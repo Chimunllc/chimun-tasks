@@ -810,15 +810,18 @@
     <label id="f-decision-reason-label" style="display:none;">Шийдвэрийн дүгнэлт (CEO)</label>
     <textarea id="f-decision-reason" style="display:none;" placeholder="Жишээ: Дүн өндөр байна, 30%-ийг бууруулсан"></textarea>
 
-    <label>📎 Худалдан авсан баримт (зураг/PDF)</label>
+    <label>📎 Үнийн судалгаа / бүтээгдэхүүний зураг</label>
+    <div style="font-size:11px;color:var(--muted);margin:-4px 0 4px;">Бараа/үйлчилгээний зураг, үнийн санал, нэхэмжлэх — CEO харж шийдвэр гаргахад туслана</div>
     <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <label>💵 Төлбөрийн баримт (S03 гүйлгээ хийсний дараа)</label>
+    <label>💵 Төлбөрийн баримт</label>
+    <div style="font-size:11px;color:var(--muted);margin:-4px 0 4px;">Туслах нягтлан гүйлгээ хийсний дараа банкны баримт хавсаргана</div>
     <input id="f-payment-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-payment-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <label>🧾 Худалдан авалтын баримт (ажилтан барааг авсны дараа)</label>
+    <label>🧾 Худалдан авалтын баримт</label>
+    <div style="font-size:11px;color:var(--muted);margin:-4px 0 4px;">Ажилтан барааг худалдан авсны дараа нэхэмжлэх/баримтыг хавсаргана</div>
     <input id="f-receipt-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-receipt-preview" style="margin-top:6px;font-size:12px;"></div>
 
@@ -1709,15 +1712,18 @@ async function decideFinanceRequest(id, decision, reason = '') {
   render();
 }
 
-// Finance modal-ийн file picker-ийг + sibling label-ыг харуулах/нуух helper
+// Finance modal-ийн file picker-ийг + холбогдох label/description divоор хамт хаах/нээх helper
 function toggleFinanceFileInput(inputId, show) {
   const input = document.getElementById(inputId);
   if (!input) return;
   input.style.display = show ? '' : 'none';
-  // previousElementSibling нь label байна
+  // input-ээс өмнөх label + description div-ыг нуух/харуулах
   let prev = input.previousElementSibling;
-  while (prev && prev.tagName !== 'LABEL') prev = prev.previousElementSibling;
-  if (prev) prev.style.display = show ? '' : 'none';
+  while (prev) {
+    if (prev.tagName === 'LABEL') { prev.style.display = show ? '' : 'none'; break; }
+    if (prev.tagName === 'DIV') prev.style.display = show ? '' : 'none';
+    prev = prev.previousElementSibling;
+  }
 }
 function hideFinanceFileInput(inputId) { toggleFinanceFileInput(inputId, false); }
 

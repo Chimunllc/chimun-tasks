@@ -618,26 +618,28 @@
       <select id="branch-select"></select>
     </div>
 
-    <div class="section-label">View</div>
-    <div class="nav-item active" data-view="all">
-      <span>Бүгд</span><span class="count-badge" id="cnt-all">0</span>
-    </div>
-    <div class="nav-item" data-view="mine">
-      <span>Миний</span><span class="count-badge" id="cnt-mine">0</span>
+    <div class="section-label">Mailbox</div>
+    <div class="nav-item active" data-view="mine">
+      <span>📥 Ирсэн ажил</span><span class="count-badge" id="cnt-mine">0</span>
     </div>
     <div class="nav-item" data-view="delegated">
-      <span>Үүргэсэн</span><span class="count-badge" id="cnt-delegated">0</span>
+      <span>📤 Илгээсэн ажил</span><span class="count-badge" id="cnt-delegated">0</span>
     </div>
     <div class="nav-item" data-view="finance">
-      <span>💸 Хүсэлт</span><span class="count-badge" id="cnt-finance">0</span>
+      <span>💸 Санхүү</span><span class="count-badge" id="cnt-finance">0</span>
     </div>
-    <div class="nav-item" data-view="overdue">
+    <!-- Хуучин view-уудыг хадгалсан (Бүгд/Хоцорсон/Өнөөдөр/Дууссан) — filter pill-аар орлуулсан.
+         Кодын тал нь үлдсэн, JS-аас reachable. Шинэ үед filter pill дээрх "Хоцорсон/Өнөөдөр" товчоор шилжинэ. -->
+    <div class="nav-item" data-view="all" style="display:none">
+      <span>Бүгд</span><span class="count-badge" id="cnt-all">0</span>
+    </div>
+    <div class="nav-item" data-view="overdue" style="display:none">
       <span>Хоцорсон</span><span class="count-badge" id="cnt-overdue">0</span>
     </div>
-    <div class="nav-item" data-view="today">
+    <div class="nav-item" data-view="today" style="display:none">
       <span>Өнөөдөр</span><span class="count-badge" id="cnt-today">0</span>
     </div>
-    <div class="nav-item" data-view="done">
+    <div class="nav-item" data-view="done" style="display:none">
       <span>Дууссан</span><span class="count-badge" id="cnt-done">0</span>
     </div>
 
@@ -664,8 +666,8 @@
     <div class="header">
       <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Цэс нээх">☰</button>
       <div style="flex:1; min-width:0;">
-        <h1 id="view-title">Бүгд</h1>
-        <div class="sub" id="view-sub">Бүх checklist</div>
+        <h1 id="view-title">📥 Ирсэн ажил</h1>
+        <div class="sub" id="view-sub">Танд оноосон ажлууд</div>
       </div>
       <div class="header-actions">
         <button class="bell-btn" id="notif-btn" aria-label="Мэдэгдэл">
@@ -698,7 +700,9 @@
     <div class="toolbar">
       <div class="filter-pill active" data-status="all">Бүгд</div>
       <div class="filter-pill" data-status="open">Идэвхтэй</div>
-      <div class="filter-pill" data-status="done">Дууссан</div>
+      <div class="filter-pill" data-status="overdue">⚠ Хоцорсон</div>
+      <div class="filter-pill" data-status="today">☀️ Өнөөдөр</div>
+      <div class="filter-pill" data-status="done">✓ Дууссан</div>
       <div class="search"><input type="text" id="search" placeholder="🔍 Хайх..." /></div>
     </div>
 
@@ -994,7 +998,7 @@ const state = {
   financeRequests: [],   // Финансын хүсэлт — тусдаа Sheet-аас sync хийгдэнэ
   projectsByBranch: {},  // { 'm-event': [...], 'camp': [...], ... }
   branch: localStorage.getItem('branch') || 'm-event',
-  view: 'all',           // all | mine | overdue | today | done | project:<id>
+  view: 'mine',          // mine | delegated | finance | all | overdue | today | done | project:<id>
   statusFilter: 'all',   // all | open | done
   search: '',
   // Auth state — populated by Google Sign-In flow. `me` is set automatically.
@@ -2104,9 +2108,11 @@ function filteredTasks() {
     const pid = state.view.split(':')[1];
     list = list.filter(t => t.project === pid);
   }
-  // status filter
+  // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
   if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done');
   else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done');
+  else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
+  else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
   // search
   if (state.search) {
     const q = state.search.toLowerCase();
@@ -2184,13 +2190,13 @@ function renderSidebar() {
 }
 function renderTitle() {
   const titles = {
-    all: ['Бүгд','Бүх checklist'],
-    mine: ['Миний даалгаврууд', 'Танд оноосон ажлууд'],
-    delegated: ['Үүргэсэн', 'Та өөр хүнд хариуцуулсан ажлууд'],
-    finance: ['💸 Санхүүгийн хүсэлтүүд', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн төлбөрүүд'],
-    overdue: ['Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
-    today: ['Өнөөдөр','Өнөөдөр дуусах ёстой'],
-    done: ['Дууссан','Биелсэн даалгаврууд'],
+    mine:      ['📥 Ирсэн ажил', 'Танд оноосон ажлууд'],
+    delegated: ['📤 Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
+    finance:   ['💸 Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
+    all:       ['Бүгд','Бүх checklist'],
+    overdue:   ['Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
+    today:     ['Өнөөдөр','Өнөөдөр дуусах ёстой'],
+    done:      ['Дууссан','Биелсэн даалгаврууд'],
   };
   let t = titles[state.view];
   if (!t && state.view.startsWith('project:')) {

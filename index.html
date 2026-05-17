@@ -975,14 +975,15 @@ const PROJECTS_BY_BRANCH = {
    Camp ↔ M Event-ийн актын урсгал — Chimun_Camp_MEvent_Agreement_2026.
    "Шинэ захиалга" товчоор 1 эх (parent) task + 5 sub-task үүснэ.
    Дамжлага бүр `offset` өдрөөр event-ийн өдрөөс тооцон due огноотой болно.
-   `role_id`-аар TEAM-аас default хариуцагчийг сонгоно (CEO/менежер өөрчилж болно).
-*/
+
+   ⚠ Шинэ дизайн: hardcoded ID-ын оронд role_pattern ашиглана —
+   ингэснээр Master Sheet-д ID солигдсон ч хариуцагч role-аар нь автомат олдоно. */
 const ACT_TEMPLATE = [
-  { stage: 1, title: 'Акт үүсгэх + захиалгын мэдээлэл',         role_id: 'M02', offset: -7, priority: 'high' },
-  { stage: 2, title: 'Тоног төхөөрөмж бэлдэх + тест',           role_id: '004', offset: -1, priority: 'high' },
-  { stage: 3, title: 'Газар дээр хүргэх + setup',               role_id: '005', offset:  0, priority: 'high' },
-  { stage: 4, title: 'Буцаалт + цэвэрлэгээ + чанарын шалгалт',  role_id: '006', offset:  1, priority: 'med'  },
-  { stage: 5, title: 'Бүртгэл хаах + санхүүгийн бүртгэл',       role_id: '003', offset:  2, priority: 'med'  },
+  { stage: 1, title: 'Акт үүсгэх + захиалгын мэдээлэл',         role_pattern: 'event manager|захиалгын ажилтан|менежер', offset: -7, priority: 'high' },
+  { stage: 2, title: 'Тоног төхөөрөмж бэлдэх + тест',           role_pattern: 'агуулах|засвар',                          offset: -1, priority: 'high' },
+  { stage: 3, title: 'Газар дээр хүргэх + setup',               role_pattern: 'логистик',                               offset:  0, priority: 'high' },
+  { stage: 4, title: 'Буцаалт + цэвэрлэгээ + чанарын шалгалт',  role_pattern: 'цэвэрлэгээ|цэврэлгээ',                   offset:  1, priority: 'med'  },
+  { stage: 5, title: 'Бүртгэл хаах + санхүүгийн бүртгэл',       role_pattern: 'нярав',                                  offset:  2, priority: 'med'  },
 ];
 
 /* -------------------- STATE -------------------- */
@@ -1181,7 +1182,7 @@ function generateNotifications() {
       }
     });
   }
-  if (state.me === FINANCE_EXECUTOR_ID) {
+  if (state.me === getFinanceExecutorId()) {
     state.financeRequests.filter(r => r.decision === 'approved' && r.status !== 'done').forEach(r => {
       const nid = `finance-execute-${r.id}`;
       if (!seen.has(nid)) {
@@ -1516,15 +1517,16 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
   };
   state.tasks.unshift(parent);
   await saveTask(parent);
-  // Sub-tasks (5 stages)
+  // Sub-tasks (5 stages) — assignee нь Master Sheet дахь role-аар автомат олдоно
   for (const tpl of ACT_TEMPLATE) {
+    const assigneeId = tpl.role_pattern ? findMemberIdByRole(tpl.role_pattern, owner) : (tpl.role_id || owner);
     const sub = {
       id: uid(),
       title: `Дамжлага ${tpl.stage}: ${tpl.title}`,
       desc: '',
       branch,
       project: 'event',
-      assignee: tpl.role_id,
+      assignee: assigneeId,
       due: addDays(eventDate, tpl.offset),
       priority: tpl.priority,
       status: 'open',
@@ -1543,13 +1545,14 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
 
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
 function financeAsTask(r) {
+  const executorId = r.executor || getFinanceExecutorId();
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
     desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + (r.justification || ''),
     branch: 'shared',
     project: 'finance',
-    assignee: (r.decision === 'approved' && r.status !== 'done') ? (r.executor || FINANCE_EXECUTOR_ID) : 'CEO',
+    assignee: (r.decision === 'approved' && r.status !== 'done') ? executorId : 'CEO',
     due: r.due_date || '',
     priority: 'high',
     status: r.status || 'open',
@@ -1570,7 +1573,13 @@ function financeAsTask(r) {
        Татгалзах  → decision=rejected, status=done (хаагдсан)
        Хойшлуулах → due += 7 хоног, CEO дээр үлдэнэ */
 
-const FINANCE_EXECUTOR_ID = 'S03'; // Туслах нягтлан — зөвшөөрсөн хүсэлтийг гүйцэтгэнэ
+// Туслах нягтлан — зөвшөөрсөн хүсэлтийг гүйцэтгэнэ. Hardcoded ID биш role-аар хайна
+// (Master Sheet-д ID солигдсон ч role-аар хадгалагдсан хүн олдох ёстой).
+function getFinanceExecutorId() {
+  return findMemberIdByRole('нягтлан', 'CEO');
+}
+// Backward-compat: legacy code may reference const FINANCE_EXECUTOR_ID
+const FINANCE_EXECUTOR_ID = 'S03'; // Default fallback — runtime-д getFinanceExecutorId()-ээр дарагдана
 
 /* Финансын хүсэлтийн ангилал — сар бүрийн тайлан, бюджет, pivot table-д ашиглана */
 const FINANCE_CATEGORIES = [
@@ -1727,7 +1736,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     decision_reason: '',
     executed_at: '',
     executed_by: '',
-    executor: FINANCE_EXECUTOR_ID,
+    executor: getFinanceExecutorId(), // Role-аар хайна, hardcoded ID биш
     purchase_proof_url: '',
     payment_proof_url: '',
     purchase_receipt_url: '',
@@ -1747,6 +1756,8 @@ async function decideFinanceRequest(id, decision, reason = '') {
   r.decision_by = state.me;
   if (reason) r.decision_reason = reason;
   if (decision === 'approved') {
+    // Approved үед executor-г динамикаар шинэчилнэ (Master Sheet-д нягтлан солигдсон бол шинэ хүн)
+    r.executor = getFinanceExecutorId();
     notify('finance.approved', r);
     showToast('Зөвшөөрсөн. Туслах нягтланд илгээгдсэн.', 'success');
   } else if (decision === 'rejected') {
@@ -1948,7 +1959,8 @@ async function executeFinanceRequest(id) {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
   if (r.decision !== 'approved') { showToast('Зөвхөн зөвшөөрсөн хүсэлтийг гүйцэтгэх боломжтой', 'warn'); return; }
-  if (state.me !== FINANCE_EXECUTOR_ID && !state.isCEO) {
+  const executorId = r.executor || getFinanceExecutorId();
+  if (state.me !== executorId && !state.isCEO) {
     showToast('Зөвхөн Туслах нягтлан гүйлгээ хийх эрхтэй', 'error'); return;
   }
   r.executed_at = new Date().toISOString();
@@ -1982,8 +1994,30 @@ function actProgress(parentId) {
 }
 
 /* -------------------- HELPERS -------------------- */
-function memberName(id) { const m = TEAM.find(x=>x.id===id); return m? m.name : id; }
-function memberInitials(id) { const m = TEAM.find(x=>x.id===id); if(!m) return '?'; return m.name.replace(/\./g,'').slice(0,2); }
+function memberName(id) {
+  if (!id) return '(сонгох)';
+  const m = TEAM.find(x => x.id === id);
+  if (m) return m.name;
+  // ID олдсонгүй — Master Sheet-аас ажилтан хасагдсан магадгүй
+  return `(${id} — алга)`;
+}
+function memberInitials(id) {
+  if (!id) return '?';
+  const m = TEAM.find(x => x.id === id);
+  if (!m) return '⚠';
+  return m.name.replace(/\./g,'').slice(0,2);
+}
+
+/* Role-аар хайх — ID-аас үл хамаарсан resilient lookup.
+   Master Sheet-д ID солигдсон ч "Туслах нягтлан" role-той хүн олдох ёстой. */
+function findMemberByRole(rolePattern) {
+  const re = new RegExp(rolePattern, 'i');
+  return TEAM.find(t => re.test(t.role || ''));
+}
+function findMemberIdByRole(rolePattern, fallback = 'CEO') {
+  const m = findMemberByRole(rolePattern);
+  return m ? m.id : fallback;
+}
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
   for (const branch of Object.keys(state.projectsByBranch)) {
@@ -2335,10 +2369,11 @@ function renderCounts() {
   document.getElementById('cnt-mine').textContent    = accessible.filter(t => t.assignee === state.me && t.status !== 'done').length;
   document.getElementById('cnt-delegated').textContent = accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length;
   // Финансын хүсэлт нь state.financeRequests-ээс ирнэ (тусдаа Sheet)
+  const executorId = getFinanceExecutorId();
   const myFinance = state.isCEO
     ? state.financeRequests
     : state.financeRequests.filter(r => r.requested_by === state.me ||
-        (r.decision === 'approved' && r.status !== 'done' && (r.executor || FINANCE_EXECUTOR_ID) === state.me));
+        (r.decision === 'approved' && r.status !== 'done' && (r.executor || executorId) === state.me));
   document.getElementById('cnt-finance').textContent = myFinance.filter(r => r.status !== 'done').length;
   document.getElementById('cnt-overdue').textContent = branchTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
   document.getElementById('cnt-today').textContent   = branchTasks.filter(t => t.due === today).length;

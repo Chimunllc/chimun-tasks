@@ -1502,7 +1502,7 @@ function addDays(yyyymmdd, days) {
 async function createOrderAct({ customer, eventDate, location, desc }) {
   const branch = 'm-event';
   const parentId = uid();
-  const owner = state.me || 'CEO';
+  const owner = state.me || getCEOId();
   const parent = {
     id: parentId,
     title: `📋 ${customer || 'Захиалга'} — ${eventDate || 'огноогүй'}`,
@@ -1554,7 +1554,7 @@ function financeAsTask(r) {
     desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + (r.justification || ''),
     branch: 'shared',
     project: 'finance',
-    assignee: (r.decision === 'approved' && r.status !== 'done') ? executorId : 'CEO',
+    assignee: (r.decision === 'approved' && r.status !== 'done') ? executorId : getCEOId(),
     due: r.due_date || '',
     priority: 'high',
     status: r.status || 'open',
@@ -1716,7 +1716,7 @@ function normalizeFinance(r) {
 }
 
 async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber }) {
-  const owner = state.me || 'CEO';
+  const owner = state.me || getCEOId();
   const r = {
     id: uid(),
     requested_by: owner,
@@ -2019,6 +2019,11 @@ function findMemberByRole(rolePattern) {
 function findMemberIdByRole(rolePattern, fallback = 'CEO') {
   const m = findMemberByRole(rolePattern);
   return m ? m.id : fallback;
+}
+// CEO-ийн ID-г динамикаар олох (level === 100). Master Sheet-д ID өөрчилсөн ч CEO олдоно.
+function getCEOId() {
+  const m = TEAM.find(t => (t.level || 0) >= 100);
+  return m ? m.id : 'CEO';
 }
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
@@ -2897,7 +2902,8 @@ function setUser(member, profile) {
     picture: profile.picture || '',
   };
   state.me = member.id;
-  state.isCEO = (member.id === 'CEO');
+  // CEO эрх — ID-аас үл хамаарч level === 100-аар тогтооно. Master Sheet-д ID өөрчилсөн ч ажиллана.
+  state.isCEO = ((member.level || 0) >= 100 || member.id === 'CEO');
   state.myLevel = member.level || 0;
   // Constrain branch to one the user actually belongs to
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
@@ -2990,7 +2996,8 @@ function tryRestoreSession() {
   // Restore without picture (we didn't cache it) — user chip will show initials
   state.user = { ...member, email: member.email, picture: '' };
   state.me = member.id;
-  state.isCEO = (member.id === 'CEO');
+  // CEO эрх — ID-аас үл хамаарч level === 100-аар тогтооно. Master Sheet-д ID өөрчилсөн ч ажиллана.
+  state.isCEO = ((member.level || 0) >= 100 || member.id === 'CEO');
   state.myLevel = member.level || 0;
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];

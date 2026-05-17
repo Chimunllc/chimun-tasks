@@ -757,6 +757,8 @@
     <input id="s-staff" placeholder="https://your-n8n.example.com/webhook/staff" />
     <label>n8n Finance Webhook URL (санхүүгийн хүсэлт)</label>
     <input id="s-finance" placeholder="https://your-n8n.example.com/webhook/finance" />
+    <label>n8n Upload Webhook URL (баримт)</label>
+    <input id="s-upload" placeholder="https://your-n8n.example.com/webhook/upload-receipt" />
     <p style="font-size: 11px; color: var(--muted); margin-top: 10px;">
       Хоосон үлдээвэл browser-ийн localStorage ашиглана (зөвхөн энэ компьютер дээр).
     </p>
@@ -805,6 +807,14 @@
     <textarea id="f-justification" placeholder="Нэхэмжлэхийн №, гэрээний линк г.м."></textarea>
     <label>Хүссэн огноо</label>
     <input id="f-due" type="date" />
+
+    <label>📎 Худалдан авсан баримт (зураг/PDF)</label>
+    <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" />
+    <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
+
+    <label>💵 Төлбөрийн баримт (зөвхөн S03 буюу гүйлгээ хийсний дараа)</label>
+    <input id="f-payment-file" type="file" accept="image/*,application/pdf" capture="environment" />
+    <div id="f-payment-preview" style="margin-top:6px;font-size:12px;"></div>
 
     <!-- DECISION BUTTONS — зөвхөн CEO + pending хүсэлт үед харагдана -->
     <div class="modal-actions" id="f-decision-actions" style="display:none; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-top:18px;">
@@ -904,6 +914,8 @@ const DEFAULT_STAFF_URL   = 'https://chimun.app.n8n.cloud/webhook/staff';
 // Finance request sync — separate Sheet for audit/reporting cleanliness.
 // GET returns { requests: [...] }; POST { action: 'upsert'|'delete', request } saves.
 const DEFAULT_FINANCE_URL = 'https://chimun.app.n8n.cloud/webhook/finance';
+// Receipt upload — POST { filename, contentType, base64, request_id, kind } → returns Drive URL.
+const DEFAULT_UPLOAD_URL  = 'https://chimun.app.n8n.cloud/webhook/upload-receipt';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
 const PROJECTS_BY_BRANCH = {
@@ -967,6 +979,7 @@ const state = {
     notifyUrl:  localStorage.getItem('notifyUrl')  || DEFAULT_NOTIFY_URL  || '',
     staffUrl:   localStorage.getItem('staffUrl')   || DEFAULT_STAFF_URL   || '',
     financeUrl: localStorage.getItem('financeUrl') || DEFAULT_FINANCE_URL || '',
+    uploadUrl:  localStorage.getItem('uploadUrl')  || DEFAULT_UPLOAD_URL  || '',
   },
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
@@ -1534,6 +1547,44 @@ function financeAsTask(r) {
 
 const FINANCE_EXECUTOR_ID = 'S03'; // Туслах нягтлан — зөвшөөрсөн хүсэлтийг гүйцэтгэнэ
 
+/* Файл (зураг/PDF) -> Drive folder руу upload хийгээд URL буцаах helper.
+   kind: 'purchase' (худалдан авсан баримт) эсвэл 'payment' (төлбөрийн баримт) */
+async function uploadReceipt(file, requestId, kind) {
+  if (!file) return null;
+  if (!state.config.uploadUrl) {
+    showToast('Upload endpoint тохируулагдаагүй. Settings шалгана уу.', 'error');
+    return null;
+  }
+  // File → base64 (FileReader)
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  try {
+    const r = await fetch(state.config.uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        contentType: file.type || 'application/octet-stream',
+        base64,
+        request_id: requestId,
+        kind,
+      })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (!data.url) throw new Error('URL буцаагүй');
+    return data.url;
+  } catch (e) {
+    console.warn('Upload failed:', e);
+    showToast('Файл upload амжилтгүй: ' + e.message, 'error');
+    return null;
+  }
+}
+
 /* Финансын хүсэлт нь Tasks-ээс ТУСДАА Sheet-д хадгалагдана (Чимун_Финанс_Хүсэлт).
    App-н state дотор хадгалахдаа state.financeRequests array-д байх ба
    UI rendering нь tasks-той хамт нэгтгэн харагдана (sidebar Хүсэлт view-р шүүгдэнэ). */
@@ -1575,7 +1626,7 @@ function normalizeFinance(r) {
   if (!r || typeof r !== 'object') return r;
   const stringFields = ['id','requested_by','beneficiary','purpose','justification','due_date',
     'status','decision','decision_at','decision_by','decision_reason',
-    'executed_at','executed_by','executor','payment_proof_url'];
+    'executed_at','executed_by','executor','purchase_proof_url','payment_proof_url'];
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
@@ -1605,6 +1656,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     executed_at: '',
     executed_by: '',
     executor: FINANCE_EXECUTOR_ID,
+    purchase_proof_url: '',
     payment_proof_url: '',
   };
   state.financeRequests.unshift(r);
@@ -1637,6 +1689,16 @@ async function decideFinanceRequest(id, decision, reason = '') {
   render();
 }
 
+function renderProofPreview(elId, url, label) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!url) {
+    el.innerHTML = `<span style="color:var(--muted);font-size:11px;">${label} баримт хавсаргаагүй</span>`;
+    return;
+  }
+  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;">📎 ${escapeHtml(label)} баримтыг харах</a>`;
+}
+
 function openFinanceModal(id = null) {
   const t = id ? state.financeRequests.find(x => x.id === id) : null;
   state.editingId = id || null;
@@ -1662,6 +1724,13 @@ function openFinanceModal(id = null) {
     document.getElementById('f-purpose').value = '';
     document.getElementById('f-justification').value = '';
     document.getElementById('f-due').value = '';
+    document.getElementById('f-purchase-file').value = '';
+    document.getElementById('f-payment-file').value = '';
+    document.getElementById('f-purchase-preview').innerHTML = '';
+    document.getElementById('f-payment-preview').innerHTML = '';
+    // Шинэ хүсэлт үед төлбөрийн file-input нуух (тухайн үед хариуцагч мэдэгдэхгүй)
+    document.getElementById('f-payment-file').parentElement.querySelector('label').style.display = 'none';
+    document.getElementById('f-payment-file').style.display = 'none';
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.removeAttribute('readonly'));
     document.getElementById('f-save').style.display = '';
   } else {
@@ -1672,7 +1741,25 @@ function openFinanceModal(id = null) {
     document.getElementById('f-purpose').value = t.purpose || '';
     document.getElementById('f-justification').value = t.justification || '';
     document.getElementById('f-due').value = t.due_date || '';
+    // Existing receipts харуулах
+    renderProofPreview('f-purchase-preview', t.purchase_proof_url, 'Худалдан авсан');
+    renderProofPreview('f-payment-preview', t.payment_proof_url, 'Төлбөрийн');
+    document.getElementById('f-purchase-file').value = '';
+    document.getElementById('f-payment-file').value = '';
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.setAttribute('readonly','readonly'));
+    // File picker нь readonly биш — upload боломжтой
+    document.getElementById('f-purchase-file').removeAttribute('readonly');
+    document.getElementById('f-payment-file').removeAttribute('readonly');
+    // Payment file picker зөвхөн approved + S03 эсвэл CEO үед харагдана
+    const showPayment = (t.decision === 'approved' && t.status !== 'done' && (state.me === FINANCE_EXECUTOR_ID || state.isCEO));
+    document.getElementById('f-payment-file').parentElement.querySelector('label[for="f-payment-file"], label:has(+ #f-payment-file)') ;
+    const paymentLabel = document.querySelectorAll('#finance-modal label');
+    // Энгийн зам — sibling label-аар хайх
+    const paymentInput = document.getElementById('f-payment-file');
+    let prev = paymentInput.previousElementSibling;
+    while (prev && prev.tagName !== 'LABEL') prev = prev.previousElementSibling;
+    if (prev) prev.style.display = showPayment ? '' : 'none';
+    paymentInput.style.display = showPayment ? '' : 'none';
     document.getElementById('f-save').style.display = 'none';
 
     // Decision banner — хоосон утга бол 'pending' гэж тооцох (Sheet sync-аас буцаж ирэхэд decision талбар хоосон байх магадлалтай)
@@ -2386,13 +2473,23 @@ function initEvents() {
     const purpose = document.getElementById('f-purpose').value.trim();
     const justification = document.getElementById('f-justification').value.trim();
     const dueDate = document.getElementById('f-due').value;
+    const purchaseFile = document.getElementById('f-purchase-file').files[0];
     if (!amount || Number(amount) <= 0) { showToast('Дүн оруулна уу', 'warn'); return; }
     if (!beneficiary) { showToast('Хүлээн авагчийн нэр шаардлагатай', 'warn'); return; }
     if (!purpose) { showToast('Зорилго шаардлагатай', 'warn'); return; }
     const btn = document.getElementById('f-save');
     btn.disabled = true;
     try {
-      await createFinanceRequest({ amount, beneficiary, purpose, justification, dueDate });
+      const newRequest = await createFinanceRequest({ amount, beneficiary, purpose, justification, dueDate });
+      // Худалдан авсан баримт сонгогдсон бол upload хийгээд update
+      if (purchaseFile) {
+        showToast('Баримт upload хийж байна...', '', 2000);
+        const url = await uploadReceipt(purchaseFile, newRequest.id, 'purchase');
+        if (url) {
+          newRequest.purchase_proof_url = url;
+          await saveFinanceRequest(newRequest);
+        }
+      }
       document.getElementById('finance-modal').classList.remove('open');
       showToast('Хүсэлт CEO-руу илгээгдсэн', 'success');
       render();
@@ -2418,7 +2515,20 @@ function initEvents() {
   });
   document.getElementById('f-execute')?.addEventListener('click', async () => {
     if (!state.editingId) return;
-    if (!(await showConfirm('Энэ гүйлгээг хийсэн гэж тэмдэглэх үү?', { okText: 'Гүйцэтгэсэн' }))) return;
+    const paymentFile = document.getElementById('f-payment-file').files[0];
+    if (!paymentFile) {
+      const proceed = await showConfirm('Төлбөрийн баримт хавсаргаагүй байна. Үргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' });
+      if (!proceed) return;
+    } else if (!(await showConfirm('Энэ гүйлгээг хийсэн гэж тэмдэглэх үү?', { okText: 'Гүйцэтгэсэн' }))) return;
+    // Upload payment proof first if provided
+    if (paymentFile) {
+      showToast('Баримт upload хийж байна...', '', 2000);
+      const url = await uploadReceipt(paymentFile, state.editingId, 'payment');
+      if (url) {
+        const r = state.financeRequests.find(x => x.id === state.editingId);
+        if (r) { r.payment_proof_url = url; await saveFinanceRequest(r); }
+      }
+    }
     await executeFinanceRequest(state.editingId);
     document.getElementById('finance-modal').classList.remove('open');
   });
@@ -2463,6 +2573,7 @@ function initEvents() {
     document.getElementById('s-notify').value = state.config.notifyUrl;
     document.getElementById('s-staff').value = state.config.staffUrl;
     document.getElementById('s-finance').value = state.config.financeUrl;
+    document.getElementById('s-upload').value = state.config.uploadUrl;
     document.getElementById('settings-modal').classList.add('open');
   };
   document.getElementById('s-cancel').onclick = () => document.getElementById('settings-modal').classList.remove('open');

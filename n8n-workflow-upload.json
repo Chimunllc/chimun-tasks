@@ -1,0 +1,97 @@
+{
+  "name": "Чимун Tasks · Upload Receipt (Drive)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-receipt",
+        "responseMode": "responseNode",
+        "options": { "allowedOrigins": "*" }
+      },
+      "id": "webhook-upload",
+      "name": "Webhook POST /upload-receipt",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate + prep file from base64 body.\n// Expected body: { filename, contentType, base64, request_id, kind: 'purchase'|'payment' }\nconst body = $input.first().json.body || {};\nif (!body.base64 || !body.filename) {\n  throw new Error('base64 эсвэл filename талбар дутуу');\n}\nconst kind = (body.kind || 'purchase').toLowerCase();\nconst safeKind = ['purchase','payment'].includes(kind) ? kind : 'purchase';\nconst requestId = (body.request_id || 'no-id').replace(/[^a-zA-Z0-9_-]/g,'');\nconst dateStr = new Date().toISOString().slice(0,10);\nconst ext = (body.filename.split('.').pop() || 'jpg').toLowerCase();\nconst finalName = `${dateStr}_${requestId}_${safeKind}.${ext}`;\n// base64 → Buffer\nconst rawB64 = body.base64.replace(/^data:[^;]+;base64,/,'');\nconst buf = Buffer.from(rawB64, 'base64');\nreturn [{\n  json: {\n    filename: finalName,\n    contentType: body.contentType || 'application/octet-stream',\n    size: buf.length,\n    request_id: requestId,\n    kind: safeKind\n  },\n  binary: {\n    data: {\n      data: rawB64,\n      mimeType: body.contentType || 'application/octet-stream',\n      fileName: finalName\n    }\n  }\n}];"
+      },
+      "id": "code-prep",
+      "name": "Prepare File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
+        "folderId": { "__rl": true, "mode": "id", "value": "1JccijKlhJr8q9D8jF7GZb5mtzSMUFGOx" },
+        "name": "={{ $json.filename }}",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "drive-upload",
+      "name": "Drive · Upload",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "REPLACE", "name": "Google Drive account" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": { "__rl": true, "mode": "id", "value": "={{ $json.id }}" },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone",
+            "allowFileDiscovery": false
+          }
+        },
+        "options": {}
+      },
+      "id": "drive-share",
+      "name": "Drive · Share Public Read",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": { "id": "REPLACE", "name": "Google Drive account" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, url: $('Drive · Upload').item.json.webViewLink, file_id: $('Drive · Upload').item.json.id, filename: $('Drive · Upload').item.json.name }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Access-Control-Allow-Methods", "value": "POST,OPTIONS" },
+              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+            ]
+          }
+        }
+      },
+      "id": "respond",
+      "name": "Respond URL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook POST /upload-receipt": { "main": [[{ "node": "Prepare File", "type": "main", "index": 0 }]] },
+    "Prepare File": { "main": [[{ "node": "Drive · Upload", "type": "main", "index": 0 }]] },
+    "Drive · Upload": { "main": [[{ "node": "Drive · Share Public Read", "type": "main", "index": 0 }]] },
+    "Drive · Share Public Read": { "main": [[{ "node": "Respond URL", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "chimun" }, { "name": "finance" }, { "name": "upload" }],
+  "_README": "POST { filename, contentType, base64, request_id, kind:'purchase'|'payment' } → Drive folder руу upload → URL буцаана. Drive credential, Google Drive OAuth API эрх хэрэгтэй. Folder ID: 1JccijKlhJr8q9D8jF7GZb5mtzSMUFGOx"
+}

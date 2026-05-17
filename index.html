@@ -611,7 +611,9 @@
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span> <span id="brand-text">Чимун ХХК</span></div>
 
-    <div class="branch-switcher">
+    <!-- Branch switcher одоохондоо нуугдсан — Чимун ХХК нэг л компани, бүгд нэг газар.
+         Кодын талд BRANCHES + filtering хадгалагдсан, ирээдүйд хэрэгцээтэй бол дахин нээх. -->
+    <div class="branch-switcher" style="display:none;">
       <label for="branch-select">Бүлэг</label>
       <select id="branch-select"></select>
     </div>
@@ -674,7 +676,7 @@
           <span class="notif-badge" id="notif-badge" style="display:none">0</span>
         </button>
         <button class="btn" id="settings-btn" aria-label="Тохиргоо">⚙</button>
-        <button class="btn" id="new-order-btn" style="display:none" title="5 дамжлагат акт автоматаар үүснэ">📋 Захиалга</button>
+        <button class="btn" id="new-order-btn" title="5 дамжлагат акт автоматаар үүснэ">📋 Захиалга</button>
         <button class="btn" id="new-finance-btn" title="Санхүүгийн хүсэлт CEO-руу илгээх">💸 Хүсэлт</button>
         <button class="btn btn-primary" id="new-task-btn">+ Шинэ</button>
       </div>
@@ -723,8 +725,8 @@
     <input id="t-title" placeholder="Жишээ: Хурим - 2026/06/15 - тоног бэлдэх" />
     <label>Тайлбар</label>
     <textarea id="t-desc" placeholder="Дэлгэрэнгүй..."></textarea>
-    <label>Бүлэг *</label>
-    <select id="t-branch"></select>
+    <!-- Бүлэг (branch) нуугдсан — Чимун ХХК нь нэг компани. Сонголт `shared`-аар автомат тогтоогдоно. -->
+    <select id="t-branch" style="display:none;"></select>
     <label>Төсөл</label>
     <select id="t-project"></select>
     <label>Хариуцагч</label>
@@ -809,8 +811,8 @@
     <input id="f-purpose" placeholder="Жишээ: Тоног түрээсийн төлбөр, тооцоо тооцоолох" />
     <label>Категори *</label>
     <select id="f-category"></select>
-    <label>Салбар *</label>
-    <select id="f-dept-branch"></select>
+    <!-- "Салбар" талбар нуугдсан — Чимун ХХК нь нэг компани, ялгаатай branch шаардлагагүй -->
+    <select id="f-dept-branch" style="display:none;"></select>
     <label>Үе шат *</label>
     <select id="f-frequency"></select>
     <label>Тайлбар / нэхэмжлэхийн дугаар</label>
@@ -2076,13 +2078,8 @@ function filteredTasks() {
     });
     list = list.filter(t => allowed.has(t.id));
   }
-  // BRANCH filter — apply after access control. Production events appear in M Event + Camp views too.
-  list = list.filter(t => {
-    const tb = taskBranch(t);
-    if (tb === state.branch) return true;
-    if (tb === 'production' && (state.branch === 'm-event' || state.branch === 'camp')) return true;
-    return false;
-  });
+  // BRANCH filter disabled — Чимун ХХК нь нэг компани, бүгд нэг task list-д харагдана.
+  // (Branch талбар datastructure-д үлдсэн — ирээдүйд буцаахаар үлдээсэн.)
   // view
   const today = new Date().toISOString().slice(0,10);
   if (state.view === 'mine') list = list.filter(t => t.assignee === state.me);
@@ -2357,14 +2354,8 @@ function renderCounts() {
   const accessible = state.isCEO
     ? state.tasks
     : state.tasks.filter(t => t.assignee === state.me);
-  // Counts respect the current branch (production tasks count toward m-event AND camp views).
-  const inBranch = (t) => {
-    const tb = taskBranch(t);
-    if (tb === state.branch) return true;
-    if (tb === 'production' && (state.branch === 'm-event' || state.branch === 'camp')) return true;
-    return false;
-  };
-  const branchTasks = accessible.filter(inBranch);
+  // Branch filter disabled — бүх task ижилхэн тоологдоно.
+  const branchTasks = accessible;
   document.getElementById('cnt-all').textContent     = branchTasks.filter(t => t.status !== 'done').length;
   document.getElementById('cnt-mine').textContent    = accessible.filter(t => t.assignee === state.me && t.status !== 'done').length;
   document.getElementById('cnt-delegated').textContent = accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length;
@@ -2754,12 +2745,9 @@ function initEvents() {
     document.getElementById('finance-modal').classList.remove('open');
   });
 
-  // NEW ORDER (5-stage act) — visible only in M Event branch
+  // NEW ORDER (5-stage act) — branch-аас үл хамаарч бүх хэрэглэгчид нээлттэй
   const orderBtn = document.getElementById('new-order-btn');
-  function syncOrderBtnVisibility() {
-    orderBtn.style.display = (state.branch === 'm-event') ? '' : 'none';
-  }
-  syncOrderBtnVisibility();
+  function syncOrderBtnVisibility() { /* branch шалгахгүй болсон */ }
   orderBtn.onclick = () => {
     document.getElementById('o-customer').value = '';
     document.getElementById('o-date').value = '';
@@ -2827,10 +2815,7 @@ function initEvents() {
     syncOrderBtnVisibility();
     render();
   };
-  // Hide branch switcher entirely if user has only one branch (avoid clutter)
-  if (visibleBranches.length <= 1) {
-    document.querySelector('.branch-switcher').style.display = 'none';
-  }
+  // Branch switcher нуугдсан (Чимун ХХК нэг компани) — code хадгалагдсан, дахин нээх боломжтой.
 
   // Logout button
   document.getElementById('logout-btn')?.addEventListener('click', logout);

@@ -799,10 +799,20 @@
     <div id="f-decision-info" style="display:none; font-size:12px; margin:-6px 0 14px; padding:10px 12px; border-radius:8px; line-height:1.5;"></div>
     <label>Дүн (₮) *</label>
     <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="500000" />
-    <label>Хэнд төлөх (хүлээн авагч) *</label>
-    <input id="f-beneficiary" placeholder="Жишээ: Шинэст ХХК, Татварын газар" />
+    <label>Хүлээн авагчийн нэр *</label>
+    <input id="f-beneficiary" placeholder="Жишээ: Шинэст ХХК, Б.Алтансүх" />
+    <label>Банк *</label>
+    <select id="f-bank"></select>
+    <label>Дансны дугаар *</label>
+    <input id="f-account" inputmode="numeric" placeholder="Жишээ: 5045123456" />
     <label>Зорилго *</label>
     <input id="f-purpose" placeholder="Жишээ: Тоног түрээсийн төлбөр, тооцоо тооцоолох" />
+    <label>Категори *</label>
+    <select id="f-category"></select>
+    <label>Салбар *</label>
+    <select id="f-dept-branch"></select>
+    <label>Үе шат *</label>
+    <select id="f-frequency"></select>
     <label>Тайлбар / нэхэмжлэхийн дугаар</label>
     <textarea id="f-justification" placeholder="Нэхэмжлэхийн №, гэрээний линк г.м."></textarea>
     <label>Хүссэн огноо</label>
@@ -1562,6 +1572,40 @@ function financeAsTask(r) {
 
 const FINANCE_EXECUTOR_ID = 'S03'; // Туслах нягтлан — зөвшөөрсөн хүсэлтийг гүйцэтгэнэ
 
+/* Финансын хүсэлтийн ангилал — сар бүрийн тайлан, бюджет, pivot table-д ашиглана */
+const FINANCE_CATEGORIES = [
+  'Оффис хэрэглээ',          // бичиг хэрэг, цай, цэвэрлэгээний бараа
+  'Үйл ажиллагаа',           // түрээс, цахилгаан, интернэт, тогтмол зардал
+  'Тоног төхөөрөмж',         // capex, шинэ тоног авах
+  'Засвар / арчилгаа',       // машин, тоног, барилгын засвар
+  'Маркетинг / контент',     // зар, видео, фото, sponsorship
+  'Тээвэр / шатахуун',       // бензин, тээврийн зардал
+  'Хоол / event provisions', // Camp хоол, event-ийн хүнс
+  'Цалин / шагнал',          // цалингаас гадуурх төлбөр (бонус, гэрээт)
+  'Татвар / шимтгэл',        // ХХОАТ, НДШ, банкны шимтгэл
+  'Хууль зүй / гэрээ',       // нотариат, өмгөөлөгч, лиценз
+  'Бусад',
+];
+const FINANCE_DEPT_BRANCHES = ['M Event', 'Camp', 'Нэгдсэн'];
+const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
+
+/* Монголын арилжааны банкуудын жагсаалт (хэрэглээнд түгээмэл) */
+const MONGOLIAN_BANKS = [
+  'Хаан банк',
+  'Голомт банк',
+  'Худалдаа хөгжлийн банк',
+  'Хас банк',
+  'Төрийн банк',
+  'Капитрон банк',
+  'Богд банк',
+  'М банк',
+  'Чингис хаан банк',
+  'Ариг банк',
+  'Үндэсний хөрөнгө оруулалтын банк',
+  'Транс банк',
+  'Бусад',
+];
+
 /* Файл (зураг/PDF) -> Drive folder руу upload хийгээд URL буцаах helper.
    kind: 'purchase' (худалдан авсан баримт) эсвэл 'payment' (төлбөрийн баримт) */
 async function uploadReceipt(file, requestId, kind) {
@@ -1648,7 +1692,8 @@ function normalizeFinance(r) {
   if (!r || typeof r !== 'object') return r;
   const stringFields = ['id','requested_by','beneficiary','purpose','justification','due_date',
     'status','decision','decision_at','decision_by','decision_reason',
-    'executed_at','executed_by','executor','purchase_proof_url','payment_proof_url','purchase_receipt_url'];
+    'executed_at','executed_by','executor','purchase_proof_url','payment_proof_url','purchase_receipt_url',
+    'category','dept_branch','frequency','bank','account_number'];
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
@@ -1659,7 +1704,7 @@ function normalizeFinance(r) {
   return out;
 }
 
-async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate }) {
+async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber }) {
   const owner = state.me || 'CEO';
   const r = {
     id: uid(),
@@ -1667,9 +1712,14 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     requested_at: new Date().toISOString(),
     amount: Number(amount) || 0,
     beneficiary: beneficiary || '',
+    bank: bank || '',
+    account_number: accountNumber || '',
     purpose: purpose || '',
     justification: justification || '',
     due_date: dueDate || '',
+    category: category || 'Бусад',
+    dept_branch: deptBranch || 'Нэгдсэн',
+    frequency: frequency || 'Нэг удаагийн',
     status: 'open',
     decision: 'pending',
     decision_at: '',
@@ -1713,6 +1763,27 @@ async function decideFinanceRequest(id, decision, reason = '') {
 }
 
 // Finance modal-ийн file picker-ийг + холбогдох label/description divоор хамт хаах/нээх helper
+function fillFinanceSelects() {
+  const cat = document.getElementById('f-category');
+  const br  = document.getElementById('f-dept-branch');
+  const fr  = document.getElementById('f-frequency');
+  const bk  = document.getElementById('f-bank');
+  if (cat && !cat.children.length) {
+    cat.innerHTML = '<option value="" disabled>— Сонгох —</option>' +
+      FINANCE_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  }
+  if (br && !br.children.length) {
+    br.innerHTML = FINANCE_DEPT_BRANCHES.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  }
+  if (fr && !fr.children.length) {
+    fr.innerHTML = FINANCE_FREQUENCIES.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+  }
+  if (bk && !bk.children.length) {
+    bk.innerHTML = '<option value="" disabled>— Сонгох —</option>' +
+      MONGOLIAN_BANKS.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+  }
+}
+
 function toggleFinanceFileInput(inputId, show) {
   const input = document.getElementById(inputId);
   if (!input) return;
@@ -1756,14 +1827,22 @@ function openFinanceModal(id = null) {
   receiptActions.style.display = 'none';
   decisionInfo.style.display = 'none';
 
+  // Dropdown options-уудыг шинэчилэх (modal нээх бүрд)
+  fillFinanceSelects();
+
   if (!t) {
     // NEW request — submit mode
     title.textContent = '💸 Санхүүгийн хүсэлт';
     document.getElementById('f-amount').value = '';
     document.getElementById('f-beneficiary').value = '';
+    document.getElementById('f-bank').value = '';
+    document.getElementById('f-account').value = '';
     document.getElementById('f-purpose').value = '';
     document.getElementById('f-justification').value = '';
     document.getElementById('f-due').value = '';
+    document.getElementById('f-category').value = '';
+    document.getElementById('f-dept-branch').value = (state.branch === 'm-event') ? 'M Event' : (state.branch === 'camp' ? 'Camp' : 'Нэгдсэн');
+    document.getElementById('f-frequency').value = 'Нэг удаагийн';
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
     document.getElementById('f-receipt-file').value = '';
@@ -1780,9 +1859,14 @@ function openFinanceModal(id = null) {
     title.textContent = '💸 Хүсэлт #' + t.id.slice(-5);
     document.getElementById('f-amount').value = t.amount || '';
     document.getElementById('f-beneficiary').value = t.beneficiary || '';
+    document.getElementById('f-bank').value = t.bank || '';
+    document.getElementById('f-account').value = t.account_number || '';
     document.getElementById('f-purpose').value = t.purpose || '';
     document.getElementById('f-justification').value = t.justification || '';
     document.getElementById('f-due').value = t.due_date || '';
+    document.getElementById('f-category').value = t.category || '';
+    document.getElementById('f-dept-branch').value = t.dept_branch || 'Нэгдсэн';
+    document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
     // Existing receipts харуулах
     renderProofPreview('f-purchase-preview', t.purchase_proof_url, 'Үнийн судалгаа');
     renderProofPreview('f-payment-preview', t.payment_proof_url, 'Төлбөрийн');
@@ -2552,17 +2636,25 @@ function initEvents() {
   document.getElementById('f-save')?.addEventListener('click', async () => {
     const amount = document.getElementById('f-amount').value;
     const beneficiary = document.getElementById('f-beneficiary').value.trim();
+    const bank = document.getElementById('f-bank').value;
+    const accountNumber = document.getElementById('f-account').value.trim();
     const purpose = document.getElementById('f-purpose').value.trim();
     const justification = document.getElementById('f-justification').value.trim();
     const dueDate = document.getElementById('f-due').value;
+    const category = document.getElementById('f-category').value;
+    const deptBranch = document.getElementById('f-dept-branch').value;
+    const frequency = document.getElementById('f-frequency').value;
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
     if (!amount || Number(amount) <= 0) { showToast('Дүн оруулна уу', 'warn'); return; }
     if (!beneficiary) { showToast('Хүлээн авагчийн нэр шаардлагатай', 'warn'); return; }
+    if (!bank) { showToast('Банк сонгоно уу', 'warn'); return; }
+    if (!accountNumber) { showToast('Дансны дугаар шаардлагатай', 'warn'); return; }
     if (!purpose) { showToast('Зорилго шаардлагатай', 'warn'); return; }
+    if (!category) { showToast('Категори сонгоно уу', 'warn'); return; }
     const btn = document.getElementById('f-save');
     btn.disabled = true;
     try {
-      const newRequest = await createFinanceRequest({ amount, beneficiary, purpose, justification, dueDate });
+      const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency });
       // Худалдан авсан баримт сонгогдсон бол upload хийгээд update
       if (purchaseFile) {
         showToast('Баримт upload хийж байна...', '', 2000);

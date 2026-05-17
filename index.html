@@ -2582,10 +2582,12 @@ function initEvents() {
     state.config.notifyUrl = document.getElementById('s-notify').value.trim();
     state.config.staffUrl = document.getElementById('s-staff').value.trim();
     state.config.financeUrl = document.getElementById('s-finance').value.trim();
+    state.config.uploadUrl = document.getElementById('s-upload').value.trim();
     localStorage.setItem('apiUrl', state.config.apiUrl);
     localStorage.setItem('notifyUrl', state.config.notifyUrl);
     localStorage.setItem('staffUrl', state.config.staffUrl);
     localStorage.setItem('financeUrl', state.config.financeUrl);
+    localStorage.setItem('uploadUrl', state.config.uploadUrl);
     document.getElementById('settings-modal').classList.remove('open');
     loadTeamFromAPI().then(() => Promise.all([loadData(), loadFinanceRequests()]).then(render));
   };

@@ -287,6 +287,25 @@
   .modal textarea { resize: vertical; min-height: 80px; font-family: inherit; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 
+  /* Modal section headers (Finance modal-д хэрэглэгдэнэ) */
+  .modal-section {
+    margin: 18px 0 8px;
+    padding: 8px 12px;
+    background: #f1f3f5;
+    border-left: 3px solid var(--primary);
+    border-radius: 0 6px 6px 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .modal-section:first-of-type { margin-top: 0; }
+  /* Modal-н label-уудын шаардлагатай * нь тод болгох */
+  .modal label { font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  .modal label .req { color: var(--danger); }
+  .modal .field-hint { font-size: 11px; color: var(--muted); margin: 2px 0 6px; line-height: 1.4; }
+
   /* LOGIN SCREEN — full-page overlay shown until authenticated */
   .login-screen {
     position: fixed; inset: 0; z-index: 200;
@@ -803,43 +822,60 @@
   <div class="modal">
     <h2 id="finance-modal-title">💸 Санхүүгийн хүсэлт</h2>
     <div id="f-decision-info" style="display:none; font-size:12px; margin:-6px 0 14px; padding:10px 12px; border-radius:8px; line-height:1.5;"></div>
-    <label>Дүн (₮) *</label>
-    <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="500000" />
-    <label>Хүлээн авагчийн нэр *</label>
-    <input id="f-beneficiary" placeholder="Жишээ: Шинэст ХХК, Б.Алтансүх" />
-    <label>Банк *</label>
-    <select id="f-bank"></select>
-    <label>Дансны дугаар *</label>
-    <input id="f-account" inputmode="numeric" placeholder="Жишээ: 5045123456" />
-    <label>Зорилго *</label>
-    <input id="f-purpose" placeholder="Жишээ: Тоног түрээсийн төлбөр, тооцоо тооцоолох" />
-    <label>Категори *</label>
-    <select id="f-category"></select>
-    <!-- "Салбар" талбар нуугдсан — Чимун ХХК нь нэг компани, ялгаатай branch шаардлагагүй -->
-    <select id="f-dept-branch" style="display:none;"></select>
-    <label>Үе шат *</label>
-    <select id="f-frequency"></select>
+
+    <div style="background:#eef2ff;color:#3730a3;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;margin-bottom:14px;">
+      💡 <strong>Зөвлөмж:</strong> Хэрэв үнэ/банкны мэдээлэл мэдэхгүй бол хоосон үлдээж болно. CEO эсвэл Туслах нягтлан тань <strong>бөглөж өгнө</strong>. Заавал бөглөх: <strong>Зорилго + Категори + үнийн зураг</strong>.
+    </div>
+
+    <!-- ────────── 💰 ҮНДСЭН МЭДЭЭЛЭЛ ────────── -->
+    <div class="modal-section">💰 Үндсэн мэдээлэл</div>
+    <label>Зорилго <span class="req">*</span></label>
+    <input id="f-purpose" placeholder="Жишээ: Угаалгын шингэн, тоног түрээс" />
+    <label>Дүн (мэдвэл)</label>
+    <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Үл мэдэгдвэл хоосон үлдээ — CEO бөглөнө" />
     <label>Тайлбар / нэхэмжлэхийн дугаар</label>
     <textarea id="f-justification" placeholder="Нэхэмжлэхийн №, гэрээний линк г.м."></textarea>
     <label>Хүссэн огноо</label>
     <input id="f-due" type="date" />
-    <label id="f-decision-reason-label" style="display:none;">Шийдвэрийн дүгнэлт (CEO)</label>
-    <textarea id="f-decision-reason" style="display:none;" placeholder="Жишээ: Дүн өндөр байна, 30%-ийг бууруулсан"></textarea>
 
-    <label>📎 Үнийн судалгаа / бүтээгдэхүүний зураг</label>
-    <div style="font-size:11px;color:var(--muted);margin:-4px 0 4px;">Бараа/үйлчилгээний зураг, үнийн санал, нэхэмжлэх — CEO харж шийдвэр гаргахад туслана</div>
+    <!-- ────────── 🏦 ТӨЛБӨРИЙН МЭДЭЭЛЭЛ ────────── -->
+    <div class="modal-section">🏦 Төлбөрийн дэлгэрэнгүй (мэдвэл)</div>
+    <label>Хүлээн авагчийн нэр</label>
+    <input id="f-beneficiary" placeholder="Жишээ: Шинэст ХХК — мэдэхгүй бол хоосон" />
+    <label>Банк</label>
+    <select id="f-bank"></select>
+    <label>Дансны дугаар</label>
+    <input id="f-account" inputmode="numeric" placeholder="Үл мэдэгдвэл хоосон үлдээ" />
+
+    <!-- ────────── 🏷 АНГИЛАЛ ────────── -->
+    <div class="modal-section">🏷 Ангилал (тайлан гаргахад)</div>
+    <label>Категори <span class="req">*</span></label>
+    <select id="f-category"></select>
+    <label>Үе шат <span class="req">*</span></label>
+    <select id="f-frequency"></select>
+    <!-- "Салбар" нуугдсан — Чимун ХХК нь нэг компани -->
+    <select id="f-dept-branch" style="display:none;"></select>
+
+    <!-- ────────── 📎 БАРИМТ ────────── -->
+    <div class="modal-section">📎 Баримт хавсралт</div>
+    <label>Үнийн судалгаа / бүтээгдэхүүний зураг</label>
+    <div class="field-hint">Бараа/үйлчилгээний зураг, үнийн санал, нэхэмжлэх — CEO харж шийдвэр гаргахад туслана</div>
     <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <label>💵 Төлбөрийн баримт</label>
-    <div style="font-size:11px;color:var(--muted);margin:-4px 0 4px;">Туслах нягтлан гүйлгээ хийсний дараа банкны баримт хавсаргана</div>
+    <label>Төлбөрийн баримт</label>
+    <div class="field-hint">Туслах нягтлан гүйлгээ хийсний дараа банкны баримт хавсаргана</div>
     <input id="f-payment-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-payment-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <label>🧾 Худалдан авалтын баримт</label>
-    <div style="font-size:11px;color:var(--muted);margin:-4px 0 4px;">Ажилтан барааг худалдан авсны дараа нэхэмжлэх/баримтыг хавсаргана</div>
+    <label>Худалдан авалтын баримт</label>
+    <div class="field-hint">Ажилтан барааг худалдан авсны дараа нэхэмжлэх/баримтыг хавсаргана</div>
     <input id="f-receipt-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-receipt-preview" style="margin-top:6px;font-size:12px;"></div>
+
+    <!-- ────────── 📋 ШИЙДВЭР (CEO харах үед) ────────── -->
+    <div id="f-decision-reason-label" class="modal-section" style="display:none;">📋 CEO дүгнэлт</div>
+    <textarea id="f-decision-reason" style="display:none;" placeholder="Жишээ: Дүн өндөр байна, 30%-ийг бууруулсан"></textarea>
 
     <!-- DECISION BUTTONS — зөвхөн CEO + pending хүсэлт үед харагдана -->
     <div class="modal-actions" id="f-decision-actions" style="display:none; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-top:18px;">
@@ -1895,11 +1931,14 @@ function openFinanceModal(id = null) {
     // File picker нь readonly биш — upload боломжтой
     document.getElementById('f-purchase-file').removeAttribute('readonly');
     document.getElementById('f-payment-file').removeAttribute('readonly');
-    // CEO pending хүсэлт дээр Дүн засах + Шийдвэрийн дүгнэлт талбарыг идэвхтэй болгох
+    // CEO pending хүсэлт дээр БҮХ талбарыг засах боломжтой болгох
+    // (Дүн + банк + данс + бусад зүйлсийг бөглөж дуусгаж болно — цэвэрлэгч мэдэхгүй талбаруудыг)
     const isPendingForCEO = ((t.decision || 'pending') === 'pending' && state.isCEO);
     if (isPendingForCEO) {
-      document.getElementById('f-amount').removeAttribute('readonly');
-      document.getElementById('f-decision-reason').removeAttribute('readonly');
+      ['f-amount','f-beneficiary','f-account','f-purpose','f-justification','f-due','f-decision-reason']
+        .forEach(id => document.getElementById(id)?.removeAttribute('readonly'));
+      ['f-bank','f-category','f-frequency','f-dept-branch']
+        .forEach(id => document.getElementById(id)?.removeAttribute('disabled'));
       document.getElementById('f-decision-reason').value = t.decision_reason || '';
       document.getElementById('f-decision-reason').style.display = '';
       document.getElementById('f-decision-reason-label').style.display = '';
@@ -2682,12 +2721,13 @@ function initEvents() {
     const deptBranch = document.getElementById('f-dept-branch').value;
     const frequency = document.getElementById('f-frequency').value;
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
-    if (!amount || Number(amount) <= 0) { showToast('Дүн оруулна уу', 'warn'); return; }
-    if (!beneficiary) { showToast('Хүлээн авагчийн нэр шаардлагатай', 'warn'); return; }
-    if (!bank) { showToast('Банк сонгоно уу', 'warn'); return; }
-    if (!accountNumber) { showToast('Дансны дугаар шаардлагатай', 'warn'); return; }
+    // Зөвхөн Зорилго + Категори заавал бөглөх. Бусад нь CEO/S03 нөхөж бөглөнө.
     if (!purpose) { showToast('Зорилго шаардлагатай', 'warn'); return; }
     if (!category) { showToast('Категори сонгоно уу', 'warn'); return; }
+    // Хэрэв дүн+банк+данс бүгд хоосон бол анхааруулга (гэхдээ үргэлжлүүлэх боломжтой)
+    if ((!amount || Number(amount) <= 0) && !bank && !accountNumber && !purchaseFile) {
+      if (!(await showConfirm('Дүн, банк, данс, баримт бүгд хоосон байна. CEO юу авах хэрэгтэйг ойлгох уу?\n\nҮргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' }))) return;
+    }
     const btn = document.getElementById('f-save');
     btn.disabled = true;
     try {
@@ -2706,13 +2746,28 @@ function initEvents() {
       render();
     } finally { btn.disabled = false; }
   });
-  // CEO шийдвэрийн өмнө modal-аас дүн + дүгнэлт татах helper
+  // CEO шийдвэрийн өмнө modal-аас бүх засагдсан талбарыг татаж хадгалах helper
+  // (Бөглөгдөөгүй талбаруудыг CEO нөхөж өгсөн бол энд татагдаж хадгална)
   async function applyCeoEditsBeforeDecision(id) {
     const r = state.financeRequests.find(x => x.id === id);
     if (!r) return;
-    const newAmount = Number(document.getElementById('f-amount').value) || r.amount;
-    const reason = document.getElementById('f-decision-reason').value.trim();
-    if (newAmount !== r.amount) r.amount = newAmount;
+    const get = (eid, defaultVal = '') => (document.getElementById(eid)?.value ?? defaultVal).trim();
+    const newAmount = Number(document.getElementById('f-amount').value) || 0;
+    if (newAmount !== r.amount && newAmount > 0) r.amount = newAmount;
+    const fields = {
+      beneficiary: get('f-beneficiary'),
+      bank: get('f-bank'),
+      account_number: get('f-account'),
+      purpose: get('f-purpose'),
+      justification: get('f-justification'),
+      due_date: get('f-due'),
+      category: get('f-category'),
+      frequency: get('f-frequency'),
+    };
+    for (const [k, v] of Object.entries(fields)) {
+      if (v && v !== r[k]) r[k] = v;
+    }
+    const reason = get('f-decision-reason');
     if (reason) r.decision_reason = reason;
   }
   document.getElementById('f-approve')?.addEventListener('click', async () => {

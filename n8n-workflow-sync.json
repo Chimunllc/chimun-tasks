@@ -106,15 +106,6 @@
             "parent_id": "={{ $('Route Action').item.json.task.parent_id }}",
             "kind": "={{ $('Route Action').item.json.task.kind }}",
             "stage": "={{ $('Route Action').item.json.task.stage }}",
-            "amount": "={{ $('Route Action').item.json.task.amount }}",
-            "purpose": "={{ $('Route Action').item.json.task.purpose }}",
-            "beneficiary": "={{ $('Route Action').item.json.task.beneficiary }}",
-            "justification": "={{ $('Route Action').item.json.task.justification }}",
-            "decision": "={{ $('Route Action').item.json.task.decision }}",
-            "decision_at": "={{ $('Route Action').item.json.task.decision_at }}",
-            "decision_by": "={{ $('Route Action').item.json.task.decision_by }}",
-            "executed_at": "={{ $('Route Action').item.json.task.executed_at }}",
-            "executed_by": "={{ $('Route Action').item.json.task.executed_by }}",
             "created": "={{ $('Route Action').item.json.task.created }}",
             "updated": "={{ $now.toISO() }}"
           }

@@ -755,6 +755,8 @@
     <input id="s-notify" placeholder="https://your-n8n.example.com/webhook/notify" />
     <label>n8n Staff Webhook URL (Master Sheet sync)</label>
     <input id="s-staff" placeholder="https://your-n8n.example.com/webhook/staff" />
+    <label>n8n Finance Webhook URL (санхүүгийн хүсэлт)</label>
+    <input id="s-finance" placeholder="https://your-n8n.example.com/webhook/finance" />
     <p style="font-size: 11px; color: var(--muted); margin-top: 10px;">
       Хоосон үлдээвэл browser-ийн localStorage ашиглана (зөвхөн энэ компьютер дээр).
     </p>
@@ -894,11 +896,14 @@ let TEAM = [
 // n8n webhook URL — hardcoded so staff never have to configure anything.
 // Change here + push when the backend moves. Settings panel still lets the user
 // override locally for testing.
-const DEFAULT_API_URL    = 'https://chimun.app.n8n.cloud/webhook/checklist';
-const DEFAULT_NOTIFY_URL = 'https://chimun.app.n8n.cloud/webhook/notify';
+const DEFAULT_API_URL     = 'https://chimun.app.n8n.cloud/webhook/checklist';
+const DEFAULT_NOTIFY_URL  = 'https://chimun.app.n8n.cloud/webhook/notify';
 // Staff roster sync — read-only GET endpoint that returns { team: [...] } from Master Sheet.
 // If reachable, replaces the hardcoded TEAM constant below at startup.
-const DEFAULT_STAFF_URL  = 'https://chimun.app.n8n.cloud/webhook/staff';
+const DEFAULT_STAFF_URL   = 'https://chimun.app.n8n.cloud/webhook/staff';
+// Finance request sync — separate Sheet for audit/reporting cleanliness.
+// GET returns { requests: [...] }; POST { action: 'upsert'|'delete', request } saves.
+const DEFAULT_FINANCE_URL = 'https://chimun.app.n8n.cloud/webhook/finance';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
 const PROJECTS_BY_BRANCH = {
@@ -946,6 +951,7 @@ const ACT_TEMPLATE = [
 /* -------------------- STATE -------------------- */
 const state = {
   tasks: [],
+  financeRequests: [],   // Финансын хүсэлт — тусдаа Sheet-аас sync хийгдэнэ
   projectsByBranch: {},  // { 'm-event': [...], 'camp': [...], ... }
   branch: localStorage.getItem('branch') || 'm-event',
   view: 'all',           // all | mine | overdue | today | done | project:<id>
@@ -957,9 +963,10 @@ const state = {
   isCEO: false,          // whether this user has full access
   config: {
     // localStorage override > hardcoded default > empty
-    apiUrl:    localStorage.getItem('apiUrl')    || DEFAULT_API_URL    || '',
-    notifyUrl: localStorage.getItem('notifyUrl') || DEFAULT_NOTIFY_URL || '',
-    staffUrl:  localStorage.getItem('staffUrl')  || DEFAULT_STAFF_URL  || '',
+    apiUrl:     localStorage.getItem('apiUrl')     || DEFAULT_API_URL     || '',
+    notifyUrl:  localStorage.getItem('notifyUrl')  || DEFAULT_NOTIFY_URL  || '',
+    staffUrl:   localStorage.getItem('staffUrl')   || DEFAULT_STAFF_URL   || '',
+    financeUrl: localStorage.getItem('financeUrl') || DEFAULT_FINANCE_URL || '',
   },
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
@@ -1109,7 +1116,7 @@ function generateNotifications() {
   });
 
   // 5. FINANCE — миний илгээсэн хүсэлтийн төлөв өөрчлөгдсөн (approved/rejected/deferred/executed)
-  state.tasks.filter(t => t.kind === 'finance_request' && t.createdBy === state.me).forEach(t => {
+  state.financeRequests.filter(t => t.requested_by === state.me).forEach(t => {
     const stages = [
       { key: 'approved', cond: t.decision === 'approved' && t.status !== 'done', msg: `✓ Зөвшөөрөгдсөн: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
       { key: 'rejected', cond: t.decision === 'rejected', msg: `✗ Татгалзсан: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
@@ -1127,21 +1134,21 @@ function generateNotifications() {
 
   // 5b. FINANCE — CEO-д ирсэн pending хүсэлт + S03-д ирсэн approved хүсэлт
   if (state.isCEO) {
-    state.tasks.filter(t => t.kind === 'finance_request' && t.decision === 'pending').forEach(t => {
-      const nid = `finance-pending-${t.id}`;
+    state.financeRequests.filter(r => (r.decision || 'pending') === 'pending' && r.status !== 'done').forEach(r => {
+      const nid = `finance-pending-${r.id}`;
       if (!seen.has(nid)) {
-        newOnes.push({ id: nid, type: 'assigned', taskId: t.id,
-          msg: `💸 Хүсэлт: ${memberName(t.createdBy)} — ${Number(t.amount).toLocaleString('mn-MN')}₮ (${t.beneficiary})`,
+        newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
+          msg: `💸 Хүсэлт: ${memberName(r.requested_by)} — ${Number(r.amount).toLocaleString('mn-MN')}₮ (${r.beneficiary})`,
           ts: Date.now(), read: false });
       }
     });
   }
   if (state.me === FINANCE_EXECUTOR_ID) {
-    state.tasks.filter(t => t.kind === 'finance_request' && t.decision === 'approved' && t.status !== 'done').forEach(t => {
-      const nid = `finance-execute-${t.id}`;
+    state.financeRequests.filter(r => r.decision === 'approved' && r.status !== 'done').forEach(r => {
+      const nid = `finance-execute-${r.id}`;
       if (!seen.has(nid)) {
-        newOnes.push({ id: nid, type: 'assigned', taskId: t.id,
-          msg: `💸 Гүйлгээ хийх: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮`,
+        newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
+          msg: `💸 Гүйлгээ хийх: ${r.beneficiary} — ${Number(r.amount).toLocaleString('mn-MN')}₮`,
           ts: Date.now(), read: false });
       }
     });
@@ -1231,8 +1238,9 @@ function renderNotifications() {
       if (n) { n.read = true; saveNotifications(); }
       closeNotifDrawer();
       if (taskId) {
-        const task = state.tasks.find(x => x.id === taskId);
-        if (task && task.kind === 'finance_request') openFinanceModal(taskId);
+        // Finance request эсэхийг шалгая (state.financeRequests дотроос)
+        const isFinance = state.financeRequests.some(r => r.id === taskId);
+        if (isFinance) openFinanceModal(taskId);
         else openTaskModal(taskId);
       }
       renderNotifications();
@@ -1495,6 +1503,28 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
   return parent;
 }
 
+/* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
+function financeAsTask(r) {
+  return {
+    id: r.id,
+    title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
+    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + (r.justification || ''),
+    branch: 'shared',
+    project: 'finance',
+    assignee: (r.decision === 'approved' && r.status !== 'done') ? (r.executor || FINANCE_EXECUTOR_ID) : 'CEO',
+    due: r.due_date || '',
+    priority: 'high',
+    status: r.status || 'open',
+    kind: 'finance_request',
+    amount: r.amount,
+    decision: r.decision,
+    executed_at: r.executed_at,
+    createdBy: r.requested_by,
+    created: r.requested_at ? new Date(r.requested_at).getTime() : 0,
+    _isFinance: true, // marker
+  };
+}
+
 /* -------------------- ФИНАНСЫН ХҮСЭЛТ (Finance request) --------------------
    Workflow:
      Ажилтан → submit → CEO (assignee автомат CEO) → CEO decision:
@@ -1504,66 +1534,111 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
 
 const FINANCE_EXECUTOR_ID = 'S03'; // Туслах нягтлан — зөвшөөрсөн хүсэлтийг гүйцэтгэнэ
 
+/* Финансын хүсэлт нь Tasks-ээс ТУСДАА Sheet-д хадгалагдана (Чимун_Финанс_Хүсэлт).
+   App-н state дотор хадгалахдаа state.financeRequests array-д байх ба
+   UI rendering нь tasks-той хамт нэгтгэн харагдана (sidebar Хүсэлт view-р шүүгдэнэ). */
+
+async function saveFinanceRequest(r, deleted = false) {
+  // localStorage кэш
+  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  if (state.config.financeUrl) {
+    try {
+      await fetch(state.config.financeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: deleted ? 'delete' : 'upsert', request: r })
+      });
+    } catch(e) { console.warn('Finance sync failed:', e); }
+  }
+}
+
+async function loadFinanceRequests() {
+  if (state.config.financeUrl) {
+    try {
+      const res = await fetch(state.config.financeUrl + '?action=list');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const raw = Array.isArray(data?.requests) ? data.requests : [];
+      state.financeRequests = raw.map(normalizeFinance);
+      try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+      return;
+    } catch (e) { console.warn('Finance load failed, fallback to cache:', e); }
+  }
+  // Fallback: localStorage
+  try {
+    const raw = localStorage.getItem('financeRequests');
+    state.financeRequests = raw ? JSON.parse(raw) : [];
+  } catch(e) { state.financeRequests = []; }
+}
+
+function normalizeFinance(r) {
+  if (!r || typeof r !== 'object') return r;
+  const stringFields = ['id','requested_by','beneficiary','purpose','justification','due_date',
+    'status','decision','decision_at','decision_by','decision_reason',
+    'executed_at','executed_by','executor','payment_proof_url'];
+  const out = { ...r };
+  for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
+  if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
+  // Pad numeric IDs
+  if (/^\d{1,2}$/.test(out.requested_by)) out.requested_by = out.requested_by.padStart(3,'0');
+  if (/^\d{1,2}$/.test(out.decision_by))  out.decision_by  = out.decision_by.padStart(3,'0');
+  if (/^\d{1,2}$/.test(out.executed_by))  out.executed_by  = out.executed_by.padStart(3,'0');
+  return out;
+}
+
 async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate }) {
   const owner = state.me || 'CEO';
-  const t = {
+  const r = {
     id: uid(),
-    title: `💸 ${beneficiary || 'Хүсэлт'} — ${Number(amount).toLocaleString('mn-MN')}₮`,
-    desc: (purpose ? `Зорилго: ${purpose}\n` : '') + (justification ? `Тайлбар: ${justification}` : ''),
-    branch: 'shared',
-    project: 'finance',
-    assignee: 'CEO',
-    due: dueDate || '',
-    priority: 'high',
-    status: 'open',
-    kind: 'finance_request',
+    requested_by: owner,
+    requested_at: new Date().toISOString(),
     amount: Number(amount) || 0,
-    purpose: purpose || '',
     beneficiary: beneficiary || '',
+    purpose: purpose || '',
     justification: justification || '',
+    due_date: dueDate || '',
+    status: 'open',
     decision: 'pending',
     decision_at: '',
     decision_by: '',
+    decision_reason: '',
     executed_at: '',
     executed_by: '',
-    createdBy: owner,
-    created: Date.now(),
+    executor: FINANCE_EXECUTOR_ID,
+    payment_proof_url: '',
   };
-  state.tasks.unshift(t);
-  await saveTask(t);
-  notify('finance.requested', t);
-  return t;
+  state.financeRequests.unshift(r);
+  await saveFinanceRequest(r);
+  notify('finance.requested', r);
+  return r;
 }
 
 async function decideFinanceRequest(id, decision, reason = '') {
-  const t = state.tasks.find(x => x.id === id);
-  if (!t || t.kind !== 'finance_request') return;
+  const r = state.financeRequests.find(x => x.id === id);
+  if (!r) return;
   if (!state.isCEO) { showToast('Зөвхөн CEO шийдвэр гаргах эрхтэй', 'error'); return; }
-  t.decision = decision;
-  t.decision_at = new Date().toISOString();
-  t.decision_by = state.me;
-  if (reason) t.desc = (t.desc || '') + `\n--\n[${decision}] ${memberName(state.me)}: ${reason}`;
+  r.decision = decision;
+  r.decision_at = new Date().toISOString();
+  r.decision_by = state.me;
+  if (reason) r.decision_reason = reason;
   if (decision === 'approved') {
-    t.assignee = FINANCE_EXECUTOR_ID;     // Туслах нягтлан руу шилжүүлэх
-    t.priority = 'high';
-    notify('finance.approved', t);
+    notify('finance.approved', r);
     showToast('Зөвшөөрсөн. Туслах нягтланд илгээгдсэн.', 'success');
   } else if (decision === 'rejected') {
-    t.status = 'done';                    // татгалзсан үед хаалга
-    notify('finance.rejected', t);
+    r.status = 'done';
+    notify('finance.rejected', r);
     showToast('Татгалзсан.', 'warn');
   } else if (decision === 'deferred') {
-    // 7 хоног хойшлуулах
-    t.due = addDays(t.due || new Date().toISOString().slice(0,10), 7);
-    notify('finance.deferred', t);
+    r.due_date = addDays(r.due_date || new Date().toISOString().slice(0,10), 7);
+    notify('finance.deferred', r);
     showToast('7 хоног хойшлуулсан.', 'warn');
   }
-  await saveTask(t);
+  await saveFinanceRequest(r);
   render();
 }
 
 function openFinanceModal(id = null) {
-  const t = id ? state.tasks.find(x => x.id === id) : null;
+  const t = id ? state.financeRequests.find(x => x.id === id) : null;
   state.editingId = id || null;
   state._modalKind = 'finance';
   const modal = document.getElementById('finance-modal');
@@ -1596,13 +1671,13 @@ function openFinanceModal(id = null) {
     document.getElementById('f-beneficiary').value = t.beneficiary || '';
     document.getElementById('f-purpose').value = t.purpose || '';
     document.getElementById('f-justification').value = t.justification || '';
-    document.getElementById('f-due').value = t.due || '';
+    document.getElementById('f-due').value = t.due_date || '';
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.setAttribute('readonly','readonly'));
     document.getElementById('f-save').style.display = 'none';
 
     // Decision banner — хоосон утга бол 'pending' гэж тооцох (Sheet sync-аас буцаж ирэхэд decision талбар хоосон байх магадлалтай)
     const dec = t.decision || 'pending';
-    const requester = memberName(t.createdBy);
+    const requester = memberName(t.requested_by);
     const decisionLabels = {
       pending:  { bg:'#fef3c7', col:'#92400e', icon:'🕐', text:'Хүлээгдэж буй' },
       approved: { bg:'#d1fae5', col:'#065f46', icon:'✓',  text:'Зөвшөөрсөн' },
@@ -1634,17 +1709,17 @@ function openFinanceModal(id = null) {
 }
 
 async function executeFinanceRequest(id) {
-  const t = state.tasks.find(x => x.id === id);
-  if (!t || t.kind !== 'finance_request') return;
-  if (t.decision !== 'approved') { showToast('Зөвхөн зөвшөөрсөн хүсэлтийг гүйцэтгэх боломжтой', 'warn'); return; }
+  const r = state.financeRequests.find(x => x.id === id);
+  if (!r) return;
+  if (r.decision !== 'approved') { showToast('Зөвхөн зөвшөөрсөн хүсэлтийг гүйцэтгэх боломжтой', 'warn'); return; }
   if (state.me !== FINANCE_EXECUTOR_ID && !state.isCEO) {
     showToast('Зөвхөн Туслах нягтлан гүйлгээ хийх эрхтэй', 'error'); return;
   }
-  t.executed_at = new Date().toISOString();
-  t.executed_by = state.me;
-  t.status = 'done';
-  await saveTask(t);
-  notify('finance.executed', t);
+  r.executed_at = new Date().toISOString();
+  r.executed_by = state.me;
+  r.status = 'done';
+  await saveFinanceRequest(r);
+  notify('finance.executed', r);
   showToast('Гүйлгээ хийгдсэн гэж тэмдэглэгдсэн.', 'success');
   render();
 }
@@ -1742,7 +1817,14 @@ function filteredTasks() {
   const today = new Date().toISOString().slice(0,10);
   if (state.view === 'mine') list = list.filter(t => t.assignee === state.me);
   else if (state.view === 'delegated') list = list.filter(t => t.createdBy === state.me && t.assignee !== state.me);
-  else if (state.view === 'finance') list = list.filter(t => t.kind === 'finance_request');
+  else if (state.view === 'finance') {
+    // Финансын хүсэлтийг task-loga adapter-аар render хийнэ
+    list = state.financeRequests.map(financeAsTask);
+    // 'mine' эсвэл 'delegated' гэх view-ийн адил accessrolгүүл явна
+    if (!state.isCEO && state.me) {
+      list = list.filter(r => r.assignee === state.me || r.createdBy === state.me);
+    }
+  }
   else if (state.view === 'overdue') list = list.filter(t => t.status === 'open' && t.due && t.due < today);
   else if (state.view === 'today') list = list.filter(t => t.due === today);
   else if (state.view === 'done') list = list.filter(t => t.status === 'done');
@@ -2016,7 +2098,12 @@ function renderCounts() {
   document.getElementById('cnt-all').textContent     = branchTasks.filter(t => t.status !== 'done').length;
   document.getElementById('cnt-mine').textContent    = accessible.filter(t => t.assignee === state.me && t.status !== 'done').length;
   document.getElementById('cnt-delegated').textContent = accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length;
-  document.getElementById('cnt-finance').textContent = accessible.filter(t => t.kind === 'finance_request' && t.status !== 'done').length;
+  // Финансын хүсэлт нь state.financeRequests-ээс ирнэ (тусдаа Sheet)
+  const myFinance = state.isCEO
+    ? state.financeRequests
+    : state.financeRequests.filter(r => r.requested_by === state.me ||
+        (r.decision === 'approved' && r.status !== 'done' && (r.executor || FINANCE_EXECUTOR_ID) === state.me));
+  document.getElementById('cnt-finance').textContent = myFinance.filter(r => r.status !== 'done').length;
   document.getElementById('cnt-overdue').textContent = branchTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
   document.getElementById('cnt-today').textContent   = branchTasks.filter(t => t.due === today).length;
   document.getElementById('cnt-done').textContent    = branchTasks.filter(t => t.status === 'done').length;
@@ -2375,6 +2462,7 @@ function initEvents() {
     document.getElementById('s-api').value = state.config.apiUrl;
     document.getElementById('s-notify').value = state.config.notifyUrl;
     document.getElementById('s-staff').value = state.config.staffUrl;
+    document.getElementById('s-finance').value = state.config.financeUrl;
     document.getElementById('settings-modal').classList.add('open');
   };
   document.getElementById('s-cancel').onclick = () => document.getElementById('settings-modal').classList.remove('open');
@@ -2382,11 +2470,13 @@ function initEvents() {
     state.config.apiUrl = document.getElementById('s-api').value.trim();
     state.config.notifyUrl = document.getElementById('s-notify').value.trim();
     state.config.staffUrl = document.getElementById('s-staff').value.trim();
+    state.config.financeUrl = document.getElementById('s-finance').value.trim();
     localStorage.setItem('apiUrl', state.config.apiUrl);
     localStorage.setItem('notifyUrl', state.config.notifyUrl);
     localStorage.setItem('staffUrl', state.config.staffUrl);
+    localStorage.setItem('financeUrl', state.config.financeUrl);
     document.getElementById('settings-modal').classList.remove('open');
-    loadTeamFromAPI().then(() => loadData().then(render));
+    loadTeamFromAPI().then(() => Promise.all([loadData(), loadFinanceRequests()]).then(render));
   };
 
   // BRANCH selector — CEO sees all 5 branches; staff see only their assigned branches
@@ -2509,7 +2599,7 @@ async function bootApp() {
     _eventsBound = true;
   }
   loadNotifications();
-  await loadData();
+  await Promise.all([ loadData(), loadFinanceRequests() ]);
   generateNotifications();
   render();
   // Auto-refresh every 60s — pulls latest tasks from n8n + generates fresh notifications.
@@ -2518,11 +2608,9 @@ async function bootApp() {
   if (_pollTimer) clearInterval(_pollTimer);
   _pollTimer = setInterval(async () => {
     try {
-      await loadData();
+      await Promise.all([ loadData(), loadFinanceRequests() ]);
       generateNotifications();
-      // Don't full-render every 60s — just update the badge + (if open) the panel.
       renderNotifications();
-      // If user is sitting on the task list, refresh counts so overdue/today move correctly.
       renderCounts();
     } catch(e) { console.warn('Auto-poll failed:', e); }
   }, 60_000);

@@ -748,11 +748,11 @@
     <input id="t-title" placeholder="Жишээ: Хурим - 2026/06/15 - тоног бэлдэх" />
     <label>Тайлбар</label>
     <textarea id="t-desc" placeholder="Дэлгэрэнгүй..."></textarea>
-    <!-- Бүлэг (branch) нуугдсан — Чимун ХХК нь нэг компани. Сонголт `shared`-аар автомат тогтоогдоно. -->
-    <select id="t-branch" style="display:none;"></select>
+    <label>Аль салбарын ажил вэ?</label>
+    <select id="t-branch"></select>
     <label>Төсөл</label>
     <select id="t-project"></select>
-    <label>Хариуцагч</label>
+    <label>Хариуцагч (бүх ажилтнаас сонгож болно)</label>
     <select id="t-assignee"></select>
     <label>Эцсийн хугацаа</label>
     <input type="date" id="t-due" />
@@ -2684,10 +2684,10 @@ function openTaskModal(id) {
   fillAssigneeSelect('t-assignee', t?.assignee || state.me, taskBranchVal);
   document.getElementById('t-due').value = t?.due || '';
   document.getElementById('t-priority').value = t?.priority || 'none';
-  // When the user changes branch inside the modal, refresh projects + assignees.
+  // Branch солих үед зөвхөн төслийн жагсаалт шинэчилнэ.
+  // Хариуцагч нь бүх ажилтнаас сонгох тул дахин filter хийхгүй.
   document.getElementById('t-branch').onchange = (e) => {
     fillProjectSelect('t-project', null, e.target.value);
-    fillAssigneeSelect('t-assignee', state.me, e.target.value);
   };
 
   // Permission lock — canEdit.all биш бол input-уудыг readonly + Save товчийг нуух
@@ -2776,10 +2776,9 @@ function fillProjectSelect(id, value, branchOverride) {
   fillSelect(id, projects.map(p => ({ value: p.id, label: p.name })), value);
 }
 function fillAssigneeSelect(id, value, branchOverride) {
-  const branch = branchOverride || state.branch;
-  // Show only people whose `branches` array includes the selected branch
-  const members = TEAM.filter(m => !m.branches || m.branches.includes(branch));
-  fillSelect(id, members.map(m => ({ value: m.id, label: m.name + ' (' + m.role + ')' })), value);
+  // Бүх ажилтан — салбараар хязгаарлахгүй. Хэн ч хэнд ч даалгавар өгч болно.
+  // (Жишээ нь Алтансүх Анужинд, Анужин Алтансүхэд даалгавар өгөх).
+  fillSelect(id, TEAM.map(m => ({ value: m.id, label: m.name + ' (' + m.role + ')' })), value);
 }
 function fillBranchSelectInModal(id, value) {
   fillSelect(id, BRANCHES.map(b => ({ value: b.id, label: b.icon + ' ' + b.name })), value);

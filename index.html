@@ -18,27 +18,158 @@
 <meta name="application-name" content="Чимун Tasks" />
 <style>
   :root {
-    --bg: #f6f7f9;
+    /* Палитр */
+    --bg: #fafafa;
     --panel: #ffffff;
-    --border: #e6e8eb;
-    --text: #1f2328;
-    --muted: #6b7280;
-    --primary: #4f46e5;
-    --primary-soft: #eef2ff;
-    --danger: #dc2626;
-    --warn: #d97706;
-    --ok: #16a34a;
-    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
+    --panel-hover: #f5f5f7;
+    --border: #ebebed;
+    --border-strong: #d1d5db;
+    --text: #18181b;
+    --text-soft: #3f3f46;
+    --muted: #71717a;
+    --muted-soft: #a1a1aa;
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --primary-soft: #f0f0ff;
+    --danger: #ef4444;
+    --danger-soft: #fef2f2;
+    --warn: #f59e0b;
+    --warn-soft: #fffbeb;
+    --ok: #10b981;
+    --ok-soft: #ecfdf5;
+    --info: #3b82f6;
+    --info-soft: #eff6ff;
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-8: 48px;
+
+    /* Radius scale */
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+    --r-full: 9999px;
+
+    /* Shadow scale */
+    --shadow-xs: 0 1px 2px rgba(0,0,0,.04);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,.08), 0 2px 4px -2px rgba(0,0,0,.04);
+    --shadow-lg: 0 10px 25px -5px rgba(0,0,0,.10), 0 6px 10px -6px rgba(0,0,0,.05);
+    --shadow-xl: 0 25px 50px -12px rgba(0,0,0,.25);
+    --shadow: var(--shadow-sm);
+
+    /* Easing */
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration: 200ms;
   }
+
+  /* Dark mode */
+  html[data-theme="dark"] {
+    --bg: #0a0a0a;
+    --panel: #18181b;
+    --panel-hover: #27272a;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --text: #fafafa;
+    --text-soft: #d4d4d8;
+    --muted: #a1a1aa;
+    --muted-soft: #71717a;
+    --primary: #818cf8;
+    --primary-hover: #a5b4fc;
+    --primary-soft: rgba(99,102,241,.15);
+    --danger: #f87171;
+    --danger-soft: rgba(239,68,68,.15);
+    --warn: #fbbf24;
+    --warn-soft: rgba(245,158,11,.15);
+    --ok: #34d399;
+    --ok-soft: rgba(16,185,129,.15);
+    --info: #60a5fa;
+    --info-soft: rgba(59,130,246,.15);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,.4);
+    --shadow-lg: 0 10px 25px rgba(0,0,0,.5);
+  }
+
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     font-size: 14px;
-    line-height: 1.45;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  /* ─── ШИНЭ DESIGN TOKEN-ЫН ҮНДСЭН СТАНДАРТ КЛАСС-УУД ─── */
+
+  /* Avatar тойрог */
+  .avatar-circle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: var(--r-full);
+    font-size: 12px; font-weight: 600; color: #fff;
+    background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+    flex-shrink: 0; letter-spacing: -0.02em;
+  }
+  .avatar-circle.sm { width: 22px; height: 22px; font-size: 10px; }
+  .avatar-circle.lg { width: 40px; height: 40px; font-size: 15px; }
+
+  /* Status цэг */
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: var(--r-full); flex-shrink: 0;
+  }
+  .status-dot.open        { background: var(--muted-soft); }
+  .status-dot.in_progress { background: var(--info); box-shadow: 0 0 0 3px var(--info-soft); }
+  .status-dot.done        { background: var(--ok); }
+  .status-dot.declined    { background: var(--danger); }
+
+  /* Status pill (модал доторх том) */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: var(--r-full);
+    font-size: 12px; font-weight: 600;
+  }
+  .status-pill.open        { background: var(--panel-hover); color: var(--text-soft); }
+  .status-pill.in_progress { background: var(--info-soft); color: var(--info); }
+  .status-pill.done        { background: var(--ok-soft); color: var(--ok); }
+  .status-pill.declined    { background: var(--danger-soft); color: var(--danger); }
+
+  /* Орчин үеийн товч */
+  .btn-modern {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 14px; border-radius: var(--r-md);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    border: 1px solid transparent; background: transparent;
+    color: var(--text); transition: all var(--duration) var(--ease);
+    white-space: nowrap;
+  }
+  .btn-modern:hover { background: var(--panel-hover); }
+  .btn-modern.primary { background: var(--primary); color: #fff; }
+  .btn-modern.primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+  .btn-modern.outline { border-color: var(--border); }
+  .btn-modern.outline:hover { border-color: var(--border-strong); background: var(--panel-hover); }
+  .btn-modern.danger { color: var(--danger); }
+  .btn-modern.danger:hover { background: var(--danger-soft); }
+  .btn-modern.ok { color: var(--ok); }
+  .btn-modern.ok:hover { background: var(--ok-soft); }
+  .btn-modern.icon-only { padding: 8px; }
+  .btn-modern.sm { padding: 6px 10px; font-size: 12px; }
+
+  /* Theme toggle товч */
+  .theme-toggle {
+    background: none; border: none; cursor: pointer; padding: 8px;
+    border-radius: var(--r-md); color: var(--muted);
+    transition: all var(--duration) var(--ease);
+  }
+  .theme-toggle:hover { background: var(--panel-hover); color: var(--text); }
   .app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
   /* SIDEBAR */
   .sidebar {
@@ -141,18 +272,25 @@
   }
   .task-row {
     display: grid;
-    grid-template-columns: 26px 1fr 160px 130px 110px 36px;
+    grid-template-columns: 24px 1fr auto auto auto;
     align-items: center;
-    padding: 10px 8px;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin: 6px 0;
-    box-shadow: var(--shadow);
-    transition: opacity .2s;
+    gap: var(--space-3);
+    padding: 12px 14px;
+    background: var(--panel);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    margin: 4px 0;
+    transition: all var(--duration) var(--ease);
+    cursor: pointer;
+  }
+  .task-row:hover {
+    background: var(--panel-hover);
+    border-color: var(--border);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
   }
   .task-row.completed .task-title { text-decoration: line-through; color: var(--muted); }
-  .task-row.completed { opacity: 0.7; }
+  .task-row.completed { opacity: 0.55; }
   /* 5-stage act parent — highlighted card */
   .task-row.act-parent {
     background: #eef2ff;
@@ -196,55 +334,69 @@
   .finance-pill.deferred { background: #e0e7ff; color: #3730a3; }
   .finance-pill.executed { background: #dcfce7; color: #166534; }
   .checkbox {
-    width: 18px; height: 18px; border: 2px solid #cfd4da; border-radius: 50%;
+    width: 20px; height: 20px; border: 1.5px solid var(--border-strong); border-radius: var(--r-full);
     display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
-    background: #fff;
+    background: var(--panel); transition: all var(--duration) var(--ease);
+    flex-shrink: 0;
   }
+  .checkbox:hover { border-color: var(--ok); background: var(--ok-soft); }
   .checkbox.checked { background: var(--ok); border-color: var(--ok); }
-  .checkbox.checked::after { content: "✓"; color: #fff; font-size: 11px; font-weight: bold; }
+  .checkbox.checked::after { content: "✓"; color: #fff; font-size: 12px; font-weight: bold; }
   .task-title-wrap { display: flex; flex-direction: column; min-width: 0; }
-  .task-title { font-weight: 500; cursor: pointer; outline: none; word-break: break-word; }
-  .task-title[contenteditable="true"]:focus { background: #fffbe6; padding: 2px 4px; border-radius: 3px; }
-  .task-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .task-title { font-weight: 500; font-size: 14px; color: var(--text); outline: none; word-break: break-word; line-height: 1.4; }
+  .task-meta { font-size: 12px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .task-meta .meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--muted-soft); }
   .delegated-from {
-    color: var(--primary);
-    font-weight: 500;
-    background: var(--primary-soft);
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 10px;
+    color: var(--primary); font-weight: 500;
+    background: var(--primary-soft); padding: 2px 8px; border-radius: var(--r-full);
+    font-size: 11px;
   }
+  /* Assignee — avatar circle (chip ХАСАГДСАН) */
+  .col-assignee { display: flex; align-items: center; }
   .assignee-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 3px 8px; border-radius: 999px; background: #f1f3f5; font-size: 12px;
-    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 4px 10px 4px 4px; border-radius: var(--r-full);
+    background: transparent; font-size: 13px; cursor: pointer;
+    transition: background var(--duration) var(--ease);
   }
+  .assignee-chip:hover { background: var(--panel-hover); }
   .assignee-chip .avatar {
-    width: 18px; height: 18px; border-radius: 50%; background: var(--primary); color: #fff;
-    display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+    width: 24px; height: 24px; border-radius: var(--r-full); flex-shrink: 0;
+    background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+    color: #fff; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; letter-spacing: -0.02em;
   }
+  .assignee-chip .name { color: var(--text-soft); font-weight: 500; }
+  /* Хугацаа — relative date */
   .due {
-    font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #f1f3f5; color: var(--muted);
-    display: inline-block; cursor: pointer;
+    font-size: 12px; padding: 4px 10px; border-radius: var(--r-full);
+    color: var(--muted); background: transparent; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px;
+    transition: background var(--duration) var(--ease);
   }
-  .due.overdue { background: #fee2e2; color: var(--danger); font-weight: 600; }
-  .due.soon { background: #fef3c7; color: var(--warn); font-weight: 600; }
+  .due:hover { background: var(--panel-hover); }
+  .due.overdue { background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+  .due.soon { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+  .due.today { background: var(--info-soft); color: var(--info); font-weight: 600; }
+  /* Зэрэглэл — flag icon */
   .priority {
-    font-size: 11px; padding: 2px 7px; border-radius: 4px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: .4px;
+    font-size: 11px; padding: 3px 8px; border-radius: var(--r-sm);
+    font-weight: 600; display: inline-flex; align-items: center; gap: 3px;
   }
-  .priority.high { background: #fee2e2; color: var(--danger); }
-  .priority.med { background: #fef3c7; color: var(--warn); }
-  .priority.low { background: #dcfce7; color: var(--ok); }
-  .priority.none { background: #f1f3f5; color: var(--muted); }
+  .priority.high { background: var(--danger-soft); color: var(--danger); }
+  .priority.med  { background: var(--warn-soft); color: var(--warn); }
+  .priority.low  { background: var(--ok-soft); color: var(--ok); }
+  .priority.none { display: none; } /* зэрэглэлгүй бол үзүүлэхгүй */
+  /* Устгах — hover үед л харагдана */
   .delete-btn {
-    border: none; background: none; color: var(--muted); cursor: pointer; font-size: 16px; opacity: 0;
+    border: none; background: transparent; color: var(--muted-soft); cursor: pointer;
+    font-size: 16px; padding: 6px; border-radius: var(--r-sm); opacity: 0;
+    transition: all var(--duration) var(--ease);
   }
   .task-row:hover .delete-btn { opacity: 1; }
-  .delete-btn:hover { color: var(--danger); }
-  /* Locked tasks (created by higher-rank) — show a lock icon instead of delete */
-  .delete-btn.locked { cursor: not-allowed; }
-  .delete-btn.locked:hover { color: var(--muted); }
+  .delete-btn:hover { color: var(--danger); background: var(--danger-soft); }
+  .delete-btn.locked { cursor: not-allowed; opacity: 0.5; }
+  .delete-btn.locked:hover { color: var(--muted); background: transparent; }
   .add-task-row {
     display: flex; align-items: center; gap: 8px;
     padding: 12px; border: 2px dashed var(--border); border-radius: 8px; margin: 12px 0;
@@ -270,22 +422,56 @@
   .conn-status.online .dot { background: var(--ok); }
   .conn-status.offline .dot { background: var(--warn); }
   /* MODAL */
+  /* ─── Modal: Slide-in side panel (Linear/Notion style) ─── */
   .modal-bg {
-    position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none;
-    align-items: center; justify-content: center; z-index: 100;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0);
+    display: none; z-index: 100;
+    transition: background var(--duration) var(--ease);
+    pointer-events: none;
   }
-  .modal-bg.open { display: flex; }
+  .modal-bg.open {
+    display: block;
+    background: rgba(0,0,0,.3);
+    pointer-events: auto;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
   .modal {
-    background: #fff; border-radius: 12px; padding: 24px; width: 92%; max-width: 480px;
-    box-shadow: 0 20px 50px rgba(0,0,0,.2);
+    position: fixed; top: 0; right: 0; bottom: 0;
+    background: var(--panel); padding: 24px 28px;
+    width: min(560px, 100%); height: 100%; overflow-y: auto;
+    box-shadow: var(--shadow-xl);
+    transform: translateX(100%);
+    transition: transform var(--duration) var(--ease);
+    border-radius: 0;
+    border-left: 1px solid var(--border);
   }
-  .modal h2 { margin: 0 0 14px; font-size: 17px; }
-  .modal label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .modal-bg.open .modal { transform: translateX(0); }
+  .modal h2 {
+    margin: 0 0 18px; font-size: 18px; font-weight: 600;
+    color: var(--text); letter-spacing: -0.01em;
+  }
+  .modal label {
+    display: block; font-size: 12px; color: var(--muted);
+    margin: 14px 0 6px; font-weight: 500;
+  }
   .modal input, .modal select, .modal textarea {
-    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px;
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: var(--r-md); font-size: 14px; color: var(--text);
+    background: var(--panel);
+    transition: border-color var(--duration) var(--ease);
+    font-family: inherit;
   }
-  .modal textarea { resize: vertical; min-height: 80px; font-family: inherit; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .modal input:focus, .modal select:focus, .modal textarea:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-soft);
+  }
+  .modal textarea { resize: vertical; min-height: 80px; }
+  .modal-actions {
+    display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px;
+    padding-top: 16px; border-top: 1px solid var(--border);
+  }
 
   /* Modal section headers (Finance modal-д хэрэглэгдэнэ) */
   .modal-section {
@@ -550,6 +736,85 @@
   }
   .sidebar-backdrop.open { display: block; }
 
+  /* ─── Command palette (⌘K) ─── */
+  .cmd-palette-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: none; align-items: flex-start; justify-content: center;
+    z-index: 200; padding-top: 80px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .cmd-palette-bg.open { display: flex; animation: fadeIn 150ms var(--ease); }
+  .cmd-palette {
+    background: var(--panel); width: min(560px, 92%);
+    border-radius: var(--r-lg); box-shadow: var(--shadow-xl);
+    overflow: hidden; border: 1px solid var(--border);
+  }
+  .cmd-palette input {
+    width: 100%; border: none; padding: 16px 20px; font-size: 16px;
+    background: transparent; color: var(--text); outline: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmd-palette-results {
+    max-height: 60vh; overflow-y: auto; padding: 8px;
+  }
+  .cmd-result {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: var(--r-md);
+    cursor: pointer; font-size: 14px;
+  }
+  .cmd-result:hover, .cmd-result.active {
+    background: var(--primary-soft); color: var(--primary);
+  }
+  .cmd-result .icon { font-size: 18px; }
+  .cmd-result .hint { margin-left: auto; font-size: 11px; color: var(--muted); }
+  .cmd-result-section {
+    font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 12px 12px 6px; font-weight: 600;
+  }
+
+  /* ─── Animations ─── */
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+  .animate-in { animation: slideUp 200ms var(--ease) both; }
+
+  /* ─── Мобайл доод нав + FAB товч ─── */
+  .mobile-bottom-nav {
+    display: none;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+  }
+  .mobile-bottom-nav-inner {
+    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px;
+  }
+  .mobile-nav-item {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 8px 4px; cursor: pointer; color: var(--muted);
+    font-size: 10px; gap: 3px; transition: color var(--duration) var(--ease);
+    border: none; background: transparent;
+  }
+  .mobile-nav-item .icon { font-size: 20px; line-height: 1; }
+  .mobile-nav-item.active { color: var(--primary); }
+  .mobile-nav-item .badge {
+    position: absolute; margin-top: -28px; margin-left: 14px;
+    background: var(--danger); color: #fff; font-size: 10px;
+    padding: 1px 5px; border-radius: var(--r-full); min-width: 16px;
+    text-align: center; font-weight: 600;
+  }
+  .fab {
+    display: none;
+    position: fixed; right: 18px; bottom: 78px; z-index: 60;
+    width: 56px; height: 56px; border-radius: var(--r-full);
+    background: var(--primary); color: #fff; border: none;
+    font-size: 26px; cursor: pointer; box-shadow: var(--shadow-lg);
+    transition: transform var(--duration) var(--ease);
+  }
+  .fab:hover, .fab:active { transform: scale(1.05); background: var(--primary-hover); }
+
   @media (max-width: 720px) {
     .app { grid-template-columns: 1fr; }
 
@@ -558,13 +823,15 @@
       position: fixed; left: 0; top: 0; bottom: 0; width: 84%; max-width: 320px;
       z-index: 100;
       transform: translateX(-100%);
-      transition: transform .25s ease;
-      box-shadow: 2px 0 24px rgba(15,23,42,.12);
+      transition: transform var(--duration) var(--ease);
+      box-shadow: var(--shadow-xl);
       display: block;
     }
     .sidebar.open { transform: translateX(0); }
 
     .mobile-menu-btn { display: inline-flex; }
+    .mobile-bottom-nav { display: block; }
+    .fab { display: block; }
 
     /* Header tightens on phones */
     .header { padding: 12px 14px; }
@@ -576,23 +843,38 @@
     .toolbar { padding: 10px 14px; flex-wrap: wrap; gap: 6px; }
     .search { flex: 1 1 100%; max-width: 100%; }
 
-    .tasks { padding: 0 12px 100px; }
+    .tasks { padding: 0 12px 140px; } /* доод nav + FAB-д зориулсан зай */
     .table-head { display: none; }
     .task-row {
-      grid-template-columns: 26px 1fr 30px;
-      row-gap: 6px; padding: 12px 10px;
+      grid-template-columns: 24px 1fr auto;
+      row-gap: 8px; padding: 14px 14px;
+      column-gap: var(--space-3);
     }
     .task-row .col-assignee, .task-row .col-due, .task-row .col-priority {
-      grid-column: 2 / 3; padding-left: 0;
+      grid-column: 2 / 4; padding-left: 0;
     }
-    .delete-btn { opacity: 1; } /* always show on touch — no hover */
+    .task-row:hover { transform: none; } /* мобайлд hover lift хасах */
+    .delete-btn { opacity: 1; }
 
     /* Connection chip stays visible but smaller */
-    .conn-status { bottom: 10px; right: 10px; font-size: 10px; padding: 4px 8px; }
+    .conn-status { bottom: 80px; right: 10px; font-size: 10px; padding: 4px 8px; }
 
-    /* Modal full-screen on phones for easier typing */
-    .modal { width: 100%; max-width: 100%; height: 100%; max-height: 100%;
-      border-radius: 0; display: flex; flex-direction: column; padding: 20px 18px 28px; overflow-y: auto; }
+    /* Модал bottom sheet хэлбэрээр мобайлд */
+    .modal {
+      top: auto; bottom: 0; right: 0; left: 0;
+      width: 100%; max-width: 100%; height: 92vh; max-height: 92vh;
+      border-radius: var(--r-lg) var(--r-lg) 0 0;
+      padding: 24px 18px calc(28px + env(safe-area-inset-bottom)) 18px;
+      transform: translateY(100%);
+      border-left: none; border-top: 1px solid var(--border);
+    }
+    .modal-bg.open .modal { transform: translateY(0); }
+    /* Bottom sheet-д drag handle харагдуулна */
+    .modal::before {
+      content: ''; display: block; width: 40px; height: 4px;
+      background: var(--border-strong); border-radius: var(--r-full);
+      margin: 0 auto 16px;
+    }
   }
 </style>
 </head>
@@ -689,6 +971,15 @@
         <div class="sub" id="view-sub">Танд оноосон ажлууд</div>
       </div>
       <div class="header-actions">
+        <button class="theme-toggle" id="theme-toggle" aria-label="Theme солих" title="Light/Dark солих">
+          <svg id="theme-icon-light" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg id="theme-icon-dark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
         <button class="bell-btn" id="notif-btn" aria-label="Мэдэгдэл">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
@@ -950,6 +1241,35 @@
   <span class="dot"></span><span id="conn-text">Локал режим</span>
 </div>
 
+<!-- ─── МОБАЙЛ ДООД НАВ — утсанд зориулсан, ≤720px үед харагдана ─── -->
+<nav class="mobile-bottom-nav" id="mobile-nav" aria-label="Үндсэн нав">
+  <div class="mobile-bottom-nav-inner">
+    <button class="mobile-nav-item active" data-view="mine">
+      <span class="icon">📥</span><span>Ирсэн</span>
+    </button>
+    <button class="mobile-nav-item" data-view="delegated">
+      <span class="icon">📤</span><span>Илгээсэн</span>
+    </button>
+    <button class="mobile-nav-item" data-view="finance">
+      <span class="icon">💸</span><span>Санхүү</span>
+    </button>
+    <button class="mobile-nav-item" id="mobile-menu-more">
+      <span class="icon">☰</span><span>Цэс</span>
+    </button>
+  </div>
+</nav>
+
+<!-- ─── FAB товч — шинэ ажил үүсгэх (мобайлд) ─── -->
+<button class="fab" id="fab-new" aria-label="Шинэ ажил үүсгэх">+</button>
+
+<!-- ─── COMMAND PALETTE (⌘K / Ctrl+K) ─── -->
+<div class="cmd-palette-bg" id="cmd-palette-bg">
+  <div class="cmd-palette" role="dialog" aria-label="Command Palette">
+    <input id="cmd-input" type="text" placeholder="Хайх эсвэл үйлдэл сонгох… (Esc-эс гарах)" autocomplete="off" />
+    <div class="cmd-palette-results" id="cmd-results"></div>
+  </div>
+</div>
+
 <script>
 /* -------------------- CONSTANTS -------------------- */
 // Branches — 3 work-groups + 1 cross-branch "production" type for Camp↔M Event events.
@@ -1128,6 +1448,108 @@ function showPrompt(msg, opts = {}) {
     const result = window.prompt(msg, opts.defaultValue || '');
     resolve(result);
   });
+}
+
+/* ─── COMMAND PALETTE (⌘K) ─── */
+function openCommandPalette() {
+  const bg = document.getElementById('cmd-palette-bg');
+  const input = document.getElementById('cmd-input');
+  bg.classList.add('open');
+  input.value = '';
+  renderCommandResults('');
+  setTimeout(() => input.focus(), 50);
+}
+function closeCommandPalette() {
+  document.getElementById('cmd-palette-bg')?.classList.remove('open');
+}
+function renderCommandResults(query) {
+  const results = document.getElementById('cmd-results');
+  const q = (query || '').toLowerCase().trim();
+
+  // 1. Үйлдэл (actions)
+  const actions = [
+    { icon: '➕', label: 'Шинэ даалгавар', hint: 'N',  run: () => { closeCommandPalette(); openTaskModal(); } },
+    { icon: '💸', label: 'Шинэ санхүүгийн хүсэлт', hint: 'F', run: () => { closeCommandPalette(); openFinanceModal(); } },
+    { icon: '📥', label: 'Ирсэн ажил',  hint: '', run: () => { closeCommandPalette(); state.view='mine'; render(); } },
+    { icon: '📤', label: 'Илгээсэн ажил', hint: '', run: () => { closeCommandPalette(); state.view='delegated'; render(); } },
+    { icon: '💸', label: 'Санхүү',      hint: '', run: () => { closeCommandPalette(); state.view='finance'; render(); } },
+    { icon: '🌓', label: 'Theme солих (Light/Dark)', hint: '', run: () => { closeCommandPalette(); toggleTheme(); } },
+    { icon: '⚙️', label: 'Тохиргоо',    hint: '', run: () => { closeCommandPalette(); document.getElementById('settings-modal')?.classList.add('open'); } },
+  ];
+
+  // 2. Tasks хайлт
+  const taskMatches = q ? state.tasks.filter(t =>
+    (t.title||'').toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q)
+  ).slice(0, 10) : [];
+
+  let html = '';
+  const filteredActions = q ? actions.filter(a => a.label.toLowerCase().includes(q)) : actions;
+  if (filteredActions.length) {
+    html += `<div class="cmd-result-section">Үйлдэл</div>`;
+    html += filteredActions.map((a, i) => `
+      <div class="cmd-result ${i===0 && !taskMatches.length ? 'active' : ''}" data-cmd-idx="action-${actions.indexOf(a)}">
+        <span class="icon">${a.icon}</span>
+        <span>${escapeHtml(a.label)}</span>
+        ${a.hint ? `<span class="hint">${escapeHtml(a.hint)}</span>` : ''}
+      </div>
+    `).join('');
+  }
+  if (taskMatches.length) {
+    html += `<div class="cmd-result-section">Даалгавар (${taskMatches.length})</div>`;
+    html += taskMatches.map((t, i) => `
+      <div class="cmd-result ${i===0 && !filteredActions.length ? 'active' : ''}" data-cmd-idx="task-${t.id}">
+        <span class="icon">${t.status === 'done' ? '✓' : '○'}</span>
+        <span>${escapeHtml(t.title || '(гарчиггүй)')}</span>
+        <span class="hint">${escapeHtml(memberName(t.assignee))}</span>
+      </div>
+    `).join('');
+  }
+  if (!html) {
+    html = `<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">"${escapeHtml(query)}" гэх зүйл олдсонгүй</div>`;
+  }
+  results.innerHTML = html;
+  // Listeners
+  results.querySelectorAll('.cmd-result').forEach(el => {
+    el.onclick = () => {
+      const key = el.dataset.cmdIdx;
+      if (!key) return;
+      if (key.startsWith('action-')) {
+        const idx = Number(key.slice(7));
+        actions[idx]?.run();
+      } else if (key.startsWith('task-')) {
+        const tid = key.slice(5);
+        closeCommandPalette();
+        openTaskModal(tid);
+      }
+    };
+  });
+}
+
+/* ─── DARK MODE / THEME ─── */
+function toggleTheme() {
+  const html = document.documentElement;
+  const cur = html.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  showToast(next === 'dark' ? '🌙 Харанхуй горим' : '☀️ Гэрэлтэй горим', 'info', 1500);
+}
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  // Тохируулаагүй бол system preference
+  else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  updateThemeIcon();
+}
+function updateThemeIcon() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const lightIcon = document.getElementById('theme-icon-light');
+  const darkIcon = document.getElementById('theme-icon-dark');
+  if (lightIcon) lightIcon.style.display = dark ? 'none' : 'block';
+  if (darkIcon) darkIcon.style.display = dark ? 'block' : 'none';
 }
 
 /* -------------------- IN-APP NOTIFICATIONS --------------------
@@ -2423,6 +2845,8 @@ function fmtDate(s) {
   if (diff === 0) return 'Өнөөдөр';
   if (diff === 1) return 'Маргааш';
   if (diff === -1) return 'Өчигдөр';
+  if (diff > 1 && diff <= 7) return `${Math.round(diff)} хоног дараа`;
+  if (diff < -1 && diff >= -7) return `${Math.abs(Math.round(diff))} хоног өмнө`;
   return d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
 }
 function setConn(cls, text) {
@@ -2642,28 +3066,34 @@ function renderRow(t) {
     }
   }
 
+  // Status dot — shows current task state subtly
+  const statusClass = t.status === 'done' ? 'done'
+                    : t.status === 'in_progress' ? 'in_progress'
+                    : t.status === 'declined' ? 'declined'
+                    : 'open';
   row.innerHTML = `
     <div>
       <div class="checkbox ${t.status==='done'?'checked':''}" data-act="toggle"></div>
     </div>
-    <div class="task-title-wrap" data-act="open" style="cursor:pointer;">
+    <div class="task-title-wrap" data-act="open">
       <div class="task-title" data-act="open">${titleHtml}${extraHtml}</div>
       <div class="task-meta" data-act="open">
-        ${escapeHtml(projectName(t.project))}
+        <span class="status-dot ${statusClass}" title="${statusClass === 'in_progress' ? 'Хийгдэж байна' : statusClass === 'declined' ? 'Татгалзсан' : statusClass === 'done' ? 'Дууссан' : 'Шинэ'}"></span>
+        ${escapeHtml(projectName(t.project) || 'Төсөлгүй')}
         ${t.createdBy && t.createdBy !== t.assignee
-          ? `· <span class="delegated-from">← ${escapeHtml(memberName(t.createdBy))}</span>`
+          ? `<span class="meta-dot"></span><span class="delegated-from">${escapeHtml(memberName(t.createdBy))}</span>`
           : ''}
-        ${t.desc ? '· '+escapeHtml(t.desc.slice(0,80)) : ''}
+        ${t.comments && t.comments.length ? `<span class="meta-dot"></span><span title="${t.comments.length} сэтгэгдэл">💬 ${t.comments.length}</span>` : ''}
       </div>
     </div>
     <div class="col-assignee">
       <span class="assignee-chip" data-act="open" title="${escapeHtml(t.createdBy && t.createdBy !== t.assignee ? memberName(t.createdBy) + ' → ' + memberName(t.assignee) : 'Өөрөө оноосон')}">
         <span class="avatar">${escapeHtml(memberInitials(t.assignee))}</span>
-        ${escapeHtml(memberName(t.assignee))}
+        <span class="name">${escapeHtml(memberName(t.assignee))}</span>
       </span>
     </div>
     <div class="col-due">
-      <span class="due ${dc}" data-act="open">${fmtDate(t.due) || '— Тогтоох'}</span>
+      <span class="due ${dc}" data-act="open">${fmtDate(t.due) || '—'}</span>
     </div>
     <div class="col-priority">
       <span class="priority ${t.priority||'none'}" data-act="open">
@@ -3169,6 +3599,71 @@ function initEvents() {
   document.getElementById('t-cancel').onclick = closeTaskModal;
   document.getElementById('t-save').onclick = saveTaskFromModal;
 
+  // ─── Мобайл доод нав ───
+  document.querySelectorAll('.mobile-nav-item[data-view]').forEach(btn => {
+    btn.onclick = (e) => {
+      const view = e.currentTarget.dataset.view;
+      state.view = view;
+      // Visible state
+      document.querySelectorAll('.mobile-nav-item').forEach(x => x.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      // Sidebar dropdown синхрон болгох
+      document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+      document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
+      render();
+    };
+  });
+  // Mobile "Цэс" товч — сайдбарыг нээх
+  document.getElementById('mobile-menu-more')?.addEventListener('click', () => {
+    document.querySelector('.sidebar')?.classList.add('open');
+    document.querySelector('.sidebar-backdrop')?.classList.add('open');
+  });
+  // FAB — шинэ ажил
+  document.getElementById('fab-new')?.addEventListener('click', () => openTaskModal());
+
+  // Theme toggle товч
+  document.getElementById('theme-toggle')?.addEventListener('click', () => {
+    toggleTheme();
+    updateThemeIcon();
+  });
+
+  // ─── ⌘K / Ctrl+K — command palette ───
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      openCommandPalette();
+    } else if (e.key === 'Escape') {
+      const bg = document.getElementById('cmd-palette-bg');
+      if (bg?.classList.contains('open')) closeCommandPalette();
+    }
+  });
+  document.getElementById('cmd-palette-bg')?.addEventListener('click', (e) => {
+    if (e.target.id === 'cmd-palette-bg') closeCommandPalette();
+  });
+  const cmdInput = document.getElementById('cmd-input');
+  cmdInput?.addEventListener('input', () => renderCommandResults(cmdInput.value));
+  cmdInput?.addEventListener('keydown', (e) => {
+    const results = document.querySelectorAll('.cmd-result');
+    let active = document.querySelector('.cmd-result.active');
+    let idx = [...results].indexOf(active);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      idx = Math.min(results.length - 1, idx + 1);
+      results.forEach(r => r.classList.remove('active'));
+      results[idx]?.classList.add('active');
+      results[idx]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      idx = Math.max(0, idx - 1);
+      results.forEach(r => r.classList.remove('active'));
+      results[idx]?.classList.add('active');
+      results[idx]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      (active || results[0])?.click();
+    }
+  });
+
   // ─── Сэтгэгдэл илгээх ───
   document.getElementById('t-comment-send')?.addEventListener('click', async () => {
     if (!state.editingId) return;
@@ -3534,6 +4029,7 @@ function setUser(member, profile) {
 let _eventsBound = false;
 let _pollTimer = null;
 async function bootApp() {
+  initTheme();
   if (!_eventsBound) {
     initEvents();
     _eventsBound = true;

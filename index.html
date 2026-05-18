@@ -823,12 +823,18 @@
     <h2 id="finance-modal-title">💸 Юу авах хэрэгтэй вэ?</h2>
     <div id="f-decision-info" style="display:none; font-size:12px; margin:-6px 0 14px; padding:10px 12px; border-radius:8px; line-height:1.5;"></div>
 
-    <!-- 4 АСУУЛТ — бүх ажилтанд ижил, ярианы хэлбэр -->
-    <label>Юу хэрэгтэй вэ? <span class="req">*</span></label>
-    <input id="f-purpose" placeholder="Жишээ: Угаалгын шингэн" />
+    <!-- ҮНДСЭН АСУУЛТ — бүх ажилтанд ижил, ярианы хэлбэр -->
+    <label>Юу авах хэрэгтэй вэ? <span class="req">*</span></label>
+    <input id="f-purpose" placeholder="Жишээ: Дуучин Болд — 5/22 концерт" />
 
-    <label>Ямар төрлийн зардал вэ?</label>
-    <select id="f-category"></select>
+    <label>Үндсэн ангилал <span class="req">*</span></label>
+    <select id="f-main-category"></select>
+
+    <label>Дэд ангилал <span class="req">*</span></label>
+    <select id="f-category" disabled><option value="">— Эхлээд үндсэн ангилал сонго —</option></select>
+
+    <label>Аль салбарт? <span class="req">*</span></label>
+    <select id="f-dept-branch"></select>
 
     <label>Үнэ ойролцоогоор хэдэн төгрөг вэ?</label>
     <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Мэдэхгүй бол хоосон үлдээж болно" />
@@ -854,8 +860,6 @@
       <input id="f-due" type="date" />
       <label>Энэ зардал давтагдах уу?</label>
       <select id="f-frequency"></select>
-      <!-- Branch нуугдсан -->
-      <select id="f-dept-branch" style="display:none;"></select>
     </div>
 
     <!-- БАРИМТ — TOLBOR & RECEIPT (зөвхөн execute/final stage-д) -->
@@ -1617,21 +1621,100 @@ function getFinanceExecutorId() {
 // Backward-compat: legacy code may reference const FINANCE_EXECUTOR_ID
 const FINANCE_EXECUTOR_ID = 'S03'; // Default fallback — runtime-д getFinanceExecutorId()-ээр дарагдана
 
-/* Финансын хүсэлтийн ангилал — сар бүрийн тайлан, бюджет, pivot table-д ашиглана */
-const FINANCE_CATEGORIES = [
-  'Оффис хэрэглээ',          // бичиг хэрэг, цай, цэвэрлэгээний бараа
-  'Үйл ажиллагаа',           // түрээс, цахилгаан, интернэт, тогтмол зардал
-  'Тоног төхөөрөмж',         // capex, шинэ тоног авах
-  'Засвар / арчилгаа',       // машин, тоног, барилгын засвар
-  'Маркетинг / контент',     // зар, видео, фото, sponsorship
-  'Тээвэр / шатахуун',       // бензин, тээврийн зардал
-  'Хоол / event provisions', // Camp хоол, event-ийн хүнс
-  'Цалин / шагнал',          // цалингаас гадуурх төлбөр (бонус, гэрээт)
-  'Татвар / шимтгэл',        // ХХОАТ, НДШ, банкны шимтгэл
-  'Хууль зүй / гэрээ',       // нотариат, өмгөөлөгч, лиценз
-  'Бусад',
+/* Зардлын стандарт ангилал — 2-түвшинт (Үндсэн → Дэд)
+   CEO-аас 2026-05-18-нд баталсан стандарт. МНББС-тэй нийцсэн.
+   Canonical Sheet: Чимун_ХХК_Зардлын_Ангилал_Стандарт.xlsx
+   Дэлгэрэнгүйг гүйлгээний утга дээр чөлөөт текстээр бичнэ. */
+const FINANCE_MAIN_CATEGORIES = [
+  { code: '1000', name: 'Үйл ажиллагаа — Шууд' },
+  { code: '2000', name: 'Үйл ажиллагаа — Тогтмол' },
+  { code: '3000', name: 'Захиргаа' },
+  { code: '4000', name: 'Маркетинг' },
+  { code: '5000', name: 'Санхүү ба татвар' },
+  { code: '6000', name: 'Хөрөнгийн зардал' },
+  { code: '9000', name: 'Бусад ба тусгай' },
 ];
-const FINANCE_DEPT_BRANCHES = ['M Event', 'Camp', 'Нэгдсэн'];
+
+const FINANCE_SUB_CATEGORIES = {
+  '1000': [
+    { code: '1100', name: 'Гадны тоног түрээс' },
+    { code: '1200', name: 'Угсралт, буулгалт, тээвэр' },
+    { code: '1300', name: 'Нийлүүлэгчийн хоол, ундаа, чимэглэл' },
+    { code: '1400', name: 'Урлагийн үйлчилгээ (гаднаас)' },
+    { code: '1500', name: 'Зочны хэрэглээний материал' },
+    { code: '1600', name: 'Зочны хоол ба түлш (өөрсдийн)' },
+    { code: '1700', name: 'Цэвэрлэгээ, угаалга, арчилгаа' },
+    { code: '1800', name: 'Ажилтны халамж (арга хэмжээ, хоног)' },
+    { code: '1900', name: 'Сезоны цалин ба бусад' },
+  ],
+  '2000': [
+    { code: '2100', name: 'Үндсэн ажилтны цалин' },
+    { code: '2200', name: 'Тоног арчилгаа (тогтмол)' },
+    { code: '2300', name: 'Шатахуун ба тээвэр' },
+    { code: '2400', name: 'Байр, агуулах, газар' },
+    { code: '2500', name: 'Холбоо (үйлдвэрлэлд)' },
+    { code: '2900', name: 'Бусад тогтмол' },
+  ],
+  '3000': [
+    { code: '3100', name: 'Удирдлагын цалин' },
+    { code: '3200', name: 'Оффисын аж ахуй' },
+    { code: '3300', name: 'Конторын түрээс, нийтийн үйлчилгээ' },
+    { code: '3400', name: 'IT, онлайн програм' },
+    { code: '3500', name: 'Утас, интернэт (захиргааны)' },
+    { code: '3600', name: 'Даатгал, лиценз, зөвшөөрөл' },
+    { code: '3700', name: 'Хууль зүйн зардал' },
+    { code: '3800', name: 'Сургалт, семинар' },
+    { code: '3900', name: 'Бусад захиргаа' },
+  ],
+  '4000': [
+    { code: '4100', name: 'Цахим зар сурталчилгаа' },
+    { code: '4200', name: 'Видео, гэрэл зургийн найруулга' },
+    { code: '4300', name: 'Хэвлэлийн материал' },
+    { code: '4400', name: 'Спонсор, нөлөөлөгч, түнш' },
+    { code: '4500', name: 'Веб хуудас, домэйн, хост' },
+    { code: '4600', name: 'Бусдын арга хэмжээний спонсорчлол' },
+    { code: '4900', name: 'Бусад маркетинг' },
+  ],
+  '5000': [
+    { code: '5100', name: 'НӨАТ' },
+    { code: '5200', name: 'ААНОАТ' },
+    { code: '5300', name: 'Ажил олгогчийн НДШ (12.5%)' },
+    { code: '5400', name: 'Ажилтны НДШ (11.5%)' },
+    { code: '5500', name: 'ХХОАТ' },
+    { code: '5600', name: 'Зээлийн хүү (ЗӨВХӨН хүү)' },
+    { code: '5700', name: 'Банкны шимтгэл' },
+    { code: '5800', name: 'Үйлчлүүлэгчид буцаасан, торгууль' },
+    { code: '5900', name: 'Бусад татвар, санхүү' },
+  ],
+  '6000': [
+    { code: '6100', name: 'Шинэ тоног төхөөрөмж' },
+    { code: '6300', name: 'Машин, тээврийн хэрэгсэл' },
+    { code: '6400', name: 'Компьютер, утас, гаджет' },
+    { code: '6500', name: 'Том засвар, шинэчлэл (>1сая)' },
+    { code: '6600', name: 'Программын байнгын лиценз' },
+    { code: '6700', name: 'Барилгын сайжруулалт' },
+    { code: '6900', name: 'Бусад хөрөнгө' },
+  ],
+  '9000': [
+    { code: '9100', name: 'Засгийн газрын торгууль' },
+    { code: '9200', name: 'Хандив, нийгмийн хариуцлага' },
+    { code: '9300', name: 'Гэнэтийн, онцгой нөхцөл' },
+    { code: '9400', name: 'Алдагдал' },
+    { code: '9500', name: 'Тодорхой бус (түр)' },
+  ],
+};
+
+/* Салбарын жагсаалт — хүсэлт ХААНА харъялагдсаныг заана */
+const FINANCE_BRANCHES = [
+  { code: 'ИВЕНТ', name: 'Эм Ивент' },
+  { code: 'КЕМП',  name: 'Номаад кемп' },
+  { code: 'ЗАХ',   name: 'Захиргаа' },
+  { code: 'ХАМТ',  name: 'Хамтын зардал' },
+];
+
+/* Backward compat — хуучин код шууд массив хүлээж байсан учир */
+const FINANCE_CATEGORIES = FINANCE_MAIN_CATEGORIES.map(c => `${c.code} ${c.name}`);
+const FINANCE_DEPT_BRANCHES = FINANCE_BRANCHES.map(b => b.name);
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
 
 /* Бүх ажилтанд ИЖИЛ нэг универсал санхүүгийн маягт.
@@ -1765,8 +1848,8 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     purpose: purpose || '',
     justification: justification || '',
     due_date: dueDate || '',
-    category: category || 'Бусад',
-    dept_branch: deptBranch || 'Нэгдсэн',
+    category: category || '9500',
+    dept_branch: deptBranch || 'ХАМТ',
     frequency: frequency || 'Нэг удаагийн',
     status: 'open',
     decision: 'pending',
@@ -1812,18 +1895,33 @@ async function decideFinanceRequest(id, decision, reason = '') {
   render();
 }
 
-// Finance modal-ийн file picker-ийг + холбогдох label/description divоор хамт хаах/нээх helper
+// Finance modal-ийн dropdown-уудыг популят + cascading логик хамруулсан helper
 function fillFinanceSelects() {
-  const cat = document.getElementById('f-category');
-  const br  = document.getElementById('f-dept-branch');
-  const fr  = document.getElementById('f-frequency');
-  const bk  = document.getElementById('f-bank');
-  if (cat && !cat.children.length) {
-    cat.innerHTML = '<option value="" disabled>— Сонгох —</option>' +
-      FINANCE_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  const main = document.getElementById('f-main-category');
+  const sub  = document.getElementById('f-category');
+  const br   = document.getElementById('f-dept-branch');
+  const fr   = document.getElementById('f-frequency');
+  const bk   = document.getElementById('f-bank');
+
+  // Үндсэн ангилал (7) — нэг л удаа популятлана
+  if (main && !main.children.length) {
+    main.innerHTML = '<option value="" disabled selected>— Сонгох —</option>' +
+      FINANCE_MAIN_CATEGORIES.map(c =>
+        `<option value="${c.code}">${escapeHtml(`${c.code} ${c.name}`)}</option>`).join('');
+    // Үндсэн солих үед дэдийг шинэчлэх
+    main.addEventListener('change', () => {
+      const code = main.value;
+      const subs = FINANCE_SUB_CATEGORIES[code] || [];
+      sub.innerHTML = '<option value="" disabled selected>— Сонгох —</option>' +
+        subs.map(s => `<option value="${s.code}">${escapeHtml(`${s.code} ${s.name}`)}</option>`).join('');
+      sub.disabled = subs.length === 0;
+    });
   }
+
+  // Салбар (4) — Эм Ивент / Кемп / Захиргаа / Хамтын
   if (br && !br.children.length) {
-    br.innerHTML = FINANCE_DEPT_BRANCHES.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
+    br.innerHTML = '<option value="" disabled selected>— Сонгох —</option>' +
+      FINANCE_BRANCHES.map(b => `<option value="${b.code}">${escapeHtml(b.name)}</option>`).join('');
   }
   if (fr && !fr.children.length) {
     fr.innerHTML = FINANCE_FREQUENCIES.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
@@ -1890,8 +1988,12 @@ function openFinanceModal(id = null) {
     document.getElementById('f-purpose').value = '';
     document.getElementById('f-justification').value = '';
     document.getElementById('f-due').value = '';
-    document.getElementById('f-category').value = '';
-    document.getElementById('f-dept-branch').value = (state.branch === 'm-event') ? 'M Event' : (state.branch === 'camp' ? 'Camp' : 'Нэгдсэн');
+    document.getElementById('f-main-category').value = '';
+    document.getElementById('f-category').innerHTML = '<option value="">— Эхлээд үндсэн ангилал сонго —</option>';
+    document.getElementById('f-category').disabled = true;
+    // Салбарын default — state.branch-аас оноох (m-event → ИВЕНТ, camp → КЕМП, бусад → ХАМТ)
+    const defaultBranch = state.branch === 'm-event' ? 'ИВЕНТ' : (state.branch === 'camp' ? 'КЕМП' : 'ХАМТ');
+    document.getElementById('f-dept-branch').value = defaultBranch;
     document.getElementById('f-frequency').value = 'Нэг удаагийн';
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
@@ -1914,8 +2016,23 @@ function openFinanceModal(id = null) {
     document.getElementById('f-purpose').value = t.purpose || '';
     document.getElementById('f-justification').value = t.justification || '';
     document.getElementById('f-due').value = t.due_date || '';
-    document.getElementById('f-category').value = t.category || '';
-    document.getElementById('f-dept-branch').value = t.dept_branch || 'Нэгдсэн';
+    // category талбарт "1400 Урлагийн үйлчилгээ" эсвэл хуучин "1400" эсвэл хуучин чөлөөт текст байж болно
+    // Дэд код нь '1100' хэлбэртэй 4 оронтой тоо
+    const catRaw = String(t.category || '');
+    const subMatch = catRaw.match(/^(\d{4})/);
+    const subCode = subMatch ? subMatch[1] : '';
+    const mainCode = subCode ? subCode[0] + '000' : '';
+    document.getElementById('f-main-category').value = mainCode;
+    // Дэд dropdown-ийг үндсэнд тааруулж популятлах
+    if (mainCode && FINANCE_SUB_CATEGORIES[mainCode]) {
+      const subs = FINANCE_SUB_CATEGORIES[mainCode];
+      document.getElementById('f-category').innerHTML =
+        '<option value="">— Сонгох —</option>' +
+        subs.map(s => `<option value="${s.code}">${escapeHtml(`${s.code} ${s.name}`)}</option>`).join('');
+      document.getElementById('f-category').disabled = false;
+      document.getElementById('f-category').value = subCode;
+    }
+    document.getElementById('f-dept-branch').value = t.dept_branch || 'ХАМТ';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
     // Existing receipts харуулах
     renderProofPreview('f-purchase-preview', t.purchase_proof_url, 'Үнийн судалгаа');
@@ -1934,7 +2051,7 @@ function openFinanceModal(id = null) {
     if (isPendingForCEO) {
       ['f-amount','f-beneficiary','f-account','f-purpose','f-justification','f-due','f-decision-reason']
         .forEach(id => document.getElementById(id)?.removeAttribute('readonly'));
-      ['f-bank','f-category','f-frequency','f-dept-branch']
+      ['f-bank','f-main-category','f-category','f-frequency','f-dept-branch']
         .forEach(id => document.getElementById(id)?.removeAttribute('disabled'));
       document.getElementById('f-decision-reason').value = t.decision_reason || '';
       document.getElementById('f-decision-reason').style.display = '';
@@ -2726,9 +2843,10 @@ function initEvents() {
     const deptBranch = document.getElementById('f-dept-branch').value;
     const frequency = document.getElementById('f-frequency').value;
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
-    // Зөвхөн Зорилго + Категори заавал бөглөх. Бусад нь CEO/S03 нөхөж бөглөнө.
-    if (!purpose) { showToast('Зорилго шаардлагатай', 'warn'); return; }
-    if (!category) { showToast('Категори сонгоно уу', 'warn'); return; }
+    // Заавал бөглөх — Зорилго, Дэд код, Салбар. Бусад нь CEO/S03 нөхөж бөглөнө.
+    if (!purpose) { showToast('Юу авах хэрэгтэйг бөглөнө үү', 'warn'); return; }
+    if (!category) { showToast('Дэд ангилал сонгоно уу', 'warn'); return; }
+    if (!deptBranch) { showToast('Аль салбарт хамаарахыг сонгоно уу', 'warn'); return; }
     // Хэрэв дүн+банк+данс бүгд хоосон бол анхааруулга (гэхдээ үргэлжлүүлэх боломжтой)
     if ((!amount || Number(amount) <= 0) && !bank && !accountNumber && !purchaseFile) {
       if (!(await showConfirm('Дүн, банк, данс, баримт бүгд хоосон байна. CEO юу авах хэрэгтэйг ойлгох уу?\n\nҮргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' }))) return;
@@ -2767,6 +2885,7 @@ function initEvents() {
       justification: get('f-justification'),
       due_date: get('f-due'),
       category: get('f-category'),
+      dept_branch: get('f-dept-branch'),
       frequency: get('f-frequency'),
     };
     for (const [k, v] of Object.entries(fields)) {

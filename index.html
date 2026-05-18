@@ -1284,28 +1284,31 @@ const BRANCHES = [
 //   C03 Бямбацэрэн, C04 Төгөлдөр, C05 Эрка, T01 Содхүү, T02 Тэлмэн.
 //
 // `let` (not const) — runtime sync replaces this array in-place from Master Sheet via n8n /staff endpoint.
+// ⚠ TEST-ийн зориулалттай: бүх PIN-ийг 1111 болгосон. Production-руу гарахын өмнө Master Sheet-аас
+//   жинхэнэ PIN-ийг буцааж тохируулна. CEO 2026-05-18-нд гаргасан шийдвэр.
 let TEAM = [
-  { id: 'CEO', name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1234',
+  { id: 'CEO', name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1111',
     email: 'ceo@nomaadcamp.com',
     branches: ['m-event','camp','shared','production'] },
 
-  // Нэгдсэн алба (cross-cutting). PIN scheme: shared=10xx
-  { id: 'S01', name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1001', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
-  { id: 'S03', name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1003', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
+  // Нэгдсэн алба (cross-cutting)
+  { id: 'S01', name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1111', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
+  { id: 'S03', name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1111', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
 
-  // M Event салбар. PIN scheme: m-event=20xx
-  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '2001', email: 'coo@mevent.mn',            branches: ['m-event','production'] },
-  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '2002', email: '',                         branches: ['m-event','production'] },
-  { id: '003', name: 'Д.Нинждолгор',   role: 'Нярав',                  level: 60, pin: '2004', email: '',                         branches: ['m-event'] },
-  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '2005', email: '',                       branches: ['m-event','production'] },
-  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '2006', email: '',                         branches: ['m-event','production'] },
-  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '2007', email: '',                         branches: ['m-event','production'] },
-  { id: '006', name: 'Хишигтогтох',    role: 'Цэврэлгээ',              level: 40, pin: '2008', email: '',                         branches: ['m-event'] },
+  // M Event салбар
+  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event','production'] },
+  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: '003', name: 'Д.Нинждолгор',   role: 'Нярав',                  level: 60, pin: '1111', email: '',                         branches: ['m-event'] },
+  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '1111', email: '',                       branches: ['m-event','production'] },
+  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: '006', name: 'Хишигтогтох',    role: 'Цэврэлгээ',              level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
 
-  // NOMAAD Camp. PIN scheme: camp=30xx
-  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '3001', email: 'delgerbat69@nomaadcamp.com', branches: ['camp','production'] },
-  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '3002', email: '',                         branches: ['camp','production'] },
-  { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '3006', email: '',                         branches: ['camp'] },
+  // NOMAAD Camp
+  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp','production'] },
+  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '1111', email: '',                         branches: ['camp','production'] },
+  { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '1111', email: '',                         branches: ['camp'] },
+  { id: 'T01', name: 'Содхүү',         role: 'Кемпийн менежер',        level: 60, pin: '1111', email: 'sodkhuu26@gmail.com',      branches: ['camp'] },
 ];
 
 // n8n webhook URL — hardcoded so staff never have to configure anything.
@@ -1867,8 +1870,18 @@ function notifTimeAgo(ts) {
    Both update TEAM in-place via `TEAM.length=0; push(...)` so all existing
    references (`memberName`, `fillAssigneeSelect`, etc.) keep working without
    reassignment. */
+// Cache version — bump-лэх үед утсууд хуучин teamCache-ыг хаяна
+const TEAM_CACHE_VERSION = '2026-05-18-pin-1111';
 function loadTeamFromCache() {
   try {
+    const ver = localStorage.getItem('teamCacheVersion');
+    if (ver !== TEAM_CACHE_VERSION) {
+      // Cache хуучирсан — устгаад hardcoded TEAM-аар явна
+      localStorage.removeItem('teamCache');
+      localStorage.removeItem('teamCacheAt');
+      localStorage.setItem('teamCacheVersion', TEAM_CACHE_VERSION);
+      return false;
+    }
     const cached = localStorage.getItem('teamCache');
     if (!cached) return false;
     const parsed = JSON.parse(cached);
@@ -1882,7 +1895,14 @@ async function loadTeamFromAPI() {
   const url = state.config.staffUrl;
   if (!url) return false;
   try {
-    const r = await fetch(url, { method: 'GET' });
+    // Cache-bust query — n8n response 5-минут CDN кэштэй тул фреш PIN авахын тулд хэрэгтэй
+    const sep = url.includes('?') ? '&' : '?';
+    const bustUrl = `${url}${sep}t=${Date.now()}`;
+    const r = await fetch(bustUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const fresh = Array.isArray(data?.team) ? data.team : null;
@@ -4120,17 +4140,41 @@ function initPinLogin() {
   });
 }
 
-function handlePinLogin(userId, pin) {
+async function handlePinLogin(userId, pin) {
   if (!userId) return showLoginError('Нэрээ сонгоно уу.');
   if (!/^\d{4}$/.test(pin)) return showLoginError('PIN нь 4 оронтой тоо байх ёстой.');
-  const member = TEAM.find(m => m.id === userId);
-  if (!member) return showLoginError('Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.');
-  if (!member.pin || member.pin !== pin) {
-    document.getElementById('login-pin-input').value = '';
-    return showLoginError('PIN буруу байна. Дахин оролдоорой эсвэл CEO-той холбогдоорой.');
+
+  const tryAuth = () => {
+    const member = TEAM.find(m => m.id === userId);
+    if (!member) return { ok: false, reason: 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.' };
+    if (!member.pin || String(member.pin) !== String(pin)) return { ok: false, reason: 'wrong_pin' };
+    return { ok: true, member };
+  };
+
+  // 1-р оролдлого: одоогийн TEAM (cache + hardcoded) дээр шалгана
+  let result = tryAuth();
+
+  // PIN буруу гарвал Master Sheet-аас шинэ data татаад дахин шалгана
+  // (Кэшэд хуучин PIN үлдсэн байж болзошгүй)
+  if (!result.ok && result.reason === 'wrong_pin') {
+    showLoginError('Шалгаж байна...', 'info');
+    try {
+      await loadTeamFromAPI();
+      result = tryAuth();
+    } catch(e) {
+      console.warn('Master Sheet шалгалт амжилтгүй:', e);
+    }
   }
-  // Success — same setUser flow as before, just without Google profile data
-  setUser(member, { email: member.email || '', name: member.name, picture: '' });
+
+  if (!result.ok) {
+    document.getElementById('login-pin-input').value = '';
+    return showLoginError(result.reason === 'wrong_pin'
+      ? 'PIN буруу байна. Дахин оролдоорой эсвэл CEO-той холбогдоорой.'
+      : result.reason);
+  }
+
+  // Амжилттай — нэвтрэх
+  setUser(result.member, { email: result.member.email || '', name: result.member.name, picture: '' });
   showApp();
   bootApp();
 }

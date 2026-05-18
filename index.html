@@ -820,62 +820,56 @@
 <!-- FINANCE REQUEST MODAL — submit + (CEO) decide -->
 <div class="modal-bg" id="finance-modal">
   <div class="modal">
-    <h2 id="finance-modal-title">💸 Санхүүгийн хүсэлт</h2>
+    <h2 id="finance-modal-title">💸 Юу авах хэрэгтэй вэ?</h2>
     <div id="f-decision-info" style="display:none; font-size:12px; margin:-6px 0 14px; padding:10px 12px; border-radius:8px; line-height:1.5;"></div>
 
-    <div style="background:#eef2ff;color:#3730a3;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;margin-bottom:14px;">
-      💡 <strong>Зөвлөмж:</strong> Хэрэв үнэ/банкны мэдээлэл мэдэхгүй бол хоосон үлдээж болно. CEO эсвэл Туслах нягтлан тань <strong>бөглөж өгнө</strong>. Заавал бөглөх: <strong>Зорилго + Категори + үнийн зураг</strong>.
-    </div>
+    <!-- 4 АСУУЛТ — бүх ажилтанд ижил, ярианы хэлбэр -->
+    <label>Юу хэрэгтэй вэ? <span class="req">*</span></label>
+    <input id="f-purpose" placeholder="Жишээ: Угаалгын шингэн" />
 
-    <!-- ────────── 💰 ҮНДСЭН МЭДЭЭЛЭЛ ────────── -->
-    <div class="modal-section">💰 Үндсэн мэдээлэл</div>
-    <label>Зорилго <span class="req">*</span></label>
-    <input id="f-purpose" placeholder="Жишээ: Угаалгын шингэн, тоног түрээс" />
-    <label>Дүн (мэдвэл)</label>
-    <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Үл мэдэгдвэл хоосон үлдээ — CEO бөглөнө" />
-    <label>Тайлбар / нэхэмжлэхийн дугаар</label>
-    <textarea id="f-justification" placeholder="Нэхэмжлэхийн №, гэрээний линк г.м."></textarea>
-    <label>Хүссэн огноо</label>
-    <input id="f-due" type="date" />
-
-    <!-- ────────── 🏦 ТӨЛБӨРИЙН МЭДЭЭЛЭЛ ────────── -->
-    <div class="modal-section">🏦 Төлбөрийн дэлгэрэнгүй (мэдвэл)</div>
-    <label>Хүлээн авагчийн нэр</label>
-    <input id="f-beneficiary" placeholder="Жишээ: Шинэст ХХК — мэдэхгүй бол хоосон" />
-    <label>Банк</label>
-    <select id="f-bank"></select>
-    <label>Дансны дугаар</label>
-    <input id="f-account" inputmode="numeric" placeholder="Үл мэдэгдвэл хоосон үлдээ" />
-
-    <!-- ────────── 🏷 АНГИЛАЛ ────────── -->
-    <div class="modal-section">🏷 Ангилал (тайлан гаргахад)</div>
-    <label>Категори <span class="req">*</span></label>
+    <label>Ямар төрлийн зардал вэ?</label>
     <select id="f-category"></select>
-    <label>Үе шат <span class="req">*</span></label>
-    <select id="f-frequency"></select>
-    <!-- "Салбар" нуугдсан — Чимун ХХК нь нэг компани -->
-    <select id="f-dept-branch" style="display:none;"></select>
 
-    <!-- ────────── 📎 БАРИМТ ────────── -->
-    <div class="modal-section">📎 Баримт хавсралт</div>
-    <label>Үнийн судалгаа / бүтээгдэхүүний зураг</label>
-    <div class="field-hint">Бараа/үйлчилгээний зураг, үнийн санал, нэхэмжлэх — CEO харж шийдвэр гаргахад туслана</div>
+    <label>Үнэ ойролцоогоор хэдэн төгрөг вэ?</label>
+    <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Мэдэхгүй бол хоосон үлдээж болно" />
+
+    <label>📷 Зураг авч хавсаргах</label>
     <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
 
+    <!-- COLLAPSIBLE "ДЭЛГЭРЭНГҮЙ" — нэмэлт талбарууд -->
+    <button type="button" class="f-expand-btn" id="f-toggle-advanced" style="background:none;border:none;color:var(--primary);font-size:13px;cursor:pointer;margin:12px 0 4px;padding:6px 0;display:flex;align-items:center;gap:4px;">
+      <span id="f-expand-icon">▾</span> Дэлгэрэнгүй мэдээлэл (хүлээн авагч, банк, тайлбар…)
+    </button>
+    <div id="f-advanced-fields" style="display:none;">
+      <label>Хэн рүү төлөх вэ?</label>
+      <input id="f-beneficiary" placeholder="Шинэст ХХК / Б.Алтансүх" />
+      <label>Аль банк руу?</label>
+      <select id="f-bank"></select>
+      <label>Дансны дугаар</label>
+      <input id="f-account" inputmode="numeric" placeholder="5045123456" />
+      <label>Нэмэлт тайлбар</label>
+      <textarea id="f-justification" placeholder="Нэхэмжлэхийн №, гэрээний линк..."></textarea>
+      <label>Хэзээ хэрэгтэй вэ?</label>
+      <input id="f-due" type="date" />
+      <label>Энэ зардал давтагдах уу?</label>
+      <select id="f-frequency"></select>
+      <!-- Branch нуугдсан -->
+      <select id="f-dept-branch" style="display:none;"></select>
+    </div>
+
+    <!-- БАРИМТ — TOLBOR & RECEIPT (зөвхөн execute/final stage-д) -->
     <label>Төлбөрийн баримт</label>
-    <div class="field-hint">Туслах нягтлан гүйлгээ хийсний дараа банкны баримт хавсаргана</div>
     <input id="f-payment-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-payment-preview" style="margin-top:6px;font-size:12px;"></div>
 
     <label>Худалдан авалтын баримт</label>
-    <div class="field-hint">Ажилтан барааг худалдан авсны дараа нэхэмжлэх/баримтыг хавсаргана</div>
     <input id="f-receipt-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-receipt-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <!-- ────────── 📋 ШИЙДВЭР (CEO харах үед) ────────── -->
-    <div id="f-decision-reason-label" class="modal-section" style="display:none;">📋 CEO дүгнэлт</div>
-    <textarea id="f-decision-reason" style="display:none;" placeholder="Жишээ: Дүн өндөр байна, 30%-ийг бууруулсан"></textarea>
+    <!-- CEO дүгнэлт (зөвхөн CEO үед) -->
+    <label id="f-decision-reason-label" style="display:none;">📋 CEO дүгнэлт</label>
+    <textarea id="f-decision-reason" style="display:none;" placeholder="Жишээ: Дүн өндөр, 30%-ийг бууруулсан"></textarea>
 
     <!-- DECISION BUTTONS — зөвхөн CEO + pending хүсэлт үед харагдана -->
     <div class="modal-actions" id="f-decision-actions" style="display:none; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-top:18px;">
@@ -1639,6 +1633,9 @@ const FINANCE_CATEGORIES = [
 ];
 const FINANCE_DEPT_BRANCHES = ['M Event', 'Camp', 'Нэгдсэн'];
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
+
+/* Бүх ажилтанд ИЖИЛ нэг универсал санхүүгийн маягт.
+   Role-аар customization хийхгүй — энгийн ярианы хэлбэрийн асуулт. */
 
 /* Монголын арилжааны банкуудын жагсаалт (хэрэглээнд түгээмэл) */
 const MONGOLIAN_BANKS = [
@@ -2691,6 +2688,14 @@ function initEvents() {
   // NEW FINANCE REQUEST button
   document.getElementById('new-finance-btn')?.addEventListener('click', () => openFinanceModal());
   document.getElementById('f-cancel')?.addEventListener('click', () => document.getElementById('finance-modal').classList.remove('open'));
+  // "Дэлгэрэнгүй" expander товч — нуугдсан талбаруудыг харуулах/нуух
+  document.getElementById('f-toggle-advanced')?.addEventListener('click', () => {
+    const adv = document.getElementById('f-advanced-fields');
+    const icon = document.getElementById('f-expand-icon');
+    const isHidden = adv.style.display === 'none';
+    adv.style.display = isHidden ? '' : 'none';
+    if (icon) icon.textContent = isHidden ? '▴' : '▾';
+  });
   document.getElementById('f-execute-cancel')?.addEventListener('click', () => document.getElementById('finance-modal').classList.remove('open'));
   document.getElementById('f-receipt-cancel')?.addEventListener('click', () => document.getElementById('finance-modal').classList.remove('open'));
   document.getElementById('f-receipt-save')?.addEventListener('click', async () => {

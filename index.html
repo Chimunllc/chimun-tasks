@@ -763,6 +763,35 @@
       <option value="med">Дунд</option>
       <option value="high">Өндөр</option>
     </select>
+
+    <!-- ─── СТАТУС ТОВЧНУУД (зөвхөн хадгалагдсан task үед харагдана) ─── -->
+    <div id="t-status-bar" style="display:none; margin:14px -4px 4px; padding:10px 4px; border-top:1px solid #eee;">
+      <div style="font-size:11px; color:var(--muted); margin-bottom:6px; padding:0 8px;">Үйлдэл</div>
+      <div id="t-action-buttons" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+    </div>
+
+    <!-- ─── СЭТГЭГДЭЛ thread ─── -->
+    <div id="t-comments-section" style="display:none; margin-top:16px; border-top:1px solid #eee; padding-top:14px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:8px;">💬 Сэтгэгдэл</div>
+      <div id="t-comments-list" style="display:flex; flex-direction:column; gap:10px; max-height:300px; overflow-y:auto; margin-bottom:10px;"></div>
+      <div style="position:relative;">
+        <textarea id="t-comment-input" placeholder="Сэтгэгдэл бичих... @ дарж хүн дурдах" rows="2" style="width:100%; resize:vertical;"></textarea>
+        <div id="t-mention-popup" style="display:none; position:absolute; background:#fff; border:1px solid #ddd; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.1); max-height:160px; overflow-y:auto; width:240px; z-index:10;"></div>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+        <input type="file" id="t-comment-file" accept="image/*,application/pdf" style="font-size:12px; flex:1;" />
+        <button class="btn btn-primary" id="t-comment-send" style="padding:6px 14px; font-size:13px;">Илгээх</button>
+      </div>
+    </div>
+
+    <!-- ─── ACTIVITY LOG (collapsible) ─── -->
+    <div id="t-activity-section" style="display:none; margin-top:14px; border-top:1px solid #eee; padding-top:14px;">
+      <button type="button" id="t-activity-toggle" style="background:none; border:none; color:var(--primary); font-size:13px; cursor:pointer; padding:6px 0; display:flex; align-items:center; gap:4px;">
+        <span id="t-activity-icon">▸</span> Үйлдлийн түүх (<span id="t-activity-count">0</span>)
+      </button>
+      <div id="t-activity-list" style="display:none; margin-top:8px; font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px;"></div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn" id="t-cancel">Болих</button>
       <button class="btn btn-primary" id="t-save">Хадгалах</button>
@@ -1092,6 +1121,15 @@ function showConfirm(msg, opts = {}) {
   });
 }
 
+/* showPrompt — текст оруулдаг dialog. Native prompt-ыг ашиглана (одоохондоо хялбар) */
+function showPrompt(msg, opts = {}) {
+  return new Promise((resolve) => {
+    // Бүх platform-д ажилладаг native prompt
+    const result = window.prompt(msg, opts.defaultValue || '');
+    resolve(result);
+  });
+}
+
 /* -------------------- IN-APP NOTIFICATIONS --------------------
    Client-side generated from task data. 4 төрөл:
      - assigned     — шинэ task надад оноогдсон
@@ -1401,7 +1439,7 @@ function currentBranchInfo() {
 function normalizeTask(t) {
   if (!t || typeof t !== 'object') return t;
   const stringFields = ['id','title','desc','branch','project','assignee','due','priority','status','kpi_code','createdBy','parent_id','kind',
-    'decision','decision_at','decision_by','executed_at','executed_by','purpose','beneficiary','justification'];
+    'decision','decision_at','decision_by','executed_at','executed_by','purpose','beneficiary','justification','decline_reason'];
   const out = { ...t };
   for (const f of stringFields) {
     if (out[f] != null) out[f] = String(out[f]);
@@ -1413,7 +1451,103 @@ function normalizeTask(t) {
   if (out.stage != null && out.stage !== '') out.stage = Number(out.stage) || null;
   // `amount` is numeric (₮). Sheets may return as string.
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
+  // Comments & activity log — массив байх ёстой. Sheet/localStorage-аас JSON string ирж болно.
+  if (typeof out.comments === 'string') {
+    try { out.comments = JSON.parse(out.comments); } catch { out.comments = []; }
+  }
+  if (typeof out.activity === 'string') {
+    try { out.activity = JSON.parse(out.activity); } catch { out.activity = []; }
+  }
+  if (!Array.isArray(out.comments)) out.comments = [];
+  if (!Array.isArray(out.activity)) out.activity = [];
   return out;
+}
+
+/* ─── Comments + Activity log helpers ─────────────────────────────
+   Tier 2 task system: бүх үйлдэл бичигдсэн audit trail.
+   Comments — creator/assignee/CEO-ийн харилцан яриа.
+   Activity — статус өөрчлөгдсөн, баримт нэмэгдсэн г.м. system log. */
+
+function uidShort() {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+// Сэтгэгдэл нэмэх. @mention — текстээс @id хэлбэрээр уншина.
+async function addTaskComment(taskId, text, fileUrl = null) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  if (!Array.isArray(task.comments)) task.comments = [];
+  const mentions = [...String(text).matchAll(/@(\w+)/g)].map(m => m[1]);
+  const comment = {
+    id: uidShort(),
+    author: state.me,
+    text: String(text).slice(0, 2000),
+    timestamp: Date.now(),
+    file_url: fileUrl || null,
+    mentions,
+  };
+  task.comments.push(comment);
+  logTaskActivity(task, 'comment_added', { commentId: comment.id });
+  await saveTask(task);
+  // Notify other party
+  const recipient = (state.me === task.createdBy) ? task.assignee : task.createdBy;
+  if (recipient && recipient !== state.me) notify('task.commented', task, { recipient });
+  // Notify mentions (бусад хүн)
+  for (const mid of mentions) {
+    if (mid !== state.me && mid !== recipient) {
+      notify('task.mentioned', task, { recipient: mid });
+    }
+  }
+  return comment;
+}
+
+// Activity log нэмэх (тайлбар нь дотоод, UI дээр харагдана)
+function logTaskActivity(task, action, details = {}) {
+  if (!Array.isArray(task.activity)) task.activity = [];
+  task.activity.push({
+    id: uidShort(),
+    actor: state.me,
+    action, // 'created', 'status_changed', 'comment_added', 'declined', 'reassigned', 'edited', 'clarification_requested'
+    timestamp: Date.now(),
+    details,
+  });
+}
+
+// Статус өөрчлөх + activity log + notify
+async function changeTaskStatus(taskId, newStatus, reason = '') {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  const oldStatus = task.status || 'open';
+  if (oldStatus === newStatus) return;
+  task.status = newStatus;
+  if (newStatus === 'in_progress') task.started_at = Date.now();
+  if (newStatus === 'done') task.completed_at = Date.now();
+  if (newStatus === 'declined') task.decline_reason = reason || '';
+  logTaskActivity(task, 'status_changed', { from: oldStatus, to: newStatus, reason });
+  await saveTask(task);
+  const recipient = (state.me === task.assignee) ? task.createdBy : task.assignee;
+  const eventMap = {
+    in_progress: 'task.started',
+    done: 'task.completed',
+    declined: 'task.declined',
+    open: 'task.reopened',
+  };
+  const ev = eventMap[newStatus];
+  if (ev && recipient && recipient !== state.me) notify(ev, task, { recipient });
+  // Declined үед CEO-д бас мэдэгдэх
+  if (newStatus === 'declined') {
+    const ceoId = getCEOId();
+    if (ceoId && ceoId !== state.me && ceoId !== recipient) notify('task.declined', task, { recipient: ceoId });
+  }
+}
+
+// Тодруулга хүсэх — сэтгэгдэл + activity log
+async function requestTaskClarification(taskId, question) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task) return;
+  await addTaskComment(taskId, `❓ Тодруулга хэрэгтэй: ${question}`);
+  logTaskActivity(task, 'clarification_requested', { question });
+  await saveTask(task);
 }
 
 async function loadData() {
@@ -1490,13 +1624,14 @@ async function saveTask(task, deleted=false) {
     }
   }
 }
-async function notify(event, task) {
+async function notify(event, task, extra = {}) {
+  // extra нь { recipient } зэрэг нэмэлт мэдээлэл агуулж болно.
   if (!state.config.notifyUrl) return;
   try {
     await fetch(state.config.notifyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event, task, by: state.me })
+      body: JSON.stringify({ event, task, by: state.me, ...extra })
     });
   } catch(e) { console.warn('notify failed', e); }
 }
@@ -2709,8 +2844,179 @@ function openTaskModal(id) {
   const saveBtn = document.getElementById('t-save');
   if (saveBtn) saveBtn.style.display = canEdit.all ? '' : 'none';
 
+  // ─── СТАТУС ТОВЧНУУД, СЭТГЭГДЭЛ, ҮЙЛДЛИЙН ТҮҮХ ───
+  // Зөвхөн хадгалагдсан task үед харагдана (шинэ task үүсэхээс өмнө хоосон)
+  const statusBar = document.getElementById('t-status-bar');
+  const commentsSec = document.getElementById('t-comments-section');
+  const activitySec = document.getElementById('t-activity-section');
+  if (t) {
+    renderTaskActionButtons(t);
+    statusBar.style.display = '';
+    renderTaskComments(t);
+    commentsSec.style.display = '';
+    renderTaskActivity(t);
+    activitySec.style.display = '';
+  } else {
+    statusBar.style.display = 'none';
+    commentsSec.style.display = 'none';
+    activitySec.style.display = 'none';
+  }
+
   document.getElementById('task-modal').classList.add('open');
-  if (canEdit.all) setTimeout(()=>document.getElementById('t-title').focus(), 50);
+  if (canEdit.all && !t) setTimeout(()=>document.getElementById('t-title').focus(), 50);
+}
+
+/* ─── Task modal: Action товчнууд (статус өөрчлөх + татгалзах + тодруулга) ─── */
+function renderTaskActionButtons(t) {
+  const bar = document.getElementById('t-action-buttons');
+  const isAssignee = (state.me === t.assignee);
+  const isCreator  = (state.me === t.createdBy);
+  const isCEO      = state.isCEO;
+  const canAct     = isAssignee || isCreator || isCEO;
+  const status     = t.status || 'open';
+
+  const btns = [];
+  // Эхлүүлэх — assignee/CEO, төлөв open эсвэл declined
+  if (canAct && (status === 'open' || status === 'declined')) {
+    btns.push(`<button class="btn btn-action" data-action="start" style="background:#3b82f6;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">▶ Эхлүүлэх</button>`);
+  }
+  // Дуусгах — assignee/CEO, in_progress эсвэл open үед
+  if (canAct && status !== 'done' && status !== 'declined') {
+    btns.push(`<button class="btn btn-action" data-action="done" style="background:#10b981;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">✓ Дуусгасан</button>`);
+  }
+  // Дахин нээх — done төлөвийг буцаах
+  if (canAct && status === 'done') {
+    btns.push(`<button class="btn btn-action" data-action="reopen" style="background:#f59e0b;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">↶ Дахин нээх</button>`);
+  }
+  // Татгалзах — assignee, эсвэл CEO. Зөвхөн open/in_progress
+  if ((isAssignee || isCEO) && (status === 'open' || status === 'in_progress')) {
+    btns.push(`<button class="btn btn-action" data-action="decline" style="background:#ef4444;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">✗ Татгалзах</button>`);
+  }
+  // Тодруулга хүсэх — assignee, аль ч төлөвт
+  if (isAssignee && status !== 'done') {
+    btns.push(`<button class="btn btn-action" data-action="clarify" style="background:#8b5cf6;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">❓ Тодруулга</button>`);
+  }
+  // Төлвийн badge
+  const statusLabels = {
+    open:        { text: 'Шинэ',         bg: '#fef3c7', col: '#92400e' },
+    in_progress: { text: 'Хийгдэж байна', bg: '#dbeafe', col: '#1e40af' },
+    done:        { text: 'Дууссан',      bg: '#d1fae5', col: '#065f46' },
+    declined:    { text: 'Татгалзсан',   bg: '#fee2e2', col: '#991b1b' },
+  };
+  const sl = statusLabels[status] || statusLabels.open;
+  let html = `<span style="padding:6px 12px;background:${sl.bg};color:${sl.col};border-radius:6px;font-size:12px;font-weight:600;margin-right:4px;">${sl.text}</span>`;
+  if (status === 'declined' && t.decline_reason) {
+    html += `<div style="width:100%;margin-top:6px;padding:8px;background:#fef2f2;color:#991b1b;border-radius:6px;font-size:12px;">Шалтгаан: ${escapeHtml(t.decline_reason)}</div>`;
+  }
+  html += btns.join('');
+  bar.innerHTML = html;
+  // Listeners
+  bar.querySelectorAll('button[data-action]').forEach(btn => {
+    btn.onclick = async (e) => {
+      const action = e.currentTarget.dataset.action;
+      await handleTaskAction(t.id, action);
+    };
+  });
+}
+
+async function handleTaskAction(taskId, action) {
+  const t = state.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (action === 'start') {
+    await changeTaskStatus(taskId, 'in_progress');
+    showToast('Ажил эхэлсэн', 'success');
+  } else if (action === 'done') {
+    await changeTaskStatus(taskId, 'done');
+    showToast('Даалгавар дууссан', 'success');
+  } else if (action === 'reopen') {
+    await changeTaskStatus(taskId, 'open');
+    showToast('Дахин нээгдсэн', 'warn');
+  } else if (action === 'decline') {
+    const reason = await showPrompt('Яагаад татгалзаж байна вэ? (заавал)', { placeholder: 'Шалтгаан...', okText: 'Татгалзах' });
+    if (!reason || !reason.trim()) { showToast('Шалтгаан шаардлагатай', 'warn'); return; }
+    await changeTaskStatus(taskId, 'declined', reason.trim());
+    showToast('Татгалзсан. Үүсгэгчид мэдэгдэв.', 'warn');
+  } else if (action === 'clarify') {
+    const q = await showPrompt('Юу тодруулмаар байна вэ?', { placeholder: 'Жишээ: Тоног төхөөрөмжийн жагсаалт хаана байна?', okText: 'Илгээх' });
+    if (!q || !q.trim()) return;
+    await requestTaskClarification(taskId, q.trim());
+    showToast('Тодруулга илгээсэн', 'success');
+  }
+  // Modal-ыг шинэчлэх (action товчнууд + comments + activity)
+  renderTaskActionButtons(t);
+  renderTaskComments(t);
+  renderTaskActivity(t);
+  render();
+}
+
+/* ─── Task modal: Сэтгэгдэл (Comments) ─── */
+function renderTaskComments(t) {
+  const list = document.getElementById('t-comments-list');
+  const comments = t.comments || [];
+  if (!comments.length) {
+    list.innerHTML = `<div style="color:var(--muted);font-size:12px;padding:6px;">Сэтгэгдэл алга. Эхний санаагаа бичээрэй.</div>`;
+    return;
+  }
+  list.innerHTML = comments.map(c => {
+    const author = memberName(c.author);
+    const time = new Date(c.timestamp).toLocaleString('mn-MN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const mine = (c.author === state.me);
+    const textHtml = renderCommentText(c.text);
+    const fileHtml = c.file_url ? `<a href="${escapeHtml(c.file_url)}" target="_blank" rel="noopener" style="display:block;margin-top:4px;color:var(--primary);font-size:12px;">📎 Хавсралт</a>` : '';
+    return `<div style="background:${mine ? '#eff6ff' : '#f9fafb'};border-left:3px solid ${mine ? '#3b82f6' : '#9ca3af'};padding:8px 10px;border-radius:6px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;"><strong>${escapeHtml(author)}</strong> · ${escapeHtml(time)}</div>
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word;">${textHtml}</div>
+      ${fileHtml}
+    </div>`;
+  }).join('');
+  // Scroll to bottom
+  list.scrollTop = list.scrollHeight;
+}
+
+// Сэтгэгдлийн @mention-ийг hyperlink-аар render хийх
+function renderCommentText(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  html = html.replace(/@(\w+)/g, (match, id) => {
+    const name = memberName(id);
+    if (name === id) return match; // mapping олдсонгүй — текстээр үлдээ
+    return `<span style="background:#fef3c7;color:#92400e;padding:1px 4px;border-radius:3px;font-weight:600;">@${escapeHtml(name)}</span>`;
+  });
+  return html;
+}
+
+/* ─── Task modal: Үйлдлийн түүх (Activity log) ─── */
+function renderTaskActivity(t) {
+  const list = document.getElementById('t-activity-list');
+  const countEl = document.getElementById('t-activity-count');
+  const activity = t.activity || [];
+  countEl.textContent = activity.length;
+  if (!activity.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-style:italic;">Түүх алга</div>';
+    return;
+  }
+  const actionLabels = {
+    created: 'Үүсгэсэн',
+    status_changed: 'Төлвийг солисон',
+    comment_added: 'Сэтгэгдэл нэмсэн',
+    declined: 'Татгалзсан',
+    reassigned: 'Хариуцагчийг өөрчилсөн',
+    edited: 'Засварласан',
+    clarification_requested: 'Тодруулга асуусан',
+  };
+  const statusNames = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };
+  list.innerHTML = activity.slice().reverse().map(a => {
+    const who = memberName(a.actor);
+    const when = new Date(a.timestamp).toLocaleString('mn-MN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    let line = `<strong>${escapeHtml(who)}</strong> — ${escapeHtml(actionLabels[a.action] || a.action)}`;
+    if (a.action === 'status_changed' && a.details) {
+      const from = statusNames[a.details.from] || a.details.from;
+      const to = statusNames[a.details.to] || a.details.to;
+      line += `: <em>${escapeHtml(from)}</em> → <em>${escapeHtml(to)}</em>`;
+      if (a.details.reason) line += ` (${escapeHtml(a.details.reason)})`;
+    }
+    return `<div>${line} <span style="color:#9ca3af;">· ${escapeHtml(when)}</span></div>`;
+  }).join('');
 }
 function closeTaskModal() {
   document.getElementById('task-modal').classList.remove('open');
@@ -2735,7 +3041,8 @@ function saveTaskFromModal() {
     saveTask(t);
     notify('task.updated', t);
   } else {
-    t = { id: uid(), status: 'open', created: Date.now(), createdBy: state.me, ...data };
+    t = { id: uid(), status: 'open', created: Date.now(), createdBy: state.me, comments: [], activity: [], ...data };
+    logTaskActivity(t, 'created', { title: t.title });
     state.tasks.unshift(t);
     saveTask(t);
     notify('task.created', t);
@@ -2800,6 +3107,69 @@ function initEvents() {
   document.getElementById('new-task-btn').onclick = () => openTaskModal();
   document.getElementById('t-cancel').onclick = closeTaskModal;
   document.getElementById('t-save').onclick = saveTaskFromModal;
+
+  // ─── Сэтгэгдэл илгээх ───
+  document.getElementById('t-comment-send')?.addEventListener('click', async () => {
+    if (!state.editingId) return;
+    const input = document.getElementById('t-comment-input');
+    const fileInput = document.getElementById('t-comment-file');
+    const text = input.value.trim();
+    if (!text && !fileInput.files[0]) { showToast('Сэтгэгдэл бичих эсвэл файл хавсаргах', 'warn'); return; }
+    let fileUrl = null;
+    if (fileInput.files[0]) {
+      showToast('Файл upload хийж байна...', '', 1500);
+      fileUrl = await uploadReceipt(fileInput.files[0], state.editingId, 'comment');
+    }
+    await addTaskComment(state.editingId, text || '(файл)', fileUrl);
+    input.value = '';
+    fileInput.value = '';
+    const t = state.tasks.find(x => x.id === state.editingId);
+    if (t) { renderTaskComments(t); renderTaskActivity(t); }
+  });
+
+  // ─── @mention popup (textarea-д @ дарахад нээгдэнэ) ───
+  const commentInput = document.getElementById('t-comment-input');
+  const mentionPopup = document.getElementById('t-mention-popup');
+  if (commentInput && mentionPopup) {
+    commentInput.addEventListener('input', () => {
+      const val = commentInput.value;
+      const cursor = commentInput.selectionStart;
+      const before = val.slice(0, cursor);
+      const match = before.match(/@(\w*)$/);
+      if (!match) { mentionPopup.style.display = 'none'; return; }
+      const query = match[1].toLowerCase();
+      const candidates = TEAM.filter(m =>
+        m.id.toLowerCase().includes(query) || m.name.toLowerCase().includes(query)
+      ).slice(0, 8);
+      if (!candidates.length) { mentionPopup.style.display = 'none'; return; }
+      mentionPopup.innerHTML = candidates.map(m =>
+        `<div data-mid="${escapeHtml(m.id)}" style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">${escapeHtml(m.name)} <span style="color:var(--muted);font-size:11px;">(${escapeHtml(m.id)})</span></div>`
+      ).join('');
+      mentionPopup.style.display = 'block';
+      mentionPopup.querySelectorAll('[data-mid]').forEach(el => {
+        el.onclick = () => {
+          const mid = el.dataset.mid;
+          const newBefore = before.replace(/@\w*$/, `@${mid} `);
+          commentInput.value = newBefore + val.slice(cursor);
+          commentInput.focus();
+          commentInput.setSelectionRange(newBefore.length, newBefore.length);
+          mentionPopup.style.display = 'none';
+        };
+      });
+    });
+    commentInput.addEventListener('blur', () => {
+      setTimeout(() => { mentionPopup.style.display = 'none'; }, 150);
+    });
+  }
+
+  // ─── Үйлдлийн түүх toggle ───
+  document.getElementById('t-activity-toggle')?.addEventListener('click', () => {
+    const list = document.getElementById('t-activity-list');
+    const icon = document.getElementById('t-activity-icon');
+    const open = list.style.display === 'flex';
+    list.style.display = open ? 'none' : 'flex';
+    icon.textContent = open ? '▸' : '▾';
+  });
 
   // NEW FINANCE REQUEST button
   document.getElementById('new-finance-btn')?.addEventListener('click', () => openFinanceModal());

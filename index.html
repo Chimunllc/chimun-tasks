@@ -210,14 +210,12 @@
   .nav-item.active .count-badge, .project-item.active .count-badge { background: #fff; color: var(--primary); }
   .add-project { color: var(--muted); cursor: pointer; padding: 7px 10px; font-size: 13px; }
   .add-project:hover { color: var(--primary); }
-  .who-am-i, .branch-switcher {
+  .who-am-i {
     margin-top: 14px; padding: 10px; background: #fafbfc; border: 1px solid var(--border);
     border-radius: 8px;
   }
-  .who-am-i label, .branch-switcher label { font-size: 11px; color: var(--muted); display:block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .6px;}
-  .who-am-i select, .branch-switcher select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: #fff; font-size: 13px; }
-  .branch-switcher { margin-top: 4px; background: var(--primary-soft); border-color: #d8defc; }
-  .branch-switcher select { font-weight: 600; color: var(--primary); }
+  .who-am-i label { font-size: 11px; color: var(--muted); display:block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .6px;}
+  .who-am-i select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: #fff; font-size: 13px; }
   /* MAIN */
   .main { display: flex; flex-direction: column; overflow: hidden; }
   .header {
@@ -351,7 +349,7 @@
     background: var(--primary-soft); padding: 2px 8px; border-radius: var(--r-full);
     font-size: 11px;
   }
-  /* Assignee — avatar circle (chip ХАСАГДСАН) */
+  /* Assignee — avatar circle + нэр (модерн стиль) */
   .col-assignee { display: flex; align-items: center; }
   .assignee-chip {
     display: inline-flex; align-items: center; gap: 8px;
@@ -911,13 +909,6 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span> <span id="brand-text">Чимун ХХК</span></div>
-
-    <!-- Branch switcher одоохондоо нуугдсан — Чимун ХХК нэг л компани, бүгд нэг газар.
-         Кодын талд BRANCHES + filtering хадгалагдсан, ирээдүйд хэрэгцээтэй бол дахин нээх. -->
-    <div class="branch-switcher" style="display:none;">
-      <label for="branch-select">Бүлэг</label>
-      <select id="branch-select"></select>
-    </div>
 
     <div class="section-label">Mailbox</div>
     <div class="nav-item active" data-view="mine">
@@ -2255,8 +2246,6 @@ function financeAsTask(r) {
 function getFinanceExecutorId() {
   return findMemberIdByRole('нягтлан', 'CEO');
 }
-// Backward-compat: legacy code may reference const FINANCE_EXECUTOR_ID
-const FINANCE_EXECUTOR_ID = 'S03'; // Default fallback — runtime-д getFinanceExecutorId()-ээр дарагдана
 
 /* Зардлын стандарт ангилал — 2-түвшинт (Үндсэн → Дэд)
    CEO-аас 2026-05-18-нд баталсан стандарт. МНББС-тэй нийцсэн.
@@ -2349,9 +2338,9 @@ const FINANCE_BRANCHES = [
   { code: 'ХАМТ',  name: 'Хамтын зардал' },
 ];
 
-/* Backward compat — хуучин код шууд массив хүлээж байсан учир */
-const FINANCE_CATEGORIES = FINANCE_MAIN_CATEGORIES.map(c => `${c.code} ${c.name}`);
-const FINANCE_DEPT_BRANCHES = FINANCE_BRANCHES.map(b => b.name);
+/* FINANCE_CATEGORIES + FINANCE_DEPT_BRANCHES backward-compat хасагдсан 2026-05-18.
+   Кодын хаана ч уншигдахгүй болсон. Хэрэв хуучин код mention хийвэл
+   FINANCE_MAIN_CATEGORIES + FINANCE_BRANCHES-аас шууд ашиглана. */
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
 
 /* Бүх ажилтанд ИЖИЛ нэг универсал санхүүгийн маягт.
@@ -2581,7 +2570,6 @@ function toggleFinanceFileInput(inputId, show) {
     prev = prev.previousElementSibling;
   }
 }
-function hideFinanceFileInput(inputId) { toggleFinanceFileInput(inputId, false); }
 
 function renderProofPreview(elId, url, label) {
   const el = document.getElementById(elId);
@@ -2639,8 +2627,8 @@ function openFinanceModal(id = null) {
     document.getElementById('f-payment-preview').innerHTML = '';
     document.getElementById('f-receipt-preview').innerHTML = '';
     // Шинэ хүсэлт үед payment + receipt picker-ийг нуух
-    hideFinanceFileInput('f-payment-file');
-    hideFinanceFileInput('f-receipt-file');
+    toggleFinanceFileInput('f-payment-file', false);
+    toggleFinanceFileInput('f-receipt-file', false);
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.removeAttribute('readonly'));
     document.getElementById('f-save').style.display = '';
   } else {
@@ -2705,7 +2693,7 @@ function openFinanceModal(id = null) {
       }
     }
     // Payment file picker зөвхөн approved + S03/CEO үед харагдана
-    const showPayment = (t.decision === 'approved' && t.status !== 'done' && (state.me === FINANCE_EXECUTOR_ID || state.isCEO));
+    const showPayment = (t.decision === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorId() || state.isCEO));
     toggleFinanceFileInput('f-payment-file', showPayment);
     // Receipt picker — гүйцэтгэгдсэний дараа + requested_by (or CEO) — final receipt upload боломжтой
     const showReceipt = (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
@@ -2735,7 +2723,7 @@ function openFinanceModal(id = null) {
     if (dec === 'pending' && state.isCEO) {
       submitActions.style.display = 'none';
       decisionActions.style.display = 'flex';
-    } else if (dec === 'approved' && t.status !== 'done' && (state.me === FINANCE_EXECUTOR_ID || state.isCEO)) {
+    } else if (dec === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorId() || state.isCEO)) {
       submitActions.style.display = 'none';
       executeActions.style.display = 'flex';
     } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
@@ -2963,9 +2951,6 @@ function renderSidebar() {
   const info = currentBranchInfo();
   const brandEl = document.getElementById('brand-text');
   if (brandEl) brandEl.textContent = info.icon + ' ' + info.name;
-  // branch dropdown reflects state.branch
-  const sel = document.getElementById('branch-select');
-  if (sel && sel.value !== state.branch) sel.value = state.branch;
   // projects (only for current branch)
   const list = document.getElementById('project-list');
   list.innerHTML = '';
@@ -3916,21 +3901,8 @@ function initEvents() {
     loadTeamFromAPI().then(() => Promise.all([loadData(), loadFinanceRequests()]).then(render));
   };
 
-  // BRANCH selector — CEO sees all 5 branches; staff see only their assigned branches
-  const userBranchIds = state.user?.branches || ['m-event'];
-  const visibleBranches = state.isCEO ? BRANCHES : BRANCHES.filter(b => userBranchIds.includes(b.id));
-  fillSelect('branch-select',
-    visibleBranches.map(b => ({ value: b.id, label: b.icon + ' ' + b.name })),
-    state.branch
-  );
-  document.getElementById('branch-select').onchange = (e) => {
-    state.branch = e.target.value;
-    state.view = 'all'; // reset view when switching branches
-    saveLocal();
-    syncOrderBtnVisibility();
-    render();
-  };
-  // Branch switcher нуугдсан (Чимун ХХК нэг компани) — code хадгалагдсан, дахин нээх боломжтой.
+  // Branch switcher UI-аас бүрэн хасагдсан 2026-05-18 — Чимун ХХК нэг компани.
+  // BRANCHES const нь task үүсгэх үед "Аль салбарын ажил вэ?" dropdown-д хэрэглэгдсэн хэвээр.
 
   // Logout button
   document.getElementById('logout-btn')?.addEventListener('click', logout);
@@ -3990,7 +3962,6 @@ function initEvents() {
   document.querySelector('.sidebar')?.addEventListener('click', (e) => {
     if (e.target.closest('.project-item')) closeMobileSidebar();
   });
-  document.getElementById('branch-select')?.addEventListener('change', closeMobileSidebar);
 }
 function closeMobileSidebar() {
   document.querySelector('.sidebar')?.classList.remove('open');

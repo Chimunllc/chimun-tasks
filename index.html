@@ -1217,20 +1217,79 @@ function generateNotifications() {
     }
   });
 
-  // 4. DELEGATED TASK COMPLETED — миний үүргэсэн ажилаа хариуцагч дуусгасан
-  state.tasks.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status === 'done').forEach(t => {
-    const nid = `delegated-done-${t.id}`;
-    if (!seen.has(nid)) {
-      newOnes.push({
-        id: nid,
-        type: 'stage_unlock', // re-use green icon
-        taskId: t.id,
-        msg: `${memberName(t.assignee)} дуусгасан: ${t.title}`,
-        ts: Date.now(),
-        read: false,
-      });
+  // 4. DELEGATED TASK — status өөрчлөгдсөн (start, done, declined, reopen)
+  //    + 4a. COMMENTS — миний үүсгэсэн / надад оноогдсон ажил дээр шинэ сэтгэгдэл
+  //    + 4b. MENTIONS — намайг @mention хийсэн
+  const lastSeenKey = `notif-last-seen-${state.me}`;
+  let lastSeen = {};
+  try { lastSeen = JSON.parse(localStorage.getItem(lastSeenKey) || '{}'); } catch { lastSeen = {}; }
+  const nowSeen = { ...lastSeen };
+
+  state.tasks.forEach(t => {
+    if (t.status === 'deleted') return;
+    const isCreator  = (t.createdBy === state.me);
+    const isAssignee = (t.assignee === state.me);
+    const involved   = isCreator || isAssignee;
+    // Activity log scan — status_changed, declined үед мэдэгдэх (зөвхөн оролцогч хүнд)
+    if (involved && Array.isArray(t.activity)) {
+      for (const a of t.activity) {
+        if (a.actor === state.me) continue; // өөрийнхөө үйлдэлд мэдэгдэхгүй
+        const aid = `${t.id}-act-${a.id}`;
+        const lastTs = lastSeen[`act-${t.id}`] || 0;
+        if (a.timestamp <= lastTs) continue;
+        if (a.action === 'status_changed') {
+          const statusNames = { open:'дахин нээгдсэн', in_progress:'эхлэсэн', done:'дуусгасан', declined:'татгалзсан' };
+          const verb = statusNames[a.details?.to] || a.details?.to || 'өөрчилсөн';
+          const reason = a.details?.reason ? ` (${a.details.reason})` : '';
+          if (!seen.has(aid)) {
+            newOnes.push({
+              id: aid,
+              type: a.details?.to === 'declined' ? 'overdue' : (a.details?.to === 'done' ? 'stage_unlock' : 'assigned'),
+              taskId: t.id,
+              msg: `${memberName(a.actor)} ${verb}: ${t.title}${reason}`,
+              ts: a.timestamp,
+              read: false,
+            });
+          }
+        } else if (a.action === 'clarification_requested') {
+          if (!seen.has(aid) && isCreator) {
+            newOnes.push({
+              id: aid,
+              type: 'assigned',
+              taskId: t.id,
+              msg: `❓ ${memberName(a.actor)} тодруулга асуусан: ${t.title}`,
+              ts: a.timestamp,
+              read: false,
+            });
+          }
+        }
+      }
+      nowSeen[`act-${t.id}`] = Math.max(nowSeen[`act-${t.id}`] || 0, ...t.activity.map(a => a.timestamp || 0));
+    }
+    // Comments scan
+    if (Array.isArray(t.comments)) {
+      for (const c of t.comments) {
+        if (c.author === state.me) continue;
+        const cid = `${t.id}-cmt-${c.id}`;
+        const lastTs = lastSeen[`cmt-${t.id}`] || 0;
+        if (c.timestamp <= lastTs) continue;
+        const mentioned = Array.isArray(c.mentions) && c.mentions.includes(state.me);
+        if ((involved || mentioned) && !seen.has(cid)) {
+          const preview = String(c.text || '').slice(0, 60);
+          newOnes.push({
+            id: cid,
+            type: mentioned ? 'overdue' : 'assigned', // mention улаан icon-той
+            taskId: t.id,
+            msg: `💬 ${memberName(c.author)}${mentioned ? ' таныг дурдсан' : ''}: ${preview}`,
+            ts: c.timestamp,
+            read: false,
+          });
+        }
+      }
+      nowSeen[`cmt-${t.id}`] = Math.max(nowSeen[`cmt-${t.id}`] || 0, ...t.comments.map(c => c.timestamp || 0));
     }
   });
+  localStorage.setItem(lastSeenKey, JSON.stringify(nowSeen));
 
   // 5. FINANCE — миний илгээсэн хүсэлтийн төлөв өөрчлөгдсөн (approved/rejected/deferred/executed)
   state.financeRequests.filter(t => t.requested_by === state.me).forEach(t => {
@@ -1470,6 +1529,27 @@ function normalizeTask(t) {
 
 function uidShort() {
   return Math.random().toString(36).slice(2, 8);
+}
+
+/* Локал notification руу нэн дарууд push хийх helper.
+   Зөвхөн recipient === state.me үед харуулна (бусдын notification сэрвэрээс ирнэ).
+   recipient бол хэнд харуулах ID. */
+function pushLocalNotification({ type, taskId, msg, recipient }) {
+  if (!recipient || recipient !== state.me) return; // надад хамаагүй
+  if (!Array.isArray(state.notifications)) state.notifications = [];
+  const nid = `${type}-${taskId}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+  state.notifications.unshift({
+    id: nid,
+    type,
+    taskId,
+    msg,
+    ts: Date.now(),
+    read: false,
+  });
+  saveNotifications();
+  renderNotifications();
+  // Toast мэдэгдэл
+  showToast(msg, 'info', 3500);
 }
 
 // Сэтгэгдэл нэмэх. @mention — текстээс @id хэлбэрээр уншина.
@@ -2566,9 +2646,9 @@ function renderRow(t) {
     <div>
       <div class="checkbox ${t.status==='done'?'checked':''}" data-act="toggle"></div>
     </div>
-    <div class="task-title-wrap">
-      <div class="task-title" data-act="edit-title" contenteditable="false">${titleHtml}${extraHtml}</div>
-      <div class="task-meta">
+    <div class="task-title-wrap" data-act="open" style="cursor:pointer;">
+      <div class="task-title" data-act="open">${titleHtml}${extraHtml}</div>
+      <div class="task-meta" data-act="open">
         ${escapeHtml(projectName(t.project))}
         ${t.createdBy && t.createdBy !== t.assignee
           ? `· <span class="delegated-from">← ${escapeHtml(memberName(t.createdBy))}</span>`
@@ -2618,28 +2698,9 @@ function renderRow(t) {
       const who = can.creator ? `${can.creator.name} (${can.creator.role})` : 'дээд албан тушаалтан';
       showToast(`${who} үүсгэсэн даалгавар. Устгах эрх танд алга. Биелүүлсэн бол ✓ тэмдэглээрэй.`, 'warn', 4500);
     }
-    else if (act === 'edit-title') {
-      // Permission check — зөвхөн засах эрхтэй хүн inline edit хийнэ
-      const perm = canEditTask(t);
-      if (!perm.all) {
-        showToast('Та энэ даалгаврыг засах эрхгүй. Зөвхөн ✓ тэмдэглэх боломжтой.', 'warn');
-        return;
-      }
-      const el = e.target;
-      el.contentEditable = 'true'; el.focus();
-      const range = document.createRange(); range.selectNodeContents(el);
-      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
-    }
-    else if (act === 'open') openTaskModal(t.id);
-  });
-  // save title on blur
-  row.querySelector('.task-title').addEventListener('blur', (e) => {
-    const newTitle = e.target.textContent.trim();
-    e.target.contentEditable = 'false';
-    if (newTitle && newTitle !== t.title) {
-      t.title = newTitle;
-      saveTask(t);
-      render();
+    else if (act === 'open' || !act) {
+      // Гарчиг, тайлбар эсвэл хоосон газар — модал нээх
+      openTaskModal(t.id);
     }
   });
   row.querySelector('.task-title').addEventListener('keydown', (e) => {

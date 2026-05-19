@@ -2,13 +2,13 @@
 
 **Зорилго:** Master Sheet өөрчлөгдөхөд App дотор автомат шинэчлэгдэх (5 минутын кэш-той).
 **Хугацаа:** ~10 минут
-**Урьдчилсан нөхцөл:** n8n Cloud account идэвхтэй (`chimun.app.n8n.cloud`) + Google Sheets credential тохируулсан байх.
+**Урьдчилсан нөхцөл:** n8n Cloud account идэвхтэй (`chimunllc.app.n8n.cloud`) + Google Sheets credential тохируулсан байх.
 
 ---
 
 ## ❶ n8n Cloud нээх
 
-Browser-аас: https://chimun.app.n8n.cloud
+Browser-аас: https://chimunllc.app.n8n.cloud
 
 CEO эрхээр нэвтрэх (хэрэв энэ workflow-уудыг өмнө импорт хийсэн бол нэг л account).
 
@@ -80,7 +80,7 @@ Webhook GET /staff  →  Sheets · Read Master Roster  →  Map Sheet → TEAM  
 
 URL хэлбэр:
 ```
-https://chimun.app.n8n.cloud/webhook/staff
+https://chimunllc.app.n8n.cloud/webhook/staff
 ```
 
 ---
@@ -90,7 +90,7 @@ https://chimun.app.n8n.cloud/webhook/staff
 Browser-ын address bar-д webhook URL тавиад Enter:
 
 ```
-https://chimun.app.n8n.cloud/webhook/staff
+https://chimunllc.app.n8n.cloud/webhook/staff
 ```
 
 Хариу JSON харагдах ёстой:
@@ -100,7 +100,7 @@ https://chimun.app.n8n.cloud/webhook/staff
 
 Эсвэл terminal-аас:
 ```bash
-curl https://chimun.app.n8n.cloud/webhook/staff | python3 -m json.tool
+curl https://chimunllc.app.n8n.cloud/webhook/staff | python3 -m json.tool
 ```
 
 ---
@@ -110,7 +110,7 @@ curl https://chimun.app.n8n.cloud/webhook/staff | python3 -m json.tool
 1. Утсаараа эсвэл browser-аар нээх: https://gmunkhuchral-debug.github.io/chimun-tasks/
 2. CEO PIN: **1234** оруулж нэвтрэх
 3. Дээд баруун буланд **⚙ Тохиргоо** дарах
-4. **n8n Staff Webhook URL** талбарт URL тавих: `https://chimun.app.n8n.cloud/webhook/staff`
+4. **n8n Staff Webhook URL** талбарт URL тавих: `https://chimunllc.app.n8n.cloud/webhook/staff`
 5. **Хадгалах** дарах
 6. Page автомат reload хийгдэнэ. Browser console (F12)-д "Staff sync OK: 13 members from Master Sheet" гэж бичигдсэн байх ёстой.
 

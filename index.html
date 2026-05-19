@@ -1360,16 +1360,16 @@ let TEAM = [
 // n8n webhook URL — hardcoded so staff never have to configure anything.
 // Change here + push when the backend moves. Settings panel still lets the user
 // override locally for testing.
-const DEFAULT_API_URL     = 'https://chimun.app.n8n.cloud/webhook/checklist';
-const DEFAULT_NOTIFY_URL  = 'https://chimun.app.n8n.cloud/webhook/notify';
+const DEFAULT_API_URL     = 'https://chimunllc.app.n8n.cloud/webhook/checklist';
+const DEFAULT_NOTIFY_URL  = 'https://chimunllc.app.n8n.cloud/webhook/notify';
 // Staff roster sync — read-only GET endpoint that returns { team: [...] } from Master Sheet.
 // If reachable, replaces the hardcoded TEAM constant below at startup.
-const DEFAULT_STAFF_URL   = 'https://chimun.app.n8n.cloud/webhook/staff';
+const DEFAULT_STAFF_URL   = 'https://chimunllc.app.n8n.cloud/webhook/staff';
 // Finance request sync — separate Sheet for audit/reporting cleanliness.
 // GET returns { requests: [...] }; POST { action: 'upsert'|'delete', request } saves.
-const DEFAULT_FINANCE_URL = 'https://chimun.app.n8n.cloud/webhook/finance';
+const DEFAULT_FINANCE_URL = 'https://chimunllc.app.n8n.cloud/webhook/finance';
 // Receipt upload — POST { filename, contentType, base64, request_id, kind } → returns Drive URL.
-const DEFAULT_UPLOAD_URL  = 'https://chimun.app.n8n.cloud/webhook/upload-receipt';
+const DEFAULT_UPLOAD_URL  = 'https://chimunllc.app.n8n.cloud/webhook/upload-receipt';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
 const PROJECTS_BY_BRANCH = {
@@ -1428,14 +1428,27 @@ const state = {
   user: null,            // { id, name, role, email, picture, branches }
   me: null,              // user.id (used as task assignee key, kept for backward compat)
   isCEO: false,          // whether this user has full access
-  config: {
-    // localStorage override > hardcoded default > empty
-    apiUrl:     localStorage.getItem('apiUrl')     || DEFAULT_API_URL     || '',
-    notifyUrl:  localStorage.getItem('notifyUrl')  || DEFAULT_NOTIFY_URL  || '',
-    staffUrl:   localStorage.getItem('staffUrl')   || DEFAULT_STAFF_URL   || '',
-    financeUrl: localStorage.getItem('financeUrl') || DEFAULT_FINANCE_URL || '',
-    uploadUrl:  localStorage.getItem('uploadUrl')  || DEFAULT_UPLOAD_URL  || '',
-  },
+  config: (() => {
+    // Migration: chimun.app.n8n.cloud → chimunllc.app.n8n.cloud (2026-05-18)
+    // Хэрэглэгчийн localStorage-д хадгалсан хуучин URL-ыг шинэ домэйн рүү шилжүүлнэ.
+    const migrationFlag = 'urlMigrated_chimunllc_v1';
+    if (!localStorage.getItem(migrationFlag)) {
+      for (const k of ['apiUrl', 'notifyUrl', 'staffUrl', 'financeUrl', 'uploadUrl']) {
+        const v = localStorage.getItem(k);
+        if (v && v.includes('chimun.app.n8n.cloud')) {
+          localStorage.setItem(k, v.replace('chimun.app.n8n.cloud', 'chimunllc.app.n8n.cloud'));
+        }
+      }
+      localStorage.setItem(migrationFlag, '1');
+    }
+    return {
+      apiUrl:     localStorage.getItem('apiUrl')     || DEFAULT_API_URL     || '',
+      notifyUrl:  localStorage.getItem('notifyUrl')  || DEFAULT_NOTIFY_URL  || '',
+      staffUrl:   localStorage.getItem('staffUrl')   || DEFAULT_STAFF_URL   || '',
+      financeUrl: localStorage.getItem('financeUrl') || DEFAULT_FINANCE_URL || '',
+      uploadUrl:  localStorage.getItem('uploadUrl')  || DEFAULT_UPLOAD_URL  || '',
+    };
+  })(),
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
 };

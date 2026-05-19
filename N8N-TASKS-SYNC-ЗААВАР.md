@@ -31,7 +31,7 @@ Header row аль хэдийн бэлэн (17 багана): `id, title, desc, b
 
 ## ❷ n8n Cloud дотор workflow import
 
-1. https://chimun.app.n8n.cloud → нэвтрэх
+1. https://chimunllc.app.n8n.cloud → нэвтрэх
 2. **+ Add workflow** → **Import from File**
 3. Файл сонгох: `/Users/munkhuchralganbat/Desktop/web site & app/АПП ЧИМУН ХХК/n8n-workflow-sync.json`
 
@@ -82,7 +82,7 @@ Save товч дарах хэрэгтэй болж магадгүй.
 1. Toggle: **Inactive → Active**
 2. `Webhook POST /checklist` node дээр товшоод **Production URL** хуулах:
    ```
-   https://chimun.app.n8n.cloud/webhook/checklist
+   https://chimunllc.app.n8n.cloud/webhook/checklist
    ```
    (Хэрэв өмнө байсан тасксын workflow-ын адил URL гэвэл — хуучин workflow-ыг **Deactivate**, эсвэл устгах)
 
@@ -94,7 +94,7 @@ Save товч дарах хэрэгтэй болж магадгүй.
 2. **⚙ Тохиргоо** дарах
 3. **n8n Webhook URL (data sync)** талбарт тавих:
    ```
-   https://chimun.app.n8n.cloud/webhook/checklist
+   https://chimunllc.app.n8n.cloud/webhook/checklist
    ```
 4. **Хадгалах** дарах
 5. App автомат reload хийгдэнэ. Доод баруун буланд "n8n холбогдсон" гэж ногоон status харагдах ёстой (өмнө "Локал режим" гэж улбар шар байсан).

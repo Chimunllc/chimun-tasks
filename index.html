@@ -805,11 +805,15 @@
   }
   .fab {
     display: none;
-    position: fixed; right: 18px; bottom: 78px; z-index: 60;
-    width: 56px; height: 56px; border-radius: var(--r-full);
+    position: fixed; right: 16px;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    z-index: 60;
+    width: 52px; height: 52px; border-radius: var(--r-full);
     background: var(--primary); color: #fff; border: none;
     font-size: 26px; cursor: pointer; box-shadow: var(--shadow-lg);
     transition: transform var(--duration) var(--ease);
+    display: none; align-items: center; justify-content: center;
+    padding: 0; line-height: 1;
   }
   .fab:hover, .fab:active { transform: scale(1.05); background: var(--primary-hover); }
 
@@ -831,28 +835,70 @@
     .mobile-bottom-nav { display: block; }
     .fab { display: block; }
 
-    /* Header tightens on phones */
+    /* Header — мобайлд хэт олон товч хасах. Зөвхөн menu + theme + bell + + */
     .header { padding: 12px 14px; }
     .header h1 { font-size: 17px; }
     .header .sub { font-size: 11px; }
+    .header-actions { gap: 4px; }
     .header-actions .btn { padding: 6px 10px; font-size: 12px; }
+    /* Утсан дээр зөвхөн bell + theme + Шинэ товчийг үлдээж бусдыг нуух
+       (зөв тохиолдолд Цэс/FAB-аар орлуулагдана) */
+    #settings-btn,
+    #new-order-btn,
+    #new-finance-btn { display: none; }
 
-    /* Toolbar: allow wrap so search drops to its own line */
+    /* Toolbar: search голчилбол өөрөө мөр болж буурна */
     .toolbar { padding: 10px 14px; flex-wrap: wrap; gap: 6px; }
     .search { flex: 1 1 100%; max-width: 100%; }
 
-    .tasks { padding: 0 12px 140px; } /* доод nav + FAB-д зориулсан зай */
+    .tasks { padding: 8px 12px 140px; }
     .table-head { display: none; }
+
+    /* ─── Мобайл task row — Цэвэрхэн, давхардалгүй ───
+       checkbox │ title (+ meta нэг мөр доор) │ chevron ▸
+       Avatar+нэр, хугацаа, зэрэглэл бүгд meta мөрөнд орно
+       Илүүдэл "delegated-from" пилл арилна — avatar нэр хариулна */
     .task-row {
-      grid-template-columns: 24px 1fr auto;
-      row-gap: 8px; padding: 14px 14px;
-      column-gap: var(--space-3);
+      grid-template-columns: 24px 1fr 16px;
+      column-gap: 12px;
+      row-gap: 0;
+      padding: 14px 14px;
+      align-items: center;
     }
-    .task-row .col-assignee, .task-row .col-due, .task-row .col-priority {
-      grid-column: 2 / 4; padding-left: 0;
+    .task-row:hover { transform: none; }
+    .task-row::after {
+      content: '›';
+      grid-column: 3;
+      color: var(--muted-soft);
+      font-size: 20px; line-height: 1;
+      text-align: right;
     }
-    .task-row:hover { transform: none; } /* мобайлд hover lift хасах */
-    .delete-btn { opacity: 1; }
+    /* Title жижигхэн боловч ихэхэн уншигдахуйц */
+    .task-title { font-size: 14px; font-weight: 500; }
+    /* Meta — нэг мөр доор: avatar + нэр + хугацаа + priority */
+    .task-meta {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; margin-top: 4px;
+      flex-wrap: nowrap; overflow: hidden;
+    }
+    .task-meta > * { flex-shrink: 0; }
+    .task-meta .meta-dot { width: 3px; height: 3px; }
+    /* Утсан дээр assignee chip хасч, зөвхөн avatar+нэрийг meta мөрөнд тусгах */
+    .col-assignee { display: none; }
+    /* Due, priority харагдахаа болино — meta мөрөнд тусгасан */
+    .col-due, .col-priority { display: none; }
+    /* Устгах товч мобайлд үргэлж харагдана */
+    .delete-btn { opacity: 1; padding: 4px; }
+    /* Long meta-г overflow хийхэд "..." болгоно */
+    .task-meta .delegated-from,
+    .task-meta .meta-project {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      max-width: 30vw;
+    }
+
+    /* Mobile-only meta элементүүдийг ил гаргаж, desktop-only-уудыг нуух */
+    .task-meta .meta-mobile-only { display: inline-flex !important; align-items: center; }
+    .task-meta .meta-desktop-only { display: none !important; }
 
     /* Connection chip stays visible but smaller */
     .conn-status { bottom: 80px; right: 10px; font-size: 10px; padding: 4px 8px; }
@@ -3084,9 +3130,13 @@ function renderRow(t) {
       <div class="task-title" data-act="open">${titleHtml}${extraHtml}</div>
       <div class="task-meta" data-act="open">
         <span class="status-dot ${statusClass}" title="${statusClass === 'in_progress' ? 'Хийгдэж байна' : statusClass === 'declined' ? 'Татгалзсан' : statusClass === 'done' ? 'Дууссан' : 'Шинэ'}"></span>
-        ${escapeHtml(projectName(t.project) || 'Төсөлгүй')}
+        <span class="meta-mobile-only avatar-circle sm" style="display:none;background:linear-gradient(135deg,var(--primary),var(--primary-hover));">${escapeHtml(memberInitials(t.assignee))}</span>
+        <span class="meta-mobile-only" style="display:none;color:var(--text-soft);font-weight:500;">${escapeHtml(memberName(t.assignee))}</span>
+        ${t.due ? `<span class="meta-mobile-only meta-dot" style="display:none;"></span><span class="meta-mobile-only meta-due ${dc}" style="display:none;color:${dc==='overdue' ? 'var(--danger)' : dc==='soon' ? 'var(--warn)' : 'var(--muted)'};font-weight:${dc ? '600' : '400'};">${fmtDate(t.due)}</span>` : ''}
+        ${t.priority && t.priority !== 'none' ? `<span class="meta-mobile-only" style="display:none;color:${t.priority==='high'?'var(--danger)':t.priority==='med'?'var(--warn)':'var(--ok)'};">●</span>` : ''}
+        <span class="meta-desktop-only meta-project">${escapeHtml(projectName(t.project) || 'Төсөлгүй')}</span>
         ${t.createdBy && t.createdBy !== t.assignee
-          ? `<span class="meta-dot"></span><span class="delegated-from">${escapeHtml(memberName(t.createdBy))}</span>`
+          ? `<span class="meta-desktop-only meta-dot"></span><span class="meta-desktop-only delegated-from">${escapeHtml(memberName(t.createdBy))}</span>`
           : ''}
         ${t.comments && t.comments.length ? `<span class="meta-dot"></span><span title="${t.comments.length} сэтгэгдэл">💬 ${t.comments.length}</span>` : ''}
       </div>

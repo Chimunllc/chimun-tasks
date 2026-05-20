@@ -14,7 +14,10 @@
       "name": "Webhook GET /staff",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
@@ -35,7 +38,10 @@
       "name": "Sheets · Read Master Roster",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
@@ -45,13 +51,16 @@
     },
     {
       "parameters": {
-        "jsCode": "// Master Sheet → TEAM format mapping.\n// Sheet баганы нэр монголоор; app дотор Latin field name ашиглана.\n//\n// Branches handling:\n//   primary 'Бүлэг' + optional 'Хавсарсан бүлэг' → branches[] array.\n//   ҮАХ захирал + production-related M Event roles also get 'production' branch.\n//\n// Status filter: 'гарсан' (left) + 'нээлттэй' (open position) excluded from active roster.\n//\n// Output: { team: [...] }\n\nconst rows = $input.all().map(it => it.json);\n\nconst BRANCH_MAP = {\n  'Нэгдсэн': 'shared',\n  'M Event': 'm-event',\n  'Camp':    'camp',\n};\n\n// Roles that should auto-include 'production' (cross-branch event work)\nconst PRODUCTION_ROLES = [\n  'ҮАХ захирал M EVENT',\n  'Event Manager',\n  'Агуулах засварын ажилтан',\n  'Засвар-Агуулахын ахлах',\n  'Агуулах-Логистик 1',\n  'Агуулах-Логистик 2',\n  'ҮАХ захирал NOMAAD',\n  'Кемпийн менежер',\n];\n\nfunction mapBranch(label) {\n  if (!label) return null;\n  const trimmed = String(label).trim();\n  return BRANCH_MAP[trimmed] || null;\n}\n\nfunction normalizeId(raw) {\n  if (raw == null) return '';\n  const s = String(raw).trim();\n  // Pad single/double-digit numeric IDs back to 3 digits to match legacy app IDs (\"1\"→\"001\")\n  if (/^\\d{1,2}$/.test(s)) return s.padStart(3, '0');\n  return s;\n}\n\nconst team = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const id = normalizeId(r['ID']);\n  if (!id) continue;\n  const status = String(r['Төлөв'] || '').trim();\n  if (status === 'гарсан' || status === 'нээлттэй') continue; // skip inactive\n\n  const primary = mapBranch(r['Бүлэг']);\n  const secondary = mapBranch(r['Хавсарсан бүлэг']);\n  const branches = [];\n  if (primary) branches.push(primary);\n  if (secondary && secondary !== primary) branches.push(secondary);\n\n  const role = String(r['Албан тушаал'] || '').trim();\n  if (PRODUCTION_ROLES.includes(role) && !branches.includes('production')) {\n    branches.push('production');\n  }\n\n  // CEO is special — give access to all branches\n  if (id === 'CEO') {\n    if (!branches.includes('m-event')) branches.push('m-event');\n    if (!branches.includes('camp')) branches.push('camp');\n    if (!branches.includes('shared')) branches.push('shared');\n    if (!branches.includes('production')) branches.push('production');\n  }\n\n  team.push({\n    id,\n    name: String(r['Овог нэр'] || '').trim(),\n    role,\n    level: parseInt(r['Зэрэглэл'] || '40', 10) || 40,\n    pin: String(r['PIN'] || '').trim(),\n    email: String(r['И-мэйл'] || '').trim(),\n    branches,\n    status: status || 'идэвхтэй',\n    seasonal_from: String(r['Улирлын эхлэл'] || '').trim() || null,\n    seasonal_to:   String(r['Улирлын төгсгөл'] || '').trim() || null,\n  });\n}\n\nreturn [{ json: { team, count: team.length, generated_at: new Date().toISOString() } }];"
+        "jsCode": "// Master Sheet → TEAM format mapping.\n// Sheet баганы нэр монголоор; app дотор Latin field name ашиглана.\n//\n// Branches handling:\n//   primary 'Бүлэг' + optional 'Хавсарсан бүлэг' → branches[] array.\n//   ҮАХ захирал + production-related M Event roles also get 'production' branch.\n//\n// Status filter: 'гарсан' (left) + 'нээлттэй' (open position) excluded from active roster.\n//\n// Output: { team: [...] }\n\nconst rows = $input.all().map(it => it.json);\n\nconst BRANCH_MAP = {\n  'Нэгдсэн': 'shared',\n  'M Event': 'm-event',\n  'Camp':    'camp',\n};\n\n// Roles that should auto-include 'production' (cross-branch event work)\nconst PRODUCTION_ROLES = [\n  'ҮАХ захирал M EVENT',\n  'Event Manager',\n  'Агуулах засварын ажилтан',\n  'Засвар-Агуулахын ахлах',\n  'Агуулах-Логистик 1',\n  'Агуулах-Логистик 2',\n  'ҮАХ захирал NOMAAD',\n  'Кемпийн менежер',\n];\n\nfunction mapBranch(label) {\n  if (!label) return null;\n  const trimmed = String(label).trim();\n  return BRANCH_MAP[trimmed] || null;\n}\n\nfunction normalizeId(raw) {\n  if (raw == null) return '';\n  const s = String(raw).trim();\n  // Pad single/double-digit numeric IDs back to 3 digits to match legacy app IDs (\"1\"→\"001\")\n  if (/^\\d{1,2}$/.test(s)) return s.padStart(3, '0');\n  return s;\n}\n\nconst team = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const id = normalizeId(r['ID']);\n  if (!id) continue;\n  const status = String(r['Төлөв'] || '').trim();\n  if (status === 'гарсан' || status === 'нээлттэй') continue; // skip inactive\n\n  const primary = mapBranch(r['Бүлэг']);\n  const secondary = mapBranch(r['Хавсарсан бүлэг']);\n  const branches = [];\n  if (primary) branches.push(primary);\n  if (secondary && secondary !== primary) branches.push(secondary);\n\n  const role = String(r['Албан тушаал'] || '').trim();\n  if (PRODUCTION_ROLES.includes(role) && !branches.includes('production')) {\n    branches.push('production');\n  }\n\n  // CEO is special — give access to all branches\n  if (id === 'CEO') {\n    if (!branches.includes('m-event')) branches.push('m-event');\n    if (!branches.includes('camp')) branches.push('camp');\n    if (!branches.includes('shared')) branches.push('shared');\n    if (!branches.includes('production')) branches.push('production');\n  }\n\n  team.push({\n    id,\n    name: String(r['Овог нэр'] || '').trim(),\n    role,\n    level: parseInt(r['Зэрэглэл'] || '40', 10) || 40,\n    pin: String(r['PIN'] || '').trim(),\n    email: String(r['И-мэйл'] || '').trim(),\n    phone: String(r['Утас'] || '').trim(),\n    branches,\n    status: status || 'идэвхтэй',\n    seasonal_from: String(r['Улирлын эхлэл'] || '').trim() || null,\n    seasonal_to:   String(r['Улирлын төгсгөл'] || '').trim() || null,\n  });\n}\n\nreturn [{ json: { team, count: team.length, generated_at: new Date().toISOString() } }];"
       },
       "id": "code-map-staff",
       "name": "Map Sheet → TEAM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -60,8 +69,14 @@
         "options": {
           "responseHeaders": {
             "entries": [
-              { "name": "Access-Control-Allow-Origin", "value": "*" },
-              { "name": "Cache-Control", "value": "public, max-age=300" }
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "public, max-age=300"
+              }
             ]
           }
         }
@@ -70,18 +85,45 @@
       "name": "Respond JSON",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [900, 300]
+      "position": [
+        900,
+        300
+      ]
     }
   ],
   "connections": {
     "Webhook GET /staff": {
-      "main": [[{ "node": "Sheets · Read Master Roster", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Sheets · Read Master Roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Sheets · Read Master Roster": {
-      "main": [[{ "node": "Map Sheet → TEAM", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Map Sheet → TEAM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Map Sheet → TEAM": {
-      "main": [[{ "node": "Respond JSON", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Respond JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {

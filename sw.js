@@ -1,14 +1,16 @@
 /*
  * Service Worker — Чимун ХХК Дотоод даалгавар
  *
- * Strategy:
- *  - Static shell (HTML/CSS/JS/icons) → cache-first, so the app opens instantly and works offline.
- *  - n8n webhook calls → network-first with timeout, fall through to "queue" idea (todo: bg sync).
+ * Strategy (v37+):
+ *  - HTML navigation (index.html) → NETWORK-FIRST. Онлайн үед үргэлж шинэ код татна,
+ *    офлайн үед cache-аас өгнө. Энэ нь шинэчлэлт шууд хүрдэг болгоно.
+ *  - Бусад статик (CSS/JS/icons) → cache-first (хурдан + офлайн).
+ *  - n8n webhook calls → network-first.
  *
  * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
  */
 
-const CACHE_VERSION = 'chimun-tasks-v36-register-validate-2026-05-20';
+const CACHE_VERSION = 'chimun-tasks-v37-network-first-2026-05-20';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -50,12 +52,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for everything else (the app shell)
+  // NETWORK-FIRST for HTML navigation + index.html — шинэ код шууд хүрнэ.
+  // Navigation requests (хуудас ачаалах) ба index.html-г онлайн үед үргэлж сүлжээнээс татна.
+  const isHTML = req.mode === 'navigate'
+    || url.pathname.endsWith('/')
+    || url.pathname.endsWith('/index.html');
+  if (isHTML) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          // Шинэ HTML-г cache-д хадгалж офлайн fallback болгоно
+          if (res.ok && url.origin === self.location.origin) {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Cache-first for everything else (статик asset — icon, manifest г.м.)
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
       return fetch(req).then((res) => {
-        // Stash same-origin successful responses for offline use
         if (res.ok && url.origin === self.location.origin) {
           const copy = res.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));

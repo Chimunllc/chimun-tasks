@@ -4286,7 +4286,14 @@ function formatMongolianName(surname, given) {
 
 async function handleRegister() {
   const errEl = document.getElementById('reg-error');
-  const show = (msg, ok) => { errEl.textContent = msg; errEl.style.color = ok ? 'var(--ok)' : 'var(--danger)'; };
+  const show = (msg, ok) => {
+    errEl.textContent = msg;
+    errEl.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+    errEl.style.fontWeight = '600';
+    errEl.style.fontSize = '13px';
+    errEl.classList.add('show');
+    errEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
   const surname = document.getElementById('reg-surname').value.trim();
   const given   = document.getElementById('reg-givenname').value.trim();
   const name    = formatMongolianName(surname, given); // "Б.Энх"
@@ -4297,21 +4304,31 @@ async function handleRegister() {
   const pin     = document.getElementById('reg-pin').value.trim();
 
   // Кирилл шалгах (Монгол үсэг — Өө Үү багтсан 0400-04FF муж + зай, цэг, зураас)
-  const cyrillic = /^[Ѐ-ӿ\s.\-]+$/;
-  // Validation
+  const cyrillic = /^[Ѐ-ӿ\s.\-]+$/;          // Кирилл (Монгол) үсэг
+  const hasLatin = /[A-Za-z]/;                // Латин үсэг агуулсан эсэх
+  const phoneNorm = phone.replace(/\D/g, ''); // Зөвхөн тоо
+  // Validation — алдааг тод харуулах (scroll into view)
   if (!surname) return show('Овгоо оруулна уу.');
-  if (!cyrillic.test(surname)) return show('Овгоо монголоор (кирилл) бичнэ үү.');
+  if (hasLatin.test(surname) || !cyrillic.test(surname)) return show('⚠ Овгоо МОНГОЛоор (кирилл) бичнэ үү. Жишээ: Болд');
   if (!given)   return show('Нэрээ оруулна уу.');
-  if (!cyrillic.test(given)) return show('Нэрээ монголоор (кирилл) бичнэ үү.');
+  if (hasLatin.test(given) || !cyrillic.test(given)) return show('⚠ Нэрээ МОНГОЛоор (кирилл) бичнэ үү. Жишээ: Энх');
   if (!role)    return show('Албан тушаалаа оруулна уу.');
   if (!group)   return show('Аль салбарт хамаарахаа сонгоно уу.');
-  if (!phone || phone.replace(/\D/g,'').length < 8) return show('Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('И-мэйл хаягаа зөв оруулна уу.');
+  if (!phone || phoneNorm.length < 8) return show('⚠ Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('⚠ И-мэйл хаягаа зөв оруулна уу.');
   if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
 
-  // PIN давхцал шалгах (одоогийн TEAM дотор)
+  // ─── Давхцал шалгах (одоогийн TEAM дотор) ───
   if (TEAM.some(m => String(m.pin) === pin)) {
-    return show('Энэ PIN өөр хүн ашиглаж байна. Өөр PIN сонгоно уу.');
+    return show('⚠ Энэ PIN өөр хүн ашиглаж байна. Өөр PIN сонгоно уу.');
+  }
+  // И-мэйл давхцал (TEAM-д email бий)
+  if (email && TEAM.some(m => m.email && m.email.trim().toLowerCase() === email.toLowerCase())) {
+    return show('⚠ Энэ и-мэйл хаягаар бүртгэлтэй байна. Нэвтрэх рүү буцна уу.');
+  }
+  // Утас давхцал (TEAM-д phone байвал)
+  if (phoneNorm && TEAM.some(m => m.phone && String(m.phone).replace(/\D/g,'') === phoneNorm)) {
+    return show('⚠ Энэ утасны дугаараар бүртгэлтэй байна. Нэвтрэх рүү буцна уу.');
   }
 
   const btn = document.getElementById('reg-submit');
@@ -4326,8 +4343,15 @@ async function handleRegister() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, role, group, phone, email, pin }),
     });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      // n8n-н жинхэнэ алдааны мессежийг харуулах (errorMessage эсвэл message)
+      let msg = data?.errorMessage || data?.message || data?.error || ('Серверийн алдаа: ' + r.status);
+      // n8n "[line 15]" гэх кодын байршлыг цэвэрлэх
+      msg = String(msg).replace(/\s*\[line \d+\]\s*$/, '');
+      show('⚠ ' + msg);
+      return;
+    }
 
     errEl.style.color = 'var(--ok)';
     errEl.textContent = '✓ Амжилттай бүртгэгдлээ! Шинэ TEAM ачаалж байна...';

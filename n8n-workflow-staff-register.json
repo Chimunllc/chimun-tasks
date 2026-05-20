@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Шинэ ажилтны ID-г салбараар автомат үүсгэх + давхцал шалгах\n// Input: Webhook body { name, role, group, phone, email, pin }\n//        + одоогийн бүх ажилтнууд (Sheets read)\n\nconst body = $('Webhook · Бүртгэл хүсэлт').first().json.body || {};\nconst existing = $input.all().map(it => it.json);\n\n// ─── Validation ───\nconst name  = String(body.name || '').trim();\nconst role  = String(body.role || '').trim();\nconst group = String(body.group || '').trim();\nconst phone = String(body.phone || '').trim();\nconst email = String(body.email || '').trim();\nconst pin   = String(body.pin || '').trim();\n\nif (!name)  throw new Error('Овог нэр шаардлагатай');\nif (!role)  throw new Error('Албан тушаал шаардлагатай');\nif (!group) throw new Error('Бүлэг шаардлагатай');\nif (!/^\\d{4}$/.test(pin)) throw new Error('PIN нь 4 оронтой тоо байх ёстой');\n\n// ─── PIN давхцал шалгах ───\nconst pinExists = existing.some(r => String(r['PIN'] || '').trim() === pin);\nif (pinExists) throw new Error('Энэ PIN өөр хүн ашиглаж байна');\n\n// ─── ID prefix салбараар тогтоох ───\nconst PREFIX_MAP = {\n  'Нэгдсэн': 'S',\n  'M Event': 'M',\n  'Camp':    'C',\n};\nconst prefix = PREFIX_MAP[group] || 'X';\n\n// ─── Дараагийн чөлөөт дугаар олох ───\nconst usedIds = new Set(existing.map(r => String(r['ID'] || '').trim()));\nlet n = 1;\nlet newId = prefix + String(n).padStart(2, '0');\nwhile (usedIds.has(newId)) {\n  n++;\n  newId = prefix + String(n).padStart(2, '0');\n}\n\n// ─── Бүлэг → app branch mapping ───\n// Master Sheet-д 'Бүлэг' баганад group нэрийг бичнэ (хэвээр)\n\n// ─── Гаралт: Sheet-д бичих мөр ───\nconst today = new Date().toISOString().slice(0, 10);\n\nreturn [{ json: {\n  id: newId,\n  name,\n  role,\n  group,\n  phone,\n  email,\n  pin,\n  level: 40,            // Шинэ ажилтан default зэрэглэл\n  status: 'идэвхтэй',   // Шууд идэвхтэй (CEO баталгаажуулалтгүй)\n  joined: today,\n} }];\n"
+        "jsCode": "// Шинэ ажилтны ID-г салбараар автомат үүсгэх + давхцал шалгах\nconst body = $('Webhook · Бүртгэл хүсэлт').first().json.body || {};\nconst existing = $input.all().map(it => it.json);\n\nconst name  = String(body.name || '').trim();\nconst role  = String(body.role || '').trim();\nconst group = String(body.group || '').trim();\nconst phone = String(body.phone || '').trim();\nconst email = String(body.email || '').trim();\nconst pin   = String(body.pin || '').trim();\n\nif (!name)  throw new Error('Овог нэр шаардлагатай');\nif (!role)  throw new Error('Албан тушаал шаардлагатай');\nif (!group) throw new Error('Бүлэг шаардлагатай');\nif (!phone || phone.replace(/\\\\D/g,'').length < 8) throw new Error('Утасны дугаар шаардлагатай');\nif (!email) throw new Error('И-мэйл шаардлагатай');\nif (!/^[0-9]{4}$/.test(pin)) throw new Error('PIN нь 4 оронтой тоо байх ёстой');\n\n// PIN давхцал (монгол 'PIN' баганаас)\nconst pinExists = existing.some(r => String(r['PIN'] || '').trim() === pin);\nif (pinExists) throw new Error('Энэ PIN өөр хүн ашиглаж байна');\n\n// ID prefix салбараар\nconst PREFIX_MAP = { 'Нэгдсэн': 'S', 'M Event': 'M', 'Camp': 'C' };\nconst prefix = PREFIX_MAP[group] || 'X';\n\n// Дараагийн чөлөөт дугаар ('ID' монгол баганаас)\nconst usedIds = new Set(existing.map(r => String(r['ID'] || '').trim()));\nlet i = 1;\nlet newId = prefix + String(i).padStart(2, '0');\nwhile (usedIds.has(newId)) { i++; newId = prefix + String(i).padStart(2, '0'); }\n\nconst today = new Date().toISOString().slice(0, 10);\n\n// ГАРАЛТ: Sheet-н толгойтой ЯГ ИЖИЛ монгол түлхүүр (auto-map таарна)\nreturn [{ json: {\n  'ID': newId,\n  'Овог нэр': name,\n  'Албан тушаал': role,\n  'Бүлэг': group,\n  'Зэрэглэл': 40,\n  'Утас': phone,\n  'И-мэйл': email,\n  'PIN': pin,\n  'Төлөв': 'идэвхтэй',\n  'Ажилд орсон': today,\n  'Тэмдэглэл': 'Апп-аар өөрөө бүртгүүлсэн',\n} }];\n"
       },
       "id": "code-build-row",
       "name": "Code · ID үүсгэх + шалгах",
@@ -80,21 +80,9 @@
           "mode": "name"
         },
         "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "ID": "={{ $json.id }}",
-            "Овог нэр": "={{ $json.name }}",
-            "Албан тушаал": "={{ $json.role }}",
-            "Бүлэг": "={{ $json.group }}",
-            "Зэрэглэл": "={{ $json.level }}",
-            "Утас": "={{ $json.phone }}",
-            "И-мэйл": "={{ $json.email }}",
-            "PIN": "={{ $json.pin }}",
-            "Төлөв": "={{ $json.status }}",
-            "Ажилд орсон": "={{ $json.joined }}",
-            "Тэмдэглэл": "Апп-аар өөрөө бүртгүүлсэн"
-          },
-          "matchingColumns": []
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": []
         },
         "options": {}
       },
@@ -116,8 +104,8 @@
     {
       "parameters": {
         "sendTo": "ceo@nomaadcamp.com",
-        "subject": "=🆕 Шинэ ажилтан бүртгүүлсэн: {{ $('Code · ID үүсгэх + шалгах').item.json.name }}",
-        "message": "=<p><strong>{{ $('Code · ID үүсгэх + шалгах').item.json.name }}</strong> апп-аар өөрөө бүртгүүлсэн байна.</p><ul><li>ID: {{ $('Code · ID үүсгэх + шалгах').item.json.id }}</li><li>Албан тушаал: {{ $('Code · ID үүсгэх + шалгах').item.json.role }}</li><li>Салбар: {{ $('Code · ID үүсгэх + шалгах').item.json.group }}</li><li>Утас: {{ $('Code · ID үүсгэх + шалгах').item.json.phone }}</li><li>И-мэйл: {{ $('Code · ID үүсгэх + шалгах').item.json.email }}</li></ul><p>Master Sheet-д идэвхтэй төлөвтэй нэмэгдсэн. Шаардлагатай бол зэрэглэл, бүлгийг шалгаж тохируулна уу.</p>",
+        "subject": "=🆕 Шинэ ажилтан бүртгүүлсэн: {{ $('Code · ID үүсгэх + шалгах').item.json['Овог нэр'] }}",
+        "message": "=<p><strong>{{ $('Code · ID үүсгэх + шалгах').item.json['Овог нэр'] }}</strong> апп-аар өөрөө бүртгүүлсэн байна.</p><ul><li>ID: {{ $('Code · ID үүсгэх + шалгах').item.json['ID'] }}</li><li>Албан тушаал: {{ $('Code · ID үүсгэх + шалгах').item.json['Албан тушаал'] }}</li><li>Салбар: {{ $('Code · ID үүсгэх + шалгах').item.json['Бүлэг'] }}</li><li>Утас: {{ $('Code · ID үүсгэх + шалгах').item.json['Утас'] }}</li><li>И-мэйл: {{ $('Code · ID үүсгэх + шалгах').item.json['И-мэйл'] }}</li></ul><p>Master Sheet-д идэвхтэй төлөвтэй нэмэгдсэн.</p>",
         "options": {
           "appendAttribution": false
         }
@@ -140,7 +128,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, id: $('Code · ID үүсгэх + шалгах').item.json.id, name: $('Code · ID үүсгэх + шалгах').item.json.name }) }}",
+        "responseBody": "={{ JSON.stringify({ ok: true, id: $('Code · ID үүсгэх + шалгах').item.json['ID'], name: $('Code · ID үүсгэх + шалгах').item.json['Овог нэр'] }) }}",
         "options": {
           "responseHeaders": {
             "entries": [
@@ -160,6 +148,30 @@
         1340,
         300
       ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code · ID үүсгэх + шалгах').item.json['И-мэйл'] }}",
+        "subject": "=Чимун ХХК дотоод апп-д бүртгэгдлээ",
+        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:0 auto;\"><h2 style=\"color:#1F2A23;\">Тавтай морил, {{ $('Code · ID үүсгэх + шалгах').item.json['Овог нэр'] }}!</h2><p>Та <strong>Чимун ХХК</strong>-ийн дотоод даалгаврын апп-д амжилттай бүртгэгдлээ.</p><table style=\"background:#F5F1E8;border-radius:8px;padding:16px;width:100%;border-collapse:collapse;\"><tr><td style=\"padding:6px;\"><strong>Нэвтрэх нэр:</strong></td><td style=\"padding:6px;\">{{ $('Code · ID үүсгэх + шалгах').item.json['Овог нэр'] }}</td></tr><tr><td style=\"padding:6px;\"><strong>Ажилтны код:</strong></td><td style=\"padding:6px;\">{{ $('Code · ID үүсгэх + шалгах').item.json['ID'] }}</td></tr><tr><td style=\"padding:6px;\"><strong>PIN код:</strong></td><td style=\"padding:6px;font-size:18px;font-weight:bold;color:#2E3A28;\">{{ $('Code · ID үүсгэх + шалгах').item.json['PIN'] }}</td></tr><tr><td style=\"padding:6px;\"><strong>Албан тушаал:</strong></td><td style=\"padding:6px;\">{{ $('Code · ID үүсгэх + шалгах').item.json['Албан тушаал'] }}</td></tr></table><p style=\"margin-top:16px;\">Апп-д нэвтрэхдээ нэрээ сонгоод дээрх PIN кодоо оруулна уу:</p><p><a href=\"https://chimunllc.github.io/chimun-tasks/\" style=\"display:inline-block;background:#2E3A28;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;\">Апп нээх</a></p><p style=\"font-size:12px;color:#888;margin-top:20px;\">PIN кодоо нууцлан хадгална уу. Асуудал гарвал CEO-той холбогдоно уу.</p></div>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "gmail-welcome-employee",
+      "name": "Gmail · Шинэ ажилтанд",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        360
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
     }
   ],
   "connections": {
@@ -206,6 +218,11 @@
           },
           {
             "node": "Respond · Амжилттай",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gmail · Шинэ ажилтанд",
             "type": "main",
             "index": 0
           }

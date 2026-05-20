@@ -968,10 +968,10 @@
         <option value="Нэгдсэн">Захиргаа / Нэгдсэн</option>
       </select>
 
-      <label class="login-label">Утасны дугаар</label>
+      <label class="login-label">Утасны дугаар <span style="color:var(--danger)">*</span></label>
       <input id="reg-phone" type="tel" inputmode="numeric" placeholder="99112233" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
 
-      <label class="login-label">И-мэйл</label>
+      <label class="login-label">И-мэйл <span style="color:var(--danger)">*</span></label>
       <input id="reg-email" type="email" placeholder="name@example.com" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
 
       <label class="login-label">PIN код (4 орон) <span style="color:var(--danger)">*</span></label>
@@ -4296,11 +4296,17 @@ async function handleRegister() {
   const email   = document.getElementById('reg-email').value.trim();
   const pin     = document.getElementById('reg-pin').value.trim();
 
+  // Кирилл шалгах (Монгол үсэг — Өө Үү багтсан 0400-04FF муж + зай, цэг, зураас)
+  const cyrillic = /^[Ѐ-ӿ\s.\-]+$/;
   // Validation
   if (!surname) return show('Овгоо оруулна уу.');
+  if (!cyrillic.test(surname)) return show('Овгоо монголоор (кирилл) бичнэ үү.');
   if (!given)   return show('Нэрээ оруулна уу.');
+  if (!cyrillic.test(given)) return show('Нэрээ монголоор (кирилл) бичнэ үү.');
   if (!role)    return show('Албан тушаалаа оруулна уу.');
   if (!group)   return show('Аль салбарт хамаарахаа сонгоно уу.');
+  if (!phone || phone.replace(/\D/g,'').length < 8) return show('Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('И-мэйл хаягаа зөв оруулна уу.');
   if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
 
   // PIN давхцал шалгах (одоогийн TEAM дотор)

@@ -14,7 +14,10 @@
       "name": "Webhook · Бүртгэл хүсэлт",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1.1,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "staff-register-webhook"
     },
     {
@@ -28,9 +31,8 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": 0,
-          "mode": "list",
-          "cachedResultName": "Sheet1"
+          "value": "Хуудас1",
+          "mode": "name"
         },
         "options": {}
       },
@@ -38,7 +40,10 @@
       "name": "Sheets · Уншиж буй ажилтнууд",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
@@ -54,7 +59,10 @@
       "name": "Code · ID үүсгэх + шалгах",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 300]
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -68,9 +76,8 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": 0,
-          "mode": "list",
-          "cachedResultName": "Sheet1"
+          "value": "Хуудас1",
+          "mode": "name"
         },
         "columns": {
           "mappingMode": "defineBelow",
@@ -95,7 +102,10 @@
       "name": "Sheets · Master-д нэмэх",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [900, 300],
+      "position": [
+        900,
+        300
+      ],
       "credentials": {
         "googleSheetsOAuth2Api": {
           "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
@@ -116,7 +126,10 @@
       "name": "Gmail · CEO-д мэдэгдэх",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
-      "position": [1120, 200],
+      "position": [
+        1120,
+        200
+      ],
       "credentials": {
         "gmailOAuth2": {
           "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
@@ -131,7 +144,10 @@
         "options": {
           "responseHeaders": {
             "entries": [
-              { "name": "Access-Control-Allow-Origin", "value": "*" }
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
             ]
           }
         }
@@ -140,24 +156,61 @@
       "name": "Respond · Амжилттай",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1340, 300]
+      "position": [
+        1340,
+        300
+      ]
     }
   ],
   "connections": {
     "Webhook · Бүртгэл хүсэлт": {
-      "main": [[{ "node": "Sheets · Уншиж буй ажилтнууд", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Sheets · Уншиж буй ажилтнууд",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Sheets · Уншиж буй ажилтнууд": {
-      "main": [[{ "node": "Code · ID үүсгэх + шалгах", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Code · ID үүсгэх + шалгах",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Code · ID үүсгэх + шалгах": {
-      "main": [[{ "node": "Sheets · Master-д нэмэх", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Sheets · Master-д нэмэх",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Sheets · Master-д нэмэх": {
-      "main": [[
-        { "node": "Gmail · CEO-д мэдэгдэх", "type": "main", "index": 0 },
-        { "node": "Respond · Амжилттай", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Gmail · CEO-д мэдэгдэх",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond · Амжилттай",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,

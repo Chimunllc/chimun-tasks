@@ -1,0 +1,166 @@
+{
+  "name": "Чимун · Шинэ ажилтан бүртгэл (staff-register)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "staff-register",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook-register",
+      "name": "Webhook · Бүртгэл хүсэлт",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "webhookId": "staff-register-webhook"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
+          "mode": "list",
+          "cachedResultName": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 0,
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "options": {}
+      },
+      "id": "read-existing-staff",
+      "name": "Sheets · Уншиж буй ажилтнууд",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [460, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Шинэ ажилтны ID-г салбараар автомат үүсгэх + давхцал шалгах\n// Input: Webhook body { name, role, group, phone, email, pin }\n//        + одоогийн бүх ажилтнууд (Sheets read)\n\nconst body = $('Webhook · Бүртгэл хүсэлт').first().json.body || {};\nconst existing = $input.all().map(it => it.json);\n\n// ─── Validation ───\nconst name  = String(body.name || '').trim();\nconst role  = String(body.role || '').trim();\nconst group = String(body.group || '').trim();\nconst phone = String(body.phone || '').trim();\nconst email = String(body.email || '').trim();\nconst pin   = String(body.pin || '').trim();\n\nif (!name)  throw new Error('Овог нэр шаардлагатай');\nif (!role)  throw new Error('Албан тушаал шаардлагатай');\nif (!group) throw new Error('Бүлэг шаардлагатай');\nif (!/^\\d{4}$/.test(pin)) throw new Error('PIN нь 4 оронтой тоо байх ёстой');\n\n// ─── PIN давхцал шалгах ───\nconst pinExists = existing.some(r => String(r['PIN'] || '').trim() === pin);\nif (pinExists) throw new Error('Энэ PIN өөр хүн ашиглаж байна');\n\n// ─── ID prefix салбараар тогтоох ───\nconst PREFIX_MAP = {\n  'Нэгдсэн': 'S',\n  'M Event': 'M',\n  'Camp':    'C',\n};\nconst prefix = PREFIX_MAP[group] || 'X';\n\n// ─── Дараагийн чөлөөт дугаар олох ───\nconst usedIds = new Set(existing.map(r => String(r['ID'] || '').trim()));\nlet n = 1;\nlet newId = prefix + String(n).padStart(2, '0');\nwhile (usedIds.has(newId)) {\n  n++;\n  newId = prefix + String(n).padStart(2, '0');\n}\n\n// ─── Бүлэг → app branch mapping ───\n// Master Sheet-д 'Бүлэг' баганад group нэрийг бичнэ (хэвээр)\n\n// ─── Гаралт: Sheet-д бичих мөр ───\nconst today = new Date().toISOString().slice(0, 10);\n\nreturn [{ json: {\n  id: newId,\n  name,\n  role,\n  group,\n  phone,\n  email,\n  pin,\n  level: 40,            // Шинэ ажилтан default зэрэглэл\n  status: 'идэвхтэй',   // Шууд идэвхтэй (CEO баталгаажуулалтгүй)\n  joined: today,\n} }];\n"
+      },
+      "id": "code-build-row",
+      "name": "Code · ID үүсгэх + шалгах",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
+          "mode": "list",
+          "cachedResultName": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 0,
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.id }}",
+            "Овог нэр": "={{ $json.name }}",
+            "Албан тушаал": "={{ $json.role }}",
+            "Бүлэг": "={{ $json.group }}",
+            "Зэрэглэл": "={{ $json.level }}",
+            "Утас": "={{ $json.phone }}",
+            "И-мэйл": "={{ $json.email }}",
+            "PIN": "={{ $json.pin }}",
+            "Төлөв": "={{ $json.status }}",
+            "Ажилд орсон": "={{ $json.joined }}",
+            "Тэмдэглэл": "Апп-аар өөрөө бүртгүүлсэн"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "append-staff",
+      "name": "Sheets · Master-д нэмэх",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "ceo@nomaadcamp.com",
+        "subject": "=🆕 Шинэ ажилтан бүртгүүлсэн: {{ $('Code · ID үүсгэх + шалгах').item.json.name }}",
+        "message": "=<p><strong>{{ $('Code · ID үүсгэх + шалгах').item.json.name }}</strong> апп-аар өөрөө бүртгүүлсэн байна.</p><ul><li>ID: {{ $('Code · ID үүсгэх + шалгах').item.json.id }}</li><li>Албан тушаал: {{ $('Code · ID үүсгэх + шалгах').item.json.role }}</li><li>Салбар: {{ $('Code · ID үүсгэх + шалгах').item.json.group }}</li><li>Утас: {{ $('Code · ID үүсгэх + шалгах').item.json.phone }}</li><li>И-мэйл: {{ $('Code · ID үүсгэх + шалгах').item.json.email }}</li></ul><p>Master Sheet-д идэвхтэй төлөвтэй нэмэгдсэн. Шаардлагатай бол зэрэглэл, бүлгийг шалгаж тохируулна уу.</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "gmail-notify-ceo",
+      "name": "Gmail · CEO-д мэдэгдэх",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1120, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, id: $('Code · ID үүсгэх + шалгах').item.json.id, name: $('Code · ID үүсгэх + шалгах').item.json.name }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond · Амжилттай",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Webhook · Бүртгэл хүсэлт": {
+      "main": [[{ "node": "Sheets · Уншиж буй ажилтнууд", "type": "main", "index": 0 }]]
+    },
+    "Sheets · Уншиж буй ажилтнууд": {
+      "main": [[{ "node": "Code · ID үүсгэх + шалгах", "type": "main", "index": 0 }]]
+    },
+    "Code · ID үүсгэх + шалгах": {
+      "main": [[{ "node": "Sheets · Master-д нэмэх", "type": "main", "index": 0 }]]
+    },
+    "Sheets · Master-д нэмэх": {
+      "main": [[
+        { "node": "Gmail · CEO-д мэдэгдэх", "type": "main", "index": 0 },
+        { "node": "Respond · Амжилттай", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "tags": []
+}

@@ -945,8 +945,43 @@
 
     <div class="login-error" id="login-error"></div>
 
-    <div class="login-footer">
+    <!-- ─── Шинэ ажилтан бүртгүүлэх форм (нуугдсан, link дарахад нээгдэнэ) ─── -->
+    <div id="register-section" style="display:none; margin-top:18px; text-align:left; border-top:1px solid var(--border); padding-top:18px;">
+      <h2 style="font-size:16px; margin:0 0 4px;">Шинэ ажилтан бүртгэл</h2>
+      <p style="font-size:12px; color:var(--muted); margin:0 0 12px;">Мэдээллээ оруулаад бүртгүүлснээр шууд нэвтрэх боломжтой.</p>
+
+      <label class="login-label">Овог нэр <span style="color:var(--danger)">*</span></label>
+      <input id="reg-name" type="text" placeholder="Жишээ: Б.Болд" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+
+      <label class="login-label">Албан тушаал <span style="color:var(--danger)">*</span></label>
+      <input id="reg-role" type="text" placeholder="Жишээ: Кемп туслах" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+
+      <label class="login-label">Аль салбар? <span style="color:var(--danger)">*</span></label>
+      <select id="reg-group" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;">
+        <option value="">— Сонгох —</option>
+        <option value="M Event">Эм Ивент</option>
+        <option value="Camp">Номаад кемп</option>
+        <option value="Нэгдсэн">Захиргаа / Нэгдсэн</option>
+      </select>
+
+      <label class="login-label">Утасны дугаар</label>
+      <input id="reg-phone" type="tel" inputmode="numeric" placeholder="99112233" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+
+      <label class="login-label">И-мэйл</label>
+      <input id="reg-email" type="email" placeholder="name@example.com" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+
+      <label class="login-label">PIN код (4 орон) <span style="color:var(--danger)">*</span></label>
+      <input id="reg-pin" type="tel" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="● ● ● ●" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
+
+      <button type="button" id="reg-submit" class="login-submit" style="width:100%;">Бүртгүүлэх</button>
+      <div class="login-error" id="reg-error" style="margin-top:8px;"></div>
+      <button type="button" id="reg-cancel" style="background:none; border:none; color:var(--muted); font-size:13px; cursor:pointer; margin-top:10px; width:100%;">← Нэвтрэх рүү буцах</button>
+    </div>
+
+    <div class="login-footer" id="login-footer-default">
       PIN кодоо мартсан/мэдэхгүй бол CEO-той холбогдоно уу.
+      <br><br>
+      <button type="button" id="show-register-btn" style="background:none; border:none; color:var(--primary); font-size:13px; font-weight:600; cursor:pointer; text-decoration:underline;">Шинэ ажилтан мөн үү? Бүртгүүлэх</button>
     </div>
   </div>
 </div>
@@ -1370,6 +1405,8 @@ const DEFAULT_STAFF_URL   = 'https://chimunllc.app.n8n.cloud/webhook/staff';
 const DEFAULT_FINANCE_URL = 'https://chimunllc.app.n8n.cloud/webhook/finance';
 // Receipt upload — POST { filename, contentType, base64, request_id, kind } → returns Drive URL.
 const DEFAULT_UPLOAD_URL  = 'https://chimunllc.app.n8n.cloud/webhook/upload-receipt';
+// Шинэ ажилтан бүртгэл — POST { name, role, group, phone, email, pin } → Master Sheet append → { id }
+const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-register';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
 const PROJECTS_BY_BRANCH = {
@@ -1442,11 +1479,12 @@ const state = {
       localStorage.setItem(migrationFlag, '1');
     }
     return {
-      apiUrl:     localStorage.getItem('apiUrl')     || DEFAULT_API_URL     || '',
-      notifyUrl:  localStorage.getItem('notifyUrl')  || DEFAULT_NOTIFY_URL  || '',
-      staffUrl:   localStorage.getItem('staffUrl')   || DEFAULT_STAFF_URL   || '',
-      financeUrl: localStorage.getItem('financeUrl') || DEFAULT_FINANCE_URL || '',
-      uploadUrl:  localStorage.getItem('uploadUrl')  || DEFAULT_UPLOAD_URL  || '',
+      apiUrl:      localStorage.getItem('apiUrl')      || DEFAULT_API_URL      || '',
+      notifyUrl:   localStorage.getItem('notifyUrl')   || DEFAULT_NOTIFY_URL   || '',
+      staffUrl:    localStorage.getItem('staffUrl')    || DEFAULT_STAFF_URL    || '',
+      financeUrl:  localStorage.getItem('financeUrl')  || DEFAULT_FINANCE_URL  || '',
+      uploadUrl:   localStorage.getItem('uploadUrl')   || DEFAULT_UPLOAD_URL   || '',
+      registerUrl: localStorage.getItem('registerUrl') || DEFAULT_REGISTER_URL || '',
     };
   })(),
   editingId: null,
@@ -4106,10 +4144,11 @@ async function bootApp() {
   }, 60_000);
 }
 
-function showLoginError(msg) {
+function showLoginError(msg, type) {
   const el = document.getElementById('login-error');
   el.textContent = msg;
   el.classList.add('show');
+  el.style.color = type === 'info' ? 'var(--ok)' : '';
 }
 
 function showLoginScreen() {
@@ -4201,6 +4240,82 @@ function initPinLogin() {
     const pin = pinInput.value.trim();
     handlePinLogin(userId, pin);
   });
+
+  // ─── Шинэ ажилтан бүртгэл ───
+  const regSection = document.getElementById('register-section');
+  const loginFooter = document.getElementById('login-footer-default');
+  document.getElementById('show-register-btn')?.addEventListener('click', () => {
+    regSection.style.display = 'block';
+    loginFooter.style.display = 'none';
+    form.style.display = 'none';
+    document.querySelector('.login-sub').textContent = 'Шинэ ажилтны бүртгэл';
+  });
+  document.getElementById('reg-cancel')?.addEventListener('click', () => {
+    regSection.style.display = 'none';
+    loginFooter.style.display = 'block';
+    form.style.display = 'flex';
+    document.querySelector('.login-sub').textContent = 'Нэрээ сонгож PIN кодоо оруулна уу';
+  });
+  document.getElementById('reg-submit')?.addEventListener('click', handleRegister);
+}
+
+async function handleRegister() {
+  const errEl = document.getElementById('reg-error');
+  const show = (msg) => { errEl.textContent = msg; errEl.style.color = 'var(--danger)'; };
+  const name  = document.getElementById('reg-name').value.trim();
+  const role  = document.getElementById('reg-role').value.trim();
+  const group = document.getElementById('reg-group').value;
+  const phone = document.getElementById('reg-phone').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pin   = document.getElementById('reg-pin').value.trim();
+
+  // Validation
+  if (!name)  return show('Овог нэрээ оруулна уу.');
+  if (!role)  return show('Албан тушаалаа оруулна уу.');
+  if (!group) return show('Аль салбарт хамаарахаа сонгоно уу.');
+  if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
+
+  // PIN давхцал шалгах (одоогийн TEAM дотор)
+  if (TEAM.some(m => String(m.pin) === pin)) {
+    return show('Энэ PIN өөр хүн ашиглаж байна. Өөр PIN сонгоно уу.');
+  }
+
+  const btn = document.getElementById('reg-submit');
+  btn.disabled = true;
+  btn.textContent = 'Бүртгэж байна...';
+
+  try {
+    const url = state.config.registerUrl;
+    if (!url) { show('Бүртгэлийн систем тохируулагдаагүй. CEO-той холбогдоно уу.'); return; }
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, role, group, phone, email, pin }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json().catch(() => ({}));
+
+    errEl.style.color = 'var(--ok)';
+    errEl.textContent = '✓ Амжилттай бүртгэгдлээ! Шинэ TEAM ачаалж байна...';
+
+    // Master Sheet-аас шинэ TEAM татаж шинэ хүнийг dropdown-д оруулах
+    await loadTeamFromAPI();
+    setTimeout(() => {
+      // Login руу буцаад шинэ хэрэглэгчийг сонгуулах
+      document.getElementById('reg-cancel').click();
+      initPinLogin();
+      const sel = document.getElementById('login-user-select');
+      const newId = data.id;
+      if (newId && [...sel.options].some(o => o.value === newId)) sel.value = newId;
+      showLoginError('Бүртгэл амжилттай. PIN кодоо оруулж нэвтэрнэ үү.', 'info');
+    }, 1200);
+  } catch (e) {
+    console.warn('Бүртгэл амжилтгүй:', e);
+    show('Бүртгэхэд алдаа гарлаа. Дахин оролдоно уу эсвэл CEO-той холбогдоно уу.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Бүртгүүлэх';
+  }
 }
 
 async function handlePinLogin(userId, pin) {

@@ -3298,3 +3298,13 @@ body {
     min-height: 44px !important;
   }
 }
+
+/* ── Empty state — content-ийг дээш ойртуулах (хэт доош харагдсан) ── */
+.empty {
+  padding: 32px 20px !important;
+}
+@media (max-width: 720px) {
+  .empty {
+    padding: 24px 16px !important;
+  }
+}

@@ -2105,27 +2105,6 @@ function uidShort() {
   return Math.random().toString(36).slice(2, 8);
 }
 
-/* Локал notification руу нэн дарууд push хийх helper.
-   Зөвхөн recipient === state.me үед харуулна (бусдын notification сэрвэрээс ирнэ).
-   recipient бол хэнд харуулах ID. */
-function pushLocalNotification({ type, taskId, msg, recipient }) {
-  if (!recipient || recipient !== state.me) return; // надад хамаагүй
-  if (!Array.isArray(state.notifications)) state.notifications = [];
-  const nid = `${type}-${taskId}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-  state.notifications.unshift({
-    id: nid,
-    type,
-    taskId,
-    msg,
-    ts: Date.now(),
-    read: false,
-  });
-  saveNotifications();
-  renderNotifications();
-  // Toast мэдэгдэл
-  showToast(msg, 'info', 3500);
-}
-
 // Сэтгэгдэл нэмэх. @mention — текстээс @id хэлбэрээр уншина.
 async function addTaskComment(taskId, text, fileUrl = null) {
   const task = state.tasks.find(t => t.id === taskId);
@@ -2762,7 +2741,6 @@ function renderProofPreview(elId, url, label) {
 function openFinanceModal(id = null) {
   const t = id ? state.financeRequests.find(x => x.id === id) : null;
   state.editingId = id || null;
-  state._modalKind = 'finance';
   const modal = document.getElementById('finance-modal');
   const submitActions = document.getElementById('f-submit-actions');
   const decisionActions = document.getElementById('f-decision-actions');
@@ -3105,10 +3083,6 @@ function filteredTasks() {
   // Remaining tasks (non-act, or orphaned sub-tasks whose parent was filtered out)
   list.forEach(t => { if (!placed.has(t.id)) grouped.push(t); });
   return grouped;
-}
-// "Mine" count across all branches (so the user sees their workload no matter which branch is selected)
-function tasksAssignedToMe() {
-  return state.tasks.filter(t => t.assignee === state.me && t.status !== 'done');
 }
 
 /* -------------------- RENDER -------------------- */
@@ -4062,7 +4036,6 @@ function initEvents() {
 
   // NEW ORDER (5-stage act) — branch-аас үл хамаарч бүх хэрэглэгчид нээлттэй
   const orderBtn = document.getElementById('new-order-btn');
-  function syncOrderBtnVisibility() { /* branch шалгахгүй болсон */ }
   orderBtn.onclick = () => {
     document.getElementById('o-customer').value = '';
     document.getElementById('o-date').value = '';

@@ -4,7 +4,7 @@
 
 - **Frontend:** Цэвэр HTML + JS (нэг файл, build хэрэггүй)
 - **Backend:** n8n + Google Sheets (`tasks` хүснэгт)
-- **Notifications:** n8n cron + email/Slack/Telegram
+- **Notifications:** Апп доторх мэдэгдэл (client-side, бүтэн офлайн ажиллана)
 - **Hosting:** GitHub Pages (үнэгүй)
 
 ---
@@ -14,17 +14,16 @@
 ```
 index.html                       ← аппликейшн өөрөө
 n8n-workflow-sync.json           ← Tasks → Google Sheets data sync workflow
-n8n-workflow-notify.json         ← Өдөр бүр сануулах workflow
-n8n-workflow-staff-sync.json     ← Master Sheet → app /staff endpoint workflow (NEW 2026-05-16)
-SHEET-SETUP-ЗААВАР.md            ← Master Sheet-ийн validation, dropdown, formatting заавар (NEW)
+n8n-workflow-finance.json        ← Санхүүгийн хүсэлт + баримт upload workflow
+n8n-workflow-staff-sync.json     ← Master Sheet → app /staff endpoint workflow
+n8n-workflow-staff-register.json ← Шинэ ажилтан бүртгэл workflow
 README.md                        ← энэ файл
 ```
 
-App нь 3 горимтой:
+App нь 2 горимтой:
 
 1. **Локал режим** — `index.html`-г browser дээр нээхэд шууд ажиллана. Data зөвхөн тухайн browser-д хадгалагдана. (Туршихад тохиромжтой.)
-2. **n8n sync режим** — Settings → n8n Webhook URL оруулсан үед бүх багийн data Google Sheet дээр хадгалагдана.
-3. **n8n notification режим** — Notify webhook URL нэмбэл шинэ даалгавар үүсгэх / биелүүлэх үед n8n рүү event илгээнэ.
+2. **n8n sync режим** — Settings → n8n Webhook URL оруулсан үед бүх багийн data Google Sheet дээр хадгалагдана. Холболт тасрахад өөрчлөлт локалд хадгалагдаж, сэргэхэд автоматаар sync хийгдэнэ.
 
 ---
 
@@ -83,7 +82,7 @@ GitHub бол кодоо хадгалдаг газар, GitHub Pages нь түү
 ### В. Файлуудыг upload хийх (хамгийн амархан арга)
 
 1. Шинээр үүссэн repo хуудсан дээрх **"uploading an existing file"** дарна
-2. `index.html`, `README.md`, `n8n-workflow-sync.json`, `n8n-workflow-notify.json` 4 файлыг чирж тавина
+2. Бүх файлыг (`index.html`, `README.md`, `n8n-workflow-*.json`, icon-ууд, `manifest.json`, `sw.js`) чирж тавина
 3. Доод талд **Commit changes** товч дарна
 
 ### Г. GitHub Pages идэвхжүүлэх
@@ -147,26 +146,9 @@ GitHub бол кодоо хадгалдаг газар, GitHub Pages нь түү
 
 ---
 
-## 4-р алхам — Сануулга (notification)
+## Мэдэгдэл (notification)
 
-### А. n8n дээр notify workflow
-
-1. `n8n-workflow-notify.json`-г Import хийх
-2. Sheet ID болон Google Sheets credentials-г адил холбох
-3. **Build Message** node-н код дотор `<YOUR-GITHUB-PAGES-URL>` хэсгийг өөрийн URL-аар солих
-4. **Send Email** node:
-   - SMTP credentials холбох (Gmail, Mailgun, Sendgrid г.м)
-   - Эсвэл Email node-г устгаад **Slack**, **Telegram**, **Messenger** node-р солих
-5. Workflow-г **Active** болгоно
-
-Одоо өдөр бүр 09:00-д хоцорсон / өнөөдөр / маргааш дуусах ёстой даалгавар бүрт мэдэгдэл явна.
-
-### Б. App-д Notify URL оруулах
-
-1. n8n дээрх **Webhook /notify** URL-г хуулна
-2. App → Тохиргоо → "n8n Notification Webhook URL" → Хадгалах
-
-Одоо даалгавар үүсгэх / биелүүлэх үед бодит цаг (real-time) event илгээгдэнэ.
+Мэдэгдэл нь **аппын дотор** (client-side) үүсдэг тул тусдаа workflow болон тохиргоо шаардахгүй. Апп хариуцагчид оноогдсон шинэ даалгавар, хугацаа хэтрэлт, өнөөдөр дуусах ёстой ажил, дамжлага идэвхжсэн зэргийг хонхны дүрсээр харуулна. Энэ нь офлайн ч ажиллана.
 
 ---
 
@@ -198,7 +180,6 @@ GitHub бол кодоо хадгалдаг газар, GitHub Pages нь түү
 |---|---|
 | App нээгдэнэ, гэхдээ "Локал режим" гэж гарч байна | Тохиргоо → Webhook URL зөв оруулсан эсэхийг шалга. n8n workflow-г Active болгосон уу? |
 | n8n дээр "Authorization required" гэж гарна | Google Sheets credentials дахин холбоно уу? |
-| Notification ирэхгүй байна | n8n → Executions хэсэгт алдаа байгаа эсэхийг шалга. SMTP credentials зөв үү? |
 | Mongolia үсэг гажиж харагдах | UTF-8 BOM. `index.html`-г UTF-8 encoding-оор хадгалах. |
 
 ---

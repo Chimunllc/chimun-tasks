@@ -2168,35 +2168,36 @@ function renderTaskActionButtons(t) {
   const status     = t.status || 'open';
 
   const btns = [];
+  // Inline style-уудыг арилгасан — өнгө, padding, font CSS theme-аас ирнэ.
   // Эхлүүлэх — assignee/CEO, төлөв open эсвэл declined
   if (canAct && (status === 'open' || status === 'declined')) {
-    btns.push(`<button class="btn btn-action" data-action="start" style="background:#3b82f6;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">▶ Эхлүүлэх</button>`);
+    btns.push(`<button class="btn btn-action" data-action="start">Эхлүүлэх</button>`);
   }
   // Дуусгах — assignee/CEO, in_progress эсвэл open үед
   if (canAct && status !== 'done' && status !== 'declined') {
-    btns.push(`<button class="btn btn-action" data-action="done" style="background:#10b981;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">✓ Дуусгасан</button>`);
+    btns.push(`<button class="btn btn-action" data-action="done">Дуусгасан</button>`);
   }
   // Дахин нээх — done төлөвийг буцаах
   if (canAct && status === 'done') {
-    btns.push(`<button class="btn btn-action" data-action="reopen" style="background:#f59e0b;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">↶ Дахин нээх</button>`);
+    btns.push(`<button class="btn btn-action" data-action="reopen">Дахин нээх</button>`);
   }
   // Татгалзах — assignee, эсвэл CEO. Зөвхөн open/in_progress
   if ((isAssignee || isCEO) && (status === 'open' || status === 'in_progress')) {
-    btns.push(`<button class="btn btn-action" data-action="decline" style="background:#ef4444;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">✗ Татгалзах</button>`);
+    btns.push(`<button class="btn btn-action" data-action="decline">Татгалзах</button>`);
   }
   // Тодруулга хүсэх — assignee, аль ч төлөвт
   if (isAssignee && status !== 'done') {
-    btns.push(`<button class="btn btn-action" data-action="clarify" style="background:#8b5cf6;color:#fff;padding:8px 14px;font-size:13px;border-radius:6px;border:none;cursor:pointer;">❓ Тодруулга</button>`);
+    btns.push(`<button class="btn btn-action" data-action="clarify">Тодруулга</button>`);
   }
-  // Төлвийн badge
+  // Төлвийн badge — CSS class-аар стиль, inline арилгасан
   const statusLabels = {
-    open:        { text: 'Шинэ',         bg: 'var(--warn-soft)',   col: 'var(--warn)' },
-    in_progress: { text: 'Хийгдэж байна', bg: 'var(--info-soft)',   col: 'var(--info)' },
-    done:        { text: 'Дууссан',      bg: 'var(--ok-soft)',     col: 'var(--ok)' },
-    declined:    { text: 'Татгалзсан',   bg: 'var(--danger-soft)', col: 'var(--danger)' },
+    open:        { text: 'Шинэ',          cls: 'open' },
+    in_progress: { text: 'Хийгдэж байна', cls: 'in_progress' },
+    done:        { text: 'Дууссан',       cls: 'done' },
+    declined:    { text: 'Татгалзсан',    cls: 'declined' },
   };
   const sl = statusLabels[status] || statusLabels.open;
-  let html = `<span style="padding:6px 12px;background:${sl.bg};color:${sl.col};border-radius:6px;font-size:12px;font-weight:600;margin-right:4px;">${sl.text}</span>`;
+  let html = `<span class="status-badge status-${sl.cls}">${sl.text}</span>`;
   if (status === 'declined' && t.decline_reason) {
     html += `<div style="width:100%;margin-top:6px;padding:8px;background:var(--danger-soft);color:var(--danger);border-radius:6px;font-size:12px;">Шалтгаан: ${escapeHtml(t.decline_reason)}</div>`;
   }
@@ -2416,7 +2417,8 @@ function fillAssigneeSelect(id, value, branchOverride) {
   fillSelect(id, TEAM.map(m => ({ value: m.id, label: m.name + ' (' + m.role + ')' })), value);
 }
 function fillBranchSelectInModal(id, value) {
-  fillSelect(id, BRANCHES.map(b => ({ value: b.id, label: b.icon + ' ' + b.name })), value);
+  // `<select><option>` нь HTML рендер хийдэггүй тул SVG icon-ыг хасч зөвхөн текст үлдээнэ.
+  fillSelect(id, BRANCHES.map(b => ({ value: b.id, label: b.name })), value);
 }
 
 function initEvents() {

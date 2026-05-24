@@ -1804,18 +1804,20 @@ function renderTaskList() {
   tasks.forEach(t => wrap.appendChild(renderRow(t)));
 }
 function emptyStateHtml() {
-  // View-ийн дагуу contextual empty state
-  let icon = '📋', title = 'Даалгавар алга', sub = '+ Шинэ дарж нэмнэ үү';
+  // View-ийн дагуу contextual empty state — SVG icon (emoji биш)
+  const SEARCH_SVG = '<svg class="lcd-icon" viewBox="0 0 24 24" style="width:56px;height:56px;opacity:.25;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+  const big = (svg) => svg.replace('class="lcd-icon"', 'class="lcd-icon" style="width:56px;height:56px;opacity:.25;"');
+  let icon = big(ICONS.layers), title = 'Даалгавар алга', sub = '+ Шинэ дарж нэмнэ үү';
   const v = state.view;
-  if (v === 'mine')     { icon = '🎯'; title = 'Танд оноосон ажил алга'; sub = 'Бүх ажилаа дуусгасан байна. Сайн байна!'; }
-  else if (v === 'delegated') { icon = '📤'; title = 'Үүргэсэн ажил алга'; sub = 'Та өөр хүнд хариуцуулсан ажил байхгүй байна. + Шинэ дарж оноо.'; }
-  else if (v === 'finance')   { icon = '💸'; title = 'Санхүүгийн хүсэлт алга'; sub = '💸 Хүсэлт дарж шинэ төлбөрийн хүсэлт илгээнэ үү.'; }
-  else if (v === 'overdue') { icon = '🎉'; title = 'Хоцорсон даалгавар алга'; sub = 'Бүх хугацаа дотроо явж байна.'; }
-  else if (v === 'today')   { icon = '☕'; title = 'Өнөөдөр дуусах юм алга'; sub = 'Тайван өдөр болж байна.'; }
-  else if (v === 'done')    { icon = '🗂'; title = 'Дууссан ажил алга'; sub = 'Шинэ ажилаа эхлээрэй.'; }
-  else if (state.statusFilter === 'done') { icon = '✅'; title = 'Дуусгасан ажил алга'; sub = 'Идэвхтэй ажлуудаа үргэлжлүүл.'; }
-  else if (state.search)    { icon = '🔍'; title = `"${state.search}" гэж олдсонгүй`; sub = 'Өөр түлхүүр үг туршаарай.'; }
-  return `<div class="empty"><div class="icon">${icon}</div><div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div></div>`;
+  if (v === 'mine')           { icon = big(ICONS.target);   title = 'Танд оноосон ажил алга'; sub = 'Бүх ажилаа дуусгасан байна. Сайн байна!'; }
+  else if (v === 'delegated') { icon = big(ICONS.send);     title = 'Үүргэсэн ажил алга'; sub = 'Та өөр хүнд хариуцуулсан ажил байхгүй байна. + Шинэ дарж оноо.'; }
+  else if (v === 'finance')   { icon = big(ICONS.wallet);   title = 'Санхүүгийн хүсэлт алга'; sub = 'Хүсэлт дарж шинэ төлбөрийн хүсэлт илгээнэ үү.'; }
+  else if (v === 'overdue')   { icon = big(ICONS.check);    title = 'Хоцорсон даалгавар алга'; sub = 'Бүх хугацаа дотроо явж байна.'; }
+  else if (v === 'today')     { icon = big(ICONS.sun);      title = 'Өнөөдөр дуусах юм алга'; sub = 'Тайван өдөр болж байна.'; }
+  else if (v === 'done')      { icon = big(ICONS.layers);   title = 'Дууссан ажил алга'; sub = 'Шинэ ажилаа эхлээрэй.'; }
+  else if (state.statusFilter === 'done') { icon = big(ICONS.check); title = 'Дуусгасан ажил алга'; sub = 'Идэвхтэй ажлуудаа үргэлжлүүл.'; }
+  else if (state.search)      { icon = SEARCH_SVG; title = `"${state.search}" гэж олдсонгүй`; sub = 'Өөр түлхүүр үг туршаарай.'; }
+  return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div></div>`;
 }
 function renderRow(t) {
   const row = document.createElement('div');

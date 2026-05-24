@@ -1782,6 +1782,9 @@ function renderSidebar() {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === state.view);
   });
+  // CEO-only nav items — Dashboard зөвхөн CEO/админ-д харагдана
+  const dashNav = document.getElementById('nav-dashboard');
+  if (dashNav) dashNav.style.display = state.isCEO ? '' : 'none';
   // brand reflects current branch so the user always knows which space they're in
   const info = currentBranchInfo();
   const brandEl = document.getElementById('brand-text');
@@ -1803,6 +1806,7 @@ function renderSidebar() {
 function renderTitle() {
   // [icon SVG, title text, subtitle]
   const titles = {
+    dashboard: [ICONS.layers, 'Тойм', 'Гүйцэтгэлийн тойм болон график'],
     mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
@@ -1822,6 +1826,19 @@ function renderTitle() {
 }
 function renderTaskList() {
   const wrap = document.getElementById('task-list');
+  // CEO dashboard view — task жагсаалт биш, харин тойм статистик.
+  // Table head, toolbar-уудыг нуунa
+  const tableHead = document.querySelector('.table-head');
+  const toolbar = document.querySelector('.toolbar');
+  if (state.view === 'dashboard') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderDashboard();
+    return;
+  } else {
+    if (tableHead) tableHead.style.display = '';
+    if (toolbar) toolbar.style.display = '';
+  }
   const tasks = filteredTasks();
   wrap.innerHTML = '';
   if (!tasks.length) {
@@ -1829,6 +1846,148 @@ function renderTaskList() {
     return;
   }
   tasks.forEach(t => wrap.appendChild(renderRow(t)));
+}
+
+/* ─── CEO Dashboard ───────────────────────────────────────
+   Үндсэн KPI болон график.
+   - Task статусын pie/donut
+   - Сарын санхүүгийн хүсэлтийн дүн
+   - Ажилтан тус бүрийн идэвхтэй ажлын тоо
+   - Хоцорсон таскын тоо
+   Бүх chart нь inline SVG — гадны library хэрэггүй. */
+function renderDashboard() {
+  const tasks = state.tasks || [];
+  const fr = state.financeRequests || [];
+  const today = todayStr();
+
+  // 1) Status breakdown
+  const byStatus = { open: 0, in_progress: 0, done: 0, declined: 0 };
+  tasks.forEach(t => { byStatus[t.status || 'open'] = (byStatus[t.status || 'open'] || 0) + 1; });
+  const totalTasks = tasks.length || 1;
+
+  // 2) Per-staff active load
+  const staffLoad = {};
+  tasks.filter(t => t.status !== 'done' && t.assignee).forEach(t => {
+    staffLoad[t.assignee] = (staffLoad[t.assignee] || 0) + 1;
+  });
+  const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]).slice(0, 6);
+  const maxLoad = Math.max(1, ...topStaff.map(([,n]) => n));
+
+  // 3) Финансын зардал — сүүлийн 30 хоног
+  const cutoff = Date.now() - 30 * 86400 * 1000;
+  const recentFinance = fr.filter(r => {
+    const ts = new Date(r.created_at || r.ts || 0).getTime();
+    return ts > cutoff;
+  });
+  const totalApproved = recentFinance
+    .filter(r => r.decision === 'approved' || r.status === 'done')
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const totalPending = recentFinance
+    .filter(r => (r.decision || 'pending') === 'pending')
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  // 4) Хоцорсон
+  const overdueCount = tasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
+  const todayCount = tasks.filter(t => t.due === today && t.status !== 'done').length;
+
+  // SVG donut for status
+  const donut = (() => {
+    const cx = 60, cy = 60, r = 48;
+    const C = 2 * Math.PI * r;
+    const colors = {
+      open: '#f59e0b', in_progress: '#3b82f6',
+      done: '#10b981', declined: '#ef4444'
+    };
+    let offset = 0;
+    const segments = ['done', 'in_progress', 'open', 'declined'].map(k => {
+      const n = byStatus[k] || 0;
+      const frac = n / totalTasks;
+      const dash = `${C * frac} ${C}`;
+      const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${colors[k]}" stroke-width="14" stroke-dasharray="${dash}" stroke-dashoffset="${-offset * C}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      offset += frac;
+      return seg;
+    }).join('');
+    return `
+      <svg viewBox="0 0 120 120" width="120" height="120">
+        ${segments}
+        <text x="60" y="58" text-anchor="middle" font-size="22" font-weight="700" fill="var(--text)">${tasks.length}</text>
+        <text x="60" y="76" text-anchor="middle" font-size="10" fill="var(--muted)">нийт</text>
+      </svg>
+    `;
+  })();
+
+  return `
+    <div class="dashboard">
+      <div class="dashboard-grid">
+        <!-- KPI карт-ууд -->
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Хоцорсон</div>
+          <div class="dash-kpi-value danger">${overdueCount}</div>
+          <div class="dash-kpi-sub">эцсийн хугацаа өнгөрсөн</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Өнөөдөр</div>
+          <div class="dash-kpi-value warn">${todayCount}</div>
+          <div class="dash-kpi-sub">дуусах ёстой</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Хүлээгдэж буй</div>
+          <div class="dash-kpi-value primary">${recentFinance.filter(r => (r.decision||'pending')==='pending').length}</div>
+          <div class="dash-kpi-sub">санхүүгийн хүсэлт</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Идэвхтэй</div>
+          <div class="dash-kpi-value ok">${byStatus.open + byStatus.in_progress}</div>
+          <div class="dash-kpi-sub">ажилтнуудад</div>
+        </div>
+
+        <!-- Status donut -->
+        <div class="dash-card dash-chart">
+          <div class="dash-card-title">Ажлын статус</div>
+          <div class="dash-donut">
+            ${donut}
+            <div class="dash-legend">
+              <div><span class="dot" style="background:#10b981"></span> Дууссан <strong>${byStatus.done}</strong></div>
+              <div><span class="dot" style="background:#3b82f6"></span> Хийгдэж байна <strong>${byStatus.in_progress}</strong></div>
+              <div><span class="dot" style="background:#f59e0b"></span> Шинэ <strong>${byStatus.open}</strong></div>
+              <div><span class="dot" style="background:#ef4444"></span> Татгалзсан <strong>${byStatus.declined}</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Finance summary -->
+        <div class="dash-card dash-finance">
+          <div class="dash-card-title">Сүүлийн 30 хоног — Санхүү</div>
+          <div class="dash-finance-row">
+            <div class="dash-finance-label">Зөвшөөрсөн</div>
+            <div class="dash-finance-value ok">${totalApproved.toLocaleString('mn-MN')}₮</div>
+          </div>
+          <div class="dash-finance-row">
+            <div class="dash-finance-label">Хүлээгдэж буй</div>
+            <div class="dash-finance-value warn">${totalPending.toLocaleString('mn-MN')}₮</div>
+          </div>
+          <div class="dash-finance-row">
+            <div class="dash-finance-label">Нийт хүсэлт</div>
+            <div class="dash-finance-value">${recentFinance.length}</div>
+          </div>
+        </div>
+
+        <!-- Staff load -->
+        <div class="dash-card dash-staff">
+          <div class="dash-card-title">Ажилтны ачаалал (идэвхтэй ажил)</div>
+          ${topStaff.length === 0 ? '<div class="dash-empty">Идэвхтэй ажил алга</div>' : topStaff.map(([id, n]) => `
+            <div class="dash-bar-row">
+              <div class="dash-bar-label">${escapeHtml(memberName(id))}</div>
+              <div class="dash-bar-track">
+                <div class="dash-bar-fill" style="width:${(n/maxLoad)*100}%"></div>
+              </div>
+              <div class="dash-bar-count">${n}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
 }
 function emptyStateHtml() {
   // View-ийн дагуу contextual empty state — SVG icon (emoji биш)

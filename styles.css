@@ -4368,3 +4368,87 @@ body {
   /* Мобайл дээр action товч үргэлж харагдана (hover байхгүй) */
   .comment-actions { opacity: 1; }
 }
+
+/* Telegram section removed */
+
+/* ═══ Dashboard action товчнууд ═══ */
+.dashboard-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.dashboard-actions .btn {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border-radius: 8px !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.dashboard-actions .btn:hover {
+  background: var(--panel-hover) !important;
+}
+
+/* ═══ Personal KPI bar chart ═══ */
+.kpi-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 6px;
+  height: 160px;
+  padding: 8px 4px 0;
+}
+.kpi-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  height: 100%;
+}
+.kpi-bar-track {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  min-height: 0;
+}
+.kpi-bar-fill {
+  width: 100%;
+  background: var(--accent-blue);
+  border-radius: 6px 6px 2px 2px;
+  min-height: 2px;
+  transition: height 300ms cubic-bezier(.32,1.2,.64,1);
+}
+.kpi-bar-fill.today {
+  background: linear-gradient(180deg, var(--accent-purple), var(--accent-blue));
+}
+.kpi-bar-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+.kpi-bar-day {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.kpi-bar-day.today {
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+
+/* ═══ Дашбордыг хэвлэх (PDF) — print стиль ═══ */
+@media print {
+  body { background: #fff !important; }
+  .sidebar, .header-actions, .toolbar, .fab, .mobile-bottom-nav,
+  .install-banner, #ptr-indicator, .bulk-bar, .dashboard-actions { display: none !important; }
+  .app { grid-template-columns: 1fr !important; }
+  .dash-card { break-inside: avoid; box-shadow: none !important; }
+  .header { background: #fff !important; border-bottom: 1px solid #ccc; }
+}

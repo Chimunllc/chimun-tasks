@@ -1774,6 +1774,26 @@ function filteredTasks() {
   else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done');
   else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
   else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
+  else if (state.statusFilter === 'week') {
+    // Энэ долоо хоног — даваа гарагаас ням гараг хүртэл
+    const now = new Date();
+    const dow = now.getDay() || 7; // Mon=1..Sun=7
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dow - 1));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const weekStart = monday.toISOString().slice(0, 10);
+    const weekEnd = sunday.toISOString().slice(0, 10);
+    list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
+  }
+  else if (state.statusFilter === 'month') {
+    // Энэ сар
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const prefix = `${y}-${m}`;
+    list = list.filter(t => t.due && t.due.startsWith(prefix));
+  }
   // search
   if (state.search) {
     const q = state.search.toLowerCase();
@@ -1824,9 +1844,13 @@ function renderSidebar() {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === state.view);
   });
-  // CEO-only nav items — Dashboard зөвхөн CEO/админ-д харагдана
+  // Тойм — бүгдэд харагдана. CEO бол company-wide, бусад нь хувийн.
   const dashNav = document.getElementById('nav-dashboard');
-  if (dashNav) dashNav.style.display = state.isCEO ? '' : 'none';
+  if (dashNav) {
+    dashNav.style.display = '';
+    const lbl = document.getElementById('nav-dashboard-label');
+    if (lbl) lbl.textContent = state.isCEO ? 'Тойм' : 'Миний тойм';
+  }
   // brand reflects current branch so the user always knows which space they're in
   const info = currentBranchInfo();
   const brandEl = document.getElementById('brand-text');
@@ -1877,6 +1901,9 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderDashboard();
+    // Dashboard action товчнууд
+    document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
+    document.getElementById('dash-print')?.addEventListener('click', () => window.print());
     return;
   } else if (state.view === 'calendar') {
     if (tableHead) tableHead.style.display = 'none';
@@ -1903,8 +1930,10 @@ function renderTaskList() {
    - Сарын санхүүгийн хүсэлтийн дүн
    - Ажилтан тус бүрийн идэвхтэй ажлын тоо
    - Хоцорсон таскын тоо
-   Бүх chart нь inline SVG — гадны library хэрэггүй. */
+   Бүх chart нь inline SVG — гадны library хэрэггүй.
+   CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
 function renderDashboard() {
+  if (!state.isCEO) return renderPersonalKPI();
   const tasks = state.tasks || [];
   const fr = state.financeRequests || [];
   const today = todayStr();
@@ -1967,6 +1996,16 @@ function renderDashboard() {
 
   return `
     <div class="dashboard">
+      <div class="dashboard-actions">
+        <button class="btn" id="dash-export-csv">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          CSV татах
+        </button>
+        <button class="btn" id="dash-print">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          PDF хэвлэх
+        </button>
+      </div>
       <div class="dashboard-grid">
         <!-- KPI карт-ууд -->
         <div class="dash-card dash-kpi">
@@ -2033,6 +2072,74 @@ function renderDashboard() {
               <div class="dash-bar-count">${n}</div>
             </div>
           `).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ─── Personal KPI (ажилтны хувийн тойм) ───────────────── */
+function renderPersonalKPI() {
+  const me = state.me;
+  const mine = (state.tasks || []).filter(t => t.assignee === me);
+  const today = todayStr();
+  const total = mine.length;
+  const done = mine.filter(t => t.status === 'done').length;
+  const active = mine.filter(t => t.status !== 'done').length;
+  const overdue = mine.filter(t => t.status !== 'done' && t.due && t.due < today).length;
+  const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  // Сүүлийн 7 хоногт хийсэн ажлуудаар bar chart
+  const last7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayDone = mine.filter(t => t.status === 'done' && t.executed_at && t.executed_at.startsWith(dateStr)).length;
+    last7.push({
+      day: ['Ня','Да','Мя','Лх','Пү','Ба','Бя'][d.getDay()],
+      count: dayDone,
+      isToday: dateStr === today,
+    });
+  }
+  const maxDay = Math.max(1, ...last7.map(d => d.count));
+
+  return `
+    <div class="dashboard">
+      <div class="dashboard-grid">
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Дуусгасан</div>
+          <div class="dash-kpi-value ok">${done}</div>
+          <div class="dash-kpi-sub">нийт ажлаас ${total}</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Идэвхтэй</div>
+          <div class="dash-kpi-value primary">${active}</div>
+          <div class="dash-kpi-sub">та хийх ёстой</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Хоцорсон</div>
+          <div class="dash-kpi-value danger">${overdue}</div>
+          <div class="dash-kpi-sub">эцсийн хугацаа өнгөрсөн</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Гүйцэтгэл</div>
+          <div class="dash-kpi-value warn">${completionRate}%</div>
+          <div class="dash-kpi-sub">дуусгасан хувь</div>
+        </div>
+        <div class="dash-card dash-chart" style="grid-column: span 4;">
+          <div class="dash-card-title">Сүүлийн 7 хоног — Дуусгасан ажил</div>
+          <div class="kpi-bar-chart">
+            ${last7.map(d => `
+              <div class="kpi-bar-col">
+                <div class="kpi-bar-track">
+                  <div class="kpi-bar-fill ${d.isToday ? 'today' : ''}" style="height:${(d.count/maxDay)*100}%"></div>
+                </div>
+                <div class="kpi-bar-num">${d.count}</div>
+                <div class="kpi-bar-day ${d.isToday ? 'today' : ''}">${d.day}</div>
+              </div>
+            `).join('')}
+          </div>
         </div>
       </div>
     </div>
@@ -2755,6 +2862,15 @@ function openTaskModal(id) {
   document.getElementById('t-priority').value = t?.priority || 'none';
   const recEl = document.getElementById('t-recurrence');
   if (recEl) recEl.value = t?.recurrence || '';
+  // Duplicate товч — зөвхөн existing task үед харагдана
+  const dupBtn = document.getElementById('t-duplicate');
+  if (dupBtn) {
+    dupBtn.style.display = t ? '' : 'none';
+    dupBtn.onclick = () => {
+      duplicateTask(t.id);
+      closeTaskModal();
+    };
+  }
   // Branch солих үед зөвхөн төслийн жагсаалт шинэчилнэ.
   // Хариуцагч нь бүх ажилтнаас сонгох тул дахин filter хийхгүй.
   document.getElementById('t-branch').onchange = (e) => {

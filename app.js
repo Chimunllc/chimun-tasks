@@ -2242,6 +2242,45 @@ function renderRow(t) {
   row.querySelector('.task-title').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
   });
+  // Inline edit — title дээр double-click хийвэл шууд засагдана
+  const titleEl = row.querySelector('.task-title');
+  if (titleEl && !t.parent_id && t.kind !== 'finance_request') {
+    titleEl.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      const can = canEditTask(t);
+      if (!can.all) { showToast('Зөвхөн үүсгэгч засаж чадна', 'warn'); return; }
+      const oldText = t.title;
+      titleEl.setAttribute('contenteditable', 'true');
+      titleEl.classList.add('editing');
+      titleEl.focus();
+      // Бүх текстийг select хийх
+      const range = document.createRange();
+      range.selectNodeContents(titleEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      const finish = (save) => {
+        titleEl.removeAttribute('contenteditable');
+        titleEl.classList.remove('editing');
+        const newText = titleEl.textContent.trim();
+        if (save && newText && newText !== oldText) {
+          const idx = state.tasks.findIndex(x => x.id === t.id);
+          if (idx >= 0) {
+            state.tasks[idx].title = newText;
+            saveData();
+            showToast('Хадгалсан', 'success', 1200);
+          }
+        } else {
+          titleEl.textContent = oldText;
+        }
+      };
+      titleEl.addEventListener('blur', () => finish(true), { once: true });
+      titleEl.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); titleEl.blur(); }
+      });
+    });
+  }
   return row;
 }
 function renderCounts() {
@@ -2370,6 +2409,26 @@ async function deleteTask(id) {
   saveTask(t, true);
   render();
 }
+function duplicateTask(id) {
+  const orig = state.tasks.find(x => x.id === id);
+  if (!orig) return;
+  const dup = {
+    ...orig,
+    id: 'T' + Date.now(),
+    title: orig.title + ' (хуулбар)',
+    status: 'open',
+    executed_at: null, executed_by: null,
+    decision: undefined, decision_at: undefined, decision_by: undefined,
+    comments: [], activity: [],
+    created_at: new Date().toISOString(),
+    createdBy: state.me,
+  };
+  state.tasks.unshift(dup);
+  saveData();
+  render();
+  showToast('Хуулбарласан', 'success');
+}
+
 function openTaskModal(id) {
   const t = id ? state.tasks.find(x=>x.id===id) : null;
   state.editingId = id || null;
@@ -2903,6 +2962,63 @@ function initEvents() {
     if (next >= obSteps.length) closeOnboarding();
     else showOnboardingStep(next);
   });
+
+  // ─── Pull-to-refresh (мобайл) ─────────────────────────
+  // Дэлгэцийн дээд хэсэгт доош 80px+ татвал sync хийнэ.
+  // Зөвхөн touch device-д, scrollTop === 0 байх үед идэвхжинэ.
+  if ('ontouchstart' in window) (function setupPullToRefresh() {
+    let startY = 0, currentY = 0, pulling = false;
+    const TRIGGER = 80;
+    // Refresh indicator DOM-д нэмэх
+    const indicator = document.createElement('div');
+    indicator.id = 'ptr-indicator';
+    indicator.innerHTML = '<div class="ptr-spinner"></div>';
+    document.body.appendChild(indicator);
+
+    const main = document.querySelector('.main') || document.body;
+    main.addEventListener('touchstart', (e) => {
+      if (window.scrollY > 0) return;
+      const el = main.scrollTop !== undefined ? main : document.scrollingElement;
+      if (el && el.scrollTop > 0) return;
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }, { passive: true });
+    main.addEventListener('touchmove', (e) => {
+      if (!pulling) return;
+      currentY = e.touches[0].clientY;
+      const dy = currentY - startY;
+      if (dy < 0) { pulling = false; indicator.style.transform = ''; return; }
+      const pct = Math.min(dy / TRIGGER, 1.2);
+      indicator.style.transform = `translateY(${Math.min(dy, TRIGGER + 20)}px)`;
+      indicator.style.opacity = pct;
+      indicator.classList.toggle('ready', dy > TRIGGER);
+    }, { passive: true });
+    main.addEventListener('touchend', async () => {
+      if (!pulling) return;
+      pulling = false;
+      const dy = currentY - startY;
+      if (dy > TRIGGER) {
+        indicator.classList.add('refreshing');
+        try {
+          await Promise.all([ loadData(), loadFinanceRequests() ]);
+          render();
+          showToast('Шинэчлэгдсэн', 'success', 1500);
+        } catch (e) {
+          showToast('Шинэчлэх амжилтгүй', 'error');
+        }
+        setTimeout(() => {
+          indicator.classList.remove('refreshing', 'ready');
+          indicator.style.transform = '';
+          indicator.style.opacity = '';
+        }, 400);
+      } else {
+        indicator.style.transition = 'transform 200ms ease, opacity 200ms ease';
+        indicator.style.transform = '';
+        indicator.style.opacity = '';
+        setTimeout(() => { indicator.style.transition = ''; }, 220);
+      }
+    });
+  })();
 
   // Settings advanced toggle — n8n URL-уудыг нуух/харуулах
   document.getElementById('s-toggle-advanced')?.addEventListener('click', () => {

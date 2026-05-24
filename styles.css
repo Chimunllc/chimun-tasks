@@ -3960,3 +3960,54 @@ body {
 #prompt-modal .modal-close-x {
   display: none !important;
 }
+
+/* ═══ Pull-to-refresh indicator ═══ */
+#ptr-indicator {
+  position: fixed;
+  top: -50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+}
+@media (max-width: 720px) {
+  #ptr-indicator { display: flex; }
+}
+.ptr-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+}
+#ptr-indicator.ready .ptr-spinner {
+  border-top-color: var(--accent-green);
+  transform: rotate(180deg);
+  transition: transform 200ms ease;
+}
+#ptr-indicator.refreshing .ptr-spinner {
+  animation: ptr-spin 0.7s linear infinite;
+}
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ═══ Inline editable task title ═══ */
+.task-title.editing {
+  background: var(--panel);
+  border: 2px solid var(--accent-blue);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
+}

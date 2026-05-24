@@ -10,13 +10,13 @@
           "allowedOrigins": "*"
         }
       },
-      "id": "webhook-register",
+      "id": "184d11db-7410-4a9b-b8c0-870c30caa07d",
       "name": "Webhook · Бүртгэл хүсэлт",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1.1,
       "position": [
-        240,
-        300
+        288,
+        2576
       ],
       "webhookId": "staff-register-webhook"
     },
@@ -31,23 +31,23 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "Хуудас1",
+          "value": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
           "mode": "name"
         },
         "options": {}
       },
-      "id": "read-existing-staff",
+      "id": "c16b6184-3931-4e31-a6a7-5024e955050c",
       "name": "Sheets · Уншиж буй ажилтнууд",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        460,
-        300
+        512,
+        2576
       ],
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
-          "name": "Google Sheets account"
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
         }
       }
     },
@@ -55,13 +55,13 @@
       "parameters": {
         "jsCode": "// Зөвхөн ID үүсгэж, Sheet-н мөр бэлдэнэ.\n// Бүх шалгалт (давхцал, кирилл, заавал) App дээр хийгдсэн — энд throw БАЙХГҮЙ.\nconst body = $('Webhook · Бүртгэл хүсэлт').first().json.body || {};\nconst existing = $input.all().map(it => it.json);\n\nconst name  = String(body.name || '').trim();\nconst role  = String(body.role || '').trim();\nconst group = String(body.group || '').trim();\nconst phone = String(body.phone || '').trim();\nconst email = String(body.email || '').trim();\nconst pin   = String(body.pin || '').trim();\n\n// ID prefix салбараар\nconst PREFIX_MAP = { 'Нэгдсэн': 'S', 'M Event': 'M', 'Camp': 'C' };\nconst prefix = PREFIX_MAP[group] || 'X';\n\n// Дараагийн чөлөөт дугаар ('ID' монгол баганаас)\nconst usedIds = new Set(existing.map(r => String(r['ID'] || '').trim()));\nlet i = 1;\nlet newId = prefix + String(i).padStart(2, '0');\nwhile (usedIds.has(newId)) { i++; newId = prefix + String(i).padStart(2, '0'); }\n\nconst today = new Date().toISOString().slice(0, 10);\n\n// ГАРАЛТ: Sheet-н толгойтой ЯГ ИЖИЛ монгол түлхүүр (auto-map)\nreturn [{ json: {\n  'ID': newId,\n  'Овог нэр': name,\n  'Албан тушаал': role,\n  'Бүлэг': group,\n  'Зэрэглэл': 40,\n  'Утас': phone,\n  'И-мэйл': email,\n  'PIN': pin,\n  'Төлөв': 'идэвхтэй',\n  'Ажилд орсон': today,\n  'Тэмдэглэл': 'Апп-аар өөрөө бүртгүүлсэн',\n} }];\n"
       },
-      "id": "code-build-row",
+      "id": "98b2b69a-54c7-43f1-9094-4e9316afbd4f",
       "name": "Code · ID үүсгэх",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
-        300
+        736,
+        2576
       ]
     },
     {
@@ -76,28 +76,194 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "Хуудас1",
+          "value": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
           "mode": "name"
         },
         "columns": {
           "mappingMode": "autoMapInputData",
+          "value": {},
           "matchingColumns": [],
-          "schema": []
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Овог нэр",
+              "displayName": "Овог нэр",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Албан тушаал",
+              "displayName": "Албан тушаал",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Бүлэг",
+              "displayName": "Бүлэг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Хавсарсан бүлэг",
+              "displayName": "Хавсарсан бүлэг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Зэрэглэл",
+              "displayName": "Зэрэглэл",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Утас",
+              "displayName": "Утас",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "И-мэйл",
+              "displayName": "И-мэйл",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PIN",
+              "displayName": "PIN",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Төлөв",
+              "displayName": "Төлөв",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Ажилд орсон",
+              "displayName": "Ажилд орсон",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Улирлын эхлэл",
+              "displayName": "Улирлын эхлэл",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Улирлын төгсгөл",
+              "displayName": "Улирлын төгсгөл",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Үндсэн цалин",
+              "displayName": "Үндсэн цалин",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "KPI кодууд",
+              "displayName": "KPI кодууд",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "JD холбоос",
+              "displayName": "JD холбоос",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Зураг",
+              "displayName": "Зураг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Тэмдэглэл",
+              "displayName": "Тэмдэглэл",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
-      "id": "append-staff",
+      "id": "92d0573d-bda2-4aeb-ba4e-8a452205352d",
       "name": "Sheets · Master-д нэмэх",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        900,
-        300
+        928,
+        2560
       ],
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
-          "name": "Google Sheets account"
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
         }
       }
     },
@@ -110,18 +276,19 @@
           "appendAttribution": false
         }
       },
-      "id": "gmail-notify-ceo",
+      "id": "d65d2dbb-5510-435a-8f17-fd19228e1b8c",
       "name": "Gmail · CEO-д мэдэгдэх",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        1120,
-        200
+        1168,
+        2480
       ],
+      "webhookId": "1eaca014-ff68-48e3-867c-be3024aab846",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
+          "id": "bDzHksZFFiNLk9gC",
+          "name": "Gmail OAuth2 API"
         }
       }
     },
@@ -140,13 +307,13 @@
           }
         }
       },
-      "id": "respond-success",
+      "id": "354d5230-dd87-4e77-8370-498846506244",
       "name": "Respond · Амжилттай",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1340,
-        300
+        1392,
+        2576
       ]
     },
     {
@@ -158,18 +325,19 @@
           "appendAttribution": false
         }
       },
-      "id": "gmail-welcome-employee",
+      "id": "e45371c7-4a8b-4175-9095-4b210bf8c6b9",
       "name": "Gmail · Шинэ ажилтанд",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        1120,
-        360
+        1168,
+        2640
       ],
+      "webhookId": "d5e70f8e-188d-41f0-b8a6-e4344fee73c0",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
-          "name": "Gmail account"
+          "id": "bDzHksZFFiNLk9gC",
+          "name": "Gmail OAuth2 API"
         }
       }
     }
@@ -197,17 +365,6 @@
         ]
       ]
     },
-    "Code · ID үүсгэх + шалгах": {
-      "main": [
-        [
-          {
-            "node": "Sheets · Master-д нэмэх",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Sheets · Master-д нэмэх": {
       "main": [
         [
@@ -228,9 +385,82 @@
           }
         ]
       ]
+    },
+    "Code · ID үүсгэх": {
+      "main": [
+        [
+          {
+            "node": "Sheets · Master-д нэмэх",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": false,
-  "settings": {},
-  "tags": []
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {
+    "Webhook · Бүртгэл хүсэлт": [
+      {
+        "json": {
+          "headers": {
+            "host": "chimunllc.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            "content-length": "149",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.9,mn;q=0.8,ja;q=0.7,zh-CN;q=0.6,zh;q=0.5,fr;q=0.4",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "2405:5700:304:4fd5:81f6:991:6ed4:77f0",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "MN",
+            "cf-ray": "9fe849cc5e56152f-ULN",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "dnt": "1",
+            "origin": "https://chimunllc.github.io",
+            "priority": "u=1, i",
+            "referer": "https://chimunllc.github.io/",
+            "sec-ch-ua": "\"Chromium\";v=\"148\", \"Google Chrome\";v=\"148\", \"Not/A)Brand\";v=\"99\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"Windows\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "2405:5700:304:4fd5:81f6:991:6ed4:77f0, 172.69.252.188",
+            "x-forwarded-host": "chimunllc.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-68-7c7c9cfb8b-jwvbz",
+            "x-is-trusted": "yes",
+            "x-real-ip": "2405:5700:304:4fd5:81f6:991:6ed4:77f0"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "name": "О.ТҮВДЭНДАРЖАА",
+            "role": "НЯГТЛАН",
+            "group": "Нэгдсэн",
+            "phone": "91204938",
+            "email": "tuvdendar@gmail.com",
+            "pin": "1122"
+          },
+          "webhookUrl": "https://chimunllc.app.n8n.cloud/webhook/staff-register",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
 }

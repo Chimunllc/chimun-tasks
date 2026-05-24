@@ -1,27 +1,26 @@
 {
-  "name": "Чимун Tasks · Staff Sync (Master Sheet)",
+  "name": "Tasks · Staff Sync (Master Sheet)",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "GET",
         "path": "staff",
         "responseMode": "responseNode",
         "options": {
           "allowedOrigins": "*"
         }
       },
-      "id": "webhook-staff-get",
+      "id": "815b94ec-6dcc-4d31-8b03-9c2fe8d48ac9",
       "name": "Webhook GET /staff",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        240,
-        300
-      ]
+        384,
+        -160
+      ],
+      "webhookId": "7a81c264-a656-4a89-8d65-1dc741e64eb4"
     },
     {
       "parameters": {
-        "operation": "read",
         "documentId": {
           "__rl": true,
           "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
@@ -29,37 +28,37 @@
         },
         "sheetName": {
           "__rl": true,
-          "value": "Хуудас1",
+          "value": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
           "mode": "name"
         },
         "options": {}
       },
-      "id": "sheets-read-staff",
+      "id": "ec61ebdd-f4c9-4a35-8ac7-c2bdb99ddb40",
       "name": "Sheets · Read Master Roster",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        460,
-        300
+        608,
+        -160
       ],
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
-          "name": "Google Sheets account"
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// Master Sheet → TEAM format mapping.\n// Sheet баганы нэр монголоор; app дотор Latin field name ашиглана.\n//\n// Branches handling:\n//   primary 'Бүлэг' + optional 'Хавсарсан бүлэг' → branches[] array.\n//   ҮАХ захирал + production-related M Event roles also get 'production' branch.\n//\n// Status filter: 'гарсан' (left) + 'нээлттэй' (open position) excluded from active roster.\n//\n// Output: { team: [...] }\n\nconst rows = $input.all().map(it => it.json);\n\nconst BRANCH_MAP = {\n  'Нэгдсэн': 'shared',\n  'M Event': 'm-event',\n  'Camp':    'camp',\n};\n\n// Roles that should auto-include 'production' (cross-branch event work)\nconst PRODUCTION_ROLES = [\n  'ҮАХ захирал M EVENT',\n  'Event Manager',\n  'Агуулах засварын ажилтан',\n  'Засвар-Агуулахын ахлах',\n  'Агуулах-Логистик 1',\n  'Агуулах-Логистик 2',\n  'ҮАХ захирал NOMAAD',\n  'Кемпийн менежер',\n];\n\nfunction mapBranch(label) {\n  if (!label) return null;\n  const trimmed = String(label).trim();\n  return BRANCH_MAP[trimmed] || null;\n}\n\nfunction normalizeId(raw) {\n  if (raw == null) return '';\n  const s = String(raw).trim();\n  // Pad single/double-digit numeric IDs back to 3 digits to match legacy app IDs (\"1\"→\"001\")\n  if (/^\\d{1,2}$/.test(s)) return s.padStart(3, '0');\n  return s;\n}\n\nconst team = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const id = normalizeId(r['ID']);\n  if (!id) continue;\n  const status = String(r['Төлөв'] || '').trim();\n  if (status === 'гарсан' || status === 'нээлттэй') continue; // skip inactive\n\n  const primary = mapBranch(r['Бүлэг']);\n  const secondary = mapBranch(r['Хавсарсан бүлэг']);\n  const branches = [];\n  if (primary) branches.push(primary);\n  if (secondary && secondary !== primary) branches.push(secondary);\n\n  const role = String(r['Албан тушаал'] || '').trim();\n  if (PRODUCTION_ROLES.includes(role) && !branches.includes('production')) {\n    branches.push('production');\n  }\n\n  // CEO is special — give access to all branches\n  if (id === 'CEO') {\n    if (!branches.includes('m-event')) branches.push('m-event');\n    if (!branches.includes('camp')) branches.push('camp');\n    if (!branches.includes('shared')) branches.push('shared');\n    if (!branches.includes('production')) branches.push('production');\n  }\n\n  team.push({\n    id,\n    name: String(r['Овог нэр'] || '').trim(),\n    role,\n    level: parseInt(r['Зэрэглэл'] || '40', 10) || 40,\n    pin: String(r['PIN'] || '').trim(),\n    email: String(r['И-мэйл'] || '').trim(),\n    phone: String(r['Утас'] || '').trim(),\n    branches,\n    status: status || 'идэвхтэй',\n    seasonal_from: String(r['Улирлын эхлэл'] || '').trim() || null,\n    seasonal_to:   String(r['Улирлын төгсгөл'] || '').trim() || null,\n  });\n}\n\nreturn [{ json: { team, count: team.length, generated_at: new Date().toISOString() } }];"
+        "jsCode": "// Master Sheet → TEAM format mapping.\n// Sheet баганы нэр монголоор; app дотор Latin field name ашиглана.\n//\n// Branches handling:\n//   primary 'Бүлэг' + optional 'Хавсарсан бүлэг' → branches[] array.\n//   ҮАХ захирал + production-related M Event roles also get 'production' branch.\n//\n// Status filter: 'гарсан' (left) + 'нээлттэй' (open position) excluded from active roster.\n//\n// Output: { team: [...] }\n\nconst rows = $input.all().map(it => it.json);\n\nconst BRANCH_MAP = {\n  'Нэгдсэн': 'shared',\n  'M Event': 'm-event',\n  'Camp':    'camp',\n};\n\n// Roles that should auto-include 'production' (cross-branch event work)\nconst PRODUCTION_ROLES = [\n  'ҮАХ захирал M EVENT',\n  'Event Manager',\n  'Агуулах засварын ажилтан',\n  'Засвар-Агуулахын ахлах',\n  'Агуулах-Логистик 1',\n  'Агуулах-Логистик 2',\n  'ҮАХ захирал NOMAAD',\n  'Кемпийн менежер',\n];\n\nfunction mapBranch(label) {\n  if (!label) return null;\n  const trimmed = String(label).trim();\n  return BRANCH_MAP[trimmed] || null;\n}\n\nfunction normalizeId(raw) {\n  if (raw == null) return '';\n  const s = String(raw).trim();\n  // Pad single/double-digit numeric IDs back to 3 digits to match legacy app IDs (\"1\"→\"001\")\n  if (/^\\d{1,2}$/.test(s)) return s.padStart(3, '0');\n  return s;\n}\n\nconst team = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const id = normalizeId(r['ID']);\n  if (!id) continue;\n  const status = String(r['Төлөв'] || '').trim();\n  if (status === 'гарсан' || status === 'нээлттэй') continue; // skip inactive\n\n  const primary = mapBranch(r['Бүлэг']);\n  const secondary = mapBranch(r['Хавсарсан бүлэг']);\n  const branches = [];\n  if (primary) branches.push(primary);\n  if (secondary && secondary !== primary) branches.push(secondary);\n\n  const role = String(r['Албан тушаал'] || '').trim();\n  if (PRODUCTION_ROLES.includes(role) && !branches.includes('production')) {\n    branches.push('production');\n  }\n\n  // CEO is special — give access to all branches\n  if (id === 'CEO') {\n    if (!branches.includes('m-event')) branches.push('m-event');\n    if (!branches.includes('camp')) branches.push('camp');\n    if (!branches.includes('shared')) branches.push('shared');\n    if (!branches.includes('production')) branches.push('production');\n  }\n\n  team.push({\n    id,\n    name: String(r['Овог нэр'] || '').trim(),\n    role,\n    level: parseInt(r['Зэрэглэл'] || '40', 10) || 40,\n    pin: String(r['PIN'] || '').trim(),\n    email: String(r['И-мэйл'] || '').trim(),\n    branches,\n    status: status || 'идэвхтэй',\n    seasonal_from: String(r['Улирлын эхлэл'] || '').trim() || null,\n    seasonal_to:   String(r['Улирлын төгсгөл'] || '').trim() || null,\n  });\n}\n\nreturn [{ json: { team, count: team.length, generated_at: new Date().toISOString() } }];"
       },
-      "id": "code-map-staff",
+      "id": "1c10c950-bd11-4b12-a3ee-aaa422a21bfb",
       "name": "Map Sheet → TEAM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        680,
-        300
+        832,
+        -160
       ]
     },
     {
@@ -81,13 +80,13 @@
           }
         }
       },
-      "id": "respond",
+      "id": "80db8048-507a-4a3c-94cc-d442f1e4cebb",
       "name": "Respond JSON",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        900,
-        300
+        1056,
+        -160
       ]
     }
   ],
@@ -127,7 +126,58 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
-  "_README": "Чимун ХХК · Staff sync workflow. Master Sheet-аас уншиж app-руу JSON хэлбэрээр буцаана. Setup: (1) Google Sheets credential холбох, (2) Workflow Active болгож хадгалах, (3) Webhook URL-г app-ын Settings → Staff webhook talbar-д тавих. 5 минутын cache (Cache-Control) — Sheet өөрчилбөл хамгийн ихдээ 5 минутын дотор аппаас харагдана."
+  "staticData": null,
+  "pinData": {
+    "Webhook GET /staff": [
+      {
+        "json": {
+          "headers": {
+            "host": "chimunllc.app.n8n.cloud",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "accept-language": "en-US,en;q=0.9",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "2405:5700:302:317:18ca:f097:3ea9:b649",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "MN",
+            "cf-ray": "9fcf77e61c0e89d2-ULN",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "origin": "https://chimunllc.github.io",
+            "priority": "u=1, i",
+            "referer": "https://chimunllc.github.io/",
+            "sec-ch-ua": "\"Chromium\";v=\"148\", \"Google Chrome\";v=\"148\", \"Not/A)Brand\";v=\"99\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-for": "2405:5700:302:317:18ca:f097:3ea9:b649, 172.69.252.189",
+            "x-forwarded-host": "chimunllc.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-68-7c7c9cfb8b-r92f7",
+            "x-is-trusted": "yes",
+            "x-real-ip": "2405:5700:302:317:18ca:f097:3ea9:b649"
+          },
+          "params": {},
+          "query": {},
+          "body": {},
+          "webhookUrl": "https://chimunllc.app.n8n.cloud/webhook/staff",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
 }

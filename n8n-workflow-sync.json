@@ -1,5 +1,5 @@
 {
-  "name": "Чимун Tasks · Sync (Google Sheets)",
+  "name": "TASKS ажил илгээх",
   "nodes": [
     {
       "parameters": {
@@ -10,86 +10,184 @@
           "allowedOrigins": "*"
         }
       },
-      "id": "webhook-post",
+      "id": "a85787f1-1779-4eba-9f25-2e04ea26349c",
       "name": "Webhook POST /checklist",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 400]
+      "position": [
+        -656,
+        304
+      ],
+      "webhookId": "3c49be5a-456a-4311-bc4a-7888c7cbf77b"
     },
     {
       "parameters": {
-        "httpMethod": "GET",
         "path": "checklist",
         "responseMode": "responseNode",
         "options": {
           "allowedOrigins": "*"
         }
       },
-      "id": "webhook-get",
+      "id": "1b297084-2932-4f07-8481-f9fd6724d694",
       "name": "Webhook GET /checklist",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 200]
+      "position": [
+        -656,
+        112
+      ],
+      "webhookId": "b377e91d-7f9c-461a-9545-b60a10c94b14"
     },
     {
       "parameters": {
         "jsCode": "// Determine action and pull task payload.\n// GET → action defaults to 'list' (no body).\n// POST → action is in body { action: 'upsert' | 'delete', task: {...} }.\nconst input = $input.first().json;\nconst body = input.body || {};\nconst query = input.query || {};\nconst action = (body.action || query.action || 'list').toLowerCase();\nconst task = body.task || null;\nreturn [{ json: { action, task } }];"
       },
-      "id": "code-route",
+      "id": "8e17470b-1774-4fa3-9cb0-16895d9d5c87",
       "name": "Route Action",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [
+        -448,
+        208
+      ]
     },
     {
       "parameters": {
         "rules": {
           "values": [
-            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "list", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "list" },
-            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "upsert", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "upsert" },
-            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" }, "conditions": [{ "leftValue": "={{ $json.action }}", "rightValue": "delete", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "outputKey": "delete" }
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "upsert",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
           ]
         },
         "options": {}
       },
-      "id": "switch-action",
+      "id": "8b690156-67e5-4bb0-8f7c-abc32c0fa2eb",
       "name": "Switch by Action",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
-      "position": [680, 300]
+      "position": [
+        -224,
+        208
+      ]
     },
     {
       "parameters": {
-        "operation": "read",
-        "documentId": { "__rl": true, "value": "1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "tasks", "mode": "name" },
+        "documentId": {
+          "__rl": true,
+          "value": "1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "tasks",
+          "mode": "name"
+        },
         "options": {}
       },
-      "id": "sheets-read",
+      "id": "4e5f6fed-337d-4711-a40f-1a27c1d3a4e6",
       "name": "Sheets · Read All",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [900, 100],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE", "name": "Google Sheets account" } }
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
     },
     {
       "parameters": {
         "jsCode": "// Aggregate all rows into a single array. Skip rows marked status='deleted'.\nconst rows = $input.all().map(it => it.json);\nconst tasks = rows.filter(r => r && r.id && r.status !== 'deleted');\nreturn [{ json: { tasks } }];"
       },
-      "id": "code-aggregate",
+      "id": "dc972412-e28c-4d60-a19a-0acc1fe723e4",
       "name": "Aggregate Tasks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 100]
+      "position": [
+        224,
+        0
+      ]
     },
     {
       "parameters": {
         "operation": "appendOrUpdate",
-        "documentId": { "__rl": true, "value": "1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "tasks", "mode": "name" },
+        "documentId": {
+          "__rl": true,
+          "value": "1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "tasks",
+          "mode": "name"
+        },
         "columns": {
           "mappingMode": "defineBelow",
-          "matchingColumns": ["id"],
           "value": {
             "id": "={{ $('Route Action').item.json.task.id }}",
             "title": "={{ $('Route Action').item.json.task.title }}",
@@ -108,49 +206,409 @@
             "stage": "={{ $('Route Action').item.json.task.stage }}",
             "created": "={{ $('Route Action').item.json.task.created }}",
             "updated": "={{ $now.toISO() }}"
-          }
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "desc",
+              "displayName": "desc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "branch",
+              "displayName": "branch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "project",
+              "displayName": "project",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "assignee",
+              "displayName": "assignee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "co_assignees",
+              "displayName": "co_assignees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "due",
+              "displayName": "due",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "kpi_code",
+              "displayName": "kpi_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "createdBy",
+              "displayName": "createdBy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "parent_id",
+              "displayName": "parent_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "kind",
+              "displayName": "kind",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "stage",
+              "displayName": "stage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created",
+              "displayName": "created",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated",
+              "displayName": "updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
-      "id": "sheets-upsert",
+      "id": "2a75efd9-666a-401d-9090-9db3ba375871",
       "name": "Sheets · Upsert",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [900, 300],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE", "name": "Google Sheets account" } }
+      "position": [
+        0,
+        208
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
     },
     {
       "parameters": {
         "jsCode": "// For delete, build a soft-delete payload: same task with status='deleted'.\n// We'll pipe this into appendOrUpdate just like upsert.\nconst t = $('Route Action').item.json.task;\nif (!t || !t.id) return [];\nreturn [{ json: { task: { ...t, status: 'deleted' } } }];"
       },
-      "id": "code-delete-prep",
+      "id": "bb79923a-7038-4d3f-9f43-6261fb66d9a6",
       "name": "Mark As Deleted",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 500]
+      "position": [
+        0,
+        400
+      ]
     },
     {
       "parameters": {
         "operation": "appendOrUpdate",
-        "documentId": { "__rl": true, "value": "1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "tasks", "mode": "name" },
+        "documentId": {
+          "__rl": true,
+          "value": "1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "tasks",
+          "mode": "name"
+        },
         "columns": {
           "mappingMode": "defineBelow",
-          "matchingColumns": ["id"],
           "value": {
             "id": "={{ $json.task.id }}",
             "status": "deleted",
             "updated": "={{ $now.toISO() }}"
-          }
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "desc",
+              "displayName": "desc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "branch",
+              "displayName": "branch",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "project",
+              "displayName": "project",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "assignee",
+              "displayName": "assignee",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "co_assignees",
+              "displayName": "co_assignees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "due",
+              "displayName": "due",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "kpi_code",
+              "displayName": "kpi_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "createdBy",
+              "displayName": "createdBy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "parent_id",
+              "displayName": "parent_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "kind",
+              "displayName": "kind",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "stage",
+              "displayName": "stage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created",
+              "displayName": "created",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "updated",
+              "displayName": "updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
-      "id": "sheets-soft-delete",
+      "id": "ec77cbd1-94eb-447e-9a18-e3a08a606a99",
       "name": "Sheets · Soft Delete",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [1120, 500],
-      "credentials": { "googleSheetsOAuth2Api": { "id": "REPLACE", "name": "Google Sheets account" } }
+      "position": [
+        224,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
     },
     {
       "parameters": {
@@ -159,18 +617,30 @@
         "options": {
           "responseHeaders": {
             "entries": [
-              { "name": "Access-Control-Allow-Origin", "value": "*" },
-              { "name": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
-              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET,POST,OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
             ]
           }
         }
       },
-      "id": "respond-list",
+      "id": "c6ea03b1-ba7c-49ea-95f2-4397a5c4a366",
       "name": "Respond List",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1340, 100]
+      "position": [
+        448,
+        0
+      ]
     },
     {
       "parameters": {
@@ -179,37 +649,155 @@
         "options": {
           "responseHeaders": {
             "entries": [
-              { "name": "Access-Control-Allow-Origin", "value": "*" },
-              { "name": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS" },
-              { "name": "Access-Control-Allow-Headers", "value": "Content-Type" }
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET,POST,OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
             ]
           }
         }
       },
-      "id": "respond-write",
+      "id": "e24dc072-9751-463b-bed2-d55a6d8b1788",
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1340, 400]
+      "position": [
+        448,
+        304
+      ]
     }
   ],
   "connections": {
-    "Webhook GET /checklist":  { "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]] },
-    "Webhook POST /checklist": { "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]] },
-    "Route Action":            { "main": [[{ "node": "Switch by Action", "type": "main", "index": 0 }]] },
-    "Switch by Action": {
+    "Webhook GET /checklist": {
       "main": [
-        [{ "node": "Sheets · Read All",   "type": "main", "index": 0 }],
-        [{ "node": "Sheets · Upsert",     "type": "main", "index": 0 }],
-        [{ "node": "Mark As Deleted",     "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Sheets · Read All":   { "main": [[{ "node": "Aggregate Tasks", "type": "main", "index": 0 }]] },
-    "Aggregate Tasks":     { "main": [[{ "node": "Respond List", "type": "main", "index": 0 }]] },
-    "Sheets · Upsert":     { "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]] },
-    "Mark As Deleted":     { "main": [[{ "node": "Sheets · Soft Delete", "type": "main", "index": 0 }]] },
-    "Sheets · Soft Delete":{ "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]] }
+    "Webhook POST /checklist": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Switch by Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch by Action": {
+      "main": [
+        [
+          {
+            "node": "Sheets · Read All",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheets · Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark As Deleted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets · Read All": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Tasks": {
+      "main": [
+        [
+          {
+            "node": "Respond List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets · Upsert": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark As Deleted": {
+      "main": [
+        [
+          {
+            "node": "Sheets · Soft Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets · Soft Delete": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "tags": [{ "name": "chimun-tasks" }]
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 2,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
 }

@@ -2426,8 +2426,15 @@ function initEvents() {
     document.querySelector('.sidebar')?.classList.add('open');
     document.querySelector('.sidebar-backdrop')?.classList.add('open');
   });
-  // FAB — шинэ ажил
-  document.getElementById('fab-new')?.addEventListener('click', () => openTaskModal());
+  // FAB — context-aware: одоогийн view-аас хамааран зөв modal нээнэ.
+  //   finance view дээр бол санхүүгийн хүсэлт, бусад үед даалгавар үүсгэх.
+  document.getElementById('fab-new')?.addEventListener('click', () => {
+    if (state.view === 'finance') {
+      openFinanceModal();
+    } else {
+      openTaskModal();
+    }
+  });
 
   // Theme toggle товч
   document.getElementById('theme-toggle')?.addEventListener('click', () => {

@@ -2649,3 +2649,44 @@ body {
     display: inline-block !important;
   }
 }
+
+/* ═══ Modal close X товч — бүх modal-ын баруун дээд буланд ═══ */
+.modal-close-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--panel-hover);
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms ease, color 120ms ease;
+  z-index: 10;
+  -webkit-tap-highlight-color: transparent;
+}
+.modal-close-x:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.modal-close-x:active {
+  transform: scale(.92);
+}
+/* Мобайлд илүү том, илүү тод */
+@media (max-width: 720px) {
+  .modal-close-x {
+    width: 40px;
+    height: 40px;
+    top: max(14px, env(safe-area-inset-top, 14px));
+    right: 14px;
+  }
+  /* Modal h2 баруун талд close товчинд зай гаргах */
+  .modal h2 {
+    padding-right: 50px !important;
+  }
+}
+/* .modal анхдагчаар position: fixed — close X-ийн absolute байрлал-д хангалттай. */

@@ -2457,6 +2457,33 @@ function initEvents() {
   });
   // FAB — sheet нээж 3 сонголт үзүүлнэ (Даалгавар / Санхүү / Захиалга).
   // Захиалга нь зөвхөн M Event-ийн ажилчин эсвэл CEO-д харагдана.
+  // ─── Бүх modal-д close X товч + backdrop click handler нэмэх ───
+  // Хэрэглэгч modal-аас гарахын тулд handle bar дээр slide хийх биш,
+  // тодорхой "×" товч эсвэл арын дэвсгэр дээр товшиж гарах боломжтой.
+  document.querySelectorAll('.modal-bg').forEach(bg => {
+    const modal = bg.querySelector('.modal');
+    if (!modal) return;
+    // Close X товч нэмэх (хэрэв байхгүй бол)
+    if (!modal.querySelector('.modal-close-x')) {
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'modal-close-x';
+      closeBtn.setAttribute('aria-label', 'Хаах');
+      closeBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      closeBtn.addEventListener('click', () => bg.classList.remove('open'));
+      modal.insertBefore(closeBtn, modal.firstChild);
+    }
+    // Backdrop click → modal хаах
+    bg.addEventListener('click', (e) => {
+      if (e.target === bg) bg.classList.remove('open');
+    });
+  });
+  // ESC → бүх нээлттэй modal хаах
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.modal-bg.open').forEach(bg => bg.classList.remove('open'));
+  });
+
   const fabSheetBg = document.getElementById('fab-sheet-bg');
   const fabSheetOrder = document.getElementById('fab-sheet-order');
   function openFabSheet() {

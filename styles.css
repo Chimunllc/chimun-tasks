@@ -476,8 +476,15 @@
   .login-screen {
     position: fixed; inset: 0; z-index: 200;
     background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 24px; color: #fff; text-align: center;
+    display: flex; flex-direction: column; align-items: center;
+    /* Бүртгэлийн форм нээгдвэл агуулга дэлгэцээс хэтэрнэ — scroll-ийг идэвхжүүлэх.
+       justify-content: center-ийн оронд padding-аар голчилно — content > viewport үед scroll ажиллана. */
+    justify-content: flex-start;
+    padding: max(24px, calc((100vh - 560px) / 2)) 24px max(48px, env(safe-area-inset-bottom, 24px));
+    color: #fff; text-align: center;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   .login-screen.hidden { display: none; }
   .login-card {

@@ -2553,3 +2553,60 @@ body {
   margin-left: auto;
   margin-right: auto;
 }
+
+/* ═══ Notification panel — мобайл дээр центрт жижиг modal ═══
+   Доороос гарах bottom sheet-ийн оронд дэлгэцийн төвд жижиг карт.
+   Цонх дотор анхаарал төвлөрөх, илүү "native dialog" мэдрэмж. */
+@media (max-width: 720px) {
+  .notif-panel,
+  .notif-panel.show,
+  .notif-panel:not([hidden]) {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    transform: translate(-50%, -50%) !important;
+    width: calc(100vw - 32px) !important;
+    max-width: 380px !important;
+    max-height: 70vh !important;
+    border-radius: 16px !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, .18), 0 8px 16px rgba(0, 0, 0, .08) !important;
+    animation: notif-pop-in .22s cubic-bezier(.34, 1.2, .64, 1) !important;
+    padding-bottom: 0 !important;
+  }
+  /* Bottom-sheet handle bar-ыг арилгах (центрт modal-д хэрэггүй) */
+  .notif-panel::before {
+    display: none !important;
+  }
+  /* Backdrop — modal маягийн харанхуй blur */
+  .notif-backdrop {
+    background: rgba(0, 0, 0, .35) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+    z-index: 9998 !important;
+  }
+  /* Header — модал шиг тодорхой close товчтой */
+  .notif-header {
+    border-bottom: 1px solid var(--border) !important;
+    padding: 14px 16px !important;
+  }
+  /* List scrollable дотроо */
+  .notif-list {
+    max-height: calc(70vh - 60px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@keyframes notif-pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}

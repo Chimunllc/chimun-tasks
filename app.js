@@ -1815,6 +1815,7 @@ function renderTitle() {
   // [icon SVG, title text, subtitle]
   const titles = {
     dashboard: [ICONS.layers, 'Тойм', 'Гүйцэтгэлийн тойм болон график'],
+    calendar:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', 'Календарь', 'Эцсийн хугацаагаар task-уудыг харах'],
     mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
@@ -1842,6 +1843,12 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderDashboard();
+    return;
+  } else if (state.view === 'calendar') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderCalendar();
+    attachCalendarHandlers();
     return;
   } else {
     if (tableHead) tableHead.style.display = '';
@@ -1997,6 +2004,122 @@ function renderDashboard() {
     </div>
   `;
 }
+
+/* ─── Calendar view ──────────────────────────────────────
+   Сарын календар — due date бүхий task-ыг өдрөөр бүлэглэж харуулна.
+   Click өдөр → түүний ажлуудыг доор жагсаална. */
+function renderCalendar() {
+  if (!state.calendarMonth) {
+    const now = new Date();
+    state.calendarMonth = { year: now.getFullYear(), month: now.getMonth() };
+  }
+  const { year, month } = state.calendarMonth;
+  const monthNames = ['1-р сар','2-р сар','3-р сар','4-р сар','5-р сар','6-р сар','7-р сар','8-р сар','9-р сар','10-р сар','11-р сар','12-р сар'];
+  const dayNames = ['Да','Мя','Лх','Пү','Ба','Бя','Ня'];
+
+  // Эхний өдрийн weekday (Mon = 0)
+  const first = new Date(year, month, 1);
+  let firstDow = first.getDay() - 1;
+  if (firstDow < 0) firstDow = 6;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = todayStr();
+
+  // Task-уудыг date-аар бүлэглэх
+  const byDate = {};
+  state.tasks.forEach(t => {
+    if (!t.due) return;
+    (byDate[t.due] = byDate[t.due] || []).push(t);
+  });
+
+  // Selected day (default: today if visible, else 1st)
+  const selected = state.calendarSelected || today;
+  const selectedTasks = byDate[selected] || [];
+
+  // Grid cells
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<div class="cal-cell cal-empty"></div>');
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dayTasks = byDate[dateStr] || [];
+    const isToday = dateStr === today;
+    const isSelected = dateStr === selected;
+    const isOverdue = dateStr < today;
+    const dotCount = Math.min(dayTasks.length, 3);
+    const dots = dayTasks.slice(0, 3).map(t => {
+      const cls = t.status === 'done' ? 'cal-dot-done'
+        : (t.priority === 'high' ? 'cal-dot-high'
+        : (t.priority === 'med' ? 'cal-dot-med' : 'cal-dot-low'));
+      return `<span class="cal-dot ${cls}"></span>`;
+    }).join('');
+    const more = dayTasks.length > 3 ? `<span class="cal-more">+${dayTasks.length - 3}</span>` : '';
+    cells.push(`
+      <button class="cal-cell ${isToday?'cal-today':''} ${isSelected?'cal-selected':''} ${isOverdue && dayTasks.some(t=>t.status!=='done')?'cal-overdue':''}" data-date="${dateStr}">
+        <span class="cal-num">${d}</span>
+        <span class="cal-dots">${dots}${more}</span>
+      </button>
+    `);
+  }
+
+  return `
+    <div class="calendar-view">
+      <div class="cal-header">
+        <button class="cal-nav" id="cal-prev" aria-label="Өмнөх сар">‹</button>
+        <div class="cal-title">${monthNames[month]} ${year}</div>
+        <button class="cal-nav" id="cal-next" aria-label="Дараагийн сар">›</button>
+        <button class="cal-today-btn" id="cal-today">Өнөөдөр</button>
+      </div>
+      <div class="cal-weekdays">
+        ${dayNames.map(d => `<div>${d}</div>`).join('')}
+      </div>
+      <div class="cal-grid">
+        ${cells.join('')}
+      </div>
+      <div class="cal-selected-info">
+        <div class="cal-selected-date">${selected === today ? 'Өнөөдөр' : fmtDate(selected)} — ${selectedTasks.length} ажил</div>
+        ${selectedTasks.length ? selectedTasks.map(t => `
+          <div class="cal-task" data-task-id="${escapeHtml(t.id)}">
+            <span class="cal-task-priority cal-dot-${t.priority || 'low'}"></span>
+            <span class="cal-task-title ${t.status === 'done' ? 'done' : ''}">${escapeHtml(t.title)}</span>
+            <span class="cal-task-assignee">${escapeHtml(memberName(t.assignee))}</span>
+          </div>
+        `).join('') : '<div class="cal-empty-msg">Энэ өдөрт ажил алга</div>'}
+      </div>
+    </div>
+  `;
+}
+
+function attachCalendarHandlers() {
+  document.getElementById('cal-prev')?.addEventListener('click', () => {
+    let { year, month } = state.calendarMonth;
+    month--;
+    if (month < 0) { month = 11; year--; }
+    state.calendarMonth = { year, month };
+    render();
+  });
+  document.getElementById('cal-next')?.addEventListener('click', () => {
+    let { year, month } = state.calendarMonth;
+    month++;
+    if (month > 11) { month = 0; year++; }
+    state.calendarMonth = { year, month };
+    render();
+  });
+  document.getElementById('cal-today')?.addEventListener('click', () => {
+    const now = new Date();
+    state.calendarMonth = { year: now.getFullYear(), month: now.getMonth() };
+    state.calendarSelected = todayStr();
+    render();
+  });
+  document.querySelectorAll('.cal-cell[data-date]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.calendarSelected = el.dataset.date;
+      render();
+    });
+  });
+  document.querySelectorAll('.cal-task[data-task-id]').forEach(el => {
+    el.addEventListener('click', () => openTaskModal(el.dataset.taskId));
+  });
+}
+
 function emptyStateHtml() {
   // View-ийн дагуу contextual empty state — SVG icon (emoji биш)
   const SEARCH_SVG = '<svg class="lcd-icon" viewBox="0 0 24 24" style="width:56px;height:56px;opacity:.25;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';

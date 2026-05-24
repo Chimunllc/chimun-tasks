@@ -4011,3 +4011,194 @@ body {
   outline: none;
   box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.15);
 }
+
+/* ═══ Calendar view ═══ */
+.calendar-view {
+  padding: 12px 4px 32px;
+}
+.cal-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 0 8px;
+}
+.cal-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 0 4px;
+}
+.cal-nav {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: var(--panel-hover);
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cal-nav:hover { background: var(--border); }
+.cal-today-btn {
+  margin-left: auto;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--accent-blue);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.cal-today-btn:hover { background: #4b56b8; }
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+.cal-weekdays > div {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding: 6px 0;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  padding: 0 4px;
+}
+.cal-cell {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 6px 4px 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+.cal-cell:hover { background: var(--panel-hover); }
+.cal-cell.cal-empty {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+.cal-num {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1;
+}
+.cal-cell.cal-today .cal-num {
+  background: var(--accent-blue);
+  color: #fff;
+  border-radius: 50%;
+  width: 22px; height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.cal-cell.cal-selected {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.15);
+}
+.cal-cell.cal-overdue {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.cal-dots {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.cal-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cal-dot-high, .cal-task-priority.cal-dot-high { background: var(--accent-red); }
+.cal-dot-med, .cal-task-priority.cal-dot-med { background: var(--accent-amber); }
+.cal-dot-low, .cal-task-priority.cal-dot-low { background: var(--accent-blue); }
+.cal-dot-done { background: var(--accent-green); }
+.cal-more {
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.cal-selected-info {
+  margin-top: 18px;
+  padding: 0 4px;
+}
+.cal-selected-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+  padding: 0 8px;
+}
+.cal-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.cal-task:hover { background: var(--panel-hover); }
+.cal-task-priority {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cal-task-title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+.cal-task-title.done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.cal-task-assignee {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cal-empty-msg {
+  font-size: 13px;
+  color: var(--muted-soft);
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+@media (max-width: 720px) {
+  .calendar-view { padding: 4px 0 120px; }
+  .cal-header { padding: 0 12px; gap: 6px; }
+  .cal-title { font-size: 16px; }
+  .cal-num { font-size: 12px; }
+  .cal-cell { padding: 4px 2px; }
+  .cal-cell.cal-today .cal-num { width: 20px; height: 20px; font-size: 11px; }
+  .cal-task-assignee { display: none; }
+  .cal-selected-info { padding: 0 8px; }
+}

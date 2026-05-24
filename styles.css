@@ -2348,3 +2348,104 @@ body {
   .notif-backdrop { z-index: 195 !important; }
   .table-head { z-index: 1 !important; position: relative; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DESKTOP NARROW / TABLET LAYOUT (721px — 1000px)
+   PWA window-ыг жижиг болгох үед content cramped болж байсныг засах.
+   - Sidebar нарийсна (260px → 200px)
+   - Header дотор товч компакт болно
+   - Filter pills wrap биш scroll
+   - Modal full-width болно
+   ═══════════════════════════════════════════════════════════ */
+@media (min-width: 721px) and (max-width: 1000px) {
+  .app {
+    grid-template-columns: 200px 1fr !important;
+  }
+  .sidebar {
+    padding: 12px 8px !important;
+  }
+  .sidebar .brand {
+    font-size: 13px !important;
+    padding: 6px 8px 16px !important;
+  }
+  .nav-item {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+  }
+  .nav-item span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .section-label {
+    font-size: 10px !important;
+    padding: 12px 8px 4px !important;
+  }
+  .user-chip {
+    padding: 6px !important;
+  }
+  .user-chip .meta .name { font-size: 12px !important; }
+  .user-chip .meta .role { font-size: 10px !important; }
+
+  .header {
+    padding: 14px 18px 10px !important;
+  }
+  .header h1 { font-size: 18px !important; }
+  .header .sub { font-size: 12px !important; }
+  .header-actions { gap: 2px !important; }
+  .header-actions .btn {
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+  }
+  /* Header дотор зөвхөн чухал товчуудыг үлдээх — Тайлан, Захиалга-г нуух */
+  #export-btn,
+  #new-order-btn {
+    display: none !important;
+  }
+
+  .toolbar {
+    padding: 10px 18px !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .filter-pill {
+    flex-shrink: 0 !important;
+    font-size: 12px !important;
+    padding: 5px 10px !important;
+  }
+  .search {
+    flex-shrink: 0 !important;
+    min-width: 160px;
+  }
+
+  /* Notification panel narrow window-д бүх өргөн */
+  .notif-panel {
+    width: 340px !important;
+    right: 18px !important;
+  }
+
+  /* Modal — narrow window-д бараг бүх өргөн */
+  .modal {
+    width: 100% !important;
+    max-width: 480px !important;
+  }
+
+  /* Table head-ийн багана нарийсгах */
+  .table-head {
+    padding: 8px 14px !important;
+    font-size: 10px !important;
+  }
+  .task-row {
+    padding: 8px 14px !important;
+  }
+}
+
+/* ═══ Илүү жижиг (хэрэв 900px доороос ороод mobile-д ороогүй бол) ═══ */
+@media (min-width: 721px) and (max-width: 860px) {
+  .header-actions #new-finance-btn,
+  .header-actions #settings-btn {
+    /* Эдгээрийг бас нуух — зөвхөн +Шинэ үлдээх */
+    display: none !important;
+  }
+}

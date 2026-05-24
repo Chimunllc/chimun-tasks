@@ -2474,3 +2474,49 @@ body {
     background: var(--panel) !important;
   }
 }
+
+/* ═══ Notification panel — content bleed-through-ийн эцсийн засвар ═══
+   Panel-ийн content area-аар доорх table-head текст харагдаж байсныг засна.
+   - Isolation: isolate шинэ stacking context үүсгэнэ
+   - z-index 9999 — бүх content-аас дээгүүр
+   - Бүх дотоод элементэд solid background  */
+.notif-panel,
+.notif-panel.show,
+.notif-panel:not([hidden]) {
+  isolation: isolate !important;
+  z-index: 9999 !important;
+  background: #ffffff !important;
+}
+@media (prefers-color-scheme: dark) {
+  .notif-panel,
+  .notif-panel.show,
+  .notif-panel:not([hidden]) {
+    background: #2f2f2f !important;
+  }
+}
+.notif-panel * {
+  background-color: inherit;
+}
+/* Solid тус тусын дотоод элементүүд */
+.notif-header,
+.notif-list,
+.notif-item,
+.notif-empty,
+.notif-footer {
+  background: #ffffff !important;
+  position: relative;
+  z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  .notif-header,
+  .notif-list,
+  .notif-item,
+  .notif-empty,
+  .notif-footer {
+    background: #2f2f2f !important;
+  }
+}
+/* Backdrop-ийг доогуур харин click-able үлдээх */
+.notif-backdrop {
+  z-index: 9998 !important;
+}

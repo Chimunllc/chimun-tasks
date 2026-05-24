@@ -1178,8 +1178,6 @@
     <h2>Тохиргоо</h2>
     <label>n8n Webhook URL (data sync)</label>
     <input id="s-api" placeholder="https://your-n8n.example.com/webhook/checklist" />
-    <label>n8n Notification Webhook URL (мэдэгдэл)</label>
-    <input id="s-notify" placeholder="https://your-n8n.example.com/webhook/notify" />
     <label>n8n Staff Webhook URL (Master Sheet sync)</label>
     <input id="s-staff" placeholder="https://your-n8n.example.com/webhook/staff" />
     <label>n8n Finance Webhook URL (санхүүгийн хүсэлт)</label>
@@ -1418,7 +1416,6 @@ let TEAM = [
 // Change here + push when the backend moves. Settings panel still lets the user
 // override locally for testing.
 const DEFAULT_API_URL     = 'https://chimunllc.app.n8n.cloud/webhook/checklist';
-const DEFAULT_NOTIFY_URL  = 'https://chimunllc.app.n8n.cloud/webhook/notify';
 // Staff roster sync — read-only GET endpoint that returns { team: [...] } from Master Sheet.
 // If reachable, replaces the hardcoded TEAM constant below at startup.
 const DEFAULT_STAFF_URL   = 'https://chimunllc.app.n8n.cloud/webhook/staff';
@@ -1492,7 +1489,7 @@ const state = {
     // Хэрэглэгчийн localStorage-д хадгалсан хуучин URL-ыг шинэ домэйн рүү шилжүүлнэ.
     const migrationFlag = 'urlMigrated_chimunllc_v1';
     if (!localStorage.getItem(migrationFlag)) {
-      for (const k of ['apiUrl', 'notifyUrl', 'staffUrl', 'financeUrl', 'uploadUrl']) {
+      for (const k of ['apiUrl', 'staffUrl', 'financeUrl', 'uploadUrl']) {
         const v = localStorage.getItem(k);
         if (v && v.includes('chimun.app.n8n.cloud')) {
           localStorage.setItem(k, v.replace('chimun.app.n8n.cloud', 'chimunllc.app.n8n.cloud'));
@@ -1502,7 +1499,6 @@ const state = {
     }
     return {
       apiUrl:      localStorage.getItem('apiUrl')      || DEFAULT_API_URL      || '',
-      notifyUrl:   localStorage.getItem('notifyUrl')   || DEFAULT_NOTIFY_URL   || '',
       staffUrl:    localStorage.getItem('staffUrl')    || DEFAULT_STAFF_URL    || '',
       financeUrl:  localStorage.getItem('financeUrl')  || DEFAULT_FINANCE_URL  || '',
       uploadUrl:   localStorage.getItem('uploadUrl')   || DEFAULT_UPLOAD_URL   || '',
@@ -2147,15 +2143,6 @@ async function addTaskComment(taskId, text, fileUrl = null) {
   task.comments.push(comment);
   logTaskActivity(task, 'comment_added', { commentId: comment.id });
   await saveTask(task);
-  // Notify other party
-  const recipient = (state.me === task.createdBy) ? task.assignee : task.createdBy;
-  if (recipient && recipient !== state.me) notify('task.commented', task, { recipient });
-  // Notify mentions (бусад хүн)
-  for (const mid of mentions) {
-    if (mid !== state.me && mid !== recipient) {
-      notify('task.mentioned', task, { recipient: mid });
-    }
-  }
   return comment;
 }
 
@@ -2171,7 +2158,7 @@ function logTaskActivity(task, action, details = {}) {
   });
 }
 
-// Статус өөрчлөх + activity log + notify
+// Статус өөрчлөх + activity log
 async function changeTaskStatus(taskId, newStatus, reason = '') {
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
@@ -2183,20 +2170,6 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (newStatus === 'declined') task.decline_reason = reason || '';
   logTaskActivity(task, 'status_changed', { from: oldStatus, to: newStatus, reason });
   await saveTask(task);
-  const recipient = (state.me === task.assignee) ? task.createdBy : task.assignee;
-  const eventMap = {
-    in_progress: 'task.started',
-    done: 'task.completed',
-    declined: 'task.declined',
-    open: 'task.reopened',
-  };
-  const ev = eventMap[newStatus];
-  if (ev && recipient && recipient !== state.me) notify(ev, task, { recipient });
-  // Declined үед CEO-д бас мэдэгдэх
-  if (newStatus === 'declined') {
-    const ceoId = getCEOId();
-    if (ceoId && ceoId !== state.me && ceoId !== recipient) notify('task.declined', task, { recipient: ceoId });
-  }
 }
 
 // Тодруулга хүсэх — сэтгэгдэл + activity log
@@ -2353,17 +2326,6 @@ async function saveTask(task, deleted=false) {
   if (ok) { flushPendingWrites(); }            // амжилттай — хуримтлагдсан backlog-оо бас илгээх
   else { enqueueWrite({ kind: 'task', action: deleted ? 'delete' : 'upsert', payload: task, ts: Date.now() }); }
 }
-async function notify(event, task, extra = {}) {
-  // extra нь { recipient } зэрэг нэмэлт мэдээлэл агуулж болно.
-  if (!state.config.notifyUrl) return;
-  try {
-    await fetch(state.config.notifyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event, task, by: state.me, ...extra })
-    });
-  } catch(e) { console.warn('notify failed', e); }
-}
 function uid() { return 't_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
 // Return TODAY as a LOCAL YYYY-MM-DD string.
@@ -2428,7 +2390,6 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
     state.tasks.push(sub);
     await saveTask(sub);
   }
-  notify('act.created', parent);
   return parent;
 }
 
@@ -2712,7 +2673,6 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
   };
   state.financeRequests.unshift(r);
   await saveFinanceRequest(r);
-  notify('finance.requested', r);
   return r;
 }
 
@@ -2727,15 +2687,12 @@ async function decideFinanceRequest(id, decision, reason = '') {
   if (decision === 'approved') {
     // Approved үед executor-г динамикаар шинэчилнэ (Master Sheet-д нягтлан солигдсон бол шинэ хүн)
     r.executor = getFinanceExecutorId();
-    notify('finance.approved', r);
     showToast('Зөвшөөрсөн. Туслах нягтланд илгээгдсэн.', 'success');
   } else if (decision === 'rejected') {
     r.status = 'done';
-    notify('finance.rejected', r);
     showToast('Татгалзсан.', 'warn');
   } else if (decision === 'deferred') {
     r.due_date = addDays(r.due_date || todayStr(), 7);
-    notify('finance.deferred', r);
     showToast('7 хоног хойшлуулсан.', 'warn');
   }
   await saveFinanceRequest(r);
@@ -2972,7 +2929,6 @@ async function executeFinanceRequest(id) {
   r.executed_by = state.me;
   r.status = 'done';
   await saveFinanceRequest(r);
-  notify('finance.executed', r);
   showToast('Гүйлгээ хийгдсэн гэж тэмдэглэгдсэн.', 'success');
   render();
 }
@@ -3396,7 +3352,6 @@ async function toggleTask(id) {
   }
   t.status = t.status === 'done' ? 'open' : 'done';
   saveTask(t);
-  notify(t.status === 'done' ? 'task.completed' : 'task.reopened', t);
   // If this was the last sub-task and all are done, also auto-complete the parent
   if (t.status === 'done' && t.parent_id) {
     const parent = state.tasks.find(x => x.id === t.parent_id);
@@ -3405,7 +3360,6 @@ async function toggleTask(id) {
       if (p.total > 0 && p.done === p.total) {
         parent.status = 'done';
         saveTask(parent);
-        notify('act.completed', parent);
       }
     }
   }
@@ -3740,13 +3694,11 @@ function saveTaskFromModal() {
     t = state.tasks.find(x=>x.id===state.editingId);
     Object.assign(t, data);
     saveTask(t);
-    notify('task.updated', t);
   } else {
     t = { id: uid(), status: 'open', created: Date.now(), createdBy: state.me, comments: [], activity: [], ...data };
     logTaskActivity(t, 'created', { title: t.title });
     state.tasks.unshift(t);
     saveTask(t);
-    notify('task.created', t);
   }
   closeTaskModal();
   render();
@@ -4143,7 +4095,6 @@ function initEvents() {
   document.getElementById('export-btn')?.addEventListener('click', exportTasksReport);
   document.getElementById('settings-btn').onclick = () => {
     document.getElementById('s-api').value = state.config.apiUrl;
-    document.getElementById('s-notify').value = state.config.notifyUrl;
     document.getElementById('s-staff').value = state.config.staffUrl;
     document.getElementById('s-finance').value = state.config.financeUrl;
     document.getElementById('s-upload').value = state.config.uploadUrl;
@@ -4152,12 +4103,10 @@ function initEvents() {
   document.getElementById('s-cancel').onclick = () => document.getElementById('settings-modal').classList.remove('open');
   document.getElementById('s-save').onclick = () => {
     state.config.apiUrl = document.getElementById('s-api').value.trim();
-    state.config.notifyUrl = document.getElementById('s-notify').value.trim();
     state.config.staffUrl = document.getElementById('s-staff').value.trim();
     state.config.financeUrl = document.getElementById('s-finance').value.trim();
     state.config.uploadUrl = document.getElementById('s-upload').value.trim();
     localStorage.setItem('apiUrl', state.config.apiUrl);
-    localStorage.setItem('notifyUrl', state.config.notifyUrl);
     localStorage.setItem('staffUrl', state.config.staffUrl);
     localStorage.setItem('financeUrl', state.config.financeUrl);
     localStorage.setItem('uploadUrl', state.config.uploadUrl);

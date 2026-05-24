@@ -2690,3 +2690,309 @@ body {
   }
 }
 /* .modal анхдагчаар position: fixed — close X-ийн absolute байрлал-д хангалттай. */
+
+/* ═══════════════════════════════════════════════════════════
+   REBRAND — амьд өнгө, тод hierarchy (v7 — 2026-05-24)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Semantic өнгөнүүд ── */
+:root {
+  --accent-blue:   #5e6ad2;
+  --accent-purple: #8b5cf6;
+  --accent-green:  #10b981;
+  --accent-amber:  #f59e0b;
+  --accent-red:    #ef4444;
+  --accent-rose:   #f43f5e;
+  --accent-cyan:   #06b6d4;
+
+  --finance-bg: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  --order-bg:   linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  --task-bg:    linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  --danger-soft: #fef2f2;
+  --warn-soft:   #fffbeb;
+  --ok-soft:     #ecfdf5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --finance-bg: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
+    --order-bg:   linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
+    --task-bg:    linear-gradient(135deg, rgba(94,106,210,0.12), rgba(94,106,210,0.04));
+    --danger-soft: rgba(239,68,68,0.10);
+    --warn-soft:   rgba(245,158,11,0.10);
+    --ok-soft:     rgba(16,185,129,0.10);
+  }
+}
+
+/* ── X close товч — улаавтар, тодорхой, sticky ──
+   `.modal button { background ... !important }` (specificity 0,1,1) -ийг
+   давахын тулд `.modal .modal-close-x` (specificity 0,2,0) гэж бичсэн. */
+.modal .modal-close-x,
+.modal-bg .modal-close-x {
+  background: var(--accent-red) !important;
+  background-image: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45), 0 2px 6px rgba(239, 68, 68, 0.25) !important;
+  position: sticky !important;
+  position: -webkit-sticky !important;
+  top: 8px !important;
+  margin-left: auto !important;
+  margin-bottom: -32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 100 !important;
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  border: 2px solid #ffffff !important;
+  padding: 0 !important;
+}
+.modal .modal-close-x:hover,
+.modal-bg .modal-close-x:hover {
+  background-image: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.55) !important;
+  transform: scale(1.05);
+}
+.modal .modal-close-x:active,
+.modal-bg .modal-close-x:active {
+  transform: scale(.92) !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.30) !important;
+}
+.modal .modal-close-x svg {
+  width: 18px !important;
+  height: 18px !important;
+  stroke: #ffffff !important;
+  stroke-width: 2.5 !important;
+}
+@media (max-width: 720px) {
+  .modal .modal-close-x,
+  .modal-bg .modal-close-x {
+    top: max(12px, env(safe-area-inset-top, 12px)) !important;
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .modal .modal-close-x svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+}
+
+/* ── Primary товч — илүү тод, gradient ── */
+.btn-primary,
+.modal .btn-primary,
+.login-submit {
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 4px 12px rgba(94, 106, 210, 0.25), 0 2px 4px rgba(94, 106, 210, 0.15) !important;
+  font-weight: 600 !important;
+}
+.btn-primary:hover,
+.modal .btn-primary:hover,
+.login-submit:hover {
+  background: linear-gradient(135deg, #4b56b8 0%, #7c3aed 100%) !important;
+  box-shadow: 0 6px 20px rgba(94, 106, 210, 0.35) !important;
+  transform: translateY(-1px);
+}
+.btn-primary:active,
+.modal .btn-primary:active,
+.login-submit:active {
+  transform: translateY(0) scale(.98);
+}
+
+/* + Шинэ товч (header) — арилгасан */
+.header-actions .btn-primary {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(94, 106, 210, 0.25) !important;
+}
+
+/* ── Action товчнууд — Зөвшөөрөх / Татгалзах / Хойшлуулах ── */
+button[id*="f-approve"], button[id*="approve"],
+.btn-approve {
+  background: linear-gradient(135deg, var(--accent-green) 0%, #059669 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25) !important;
+  font-weight: 600 !important;
+}
+button[id*="f-decline"], button[id*="decline"], button[id*="reject"],
+.btn-decline {
+  background: linear-gradient(135deg, var(--accent-red) 0%, #dc2626 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25) !important;
+  font-weight: 600 !important;
+}
+button[id*="f-defer"], button[id*="defer"], button[id*="postpone"],
+.btn-defer {
+  background: linear-gradient(135deg, var(--accent-amber) 0%, #d97706 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25) !important;
+  font-weight: 600 !important;
+}
+
+/* ── Filter pills — идэвхтэй pill-ийг илүү тод ── */
+.filter-pill.active {
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 8px rgba(94, 106, 210, 0.30) !important;
+}
+
+/* ── FAB — gradient илүү амьд ── */
+.fab {
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%) !important;
+  box-shadow: 0 8px 24px rgba(94, 106, 210, 0.40), 0 4px 8px rgba(139, 92, 246, 0.25) !important;
+}
+.fab:active {
+  box-shadow: 0 4px 16px rgba(94, 106, 210, 0.50) !important;
+}
+
+/* ── Empty state icon — өнгөтэй, амьд ── */
+.empty .lcd-icon {
+  opacity: 1 !important;
+  color: var(--accent-blue) !important;
+  background: var(--task-bg);
+  border-radius: 50%;
+  padding: 16px;
+  box-sizing: content-box;
+}
+
+/* ── Status / decision badges — амьд өнгөтэй ── */
+.finance-pill {
+  font-weight: 600 !important;
+  padding: 4px 10px !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.finance-pill.pending {
+  background: var(--warn-soft) !important;
+  color: #b45309 !important;
+  border: 1px solid rgba(245, 158, 11, 0.20);
+}
+.finance-pill.approved {
+  background: var(--ok-soft) !important;
+  color: #047857 !important;
+  border: 1px solid rgba(16, 185, 129, 0.20);
+}
+.finance-pill.rejected {
+  background: var(--danger-soft) !important;
+  color: #b91c1c !important;
+  border: 1px solid rgba(239, 68, 68, 0.20);
+}
+.finance-pill.deferred {
+  background: rgba(99, 102, 241, 0.10) !important;
+  color: #4338ca !important;
+  border: 1px solid rgba(99, 102, 241, 0.20);
+}
+.finance-pill.executed {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #fff !important;
+  border: none;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.25);
+}
+
+/* ── Bell badge (notification count) — илүү тод ── */
+.notif-badge,
+.bell-btn .notif-badge {
+  background: linear-gradient(135deg, var(--accent-red) 0%, var(--accent-rose) 100%) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35) !important;
+  border: 2px solid var(--bg) !important;
+}
+
+/* ── Count badge (nav item тоо) — нэрхээ илүү ── */
+.count-badge {
+  font-weight: 600 !important;
+}
+.nav-item.active .count-badge {
+  background: var(--accent-blue) !important;
+  color: #ffffff !important;
+}
+
+/* ── Login screen — илүү амьд gradient ── */
+.login-screen {
+  background: linear-gradient(135deg, #4f46e5 0%, #8b5cf6 50%, #ec4899 100%) !important;
+}
+.login-logo {
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)) !important;
+  box-shadow: 0 8px 24px rgba(94, 106, 210, 0.35);
+}
+
+/* ── User avatar — gradient ── */
+.user-chip .avatar,
+.task-row .avatar,
+.assignee-chip .avatar {
+  background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+
+/* ── Header h1-ийн icon — primary өнгө ── */
+.header h1 .lcd-icon {
+  color: var(--accent-blue) !important;
+  opacity: 1 !important;
+}
+
+/* ── Task row hover — илүү тод feedback ── */
+.task-row:hover {
+  background: var(--task-bg) !important;
+}
+
+/* ── Priority dot — илүү тод ── */
+.task-row .priority-dot,
+.meta-mobile-only[style*="●"] {
+  font-size: 14px !important;
+}
+
+/* ── Search input focus — gradient ring ── */
+.search input:focus {
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.20) !important;
+  border-color: var(--accent-blue) !important;
+}
+
+/* ── Mobile nav active — color tint ── */
+@media (max-width: 720px) {
+  .mobile-nav-item.active {
+    color: var(--accent-blue) !important;
+  }
+  .mobile-nav-item.active .lcd-icon {
+    color: var(--accent-blue) !important;
+  }
+}
+
+/* ── Sidebar active nav item — primary tint ── */
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(94, 106, 210, 0.08), rgba(139, 92, 246, 0.04)) !important;
+  color: var(--accent-blue) !important;
+  font-weight: 600 !important;
+}
+.nav-item.active .lcd-icon {
+  color: var(--accent-blue) !important;
+  opacity: 1 !important;
+}
+
+/* ── Toast — амьд өнгөтэй ── */
+.toast {
+  font-weight: 500 !important;
+}
+.toast.success { border-left: 4px solid var(--accent-green); }
+.toast.error   { border-left: 4px solid var(--accent-red); }
+.toast.warn    { border-left: 4px solid var(--accent-amber); }
+.toast.info    { border-left: 4px solid var(--accent-blue); }
+
+/* ── Status dot — finance pending бол улбар ── */
+.task-row .status-dot {
+  background: var(--accent-amber) !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+.task-row .status-dot.done {
+  background: var(--accent-green) !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+.task-row .status-dot.declined {
+  background: var(--accent-red) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}

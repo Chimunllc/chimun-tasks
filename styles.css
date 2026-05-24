@@ -2745,9 +2745,17 @@ body {
   z-index: 100 !important;
   width: 32px !important;
   height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  aspect-ratio: 1 / 1 !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
   border-radius: 50% !important;
   border: none !important;
   padding: 0 !important;
+  line-height: 1 !important;
   transition: background-color 120ms ease, transform 100ms ease !important;
 }
 .modal .modal-close-x:hover,
@@ -2772,6 +2780,10 @@ body {
     top: max(14px, env(safe-area-inset-top, 14px)) !important;
     width: 36px !important;
     height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    max-width: 36px !important;
+    max-height: 36px !important;
   }
   .modal .modal-close-x svg {
     width: 18px !important;

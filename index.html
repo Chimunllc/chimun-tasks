@@ -513,14 +513,15 @@
   .login-card .login-sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
   #pin-login-form { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .login-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin: 14px 0 4px; text-align: left; }
-  #login-user-select, #login-pin-input {
+  #login-id-input, #login-pin-input {
     width: 100%; padding: 12px 14px; font-size: 16px;
     border: 1px solid var(--border); border-radius: 10px;
     background: #fff; color: var(--text);
     -webkit-appearance: none; appearance: none;
   }
   #login-pin-input { letter-spacing: 8px; text-align: center; font-weight: 600; }
-  #login-user-select:focus, #login-pin-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: var(--primary); }
+  #login-id-input:focus, #login-pin-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: var(--primary); }
+  #login-id-input { text-transform: uppercase; letter-spacing: 2px; font-weight: 600; }
   .login-submit {
     width: 100%; margin-top: 18px; padding: 13px 18px;
     background: var(--primary); color: #fff; border: none; border-radius: 10px;
@@ -929,11 +930,13 @@
   <div class="login-card">
     <div class="login-logo">✓</div>
     <h1>Чимун ХХК · Дотоод даалгавар</h1>
-    <p class="login-sub">Нэрээ сонгож PIN кодоо оруулна уу</p>
+    <p class="login-sub">ID болон PIN кодоо оруулж нэвтэрнэ үү</p>
 
     <form id="pin-login-form" autocomplete="off">
-      <label class="login-label">Хэн бэ?</label>
-      <select id="login-user-select" required></select>
+      <label class="login-label">Ажилтны ID</label>
+      <input id="login-id-input" type="text" required autocomplete="off"
+             autocapitalize="characters" spellcheck="false"
+             placeholder="Жишээ: M01" />
 
       <label class="login-label">PIN код (4 орон)</label>
       <input id="login-pin-input" type="tel" inputmode="numeric" pattern="[0-9]{4}"
@@ -4217,22 +4220,15 @@ function tryRestoreSession() {
    Each TEAM member has a 4-digit `pin`. User picks their name + enters PIN to sign in. */
 
 function initPinLogin() {
-  // Populate the user dropdown with everyone who has a PIN configured
-  const sel = document.getElementById('login-user-select');
-  sel.innerHTML = '<option value="" disabled selected>— Сонгох —</option>';
-  TEAM.filter(m => m.pin).forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.id;
-    opt.textContent = m.name + ' · ' + m.role;
-    sel.appendChild(opt);
-  });
+  // ID-р нэвтрэх — нэрийн жагсаалт харуулахгүй (нууцлал). Ажилтан өөрийн ID-г бичнэ.
+  const idInput = document.getElementById('login-id-input');
 
   const form = document.getElementById('pin-login-form');
   const pinInput = document.getElementById('login-pin-input');
   // Auto-submit when 4 digits entered (faster UX on mobile)
   pinInput.addEventListener('input', () => {
     pinInput.value = pinInput.value.replace(/\D/g,'').slice(0,4);
-    if (pinInput.value.length === 4) {
+    if (pinInput.value.length === 4 && idInput.value.trim()) {
       // Defer slightly so the keyboard "done" UX feels natural
       setTimeout(() => form.requestSubmit(), 80);
     }
@@ -4240,7 +4236,7 @@ function initPinLogin() {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const userId = sel.value;
+    const userId = idInput.value.trim().toUpperCase();
     const pin = pinInput.value.trim();
     handlePinLogin(userId, pin);
   });
@@ -4258,7 +4254,7 @@ function initPinLogin() {
     regSection.style.display = 'none';
     loginFooter.style.display = 'block';
     form.style.display = 'flex';
-    document.querySelector('.login-sub').textContent = 'Нэрээ сонгож PIN кодоо оруулна уу';
+    document.querySelector('.login-sub').textContent = 'ID болон PIN кодоо оруулж нэвтэрнэ үү';
   });
   document.getElementById('reg-submit')?.addEventListener('click', handleRegister);
 
@@ -4362,10 +4358,10 @@ async function handleRegister() {
       // Login руу буцаад шинэ хэрэглэгчийг сонгуулах
       document.getElementById('reg-cancel').click();
       initPinLogin();
-      const sel = document.getElementById('login-user-select');
+      const idInput = document.getElementById('login-id-input');
       const newId = data.id;
-      if (newId && [...sel.options].some(o => o.value === newId)) sel.value = newId;
-      showLoginError('Бүртгэл амжилттай. PIN кодоо оруулж нэвтэрнэ үү.', 'info');
+      if (newId && idInput) idInput.value = String(newId).toUpperCase();
+      showLoginError('Бүртгэл амжилттай. ID: ' + (newId||'') + ' · PIN кодоо оруулж нэвтэрнэ үү.', 'info');
     }, 1200);
   } catch (e) {
     console.warn('Бүртгэл амжилтгүй:', e);
@@ -4377,11 +4373,12 @@ async function handleRegister() {
 }
 
 async function handlePinLogin(userId, pin) {
-  if (!userId) return showLoginError('Нэрээ сонгоно уу.');
+  if (!userId) return showLoginError('Ажилтны ID-гаа оруулна уу.');
   if (!/^\d{4}$/.test(pin)) return showLoginError('PIN нь 4 оронтой тоо байх ёстой.');
 
+  const uid = String(userId).trim().toUpperCase();
   const tryAuth = () => {
-    const member = TEAM.find(m => m.id === userId);
+    const member = TEAM.find(m => String(m.id).toUpperCase() === uid);
     if (!member) return { ok: false, reason: 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.' };
     if (!member.pin || String(member.pin) !== String(pin)) return { ok: false, reason: 'wrong_pin' };
     return { ok: true, member };

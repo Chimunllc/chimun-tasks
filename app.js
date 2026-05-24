@@ -36,30 +36,32 @@ const BRANCHES = [
 //   C03 Бямбацэрэн, C04 Төгөлдөр, C05 Эрка, T01 Содхүү, T02 Тэлмэн.
 //
 // `let` (not const) — runtime sync replaces this array in-place from Master Sheet via n8n /staff endpoint.
-// PIN-ийг hardcoded TEAM-д хадгалахгүй. Master Sheet sync (loadTeamFromAPI) ажиллахгүй бол
-// нэвтрэлт ажиллахгүй — энэ нь зориуд тавьсан failsafe. Production PIN зөвхөн Sheet-д байрладаг.
+// ⚠ Fallback PIN '1111' нь Master Sheet холбогдоогүй үед түр нэвтрэх боломжтой байх зориулалттай.
+//   Master Sheet idевхтэй болсны дараа Sheet дотор бичсэн PIN-ээр шууд override хийгдэнэ
+//   (loadTeamFromAPI → TEAM.length = 0; push(...) — энэ нь array-г бүтнээр солино).
+//   Production-д шилжсэний дараа энэ файлаас 1111-ийг хасч, зөвхөн Master Sheet ашиглахаа боль.
 let TEAM = [
-  { id: 'CEO', name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '',
+  { id: 'CEO', name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1111',
     email: 'ceo@nomaadcamp.com',
     branches: ['m-event','camp','shared','production'] },
 
   // Нэгдсэн алба (cross-cutting)
-  { id: 'S01', name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
-  { id: 'S03', name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
+  { id: 'S01', name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1111', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
+  { id: 'S03', name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1111', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
 
   // M Event салбар
-  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '', email: 'coo@mevent.mn',            branches: ['m-event','production'] },
-  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '', email: '',                         branches: ['m-event','production'] },
-  { id: '003', name: 'Д.Нинждолгор',   role: 'Нярав',                  level: 60, pin: '', email: '',                         branches: ['m-event'] },
-  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '', email: '',                       branches: ['m-event','production'] },
-  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '', email: '',                         branches: ['m-event','production'] },
-  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '', email: '',                         branches: ['m-event','production'] },
-  { id: '006', name: 'Хишигтогтох',    role: 'Цэврэлгээ',              level: 40, pin: '', email: '',                         branches: ['m-event'] },
+  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event','production'] },
+  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: '003', name: 'Д.Нинждолгор',   role: 'Нярав',                  level: 60, pin: '1111', email: '',                         branches: ['m-event'] },
+  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '1111', email: '',                       branches: ['m-event','production'] },
+  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: '006', name: 'Хишигтогтох',    role: 'Цэврэлгээ',              level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
 
   // NOMAAD Camp
-  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '', email: 'delgerbat69@nomaadcamp.com', branches: ['camp','production'] },
-  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '', email: '',                         branches: ['camp','production'] },
-  { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '', email: '',                         branches: ['camp'] },
+  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp','production'] },
+  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '1111', email: '',                         branches: ['camp','production'] },
+  { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '1111', email: '',                         branches: ['camp'] },
 ];
 
 // n8n webhook URL — hardcoded so staff never have to configure anything.

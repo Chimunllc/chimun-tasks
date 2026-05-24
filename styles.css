@@ -4501,3 +4501,100 @@ body {
 .user-chip .avatar img {
   border-radius: inherit;
 }
+
+/* ═══ Font size scale (data-fs="sm|md|lg|xl") ═══ */
+:root[data-fs="sm"] { font-size: 14px; }
+:root[data-fs="md"] { font-size: 16px; }  /* default */
+:root[data-fs="lg"] { font-size: 17px; }
+:root[data-fs="xl"] { font-size: 19px; }
+
+/* Font size picker UI */
+.font-size-picker {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
+.fs-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--panel-hover);
+  border: 2px solid transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.fs-btn[data-fs="sm"] { font-size: 12px; }
+.fs-btn[data-fs="md"] { font-size: 14px; }
+.fs-btn[data-fs="lg"] { font-size: 17px; }
+.fs-btn[data-fs="xl"] { font-size: 20px; }
+.fs-btn:hover { background: var(--border); }
+.fs-btn.active {
+  background: var(--panel);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+/* ═══ High contrast mode ═══ */
+:root.high-contrast {
+  --border: rgba(15, 15, 15, 0.25) !important;
+  --border-strong: rgba(15, 15, 15, 0.40) !important;
+  --text: #000000 !important;
+  --muted: #444444 !important;
+  --muted-soft: #666666 !important;
+  --bg: #ffffff !important;
+  --panel: #ffffff !important;
+  --panel-hover: #f0f0f0 !important;
+}
+:root.high-contrast .filter-pill,
+:root.high-contrast .nav-item,
+:root.high-contrast .task-row {
+  border: 1px solid var(--border) !important;
+}
+:root.high-contrast .filter-pill.active {
+  outline: 2px solid #000000;
+}
+:root.high-contrast.dark,
+:root.high-contrast[data-theme="dark"] {
+  --text: #ffffff !important;
+  --bg: #000000 !important;
+  --panel: #1a1a1a !important;
+  --panel-hover: #2a2a2a !important;
+  --border: rgba(255, 255, 255, 0.30) !important;
+}
+
+/* ═══ Drag-drop reorder visual ═══ */
+.task-row[draggable="true"] { cursor: grab; }
+.task-row.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+.task-row.drag-over {
+  background: rgba(94, 106, 210, 0.10) !important;
+  border-top: 2px solid var(--accent-blue) !important;
+}
+@media (max-width: 720px) {
+  /* Touch device — drag disable, swipe action хэрэглэгдэх */
+  .task-row[draggable="true"] { cursor: pointer; }
+}
+
+/* ═══ Permissions UI rows ═══ */
+.perm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel-hover);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 100ms ease;
+}
+.perm-row:hover { background: var(--border); }
+.perm-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}

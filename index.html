@@ -574,6 +574,19 @@
     <label>И-мэйл</label>
     <input id="profile-email" type="email" placeholder="name@example.com" />
 
+    <h3 style="font-size:14px;font-weight:700;margin:20px 0 10px;border-top:1px solid var(--border);padding-top:16px;">Харагдах байдал</h3>
+    <label>Үсгийн хэмжээ</label>
+    <div class="font-size-picker">
+      <button type="button" class="fs-btn" data-fs="sm">A</button>
+      <button type="button" class="fs-btn fs-default" data-fs="md">A</button>
+      <button type="button" class="fs-btn fs-lg" data-fs="lg">A</button>
+      <button type="button" class="fs-btn fs-xl" data-fs="xl">A</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;">
+      <input type="checkbox" id="profile-high-contrast" style="width:18px;height:18px;cursor:pointer;" />
+      <span>Илүү тод харагдах горим (high contrast)</span>
+    </label>
+
     <h3 style="font-size:14px;font-weight:700;margin:20px 0 10px;border-top:1px solid var(--border);padding-top:16px;">PIN солих</h3>
     <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Хоосон үлдээвэл PIN солигдохгүй.</p>
     <label>Одоогийн PIN</label>
@@ -586,6 +599,25 @@
     <div class="modal-actions">
       <button class="btn" id="profile-cancel">Болих</button>
       <button class="btn btn-primary" id="profile-save">Хадгалах</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PERMISSIONS MODAL — CEO эрх тохируулах ─── -->
+<div class="modal-bg" id="permissions-modal">
+  <div class="modal">
+    <h2>Эрхийн тохиргоо</h2>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5;">
+      Ямар ажилтанд ямар үйлдэл хийх эрх олгох вэ? Зөвхөн CEO харах боломжтой.
+    </p>
+    <div id="perm-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <p style="font-size:11px;color:var(--muted);margin-top:14px;line-height:1.5;">
+      * Тохируулга Master Sheet-д хадгалагдахын тулд n8n endpoint шаардлагатай.
+        Одоогоор зөвхөн локал төхөөрөмжид хадгалагдана.
+    </p>
+    <div class="modal-actions">
+      <button class="btn" id="perm-cancel">Болих</button>
+      <button class="btn btn-primary" id="perm-save">Хадгалах</button>
     </div>
   </div>
 </div>

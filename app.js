@@ -1905,6 +1905,13 @@ function renderTaskList() {
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
+    document.getElementById('dash-permissions')?.addEventListener('click', openPermissionsModal);
+    document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
+    // CEO бус хэрэглэгчид permissions + email digest нуух
+    if (!state.isCEO) {
+      document.getElementById('dash-permissions')?.style.setProperty('display', 'none');
+      document.getElementById('dash-email-digest')?.style.setProperty('display', 'none');
+    }
     return;
   } else if (state.view === 'calendar') {
     if (tableHead) tableHead.style.display = 'none';
@@ -2010,6 +2017,14 @@ function renderDashboard() {
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           PDF хэвлэх
         </button>
+        <button class="btn" id="dash-email-digest">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Долоо хоногийн тойм имэйлдэх
+        </button>
+        <button class="btn" id="dash-permissions">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+          Эрх тохируулах
+        </button>
       </div>
       <div class="dashboard-grid">
         <!-- KPI карт-ууд -->
@@ -2081,6 +2096,68 @@ function renderDashboard() {
       </div>
     </div>
   `;
+}
+
+/* ─── Долоо хоногийн email тойм — CEO-д ──────────────────
+   n8n webhook руу POST хийж тус ажилтан бүрд тус тусын статистикийг
+   email-ээр илгээнэ. Webhook payload: { type: 'weekly_digest', period, stats } */
+async function sendWeeklyDigest() {
+  if (!state.isCEO) return;
+  const webhook = state.config.apiUrl;
+  if (!webhook) {
+    showToast('n8n endpoint тохируулагдаагүй', 'warn');
+    return;
+  }
+  // Сүүлийн 7 хоногийн өгөгдөл цуглуулах
+  const now = new Date();
+  const weekAgo = new Date(now);
+  weekAgo.setDate(now.getDate() - 7);
+  const tasks = state.tasks || [];
+  const fr = state.financeRequests || [];
+
+  const stats = {
+    period: {
+      from: weekAgo.toISOString().slice(0, 10),
+      to: now.toISOString().slice(0, 10),
+    },
+    tasks: {
+      total: tasks.length,
+      done: tasks.filter(t => t.status === 'done').length,
+      open: tasks.filter(t => t.status !== 'done').length,
+      overdue: tasks.filter(t => t.status !== 'done' && t.due && t.due < todayStr()).length,
+      created_this_week: tasks.filter(t => t.created_at && new Date(t.created_at) >= weekAgo).length,
+      completed_this_week: tasks.filter(t => t.executed_at && new Date(t.executed_at) >= weekAgo).length,
+    },
+    finance: {
+      total: fr.length,
+      pending: fr.filter(r => (r.decision || 'pending') === 'pending').length,
+      approved_amount: fr.filter(r => r.decision === 'approved').reduce((s, r) => s + (+r.amount || 0), 0),
+    },
+    by_staff: (() => {
+      const map = {};
+      tasks.forEach(t => {
+        if (!t.assignee) return;
+        if (!map[t.assignee]) map[t.assignee] = { name: memberName(t.assignee), done: 0, active: 0, overdue: 0 };
+        if (t.status === 'done') map[t.assignee].done++;
+        else map[t.assignee].active++;
+        if (t.status !== 'done' && t.due && t.due < todayStr()) map[t.assignee].overdue++;
+      });
+      return Object.values(map);
+    })(),
+  };
+
+  try {
+    showToast('Имэйл илгээж байна...', 'info', 2000);
+    const r = await fetch(webhook.replace(/\/[^\/]+$/, '/weekly-digest'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'weekly_digest', stats, requested_by: state.user?.email }),
+    });
+    if (r.ok) showToast('Долоо хоногийн тойм имэйлээр илгээгдлээ', 'success', 3000);
+    else throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    showToast('Имэйл илгээх амжилтгүй: ' + e.message, 'error', 4500);
+  }
 }
 
 /* ─── Google Calendar / ICS export ───────────────────────
@@ -2366,6 +2443,82 @@ function emptyStateHtml() {
   }
   return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div>${actionBtn}</div>`;
 }
+/* ─── Permissions UI (CEO only) ─── */
+function openPermissionsModal() {
+  if (!state.isCEO) return;
+  const list = document.getElementById('perm-list');
+  const perms = JSON.parse(localStorage.getItem('permissions') || '{}');
+  // Боломжит эрхүүд
+  const features = [
+    { key: 'create_task', label: 'Шинэ ажил үүсгэх' },
+    { key: 'create_finance', label: 'Санхүүгийн хүсэлт илгээх' },
+    { key: 'create_order', label: 'Шинэ захиалга (5-дамжлагат акт) үүсгэх' },
+    { key: 'edit_others', label: 'Өөр хүний ажлыг засах' },
+    { key: 'delete_tasks', label: 'Ажил устгах' },
+    { key: 'view_dashboard', label: 'Тойм үзэх' },
+  ];
+  list.innerHTML = features.map(f => {
+    const enabled = perms[f.key] !== false; // default true
+    return `
+      <label class="perm-row">
+        <input type="checkbox" data-perm-key="${f.key}" ${enabled ? 'checked' : ''} />
+        <span>${escapeHtml(f.label)}</span>
+      </label>
+    `;
+  }).join('');
+  document.getElementById('permissions-modal').classList.add('open');
+}
+
+function setupPermissionsModal() {
+  document.getElementById('perm-cancel')?.addEventListener('click', () =>
+    document.getElementById('permissions-modal').classList.remove('open'));
+  document.getElementById('perm-save')?.addEventListener('click', () => {
+    const perms = {};
+    document.querySelectorAll('#perm-list input[data-perm-key]').forEach(cb => {
+      perms[cb.dataset.permKey] = cb.checked;
+    });
+    localStorage.setItem('permissions', JSON.stringify(perms));
+    document.getElementById('permissions-modal').classList.remove('open');
+    showToast('Эрхийн тохиргоо хадгалагдсан', 'success');
+  });
+}
+
+/* ─── Drag-drop reorder (desktop) ─── */
+let _dragSrcId = null;
+function attachDragReorder(row, t) {
+  row.addEventListener('dragstart', (e) => {
+    _dragSrcId = t.id;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', t.id); } catch(err) {}
+  });
+  row.addEventListener('dragend', () => {
+    row.classList.remove('dragging');
+    document.querySelectorAll('.task-row.drag-over').forEach(r => r.classList.remove('drag-over'));
+    _dragSrcId = null;
+  });
+  row.addEventListener('dragover', (e) => {
+    if (!_dragSrcId || _dragSrcId === t.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    row.classList.add('drag-over');
+  });
+  row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    row.classList.remove('drag-over');
+    if (!_dragSrcId || _dragSrcId === t.id) return;
+    const srcIdx = state.tasks.findIndex(x => x.id === _dragSrcId);
+    const dstIdx = state.tasks.findIndex(x => x.id === t.id);
+    if (srcIdx < 0 || dstIdx < 0) return;
+    const [moved] = state.tasks.splice(srcIdx, 1);
+    state.tasks.splice(dstIdx, 0, moved);
+    saveData();
+    render();
+    showToast('Эрэмбэ өөрчилсөн', 'success', 1200);
+  });
+}
+
 /* ─── Long-press → bulk mode (мобайл + desktop) ─── */
 function attachLongPress(row, t) {
   let timer = null;
@@ -2507,6 +2660,11 @@ function renderRow(t) {
   row.dataset.taskId = t.id;
   // Bulk-selected state
   if (state.bulkSelected && state.bulkSelected.has(t.id)) row.classList.add('bulk-selected');
+  // Drag-drop reorder (desktop) — зөвхөн өөрийн ажил эсвэл CEO үед
+  if (!t.parent_id && t.kind !== 'finance_request' && (state.isCEO || t.createdBy === state.me)) {
+    row.draggable = true;
+    attachDragReorder(row, t);
+  }
   // Мобайл swipe action нэмэх — task row-нд touch handler
   attachSwipeActions(row, t);
   // Long-press → bulk mode-руу орох (мобайл)
@@ -3944,6 +4102,8 @@ function initEvents() {
 
   // Profile modal setup
   setupProfileModal();
+  // Permissions modal (CEO only)
+  setupPermissionsModal();
 
   // Notification bell — toggle drawer
   const notifBtn = document.getElementById('notif-btn');
@@ -4128,6 +4288,10 @@ function openProfileModal() {
   document.getElementById('profile-pin-current').value = '';
   document.getElementById('profile-pin-new').value = '';
   document.getElementById('profile-pin-confirm').value = '';
+  // Accessibility prefs
+  const fs = localStorage.getItem('fontSize') || 'md';
+  document.querySelectorAll('.fs-btn').forEach(b => b.classList.toggle('active', b.dataset.fs === fs));
+  document.getElementById('profile-high-contrast').checked = localStorage.getItem('highContrast') === '1';
   // Avatar preview
   const picture = state.user.picture || localStorage.getItem('userPicture');
   const display = document.getElementById('profile-avatar-display');
@@ -4149,7 +4313,36 @@ function openProfileModal() {
   document.getElementById('profile-modal').classList.add('open');
 }
 
+/* ─── Accessibility — үсгийн хэмжээ + high contrast ─── */
+function applyFontSize(size) {
+  document.documentElement.setAttribute('data-fs', size);
+  localStorage.setItem('fontSize', size);
+}
+function applyHighContrast(on) {
+  document.documentElement.classList.toggle('high-contrast', !!on);
+  localStorage.setItem('highContrast', on ? '1' : '0');
+}
+function loadAccessibilityPrefs() {
+  const fs = localStorage.getItem('fontSize') || 'md';
+  applyFontSize(fs);
+  if (localStorage.getItem('highContrast') === '1') applyHighContrast(true);
+}
+// Аппын анх ачаалах үед хэрэглэх
+loadAccessibilityPrefs();
+
 function setupProfileModal() {
+  // Font size picker
+  document.querySelectorAll('.fs-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.fs-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyFontSize(btn.dataset.fs);
+    });
+  });
+  // High contrast toggle
+  document.getElementById('profile-high-contrast')?.addEventListener('change', (e) => {
+    applyHighContrast(e.target.checked);
+  });
   document.getElementById('profile-cancel')?.addEventListener('click', () =>
     document.getElementById('profile-modal').classList.remove('open'));
 

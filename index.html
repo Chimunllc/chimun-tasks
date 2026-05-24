@@ -2218,7 +2218,12 @@ async function loadData() {
   }
   if (state.config.apiUrl) {
     try {
-      const r = await fetch(state.config.apiUrl + '?action=list');
+      // Cache-bust — n8n Cloud GET-ийг ~5 мин кэшилдэг тул Sheet дээр шууд хийсэн өөрчлөлт
+      // (мөр устгах/засах) тусахгүй байдаг. t=Date.now() + no-store-р фреш дата авна.
+      const r = await fetch(state.config.apiUrl + '?action=list&t=' + Date.now(), {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       const raw = Array.isArray(data) ? data : (data.tasks || []);
@@ -2640,7 +2645,11 @@ async function saveFinanceRequest(r, deleted = false) {
 async function loadFinanceRequests() {
   if (state.config.financeUrl) {
     try {
-      const res = await fetch(state.config.financeUrl + '?action=list');
+      // Cache-bust — Sheet дээр шууд устгасан/засварласан хүсэлт нэн даруй тусахын тулд
+      const res = await fetch(state.config.financeUrl + '?action=list&t=' + Date.now(), {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const raw = Array.isArray(data?.requests) ? data.requests : [];

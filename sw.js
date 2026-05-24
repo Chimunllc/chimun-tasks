@@ -10,10 +10,12 @@
  * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
  */
 
-const CACHE_VERSION = 'chimun-tasks-v40-offline-cachebust-darkmode-2026-05-24';
+const CACHE_VERSION = 'chimun-tasks-v41-split-css-js-2026-05-24';
 const SHELL_FILES = [
   './',
   './index.html',
+  './styles.css',
+  './app.js',
   './manifest.json',
   './icon.svg',
 ];
@@ -52,12 +54,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // NETWORK-FIRST for HTML navigation + index.html — шинэ код шууд хүрнэ.
-  // Navigation requests (хуудас ачаалах) ба index.html-г онлайн үед үргэлж сүлжээнээс татна.
+  // NETWORK-FIRST for HTML navigation + app shell (index.html, styles.css, app.js)
+  // — ингэснээр шинэчилсэн код шууд хүрнэ. CSS/JS-ийг HTML-тэй хамт fresh байлгасан нь
+  //   хувилбар таарахгүй (HTML шинэ, JS хуучин) асуудлаас сэргийлнэ.
   const isHTML = req.mode === 'navigate'
     || url.pathname.endsWith('/')
     || url.pathname.endsWith('/index.html');
-  if (isHTML) {
+  const isAppShell = url.origin === self.location.origin
+    && (url.pathname.endsWith('/styles.css') || url.pathname.endsWith('/app.js'));
+  if (isHTML || isAppShell) {
     event.respondWith(
       fetch(req)
         .then((res) => {
@@ -68,7 +73,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+        .catch(() => caches.match(req).then(c => c || (isHTML ? caches.match('./index.html') : undefined)))
     );
     return;
   }

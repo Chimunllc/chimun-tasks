@@ -2724,15 +2724,15 @@ body {
   }
 }
 
-/* ── X close товч — цэвэрхэн, нарийн, sticky ──
-   Аяг өнгөтэй биш — subtle gray bg, hover-д л дарвал улаавтар.
+/* ── X close товч — solid улаан, цэвэрхэн, sticky ──
+   Gradient/border/glow байхгүй. Зөвхөн solid улаан bg + цагаан icon.
    `.modal button { background ... !important }`-ийг давах ёстой тул
    `.modal .modal-close-x` (specificity 0,2,0) ашигласан. */
 .modal .modal-close-x,
 .modal-bg .modal-close-x {
-  background: rgba(15, 15, 15, 0.05) !important;
+  background: var(--accent-red) !important;
   background-image: none !important;
-  color: var(--muted) !important;
+  color: #ffffff !important;
   box-shadow: none !important;
   position: sticky !important;
   position: -webkit-sticky !important;
@@ -2743,42 +2743,35 @@ body {
   align-items: center !important;
   justify-content: center !important;
   z-index: 100 !important;
-  width: 30px !important;
-  height: 30px !important;
+  width: 32px !important;
+  height: 32px !important;
   border-radius: 50% !important;
   border: none !important;
   padding: 0 !important;
-  transition: background-color 120ms ease, color 120ms ease, transform 100ms ease !important;
+  transition: background-color 120ms ease, transform 100ms ease !important;
 }
 .modal .modal-close-x:hover,
 .modal-bg .modal-close-x:hover {
-  background: rgba(239, 68, 68, 0.10) !important;
-  color: var(--accent-red) !important;
-  box-shadow: none !important;
+  background: #dc2626 !important;
+  background-image: none !important;
 }
 .modal .modal-close-x:active,
 .modal-bg .modal-close-x:active {
   transform: scale(.92) !important;
-  background: rgba(239, 68, 68, 0.18) !important;
+  background: #b91c1c !important;
 }
 .modal .modal-close-x svg {
   width: 16px !important;
   height: 16px !important;
-  stroke: currentColor !important;
-  stroke-width: 2 !important;
-}
-@media (prefers-color-scheme: dark) {
-  .modal .modal-close-x,
-  .modal-bg .modal-close-x {
-    background: rgba(255, 255, 255, 0.06) !important;
-  }
+  stroke: #ffffff !important;
+  stroke-width: 2.5 !important;
 }
 @media (max-width: 720px) {
   .modal .modal-close-x,
   .modal-bg .modal-close-x {
     top: max(14px, env(safe-area-inset-top, 14px)) !important;
-    width: 34px !important;
-    height: 34px !important;
+    width: 36px !important;
+    height: 36px !important;
   }
   .modal .modal-close-x svg {
     width: 18px !important;

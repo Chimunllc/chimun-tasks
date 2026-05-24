@@ -2724,57 +2724,65 @@ body {
   }
 }
 
-/* ── X close товч — улаавтар, тодорхой, sticky ──
-   `.modal button { background ... !important }` (specificity 0,1,1) -ийг
-   давахын тулд `.modal .modal-close-x` (specificity 0,2,0) гэж бичсэн. */
+/* ── X close товч — цэвэрхэн, нарийн, sticky ──
+   Аяг өнгөтэй биш — subtle gray bg, hover-д л дарвал улаавтар.
+   `.modal button { background ... !important }`-ийг давах ёстой тул
+   `.modal .modal-close-x` (specificity 0,2,0) ашигласан. */
 .modal .modal-close-x,
 .modal-bg .modal-close-x {
-  background: var(--accent-red) !important;
-  background-image: linear-gradient(135deg, #ef4444, #dc2626) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45), 0 2px 6px rgba(239, 68, 68, 0.25) !important;
+  background: rgba(15, 15, 15, 0.05) !important;
+  background-image: none !important;
+  color: var(--muted) !important;
+  box-shadow: none !important;
   position: sticky !important;
   position: -webkit-sticky !important;
-  top: 8px !important;
+  top: 12px !important;
   margin-left: auto !important;
   margin-bottom: -32px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   z-index: 100 !important;
-  width: 38px !important;
-  height: 38px !important;
+  width: 30px !important;
+  height: 30px !important;
   border-radius: 50% !important;
-  border: 2px solid #ffffff !important;
+  border: none !important;
   padding: 0 !important;
+  transition: background-color 120ms ease, color 120ms ease, transform 100ms ease !important;
 }
 .modal .modal-close-x:hover,
 .modal-bg .modal-close-x:hover {
-  background-image: linear-gradient(135deg, #dc2626, #b91c1c) !important;
-  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.55) !important;
-  transform: scale(1.05);
+  background: rgba(239, 68, 68, 0.10) !important;
+  color: var(--accent-red) !important;
+  box-shadow: none !important;
 }
 .modal .modal-close-x:active,
 .modal-bg .modal-close-x:active {
   transform: scale(.92) !important;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.30) !important;
+  background: rgba(239, 68, 68, 0.18) !important;
 }
 .modal .modal-close-x svg {
-  width: 18px !important;
-  height: 18px !important;
-  stroke: #ffffff !important;
-  stroke-width: 2.5 !important;
+  width: 16px !important;
+  height: 16px !important;
+  stroke: currentColor !important;
+  stroke-width: 2 !important;
+}
+@media (prefers-color-scheme: dark) {
+  .modal .modal-close-x,
+  .modal-bg .modal-close-x {
+    background: rgba(255, 255, 255, 0.06) !important;
+  }
 }
 @media (max-width: 720px) {
   .modal .modal-close-x,
   .modal-bg .modal-close-x {
-    top: max(12px, env(safe-area-inset-top, 12px)) !important;
-    width: 44px !important;
-    height: 44px !important;
+    top: max(14px, env(safe-area-inset-top, 14px)) !important;
+    width: 34px !important;
+    height: 34px !important;
   }
   .modal .modal-close-x svg {
-    width: 22px !important;
-    height: 22px !important;
+    width: 18px !important;
+    height: 18px !important;
   }
 }
 
@@ -2912,13 +2920,20 @@ button[id*="f-defer"], button[id*="defer"], button[id*="postpone"],
   color: #ffffff !important;
 }
 
-/* ── Login screen — илүү амьд gradient ── */
+/* ── Login screen — цэвэрхэн, нэг өнгөтэй (gradient бус) ── */
 .login-screen {
-  background: linear-gradient(135deg, #4f46e5 0%, #8b5cf6 50%, #ec4899 100%) !important;
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+.login-card {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 4px 24px rgba(15, 15, 15, 0.04) !important;
 }
 .login-logo {
-  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)) !important;
-  box-shadow: 0 8px 24px rgba(94, 106, 210, 0.35);
+  background: var(--accent-blue) !important;
+  background-image: none !important;
+  box-shadow: 0 4px 12px rgba(94, 106, 210, 0.20) !important;
 }
 
 /* ── User avatar — gradient ── */

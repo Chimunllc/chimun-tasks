@@ -1316,6 +1316,19 @@
   </div>
 </div>
 
+<!-- Текст оруулах dialog — native window.prompt-ийн орлуулга (iOS PWA-д найдвартай) -->
+<div class="modal-bg" id="prompt-modal" role="dialog" aria-modal="true">
+  <div class="confirm-dialog">
+    <h3 id="prompt-title">Оролт</h3>
+    <p id="prompt-msg" style="margin-bottom:10px;"></p>
+    <textarea id="prompt-input" rows="2" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);font-size:14px;font-family:inherit;resize:vertical;color:var(--text);background:var(--panel);"></textarea>
+    <div class="actions" style="margin-top:14px;">
+      <button class="btn" id="prompt-cancel">Болих</button>
+      <button class="btn btn-primary" id="prompt-ok">Илгээх</button>
+    </div>
+  </div>
+</div>
+
 <div class="conn-status offline" id="conn">
   <span class="dot"></span><span id="conn-text">Локал режим</span>
 </div>
@@ -1360,7 +1373,7 @@ const BRANCHES = [
   { id: 'production', name: 'Production event',icon: '🌟' },
 ];
 
-// 14-staff roster as of 2026-05-16, синк хийгдсэн Master Sheet:
+// 13-staff roster as of 2026-05-16, синк хийгдсэн Master Sheet:
 // https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit
 // Old IDs (001–006) kept for backward compat with existing tasks in localStorage.
 // `email` field used for login email lookup (legacy). PIN is the active auth.
@@ -1396,7 +1409,6 @@ let TEAM = [
   { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp','production'] },
   { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '1111', email: '',                         branches: ['camp','production'] },
   { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '1111', email: '',                         branches: ['camp'] },
-  { id: 'T01', name: 'Содхүү',         role: 'Кемпийн менежер',        level: 60, pin: '1111', email: 'sodkhuu26@gmail.com',      branches: ['camp'] },
 ];
 
 // n8n webhook URL — hardcoded so staff never have to configure anything.
@@ -1539,12 +1551,38 @@ function showConfirm(msg, opts = {}) {
   });
 }
 
-/* showPrompt — текст оруулдаг dialog. Native prompt-ыг ашиглана (одоохондоо хялбар) */
+/* showPrompt — текст оруулдаг in-app dialog. Промис буцаана: текст эсвэл null (Болих).
+   Native window.prompt iOS standalone PWA-д блоклогддог тул өөрсдийн modal ашиглана.
+   opts: { title, placeholder, okText, cancelText, defaultValue } */
 function showPrompt(msg, opts = {}) {
   return new Promise((resolve) => {
-    // Бүх platform-д ажилладаг native prompt
-    const result = window.prompt(msg, opts.defaultValue || '');
-    resolve(result);
+    const modal = document.getElementById('prompt-modal');
+    const input = document.getElementById('prompt-input');
+    const msgEl = document.getElementById('prompt-msg');
+    const okBtn = document.getElementById('prompt-ok');
+    const cancelBtn = document.getElementById('prompt-cancel');
+    document.getElementById('prompt-title').textContent = opts.title || 'Оролт';
+    msgEl.textContent = msg || '';
+    msgEl.style.display = msg ? '' : 'none';
+    input.value = opts.defaultValue || '';
+    input.placeholder = opts.placeholder || '';
+    okBtn.textContent = opts.okText || 'Илгээх';
+    cancelBtn.textContent = opts.cancelText || 'Болих';
+    function cleanup(result) {
+      modal.classList.remove('open');
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      input.onkeydown = null;
+      resolve(result);
+    }
+    okBtn.onclick = () => cleanup(input.value);
+    cancelBtn.onclick = () => cleanup(null);
+    // Cmd/Ctrl+Enter → илгээх
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); cleanup(input.value); }
+    };
+    modal.classList.add('open');
+    setTimeout(() => input.focus(), 50);
   });
 }
 
@@ -1670,7 +1708,7 @@ function saveNotifications() {
 }
 function generateNotifications() {
   if (!state.me) return;
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayStr();
   const seen = new Set(state.notifications.map(n => n.id));
   const myTasks = state.tasks.filter(t => t.assignee === state.me && t.status !== 'deleted');
   const newOnes = [];
@@ -2194,17 +2232,10 @@ async function loadData() {
   loadLocal();
 }
 function loadLocal() {
-  // Tasks — seed-уудыг ЗӨВХӨН (а) хоосон localStorage, (b) CEO нэвтэрсэн, (c) backend огт холбогдоогүй
-  // нөхцөлд оруулна. Эс бөгөөс жинхэнэ дата дээр хуурамч demo task-ууд гарах эрсдэлтэй.
+  // Tasks — localStorage кэшээс уншина. Backend холбогдоогүй үед энэ нь сүүлийн sync-ийн хуулбар.
   try {
     const raw = localStorage.getItem('tasks');
-    if (raw) {
-      state.tasks = JSON.parse(raw);
-    } else if (state.isCEO && !state.config.apiUrl) {
-      state.tasks = seedTasks();
-    } else {
-      state.tasks = [];
-    }
+    state.tasks = raw ? JSON.parse(raw) : [];
   } catch(e) { state.tasks = []; }
   // Projects per branch — initialize from defaults, override with anything saved
   state.projectsByBranch = {};
@@ -2252,31 +2283,16 @@ async function notify(event, task, extra = {}) {
     });
   } catch(e) { console.warn('notify failed', e); }
 }
-function seedTasks() {
-  const today = new Date();
-  const d = (n)=> { const x = new Date(today); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); };
-  return [
-    // M Event seeds
-    { id: uid(),    title: 'Долоо хоногийн агуулахын тооллого',                 branch: 'm-event', project: 'inventory', assignee: '003', due: d(2),  priority: 'high', status: 'open', createdBy: 'CEO', desc: '', created: Date.now() },
-    { id: 'demo2',  title: 'Шинэ хүргэлтийн машин шалгах',                      branch: 'm-event', project: 'repair',    assignee: '004', due: d(0),  priority: 'med',  status: 'open', createdBy: 'CEO', desc: '', created: Date.now() },
-    { id: 'demo3',  title: 'Хурим — 2026/05/12 — тоног бэлдэх',                 branch: 'm-event', project: 'event',     assignee: '005', due: d(-1), priority: 'high', status: 'open', createdBy: 'CEO', desc: '50 ширхэг сандал, 5 ширээ', created: Date.now() },
-    { id: 'demo4',  title: 'M Event сарын KPI тайлан гаргах',                   branch: 'm-event', project: 'kpi',       assignee: '001', due: d(7),  priority: 'med',  status: 'open', createdBy: 'CEO', desc: '', created: Date.now() },
-    { id: 'demo5',  title: 'Буцаж ирсэн ширээний бүтээлгийн цэвэрлэгээ',        branch: 'm-event', project: 'cleaning',  assignee: '006', due: d(1),  priority: 'low',  status: 'done', createdBy: 'CEO', desc: '', created: Date.now() },
-    // Camp seeds — Сезон 5/20 нээлтийн ӨМНӨХ 4 хоногийн бэлдэл
-    { id: 'demo-pre1', title: 'Тогооч/зөөгч/үйлчлэгч зар тарьх (FB groups + 1212.mn)', branch: 'camp', project: 'pre-season', assignee: 'S01', due: d(0), priority: 'high', status: 'open', createdBy: 'CEO', desc: 'Олголтын Sheet-аас өнөөдөр 10 орон тоо зарлагдсан байх ёстой. FB кэмпүүдийн group, 1212.mn, Joboo.mn-д тавих.', created: Date.now() },
-    { id: 'demo-pre2', title: 'Ярилцлага хийх 5/17-18 (хүнсний орон тоо тус бүр)',    branch: 'camp', project: 'pre-season', assignee: 'S01', due: d(1), priority: 'high', status: 'open', createdBy: 'CEO', desc: 'Ахлах тогооч 1, туслах тогооч 1, бэлтгэгч 1, зөөгч 3 — нийт 6 хүнтэй гэрээ бэлдэх', created: Date.now() },
-    { id: 'demo-pre3', title: 'Гэрээ + НДШ бүртгэл бэлдэх (M.event загвар)',          branch: 'camp', project: 'pre-season', assignee: 'S03', due: d(2), priority: 'high', status: 'open', createdBy: 'CEO', desc: 'Улирлын 4 сарын гэрээ — Анужины хувилбараар Үндсэн цалин + улирлын бонус', created: Date.now() },
-    { id: 'demo-pre4', title: 'Кемпийн дэд бүтцийн шалгалт (гэр, гал тогоо, бариа)',  branch: 'camp', project: 'pre-season', assignee: 'C02', due: d(3), priority: 'high', status: 'open', createdBy: 'CEO', desc: 'Гэр 8 ширхэг, ор/матрас, гал тогооны багаж, гэрэлтүүлэг, ариун цэврийн өрөө — бүгд бэлэн эсэхийг шалга', created: Date.now() },
-    { id: 'demo-pre5', title: 'Тогооны хүнсний эхний захиалга (5/20-25)',             branch: 'camp', project: 'kitchen',    assignee: 'C05_TBD', due: d(3), priority: 'med', status: 'open', createdBy: 'CEO', desc: 'Шинэ ахлах тогоочтой хамт жагсаалт хийж захиална. C05_TBD = шинэ ахлах тогоочийн ID орлон гарах.', created: Date.now() },
-    { id: 'demo-pre6', title: 'Сезоны нээлтийн өдрийн plan (5/20 бүх багц бэлэн)',    branch: 'camp', project: 'pre-season', assignee: 'C01', due: d(4), priority: 'high', status: 'open', createdBy: 'CEO', desc: 'Энэ нь нэгтгэх checkpoint — бүх sub-task дуусгасан байна', created: Date.now() },
-    // Shared seeds
-    { id: 'demo9',  title: 'Цалингийн хуваарилалт сар бүр 5-нд',                branch: 'shared',  project: 'finance',   assignee: 'S01', due: d(3),  priority: 'high', status: 'open', createdBy: 'CEO', desc: '', created: Date.now() },
-    { id: 'demo10', title: 'Social media контент 5/12-15-ны хуваарь',           branch: 'shared',  project: 'marketing', assignee: 'S03', due: d(2),  priority: 'med',  status: 'open', createdBy: 'CEO', desc: '', created: Date.now() },
-    // Production event seed (cross-branch)
-    { id: 'demo11', title: 'Production: Оюу Толгой 2026/06/15 — гэрээ батлах', branch: 'production', project: 'event-day', assignee: 'C01', due: d(40), priority: 'high', status: 'open', createdBy: 'CEO', desc: '280K багц · LED дэлгэц · Moonbeam Lounge · 200 хүн', created: Date.now() },
-  ].map(t => ({ ...t, id: t.id || uid() }));
-}
 function uid() { return 't_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+// Return TODAY as a LOCAL YYYY-MM-DD string.
+// ⚠ `new Date().toISOString().slice(0,10)` буцаадаг нь UTC огноо — Монгол (UTC+8)-д
+//   өглөө 08:00-аас өмнө өчигдрийн огноог буцааж, "Өнөөдөр"/"Хоцорсон" тооллогыг
+//   нэг өдрөөр буруу болгодог. Энэ helper локал огноог зөв буцаана.
+function todayStr() {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
 
 // Add `days` (can be negative) to a YYYY-MM-DD string. Returns YYYY-MM-DD.
 function addDays(yyyymmdd, days) {
@@ -2637,7 +2653,7 @@ async function decideFinanceRequest(id, decision, reason = '') {
     notify('finance.rejected', r);
     showToast('Татгалзсан.', 'warn');
   } else if (decision === 'deferred') {
-    r.due_date = addDays(r.due_date || new Date().toISOString().slice(0,10), 7);
+    r.due_date = addDays(r.due_date || todayStr(), 7);
     notify('finance.deferred', r);
     showToast('7 хоног хойшлуулсан.', 'warn');
   }
@@ -2994,7 +3010,7 @@ function filteredTasks() {
   // BRANCH filter disabled — Чимун ХХК нь нэг компани, бүгд нэг task list-д харагдана.
   // (Branch талбар datastructure-д үлдсэн — ирээдүйд буцаахаар үлдээсэн.)
   // view
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayStr();
   if (state.view === 'mine') list = list.filter(t => t.assignee === state.me);
   else if (state.view === 'delegated') list = list.filter(t => t.createdBy === state.me && t.assignee !== state.me);
   else if (state.view === 'finance') {
@@ -3252,7 +3268,7 @@ function renderRow(t) {
   return row;
 }
 function renderCounts() {
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayStr();
   // Apply access control to base task list — non-CEO sees only own tasks
   const accessible = state.isCEO
     ? state.tasks
@@ -3654,12 +3670,12 @@ function saveTaskFromModal() {
   closeTaskModal();
   render();
 }
-function addProject() {
-  const name = prompt('Шинэ төслийн нэр (' + currentBranchInfo().name + ' дотор үүснэ):');
-  if (!name) return;
+async function addProject() {
+  const name = await showPrompt('Шинэ төслийн нэр (' + currentBranchInfo().name + ' дотор үүснэ):', { title: 'Шинэ төсөл', okText: 'Нэмэх' });
+  if (!name || !name.trim()) return;
   const id = 'p_' + Date.now().toString(36);
   if (!state.projectsByBranch[state.branch]) state.projectsByBranch[state.branch] = [];
-  state.projectsByBranch[state.branch].push({ id, name });
+  state.projectsByBranch[state.branch].push({ id, name: name.trim() });
   saveLocal();
   state.view = 'project:' + id;
   render();
@@ -4127,6 +4143,7 @@ function setUser(member, profile) {
 // Safe to call multiple times — initEvents is idempotent because we check _eventsBound.
 let _eventsBound = false;
 let _pollTimer = null;
+let _visibilityBound = false;
 async function bootApp() {
   initTheme();
   if (!_eventsBound) {
@@ -4138,17 +4155,30 @@ async function bootApp() {
   generateNotifications();
   render();
   // Auto-refresh every 60s — pulls latest tasks from n8n + generates fresh notifications.
-  // When the tab is hidden (phone locked, app backgrounded) we still keep ticking so the
-  // user gets a fresh badge the moment they open it.
   if (_pollTimer) clearInterval(_pollTimer);
-  _pollTimer = setInterval(async () => {
-    try {
-      await Promise.all([ loadData(), loadFinanceRequests() ]);
-      generateNotifications();
-      renderNotifications();
-      renderCounts();
-    } catch(e) { console.warn('Auto-poll failed:', e); }
-  }, 60_000);
+  _pollTimer = setInterval(refreshFromServer, 60_000);
+  // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ
+  // — ингэснээр хэрэглэгч апп нээх агшинд хамгийн сүүлийн дата + badge харагдана.
+  if (!_visibilityBound) {
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && state.me) refreshFromServer();
+    });
+    _visibilityBound = true;
+  }
+}
+
+// Сэрвэрээс дата татаж дэлгэцийг шинэчлэх (poll + visibility-д хуваалцсан).
+async function refreshFromServer() {
+  if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
+  try {
+    await Promise.all([ loadData(), loadFinanceRequests() ]);
+    generateNotifications();
+    // Модал нээлттэй (хэрэглэгч засаж байгаа) бол жагсаалтыг бүрэн дахин зурахгүй —
+    // зөвхөн badge/тоог шинэчилнэ. Эс бөгөөс бүрэн render хийж шинэ даалгаврыг харуулна.
+    const modalOpen = !!document.querySelector('.modal-bg.open');
+    if (modalOpen) { renderNotifications(); renderCounts(); }
+    else render();
+  } catch(e) { console.warn('Refresh failed:', e); }
 }
 
 function showLoginError(msg, type) {
@@ -4173,12 +4203,8 @@ function renderUserChip() {
   if (!state.user) return;
   document.getElementById('user-name').textContent = state.user.name;
   document.getElementById('user-role').textContent = state.user.role;
-  const avatar = document.getElementById('user-avatar');
-  if (state.user.picture) {
-    avatar.innerHTML = '<img src="' + state.user.picture + '" alt="" referrerpolicy="no-referrer">';
-  } else {
-    avatar.textContent = state.user.name.replace(/\./g,'').slice(0,2);
-  }
+  // PIN-only auth — профайл зураг байхгүй тул нэрний эхний үсгүүдийг харуулна.
+  document.getElementById('user-avatar').textContent = state.user.name.replace(/\./g,'').slice(0,2);
 }
 
 async function logout() {

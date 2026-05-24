@@ -1990,3 +1990,350 @@ body, input, textarea, select, button {
   cursor: pointer; min-height: 52px;
 }
 .fab-sheet-cancel:active { background: var(--border); }
+
+/* ═══════════════════════════════════════════════════════════
+   DESKTOP REFINEMENT (v5 — 2026-05-24)
+   Утсан дээрх Notion/Linear загварыг desktop руу шилжүүлсэн.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Notion/Linear өнгөний систем — БҮХ ДЭЛГЭЦЭД (зөвхөн мобайл биш) */
+:root {
+  --bg: #fbfbfa !important;
+  --panel: #ffffff !important;
+  --panel-hover: #f7f7f5 !important;
+  --border: rgba(15, 15, 15, 0.08) !important;
+  --border-strong: rgba(15, 15, 15, 0.12) !important;
+  --text: #37352f !important;
+  --muted: #787774 !important;
+  --muted-soft: #9b9a97 !important;
+  --primary: #5e6ad2 !important;
+  --primary-hover: #4b56b8 !important;
+  --primary-soft: rgba(94, 106, 210, 0.10) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191919 !important;
+    --panel: #2f2f2f !important;
+    --panel-hover: #373737 !important;
+    --border: rgba(255, 255, 255, 0.08) !important;
+    --border-strong: rgba(255, 255, 255, 0.12) !important;
+    --text: #ffffff !important;
+    --muted: #9b9a97 !important;
+    --muted-soft: #6f6e69 !important;
+    --primary: #7d87de !important;
+    --primary-soft: rgba(125, 135, 222, 0.15) !important;
+  }
+}
+
+/* ── HEADER (desktop) — flat, цэвэрхэн ── */
+.header {
+  background: var(--bg) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 18px 28px 14px !important;
+}
+.header h1 {
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  color: var(--text) !important;
+}
+.header .sub { color: var(--muted) !important; }
+
+/* Header дээрх товчлуурууд — Linear маяг flat */
+.header-actions { gap: 4px !important; }
+.header-actions .btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--text) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  padding: 7px 12px !important;
+  border-radius: 6px !important;
+  letter-spacing: -0.01em !important;
+  box-shadow: none !important;
+  transition: background 100ms ease !important;
+}
+.header-actions .btn:hover {
+  background: var(--panel-hover) !important;
+  border-color: var(--border) !important;
+}
+.header-actions .btn.btn-primary {
+  background: var(--text) !important;
+  color: var(--bg) !important;
+  border-color: var(--text) !important;
+  font-weight: 600 !important;
+}
+.header-actions .btn.btn-primary:hover {
+  background: var(--muted) !important;
+  border-color: var(--muted) !important;
+}
+#theme-toggle, #notif-btn {
+  background: transparent !important;
+  border: none !important;
+  color: var(--muted) !important;
+  width: 36px !important; height: 36px !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+#theme-toggle:hover, #notif-btn:hover {
+  background: var(--panel-hover) !important;
+  color: var(--text) !important;
+}
+
+/* ── FILTER PILLS (desktop) — text button маяг ── */
+.toolbar {
+  background: var(--bg) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 12px 28px !important;
+}
+.filter-pill {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 6px 12px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--muted) !important;
+  letter-spacing: -0.01em !important;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.filter-pill:hover {
+  background: var(--panel-hover) !important;
+  color: var(--text) !important;
+}
+.filter-pill.active {
+  background: var(--panel-hover) !important;
+  color: var(--text) !important;
+  font-weight: 600 !important;
+}
+.search input {
+  background: var(--panel-hover) !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  padding: 7px 12px !important;
+  font-size: 13px !important;
+  letter-spacing: -0.01em !important;
+}
+.search input:focus {
+  background: var(--panel) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--primary-soft) !important;
+  outline: none !important;
+}
+
+/* ── TABLE HEAD (desktop) — Linear маяг ── */
+.table-head {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 10px 16px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+}
+
+/* ── TASK ROWS (desktop) — Linear маяг, шугам бүрэн арилгасан ── */
+.tasks { background: var(--bg) !important; }
+.task-row {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 10px 16px !important;
+  margin: 0 !important;
+  transition: background 80ms ease !important;
+}
+.task-row:hover {
+  background: var(--panel-hover) !important;
+  transform: none !important;
+}
+.task-row .title {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--text) !important;
+  letter-spacing: -0.01em !important;
+}
+.task-row .meta-row,
+.task-row .meta {
+  font-size: 12px !important;
+  color: var(--muted) !important;
+}
+
+/* ── SIDEBAR (desktop) — Linear маяг ── */
+.sidebar {
+  background: var(--bg) !important;
+  border-right: 1px solid var(--border) !important;
+  padding: 14px 10px !important;
+}
+.sidebar .brand {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--text) !important;
+  padding: 8px 10px 20px !important;
+  letter-spacing: -0.02em !important;
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar .brand .dot {
+  width: 22px !important; height: 22px !important;
+  border-radius: 6px !important;
+  background: var(--primary) !important;
+}
+.section-label {
+  font-size: 11px !important;
+  color: var(--muted) !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  padding: 14px 10px 6px !important;
+  margin: 0 !important;
+}
+.nav-item {
+  background: transparent !important;
+  border-radius: 5px !important;
+  padding: 5px 10px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--text) !important;
+  letter-spacing: -0.01em !important;
+  min-height: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  transition: background 80ms ease !important;
+  margin-bottom: 1px;
+}
+.nav-item:hover { background: var(--panel-hover) !important; }
+.nav-item.active {
+  background: var(--panel-hover) !important;
+  color: var(--text) !important;
+  font-weight: 600 !important;
+}
+.count-badge {
+  background: var(--border) !important;
+  color: var(--muted) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 1px 6px !important;
+  border-radius: 999px !important;
+  min-width: 20px !important;
+}
+.add-project {
+  color: var(--muted) !important;
+  font-size: 13px !important;
+  padding: 6px 10px !important;
+  border-radius: 5px !important;
+  transition: background 80ms ease;
+}
+.add-project:hover { background: var(--panel-hover) !important; color: var(--text) !important; }
+.user-chip {
+  background: var(--panel-hover) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+}
+.user-chip .avatar {
+  width: 28px !important; height: 28px !important;
+  font-size: 11px !important;
+  border-radius: 6px !important;
+  background: var(--primary) !important;
+}
+.user-chip .meta .name { font-size: 13px !important; font-weight: 600 !important; }
+.user-chip .meta .role { font-size: 11px !important; color: var(--muted) !important; }
+
+/* ── NOTIFICATION PANEL (desktop) — давхар салгах ── */
+@media (min-width: 721px) {
+  .notif-panel {
+    width: 380px !important;
+    right: 28px !important;
+    top: 70px !important;
+    max-height: 75vh !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 32px rgba(15, 15, 15, .12), 0 2px 8px rgba(15, 15, 15, .06) !important;
+    border: 1px solid var(--border) !important;
+  }
+  .notif-panel::before { display: none !important; }
+  .notif-header {
+    padding: 14px 16px !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .notif-header > span:first-child {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.01em;
+  }
+  .notif-mark-read {
+    background: transparent !important;
+    border: none !important;
+    color: var(--primary) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    cursor: pointer;
+    padding: 4px 8px !important;
+    border-radius: 4px;
+  }
+  .notif-mark-read:hover { background: var(--primary-soft) !important; }
+  .notif-item {
+    padding: 12px 16px !important;
+    border-bottom: 1px solid var(--border) !important;
+    border-radius: 0 !important;
+  }
+  .notif-item:hover { background: var(--panel-hover) !important; }
+}
+
+/* ── MODAL (desktop) — Linear маяг ── */
+@media (min-width: 721px) {
+  .modal {
+    padding: 24px 28px !important;
+    border-radius: 0 !important;
+  }
+  .modal h2 {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+  }
+  .modal label {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    color: var(--text) !important;
+    text-transform: none !important;
+  }
+  .modal input, .modal select, .modal textarea {
+    background: var(--panel-hover) !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus {
+    background: var(--panel) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px var(--primary-soft) !important;
+    outline: none !important;
+  }
+  .modal .btn, .modal button {
+    border-radius: 6px !important;
+    font-weight: 500 !important;
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+  }
+  .modal .btn-primary {
+    background: var(--text) !important;
+    color: var(--bg) !important;
+    font-weight: 600 !important;
+  }
+  .modal .btn-primary:hover {
+    background: var(--muted) !important;
+  }
+}
+
+/* ── conn-status-ийг бүх дэлгэцэнд нуух ── */
+.conn-status { display: none !important; }
+
+/* ── Default body font + smoothing ── */
+body {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}

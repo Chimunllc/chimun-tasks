@@ -602,7 +602,26 @@ function renderNotifications() {
     due_today:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>',
     stage_unlock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
   };
-  list.innerHTML = state.notifications.map(n => {
+  // Notification-уудыг 3 категори болгож бүлэглэх:
+  //   active   — миний шийдвэр/анхаарал шаардах (unread + overdue/assigned)
+  //   info     — мэдээллийн (read эсвэл due_today/stage_unlock)
+  //   archive  — read + 24 цагаас өмнөх
+  const NOW = Date.now();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const groupOf = (n) => {
+    if (!n.read) return 'active';
+    if (NOW - n.ts > DAY_MS) return 'archive';
+    return 'info';
+  };
+  const groups = { active: [], info: [], archive: [] };
+  state.notifications.forEach(n => groups[groupOf(n)].push(n));
+
+  const groupLabels = {
+    active:  { name: 'Идэвхтэй',  count: groups.active.length },
+    info:    { name: 'Мэдээлэл',  count: groups.info.length },
+    archive: { name: 'Архив',     count: groups.archive.length },
+  };
+  const renderItem = (n) => {
     const ago = notifTimeAgo(n.ts);
     const icon = ICON_SVG[n.type] || ICON_SVG.assigned;
     return `
@@ -614,7 +633,13 @@ function renderNotifications() {
         </div>
       </div>
     `;
-  }).join('');
+  };
+  list.innerHTML = ['active','info','archive'].filter(k => groups[k].length).map(k => `
+    <div class="notif-group notif-group-${k}">
+      <div class="notif-group-header">${groupLabels[k].name} <span class="notif-group-count">${groupLabels[k].count}</span></div>
+      ${groups[k].map(renderItem).join('')}
+    </div>
+  `).join('');
   list.querySelectorAll('.notif-item').forEach(el => {
     el.onclick = () => {
       const taskId = el.dataset.taskId;
@@ -1821,6 +1846,106 @@ function emptyStateHtml() {
   else if (state.search)      { icon = SEARCH_SVG; title = `"${state.search}" гэж олдсонгүй`; sub = 'Өөр түлхүүр үг туршаарай.'; }
   return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div></div>`;
 }
+/* ─── Mobile swipe actions for task rows ───
+   Зүүн → Татгалзах/Устгах. Баруун → Дуусгасан. Зөвхөн утсан дээр (touch).
+   80px-аас илүү шудалбал үйлдэл идэвхжинэ. */
+function attachSwipeActions(row, t) {
+  // Зөвхөн утсан дээр (touch device) ажиллана
+  if (!('ontouchstart' in window)) return;
+  // Finance request, subtask, parent — swipe-гүй (төвөгтэй логиктой)
+  if (t.kind === 'finance_request' || t.kind === 'act_parent' || t.kind === 'act_stage') return;
+  // Дууссан task-д swipe үл хэрэгтэй
+  if (t.status === 'done') return;
+
+  let startX = 0, startY = 0, currentX = 0;
+  let swiping = false, axisLocked = false;
+  const THRESHOLD = 80;
+
+  const onStart = (e) => {
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    currentX = 0;
+    swiping = true;
+    axisLocked = false;
+    row.style.transition = 'none';
+  };
+
+  const onMove = (e) => {
+    if (!swiping) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    // Эхний хөдөлгөөнд axis сонгох — vertical scroll-ийг саатуулахгүй
+    if (!axisLocked) {
+      if (Math.abs(dy) > Math.abs(dx)) {
+        swiping = false; // vertical scroll, swipe цуцлах
+        return;
+      }
+      if (Math.abs(dx) > 8) axisLocked = true;
+      else return;
+    }
+    currentX = dx;
+    row.style.transform = `translateX(${dx}px)`;
+    // Дэвсгэр өнгийг harguilsan үйлдлийнхээр өөрчлөх
+    if (dx > 0) {
+      row.style.background = `linear-gradient(90deg, rgba(16,185,129,${Math.min(dx/THRESHOLD, 1)*0.30}) 0%, transparent ${Math.min(100, dx/3)}%)`;
+    } else if (dx < 0) {
+      row.style.background = `linear-gradient(270deg, rgba(239,68,68,${Math.min(-dx/THRESHOLD, 1)*0.30}) 0%, transparent ${Math.min(100, -dx/3)}%)`;
+    }
+  };
+
+  const onEnd = () => {
+    if (!swiping) return;
+    swiping = false;
+    row.style.transition = 'transform 200ms ease, background 200ms ease';
+    if (currentX > THRESHOLD) {
+      // Баруун шудалсан → Дуусгасан
+      row.style.transform = 'translateX(100%)';
+      row.style.background = 'rgba(16,185,129,0.30)';
+      setTimeout(() => {
+        const idx = state.tasks.findIndex(x => x.id === t.id);
+        if (idx >= 0) {
+          state.tasks[idx].status = 'done';
+          state.tasks[idx].executed_at = new Date().toISOString();
+          state.tasks[idx].executed_by = state.me;
+          saveData();
+          render();
+          showToast('Дуусгасан', 'success', 1200);
+        }
+      }, 180);
+    } else if (currentX < -THRESHOLD) {
+      // Зүүн шудалсан → Татгалзах эсвэл устгах
+      row.style.transform = 'translateX(-100%)';
+      row.style.background = 'rgba(239,68,68,0.30)';
+      setTimeout(async () => {
+        if (await showConfirm('Энэ ажлыг устгах уу?', { okText: 'Устгах', danger: true })) {
+          const idx = state.tasks.findIndex(x => x.id === t.id);
+          if (idx >= 0) {
+            state.tasks.splice(idx, 1);
+            saveData();
+            render();
+            showToast('Устгасан', 'success', 1200);
+          }
+        } else {
+          // Цуцалсан — буцааж тавих
+          row.style.transform = '';
+          row.style.background = '';
+        }
+      }, 180);
+    } else {
+      // Threshold хүрээгүй → буцаах
+      row.style.transform = '';
+      row.style.background = '';
+    }
+  };
+
+  row.addEventListener('touchstart', onStart, { passive: true });
+  row.addEventListener('touchmove', onMove, { passive: true });
+  row.addEventListener('touchend', onEnd);
+  row.addEventListener('touchcancel', onEnd);
+}
+
 function renderRow(t) {
   const row = document.createElement('div');
   const isParent = t.kind === 'act_parent';
@@ -1833,6 +1958,9 @@ function renderRow(t) {
   if (isSub) cls += ' subtask';
   if (!lockCheck.ok && t.status !== 'done') cls += ' locked-stage';
   row.className = cls;
+  row.dataset.taskId = t.id;
+  // Мобайл swipe action нэмэх — task row-нд touch handler
+  attachSwipeActions(row, t);
   const dc = dueClass(t.due, t.status);
 
   // Title: prepend stage badge for sub-tasks, append progress for parents

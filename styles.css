@@ -3308,3 +3308,81 @@ body {
     padding: 24px 16px !important;
   }
 }
+
+/* ═══ Гарын авлагын dark mode (data-theme="dark") ═══
+   prefers-color-scheme-аас гадуур хэрэглэгчийн сонгосон theme-ийг хадгална.
+   Хэрэв системийн theme dark гэхдээ хэрэглэгч "light" сонговол light хэвээр.
+   data-theme="light" → албадан light, data-theme="dark" → албадан dark. */
+:root[data-theme="dark"] {
+  --bg: #191919 !important;
+  --panel: #2f2f2f !important;
+  --panel-hover: #373737 !important;
+  --border: rgba(255, 255, 255, 0.08) !important;
+  --border-strong: rgba(255, 255, 255, 0.12) !important;
+  --text: #ffffff !important;
+  --muted: #9b9a97 !important;
+  --muted-soft: #6f6e69 !important;
+  --primary: #7d87de !important;
+  --primary-soft: rgba(125, 135, 222, 0.15) !important;
+}
+:root[data-theme="light"] {
+  --bg: #fbfbfa !important;
+  --panel: #ffffff !important;
+  --panel-hover: #f7f7f5 !important;
+  --border: rgba(15, 15, 15, 0.08) !important;
+  --border-strong: rgba(15, 15, 15, 0.12) !important;
+  --text: #37352f !important;
+  --muted: #787774 !important;
+  --muted-soft: #9b9a97 !important;
+  --primary: #5e6ad2 !important;
+  --primary-soft: rgba(94, 106, 210, 0.10) !important;
+}
+/* Notif panel-ийн solid background — data-theme харгалзах */
+:root[data-theme="dark"] .modal .modal-close-x { background: var(--accent-red) !important; }
+:root[data-theme="dark"] .notif-panel,
+:root[data-theme="dark"] .notif-header,
+:root[data-theme="dark"] .notif-list,
+:root[data-theme="dark"] .notif-item {
+  background: #2f2f2f !important;
+}
+
+/* ═══ Notification категори бүлгүүд ═══ */
+.notif-group {
+  margin-bottom: 8px;
+}
+.notif-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.notif-group-count {
+  background: var(--border);
+  color: var(--muted);
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.notif-group-active .notif-group-header {
+  color: var(--accent-red);
+}
+.notif-group-active .notif-group-count {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--accent-red);
+}
+.notif-group-archive {
+  opacity: 0.65;
+}
+.notif-group-archive .notif-group-header {
+  color: var(--muted-soft);
+}

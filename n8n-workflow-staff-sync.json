@@ -6,7 +6,7 @@
         "path": "staff",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "*"
+          "allowedOrigins": "https://chimunllc.github.io"
         }
       },
       "id": "815b94ec-6dcc-4d31-8b03-9c2fe8d48ac9",

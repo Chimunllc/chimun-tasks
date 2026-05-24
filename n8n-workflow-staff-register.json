@@ -7,7 +7,7 @@
         "path": "staff-register",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "*"
+          "allowedOrigins": "https://chimunllc.github.io"
         }
       },
       "id": "184d11db-7410-4a9b-b8c0-870c30caa07d",

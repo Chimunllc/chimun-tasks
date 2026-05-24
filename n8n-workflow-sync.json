@@ -7,7 +7,7 @@
         "path": "checklist",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "*"
+          "allowedOrigins": "https://chimunllc.github.io"
         }
       },
       "id": "a85787f1-1779-4eba-9f25-2e04ea26349c",
@@ -25,7 +25,7 @@
         "path": "checklist",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "*"
+          "allowedOrigins": "https://chimunllc.github.io"
         }
       },
       "id": "1b297084-2932-4f07-8481-f9fd6724d694",

@@ -823,6 +823,31 @@ async function addTaskComment(taskId, text, fileUrl = null) {
   task.comments.push(comment);
   logTaskActivity(task, 'comment_added', { commentId: comment.id });
   await saveTask(task);
+  // @mention notification — дурдсан хүн бүрд in-app + push мэдэгдэл
+  if (mentions.length) {
+    const uniqueMentions = [...new Set(mentions)].filter(id => id !== state.me);
+    if (!Array.isArray(state.notifications)) state.notifications = [];
+    uniqueMentions.forEach(mid => {
+      const member = TEAM.find(m => String(m.id).toUpperCase() === mid.toUpperCase());
+      if (!member) return;
+      // Зөвхөн дурдсан хүн өөрөө л харахаар filter ашиглаж болно — одоогоор бүгдэд push
+      const nid = `mention-${task.id}-${comment.id}-${mid}`;
+      state.notifications.unshift({
+        id: nid,
+        type: 'assigned',
+        taskId: task.id,
+        msg: `${memberName(state.me)} танд дурдсан: ${task.title}`,
+        ts: Date.now(),
+        read: false,
+        forUser: member.id,
+      });
+    });
+    saveNotifications();
+    renderNotifications();
+    if (window._chimunNotify && uniqueMentions.includes(state.me)) {
+      window._chimunNotify('Танд дурдсан', task.title, { taskId: task.id });
+    }
+  }
   return comment;
 }
 
@@ -2872,15 +2897,58 @@ function renderTaskComments(t) {
   list.innerHTML = comments.map(c => {
     const author = memberName(c.author);
     const time = new Date(c.timestamp).toLocaleString('mn-MN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const editedBadge = c.edited ? ` <span style="font-style:italic;opacity:.7;">· засагдсан</span>` : '';
     const mine = (c.author === state.me);
+    const canEditDelete = mine || state.isCEO;
     const textHtml = renderCommentText(c.text);
-    const fileHtml = c.file_url ? `<a href="${escapeHtml(c.file_url)}" target="_blank" rel="noopener" style="display:block;margin-top:4px;color:var(--primary);font-size:12px;">📎 Хавсралт</a>` : '';
-    return `<div style="background:${mine ? 'var(--info-soft)' : 'var(--panel-hover)'};border-left:3px solid ${mine ? 'var(--info)' : 'var(--muted-soft)'};padding:8px 10px;border-radius:6px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;"><strong>${escapeHtml(author)}</strong> · ${escapeHtml(time)}</div>
-      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word;">${textHtml}</div>
+    const fileHtml = c.file_url ? `<a href="${escapeHtml(c.file_url)}" target="_blank" rel="noopener" class="comment-attach">📎 Хавсралт</a>` : '';
+    const actions = canEditDelete ? `
+      <div class="comment-actions">
+        <button class="comment-action" data-comment-act="edit" data-comment-id="${escapeHtml(c.id || '')}" title="Засах">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="comment-action" data-comment-act="delete" data-comment-id="${escapeHtml(c.id || '')}" title="Устгах">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+        </button>
+      </div>` : '';
+    return `<div class="comment-item ${mine ? 'mine' : ''}" data-comment-id="${escapeHtml(c.id || '')}">
+      <div class="comment-head">
+        <strong class="comment-author">${escapeHtml(author)}</strong>
+        <span class="comment-time">${escapeHtml(time)}${editedBadge}</span>
+        ${actions}
+      </div>
+      <div class="comment-text">${textHtml}</div>
       ${fileHtml}
     </div>`;
   }).join('');
+  // Event handlers for edit/delete
+  list.querySelectorAll('.comment-action').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.commentId;
+      const action = btn.dataset.commentAct;
+      const cIdx = (t.comments || []).findIndex(x => String(x.id || '') === id);
+      if (cIdx < 0) return;
+      const comment = t.comments[cIdx];
+      if (action === 'delete') {
+        if (!(await showConfirm('Энэ сэтгэгдлийг устгах уу?', { okText: 'Устгах', danger: true }))) return;
+        t.comments.splice(cIdx, 1);
+        saveTask(t);
+        renderTaskComments(t);
+        showToast('Сэтгэгдэл устгасан', 'success', 1500);
+      } else if (action === 'edit') {
+        const newText = await showPrompt('Сэтгэгдлийг засах:', { defaultValue: comment.text, okText: 'Хадгалах', placeholder: 'Сэтгэгдэл...' });
+        if (newText && newText.trim() && newText.trim() !== comment.text) {
+          comment.text = newText.trim();
+          comment.edited = true;
+          comment.editedAt = new Date().toISOString();
+          saveTask(t);
+          renderTaskComments(t);
+          showToast('Сэтгэгдэл засагдсан', 'success', 1500);
+        }
+      }
+    });
+  });
   // Scroll to bottom
   list.scrollTop = list.scrollHeight;
 }

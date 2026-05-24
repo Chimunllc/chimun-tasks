@@ -4296,3 +4296,75 @@ body {
   margin-right: 4px;
   opacity: 0.85;
 }
+
+/* ═══ Comments — засах/устгах товчтой ═══ */
+.comment-item {
+  background: var(--panel-hover);
+  border-left: 3px solid var(--muted-soft);
+  padding: 10px 12px;
+  border-radius: 8px;
+  position: relative;
+  transition: background 120ms ease;
+}
+.comment-item.mine {
+  background: rgba(94, 106, 210, 0.06);
+  border-left-color: var(--accent-blue);
+}
+.comment-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+.comment-author {
+  color: var(--text);
+  font-weight: 600;
+}
+.comment-time {
+  color: var(--muted);
+  flex: 1;
+}
+.comment-text {
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  color: var(--text);
+}
+.comment-attach {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent-blue);
+  font-size: 12px;
+  text-decoration: none;
+}
+.comment-attach:hover { text-decoration: underline; }
+.comment-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+.comment-item:hover .comment-actions,
+.comment-item:focus-within .comment-actions {
+  opacity: 1;
+}
+.comment-action {
+  width: 24px; height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.comment-action:hover { background: var(--panel); color: var(--text); }
+.comment-action[data-comment-act="delete"]:hover { color: var(--accent-red); }
+
+@media (max-width: 720px) {
+  /* Мобайл дээр action товч үргэлж харагдана (hover байхгүй) */
+  .comment-actions { opacity: 1; }
+}

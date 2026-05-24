@@ -201,50 +201,50 @@
     color: var(--text);
     user-select: none;
   }
-  .nav-item:hover, .project-item:hover { background: #f1f3f5; }
+  .nav-item:hover, .project-item:hover { background: var(--panel-hover); }
   .nav-item.active, .project-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
   .count-badge {
-    background: #eef0f3; color: var(--muted); font-size: 11px;
+    background: var(--panel-hover); color: var(--muted); font-size: 11px;
     padding: 1px 7px; border-radius: 10px; min-width: 18px; text-align: center;
   }
-  .nav-item.active .count-badge, .project-item.active .count-badge { background: #fff; color: var(--primary); }
+  .nav-item.active .count-badge, .project-item.active .count-badge { background: var(--panel); color: var(--primary); }
   .add-project { color: var(--muted); cursor: pointer; padding: 7px 10px; font-size: 13px; }
   .add-project:hover { color: var(--primary); }
   .who-am-i {
-    margin-top: 14px; padding: 10px; background: #fafbfc; border: 1px solid var(--border);
+    margin-top: 14px; padding: 10px; background: var(--panel-hover); border: 1px solid var(--border);
     border-radius: 8px;
   }
   .who-am-i label { font-size: 11px; color: var(--muted); display:block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .6px;}
-  .who-am-i select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: #fff; font-size: 13px; }
+  .who-am-i select { width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); font-size: 13px; }
   /* MAIN */
   .main { display: flex; flex-direction: column; overflow: hidden; }
   .header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 28px; border-bottom: 1px solid var(--border); background: #fff;
+    padding: 18px 28px; border-bottom: 1px solid var(--border); background: var(--panel);
   }
   .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
   .header .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
   .header-actions { display: flex; gap: 8px; align-items: center; }
   .btn {
-    border: 1px solid var(--border); background: #fff; padding: 7px 13px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--panel); padding: 7px 13px; border-radius: 7px;
     font-size: 13px; cursor: pointer; color: var(--text);
   }
-  .btn:hover { background: #f6f7f9; }
+  .btn:hover { background: var(--panel-hover); }
   .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; }
   .btn-primary:hover { background: #4338ca; }
   .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); font-weight: 600; }
   .btn-danger:hover { background: #b91c1c; }
   .toolbar {
     display: flex; align-items: center; gap: 10px;
-    padding: 12px 28px; background: #fff; border-bottom: 1px solid var(--border);
+    padding: 12px 28px; background: var(--panel); border-bottom: 1px solid var(--border);
   }
   .filter-pill {
-    border: 1px solid var(--border); background: #fff; padding: 7px 14px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--panel); padding: 7px 14px; border-radius: 999px;
     font-size: 13px; color: var(--muted); cursor: pointer;
     min-height: 32px; display: inline-flex; align-items: center;
     transition: background .12s, border-color .12s;
   }
-  .filter-pill:hover { background: #f6f7f9; }
+  .filter-pill:hover { background: var(--panel-hover); }
   .filter-pill.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary-soft); font-weight: 600; }
   @media (max-width: 720px) {
     .filter-pill { padding: 9px 16px; min-height: 38px; font-size: 13px; }
@@ -252,6 +252,7 @@
   .search { flex: 1; max-width: 280px; }
   .search input {
     width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+    background: var(--panel); color: var(--text);
   }
   /* TASKS */
   .tasks {
@@ -291,18 +292,18 @@
   .task-row.completed { opacity: 0.55; }
   /* 5-stage act parent — highlighted card */
   .task-row.act-parent {
-    background: #eef2ff;
-    border-color: #c7d2fe;
+    background: var(--primary-soft);
+    border-color: var(--primary-soft);
   }
   .task-row.act-parent .task-title { font-weight: 700; }
   .act-progress {
     font-size: 11px; color: var(--primary); font-weight: 600;
-    background: #fff; padding: 2px 8px; border-radius: 999px;
+    background: var(--panel); padding: 2px 8px; border-radius: 999px;
     border: 1px solid #c7d2fe;
     margin-left: 8px; white-space: nowrap;
   }
   /* sub-task — indented under its parent */
-  .task-row.subtask { margin-left: 28px; background: #fafbfc; }
+  .task-row.subtask { margin-left: 28px; background: var(--panel-hover); }
   .stage-badge {
     display: inline-block;
     background: var(--primary-soft); color: var(--primary);
@@ -313,12 +314,12 @@
   /* locked sub-task — previous stage not done yet */
   .task-row.locked-stage { opacity: 0.55; }
   .task-row.locked-stage .checkbox {
-    cursor: not-allowed; background: #f1f3f5; border-color: #e6e8eb;
+    cursor: not-allowed; background: var(--panel-hover); border-color: var(--border);
   }
   .task-row.locked-stage .task-title { color: var(--muted); }
   .stage-locked-hint {
     font-size: 10px; color: var(--warn); font-weight: 600;
-    background: #fef3c7; padding: 2px 6px; border-radius: 4px;
+    background: var(--warn-soft); padding: 2px 6px; border-radius: 4px;
     margin-left: 6px;
   }
   /* Finance request decision pills */
@@ -413,7 +414,7 @@
   /* CONNECTION STATUS */
   .conn-status {
     position: fixed; bottom: 14px; right: 18px; padding: 6px 12px; border-radius: 999px;
-    font-size: 11px; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow);
+    font-size: 11px; background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
     color: var(--muted); display: flex; align-items: center; gap: 6px;
   }
   .conn-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
@@ -475,7 +476,7 @@
   .modal-section {
     margin: 18px 0 8px;
     padding: 8px 12px;
-    background: #f1f3f5;
+    background: var(--panel-hover);
     border-left: 3px solid var(--primary);
     border-radius: 0 6px 6px 0;
     font-size: 11px;
@@ -499,7 +500,7 @@
   }
   .login-screen.hidden { display: none; }
   .login-card {
-    background: #fff; color: var(--text); border-radius: 16px;
+    background: var(--panel); color: var(--text); border-radius: 16px;
     padding: 36px 28px; max-width: 380px; width: 100%;
     box-shadow: 0 20px 60px rgba(0,0,0,.25);
   }
@@ -516,7 +517,7 @@
   #login-id-input, #login-pin-input {
     width: 100%; padding: 12px 14px; font-size: 16px;
     border: 1px solid var(--border); border-radius: 10px;
-    background: #fff; color: var(--text);
+    background: var(--panel); color: var(--text);
     -webkit-appearance: none; appearance: none;
   }
   #login-pin-input { letter-spacing: 8px; text-align: center; font-weight: 600; }
@@ -543,7 +544,7 @@
 
   /* User chip in sidebar (replaces "Би хэн бэ?" dropdown) */
   .user-chip {
-    margin-top: 12px; padding: 10px; background: #fafbfc; border: 1px solid var(--border);
+    margin-top: 12px; padding: 10px; background: var(--panel-hover); border: 1px solid var(--border);
     border-radius: 8px; display: flex; align-items: center; gap: 10px;
   }
   .user-chip .avatar {
@@ -559,7 +560,7 @@
     background: none; border: none; color: var(--muted); cursor: pointer; padding: 6px;
     border-radius: 6px;
   }
-  .user-chip .logout-btn:hover { background: #f1f3f5; color: var(--danger); }
+  .user-chip .logout-btn:hover { background: var(--panel-hover); color: var(--danger); }
 
   /* TOAST + CONFIRM (alert/confirm-ийг сольсон) */
   .toast-stack {
@@ -584,7 +585,7 @@
     to   { transform: translateY(0); opacity: 1; }
   }
   .confirm-dialog {
-    background: #fff; border-radius: 14px; padding: 22px;
+    background: var(--panel); border-radius: 14px; padding: 22px;
     max-width: 360px; width: 92%; box-shadow: 0 20px 50px rgba(0,0,0,.25);
   }
   .confirm-dialog h3 { margin: 0 0 8px; font-size: 16px; }
@@ -595,7 +596,7 @@
   .bell-btn {
     position: relative;
     padding: 8px 12px;
-    background: #fff;
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
@@ -603,7 +604,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     transition: background .15s;
   }
-  .bell-btn:hover { background: #f6f7f9; }
+  .bell-btn:hover { background: var(--panel-hover); }
   .bell-btn svg { width: 18px; height: 18px; display: block; }
   .bell-btn.has-unread svg { color: var(--primary); }
   @keyframes bell-shake {
@@ -626,7 +627,7 @@
   /* DESKTOP: dropdown panel */
   .notif-panel {
     position: fixed; top: 64px; right: 16px;
-    background: #fff; border: 1px solid var(--border);
+    background: var(--panel); border: 1px solid var(--border);
     border-radius: 12px; box-shadow: 0 12px 36px rgba(15,23,42,.20);
     width: 380px; max-width: calc(100vw - 32px);
     max-height: 70vh;
@@ -657,7 +658,7 @@
     width: 32px; height: 32px; border-radius: 50%;
     transition: background .12s;
   }
-  .notif-header .close-btn:hover { background: #f1f3f5; color: var(--text); }
+  .notif-header .close-btn:hover { background: var(--panel-hover); color: var(--text); }
   .notif-mark-read {
     background: none; border: none; color: var(--primary);
     font-size: 12px; cursor: pointer; padding: 6px 10px;
@@ -670,9 +671,9 @@
     padding: 14px 18px; border-bottom: 1px solid #f1f3f5;
     cursor: pointer; transition: background .12s;
   }
-  .notif-item:hover { background: #fafbfc; }
+  .notif-item:hover { background: var(--panel-hover); }
   .notif-item.unread { background: var(--primary-soft); }
-  .notif-item.unread:hover { background: #e0e7ff; }
+  .notif-item.unread:hover { background: var(--primary-soft); }
   .notif-item.unread::before {
     content: ''; position: absolute; margin-left: -10px; margin-top: 8px;
     width: 6px; height: 6px; border-radius: 50%; background: var(--primary);
@@ -682,14 +683,14 @@
     width: 36px; height: 36px;
     border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
-    background: #f1f3f5;
+    background: var(--panel-hover);
     color: var(--muted);
   }
   .notif-icon svg { width: 18px; height: 18px; }
   .notif-icon.assigned    { background: var(--primary-soft); color: var(--primary); }
-  .notif-icon.overdue     { background: #fee2e2; color: var(--danger); }
-  .notif-icon.due_today   { background: #fef3c7; color: var(--warn); }
-  .notif-icon.stage_unlock{ background: #dcfce7; color: var(--ok); }
+  .notif-icon.overdue     { background: var(--danger-soft); color: var(--danger); }
+  .notif-icon.due_today   { background: var(--warn-soft); color: var(--warn); }
+  .notif-icon.stage_unlock{ background: var(--ok-soft); color: var(--ok); }
   .notif-body { flex: 1; min-width: 0; }
   .notif-msg { font-size: 14px; color: var(--text); line-height: 1.4; }
   .notif-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
@@ -845,6 +846,7 @@
     /* Утсан дээр зөвхөн bell + theme + Шинэ товчийг үлдээж бусдыг нуух
        (зөв тохиолдолд Цэс/FAB-аар орлуулагдана) */
     #settings-btn,
+    #export-btn,
     #new-order-btn,
     #new-finance-btn { display: none; }
 
@@ -1067,6 +1069,7 @@
           <span class="notif-badge" id="notif-badge" style="display:none">0</span>
         </button>
         <button class="btn" id="settings-btn" aria-label="Тохиргоо">⚙</button>
+        <button class="btn" id="export-btn" title="Даалгаврын тайланг CSV (Excel)-ээр татах" style="display:none;">📊 Тайлан</button>
         <button class="btn" id="new-order-btn" title="5 дамжлагат акт автоматаар үүснэ">📋 Захиалга</button>
         <button class="btn" id="new-finance-btn" title="Санхүүгийн хүсэлт CEO-руу илгээх">💸 Хүсэлт</button>
         <button class="btn btn-primary" id="new-task-btn">+ Шинэ</button>
@@ -1113,7 +1116,7 @@
 <div class="modal-bg" id="task-modal">
   <div class="modal">
     <h2 id="task-modal-title">Шинэ даалгавар</h2>
-    <div id="t-creator-info" style="display:none; font-size:12px; color:var(--muted); margin:-8px 0 12px; padding:8px 10px; background:#f1f3f5; border-radius:6px;"></div>
+    <div id="t-creator-info" style="display:none; font-size:12px; color:var(--muted); margin:-8px 0 12px; padding:8px 10px; background:var(--panel-hover); border-radius:6px;"></div>
     <label>Гарчиг *</label>
     <input id="t-title" placeholder="Жишээ: Хурим - 2026/06/15 - тоног бэлдэх" />
     <label>Тайлбар</label>
@@ -1135,18 +1138,18 @@
     </select>
 
     <!-- ─── СТАТУС ТОВЧНУУД (зөвхөн хадгалагдсан task үед харагдана) ─── -->
-    <div id="t-status-bar" style="display:none; margin:14px -4px 4px; padding:10px 4px; border-top:1px solid #eee;">
+    <div id="t-status-bar" style="display:none; margin:14px -4px 4px; padding:10px 4px; border-top:1px solid var(--border);">
       <div style="font-size:11px; color:var(--muted); margin-bottom:6px; padding:0 8px;">Үйлдэл</div>
       <div id="t-action-buttons" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
     </div>
 
     <!-- ─── СЭТГЭГДЭЛ thread ─── -->
-    <div id="t-comments-section" style="display:none; margin-top:16px; border-top:1px solid #eee; padding-top:14px;">
+    <div id="t-comments-section" style="display:none; margin-top:16px; border-top:1px solid var(--border); padding-top:14px;">
       <div style="font-size:13px; font-weight:600; margin-bottom:8px;">💬 Сэтгэгдэл</div>
       <div id="t-comments-list" style="display:flex; flex-direction:column; gap:10px; max-height:300px; overflow-y:auto; margin-bottom:10px;"></div>
       <div style="position:relative;">
         <textarea id="t-comment-input" placeholder="Сэтгэгдэл бичих... @ дарж хүн дурдах" rows="2" style="width:100%; resize:vertical;"></textarea>
-        <div id="t-mention-popup" style="display:none; position:absolute; background:#fff; border:1px solid #ddd; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.1); max-height:160px; overflow-y:auto; width:240px; z-index:10;"></div>
+        <div id="t-mention-popup" style="display:none; position:absolute; background:var(--panel); border:1px solid var(--border); border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.1); max-height:160px; overflow-y:auto; width:240px; z-index:10;"></div>
       </div>
       <div style="display:flex; gap:6px; align-items:center; margin-top:6px;">
         <input type="file" id="t-comment-file" accept="image/*,application/pdf" style="font-size:12px; flex:1;" />
@@ -1155,7 +1158,7 @@
     </div>
 
     <!-- ─── ACTIVITY LOG (collapsible) ─── -->
-    <div id="t-activity-section" style="display:none; margin-top:14px; border-top:1px solid #eee; padding-top:14px;">
+    <div id="t-activity-section" style="display:none; margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
       <button type="button" id="t-activity-toggle" style="background:none; border:none; color:var(--primary); font-size:13px; cursor:pointer; padding:6px 0; display:flex; align-items:center; gap:4px;">
         <span id="t-activity-icon">▸</span> Үйлдлийн түүх (<span id="t-activity-count">0</span>)
       </button>
@@ -2221,7 +2224,8 @@ async function loadData() {
       const raw = Array.isArray(data) ? data : (data.tasks || []);
       state.tasks = raw.map(normalizeTask);
       if (data.projectsByBranch) state.projectsByBranch = data.projectsByBranch;
-      setConn('online', 'n8n холбогдсон');
+      applyPendingTaskWrites();   // офлайн хийсэн, хараахан sync болоогүй өөрчлөлтийг хадгална
+      updatePendingConn();
       saveLocal();   // cache
       return;
     } catch (e) {
@@ -2256,21 +2260,93 @@ function saveLocal() {
   localStorage.setItem('projectsByBranch', JSON.stringify(state.projectsByBranch));
   localStorage.setItem('branch', state.branch);
 }
-async function saveTask(task, deleted=false) {
-  saveLocal();
-  if (state.config.apiUrl) {
-    try {
-      await fetch(state.config.apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: deleted ? 'delete' : 'upsert', task })
-      });
-      setConn('online', 'n8n холбогдсон');
-    } catch(e) {
-      console.warn('Sync failed:', e);
-      setConn('offline', 'Sync хийгдсэнгүй');
+/* -------------------- OFFLINE WRITE QUEUE --------------------
+   Кемпэд интернэт тогтворгүй. Сервер рүү бичих оролдлого амжилтгүй болбол өөрчлөлтийг
+   localStorage-д "pendingWrites" дараалалд хадгална. Холболт сэргэх бүрд (poll, online
+   event, апп нээх) дахин илгээнэ. Ингэснээр офлайн хийсэн өөрчлөлт алдагдахгүй.
+   loadData/loadFinanceRequests серверээс дата татахдаа эдгээр pending бичлэгийг ДЭЭР нь
+   давхарлаж (merge) тавьдаг тул сервер дээр хараахан очоогүй өөрчлөлт ч UI-д хадгалагдана. */
+function loadPendingWrites() {
+  try { return JSON.parse(localStorage.getItem('pendingWrites') || '[]'); } catch(e) { return []; }
+}
+function savePendingWrites(q) {
+  try { localStorage.setItem('pendingWrites', JSON.stringify(q)); } catch(e) {}
+}
+function enqueueWrite(write) {
+  const q = loadPendingWrites();
+  const id = write.payload && write.payload.id;
+  // Нэг бичлэгийн өмнөх pending-ийг хасна (хамгийн сүүлийн өөрчлөлт давамгайлна)
+  const filtered = q.filter(w => !(w.kind === write.kind && w.payload && w.payload.id === id));
+  filtered.push(write);
+  savePendingWrites(filtered);
+  updatePendingConn();
+}
+async function postWrite(url, body) {
+  if (!url) return false;
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return r.ok; // 500/4xx-ийг ялагдал гэж тооцно (throw хийдэггүй)
+  } catch(e) { return false; }
+}
+let _flushing = false;
+async function flushPendingWrites() {
+  if (_flushing) return;
+  let queue = loadPendingWrites();
+  if (!queue.length) { updatePendingConn(); return; }
+  _flushing = true;
+  const remaining = [];
+  for (const w of queue) {
+    const url = w.kind === 'finance' ? state.config.financeUrl : state.config.apiUrl;
+    const body = w.kind === 'finance'
+      ? { action: w.action, request: w.payload }
+      : { action: w.action, task: w.payload };
+    const ok = await postWrite(url, body);
+    if (!ok) remaining.push(w);
+  }
+  savePendingWrites(remaining);
+  _flushing = false;
+  updatePendingConn();
+}
+function updatePendingConn() {
+  const n = loadPendingWrites().length;
+  if (n > 0) setConn('offline', `${n} өөрчлөлт sync хүлээж буй`);
+  else setConn('online', 'n8n холбогдсон');
+}
+// Серверээс татсан жагсаалт дээр pending бичлэгүүдийг давхарлаж тавих (merge).
+function applyPendingTaskWrites() {
+  for (const w of loadPendingWrites()) {
+    if (w.kind !== 'task' || !w.payload) continue;
+    if (w.action === 'delete') {
+      state.tasks = state.tasks.filter(t => t.id !== w.payload.id);
+    } else {
+      const idx = state.tasks.findIndex(t => t.id === w.payload.id);
+      if (idx >= 0) state.tasks[idx] = normalizeTask(w.payload);
+      else state.tasks.unshift(normalizeTask(w.payload));
     }
   }
+}
+function applyPendingFinanceWrites() {
+  for (const w of loadPendingWrites()) {
+    if (w.kind !== 'finance' || !w.payload) continue;
+    if (w.action === 'delete') {
+      state.financeRequests = state.financeRequests.filter(r => r.id !== w.payload.id);
+    } else {
+      const idx = state.financeRequests.findIndex(r => r.id === w.payload.id);
+      if (idx >= 0) state.financeRequests[idx] = normalizeFinance(w.payload);
+      else state.financeRequests.unshift(normalizeFinance(w.payload));
+    }
+  }
+}
+async function saveTask(task, deleted=false) {
+  saveLocal();
+  if (!state.config.apiUrl) return; // backend тохируулаагүй — зөвхөн локал
+  const ok = await postWrite(state.config.apiUrl, { action: deleted ? 'delete' : 'upsert', task });
+  if (ok) { flushPendingWrites(); }            // амжилттай — хуримтлагдсан backlog-оо бас илгээх
+  else { enqueueWrite({ kind: 'task', action: deleted ? 'delete' : 'upsert', payload: task, ts: Date.now() }); }
 }
 async function notify(event, task, extra = {}) {
   // extra нь { recipient } зэрэг нэмэлт мэдээлэл агуулж болно.
@@ -2555,15 +2631,10 @@ async function uploadReceipt(file, requestId, kind) {
 async function saveFinanceRequest(r, deleted = false) {
   // localStorage кэш
   try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
-  if (state.config.financeUrl) {
-    try {
-      await fetch(state.config.financeUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: deleted ? 'delete' : 'upsert', request: r })
-      });
-    } catch(e) { console.warn('Finance sync failed:', e); }
-  }
+  if (!state.config.financeUrl) return;
+  const ok = await postWrite(state.config.financeUrl, { action: deleted ? 'delete' : 'upsert', request: r });
+  if (ok) { flushPendingWrites(); }
+  else { enqueueWrite({ kind: 'finance', action: deleted ? 'delete' : 'upsert', payload: r, ts: Date.now() }); }
 }
 
 async function loadFinanceRequests() {
@@ -2574,6 +2645,7 @@ async function loadFinanceRequests() {
       const data = await res.json();
       const raw = Array.isArray(data?.requests) ? data.requests : [];
       state.financeRequests = raw.map(normalizeFinance);
+      applyPendingFinanceWrites();   // офлайн хийсэн өөрчлөлтийг хадгална
       try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
       return;
     } catch (e) { console.warn('Finance load failed, fallback to cache:', e); }
@@ -2845,10 +2917,10 @@ function openFinanceModal(id = null) {
     const dec = t.decision || 'pending';
     const requester = memberName(t.requested_by);
     const decisionLabels = {
-      pending:  { bg:'#fef3c7', col:'#92400e', icon:'🕐', text:'Хүлээгдэж буй' },
-      approved: { bg:'#d1fae5', col:'#065f46', icon:'✓',  text:'Зөвшөөрсөн' },
-      rejected: { bg:'#fee2e2', col:'#991b1b', icon:'✗',  text:'Татгалзсан' },
-      deferred: { bg:'#e0e7ff', col:'#3730a3', icon:'🕐', text:'Хойшлогдсон' },
+      pending:  { bg:'var(--warn-soft)',    col:'var(--warn)',    icon:'🕐', text:'Хүлээгдэж буй' },
+      approved: { bg:'var(--ok-soft)',      col:'var(--ok)',      icon:'✓',  text:'Зөвшөөрсөн' },
+      rejected: { bg:'var(--danger-soft)',  col:'var(--danger)',  icon:'✗',  text:'Татгалзсан' },
+      deferred: { bg:'var(--primary-soft)', col:'var(--primary)', icon:'🕐', text:'Хойшлогдсон' },
     };
     const d = decisionLabels[dec] || decisionLabels.pending;
     let info = `<div style="background:${d.bg};color:${d.col};padding:8px 12px;border-radius:6px;font-weight:600;">${d.icon} ${d.text}</div>`;
@@ -3518,15 +3590,15 @@ function renderTaskActionButtons(t) {
   }
   // Төлвийн badge
   const statusLabels = {
-    open:        { text: 'Шинэ',         bg: '#fef3c7', col: '#92400e' },
-    in_progress: { text: 'Хийгдэж байна', bg: '#dbeafe', col: '#1e40af' },
-    done:        { text: 'Дууссан',      bg: '#d1fae5', col: '#065f46' },
-    declined:    { text: 'Татгалзсан',   bg: '#fee2e2', col: '#991b1b' },
+    open:        { text: 'Шинэ',         bg: 'var(--warn-soft)',   col: 'var(--warn)' },
+    in_progress: { text: 'Хийгдэж байна', bg: 'var(--info-soft)',   col: 'var(--info)' },
+    done:        { text: 'Дууссан',      bg: 'var(--ok-soft)',     col: 'var(--ok)' },
+    declined:    { text: 'Татгалзсан',   bg: 'var(--danger-soft)', col: 'var(--danger)' },
   };
   const sl = statusLabels[status] || statusLabels.open;
   let html = `<span style="padding:6px 12px;background:${sl.bg};color:${sl.col};border-radius:6px;font-size:12px;font-weight:600;margin-right:4px;">${sl.text}</span>`;
   if (status === 'declined' && t.decline_reason) {
-    html += `<div style="width:100%;margin-top:6px;padding:8px;background:#fef2f2;color:#991b1b;border-radius:6px;font-size:12px;">Шалтгаан: ${escapeHtml(t.decline_reason)}</div>`;
+    html += `<div style="width:100%;margin-top:6px;padding:8px;background:var(--danger-soft);color:var(--danger);border-radius:6px;font-size:12px;">Шалтгаан: ${escapeHtml(t.decline_reason)}</div>`;
   }
   html += btns.join('');
   bar.innerHTML = html;
@@ -3583,7 +3655,7 @@ function renderTaskComments(t) {
     const mine = (c.author === state.me);
     const textHtml = renderCommentText(c.text);
     const fileHtml = c.file_url ? `<a href="${escapeHtml(c.file_url)}" target="_blank" rel="noopener" style="display:block;margin-top:4px;color:var(--primary);font-size:12px;">📎 Хавсралт</a>` : '';
-    return `<div style="background:${mine ? '#eff6ff' : '#f9fafb'};border-left:3px solid ${mine ? '#3b82f6' : '#9ca3af'};padding:8px 10px;border-radius:6px;">
+    return `<div style="background:${mine ? 'var(--info-soft)' : 'var(--panel-hover)'};border-left:3px solid ${mine ? 'var(--info)' : 'var(--muted-soft)'};padding:8px 10px;border-radius:6px;">
       <div style="font-size:11px;color:var(--muted);margin-bottom:3px;"><strong>${escapeHtml(author)}</strong> · ${escapeHtml(time)}</div>
       <div style="font-size:13px;white-space:pre-wrap;word-break:break-word;">${textHtml}</div>
       ${fileHtml}
@@ -3600,7 +3672,7 @@ function renderCommentText(text) {
   html = html.replace(/@(\w+)/g, (match, id) => {
     const name = memberName(id);
     if (name === id) return match; // mapping олдсонгүй — текстээр үлдээ
-    return `<span style="background:#fef3c7;color:#92400e;padding:1px 4px;border-radius:3px;font-weight:600;">@${escapeHtml(name)}</span>`;
+    return `<span style="background:var(--warn-soft);color:var(--warn);padding:1px 4px;border-radius:3px;font-weight:600;">@${escapeHtml(name)}</span>`;
   });
   return html;
 }
@@ -3635,7 +3707,7 @@ function renderTaskActivity(t) {
       line += `: <em>${escapeHtml(from)}</em> → <em>${escapeHtml(to)}</em>`;
       if (a.details.reason) line += ` (${escapeHtml(a.details.reason)})`;
     }
-    return `<div>${line} <span style="color:#9ca3af;">· ${escapeHtml(when)}</span></div>`;
+    return `<div>${line} <span style="color:var(--muted-soft);">· ${escapeHtml(when)}</span></div>`;
   }).join('');
 }
 function closeTaskModal() {
@@ -3679,6 +3751,44 @@ async function addProject() {
   saveLocal();
   state.view = 'project:' + id;
   render();
+}
+
+/* -------------------- ТАЙЛАН EXPORT (CEO) --------------------
+   Бүх даалгаврыг CSV болгон татах. UTF-8 BOM нэмсэн тул Excel дээр Монгол үсэг зөв нээгдэнэ.
+   Долоо хоногийн тайлан/хяналтад зориулсан — хэн юу хариуцаж, юу хоцорсныг нэг дор харна. */
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function exportTasksReport() {
+  const statusMn = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };
+  const prioMn = { high: 'Өндөр', med: 'Дунд', low: 'Бага', none: '—' };
+  const today = todayStr();
+  const tasks = state.tasks.filter(t => t.status !== 'deleted');
+  const rows = tasks.map(t => [
+    t.title,
+    memberName(t.assignee),
+    memberName(t.createdBy),
+    projectName(t.project),
+    prioMn[t.priority] || '—',
+    statusMn[t.status] || t.status || 'Шинэ',
+    t.due || '',
+    (t.status !== 'done' && t.due && t.due < today) ? 'Тийм' : '',
+    (t.comments || []).length,
+    t.created ? new Date(t.created).toLocaleDateString('mn-MN') : '',
+  ].map(csvCell).join(','));
+  const header = ['Гарчиг', 'Хариуцагч', 'Үүсгэгч', 'Төсөл', 'Зэрэглэл', 'Төлөв', 'Эцсийн огноо', 'Хоцорсон', 'Сэтгэгдэл', 'Үүсгэсэн'].join(',');
+  const csv = '﻿' + header + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Чимун-даалгавар-тайлан-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`${tasks.length} даалгаврын тайлан татагдлаа`, 'success');
 }
 
 /* -------------------- INIT -------------------- */
@@ -3828,7 +3938,7 @@ function initEvents() {
       ).slice(0, 8);
       if (!candidates.length) { mentionPopup.style.display = 'none'; return; }
       mentionPopup.innerHTML = candidates.map(m =>
-        `<div data-mid="${escapeHtml(m.id)}" style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f3f4f6;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">${escapeHtml(m.name)} <span style="color:var(--muted);font-size:11px;">(${escapeHtml(m.id)})</span></div>`
+        `<div data-mid="${escapeHtml(m.id)}" style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--panel-hover)'" onmouseout="this.style.background=''">${escapeHtml(m.name)} <span style="color:var(--muted);font-size:11px;">(${escapeHtml(m.id)})</span></div>`
       ).join('');
       mentionPopup.style.display = 'block';
       mentionPopup.querySelectorAll('[data-mid]').forEach(el => {
@@ -4021,6 +4131,7 @@ function initEvents() {
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };
 
   // settings
+  document.getElementById('export-btn')?.addEventListener('click', exportTasksReport);
   document.getElementById('settings-btn').onclick = () => {
     document.getElementById('s-api').value = state.config.apiUrl;
     document.getElementById('s-notify').value = state.config.notifyUrl;
@@ -4151,6 +4262,7 @@ async function bootApp() {
     _eventsBound = true;
   }
   loadNotifications();
+  await flushPendingWrites();   // өмнөх session-д офлайн үлдсэн өөрчлөлт байвал эхлээд илгээх
   await Promise.all([ loadData(), loadFinanceRequests() ]);
   generateNotifications();
   render();
@@ -4163,6 +4275,8 @@ async function bootApp() {
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && state.me) refreshFromServer();
     });
+    // Холболт сэргэхэд (offline → online) хүлээгдэж буй өөрчлөлтийг шууд илгээх
+    window.addEventListener('online', () => { if (state.me) flushPendingWrites(); });
     _visibilityBound = true;
   }
 }
@@ -4171,6 +4285,7 @@ async function bootApp() {
 async function refreshFromServer() {
   if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
   try {
+    await flushPendingWrites();   // татахаасаа өмнө офлайн өөрчлөлтөө илгээж, дарагдахаас сэргийлнэ
     await Promise.all([ loadData(), loadFinanceRequests() ]);
     generateNotifications();
     // Модал нээлттэй (хэрэглэгч засаж байгаа) бол жагсаалтыг бүрэн дахин зурахгүй —
@@ -4197,6 +4312,9 @@ function showApp() {
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').style.display = '';
   renderUserChip();
+  // Тайлан export зөвхөн CEO-д
+  const exportBtn = document.getElementById('export-btn');
+  if (exportBtn) exportBtn.style.display = state.isCEO ? '' : 'none';
 }
 
 function renderUserChip() {

@@ -1308,3 +1308,184 @@ html, body {
     backdrop-filter: blur(2px);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE-FIRST NATIVE LAYOUT (v3 — 2026-05-24)
+   Утсан дээр desktop dashboard загвараас "mobile app" загвар руу.
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 720px) {
+
+  /* ── Бүх хуудсын дэвсгэр өнгийг native апп шиг ── */
+  body, .app {
+    background: var(--bg) !important;
+  }
+
+  /* ── HEADER — iOS large title маяг ── */
+  .header {
+    display: block !important;
+    padding: max(12px, env(safe-area-inset-top, 12px)) 18px 8px !important;
+    border-bottom: none !important;
+    background: var(--bg) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    position: relative !important;
+  }
+  .header > div:first-of-type {
+    flex: none !important;
+  }
+  /* Large title */
+  .header h1 {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+    line-height: 1.15 !important;
+    margin: 4px 0 2px !important;
+  }
+  .header .sub {
+    font-size: 14px !important;
+    color: var(--muted) !important;
+    margin-top: 4px !important;
+  }
+
+  /* ── Header-ийн ачаалал арилгах: хамгийн чухал товч (3) л үлдээх ── */
+  .header-actions {
+    position: absolute !important;
+    top: max(10px, env(safe-area-inset-top, 10px)) !important;
+    right: 14px !important;
+    gap: 4px !important;
+  }
+  /* Жижиг icon-only хэлбэрт оруулах */
+  .header-actions .btn {
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    background: var(--panel) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+    font-size: 0 !important; /* text нуух */
+  }
+  /* Тэмдэглэгчээр (emoji) товчийг ил гаргах */
+  .header-actions .btn::before {
+    font-size: 18px;
+    line-height: 1;
+  }
+  #settings-btn::before { content: '⚙'; font-size: 16px; }
+  #export-btn::before { content: '📊'; }
+  #new-order-btn::before { content: '📋'; }
+  #new-finance-btn::before { content: '💸'; }
+  #new-task-btn::before { content: '＋'; font-size: 22px; font-weight: 300; }
+
+  /* Утасны header дээр зөвхөн notif + theme үлдээх, бусдыг FAB/menu рүү шилжүүлнэ */
+  #settings-btn,
+  #export-btn,
+  #new-order-btn,
+  #new-finance-btn,
+  #new-task-btn { display: none !important; }
+  /* Notif + theme — icon-only товч хэлбэр */
+  #theme-toggle, #notif-btn {
+    width: 40px !important; height: 40px !important;
+    min-width: 40px !important;
+    border-radius: 50% !important;
+    background: var(--panel) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+    border: 1px solid var(--border) !important;
+    padding: 0 !important;
+  }
+
+  /* Mobile menu (hamburger) — header-ийн зүүн дээр ── */
+  .mobile-menu-btn {
+    position: absolute !important;
+    top: max(10px, env(safe-area-inset-top, 10px)) !important;
+    left: 14px !important;
+    width: 40px !important; height: 40px !important;
+    border-radius: 50% !important;
+    background: var(--panel) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06) !important;
+    border: 1px solid var(--border) !important;
+    padding: 0 !important;
+    font-size: 18px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  /* h1 нь header дотроос menu/notif товчид нөлөөлөхгүйн тулд padding-top нэмэх */
+  .header > div:nth-child(2) {
+    padding-top: 44px !important;
+  }
+
+  /* ── TOOLBAR — filter pills, илүүдэл нь хасах ── */
+  .toolbar {
+    padding: 8px 14px 10px !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    background: var(--bg) !important;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .filter-pill {
+    flex-shrink: 0 !important;
+    padding: 8px 14px !important;
+    background: var(--panel) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 999px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--text) !important;
+    min-height: 36px !important;
+    cursor: pointer !important;
+  }
+  .filter-pill.active {
+    background: var(--primary) !important;
+    color: #fff !important;
+    border-color: var(--primary) !important;
+  }
+  /* Search-ийг toolbar-аас тусдаа доош зөөх */
+  .toolbar .search {
+    order: 99 !important;
+    flex: 1 1 100% !important;
+    margin-top: 0 !important;
+  }
+
+  /* ── Sidebar — brand-ыг утсан дээр нуух (зай хэмнэх) ── */
+  .sidebar .brand {
+    font-size: 18px !important;
+    padding: 18px 18px 12px !important;
+  }
+  .sidebar {
+    padding: 12px 12px max(20px, env(safe-area-inset-bottom)) !important;
+    border-radius: 0 20px 20px 0 !important;
+  }
+
+  /* ── Connection status (зүүн доод) — pill маяг, тод биш ── */
+  .conn-status {
+    bottom: calc(78px + env(safe-area-inset-bottom)) !important;
+    left: 12px !important;
+    font-size: 11px !important;
+    padding: 4px 10px !important;
+    opacity: .7;
+  }
+
+  /* ── Task мөр илүү тав тухтай ── */
+  .task-row {
+    padding: 14px 16px !important;
+    background: var(--panel) !important;
+  }
+
+  /* ── Empty state-ийг сайхан болгох (хэрэв байгаа бол) ── */
+  #task-list:empty::after {
+    content: '✨ Танд оноосон ажил алга байна.\A Шинэ ажил үүсгэхдээ доорх + товчийг дарна уу.';
+    white-space: pre-line;
+    display: block;
+    text-align: center;
+    color: var(--muted);
+    font-size: 15px;
+    padding: 60px 20px;
+    line-height: 1.6;
+  }
+
+  /* ── Filter pill-ийн дотроос emoji-г жижигрүүлэх (overflow саатуулах) ── */
+  .filter-pill { white-space: nowrap; }
+}

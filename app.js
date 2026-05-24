@@ -2604,18 +2604,43 @@ function renderTaskActivity(t) {
     clarification_requested: 'Тодруулга асуусан',
   };
   const statusNames = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };
-  list.innerHTML = activity.slice().reverse().map(a => {
+  // Vertical timeline маяг — actor avatar + dot + line connector + content
+  const actionColors = {
+    created: 'var(--accent-blue)',
+    status_changed: 'var(--accent-amber)',
+    comment_added: 'var(--accent-purple)',
+    declined: 'var(--accent-red)',
+    reassigned: 'var(--accent-blue)',
+    edited: 'var(--muted)',
+    clarification_requested: 'var(--accent-amber)',
+  };
+  list.innerHTML = `<div class="timeline">` + activity.slice().reverse().map((a, idx) => {
     const who = memberName(a.actor);
+    const initials = memberInitials(a.actor);
     const when = new Date(a.timestamp).toLocaleString('mn-MN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    let line = `<strong>${escapeHtml(who)}</strong> — ${escapeHtml(actionLabels[a.action] || a.action)}`;
+    const color = actionColors[a.action] || 'var(--muted)';
+    let detail = '';
     if (a.action === 'status_changed' && a.details) {
       const from = statusNames[a.details.from] || a.details.from;
       const to = statusNames[a.details.to] || a.details.to;
-      line += `: <em>${escapeHtml(from)}</em> → <em>${escapeHtml(to)}</em>`;
-      if (a.details.reason) line += ` (${escapeHtml(a.details.reason)})`;
+      detail = `<span class="timeline-detail">${escapeHtml(from)} → ${escapeHtml(to)}</span>`;
+      if (a.details.reason) detail += `<div class="timeline-reason">${escapeHtml(a.details.reason)}</div>`;
     }
-    return `<div>${line} <span style="color:var(--muted-soft);">· ${escapeHtml(when)}</span></div>`;
-  }).join('');
+    return `
+      <div class="timeline-item">
+        <div class="timeline-dot" style="background:${color};"></div>
+        <div class="timeline-content">
+          <div class="timeline-head">
+            <span class="timeline-avatar">${escapeHtml(initials)}</span>
+            <span class="timeline-who">${escapeHtml(who)}</span>
+            <span class="timeline-action">${escapeHtml(actionLabels[a.action] || a.action)}</span>
+          </div>
+          ${detail}
+          <div class="timeline-time">${escapeHtml(when)}</div>
+        </div>
+      </div>
+    `;
+  }).join('') + `</div>`;
 }
 function closeTaskModal() {
   document.getElementById('task-modal').classList.remove('open');
@@ -2823,6 +2848,60 @@ function initEvents() {
   // ESC-ээр хаах
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && fabSheetBg?.classList.contains('open')) closeFabSheet();
+  });
+
+  // ─── Onboarding tour — анх нэвтэрсэн хэрэглэгчид богино зааварчилгаа ───
+  const OB_KEY = 'onboardingShown_v1';
+  const obSteps = [
+    {
+      illus: ICONS.inbox,
+      title: 'Тавтай морил!',
+      text: 'Энэ апп таны өдөр тутмын ажил, санхүүгийн хүсэлт, тайлангуудыг нэг дороос удирдана.',
+    },
+    {
+      illus: '<svg class="lcd-icon" viewBox="0 0 24 24" style="width:64px;height:64px;color:var(--accent-blue);"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+      title: 'Шинэ ажил үүсгэх',
+      text: 'Доод буланд "+" товч дарна. Сонголтоос Даалгавар, Санхүүгийн хүсэлт эсвэл Захиалга үүсгэж болно.',
+    },
+    {
+      illus: '<svg class="lcd-icon" viewBox="0 0 24 24" style="width:64px;height:64px;color:var(--accent-green);"><path d="M9 12h6m-3-3v6m9 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" stroke-linecap="round"/></svg>',
+      title: 'Утсан дээр swipe',
+      text: 'Ажил мөрөн дээр баруун шудалбал дуусгасан, зүүн шудалбал устгахаар тэмдэглэгдэнэ.',
+    },
+    {
+      illus: '<svg class="lcd-icon" viewBox="0 0 24 24" style="width:64px;height:64px;color:var(--accent-purple);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      title: 'Хайлт, shortcut',
+      text: 'Desktop дээр ⌘K дарж бүх шилжилт, командын меню. ? дарвал бүх shortcut жагсаалт нээгдэнэ.',
+    },
+  ];
+  function showOnboardingStep(idx) {
+    const step = obSteps[idx];
+    if (!step) { closeOnboarding(); return; }
+    document.getElementById('ob-illus').innerHTML = step.illus;
+    document.getElementById('ob-title').textContent = step.title;
+    document.getElementById('ob-text').textContent = step.text;
+    document.querySelectorAll('.onboarding-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+    document.getElementById('ob-prev').style.display = idx === 0 ? 'none' : '';
+    document.getElementById('ob-next').textContent = (idx === obSteps.length - 1) ? 'Эхлүүлэх ✓' : 'Дараах →';
+    state._obIdx = idx;
+  }
+  function closeOnboarding() {
+    document.getElementById('onboarding-bg')?.classList.remove('open');
+    localStorage.setItem(OB_KEY, '1');
+  }
+  // Анх удаа нэвтэрсэн бол tour эхлүүлэх
+  if (!localStorage.getItem(OB_KEY) && state.user) {
+    setTimeout(() => {
+      document.getElementById('onboarding-bg')?.classList.add('open');
+      showOnboardingStep(0);
+    }, 600);
+  }
+  document.getElementById('ob-skip')?.addEventListener('click', closeOnboarding);
+  document.getElementById('ob-prev')?.addEventListener('click', () => showOnboardingStep((state._obIdx || 0) - 1));
+  document.getElementById('ob-next')?.addEventListener('click', () => {
+    const next = (state._obIdx || 0) + 1;
+    if (next >= obSteps.length) closeOnboarding();
+    else showOnboardingStep(next);
   });
 
   // Settings advanced toggle — n8n URL-уудыг нуух/харуулах

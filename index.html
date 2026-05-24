@@ -20,6 +20,32 @@
 </head>
 <body>
 
+<!-- ─── INSTALL BANNER — "Гэрийн дэлгэц рүү нэмэх" зөвлөгөө ─── -->
+<div class="install-banner" id="install-banner" role="region" aria-label="Аппыг суулгах">
+  <div class="ib-icon">📱</div>
+  <div class="ib-text">
+    <div class="ib-title">Аппыг суулгах</div>
+    <div class="ib-sub">Гэрийн дэлгэцээс шууд нээж, илүү хурдан ажиллуулна</div>
+  </div>
+  <button class="ib-btn" id="install-btn" type="button">Суулгах</button>
+  <button class="ib-close" id="install-close" type="button" aria-label="Хаах">×</button>
+</div>
+
+<!-- iOS install instruction modal -->
+<div class="ios-install-modal" id="ios-install-modal" role="dialog" aria-label="iOS суулгах заавар">
+  <div class="iim-sheet">
+    <div class="iim-handle"></div>
+    <h3>📱 iPhone дээр суулгах</h3>
+    <div class="iim-sub">Safari доороос дараах 3 алхмыг хийнэ үү:</div>
+    <ol>
+      <li>Доод хэсэгт байгаа <strong>Хуваалцах</strong> товчийг (□↑) дарна</li>
+      <li>Жагсаалтаас <strong>"Add to Home Screen"</strong> сонгоно</li>
+      <li>Баруун дээд буланд <strong>"Add"</strong> товчийг дарна</li>
+    </ol>
+    <button class="iim-close" id="ios-install-close" type="button">Ойлголоо</button>
+  </div>
+</div>
+
 <!-- LOGIN SCREEN — shown until authenticated -->
 <div class="login-screen" id="login-screen">
   <div class="login-card">

@@ -3165,3 +3165,82 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     });
   });
 }
+
+/* ═══════════════════════════════════════════════════════════
+   INSTALL PROMPT — "Гэрийн дэлгэц рүү нэмэх" туслалцаа
+   - Android Chrome: beforeinstallprompt үйл явдлыг барьж native prompt үзүүлнэ
+   - iOS Safari: native API байхгүй тул step-by-step заавар үзүүлнэ
+   - Аль хэдийн суулгасан (standalone mode) бол огт харуулахгүй
+   - Хэрэглэгч хаасан бол 7 хоног дахин харуулахгүй
+   ═══════════════════════════════════════════════════════════ */
+(function setupInstallPrompt() {
+  const DISMISS_KEY = 'installBannerDismissedAt';
+  const DISMISS_DAYS = 7;
+
+  // PWA standalone mode-д ажиллаж байвал банер үл хэрэгтэй
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  if (isStandalone) return;
+
+  // Сүүлд хаасан 7 хоногийн дотор бол үл харуулах
+  const dismissedAt = parseInt(localStorage.getItem(DISMISS_KEY) || '0', 10);
+  if (dismissedAt && (Date.now() - dismissedAt) < DISMISS_DAYS * 86400 * 1000) return;
+
+  const banner = document.getElementById('install-banner');
+  const btn = document.getElementById('install-btn');
+  const closeBtn = document.getElementById('install-close');
+  const iosModal = document.getElementById('ios-install-modal');
+  const iosClose = document.getElementById('ios-install-close');
+  if (!banner || !btn || !closeBtn) return;
+
+  let deferredPrompt = null;
+
+  // iOS Safari detect (beforeinstallprompt дэмжлэггүй)
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  const isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
+
+  function dismiss() {
+    banner.classList.remove('show');
+    localStorage.setItem(DISMISS_KEY, String(Date.now()));
+  }
+
+  closeBtn.addEventListener('click', dismiss);
+
+  btn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        dismiss();
+      }
+      deferredPrompt = null;
+    } else if (isIOS && isSafari) {
+      // iOS: native prompt байхгүй тул заавар үзүүлнэ
+      iosModal.classList.add('show');
+    } else {
+      // Бусад тохиолдол — browser-ийн menu-аас "Install app" сонгох заавар
+      alert('Browser-ийн цэснээс "Аппыг суулгах" эсвэл "Add to Home Screen" сонгоно уу.');
+    }
+  });
+
+  iosClose?.addEventListener('click', () => iosModal.classList.remove('show'));
+  iosModal?.addEventListener('click', (e) => {
+    if (e.target === iosModal) iosModal.classList.remove('show');
+  });
+
+  // Android/desktop Chrome: beforeinstallprompt-ыг хадгалаад банер харуулна
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    banner.classList.add('show');
+  });
+
+  // iOS дээр beforeinstallprompt гарахгүй — шууд банер харуулна
+  if (isIOS && isSafari) {
+    // App нээгдэхэд 3 секундын дараа банер харуулна (анх хараахан их санасангүй байх)
+    setTimeout(() => banner.classList.add('show'), 3000);
+  }
+
+  // Хэрэглэгч суулгасны дараа банер хаах
+  window.addEventListener('appinstalled', dismiss);
+})();

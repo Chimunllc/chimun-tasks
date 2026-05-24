@@ -478,6 +478,36 @@
 <!-- ─── FAB товч — шинэ ажил үүсгэх (мобайлд) ─── -->
 <button class="fab" id="fab-new" aria-label="Шинэ ажил үүсгэх">+</button>
 
+<!-- ─── FAB SHEET — + товч дарахад сонголтын меню ─── -->
+<div class="fab-sheet-bg" id="fab-sheet-bg" aria-hidden="true">
+  <div class="fab-sheet" role="dialog" aria-label="Шинэ зүйл үүсгэх">
+    <div class="fab-sheet-handle"></div>
+    <div class="fab-sheet-title">Шинээр үүсгэх</div>
+    <button class="fab-sheet-item" data-action="task" type="button">
+      <span class="fsi-icon" style="background:#eef2ff;color:#4f46e5;">📥</span>
+      <div class="fsi-text">
+        <div class="fsi-name">Даалгавар</div>
+        <div class="fsi-sub">Ажилтанд ажил оноох</div>
+      </div>
+    </button>
+    <button class="fab-sheet-item" data-action="finance" type="button">
+      <span class="fsi-icon" style="background:#fef3c7;color:#b45309;">💸</span>
+      <div class="fsi-text">
+        <div class="fsi-name">Санхүүгийн хүсэлт</div>
+        <div class="fsi-sub">Төлбөр / зардлын зөвшөөрөл</div>
+      </div>
+    </button>
+    <button class="fab-sheet-item" data-action="order" type="button" id="fab-sheet-order">
+      <span class="fsi-icon" style="background:#dcfce7;color:#15803d;">📋</span>
+      <div class="fsi-text">
+        <div class="fsi-name">Шинэ захиалга</div>
+        <div class="fsi-sub">5 дамжлагат акт автоматаар үүснэ</div>
+      </div>
+    </button>
+    <button class="fab-sheet-cancel" type="button" id="fab-sheet-cancel">Болих</button>
+  </div>
+</div>
+
 <!-- ─── COMMAND PALETTE (⌘K / Ctrl+K) ─── -->
 <div class="cmd-palette-bg" id="cmd-palette-bg">
   <div class="cmd-palette" role="dialog" aria-label="Command Palette">

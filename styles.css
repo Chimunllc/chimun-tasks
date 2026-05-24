@@ -1897,3 +1897,69 @@ body, input, textarea, select, button {
 @media (max-width: 720px) {
   .conn-status { display: none !important; }
 }
+
+/* ═══ FAB SHEET — + товчны сонголтын меню ═══ */
+.fab-sheet-bg {
+  position: fixed; inset: 0; z-index: 150;
+  background: rgba(0, 0, 0, 0);
+  pointer-events: none;
+  display: flex; align-items: flex-end; justify-content: center;
+  transition: background 200ms ease;
+}
+.fab-sheet-bg.open {
+  background: rgba(0, 0, 0, .35);
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.fab-sheet {
+  background: var(--panel);
+  width: 100%; max-width: 440px;
+  border-radius: 20px 20px 0 0;
+  padding: 8px 14px max(24px, env(safe-area-inset-bottom));
+  transform: translateY(100%);
+  transition: transform 280ms cubic-bezier(.32, .72, 0, 1);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, .15);
+}
+.fab-sheet-bg.open .fab-sheet { transform: translateY(0); }
+.fab-sheet-handle {
+  width: 40px; height: 4px; background: var(--border-strong);
+  border-radius: 999px; margin: 8px auto 14px;
+}
+.fab-sheet-title {
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em;
+  padding: 0 8px 10px;
+}
+.fab-sheet-item {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; padding: 14px 10px;
+  background: transparent; border: none; cursor: pointer;
+  border-radius: 12px; text-align: left;
+  transition: background 120ms ease, transform 80ms ease;
+  min-height: 64px;
+}
+.fab-sheet-item:hover { background: var(--panel-hover); }
+.fab-sheet-item:active { background: var(--border); transform: scale(.98); }
+.fsi-icon {
+  flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+}
+.fsi-text { flex: 1; min-width: 0; }
+.fsi-name {
+  font-size: 16px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.01em;
+}
+.fsi-sub {
+  font-size: 13px; color: var(--muted); margin-top: 2px;
+  letter-spacing: -0.01em;
+}
+.fab-sheet-cancel {
+  width: 100%; margin-top: 8px; padding: 14px;
+  background: var(--panel-hover); border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 600; color: var(--text);
+  cursor: pointer; min-height: 52px;
+}
+.fab-sheet-cancel:active { background: var(--border); }

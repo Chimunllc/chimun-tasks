@@ -2426,14 +2426,39 @@ function initEvents() {
     document.querySelector('.sidebar')?.classList.add('open');
     document.querySelector('.sidebar-backdrop')?.classList.add('open');
   });
-  // FAB — context-aware: одоогийн view-аас хамааран зөв modal нээнэ.
-  //   finance view дээр бол санхүүгийн хүсэлт, бусад үед даалгавар үүсгэх.
-  document.getElementById('fab-new')?.addEventListener('click', () => {
-    if (state.view === 'finance') {
-      openFinanceModal();
-    } else {
-      openTaskModal();
-    }
+  // FAB — sheet нээж 3 сонголт үзүүлнэ (Даалгавар / Санхүү / Захиалга).
+  // Захиалга нь зөвхөн M Event-ийн ажилчин эсвэл CEO-д харагдана.
+  const fabSheetBg = document.getElementById('fab-sheet-bg');
+  const fabSheetOrder = document.getElementById('fab-sheet-order');
+  function openFabSheet() {
+    // "Захиалга" сонголтыг зөвхөн зөв хүмүүст харуулах
+    const canCreateOrder = state.isCEO
+      || (state.user?.branches || []).some(b => b === 'm-event' || b === 'production');
+    if (fabSheetOrder) fabSheetOrder.style.display = canCreateOrder ? '' : 'none';
+    fabSheetBg?.classList.add('open');
+  }
+  function closeFabSheet() { fabSheetBg?.classList.remove('open'); }
+
+  document.getElementById('fab-new')?.addEventListener('click', openFabSheet);
+  document.getElementById('fab-sheet-cancel')?.addEventListener('click', closeFabSheet);
+  fabSheetBg?.addEventListener('click', (e) => {
+    if (e.target === fabSheetBg) closeFabSheet();
+  });
+  fabSheetBg?.querySelectorAll('.fab-sheet-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      closeFabSheet();
+      // Sheet хаагдсаны дараа modal нээж жижиг хоцрогдол үүсгэж smooth transition
+      setTimeout(() => {
+        if (action === 'task') openTaskModal();
+        else if (action === 'finance') openFinanceModal();
+        else if (action === 'order') document.getElementById('order-modal')?.classList.add('open');
+      }, 180);
+    });
+  });
+  // ESC-ээр хаах
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && fabSheetBg?.classList.contains('open')) closeFabSheet();
   });
 
   // Theme toggle товч

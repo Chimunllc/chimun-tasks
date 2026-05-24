@@ -169,15 +169,23 @@ function showToast(msg, type = '', timeoutMs = 3500) {
   const stack = document.getElementById('toast-stack');
   if (!stack) return console.log('[toast]', msg);
   const el = document.createElement('div');
-  el.className = 'toast' + (type ? ' ' + type : '');
-  const icon = { success: '✓', error: '✕', warn: '⚠' }[type] || 'ⓘ';
-  el.innerHTML = `<span class="toast-icon">${icon}</span><span>${escapeHtml(msg)}</span>`;
+  el.className = 'toast toast-enter' + (type ? ' ' + type : '');
+  // SVG icon — emoji биш, илүү тод
+  const ICONS_T = {
+    success: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    error:   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    warn:    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    info:    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  };
+  const icon = ICONS_T[type] || ICONS_T.info;
+  el.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-msg">${escapeHtml(msg)}</span><button class="toast-close" aria-label="Хаах">×</button>`;
   stack.appendChild(el);
-  setTimeout(() => {
-    el.style.transition = 'opacity .2s';
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 220);
-  }, timeoutMs);
+  el.querySelector('.toast-close').onclick = () => dismiss();
+  const dismiss = () => {
+    el.classList.add('toast-leave');
+    setTimeout(() => el.remove(), 200);
+  };
+  setTimeout(dismiss, timeoutMs);
 }
 function showConfirm(msg, opts = {}) {
   return new Promise((resolve) => {
@@ -2003,7 +2011,15 @@ function emptyStateHtml() {
   else if (v === 'done')      { icon = big(ICONS.layers);   title = 'Дууссан ажил алга'; sub = 'Шинэ ажилаа эхлээрэй.'; }
   else if (state.statusFilter === 'done') { icon = big(ICONS.check); title = 'Дуусгасан ажил алга'; sub = 'Идэвхтэй ажлуудаа үргэлжлүүл.'; }
   else if (state.search)      { icon = SEARCH_SVG; title = `"${state.search}" гэж олдсонгүй`; sub = 'Өөр түлхүүр үг туршаарай.'; }
-  return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div></div>`;
+
+  // Quick-add товч — empty state дотроос шууд үүсгэх боломж
+  let actionBtn = '';
+  if (v === 'mine' || v === 'delegated') {
+    actionBtn = `<button class="empty-action btn-primary" onclick="openTaskModal()">+ Шинэ ажил үүсгэх</button>`;
+  } else if (v === 'finance') {
+    actionBtn = `<button class="empty-action btn-primary" onclick="openFinanceModal()">+ Шинэ хүсэлт илгээх</button>`;
+  }
+  return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div>${actionBtn}</div>`;
 }
 /* ─── Mobile swipe actions for task rows ───
    Зүүн → Татгалзах/Устгах. Баруун → Дуусгасан. Зөвхөн утсан дээр (touch).
@@ -2807,6 +2823,39 @@ function initEvents() {
   // ESC-ээр хаах
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && fabSheetBg?.classList.contains('open')) closeFabSheet();
+  });
+
+  // Settings advanced toggle — n8n URL-уудыг нуух/харуулах
+  document.getElementById('s-toggle-advanced')?.addEventListener('click', () => {
+    const adv = document.getElementById('s-advanced');
+    const toggle = document.getElementById('s-toggle-advanced');
+    if (!adv) return;
+    const isOpen = adv.classList.toggle('show');
+    if (toggle) toggle.textContent = (isOpen ? '▾ Advanced (n8n webhook URL-ууд)' : '▸ Advanced (n8n webhook URL-ууд)');
+  });
+
+  // ─── Keyboard shortcuts ────────────────────────────────
+  // Гар бичих input/textarea-д фокус байх үед shortcut саатуулахгүй.
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      openTaskModal();
+    } else if (mod && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      openFinanceModal();
+    } else if (e.key === '?' && !mod) {
+      e.preventDefault();
+      document.getElementById('shortcuts-modal')?.classList.add('open');
+    } else if (['1','2','3','4'].includes(e.key) && !mod) {
+      const views = ['mine','delegated','finance','dashboard'];
+      const idx = parseInt(e.key, 10) - 1;
+      if (views[idx] === 'dashboard' && !state.isCEO) return;
+      state.view = views[idx];
+      render();
+    }
   });
 
   // Theme toggle товч

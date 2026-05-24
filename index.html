@@ -290,17 +290,25 @@
 <div class="modal-bg" id="settings-modal">
   <div class="modal">
     <h2>Тохиргоо</h2>
-    <label>n8n Webhook URL (data sync)</label>
-    <input id="s-api" placeholder="https://your-n8n.example.com/webhook/checklist" />
-    <label>n8n Staff Webhook URL (Master Sheet sync)</label>
-    <input id="s-staff" placeholder="https://your-n8n.example.com/webhook/staff" />
-    <label>n8n Finance Webhook URL (санхүүгийн хүсэлт)</label>
-    <input id="s-finance" placeholder="https://your-n8n.example.com/webhook/finance" />
-    <label>n8n Upload Webhook URL (баримт)</label>
-    <input id="s-upload" placeholder="https://your-n8n.example.com/webhook/upload-receipt" />
-    <p style="font-size: 11px; color: var(--muted); margin-top: 10px;">
-      Хоосон үлдээвэл browser-ийн localStorage ашиглана (зөвхөн энэ компьютер дээр).
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5;">
+      Энгийн хэрэглэгч бол зүйл өөрчлөх хэрэггүй. Webhook URL-ууд default-аар ажиллана.
     </p>
+    <button type="button" class="settings-advanced-toggle" id="s-toggle-advanced">
+      ▸ Advanced (n8n webhook URL-ууд)
+    </button>
+    <div class="settings-advanced" id="s-advanced">
+      <label>n8n Webhook URL (data sync)</label>
+      <input id="s-api" placeholder="https://your-n8n.example.com/webhook/checklist" />
+      <label>n8n Staff Webhook URL (Master Sheet sync)</label>
+      <input id="s-staff" placeholder="https://your-n8n.example.com/webhook/staff" />
+      <label>n8n Finance Webhook URL (санхүүгийн хүсэлт)</label>
+      <input id="s-finance" placeholder="https://your-n8n.example.com/webhook/finance" />
+      <label>n8n Upload Webhook URL (баримт)</label>
+      <input id="s-upload" placeholder="https://your-n8n.example.com/webhook/upload-receipt" />
+      <p style="font-size: 11px; color: var(--muted); margin-top: 10px;">
+        Хоосон үлдээвэл browser-ийн localStorage ашиглана (зөвхөн энэ компьютер дээр).
+      </p>
+    </div>
     <div class="modal-actions">
       <button class="btn" id="s-cancel">Болих</button>
       <button class="btn btn-primary" id="s-save">Хадгалах</button>
@@ -502,6 +510,21 @@
       </div>
     </button>
     <button class="fab-sheet-cancel" type="button" id="fab-sheet-cancel">Болих</button>
+  </div>
+</div>
+
+<!-- ─── KEYBOARD SHORTCUTS HELP (? товчоор нээгдэнэ) ─── -->
+<div class="modal-bg" id="shortcuts-modal">
+  <div class="modal">
+    <h2>Гарын товчлуурын shortcut</h2>
+    <div class="shortcuts-list">
+      <div class="shortcut-row"><span class="shortcut-keys"><kbd>⌘</kbd><kbd>K</kbd></span><span class="shortcut-desc">Хайлт / командын меню</span></div>
+      <div class="shortcut-row"><span class="shortcut-keys"><kbd>⌘</kbd><kbd>N</kbd></span><span class="shortcut-desc">Шинэ ажил үүсгэх</span></div>
+      <div class="shortcut-row"><span class="shortcut-keys"><kbd>⌘</kbd><kbd>F</kbd></span><span class="shortcut-desc">Шинэ санхүүгийн хүсэлт</span></div>
+      <div class="shortcut-row"><span class="shortcut-keys"><kbd>Esc</kbd></span><span class="shortcut-desc">Modal / popup хаах</span></div>
+      <div class="shortcut-row"><span class="shortcut-keys"><kbd>?</kbd></span><span class="shortcut-desc">Энэ туслах харах</span></div>
+      <div class="shortcut-row"><span class="shortcut-keys"><kbd>1</kbd>...<kbd>4</kbd></span><span class="shortcut-desc">Tab шилжих (Ирсэн, Илгээсэн, Санхүү, Тойм)</span></div>
+    </div>
   </div>
 </div>
 

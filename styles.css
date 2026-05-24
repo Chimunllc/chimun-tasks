@@ -2199,11 +2199,15 @@ body, input, textarea, select, button {
   color: var(--text) !important;
   letter-spacing: -0.01em !important;
   min-height: 30px !important;
-  display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
   transition: background 80ms ease !important;
   margin-bottom: 1px;
+}
+/* HTML-д inline style="display:none"-той nav-item-ийг хүндэтгэх.
+   `display: flex !important` нэмбэл inline display:none эвдэрнэ. */
+.nav-item:not([style*="display:none"]):not([style*="display: none"]) {
+  display: flex !important;
 }
 .nav-item:hover { background: var(--panel-hover) !important; }
 .nav-item.active {
@@ -2336,4 +2340,11 @@ body, input, textarea, select, button {
 body {
   background: var(--bg) !important;
   color: var(--text) !important;
+}
+
+/* Notification z-index — table head + sticky header дээгүүр гарах */
+@media (min-width: 721px) {
+  .notif-panel { z-index: 200 !important; }
+  .notif-backdrop { z-index: 195 !important; }
+  .table-head { z-index: 1 !important; position: relative; }
 }

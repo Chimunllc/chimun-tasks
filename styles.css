@@ -2610,3 +2610,42 @@ body {
     transform: translate(-50%, -50%) scale(1);
   }
 }
+
+/* ═══ Mobile header + task row duplicates засвар ═══ */
+@media (max-width: 720px) {
+  /* Header h1 — bell + theme товчтой хэт ойртохгүй байх ёстой.
+     Зүүн талд hamburger 40px, баруун талд 2 товч ~80px зай хэрэгтэй. */
+  .header {
+    padding-left: 60px !important;
+    padding-right: 96px !important;
+  }
+  .header h1 {
+    font-size: 26px !important;
+    line-height: 1.15 !important;
+    word-break: break-word;
+    hyphens: auto;
+  }
+  /* Bell/theme товчны байрлал — header-ын дотор тогтоох */
+  .header-actions {
+    right: 12px !important;
+  }
+  .mobile-menu-btn {
+    left: 12px !important;
+  }
+
+  /* Task row — мобайлд .col-assignee хэвээр харагдсан асуудлыг 100% хаах */
+  .col-assignee,
+  .col-due,
+  .col-priority {
+    display: none !important;
+  }
+  /* Status-dot нь meta-ийн эхэнд status харуулдаг — мобайлд илүү давхардсан мэт.
+     Зөвхөн pending/declined үед л харуулна, бусдад нуух. */
+  .task-row .status-dot {
+    display: none !important;
+  }
+  .task-row.has-decision .status-dot,
+  .task-row[data-decision="pending"] .status-dot {
+    display: inline-block !important;
+  }
+}

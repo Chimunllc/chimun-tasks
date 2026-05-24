@@ -1489,3 +1489,399 @@ html, body {
   /* ── Filter pill-ийн дотроос emoji-г жижигрүүлэх (overflow саатуулах) ── */
   .filter-pill { white-space: nowrap; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   NOTION / LINEAR ХЭВ МАЯГ (v4 — 2026-05-24)
+   Минимал, цэвэрхэн, орчин үеийн task app загвар.
+   - Inter фонт
+   - Бараг үл харагдах хүрээ
+   - Грэйскейл + нэг ягаан accent
+   - Илүү зай, илүү амьсгал
+   - Emoji-г хэрэглэхгүй бол хэрэглэхгүй
+   ═══════════════════════════════════════════════════════════ */
+
+/* Inter фонтыг бүхэл аппын суурь фонт болгох */
+body, input, textarea, select, button {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif !important;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Notion/Linear-ийн өнгөний систем — өөрчлөлт зөвхөн мобайлд */
+@media (max-width: 720px) {
+  :root {
+    --bg: #fbfbfa !important;              /* Notion light bg */
+    --panel: #ffffff !important;
+    --panel-hover: #f7f7f5 !important;
+    --border: rgba(15, 15, 15, 0.06) !important;  /* Бараг үл харагдах */
+    --border-strong: rgba(15, 15, 15, 0.10) !important;
+    --text: #37352f !important;            /* Notion-ы үсгийн өнгө */
+    --muted: #787774 !important;
+    --muted-soft: #9b9a97 !important;
+    --primary: #5e6ad2 !important;         /* Linear blue */
+    --primary-hover: #4b56b8 !important;
+    --primary-soft: rgba(94, 106, 210, 0.08) !important;
+    --shadow-sm: none !important;          /* Сүүдрийг бүгдийг арилгах */
+    --shadow-md: 0 1px 2px rgba(15, 15, 15, 0.04) !important;
+    --shadow-lg: 0 4px 12px rgba(15, 15, 15, 0.06) !important;
+    --shadow-xl: 0 8px 24px rgba(15, 15, 15, 0.08) !important;
+  }
+
+  /* Dark mode override */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191919 !important;            /* Notion dark */
+      --panel: #2f2f2f !important;
+      --panel-hover: #373737 !important;
+      --border: rgba(255, 255, 255, 0.06) !important;
+      --border-strong: rgba(255, 255, 255, 0.10) !important;
+      --text: #ffffff !important;
+      --muted: #9b9a97 !important;
+      --muted-soft: #6f6e69 !important;
+      --primary: #7d87de !important;
+    }
+  }
+
+  /* ── HEADER — туйлын цэвэрхэн ── */
+  .header {
+    background: var(--bg) !important;
+    padding: max(18px, env(safe-area-inset-top, 18px)) 20px 12px !important;
+  }
+  .header h1 {
+    font-size: 32px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.03em !important;
+    color: var(--text) !important;
+  }
+  .header .sub {
+    font-size: 14px !important;
+    color: var(--muted) !important;
+    font-weight: 400 !important;
+    letter-spacing: -0.01em !important;
+  }
+
+  /* ── Header дээрх icon товчлуурууд — flat, no shadow ── */
+  .header-actions .btn,
+  #theme-toggle, #notif-btn,
+  .mobile-menu-btn {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--muted) !important;
+    width: 36px !important; height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 8px !important;
+    transition: background 120ms ease !important;
+  }
+  .header-actions .btn:hover,
+  #theme-toggle:hover, #notif-btn:hover,
+  .mobile-menu-btn:hover {
+    background: var(--panel-hover) !important;
+  }
+  .header-actions .btn:active,
+  #theme-toggle:active, #notif-btn:active,
+  .mobile-menu-btn:active {
+    background: var(--border) !important;
+  }
+
+  /* ── TOOLBAR — pill маяг, минимал ── */
+  .toolbar {
+    padding: 6px 16px 16px !important;
+    background: var(--bg) !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .filter-pill {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: var(--muted) !important;
+    letter-spacing: -0.01em !important;
+    min-height: auto !important;
+  }
+  .filter-pill.active {
+    background: var(--panel-hover) !important;
+    color: var(--text) !important;
+    font-weight: 600 !important;
+  }
+  .search input {
+    background: var(--panel-hover) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+  }
+  .search input:focus {
+    background: var(--panel) !important;
+    box-shadow: 0 0 0 2px var(--primary-soft) !important;
+    outline: none !important;
+  }
+
+  /* ── TASK МӨР — Notion маяг, хүрээгүй жагсаалт ── */
+  .tasks { background: var(--bg) !important; padding: 4px 8px 160px !important; }
+  .task-row {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 6px !important;
+    box-shadow: none !important;
+    margin-bottom: 1px !important;
+    padding: 10px 12px !important;
+    transition: background 100ms ease !important;
+    min-height: 44px !important;
+  }
+  .task-row:hover { background: var(--panel-hover) !important; }
+  .task-row:active { background: var(--border) !important; transform: none !important; }
+  .task-row .title {
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    color: var(--text) !important;
+    letter-spacing: -0.01em !important;
+  }
+  .task-row .meta-row,
+  .task-row .meta {
+    font-size: 13px !important;
+    color: var(--muted) !important;
+    margin-top: 3px !important;
+  }
+  .task-row::after {
+    color: var(--muted-soft) !important;
+    font-size: 16px !important;
+    opacity: .5;
+  }
+  /* Task list-ийн хооронд жижиг тусгаарлагч */
+  #task-list { padding-top: 8px; }
+
+  /* ── SIDEBAR — цэвэрхэн, Linear маяг ── */
+  .sidebar {
+    background: var(--panel) !important;
+    border-right: 1px solid var(--border) !important;
+    box-shadow: var(--shadow-lg) !important;
+  }
+  .sidebar .brand {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: var(--text) !important;
+    padding: 16px 16px 20px !important;
+    letter-spacing: -0.02em !important;
+  }
+  .sidebar .brand .dot {
+    width: 24px !important; height: 24px !important;
+    border-radius: 6px !important;
+    background: var(--primary) !important;
+  }
+  .section-label {
+    font-size: 11px !important;
+    color: var(--muted) !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    padding: 14px 10px 6px !important;
+    margin: 0 !important;
+  }
+  .nav-item {
+    background: transparent !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: var(--text) !important;
+    letter-spacing: -0.01em !important;
+    min-height: 36px !important;
+    transition: background 100ms ease !important;
+  }
+  .nav-item:hover { background: var(--panel-hover) !important; }
+  .nav-item.active {
+    background: var(--panel-hover) !important;
+    color: var(--text) !important;
+    font-weight: 600 !important;
+  }
+  .count-badge {
+    background: var(--border) !important;
+    color: var(--muted) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    padding: 1px 7px !important;
+    border-radius: 999px !important;
+    min-width: 20px !important;
+  }
+  .add-project {
+    color: var(--muted) !important;
+    font-size: 13px !important;
+    padding: 8px 10px !important;
+  }
+  .user-chip {
+    background: transparent !important;
+    border: none !important;
+    border-top: 1px solid var(--border) !important;
+    border-radius: 0 !important;
+    margin: 16px -12px 0 !important;
+    padding: 12px 14px !important;
+  }
+  .user-chip .meta .name { font-size: 14px !important; font-weight: 600 !important; }
+  .user-chip .meta .role { font-size: 12px !important; color: var(--muted) !important; }
+
+  /* ── BOTTOM NAV — Linear/Notion mobile маяг, цэвэрхэн ── */
+  .mobile-bottom-nav {
+    background: var(--panel) !important;
+    border-top: 1px solid var(--border) !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .mobile-nav-item {
+    font-size: 11px !important;
+    font-weight: 500 !important;
+    color: var(--muted) !important;
+    letter-spacing: -0.01em !important;
+    padding: 8px 4px !important;
+  }
+  .mobile-nav-item .icon {
+    font-size: 22px !important;
+    line-height: 1 !important;
+    filter: grayscale(.3);
+    transition: filter 120ms ease;
+  }
+  .mobile-nav-item.active {
+    color: var(--text) !important;
+    font-weight: 600 !important;
+  }
+  .mobile-nav-item.active .icon { filter: none; }
+  .mobile-nav-item.active::before {
+    display: none !important;  /* pill indicator-ийг хасах */
+  }
+
+  /* ── FAB — Linear-ийн "+" маяг, дугуй биш дөрвөлжин ── */
+  .fab {
+    width: 52px !important; height: 52px !important;
+    border-radius: 14px !important;
+    background: var(--primary) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 14px rgba(94, 106, 210, 0.35) !important;
+    font-size: 24px !important;
+    font-weight: 400 !important;
+    line-height: 1 !important;
+  }
+  .fab:active { transform: scale(.92) !important; }
+
+  /* ── MODAL / SHEET — Linear маяг ── */
+  .modal {
+    background: var(--panel) !important;
+    padding: 12px 22px max(28px, env(safe-area-inset-bottom)) !important;
+  }
+  .modal h2 {
+    font-size: 19px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+    color: var(--text) !important;
+    margin: 8px 0 18px !important;
+  }
+  .modal label {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--muted) !important;
+    margin: 14px 0 4px !important;
+    letter-spacing: -0.01em !important;
+    text-transform: none !important;
+  }
+  .modal input,
+  .modal select,
+  .modal textarea {
+    background: var(--panel-hover) !important;
+    border: 1px solid transparent !important;
+    border-radius: 8px !important;
+    padding: 12px 14px !important;
+    font-size: 15px !important;
+    color: var(--text) !important;
+    transition: background 120ms ease, border-color 120ms ease !important;
+  }
+  .modal input:focus,
+  .modal select:focus,
+  .modal textarea:focus {
+    background: var(--panel) !important;
+    border-color: var(--primary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px var(--primary-soft) !important;
+  }
+  .modal .btn,
+  .modal button {
+    background: var(--panel-hover) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    color: var(--text) !important;
+    font-weight: 500 !important;
+    padding: 12px 16px !important;
+  }
+  .modal .btn-primary {
+    background: var(--primary) !important;
+    color: #fff !important;
+    font-weight: 600 !important;
+  }
+  .modal .btn-primary:active { background: var(--primary-hover) !important; }
+
+  /* ── LOGIN SCREEN — Linear "Sign in" маяг ── */
+  .login-screen {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+    padding: 32px 24px !important;
+  }
+  .login-card {
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 24px 4px !important;
+    max-width: 360px !important;
+  }
+  .login-logo {
+    background: var(--text) !important;
+    color: var(--bg) !important;
+    font-size: 28px !important;
+    border-radius: 12px !important;
+    width: 56px !important; height: 56px !important;
+    margin: 0 auto 24px !important;
+  }
+  .login-card h1 {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em !important;
+  }
+  .login-card .login-sub { font-size: 14px !important; color: var(--muted) !important; }
+  .login-label {
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: var(--text) !important;
+    text-transform: none !important;
+    letter-spacing: -0.01em !important;
+  }
+  #login-id-input, #login-pin-input {
+    background: var(--panel-hover) !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+  }
+  #login-id-input:focus, #login-pin-input:focus {
+    background: var(--panel) !important;
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px var(--primary-soft) !important;
+    outline: none !important;
+  }
+  .login-submit {
+    background: var(--text) !important;
+    color: var(--bg) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+  }
+
+  /* ── INSTALL BANNER — Linear маяг flat ── */
+  .install-banner {
+    background: var(--text) !important;
+    color: var(--bg) !important;
+  }
+  .install-banner .ib-btn {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+  }
+
+  /* ── Бүх gradient/emoji icon арилгах ── */
+  .brand .dot { background: var(--primary) !important; }
+}

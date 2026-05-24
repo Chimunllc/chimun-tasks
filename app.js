@@ -1949,19 +1949,22 @@ function renderCounts() {
     : state.tasks.filter(t => t.assignee === state.me);
   // Branch filter disabled — бүх task ижилхэн тоологдоно.
   const branchTasks = accessible;
-  document.getElementById('cnt-all').textContent     = branchTasks.filter(t => t.status !== 'done').length;
-  document.getElementById('cnt-mine').textContent    = accessible.filter(t => t.assignee === state.me && t.status !== 'done').length;
-  document.getElementById('cnt-delegated').textContent = accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length;
+  // Helper — element байхгүй бол алгасах (cnt-all/overdue/today/done нь
+  // sidebar-аас хасагдсан, зөвхөн filter pill-аар ажилладаг болсон).
+  const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
+  setCount('cnt-all', branchTasks.filter(t => t.status !== 'done').length);
+  setCount('cnt-mine', accessible.filter(t => t.assignee === state.me && t.status !== 'done').length);
+  setCount('cnt-delegated', accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length);
   // Финансын хүсэлт нь state.financeRequests-ээс ирнэ (тусдаа Sheet)
   const executorId = getFinanceExecutorId();
   const myFinance = state.isCEO
     ? state.financeRequests
     : state.financeRequests.filter(r => r.requested_by === state.me ||
         (r.decision === 'approved' && r.status !== 'done' && (r.executor || executorId) === state.me));
-  document.getElementById('cnt-finance').textContent = myFinance.filter(r => r.status !== 'done').length;
-  document.getElementById('cnt-overdue').textContent = branchTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
-  document.getElementById('cnt-today').textContent   = branchTasks.filter(t => t.due === today).length;
-  document.getElementById('cnt-done').textContent    = branchTasks.filter(t => t.status === 'done').length;
+  setCount('cnt-finance', myFinance.filter(r => r.status !== 'done').length);
+  setCount('cnt-overdue', branchTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length);
+  setCount('cnt-today', branchTasks.filter(t => t.due === today).length);
+  setCount('cnt-done', branchTasks.filter(t => t.status === 'done').length);
 }
 function escapeHtml(s) {
   // Defensive: Google Sheets sometimes returns numbers/booleans where we expected strings

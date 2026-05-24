@@ -4452,3 +4452,52 @@ body {
   .dash-card { break-inside: avoid; box-shadow: none !important; }
   .header { background: #fff !important; border-bottom: 1px solid #ccc; }
 }
+
+/* ═══ Profile modal — avatar upload + profile fields ═══ */
+.profile-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-avatar-display {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  color: #fff;
+  font-size: 26px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+.profile-avatar-display img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.profile-avatar-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--accent-blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.profile-avatar-upload-btn:hover {
+  background: #4b56b8;
+}
+/* User chip avatar — img-г бүрэн дүүргэх */
+.user-chip .avatar img {
+  border-radius: inherit;
+}

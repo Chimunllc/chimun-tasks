@@ -1903,6 +1903,7 @@ function renderTaskList() {
     wrap.innerHTML = renderDashboard();
     // Dashboard action товчнууд
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
+    document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
     return;
   } else if (state.view === 'calendar') {
@@ -2001,6 +2002,10 @@ function renderDashboard() {
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           CSV татах
         </button>
+        <button class="btn" id="dash-export-ics">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Календарт татах (.ics)
+        </button>
         <button class="btn" id="dash-print">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           PDF хэвлэх
@@ -2076,6 +2081,82 @@ function renderDashboard() {
       </div>
     </div>
   `;
+}
+
+/* ─── Google Calendar / ICS export ───────────────────────
+   Task-ийн due огнооноос ICS файл үүсгэж татах. Хэрэглэгч Google
+   Calendar, Apple Calendar, Outlook бүгдэд импортлох боломжтой. */
+function generateICS(tasks) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmtDateICS = (dateStr) => {
+    // YYYY-MM-DD → YYYYMMDD (all-day event)
+    return dateStr.replace(/-/g, '');
+  };
+  const escape = (s) => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g, '\\n');
+  const now = new Date();
+  const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth()+1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+
+  const events = tasks.filter(t => t.due).map(t => {
+    const startDate = fmtDateICS(t.due);
+    const endDate = (() => {
+      const d = new Date(t.due);
+      d.setDate(d.getDate() + 1);
+      return d.toISOString().slice(0,10).replace(/-/g,'');
+    })();
+    const priorityNum = { high: 1, med: 5, low: 9 }[t.priority] || 5;
+    const description = [
+      `Хариуцагч: ${memberName(t.assignee)}`,
+      `Үүсгэгч: ${memberName(t.createdBy)}`,
+      `Төсөл: ${projectName(t.project) || '—'}`,
+      `Төлөв: ${t.status}`,
+      t.desc ? `\\n${t.desc}` : '',
+    ].filter(Boolean).join('\\n');
+    return [
+      'BEGIN:VEVENT',
+      `UID:${t.id}@chimunllc.github.io`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${startDate}`,
+      `DTEND;VALUE=DATE:${endDate}`,
+      `SUMMARY:${escape(t.title)}`,
+      `DESCRIPTION:${description}`,
+      `PRIORITY:${priorityNum}`,
+      `STATUS:${t.status === 'done' ? 'COMPLETED' : 'NEEDS-ACTION'}`,
+      'END:VEVENT',
+    ].join('\r\n');
+  });
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Chimun Tasks//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Чимун Tasks',
+    'X-WR-TIMEZONE:Asia/Ulaanbaatar',
+    ...events,
+    'END:VCALENDAR',
+  ].join('\r\n');
+}
+
+function exportTasksAsICS(tasks) {
+  const due = (tasks || state.tasks).filter(t => t.due);
+  if (!due.length) { showToast('Эцсийн огноотой ажил алга байна', 'warn'); return; }
+  const ics = generateICS(due);
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `chimun-tasks-${todayStr()}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`${due.length} ажлыг календарт татсан`, 'success');
+}
+
+function addSingleTaskToCalendar(task) {
+  if (!task.due) { showToast('Эцсийн огноо тохируулна уу', 'warn'); return; }
+  exportTasksAsICS([task]);
 }
 
 /* ─── Personal KPI (ажилтны хувийн тойм) ───────────────── */
@@ -3861,6 +3942,9 @@ function initEvents() {
   // Logout button
   document.getElementById('logout-btn')?.addEventListener('click', logout);
 
+  // Profile modal setup
+  setupProfileModal();
+
   // Notification bell — toggle drawer
   const notifBtn = document.getElementById('notif-btn');
   const notifPanel = document.getElementById('notif-panel');
@@ -4020,8 +4104,175 @@ function renderUserChip() {
   if (!state.user) return;
   document.getElementById('user-name').textContent = state.user.name;
   document.getElementById('user-role').textContent = state.user.role;
-  // PIN-only auth — профайл зураг байхгүй тул нэрний эхний үсгүүдийг харуулна.
-  document.getElementById('user-avatar').textContent = state.user.name.replace(/\./g,'').slice(0,2);
+  // Avatar — хэрэглэгчийн уплоадсан зураг эсвэл initials
+  const avatarEl = document.getElementById('user-avatar');
+  const picture = state.user.picture || localStorage.getItem('userPicture');
+  if (picture) {
+    avatarEl.innerHTML = `<img src="${escapeHtml(picture)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" />`;
+  } else {
+    avatarEl.textContent = state.user.name.replace(/\./g,'').slice(0,2);
+  }
+}
+
+/* ─── Profile modal ───────────────────────────────────────
+   Хэрэглэгч өөрийн нэр/утас/имэйл засах, PIN солих, avatar upload.
+   Localstorage-д хадгалагдана. n8n endpoint байгаа бол Master Sheet
+   рүү sync хийх боломжтой (саралан хадгалагдах). */
+function openProfileModal() {
+  if (!state.user) return;
+  document.getElementById('profile-name').value = state.user.name || '';
+  document.getElementById('profile-role').value = state.user.role || '';
+  document.getElementById('profile-phone').value = state.user.phone || localStorage.getItem('userPhone') || '';
+  document.getElementById('profile-email').value = state.user.email || '';
+  // Clear PIN inputs
+  document.getElementById('profile-pin-current').value = '';
+  document.getElementById('profile-pin-new').value = '';
+  document.getElementById('profile-pin-confirm').value = '';
+  // Avatar preview
+  const picture = state.user.picture || localStorage.getItem('userPicture');
+  const display = document.getElementById('profile-avatar-display');
+  const initialsEl = document.getElementById('profile-avatar-initials');
+  const imgEl = document.getElementById('profile-avatar-img');
+  const clearBtn = document.getElementById('profile-avatar-clear');
+  if (picture) {
+    imgEl.src = picture;
+    imgEl.style.display = '';
+    initialsEl.style.display = 'none';
+    clearBtn.style.display = '';
+  } else {
+    imgEl.src = '';
+    imgEl.style.display = 'none';
+    initialsEl.style.display = '';
+    initialsEl.textContent = state.user.name.replace(/\./g,'').slice(0,2);
+    clearBtn.style.display = 'none';
+  }
+  document.getElementById('profile-modal').classList.add('open');
+}
+
+function setupProfileModal() {
+  document.getElementById('profile-cancel')?.addEventListener('click', () =>
+    document.getElementById('profile-modal').classList.remove('open'));
+
+  // Avatar upload — file → base64 (resize-сэн 256x256)
+  document.getElementById('profile-avatar-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Зөвхөн зураг сонгоно уу', 'warn');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Зураг 2MB-аас бага байх ёстой', 'warn');
+      return;
+    }
+    try {
+      const dataUrl = await resizeImageToBase64(file, 256);
+      document.getElementById('profile-avatar-img').src = dataUrl;
+      document.getElementById('profile-avatar-img').style.display = '';
+      document.getElementById('profile-avatar-initials').style.display = 'none';
+      document.getElementById('profile-avatar-clear').style.display = '';
+      // Tmp хадгалах — Save товч дарвал л баталгаажна
+      state._tmpAvatarDataUrl = dataUrl;
+    } catch (err) {
+      showToast('Зураг боловсруулах амжилтгүй', 'error');
+    }
+  });
+  document.getElementById('profile-avatar-clear')?.addEventListener('click', () => {
+    document.getElementById('profile-avatar-img').src = '';
+    document.getElementById('profile-avatar-img').style.display = 'none';
+    document.getElementById('profile-avatar-initials').style.display = '';
+    document.getElementById('profile-avatar-clear').style.display = 'none';
+    state._tmpAvatarDataUrl = '__CLEAR__';
+  });
+
+  document.getElementById('profile-save')?.addEventListener('click', async () => {
+    const name = document.getElementById('profile-name').value.trim();
+    const phone = document.getElementById('profile-phone').value.trim();
+    const email = document.getElementById('profile-email').value.trim();
+    const pinCur = document.getElementById('profile-pin-current').value.trim();
+    const pinNew = document.getElementById('profile-pin-new').value.trim();
+    const pinConfirm = document.getElementById('profile-pin-confirm').value.trim();
+    if (!name) { showToast('Нэрээ оруулна уу', 'warn'); return; }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showToast('И-мэйл буруу формат', 'warn'); return;
+    }
+    if (phone && phone.replace(/\D/g,'').length < 8) {
+      showToast('Утас наад зах нь 8 орон', 'warn'); return;
+    }
+    // PIN солих логик
+    if (pinNew || pinConfirm || pinCur) {
+      if (!pinCur || String(pinCur) !== String(state.user.pin)) {
+        showToast('Одоогийн PIN буруу байна', 'error'); return;
+      }
+      if (!/^\d{4}$/.test(pinNew)) { showToast('Шинэ PIN 4 оронтой тоо', 'warn'); return; }
+      if (pinNew !== pinConfirm) { showToast('Шинэ PIN таарахгүй байна', 'warn'); return; }
+      state.user.pin = pinNew;
+      // TEAM array дотор мөн шинэчлэх
+      const member = TEAM.find(m => m.id === state.user.id);
+      if (member) member.pin = pinNew;
+      localStorage.setItem('teamCache', JSON.stringify(TEAM));
+    }
+    // Profile талбарууд хадгалах
+    state.user.name = name;
+    state.user.phone = phone;
+    state.user.email = email;
+    localStorage.setItem('userPhone', phone);
+    // Avatar
+    if (state._tmpAvatarDataUrl === '__CLEAR__') {
+      state.user.picture = '';
+      localStorage.removeItem('userPicture');
+    } else if (state._tmpAvatarDataUrl) {
+      state.user.picture = state._tmpAvatarDataUrl;
+      localStorage.setItem('userPicture', state._tmpAvatarDataUrl);
+    }
+    state._tmpAvatarDataUrl = null;
+    // TEAM-д member-ийг мөн шинэчлэх
+    const member = TEAM.find(m => m.id === state.user.id);
+    if (member) {
+      member.name = name;
+      member.email = email;
+      member.phone = phone;
+    }
+    document.getElementById('profile-modal').classList.remove('open');
+    showToast('Профайл хадгалагдсан', 'success');
+    renderUserChip();
+    render();
+  });
+
+  // User chip дээр товшиход профайл нээх
+  document.querySelector('.user-chip')?.addEventListener('click', (e) => {
+    // Logout button-ийг алгасах
+    if (e.target.closest('.logout-btn')) return;
+    openProfileModal();
+  });
+}
+
+/* Файлыг канвас дээр resize хийгээд base64 болгох (avatar-д ашиглана) */
+function resizeImageToBase64(file, maxSize = 256) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxSize) { height = (height / width) * maxSize; width = maxSize; }
+        } else {
+          if (height > maxSize) { width = (width / height) * maxSize; height = maxSize; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 async function logout() {

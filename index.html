@@ -547,6 +547,49 @@
   </div>
 </div>
 
+<!-- ─── PROFILE MODAL — өөрийн мэдээлэл + PIN засах ─── -->
+<div class="modal-bg" id="profile-modal">
+  <div class="modal">
+    <h2>Миний профайл</h2>
+    <div class="profile-avatar-section">
+      <div class="profile-avatar-display" id="profile-avatar-display">
+        <span id="profile-avatar-initials">??</span>
+        <img id="profile-avatar-img" src="" alt="" style="display:none;" />
+      </div>
+      <div>
+        <label for="profile-avatar-input" class="profile-avatar-upload-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Зураг сонгох
+        </label>
+        <input type="file" id="profile-avatar-input" accept="image/*" style="display:none;" />
+        <button type="button" id="profile-avatar-clear" style="background:none;border:none;color:var(--muted);font-size:12px;margin-left:8px;cursor:pointer;display:none;">Арилгах</button>
+      </div>
+    </div>
+    <label>Овог нэр</label>
+    <input id="profile-name" type="text" placeholder="Жишээ: Г.Мөнх-Учрал" />
+    <label>Албан тушаал</label>
+    <input id="profile-role" type="text" readonly style="opacity:.7;cursor:not-allowed;" />
+    <label>Утасны дугаар</label>
+    <input id="profile-phone" type="tel" inputmode="numeric" placeholder="99112233" />
+    <label>И-мэйл</label>
+    <input id="profile-email" type="email" placeholder="name@example.com" />
+
+    <h3 style="font-size:14px;font-weight:700;margin:20px 0 10px;border-top:1px solid var(--border);padding-top:16px;">PIN солих</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Хоосон үлдээвэл PIN солигдохгүй.</p>
+    <label>Одоогийн PIN</label>
+    <input id="profile-pin-current" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="● ● ● ●" />
+    <label>Шинэ PIN (4 орон)</label>
+    <input id="profile-pin-new" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="● ● ● ●" />
+    <label>Шинэ PIN дахин</label>
+    <input id="profile-pin-confirm" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="● ● ● ●" />
+
+    <div class="modal-actions">
+      <button class="btn" id="profile-cancel">Болих</button>
+      <button class="btn btn-primary" id="profile-save">Хадгалах</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── ONBOARDING TOUR — анх удаа нэвтрэх ажилтанд богино зааварчилгаа ─── -->
 <div class="onboarding-bg" id="onboarding-bg">
   <div class="onboarding-card">

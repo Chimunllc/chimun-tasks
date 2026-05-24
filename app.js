@@ -1929,7 +1929,26 @@ function renderTaskList() {
     wrap.innerHTML = emptyStateHtml();
     return;
   }
-  tasks.forEach(t => wrap.appendChild(renderRow(t)));
+  // Virtual scroll — 80+ task үед эхний 80-ыг харуулна,
+  // дараа нь "Бусдыг харуулах" товч дарж дараагийн 80-ыг ачаална.
+  const PAGE_SIZE = 80;
+  const visibleCount = state._taskListLimit || PAGE_SIZE;
+  const visible = tasks.slice(0, visibleCount);
+  visible.forEach(t => wrap.appendChild(renderRow(t)));
+  if (tasks.length > visibleCount) {
+    const remaining = tasks.length - visibleCount;
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'task-list-more';
+    moreBtn.textContent = `Бусдыг харуулах (${remaining} ажил)`;
+    moreBtn.addEventListener('click', () => {
+      state._taskListLimit = visibleCount + PAGE_SIZE;
+      render();
+    });
+    wrap.appendChild(moreBtn);
+  } else if (state._taskListLimit && state._taskListLimit > PAGE_SIZE) {
+    // Цөөрсөн — reset back to default
+    state._taskListLimit = PAGE_SIZE;
+  }
 }
 
 /* ─── CEO Dashboard ───────────────────────────────────────
@@ -2443,6 +2462,39 @@ function emptyStateHtml() {
   }
   return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div>${actionBtn}</div>`;
 }
+/* ─── Online/offline detection + auto-sync ─────────────── */
+function updateOnlineStatus() {
+  const offline = !navigator.onLine;
+  const banner = document.getElementById('offline-banner');
+  if (banner) banner.classList.toggle('show', offline);
+  const queue = loadPendingWrites();
+  const cntEl = document.getElementById('offline-queue-count');
+  if (cntEl) {
+    if (queue.length > 0) {
+      cntEl.textContent = ` · ${queue.length} өөрчлөлт хүлээж байна`;
+      cntEl.style.display = '';
+    } else {
+      cntEl.style.display = 'none';
+    }
+  }
+  if (!offline && queue.length > 0) {
+    // Шинээр онлайн болсон — backlog flush хийх
+    flushPendingWrites().then(() => updateOnlineStatus());
+  }
+}
+window.addEventListener('online', () => {
+  showToast('Интернэт сэргэв — синк хийж байна...', 'info', 2000);
+  updateOnlineStatus();
+});
+window.addEventListener('offline', () => {
+  showToast('Интернэтгүй боллоо — офлайн горим', 'warn', 3000);
+  updateOnlineStatus();
+});
+// Анхны load
+setTimeout(updateOnlineStatus, 500);
+// Pending writes-ийг тогтмол шалгах (хэрэв background-д ямар нэг солигдвол)
+setInterval(updateOnlineStatus, 15000);
+
 /* ─── Permissions UI (CEO only) ─── */
 function openPermissionsModal() {
   if (!state.isCEO) return;
@@ -3491,7 +3543,7 @@ function fillBranchSelectInModal(id, value) {
 
 function initEvents() {
   document.querySelectorAll('.nav-item').forEach(el => {
-    el.onclick = () => { state.view = el.dataset.view; render(); };
+    el.onclick = () => { state.view = el.dataset.view; state._taskListLimit = null; render(); };
   });
   document.querySelectorAll('.filter-pill').forEach(el => {
     el.onclick = () => {

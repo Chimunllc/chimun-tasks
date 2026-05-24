@@ -572,6 +572,15 @@ function generateNotifications() {
     state.notifications = [...newOnes, ...state.notifications];
     saveNotifications();
     renderNotifications();
+    // Browser native push notification — assigned + overdue-д л явуулна
+    if (window._chimunNotify) {
+      newOnes.slice(0, 3).forEach(n => { // максимум 3 нэг дор
+        if (n.type === 'assigned' || n.type === 'overdue') {
+          const title = n.type === 'assigned' ? 'Шинэ ажил оноогдсон' : 'Ажил хоцорсон';
+          window._chimunNotify(title, n.msg, { taskId: n.taskId, tag: n.id });
+        }
+      });
+    }
   }
 }
 function unreadCount() {
@@ -2331,7 +2340,7 @@ function renderRow(t) {
       <div class="checkbox ${t.status==='done'?'checked':''}" data-act="toggle"></div>
     </div>
     <div class="task-title-wrap" data-act="open">
-      <div class="task-title" data-act="open">${titleHtml}${extraHtml}</div>
+      <div class="task-title" data-act="open">${t.recurrence ? '<svg class="recur-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Давтагдах"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> ' : ''}${titleHtml}${extraHtml}</div>
       <div class="task-meta" data-act="open">
         <span class="status-dot ${statusClass}" title="${statusClass === 'in_progress' ? 'Хийгдэж байна' : statusClass === 'declined' ? 'Татгалзсан' : statusClass === 'done' ? 'Дууссан' : 'Шинэ'}"></span>
         <span class="meta-mobile-only avatar-circle sm" style="display:none;background:linear-gradient(135deg,var(--primary),var(--primary-hover));">${escapeHtml(memberInitials(t.assignee))}</span>
@@ -2487,6 +2496,10 @@ async function toggleTask(id) {
   }
   t.status = t.status === 'done' ? 'open' : 'done';
   saveTask(t);
+  // Recurring task — done болсон үед дараагийн instance автомат үүсгэх
+  if (t.status === 'done' && t.recurrence) {
+    spawnRecurringNext(t);
+  }
   // If this was the last sub-task and all are done, also auto-complete the parent
   if (t.status === 'done' && t.parent_id) {
     const parent = state.tasks.find(x => x.id === t.parent_id);
@@ -2562,6 +2575,41 @@ async function deleteTask(id) {
   saveTask(t, true);
   render();
 }
+/* ─── Recurring tasks — давтагдах ажил ───
+   Task done болоход дараагийн давтамжийн интервалаар шинэ task үүсгэнэ.
+   parent_id (буюу act stage)-той эсвэл act parent-ийг хасна — тэдгээр нь
+   тусдаа логиктой. */
+function spawnRecurringNext(orig) {
+  if (orig.parent_id || orig.kind === 'act_parent' || orig.kind === 'act_stage') return;
+  if (!orig.recurrence) return;
+  const intervalDays = { daily: 1, weekly: 7, biweekly: 14, monthly: null, quarterly: null };
+  // base date = current due (эсвэл өнөөдөр)
+  const baseDate = orig.due ? new Date(orig.due) : new Date();
+  const next = new Date(baseDate);
+  if (orig.recurrence === 'monthly') next.setMonth(next.getMonth() + 1);
+  else if (orig.recurrence === 'quarterly') next.setMonth(next.getMonth() + 3);
+  else {
+    const days = intervalDays[orig.recurrence];
+    if (!days) return;
+    next.setDate(next.getDate() + days);
+  }
+  const nextDue = next.toISOString().slice(0, 10);
+  const dup = {
+    ...orig,
+    id: 'T' + Date.now(),
+    due: nextDue,
+    status: 'open',
+    executed_at: null, executed_by: null,
+    decision: undefined, decision_at: undefined, decision_by: undefined,
+    comments: [], activity: [],
+    created_at: new Date().toISOString(),
+    parent_recurrence_id: orig.id,
+  };
+  state.tasks.unshift(dup);
+  saveData();
+  showToast(`Дараагийн давталт үүслээ: ${fmtDate(nextDue)}`, 'info', 2500);
+}
+
 /* ─── Bulk action — олон task сонгож нэг дороос үйлдэл хийх ─── */
 function ensureBulkState() {
   if (!state.bulkSelected) state.bulkSelected = new Set();
@@ -2680,6 +2728,8 @@ function openTaskModal(id) {
   fillAssigneeSelect('t-assignee', t?.assignee || state.me, taskBranchVal);
   document.getElementById('t-due').value = t?.due || '';
   document.getElementById('t-priority').value = t?.priority || 'none';
+  const recEl = document.getElementById('t-recurrence');
+  if (recEl) recEl.value = t?.recurrence || '';
   // Branch солих үед зөвхөн төслийн жагсаалт шинэчилнэ.
   // Хариуцагч нь бүх ажилтнаас сонгох тул дахин filter хийхгүй.
   document.getElementById('t-branch').onchange = (e) => {
@@ -2920,6 +2970,7 @@ function saveTaskFromModal() {
     assignee: document.getElementById('t-assignee').value,
     due: document.getElementById('t-due').value || '',
     priority: document.getElementById('t-priority').value,
+    recurrence: document.getElementById('t-recurrence')?.value || '',
   };
   let t;
   if (state.editingId) {
@@ -3166,6 +3217,68 @@ function initEvents() {
     if (next >= obSteps.length) closeOnboarding();
     else showOnboardingStep(next);
   });
+
+  // ─── Browser notification — local push мэдэгдэл ──────
+  // PWA-д суулгасан үед browser-ээс үзүүлэх native notification.
+  // Анх удаа task assign хийгдсэн үед permission асуунa.
+  function requestNotifPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().then(p => {
+        if (p === 'granted') showToast('Мэдэгдэл идэвхжсэн', 'success', 2000);
+      });
+    }
+  }
+  function pushNotify(title, body, opts = {}) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    if (document.hasFocus() && !opts.force) return; // апп нээлттэй үед toast хангалттай
+    try {
+      const n = new Notification(title, {
+        body,
+        icon: 'icon-192.png',
+        badge: 'icon.svg',
+        tag: opts.tag || 'chimun',
+        silent: false,
+        renotify: false,
+      });
+      if (opts.taskId) {
+        n.onclick = () => {
+          window.focus();
+          openTaskModal(opts.taskId);
+          n.close();
+        };
+      }
+    } catch(e) { /* iOS may not support */ }
+  }
+  // First-run: subtle prompt button (Settings modal-д)
+  // Шинэ task оноогдох үед автомат notification — generateNotifications-д hook нэмнэ.
+  window._chimunNotify = pushNotify; // optional: expose for testing
+  // Settings modal дотроос "Мэдэгдэл асуух" товчоор гар аргаар идэвхжүүлэх боломжтой
+  const settingsBtn = document.getElementById('settings-btn');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      // Modal нээгдэхэд permission төлвийг харах
+      setTimeout(() => {
+        const advBlock = document.getElementById('s-advanced');
+        if (!advBlock || advBlock.querySelector('.notif-perm-block')) return;
+        const block = document.createElement('div');
+        block.className = 'notif-perm-block';
+        block.style.cssText = 'margin-top:16px;padding:12px;background:var(--panel-hover);border-radius:8px;';
+        const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
+        const label = perm === 'granted' ? '✓ Мэдэгдэл идэвхжсэн'
+          : perm === 'denied' ? '✗ Мэдэгдэл хориглосон (Browser-аас зөвшөөрөл)'
+          : perm === 'unsupported' ? 'Browser дэмжихгүй'
+          : 'Идэвхжүүлэх боломжтой';
+        block.innerHTML = `
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Push мэдэгдэл</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${label}</div>
+          ${perm === 'default' ? `<button type="button" id="s-enable-notif" class="btn btn-primary" style="font-size:13px;padding:8px 14px;">Идэвхжүүлэх</button>` : ''}
+        `;
+        advBlock.parentNode.insertBefore(block, advBlock);
+        document.getElementById('s-enable-notif')?.addEventListener('click', requestNotifPermission);
+      }, 50);
+    });
+  }
 
   // ─── Bulk action bar wiring ──────────────────────────
   document.getElementById('bulk-cancel')?.addEventListener('click', bulkClear);

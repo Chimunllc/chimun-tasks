@@ -4287,3 +4287,12 @@ body {
   pointer-events: none;
   border-radius: 6px;
 }
+
+/* ═══ Recurring task icon ═══ */
+.recur-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  color: var(--accent-blue);
+  margin-right: 4px;
+  opacity: 0.85;
+}

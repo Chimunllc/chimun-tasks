@@ -617,7 +617,14 @@ function renderNotifications() {
 
 function openNotifDrawer() {
   document.getElementById('notif-backdrop').classList.add('open');
-  document.getElementById('notif-panel').hidden = false;
+  const panel = document.getElementById('notif-panel');
+  panel.hidden = false;
+  // CSS дүрэм хоорондын зөрчилдөөнөөс зайлсхийхийн тулд background-ыг JS-ээр inline style-аар тогтоох.
+  // Энэ нь дотроос дамжуулан гарч ирэх контентыг хаах.
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  panel.style.background = isDark ? '#2f2f2f' : '#ffffff';
+  panel.style.zIndex = '99999';
+  panel.style.isolation = 'isolate';
   renderNotifications();
   // Vibration cue on mobile when opening — gentle feedback
   if ('vibrate' in navigator) try { navigator.vibrate(15); } catch(e) {}

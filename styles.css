@@ -2809,27 +2809,96 @@ body {
   box-shadow: 0 4px 12px rgba(94, 106, 210, 0.25) !important;
 }
 
-/* ── Action товчнууд — Зөвшөөрөх / Татгалзах / Хойшлуулах ── */
-button[id*="f-approve"], button[id*="approve"],
+/* ── Action товчнууд — Зөвшөөрөх / Татгалзах / Хойшлуулах ──
+   Бодит ID-ууд: #f-approve, #f-reject, #f-defer (Гүйцэтгэх, Татгалзах гэх мэт)
+   `.modal button !important`-ийг давахын тулд `.modal #id` ашиглана.
+   Мобайл болон desktop хоёулангийнх. */
+.modal #f-approve,
+.modal-bg #f-approve,
+button#f-approve,
+.modal #f-execute,
+button#f-execute,
 .btn-approve {
-  background: linear-gradient(135deg, var(--accent-green) 0%, #059669 100%) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25) !important;
+  background: var(--accent-green) !important;
+  background-image: none !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
+  border: none !important;
 }
-button[id*="f-decline"], button[id*="decline"], button[id*="reject"],
+.modal #f-approve:hover,
+button#f-approve:hover,
+.btn-approve:hover {
+  background: #059669 !important;
+}
+
+.modal #f-reject,
+.modal-bg #f-reject,
+button#f-reject,
+.modal .btn-danger,
+button.btn-danger,
 .btn-decline {
-  background: linear-gradient(135deg, var(--accent-red) 0%, #dc2626 100%) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25) !important;
+  background: var(--accent-red) !important;
+  background-image: none !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
+  border: none !important;
 }
-button[id*="f-defer"], button[id*="defer"], button[id*="postpone"],
+.modal #f-reject:hover,
+button#f-reject:hover,
+.modal .btn-danger:hover,
+.btn-decline:hover {
+  background: #dc2626 !important;
+}
+
+.modal #f-defer,
+.modal-bg #f-defer,
+button#f-defer,
 .btn-defer {
-  background: linear-gradient(135deg, var(--accent-amber) 0%, #d97706 100%) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25) !important;
+  background: var(--accent-amber) !important;
+  background-image: none !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
+  border: none !important;
+}
+.modal #f-defer:hover,
+button#f-defer:hover,
+.btn-defer:hover {
+  background: #d97706 !important;
+}
+
+/* btn-action — task өсөлтийн товч (Эхлүүлэх / Дуусгах / Татгалзах) */
+.btn-action {
+  font-weight: 600 !important;
+  border: none !important;
+  color: #ffffff !important;
+}
+.btn-action[data-action="start"],
+.btn-action[data-action="in_progress"] {
+  background: var(--accent-blue) !important;
+}
+.btn-action[data-action="start"]:hover {
+  background: #4b56b8 !important;
+}
+.btn-action[data-action="done"],
+.btn-action[data-action="complete"] {
+  background: var(--accent-green) !important;
+}
+.btn-action[data-action="done"]:hover {
+  background: #059669 !important;
+}
+.btn-action[data-action="decline"],
+.btn-action[data-action="reject"] {
+  background: var(--accent-red) !important;
+}
+.btn-action[data-action="decline"]:hover {
+  background: #dc2626 !important;
+}
+.btn-action[data-action="defer"],
+.btn-action[data-action="postpone"] {
+  background: var(--accent-amber) !important;
+}
+.btn-action[data-action="defer"]:hover {
+  background: #d97706 !important;
 }
 
 /* ── Filter pills — идэвхтэй pill-ийг илүү тод ── */

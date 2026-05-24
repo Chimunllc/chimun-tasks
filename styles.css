@@ -1892,3 +1892,8 @@ body, input, textarea, select, button {
   /* ── Бүх gradient/emoji icon арилгах ── */
   .brand .dot { background: var(--primary) !important; }
 }
+
+/* Connection status badge-ийг утсан дээр нуух — апп шиг харагдахад үл хэрэгтэй */
+@media (max-width: 720px) {
+  .conn-status { display: none !important; }
+}

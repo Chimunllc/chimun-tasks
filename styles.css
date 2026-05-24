@@ -4202,3 +4202,88 @@ body {
   .cal-task-assignee { display: none; }
   .cal-selected-info { padding: 0 8px; }
 }
+
+/* ═══ Bulk action bar ═══ */
+.bulk-bar {
+  position: fixed;
+  top: -80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--accent-blue);
+  color: #fff;
+  padding: 10px 12px 10px 8px;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(94, 106, 210, 0.4), 0 4px 12px rgba(0,0,0,0.10);
+  z-index: 500;
+  transition: top 240ms cubic-bezier(.32,1.2,.64,1);
+  min-width: 320px;
+  max-width: calc(100vw - 24px);
+}
+.bulk-bar.open {
+  top: max(14px, env(safe-area-inset-top, 14px));
+}
+.bulk-cancel {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.bulk-cancel:hover { background: rgba(255, 255, 255, 0.25); }
+.bulk-count {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.bulk-actions {
+  display: flex;
+  gap: 6px;
+}
+.bulk-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bulk-act:hover { background: rgba(255, 255, 255, 0.25); }
+.bulk-act-delete { background: rgba(239, 68, 68, 0.55); }
+.bulk-act-delete:hover { background: rgba(239, 68, 68, 0.75); }
+
+@media (max-width: 720px) {
+  .bulk-bar { min-width: auto; left: 12px; right: 12px; transform: none; }
+  .bulk-bar.open {
+    top: max(12px, env(safe-area-inset-top, 12px));
+  }
+  .bulk-act span { display: none; }  /* мобайлд зөвхөн icon */
+  .bulk-act { padding: 8px; width: 36px; height: 36px; justify-content: center; }
+}
+
+/* Selected task row */
+.task-row.bulk-selected {
+  background: rgba(94, 106, 210, 0.10) !important;
+  border-left: 3px solid var(--accent-blue) !important;
+  padding-left: 13px !important;
+}
+.task-row.bulk-selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 6px;
+}

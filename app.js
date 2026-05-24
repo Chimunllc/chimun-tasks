@@ -2144,6 +2144,32 @@ function emptyStateHtml() {
   }
   return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div>${actionBtn}</div>`;
 }
+/* ─── Long-press → bulk mode (мобайл + desktop) ─── */
+function attachLongPress(row, t) {
+  let timer = null;
+  let moved = false;
+  const LONG_MS = 500;
+  const start = () => {
+    moved = false;
+    timer = setTimeout(() => {
+      if (moved) return;
+      ensureBulkState();
+      bulkToggle(t.id);
+      if ('vibrate' in navigator) try { navigator.vibrate(20); } catch(e) {}
+    }, LONG_MS);
+  };
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  row.addEventListener('touchstart', start, { passive: true });
+  row.addEventListener('touchmove', () => { moved = true; cancel(); }, { passive: true });
+  row.addEventListener('touchend', cancel);
+  row.addEventListener('touchcancel', cancel);
+  // Desktop: contextmenu (right-click) → bulk toggle
+  row.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    bulkToggle(t.id);
+  });
+}
+
 /* ─── Mobile swipe actions for task rows ───
    Зүүн → Татгалзах/Устгах. Баруун → Дуусгасан. Зөвхөн утсан дээр (touch).
    80px-аас илүү шудалбал үйлдэл идэвхжинэ. */
@@ -2257,8 +2283,12 @@ function renderRow(t) {
   if (!lockCheck.ok && t.status !== 'done') cls += ' locked-stage';
   row.className = cls;
   row.dataset.taskId = t.id;
+  // Bulk-selected state
+  if (state.bulkSelected && state.bulkSelected.has(t.id)) row.classList.add('bulk-selected');
   // Мобайл swipe action нэмэх — task row-нд touch handler
   attachSwipeActions(row, t);
+  // Long-press → bulk mode-руу орох (мобайл)
+  attachLongPress(row, t);
   const dc = dueClass(t.due, t.status);
 
   // Title: prepend stage badge for sub-tasks, append progress for parents
@@ -2532,6 +2562,57 @@ async function deleteTask(id) {
   saveTask(t, true);
   render();
 }
+/* ─── Bulk action — олон task сонгож нэг дороос үйлдэл хийх ─── */
+function ensureBulkState() {
+  if (!state.bulkSelected) state.bulkSelected = new Set();
+}
+function bulkToggle(id) {
+  ensureBulkState();
+  if (state.bulkSelected.has(id)) state.bulkSelected.delete(id);
+  else state.bulkSelected.add(id);
+  bulkRefreshBar();
+  // task мөрийн checkbox-ыг шинэчлэх
+  const row = document.querySelector(`.task-row[data-task-id="${id}"]`);
+  if (row) row.classList.toggle('bulk-selected', state.bulkSelected.has(id));
+}
+function bulkClear() {
+  ensureBulkState();
+  state.bulkSelected.clear();
+  document.querySelectorAll('.task-row.bulk-selected').forEach(r => r.classList.remove('bulk-selected'));
+  bulkRefreshBar();
+}
+function bulkRefreshBar() {
+  ensureBulkState();
+  const bar = document.getElementById('bulk-bar');
+  const count = state.bulkSelected.size;
+  if (!bar) return;
+  bar.classList.toggle('open', count > 0);
+  const numEl = document.getElementById('bulk-count-num');
+  if (numEl) numEl.textContent = count;
+}
+async function bulkApply(action) {
+  ensureBulkState();
+  const ids = [...state.bulkSelected];
+  if (!ids.length) return;
+  if (action === 'delete') {
+    if (!(await showConfirm(`${ids.length} ажлыг бүгдийг устгах уу?`, { okText: 'Устгах', danger: true }))) return;
+    state.tasks = state.tasks.filter(t => !state.bulkSelected.has(t.id));
+    showToast(`${ids.length} ажил устгасан`, 'success');
+  } else if (action === 'done') {
+    state.tasks.forEach(t => {
+      if (state.bulkSelected.has(t.id)) {
+        t.status = 'done';
+        t.executed_at = new Date().toISOString();
+        t.executed_by = state.me;
+      }
+    });
+    showToast(`${ids.length} ажил дуусгасан`, 'success');
+  }
+  state.bulkSelected.clear();
+  saveData();
+  render();
+}
+
 function duplicateTask(id) {
   const orig = state.tasks.find(x => x.id === id);
   if (!orig) return;
@@ -3084,6 +3165,15 @@ function initEvents() {
     const next = (state._obIdx || 0) + 1;
     if (next >= obSteps.length) closeOnboarding();
     else showOnboardingStep(next);
+  });
+
+  // ─── Bulk action bar wiring ──────────────────────────
+  document.getElementById('bulk-cancel')?.addEventListener('click', bulkClear);
+  document.getElementById('bulk-done')?.addEventListener('click', () => bulkApply('done'));
+  document.getElementById('bulk-delete')?.addEventListener('click', () => bulkApply('delete'));
+  // Esc → bulk цуцлах
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.bulkSelected?.size > 0) bulkClear();
   });
 
   // ─── Pull-to-refresh (мобайл) ─────────────────────────

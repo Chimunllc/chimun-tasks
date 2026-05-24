@@ -2542,3 +2542,14 @@ body {
 .brand .lcd-icon { width: 16px; height: 16px; margin-right: 4px; vertical-align: -3px; color: var(--muted); }
 .search .lcd-icon { width: 14px; height: 14px; }
 .empty-state .lcd-icon { width: 48px; height: 48px; opacity: 0.3; }
+
+/* Mobile bottom nav SVG icons — emoji-аас орлуулсан */
+.mobile-nav-item .lcd-icon.nav-svg {
+  width: 22px !important;
+  height: 22px !important;
+  margin-bottom: 4px !important;
+  vertical-align: middle;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}

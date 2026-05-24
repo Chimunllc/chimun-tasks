@@ -1418,7 +1418,7 @@ function openFinanceModal(id = null) {
 
   if (!t) {
     // NEW request — submit mode
-    title.textContent = '💸 Санхүүгийн хүсэлт';
+    title.innerHTML = ICONS.wallet + ' Санхүүгийн хүсэлт';
     document.getElementById('f-amount').value = '';
     document.getElementById('f-beneficiary').value = '';
     document.getElementById('f-bank').value = '';
@@ -1446,7 +1446,7 @@ function openFinanceModal(id = null) {
     document.getElementById('f-save').style.display = '';
   } else {
     // VIEW existing — populate read-only
-    title.textContent = '💸 Хүсэлт #' + t.id.slice(-5);
+    title.innerHTML = ICONS.wallet + ' Хүсэлт #' + escapeHtml(t.id.slice(-5));
     document.getElementById('f-amount').value = t.amount || '';
     document.getElementById('f-beneficiary').value = t.beneficiary || '';
     document.getElementById('f-bank').value = t.bank || '';

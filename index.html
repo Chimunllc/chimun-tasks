@@ -172,7 +172,7 @@
     <div class="header">
       <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Цэс нээх">☰</button>
       <div style="flex:1; min-width:0;">
-        <h1 id="view-title">📥 Ирсэн ажил</h1>
+        <h1 id="view-title">Ирсэн ажил</h1>
         <div class="sub" id="view-sub">Танд оноосон ажлууд</div>
       </div>
       <div class="header-actions">
@@ -321,7 +321,7 @@
 <!-- NEW ORDER MODAL — 5-stage act (M Event-ийн гол урсгал) -->
 <div class="modal-bg" id="order-modal">
   <div class="modal">
-    <h2>📋 Шинэ захиалга — 5 дамжлагат акт</h2>
+    <h2>Шинэ захиалга — 5 дамжлагат акт</h2>
     <p style="font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.5;">
       Нэг товчоор парент + 5 sub-task (Захиалга → Засвар → Логистик → Цэвэрлэгээ → Нярав) автоматаар үүснэ.
       Дамжлага бүр өмнөхөө дуустал идэвхгүй байна.
@@ -344,7 +344,7 @@
 <!-- FINANCE REQUEST MODAL — submit + (CEO) decide -->
 <div class="modal-bg" id="finance-modal">
   <div class="modal">
-    <h2 id="finance-modal-title">💸 Юу авах хэрэгтэй вэ?</h2>
+    <h2 id="finance-modal-title">Юу авах хэрэгтэй вэ?</h2>
     <div id="f-decision-info" style="display:none; font-size:12px; margin:-6px 0 14px; padding:10px 12px; border-radius:8px; line-height:1.5;"></div>
 
     <!-- ҮНДСЭН АСУУЛТ — бүх ажилтанд ижил, ярианы хэлбэр -->
@@ -396,7 +396,7 @@
     <div id="f-receipt-preview" style="margin-top:6px;font-size:12px;"></div>
 
     <!-- CEO дүгнэлт (зөвхөн CEO үед) -->
-    <label id="f-decision-reason-label" style="display:none;">📋 CEO дүгнэлт</label>
+    <label id="f-decision-reason-label" style="display:none;">CEO дүгнэлт</label>
     <textarea id="f-decision-reason" style="display:none;" placeholder="Жишээ: Дүн өндөр, 30%-ийг бууруулсан"></textarea>
 
     <!-- DECISION BUTTONS — зөвхөн CEO + pending хүсэлт үед харагдана -->
@@ -423,7 +423,7 @@
     <!-- SUBMIT / VIEW ACTIONS -->
     <div class="modal-actions" id="f-submit-actions" style="margin-top:18px;">
       <button class="btn" id="f-cancel">Болих</button>
-      <button class="btn btn-primary" id="f-save">💸 Илгээх</button>
+      <button class="btn btn-primary" id="f-save">Илгээх</button>
     </div>
   </div>
 </div>
@@ -462,16 +462,16 @@
 <nav class="mobile-bottom-nav" id="mobile-nav" aria-label="Үндсэн нав">
   <div class="mobile-bottom-nav-inner">
     <button class="mobile-nav-item active" data-view="mine">
-      <span class="icon">📥</span><span>Ирсэн</span>
+      <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span>Ирсэн</span>
     </button>
     <button class="mobile-nav-item" data-view="delegated">
-      <span class="icon">📤</span><span>Илгээсэн</span>
+      <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg><span>Илгээсэн</span>
     </button>
     <button class="mobile-nav-item" data-view="finance">
-      <span class="icon">💸</span><span>Санхүү</span>
+      <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg><span>Санхүү</span>
     </button>
     <button class="mobile-nav-item" id="mobile-menu-more">
-      <span class="icon">☰</span><span>Цэс</span>
+      <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg><span>Цэс</span>
     </button>
   </div>
 </nav>
@@ -485,21 +485,27 @@
     <div class="fab-sheet-handle"></div>
     <div class="fab-sheet-title">Шинээр үүсгэх</div>
     <button class="fab-sheet-item" data-action="task" type="button">
-      <span class="fsi-icon" style="background:#eef2ff;color:#4f46e5;">📥</span>
+      <span class="fsi-icon" style="background:#eef2ff;color:#4f46e5;">
+        <svg class="lcd-icon" viewBox="0 0 24 24" style="width:22px;height:22px;"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+      </span>
       <div class="fsi-text">
         <div class="fsi-name">Даалгавар</div>
         <div class="fsi-sub">Ажилтанд ажил оноох</div>
       </div>
     </button>
     <button class="fab-sheet-item" data-action="finance" type="button">
-      <span class="fsi-icon" style="background:#fef3c7;color:#b45309;">💸</span>
+      <span class="fsi-icon" style="background:#fef3c7;color:#b45309;">
+        <svg class="lcd-icon" viewBox="0 0 24 24" style="width:22px;height:22px;"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+      </span>
       <div class="fsi-text">
         <div class="fsi-name">Санхүүгийн хүсэлт</div>
         <div class="fsi-sub">Төлбөр / зардлын зөвшөөрөл</div>
       </div>
     </button>
     <button class="fab-sheet-item" data-action="order" type="button" id="fab-sheet-order">
-      <span class="fsi-icon" style="background:#dcfce7;color:#15803d;">📋</span>
+      <span class="fsi-icon" style="background:#dcfce7;color:#15803d;">
+        <svg class="lcd-icon" viewBox="0 0 24 24" style="width:22px;height:22px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </span>
       <div class="fsi-text">
         <div class="fsi-name">Шинэ захиалга</div>
         <div class="fsi-sub">5 дамжлагат акт автоматаар үүснэ</div>

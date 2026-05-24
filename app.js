@@ -1,11 +1,27 @@
 /* -------------------- CONSTANTS -------------------- */
 // Branches — 3 work-groups + 1 cross-branch "production" type for Camp↔M Event events.
 // Store branch removed 2026-05-16: CEO no longer manages the store (Wise Brothers).
+// SVG icons — emoji-г орлуулсан Lucide-маяг icons. `currentColor` ашигладаг.
+const ICONS = {
+  inbox:     '<svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+  send:      '<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+  wallet:    '<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>',
+  tent:      '<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3.5 21 12 8l8.5 13"/><path d="M12 8 7 21M12 8l5 13M3.5 21h17"/></svg>',
+  mountain:  '<svg class="lcd-icon" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>',
+  building:  '<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/></svg>',
+  star:      '<svg class="lcd-icon" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  layers:    '<svg class="lcd-icon" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+  alertTri:  '<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  sun:       '<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+  check:     '<svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
+  target:    '<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+};
+
 const BRANCHES = [
-  { id: 'm-event',    name: 'M Event',         icon: '🎪' },
-  { id: 'camp',       name: 'NOMAAD Camp',     icon: '🏕️' },
-  { id: 'shared',     name: 'Нэгдсэн алба',    icon: '🏢' },
-  { id: 'production', name: 'Production event',icon: '🌟' },
+  { id: 'm-event',    name: 'M Event',         icon: ICONS.tent },
+  { id: 'camp',       name: 'NOMAAD Camp',     icon: ICONS.mountain },
+  { id: 'shared',     name: 'Нэгдсэн алба',    icon: ICONS.building },
+  { id: 'production', name: 'Production event',icon: ICONS.star },
 ];
 
 // 13-staff roster as of 2026-05-16, синк хийгдсэн Master Sheet:
@@ -1742,7 +1758,7 @@ function renderSidebar() {
   // brand reflects current branch so the user always knows which space they're in
   const info = currentBranchInfo();
   const brandEl = document.getElementById('brand-text');
-  if (brandEl) brandEl.textContent = info.icon + ' ' + info.name;
+  if (brandEl) brandEl.innerHTML = (info.icon || '') + ' ' + escapeHtml(info.name);
   // projects (only for current branch)
   const list = document.getElementById('project-list');
   list.innerHTML = '';
@@ -1758,22 +1774,24 @@ function renderSidebar() {
   });
 }
 function renderTitle() {
+  // [icon SVG, title text, subtitle]
   const titles = {
-    mine:      ['📥 Ирсэн ажил', 'Танд оноосон ажлууд'],
-    delegated: ['📤 Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
-    finance:   ['💸 Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
-    all:       ['Бүгд','Бүх checklist'],
-    overdue:   ['Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
-    today:     ['Өнөөдөр','Өнөөдөр дуусах ёстой'],
-    done:      ['Дууссан','Биелсэн даалгаврууд'],
+    mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
+    delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
+    finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
+    all:       ['', 'Бүгд','Бүх checklist'],
+    overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
+    today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
+    done:      [ICONS.check, 'Дууссан','Биелсэн даалгаврууд'],
   };
   let t = titles[state.view];
   if (!t && state.view.startsWith('project:')) {
     const pid = state.view.split(':')[1];
-    t = [projectName(pid), 'Төсөл'];
+    t = ['', projectName(pid), 'Төсөл'];
   }
-  document.getElementById('view-title').textContent = (t||['Бүгд'])[0];
-  document.getElementById('view-sub').textContent = (t||['','Бүх'])[1] || '';
+  const [icon, title, sub] = t || ['', 'Бүгд', 'Бүх'];
+  document.getElementById('view-title').innerHTML = (icon || '') + escapeHtml(title);
+  document.getElementById('view-sub').textContent = sub || '';
 }
 function renderTaskList() {
   const wrap = document.getElementById('task-list');

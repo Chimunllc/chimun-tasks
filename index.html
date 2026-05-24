@@ -126,13 +126,13 @@
 
     <div class="section-label">Mailbox</div>
     <div class="nav-item active" data-view="mine">
-      <span>📥 Ирсэн ажил</span><span class="count-badge" id="cnt-mine">0</span>
+      <span><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Ирсэн ажил</span><span class="count-badge" id="cnt-mine">0</span>
     </div>
     <div class="nav-item" data-view="delegated">
-      <span>📤 Илгээсэн ажил</span><span class="count-badge" id="cnt-delegated">0</span>
+      <span><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Илгээсэн ажил</span><span class="count-badge" id="cnt-delegated">0</span>
     </div>
     <div class="nav-item" data-view="finance">
-      <span>💸 Санхүү</span><span class="count-badge" id="cnt-finance">0</span>
+      <span><svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>Санхүү</span><span class="count-badge" id="cnt-finance">0</span>
     </div>
     <!-- Хуучин view-уудыг хадгалсан (Бүгд/Хоцорсон/Өнөөдөр/Дууссан) — filter pill-аар орлуулсан.
          Кодын тал нь үлдсэн, JS-аас reachable. Шинэ үед filter pill дээрх "Хоцорсон/Өнөөдөр" товчоор шилжинэ. -->
@@ -192,11 +192,11 @@
           </svg>
           <span class="notif-badge" id="notif-badge" style="display:none">0</span>
         </button>
-        <button class="btn" id="settings-btn" aria-label="Тохиргоо">⚙</button>
-        <button class="btn" id="export-btn" title="Даалгаврын тайланг CSV (Excel)-ээр татах" style="display:none;">📊 Тайлан</button>
-        <button class="btn" id="new-order-btn" title="5 дамжлагат акт автоматаар үүснэ">📋 Захиалга</button>
-        <button class="btn" id="new-finance-btn" title="Санхүүгийн хүсэлт CEO-руу илгээх">💸 Хүсэлт</button>
-        <button class="btn btn-primary" id="new-task-btn">+ Шинэ</button>
+        <button class="btn" id="settings-btn" aria-label="Тохиргоо"><svg class="lcd-icon" viewBox="0 0 24 24" style="margin:0;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button class="btn" id="export-btn" title="Даалгаврын тайланг CSV (Excel)-ээр татах" style="display:none;"><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Тайлан</button>
+        <button class="btn" id="new-order-btn" title="5 дамжлагат акт автоматаар үүснэ"><svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Захиалга</button>
+        <button class="btn" id="new-finance-btn" title="Санхүүгийн хүсэлт CEO-руу илгээх"><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Хүсэлт</button>
+        <button class="btn btn-primary" id="new-task-btn"><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Шинэ</button>
       </div>
 
       <!-- Notification drawer (mobile: bottom sheet, desktop: dropdown) -->
@@ -216,10 +216,10 @@
     <div class="toolbar">
       <div class="filter-pill active" data-status="all">Бүгд</div>
       <div class="filter-pill" data-status="open">Идэвхтэй</div>
-      <div class="filter-pill" data-status="overdue">⚠ Хоцорсон</div>
-      <div class="filter-pill" data-status="today">☀️ Өнөөдөр</div>
-      <div class="filter-pill" data-status="done">✓ Дууссан</div>
-      <div class="search"><input type="text" id="search" placeholder="🔍 Хайх..." /></div>
+      <div class="filter-pill" data-status="overdue"><svg class="lcd-icon" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Хоцорсон</div>
+      <div class="filter-pill" data-status="today"><svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Өнөөдөр</div>
+      <div class="filter-pill" data-status="done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
+      <div class="search"><input type="text" id="search" placeholder="Хайх..." /></div>
     </div>
 
     <div class="tasks" id="tasks">

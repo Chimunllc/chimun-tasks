@@ -5141,12 +5141,14 @@ async function bootApp() {
   }
   loadNotifications();
   await flushPendingWrites();   // өмнөх session-д офлайн үлдсэн өөрчлөлт байвал эхлээд илгээх
+  // TEAM-аа ЭХЭЛЖ ачаална — bootstrap/loadData нь Sheet-ийн нэр (assignee="Г.Бат")-ийг
+  // email рүү хөрвүүлэхэд TEAM хэрэгтэй. Хоосон TEAM-тай ажиллавал бүх task assignee нь
+  // нэр хэлбэрээр үлдэж, ажилтны филтр (t.assignee === state.me email) бүхнийг хасна.
+  await loadTeamFromAPI();
   // Bootstrap endpoint туршиж үзнэ — tasks + finance-ийг 1 fetch-ээр авна. Бүтэлгүй бол
-  // хуучин 2 endpoint-аар нөхөж явна. Team тусдаа /staff endpoint-аар явсаар (UI байгууламж
-  // нь Master Sheet баганатай тулд n8n тал маппинг хийдэг тул нэгтгэх нь нийлмэл).
+  // хуучин 2 endpoint-аар нөхнө.
   const bootOk = await loadBootstrap();
-  const taskPromises = bootOk ? [loadTeamFromAPI()] : [loadData(), loadFinanceRequests(), loadTeamFromAPI()];
-  await Promise.all(taskPromises);
+  if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
   generateNotifications();
   render();
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
@@ -5239,6 +5241,9 @@ async function refreshFromServer() {
   if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
   try {
     await flushPendingWrites();   // татахаасаа өмнө офлайн өөрчлөлтөө илгээж, дарагдахаас сэргийлнэ
+    // TEAM хоосон бол эхлээд татах (assignee нэр → email хөрвүүлэх тулд хэрэгтэй).
+    // Энгийн refresh үед TEAM аль хэдийн in-memory-д бий тул дахин татахгүй.
+    if (!TEAM.length) await loadTeamFromAPI();
     // Bootstrap endpoint-ыг турших — tasks + finance-ийг 1 fetch-ээр. Алдаатай бол fallback.
     const bootOk = await loadBootstrap();
     const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];

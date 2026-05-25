@@ -3814,14 +3814,15 @@ function openTaskModal(id) {
   state._modalCanEdit = canEdit;
 
   // Header текст
+  const modalTitleEl = document.getElementById('task-modal-title');
   if (!t) {
-    document.getElementById('task-modal-title').textContent = 'Шинэ даалгавар';
+    modalTitleEl.textContent = 'Шинэ даалгавар';
   } else if (canEdit.all) {
-    document.getElementById('task-modal-title').textContent = 'Даалгавар засах';
+    modalTitleEl.textContent = 'Даалгавар засах';
   } else if (canEdit.status) {
-    document.getElementById('task-modal-title').textContent = 'Даалгавар (зөвхөн харах)';
+    modalTitleEl.innerHTML = '📋 Танд оноосон даалгавар <span style="font-size:11px;font-weight:600;background:var(--accent-blue,#4f46e5);color:#fff;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;">ХАРИУЦАГЧ</span>';
   } else {
-    document.getElementById('task-modal-title').textContent = 'Даалгавар';
+    modalTitleEl.textContent = 'Даалгавар';
   }
 
   // Creator info — only shown when editing an existing task
@@ -3905,7 +3906,7 @@ function openTaskModal(id) {
   };
 
   // Permission lock — canEdit.all биш бол input-уудыг readonly + Save товчийг нуух
-  const inputIds = ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority'];
+  const inputIds = ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority','t-recurrence','t-requires-photo'];
   inputIds.forEach(iid => {
     const el = document.getElementById(iid);
     if (!el) return;
@@ -3913,15 +3914,31 @@ function openTaskModal(id) {
       el.removeAttribute('readonly');
       el.removeAttribute('disabled');
       el.style.opacity = '';
+      el.style.background = '';
+      el.style.cursor = '';
     } else {
-      // textarea/input: readonly; select: disabled (Safari doesn't honor readonly on select)
-      if (el.tagName === 'SELECT') el.setAttribute('disabled','disabled');
+      // textarea/input: readonly; select+checkbox: disabled
+      if (el.tagName === 'SELECT' || el.type === 'checkbox') el.setAttribute('disabled','disabled');
       else el.setAttribute('readonly','readonly');
-      el.style.opacity = '0.7';
+      el.style.opacity = '0.85';
+      el.style.background = 'var(--panel-hover)';
+      el.style.cursor = 'not-allowed';
     }
   });
+  // Олон хүнд оноох + Хуулбарлах товчийг бас нуух (зөвхөн үүсгэгчид)
+  const multiBtnEl = document.getElementById('t-assignee-multi');
+  if (multiBtnEl) multiBtnEl.style.display = canEdit.all ? '' : 'none';
   const saveBtn = document.getElementById('t-save');
   if (saveBtn) saveBtn.style.display = canEdit.all ? '' : 'none';
+
+  // ─── Хариуцагчид зориулсан тод мэдэгдэл (canEdit.status зөвхөн) ───
+  // Дээр creatorInfo дотор ажилбал ч хариуцагч уншихад хангалттай байх ёстой
+  if (t && !canEdit.all && canEdit.status) {
+    const ci = document.getElementById('t-creator-info');
+    if (ci && t.requires_photo && t.status !== 'done') {
+      ci.innerHTML += `<div style="margin-top:10px;padding:10px 12px;background:var(--accent-blue-soft, #dbeafe);border-left:3px solid var(--accent-blue, #4f46e5);border-radius:6px;color:var(--accent-blue, #4f46e5);font-weight:600;font-size:13px;">📷 Энэ даалгаврыг дуусгахдаа биелэлтийн зураг хавсаргах ёстой</div>`;
+    }
+  }
 
   // ─── СТАТУС ТОВЧНУУД (сэтгэгдэл болон үйлдлийн түүх устгагдсан) ───
   const statusBar = document.getElementById('t-status-bar');

@@ -25,44 +25,32 @@ const BRANCHES = [
   // 'production' салбар хасагдсан 2026-05-25 — M Event-д нэгтгэгдсэн.
 ];
 
-// 13-staff roster as of 2026-05-16, синк хийгдсэн Master Sheet:
+// 13-staff roster — Master Sheet-ээс runtime-д ачаалагдана:
 // https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit
-// Old IDs (001–006) kept for backward compat with existing tasks in localStorage.
-// `email` field used for login email lookup (legacy). PIN is the active auth.
-// `level` is hierarchical rank: 100=CEO, 80=executive, 60=manager/ахлах, 40=staff.
-// A user can only DELETE tasks created by someone at their level or below.
 //
-// Store branch + Wise Brothers staff removed: CEO no longer manages дэлгүүр.
-// Хасагдсан хүмүүс: S02 Тэмүүлэн, S04 Ганболд, M03 Шижирсаран, M09 Тананбат,
-//   C03 Бямбацэрэн, C04 Төгөлдөр, C05 Эрка, T01 Содхүү, T02 Тэлмэн.
+// 2026-05-25 — `id` талбар хасагдсан. Эргэн дурдсан түлхүүр нь EMAIL.
+// Email Sheet-д бүх ажилтанд бөглөгдсөн учраас runtime sync бүх ажилтны email-ийг
+// авч ирнэ. Hardcoded fallback зөвхөн email бүхий ажилтнуудыг агуулна — Sheet
+// холбогдоогүй үед хязгаарлагдмал ажиллана.
 //
-// `let` (not const) — runtime sync replaces this array in-place from Master Sheet via n8n /staff endpoint.
-// ⚠ Fallback PIN '1111' нь Master Sheet холбогдоогүй үед түр нэвтрэх боломжтой байх зориулалттай.
-//   Master Sheet idевхтэй болсны дараа Sheet дотор бичсэн PIN-ээр шууд override хийгдэнэ
-//   (loadTeamFromAPI → TEAM.length = 0; push(...) — энэ нь array-г бүтнээр солино).
-//   Production-д шилжсэний дараа энэ файлаас 1111-ийг хасч, зөвхөн Master Sheet ашиглахаа боль.
+// `email` нь түлхүүр (assignee, createdBy, forUser, state.me бүгд email-ээр хадгална).
+// `pin` — нэвтрэх. `level` — 100=CEO, 80=executive, 60=manager, 40=staff.
+//
+// `let` (not const) — loadTeamFromAPI in-place солино.
 let TEAM = [
-  { id: 'CEO', name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1111',
+  { name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1111',
     email: 'ceo@nomaadcamp.com',
     branches: ['m-event','camp','shared'] },
 
   // Нэгдсэн алба (cross-cutting)
-  { id: 'S01', name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1111', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
-  { id: 'S03', name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1111', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
+  { name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1111', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
+  { name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1111', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
 
   // M Event салбар
-  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event'] },
-  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '1111', email: '',                         branches: ['m-event'] },
-  { id: '003', name: 'Д.Нинждолгор',   role: 'Нярав',                  level: 60, pin: '1111', email: '',                         branches: ['m-event'] },
-  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '1111', email: '',                       branches: ['m-event'] },
-  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
-  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
-  { id: '006', name: 'Хишигтогтох',    role: 'Цэврэлгээ',              level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
+  { name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event'] },
 
   // NOMAAD Camp
-  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp'] },
-  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '1111', email: '',                         branches: ['camp'] },
-  { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '1111', email: '',                         branches: ['camp'] },
+  { name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp'] },
 ];
 
 // n8n webhook URL — hardcoded so staff never have to configure anything.
@@ -122,8 +110,8 @@ const state = {
   statusFilter: 'all',   // all | open | done
   search: '',
   // Auth state — populated by Google Sign-In flow. `me` is set automatically.
-  user: null,            // { id, name, role, email, picture, branches }
-  me: null,              // user.id (used as task assignee key, kept for backward compat)
+  user: null,            // { name, role, email, picture, branches }
+  me: null,              // user.email — task assignee, createdBy, forUser түлхүүр
   isCEO: false,          // whether this user has full access
   config: (() => {
     // Migration: chimun.app.n8n.cloud → chimunllc.app.n8n.cloud (2026-05-18)
@@ -525,7 +513,7 @@ function generateNotifications() {
       }
     });
   }
-  if (state.me === getFinanceExecutorId()) {
+  if (state.me === getFinanceExecutorEmail()) {
     state.financeRequests.filter(r => r.decision === 'approved' && r.status !== 'done').forEach(r => {
       const nid = `finance-execute-${r.id}`;
       if (!seen.has(nid)) {
@@ -774,21 +762,29 @@ function currentBranchInfo() {
 /* -------------------- STORAGE -------------------- */
 // Google Sheets returns string-typed columns as numbers when the value looks numeric
 // (e.g. assignee "001" → 1). Normalize so render code can rely on consistent types.
-/* ─── Хариуцагч ID ↔ нэр хөрвүүлэх ──────────────────────────────────
-   Google Sheet-д ID биш НЭР хадгална (хүн уншиж ойлгомжтой, ID давхцал гарахгүй).
-   Аппын дотоод төлөв (state) ID-аар үлдсэн хэвээр — зөвхөн n8n руу явахаас өмнө +
-   ирэхэд хөрвүүлнэ. Хоёр чигт idempotent: ID өгсөн бол ID-аар үлдээнэ. */
-function idToName(val) {
+/* ─── Хариуцагч EMAIL ↔ нэр хөрвүүлэх ──────────────────────────────────
+   Google Sheet-д НЭР хадгална (хүн уншиж ойлгомжтой).
+   Аппын дотоод төлөв (state) EMAIL-ээр түлхүүрлэгдэнэ — зөвхөн n8n руу явахаас
+   өмнө + ирэхэд хөрвүүлнэ. Хоёр чигт idempotent.
+   2026-05-25 шилжилт: хуучин ID ("S01", "M02") ирвэл нэр рүү буулгахдаа TEAM-ын
+   id талбараар (хадгалагдсан бол) олж нэр буцаана — хуучин даалгавар алдагдахгүй. */
+function emailToName(val) {
   if (!val) return val;
-  const m = TEAM.find(x => String(x.id) === String(val));
-  return m ? m.name : val;
+  const m = TEAM.find(x => String(x.email).toLowerCase() === String(val).toLowerCase());
+  if (m) return m.name;
+  // Backward compat — хуучин ID-аар хадгалагдсан байж магадгүй
+  const byId = TEAM.find(x => String(x.id) === String(val));
+  return byId ? byId.name : val;
 }
-function nameToId(val) {
+function nameToEmail(val) {
   if (!val) return val;
-  // Аль хэдийн ID байвал орхино
-  if (TEAM.some(x => String(x.id) === String(val))) return val;
+  // Аль хэдийн email байвал орхино
+  if (/@/.test(String(val))) return val;
+  // Backward compat — хуучин ID ирвэл түүнийг олоод email рүү буулгана
+  const byId = TEAM.find(x => String(x.id) === String(val));
+  if (byId && byId.email) return byId.email;
   const m = TEAM.find(x => x.name === val);
-  return m ? m.id : val;
+  return (m && m.email) ? m.email : val;
 }
 /* Код ↔ монгол текст хөрвүүлэх maps (Sheet нь зөвхөн монголоор) */
 const _BRANCH_E2M = { 'm-event':'M Event', 'camp':'NOMAAD Camp', 'shared':'Нэгдсэн', 'production':'Бэлтгэл' };
@@ -807,9 +803,9 @@ const _xlate = (val, m) => (val && m[val] != null) ? m[val] : val;
 function taskToWire(task) {
   if (!task || typeof task !== 'object') return task;
   const out = { ...task };
-  if (out.assignee) out.assignee = idToName(out.assignee);
-  if (out.createdBy) out.createdBy = idToName(out.createdBy);
-  if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(idToName);
+  if (out.assignee) out.assignee = emailToName(out.assignee);
+  if (out.createdBy) out.createdBy = emailToName(out.createdBy);
+  if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(emailToName);
   // completion_photos array → CSV string (Sheet single cell)
   if (Array.isArray(out.completion_photos)) {
     out.completion_photos_csv = out.completion_photos.join(' | ');
@@ -830,12 +826,12 @@ function taskToWire(task) {
 function taskFromWire(task) {
   if (!task || typeof task !== 'object') return task;
   const out = { ...task };
-  if (out.assignee) out.assignee = nameToId(out.assignee);
-  if (out.createdBy) out.createdBy = nameToId(out.createdBy);
+  if (out.assignee) out.assignee = nameToEmail(out.assignee);
+  if (out.createdBy) out.createdBy = nameToEmail(out.createdBy);
   if (typeof out.co_assignees === 'string') {
     out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];
   }
-  if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(nameToId);
+  if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(nameToEmail);
   // completion_photos CSV → array
   if (typeof out.completion_photos === 'string') {
     out.completion_photos = out.completion_photos ? out.completion_photos.split(/\s*\|\s*/).filter(Boolean) : [];
@@ -864,9 +860,9 @@ function normalizeTask(t) {
   for (const f of stringFields) {
     if (out[f] != null) out[f] = String(out[f]);
   }
-  // Pad assignee back to 3 digits if it looks like a stripped numeric ID ("1" → "001")
-  if (/^\d{1,2}$/.test(out.assignee)) out.assignee = out.assignee.padStart(3, '0');
-  if (/^\d{1,2}$/.test(out.createdBy)) out.createdBy = out.createdBy.padStart(3, '0');
+  // Backward compat — Sheet хуучин numeric ID ирүүлж болзошгүй. nameToEmail-аар буулгана.
+  if (/^\d{1,2}$/.test(out.assignee)) out.assignee = nameToEmail(out.assignee.padStart(3, '0'));
+  if (/^\d{1,2}$/.test(out.createdBy)) out.createdBy = nameToEmail(out.createdBy.padStart(3, '0'));
   // `stage` is numeric (1-5). Google Sheets may return it as string.
   if (out.stage != null && out.stage !== '') out.stage = Number(out.stage) || null;
   // `amount` is numeric (₮). Sheets may return as string.
@@ -914,9 +910,8 @@ async function addTaskComment(taskId, text, fileUrl = null) {
     const uniqueMentions = [...new Set(mentions)].filter(id => id !== state.me);
     if (!Array.isArray(state.notifications)) state.notifications = [];
     uniqueMentions.forEach(mid => {
-      const member = TEAM.find(m => String(m.id).toUpperCase() === mid.toUpperCase());
+      const member = findMember(mid);
       if (!member) return;
-      // Зөвхөн дурдсан хүн өөрөө л харахаар filter ашиглаж болно — одоогоор бүгдэд push
       const nid = `mention-${task.id}-${comment.id}-${mid}`;
       state.notifications.unshift({
         id: nid,
@@ -925,7 +920,7 @@ async function addTaskComment(taskId, text, fileUrl = null) {
         msg: `${memberName(state.me)} танд дурдсан: ${task.title}`,
         ts: Date.now(),
         read: false,
-        forUser: member.id,
+        forUser: member.email,
       });
     });
     saveNotifications();
@@ -1065,6 +1060,35 @@ function loadLocal() {
     saveLocal();
     localStorage.setItem('projectCleanup_v1', '1');
   }
+
+  // Migration v2 (2026-05-25) — assignee/createdBy id-аар хадгалагдсан хуучин даалгавруудыг
+  // email рүү шилжүүлэх. TEAM-ын fallback хадгалсан id-ыг ашиглана. Нэг удаагийн ажиллана.
+  if (!localStorage.getItem('emailKeyMigration_v1')) {
+    const idToEmail = (val) => {
+      if (!val) return val;
+      if (/@/.test(String(val))) return val; // already email
+      const m = TEAM.find(x => String(x.id) === String(val));
+      return (m && m.email) ? m.email : val;
+    };
+    state.tasks.forEach(t => {
+      if (t.assignee) t.assignee = idToEmail(t.assignee);
+      if (t.createdBy) t.createdBy = idToEmail(t.createdBy);
+      if (Array.isArray(t.co_assignees)) t.co_assignees = t.co_assignees.map(idToEmail);
+    });
+    try {
+      const notifRaw = localStorage.getItem('notifications');
+      if (notifRaw) {
+        const notifs = JSON.parse(notifRaw);
+        if (Array.isArray(notifs)) {
+          notifs.forEach(n => { if (n.forUser) n.forUser = idToEmail(n.forUser); });
+          localStorage.setItem('notifications', JSON.stringify(notifs));
+        }
+      }
+    } catch(e) {}
+    saveLocal();
+    localStorage.setItem('emailKeyMigration_v1', '1');
+  }
+
   setConn('offline', 'Локал режим');
 }
 function saveLocal() {
@@ -1187,7 +1211,7 @@ function addDays(yyyymmdd, days) {
 async function createOrderAct({ customer, eventDate, location, desc }) {
   const branch = 'm-event';
   const parentId = uid();
-  const owner = state.me || getCEOId();
+  const owner = state.me || getCEOEmail();
   const parent = {
     id: parentId,
     title: `📋 ${customer || 'Захиалга'} — ${eventDate || 'огноогүй'}`,
@@ -1206,7 +1230,7 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
   await saveTask(parent);
   // Sub-tasks (5 stages) — assignee нь Master Sheet дахь role-аар автомат олдоно
   for (const tpl of ACT_TEMPLATE) {
-    const assigneeId = tpl.role_pattern ? findMemberIdByRole(tpl.role_pattern, owner) : (tpl.role_id || owner);
+    const assigneeId = tpl.role_pattern ? findMemberEmailByRole(tpl.role_pattern, owner) : (tpl.role_id || owner);
     const sub = {
       id: uid(),
       title: `Дамжлага ${tpl.stage}: ${tpl.title}`,
@@ -1231,14 +1255,14 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
 
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
 function financeAsTask(r) {
-  const executorId = r.executor || getFinanceExecutorId();
+  const executorId = r.executor || getFinanceExecutorEmail();
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
     desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + (r.justification || ''),
     branch: 'shared',
     project: 'finance',
-    assignee: (r.decision === 'approved' && r.status !== 'done') ? executorId : getCEOId(),
+    assignee: (r.decision === 'approved' && r.status !== 'done') ? executorId : getCEOEmail(),
     due: r.due_date || '',
     priority: 'high',
     status: r.status || 'open',
@@ -1261,8 +1285,8 @@ function financeAsTask(r) {
 
 // Туслах нягтлан — зөвшөөрсөн хүсэлтийг гүйцэтгэнэ. Hardcoded ID биш role-аар хайна
 // (Master Sheet-д ID солигдсон ч role-аар хадгалагдсан хүн олдох ёстой).
-function getFinanceExecutorId() {
-  return findMemberIdByRole('нягтлан', 'CEO');
+function getFinanceExecutorEmail() {
+  return findMemberEmailByRole('нягтлан', getCEOEmail());
 }
 
 /* Зардлын стандарт ангилал — 2-түвшинт (Үндсэн → Дэд)
@@ -1518,7 +1542,7 @@ function normalizeFinance(r) {
 }
 
 async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber }) {
-  const owner = state.me || getCEOId();
+  const owner = state.me || getCEOEmail();
   const r = {
     id: uid(),
     requested_by: owner,
@@ -1540,7 +1564,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     decision_reason: '',
     executed_at: '',
     executed_by: '',
-    executor: getFinanceExecutorId(), // Role-аар хайна, hardcoded ID биш
+    executor: getFinanceExecutorEmail(), // Role-аар хайна, hardcoded ID биш
     purchase_proof_url: '',
     payment_proof_url: '',
     purchase_receipt_url: '',
@@ -1560,7 +1584,7 @@ async function decideFinanceRequest(id, decision, reason = '') {
   if (reason) r.decision_reason = reason;
   if (decision === 'approved') {
     // Approved үед executor-г динамикаар шинэчилнэ (Master Sheet-д нягтлан солигдсон бол шинэ хүн)
-    r.executor = getFinanceExecutorId();
+    r.executor = getFinanceExecutorEmail();
     showToast('Зөвшөөрсөн. Туслах нягтланд илгээгдсэн.', 'success');
   } else if (decision === 'rejected') {
     r.status = 'done';
@@ -1744,7 +1768,7 @@ function openFinanceModal(id = null) {
       }
     }
     // Payment file picker зөвхөн approved + S03/CEO үед харагдана
-    const showPayment = (t.decision === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorId() || state.isCEO));
+    const showPayment = (t.decision === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorEmail() || state.isCEO));
     toggleFinanceFileInput('f-payment-file', showPayment);
     // Receipt picker — гүйцэтгэгдсэний дараа + requested_by (or CEO) — final receipt upload боломжтой
     const showReceipt = (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
@@ -1774,7 +1798,7 @@ function openFinanceModal(id = null) {
     if (dec === 'pending' && state.isCEO) {
       submitActions.style.display = 'none';
       decisionActions.style.display = 'flex';
-    } else if (dec === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorId() || state.isCEO)) {
+    } else if (dec === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorEmail() || state.isCEO)) {
       submitActions.style.display = 'none';
       executeActions.style.display = 'flex';
     } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
@@ -1794,7 +1818,7 @@ async function executeFinanceRequest(id) {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
   if (r.decision !== 'approved') { showToast('Зөвхөн зөвшөөрсөн хүсэлтийг гүйцэтгэх боломжтой', 'warn'); return; }
-  const executorId = r.executor || getFinanceExecutorId();
+  const executorId = r.executor || getFinanceExecutorEmail();
   if (state.me !== executorId && !state.isCEO) {
     showToast('Зөвхөн Туслах нягтлан гүйлгээ хийх эрхтэй', 'error'); return;
   }
@@ -1828,34 +1852,40 @@ function actProgress(parentId) {
 }
 
 /* -------------------- HELPERS -------------------- */
-function memberName(id) {
-  if (!id) return '(сонгох)';
-  const m = TEAM.find(x => x.id === id);
-  if (m) return m.name;
-  // ID олдсонгүй — Master Sheet-аас ажилтан хасагдсан магадгүй
-  return `(${id} — алга)`;
+// Ажилтны түлхүүр (email) бүхий бичлэгийг олох — хуучин id-аар хадгалагдсан утгыг ч хүлээн авна.
+function findMember(key) {
+  if (!key) return null;
+  const k = String(key).toLowerCase();
+  return TEAM.find(x => String(x.email || '').toLowerCase() === k)
+      || TEAM.find(x => String(x.id || '') === String(key))
+      || null;
 }
-function memberInitials(id) {
-  if (!id) return '?';
-  const m = TEAM.find(x => x.id === id);
+function memberName(key) {
+  if (!key) return '(сонгох)';
+  const m = findMember(key);
+  if (m) return m.name;
+  return `(${key} — алга)`;
+}
+function memberInitials(key) {
+  if (!key) return '?';
+  const m = findMember(key);
   if (!m) return '⚠';
   return m.name.replace(/\./g,'').slice(0,2);
 }
 
-/* Role-аар хайх — ID-аас үл хамаарсан resilient lookup.
-   Master Sheet-д ID солигдсон ч "Туслах нягтлан" role-той хүн олдох ёстой. */
+/* Role-аар хайх — түлхүүрээс үл хамаарсан resilient lookup. */
 function findMemberByRole(rolePattern) {
   const re = new RegExp(rolePattern, 'i');
   return TEAM.find(t => re.test(t.role || ''));
 }
-function findMemberIdByRole(rolePattern, fallback = 'CEO') {
+function findMemberEmailByRole(rolePattern, fallback = '') {
   const m = findMemberByRole(rolePattern);
-  return m ? m.id : fallback;
+  return m ? (m.email || '') : fallback;
 }
-// CEO-ийн ID-г динамикаар олох (level === 100). Master Sheet-д ID өөрчилсөн ч CEO олдоно.
-function getCEOId() {
+// CEO-ийн email-г динамикаар олох (level === 100).
+function getCEOEmail() {
   const m = TEAM.find(t => (t.level || 0) >= 100);
-  return m ? m.id : 'CEO';
+  return m ? (m.email || '') : '';
 }
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
@@ -2726,8 +2756,8 @@ function openMultiAssigneePicker(currentAssignees = []) {
       );
     listEl.innerHTML = visible.map(m => `
       <label class="mp-row">
-        <input type="checkbox" data-mp-id="${escapeHtml(m.id)}" ${selected.has(m.id) ? 'checked' : ''} style="width:18px;height:18px;" />
-        <span class="mp-avatar">${escapeHtml(memberInitials(m.id))}</span>
+        <input type="checkbox" data-mp-id="${escapeHtml(m.email || '')}" ${selected.has(m.email) ? 'checked' : ''} style="width:18px;height:18px;" />
+        <span class="mp-avatar">${escapeHtml(memberInitials(m.email || ''))}</span>
         <span class="mp-info">
           <span class="mp-name">${escapeHtml(m.name)}</span>
           <span class="mp-role">${escapeHtml(m.role || '')}</span>
@@ -2751,7 +2781,7 @@ function openMultiAssigneePicker(currentAssignees = []) {
   searchEl.oninput = renderList;
   allEl.onchange = () => {
     if (allEl.checked) {
-      TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => selected.add(m.id));
+      TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => selected.add(m.email));
     } else {
       selected.clear();
     }
@@ -2843,38 +2873,6 @@ function levelForRole(role) {
   return 40;
 }
 
-/* ─── ID автомат санал ─────────────────────────────────
-   Branch-аас хамаарч prefix тогтооно:
-     M Event       → M
-     NOMAAD Camp   → C
-     Удирдлага     → S (Shared)
-   TEAM-аас тус prefix-тэй ID-уудын хамгийн их тоонд +1 нэмж буцаана.
-   Жишээ нь M07 байсан бол M08 буцаана. */
-/* Шинэ ажилтны ID-г нэр өөрөөр нь ашиглана — давхцал гарахгүй, хүн уншихад ойлгомжтой.
-   Хуучин M01/C07 ID-уудтай нийцтэй ажиллах ба шинээр бүртгэх үед нэрийг л буцаана. */
-function suggestNextStaffId(branchLabelOrArray, name) {
-  if (name && String(name).trim()) return String(name).trim();
-  // name дамжуулсангүй бол fallback: хуучин prefix схем
-  const PREFIX_MAP = {
-    'm-event': 'M', 'M Event': 'M', 'M EVENT': 'M',
-    'camp': 'C', 'Camp': 'C', 'NOMAAD Camp': 'C',
-    'shared': 'S', 'Нэгдсэн': 'S', 'Удирдлага': 'S',
-  };
-  let key = branchLabelOrArray;
-  if (Array.isArray(branchLabelOrArray)) key = branchLabelOrArray[0];
-  const prefix = PREFIX_MAP[key] || 'S';
-  const regex = new RegExp(`^${prefix}(\\d+)$`, 'i');
-  let maxNum = 0;
-  TEAM.forEach(m => {
-    const match = String(m.id || '').match(regex);
-    if (match) {
-      const n = parseInt(match[1], 10);
-      if (n > maxNum) maxNum = n;
-    }
-  });
-  return `${prefix}${String(maxNum + 1).padStart(2, '0')}`;
-}
-
 /* ─── Шинэ ажилтан бүртгүүлсэн үед CEO-д мэдэгдэх ─────────
    loadTeamFromAPI болгонд request_id-тай шинэ ажилтан байгаа эсэхийг
    шалгана. localStorage('seenStaffIds_v1') нь өмнө мэдэгдсэн нэгжийг
@@ -2882,7 +2880,7 @@ function suggestNextStaffId(branchLabelOrArray, name) {
 function notifyCEOOfPendingRegistrations() {
   if (!state.isCEO) return;
   // Шинэ ажилтан = request_id-тай (бүртгэлээр орсон) бөгөөд CEO-биш бусад ажилтан
-  const fresh = TEAM.filter(m => m.request_id && m.id !== state.me);
+  const fresh = TEAM.filter(m => m.request_id && m.email !== state.me);
   if (!fresh.length) return;
   const seenRaw = localStorage.getItem('seenStaffIds_v1') || '[]';
   let seen;
@@ -2933,7 +2931,7 @@ function openPendingRegistration(member) {
   if (member.photo) {
     photoEl.innerHTML = `<img src="${escapeHtml(member.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
   } else {
-    photoEl.textContent = memberInitials(member.id || member.name);
+    photoEl.textContent = memberInitials(member.email || member.name);
   }
   // Info block
   const fmt = (label, val) => val ? `<div><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>` : '';
@@ -2948,19 +2946,9 @@ function openPendingRegistration(member) {
     fmt('Яаралтай үед', `${member.emergency_name || ''}${member.emergency_phone ? ' — ' + member.emergency_phone : ''}`),
     fmt('Хүсэлт өгсөн', member.requested_at ? new Date(member.requested_at).toLocaleString('mn-MN') : ''),
   ].filter(Boolean).join('');
-  // CEO-ийн талбарууд clean — Зэрэглэлийг албан тушаалаас автомат
+  // CEO-ийн талбарууд — Зэрэглэлийг албан тушаалаас автомат
   document.getElementById('reg-salary').value = member.salary || '';
   document.getElementById('reg-level').value = member.level || levelForRole(member.role);
-  // ID автомат санал болгох — group ('Camp', 'M Event', 'Удирдлага') эсвэл branches[] хэрэглэнэ
-  const branchHint = member.group || member.branches || member.branch;
-  const suggestedId = suggestNextStaffId(branchHint);
-  const existingValid = member.id && /^(M|C|S)\d+$/i.test(member.id) ? member.id : '';
-  document.getElementById('reg-assigned-id').value = member.assigned_id || existingValid || suggestedId;
-  // "Дахин санал болгох" товч
-  document.getElementById('reg-suggest-id').onclick = () => {
-    document.getElementById('reg-assigned-id').value = suggestNextStaffId(branchHint);
-    showToast(`Шинэ ID санал: ${document.getElementById('reg-assigned-id').value}`, 'info', 1500);
-  };
   document.getElementById('reg-notes').value = member.notes || '';
 
   const approveBtn = document.getElementById('reg-approve');
@@ -2968,16 +2956,12 @@ function openPendingRegistration(member) {
   approveBtn.onclick = async () => {
     const salary = document.getElementById('reg-salary').value.trim();
     const level = parseInt(document.getElementById('reg-level').value, 10) || 40;
-    const assignedId = document.getElementById('reg-assigned-id').value.trim().toUpperCase();
     const notes = document.getElementById('reg-notes').value.trim();
-    if (!assignedId) { showToast('ID код тохируулна уу', 'warn'); return; }
-    if (TEAM.some(m => m.id === assignedId && m.id !== member.id)) {
-      showToast('Энэ ID өөр хүн ашиглаж байна', 'error'); return;
-    }
+    if (!member.email) { showToast('И-мэйл хаяг алга — баталгаажуулах боломжгүй', 'error'); return; }
     const payload = {
       action: 'approve_registration',
-      request_id: member.request_id || member.id || member.requested_at,
-      assigned_id: assignedId,
+      request_id: member.request_id || member.email || member.requested_at,
+      email: member.email,
       salary,
       level,
       notes,
@@ -2996,10 +2980,10 @@ function openPendingRegistration(member) {
         if (r.ok) {
           showToast('Бүртгэл баталгаажсан. Master Sheet шинэчлэгдсэн.', 'success', 3000);
           modal.classList.remove('open');
-          // Локал TEAM шинэчлэх
-          const idx = TEAM.findIndex(m => m.id === member.id);
+          // Локал TEAM шинэчлэх — email-ээр олно
+          const idx = TEAM.findIndex(m => m.email === member.email);
           if (idx >= 0) {
-            TEAM[idx] = { ...TEAM[idx], id: assignedId, status: 'идэвхтэй', salary, level, notes };
+            TEAM[idx] = { ...TEAM[idx], status: 'идэвхтэй', salary, level, notes };
             localStorage.setItem('teamCache', JSON.stringify(TEAM));
           }
           await loadTeamFromAPI();
@@ -3018,7 +3002,8 @@ function openPendingRegistration(member) {
     if (!(await showConfirm(`${member.name}-ийн хүсэлтийг татгалзах уу?`, { okText: 'Татгалзах', danger: true }))) return;
     const payload = {
       action: 'reject_registration',
-      request_id: member.request_id || member.id || member.requested_at,
+      request_id: member.request_id || member.email || member.requested_at,
+      email: member.email,
       status: 'татгалзсан',
       rejected_by: state.me,
       rejected_at: new Date().toISOString(),
@@ -3033,8 +3018,8 @@ function openPendingRegistration(member) {
         });
       } catch(e) {}
     }
-    // Локал хасах
-    const idx = TEAM.findIndex(m => m.id === member.id);
+    // Локал хасах — email-ээр
+    const idx = TEAM.findIndex(m => m.email === member.email);
     if (idx >= 0) TEAM.splice(idx, 1);
     localStorage.setItem('teamCache', JSON.stringify(TEAM));
     modal.classList.remove('open');
@@ -3078,22 +3063,23 @@ function renderStaffList() {
     const status = m.status || 'идэвхтэй';
     const isActive = status === 'идэвхтэй';
     const isPending = status === 'хүлээж буй';
-    const isSelf = m.id === state.me;
+    const isSelf = m.email === state.me;
     let statusLabel = 'Идэвхтэй', statusCls = 'active';
     if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
     else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
+    const key = m.email || '';
     return `
-      <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-id="${escapeHtml(m.id)}">
-        <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(m.id))}</span>
+      <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
+        <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(key))}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
-          <div class="staff-role">${escapeHtml(m.role || '')} · ${escapeHtml(m.id)}</div>
+          <div class="staff-role">${escapeHtml(m.role || '')}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
         </div>
         <span class="staff-status status-${statusCls}">${statusLabel}</span>
         ${isSelf ? '' : (
           isPending
-            ? `<button class="staff-action approve" data-staff-act="review" data-staff-id="${escapeHtml(m.id)}">Хянах</button>`
-            : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-id="${escapeHtml(m.id)}">
+            ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
+            : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">
                 ${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}
               </button>`
         )}
@@ -3102,9 +3088,9 @@ function renderStaffList() {
   }).join('');
   listEl.querySelectorAll('.staff-action').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const id = btn.dataset.staffId;
+      const email = btn.dataset.staffEmail;
       const act = btn.dataset.staffAct;
-      const member = TEAM.find(m => m.id === id);
+      const member = TEAM.find(m => m.email === email);
       if (!member) return;
       if (act === 'review') { openPendingRegistration(member); return; }
       const newStatus = act === 'leave' ? 'гарсан' : 'идэвхтэй';
@@ -3136,7 +3122,7 @@ function renderStaffList() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'update_status',
-              id: member.id,
+              email: member.email,
               status: newStatus,
               left_date: leftDate,      // 'Гарсан огноо' багана
               joined_date: joinedDate,  // 'Орсон огноо' багана
@@ -3554,7 +3540,7 @@ function renderCounts() {
   setCount('cnt-mine', accessible.filter(t => t.assignee === state.me && t.status !== 'done').length);
   setCount('cnt-delegated', accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length);
   // Финансын хүсэлт нь state.financeRequests-ээс ирнэ (тусдаа Sheet)
-  const executorId = getFinanceExecutorId();
+  const executorId = getFinanceExecutorEmail();
   const myFinance = state.isCEO
     ? state.financeRequests
     : state.financeRequests.filter(r => r.requested_by === state.me ||
@@ -3703,7 +3689,7 @@ function canEditTask(t) {
   if (state.isCEO) return { all: true, status: true, none: false };
   // Үүсгэгч нь өөрөө
   if (state.me && state.me === t.createdBy) return { all: true, status: true, none: false };
-  const creator = TEAM.find(m => m.id === t.createdBy);
+  const creator = findMember(t.createdBy);
   const creatorLevel = creator ? (creator.level || 0) : 100;
   const myLevel = state.myLevel || 0;
   // Үүсгэгчээс ДЭЭГҮҮР түвшинтэй
@@ -3719,7 +3705,7 @@ function canDeleteTask(t) {
   // their rank or below. Tasks with no `createdBy` are treated as CEO-created
   // (most cautious — only CEO can clean them up).
   if (state.isCEO) return { ok: true };
-  const creator = TEAM.find(m => m.id === t.createdBy);
+  const creator = findMember(t.createdBy);
   const creatorLevel = creator ? (creator.level || 0) : 100;
   const myLevel = state.myLevel || 0;
   if (creatorLevel > myLevel) {
@@ -4440,7 +4426,7 @@ function fillProjectSelect(id, value, branchOverride) {
 function fillAssigneeSelect(id, value, branchOverride) {
   // Бүх ажилтан — салбараар хязгаарлахгүй. "Гарсан" статустайг шүүж хасна.
   const active = TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
-  fillSelect(id, active.map(m => ({ value: m.id, label: m.name + ' (' + m.role + ')' })), value);
+  fillSelect(id, active.map(m => ({ value: m.email || '', label: m.name + ' (' + m.role + ')' })), value);
 }
 function fillBranchSelectInModal(id, value) {
   // `<select><option>` нь HTML рендер хийдэггүй тул SVG icon-ыг хасч зөвхөн текст үлдээнэ.
@@ -4839,11 +4825,11 @@ function initEvents() {
       if (!match) { mentionPopup.style.display = 'none'; return; }
       const query = match[1].toLowerCase();
       const candidates = TEAM.filter(m =>
-        m.id.toLowerCase().includes(query) || m.name.toLowerCase().includes(query)
+        (m.email || '').toLowerCase().includes(query) || (m.name || '').toLowerCase().includes(query)
       ).slice(0, 8);
       if (!candidates.length) { mentionPopup.style.display = 'none'; return; }
       mentionPopup.innerHTML = candidates.map(m =>
-        `<div data-mid="${escapeHtml(m.id)}" style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--panel-hover)'" onmouseout="this.style.background=''">${escapeHtml(m.name)} <span style="color:var(--muted);font-size:11px;">(${escapeHtml(m.id)})</span></div>`
+        `<div data-mid="${escapeHtml(m.email || '')}" style="padding:6px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--panel-hover)'" onmouseout="this.style.background=''">${escapeHtml(m.name)} <span style="color:var(--muted);font-size:11px;">(${escapeHtml(m.email || '')})</span></div>`
       ).join('');
       mentionPopup.style.display = 'block';
       mentionPopup.querySelectorAll('[data-mid]').forEach(el => {
@@ -5145,16 +5131,16 @@ function setUser(member, profile) {
     email: profile.email || member.email || '',
     picture: profile.picture || '',
   };
-  state.me = member.id;
-  // CEO эрх — ID-аас үл хамаарч level === 100-аар тогтооно. Master Sheet-д ID өөрчилсөн ч ажиллана.
-  state.isCEO = ((member.level || 0) >= 100 || member.id === 'CEO');
+  state.me = member.email || '';
+  // CEO эрх — level === 100-аар тогтооно.
+  state.isCEO = ((member.level || 0) >= 100);
   state.myLevel = member.level || 0;
   // Constrain branch to one the user actually belongs to
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
   }
-  // Persist a lightweight session — just the matched ID
-  localStorage.setItem('userId', member.id);
+  // Persist a lightweight session — email-ээр
+  localStorage.setItem('userEmail', member.email || '');
   localStorage.setItem('userLoginAt', String(Date.now()));
 }
 
@@ -5373,7 +5359,7 @@ function setupProfileModal() {
       if (pinNew !== pinConfirm) { showToast('Шинэ PIN таарахгүй байна', 'warn'); return; }
       state.user.pin = pinNew;
       // TEAM array дотор мөн шинэчлэх
-      const member = TEAM.find(m => m.id === state.user.id);
+      const member = TEAM.find(m => m.email === state.user.email);
       if (member) member.pin = pinNew;
       localStorage.setItem('teamCache', JSON.stringify(TEAM));
     }
@@ -5392,7 +5378,7 @@ function setupProfileModal() {
     }
     state._tmpAvatarDataUrl = null;
     // TEAM-д member-ийг мөн шинэчлэх
-    const member = TEAM.find(m => m.id === state.user.id);
+    const member = TEAM.find(m => m.email === state.user.email);
     if (member) {
       member.name = name;
       member.email = email;
@@ -5457,19 +5443,30 @@ async function logout() {
 }
 
 function tryRestoreSession() {
-  // Lightweight session restore — if we have a recent userId, use it without forcing re-auth.
+  // Lightweight session restore — if we have a recent userEmail, use it without forcing re-auth.
   // Hard cap: 24 hours, after which we make the user sign in again.
-  const userId = localStorage.getItem('userId');
+  // Backward compat: хуучин 'userId' хадгалагдсан байж болзошгүй — TEAM-аас id-аар олж email рүү шилжүүлнэ.
+  let userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    const legacyId = localStorage.getItem('userId');
+    if (legacyId) {
+      const legacyMember = TEAM.find(m => m.id === legacyId);
+      if (legacyMember && legacyMember.email) {
+        userEmail = legacyMember.email;
+        localStorage.setItem('userEmail', userEmail);
+        localStorage.removeItem('userId');
+      }
+    }
+  }
   const loginAt = parseInt(localStorage.getItem('userLoginAt') || '0', 10);
   const ageMs = Date.now() - loginAt;
-  if (!userId || ageMs > 24 * 60 * 60 * 1000) return false;
-  const member = TEAM.find(m => m.id === userId);
+  if (!userEmail || ageMs > 24 * 60 * 60 * 1000) return false;
+  const member = TEAM.find(m => String(m.email).toLowerCase() === String(userEmail).toLowerCase());
   if (!member) return false;
   // Restore without picture (we didn't cache it) — user chip will show initials
   state.user = { ...member, email: member.email, picture: '' };
-  state.me = member.id;
-  // CEO эрх — ID-аас үл хамаарч level === 100-аар тогтооно. Master Sheet-д ID өөрчилсөн ч ажиллана.
-  state.isCEO = ((member.level || 0) >= 100 || member.id === 'CEO');
+  state.me = member.email;
+  state.isCEO = ((member.level || 0) >= 100);
   state.myLevel = member.level || 0;
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
@@ -5481,7 +5478,7 @@ function tryRestoreSession() {
    Each TEAM member has a 4-digit `pin`. User picks their name + enters PIN to sign in. */
 
 function initPinLogin() {
-  // ID-р нэвтрэх — нэрийн жагсаалт харуулахгүй (нууцлал). Ажилтан өөрийн ID-г бичнэ.
+  // Утас эсвэл и-мэйл + PIN-ээр нэвтрэх. Нэрийн жагсаалт харуулахгүй (нууцлал).
   const idInput = document.getElementById('login-id-input');
 
   const form = document.getElementById('pin-login-form');
@@ -5497,9 +5494,9 @@ function initPinLogin() {
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    const userId = idInput.value.trim().toUpperCase();
+    const identifier = idInput.value.trim();
     const pin = pinInput.value.trim();
-    handlePinLogin(userId, pin);
+    handlePinLogin(identifier, pin);
   });
 
   // ─── Шинэ ажилтан бүртгэл ───
@@ -5515,7 +5512,7 @@ function initPinLogin() {
     regSection.style.display = 'none';
     loginFooter.style.display = 'block';
     form.style.display = 'flex';
-    document.querySelector('.login-sub').textContent = 'ID болон PIN кодоо оруулж нэвтэрнэ үү';
+    document.querySelector('.login-sub').textContent = 'Утас эсвэл и-мэйл + PIN кодоор нэвтэрнэ үү';
   });
   document.getElementById('reg-submit')?.addEventListener('click', handleRegister);
   // Зураг upload — registration form
@@ -5624,9 +5621,8 @@ async function handleRegister() {
   try {
     const url = state.config.registerUrl;
     if (!url) { show('Бүртгэлийн систем тохируулагдаагүй. CEO-той холбогдоно уу.'); return; }
-    // CEO зөвшөөрөл шаардахгүй — ID болон зэрэглэлийг автоматаар тогтооно
-    // ID = нэр өөрөө (давхцал гарахгүй) — n8n тал ч мөн нэрээр илгээгдсэн body.name дээр үндэслэн оноох
-    const assignedId = suggestNextStaffId(group, name);
+    // CEO зөвшөөрөл шаардахгүй — зэрэглэлийг албан тушаалаас автомат тогтооно.
+    // Түлхүүр = и-мэйл хаяг. ID талбар цаашид ашиглагдахгүй.
     const autoLevel = levelForRole(role);
     const r = await fetch(url, {
       method: 'POST',
@@ -5638,7 +5634,6 @@ async function handleRegister() {
         emergency_name: emergencyName,
         emergency_phone: emergencyPhone,
         photo: photoDataUrl, // base64 data URL эсвэл хоосон
-        assigned_id: assignedId,  // M08, C07 г.м.
         level: autoLevel,         // 40/60/80/100
         status: 'идэвхтэй',       // шууд идэвхтэй — зөвшөөрөл шаардахгүй
         joined_at: new Date().toISOString().slice(0, 10),
@@ -5661,13 +5656,12 @@ async function handleRegister() {
     // Master Sheet-аас шинэ TEAM татаж шинэ хүнийг dropdown-д оруулах
     await loadTeamFromAPI();
     setTimeout(() => {
-      // Login руу буцаад шинэ хэрэглэгчийг сонгуулах
+      // Login руу буцаад шинэ хэрэглэгчийг и-мэйлээр сонгуулах
       document.getElementById('reg-cancel').click();
       initPinLogin();
       const idInput = document.getElementById('login-id-input');
-      const newId = data.id;
-      if (newId && idInput) idInput.value = String(newId).toUpperCase();
-      showLoginError('Бүртгэл амжилттай. ID: ' + (newId||'') + ' · PIN кодоо оруулж нэвтэрнэ үү.', 'info');
+      if (email && idInput) idInput.value = email;
+      showLoginError('Бүртгэл амжилттай. И-мэйл: ' + email + ' · PIN кодоо оруулж нэвтэрнэ үү.', 'info');
     }, 1200);
   } catch (e) {
     console.warn('Бүртгэл амжилтгүй:', e);
@@ -5678,12 +5672,12 @@ async function handleRegister() {
   }
 }
 
-async function handlePinLogin(userId, pin) {
-  if (!userId) return showLoginError('Утасны дугаар эсвэл ID-гаа оруулна уу.');
+async function handlePinLogin(userIdentifier, pin) {
+  if (!userIdentifier) return showLoginError('Утас эсвэл и-мэйл хаягаа оруулна уу.');
   if (!/^\d{4}$/.test(pin)) return showLoginError('PIN нь 4 оронтой тоо байх ёстой.');
 
-  const raw = String(userId).trim();
-  const uid = raw.toUpperCase();
+  const raw = String(userIdentifier).trim();
+  const lowered = raw.toLowerCase();
   const phoneNorm = raw.replace(/\D/g, '');
 
   const tryAuth = () => {
@@ -5695,9 +5689,13 @@ async function handlePinLogin(userId, pin) {
         return p && p === phoneNorm;
       });
     }
-    // Олдоогүй бол ID-аар хайх
+    // Олдоогүй бол email-ээр хайх
     if (!member) {
-      member = TEAM.find(m => String(m.id).toUpperCase() === uid);
+      member = TEAM.find(m => String(m.email || '').toLowerCase() === lowered);
+    }
+    // Backward compat — хэрэв хуучин ID бичсэн бол хүлээн авна
+    if (!member) {
+      member = TEAM.find(m => String(m.id || '').toUpperCase() === raw.toUpperCase());
     }
     if (!member) return { ok: false, reason: 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.' };
     // "Гарсан" статустай ажилтан нэвтэрч чадахгүй

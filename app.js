@@ -5164,9 +5164,10 @@ async function bootApp() {
   render();
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
   notifyCEOOfPendingRegistrations();
-  // Auto-refresh every 60s — pulls latest tasks from n8n + generates fresh notifications.
+  // Auto-refresh every 10 мин — n8n execution хэмнэх (idle polling багасгана).
+  // Хэрэглэгч таб эргэж нээх үед visibilitychange шууд татна, online эргэж сэргэхэд бас.
   if (_pollTimer) clearInterval(_pollTimer);
-  _pollTimer = setInterval(refreshFromServer, 60_000);
+  _pollTimer = setInterval(refreshFromServer, 600_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ
   // — ингэснээр хэрэглэгч апп нээх агшинд хамгийн сүүлийн дата + badge харагдана.
   if (!_visibilityBound) {

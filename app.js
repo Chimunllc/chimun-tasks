@@ -3863,6 +3863,25 @@ function bulkRefreshBar() {
   if (doneBtn) doneBtn.style.display = isArchive ? 'none' : '';
   if (restoreBtn) restoreBtn.style.display = isArchive ? '' : 'none';
 }
+// Bulk bar дотроо "✓ Сэргээгдлээ" гэсэн success cap-ыг 900мс харуулаад дараа нь
+// нуудаг helper. Хэрэглэгч товч дарсан газартаа шууд хариу авна (toast доод
+// талд гарах ч анзаарагдахгүй байж болзошгүйг нөхнө).
+function flashBulkBarSuccess(text) {
+  const bar = document.getElementById('bulk-bar');
+  const count = document.querySelector('.bulk-count');
+  const actions = document.querySelector('.bulk-actions');
+  if (!bar || !count) return;
+  const origCountHTML = count.innerHTML;
+  const origActionsDisplay = actions ? actions.style.display : '';
+  if (actions) actions.style.display = 'none';
+  count.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;color:#10b981;font-weight:600;"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>${escapeHtml(text)}</span>`;
+  return new Promise(resolve => setTimeout(() => {
+    count.innerHTML = origCountHTML;
+    if (actions) actions.style.display = origActionsDisplay;
+    resolve();
+  }, 900));
+}
+
 async function bulkApply(action) {
   ensureBulkState();
   const ids = [...state.bulkSelected];
@@ -3877,21 +3896,21 @@ async function bulkApply(action) {
     if (!(await showConfirm(msg, { okText: label, danger: true }))) return;
     const targets = state.tasks.filter(t => state.bulkSelected.has(t.id));
     state.tasks = state.tasks.filter(t => !state.bulkSelected.has(t.id));
-    if (isArchive) {
-      // Sheet-ээс мөр устгах: тус task бүрд hard_delete явуулна. Local-аас аль хэдийн хассан.
-      targets.forEach(t => saveTask(t, true, true));
-    } else {
-      targets.forEach(t => saveTask(t, true, false));
-    }
+    await Promise.all(targets.map(t => saveTask(t, true, isArchive)));
+    await flashBulkBarSuccess(`${ids.length} ${isArchive ? 'бүрэн устгагдлаа' : 'архивлагдлаа'}`);
     showToast(`${ids.length} ажил ${isArchive ? 'бүрэн устгасан' : 'архивласан'}`, 'success');
   } else if (action === 'done') {
+    const doneList = [];
     state.tasks.forEach(t => {
       if (state.bulkSelected.has(t.id)) {
         t.status = 'done';
         t.executed_at = new Date().toISOString();
         t.executed_by = state.me;
+        doneList.push(t);
       }
     });
+    await Promise.all(doneList.map(t => saveTask(t)));
+    await flashBulkBarSuccess(`${ids.length} ажил дуусгалаа`);
     showToast(`${ids.length} ажил дуусгасан`, 'success');
   } else if (action === 'restore') {
     // Архивласан task-уудыг 'open' болгож буцаан идэвхжүүлнэ.
@@ -3903,7 +3922,8 @@ async function bulkApply(action) {
         restored.push(t);
       }
     });
-    restored.forEach(t => saveTask(t)); // upsert үйлдэл — Sheet статус 'Идэвхтэй' болж шинэчилнэ
+    await Promise.all(restored.map(t => saveTask(t))); // upsert — Sheet 'Идэвхтэй' болно
+    await flashBulkBarSuccess(`${restored.length} ажил сэргээгдлээ`);
     showToast(`${restored.length} ажил сэргээгдсэн`, 'success');
   }
   state.bulkSelected.clear();

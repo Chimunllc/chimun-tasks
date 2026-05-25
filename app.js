@@ -3574,7 +3574,18 @@ function saveTaskFromModal() {
       saveTask(t);
     });
     state._multiAssignees = null;
-    showToast(`${multi.length} ажилтанд оноосон`, 'success', 2500);
+    // Хэрэглэгчийг тус тусын task-уудыг харах "Илгээсэн ажил" руу шилжүүлнэ
+    const includesMe = multi.includes(state.me);
+    const otherCount = includesMe ? multi.length - 1 : multi.length;
+    showToast(
+      `${multi.length} ажилтанд тус тусдаа даалгавар үүслээ${otherCount ? ` — "Илгээсэн ажил"-аас харна уу` : ''}`,
+      'success',
+      4000
+    );
+    if (otherCount > 0) {
+      state.view = 'delegated';
+      state._taskListLimit = null;
+    }
     closeTaskModal();
     render();
     return;

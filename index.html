@@ -105,10 +105,36 @@
       <label class="login-label">И-мэйл <span style="color:var(--danger)">*</span></label>
       <input id="reg-email" type="email" placeholder="name@example.com" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
 
+      <label class="login-label">Регистрийн дугаар (РД) <span style="color:var(--danger)">*</span></label>
+      <input id="reg-rd" type="text" maxlength="10" placeholder="АБ12345678" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; text-transform:uppercase;" />
+
+      <label class="login-label">Гэрийн хаяг</label>
+      <textarea id="reg-address" rows="2" placeholder="Жишээ: УБ, СБД, 7-р хороо, 14 байр, 32 тоот" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; font-family:inherit; resize:vertical;"></textarea>
+
+      <label class="login-label">Зураг <span style="font-size:11px;color:var(--muted)">(заавал биш)</span></label>
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+        <div id="reg-photo-preview" style="width:56px; height:56px; border-radius:50%; background:var(--panel-hover); display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <label for="reg-photo" style="flex:1; padding:8px 12px; background:var(--panel-hover); border:1px dashed var(--border); border-radius:var(--r-md); font-size:13px; color:var(--text); text-align:center; cursor:pointer;">Зураг сонгох</label>
+        <input id="reg-photo" type="file" accept="image/*" style="display:none;" />
+      </div>
+
+      <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Яаралтай үед холбоо барих</h3>
+      <label class="login-label">Хүний нэр <span style="color:var(--danger)">*</span></label>
+      <input id="reg-emergency-name" type="text" placeholder="Жишээ: Эх — Долгормаа" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+
+      <label class="login-label">Утасны дугаар <span style="color:var(--danger)">*</span></label>
+      <input id="reg-emergency-phone" type="tel" inputmode="numeric" placeholder="99887766" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
+
+      <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Нэвтрэх</h3>
       <label class="login-label">PIN код (4 орон) <span style="color:var(--danger)">*</span></label>
       <input id="reg-pin" type="tel" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="● ● ● ●" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
 
-      <button type="button" id="reg-submit" class="login-submit" style="width:100%;">Бүртгүүлэх</button>
+      <p style="font-size:11px;color:var(--muted);margin:0 0 12px;line-height:1.4;">
+        Хүсэлт CEO-руу илгээгдэнэ. CEO зөвшөөрсний дараа цалин г.м. тохиргоо хийгдэж, та нэвтрэх боломжтой болно.
+      </p>
+      <button type="button" id="reg-submit" class="login-submit" style="width:100%;">Хүсэлт илгээх</button>
       <div class="login-error" id="reg-error" style="margin-top:8px;"></div>
       <button type="button" id="reg-cancel" style="background:none; border:none; color:var(--muted); font-size:13px; cursor:pointer; margin-top:10px; width:100%;">← Нэвтрэх рүү буцах</button>
     </div>
@@ -630,6 +656,41 @@
     <div class="modal-actions">
       <button class="btn" id="profile-cancel">Болих</button>
       <button class="btn btn-primary" id="profile-save">Хадгалах</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PENDING REGISTRATION REVIEW (CEO) — шинэ ажилтны хүсэлт ─── -->
+<div class="modal-bg" id="pending-reg-modal">
+  <div class="modal" style="max-width:520px;">
+    <h2>Шинэ ажилтны хүсэлт</h2>
+    <div id="pending-reg-photo-wrap" style="display:flex;justify-content:center;margin-bottom:12px;">
+      <div id="pending-reg-photo" style="width:90px;height:90px;border-radius:50%;background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple));color:#fff;font-weight:700;font-size:28px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;"></div>
+    </div>
+    <div id="pending-reg-info" style="background:var(--panel-hover);padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.7;"></div>
+
+    <h3 style="font-size:13px;font-weight:700;margin:14px 0 10px;border-top:1px solid var(--border);padding-top:12px;">CEO тохиргоо</h3>
+
+    <label>Цалин (нэг сар, ₮)</label>
+    <input id="reg-salary" type="text" inputmode="numeric" placeholder="Жишээ: 1500000" />
+
+    <label>Зэрэглэл</label>
+    <select id="reg-level">
+      <option value="40">40 — Энгийн ажилтан</option>
+      <option value="60">60 — Менежер / Нярав</option>
+      <option value="80">80 — ҮАХ Захирал</option>
+      <option value="100">100 — CEO</option>
+    </select>
+
+    <label>ID кодыг таниулах (давхцалгүй)</label>
+    <input id="reg-assigned-id" type="text" placeholder="Жишээ: M08, C07" style="text-transform:uppercase;" />
+
+    <label>Тэмдэглэл (заавал биш)</label>
+    <textarea id="reg-notes" rows="2" placeholder="Дотоод тэмдэглэл..."></textarea>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="reg-reject">Татгалзах</button>
+      <button class="btn btn-primary" id="reg-approve" style="background:var(--accent-green) !important;">Зөвшөөрч бүртгэх</button>
     </div>
   </div>
 </div>

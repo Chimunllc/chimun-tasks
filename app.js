@@ -2682,6 +2682,121 @@ setTimeout(updateOnlineStatus, 500);
 // Pending writes-ийг тогтмол шалгах (хэрэв background-д ямар нэг солигдвол)
 setInterval(updateOnlineStatus, 15000);
 
+/* ─── Pending registrations (CEO review) ───────────────────
+   Шинэ ажилтан бүртгүүлэхэд status='хүлээж буй' гэж тэмдэглэгдэнэ.
+   CEO Staff Management list дотроос pending row дээр товшиход энэ
+   modal нээгдэж CEO цалин/зэрэглэл/ID нэмж "Зөвшөөрөх" эсвэл "Татгалзах". */
+function openPendingRegistration(member) {
+  if (!state.isCEO) return;
+  const modal = document.getElementById('pending-reg-modal');
+  // Avatar / initials
+  const photoEl = document.getElementById('pending-reg-photo');
+  if (member.photo) {
+    photoEl.innerHTML = `<img src="${escapeHtml(member.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
+  } else {
+    photoEl.textContent = memberInitials(member.id || member.name);
+  }
+  // Info block
+  const fmt = (label, val) => val ? `<div><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>` : '';
+  document.getElementById('pending-reg-info').innerHTML = [
+    fmt('Нэр', member.name),
+    fmt('Албан тушаал', member.role),
+    fmt('Салбар', member.group || member.branch),
+    fmt('Утас', member.phone),
+    fmt('И-мэйл', member.email),
+    fmt('РД', member.rd),
+    fmt('Гэрийн хаяг', member.address),
+    fmt('Яаралтай үед', `${member.emergency_name || ''}${member.emergency_phone ? ' — ' + member.emergency_phone : ''}`),
+    fmt('Хүсэлт өгсөн', member.requested_at ? new Date(member.requested_at).toLocaleString('mn-MN') : ''),
+  ].filter(Boolean).join('');
+  // CEO-ийн талбарууд clean
+  document.getElementById('reg-salary').value = member.salary || '';
+  document.getElementById('reg-level').value = member.level || 40;
+  document.getElementById('reg-assigned-id').value = member.assigned_id || member.id || '';
+  document.getElementById('reg-notes').value = member.notes || '';
+
+  const approveBtn = document.getElementById('reg-approve');
+  const rejectBtn = document.getElementById('reg-reject');
+  approveBtn.onclick = async () => {
+    const salary = document.getElementById('reg-salary').value.trim();
+    const level = parseInt(document.getElementById('reg-level').value, 10) || 40;
+    const assignedId = document.getElementById('reg-assigned-id').value.trim().toUpperCase();
+    const notes = document.getElementById('reg-notes').value.trim();
+    if (!assignedId) { showToast('ID код тохируулна уу', 'warn'); return; }
+    if (TEAM.some(m => m.id === assignedId && m.id !== member.id)) {
+      showToast('Энэ ID өөр хүн ашиглаж байна', 'error'); return;
+    }
+    const payload = {
+      action: 'approve_registration',
+      request_id: member.id || member.requested_at,
+      assigned_id: assignedId,
+      salary,
+      level,
+      notes,
+      status: 'идэвхтэй',
+      approved_by: state.me,
+      approved_at: new Date().toISOString(),
+    };
+    const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
+    if (webhook) {
+      try {
+        const r = await fetch(webhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (r.ok) {
+          showToast('Бүртгэл баталгаажсан. Master Sheet шинэчлэгдсэн.', 'success', 3000);
+          modal.classList.remove('open');
+          // Локал TEAM шинэчлэх
+          const idx = TEAM.findIndex(m => m.id === member.id);
+          if (idx >= 0) {
+            TEAM[idx] = { ...TEAM[idx], id: assignedId, status: 'идэвхтэй', salary, level, notes };
+            localStorage.setItem('teamCache', JSON.stringify(TEAM));
+          }
+          await loadTeamFromAPI();
+          renderStaffList();
+        } else {
+          throw new Error('HTTP ' + r.status);
+        }
+      } catch(e) {
+        showToast('Sync алдаа: ' + e.message, 'error', 4000);
+      }
+    } else {
+      showToast('Staff webhook тохируулагдаагүй', 'warn');
+    }
+  };
+  rejectBtn.onclick = async () => {
+    if (!(await showConfirm(`${member.name}-ийн хүсэлтийг татгалзах уу?`, { okText: 'Татгалзах', danger: true }))) return;
+    const payload = {
+      action: 'reject_registration',
+      request_id: member.id || member.requested_at,
+      status: 'татгалзсан',
+      rejected_by: state.me,
+      rejected_at: new Date().toISOString(),
+    };
+    const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
+    if (webhook) {
+      try {
+        await fetch(webhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch(e) {}
+    }
+    // Локал хасах
+    const idx = TEAM.findIndex(m => m.id === member.id);
+    if (idx >= 0) TEAM.splice(idx, 1);
+    localStorage.setItem('teamCache', JSON.stringify(TEAM));
+    modal.classList.remove('open');
+    showToast('Хүсэлт татгалзсан', 'info');
+    renderStaffList();
+  };
+
+  modal.classList.add('open');
+}
+
 /* ─── Staff management (CEO only) ─────────────────────────
    CEO ажилтны статусыг өөрчилнө (идэвхтэй ↔ гарсан).
    "Гарсан" гэж тэмдэглэсэн ажилтан:
@@ -2714,22 +2829,26 @@ function renderStaffList() {
   listEl.innerHTML = filtered.map(m => {
     const status = m.status || 'идэвхтэй';
     const isActive = status === 'идэвхтэй';
+    const isPending = status === 'хүлээж буй';
     const isSelf = m.id === state.me;
+    let statusLabel = 'Идэвхтэй', statusCls = 'active';
+    if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
+    else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
     return `
-      <div class="staff-row ${isActive ? '' : 'staff-left'}" data-staff-id="${escapeHtml(m.id)}">
-        <span class="staff-avatar">${escapeHtml(memberInitials(m.id))}</span>
+      <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-id="${escapeHtml(m.id)}">
+        <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(m.id))}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
           <div class="staff-role">${escapeHtml(m.role || '')} · ${escapeHtml(m.id)}</div>
         </div>
-        <span class="staff-status status-${isActive ? 'active' : 'left'}">
-          ${isActive ? 'Идэвхтэй' : 'Гарсан'}
-        </span>
-        ${isSelf ? '' : `
-          <button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-id="${escapeHtml(m.id)}">
-            ${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}
-          </button>
-        `}
+        <span class="staff-status status-${statusCls}">${statusLabel}</span>
+        ${isSelf ? '' : (
+          isPending
+            ? `<button class="staff-action approve" data-staff-act="review" data-staff-id="${escapeHtml(m.id)}">Хянах</button>`
+            : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-id="${escapeHtml(m.id)}">
+                ${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}
+              </button>`
+        )}
       </div>
     `;
   }).join('');
@@ -2739,6 +2858,7 @@ function renderStaffList() {
       const act = btn.dataset.staffAct;
       const member = TEAM.find(m => m.id === id);
       if (!member) return;
+      if (act === 'review') { openPendingRegistration(member); return; }
       const newStatus = act === 'leave' ? 'гарсан' : 'идэвхтэй';
       const verb = act === 'leave' ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх';
       const confirmMsg = act === 'leave'
@@ -4971,6 +5091,21 @@ function initPinLogin() {
     document.querySelector('.login-sub').textContent = 'ID болон PIN кодоо оруулж нэвтэрнэ үү';
   });
   document.getElementById('reg-submit')?.addEventListener('click', handleRegister);
+  // Зураг upload — registration form
+  document.getElementById('reg-photo')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Зөвхөн зураг сонгоно уу', 'warn'); return; }
+    if (file.size > 2 * 1024 * 1024) { showToast('Зураг 2MB-аас бага байх ёстой', 'warn'); return; }
+    try {
+      const dataUrl = await resizeImageToBase64(file, 256);
+      state._regPhotoDataUrl = dataUrl;
+      const prev = document.getElementById('reg-photo-preview');
+      if (prev) prev.innerHTML = `<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
+    } catch (err) {
+      showToast('Зураг боловсруулах амжилтгүй', 'error');
+    }
+  });
 
   // Нэрийн preview — Овог + Нэр → "Б.Энх" формат
   const surnameEl = document.getElementById('reg-surname');
@@ -5012,6 +5147,12 @@ async function handleRegister() {
   const phone   = document.getElementById('reg-phone').value.trim();
   const email   = document.getElementById('reg-email').value.trim();
   const pin     = document.getElementById('reg-pin').value.trim();
+  // Шинэ талбарууд
+  const rd      = document.getElementById('reg-rd')?.value.trim().toUpperCase() || '';
+  const address = document.getElementById('reg-address')?.value.trim() || '';
+  const emergencyName  = document.getElementById('reg-emergency-name')?.value.trim() || '';
+  const emergencyPhone = document.getElementById('reg-emergency-phone')?.value.trim() || '';
+  const photoDataUrl   = state._regPhotoDataUrl || '';
 
   // Кирилл шалгах (Монгол үсэг — Өө Үү багтсан 0400-04FF муж + зай, цэг, зураас)
   const cyrillic = /^[Ѐ-ӿ\s.\-]+$/;          // Кирилл (Монгол) үсэг
@@ -5026,6 +5167,9 @@ async function handleRegister() {
   if (!group)   return show('Аль салбарт хамаарахаа сонгоно уу.');
   if (!phone || phoneNorm.length < 8) return show('⚠ Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('⚠ И-мэйл хаягаа зөв оруулна уу.');
+  if (!rd || !/^[А-ЯӨҮ]{2}\d{8}$/i.test(rd)) return show('⚠ РД дугаар "АА00000000" хэлбэртэй байх ёстой.');
+  if (!emergencyName) return show('⚠ Яаралтай үед холбоо барих хүний нэр оруулна уу.');
+  if (!emergencyPhone || emergencyPhone.replace(/\D/g,'').length < 8) return show('⚠ Яаралтай үеийн утас наад зах нь 8 орон.');
   if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
 
   // ─── Давхцал шалгах (одоогийн TEAM дотор) ───
@@ -5051,7 +5195,15 @@ async function handleRegister() {
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, role, group, phone, email, pin }),
+      body: JSON.stringify({
+        name, role, group, phone, email, pin,
+        rd, address,
+        emergency_name: emergencyName,
+        emergency_phone: emergencyPhone,
+        photo: photoDataUrl, // base64 data URL эсвэл хоосон
+        status: 'хүлээж буй', // CEO зөвшөөрөх хүртэл pending
+        requested_at: new Date().toISOString(),
+      }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {

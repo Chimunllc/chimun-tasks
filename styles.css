@@ -4916,3 +4916,20 @@ body {
     min-height: 40px;
   }
 }
+
+/* ═══ Pending registration row ═══ */
+.staff-row.staff-pending {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 3px solid var(--accent-amber);
+}
+.status-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+.staff-action.approve {
+  background: var(--accent-amber);
+  color: #fff;
+}
+.staff-action.approve:hover {
+  background: #d97706;
+}

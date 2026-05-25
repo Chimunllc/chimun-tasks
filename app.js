@@ -1161,14 +1161,15 @@ function applyPendingFinanceWrites() {
     }
   }
 }
-async function saveTask(task, deleted=false) {
+async function saveTask(task, deleted=false, hardDelete=false) {
   saveLocal();
   if (!state.config.apiUrl) return; // backend тохируулаагүй — зөвхөн локал
   // ID-г нэр болгож хувиргаж Sheet рүү явуулна
   const wire = taskToWire(task);
-  const ok = await postWrite(state.config.apiUrl, { action: deleted ? 'delete' : 'upsert', task: wire });
+  const action = hardDelete ? 'hard_delete' : (deleted ? 'delete' : 'upsert');
+  const ok = await postWrite(state.config.apiUrl, { action, task: wire });
   if (ok) { flushPendingWrites(); }            // амжилттай — хуримтлагдсан backlog-оо бас илгээх
-  else { enqueueWrite({ kind: 'task', action: deleted ? 'delete' : 'upsert', payload: task, ts: Date.now() }); }
+  else { enqueueWrite({ kind: 'task', action, payload: task, ts: Date.now() }); }
 }
 
 /* Push broadcast — хариуцагч руу нэн даруй мэдэгдэл илгээнэ. Fire-and-forget;
@@ -3719,43 +3720,59 @@ function canEditTask(t) {
   return { all: false, status: false, none: true };
 }
 
+// Delete permission матриц:
+//   CEO       → ok + permanent (бүрэн устгах эрхтэй)
+//   Үүсгэгч өөрөө → ok; permanent зөвхөн "алдаа цонх" хангагдсан үед (24 цаг
+//     дотор + ажиллаж эхлээгүй + comment байхгүй). Бусад тохиолдолд soft delete.
+//   Дээд зэрэглэлтэй → ok + soft delete (бүрэн устгах эрх алга, аудит хадгална)
+//   Бусад → ok=false
+const MISTAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
 function canDeleteTask(t) {
-  // CEO can always delete. Others can only delete tasks created by someone at
-  // their rank or below. Tasks with no `createdBy` are treated as CEO-created
-  // (most cautious — only CEO can clean them up).
-  if (state.isCEO) return { ok: true };
+  if (state.isCEO) return { ok: true, permanent: true };
   const creator = findMember(t.createdBy);
   const creatorLevel = creator ? (creator.level || 0) : 100;
   const myLevel = state.myLevel || 0;
-  if (creatorLevel > myLevel) {
-    return { ok: false, creator };
+  if (creatorLevel > myLevel) return { ok: false, creator };
+  // Үүсгэгч өөрөө — алдаа цонх (24 цаг + ажиллаж эхлээгүй) үед бүрэн устгана
+  if (state.me && state.me === t.createdBy) {
+    const createdMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
+    const inWindow = createdMs && (Date.now() - createdMs) < MISTAKE_WINDOW_MS;
+    const noProgress = (t.status === 'open' || !t.status)
+      && !t.started_at && !t.completed_at
+      && !(Array.isArray(t.comments) && t.comments.length)
+      && !(Array.isArray(t.completion_photos) && t.completion_photos.length);
+    return { ok: true, permanent: !!(inWindow && noProgress) };
   }
-  return { ok: true };
+  return { ok: true, permanent: false };
 }
 async function deleteTask(id) {
   const t = state.tasks.find(x=>x.id===id);
   if (!t) return;
-  // Hierarchical access control — block delete of higher-rank tasks
   const check = canDeleteTask(t);
   if (!check.ok) {
     const who = check.creator ? `${check.creator.name} (${check.creator.role})` : 'дээд албан тушаалтан';
     showToast(`Энэ даалгаврыг ${who} үүсгэсэн тул устгах эрх танд алга. Биелүүлсэн бол ✓ тэмдэглээрэй.`, 'warn', 4500);
     return;
   }
-  // Special confirm + cascade for 5-stage act parents
+  const hardDelete = !!check.permanent;
+  const label = hardDelete ? 'Бүрэн устгах' : 'Архивлах';
+  const explainer = hardDelete
+    ? 'Энэ даалгавар Sheet-ээс БҮРЭН устгагдана. Сэргээх боломжгүй.'
+    : 'Архивласан үед CEO-ийн Архив хэсэгт хадгалагдаж, шаардлагатай үед сэргээх боломжтой.';
+  // 5-дамжлагат акт parent — sub-task-уудтай хамт устгана
   if (t.kind === 'act_parent') {
     const subs = state.tasks.filter(x => x.parent_id === t.id);
-    if (!(await showConfirm(`"${t.title}" + ${subs.length} sub-task бүгдийг хамт устгана. Та итгэлтэй байна уу?`, { okText: 'Устгах', danger: true }))) return;
+    if (!(await showConfirm(`"${t.title}" + ${subs.length} sub-task бүгдийг хамт устгана.\n\n${explainer}`, { okText: label, danger: true }))) return;
     const idsToRemove = new Set([t.id, ...subs.map(s => s.id)]);
     state.tasks = state.tasks.filter(x => !idsToRemove.has(x.id));
-    saveTask(t, true);
-    subs.forEach(s => saveTask(s, true));
+    saveTask(t, true, hardDelete);
+    subs.forEach(s => saveTask(s, true, hardDelete));
     render();
     return;
   }
-  if (!(await showConfirm('Энэ даалгаврыг устгах уу?', { okText: 'Устгах', danger: true }))) return;
+  if (!(await showConfirm(`${explainer}\n\nҮргэлжлүүлэх үү?`, { okText: label, danger: true }))) return;
   state.tasks = state.tasks.filter(x=>x.id!==id);
-  saveTask(t, true);
+  saveTask(t, true, hardDelete);
   render();
 }
 /* ─── Recurring tasks — давтагдах ажил ───

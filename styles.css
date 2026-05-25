@@ -3690,28 +3690,6 @@ body {
 .skeleton-row .skeleton-line { flex: 1; height: 14px; }
 .skeleton-row .skeleton-line-sm { width: 40%; height: 10px; }
 
-/* ═══ Settings — advanced toggle ═══ */
-.settings-advanced-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  font-size: 13px;
-  color: var(--accent-blue);
-  cursor: pointer;
-  background: none;
-  border: none;
-  font-weight: 500;
-}
-.settings-advanced-toggle:hover { text-decoration: underline; }
-.settings-advanced {
-  display: none;
-  border-top: 1px solid var(--border);
-  padding-top: 12px;
-  margin-top: 12px;
-}
-.settings-advanced.show { display: block; }
-
 /* ═══ Activity timeline — vertical, dot + connector маяг ═══ */
 .timeline {
   position: relative;

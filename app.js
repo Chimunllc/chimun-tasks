@@ -37,21 +37,10 @@ const BRANCHES = [
 // `pin` — нэвтрэх. `level` — 100=CEO, 80=executive, 60=manager, 40=staff.
 //
 // `let` (not const) — loadTeamFromAPI in-place солино.
-let TEAM = [
-  { name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1111',
-    email: 'ceo@nomaadcamp.com',
-    branches: ['m-event','camp','shared'] },
-
-  // Нэгдсэн алба (cross-cutting)
-  { name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1111', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
-  { name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1111', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
-
-  // M Event салбар
-  { name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event'] },
-
-  // NOMAAD Camp
-  { name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp'] },
-];
+// TEAM нь хоосон array-аар эхлээд /staff endpoint амжилттай хариулмагц Master Sheet-ийн
+// бодит ажилтнуудаар дүүргэгдэнэ. Хуучин кодонд hardcoded fallback TEAM (PIN='1111')
+// байсан ч бодит PIN-ууд өөр учраас login-д хэрэг болохгүй байсан тул устгасан.
+let TEAM = [];
 
 // n8n webhook URL — hardcoded so staff never have to configure anything.
 // Change here + push when the backend moves. Settings panel still lets the user
@@ -114,13 +103,6 @@ const PROJECTS_BY_BRANCH = {
 };
 
 // Хуучин default project ID-ууд — localStorage-аас цэвэрлэх зорилгоор хадгалсан.
-const _LEGACY_DEFAULT_PROJECT_IDS = new Set([
-  'event','inventory','cleaning','repair','kpi',
-  'event-prep','camp-ops','kitchen',
-  'admin','finance','marketing','hr',
-  'camp-prep','mevent-prep','event-day','post-event',
-]);
-
 /* -------------------- 5-СТАДИЙН АКТ TEMPLATE --------------------
    Camp ↔ M Event-ийн актын урсгал — Chimun_Camp_MEvent_Agreement_2026.
    "Шинэ захиалга" товчоор 1 эх (parent) task + 5 sub-task үүснэ.
@@ -150,18 +132,6 @@ const state = {
   me: null,              // user.email — task assignee, createdBy, forUser түлхүүр
   isCEO: false,          // whether this user has full access
   config: (() => {
-    // Migration: chimun.app.n8n.cloud → chimunllc.app.n8n.cloud (2026-05-18)
-    // Хэрэглэгчийн localStorage-д хадгалсан хуучин URL-ыг шинэ домэйн рүү шилжүүлнэ.
-    const migrationFlag = 'urlMigrated_chimunllc_v1';
-    if (!localStorage.getItem(migrationFlag)) {
-      for (const k of ['apiUrl', 'staffUrl', 'financeUrl', 'uploadUrl']) {
-        const v = localStorage.getItem(k);
-        if (v && v.includes('chimun.app.n8n.cloud')) {
-          localStorage.setItem(k, v.replace('chimun.app.n8n.cloud', 'chimunllc.app.n8n.cloud'));
-        }
-      }
-      localStorage.setItem(migrationFlag, '1');
-    }
     return {
       apiUrl:      localStorage.getItem('apiUrl')      || DEFAULT_API_URL      || '',
       staffUrl:    localStorage.getItem('staffUrl')    || DEFAULT_STAFF_URL    || '',
@@ -816,24 +786,15 @@ function currentBranchInfo() {
 /* ─── Хариуцагч EMAIL ↔ нэр хөрвүүлэх ──────────────────────────────────
    Google Sheet-д НЭР хадгална (хүн уншиж ойлгомжтой).
    Аппын дотоод төлөв (state) EMAIL-ээр түлхүүрлэгдэнэ — зөвхөн n8n руу явахаас
-   өмнө + ирэхэд хөрвүүлнэ. Хоёр чигт idempotent.
-   2026-05-25 шилжилт: хуучин ID ("S01", "M02") ирвэл нэр рүү буулгахдаа TEAM-ын
-   id талбараар (хадгалагдсан бол) олж нэр буцаана — хуучин даалгавар алдагдахгүй. */
+   өмнө + ирэхэд хөрвүүлнэ. Хоёр чигт idempotent. */
 function emailToName(val) {
   if (!val) return val;
   const m = TEAM.find(x => String(x.email).toLowerCase() === String(val).toLowerCase());
-  if (m) return m.name;
-  // Backward compat — хуучин ID-аар хадгалагдсан байж магадгүй
-  const byId = TEAM.find(x => String(x.id) === String(val));
-  return byId ? byId.name : val;
+  return m ? m.name : val;
 }
 function nameToEmail(val) {
   if (!val) return val;
-  // Аль хэдийн email байвал орхино
-  if (/@/.test(String(val))) return val;
-  // Backward compat — хуучин ID ирвэл түүнийг олоод email рүү буулгана
-  const byId = TEAM.find(x => String(x.id) === String(val));
-  if (byId && byId.email) return byId.email;
+  if (/@/.test(String(val))) return val; // аль хэдийн email
   const m = TEAM.find(x => x.name === val);
   return (m && m.email) ? m.email : val;
 }
@@ -911,9 +872,6 @@ function normalizeTask(t) {
   for (const f of stringFields) {
     if (out[f] != null) out[f] = String(out[f]);
   }
-  // Backward compat — Sheet хуучин numeric ID ирүүлж болзошгүй. nameToEmail-аар буулгана.
-  if (/^\d{1,2}$/.test(out.assignee)) out.assignee = nameToEmail(out.assignee.padStart(3, '0'));
-  if (/^\d{1,2}$/.test(out.createdBy)) out.createdBy = nameToEmail(out.createdBy.padStart(3, '0'));
   // `stage` is numeric (1-5). Google Sheets may return it as string.
   if (out.stage != null && out.stage !== '') out.stage = Number(out.stage) || null;
   // `amount` is numeric (₮). Sheets may return as string.
@@ -1115,66 +1073,6 @@ function loadLocal() {
       Object.keys(saved).forEach(b => { state.projectsByBranch[b] = saved[b]; });
     }
   } catch(e) { /* keep defaults */ }
-  // One-time branch migration (2026-05-25) — 'production' салбарыг M Event-д
-  // нэгтгэх. Хэрэглэгч "production" гэж тэмдэглэсэн task-уудыг 'm-event' болгоно.
-  if (!localStorage.getItem('branchMigration_v1')) {
-    state.tasks.forEach(t => {
-      if (t.branch === 'production') t.branch = 'm-event';
-    });
-    saveLocal();
-    localStorage.setItem('branchMigration_v1', '1');
-  }
-
-  // One-time migration — хуучин hardcoded default project-уудыг хэрэглэгчийн
-  // localStorage-аас хасах (2026-05-25). 'pre-season' үлдээх, хэрэглэгчийн
-  // өөрөө нэмсэн төслүүд (id 'p_'-ээр эхэлсэн) хэвээр үлдэнэ.
-  if (!localStorage.getItem('projectCleanup_v1')) {
-    Object.keys(state.projectsByBranch).forEach(b => {
-      state.projectsByBranch[b] = (state.projectsByBranch[b] || [])
-        .filter(p => !_LEGACY_DEFAULT_PROJECT_IDS.has(p.id));
-    });
-    // Хэрэв 'pre-season' алга болсон бол сэргээх (хэрэглэгч pre-season хадгалмаар байгаа)
-    const allProjects = Object.values(state.projectsByBranch).flat();
-    if (!allProjects.some(p => p.id === 'pre-season')) {
-      if (!state.projectsByBranch['shared']) state.projectsByBranch['shared'] = [];
-      state.projectsByBranch['shared'].unshift({ id: 'pre-season', name: 'Сезоны өмнөх бэлтгэл' });
-    }
-    // Устгасан төслүүдэд хамаарах task-уудын project талбарыг хоослох
-    state.tasks.forEach(t => {
-      if (t.project && _LEGACY_DEFAULT_PROJECT_IDS.has(t.project)) t.project = '';
-    });
-    saveLocal();
-    localStorage.setItem('projectCleanup_v1', '1');
-  }
-
-  // Migration v2 (2026-05-25) — assignee/createdBy id-аар хадгалагдсан хуучин даалгавруудыг
-  // email рүү шилжүүлэх. TEAM-ын fallback хадгалсан id-ыг ашиглана. Нэг удаагийн ажиллана.
-  if (!localStorage.getItem('emailKeyMigration_v1')) {
-    const idToEmail = (val) => {
-      if (!val) return val;
-      if (/@/.test(String(val))) return val; // already email
-      const m = TEAM.find(x => String(x.id) === String(val));
-      return (m && m.email) ? m.email : val;
-    };
-    state.tasks.forEach(t => {
-      if (t.assignee) t.assignee = idToEmail(t.assignee);
-      if (t.createdBy) t.createdBy = idToEmail(t.createdBy);
-      if (Array.isArray(t.co_assignees)) t.co_assignees = t.co_assignees.map(idToEmail);
-    });
-    try {
-      const notifRaw = localStorage.getItem('notifications');
-      if (notifRaw) {
-        const notifs = JSON.parse(notifRaw);
-        if (Array.isArray(notifs)) {
-          notifs.forEach(n => { if (n.forUser) n.forUser = idToEmail(n.forUser); });
-          localStorage.setItem('notifications', JSON.stringify(notifs));
-        }
-      }
-    } catch(e) {}
-    saveLocal();
-    localStorage.setItem('emailKeyMigration_v1', '1');
-  }
-
   setConn('offline', 'Локал режим');
 }
 function saveLocal() {
@@ -1480,9 +1378,6 @@ const FINANCE_BRANCHES = [
   { code: 'ХАМТ',  name: 'Хамтын зардал' },
 ];
 
-/* FINANCE_CATEGORIES + FINANCE_DEPT_BRANCHES backward-compat хасагдсан 2026-05-18.
-   Кодын хаана ч уншигдахгүй болсон. Хэрэв хуучин код mention хийвэл
-   FINANCE_MAIN_CATEGORIES + FINANCE_BRANCHES-аас шууд ашиглана. */
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
 
 /* Бүх ажилтанд ИЖИЛ нэг универсал санхүүгийн маягт.
@@ -1634,10 +1529,6 @@ function normalizeFinance(r) {
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
-  // Pad numeric IDs (зөвхөн хуучин numeric ID-уудад зориулсан backward-compat)
-  if (/^\d{1,2}$/.test(out.requested_by)) out.requested_by = out.requested_by.padStart(3,'0');
-  if (/^\d{1,2}$/.test(out.decision_by))  out.decision_by  = out.decision_by.padStart(3,'0');
-  if (/^\d{1,2}$/.test(out.executed_by))  out.executed_by  = out.executed_by.padStart(3,'0');
   return out;
 }
 
@@ -1952,13 +1843,11 @@ function actProgress(parentId) {
 }
 
 /* -------------------- HELPERS -------------------- */
-// Ажилтны түлхүүр (email) бүхий бичлэгийг олох — хуучин id-аар хадгалагдсан утгыг ч хүлээн авна.
+// Ажилтны түлхүүр (email) бүхий бичлэгийг олох.
 function findMember(key) {
   if (!key) return null;
   const k = String(key).toLowerCase();
-  return TEAM.find(x => String(x.email || '').toLowerCase() === k)
-      || TEAM.find(x => String(x.id || '') === String(key))
-      || null;
+  return TEAM.find(x => String(x.email || '').toLowerCase() === k) || null;
 }
 function memberName(key) {
   if (!key) return '(сонгох)';
@@ -4449,7 +4338,7 @@ function saveTaskFromModal() {
     render();
     return;
   }
-  // Ганц assignee (legacy path)
+  // Ганц assignee
   const data = {
     ...baseData,
     assignee: multi.length === 1 ? multi[0] : document.getElementById('t-assignee').value,
@@ -4838,15 +4727,6 @@ function initEvents() {
     });
   })();
 
-  // Settings advanced toggle — n8n URL-уудыг нуух/харуулах
-  document.getElementById('s-toggle-advanced')?.addEventListener('click', () => {
-    const adv = document.getElementById('s-advanced');
-    const toggle = document.getElementById('s-toggle-advanced');
-    if (!adv) return;
-    const isOpen = adv.classList.toggle('show');
-    if (toggle) toggle.textContent = (isOpen ? '▾ Advanced (n8n webhook URL-ууд)' : '▸ Advanced (n8n webhook URL-ууд)');
-  });
-
   // ─── Keyboard shortcuts ────────────────────────────────
   // Гар бичих input/textarea-д фокус байх үед shortcut саатуулахгүй.
   document.addEventListener('keydown', (e) => {
@@ -5140,28 +5020,12 @@ function initEvents() {
   };
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };
 
-  // settings
+  // settings — modal-д зөвхөн notification permission helper (initEvents-д dynamic нэмэгдэнэ)
   document.getElementById('export-btn')?.addEventListener('click', exportTasksReport);
   document.getElementById('settings-btn').onclick = () => {
-    document.getElementById('s-api').value = state.config.apiUrl;
-    document.getElementById('s-staff').value = state.config.staffUrl;
-    document.getElementById('s-finance').value = state.config.financeUrl;
-    document.getElementById('s-upload').value = state.config.uploadUrl;
     document.getElementById('settings-modal').classList.add('open');
   };
   document.getElementById('s-cancel').onclick = () => document.getElementById('settings-modal').classList.remove('open');
-  document.getElementById('s-save').onclick = () => {
-    state.config.apiUrl = document.getElementById('s-api').value.trim();
-    state.config.staffUrl = document.getElementById('s-staff').value.trim();
-    state.config.financeUrl = document.getElementById('s-finance').value.trim();
-    state.config.uploadUrl = document.getElementById('s-upload').value.trim();
-    localStorage.setItem('apiUrl', state.config.apiUrl);
-    localStorage.setItem('staffUrl', state.config.staffUrl);
-    localStorage.setItem('financeUrl', state.config.financeUrl);
-    localStorage.setItem('uploadUrl', state.config.uploadUrl);
-    document.getElementById('settings-modal').classList.remove('open');
-    loadTeamFromAPI().then(() => Promise.all([loadData(), loadFinanceRequests()]).then(render));
-  };
 
   // Branch switcher UI-аас бүрэн хасагдсан 2026-05-18 — Чимун ХХК нэг компани.
   // BRANCHES const нь task үүсгэх үед "Аль салбарын ажил вэ?" dropdown-д хэрэглэгдсэн хэвээр.
@@ -5635,7 +5499,7 @@ function resizeImageToBase64(file, maxSize = 512, quality = 0.92) {
 async function logout() {
   if (!(await showConfirm('Гарах уу?', { okText: 'Гарах' }))) return;
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-  localStorage.removeItem('userId');
+  localStorage.removeItem('userEmail');
   localStorage.removeItem('userLoginAt');
   // Notification "seen" state is per-user — clear so next user doesn't see this user's history
   localStorage.removeItem('notifications');
@@ -5649,19 +5513,7 @@ async function logout() {
 function tryRestoreSession() {
   // Lightweight session restore — if we have a recent userEmail, use it without forcing re-auth.
   // Hard cap: 24 hours, after which we make the user sign in again.
-  // Backward compat: хуучин 'userId' хадгалагдсан байж болзошгүй — TEAM-аас id-аар олж email рүү шилжүүлнэ.
-  let userEmail = localStorage.getItem('userEmail');
-  if (!userEmail) {
-    const legacyId = localStorage.getItem('userId');
-    if (legacyId) {
-      const legacyMember = TEAM.find(m => m.id === legacyId);
-      if (legacyMember && legacyMember.email) {
-        userEmail = legacyMember.email;
-        localStorage.setItem('userEmail', userEmail);
-        localStorage.removeItem('userId');
-      }
-    }
-  }
+  const userEmail = localStorage.getItem('userEmail');
   const loginAt = parseInt(localStorage.getItem('userLoginAt') || '0', 10);
   const ageMs = Date.now() - loginAt;
   if (!userEmail || ageMs > 24 * 60 * 60 * 1000) return false;
@@ -5897,10 +5749,6 @@ async function handlePinLogin(userIdentifier, pin) {
     if (!member) {
       member = TEAM.find(m => String(m.email || '').toLowerCase() === lowered);
     }
-    // Backward compat — хэрэв хуучин ID бичсэн бол хүлээн авна
-    if (!member) {
-      member = TEAM.find(m => String(m.id || '').toUpperCase() === raw.toUpperCase());
-    }
     if (!member) return { ok: false, reason: 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.' };
     // "Гарсан" статустай ажилтан нэвтэрч чадахгүй
     if ((member.status || 'идэвхтэй') === 'гарсан') {
@@ -5911,7 +5759,7 @@ async function handlePinLogin(userIdentifier, pin) {
     return { ok: true, member };
   };
 
-  // 1-р оролдлого: одоогийн TEAM (cache + hardcoded) дээр шалгана
+  // 1-р оролдлого: одоогийн TEAM (cache) дээр шалгана
   let result = tryAuth();
 
   // PIN буруу эсвэл Sheet-д PIN тохируулаагүй бол Master Sheet-ээс шинэ data татаад дахин шалгана

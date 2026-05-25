@@ -401,32 +401,15 @@
   </div>
 </div>
 
-<!-- SETTINGS MODAL -->
+<!-- SETTINGS MODAL — notification permission helper-ийг агуулна.
+     Хуучин n8n URL config inputs устгасан (хэрэглэгч хэзээ ч өөрчилдөггүй,
+     default URL-ууд хатуу coded). -->
 <div class="modal-bg" id="settings-modal">
   <div class="modal">
     <h2>Тохиргоо</h2>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.5;">
-      Энгийн хэрэглэгч бол зүйл өөрчлөх хэрэггүй. Webhook URL-ууд default-аар ажиллана.
-    </p>
-    <button type="button" class="settings-advanced-toggle" id="s-toggle-advanced">
-      ▸ Advanced (n8n webhook URL-ууд)
-    </button>
-    <div class="settings-advanced" id="s-advanced">
-      <label>n8n Webhook URL (data sync)</label>
-      <input id="s-api" placeholder="https://your-n8n.example.com/webhook/checklist" />
-      <label>n8n Staff Webhook URL (Master Sheet sync)</label>
-      <input id="s-staff" placeholder="https://your-n8n.example.com/webhook/staff" />
-      <label>n8n Finance Webhook URL (санхүүгийн хүсэлт)</label>
-      <input id="s-finance" placeholder="https://your-n8n.example.com/webhook/finance" />
-      <label>n8n Upload Webhook URL (баримт)</label>
-      <input id="s-upload" placeholder="https://your-n8n.example.com/webhook/upload-receipt" />
-      <p style="font-size: 11px; color: var(--muted); margin-top: 10px;">
-        Хоосон үлдээвэл browser-ийн localStorage ашиглана (зөвхөн энэ компьютер дээр).
-      </p>
-    </div>
+    <div id="s-advanced"></div>
     <div class="modal-actions">
-      <button class="btn" id="s-cancel">Болих</button>
-      <button class="btn btn-primary" id="s-save">Хадгалах</button>
+      <button class="btn btn-primary" id="s-cancel">Хаах</button>
     </div>
   </div>
 </div>

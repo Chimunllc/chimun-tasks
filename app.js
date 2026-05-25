@@ -1495,11 +1495,11 @@ const _FIN_DEC_M2E    = _flip(_FIN_DEC_E2M);
 function requestToWire(r) {
   if (!r || typeof r !== 'object') return r;
   const out = { ...r };
-  // ID → нэр
-  if (out.requested_by) out.requested_by = idToName(out.requested_by);
-  if (out.executor)     out.executor     = idToName(out.executor);
-  if (out.executed_by)  out.executed_by  = idToName(out.executed_by);
-  if (out.decision_by)  out.decision_by  = idToName(out.decision_by);
+  // email → нэр (Sheet нь нэр хадгална, хүн уншихад зориулагдсан)
+  if (out.requested_by) out.requested_by = emailToName(out.requested_by);
+  if (out.executor)     out.executor     = emailToName(out.executor);
+  if (out.executed_by)  out.executed_by  = emailToName(out.executed_by);
+  if (out.decision_by)  out.decision_by  = emailToName(out.decision_by);
   // Код → монгол
   out.status   = _xlate(out.status, _FIN_STATUS_E2M);
   out.decision = _xlate(out.decision, _FIN_DEC_E2M);
@@ -1508,11 +1508,11 @@ function requestToWire(r) {
 function requestFromWire(r) {
   if (!r || typeof r !== 'object') return r;
   const out = { ...r };
-  // нэр → ID
-  if (out.requested_by) out.requested_by = nameToId(out.requested_by);
-  if (out.executor)     out.executor     = nameToId(out.executor);
-  if (out.executed_by)  out.executed_by  = nameToId(out.executed_by);
-  if (out.decision_by)  out.decision_by  = nameToId(out.decision_by);
+  // нэр → email (app дотор email-ээр түлхүүрлэдэг)
+  if (out.requested_by) out.requested_by = nameToEmail(out.requested_by);
+  if (out.executor)     out.executor     = nameToEmail(out.executor);
+  if (out.executed_by)  out.executed_by  = nameToEmail(out.executed_by);
+  if (out.decision_by)  out.decision_by  = nameToEmail(out.decision_by);
   // монгол → код
   out.status   = _xlate(out.status, _FIN_STATUS_M2E);
   out.decision = _xlate(out.decision, _FIN_DEC_M2E);

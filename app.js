@@ -3905,39 +3905,86 @@ function openTaskModal(id) {
     fillProjectSelect('t-project', null, e.target.value);
   };
 
-  // Permission lock — canEdit.all биш бол input-уудыг readonly + Save товчийг нуух
-  const inputIds = ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority','t-recurrence','t-requires-photo'];
-  inputIds.forEach(iid => {
+  // Permission lock — canEdit.all биш бол бүх form-ийг НУУГААД read-only card харуулна
+  const formFieldIds = ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority','t-recurrence','t-requires-photo'];
+  // Тус бүрийн label-г label.previousLabel ашиглан олж нуух — DOM-д label > input дараалал
+  const formLabelTexts = {
+    't-title': 'Гарчиг *', 't-desc': 'Тайлбар',
+    't-branch': 'Аль салбарт хамаарах вэ?',
+    't-project': 'Төсөл', 't-assignee': 'Хариуцагч',
+    't-due': 'Эцсийн хугацаа', 't-priority': 'Зэрэглэл',
+    't-recurrence': 'Давтамж',
+  };
+  formFieldIds.forEach(iid => {
     const el = document.getElementById(iid);
     if (!el) return;
     if (canEdit.all) {
+      el.style.display = '';
       el.removeAttribute('readonly');
       el.removeAttribute('disabled');
       el.style.opacity = '';
       el.style.background = '';
       el.style.cursor = '';
     } else {
-      // textarea/input: readonly; select+checkbox: disabled
-      if (el.tagName === 'SELECT' || el.type === 'checkbox') el.setAttribute('disabled','disabled');
-      else el.setAttribute('readonly','readonly');
-      el.style.opacity = '0.85';
-      el.style.background = 'var(--panel-hover)';
-      el.style.cursor = 'not-allowed';
+      // Хариуцагчийн харагдац — бүх засварлах талбарыг нуух
+      el.style.display = 'none';
     }
   });
-  // Олон хүнд оноох + Хуулбарлах товчийг бас нуух (зөвхөн үүсгэгчид)
+  // Form-ийн label-уудыг нуух (хариуцагч үед)
+  document.querySelectorAll('#task-modal .modal > label').forEach(lb => {
+    if (canEdit.all) { lb.style.display = ''; return; }
+    const txt = lb.textContent.trim();
+    // Гарчиг/Тайлбар/Хариуцагч гэх мэт form label-уудыг нуух (бусдыг үлдээх)
+    if (Object.values(formLabelTexts).some(t => txt.startsWith(t.replace(' *','')))) {
+      lb.style.display = 'none';
+    }
+  });
+  // requires_photo checkbox-ийн хажуух тайлбар <div> + label-ийг нуух
+  const reqPhotoLabel = document.querySelector('label > #t-requires-photo')?.parentElement;
+  if (reqPhotoLabel) reqPhotoLabel.style.display = canEdit.all ? '' : 'none';
+  // assignee picker wrapper нуух
+  const asgnWrap = document.querySelector('#task-modal .assignee-picker-wrap');
+  if (asgnWrap) asgnWrap.style.display = canEdit.all ? '' : 'none';
   const multiBtnEl = document.getElementById('t-assignee-multi');
   if (multiBtnEl) multiBtnEl.style.display = canEdit.all ? '' : 'none';
   const saveBtn = document.getElementById('t-save');
   if (saveBtn) saveBtn.style.display = canEdit.all ? '' : 'none';
+  const dupBtnEl = document.getElementById('t-duplicate');
+  if (dupBtnEl) dupBtnEl.style.display = canEdit.all ? '' : 'none';
 
-  // ─── Хариуцагчид зориулсан тод мэдэгдэл (canEdit.status зөвхөн) ───
-  // Дээр creatorInfo дотор ажилбал ч хариуцагч уншихад хангалттай байх ёстой
-  if (t && !canEdit.all && canEdit.status) {
-    const ci = document.getElementById('t-creator-info');
-    if (ci && t.requires_photo && t.status !== 'done') {
-      ci.innerHTML += `<div style="margin-top:10px;padding:10px 12px;background:var(--accent-blue-soft, #dbeafe);border-left:3px solid var(--accent-blue, #4f46e5);border-radius:6px;color:var(--accent-blue, #4f46e5);font-weight:600;font-size:13px;">📷 Энэ даалгаврыг дуусгахдаа биелэлтийн зураг хавсаргах ёстой</div>`;
-    }
+  // ─── Хариуцагчийн уншмаар card (бүх мэдээлэл нэг дор) ───
+  let readOnlyCard = document.getElementById('t-readonly-card');
+  if (!readOnlyCard) {
+    readOnlyCard = document.createElement('div');
+    readOnlyCard.id = 't-readonly-card';
+    const modalEl = document.querySelector('#task-modal .modal');
+    const statusBarEl = document.getElementById('t-status-bar');
+    if (modalEl && statusBarEl) modalEl.insertBefore(readOnlyCard, statusBarEl);
+  }
+  if (t && !canEdit.all) {
+    const branchLabel = ({'m-event':'M Event','camp':'NOMAAD Camp','shared':'Нэгдсэн','production':'Бэлтгэл'})[t.branch] || t.branch || '';
+    const priorityLabel = ({'low':'Бага','med':'Дунд','high':'Өндөр'})[t.priority] || '';
+    const priorityColor = ({'low':'#10b981','med':'#f59e0b','high':'#ef4444'})[t.priority] || 'var(--muted)';
+    readOnlyCard.style.display = '';
+    readOnlyCard.innerHTML = `
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">${escapeHtml(t.title || '')}</div>
+        ${t.desc ? `<div style="font-size:14px;color:var(--muted);margin-bottom:12px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(t.desc)}</div>` : ''}
+        <div style="display:grid;grid-template-columns:90px 1fr;gap:6px 12px;font-size:13px;">
+          ${branchLabel ? `<div style="color:var(--muted);">Салбар</div><div>${escapeHtml(branchLabel)}</div>` : ''}
+          ${t.project ? `<div style="color:var(--muted);">Төсөл</div><div>${escapeHtml(t.project)}</div>` : ''}
+          ${t.due ? `<div style="color:var(--muted);">Хугацаа</div><div style="font-weight:600;">${escapeHtml(t.due)}</div>` : ''}
+          ${priorityLabel ? `<div style="color:var(--muted);">Зэрэглэл</div><div style="color:${priorityColor};font-weight:600;">${escapeHtml(priorityLabel)}</div>` : ''}
+        </div>
+        ${t.requires_photo && t.status !== 'done' ? `
+          <div style="margin-top:12px;padding:10px 12px;background:linear-gradient(135deg,#dbeafe,#ede9fe);border-left:3px solid #4f46e5;border-radius:6px;color:#3730a3;font-weight:600;font-size:13px;">
+            📷 Энэ даалгаврыг дуусгахдаа биелэлтийн зураг хавсаргах ёстой
+          </div>` : ''}
+      </div>
+    `;
+  } else {
+    readOnlyCard.style.display = 'none';
+    readOnlyCard.innerHTML = '';
   }
 
   // ─── СТАТУС ТОВЧНУУД (сэтгэгдэл болон үйлдлийн түүх устгагдсан) ───

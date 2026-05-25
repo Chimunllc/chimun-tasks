@@ -2696,6 +2696,19 @@ setTimeout(updateOnlineStatus, 500);
 // Pending writes-ийг тогтмол шалгах (хэрэв background-д ямар нэг солигдвол)
 setInterval(updateOnlineStatus, 15000);
 
+/* ─── Албан тушаалаас Зэрэглэл (level) олох ──────────── */
+function levelForRole(role) {
+  const r = String(role || '').trim().toLowerCase();
+  // 100 — CEO
+  if (/гүйцэтгэх захирал|ceo/.test(r)) return 100;
+  // 80 — ҮАХ захирал
+  if (/үах захирал/.test(r)) return 80;
+  // 60 — Менежер, Event manager, Ерөнхий нягтлан, Кемп менежер, Агуулах ахлах
+  if (/менежер|manager|ерөнхий нягтлан|агуулах ахлах|нярав/.test(r)) return 60;
+  // 40 — Үлдсэн ажилтнууд (Туслах нягтлан, Логистик, Туслах, г.м.)
+  return 40;
+}
+
 /* ─── ID автомат санал ─────────────────────────────────
    Branch-аас хамаарч prefix тогтооно:
      M Event       → M
@@ -2798,9 +2811,9 @@ function openPendingRegistration(member) {
     fmt('Яаралтай үед', `${member.emergency_name || ''}${member.emergency_phone ? ' — ' + member.emergency_phone : ''}`),
     fmt('Хүсэлт өгсөн', member.requested_at ? new Date(member.requested_at).toLocaleString('mn-MN') : ''),
   ].filter(Boolean).join('');
-  // CEO-ийн талбарууд clean
+  // CEO-ийн талбарууд clean — Зэрэглэлийг албан тушаалаас автомат
   document.getElementById('reg-salary').value = member.salary || '';
-  document.getElementById('reg-level').value = member.level || 40;
+  document.getElementById('reg-level').value = member.level || levelForRole(member.role);
   // ID автомат санал болгох — branch-аас хамаарч хамгийн их тооноос +1
   const branchLabel = member.group || member.branch;
   const suggestedId = suggestNextStaffId(branchLabel);

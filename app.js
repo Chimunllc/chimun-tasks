@@ -5189,16 +5189,21 @@ async function bootApp() {
   render();
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
   notifyCEOOfPendingRegistrations();
-  // Safety-net polling — Web Push амжилттай subscribe хийгдсэн бол 1 цаг тутамд л татна
-  // (Apps Script trigger унтарсан үед idle байх биш үе үе шинэчлэхийн тулд).
-  // Subscribe бүтэлгүйтсэн бол 10 мин рүү буцаана.
-  if (_pollTimer) clearInterval(_pollTimer);
+  // Safety-net polling — Web Push амжилттай subscribe хийгдсэн бол polling-г бүхэлд нь хасна
+  // (push event + visibilitychange л refresh-ийг trigger болгоно). Push бүтэлгүйтсэн бол
+  // 10 мин тутам fallback poll хийнэ. N8n execution-ийг 30+ мянгаар бууруулна.
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   const pushReady = await ensurePushSubscription();
-  _pollTimer = setInterval(refreshFromServer, pushReady ? 3_600_000 : 600_000);
-  // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ
+  if (!pushReady) _pollTimer = setInterval(refreshFromServer, 600_000);
+  // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —
+  // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 30 сек throttle.
   if (!_visibilityBound) {
+    let _lastVisRefresh = 0;
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && state.me) refreshFromServer();
+      if (!document.hidden && state.me && Date.now() - _lastVisRefresh > 30_000) {
+        _lastVisRefresh = Date.now();
+        refreshFromServer();
+      }
     });
     // Холболт сэргэхэд (offline → online) хүлээгдэж буй өөрчлөлтийг шууд илгээх
     window.addEventListener('online', () => { if (state.me) flushPendingWrites(); });

@@ -4029,10 +4029,6 @@ function renderTaskActionButtons(t) {
   if ((isAssignee || isCEO) && (status === 'open' || status === 'in_progress')) {
     btns.push(`<button class="btn btn-action" data-action="decline">Татгалзах</button>`);
   }
-  // Тодруулга хүсэх — assignee, аль ч төлөвт
-  if (isAssignee && status !== 'done') {
-    btns.push(`<button class="btn btn-action" data-action="clarify">Тодруулга</button>`);
-  }
   // Зураг хавсаргах — assignee/CEO, шаардлагатай эсэхээс үл хамаараад хүсэлтээр нэмж болно
   if (canAct && status !== 'done') {
     const cnt = Array.isArray(t.completion_photos) ? t.completion_photos.length : 0;

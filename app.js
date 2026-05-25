@@ -2696,6 +2696,32 @@ setTimeout(updateOnlineStatus, 500);
 // Pending writes-ийг тогтмол шалгах (хэрэв background-д ямар нэг солигдвол)
 setInterval(updateOnlineStatus, 15000);
 
+/* ─── ID автомат санал ─────────────────────────────────
+   Branch-аас хамаарч prefix тогтооно:
+     M Event       → M
+     NOMAAD Camp   → C
+     Удирдлага     → S (Shared)
+   TEAM-аас тус prefix-тэй ID-уудын хамгийн их тоонд +1 нэмж буцаана.
+   Жишээ нь M07 байсан бол M08 буцаана. */
+function suggestNextStaffId(branchLabel) {
+  const PREFIX_MAP = {
+    'm-event': 'M', 'M Event': 'M', 'M EVENT': 'M',
+    'camp': 'C', 'Camp': 'C', 'NOMAAD Camp': 'C',
+    'shared': 'S', 'Нэгдсэн': 'S', 'Удирдлага': 'S',
+  };
+  const prefix = PREFIX_MAP[branchLabel] || 'S';
+  const regex = new RegExp(`^${prefix}(\\d+)$`, 'i');
+  let maxNum = 0;
+  TEAM.forEach(m => {
+    const match = String(m.id || '').match(regex);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > maxNum) maxNum = n;
+    }
+  });
+  return `${prefix}${String(maxNum + 1).padStart(2, '0')}`;
+}
+
 /* ─── Шинэ бүртгэлийн хүсэлт CEO-д мэдэгдэх ─────────────
    loadTeamFromAPI дуудах болгонд "хүлээж буй" статустайг шалгаж,
    өмнө мэдэгдээгүй хүн байвал toast + push + notification гаргана.
@@ -2775,7 +2801,15 @@ function openPendingRegistration(member) {
   // CEO-ийн талбарууд clean
   document.getElementById('reg-salary').value = member.salary || '';
   document.getElementById('reg-level').value = member.level || 40;
-  document.getElementById('reg-assigned-id').value = member.assigned_id || member.id || '';
+  // ID автомат санал болгох — branch-аас хамаарч хамгийн их тооноос +1
+  const branchLabel = member.group || member.branch;
+  const suggestedId = suggestNextStaffId(branchLabel);
+  document.getElementById('reg-assigned-id').value = member.assigned_id || (member.id && /^(M|C|S)\d+$/i.test(member.id) ? member.id : '') || suggestedId;
+  // "Дахин санал болгох" товч
+  document.getElementById('reg-suggest-id').onclick = () => {
+    document.getElementById('reg-assigned-id').value = suggestNextStaffId(branchLabel);
+    showToast(`Шинэ ID санал: ${document.getElementById('reg-assigned-id').value}`, 'info', 1500);
+  };
   document.getElementById('reg-notes').value = member.notes || '';
 
   const approveBtn = document.getElementById('reg-approve');

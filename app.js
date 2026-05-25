@@ -1080,6 +1080,10 @@ function saveLocal() {
   localStorage.setItem('projectsByBranch', JSON.stringify(state.projectsByBranch));
   localStorage.setItem('branch', state.branch);
 }
+// Хуучин кодны 5 газар (project устгах, recurring spawn, swipe delete/done) `saveData()` гэж
+// дуудсан байсан ч ийм функц огт тодорхойлогдоогүй байсан тул silently throw хийдэг байсан.
+// saveLocal-ын alias болгож засав — call sites энэ нэрийг ашигладгийг тодорхойлж байгаа нь.
+const saveData = saveLocal;
 /* -------------------- OFFLINE WRITE QUEUE --------------------
    Кемпэд интернэт тогтворгүй. Сервер рүү бичих оролдлого амжилтгүй болбол өөрчлөлтийг
    localStorage-д "pendingWrites" дараалалд хадгална. Холболт сэргэх бүрд (poll, online
@@ -3362,23 +3366,20 @@ function attachSwipeActions(row, t) {
         }
       }, 180);
     } else if (currentX < -THRESHOLD) {
-      // Зүүн шудалсан → Татгалзах эсвэл устгах
+      // Зүүн шудалсан → Устгах. canDeleteTask check-ээр permission шалгана.
       row.style.transform = 'translateX(-100%)';
       row.style.background = 'rgba(239,68,68,0.30)';
       setTimeout(async () => {
-        if (await showConfirm('Энэ ажлыг устгах уу?', { okText: 'Устгах', danger: true })) {
-          const idx = state.tasks.findIndex(x => x.id === t.id);
-          if (idx >= 0) {
-            state.tasks.splice(idx, 1);
-            saveData();
-            render();
-            showToast('Устгасан', 'success', 1200);
-          }
-        } else {
-          // Цуцалсан — буцааж тавих
+        const can = canDeleteTask(t);
+        if (!can.ok) {
           row.style.transform = '';
           row.style.background = '';
+          const who = can.creator ? `${can.creator.name} (${can.creator.role})` : 'дээд албан тушаалтан';
+          showToast(`${who} үүсгэсэн даалгавар. Устгах эрх танд алга.`, 'warn', 4000);
+          return;
         }
+        // Зөвшөөрөгдсөн — deleteTask helper-ээр явуулна (mistake window + soft/hard сонголтыг бас хариуцна)
+        await deleteTask(t.id);
       }, 180);
     } else {
       // Threshold хүрээгүй → буцаах
@@ -3889,16 +3890,25 @@ async function bulkApply(action) {
   // Архив view-д "Устгах" = Sheet-ээс бүрэн устгах (hard_delete). Бусад view-д soft delete.
   const isArchive = state.view === 'archive';
   if (action === 'delete') {
+    // Зөвшөөрөлгүй task-уудыг хасч, зөвхөн устгах эрхтэйг үлдээнэ.
+    const allTargets = state.tasks.filter(t => state.bulkSelected.has(t.id));
+    const allowed = allTargets.filter(t => canDeleteTask(t).ok);
+    const blocked = allTargets.length - allowed.length;
+    if (!allowed.length) {
+      showToast(`Сонгосон ${allTargets.length} ажил бүгд устгах эрхээс гадуур (бусдын үүсгэсэн).`, 'warn', 4500);
+      return;
+    }
     const label = isArchive ? 'Бүрэн устгах' : 'Устгах';
+    const skipNote = blocked > 0 ? `\n\n⚠ ${blocked} ажил бусдын үүсгэсэн тул алгасагдана.` : '';
     const msg = isArchive
-      ? `${ids.length} архивласан ажлыг Sheet-ээс БҮРЭН устгана. Сэргээх боломжгүй. Үргэлжлүүлэх үү?`
-      : `${ids.length} ажлыг бүгдийг архивлах уу? (CEO дараа сэргээх боломжтой)`;
+      ? `${allowed.length} архивласан ажлыг Sheet-ээс БҮРЭН устгана. Сэргээх боломжгүй.${skipNote}\n\nҮргэлжлүүлэх үү?`
+      : `${allowed.length} ажлыг архивлах уу?${skipNote}\n\n(CEO дараа сэргээх боломжтой)`;
     if (!(await showConfirm(msg, { okText: label, danger: true }))) return;
-    const targets = state.tasks.filter(t => state.bulkSelected.has(t.id));
-    state.tasks = state.tasks.filter(t => !state.bulkSelected.has(t.id));
-    await Promise.all(targets.map(t => saveTask(t, true, isArchive)));
-    await flashBulkBarSuccess(`${ids.length} ${isArchive ? 'бүрэн устгагдлаа' : 'архивлагдлаа'}`);
-    showToast(`${ids.length} ажил ${isArchive ? 'бүрэн устгасан' : 'архивласан'}`, 'success');
+    const allowedIds = new Set(allowed.map(t => t.id));
+    state.tasks = state.tasks.filter(t => !allowedIds.has(t.id));
+    await Promise.all(allowed.map(t => saveTask(t, true, isArchive)));
+    await flashBulkBarSuccess(`${allowed.length} ${isArchive ? 'бүрэн устгагдлаа' : 'архивлагдлаа'}`);
+    showToast(`${allowed.length} ажил ${isArchive ? 'бүрэн устгасан' : 'архивласан'}`, 'success');
   } else if (action === 'done') {
     const doneList = [];
     state.tasks.forEach(t => {

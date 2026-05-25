@@ -108,16 +108,19 @@
       <label class="login-label">Регистрийн дугаар (РД) <span style="color:var(--danger)">*</span></label>
       <input id="reg-rd" type="text" maxlength="10" placeholder="АБ12345678" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; text-transform:uppercase;" />
 
-      <label class="login-label">Гэрийн хаяг</label>
+      <label class="login-label">Гэрийн хаяг <span style="color:var(--danger)">*</span></label>
       <textarea id="reg-address" rows="2" placeholder="Жишээ: УБ, СБД, 7-р хороо, 14 байр, 32 тоот" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; font-family:inherit; resize:vertical;"></textarea>
 
-      <label class="login-label">Зураг <span style="font-size:11px;color:var(--muted)">(заавал биш)</span></label>
+      <label class="login-label">Selfie зураг <span style="color:var(--danger)">*</span> <span style="font-size:11px;color:var(--muted)">(өөрөө гэрэл сайтай газар татна)</span></label>
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-        <div id="reg-photo-preview" style="width:56px; height:56px; border-radius:50%; background:var(--panel-hover); display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <div id="reg-photo-preview" style="width:64px; height:64px; border-radius:50%; background:var(--panel-hover); display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; border:2px dashed var(--border);">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--muted);"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
-        <label for="reg-photo" style="flex:1; padding:8px 12px; background:var(--panel-hover); border:1px dashed var(--border); border-radius:var(--r-md); font-size:13px; color:var(--text); text-align:center; cursor:pointer;">Зураг сонгох</label>
-        <input id="reg-photo" type="file" accept="image/*" style="display:none;" />
+        <label for="reg-photo" style="flex:1; padding:12px; background:linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color:#fff; border:none; border-radius:var(--r-md); font-size:13px; font-weight:600; text-align:center; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Selfie татах
+        </label>
+        <input id="reg-photo" type="file" accept="image/*" capture="user" style="display:none;" />
       </div>
 
       <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Яаралтай үед холбоо барих</h3>

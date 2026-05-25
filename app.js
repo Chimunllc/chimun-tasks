@@ -2850,13 +2850,16 @@ function levelForRole(role) {
      Удирдлага     → S (Shared)
    TEAM-аас тус prefix-тэй ID-уудын хамгийн их тоонд +1 нэмж буцаана.
    Жишээ нь M07 байсан бол M08 буцаана. */
-function suggestNextStaffId(branchLabelOrArray) {
+/* Шинэ ажилтны ID-г нэр өөрөөр нь ашиглана — давхцал гарахгүй, хүн уншихад ойлгомжтой.
+   Хуучин M01/C07 ID-уудтай нийцтэй ажиллах ба шинээр бүртгэх үед нэрийг л буцаана. */
+function suggestNextStaffId(branchLabelOrArray, name) {
+  if (name && String(name).trim()) return String(name).trim();
+  // name дамжуулсангүй бол fallback: хуучин prefix схем
   const PREFIX_MAP = {
     'm-event': 'M', 'M Event': 'M', 'M EVENT': 'M',
     'camp': 'C', 'Camp': 'C', 'NOMAAD Camp': 'C',
     'shared': 'S', 'Нэгдсэн': 'S', 'Удирдлага': 'S',
   };
-  // Accept string OR array of branch IDs
   let key = branchLabelOrArray;
   if (Array.isArray(branchLabelOrArray)) key = branchLabelOrArray[0];
   const prefix = PREFIX_MAP[key] || 'S';
@@ -5622,7 +5625,8 @@ async function handleRegister() {
     const url = state.config.registerUrl;
     if (!url) { show('Бүртгэлийн систем тохируулагдаагүй. CEO-той холбогдоно уу.'); return; }
     // CEO зөвшөөрөл шаардахгүй — ID болон зэрэглэлийг автоматаар тогтооно
-    const assignedId = suggestNextStaffId(group);
+    // ID = нэр өөрөө (давхцал гарахгүй) — n8n тал ч мөн нэрээр илгээгдсэн body.name дээр үндэслэн оноох
+    const assignedId = suggestNextStaffId(group, name);
     const autoLevel = levelForRole(role);
     const r = await fetch(url, {
       method: 'POST',

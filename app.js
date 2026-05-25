@@ -3939,9 +3939,11 @@ function openTaskModal(id) {
       lb.style.display = 'none';
     }
   });
-  // requires_photo checkbox-ийн хажуух тайлбар <div> + label-ийг нуух
-  const reqPhotoLabel = document.querySelector('label > #t-requires-photo')?.parentElement;
+  // requires_photo checkbox label + хажуух тайлбар хоёрыг нуух
+  const reqPhotoLabel = document.getElementById('t-requires-photo-label');
+  const reqPhotoHint  = document.getElementById('t-requires-photo-hint');
   if (reqPhotoLabel) reqPhotoLabel.style.display = canEdit.all ? '' : 'none';
+  if (reqPhotoHint)  reqPhotoHint.style.display  = canEdit.all ? '' : 'none';
   // assignee picker wrapper нуух
   const asgnWrap = document.querySelector('#task-modal .assignee-picker-wrap');
   if (asgnWrap) asgnWrap.style.display = canEdit.all ? '' : 'none';
@@ -4031,6 +4033,11 @@ function renderTaskActionButtons(t) {
   if (isAssignee && status !== 'done') {
     btns.push(`<button class="btn btn-action" data-action="clarify">Тодруулга</button>`);
   }
+  // Зураг хавсаргах — assignee/CEO, шаардлагатай эсэхээс үл хамаараад хүсэлтээр нэмж болно
+  if (canAct && status !== 'done') {
+    const cnt = Array.isArray(t.completion_photos) ? t.completion_photos.length : 0;
+    btns.push(`<button class="btn btn-action" data-action="add_photo">📷 Зураг хавсаргах${cnt > 0 ? ` (${cnt})` : ''}</button>`);
+  }
   // Төлвийн badge — CSS class-аар стиль, inline арилгасан
   const statusLabels = {
     open:        { text: 'Шинэ',          cls: 'open' },
@@ -4062,6 +4069,18 @@ async function handleTaskAction(taskId, action) {
     showToast('Ажил эхэлсэн', 'success');
   } else if (action === 'done') {
     await changeTaskStatus(taskId, 'done');
+  } else if (action === 'add_photo') {
+    const t = state.tasks.find(x => x.id === taskId);
+    if (!t) return;
+    const photos = await promptCompletionPhoto(t);
+    if (photos && photos.length) {
+      t.completion_photos = [...(t.completion_photos || []), ...photos];
+      await saveTask(t);
+      // Modal-г шинээр нээж зургийг харуулах
+      openTaskModal(taskId);
+      showToast('✓ ' + photos.length + ' зураг хавсаргалаа', 'success', 2000);
+    }
+    return;
     showToast('Даалгавар дууссан', 'success');
   } else if (action === 'reopen') {
     await changeTaskStatus(taskId, 'open');

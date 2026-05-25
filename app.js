@@ -844,6 +844,7 @@ function normalizeTask(t) {
   // Эхлээд нэр → ID хөрвүүлэх (Sheet-ээс ирсэн бол)
   t = taskFromWire(t);
   const stringFields = ['id','title','desc','branch','project','assignee','due','priority','status','kpi_code','createdBy','parent_id','kind',
+    'completion_photo_url',
     'decision','decision_at','decision_by','executed_at','executed_by','purpose','beneficiary','justification','decline_reason'];
   const out = { ...t };
   for (const f of stringFields) {
@@ -3503,6 +3504,47 @@ function escapeHtml(s) {
 }
 
 /* -------------------- ACTIONS -------------------- */
+/* Биелэлтийн зураг авах — даалгавар дуусгахаас өмнө хариуцагчаас баталгаа авна.
+   Цуцалбал null буцаана (даалгавар done болохгүй). */
+function promptCompletionPhoto(task) {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment'; // Утсан дээр шууд камер нээгдэнэ
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    let resolved = false;
+    const cleanup = () => { document.body.removeChild(input); };
+    input.addEventListener('change', async () => {
+      if (resolved) return;
+      const file = input.files && input.files[0];
+      if (!file) { resolved = true; cleanup(); return resolve(null); }
+      showToast('Зураг илгээж байна...', 'info', 2000);
+      try {
+        const url = await uploadReceipt(file, task.id, 'completion');
+        resolved = true; cleanup();
+        if (!url) { showToast('Зураг илгээгдсэнгүй', 'error'); return resolve(null); }
+        resolve(url);
+      } catch (e) {
+        resolved = true; cleanup();
+        showToast('Зураг илгээхэд алдаа гарлаа', 'error');
+        resolve(null);
+      }
+    });
+    // Хэрэглэгч cancel дарвал change гарахгүй; focus буцаж ирэхэд цуцалсан гэж үзнэ
+    setTimeout(() => {
+      window.addEventListener('focus', function onFocus() {
+        window.removeEventListener('focus', onFocus);
+        setTimeout(() => {
+          if (!resolved) { resolved = true; cleanup(); resolve(null); }
+        }, 600);
+      }, { once: true });
+    }, 100);
+    input.click();
+  });
+}
+
 async function toggleTask(id) {
   const t = state.tasks.find(x=>x.id===id); if (!t) return;
   // Going from open → done: enforce 5-stage dependency for act sub-tasks
@@ -3513,6 +3555,11 @@ async function toggleTask(id) {
       showToast(`Энэ дамжлагыг дуусгахын өмнө "${prev.title}" дуусгасан байх ёстой. Хариуцагч: ${memberName(prev.assignee)}`, 'warn', 4500);
       return;
     }
+    // ─── Биелэлтийн зураг шаардах ───
+    // Хариуцагч даалгавраа дуусгахдаа гэрэл зураг хавсаргаж баталгаажуулна
+    const photoUrl = await promptCompletionPhoto(t);
+    if (photoUrl === null) return; // Цуцалсан — done болгохгүй
+    t.completion_photo_url = photoUrl;
   } else {
     // Going from done → open: warn if a later stage is already done (would create inconsistency)
     if (t.kind === 'act_stage' && t.parent_id) {
@@ -3738,6 +3785,16 @@ function openTaskModal(id) {
       info += `<br><span style="color:var(--warn);font-weight:600;">⚠ Та зөвхөн ✓ тэмдэглэх эрхтэй. Гарчиг, тайлбар засах боломжгүй.</span>`;
     } else if (canEdit.none) {
       info += `<br><span style="color:var(--danger);font-weight:600;">🔒 Танд засах эрхгүй (зөвхөн харах).</span>`;
+    }
+    // Биелэлтийн зураг — дууссан даалгаврын баталгаа
+    if (t.status === 'done' && t.completion_photo_url) {
+      info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">✅ Биелэлтийн зураг</div>
+        <a href="${escapeHtml(t.completion_photo_url)}" target="_blank" rel="noopener">
+          <img src="${escapeHtml(t.completion_photo_url)}" alt="Биелэлт"
+               style="max-width:100%;max-height:220px;border-radius:8px;border:1px solid var(--border);display:block;" />
+        </a>
+      </div>`;
     }
     creatorInfo.innerHTML = info;
     creatorInfo.style.display = 'block';

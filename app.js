@@ -5230,7 +5230,7 @@ async function handleRegister() {
   if (hasLatin.test(surname) || !cyrillic.test(surname)) return show('⚠ Овгоо МОНГОЛоор (кирилл) бичнэ үү. Жишээ: Болд');
   if (!given)   return show('Нэрээ оруулна уу.');
   if (hasLatin.test(given) || !cyrillic.test(given)) return show('⚠ Нэрээ МОНГОЛоор (кирилл) бичнэ үү. Жишээ: Энх');
-  if (!role)    return show('Албан тушаалаа оруулна уу.');
+  if (!role)    return show('Албан тушаалаа жагсаалтаас сонгоно уу.');
   if (!group)   return show('Аль салбарт хамаарахаа сонгоно уу.');
   if (!phone || phoneNorm.length < 8) return show('⚠ Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('⚠ И-мэйл хаягаа зөв оруулна уу.');

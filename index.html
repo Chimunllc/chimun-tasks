@@ -89,7 +89,44 @@
       <div id="reg-name-preview" style="font-size:12px; color:var(--muted); margin-bottom:8px; min-height:16px;"></div>
 
       <label class="login-label">Албан тушаал <span style="color:var(--danger)">*</span></label>
-      <input id="reg-role" type="text" placeholder="Жишээ: Кемп туслах" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+      <select id="reg-role" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; background:var(--panel); color:var(--text);">
+        <option value="">— Сонгох —</option>
+        <optgroup label="Удирдлага">
+          <option value="Гүйцэтгэх Захирал">Гүйцэтгэх Захирал (CEO)</option>
+          <option value="ҮАХ Захирал">ҮАХ Захирал</option>
+          <option value="Менежер">Менежер</option>
+          <option value="Кемп менежер">Кемп менежер</option>
+          <option value="Кемпийн менежер">Кемпийн менежер</option>
+          <option value="Event Manager">Event Manager</option>
+        </optgroup>
+        <optgroup label="Санхүү / Захиргаа">
+          <option value="Ерөнхий нягтлан">Ерөнхий нягтлан</option>
+          <option value="Туслах нягтлан">Туслах нягтлан</option>
+          <option value="Нярав">Нярав</option>
+          <option value="Хүний нөөц">Хүний нөөц</option>
+          <option value="Маркетинг">Маркетинг</option>
+        </optgroup>
+        <optgroup label="Үйл ажиллагаа">
+          <option value="Агуулах ахлах">Агуулах ахлах</option>
+          <option value="Агуулах-Логистик">Агуулах-Логистик</option>
+          <option value="Агуулах засварын ажилтан">Агуулах засварын ажилтан</option>
+          <option value="Зөөвөрлөгч">Зөөвөрлөгч</option>
+          <option value="Жолооч">Жолооч</option>
+        </optgroup>
+        <optgroup label="Кемп">
+          <option value="Кемп туслах">Кемп туслах</option>
+          <option value="Гал тогооч">Гал тогооч</option>
+          <option value="Туслах тогооч">Туслах тогооч</option>
+          <option value="Үйлчлэгч">Үйлчлэгч</option>
+        </optgroup>
+        <optgroup label="Бусад">
+          <option value="Цэвэрлэгээ">Цэвэрлэгээ</option>
+          <option value="Харуул">Харуул</option>
+          <option value="Дизайнер">Дизайнер</option>
+          <option value="Контент менежер">Контент менежер</option>
+          <option value="Програмист">Програмист</option>
+        </optgroup>
+      </select>
 
       <label class="login-label">Аль салбар? <span style="color:var(--danger)">*</span></label>
       <select id="reg-group" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;">

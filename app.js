@@ -5326,6 +5326,7 @@ async function handleRegister() {
       body: JSON.stringify({
         name, role, group, phone, email, pin,
         rd, address,
+        emergency_relation: emergencyRelation,
         emergency_name: emergencyName,
         emergency_phone: emergencyPhone,
         photo: photoDataUrl, // base64 data URL эсвэл хоосон

@@ -3856,6 +3856,12 @@ function bulkRefreshBar() {
   bar.classList.toggle('open', count > 0);
   const numEl = document.getElementById('bulk-count-num');
   if (numEl) numEl.textContent = count;
+  // Архив view-д "Сэргээх" товч харагдана, "Дуусгах" нуугдана. Бусад view-д эсрэг.
+  const isArchive = state.view === 'archive';
+  const doneBtn = document.getElementById('bulk-done');
+  const restoreBtn = document.getElementById('bulk-restore');
+  if (doneBtn) doneBtn.style.display = isArchive ? 'none' : '';
+  if (restoreBtn) restoreBtn.style.display = isArchive ? '' : 'none';
 }
 async function bulkApply(action) {
   ensureBulkState();
@@ -3887,6 +3893,18 @@ async function bulkApply(action) {
       }
     });
     showToast(`${ids.length} ажил дуусгасан`, 'success');
+  } else if (action === 'restore') {
+    // Архивласан task-уудыг 'open' болгож буцаан идэвхжүүлнэ.
+    const restored = [];
+    state.tasks.forEach(t => {
+      if (state.bulkSelected.has(t.id) && t.status === 'deleted') {
+        t.status = 'open';
+        t.updated = new Date().toISOString();
+        restored.push(t);
+      }
+    });
+    restored.forEach(t => saveTask(t)); // upsert үйлдэл — Sheet статус 'Идэвхтэй' болж шинэчилнэ
+    showToast(`${restored.length} ажил сэргээгдсэн`, 'success');
   }
   state.bulkSelected.clear();
   saveData();
@@ -4725,6 +4743,7 @@ function initEvents() {
   // ─── Bulk action bar wiring ──────────────────────────
   document.getElementById('bulk-cancel')?.addEventListener('click', bulkClear);
   document.getElementById('bulk-done')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('done')));
+  document.getElementById('bulk-restore')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('restore')));
   document.getElementById('bulk-delete')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('delete')));
   // Esc → bulk цуцлах
   document.addEventListener('keydown', (e) => {

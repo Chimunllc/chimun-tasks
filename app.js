@@ -3873,22 +3873,13 @@ function openTaskModal(id) {
   const saveBtn = document.getElementById('t-save');
   if (saveBtn) saveBtn.style.display = canEdit.all ? '' : 'none';
 
-  // ─── СТАТУС ТОВЧНУУД, СЭТГЭГДЭЛ, ҮЙЛДЛИЙН ТҮҮХ ───
-  // Зөвхөн хадгалагдсан task үед харагдана (шинэ task үүсэхээс өмнө хоосон)
+  // ─── СТАТУС ТОВЧНУУД (сэтгэгдэл болон үйлдлийн түүх устгагдсан) ───
   const statusBar = document.getElementById('t-status-bar');
-  const commentsSec = document.getElementById('t-comments-section');
-  const activitySec = document.getElementById('t-activity-section');
   if (t) {
     renderTaskActionButtons(t);
-    statusBar.style.display = '';
-    renderTaskComments(t);
-    commentsSec.style.display = '';
-    renderTaskActivity(t);
-    activitySec.style.display = '';
+    if (statusBar) statusBar.style.display = '';
   } else {
-    statusBar.style.display = 'none';
-    commentsSec.style.display = 'none';
-    activitySec.style.display = 'none';
+    if (statusBar) statusBar.style.display = 'none';
   }
 
   document.getElementById('task-modal').classList.add('open');

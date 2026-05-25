@@ -742,15 +742,11 @@ async function loadTeamFromAPI() {
     const fresh = Array.isArray(data?.team) ? data.team : null;
     if (!fresh || !fresh.length) throw new Error('empty team response');
     TEAM.length = 0;
-    // m.level-ыг үргэлж role-аас тооцоолж засна (Sheet-ийн утга зөрчилдөж магадгүй)
-    fresh.forEach(m => {
-      m.level = levelForRole(m.role);
-      TEAM.push(m);
-    });
-    localStorage.setItem('teamCache', JSON.stringify(TEAM));
+    fresh.forEach(m => TEAM.push(m));
+    localStorage.setItem('teamCache', JSON.stringify(fresh));
     localStorage.setItem('teamCacheAt', String(Date.now()));
     console.log(`Staff sync OK: ${fresh.length} members from Master Sheet`);
-    // Шинэ pending бүртгэлийн хүсэлт CEO-д мэдэгдэх
+    // Шинэ ажилтан бүртгүүлсэн үед CEO-д мэдэгдэх
     notifyCEOOfPendingRegistrations();
     return true;
   } catch(e) {

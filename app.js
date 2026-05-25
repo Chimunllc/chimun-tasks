@@ -2701,11 +2701,11 @@ function levelForRole(role) {
   const r = String(role || '').trim().toLowerCase();
   // 100 — CEO
   if (/гүйцэтгэх захирал|ceo/.test(r)) return 100;
-  // 80 — ҮАХ захирал
-  if (/үах захирал/.test(r)) return 80;
-  // 60 — Менежер, Event manager, Ерөнхий нягтлан, Кемп менежер, Агуулах ахлах
-  if (/менежер|manager|ерөнхий нягтлан|агуулах ахлах|нярав/.test(r)) return 60;
-  // 40 — Үлдсэн ажилтнууд (Туслах нягтлан, Логистик, Туслах, г.м.)
+  // 80 — COO / ҮАХ захирал
+  if (/үйл ажиллагааны захирал|үах захирал|coo/.test(r)) return 80;
+  // 60 — Менежер, ахлах ангилал, Ерөнхий нягтлан, Нярав
+  if (/менежер|manager|ерөнхий нягтлан|ахлах|нярав/.test(r)) return 60;
+  // 40 — Үлдсэн ажилтнууд (туслах, ажилтан, тогооч, жолооч г.м.)
   return 40;
 }
 
@@ -5272,8 +5272,9 @@ async function handleRegister() {
   // Шинэ талбарууд
   const rd      = document.getElementById('reg-rd')?.value.trim().toUpperCase() || '';
   const address = document.getElementById('reg-address')?.value.trim() || '';
-  const emergencyName  = document.getElementById('reg-emergency-name')?.value.trim() || '';
-  const emergencyPhone = document.getElementById('reg-emergency-phone')?.value.trim() || '';
+  const emergencyRelation = document.getElementById('reg-emergency-relation')?.value.trim() || '';
+  const emergencyName     = document.getElementById('reg-emergency-name')?.value.trim() || '';
+  const emergencyPhone    = document.getElementById('reg-emergency-phone')?.value.trim() || '';
   const photoDataUrl   = state._regPhotoDataUrl || '';
 
   // Кирилл шалгах (Монгол үсэг — Өө Үү багтсан 0400-04FF муж + зай, цэг, зураас)

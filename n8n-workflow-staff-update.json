@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Payload: { action: 'update_status', id, status, requested_by, timestamp }\n// Зөвхөн CEO зөвшөөрнө — requested_by === 'CEO' эсвэл level === 100\nconst body = $input.first().json.body || {};\nif (body.action !== 'update_status') {\n  return [{ json: { ok: false, error: 'Unknown action' } }];\n}\nif (!body.id || !body.status) {\n  return [{ json: { ok: false, error: 'Missing id or status' } }];\n}\n// Allowed statuses: идэвхтэй, гарсан, нээлттэй, чөлөөтэй\nconst allowed = ['идэвхтэй', 'гарсан', 'нээлттэй', 'чөлөөтэй'];\nif (!allowed.includes(body.status)) {\n  return [{ json: { ok: false, error: 'Invalid status' } }];\n}\nreturn [{\n  json: {\n    id: String(body.id),\n    status: body.status,\n    requested_by: body.requested_by || 'unknown',\n    timestamp: body.timestamp || new Date().toISOString(),\n  },\n}];"
+        "jsCode": "// Payload: { action: 'update_status', id, status, requested_by, timestamp }\nconst body = $input.first().json.body || {};\nif (body.action !== 'update_status') {\n  return [{ json: { ok: false, error: 'Unknown action' } }];\n}\nif (!body.id || !body.status) {\n  return [{ json: { ok: false, error: 'Missing id or status' } }];\n}\n// Allowed statuses: идэвхтэй, гарсан, нээлттэй, чөлөөтэй\nconst allowed = ['идэвхтэй', 'гарсан', 'нээлттэй', 'чөлөөтэй'];\nif (!allowed.includes(body.status)) {\n  return [{ json: { ok: false, error: 'Invalid status' } }];\n}\n// Google Sheets node-нд шилжихэд тохирох format\nreturn [{\n  json: {\n    'ID': String(body.id),\n    'Төлөв': body.status,\n    requested_by: body.requested_by || 'unknown',\n    timestamp: body.timestamp || new Date().toISOString(),\n  },\n}];"
       },
       "id": "su-validate-1",
       "name": "Validate payload",
@@ -29,39 +29,41 @@
     },
     {
       "parameters": {
+        "operation": "update",
         "documentId": {
           "__rl": true,
           "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
-          "mode": "list",
-          "cachedResultName": "Master Sheet"
+          "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "Ажилтан",
-          "mode": "list"
+          "value": 451955481,
+          "mode": "id"
         },
-        "filtersUI": {
-          "values": [
-            {
-              "lookupColumn": "ID",
-              "lookupValue": "={{ $json.id }}"
-            }
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.ID }}",
+            "Төлөв": "={{ $json['Төлөв'] }}"
+          },
+          "matchingColumns": ["ID"],
+          "schema": [
+            { "id": "ID", "displayName": "ID", "required": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Төлөв", "displayName": "Төлөв", "required": false, "type": "string", "canBeUsedToMatch": false }
           ]
         },
-        "valueInputMode": "USER_ENTERED",
         "options": {}
       },
       "id": "su-sheets-update",
       "name": "Update Master Sheet · Төлөв column",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [-120, 200],
-      "_comment_for_setup": "Google Sheets node-ийг тохируулна уу. Operation: 'Update Row'. Match column: 'ID'. Updating column: 'Төлөв'. valueInputMode: USER_ENTERED."
+      "position": [-120, 200]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, updated: { id: $json.id, status: $json.status } }) }}"
+        "responseBody": "={{ JSON.stringify({ ok: true, updated: { id: $json.ID, status: $json['Төлөв'] } }) }}"
       },
       "id": "su-respond",
       "name": "Respond OK",
@@ -85,14 +87,29 @@
   "active": false,
   "_setup_instructions": [
     "1. n8n cloud дээр энэ JSON-г import хийнэ.",
-    "2. Google Sheets node-нд:",
-    "   - Document: 1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM (Master Sheet)",
-    "   - Sheet: 'Ажилтан' (эсвэл бодит нэр)",
+    "",
+    "2. 'Update Master Sheet · Төлөв column' node-г нээж дараах зүйлсийг шалгана:",
+    "   - Document: Master Sheet (1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM)",
+    "   - Sheet: Tab нь GID 451955481 (ажилтны хуудас)",
     "   - Operation: 'Update Row'",
-    "   - Match column: 'ID', Lookup value: {{ $json.id }}",
-    "   - Update columns: 'Төлөв' → {{ $json.status }}",
-    "3. Workflow Activate хийнэ.",
-    "4. Аппын Settings → Telegram talbar дотор s-staff URL-ийг засаж '/staff-update' suffix-тэй болгох (эсвэл шинэ webhook URL ашиглах).",
-    "Hint: Аппын код staffUrl-ийн сүүлийн path-ыг '/staff-update'-аар орлуулж дуудна."
+    "   - 'Mapping Column Mode' нь 'Map Each Column Manually'",
+    "   - 'Column to Match On' нь 'ID'",
+    "   - 'Values to Send' хэсэгт:",
+    "        ID    = {{ $json.ID }}",
+    "        Төлөв = {{ $json['Төлөв'] }}",
+    "",
+    "3. Хэрэв sheet schema autodetect хийгдэхгүй бол:",
+    "   - Refresh column list (3 цэг → Refresh)",
+    "   - Эсвэл 'columns.schema' талбарт бодит баганы нэрсээ оруулах",
+    "",
+    "4. Google Sheets credential зөв сонгогдсон эсэхийг шалгах.",
+    "",
+    "5. Workflow Activate хийх.",
+    "",
+    "6. Аппын Settings-д staffUrl байгаа эсэхийг шалгаад тестлэх:",
+    "   - Dashboard → Ажилтан удирдах → ажилтан сонгож 'Гарсан' дарах",
+    "   - Google Sheet-д тус мөрийн 'Төлөв' багана 'гарсан' гэж бичигдэх ёстой",
+    "",
+    "Анхааруулга: 'Төлөв' гэдэг баганын нэр Sheet-д таарч байх ёстой. Хэрэв 'Status' эсвэл өөр нэртэй бол JSON-ийн 'Төлөв' талбаруудыг тус нэрээр сольж бичих."
   ]
 }

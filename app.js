@@ -2716,13 +2716,16 @@ function levelForRole(role) {
      Удирдлага     → S (Shared)
    TEAM-аас тус prefix-тэй ID-уудын хамгийн их тоонд +1 нэмж буцаана.
    Жишээ нь M07 байсан бол M08 буцаана. */
-function suggestNextStaffId(branchLabel) {
+function suggestNextStaffId(branchLabelOrArray) {
   const PREFIX_MAP = {
     'm-event': 'M', 'M Event': 'M', 'M EVENT': 'M',
     'camp': 'C', 'Camp': 'C', 'NOMAAD Camp': 'C',
     'shared': 'S', 'Нэгдсэн': 'S', 'Удирдлага': 'S',
   };
-  const prefix = PREFIX_MAP[branchLabel] || 'S';
+  // Accept string OR array of branch IDs
+  let key = branchLabelOrArray;
+  if (Array.isArray(branchLabelOrArray)) key = branchLabelOrArray[0];
+  const prefix = PREFIX_MAP[key] || 'S';
   const regex = new RegExp(`^${prefix}(\\d+)$`, 'i');
   let maxNum = 0;
   TEAM.forEach(m => {
@@ -2814,13 +2817,14 @@ function openPendingRegistration(member) {
   // CEO-ийн талбарууд clean — Зэрэглэлийг албан тушаалаас автомат
   document.getElementById('reg-salary').value = member.salary || '';
   document.getElementById('reg-level').value = member.level || levelForRole(member.role);
-  // ID автомат санал болгох — branch-аас хамаарч хамгийн их тооноос +1
-  const branchLabel = member.group || member.branch;
-  const suggestedId = suggestNextStaffId(branchLabel);
-  document.getElementById('reg-assigned-id').value = member.assigned_id || (member.id && /^(M|C|S)\d+$/i.test(member.id) ? member.id : '') || suggestedId;
+  // ID автомат санал болгох — group ('Camp', 'M Event', 'Удирдлага') эсвэл branches[] хэрэглэнэ
+  const branchHint = member.group || member.branches || member.branch;
+  const suggestedId = suggestNextStaffId(branchHint);
+  const existingValid = member.id && /^(M|C|S)\d+$/i.test(member.id) ? member.id : '';
+  document.getElementById('reg-assigned-id').value = member.assigned_id || existingValid || suggestedId;
   // "Дахин санал болгох" товч
   document.getElementById('reg-suggest-id').onclick = () => {
-    document.getElementById('reg-assigned-id').value = suggestNextStaffId(branchLabel);
+    document.getElementById('reg-assigned-id').value = suggestNextStaffId(branchHint);
     showToast(`Шинэ ID санал: ${document.getElementById('reg-assigned-id').value}`, 'info', 1500);
   };
   document.getElementById('reg-notes').value = member.notes || '';
@@ -2838,7 +2842,7 @@ function openPendingRegistration(member) {
     }
     const payload = {
       action: 'approve_registration',
-      request_id: member.id || member.requested_at,
+      request_id: member.request_id || member.id || member.requested_at,
       assigned_id: assignedId,
       salary,
       level,
@@ -2880,7 +2884,7 @@ function openPendingRegistration(member) {
     if (!(await showConfirm(`${member.name}-ийн хүсэлтийг татгалзах уу?`, { okText: 'Татгалзах', danger: true }))) return;
     const payload = {
       action: 'reject_registration',
-      request_id: member.id || member.requested_at,
+      request_id: member.request_id || member.id || member.requested_at,
       status: 'татгалзсан',
       rejected_by: state.me,
       rejected_at: new Date().toISOString(),

@@ -2570,11 +2570,12 @@ function openMultiAssigneePicker(currentAssignees = []) {
 
   function renderList() {
     const q = (searchEl.value || '').toLowerCase().trim();
-    const visible = TEAM.filter(m =>
-      m.id !== 'CEO' || true  // CEO багтаана
-    ).filter(m =>
-      !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q)
-    );
+    // "Гарсан" ажилтнуудыг multi-picker дотроос шүүж хасна
+    const visible = TEAM
+      .filter(m => (m.status || 'идэвхтэй') !== 'гарсан')
+      .filter(m =>
+        !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q)
+      );
     listEl.innerHTML = visible.map(m => `
       <label class="mp-row">
         <input type="checkbox" data-mp-id="${escapeHtml(m.id)}" ${selected.has(m.id) ? 'checked' : ''} style="width:18px;height:18px;" />
@@ -2601,8 +2602,11 @@ function openMultiAssigneePicker(currentAssignees = []) {
   searchEl.value = '';
   searchEl.oninput = renderList;
   allEl.onchange = () => {
-    if (allEl.checked) TEAM.forEach(m => selected.add(m.id));
-    else selected.clear();
+    if (allEl.checked) {
+      TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => selected.add(m.id));
+    } else {
+      selected.clear();
+    }
     renderList();
   };
   renderList();
@@ -3896,9 +3900,9 @@ function fillProjectSelect(id, value, branchOverride) {
   fillSelect(id, options, value != null ? value : '');
 }
 function fillAssigneeSelect(id, value, branchOverride) {
-  // Бүх ажилтан — салбараар хязгаарлахгүй. Хэн ч хэнд ч даалгавар өгч болно.
-  // (Жишээ нь Алтансүх Анужинд, Анужин Алтансүхэд даалгавар өгөх).
-  fillSelect(id, TEAM.map(m => ({ value: m.id, label: m.name + ' (' + m.role + ')' })), value);
+  // Бүх ажилтан — салбараар хязгаарлахгүй. "Гарсан" статустайг шүүж хасна.
+  const active = TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+  fillSelect(id, active.map(m => ({ value: m.id, label: m.name + ' (' + m.role + ')' })), value);
 }
 function fillBranchSelectInModal(id, value) {
   // `<select><option>` нь HTML рендер хийдэггүй тул SVG icon-ыг хасч зөвхөн текст үлдээнэ.
@@ -5090,6 +5094,10 @@ async function handlePinLogin(userId, pin) {
   const tryAuth = () => {
     const member = TEAM.find(m => String(m.id).toUpperCase() === uid);
     if (!member) return { ok: false, reason: 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.' };
+    // "Гарсан" статустай ажилтан нэвтэрч чадахгүй
+    if ((member.status || 'идэвхтэй') === 'гарсан') {
+      return { ok: false, reason: 'Та ажлаас гарсан гэж тэмдэглэгдсэн. CEO-той холбогдоорой.' };
+    }
     if (!member.pin) return { ok: false, reason: 'no_pin_in_sheet' };
     if (String(member.pin) !== String(pin)) return { ok: false, reason: 'wrong_pin' };
     return { ok: true, member };

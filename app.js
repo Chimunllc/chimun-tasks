@@ -1967,10 +1967,12 @@ function renderTaskList() {
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
     document.getElementById('dash-permissions')?.addEventListener('click', openPermissionsModal);
     document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
-    // CEO бус хэрэглэгчид permissions + email digest нуух
+    document.getElementById('dash-staff')?.addEventListener('click', openStaffManagement);
+    // CEO бус хэрэглэгчид permissions/staff/email digest нуух
     if (!state.isCEO) {
       document.getElementById('dash-permissions')?.style.setProperty('display', 'none');
       document.getElementById('dash-email-digest')?.style.setProperty('display', 'none');
+      document.getElementById('dash-staff')?.style.setProperty('display', 'none');
     }
     return;
   } else if (state.view === 'calendar') {
@@ -2099,6 +2101,10 @@ function renderDashboard() {
         <button class="btn" id="dash-email-digest">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           Долоо хоногийн тойм имэйлдэх
+        </button>
+        <button class="btn" id="dash-staff">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Ажилтан удирдах
         </button>
         <button class="btn" id="dash-permissions">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
@@ -2671,6 +2677,111 @@ window.addEventListener('offline', () => {
 setTimeout(updateOnlineStatus, 500);
 // Pending writes-ийг тогтмол шалгах (хэрэв background-д ямар нэг солигдвол)
 setInterval(updateOnlineStatus, 15000);
+
+/* ─── Staff management (CEO only) ─────────────────────────
+   CEO ажилтны статусыг өөрчилнө (идэвхтэй ↔ гарсан).
+   "Гарсан" гэж тэмдэглэсэн ажилтан:
+     - Apps нэвтрэх боломжгүй (loadTeamFromAPI 'гарсан' статусыг шүүж хасдаг)
+     - Master Sheet-д тус "Төлөв" нүдэнд "гарсан" гэж бичигдэнэ
+   Webhook URL нь n8n-ийн /staff-update endpoint руу POST хийнэ. */
+function openStaffManagement() {
+  if (!state.isCEO) { showToast('Зөвхөн CEO эрхтэй', 'warn'); return; }
+  document.getElementById('staff-modal').classList.add('open');
+  renderStaffList();
+}
+
+function renderStaffList() {
+  const listEl = document.getElementById('staff-list');
+  const q = (document.getElementById('staff-search')?.value || '').toLowerCase().trim();
+  const all = [...TEAM].sort((a, b) => {
+    // Active first, then by level
+    const aActive = (a.status || 'идэвхтэй') === 'идэвхтэй';
+    const bActive = (b.status || 'идэвхтэй') === 'идэвхтэй';
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    return (b.level || 0) - (a.level || 0);
+  });
+  const filtered = all.filter(m =>
+    !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q)
+  );
+  if (!filtered.length) {
+    listEl.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;">Ажилтан олдсонгүй</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.map(m => {
+    const status = m.status || 'идэвхтэй';
+    const isActive = status === 'идэвхтэй';
+    const isSelf = m.id === state.me;
+    return `
+      <div class="staff-row ${isActive ? '' : 'staff-left'}" data-staff-id="${escapeHtml(m.id)}">
+        <span class="staff-avatar">${escapeHtml(memberInitials(m.id))}</span>
+        <div class="staff-info">
+          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
+          <div class="staff-role">${escapeHtml(m.role || '')} · ${escapeHtml(m.id)}</div>
+        </div>
+        <span class="staff-status status-${isActive ? 'active' : 'left'}">
+          ${isActive ? 'Идэвхтэй' : 'Гарсан'}
+        </span>
+        ${isSelf ? '' : `
+          <button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-id="${escapeHtml(m.id)}">
+            ${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}
+          </button>
+        `}
+      </div>
+    `;
+  }).join('');
+  listEl.querySelectorAll('.staff-action').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.staffId;
+      const act = btn.dataset.staffAct;
+      const member = TEAM.find(m => m.id === id);
+      if (!member) return;
+      const newStatus = act === 'leave' ? 'гарсан' : 'идэвхтэй';
+      const verb = act === 'leave' ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх';
+      const confirmMsg = act === 'leave'
+        ? `${member.name}-ийг "Гарсан" гэж тэмдэглэх үү? Тэр аппд нэвтэрч чадахгүй болно.`
+        : `${member.name}-ийг буцааж "Идэвхтэй" болгох уу?`;
+      if (!(await showConfirm(confirmMsg, { okText: verb, danger: act === 'leave' }))) return;
+
+      // 1. Локал TEAM шинэчлэх
+      member.status = newStatus;
+      localStorage.setItem('teamCache', JSON.stringify(TEAM));
+      // 2. Master Sheet руу webhook илгээх (n8n /staff-update endpoint)
+      const webhook = state.config.staffUrl;
+      if (webhook) {
+        try {
+          // Илгээх payload: { action: 'update_status', id, status, requested_by }
+          const r = await fetch(webhook.replace(/\/[^\/]+$/, '/staff-update'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'update_status',
+              id: member.id,
+              status: newStatus,
+              requested_by: state.me,
+              timestamp: new Date().toISOString(),
+            }),
+          });
+          if (r.ok) {
+            showToast(`${member.name} — ${newStatus} болсон. Master Sheet-д хадгалагдсан.`, 'success', 3000);
+          } else {
+            showToast(`${member.name} — локалд хадгалагдсан. Master Sheet-д sync хийгдээгүй.`, 'warn', 4000);
+          }
+        } catch (e) {
+          showToast(`${member.name} — локалд хадгалагдсан. Sheet sync алдаатай.`, 'warn', 4000);
+        }
+      } else {
+        showToast(`${member.name} — локалд хадгалагдсан. Sheet тохируулагдаагүй.`, 'info', 3000);
+      }
+      renderStaffList();
+    });
+  });
+}
+
+function setupStaffManagement() {
+  document.getElementById('staff-close')?.addEventListener('click', () =>
+    document.getElementById('staff-modal').classList.remove('open'));
+  document.getElementById('staff-search')?.addEventListener('input', renderStaffList);
+}
 
 /* ─── Permissions UI (CEO only) ─── */
 function openPermissionsModal() {
@@ -4403,6 +4514,8 @@ function initEvents() {
   setupProfileModal();
   // Permissions modal (CEO only)
   setupPermissionsModal();
+  // Staff management (CEO only)
+  setupStaffManagement();
 
   // Notification bell — toggle drawer
   const notifBtn = document.getElementById('notif-btn');

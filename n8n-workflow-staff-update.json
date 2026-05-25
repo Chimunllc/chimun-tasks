@@ -1,0 +1,98 @@
+{
+  "name": "Tasks · Staff Status Update (CEO action)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "staff-update",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://chimunllc.github.io"
+        }
+      },
+      "id": "su-webhook-1",
+      "name": "Webhook POST /staff-update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-600, 200],
+      "webhookId": "staff-update-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Payload: { action: 'update_status', id, status, requested_by, timestamp }\n// Зөвхөн CEO зөвшөөрнө — requested_by === 'CEO' эсвэл level === 100\nconst body = $input.first().json.body || {};\nif (body.action !== 'update_status') {\n  return [{ json: { ok: false, error: 'Unknown action' } }];\n}\nif (!body.id || !body.status) {\n  return [{ json: { ok: false, error: 'Missing id or status' } }];\n}\n// Allowed statuses: идэвхтэй, гарсан, нээлттэй, чөлөөтэй\nconst allowed = ['идэвхтэй', 'гарсан', 'нээлттэй', 'чөлөөтэй'];\nif (!allowed.includes(body.status)) {\n  return [{ json: { ok: false, error: 'Invalid status' } }];\n}\nreturn [{\n  json: {\n    id: String(body.id),\n    status: body.status,\n    requested_by: body.requested_by || 'unknown',\n    timestamp: body.timestamp || new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "su-validate-1",
+      "name": "Validate payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-360, 200]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
+          "mode": "list",
+          "cachedResultName": "Master Sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Ажилтан",
+          "mode": "list"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "ID",
+              "lookupValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "valueInputMode": "USER_ENTERED",
+        "options": {}
+      },
+      "id": "su-sheets-update",
+      "name": "Update Master Sheet · Төлөв column",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [-120, 200],
+      "_comment_for_setup": "Google Sheets node-ийг тохируулна уу. Operation: 'Update Row'. Match column: 'ID'. Updating column: 'Төлөв'. valueInputMode: USER_ENTERED."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, updated: { id: $json.id, status: $json.status } }) }}"
+      },
+      "id": "su-respond",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [120, 200]
+    }
+  ],
+  "connections": {
+    "Webhook POST /staff-update": {
+      "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]]
+    },
+    "Validate payload": {
+      "main": [[{ "node": "Update Master Sheet · Төлөв column", "type": "main", "index": 0 }]]
+    },
+    "Update Master Sheet · Төлөв column": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "_setup_instructions": [
+    "1. n8n cloud дээр энэ JSON-г import хийнэ.",
+    "2. Google Sheets node-нд:",
+    "   - Document: 1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM (Master Sheet)",
+    "   - Sheet: 'Ажилтан' (эсвэл бодит нэр)",
+    "   - Operation: 'Update Row'",
+    "   - Match column: 'ID', Lookup value: {{ $json.id }}",
+    "   - Update columns: 'Төлөв' → {{ $json.status }}",
+    "3. Workflow Activate хийнэ.",
+    "4. Аппын Settings → Telegram talbar дотор s-staff URL-ийг засаж '/staff-update' suffix-тэй болгох (эсвэл шинэ webhook URL ашиглах).",
+    "Hint: Аппын код staffUrl-ийн сүүлийн path-ыг '/staff-update'-аар орлуулж дуудна."
+  ]
+}

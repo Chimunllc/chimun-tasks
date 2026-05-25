@@ -4817,3 +4817,102 @@ body {
 @media (max-width: 720px) {
   .project-item .proj-del { opacity: 1; }
 }
+
+/* ═══ Staff management list ═══ */
+.staff-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--panel-hover);
+  border-radius: 8px;
+  transition: background 100ms ease;
+}
+.staff-row.staff-left {
+  opacity: 0.65;
+}
+.staff-row .staff-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.staff-row.staff-left .staff-avatar {
+  background: var(--muted-soft);
+  filter: grayscale(.6);
+}
+.staff-info {
+  flex: 1;
+  min-width: 0;
+}
+.staff-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.staff-you {
+  font-size: 11px;
+  color: var(--accent-blue);
+  font-weight: 500;
+}
+.staff-role {
+  font-size: 12px;
+  color: var(--muted);
+}
+.staff-status {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.status-active {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent-green);
+}
+.status-left {
+  background: rgba(239, 68, 68, 0.10);
+  color: var(--accent-red);
+}
+.staff-action {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.staff-action.leave {
+  background: rgba(239, 68, 68, 0.10);
+  color: var(--accent-red);
+}
+.staff-action.leave:hover {
+  background: var(--accent-red);
+  color: #fff;
+}
+.staff-action.restore {
+  background: rgba(16, 185, 129, 0.10);
+  color: var(--accent-green);
+}
+.staff-action.restore:hover {
+  background: var(--accent-green);
+  color: #fff;
+}
+@media (max-width: 720px) {
+  .staff-row {
+    flex-wrap: wrap;
+  }
+  .staff-action {
+    width: 100%;
+    margin-top: 4px;
+    padding: 10px;
+    min-height: 40px;
+  }
+}

@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Payload: { action: 'update_status', id, status, requested_by, timestamp }\nconst body = $input.first().json.body || {};\nif (body.action !== 'update_status') {\n  return [{ json: { ok: false, error: 'Unknown action' } }];\n}\nif (!body.id || !body.status) {\n  return [{ json: { ok: false, error: 'Missing id or status' } }];\n}\n// Allowed statuses: идэвхтэй, гарсан, нээлттэй, чөлөөтэй\nconst allowed = ['идэвхтэй', 'гарсан', 'нээлттэй', 'чөлөөтэй'];\nif (!allowed.includes(body.status)) {\n  return [{ json: { ok: false, error: 'Invalid status' } }];\n}\n// Google Sheets node-нд шилжихэд тохирох format\nreturn [{\n  json: {\n    'ID': String(body.id),\n    'Төлөв': body.status,\n    requested_by: body.requested_by || 'unknown',\n    timestamp: body.timestamp || new Date().toISOString(),\n  },\n}];"
+        "jsCode": "// Payload: { action: 'update_status', id, status, left_date, joined_date, requested_by, timestamp }\nconst body = $input.first().json.body || {};\nif (body.action !== 'update_status') {\n  return [{ json: { ok: false, error: 'Unknown action' } }];\n}\nif (!body.id || !body.status) {\n  return [{ json: { ok: false, error: 'Missing id or status' } }];\n}\nconst allowed = ['идэвхтэй', 'гарсан', 'нээлттэй', 'чөлөөтэй'];\nif (!allowed.includes(body.status)) {\n  return [{ json: { ok: false, error: 'Invalid status' } }];\n}\nreturn [{\n  json: {\n    'ID': String(body.id),\n    'Төлөв': body.status,\n    'Гарсан огноо': body.left_date || '',\n    'Орсон огноо': body.joined_date || '',\n    requested_by: body.requested_by || 'unknown',\n    timestamp: body.timestamp || new Date().toISOString(),\n  },\n}];"
       },
       "id": "su-validate-1",
       "name": "Validate payload",
@@ -44,18 +44,22 @@
           "mappingMode": "defineBelow",
           "value": {
             "ID": "={{ $json.ID }}",
-            "Төлөв": "={{ $json['Төлөв'] }}"
+            "Төлөв": "={{ $json['Төлөв'] }}",
+            "Гарсан огноо": "={{ $json['Гарсан огноо'] }}",
+            "Орсон огноо": "={{ $json['Орсон огноо'] }}"
           },
           "matchingColumns": ["ID"],
           "schema": [
             { "id": "ID", "displayName": "ID", "required": true, "type": "string", "canBeUsedToMatch": true },
-            { "id": "Төлөв", "displayName": "Төлөв", "required": false, "type": "string", "canBeUsedToMatch": false }
+            { "id": "Төлөв", "displayName": "Төлөв", "required": false, "type": "string", "canBeUsedToMatch": false },
+            { "id": "Гарсан огноо", "displayName": "Гарсан огноо", "required": false, "type": "string", "canBeUsedToMatch": false },
+            { "id": "Орсон огноо", "displayName": "Орсон огноо", "required": false, "type": "string", "canBeUsedToMatch": false }
           ]
         },
         "options": {}
       },
       "id": "su-sheets-update",
-      "name": "Update Master Sheet · Төлөв column",
+      "name": "Update Master Sheet · Төлөв + Огноо",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
       "position": [-120, 200]
@@ -63,7 +67,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, updated: { id: $json.ID, status: $json['Төлөв'] } }) }}"
+        "responseBody": "={{ JSON.stringify({ ok: true, updated: { id: $json.ID, status: $json['Төлөв'], left_date: $json['Гарсан огноо'], joined_date: $json['Орсон огноо'] } }) }}"
       },
       "id": "su-respond",
       "name": "Respond OK",
@@ -77,39 +81,35 @@
       "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]]
     },
     "Validate payload": {
-      "main": [[{ "node": "Update Master Sheet · Төлөв column", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Update Master Sheet · Төлөв + Огноо", "type": "main", "index": 0 }]]
     },
-    "Update Master Sheet · Төлөв column": {
+    "Update Master Sheet · Төлөв + Огноо": {
       "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
     }
   },
   "settings": { "executionOrder": "v1" },
   "active": false,
   "_setup_instructions": [
-    "1. n8n cloud дээр энэ JSON-г import хийнэ.",
+    "1. Шинэ JSON-г re-import хийнэ.",
     "",
-    "2. 'Update Master Sheet · Төлөв column' node-г нээж дараах зүйлсийг шалгана:",
-    "   - Document: Master Sheet (1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM)",
-    "   - Sheet: Tab нь GID 451955481 (ажилтны хуудас)",
-    "   - Operation: 'Update Row'",
-    "   - 'Mapping Column Mode' нь 'Map Each Column Manually'",
-    "   - 'Column to Match On' нь 'ID'",
-    "   - 'Values to Send' хэсэгт:",
-    "        ID    = {{ $json.ID }}",
-    "        Төлөв = {{ $json['Төлөв'] }}",
+    "2. Master Sheet-д дараах баганууд байх ёстой:",
+    "   - ID",
+    "   - Төлөв",
+    "   - Гарсан огноо   (шинээр нэмэх — статус 'гарсан' болгоход тэр өдрийн огноо бичигдэнэ)",
+    "   - Орсон огноо    (шинээр нэмэх — статус 'идэвхтэй' болгоход)",
     "",
-    "3. Хэрэв sheet schema autodetect хийгдэхгүй бол:",
-    "   - Refresh column list (3 цэг → Refresh)",
-    "   - Эсвэл 'columns.schema' талбарт бодит баганы нэрсээ оруулах",
+    "3. 'Update Master Sheet · Төлөв + Огноо' node-г нээж:",
+    "   - Operation: Update Row",
+    "   - Column to Match On: ID",
+    "   - Schema-г шинэчлэх (3 цэг → Refresh) — энэ нь Sheet-ийн баганыг автомат уншина",
     "",
-    "4. Google Sheets credential зөв сонгогдсон эсэхийг шалгах.",
+    "4. Хоосон утга илгээх логик:",
+    "   - 'гарсан' болгоход: Гарсан огноо = өнөөдөр, Орсон огноо = '' (хоосон → утга цэвэрлэхгүй харин шинэчлэгдэнэ)",
+    "   - 'идэвхтэй' болгоход: Орсон огноо = өнөөдөр, Гарсан огноо = ''",
     "",
-    "5. Workflow Activate хийх.",
+    "   ⚠ Хэрэв хоосон утга бичигдэхийг хүсэхгүй бол Code node дотроос validate-payload хэсэгт",
+    "      огноо хоосон бол тус талбарыг payload-ээс delete хийх боломжтой.",
     "",
-    "6. Аппын Settings-д staffUrl байгаа эсэхийг шалгаад тестлэх:",
-    "   - Dashboard → Ажилтан удирдах → ажилтан сонгож 'Гарсан' дарах",
-    "   - Google Sheet-д тус мөрийн 'Төлөв' багана 'гарсан' гэж бичигдэх ёстой",
-    "",
-    "Анхааруулга: 'Төлөв' гэдэг баганын нэр Sheet-д таарч байх ёстой. Хэрэв 'Status' эсвэл өөр нэртэй бол JSON-ийн 'Төлөв' талбаруудыг тус нэрээр сольж бичих."
+    "5. Activate → апп руу буцаж тестлэх."
   ]
 }

@@ -2749,7 +2749,16 @@ function renderStaffList() {
       const webhook = state.config.staffUrl;
       if (webhook) {
         try {
-          // Илгээх payload: { action: 'update_status', id, status, requested_by }
+          // Огноо талбарууд — статусаас хамаарч 'Гарсан огноо' эсвэл 'Орсон огноо' бичигдэнэ.
+          // Sheet дотор хоёр баганатай байх ёстой: 'Гарсан огноо', 'Орсон огноо'.
+          const today = todayStr(); // YYYY-MM-DD local format
+          const leftDate = newStatus === 'гарсан' ? today : '';
+          const joinedDate = newStatus === 'идэвхтэй' ? today : '';
+          // Locally also persist
+          if (newStatus === 'гарсан') member.left_at = today;
+          if (newStatus === 'идэвхтэй') member.joined_at = today;
+          localStorage.setItem('teamCache', JSON.stringify(TEAM));
+
           const r = await fetch(webhook.replace(/\/[^\/]+$/, '/staff-update'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2757,6 +2766,8 @@ function renderStaffList() {
               action: 'update_status',
               id: member.id,
               status: newStatus,
+              left_date: leftDate,      // 'Гарсан огноо' багана
+              joined_date: joinedDate,  // 'Орсон огноо' багана
               requested_by: state.me,
               timestamp: new Date().toISOString(),
             }),

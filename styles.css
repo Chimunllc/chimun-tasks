@@ -4933,3 +4933,12 @@ body {
 .staff-action.approve:hover {
   background: #d97706;
 }
+
+/* Dashboard pending registration card */
+.dash-kpi-clickable {
+  transition: transform 100ms ease, box-shadow 120ms ease;
+}
+.dash-kpi-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.18);
+}

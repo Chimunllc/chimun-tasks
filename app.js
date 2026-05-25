@@ -653,7 +653,10 @@ function renderNotifications() {
       const n = state.notifications.find(x => x.id === notifId);
       if (n) { n.read = true; saveNotifications(); }
       closeNotifDrawer();
-      if (taskId) {
+      if (taskId === 'staff-management') {
+        // Шинэ бүртгэлийн хүсэлт → Staff Management modal
+        openStaffManagement();
+      } else if (taskId) {
         // Finance request эсэхийг шалгая (state.financeRequests дотроос)
         const isFinance = state.financeRequests.some(r => r.id === taskId);
         if (isFinance) openFinanceModal(taskId);
@@ -743,6 +746,8 @@ async function loadTeamFromAPI() {
     localStorage.setItem('teamCache', JSON.stringify(fresh));
     localStorage.setItem('teamCacheAt', String(Date.now()));
     console.log(`Staff sync OK: ${fresh.length} members from Master Sheet`);
+    // Шинэ pending бүртгэлийн хүсэлт CEO-д мэдэгдэх
+    notifyCEOOfPendingRegistrations();
     return true;
   } catch(e) {
     console.warn('Staff sync failed, using cached/hardcoded TEAM:', e);
@@ -1968,6 +1973,7 @@ function renderTaskList() {
     document.getElementById('dash-permissions')?.addEventListener('click', openPermissionsModal);
     document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
     document.getElementById('dash-staff')?.addEventListener('click', openStaffManagement);
+    document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     // CEO бус хэрэглэгчид permissions/staff/email digest нуух
     if (!state.isCEO) {
       document.getElementById('dash-permissions')?.style.setProperty('display', 'none');
@@ -2056,6 +2062,8 @@ function renderDashboard() {
   // 4) Хоцорсон
   const overdueCount = tasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
   const todayCount = tasks.filter(t => t.due === today && t.status !== 'done').length;
+  // 5) Хүлээж буй ажилтны бүртгэл (CEO action хэрэгтэй)
+  const pendingRegCount = TEAM.filter(m => (m.status || '') === 'хүлээж буй').length;
 
   // SVG donut for status
   const donut = (() => {
@@ -2133,6 +2141,12 @@ function renderDashboard() {
           <div class="dash-kpi-value ok">${byStatus.open + byStatus.in_progress}</div>
           <div class="dash-kpi-sub">ажилтнуудад</div>
         </div>
+        ${pendingRegCount > 0 ? `
+        <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">
+          <div class="dash-kpi-label" style="color:var(--accent-amber);">⏳ Хүлээж буй бүртгэлийн хүсэлт</div>
+          <div class="dash-kpi-value warn" style="font-size:24px;">${pendingRegCount} ажилтан хянахыг хүлээж байна</div>
+          <div class="dash-kpi-sub">Энд дарж хянах →</div>
+        </div>` : ''}
 
         <!-- Status donut -->
         <div class="dash-card dash-chart">
@@ -2681,6 +2695,55 @@ window.addEventListener('offline', () => {
 setTimeout(updateOnlineStatus, 500);
 // Pending writes-ийг тогтмол шалгах (хэрэв background-д ямар нэг солигдвол)
 setInterval(updateOnlineStatus, 15000);
+
+/* ─── Шинэ бүртгэлийн хүсэлт CEO-д мэдэгдэх ─────────────
+   loadTeamFromAPI дуудах болгонд "хүлээж буй" статустайг шалгаж,
+   өмнө мэдэгдээгүй хүн байвал toast + push + notification гаргана.
+   localStorage('seenPendingIds_v1') нь өмнө үзсэн хүсэлтийн ID-уудыг хадгална
+   тул нэг хүсэлт хэдэн ч удаа давтан мэдэгдэхгүй. */
+function notifyCEOOfPendingRegistrations() {
+  if (!state.isCEO) return;
+  const pending = TEAM.filter(m => (m.status || '') === 'хүлээж буй');
+  if (!pending.length) return;
+  const seenRaw = localStorage.getItem('seenPendingIds_v1') || '[]';
+  let seen;
+  try { seen = JSON.parse(seenRaw); if (!Array.isArray(seen)) seen = []; }
+  catch(e) { seen = []; }
+  const newOnes = pending.filter(m => !seen.includes(m.id));
+  if (!newOnes.length) return;
+  // In-app notification
+  if (!Array.isArray(state.notifications)) state.notifications = [];
+  newOnes.forEach(m => {
+    state.notifications.unshift({
+      id: 'pending-reg-' + m.id,
+      type: 'assigned',
+      taskId: 'staff-management',
+      msg: `Шинэ ажилтан: ${m.name} — хянах хүсэлт`,
+      ts: Date.now(),
+      read: false,
+    });
+  });
+  saveNotifications();
+  renderNotifications();
+  // Toast
+  showToast(
+    newOnes.length === 1
+      ? `🆕 Шинэ ажилтны хүсэлт: ${newOnes[0].name}`
+      : `🆕 ${newOnes.length} шинэ ажилтны хүсэлт ирлээ`,
+    'info', 5000
+  );
+  // Browser push notification
+  if (window._chimunNotify) {
+    newOnes.forEach(m => {
+      window._chimunNotify('Шинэ ажилтны хүсэлт', `${m.name} (${m.role}) бүртгүүлэх хүсэлт илгээсэн`, {
+        tag: 'pending-' + m.id,
+      });
+    });
+  }
+  // "Үзсэн" гэж тэмдэглэх (Хянах modal-аар хариу өгсний дараа л Sheet-ээс хасагдана)
+  const newSeen = [...new Set([...seen, ...newOnes.map(m => m.id)])];
+  localStorage.setItem('seenPendingIds_v1', JSON.stringify(newSeen));
+}
 
 /* ─── Pending registrations (CEO review) ───────────────────
    Шинэ ажилтан бүртгүүлэхэд status='хүлээж буй' гэж тэмдэглэгдэнэ.

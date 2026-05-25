@@ -70,6 +70,8 @@ const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-regi
 // Web Push — Sheet өөрчлөгдөх бүрд n8n /push-broadcast bütee push-аар client-уудад мэдэгдэнэ.
 // Subscribe хийсэн endpoint-ийг хадгалах URL.
 const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-subscribe';
+// Push broadcast — даалгавар үүсгэх/санхүүгийн хүсэлтийн дараа хариуцагч руу нэн даруй push илгээнэ.
+const DEFAULT_PUSH_BROADCAST_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-broadcast';
 // VAPID public key — push шифрлэлтийн нийтийн түлхүүр (private түлхүүр n8n credentials-д үлдэнэ).
 const VAPID_PUBLIC_KEY = 'BEWEze0XzdKChNxs6DrsnyivUfBN7xgxL6T219i6W-Gt808fzAadxW3REWnNjQb2v3GVSlnpF4oDM_F0uF6SRfY';
 
@@ -138,6 +140,7 @@ const state = {
       uploadUrl:   localStorage.getItem('uploadUrl')   || DEFAULT_UPLOAD_URL   || '',
       registerUrl: localStorage.getItem('registerUrl') || DEFAULT_REGISTER_URL || '',
       pushSubscribeUrl: localStorage.getItem('pushSubscribeUrl') || DEFAULT_PUSH_SUBSCRIBE_URL || '',
+      pushBroadcastUrl: localStorage.getItem('pushBroadcastUrl') || DEFAULT_PUSH_BROADCAST_URL || '',
     };
   })(),
   editingId: null,
@@ -1191,6 +1194,20 @@ async function saveTask(task, deleted=false) {
   const ok = await postWrite(state.config.apiUrl, { action: deleted ? 'delete' : 'upsert', task: wire });
   if (ok) { flushPendingWrites(); }            // амжилттай — хуримтлагдсан backlog-оо бас илгээх
   else { enqueueWrite({ kind: 'task', action: deleted ? 'delete' : 'upsert', payload: task, ts: Date.now() }); }
+}
+
+/* Push broadcast — хариуцагч руу нэн даруй мэдэгдэл илгээнэ. Fire-and-forget;
+   амжилтгүй бол ердөө сайлент үлдэнэ (Sheet sync дараа нь шинэчлэгдэх үед бас давтахгүй). */
+function pushBroadcast(email, payload) {
+  const url = state.config.pushBroadcastUrl;
+  if (!url || !email) return;
+  if (email === state.me) return; // өөртөө илгээхгүй
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, ...payload }),
+    keepalive: true,
+  }).catch(() => {});
 }
 function uid() { return 't_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 
@@ -4318,6 +4335,7 @@ function saveTaskFromModal() {
       logTaskActivity(t, 'created', { title: t.title });
       state.tasks.unshift(t);
       saveTask(t);
+      pushBroadcast(asgn, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
     });
     state._multiAssignees = null;
     // Хэрэглэгчийг тус тусын task-уудыг харах "Илгээсэн ажил" руу шилжүүлнэ
@@ -4351,6 +4369,7 @@ function saveTaskFromModal() {
     logTaskActivity(t, 'created', { title: t.title });
     state.tasks.unshift(t);
     saveTask(t);
+    if (t.assignee) pushBroadcast(t.assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
   }
   state._multiAssignees = null;
   closeTaskModal();

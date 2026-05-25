@@ -61,10 +61,10 @@
     <p class="login-sub">ID болон PIN кодоо оруулж нэвтэрнэ үү</p>
 
     <form id="pin-login-form" autocomplete="off">
-      <label class="login-label">Ажилтны ID</label>
-      <input id="login-id-input" type="text" required autocomplete="off"
-             autocapitalize="characters" spellcheck="false"
-             placeholder="Жишээ: M01" />
+      <label class="login-label">Утасны дугаар <span style="font-size:11px;color:var(--muted);font-weight:400;">(эсвэл ажилтны ID)</span></label>
+      <input id="login-id-input" type="tel" inputmode="numeric" required autocomplete="off"
+             spellcheck="false"
+             placeholder="99112233" />
 
       <label class="login-label">PIN код (4 орон)</label>
       <input id="login-pin-input" type="tel" inputmode="numeric" pattern="[0-9]{4}"

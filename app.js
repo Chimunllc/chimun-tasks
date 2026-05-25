@@ -5245,12 +5245,26 @@ async function handleRegister() {
 }
 
 async function handlePinLogin(userId, pin) {
-  if (!userId) return showLoginError('Ажилтны ID-гаа оруулна уу.');
+  if (!userId) return showLoginError('Утасны дугаар эсвэл ID-гаа оруулна уу.');
   if (!/^\d{4}$/.test(pin)) return showLoginError('PIN нь 4 оронтой тоо байх ёстой.');
 
-  const uid = String(userId).trim().toUpperCase();
+  const raw = String(userId).trim();
+  const uid = raw.toUpperCase();
+  const phoneNorm = raw.replace(/\D/g, '');
+
   const tryAuth = () => {
-    const member = TEAM.find(m => String(m.id).toUpperCase() === uid);
+    // Эхлээд утсаар хайх (8+ оронтой бол утас гэж үзнэ)
+    let member = null;
+    if (phoneNorm.length >= 8) {
+      member = TEAM.find(m => {
+        const p = String(m.phone || '').replace(/\D/g, '');
+        return p && p === phoneNorm;
+      });
+    }
+    // Олдоогүй бол ID-аар хайх
+    if (!member) {
+      member = TEAM.find(m => String(m.id).toUpperCase() === uid);
+    }
     if (!member) return { ok: false, reason: 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.' };
     // "Гарсан" статустай ажилтан нэвтэрч чадахгүй
     if ((member.status || 'идэвхтэй') === 'гарсан') {

@@ -1114,7 +1114,7 @@ async function flushPendingWrites() {
   for (const w of queue) {
     const url = w.kind === 'finance' ? state.config.financeUrl : state.config.apiUrl;
     const body = w.kind === 'finance'
-      ? { action: w.action, request: w.payload }
+      ? { action: w.action, request: requestToWire(w.payload) }
       : { action: w.action, task: taskToWire(w.payload) };
     const ok = await postWrite(url, body);
     if (!ok) remaining.push(w);
@@ -1435,7 +1435,9 @@ async function saveFinanceRequest(r, deleted = false) {
   // localStorage кэш
   try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
   if (!state.config.financeUrl) return;
-  const ok = await postWrite(state.config.financeUrl, { action: deleted ? 'delete' : 'upsert', request: r });
+  // Sheet рүү явуулахын өмнө: ID → нэр, код → монгол
+  const wire = requestToWire(r);
+  const ok = await postWrite(state.config.financeUrl, { action: deleted ? 'delete' : 'upsert', request: wire });
   if (ok) { flushPendingWrites(); }
   else { enqueueWrite({ kind: 'finance', action: deleted ? 'delete' : 'upsert', payload: r, ts: Date.now() }); }
 }
@@ -1464,8 +1466,43 @@ async function loadFinanceRequests() {
   } catch(e) { state.financeRequests = []; }
 }
 
+/* Финансын хүсэлт: ID ↔ нэр + код ↔ монгол текст хөрвүүлэх (Sheet нь хүн уншихад зориулсан) */
+const _FIN_STATUS_E2M = { 'open':'Идэвхтэй', 'done':'Дууссан', 'deleted':'Устгасан' };
+const _FIN_STATUS_M2E = _flip(_FIN_STATUS_E2M);
+const _FIN_DEC_E2M    = { 'pending':'Хүлээгдэж буй', 'approved':'Зөвшөөрсөн', 'rejected':'Татгалзсан', 'deferred':'Хойшлуулсан' };
+const _FIN_DEC_M2E    = _flip(_FIN_DEC_E2M);
+
+function requestToWire(r) {
+  if (!r || typeof r !== 'object') return r;
+  const out = { ...r };
+  // ID → нэр
+  if (out.requested_by) out.requested_by = idToName(out.requested_by);
+  if (out.executor)     out.executor     = idToName(out.executor);
+  if (out.executed_by)  out.executed_by  = idToName(out.executed_by);
+  if (out.decision_by)  out.decision_by  = idToName(out.decision_by);
+  // Код → монгол
+  out.status   = _xlate(out.status, _FIN_STATUS_E2M);
+  out.decision = _xlate(out.decision, _FIN_DEC_E2M);
+  return out;
+}
+function requestFromWire(r) {
+  if (!r || typeof r !== 'object') return r;
+  const out = { ...r };
+  // нэр → ID
+  if (out.requested_by) out.requested_by = nameToId(out.requested_by);
+  if (out.executor)     out.executor     = nameToId(out.executor);
+  if (out.executed_by)  out.executed_by  = nameToId(out.executed_by);
+  if (out.decision_by)  out.decision_by  = nameToId(out.decision_by);
+  // монгол → код
+  out.status   = _xlate(out.status, _FIN_STATUS_M2E);
+  out.decision = _xlate(out.decision, _FIN_DEC_M2E);
+  return out;
+}
+
 function normalizeFinance(r) {
   if (!r || typeof r !== 'object') return r;
+  // Sheet-ээс ирсэн бол нэр/монгол текстийг код руу буцаах
+  r = requestFromWire(r);
   const stringFields = ['id','requested_by','beneficiary','purpose','justification','due_date',
     'status','decision','decision_at','decision_by','decision_reason',
     'executed_at','executed_by','executor','purchase_proof_url','payment_proof_url','purchase_receipt_url',
@@ -1473,7 +1510,7 @@ function normalizeFinance(r) {
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
-  // Pad numeric IDs
+  // Pad numeric IDs (зөвхөн хуучин numeric ID-уудад зориулсан backward-compat)
   if (/^\d{1,2}$/.test(out.requested_by)) out.requested_by = out.requested_by.padStart(3,'0');
   if (/^\d{1,2}$/.test(out.decision_by))  out.decision_by  = out.decision_by.padStart(3,'0');
   if (/^\d{1,2}$/.test(out.executed_by))  out.executed_by  = out.executed_by.padStart(3,'0');

@@ -162,7 +162,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Sheet → English JSON: монгол баганы нэрсийг англи field name-руу хөрвүүлэх.\n// App-ийн state.financeRequests нь англи талбартай тул хөрвүүлэх ёстой.\nconst MAP = {\n  'ID': 'id',\n  'Илгээгч': 'requested_by',\n  'Илгээсэн огноо': 'requested_at',\n  'Дүн': 'amount',\n  'Хүлээн авагч': 'beneficiary',\n  'Зорилго': 'purpose',\n  'Тайлбар': 'justification',\n  'Хүссэн огноо': 'due_date',\n  'Төлөв': 'status',\n  'Шийдвэр': 'decision',\n  'Шийдвэрийн огноо': 'decision_at',\n  'Шийдвэр гаргасан': 'decision_by',\n  'Шийдвэрийн шалтгаан': 'decision_reason',\n  'Гүйцэтгэсэн огноо': 'executed_at',\n  'Гүйцэтгэгч': 'executed_by',\n  'Хариуцагч': 'executor',\n  'Үнийн судалгаа': 'purchase_proof_url',\n  'Төлбөрийн баримт': 'payment_proof_url',\n  'Худалдан авалтын баримт': 'purchase_receipt_url',\n  'Категори': 'category',\n  'Салбар': 'dept_branch',\n  'Үе шат': 'frequency',\n  'Банк': 'bank',\n  'Дансны дугаар': 'account_number',\n  'Шинэчилсэн': 'updated',\n};\nconst rows = $input.all().map(it => it.json);\nconst requests = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const out = {};\n  for (const [k, v] of Object.entries(r)) {\n    out[MAP[k] || k] = v;\n  }\n  if (out.id && out.status !== 'deleted') requests.push(out);\n}\nreturn [{ json: { requests } }];"
+        "jsCode": "// Sheet → English JSON: монгол баганы нэрсийг англи field name-руу хөрвүүлэх.\n// App-ийн state.financeRequests нь англи талбартай тул хөрвүүлэх ёстой.\nconst MAP = {\n  'ID': 'id',\n  'Илгээгч': 'requested_by',\n  'Илгээсэн огноо': 'requested_at',\n  'Дүн': 'amount',\n  'Хүлээн авагч': 'beneficiary',\n  'Зорилго': 'purpose',\n  'Тайлбар': 'justification',\n  'Хүссэн огноо': 'due_date',\n  'Төлөв': 'status',\n  'Шийдвэр': 'decision',\n  'Шийдвэрийн огноо': 'decision_at',\n  'Шийдвэр гаргасан': 'decision_by',\n  'Шийдвэрийн шалтгаан': 'decision_reason',\n  'Гүйцэтгэсэн огноо': 'executed_at',\n  'Гүйцэтгэгч': 'executed_by',\n  'Хариуцагч': 'executor',\n  'Үнийн судалгаа': 'purchase_proof_url',\n  'Төлбөрийн баримт': 'payment_proof_url',\n  'Худалдан авалтын баримт': 'purchase_receipt_url',\n  'Категори': 'category',\n  'Салбар': 'dept_branch',\n  'Үе шат': 'frequency',\n  'Банк': 'bank',\n  'Дансны дугаар': 'account_number',\n  'Шинэчилсэн': 'updated',\n};\nconst rows = $input.all().map(it => it.json);\nconst requests = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const out = {};\n  for (const [k, v] of Object.entries(r)) {\n    out[MAP[k] || k] = v;\n  }\n  if (out.id && out.status !== 'deleted') requests.push(out);\n}\n\n// Sheet (монгол) → app (english code)\nconst STATUS_M2E = {'Идэвхтэй':'open','Дууссан':'done','Устгасан':'deleted'};\nconst DEC_M2E    = {'Хүлээгдэж буй':'pending','Зөвшөөрсөн':'approved','Татгалзсан':'rejected','Хойшлуулсан':'deferred'};\nrequests.forEach(r => {\n  if (r.status   && STATUS_M2E[r.status])   r.status   = STATUS_M2E[r.status];\n  if (r.decision && DEC_M2E[r.decision])    r.decision = DEC_M2E[r.decision];\n});\nreturn [{ json: { requests } }];"
       },
       "id": "5000be6f-6129-47be-be10-b9381e0090b2",
       "name": "Aggregate Requests",
@@ -495,7 +495,7 @@
           "mappingMode": "defineBelow",
           "value": {
             "ID": "={{ $json.request.id }}",
-            "Төлөв": "deleted",
+            "Төлөв": "Устгасан",
             "Шинэчилсэн": "={{ $now.toISO() }}"
           },
           "matchingColumns": [

@@ -1,0 +1,83 @@
+{
+  "name": "Чимун · Долоо хоногийн тойм имэйл (weekly digest)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "weekly-digest",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://chimunllc.github.io"
+        }
+      },
+      "id": "wd-webhook",
+      "name": "Webhook POST /weekly-digest",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-800, 200],
+      "webhookId": "weekly-digest-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Payload: { type: 'weekly_digest', stats, requested_by }\n// stats = { period: { from, to }, tasks: { total, done, open, overdue, created_this_week, completed_this_week }, finance: { total, pending, approved_amount }, by_staff: [{ name, done, active, overdue }] }\nconst body = $input.first().json.body || {};\nconst stats = body.stats || {};\nconst tasks = stats.tasks || {};\nconst finance = stats.finance || {};\nconst byStaff = stats.by_staff || [];\nconst period = stats.period || {};\nconst requestedBy = body.requested_by || 'CEO';\n\nconst fmt = (n) => Number(n || 0).toLocaleString('mn-MN');\n\nconst staffRows = byStaff\n  .sort((a, b) => (b.done || 0) - (a.done || 0))\n  .map(s => `<tr><td style=\"padding:6px 12px;border-bottom:1px solid #eee;\">${s.name || ''}</td><td style=\"padding:6px 12px;border-bottom:1px solid #eee;text-align:center;color:#10b981;font-weight:600;\">${s.done || 0}</td><td style=\"padding:6px 12px;border-bottom:1px solid #eee;text-align:center;color:#3b82f6;\">${s.active || 0}</td><td style=\"padding:6px 12px;border-bottom:1px solid #eee;text-align:center;color:#ef4444;font-weight:${(s.overdue||0)>0?'700':'400'};\">${s.overdue || 0}</td></tr>`)\n  .join('');\n\nconst html = `<!DOCTYPE html><html><body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#37352f;background:#fbfbfa;margin:0;padding:20px;\">\n<div style=\"max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #eee;\">\n  <div style=\"background:linear-gradient(135deg,#5e6ad2,#8b5cf6);color:#fff;padding:24px;\">\n    <h1 style=\"margin:0;font-size:22px;\">Долоо хоногийн тойм</h1>\n    <p style=\"margin:6px 0 0;opacity:.9;font-size:14px;\">${period.from || ''} → ${period.to || ''}</p>\n  </div>\n  <div style=\"padding:24px;\">\n    <h2 style=\"font-size:16px;margin:0 0 12px;\">Ажлын тойм</h2>\n    <table style=\"width:100%;border-collapse:collapse;margin-bottom:24px;\">\n      <tr><td style=\"padding:8px 0;color:#787774;\">Нийт</td><td style=\"padding:8px 0;text-align:right;font-weight:700;\">${fmt(tasks.total)}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">✓ Дуусгасан</td><td style=\"padding:8px 0;text-align:right;font-weight:700;color:#10b981;border-top:1px solid #eee;\">${fmt(tasks.done)}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">Идэвхтэй</td><td style=\"padding:8px 0;text-align:right;font-weight:700;color:#3b82f6;border-top:1px solid #eee;\">${fmt(tasks.open)}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">⚠ Хоцорсон</td><td style=\"padding:8px 0;text-align:right;font-weight:700;color:#ef4444;border-top:1px solid #eee;\">${fmt(tasks.overdue)}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">Энэ долоо хоногт үүсгэсэн</td><td style=\"padding:8px 0;text-align:right;border-top:1px solid #eee;\">${fmt(tasks.created_this_week)}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">Энэ долоо хоногт дуусгасан</td><td style=\"padding:8px 0;text-align:right;color:#10b981;font-weight:700;border-top:1px solid #eee;\">${fmt(tasks.completed_this_week)}</td></tr>\n    </table>\n\n    <h2 style=\"font-size:16px;margin:0 0 12px;\">Санхүү (сүүлийн 30 хоног)</h2>\n    <table style=\"width:100%;border-collapse:collapse;margin-bottom:24px;\">\n      <tr><td style=\"padding:8px 0;color:#787774;\">Зөвшөөрсөн дүн</td><td style=\"padding:8px 0;text-align:right;font-weight:700;color:#10b981;\">${fmt(finance.approved_amount)}₮</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">Хүлээгдэж буй</td><td style=\"padding:8px 0;text-align:right;color:#f59e0b;font-weight:600;border-top:1px solid #eee;\">${fmt(finance.pending)}</td></tr>\n      <tr><td style=\"padding:8px 0;color:#787774;border-top:1px solid #eee;\">Нийт хүсэлт</td><td style=\"padding:8px 0;text-align:right;border-top:1px solid #eee;\">${fmt(finance.total)}</td></tr>\n    </table>\n\n    ${staffRows ? `<h2 style=\"font-size:16px;margin:0 0 12px;\">Ажилтны гүйцэтгэл</h2>\n    <table style=\"width:100%;border-collapse:collapse;\">\n      <tr style=\"background:#f7f7f5;\"><th style=\"padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#787774;\">Ажилтан</th><th style=\"padding:8px 12px;font-size:12px;text-transform:uppercase;color:#787774;\">✓</th><th style=\"padding:8px 12px;font-size:12px;text-transform:uppercase;color:#787774;\">Идэвхтэй</th><th style=\"padding:8px 12px;font-size:12px;text-transform:uppercase;color:#787774;\">⚠</th></tr>\n      ${staffRows}\n    </table>` : ''}\n  </div>\n  <div style=\"background:#f7f7f5;padding:14px 24px;text-align:center;font-size:12px;color:#787774;\">Чимун ХХК · Дотоод даалгавар систем</div>\n</div>\n</body></html>`;\n\nreturn [{ json: { to: requestedBy, subject: `Долоо хоногийн тойм · ${period.from || ''} → ${period.to || ''}`, html, period, summary: tasks } }];"
+      },
+      "id": "wd-format",
+      "name": "Format email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-560, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@nomaadcamp.com",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "wd-send",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [-320, 200],
+      "_comment": "Use Gmail OAuth2 credential. Эсвэл SMTP node-р сольж болно."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, sent_to: $json.to, subject: $json.subject }) }}"
+      },
+      "id": "wd-respond",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [-80, 200]
+    }
+  ],
+  "connections": {
+    "Webhook POST /weekly-digest": {
+      "main": [[{ "node": "Format email HTML", "type": "main", "index": 0 }]]
+    },
+    "Format email HTML": {
+      "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]]
+    },
+    "Send Email": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "_setup_instructions": [
+    "ЗОРИУЛАЛТ:",
+    "  Dashboard 'Долоо хоногийн тойм имэйлдэх' товчийг дарахад дуудагдана.",
+    "  App нь stats payload явуулна; n8n нь HTML email формат хийж явуулна.",
+    "",
+    "SETUP:",
+    "  1. n8n-д import хийнэ.",
+    "  2. 'Send Email' node:",
+    "     - Credential: Gmail OAuth2 (эсвэл SMTP)",
+    "     - From: noreply@nomaadcamp.com (эсвэл өөрийн mail)",
+    "     - To: {{ $json.to }} — энэ нь app-аас ирэх requested_by (CEO email)",
+    "  3. Activate."
+  ]
+}

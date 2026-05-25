@@ -1,0 +1,1148 @@
+{
+  "name": "Tasks ·Санхүү",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "finance",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://chimunllc.github.io"
+        }
+      },
+      "id": "564ed543-c9ad-452f-b607-26bb02aa25b4",
+      "name": "Webhook GET /finance",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        112
+      ],
+      "webhookId": "0b89a4df-5163-4a60-b699-6b5238c15661"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "finance",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://chimunllc.github.io"
+        }
+      },
+      "id": "acb09c5b-b629-4507-b47a-fc756a5301e0",
+      "name": "Webhook POST /finance",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        304
+      ],
+      "webhookId": "f6a3a8dd-7c4b-440f-9f28-3693d3bfb4ab"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route by action: list (GET) / upsert / delete (POST).\nconst input = $input.first().json;\nconst body = input.body || {};\nconst query = input.query || {};\nconst action = (body.action || query.action || 'list').toLowerCase();\nconst request = body.request || null;\nreturn [{ json: { action, request } }];"
+      },
+      "id": "2f41fc2e-b209-4d16-9dfd-6f6cc6b18a8e",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "upsert",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "91678904-76c3-4724-9d4c-b72dbcfd3f04",
+      "name": "Switch by Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -224,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1ogJTucQ9BipiJU_kckjS4DmJ7b0BJbh1_eXuoLWZNEI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "tasks",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "a735ef68-e764-4bb6-8ba5-ab2ed03fad19",
+      "name": "Sheets · Read Finance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sheet → English JSON: монгол баганы нэрсийг англи field name-руу хөрвүүлэх.\n// App-ийн state.financeRequests нь англи талбартай тул хөрвүүлэх ёстой.\nconst MAP = {\n  'ID': 'id',\n  'Илгээгч': 'requested_by',\n  'Илгээсэн огноо': 'requested_at',\n  'Дүн': 'amount',\n  'Хүлээн авагч': 'beneficiary',\n  'Зорилго': 'purpose',\n  'Тайлбар': 'justification',\n  'Хүссэн огноо': 'due_date',\n  'Төлөв': 'status',\n  'Шийдвэр': 'decision',\n  'Шийдвэрийн огноо': 'decision_at',\n  'Шийдвэр гаргасан': 'decision_by',\n  'Шийдвэрийн шалтгаан': 'decision_reason',\n  'Гүйцэтгэсэн огноо': 'executed_at',\n  'Гүйцэтгэгч': 'executed_by',\n  'Хариуцагч': 'executor',\n  'Үнийн судалгаа': 'purchase_proof_url',\n  'Төлбөрийн баримт': 'payment_proof_url',\n  'Худалдан авалтын баримт': 'purchase_receipt_url',\n  'Категори': 'category',\n  'Салбар': 'dept_branch',\n  'Үе шат': 'frequency',\n  'Банк': 'bank',\n  'Дансны дугаар': 'account_number',\n  'Шинэчилсэн': 'updated',\n};\nconst rows = $input.all().map(it => it.json);\nconst requests = [];\nfor (const r of rows) {\n  if (!r) continue;\n  const out = {};\n  for (const [k, v] of Object.entries(r)) {\n    out[MAP[k] || k] = v;\n  }\n  if (out.id && out.status !== 'deleted') requests.push(out);\n}\nreturn [{ json: { requests } }];"
+      },
+      "id": "5000be6f-6129-47be-be10-b9381e0090b2",
+      "name": "Aggregate Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1ogJTucQ9BipiJU_kckjS4DmJ7b0BJbh1_eXuoLWZNEI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "tasks",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $('Route Action').item.json.request.id }}",
+            "Илгээгч": "={{ $('Route Action').item.json.request.requested_by }}",
+            "Илгээсэн огноо": "={{ $('Route Action').item.json.request.requested_at }}",
+            "Дүн": "={{ $('Route Action').item.json.request.amount }}",
+            "Хүлээн авагч": "={{ $('Route Action').item.json.request.beneficiary }}",
+            "Зорилго": "={{ $('Route Action').item.json.request.purpose }}",
+            "Тайлбар": "={{ $('Route Action').item.json.request.justification }}",
+            "Хүссэн огноо": "={{ $('Route Action').item.json.request.due_date }}",
+            "Төлөв": "={{ $('Route Action').item.json.request.status }}",
+            "Шийдвэр": "={{ $('Route Action').item.json.request.decision }}",
+            "Шийдвэрийн огноо": "={{ $('Route Action').item.json.request.decision_at }}",
+            "Шийдвэр гаргасан": "={{ $('Route Action').item.json.request.decision_by }}",
+            "Шийдвэрийн шалтгаан": "={{ $('Route Action').item.json.request.decision_reason }}",
+            "Гүйцэтгэсэн огноо": "={{ $('Route Action').item.json.request.executed_at }}",
+            "Гүйцэтгэгч": "={{ $('Route Action').item.json.request.executed_by }}",
+            "Хариуцагч": "={{ $('Route Action').item.json.request.executor }}",
+            "Үнийн судалгаа": "={{ $('Route Action').item.json.request.purchase_proof_url }}",
+            "Төлбөрийн баримт": "={{ $('Route Action').item.json.request.payment_proof_url }}",
+            "Худалдан авалтын баримт": "={{ $('Route Action').item.json.request.purchase_receipt_url }}",
+            "Категори": "={{ $('Route Action').item.json.request.category }}",
+            "Салбар": "={{ $('Route Action').item.json.request.dept_branch }}",
+            "Үе шат": "={{ $('Route Action').item.json.request.frequency }}",
+            "Банк": "={{ $('Route Action').item.json.request.bank }}",
+            "Дансны дугаар": "={{ $('Route Action').item.json.request.account_number }}",
+            "Шинэчилсэн": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "ID"
+          ],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Илгээгч",
+              "displayName": "Илгээгч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Илгээсэн огноо",
+              "displayName": "Илгээсэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Дүн",
+              "displayName": "Дүн",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Хүлээн авагч",
+              "displayName": "Хүлээн авагч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Зорилго",
+              "displayName": "Зорилго",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Тайлбар",
+              "displayName": "Тайлбар",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Хүссэн огноо",
+              "displayName": "Хүссэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Төлөв",
+              "displayName": "Төлөв",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шийдвэр",
+              "displayName": "Шийдвэр",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шийдвэрийн огноо",
+              "displayName": "Шийдвэрийн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шийдвэр гаргасан",
+              "displayName": "Шийдвэр гаргасан",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шийдвэрийн шалтгаан",
+              "displayName": "Шийдвэрийн шалтгаан",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Гүйцэтгэсэн огноо",
+              "displayName": "Гүйцэтгэсэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Гүйцэтгэгч",
+              "displayName": "Гүйцэтгэгч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Хариуцагч",
+              "displayName": "Хариуцагч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Үнийн судалгаа",
+              "displayName": "Үнийн судалгаа",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Төлбөрийн баримт",
+              "displayName": "Төлбөрийн баримт",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Худалдан авалтын баримт",
+              "displayName": "Худалдан авалтын баримт",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Категори",
+              "displayName": "Категори",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Салбар",
+              "displayName": "Салбар",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Үе шат",
+              "displayName": "Үе шат",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Банк",
+              "displayName": "Банк",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Дансны дугаар",
+              "displayName": "Дансны дугаар",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шинэчилсэн",
+              "displayName": "Шинэчилсэн",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "7ac69d82-0a17-43b2-b029-d6cf1ab64642",
+      "name": "Sheets · Upsert Finance",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        208
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Soft delete: status='deleted'\nconst r = $('Route Action').item.json.request;\nif (!r || !r.id) return [];\nreturn [{ json: { request: { ...r, status: 'deleted' } } }];"
+      },
+      "id": "4e1b5240-4397-47dd-959e-98e2ed328207",
+      "name": "Mark Deleted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1ogJTucQ9BipiJU_kckjS4DmJ7b0BJbh1_eXuoLWZNEI",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "tasks",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.request.id }}",
+            "Төлөв": "deleted",
+            "Шинэчилсэн": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "ID"
+          ],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Илгээгч",
+              "displayName": "Илгээгч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Илгээсэн огноо",
+              "displayName": "Илгээсэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Дүн",
+              "displayName": "Дүн",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Хүлээн авагч",
+              "displayName": "Хүлээн авагч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Зорилго",
+              "displayName": "Зорилго",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Тайлбар",
+              "displayName": "Тайлбар",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Хүссэн огноо",
+              "displayName": "Хүссэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Төлөв",
+              "displayName": "Төлөв",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шийдвэр",
+              "displayName": "Шийдвэр",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Шийдвэрийн огноо",
+              "displayName": "Шийдвэрийн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Шийдвэр гаргасан",
+              "displayName": "Шийдвэр гаргасан",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Шийдвэрийн шалтгаан",
+              "displayName": "Шийдвэрийн шалтгаан",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Гүйцэтгэсэн огноо",
+              "displayName": "Гүйцэтгэсэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Гүйцэтгэгч",
+              "displayName": "Гүйцэтгэгч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Хариуцагч",
+              "displayName": "Хариуцагч",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Үнийн судалгаа",
+              "displayName": "Үнийн судалгаа",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Төлбөрийн баримт",
+              "displayName": "Төлбөрийн баримт",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Худалдан авалтын баримт",
+              "displayName": "Худалдан авалтын баримт",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Категори",
+              "displayName": "Категори",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Салбар",
+              "displayName": "Салбар",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Үе шат",
+              "displayName": "Үе шат",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Банк",
+              "displayName": "Банк",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Дансны дугаар",
+              "displayName": "Дансны дугаар",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Шинэчилсэн",
+              "displayName": "Шинэчилсэн",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "5ec98341-dff9-4cf6-9e81-0ed4e641dab9",
+      "name": "Sheets · Soft Delete",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "tZSfYfxkpH5L34wG",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET,POST,OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "114092c2-7365-4647-925d-3259c0f008fc",
+      "name": "Respond List",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, request: $('Route Action').item.json.request }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "e672c6c0-54a2-4c35-bd8c-150317e8daa0",
+      "name": "Respond Upsert",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "0fe79b5e-8762-43a1-bbdf-4a8e0c4e1217",
+      "name": "Respond Delete",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-receipt",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://chimunllc.github.io"
+        }
+      },
+      "id": "49b6bf05-b620-497a-8c91-7a1966a463fa",
+      "name": "Webhook POST /upload-receipt",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        656
+      ],
+      "webhookId": "d272651f-8f0f-4fcd-bfb1-1417fe8d9026"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate + prep file from base64 body.\n// Expected body: { filename, contentType, base64, request_id, kind: 'purchase'|'payment'|'completion' }\nconst body = $input.first().json.body || {};\nif (!body.base64 || !body.filename) {\n  throw new Error('base64 эсвэл filename талбар дутуу');\n}\nconst kind = (body.kind || 'purchase').toLowerCase();\nconst safeKind = ['purchase','payment','completion'].includes(kind) ? kind : 'purchase';\n// Folder routing — kind-ээс шалтгаалаад зөв фолдер сонгоно\nconst FOLDER = {\n  purchase:   '1JccijKlhJr8q9D8jF7GZb5mtzSMUFGOx',\n  payment:    '1JccijKlhJr8q9D8jF7GZb5mtzSMUFGOx',\n  completion: '1MdlYWmhhOAeJdAUTn6iGHAw2-zWbjhnr',\n};\nconst folderId = FOLDER[safeKind] || FOLDER.purchase;\nconst requestId = (body.request_id || 'no-id').replace(/[^a-zA-Z0-9_-]/g,'');\nconst dateStr = new Date().toISOString().slice(0,10);\nconst ext = (body.filename.split('.').pop() || 'jpg').toLowerCase();\nconst finalName = `${dateStr}_${requestId}_${safeKind}.${ext}`;\nconst rawB64 = body.base64.replace(/^data:[^;]+;base64,/,'');\nconst buf = Buffer.from(rawB64, 'base64');\nreturn [{\n  json: {\n    filename: finalName,\n    contentType: body.contentType || 'application/octet-stream',\n    size: buf.length,\n    request_id: requestId,\n    kind: safeKind,\n    folderId,\n  },\n  binary: {\n    data: {\n      data: rawB64,\n      mimeType: body.contentType || 'application/octet-stream',\n      fileName: finalName\n    }\n  }\n}];"
+      },
+      "id": "1da606d6-c30f-4e45-a3f3-5f86ca2cffe8",
+      "name": "Prepare File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.filename }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.folderId }}"
+        },
+        "options": {}
+      },
+      "id": "e2824692-bf1a-4100-9d20-da7e53cd083d",
+      "name": "Drive · Upload",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        656
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "lOdlEFcOQRw2l14x",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone"
+          }
+        },
+        "options": {}
+      },
+      "id": "02d34c11-7aa9-4c88-833f-3ecacd936936",
+      "name": "Drive · Share Public Read",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        128,
+        656
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "lOdlEFcOQRw2l14x",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, url: $('Drive · Upload').item.json.webViewLink, file_id: $('Drive · Upload').item.json.id, filename: $('Drive · Upload').item.json.name }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST,OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6a1771b6-a4a4-4c43-bbc7-bdda6faecbe0",
+      "name": "Respond URL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        336,
+        656
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook GET /finance": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook POST /finance": {
+      "main": [
+        [
+          {
+            "node": "Route Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Action": {
+      "main": [
+        [
+          {
+            "node": "Switch by Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch by Action": {
+      "main": [
+        [
+          {
+            "node": "Sheets · Read Finance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Sheets · Upsert Finance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Deleted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets · Read Finance": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Requests": {
+      "main": [
+        [
+          {
+            "node": "Respond List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets · Upsert Finance": {
+      "main": [
+        [
+          {
+            "node": "Respond Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Deleted": {
+      "main": [
+        [
+          {
+            "node": "Sheets · Soft Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheets · Soft Delete": {
+      "main": [
+        [
+          {
+            "node": "Respond Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook POST /upload-receipt": {
+      "main": [
+        [
+          {
+            "node": "Prepare File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare File": {
+      "main": [
+        [
+          {
+            "node": "Drive · Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive · Upload": {
+      "main": [
+        [
+          {
+            "node": "Drive · Share Public Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive · Share Public Read": {
+      "main": [
+        [
+          {
+            "node": "Respond URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 3,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

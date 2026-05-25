@@ -5946,7 +5946,11 @@ async function handlePinLogin(userIdentifier, pin) {
   }
 }
 
-const DEFAULT_PINS = new Set(['1111', '0000', '1234', '8888']);
+// Зөвхөн hardcoded '1111' нь default — бусад "сул" PIN-ийг (8888, 1234 г.м.) хэрэглэгч
+// зориудаар сонгосон байж болохыг хүндэтгэнэ. Master Sheet дотор хэрэв ажилтан '1111'
+// PIN-тэй бол шинэ ажилтан CEO setup-аас үлдсэн default гэж тооцох ба заавал солих
+// шаардлагатай. Бусдад нь интерфэр хийхгүй.
+const DEFAULT_PINS = new Set(['1111']);
 function isDefaultPin(pin) { return DEFAULT_PINS.has(String(pin || '')); }
 
 function promptDefaultPinChange() {

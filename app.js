@@ -1,5 +1,6 @@
 /* -------------------- CONSTANTS -------------------- */
-// Branches — 3 work-groups + 1 cross-branch "production" type for Camp↔M Event events.
+// Branches — 3 ажлын чиглэл: M Event, NOMAAD Camp, Удирдлага.
+//   Production салбар 2026-05-25-нд M Event-д нэгтгэгдсэн.
 // Store branch removed 2026-05-16: CEO no longer manages the store (Wise Brothers).
 // SVG icons — emoji-г орлуулсан Lucide-маяг icons. `currentColor` ашигладаг.
 const ICONS = {
@@ -18,10 +19,10 @@ const ICONS = {
 };
 
 const BRANCHES = [
-  { id: 'm-event',    name: 'M Event',         icon: ICONS.tent },
-  { id: 'camp',       name: 'NOMAAD Camp',     icon: ICONS.mountain },
-  { id: 'shared',     name: 'Нэгдсэн алба',    icon: ICONS.building },
-  { id: 'production', name: 'Production event',icon: ICONS.star },
+  { id: 'm-event',    name: 'M Event',     icon: ICONS.tent },
+  { id: 'camp',       name: 'NOMAAD Camp', icon: ICONS.mountain },
+  { id: 'shared',     name: 'Удирдлага',   icon: ICONS.building },
+  // 'production' салбар хасагдсан 2026-05-25 — M Event-д нэгтгэгдсэн.
 ];
 
 // 13-staff roster as of 2026-05-16, синк хийгдсэн Master Sheet:
@@ -43,24 +44,24 @@ const BRANCHES = [
 let TEAM = [
   { id: 'CEO', name: 'Г.Мөнх-Учрал', role: 'CEO', level: 100, pin: '1111',
     email: 'ceo@nomaadcamp.com',
-    branches: ['m-event','camp','shared','production'] },
+    branches: ['m-event','camp','shared'] },
 
   // Нэгдсэн алба (cross-cutting)
   { id: 'S01', name: 'Н.Анужин',       role: 'Кемп менежер',           level: 80, pin: '1111', email: 'akunaa.anujin@gmail.com',  branches: ['shared','camp'] },
   { id: 'S03', name: 'О.Түвдэндаржаа', role: 'Туслах нягтлан',         level: 40, pin: '1111', email: 'tuvdendar@gmail.com',      branches: ['shared'] },
 
   // M Event салбар
-  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event','production'] },
-  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: '001', name: 'И.Алтансүх',     role: 'ҮАХ захирал M EVENT',    level: 80, pin: '1111', email: 'coo@mevent.mn',            branches: ['m-event'] },
+  { id: 'M02', name: 'Г.Сайнжаргал',   role: 'Event Manager',          level: 60, pin: '1111', email: '',                         branches: ['m-event'] },
   { id: '003', name: 'Д.Нинждолгор',   role: 'Нярав',                  level: 60, pin: '1111', email: '',                         branches: ['m-event'] },
-  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '1111', email: '',                       branches: ['m-event','production'] },
-  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '1111', email: '',                         branches: ['m-event','production'] },
-  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '1111', email: '',                         branches: ['m-event','production'] },
+  { id: '004', name: 'Б.Пүрэвдавга',   role: 'Агуулах засварын ажилтан', level: 60, pin: '1111', email: '',                       branches: ['m-event'] },
+  { id: '005', name: 'Д.Баясгалан',    role: 'Агуулах-Логистик 1',     level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
+  { id: 'M07', name: 'О.Эрдэнэхүү',    role: 'Агуулах-Логистик 2',     level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
   { id: '006', name: 'Хишигтогтох',    role: 'Цэврэлгээ',              level: 40, pin: '1111', email: '',                         branches: ['m-event'] },
 
   // NOMAAD Camp
-  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp','production'] },
-  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '1111', email: '',                         branches: ['camp','production'] },
+  { id: 'C01', name: 'Б.Дэлгэрбат',    role: 'ҮАХ захирал NOMAAD',     level: 80, pin: '1111', email: 'delgerbat69@nomaadcamp.com', branches: ['camp'] },
+  { id: 'C02', name: 'Б.Батжаргал',    role: 'Кемпийн менежер',        level: 60, pin: '1111', email: '',                         branches: ['camp'] },
   { id: 'C06', name: 'Цэлмэг',         role: 'Кемп туслах 1',          level: 40, pin: '1111', email: '',                         branches: ['camp'] },
 ];
 
@@ -934,6 +935,16 @@ function loadLocal() {
       Object.keys(saved).forEach(b => { state.projectsByBranch[b] = saved[b]; });
     }
   } catch(e) { /* keep defaults */ }
+  // One-time branch migration (2026-05-25) — 'production' салбарыг M Event-д
+  // нэгтгэх. Хэрэглэгч "production" гэж тэмдэглэсэн task-уудыг 'm-event' болгоно.
+  if (!localStorage.getItem('branchMigration_v1')) {
+    state.tasks.forEach(t => {
+      if (t.branch === 'production') t.branch = 'm-event';
+    });
+    saveLocal();
+    localStorage.setItem('branchMigration_v1', '1');
+  }
+
   // One-time migration — хуучин hardcoded default project-уудыг хэрэглэгчийн
   // localStorage-аас хасах (2026-05-25). 'pre-season' үлдээх, хэрэглэгчийн
   // өөрөө нэмсэн төслүүд (id 'p_'-ээр эхэлсэн) хэвээр үлдэнэ.
@@ -3847,7 +3858,7 @@ function initEvents() {
   function openFabSheet() {
     // "Захиалга" сонголтыг зөвхөн зөв хүмүүст харуулах
     const canCreateOrder = state.isCEO
-      || (state.user?.branches || []).some(b => b === 'm-event' || b === 'production');
+      || (state.user?.branches || []).some(b => b === 'm-event');
     if (fabSheetOrder) fabSheetOrder.style.display = canCreateOrder ? '' : 'none';
     fabSheetBg?.classList.add('open');
   }

@@ -4867,9 +4867,13 @@ async function bootApp() {
   }
   loadNotifications();
   await flushPendingWrites();   // өмнөх session-д офлайн үлдсэн өөрчлөлт байвал эхлээд илгээх
-  await Promise.all([ loadData(), loadFinanceRequests() ]);
+  // CEO дотор орсны дараа TEAM-аа дахин sync хийнэ — шинэ pending бүртгэлийн хүсэлт байвал
+  // үүнийг unceп олж notifyCEOOfPendingRegistrations төв дамжуулна.
+  await Promise.all([ loadData(), loadFinanceRequests(), loadTeamFromAPI() ]);
   generateNotifications();
   render();
+  // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
+  notifyCEOOfPendingRegistrations();
   // Auto-refresh every 60s — pulls latest tasks from n8n + generates fresh notifications.
   if (_pollTimer) clearInterval(_pollTimer);
   _pollTimer = setInterval(refreshFromServer, 60_000);
@@ -4890,7 +4894,10 @@ async function refreshFromServer() {
   if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
   try {
     await flushPendingWrites();   // татахаасаа өмнө офлайн өөрчлөлтөө илгээж, дарагдахаас сэргийлнэ
-    await Promise.all([ loadData(), loadFinanceRequests() ]);
+    // CEO үед TEAM-аа бас sync хийж шинэ бүртгэлийн хүсэлт байвал автомат мэдэгдэнэ
+    const taskPromises = [ loadData(), loadFinanceRequests() ];
+    if (state.isCEO) taskPromises.push(loadTeamFromAPI());
+    await Promise.all(taskPromises);
     generateNotifications();
     // Модал нээлттэй (хэрэглэгч засаж байгаа) бол жагсаалтыг бүрэн дахин зурахгүй —
     // зөвхөн badge/тоог шинэчилнэ. Эс бөгөөс бүрэн render хийж шинэ даалгаврыг харуулна.

@@ -941,6 +941,12 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (!task) return;
   const oldStatus = task.status || 'open';
   if (oldStatus === newStatus) return;
+  // Дуусгахдаа биелэлтийн зураг шаардах (зураггүй бол)
+  if (newStatus === 'done' && !task.completion_photo_url) {
+    const photoUrl = await promptCompletionPhoto(task);
+    if (photoUrl === null) return; // Цуцалсан — done болгохгүй
+    task.completion_photo_url = photoUrl;
+  }
   task.status = newStatus;
   if (newStatus === 'in_progress') task.started_at = Date.now();
   if (newStatus === 'done') task.completed_at = Date.now();

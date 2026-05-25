@@ -4906,7 +4906,7 @@ function setupProfileModal() {
       return;
     }
     try {
-      const dataUrl = await resizeImageToBase64(file, 256);
+      const dataUrl = await resizeImageToBase64(file, 512, 0.92);
       document.getElementById('profile-avatar-img').src = dataUrl;
       document.getElementById('profile-avatar-img').style.display = '';
       document.getElementById('profile-avatar-initials').style.display = 'none';
@@ -4988,7 +4988,7 @@ function setupProfileModal() {
 }
 
 /* Файлыг канвас дээр resize хийгээд base64 болгох (avatar-д ашиглана) */
-function resizeImageToBase64(file, maxSize = 256) {
+function resizeImageToBase64(file, maxSize = 512, quality = 0.92) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -4996,16 +4996,18 @@ function resizeImageToBase64(file, maxSize = 256) {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width, height } = img;
-        if (width > height) {
-          if (width > maxSize) { height = (height / width) * maxSize; width = maxSize; }
-        } else {
-          if (height > maxSize) { width = (width / height) * maxSize; height = maxSize; }
-        }
+        // Хэт жижиг (max биш) ч ороцог — оригиналаас том болохгүй
+        const ratio = Math.min(1, maxSize / Math.max(width, height));
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        // Илүү чанартай scaling
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        resolve(canvas.toDataURL('image/jpeg', quality));
       };
       img.onerror = reject;
       img.src = reader.result;
@@ -5096,9 +5098,11 @@ function initPinLogin() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { showToast('Зөвхөн зураг сонгоно уу', 'warn'); return; }
-    if (file.size > 2 * 1024 * 1024) { showToast('Зураг 2MB-аас бага байх ёстой', 'warn'); return; }
+    // Selfie — өндөр чанартай байх ёстой. 8MB хүртэл зөвшөөрнө.
+    if (file.size > 8 * 1024 * 1024) { showToast('Зураг 8MB-аас бага байх ёстой', 'warn'); return; }
     try {
-      const dataUrl = await resizeImageToBase64(file, 256);
+      // 1024px max + 0.95 quality — ID verification-д тохирно (≈250-400KB JPEG)
+      const dataUrl = await resizeImageToBase64(file, 1024, 0.95);
       state._regPhotoDataUrl = dataUrl;
       const prev = document.getElementById('reg-photo-preview');
       if (prev) prev.innerHTML = `<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;

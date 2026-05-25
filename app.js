@@ -701,8 +701,20 @@ function notifTimeAgo(ts) {
    Both update TEAM in-place via `TEAM.length=0; push(...)` so all existing
    references (`memberName`, `fillAssigneeSelect`, etc.) keep working without
    reassignment. */
-// Cache version — bump-лэх үед утсууд хуучин teamCache-ыг хаяна
-const TEAM_CACHE_VERSION = '2026-05-20-phone';
+// Cache version — bump-лэх үед утсууд хуучин teamCache-ыг хаяна.
+// 2026-05-25-strip нь sensitive талбаруудыг хассан тул хуучин cache (PIN-тэй) хүчингүй болгоно.
+const TEAM_CACHE_VERSION = '2026-05-25-strip';
+
+// localStorage-д хадгалахаас өмнө sensitive талбаруудыг хасна — PIN, цалин, РД, хаяг,
+// яаралтай үед холбоо барих утас/нэр. PIN зөвхөн in-memory TEAM-д үлдэж нэвтрэх сессид ажиллана
+// (хуудас refresh-д /staff endpoint дахин дуудаж шинээр татна). DevTools-оор localStorage-ийг
+// уншсан ч энэ мэдээллүүд ил гарахгүй.
+const SENSITIVE_TEAM_FIELDS = ['pin', 'salary', 'rd', 'address', 'emergency_phone', 'emergency_name'];
+function sanitizeTeamForCache(member) {
+  const c = { ...member };
+  for (const k of SENSITIVE_TEAM_FIELDS) delete c[k];
+  return c;
+}
 function loadTeamFromCache() {
   try {
     const ver = localStorage.getItem('teamCacheVersion');
@@ -740,7 +752,7 @@ async function loadTeamFromAPI() {
     if (!fresh || !fresh.length) throw new Error('empty team response');
     TEAM.length = 0;
     fresh.forEach(m => TEAM.push(m));
-    localStorage.setItem('teamCache', JSON.stringify(fresh));
+    localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
     localStorage.setItem('teamCacheAt', String(Date.now()));
     console.log(`Staff sync OK: ${fresh.length} members from Master Sheet`);
     // Шинэ ажилтан бүртгүүлсэн үед CEO-д мэдэгдэх
@@ -5361,6 +5373,9 @@ function openProfileModal() {
     initialsEl.textContent = state.user.name.replace(/\./g,'').slice(0,2);
     clearBtn.style.display = 'none';
   }
+  // Default PIN-ийг солих заавал шаардлагатай үед "Болих" товчийг нуух (хэрэглэгч хаах боломжгүй)
+  const cancelBtn = document.getElementById('profile-cancel');
+  if (cancelBtn) cancelBtn.style.display = state._forcePinChange ? 'none' : '';
   document.getElementById('profile-modal').classList.add('open');
 }
 
@@ -5454,7 +5469,8 @@ function setupProfileModal() {
       // TEAM array дотор мөн шинэчлэх
       const member = TEAM.find(m => m.email === state.user.email);
       if (member) member.pin = pinNew;
-      localStorage.setItem('teamCache', JSON.stringify(TEAM));
+      localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
+      state._forcePinChange = false; // PIN солисон → enforcement off
     }
     // Profile талбарууд хадгалах
     state.user.name = name;
@@ -5476,6 +5492,14 @@ function setupProfileModal() {
       member.name = name;
       member.email = email;
       member.phone = phone;
+    }
+    // Default PIN-ийг солих заавал шаардлагатай байсан бол шинэ PIN үнэхээр оруулсан
+    // эсэхийг шалгана. Хоосон үлдээж "хадгалах" дарвал модал хаагдахгүй.
+    if (state._forcePinChange) {
+      showToast('PIN-ээ заавал өөрчилнө үү', 'warn');
+      const newPin = document.getElementById('profile-pin-new');
+      if (newPin) newPin.focus();
+      return;
     }
     document.getElementById('profile-modal').classList.remove('open');
     showToast('Профайл хадгалагдсан', 'success');
@@ -5826,6 +5850,30 @@ async function handlePinLogin(userIdentifier, pin) {
   setUser(result.member, { email: result.member.email || '', name: result.member.name, picture: '' });
   showApp();
   bootApp();
+  // Default PIN (хамтын '1111' гэх мэт) хэвээр байгаа бол шууд солихыг шаардана.
+  // Энэ нь шинэ ажилтан болон CEO-ийн setup-аас үлдсэн default-аас account takeover хаах
+  // зориулалттай. Хэрэглэгч PIN солих хүртэл profile modal-ыг хааж болохгүй.
+  if (isDefaultPin(result.member.pin)) {
+    state._forcePinChange = true;
+    setTimeout(() => promptDefaultPinChange(), 600);
+  }
+}
+
+const DEFAULT_PINS = new Set(['1111', '0000', '1234', '8888']);
+function isDefaultPin(pin) { return DEFAULT_PINS.has(String(pin || '')); }
+
+function promptDefaultPinChange() {
+  showToast('Аюулгүй байдлын үүднээс PIN-ээ өөрчилнө үү', 'warn', 5000);
+  openProfileModal();
+  // PIN секц рүү fokус
+  const newPin = document.getElementById('profile-pin-new');
+  if (newPin) {
+    newPin.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => newPin.focus(), 400);
+  }
+  // Cancel товч + background click нь модалыг хаахаар хийсэн — тэдгээрийг blok
+  const cancelBtn = document.getElementById('profile-cancel');
+  if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
 (async function start() {
@@ -5844,6 +5892,16 @@ async function handlePinLogin(userIdentifier, pin) {
   if (tryRestoreSession()) {
     showApp();
     bootApp();
+    // Session-аар нэвтэрсэн ч default PIN хэвээр байгаа бол шууд солихыг шаардана.
+    // TEAM нь async ачаалагдаж буй тул жаахан хүлээгээд шалгана.
+    setTimeout(() => {
+      if (!state.user) return;
+      const member = TEAM.find(m => m.email === state.user.email);
+      if (member && isDefaultPin(member.pin)) {
+        state._forcePinChange = true;
+        promptDefaultPinChange();
+      }
+    }, 2000);
   } else {
     showLoginScreen();
     initPinLogin();

@@ -71,7 +71,7 @@ const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-regi
 // Subscribe хийсэн endpoint-ийг хадгалах URL.
 const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-subscribe';
 // VAPID public key — push шифрлэлтийн нийтийн түлхүүр (private түлхүүр n8n credentials-д үлдэнэ).
-const VAPID_PUBLIC_KEY = 'BL6TlSijHnbSyXh4IwKk78xFmQA5i_45DRgtc-bIFoNQTG6XOmGc7gZzIVkDY89AeLMfKjKm_ceF46nNIRLAHeE';
+const VAPID_PUBLIC_KEY = 'BEWEze0XzdKChNxs6DrsnyivUfBN7xgxL6T219i6W-Gt808fzAadxW3REWnNjQb2v3GVSlnpF4oDM_F0uF6SRfY';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
 // Default projects — зөвхөн "Сезоны өмнөх бэлтгэл" үлдээсэн (2026-05-25 хэрэглэгчийн хүсэлтээр).

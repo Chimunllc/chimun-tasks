@@ -816,6 +816,9 @@ function taskToWire(task) {
   out.status    = _xlate(out.status, _STATUS_E2M);
   out.kind      = _xlate(out.kind, _KIND_E2M);
   out.decision  = _xlate(out.decision, _DECISION_E2M);
+  // Timestamp (ms) → ISO string (Sheet дээр унших боломжтой)
+  if (typeof out.created === 'number') out.created = new Date(out.created).toISOString();
+  if (typeof out.updated === 'number') out.updated = new Date(out.updated).toISOString();
   return out;
 }
 function taskFromWire(task) {

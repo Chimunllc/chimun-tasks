@@ -761,7 +761,17 @@ async function loadTeamFromAPI() {
   }
 }
 function currentProjects() {
-  return state.projectsByBranch[state.branch] || [];
+  // Бүх салбарын төслийг нэг жагсаалт болгож нэгтгэнэ — салбарын систем дотоод л үлдсэн.
+  const seen = new Set();
+  const merged = [];
+  Object.values(state.projectsByBranch || {}).forEach(arr => {
+    (arr || []).forEach(p => {
+      if (seen.has(p.id)) return;
+      seen.add(p.id);
+      merged.push(p);
+    });
+  });
+  return merged;
 }
 function currentBranchInfo() {
   return BRANCHES.find(b => b.id === state.branch) || BRANCHES[0];
@@ -1851,10 +1861,9 @@ function renderSidebar() {
     const lbl = document.getElementById('nav-dashboard-label');
     if (lbl) lbl.textContent = state.isCEO ? 'Тойм' : 'Миний тойм';
   }
-  // brand reflects current branch so the user always knows which space they're in
-  const info = currentBranchInfo();
+  // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
-  if (brandEl) brandEl.innerHTML = (info.icon || '') + ' ' + escapeHtml(info.name);
+  if (brandEl) brandEl.innerHTML = ICONS.building + ' Чимун ХХК';
   // projects (only for current branch) — устгах товчтой
   const list = document.getElementById('project-list');
   list.innerHTML = '';
@@ -1862,7 +1871,7 @@ function renderSidebar() {
     const div = document.createElement('div');
     div.className = 'project-item' + (state.view === 'project:'+p.id ? ' active':'');
     const cnt = state.tasks.filter(t =>
-      t.project === p.id && taskBranch(t) === state.branch && t.status !== 'done'
+      t.project === p.id && t.status !== 'done'
     ).length;
     div.innerHTML = `
       <span class="proj-name">${escapeHtml(p.name)}</span>
@@ -1878,21 +1887,19 @@ function renderSidebar() {
     });
     div.querySelector('.proj-del')?.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const taskCount = state.tasks.filter(t => t.project === p.id && taskBranch(t) === state.branch).length;
+      const taskCount = state.tasks.filter(t => t.project === p.id).length;
       const msg = taskCount > 0
         ? `"${p.name}" төсөлд ${taskCount} даалгавар бий. Устгахад тэдгээр даалгаврууд "Төсөлгүй" болно. Үргэлжлэх үү?`
         : `"${p.name}" төслийг устгах уу?`;
       if (!(await showConfirm(msg, { okText: 'Устгах', danger: true }))) return;
-      // Тус төсөлд хамаарах task-уудын project талбарыг хоослох
+      // Тус төсөлд хамаарах БҮХ task-уудын project талбарыг хоослох (салбараас үл хамаарч)
       state.tasks.forEach(t => {
-        if (t.project === p.id && taskBranch(t) === state.branch) {
-          t.project = '';
-        }
+        if (t.project === p.id) t.project = '';
       });
-      // projectsByBranch массиваас хасах
-      state.projectsByBranch[state.branch] = (state.projectsByBranch[state.branch] || [])
-        .filter(x => x.id !== p.id);
-      // Хэрэв одоо тус төслийн view дээр бол mine руу шилжүүлэх
+      // projectsByBranch бүх массивaас хасах
+      Object.keys(state.projectsByBranch || {}).forEach(b => {
+        state.projectsByBranch[b] = (state.projectsByBranch[b] || []).filter(x => x.id !== p.id);
+      });
       if (state.view === 'project:' + p.id) state.view = 'mine';
       saveLocal();
       saveData();
@@ -3644,11 +3651,12 @@ function saveTaskFromModal() {
   render();
 }
 async function addProject() {
-  const name = await showPrompt('Шинэ төслийн нэр (' + currentBranchInfo().name + ' дотор үүснэ):', { title: 'Шинэ төсөл', okText: 'Нэмэх' });
+  const name = await showPrompt('Шинэ төслийн нэр:', { title: 'Шинэ төсөл', okText: 'Нэмэх' });
   if (!name || !name.trim()) return;
   const id = 'p_' + Date.now().toString(36);
-  if (!state.projectsByBranch[state.branch]) state.projectsByBranch[state.branch] = [];
-  state.projectsByBranch[state.branch].push({ id, name: name.trim() });
+  // Single bucket — салбарын систем дотроос л үлдсэн тул "shared"-д хадгална
+  if (!state.projectsByBranch['shared']) state.projectsByBranch['shared'] = [];
+  state.projectsByBranch['shared'].push({ id, name: name.trim() });
   saveLocal();
   state.view = 'project:' + id;
   render();
@@ -3709,11 +3717,10 @@ function fillSelect(id, items, value, placeholder) {
   });
 }
 function fillProjectSelect(id, value, branchOverride) {
-  const branch = branchOverride || state.branch;
-  const projects = state.projectsByBranch[branch] || [];
+  // Бүх төслийг (бүх салбараас) нэгтгэж харуулна — Чимун ХХК нэг компани.
+  const projects = currentProjects();
   // "— Төсөлгүй —" сонголтыг эхэнд тавиж заавал биш болгох
   const options = [{ value: '', label: '— Төсөлгүй —' }, ...projects.map(p => ({ value: p.id, label: p.name }))];
-  // Хэрэв шинэ task үүсгэж байгаа бөгөөд value заагаагүй бол хоосон-аар нээх
   fillSelect(id, options, value != null ? value : '');
 }
 function fillAssigneeSelect(id, value, branchOverride) {

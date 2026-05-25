@@ -72,6 +72,8 @@ const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-regi
 const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-subscribe';
 // Push broadcast — даалгавар үүсгэх/санхүүгийн хүсэлтийн дараа хариуцагч руу нэн даруй push илгээнэ.
 const DEFAULT_PUSH_BROADCAST_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-broadcast';
+// Bootstrap — tasks + finance-ийг нэг хариунд татаж execution-ийг 2 → 1 болгож хэмнэнэ.
+const DEFAULT_BOOTSTRAP_URL = 'https://chimunllc.app.n8n.cloud/webhook/bootstrap';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -82,6 +84,22 @@ function withKey(url) {
   if (!url) return url;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}key=${encodeURIComponent(N8N_API_KEY)}`;
+}
+
+// Modal save товчинд хурдан 2 удаа дарахад давтан POST явахаас сэргийлнэ.
+// async ажиллах хугацаанд товч disabled байж, дууссаны дараа (success/error аль аль)
+// автомат буцаана. Жишээ хэрэглээ: withBusy(btn, async () => { await saveTask(); }).
+async function withBusy(btn, asyncFn) {
+  if (!btn) return asyncFn();
+  if (btn.disabled) return; // өмнөх дуудалт хараахан дуусаагүй
+  btn.disabled = true;
+  const origText = btn.textContent;
+  try {
+    return await asyncFn();
+  } finally {
+    btn.disabled = false;
+    if (origText && btn.textContent !== origText) btn.textContent = origText;
+  }
 }
 // VAPID public key — push шифрлэлтийн нийтийн түлхүүр (private түлхүүр n8n credentials-д үлдэнэ).
 const VAPID_PUBLIC_KEY = 'BEWEze0XzdKChNxs6DrsnyivUfBN7xgxL6T219i6W-Gt808fzAadxW3REWnNjQb2v3GVSlnpF4oDM_F0uF6SRfY';
@@ -152,6 +170,7 @@ const state = {
       registerUrl: localStorage.getItem('registerUrl') || DEFAULT_REGISTER_URL || '',
       pushSubscribeUrl: localStorage.getItem('pushSubscribeUrl') || DEFAULT_PUSH_SUBSCRIBE_URL || '',
       pushBroadcastUrl: localStorage.getItem('pushBroadcastUrl') || DEFAULT_PUSH_BROADCAST_URL || '',
+      bootstrapUrl:     localStorage.getItem('bootstrapUrl')     || DEFAULT_BOOTSTRAP_URL     || '',
     };
   })(),
   editingId: null,
@@ -1009,6 +1028,41 @@ async function requestTaskClarification(taskId, question) {
   await addTaskComment(taskId, `❓ Тодруулга хэрэгтэй: ${question}`);
   logTaskActivity(task, 'clarification_requested', { question });
   await saveTask(task);
+}
+
+/* Bootstrap fetch — tasks + finance-ийг нэг webhook-аас зэрэг татна. n8n execution тоог
+   2 → 1 болгож сард ~30% буурна. Алдаатай эсвэл endpoint тохируулагдаагүй бол false
+   буцаагаад caller хуучин 2 тусдаа endpoint-ыг ашиглах fallback-ыг идэвхжүүлнэ. */
+async function loadBootstrap() {
+  const url = state.config.bootstrapUrl;
+  if (!url) return false;
+  try {
+    const r = await fetch(withKey(url + '?t=' + Date.now()), {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!r.ok) return false;
+    const data = await r.json();
+    const tasksRaw  = (data.tasks   && data.tasks.tasks)      || [];
+    const finRaw    = (data.finance && data.finance.requests) || [];
+    if (!Array.isArray(tasksRaw) || !Array.isArray(finRaw)) return false;
+    if (!Object.keys(state.projectsByBranch).length) {
+      Object.keys(PROJECTS_BY_BRANCH).forEach(b => {
+        state.projectsByBranch[b] = [...PROJECTS_BY_BRANCH[b]];
+      });
+    }
+    state.tasks = tasksRaw.map(normalizeTask);
+    state.financeRequests = finRaw.map(normalizeFinance);
+    applyPendingTaskWrites();
+    applyPendingFinanceWrites();
+    updatePendingConn();
+    saveLocal();
+    try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+    return true;
+  } catch (e) {
+    console.warn('Bootstrap load failed, falling back to per-endpoint:', e);
+    return false;
+  }
 }
 
 async function loadData() {
@@ -1975,6 +2029,17 @@ function taskBranch(t) {
   // as M Event so existing data stays visible.
   return t.branch || 'm-event';
 }
+// "Гарсан" статустай ажилтны email-ийг хурдан хайхад зориулсан Set.
+// Active task жагсаалтаас тэдгээрийн оноосон ажлуудыг хасахад ашиглана —
+// гэхдээ "Дууссан" болон "Илгээсэн ажил" view-д үлдээж history алдагдахгүй.
+function leftStaffEmails() {
+  return new Set(
+    TEAM.filter(m => (m.status || 'идэвхтэй') === 'гарсан')
+        .map(m => String(m.email || '').toLowerCase())
+        .filter(Boolean)
+  );
+}
+
 function filteredTasks() {
   let list = [...state.tasks];
   // ACCESS CONTROL — non-CEO users see:
@@ -2013,6 +2078,13 @@ function filteredTasks() {
   else if (state.view.startsWith('project:')) {
     const pid = state.view.split(':')[1];
     list = list.filter(t => t.project === pid);
+  }
+  // "Гарсан" ажилтны идэвхтэй task-уудыг ажлын жагсаалтаас хасна — KPI болон тойм муудах
+  // эх үүсвэр. "Дууссан" tab дотор үлдээж history тэвэрнэ. Илгээсэн ажил болон finance
+  // адил тэр хүний өмнөх төлөвлөгөөг харах боломжтой.
+  if (state.view !== 'done' && state.view !== 'delegated' && state.view !== 'finance') {
+    const left = leftStaffEmails();
+    if (left.size) list = list.filter(t => !left.has(String(t.assignee || '').toLowerCase()));
   }
   // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
   if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done');
@@ -4501,7 +4573,7 @@ function initEvents() {
   document.getElementById('add-project').onclick = addProject;
   document.getElementById('new-task-btn').onclick = () => openTaskModal();
   document.getElementById('t-cancel').onclick = closeTaskModal;
-  document.getElementById('t-save').onclick = saveTaskFromModal;
+  document.getElementById('t-save').onclick = () => withBusy(document.getElementById('t-save'), saveTaskFromModal);
 
   // ─── Мобайл доод нав ───
   document.querySelectorAll('.mobile-nav-item[data-view]').forEach(btn => {
@@ -4702,8 +4774,8 @@ function initEvents() {
 
   // ─── Bulk action bar wiring ──────────────────────────
   document.getElementById('bulk-cancel')?.addEventListener('click', bulkClear);
-  document.getElementById('bulk-done')?.addEventListener('click', () => bulkApply('done'));
-  document.getElementById('bulk-delete')?.addEventListener('click', () => bulkApply('delete'));
+  document.getElementById('bulk-done')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('done')));
+  document.getElementById('bulk-delete')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('delete')));
   // Esc → bulk цуцлах
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.bulkSelected?.size > 0) bulkClear();
@@ -5205,9 +5277,12 @@ async function bootApp() {
   }
   loadNotifications();
   await flushPendingWrites();   // өмнөх session-д офлайн үлдсэн өөрчлөлт байвал эхлээд илгээх
-  // CEO дотор орсны дараа TEAM-аа дахин sync хийнэ — шинэ pending бүртгэлийн хүсэлт байвал
-  // үүнийг unceп олж notifyCEOOfPendingRegistrations төв дамжуулна.
-  await Promise.all([ loadData(), loadFinanceRequests(), loadTeamFromAPI() ]);
+  // Bootstrap endpoint туршиж үзнэ — tasks + finance-ийг 1 fetch-ээр авна. Бүтэлгүй бол
+  // хуучин 2 endpoint-аар нөхөж явна. Team тусдаа /staff endpoint-аар явсаар (UI байгууламж
+  // нь Master Sheet баганатай тулд n8n тал маппинг хийдэг тул нэгтгэх нь нийлмэл).
+  const bootOk = await loadBootstrap();
+  const taskPromises = bootOk ? [loadTeamFromAPI()] : [loadData(), loadFinanceRequests(), loadTeamFromAPI()];
+  await Promise.all(taskPromises);
   generateNotifications();
   render();
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
@@ -5300,8 +5375,9 @@ async function refreshFromServer() {
   if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
   try {
     await flushPendingWrites();   // татахаасаа өмнө офлайн өөрчлөлтөө илгээж, дарагдахаас сэргийлнэ
-    // CEO үед TEAM-аа бас sync хийж шинэ бүртгэлийн хүсэлт байвал автомат мэдэгдэнэ
-    const taskPromises = [ loadData(), loadFinanceRequests() ];
+    // Bootstrap endpoint-ыг турших — tasks + finance-ийг 1 fetch-ээр. Алдаатай бол fallback.
+    const bootOk = await loadBootstrap();
+    const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];
     if (state.isCEO) taskPromises.push(loadTeamFromAPI());
     await Promise.all(taskPromises);
     generateNotifications();

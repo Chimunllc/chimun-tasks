@@ -10,59 +10,74 @@
           "allowedOrigins": "https://chimunllc.github.io"
         }
       },
-      "id": "184d11db-7410-4a9b-b8c0-870c30caa07d",
+      "id": "sr-webhook",
       "name": "Webhook · Бүртгэл хүсэлт",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1.1,
-      "position": [
-        288,
-        2576
-      ],
+      "typeVersion": 2,
+      "position": [-800, 200],
       "webhookId": "staff-register-webhook"
     },
     {
       "parameters": {
-        "documentId": {
-          "__rl": true,
-          "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
-          "mode": "list",
-          "cachedResultName": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
-          "mode": "name"
-        },
-        "options": {}
+        "jsCode": "// Payload: { name, role, group, phone, email, pin, rd, address, photo (base64 dataURL),\n//             emergency_name, emergency_phone, status, requested_at }\nconst body = $input.first().json.body || $input.first().json || {};\n\n// Phone-ийг норморчилох (зөвхөн тоо)\nconst phoneNorm = String(body.phone || '').replace(/\\D/g, '');\n\n// Filename — нэр + утас. \"Болд_Энх_99112233.jpg\".\nconst nameClean = String(body.name || 'unknown').replace(/[^\\p{L}\\d]+/gu, '_').slice(0, 40);\nconst filename = `${nameClean}_${phoneNorm || 'no-phone'}.jpg`;\n\n// Photo нь dataURL хэлбэртэй: 'data:image/jpeg;base64,<base64>'\nlet photoBase64 = '';\nlet hasPhoto = false;\nif (body.photo && body.photo.startsWith('data:image/')) {\n  const m = body.photo.match(/^data:image\\/[\\w+]+;base64,(.+)$/);\n  if (m) {\n    photoBase64 = m[1];\n    hasPhoto = true;\n  }\n}\n\n// Generate уникал request ID\nconst requestId = 'REQ_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);\n\nreturn [{\n  json: {\n    request_id: requestId,\n    filename,\n    has_photo: hasPhoto,\n    photo_base64: photoBase64,\n    // Sheet-д бичигдэх талбарууд\n    'ID': '', // CEO зөвшөөрсний дараа M01, C07 г.м.\n    'Овог нэр': body.name || '',\n    'Албан тушаал': body.role || '',\n    'Бүлэг': body.group || '',\n    'Утас': body.phone || '',\n    'И-мэйл': body.email || '',\n    'PIN': body.pin || '',\n    'РД': body.rd || '',\n    'Гэрийн хаяг': body.address || '',\n    'Яаралтай нэр': body.emergency_name || '',\n    'Яаралтай утас': body.emergency_phone || '',\n    'Зургийн URL': '', // Drive upload-ийн дараа бичигдэнэ\n    'Төлөв': body.status || 'хүлээж буй',\n    'Хүсэлтийн ID': requestId,\n    'Хүсэлт өгсөн': body.requested_at || new Date().toISOString(),\n  },\n  binary: hasPhoto ? {\n    photo: {\n      data: photoBase64,\n      mimeType: 'image/jpeg',\n      fileName: filename,\n    }\n  } : {},\n}];"
       },
-      "id": "c16b6184-3931-4e31-a6a7-5024e955050c",
-      "name": "Sheets · Уншиж буй ажилтнууд",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
-      "position": [
-        512,
-        2576
-      ],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "tZSfYfxkpH5L34wG",
-          "name": "Google Sheets OAuth2 API"
-        }
-      }
+      "id": "sr-parse",
+      "name": "Parse payload + filename",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-560, 200]
     },
     {
       "parameters": {
-        "jsCode": "// Зөвхөн ID үүсгэж, Sheet-н мөр бэлдэнэ.\n// Бүх шалгалт (давхцал, кирилл, заавал) App дээр хийгдсэн — энд throw БАЙХГҮЙ.\nconst body = $('Webhook · Бүртгэл хүсэлт').first().json.body || {};\nconst existing = $input.all().map(it => it.json);\n\nconst name  = String(body.name || '').trim();\nconst role  = String(body.role || '').trim();\nconst group = String(body.group || '').trim();\nconst phone = String(body.phone || '').trim();\nconst email = String(body.email || '').trim();\nconst pin   = String(body.pin || '').trim();\n\n// ID prefix салбараар\nconst PREFIX_MAP = { 'Нэгдсэн': 'S', 'M Event': 'M', 'Camp': 'C' };\nconst prefix = PREFIX_MAP[group] || 'X';\n\n// Дараагийн чөлөөт дугаар ('ID' монгол баганаас)\nconst usedIds = new Set(existing.map(r => String(r['ID'] || '').trim()));\nlet i = 1;\nlet newId = prefix + String(i).padStart(2, '0');\nwhile (usedIds.has(newId)) { i++; newId = prefix + String(i).padStart(2, '0'); }\n\nconst today = new Date().toISOString().slice(0, 10);\n\n// ГАРАЛТ: Sheet-н толгойтой ЯГ ИЖИЛ монгол түлхүүр (auto-map)\nreturn [{ json: {\n  'ID': newId,\n  'Овог нэр': name,\n  'Албан тушаал': role,\n  'Бүлэг': group,\n  'Зэрэглэл': 40,\n  'Утас': phone,\n  'И-мэйл': email,\n  'PIN': pin,\n  'Төлөв': 'идэвхтэй',\n  'Ажилд орсон': today,\n  'Тэмдэглэл': 'Апп-аар өөрөө бүртгүүлсэн',\n} }];\n"
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "has-photo",
+              "leftValue": "={{ $json.has_photo }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
-      "id": "98b2b69a-54c7-43f1-9094-4e9316afbd4f",
-      "name": "Code · ID үүсгэх",
+      "id": "sr-if-photo",
+      "name": "If зураг байгаа эсэх",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-320, 200]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.filename }}",
+        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1yNTOivF-wBoSVrx5MHj8X0kQY-YZsl6G"
+        },
+        "options": {},
+        "binaryPropertyName": "photo",
+        "resource": "file",
+        "operation": "upload"
+      },
+      "id": "sr-drive-upload",
+      "name": "Upload зураг → Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [-80, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Drive upload-аас гарсан file ID-г Sheet-д бичих form-руу нэгтгэх.\n// Webhook view-ыг шууд хуваалцах боломжтой URL болгож хувиргана.\nconst orig = $('Parse payload + filename').item.json;\nconst driveFile = $input.first().json;\nconst fileId = driveFile.id;\nconst publicUrl = fileId ? `https://drive.google.com/uc?id=${fileId}` : '';\nreturn [{ json: { ...orig, 'Зургийн URL': publicUrl, drive_file_id: fileId } }];"
+      },
+      "id": "sr-merge-url",
+      "name": "Зургийн URL → row",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        736,
-        2576
-      ]
+      "position": [160, 100]
     },
     {
       "parameters": {
@@ -70,397 +85,129 @@
         "documentId": {
           "__rl": true,
           "value": "1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM",
-          "mode": "list",
-          "cachedResultName": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit"
+          "mode": "id"
         },
         "sheetName": {
           "__rl": true,
-          "value": "Чимун_ХХК_Ажилтны_бүртгэл_Master",
-          "mode": "name"
+          "value": 451955481,
+          "mode": "id"
         },
         "columns": {
-          "mappingMode": "autoMapInputData",
-          "value": {},
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json['ID'] }}",
+            "Овог нэр": "={{ $json['Овог нэр'] }}",
+            "Албан тушаал": "={{ $json['Албан тушаал'] }}",
+            "Бүлэг": "={{ $json['Бүлэг'] }}",
+            "Утас": "={{ $json['Утас'] }}",
+            "И-мэйл": "={{ $json['И-мэйл'] }}",
+            "PIN": "={{ $json['PIN'] }}",
+            "РД": "={{ $json['РД'] }}",
+            "Гэрийн хаяг": "={{ $json['Гэрийн хаяг'] }}",
+            "Яаралтай нэр": "={{ $json['Яаралтай нэр'] }}",
+            "Яаралтай утас": "={{ $json['Яаралтай утас'] }}",
+            "Зургийн URL": "={{ $json['Зургийн URL'] }}",
+            "Төлөв": "={{ $json['Төлөв'] }}",
+            "Хүсэлтийн ID": "={{ $json['Хүсэлтийн ID'] }}",
+            "Хүсэлт өгсөн": "={{ $json['Хүсэлт өгсөн'] }}"
+          },
           "matchingColumns": [],
           "schema": [
-            {
-              "id": "ID",
-              "displayName": "ID",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Овог нэр",
-              "displayName": "Овог нэр",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Албан тушаал",
-              "displayName": "Албан тушаал",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Бүлэг",
-              "displayName": "Бүлэг",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Хавсарсан бүлэг",
-              "displayName": "Хавсарсан бүлэг",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Зэрэглэл",
-              "displayName": "Зэрэглэл",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Утас",
-              "displayName": "Утас",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "И-мэйл",
-              "displayName": "И-мэйл",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "PIN",
-              "displayName": "PIN",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Төлөв",
-              "displayName": "Төлөв",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Ажилд орсон",
-              "displayName": "Ажилд орсон",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Улирлын эхлэл",
-              "displayName": "Улирлын эхлэл",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Улирлын төгсгөл",
-              "displayName": "Улирлын төгсгөл",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Үндсэн цалин",
-              "displayName": "Үндсэн цалин",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "KPI кодууд",
-              "displayName": "KPI кодууд",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "JD холбоос",
-              "displayName": "JD холбоос",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Зураг",
-              "displayName": "Зураг",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Тэмдэглэл",
-              "displayName": "Тэмдэглэл",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": false
+            { "id": "ID", "displayName": "ID", "type": "string" },
+            { "id": "Овог нэр", "displayName": "Овог нэр", "type": "string" },
+            { "id": "Албан тушаал", "displayName": "Албан тушаал", "type": "string" },
+            { "id": "Бүлэг", "displayName": "Бүлэг", "type": "string" },
+            { "id": "Утас", "displayName": "Утас", "type": "string" },
+            { "id": "И-мэйл", "displayName": "И-мэйл", "type": "string" },
+            { "id": "PIN", "displayName": "PIN", "type": "string" },
+            { "id": "РД", "displayName": "РД", "type": "string" },
+            { "id": "Гэрийн хаяг", "displayName": "Гэрийн хаяг", "type": "string" },
+            { "id": "Яаралтай нэр", "displayName": "Яаралтай нэр", "type": "string" },
+            { "id": "Яаралтай утас", "displayName": "Яаралтай утас", "type": "string" },
+            { "id": "Зургийн URL", "displayName": "Зургийн URL", "type": "string" },
+            { "id": "Төлөв", "displayName": "Төлөв", "type": "string" },
+            { "id": "Хүсэлтийн ID", "displayName": "Хүсэлтийн ID", "type": "string" },
+            { "id": "Хүсэлт өгсөн", "displayName": "Хүсэлт өгсөн", "type": "string" }
+          ]
         },
         "options": {}
       },
-      "id": "92d0573d-bda2-4aeb-ba4e-8a452205352d",
-      "name": "Sheets · Master-д нэмэх",
+      "id": "sr-sheet-append",
+      "name": "Sheet · Append шинэ мөр",
       "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
-      "position": [
-        928,
-        2560
-      ],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "tZSfYfxkpH5L34wG",
-          "name": "Google Sheets OAuth2 API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "sendTo": "ceo@nomaadcamp.com",
-        "subject": "=🆕 Шинэ ажилтан бүртгүүлсэн: {{ $('Code · ID үүсгэх').item.json['Овог нэр'] }}",
-        "message": "=<p><strong>{{ $('Code · ID үүсгэх').item.json['Овог нэр'] }}</strong> апп-аар өөрөө бүртгүүлсэн байна.</p><ul><li>ID: {{ $('Code · ID үүсгэх').item.json['ID'] }}</li><li>Албан тушаал: {{ $('Code · ID үүсгэх').item.json['Албан тушаал'] }}</li><li>Салбар: {{ $('Code · ID үүсгэх').item.json['Бүлэг'] }}</li><li>Утас: {{ $('Code · ID үүсгэх').item.json['Утас'] }}</li><li>И-мэйл: {{ $('Code · ID үүсгэх').item.json['И-мэйл'] }}</li></ul><p>Master Sheet-д идэвхтэй төлөвтэй нэмэгдсэн.</p>",
-        "options": {
-          "appendAttribution": false
-        }
-      },
-      "id": "d65d2dbb-5510-435a-8f17-fd19228e1b8c",
-      "name": "Gmail · CEO-д мэдэгдэх",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2,
-      "position": [
-        1168,
-        2480
-      ],
-      "webhookId": "1eaca014-ff68-48e3-867c-be3024aab846",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "bDzHksZFFiNLk9gC",
-          "name": "Gmail OAuth2 API"
-        }
-      }
+      "typeVersion": 4,
+      "position": [400, 200]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ ok: true, id: $('Code · ID үүсгэх').item.json['ID'], name: $('Code · ID үүсгэх').item.json['Овог нэр'] }) }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Access-Control-Allow-Origin",
-                "value": "*"
-              }
-            ]
-          }
-        }
+        "responseBody": "={{ JSON.stringify({ ok: true, request_id: $json['Хүсэлтийн ID'], photo_url: $json['Зургийн URL'] }) }}"
       },
-      "id": "354d5230-dd87-4e77-8370-498846506244",
-      "name": "Respond · Амжилттай",
+      "id": "sr-respond",
+      "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        1392,
-        2576
-      ]
-    },
-    {
-      "parameters": {
-        "sendTo": "={{ $('Code · ID үүсгэх').item.json['И-мэйл'] }}",
-        "subject": "=Чимун ХХК дотоод апп-д бүртгэгдлээ",
-        "message": "=<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:0 auto;\"><h2 style=\"color:#1F2A23;\">Тавтай морил, {{ $('Code · ID үүсгэх').item.json['Овог нэр'] }}!</h2><p>Та <strong>Чимун ХХК</strong>-ийн дотоод даалгаврын апп-д амжилттай бүртгэгдлээ.</p><table style=\"background:#F5F1E8;border-radius:8px;padding:16px;width:100%;border-collapse:collapse;\"><tr><td style=\"padding:6px;\"><strong>Нэвтрэх нэр:</strong></td><td style=\"padding:6px;\">{{ $('Code · ID үүсгэх').item.json['Овог нэр'] }}</td></tr><tr><td style=\"padding:6px;\"><strong>Ажилтны код:</strong></td><td style=\"padding:6px;\">{{ $('Code · ID үүсгэх').item.json['ID'] }}</td></tr><tr><td style=\"padding:6px;\"><strong>PIN код:</strong></td><td style=\"padding:6px;font-size:18px;font-weight:bold;color:#2E3A28;\">{{ $('Code · ID үүсгэх').item.json['PIN'] }}</td></tr><tr><td style=\"padding:6px;\"><strong>Албан тушаал:</strong></td><td style=\"padding:6px;\">{{ $('Code · ID үүсгэх').item.json['Албан тушаал'] }}</td></tr></table><p style=\"margin-top:16px;\">Апп-д нэвтрэхдээ нэрээ сонгоод дээрх PIN кодоо оруулна уу:</p><p><a href=\"https://chimunllc.github.io/chimun-tasks/\" style=\"display:inline-block;background:#2E3A28;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;\">Апп нээх</a></p><p style=\"font-size:12px;color:#888;margin-top:20px;\">PIN кодоо нууцлан хадгална уу. Асуудал гарвал CEO-той холбогдоно уу.</p></div>",
-        "options": {
-          "appendAttribution": false
-        }
-      },
-      "id": "e45371c7-4a8b-4175-9095-4b210bf8c6b9",
-      "name": "Gmail · Шинэ ажилтанд",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2,
-      "position": [
-        1168,
-        2640
-      ],
-      "webhookId": "d5e70f8e-188d-41f0-b8a6-e4344fee73c0",
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "bDzHksZFFiNLk9gC",
-          "name": "Gmail OAuth2 API"
-        }
-      }
+      "position": [640, 200]
     }
   ],
   "connections": {
     "Webhook · Бүртгэл хүсэлт": {
+      "main": [[{ "node": "Parse payload + filename", "type": "main", "index": 0 }]]
+    },
+    "Parse payload + filename": {
+      "main": [[{ "node": "If зураг байгаа эсэх", "type": "main", "index": 0 }]]
+    },
+    "If зураг байгаа эсэх": {
       "main": [
-        [
-          {
-            "node": "Sheets · Уншиж буй ажилтнууд",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Upload зураг → Drive", "type": "main", "index": 0 }],
+        [{ "node": "Sheet · Append шинэ мөр", "type": "main", "index": 0 }]
       ]
     },
-    "Sheets · Уншиж буй ажилтнууд": {
-      "main": [
-        [
-          {
-            "node": "Code · ID үүсгэх",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Upload зураг → Drive": {
+      "main": [[{ "node": "Зургийн URL → row", "type": "main", "index": 0 }]]
     },
-    "Sheets · Master-д нэмэх": {
-      "main": [
-        [
-          {
-            "node": "Gmail · CEO-д мэдэгдэх",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Respond · Амжилттай",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Gmail · Шинэ ажилтанд",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Зургийн URL → row": {
+      "main": [[{ "node": "Sheet · Append шинэ мөр", "type": "main", "index": 0 }]]
     },
-    "Code · ID үүсгэх": {
-      "main": [
-        [
-          {
-            "node": "Sheets · Master-д нэмэх",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Sheet · Append шинэ мөр": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
     }
   },
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
-  "staticData": null,
-  "pinData": {
-    "Webhook · Бүртгэл хүсэлт": [
-      {
-        "json": {
-          "headers": {
-            "host": "chimunllc.app.n8n.cloud",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-            "content-length": "149",
-            "accept": "*/*",
-            "accept-encoding": "gzip, br",
-            "accept-language": "en-US,en;q=0.9,mn;q=0.8,ja;q=0.7,zh-CN;q=0.6,zh;q=0.5,fr;q=0.4",
-            "cdn-loop": "cloudflare; loops=1; subreqs=1",
-            "cf-connecting-ip": "2405:5700:304:4fd5:81f6:991:6ed4:77f0",
-            "cf-ew-via": "15",
-            "cf-ipcountry": "MN",
-            "cf-ray": "9fe849cc5e56152f-ULN",
-            "cf-visitor": "{\"scheme\":\"https\"}",
-            "cf-worker": "n8n.cloud",
-            "content-type": "application/json",
-            "dnt": "1",
-            "origin": "https://chimunllc.github.io",
-            "priority": "u=1, i",
-            "referer": "https://chimunllc.github.io/",
-            "sec-ch-ua": "\"Chromium\";v=\"148\", \"Google Chrome\";v=\"148\", \"Not/A)Brand\";v=\"99\"",
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": "\"Windows\"",
-            "sec-fetch-dest": "empty",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-site": "cross-site",
-            "x-forwarded-for": "2405:5700:304:4fd5:81f6:991:6ed4:77f0, 172.69.252.188",
-            "x-forwarded-host": "chimunllc.app.n8n.cloud",
-            "x-forwarded-port": "443",
-            "x-forwarded-proto": "https",
-            "x-forwarded-server": "traefik-prod-users-gwc-68-7c7c9cfb8b-jwvbz",
-            "x-is-trusted": "yes",
-            "x-real-ip": "2405:5700:304:4fd5:81f6:991:6ed4:77f0"
-          },
-          "params": {},
-          "query": {},
-          "body": {
-            "name": "О.ТҮВДЭНДАРЖАА",
-            "role": "НЯГТЛАН",
-            "group": "Нэгдсэн",
-            "phone": "91204938",
-            "email": "tuvdendar@gmail.com",
-            "pin": "1122"
-          },
-          "webhookUrl": "https://chimunllc.app.n8n.cloud/webhook/staff-register",
-          "executionMode": "production"
-        },
-        "pairedItem": {
-          "item": 0
-        }
-      }
-    ]
-  },
-  "triggerCount": 1,
-  "meta": {
-    "templateCredsSetupCompleted": true
-  }
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "_setup_instructions": [
+    "АЖИЛЛАХ УРСГАЛ:",
+    "  1. Аппаас POST /staff-register ирнэ. Payload-д photo (base64 dataURL) байна.",
+    "  2. Parse node нэр+утсаар filename үүсгэнэ ('Болд_Энх_99112233.jpg').",
+    "  3. If photo → Google Drive folder руу upload.",
+    "  4. File ID-аас public URL үүсгэнэ ('https://drive.google.com/uc?id=...').",
+    "  5. Sheet-д шинэ мөр append хийгдэнэ — Зургийн URL баганатай.",
+    "",
+    "SETUP STEPS:",
+    "  1. n8n cloud дээр энэ JSON-ыг re-import хийнэ.",
+    "  2. 'Upload зураг → Drive' node-нд:",
+    "       - Google Drive credential зөв сонгогдсон эсэхийг шалгах",
+    "       - Folder ID: 1yNTOivF-wBoSVrx5MHj8X0kQY-YZsl6G (танай ажилтны зургийн folder)",
+    "       - Resource: File, Operation: Upload",
+    "       - Binary Property Name: photo",
+    "       - File Name: {{ $json.filename }}",
+    "       - Folder credential нь folder-руу бичих эрхтэй байх ёстой",
+    "  3. 'Sheet · Append шинэ мөр' node-нд:",
+    "       - Master Sheet-д дараах баганууд байх ёстой:",
+    "           ID, Овог нэр, Албан тушаал, Бүлэг, Утас, И-мэйл, PIN,",
+    "           РД, Гэрийн хаяг, Яаралтай нэр, Яаралтай утас, Зургийн URL,",
+    "           Төлөв, Хүсэлтийн ID, Хүсэлт өгсөн",
+    "       - Хэрэв тус баганууд байхгүй бол Sheet-д шинээр нэмэх",
+    "       - Schema refresh хийх (3 цэг → Refresh)",
+    "  4. Workflow Activate хийх.",
+    "  5. Аппаас бүртгэлийн форм бөглөж тест хийх — Drive folder-д зураг,",
+    "     Sheet-д мөр гарах ёстой.",
+    "",
+    "ЗУРГИЙН URL FORMAT:",
+    "  Public preview URL: https://drive.google.com/uc?id={fileId}",
+    "  Thumbnail: https://drive.google.com/thumbnail?id={fileId}",
+    "  Дэлгэрэнгүй: https://drive.google.com/file/d/{fileId}/view",
+    "  Folder нь 'Anyone with link can view' хандалттай байх шаардлагатай (эсвэл компанийн",
+    "  Workspace-д хязгаарлах)."
+  ]
 }

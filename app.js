@@ -2738,53 +2738,50 @@ function suggestNextStaffId(branchLabelOrArray) {
   return `${prefix}${String(maxNum + 1).padStart(2, '0')}`;
 }
 
-/* ─── Шинэ бүртгэлийн хүсэлт CEO-д мэдэгдэх ─────────────
-   loadTeamFromAPI дуудах болгонд "хүлээж буй" статустайг шалгаж,
-   өмнө мэдэгдээгүй хүн байвал toast + push + notification гаргана.
-   localStorage('seenPendingIds_v1') нь өмнө үзсэн хүсэлтийн ID-уудыг хадгална
-   тул нэг хүсэлт хэдэн ч удаа давтан мэдэгдэхгүй. */
+/* ─── Шинэ ажилтан бүртгүүлсэн үед CEO-д мэдэгдэх ─────────
+   loadTeamFromAPI болгонд request_id-тай шинэ ажилтан байгаа эсэхийг
+   шалгана. localStorage('seenStaffIds_v1') нь өмнө мэдэгдсэн нэгжийг
+   тэмдэглэдэг тул давтан spam-ээ сэргийлнэ. */
 function notifyCEOOfPendingRegistrations() {
   if (!state.isCEO) return;
-  const pending = TEAM.filter(m => (m.status || '') === 'хүлээж буй');
-  if (!pending.length) return;
-  const seenRaw = localStorage.getItem('seenPendingIds_v1') || '[]';
+  // Шинэ ажилтан = request_id-тай (бүртгэлээр орсон) бөгөөд CEO-биш бусад ажилтан
+  const fresh = TEAM.filter(m => m.request_id && m.id !== state.me);
+  if (!fresh.length) return;
+  const seenRaw = localStorage.getItem('seenStaffIds_v1') || '[]';
   let seen;
   try { seen = JSON.parse(seenRaw); if (!Array.isArray(seen)) seen = []; }
   catch(e) { seen = []; }
-  const newOnes = pending.filter(m => !seen.includes(m.id));
+  const newOnes = fresh.filter(m => !seen.includes(m.request_id));
   if (!newOnes.length) return;
   // In-app notification
   if (!Array.isArray(state.notifications)) state.notifications = [];
   newOnes.forEach(m => {
     state.notifications.unshift({
-      id: 'pending-reg-' + m.id,
+      id: 'new-staff-' + m.request_id,
       type: 'assigned',
       taskId: 'staff-management',
-      msg: `Шинэ ажилтан: ${m.name} — хянах хүсэлт`,
+      msg: `Шинэ ажилтан бүртгүүллээ: ${m.name} (${m.role})`,
       ts: Date.now(),
       read: false,
     });
   });
   saveNotifications();
   renderNotifications();
-  // Toast
   showToast(
     newOnes.length === 1
-      ? `🆕 Шинэ ажилтны хүсэлт: ${newOnes[0].name}`
-      : `🆕 ${newOnes.length} шинэ ажилтны хүсэлт ирлээ`,
-    'info', 5000
+      ? `🆕 Шинэ ажилтан: ${newOnes[0].name}`
+      : `🆕 ${newOnes.length} шинэ ажилтан бүртгүүллээ`,
+    'success', 4000
   );
-  // Browser push notification
   if (window._chimunNotify) {
     newOnes.forEach(m => {
-      window._chimunNotify('Шинэ ажилтны хүсэлт', `${m.name} (${m.role}) бүртгүүлэх хүсэлт илгээсэн`, {
-        tag: 'pending-' + m.id,
+      window._chimunNotify('Шинэ ажилтан бүртгүүллээ', `${m.name} — ${m.role}`, {
+        tag: 'new-staff-' + m.request_id,
       });
     });
   }
-  // "Үзсэн" гэж тэмдэглэх (Хянах modal-аар хариу өгсний дараа л Sheet-ээс хасагдана)
-  const newSeen = [...new Set([...seen, ...newOnes.map(m => m.id)])];
-  localStorage.setItem('seenPendingIds_v1', JSON.stringify(newSeen));
+  const newSeen = [...new Set([...seen, ...newOnes.map(m => m.request_id)])];
+  localStorage.setItem('seenStaffIds_v1', JSON.stringify(newSeen));
 }
 
 /* ─── Pending registrations (CEO review) ───────────────────
@@ -5319,6 +5316,9 @@ async function handleRegister() {
   try {
     const url = state.config.registerUrl;
     if (!url) { show('Бүртгэлийн систем тохируулагдаагүй. CEO-той холбогдоно уу.'); return; }
+    // CEO зөвшөөрөл шаардахгүй — ID болон зэрэглэлийг автоматаар тогтооно
+    const assignedId = suggestNextStaffId(group);
+    const autoLevel = levelForRole(role);
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5328,7 +5328,10 @@ async function handleRegister() {
         emergency_name: emergencyName,
         emergency_phone: emergencyPhone,
         photo: photoDataUrl, // base64 data URL эсвэл хоосон
-        status: 'хүлээж буй', // CEO зөвшөөрөх хүртэл pending
+        assigned_id: assignedId,  // M08, C07 г.м.
+        level: autoLevel,         // 40/60/80/100
+        status: 'идэвхтэй',       // шууд идэвхтэй — зөвшөөрөл шаардахгүй
+        joined_at: new Date().toISOString().slice(0, 10),
         requested_at: new Date().toISOString(),
       }),
     });

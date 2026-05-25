@@ -381,6 +381,12 @@
       <option value="quarterly">Улирал бүр</option>
     </select>
 
+    <label style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer; user-select:none;">
+      <input type="checkbox" id="t-requires-photo" style="width:18px; height:18px; cursor:pointer;" />
+      <span>📷 Дуусгахдаа биелэлтийн зураг шаардах</span>
+    </label>
+    <div style="font-size:11px; color:var(--muted); margin:-4px 0 8px 26px;">Хариуцагч даалгавраа дуусгахдаа нотлох зураг хавсаргана</div>
+
     <!-- ─── СТАТУС ТОВЧНУУД (зөвхөн хадгалагдсан task үед харагдана) ─── -->
     <div id="t-status-bar" style="display:none; margin:14px -4px 4px; padding:10px 4px; border-top:1px solid var(--border);">
       <div style="font-size:11px; color:var(--muted); margin-bottom:6px; padding:0 8px;">Үйлдэл</div>
@@ -531,6 +537,25 @@
     <div class="modal-actions" id="f-submit-actions" style="margin-top:18px;">
       <button class="btn" id="f-cancel">Болих</button>
       <button class="btn btn-primary" id="f-save">Илгээх</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── COMPLETION PHOTOS MODAL — даалгавар дуусгахдаа олон зураг хавсаргах ─── -->
+<div class="modal-bg" id="completion-photos-modal">
+  <div class="modal" style="max-width:480px;">
+    <h2>📷 Биелэлтийн зураг</h2>
+    <div id="cp-task-title" style="font-size:13px; color:var(--muted); margin:-6px 0 14px; padding:8px 10px; background:var(--panel-hover); border-radius:6px;"></div>
+    <p style="font-size:13px; color:var(--muted); margin:0 0 12px; line-height:1.5;">Хэдэн ч зураг хавсаргаж болно. Бүх зургийг хавсаргасны дараа "Даалгавар дуусгах" товчийг дарна.</p>
+    <div id="cp-photos-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(90px, 1fr)); gap:8px; margin-bottom:12px;"></div>
+    <label for="cp-photo-input" class="login-submit" style="display:block; text-align:center; cursor:pointer; padding:12px; background:linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color:#fff; border-radius:8px; font-weight:600; font-size:14px;">
+      ➕ Зураг нэмэх
+    </label>
+    <input id="cp-photo-input" type="file" accept="image/*" capture="environment" style="display:none;" />
+    <div id="cp-upload-status" style="font-size:12px; color:var(--muted); margin-top:8px; min-height:18px;"></div>
+    <div class="modal-actions">
+      <button class="btn" id="cp-cancel">Болих</button>
+      <button class="btn btn-primary" id="cp-done" disabled>Даалгавар дуусгах</button>
     </div>
   </div>
 </div>

@@ -162,7 +162,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Sheet (монгол) → app (english code) хөрвүүлэлт.\nconst M2E = {\n  'ID':'id','Гарчиг':'title','Тайлбар':'desc',\n  'Салбар':'branch','Төсөл':'project',\n  'Хариуцагч':'assignee','Хамт хариуцагч':'co_assignees',\n  'Эцсийн хугацаа':'due','Чухлын зэрэг':'priority',\n  'Төлөв':'status','KPI код':'kpi_code',\n  'Үүсгэсэн ажилтан':'createdBy','Эх ID':'parent_id',\n  'Төрөл':'kind','Дамжлага':'stage',\n  'Үүсгэсэн огноо':'created','Шинэчилсэн огноо':'updated',\n  'Биелэлтийн зураг':'completion_photo_url',\n};\nconst STATUS = {'Идэвхтэй':'open','Дууссан':'done','Устгасан':'deleted','Түгжээтэй':'locked'};\nconst PRIORITY = {'Бага':'low','Дунд':'med','Өндөр':'high'};\nconst BRANCH = {'M Event':'m-event','NOMAAD Camp':'camp','Нэгдсэн':'shared','Бэлтгэл':'production'};\nconst KIND = {'Эх захиалга':'act_parent','Дамжлага':'act_stage'};\nconst DECISION = {'Хүлээгдэж буй':'pending','Зөвшөөрсөн':'approved','Татгалзсан':'rejected','Хойшлуулсан':'deferred'};\nconst xlate = (v,m) => (v && m[v] != null) ? m[v] : v;\nconst rows = $input.all().map(it => {\n  const src = it.json || {};\n  const out = {};\n  for (const k of Object.keys(src)) out[M2E[k] || k] = src[k];\n  if (typeof out.co_assignees === 'string') {\n    out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];\n  }\n  out.status   = xlate(out.status, STATUS);\n  out.priority = xlate(out.priority, PRIORITY);\n  out.branch   = xlate(out.branch, BRANCH);\n  out.kind     = xlate(out.kind, KIND);\n  out.decision = xlate(out.decision, DECISION);\n  return out;\n});\nconst tasks = rows.filter(r => r && r.id && r.status !== 'deleted');\nreturn [{ json: { tasks } }];"
+        "jsCode": "// Sheet (монгол) → app (english code) хөрвүүлэлт.\nconst M2E = {\n  'ID':'id','Гарчиг':'title','Тайлбар':'desc',\n  'Салбар':'branch','Төсөл':'project',\n  'Хариуцагч':'assignee','Хамт хариуцагч':'co_assignees',\n  'Эцсийн хугацаа':'due','Чухлын зэрэг':'priority',\n  'Төлөв':'status','KPI код':'kpi_code',\n  'Үүсгэсэн ажилтан':'createdBy','Эх ID':'parent_id',\n  'Төрөл':'kind','Дамжлага':'stage',\n  'Үүсгэсэн огноо':'created','Шинэчилсэн огноо':'updated',\n  'Биелэлтийн зураг':'completion_photos','Зураг шаардах':'requires_photo',\n};\nconst STATUS = {'Идэвхтэй':'open','Дууссан':'done','Устгасан':'deleted','Түгжээтэй':'locked'};\nconst PRIORITY = {'Бага':'low','Дунд':'med','Өндөр':'high'};\nconst BRANCH = {'M Event':'m-event','NOMAAD Camp':'camp','Нэгдсэн':'shared','Бэлтгэл':'production'};\nconst KIND = {'Эх захиалга':'act_parent','Дамжлага':'act_stage'};\nconst DECISION = {'Хүлээгдэж буй':'pending','Зөвшөөрсөн':'approved','Татгалзсан':'rejected','Хойшлуулсан':'deferred'};\nconst xlate = (v,m) => (v && m[v] != null) ? m[v] : v;\nconst rows = $input.all().map(it => {\n  const src = it.json || {};\n  const out = {};\n  for (const k of Object.keys(src)) out[M2E[k] || k] = src[k];\n  if (typeof out.co_assignees === 'string') {\n    out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];\n  }\n  out.status   = xlate(out.status, STATUS);\n  out.priority = xlate(out.priority, PRIORITY);\n  out.branch   = xlate(out.branch, BRANCH);\n  out.kind     = xlate(out.kind, KIND);\n  out.decision = xlate(out.decision, DECISION);\n  return out;\n});\nconst tasks = rows.filter(r => r && r.id && r.status !== 'deleted');\nreturn [{ json: { tasks } }];"
       },
       "id": "a2c437e2-7097-4a8e-9f34-6ffd9dcf56d1",
       "name": "Aggregate Tasks1",
@@ -206,7 +206,8 @@
             "Дамжлага": "={{ $('Route Action1').item.json.task.stage }}",
             "Үүсгэсэн огноо": "={{ $('Route Action1').item.json.task.created }}",
             "Шинэчилсэн огноо": "={{ $now.toISO() }}",
-            "Биелэлтийн зураг": "={{ $('Route Action1').item.json.task.completion_photo_url || '' }}"
+            "Биелэлтийн зураг": "={{ $('Route Action1').item.json.task.completion_photos_csv || $('Route Action1').item.json.task.completion_photo_url || '' }}",
+            "Зураг шаардах": "={{ $('Route Action1').item.json.task.requires_photo_label || ($('Route Action1').item.json.task.requires_photo ? 'Тийм' : 'Үгүй') }}"
           },
           "matchingColumns": [
             "ID"
@@ -368,6 +369,15 @@
             {
               "id": "Биелэлтийн зураг",
               "displayName": "Биелэлтийн зураг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Зураг шаардах",
+              "displayName": "Зураг шаардах",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -588,6 +598,15 @@
             {
               "id": "Биелэлтийн зураг",
               "displayName": "Биелэлтийн зураг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Зураг шаардах",
+              "displayName": "Зураг шаардах",
               "required": false,
               "defaultMatch": false,
               "display": true,

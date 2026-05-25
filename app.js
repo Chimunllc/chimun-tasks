@@ -810,6 +810,12 @@ function taskToWire(task) {
   if (out.assignee) out.assignee = idToName(out.assignee);
   if (out.createdBy) out.createdBy = idToName(out.createdBy);
   if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(idToName);
+  // completion_photos array → CSV string (Sheet single cell)
+  if (Array.isArray(out.completion_photos)) {
+    out.completion_photos_csv = out.completion_photos.join(' | ');
+  }
+  // Boolean flag → Тийм/Үгүй (Sheet хүн уншихад)
+  out.requires_photo_label = out.requires_photo ? 'Тийм' : 'Үгүй';
   // Код → монгол
   out.branch    = _xlate(out.branch, _BRANCH_E2M);
   out.priority  = _xlate(out.priority, _PRIORITY_E2M);
@@ -830,6 +836,14 @@ function taskFromWire(task) {
     out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];
   }
   if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(nameToId);
+  // completion_photos CSV → array
+  if (typeof out.completion_photos === 'string') {
+    out.completion_photos = out.completion_photos ? out.completion_photos.split(/\s*\|\s*/).filter(Boolean) : [];
+  }
+  // requires_photo Mongolian label → bool
+  if (typeof out.requires_photo === 'string') {
+    out.requires_photo = /тийм|true|yes|1/i.test(out.requires_photo);
+  }
   // Монгол → код
   out.branch    = _xlate(out.branch, _BRANCH_M2E);
   out.priority  = _xlate(out.priority, _PRIORITY_M2E);
@@ -941,11 +955,11 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (!task) return;
   const oldStatus = task.status || 'open';
   if (oldStatus === newStatus) return;
-  // Дуусгахдаа биелэлтийн зураг шаардах (зураггүй бол)
-  if (newStatus === 'done' && !task.completion_photo_url) {
-    const photoUrl = await promptCompletionPhoto(task);
-    if (photoUrl === null) return; // Цуцалсан — done болгохгүй
-    task.completion_photo_url = photoUrl;
+  // Дуусгахдаа биелэлтийн зураг шаардах — task үүсгэгч requires_photo=true гэж тохируулсан үед
+  if (newStatus === 'done' && task.requires_photo && !(task.completion_photos || []).length) {
+    const photos = await promptCompletionPhoto(task);
+    if (photos === null) return; // Цуцалсан — done болгохгүй
+    task.completion_photos = photos;
   }
   task.status = newStatus;
   if (newStatus === 'in_progress') task.started_at = Date.now();
@@ -1363,7 +1377,7 @@ const MONGOLIAN_BANKS = [
 
 /* Файл (зураг/PDF) -> Drive folder руу upload хийгээд URL буцаах helper.
    kind: 'purchase' (худалдан авсан баримт) эсвэл 'payment' (төлбөрийн баримт) */
-async function uploadReceipt(file, requestId, kind) {
+async function uploadReceipt(file, requestId, kind, taskTitle = '') {
   if (!file) return null;
   if (!state.config.uploadUrl) {
     showToast('Upload endpoint тохируулагдаагүй. Settings шалгана уу.', 'error');
@@ -1386,6 +1400,7 @@ async function uploadReceipt(file, requestId, kind) {
         base64,
         request_id: requestId,
         kind,
+        task_title: taskTitle,
       })
     });
     if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 100));
@@ -3510,45 +3525,73 @@ function escapeHtml(s) {
 }
 
 /* -------------------- ACTIONS -------------------- */
-/* Биелэлтийн зураг авах — даалгавар дуусгахаас өмнө хариуцагчаас баталгаа авна.
-   Цуцалбал null буцаана (даалгавар done болохгүй).
-   Тэмдэглэл: cancel-detection нь хэт түргэн болсон тул focus-логик ХАСав;
-   upload явагдаж байх үед буруу null-аар цуцлахгүй. Хэрэглэгч цуцалбал change
-   event-д file байхгүй гэж ирнэ — тэр үед null буцаана. */
+/* Биелэлтийн зураг — олон зураг хавсаргах modal.
+   task.requires_photo=true үед л дуудагдана.
+   Resolve: { photos: [url1, url2, ...] } эсвэл null (цуцалсан). */
 function promptCompletionPhoto(task) {
   return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment'; // Утсан дээр шууд камер нээгдэнэ
-    input.style.display = 'none';
-    document.body.appendChild(input);
-    let resolved = false;
-    const cleanup = () => { try { document.body.removeChild(input); } catch(e){} };
-    input.addEventListener('change', async () => {
-      if (resolved) return;
+    const modal = document.getElementById('completion-photos-modal');
+    const titleEl = document.getElementById('cp-task-title');
+    const listEl  = document.getElementById('cp-photos-list');
+    const input   = document.getElementById('cp-photo-input');
+    const status  = document.getElementById('cp-upload-status');
+    const doneBtn = document.getElementById('cp-done');
+    const cancelBtn = document.getElementById('cp-cancel');
+    const photos = [];
+    let settled = false;
+
+    titleEl.textContent = `📋 ${task.title || '(нэргүй даалгавар)'}`;
+    listEl.innerHTML = '';
+    status.textContent = '';
+    doneBtn.disabled = true;
+    doneBtn.textContent = 'Даалгавар дуусгах';
+
+    const renderList = () => {
+      listEl.innerHTML = photos.map((p, i) =>
+        `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+           <img src="${escapeHtml(p)}" style="width:100%;height:100%;object-fit:cover;" />
+           <button data-rm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:14px;cursor:pointer;line-height:1;">×</button>
+         </div>`
+      ).join('');
+      listEl.querySelectorAll('[data-rm]').forEach(b => {
+        b.onclick = () => { photos.splice(Number(b.dataset.rm), 1); renderList(); };
+      });
+      doneBtn.disabled = (photos.length === 0);
+      doneBtn.textContent = photos.length > 0 ? `Даалгавар дуусгах (${photos.length})` : 'Даалгавар дуусгах';
+    };
+
+    const cleanup = () => {
+      modal.classList.remove('open');
+      input.value = '';
+      input.onchange = null;
+      doneBtn.onclick = null;
+      cancelBtn.onclick = null;
+    };
+    const finish = (val) => { if (settled) return; settled = true; cleanup(); resolve(val); };
+
+    input.onchange = async () => {
       const file = input.files && input.files[0];
-      if (!file) { resolved = true; cleanup(); return resolve(null); }
-      showToast('Зураг илгээж байна...', 'info', 3000);
+      input.value = ''; // дараагийн нэмэх боломжтой болгох
+      if (!file) return;
+      status.textContent = '⏳ Илгээж байна...';
       try {
-        const url = await uploadReceipt(file, task.id, 'completion');
-        resolved = true; cleanup();
-        if (!url) { showToast('Зураг илгээгдсэнгүй — дахин оролдоно уу', 'error', 4000); return resolve(null); }
-        showToast('✓ Зураг хадгалагдлаа', 'success', 1500);
-        resolve(url);
+        const url = await uploadReceipt(file, task.id, 'completion', task.title);
+        if (url) {
+          photos.push(url);
+          renderList();
+          status.textContent = `✓ ${photos.length} зураг хадгалагдсан`;
+        } else {
+          status.textContent = '⚠ Зураг илгээгдсэнгүй';
+        }
       } catch (e) {
         console.warn('completion upload err', e);
-        resolved = true; cleanup();
-        showToast('Зураг илгээхэд алдаа: ' + (e?.message || ''), 'error', 5000);
-        resolve(null);
+        status.textContent = '⚠ Алдаа: ' + (e?.message || '');
       }
-    });
-    // cancel-event (browser-аас файл сонголтыг цуцлахад)
-    input.addEventListener('cancel', () => {
-      if (resolved) return;
-      resolved = true; cleanup(); resolve(null);
-    });
-    input.click();
+    };
+
+    cancelBtn.onclick = () => finish(null);
+    doneBtn.onclick = () => finish(photos.slice());
+    modal.classList.add('open');
   });
 }
 
@@ -3562,11 +3605,12 @@ async function toggleTask(id) {
       showToast(`Энэ дамжлагыг дуусгахын өмнө "${prev.title}" дуусгасан байх ёстой. Хариуцагч: ${memberName(prev.assignee)}`, 'warn', 4500);
       return;
     }
-    // ─── Биелэлтийн зураг шаардах ───
-    // Хариуцагч даалгавраа дуусгахдаа гэрэл зураг хавсаргаж баталгаажуулна
-    const photoUrl = await promptCompletionPhoto(t);
-    if (photoUrl === null) return; // Цуцалсан — done болгохгүй
-    t.completion_photo_url = photoUrl;
+    // ─── Биелэлтийн зураг шаардах ─── (зөвхөн requires_photo=true үед)
+    if (t.requires_photo && !(t.completion_photos || []).length) {
+      const photos = await promptCompletionPhoto(t);
+      if (photos === null) return; // Цуцалсан — done болгохгүй
+      t.completion_photos = photos;
+    }
   } else {
     // Going from done → open: warn if a later stage is already done (would create inconsistency)
     if (t.kind === 'act_stage' && t.parent_id) {
@@ -3793,14 +3837,17 @@ function openTaskModal(id) {
     } else if (canEdit.none) {
       info += `<br><span style="color:var(--danger);font-weight:600;">🔒 Танд засах эрхгүй (зөвхөн харах).</span>`;
     }
-    // Биелэлтийн зураг — дууссан даалгаврын баталгаа
-    if (t.status === 'done' && t.completion_photo_url) {
+    // Биелэлтийн зураг(ууд) — дууссан даалгаврын баталгаа
+    const photos = Array.isArray(t.completion_photos) ? t.completion_photos
+                  : (t.completion_photo_url ? [t.completion_photo_url] : []);
+    if (t.status === 'done' && photos.length) {
       info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">✅ Биелэлтийн зураг</div>
-        <a href="${escapeHtml(t.completion_photo_url)}" target="_blank" rel="noopener">
-          <img src="${escapeHtml(t.completion_photo_url)}" alt="Биелэлт"
-               style="max-width:100%;max-height:220px;border-radius:8px;border:1px solid var(--border);display:block;" />
-        </a>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">✅ Биелэлтийн зураг (${photos.length})</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));gap:6px;">
+        ${photos.map(p => `<a href="${escapeHtml(p)}" target="_blank" rel="noopener" style="aspect-ratio:1;display:block;border-radius:6px;overflow:hidden;border:1px solid var(--border);">
+          <img src="${escapeHtml(p)}" alt="Биелэлт" style="width:100%;height:100%;object-fit:cover;display:block;" />
+        </a>`).join('')}
+        </div>
       </div>`;
     }
     creatorInfo.innerHTML = info;
@@ -3840,6 +3887,8 @@ function openTaskModal(id) {
   document.getElementById('t-priority').value = t?.priority || 'none';
   const recEl = document.getElementById('t-recurrence');
   if (recEl) recEl.value = t?.recurrence || '';
+  const reqPhotoEl = document.getElementById('t-requires-photo');
+  if (reqPhotoEl) reqPhotoEl.checked = !!t?.requires_photo;
   // Duplicate товч — зөвхөн existing task үед харагдана
   const dupBtn = document.getElementById('t-duplicate');
   if (dupBtn) {
@@ -4124,6 +4173,7 @@ function saveTaskFromModal() {
     due: document.getElementById('t-due').value || '',
     priority: document.getElementById('t-priority').value,
     recurrence: document.getElementById('t-recurrence')?.value || '',
+    requires_photo: !!document.getElementById('t-requires-photo')?.checked,
   };
   // Multi-assignee — олон хүнд тус тусын task үүсгэх
   if (!state.editingId && multi.length > 1) {

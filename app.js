@@ -3957,9 +3957,9 @@ function openTaskModal(id) {
 function renderTaskActionButtons(t) {
   const bar = document.getElementById('t-action-buttons');
   const isAssignee = (state.me === t.assignee);
-  const isCreator  = (state.me === t.createdBy);
   const isCEO      = state.isCEO;
-  const canAct     = isAssignee || isCreator || isCEO;
+  // Зөвхөн хариуцагч + CEO статус өөрчилнө. Үүсгэгч (admin биш бол) статус оруулахгүй.
+  const canAct     = isAssignee || isCEO;
   const status     = t.status || 'open';
 
   const btns = [];

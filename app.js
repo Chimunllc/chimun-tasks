@@ -955,11 +955,12 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (!task) return;
   const oldStatus = task.status || 'open';
   if (oldStatus === newStatus) return;
-  // Дуусгахдаа биелэлтийн зураг шаардах — task үүсгэгч requires_photo=true гэж тохируулсан үед
-  if (newStatus === 'done' && task.requires_photo && !(task.completion_photos || []).length) {
-    const photos = await promptCompletionPhoto(task);
-    if (photos === null) return; // Цуцалсан — done болгохгүй
-    task.completion_photos = photos;
+  // Дуусгахдаа биелэлтийн зураг modal — үргэлж нээгдэнэ.
+  // requires_photo=true үед заавал, эс бөгөөс заавал биш.
+  if (newStatus === 'done' && !(task.completion_photos || []).length) {
+    const photos = await promptCompletionPhoto(task, { required: !!task.requires_photo });
+    if (photos === null) return; // Болих дарсан
+    if (photos.length) task.completion_photos = photos;
   }
   task.status = newStatus;
   if (newStatus === 'in_progress') task.started_at = Date.now();
@@ -3526,9 +3527,11 @@ function escapeHtml(s) {
 
 /* -------------------- ACTIONS -------------------- */
 /* Биелэлтийн зураг — олон зураг хавсаргах modal.
-   task.requires_photo=true үед л дуудагдана.
-   Resolve: { photos: [url1, url2, ...] } эсвэл null (цуцалсан). */
-function promptCompletionPhoto(task) {
+   opts.required=true (default false): хамгийн багадаа 1 зураг шаардана; Алгасах сонголт байхгүй.
+   opts.required=false: 0 зураг бол ч Алгасах товчоор шууд дуусгана.
+   Resolve: массив (URL-ууд эсвэл хоосон), null (Болих). */
+function promptCompletionPhoto(task, opts = {}) {
+  const required = !!opts.required;
   return new Promise((resolve) => {
     const modal = document.getElementById('completion-photos-modal');
     const titleEl = document.getElementById('cp-task-title');
@@ -3540,11 +3543,11 @@ function promptCompletionPhoto(task) {
     const photos = [];
     let settled = false;
 
-    titleEl.textContent = `📋 ${task.title || '(нэргүй даалгавар)'}`;
+    titleEl.innerHTML = `📋 ${escapeHtml(task.title || '(нэргүй даалгавар)')}${required ? ' · <span style="color:var(--danger);font-weight:600;">Зураг ЗААВАЛ</span>' : ' · <span style="color:var(--muted);">Зураг заавал биш</span>'}`;
     listEl.innerHTML = '';
     status.textContent = '';
-    doneBtn.disabled = true;
-    doneBtn.textContent = 'Даалгавар дуусгах';
+    doneBtn.disabled = required; // заавал бол анхандаа disabled
+    doneBtn.textContent = required ? 'Даалгавар дуусгах' : 'Зураггүй дуусгах';
 
     const renderList = () => {
       listEl.innerHTML = photos.map((p, i) =>
@@ -3556,8 +3559,10 @@ function promptCompletionPhoto(task) {
       listEl.querySelectorAll('[data-rm]').forEach(b => {
         b.onclick = () => { photos.splice(Number(b.dataset.rm), 1); renderList(); };
       });
-      doneBtn.disabled = (photos.length === 0);
-      doneBtn.textContent = photos.length > 0 ? `Даалгавар дуусгах (${photos.length})` : 'Даалгавар дуусгах';
+      // required=true үед зураг хэрэг; required=false үед үргэлж enabled
+      doneBtn.disabled = required ? (photos.length === 0) : false;
+      if (photos.length > 0) doneBtn.textContent = `Даалгавар дуусгах (${photos.length} зураг)`;
+      else doneBtn.textContent = required ? 'Зураг шаардлагатай' : 'Зураггүй дуусгах';
     };
 
     const cleanup = () => {
@@ -3605,11 +3610,11 @@ async function toggleTask(id) {
       showToast(`Энэ дамжлагыг дуусгахын өмнө "${prev.title}" дуусгасан байх ёстой. Хариуцагч: ${memberName(prev.assignee)}`, 'warn', 4500);
       return;
     }
-    // ─── Биелэлтийн зураг шаардах ─── (зөвхөн requires_photo=true үед)
-    if (t.requires_photo && !(t.completion_photos || []).length) {
-      const photos = await promptCompletionPhoto(t);
-      if (photos === null) return; // Цуцалсан — done болгохгүй
-      t.completion_photos = photos;
+    // ─── Биелэлтийн зураг modal — үргэлж нээнэ ───
+    if (!(t.completion_photos || []).length) {
+      const photos = await promptCompletionPhoto(t, { required: !!t.requires_photo });
+      if (photos === null) return; // Болих
+      if (photos.length) t.completion_photos = photos;
     }
   } else {
     // Going from done → open: warn if a later stage is already done (would create inconsistency)

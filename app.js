@@ -72,6 +72,17 @@ const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-regi
 const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-subscribe';
 // Push broadcast — даалгавар үүсгэх/санхүүгийн хүсэлтийн дараа хариуцагч руу нэн даруй push илгээнэ.
 const DEFAULT_PUSH_BROADCAST_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-broadcast';
+
+// n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
+// дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
+// хийх ёстой (одоохондоо төлөвлөгөөнд байгаа).
+const N8N_API_KEY = '1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
+// URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
+function withKey(url) {
+  if (!url) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}key=${encodeURIComponent(N8N_API_KEY)}`;
+}
 // VAPID public key — push шифрлэлтийн нийтийн түлхүүр (private түлхүүр n8n credentials-д үлдэнэ).
 const VAPID_PUBLIC_KEY = 'BEWEze0XzdKChNxs6DrsnyivUfBN7xgxL6T219i6W-Gt808fzAadxW3REWnNjQb2v3GVSlnpF4oDM_F0uF6SRfY';
 
@@ -740,7 +751,7 @@ async function loadTeamFromAPI() {
   try {
     // Cache-bust query — n8n response 5-минут CDN кэштэй тул фреш PIN авахын тулд хэрэгтэй
     const sep = url.includes('?') ? '&' : '?';
-    const bustUrl = `${url}${sep}t=${Date.now()}`;
+    const bustUrl = withKey(`${url}${sep}t=${Date.now()}`);
     const r = await fetch(bustUrl, {
       method: 'GET',
       cache: 'no-store',
@@ -1012,7 +1023,7 @@ async function loadData() {
     try {
       // Cache-bust — n8n Cloud GET-ийг ~5 мин кэшилдэг тул Sheet дээр шууд хийсэн өөрчлөлт
       // (мөр устгах/засах) тусахгүй байдаг. t=Date.now() + no-store-р фреш дата авна.
-      const r = await fetch(state.config.apiUrl + '?action=list&t=' + Date.now(), {
+      const r = await fetch(withKey(state.config.apiUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
@@ -1141,7 +1152,7 @@ function enqueueWrite(write) {
 async function postWrite(url, body) {
   if (!url) return false;
   try {
-    const r = await fetch(url, {
+    const r = await fetch(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -1214,7 +1225,7 @@ function pushBroadcast(email, payload) {
   const url = state.config.pushBroadcastUrl;
   if (!url || !email) return;
   if (email === state.me) return; // өөртөө илгээхгүй
-  fetch(url, {
+  fetch(withKey(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, ...payload }),
@@ -1456,7 +1467,7 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
     reader.readAsDataURL(file);
   });
   try {
-    const r = await fetch(state.config.uploadUrl, {
+    const r = await fetch(withKey(state.config.uploadUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1505,7 +1516,7 @@ async function loadFinanceRequests() {
   if (state.config.financeUrl) {
     try {
       // Cache-bust — Sheet дээр шууд устгасан/засварласан хүсэлт нэн даруй тусахын тулд
-      const res = await fetch(state.config.financeUrl + '?action=list&t=' + Date.now(), {
+      const res = await fetch(withKey(state.config.financeUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
@@ -2476,7 +2487,7 @@ async function sendWeeklyDigest() {
 
   try {
     showToast('Имэйл илгээж байна...', 'info', 2000);
-    const r = await fetch(webhook.replace(/\/[^\/]+$/, '/weekly-digest'), {
+    const r = await fetch(withKey(webhook.replace(/\/[^\/]+$/, '/weekly-digest')), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'weekly_digest', stats, requested_by: state.user?.email }),
@@ -3007,7 +3018,7 @@ function openPendingRegistration(member) {
     const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
     if (webhook) {
       try {
-        const r = await fetch(webhook, {
+        const r = await fetch(withKey(webhook), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -3019,7 +3030,7 @@ function openPendingRegistration(member) {
           const idx = TEAM.findIndex(m => m.email === member.email);
           if (idx >= 0) {
             TEAM[idx] = { ...TEAM[idx], status: 'идэвхтэй', salary, level, notes };
-            localStorage.setItem('teamCache', JSON.stringify(TEAM));
+            localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
           }
           await loadTeamFromAPI();
           renderStaffList();
@@ -3046,7 +3057,7 @@ function openPendingRegistration(member) {
     const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
     if (webhook) {
       try {
-        await fetch(webhook, {
+        await fetch(withKey(webhook), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -3056,7 +3067,7 @@ function openPendingRegistration(member) {
     // Локал хасах — email-ээр
     const idx = TEAM.findIndex(m => m.email === member.email);
     if (idx >= 0) TEAM.splice(idx, 1);
-    localStorage.setItem('teamCache', JSON.stringify(TEAM));
+    localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
     modal.classList.remove('open');
     showToast('Хүсэлт татгалзсан', 'info');
     renderStaffList();
@@ -3137,7 +3148,7 @@ function renderStaffList() {
 
       // 1. Локал TEAM шинэчлэх
       member.status = newStatus;
-      localStorage.setItem('teamCache', JSON.stringify(TEAM));
+      localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
       // 2. Master Sheet руу webhook илгээх (n8n /staff-update endpoint)
       const webhook = state.config.staffUrl;
       if (webhook) {
@@ -3150,9 +3161,9 @@ function renderStaffList() {
           // Locally also persist
           if (newStatus === 'гарсан') member.left_at = today;
           if (newStatus === 'идэвхтэй') member.joined_at = today;
-          localStorage.setItem('teamCache', JSON.stringify(TEAM));
+          localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
 
-          const r = await fetch(webhook.replace(/\/[^\/]+$/, '/staff-update'), {
+          const r = await fetch(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -5268,7 +5279,7 @@ async function ensurePushSubscription() {
     const lastSent = localStorage.getItem('pushSubLastSent');
     const subStr = JSON.stringify(sub);
     if (lastSent === subStr + '::' + state.me) return true; // өөрчлөгдөөгүй, дахин илгээхгүй
-    const r = await fetch(url, {
+    const r = await fetch(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: state.me, subscription: sub }),
@@ -5741,7 +5752,7 @@ async function handleRegister() {
     // CEO зөвшөөрөл шаардахгүй — зэрэглэлийг албан тушаалаас автомат тогтооно.
     // Түлхүүр = и-мэйл хаяг. ID талбар цаашид ашиглагдахгүй.
     const autoLevel = levelForRole(role);
-    const r = await fetch(url, {
+    const r = await fetch(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -790,12 +790,32 @@ function nameToId(val) {
   const m = TEAM.find(x => x.name === val);
   return m ? m.id : val;
 }
+/* Код ↔ монгол текст хөрвүүлэх maps (Sheet нь зөвхөн монголоор) */
+const _BRANCH_E2M = { 'm-event':'M Event', 'camp':'NOMAAD Camp', 'shared':'Нэгдсэн', 'production':'Бэлтгэл' };
+const _PRIORITY_E2M = { 'low':'Бага', 'med':'Дунд', 'high':'Өндөр', 'none':'' };
+const _STATUS_E2M = { 'open':'Идэвхтэй', 'done':'Дууссан', 'deleted':'Устгасан', 'locked':'Түгжээтэй' };
+const _KIND_E2M = { 'act_parent':'Эх захиалга', 'act_stage':'Дамжлага' };
+const _DECISION_E2M = { 'pending':'Хүлээгдэж буй', 'approved':'Зөвшөөрсөн', 'rejected':'Татгалзсан', 'deferred':'Хойшлуулсан' };
+const _flip = (m) => Object.fromEntries(Object.entries(m).map(([k,v])=>[v,k]));
+const _BRANCH_M2E = _flip(_BRANCH_E2M);
+const _PRIORITY_M2E = _flip(_PRIORITY_E2M);
+const _STATUS_M2E = _flip(_STATUS_E2M);
+const _KIND_M2E = _flip(_KIND_E2M);
+const _DECISION_M2E = _flip(_DECISION_E2M);
+const _xlate = (val, m) => (val && m[val] != null) ? m[val] : val;
+
 function taskToWire(task) {
   if (!task || typeof task !== 'object') return task;
   const out = { ...task };
   if (out.assignee) out.assignee = idToName(out.assignee);
   if (out.createdBy) out.createdBy = idToName(out.createdBy);
   if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(idToName);
+  // Код → монгол
+  out.branch    = _xlate(out.branch, _BRANCH_E2M);
+  out.priority  = _xlate(out.priority, _PRIORITY_E2M);
+  out.status    = _xlate(out.status, _STATUS_E2M);
+  out.kind      = _xlate(out.kind, _KIND_E2M);
+  out.decision  = _xlate(out.decision, _DECISION_E2M);
   return out;
 }
 function taskFromWire(task) {
@@ -807,6 +827,12 @@ function taskFromWire(task) {
     out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];
   }
   if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(nameToId);
+  // Монгол → код
+  out.branch    = _xlate(out.branch, _BRANCH_M2E);
+  out.priority  = _xlate(out.priority, _PRIORITY_M2E);
+  out.status    = _xlate(out.status, _STATUS_M2E);
+  out.kind      = _xlate(out.kind, _KIND_M2E);
+  out.decision  = _xlate(out.decision, _DECISION_M2E);
   return out;
 }
 

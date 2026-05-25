@@ -1931,7 +1931,10 @@ function leftStaffEmails() {
 }
 
 function filteredTasks() {
-  let list = [...state.tasks];
+  // Архив view-аас БУСАД бүх view-д устгасан task-уудыг хасна. Bootstrap нь deleted
+  // task-уудыг ч буцаадаг тул CEO Архивлуулсан жагсаалт үзэх боломжтой болгосон.
+  const includeDeleted = state.view === 'archive';
+  let list = state.tasks.filter(t => includeDeleted ? t.status === 'deleted' : t.status !== 'deleted');
   // ACCESS CONTROL — non-CEO users see:
   //   (1) tasks assigned to themselves (өөрийн хариуцах ажил),
   //   (2) tasks they created and assigned to others (өөрийн үүргэсэн ажил),
@@ -1965,6 +1968,14 @@ function filteredTasks() {
   else if (state.view === 'overdue') list = list.filter(t => t.status === 'open' && t.due && t.due < today);
   else if (state.view === 'today') list = list.filter(t => t.due === today);
   else if (state.view === 'done') list = list.filter(t => t.status === 'done');
+  else if (state.view === 'archive') {
+    // Архив: deleted task-уудыг сүүлд устгасан нь дээр харагдахаар буцаан эрэмбэлнэ
+    list.sort((a,b) => {
+      const au = new Date(a.updated || a.created || 0).getTime();
+      const bu = new Date(b.updated || b.created || 0).getTime();
+      return bu - au;
+    });
+  }
   else if (state.view.startsWith('project:')) {
     const pid = state.view.split(':')[1];
     list = list.filter(t => t.project === pid);
@@ -2058,6 +2069,13 @@ function renderSidebar() {
     const lbl = document.getElementById('nav-dashboard-label');
     if (lbl) lbl.textContent = state.isCEO ? 'Тойм' : 'Миний тойм';
   }
+  // Архив — зөвхөн CEO-д харагдана. Тоо нь бүх deleted task-ийн тоо.
+  const archNav = document.getElementById('nav-archive');
+  if (archNav) {
+    archNav.style.display = state.isCEO ? '' : 'none';
+    const archCnt = document.getElementById('cnt-archive');
+    if (archCnt) archCnt.textContent = String(state.tasks.filter(t => t.status === 'deleted').length);
+  }
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   if (brandEl) brandEl.innerHTML = ICONS.building + ' Чимун ХХК';
@@ -2118,6 +2136,7 @@ function renderTitle() {
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
     done:      [ICONS.check, 'Дууссан','Биелсэн даалгаврууд'],
+    archive:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>', 'Архив', 'Устгасан даалгаврууд — CEO бүрэн цэвэрлэх боломжтой'],
   };
   let t = titles[state.view];
   if (!t && state.view.startsWith('project:')) {
@@ -3842,10 +3861,23 @@ async function bulkApply(action) {
   ensureBulkState();
   const ids = [...state.bulkSelected];
   if (!ids.length) return;
+  // Архив view-д "Устгах" = Sheet-ээс бүрэн устгах (hard_delete). Бусад view-д soft delete.
+  const isArchive = state.view === 'archive';
   if (action === 'delete') {
-    if (!(await showConfirm(`${ids.length} ажлыг бүгдийг устгах уу?`, { okText: 'Устгах', danger: true }))) return;
+    const label = isArchive ? 'Бүрэн устгах' : 'Устгах';
+    const msg = isArchive
+      ? `${ids.length} архивласан ажлыг Sheet-ээс БҮРЭН устгана. Сэргээх боломжгүй. Үргэлжлүүлэх үү?`
+      : `${ids.length} ажлыг бүгдийг архивлах уу? (CEO дараа сэргээх боломжтой)`;
+    if (!(await showConfirm(msg, { okText: label, danger: true }))) return;
+    const targets = state.tasks.filter(t => state.bulkSelected.has(t.id));
     state.tasks = state.tasks.filter(t => !state.bulkSelected.has(t.id));
-    showToast(`${ids.length} ажил устгасан`, 'success');
+    if (isArchive) {
+      // Sheet-ээс мөр устгах: тус task бүрд hard_delete явуулна. Local-аас аль хэдийн хассан.
+      targets.forEach(t => saveTask(t, true, true));
+    } else {
+      targets.forEach(t => saveTask(t, true, false));
+    }
+    showToast(`${ids.length} ажил ${isArchive ? 'бүрэн устгасан' : 'архивласан'}`, 'success');
   } else if (action === 'done') {
     state.tasks.forEach(t => {
       if (state.bulkSelected.has(t.id)) {

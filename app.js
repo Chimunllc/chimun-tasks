@@ -1855,7 +1855,7 @@ function renderSidebar() {
   const info = currentBranchInfo();
   const brandEl = document.getElementById('brand-text');
   if (brandEl) brandEl.innerHTML = (info.icon || '') + ' ' + escapeHtml(info.name);
-  // projects (only for current branch)
+  // projects (only for current branch) — устгах товчтой
   const list = document.getElementById('project-list');
   list.innerHTML = '';
   currentProjects().forEach(p => {
@@ -1864,8 +1864,41 @@ function renderSidebar() {
     const cnt = state.tasks.filter(t =>
       t.project === p.id && taskBranch(t) === state.branch && t.status !== 'done'
     ).length;
-    div.innerHTML = `<span>${escapeHtml(p.name)}</span><span class="count-badge">${cnt}</span>`;
-    div.onclick = () => { state.view = 'project:'+p.id; render(); };
+    div.innerHTML = `
+      <span class="proj-name">${escapeHtml(p.name)}</span>
+      <span class="count-badge">${cnt}</span>
+      <button class="proj-del" title="Төсөл устгах" aria-label="Устгах">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    `;
+    div.addEventListener('click', (e) => {
+      if (e.target.closest('.proj-del')) return; // delete button handled separately
+      state.view = 'project:' + p.id;
+      render();
+    });
+    div.querySelector('.proj-del')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const taskCount = state.tasks.filter(t => t.project === p.id && taskBranch(t) === state.branch).length;
+      const msg = taskCount > 0
+        ? `"${p.name}" төсөлд ${taskCount} даалгавар бий. Устгахад тэдгээр даалгаврууд "Төсөлгүй" болно. Үргэлжлэх үү?`
+        : `"${p.name}" төслийг устгах уу?`;
+      if (!(await showConfirm(msg, { okText: 'Устгах', danger: true }))) return;
+      // Тус төсөлд хамаарах task-уудын project талбарыг хоослох
+      state.tasks.forEach(t => {
+        if (t.project === p.id && taskBranch(t) === state.branch) {
+          t.project = '';
+        }
+      });
+      // projectsByBranch массиваас хасах
+      state.projectsByBranch[state.branch] = (state.projectsByBranch[state.branch] || [])
+        .filter(x => x.id !== p.id);
+      // Хэрэв одоо тус төслийн view дээр бол mine руу шилжүүлэх
+      if (state.view === 'project:' + p.id) state.view = 'mine';
+      saveLocal();
+      saveData();
+      render();
+      showToast('Төсөл устгасан', 'success', 1500);
+    });
     list.appendChild(div);
   });
 }
@@ -3678,7 +3711,10 @@ function fillSelect(id, items, value, placeholder) {
 function fillProjectSelect(id, value, branchOverride) {
   const branch = branchOverride || state.branch;
   const projects = state.projectsByBranch[branch] || [];
-  fillSelect(id, projects.map(p => ({ value: p.id, label: p.name })), value);
+  // "— Төсөлгүй —" сонголтыг эхэнд тавиж заавал биш болгох
+  const options = [{ value: '', label: '— Төсөлгүй —' }, ...projects.map(p => ({ value: p.id, label: p.name }))];
+  // Хэрэв шинэ task үүсгэж байгаа бөгөөд value заагаагүй бол хоосон-аар нээх
+  fillSelect(id, options, value != null ? value : '');
 }
 function fillAssigneeSelect(id, value, branchOverride) {
   // Бүх ажилтан — салбараар хязгаарлахгүй. Хэн ч хэнд ч даалгавар өгч болно.

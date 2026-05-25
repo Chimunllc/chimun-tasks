@@ -10,7 +10,7 @@
  * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
  */
 
-const CACHE_VERSION = 'chimun-tasks-v125-id-by-name-2026-05-25';
+const CACHE_VERSION = 'chimun-tasks-v126-webpush-2026-05-25';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -35,6 +35,43 @@ self.addEventListener('activate', (event) => {
       Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+});
+
+/* -------------------- WEB PUSH -------------------- */
+// Sheet өөрчлөгдөх бүрд n8n /push-broadcast endpoint бүх subscribe-чдад push илгээнэ.
+// Payload: { kind: 'tasks'|'finance'|'staff', title, body, url }
+// SW push авангуутаа client-уудад postMessage хийж refreshFromServer дуудуулна.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch(e) { data = { body: event.data ? event.data.text() : '' }; }
+  const kind = data.kind || 'tasks';
+  const title = data.title || 'Чимун ХХК — шинэчлэлт';
+  const body  = data.body  || 'Шинэ өөрчлөлт ирлээ';
+  const url   = data.url   || './';
+
+  event.waitUntil((async () => {
+    // 1) Бүх нээлттэй client-д postMessage илгээж UI шууд refresh хийлгэнэ
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    clients.forEach(c => c.postMessage({ type: 'push-refresh', kind }));
+    // 2) Хэрэв ямар ч таб идэвхтэй биш бол notification харуулна (push зөвшөөрөл өгсөн бол)
+    const anyVisible = clients.some(c => c.visibilityState === 'visible');
+    if (!anyVisible) {
+      await self.registration.showNotification(title, {
+        body, icon: './icon-192.png', badge: './icon-192.png',
+        tag: kind, data: { url },
+      });
+    }
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || './';
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window' });
+    if (clients.length) { clients[0].focus(); return; }
+    await self.clients.openWindow(targetUrl);
+  })());
 });
 
 self.addEventListener('fetch', (event) => {

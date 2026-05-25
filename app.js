@@ -67,6 +67,11 @@ const DEFAULT_FINANCE_URL = 'https://chimunllc.app.n8n.cloud/webhook/finance';
 const DEFAULT_UPLOAD_URL  = 'https://chimunllc.app.n8n.cloud/webhook/upload-receipt';
 // Шинэ ажилтан бүртгэл — POST { name, role, group, phone, email, pin } → Master Sheet append → { id }
 const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-register';
+// Web Push — Sheet өөрчлөгдөх бүрд n8n /push-broadcast bütee push-аар client-уудад мэдэгдэнэ.
+// Subscribe хийсэн endpoint-ийг хадгалах URL.
+const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-subscribe';
+// VAPID public key — push шифрлэлтийн нийтийн түлхүүр (private түлхүүр n8n credentials-д үлдэнэ).
+const VAPID_PUBLIC_KEY = 'BL6TlSijHnbSyXh4IwKk78xFmQA5i_45DRgtc-bIFoNQTG6XOmGc7gZzIVkDY89AeLMfKjKm_ceF46nNIRLAHeE';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
 // Default projects — зөвхөн "Сезоны өмнөх бэлтгэл" үлдээсэн (2026-05-25 хэрэглэгчийн хүсэлтээр).
@@ -132,6 +137,7 @@ const state = {
       financeUrl:  localStorage.getItem('financeUrl')  || DEFAULT_FINANCE_URL  || '',
       uploadUrl:   localStorage.getItem('uploadUrl')   || DEFAULT_UPLOAD_URL   || '',
       registerUrl: localStorage.getItem('registerUrl') || DEFAULT_REGISTER_URL || '',
+      pushSubscribeUrl: localStorage.getItem('pushSubscribeUrl') || DEFAULT_PUSH_SUBSCRIBE_URL || '',
     };
   })(),
   editingId: null,
@@ -5164,19 +5170,81 @@ async function bootApp() {
   render();
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
   notifyCEOOfPendingRegistrations();
-  // Auto-refresh every 10 мин — n8n execution хэмнэх (idle polling багасгана).
-  // Хэрэглэгч таб эргэж нээх үед visibilitychange шууд татна, online эргэж сэргэхэд бас.
+  // Safety-net polling — Web Push амжилттай subscribe хийгдсэн бол 1 цаг тутамд л татна
+  // (Apps Script trigger унтарсан үед idle байх биш үе үе шинэчлэхийн тулд).
+  // Subscribe бүтэлгүйтсэн бол 10 мин рүү буцаана.
   if (_pollTimer) clearInterval(_pollTimer);
-  _pollTimer = setInterval(refreshFromServer, 600_000);
+  const pushReady = await ensurePushSubscription();
+  _pollTimer = setInterval(refreshFromServer, pushReady ? 3_600_000 : 600_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ
-  // — ингэснээр хэрэглэгч апп нээх агшинд хамгийн сүүлийн дата + badge харагдана.
   if (!_visibilityBound) {
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && state.me) refreshFromServer();
     });
     // Холболт сэргэхэд (offline → online) хүлээгдэж буй өөрчлөлтийг шууд илгээх
     window.addEventListener('online', () => { if (state.me) flushPendingWrites(); });
+    // Service Worker push-аас ирэх refresh сигналд хариу үзүүлнэ
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (ev) => {
+        if (ev.data && ev.data.type === 'push-refresh' && state.me) refreshFromServer();
+      });
+    }
     _visibilityBound = true;
+  }
+}
+
+/* -------------------- WEB PUSH SUBSCRIBE --------------------
+   Хэрэглэгч аппад нэвтэрсний дараа Web Push-д subscribe хийнэ. Subscription endpoint-ийг
+   n8n /push-subscribe рүү илгээж n8n тал тэр endpoint руу push илгээх боломжтой болгоно.
+   Apps Script onEdit trigger Sheet өөрчлөгдөх бүрд n8n /push-broadcast дуудна.
+   n8n тэндээсээ бүх хадгалагдсан subscription руу web-push илгээнэ. */
+function urlBase64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+async function ensurePushSubscription() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    if (!VAPID_PUBLIC_KEY) return false;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      // Notification зөвшөөрөл шаардлагатай. Default үед асуулгүй өнгөрөөнө —
+      // хэрэглэгч өмнө "Block" дарсан бол дахин асуухгүй.
+      if (Notification.permission === 'default') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return false;
+      } else if (Notification.permission !== 'granted') {
+        return false;
+      }
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    // Subscription-ийг сервер рүү илгээх — нэг и-мэйлд олон төхөөрөмж байж болно
+    const url = state.config.pushSubscribeUrl;
+    if (!url) return !!sub;
+    const lastSent = localStorage.getItem('pushSubLastSent');
+    const subStr = JSON.stringify(sub);
+    if (lastSent === subStr + '::' + state.me) return true; // өөрчлөгдөөгүй, дахин илгээхгүй
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: state.me, subscription: sub }),
+    });
+    if (r.ok) {
+      localStorage.setItem('pushSubLastSent', subStr + '::' + state.me);
+      return true;
+    }
+    return false;
+  } catch(e) {
+    console.warn('Push subscribe failed:', e);
+    return false;
   }
 }
 

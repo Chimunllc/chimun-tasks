@@ -2462,6 +2462,93 @@ function emptyStateHtml() {
   }
   return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div>${actionBtn}</div>`;
 }
+/* ─── Multi-assignee picker — олон хүнд нэг дор ажил оноох ─── */
+function openMultiAssigneePicker(currentAssignees = []) {
+  const modal = document.getElementById('multi-pick-modal');
+  const listEl = document.getElementById('mp-list');
+  const searchEl = document.getElementById('mp-search');
+  const allEl = document.getElementById('mp-all');
+  const countEl = document.getElementById('mp-save-count');
+
+  let selected = new Set(currentAssignees);
+
+  function renderList() {
+    const q = (searchEl.value || '').toLowerCase().trim();
+    const visible = TEAM.filter(m =>
+      m.id !== 'CEO' || true  // CEO багтаана
+    ).filter(m =>
+      !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q)
+    );
+    listEl.innerHTML = visible.map(m => `
+      <label class="mp-row">
+        <input type="checkbox" data-mp-id="${escapeHtml(m.id)}" ${selected.has(m.id) ? 'checked' : ''} style="width:18px;height:18px;" />
+        <span class="mp-avatar">${escapeHtml(memberInitials(m.id))}</span>
+        <span class="mp-info">
+          <span class="mp-name">${escapeHtml(m.name)}</span>
+          <span class="mp-role">${escapeHtml(m.role || '')}</span>
+        </span>
+      </label>
+    `).join('');
+    listEl.querySelectorAll('input[data-mp-id]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selected.add(cb.dataset.mpId);
+        else selected.delete(cb.dataset.mpId);
+        updateCount();
+      });
+    });
+    updateCount();
+  }
+  function updateCount() {
+    countEl.textContent = selected.size;
+    allEl.checked = selected.size === TEAM.length;
+  }
+  searchEl.value = '';
+  searchEl.oninput = renderList;
+  allEl.onchange = () => {
+    if (allEl.checked) TEAM.forEach(m => selected.add(m.id));
+    else selected.clear();
+    renderList();
+  };
+  renderList();
+  modal.classList.add('open');
+
+  return new Promise((resolve) => {
+    document.getElementById('mp-cancel').onclick = () => {
+      modal.classList.remove('open');
+      resolve(null);
+    };
+    document.getElementById('mp-save').onclick = () => {
+      modal.classList.remove('open');
+      resolve([...selected]);
+    };
+  });
+}
+
+function refreshMultiAssigneeChips(ids) {
+  const wrap = document.getElementById('t-multi-chips');
+  const single = document.getElementById('t-assignee');
+  if (!ids || ids.length === 0) {
+    wrap.style.display = 'none';
+    single.style.display = '';
+    return;
+  }
+  wrap.style.display = 'flex';
+  single.style.display = 'none';
+  wrap.innerHTML = ids.slice(0, 8).map(id => `
+    <span class="t-multi-chip">
+      <span class="mp-avatar">${escapeHtml(memberInitials(id))}</span>
+      ${escapeHtml(memberName(id))}
+      <button type="button" data-mp-remove="${escapeHtml(id)}" aria-label="Хасах">×</button>
+    </span>
+  `).join('') + (ids.length > 8 ? `<span class="t-multi-more">+${ids.length - 8}</span>` : '');
+  wrap.querySelectorAll('button[data-mp-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state._multiAssignees = (state._multiAssignees || []).filter(x => x !== btn.dataset.mpRemove);
+      refreshMultiAssigneeChips(state._multiAssignees);
+    });
+  });
+}
+
 /* ─── Online/offline detection + auto-sync ─────────────── */
 function updateOnlineStatus() {
   const offline = !navigator.onLine;
@@ -3149,6 +3236,26 @@ function openTaskModal(id) {
   fillBranchSelectInModal('t-branch', taskBranchVal);
   fillProjectSelect('t-project', t?.project, taskBranchVal);
   fillAssigneeSelect('t-assignee', t?.assignee || state.me, taskBranchVal);
+  // Multi-assignee state reset
+  state._multiAssignees = null;
+  refreshMultiAssigneeChips([]);
+  // "Олон хүнд оноох" товч — modal-аас сонгож аваад chips болгож харуулах
+  const multiBtn = document.getElementById('t-assignee-multi');
+  if (multiBtn) {
+    multiBtn.style.display = state.editingId ? 'none' : ''; // зөвхөн шинэ task үед
+    multiBtn.onclick = async () => {
+      const cur = state._multiAssignees || (document.getElementById('t-assignee').value ? [document.getElementById('t-assignee').value] : []);
+      const picked = await openMultiAssigneePicker(cur);
+      if (!picked) return;
+      if (picked.length === 0) {
+        state._multiAssignees = null;
+        refreshMultiAssigneeChips([]);
+      } else {
+        state._multiAssignees = picked;
+        refreshMultiAssigneeChips(picked);
+      }
+    };
+  }
   document.getElementById('t-due').value = t?.due || '';
   document.getElementById('t-priority').value = t?.priority || 'none';
   const recEl = document.getElementById('t-recurrence');
@@ -3437,15 +3544,45 @@ function closeTaskModal() {
 function saveTaskFromModal() {
   const title = document.getElementById('t-title').value.trim();
   if (!title) { showToast('Гарчиг шаардлагатай', 'warn'); return; }
-  const data = {
+  const multi = state._multiAssignees || [];
+  const baseData = {
     title,
     desc: document.getElementById('t-desc').value.trim(),
     branch: document.getElementById('t-branch').value || state.branch,
     project: document.getElementById('t-project').value,
-    assignee: document.getElementById('t-assignee').value,
     due: document.getElementById('t-due').value || '',
     priority: document.getElementById('t-priority').value,
     recurrence: document.getElementById('t-recurrence')?.value || '',
+  };
+  // Multi-assignee — олон хүнд тус тусын task үүсгэх
+  if (!state.editingId && multi.length > 1) {
+    const groupId = 'g_' + Date.now().toString(36);
+    multi.forEach((asgn, i) => {
+      const t = {
+        id: uid(),
+        status: 'open',
+        created: Date.now() + i,
+        createdBy: state.me,
+        comments: [],
+        activity: [],
+        ...baseData,
+        assignee: asgn,
+        group_id: groupId,
+      };
+      logTaskActivity(t, 'created', { title: t.title });
+      state.tasks.unshift(t);
+      saveTask(t);
+    });
+    state._multiAssignees = null;
+    showToast(`${multi.length} ажилтанд оноосон`, 'success', 2500);
+    closeTaskModal();
+    render();
+    return;
+  }
+  // Ганц assignee (legacy path)
+  const data = {
+    ...baseData,
+    assignee: multi.length === 1 ? multi[0] : document.getElementById('t-assignee').value,
   };
   let t;
   if (state.editingId) {
@@ -3458,6 +3595,7 @@ function saveTaskFromModal() {
     state.tasks.unshift(t);
     saveTask(t);
   }
+  state._multiAssignees = null;
   closeTaskModal();
   render();
 }

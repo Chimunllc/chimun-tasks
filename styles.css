@@ -4648,3 +4648,119 @@ body {
 .task-list-more:hover {
   background: var(--border);
 }
+
+/* ═══ Multi-assignee picker ═══ */
+.assignee-picker-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.assignee-picker-wrap select {
+  flex: 1;
+}
+.btn-multi-pick {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--panel-hover);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent-blue);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-multi-pick:hover {
+  background: var(--border);
+}
+@media (max-width: 720px) {
+  .assignee-picker-wrap { flex-direction: column; }
+  .btn-multi-pick { padding: 10px 12px; min-height: 40px; justify-content: center; }
+}
+
+/* Selected chips */
+.t-multi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  background: var(--panel-hover);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.t-multi-chip .mp-avatar {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.t-multi-chip button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.t-multi-chip button:hover {
+  color: var(--accent-red);
+}
+.t-multi-more {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--accent-blue);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Picker modal rows */
+.mp-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.mp-row:hover {
+  background: var(--panel-hover);
+}
+.mp-row .mp-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.mp-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.mp-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.mp-role {
+  font-size: 12px;
+  color: var(--muted);
+}

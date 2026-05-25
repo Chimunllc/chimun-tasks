@@ -244,8 +244,32 @@
     <select id="t-branch"></select>
     <label>Төсөл</label>
     <select id="t-project"></select>
-    <label>Хариуцагч (бүх ажилтнаас сонгож болно)</label>
-    <select id="t-assignee"></select>
+    <label>Хариуцагч <span style="font-size:11px;color:var(--muted);font-weight:400;">(нэг буюу олон сонгож болно)</span></label>
+    <div class="assignee-picker-wrap">
+      <select id="t-assignee"></select>
+      <button type="button" id="t-assignee-multi" class="btn-multi-pick">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Олон хүнд оноох
+      </button>
+    </div>
+    <div id="t-multi-chips" style="display:none;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
+
+<!-- ─── Multi-assignee picker modal ─── -->
+<div class="modal-bg" id="multi-pick-modal">
+  <div class="modal" style="max-width:480px;">
+    <h2>Хариуцагчдыг сонгох</h2>
+    <input type="text" id="mp-search" placeholder="Хайх (нэр)..." style="width:100%;margin-bottom:10px;" />
+    <label class="mp-row" style="border-bottom:1px solid var(--border);padding:10px 0;margin-bottom:6px;font-weight:700;">
+      <input type="checkbox" id="mp-all" style="width:18px;height:18px;" />
+      <span>Бүх ажилтан</span>
+    </label>
+    <div id="mp-list" style="max-height:50vh;overflow-y:auto;"></div>
+    <div class="modal-actions">
+      <button class="btn" id="mp-cancel">Болих</button>
+      <button class="btn btn-primary" id="mp-save"><span id="mp-save-count">0</span> хүн сонгох</button>
+    </div>
+  </div>
+</div>
     <label>Эцсийн хугацаа</label>
     <input type="date" id="t-due" />
     <label>Зэрэглэл</label>

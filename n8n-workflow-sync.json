@@ -162,7 +162,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Aggregate all rows into a single array. Skip rows marked status='deleted'.\nconst rows = $input.all().map(it => it.json);\nconst tasks = rows.filter(r => r && r.id && r.status !== 'deleted');\nreturn [{ json: { tasks } }];"
+        "jsCode": "// Sheet-ийн монгол баганы нэрсийг app-ийн english key руу хөрвүүлж буцаана.\nconst M2E = {\n  'ID': 'id', 'Гарчиг': 'title', 'Тайлбар': 'desc',\n  'Салбар': 'branch', 'Төсөл': 'project',\n  'Хариуцагч': 'assignee', 'Хамт хариуцагч': 'co_assignees',\n  'Эцсийн хугацаа': 'due', 'Чухлын зэрэг': 'priority',\n  'Төлөв': 'status', 'KPI код': 'kpi_code',\n  'Үүсгэсэн ажилтан': 'createdBy', 'Эх ID': 'parent_id',\n  'Төрөл': 'kind', 'Дамжлага': 'stage',\n  'Үүсгэсэн огноо': 'created', 'Шинэчилсэн огноо': 'updated',\n};\nconst rows = $input.all().map(it => {\n  const src = it.json || {};\n  const out = {};\n  for (const k of Object.keys(src)) out[M2E[k] || k] = src[k];\n  if (typeof out.co_assignees === 'string') {\n    out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];\n  }\n  return out;\n});\nconst tasks = rows.filter(r => r && r.id && r.status !== 'deleted');\nreturn [{ json: { tasks } }];"
       },
       "id": "dc972412-e28c-4d60-a19a-0acc1fe723e4",
       "name": "Aggregate Tasks",
@@ -189,31 +189,31 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "id": "={{ $('Route Action').item.json.task.id }}",
-            "title": "={{ $('Route Action').item.json.task.title }}",
-            "desc": "={{ $('Route Action').item.json.task.desc }}",
-            "branch": "={{ $('Route Action').item.json.task.branch }}",
-            "project": "={{ $('Route Action').item.json.task.project }}",
-            "assignee": "={{ $('Route Action').item.json.task.assignee }}",
-            "co_assignees": "={{ ($('Route Action').item.json.task.co_assignees || []).join(',') }}",
-            "due": "={{ $('Route Action').item.json.task.due }}",
-            "priority": "={{ $('Route Action').item.json.task.priority }}",
-            "status": "={{ $('Route Action').item.json.task.status }}",
-            "kpi_code": "={{ $('Route Action').item.json.task.kpi_code }}",
-            "createdBy": "={{ $('Route Action').item.json.task.createdBy }}",
-            "parent_id": "={{ $('Route Action').item.json.task.parent_id }}",
-            "kind": "={{ $('Route Action').item.json.task.kind }}",
-            "stage": "={{ $('Route Action').item.json.task.stage }}",
-            "created": "={{ $('Route Action').item.json.task.created }}",
-            "updated": "={{ $now.toISO() }}"
+            "ID": "={{ $('Route Action').item.json.task.id }}",
+            "Гарчиг": "={{ $('Route Action').item.json.task.title }}",
+            "Тайлбар": "={{ $('Route Action').item.json.task.desc }}",
+            "Салбар": "={{ $('Route Action').item.json.task.branch }}",
+            "Төсөл": "={{ $('Route Action').item.json.task.project }}",
+            "Хариуцагч": "={{ $('Route Action').item.json.task.assignee }}",
+            "Хамт хариуцагч": "={{ ($('Route Action').item.json.task.co_assignees || []).join(',') }}",
+            "Эцсийн хугацаа": "={{ $('Route Action').item.json.task.due }}",
+            "Чухлын зэрэг": "={{ $('Route Action').item.json.task.priority }}",
+            "Төлөв": "={{ $('Route Action').item.json.task.status }}",
+            "KPI код": "={{ $('Route Action').item.json.task.kpi_code }}",
+            "Үүсгэсэн ажилтан": "={{ $('Route Action').item.json.task.createdBy }}",
+            "Эх ID": "={{ $('Route Action').item.json.task.parent_id }}",
+            "Төрөл": "={{ $('Route Action').item.json.task.kind }}",
+            "Дамжлага": "={{ $('Route Action').item.json.task.stage }}",
+            "Үүсгэсэн огноо": "={{ $('Route Action').item.json.task.created }}",
+            "Шинэчилсэн огноо": "={{ $now.toISO() }}"
           },
           "matchingColumns": [
-            "id"
+            "ID"
           ],
           "schema": [
             {
-              "id": "id",
-              "displayName": "id",
+              "id": "ID",
+              "displayName": "ID",
               "required": false,
               "defaultMatch": true,
               "display": true,
@@ -221,8 +221,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "title",
-              "displayName": "title",
+              "id": "Гарчиг",
+              "displayName": "Гарчиг",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -230,8 +230,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "desc",
-              "displayName": "desc",
+              "id": "Тайлбар",
+              "displayName": "Тайлбар",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -239,8 +239,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "branch",
-              "displayName": "branch",
+              "id": "Салбар",
+              "displayName": "Салбар",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -248,8 +248,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "project",
-              "displayName": "project",
+              "id": "Төсөл",
+              "displayName": "Төсөл",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -257,8 +257,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "assignee",
-              "displayName": "assignee",
+              "id": "Хариуцагч",
+              "displayName": "Хариуцагч",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -266,8 +266,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "co_assignees",
-              "displayName": "co_assignees",
+              "id": "Хамт хариуцагч",
+              "displayName": "Хамт хариуцагч",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -275,8 +275,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "due",
-              "displayName": "due",
+              "id": "Эцсийн хугацаа",
+              "displayName": "Эцсийн хугацаа",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -284,8 +284,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "priority",
-              "displayName": "priority",
+              "id": "Чухлын зэрэг",
+              "displayName": "Чухлын зэрэг",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -293,8 +293,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "status",
-              "displayName": "status",
+              "id": "Төлөв",
+              "displayName": "Төлөв",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -302,8 +302,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "kpi_code",
-              "displayName": "kpi_code",
+              "id": "KPI код",
+              "displayName": "KPI код",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -311,8 +311,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "createdBy",
-              "displayName": "createdBy",
+              "id": "Үүсгэсэн ажилтан",
+              "displayName": "Үүсгэсэн ажилтан",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -320,8 +320,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "parent_id",
-              "displayName": "parent_id",
+              "id": "Эх ID",
+              "displayName": "Эх ID",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -329,8 +329,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "kind",
-              "displayName": "kind",
+              "id": "Төрөл",
+              "displayName": "Төрөл",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -338,8 +338,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "stage",
-              "displayName": "stage",
+              "id": "Дамжлага",
+              "displayName": "Дамжлага",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -347,8 +347,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "created",
-              "displayName": "created",
+              "id": "Үүсгэсэн огноо",
+              "displayName": "Үүсгэсэн огноо",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -356,8 +356,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "updated",
-              "displayName": "updated",
+              "id": "Шинэчилсэн огноо",
+              "displayName": "Шинэчилсэн огноо",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -414,17 +414,17 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "id": "={{ $json.task.id }}",
-            "status": "deleted",
-            "updated": "={{ $now.toISO() }}"
+            "ID": "={{ $json.task.id }}",
+            "Төлөв": "deleted",
+            "Шинэчилсэн огноо": "={{ $now.toISO() }}"
           },
           "matchingColumns": [
-            "id"
+            "ID"
           ],
           "schema": [
             {
-              "id": "id",
-              "displayName": "id",
+              "id": "ID",
+              "displayName": "ID",
               "required": false,
               "defaultMatch": true,
               "display": true,
@@ -432,88 +432,8 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "title",
-              "displayName": "title",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "desc",
-              "displayName": "desc",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "branch",
-              "displayName": "branch",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "project",
-              "displayName": "project",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "assignee",
-              "displayName": "assignee",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "co_assignees",
-              "displayName": "co_assignees",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "due",
-              "displayName": "due",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "priority",
-              "displayName": "priority",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "status",
-              "displayName": "status",
+              "id": "Гарчиг",
+              "displayName": "Гарчиг",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -521,68 +441,134 @@
               "canBeUsedToMatch": true
             },
             {
-              "id": "kpi_code",
-              "displayName": "kpi_code",
+              "id": "Тайлбар",
+              "displayName": "Тайлбар",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
-              "id": "createdBy",
-              "displayName": "createdBy",
+              "id": "Салбар",
+              "displayName": "Салбар",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
-              "id": "parent_id",
-              "displayName": "parent_id",
+              "id": "Төсөл",
+              "displayName": "Төсөл",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
-              "id": "kind",
-              "displayName": "kind",
+              "id": "Хариуцагч",
+              "displayName": "Хариуцагч",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
-              "id": "stage",
-              "displayName": "stage",
+              "id": "Хамт хариуцагч",
+              "displayName": "Хамт хариуцагч",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
-              "id": "created",
-              "displayName": "created",
+              "id": "Эцсийн хугацаа",
+              "displayName": "Эцсийн хугацаа",
               "required": false,
               "defaultMatch": false,
               "display": true,
               "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
+              "canBeUsedToMatch": true
             },
             {
-              "id": "updated",
-              "displayName": "updated",
+              "id": "Чухлын зэрэг",
+              "displayName": "Чухлын зэрэг",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Төлөв",
+              "displayName": "Төлөв",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "KPI код",
+              "displayName": "KPI код",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Үүсгэсэн ажилтан",
+              "displayName": "Үүсгэсэн ажилтан",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Эх ID",
+              "displayName": "Эх ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Төрөл",
+              "displayName": "Төрөл",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Дамжлага",
+              "displayName": "Дамжлага",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Үүсгэсэн огноо",
+              "displayName": "Үүсгэсэн огноо",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Шинэчилсэн огноо",
+              "displayName": "Шинэчилсэн огноо",
               "required": false,
               "defaultMatch": false,
               "display": true,

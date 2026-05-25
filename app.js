@@ -2217,17 +2217,24 @@ function renderDashboard() {
   const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]).slice(0, 6);
   const maxLoad = Math.max(1, ...topStaff.map(([,n]) => n));
 
-  // 3) Финансын зардал — сүүлийн 30 хоног
+  // 3) Финансын зардал — сүүлийн 30 хоног. Finance-ийн ts талбар нь `requested_at` —
+  // өмнөх кодонд `created_at || ts` гэж буруу нэр хайж байсан тул хоосон гарч байсан.
   const cutoff = Date.now() - 30 * 86400 * 1000;
-  const recentFinance = fr.filter(r => {
-    const ts = new Date(r.created_at || r.ts || 0).getTime();
-    return ts > cutoff;
-  });
+  const financeTs = r => {
+    const raw = r.requested_at || r.updated || r.decision_at || r.created_at || r.ts;
+    if (!raw) return 0;
+    const t = new Date(raw).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  const recentFinance = fr.filter(r => financeTs(r) > cutoff);
   const totalApproved = recentFinance
     .filter(r => r.decision === 'approved' || r.status === 'done')
     .reduce((s, r) => s + (Number(r.amount) || 0), 0);
   const totalPending = recentFinance
     .filter(r => (r.decision || 'pending') === 'pending')
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const totalRejected = recentFinance
+    .filter(r => r.decision === 'rejected')
     .reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   // 4) Хоцорсон
@@ -2344,9 +2351,14 @@ function renderDashboard() {
             <div class="dash-finance-label">Хүлээгдэж буй</div>
             <div class="dash-finance-value warn">${totalPending.toLocaleString('mn-MN')}₮</div>
           </div>
+          ${totalRejected > 0 ? `
+          <div class="dash-finance-row">
+            <div class="dash-finance-label">Татгалзсан</div>
+            <div class="dash-finance-value" style="color:var(--danger)">${totalRejected.toLocaleString('mn-MN')}₮</div>
+          </div>` : ''}
           <div class="dash-finance-row">
             <div class="dash-finance-label">Нийт хүсэлт</div>
-            <div class="dash-finance-value">${recentFinance.length}</div>
+            <div class="dash-finance-value">${recentFinance.length}${fr.length > recentFinance.length ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">(нийт ${fr.length})</span>` : ''}</div>
           </div>
         </div>
 

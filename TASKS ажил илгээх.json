@@ -206,7 +206,7 @@
             "Дамжлага": "={{ $('Route Action1').item.json.task.stage }}",
             "Үүсгэсэн огноо": "={{ $('Route Action1').item.json.task.created }}",
             "Шинэчилсэн огноо": "={{ $now.toISO() }}",
-            "Тодруулга": "={{ $json.task.comments[0].text }}"
+            "Тодруулга": "={{ ($('Route Action1').item.json.task.comments && $('Route Action1').item.json.task.comments[0] && $('Route Action1').item.json.task.comments[0].text) || '' }}"
           },
           "matchingColumns": [
             "ID"

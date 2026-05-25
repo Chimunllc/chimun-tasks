@@ -774,8 +774,46 @@ function currentBranchInfo() {
 /* -------------------- STORAGE -------------------- */
 // Google Sheets returns string-typed columns as numbers when the value looks numeric
 // (e.g. assignee "001" → 1). Normalize so render code can rely on consistent types.
+/* ─── Хариуцагч ID ↔ нэр хөрвүүлэх ──────────────────────────────────
+   Google Sheet-д ID биш НЭР хадгална (хүн уншиж ойлгомжтой, ID давхцал гарахгүй).
+   Аппын дотоод төлөв (state) ID-аар үлдсэн хэвээр — зөвхөн n8n руу явахаас өмнө +
+   ирэхэд хөрвүүлнэ. Хоёр чигт idempotent: ID өгсөн бол ID-аар үлдээнэ. */
+function idToName(val) {
+  if (!val) return val;
+  const m = TEAM.find(x => String(x.id) === String(val));
+  return m ? m.name : val;
+}
+function nameToId(val) {
+  if (!val) return val;
+  // Аль хэдийн ID байвал орхино
+  if (TEAM.some(x => String(x.id) === String(val))) return val;
+  const m = TEAM.find(x => x.name === val);
+  return m ? m.id : val;
+}
+function taskToWire(task) {
+  if (!task || typeof task !== 'object') return task;
+  const out = { ...task };
+  if (out.assignee) out.assignee = idToName(out.assignee);
+  if (out.createdBy) out.createdBy = idToName(out.createdBy);
+  if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(idToName);
+  return out;
+}
+function taskFromWire(task) {
+  if (!task || typeof task !== 'object') return task;
+  const out = { ...task };
+  if (out.assignee) out.assignee = nameToId(out.assignee);
+  if (out.createdBy) out.createdBy = nameToId(out.createdBy);
+  if (typeof out.co_assignees === 'string') {
+    out.co_assignees = out.co_assignees ? out.co_assignees.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  }
+  if (Array.isArray(out.co_assignees)) out.co_assignees = out.co_assignees.map(nameToId);
+  return out;
+}
+
 function normalizeTask(t) {
   if (!t || typeof t !== 'object') return t;
+  // Эхлээд нэр → ID хөрвүүлэх (Sheet-ээс ирсэн бол)
+  t = taskFromWire(t);
   const stringFields = ['id','title','desc','branch','project','assignee','due','priority','status','kpi_code','createdBy','parent_id','kind',
     'decision','decision_at','decision_by','executed_at','executed_by','purpose','beneficiary','justification','decline_reason'];
   const out = { ...t };
@@ -1021,7 +1059,7 @@ async function flushPendingWrites() {
     const url = w.kind === 'finance' ? state.config.financeUrl : state.config.apiUrl;
     const body = w.kind === 'finance'
       ? { action: w.action, request: w.payload }
-      : { action: w.action, task: w.payload };
+      : { action: w.action, task: taskToWire(w.payload) };
     const ok = await postWrite(url, body);
     if (!ok) remaining.push(w);
   }
@@ -1062,7 +1100,9 @@ function applyPendingFinanceWrites() {
 async function saveTask(task, deleted=false) {
   saveLocal();
   if (!state.config.apiUrl) return; // backend тохируулаагүй — зөвхөн локал
-  const ok = await postWrite(state.config.apiUrl, { action: deleted ? 'delete' : 'upsert', task });
+  // ID-г нэр болгож хувиргаж Sheet рүү явуулна
+  const wire = taskToWire(task);
+  const ok = await postWrite(state.config.apiUrl, { action: deleted ? 'delete' : 'upsert', task: wire });
   if (ok) { flushPendingWrites(); }            // амжилттай — хуримтлагдсан backlog-оо бас илгээх
   else { enqueueWrite({ kind: 'task', action: deleted ? 'delete' : 'upsert', payload: task, ts: Date.now() }); }
 }

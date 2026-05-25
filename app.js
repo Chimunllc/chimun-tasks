@@ -80,33 +80,21 @@ const DEFAULT_UPLOAD_URL  = 'https://chimunllc.app.n8n.cloud/webhook/upload-rece
 const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-register';
 
 // Default projects per branch. Saved to localStorage on first load; user can add more.
+// Default projects — зөвхөн "Сезоны өмнөх бэлтгэл" үлдээсэн (2026-05-25 хэрэглэгчийн хүсэлтээр).
+// Хэрэглэгч өөрөө шинэ төслүүдээ бичиж нэмнэ.
 const PROJECTS_BY_BRANCH = {
-  'm-event': [
-    { id: 'event',     name: 'Захиалга бэлдэх (5 дамжлага)' },
-    { id: 'inventory', name: 'Сар бүрийн тооллого' },
-    { id: 'cleaning',  name: 'Цэвэрлэгээ / чанарын шалгалт' },
-    { id: 'repair',    name: 'Засвар / тоноглол' },
-    { id: 'kpi',       name: 'KPI хяналт' },
-  ],
-  'camp': [
-    { id: 'pre-season', name: 'Сезоны өмнөх бэлтгэл' },
-    { id: 'event-prep', name: 'Арга хэмжээний бэлдэл' },
-    { id: 'camp-ops',   name: 'Кемпийн өдөр тутмын ажил' },
-    { id: 'kitchen',    name: 'Гал тогоо' },
-  ],
   'shared': [
-    { id: 'admin',     name: 'Захиргааны ажил' },
-    { id: 'finance',   name: 'Санхүү / татвар' },
-    { id: 'marketing', name: 'Маркетинг / social' },
-    { id: 'hr',        name: 'Хүний нөөц / цалин' },
-  ],
-  'production': [
-    { id: 'camp-prep',   name: 'Camp талын бэлдэл' },
-    { id: 'mevent-prep', name: 'M Event талын бэлдэл' },
-    { id: 'event-day',   name: 'Арга хэмжээний өдөр' },
-    { id: 'post-event',  name: 'Дараах тайлан' },
+    { id: 'pre-season', name: 'Сезоны өмнөх бэлтгэл' },
   ],
 };
+
+// Хуучин default project ID-ууд — localStorage-аас цэвэрлэх зорилгоор хадгалсан.
+const _LEGACY_DEFAULT_PROJECT_IDS = new Set([
+  'event','inventory','cleaning','repair','kpi',
+  'event-prep','camp-ops','kitchen',
+  'admin','finance','marketing','hr',
+  'camp-prep','mevent-prep','event-day','post-event',
+]);
 
 /* -------------------- 5-СТАДИЙН АКТ TEMPLATE --------------------
    Camp ↔ M Event-ийн актын урсгал — Chimun_Camp_MEvent_Agreement_2026.
@@ -946,6 +934,27 @@ function loadLocal() {
       Object.keys(saved).forEach(b => { state.projectsByBranch[b] = saved[b]; });
     }
   } catch(e) { /* keep defaults */ }
+  // One-time migration — хуучин hardcoded default project-уудыг хэрэглэгчийн
+  // localStorage-аас хасах (2026-05-25). 'pre-season' үлдээх, хэрэглэгчийн
+  // өөрөө нэмсэн төслүүд (id 'p_'-ээр эхэлсэн) хэвээр үлдэнэ.
+  if (!localStorage.getItem('projectCleanup_v1')) {
+    Object.keys(state.projectsByBranch).forEach(b => {
+      state.projectsByBranch[b] = (state.projectsByBranch[b] || [])
+        .filter(p => !_LEGACY_DEFAULT_PROJECT_IDS.has(p.id));
+    });
+    // Хэрэв 'pre-season' алга болсон бол сэргээх (хэрэглэгч pre-season хадгалмаар байгаа)
+    const allProjects = Object.values(state.projectsByBranch).flat();
+    if (!allProjects.some(p => p.id === 'pre-season')) {
+      if (!state.projectsByBranch['shared']) state.projectsByBranch['shared'] = [];
+      state.projectsByBranch['shared'].unshift({ id: 'pre-season', name: 'Сезоны өмнөх бэлтгэл' });
+    }
+    // Устгасан төслүүдэд хамаарах task-уудын project талбарыг хоослох
+    state.tasks.forEach(t => {
+      if (t.project && _LEGACY_DEFAULT_PROJECT_IDS.has(t.project)) t.project = '';
+    });
+    saveLocal();
+    localStorage.setItem('projectCleanup_v1', '1');
+  }
   setConn('offline', 'Локал режим');
 }
 function saveLocal() {

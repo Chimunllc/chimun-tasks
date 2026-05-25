@@ -3511,7 +3511,10 @@ function escapeHtml(s) {
 
 /* -------------------- ACTIONS -------------------- */
 /* Биелэлтийн зураг авах — даалгавар дуусгахаас өмнө хариуцагчаас баталгаа авна.
-   Цуцалбал null буцаана (даалгавар done болохгүй). */
+   Цуцалбал null буцаана (даалгавар done болохгүй).
+   Тэмдэглэл: cancel-detection нь хэт түргэн болсон тул focus-логик ХАСав;
+   upload явагдаж байх үед буруу null-аар цуцлахгүй. Хэрэглэгч цуцалбал change
+   event-д file байхгүй гэж ирнэ — тэр үед null буцаана. */
 function promptCompletionPhoto(task) {
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -3521,32 +3524,30 @@ function promptCompletionPhoto(task) {
     input.style.display = 'none';
     document.body.appendChild(input);
     let resolved = false;
-    const cleanup = () => { document.body.removeChild(input); };
+    const cleanup = () => { try { document.body.removeChild(input); } catch(e){} };
     input.addEventListener('change', async () => {
       if (resolved) return;
       const file = input.files && input.files[0];
       if (!file) { resolved = true; cleanup(); return resolve(null); }
-      showToast('Зураг илгээж байна...', 'info', 2000);
+      showToast('Зураг илгээж байна...', 'info', 3000);
       try {
         const url = await uploadReceipt(file, task.id, 'completion');
         resolved = true; cleanup();
-        if (!url) { showToast('Зураг илгээгдсэнгүй', 'error'); return resolve(null); }
+        if (!url) { showToast('Зураг илгээгдсэнгүй — дахин оролдоно уу', 'error', 4000); return resolve(null); }
+        showToast('✓ Зураг хадгалагдлаа', 'success', 1500);
         resolve(url);
       } catch (e) {
+        console.warn('completion upload err', e);
         resolved = true; cleanup();
-        showToast('Зураг илгээхэд алдаа гарлаа', 'error');
+        showToast('Зураг илгээхэд алдаа: ' + (e?.message || ''), 'error', 5000);
         resolve(null);
       }
     });
-    // Хэрэглэгч cancel дарвал change гарахгүй; focus буцаж ирэхэд цуцалсан гэж үзнэ
-    setTimeout(() => {
-      window.addEventListener('focus', function onFocus() {
-        window.removeEventListener('focus', onFocus);
-        setTimeout(() => {
-          if (!resolved) { resolved = true; cleanup(); resolve(null); }
-        }, 600);
-      }, { once: true });
-    }, 100);
+    // cancel-event (browser-аас файл сонголтыг цуцлахад)
+    input.addEventListener('cancel', () => {
+      if (resolved) return;
+      resolved = true; cleanup(); resolve(null);
+    });
     input.click();
   });
 }

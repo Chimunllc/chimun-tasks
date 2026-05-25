@@ -960,6 +960,11 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (newStatus === 'done' && !(task.completion_photos || []).length) {
     const photos = await promptCompletionPhoto(task, { required: !!task.requires_photo });
     if (photos === null) return; // Болих дарсан
+    // Заавал зурагтай үед хоосон бол done болгохгүй (хатуу шалгалт)
+    if (task.requires_photo && !photos.length) {
+      showToast('⚠ Энэ даалгаврыг дуусгахын тулд зураг хавсаргах ёстой', 'warn', 3500);
+      return;
+    }
     if (photos.length) task.completion_photos = photos;
   }
   task.status = newStatus;
@@ -3562,7 +3567,7 @@ function promptCompletionPhoto(task, opts = {}) {
       // required=true үед зураг хэрэг; required=false үед үргэлж enabled
       doneBtn.disabled = required ? (photos.length === 0) : false;
       if (photos.length > 0) doneBtn.textContent = `Даалгавар дуусгах (${photos.length} зураг)`;
-      else doneBtn.textContent = required ? 'Зураг шаардлагатай' : 'Зураггүй дуусгах';
+      else doneBtn.textContent = required ? '⚠ Эхлээд зураг хавсаргана уу' : 'Зураггүй дуусгах';
     };
 
     const cleanup = () => {
@@ -3614,6 +3619,10 @@ async function toggleTask(id) {
     if (!(t.completion_photos || []).length) {
       const photos = await promptCompletionPhoto(t, { required: !!t.requires_photo });
       if (photos === null) return; // Болих
+      if (t.requires_photo && !photos.length) {
+        showToast('⚠ Энэ даалгаврыг дуусгахын тулд зураг хавсаргах ёстой', 'warn', 3500);
+        return;
+      }
       if (photos.length) t.completion_photos = photos;
     }
   } else {

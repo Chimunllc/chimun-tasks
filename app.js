@@ -2161,6 +2161,36 @@ function renderDashboard() {
             </div>
           `).join('')}
         </div>
+
+        <!-- Салбараар ажлын статистик -->
+        <div class="dash-card dash-staff" style="grid-column: span 4;">
+          <div class="dash-card-title">Салбараар ажлын тоо</div>
+          ${(() => {
+            const byBranch = {};
+            BRANCHES.forEach(b => { byBranch[b.id] = { name: b.name, total: 0, done: 0, active: 0 }; });
+            tasks.forEach(t => {
+              const b = t.branch || 'shared';
+              if (!byBranch[b]) byBranch[b] = { name: b, total: 0, done: 0, active: 0 };
+              byBranch[b].total++;
+              if (t.status === 'done') byBranch[b].done++;
+              else byBranch[b].active++;
+            });
+            const branches = Object.values(byBranch).filter(b => b.total > 0);
+            if (branches.length === 0) return '<div class="dash-empty">Ажил алга</div>';
+            const maxTotal = Math.max(1, ...branches.map(b => b.total));
+            return branches.map(b => `
+              <div class="dash-bar-row">
+                <div class="dash-bar-label">${escapeHtml(b.name)}</div>
+                <div class="dash-bar-track" style="position:relative;">
+                  <div class="dash-bar-fill" style="width:${(b.total/maxTotal)*100}%;background:linear-gradient(90deg,var(--accent-green),var(--accent-blue));"></div>
+                </div>
+                <div class="dash-bar-count" style="width:auto;min-width:70px;text-align:right;font-size:12px;">
+                  <span style="color:var(--accent-green);">${b.done}</span> / <span>${b.total}</span>
+                </div>
+              </div>
+            `).join('');
+          })()}
+        </div>
       </div>
     </div>
   `;
@@ -3739,7 +3769,12 @@ function fillAssigneeSelect(id, value, branchOverride) {
 }
 function fillBranchSelectInModal(id, value) {
   // `<select><option>` нь HTML рендер хийдэггүй тул SVG icon-ыг хасч зөвхөн текст үлдээнэ.
-  fillSelect(id, BRANCHES.map(b => ({ value: b.id, label: b.name })), value);
+  // Salbar нь зөвхөн статистикт хэрэглэгдэх label. Хүн ямар ч салбарт ажил хийж болно.
+  const options = [
+    { value: '', label: '— Сонгох (заавал биш) —' },
+    ...BRANCHES.map(b => ({ value: b.id, label: b.name })),
+  ];
+  fillSelect(id, options, value != null ? value : '');
 }
 
 function initEvents() {

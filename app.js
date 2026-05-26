@@ -1800,8 +1800,8 @@ function openFinanceModal(id = null) {
         document.getElementById('f-decision-reason-label').style.display = 'none';
       }
     }
-    // Payment file picker зөвхөн approved + S03/CEO үед харагдана
-    const showPayment = (t.decision === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorEmail() || state.isCEO));
+    // Payment file picker зөвхөн approved + туслах нягтлан үед. CEO үүрэгт ажил биш.
+    const showPayment = (t.decision === 'approved' && t.status !== 'done' && state.me === getFinanceExecutorEmail());
     toggleFinanceFileInput('f-payment-file', showPayment);
     // Receipt picker — гүйцэтгэгдсэний дараа + requested_by (or CEO) — final receipt upload боломжтой
     const showReceipt = (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
@@ -1835,7 +1835,9 @@ function openFinanceModal(id = null) {
     const fSave = document.getElementById('f-save');
     const canEditFields = (dec === 'pending') && (state.me === t.requested_by || state.isCEO);
     const isReqOrCEO = (state.me === t.requested_by) || state.isCEO;
-    const isExecutorOrCEO = (state.me === getFinanceExecutorEmail()) || state.isCEO;
+    // Гүйлгээ хийгдсэн гэж тэмдэглэх нь зөвхөн туслах нягтлангийн үүрэг. CEO тэр үүрэгт оролцохгүй —
+    // ажил үүргийн зааг ялгана (CEO зөвшөөрнө, нягтлан гүйлгээ хийнэ).
+    const isExecutor = (state.me === getFinanceExecutorEmail());
     // Хүсэлт гаргагч өөрөө бол шийдвэрийн/гүйцэтгэлийн товчнууд харагдахгүй —
     // өөрийгөө зөвшөөрөх/гүйцэтгэх нь зөв биш. Зөвхөн Засах эсвэл харах.
     const isRequester = (state.me === t.requested_by);
@@ -1850,7 +1852,7 @@ function openFinanceModal(id = null) {
       if (!isRequester) {
         if (dec === 'pending' && state.isCEO) {
           decisionActions.style.setProperty('display', 'flex', 'important');
-        } else if (dec === 'approved' && t.status !== 'done' && isExecutorOrCEO) {
+        } else if (dec === 'approved' && t.status !== 'done' && isExecutor) {
           executeActions.style.setProperty('display', 'flex', 'important');
         } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url && isReqOrCEO) {
           receiptActions.style.setProperty('display', 'flex', 'important');

@@ -1669,7 +1669,7 @@ function renderProofPreview(elId, url, label) {
     el.innerHTML = `<span style="color:var(--muted);font-size:11px;">${label} баримт хавсаргаагүй</span>`;
     return;
   }
-  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;">📎 ${escapeHtml(label)} баримтыг харах</a>`;
+  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${escapeHtml(label)} баримтыг харах</a>`;
 }
 
 function closeFinanceModal() {
@@ -4380,7 +4380,7 @@ function openTaskModal(id) {
         </div>
         ${t.requires_photo && t.status !== 'done' ? `
           <div style="margin-top:12px;padding:10px 12px;background:linear-gradient(135deg,#dbeafe,#ede9fe);border-left:3px solid #4f46e5;border-radius:6px;color:#3730a3;font-weight:600;font-size:13px;">
-            📷 Энэ даалгаврыг дуусгахдаа биелэлтийн зураг хавсаргах ёстой
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>Энэ даалгаврыг дуусгахдаа биелэлтийн зураг хавсаргах ёстой
           </div>` : ''}
       </div>
     `;
@@ -4533,7 +4533,7 @@ function renderTaskComments(t) {
     const mine = (c.author === state.me);
     const canEditDelete = mine || state.isCEO;
     const textHtml = renderCommentText(c.text);
-    const fileHtml = c.file_url ? `<a href="${escapeHtml(c.file_url)}" target="_blank" rel="noopener" class="comment-attach">📎 Хавсралт</a>` : '';
+    const fileHtml = c.file_url ? `<a href="${escapeHtml(c.file_url)}" target="_blank" rel="noopener" class="comment-attach"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>Хавсралт</a>` : '';
     const actions = canEditDelete ? `
       <div class="comment-actions">
         <button class="comment-action" data-comment-act="edit" data-comment-id="${escapeHtml(c.id || '')}" title="Засах">

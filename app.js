@@ -6279,11 +6279,12 @@ async function handleRegister() {
   if (!phone || phoneNorm.length < 8) return show('⚠ Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
   if (!rd || !/^[А-ЯӨҮ]{2}\d{8}$/i.test(rd)) return show('⚠ РД дугаар "АА00000000" хэлбэртэй байх ёстой.');
   if (!photoDataUrl) return show('⚠ Selfie зураг заавал оруулна уу.');
+  // Цалин хүлээн авах данс — бүх ажилтанд шаардлагатай
+  if (!bank) return show('⚠ Банкаа сонгоно уу.');
+  if (!bankAccount || bankAccount.replace(/\D/g,'').length < 6) return show('⚠ Дансны дугаараа зөв оруулна уу.');
+  if (!bankHolder) return show('⚠ Данс эзэмшигчийн нэр оруулна уу.');
   // Өдрийн ажилтны нэмэлт шалгалт
   if (workerType === 'daily') {
-    if (!bank) return show('⚠ Банкаа сонгоно уу.');
-    if (!bankAccount || bankAccount.replace(/\D/g,'').length < 6) return show('⚠ Дансны дугаараа зөв оруулна уу.');
-    if (!bankHolder) return show('⚠ Данс эзэмшигчийн нэр оруулна уу.');
     if (!seasonalFrom) return show('⚠ Ажиллаж эхлэх огноог оруулна уу.');
     if (!seasonalTo)   return show('⚠ Ажиллаж дуусах огноог оруулна уу.');
     if (seasonalTo < seasonalFrom) return show('⚠ Дуусах огноо эхлэх огнооноос өмнө байж болохгүй.');
@@ -6332,9 +6333,7 @@ async function handleRegister() {
         worker_type:   workerType,   // 'permanent' | 'daily'
         seasonal_from: workerType === 'daily' ? seasonalFrom : '',
         seasonal_to:   workerType === 'daily' ? seasonalTo   : '',
-        bank:          workerType === 'daily' ? bank         : '',
-        bank_account:  workerType === 'daily' ? bankAccount  : '',
-        bank_holder:   workerType === 'daily' ? bankHolder   : '',
+        bank, bank_account: bankAccount, bank_holder: bankHolder,
       }),
     });
     const data = await r.json().catch(() => ({}));

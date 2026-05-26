@@ -4131,16 +4131,25 @@ function openTaskModal(id) {
   state.editingId = id || null;
 
   // Permission check — existing task үед canEditTask тогтооно
-  const canEdit = t ? canEditTask(t) : { all: true, status: true, none: false };
+  const realCanEdit = t ? canEditTask(t) : { all: true, status: true, none: false };
+  // View mode: засах эрхтэй ч хадгалагдсан task-ыг эхэндээ read-only-аар нээнэ —
+  // санамсаргүй өөрчлөлтөөс хамгаална. "Засах" товч дармагц edit mode-руу шилжинэ.
+  // Шинэ task бол шууд edit mode.
+  if (!t) state._taskViewMode = false;
+  else if (state._taskViewMode == null) state._taskViewMode = realCanEdit.all;
+  const inViewMode = !!(t && realCanEdit.all && state._taskViewMode);
+  const canEdit = inViewMode ? { all: false, status: realCanEdit.status, none: false } : realCanEdit;
   state._modalCanEdit = canEdit;
 
   // Header текст
   const modalTitleEl = document.getElementById('task-modal-title');
   if (!t) {
     modalTitleEl.textContent = 'Шинэ даалгавар';
-  } else if (canEdit.all) {
+  } else if (inViewMode) {
+    modalTitleEl.textContent = 'Даалгавар';
+  } else if (realCanEdit.all) {
     modalTitleEl.textContent = 'Даалгавар засах';
-  } else if (canEdit.status) {
+  } else if (realCanEdit.status) {
     modalTitleEl.innerHTML = '📋 Танд оноосон даалгавар <span style="font-size:11px;font-weight:600;background:var(--accent-blue,#4f46e5);color:#fff;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px;">ХАРИУЦАГЧ</span>';
   } else {
     modalTitleEl.textContent = 'Даалгавар';
@@ -4271,9 +4280,22 @@ function openTaskModal(id) {
   const multiBtnEl = document.getElementById('t-assignee-multi');
   if (multiBtnEl) multiBtnEl.style.display = canEdit.all ? '' : 'none';
   const saveBtn = document.getElementById('t-save');
-  if (saveBtn) saveBtn.style.display = canEdit.all ? '' : 'none';
+  if (saveBtn) {
+    // View mode → "Засах" товч. Edit mode → "Хадгалах". Зөвхөн харах хэрэглэгчид нуух.
+    if (inViewMode) {
+      saveBtn.style.display = '';
+      saveBtn.textContent = '✎ Засах';
+      saveBtn.onclick = () => { state._taskViewMode = false; openTaskModal(t.id); };
+    } else if (canEdit.all) {
+      saveBtn.style.display = '';
+      saveBtn.textContent = 'Хадгалах';
+      saveBtn.onclick = () => withBusy(saveBtn, saveTaskFromModal, { successText: 'Хадгалагдлаа' });
+    } else {
+      saveBtn.style.display = 'none';
+    }
+  }
   const dupBtnEl = document.getElementById('t-duplicate');
-  if (dupBtnEl) dupBtnEl.style.display = canEdit.all ? '' : 'none';
+  if (dupBtnEl) dupBtnEl.style.display = realCanEdit.all && !inViewMode ? '' : 'none';
 
   // ─── Хариуцагчийн уншмаар card (бүх мэдээлэл нэг дор) ───
   let readOnlyCard = document.getElementById('t-readonly-card');
@@ -4573,6 +4595,7 @@ function renderTaskActivity(t) {
 function closeTaskModal() {
   document.getElementById('task-modal').classList.remove('open');
   state.editingId = null;
+  state._taskViewMode = null; // дараагийн нээхэд анхдагч view mode-аар эхэлнэ
 }
 async function saveTaskFromModal() {
   const title = document.getElementById('t-title').value.trim();

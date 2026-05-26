@@ -4447,6 +4447,12 @@ function renderTaskActionButtons(t) {
     const cnt = Array.isArray(t.completion_photos) ? t.completion_photos.length : 0;
     btns.push(`<button class="btn btn-action" data-action="add_photo">📷 Зураг хавсаргах${cnt > 0 ? ` (${cnt})` : ''}</button>`);
   }
+  // Дамжуулах — менежер ба түүнээс дээш зэрэглэлтэй хариуцагч өөрийн харьяа ажилтанд
+  // хариуцлагыг шилжүүлж болно. CEO зөвшөөрөл шаардахгүй (хурдан үйл ажиллагаа), гэхдээ
+  // activity log + push мэдэгдэлээр транспэрэнт байна.
+  if (canAct && (state.myLevel || 0) >= 60 && status !== 'done' && status !== 'declined') {
+    btns.push(`<button class="btn btn-action" data-action="delegate">↪ Дамжуулах</button>`);
+  }
   // Төлвийн badge — CSS class-аар стиль, inline арилгасан
   const statusLabels = {
     open:        { text: 'Шинэ',          cls: 'open' },
@@ -4504,6 +4510,22 @@ async function handleTaskAction(taskId, action) {
     if (!q || !q.trim()) return;
     await requestTaskClarification(taskId, q.trim());
     showToast('Тодруулга илгээсэн', 'success');
+  } else if (action === 'delegate') {
+    const picked = await openMultiAssigneePicker([t.assignee]);
+    if (!picked || !picked.length) return;
+    // Зөвхөн нэг хүн сонгох — олон бол эхнийхийг авна (Шинэ task үүсгэхдээ олныг хувиарлах өөр урсгал)
+    const newAssignee = picked.find(p => p !== t.assignee) || picked[0];
+    if (newAssignee === t.assignee) { showToast('Өөр хариуцагч сонгоно уу', 'warn'); return; }
+    const prev = t.assignee;
+    t.assignee = newAssignee;
+    t.updated = new Date().toISOString();
+    logTaskActivity(t, 'reassigned', { from: prev, to: newAssignee });
+    await saveTask(t);
+    pushBroadcast(newAssignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
+    showToast(`Дамжуулсан: ${memberName(newAssignee)}`, 'success', 2500);
+    closeTaskModal();
+    render();
+    return;
   }
   // Modal-ыг шинэчлэх (action товчнууд + comments + activity)
   renderTaskActionButtons(t);

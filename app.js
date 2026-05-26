@@ -6139,17 +6139,29 @@ function initPinLogin() {
   // ─── Шинэ ажилтан бүртгэл ───
   const regSection = document.getElementById('register-section');
   const loginFooter = document.getElementById('login-footer-default');
-  document.getElementById('show-register-btn')?.addEventListener('click', () => {
+  const openRegister = (type) => {
     regSection.style.display = 'block';
     loginFooter.style.display = 'none';
     form.style.display = 'none';
-    document.querySelector('.login-sub').textContent = 'Шинэ ажилтны бүртгэл';
-  });
+    const subTxt = type === 'daily' ? 'Цагийн ажилтны бүртгэл' : 'Үндсэн ажилтны бүртгэл';
+    document.querySelector('.login-sub').textContent = subTxt;
+    // Worker type toggle-ийг автоматаар тохируулна
+    const targetBtn = document.querySelector(`#reg-worker-type .reg-type-btn[data-type="${type}"]`);
+    if (targetBtn) targetBtn.click();
+    // Top toggle-ийг далдална — entry button-аар сонгосон тул дахин харуулах хэрэггүй
+    const tt = document.getElementById('reg-worker-type');
+    if (tt) tt.style.display = 'none';
+    const ttLabel = tt?.previousElementSibling;
+    if (ttLabel && ttLabel.classList.contains('login-label')) ttLabel.style.display = 'none';
+  };
+  document.getElementById('show-register-permanent-btn')?.addEventListener('click', () => openRegister('permanent'));
+  document.getElementById('show-register-daily-btn')?.addEventListener('click', () => openRegister('daily'));
   document.getElementById('reg-cancel')?.addEventListener('click', () => {
     regSection.style.display = 'none';
     loginFooter.style.display = 'block';
     form.style.display = 'flex';
     document.querySelector('.login-sub').textContent = 'Утас эсвэл и-мэйл + PIN кодоор нэвтэрнэ үү';
+    // Toggle-ийг буцааж харуулах хэрэггүй (entry button-аар л сонгоно)
   });
   document.getElementById('reg-submit')?.addEventListener('click', handleRegister);
   // Зураг upload — registration form

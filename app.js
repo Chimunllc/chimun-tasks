@@ -75,6 +75,16 @@ function withKey(url) {
   return `${url}${sep}key=${encodeURIComponent(N8N_API_KEY)}`;
 }
 
+// fetch timeout wrapper — кемп/3G гэх мэт сул сүлжээ үед fetch 60-120 сек ширж байж
+// аппыг "гацсан" гэж мэдрүүлдэг. AbortController-аар хугацаа тавьж хурдан буцах.
+// Default 15s ердийн дуудлагад; upload-д заавал тусдаа удаан хугацаа өг.
+function fetchWithTimeout(url, opts = {}, timeoutMs = 15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { ...opts, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 // Modal save товчинд хурдан 2 удаа дарахад давтан POST явахаас сэргийлнэ.
 // async ажиллах хугацаанд товч disabled байж, дууссаны дараа (success/error аль аль)
 // автомат буцаана. Хэрэв opts.successText өгсөн бол амжилт-н дараа товч 800мс ✓ текстээр
@@ -750,7 +760,7 @@ async function loadTeamFromAPI() {
     // Cache-bust query — n8n response 5-минут CDN кэштэй тул фреш PIN авахын тулд хэрэгтэй
     const sep = url.includes('?') ? '&' : '?';
     const bustUrl = withKey(`${url}${sep}t=${Date.now()}`);
-    const r = await fetch(bustUrl, {
+    const r = await fetchWithTimeout(bustUrl, {
       method: 'GET',
       cache: 'no-store',
       headers: { 'Cache-Control': 'no-cache' },
@@ -1004,7 +1014,7 @@ async function loadBootstrap() {
   const url = state.config.bootstrapUrl;
   if (!url) return false;
   try {
-    const r = await fetch(withKey(url + '?t=' + Date.now()), {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), {
       cache: 'no-store',
       headers: { 'Cache-Control': 'no-cache' },
     });
@@ -1044,7 +1054,7 @@ async function loadData() {
     try {
       // Cache-bust — n8n Cloud GET-ийг ~5 мин кэшилдэг тул Sheet дээр шууд хийсэн өөрчлөлт
       // (мөр устгах/засах) тусахгүй байдаг. t=Date.now() + no-store-р фреш дата авна.
-      const r = await fetch(withKey(state.config.apiUrl + '?action=list&t=' + Date.now()), {
+      const r = await fetchWithTimeout(withKey(state.config.apiUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
@@ -1117,7 +1127,7 @@ function enqueueWrite(write) {
 async function postWrite(url, body) {
   if (!url) return false;
   try {
-    const r = await fetch(withKey(url), {
+    const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -1191,7 +1201,7 @@ function pushBroadcast(email, payload) {
   const url = state.config.pushBroadcastUrl;
   if (!url || !email) return;
   if (email === state.me) return; // өөртөө илгээхгүй
-  fetch(withKey(url), {
+  fetchWithTimeout(withKey(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, ...payload }),
@@ -1430,7 +1440,7 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
     reader.readAsDataURL(file);
   });
   try {
-    const r = await fetch(withKey(state.config.uploadUrl), {
+    const r = await fetchWithTimeout(withKey(state.config.uploadUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1479,7 +1489,7 @@ async function loadFinanceRequests() {
   if (state.config.financeUrl) {
     try {
       // Cache-bust — Sheet дээр шууд устгасан/засварласан хүсэлт нэн даруй тусахын тулд
-      const res = await fetch(withKey(state.config.financeUrl + '?action=list&t=' + Date.now()), {
+      const res = await fetchWithTimeout(withKey(state.config.financeUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' },
       });
@@ -2638,7 +2648,7 @@ async function sendWeeklyDigest() {
 
   try {
     showToast('Имэйл илгээж байна...', 'info', 2000);
-    const r = await fetch(withKey(webhook.replace(/\/[^\/]+$/, '/weekly-digest')), {
+    const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/weekly-digest')), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'weekly_digest', stats, requested_by: state.user?.email }),
@@ -3169,7 +3179,7 @@ function openPendingRegistration(member) {
     const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
     if (webhook) {
       try {
-        const r = await fetch(withKey(webhook), {
+        const r = await fetchWithTimeout(withKey(webhook), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -3208,7 +3218,7 @@ function openPendingRegistration(member) {
     const webhook = state.config.staffUrl?.replace(/\/[^\/]+$/, '/staff-approve');
     if (webhook) {
       try {
-        await fetch(withKey(webhook), {
+        await fetchWithTimeout(withKey(webhook), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -3314,7 +3324,7 @@ function renderStaffList() {
           if (newStatus === 'идэвхтэй') member.joined_at = today;
           localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
 
-          const r = await fetch(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
+          const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -5496,7 +5506,7 @@ async function ensurePushSubscription() {
     const lastSent = localStorage.getItem('pushSubLastSent');
     const subStr = JSON.stringify(sub);
     if (lastSent === subStr + '::' + state.me) return true; // өөрчлөгдөөгүй, дахин илгээхгүй
-    const r = await fetch(withKey(url), {
+    const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: state.me, subscription: sub }),
@@ -5961,7 +5971,7 @@ async function handleRegister() {
     // CEO зөвшөөрөл шаардахгүй — зэрэглэлийг албан тушаалаас автомат тогтооно.
     // Түлхүүр = и-мэйл хаяг. ID талбар цаашид ашиглагдахгүй.
     const autoLevel = levelForRole(role);
-    const r = await fetch(withKey(url), {
+    const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

@@ -77,17 +77,26 @@ function withKey(url) {
 
 // Modal save товчинд хурдан 2 удаа дарахад давтан POST явахаас сэргийлнэ.
 // async ажиллах хугацаанд товч disabled байж, дууссаны дараа (success/error аль аль)
-// автомат буцаана. Жишээ хэрэглээ: withBusy(btn, async () => { await saveTask(); }).
-async function withBusy(btn, asyncFn) {
+// автомат буцаана. Хэрэв opts.successText өгсөн бол амжилт-н дараа товч 800мс ✓ текстээр
+// flash хийгээд эх HTML рүү буцана — хэрэглэгчид click → action бэлэн боллоо гэдгийг
+// шууд харуулна.
+async function withBusy(btn, asyncFn, opts = {}) {
   if (!btn) return asyncFn();
   if (btn.disabled) return; // өмнөх дуудалт хараахан дуусаагүй
   btn.disabled = true;
-  const origText = btn.textContent;
+  const origHTML = btn.innerHTML;
+  let success = false;
   try {
-    return await asyncFn();
+    const result = await asyncFn();
+    success = true;
+    return result;
   } finally {
+    if (success && opts.successText) {
+      btn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>${opts.successText}`;
+      await new Promise(r => setTimeout(r, 800));
+    }
     btn.disabled = false;
-    if (origText && btn.textContent !== origText) btn.textContent = origText;
+    btn.innerHTML = origHTML;
   }
 }
 // VAPID public key — push шифрлэлтийн нийтийн түлхүүр (private түлхүүр n8n credentials-д үлдэнэ).
@@ -4571,7 +4580,7 @@ function initEvents() {
   document.getElementById('add-project').onclick = addProject;
   document.getElementById('new-task-btn').onclick = () => openTaskModal();
   document.getElementById('t-cancel').onclick = closeTaskModal;
-  document.getElementById('t-save').onclick = () => withBusy(document.getElementById('t-save'), saveTaskFromModal);
+  document.getElementById('t-save').onclick = () => withBusy(document.getElementById('t-save'), saveTaskFromModal, { successText: 'Хадгалагдлаа' });
 
   // ─── Мобайл доод нав ───
   document.querySelectorAll('.mobile-nav-item[data-view]').forEach(btn => {
@@ -4772,9 +4781,9 @@ function initEvents() {
 
   // ─── Bulk action bar wiring ──────────────────────────
   document.getElementById('bulk-cancel')?.addEventListener('click', bulkClear);
-  document.getElementById('bulk-done')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('done')));
-  document.getElementById('bulk-restore')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('restore')));
-  document.getElementById('bulk-delete')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('delete')));
+  document.getElementById('bulk-done')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('done'), { successText: 'Дуусгалаа' }));
+  document.getElementById('bulk-restore')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('restore'), { successText: 'Сэргээгдлээ' }));
+  document.getElementById('bulk-delete')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('delete'), { successText: state.view === 'archive' ? 'Устгагдлаа' : 'Архивлагдлаа' }));
   // Esc → bulk цуцлах
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.bulkSelected?.size > 0) bulkClear();

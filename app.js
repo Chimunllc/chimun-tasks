@@ -5481,7 +5481,12 @@ function initEvents() {
     const files = [...(e.target.files || [])];
     if (!files.length) return;
     const editingId = state.editingId;
-    showToast(`${files.length} файл upload хийж байна...`, '', 3000);
+    const btn = document.getElementById('f-purchase-btn');
+    state._fPurchaseUploading = (state._fPurchaseUploading || 0) + files.length;
+    if (btn) { btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none';
+      btn.querySelector('svg + *, span')?.remove?.();
+      btn.lastChild.textContent = ` Upload хийж байна... ${state._fPurchaseUploading}`;
+    }
     for (const f of files) {
       const url = await uploadReceipt(f, editingId || 'new', 'purchase');
       if (url) {
@@ -5495,6 +5500,10 @@ function initEvents() {
           }
         }
       }
+      state._fPurchaseUploading--;
+    }
+    if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = '';
+      btn.lastChild.textContent = ' Зураг / баримт хавсаргах';
     }
     renderFinanceFileList('f-purchase-list', state._fPurchaseUrls, true);
     e.target.value = '';
@@ -5563,6 +5572,16 @@ function initEvents() {
     if (!purpose) { showToast('Юу авах хэрэгтэйг бөглөнө үү', 'warn'); return; }
     if (!category) { showToast('Дэд ангилал сонгоно уу', 'warn'); return; }
     if (!deptBranch) { showToast('Аль салбарт хамаарахыг сонгоно уу', 'warn'); return; }
+    // Upload дуусаагүй байгаа бол хүлээнэ
+    if (state._fPurchaseUploading > 0) {
+      showToast('Зураг upload дуусахыг хүлээнэ үү...', 'warn', 3000);
+      return;
+    }
+    // Зураг/баримтгүй бол анхааруулга — CEO нь яг юу болохыг харах ёстой
+    const hasAttach = Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length > 0;
+    if (!hasAttach) {
+      if (!(await showConfirm('Бараа бүтээгдэхүүний зураг эсвэл нэхэмжлэх хавсаргаагүй байна.\n\nCEO юу зөвшөөрөхөө харах боломжгүй. Зурагтайгаар илгээхийг зөвлөж байна.', { okText: 'Зураггүй илгээх', cancelText: 'Буцах · зураг нэмэх' }))) return;
+    }
     // Хэрэв дүн+банк+данс бүгд хоосон бол анхааруулга (гэхдээ үргэлжлүүлэх боломжтой)
     if ((!amount || Number(amount) <= 0) && !bank && !accountNumber && !purchaseFile) {
       if (!(await showConfirm('Дүн, банк, данс, баримт бүгд хоосон байна. CEO юу авах хэрэгтэйг ойлгох уу?\n\nҮргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' }))) return;

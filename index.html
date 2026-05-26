@@ -485,8 +485,10 @@
     <label>Үнэ ойролцоогоор хэдэн төгрөг вэ?</label>
     <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Мэдэхгүй бол хоосон үлдээж болно" />
 
-    <label><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>Зураг авч хавсаргах</label>
-    <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" />
+    <!-- Stage 1 — Илгээгчийн хавсаргадаг бараа зураг + нэхэмжлэх (олон файл) -->
+    <label id="f-purchase-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>Бараа бүтээгдэхүүний зураг / нэхэмжлэх (олон файл)</label>
+    <div id="f-purchase-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:6px;"></div>
+    <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" multiple />
     <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
 
     <!-- COLLAPSIBLE "ДЭЛГЭРЭНГҮЙ" — нэмэлт талбарууд -->
@@ -513,8 +515,10 @@
     <input id="f-payment-file" type="file" accept="image/*,application/pdf" capture="environment" />
     <div id="f-payment-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <label>Худалдан авалтын баримт</label>
-    <input id="f-receipt-file" type="file" accept="image/*,application/pdf" capture="environment" />
+    <!-- Stage 4 — Туслах нягтлан хүлээн авч хаах: НӨАТ + бараа баримтууд (олон файл) -->
+    <label id="f-receipt-label">Хүлээн авалтын баримт (НӨАТ, бараа гэх мэт, олон файл) <span style="color:var(--danger);">*</span></label>
+    <div id="f-receipt-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:6px;"></div>
+    <input id="f-receipt-file" type="file" accept="image/*,application/pdf" capture="environment" multiple />
     <div id="f-receipt-preview" style="margin-top:6px;font-size:12px;"></div>
 
     <!-- CEO дүгнэлт (зөвхөн CEO үед) -->
@@ -530,16 +534,14 @@
       </div>
     </div>
 
-    <!-- EXECUTE BUTTON — S03 (Туслах нягтлан) approved хүсэлт үед -->
+    <!-- STAGE 3 — Шилжүүлсэн гэж тэмдэглэх (Туслах нягтлан) -->
     <div class="modal-actions" id="f-execute-actions" style="display:none; margin-top:18px;">
-      <button class="btn" id="f-execute-cancel">Хаах</button>
-      <button class="btn btn-primary" id="f-execute">✓ Гүйлгээ хийгдсэн гэж тэмдэглэх</button>
+      <button class="btn btn-primary" id="f-execute">✓ Шилжүүлсэн (баримт хавсаргав)</button>
     </div>
 
-    <!-- RECEIPT UPLOAD — requester эцсийн баримт upload -->
+    <!-- STAGE 4 — Бараа хүлээн авч бүрэн хаах (Туслах нягтлан) -->
     <div class="modal-actions" id="f-receipt-actions" style="display:none; margin-top:18px;">
-      <button class="btn" id="f-receipt-cancel">Хаах</button>
-      <button class="btn btn-primary" id="f-receipt-save">🧾 Худалдан авалтын баримт хадгалах</button>
+      <button class="btn btn-primary" id="f-receipt-save">✓ Бараа хүлээн авч хаах</button>
     </div>
 
     <!-- SUBMIT / VIEW ACTIONS -->

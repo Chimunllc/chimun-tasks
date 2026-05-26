@@ -1522,7 +1522,11 @@ function requestToWire(r) {
   if (out.requested_by) out.requested_by = emailToName(out.requested_by);
   if (out.executor)     out.executor     = emailToName(out.executor);
   if (out.executed_by)  out.executed_by  = emailToName(out.executed_by);
+  if (out.received_by)  out.received_by  = emailToName(out.received_by);
   if (out.decision_by)  out.decision_by  = emailToName(out.decision_by);
+  // Олон URL талбаруудыг CSV ("|") болгож хадгална
+  if (Array.isArray(out.purchase_proof_urls)) out.purchase_proof_urls = out.purchase_proof_urls.join(' | ');
+  if (Array.isArray(out.purchase_receipt_urls)) out.purchase_receipt_urls = out.purchase_receipt_urls.join(' | ');
   // Код → монгол
   out.status   = _xlate(out.status, _FIN_STATUS_E2M);
   out.decision = _xlate(out.decision, _FIN_DEC_E2M);
@@ -1535,7 +1539,18 @@ function requestFromWire(r) {
   if (out.requested_by) out.requested_by = nameToEmail(out.requested_by);
   if (out.executor)     out.executor     = nameToEmail(out.executor);
   if (out.executed_by)  out.executed_by  = nameToEmail(out.executed_by);
+  if (out.received_by)  out.received_by  = nameToEmail(out.received_by);
   if (out.decision_by)  out.decision_by  = nameToEmail(out.decision_by);
+  // CSV → массив
+  if (typeof out.purchase_proof_urls === 'string') {
+    out.purchase_proof_urls = out.purchase_proof_urls ? out.purchase_proof_urls.split(/\s*\|\s*/).filter(Boolean) : [];
+  }
+  if (typeof out.purchase_receipt_urls === 'string') {
+    out.purchase_receipt_urls = out.purchase_receipt_urls ? out.purchase_receipt_urls.split(/\s*\|\s*/).filter(Boolean) : [];
+  }
+  // Backward compat — хуучин нэг URL талбарыг олон URL array-руу багтаах
+  if (!out.purchase_proof_urls && out.purchase_proof_url) out.purchase_proof_urls = [out.purchase_proof_url];
+  if (!out.purchase_receipt_urls && out.purchase_receipt_url) out.purchase_receipt_urls = [out.purchase_receipt_url];
   // монгол → код
   out.status   = _xlate(out.status, _FIN_STATUS_M2E);
   out.decision = _xlate(out.decision, _FIN_DEC_M2E);
@@ -1548,7 +1563,8 @@ function normalizeFinance(r) {
   r = requestFromWire(r);
   const stringFields = ['id','requested_by','beneficiary','purpose','justification','due_date',
     'status','decision','decision_at','decision_by','decision_reason',
-    'executed_at','executed_by','executor','purchase_proof_url','payment_proof_url','purchase_receipt_url',
+    'executed_at','executed_by','executor','received_at','received_by',
+    'purchase_proof_url','payment_proof_url','purchase_receipt_url',
     'category','dept_branch','frequency','bank','account_number'];
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
@@ -1580,9 +1596,13 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     executed_at: '',
     executed_by: '',
     executor: getFinanceExecutorEmail(), // Role-аар хайна, hardcoded ID биш
+    received_at: '',
+    received_by: '',
     purchase_proof_url: '',
     payment_proof_url: '',
     purchase_receipt_url: '',
+    purchase_proof_urls: [],     // Stage 1 — олон бараа зураг / нэхэмжлэх
+    purchase_receipt_urls: [],   // Stage 4 — олон НӨАТ / хүлээн авалтын баримт
   };
   state.financeRequests.unshift(r);
   await saveFinanceRequest(r);
@@ -1734,7 +1754,13 @@ function openFinanceModal(id = null) {
     toggleFinanceFileInput('f-payment-file', false);
     toggleFinanceFileInput('f-receipt-file', false);
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.removeAttribute('readonly'));
-    // NEW request — submitActions visible, f-save = "Илгээх"
+    // NEW request — submitActions visible, f-save = "Илгээх". Multi-file picker анхдагч хоосон.
+    state._fPurchaseUrls = [];
+    state._fReceiptUrls = [];
+    renderFinanceFileList('f-purchase-list', [], true);
+    renderFinanceFileList('f-receipt-list', [], true);
+    toggleFinanceFileInput('f-purchase-file', true);
+    document.getElementById('f-purchase-label').style.display = '';
     submitActions.style.setProperty('display', '', 'important');
     const fSaveNew = document.getElementById('f-save');
     fSaveNew.style.display = '';
@@ -1767,21 +1793,28 @@ function openFinanceModal(id = null) {
     }
     document.getElementById('f-dept-branch').value = t.dept_branch || 'ХАМТ';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
-    // Existing receipts харуулах. Үнийн судалгаа preview-г hide хийнэ хэрэв URL байхгүй
-    // (executor болон CEO харахад хэрэггүй хадаас бичиг арилгана).
-    if (t.purchase_proof_url) {
-      renderProofPreview('f-purchase-preview', t.purchase_proof_url, 'Үнийн судалгаа');
-    } else {
-      document.getElementById('f-purchase-preview').innerHTML = '';
-    }
+    // Multi-file жагсаалт — Stage 1 болон Stage 4-ийн хувьд массивыг харуулна.
+    const purchaseUrls = Array.isArray(t.purchase_proof_urls) ? t.purchase_proof_urls
+                       : (t.purchase_proof_url ? [t.purchase_proof_url] : []);
+    const receiptUrls  = Array.isArray(t.purchase_receipt_urls) ? t.purchase_receipt_urls
+                       : (t.purchase_receipt_url ? [t.purchase_receipt_url] : []);
+    state._fPurchaseUrls = [...purchaseUrls];
+    state._fReceiptUrls = [...receiptUrls];
+    const isRequester = (state.me === t.requested_by);
+    const isExecutor = (state.me === getFinanceExecutorEmail());
+    const dec0 = t.decision || 'pending';
+    // Stage 1 picker — зөвхөн илгээгч өөрөө pending үед нэмэх боломжтой; бусдад read-only thumbs.
+    const canEditPurchase = isRequester && dec0 === 'pending';
+    renderFinanceFileList('f-purchase-list', purchaseUrls, canEditPurchase);
+    toggleFinanceFileInput('f-purchase-file', canEditPurchase);
+    document.getElementById('f-purchase-label').style.display = (purchaseUrls.length || canEditPurchase) ? '' : 'none';
+    // Stage 4 picker — зөвхөн executor + executed + !done үед хавсаргана; бусдад read-only thumbs.
+    const canEditReceipt = isExecutor && t.executed_at && t.status !== 'done';
+    renderFinanceFileList('f-receipt-list', receiptUrls, canEditReceipt);
+    toggleFinanceFileInput('f-receipt-file', canEditReceipt);
+    document.getElementById('f-receipt-label').style.display = (receiptUrls.length || canEditReceipt) ? '' : 'none';
+    // Stage 3 (transfer) preview
     renderProofPreview('f-payment-preview', t.payment_proof_url, 'Төлбөрийн');
-    renderProofPreview('f-receipt-preview', t.purchase_receipt_url, 'Худалдан авалтын');
-    // Executor approved хүсэлт харах үед f-purchase-file picker нуух — тэр нь requester-ийн ажил.
-    if ((t.decision || '') === 'approved' && state.me === getFinanceExecutorEmail()) {
-      toggleFinanceFileInput('f-purchase-file', false);
-    } else {
-      toggleFinanceFileInput('f-purchase-file', true);
-    }
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
     document.getElementById('f-receipt-file').value = '';
@@ -1859,18 +1892,18 @@ function openFinanceModal(id = null) {
         fSave.style.display = '';
         fSave.textContent = '✎ Засах';
       }
-      // Стадийн action товчнууд (өөрийн хүсэлт дээр нуугдана)
+      // Стадийн action товчнууд:
+      //  - CEO pending хүсэлт → Decision
+      //  - Туслах нягтлан approved + !executed_at → Шилжүүлсэн (Stage 3)
+      //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах (Stage 4)
       if (!isRequester) {
         if (dec === 'pending' && state.isCEO) {
           decisionActions.style.setProperty('display', 'flex', 'important');
-        } else if (dec === 'approved' && t.status !== 'done' && isExecutor) {
+        } else if (dec === 'approved' && !t.executed_at && isExecutor) {
           executeActions.style.setProperty('display', 'flex', 'important');
-        } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url && isReqOrCEO) {
+        } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && isExecutor) {
           receiptActions.style.setProperty('display', 'flex', 'important');
         }
-      } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url) {
-        // Хүсэлт гаргагч дууссан хүсэлтэд эцсийн баримт хавсаргах
-        receiptActions.style.setProperty('display', 'flex', 'important');
       }
     } else if (canEditFields) {
       // EDIT mode — field-үүдийг unlock + Хадгалах товч
@@ -1886,6 +1919,57 @@ function openFinanceModal(id = null) {
     }
   }
   modal.classList.add('open');
+}
+
+/* Multi-file picker — finance modal-ийн Stage 1/4-д ашиглана. urls массивыг харуулж,
+   X товчоор хасах боломжтой. state дотор тухайн request-ийн temp массивыг хадгална. */
+function renderFinanceFileList(containerId, urls, removable) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!urls || !urls.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;">Хавсралт алга</div>'; return; }
+  const icon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+  el.innerHTML = urls.map((u, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel-hover);border-radius:6px;font-size:13px;">
+      <a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="flex:1;color:var(--primary);text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${icon}Файл ${i+1}</a>
+      ${removable ? `<button type="button" data-rm-idx="${i}" data-rm-container="${containerId}" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;line-height:1;">×</button>` : ''}
+    </div>
+  `).join('');
+}
+
+/* Stage 4 — Туслах нягтлан хүлээн авч хаах: олон файл шаардана, дараа нь received_at/status=done. */
+async function closeFinanceRequest(id) {
+  const r = state.financeRequests.find(x => x.id === id);
+  if (!r) return;
+  const executorId = r.executor || getFinanceExecutorEmail();
+  if (state.me !== executorId && !state.isCEO) {
+    showToast('Зөвхөн туслах нягтлан хаах эрхтэй', 'error'); return;
+  }
+  if (!r.executed_at) {
+    showToast('Эхлээд шилжүүлгийн баримт хавсаргана', 'warn'); return;
+  }
+  // Шинэ сонгосон файлуудыг upload-аад одоогийн жагсаалтад нэмнэ
+  const fileInput = document.getElementById('f-receipt-file');
+  const newFiles = fileInput && fileInput.files ? [...fileInput.files] : [];
+  const existing = Array.isArray(r.purchase_receipt_urls) ? [...r.purchase_receipt_urls] : [];
+  if (newFiles.length) {
+    showToast(`${newFiles.length} баримт upload хийж байна...`, '', 3000);
+    for (const f of newFiles) {
+      const url = await uploadReceipt(f, r.id, 'receipt');
+      if (url) existing.push(url);
+    }
+    fileInput.value = '';
+  }
+  if (!existing.length) {
+    showToast('Хүлээн авалтын баримт заавал хавсаргана уу', 'warn', 4000); return;
+  }
+  r.purchase_receipt_urls = existing;
+  r.received_at = new Date().toISOString();
+  r.received_by = state.me;
+  r.status = 'done';
+  await saveFinanceRequest(r);
+  showToast('Хүсэлт хаагдсан. Бараа хүлээн авсан.', 'success', 3000);
+  closeFinanceModal();
+  render();
 }
 
 async function executeFinanceRequest(id) {
@@ -1910,11 +1994,13 @@ async function executeFinanceRequest(id) {
     if (!url) { showToast('Баримт upload амжилтгүй', 'error'); return; }
     r.payment_proof_url = url;
   }
+  // Шилжүүлэг хийгдсэн — status=done БҮҮ тогтоо. Status open хэвээр үлдэж, дараа нь
+  // closeFinanceRequest (Бараа хүлээн авч хаах) дуудагдмагц л status=done болно.
   r.executed_at = new Date().toISOString();
   r.executed_by = state.me;
-  r.status = 'done';
   await saveFinanceRequest(r);
-  showToast('Гүйлгээ хийгдсэн гэж тэмдэглэгдсэн.', 'success');
+  showToast('Шилжүүлэг хийгдсэн гэж тэмдэглэгдлээ. Бараа ирмэгц хүлээн авч хаа.', 'success', 4000);
+  closeFinanceModal();
   render();
 }
 
@@ -5268,23 +5354,62 @@ function initEvents() {
     adv.style.display = isHidden ? '' : 'none';
     if (icon) icon.textContent = isHidden ? '▴' : '▾';
   });
-  document.getElementById('f-execute-cancel')?.addEventListener('click', () => closeFinanceModal());
-  document.getElementById('f-receipt-cancel')?.addEventListener('click', () => closeFinanceModal());
-  document.getElementById('f-receipt-save')?.addEventListener('click', async () => {
+  // Receipt-save товч → closeFinanceRequest (Stage 4 — бараа хүлээн авч хаах)
+  document.getElementById('f-receipt-save')?.addEventListener('click', async (e) => {
     if (!state.editingId) return;
-    const file = document.getElementById('f-receipt-file').files[0];
-    if (!file) { showToast('Худалдан авалтын баримт сонгоно уу', 'warn'); return; }
-    showToast('Баримт upload хийж байна...', '', 2000);
-    const url = await uploadReceipt(file, state.editingId, 'receipt');
-    if (!url) return;
-    const r = state.financeRequests.find(x => x.id === state.editingId);
-    if (r) {
-      r.purchase_receipt_url = url;
-      await saveFinanceRequest(r);
-      showToast('Худалдан авалтын баримт хадгалагдсан', 'success');
+    await withBusy(e.currentTarget, () => closeFinanceRequest(state.editingId), { successText: 'Хаагдлаа' });
+  });
+  // Multi-file picker change handlers — сонгосон файлуудыг шууд upload + жагсаалтад нэмнэ
+  document.getElementById('f-purchase-file')?.addEventListener('change', async (e) => {
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    const editingId = state.editingId;
+    showToast(`${files.length} файл upload хийж байна...`, '', 3000);
+    for (const f of files) {
+      const url = await uploadReceipt(f, editingId || 'new', 'purchase');
+      if (url) {
+        state._fPurchaseUrls = state._fPurchaseUrls || [];
+        state._fPurchaseUrls.push(url);
+        if (editingId) {
+          const r = state.financeRequests.find(x => x.id === editingId);
+          if (r) {
+            r.purchase_proof_urls = [...state._fPurchaseUrls];
+            await saveFinanceRequest(r);
+          }
+        }
+      }
     }
-    closeFinanceModal();
-    render();
+    renderFinanceFileList('f-purchase-list', state._fPurchaseUrls, true);
+    e.target.value = '';
+    showToast('Бараа баримт нэмэгдлээ', 'success', 1500);
+  });
+  document.getElementById('f-receipt-file')?.addEventListener('change', async (e) => {
+    // Receipt picker нь Stage 4-д closeFinanceRequest үед upload хийнэ. Энд preview-д л харуулна.
+    const files = [...(e.target.files || [])];
+    if (!files.length) return;
+    const tmpList = files.map((f, i) => URL.createObjectURL(f));
+    state._fReceiptPending = files;
+    renderFinanceFileList('f-receipt-list', [...(state._fReceiptUrls || []), ...tmpList], false);
+    showToast(`${files.length} файл сонгогдсон — "Хүлээн авч хаах" товч дарж хадгална`, 'info', 3000);
+  });
+  // Multi-file жагсаалтаас X товч дарахад нэг хавсралт хасах
+  document.addEventListener('click', async (e) => {
+    const rmBtn = e.target.closest('[data-rm-idx][data-rm-container]');
+    if (!rmBtn) return;
+    const containerId = rmBtn.dataset.rmContainer;
+    const idx = +rmBtn.dataset.rmIdx;
+    const arr = containerId === 'f-purchase-list' ? state._fPurchaseUrls : state._fReceiptUrls;
+    if (!arr || idx < 0 || idx >= arr.length) return;
+    arr.splice(idx, 1);
+    renderFinanceFileList(containerId, arr, true);
+    if (state.editingId) {
+      const r = state.financeRequests.find(x => x.id === state.editingId);
+      if (r) {
+        if (containerId === 'f-purchase-list') r.purchase_proof_urls = [...arr];
+        else r.purchase_receipt_urls = [...arr];
+        await saveFinanceRequest(r);
+      }
+    }
   });
   document.getElementById('f-save')?.addEventListener('click', async () => {
     // View mode үед "Засах" гэж ажилладаг — modal-ыг edit mode-руу шилжүүлнэ.

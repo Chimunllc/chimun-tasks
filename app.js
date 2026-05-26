@@ -1672,6 +1672,12 @@ function renderProofPreview(elId, url, label) {
   el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;">📎 ${escapeHtml(label)} баримтыг харах</a>`;
 }
 
+function closeFinanceModal() {
+  document.getElementById('finance-modal').classList.remove('open');
+  state.editingId = null;
+  state._financeViewMode = null;
+}
+
 function openFinanceModal(id = null) {
   const t = id ? state.financeRequests.find(x => x.id === id) : null;
   state.editingId = id || null;
@@ -1683,8 +1689,14 @@ function openFinanceModal(id = null) {
   const decisionInfo = document.getElementById('f-decision-info');
   const title = document.getElementById('finance-modal-title');
 
-  // Default reset
-  submitActions.style.display = '';
+  // View mode (хадгалагдсан хүсэлтэд анхдагч): зөвхөн харах + "Засах" товч. Edit mode
+  // (Засах товч дарсны дараа): бөглөх + шийдвэрийн товчнууд. Шинэ хүсэлт шууд edit mode.
+  if (!t) state._financeViewMode = false;
+  else if (state._financeViewMode == null) state._financeViewMode = true;
+  const inViewMode = !!(t && state._financeViewMode);
+
+  // Default reset — БҮХ action section-ийг хааж эхэлнэ. Шаардлагатайг доор шууд асаана.
+  submitActions.style.display = 'none';
   decisionActions.style.display = 'none';
   executeActions.style.display = 'none';
   receiptActions.style.display = 'none';
@@ -1720,7 +1732,11 @@ function openFinanceModal(id = null) {
     toggleFinanceFileInput('f-payment-file', false);
     toggleFinanceFileInput('f-receipt-file', false);
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.removeAttribute('readonly'));
-    document.getElementById('f-save').style.display = '';
+    // NEW request — submitActions visible, f-save = "Илгээх"
+    submitActions.style.display = '';
+    const fSaveNew = document.getElementById('f-save');
+    fSaveNew.style.display = '';
+    fSaveNew.textContent = 'Илгээх';
   } else {
     // VIEW existing — populate read-only
     title.innerHTML = ICONS.wallet + ' Хүсэлт #' + escapeHtml(t.id.slice(-5));
@@ -1809,21 +1825,25 @@ function openFinanceModal(id = null) {
     decisionInfo.innerHTML = info;
     decisionInfo.style.display = 'block';
 
-    // Show appropriate actions — хоосон decision нь 'pending' гэж тооцогдоно
-    if (dec === 'pending' && state.isCEO) {
-      submitActions.style.display = 'none';
-      decisionActions.style.display = 'flex';
-    } else if (dec === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorEmail() || state.isCEO)) {
-      submitActions.style.display = 'none';
-      executeActions.style.display = 'flex';
-    } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
-               (state.me === t.requested_by || state.isCEO)) {
-      // Final receipt upload step — requester эцсийн баримт хавсаргах
-      submitActions.style.display = 'none';
-      receiptActions.style.display = 'flex';
+    // VIEW mode → зөвхөн "Засах" товч. EDIT mode → тухайн үеийн action section (decision/
+    // execute/receipt) л. Submit section (Болих/Илгээх) хадгалагдсан хүсэлтэд хэрэггүй.
+    const fSave = document.getElementById('f-save');
+    if (inViewMode) {
+      submitActions.style.display = '';
+      fSave.style.display = '';
+      fSave.textContent = '✎ Засах';
     } else {
-      // Read-only view — show only "Болих" close button
-      document.getElementById('f-save').style.display = 'none';
+      // EDIT mode — submit нуух, тухайн стадийнхыг л харуулна
+      submitActions.style.display = 'none';
+      fSave.style.display = 'none';
+      if (dec === 'pending' && state.isCEO) {
+        decisionActions.style.display = 'flex';
+      } else if (dec === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorEmail() || state.isCEO)) {
+        executeActions.style.display = 'flex';
+      } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
+                 (state.me === t.requested_by || state.isCEO)) {
+        receiptActions.style.display = 'flex';
+      }
     }
   }
   modal.classList.add('open');
@@ -3913,6 +3933,11 @@ function canEditTask(t) {
 //   Бусад → ok=false
 const MISTAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
 function canDeleteTask(t) {
+  // Финансын хүсэлт нь нягтлан гүйцэтгэсэн (executed_at тогтоосон) бол хэн ч устгаж болохгүй —
+  // CEO ч мөн адил. Дансны бүртгэлийн уялдааг хадгална.
+  if ((t.kind === 'finance_request' || t._isFinance) && t.executed_at) {
+    return { ok: false, reason: 'executed', creator: null };
+  }
   if (state.isCEO) return { ok: true, permanent: true };
   const creator = findMember(t.createdBy);
   const creatorLevel = creator ? (creator.level || 0) : 100;
@@ -3935,8 +3960,12 @@ async function deleteTask(id) {
   if (!t) return;
   const check = canDeleteTask(t);
   if (!check.ok) {
-    const who = check.creator ? `${check.creator.name} (${check.creator.role})` : 'дээд албан тушаалтан';
-    showToast(`Энэ даалгаврыг ${who} үүсгэсэн тул устгах эрх танд алга. Биелүүлсэн бол ✓ тэмдэглээрэй.`, 'warn', 4500);
+    if (check.reason === 'executed') {
+      showToast('Гүйлгээ хийгдсэн санхүүгийн хүсэлтийг устгах боломжгүй (аудит хадгална).', 'warn', 5000);
+    } else {
+      const who = check.creator ? `${check.creator.name} (${check.creator.role})` : 'дээд албан тушаалтан';
+      showToast(`Энэ даалгаврыг ${who} үүсгэсэн тул устгах эрх танд алга. Биелүүлсэн бол ✓ тэмдэглээрэй.`, 'warn', 4500);
+    }
     return;
   }
   const hardDelete = !!check.permanent;
@@ -5171,7 +5200,7 @@ function initEvents() {
 
   // NEW FINANCE REQUEST button
   document.getElementById('new-finance-btn')?.addEventListener('click', () => openFinanceModal());
-  document.getElementById('f-cancel')?.addEventListener('click', () => document.getElementById('finance-modal').classList.remove('open'));
+  document.getElementById('f-cancel')?.addEventListener('click', () => closeFinanceModal());
   // "Дэлгэрэнгүй" expander товч — нуугдсан талбаруудыг харуулах/нуух
   document.getElementById('f-toggle-advanced')?.addEventListener('click', () => {
     const adv = document.getElementById('f-advanced-fields');
@@ -5180,8 +5209,8 @@ function initEvents() {
     adv.style.display = isHidden ? '' : 'none';
     if (icon) icon.textContent = isHidden ? '▴' : '▾';
   });
-  document.getElementById('f-execute-cancel')?.addEventListener('click', () => document.getElementById('finance-modal').classList.remove('open'));
-  document.getElementById('f-receipt-cancel')?.addEventListener('click', () => document.getElementById('finance-modal').classList.remove('open'));
+  document.getElementById('f-execute-cancel')?.addEventListener('click', () => closeFinanceModal());
+  document.getElementById('f-receipt-cancel')?.addEventListener('click', () => closeFinanceModal());
   document.getElementById('f-receipt-save')?.addEventListener('click', async () => {
     if (!state.editingId) return;
     const file = document.getElementById('f-receipt-file').files[0];
@@ -5195,10 +5224,16 @@ function initEvents() {
       await saveFinanceRequest(r);
       showToast('Худалдан авалтын баримт хадгалагдсан', 'success');
     }
-    document.getElementById('finance-modal').classList.remove('open');
+    closeFinanceModal();
     render();
   });
   document.getElementById('f-save')?.addEventListener('click', async () => {
+    // View mode үед "Засах" гэж ажилладаг — modal-ыг edit mode-руу шилжүүлнэ.
+    if (state._financeViewMode && state.editingId) {
+      state._financeViewMode = false;
+      openFinanceModal(state.editingId);
+      return;
+    }
     const amount = document.getElementById('f-amount').value;
     const beneficiary = document.getElementById('f-beneficiary').value.trim();
     const bank = document.getElementById('f-bank').value;
@@ -5231,7 +5266,7 @@ function initEvents() {
           await saveFinanceRequest(newRequest);
         }
       }
-      document.getElementById('finance-modal').classList.remove('open');
+      closeFinanceModal();
       showToast('Хүсэлт CEO-руу илгээгдсэн', 'success');
       render();
     } finally { btn.disabled = false; }
@@ -5265,7 +5300,7 @@ function initEvents() {
     if (state.editingId) {
       await applyCeoEditsBeforeDecision(state.editingId);
       await decideFinanceRequest(state.editingId, 'approved');
-      document.getElementById('finance-modal').classList.remove('open');
+      closeFinanceModal();
     }
   });
   document.getElementById('f-reject')?.addEventListener('click', async () => {
@@ -5273,13 +5308,13 @@ function initEvents() {
     if (!(await showConfirm('Энэ хүсэлтийг татгалзах уу? Дахин нээгдэхгүй.', { okText: 'Татгалзах', danger: true }))) return;
     await applyCeoEditsBeforeDecision(state.editingId);
     await decideFinanceRequest(state.editingId, 'rejected');
-    document.getElementById('finance-modal').classList.remove('open');
+    closeFinanceModal();
   });
   document.getElementById('f-defer')?.addEventListener('click', async () => {
     if (state.editingId) {
       await applyCeoEditsBeforeDecision(state.editingId);
       await decideFinanceRequest(state.editingId, 'deferred');
-      document.getElementById('finance-modal').classList.remove('open');
+      closeFinanceModal();
     }
   });
   document.getElementById('f-execute')?.addEventListener('click', async () => {
@@ -5299,7 +5334,7 @@ function initEvents() {
       }
     }
     await executeFinanceRequest(state.editingId);
-    document.getElementById('finance-modal').classList.remove('open');
+    closeFinanceModal();
   });
 
   // NEW ORDER (5-stage act) — branch-аас үл хамаарч бүх хэрэглэгчид нээлттэй

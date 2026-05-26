@@ -1834,6 +1834,9 @@ function openFinanceModal(id = null) {
     const canEditFields = (dec === 'pending') && (state.me === t.requested_by || state.isCEO);
     const isReqOrCEO = (state.me === t.requested_by) || state.isCEO;
     const isExecutorOrCEO = (state.me === getFinanceExecutorEmail()) || state.isCEO;
+    // Хүсэлт гаргагч өөрөө бол шийдвэрийн/гүйцэтгэлийн товчнууд харагдахгүй —
+    // өөрийгөө зөвшөөрөх/гүйцэтгэх нь зөв биш. Зөвхөн Засах эсвэл харах.
+    const isRequester = (state.me === t.requested_by);
     if (inViewMode) {
       // Засах товч — зөвхөн pending + edit эрхтэй үед
       if (canEditFields) {
@@ -1841,12 +1844,17 @@ function openFinanceModal(id = null) {
         fSave.style.display = '';
         fSave.textContent = '✎ Засах';
       }
-      // Стадийн action товчнууд (Засах-аас тусгаар)
-      if (dec === 'pending' && state.isCEO) {
-        decisionActions.style.display = 'flex';
-      } else if (dec === 'approved' && t.status !== 'done' && isExecutorOrCEO) {
-        executeActions.style.display = 'flex';
-      } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url && isReqOrCEO) {
+      // Стадийн action товчнууд (өөрийн хүсэлт дээр нуугдана)
+      if (!isRequester) {
+        if (dec === 'pending' && state.isCEO) {
+          decisionActions.style.display = 'flex';
+        } else if (dec === 'approved' && t.status !== 'done' && isExecutorOrCEO) {
+          executeActions.style.display = 'flex';
+        } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url && isReqOrCEO) {
+          receiptActions.style.display = 'flex';
+        }
+      } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url) {
+        // Хүсэлт гаргагч дууссан хүсэлтэд эцсийн баримт хавсаргах
         receiptActions.style.display = 'flex';
       }
     } else if (canEditFields) {
@@ -1858,8 +1866,8 @@ function openFinanceModal(id = null) {
       submitActions.style.display = '';
       fSave.style.display = '';
       fSave.textContent = '💾 Хадгалах';
-      // CEO эдитлэж байгаа бол шийдвэрийн товч хэвээр (нэг дор засаад зөвшөөрөх)
-      if (state.isCEO) decisionActions.style.display = 'flex';
+      // CEO өөрийн биш хүсэлт засаж байгаа бол шийдвэрийн товч хэвээр (нэг дор засаад зөвшөөрөх)
+      if (state.isCEO && state.me !== t.requested_by) decisionActions.style.display = 'flex';
     }
   }
   modal.classList.add('open');

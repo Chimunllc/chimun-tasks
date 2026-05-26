@@ -4573,7 +4573,7 @@ function closeTaskModal() {
   document.getElementById('task-modal').classList.remove('open');
   state.editingId = null;
 }
-function saveTaskFromModal() {
+async function saveTaskFromModal() {
   const title = document.getElementById('t-title').value.trim();
   if (!title) { showToast('Гарчиг шаардлагатай', 'warn'); return; }
   const multi = state._multiAssignees || [];
@@ -4587,40 +4587,40 @@ function saveTaskFromModal() {
     recurrence: document.getElementById('t-recurrence')?.value || '',
     requires_photo: !!document.getElementById('t-requires-photo')?.checked,
   };
-  // Multi-assignee — олон хүнд тус тусын task үүсгэх
+  // Multi-assignee — олон хүнд тус тусын task үүсгэх. saveTask-уудыг ДАРААЛУУЛНА.
+  // Параллел fire хийвэл Google Sheets concurrent appendOrUpdate race condition үүсч
+  // зөвхөн сүүлийн write үлдэж бусад нь дарагддаг (2026-05-26 олдсон bug).
   if (!state.editingId && multi.length > 1) {
     const groupId = 'g_' + Date.now().toString(36);
-    multi.forEach((asgn, i) => {
-      const t = {
-        id: uid(),
-        status: 'open',
-        created: Date.now() + i,
-        createdBy: state.me,
-        comments: [],
-        activity: [],
-        ...baseData,
-        assignee: asgn,
-        group_id: groupId,
-      };
-      logTaskActivity(t, 'created', { title: t.title });
-      state.tasks.unshift(t);
-      saveTask(t);
-      pushBroadcast(asgn, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
-    });
+    const tasks = multi.map((asgn, i) => ({
+      id: uid(),
+      status: 'open',
+      created: Date.now() + i,
+      createdBy: state.me,
+      comments: [],
+      activity: [],
+      ...baseData,
+      assignee: asgn,
+      group_id: groupId,
+    }));
+    // Local state + UI шуурхай шинэчилнэ
+    tasks.forEach(t => { logTaskActivity(t, 'created', { title: t.title }); state.tasks.unshift(t); });
+    closeTaskModal();
+    render();
+    // Sheet рүү тус бүрчлэн дараалуулан хадгална
+    for (let i = 0; i < tasks.length; i++) {
+      await saveTask(tasks[i]);
+      pushBroadcast(tasks[i].assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: tasks[i].title, url: './' });
+    }
     state._multiAssignees = null;
     // Хэрэглэгчийг тус тусын task-уудыг харах "Илгээсэн ажил" руу шилжүүлнэ
     const includesMe = multi.includes(state.me);
     const otherCount = includesMe ? multi.length - 1 : multi.length;
-    showToast(
-      `${multi.length} ажилтанд тус тусдаа даалгавар үүслээ${otherCount ? ` — "Илгээсэн ажил"-аас харна уу` : ''}`,
-      'success',
-      4000
-    );
+    showToast(`${multi.length} ажилтанд тус тусдаа даалгавар хадгалагдлаа`, 'success', 4000);
     if (otherCount > 0) {
       state.view = 'delegated';
       state._taskListLimit = null;
     }
-    closeTaskModal();
     render();
     return;
   }

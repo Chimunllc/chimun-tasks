@@ -5426,17 +5426,28 @@ async function bootApp() {
     _eventsBound = true;
   }
   loadNotifications();
-  await flushPendingWrites();   // өмнөх session-д офлайн үлдсэн өөрчлөлт байвал эхлээд илгээх
-  // TEAM-аа ЭХЭЛЖ ачаална — bootstrap/loadData нь Sheet-ийн нэр (assignee="Г.Бат")-ийг
-  // email рүү хөрвүүлэхэд TEAM хэрэгтэй. Хоосон TEAM-тай ажиллавал бүх task assignee нь
-  // нэр хэлбэрээр үлдэж, ажилтны филтр (t.assignee === state.me email) бүхнийг хасна.
-  await loadTeamFromAPI();
-  // Bootstrap endpoint туршиж үзнэ — tasks + finance-ийг 1 fetch-ээр авна. Бүтэлгүй бол
-  // хуучин 2 endpoint-аар нөхнө.
+  // ─── CACHE-FIRST RENDER ───
+  // localStorage-аас өмнөх session-ийн tasks + finance-ийг шууд унших → render шууд явна.
+  // Хэрэглэгч аппаа нээмэгц 0мс-д даалгавруудаа харна. Сервер дата дараа async ачаалагдаж,
+  // өөрчлөлт байвал чимээгүй re-render хийнэ. (Twitter / Gmail-ийн pattern.)
+  loadLocal();
+  try {
+    const frRaw = localStorage.getItem('financeRequests');
+    if (frRaw) state.financeRequests = JSON.parse(frRaw);
+  } catch(e) { state.financeRequests = []; }
+  setConn('offline', 'Шинэчилж байна…');
+  generateNotifications();
+  render();
+
+  // ─── BACKGROUND SYNC ───
+  await flushPendingWrites();   // офлайн үлдсэн өөрчлөлтийг сервер рүү
+  // TEAM нь /staff cache-аас аль хэдийн ачаалагдсан (start()-д). Хоосон үед л дахин татах.
+  if (!TEAM.length) await loadTeamFromAPI();
   const bootOk = await loadBootstrap();
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
   generateNotifications();
   render();
+  setConn('online', 'n8n холбогдсон');
   // CEO-д шинэ бүртгэлийн хүсэлтийг тусгайлан шалгаж дахин мэдэгдэх
   notifyCEOOfPendingRegistrations();
   // Safety-net polling — Web Push амжилттай subscribe хийгдсэн бол polling-г бүхэлд нь хасна

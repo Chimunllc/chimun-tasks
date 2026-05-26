@@ -1872,26 +1872,6 @@ function openFinanceModal(id = null) {
       if (state.isCEO && state.me !== t.requested_by) decisionActions.style.setProperty('display', 'flex', 'important');
     }
   }
-  // TEMP DEBUG — finance modal-ийн төлвийг console-д бичиж яг ямар товч харагдах ёстойг тэмдэглэнэ
-  if (t) {
-    const isReq = state.me === t.requested_by;
-    console.log('[finance-modal]', {
-      me: state.me,
-      requested_by: t.requested_by,
-      isRequester: isReq,
-      isCEO: state.isCEO,
-      decision_raw: t.decision,
-      dec_resolved: t.decision || 'pending',
-      status: t.status,
-      viewMode: !!state._financeViewMode,
-      visible: {
-        submit: document.getElementById('f-submit-actions').style.display,
-        decision: document.getElementById('f-decision-actions').style.display,
-        execute: document.getElementById('f-execute-actions').style.display,
-        receipt: document.getElementById('f-receipt-actions').style.display,
-      },
-    });
-  }
   modal.classList.add('open');
 }
 

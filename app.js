@@ -4442,11 +4442,8 @@ function renderTaskActionButtons(t) {
   if (canAct && (status === 'open' || status === 'in_progress')) {
     btns.push(`<button class="btn btn-action" data-action="decline">Татгалзах</button>`);
   }
-  // Зураг хавсаргах
-  if (canAct && status !== 'done') {
-    const cnt = Array.isArray(t.completion_photos) ? t.completion_photos.length : 0;
-    btns.push(`<button class="btn btn-action" data-action="add_photo">📷 Зураг хавсаргах${cnt > 0 ? ` (${cnt})` : ''}</button>`);
-  }
+  // (Зураг хавсаргах тусдаа товч хасагдсан — "Дуусгасан" дарахад promptCompletionPhoto
+  //  автомат гарч ирнэ.)
   // Дамжуулах — менежер ба түүнээс дээш зэрэглэлтэй хариуцагч өөрийн харьяа ажилтанд
   // хариуцлагыг шилжүүлж болно. CEO зөвшөөрөл шаардахгүй (хурдан үйл ажиллагаа), гэхдээ
   // activity log + push мэдэгдэлээр транспэрэнт байна.
@@ -4484,19 +4481,6 @@ async function handleTaskAction(taskId, action) {
     showToast('Ажил эхэлсэн', 'success');
   } else if (action === 'done') {
     await changeTaskStatus(taskId, 'done');
-  } else if (action === 'add_photo') {
-    const t = state.tasks.find(x => x.id === taskId);
-    if (!t) return;
-    const photos = await promptCompletionPhoto(t);
-    if (photos && photos.length) {
-      t.completion_photos = [...(t.completion_photos || []), ...photos];
-      await saveTask(t);
-      // Modal-г шинээр нээж зургийг харуулах
-      openTaskModal(taskId);
-      showToast('✓ ' + photos.length + ' зураг хавсаргалаа', 'success', 2000);
-    }
-    return;
-    showToast('Даалгавар дууссан', 'success');
   } else if (action === 'reopen') {
     await changeTaskStatus(taskId, 'open');
     showToast('Дахин нээгдсэн', 'warn');

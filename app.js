@@ -1527,6 +1527,9 @@ function requestToWire(r) {
   // Олон URL талбаруудыг CSV ("|") болгож хадгална
   if (Array.isArray(out.purchase_proof_urls)) out.purchase_proof_urls = out.purchase_proof_urls.join(' | ');
   if (Array.isArray(out.purchase_receipt_urls)) out.purchase_receipt_urls = out.purchase_receipt_urls.join(' | ');
+  // N8n Sheet upsert нь singular талбараар map хийдэг тул plural CSV-г singular-д бас оноох
+  if (out.purchase_proof_urls && !out.purchase_proof_url) out.purchase_proof_url = out.purchase_proof_urls;
+  if (out.purchase_receipt_urls && !out.purchase_receipt_url) out.purchase_receipt_url = out.purchase_receipt_urls;
   // Код → монгол
   out.status   = _xlate(out.status, _FIN_STATUS_E2M);
   out.decision = _xlate(out.decision, _FIN_DEC_E2M);
@@ -1548,9 +1551,13 @@ function requestFromWire(r) {
   if (typeof out.purchase_receipt_urls === 'string') {
     out.purchase_receipt_urls = out.purchase_receipt_urls ? out.purchase_receipt_urls.split(/\s*\|\s*/).filter(Boolean) : [];
   }
-  // Backward compat — хуучин нэг URL талбарыг олон URL array-руу багтаах
-  if (!out.purchase_proof_urls && out.purchase_proof_url) out.purchase_proof_urls = [out.purchase_proof_url];
-  if (!out.purchase_receipt_urls && out.purchase_receipt_url) out.purchase_receipt_urls = [out.purchase_receipt_url];
+  // Backward compat — singular талбарт CSV эсвэл нэг URL ирэхэд array-руу хувиргах
+  if ((!out.purchase_proof_urls || !out.purchase_proof_urls.length) && out.purchase_proof_url) {
+    out.purchase_proof_urls = String(out.purchase_proof_url).split(/\s*\|\s*/).filter(Boolean);
+  }
+  if ((!out.purchase_receipt_urls || !out.purchase_receipt_urls.length) && out.purchase_receipt_url) {
+    out.purchase_receipt_urls = String(out.purchase_receipt_url).split(/\s*\|\s*/).filter(Boolean);
+  }
   // монгол → код
   out.status   = _xlate(out.status, _FIN_STATUS_M2E);
   out.decision = _xlate(out.decision, _FIN_DEC_M2E);

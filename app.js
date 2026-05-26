@@ -1926,12 +1926,33 @@ function renderFinanceFileList(containerId, urls, removable) {
   if (!el) return;
   if (!urls || !urls.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;">Хавсралт алга</div>'; return; }
   const icon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
-  el.innerHTML = urls.map((u, i) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel-hover);border-radius:6px;font-size:13px;">
-      <a href="${escapeHtml(u)}" target="_blank" rel="noopener" style="flex:1;color:var(--primary);text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${icon}Файл ${i+1}</a>
-      ${removable ? `<button type="button" data-rm-idx="${i}" data-rm-container="${containerId}" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;line-height:1;">×</button>` : ''}
-    </div>
-  `).join('');
+  // Google Drive view link → шууд thumbnail авах URL
+  const toThumb = (u) => {
+    const m = String(u||'').match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/);
+    const id = m ? (m[1] || m[2]) : null;
+    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w400`;
+    return u;
+  };
+  const isImage = (u) => /\.(jpe?g|png|gif|webp|heic|bmp)(\?|$)/i.test(u) || /drive\.google\.com/.test(u);
+  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:10px;">` + urls.map((u, i) => {
+    const safe = escapeHtml(u);
+    if (isImage(u)) {
+      return `
+        <div style="position:relative;width:96px;">
+          <a href="${safe}" target="_blank" rel="noopener" style="display:block;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);">
+            <img src="${escapeHtml(toThumb(u))}" alt="Хавсралт ${i+1}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none';this.parentNode.innerHTML='${icon.replace(/'/g,"\\'")}<div style=&quot;padding:4px;font-size:11px;color:var(--muted);text-align:center;&quot;>Файл ${i+1}</div>';" />
+          </a>
+          ${removable ? `<button type="button" data-rm-idx="${i}" data-rm-container="${containerId}" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#fff;border:2px solid var(--panel);cursor:pointer;font-size:14px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">×</button>` : ''}
+        </div>
+      `;
+    }
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel-hover);border-radius:6px;font-size:13px;width:100%;">
+        <a href="${safe}" target="_blank" rel="noopener" style="flex:1;color:var(--primary);text-decoration:underline;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${icon}Файл ${i+1}</a>
+        ${removable ? `<button type="button" data-rm-idx="${i}" data-rm-container="${containerId}" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;line-height:1;">×</button>` : ''}
+      </div>
+    `;
+  }).join('') + `</div>`;
 }
 
 /* Stage 4 — Туслах нягтлан хүлээн авч хаах: олон файл шаардана, дараа нь received_at/status=done. */

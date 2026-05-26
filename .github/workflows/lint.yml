@@ -1,0 +1,54 @@
+name: Lint
+
+# GitHub Actions нь push болгоны дараа автомат ESLint + syntax шалгалт хийнэ.
+# Локал суулгац шаардахгүй (CI runner-д ESLint-ийг npx-ээр татаж нэг удаа ажиллуулна).
+# saveData()-тэй адил silent JS error буюу undefined function call-ыг барина.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.js'
+      - 'sw.js'
+      - '.github/workflows/lint.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax check (app.js)
+        run: node --check app.js
+
+      - name: Syntax check (sw.js)
+        run: node --check sw.js
+
+      - name: ESLint — no-undef on app.js
+        run: |
+          npx --yes eslint@9 \
+            --no-config-lookup \
+            --rule '{"no-undef":"error","no-unused-vars":"off","no-redeclare":"warn"}' \
+            --env browser \
+            --env serviceworker \
+            --env es2022 \
+            --parser-options=ecmaVersion:latest,sourceType:script \
+            --global ICONS:readonly \
+            --global BRANCHES:readonly \
+            --global TEAM:writable \
+            --global state:writable \
+            app.js
+
+      - name: ESLint — no-undef on sw.js
+        run: |
+          npx --yes eslint@9 \
+            --no-config-lookup \
+            --rule '{"no-undef":"error"}' \
+            --env serviceworker \
+            --env es2022 \
+            --parser-options=ecmaVersion:latest,sourceType:script \
+            sw.js

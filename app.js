@@ -1695,11 +1695,13 @@ function openFinanceModal(id = null) {
   else if (state._financeViewMode == null) state._financeViewMode = true;
   const inViewMode = !!(t && state._financeViewMode);
 
-  // Default reset — БҮХ action section-ийг хааж эхэлнэ. Шаардлагатайг доор шууд асаана.
-  submitActions.style.display = 'none';
-  decisionActions.style.display = 'none';
-  executeActions.style.display = 'none';
-  receiptActions.style.display = 'none';
+  // Default reset — БҮХ action section-ийг хааж эхэлнэ. CSS .modal-actions нь `display:flex
+  // !important`-тэй тул JS-ээс хаахдаа `setProperty(..., 'important')` ашиглах ёстой
+  // (өмнө style.display='none' тавихад !important override болж бүх товч харагдаж байсан bug).
+  submitActions.style.setProperty('display', 'none', 'important');
+  decisionActions.style.setProperty('display', 'none', 'important');
+  executeActions.style.setProperty('display', 'none', 'important');
+  receiptActions.style.setProperty('display', 'none', 'important');
   decisionInfo.style.display = 'none';
 
   // Dropdown options-уудыг шинэчилэх (modal нээх бүрд)
@@ -1733,7 +1735,7 @@ function openFinanceModal(id = null) {
     toggleFinanceFileInput('f-receipt-file', false);
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.removeAttribute('readonly'));
     // NEW request — submitActions visible, f-save = "Илгээх"
-    submitActions.style.display = '';
+    submitActions.style.setProperty('display', '', 'important');
     const fSaveNew = document.getElementById('f-save');
     fSaveNew.style.display = '';
     fSaveNew.textContent = 'Илгээх';
@@ -1840,22 +1842,22 @@ function openFinanceModal(id = null) {
     if (inViewMode) {
       // Засах товч — зөвхөн pending + edit эрхтэй үед
       if (canEditFields) {
-        submitActions.style.display = '';
+        submitActions.style.setProperty('display', '', 'important');
         fSave.style.display = '';
         fSave.textContent = '✎ Засах';
       }
       // Стадийн action товчнууд (өөрийн хүсэлт дээр нуугдана)
       if (!isRequester) {
         if (dec === 'pending' && state.isCEO) {
-          decisionActions.style.display = 'flex';
+          decisionActions.style.setProperty('display', 'flex', 'important');
         } else if (dec === 'approved' && t.status !== 'done' && isExecutorOrCEO) {
-          executeActions.style.display = 'flex';
+          executeActions.style.setProperty('display', 'flex', 'important');
         } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url && isReqOrCEO) {
-          receiptActions.style.display = 'flex';
+          receiptActions.style.setProperty('display', 'flex', 'important');
         }
       } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url) {
         // Хүсэлт гаргагч дууссан хүсэлтэд эцсийн баримт хавсаргах
-        receiptActions.style.display = 'flex';
+        receiptActions.style.setProperty('display', 'flex', 'important');
       }
     } else if (canEditFields) {
       // EDIT mode — field-үүдийг unlock + Хадгалах товч
@@ -1863,11 +1865,11 @@ function openFinanceModal(id = null) {
         .forEach(id => document.getElementById(id)?.removeAttribute('readonly'));
       ['f-bank','f-main-category','f-category','f-frequency','f-dept-branch']
         .forEach(id => document.getElementById(id)?.removeAttribute('disabled'));
-      submitActions.style.display = '';
+      submitActions.style.setProperty('display', '', 'important');
       fSave.style.display = '';
       fSave.textContent = '💾 Хадгалах';
       // CEO өөрийн биш хүсэлт засаж байгаа бол шийдвэрийн товч хэвээр (нэг дор засаад зөвшөөрөх)
-      if (state.isCEO && state.me !== t.requested_by) decisionActions.style.display = 'flex';
+      if (state.isCEO && state.me !== t.requested_by) decisionActions.style.setProperty('display', 'flex', 'important');
     }
   }
   // TEMP DEBUG — finance modal-ийн төлвийг console-д бичиж яг ямар товч харагдах ёстойг тэмдэглэнэ

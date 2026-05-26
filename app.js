@@ -2330,6 +2330,52 @@ function renderDashboard() {
   // 5) Хүлээж буй ажилтны бүртгэл (CEO action хэрэгтэй)
   const pendingRegCount = TEAM.filter(m => (m.status || '') === 'хүлээж буй').length;
 
+  // 6) Trend: сүүлийн 14 хоногийн task үүсгэх vs дуусгах
+  const trendDays = 14;
+  const dayMs = 86400 * 1000;
+  const createdByDay = new Array(trendDays).fill(0);
+  const doneByDay = new Array(trendDays).fill(0);
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const trendStart = startOfToday.getTime() - (trendDays - 1) * dayMs;
+  for (const t of tasks) {
+    const cMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
+    if (cMs >= trendStart) {
+      const idx = Math.floor((cMs - trendStart) / dayMs);
+      if (idx >= 0 && idx < trendDays) createdByDay[idx]++;
+    }
+    if (t.status === 'done') {
+      const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
+      if (dMs >= trendStart) {
+        const idx = Math.floor((dMs - trendStart) / dayMs);
+        if (idx >= 0 && idx < trendDays) doneByDay[idx]++;
+      }
+    }
+  }
+
+  // 7) Top performer — хамгийн их дуусгасан 3 ажилтан (сүүлийн 30 хоног)
+  const completionCutoff = Date.now() - 30 * dayMs;
+  const completionCount = {};
+  for (const t of tasks) {
+    if (t.status !== 'done' || !t.assignee) continue;
+    const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
+    if (dMs >= completionCutoff) {
+      completionCount[t.assignee] = (completionCount[t.assignee] || 0) + 1;
+    }
+  }
+  const topPerformers = Object.entries(completionCount).sort((a,b)=>b[1]-a[1]).slice(0, 3);
+
+  // 8) Дундаж дуусгах хугацаа (created → completed_at, сүүлийн 30 хоног)
+  const durations = [];
+  for (const t of tasks) {
+    if (t.status !== 'done') continue;
+    const cMs = typeof t.created === 'number' ? t.created : new Date(t.created || 0).getTime();
+    const dMs = typeof t.completed_at === 'number' ? t.completed_at : new Date(t.completed_at || t.executed_at || 0).getTime();
+    if (!cMs || !dMs || dMs < completionCutoff) continue;
+    const days = (dMs - cMs) / dayMs;
+    if (days >= 0 && days < 365) durations.push(days);
+  }
+  const avgCompletionDays = durations.length ? (durations.reduce((s,d)=>s+d, 0) / durations.length) : 0;
+
   // SVG donut for status
   const donut = (() => {
     const cx = 60, cy = 60, r = 48;
@@ -2463,8 +2509,53 @@ function renderDashboard() {
           `).join('')}
         </div>
 
-        <!-- Салбараар ажлын статистик -->
+        <!-- Сүүлийн 14 хоног — үүсгэх vs дуусгах trend (inline SVG sparkline) -->
         <div class="dash-card dash-staff" style="grid-column: span 4;">
+          <div class="dash-card-title">Сүүлийн 14 хоног — даалгаврын урсгал</div>
+          ${(() => {
+            const maxV = Math.max(1, ...createdByDay, ...doneByDay);
+            const W = 600, H = 80, pad = 8;
+            const stepX = (W - 2*pad) / (trendDays - 1);
+            const yFor = v => H - pad - (v / maxV) * (H - 2*pad);
+            const ptsCreated = createdByDay.map((v, i) => `${pad + i*stepX},${yFor(v)}`).join(' ');
+            const ptsDone = doneByDay.map((v, i) => `${pad + i*stepX},${yFor(v)}`).join(' ');
+            const totalCreated = createdByDay.reduce((s,v)=>s+v,0);
+            const totalDone = doneByDay.reduce((s,v)=>s+v,0);
+            return `
+              <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block;">
+                <polyline points="${ptsCreated}" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
+                <polyline points="${ptsDone}"    fill="none" stroke="#10b981" stroke-width="2" stroke-linejoin="round"/>
+                ${createdByDay.map((v, i) => `<circle cx="${pad + i*stepX}" cy="${yFor(v)}" r="2.5" fill="#f59e0b"/>`).join('')}
+                ${doneByDay.map((v, i) => `<circle cx="${pad + i*stepX}" cy="${yFor(v)}" r="2.5" fill="#10b981"/>`).join('')}
+              </svg>
+              <div style="display:flex; gap:16px; font-size:12px; margin-top:6px; color:var(--muted);">
+                <span><span class="dot" style="background:#f59e0b;"></span> Үүсгэсэн <strong style="color:var(--text);">${totalCreated}</strong></span>
+                <span><span class="dot" style="background:#10b981;"></span> Дуусгасан <strong style="color:var(--text);">${totalDone}</strong></span>
+                <span style="margin-left:auto;">Дундаж дуусгах хугацаа: <strong style="color:var(--text);">${avgCompletionDays.toFixed(1)} өдөр</strong></span>
+              </div>
+            `;
+          })()}
+        </div>
+
+        <!-- Top performers — сүүлийн 30 хоног хамгийн их дуусгасан -->
+        <div class="dash-card dash-staff" style="grid-column: span 2;">
+          <div class="dash-card-title">🏆 Шилдэг гүйцэтгэгч (30 хоног)</div>
+          ${topPerformers.length === 0 ? '<div class="dash-empty">Дуусгасан ажил алга</div>' : topPerformers.map(([email, n], i) => {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+            return `
+              <div class="dash-bar-row">
+                <div class="dash-bar-label">${medal} ${escapeHtml(memberName(email))}</div>
+                <div class="dash-bar-track">
+                  <div class="dash-bar-fill" style="width:${(n/topPerformers[0][1])*100}%;background:linear-gradient(90deg,#fbbf24,#f59e0b);"></div>
+                </div>
+                <div class="dash-bar-count">${n}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Салбараар ажлын статистик -->
+        <div class="dash-card dash-staff" style="grid-column: span 2;">
           <div class="dash-card-title">Салбараар ажлын тоо</div>
           ${(() => {
             const byBranch = {};

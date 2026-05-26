@@ -1689,7 +1689,15 @@ function renderProofPreview(elId, url, label) {
     el.innerHTML = `<span style="color:var(--muted);font-size:11px;">${label} баримт хавсаргаагүй</span>`;
     return;
   }
-  el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${escapeHtml(label)} баримтыг харах</a>`;
+  const m = String(url).match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/);
+  const id = m ? (m[1] || m[2]) : null;
+  const thumb = id ? `https://lh3.googleusercontent.com/d/${id}=w400` : url;
+  const isImage = id || /\.(jpe?g|png|gif|webp|heic|bmp)(\?|$)/i.test(url);
+  if (isImage) {
+    el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(label)} баримт" style="display:inline-block;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></a>`;
+  } else {
+    el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${escapeHtml(label)} баримтыг харах</a>`;
+  }
 }
 
 function closeFinanceModal() {
@@ -1926,11 +1934,11 @@ function renderFinanceFileList(containerId, urls, removable) {
   if (!el) return;
   if (!urls || !urls.length) { el.innerHTML = '<div style="color:var(--muted);font-size:11px;">Хавсралт алга</div>'; return; }
   const icon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
-  // Google Drive view link → шууд thumbnail авах URL
+  // Google Drive view link → шууд thumbnail (lh3 нь CORS зөвшөөрөгдсөн)
   const toThumb = (u) => {
     const m = String(u||'').match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/);
     const id = m ? (m[1] || m[2]) : null;
-    if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w400`;
+    if (id) return `https://lh3.googleusercontent.com/d/${id}=w400`;
     return u;
   };
   const isImage = (u) => /\.(jpe?g|png|gif|webp|heic|bmp)(\?|$)/i.test(u) || /drive\.google\.com/.test(u);

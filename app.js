@@ -1811,16 +1811,19 @@ function openFinanceModal(id = null) {
     const isRequester = (state.me === t.requested_by);
     const isExecutor = (state.me === getFinanceExecutorEmail());
     const dec0 = t.decision || 'pending';
-    // Stage 1 picker — зөвхөн илгээгч өөрөө pending үед нэмэх боломжтой; бусдад read-only thumbs.
+    // Stage 1 picker — илгээгч pending үед нэмэх боломжтой; бусдад read-only thumbs.
+    // Хавсралтгүй ч label-ыг үргэлж харуулна — CEO юу дутууг шууд харах
     const canEditPurchase = isRequester && dec0 === 'pending';
     renderFinanceFileList('f-purchase-list', purchaseUrls, canEditPurchase);
     toggleFinanceFileInput('f-purchase-file', canEditPurchase);
-    document.getElementById('f-purchase-label').style.display = (purchaseUrls.length || canEditPurchase) ? '' : 'none';
+    document.getElementById('f-purchase-label').style.display = '';
     // Stage 4 picker — зөвхөн executor + executed + !done үед хавсаргана; бусдад read-only thumbs.
     const canEditReceipt = isExecutor && t.executed_at && t.status !== 'done';
     renderFinanceFileList('f-receipt-list', receiptUrls, canEditReceipt);
     toggleFinanceFileInput('f-receipt-file', canEditReceipt);
-    document.getElementById('f-receipt-label').style.display = (receiptUrls.length || canEditReceipt) ? '' : 'none';
+    // Stage 4 label — executed эсвэл done төлөвт л харагдана (өмнө нь утгагүй)
+    const showReceiptSection = (t.executed_at || t.status === 'done' || receiptUrls.length || canEditReceipt);
+    document.getElementById('f-receipt-label').style.display = showReceiptSection ? '' : 'none';
     // Stage 3 (transfer) preview
     renderProofPreview('f-payment-preview', t.payment_proof_url, 'Төлбөрийн');
     document.getElementById('f-purchase-file').value = '';

@@ -1767,10 +1767,21 @@ function openFinanceModal(id = null) {
     }
     document.getElementById('f-dept-branch').value = t.dept_branch || 'ХАМТ';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
-    // Existing receipts харуулах
-    renderProofPreview('f-purchase-preview', t.purchase_proof_url, 'Үнийн судалгаа');
+    // Existing receipts харуулах. Үнийн судалгаа preview-г hide хийнэ хэрэв URL байхгүй
+    // (executor болон CEO харахад хэрэггүй хадаас бичиг арилгана).
+    if (t.purchase_proof_url) {
+      renderProofPreview('f-purchase-preview', t.purchase_proof_url, 'Үнийн судалгаа');
+    } else {
+      document.getElementById('f-purchase-preview').innerHTML = '';
+    }
     renderProofPreview('f-payment-preview', t.payment_proof_url, 'Төлбөрийн');
     renderProofPreview('f-receipt-preview', t.purchase_receipt_url, 'Худалдан авалтын');
+    // Executor approved хүсэлт харах үед f-purchase-file picker нуух — тэр нь requester-ийн ажил.
+    if ((t.decision || '') === 'approved' && state.me === getFinanceExecutorEmail()) {
+      toggleFinanceFileInput('f-purchase-file', false);
+    } else {
+      toggleFinanceFileInput('f-purchase-file', true);
+    }
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
     document.getElementById('f-receipt-file').value = '';
@@ -1884,6 +1895,20 @@ async function executeFinanceRequest(id) {
   const executorId = r.executor || getFinanceExecutorEmail();
   if (state.me !== executorId && !state.isCEO) {
     showToast('Зөвхөн Туслах нягтлан гүйлгээ хийх эрхтэй', 'error'); return;
+  }
+  // Шилжүүлгийн баримт заавал хавсаргасан байх ёстой — modal-ийн file picker эсвэл өмнө upload-сан URL
+  const paymentInput = document.getElementById('f-payment-file');
+  const hasNewFile = paymentInput && paymentInput.files && paymentInput.files[0];
+  if (!r.payment_proof_url && !hasNewFile) {
+    showToast('Шилжүүлгийн баримт заавал хавсаргана уу', 'warn', 4000);
+    return;
+  }
+  // Шинээр сонгосон бол upload хийгээд URL-ыг хадгална
+  if (hasNewFile) {
+    showToast('Баримт upload хийж байна...', '', 2000);
+    const url = await uploadReceipt(paymentInput.files[0], r.id, 'payment');
+    if (!url) { showToast('Баримт upload амжилтгүй', 'error'); return; }
+    r.payment_proof_url = url;
   }
   r.executed_at = new Date().toISOString();
   r.executed_by = state.me;

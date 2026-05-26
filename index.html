@@ -83,6 +83,12 @@
       <h2 style="font-size:16px; margin:0 0 4px;">Шинэ ажилтан бүртгэл</h2>
       <p style="font-size:12px; color:var(--muted); margin:0 0 12px;">Мэдээллээ оруулаад бүртгүүлснээр шууд нэвтрэх боломжтой.</p>
 
+      <label class="login-label">Бүртгэлийн төрөл <span style="color:var(--danger)">*</span></label>
+      <div id="reg-worker-type" style="display:flex; gap:8px; margin-bottom:14px;">
+        <button type="button" class="reg-type-btn active" data-type="permanent" style="flex:1; padding:10px; border:2px solid var(--primary); background:var(--primary); color:#fff; border-radius:var(--r-md); font-size:13px; font-weight:600; cursor:pointer;">Үндсэн ажилтан</button>
+        <button type="button" class="reg-type-btn" data-type="daily" style="flex:1; padding:10px; border:2px solid var(--border); background:var(--panel); color:var(--text); border-radius:var(--r-md); font-size:13px; font-weight:600; cursor:pointer;">Өдрийн ажилтан</button>
+      </div>
+
       <label class="login-label">Овог <span style="color:var(--danger)">*</span></label>
       <input id="reg-surname" type="text" placeholder="Жишээ: Болд" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
 
@@ -194,19 +200,44 @@
       <label class="login-label">Утасны дугаар <span style="color:var(--danger)">*</span></label>
       <input id="reg-emergency-phone" type="tel" inputmode="numeric" placeholder="99887766" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
 
-      <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Ажиллах хугацаа</h3>
-      <p style="font-size:11px;color:var(--muted);margin:0 0 6px;line-height:1.4;">Өдрөөр ажиллах ажилтан бол дуусах огноог тавьна — тэр өдрөөс хойш аппд нэвтрэх боломжгүй. Үндсэн ажилтан бол хоосон үлдээ.</p>
-      <label class="login-label">Эхлэх огноо</label>
-      <input id="reg-seasonal-from" type="date" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
-      <label class="login-label">Дуусах огноо</label>
-      <input id="reg-seasonal-to" type="date" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
+      <!-- ─── Өдрийн ажилтны нэмэлт талбарууд (зөвхөн worker_type='daily' үед харагдана) ─── -->
+      <div id="reg-daily-section" style="display:none;">
+        <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Цалин хүлээн авах данс</h3>
+        <label class="login-label">Банк <span style="color:var(--danger)">*</span></label>
+        <select id="reg-bank" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; background:var(--panel); color:var(--text);">
+          <option value="">— Сонгох —</option>
+          <option value="Хаан банк">Хаан банк</option>
+          <option value="Голомт банк">Голомт банк</option>
+          <option value="ХХБ">ХХБ (Худалдаа Хөгжлийн Банк)</option>
+          <option value="Төрийн банк">Төрийн банк</option>
+          <option value="Хас банк">Хас банк</option>
+          <option value="Капитрон банк">Капитрон банк</option>
+          <option value="М банк">М банк</option>
+          <option value="Ариг банк">Ариг банк</option>
+          <option value="Чингис банк">Чингис банк</option>
+          <option value="Богд банк">Богд банк</option>
+          <option value="Тээвэр хөгжлийн банк">Тээвэр хөгжлийн банк</option>
+          <option value="Үндэсний хөрөнгө оруулалтын банк">Үндэсний хөрөнгө оруулалтын банк</option>
+        </select>
+        <label class="login-label">Дансны дугаар <span style="color:var(--danger)">*</span></label>
+        <input id="reg-bank-account" type="text" inputmode="numeric" placeholder="Жишээ: 5012345678" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+        <label class="login-label">Данс эзэмшигчийн нэр <span style="color:var(--danger)">*</span></label>
+        <input id="reg-bank-holder" type="text" placeholder="Дансан дээрх нэр (РД-тэй таарах)" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
+
+        <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Ажиллах хугацаа</h3>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 6px;line-height:1.4;">Дуусах огнооноос хойш аппд нэвтрэх боломжгүй. CEO дараа нь хугацааг сунгах боломжтой.</p>
+        <label class="login-label">Эхлэх огноо <span style="color:var(--danger)">*</span></label>
+        <input id="reg-seasonal-from" type="date" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+        <label class="login-label">Дуусах огноо <span style="color:var(--danger)">*</span></label>
+        <input id="reg-seasonal-to" type="date" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
+      </div>
 
       <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Нэвтрэх</h3>
       <label class="login-label">PIN код (4 орон) <span style="color:var(--danger)">*</span></label>
       <input id="reg-pin" type="tel" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="● ● ● ●" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
 
       <p style="font-size:11px;color:var(--muted);margin:0 0 12px;line-height:1.4;">
-        Бүртгүүлсний дараа шууд нэвтрэх боломжтой. Цалин болон зэрэглэлийг CEO дараа нь тохируулна.
+        Бүртгүүлсний дараа шууд нэвтрэх боломжтой. Цалинг нягтлан гараар олгоно.
       </p>
       <button type="button" id="reg-submit" class="login-submit" style="width:100%;">Бүртгүүлэх</button>
       <div class="login-error" id="reg-error" style="margin-top:8px;"></div>

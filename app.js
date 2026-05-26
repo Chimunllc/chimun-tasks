@@ -6180,6 +6180,24 @@ function initPinLogin() {
   };
   surnameEl?.addEventListener('input', updatePreview);
   givenEl?.addEventListener('input', updatePreview);
+
+  // Бүртгэлийн төрөл (Үндсэн / Өдрийн) — toggle
+  state._regWorkerType = 'permanent';
+  document.querySelectorAll('#reg-worker-type .reg-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.dataset.type;
+      state._regWorkerType = type;
+      document.querySelectorAll('#reg-worker-type .reg-type-btn').forEach(b => {
+        const active = b.dataset.type === type;
+        b.classList.toggle('active', active);
+        b.style.background = active ? 'var(--primary)' : 'var(--panel)';
+        b.style.color = active ? '#fff' : 'var(--text)';
+        b.style.borderColor = active ? 'var(--primary)' : 'var(--border)';
+      });
+      const daily = document.getElementById('reg-daily-section');
+      if (daily) daily.style.display = (type === 'daily') ? 'block' : 'none';
+    });
+  });
 }
 
 // Овог + Нэр → "Б.Энх" формат (овгийн эхний үсэг + цэг + нэр)
@@ -6219,6 +6237,10 @@ async function handleRegister() {
   const seasonalFrom   = document.getElementById('reg-seasonal-from')?.value || '';
   const seasonalTo     = document.getElementById('reg-seasonal-to')?.value || '';
   const photoDataUrl   = state._regPhotoDataUrl || '';
+  const workerType     = state._regWorkerType || 'permanent';
+  const bank           = document.getElementById('reg-bank')?.value || '';
+  const bankAccount    = document.getElementById('reg-bank-account')?.value.trim() || '';
+  const bankHolder     = document.getElementById('reg-bank-holder')?.value.trim() || '';
 
   // Кирилл шалгах (Монгол үсэг — Өө Үү багтсан 0400-04FF муж + зай, цэг, зураас)
   const cyrillic = /^[Ѐ-ӿ\s.\-]+$/;          // Кирилл (Монгол) үсэг
@@ -6238,6 +6260,15 @@ async function handleRegister() {
   if (!photoDataUrl) return show('⚠ Selfie зураг заавал оруулна уу.');
   if (!emergencyName) return show('⚠ Яаралтай үед холбоо барих хүний нэр оруулна уу.');
   if (!emergencyPhone || emergencyPhone.replace(/\D/g,'').length < 8) return show('⚠ Яаралтай үеийн утас наад зах нь 8 орон.');
+  // Өдрийн ажилтны нэмэлт шалгалт
+  if (workerType === 'daily') {
+    if (!bank) return show('⚠ Банкаа сонгоно уу.');
+    if (!bankAccount || bankAccount.replace(/\D/g,'').length < 6) return show('⚠ Дансны дугаараа зөв оруулна уу.');
+    if (!bankHolder) return show('⚠ Данс эзэмшигчийн нэр оруулна уу.');
+    if (!seasonalFrom) return show('⚠ Ажиллаж эхлэх огноог оруулна уу.');
+    if (!seasonalTo)   return show('⚠ Ажиллаж дуусах огноог оруулна уу.');
+    if (seasonalTo < seasonalFrom) return show('⚠ Дуусах огноо эхлэх огнооноос өмнө байж болохгүй.');
+  }
   if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
 
   // ─── Давхцал шалгах (одоогийн TEAM дотор) ───
@@ -6277,8 +6308,12 @@ async function handleRegister() {
         status: 'идэвхтэй',       // шууд идэвхтэй — зөвшөөрөл шаардахгүй
         joined_at: new Date().toISOString().slice(0, 10),
         requested_at: new Date().toISOString(),
-        seasonal_from: seasonalFrom, // Өдрийн ажилтанд (хоосон бол үндсэн)
-        seasonal_to:   seasonalTo,   // Тэр өдрөөс хойш login боломжгүй
+        worker_type:   workerType,   // 'permanent' | 'daily'
+        seasonal_from: workerType === 'daily' ? seasonalFrom : '',
+        seasonal_to:   workerType === 'daily' ? seasonalTo   : '',
+        bank:          workerType === 'daily' ? bank         : '',
+        bank_account:  workerType === 'daily' ? bankAccount  : '',
+        bank_holder:   workerType === 'daily' ? bankHolder   : '',
       }),
     });
     const data = await r.json().catch(() => ({}));

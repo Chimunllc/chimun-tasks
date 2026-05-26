@@ -30,8 +30,8 @@ jobs:
 
       - name: ESLint — no-undef on app.js
         run: |
-          npx --yes eslint@9 \
-            --no-config-lookup \
+          npx --yes eslint@8 \
+            --no-eslintrc \
             --rule '{"no-undef":"error","no-unused-vars":"off","no-redeclare":"warn"}' \
             --env browser \
             --env serviceworker \
@@ -45,8 +45,8 @@ jobs:
 
       - name: ESLint — no-undef on sw.js
         run: |
-          npx --yes eslint@9 \
-            --no-config-lookup \
+          npx --yes eslint@8 \
+            --no-eslintrc \
             --rule '{"no-undef":"error"}' \
             --env serviceworker \
             --env es2022 \

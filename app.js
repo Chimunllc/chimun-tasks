@@ -2454,10 +2454,31 @@ function renderTaskList() {
    Бүх chart нь inline SVG — гадны library хэрэггүй.
    CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
 function renderDashboard() {
-  if (!state.isCEO) return renderPersonalKPI();
   const tasks = state.tasks || [];
   const fr = state.financeRequests || [];
   const today = todayStr();
+  const isCEO = !!state.isCEO;
+  const me = state.me;
+
+  // ─── Хувийн KPI (бүх ажилтанд) ───
+  const mineTasks = tasks.filter(t => t.assignee === me);
+  const myDone = mineTasks.filter(t => t.status === 'done').length;
+  const myActive = mineTasks.filter(t => t.status !== 'done').length;
+  const myOverdue = mineTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
+  const myToday = mineTasks.filter(t => t.due === today && t.status !== 'done').length;
+  const myRate = mineTasks.length > 0 ? Math.round((myDone / mineTasks.length) * 100) : 0;
+  // Сүүлийн 7 хоног — миний дуусгасан
+  const my7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const ds = d.toISOString().slice(0, 10);
+    my7.push({
+      day: ['Ня','Да','Мя','Лх','Пү','Ба','Бя'][d.getDay()],
+      count: mineTasks.filter(t => t.status === 'done' && (t.executed_at || t.completed_at || '').toString().startsWith(ds)).length,
+      isToday: ds === today,
+    });
+  }
+  const myMax = Math.max(1, ...my7.map(x => x.count));
 
   // 1) Status breakdown
   const byStatus = { open: 0, in_progress: 0, done: 0, declined: 0 };
@@ -2599,7 +2620,45 @@ function renderDashboard() {
         </button>
       </div>
       <div class="dashboard-grid">
-        <!-- KPI карт-ууд -->
+        <!-- ─── Миний ажил (бүх ажилтанд) ─── -->
+        <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:-4px;">Миний ажил</div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Идэвхтэй</div>
+          <div class="dash-kpi-value primary">${myActive}</div>
+          <div class="dash-kpi-sub">та хийх ёстой</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Өнөөдөр</div>
+          <div class="dash-kpi-value warn">${myToday}</div>
+          <div class="dash-kpi-sub">дуусах ёстой</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Хоцорсон</div>
+          <div class="dash-kpi-value danger">${myOverdue}</div>
+          <div class="dash-kpi-sub">та хийх ёстой</div>
+        </div>
+        <div class="dash-card dash-kpi">
+          <div class="dash-kpi-label">Гүйцэтгэл</div>
+          <div class="dash-kpi-value ok">${myRate}%</div>
+          <div class="dash-kpi-sub">${myDone}/${mineTasks.length} дуусгасан</div>
+        </div>
+        <div class="dash-card dash-chart" style="grid-column: span 4;">
+          <div class="dash-card-title">Сүүлийн 7 хоног — Миний дуусгасан ажил</div>
+          <div class="kpi-bar-chart">
+            ${my7.map(d => `
+              <div class="kpi-bar-col">
+                <div class="kpi-bar-track">
+                  <div class="kpi-bar-fill ${d.isToday ? 'today' : ''}" style="height:${(d.count/myMax)*100}%"></div>
+                </div>
+                <div class="kpi-bar-num">${d.count}</div>
+                <div class="kpi-bar-day ${d.isToday ? 'today' : ''}">${d.day}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- ─── Компанийн тойм (бүх ажилтанд) ─── -->
+        <div class="dash-section-title" style="grid-column: span 4; font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-top:12px; margin-bottom:-4px;">Компанийн тойм</div>
         <div class="dash-card dash-kpi">
           <div class="dash-kpi-label">Хоцорсон</div>
           <div class="dash-kpi-value danger">${overdueCount}</div>
@@ -2620,7 +2679,7 @@ function renderDashboard() {
           <div class="dash-kpi-value ok">${byStatus.open + byStatus.in_progress}</div>
           <div class="dash-kpi-sub">ажилтнуудад</div>
         </div>
-        ${pendingRegCount > 0 ? `
+        ${isCEO && pendingRegCount > 0 ? `
         <div class="dash-card dash-kpi dash-kpi-clickable" id="dash-pending-reg-card" style="grid-column: span 4;cursor:pointer;border:2px solid var(--accent-amber);">
           <div class="dash-kpi-label" style="color:var(--accent-amber);">⏳ Хүлээж буй бүртгэлийн хүсэлт</div>
           <div class="dash-kpi-value warn" style="font-size:24px;">${pendingRegCount} ажилтан хянахыг хүлээж байна</div>
@@ -2641,7 +2700,8 @@ function renderDashboard() {
           </div>
         </div>
 
-        <!-- Finance summary -->
+        <!-- Finance summary (CEO only — sensitive amounts) -->
+        ${isCEO ? `
         <div class="dash-card dash-finance">
           <div class="dash-card-title">Сүүлийн 30 хоног — Санхүү</div>
           <div class="dash-finance-row">
@@ -2661,7 +2721,7 @@ function renderDashboard() {
             <div class="dash-finance-label">Нийт хүсэлт</div>
             <div class="dash-finance-value">${recentFinance.length}${fr.length > recentFinance.length ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">(нийт ${fr.length})</span>` : ''}</div>
           </div>
-        </div>
+        </div>` : ''}
 
         <!-- Staff load -->
         <div class="dash-card dash-staff">

@@ -1825,25 +1825,41 @@ function openFinanceModal(id = null) {
     decisionInfo.innerHTML = info;
     decisionInfo.style.display = 'block';
 
-    // VIEW mode → зөвхөн "Засах" товч. EDIT mode → тухайн үеийн action section (decision/
-    // execute/receipt) л. Submit section (Болих/Илгээх) хадгалагдсан хүсэлтэд хэрэггүй.
+    // Хэн юу хийж болох вэ:
+    //  - Field-үүдийг ЗАСАХ: зөвхөн status=pending + (хүсэлт гаргагч өөрөө эсвэл CEO).
+    //    CEO зөвшөөрсний дараа дүн/банк/данс бүхэлдээ түгжигдэнэ (аудит).
+    //  - Стадиа шилжүүлэх action товч (decision/execute/receipt): тухайн стадийн ажилтанд.
+    //  - Хүсэлт гаргагч pending үед өөрийн хүсэлтийг л өөрчилнө, бусдын товч нь огт харагдахгүй.
     const fSave = document.getElementById('f-save');
+    const canEditFields = (dec === 'pending') && (state.me === t.requested_by || state.isCEO);
+    const isReqOrCEO = (state.me === t.requested_by) || state.isCEO;
+    const isExecutorOrCEO = (state.me === getFinanceExecutorEmail()) || state.isCEO;
     if (inViewMode) {
-      submitActions.style.display = '';
-      fSave.style.display = '';
-      fSave.textContent = '✎ Засах';
-    } else {
-      // EDIT mode — submit нуух, тухайн стадийнхыг л харуулна
-      submitActions.style.display = 'none';
-      fSave.style.display = 'none';
+      // Засах товч — зөвхөн pending + edit эрхтэй үед
+      if (canEditFields) {
+        submitActions.style.display = '';
+        fSave.style.display = '';
+        fSave.textContent = '✎ Засах';
+      }
+      // Стадийн action товчнууд (Засах-аас тусгаар)
       if (dec === 'pending' && state.isCEO) {
         decisionActions.style.display = 'flex';
-      } else if (dec === 'approved' && t.status !== 'done' && (state.me === getFinanceExecutorEmail() || state.isCEO)) {
+      } else if (dec === 'approved' && t.status !== 'done' && isExecutorOrCEO) {
         executeActions.style.display = 'flex';
-      } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
-                 (state.me === t.requested_by || state.isCEO)) {
+      } else if (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url && isReqOrCEO) {
         receiptActions.style.display = 'flex';
       }
+    } else if (canEditFields) {
+      // EDIT mode — field-үүдийг unlock + Хадгалах товч
+      ['f-amount','f-beneficiary','f-account','f-purpose','f-justification','f-due']
+        .forEach(id => document.getElementById(id)?.removeAttribute('readonly'));
+      ['f-bank','f-main-category','f-category','f-frequency','f-dept-branch']
+        .forEach(id => document.getElementById(id)?.removeAttribute('disabled'));
+      submitActions.style.display = '';
+      fSave.style.display = '';
+      fSave.textContent = '💾 Хадгалах';
+      // CEO эдитлэж байгаа бол шийдвэрийн товч хэвээр (нэг дор засаад зөвшөөрөх)
+      if (state.isCEO) decisionActions.style.display = 'flex';
     }
   }
   modal.classList.add('open');
@@ -5232,6 +5248,19 @@ function initEvents() {
     if (state._financeViewMode && state.editingId) {
       state._financeViewMode = false;
       openFinanceModal(state.editingId);
+      return;
+    }
+    // Edit mode + existing pending request → update + save + close
+    if (state.editingId && !state._financeViewMode) {
+      await applyCeoEditsBeforeDecision(state.editingId);
+      const r = state.financeRequests.find(x => x.id === state.editingId);
+      if (r) {
+        r.updated = new Date().toISOString();
+        await saveFinanceRequest(r);
+        showToast('Хадгалагдлаа', 'success', 2000);
+      }
+      closeFinanceModal();
+      render();
       return;
     }
     const amount = document.getElementById('f-amount').value;

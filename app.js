@@ -1880,8 +1880,7 @@ function openFinanceModal(id = null) {
     const canEditFields = (dec === 'pending') && (state.me === t.requested_by || state.isCEO);
     const isReqOrCEO = (state.me === t.requested_by) || state.isCEO;
     // Гүйлгээ хийгдсэн гэж тэмдэглэх нь зөвхөн туслах нягтлангийн үүрэг. CEO тэр үүрэгт оролцохгүй —
-    // ажил үүргийн зааг ялгана (CEO зөвшөөрнө, нягтлан гүйлгээ хийнэ).
-    const isExecutor = (state.me === getFinanceExecutorEmail());
+    // ажил үүргийн зааг ялгана. isExecutor дээр populate секцэд тодорхойлогдсон.
     // Хүсэлт гаргагч өөрөө бол шийдвэрийн/гүйцэтгэлийн товчнууд харагдахгүй —
     // өөрийгөө зөвшөөрөх/гүйцэтгэх нь зөв биш. Зөвхөн Засах эсвэл харах.
     const isRequester = (state.me === t.requested_by);

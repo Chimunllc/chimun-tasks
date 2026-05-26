@@ -4154,13 +4154,25 @@ function openTaskModal(id) {
     readOnlyCard.innerHTML = '';
   }
 
-  // ─── СТАТУС ТОВЧНУУД (сэтгэгдэл болон үйлдлийн түүх устгагдсан) ───
+  // ─── СТАТУС ТОВЧНУУД + СЭТГЭГДЭЛ + ҮЙЛДЛИЙН ТҮҮХ — зөвхөн хадгалагдсан task үед ───
   const statusBar = document.getElementById('t-status-bar');
+  const commentsSection = document.getElementById('t-comments-section');
+  const activitySection = document.getElementById('t-activity-section');
   if (t) {
     renderTaskActionButtons(t);
     if (statusBar) statusBar.style.display = '';
+    if (commentsSection) {
+      commentsSection.style.display = '';
+      renderTaskComments(t);
+    }
+    if (activitySection) {
+      activitySection.style.display = '';
+      renderTaskActivity(t);
+    }
   } else {
     if (statusBar) statusBar.style.display = 'none';
+    if (commentsSection) commentsSection.style.display = 'none';
+    if (activitySection) activitySection.style.display = 'none';
   }
 
   document.getElementById('task-modal').classList.add('open');

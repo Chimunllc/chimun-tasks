@@ -2155,7 +2155,8 @@ function renderSidebar() {
   }
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
-  if (brandEl) brandEl.innerHTML = ICONS.building + ' Чимун ХХК';
+  // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
+  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Чимун ХХК';
   // projects (only for current branch) — устгах товчтой
   const list = document.getElementById('project-list');
   list.innerHTML = '';

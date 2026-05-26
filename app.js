@@ -3779,7 +3779,8 @@ function renderRow(t) {
                     : 'open';
   row.innerHTML = `
     <div>
-      <div class="checkbox ${t.status==='done'?'checked':''}" data-act="toggle"></div>
+      <!-- Status indicator (clickable биш) — нээж байж дуусгана. -->
+      <div class="checkbox ${t.status==='done'?'checked':''}" data-act="open" style="cursor:pointer;"></div>
     </div>
     <div class="task-title-wrap" data-act="open">
       <div class="task-title" data-act="open">${t.recurrence ? '<svg class="recur-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Давтагдах"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> ' : ''}${titleHtml}${extraHtml}</div>
@@ -3821,27 +3822,17 @@ function renderRow(t) {
   `;
   row.addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
-    // Finance request — special modal
-    if (isFinance && (act === 'open' || act === 'edit-title')) {
-      openFinanceModal(t.id);
-      return;
-    }
-    if (act === 'toggle' && isFinance) {
-      // Finance row-н checkbox дарвал finance modal-ыг execute mode-руу нээх
-      openFinanceModal(t.id);
-      return;
-    }
-    if (act === 'toggle') toggleTask(t.id);
-    else if (act === 'delete') deleteTask(t.id);
-    else if (act === 'locked') {
+    // Delete + locked үлдсэн — бусад бүх click модал нээнэ.
+    if (act === 'delete') { deleteTask(t.id); return; }
+    if (act === 'locked') {
       const can = canDeleteTask(t);
       const who = can.creator ? `${can.creator.name} (${can.creator.role})` : 'дээд албан тушаалтан';
       showToast(`${who} үүсгэсэн даалгавар. Устгах эрх танд алга. Биелүүлсэн бол ✓ тэмдэглээрэй.`, 'warn', 4500);
+      return;
     }
-    else if (act === 'open' || !act) {
-      // Гарчиг, тайлбар эсвэл хоосон газар — модал нээх
-      openTaskModal(t.id);
-    }
+    // Бусад бүх click (гарчиг, аватар, due, status circle, хоосон газар) → модал нээнэ
+    if (isFinance) openFinanceModal(t.id);
+    else openTaskModal(t.id);
   });
   row.querySelector('.task-title').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }

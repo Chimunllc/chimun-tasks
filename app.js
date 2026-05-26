@@ -2027,8 +2027,62 @@ function filteredTasks() {
   }
   // search
   if (state.search) {
-    const q = state.search.toLowerCase();
-    list = list.filter(t => (t.title||'').toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q));
+    // Search syntax — "from:Бат", "due:today" / "due:2026-05-30", "priority:high|med|low",
+    // "status:open|done", "branch:m-event" гэх мэт. Бусад үлдсэн текст нь title+desc-д хайгдана.
+    // Жишээ: "from:Бат due:today" → Бат-д оноосон, өнөөдөр дуустай.
+    const tokens = state.search.trim().match(/(\w+:[^\s]+|"[^"]+"|\S+)/g) || [];
+    const today = todayStr();
+    const filters = [];
+    const textBits = [];
+    for (const tok of tokens) {
+      const colonIdx = tok.indexOf(':');
+      if (colonIdx > 0 && !tok.startsWith('"')) {
+        const key = tok.slice(0, colonIdx).toLowerCase();
+        let val = tok.slice(colonIdx + 1).toLowerCase().replace(/^"|"$/g, '');
+        if (key === 'from' || key === 'хариуцагч' || key === 'assignee') {
+          filters.push(t => {
+            const name = (memberName(t.assignee) || '').toLowerCase();
+            return name.includes(val) || String(t.assignee || '').toLowerCase().includes(val);
+          });
+        } else if (key === 'by' || key === 'үүсгэгч' || key === 'creator') {
+          filters.push(t => {
+            const name = (memberName(t.createdBy) || '').toLowerCase();
+            return name.includes(val) || String(t.createdBy || '').toLowerCase().includes(val);
+          });
+        } else if (key === 'due' || key === 'хугацаа') {
+          if (val === 'today' || val === 'өнөөдөр') filters.push(t => t.due === today);
+          else if (val === 'overdue' || val === 'хоцорсон') filters.push(t => t.due && t.due < today && t.status !== 'done');
+          else if (val === 'week' || val === 'долоохоног') {
+            const w = new Date(); w.setDate(w.getDate() + 7); const wkStr = w.toISOString().slice(0, 10);
+            filters.push(t => t.due && t.due >= today && t.due <= wkStr);
+          } else filters.push(t => t.due === val);
+        } else if (key === 'priority' || key === 'зэрэглэл') {
+          const norm = { 'high':'high', 'өндөр':'high', 'med':'med', 'medium':'med', 'дунд':'med', 'low':'low', 'бага':'low' };
+          const wanted = norm[val] || val;
+          filters.push(t => t.priority === wanted);
+        } else if (key === 'status' || key === 'төлөв') {
+          const norm = { 'open':'open', 'идэвхтэй':'open', 'done':'done', 'дууссан':'done',
+                         'declined':'declined', 'татгалзсан':'declined', 'in_progress':'in_progress', 'хийгдэж':'in_progress' };
+          const wanted = norm[val] || val;
+          filters.push(t => (t.status || 'open') === wanted);
+        } else if (key === 'branch' || key === 'салбар') {
+          const norm = { 'm-event':'m-event', 'mevent':'m-event', 'mэвент':'m-event',
+                         'camp':'camp', 'кемп':'camp', 'shared':'shared', 'нэгдсэн':'shared' };
+          const wanted = norm[val] || val;
+          filters.push(t => (t.branch || '') === wanted);
+        } else {
+          // Тодорхойгүй prefix — title-д орох гэж тооцно
+          textBits.push(tok);
+        }
+      } else {
+        textBits.push(tok.replace(/^"|"$/g, ''));
+      }
+    }
+    if (filters.length) list = list.filter(t => filters.every(f => f(t)));
+    if (textBits.length) {
+      const q = textBits.join(' ').toLowerCase();
+      list = list.filter(t => (t.title||'').toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q));
+    }
   }
   // sort: open first, then by due asc, then created desc
   list.sort((a,b) => {

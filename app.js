@@ -4339,30 +4339,31 @@ function openTaskModal(id) {
 function renderTaskActionButtons(t) {
   const bar = document.getElementById('t-action-buttons');
   const isAssignee = (state.me === t.assignee);
-  const isCEO      = state.isCEO;
-  // Зөвхөн хариуцагч + CEO статус өөрчилнө. Үүсгэгч (admin биш бол) статус оруулахгүй.
-  const canAct     = isAssignee || isCEO;
   const status     = t.status || 'open';
+  // Status өөрчлөх товчнууд — ЗӨВХӨН хариуцагчид зориулсан. CEO/үүсгэгч өөрөө хариуцагч
+  // биш бол харагдахгүй (өөрийн бусдад өгсөн ажил дээр Start/Done/Decline дарж хариуцагчийн
+  // өмнөөс шийдэх нь буруу). CEO task field-уудыг (нэр, due, assignee) modal-аас засна.
+  // Тусгай override хэрэгтэй болвол admin товч дараа нэмж болно.
+  const canAct = isAssignee;
 
   const btns = [];
-  // Inline style-уудыг арилгасан — өнгө, padding, font CSS theme-аас ирнэ.
-  // Эхлүүлэх — assignee/CEO, төлөв open эсвэл declined
+  // Эхлүүлэх — open эсвэл declined
   if (canAct && (status === 'open' || status === 'declined')) {
     btns.push(`<button class="btn btn-action" data-action="start">Эхлүүлэх</button>`);
   }
-  // Дуусгах — assignee/CEO, in_progress эсвэл open үед
+  // Дуусгах
   if (canAct && status !== 'done' && status !== 'declined') {
     btns.push(`<button class="btn btn-action" data-action="done">Дуусгасан</button>`);
   }
-  // Дахин нээх — done төлөвийг буцаах
+  // Дахин нээх
   if (canAct && status === 'done') {
     btns.push(`<button class="btn btn-action" data-action="reopen">Дахин нээх</button>`);
   }
-  // Татгалзах — assignee, эсвэл CEO. Зөвхөн open/in_progress
-  if ((isAssignee || isCEO) && (status === 'open' || status === 'in_progress')) {
+  // Татгалзах
+  if (canAct && (status === 'open' || status === 'in_progress')) {
     btns.push(`<button class="btn btn-action" data-action="decline">Татгалзах</button>`);
   }
-  // Зураг хавсаргах — assignee/CEO, шаардлагатай эсэхээс үл хамаараад хүсэлтээр нэмж болно
+  // Зураг хавсаргах
   if (canAct && status !== 'done') {
     const cnt = Array.isArray(t.completion_photos) ? t.completion_photos.length : 0;
     btns.push(`<button class="btn btn-action" data-action="add_photo">📷 Зураг хавсаргах${cnt > 0 ? ` (${cnt})` : ''}</button>`);

@@ -5452,14 +5452,10 @@ function initEvents() {
     btn.disabled = true;
     try {
       const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency });
-      // Худалдан авсан баримт сонгогдсон бол upload хийгээд update
-      if (purchaseFile) {
-        showToast('Баримт upload хийж байна...', '', 2000);
-        const url = await uploadReceipt(purchaseFile, newRequest.id, 'purchase');
-        if (url) {
-          newRequest.purchase_proof_url = url;
-          await saveFinanceRequest(newRequest);
-        }
+      // Multi-file picker дээр аль хэдийн upload хийгдсэн URL-ууд (purchase_proof_urls):
+      if (Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length) {
+        newRequest.purchase_proof_urls = [...state._fPurchaseUrls];
+        await saveFinanceRequest(newRequest);
       }
       closeFinanceModal();
       showToast('Хүсэлт CEO-руу илгээгдсэн', 'success');

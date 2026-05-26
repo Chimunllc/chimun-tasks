@@ -4995,7 +4995,8 @@ function initEvents() {
         try {
           await Promise.all([ loadData(), loadFinanceRequests() ]);
           render();
-          showToast('Шинэчлэгдсэн', 'success', 1500);
+          // Spin indicator өөрөө "Шинэчлэгдлээ" мессежийг харуулдаг тул toast илүү байна.
+          // (Алдаа гарвал л toast гаргана.)
         } catch (e) {
           showToast('Шинэчлэх амжилтгүй', 'error');
         }

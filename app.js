@@ -6196,6 +6196,11 @@ function initPinLogin() {
       });
       const daily = document.getElementById('reg-daily-section');
       if (daily) daily.style.display = (type === 'daily') ? 'block' : 'none';
+      // Үндсэн ажилтны нэмэлт талбарууд (албан тушаал, салбар, и-мэйл, хаяг, яаралтай үед)
+      // өдрийн ажилтанд харагдахгүй
+      document.querySelectorAll('.reg-permanent-only').forEach(el => {
+        el.style.display = (type === 'daily') ? 'none' : '';
+      });
     });
   });
 }
@@ -6251,15 +6256,17 @@ async function handleRegister() {
   if (hasLatin.test(surname) || !cyrillic.test(surname)) return show('⚠ Овгоо МОНГОЛоор (кирилл) бичнэ үү. Жишээ: Болд');
   if (!given)   return show('Нэрээ оруулна уу.');
   if (hasLatin.test(given) || !cyrillic.test(given)) return show('⚠ Нэрээ МОНГОЛоор (кирилл) бичнэ үү. Жишээ: Энх');
-  if (!role)    return show('Албан тушаалаа жагсаалтаас сонгоно уу.');
-  if (!group)   return show('Аль салбарт хамаарахаа сонгоно уу.');
+  if (workerType === 'permanent') {
+    if (!role)    return show('Албан тушаалаа жагсаалтаас сонгоно уу.');
+    if (!group)   return show('Аль салбарт хамаарахаа сонгоно уу.');
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('⚠ И-мэйл хаягаа зөв оруулна уу.');
+    if (!address || address.length < 8) return show('⚠ Гэрийн хаягаа дэлгэрэнгүй (хороо, байр, тоот) оруулна уу.');
+    if (!emergencyName) return show('⚠ Яаралтай үед холбоо барих хүний нэр оруулна уу.');
+    if (!emergencyPhone || emergencyPhone.replace(/\D/g,'').length < 8) return show('⚠ Яаралтай үеийн утас наад зах нь 8 орон.');
+  }
   if (!phone || phoneNorm.length < 8) return show('⚠ Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('⚠ И-мэйл хаягаа зөв оруулна уу.');
   if (!rd || !/^[А-ЯӨҮ]{2}\d{8}$/i.test(rd)) return show('⚠ РД дугаар "АА00000000" хэлбэртэй байх ёстой.');
-  if (!address || address.length < 8) return show('⚠ Гэрийн хаягаа дэлгэрэнгүй (хороо, байр, тоот) оруулна уу.');
   if (!photoDataUrl) return show('⚠ Selfie зураг заавал оруулна уу.');
-  if (!emergencyName) return show('⚠ Яаралтай үед холбоо барих хүний нэр оруулна уу.');
-  if (!emergencyPhone || emergencyPhone.replace(/\D/g,'').length < 8) return show('⚠ Яаралтай үеийн утас наад зах нь 8 орон.');
   // Өдрийн ажилтны нэмэлт шалгалт
   if (workerType === 'daily') {
     if (!bank) return show('⚠ Банкаа сонгоно уу.');
@@ -6292,13 +6299,15 @@ async function handleRegister() {
     const url = state.config.registerUrl;
     if (!url) { show('Бүртгэлийн систем тохируулагдаагүй. CEO-той холбогдоно уу.'); return; }
     // CEO зөвшөөрөл шаардахгүй — зэрэглэлийг албан тушаалаас автомат тогтооно.
-    // Түлхүүр = и-мэйл хаяг. ID талбар цаашид ашиглагдахгүй.
-    const autoLevel = levelForRole(role);
+    // Өдрийн ажилтны хувьд role/group хоосон тул автомат default тогтооно.
+    const effectiveRole  = (workerType === 'daily') ? 'Өдрийн ажилтан' : role;
+    const effectiveGroup = (workerType === 'daily') ? 'Нэгдсэн'        : group;
+    const autoLevel = (workerType === 'daily') ? 40 : levelForRole(role);
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name, role, group, phone, email, pin,
+        name, role: effectiveRole, group: effectiveGroup, phone, email, pin,
         rd, address,
         emergency_relation: emergencyRelation,
         emergency_name: emergencyName,

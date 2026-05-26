@@ -96,6 +96,7 @@
       <input id="reg-givenname" type="text" placeholder="Жишээ: Энх" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:4px;" />
       <div id="reg-name-preview" style="font-size:12px; color:var(--muted); margin-bottom:8px; min-height:16px;"></div>
 
+      <div class="reg-permanent-only">
       <label class="login-label">Албан тушаал <span style="color:var(--danger)">*</span></label>
       <select id="reg-role" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; background:var(--panel); color:var(--text);">
         <option value="">— Сонгох —</option>
@@ -149,18 +150,23 @@
         <option value="Camp">Номаад кемп</option>
         <option value="Нэгдсэн">Захиргаа / Нэгдсэн</option>
       </select>
+      </div>
 
       <label class="login-label">Утасны дугаар <span style="color:var(--danger)">*</span></label>
       <input id="reg-phone" type="tel" inputmode="numeric" placeholder="99112233" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
 
+      <div class="reg-permanent-only">
       <label class="login-label">И-мэйл <span style="color:var(--danger)">*</span></label>
       <input id="reg-email" type="email" placeholder="name@example.com" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px;" />
+      </div>
 
       <label class="login-label">Регистрийн дугаар (РД) <span style="color:var(--danger)">*</span></label>
       <input id="reg-rd" type="text" maxlength="10" placeholder="АБ12345678" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; text-transform:uppercase;" />
 
+      <div class="reg-permanent-only">
       <label class="login-label">Гэрийн хаяг <span style="color:var(--danger)">*</span></label>
       <textarea id="reg-address" rows="2" placeholder="Жишээ: УБ, СБД, 7-р хороо, 14 байр, 32 тоот" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; font-family:inherit; resize:vertical;"></textarea>
+      </div>
 
       <label class="login-label">Selfie зураг <span style="color:var(--danger)">*</span> <span style="font-size:11px;color:var(--muted)">(өөрөө гэрэл сайтай газар татна)</span></label>
       <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
@@ -174,6 +180,7 @@
         <input id="reg-photo" type="file" accept="image/*" capture="user" style="display:none;" />
       </div>
 
+      <div class="reg-permanent-only">
       <h3 style="font-size:13px;font-weight:700;margin:18px 0 6px;border-top:1px solid var(--border);padding-top:14px;color:var(--text);">Яаралтай үед холбоо барих</h3>
       <label class="login-label">Хэн болох <span style="color:var(--danger)">*</span></label>
       <select id="reg-emergency-relation" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:8px; background:var(--panel); color:var(--text);">
@@ -199,6 +206,7 @@
 
       <label class="login-label">Утасны дугаар <span style="color:var(--danger)">*</span></label>
       <input id="reg-emergency-phone" type="tel" inputmode="numeric" placeholder="99887766" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px; margin-bottom:12px;" />
+      </div>
 
       <!-- ─── Өдрийн ажилтны нэмэлт талбарууд (зөвхөн worker_type='daily' үед харагдана) ─── -->
       <div id="reg-daily-section" style="display:none;">

@@ -1984,9 +1984,13 @@ async function closeFinanceRequest(id) {
   if (!r.executed_at) {
     showToast('Эхлээд шилжүүлгийн баримт хавсаргана', 'warn'); return;
   }
-  // Шинэ сонгосон файлуудыг upload-аад одоогийн жагсаалтад нэмнэ
+  // Шинэ сонгосон файлуудыг upload-аад одоогийн жагсаалтад нэмнэ.
+  // state._fReceiptPending — change handler-ээс хадгалсан файлууд (input.value reset болсон ч үлдэнэ).
   const fileInput = document.getElementById('f-receipt-file');
-  const newFiles = fileInput && fileInput.files ? [...fileInput.files] : [];
+  const inputFiles = fileInput && fileInput.files ? [...fileInput.files] : [];
+  const pendingFiles = Array.isArray(state._fReceiptPending) ? state._fReceiptPending : [];
+  // Давхар орохгүй — input.files vs pending хоёроос аль илүү байгааг ашиглана
+  const newFiles = inputFiles.length >= pendingFiles.length ? inputFiles : pendingFiles;
   const existing = Array.isArray(r.purchase_receipt_urls) ? [...r.purchase_receipt_urls] : [];
   if (newFiles.length) {
     showToast(`${newFiles.length} баримт upload хийж байна...`, '', 3000);
@@ -1994,7 +1998,8 @@ async function closeFinanceRequest(id) {
       const url = await uploadReceipt(f, r.id, 'receipt');
       if (url) existing.push(url);
     }
-    fileInput.value = '';
+    if (fileInput) fileInput.value = '';
+    state._fReceiptPending = [];
   }
   if (!existing.length) {
     showToast('Хүлээн авалтын баримт заавал хавсаргана уу', 'warn', 4000); return;

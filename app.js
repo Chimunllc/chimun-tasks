@@ -5631,7 +5631,7 @@ function initEvents() {
     const frequency = document.getElementById('f-frequency').value;
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
     // Заавал бөглөх — Зорилго, Дэд код, Салбар. Бусад нь CEO/S03 нөхөж бөглөнө.
-    if (!purpose) { showToast('Юу авах хэрэгтэйг бөглөнө үү', 'warn'); return; }
+    if (!purpose) { showToast('Зарцуулалтын тайлбараа бөглөнө үү', 'warn'); return; }
     // Ангилал/салбар нь зөвхөн нягтлан/CEO-д шаардагдана. Бусад ажилтан хоосон үлдээж болно.
     const isAcct = state.isCEO || (state.me === getFinanceExecutorEmail());
     if (isAcct) {

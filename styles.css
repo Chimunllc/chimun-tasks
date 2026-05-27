@@ -4920,3 +4920,35 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(245, 158, 11, 0.18);
 }
+
+/* Финансын модал — readonly талбарыг "энгийн текст шиг" харуулна (засах боломжгүй гэдэг нь
+   шууд харагдана). Зөвхөн finance-modal дотор хэрэглэнэ. */
+#finance-modal input[readonly],
+#finance-modal textarea[readonly] {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px dashed var(--border) !important;
+  border-radius: 0 !important;
+  padding: 6px 0 !important;
+  cursor: default;
+  color: var(--text);
+  font-weight: 500;
+}
+#finance-modal select[disabled] {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px dashed var(--border) !important;
+  border-radius: 0 !important;
+  padding: 6px 0 !important;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: default;
+  color: var(--text);
+  font-weight: 500;
+}
+#finance-modal input[readonly]:focus,
+#finance-modal textarea[readonly]:focus,
+#finance-modal select[disabled]:focus {
+  outline: none;
+  box-shadow: none;
+}

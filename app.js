@@ -1901,20 +1901,41 @@ function openFinanceModal(id = null) {
     // дээр аль хэдийн зөв тогтоосон). showReceipt-ийг устгана — давхардсан логик.
     document.getElementById('f-save').style.display = 'none';
 
-    // Decision banner — хоосон утга бол 'pending' гэж тооцох (Sheet sync-аас буцаж ирэхэд decision талбар хоосон байх магадлалтай)
+    // Stage-specific banner — одоо хаана байгаа, дараагийн алхам хэн дээр байгааг тодорхойлно
     const dec = t.decision || 'pending';
     const requester = memberName(t.requested_by);
-    const decisionLabels = {
-      pending:  { bg:'var(--warn-soft)',    col:'var(--warn)',    icon:'🕐', text:'Хүлээгдэж буй' },
-      approved: { bg:'var(--ok-soft)',      col:'var(--ok)',      icon:'✓',  text:'Зөвшөөрсөн' },
-      rejected: { bg:'var(--danger-soft)',  col:'var(--danger)',  icon:'✗',  text:'Татгалзсан' },
-      deferred: { bg:'var(--primary-soft)', col:'var(--primary)', icon:'🕐', text:'Хойшлогдсон' },
-    };
-    const d = decisionLabels[dec] || decisionLabels.pending;
-    let info = `<div style="background:${d.bg};color:${d.col};padding:8px 12px;border-radius:6px;font-weight:600;">${d.icon} ${d.text}</div>`;
-    info += `<div style="margin-top:6px;color:var(--muted);">Илгээгч: <strong>${escapeHtml(requester)}</strong>`;
-    if (t.decision_by) info += ` · Шийдвэр гаргасан: <strong>${escapeHtml(memberName(t.decision_by))}</strong>`;
-    if (t.executed_by) info += ` · Гүйцэтгэсэн: <strong>${escapeHtml(memberName(t.executed_by))}</strong>`;
+    const accountantName = memberName(getFinanceExecutorEmail()) || 'нягтлан';
+    let stage, bg, col, icon, headline, nextLine = '';
+    if (dec === 'pending') {
+      stage = 'Stage 2'; bg = 'var(--warn-soft)'; col = 'var(--warn)'; icon = '🕐';
+      headline = 'CEO шийдвэр гаргахыг хүлээж байна';
+    } else if (dec === 'rejected') {
+      stage = 'Татгалзсан'; bg = 'var(--danger-soft)'; col = 'var(--danger)'; icon = '✗';
+      headline = 'CEO энэ хүсэлтийг татгалзсан';
+      if (t.decision_reason) nextLine = `Шалтгаан: ${escapeHtml(t.decision_reason)}`;
+    } else if (dec === 'deferred') {
+      stage = 'Хойшлогдсон'; bg = 'var(--primary-soft)'; col = 'var(--primary)'; icon = '🕐';
+      headline = 'CEO хойшлуулсан';
+    } else if (dec === 'approved' && !t.executed_at) {
+      stage = 'Stage 3'; bg = 'var(--ok-soft)'; col = 'var(--ok)'; icon = '✓';
+      headline = 'CEO зөвшөөрсөн · нягтлан гүйлгээ хийнэ';
+      nextLine = `Яаралтай бол ${escapeHtml(accountantName)}-тай шууд холбогдоно уу.`;
+    } else if (dec === 'approved' && t.executed_at && t.status !== 'done') {
+      stage = 'Stage 4'; bg = 'var(--primary-soft)'; col = 'var(--primary)'; icon = '💵';
+      headline = 'Гүйлгээ хийгдсэн · бараа хүлээн авч хаахыг хүлээж байна';
+      nextLine = `${escapeHtml(accountantName)} НӨАТ/баримтаар хаана.`;
+    } else if (t.status === 'done') {
+      stage = 'Дууссан'; bg = 'var(--ok-soft)'; col = 'var(--ok)'; icon = '✓';
+      headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
+    } else {
+      stage = ''; bg = 'var(--panel-hover)'; col = 'var(--text)'; icon = '•'; headline = '—';
+    }
+    let info = `<div style="background:${bg};color:${col};padding:10px 12px;border-radius:8px;font-weight:600;font-size:13px;">${icon} ${escapeHtml(headline)}`;
+    if (nextLine) info += `<div style="font-weight:400;font-size:12px;margin-top:4px;opacity:0.9;">${nextLine}</div>`;
+    info += `</div>`;
+    info += `<div style="margin-top:6px;color:var(--muted);font-size:11px;">Илгээгч: <strong>${escapeHtml(requester)}</strong>`;
+    if (t.decision_by) info += ` · CEO: <strong>${escapeHtml(memberName(t.decision_by))}</strong>`;
+    if (t.executed_by) info += ` · Гүйлгэсэн: <strong>${escapeHtml(memberName(t.executed_by))}</strong>`;
     info += `</div>`;
     decisionInfo.innerHTML = info;
     decisionInfo.style.display = 'block';

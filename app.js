@@ -3952,17 +3952,17 @@ function renderRow(t) {
     extraHtml += `<span class="stage-locked-hint">🔒 ${prevName} дуусгахыг хүлээж байна</span>`;
   }
   if (isFinance) {
-    const decisionPills = {
-      pending:  '<span class="finance-pill pending">🕐 Хүлээгдэж буй</span>',
-      approved: '<span class="finance-pill approved">✓ Зөвшөөрсөн · Гүйлгээ хүлээж буй</span>',
-      rejected: '<span class="finance-pill rejected">✗ Татгалзсан</span>',
-      deferred: '<span class="finance-pill deferred">🕐 Хойшлогдсон</span>',
-    };
-    const pill = decisionPills[t.decision || 'pending'] || decisionPills.pending;
-    extraHtml += pill;
-    if (t.status === 'done' && (t.decision === 'approved' || t.executed_at)) {
-      extraHtml += '<span class="finance-pill executed">💵 Гүйцэтгэсэн</span>';
+    const dec = t.decision || 'pending';
+    let pillHtml;
+    if (dec === 'pending')      pillHtml = '<span class="finance-pill pending">🕐 Хүлээгдэж буй</span>';
+    else if (dec === 'rejected') pillHtml = '<span class="finance-pill rejected">✗ Татгалзсан</span>';
+    else if (dec === 'deferred') pillHtml = '<span class="finance-pill deferred">🕐 Хойшлогдсон</span>';
+    else if (dec === 'approved') {
+      if (t.status === 'done')       pillHtml = '<span class="finance-pill executed">✓ Дууссан</span>';
+      else if (t.executed_at)        pillHtml = '<span class="finance-pill executed">💵 Гүйлгээ хийгдсэн · хаахыг хүлээж буй</span>';
+      else                            pillHtml = '<span class="finance-pill approved">✓ Зөвшөөрсөн · гүйлгээ хүлээж буй</span>';
     }
+    if (pillHtml) extraHtml += pillHtml;
   }
 
   // Status dot — shows current task state subtly

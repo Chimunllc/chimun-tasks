@@ -1278,13 +1278,21 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
 function financeAsTask(r) {
   const executorId = r.executor || getFinanceExecutorEmail();
+  // Assignee logic:
+  //  - pending: CEO (тэр шийдвэр гаргана)
+  //  - approved + хаагдаагүй: executor (нягтлан хийнэ)
+  //  - done + approved: executor (хаасан түүх тэр хүний дээр үлдэнэ)
+  //  - rejected: CEO (тэр шийдсэн)
+  let assignee;
+  if (r.decision === 'approved') assignee = executorId;
+  else assignee = getCEOEmail();
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
     desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + (r.justification || ''),
     branch: 'shared',
     project: 'finance',
-    assignee: (r.decision === 'approved' && r.status !== 'done') ? executorId : getCEOEmail(),
+    assignee,
     due: r.due_date || '',
     priority: 'high',
     status: r.status || 'open',

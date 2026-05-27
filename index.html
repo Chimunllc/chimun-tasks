@@ -548,24 +548,13 @@
     <input id="f-purchase-file" type="file" accept="image/*,application/pdf" capture="environment" multiple style="display:none;" />
     <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
 
-    <!-- COLLAPSIBLE "ДЭЛГЭРЭНГҮЙ" — нэмэлт талбарууд -->
-    <button type="button" class="f-expand-btn" id="f-toggle-advanced" style="background:none;border:none;color:var(--primary);font-size:13px;cursor:pointer;margin:12px 0 4px;padding:6px 0;display:flex;align-items:center;gap:4px;">
-      <span id="f-expand-icon">▾</span> Дэлгэрэнгүй мэдээлэл (хүлээн авагч, банк, тайлбар…)
-    </button>
-    <div id="f-advanced-fields" style="display:none;">
-      <label>Хэн рүү төлөх вэ?</label>
-      <input id="f-beneficiary" placeholder="Шинэст ХХК / Б.Алтансүх" />
-      <label>Аль банк руу?</label>
-      <select id="f-bank"></select>
-      <label>Дансны дугаар</label>
-      <input id="f-account" inputmode="numeric" placeholder="5045123456" />
-      <label>Нэмэлт тайлбар</label>
-      <textarea id="f-justification" placeholder="Нэхэмжлэхийн №, гэрээний линк..."></textarea>
-      <label>Хэзээ хэрэгтэй вэ?</label>
-      <input id="f-due" type="date" />
-      <label>Энэ зардал давтагдах уу?</label>
-      <select id="f-frequency"></select>
-    </div>
+    <!-- Хүлээн авагч/банк/данс/огноо/давтагдах нь хасагдсан — JS-д ID хэрэгцээтэй тул hidden үлдээв -->
+    <input id="f-beneficiary" type="hidden" />
+    <select id="f-bank" style="display:none;"></select>
+    <input id="f-account" type="hidden" />
+    <textarea id="f-justification" style="display:none;"></textarea>
+    <input id="f-due" type="hidden" />
+    <select id="f-frequency" style="display:none;"></select>
 
     <!-- Stage 3 + 4 — Зөвхөн нягтлан/CEO-д харагдана. Илгээгчид хэрэггүй. -->
     <div id="f-accountant-stages" style="display:none;">

@@ -1800,12 +1800,13 @@ function openFinanceModal(id = null) {
     toggleFinanceFileInput('f-purchase-file', true);
     document.getElementById('f-purchase-label').style.display = '';
     submitActions.style.setProperty('display', '', 'important');
-    // Ангилал/салбар + Stage 3/4 баримтын хэсгүүд — зөвхөн нягтлан/CEO-д харагдана.
-    const isAccountantOrCEO = state.isCEO || (state.me === getFinanceExecutorEmail());
+    // ШИНЭ хүсэлт үед — CEO ч бусад ажилтантай адил энгийн форм.
+    // Зөвхөн нягтлан өөрөө хүсэлт гаргаж байвал ангилал/Stage 3-4 харагдана.
+    const isAccountantNew = (state.me === getFinanceExecutorEmail());
     const acctSection = document.getElementById('f-accountant-only');
-    if (acctSection) acctSection.style.display = isAccountantOrCEO ? '' : 'none';
+    if (acctSection) acctSection.style.display = isAccountantNew ? '' : 'none';
     const acctStages = document.getElementById('f-accountant-stages');
-    if (acctStages) acctStages.style.display = isAccountantOrCEO ? '' : 'none';
+    if (acctStages) acctStages.style.display = isAccountantNew ? '' : 'none';
     const fSaveNew = document.getElementById('f-save');
     fSaveNew.style.display = '';
     fSaveNew.textContent = 'Илгээх';
@@ -5676,9 +5677,10 @@ function initEvents() {
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
     // Заавал бөглөх — Зорилго, Дэд код, Салбар. Бусад нь CEO/S03 нөхөж бөглөнө.
     if (!purpose) { showToast('Зарцуулалтын тайлбараа бөглөнө үү', 'warn'); return; }
-    // Ангилал/салбар нь зөвхөн нягтлан/CEO-д шаардагдана. Бусад ажилтан хоосон үлдээж болно.
-    const isAcct = state.isCEO || (state.me === getFinanceExecutorEmail());
-    if (isAcct) {
+    // ШИНЭ хүсэлт илгээж байгаа нь зөвхөн нягтлан өөрөө бол ангилал шаардана.
+    // CEO ч энгийн ажилтан шиг хоосон үлдээж болно (нягтлан дараа нь бөглөнө).
+    const isAcctSubmit = (state.me === getFinanceExecutorEmail());
+    if (isAcctSubmit) {
       if (!category) { showToast('Дэд ангилал сонгоно уу', 'warn'); return; }
       if (!deptBranch) { showToast('Аль салбарт хамаарахыг сонгоно уу', 'warn'); return; }
     }

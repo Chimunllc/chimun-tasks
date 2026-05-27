@@ -1795,10 +1795,12 @@ function openFinanceModal(id = null) {
     toggleFinanceFileInput('f-purchase-file', true);
     document.getElementById('f-purchase-label').style.display = '';
     submitActions.style.setProperty('display', '', 'important');
-    // Ангилал/салбарын хэсэг — зөвхөн нягтлан/CEO-д харагдана. Бусад ажилтан мэдэхгүй.
+    // Ангилал/салбар + Stage 3/4 баримтын хэсгүүд — зөвхөн нягтлан/CEO-д харагдана.
     const isAccountantOrCEO = state.isCEO || (state.me === getFinanceExecutorEmail());
     const acctSection = document.getElementById('f-accountant-only');
     if (acctSection) acctSection.style.display = isAccountantOrCEO ? '' : 'none';
+    const acctStages = document.getElementById('f-accountant-stages');
+    if (acctStages) acctStages.style.display = isAccountantOrCEO ? '' : 'none';
     const fSaveNew = document.getElementById('f-save');
     fSaveNew.style.display = '';
     fSaveNew.textContent = 'Илгээх';
@@ -1829,10 +1831,12 @@ function openFinanceModal(id = null) {
       document.getElementById('f-category').value = subCode;
     }
     document.getElementById('f-dept-branch').value = t.dept_branch || 'ХАМТ';
-    // Ангилал/салбарын хэсэг — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
+    // Ангилал/салбар + Stage 3/4 — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
     const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
     const acctSectionView = document.getElementById('f-accountant-only');
     if (acctSectionView) acctSectionView.style.display = isAccountantOrCEOview ? '' : 'none';
+    const acctStagesView = document.getElementById('f-accountant-stages');
+    if (acctStagesView) acctStagesView.style.display = isAccountantOrCEOview ? '' : 'none';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
     // Multi-file жагсаалт — Stage 1 болон Stage 4-ийн хувьд массивыг харуулна.
     const purchaseUrls = Array.isArray(t.purchase_proof_urls) ? t.purchase_proof_urls

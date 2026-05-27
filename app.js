@@ -1867,13 +1867,13 @@ function openFinanceModal(id = null) {
         document.getElementById('f-decision-reason-label').style.display = 'none';
       }
     }
-    // Payment file picker зөвхөн approved + туслах нягтлан үед. CEO үүрэгт ажил биш.
-    const showPayment = (t.decision === 'approved' && t.status !== 'done' && state.me === getFinanceExecutorEmail());
+    // Payment file picker — Stage 3: approved + НЭ гүйцэтгэгдээгүй + туслах нягтлан.
+    // executed_at тогтоогдсон бол Stage 3 дууссан, товчийг нуунa (давхар харагдвал
+    // хэрэглэгч Stage 4-ийн оронд буруу газар файл хавсаргадаг).
+    const showPayment = (t.decision === 'approved' && !t.executed_at && state.me === getFinanceExecutorEmail());
     toggleFinanceFileInput('f-payment-file', showPayment);
-    // Receipt picker — гүйцэтгэгдсэний дараа + requested_by (or CEO) — final receipt upload боломжтой
-    const showReceipt = (t.status === 'done' && t.decision === 'approved' && !t.purchase_receipt_url &&
-      (state.me === t.requested_by || state.isCEO));
-    toggleFinanceFileInput('f-receipt-file', showReceipt);
+    // Stage 4 receipt picker — gүйцэтгэгдсэн + хаагдаагүй + туслах нягтлан (canEditReceipt
+    // дээр аль хэдийн зөв тогтоосон). showReceipt-ийг устгана — давхардсан логик.
     document.getElementById('f-save').style.display = 'none';
 
     // Decision banner — хоосон утга бол 'pending' гэж тооцох (Sheet sync-аас буцаж ирэхэд decision талбар хоосон байх магадлалтай)

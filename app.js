@@ -4021,7 +4021,10 @@ function renderRow(t) {
     </div>
     <div class="col-priority">
       <span class="priority ${t.priority||'none'}" data-act="open">
-        ${({high:'🔴 Яаралтай',med:'🟡 Энгийн',low:'⚪ Чөлөөтэй',none:'—'})[t.priority||'none']}
+        ${(t._isFinance
+          ? ({high:'🔴 Чухал',med:'🟡 Энгийн',low:'⚪ Чөлөөтэй',none:'—'})
+          : ({high:'🔴 Яаралтай',med:'🟡 Энгийн',low:'⚪ Чөлөөтэй',none:'—'})
+        )[t.priority||'none']}
       </span>
     </div>
     <div>
@@ -4678,7 +4681,9 @@ function openTaskModal(id) {
   }
   if (t && !canEdit.all) {
     const branchLabel = ({'m-event':'M Event','camp':'NOMAAD Camp','shared':'Нэгдсэн','production':'Бэлтгэл'})[t.branch] || t.branch || '';
-    const priorityLabel = ({'low':'Чөлөөтэй','med':'Энгийн','high':'Яаралтай'})[t.priority] || '';
+    const priorityLabel = t._isFinance
+      ? ({'low':'Чөлөөтэй','med':'Энгийн','high':'Чухал'})[t.priority] || ''
+      : ({'low':'Чөлөөтэй','med':'Энгийн','high':'Яаралтай'})[t.priority] || '';
     const priorityColor = ({'low':'#10b981','med':'#f59e0b','high':'#ef4444'})[t.priority] || 'var(--muted)';
     readOnlyCard.style.display = '';
     readOnlyCard.innerHTML = `

@@ -1922,17 +1922,15 @@ function openFinanceModal(id = null) {
         fSave.textContent = '✎ Засах';
       }
       // Стадийн action товчнууд:
-      //  - CEO pending хүсэлт → Decision
-      //  - Туслах нягтлан approved + !executed_at → Шилжүүлсэн (Stage 3)
-      //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах (Stage 4)
-      if (!isRequester) {
-        if (dec === 'pending' && state.isCEO) {
-          decisionActions.style.setProperty('display', 'flex', 'important');
-        } else if (dec === 'approved' && !t.executed_at && isExecutor) {
-          executeActions.style.setProperty('display', 'flex', 'important');
-        } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && isExecutor) {
-          receiptActions.style.setProperty('display', 'flex', 'important');
-        }
+      //  - CEO pending хүсэлт → Decision (хүсэлт гаргагч өөрөө шийдэх боломжгүй)
+      //  - Туслах нягтлан approved + !executed_at → Шилжүүлсэн (өөрийн хүсэлт ч гүйлгэх ёстой)
+      //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах
+      if (dec === 'pending' && state.isCEO && !isRequester) {
+        decisionActions.style.setProperty('display', 'flex', 'important');
+      } else if (dec === 'approved' && !t.executed_at && isExecutor) {
+        executeActions.style.setProperty('display', 'flex', 'important');
+      } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && isExecutor) {
+        receiptActions.style.setProperty('display', 'flex', 'important');
       }
     } else if (canEditFields) {
       // EDIT mode — field-үүдийг unlock + Хадгалах товч

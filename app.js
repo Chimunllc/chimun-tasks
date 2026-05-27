@@ -5647,11 +5647,12 @@ function initEvents() {
       showToast('Зураг upload дуусахыг хүлээнэ үү...', 'warn', 3000);
       return;
     }
-    // Зураг/баримтгүй бол анхааруулга — CEO нь яг юу болохыг харах ёстой
+    // Зураг/баримт ЗААВАЛ хавсаргасан байх ёстой — CEO нь яг юу болохыг харах ёстой
     const pendingCount = (state._fPurchasePendingFiles || []).length;
     const hasAttach = (Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length > 0) || pendingCount > 0;
     if (!hasAttach) {
-      if (!(await showConfirm('Бараа бүтээгдэхүүний зураг эсвэл нэхэмжлэх хавсаргаагүй байна.\n\nCEO юу зөвшөөрөхөө харах боломжгүй. Зурагтайгаар илгээхийг зөвлөж байна.', { okText: 'Зураггүй илгээх', cancelText: 'Буцах · зураг нэмэх' }))) return;
+      showToast('⚠ Бараа бүтээгдэхүүний зураг эсвэл нэхэмжлэх ЗААВАЛ хавсаргах ёстой', 'warn', 5000);
+      return;
     }
     // Хэрэв дүн+банк+данс бүгд хоосон бол анхааруулга (гэхдээ үргэлжлүүлэх боломжтой)
     if ((!amount || Number(amount) <= 0) && !bank && !accountNumber && !purchaseFile) {

@@ -1679,7 +1679,12 @@ function fillFinanceSelects() {
 function toggleFinanceFileInput(inputId, show) {
   const input = document.getElementById(inputId);
   if (!input) return;
-  input.style.display = show ? '' : 'none';
+  // Native <input> үргэлж нуугдсан байх (бид styled <label for> товч ашигладаг).
+  // Тиймээс зөвхөн ОЙРОЛЦООХ label/preview-г нуух/харуулна.
+  input.style.display = 'none';
+  // Styled button label (for=<inputId>) олж нуух/харуулах
+  const styledBtn = document.querySelector(`label[for="${inputId}"]`);
+  if (styledBtn) styledBtn.style.display = show ? '' : 'none';
   // input-ээс өмнөх label + description div-ыг нуух/харуулах
   let prev = input.previousElementSibling;
   while (prev) {

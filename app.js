@@ -1711,10 +1711,10 @@ function renderProofPreview(elId, url, label) {
   }
   const m = String(url).match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/);
   const id = m ? (m[1] || m[2]) : null;
-  const thumb = id ? `https://lh3.googleusercontent.com/d/${id}=w400` : url;
+  const thumb = id ? `https://lh3.googleusercontent.com/d/${id}=w800` : url;
   const isImage = id || /\.(jpe?g|png|gif|webp|heic|bmp)(\?|$)/i.test(url);
   if (isImage) {
-    el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(label)} баримт" style="display:inline-block;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></a>`;
+    el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(label)} баримт" style="display:inline-block;width:180px;height:180px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></a>`;
   } else {
     el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${escapeHtml(label)} баримтыг харах</a>`;
   }
@@ -1976,7 +1976,7 @@ function renderFinanceFileList(containerId, urls, removable) {
   const toThumb = (u) => {
     const m = String(u||'').match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/);
     const id = m ? (m[1] || m[2]) : null;
-    if (id) return `https://lh3.googleusercontent.com/d/${id}=w400`;
+    if (id) return `https://lh3.googleusercontent.com/d/${id}=w800`;
     return u;
   };
   const isImage = (u) => /\.(jpe?g|png|gif|webp|heic|bmp)(\?|$)/i.test(u) || /drive\.google\.com/.test(u);
@@ -1984,8 +1984,8 @@ function renderFinanceFileList(containerId, urls, removable) {
     const safe = escapeHtml(u);
     if (isImage(u)) {
       return `
-        <div style="position:relative;width:96px;">
-          <a href="${safe}" target="_blank" rel="noopener" style="display:block;width:96px;height:96px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);">
+        <div style="position:relative;width:180px;">
+          <a href="${safe}" target="_blank" rel="noopener" style="display:block;width:180px;height:180px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);">
             <img src="${escapeHtml(toThumb(u))}" alt="Хавсралт ${i+1}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none';this.parentNode.innerHTML='${icon.replace(/'/g,"\\'")}<div style=&quot;padding:4px;font-size:11px;color:var(--muted);text-align:center;&quot;>Файл ${i+1}</div>';" />
           </a>
           ${removable ? `<button type="button" data-rm-idx="${i}" data-rm-container="${containerId}" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#fff;border:2px solid var(--panel);cursor:pointer;font-size:14px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">×</button>` : ''}

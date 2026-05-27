@@ -1790,6 +1790,10 @@ function openFinanceModal(id = null) {
     toggleFinanceFileInput('f-purchase-file', true);
     document.getElementById('f-purchase-label').style.display = '';
     submitActions.style.setProperty('display', '', 'important');
+    // Ангилал/салбарын хэсэг — зөвхөн нягтлан/CEO-д харагдана. Бусад ажилтан мэдэхгүй.
+    const isAccountantOrCEO = state.isCEO || (state.me === getFinanceExecutorEmail());
+    const acctSection = document.getElementById('f-accountant-only');
+    if (acctSection) acctSection.style.display = isAccountantOrCEO ? '' : 'none';
     const fSaveNew = document.getElementById('f-save');
     fSaveNew.style.display = '';
     fSaveNew.textContent = 'Илгээх';
@@ -1820,6 +1824,10 @@ function openFinanceModal(id = null) {
       document.getElementById('f-category').value = subCode;
     }
     document.getElementById('f-dept-branch').value = t.dept_branch || 'ХАМТ';
+    // Ангилал/салбарын хэсэг — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
+    const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
+    const acctSectionView = document.getElementById('f-accountant-only');
+    if (acctSectionView) acctSectionView.style.display = isAccountantOrCEOview ? '' : 'none';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
     // Multi-file жагсаалт — Stage 1 болон Stage 4-ийн хувьд массивыг харуулна.
     const purchaseUrls = Array.isArray(t.purchase_proof_urls) ? t.purchase_proof_urls
@@ -5609,8 +5617,12 @@ function initEvents() {
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
     // Заавал бөглөх — Зорилго, Дэд код, Салбар. Бусад нь CEO/S03 нөхөж бөглөнө.
     if (!purpose) { showToast('Юу авах хэрэгтэйг бөглөнө үү', 'warn'); return; }
-    if (!category) { showToast('Дэд ангилал сонгоно уу', 'warn'); return; }
-    if (!deptBranch) { showToast('Аль салбарт хамаарахыг сонгоно уу', 'warn'); return; }
+    // Ангилал/салбар нь зөвхөн нягтлан/CEO-д шаардагдана. Бусад ажилтан хоосон үлдээж болно.
+    const isAcct = state.isCEO || (state.me === getFinanceExecutorEmail());
+    if (isAcct) {
+      if (!category) { showToast('Дэд ангилал сонгоно уу', 'warn'); return; }
+      if (!deptBranch) { showToast('Аль салбарт хамаарахыг сонгоно уу', 'warn'); return; }
+    }
     // Upload дуусаагүй байгаа бол хүлээнэ
     if (state._fPurchaseUploading > 0) {
       showToast('Зураг upload дуусахыг хүлээнэ үү...', 'warn', 3000);

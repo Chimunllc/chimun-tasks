@@ -523,14 +523,17 @@
     <label>Юу авах хэрэгтэй вэ? <span class="req">*</span></label>
     <input id="f-purpose" placeholder="Жишээ: Дуучин Болд — 5/22 концерт" />
 
-    <label>Үндсэн ангилал <span class="req">*</span></label>
-    <select id="f-main-category"></select>
+    <!-- Дансны ангилал/салбар нь зөвхөн нягтлан/CEO-д харагдана. Энгийн ажилтан мэдэхгүй учир хоосон үлдээнэ. -->
+    <div id="f-accountant-only" style="display:none;">
+      <label>Үндсэн ангилал <span class="req">*</span> <span style="font-size:11px;color:var(--muted);font-weight:400;">(нягтлан бөглөх)</span></label>
+      <select id="f-main-category"></select>
 
-    <label>Дэд ангилал <span class="req">*</span></label>
-    <select id="f-category" disabled><option value="">— Эхлээд үндсэн ангилал сонго —</option></select>
+      <label>Дэд ангилал <span class="req">*</span></label>
+      <select id="f-category" disabled><option value="">— Эхлээд үндсэн ангилал сонго —</option></select>
 
-    <label>Аль салбарт? <span class="req">*</span></label>
-    <select id="f-dept-branch"></select>
+      <label>Аль салбарт? <span class="req">*</span></label>
+      <select id="f-dept-branch"></select>
+    </div>
 
     <label>Үнэ ойролцоогоор хэдэн төгрөг вэ?</label>
     <input id="f-amount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Мэдэхгүй бол хоосон үлдээж болно" />

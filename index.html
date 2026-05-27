@@ -420,9 +420,9 @@
     <input type="date" id="t-due" />
     <label>Зэрэглэл</label>
     <select id="t-priority">
-      <option value="med">🟡 Энгийн — энэ долоо хоног</option>
-      <option value="high">🔴 Яаралтай — өнөөдөр/маргааш</option>
-      <option value="low">⚪ Чөлөөтэй — хэдийд ч болно</option>
+      <option value="med">🟡 Энгийн</option>
+      <option value="high">🔴 Яаралтай</option>
+      <option value="low">⚪ Чөлөөтэй</option>
     </select>
 
     <label>Давтамж</label>
@@ -557,10 +557,15 @@
     <label>Дансны дугаар</label>
     <input id="f-account" inputmode="numeric" placeholder="5045123456" />
 
-    <label>Хэзээ хэрэгтэй вэ?</label>
-    <input id="f-due" type="date" />
+    <label>Зэрэглэл</label>
+    <select id="f-priority">
+      <option value="med">🟡 Энгийн</option>
+      <option value="high">🔴 Чухал</option>
+      <option value="low">⚪ Чөлөөтэй</option>
+    </select>
 
-    <!-- Нэмэлт тайлбар + Давтагдах уу хасагдав. JS dependency-д hidden үлдээв. -->
+    <!-- Огноо + Нэмэлт тайлбар + Давтагдах уу хасагдав. JS dependency-д hidden үлдээв. -->
+    <input id="f-due" type="hidden" />
     <textarea id="f-justification" style="display:none;"></textarea>
     <select id="f-frequency" style="display:none;"></select>
 

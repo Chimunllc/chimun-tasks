@@ -1294,7 +1294,7 @@ function financeAsTask(r) {
     project: 'finance',
     assignee,
     due: r.due_date || '',
-    priority: 'high',
+    priority: r.priority || 'med',
     status: r.status || 'open',
     kind: 'finance_request',
     amount: r.amount,
@@ -1580,14 +1580,14 @@ function normalizeFinance(r) {
     'status','decision','decision_at','decision_by','decision_reason',
     'executed_at','executed_by','executor','received_at','received_by',
     'purchase_proof_url','payment_proof_url','purchase_receipt_url',
-    'category','dept_branch','frequency','bank','account_number'];
+    'category','dept_branch','frequency','bank','account_number','priority'];
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
   return out;
 }
 
-async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber }) {
+async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber, priority }) {
   const owner = state.me || getCEOEmail();
   const r = {
     id: uid(),
@@ -1603,6 +1603,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     category: category || '9500',
     dept_branch: deptBranch || 'ХАМТ',
     frequency: frequency || 'Нэг удаагийн',
+    priority: priority || 'med',
     status: 'open',
     decision: 'pending',
     decision_at: '',
@@ -1776,6 +1777,7 @@ function openFinanceModal(id = null) {
     const defaultBranch = state.branch === 'm-event' ? 'ИВЕНТ' : (state.branch === 'camp' ? 'КЕМП' : 'ХАМТ');
     document.getElementById('f-dept-branch').value = defaultBranch;
     document.getElementById('f-frequency').value = 'Нэг удаагийн';
+    const fpNew = document.getElementById('f-priority'); if (fpNew) fpNew.value = 'med';
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
     document.getElementById('f-receipt-file').value = '';
@@ -1853,6 +1855,7 @@ function openFinanceModal(id = null) {
     const acctStagesView = document.getElementById('f-accountant-stages');
     if (acctStagesView) acctStagesView.style.display = isAccountantOrCEOview ? '' : 'none';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
+    const fpView = document.getElementById('f-priority'); if (fpView) fpView.value = t.priority || 'med';
     // Multi-file жагсаалт — Stage 1 болон Stage 4-ийн хувьд массивыг харуулна.
     const purchaseUrls = Array.isArray(t.purchase_proof_urls) ? t.purchase_proof_urls
                        : (t.purchase_proof_url ? [t.purchase_proof_url] : []);
@@ -5679,6 +5682,7 @@ function initEvents() {
     const category = document.getElementById('f-category').value;
     const deptBranch = document.getElementById('f-dept-branch').value;
     const frequency = document.getElementById('f-frequency').value;
+    const priority = document.getElementById('f-priority')?.value || 'med';
     const purchaseFile = document.getElementById('f-purchase-file').files[0];
     // Заавал бөглөх — Зорилго, Дэд код, Салбар. Бусад нь CEO/S03 нөхөж бөглөнө.
     if (!purpose) { showToast('Зарцуулалтын тайлбараа бөглөнө үү', 'warn'); return; }
@@ -5708,7 +5712,7 @@ function initEvents() {
     const btn = document.getElementById('f-save');
     btn.disabled = true;
     try {
-      const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency });
+      const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency, priority });
       // Хойшлогдсон файлуудыг ОДОО Drive-руу upload хийнэ (request бүртгэгдсэний дараа real ID ашиглана)
       const pendingFiles = state._fPurchasePendingFiles || [];
       if (pendingFiles.length) {

@@ -2022,19 +2022,23 @@ async function executeFinanceRequest(id) {
   if (state.me !== executorId && !state.isCEO) {
     showToast('Зөвхөн Туслах нягтлан гүйлгээ хийх эрхтэй', 'error'); return;
   }
-  // Шилжүүлгийн баримт заавал хавсаргасан байх ёстой — modal-ийн file picker эсвэл өмнө upload-сан URL
+  // Шилжүүлгийн баримт заавал хавсаргасан байх ёстой — input.files эсвэл pending state эсвэл өмнө upload-сан URL
   const paymentInput = document.getElementById('f-payment-file');
-  const hasNewFile = paymentInput && paymentInput.files && paymentInput.files[0];
-  if (!r.payment_proof_url && !hasNewFile) {
+  const inputFile = paymentInput && paymentInput.files && paymentInput.files[0];
+  const pendingFile = state._fPaymentPending;
+  const newFile = inputFile || pendingFile;
+  if (!r.payment_proof_url && !newFile) {
     showToast('Шилжүүлгийн баримт заавал хавсаргана уу', 'warn', 4000);
     return;
   }
   // Шинээр сонгосон бол upload хийгээд URL-ыг хадгална
-  if (hasNewFile) {
+  if (newFile) {
     showToast('Баримт upload хийж байна...', '', 2000);
-    const url = await uploadReceipt(paymentInput.files[0], r.id, 'payment');
+    const url = await uploadReceipt(newFile, r.id, 'payment');
     if (!url) { showToast('Баримт upload амжилтгүй', 'error'); return; }
     r.payment_proof_url = url;
+    state._fPaymentPending = null;
+    if (paymentInput) paymentInput.value = '';
   }
   // Шилжүүлэг хийгдсэн — status=done БҮҮ тогтоо. Status open хэвээр үлдэж, дараа нь
   // closeFinanceRequest (Бараа хүлээн авч хаах) дуудагдмагц л status=done болно.
@@ -5529,6 +5533,18 @@ function initEvents() {
     state._fReceiptPending = files;
     renderFinanceFileList('f-receipt-list', [...(state._fReceiptUrls || []), ...tmpList], false);
     showToast(`${files.length} файл сонгогдсон — "Хүлээн авч хаах" товч дарж хадгална`, 'info', 3000);
+  });
+  // Stage 3 payment picker — change үед файлыг pending state-д хадгална
+  document.getElementById('f-payment-file')?.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    state._fPaymentPending = f;
+    const prev = document.getElementById('f-payment-preview');
+    if (prev) {
+      const url = URL.createObjectURL(f);
+      prev.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--panel-hover);border-radius:6px;font-size:13px;"><img src="${url}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'"/><span style="flex:1;">${f.name}</span></div>`;
+    }
+    showToast('Шилжүүлгийн баримт сонгогдсон — "Гүйлгээ хийгдсэн" товч дарж илгээнэ', 'info', 3000);
   });
   // Multi-file жагсаалтаас X товч дарахад нэг хавсралт хасах
   document.addEventListener('click', async (e) => {

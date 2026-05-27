@@ -1790,6 +1790,11 @@ function openFinanceModal(id = null) {
     state._fPurchaseUrls = [];
     state._fReceiptUrls = [];
     state._fPurchasePendingFiles = [];  // Илгээх дармагц upload хийгдэнэ
+    // New request — input харуулна, display нуунa
+    const amountDispNew = document.getElementById('f-amount-display');
+    const amountInputNew = document.getElementById('f-amount');
+    if (amountDispNew) amountDispNew.style.display = 'none';
+    if (amountInputNew) amountInputNew.style.display = '';
     renderFinanceFileList('f-purchase-list', [], true);
     renderFinanceFileList('f-receipt-list', [], true);
     toggleFinanceFileInput('f-purchase-file', true);
@@ -1808,6 +1813,15 @@ function openFinanceModal(id = null) {
     // VIEW existing — populate read-only
     title.innerHTML = ICONS.wallet + ' Хүсэлт #' + escapeHtml(t.id.slice(-5));
     document.getElementById('f-amount').value = t.amount || '';
+    // View mode-д үнийг "113,000₮" хэлбэрээр тод харуулна (raw input биш)
+    const amountDisp = document.getElementById('f-amount-display');
+    const amountInput = document.getElementById('f-amount');
+    if (amountDisp && amountInput) {
+      const n = Number(t.amount) || 0;
+      amountDisp.textContent = n > 0 ? `${n.toLocaleString('mn-MN')}₮` : '—';
+      amountDisp.style.display = '';
+      amountInput.style.display = 'none';
+    }
     document.getElementById('f-beneficiary').value = t.beneficiary || '';
     document.getElementById('f-bank').value = t.bank || '';
     document.getElementById('f-account').value = t.account_number || '';
@@ -1974,6 +1988,11 @@ function openFinanceModal(id = null) {
       // EDIT mode — field-үүдийг unlock + Хадгалах товч
       ['f-amount','f-beneficiary','f-account','f-purpose','f-justification','f-due']
         .forEach(id => document.getElementById(id)?.removeAttribute('readonly'));
+      // Үнийн display-г нуугаад input буцааж харуулна
+      const amtDispE = document.getElementById('f-amount-display');
+      const amtInputE = document.getElementById('f-amount');
+      if (amtDispE) amtDispE.style.display = 'none';
+      if (amtInputE) amtInputE.style.display = '';
       ['f-bank','f-main-category','f-category','f-frequency','f-dept-branch']
         .forEach(id => document.getElementById(id)?.removeAttribute('disabled'));
       submitActions.style.setProperty('display', '', 'important');

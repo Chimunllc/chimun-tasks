@@ -819,7 +819,7 @@ function nameToEmail(val) {
 }
 /* Код ↔ монгол текст хөрвүүлэх maps (Sheet нь зөвхөн монголоор) */
 const _BRANCH_E2M = { 'm-event':'M Event', 'camp':'NOMAAD Camp', 'shared':'Нэгдсэн', 'production':'Бэлтгэл' };
-const _PRIORITY_E2M = { 'low':'Бага', 'med':'Дунд', 'high':'Өндөр', 'none':'' };
+const _PRIORITY_E2M = { 'low':'Чөлөөтэй', 'med':'Энгийн', 'high':'Яаралтай', 'none':'' };
 const _STATUS_E2M = { 'open':'Идэвхтэй', 'done':'Дууссан', 'deleted':'Устгасан', 'locked':'Түгжээтэй' };
 const _KIND_E2M = { 'act_parent':'Эх захиалга', 'act_stage':'Дамжлага' };
 const _DECISION_E2M = { 'pending':'Хүлээгдэж буй', 'approved':'Зөвшөөрсөн', 'rejected':'Татгалзсан', 'deferred':'Хойшлуулсан' };
@@ -4021,7 +4021,7 @@ function renderRow(t) {
     </div>
     <div class="col-priority">
       <span class="priority ${t.priority||'none'}" data-act="open">
-        ${({high:'Өндөр',med:'Дунд',low:'Бага',none:'—'})[t.priority||'none']}
+        ${({high:'🔴 Яаралтай',med:'🟡 Энгийн',low:'⚪ Чөлөөтэй',none:'—'})[t.priority||'none']}
       </span>
     </div>
     <div>
@@ -4678,7 +4678,7 @@ function openTaskModal(id) {
   }
   if (t && !canEdit.all) {
     const branchLabel = ({'m-event':'M Event','camp':'NOMAAD Camp','shared':'Нэгдсэн','production':'Бэлтгэл'})[t.branch] || t.branch || '';
-    const priorityLabel = ({'low':'Бага','med':'Дунд','high':'Өндөр'})[t.priority] || '';
+    const priorityLabel = ({'low':'Чөлөөтэй','med':'Энгийн','high':'Яаралтай'})[t.priority] || '';
     const priorityColor = ({'low':'#10b981','med':'#f59e0b','high':'#ef4444'})[t.priority] || 'var(--muted)';
     readOnlyCard.style.display = '';
     readOnlyCard.innerHTML = `
@@ -5066,7 +5066,7 @@ function csvCell(v) {
 }
 function exportTasksReport() {
   const statusMn = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };
-  const prioMn = { high: 'Өндөр', med: 'Дунд', low: 'Бага', none: '—' };
+  const prioMn = { high: 'Яаралтай', med: 'Энгийн', low: 'Чөлөөтэй', none: '—' };
   const today = todayStr();
   const tasks = state.tasks.filter(t => t.status !== 'deleted');
   const rows = tasks.map(t => [

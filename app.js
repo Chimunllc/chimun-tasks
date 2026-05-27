@@ -1724,6 +1724,10 @@ function closeFinanceModal() {
   document.getElementById('finance-modal').classList.remove('open');
   state.editingId = null;
   state._financeViewMode = null;
+  // Болих/X дарвал хойшлогдсон файлуудыг хаяна — Drive-руу илгээгдэхгүй
+  state._fPurchasePendingFiles = [];
+  state._fReceiptPending = [];
+  state._fPaymentPending = null;
 }
 
 function openFinanceModal(id = null) {
@@ -1785,6 +1789,7 @@ function openFinanceModal(id = null) {
     // NEW request — submitActions visible, f-save = "Илгээх". Multi-file picker анхдагч хоосон.
     state._fPurchaseUrls = [];
     state._fReceiptUrls = [];
+    state._fPurchasePendingFiles = [];  // Илгээх дармагц upload хийгдэнэ
     renderFinanceFileList('f-purchase-list', [], true);
     renderFinanceFileList('f-receipt-list', [], true);
     toggleFinanceFileInput('f-purchase-file', true);
@@ -5511,28 +5516,38 @@ function initEvents() {
     if (!state.editingId) return;
     await withBusy(e.currentTarget, () => closeFinanceRequest(state.editingId), { successText: 'Хаагдлаа' });
   });
-  // Multi-file picker change handlers — сонгосон файлуудыг шууд upload + жагсаалтад нэмнэ
+  // Multi-file picker change handler:
+  //  - ШИНЭ хүсэлт (editingId хоосон): upload-ыг ХОЙШЛУУЛНА. Илгээх товч дармагц л Drive-руу
+  //    илгээгдэнэ. Илгээх хийгээгүй бол Drive-д хог үлдэхгүй.
+  //  - ЗАСАЖ БУЙ (editingId): хүсэлт аль хэдийн Sheet-д бий тул шууд upload + автомат хадгалалт.
   document.getElementById('f-purchase-file')?.addEventListener('change', async (e) => {
     const files = [...(e.target.files || [])];
     if (!files.length) return;
     const editingId = state.editingId;
+    if (!editingId) {
+      // Шинэ хүсэлт — файлуудыг локалд хадгалаад preview-нд харуулна (Илгээх дармагц upload).
+      state._fPurchasePendingFiles = (state._fPurchasePendingFiles || []).concat(files);
+      const tmpUrls = state._fPurchasePendingFiles.map(f => URL.createObjectURL(f));
+      renderFinanceFileList('f-purchase-list', [...(state._fPurchaseUrls || []), ...tmpUrls], true);
+      e.target.value = '';
+      showToast(`${files.length} зураг сонгогдсон — "Илгээх" дармагц Drive руу илгээнэ`, 'info', 2500);
+      return;
+    }
+    // Хуучин хүсэлт — шууд upload
     const btn = document.getElementById('f-purchase-btn');
     state._fPurchaseUploading = (state._fPurchaseUploading || 0) + files.length;
     if (btn) { btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none';
-      btn.querySelector('svg + *, span')?.remove?.();
       btn.lastChild.textContent = ` Upload хийж байна... ${state._fPurchaseUploading}`;
     }
     for (const f of files) {
-      const url = await uploadReceipt(f, editingId || 'new', 'purchase');
+      const url = await uploadReceipt(f, editingId, 'purchase');
       if (url) {
         state._fPurchaseUrls = state._fPurchaseUrls || [];
         state._fPurchaseUrls.push(url);
-        if (editingId) {
-          const r = state.financeRequests.find(x => x.id === editingId);
-          if (r) {
-            r.purchase_proof_urls = [...state._fPurchaseUrls];
-            await saveFinanceRequest(r);
-          }
+        const r = state.financeRequests.find(x => x.id === editingId);
+        if (r) {
+          r.purchase_proof_urls = [...state._fPurchaseUrls];
+          await saveFinanceRequest(r);
         }
       }
       state._fPurchaseUploading--;
@@ -5629,7 +5644,8 @@ function initEvents() {
       return;
     }
     // Зураг/баримтгүй бол анхааруулга — CEO нь яг юу болохыг харах ёстой
-    const hasAttach = Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length > 0;
+    const pendingCount = (state._fPurchasePendingFiles || []).length;
+    const hasAttach = (Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length > 0) || pendingCount > 0;
     if (!hasAttach) {
       if (!(await showConfirm('Бараа бүтээгдэхүүний зураг эсвэл нэхэмжлэх хавсаргаагүй байна.\n\nCEO юу зөвшөөрөхөө харах боломжгүй. Зурагтайгаар илгээхийг зөвлөж байна.', { okText: 'Зураггүй илгээх', cancelText: 'Буцах · зураг нэмэх' }))) return;
     }
@@ -5641,7 +5657,20 @@ function initEvents() {
     btn.disabled = true;
     try {
       const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency });
-      // Multi-file picker дээр аль хэдийн upload хийгдсэн URL-ууд (purchase_proof_urls):
+      // Хойшлогдсон файлуудыг ОДОО Drive-руу upload хийнэ (request бүртгэгдсэний дараа real ID ашиглана)
+      const pendingFiles = state._fPurchasePendingFiles || [];
+      if (pendingFiles.length) {
+        showToast(`${pendingFiles.length} зураг Drive руу илгээж байна...`, '', 3000);
+        for (const f of pendingFiles) {
+          const url = await uploadReceipt(f, newRequest.id, 'purchase');
+          if (url) {
+            state._fPurchaseUrls = state._fPurchaseUrls || [];
+            state._fPurchaseUrls.push(url);
+          }
+        }
+        state._fPurchasePendingFiles = [];
+      }
+      // Multi-file picker дээр upload хийгдсэн бүх URL:
       if (Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length) {
         newRequest.purchase_proof_urls = [...state._fPurchaseUrls];
         await saveFinanceRequest(newRequest);

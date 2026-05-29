@@ -4237,7 +4237,7 @@ function promptCompletionPhoto(task, opts = {}) {
     const renderList = () => {
       listEl.innerHTML = photos.map((p, i) =>
         `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
-           <img src="${escapeHtml(p)}" style="width:100%;height:100%;object-fit:cover;" />
+           <img src="${escapeHtml(driveThumbUrl(p, 400))}" loading="lazy" style="width:100%;height:100%;object-fit:cover;" />
            <button data-rm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:14px;cursor:pointer;line-height:1;">×</button>
          </div>`
       ).join('');

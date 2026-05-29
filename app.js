@@ -1600,8 +1600,8 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     purpose: purpose || '',
     justification: justification || '',
     due_date: dueDate || '',
-    category: category || '9500',
-    dept_branch: deptBranch || 'ХАМТ',
+    category: category || '',       // Нягтлан гараар сонгох — default утга оноохгүй
+    dept_branch: deptBranch || '',   // Нягтлан гараар сонгох
     frequency: frequency || 'Нэг удаагийн',
     priority: priority || 'med',
     status: 'open',
@@ -1848,7 +1848,7 @@ function openFinanceModal(id = null) {
       document.getElementById('f-category').disabled = false;
       document.getElementById('f-category').value = subCode;
     }
-    document.getElementById('f-dept-branch').value = t.dept_branch || 'ХАМТ';
+    document.getElementById('f-dept-branch').value = t.dept_branch || '';
     // Ангилал/салбар + Stage 3/4 — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
     const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
     const acctSectionView = document.getElementById('f-accountant-only');
@@ -2096,6 +2096,25 @@ async function executeFinanceRequest(id) {
   if (state.me !== executorId && !state.isCEO) {
     showToast('Зөвхөн Туслах нягтлан гүйлгээ хийх эрхтэй', 'error'); return;
   }
+  // Ангилал + салбар нягтлан гараар сонгох ёстой — гүйлгээ хийхийн өмнө шалгана
+  const catSel = document.getElementById('f-category');
+  const branchSel = document.getElementById('f-dept-branch');
+  const catValue = catSel?.value || '';
+  const branchValue = branchSel?.value || '';
+  if (!catValue) {
+    showToast('⚠ Дэд ангилал сонгоно уу — гүйлгээ хийхийн өмнө', 'warn', 4000);
+    catSel?.focus();
+    return;
+  }
+  if (!branchValue) {
+    showToast('⚠ Аль салбарт хамаарахыг сонгоно уу', 'warn', 4000);
+    branchSel?.focus();
+    return;
+  }
+  // Шинэ утга байвал хадгална (нягтлан сонгосон утга)
+  if (catValue !== r.category) r.category = catValue;
+  if (branchValue !== r.dept_branch) r.dept_branch = branchValue;
+
   // Шилжүүлгийн баримт заавал хавсаргасан байх ёстой — input.files эсвэл pending state эсвэл өмнө upload-сан URL
   const paymentInput = document.getElementById('f-payment-file');
   const inputFile = paymentInput && paymentInput.files && paymentInput.files[0];

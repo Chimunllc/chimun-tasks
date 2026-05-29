@@ -1276,16 +1276,34 @@ async function createOrderAct({ customer, eventDate, location, desc }) {
 }
 
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
+// Жижиг дүн (300,000₮-аас доош) → салбарын менежер баталдаг. Эрхгүй бол CEO.
+//  ИВЕНТ — И.Алтансүх ·  КЕМП — Дэлгэрбат ·  ЗАХ — Анужин
+function getFinanceApprover(r) {
+  const amt = Number(r?.amount) || 0;
+  if (amt > 0 && amt < 300000) {
+    const branch = String(r?.dept_branch || '').toUpperCase();
+    let needle = null;
+    if (branch === 'ИВЕНТ') needle = 'алтансүх';
+    else if (branch === 'КЕМП') needle = 'дэлгэрбат';
+    else if (branch === 'ЗАХ' || branch === 'ЗАХИРГАА') needle = 'анужин';
+    if (needle) {
+      const found = (TEAM || []).find(m => String(m.name || '').toLowerCase().includes(needle));
+      if (found) return found.email || found.id;
+    }
+  }
+  return getCEOEmail();
+}
+
 function financeAsTask(r) {
   const executorId = r.executor || getFinanceExecutorEmail();
   // Assignee logic:
-  //  - pending: CEO (тэр шийдвэр гаргана)
+  //  - pending: salbar manager эсвэл CEO (getFinanceApprover)
   //  - approved + хаагдаагүй: executor (нягтлан хийнэ)
   //  - done + approved: executor (хаасан түүх тэр хүний дээр үлдэнэ)
-  //  - rejected: CEO (тэр шийдсэн)
+  //  - rejected: salbar manager эсвэл CEO (тэр шийдсэн)
   let assignee;
   if (r.decision === 'approved') assignee = executorId;
-  else assignee = getCEOEmail();
+  else assignee = getFinanceApprover(r);
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
@@ -1927,7 +1945,8 @@ function openFinanceModal(id = null) {
     let stage, bg, col, icon, headline, nextLine = '';
     if (dec === 'pending') {
       stage = 'Stage 2'; bg = 'var(--warn-soft)'; col = 'var(--warn)'; icon = '🕐';
-      headline = 'CEO шийдвэр гаргахыг хүлээж байна';
+      const approverNm = memberName(getFinanceApprover(t)) || 'CEO';
+      headline = `${approverNm} шийдвэр гаргахыг хүлээж байна`;
     } else if (dec === 'rejected') {
       stage = 'Татгалзсан'; bg = 'var(--danger-soft)'; col = 'var(--danger)'; icon = '✗';
       headline = 'CEO энэ хүсэлтийг татгалзсан';
@@ -1982,7 +2001,9 @@ function openFinanceModal(id = null) {
       //  - CEO pending хүсэлт → Decision (хүсэлт гаргагч өөрөө шийдэх боломжгүй)
       //  - Туслах нягтлан approved + !executed_at → Шилжүүлсэн (өөрийн хүсэлт ч гүйлгэх ёстой)
       //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах
-      if (dec === 'pending' && state.isCEO && !isRequester) {
+      const approverEmail = getFinanceApprover(t);
+      const isApprover = (state.me === approverEmail);
+      if (dec === 'pending' && (state.isCEO || isApprover) && !isRequester) {
         decisionActions.style.setProperty('display', 'flex', 'important');
       } else if (dec === 'approved' && !t.executed_at && isExecutor) {
         executeActions.style.setProperty('display', 'flex', 'important');

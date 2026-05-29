@@ -1715,7 +1715,8 @@ function renderProofPreview(elId, url, label) {
   const thumb = id ? `https://lh3.googleusercontent.com/d/${id}=w800` : url;
   const isImage = id || /\.(jpe?g|png|gif|webp|heic|bmp)(\?|$)/i.test(url);
   if (isImage) {
-    el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" title="${escapeHtml(label)} баримт" style="display:inline-block;width:180px;height:180px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></a>`;
+    const full = id ? `https://lh3.googleusercontent.com/d/${id}=w1600` : url;
+    el.innerHTML = `<button type="button" data-lightbox="${escapeHtml(full)}" data-fallback="${escapeHtml(url)}" title="${escapeHtml(label)} баримт" style="display:inline-block;width:180px;height:180px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);padding:0;cursor:zoom-in;"><img src="${escapeHtml(thumb)}" alt="${escapeHtml(label)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></button>`;
   } else {
     el.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>${escapeHtml(label)} баримтыг харах</a>`;
   }
@@ -2027,11 +2028,12 @@ function renderFinanceFileList(containerId, urls, removable) {
   el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:10px;">` + urls.map((u, i) => {
     const safe = escapeHtml(u);
     if (isImage(u)) {
+      const fullThumb = `https://lh3.googleusercontent.com/d/${(String(u).match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/)||[])[1]||(String(u).match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/)||[])[2]||''}=w1600`;
       return `
         <div style="position:relative;width:180px;">
-          <a href="${safe}" target="_blank" rel="noopener" style="display:block;width:180px;height:180px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);">
-            <img src="${escapeHtml(toThumb(u))}" alt="Хавсралт ${i+1}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none';this.parentNode.innerHTML='${icon.replace(/'/g,"\\'")}<div style=&quot;padding:4px;font-size:11px;color:var(--muted);text-align:center;&quot;>Файл ${i+1}</div>';" />
-          </a>
+          <button type="button" data-lightbox="${escapeHtml(fullThumb)}" data-fallback="${safe}" style="display:block;width:180px;height:180px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);padding:0;cursor:zoom-in;">
+            <img src="${escapeHtml(toThumb(u))}" alt="Хавсралт ${i+1}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
+          </button>
           ${removable ? `<button type="button" data-rm-idx="${i}" data-rm-container="${containerId}" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#fff;border:2px solid var(--panel);cursor:pointer;font-size:14px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">×</button>` : ''}
         </div>
       `;
@@ -5633,6 +5635,33 @@ function initEvents() {
     }
     showToast('Шилжүүлгийн баримт сонгогдсон — "Гүйлгээ хийгдсэн" товч дарж илгээнэ', 'info', 3000);
   });
+  // Lightbox — зураг товч дарахад апп дотор томруулж харуулна
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightbox-img');
+  const lightboxOpen = document.getElementById('lightbox-open');
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-lightbox]');
+    if (btn) {
+      e.preventDefault();
+      const src = btn.dataset.lightbox;
+      const fallback = btn.dataset.fallback || src;
+      if (lightboxImg) lightboxImg.src = src;
+      if (lightboxOpen) lightboxOpen.href = fallback;
+      if (lightbox) lightbox.style.display = 'flex';
+      return;
+    }
+    if (lightbox && (e.target === lightbox || e.target.id === 'lightbox-close')) {
+      lightbox.style.display = 'none';
+      if (lightboxImg) lightboxImg.src = '';
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && lightbox && lightbox.style.display === 'flex') {
+      lightbox.style.display = 'none';
+      if (lightboxImg) lightboxImg.src = '';
+    }
+  });
+
   // Multi-file жагсаалтаас X товч дарахад нэг хавсралт хасах
   document.addEventListener('click', async (e) => {
     const rmBtn = e.target.closest('[data-rm-idx][data-rm-container]');

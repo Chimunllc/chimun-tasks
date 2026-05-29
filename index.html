@@ -925,6 +925,13 @@
   </div>
 </div>
 
+<!-- Lightbox — app дотор зураг томруулж харах -->
+<div id="lightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:10000; align-items:center; justify-content:center; cursor:zoom-out; padding:20px;">
+  <img id="lightbox-img" src="" alt="" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:6px; box-shadow:0 4px 30px rgba(0,0,0,0.6);" />
+  <button id="lightbox-close" type="button" style="position:fixed; top:20px; right:20px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.15); color:#fff; border:none; cursor:pointer; font-size:20px; line-height:1; display:flex; align-items:center; justify-content:center;" aria-label="Хаах">×</button>
+  <a id="lightbox-open" href="#" target="_blank" rel="noopener" style="position:fixed; bottom:20px; right:20px; padding:8px 14px; background:rgba(255,255,255,0.15); color:#fff; border-radius:6px; text-decoration:none; font-size:13px;" title="Drive дээр нээх">Drive дээр нээх ↗</a>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

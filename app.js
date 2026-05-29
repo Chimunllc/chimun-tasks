@@ -1618,8 +1618,15 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     purpose: purpose || '',
     justification: justification || '',
     due_date: dueDate || '',
-    category: category || '',       // Нягтлан гараар сонгох — default утга оноохгүй
-    dept_branch: deptBranch || '',   // Нягтлан гараар сонгох
+    category: category || '',       // Нягтлан гараар сонгох
+    // dept_branch: илгээгчийн TEAM салбараас автомат — m-event → ИВЕНТ, camp → КЕМП, бусад → ЗАХ
+    dept_branch: deptBranch || (function(){
+      const me = (TEAM || []).find(m => (m.email||m.id) === owner);
+      const primary = me?.branches?.[0];
+      if (primary === 'm-event') return 'ИВЕНТ';
+      if (primary === 'camp')    return 'КЕМП';
+      return 'ЗАХ';
+    })(),
     frequency: frequency || 'Нэг удаагийн',
     priority: priority || 'med',
     status: 'open',

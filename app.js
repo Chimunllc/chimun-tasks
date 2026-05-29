@@ -2010,7 +2010,9 @@ function openFinanceModal(id = null) {
       //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах
       const approverEmail = getFinanceApprover(t);
       const isApprover = (state.me === approverEmail);
-      if (dec === 'pending' && (state.isCEO || isApprover) && !isRequester) {
+      // Зөвхөн томилогдсон approver товч хардаг. CEO бол өндөр дүнтэй (≥300K) эсвэл
+      // салбарын менежер байхгүй тохиолдолд өөрөө approver болдог.
+      if (dec === 'pending' && isApprover && !isRequester) {
         decisionActions.style.setProperty('display', 'flex', 'important');
       } else if (dec === 'approved' && !t.executed_at && isExecutor) {
         executeActions.style.setProperty('display', 'flex', 'important');

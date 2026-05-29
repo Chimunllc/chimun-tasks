@@ -6831,7 +6831,12 @@ function promptDefaultPinChange() {
 
 /* -------------------- PWA: register service worker -------------------- */
 // Only registers on http(s) (skips file:// — double-clicked local files won't try to register).
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.protocol === 'http:')) {
+// SW-г түр зогсоож гацлыг тусгаарлах — ?nosw=1 URL-р идэвхгүй болгож болно
+const _NO_SW = new URLSearchParams(location.search).has('nosw');
+if (_NO_SW && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+}
+if (!_NO_SW && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.protocol === 'http:')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       console.log('SW registered:', reg.scope);

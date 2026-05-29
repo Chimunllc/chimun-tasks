@@ -1653,7 +1653,11 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
 async function decideFinanceRequest(id, decision, reason = '') {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
-  if (!state.isCEO) { showToast('Зөвхөн CEO шийдвэр гаргах эрхтэй', 'error'); return; }
+  // Approver: CEO эсвэл салбарын менежер (жижиг дүн дээр)
+  const approverEmail = getFinanceApprover(r);
+  if (!state.isCEO && state.me !== approverEmail) {
+    showToast('Зөвхөн томилогдсон approver шийдвэр гаргах эрхтэй', 'error'); return;
+  }
   r.decision = decision;
   r.decision_at = new Date().toISOString();
   r.decision_by = state.me;

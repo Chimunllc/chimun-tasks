@@ -6839,25 +6839,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
       // өөрөө тохиромжтой үед дарна. Modal/form-той ажиллаж байх үед reload болгож
       // task алдагдахаас сэргийлнэ. Banner-ыг дарахгүй бол дараагийн нээх үед автомат
       // sync хийгдсэн SW үргэлжилнэ.
-      let firstRegister = !navigator.serviceWorker.controller;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (firstRegister) { firstRegister = false; return; }
-        // Хэрэв шинэ SW automatic skipWaiting хийсэн бол modal нээлттэй эсэхийг шалгана
-        const hasOpenModal = !!document.querySelector('.modal-bg.open');
-        if (hasOpenModal) {
-          console.log('SW updated — defer reload until modal closed');
-          // Modal хаагдсаны дараа reload
-          const obs = new MutationObserver(() => {
-            if (!document.querySelector('.modal-bg.open')) {
-              obs.disconnect();
-              location.reload();
-            }
-          });
-          obs.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class'] });
-        } else {
-          location.reload();
-        }
-      });
+      // SW controllerchange нь infinite reload loop үүсгэх магадлалтай тул автомат
+      // reload-ыг арилгасан. Хэрэглэгч өөрөө tab refresh хийнэ.
       // Update check — 60 секундын оронд 15 минут тутамд (хэт олон reload-аас сэргийлнэ).
       // Идэвхтэй ашиглах үед SW v2 v3 хооронд хэдэн commit-аар өөрчлөгдөж байх боломжтой
       // ч хэрэглэгч мэдрэхгүй (visibilitychange refresh бодит дата ачаалдаг).

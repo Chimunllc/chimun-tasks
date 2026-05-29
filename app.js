@@ -841,6 +841,10 @@ function taskToWire(task) {
   if (Array.isArray(out.completion_photos)) {
     out.completion_photos_csv = out.completion_photos.join(' | ');
   }
+  // task_images array → CSV string (Sheet "Даалгаврын зураг" багана)
+  if (Array.isArray(out.task_images)) {
+    out.task_images_csv = out.task_images.join(' | ');
+  }
   // Boolean flag → Тийм/Үгүй (Sheet хүн уншихад)
   out.requires_photo_label = out.requires_photo ? 'Тийм' : 'Үгүй';
   // Код → монгол
@@ -866,6 +870,10 @@ function taskFromWire(task) {
   // completion_photos CSV → array
   if (typeof out.completion_photos === 'string') {
     out.completion_photos = out.completion_photos ? out.completion_photos.split(/\s*\|\s*/).filter(Boolean) : [];
+  }
+  // task_images CSV → array
+  if (typeof out.task_images === 'string') {
+    out.task_images = out.task_images ? out.task_images.split(/\s*\|\s*/).filter(Boolean) : [];
   }
   // requires_photo Mongolian label → bool
   if (typeof out.requires_photo === 'string') {
@@ -2079,6 +2087,25 @@ function renderFinanceFileList(containerId, urls, removable) {
       </div>
     `;
   }).join('') + `</div>`;
+}
+
+/* ─── Нийтлэг зургийн thumbnail + lightbox helper ───
+   Google Drive view link → lh3 thumbnail (CORS зөвшөөрөгдсөн). Дарвал аппын дотор
+   томроод харагдана (#lightbox handler, app.js доор). Даалгаврын зураг + биелэлтийн
+   зураг + бусад газар нийтлэг ашиглана. Санхүүгийн хүсэлттэй ижил зан төлөв. */
+function driveThumbUrl(u, size) {
+  const m = String(u || '').match(/[?&]id=([\w-]+)|\/d\/([\w-]+)/);
+  const id = m ? (m[1] || m[2]) : null;
+  return id ? `https://lh3.googleusercontent.com/d/${id}=w${size || 800}` : u;
+}
+function imageThumbsHtml(urls, opts = {}) {
+  const size = opts.size || 100;
+  const label = opts.label || 'Зураг';
+  if (!urls || !urls.length) return '';
+  return urls.map((u, i) => {
+    const safe = escapeHtml(u);
+    return `<button type="button" data-lightbox="${escapeHtml(driveThumbUrl(u, 1600))}" data-fallback="${safe}" title="${escapeHtml(label)} ${i + 1}" style="width:${size}px;height:${size}px;border-radius:6px;overflow:hidden;border:1px solid var(--border);background:var(--panel-hover);padding:0;cursor:zoom-in;display:block;"><img src="${escapeHtml(driveThumbUrl(u, 800))}" alt="${escapeHtml(label)} ${i + 1}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" /></button>`;
+  }).join('');
 }
 
 /* Stage 4 — Туслах нягтлан хүлээн авч хаах: олон файл шаардана, дараа нь received_at/status=done. */
@@ -4605,11 +4632,15 @@ function openTaskModal(id) {
     if (t.status === 'done' && photos.length) {
       info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
         <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">✅ Биелэлтийн зураг (${photos.length})</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));gap:6px;">
-        ${photos.map(p => `<a href="${escapeHtml(p)}" target="_blank" rel="noopener" style="aspect-ratio:1;display:block;border-radius:6px;overflow:hidden;border:1px solid var(--border);">
-          <img src="${escapeHtml(p)}" alt="Биелэлт" style="width:100%;height:100%;object-fit:cover;display:block;" />
-        </a>`).join('')}
-        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">${imageThumbsHtml(photos, { size: 92, label: 'Биелэлт' })}</div>
+      </div>`;
+    }
+    // Үүсгэх үед хавсаргасан зураг(ууд) — дарвал аппын дотор томроно
+    const attachImgs = Array.isArray(t.task_images) ? t.task_images : [];
+    if (attachImgs.length) {
+      info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">🖼 Хавсаргасан зураг (${attachImgs.length})</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">${imageThumbsHtml(attachImgs, { size: 92, label: 'Зураг' })}</div>
       </div>`;
     }
     creatorInfo.innerHTML = info;
@@ -4710,6 +4741,9 @@ function openTaskModal(id) {
   if (asgnWrap) asgnWrap.style.display = canEdit.all ? '' : 'none';
   const multiBtnEl = document.getElementById('t-assignee-multi');
   if (multiBtnEl) multiBtnEl.style.display = canEdit.all ? '' : 'none';
+  // Зураг хавсаргах picker — зөвхөн засах/үүсгэх эрхтэй үед. Хариуцагч уншмаар горимд
+  // зургууд дээрх creatorInfo card дотор томруулж харагдана.
+  setupTaskImagePicker(t, canEdit.all);
   const saveBtn = document.getElementById('t-save');
   if (saveBtn) {
     // View mode → "Засах" товч. Edit mode → "Хадгалах". Зөвхөн харах хэрэглэгчид нуух.
@@ -4788,6 +4822,57 @@ function openTaskModal(id) {
 
   document.getElementById('task-modal').classList.add('open');
   if (canEdit.all && !t) setTimeout(()=>document.getElementById('t-title').focus(), 50);
+}
+
+/* ─── Даалгаврын зураг хавсралт (үүсгэх/засах) ───
+   state._taskImages — тухайн нээлттэй modal-ийн temp зургийн URL массив.
+   Файл сонгомогц шууд uploadReceipt-ээр Drive рүү хуулж, URL-г массивт нэмнэ.
+   Хадгалахад saveTaskFromModal энэ массивыг task.task_images болгож бичнэ. */
+function renderTaskImagePreview() {
+  const wrap = document.getElementById('t-image-preview');
+  if (!wrap) return;
+  const imgs = state._taskImages || [];
+  if (!imgs.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = imgs.map((u, i) => `
+    <div style="position:relative;">
+      ${imageThumbsHtml([u], { size: 84, label: 'Зураг' })}
+      <button type="button" data-task-img-rm="${i}" title="Хасах" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger);color:#fff;border:2px solid var(--panel);cursor:pointer;font-size:13px;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;">×</button>
+    </div>`).join('');
+  wrap.querySelectorAll('[data-task-img-rm]').forEach(btn => {
+    btn.onclick = () => {
+      const idx = Number(btn.dataset.taskImgRm);
+      (state._taskImages || []).splice(idx, 1);
+      renderTaskImagePreview();
+    };
+  });
+}
+function setupTaskImagePicker(t, editable) {
+  state._taskImages = Array.isArray(t?.task_images) ? t.task_images.slice() : [];
+  const row = document.getElementById('t-image-row');
+  const label = document.getElementById('t-image-label');
+  const preview = document.getElementById('t-image-preview');
+  if (row) row.style.display = editable ? 'flex' : 'none';
+  if (label) label.style.display = editable ? '' : 'none';
+  if (preview) preview.style.display = editable ? 'flex' : 'none';
+  if (!editable) return;
+  renderTaskImagePreview();
+  const input = document.getElementById('t-image-input');
+  if (!input) return;
+  input.value = '';
+  input.onchange = async () => {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+    const note = document.getElementById('t-image-uploading');
+    if (note) note.style.display = '';
+    const reqId = state.editingId || ('t_new_' + Date.now().toString(36));
+    const title = document.getElementById('t-title')?.value || '';
+    for (const f of files) {
+      const url = await uploadReceipt(f, reqId, 'task', title);
+      if (url) { (state._taskImages = state._taskImages || []).push(url); renderTaskImagePreview(); }
+    }
+    if (note) note.style.display = 'none';
+    input.value = '';
+  };
 }
 
 /* ─── Task modal: Action товчнууд (статус өөрчлөх + татгалзах + тодруулга) ─── */
@@ -5049,6 +5134,7 @@ async function saveTaskFromModal() {
     priority: document.getElementById('t-priority').value,
     recurrence: document.getElementById('t-recurrence')?.value || '',
     requires_photo: !!document.getElementById('t-requires-photo')?.checked,
+    task_images: (state._taskImages || []).slice(),
   };
   // Multi-assignee — олон хүнд тус тусын task үүсгэх. saveTask-уудыг ДАРААЛУУЛНА.
   // Параллел fire хийвэл Google Sheets concurrent appendOrUpdate race condition үүсч
@@ -5076,6 +5162,7 @@ async function saveTaskFromModal() {
       pushBroadcast(tasks[i].assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: tasks[i].title, url: './' });
     }
     state._multiAssignees = null;
+    state._taskImages = null;
     // Хэрэглэгчийг тус тусын task-уудыг харах "Илгээсэн ажил" руу шилжүүлнэ
     const includesMe = multi.includes(state.me);
     const otherCount = includesMe ? multi.length - 1 : multi.length;
@@ -5105,6 +5192,7 @@ async function saveTaskFromModal() {
     if (t.assignee) pushBroadcast(t.assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
   }
   state._multiAssignees = null;
+  state._taskImages = null;
   closeTaskModal();
   render();
 }

@@ -4596,13 +4596,20 @@ function openTaskModal(id) {
   if (!t) state._taskViewMode = false;
   else if (state._taskViewMode == null) state._taskViewMode = realCanEdit.all;
   const inViewMode = !!(t && realCanEdit.all && state._taskViewMode);
-  const canEdit = inViewMode ? { all: false, status: realCanEdit.status, none: false } : realCanEdit;
+  // Дууссан даалгавар — БҮХ хэрэглэгчид цэвэр read-only тойм. Засах/статус/footer товч
+  // огт харагдахгүй (хэрэглэгч баталсан: дууссан ажил дээр ямар ч товч хэрэггүй).
+  // Дээд буланд × товчоор хаана.
+  const isDone = !!(t && t.status === 'done');
+  let canEdit = inViewMode ? { all: false, status: realCanEdit.status, none: false } : realCanEdit;
+  if (isDone) canEdit = { all: false, status: false, none: true };
   state._modalCanEdit = canEdit;
 
   // Header текст
   const modalTitleEl = document.getElementById('task-modal-title');
   if (!t) {
     modalTitleEl.textContent = 'Шинэ даалгавар';
+  } else if (isDone) {
+    modalTitleEl.innerHTML = '<span style="font-size:13px;font-weight:700;background:#dcfce7;color:#15803d;padding:3px 12px;border-radius:999px;vertical-align:middle;">✓ Дууссан даалгавар</span>';
   } else if (inViewMode) {
     modalTitleEl.textContent = 'Даалгавар';
   } else if (realCanEdit.all) {
@@ -4746,8 +4753,10 @@ function openTaskModal(id) {
   setupTaskImagePicker(t, canEdit.all);
   const saveBtn = document.getElementById('t-save');
   if (saveBtn) {
-    // View mode → "Засах" товч. Edit mode → "Хадгалах". Зөвхөн харах хэрэглэгчид нуух.
-    if (inViewMode) {
+    // View mode → "Засах" товч. Edit mode → "Хадгалах". Зөвхөн харах / дууссан үед нуух.
+    if (isDone) {
+      saveBtn.style.display = 'none';
+    } else if (inViewMode) {
       saveBtn.style.display = '';
       saveBtn.textContent = '✎ Засах';
       saveBtn.onclick = () => { state._taskViewMode = false; openTaskModal(t.id); };
@@ -4760,7 +4769,10 @@ function openTaskModal(id) {
     }
   }
   const dupBtnEl = document.getElementById('t-duplicate');
-  if (dupBtnEl) dupBtnEl.style.display = realCanEdit.all && !inViewMode ? '' : 'none';
+  if (dupBtnEl) dupBtnEl.style.display = (realCanEdit.all && !inViewMode && !isDone) ? '' : 'none';
+  // Дууссан үед "Болих" footer товчийг нуух — × товчоор хаана (товчгүй цэвэр тойм)
+  const cancelBtn = document.getElementById('t-cancel');
+  if (cancelBtn) cancelBtn.style.display = isDone ? 'none' : '';
 
   // ─── Хариуцагчийн уншмаар card (бүх мэдээлэл нэг дор) ───
   let readOnlyCard = document.getElementById('t-readonly-card');
@@ -4783,6 +4795,7 @@ function openTaskModal(id) {
         <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:6px;">${escapeHtml(t.title || '')}</div>
         ${t.desc ? `<div style="font-size:14px;color:var(--muted);margin-bottom:12px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(t.desc)}</div>` : ''}
         <div style="display:grid;grid-template-columns:90px 1fr;gap:6px 12px;font-size:13px;">
+          ${isDone ? `<div style="color:var(--muted);">Төлөв</div><div style="color:#15803d;font-weight:700;">✓ Дууссан</div>` : ''}
           ${branchLabel ? `<div style="color:var(--muted);">Салбар</div><div>${escapeHtml(branchLabel)}</div>` : ''}
           ${t.project ? `<div style="color:var(--muted);">Төсөл</div><div>${escapeHtml(t.project)}</div>` : ''}
           ${t.due ? `<div style="color:var(--muted);">Хугацаа</div><div style="font-weight:600;">${escapeHtml(t.due)}</div>` : ''}
@@ -4804,8 +4817,13 @@ function openTaskModal(id) {
   const commentsSection = document.getElementById('t-comments-section');
   const activitySection = document.getElementById('t-activity-section');
   if (t) {
-    renderTaskActionButtons(t);
-    if (statusBar) statusBar.style.display = '';
+    // Дууссан үед статус/action товчнуудыг огт харуулахгүй (товчгүй цэвэр тойм).
+    if (isDone) {
+      if (statusBar) statusBar.style.display = 'none';
+    } else {
+      renderTaskActionButtons(t);
+      if (statusBar) statusBar.style.display = '';
+    }
     if (commentsSection) {
       commentsSection.style.display = '';
       renderTaskComments(t);

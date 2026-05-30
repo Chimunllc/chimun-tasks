@@ -3039,8 +3039,8 @@ async function sendWeeklyDigest() {
       done: tasks.filter(t => t.status === 'done').length,
       open: tasks.filter(t => t.status !== 'done').length,
       overdue: tasks.filter(t => t.status !== 'done' && t.due && t.due < todayStr()).length,
-      created_this_week: tasks.filter(t => t.created_at && new Date(t.created_at) >= weekAgo).length,
-      completed_this_week: tasks.filter(t => t.executed_at && new Date(t.executed_at) >= weekAgo).length,
+      created_this_week: tasks.filter(t => t.created && new Date(t.created) >= weekAgo).length,
+      completed_this_week: tasks.filter(t => t.status === 'done' && t.updated && new Date(t.updated) >= weekAgo).length,
     },
     finance: {
       total: fr.length,

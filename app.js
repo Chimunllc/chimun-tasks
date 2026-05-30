@@ -5571,8 +5571,8 @@ function initEvents() {
       if (dy > TRIGGER) {
         indicator.classList.add('refreshing');
         try {
-          await Promise.all([ loadData(), loadFinanceRequests() ]);
-          render();
+          // Bootstrap (tasks+finance 1 дуудлага) ашиглана — 2 тусдаа дуудлагын оронд.
+          await refreshFromServer();
           // Spin indicator өөрөө "Шинэчлэгдлээ" мессежийг харуулдаг тул toast илүү байна.
           // (Алдаа гарвал л toast гаргана.)
         } catch (e) {
@@ -6128,11 +6128,12 @@ async function bootApp() {
   const pushReady = await ensurePushSubscription();
   if (!pushReady) _pollTimer = setInterval(refreshFromServer, 600_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —
-  // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 30 сек throttle.
+  // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 90 сек throttle.
+  // (Шинэ ажил оноогдох бүрд Web Push шууд мэдэгддэг тул focus-refresh ховор байж болно.)
   if (!_visibilityBound) {
     let _lastVisRefresh = 0;
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && state.me && Date.now() - _lastVisRefresh > 30_000) {
+      if (!document.hidden && state.me && Date.now() - _lastVisRefresh > 90_000) {
         _lastVisRefresh = Date.now();
         refreshFromServer();
       }
@@ -6215,7 +6216,10 @@ async function refreshFromServer() {
     // Bootstrap endpoint-ыг турших — tasks + finance-ийг 1 fetch-ээр. Алдаатай бол fallback.
     const bootOk = await loadBootstrap();
     const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];
-    if (state.isCEO) taskPromises.push(loadTeamFromAPI());
+    // Ажилтны жагсаалт ховор өөрчлөгддөг — refresh бүрд биш, зөвхөн 2 цаг өнгөрсөн бол
+    // дахин татна (n8n execution хэмнэх). Бүртгэл/засвар үед тусдаа шууд татагдсаар.
+    const teamAge = Date.now() - (Number(localStorage.getItem('teamCacheAt')) || 0);
+    if (state.isCEO && teamAge > 2 * 60 * 60 * 1000) taskPromises.push(loadTeamFromAPI());
     await Promise.all(taskPromises);
     generateNotifications();
     // Модал нээлттэй (хэрэглэгч засаж байгаа) бол жагсаалтыг бүрэн дахин зурахгүй —

@@ -2284,10 +2284,15 @@ function filteredTasks() {
     const pid = state.view.split(':')[1];
     list = list.filter(t => t.project === pid);
   }
+  else if (state.view.startsWith('staff:')) {
+    // Тухайн ажилтны бүх ажил (Тойм самбараас мөр дээр дарахад) — гарсан хүний ажлыг ч харна
+    const em = state.view.slice(6);
+    list = list.filter(t => t.assignee === em);
+  }
   // "Гарсан" ажилтны идэвхтэй task-уудыг ажлын жагсаалтаас хасна — KPI болон тойм муудах
   // эх үүсвэр. "Дууссан" tab дотор үлдээж history тэвэрнэ. Илгээсэн ажил болон finance
-  // адил тэр хүний өмнөх төлөвлөгөөг харах боломжтой.
-  if (state.view !== 'done' && state.view !== 'delegated' && state.view !== 'finance') {
+  // адил тэр хүний өмнөх төлөвлөгөөг харах боломжтой. (staff: view-д тухайн хүнийг харуулна.)
+  if (state.view !== 'done' && state.view !== 'delegated' && state.view !== 'finance' && !state.view.startsWith('staff:')) {
     const left = leftStaffEmails();
     if (left.size) list = list.filter(t => !left.has(String(t.assignee || '').toLowerCase()));
   }
@@ -2573,6 +2578,10 @@ function renderTitle() {
     const pid = state.view.split(':')[1];
     t = ['', projectName(pid), 'Төсөл'];
   }
+  if (!t && state.view.startsWith('staff:')) {
+    const em = state.view.slice(6);
+    t = [ICONS.inbox, memberName(em), 'Энэ ажилтны бүх ажил — буцахдаа зүүн талаас цэс сонгоно уу'];
+  }
   const [icon, title, sub] = t || ['', 'Бүгд', 'Бүх'];
   document.getElementById('view-title').innerHTML = (icon || '') + escapeHtml(title);
   document.getElementById('view-sub').textContent = sub || '';
@@ -2595,6 +2604,17 @@ function renderTaskList() {
     document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
     document.getElementById('dash-staff')?.addEventListener('click', openStaffManagement);
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
+    // Ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг жагсаалтаар харах
+    wrap.querySelectorAll('.dash-staff-clickable').forEach(row => {
+      row.addEventListener('click', () => {
+        const email = row.dataset.staffEmail;
+        if (!email) return;
+        state.view = 'staff:' + email;
+        state.statusFilter = 'all';
+        state._taskListLimit = null;
+        render();
+      });
+    });
     // CEO бус хэрэглэгчид permissions/staff/email digest нуух
     if (!state.isCEO) {
       document.getElementById('dash-permissions')?.style.setProperty('display', 'none');
@@ -2681,12 +2701,14 @@ function renderDashboard() {
   tasks.forEach(t => { byStatus[t.status || 'open'] = (byStatus[t.status || 'open'] || 0) + 1; });
   const totalTasks = tasks.length || 1;
 
-  // 2) Per-staff active load
+  // 2) Per-staff active load — БҮХ идэвхтэй ажилтныг 0-ээс эхлүүлнэ (ачаалалгүй/чөлөөтэй
+  //    хүмүүс ч харагдана — CEO хэнд ажил оноох боломжтойг шууд харна).
   const staffLoad = {};
+  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && m.email).forEach(m => { staffLoad[m.email] = 0; });
   tasks.filter(t => t.status !== 'done' && t.assignee).forEach(t => {
     staffLoad[t.assignee] = (staffLoad[t.assignee] || 0) + 1;
   });
-  const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]).slice(0, 6);
+  const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]); // бүгд, ачаалалаар (чөлөөтэй нь доор)
   const maxLoad = Math.max(1, ...topStaff.map(([,n]) => n));
 
   // 3) Финансын зардал — сүүлийн 30 хоног. Finance-ийн ts талбар нь `requested_at` —
@@ -2919,18 +2941,20 @@ function renderDashboard() {
           </div>
         </div>` : ''}
 
-        <!-- Staff load -->
+        <!-- Staff load — мөр дээр дарж тухайн хүний ажлуудыг харна -->
         <div class="dash-card dash-staff">
           <div class="dash-card-title">Ажилтны ачаалал (идэвхтэй ажил)</div>
-          ${topStaff.length === 0 ? '<div class="dash-empty">Идэвхтэй ажил алга</div>' : topStaff.map(([id, n]) => `
-            <div class="dash-bar-row">
+          <div class="dash-staff-scroll">
+          ${topStaff.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topStaff.map(([id, n]) => `
+            <div class="dash-bar-row dash-staff-clickable${n === 0 ? ' is-free' : ''}" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
               <div class="dash-bar-label">${escapeHtml(memberName(id))}</div>
               <div class="dash-bar-track">
                 <div class="dash-bar-fill" style="width:${(n/maxLoad)*100}%"></div>
               </div>
-              <div class="dash-bar-count">${n}</div>
+              <div class="dash-bar-count">${n === 0 ? '<span class="dash-free">чөлөөтэй</span>' : n}</div>
             </div>
           `).join('')}
+          </div>
         </div>
 
         <!-- Сүүлийн 14 хоног — үүсгэх vs дуусгах trend (inline SVG sparkline) -->

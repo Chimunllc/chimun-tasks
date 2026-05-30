@@ -4956,8 +4956,53 @@ function openTaskModal(id) {
     if (activitySection) activitySection.style.display = 'none';
   }
 
+  // ─── Шинэ даалгаврын хадгалаагүй ноорог сэргээх (хальт хаагдвал алдагдахгүй) ───
+  if (!t) restoreTaskDraft();
+
   document.getElementById('task-modal').classList.add('open');
   if (canEdit.all && !t) setTimeout(()=>document.getElementById('t-title').focus(), 50);
+}
+
+/* ─── Шинэ даалгаврын ноорог — localStorage-д түр хадгалж, хальт хаагдвал сэргээнэ.
+   Зөвхөн ШИНЭ үүсгэх үед. Амжилттай хадгалмагц цэвэрлэгдэнэ. */
+function saveTaskDraft() {
+  if (state.editingId) return; // зөвхөн шинэ
+  const modal = document.getElementById('task-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+  const g = id => document.getElementById(id);
+  const draft = {
+    title: g('t-title')?.value || '',
+    desc: g('t-desc')?.value || '',
+    branch: g('t-branch')?.value || '',
+    project: g('t-project')?.value || '',
+    assignee: g('t-assignee')?.value || '',
+    due: g('t-due')?.value || '',
+    priority: g('t-priority')?.value || '',
+    recurrence: g('t-recurrence')?.value || '',
+    requires_photo: !!g('t-requires-photo')?.checked,
+    images: (state._taskImages || []).slice(),
+  };
+  // Утга оруулсан үед л хадгална (хоосон форм ноорог болохгүй)
+  if (!(draft.title || draft.desc || draft.due || draft.images.length)) { clearTaskDraft(); return; }
+  try { localStorage.setItem('taskDraft', JSON.stringify(draft)); } catch (e) {}
+}
+function clearTaskDraft() { try { localStorage.removeItem('taskDraft'); } catch (e) {} }
+function restoreTaskDraft() {
+  let draft = null;
+  try { draft = JSON.parse(localStorage.getItem('taskDraft') || 'null'); } catch (e) {}
+  if (!draft || !(draft.title || draft.desc || draft.due || (draft.images && draft.images.length))) return;
+  const g = id => document.getElementById(id);
+  if (g('t-title')) g('t-title').value = draft.title || '';
+  if (g('t-desc')) g('t-desc').value = draft.desc || '';
+  if (draft.branch && g('t-branch')) { g('t-branch').value = draft.branch; fillProjectSelect('t-project', draft.project, draft.branch); }
+  if (draft.project && g('t-project')) g('t-project').value = draft.project;
+  if (draft.assignee && g('t-assignee')) g('t-assignee').value = draft.assignee;
+  if (g('t-due')) g('t-due').value = draft.due || '';
+  if (draft.priority && g('t-priority')) g('t-priority').value = draft.priority;
+  if (draft.recurrence && g('t-recurrence')) g('t-recurrence').value = draft.recurrence;
+  if (g('t-requires-photo')) g('t-requires-photo').checked = !!draft.requires_photo;
+  if (Array.isArray(draft.images) && draft.images.length) { state._taskImages = draft.images.slice(); renderTaskImagePreview(); }
+  showToast('Хадгалаагүй ноорог сэргээгдлээ', 'info', 2500);
 }
 
 /* ─── Даалгаврын зураг хавсралт (үүсгэх/засах) ───
@@ -4979,6 +5024,7 @@ function renderTaskImagePreview() {
       const idx = Number(btn.dataset.taskImgRm);
       (state._taskImages || []).splice(idx, 1);
       renderTaskImagePreview();
+      saveTaskDraft();
     };
   });
 }
@@ -5004,7 +5050,7 @@ function setupTaskImagePicker(t, editable) {
     const title = document.getElementById('t-title')?.value || '';
     for (const f of files) {
       const url = await uploadReceipt(f, reqId, 'task', title);
-      if (url) { (state._taskImages = state._taskImages || []).push(url); renderTaskImagePreview(); }
+      if (url) { (state._taskImages = state._taskImages || []).push(url); renderTaskImagePreview(); saveTaskDraft(); }
     }
     if (note) note.style.display = 'none';
     input.value = '';
@@ -5214,6 +5260,7 @@ async function saveTaskFromModal() {
     }
     state._multiAssignees = null;
     state._taskImages = null;
+    clearTaskDraft();
     // Хэрэглэгчийг тус тусын task-уудыг харах "Илгээсэн ажил" руу шилжүүлнэ
     const includesMe = multi.includes(state.me);
     const otherCount = includesMe ? multi.length - 1 : multi.length;
@@ -5244,6 +5291,7 @@ async function saveTaskFromModal() {
   }
   state._multiAssignees = null;
   state._taskImages = null;
+  clearTaskDraft();
   closeTaskModal();
   render();
 }
@@ -5350,6 +5398,13 @@ function initEvents() {
   document.getElementById('new-task-btn').onclick = () => openTaskModal();
   document.getElementById('t-cancel').onclick = closeTaskModal;
   document.getElementById('t-save').onclick = () => withBusy(document.getElementById('t-save'), saveTaskFromModal, { successText: 'Хадгалагдлаа' });
+  // Шинэ даалгаврын ноорог — талбар өөрчлөгдөх бүрд localStorage-д түр хадгална
+  ['t-title','t-desc','t-branch','t-project','t-assignee','t-due','t-priority','t-recurrence','t-requires-photo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', saveTaskDraft);
+    el.addEventListener('change', saveTaskDraft);
+  });
 
   // ─── Мобайл доод нав ───
   document.querySelectorAll('.mobile-nav-item[data-view]').forEach(btn => {

@@ -4275,6 +4275,63 @@ body {
   opacity: 0.85;
 }
 
+/* ═══ Мөрийн шуурхай үйлдэл (⋯ цэс) ═══ */
+.col-rowactions { display: flex; align-items: center; gap: 2px; justify-content: flex-end; }
+.row-menu-btn {
+  width: 26px; height: 26px;
+  border: none; background: transparent;
+  color: var(--muted);
+  border-radius: 6px; cursor: pointer;
+  font-size: 17px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.row-menu-btn:hover { background: var(--panel-hover); color: var(--text); }
+.row-action-menu {
+  position: fixed; z-index: 11000;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  padding: 4px; min-width: 170px;
+  display: flex; flex-direction: column;
+}
+.ram-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  background: none; border: none;
+  color: var(--text); font-size: 13px;
+  text-align: left; cursor: pointer;
+  border-radius: 6px; width: 100%;
+  font-family: inherit;
+}
+.ram-item:hover { background: var(--panel-hover); }
+.ram-item.danger { color: var(--danger); }
+.ram-ic { width: 16px; text-align: center; opacity: .85; flex: none; }
+
+/* ═══ Анхны ачааллын skeleton (cache хоосон үед) ═══ */
+.skeleton-wrap { display: flex; flex-direction: column; }
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sk {
+  background: linear-gradient(90deg, var(--panel-hover) 25%, var(--border) 37%, var(--panel-hover) 63%);
+  background-size: 400% 100%;
+  border-radius: 6px;
+  animation: sk-shimmer 1.3s ease-in-out infinite;
+}
+.sk-dot { width: 18px; height: 18px; border-radius: 50%; flex: none; }
+.sk-line { height: 12px; }
+.sk-chip { width: 80px; height: 22px; border-radius: 999px; flex: none; }
+@keyframes sk-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
 /* Telegram section removed */
 
 /* ═══ Dashboard action товчнууд ═══ */

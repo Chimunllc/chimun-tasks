@@ -2316,6 +2316,19 @@ function filteredTasks() {
     const prefix = `${y}-${m}`;
     list = list.filter(t => t.due && t.due.startsWith(prefix));
   }
+  // ─── Авто-архив: 14 хоногоос өмнө дууссан ажлыг идэвхтэй жагсаалтаас нуух ───
+  // Дата ӨӨРЧЛӨХГҮЙ — зөвхөн харагдацын filter. "Дууссан" шүүлт, хайлт, Архив, Дууссан
+  // view-д бүрэн хэвээр харагдана. Дуусгасан огноог t.updated-аар тооцно.
+  if (!state.search
+      && state.view !== 'done' && state.view !== 'archive' && state.view !== 'finance'
+      && state.statusFilter !== 'done') {
+    const cutoff = Date.now() - 14 * 86400000;
+    list = list.filter(t => {
+      if (t.status !== 'done') return true;
+      const doneTs = new Date(t.updated || t.created || 0).getTime();
+      return !doneTs || doneTs >= cutoff; // огноогүй бол үлдээнэ
+    });
+  }
   // search
   if (state.search) {
     // Search syntax — "from:Бат", "due:today" / "due:2026-05-30", "priority:high|med|low",
@@ -2544,7 +2557,8 @@ function renderTaskList() {
   const tasks = filteredTasks();
   wrap.innerHTML = '';
   if (!tasks.length) {
-    wrap.innerHTML = emptyStateHtml();
+    // Анхны ачаалал (cache хоосон + сервер хариу хүлээж буй) — "алга" биш skeleton.
+    wrap.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml();
     return;
   }
   // Virtual scroll — 80+ task үед эхний 80-ыг харуулна,
@@ -3261,6 +3275,20 @@ function attachCalendarHandlers() {
   });
 }
 
+// Анхны ачааллын skeleton — cache хоосон, сервер дата хүлээж буй үед "Даалгавар алга"
+// гэж андуурахаас сэргийлж shimmer мөрүүд харуулна.
+function listSkeletonHtml() {
+  const row = `<div class="skeleton-row">
+    <div class="sk sk-dot"></div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+      <div class="sk sk-line" style="width:55%;"></div>
+      <div class="sk sk-line" style="width:30%;height:9px;"></div>
+    </div>
+    <div class="sk sk-chip"></div>
+    <div class="sk sk-line" style="width:60px;height:11px;"></div>
+  </div>`;
+  return `<div class="skeleton-wrap">${row.repeat(6)}</div>`;
+}
 function emptyStateHtml() {
   // View-ийн дагуу contextual empty state — SVG icon (emoji биш)
   const SEARCH_SVG = '<svg class="lcd-icon" viewBox="0 0 24 24" style="width:56px;height:56px;opacity:.25;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
@@ -4033,7 +4061,8 @@ function renderRow(t) {
         )[t.priority||'none']}
       </span>
     </div>
-    <div>
+    <div class="col-rowactions">
+      ${isFinance ? '' : '<button class="row-menu-btn" title="Шуурхай үйлдэл" data-act="menu">⋯</button>'}
       ${(() => {
         const can = canDeleteTask(t);
         if (can.ok) return '<button class="delete-btn" title="Устгах" data-act="delete">×</button>';
@@ -4043,8 +4072,10 @@ function renderRow(t) {
     </div>
   `;
   row.addEventListener('click', (e) => {
-    const act = e.target.closest('[data-act]')?.dataset.act;
-    // Delete + locked үлдсэн — бусад бүх click модал нээнэ.
+    const actEl = e.target.closest('[data-act]');
+    const act = actEl?.dataset.act;
+    // Delete + locked + menu үлдсэн — бусад бүх click модал нээнэ.
+    if (act === 'menu') { e.stopPropagation(); openRowMenu(t, actEl); return; }
     if (act === 'delete') { deleteTask(t.id); return; }
     if (act === 'locked') {
       const can = canDeleteTask(t);
@@ -4099,6 +4130,96 @@ function renderRow(t) {
     });
   }
   return row;
+}
+
+/* ─── Жагсаалтаас шуурхай үйлдэл (мөрийн ⋯ цэс) ───
+   Модал нээлгүйгээр статус/оноолт/хугацаа өөрчилнө. Үйлдлүүд нь modal доторхтой
+   ижил функц дуудна (handleTaskAction г.м.) тул логик давхардахгүй. */
+let _rowMenuEl = null;
+function _rowMenuOutside(e) { if (_rowMenuEl && !_rowMenuEl.contains(e.target)) closeRowMenu(); }
+function _rowMenuEsc(e) { if (e.key === 'Escape') closeRowMenu(); }
+function closeRowMenu() {
+  if (!_rowMenuEl) return;
+  _rowMenuEl.remove(); _rowMenuEl = null;
+  document.removeEventListener('click', _rowMenuOutside, true);
+  document.removeEventListener('keydown', _rowMenuEsc);
+}
+function openRowMenu(t, anchorEl) {
+  closeRowMenu();
+  const isAssignee = state.me === t.assignee;
+  const canEdit = canEditTask(t);
+  const status = t.status || 'open';
+  const items = [];
+  if (isAssignee && (status === 'open' || status === 'declined')) items.push({ label: 'Эхлүүлэх', icon: '▶', fn: () => handleTaskAction(t.id, 'start') });
+  if (isAssignee && status !== 'done' && status !== 'declined') items.push({ label: 'Дуусгасан', icon: '✓', fn: () => handleTaskAction(t.id, 'done') });
+  if (isAssignee && status === 'done') items.push({ label: 'Дахин нээх', icon: '↻', fn: () => handleTaskAction(t.id, 'reopen') });
+  if (canEdit.all) items.push({ label: 'Дахин оноох', icon: '👤', fn: () => reassignTaskQuick(t) });
+  if (canEdit.all) items.push({ label: 'Хугацаа солих', icon: '📅', fn: () => changeDueQuick(t) });
+  items.push({ label: 'Дэлгэрэнгүй', icon: '✎', fn: () => openTaskModal(t.id) });
+  const del = canDeleteTask(t);
+  if (del.ok) items.push({ label: 'Устгах', icon: '🗑', danger: true, fn: () => deleteTask(t.id) });
+
+  const menu = document.createElement('div');
+  menu.className = 'row-action-menu';
+  menu.innerHTML = items.map((it, i) => `<button class="ram-item${it.danger ? ' danger' : ''}" data-i="${i}"><span class="ram-ic">${it.icon}</span>${escapeHtml(it.label)}</button>`).join('');
+  document.body.appendChild(menu);
+  _rowMenuEl = menu;
+  // Anchor товчны дэргэд байрлуулна; дэлгэцээс хальбал дээш/зүүн тийш эргүүлнэ
+  const r = anchorEl.getBoundingClientRect();
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = r.right - mw;
+  let top = r.bottom + 4;
+  if (top + mh > window.innerHeight - 8) top = r.top - mh - 4;
+  if (left < 8) left = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = Math.max(8, top) + 'px';
+  menu.querySelectorAll('.ram-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const it = items[Number(btn.dataset.i)];
+      closeRowMenu();
+      it.fn();
+    });
+  });
+  setTimeout(() => {
+    document.addEventListener('click', _rowMenuOutside, true);
+    document.addEventListener('keydown', _rowMenuEsc);
+  }, 0);
+}
+async function reassignTaskQuick(t) {
+  const picked = await openMultiAssigneePicker([t.assignee]);
+  if (!picked || !picked.length) return;
+  const newAssignee = picked.find(p => p !== t.assignee) || picked[0];
+  if (newAssignee === t.assignee) { showToast('Өөр хариуцагч сонгоно уу', 'warn'); return; }
+  const prev = t.assignee;
+  t.assignee = newAssignee;
+  t.updated = new Date().toISOString();
+  logTaskActivity(t, 'reassigned', { from: prev, to: newAssignee });
+  await saveTask(t);
+  pushBroadcast(newAssignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
+  showToast(`Дахин оноосон: ${memberName(newAssignee)}`, 'success', 2500);
+  render();
+}
+function changeDueQuick(t) {
+  const input = document.createElement('input');
+  input.type = 'date';
+  input.value = t.due || '';
+  input.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+  document.body.appendChild(input);
+  input.addEventListener('change', async () => {
+    const v = input.value;
+    input.remove();
+    if (v === (t.due || '')) return;
+    t.due = v;
+    t.updated = new Date().toISOString();
+    logTaskActivity(t, 'edited', { field: 'due', to: v });
+    await saveTask(t);
+    showToast(v ? `Хугацаа: ${fmtDate(v)}` : 'Хугацаа арилгалаа', 'success', 2000);
+    render();
+  }, { once: true });
+  input.addEventListener('blur', () => setTimeout(() => input.remove(), 300), { once: true });
+  if (input.showPicker) { try { input.showPicker(); } catch { input.click(); } }
+  else input.click();
 }
 function renderCounts() {
   const today = todayStr();
@@ -4719,7 +4840,7 @@ function openTaskModal(id) {
           ${isDone ? `<div style="color:var(--muted);">Төлөв</div><div style="color:#15803d;font-weight:700;">✓ Дууссан</div>` : ''}
           ${branchLabel ? `<div style="color:var(--muted);">Салбар</div><div>${escapeHtml(branchLabel)}</div>` : ''}
           ${t.project ? `<div style="color:var(--muted);">Төсөл</div><div>${escapeHtml(t.project)}</div>` : ''}
-          ${t.due ? `<div style="color:var(--muted);">Хугацаа</div><div style="font-weight:600;">${escapeHtml(t.due)}</div>` : ''}
+          ${t.due ? `<div style="color:var(--muted);">Хугацаа</div><div style="font-weight:600;${(t.status !== 'done' && t.due < todayStr()) ? 'color:var(--danger);' : ''}">${escapeHtml(fmtDate(t.due))}${(t.status !== 'done' && t.due < todayStr()) ? ' · хоцорсон' : ''}</div>` : ''}
           ${priorityLabel ? `<div style="color:var(--muted);">Зэрэглэл</div><div style="color:${priorityColor};font-weight:600;">${escapeHtml(priorityLabel)}</div>` : ''}
         </div>
         ${t.requires_photo && t.status !== 'done' ? `
@@ -5925,6 +6046,8 @@ async function bootApp() {
     if (frRaw) state.financeRequests = JSON.parse(frRaw);
   } catch(e) { state.financeRequests = []; }
   setConn('offline', 'Шинэчилж байна…');
+  // Cache хоосон (анх удаа / шинэ төхөөрөмж) бол сервер хариу иртэл skeleton харуулна.
+  state._initialLoading = !state.tasks.length;
   generateNotifications();
   render();
 
@@ -5934,6 +6057,7 @@ async function bootApp() {
   if (!TEAM.length) await loadTeamFromAPI();
   const bootOk = await loadBootstrap();
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
+  state._initialLoading = false;
   generateNotifications();
   render();
   setConn('online', 'n8n холбогдсон');

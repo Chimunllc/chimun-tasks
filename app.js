@@ -2291,30 +2291,41 @@ function filteredTasks() {
     const left = leftStaffEmails();
     if (left.size) list = list.filter(t => !left.has(String(t.assignee || '').toLowerCase()));
   }
-  // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
-  if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done');
-  else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done');
-  else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
-  else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
-  else if (state.statusFilter === 'week') {
-    // Энэ долоо хоног — даваа гарагаас ням гараг хүртэл
-    const now = new Date();
-    const dow = now.getDay() || 7; // Mon=1..Sun=7
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - (dow - 1));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const weekStart = monday.toISOString().slice(0, 10);
-    const weekEnd = sunday.toISOString().slice(0, 10);
-    list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
-  }
-  else if (state.statusFilter === 'month') {
-    // Энэ сар
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `${y}-${m}`;
-    list = list.filter(t => t.due && t.due.startsWith(prefix));
+  // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
+  if (state.view === 'finance') {
+    // Санхүүгийн үе шат: Хүлээгдэж буй / Гүйлгээ хүлээж буй / Хаахыг хүлээж буй / Дууссан
+    const f = state.statusFilter;
+    if (f === 'f-pending')          list = list.filter(t => (t.decision || 'pending') === 'pending');
+    else if (f === 'f-await-txn')   list = list.filter(t => t.decision === 'approved' && !t.executed_at && t.status !== 'done');
+    else if (f === 'f-await-close') list = list.filter(t => t.decision === 'approved' && t.executed_at && t.status !== 'done');
+    else if (f === 'f-done')        list = list.filter(t => t.status === 'done');
+    // 'all' эсвэл бусад → бүгд (татгалзсан/хойшлогдсон ч энд харагдана)
+  } else {
+    // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
+    if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done');
+    else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done');
+    else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
+    else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
+    else if (state.statusFilter === 'week') {
+      // Энэ долоо хоног — даваа гарагаас ням гараг хүртэл
+      const now = new Date();
+      const dow = now.getDay() || 7; // Mon=1..Sun=7
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (dow - 1));
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const weekStart = monday.toISOString().slice(0, 10);
+      const weekEnd = sunday.toISOString().slice(0, 10);
+      list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
+    }
+    else if (state.statusFilter === 'month') {
+      // Энэ сар
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const prefix = `${y}-${m}`;
+      list = list.filter(t => t.due && t.due.startsWith(prefix));
+    }
   }
   // ─── Авто-архив: 14 хоногоос өмнө дууссан ажлыг идэвхтэй жагсаалтаас нуух ───
   // Дата ӨӨРЧЛӨХГҮЙ — зөвхөн харагдацын filter. "Дууссан" шүүлт, хайлт, Архив, Дууссан
@@ -2388,13 +2399,37 @@ function filteredTasks() {
       list = list.filter(t => (t.title||'').toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q));
     }
   }
-  // sort: open first, then by due asc, then created desc
-  list.sort((a,b) => {
-    if ((a.status==='done') !== (b.status==='done')) return a.status==='done' ? 1 : -1;
-    const ad = a.due || '9999-12-31', bd = b.due || '9999-12-31';
-    if (ad !== bd) return ad < bd ? -1 : 1;
-    return (b.created||0) - (a.created||0);
-  });
+  // ─── Sort ───
+  if (state.view === 'finance') {
+    // Санхүү — ач холбогдлоор: ТАНД хамаатай (одоо таны үйлдэл хүлээж буй) нь хамгийн эхэнд.
+    //   assignee нь тухайн үе шатанд хариуцагчийг заана (хүлээгдэж буй → зөвшөөрөгч,
+    //   зөвшөөрсөн → нягтлан). Тиймээс assignee===me бол "миний хийх зүйл" = эхэнд.
+    //   Дараа нь үе шатаар (хүлээгдэж буй → гүйлгээ → хаах → хойшлогдсон), эцэст нь дууссан/татгалзсан.
+    const finRank = (t) => {
+      const dec = t.decision || 'pending';
+      if (t.status === 'done' || dec === 'rejected') return 5; // дууссан/татгалзсан — доор
+      let stage;
+      if (dec === 'pending') stage = 1;
+      else if (dec === 'approved' && !t.executed_at) stage = 2; // гүйлгээ хүлээж буй
+      else if (dec === 'approved' && t.executed_at) stage = 3;  // хаахыг хүлээж буй
+      else stage = 4;                                            // хойшлогдсон г.м.
+      return (t.assignee === state.me) ? 0 : stage; // миний үйлдэл хүлээж буй нь дээр
+    };
+    list.sort((a,b) => {
+      const ra = finRank(a), rb = finRank(b);
+      if (ra !== rb) return ra - rb;
+      if (ra === 5) return (b.created||0) - (a.created||0); // дууссан — шинэ нь дээр
+      return (a.created||0) - (b.created||0);               // идэвхтэй — удаан хүлээсэн нь дээр
+    });
+  } else {
+    // sort: open first, then by due asc, then created desc
+    list.sort((a,b) => {
+      if ((a.status==='done') !== (b.status==='done')) return a.status==='done' ? 1 : -1;
+      const ad = a.due || '9999-12-31', bd = b.due || '9999-12-31';
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return (b.created||0) - (a.created||0);
+    });
+  }
   // REGROUP — keep 5-stage act sub-tasks right under their parent.
   // Sub-tasks within a parent are ordered by stage 1→5 regardless of due date.
   const placed = new Set();
@@ -2424,9 +2459,32 @@ function filteredTasks() {
 function render() {
   renderSidebar();
   renderTitle();
+  syncFilterPills();
   renderTaskList();
   renderCounts();
   renderNotifications();
+}
+// Санхүүгийн view-д үе шатны filter, бусад view-д ажлын ерөнхий filter харуулна.
+// Идэвхтэй pill-ийг state.statusFilter-тэй тааруулна.
+function syncFilterPills() {
+  const isFin = state.view === 'finance';
+  const taskG = document.getElementById('task-filters');
+  const finG  = document.getElementById('fin-filters');
+  if (taskG) taskG.style.display = isFin ? 'none' : '';
+  if (finG)  finG.style.display  = isFin ? '' : 'none';
+  const grp = isFin ? finG : taskG;
+  if (!grp) return;
+  let matched = false;
+  grp.querySelectorAll('.filter-pill').forEach(p => {
+    const on = p.dataset.status === state.statusFilter;
+    p.classList.toggle('active', on);
+    if (on) matched = true;
+  });
+  // Идэвхтэй filter энэ бүлэгт байхгүй бол (view сольсон) → Бүгд болгоно
+  if (!matched) {
+    state.statusFilter = 'all';
+    grp.querySelectorAll('.filter-pill').forEach(p => p.classList.toggle('active', p.dataset.status === 'all'));
+  }
 }
 function renderSidebar() {
   // active nav

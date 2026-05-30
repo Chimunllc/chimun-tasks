@@ -353,13 +353,24 @@
     </div>
 
     <div class="toolbar">
-      <div class="filter-pill active" data-status="all">Бүгд</div>
-      <div class="filter-pill" data-status="open">Идэвхтэй</div>
-      <div class="filter-pill" data-status="overdue"><svg class="lcd-icon" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Хоцорсон</div>
-      <div class="filter-pill" data-status="today"><svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Өнөөдөр</div>
-      <div class="filter-pill" data-status="week">Энэ долоо хоног</div>
-      <div class="filter-pill" data-status="month">Энэ сар</div>
-      <div class="filter-pill" data-status="done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
+      <!-- Ажлын ерөнхий filter — санхүүгийн view-д нуугдана -->
+      <span class="filter-group" id="task-filters">
+        <div class="filter-pill active" data-status="all">Бүгд</div>
+        <div class="filter-pill" data-status="open">Идэвхтэй</div>
+        <div class="filter-pill" data-status="overdue"><svg class="lcd-icon" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Хоцорсон</div>
+        <div class="filter-pill" data-status="today"><svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>Өнөөдөр</div>
+        <div class="filter-pill" data-status="week">Энэ долоо хоног</div>
+        <div class="filter-pill" data-status="month">Энэ сар</div>
+        <div class="filter-pill" data-status="done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
+      </span>
+      <!-- Санхүүгийн үе шатны filter — зөвхөн Санхүү view-д харагдана -->
+      <span class="filter-group" id="fin-filters" style="display:none;">
+        <div class="filter-pill active" data-status="all">Бүгд</div>
+        <div class="filter-pill" data-status="f-pending">🕐 Хүлээгдэж буй</div>
+        <div class="filter-pill" data-status="f-await-txn">💸 Гүйлгээ хүлээж буй</div>
+        <div class="filter-pill" data-status="f-await-close">💵 Хаахыг хүлээж буй</div>
+        <div class="filter-pill" data-status="f-done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
+      </span>
       <div class="search"><input type="text" id="search" placeholder="Хайх... (from:Бат due:today priority:high)" title="Шүүлт: from:нэр, by:нэр, due:today/overdue/2026-05-30, priority:high/med/low, status:open/done, branch:m-event/camp" /></div>
     </div>
 

@@ -1812,8 +1812,12 @@ function openFinanceModal(id = null) {
     const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
     const acctSectionView = document.getElementById('f-accountant-only');
     if (acctSectionView) acctSectionView.style.display = isAccountantOrCEOview ? '' : 'none';
+    // Хаах шатанд (зөвшөөрсөн + гүйлгээ хийгдсэн + хаагдаагүй) хүсэлт гаргагч ч баримтын хэсгийг
+    // хараад баримт хавсаргаж хаах боломжтой байх ёстой.
+    const atCloseStage = (t.decision === 'approved' && t.executed_at && t.status !== 'done');
+    const showAcctStages = isAccountantOrCEOview || (atCloseStage && state.me === t.requested_by);
     const acctStagesView = document.getElementById('f-accountant-stages');
-    if (acctStagesView) acctStagesView.style.display = isAccountantOrCEOview ? '' : 'none';
+    if (acctStagesView) acctStagesView.style.display = showAcctStages ? '' : 'none';
     document.getElementById('f-frequency').value = t.frequency || 'Нэг удаагийн';
     const fpView = document.getElementById('f-priority'); if (fpView) fpView.value = t.priority || 'med';
     // Multi-file жагсаалт — Stage 1 болон Stage 4-ийн хувьд массивыг харуулна.

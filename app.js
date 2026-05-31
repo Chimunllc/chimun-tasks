@@ -2460,8 +2460,21 @@ function filteredTasks() {
   return grouped;
 }
 
+/* Цагийн ажилтан (worker_type='daily') — хязгаарлагдмал хандалт. Зөвхөн өөрийн
+   "Ирсэн ажил"-ыг хардаг: санхүү, тойм, илгээсэн, календарь, бусад ажилтан харагдахгүй. */
+function isDailyWorker() {
+  return (state.user && state.user.worker_type === 'daily');
+}
+
 /* -------------------- RENDER -------------------- */
 function render() {
+  // Цагийн ажилтныг зөвшөөрөлгүй view-аас "Ирсэн ажил" руу буцаана (UI нууснаас гадна бат)
+  if (isDailyWorker()) {
+    const blocked = ['dashboard','finance','delegated','calendar','archive'];
+    if (blocked.includes(state.view) || state.view.startsWith('staff:') || state.view.startsWith('project:')) {
+      state.view = 'mine';
+    }
+  }
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -6328,6 +6341,9 @@ function showApp() {
   // Тайлан export зөвхөн CEO-д
   const exportBtn = document.getElementById('export-btn');
   if (exportBtn) exportBtn.style.display = state.isCEO ? '' : 'none';
+  // Цагийн ажилтан — хязгаарлагдмал UI (body class → CSS-ээр нав/товч нуух)
+  document.body.classList.toggle('role-daily', isDailyWorker());
+  if (isDailyWorker()) state.view = 'mine';
 }
 
 function renderUserChip() {

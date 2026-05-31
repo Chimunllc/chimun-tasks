@@ -4275,6 +4275,21 @@ body {
   opacity: 0.85;
 }
 
+/* ═══ Цагийн ажилтан — хязгаарлагдмал хандалт (зөвхөн өөрийн Ирсэн ажил) ═══ */
+body.role-daily #nav-dashboard,
+body.role-daily #nav-calendar,
+body.role-daily .nav-item[data-view="delegated"],
+body.role-daily .nav-item[data-view="finance"],
+body.role-daily .mobile-nav-item[data-view="delegated"],
+body.role-daily .mobile-nav-item[data-view="finance"],
+body.role-daily #new-task-btn,
+body.role-daily #new-finance-btn,
+body.role-daily #new-order-btn,
+body.role-daily #export-btn,
+body.role-daily #nav-projects-label,
+body.role-daily #project-list,
+body.role-daily #add-project { display: none !important; }
+
 /* ═══ Тойм: ажилтны ачаалал — даркуй мөр + чөлөөтэй badge ═══ */
 .dash-staff-scroll { max-height: 320px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
 .dash-staff-clickable { cursor: pointer; border-radius: 6px; transition: background 100ms ease; padding: 2px 6px; margin: 0 -6px; }

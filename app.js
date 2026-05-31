@@ -7060,19 +7060,32 @@ const _NO_SW = new URLSearchParams(location.search).has('nosw');
 if (_NO_SW && 'serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
 }
+function showUpdateBanner() {
+  if (document.getElementById('sw-update-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'sw-update-banner';
+  b.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:12000;background:var(--primary,#5e6ad2);color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;gap:12px;font-size:14px;max-width:92vw;';
+  b.innerHTML = '<span>🔄 Шинэ хувилбар бэлэн</span><button id="sw-update-btn" style="background:#fff;color:#5e6ad2;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;white-space:nowrap;">Шинэчлэх</button><button id="sw-update-x" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1;padding:0 4px;">×</button>';
+  document.body.appendChild(b);
+  document.getElementById('sw-update-btn').onclick = () => location.reload();
+  document.getElementById('sw-update-x').onclick = () => b.remove();
+}
+
 if (!_NO_SW && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.protocol === 'http:')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       console.log('SW registered:', reg.scope);
-      // Шинэ хувилбар install хийгдмэгц шууд reload биш — banner үзүүлж, хэрэглэгч
-      // өөрөө тохиромжтой үед дарна. Modal/form-той ажиллаж байх үед reload болгож
-      // task алдагдахаас сэргийлнэ. Banner-ыг дарахгүй бол дараагийн нээх үед автомат
-      // sync хийгдсэн SW үргэлжилнэ.
-      // SW controllerchange нь infinite reload loop үүсгэх магадлалтай тул автомат
-      // reload-ыг арилгасан. Хэрэглэгч өөрөө tab refresh хийнэ.
-      // Update check — 60 секундын оронд 15 минут тутамд (хэт олон reload-аас сэргийлнэ).
-      // Идэвхтэй ашиглах үед SW v2 v3 хооронд хэдэн commit-аар өөрчлөгдөж байх боломжтой
-      // ч хэрэглэгч мэдрэхгүй (visibilitychange refresh бодит дата ачаалдаг).
+      // Шинэ хувилбар суурилмагц "Шинэчлэх" banner үзүүлнэ. Хэрэглэгч дарж reload —
+      // автомат reload биш тул infinite loop болохгүй, мид-форм дата ч алдагдахгүй.
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          // controller байгаа = энэ нь ШИНЭЧЛЭЛТ (анхны суулгац биш)
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+        });
+      });
+      // Update check — 15 минут тутам
       setInterval(() => reg.update().catch(()=>{}), 15 * 60_000);
     }).catch((err) => {
       console.warn('SW register failed:', err);

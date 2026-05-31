@@ -1832,10 +1832,19 @@ function openFinanceModal(id = null) {
     renderFinanceFileList('f-purchase-list', purchaseUrls, canEditPurchase);
     toggleFinanceFileInput('f-purchase-file', canEditPurchase);
     document.getElementById('f-purchase-label').style.display = '';
-    // Stage 4 picker — зөвхөн executor + executed + !done үед хавсаргана; бусдад read-only thumbs.
-    const canEditReceipt = isExecutor && t.executed_at && t.status !== 'done';
+    // Stage 4 picker — executor БА хүсэлт гаргагч баримт хавсаргаж болно (гаргагч баримтаа
+    // оруулж, нягтлан хянаж хаана). Бусдад read-only thumbs.
+    const canEditReceipt = (isExecutor || state.me === t.requested_by) && t.executed_at && t.status !== 'done';
     renderFinanceFileList('f-receipt-list', receiptUrls, canEditReceipt);
     toggleFinanceFileInput('f-receipt-file', canEditReceipt);
+    // Баримтын дүн input — хаах шатанд (гаргагч/нягтлан засна)
+    const rcptAmtWrap = document.getElementById('f-receipt-amount-wrap');
+    const rcptAmtInput = document.getElementById('f-receipt-amount');
+    if (rcptAmtWrap && rcptAmtInput) {
+      rcptAmtWrap.style.display = (t.executed_at && t.status !== 'done') || t.receipt_amount ? '' : 'none';
+      rcptAmtInput.value = t.receipt_amount || '';
+      rcptAmtInput.readOnly = !canEditReceipt;
+    }
     // Stage 4 label — executed эсвэл done төлөвт л харагдана (өмнө нь утгагүй)
     const showReceiptSection = (t.executed_at || t.status === 'done' || receiptUrls.length || canEditReceipt);
     document.getElementById('f-receipt-label').style.display = showReceiptSection ? '' : 'none';
@@ -1905,7 +1914,17 @@ function openFinanceModal(id = null) {
       nextLine = `${escapeHtml(accountantName)} НӨАТ/баримтаар хаана.`;
     } else if (t.status === 'done') {
       stage = 'Дууссан'; bg = 'var(--ok-soft)'; col = 'var(--ok)'; icon = '✓';
-      headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
+      if (t.close_type === 'дутуу') {
+        bg = 'var(--warn-soft)'; col = 'var(--warn)'; icon = '⚠';
+        headline = `Хаагдсан · баримт дутуу · зөрүү ${Number(t.variance||0).toLocaleString('mn-MN')}₮ авлага`;
+      } else if (t.close_type === 'баримтгүй') {
+        icon = '📝'; headline = 'Хаагдсан · баримтгүй (тайлбараар)';
+        if (t.close_note) nextLine = `Тайлбар: ${escapeHtml(t.close_note)}`;
+      } else if (t.close_type === 'баримттай') {
+        headline = `Хаагдсан · баримт таарсан (${Number(t.receipt_amount||0).toLocaleString('mn-MN')}₮)`;
+      } else {
+        headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
+      }
     } else {
       stage = ''; bg = 'var(--panel-hover)'; col = 'var(--text)'; icon = '•'; headline = '—';
     }
@@ -2031,7 +2050,8 @@ function imageThumbsHtml(urls, opts = {}) {
 }
 
 /* Stage 4 — Туслах нягтлан хүлээн авч хаах: олон файл шаардана, дараа нь received_at/status=done. */
-async function closeFinanceRequest(id) {
+// mode: 'match' (баримт таарсан) | 'short' (дутуу→авлага) | 'noreceipt' (баримтгүй→тайлбар)
+async function closeFinanceRequest(id, mode = 'match') {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
   const executorId = r.executor || getFinanceExecutorEmail();
@@ -2041,12 +2061,10 @@ async function closeFinanceRequest(id) {
   if (!r.executed_at) {
     showToast('Эхлээд шилжүүлгийн баримт хавсаргана', 'warn'); return;
   }
-  // Шинэ сонгосон файлуудыг upload-аад одоогийн жагсаалтад нэмнэ.
-  // state._fReceiptPending — change handler-ээс хадгалсан файлууд (input.value reset болсон ч үлдэнэ).
+  // Шинэ сонгосон баримтыг upload-аад одоогийн жагсаалтад нэмнэ
   const fileInput = document.getElementById('f-receipt-file');
   const inputFiles = fileInput && fileInput.files ? [...fileInput.files] : [];
   const pendingFiles = Array.isArray(state._fReceiptPending) ? state._fReceiptPending : [];
-  // Давхар орохгүй — input.files vs pending хоёроос аль илүү байгааг ашиглана
   const newFiles = inputFiles.length >= pendingFiles.length ? inputFiles : pendingFiles;
   const existing = Array.isArray(r.purchase_receipt_urls) ? [...r.purchase_receipt_urls] : [];
   if (newFiles.length) {
@@ -2058,15 +2076,43 @@ async function closeFinanceRequest(id) {
     if (fileInput) fileInput.value = '';
     state._fReceiptPending = [];
   }
-  if (!existing.length) {
-    showToast('Хүлээн авалтын баримт заавал хавсаргана уу', 'warn', 4000); return;
+  const approved = Number(r.amount) || 0;
+  const receiptAmt = Number(document.getElementById('f-receipt-amount')?.value) || 0;
+
+  if (mode === 'noreceipt') {
+    const note = await showPrompt('Баримтгүй хаах — тодруулга/шалтгаан заавал бичнэ үү:', { placeholder: 'Жишээ: жижиг зардал, баримт аваагүй...', okText: 'Хаах' });
+    if (!note || !note.trim()) { showToast('Тодруулга заавал', 'warn'); return; }
+    r.close_type = 'баримтгүй';
+    r.close_note = note.trim();
+    r.receipt_amount = 0;
+    r.variance = 0;
+  } else {
+    // Баримттай хаах — баримт + дүн заавал
+    if (!existing.length) { showToast('Хүлээн авалтын баримт хавсаргана уу', 'warn', 4000); return; }
+    if (!receiptAmt) { showToast('Баримтын бодит дүнг оруулна уу', 'warn', 4000); return; }
+    const variance = approved - receiptAmt;
+    if (mode === 'short') {
+      if (variance <= 0) { showToast('Зөрүү алга. "Баримт таарсан" дарна уу.', 'warn', 4000); return; }
+      r.close_type = 'дутуу';
+      r.variance = variance;
+      r.close_note = `Баримт ${receiptAmt.toLocaleString('mn-MN')}₮ · зөрүү ${variance.toLocaleString('mn-MN')}₮ — ${memberName(r.requested_by)}-ийн авлага`;
+    } else {
+      // match
+      r.close_type = 'баримттай';
+      r.variance = variance > 0 ? variance : 0;
+      r.close_note = '';
+    }
+    r.receipt_amount = receiptAmt;
   }
   r.purchase_receipt_urls = existing;
   r.received_at = new Date().toISOString();
   r.received_by = state.me;
   r.status = 'done';
   await saveFinanceRequest(r);
-  showToast('Хүсэлт хаагдсан. Бараа хүлээн авсан.', 'success', 3000);
+  const msg = r.close_type === 'дутуу' ? `Хаагдлаа. Зөрүү ${Number(r.variance).toLocaleString('mn-MN')}₮ авлагад бүртгэгдэв.`
+            : r.close_type === 'баримтгүй' ? 'Баримтгүй · тайлбараар хаагдлаа.'
+            : 'Баримт таарсан · хаагдлаа.';
+  showToast(msg, 'success', 3500);
   closeFinanceModal();
   render();
 }
@@ -5772,9 +5818,17 @@ function initEvents() {
     if (icon) icon.textContent = isHidden ? '▴' : '▾';
   });
   // Receipt-save товч → closeFinanceRequest (Stage 4 — бараа хүлээн авч хаах)
-  document.getElementById('f-receipt-save')?.addEventListener('click', async (e) => {
+  document.getElementById('f-close-match')?.addEventListener('click', (e) => {
     if (!state.editingId) return;
-    await withBusy(e.currentTarget, () => closeFinanceRequest(state.editingId), { successText: 'Хаагдлаа' });
+    withBusy(e.currentTarget, () => closeFinanceRequest(state.editingId, 'match'), { successText: 'Хаагдлаа' });
+  });
+  document.getElementById('f-close-short')?.addEventListener('click', (e) => {
+    if (!state.editingId) return;
+    withBusy(e.currentTarget, () => closeFinanceRequest(state.editingId, 'short'), { successText: 'Хаагдлаа' });
+  });
+  document.getElementById('f-close-noreceipt')?.addEventListener('click', (e) => {
+    if (!state.editingId) return;
+    withBusy(e.currentTarget, () => closeFinanceRequest(state.editingId, 'noreceipt'), { successText: 'Хаагдлаа' });
   });
   // Multi-file picker change handler:
   //  - ШИНЭ хүсэлт (editingId хоосон): upload-ыг ХОЙШЛУУЛНА. Илгээх товч дармагц л Drive-руу

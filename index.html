@@ -604,6 +604,13 @@
     <input id="f-receipt-file" type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" multiple style="display:none;" />
     <div id="f-receipt-preview" style="margin-top:6px;font-size:12px;"></div>
 
+    <!-- Баримтын бодит дүн (хаах шатанд) -->
+    <div id="f-receipt-amount-wrap" style="display:none; margin-top:10px;">
+      <label style="font-weight:600;">Баримтын бодит дүн (₮)</label>
+      <p style="font-size:11px;color:var(--muted);margin:2px 0 4px;">Баримтаар баталгаажсан нийт дүн. Батлагдсанаас дутвал зөрүү нь авлага болно.</p>
+      <input id="f-receipt-amount" type="number" min="0" step="1000" placeholder="Жишээ: 80000" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--r-md); font-size:14px;" />
+    </div>
+
     </div>
     <!-- /f-accountant-stages -->
 
@@ -625,9 +632,11 @@
       <button class="btn btn-primary" id="f-execute">✓ Шилжүүлсэн (баримт хавсаргав)</button>
     </div>
 
-    <!-- STAGE 4 — Бараа хүлээн авч бүрэн хаах (Туслах нягтлан) -->
-    <div class="modal-actions" id="f-receipt-actions" style="display:none; margin-top:18px;">
-      <button class="btn btn-primary" id="f-receipt-save">✓ Бараа хүлээн авч хаах</button>
+    <!-- STAGE 4 — Хянаж хаах (Туслах нягтлан) — 3 үр дүн -->
+    <div class="modal-actions" id="f-receipt-actions" style="display:none; flex-wrap:wrap; gap:6px; margin-top:18px;">
+      <button class="btn btn-primary" id="f-close-match">✓ Баримт таарсан · хаах</button>
+      <button class="btn" id="f-close-short" style="border-color:var(--warn);color:var(--warn);">⚠ Дутуу · авлага болгож хаах</button>
+      <button class="btn" id="f-close-noreceipt">📝 Баримтгүй · тайлбараар хаах</button>
     </div>
 
     <!-- SUBMIT / VIEW ACTIONS -->

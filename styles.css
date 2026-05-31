@@ -4963,3 +4963,30 @@ body.role-daily #add-project { display: none !important; }
   outline: none;
   box-shadow: none;
 }
+
+/* ─── M-Event Захиалга view ─────────────────────────────── */
+.orders-wrap { display: grid; gap: 14px; padding: 4px 2px 24px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.order-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); }
+.order-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.order-no { font-weight: 700; font-size: 14px; color: var(--text); }
+.order-total { font-weight: 700; font-size: 16px; color: var(--primary); white-space: nowrap; }
+.order-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
+.order-badge.os-new { background: var(--info-soft); color: var(--info); }
+.order-badge.os-ok { background: var(--primary-soft); color: var(--primary-hover); }
+.order-badge.os-prep { background: var(--warn-soft); color: var(--warn); }
+.order-badge.os-done { background: var(--ok-soft); color: var(--ok); }
+.order-badge.os-cancel { background: var(--danger-soft); color: var(--danger); }
+.order-cust { font-size: 13.5px; color: var(--text-soft); margin-bottom: 4px; }
+.order-cust a { color: var(--primary); text-decoration: none; }
+.order-meta { font-size: 12.5px; color: var(--muted); margin: 2px 0; }
+.order-items { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+.order-items th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); padding: 4px 6px; }
+.order-items td { padding: 4px 6px; border-bottom: 1px solid var(--border); color: var(--text-soft); }
+.order-items .num { text-align: right; }
+.order-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.order-sub { font-size: 12px; color: var(--muted); }
+.order-status-sel { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.order-status-sel select { font-family: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--panel); color: var(--text); cursor: pointer; }
+.orders-empty { text-align: center; padding: 64px 20px; color: var(--muted); }
+.orders-empty .icon { font-size: 40px; margin-bottom: 12px; }
+.orders-empty .sub { font-size: 13px; color: var(--muted-soft); margin-top: 6px; }

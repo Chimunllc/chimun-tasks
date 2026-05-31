@@ -63,6 +63,10 @@ const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push
 const DEFAULT_PUSH_BROADCAST_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-broadcast';
 // Bootstrap — tasks + finance-ийг нэг хариунд татаж execution-ийг 2 → 1 болгож хэмнэнэ.
 const DEFAULT_BOOTSTRAP_URL = 'https://chimunllc.app.n8n.cloud/webhook/bootstrap';
+// M-Event захиалга — GET { orders:[...] } унших, POST { order_no, status, assigned_to, task_id } → шинэчлэх.
+// Сайт (chimunllc.github.io/m-event-website-ready) → /webhook/m-event-site-order руу захиалга илгээж
+// MEVENT_Orders_DB Sheet-д хадгалагдана. Энэ нь тэр Sheet-ийг уншиж/шинэчилнэ.
+const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-orders';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -160,8 +164,10 @@ const state = {
       pushSubscribeUrl: localStorage.getItem('pushSubscribeUrl') || DEFAULT_PUSH_SUBSCRIBE_URL || '',
       pushBroadcastUrl: localStorage.getItem('pushBroadcastUrl') || DEFAULT_PUSH_BROADCAST_URL || '',
       bootstrapUrl:     localStorage.getItem('bootstrapUrl')     || DEFAULT_BOOTSTRAP_URL     || '',
+      ordersUrl:        localStorage.getItem('ordersUrl')        || DEFAULT_ORDERS_URL        || '',
     };
   })(),
+  orders: [],            // M-Event сайтаас ирсэн захиалгууд (зөвхөн CEO ачаална)
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
@@ -2526,6 +2532,8 @@ function render() {
       state.view = 'mine';
     }
   }
+  // Захиалга view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
+  if (state.view === 'orders' && !state.isCEO) state.view = 'mine';
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2566,6 +2574,13 @@ function renderSidebar() {
     dashNav.style.display = '';
     const lbl = document.getElementById('nav-dashboard-label');
     if (lbl) lbl.textContent = state.isCEO ? 'Тойм' : 'Миний тойм';
+  }
+  // Захиалга — зөвхөн CEO-д харагдана. Badge нь "Шинэ" захиалгын тоо.
+  const ordersNav = document.getElementById('nav-orders');
+  if (ordersNav) {
+    ordersNav.style.display = state.isCEO ? '' : 'none';
+    const oCnt = document.getElementById('cnt-orders');
+    if (oCnt) oCnt.textContent = String((state.orders || []).filter(o => (o.status || 'Шинэ') === 'Шинэ').length);
   }
   // Архив — зөвхөн CEO-д харагдана. Тоо нь бүх deleted task-ийн тоо.
   const archNav = document.getElementById('nav-archive');
@@ -2631,6 +2646,7 @@ function renderTitle() {
     mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
+    orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -2692,6 +2708,12 @@ function renderTaskList() {
     wrap.innerHTML = renderCalendar();
     attachCalendarHandlers();
     return;
+  } else if (state.view === 'orders') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderOrders();
+    attachOrdersHandlers();
+    return;
   } else {
     if (tableHead) tableHead.style.display = '';
     if (toolbar) toolbar.style.display = '';
@@ -2723,6 +2745,131 @@ function renderTaskList() {
     // Цөөрсөн — reset back to default
     state._taskListLimit = PAGE_SIZE;
   }
+}
+
+/* ─── M-Event Захиалга ─────────────────────────────────────
+   Сайтаас ирсэн түрээсийн захиалгыг харах + статус удирдах.
+   Backend: n8n /webhook/mevent-orders (GET унших, POST шинэчлэх) → MEVENT_Orders_DB Sheet.
+   Зөвхөн CEO. */
+const ORDER_STATUSES = ['Шинэ', 'Баталсан', 'Бэлтгэж буй', 'Хүргэсэн', 'Буцаан авсан', 'Цуцалсан'];
+
+function normalizeOrder(o) {
+  let items = [];
+  try { items = JSON.parse(o.items_json || '[]'); } catch(e) { items = []; }
+  return {
+    order_no: o.order_no || '',
+    created_at: o.created_at || '',
+    status: o.status || 'Шинэ',
+    customer_name: o.customer_name || '',
+    phone: String(o.phone || ''),
+    address: o.address || '',
+    email: o.email || '',
+    company: o.company || '',
+    register: String(o.register || ''),
+    date_start: o.date_start || '',
+    date_end: o.date_end || '',
+    days: o.days || '',
+    items,
+    subtotal: Number(o.subtotal) || 0,
+    deposit: Number(o.deposit) || 0,
+    total: Number(o.total) || 0,
+    note: o.note || '',
+    source: o.source || '',
+    assigned_to: o.assigned_to || '',
+    task_id: o.task_id || '',
+  };
+}
+
+async function loadOrders() {
+  if (!state.isCEO) return;
+  const url = state.config.ordersUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    state.orders = (data.orders || []).map(normalizeOrder)
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    try { localStorage.setItem('orders', JSON.stringify(state.orders)); } catch(e) {}
+    if (typeof render === 'function') render();   // badge + view шинэчлэх
+  } catch(e) { console.warn('loadOrders fail', e); }
+}
+
+async function updateOrderStatus(order_no, fields) {
+  const o = state.orders.find(x => x.order_no === order_no);
+  if (o) Object.assign(o, fields);
+  render();
+  const url = state.config.ordersUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_no, ...fields }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Захиалга шинэчлэгдлээ', 'success', 1500);
+  } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
+}
+
+function orderStatusClass(s) {
+  return ({
+    'Шинэ': 'os-new', 'Баталсан': 'os-ok', 'Бэлтгэж буй': 'os-prep',
+    'Хүргэсэн': 'os-done', 'Буцаан авсан': 'os-done', 'Цуцалсан': 'os-cancel',
+  })[s] || 'os-new';
+}
+
+function renderOrders() {
+  const orders = state.orders || [];
+  if (!orders.length) {
+    return `<div class="orders-empty"><div class="icon">🛒</div>
+      <div>Захиалга алга байна.</div>
+      <div class="sub">Сайтаас (m-event-website) шинэ захиалга ирэхэд энд харагдана.</div></div>`;
+  }
+  const cards = orders.map(o => {
+    const itemsRows = (o.items || []).map(it =>
+      `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0))}</td></tr>`
+    ).join('');
+    const opts = ORDER_STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${s}</option>`).join('');
+    return `<div class="order-card" data-order="${escapeHtml(o.order_no)}">
+      <div class="order-head">
+        <div>
+          <span class="order-no">${escapeHtml(o.order_no)}</span>
+          <span class="order-badge ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span>
+        </div>
+        <div class="order-total">${fmtMoney(o.total)}</div>
+      </div>
+      <div class="order-cust">
+        <b>${escapeHtml(o.customer_name)}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}
+        · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>
+      </div>
+      <div class="order-meta">📍 ${escapeHtml(o.address || '—')}</div>
+      <div class="order-meta">📅 ${escapeHtml(o.date_start)} → ${escapeHtml(o.date_end)}${o.days ? ' (' + o.days + ' хоног)' : ''}</div>
+      ${o.note ? `<div class="order-meta">📝 ${escapeHtml(o.note)}</div>` : ''}
+      <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
+      <div class="order-foot">
+        <span class="order-sub">Түрээс: ${fmtMoney(o.subtotal)} · Барьцаа: ${fmtMoney(o.deposit)}</span>
+        <label class="order-status-sel">Статус:
+          <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
+        </label>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="orders-wrap">${cards}</div>`;
+}
+
+function attachOrdersHandlers() {
+  document.querySelectorAll('select[data-order-status]').forEach(sel => {
+    sel.onchange = (e) => {
+      const order_no = e.currentTarget.dataset.orderStatus;
+      updateOrderStatus(order_no, { status: e.currentTarget.value });
+    };
+  });
+}
+
+// Мөнгөн дүн форматлагч (₮). fmt-тэй давхцахгүй, орон тусгаарлана.
+function fmtMoney(n) {
+  return new Intl.NumberFormat('mn-MN').format(Math.round(Number(n) || 0)) + '₮';
 }
 
 /* ─── CEO Dashboard ───────────────────────────────────────
@@ -6266,6 +6413,7 @@ async function bootApp() {
   if (!TEAM.length) await loadTeamFromAPI();
   const bootOk = await loadBootstrap();
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
+  loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
   state._initialLoading = false;
   generateNotifications();
   render();

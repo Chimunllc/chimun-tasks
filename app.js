@@ -1969,7 +1969,7 @@ function openFinanceModal(id = null) {
         decisionActions.style.setProperty('display', 'flex', 'important');
       } else if (dec === 'approved' && !t.executed_at && isExecutor) {
         executeActions.style.setProperty('display', 'flex', 'important');
-      } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && isExecutor) {
+      } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && (isExecutor || state.me === t.requested_by)) {
         receiptActions.style.setProperty('display', 'flex', 'important');
       }
     } else if (canEditFields) {
@@ -2055,8 +2055,9 @@ async function closeFinanceRequest(id, mode = 'match') {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
   const executorId = r.executor || getFinanceExecutorEmail();
-  if (state.me !== executorId && !state.isCEO) {
-    showToast('Зөвхөн туслах нягтлан хаах эрхтэй', 'error'); return;
+  // Хаах эрх: туслах нягтлан, хүсэлт гаргагч (бараагаа хүлээн авсан хүн), эсвэл CEO.
+  if (state.me !== executorId && state.me !== r.requested_by && !state.isCEO) {
+    showToast('Зөвхөн туслах нягтлан эсвэл хүсэлт гаргагч хаах эрхтэй', 'error'); return;
   }
   if (!r.executed_at) {
     showToast('Эхлээд шилжүүлгийн баримт хавсаргана', 'warn'); return;

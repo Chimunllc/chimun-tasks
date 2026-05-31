@@ -17,8 +17,16 @@
 - **Frontend:** нэг файлын `app.js` (~6000 мөр) + `index.html` + `styles.css`. Build систем байхгүй.
 - **Backend:** n8n + Google Sheets. 10 workflow → `n8n-workflows-backup/`.
 - **PWA:** service worker, Web Push (VAPID), офлайн ажиллагаа.
-- **Чадвар:** роль/эрх, PIN нэвтрэлт, санхүүгийн хүсэлт, KPI, 5-дамжлагат "акт" урсгал, аппын доторх + push мэдэгдэл.
+- **Чадвар:** роль/эрх, PIN нэвтрэлт, санхүүгийн хүсэлт, KPI, 5-дамжлагат "акт" урсгал, аппын доторх + push мэдэгдэл, **M-Event захиалгын самбар (CEO)**.
 - **Hosting:** GitHub Pages.
+
+### M-Event захиалга (backoffice эхлэл, 2026-05-31)
+- M-Event түрээсийн сайт (`chimunllc.github.io/m-event-website-ready`) захиалгыг хүлээж авах backoffice.
+- **Архитектур шийдэгдсэн:** website дээр админ БАЙХГҮЙ — бүх админ Чимун апп дотор, admin (CEO) эрхээр. Бараа/захиалга Google Sheets-д амьдарна.
+- **Дата:** `MEVENT_Orders_DB` Sheet id `1MxI9jkC06XyNNzyW2nsSNpH8CUKL9GlHDzVHwA65MR8`, tab `orders` (21 багана: order_no, status, customer_*, items_json, total, assigned_to, task_id...). MEVENT Drive фолдер: `1-zJ7OM1uEVb04JCptvJgbYh4VawN5b_c`.
+- **n8n workflow:** `MEVENT · Site order capture` (POST /webhook/m-event-site-order, id `YGrBDw0wZ7O9xMPW`) — сайт → Sheet append. `MEVENT · Orders API (read+update)` (id `9Jh8Qw2XYJwzH9Ho`) — GET /webhook/mevent-orders унших, POST статус/хариуцагч шинэчлэх. Auth: app.js webhook key `1YP4RCfL...`.
+- **App код:** `state.orders`, `loadOrders`, `renderOrders`, `updateOrderStatus`, view `orders` (зөвхөн CEO). config `ordersUrl`.
+- **Дараагийн ажил:** Бараа/үнэ засах backoffice (сайт products.json-ийг Sheet эх сурвалжтай болгох), захиалга → даалгавар/акт урсгал руу холбох, тестийн мөр (`ME-20260531-062727`) устгах.
 
 ## Урт хугацааны зорилго
 
@@ -61,4 +69,4 @@
 Шинэ чухал шийдвэр, хэрэглэгчийн арга барилын талаар олж мэдсэн зүйл гарвал
 энэ файлыг богино, үнэн зөв байлгаж шинэчилнэ.
 
-_Сүүлд шинэчилсэн: 2026-05-26_
+_Сүүлд шинэчилсэн: 2026-05-31_

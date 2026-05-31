@@ -6728,6 +6728,7 @@ async function handleRegister() {
   const emergencyPhone    = document.getElementById('reg-emergency-phone')?.value.trim() || '';
   const seasonalFrom   = document.getElementById('reg-seasonal-from')?.value || '';
   const seasonalTo     = document.getElementById('reg-seasonal-to')?.value || '';
+  const dailyRate      = document.getElementById('reg-daily-rate')?.value || '';
   const photoDataUrl   = state._regPhotoDataUrl || '';
   const workerType     = state._regWorkerType || 'permanent';
   const bank           = document.getElementById('reg-bank')?.value || '';
@@ -6763,6 +6764,7 @@ async function handleRegister() {
     if (!seasonalFrom) return show('⚠ Ажиллаж эхлэх огноог оруулна уу.');
     if (!seasonalTo)   return show('⚠ Ажиллаж дуусах огноог оруулна уу.');
     if (seasonalTo < seasonalFrom) return show('⚠ Дуусах огноо эхлэх огнооноос өмнө байж болохгүй.');
+    if (!dailyRate || Number(dailyRate) <= 0) return show('⚠ Өдрийн хөлсийг оруулна уу.');
   }
   if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
 
@@ -6808,6 +6810,7 @@ async function handleRegister() {
         worker_type:   workerType,   // 'permanent' | 'daily'
         seasonal_from: workerType === 'daily' ? seasonalFrom : '',
         seasonal_to:   workerType === 'daily' ? seasonalTo   : '',
+        daily_rate:    workerType === 'daily' ? (Number(dailyRate) || 0) : '',
         bank, bank_account: bankAccount, bank_holder: bankHolder,
       }),
     });

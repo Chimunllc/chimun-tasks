@@ -67,6 +67,9 @@ const DEFAULT_BOOTSTRAP_URL = 'https://chimunllc.app.n8n.cloud/webhook/bootstrap
 // Сайт (chimunllc.github.io/m-event-website-ready) → /webhook/m-event-site-order руу захиалга илгээж
 // MEVENT_Orders_DB Sheet-д хадгалагдана. Энэ нь тэр Sheet-ийг уншиж/шинэчилнэ.
 const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-orders';
+// M-Event бараа — GET бараа жагсаалт унших, POST { product | products:[...] } → нэмэх/засах.
+// Эх сурвалж: MEVENT_Orders_DB Sheet `products` tab. Сайт мөн эндээс уншина.
+const DEFAULT_PRODUCTS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-products';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -165,9 +168,12 @@ const state = {
       pushBroadcastUrl: localStorage.getItem('pushBroadcastUrl') || DEFAULT_PUSH_BROADCAST_URL || '',
       bootstrapUrl:     localStorage.getItem('bootstrapUrl')     || DEFAULT_BOOTSTRAP_URL     || '',
       ordersUrl:        localStorage.getItem('ordersUrl')        || DEFAULT_ORDERS_URL        || '',
+      productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
     };
   })(),
   orders: [],            // M-Event сайтаас ирсэн захиалгууд (зөвхөн CEO ачаална)
+  products: [],          // M-Event барааны каталог (Sheet эх сурвалж, CEO засна)
+  productSearch: '',     // Бараа view-ийн хайлт
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
@@ -1542,7 +1548,14 @@ function normalizeFinance(r) {
 }
 
 async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber, priority }) {
-  const owner = state.me || getCEOEmail();
+  // Илгээгчийг нэвтэрсэн хэрэглэгчийн identity-гээр тогтооно. ХЭЗЭЭ Ч CEO рүү
+  // автоматаар бүү оноо — өмнө нь и-мэйлгүй ажилтан (state.me='') хүсэлт үүсгэхэд
+  // буруугаар CEO-д бичигддэг алдаа байсан.
+  const owner = state.me || (state.user && state.user.name) || '';
+  if (!owner) {
+    showToast('Нэвтрэлт тодорхойгүй байна. Дахин нэвтэрнэ үү.', 'error');
+    return;
+  }
   const r = {
     id: uid(),
     requested_by: owner,
@@ -2532,8 +2545,8 @@ function render() {
       state.view = 'mine';
     }
   }
-  // Захиалга view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
-  if (state.view === 'orders' && !state.isCEO) state.view = 'mine';
+  // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
+  if ((state.view === 'orders' || state.view === 'products') && !state.isCEO) state.view = 'mine';
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2581,6 +2594,13 @@ function renderSidebar() {
     ordersNav.style.display = state.isCEO ? '' : 'none';
     const oCnt = document.getElementById('cnt-orders');
     if (oCnt) oCnt.textContent = String((state.orders || []).filter(o => (o.status || 'Шинэ') === 'Шинэ').length);
+  }
+  // Бараа — зөвхөн CEO. Badge нь нийт барааны тоо.
+  const prodNav = document.getElementById('nav-products');
+  if (prodNav) {
+    prodNav.style.display = state.isCEO ? '' : 'none';
+    const pCnt = document.getElementById('cnt-products');
+    if (pCnt) pCnt.textContent = String((state.products || []).length);
   }
   // Архив — зөвхөн CEO-д харагдана. Тоо нь бүх deleted task-ийн тоо.
   const archNav = document.getElementById('nav-archive');
@@ -2647,6 +2667,7 @@ function renderTitle() {
     delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
+    products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -2713,6 +2734,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderOrders();
     attachOrdersHandlers();
+    return;
+  } else if (state.view === 'products') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderProducts();
+    attachProductsHandlers();
     return;
   } else {
     if (tableHead) tableHead.style.display = '';
@@ -6367,7 +6394,9 @@ function setUser(member, profile) {
     email: profile.email || member.email || '',
     picture: profile.picture || '',
   };
-  state.me = member.email || '';
+  // И-мэйлгүй ажилтан (цагийн ажилтан г.м.)-д нэрийг identity болгоно — эс бөгөөс
+  // state.me хоосон болж, хүсэлт/даалгавар буруугаар CEO-д онооход хүрнэ.
+  state.me = member.email || member.name || '';
   // CEO эрх — level === 100-аар тогтооно.
   state.isCEO = ((member.level || 0) >= 100);
   state.myLevel = member.level || 0;
@@ -6375,8 +6404,8 @@ function setUser(member, profile) {
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
   }
-  // Persist a lightweight session — email-ээр
-  localStorage.setItem('userEmail', member.email || '');
+  // Persist a lightweight session — email эсвэл (и-мэйлгүй бол) нэрээр
+  localStorage.setItem('userEmail', member.email || member.name || '');
   localStorage.setItem('userLoginAt', String(Date.now()));
 }
 
@@ -6796,11 +6825,13 @@ function tryRestoreSession() {
   const loginAt = parseInt(localStorage.getItem('userLoginAt') || '0', 10);
   const ageMs = Date.now() - loginAt;
   if (!userEmail || ageMs > 24 * 60 * 60 * 1000) return false;
-  const member = TEAM.find(m => String(m.email).toLowerCase() === String(userEmail).toLowerCase());
+  // И-мэйлээр (эсвэл и-мэйлгүй бол нэрээр) сэргээнэ
+  const key = String(userEmail).toLowerCase();
+  const member = TEAM.find(m => (m.email && String(m.email).toLowerCase() === key) || m.name === userEmail);
   if (!member) return false;
   // Restore without picture (we didn't cache it) — user chip will show initials
   state.user = { ...member, email: member.email, picture: '' };
-  state.me = member.email;
+  state.me = member.email || member.name || '';
   state.isCEO = ((member.level || 0) >= 100);
   state.myLevel = member.level || 0;
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {

@@ -26,7 +26,9 @@
 - **Дата:** `MEVENT_Orders_DB` Sheet id `1MxI9jkC06XyNNzyW2nsSNpH8CUKL9GlHDzVHwA65MR8`, tab `orders` (21 багана: order_no, status, customer_*, items_json, total, assigned_to, task_id...). MEVENT Drive фолдер: `1-zJ7OM1uEVb04JCptvJgbYh4VawN5b_c`.
 - **n8n workflow:** `MEVENT · Site order capture` (POST /webhook/m-event-site-order, id `YGrBDw0wZ7O9xMPW`) — сайт → Sheet append. `MEVENT · Orders API (read+update)` (id `9Jh8Qw2XYJwzH9Ho`) — GET /webhook/mevent-orders унших, POST статус/хариуцагч шинэчлэх. Auth: app.js webhook key `1YP4RCfL...`.
 - **App код:** `state.orders`, `loadOrders`, `renderOrders`, `updateOrderStatus`, view `orders` (зөвхөн CEO). config `ordersUrl`.
-- **Дараагийн ажил:** Бараа/үнэ засах backoffice (сайт products.json-ийг Sheet эх сурвалжтай болгох), захиалга → даалгавар/акт урсгал руу холбох, тестийн мөр (`ME-20260531-062727`) устгах.
+- **Бараа backoffice (2026-05-31):** `products` tab (sheet id мөн `1MxI9jkC...`), 249 бараа seed хийсэн. n8n `MEVENT · Products API (read+upsert)` (id `t8JsCudKPGKtP0KW`): GET /webhook/mevent-products (сайт + апп уншина, bare array буцаана), POST бараа нэмэх/засах. **Merge-safe:** POST үед эхлээд Sheet уншиж байгаа мөртэй merge хийдэг — хэсэгчилсэн засвар (зөвхөн үнэ) бусад талбарыг хоослохгүй. Setup workflow: `MEVENT · setup products tab` (id `uO2UJFdT2pNnMgdX`, tab үүсгэх, дахин хэрэггүй). App: `state.products`, `loadProductsCatalog`, `saveProduct`, `renderProducts`, view `products`, config `productsUrl`. Сайт: `CONFIG.PRODUCTS_URL` (live), `loadProducts` нь products.json-ийг fallback болгоно.
+- **Анхаарах (n8n appendOrUpdate gotcha 2):** defineBelow-д БҮХ багана map хийвэл дутуу талбар '' болж жинхэнэ мөрийг хоослоно. Хэсэгчилсэн засвар хийх бол эхлээд Sheet уншиж merge хий (Products API-д хийсэн).
+- **Дараагийн ажил:** захиалга → даалгавар/акт урсгал руу холбох; бараа архивлах UI; тестийн мөр (`ME-20260531-062727`) устгах; MEVENT_Orders_DB-г MEVENT фолдер руу зөөх + давхардсан sheet устгах (хэрэглэгч гараар).
 
 ## Урт хугацааны зорилго
 

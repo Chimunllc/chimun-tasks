@@ -1861,14 +1861,6 @@ function openFinanceModal(id = null) {
     const canEditReceipt = (isExecutor || state.me === t.requested_by) && t.executed_at && t.status !== 'done';
     renderFinanceFileList('f-receipt-list', receiptUrls, canEditReceipt);
     toggleFinanceFileInput('f-receipt-file', canEditReceipt);
-    // Баримтын дүн input — хаах шатанд (гаргагч/нягтлан засна)
-    const rcptAmtWrap = document.getElementById('f-receipt-amount-wrap');
-    const rcptAmtInput = document.getElementById('f-receipt-amount');
-    if (rcptAmtWrap && rcptAmtInput) {
-      rcptAmtWrap.style.display = (t.executed_at && t.status !== 'done') || t.receipt_amount ? '' : 'none';
-      rcptAmtInput.value = t.receipt_amount || '';
-      rcptAmtInput.readOnly = !canEditReceipt;
-    }
     // Stage 4 label — executed эсвэл done төлөвт л харагдана (өмнө нь утгагүй)
     const showReceiptSection = (t.executed_at || t.status === 'done' || receiptUrls.length || canEditReceipt);
     document.getElementById('f-receipt-label').style.display = showReceiptSection ? '' : 'none';
@@ -1940,12 +1932,13 @@ function openFinanceModal(id = null) {
       stage = 'Дууссан'; bg = 'var(--ok-soft)'; col = 'var(--ok)'; icon = '✓';
       if (t.close_type === 'дутуу') {
         bg = 'var(--warn-soft)'; col = 'var(--warn)'; icon = '⚠';
-        headline = `Хаагдсан · баримт дутуу · зөрүү ${Number(t.variance||0).toLocaleString('mn-MN')}₮ авлага`;
+        headline = 'Хаагдсан · дутуу (тайлбартай)';
+        if (t.close_note) nextLine = `Тайлбар: ${escapeHtml(t.close_note)}`;
       } else if (t.close_type === 'баримтгүй') {
         icon = '📝'; headline = 'Хаагдсан · баримтгүй (тайлбараар)';
         if (t.close_note) nextLine = `Тайлбар: ${escapeHtml(t.close_note)}`;
       } else if (t.close_type === 'баримттай') {
-        headline = `Хаагдсан · баримт таарсан (${Number(t.receipt_amount||0).toLocaleString('mn-MN')}₮)`;
+        headline = 'Хаагдсан · баримт таарсан';
       } else {
         headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
       }
@@ -2074,7 +2067,8 @@ function imageThumbsHtml(urls, opts = {}) {
 }
 
 /* Stage 4 — Туслах нягтлан хүлээн авч хаах: олон файл шаардана, дараа нь received_at/status=done. */
-// mode: 'match' (баримт таарсан) | 'short' (дутуу→авлага) | 'noreceipt' (баримтгүй→тайлбар)
+// mode: 'match' (баримт таарсан·хаах) | 'short' (дутуу·тайлбараар) | 'noreceipt' (баримтгүй·тайлбараар)
+// Дүн оруулах механизм байхгүй — дутуу/баримтгүй хоёул зөвхөн тайлбар шаардаж хаана.
 async function closeFinanceRequest(id, mode = 'match') {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
@@ -2101,40 +2095,30 @@ async function closeFinanceRequest(id, mode = 'match') {
     if (fileInput) fileInput.value = '';
     state._fReceiptPending = [];
   }
-  const approved = Number(r.amount) || 0;
-  const receiptAmt = Number(document.getElementById('f-receipt-amount')?.value) || 0;
-
   if (mode === 'noreceipt') {
     const note = await showPrompt('Баримтгүй хаах — тодруулга/шалтгаан заавал бичнэ үү:', { placeholder: 'Жишээ: жижиг зардал, баримт аваагүй...', okText: 'Хаах' });
     if (!note || !note.trim()) { showToast('Тодруулга заавал', 'warn'); return; }
     r.close_type = 'баримтгүй';
     r.close_note = note.trim();
-    r.receipt_amount = 0;
-    r.variance = 0;
+  } else if (mode === 'short') {
+    const note = await showPrompt('Дутуу хаах — юу дутсан / шалтгааныг заавал бичнэ үү:', { placeholder: 'Жишээ: 1 ширхэг дутуу ирсэн...', okText: 'Хаах' });
+    if (!note || !note.trim()) { showToast('Тайлбар заавал', 'warn'); return; }
+    r.close_type = 'дутуу';
+    r.close_note = note.trim();
   } else {
-    // Баримттай хаах — баримт + дүн заавал
+    // match — баримт хавсаргасан байх ёстой
     if (!existing.length) { showToast('Хүлээн авалтын баримт хавсаргана уу', 'warn', 4000); return; }
-    if (!receiptAmt) { showToast('Баримтын бодит дүнг оруулна уу', 'warn', 4000); return; }
-    const variance = approved - receiptAmt;
-    if (mode === 'short') {
-      if (variance <= 0) { showToast('Зөрүү алга. "Баримт таарсан" дарна уу.', 'warn', 4000); return; }
-      r.close_type = 'дутуу';
-      r.variance = variance;
-      r.close_note = `Баримт ${receiptAmt.toLocaleString('mn-MN')}₮ · зөрүү ${variance.toLocaleString('mn-MN')}₮ — ${memberName(r.requested_by)}-ийн авлага`;
-    } else {
-      // match
-      r.close_type = 'баримттай';
-      r.variance = variance > 0 ? variance : 0;
-      r.close_note = '';
-    }
-    r.receipt_amount = receiptAmt;
+    r.close_type = 'баримттай';
+    r.close_note = '';
   }
+  r.receipt_amount = 0;
+  r.variance = 0;
   r.purchase_receipt_urls = existing;
   r.received_at = new Date().toISOString();
   r.received_by = state.me;
   r.status = 'done';
   await saveFinanceRequest(r);
-  const msg = r.close_type === 'дутуу' ? `Хаагдлаа. Зөрүү ${Number(r.variance).toLocaleString('mn-MN')}₮ авлагад бүртгэгдэв.`
+  const msg = r.close_type === 'дутуу' ? 'Дутуу · тайлбараар хаагдлаа.'
             : r.close_type === 'баримтгүй' ? 'Баримтгүй · тайлбараар хаагдлаа.'
             : 'Баримт таарсан · хаагдлаа.';
   showToast(msg, 'success', 3500);

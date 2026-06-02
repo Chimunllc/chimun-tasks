@@ -794,16 +794,17 @@ function currentBranchInfo() {
    Google Sheet-д НЭР хадгална (хүн уншиж ойлгомжтой).
    Аппын дотоод төлөв (state) EMAIL-ээр түлхүүрлэгдэнэ — зөвхөн n8n руу явахаас
    өмнө + ирэхэд хөрвүүлнэ. Хоёр чигт idempotent. */
+// Дотоод түлхүүр (утас/email/нэр) → дэлгэцийн нэр (Sheet-д нэр хадгална)
 function emailToName(val) {
   if (!val) return val;
-  const m = TEAM.find(x => String(x.email).toLowerCase() === String(val).toLowerCase());
+  const m = findMember(val);
   return m ? m.name : val;
 }
+// Нэр (эсвэл аливаа таних утга) → давтагдашгүй түлхүүр = утасны дугаар (idempotent)
 function nameToEmail(val) {
   if (!val) return val;
-  if (/@/.test(String(val))) return val; // аль хэдийн email
-  const m = TEAM.find(x => x.name === val);
-  return (m && m.email) ? m.email : val;
+  const m = findMember(val);
+  return m ? personKey(m) : val;
 }
 /* Код ↔ монгол текст хөрвүүлэх maps (Sheet нь зөвхөн монголоор) */
 const _BRANCH_E2M = { 'm-event':'M Event', 'camp':'NOMAAD Camp', 'shared':'Нэгдсэн', 'production':'Бэлтгэл' };
@@ -1230,7 +1231,7 @@ function getFinanceApprover(r) {
     else if (branch === 'ЗАХ' || branch === 'ЗАХИРГАА') needle = 'анужин';
     if (needle) {
       const found = (TEAM || []).find(m => String(m.name || '').toLowerCase().includes(needle));
-      if (found) return found.email || found.id;
+      if (found) return personKey(found);
     }
   }
   return getCEOEmail();
@@ -2218,11 +2219,22 @@ function actProgress(parentId) {
 }
 
 /* -------------------- HELPERS -------------------- */
-// Ажилтны түлхүүр (email) бүхий бичлэгийг олох.
+// Ажилтны давтагдашгүй ТҮЛХҮҮР — утасны дугаар (бүгдэд бий, давхцахгүй).
+// Утасгүй бол email, эс бөгөөс нэр рүү уналт хийнэ.
+function personKey(m) {
+  if (!m) return '';
+  return String(m.phone || '').replace(/\D/g, '') || String(m.email || '').toLowerCase() || m.name || '';
+}
+// Ажилтныг утас / email / нэрийн аль нэгээр олох (resilient).
 function findMember(key) {
   if (!key) return null;
   const k = String(key).toLowerCase();
-  return TEAM.find(x => String(x.email || '').toLowerCase() === k) || null;
+  const d = String(key).replace(/\D/g, '');
+  return TEAM.find(x =>
+    (x.email && String(x.email).toLowerCase() === k) ||
+    (d && String(x.phone || '').replace(/\D/g, '') === d) ||
+    x.name === key
+  ) || null;
 }
 function memberName(key) {
   if (!key) return '(сонгох)';
@@ -2244,12 +2256,12 @@ function findMemberByRole(rolePattern) {
 }
 function findMemberEmailByRole(rolePattern, fallback = '') {
   const m = findMemberByRole(rolePattern);
-  return m ? (m.email || '') : fallback;
+  return m ? personKey(m) : fallback;
 }
-// CEO-ийн email-г динамикаар олох (level === 100).
+// CEO-ийн түлхүүрийг (утас) динамикаар олох (level === 100).
 function getCEOEmail() {
   const m = TEAM.find(t => (t.level || 0) >= 100);
-  return m ? (m.email || '') : '';
+  return m ? personKey(m) : '';
 }
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
@@ -2299,7 +2311,7 @@ function taskBranch(t) {
 function leftStaffEmails() {
   return new Set(
     TEAM.filter(m => (m.status || 'идэвхтэй') === 'гарсан')
-        .map(m => String(m.email || '').toLowerCase())
+        .map(m => personKey(m))
         .filter(Boolean)
   );
 }
@@ -3086,7 +3098,7 @@ function renderDashboard() {
   // 2) Per-staff active load — БҮХ идэвхтэй ажилтныг 0-ээс эхлүүлнэ (ачаалалгүй/чөлөөтэй
   //    хүмүүс ч харагдана — CEO хэнд ажил оноох боломжтойг шууд харна).
   const staffLoad = {};
-  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && m.email).forEach(m => { staffLoad[m.email] = 0; });
+  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй').forEach(m => { staffLoad[personKey(m)] = 0; });
   tasks.filter(t => t.status !== 'done' && t.assignee).forEach(t => {
     staffLoad[t.assignee] = (staffLoad[t.assignee] || 0) + 1;
   });
@@ -3797,8 +3809,8 @@ function openMultiAssigneePicker(currentAssignees = []) {
       );
     listEl.innerHTML = visible.map(m => `
       <label class="mp-row">
-        <input type="checkbox" data-mp-id="${escapeHtml(m.email || '')}" ${selected.has(m.email) ? 'checked' : ''} style="width:18px;height:18px;" />
-        <span class="mp-avatar">${escapeHtml(memberInitials(m.email || ''))}</span>
+        <input type="checkbox" data-mp-id="${escapeHtml(personKey(m))}" ${selected.has(personKey(m)) ? 'checked' : ''} style="width:18px;height:18px;" />
+        <span class="mp-avatar">${escapeHtml(memberInitials(personKey(m)))}</span>
         <span class="mp-info">
           <span class="mp-name">${escapeHtml(m.name)}</span>
           <span class="mp-role">${escapeHtml(m.role || '')}</span>
@@ -3822,7 +3834,7 @@ function openMultiAssigneePicker(currentAssignees = []) {
   searchEl.oninput = renderList;
   allEl.onchange = () => {
     if (allEl.checked) {
-      TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => selected.add(m.email));
+      TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => selected.add(personKey(m)));
     } else {
       selected.clear();
     }
@@ -4104,7 +4116,7 @@ function renderStaffList() {
     const status = m.status || 'идэвхтэй';
     const isActive = status === 'идэвхтэй';
     const isPending = status === 'хүлээж буй';
-    const isSelf = m.email === state.me;
+    const isSelf = personKey(m) === state.me;
     let statusLabel = 'Идэвхтэй', statusCls = 'active';
     if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
     else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
@@ -4115,7 +4127,7 @@ function renderStaffList() {
     const seasonalBadge = isSeasonal
       ? `<span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;background:${isExpired ? 'var(--danger-soft)' : 'var(--warn-soft)'};color:${isExpired ? 'var(--danger)' : 'var(--warn)'};">${isExpired ? '⏱ ' + m.seasonal_to + ' хугацаа дууссан' : '⏱ ' + m.seasonal_to + ' хүртэл'}</span>`
       : '';
-    const key = m.email || '';
+    const key = personKey(m);
     return `
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
         <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(key))}</span>
@@ -4138,7 +4150,7 @@ function renderStaffList() {
     btn.addEventListener('click', async () => {
       const email = btn.dataset.staffEmail;
       const act = btn.dataset.staffAct;
-      const member = TEAM.find(m => m.email === email);
+      const member = findMember(email);
       if (!member) return;
       if (act === 'review') { openPendingRegistration(member); return; }
       // Хугацаа сунгах — өдрийн ажилтан буцаж ажиллах
@@ -5752,7 +5764,7 @@ function fillProjectSelect(id, value, branchOverride) {
 function fillAssigneeSelect(id, value, branchOverride) {
   // Бүх ажилтан — салбараар хязгаарлахгүй. "Гарсан" статустайг шүүж хасна.
   const active = TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
-  fillSelect(id, active.map(m => ({ value: m.email || '', label: m.name + ' (' + m.role + ')' })), value);
+  fillSelect(id, active.map(m => ({ value: personKey(m), label: m.name + ' (' + m.role + ')' })), value);
 }
 function fillBranchSelectInModal(id, value) {
   // `<select><option>` нь HTML рендер хийдэггүй тул SVG icon-ыг хасч зөвхөн текст үлдээнэ.
@@ -6538,9 +6550,9 @@ function setUser(member, profile) {
     email: profile.email || member.email || '',
     picture: profile.picture || '',
   };
-  // И-мэйлгүй ажилтан (цагийн ажилтан г.м.)-д нэрийг identity болгоно — эс бөгөөс
-  // state.me хоосон болж, хүсэлт/даалгавар буруугаар CEO-д онооход хүрнэ.
-  state.me = member.email || member.name || '';
+  // Identity = утасны дугаар (давтагдашгүй, бүгдэд бий). Утасгүй бол email/нэр рүү уналт.
+  // Өмнө нь email байсан тул и-мэйлгүй ажилтан хоосон болж, хүсэлт буруугаар CEO-д онооддог байсан.
+  state.me = personKey(member);
   // CEO эрх — level === 100-аар тогтооно.
   state.isCEO = ((member.level || 0) >= 100);
   state.myLevel = member.level || 0;
@@ -6548,8 +6560,8 @@ function setUser(member, profile) {
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
   }
-  // Persist a lightweight session — email эсвэл (и-мэйлгүй бол) нэрээр
-  localStorage.setItem('userEmail', member.email || member.name || '');
+  // Persist a lightweight session — утас/email/нэрийн түлхүүрээр
+  localStorage.setItem('userEmail', personKey(member));
   localStorage.setItem('userLoginAt', String(Date.now()));
 }
 
@@ -6970,13 +6982,12 @@ function tryRestoreSession() {
   const loginAt = parseInt(localStorage.getItem('userLoginAt') || '0', 10);
   const ageMs = Date.now() - loginAt;
   if (!userEmail || ageMs > 24 * 60 * 60 * 1000) return false;
-  // И-мэйлээр (эсвэл и-мэйлгүй бол нэрээр) сэргээнэ
-  const key = String(userEmail).toLowerCase();
-  const member = TEAM.find(m => (m.email && String(m.email).toLowerCase() === key) || m.name === userEmail);
+  // Утас/email/нэрийн түлхүүрээр сэргээнэ
+  const member = findMember(userEmail);
   if (!member) return false;
   // Restore without picture (we didn't cache it) — user chip will show initials
   state.user = { ...member, email: member.email, picture: '' };
-  state.me = member.email || member.name || '';
+  state.me = personKey(member);
   state.isCEO = ((member.level || 0) >= 100);
   state.myLevel = member.level || 0;
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {

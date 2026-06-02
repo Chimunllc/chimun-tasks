@@ -37,6 +37,16 @@
 Стратеги: цөм урсгалаа өөрөө бүтээх, "хатуу дүрэмтэй" модулиудыг (нягтлан, татвар, цалин)
 бэлэн системд даатгах эсэхийг хэрэглэгчтэй ярих.
 
+### Identity түлхүүр (2026-06-02)
+Ажилтны дотоод түлхүүр = **утасны дугаар** (`personKey(m)` = phone digits ‖ email ‖ name).
+Өмнө нь email байсан ч и-мэйлгүй ажилтан (цагийн ажилтан)-д хоосон болж, хүсэлт буруугаар
+CEO-д онооддог байсан. Sheet-д НЭР хадгална (хүн уншихад). `findMember(key)` нь утас/email/нэрээр
+resilient хайдаг. `emailToName`/`nameToEmail` (toWire/fromWire seam), getCEOEmail,
+getFinanceExecutorEmail, findMemberEmailByRole, getFinanceApprover, member picker-ууд бүгд
+personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэт харьцуулалт бүгд phone===phone.
+**Үлдсэн gap:** staff-update webhook (Хугацаа сунгах/Гарсан) мөрийг `email`-ээр тааруулдаг —
+и-мэйлгүй ажилтанд sync хийгдэхгүй (backend засвар хэрэгтэй).
+
 ## Хэрэглэгчийн ажиллах арга барил — ЭНИЙГ ДАГА
 
 - **Прагматик, over-engineering-ийг үл тэвчинэ.** "Ном ёсны best practice" гэж бүү

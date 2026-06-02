@@ -4990,3 +4990,33 @@ body.role-daily #add-project { display: none !important; }
 .orders-empty { text-align: center; padding: 64px 20px; color: var(--muted); }
 .orders-empty .icon { font-size: 40px; margin-bottom: 12px; }
 .orders-empty .sub { font-size: 13px; color: var(--muted-soft); margin-top: 6px; }
+
+/* ─── M-Event Бараа (backoffice) view ───────────────────── */
+.prod-toolbar { display: flex; gap: 10px; align-items: center; margin: 4px 2px 10px; }
+.prod-search { flex: 1; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-family: inherit; font-size: 14px; background: var(--panel); color: var(--text); }
+.prod-count { font-size: 12.5px; color: var(--muted); margin: 0 2px 10px; }
+.prod-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+.prod-row { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.prod-img { width: 48px; height: 48px; border-radius: 8px; overflow: hidden; background: var(--bg); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.prod-img img { width: 100%; height: 100%; object-fit: cover; }
+.prod-img .ph { font-size: 22px; opacity: .4; }
+.prod-main { flex: 1; min-width: 120px; }
+.prod-name { width: 100%; font-size: 14px; font-weight: 600; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; background: transparent; color: var(--text); font-family: inherit; }
+.prod-name:hover, .prod-name:focus { border-color: var(--border-strong); background: var(--panel); outline: none; }
+.prod-sub { font-size: 11.5px; color: var(--muted); padding-left: 6px; margin-top: 2px; }
+.prod-fld { display: flex; flex-direction: column; font-size: 10.5px; color: var(--muted); gap: 2px; }
+.prod-fld input { width: 96px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 13px; font-family: inherit; text-align: right; background: var(--panel); color: var(--text); }
+.prod-fld.sm input { width: 64px; }
+.prod-save { padding: 8px 14px; border: 1px solid var(--primary); background: var(--primary-soft); color: var(--primary-hover); border-radius: 7px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.prod-save:hover { background: var(--primary); color: #fff; }
+.pnf { background: var(--panel); border: 1px solid var(--primary); border-radius: 10px; padding: 14px; margin: 0 2px 12px; }
+.pnf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pnf-grid label { display: flex; flex-direction: column; font-size: 11.5px; color: var(--muted); gap: 3px; }
+.pnf-grid label.pnf-wide { grid-column: span 3; }
+.pnf-grid input { padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 13.5px; font-family: inherit; background: var(--panel); color: var(--text); }
+.pnf-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+@media (max-width: 720px) {
+  .prod-row { flex-wrap: wrap; }
+  .pnf-grid { grid-template-columns: 1fr 1fr; }
+  .pnf-grid label.pnf-wide { grid-column: span 2; }
+}

@@ -2899,6 +2899,150 @@ function fmtMoney(n) {
   return new Intl.NumberFormat('mn-MN').format(Math.round(Number(n) || 0)) + '₮';
 }
 
+/* ─── M-Event Бараа (backoffice) ────────────────────────────
+   Барааны үнэ/нөөц/нэр засах + шинэ бараа нэмэх. Эх сурвалж: MEVENT_Orders_DB `products` tab.
+   Засвар нь n8n-ээр Sheet-д хадгалагдаж, сайт (m-event-website) шууд тэр өгөгдлийг уншина.
+   Зөвхөн CEO. */
+async function loadProductsCatalog() {
+  if (!state.isCEO) return;
+  const url = state.config.productsUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    state.products = Array.isArray(data) ? data : (data.products || []);
+    try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch(e) {}
+    if (typeof render === 'function') render();
+  } catch(e) { console.warn('loadProductsCatalog fail', e); }
+}
+
+async function saveProduct(product) {
+  const url = state.config.productsUrl;
+  const idx = state.products.findIndex(p => p.id === product.id);
+  if (idx >= 0) state.products[idx] = { ...state.products[idx], ...product };
+  else state.products.unshift(product);
+  render();
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Бараа хадгалагдлаа', 'success', 1500);
+    loadProductsCatalog();
+  } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
+}
+
+function productRowHtml(p) {
+  const img = p.photo
+    ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
+    : '<div class="ph">📦</div>';
+  const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
+  return `<div class="prod-row" data-id="${escapeHtml(p.id)}" data-search="${escapeHtml(search)}">
+    <div class="prod-img">${img}</div>
+    <div class="prod-main">
+      <input class="prod-name" data-f="name" value="${escapeHtml(p.name || '')}">
+      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}</div>
+    </div>
+    <label class="prod-fld">Үнэ<input type="number" data-f="price" value="${Number(p.price) || 0}"></label>
+    <label class="prod-fld">Барьцаа<input type="number" data-f="deposit" value="${Number(p.deposit) || 0}"></label>
+    <label class="prod-fld sm">Нөөц<input type="number" data-f="stock" value="${Number(p.stock) || 0}"></label>
+    <button class="btn prod-save" data-id="${escapeHtml(p.id)}">Хадгалах</button>
+  </div>`;
+}
+
+function renderProducts() {
+  let list = state.products || [];
+  const rows = list.map(productRowHtml).join('');
+  return `
+    <div class="prod-toolbar">
+      <input type="search" id="prod-search" class="prod-search" placeholder="Бараа хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
+      <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
+    </div>
+    <div class="prod-count" id="prod-count">${list.length} бараа</div>
+    <div id="prod-new-form"></div>
+    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
+  `;
+}
+
+function newProductFormHtml() {
+  const cats = [...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort();
+  const opts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
+  return `<div class="pnf">
+    <div class="pnf-grid">
+      <label>Нэр*<input id="pnf-name" placeholder="Барааны нэр"></label>
+      <label>Ангилал<input id="pnf-cat" list="pnf-cats" placeholder="Ангилал"><datalist id="pnf-cats">${opts}</datalist></label>
+      <label>SKU<input id="pnf-sku" placeholder="SKU код"></label>
+      <label>Үнэ<input id="pnf-price" type="number" value="0"></label>
+      <label>Барьцаа<input id="pnf-deposit" type="number" value="0"></label>
+      <label>Нөөц<input id="pnf-stock" type="number" value="1"></label>
+      <label class="pnf-wide">Зургийн URL<input id="pnf-photo" placeholder="https://..."></label>
+      <label class="pnf-wide">Тайлбар<input id="pnf-desc" placeholder="Тайлбар"></label>
+    </div>
+    <div class="pnf-actions">
+      <button class="btn" id="pnf-cancel">Болих</button>
+      <button class="btn btn-primary" id="pnf-save">Нэмэх</button>
+    </div>
+  </div>`;
+}
+
+function attachProductsHandlers() {
+  // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
+  const s = document.getElementById('prod-search');
+  if (s) s.oninput = (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    state.productSearch = e.target.value;
+    let n = 0;
+    document.querySelectorAll('.prod-row').forEach(row => {
+      const show = !q || (row.dataset.search || '').includes(q);
+      row.style.display = show ? '' : 'none';
+      if (show) n++;
+    });
+    const c = document.getElementById('prod-count');
+    if (c) c.textContent = `${n} бараа${q ? ' (шүүсэн)' : ''}`;
+  };
+  // Мөр хадгалах
+  document.querySelectorAll('.prod-save').forEach(btn => {
+    btn.onclick = () => {
+      const row = btn.closest('.prod-row');
+      const id = row.dataset.id;
+      const orig = state.products.find(p => p.id === id) || {};
+      const get = f => row.querySelector(`[data-f="${f}"]`);
+      const product = { ...orig, id,
+        name: get('name').value.trim(),
+        price: Number(get('price').value) || 0,
+        deposit: Number(get('deposit').value) || 0,
+        stock: Number(get('stock').value) || 0,
+      };
+      withBusy(btn, () => saveProduct(product), { successText: 'Хадгалсан' });
+    };
+  });
+  // Шинэ бараа
+  document.getElementById('prod-new')?.addEventListener('click', () => {
+    const wrap = document.getElementById('prod-new-form');
+    if (!wrap) return;
+    if (wrap.innerHTML.trim()) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = newProductFormHtml();
+    wrap.querySelector('#pnf-cancel').onclick = () => { wrap.innerHTML = ''; };
+    wrap.querySelector('#pnf-save').onclick = (e) => {
+      const g = id => (wrap.querySelector('#' + id)?.value || '').trim();
+      const name = g('pnf-name');
+      if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
+      const cat = g('pnf-cat');
+      const product = {
+        name, category: cat, sku: g('pnf-sku'),
+        price: Number(g('pnf-price')) || 0, deposit: Number(g('pnf-deposit')) || 0,
+        stock: Number(g('pnf-stock')) || 0, photo: g('pnf-photo'), description: g('pnf-desc'),
+        type: 'rental', all_categories: cat ? [cat] : [],
+      };
+      withBusy(e.currentTarget, () => saveProduct(product), { successText: 'Нэмсэн' });
+      wrap.innerHTML = '';
+    };
+  });
+}
+
 /* ─── CEO Dashboard ───────────────────────────────────────
    Үндсэн KPI болон график.
    - Task статусын pie/donut
@@ -6443,6 +6587,7 @@ async function bootApp() {
   const bootOk = await loadBootstrap();
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
   loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
+  loadProductsCatalog();   // M-Event барааны каталог (CEO)
   state._initialLoading = false;
   generateNotifications();
   render();

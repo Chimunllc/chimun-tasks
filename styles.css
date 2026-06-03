@@ -5020,3 +5020,39 @@ body.role-daily #add-project { display: none !important; }
   .pnf-grid { grid-template-columns: 1fr 1fr; }
   .pnf-grid label.pnf-wide { grid-column: span 2; }
 }
+
+/* ─── Монгол огнооны календар (захиалгын форм) ─── */
+.mc-pop {
+  margin-top: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  z-index: 70;
+  position: relative;
+}
+.mc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.mc-title { font-weight: 700; font-size: 13px; }
+.mc-nav {
+  background: none; border: none; font-size: 20px; line-height: 1;
+  cursor: pointer; color: var(--text); padding: 2px 10px; border-radius: 6px;
+}
+.mc-nav:hover { background: var(--panel-hover); }
+.mc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.mc-cell {
+  text-align: center; padding: 7px 0; font-size: 13px; border-radius: 7px;
+  user-select: none;
+}
+.mc-cell.wd { color: var(--muted); font-size: 11px; font-weight: 700; padding: 4px 0; }
+.mc-cell.day { cursor: pointer; }
+.mc-cell.day:hover { background: var(--panel-hover); }
+.mc-cell.weekend { color: var(--danger); }
+.mc-cell.today { outline: 1.5px solid var(--primary); outline-offset: -1.5px; }
+.mc-cell.sel { background: var(--primary); color: #fff; font-weight: 700; }
+.mc-cell.sel.weekend { color: #fff; }
+.mc-cell.empty { visibility: hidden; }
+.mcal-display { background: var(--panel); }

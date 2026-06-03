@@ -2970,6 +2970,59 @@ function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', openNewMeventOrder);
 }
 
+/* Монгол хэлтэй огнооны календар — readonly input дээр дарахад inline panel нээгдэнэ.
+   hiddenEl.value = YYYY-MM-DD (логикт), displayEl нь монголоор харуулна. */
+function mountCalendar(displayEl, hiddenEl, popEl) {
+  const WD = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
+  const today = new Date();
+  let view = new Date(today.getFullYear(), today.getMonth(), 1);
+  let selected = null;
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const human = (d) => `${d.getFullYear()} оны ${d.getMonth() + 1}-р сарын ${d.getDate()}`;
+  function render() {
+    const y = view.getFullYear(), mo = view.getMonth();
+    const startOff = (new Date(y, mo, 1).getDay() + 6) % 7; // Даваа = 0
+    const days = new Date(y, mo + 1, 0).getDate();
+    let cells = '';
+    for (let i = 0; i < startOff; i++) cells += '<div class="mc-cell empty"></div>';
+    for (let d = 1; d <= days; d++) {
+      const cur = new Date(y, mo, d);
+      const wknd = [0, 6].includes(cur.getDay());
+      const cls = ['mc-cell', 'day', wknd ? 'weekend' : '', iso(cur) === iso(today) ? 'today' : '', selected && iso(cur) === iso(selected) ? 'sel' : ''].filter(Boolean).join(' ');
+      cells += `<div class="${cls}" data-d="${d}">${d}</div>`;
+    }
+    popEl.innerHTML = `
+      <div class="mc-head">
+        <button type="button" class="mc-nav" data-nav="-1">‹</button>
+        <span class="mc-title">${y} оны ${mo + 1}-р сар</span>
+        <button type="button" class="mc-nav" data-nav="1">›</button>
+      </div>
+      <div class="mc-grid">${WD.map(w => `<div class="mc-cell wd">${w}</div>`).join('')}</div>
+      <div class="mc-grid">${cells}</div>`;
+  }
+  displayEl.addEventListener('click', () => {
+    const open = popEl.style.display !== 'none';
+    document.querySelectorAll('.mc-pop').forEach(p => { p.style.display = 'none'; });
+    if (!open) { render(); popEl.style.display = 'block'; }
+  });
+  popEl.addEventListener('click', (e) => {
+    const nav = e.target.closest('.mc-nav');
+    if (nav) { view.setMonth(view.getMonth() + Number(nav.dataset.nav)); render(); return; }
+    const cell = e.target.closest('.mc-cell.day');
+    if (cell) {
+      selected = new Date(view.getFullYear(), view.getMonth(), Number(cell.dataset.d));
+      hiddenEl.value = iso(selected);
+      displayEl.value = human(selected);
+      popEl.style.display = 'none';
+    }
+  });
+  document.addEventListener('mousedown', (e) => {
+    if (!popEl.parentElement) return; // modal хаагдсан
+    if (popEl.style.display === 'none') return;
+    if (!e.target.closest('.mcal')) popEl.style.display = 'none';
+  });
+}
+
 /* Вэбсайт шиг бүрэн захиалга гараар үүсгэх (үйлчлүүлэгч + бараа + дүн) →
    /webhook/m-event-site-order руу илгээж MEVENT_Orders_DB-д "Шинэ" төлөвтэй нэмнэ. */
 function openNewMeventOrder() {
@@ -2978,7 +3031,7 @@ function openNewMeventOrder() {
   let manualDeposit = null; // null бол авто (барааны барьцаа), эс бөгөөс гар оролт
   const hourOpts = Array.from({ length: 24 }, (_, h) => {
     const hh = String(h).padStart(2, '0');
-    return `<option value="${hh}">${hh}:00 цаг</option>`;
+    return `<option value="${hh}">${hh}:00</option>`;
   }).join('');
 
   const old = document.getElementById('mev-order-modal');
@@ -3004,15 +3057,23 @@ function openNewMeventOrder() {
       <input id="mo-address" placeholder="Хан-Уул, Restaurant XYZ" />
       <div style="display:flex;gap:8px;">
         <div style="flex:1;min-width:0;"><label>Эхлэх</label>
-          <div style="display:flex;gap:4px;">
-            <input id="mo-start-date" type="date" lang="mn-MN" style="flex:1;min-width:0;" />
-            <select id="mo-start-hour" style="width:86px;flex:none;">${hourOpts}</select>
+          <div style="display:flex;gap:4px;align-items:flex-start;">
+            <div class="mcal" style="flex:1;min-width:0;position:relative;">
+              <input type="text" class="mcal-display" id="mo-start-disp" readonly placeholder="Огноо сонгох" style="width:100%;cursor:pointer;" />
+              <input type="hidden" id="mo-start-date" />
+              <div class="mc-pop" id="mo-start-pop" style="display:none;"></div>
+            </div>
+            <select id="mo-start-hour" style="width:80px;flex:none;">${hourOpts}</select>
           </div>
         </div>
         <div style="flex:1;min-width:0;"><label>Дуусах</label>
-          <div style="display:flex;gap:4px;">
-            <input id="mo-end-date" type="date" lang="mn-MN" style="flex:1;min-width:0;" />
-            <select id="mo-end-hour" style="width:86px;flex:none;">${hourOpts}</select>
+          <div style="display:flex;gap:4px;align-items:flex-start;">
+            <div class="mcal" style="flex:1;min-width:0;position:relative;">
+              <input type="text" class="mcal-display" id="mo-end-disp" readonly placeholder="Огноо сонгох" style="width:100%;cursor:pointer;" />
+              <input type="hidden" id="mo-end-date" />
+              <div class="mc-pop" id="mo-end-pop" style="display:none;"></div>
+            </div>
+            <select id="mo-end-hour" style="width:80px;flex:none;">${hourOpts}</select>
           </div>
         </div>
       </div>
@@ -3036,6 +3097,8 @@ function openNewMeventOrder() {
   document.body.appendChild(modal);
   modal.querySelector('#mo-start-hour').value = '09';
   modal.querySelector('#mo-end-hour').value = '17';
+  mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'));
+  mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'));
 
   const itemsEl = modal.querySelector('#mo-items');
   const totalsEl = modal.querySelector('#mo-totals');

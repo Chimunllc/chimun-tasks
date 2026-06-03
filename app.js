@@ -2925,6 +2925,57 @@ async function updateOrderStatus(order_no, fields) {
   } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 
+// Туслах нягтлан "Гүйлгээ амжилттай" дарахад: захиалгыг баталгаажуулж, 3 даалгавар
+// (Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт) автоматаар үүсгэнэ. Эвент менежерт оноогдоно
+// → тэр тус бүрд ажилтан хуваарилна (даалгаврын reassign-аар).
+async function confirmOrderPayment(order_no) {
+  const o = state.orders.find(x => x.order_no === order_no);
+  if (!o) return;
+  if (state.me !== getFinanceExecutorEmail() && !state.isCEO) {
+    showToast('Зөвхөн Туслах нягтлан төлбөр баталгаажуулна', 'error'); return;
+  }
+  if ((o.status || 'Шинэ') !== 'Шинэ') { showToast('Аль хэдийн баталгаажсан', 'warn'); return; }
+  const ok = await showConfirm(
+    `${o.customer_name || o.order_no} — ${fmtMoney(o.total)}\nГүйлгээ амжилттай гэж баталгаажуулах уу?\n(Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт даалгавар үүснэ)`,
+    { title: 'Төлбөр баталгаажуулах', okText: 'Тийм, баталгаажуулах' });
+  if (!ok) return;
+  // Эвент менежер даалгаврын эзэн (creator) → тэр тус бүрд ажилтан хуваарилна.
+  const owner = findMemberEmailByRole('эвент', '') || state.me;
+  const cust = o.customer_name || o.order_no;
+  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
+  const baseDesc = `Захиалга ${o.order_no} · ${cust}`
+    + (o.date_start ? `\n📅 ${o.date_start} → ${o.date_end}` : '')
+    + `\n📍 ${o.address || '—'} · ☎ ${o.phone || '—'}`;
+  const defs = [
+    { title: `Түрээс бэлдэх — ${cust}`, priority: 'high' },
+    { title: `Цэвэрлэгээ — ${cust}`, priority: 'med' },
+    { title: `Хүргэлт — ${cust}`, priority: 'high' },
+  ];
+  const ids = [];
+  for (let i = 0; i < defs.length; i++) {
+    const t = {
+      id: uid(), title: defs[i].title, desc: baseDesc, branch: 'm-event', project: 'event',
+      assignee: owner, due, priority: defs[i].priority, status: 'open',
+      order_no: o.order_no, createdBy: owner, created: Date.now() + i, comments: [], activity: [],
+    };
+    state.tasks.unshift(t);
+    ids.push(t.id);
+    await saveTask(t);
+  }
+  o.status = 'Баталсан';
+  o.task_id = ids.join(',');
+  const idx = state.orders.findIndex(x => x.order_no === order_no);
+  if (idx >= 0) state.orders[idx] = o;
+  render();
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.ordersUrl || DEFAULT_ORDERS_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderToWire(o)),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { showToast('Захиалга sheet-д хадгалагдсангүй: ' + e.message, 'warn', 4000); }
+  showToast('Баталгаажлаа · 3 даалгавар үүслээ. Эвент менежер ажилтан хуваарилна.', 'success', 4000);
+}
+
 function orderStatusClass(s) {
   return ({
     'Шинэ': 'os-new', 'Баталсан': 'os-ok', 'Бэлтгэж буй': 'os-prep',
@@ -2942,6 +2993,7 @@ function renderOrders() {
       <div>Захиалга алга байна.</div>
       <div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.</div></div>`;
   }
+  const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const cards = orders.map(o => {
     const itemsRows = (o.items || []).map(it =>
       `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0))}</td></tr>`
@@ -2962,10 +3014,12 @@ function renderOrders() {
       <div class="order-meta">📍 ${escapeHtml(o.address || '—')}</div>
       <div class="order-meta">📅 ${escapeHtml(o.date_start)} → ${escapeHtml(o.date_end)}${o.days ? ' (' + o.days + ' хоног)' : ''}</div>
       ${o.note ? `<div class="order-meta">📝 ${escapeHtml(o.note)}</div>` : ''}
+      ${o.task_id ? `<div class="order-meta">📋 Бэлтгэлийн даалгавар үүсгэгдсэн</div>` : ''}
       <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
       <div class="order-foot">
         <span class="order-sub">Түрээс: ${fmtMoney(o.subtotal)} · Барьцаа: ${fmtMoney(o.deposit)}</span>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+          ${(o.status || 'Шинэ') === 'Шинэ' && canConfirm ? `<button class="btn btn-primary" data-order-confirm="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>` : ''}
           ${(o.status || 'Шинэ') === 'Шинэ' ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
           <label class="order-status-sel">Статус:
             <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
@@ -2990,6 +3044,9 @@ function attachOrdersHandlers() {
       const o = state.orders.find(x => x.order_no === btn.dataset.orderEdit);
       if (o) openNewMeventOrder(o);
     });
+  });
+  document.querySelectorAll('button[data-order-confirm]').forEach(btn => {
+    btn.addEventListener('click', () => confirmOrderPayment(btn.dataset.orderConfirm));
   });
 }
 

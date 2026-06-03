@@ -28,7 +28,9 @@
 - **App код:** `state.orders`, `loadOrders`, `renderOrders`, `updateOrderStatus`, view `orders` (зөвхөн CEO). config `ordersUrl`.
 - **Бараа backoffice (2026-05-31):** `products` tab (sheet id мөн `1MxI9jkC...`), 249 бараа seed хийсэн. n8n `MEVENT · Products API (read+upsert)` (id `t8JsCudKPGKtP0KW`): GET /webhook/mevent-products (сайт + апп уншина, bare array буцаана), POST бараа нэмэх/засах. **Merge-safe:** POST үед эхлээд Sheet уншиж байгаа мөртэй merge хийдэг — хэсэгчилсэн засвар (зөвхөн үнэ) бусад талбарыг хоослохгүй. Setup workflow: `MEVENT · setup products tab` (id `uO2UJFdT2pNnMgdX`, tab үүсгэх, дахин хэрэггүй). App: `state.products`, `loadProductsCatalog`, `saveProduct`, `renderProducts`, view `products`, config `productsUrl`. Сайт: `CONFIG.PRODUCTS_URL` (live), `loadProducts` нь products.json-ийг fallback болгоно.
 - **Анхаарах (n8n appendOrUpdate gotcha 2):** defineBelow-д БҮХ багана map хийвэл дутуу талбар '' болж жинхэнэ мөрийг хоослоно. Хэсэгчилсэн засвар хийх бол эхлээд Sheet уншиж merge хий (Products API-д хийсэн).
-- **Дараагийн ажил:** захиалга → даалгавар/акт урсгал руу холбох; бараа архивлах UI; тестийн мөр (`ME-20260531-062727`) устгах; MEVENT_Orders_DB-г MEVENT фолдер руу зөөх + давхардсан sheet устгах (хэрэглэгч гараар).
+- **Захиалгын гүйцэтгэлийн урсгал (2026-06-02):** Шинэ (захиалгын/эвент ажилтан үүсгэв, апп доторх "+ Шинэ захиалга" эсвэл сайтаас) → Туслах нягтлан "✓ Гүйлгээ амжилттай" дарна (`confirmOrderPayment`) → status=Баталсан + **3 даалгавар автоматаар** үүснэ (Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт; branch m-event, project event, эзэн=Эвент менежер) → Эвент менежер тус бүрд ажилтан reassign-аар хуваарилна. "✓ Гүйлгээ амжилттай" зөвхөн нягтлан/CEO-д. "✎ Засах" зөвхөн Шинэ төлөвт. Update Order node 21 багана бүгд map (update бүр бүрэн мөр илгээнэ — `orderToWire`).
+- **20% хямдрал:** 2+ хоног түрээслэвэл түрээсийн дүнгээс 20% (апп форм + сайт хоёуланд). НӨАТ хасах чагт = түрээсээс −5%.
+- **Дараагийн ажил:** бараа архивлах UI; тестийн мөр (`ME-20260531-062727`) устгах; MEVENT_Orders_DB-г MEVENT фолдер руу зөөх + давхардсан sheet устгах (хэрэглэгч гараар).
 
 ## Урт хугацааны зорилго
 

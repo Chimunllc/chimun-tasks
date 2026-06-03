@@ -1263,6 +1263,8 @@ function financeAsTask(r) {
     executed_at: r.executed_at,
     createdBy: r.requested_by,
     created: r.requested_at ? new Date(r.requested_at).getTime() : 0,
+    purpose: r.purpose || '',          // зарцуулалт тайлбар — мөрөнд харуулна
+    requested_at: r.requested_at || '', // илгээсэн цаг (UB-аар форматлана)
     _isFinance: true, // marker
   };
 }
@@ -2311,6 +2313,17 @@ function fmtDate(s) {
   if (diff > 1 && diff <= 7) return `${Math.round(diff)} хоног дараа`;
   if (diff < -1 && diff >= -7) return `${Math.abs(Math.round(diff))} хоног өмнө`;
   return d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
+}
+// Огноо + цаг — Улаанбаатарын цагаар (MM-DD HH:MM)
+function fmtDateTimeUB(val) {
+  if (!val) return '';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleString('sv-SE', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return d.toISOString().slice(5, 16).replace('T', ' ');
+  }
 }
 function setConn(cls, text) {
   const el = document.getElementById('conn');
@@ -4536,6 +4549,12 @@ function renderRow(t) {
         <span class="meta-desktop-only meta-project">${escapeHtml(projectName(t.project) || 'Төсөлгүй')}</span>
         ${t.createdBy && t.createdBy !== t.assignee
           ? `<span class="meta-desktop-only meta-dot"></span><span class="meta-desktop-only delegated-from">${escapeHtml(memberName(t.createdBy))}</span>`
+          : ''}
+        ${t._isFinance && t.purpose
+          ? `<span class="meta-dot"></span><span class="fin-purpose" style="color:var(--text-soft);" title="${escapeHtml(t.purpose)}">${escapeHtml(t.purpose.length > 70 ? t.purpose.slice(0, 70) + '…' : t.purpose)}</span>`
+          : ''}
+        ${t._isFinance && t.requested_at
+          ? `<span class="meta-dot"></span><span class="fin-time" style="color:var(--muted);">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>`
           : ''}
       </div>
     </div>

@@ -3003,7 +3003,6 @@ function openNewMeventOrder() {
         <div style="flex:1;"><label>Дуусах огноо</label><input id="mo-end" type="date" /></div>
       </div>
       <label style="margin-top:10px;">Бараа</label>
-      <datalist id="mo-prod-list">${products.map(p => `<option value="${escapeHtml(p.name || '')}"></option>`).join('')}</datalist>
       <div id="mo-items"></div>
       <button class="btn" id="mo-add-item" style="margin-top:6px;">+ Бараа нэмэх</button>
       <label style="margin-top:12px;">Нийт барьцаа (₮)</label>
@@ -3033,8 +3032,11 @@ function openNewMeventOrder() {
   depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
   function renderItems() {
     itemsEl.innerHTML = items.map((it, i) => `
-      <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-        <input class="mo-it-name" list="mo-prod-list" value="${escapeHtml(it.name || '')}" placeholder="Бараа сонгох/бичих" style="flex:1;min-width:0;" />
+      <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;">
+        <div class="mo-name-wrap" style="flex:1;min-width:0;position:relative;">
+          <input class="mo-it-name" autocomplete="off" value="${escapeHtml(it.name || '')}" placeholder="Бараа хайх/бичих" style="width:100%;" />
+          <div class="mo-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:60;background:var(--panel);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.18);margin-top:2px;"></div>
+        </div>
         <input class="mo-it-qty" type="number" min="1" value="${it.qty || 1}" style="width:56px;" title="Тоо" />
         <input class="mo-it-price" type="number" min="0" value="${it.price || 0}" style="width:104px;" title="Үнэ" />
         <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
@@ -3046,6 +3048,19 @@ function openNewMeventOrder() {
     const t = computeTotals();
     totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b><br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
   }
+  // Барааны хайлтын dropdown — нэр бичихэд тохирох бараанууд жагсана
+  function showSuggest(row, query) {
+    const box = row.querySelector('.mo-suggest');
+    if (!box) return;
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) { box.style.display = 'none'; return; }
+    const matches = products.filter(p => (p.name || '').toLowerCase().includes(q)).slice(0, 12);
+    if (!matches.length) { box.style.display = 'none'; return; }
+    box.innerHTML = matches.map(p =>
+      `<div class="mo-sg-item" data-name="${escapeHtml(p.name || '')}" style="padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);">${escapeHtml(p.name || '')}<span style="color:var(--muted);float:right;">${fmtMoney(Number(p.price) || 0)}</span></div>`
+    ).join('');
+    box.style.display = '';
+  }
 
   renderItems();
 
@@ -3054,6 +3069,7 @@ function openNewMeventOrder() {
     const i = +row.dataset.idx;
     if (e.target.classList.contains('mo-it-name')) {
       items[i].name = e.target.value;
+      showSuggest(row, e.target.value);
       const p = findProd(e.target.value);
       if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
         row.querySelector('.mo-it-price').value = items[i].price; }
@@ -3071,6 +3087,28 @@ function openNewMeventOrder() {
     items.splice(i, 1);
     if (!items.length) items.push({ name: '', qty: 1, price: 0, deposit: 0 });
     renderItems();
+  });
+  // Саналыг сонгох (mousedown — blur-аас өмнө ажиллана)
+  itemsEl.addEventListener('mousedown', (e) => {
+    const sg = e.target.closest('.mo-sg-item');
+    if (!sg) return;
+    e.preventDefault();
+    const row = sg.closest('.mo-item-row');
+    const i = +row.dataset.idx;
+    const p = findProd(sg.dataset.name);
+    items[i].name = sg.dataset.name;
+    if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0; }
+    row.querySelector('.mo-it-name').value = items[i].name;
+    row.querySelector('.mo-it-price').value = items[i].price;
+    row.querySelector('.mo-suggest').style.display = 'none';
+    syncAutoDeposit();
+    renderTotals();
+  });
+  // Focus алдахад dropdown-ийг хаах (сонголтод зориулж бага зэрэг хүлээнэ)
+  itemsEl.addEventListener('focusout', (e) => {
+    if (!e.target.classList.contains('mo-it-name')) return;
+    const row = e.target.closest('.mo-item-row');
+    setTimeout(() => { const b = row?.querySelector('.mo-suggest'); if (b) b.style.display = 'none'; }, 150);
   });
   modal.querySelector('#mo-add-item').addEventListener('click', () => {
     items.push({ name: '', qty: 1, price: 0, deposit: 0 });

@@ -3169,10 +3169,16 @@ function openNewMeventOrder(editOrder) {
   const startDateEl = modal.querySelector('#mo-start-date');
   const endDateEl = modal.querySelector('#mo-end-date');
   function orderDays() {
+    // Түрээс эхэлсэн цагаас хойш 24 цаг = 1 хоног. Огноо + цагийг нийлүүлж бодно.
     const sd = startDateEl.value, ed = endDateEl.value;
     if (!sd || !ed) return 1;
-    const d = Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1;
-    return d > 0 ? d : 1;
+    const sh = parseInt(modal.querySelector('#mo-start-hour')?.value, 10) || 0;
+    const eh = parseInt(modal.querySelector('#mo-end-hour')?.value, 10) || 0;
+    const start = new Date(`${sd}T${String(sh).padStart(2, '0')}:00:00`);
+    const end = new Date(`${ed}T${String(eh).padStart(2, '0')}:00:00`);
+    const diffMs = end - start;
+    if (!(diffMs > 0)) return 1;
+    return Math.max(1, Math.ceil(diffMs / 86400000 - 1e-9));   // 24ц=1, 35ц=2, 48ц=2
   }
   function computeTotals() {
     const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);

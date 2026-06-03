@@ -502,7 +502,7 @@ function generateNotifications() {
   localStorage.setItem(lastSeenKey, JSON.stringify(nowSeen));
 
   // 5. FINANCE — миний илгээсэн хүсэлтийн төлөв өөрчлөгдсөн (approved/rejected/deferred/executed)
-  state.financeRequests.filter(t => t.requested_by === state.me).forEach(t => {
+  state.financeRequests.filter(t => t.requested_by === state.me && t.status !== 'deleted').forEach(t => {
     const stages = [
       { key: 'approved', cond: t.decision === 'approved' && t.status !== 'done', msg: `✓ Зөвшөөрөгдсөн: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
       { key: 'rejected', cond: t.decision === 'rejected', msg: `✗ Татгалзсан: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
@@ -520,7 +520,7 @@ function generateNotifications() {
 
   // 5b. FINANCE — CEO-д ирсэн pending хүсэлт + S03-д ирсэн approved хүсэлт
   if (state.isCEO) {
-    state.financeRequests.filter(r => (r.decision || 'pending') === 'pending' && r.status !== 'done').forEach(r => {
+    state.financeRequests.filter(r => (r.decision || 'pending') === 'pending' && r.status !== 'done' && r.status !== 'deleted').forEach(r => {
       const nid = `finance-pending-${r.id}`;
       if (!seen.has(nid)) {
         newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
@@ -530,7 +530,7 @@ function generateNotifications() {
     });
   }
   if (state.me === getFinanceExecutorEmail()) {
-    state.financeRequests.filter(r => r.decision === 'approved' && r.status !== 'done').forEach(r => {
+    state.financeRequests.filter(r => r.decision === 'approved' && r.status !== 'done' && r.status !== 'deleted').forEach(r => {
       const nid = `finance-execute-${r.id}`;
       if (!seen.has(nid)) {
         newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
@@ -1736,6 +1736,8 @@ function openFinanceModal(id = null) {
   executeActions.style.setProperty('display', 'none', 'important');
   receiptActions.style.setProperty('display', 'none', 'important');
   decisionInfo.style.display = 'none';
+  const fDeleteBtn = document.getElementById('f-delete');
+  if (fDeleteBtn) fDeleteBtn.style.display = 'none';
 
   // Dropdown options-уудыг шинэчилэх (modal нээх бүрд)
   fillFinanceSelects();
@@ -1989,6 +1991,16 @@ function openFinanceModal(id = null) {
       } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && (isExecutor || state.me === t.requested_by)) {
         receiptActions.style.setProperty('display', 'flex', 'important');
       }
+      // Устгах — зөвхөн өөрийн илгээсэн хүсэлт, гүйлгээ хийгдэхээс ӨМНӨ (CEO ч устгаж болно)
+      const fDelete = document.getElementById('f-delete');
+      if (fDelete) {
+        const canDelete = !t.executed_at && t.status !== 'done'
+          && (state.me === t.requested_by || state.isCEO);
+        if (canDelete) {
+          submitActions.style.setProperty('display', '', 'important');
+          fDelete.style.display = '';
+        }
+      }
     } else if (canEditFields) {
       // EDIT mode — field-үүдийг unlock + Хадгалах товч
       ['f-amount','f-beneficiary','f-account','f-purpose','f-justification','f-due']
@@ -2122,6 +2134,29 @@ async function closeFinanceRequest(id, mode = 'match') {
             : r.close_type === 'баримтгүй' ? 'Баримтгүй · тайлбараар хаагдлаа.'
             : 'Баримт таарсан · хаагдлаа.';
   showToast(msg, 'success', 3500);
+  closeFinanceModal();
+  render();
+}
+
+// Өөрийн илгээсэн санхүүгийн хүсэлтийг гүйлгээ хийгдэхээс ӨМНӨ устгана (soft delete).
+async function deleteFinanceRequest(id) {
+  const r = state.financeRequests.find(x => x.id === id);
+  if (!r) return;
+  if (state.me !== r.requested_by && !state.isCEO) {
+    showToast('Зөвхөн өөрийн илгээсэн хүсэлтийг устгана', 'error'); return;
+  }
+  if (r.executed_at || r.status === 'done') {
+    showToast('Гүйлгээ хийгдсэн хүсэлтийг устгах боломжгүй', 'warn', 4000); return;
+  }
+  const ok = await showConfirm(
+    `${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮\nЭнэ хүсэлтийг устгах уу?`,
+    { title: 'Хүсэлт устгах', okText: 'Устгах', danger: true });
+  if (!ok) return;
+  r.status = 'deleted';
+  await saveFinanceRequest(r, true);
+  state.financeRequests = state.financeRequests.filter(x => x.id !== id);
+  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  showToast('Хүсэлт устгагдлаа', 'success');
   closeFinanceModal();
   render();
 }
@@ -2328,8 +2363,8 @@ function filteredTasks() {
   if (state.view === 'mine') list = list.filter(t => t.assignee === state.me);
   else if (state.view === 'delegated') list = list.filter(t => t.createdBy === state.me && t.assignee !== state.me);
   else if (state.view === 'finance') {
-    // Финансын хүсэлтийг task-loga adapter-аар render хийнэ
-    list = state.financeRequests.map(financeAsTask);
+    // Финансын хүсэлтийг task-loga adapter-аар render хийнэ (устгасныг хасна)
+    list = state.financeRequests.filter(r => r.status !== 'deleted').map(financeAsTask);
     // 'mine' эсвэл 'delegated' гэх view-ийн адил accessrolгүүл явна
     if (!state.isCEO && state.me) {
       list = list.filter(r => r.assignee === state.me || r.createdBy === state.me);
@@ -3049,7 +3084,7 @@ function attachProductsHandlers() {
    CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
 function renderDashboard() {
   const tasks = state.tasks || [];
-  const fr = state.financeRequests || [];
+  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted');
   const today = todayStr();
   const isCEO = !!state.isCEO;
   const me = state.me;
@@ -3429,7 +3464,7 @@ async function sendWeeklyDigest() {
   const weekAgo = new Date(now);
   weekAgo.setDate(now.getDate() - 7);
   const tasks = state.tasks || [];
-  const fr = state.financeRequests || [];
+  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted');
 
   const stats = {
     period: {
@@ -4701,7 +4736,7 @@ function renderCounts() {
     ? state.financeRequests
     : state.financeRequests.filter(r => r.requested_by === state.me ||
         (r.decision === 'approved' && r.status !== 'done' && (r.executor || executorId) === state.me));
-  setCount('cnt-finance', myFinance.filter(r => r.status !== 'done').length);
+  setCount('cnt-finance', myFinance.filter(r => r.status !== 'done' && r.status !== 'deleted').length);
   setCount('cnt-overdue', branchTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length);
   setCount('cnt-today', branchTasks.filter(t => t.due === today).length);
   setCount('cnt-done', branchTasks.filter(t => t.status === 'done').length);
@@ -6128,6 +6163,10 @@ function initEvents() {
   // NEW FINANCE REQUEST button
   document.getElementById('new-finance-btn')?.addEventListener('click', () => openFinanceModal());
   document.getElementById('f-cancel')?.addEventListener('click', () => closeFinanceModal());
+  document.getElementById('f-delete')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (state.editingId) deleteFinanceRequest(state.editingId);
+  });
   // "Дэлгэрэнгүй" expander товч — нуугдсан талбаруудыг харуулах/нуух
   document.getElementById('f-toggle-advanced')?.addEventListener('click', () => {
     const adv = document.getElementById('f-advanced-fields');

@@ -2256,12 +2256,12 @@ function personKey(m) {
 // Ажилтныг утас / email / нэрийн аль нэгээр олох (resilient).
 function findMember(key) {
   if (!key) return null;
-  const k = String(key).toLowerCase();
+  const k = String(key).trim().toLowerCase();
   const d = String(key).replace(/\D/g, '');
   return TEAM.find(x =>
-    (x.email && String(x.email).toLowerCase() === k) ||
+    (x.email && String(x.email).trim().toLowerCase() === k) ||
     (d && String(x.phone || '').replace(/\D/g, '') === d) ||
-    x.name === key
+    (String(x.name || '').trim().toLowerCase() === k)  // нэрийг үсгийн том/жижиг ялгахгүй тааруулна
   ) || null;
 }
 function memberName(key) {

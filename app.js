@@ -2293,6 +2293,12 @@ function getCEOEmail() {
   const m = TEAM.find(t => (t.level || 0) >= 100);
   return m ? personKey(m) : '';
 }
+// M-Event захиалга удирдах эрх — CEO эсвэл эвент/захиалгын менежер (role-д "эвент"/"захиалг").
+function canManageOrders() {
+  if (state.isCEO) return true;
+  const m = findMember(state.me);
+  return /эвент|захиалг/i.test(String(m?.role || ''));
+}
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
   for (const branch of Object.keys(state.projectsByBranch)) {
@@ -2609,7 +2615,8 @@ function render() {
     }
   }
   // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
-  if ((state.view === 'orders' || state.view === 'products') && !state.isCEO) state.view = 'mine';
+  if (state.view === 'orders' && !canManageOrders()) state.view = 'mine';
+  if (state.view === 'products' && !state.isCEO) state.view = 'mine';
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2656,7 +2663,7 @@ function renderSidebar() {
   // Захиалга — зөвхөн CEO-д харагдана. Badge нь "Шинэ" захиалгын тоо.
   const ordersNav = document.getElementById('nav-orders');
   if (ordersNav) {
-    ordersNav.style.display = state.isCEO ? '' : 'none';
+    ordersNav.style.display = canManageOrders() ? '' : 'none';
     const oCnt = document.getElementById('cnt-orders');
     if (oCnt) oCnt.textContent = String((state.orders || []).filter(o => (o.status || 'Шинэ') === 'Шинэ').length);
   }
@@ -2873,7 +2880,7 @@ function normalizeOrder(o) {
 }
 
 async function loadOrders() {
-  if (!state.isCEO) return;
+  if (!canManageOrders()) return;
   const url = state.config.ordersUrl;
   if (!url) return;
   try {
@@ -3122,7 +3129,7 @@ function fmtMoney(n) {
    Засвар нь n8n-ээр Sheet-д хадгалагдаж, сайт (m-event-website) шууд тэр өгөгдлийг уншина.
    Зөвхөн CEO. */
 async function loadProductsCatalog() {
-  if (!state.isCEO) return;
+  if (!canManageOrders()) return;   // order manager-д бараа сонгох форм хэрэгтэй
   const url = state.config.productsUrl;
   if (!url) return;
   try {

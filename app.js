@@ -3023,7 +3023,7 @@ function openNewMeventOrder() {
       <input id="mo-deposit" type="number" min="0" placeholder="0" />
       <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Бүх үнэ НӨАТ-тэй.</p>
       <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-weight:400;cursor:pointer;">
-        <input type="checkbox" id="mo-vat" style="width:18px;height:18px;" /> НӨАТ хасах (нийт дүнгээс −5%)
+        <input type="checkbox" id="mo-vat" style="width:18px;height:18px;" /> НӨАТ хасах (түрээсийн үнээс −5%)
       </label>
       <label style="margin-top:12px;">Тэмдэглэл</label>
       <textarea id="mo-note" placeholder="Хүргэлт, тоног, нэмэлт..."></textarea>
@@ -3048,9 +3048,9 @@ function openNewMeventOrder() {
   function computeTotals() {
     const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
     const deposit = Number(depositEl.value) || 0;
-    const base = subtotal + deposit;
-    const vatDiscount = vatEl.checked ? Math.round(base * 0.05) : 0;
-    return { subtotal, deposit, vatDiscount, grand: base - vatDiscount };
+    // НӨАТ хасалт зөвхөн ТҮРЭЭСИЙН үнээс (барьцаанаас хасагдахгүй)
+    const vatDiscount = vatEl.checked ? Math.round(subtotal * 0.05) : 0;
+    return { subtotal, deposit, vatDiscount, grand: subtotal - vatDiscount + deposit };
   }
   depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
   vatEl.addEventListener('change', () => renderTotals());

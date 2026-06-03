@@ -380,6 +380,13 @@
         <div class="filter-pill" data-status="f-done"><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Дууссан</div>
         <div class="filter-pill active" data-status="all">Бүгд</div>
       </span>
+      <!-- Санхүү — эрэмбэлэх (зөвхөн Санхүү view) -->
+      <select id="fin-sort" style="display:none; padding:6px 10px; border:1px solid var(--border); border-radius:var(--r-md); background:var(--panel); color:var(--text); font-size:13px; cursor:pointer;">
+        <option value="smart">⭐ Ач холбогдлоор</option>
+        <option value="date">🕐 Огноогоор</option>
+        <option value="amount">💰 Дүнгээр</option>
+        <option value="requester">👤 Илгээгчээр</option>
+      </select>
       <div class="search"><input type="text" id="search" placeholder="Хайх... (from:Бат due:today priority:high)" title="Шүүлт: from:нэр, by:нэр, due:today/overdue/2026-05-30, priority:high/med/low, status:open/done, branch:m-event/camp" /></div>
     </div>
 

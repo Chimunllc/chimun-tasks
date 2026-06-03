@@ -152,6 +152,7 @@ const state = {
   branch: localStorage.getItem('branch') || 'm-event',
   view: 'mine',          // mine | delegated | finance | all | overdue | today | done | project:<id>
   statusFilter: 'all',   // all | open | done
+  financeSort: 'smart',  // smart | date | amount | requester (зөвхөн Санхүү view)
   search: '',
   // Auth state — populated by Google Sign-In flow. `me` is set automatically.
   user: null,            // { name, role, email, picture, branches }
@@ -2528,26 +2529,36 @@ function filteredTasks() {
   }
   // ─── Sort ───
   if (state.view === 'finance') {
-    // Санхүү — ач холбогдлоор: ТАНД хамаатай (одоо таны үйлдэл хүлээж буй) нь хамгийн эхэнд.
-    //   assignee нь тухайн үе шатанд хариуцагчийг заана (хүлээгдэж буй → зөвшөөрөгч,
-    //   зөвшөөрсөн → нягтлан). Тиймээс assignee===me бол "миний хийх зүйл" = эхэнд.
-    //   Дараа нь үе шатаар (хүлээгдэж буй → гүйлгээ → хаах → хойшлогдсон), эцэст нь дууссан/татгалзсан.
-    const finRank = (t) => {
-      const dec = t.decision || 'pending';
-      if (t.status === 'done' || dec === 'rejected') return 5; // дууссан/татгалзсан — доор
-      let stage;
-      if (dec === 'pending') stage = 1;
-      else if (dec === 'approved' && !t.executed_at) stage = 2; // гүйлгээ хүлээж буй
-      else if (dec === 'approved' && t.executed_at) stage = 3;  // хаахыг хүлээж буй
-      else stage = 4;                                            // хойшлогдсон г.м.
-      return (t.assignee === state.me) ? 0 : stage; // миний үйлдэл хүлээж буй нь дээр
-    };
-    list.sort((a,b) => {
-      const ra = finRank(a), rb = finRank(b);
-      if (ra !== rb) return ra - rb;
-      if (ra === 5) return (b.created||0) - (a.created||0); // дууссан — шинэ нь дээр
-      return (a.created||0) - (b.created||0);               // идэвхтэй — удаан хүлээсэн нь дээр
-    });
+    const sortMode = state.financeSort || 'smart';
+    if (sortMode === 'date') {
+      list.sort((a,b) => (b.created||0) - (a.created||0)); // шинэ нь дээр
+    } else if (sortMode === 'amount') {
+      list.sort((a,b) => (Number(b.amount)||0) - (Number(a.amount)||0)); // их дүн дээр
+    } else if (sortMode === 'requester') {
+      list.sort((a,b) => {
+        const c = (memberName(a.createdBy)||'').localeCompare(memberName(b.createdBy)||'', 'mn');
+        return c !== 0 ? c : (b.created||0) - (a.created||0);
+      });
+    } else {
+      // smart — ач холбогдлоор: ТАНД хамаатай (одоо таны үйлдэл хүлээж буй) нь эхэнд.
+      //   Дараа нь үе шатаар (хүлээгдэж буй → гүйлгээ → хаах → хойшлогдсон), эцэст нь дууссан.
+      const finRank = (t) => {
+        const dec = t.decision || 'pending';
+        if (t.status === 'done' || dec === 'rejected') return 5; // дууссан/татгалзсан — доор
+        let stage;
+        if (dec === 'pending') stage = 1;
+        else if (dec === 'approved' && !t.executed_at) stage = 2; // гүйлгээ хүлээж буй
+        else if (dec === 'approved' && t.executed_at) stage = 3;  // хаахыг хүлээж буй
+        else stage = 4;                                            // хойшлогдсон г.м.
+        return (t.assignee === state.me) ? 0 : stage; // миний үйлдэл хүлээж буй нь дээр
+      };
+      list.sort((a,b) => {
+        const ra = finRank(a), rb = finRank(b);
+        if (ra !== rb) return ra - rb;
+        if (ra === 5) return (b.created||0) - (a.created||0); // дууссан — шинэ нь дээр
+        return (a.created||0) - (b.created||0);               // идэвхтэй — удаан хүлээсэн нь дээр
+      });
+    }
   } else {
     // sort: open first, then by due asc, then created desc
     list.sort((a,b) => {
@@ -2614,6 +2625,8 @@ function syncFilterPills() {
   const finG  = document.getElementById('fin-filters');
   if (taskG) taskG.style.display = isFin ? 'none' : '';
   if (finG)  finG.style.display  = isFin ? '' : 'none';
+  const finSort = document.getElementById('fin-sort');
+  if (finSort) { finSort.style.display = isFin ? '' : 'none'; finSort.value = state.financeSort || 'smart'; }
   const grp = isFin ? finG : taskG;
   if (!grp) return;
   let matched = false;
@@ -6504,6 +6517,7 @@ function initEvents() {
     }
   };
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };
+  document.getElementById('fin-sort')?.addEventListener('change', (e) => { state.financeSort = e.target.value; render(); });
 
   // settings — modal-д зөвхөн notification permission helper (initEvents-д dynamic нэмэгдэнэ)
   document.getElementById('export-btn')?.addEventListener('click', exportTasksReport);

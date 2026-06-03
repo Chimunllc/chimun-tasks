@@ -2982,6 +2982,7 @@ function cleanOrderNote(note) {
   return String(note || '')
     .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
     .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
+    .replace(/·?\s*Хямдрал \(гар\):[^·]*/g, '')
     .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
 }
 // Захиалгын үнийг items + хоногоор ДАХИН тооцоолно (хадгалагдсан дүн хуучин/буруу байж болзошгүй тул).
@@ -2994,8 +2995,11 @@ function computeOrderPricing(o) {
   const afterMd = rental - multiDayDiscount;
   const hasVat = /НӨАТ/i.test(String(o.note || ''));
   const vatDiscount = hasVat ? Math.round(afterMd * 0.05) : 0;
+  const dm = String(o.note || '').match(/Хямдрал \(гар\):\s*−?\s*([\d,]+)/);
+  const manualDiscount = dm ? (parseInt(dm[1].replace(/\D/g, ''), 10) || 0) : 0;
   const deposit = Number(o.deposit) || 0;
-  return { days, rental, multiDayDiscount, vatDiscount, hasVat, deposit, total: afterMd - vatDiscount + deposit };
+  const total = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
+  return { days, rental, multiDayDiscount, vatDiscount, manualDiscount, hasVat, deposit, total };
 }
 
 function renderOrders() {
@@ -3039,6 +3043,7 @@ function renderOrders() {
       <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
       ${pr.multiDayDiscount ? `<div class="order-meta">${pr.days} хоногийн хямдрал (−20%): −${fmtMoney(pr.multiDayDiscount)}</div>` : ''}
       ${pr.vatDiscount ? `<div class="order-meta">НӨАТ хасалт (−5%): −${fmtMoney(pr.vatDiscount)}</div>` : ''}
+      ${pr.manualDiscount ? `<div class="order-meta">Нэмэлт хямдрал: −${fmtMoney(pr.manualDiscount)}</div>` : ''}
       <div class="order-foot">
         <span class="order-sub">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
@@ -3208,7 +3213,9 @@ function openNewMeventOrder(editOrder) {
       <button class="btn" id="mo-add-item" style="margin-top:6px;">+ Бараа нэмэх</button>
       <label style="margin-top:12px;">Нийт барьцаа (₮)</label>
       <input id="mo-deposit" type="number" min="0" placeholder="0" />
-      <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Бүх үнэ НӨАТ-тэй.</p>
+      <label style="margin-top:10px;">Нэмэлт хямдрал (₮)</label>
+      <input id="mo-discount" type="number" min="0" placeholder="0" />
+      <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Бүх үнэ НӨАТ-тэй. Барааны үнэ каталогоос автомат (захиалга дотор засагдахгүй).</p>
       <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-weight:400;cursor:pointer;">
         <input type="checkbox" id="mo-vat" style="width:18px;height:18px;" /> НӨАТ хасах (түрээсийн үнээс −5%)
       </label>
@@ -3228,7 +3235,12 @@ function openNewMeventOrder(editOrder) {
     set('#mo-name', editOrder.customer_name); set('#mo-phone', editOrder.phone);
     set('#mo-company', editOrder.company); set('#mo-register', editOrder.register);
     set('#mo-email', editOrder.email); set('#mo-address', editOrder.address);
-    set('#mo-deposit', editOrder.deposit || ''); set('#mo-note', editOrder.note);
+    set('#mo-deposit', editOrder.deposit || '');
+    // Note-оос гар хямдрал + цэвэр тэмдэглэлийг салгаж буцаан дүүргэнэ.
+    const dm = String(editOrder.note || '').match(/Хямдрал \(гар\):\s*−?\s*([\d,]+)/);
+    set('#mo-discount', dm ? dm[1].replace(/\D/g, '') : '');
+    set('#mo-note', cleanOrderNote(editOrder.note));
+    if (/НӨАТ/i.test(String(editOrder.note || ''))) { const v = modal.querySelector('#mo-vat'); if (v) v.checked = true; }
   }
   mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'), () => renderTotals(), isEdit ? sDT.date : '');
   mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'), () => renderTotals(), isEdit ? eDT.date : '');
@@ -3255,6 +3267,7 @@ function openNewMeventOrder(editOrder) {
     if (!(diffMs > 0)) return 1;
     return Math.max(1, Math.ceil(diffMs / 86400000 - 1e-9));   // 24ц=1, 35ц=2, 48ц=2
   }
+  const discountEl = modal.querySelector('#mo-discount');
   function computeTotals() {
     const days = orderDays();
     // Түрээс = (барааны үнэ × тоо) × хоног
@@ -3265,10 +3278,14 @@ function openNewMeventOrder(editOrder) {
     const afterMd = subtotal - multiDayDiscount;
     // НӨАТ хасалт — хямдарсан түрээсийн үнээс 5% (барьцаанаас хасагдахгүй)
     const vatDiscount = vatEl.checked ? Math.round(afterMd * 0.05) : 0;
-    return { subtotal, deposit, days, multiDayDiscount, vatDiscount, grand: afterMd - vatDiscount + deposit };
+    // Гар (нэмэлт) хямдрал — менежер тавина
+    const manualDiscount = Math.max(0, Number(discountEl.value) || 0);
+    const grand = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
+    return { subtotal, deposit, days, multiDayDiscount, vatDiscount, manualDiscount, grand };
   }
   depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
   vatEl.addEventListener('change', () => renderTotals());
+  discountEl.addEventListener('input', () => renderTotals());
   function renderItems() {
     itemsEl.innerHTML = items.map((it, i) => `
       <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;">
@@ -3277,7 +3294,7 @@ function openNewMeventOrder(editOrder) {
           <div class="mo-suggest" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:60;background:var(--panel);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow:auto;box-shadow:0 6px 20px rgba(0,0,0,.18);margin-top:2px;"></div>
         </div>
         <input class="mo-it-qty" type="number" min="1" value="${it.qty || 1}" style="width:56px;" title="Тоо" />
-        <input class="mo-it-price" type="number" min="0" value="${it.price || 0}" style="width:104px;" title="Үнэ" />
+        <input class="mo-it-price" type="number" value="${it.price || 0}" style="width:104px;background:var(--panel-hover);color:var(--muted);cursor:not-allowed;" title="Каталогийн үнэ (засагдахгүй)" readonly tabindex="-1" />
         <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
       </div>`).join('');
     syncAutoDeposit();
@@ -3288,6 +3305,7 @@ function openNewMeventOrder(editOrder) {
     totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b>`
       + (t.multiDayDiscount ? `<br>${t.days} хоногийн хямдрал (20%): <b style="color:var(--ok);">−${fmtMoney(t.multiDayDiscount)}</b>` : '')
       + (t.vatDiscount ? `<br>НӨАТ хасалт (5%): <b style="color:var(--danger);">−${fmtMoney(t.vatDiscount)}</b>` : '')
+      + (t.manualDiscount ? `<br>Нэмэлт хямдрал: <b style="color:var(--ok);">−${fmtMoney(t.manualDiscount)}</b>` : '')
       + `<br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
   }
   // Барааны хайлтын dropdown — нэр бичихэд тохирох бараанууд жагсана
@@ -3381,12 +3399,10 @@ async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
   const days = (sd && ed) ? (totals.days || '') : '';
   const vatOff = !!modal.querySelector('#mo-vat')?.checked;
   // Хэрэглэгчийн note-оос өмнө автоматаар нэмсэн хямдрал/НӨАТ мөрийг арилгаад (давхардахаас сэргийлж) дахин нэмнэ.
-  let note = val('#mo-note')
-    .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
-    .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
-    .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
+  let note = cleanOrderNote(val('#mo-note'));
   if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−20% = ${fmtMoney(totals.multiDayDiscount)})`;
   if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
+  if (totals.manualDiscount) note = (note ? note + ' · ' : '') + `Хямдрал (гар): −${fmtMoney(totals.manualDiscount)}`;
   btn.disabled = true;
 
   // ── EDIT — бүрэн мөрийг /webhook/mevent-orders руу update хийнэ ──

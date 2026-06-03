@@ -2259,12 +2259,14 @@ function findMember(key) {
 }
 function memberName(key) {
   if (!key) return '(сонгох)';
+  if (String(key).toUpperCase() === 'SYSTEM') return 'Автомат';
   const m = findMember(key);
   if (m) return m.name;
   return `(${key} — алга)`;
 }
 function memberInitials(key) {
   if (!key) return '?';
+  if (String(key).toUpperCase() === 'SYSTEM') return '⚙';
   const m = findMember(key);
   if (!m) return '⚠';
   return m.name.replace(/\./g,'').slice(0,2);

@@ -2894,17 +2894,31 @@ async function loadOrders() {
   } catch(e) { console.warn('loadOrders fail', e); }
 }
 
+// Захиалгын объектыг sheet-ийн 21 баганы бүтцэд хөрвүүлнэ. appendOrUpdate нь бүх
+// баганыг бичдэг тул update бүрд БҮРЭН мөр илгээх ёстой (эс бөгөөс талбар хоосрох).
+function orderToWire(o) {
+  return {
+    order_no: o.order_no || '', id: o.id || o.order_no || '', created_at: o.created_at || '',
+    status: o.status || 'Шинэ', customer_name: o.customer_name || '', phone: o.phone || '',
+    address: o.address || '', email: o.email || '', company: o.company || '', register: o.register || '',
+    date_start: o.date_start || '', date_end: o.date_end || '', days: o.days || '',
+    items_json: JSON.stringify(o.items || []), subtotal: Number(o.subtotal) || 0,
+    deposit: Number(o.deposit) || 0, total: Number(o.total) || 0, note: o.note || '',
+    source: o.source || '', assigned_to: o.assigned_to || '', task_id: o.task_id || '',
+  };
+}
+
 async function updateOrderStatus(order_no, fields) {
   const o = state.orders.find(x => x.order_no === order_no);
   if (o) Object.assign(o, fields);
   render();
   const url = state.config.ordersUrl;
-  if (!url) return;
+  if (!url || !o) return;
   try {
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_no, ...fields }),
+      body: JSON.stringify(orderToWire(o)),   // бүрэн мөр
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast('Захиалга шинэчлэгдлээ', 'success', 1500);
@@ -2951,9 +2965,12 @@ function renderOrders() {
       <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
       <div class="order-foot">
         <span class="order-sub">Түрээс: ${fmtMoney(o.subtotal)} · Барьцаа: ${fmtMoney(o.deposit)}</span>
-        <label class="order-status-sel">Статус:
-          <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
-        </label>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${(o.status || 'Шинэ') === 'Шинэ' ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
+          <label class="order-status-sel">Статус:
+            <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
+          </label>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -2967,18 +2984,31 @@ function attachOrdersHandlers() {
       updateOrderStatus(order_no, { status: e.currentTarget.value });
     };
   });
-  document.getElementById('new-mevent-order')?.addEventListener('click', openNewMeventOrder);
+  document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
+  document.querySelectorAll('button[data-order-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const o = state.orders.find(x => x.order_no === btn.dataset.orderEdit);
+      if (o) openNewMeventOrder(o);
+    });
+  });
 }
 
 /* Монгол хэлтэй огнооны календар — readonly input дээр дарахад inline panel нээгдэнэ.
    hiddenEl.value = YYYY-MM-DD (логикт), displayEl нь монголоор харуулна. */
-function mountCalendar(displayEl, hiddenEl, popEl, onChange) {
+function mountCalendar(displayEl, hiddenEl, popEl, onChange, initial) {
   const WD = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
   const today = new Date();
   let view = new Date(today.getFullYear(), today.getMonth(), 1);
   let selected = null;
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const human = (d) => `${d.getFullYear()} оны ${d.getMonth() + 1}-р сарын ${d.getDate()}`;
+  if (initial && /^\d{4}-\d{2}-\d{2}/.test(initial)) {
+    const p = initial.slice(0, 10).split('-').map(Number);
+    selected = new Date(p[0], p[1] - 1, p[2]);
+    view = new Date(p[0], p[1] - 1, 1);
+    hiddenEl.value = iso(selected);
+    displayEl.value = human(selected);
+  }
   function render() {
     const y = view.getFullYear(), mo = view.getMonth();
     const startOff = (new Date(y, mo, 1).getDay() + 6) % 7; // Даваа = 0
@@ -3026,14 +3056,20 @@ function mountCalendar(displayEl, hiddenEl, popEl, onChange) {
 
 /* Вэбсайт шиг бүрэн захиалга гараар үүсгэх (үйлчлүүлэгч + бараа + дүн) →
    /webhook/m-event-site-order руу илгээж MEVENT_Orders_DB-д "Шинэ" төлөвтэй нэмнэ. */
-function openNewMeventOrder() {
+function openNewMeventOrder(editOrder) {
+  const isEdit = !!editOrder;
   const products = state.products || [];
-  let items = [{ name: '', qty: 1, price: 0, deposit: 0 }];
-  let manualDeposit = null; // null бол авто (барааны барьцаа), эс бөгөөс гар оролт
+  let items = isEdit && Array.isArray(editOrder.items) && editOrder.items.length
+    ? editOrder.items.map(it => ({ name: it.name || '', qty: Number(it.qty) || 1, price: Number(it.price) || 0, deposit: Number(it.deposit) || 0 }))
+    : [{ name: '', qty: 1, price: 0, deposit: 0 }];
+  let manualDeposit = isEdit ? true : null; // edit үед барьцааг хадгалсан утгаар нь авна
   const hourOpts = Array.from({ length: 24 }, (_, h) => {
     const hh = String(h).padStart(2, '0');
     return `<option value="${hh}">${hh}:00</option>`;
   }).join('');
+  // edit үед огноо/цаг задлах ("2026-06-03 09:00")
+  const parseDT = (s) => { const m = String(s || '').match(/(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}))?/); return { date: m ? m[1] : '', hour: m && m[2] ? m[2] : '' }; };
+  const sDT = parseDT(editOrder?.date_start), eDT = parseDT(editOrder?.date_end);
 
   const old = document.getElementById('mev-order-modal');
   if (old) old.remove();
@@ -3042,8 +3078,8 @@ function openNewMeventOrder() {
   modal.id = 'mev-order-modal';
   modal.innerHTML = `
     <div class="modal" style="max-width:560px;">
-      <h2>Шинэ захиалга</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Сайтын захиалга шиг — үйлчлүүлэгч, бараа, дүн. "Шинэ" төлөвтэй бүртгэгдэнэ.</p>
+      <h2>${isEdit ? 'Захиалга засах · ' + escapeHtml(editOrder.order_no) : 'Шинэ захиалга'}</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">${isEdit ? 'Зөвхөн "Шинэ" төлөвт засах боломжтой.' : 'Сайтын захиалга шиг — үйлчлүүлэгч, бараа, дүн. "Шинэ" төлөвтэй бүртгэгдэнэ.'}</p>
       <label>Үйлчлүүлэгчийн нэр *</label>
       <input id="mo-name" placeholder="Жишээ: Анхил Group" />
       <div style="display:flex;gap:8px;">
@@ -3092,14 +3128,21 @@ function openNewMeventOrder() {
       <div id="mo-totals" style="margin-top:12px;padding:10px 12px;background:var(--panel-hover);border-radius:8px;font-size:13px;"></div>
       <div class="modal-actions" style="margin-top:16px;">
         <button class="btn" id="mo-cancel">Болих</button>
-        <button class="btn btn-primary" id="mo-save">Захиалга үүсгэх</button>
+        <button class="btn btn-primary" id="mo-save">${isEdit ? '💾 Хадгалах' : 'Захиалга үүсгэх'}</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
-  modal.querySelector('#mo-start-hour').value = '09';
-  modal.querySelector('#mo-end-hour').value = '17';
-  mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'), () => renderTotals());
-  mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'), () => renderTotals());
+  modal.querySelector('#mo-start-hour').value = (isEdit && sDT.hour) ? sDT.hour : '09';
+  modal.querySelector('#mo-end-hour').value = (isEdit && eDT.hour) ? eDT.hour : '17';
+  if (isEdit) {
+    const set = (id, v) => { const el = modal.querySelector(id); if (el) el.value = v || ''; };
+    set('#mo-name', editOrder.customer_name); set('#mo-phone', editOrder.phone);
+    set('#mo-company', editOrder.company); set('#mo-register', editOrder.register);
+    set('#mo-email', editOrder.email); set('#mo-address', editOrder.address);
+    set('#mo-deposit', editOrder.deposit || ''); set('#mo-note', editOrder.note);
+  }
+  mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'), () => renderTotals(), isEdit ? sDT.date : '');
+  mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'), () => renderTotals(), isEdit ? eDT.date : '');
 
   const itemsEl = modal.querySelector('#mo-items');
   const totalsEl = modal.querySelector('#mo-totals');
@@ -3221,14 +3264,14 @@ function openNewMeventOrder() {
   modal.querySelector('#mo-cancel').addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#mo-save').addEventListener('click', (e) => {
-    submitNewMeventOrder(modal, items, computeTotals(), e.currentTarget);
+    submitNewMeventOrder(modal, items, computeTotals(), e.currentTarget, editOrder);
   });
 
   modal.classList.add('open');
   setTimeout(() => modal.querySelector('#mo-name')?.focus(), 50);
 }
 
-async function submitNewMeventOrder(modal, items, totals, btn) {
+async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
   const val = (id) => (modal.querySelector(id)?.value || '').trim();
   const name = val('#mo-name');
   if (!name) { showToast('Үйлчлүүлэгчийн нэр шаардлагатай', 'warn'); return; }
@@ -3247,6 +3290,35 @@ async function submitNewMeventOrder(modal, items, totals, btn) {
   let note = val('#mo-note');
   if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−20% = ${fmtMoney(totals.multiDayDiscount)})`;
   if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
+  btn.disabled = true;
+
+  // ── EDIT — бүрэн мөрийг /webhook/mevent-orders руу update хийнэ ──
+  if (editOrder) {
+    const updated = {
+      ...editOrder,
+      customer_name: name, phone: val('#mo-phone'), address: val('#mo-address'),
+      email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register'),
+      date_start: start, date_end: end, days,
+      items: cleanItems, subtotal: totals.subtotal, deposit: totals.deposit, total: totals.grand,
+      note,
+    };
+    const idx = state.orders.findIndex(x => x.order_no === editOrder.order_no);
+    if (idx >= 0) state.orders[idx] = updated;
+    try {
+      const r = await fetchWithTimeout(withKey(state.config.ordersUrl || DEFAULT_ORDERS_URL), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderToWire(updated)),
+      }, 15000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      showToast('Захиалга шинэчлэгдлээ', 'success', 2500);
+      modal.remove();
+      render();
+      loadOrders();
+    } catch (e) { showToast('Алдаа: ' + e.message, 'error', 4000); btn.disabled = false; }
+    return;
+  }
+
+  // ── NEW — сайттай ижил capture webhook ──
   const payload = {
     customer: { name, phone: val('#mo-phone'), address: val('#mo-address'), email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register') },
     dates: { start, end },
@@ -3257,7 +3329,6 @@ async function submitNewMeventOrder(modal, items, totals, btn) {
   };
   const base = state.config.ordersUrl || DEFAULT_ORDERS_URL;
   const captureUrl = base.replace(/\/[^/]+$/, '/m-event-site-order');
-  btn.disabled = true;
   try {
     const r = await fetchWithTimeout(withKey(captureUrl), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

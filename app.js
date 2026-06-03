@@ -3006,6 +3006,8 @@ function openNewMeventOrder() {
       <datalist id="mo-prod-list">${products.map(p => `<option value="${escapeHtml(p.name || '')}"></option>`).join('')}</datalist>
       <div id="mo-items"></div>
       <button class="btn" id="mo-add-item" style="margin-top:6px;">+ Бараа нэмэх</button>
+      <label style="margin-top:12px;">Нийт барьцаа (₮)</label>
+      <input id="mo-deposit" type="number" min="0" placeholder="0" />
       <label style="margin-top:12px;">Тэмдэглэл</label>
       <textarea id="mo-note" placeholder="Хүргэлт, тоног, нэмэлт..."></textarea>
       <div id="mo-totals" style="margin-top:12px;padding:10px 12px;background:var(--panel-hover);border-radius:8px;font-size:13px;"></div>
@@ -3018,15 +3020,17 @@ function openNewMeventOrder() {
 
   const itemsEl = modal.querySelector('#mo-items');
   const totalsEl = modal.querySelector('#mo-totals');
+  const depositEl = modal.querySelector('#mo-deposit');
   const findProd = (name) => products.find(p => (p.name || '') === name);
 
+  const autoDeposit = () => items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
+  function syncAutoDeposit() { if (!manualDeposit) depositEl.value = autoDeposit() || ''; }
   function computeTotals() {
     const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-    const autoDeposit = items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
-    const deposit = manualDeposit != null ? manualDeposit : autoDeposit;
-    const grand = subtotal + deposit;
-    return { subtotal, deposit, grand };
+    const deposit = Number(depositEl.value) || 0;
+    return { subtotal, deposit, grand: subtotal + deposit };
   }
+  depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
   function renderItems() {
     itemsEl.innerHTML = items.map((it, i) => `
       <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
@@ -3035,6 +3039,7 @@ function openNewMeventOrder() {
         <input class="mo-it-price" type="number" min="0" value="${it.price || 0}" style="width:104px;" title="Үнэ" />
         <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
       </div>`).join('');
+    syncAutoDeposit();
     renderTotals();
   }
   function renderTotals() {
@@ -3057,6 +3062,7 @@ function openNewMeventOrder() {
     } else if (e.target.classList.contains('mo-it-price')) {
       items[i].price = Number(e.target.value) || 0;
     }
+    syncAutoDeposit();
     renderTotals();
   });
   itemsEl.addEventListener('click', (e) => {

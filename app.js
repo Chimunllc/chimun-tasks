@@ -2976,6 +2976,10 @@ function openNewMeventOrder() {
   const products = state.products || [];
   let items = [{ name: '', qty: 1, price: 0, deposit: 0 }];
   let manualDeposit = null; // null бол авто (барааны барьцаа), эс бөгөөс гар оролт
+  const hourOpts = Array.from({ length: 24 }, (_, h) => {
+    const hh = String(h).padStart(2, '0');
+    return `<option value="${hh}">${hh}:00 цаг</option>`;
+  }).join('');
 
   const old = document.getElementById('mev-order-modal');
   if (old) old.remove();
@@ -2999,8 +3003,18 @@ function openNewMeventOrder() {
       <label>Хаяг / газар</label>
       <input id="mo-address" placeholder="Хан-Уул, Restaurant XYZ" />
       <div style="display:flex;gap:8px;">
-        <div style="flex:1;"><label>Эхлэх огноо/цаг</label><input id="mo-start" type="datetime-local" /></div>
-        <div style="flex:1;"><label>Дуусах огноо/цаг</label><input id="mo-end" type="datetime-local" /></div>
+        <div style="flex:1;min-width:0;"><label>Эхлэх</label>
+          <div style="display:flex;gap:4px;">
+            <input id="mo-start-date" type="date" lang="mn-MN" style="flex:1;min-width:0;" />
+            <select id="mo-start-hour" style="width:86px;flex:none;">${hourOpts}</select>
+          </div>
+        </div>
+        <div style="flex:1;min-width:0;"><label>Дуусах</label>
+          <div style="display:flex;gap:4px;">
+            <input id="mo-end-date" type="date" lang="mn-MN" style="flex:1;min-width:0;" />
+            <select id="mo-end-hour" style="width:86px;flex:none;">${hourOpts}</select>
+          </div>
+        </div>
       </div>
       <label style="margin-top:10px;">Бараа</label>
       <div id="mo-items"></div>
@@ -3020,6 +3034,8 @@ function openNewMeventOrder() {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  modal.querySelector('#mo-start-hour').value = '09';
+  modal.querySelector('#mo-end-hour').value = '17';
 
   const itemsEl = modal.querySelector('#mo-items');
   const totalsEl = modal.querySelector('#mo-totals');
@@ -3141,10 +3157,13 @@ async function submitNewMeventOrder(modal, items, totals, btn) {
   if (!name) { showToast('Үйлчлүүлэгчийн нэр шаардлагатай', 'warn'); return; }
   const cleanItems = items.filter(it => (it.name || '').trim() && (Number(it.qty) || 0) > 0);
   if (!cleanItems.length) { showToast('Дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
-  const start = val('#mo-start'), end = val('#mo-end');
+  const sd = val('#mo-start-date'), ed = val('#mo-end-date');
+  const sh = val('#mo-start-hour') || '09', eh = val('#mo-end-hour') || '17';
+  const start = sd ? `${sd} ${sh}:00` : '';
+  const end = ed ? `${ed} ${eh}:00` : '';
   let days = '';
-  if (start && end) {
-    const d = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
+  if (sd && ed) {
+    const d = Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1;
     days = d > 0 ? d : '';
   }
   const vatOff = !!modal.querySelector('#mo-vat')?.checked;

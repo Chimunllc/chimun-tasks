@@ -1231,7 +1231,13 @@ function getFinanceApprover(r) {
     else if (branch === 'ЗАХ' || branch === 'ЗАХИРГАА') needle = 'анужин';
     if (needle) {
       const found = (TEAM || []).find(m => String(m.name || '').toLowerCase().includes(needle));
-      if (found) return personKey(found);
+      if (found) {
+        const approverKey = personKey(found);
+        // Өөрөө өөрийнхөө хүсэлтийг батлахаас сэргийлнэ — батлагч нь илгээгч мөн бол
+        // шийдвэрийг нэг шат дээш (CEO) руу ахиулна.
+        if (approverKey && approverKey === r?.requested_by) return getCEOEmail();
+        return approverKey;
+      }
     }
   }
   return getCEOEmail();
@@ -1984,9 +1990,9 @@ function openFinanceModal(id = null) {
       //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах
       const approverEmail = getFinanceApprover(t);
       const isApprover = (state.me === approverEmail);
-      // Зөвхөн томилогдсон approver товч хардаг. CEO бол өндөр дүнтэй (≥300K) эсвэл
-      // салбарын менежер байхгүй тохиолдолд өөрөө approver болдог.
-      if (dec === 'pending' && isApprover && !isRequester) {
+      // Зөвхөн томилогдсон approver товч хардаг. Өөрийн хүсэлтийг өөрөө батлахыг
+      // хориглоно — цорын ганц онцгой тохиолдол нь CEO (дээд эрх, дээш ахиулах хүн алга).
+      if (dec === 'pending' && isApprover && (!isRequester || state.isCEO)) {
         decisionActions.style.setProperty('display', 'flex', 'important');
       } else if (dec === 'approved' && !t.executed_at && isExecutor) {
         executeActions.style.setProperty('display', 'flex', 'important');

@@ -2239,6 +2239,13 @@ function canManageOrders() {
   const m = findMember(state.me);
   return /эвент|захиалг/i.test(String(m?.role || ''));
 }
+// M-Event захиалга ХАРАХ эрх — менежер + M Event салбарын бүх хүн (нярав, агуулах, цэвэрлэгээ г.м.).
+// Удирдах биш, харах/филтер хийх зорилгоор өргөн нээлттэй.
+function canSeeOrders() {
+  if (canManageOrders()) return true;
+  const branches = (state.user?.branches) || (findMember(state.me)?.branches) || [];
+  return Array.isArray(branches) && branches.includes('m-event');
+}
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
   for (const branch of Object.keys(state.projectsByBranch)) {
@@ -2555,7 +2562,7 @@ function render() {
     }
   }
   // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
-  if (state.view === 'orders' && !canManageOrders()) state.view = 'mine';
+  if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !state.isCEO) state.view = 'mine';
   renderSidebar();
   renderTitle();
@@ -2603,7 +2610,7 @@ function renderSidebar() {
   // Захиалга — зөвхөн CEO-д харагдана. Badge нь "Шинэ" захиалгын тоо.
   const ordersNav = document.getElementById('nav-orders');
   if (ordersNav) {
-    ordersNav.style.display = canManageOrders() ? '' : 'none';
+    ordersNav.style.display = canSeeOrders() ? '' : 'none';
     const oCnt = document.getElementById('cnt-orders');
     if (oCnt) oCnt.textContent = String((state.orders || []).filter(o => (o.status || 'Шинэ') === 'Шинэ').length);
   }
@@ -2820,7 +2827,7 @@ function normalizeOrder(o) {
 }
 
 async function loadOrders() {
-  if (!canManageOrders()) return;
+  if (!canSeeOrders()) return;
   const url = state.config.ordersUrl;
   if (!url) return;
   try {
@@ -2925,13 +2932,14 @@ function orderStatusClass(s) {
 
 function renderOrders() {
   const orders = state.orders || [];
-  const topbar = `<div class="orders-topbar" style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+  const canManage = canManageOrders();   // үүсгэх/засах эрх — менежер. Бусад M Event хүн зөвхөн харах + статус.
+  const topbar = canManage ? `<div class="orders-topbar" style="display:flex;justify-content:flex-end;margin-bottom:14px;">
     <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
-  </div>`;
+  </div>` : '';
   if (!orders.length) {
     return topbar + `<div class="orders-empty"><div class="icon">🛒</div>
       <div>Захиалга алга байна.</div>
-      <div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.</div></div>`;
+      <div class="sub">${canManage ? 'Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.' : 'Сайтаас захиалга ирэхэд энд харагдана.'}</div></div>`;
   }
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const cards = orders.map(o => {
@@ -2960,7 +2968,7 @@ function renderOrders() {
         <span class="order-sub">Түрээс: ${fmtMoney(o.subtotal)} · Барьцаа: ${fmtMoney(o.deposit)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           ${(o.status || 'Шинэ') === 'Шинэ' && canConfirm ? `<button class="btn btn-primary" data-order-confirm="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>` : ''}
-          ${(o.status || 'Шинэ') === 'Шинэ' ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
+          ${(o.status || 'Шинэ') === 'Шинэ' && canManage ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
           <label class="order-status-sel">Статус:
             <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
           </label>
@@ -6292,10 +6300,9 @@ function initEvents() {
   const fabSheetBg = document.getElementById('fab-sheet-bg');
   const fabSheetOrder = document.getElementById('fab-sheet-order');
   function openFabSheet() {
-    // "Захиалга" сонголтыг зөвхөн зөв хүмүүст харуулах
-    const canCreateOrder = state.isCEO
-      || (state.user?.branches || []).some(b => b === 'm-event');
-    if (fabSheetOrder) fabSheetOrder.style.display = canCreateOrder ? '' : 'none';
+    // "Захиалга" үүсгэх сонголт — зөвхөн менежер (CEO / эвент-захиалгын менежер).
+    // Бусад M Event хүн зүүн талын "Захиалга" view-ээс хараад статус л өөрчилнө.
+    if (fabSheetOrder) fabSheetOrder.style.display = canManageOrders() ? '' : 'none';
     fabSheetBg?.classList.add('open');
   }
   function closeFabSheet() { fabSheetBg?.classList.remove('open'); }

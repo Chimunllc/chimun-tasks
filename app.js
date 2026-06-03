@@ -129,21 +129,6 @@ const PROJECTS_BY_BRANCH = {
 };
 
 // Хуучин default project ID-ууд — localStorage-аас цэвэрлэх зорилгоор хадгалсан.
-/* -------------------- 5-СТАДИЙН АКТ TEMPLATE --------------------
-   Camp ↔ M Event-ийн актын урсгал — Chimun_Camp_MEvent_Agreement_2026.
-   "Шинэ захиалга" товчоор 1 эх (parent) task + 5 sub-task үүснэ.
-   Дамжлага бүр `offset` өдрөөр event-ийн өдрөөс тооцон due огноотой болно.
-
-   ⚠ Шинэ дизайн: hardcoded ID-ын оронд role_pattern ашиглана —
-   ингэснээр Master Sheet-д ID солигдсон ч хариуцагч role-аар нь автомат олдоно. */
-const ACT_TEMPLATE = [
-  { stage: 1, title: 'Акт үүсгэх + захиалгын мэдээлэл',         role_pattern: 'event manager|захиалгын ажилтан|менежер', offset: -7, priority: 'high' },
-  { stage: 2, title: 'Тоног төхөөрөмж бэлдэх + тест',           role_pattern: 'агуулах|засвар',                          offset: -1, priority: 'high' },
-  { stage: 3, title: 'Газар дээр хүргэх + setup',               role_pattern: 'логистик',                               offset:  0, priority: 'high' },
-  { stage: 4, title: 'Буцаалт + цэвэрлэгээ + чанарын шалгалт',  role_pattern: 'цэвэрлэгээ|цэврэлгээ',                   offset:  1, priority: 'med'  },
-  { stage: 5, title: 'Бүртгэл хаах + санхүүгийн бүртгэл',       role_pattern: 'нярав',                                  offset:  2, priority: 'med'  },
-];
-
 /* -------------------- STATE -------------------- */
 const state = {
   tasks: [],
@@ -1174,51 +1159,6 @@ function addDays(yyyymmdd, days) {
 
 /* Create a 5-stage act for an M Event order. Returns the parent task.
    Side-effect: pushes parent + 5 sub-tasks into state.tasks, persists via saveTask. */
-async function createOrderAct({ customer, eventDate, location, desc }) {
-  const branch = 'm-event';
-  const parentId = uid();
-  const owner = state.me || getCEOEmail();
-  const parent = {
-    id: parentId,
-    title: `📋 ${customer || 'Захиалга'} — ${eventDate || 'огноогүй'}`,
-    desc: (location ? `📍 ${location}\n` : '') + (desc || ''),
-    branch,
-    project: 'event',
-    assignee: owner,           // парент даалгаврыг үүсгэгч хариуцна
-    due: eventDate || '',
-    priority: 'high',
-    status: 'open',
-    kind: 'act_parent',
-    createdBy: owner,
-    created: Date.now(),
-  };
-  state.tasks.unshift(parent);
-  await saveTask(parent);
-  // Sub-tasks (5 stages) — assignee нь Master Sheet дахь role-аар автомат олдоно
-  for (const tpl of ACT_TEMPLATE) {
-    const assigneeId = tpl.role_pattern ? findMemberEmailByRole(tpl.role_pattern, owner) : (tpl.role_id || owner);
-    const sub = {
-      id: uid(),
-      title: `Дамжлага ${tpl.stage}: ${tpl.title}`,
-      desc: '',
-      branch,
-      project: 'event',
-      assignee: assigneeId,
-      due: addDays(eventDate, tpl.offset),
-      priority: tpl.priority,
-      status: 'open',
-      kind: 'act_stage',
-      stage: tpl.stage,
-      parent_id: parentId,
-      createdBy: owner,
-      created: Date.now() + tpl.stage,  // keep stable order
-    };
-    state.tasks.push(sub);
-    await saveTask(sub);
-  }
-  return parent;
-}
-
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
 // Жижиг дүн (300,000₮-аас доош) → салбарын менежер баталдаг. Эрхгүй бол CEO.
 //  ИВЕНТ — И.Алтансүх ·  КЕМП — Дэлгэрбат ·  ЗАХ — Анужин
@@ -6373,7 +6313,7 @@ function initEvents() {
       setTimeout(() => {
         if (action === 'task') openTaskModal();
         else if (action === 'finance') openFinanceModal();
-        else if (action === 'order') document.getElementById('order-modal')?.classList.add('open');
+        else if (action === 'order') openNewMeventOrder();
       }, 180);
     });
   });
@@ -6930,34 +6870,6 @@ function initEvents() {
     closeFinanceModal();
   });
 
-  // NEW ORDER (5-stage act) — branch-аас үл хамаарч бүх хэрэглэгчид нээлттэй
-  const orderBtn = document.getElementById('new-order-btn');
-  orderBtn.onclick = () => {
-    document.getElementById('o-customer').value = '';
-    document.getElementById('o-date').value = '';
-    document.getElementById('o-location').value = '';
-    document.getElementById('o-desc').value = '';
-    document.getElementById('order-modal').classList.add('open');
-    setTimeout(() => document.getElementById('o-customer').focus(), 50);
-  };
-  document.getElementById('o-cancel').onclick = () => document.getElementById('order-modal').classList.remove('open');
-  document.getElementById('o-save').onclick = async () => {
-    const customer = document.getElementById('o-customer').value.trim();
-    const eventDate = document.getElementById('o-date').value;
-    const location = document.getElementById('o-location').value.trim();
-    const desc = document.getElementById('o-desc').value.trim();
-    if (!customer) { showToast('Үйлчлүүлэгчийн нэр шаардлагатай', 'warn'); return; }
-    if (!eventDate) { showToast('Арга хэмжээний өдөр шаардлагатай', 'warn'); return; }
-    document.getElementById('o-save').disabled = true;
-    try {
-      await createOrderAct({ customer, eventDate, location, desc });
-      document.getElementById('order-modal').classList.remove('open');
-      state.view = 'all';
-      render();
-    } finally {
-      document.getElementById('o-save').disabled = false;
-    }
-  };
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };
   document.getElementById('fin-sort')?.addEventListener('change', (e) => { state.financeSort = e.target.value; render(); });
 

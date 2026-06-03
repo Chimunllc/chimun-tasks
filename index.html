@@ -342,7 +342,6 @@
         </button>
         <button class="btn" id="settings-btn" aria-label="Тохиргоо"><svg class="lcd-icon" viewBox="0 0 24 24" style="margin:0;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
         <button class="btn" id="export-btn" title="Даалгаврын тайланг CSV (Excel)-ээр татах" style="display:none;"><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Тайлан</button>
-        <button class="btn" id="new-order-btn" title="5 дамжлагат акт автоматаар үүснэ"><svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Захиалга</button>
         <button class="btn" id="new-finance-btn" title="Санхүүгийн хүсэлт CEO-руу илгээх"><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Хүсэлт</button>
         <button class="btn btn-primary" id="new-task-btn"><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Шинэ</button>
       </div>
@@ -511,29 +510,6 @@
     <div id="s-advanced"></div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="s-cancel">Хаах</button>
-    </div>
-  </div>
-</div>
-
-<!-- NEW ORDER MODAL — 5-stage act (M Event-ийн гол урсгал) -->
-<div class="modal-bg" id="order-modal">
-  <div class="modal">
-    <h2>Шинэ захиалга — 5 дамжлагат акт</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;line-height:1.5;">
-      Нэг товчоор парент + 5 sub-task (Захиалга → Засвар → Логистик → Цэвэрлэгээ → Нярав) автоматаар үүснэ.
-      Дамжлага бүр өмнөхөө дуустал идэвхгүй байна.
-    </p>
-    <label>Үйлчлүүлэгчийн нэр *</label>
-    <input id="o-customer" placeholder="Жишээ: Анхил Group · Хурим" />
-    <label>Арга хэмжээний өдөр *</label>
-    <input id="o-date" type="date" />
-    <label>Газар</label>
-    <input id="o-location" placeholder="Жишээ: Хан-Уул дүүрэг, Restaurant XYZ" />
-    <label>Тайлбар (тоног, хүний тоо г.м.)</label>
-    <textarea id="o-desc" placeholder="50 ширхэг сандал, 5 ширээ, LED дэлгэц..."></textarea>
-    <div class="modal-actions">
-      <button class="btn" id="o-cancel">Болих</button>
-      <button class="btn btn-primary" id="o-save">5 дамжлагаар үүсгэх</button>
     </div>
   </div>
 </div>
@@ -753,7 +729,7 @@
       </span>
       <div class="fsi-text">
         <div class="fsi-name">Шинэ захиалга</div>
-        <div class="fsi-sub">5 дамжлагат акт автоматаар үүснэ</div>
+        <div class="fsi-sub">M Event түрээсийн захиалга үүсгэх</div>
       </div>
     </button>
     <button class="fab-sheet-cancel" type="button" id="fab-sheet-cancel">Болих</button>

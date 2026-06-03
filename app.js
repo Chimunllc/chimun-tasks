@@ -7101,6 +7101,17 @@ async function bootApp() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   const pushReady = await ensurePushSubscription();
   if (!pushReady) _pollTimer = setInterval(refreshFromServer, 600_000);
+  // Захиалга/бараа view-г идэвхтэй харж буй ажилтанд статус өөрчлөлтийг хурдан хүргэх богино poll.
+  // Зөвхөн тухайн view нээлттэй + таб харагдаж байх үед (push эсэхээс үл хамаарч). n8n ачааллыг хэмнэнэ.
+  if (window._ordersPollTimer) clearInterval(window._ordersPollTimer);
+  window._ordersPollTimer = setInterval(() => {
+    if (document.hidden || !state.me) return;
+    // Хэрэглэгч select/input засаж байвал алгасна (дэлгэц дахин зурж тасалдуулахгүй).
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+    if (state.view === 'orders' && canSeeOrders()) loadOrders();
+    else if (state.view === 'products' && state.isCEO) loadProductsCatalog();
+  }, 45_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —
   // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 90 сек throttle.
   // (Шинэ ажил оноогдох бүрд Web Push шууд мэдэгддэг тул focus-refresh ховор байж болно.)
@@ -7190,6 +7201,9 @@ async function refreshFromServer() {
     // Bootstrap endpoint-ыг турших — tasks + finance-ийг 1 fetch-ээр. Алдаатай бол fallback.
     const bootOk = await loadBootstrap();
     const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];
+    // M-Event захиалга/бараа — refresh бүрд дахин татна (статус өөрчлөгдөхөд бусад ажилтанд хүрэх тулд).
+    // Дотроо canSeeOrders/isCEO-аар хаалттай тул хамааралгүй хүмүүст no-op.
+    taskPromises.push(loadOrders(), loadProductsCatalog());
     // Ажилтны жагсаалт ховор өөрчлөгддөг — refresh бүрд биш, зөвхөн 2 цаг өнгөрсөн бол
     // дахин татна (n8n execution хэмнэх). Бүртгэл/засвар үед тусдаа шууд татагдсаар.
     const teamAge = Date.now() - (Number(localStorage.getItem('teamCacheAt')) || 0);

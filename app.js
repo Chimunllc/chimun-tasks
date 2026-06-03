@@ -2999,14 +2999,18 @@ function openNewMeventOrder() {
       <label>Хаяг / газар</label>
       <input id="mo-address" placeholder="Хан-Уул, Restaurant XYZ" />
       <div style="display:flex;gap:8px;">
-        <div style="flex:1;"><label>Эхлэх огноо</label><input id="mo-start" type="date" /></div>
-        <div style="flex:1;"><label>Дуусах огноо</label><input id="mo-end" type="date" /></div>
+        <div style="flex:1;"><label>Эхлэх огноо/цаг</label><input id="mo-start" type="datetime-local" /></div>
+        <div style="flex:1;"><label>Дуусах огноо/цаг</label><input id="mo-end" type="datetime-local" /></div>
       </div>
       <label style="margin-top:10px;">Бараа</label>
       <div id="mo-items"></div>
       <button class="btn" id="mo-add-item" style="margin-top:6px;">+ Бараа нэмэх</button>
       <label style="margin-top:12px;">Нийт барьцаа (₮)</label>
       <input id="mo-deposit" type="number" min="0" placeholder="0" />
+      <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Бүх үнэ НӨАТ-тэй.</p>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="mo-vat" style="width:18px;height:18px;" /> НӨАТ хасах (нийт дүнгээс −5%)
+      </label>
       <label style="margin-top:12px;">Тэмдэглэл</label>
       <textarea id="mo-note" placeholder="Хүргэлт, тоног, нэмэлт..."></textarea>
       <div id="mo-totals" style="margin-top:12px;padding:10px 12px;background:var(--panel-hover);border-radius:8px;font-size:13px;"></div>
@@ -3024,12 +3028,16 @@ function openNewMeventOrder() {
 
   const autoDeposit = () => items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
   function syncAutoDeposit() { if (!manualDeposit) depositEl.value = autoDeposit() || ''; }
+  const vatEl = modal.querySelector('#mo-vat');
   function computeTotals() {
     const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
     const deposit = Number(depositEl.value) || 0;
-    return { subtotal, deposit, grand: subtotal + deposit };
+    const base = subtotal + deposit;
+    const vatDiscount = vatEl.checked ? Math.round(base * 0.05) : 0;
+    return { subtotal, deposit, vatDiscount, grand: base - vatDiscount };
   }
   depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
+  vatEl.addEventListener('change', () => renderTotals());
   function renderItems() {
     itemsEl.innerHTML = items.map((it, i) => `
       <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;">
@@ -3046,7 +3054,9 @@ function openNewMeventOrder() {
   }
   function renderTotals() {
     const t = computeTotals();
-    totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b><br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
+    totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b>`
+      + (t.vatDiscount ? `<br>НӨАТ хасалт (5%): <b style="color:var(--danger);">−${fmtMoney(t.vatDiscount)}</b>` : '')
+      + `<br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
   }
   // Барааны хайлтын dropdown — нэр бичихэд тохирох бараанууд жагсана
   function showSuggest(row, query) {
@@ -3137,12 +3147,15 @@ async function submitNewMeventOrder(modal, items, totals, btn) {
     const d = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
     days = d > 0 ? d : '';
   }
+  const vatOff = !!modal.querySelector('#mo-vat')?.checked;
+  let note = val('#mo-note');
+  if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
   const payload = {
     customer: { name, phone: val('#mo-phone'), address: val('#mo-address'), email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register') },
     dates: { start, end },
     totals: { days, subtotal: totals.subtotal, deposit: totals.deposit, grand: totals.grand },
     items: cleanItems,
-    note: val('#mo-note'),
+    note,
     source: 'app',
   };
   const base = state.config.ordersUrl || DEFAULT_ORDERS_URL;

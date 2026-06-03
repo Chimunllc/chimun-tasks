@@ -2972,7 +2972,7 @@ function attachOrdersHandlers() {
 
 /* Монгол хэлтэй огнооны календар — readonly input дээр дарахад inline panel нээгдэнэ.
    hiddenEl.value = YYYY-MM-DD (логикт), displayEl нь монголоор харуулна. */
-function mountCalendar(displayEl, hiddenEl, popEl) {
+function mountCalendar(displayEl, hiddenEl, popEl, onChange) {
   const WD = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
   const today = new Date();
   let view = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -3014,6 +3014,7 @@ function mountCalendar(displayEl, hiddenEl, popEl) {
       hiddenEl.value = iso(selected);
       displayEl.value = human(selected);
       popEl.style.display = 'none';
+      if (typeof onChange === 'function') onChange();
     }
   });
   document.addEventListener('mousedown', (e) => {
@@ -3097,8 +3098,8 @@ function openNewMeventOrder() {
   document.body.appendChild(modal);
   modal.querySelector('#mo-start-hour').value = '09';
   modal.querySelector('#mo-end-hour').value = '17';
-  mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'));
-  mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'));
+  mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'), () => renderTotals());
+  mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'), () => renderTotals());
 
   const itemsEl = modal.querySelector('#mo-items');
   const totalsEl = modal.querySelector('#mo-totals');
@@ -3108,12 +3109,24 @@ function openNewMeventOrder() {
   const autoDeposit = () => items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
   function syncAutoDeposit() { if (!manualDeposit) depositEl.value = autoDeposit() || ''; }
   const vatEl = modal.querySelector('#mo-vat');
+  const startDateEl = modal.querySelector('#mo-start-date');
+  const endDateEl = modal.querySelector('#mo-end-date');
+  function orderDays() {
+    const sd = startDateEl.value, ed = endDateEl.value;
+    if (!sd || !ed) return 1;
+    const d = Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1;
+    return d > 0 ? d : 1;
+  }
   function computeTotals() {
     const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
     const deposit = Number(depositEl.value) || 0;
-    // НӨАТ хасалт зөвхөн ТҮРЭЭСИЙН үнээс (барьцаанаас хасагдахгүй)
-    const vatDiscount = vatEl.checked ? Math.round(subtotal * 0.05) : 0;
-    return { subtotal, deposit, vatDiscount, grand: subtotal - vatDiscount + deposit };
+    const days = orderDays();
+    // 2+ хоног түрээслэвэл түрээсийн үнээс 20% хямдрал
+    const multiDayDiscount = days >= 2 ? Math.round(subtotal * 0.20) : 0;
+    const afterMd = subtotal - multiDayDiscount;
+    // НӨАТ хасалт — хямдарсан түрээсийн үнээс 5% (барьцаанаас хасагдахгүй)
+    const vatDiscount = vatEl.checked ? Math.round(afterMd * 0.05) : 0;
+    return { subtotal, deposit, days, multiDayDiscount, vatDiscount, grand: afterMd - vatDiscount + deposit };
   }
   depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
   vatEl.addEventListener('change', () => renderTotals());
@@ -3134,6 +3147,7 @@ function openNewMeventOrder() {
   function renderTotals() {
     const t = computeTotals();
     totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b>`
+      + (t.multiDayDiscount ? `<br>${t.days} хоногийн хямдрал (20%): <b style="color:var(--ok);">−${fmtMoney(t.multiDayDiscount)}</b>` : '')
       + (t.vatDiscount ? `<br>НӨАТ хасалт (5%): <b style="color:var(--danger);">−${fmtMoney(t.vatDiscount)}</b>` : '')
       + `<br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
   }
@@ -3231,6 +3245,7 @@ async function submitNewMeventOrder(modal, items, totals, btn) {
   }
   const vatOff = !!modal.querySelector('#mo-vat')?.checked;
   let note = val('#mo-note');
+  if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−20% = ${fmtMoney(totals.multiDayDiscount)})`;
   if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
   const payload = {
     customer: { name, phone: val('#mo-phone'), address: val('#mo-address'), email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register') },

@@ -4576,7 +4576,7 @@ function renderStaffList() {
         <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(key))}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${seasonalBadge}</div>
-          <div class="staff-role">${escapeHtml(m.role || '')}${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+          <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
         </div>
         <span class="staff-status status-${statusCls}">${statusLabel}</span>
         ${isSelf ? '' : (
@@ -4589,6 +4589,9 @@ function renderStaffList() {
       </div>
     `;
   }).join('');
+  listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
+  });
   listEl.querySelectorAll('.staff-action').forEach(btn => {
     btn.addEventListener('click', async () => {
       const email = btn.dataset.staffEmail;
@@ -4676,6 +4679,57 @@ function renderStaffList() {
       renderStaffList();
     });
   });
+}
+
+// Бүртгэлийн формын role сонголтуудыг runtime-д уншина (давхардуулахгүй).
+function getRoleOptions() {
+  return [...document.querySelectorAll('#reg-role option')].map(o => o.value).filter(Boolean);
+}
+
+// Ажилтны албан тушаал (role)-ийг мөр дотор inline select-ээр засна.
+function editStaffRole(key) {
+  const member = findMember(key);
+  if (!member) return;
+  const row = [...document.querySelectorAll('.staff-row')].find(r => r.dataset.staffEmail === key);
+  const roleDiv = row?.querySelector('.staff-role');
+  if (!roleDiv) return;
+  const roles = getRoleOptions();
+  const cur = member.role || '';
+  if (cur && !roles.includes(cur)) roles.unshift(cur);   // одоогийн role жагсаалтад байхгүй бол нэмнэ
+  const sel = document.createElement('select');
+  sel.className = 'staff-role-select';
+  sel.innerHTML = roles.map(r => `<option value="${escapeHtml(r)}"${r === cur ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('');
+  roleDiv.innerHTML = '';
+  roleDiv.appendChild(sel);
+  sel.focus();
+  sel.addEventListener('change', () => saveStaffRole(member, sel.value));
+  sel.addEventListener('blur', () => setTimeout(renderStaffList, 100));
+}
+
+// Role-ийг Master Sheet-д хадгална (/staff-role endpoint, утсаар тааруулна). Optimistic.
+async function saveStaffRole(member, role) {
+  role = String(role || '').trim();
+  if (!role || role === member.role) { renderStaffList(); return; }
+  const prev = member.role;
+  member.role = role;
+  try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch(e) {}
+  renderStaffList();
+  const base = state.config.staffUrl;
+  if (!base) { showToast('Локалд хадгаллаа (Sheet sync алга)', 'warn'); return; }
+  const url = base.replace(/\/[^\/]+$/, '/staff-role');
+  try {
+    const r = await fetchWithTimeout(withKey(url), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_role', phone: member.phone, role, requested_by: state.me }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast(`${member.name}: албан тушаал → ${role}`, 'success', 2500);
+  } catch(e) {
+    member.role = prev;
+    try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch(_) {}
+    renderStaffList();
+    showToast('Алдаа: ' + e.message, 'error');
+  }
 }
 
 function setupStaffManagement() {

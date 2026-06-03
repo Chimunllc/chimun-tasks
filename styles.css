@@ -5056,3 +5056,8 @@ body.role-daily #add-project { display: none !important; }
 .mc-cell.sel.weekend { color: #fff; }
 .mc-cell.empty { visibility: hidden; }
 .mcal-display { background: var(--panel); }
+
+/* ─── Ажилтны role inline засвар ───────────────────────── */
+.staff-role-edit { background:none; border:none; cursor:pointer; color:var(--muted); font-size:12px; padding:0 4px; opacity:.6; }
+.staff-role-edit:hover { opacity:1; color:var(--primary); }
+.staff-role-select { font-family:inherit; font-size:12.5px; padding:3px 6px; border:1px solid var(--primary); border-radius:6px; background:var(--panel); color:var(--text); max-width:240px; }

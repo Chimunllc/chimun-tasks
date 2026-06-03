@@ -2243,6 +2243,11 @@ function canManageOrders() {
 // Удирдах биш, харах/филтер хийх зорилгоор өргөн нээлттэй.
 function canSeeOrders() {
   if (canManageOrders()) return true;
+  // Дамжлагын аль нэг шатыг хариуцдаг role-тэй бол (нягтлан, агуулах, цэвэрлэгээ, нярав...) харна.
+  const role = String(findMember(state.me)?.role || '');
+  const hasStageRole = (typeof ORDER_FLOW !== 'undefined') &&
+    Object.values(ORDER_FLOW).some(s => s.role !== 'manager' && s.role.test(role));
+  if (hasStageRole) return true;
   const branches = (state.user?.branches) || (findMember(state.me)?.branches) || [];
   return Array.isArray(branches) && branches.includes('m-event');
 }
@@ -2612,7 +2617,13 @@ function renderSidebar() {
   if (ordersNav) {
     ordersNav.style.display = canSeeOrders() ? '' : 'none';
     const oCnt = document.getElementById('cnt-orders');
-    if (oCnt) oCnt.textContent = String((state.orders || []).filter(o => (o.status || 'Шинэ') === 'Шинэ').length);
+    if (oCnt) {
+      const list = state.orders || [];
+      // Менежер — шинэ захиалгын тоо. Бусад — өөрийн шатанд хүлээж буй захиалгын тоо.
+      oCnt.textContent = String(canManageOrders()
+        ? list.filter(o => (o.status || 'Шинэ') === 'Шинэ').length
+        : list.filter(canSeeOrder).length);
+    }
   }
   // Бараа — зөвхөн CEO. Badge нь нийт барааны тоо.
   const prodNav = document.getElementById('nav-products');
@@ -2800,6 +2811,32 @@ function renderTaskList() {
 // Захиалгын дамжлага (queue). Шат бүр тодорхой role/хүнд хамаарна.
 const ORDER_STATUSES = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'];
 
+// Дамжлагын чиглүүлэлт: захиалга тухайн статустай байх үед ХЭН харж, ХӨГ үйлдэл хийх вэ.
+//   role: 'manager' = зөвхөн менежер/CEO. Бусад нь ажилтны role-д тааруулах regex.
+//   next: дараагийн статус (тухайн хүн "дуусгах" товч дармагц). label: товчны бичиг.
+// Загвар: статус = өмнөх шат ДУУССАН гэсэн утга → дараагийн хүн авч ажиллана.
+const ORDER_FLOW = {
+  'Шинэ':           { role: 'manager',                          next: 'Баталсан',       label: '✓ Батлах' },
+  'Баталсан':       { role: /нягтлан/i,                         next: 'Төлбөр авсан',   label: '✓ Төлбөр авсан' },
+  'Төлбөр авсан':   { role: /цэвэрлэгээ|цэврэлгээ|үйлчилгээ/i,  next: 'Цэвэрлэгээ',     label: '✓ Цэвэрлэсэн' },
+  'Цэвэрлэгээ':     { role: /агуулахын ажилтан/i,               next: 'Түрээс бэлдсэн', label: '✓ Түрээс бэлдсэн' },
+  'Түрээс бэлдсэн': { role: /нярав|агуулахын ахлах/i,           next: 'Гаргасан',       label: '✓ Гаргасан' },
+  'Гаргасан':       { role: /агуулахын ажилтан|жолооч/i,        next: 'Хүргэсэн',       label: '✓ Хүргэсэн' },
+  'Хүргэсэн':       { role: /нярав|агуулахын ахлах/i,           next: 'Буцаан ирсэн',   label: '✓ Буцаан ирсэн' },
+  'Буцаан ирсэн':   { role: /нягтлан/i,                         next: 'Дууссан',        label: '✓ Дуусгах' },
+  'Дууссан':        { role: 'manager',                          next: null,             label: null },
+  'Цуцалсан':       { role: 'manager',                          next: null,             label: null },
+};
+function orderStage(status) { return ORDER_FLOW[status || 'Шинэ'] || ORDER_FLOW['Шинэ']; }
+// Тухайн захиалгыг би харах эрхтэй юу — менежер бүгдийг, бусад нь зөвхөн өөрийн шатных.
+function canSeeOrder(o) {
+  if (canManageOrders()) return true;
+  const stage = orderStage(o.status);
+  if (!stage || stage.role === 'manager') return false;
+  const role = String(findMember(state.me)?.role || '');
+  return stage.role.test(role);
+}
+
 function normalizeOrder(o) {
   let items = [];
   try { items = JSON.parse(o.items_json || '[]'); } catch(e) { items = []; }
@@ -2940,15 +2977,16 @@ function orderStatusClass(s) {
 }
 
 function renderOrders() {
-  const orders = state.orders || [];
-  const canManage = canManageOrders();   // үүсгэх/засах эрх — менежер. Бусад M Event хүн зөвхөн харах + статус.
+  const canManage = canManageOrders();   // менежер — бүгдийг хараад бүрэн хяналт. Бусад — зөвхөн өөрийн шат.
+  const all = state.orders || [];
+  const orders = canManage ? all : all.filter(canSeeOrder);   // дамжлагын чиглүүлэлт
   const topbar = canManage ? `<div class="orders-topbar" style="display:flex;justify-content:flex-end;margin-bottom:14px;">
     <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
   </div>` : '';
   if (!orders.length) {
     return topbar + `<div class="orders-empty"><div class="icon">🛒</div>
-      <div>Захиалга алга байна.</div>
-      <div class="sub">${canManage ? 'Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.' : 'Сайтаас захиалга ирэхэд энд харагдана.'}</div></div>`;
+      <div>${all.length ? 'Танд хамаарах захиалга одоогоор алга.' : 'Захиалга алга байна.'}</div>
+      <div class="sub">${canManage ? 'Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.' : 'Таны шатанд захиалга ирэхэд энд харагдана.'}</div></div>`;
   }
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const cards = orders.map(o => {
@@ -2976,11 +3014,13 @@ function renderOrders() {
       <div class="order-foot">
         <span class="order-sub">Түрээс: ${fmtMoney(o.subtotal)} · Барьцаа: ${fmtMoney(o.deposit)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          ${(o.status || 'Шинэ') === 'Шинэ' && canConfirm ? `<button class="btn btn-primary" data-order-confirm="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>` : ''}
-          ${(o.status || 'Шинэ') === 'Шинэ' && canManage ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
-          <label class="order-status-sel">Статус:
-            <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
-          </label>
+          ${canManage ? `
+            ${(o.status || 'Шинэ') === 'Шинэ' && canConfirm ? `<button class="btn btn-primary" data-order-confirm="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>` : ''}
+            ${(o.status || 'Шинэ') === 'Шинэ' ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
+            <label class="order-status-sel">Статус:
+              <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
+            </label>
+          ` : (orderStage(o.status).next ? `<button class="btn btn-primary" data-order-advance="${escapeHtml(o.order_no)}" data-next="${escapeHtml(orderStage(o.status).next)}" style="padding:6px 16px;">${orderStage(o.status).label}</button>` : '<span class="order-sub">—</span>')}
         </div>
       </div>
     </div>`;
@@ -3004,6 +3044,13 @@ function attachOrdersHandlers() {
   });
   document.querySelectorAll('button[data-order-confirm]').forEach(btn => {
     btn.addEventListener('click', () => confirmOrderPayment(btn.dataset.orderConfirm));
+  });
+  // Дараагийн шат руу шилжүүлэх (ажилтан зөвхөн өөрийн алхмаа дарна)
+  document.querySelectorAll('button[data-order-advance]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const next = btn.dataset.next;
+      withBusy(btn, () => updateOrderStatus(btn.dataset.orderAdvance, { status: next }), { successText: next });
+    });
   });
 }
 

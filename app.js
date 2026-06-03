@@ -2976,6 +2976,27 @@ function orderStatusClass(s) {
   })[s] || 'os-new';
 }
 
+// Note-оос автомат хямдрал/НӨАТ мөрийг арилгаж зөвхөн хүний бичсэнийг үлдээнэ.
+function cleanOrderNote(note) {
+  return String(note || '')
+    .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
+    .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
+    .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
+}
+// Захиалгын үнийг items + хоногоор ДАХИН тооцоолно (хадгалагдсан дүн хуучин/буруу байж болзошгүй тул).
+// Түрээс = (үнэ×тоо)×хоног, дараа нь 2+ хоног −20%, НӨАТ (note-д байвал) −5%, дээр нь барьцаа.
+function computeOrderPricing(o) {
+  const days = Math.max(1, Number(o.days) || 1);
+  const daily = (o.items || []).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
+  const rental = daily * days;
+  const multiDayDiscount = days >= 2 ? Math.round(rental * 0.20) : 0;
+  const afterMd = rental - multiDayDiscount;
+  const hasVat = /НӨАТ/i.test(String(o.note || ''));
+  const vatDiscount = hasVat ? Math.round(afterMd * 0.05) : 0;
+  const deposit = Number(o.deposit) || 0;
+  return { days, rental, multiDayDiscount, vatDiscount, hasVat, deposit, total: afterMd - vatDiscount + deposit };
+}
+
 function renderOrders() {
   const canManage = canManageOrders();   // менежер — бүгдийг хараад бүрэн хяналт. Бусад — зөвхөн өөрийн шат.
   const all = state.orders || [];
@@ -2990,9 +3011,11 @@ function renderOrders() {
   }
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const cards = orders.map(o => {
+    const pr = computeOrderPricing(o);   // хоногоор зөв дахин тооцсон үнэ
     const itemsRows = (o.items || []).map(it =>
-      `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0))}</td></tr>`
+      `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0) * pr.days)}</td></tr>`
     ).join('');
+    const humanNote = cleanOrderNote(o.note);
     const opts = ORDER_STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${s}</option>`).join('');
     return `<div class="order-card" data-order="${escapeHtml(o.order_no)}">
       <div class="order-head">
@@ -3000,19 +3023,20 @@ function renderOrders() {
           <span class="order-no">${escapeHtml(o.order_no)}</span>
           <span class="order-badge ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span>
         </div>
-        <div class="order-total">${fmtMoney(o.total)}</div>
+        <div class="order-total">${fmtMoney(pr.total)}</div>
       </div>
       <div class="order-cust">
         <b>${escapeHtml(o.customer_name)}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}
         · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>
       </div>
       <div class="order-meta">📍 ${escapeHtml(o.address || '—')}</div>
-      <div class="order-meta">📅 ${escapeHtml(o.date_start)} → ${escapeHtml(o.date_end)}${o.days ? ' (' + o.days + ' хоног)' : ''}</div>
-      ${o.note ? `<div class="order-meta">📝 ${escapeHtml(o.note)}</div>` : ''}
-      ${o.task_id ? `<div class="order-meta">📋 Бэлтгэлийн даалгавар үүсгэгдсэн</div>` : ''}
+      <div class="order-meta">📅 ${escapeHtml(o.date_start)} → ${escapeHtml(o.date_end)}${pr.days ? ' (' + pr.days + ' хоног)' : ''}</div>
+      ${humanNote ? `<div class="order-meta">📝 ${escapeHtml(humanNote)}</div>` : ''}
       <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
+      ${pr.multiDayDiscount ? `<div class="order-meta">${pr.days} хоногийн хямдрал (−20%): −${fmtMoney(pr.multiDayDiscount)}</div>` : ''}
+      ${pr.vatDiscount ? `<div class="order-meta">НӨАТ хасалт (−5%): −${fmtMoney(pr.vatDiscount)}</div>` : ''}
       <div class="order-foot">
-        <span class="order-sub">Түрээс: ${fmtMoney(o.subtotal)} · Барьцаа: ${fmtMoney(o.deposit)}</span>
+        <span class="order-sub">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           ${canManage ? `
             ${(o.status || 'Шинэ') === 'Шинэ' && canConfirm ? `<button class="btn btn-primary" data-order-confirm="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>` : ''}
@@ -3228,9 +3252,10 @@ function openNewMeventOrder(editOrder) {
     return Math.max(1, Math.ceil(diffMs / 86400000 - 1e-9));   // 24ц=1, 35ц=2, 48ц=2
   }
   function computeTotals() {
-    const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-    const deposit = Number(depositEl.value) || 0;
     const days = orderDays();
+    // Түрээс = (барааны үнэ × тоо) × хоног
+    const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * days;
+    const deposit = Number(depositEl.value) || 0;
     // 2+ хоног түрээслэвэл түрээсийн үнээс 20% хямдрал
     const multiDayDiscount = days >= 2 ? Math.round(subtotal * 0.20) : 0;
     const afterMd = subtotal - multiDayDiscount;
@@ -3348,13 +3373,14 @@ async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
   const sh = val('#mo-start-hour') || '09', eh = val('#mo-end-hour') || '17';
   const start = sd ? `${sd} ${sh}:00` : '';
   const end = ed ? `${ed} ${eh}:00` : '';
-  let days = '';
-  if (sd && ed) {
-    const d = Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1;
-    days = d > 0 ? d : '';
-  }
+  // Хоногийг computeTotals-тэй ижил 24ц логикоор (totals.days) авна — давхар буруу тооцоо хийхгүй.
+  const days = (sd && ed) ? (totals.days || '') : '';
   const vatOff = !!modal.querySelector('#mo-vat')?.checked;
-  let note = val('#mo-note');
+  // Хэрэглэгчийн note-оос өмнө автоматаар нэмсэн хямдрал/НӨАТ мөрийг арилгаад (давхардахаас сэргийлж) дахин нэмнэ.
+  let note = val('#mo-note')
+    .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
+    .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
+    .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
   if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−20% = ${fmtMoney(totals.multiDayDiscount)})`;
   if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
   btn.disabled = true;

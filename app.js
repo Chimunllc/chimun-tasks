@@ -2913,10 +2913,13 @@ function orderStatusClass(s) {
 
 function renderOrders() {
   const orders = state.orders || [];
+  const topbar = `<div class="orders-topbar" style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+    <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
+  </div>`;
   if (!orders.length) {
-    return `<div class="orders-empty"><div class="icon">🛒</div>
+    return topbar + `<div class="orders-empty"><div class="icon">🛒</div>
       <div>Захиалга алга байна.</div>
-      <div class="sub">Сайтаас (m-event-website) шинэ захиалга ирэхэд энд харагдана.</div></div>`;
+      <div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.</div></div>`;
   }
   const cards = orders.map(o => {
     const itemsRows = (o.items || []).map(it =>
@@ -2947,7 +2950,7 @@ function renderOrders() {
       </div>
     </div>`;
   }).join('');
-  return `<div class="orders-wrap">${cards}</div>`;
+  return topbar + `<div class="orders-wrap">${cards}</div>`;
 }
 
 function attachOrdersHandlers() {
@@ -2957,6 +2960,156 @@ function attachOrdersHandlers() {
       updateOrderStatus(order_no, { status: e.currentTarget.value });
     };
   });
+  document.getElementById('new-mevent-order')?.addEventListener('click', openNewMeventOrder);
+}
+
+/* Вэбсайт шиг бүрэн захиалга гараар үүсгэх (үйлчлүүлэгч + бараа + дүн) →
+   /webhook/m-event-site-order руу илгээж MEVENT_Orders_DB-д "Шинэ" төлөвтэй нэмнэ. */
+function openNewMeventOrder() {
+  const products = state.products || [];
+  let items = [{ name: '', qty: 1, price: 0, deposit: 0 }];
+  let manualDeposit = null; // null бол авто (барааны барьцаа), эс бөгөөс гар оролт
+
+  const old = document.getElementById('mev-order-modal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'mev-order-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:560px;">
+      <h2>Шинэ захиалга</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Сайтын захиалга шиг — үйлчлүүлэгч, бараа, дүн. "Шинэ" төлөвтэй бүртгэгдэнэ.</p>
+      <label>Үйлчлүүлэгчийн нэр *</label>
+      <input id="mo-name" placeholder="Жишээ: Анхил Group" />
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;"><label>Утас</label><input id="mo-phone" inputmode="tel" placeholder="99112233" /></div>
+        <div style="flex:1;"><label>Байгууллага</label><input id="mo-company" placeholder="ХХК нэр" /></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;"><label>Регистр</label><input id="mo-register" placeholder="РД" /></div>
+        <div style="flex:1;"><label>И-мэйл</label><input id="mo-email" placeholder="имэйл" /></div>
+      </div>
+      <label>Хаяг / газар</label>
+      <input id="mo-address" placeholder="Хан-Уул, Restaurant XYZ" />
+      <div style="display:flex;gap:8px;">
+        <div style="flex:1;"><label>Эхлэх огноо</label><input id="mo-start" type="date" /></div>
+        <div style="flex:1;"><label>Дуусах огноо</label><input id="mo-end" type="date" /></div>
+      </div>
+      <label style="margin-top:10px;">Бараа</label>
+      <datalist id="mo-prod-list">${products.map(p => `<option value="${escapeHtml(p.name || '')}"></option>`).join('')}</datalist>
+      <div id="mo-items"></div>
+      <button class="btn" id="mo-add-item" style="margin-top:6px;">+ Бараа нэмэх</button>
+      <label style="margin-top:12px;">Тэмдэглэл</label>
+      <textarea id="mo-note" placeholder="Хүргэлт, тоног, нэмэлт..."></textarea>
+      <div id="mo-totals" style="margin-top:12px;padding:10px 12px;background:var(--panel-hover);border-radius:8px;font-size:13px;"></div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn" id="mo-cancel">Болих</button>
+        <button class="btn btn-primary" id="mo-save">Захиалга үүсгэх</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const itemsEl = modal.querySelector('#mo-items');
+  const totalsEl = modal.querySelector('#mo-totals');
+  const findProd = (name) => products.find(p => (p.name || '') === name);
+
+  function computeTotals() {
+    const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
+    const autoDeposit = items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
+    const deposit = manualDeposit != null ? manualDeposit : autoDeposit;
+    const grand = subtotal + deposit;
+    return { subtotal, deposit, grand };
+  }
+  function renderItems() {
+    itemsEl.innerHTML = items.map((it, i) => `
+      <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+        <input class="mo-it-name" list="mo-prod-list" value="${escapeHtml(it.name || '')}" placeholder="Бараа сонгох/бичих" style="flex:1;min-width:0;" />
+        <input class="mo-it-qty" type="number" min="1" value="${it.qty || 1}" style="width:56px;" title="Тоо" />
+        <input class="mo-it-price" type="number" min="0" value="${it.price || 0}" style="width:104px;" title="Үнэ" />
+        <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
+      </div>`).join('');
+    renderTotals();
+  }
+  function renderTotals() {
+    const t = computeTotals();
+    totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b><br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
+  }
+
+  renderItems();
+
+  itemsEl.addEventListener('input', (e) => {
+    const row = e.target.closest('.mo-item-row'); if (!row) return;
+    const i = +row.dataset.idx;
+    if (e.target.classList.contains('mo-it-name')) {
+      items[i].name = e.target.value;
+      const p = findProd(e.target.value);
+      if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
+        row.querySelector('.mo-it-price').value = items[i].price; }
+    } else if (e.target.classList.contains('mo-it-qty')) {
+      items[i].qty = Math.max(1, Number(e.target.value) || 1);
+    } else if (e.target.classList.contains('mo-it-price')) {
+      items[i].price = Number(e.target.value) || 0;
+    }
+    renderTotals();
+  });
+  itemsEl.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('mo-it-rm')) return;
+    const i = +e.target.closest('.mo-item-row').dataset.idx;
+    items.splice(i, 1);
+    if (!items.length) items.push({ name: '', qty: 1, price: 0, deposit: 0 });
+    renderItems();
+  });
+  modal.querySelector('#mo-add-item').addEventListener('click', () => {
+    items.push({ name: '', qty: 1, price: 0, deposit: 0 });
+    renderItems();
+  });
+  const close = () => modal.remove();
+  modal.querySelector('#mo-cancel').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#mo-save').addEventListener('click', (e) => {
+    submitNewMeventOrder(modal, items, computeTotals(), e.currentTarget);
+  });
+
+  modal.classList.add('open');
+  setTimeout(() => modal.querySelector('#mo-name')?.focus(), 50);
+}
+
+async function submitNewMeventOrder(modal, items, totals, btn) {
+  const val = (id) => (modal.querySelector(id)?.value || '').trim();
+  const name = val('#mo-name');
+  if (!name) { showToast('Үйлчлүүлэгчийн нэр шаардлагатай', 'warn'); return; }
+  const cleanItems = items.filter(it => (it.name || '').trim() && (Number(it.qty) || 0) > 0);
+  if (!cleanItems.length) { showToast('Дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
+  const start = val('#mo-start'), end = val('#mo-end');
+  let days = '';
+  if (start && end) {
+    const d = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
+    days = d > 0 ? d : '';
+  }
+  const payload = {
+    customer: { name, phone: val('#mo-phone'), address: val('#mo-address'), email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register') },
+    dates: { start, end },
+    totals: { days, subtotal: totals.subtotal, deposit: totals.deposit, grand: totals.grand },
+    items: cleanItems,
+    note: val('#mo-note'),
+    source: 'app',
+  };
+  const base = state.config.ordersUrl || DEFAULT_ORDERS_URL;
+  const captureUrl = base.replace(/\/[^/]+$/, '/m-event-site-order');
+  btn.disabled = true;
+  try {
+    const r = await fetchWithTimeout(withKey(captureUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Захиалга үүсгэгдлээ', 'success', 2500);
+    modal.remove();
+    loadOrders();
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, 'error', 4000);
+    btn.disabled = false;
+  }
 }
 
 // Мөнгөн дүн форматлагч (₮). fmt-тэй давхцахгүй, орон тусгаарлана.

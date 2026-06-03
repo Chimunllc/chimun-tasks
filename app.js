@@ -1520,7 +1520,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     category: category || '',       // Нягтлан гараар сонгох
     // dept_branch: илгээгчийн TEAM салбараас автомат — m-event → ИВЕНТ, camp → КЕМП, бусад → ЗАХ
     dept_branch: deptBranch || (function(){
-      const me = (TEAM || []).find(m => (m.email||m.id) === owner);
+      const me = (TEAM || []).find(m => personKey(m) === owner || (m.email && m.email === owner));
       const primary = me?.branches?.[0];
       if (primary === 'm-event') return 'ИВЕНТ';
       if (primary === 'camp')    return 'КЕМП';
@@ -4657,6 +4657,7 @@ function renderStaffList() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'update_status',
+              phone: member.phone,      // утсаар тааруулна (ID хэрэглэхээ больсон)
               email: member.email,
               status: newStatus,
               left_date: leftDate,      // 'Гарсан огноо' багана

@@ -2797,7 +2797,8 @@ function renderTaskList() {
    Сайтаас ирсэн түрээсийн захиалгыг харах + статус удирдах.
    Backend: n8n /webhook/mevent-orders (GET унших, POST шинэчлэх) → MEVENT_Orders_DB Sheet.
    Зөвхөн CEO. */
-const ORDER_STATUSES = ['Шинэ', 'Баталсан', 'Бэлтгэж буй', 'Хүргэсэн', 'Буцаан авсан', 'Цуцалсан'];
+// Захиалгын дамжлага (queue). Шат бүр тодорхой role/хүнд хамаарна.
+const ORDER_STATUSES = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'];
 
 function normalizeOrder(o) {
   let items = [];
@@ -2925,8 +2926,16 @@ async function confirmOrderPayment(order_no) {
 
 function orderStatusClass(s) {
   return ({
-    'Шинэ': 'os-new', 'Баталсан': 'os-ok', 'Бэлтгэж буй': 'os-prep',
-    'Хүргэсэн': 'os-done', 'Буцаан авсан': 'os-done', 'Цуцалсан': 'os-cancel',
+    'Шинэ': 'os-new',
+    'Баталсан': 'os-ok',
+    'Төлбөр авсан': 'os-ok',
+    'Цэвэрлэгээ': 'os-prep',
+    'Түрээс бэлдсэн': 'os-prep',
+    'Гаргасан': 'os-prep',
+    'Хүргэсэн': 'os-ok',
+    'Буцаан ирсэн': 'os-prep',
+    'Дууссан': 'os-done',
+    'Цуцалсан': 'os-cancel',
   })[s] || 'os-new';
 }
 

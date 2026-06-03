@@ -157,8 +157,9 @@ const state = {
       productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
     };
   })(),
-  orders: [],            // M-Event сайтаас ирсэн захиалгууд (зөвхөн CEO ачаална)
-  products: [],          // M-Event барааны каталог (Sheet эх сурвалж, CEO засна)
+  // Кэшээс шууд ачаална (3 сек хүлээхгүй) — ард нь loadOrders/loadProductsCatalog шинэчилнэ.
+  orders: (() => { try { return JSON.parse(localStorage.getItem('orders') || '[]'); } catch(e) { return []; } })(),
+  products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
@@ -3005,6 +3006,9 @@ function renderOrders() {
     <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
   </div>` : '';
   if (!orders.length) {
+    if (state._initialLoading && !all.length) {
+      return topbar + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
+    }
     return topbar + `<div class="orders-empty"><div class="icon">🛒</div>
       <div>${all.length ? 'Танд хамаарах захиалга одоогоор алга.' : 'Захиалга алга байна.'}</div>
       <div class="sub">${canManage ? 'Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.' : 'Таны шатанд захиалга ирэхэд энд харагдана.'}</div></div>`;

@@ -3548,14 +3548,8 @@ function canSeeHourlyPayroll() {
   return !!myPhone && HOURLY_VIEWERS.some(p => myPhone.endsWith(p));
 }
 function hourlyWorkers() {
-  let list = (TEAM || []).filter(m =>
-    m.worker_type === 'daily' && String(m.status || '').trim() !== 'гарсан');
-  // Менежер (CEO/нягтлан биш) — зөвхөн өөрийн салбарын ажилчид
-  if (!state.isCEO && state.me !== getFinanceExecutorEmail()) {
-    const myBr = (state.user && state.user.branches) || [];
-    if (myBr.length) list = list.filter(m => (m.branches || []).some(b => myBr.includes(b)));
-  }
-  return list;
+  // Бүх цагийн ажилтан — салбар/идэвхтэй эсэхээс үл хамаарна (ad-hoc дуудаж ажиллуулдаг).
+  return (TEAM || []).filter(m => m.worker_type === 'daily');
 }
 // Тухайн ажилтанд хийсэн БҮХ цагийн цалингийн шилжүүлэг (нэрээр, шинэ нь эхэнд).
 function hourlyPayouts(m) {
@@ -3571,7 +3565,7 @@ function renderHourly() {
   const workers = hourlyWorkers();
   if (!workers.length) {
     return `<div class="orders-empty"><div class="icon">👷</div>
-      <div>Идэвхтэй цагийн ажилтан алга.</div>
+      <div>Цагийн ажилтан алга.</div>
       <div class="sub">Цагийн ажилтан "+ Шинэ ажилтан"-аар бүртгэгдэхэд энд харагдана.</div></div>`;
   }
   let totalPaid = 0;

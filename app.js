@@ -3932,6 +3932,7 @@ async function sendNomaadAssignments(quoteNo) {
       title: `NOMAAD ${o.quote_no} · ${o.company} — бэлтгэл шалгах`,
       desc: `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n'),
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
+      requires_photo: true,  // биелэлтийн зураг заавал
       createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
     state.tasks.unshift(t);

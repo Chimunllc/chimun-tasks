@@ -7885,6 +7885,10 @@ function initPinLogin() {
       document.querySelectorAll('.reg-permanent-only').forEach(el => {
         el.style.display = (type === 'daily') ? 'none' : '';
       });
+      // Цагийн ажилтны салбар сонголт — зөвхөн daily үед
+      document.querySelectorAll('.reg-daily-only').forEach(el => {
+        el.style.display = (type === 'daily') ? '' : 'none';
+      });
     });
   });
 }
@@ -7914,6 +7918,7 @@ async function handleRegister() {
   const name    = formatMongolianName(surname, given); // "Б.Энх"
   const role    = document.getElementById('reg-role').value.trim();
   const group   = document.getElementById('reg-group').value;
+  const dailyBranch = document.getElementById('reg-daily-branch')?.value || ''; // цагийн ажилтны салбар (M Event / Camp)
   const phone   = document.getElementById('reg-phone').value.trim();
   const email   = document.getElementById('reg-email').value.trim();
   const pin     = document.getElementById('reg-pin').value.trim();
@@ -7946,6 +7951,7 @@ async function handleRegister() {
     if (!emergencyName) return show('⚠ Яаралтай үед холбоо барих хүний нэр оруулна уу.');
     if (!emergencyPhone || emergencyPhone.replace(/\D/g,'').length < 8) return show('⚠ Яаралтай үеийн утас наад зах нь 8 орон.');
   }
+  if (workerType === 'daily' && !dailyBranch) return show('⚠ Аль салбарт хамаарахаа сонгоно уу (M Event / NOMAAD).');
   if (!phone || phoneNorm.length < 8) return show('⚠ Утасны дугаараа зөв оруулна уу (наад зах нь 8 орон).');
   if (!rd || !/^[А-ЯӨҮ]{2}\d{8}$/i.test(rd)) return show('⚠ РД дугаар "АА00000000" хэлбэртэй байх ёстой.');
   if (!photoDataUrl) return show('⚠ Selfie зураг заавал оруулна уу.');
@@ -7979,7 +7985,7 @@ async function handleRegister() {
     // CEO зөвшөөрөл шаардахгүй — зэрэглэлийг албан тушаалаас автомат тогтооно.
     // Өдрийн ажилтны хувьд role/group хоосон тул автомат default тогтооно.
     const effectiveRole  = (workerType === 'daily') ? 'Өдрийн ажилтан' : role;
-    const effectiveGroup = (workerType === 'daily') ? 'Нэгдсэн'        : group;
+    const effectiveGroup = (workerType === 'daily') ? dailyBranch      : group;
     const autoLevel = (workerType === 'daily') ? 40 : levelForRole(role);
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',

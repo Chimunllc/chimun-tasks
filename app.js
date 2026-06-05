@@ -3837,6 +3837,11 @@ function renderDashboard() {
   });
   const topStaff = Object.entries(staffLoad).sort((a,b)=>b[1]-a[1]); // бүгд, ачаалалаар (чөлөөтэй нь доор)
   const maxLoad = Math.max(1, ...topStaff.map(([,n]) => n));
+  // Үндсэн ба цагийн ажилтныг тойм дээр тусад нь харуулна.
+  const isDailyKey = (id) => { const m = findMember(id); return !!(m && m.worker_type === 'daily'); };
+  const permStaff  = topStaff.filter(([id]) => !isDailyKey(id));
+  const dailyStaff = topStaff.filter(([id]) =>  isDailyKey(id));
+  const maxPermLoad = Math.max(1, ...permStaff.map(([,n]) => n));
 
   // 3) Финансын зардал — сүүлийн 30 хоног. Finance-ийн ts талбар нь `requested_at` —
   // өмнөх кодонд `created_at || ts` гэж буруу нэр хайж байсан тул хоосон гарч байсан.
@@ -4068,19 +4073,38 @@ function renderDashboard() {
           </div>
         </div>` : ''}
 
-        <!-- Staff load — мөр дээр дарж тухайн хүний ажлуудыг харна -->
+        <!-- Үндсэн ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг харна -->
         <div class="dash-card dash-staff">
-          <div class="dash-card-title">Ажилтны ачаалал (идэвхтэй ажил)</div>
+          <div class="dash-card-title">Үндсэн ажилтны ачаалал (идэвхтэй ажил)</div>
           <div class="dash-staff-scroll">
-          ${topStaff.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : topStaff.map(([id, n]) => `
+          ${permStaff.length === 0 ? '<div class="dash-empty">Ажилтан алга</div>' : permStaff.map(([id, n]) => `
             <div class="dash-bar-row dash-staff-clickable${n === 0 ? ' is-free' : ''}" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
               <div class="dash-bar-label">${escapeHtml(memberName(id))}</div>
               <div class="dash-bar-track">
-                <div class="dash-bar-fill" style="width:${(n/maxLoad)*100}%"></div>
+                <div class="dash-bar-fill" style="width:${(n/maxPermLoad)*100}%"></div>
               </div>
               <div class="dash-bar-count">${n === 0 ? '<span class="dash-free">чөлөөтэй</span>' : n}</div>
             </div>
           `).join('')}
+          </div>
+        </div>
+
+        <!-- Цагийн (өдрийн) ажилтан — тусад нь. Хугацаа + өдрийн хөлс. -->
+        <div class="dash-card dash-staff">
+          <div class="dash-card-title">Цагийн ажилтан (${dailyStaff.length})</div>
+          <div class="dash-staff-scroll">
+          ${dailyStaff.length === 0 ? '<div class="dash-empty">Цагийн ажилтан алга</div>' : dailyStaff.map(([id]) => {
+            const m = findMember(id) || {};
+            const today = new Date().toISOString().slice(0,10);
+            const expired = m.seasonal_to && m.seasonal_to < today;
+            return `
+            <div class="dash-bar-row dash-staff-clickable" data-staff-email="${escapeHtml(id)}" title="Дарж ${escapeHtml(memberName(id))}-ийн ажлуудыг харах">
+              <div class="dash-bar-label">${escapeHtml(memberName(id))}<span style="font-size:10px;color:var(--muted);margin-left:6px;">${escapeHtml(m.role || '')}</span></div>
+              <div style="flex:1;text-align:right;font-size:11px;color:${expired ? 'var(--danger)' : 'var(--muted)'};white-space:nowrap;">
+                ${m.seasonal_to ? (expired ? '⏱ ' + escapeHtml(m.seasonal_to) + ' дууссан' : '⏱ ' + escapeHtml(m.seasonal_to) + ' хүртэл') : ''}${Number(m.daily_rate) > 0 ? ' · ' + fmtMoney(Number(m.daily_rate)) + '/хоног' : ''}
+              </div>
+            </div>`;
+          }).join('')}
           </div>
         </div>
 

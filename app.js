@@ -3539,12 +3539,13 @@ function productRowHtml(p) {
    (нэмэлт schema хэрэггүй): purpose "Цагийн цалин · <нэр> · <огноо>". */
 const HOURLY_FUND_LABEL = 'Цагийн ажилтны данс · Хаан банк';
 
+// Цагийн цалин харах эрхтэй утаснууд (+ CEO үргэлж). Утсаар тааруулна.
+const HOURLY_VIEWERS = ['86657676','88028216','99337760','88394636','99179417','80535220','99285468','89904109'];
 function canSeeHourlyPayroll() {
   if (isDailyWorker()) return false;
   if (state.isCEO) return true;
-  if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
-  const role = (state.user && state.user.role) || '';
-  return /менежер|эвент|захиалг/i.test(role);
+  const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
+  return !!myPhone && HOURLY_VIEWERS.some(p => myPhone.endsWith(p));
 }
 function hourlyWorkers() {
   let list = (TEAM || []).filter(m =>

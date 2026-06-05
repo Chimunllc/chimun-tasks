@@ -3582,9 +3582,8 @@ function renderHourly() {
     const sum = payouts.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     totalPaid += sum;
     const key = personKey(m);
-    const avatar = m.photo
-      ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
-      : `<span style="width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;">${escapeHtml(memberInitials(key))}</span>`;
+    // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
+    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : ''}</span>`;
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';

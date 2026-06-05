@@ -3775,8 +3775,13 @@ async function markHourlyPaid(workerKey) {
 /* ===================== NOMAAD ЗАХИАЛГА (батлагдсан гэрээ + орлого) =====================
    nomaad Quote Log-оос Төлөв=ГЭРЭЭ/ГЭРЭЭ БАТЛАГДСАН гэрээг Quote Items-тэй нь
    /nomaad-orders webhook-оор татна. Нийт төлбөрийг гараар оруулж орлого бүртгэнэ. */
+// NOMAAD захиалга харах эрхтэй нэмэлт утаснууд: Анужин, Дэлгэрбат (+ CEO, нягтлан үргэлж).
+const NOMAAD_VIEWERS = ['88028216', '99179417'];
 function canSeeNomaadOrders() {
-  return state.isCEO || state.me === getFinanceExecutorEmail();
+  if (state.isCEO) return true;
+  if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
+  const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
+  return !!myPhone && NOMAAD_VIEWERS.some(p => myPhone.endsWith(p));
 }
 async function loadNomaadOrders() {
   if (!canSeeNomaadOrders()) return;

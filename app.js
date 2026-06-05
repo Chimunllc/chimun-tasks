@@ -3646,18 +3646,23 @@ function openHourlyPayModal(m) {
     document.getElementById('hp-holder').textContent = m.bank_holder || m.name || '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     rateEl.value = ''; daysEl.value = ''; startEl.value = new Date().toISOString().slice(0, 10);
-    const memoText = () => 'Өдрийн цалин' + (Number(daysEl.value) > 0 ? ' ' + Number(daysEl.value) + ' хоног' : '');
+    // Гүйлгээний утга: "Зарлага: Өдрийн цалин 2х К.Эрбол 06.05"
+    const memoText = () => {
+      const dPart = Number(daysEl.value) > 0 ? Number(daysEl.value) + 'х' : '';
+      const md = (startEl.value || '').slice(5).replace('-', '.'); // YYYY-MM-DD → MM.DD
+      return ['Зарлага: Өдрийн цалин', dPart, (m.name || ''), md].filter(Boolean).join(' ');
+    };
     const upd = () => {
       totalEl.textContent = 'Дүн: ' + fmtMoney(Math.round((Number(rateEl.value) || 0) * (Number(daysEl.value) || 0)));
       memoEl.textContent = memoText();
     };
-    rateEl.oninput = upd; daysEl.oninput = upd; upd();
+    rateEl.oninput = upd; daysEl.oninput = upd; startEl.oninput = upd; startEl.onchange = upd; upd();
     copyAcctBtn.onclick = () => copyText(acct, 'Данс хууллаа');
     copyMemoBtn.onclick = () => copyText(memoEl.textContent, 'Утга хууллаа');
     function cleanup(result) {
       modal.classList.remove('open');
       okBtn.onclick = null; cancelBtn.onclick = null; rateEl.oninput = null; daysEl.oninput = null;
-      copyAcctBtn.onclick = null; copyMemoBtn.onclick = null;
+      startEl.oninput = null; startEl.onchange = null; copyAcctBtn.onclick = null; copyMemoBtn.onclick = null;
       resolve(result);
     }
     okBtn.onclick = () => {

@@ -962,7 +962,7 @@ async function loadBootstrap() {
         state.projectsByBranch[b] = [...PROJECTS_BY_BRANCH[b]];
       });
     }
-    state.tasks = tasksRaw.map(normalizeTask);
+    state.tasks = tasksRaw.map(normalizeTask).filter(t => !isRecentlyDeleted(t.id));
     state.financeRequests = finRaw.map(normalizeFinance);
     applyPendingTaskWrites();
     applyPendingFinanceWrites();
@@ -995,7 +995,7 @@ async function loadData() {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
       const raw = Array.isArray(data) ? data : (data.tasks || []);
-      state.tasks = raw.map(normalizeTask);
+      state.tasks = raw.map(normalizeTask).filter(t => !isRecentlyDeleted(t.id));
       if (data.projectsByBranch) state.projectsByBranch = data.projectsByBranch;
       applyPendingTaskWrites();   // офлайн хийсэн, хараахан sync болоогүй өөрчлөлтийг хадгална
       updatePendingConn();
@@ -1151,6 +1151,17 @@ function pushBroadcast(email, payload) {
   }).catch(() => {});
 }
 function uid() { return 't_' + Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+
+// Саяхан устгасан task id-ууд — backend-д бүрэн тусах хүртэл (chain хүлээж байх үед)
+// refresh нь Sheet-ээс буцааж нэмэхээс сэргийлнэ (устгал "буцаж ирэх" алдааг арилгана).
+const _recentlyDeleted = new Map();
+function markDeleted(id) { if (id) _recentlyDeleted.set(id, Date.now()); }
+function isRecentlyDeleted(id) {
+  const ts = _recentlyDeleted.get(id);
+  if (!ts) return false;
+  if (Date.now() - ts > 120000) { _recentlyDeleted.delete(id); return false; }
+  return true;
+}
 
 // Return TODAY as a LOCAL YYYY-MM-DD string.
 // ⚠ `new Date().toISOString().slice(0,10)` буцаадаг нь UTC огноо — Монгол (UTC+8)-д
@@ -5948,16 +5959,20 @@ async function deleteTask(id) {
     const subs = state.tasks.filter(x => x.parent_id === t.id);
     if (!(await showConfirm(`"${t.title}" + ${subs.length} sub-task бүгдийг хамт устгана.\n\n${explainer}`, { okText: label, danger: true }))) return;
     const idsToRemove = new Set([t.id, ...subs.map(s => s.id)]);
+    idsToRemove.forEach(markDeleted);
     state.tasks = state.tasks.filter(x => !idsToRemove.has(x.id));
     saveTask(t, true, hardDelete);
     subs.forEach(s => saveTask(s, true, hardDelete));
     render();
+    showToast('Устгалаа', 'success', 1800);
     return;
   }
   if (!(await showConfirm(`${explainer}\n\nҮргэлжлүүлэх үү?`, { okText: label, danger: true }))) return;
+  markDeleted(id);
   state.tasks = state.tasks.filter(x=>x.id!==id);
   saveTask(t, true, hardDelete);
   render();
+  showToast('Устгалаа', 'success', 1800);
 }
 /* ─── Recurring tasks — давтагдах ажил ───
    Task done болоход дараагийн давтамжийн интервалаар шинэ task үүсгэнэ.
@@ -6064,10 +6079,14 @@ async function bulkApply(action) {
     const msg = `${allowed.length} ажлыг бүрмөсөн устгах уу? Сэргээх боломжгүй.${skipNote}`;
     if (!(await showConfirm(msg, { okText: 'Устгах', danger: true }))) return;
     const allowedIds = new Set(allowed.map(t => t.id));
+    allowed.forEach(t => markDeleted(t.id));                 // refresh буцааж нэмэхгүй
     state.tasks = state.tasks.filter(t => !allowedIds.has(t.id));
-    await Promise.all(allowed.map(t => saveTask(t, true, true)));  // үргэлж hard delete
-    await flashBulkBarSuccess(`${allowed.length} устгагдлаа`);
-    showToast(`${allowed.length} ажил устгасан`, 'success');
+    state.bulkSelected.clear();
+    saveData();
+    render();                                                // ШУУД жагсаалтаас арилгана
+    showToast(`${allowed.length} ажил устгалаа`, 'success', 2500);
+    allowed.forEach(t => saveTask(t, true, true));           // backend hard delete — фон дээр
+    return;
   } else if (action === 'done') {
     const doneList = [];
     state.tasks.forEach(t => {

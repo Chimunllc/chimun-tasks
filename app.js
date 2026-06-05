@@ -70,6 +70,8 @@ const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-order
 // M-Event бараа — GET бараа жагсаалт унших, POST { product | products:[...] } → нэмэх/засах.
 // Эх сурвалж: MEVENT_Orders_DB Sheet `products` tab. Сайт мөн эндээс уншина.
 const DEFAULT_PRODUCTS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-products';
+// NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
+const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -155,11 +157,13 @@ const state = {
       bootstrapUrl:     localStorage.getItem('bootstrapUrl')     || DEFAULT_BOOTSTRAP_URL     || '',
       ordersUrl:        localStorage.getItem('ordersUrl')        || DEFAULT_ORDERS_URL        || '',
       productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
+      nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
     };
   })(),
   // Кэшээс шууд ачаална (3 сек хүлээхгүй) — ард нь loadOrders/loadProductsCatalog шинэчилнэ.
   orders: (() => { try { return JSON.parse(localStorage.getItem('orders') || '[]'); } catch(e) { return []; } })(),
   products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
+  nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
@@ -2571,6 +2575,7 @@ function render() {
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !state.isCEO) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
+  if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2648,6 +2653,13 @@ function renderSidebar() {
     const hrCnt = document.getElementById('cnt-hourly');
     if (hrCnt) hrCnt.textContent = String(hourlyWorkers().length);
   }
+  // NOMAAD захиалга — CEO/нягтлан. Badge нь орлого бүртгээгүй гэрээний тоо.
+  const noNav = document.getElementById('nav-nomaad');
+  if (noNav) {
+    noNav.style.display = canSeeNomaadOrders() ? '' : 'none';
+    const noCnt = document.getElementById('cnt-nomaad');
+    if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(Number(o.income_amount) > 0)).length);
+  }
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
@@ -2708,6 +2720,7 @@ function renderTitle() {
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
+    nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -2786,6 +2799,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderHourly();
     attachHourlyHandlers();
+    return;
+  } else if (state.view === 'nomaad') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderNomaadOrders();
+    attachNomaadHandlers();
     return;
   } else {
     if (tableHead) tableHead.style.display = '';
@@ -3739,6 +3758,87 @@ async function markHourlyPaid(workerKey) {
   pushBroadcast(personKey(m), { type: 'salary_paid', title: 'Цалин шилжүүлэв', body: `${fmtMoney(amount)} таны дансанд шилжүүлэв.` });
   showToast(`${m.name} — ${fmtMoney(amount)} бүртгэлээ`, 'success', 2000);
   render();
+}
+
+/* ===================== NOMAAD ЗАХИАЛГА (батлагдсан гэрээ + орлого) =====================
+   nomaad Quote Log-оос Төлөв=ГЭРЭЭ/ГЭРЭЭ БАТЛАГДСАН гэрээг Quote Items-тэй нь
+   /nomaad-orders webhook-оор татна. Нийт төлбөрийг гараар оруулж орлого бүртгэнэ. */
+function canSeeNomaadOrders() {
+  return state.isCEO || state.me === getFinanceExecutorEmail();
+}
+async function loadNomaadOrders() {
+  if (!canSeeNomaadOrders()) return;
+  const url = state.config.nomaadOrdersUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    state.nomaadOrders = Array.isArray(data.orders) ? data.orders : [];
+    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch(e) {}
+    if (typeof render === 'function') render();
+  } catch(e) { console.warn('loadNomaadOrders fail', e); }
+}
+function renderNomaadOrders() {
+  const orders = state.nomaadOrders || [];
+  if (!orders.length) {
+    if (state._initialLoading) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
+    return `<div class="orders-empty"><div class="icon">📑</div><div>Батлагдсан гэрээ алга.</div>
+      <div class="sub">nomaad Quote Log-д Төлөв "ГЭРЭЭ" / "ГЭРЭЭ БАТЛАГДСАН" болсон гэрээ энд харагдана.</div></div>`;
+  }
+  let totalIncome = 0;
+  const cards = orders.map(o => {
+    const income = Number(o.income_amount) || 0;
+    totalIncome += income;
+    const itemRows = (o.items || []).map(it =>
+      `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td><td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`
+    ).join('');
+    const incomeArea = income > 0
+      ? `<div style="text-align:right;"><span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
+           <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''}</div></div>`
+      : `<button class="btn btn-primary" data-nomaad-income="${escapeHtml(o.quote_no)}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>`;
+    return `<div class="order-card" data-nomaad="${escapeHtml(o.quote_no)}">
+      <div class="order-head">
+        <div><span class="order-no">${escapeHtml(o.quote_no)}</span> <span class="order-badge os-ok">${escapeHtml(o.status)}</span></div>
+        <div class="order-total">${fmtMoney(o.grand_total || 0)}</div>
+      </div>
+      <div class="order-cust"><b>${escapeHtml(o.company || '')}</b>${o.contact ? ' · ' + escapeHtml(o.contact) : ''} · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a></div>
+      <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')} · ${o.guests || 0} хүн</div>
+      <div class="order-meta">📅 ${escapeHtml(o.date_start || '')} → ${escapeHtml(o.date_end || '')}</div>
+      <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
+      <div class="order-foot">
+        <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
+        <div style="display:flex;align-items:center;gap:10px;">${incomeArea}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const header = `<div style="margin-bottom:14px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${orders.length} батлагдсан гэрээ</div>`;
+  return header + `<div class="orders-wrap">${cards}</div>`;
+}
+function attachNomaadHandlers() {
+  document.querySelectorAll('button[data-nomaad-income]').forEach(b => {
+    b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome));
+  });
+}
+async function recordNomaadIncome(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  const amtStr = await showPrompt(`${o.company} — нийт төлсөн дүн (₮):`, { title: 'Орлого бүртгэх', placeholder: 'Жишээ: 63600000', defaultValue: String(o.grand_total || ''), okText: 'Бүртгэх' });
+  if (amtStr == null) return;
+  const amount = Number(String(amtStr).replace(/[^\d]/g, '')) || 0;
+  if (amount <= 0) { showToast('Дүнг зөв оруулна уу.', 'warn', 2000); return; }
+  if (!(await showConfirm(`${o.company}: ${fmtMoney(amount)} орлого бүртгэх үү?`, { okText: 'Тийм, бүртгэх' }))) return;
+  const today = new Date().toISOString().slice(0, 10);
+  o.income_amount = amount; o.income_date = today; o.income_by = state.me; // optimistic
+  render();
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: amount, income_date: today, income_by: state.me }),
+    }, 15000);
+    if (r.ok) showToast(`${o.company} — ${fmtMoney(amount)} орлого бүртгэлээ`, 'success', 2500);
+    else showToast('Локалд хадгалсан. Sheet sync хийгдээгүй.', 'warn');
+  } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
 }
 
 function renderProducts() {
@@ -7396,6 +7496,7 @@ async function bootApp() {
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
   loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
   loadProductsCatalog();   // M-Event барааны каталог (CEO)
+  loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
   render();
@@ -7416,7 +7517,8 @@ async function bootApp() {
     // Хэрэглэгч select/input засаж байвал алгасна (дэлгэц дахин зурж тасалдуулахгүй).
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
-    if (state.view === 'orders' && canSeeOrders()) loadOrders();
+    if (state.view === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
+    else if (state.view === 'orders' && canSeeOrders()) loadOrders();
     else if (state.view === 'products' && state.isCEO) loadProductsCatalog();
   }, 45_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —

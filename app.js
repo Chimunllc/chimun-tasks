@@ -3609,21 +3609,45 @@ function attachHourlyHandlers() {
   });
 }
 
+// Цалин шилжүүлэх модал — өдрийн цалин × ажилласан өдөр + эхэлсэн огноо. {rate,days,start} эсвэл null.
+function openHourlyPayModal(m) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('hourly-pay-modal');
+    const rateEl = document.getElementById('hp-rate');
+    const daysEl = document.getElementById('hp-days');
+    const startEl = document.getElementById('hp-start');
+    const totalEl = document.getElementById('hp-total');
+    const okBtn = document.getElementById('hp-ok');
+    const cancelBtn = document.getElementById('hp-cancel');
+    document.getElementById('hp-worker').textContent = (m.name || '') + ' · ' + (m.role || 'цагийн ажилтан');
+    rateEl.value = ''; daysEl.value = ''; startEl.value = new Date().toISOString().slice(0, 10);
+    const upd = () => { totalEl.textContent = 'Дүн: ' + fmtMoney(Math.round((Number(rateEl.value) || 0) * (Number(daysEl.value) || 0))); };
+    rateEl.oninput = upd; daysEl.oninput = upd; upd();
+    function cleanup(result) {
+      modal.classList.remove('open');
+      okBtn.onclick = null; cancelBtn.onclick = null; rateEl.oninput = null; daysEl.oninput = null;
+      resolve(result);
+    }
+    okBtn.onclick = () => {
+      const rate = Number(rateEl.value) || 0, days = Number(daysEl.value) || 0;
+      if (rate <= 0) { showToast('Өдрийн цалинг оруулна уу.', 'warn', 2000); return; }
+      if (days <= 0) { showToast('Ажилласан өдрийг оруулна уу.', 'warn', 2000); return; }
+      cleanup({ rate, days, start: startEl.value || '' });
+    };
+    cancelBtn.onclick = () => cleanup(null);
+    modal.classList.add('open');
+    setTimeout(() => rateEl.focus(), 50);
+  });
+}
+
 async function markHourlyPaid(workerKey) {
   const m = findMember(workerKey);
   if (!m) return;
-  // 1) Өдрийн хөлс
-  const rateStr = await showPrompt(`${m.name} — нэг өдрийн хөлс (₮):`, { title: 'Цалин шилжүүлэх', placeholder: 'Жишээ: 80000', okText: 'Цааш' });
-  if (rateStr == null) return;
-  const rate = Number(String(rateStr).replace(/[^\d]/g, '')) || 0;
-  if (rate <= 0) { showToast('Өдрийн хөлсийг зөв оруулна уу.', 'warn', 2000); return; }
-  // 2) Хэдэн өдөр
-  const daysStr = await showPrompt(`${m.name} — хэдэн өдөр ажилласан бэ?`, { title: 'Цалин шилжүүлэх', placeholder: 'Жишээ: 2', okText: 'Цааш' });
-  if (daysStr == null) return;
-  const days = Number(String(daysStr).replace(/[^\d.]/g, '')) || 0;
-  if (days <= 0) { showToast('Өдрийн тоог зөв оруулна уу.', 'warn', 2000); return; }
+  const res = await openHourlyPayModal(m);
+  if (!res) return;
+  const { rate, days, start } = res;
   const amount = Math.round(rate * days);
-  if (!(await showConfirm(`${m.name}: ${fmtMoney(rate)} × ${days} өдөр = ${fmtMoney(amount)}\n${HOURLY_FUND_LABEL}-наас шилжүүлснийг бүртгэх үү?`, { okText: 'Тийм, шилжүүлсэн' }))) return;
+  if (!(await showConfirm(`${m.name}: ${fmtMoney(rate)} × ${days} өдөр = ${fmtMoney(amount)}\nЭхэлсэн: ${start || '-'}\n${HOURLY_FUND_LABEL}-наас шилжүүлснийг бүртгэх үү?`, { okText: 'Тийм, шилжүүлсэн' }))) return;
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
   const r = {
@@ -3634,9 +3658,9 @@ async function markHourlyPaid(workerKey) {
     beneficiary: m.name || '',
     bank: m.bank || '',
     account_number: m.bank_account || '',
-    purpose: `Цагийн цалин · ${m.name} · ${today}`,
-    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(rate)} × ${days} өдөр · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'}`,
-    due_date: today,
+    purpose: `Цагийн цалин · ${m.name} · ${start || today}`,
+    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(rate)} × ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'}`,
+    due_date: start || today,
     category: 'Цалин',
     dept_branch: (m.branches && m.branches[0]) || 'shared',
     frequency: 'Нэг удаагийн',

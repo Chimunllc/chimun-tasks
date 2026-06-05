@@ -4837,25 +4837,48 @@ function openMultiAssigneePicker(currentAssignees = []) {
   const countEl = document.getElementById('mp-save-count');
 
   let selected = new Set(currentAssignees);
+  const expandedGroups = new Set();   // нээлттэй бүлгүүд (толгой дарж нээнэ)
 
   function renderList() {
     const q = (searchEl.value || '').toLowerCase().trim();
-    // "Гарсан" ажилтнуудыг multi-picker дотроос шүүж хасна
-    const visible = TEAM
-      .filter(m => (m.status || 'идэвхтэй') !== 'гарсан')
-      .filter(m =>
-        !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q)
-      );
-    listEl.innerHTML = visible.map(m => `
-      <label class="mp-row">
+    const active = TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+    // Бүлгээр (Бүлэг багана + Цагийн ажилтан) ангилна, хайлтаар шүүнэ.
+    const byGroup = {};
+    active.forEach(m => {
+      const ok = !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q);
+      if (!ok) return;
+      const g = memberGroupOf(m);
+      (byGroup[g] = byGroup[g] || []).push(m);
+    });
+    const pref = ['M Event', 'Camp', 'Нэгдсэн'];
+    const others = Object.keys(byGroup).filter(g => !pref.includes(g) && g !== 'Цагийн ажилтан').sort();
+    const order = [...pref, ...others, 'Цагийн ажилтан'].filter(g => byGroup[g] && byGroup[g].length);
+    const autoExpand = !!q;   // хайж байгаа үед бүх таарсан бүлгийг нээнэ
+    const rowHtml = (m) => `
+      <label class="mp-row" style="padding-left:16px;">
         <input type="checkbox" data-mp-id="${escapeHtml(personKey(m))}" ${selected.has(personKey(m)) ? 'checked' : ''} style="width:18px;height:18px;" />
         <span class="mp-avatar">${escapeHtml(memberInitials(personKey(m)))}</span>
-        <span class="mp-info">
-          <span class="mp-name">${escapeHtml(m.name)}</span>
-          <span class="mp-role">${escapeHtml(m.role || '')}</span>
-        </span>
-      </label>
-    `).join('');
+        <span class="mp-info"><span class="mp-name">${escapeHtml(m.name)}</span><span class="mp-role">${escapeHtml(m.role || '')}</span></span>
+      </label>`;
+    listEl.innerHTML = order.map(g => {
+      const ms = byGroup[g];
+      const selCount = ms.filter(m => selected.has(personKey(m))).length;
+      const open = autoExpand || expandedGroups.has(g);
+      return `<div class="mp-group">
+        <button type="button" data-mp-group="${escapeHtml(g)}" style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;padding:11px 12px;margin-top:6px;background:var(--panel-hover);border:1px solid var(--border);border-radius:var(--r-md);font-weight:600;cursor:pointer;color:var(--text);font-size:14px;">
+          <span>${open ? '▾' : '▸'} ${escapeHtml(g)} <span style="color:var(--muted);font-weight:400;">(${ms.length})</span></span>
+          ${selCount ? `<span style="color:var(--accent-green);font-size:12px;">${selCount} ✓</span>` : ''}
+        </button>
+        <div style="display:${open ? 'block' : 'none'};">${ms.map(rowHtml).join('')}</div>
+      </div>`;
+    }).join('') || '<div style="padding:14px;color:var(--muted);">Ажилтан олдсонгүй</div>';
+    listEl.querySelectorAll('button[data-mp-group]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const g = btn.dataset.mpGroup;
+        if (expandedGroups.has(g)) expandedGroups.delete(g); else expandedGroups.add(g);
+        renderList();
+      });
+    });
     listEl.querySelectorAll('input[data-mp-id]').forEach(cb => {
       cb.addEventListener('change', () => {
         if (cb.checked) selected.add(cb.dataset.mpId);

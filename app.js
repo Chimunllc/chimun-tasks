@@ -3811,7 +3811,10 @@ function renderNomaadOrders() {
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
-        <div style="display:flex;align-items:center;gap:10px;">${incomeArea}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="btn" data-nomaad-assign="${escapeHtml(o.quote_no)}" style="padding:5px 14px;font-size:12px;">Ажил хувиарлах</button>
+          ${incomeArea}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -3821,6 +3824,9 @@ function renderNomaadOrders() {
 function attachNomaadHandlers() {
   document.querySelectorAll('button[data-nomaad-income]').forEach(b => {
     b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome));
+  });
+  document.querySelectorAll('button[data-nomaad-assign]').forEach(b => {
+    b.addEventListener('click', () => openNomaadAssign(b.dataset.nomaadAssign));
   });
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
@@ -3868,6 +3874,74 @@ async function recordNomaadIncome(quoteNo) {
     if (r.ok) showToast(`${o.company} — ${fmtMoney(res.total)} орлого бүртгэлээ`, 'success', 2500);
     else showToast('Локалд хадгалсан. Sheet sync хийгдээгүй.', 'warn');
   } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
+}
+
+function memberOptionsHtml(selected) {
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+  return '<option value="">— сонгох —</option>' + active.map(m => {
+    const k = personKey(m);
+    return `<option value="${escapeHtml(k)}"${k === selected ? ' selected' : ''}>${escapeHtml(m.name)}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`;
+  }).join('');
+}
+// Захиалгын Quote Items-ийг ажилтнуудад хувиарлах модал.
+function openNomaadAssign(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  const modal = document.getElementById('nomaad-assign-modal');
+  document.getElementById('na-title').textContent = `Ажил хувиарлах · ${o.quote_no}`;
+  document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${o.date_start || ''}`;
+  const bulk = document.getElementById('na-bulk');
+  bulk.innerHTML = memberOptionsHtml('');
+  const items = o.items || [];
+  const byCat = {};
+  items.forEach((it, idx) => { (byCat[it.category || 'Бусад'] = byCat[it.category || 'Бусад'] || []).push({ it, idx }); });
+  const itemsEl = document.getElementById('na-items');
+  itemsEl.innerHTML = Object.keys(byCat).map(cat =>
+    `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(cat)}</div>` +
+    byCat[cat].map(({ it, idx }) =>
+      `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(it.name || '')} <span style="color:var(--muted);font-size:11px;">${it.qty || ''} ${escapeHtml(it.unit || '')}</span></span>
+         <select data-na-item="${idx}" style="width:180px;flex-shrink:0;padding:5px 8px;border:1px solid var(--border);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--text);">${memberOptionsHtml('')}</select>
+       </div>`
+    ).join('')
+  ).join('');
+  bulk.onchange = () => { itemsEl.querySelectorAll('select[data-na-item]').forEach(s => { s.value = bulk.value; }); };
+  document.getElementById('na-cancel').onclick = () => modal.classList.remove('open');
+  document.getElementById('na-send').onclick = () => sendNomaadAssignments(quoteNo);
+  modal.classList.add('open');
+}
+async function sendNomaadAssignments(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  const modal = document.getElementById('nomaad-assign-modal');
+  const byAssignee = {};
+  modal.querySelectorAll('select[data-na-item]').forEach(s => {
+    if (!s.value) return;
+    const it = (o.items || [])[Number(s.dataset.naItem)];
+    if (it) (byAssignee[s.value] = byAssignee[s.value] || []).push(it.name);
+  });
+  const keys = Object.keys(byAssignee);
+  if (!keys.length) { showToast('Дор хаяж нэг зүйлд ажилтан сонгоно уу.', 'warn', 2500); return; }
+  if (!(await showConfirm(`${keys.length} ажилтанд "${o.company}" захиалгын бэлтгэл шалгах ажил илгээх үү?`, { okText: 'Тийм, илгээх' }))) return;
+  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
+  let n = 0;
+  for (const ass of keys) {
+    const names = byAssignee[ass];
+    const t = {
+      id: uid(),
+      title: `NOMAAD ${o.quote_no} · ${o.company} — бэлтгэл шалгах`,
+      desc: `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n'),
+      branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
+      createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
+    };
+    state.tasks.unshift(t);
+    await saveTask(t);
+    pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title });
+    n++;
+  }
+  modal.classList.remove('open');
+  render();
+  showToast(`${keys.length} ажилтанд ажил илгээлээ`, 'success', 3000);
 }
 
 function renderProducts() {

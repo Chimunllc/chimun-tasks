@@ -3888,13 +3888,34 @@ async function recordNomaadIncome(quoteNo) {
   } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
 }
 
-function memberOptionsHtml(selected) {
-  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
-  return '<option value="">— сонгох —</option>' + active.map(m => {
-    const k = personKey(m);
-    return `<option value="${escapeHtml(k)}"${k === selected ? ' selected' : ''}>${escapeHtml(m.name)}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`;
-  }).join('');
+// Ажилтны бүлэг — салбар + цагийн ажилтан. Ажилтан тус бүр НЭГ бүлэгт орно.
+const _MEMBER_GROUP_ORDER = ['M Event', 'NOMAAD Camp', 'Удирдлага / Нэгдсэн', 'Цагийн ажилтан'];
+function memberGroupOf(m) {
+  if (m.worker_type === 'daily') return 'Цагийн ажилтан';
+  const b = m.branches || [];
+  if (b.includes('m-event')) return 'M Event';
+  if (b.includes('camp')) return 'NOMAAD Camp';
+  return 'Удирдлага / Нэгдсэн';
 }
+// Бүлэглэсэн <optgroup> сонголтууд (салбар/цагийн). placeholder=false бол "сонгох" нэмэхгүй.
+function memberOptgroupsHtml(selected, placeholder = true) {
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+  const byGroup = {};
+  active.forEach(m => { (byGroup[memberGroupOf(m)] = byGroup[memberGroupOf(m)] || []).push(m); });
+  let html = placeholder ? '<option value="">— Сонгох —</option>' : '';
+  for (const g of _MEMBER_GROUP_ORDER) {
+    const ms = byGroup[g];
+    if (!ms || !ms.length) continue;
+    html += `<optgroup label="${escapeHtml(g)} (${ms.length})">`;
+    html += ms.map(m => {
+      const k = personKey(m);
+      return `<option value="${escapeHtml(k)}"${k === selected ? ' selected' : ''}>${escapeHtml(m.name)}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`;
+    }).join('');
+    html += '</optgroup>';
+  }
+  return html;
+}
+function memberOptionsHtml(selected) { return memberOptgroupsHtml(selected, true); }
 // Захиалгын Quote Items-ийг ажилтнуудад хувиарлах модал.
 function openNomaadAssign(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
@@ -6799,9 +6820,11 @@ function fillProjectSelect(id, value, branchOverride) {
   fillSelect(id, options, value != null ? value : '');
 }
 function fillAssigneeSelect(id, value, branchOverride) {
-  // Бүх ажилтан — салбараар хязгаарлахгүй. "Гарсан" статустайг шүүж хасна.
-  const active = TEAM.filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
-  fillSelect(id, active.map(m => ({ value: personKey(m), label: m.name + ' (' + m.role + ')' })), value);
+  // Салбар (M Event / NOMAAD Camp / Удирдлага) + Цагийн ажилтнаар бүлэглэж харуулна.
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = memberOptgroupsHtml(value, true);
+  if (value) el.value = value;
 }
 function fillBranchSelectInModal(id, value) {
   // `<select><option>` нь HTML рендер хийдэггүй тул SVG icon-ыг хасч зөвхөн текст үлдээнэ.

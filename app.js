@@ -2584,6 +2584,7 @@ function render() {
   if (state.view === 'products' && !state.isCEO) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
+  if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2646,13 +2647,6 @@ function renderSidebar() {
     prodNav.style.display = state.isCEO ? '' : 'none';
     const pCnt = document.getElementById('cnt-products');
     if (pCnt) pCnt.textContent = String((state.products || []).length);
-  }
-  // Архив — зөвхөн CEO-д харагдана. Тоо нь бүх deleted task-ийн тоо.
-  const archNav = document.getElementById('nav-archive');
-  if (archNav) {
-    archNav.style.display = state.isCEO ? '' : 'none';
-    const archCnt = document.getElementById('cnt-archive');
-    if (archCnt) archCnt.textContent = String(state.tasks.filter(t => t.status === 'deleted').length);
   }
   // Цагийн цалин — CEO/нягтлан/менежер. Badge нь төлбөргүй цагийн ажилтны тоо.
   const hrNav = document.getElementById('nav-hourly');
@@ -2733,7 +2727,6 @@ function renderTitle() {
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
     done:      [ICONS.check, 'Дууссан','Биелсэн даалгаврууд'],
-    archive:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>', 'Архив', 'Устгасан даалгаврууд — CEO бүрэн цэвэрлэх боломжтой'],
   };
   let t = titles[state.view];
   if (!t && state.view.startsWith('project:')) {
@@ -6058,8 +6051,6 @@ async function bulkApply(action) {
   ensureBulkState();
   const ids = [...state.bulkSelected];
   if (!ids.length) return;
-  // Архив view-д "Устгах" = Sheet-ээс бүрэн устгах (hard_delete). Бусад view-д soft delete.
-  const isArchive = state.view === 'archive';
   if (action === 'delete') {
     // Зөвшөөрөлгүй task-уудыг хасч, зөвхөн устгах эрхтэйг үлдээнэ.
     const allTargets = state.tasks.filter(t => state.bulkSelected.has(t.id));
@@ -6069,17 +6060,14 @@ async function bulkApply(action) {
       showToast(`Сонгосон ${allTargets.length} ажил бүгд устгах эрхээс гадуур (бусдын үүсгэсэн).`, 'warn', 4500);
       return;
     }
-    const label = isArchive ? 'Бүрэн устгах' : 'Устгах';
     const skipNote = blocked > 0 ? `\n\n⚠ ${blocked} ажил бусдын үүсгэсэн тул алгасагдана.` : '';
-    const msg = isArchive
-      ? `${allowed.length} архивласан ажлыг Sheet-ээс БҮРЭН устгана. Сэргээх боломжгүй.${skipNote}\n\nҮргэлжлүүлэх үү?`
-      : `${allowed.length} ажлыг архивлах уу?${skipNote}\n\n(CEO дараа сэргээх боломжтой)`;
-    if (!(await showConfirm(msg, { okText: label, danger: true }))) return;
+    const msg = `${allowed.length} ажлыг бүрмөсөн устгах уу? Сэргээх боломжгүй.${skipNote}`;
+    if (!(await showConfirm(msg, { okText: 'Устгах', danger: true }))) return;
     const allowedIds = new Set(allowed.map(t => t.id));
     state.tasks = state.tasks.filter(t => !allowedIds.has(t.id));
-    await Promise.all(allowed.map(t => saveTask(t, true, isArchive)));
-    await flashBulkBarSuccess(`${allowed.length} ${isArchive ? 'бүрэн устгагдлаа' : 'архивлагдлаа'}`);
-    showToast(`${allowed.length} ажил ${isArchive ? 'бүрэн устгасан' : 'архивласан'}`, 'success');
+    await Promise.all(allowed.map(t => saveTask(t, true, true)));  // үргэлж hard delete
+    await flashBulkBarSuccess(`${allowed.length} устгагдлаа`);
+    showToast(`${allowed.length} ажил устгасан`, 'success');
   } else if (action === 'done') {
     const doneList = [];
     state.tasks.forEach(t => {
@@ -7030,7 +7018,7 @@ function initEvents() {
   document.getElementById('bulk-cancel')?.addEventListener('click', bulkClear);
   document.getElementById('bulk-done')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('done'), { successText: 'Дуусгалаа' }));
   document.getElementById('bulk-restore')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('restore'), { successText: 'Сэргээгдлээ' }));
-  document.getElementById('bulk-delete')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('delete'), { successText: state.view === 'archive' ? 'Устгагдлаа' : 'Архивлагдлаа' }));
+  document.getElementById('bulk-delete')?.addEventListener('click', (e) => withBusy(e.currentTarget, () => bulkApply('delete'), { successText: 'Устгагдлаа' }));
   // Esc → bulk цуцлах
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.bulkSelected?.size > 0) bulkClear();

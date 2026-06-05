@@ -3888,22 +3888,22 @@ async function recordNomaadIncome(quoteNo) {
   } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
 }
 
-// Ажилтны бүлэг — салбар + цагийн ажилтан. Ажилтан тус бүр НЭГ бүлэгт орно.
-const _MEMBER_GROUP_ORDER = ['M Event', 'NOMAAD Camp', 'Удирдлага / Нэгдсэн', 'Цагийн ажилтан'];
+// Ажилтны бүлэг — Master Sheet-ийн "Бүлэг" багана (m.group). Цагийн ажилтныг
+// (daily) тусад нь гаргана (тэд бүгд "Нэгдсэн" бүлэгтэй ч тусдаа харагдах ёстой).
 function memberGroupOf(m) {
   if (m.worker_type === 'daily') return 'Цагийн ажилтан';
-  const b = m.branches || [];
-  if (b.includes('m-event')) return 'M Event';
-  if (b.includes('camp')) return 'NOMAAD Camp';
-  return 'Удирдлага / Нэгдсэн';
+  return String(m.group || m.branch || '').trim() || 'Бусад';
 }
-// Бүлэглэсэн <optgroup> сонголтууд (салбар/цагийн). placeholder=false бол "сонгох" нэмэхгүй.
+// Бүлэглэсэн <optgroup> сонголтууд. Дараалал: M Event → Camp → Нэгдсэн → бусад → Цагийн ажилтан.
 function memberOptgroupsHtml(selected, placeholder = true) {
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
   const byGroup = {};
-  active.forEach(m => { (byGroup[memberGroupOf(m)] = byGroup[memberGroupOf(m)] || []).push(m); });
+  active.forEach(m => { const g = memberGroupOf(m); (byGroup[g] = byGroup[g] || []).push(m); });
+  const pref = ['M Event', 'Camp', 'Нэгдсэн'];
+  const others = Object.keys(byGroup).filter(g => !pref.includes(g) && g !== 'Цагийн ажилтан').sort();
+  const order = [...pref, ...others, 'Цагийн ажилтан'];
   let html = placeholder ? '<option value="">— Сонгох —</option>' : '';
-  for (const g of _MEMBER_GROUP_ORDER) {
+  for (const g of order) {
     const ms = byGroup[g];
     if (!ms || !ms.length) continue;
     html += `<optgroup label="${escapeHtml(g)} (${ms.length})">`;

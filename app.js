@@ -5947,11 +5947,9 @@ async function deleteTask(id) {
     }
     return;
   }
-  const hardDelete = !!check.permanent;
-  const label = hardDelete ? 'Бүрэн устгах' : 'Архивлах';
-  const explainer = hardDelete
-    ? 'Энэ даалгавар Sheet-ээс БҮРЭН устгагдана. Сэргээх боломжгүй.'
-    : 'Архивласан үед CEO-ийн Архив хэсэгт хадгалагдаж, шаардлагатай үед сэргээх боломжтой.';
+  const hardDelete = true;  // Архив хэрэггүй — даалгаврыг шууд бүрмөсөн устгана (дуусгаагүй ч).
+  const label = 'Устгах';
+  const explainer = 'Энэ даалгавар бүрмөсөн устгагдана. Сэргээх боломжгүй.';
   // 5-дамжлагат акт parent — sub-task-уудтай хамт устгана
   if (t.kind === 'act_parent') {
     const subs = state.tasks.filter(x => x.parent_id === t.id);

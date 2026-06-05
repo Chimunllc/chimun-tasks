@@ -2570,6 +2570,7 @@ function render() {
   // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2640,6 +2641,13 @@ function renderSidebar() {
     const archCnt = document.getElementById('cnt-archive');
     if (archCnt) archCnt.textContent = String(state.tasks.filter(t => t.status === 'deleted').length);
   }
+  // Цагийн цалин — CEO/нягтлан/менежер. Badge нь төлбөргүй цагийн ажилтны тоо.
+  const hrNav = document.getElementById('nav-hourly');
+  if (hrNav) {
+    hrNav.style.display = canSeeHourlyPayroll() ? '' : 'none';
+    const hrCnt = document.getElementById('cnt-hourly');
+    if (hrCnt) hrCnt.textContent = String(hourlyWorkers().filter(m => !findHourlyPayout(m)).length);
+  }
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
@@ -2699,6 +2707,7 @@ function renderTitle() {
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
+    hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -2771,6 +2780,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderProducts();
     attachProductsHandlers();
+    return;
+  } else if (state.view === 'hourly') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderHourly();
+    attachHourlyHandlers();
     return;
   } else {
     if (tableHead) tableHead.style.display = '';
@@ -3514,6 +3529,173 @@ function productRowHtml(p) {
     <label class="prod-fld sm">Нөөц<input type="number" data-f="stock" value="${Number(p.stock) || 0}"></label>
     <button class="btn prod-save" data-id="${escapeHtml(p.id)}">Хадгалах</button>
   </div>`;
+}
+
+/* ===================== ЦАГИЙН ЦАЛИН (hourly payroll) =====================
+   Менежер тухайн өдрийн цагийн ажилчдын цалинг урьдчилгаагаар өөрийн данс руу
+   аваад, ажил дуусахад тус бүрд нь шилжүүлнэ. Энэ view ажилчдыг жагсааж, хэнд
+   хэдэн төгрөг шилжүүлснийг (хэн/хэзээ) бүртгэж хянана.
+   Бичилт — одоо байгаа finance webhook руу (нэмэлт schema хэрэггүй):
+     • Шилжүүлэг: finance request, purpose "Цагийн цалин · <нэр> · <огноо>"
+     • Урьдчилгаа: finance request, purpose "Цагийн цалингийн урьдчилгаа · <огноо>" */
+function canSeeHourlyPayroll() {
+  if (isDailyWorker()) return false;
+  if (state.isCEO) return true;
+  if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
+  const role = (state.user && state.user.role) || '';
+  return /менежер|эвент|захиалг/i.test(role);
+}
+function hourlyDays(m) {
+  if (m.seasonal_from && m.seasonal_to) {
+    const a = new Date(m.seasonal_from + 'T00:00:00Z');
+    const b = new Date(m.seasonal_to + 'T00:00:00Z');
+    return Math.max(1, Math.round((b - a) / 86400000) + 1);
+  }
+  return 1;
+}
+function hourlyAmount(m) { return (Number(m.daily_rate) || 0) * hourlyDays(m); }
+function hourlyWorkers() {
+  let list = (TEAM || []).filter(m =>
+    m.worker_type === 'daily' && String(m.status || '').trim() !== 'гарсан');
+  // Менежер (CEO/нягтлан биш) — зөвхөн өөрийн салбарын ажилчид
+  if (!state.isCEO && state.me !== getFinanceExecutorEmail()) {
+    const myBr = (state.user && state.user.branches) || [];
+    if (myBr.length) list = list.filter(m => (m.branches || []).some(b => myBr.includes(b)));
+  }
+  return list;
+}
+// Тухайн ажилтны (нэрээр) хамгийн сүүлийн шилжүүлгийн finance request-ийг олно.
+function findHourlyPayout(m) {
+  const nm = (m.name || '').trim();
+  return (state.financeRequests || []).find(r =>
+    r.status !== 'deleted' &&
+    /^Цагийн цалин ·/.test(r.purpose || '') &&
+    (r.beneficiary || '').trim() === nm
+  ) || null;
+}
+
+function renderHourly() {
+  const workers = hourlyWorkers();
+  if (!workers.length) {
+    return `<div class="orders-empty"><div class="icon">👷</div>
+      <div>Идэвхтэй цагийн ажилтан алга.</div>
+      <div class="sub">Цагийн ажилтан "+ Шинэ ажилтан"-аар бүртгэгдэхэд энд харагдана.</div></div>`;
+  }
+  let expected = 0, paid = 0;
+  const rows = workers.map(m => {
+    const amt = hourlyAmount(m);
+    const rate = Number(m.daily_rate) || 0;
+    const days = hourlyDays(m);
+    expected += amt;
+    const payout = findHourlyPayout(m);
+    if (payout) paid += Number(payout.amount) || 0;
+    const bankLine = (m.bank || m.bank_account)
+      ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
+      : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
+    const calc = rate > 0
+      ? `${fmtMoney(rate)} × ${days} хоног = <b>${fmtMoney(amt)}</b>`
+      : '<span style="color:var(--danger)">daily_rate тохируулаагүй</span>';
+    const action = payout
+      ? `<div style="text-align:right;">
+           <span style="font-weight:700;color:var(--ok);font-size:13px;">✓ ${fmtMoney(Number(payout.amount) || 0)} шилжсэн</span>
+           <div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(memberName(payout.executed_by || payout.requested_by || ''))} · ${escapeHtml(fmtDateTimeUB(payout.executed_at || payout.requested_at || ''))}</div>
+         </div>`
+      : `<button class="btn btn-primary" data-hourly-pay="${escapeHtml(personKey(m))}" style="padding:5px 14px;font-size:12px;"${rate <= 0 ? ' disabled' : ''}>Шилжүүлсэн</button>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
+      <div style="min-width:0;">
+        <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span></div>
+        <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">${calc} · 📞 ${escapeHtml(m.phone || '-')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">${bankLine}</div>
+      </div>
+      <div style="flex-shrink:0;">${action}</div>
+    </div>`;
+  }).join('');
+  const remaining = expected - paid;
+  const summary = `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px;">
+    <div>Нийт төлөх: <b>${fmtMoney(expected)}</b></div>
+    <div>Шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(paid)}</b></div>
+    <div>Үлдэгдэл: <b style="color:${remaining > 0 ? 'var(--warn)' : 'var(--ok)'}">${fmtMoney(remaining)}</b></div>
+  </div>`;
+  const advanceBtn = remaining > 0
+    ? `<button class="btn" id="hourly-advance" style="padding:6px 16px;flex-shrink:0;">Урьдчилгаа авах (${fmtMoney(remaining)})</button>`
+    : '';
+  return `<div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">${summary}${advanceBtn}</div>
+    <div>${rows}</div>`;
+}
+
+function attachHourlyHandlers() {
+  document.querySelectorAll('button[data-hourly-pay]').forEach(b => {
+    b.addEventListener('click', () => markHourlyPaid(b.dataset.hourlyPay));
+  });
+  document.getElementById('hourly-advance')?.addEventListener('click', takeHourlyAdvance);
+}
+
+async function markHourlyPaid(workerKey) {
+  const m = findMember(workerKey);
+  if (!m) return;
+  const amount = hourlyAmount(m);
+  if (amount <= 0) {
+    showToast('Энэ ажилтанд өдрийн хөлс (daily_rate) тохируулаагүй байна.', 'warn', 2500);
+    return;
+  }
+  if (!(await showConfirm(`${m.name} — ${fmtMoney(amount)} шилжүүлснийг бүртгэх үү?`, { okText: 'Тийм, шилжүүлсэн' }))) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+  const r = {
+    id: 'HRLY_' + personKey(m) + '_' + today + '_' + Math.random().toString(36).slice(2, 6),
+    requested_by: state.me,
+    requested_at: now,
+    amount,
+    beneficiary: m.name || '',
+    bank: m.bank || '',
+    account_number: m.bank_account || '',
+    purpose: `Цагийн цалин · ${m.name} · ${today}`,
+    justification: `${m.role || 'цагийн ажилтан'} · ${hourlyDays(m)} хоног × ${fmtMoney(Number(m.daily_rate) || 0)} · 📞 ${m.phone || '-'}`,
+    due_date: today,
+    category: 'Цалин',
+    dept_branch: (m.branches && m.branches[0]) || 'shared',
+    frequency: 'Нэг удаагийн',
+    priority: 'med',
+    status: 'done',
+    decision: 'approved',
+    decision_at: now,
+    decision_by: state.me,
+    decision_reason: 'Цагийн ажилтны цалин — менежер шилжүүлэв',
+    executor: state.me,
+    executed_at: now,
+    executed_by: state.me,
+    received_at: now,
+    received_by: personKey(m),
+    purchase_proof_url: '', payment_proof_url: '', purchase_receipt_url: '',
+    purchase_proof_urls: [], purchase_receipt_urls: [],
+  };
+  state.financeRequests.unshift(r);
+  await saveFinanceRequest(r);
+  pushBroadcast(personKey(m), { type: 'salary_paid', title: 'Цалин шилжүүлэв', body: `${fmtMoney(amount)} таны дансанд шилжүүлэв.` });
+  showToast(`${m.name} — ${fmtMoney(amount)} бүртгэлээ`, 'success', 2000);
+  render();
+}
+
+async function takeHourlyAdvance() {
+  const workers = hourlyWorkers();
+  let remaining = 0;
+  workers.forEach(m => { if (!findHourlyPayout(m)) remaining += hourlyAmount(m); });
+  if (remaining <= 0) { showToast('Төлбөргүй үлдэгдэл алга.', 'warn', 2000); return; }
+  if (!(await showConfirm(`Цагийн цалингийн урьдчилгаа ${fmtMoney(remaining)}-г өөрийн данс руу авах хүсэлт үүсгэх үү? (CEO баталгаажуулна)`, { okText: 'Хүсэлт үүсгэх' }))) return;
+  const today = new Date().toISOString().slice(0, 10);
+  await createFinanceRequest({
+    amount: remaining,
+    beneficiary: (state.user && state.user.name) || state.me,
+    bank: (state.user && state.user.bank) || '',
+    accountNumber: (state.user && state.user.bank_account) || '',
+    purpose: `Цагийн цалингийн урьдчилгаа · ${today}`,
+    justification: `${workers.filter(m => !findHourlyPayout(m)).length} цагийн ажилтны цалин — менежер урьдчилгаагаар авч, ажил дуусахад шилжүүлнэ.`,
+    dueDate: today,
+    category: 'Цалин',
+    frequency: 'Нэг удаагийн',
+  });
+  showToast('Урьдчилгааны хүсэлт үүслээ', 'success', 2000);
+  render();
 }
 
 function renderProducts() {

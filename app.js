@@ -2596,6 +2596,7 @@ function render() {
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
+  if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2677,50 +2678,7 @@ function renderSidebar() {
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
   if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Чимун ХХК';
-  // projects (only for current branch) — устгах товчтой
-  const list = document.getElementById('project-list');
-  list.innerHTML = '';
-  currentProjects().forEach(p => {
-    const div = document.createElement('div');
-    div.className = 'project-item' + (state.view === 'project:'+p.id ? ' active':'');
-    const cnt = state.tasks.filter(t =>
-      t.project === p.id && t.status !== 'done'
-    ).length;
-    div.innerHTML = `
-      <span class="proj-name">${escapeHtml(p.name)}</span>
-      <span class="count-badge">${cnt}</span>
-      <button class="proj-del" title="Төсөл устгах" aria-label="Устгах">
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    `;
-    div.addEventListener('click', (e) => {
-      if (e.target.closest('.proj-del')) return; // delete button handled separately
-      state.view = 'project:' + p.id;
-      render();
-    });
-    div.querySelector('.proj-del')?.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const taskCount = state.tasks.filter(t => t.project === p.id).length;
-      const msg = taskCount > 0
-        ? `"${p.name}" төсөлд ${taskCount} даалгавар бий. Устгахад тэдгээр даалгаврууд "Төсөлгүй" болно. Үргэлжлэх үү?`
-        : `"${p.name}" төслийг устгах уу?`;
-      if (!(await showConfirm(msg, { okText: 'Устгах', danger: true }))) return;
-      // Тус төсөлд хамаарах БҮХ task-уудын project талбарыг хоослох (салбараас үл хамаарч)
-      state.tasks.forEach(t => {
-        if (t.project === p.id) t.project = '';
-      });
-      // projectsByBranch бүх массивaас хасах
-      Object.keys(state.projectsByBranch || {}).forEach(b => {
-        state.projectsByBranch[b] = (state.projectsByBranch[b] || []).filter(x => x.id !== p.id);
-      });
-      if (state.view === 'project:' + p.id) state.view = 'mine';
-      saveLocal();
-      saveData();
-      render();
-      showToast('Төсөл устгасан', 'success', 1500);
-    });
-    list.appendChild(div);
-  });
+  // Төслийн жагсаалт UI-аас бүрэн хасагдсан (2026-06-06). project-list element байхгүй.
 }
 function renderTitle() {
   // [icon SVG, title text, subtitle]
@@ -4555,7 +4513,6 @@ function generateICS(tasks) {
     const description = [
       `Хариуцагч: ${memberName(t.assignee)}`,
       `Үүсгэгч: ${memberName(t.createdBy)}`,
-      `Төсөл: ${projectName(t.project) || '—'}`,
       `Төлөв: ${t.status}`,
       t.desc ? `\\n${t.desc}` : '',
     ].filter(Boolean).join('\\n');
@@ -5586,14 +5543,13 @@ function renderRow(t) {
       <div class="checkbox ${t.status==='done'?'checked':''}" data-act="open" style="cursor:pointer;"></div>
     </div>
     <div class="task-title-wrap" data-act="open">
-      <div class="task-title" data-act="open">${t.recurrence ? '<svg class="recur-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" title="Давтагдах"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> ' : ''}${titleHtml}${extraHtml}</div>
+      <div class="task-title" data-act="open">${titleHtml}${extraHtml}</div>
       <div class="task-meta" data-act="open">
         <span class="status-dot ${statusClass}" title="${statusClass === 'in_progress' ? 'Хийгдэж байна' : statusClass === 'declined' ? 'Татгалзсан' : statusClass === 'done' ? 'Дууссан' : 'Шинэ'}"></span>
         <span class="meta-mobile-only avatar-circle sm" style="display:none;background:linear-gradient(135deg,var(--primary),var(--primary-hover));">${escapeHtml(memberInitials(t.assignee))}</span>
         <span class="meta-mobile-only" style="display:none;color:var(--text-soft);font-weight:500;">${escapeHtml(memberName(t.assignee))}</span>
         ${t.due ? `<span class="meta-mobile-only meta-dot" style="display:none;"></span><span class="meta-mobile-only meta-due ${dc}" style="display:none;color:${dc==='overdue' ? 'var(--danger)' : dc==='soon' ? 'var(--warn)' : 'var(--muted)'};font-weight:${dc ? '600' : '400'};">${fmtDate(t.due)}</span>` : ''}
         ${t.priority && t.priority !== 'none' ? `<span class="meta-mobile-only" style="display:none;color:${t.priority==='high'?'var(--danger)':t.priority==='med'?'var(--warn)':'var(--ok)'};">●</span>` : ''}
-        <span class="meta-desktop-only meta-project">${escapeHtml(projectName(t.project) || 'Төсөлгүй')}</span>
         ${t.createdBy && t.createdBy !== t.assignee
           ? `<span class="meta-desktop-only meta-dot"></span><span class="meta-desktop-only delegated-from">${escapeHtml(memberName(t.createdBy))}</span>`
           : ''}
@@ -5917,10 +5873,7 @@ async function toggleTask(id) {
   }
   t.status = t.status === 'done' ? 'open' : 'done';
   saveTask(t);
-  // Recurring task — done болсон үед дараагийн instance автомат үүсгэх
-  if (t.status === 'done' && t.recurrence) {
-    spawnRecurringNext(t);
-  }
+  // Давтамж (recurring) онол UI-аас хасагдсан (2026-06-06) — автомат spawn хийхгүй.
   // If this was the last sub-task and all are done, also auto-complete the parent
   if (t.status === 'done' && t.parent_id) {
     const parent = state.tasks.find(x => x.id === t.parent_id);
@@ -6706,7 +6659,7 @@ async function saveTaskFromModal() {
     title,
     desc: document.getElementById('t-desc').value.trim(),
     branch: document.getElementById('t-branch').value || state.branch,
-    project: document.getElementById('t-project').value,
+    project: document.getElementById('t-project')?.value || '',
     due: document.getElementById('t-due').value || '',
     priority: document.getElementById('t-priority').value,
     recurrence: document.getElementById('t-recurrence')?.value || '',
@@ -6841,6 +6794,8 @@ function fillSelect(id, items, value, placeholder) {
   });
 }
 function fillProjectSelect(id, value, branchOverride) {
+  // Төсөл талбар UI-аас хасагдсан — element байхгүй бол юу ч хийхгүй.
+  if (!document.getElementById(id)) return;
   // Бүх төслийг (бүх салбараас) нэгтгэж харуулна — Чимун ХХК нэг компани.
   const projects = currentProjects();
   // "— Төсөлгүй —" сонголтыг эхэнд тавиж заавал биш болгох
@@ -6876,7 +6831,8 @@ function initEvents() {
       render();
     };
   });
-  document.getElementById('add-project').onclick = addProject;
+  const addProjBtn = document.getElementById('add-project');
+  if (addProjBtn) addProjBtn.onclick = addProject;
   document.getElementById('new-task-btn').onclick = () => openTaskModal();
   document.getElementById('t-cancel').onclick = closeTaskModal;
   document.getElementById('t-save').onclick = () => withBusy(document.getElementById('t-save'), saveTaskFromModal, { successText: 'Хадгалагдлаа' });

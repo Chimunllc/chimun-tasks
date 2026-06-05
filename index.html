@@ -301,10 +301,6 @@
     <div class="nav-item" data-view="products" id="nav-products" style="display:none;">
       <span><svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Бараа</span><span class="count-badge" id="cnt-products">0</span>
     </div>
-    <div class="section-label" id="nav-projects-label">Төслүүд</div>
-    <div id="project-list"></div>
-    <div class="add-project" id="add-project">+ Шинэ төсөл</div>
-
     <!-- User chip — populated after Google sign-in -->
     <div class="user-chip" id="user-chip">
       <div class="avatar" id="user-avatar">?</div>
@@ -418,8 +414,6 @@
     <textarea id="t-desc" placeholder="Дэлгэрэнгүй..."></textarea>
     <label>Аль салбарт хамаарах вэ? <span style="font-size:11px;color:var(--muted);font-weight:400;">(статистикад тус салбарт тооцогдоно)</span></label>
     <select id="t-branch"></select>
-    <label>Төсөл</label>
-    <select id="t-project"></select>
     <label>Хариуцагч <span style="font-size:11px;color:var(--muted);font-weight:400;">(нэг буюу олон сонгож болно)</span></label>
     <div class="assignee-picker-wrap">
       <select id="t-assignee"></select>
@@ -453,16 +447,6 @@
       <option value="med">🟡 Энгийн</option>
       <option value="high">🔴 Яаралтай</option>
       <option value="low">⚪ Чөлөөтэй</option>
-    </select>
-
-    <label>Давтамж</label>
-    <select id="t-recurrence">
-      <option value="">Давтагдахгүй (нэг удаагийн)</option>
-      <option value="daily">Өдөр бүр</option>
-      <option value="weekly">Долоо хоног бүр</option>
-      <option value="biweekly">2 долоо хоног тутамд</option>
-      <option value="monthly">Сар бүр</option>
-      <option value="quarterly">Улирал бүр</option>
     </select>
 
     <label id="t-requires-photo-label" style="display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer; user-select:none;">

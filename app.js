@@ -1118,15 +1118,23 @@ function applyPendingFinanceWrites() {
     }
   }
 }
+let _taskWriteChain = Promise.resolve();
 async function saveTask(task, deleted=false, hardDelete=false) {
   saveLocal();
   if (!state.config.apiUrl) return; // backend тохируулаагүй — зөвхөн локал
   // ID-г нэр болгож хувиргаж Sheet рүү явуулна
   const wire = taskToWire(task);
   const action = hardDelete ? 'hard_delete' : (deleted ? 'delete' : 'upsert');
-  const ok = await postWrite(state.config.apiUrl, { action, task: wire });
-  if (ok) { flushPendingWrites(); }            // амжилттай — хуримтлагдсан backlog-оо бас илгээх
-  else { enqueueWrite({ kind: 'task', action, payload: task, ts: Date.now() }); }
+  // БҮХ task Sheet-бичилтийг ДАРААЛУУЛЖ (сериал) ажиллуулна. Олон ажлыг зэрэг
+  // устгахад hard_delete нь Sheet-ийн мөрийн дугаараар устгадаг тул мөрийн дугаар
+  // шилжиж зарим устгал "мөр олдсонгүй" болж тусдаггүй (буцаж гарч ирдэг). Нэг
+  // бичилт дуустал дараагийнх хүлээснээр уг уралдааныг арилгана.
+  _taskWriteChain = _taskWriteChain.then(async () => {
+    const ok = await postWrite(state.config.apiUrl, { action, task: wire });
+    if (ok) { flushPendingWrites(); }            // амжилттай — backlog-оо бас илгээх
+    else { enqueueWrite({ kind: 'task', action, payload: task, ts: Date.now() }); }
+  }).catch(() => { enqueueWrite({ kind: 'task', action, payload: task, ts: Date.now() }); });
+  return _taskWriteChain;
 }
 
 /* Push broadcast — хариуцагч руу нэн даруй мэдэгдэл илгээнэ. Fire-and-forget;

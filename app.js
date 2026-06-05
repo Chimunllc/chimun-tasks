@@ -4861,28 +4861,19 @@ function renderStaffList() {
     let statusLabel = 'Идэвхтэй', statusCls = 'active';
     if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
     else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
-    // Өдрийн ажилтан badge — seasonal_to-тэй бол. Хугацаа дууссан бол улаан.
-    const today = todayStr();
-    const isSeasonal = !!m.seasonal_to;
-    const isExpired = isSeasonal && m.seasonal_to < today;
-    const seasonalBadge = isSeasonal
-      ? `<span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:6px;background:${isExpired ? 'var(--danger-soft)' : 'var(--warn-soft)'};color:${isExpired ? 'var(--danger)' : 'var(--warn)'};">${isExpired ? '⏱ ' + m.seasonal_to + ' хугацаа дууссан' : '⏱ ' + m.seasonal_to + ' хүртэл'}</span>`
-      : '';
     const key = personKey(m);
     return `
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
         <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(key))}</span>
         <div class="staff-info">
-          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${seasonalBadge}</div>
+          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
         </div>
         <span class="staff-status status-${statusCls}">${statusLabel}</span>
         ${isSelf ? '' : (
           isPending
             ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
-            : (isExpired
-                ? `<button class="staff-action restore" data-staff-act="extend" data-staff-email="${escapeHtml(key)}">↻ Хугацаа сунгах</button>`
-                : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}</button>`)
+            : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}</button>`
         )}
       </div>
     `;
@@ -4897,35 +4888,6 @@ function renderStaffList() {
       const member = findMember(email);
       if (!member) return;
       if (act === 'review') { openPendingRegistration(member); return; }
-      // Хугацаа сунгах — өдрийн ажилтан буцаж ажиллах
-      if (act === 'extend') {
-        const newDate = await showPrompt(`${member.name}-ийн ажиллах хугацааг хэдэн өдөр хүртэл сунгах вэ? (YYYY-MM-DD)`, {
-          placeholder: 'Жишээ: 2026-07-15', okText: 'Сунгах',
-          defaultValue: member.seasonal_to || '',
-        });
-        if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate.trim())) {
-          if (newDate) showToast('Огноо YYYY-MM-DD форматтай байх ёстой', 'warn');
-          return;
-        }
-        member.seasonal_to = newDate.trim();
-        localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-        const webhook = state.config.staffUrl;
-        if (webhook) {
-          try {
-            const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'update_seasonal', email: member.email,
-                seasonal_to: newDate.trim(), requested_by: state.me,
-              }),
-            });
-            if (r.ok) showToast(`${member.name}-ийн ажиллах хугацаа ${newDate} хүртэл сунгасан.`, 'success', 3000);
-            else showToast('Локалд хадгалсан. Sheet sync хийгдээгүй.', 'warn');
-          } catch(e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
-        }
-        renderStaffList();
-        return;
-      }
       const newStatus = act === 'leave' ? 'гарсан' : 'идэвхтэй';
       const verb = act === 'leave' ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх';
       const confirmMsg = act === 'leave'
@@ -7883,8 +7845,6 @@ function initPinLogin() {
         b.style.color = active ? '#fff' : 'var(--text)';
         b.style.borderColor = active ? 'var(--primary)' : 'var(--border)';
       });
-      const daily = document.getElementById('reg-daily-section');
-      if (daily) daily.style.display = (type === 'daily') ? 'block' : 'none';
       // Үндсэн ажилтны нэмэлт талбарууд (албан тушаал, салбар, и-мэйл, хаяг, яаралтай үед)
       // өдрийн ажилтанд харагдахгүй
       document.querySelectorAll('.reg-permanent-only').forEach(el => {
@@ -7928,9 +7888,6 @@ async function handleRegister() {
   const emergencyRelation = document.getElementById('reg-emergency-relation')?.value.trim() || '';
   const emergencyName     = document.getElementById('reg-emergency-name')?.value.trim() || '';
   const emergencyPhone    = document.getElementById('reg-emergency-phone')?.value.trim() || '';
-  const seasonalFrom   = document.getElementById('reg-seasonal-from')?.value || '';
-  const seasonalTo     = document.getElementById('reg-seasonal-to')?.value || '';
-  const dailyRate      = document.getElementById('reg-daily-rate')?.value || '';
   const photoDataUrl   = state._regPhotoDataUrl || '';
   const workerType     = state._regWorkerType || 'permanent';
   const bank           = document.getElementById('reg-bank')?.value || '';
@@ -8004,9 +7961,6 @@ async function handleRegister() {
         joined_at: new Date().toISOString().slice(0, 10),
         requested_at: new Date().toISOString(),
         worker_type:   workerType,   // 'permanent' | 'daily'
-        seasonal_from: workerType === 'daily' ? seasonalFrom : '',
-        seasonal_to:   workerType === 'daily' ? seasonalTo   : '',
-        daily_rate:    workerType === 'daily' ? (Number(dailyRate) || 0) : '',
         bank, bank_account: bankAccount, bank_holder: bankHolder,
       }),
     });
@@ -8067,19 +8021,6 @@ async function handlePinLogin(userIdentifier, pin) {
     // "Гарсан" статустай ажилтан нэвтэрч чадахгүй
     if ((member.status || 'идэвхтэй') === 'гарсан') {
       return { ok: false, reason: 'Та ажлаас гарсан гэж тэмдэглэгдсэн. CEO-той холбогдоорой.' };
-    }
-    // Өдрийн ажилтан — seasonal_to-ийн дараа нэвтрэх боломжгүй
-    if (member.seasonal_to) {
-      const todayY = todayStr();
-      if (member.seasonal_to < todayY) {
-        return { ok: false, reason: `Ажиллах хугацаа дууссан (${member.seasonal_to}). CEO-той холбогдоорой.` };
-      }
-    }
-    if (member.seasonal_from) {
-      const todayY = todayStr();
-      if (member.seasonal_from > todayY) {
-        return { ok: false, reason: `Ажиллах хугацаа ${member.seasonal_from}-нд эхэлнэ.` };
-      }
     }
     if (!member.pin) return { ok: false, reason: 'no_pin_in_sheet' };
     if (String(member.pin) !== String(pin)) return { ok: false, reason: 'wrong_pin' };

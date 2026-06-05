@@ -3609,7 +3609,26 @@ function attachHourlyHandlers() {
   });
 }
 
-// Цалин шилжүүлэх модал — өдрийн цалин × ажилласан өдөр + эхэлсэн огноо. {rate,days,start} эсвэл null.
+// Текст хуулах (банк апп руу paste хийхэд). Secure context-д clipboard API, эс бөгөөс fallback.
+function copyText(text, okMsg) {
+  text = String(text || '').trim();
+  if (!text) { showToast('Хуулах зүйл алга', 'warn', 1500); return; }
+  const done = () => showToast(okMsg || 'Хууллаа', 'success', 1500);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else { fallbackCopy(text, done); }
+}
+function fallbackCopy(text, done) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    done && done();
+  } catch (e) { showToast('Хуулж чадсангүй', 'warn', 1500); }
+}
+
+// Цалин шилжүүлэх модал — данс/утга хуулах + өдрийн цалин × өдөр + эхэлсэн огноо. {rate,days,start} эсвэл null.
 function openHourlyPayModal(m) {
   return new Promise((resolve) => {
     const modal = document.getElementById('hourly-pay-modal');
@@ -3617,15 +3636,28 @@ function openHourlyPayModal(m) {
     const daysEl = document.getElementById('hp-days');
     const startEl = document.getElementById('hp-start');
     const totalEl = document.getElementById('hp-total');
+    const memoEl = document.getElementById('hp-memo');
     const okBtn = document.getElementById('hp-ok');
     const cancelBtn = document.getElementById('hp-cancel');
+    const copyAcctBtn = document.getElementById('hp-copy-acct');
+    const copyMemoBtn = document.getElementById('hp-copy-memo');
     document.getElementById('hp-worker').textContent = (m.name || '') + ' · ' + (m.role || 'цагийн ажилтан');
+    document.getElementById('hp-bank').textContent = (m.bank || '—') + (m.bank_account ? ' · ' + m.bank_account : '');
+    document.getElementById('hp-holder').textContent = m.bank_holder || m.name || '';
+    const acct = String(m.bank_account || '').replace(/\s/g, '');
     rateEl.value = ''; daysEl.value = ''; startEl.value = new Date().toISOString().slice(0, 10);
-    const upd = () => { totalEl.textContent = 'Дүн: ' + fmtMoney(Math.round((Number(rateEl.value) || 0) * (Number(daysEl.value) || 0))); };
+    const memoText = () => 'Өдрийн цалин' + (Number(daysEl.value) > 0 ? ' ' + Number(daysEl.value) + ' хоног' : '');
+    const upd = () => {
+      totalEl.textContent = 'Дүн: ' + fmtMoney(Math.round((Number(rateEl.value) || 0) * (Number(daysEl.value) || 0)));
+      memoEl.textContent = memoText();
+    };
     rateEl.oninput = upd; daysEl.oninput = upd; upd();
+    copyAcctBtn.onclick = () => copyText(acct, 'Данс хууллаа');
+    copyMemoBtn.onclick = () => copyText(memoEl.textContent, 'Утга хууллаа');
     function cleanup(result) {
       modal.classList.remove('open');
       okBtn.onclick = null; cancelBtn.onclick = null; rateEl.oninput = null; daysEl.oninput = null;
+      copyAcctBtn.onclick = null; copyMemoBtn.onclick = null;
       resolve(result);
     }
     okBtn.onclick = () => {

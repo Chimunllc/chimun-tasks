@@ -3578,12 +3578,15 @@ function renderHourly() {
     const payouts = hourlyPayouts(m);
     const sum = payouts.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     totalPaid += sum;
-    const last = payouts[0];
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
+    // Авсан нийт цалин + шилжүүлэг бүрийг (дүн · огноо) тусдаа мөрөөр доош
     const paidLine = sum > 0
-      ? `<div style="font-size:11px;color:var(--ok);margin-top:3px;">✓ Шилжүүлсэн: ${fmtMoney(sum)}${payouts.length > 1 ? ' (' + payouts.length + ' удаа)' : ''}${last ? ' · ' + escapeHtml(fmtDateTimeUB(last.executed_at || last.requested_at || '')) : ''}</div>`
+      ? `<div style="margin-top:4px;">
+           <div style="font-size:12px;font-weight:600;color:var(--ok);">Авсан нийт: ${fmtMoney(sum)}</div>
+           ${payouts.map(p => `<div style="font-size:11px;color:var(--muted);margin-top:1px;">· ${fmtMoney(Number(p.amount) || 0)} · ${escapeHtml(fmtDateTimeUB(p.executed_at || p.requested_at || ''))}</div>`).join('')}
+         </div>`
       : '';
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
       <div style="min-width:0;">

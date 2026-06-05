@@ -3561,6 +3561,14 @@ function hourlyPayouts(m) {
   );
 }
 
+// Цагийн ажилтны салбар (M Event / NOMAAD / Бусад) — group/branches талбараас.
+function hourlyBranchLabel(m) {
+  const g = String((m.branches && m.branches[0]) || m.group || m.branch || '').toLowerCase().trim();
+  if (g === 'm-event' || g === 'mevent' || g.includes('event') || g.includes('ивент') || g.includes('эвент')) return 'M Event';
+  if (g === 'camp' || g.includes('camp') || g.includes('кемп') || g.includes('номаад') || g.includes('nomaad')) return 'NOMAAD';
+  return 'Бусад';
+}
+
 function renderHourly() {
   const workers = hourlyWorkers();
   if (!workers.length) {
@@ -3569,10 +3577,14 @@ function renderHourly() {
       <div class="sub">Цагийн ажилтан "+ Шинэ ажилтан"-аар бүртгэгдэхэд энд харагдана.</div></div>`;
   }
   let totalPaid = 0;
-  const rows = workers.map(m => {
+  const rowHtml = (m) => {
     const payouts = hourlyPayouts(m);
     const sum = payouts.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     totalPaid += sum;
+    const key = personKey(m);
+    const avatar = m.photo
+      ? `<img src="${escapeHtml(m.photo)}" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+      : `<span style="width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;">${escapeHtml(memberInitials(key))}</span>`;
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
@@ -3584,21 +3596,31 @@ function renderHourly() {
          </div>`
       : '';
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
-      <div style="min-width:0;">
-        <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span></div>
-        <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
-        ${paidLine}
+      <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+        ${avatar}
+        <div style="min-width:0;">
+          <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span></div>
+          <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
+          ${paidLine}
+        </div>
       </div>
       <div style="flex-shrink:0;">
-        <button class="btn btn-primary" data-hourly-pay="${escapeHtml(personKey(m))}" style="padding:5px 14px;font-size:12px;">Цалин шилжүүлэх</button>
+        <button class="btn btn-primary" data-hourly-pay="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">Цалин шилжүүлэх</button>
       </div>
     </div>`;
-  }).join('');
-  const header = `<div style="margin-bottom:16px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
+  };
+  // Салбараар бүлэглэх — M Event / NOMAAD / Бусад
+  const groups = { 'M Event': [], 'NOMAAD': [], 'Бусад': [] };
+  workers.forEach(m => { (groups[hourlyBranchLabel(m)] || groups['Бусад']).push(m); });
+  const sections = ['M Event', 'NOMAAD', 'Бусад']
+    .filter(k => groups[k].length)
+    .map(k => `<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">${k} · ${groups[k].length}</div>` + groups[k].map(rowHtml).join(''))
+    .join('');
+  const header = `<div style="margin-bottom:8px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
     <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан</div>
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>. Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.</div>
   </div>`;
-  return header + `<div>${rows}</div>`;
+  return header + sections;
 }
 
 function attachHourlyHandlers() {

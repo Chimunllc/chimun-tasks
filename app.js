@@ -3794,8 +3794,11 @@ function renderNomaadOrders() {
       `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td><td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`
     ).join('');
     const incomeArea = income > 0
-      ? `<div style="text-align:right;"><span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
-           <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''}</div></div>`
+      ? `<div style="text-align:right;">
+           <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
+           <div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>
+           <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''} · <button class="btn" data-nomaad-income="${escapeHtml(o.quote_no)}" style="padding:2px 8px;font-size:10px;">Засах</button></div>
+         </div>`
       : `<button class="btn btn-primary" data-nomaad-income="${escapeHtml(o.quote_no)}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>`;
     return `<div class="order-card" data-nomaad="${escapeHtml(o.quote_no)}">
       <div class="order-head">
@@ -3820,23 +3823,49 @@ function attachNomaadHandlers() {
     b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome));
   });
 }
+// Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
+function openNomaadIncomeModal(o) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('nomaad-income-modal');
+    const fA = document.getElementById('ni-advance'), fB = document.getElementById('ni-balance'),
+          fN = document.getElementById('ni-addon'), fD = document.getElementById('ni-damage');
+    const totalEl = document.getElementById('ni-total');
+    const okBtn = document.getElementById('ni-ok'), cancelBtn = document.getElementById('ni-cancel');
+    const fields = [fA, fB, fN, fD];
+    document.getElementById('ni-company').textContent = (o.company || '') + ' · ' + (o.quote_no || '');
+    // Урьдчилгаа = deposit, Үлдэгдэл = нийт − урьдчилгаа (засаж болно)
+    fA.value = o.income_advance != null && o.income_amount ? o.income_advance : (o.deposit || '');
+    fB.value = o.income_balance != null && o.income_amount ? o.income_balance : ((Number(o.grand_total) || 0) - (Number(o.deposit) || 0) || '');
+    fN.value = o.income_addon || ''; fD.value = o.income_damage || '';
+    const sum = () => fields.reduce((s, f) => s + (Number(f.value) || 0), 0);
+    const upd = () => { totalEl.textContent = 'Нийт орлого: ' + fmtMoney(Math.round(sum())); };
+    fields.forEach(f => f.oninput = upd); upd();
+    function cleanup(result) { modal.classList.remove('open'); okBtn.onclick = null; cancelBtn.onclick = null; fields.forEach(f => f.oninput = null); resolve(result); }
+    okBtn.onclick = () => {
+      const total = Math.round(sum());
+      if (total <= 0) { showToast('Дор хаяж нэг дүн оруулна уу.', 'warn', 2000); return; }
+      cleanup({ advance: Number(fA.value) || 0, balance: Number(fB.value) || 0, addon: Number(fN.value) || 0, damage: Number(fD.value) || 0, total });
+    };
+    cancelBtn.onclick = () => cleanup(null);
+    modal.classList.add('open');
+    setTimeout(() => fA.focus(), 50);
+  });
+}
 async function recordNomaadIncome(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) return;
-  const amtStr = await showPrompt(`${o.company} — нийт төлсөн дүн (₮):`, { title: 'Орлого бүртгэх', placeholder: 'Жишээ: 63600000', defaultValue: String(o.grand_total || ''), okText: 'Бүртгэх' });
-  if (amtStr == null) return;
-  const amount = Number(String(amtStr).replace(/[^\d]/g, '')) || 0;
-  if (amount <= 0) { showToast('Дүнг зөв оруулна уу.', 'warn', 2000); return; }
-  if (!(await showConfirm(`${o.company}: ${fmtMoney(amount)} орлого бүртгэх үү?`, { okText: 'Тийм, бүртгэх' }))) return;
+  const res = await openNomaadIncomeModal(o);
+  if (!res) return;
+  if (!(await showConfirm(`${o.company}: нийт ${fmtMoney(res.total)} орлого бүртгэх үү?\n(Урьд ${fmtMoney(res.advance)} · Үлд ${fmtMoney(res.balance)} · Нэм ${fmtMoney(res.addon)} · Эвд ${fmtMoney(res.damage)})`, { okText: 'Тийм, бүртгэх' }))) return;
   const today = new Date().toISOString().slice(0, 10);
-  o.income_amount = amount; o.income_date = today; o.income_by = state.me; // optimistic
+  Object.assign(o, { income_amount: res.total, income_advance: res.advance, income_balance: res.balance, income_addon: res.addon, income_damage: res.damage, income_date: today, income_by: state.me });
   render();
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: amount, income_date: today, income_by: state.me }),
+      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: res.total, income_advance: res.advance, income_balance: res.balance, income_addon: res.addon, income_damage: res.damage, income_date: today, income_by: state.me }),
     }, 15000);
-    if (r.ok) showToast(`${o.company} — ${fmtMoney(amount)} орлого бүртгэлээ`, 'success', 2500);
+    if (r.ok) showToast(`${o.company} — ${fmtMoney(res.total)} орлого бүртгэлээ`, 'success', 2500);
     else showToast('Локалд хадгалсан. Sheet sync хийгдээгүй.', 'warn');
   } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
 }

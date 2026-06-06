@@ -3770,6 +3770,15 @@ function nomaadSortKey(o) {
   if (d < 0) return 1e8 - d;   // өнгөрсөн (сүүлийнх нь эхэнд)
   return d;
 }
+// Огноог "2026-06-09 Ба" хэлбэрээр — гарагийн товчилсон нэртэйгээр буцаана
+function nomaadDateWithDow(dateStr) {
+  if (!dateStr) return '';
+  const m = String(dateStr).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return escapeHtml(dateStr);
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dow = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'][d.getDay()];
+  return `${escapeHtml(dateStr)} <span class="nomaad-dow">${dow}</span>`;
+}
 function nomaadCampLabel(o) {
   const c = String(o.camp || '').toLowerCase();
   if (c.includes('summit')) return 'NOMAAD Summit';
@@ -3805,7 +3814,7 @@ function nomaadCardHtml(o) {
       <div class="nomaad-card-main">
         ${nomaadCountdownBadge(days)}
         <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>
-        <span class="nomaad-card-date">${escapeHtml(o.date_start || '')} → ${escapeHtml(o.date_end || '')} · ${o.guests || 0} хүн</span>
+        <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
       </div>
       <div class="nomaad-card-right">
         ${income > 0 ? '<span class="nomaad-paid">✓</span>' : ''}

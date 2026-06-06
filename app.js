@@ -3754,6 +3754,79 @@ async function loadNomaadOrders() {
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadNomaadOrders fail', e); }
 }
+// date_start-аас өнөөдрийг хүртэлх үлдсэн хоног (null = огноо алга/буруу)
+function nomaadDaysLeft(dateStr) {
+  if (!dateStr) return null;
+  const m = String(dateStr).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((d - today) / 86400000);
+}
+// Эрэмбэлэх түлхүүр: ирээдүйн ойрхон эхэлнэ → өнгөрсөн → огноогүй хамгийн сүүлд
+function nomaadSortKey(o) {
+  const d = nomaadDaysLeft(o.date_start);
+  if (d == null) return 1e9;
+  if (d < 0) return 1e8 - d;   // өнгөрсөн (сүүлийнх нь эхэнд)
+  return d;
+}
+function nomaadCampLabel(o) {
+  const c = String(o.camp || '').toLowerCase();
+  if (c.includes('summit')) return 'NOMAAD Summit';
+  if (c.includes('meadow')) return 'NOMAAD Meadow';
+  if (c.includes('grove'))  return 'NOMAAD Grove';
+  return (o.camp || '').trim() || 'Бусад';
+}
+function nomaadCountdownBadge(days) {
+  if (days == null) return `<span class="nomaad-cd nomaad-cd-none">огноогүй</span>`;
+  if (days < 0)  return `<span class="nomaad-cd nomaad-cd-past">дууссан</span>`;
+  if (days === 0) return `<span class="nomaad-cd nomaad-cd-urgent">Өнөөдөр</span>`;
+  if (days === 1) return `<span class="nomaad-cd nomaad-cd-urgent">Маргааш</span>`;
+  const cls = days <= 7 ? 'nomaad-cd-soon' : 'nomaad-cd-ok';
+  return `<span class="nomaad-cd ${cls}">${days} хоног үлдсэн</span>`;
+}
+// Нэг захиалгын карт — эвхэгдсэн товч харагдац + дарахад нээгддэг дэлгэрэнгүй
+function nomaadCardHtml(o) {
+  const q = escapeHtml(o.quote_no);
+  const income = Number(o.income_amount) || 0;
+  const days = nomaadDaysLeft(o.date_start);
+  const itemRows = (o.items || []).map(it =>
+    `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td><td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`
+  ).join('');
+  const incomeArea = income > 0
+    ? `<div style="text-align:right;">
+         <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
+         <div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>
+         <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''} · <button class="btn" data-nomaad-income="${q}" style="padding:2px 8px;font-size:10px;">Засах</button></div>
+       </div>`
+    : `<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>`;
+  return `<div class="nomaad-card" data-nomaad="${q}">
+    <div class="nomaad-card-head" data-nomaad-toggle="${q}">
+      <div class="nomaad-card-main">
+        ${nomaadCountdownBadge(days)}
+        <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>
+        <span class="nomaad-card-date">${escapeHtml(o.date_start || '')} → ${escapeHtml(o.date_end || '')} · ${o.guests || 0} хүн</span>
+      </div>
+      <div class="nomaad-card-right">
+        ${income > 0 ? '<span class="nomaad-paid">✓</span>' : ''}
+        <span class="nomaad-card-total">${fmtMoney(o.grand_total || 0)}</span>
+        <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+    <div class="nomaad-card-body" style="display:none;">
+      <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
+      <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
+      <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
+      <div class="order-foot">
+        <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="btn" data-nomaad-assign="${q}" style="padding:5px 14px;font-size:12px;">Ажил хувиарлах</button>
+          ${incomeArea}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
 function renderNomaadOrders() {
   const orders = state.nomaadOrders || [];
   if (!orders.length) {
@@ -3762,41 +3835,55 @@ function renderNomaadOrders() {
       <div class="sub">nomaad Quote Log-д Төлөв "ГЭРЭЭ" / "ГЭРЭЭ БАТЛАГДСАН" болсон гэрээ энд харагдана.</div></div>`;
   }
   let totalIncome = 0;
-  const cards = orders.map(o => {
-    const income = Number(o.income_amount) || 0;
-    totalIncome += income;
-    const itemRows = (o.items || []).map(it =>
-      `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td><td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`
-    ).join('');
-    const incomeArea = income > 0
-      ? `<div style="text-align:right;">
-           <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
-           <div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>
-           <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''} · <button class="btn" data-nomaad-income="${escapeHtml(o.quote_no)}" style="padding:2px 8px;font-size:10px;">Засах</button></div>
-         </div>`
-      : `<button class="btn btn-primary" data-nomaad-income="${escapeHtml(o.quote_no)}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>`;
-    return `<div class="order-card" data-nomaad="${escapeHtml(o.quote_no)}">
-      <div class="order-head">
-        <div><span class="order-no">${escapeHtml(o.quote_no)}</span> <span class="order-badge os-ok">${escapeHtml(o.status)}</span></div>
-        <div class="order-total">${fmtMoney(o.grand_total || 0)}</div>
+  orders.forEach(o => { totalIncome += Number(o.income_amount) || 0; });
+
+  // 1) Camp-аар бүлэглэх (Summit / Meadow / Grove / Бусад)
+  const campOrder = ['NOMAAD Summit', 'NOMAAD Meadow', 'NOMAAD Grove'];
+  const byCamp = {};
+  orders.forEach(o => { const c = nomaadCampLabel(o); (byCamp[c] = byCamp[c] || []).push(o); });
+  const camps = [...campOrder.filter(c => byCamp[c]), ...Object.keys(byCamp).filter(c => !campOrder.includes(c)).sort()];
+
+  const sections = camps.map(camp => {
+    const list = byCamp[camp];
+    // 2) Багцаар (tier) дэд бүлэглэх
+    const byPkg = {};
+    list.forEach(o => { const p = (o.tier || '').trim() || 'Бусад'; (byPkg[p] = byPkg[p] || []).push(o); });
+    // Багц дэд бүлгүүдийг хамгийн ойрхон огноотой нь эхэнд (ойролцоо өдрүүдээр) эрэмбэлнэ
+    const pkgs = Object.keys(byPkg).sort((a, b) =>
+      Math.min(...byPkg[a].map(nomaadSortKey)) - Math.min(...byPkg[b].map(nomaadSortKey)));
+    const pkgSummary = pkgs.map(p => `${escapeHtml(p)} ${byPkg[p].length}`).join(' · ');
+    const blocks = pkgs.map(p => {
+      // 3) Багц доторх захиалгыг ойролцоо огноогоор эрэмбэлэх
+      const items = byPkg[p].slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
+      return `<div class="nomaad-pkg">
+        <div class="nomaad-pkg-label">${escapeHtml(p)} <span style="color:var(--muted);font-weight:400;">(${items.length})</span></div>
+        ${items.map(nomaadCardHtml).join('')}
+      </div>`;
+    }).join('');
+    return `<div class="nomaad-camp-section">
+      <div class="nomaad-camp-head">
+        <span class="nomaad-camp-name">${escapeHtml(camp)}</span>
+        <span class="nomaad-camp-sub">${list.length} захиалга · ${pkgSummary}</span>
       </div>
-      <div class="order-cust"><b>${escapeHtml(o.company || '')}</b>${o.contact ? ' · ' + escapeHtml(o.contact) : ''} · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a></div>
-      <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')} · ${o.guests || 0} хүн</div>
-      <div class="order-meta">📅 ${escapeHtml(o.date_start || '')} → ${escapeHtml(o.date_end || '')}</div>
-      <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
-      <div class="order-foot">
-        <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="btn" data-nomaad-assign="${escapeHtml(o.quote_no)}" style="padding:5px 14px;font-size:12px;">Ажил хувиарлах</button>
-          ${incomeArea}
-        </div>
-      </div>
+      ${blocks}
     </div>`;
   }).join('');
+
   const header = `<div style="margin-bottom:14px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${orders.length} батлагдсан гэрээ</div>`;
-  return header + `<div class="orders-wrap">${cards}</div>`;
+  return header + sections;
 }
 function attachNomaadHandlers() {
+  document.querySelectorAll('[data-nomaad-toggle]').forEach(h => {
+    h.addEventListener('click', (e) => {
+      if (e.target.closest('button, a')) return;
+      const card = h.closest('.nomaad-card');
+      if (!card) return;
+      const body = card.querySelector('.nomaad-card-body');
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      card.classList.toggle('expanded', !open);
+    });
+  });
   document.querySelectorAll('button[data-nomaad-income]').forEach(b => {
     b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome));
   });

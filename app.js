@@ -3832,6 +3832,59 @@ function nomaadAssignedTasksHtml(quoteNo) {
     ${rows}
   </div>`;
 }
+// Нээлттэй (дэлгэрсэн) захиалгуудыг render хооронд хадгална
+let nomaadExpanded = new Set();
+// Бэлтгэл-шалгах task-ийн desc-ийг нэг хэвээр угсарна
+function nomaadTaskDesc(o, names) {
+  return `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n');
+}
+function nomaadDescBullets(desc) {
+  return String(desc || '').split('\n').filter(l => l.trim().startsWith('•')).map(l => l.replace(/^\s*•\s*/, '').trim()).filter(Boolean);
+}
+// Захиалгын дэлгэрэнгүй дээр зүйл дээр шууд дарж нэг хүнд хувиарлах/солих
+async function assignNomaadItemInline(quoteNo, itemName) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  const tasks = nomaadOrderTasks(quoteNo);
+  let currentKey = '';
+  tasks.forEach(t => { if (nomaadDescBullets(t.desc).includes(itemName)) currentKey = t.assignee; });
+  const picked = await openGroupSinglePicker(currentKey, itemName);
+  if (picked === null || picked === currentKey) return;
+  // 1) Хуучин эзэмшигчээс хасах (task хоосрвол устгана)
+  for (const t of tasks) {
+    if (t.assignee === picked) continue;
+    const items = nomaadDescBullets(t.desc);
+    if (!items.includes(itemName)) continue;
+    const rest = items.filter(x => x !== itemName);
+    if (rest.length) { t.desc = nomaadTaskDesc(o, rest); await saveTask(t); }
+    else {
+      if (typeof markDeleted === 'function') markDeleted(t.id);
+      state.tasks = state.tasks.filter(x => x.id !== t.id);
+      saveTask(t, true, true);
+    }
+  }
+  // 2) Шинэ эзэмшигчид нэмэх (task байвал desc-д нэмнэ, эс бөгөөс шинэ task)
+  const dest = (state.tasks || []).find(t => t.status !== 'deleted' && (t.title || '').startsWith('NOMAAD ' + quoteNo + ' ') && t.assignee === picked);
+  if (dest) {
+    const items = nomaadDescBullets(dest.desc);
+    if (!items.includes(itemName)) { items.push(itemName); dest.desc = nomaadTaskDesc(o, items); await saveTask(dest); }
+  } else {
+    const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
+    const t = {
+      id: uid(),
+      title: `NOMAAD ${o.quote_no} · ${o.company} — бэлтгэл шалгах`,
+      desc: nomaadTaskDesc(o, [itemName]),
+      branch: 'camp', project: '', assignee: picked, due, priority: 'high', status: 'open',
+      requires_photo: true, createdBy: state.me, created: Date.now(), comments: [], activity: [],
+    };
+    state.tasks.unshift(t);
+    await saveTask(t);
+    pushBroadcast(picked, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title });
+  }
+  nomaadExpanded.add(quoteNo);   // карт нээлттэй хэвээр үлдэнэ
+  render();
+  showToast(`${itemName} → ${memberName(picked)}`, 'success', 2000);
+}
 // Нэг захиалгын карт — эвхэгдсэн товч харагдац + дарахад нээгддэг дэлгэрэнгүй
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
@@ -3852,11 +3905,13 @@ function nomaadCardHtml(o) {
   });
   const itemRows = (o.items || []).map(it => {
     const owner = itemOwner[it.name];
+    const da = `data-na-assign-q="${q}" data-na-assign-item="${escapeHtml(it.name || '')}"`;
     const ownerCell = owner
-      ? `<td class="nomaad-item-owner">${escapeHtml(owner)}</td>`
-      : `<td class="nomaad-item-owner"><span style="color:var(--muted)">—</span></td>`;
+      ? `<td class="nomaad-item-owner nomaad-item-assign" ${da} title="Солих">${escapeHtml(owner)}</td>`
+      : `<td class="nomaad-item-owner nomaad-item-assign" ${da} title="Хувиарлах"><span class="na-assign-hint">+ хувиарлах</span></td>`;
     return `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td>${ownerCell}<td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`;
   }).join('');
+  const open = nomaadExpanded.has(o.quote_no);
   const incomeArea = income > 0
     ? `<div style="text-align:right;">
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
@@ -3864,7 +3919,7 @@ function nomaadCardHtml(o) {
          <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''} · <button class="btn" data-nomaad-income="${q}" style="padding:2px 8px;font-size:10px;">Засах</button></div>
        </div>`
     : `<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>`;
-  return `<div class="nomaad-card" data-nomaad="${q}">
+  return `<div class="nomaad-card${open ? ' expanded' : ''}" data-nomaad="${q}">
     <div class="nomaad-card-head" data-nomaad-toggle="${q}">
       <div class="nomaad-card-main">
         ${nomaadCountdownBadge(days)}
@@ -3878,7 +3933,7 @@ function nomaadCardHtml(o) {
         <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="nomaad-card-body" style="display:none;">
+    <div class="nomaad-card-body" style="display:${open ? 'block' : 'none'};">
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
@@ -3944,10 +3999,19 @@ function attachNomaadHandlers() {
       if (e.target.closest('button, a')) return;
       const card = h.closest('.nomaad-card');
       if (!card) return;
+      const qn = h.dataset.nomaadToggle;
       const body = card.querySelector('.nomaad-card-body');
       const open = body.style.display !== 'none';
       body.style.display = open ? 'none' : 'block';
       card.classList.toggle('expanded', !open);
+      if (open) nomaadExpanded.delete(qn); else nomaadExpanded.add(qn);
+    });
+  });
+  // Зүйл дээр шууд дарж нэг хүнд хувиарлах/солих
+  document.querySelectorAll('[data-na-assign-item]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      assignNomaadItemInline(el.dataset.naAssignQ, el.dataset.naAssignItem);
     });
   });
   document.querySelectorAll('button[data-nomaad-income]').forEach(b => {
@@ -4166,7 +4230,7 @@ async function sendNomaadAssignments(quoteNo) {
     const t = {
       id: uid(),
       title: `NOMAAD ${o.quote_no} · ${o.company} — бэлтгэл шалгах`,
-      desc: `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n'),
+      desc: nomaadTaskDesc(o, names),
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: true,  // биелэлтийн зураг заавал
       createdBy: state.me, created: Date.now() + n, comments: [], activity: [],

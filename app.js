@@ -3811,21 +3811,15 @@ function nomaadAssignedTasksHtml(quoteNo) {
           ? `<a href="${escapeHtml(photos[0])}" target="_blank" rel="noopener" class="nomaad-task-photo">📷 ${photos.length}</a>`
           : '<span style="color:var(--muted);font-size:11px;">зураггүй</span>')
       : '';
-    // Хувиарласан зүйлс — task.desc доторх "• ..." мөрүүдээс задлана
-    const items = String(t.desc || '').split('\n')
-      .filter(l => l.trim().startsWith('•'))
-      .map(l => l.replace(/^\s*•\s*/, '').trim())
-      .filter(Boolean);
-    const itemsHtml = items.length
-      ? `<div class="nomaad-task-items">${items.map(escapeHtml).join(' · ')}</div>` : '';
+    const itemCnt = String(t.desc || '').split('\n').filter(l => l.trim().startsWith('•')).length;
     return `<div class="nomaad-task-row">
       <div class="nomaad-task-line">
         <span class="status-dot ${statusCls[t.status] || ''}"></span>
         <span class="nomaad-task-who">${escapeHtml(memberName(t.assignee))}</span>
+        ${itemCnt ? `<span class="nomaad-task-cnt">${itemCnt} зүйл</span>` : ''}
         <span class="nomaad-task-st">${statusMn[t.status] || t.status || 'Шинэ'}</span>
         ${photoBit}
       </div>
-      ${itemsHtml}
     </div>`;
   }).join('');
   const doneN = tasks.filter(t => t.status === 'done').length;
@@ -3841,9 +3835,24 @@ function nomaadCardHtml(o) {
   const days = nomaadDaysLeft(o.date_start);
   const asgTasks = nomaadOrderTasks(o.quote_no);
   const asgDone  = asgTasks.filter(t => t.status === 'done').length;
-  const itemRows = (o.items || []).map(it =>
-    `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td><td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`
-  ).join('');
+  // Зүйл → хариуцагч map (task.desc доторх "• <зүйлийн нэр>"-ийг тухайн ажилтанд холбоно)
+  const itemOwner = {};
+  asgTasks.forEach(t => {
+    const who = memberName(t.assignee);
+    String(t.desc || '').split('\n').filter(l => l.trim().startsWith('•')).forEach(l => {
+      const nm = l.replace(/^\s*•\s*/, '').trim();
+      if (!nm) return;
+      if (itemOwner[nm]) { if (!itemOwner[nm].split(', ').includes(who)) itemOwner[nm] += ', ' + who; }
+      else itemOwner[nm] = who;
+    });
+  });
+  const itemRows = (o.items || []).map(it => {
+    const owner = itemOwner[it.name];
+    const ownerCell = owner
+      ? `<td class="nomaad-item-owner">${escapeHtml(owner)}</td>`
+      : `<td class="nomaad-item-owner"><span style="color:var(--muted)">—</span></td>`;
+    return `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td>${ownerCell}<td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`;
+  }).join('');
   const incomeArea = income > 0
     ? `<div style="text-align:right;">
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
@@ -3868,7 +3877,7 @@ function nomaadCardHtml(o) {
     <div class="nomaad-card-body" style="display:none;">
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
-      <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
+      <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>

@@ -3735,11 +3735,15 @@ async function markHourlyPaid(workerKey) {
    /nomaad-orders webhook-оор татна. Нийт төлбөрийг гараар оруулж орлого бүртгэнэ. */
 // NOMAAD захиалга харах эрхтэй нэмэлт утаснууд: Анужин, Дэлгэрбат (+ CEO, нягтлан үргэлж).
 const NOMAAD_VIEWERS = ['88028216', '99179417'];
+const NOMAAD_VIEWER_NAMES = ['алтансүх'];  // нэрээр зөвшөөрөх (утас тодорхойгүй)
 function canSeeNomaadOrders() {
   if (state.isCEO) return true;
   if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
   const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
-  return !!myPhone && NOMAAD_VIEWERS.some(p => myPhone.endsWith(p));
+  if (myPhone && NOMAAD_VIEWERS.some(p => myPhone.endsWith(p))) return true;
+  const me = (typeof findMember === 'function') ? findMember(state.me) : null;
+  const myName = String((me && me.name) || (state.user && state.user.name) || '').toLowerCase();
+  return NOMAAD_VIEWER_NAMES.some(n => myName.includes(n));
 }
 async function loadNomaadOrders() {
   if (!canSeeNomaadOrders()) return;
@@ -4028,6 +4032,67 @@ function memberOptgroupsHtml(selected, placeholder = true) {
   return html;
 }
 function memberOptionsHtml(selected) { return memberOptgroupsHtml(selected, true); }
+// Бүлэг-эхэнд нэг хүн сонгох picker — жагсаалт дээр дарж сонгоно. personKey эсвэл null буцаана.
+function openGroupSinglePicker(currentKey = '', title = 'Хүн сонгох') {
+  const modal = document.getElementById('single-pick-modal');
+  const listEl = document.getElementById('sp-list');
+  const searchEl = document.getElementById('sp-search');
+  document.getElementById('sp-title').textContent = title;
+  const expandedGroups = new Set();
+  let finish;
+  function renderList() {
+    const q = (searchEl.value || '').toLowerCase().trim();
+    const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+    const byGroup = {};
+    active.forEach(m => {
+      const ok = !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q);
+      if (!ok) return;
+      const g = memberGroupOf(m);
+      (byGroup[g] = byGroup[g] || []).push(m);
+    });
+    const pref = ['M Event', 'Camp', 'Нэгдсэн'];
+    const others = Object.keys(byGroup).filter(g => !pref.includes(g) && g !== 'Цагийн ажилтан').sort();
+    const order = [...pref, ...others, 'Цагийн ажилтан'].filter(g => byGroup[g] && byGroup[g].length);
+    const autoExpand = !!q;
+    const rowHtml = (m) => {
+      const k = personKey(m);
+      const sel = k === currentKey;
+      return `<button type="button" class="mp-row" data-sp-id="${escapeHtml(k)}" style="width:100%;text-align:left;border:none;background:${sel ? 'var(--panel-hover)' : 'transparent'};padding-left:16px;cursor:pointer;">
+        <span class="mp-avatar">${escapeHtml(memberInitials(k))}</span>
+        <span class="mp-info"><span class="mp-name">${escapeHtml(m.name)}</span><span class="mp-role">${escapeHtml(m.role || '')}</span></span>
+        ${sel ? '<span style="margin-left:auto;color:var(--accent-green);font-weight:700;">✓</span>' : ''}
+      </button>`;
+    };
+    listEl.innerHTML = order.map(g => {
+      const ms = byGroup[g];
+      const open = autoExpand || expandedGroups.has(g);
+      return `<div class="mp-group">
+        <button type="button" data-sp-group="${escapeHtml(g)}" style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;padding:11px 12px;margin-top:6px;background:var(--panel-hover);border:1px solid var(--border);border-radius:var(--r-md);font-weight:600;cursor:pointer;color:var(--text);font-size:14px;">
+          <span>${open ? '▾' : '▸'} ${escapeHtml(g)} <span style="color:var(--muted);font-weight:400;">(${ms.length})</span></span>
+        </button>
+        <div style="display:${open ? 'block' : 'none'};">${ms.map(rowHtml).join('')}</div>
+      </div>`;
+    }).join('') || '<div style="padding:14px;color:var(--muted);">Ажилтан олдсонгүй</div>';
+    listEl.querySelectorAll('button[data-sp-group]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const g = btn.dataset.spGroup;
+        if (expandedGroups.has(g)) expandedGroups.delete(g); else expandedGroups.add(g);
+        renderList();
+      });
+    });
+    listEl.querySelectorAll('button[data-sp-id]').forEach(btn => {
+      btn.addEventListener('click', () => finish(btn.dataset.spId));
+    });
+  }
+  searchEl.value = '';
+  searchEl.oninput = renderList;
+  renderList();
+  modal.classList.add('open');
+  return new Promise((resolve) => {
+    finish = (key) => { modal.classList.remove('open'); searchEl.oninput = null; resolve(key); };
+    document.getElementById('sp-cancel').onclick = () => finish(null);
+  });
+}
 // Захиалгын Quote Items-ийг ажилтнуудад хувиарлах модал.
 function openNomaadAssign(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
@@ -4035,8 +4100,6 @@ function openNomaadAssign(quoteNo) {
   const modal = document.getElementById('nomaad-assign-modal');
   document.getElementById('na-title').textContent = `Ажил хувиарлах · ${o.quote_no}`;
   document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${o.date_start || ''}`;
-  const bulk = document.getElementById('na-bulk');
-  bulk.innerHTML = memberOptionsHtml('');
   const items = o.items || [];
   const byCat = {};
   items.forEach((it, idx) => { (byCat[it.category || 'Бусад'] = byCat[it.category || 'Бусад'] || []).push({ it, idx }); });
@@ -4044,13 +4107,40 @@ function openNomaadAssign(quoteNo) {
   itemsEl.innerHTML = Object.keys(byCat).map(cat =>
     `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(cat)}</div>` +
     byCat[cat].map(({ it, idx }) =>
-      `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+      `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
          <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(it.name || '')} <span style="color:var(--muted);font-size:11px;">${it.qty || ''} ${escapeHtml(it.unit || '')}</span></span>
-         <select data-na-item="${idx}" style="width:180px;flex-shrink:0;padding:5px 8px;border:1px solid var(--border);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--text);">${memberOptionsHtml('')}</select>
+         <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="" style="flex-shrink:0;min-width:150px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--muted);cursor:pointer;">+ Хүн сонгох</button>
        </div>`
     ).join('')
   ).join('');
-  bulk.onchange = () => { itemsEl.querySelectorAll('select[data-na-item]').forEach(s => { s.value = bulk.value; }); };
+  // Зүйл дээр дарахад group-picker нээж, нэг хүн сонгоно
+  function setOwnerBtn(btn, key) {
+    btn.dataset.naOwner = key || '';
+    if (key) {
+      btn.textContent = memberName(key);
+      btn.style.color = 'var(--text)';
+      btn.style.borderStyle = 'solid';
+      btn.style.fontWeight = '600';
+    } else {
+      btn.textContent = '+ Хүн сонгох';
+      btn.style.color = 'var(--muted)';
+      btn.style.borderStyle = 'dashed';
+      btn.style.fontWeight = '400';
+    }
+  }
+  itemsEl.querySelectorAll('button.na-pick').forEach(btn => {
+    btn.onclick = async () => {
+      const picked = await openGroupSinglePicker(btn.dataset.naOwner || '', 'Хэн хариуцах вэ?');
+      if (picked === null) return;   // болих
+      setOwnerBtn(btn, picked);
+    };
+  });
+  // "Бүх зүйлийг нэг хүнд оноох" — нэг удаа сонгоод бүгдэд тараана
+  document.getElementById('na-bulk').onclick = async () => {
+    const picked = await openGroupSinglePicker('', 'Бүгдийг хэнд оноох вэ?');
+    if (picked === null) return;
+    itemsEl.querySelectorAll('button.na-pick').forEach(b => setOwnerBtn(b, picked));
+  };
   document.getElementById('na-cancel').onclick = () => modal.classList.remove('open');
   document.getElementById('na-send').onclick = () => sendNomaadAssignments(quoteNo);
   modal.classList.add('open');
@@ -4060,10 +4150,11 @@ async function sendNomaadAssignments(quoteNo) {
   if (!o) return;
   const modal = document.getElementById('nomaad-assign-modal');
   const byAssignee = {};
-  modal.querySelectorAll('select[data-na-item]').forEach(s => {
-    if (!s.value) return;
-    const it = (o.items || [])[Number(s.dataset.naItem)];
-    if (it) (byAssignee[s.value] = byAssignee[s.value] || []).push(it.name);
+  modal.querySelectorAll('button.na-pick').forEach(b => {
+    const owner = b.dataset.naOwner;
+    if (!owner) return;
+    const it = (o.items || [])[Number(b.dataset.naItem)];
+    if (it) (byAssignee[owner] = byAssignee[owner] || []).push(it.name);
   });
   const keys = Object.keys(byAssignee);
   if (!keys.length) { showToast('Дор хаяж нэг зүйлд ажилтан сонгоно уу.', 'warn', 2500); return; }

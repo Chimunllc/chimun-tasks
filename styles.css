@@ -5021,10 +5021,13 @@ body.role-daily #add-project { display: none !important; }
 .nomaad-asg { font-size: 12px; font-weight: 700; color: var(--text-soft); background: var(--border); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .nomaad-tasks { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft, var(--card)); }
 .nomaad-tasks-head { font-size: 12px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 7px; }
-.nomaad-task-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+.nomaad-task-row { padding: 6px 0; font-size: 13px; border-top: 1px solid var(--border); }
+.nomaad-task-row:first-child { border-top: none; }
+.nomaad-task-line { display: flex; align-items: center; gap: 8px; }
 .nomaad-task-who { font-weight: 600; color: var(--text); }
 .nomaad-task-st { color: var(--muted); font-size: 12px; }
 .nomaad-task-photo { margin-left: auto; font-size: 12px; color: var(--primary); text-decoration: none; font-weight: 600; }
+.nomaad-task-items { margin: 3px 0 0 18px; font-size: 12px; color: var(--text-soft); line-height: 1.5; }
 
 /* ─── M-Event Бараа (backoffice) view ───────────────────── */
 .prod-toolbar { display: flex; gap: 10px; align-items: center; margin: 4px 2px 10px; }

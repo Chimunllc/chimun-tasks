@@ -3811,11 +3811,21 @@ function nomaadAssignedTasksHtml(quoteNo) {
           ? `<a href="${escapeHtml(photos[0])}" target="_blank" rel="noopener" class="nomaad-task-photo">📷 ${photos.length}</a>`
           : '<span style="color:var(--muted);font-size:11px;">зураггүй</span>')
       : '';
+    // Хувиарласан зүйлс — task.desc доторх "• ..." мөрүүдээс задлана
+    const items = String(t.desc || '').split('\n')
+      .filter(l => l.trim().startsWith('•'))
+      .map(l => l.replace(/^\s*•\s*/, '').trim())
+      .filter(Boolean);
+    const itemsHtml = items.length
+      ? `<div class="nomaad-task-items">${items.map(escapeHtml).join(' · ')}</div>` : '';
     return `<div class="nomaad-task-row">
-      <span class="status-dot ${statusCls[t.status] || ''}"></span>
-      <span class="nomaad-task-who">${escapeHtml(memberName(t.assignee))}</span>
-      <span class="nomaad-task-st">${statusMn[t.status] || t.status || 'Шинэ'}</span>
-      ${photoBit}
+      <div class="nomaad-task-line">
+        <span class="status-dot ${statusCls[t.status] || ''}"></span>
+        <span class="nomaad-task-who">${escapeHtml(memberName(t.assignee))}</span>
+        <span class="nomaad-task-st">${statusMn[t.status] || t.status || 'Шинэ'}</span>
+        ${photoBit}
+      </div>
+      ${itemsHtml}
     </div>`;
   }).join('');
   const doneN = tasks.filter(t => t.status === 'done').length;

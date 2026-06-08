@@ -3794,11 +3794,43 @@ function nomaadCountdownBadge(days) {
   const cls = days <= 7 ? 'nomaad-cd-soon' : 'nomaad-cd-ok';
   return `<span class="nomaad-cd ${cls}">${days} хоног үлдсэн</span>`;
 }
+// Тухайн захиалгад хувиарласан ажлууд — гарчиг "NOMAAD <quote_no> · ..."-ээр тааруулна
+function nomaadOrderTasks(quoteNo) {
+  const pref = 'NOMAAD ' + quoteNo + ' ';
+  return (state.tasks || []).filter(t => t.status !== 'deleted' && (t.title || '').startsWith(pref));
+}
+function nomaadAssignedTasksHtml(quoteNo) {
+  const tasks = nomaadOrderTasks(quoteNo);
+  if (!tasks.length) return '';
+  const statusMn  = { open: 'Шинэ', in_progress: 'Хийгдэж байна', done: 'Дууссан', declined: 'Татгалзсан' };
+  const statusCls = { open: '', in_progress: 'in_progress', done: 'done', declined: 'declined' };
+  const rows = tasks.map(t => {
+    const photos = (t.completion_photos || []).filter(Boolean);
+    const photoBit = t.status === 'done'
+      ? (photos.length
+          ? `<a href="${escapeHtml(photos[0])}" target="_blank" rel="noopener" class="nomaad-task-photo">📷 ${photos.length}</a>`
+          : '<span style="color:var(--muted);font-size:11px;">зураггүй</span>')
+      : '';
+    return `<div class="nomaad-task-row">
+      <span class="status-dot ${statusCls[t.status] || ''}"></span>
+      <span class="nomaad-task-who">${escapeHtml(memberName(t.assignee))}</span>
+      <span class="nomaad-task-st">${statusMn[t.status] || t.status || 'Шинэ'}</span>
+      ${photoBit}
+    </div>`;
+  }).join('');
+  const doneN = tasks.filter(t => t.status === 'done').length;
+  return `<div class="nomaad-tasks">
+    <div class="nomaad-tasks-head">Хувиарласан ажил · ${doneN}/${tasks.length} дууссан</div>
+    ${rows}
+  </div>`;
+}
 // Нэг захиалгын карт — эвхэгдсэн товч харагдац + дарахад нээгддэг дэлгэрэнгүй
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
   const income = Number(o.income_amount) || 0;
   const days = nomaadDaysLeft(o.date_start);
+  const asgTasks = nomaadOrderTasks(o.quote_no);
+  const asgDone  = asgTasks.filter(t => t.status === 'done').length;
   const itemRows = (o.items || []).map(it =>
     `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td><td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`
   ).join('');
@@ -3817,6 +3849,7 @@ function nomaadCardHtml(o) {
         <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
       </div>
       <div class="nomaad-card-right">
+        ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
         ${income > 0 ? '<span class="nomaad-paid">✓</span>' : ''}
         <span class="nomaad-card-total">${fmtMoney(o.grand_total || 0)}</span>
         <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -3826,6 +3859,7 @@ function nomaadCardHtml(o) {
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
+      ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">

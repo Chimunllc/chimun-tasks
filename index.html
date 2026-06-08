@@ -697,6 +697,22 @@
   </div>
 </div>
 
+<!-- Цагийн ажилтны үнэлгээ — од (1-5) + тэмдэглэл -->
+<div class="modal-bg" id="hourly-rating-modal" role="dialog" aria-modal="true">
+  <div class="confirm-dialog">
+    <h3>★ Үнэлгээ өгөх</h3>
+    <p id="hr-worker" style="margin:2px 0 12px;font-size:13px;color:var(--muted);"></p>
+    <div id="hr-stars" style="display:flex;gap:6px;margin-bottom:14px;"></div>
+    <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text);">Тэмдэглэл (заавал биш)</label>
+    <textarea id="hr-note" rows="3" placeholder="Ажлын чанар, сахилга, хандлага..." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);font-size:14px;color:var(--text);background:var(--panel);resize:vertical;"></textarea>
+    <div id="hr-history"></div>
+    <div class="actions" style="margin-top:14px;">
+      <button class="btn" id="hr-cancel">Болих</button>
+      <button class="btn btn-primary" id="hr-ok">Үнэлгээ хадгалах</button>
+    </div>
+  </div>
+</div>
+
 <!-- NOMAAD ажил хувиарлах — Quote Items-ийг ажилтнуудад хувиарлаж, ажил илгээх -->
 <div class="modal-bg" id="nomaad-assign-modal" role="dialog" aria-modal="true">
   <div class="modal" style="max-width:600px;">

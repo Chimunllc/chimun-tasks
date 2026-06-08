@@ -72,6 +72,8 @@ const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-order
 const DEFAULT_PRODUCTS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-products';
 // NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
 const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
+// Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
+const DEFAULT_HOURLY_RATING_URL = 'https://chimunllc.app.n8n.cloud/webhook/hourly-rating';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -158,12 +160,14 @@ const state = {
       ordersUrl:        localStorage.getItem('ordersUrl')        || DEFAULT_ORDERS_URL        || '',
       productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
       nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
+      hourlyRatingUrl:  localStorage.getItem('hourlyRatingUrl')  || DEFAULT_HOURLY_RATING_URL || '',
     };
   })(),
   // Кэшээс шууд ачаална (3 сек хүлээхгүй) — ард нь loadOrders/loadProductsCatalog шинэчилнэ.
   orders: (() => { try { return JSON.parse(localStorage.getItem('orders') || '[]'); } catch(e) { return []; } })(),
   products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
+  hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
@@ -3583,17 +3587,26 @@ function renderHourly() {
            ${payouts.map(p => `<div style="font-size:11px;color:var(--muted);margin-top:1px;">· ${fmtMoney(Number(p.amount) || 0)} · ${escapeHtml(fmtDateTimeUB(p.executed_at || p.requested_at || ''))}</div>`).join('')}
          </div>`
       : '';
+    const rlist = ratingsForWorker(m);
+    const ratingLine = `<div style="margin-top:4px;">${starsRow(avgStars(rlist), rlist.length)}</div>`;
+    const lastNote = rlist.slice().sort((a, b) => String(b.ts).localeCompare(String(a.ts))).find(r => (r.note || '').trim());
+    const noteLine = lastNote
+      ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;font-style:italic;">“${escapeHtml(lastNote.note)}” — ${escapeHtml(lastNote.rater_name || '')}</div>`
+      : '';
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
       <div style="display:flex;align-items:center;gap:12px;min-width:0;">
         ${avatar}
         <div style="min-width:0;">
           <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span></div>
           <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
+          ${ratingLine}
+          ${noteLine}
           ${paidLine}
         </div>
       </div>
-      <div style="flex-shrink:0;">
+      <div style="flex-shrink:0;display:flex;flex-direction:column;gap:6px;">
         <button class="btn btn-primary" data-hourly-pay="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">Цалин шилжүүлэх</button>
+        <button class="btn" data-hourly-rate="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">★ Үнэлгээ өгөх</button>
       </div>
     </div>`;
   };
@@ -3615,6 +3628,121 @@ function attachHourlyHandlers() {
   document.querySelectorAll('button[data-hourly-pay]').forEach(b => {
     b.addEventListener('click', () => markHourlyPaid(b.dataset.hourlyPay));
   });
+  document.querySelectorAll('button[data-hourly-rate]').forEach(b => {
+    b.addEventListener('click', () => submitHourlyRating(b.dataset.hourlyRate));
+  });
+}
+
+/* ─── Цагийн ажилтны үнэлгээ (од + тэмдэглэл) ───
+   Менежер бүр 1-5 од + тэмдэглэл өгнө. Бүх үнэлгээ түүх болж хадгалагдана.
+   Ажилтан дээр дундаж од + сүүлийн тэмдэглэлүүд харагдана. Зөвхөн менежер/CEO. */
+function ratingsForWorker(m) {
+  const ph = String(m.phone || '').replace(/\D/g, '');
+  const nm = (m.name || '').trim();
+  return (state.hourlyRatings || []).filter(r => {
+    const rph = String(r.worker_phone || '').replace(/\D/g, '');
+    if (ph && rph) return ph === rph || ph.endsWith(rph) || rph.endsWith(ph);
+    return (r.worker_name || '').trim() === nm;
+  });
+}
+function avgStars(list) {
+  if (!list || !list.length) return 0;
+  return list.reduce((s, r) => s + (Number(r.stars) || 0), 0) / list.length;
+}
+function starsRow(avg, count) {
+  const full = Math.round(avg);
+  let s = '';
+  for (let i = 1; i <= 5; i++) s += `<span style="color:${i <= full ? '#f5a623' : 'var(--border-strong)'};">★</span>`;
+  return `<span class="hr-stars">${s}</span> <span style="font-size:12px;color:var(--muted);">${avg ? avg.toFixed(1) : '—'}${count ? ` · ${count} үнэлгээ` : ''}</span>`;
+}
+function ratingDedupKey(r) {
+  return (r.ts || '') + '|' + (r.worker_phone || r.worker_name || '') + '|' + (r.rater_phone || r.rater_name || '');
+}
+async function loadHourlyRatings() {
+  if (!canSeeHourlyPayroll()) return;
+  const url = state.config.hourlyRatingUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 12000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const server = Array.isArray(data) ? data : (Array.isArray(data.ratings) ? data.ratings : []);
+    // Локалд sync хийгдээгүй үнэлгээг алдахгүйн тулд merge (dedupe)
+    let local = []; try { local = JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch (e) {}
+    const seen = new Set(server.map(ratingDedupKey));
+    const merged = [...server, ...local.filter(r => !seen.has(ratingDedupKey(r)))];
+    state.hourlyRatings = merged;
+    localStorage.setItem('hourlyRatings', JSON.stringify(merged));
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadHourlyRatings fail', e); }
+}
+// Од + тэмдэглэлийн модал. Үнэлгээ {stars, note} эсвэл null буцаана.
+function openHourlyRatingModal(m) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('hourly-rating-modal');
+    const starsEl = document.getElementById('hr-stars');
+    const noteEl = document.getElementById('hr-note');
+    const okBtn = document.getElementById('hr-ok');
+    const cancelBtn = document.getElementById('hr-cancel');
+    document.getElementById('hr-worker').textContent = (m.name || '') + ' · ' + (m.role || 'цагийн ажилтан');
+    let chosen = 0;
+    function paint() {
+      starsEl.querySelectorAll('span[data-star]').forEach(sp => {
+        sp.style.color = Number(sp.dataset.star) <= chosen ? '#f5a623' : 'var(--border-strong)';
+      });
+    }
+    starsEl.innerHTML = [1, 2, 3, 4, 5].map(i =>
+      `<span data-star="${i}" style="cursor:pointer;font-size:34px;line-height:1;color:var(--border-strong);">★</span>`
+    ).join('');
+    starsEl.querySelectorAll('span[data-star]').forEach(sp => {
+      sp.onclick = () => { chosen = Number(sp.dataset.star); paint(); };
+    });
+    paint();
+    noteEl.value = '';
+    // Сүүлийн үнэлгээнүүдийн түүх
+    const hist = ratingsForWorker(m).slice().sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+    const histEl = document.getElementById('hr-history');
+    histEl.innerHTML = hist.length
+      ? `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:12px 0 6px;">Өмнөх үнэлгээ (${hist.length})</div>` +
+        hist.slice(0, 6).map(r => `<div style="padding:6px 0;border-top:1px solid var(--border);font-size:12.5px;">
+          <span style="color:#f5a623;">${'★'.repeat(Number(r.stars) || 0)}</span><span style="color:var(--border-strong);">${'★'.repeat(5 - (Number(r.stars) || 0))}</span>
+          <span style="color:var(--muted);font-size:11px;margin-left:6px;">${escapeHtml(r.rater_name || '')} · ${escapeHtml(fmtDateTimeUB(r.ts || ''))}</span>
+          ${r.note ? `<div style="color:var(--text-soft);margin-top:2px;">${escapeHtml(r.note)}</div>` : ''}
+        </div>`).join('')
+      : '';
+    function cleanup(result) { modal.classList.remove('open'); okBtn.onclick = null; cancelBtn.onclick = null; resolve(result); }
+    okBtn.onclick = () => {
+      if (!chosen) { showToast('Од сонгоно уу (1-5).', 'warn', 2000); return; }
+      cleanup({ stars: chosen, note: (noteEl.value || '').trim() });
+    };
+    cancelBtn.onclick = () => cleanup(null);
+    modal.classList.add('open');
+  });
+}
+async function submitHourlyRating(workerKey) {
+  const m = (typeof findMember === 'function' && findMember(workerKey)) || hourlyWorkers().find(x => personKey(x) === workerKey);
+  if (!m) return;
+  const res = await openHourlyRatingModal(m);
+  if (!res) return;
+  const rec = {
+    ts: new Date().toISOString(),
+    worker_name: m.name || '', worker_phone: String(m.phone || '').replace(/\D/g, ''),
+    stars: res.stars, note: res.note || '',
+    rater_name: (state.user && state.user.name) || memberName(state.me) || '',
+    rater_phone: String((state.user && state.user.phone) || state.me || '').replace(/\D/g, ''),
+  };
+  state.hourlyRatings = [rec, ...(state.hourlyRatings || [])];
+  localStorage.setItem('hourlyRatings', JSON.stringify(state.hourlyRatings));
+  render();
+  showToast(`${m.name}: ${res.stars}★ үнэлгээ хадгаллаа`, 'success', 2000);
+  // Backend руу sync (best-effort). Амжилтгүй бол локалд үлдэж, дараа merge-р сэргэнэ.
+  const url = state.config.hourlyRatingUrl;
+  if (url) {
+    try {
+      const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', ...rec }) }, 12000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    } catch (e) { showToast('Үнэлгээ локалд хадгалагдсан, sync дараа хийгдэнэ.', 'warn', 2500); }
+  }
 }
 
 // Текст хуулах (банк апп руу paste хийхэд). Secure context-д clipboard API, эс бөгөөс fallback.
@@ -7925,6 +8053,7 @@ async function bootApp() {
   loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
   loadProductsCatalog();   // M-Event барааны каталог (CEO)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
+  loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   state._initialLoading = false;
   generateNotifications();
   render();

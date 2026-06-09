@@ -4540,6 +4540,15 @@ function bonusPctForScore(s) {
   if (s == null) return 0;
   if (s >= 90) return 20; if (s >= 80) return 15; if (s >= 70) return 10; if (s >= 60) return 5; return 0;
 }
+const BONUS_MIN_PARTS = 2;
+/* Бонус олгох эрх: дан нэг бүрэлдэхүүнээс (ихэвчлэн объектив) +20% олгох нь
+   gaming/инфляци үүсгэдэг. Дор хаяж 2 бүрэлдэхүүн (объектив + KPI эсвэл 360°)
+   байж байж бонус тооцно. Доош нь оноо харагдана, бонус 0. */
+function eligibleBonus(u) {
+  if (!u || u.total == null) return 0;
+  if ((u.partsUsed || 0) < BONUS_MIN_PARTS) return 0;
+  return bonusPctForScore(u.total);
+}
 const perfScoreColor = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' : s >= 60 ? 'var(--warn)' : 'var(--danger)';
 
 function renderPerformance() {
@@ -4559,13 +4568,14 @@ function renderPerfMe() {
   const month = state.perfMonth;
   const u = unifiedScore(state.me, month);
   const me = findMember(state.me) || {};
-  const bp = bonusPctForScore(u.total);
+  const bp = eligibleBonus(u);
   const base = Number(me.base_salary) || 0;
+  const partial = u.total != null && (u.partsUsed || 0) < BONUS_MIN_PARTS;
   const bar = (label, val, w) => `<div class="perf-bar-row"><span>${label} <small>(${Math.round(w * 100)}%)</small></span><b>${val == null ? '—' : val}</b></div>`;
   const obj = objectiveMetrics(state.me, month);
   return `<div class="perf-me-card">
       <div class="perf-big-score" style="color:${perfScoreColor(u.total)}">${u.total == null ? '—' : u.total}<small>/100</small></div>
-      <div class="perf-bonus">${bp ? `Урамшуулал: <b style="color:var(--ok)">+${bp}%</b>${base ? ` = ${fmtMoney(Math.round(base * bp / 100))}` : ''}` : 'Урамшуулал: 0% <small>(60+ оноо хэрэгтэй)</small>'}</div>
+      <div class="perf-bonus">${bp ? `Урамшуулал: <b style="color:var(--ok)">+${bp}%</b>${base ? ` = ${fmtMoney(Math.round(base * bp / 100))}` : ''}` : partial ? `Урамшуулал: 0% <small>(хэсэгчилсэн дата — ${BONUS_MIN_PARTS}+ бүрэлдэхүүн хэрэгтэй)</small>` : 'Урамшуулал: 0% <small>(60+ оноо хэрэгтэй)</small>'}</div>
       <div class="perf-breakdown">
         ${bar('Объектив (ажил)', u.obj, PERF_WEIGHTS.objective)}
         ${bar(u.kpiInfo ? u.kpiInfo.label : 'KPI', u.kpi, PERF_WEIGHTS.kpi)}
@@ -4582,7 +4592,7 @@ function renderPerfAll() {
   const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0 }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
-    const bp = bonusPctForScore(r.u.total);
+    const bp = eligibleBonus(r.u);
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч</div></div>
@@ -4592,7 +4602,7 @@ function renderPerfAll() {
     </div>`;
   }).join('');
   return `<div class="perf-list"><div class="perf-row perf-row-head"><div class="perf-rank">#</div><div class="perf-name">Ажилтан</div><div class="perf-metrics">Задаргаа</div><div class="perf-score">Оноо</div><div class="perf-bonus-cell">Бонус</div></div>${list}</div>
-    <div class="perf-note" style="margin-top:10px;">Бонус = үндсэн цалин × хувь. CEO баталгаажуулна. Calibration: маш олон 5★ эсвэл харилцан өндөр оноог шалгаарай.</div>`;
+    <div class="perf-note" style="margin-top:10px;">Бонус = үндсэн цалин × хувь. CEO баталгаажуулна. <b>Бонус авахад дор хаяж ${BONUS_MIN_PARTS} бүрэлдэхүүн (объектив + KPI эсвэл 360°) хэрэгтэй</b> — дан объективаас бонус олгохгүй. Calibration: маш олон 5★ эсвэл харилцан өндөр оноог шалгаарай.</div>`;
 }
 
 function renderPerfRate() {

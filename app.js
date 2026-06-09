@@ -4408,6 +4408,8 @@ function objectiveMetrics(key, month) {
   const today = todayStr();
   const mine = (state.tasks || []).filter(t =>
     t.assignee === key && t.status !== 'deleted' && t.kind !== 'act_parent'
+    // Зөвхөн удирдлагаас өгсөн ажил — өөртөө оноосон ажлаар оноо нэмэхээс сэргийлнэ.
+    && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
   const total = mine.length;
   let done = 0, onTime = 0, late = 0, overdue = 0;
@@ -4424,8 +4426,8 @@ function objectiveMetrics(key, month) {
   return { total, done, onTime, late, overdue, score, lowData };
 }
 const MIN_OBJ_TASKS = 3;
-/* ─── Нэгдсэн оноо (Объектив 55% + KPI 20% + 360° 25%) + бонус ─── */
-const PERF_WEIGHTS = { objective: 0.55, kpi: 0.20, eval360: 0.25 };
+/* ─── Нэгдсэн оноо (Объектив 40% + Ажлын чанар 40% + 360° 20%) + бонус ─── */
+const PERF_WEIGHTS = { objective: 0.40, quality: 0.40, eval360: 0.20 };
 const EVAL_COMPETENCIES = [
   { id: 'responsibility', label: 'Хариуцлага' },
   { id: 'quality', label: 'Чанар' },
@@ -4479,62 +4481,45 @@ function eval360Score(key, period) {
   if (peerAvg != null) { num += peerAvg; den += 1; }
   return { score: den ? Math.round(num / den) : null, raterCount: mgr.length + peerN };
 }
-function kpiPctFor(key, period) {
-  const vals = (state.evaluations || []).filter(e => e.ratee === key && e.period === period && e.type === 'manager' && e.kpi_pct !== '' && e.kpi_pct != null)
-    .map(e => Number(e.kpi_pct)).filter(v => !isNaN(v));
-  return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+/* ─── Ажлын чанар (даалгавар өгөгчийн ★ үнэлгээ) ───
+   Даалгавар өгөгч (удирдлага) дуусгасан ажил бүрийг 1-5★ үнэлнэ. Үнэлгээ нь
+   task.kpi_code баганд хадгалагдана (Sheet "KPI код" — backend засваргүй persist).
+   Сарын дундаж ×20 → 0-100. Объектив (цагтаа)-оос ӨӨР хэмжүүр: чанар. */
+function taskQualityScore(key, month) {
+  const done = (state.tasks || []).filter(t =>
+    t.assignee === key && t.status === 'done' && t.kind !== 'act_parent'
+    && t.createdBy && t.createdBy !== key
+    && (t.due || '').slice(0, 7) === month);
+  const rated = done.map(t => Number(t.kpi_code)).filter(v => v >= 1 && v <= 5);
+  if (!rated.length) return { score: null, rated: 0, doneTotal: done.length };
+  const avg = rated.reduce((a, b) => a + b, 0) / rated.length;
+  return { score: Math.round(avg * 20), rated: rated.length, doneTotal: done.length, avg: Math.round(avg * 10) / 10 };
 }
-/* ─── Роль-суурьтай бодит KPI (хувь, зорилтгүй, дататаас шууд) ───
-   Объектив (on-time)-оос ӨӨР хэмжүүр сонгоно: үр дүн. Дата байхгүй/цөөн бол
-   null → гар оруулга (kpiPctFor) руу шилжинэ. Гар оруулга байвал бодитыг дарна.
-   Цөөн дататай метрик шуугиантай тул MIN_KPI_N доош null буцаана. */
-const MIN_KPI_N = 3;
-function keyOfWire(v) { if (!v) return ''; const m = findMember(v); return m ? personKey(m) : ''; }
-function roleKpi(key, period) {
-  const m = findMember(key);
-  if (!m) return null;
-  const role = String(m.role || '');
-  // 1) Эвент/захиалгын менежер → захиалга биелүүлэлт (Дууссан / шийдэгдсэн)
-  if (/эвент|захиалг/i.test(role)) {
-    const settled = (state.orders || []).filter(o =>
-      (o.created_at || '').slice(0, 7) === period && ['Дууссан', 'Цуцалсан'].includes(o.status));
-    if (settled.length < MIN_KPI_N) return null;
-    const done = settled.filter(o => o.status === 'Дууссан').length;
-    return { score: Math.round(100 * done / settled.length), label: 'Захиалга биелүүлэлт',
-      detail: `${done}/${settled.length} захиалга дуусгасан` };
-  }
-  // 2) Нягтлан → батлагдсан хүсэлтийн гүйцэтгэл (гүйлгээ хийсэн эсэх)
-  if (/нягтлан/i.test(role)) {
-    const mine = (state.financeRequests || []).filter(r =>
-      r.decision === 'approved'
-      && (keyOfWire(r.executor) === key || keyOfWire(r.executed_by) === key)
-      && (r.decision_at || r.requested_at || '').slice(0, 7) === period);
-    if (mine.length < MIN_KPI_N) return null;
-    const done = mine.filter(r => r.executed_at || r.status === 'done').length;
-    return { score: Math.round(100 * done / mine.length), label: 'Төлбөр гүйцэтгэл',
-      detail: `${done}/${mine.length} батлагдсан хүсэлт гүйцэтгэсэн` };
-  }
-  // 3) Бусад роль → бодит дата алга. (Зураг баталгаажуулалт нь дуусгахад заавал
-  //    тул үргэлж 100% — ялгах чадваргүй. Тиймээс гар оруулга руу шилжүүлнэ.)
-  return null;
+async function saveTaskQuality(id, rating) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.kpi_code = String(rating);
+  document.querySelectorAll('#t-quality-block .q-star').forEach(s => {
+    s.style.color = Number(s.dataset.q) <= rating ? '#f59e0b' : 'var(--border)';
+  });
+  try { await saveTask(t); showToast(`Ажлын чанар: ${rating}★ хадгалагдлаа`, 'success', 1500); }
+  catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 function unifiedScore(key, period) {
   const om = objectiveMetrics(key, period);
   const obj = om.score;
   const objLowData = om.lowData;
-  const manual = kpiPctFor(key, period);
-  const auto = roleKpi(key, period);
-  const kpi = manual != null ? manual : (auto ? auto.score : null);
-  const kpiSource = manual != null ? 'manual' : (auto ? 'auto' : null);
+  const q = taskQualityScore(key, period);
+  const quality = q.score;
   const e360 = eval360Score(key, period);
   const parts = [];
   // Цөөн ажилтай объективийг (lowData) нэгдсэн онооноос хасна — хиймэл өндөр оноо/бонусаас сэргийлнэ.
   if (obj != null && !objLowData) parts.push([obj, PERF_WEIGHTS.objective]);
-  if (kpi != null) parts.push([kpi, PERF_WEIGHTS.kpi]);
+  if (quality != null) parts.push([quality, PERF_WEIGHTS.quality]);
   if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
-  if (!parts.length) return { total: null, obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360, partsUsed: 0 };
+  if (!parts.length) return { total: null, obj, objLowData, quality, qualityInfo: q, e360, partsUsed: 0 };
   const wsum = parts.reduce((s, [, w]) => s + w, 0);
-  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360, partsUsed: parts.length };
+  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, objLowData, quality, qualityInfo: q, e360, partsUsed: parts.length };
 }
 function bonusPctForScore(s) {
   if (s == null) return 0;
@@ -4577,12 +4562,12 @@ function renderPerfMe() {
       <div class="perf-big-score" style="color:${perfScoreColor(u.total)}">${u.total == null ? '—' : u.total}<small>/100</small></div>
       <div class="perf-bonus">${bp ? `Урамшуулал: <b style="color:var(--ok)">+${bp}%</b>${base ? ` = ${fmtMoney(Math.round(base * bp / 100))}` : ''}` : partial ? `Урамшуулал: 0% <small>(хэсэгчилсэн дата — ${BONUS_MIN_PARTS}+ бүрэлдэхүүн хэрэгтэй)</small>` : 'Урамшуулал: 0% <small>(60+ оноо хэрэгтэй)</small>'}</div>
       <div class="perf-breakdown">
-        ${bar('Объектив (ажил)', u.obj, PERF_WEIGHTS.objective)}
-        ${bar(u.kpiInfo ? u.kpiInfo.label : 'KPI', u.kpi, PERF_WEIGHTS.kpi)}
+        ${bar('Объектив (цагтаа)', u.obj, PERF_WEIGHTS.objective)}
+        ${bar('Ажлын чанар', u.quality, PERF_WEIGHTS.quality)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
       </div>
       ${u.total != null && u.partsUsed < 3 ? `<div class="perf-partial" style="color:var(--warn);font-size:12px;margin:4px 0;">⚠ Хэсэгчилсэн дата — оноо ${u.partsUsed}/3 бүрэлдэхүүнээс гарсан</div>` : ''}
-      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''}${u.kpiInfo ? ` KPI: ${u.kpiInfo.detail}${u.kpiSource === 'manual' ? ' (гар оруулга дарсан)' : ''}.` : ''} 360°: ${u.e360.raterCount} үнэлэгч.</div>
+      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''} Чанар: ${u.qualityInfo && u.qualityInfo.rated ? `${u.qualityInfo.avg}★ (${u.qualityInfo.rated}/${u.qualityInfo.doneTotal} ажил үнэлэгдсэн)` : 'үнэлгээ хийгдээгүй'}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
     </div>`;
 }
 
@@ -4596,13 +4581,13 @@ function renderPerfAll() {
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч</div></div>
-      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="KPI">kpi ${r.u.kpi ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
+      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
       <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;
   }).join('');
   return `<div class="perf-list"><div class="perf-row perf-row-head"><div class="perf-rank">#</div><div class="perf-name">Ажилтан</div><div class="perf-metrics">Задаргаа</div><div class="perf-score">Оноо</div><div class="perf-bonus-cell">Бонус</div></div>${list}</div>
-    <div class="perf-note" style="margin-top:10px;">Бонус = үндсэн цалин × хувь. CEO баталгаажуулна. <b>Бонус авахад дор хаяж ${BONUS_MIN_PARTS} бүрэлдэхүүн (объектив + KPI эсвэл 360°) хэрэгтэй</b> — дан объективаас бонус олгохгүй. Calibration: маш олон 5★ эсвэл харилцан өндөр оноог шалгаарай.</div>`;
+    <div class="perf-note" style="margin-top:10px;">Бонус = үндсэн цалин × хувь. CEO баталгаажуулна. <b>Бонус авахад дор хаяж ${BONUS_MIN_PARTS} бүрэлдэхүүн (объектив + ажлын чанар эсвэл 360°) хэрэгтэй</b> — дан объективаас бонус олгохгүй. Calibration: маш олон 5★ эсвэл харилцан өндөр оноог шалгаарай.</div>`;
 }
 
 function renderPerfRate() {
@@ -4621,13 +4606,11 @@ function renderPerfRate() {
     const isSelf = key === state.me;
     const type = isSelf ? 'self' : (myLevel >= 60 && (Number(m.level) || 0) < myLevel ? 'manager' : 'peer');
     const ex = (state.evaluations || []).find(e => e.id === `${month}|${state.me}|${key}`);
-    const autoKpi = roleKpi(key, month);
     const typeLbl = type === 'manager' ? 'удирдсан' : type === 'self' ? 'өөрөө' : 'хамт';
     return `<div class="perf-rate-card" data-rate-key="${escapeHtml(key)}" data-rate-type="${type}">
       <div class="perf-rate-head"><div><b>${escapeHtml(m.name)}</b> <span class="perf-sub">${typeLbl}</span></div>${ex ? '<span class="perf-done">✓ үнэлсэн</span>' : ''}</div>
       <div class="perf-rate-body">
         ${EVAL_COMPETENCIES.map(c => `<div class="perf-comp"><span>${c.label}</span><div class="perf-stars" data-comp="${c.id}"${ex && Number(ex[c.id]) ? ` data-val="${Number(ex[c.id])}"` : ''}>${[1, 2, 3, 4, 5].map(n => `<span class="perf-star${ex && Number(ex[c.id]) >= n ? ' on' : ''}" data-star="${n}">★</span>`).join('')}</div></div>`).join('')}
-        ${type === 'manager' ? `<div class="perf-comp"><span>KPI ${autoKpi ? `<small style="color:var(--muted)">(авто: ${autoKpi.label} ${autoKpi.score}% — ${autoKpi.detail})</small>` : '<small style="color:var(--muted)">(авто дата алга)</small>'}</span><input type="number" class="perf-kpi" min="0" max="100" value="${ex && ex.kpi_pct != null ? ex.kpi_pct : ''}" style="width:72px;" placeholder="${autoKpi ? 'хоосон=авто' : '0-100'}"></div>` : ''}
         <textarea class="perf-rate-note" placeholder="Тэмдэглэл (1 эсвэл 5 өгвөл заавал)">${ex ? escapeHtml(ex.note || '') : ''}</textarea>
         <button class="btn btn-primary perf-rate-save">Хадгалах</button>
       </div>
@@ -4667,7 +4650,6 @@ function attachPerformanceHandlers() {
       if (!any) { showToast('Дор хаяж нэг чадвар үнэлнэ үү', 'warn'); return; }
       if (extreme && !note) { showToast('1 эсвэл 5 өгвөл тэмдэглэл заавал', 'warn'); return; }
       fields.note = note;
-      if (type === 'manager') { const k = card.querySelector('.perf-kpi'); if (k) fields.kpi_pct = k.value.trim(); }
       withBusy(e.currentTarget, () => saveEvaluation(key, fields), { successText: 'Хадгалсан' });
     };
   });
@@ -6939,8 +6921,20 @@ function openTaskModal(id) {
         <div style="display:flex;flex-wrap:wrap;gap:6px;">${imageThumbsHtml(attachImgs, { size: 92, label: 'Зураг' })}</div>
       </div>`;
     }
+    // ⭐ Ажлын чанар — зөвхөн даалгавар өгөгч (эсвэл CEO) дуусгасан ажлыг үнэлнэ.
+    // Үнэлгээ task.kpi_code баганд хадгалагдана (Sheet "KPI код", backend засваргүй).
+    const canRateQuality = t.status === 'done' && (state.me === t.createdBy || state.isCEO);
+    if (canRateQuality) {
+      const qVal = Number(t.kpi_code) || 0;
+      info += `<div id="t-quality-block" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">⭐ Ажлын чанар — таны үнэлгээ (гүйцэтгэлийн оноонд 40% жинтэй)</div>
+        <div class="q-stars" style="display:flex;gap:6px;font-size:26px;line-height:1;cursor:pointer;">${[1,2,3,4,5].map(n => `<span class="q-star" data-q="${n}" style="color:${qVal >= n ? '#f59e0b' : 'var(--border)'};">★</span>`).join('')}</div>
+      </div>`;
+    }
     creatorInfo.innerHTML = info;
     creatorInfo.style.display = 'block';
+    const qStars = creatorInfo.querySelector('.q-stars');
+    if (qStars) qStars.querySelectorAll('.q-star').forEach(s => s.onclick = () => saveTaskQuality(t.id, Number(s.dataset.q)));
   } else {
     creatorInfo.style.display = 'none';
   }

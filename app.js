@@ -4481,17 +4481,57 @@ function kpiPctFor(key, period) {
     .map(e => Number(e.kpi_pct)).filter(v => !isNaN(v));
   return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
 }
+/* ─── Роль-суурьтай бодит KPI (хувь, зорилтгүй, дататаас шууд) ───
+   Объектив (on-time)-оос ӨӨР хэмжүүр сонгоно: үр дүн/чанар. Дата байхгүй бол
+   null → гар оруулга (kpiPctFor) руу шилжинэ. Гар оруулга байвал бодитыг дарна. */
+function keyOfWire(v) { if (!v) return ''; const m = findMember(v); return m ? personKey(m) : ''; }
+function roleKpi(key, period) {
+  const m = findMember(key);
+  if (!m) return null;
+  const role = String(m.role || '');
+  // 1) Эвент/захиалгын менежер → захиалга биелүүлэлт (Дууссан / шийдэгдсэн)
+  if (/эвент|захиалг/i.test(role)) {
+    const settled = (state.orders || []).filter(o =>
+      (o.created_at || '').slice(0, 7) === period && ['Дууссан', 'Цуцалсан'].includes(o.status));
+    if (!settled.length) return null;
+    const done = settled.filter(o => o.status === 'Дууссан').length;
+    return { score: Math.round(100 * done / settled.length), label: 'Захиалга биелүүлэлт',
+      detail: `${done}/${settled.length} захиалга дуусгасан` };
+  }
+  // 2) Нягтлан → батлагдсан хүсэлтийн гүйцэтгэл (гүйлгээ хийсэн эсэх)
+  if (/нягтлан/i.test(role)) {
+    const mine = (state.financeRequests || []).filter(r =>
+      r.decision === 'approved'
+      && (keyOfWire(r.executor) === key || keyOfWire(r.executed_by) === key)
+      && (r.decision_at || r.requested_at || '').slice(0, 7) === period);
+    if (!mine.length) return null;
+    const done = mine.filter(r => r.executed_at || r.status === 'done').length;
+    return { score: Math.round(100 * done / mine.length), label: 'Төлбөр гүйцэтгэл',
+      detail: `${done}/${mine.length} батлагдсан хүсэлт гүйцэтгэсэн` };
+  }
+  // 3) Бусад (агуулах/жолооч/цэвэрлэгээ/нярав...) → зураг баталгаажуулалт (чанар)
+  const photoTasks = (state.tasks || []).filter(t =>
+    t.assignee === key && t.status === 'done' && t.requires_photo
+    && (t.due || '').slice(0, 7) === period);
+  if (!photoTasks.length) return null;
+  const ok = photoTasks.filter(t => (t.completion_photo_url || '').trim()).length;
+  return { score: Math.round(100 * ok / photoTasks.length), label: 'Зураг баталгаажуулалт',
+    detail: `${ok}/${photoTasks.length} ажил зурагтай дуусгасан` };
+}
 function unifiedScore(key, period) {
   const obj = objectiveMetrics(key, period).score;
-  const kpi = kpiPctFor(key, period);
+  const manual = kpiPctFor(key, period);
+  const auto = roleKpi(key, period);
+  const kpi = manual != null ? manual : (auto ? auto.score : null);
+  const kpiSource = manual != null ? 'manual' : (auto ? 'auto' : null);
   const e360 = eval360Score(key, period);
   const parts = [];
   if (obj != null) parts.push([obj, PERF_WEIGHTS.objective]);
   if (kpi != null) parts.push([kpi, PERF_WEIGHTS.kpi]);
   if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
-  if (!parts.length) return { total: null, obj, kpi, e360 };
+  if (!parts.length) return { total: null, obj, kpi, kpiSource, kpiInfo: auto, e360 };
   const wsum = parts.reduce((s, [, w]) => s + w, 0);
-  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, kpi, e360 };
+  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, kpi, kpiSource, kpiInfo: auto, e360 };
 }
 function bonusPctForScore(s) {
   if (s == null) return 0;
@@ -4525,10 +4565,10 @@ function renderPerfMe() {
       <div class="perf-bonus">${bp ? `Урамшуулал: <b style="color:var(--ok)">+${bp}%</b>${base ? ` = ${fmtMoney(Math.round(base * bp / 100))}` : ''}` : 'Урамшуулал: 0% <small>(60+ оноо хэрэгтэй)</small>'}</div>
       <div class="perf-breakdown">
         ${bar('Объектив (ажил)', u.obj, PERF_WEIGHTS.objective)}
-        ${bar('KPI зорилт', u.kpi, PERF_WEIGHTS.kpi)}
+        ${bar(u.kpiInfo ? u.kpiInfo.label : 'KPI', u.kpi, PERF_WEIGHTS.kpi)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
       </div>
-      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
+      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${u.kpiInfo ? ` KPI: ${u.kpiInfo.detail}${u.kpiSource === 'manual' ? ' (гар оруулга дарсан)' : ''}.` : ''} 360°: ${u.e360.raterCount} үнэлэгч.</div>
     </div>`;
 }
 
@@ -4567,12 +4607,13 @@ function renderPerfRate() {
     const isSelf = key === state.me;
     const type = isSelf ? 'self' : (myLevel >= 60 && (Number(m.level) || 0) < myLevel ? 'manager' : 'peer');
     const ex = (state.evaluations || []).find(e => e.id === `${month}|${state.me}|${key}`);
+    const autoKpi = roleKpi(key, month);
     const typeLbl = type === 'manager' ? 'удирдсан' : type === 'self' ? 'өөрөө' : 'хамт';
     return `<div class="perf-rate-card" data-rate-key="${escapeHtml(key)}" data-rate-type="${type}">
       <div class="perf-rate-head"><div><b>${escapeHtml(m.name)}</b> <span class="perf-sub">${typeLbl}</span></div>${ex ? '<span class="perf-done">✓ үнэлсэн</span>' : ''}</div>
       <div class="perf-rate-body">
         ${EVAL_COMPETENCIES.map(c => `<div class="perf-comp"><span>${c.label}</span><div class="perf-stars" data-comp="${c.id}"${ex && Number(ex[c.id]) ? ` data-val="${Number(ex[c.id])}"` : ''}>${[1, 2, 3, 4, 5].map(n => `<span class="perf-star${ex && Number(ex[c.id]) >= n ? ' on' : ''}" data-star="${n}">★</span>`).join('')}</div></div>`).join('')}
-        ${type === 'manager' ? `<div class="perf-comp"><span>KPI зорилтын гүйцэтгэл %</span><input type="number" class="perf-kpi" min="0" max="100" value="${ex && ex.kpi_pct != null ? ex.kpi_pct : ''}" style="width:72px;" placeholder="0-100"></div>` : ''}
+        ${type === 'manager' ? `<div class="perf-comp"><span>KPI ${autoKpi ? `<small style="color:var(--muted)">(авто: ${autoKpi.label} ${autoKpi.score}% — ${autoKpi.detail})</small>` : '<small style="color:var(--muted)">(авто дата алга)</small>'}</span><input type="number" class="perf-kpi" min="0" max="100" value="${ex && ex.kpi_pct != null ? ex.kpi_pct : ''}" style="width:72px;" placeholder="${autoKpi ? 'хоосон=авто' : '0-100'}"></div>` : ''}
         <textarea class="perf-rate-note" placeholder="Тэмдэглэл (1 эсвэл 5 өгвөл заавал)">${ex ? escapeHtml(ex.note || '') : ''}</textarea>
         <button class="btn btn-primary perf-rate-save">Хадгалах</button>
       </div>

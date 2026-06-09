@@ -78,6 +78,18 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 - staff-update (`/staff-update`, төлөв leave/restore) ба `/staff-role` (албан тушаал засах) хоёулаа **Утас баганаар тааруулдаг**. Master Sheet: `1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM`, gid 451955481, толгой 27 багана (ID, Овог нэр, РД, Албан тушаал, ...).
 - Role засах: Ажилтны удирдлага → ✎ → inline select (`editStaffRole`/`saveStaffRole`). HR sheet бичилтийг агентаар тест хийх боломжгүй (classifier хориглодог) — хэрэглэгч UI-аар тестэлнэ.
 
+## Гүйцэтгэлийн үнэлгээ (360° + KPI + бонус, 2026-06-03)
+
+- **Нэгдсэн оноо** = Объектив 55% + KPI(гар) 20% + 360° 25% → +20% хүртэл бонус (үндсэн цалингаас).
+- **Объектив:** `objectiveMetrics()` — сарын task on-time гүйцэтгэл (хугацаандаа дуусгасан). completion timestamp = `completed_at`.
+- **360°:** `eval360Score()` — менежер(×2)+хамт(×1)+өөрөө, 4 чадвар (хариуцлага/чанар/баг/санаачлага) 1-5★. Anti-gaming: 3+ хамт бол outlier trim (хамгийн өндөр+доод хасна). Нэргүй нэгтгэл.
+- **KPI:** менежер role бүрд гар % (0-100) оруулна (`kpi_pct`).
+- **Бонус:** `bonusPctForScore` — 90+→20%, 80-89→15%, 70-79→10%, 60-69→5%. CEO баталгаажуулна (автомат төлбөр биш).
+- **App:** view `performance` (бүх ажилтан), 3 tab: Миний оноо / Бүх ажилтан (менежер) / Үнэлэх. `state.evaluations`, `loadEvaluations`, `saveEvaluation`, config `evalUrl`.
+- **n8n:** `CHIMUN · Evaluations API (360)` — GET/POST `/webhook/evaluations` (upsert id=`period|rater|ratee`, body flatten-тэй). Sheet: Чимун_Tasks_DB-ийн `evaluations` tab (12 багана).
+- **Тестийн мөр:** `2026-06|99|88` (хуурамч түлхүүр, оноонд нөлөөлөхгүй) — устгаж болно.
+- **Дараагийн:** CEO calibration UI (харилцан өндөр оноо илрүүлэх), бонус баталгаажуулах→цалин workflow холбох.
+
 ## Анхаарах эрсдэл (яаралтай биш, мартаж болохгүй)
 
 - Google Sheets-ийг өгөгдлийн сан болгосон → хэдэн мянган мөрт хүрвэл удааширна.

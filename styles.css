@@ -5122,3 +5122,26 @@ body.role-daily #add-project { display: none !important; }
 .perf-score { width: 52px; text-align: right; font-size: 20px; font-weight: 800; flex-shrink: 0; }
 .perf-row-head .perf-score { font-size: 11px; font-weight: 700; }
 @media (max-width: 640px) { .perf-metrics { width: 100%; order: 3; } }
+
+/* ─── Гүйцэтгэл: tabs, нэгдсэн оноо, 360° ─────────────────── */
+.perf-tabs { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.perf-tab { padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text-soft); font-size: 13px; font-weight: 600; cursor: pointer; }
+.perf-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.perf-me-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; text-align: center; max-width: 460px; margin: 4px auto; }
+.perf-big-score { font-size: 56px; font-weight: 900; line-height: 1; } .perf-big-score small { font-size: 18px; color: var(--muted); font-weight: 600; }
+.perf-bonus { font-size: 15px; margin: 10px 0 16px; }
+.perf-breakdown { text-align: left; border-top: 1px solid var(--border); padding-top: 12px; }
+.perf-bar-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+.perf-bar-row small { color: var(--muted); }
+.perf-bonus-cell { width: 70px; text-align: right; font-size: 13px; font-weight: 700; color: var(--ok); flex-shrink: 0; }
+.perf-bonus-cell small { color: var(--muted); font-weight: 400; }
+.perf-rate-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 24px; }
+.perf-rate-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+.perf-rate-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.perf-done { font-size: 12px; color: var(--ok); font-weight: 700; }
+.perf-comp { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; font-size: 13px; }
+.perf-stars { display: inline-flex; gap: 2px; }
+.perf-star { font-size: 22px; color: var(--border-strong); cursor: pointer; line-height: 1; }
+.perf-star.on { color: #f59e0b; }
+.perf-rate-note { width: 100%; margin: 8px 0; min-height: 44px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 7px; font-family: inherit; font-size: 13px; background: var(--panel); color: var(--text); }
+.perf-kpi { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-family: inherit; }

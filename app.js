@@ -70,6 +70,8 @@ const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-order
 // M-Event бараа — GET бараа жагсаалт унших, POST { product | products:[...] } → нэмэх/засах.
 // Эх сурвалж: MEVENT_Orders_DB Sheet `products` tab. Сайт мөн эндээс уншина.
 const DEFAULT_PRODUCTS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-products';
+// 360° гүйцэтгэлийн үнэлгээ — GET { evaluations:[...] }, POST нэг үнэлгээ (upsert id-аар).
+const DEFAULT_EVAL_URL = 'https://chimunllc.app.n8n.cloud/webhook/evaluations';
 // NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
 const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
@@ -161,6 +163,7 @@ const state = {
       productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
       nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
       hourlyRatingUrl:  localStorage.getItem('hourlyRatingUrl')  || DEFAULT_HOURLY_RATING_URL || '',
+      evalUrl:          localStorage.getItem('evalUrl')          || DEFAULT_EVAL_URL          || '',
     };
   })(),
   // Кэшээс шууд ачаална (3 сек хүлээхгүй) — ард нь loadOrders/loadProductsCatalog шинэчилнэ.
@@ -168,8 +171,10 @@ const state = {
   products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
+  evaluations: (() => { try { return JSON.parse(localStorage.getItem('evaluations') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
   perfMonth: new Date().toISOString().slice(0, 7),   // Гүйцэтгэл view-ийн сар (YYYY-MM)
+  perfTab: 'me',         // Гүйцэтгэл view tab: me | all | rate
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
@@ -4409,54 +4414,200 @@ function objectiveMetrics(key, month) {
   const score = total ? Math.round(100 * (onTime + 0.5 * late) / total) : null;
   return { total, done, onTime, late, overdue, score };
 }
+/* ─── Нэгдсэн оноо (Объектив 55% + KPI 20% + 360° 25%) + бонус ─── */
+const PERF_WEIGHTS = { objective: 0.55, kpi: 0.20, eval360: 0.25 };
+const EVAL_COMPETENCIES = [
+  { id: 'responsibility', label: 'Хариуцлага' },
+  { id: 'quality', label: 'Чанар' },
+  { id: 'teamwork', label: 'Багийн ажиллагаа' },
+  { id: 'initiative', label: 'Санаачлага' },
+];
+
+async function loadEvaluations() {
+  const url = state.config.evalUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    state.evaluations = Array.isArray(data) ? data : (data.evaluations || []);
+    try { localStorage.setItem('evaluations', JSON.stringify(state.evaluations)); } catch(e) {}
+    if (typeof render === 'function') render();
+  } catch(e) { console.warn('loadEvaluations fail', e); }
+}
+
+async function saveEvaluation(ratee, fields) {
+  const period = state.perfMonth;
+  const id = `${period}|${state.me}|${ratee}`;
+  const row = { id, period, ratee, rater: state.me, ts: new Date().toISOString(), ...fields };
+  const idx = state.evaluations.findIndex(e => e.id === id);
+  if (idx >= 0) state.evaluations[idx] = { ...state.evaluations[idx], ...row }; else state.evaluations.push(row);
+  render();
+  const url = state.config.evalUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Үнэлгээ хадгалагдлаа', 'success', 1500);
+  } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
+}
+
+function evalRowScore(e) {
+  const vals = EVAL_COMPETENCIES.map(c => Number(e[c.id]) || 0).filter(v => v > 0);
+  return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 20) : null;
+}
+function eval360Score(key, period) {
+  const rows = (state.evaluations || []).filter(e => e.ratee === key && e.period === period);
+  const mgr = rows.filter(e => e.type === 'manager').map(evalRowScore).filter(v => v != null);
+  let peers = rows.filter(e => e.type === 'peer').map(evalRowScore).filter(v => v != null);
+  const peerN = peers.length;
+  if (peers.length >= 3) peers = peers.slice().sort((a, b) => a - b).slice(1, -1);  // outlier trim
+  const mgrAvg = mgr.length ? mgr.reduce((a, b) => a + b, 0) / mgr.length : null;
+  const peerAvg = peers.length ? peers.reduce((a, b) => a + b, 0) / peers.length : null;
+  let num = 0, den = 0;
+  if (mgrAvg != null) { num += mgrAvg * 2; den += 2; }
+  if (peerAvg != null) { num += peerAvg; den += 1; }
+  return { score: den ? Math.round(num / den) : null, raterCount: mgr.length + peerN };
+}
+function kpiPctFor(key, period) {
+  const vals = (state.evaluations || []).filter(e => e.ratee === key && e.period === period && e.type === 'manager' && e.kpi_pct !== '' && e.kpi_pct != null)
+    .map(e => Number(e.kpi_pct)).filter(v => !isNaN(v));
+  return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+}
+function unifiedScore(key, period) {
+  const obj = objectiveMetrics(key, period).score;
+  const kpi = kpiPctFor(key, period);
+  const e360 = eval360Score(key, period);
+  const parts = [];
+  if (obj != null) parts.push([obj, PERF_WEIGHTS.objective]);
+  if (kpi != null) parts.push([kpi, PERF_WEIGHTS.kpi]);
+  if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
+  if (!parts.length) return { total: null, obj, kpi, e360 };
+  const wsum = parts.reduce((s, [, w]) => s + w, 0);
+  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, kpi, e360 };
+}
+function bonusPctForScore(s) {
+  if (s == null) return 0;
+  if (s >= 90) return 20; if (s >= 80) return 15; if (s >= 70) return 10; if (s >= 60) return 5; return 0;
+}
+const perfScoreColor = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' : s >= 60 ? 'var(--warn)' : 'var(--danger)';
+
 function renderPerformance() {
-  const month = state.perfMonth;
   const isMgr = canManageOrders() || state.isCEO;
-  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй');
-  const ranked = active.map(m => ({ key: personKey(m), score: objectiveMetrics(personKey(m), month).score }))
-    .filter(r => r.score != null).sort((a, b) => b.score - a.score);
-  const rows = active.map(m => ({ m, key: personKey(m), met: objectiveMetrics(personKey(m), month) }))
-    .filter(r => isMgr || r.key === state.me)
-    .sort((a, b) => (b.met.score ?? -1) - (a.met.score ?? -1));
+  const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
   const cur = new Date().toISOString().slice(0, 7);
-  const head = `
-    <div class="perf-head">
-      <div class="perf-month">
-        <button class="btn perf-nav" data-perf-nav="-1">‹</button>
-        <span class="perf-month-label">${month}</span>
-        <button class="btn perf-nav" data-perf-nav="1"${month >= cur ? ' disabled' : ''}>›</button>
+  const tabs = [{ id: 'me', label: 'Миний оноо' }, ...(isMgr ? [{ id: 'all', label: 'Бүх ажилтан' }] : []), { id: 'rate', label: 'Үнэлэх' }];
+  const head = `<div class="perf-head">
+    <div class="perf-month"><button class="btn perf-nav" data-perf-nav="-1">‹</button><span class="perf-month-label">${state.perfMonth}</span><button class="btn perf-nav" data-perf-nav="1"${state.perfMonth >= cur ? ' disabled' : ''}>›</button></div>
+    <div class="perf-tabs">${tabs.map(t => `<button class="perf-tab${t.id === tab ? ' active' : ''}" data-perf-tab="${t.id}">${t.label}</button>`).join('')}</div>
+  </div>`;
+  const body = tab === 'all' ? renderPerfAll() : tab === 'rate' ? renderPerfRate() : renderPerfMe();
+  return head + body;
+}
+
+function renderPerfMe() {
+  const month = state.perfMonth;
+  const u = unifiedScore(state.me, month);
+  const me = findMember(state.me) || {};
+  const bp = bonusPctForScore(u.total);
+  const base = Number(me.base_salary) || 0;
+  const bar = (label, val, w) => `<div class="perf-bar-row"><span>${label} <small>(${Math.round(w * 100)}%)</small></span><b>${val == null ? '—' : val}</b></div>`;
+  const obj = objectiveMetrics(state.me, month);
+  return `<div class="perf-me-card">
+      <div class="perf-big-score" style="color:${perfScoreColor(u.total)}">${u.total == null ? '—' : u.total}<small>/100</small></div>
+      <div class="perf-bonus">${bp ? `Урамшуулал: <b style="color:var(--ok)">+${bp}%</b>${base ? ` = ${fmtMoney(Math.round(base * bp / 100))}` : ''}` : 'Урамшуулал: 0% <small>(60+ оноо хэрэгтэй)</small>'}</div>
+      <div class="perf-breakdown">
+        ${bar('Объектив (ажил)', u.obj, PERF_WEIGHTS.objective)}
+        ${bar('KPI зорилт', u.kpi, PERF_WEIGHTS.kpi)}
+        ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
       </div>
-      <div class="perf-note">Объектив гүйцэтгэл — хугацаандаа дуусгасан ажил. Нэгдсэн оноонд 55% жинтэй (360° + KPI дараа нэмэгдэнэ).</div>
+      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
     </div>`;
-  if (!rows.length || !ranked.length) {
-    return head + `<div class="orders-empty"><div class="icon">📊</div><div>${month} сард үнэлэх өгөгдөл алга.</div></div>`;
-  }
-  const sc = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' : s >= 60 ? 'var(--warn)' : 'var(--danger)';
-  const list = rows.map(r => {
-    const me = r.met;
-    const rank = ranked.findIndex(x => x.key === r.key) + 1;
+}
+
+function renderPerfAll() {
+  const month = state.perfMonth;
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй');
+  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0 }))
+    .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
+  const list = rows.map((r, i) => {
+    const bp = bonusPctForScore(r.u.total);
     return `<div class="perf-row">
-      <div class="perf-rank">${rank || '—'}</div>
-      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b>${r.key === state.me ? ' <span class="staff-you">(Та)</span>' : ''}<div class="perf-sub">${escapeHtml(r.m.role || '')}</div></div>
-      <div class="perf-metrics"><span>${me.total} ажил</span><span class="ok" title="Хугацаандаа">✓${me.onTime}</span><span class="warn" title="Хоцорч дуусгасан">⏱${me.late}</span><span class="danger" title="Хоцорсон">⚠${me.overdue}</span></div>
-      <div class="perf-score" style="color:${sc(me.score)}">${me.score == null ? '—' : me.score}</div>
+      <div class="perf-rank">${i + 1}</div>
+      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч</div></div>
+      <div class="perf-metrics"><span title="Объектив">об ${r.u.obj ?? '—'}</span><span title="KPI">kpi ${r.u.kpi ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
+      <div class="perf-score" style="color:${perfScoreColor(r.u.total)}">${r.u.total ?? '—'}</div>
+      <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;
   }).join('');
-  const myRank = ranked.findIndex(r => r.key === state.me) + 1;
-  const myLine = (!isMgr && myRank) ? `<div class="perf-note">Таны байр: <b>${myRank}</b> / ${ranked.length}</div>` : '';
-  return head + myLine + `<div class="perf-list"><div class="perf-row perf-row-head"><div class="perf-rank">#</div><div class="perf-name">Ажилтан</div><div class="perf-metrics">Метрик</div><div class="perf-score">Оноо</div></div>${list}</div>`;
+  return `<div class="perf-list"><div class="perf-row perf-row-head"><div class="perf-rank">#</div><div class="perf-name">Ажилтан</div><div class="perf-metrics">Задаргаа</div><div class="perf-score">Оноо</div><div class="perf-bonus-cell">Бонус</div></div>${list}</div>
+    <div class="perf-note" style="margin-top:10px;">Бонус = үндсэн цалин × хувь. CEO баталгаажуулна. Calibration: маш олон 5★ эсвэл харилцан өндөр оноог шалгаарай.</div>`;
 }
+
+function renderPerfRate() {
+  const month = state.perfMonth;
+  const me = findMember(state.me) || {};
+  const myBranches = me.branches || [];
+  const myLevel = Number(me.level) || 0;
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй');
+  const targets = active.filter(m => {
+    const k = personKey(m);
+    if (k === state.me) return true;
+    return (m.branches || []).some(b => myBranches.includes(b));
+  });
+  const cards = targets.map(m => {
+    const key = personKey(m);
+    const isSelf = key === state.me;
+    const type = isSelf ? 'self' : (myLevel >= 60 && (Number(m.level) || 0) < myLevel ? 'manager' : 'peer');
+    const ex = (state.evaluations || []).find(e => e.id === `${month}|${state.me}|${key}`);
+    const typeLbl = type === 'manager' ? 'удирдсан' : type === 'self' ? 'өөрөө' : 'хамт';
+    return `<div class="perf-rate-card" data-rate-key="${escapeHtml(key)}" data-rate-type="${type}">
+      <div class="perf-rate-head"><div><b>${escapeHtml(m.name)}</b> <span class="perf-sub">${typeLbl}</span></div>${ex ? '<span class="perf-done">✓ үнэлсэн</span>' : ''}</div>
+      <div class="perf-rate-body">
+        ${EVAL_COMPETENCIES.map(c => `<div class="perf-comp"><span>${c.label}</span><div class="perf-stars" data-comp="${c.id}"${ex && Number(ex[c.id]) ? ` data-val="${Number(ex[c.id])}"` : ''}>${[1, 2, 3, 4, 5].map(n => `<span class="perf-star${ex && Number(ex[c.id]) >= n ? ' on' : ''}" data-star="${n}">★</span>`).join('')}</div></div>`).join('')}
+        ${type === 'manager' ? `<div class="perf-comp"><span>KPI зорилтын гүйцэтгэл %</span><input type="number" class="perf-kpi" min="0" max="100" value="${ex && ex.kpi_pct != null ? ex.kpi_pct : ''}" style="width:72px;" placeholder="0-100"></div>` : ''}
+        <textarea class="perf-rate-note" placeholder="Тэмдэглэл (1 эсвэл 5 өгвөл заавал)">${ex ? escapeHtml(ex.note || '') : ''}</textarea>
+        <button class="btn btn-primary perf-rate-save">Хадгалах</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="perf-note">${month} сард үнэлэх хүмүүс (таны салбар). 1-5★. Хамт олны оноо нэргүй нэгтгэгдэнэ.</div><div class="perf-rate-list">${cards}</div>`;
+}
+
 function attachPerformanceHandlers() {
-  document.querySelectorAll('[data-perf-nav]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const delta = Number(btn.dataset.perfNav);
-      const [y, m] = state.perfMonth.split('-').map(Number);
-      const d = new Date(y, m - 1 + delta, 1);
-      const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (next > new Date().toISOString().slice(0, 7)) return;
-      state.perfMonth = next;
-      render();
-    });
+  document.querySelectorAll('[data-perf-tab]').forEach(b => b.onclick = () => { state.perfTab = b.dataset.perfTab; render(); });
+  document.querySelectorAll('[data-perf-nav]').forEach(btn => btn.addEventListener('click', () => {
+    const [y, m] = state.perfMonth.split('-').map(Number);
+    const d = new Date(y, m - 1 + Number(btn.dataset.perfNav), 1);
+    const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (next > new Date().toISOString().slice(0, 7)) return;
+    state.perfMonth = next; render();
+  }));
+  document.querySelectorAll('.perf-rate-card').forEach(card => {
+    card.querySelectorAll('.perf-stars').forEach(stars => stars.querySelectorAll('.perf-star').forEach(star => {
+      star.onclick = () => {
+        const n = Number(star.dataset.star);
+        stars.querySelectorAll('.perf-star').forEach(s => s.classList.toggle('on', Number(s.dataset.star) <= n));
+        stars.dataset.val = n;
+      };
+    }));
+    const saveBtn = card.querySelector('.perf-rate-save');
+    if (saveBtn) saveBtn.onclick = (e) => {
+      const key = card.dataset.rateKey, type = card.dataset.rateType;
+      const fields = { type };
+      let any = false, extreme = false;
+      EVAL_COMPETENCIES.forEach(c => {
+        const stars = card.querySelector(`.perf-stars[data-comp="${c.id}"]`);
+        const v = Number(stars?.dataset.val || 0);
+        fields[c.id] = v || ''; if (v) any = true; if (v === 1 || v === 5) extreme = true;
+      });
+      const note = card.querySelector('.perf-rate-note').value.trim();
+      if (!any) { showToast('Дор хаяж нэг чадвар үнэлнэ үү', 'warn'); return; }
+      if (extreme && !note) { showToast('1 эсвэл 5 өгвөл тэмдэглэл заавал', 'warn'); return; }
+      fields.note = note;
+      if (type === 'manager') { const k = card.querySelector('.perf-kpi'); if (k) fields.kpi_pct = k.value.trim(); }
+      withBusy(e.currentTarget, () => saveEvaluation(key, fields), { successText: 'Хадгалсан' });
+    };
   });
 }
 
@@ -8139,6 +8290,7 @@ async function bootApp() {
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
   loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
   loadProductsCatalog();   // M-Event барааны каталог (CEO)
+  loadEvaluations();   // 360° гүйцэтгэлийн үнэлгээ (бүх ажилтан)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   state._initialLoading = false;
@@ -8256,7 +8408,7 @@ async function refreshFromServer() {
     const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];
     // M-Event захиалга/бараа — refresh бүрд дахин татна (статус өөрчлөгдөхөд бусад ажилтанд хүрэх тулд).
     // Дотроо canSeeOrders/isCEO-аар хаалттай тул хамааралгүй хүмүүст no-op.
-    taskPromises.push(loadOrders(), loadProductsCatalog());
+    taskPromises.push(loadOrders(), loadProductsCatalog(), loadEvaluations());
     // Ажилтны жагсаалт ховор өөрчлөгддөг — refresh бүрд биш, зөвхөн 2 цаг өнгөрсөн бол
     // дахин татна (n8n execution хэмнэх). Бүртгэл/засвар үед тусдаа шууд татагдсаар.
     const teamAge = Date.now() - (Number(localStorage.getItem('teamCacheAt')) || 0);

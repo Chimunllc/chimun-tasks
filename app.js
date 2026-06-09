@@ -4535,9 +4535,9 @@ function unifiedScore(key, period) {
   if (obj != null && !objLowData) parts.push([obj, PERF_WEIGHTS.objective]);
   if (kpi != null) parts.push([kpi, PERF_WEIGHTS.kpi]);
   if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
-  if (!parts.length) return { total: null, obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360 };
+  if (!parts.length) return { total: null, obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360, partsUsed: 0 };
   const wsum = parts.reduce((s, [, w]) => s + w, 0);
-  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360 };
+  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360, partsUsed: parts.length };
 }
 function bonusPctForScore(s) {
   if (s == null) return 0;
@@ -4574,6 +4574,7 @@ function renderPerfMe() {
         ${bar(u.kpiInfo ? u.kpiInfo.label : 'KPI', u.kpi, PERF_WEIGHTS.kpi)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
       </div>
+      ${u.total != null && u.partsUsed < 3 ? `<div class="perf-partial" style="color:var(--warn);font-size:12px;margin:4px 0;">⚠ Хэсэгчилсэн дата — оноо ${u.partsUsed}/3 бүрэлдэхүүнээс гарсан</div>` : ''}
       <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''}${u.kpiInfo ? ` KPI: ${u.kpiInfo.detail}${u.kpiSource === 'manual' ? ' (гар оруулга дарсан)' : ''}.` : ''} 360°: ${u.e360.raterCount} үнэлэгч.</div>
     </div>`;
 }
@@ -4589,7 +4590,7 @@ function renderPerfAll() {
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч</div></div>
       <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="KPI">kpi ${r.u.kpi ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
-      <div class="perf-score" style="color:${perfScoreColor(r.u.total)}">${r.u.total ?? '—'}</div>
+      <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;
   }).join('');

@@ -169,6 +169,7 @@ const state = {
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
+  perfMonth: new Date().toISOString().slice(0, 7),   // Гүйцэтгэл view-ийн сар (YYYY-MM)
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
@@ -2692,6 +2693,7 @@ function renderTitle() {
     mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
+    performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Сарын объектив гүйцэтгэлийн үнэлгээ'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
@@ -2767,6 +2769,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderProducts();
     attachProductsHandlers();
+    return;
+  } else if (state.view === 'performance') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderPerformance();
+    attachPerformanceHandlers();
     return;
   } else if (state.view === 'hourly') {
     if (tableHead) tableHead.style.display = 'none';
@@ -4371,6 +4379,85 @@ async function sendNomaadAssignments(quoteNo) {
   modal.classList.remove('open');
   render();
   showToast(`${keys.length} ажилтанд ажил илгээлээ`, 'success', 3000);
+}
+
+/* ─── Гүйцэтгэл (Phase 1: объектив метрик) ─────────────────
+   Сарын task өгөгдлөөс ажилтан бүрийн объектив гүйцэтгэл.
+   On-time = дуусгасан огноо <= эцсийн хугацаа. Оноо = (хугацаандаа + 0.5×хоцорч дуусгасан) / нийт.
+   Энэ нь нэгдсэн оноонд 55% жинтэй орно (Phase 3-д 360° + KPI нэмэгдэнэ). */
+function taskCompletedDate(t) {
+  const ms = typeof t.completed_at === 'number' ? t.completed_at
+    : (t.completed_at ? new Date(t.completed_at).getTime()
+      : (t.executed_at ? new Date(t.executed_at).getTime()
+        : (t.updated ? new Date(t.updated).getTime() : 0)));
+  return ms ? new Date(ms).toISOString().slice(0, 10) : '';
+}
+function objectiveMetrics(key, month) {
+  const today = todayStr();
+  const mine = (state.tasks || []).filter(t =>
+    t.assignee === key && t.status !== 'deleted' && t.kind !== 'act_parent'
+    && (t.due || '').slice(0, 7) === month);
+  const total = mine.length;
+  let done = 0, onTime = 0, late = 0, overdue = 0;
+  mine.forEach(t => {
+    if (t.status === 'done') {
+      done++;
+      const cd = taskCompletedDate(t);
+      if (cd && t.due && cd <= t.due) onTime++; else late++;
+    } else if (t.due && t.due < today) { overdue++; }
+  });
+  const score = total ? Math.round(100 * (onTime + 0.5 * late) / total) : null;
+  return { total, done, onTime, late, overdue, score };
+}
+function renderPerformance() {
+  const month = state.perfMonth;
+  const isMgr = canManageOrders() || state.isCEO;
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй');
+  const ranked = active.map(m => ({ key: personKey(m), score: objectiveMetrics(personKey(m), month).score }))
+    .filter(r => r.score != null).sort((a, b) => b.score - a.score);
+  const rows = active.map(m => ({ m, key: personKey(m), met: objectiveMetrics(personKey(m), month) }))
+    .filter(r => isMgr || r.key === state.me)
+    .sort((a, b) => (b.met.score ?? -1) - (a.met.score ?? -1));
+  const cur = new Date().toISOString().slice(0, 7);
+  const head = `
+    <div class="perf-head">
+      <div class="perf-month">
+        <button class="btn perf-nav" data-perf-nav="-1">‹</button>
+        <span class="perf-month-label">${month}</span>
+        <button class="btn perf-nav" data-perf-nav="1"${month >= cur ? ' disabled' : ''}>›</button>
+      </div>
+      <div class="perf-note">Объектив гүйцэтгэл — хугацаандаа дуусгасан ажил. Нэгдсэн оноонд 55% жинтэй (360° + KPI дараа нэмэгдэнэ).</div>
+    </div>`;
+  if (!rows.length || !ranked.length) {
+    return head + `<div class="orders-empty"><div class="icon">📊</div><div>${month} сард үнэлэх өгөгдөл алга.</div></div>`;
+  }
+  const sc = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' : s >= 60 ? 'var(--warn)' : 'var(--danger)';
+  const list = rows.map(r => {
+    const me = r.met;
+    const rank = ranked.findIndex(x => x.key === r.key) + 1;
+    return `<div class="perf-row">
+      <div class="perf-rank">${rank || '—'}</div>
+      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b>${r.key === state.me ? ' <span class="staff-you">(Та)</span>' : ''}<div class="perf-sub">${escapeHtml(r.m.role || '')}</div></div>
+      <div class="perf-metrics"><span>${me.total} ажил</span><span class="ok" title="Хугацаандаа">✓${me.onTime}</span><span class="warn" title="Хоцорч дуусгасан">⏱${me.late}</span><span class="danger" title="Хоцорсон">⚠${me.overdue}</span></div>
+      <div class="perf-score" style="color:${sc(me.score)}">${me.score == null ? '—' : me.score}</div>
+    </div>`;
+  }).join('');
+  const myRank = ranked.findIndex(r => r.key === state.me) + 1;
+  const myLine = (!isMgr && myRank) ? `<div class="perf-note">Таны байр: <b>${myRank}</b> / ${ranked.length}</div>` : '';
+  return head + myLine + `<div class="perf-list"><div class="perf-row perf-row-head"><div class="perf-rank">#</div><div class="perf-name">Ажилтан</div><div class="perf-metrics">Метрик</div><div class="perf-score">Оноо</div></div>${list}</div>`;
+}
+function attachPerformanceHandlers() {
+  document.querySelectorAll('[data-perf-nav]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const delta = Number(btn.dataset.perfNav);
+      const [y, m] = state.perfMonth.split('-').map(Number);
+      const d = new Date(y, m - 1 + delta, 1);
+      const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (next > new Date().toISOString().slice(0, 7)) return;
+      state.perfMonth = next;
+      render();
+    });
+  });
 }
 
 function renderProducts() {

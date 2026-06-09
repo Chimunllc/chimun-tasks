@@ -2590,12 +2590,16 @@ function filteredTasks() {
 function isDailyWorker() {
   return (state.user && state.user.worker_type === 'daily');
 }
+// Үндсэн ажилтан (өдрийн/цагийн биш) — гүйцэтгэлийн үнэлгээ зөвхөн эдгээрт хамаарна.
+function isPermanentStaff(m) {
+  return m && String(m.worker_type || 'permanent') !== 'daily';
+}
 
 /* -------------------- RENDER -------------------- */
 function render() {
   // Цагийн ажилтныг зөвшөөрөлгүй view-аас "Ирсэн ажил" руу буцаана (UI нууснаас гадна бат)
   if (isDailyWorker()) {
-    const blocked = ['dashboard','finance','delegated','calendar','archive'];
+    const blocked = ['dashboard','finance','delegated','calendar','archive','performance'];
     if (blocked.includes(state.view) || state.view.startsWith('staff:') || state.view.startsWith('project:')) {
       state.view = 'mine';
     }
@@ -2663,6 +2667,9 @@ function renderSidebar() {
         : list.filter(canSeeOrder).length);
     }
   }
+  // Гүйцэтгэл — зөвхөн үндсэн ажилтанд (өдрийн ажилтанд хамаарахгүй).
+  const perfNav = document.getElementById('nav-performance');
+  if (perfNav) perfNav.style.display = isDailyWorker() ? 'none' : '';
   // Бараа — зөвхөн CEO. Badge нь нийт барааны тоо.
   const prodNav = document.getElementById('nav-products');
   if (prodNav) {
@@ -4527,7 +4534,7 @@ function renderPerfMe() {
 
 function renderPerfAll() {
   const month = state.perfMonth;
-  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй');
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m));
   const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0 }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
@@ -4549,7 +4556,7 @@ function renderPerfRate() {
   const me = findMember(state.me) || {};
   const myBranches = me.branches || [];
   const myLevel = Number(me.level) || 0;
-  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй');
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m));
   const targets = active.filter(m => {
     const k = personKey(m);
     if (k === state.me) return true;

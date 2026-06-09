@@ -4419,8 +4419,11 @@ function objectiveMetrics(key, month) {
     } else if (t.due && t.due < today) { overdue++; }
   });
   const score = total ? Math.round(100 * (onTime + 0.5 * late) / total) : null;
-  return { total, done, onTime, late, overdue, score };
+  // Цөөн ажилтай үед оноо найдваргүй (2 амар ажил → 100%). Тэмдэглэж, нэгдсэн онооноос хасна.
+  const lowData = total > 0 && total < MIN_OBJ_TASKS;
+  return { total, done, onTime, late, overdue, score, lowData };
 }
+const MIN_OBJ_TASKS = 3;
 /* ─── Нэгдсэн оноо (Объектив 55% + KPI 20% + 360° 25%) + бонус ─── */
 const PERF_WEIGHTS = { objective: 0.55, kpi: 0.20, eval360: 0.25 };
 const EVAL_COMPETENCIES = [
@@ -4519,19 +4522,22 @@ function roleKpi(key, period) {
     detail: `${ok}/${photoTasks.length} ажил зурагтай дуусгасан` };
 }
 function unifiedScore(key, period) {
-  const obj = objectiveMetrics(key, period).score;
+  const om = objectiveMetrics(key, period);
+  const obj = om.score;
+  const objLowData = om.lowData;
   const manual = kpiPctFor(key, period);
   const auto = roleKpi(key, period);
   const kpi = manual != null ? manual : (auto ? auto.score : null);
   const kpiSource = manual != null ? 'manual' : (auto ? 'auto' : null);
   const e360 = eval360Score(key, period);
   const parts = [];
-  if (obj != null) parts.push([obj, PERF_WEIGHTS.objective]);
+  // Цөөн ажилтай объективийг (lowData) нэгдсэн онооноос хасна — хиймэл өндөр оноо/бонусаас сэргийлнэ.
+  if (obj != null && !objLowData) parts.push([obj, PERF_WEIGHTS.objective]);
   if (kpi != null) parts.push([kpi, PERF_WEIGHTS.kpi]);
   if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
-  if (!parts.length) return { total: null, obj, kpi, kpiSource, kpiInfo: auto, e360 };
+  if (!parts.length) return { total: null, obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360 };
   const wsum = parts.reduce((s, [, w]) => s + w, 0);
-  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, kpi, kpiSource, kpiInfo: auto, e360 };
+  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, objLowData, kpi, kpiSource, kpiInfo: auto, e360 };
 }
 function bonusPctForScore(s) {
   if (s == null) return 0;
@@ -4568,7 +4574,7 @@ function renderPerfMe() {
         ${bar(u.kpiInfo ? u.kpiInfo.label : 'KPI', u.kpi, PERF_WEIGHTS.kpi)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
       </div>
-      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${u.kpiInfo ? ` KPI: ${u.kpiInfo.detail}${u.kpiSource === 'manual' ? ' (гар оруулга дарсан)' : ''}.` : ''} 360°: ${u.e360.raterCount} үнэлэгч.</div>
+      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''}${u.kpiInfo ? ` KPI: ${u.kpiInfo.detail}${u.kpiSource === 'manual' ? ' (гар оруулга дарсан)' : ''}.` : ''} 360°: ${u.e360.raterCount} үнэлэгч.</div>
     </div>`;
 }
 
@@ -4582,7 +4588,7 @@ function renderPerfAll() {
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч</div></div>
-      <div class="perf-metrics"><span title="Объектив">об ${r.u.obj ?? '—'}</span><span title="KPI">kpi ${r.u.kpi ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
+      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="KPI">kpi ${r.u.kpi ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
       <div class="perf-score" style="color:${perfScoreColor(r.u.total)}">${r.u.total ?? '—'}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;

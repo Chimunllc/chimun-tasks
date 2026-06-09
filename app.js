@@ -4485,8 +4485,10 @@ function kpiPctFor(key, period) {
   return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
 }
 /* ─── Роль-суурьтай бодит KPI (хувь, зорилтгүй, дататаас шууд) ───
-   Объектив (on-time)-оос ӨӨР хэмжүүр сонгоно: үр дүн/чанар. Дата байхгүй бол
-   null → гар оруулга (kpiPctFor) руу шилжинэ. Гар оруулга байвал бодитыг дарна. */
+   Объектив (on-time)-оос ӨӨР хэмжүүр сонгоно: үр дүн. Дата байхгүй/цөөн бол
+   null → гар оруулга (kpiPctFor) руу шилжинэ. Гар оруулга байвал бодитыг дарна.
+   Цөөн дататай метрик шуугиантай тул MIN_KPI_N доош null буцаана. */
+const MIN_KPI_N = 3;
 function keyOfWire(v) { if (!v) return ''; const m = findMember(v); return m ? personKey(m) : ''; }
 function roleKpi(key, period) {
   const m = findMember(key);
@@ -4496,7 +4498,7 @@ function roleKpi(key, period) {
   if (/эвент|захиалг/i.test(role)) {
     const settled = (state.orders || []).filter(o =>
       (o.created_at || '').slice(0, 7) === period && ['Дууссан', 'Цуцалсан'].includes(o.status));
-    if (!settled.length) return null;
+    if (settled.length < MIN_KPI_N) return null;
     const done = settled.filter(o => o.status === 'Дууссан').length;
     return { score: Math.round(100 * done / settled.length), label: 'Захиалга биелүүлэлт',
       detail: `${done}/${settled.length} захиалга дуусгасан` };
@@ -4507,19 +4509,14 @@ function roleKpi(key, period) {
       r.decision === 'approved'
       && (keyOfWire(r.executor) === key || keyOfWire(r.executed_by) === key)
       && (r.decision_at || r.requested_at || '').slice(0, 7) === period);
-    if (!mine.length) return null;
+    if (mine.length < MIN_KPI_N) return null;
     const done = mine.filter(r => r.executed_at || r.status === 'done').length;
     return { score: Math.round(100 * done / mine.length), label: 'Төлбөр гүйцэтгэл',
       detail: `${done}/${mine.length} батлагдсан хүсэлт гүйцэтгэсэн` };
   }
-  // 3) Бусад (агуулах/жолооч/цэвэрлэгээ/нярав...) → зураг баталгаажуулалт (чанар)
-  const photoTasks = (state.tasks || []).filter(t =>
-    t.assignee === key && t.status === 'done' && t.requires_photo
-    && (t.due || '').slice(0, 7) === period);
-  if (!photoTasks.length) return null;
-  const ok = photoTasks.filter(t => (t.completion_photo_url || '').trim()).length;
-  return { score: Math.round(100 * ok / photoTasks.length), label: 'Зураг баталгаажуулалт',
-    detail: `${ok}/${photoTasks.length} ажил зурагтай дуусгасан` };
+  // 3) Бусад роль → бодит дата алга. (Зураг баталгаажуулалт нь дуусгахад заавал
+  //    тул үргэлж 100% — ялгах чадваргүй. Тиймээс гар оруулга руу шилжүүлнэ.)
+  return null;
 }
 function unifiedScore(key, period) {
   const om = objectiveMetrics(key, period);

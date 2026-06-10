@@ -3931,6 +3931,15 @@ function nomaadDateWithDow(dateStr) {
   const dow = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'][d.getDay()];
   return `${escapeHtml(dateStr)} <span class="nomaad-dow">${dow}</span>`;
 }
+// Plain текст хувилбар (HTML биш — textContent/desc-д ашиглана)
+function nomaadDatePlain(dateStr) {
+  if (!dateStr) return '';
+  const m = String(dateStr).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!m) return String(dateStr);
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dow = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'][d.getDay()];
+  return `${dateStr} (${dow})`;
+}
 function nomaadCampLabel(o) {
   const c = String(o.camp || '').toLowerCase();
   if (c.includes('summit')) return 'NOMAAD Summit';
@@ -4442,18 +4451,24 @@ function openNomaadPrepChecklist(quoteNo) {
   if (!o) return;
   const modal = document.getElementById('nomaad-assign-modal');
   document.getElementById('na-title').textContent = `Бэлтгэл үүсгэх · ${o.quote_no}`;
-  document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDateWithDow(o.date_start)}`;
+  document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDatePlain(o.date_start)}`;
   const itemsEl = document.getElementById('na-items');
   const byGroup = {};
   NOMAAD_PREP_CHECKLIST.forEach((c, idx) => { (byGroup[c.group] = byGroup[c.group] || []).push({ c, idx }); });
+  const prepTitle = (c) => `${c.group}: ${c.title} (${c.deadline})`;
+  const findExisting = (c) => (state.tasks || []).find(t => t.title === prepTitle(c)
+    && (t.desc || '').includes(`NOMAAD ${o.quote_no} `) && t.status !== 'deleted');
   itemsEl.innerHTML = Object.keys(byGroup).map(g =>
     `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(g)}</div>` +
-    byGroup[g].map(({ c, idx }) =>
-      `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">· ${escapeHtml(c.deadline)}${c.photo ? ' · ✓зураг' : ''}</span></span>
-         <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--muted);cursor:pointer;">+ Хүн сонгох</button>
-       </div>`
-    ).join('')
+    byGroup[g].map(({ c, idx }) => {
+      const ex = findExisting(c);
+      const owner = ex ? ex.assignee : '';
+      const ownerStyle = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">· ${escapeHtml(c.deadline)}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span></span>
+         <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${ex ? '1' : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${ownerStyle}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>
+       </div>`;
+    }).join('')
   ).join('');
   function setOwnerBtn(btn, key) {
     btn.dataset.naOwner = key || '';
@@ -4480,10 +4495,13 @@ async function sendNomaadPrepTasks(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) return;
   const modal = document.getElementById('nomaad-assign-modal');
-  const picks = [...modal.querySelectorAll('button.na-pick')].map(b => ({ idx: Number(b.dataset.naItem), owner: b.dataset.naOwner || '' }));
-  if (!picks.length) return;
+  // Аль хэдийн үүссэн ажлыг (data-na-exists) алгасна — давхар үүсгэхгүй.
+  const picks = [...modal.querySelectorAll('button.na-pick')]
+    .filter(b => b.dataset.naExists !== '1')
+    .map(b => ({ idx: Number(b.dataset.naItem), owner: b.dataset.naOwner || '' }));
+  if (!picks.length) { showToast('Шинээр үүсгэх ажил алга — бүгд аль хэдийн үүссэн байна.', 'warn', 3000); return; }
   const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
-  if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} бэлтгэл ажил үүсгэх үү? (хувиараагүйг өөрт оноож дараа тараана)`, { okText: 'Тийм, үүсгэх' }))) return;
+  if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} шинэ бэлтгэл ажил үүсгэх үү? (хувиараагүйг өөрт оноож дараа тараана)`, { okText: 'Тийм, үүсгэх' }))) return;
   let n = 0, assigned = 0;
   for (const p of picks) {
     const c = NOMAAD_PREP_CHECKLIST[p.idx];
@@ -4492,7 +4510,7 @@ async function sendNomaadPrepTasks(quoteNo) {
     const t = {
       id: uid(),
       title: `${c.group}: ${c.title} (${c.deadline})`,
-      desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDateWithDow(o.date_start)}\nЭцсийн хугацаа: ${c.deadline}${c.detail ? '\n\n' + c.detail : ''}`,
+      desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDatePlain(o.date_start)}\nЭцсийн хугацаа: ${c.deadline}${c.detail ? '\n\n' + c.detail : ''}`,
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: !!c.photo,
       createdBy: state.me, created: Date.now() + n, comments: [], activity: [],

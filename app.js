@@ -4411,40 +4411,39 @@ async function sendNomaadAssignments(quoteNo) {
    засна. group=бүлэг, deadline=цаг (гарчигт орно, task-д цагийн талбар байхгүй),
    photo=зураг шаардах эсэх, detail=урт заавар (тайлбарт орно). */
 const NOMAAD_PREP_CHECKLIST = [
-  // Эрчүүд — гадаа хог (өдөрт 3 удаа)
-  { group: 'Эрчүүд', title: 'Гадаа хог цэвэрлэх', deadline: '09:00-аас өмнө', photo: true },
-  { group: 'Эрчүүд', title: 'Гадаа хог цэвэрлэх', deadline: '15:00-аас өмнө', photo: true },
-  { group: 'Эрчүүд', title: 'Гадаа хог цэвэрлэх', deadline: '20:00-аас өмнө', photo: true },
-  // Охидууд — ариун цэврийн өрөө (өдөрт 3 удаа)
-  { group: 'Охидууд', title: 'Ариун цэврийн өрөө цэвэрлэх, хогны уут солих (00 дүүрсэн бол байршуулах)', deadline: '09:00-аас өмнө', photo: true },
-  { group: 'Охидууд', title: 'Ариун цэврийн өрөө цэвэрлэх, хогны уут солих', deadline: '15:00-аас өмнө', photo: true },
-  { group: 'Охидууд', title: 'Ариун цэврийн өрөө цэвэрлэх, хогны уут солих', deadline: '20:00-аас өмнө', photo: true },
-  // Ус — гар угаалтуур (өдөрт 3 удаа) + долоо хоногийн нөөц
-  { group: 'Ус', title: 'Гар угаалтуурын ус шалгаж дүүргэх', deadline: '09:00', photo: false },
-  { group: 'Ус', title: 'Гар угаалтуурын ус шалгаж дүүргэх', deadline: '15:00', photo: false },
-  { group: 'Ус', title: 'Гар угаалтуурын ус шалгаж дүүргэх', deadline: '20:00', photo: false },
-  { group: 'Ус', title: 'Долоо хоногийн усны хэрэглээг тооцоолж нөөц бэлтгэх — 00 (жорлон) + гар угаалтуур дүүргэх', deadline: '09:00-аас өмнө', photo: true, detail: 'Үйл ажиллагааны дундуур ус авахгүй байхаар тооцоолж усны нөөцийг урьдчилан бэлэн байлгах.' },
-  // Тайз / хөгжим / гэрэл
-  { group: 'Тайз/гэрэл', title: 'Тайз, хөгжим, микрофон, гэрэл шалгаж бэлэн байх + борооны хамгаалалт бэлэн', deadline: 'үйл ажиллагаанаас өмнө (09:00)', photo: true, detail: 'Цаг агаар шалгаж борооны хамгаалалтыг бэлэн байлгах.' },
-  { group: 'Тайз/гэрэл', title: 'Тайз, хөгжим, микрофон, гэрэл хайрцагт хийж хураах', deadline: 'үйл ажиллагааны дараа 00:00', photo: false },
-  // Хоолны асар
-  { group: 'Хоолны асар', title: 'Ширээ сандал зөв байрлал + угаасан бүтээлэгтэй + ширээ бүрд салфетка', deadline: '09:00-аас өмнө', photo: true },
-  { group: 'Хоолны асар', title: 'Асрын зүлэг шүүрдэж соруулж цэвэрлэх, хогны сав байрлуулах, гэрэл 20:00-д ажиллахад бэлэн', deadline: '09:00-аас өмнө', photo: true },
-  // Хоол (өдөр / орой)
-  { group: 'Хоол', title: 'Өдрийн хоолны бэлтгэл — аяга таваг тоолох, буфет цэвэрхэн, халуун цай/ус бэлэн', deadline: 'өдрийн хоолны өмнө', photo: false },
-  { group: 'Хоол', title: 'Өдрийн хоолны дараа аяга таваг хураах, 3 дамжлагаар угааж хатааж хайрцагт савлах', deadline: 'өдрийн хоолны дараа', photo: false },
-  { group: 'Хоол', title: 'Оройн хоолны бэлтгэл — аяга таваг тоолох, буфет цэвэрхэн, халуун цай/ус бэлэн', deadline: 'оройн хоолны өмнө', photo: false },
-  { group: 'Хоол', title: 'Оройн хоолны дараа аяга таваг хураах, 3 дамжлагаар угааж хатааж хайрцагт савлах', deadline: 'оройн хоолны дараа', photo: false },
-  // Майхан (хүлээн авах / checkout)
-  { group: 'Майхан', title: 'Хүлээн авах/checkout-ын майхан шалгалт (ор, мешок, гадас татлага)', deadline: 'хүлээн авах / checkout', photo: true, detail: 'Бүх залуучууд майхныг тэнцүү хувааж: орны эвдрэл, мешок тоо, бохирдол шалгах. Ор гадаа гаргаж охидууд цэвэрлэгээнд бэлдэх, дараа нь ор/мешокыг стандартаар байрлуулах. Гадас татлага бүрэн шалгаж стандартаар чангалах. Дутуу/эвдрэлтэй ор, бохир мешок байвал менежерт даалгавар үүсгэж яаралтай шийдвэрлүүлэх. Чийг/эвгүй үнэр шалгаж агааржуулалт нээх, бороонд хаах.' },
-  { group: 'Майхан', title: 'Checkout-ийн дараа гарсан майхныг цэвэрлэх + майхан бүрийн зураг дарж баталгаажуулах', deadline: 'өглөө checkout-ийн дараа', photo: true, detail: 'Бүх охидууд гарсан майхныг тэнцүү хувааж цэвэрлэгээ хийнэ. Цэвэрлэсэн майхан бүрийн зургийг дарж баталгаажуулна.' },
-  // Цахилгаан
-  { group: 'Цахилгаан', title: 'Цахилгаан үүсгүүрийн түлш + кабель хүрэлцээ хангах', deadline: 'үйл ажиллагаанаас өмнө', photo: false, detail: 'Түлшийг үйл ажиллагааны дундуур зөөхгүй байхаар тооцоолж хангана. Кабель хүрэлцээг хангаж, эвдэрсэн хангамжийг яаралтай шийдвэрлэх/ашиглалтаас гаргана.' },
-  // Хог тээвэр
-  { group: 'Хог', title: 'Хог Эрдэнэ сумын хогны цэгт тээвэрлэж асгах', deadline: 'үйл ажиллагааны дараа, даваа гараг', photo: true },
-  // Түүдэг гал
-  { group: 'Гал', title: 'Оройн түүдэг галын мод түүж бэлтгэх, бүрэнхийд асаах', deadline: 'орой', photo: false },
+  { group: "Хог", title: "Гадаа хог цэвэрлэх", deadline: "09:00-аас өмнө", photo: true },
+  { group: "Хог", title: "Гадаа хог цэвэрлэх", deadline: "15:00-аас өмнө", photo: true },
+  { group: "Хог", title: "Гадаа хог цэвэрлэх", deadline: "20:00-аас өмнө", photo: true },
+  { group: "Ариун цэвэр", title: "Ариун цэврийн өрөө цэвэрлэх, хогны уут солих (00 дүүрсэн бол байршуулах)", deadline: "09:00-аас өмнө", photo: true },
+  { group: "Ариун цэвэр", title: "Ариун цэврийн өрөө цэвэрлэх, хогны уут солих (00 дүүрсэн бол байршуулах)", deadline: "15:00-аас өмнө", photo: true },
+  { group: "Ариун цэвэр", title: "Ариун цэврийн өрөө цэвэрлэх, хогны уут солих (00 дүүрсэн бол байршуулах)", deadline: "20:00-аас өмнө", photo: true },
+  { group: "Ус", title: "Гар угаалтуурын ус шалгаж дүүргэх,шингэн саван бэлдэж тавих", deadline: "09:00", photo: false },
+  { group: "Ус", title: "Гар угаалтуурын ус шалгаж дүүргэх,шингэн саван бэлдэж тавих", deadline: "15:00", photo: false },
+  { group: "Ус", title: "Гар угаалтуурын ус шалгаж дүүргэх,шингэн саван бэлдэж тавих", deadline: "20:00", photo: false },
+  { group: "Ус", title: "Долоо хоногийн усны хэрэглээг тооцоолж нөөц бэлтгэх — 00 (жорлон) + гар угаалтуур дүүргэх", deadline: "09:00-аас өмнө", photo: true, detail: "Үйл ажиллагааны дундуур ус авахгүй байхаар тооцоолж усны нөөцийг урьдчилан бэлэн байлгах." },
+  { group: "Тайз/гэрэл", title: "Тайз, хөгжим, микрофон, гэрлтүүлгийн ажиллагаа шалгах мирофон батери нөөц бэлэн байх + борооны хамгаалалт", deadline: "үйл ажиллагаанаас өмнө (09:00)", photo: true, detail: "Цаг агаар шалгаж борооны хамгаалалтыг бэлэн байлгах." },
+  { group: "Тайз/гэрэл", title: "хөгжим, микрофон, фүльт гэх мэт бороонд норох зүйлсийг хөгжимийн хайрцагт хийж хураах", deadline: "үйл ажиллагааны дараа 00:00", photo: false },
+  { group: "Хоолны асар", title: "Ширээ сандал хүний тоогоор зөв байрлуулах + угаасан бүтээлэгтэй + ширээ бүрд салфетка", deadline: "09:00-аас өмнө", photo: true },
+  { group: "Хоолны асар", title: "Асрын зүлэг шүүрдэж соруулж цэвэрлэх, хогны сав байрлуулах, гэрэл 20:00-д ажиллахад бэлэн", deadline: "09:00-аас өмнө", photo: true },
+  { group: "Хоол", title: "Гал тогооны тоног төхөөрөмж бүрэн ажиллаж байгаа эсэх газны нөөцийг шалгах цэнэглэх", deadline: "Хоёр хонгийн өмнө", photo: false },
+  { group: "Хоол", title: "Хүнсний материал дутуу эсэхийг шалгаж  2 хонгийн өмнө бэлдэх 100% бэлэн болгох", deadline: "Хоёр хонгийн өмнө", photo: false },
+  { group: "Хоол", title: "Өглөөний цай менежерээс мэдээлэл авч өглөө бэлтгэх", deadline: "", photo: false },
+  { group: "Хоол", title: "Өглөөний цайнаас хийхээс өмнө асар цэвэрлэх,ширээ засах,хогны сав байршуулах", deadline: "", photo: false },
+  { group: "Хоол", title: "Өдрийн хоолны бэлтгэл — аяга таваг тоолох, буфет тоног төхөөрөмж цэвэрхэн, халуун цай/ус бэлэн", deadline: "өдрийн хоолны өмнө", photo: false },
+  { group: "Хоол", title: "Өдрийн хоолны дараа аяга таваг хураах, 3 дамжлагаар угааж хатааж хайрцагт савлах", deadline: "өдрийн хоолны дараа", photo: false },
+  { group: "Хоол", title: "Оройн хоолны бэлтгэл — аяга таваг тоолох, уфет тоног төхөөрөмж цэвэрхэн, халуун цай/ус бэлэн", deadline: "оройн хоолны өмнө", photo: false },
+  { group: "Хоол", title: "Оройн хоолны дараа аяга таваг хураах, 3 дамжлагаар угааж хатааж хайрцагт савлах", deadline: "оройн хоолны дараа", photo: false },
+  { group: "Хоол", title: "Хоол гаргах бүрийн өмнө болц голын темпратур шалгаж амталгаа хийж шалгах.Дүгнэлт бичих.", deadline: "", photo: false },
+  { group: "Майхан", title: "Хүлээн авах/checkout-ын майхан шалгалт (ор, мешок, гадас татлага)", deadline: "хүлээн авах / checkout", photo: true, detail: "Нэг хүн удирдаж ажиллана.Бүх залуучуудыг майхныг тэнцүү хувааж: орны эвдрэл, мешок тоо, бохирдол шалгах. Ор гадаа гаргаж охидууд цэвэрлэгээнд бэлдэх, дараа нь стандартаар байрлуулах. Гадас татлага чангалах. Дутуу/эвдрэл/бохир бол менежерт даалгавар үүсгэх. Чийг/үнэр шалгаж агааржуулах, бороонд хаах." },
+  { group: "Майхан", title: "Checkout-ийн дараа гарсан майхныг цэвэрлэх + майхан бүрийн зураг дарж баталгаажуулах", deadline: "өглөө checkout-ийн дараа", photo: true, detail: "Нэг хүн удирдаж ажиллана.Бүх охидууд гарсан майхныг тэнцүү хувааж цэвэрлэнэ. Цэвэрлэсэн майхан бүрийн зургийг дарж баталгаажуулна." },
+  { group: "Цахилгаан", title: "Цахилгаан үүсгүүрийн түлш + кабель хүрэлцээ хангах", deadline: "үйл ажиллагаанаас өмнө", photo: false, detail: "Түлшийг үйл ажиллагааны дундуур зөөхгүй байхаар тооцоолж хангах. Кабель хүрэлцээ хангаж, эвдрэлийг яаралтай шийдвэрлэх/ашиглалтаас гаргах." },
+  { group: "Хог", title: "Хог Эрдэнэ сумын хогны цэгт тээвэрлэж асгах", deadline: "үйл ажиллагааны дараа, даваа гараг", photo: true },
+  { group: "Гал", title: "Оройн түүдэг галын мод түүж бэлтгэх, бүрэнхийд асаах", deadline: "орой", photo: false },
+  { group: "Нэмэлт захиалга", title: "Автобус болон үйлчилүүлэгчийн нэмэлт хүсэлт захиалгуудыг нэгтгэж шинэ ажил үүсгэж ажилчдад хувиарлах", deadline: "үйл ажиллагаанаас өмнө", photo: false },
+  { group: "Тайлан", title: "Арга хэмжээний дараа асуудал,гомдол,дараагийн арга хэмжээнд сайжруулах шаардлагтай зүйлсийг бичиж зургаар хавсаргах", deadline: "үйл ажиллагааны дараа, даваа гараг", photo: false },
 ];
+// Ажлын гарчиг — модал (давхардал таних) ба үүсгэхэд ИЖИЛ байх ёстой. Хугацаагүй бол хаалт нэмэхгүй.
+function prepTaskTitle(c) { return `${c.group}: ${c.title}${c.deadline ? ` (${c.deadline})` : ''}`; }
 // Бэлтгэлийн чеклистийг ажилтнуудад хувиарлах модал (assign модалын DOM-ыг дахин ашиглана).
 function openNomaadPrepChecklist(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
@@ -4455,7 +4454,7 @@ function openNomaadPrepChecklist(quoteNo) {
   const itemsEl = document.getElementById('na-items');
   const byGroup = {};
   NOMAAD_PREP_CHECKLIST.forEach((c, idx) => { (byGroup[c.group] = byGroup[c.group] || []).push({ c, idx }); });
-  const prepTitle = (c) => `${c.group}: ${c.title} (${c.deadline})`;
+  const prepTitle = prepTaskTitle;
   const findExisting = (c) => (state.tasks || []).find(t => t.title === prepTitle(c)
     && (t.desc || '').includes(`NOMAAD ${o.quote_no} `) && t.status !== 'deleted');
   itemsEl.innerHTML = Object.keys(byGroup).map(g =>
@@ -4465,7 +4464,7 @@ function openNomaadPrepChecklist(quoteNo) {
       const owner = ex ? ex.assignee : '';
       const ownerStyle = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
       return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">· ${escapeHtml(c.deadline)}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span></span>
+         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span></span>
          <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${ex ? '1' : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${ownerStyle}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>
        </div>`;
     }).join('')
@@ -4511,8 +4510,8 @@ async function sendNomaadPrepTasks(quoteNo) {
     const ass = p.owner || '';  // сонгоогүй бол хариуцагчгүй — өөрт оноохгүй
     const t = {
       id: uid(),
-      title: `${c.group}: ${c.title} (${c.deadline})`,
-      desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDatePlain(o.date_start)}\nЭцсийн хугацаа: ${c.deadline}${c.detail ? '\n\n' + c.detail : ''}`,
+      title: prepTaskTitle(c),
+      desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDatePlain(o.date_start)}${c.deadline ? '\nЭцсийн хугацаа: ' + c.deadline : ''}${c.detail ? '\n\n' + c.detail : ''}`,
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: !!c.photo,
       createdBy: state.me, created: Date.now() + n, comments: [], activity: [],

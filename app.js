@@ -4363,9 +4363,10 @@ function openNomaadPrepChecklist(quoteNo) {
   const itemsEl = document.getElementById('na-items');
   const secHdr = (txt) => `<div style="font-size:12px;font-weight:800;color:var(--text);background:var(--bg-soft,#eef2f7);padding:8px 10px;margin:14px -4px 6px;border-radius:6px;">${escapeHtml(txt)}</div>`;
   const grpHdr = (txt) => `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(txt)}</div>`;
-  const pickBtn = (type, idx, owner, exists) => {
+  const pickBtn = (type, idx, owner, exTask) => {
     const style = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
-    return `<button type="button" class="na-pick" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exists ? '1' : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${style}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
+    const exId = exTask ? exTask.id : '';
+    return `<button type="button" class="na-pick" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exTask ? '1' : ''}" data-na-task-id="${escapeHtml(exId)}" data-na-orig="${owner ? escapeHtml(owner) : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${style}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
   };
   const row = (label, meta, btn) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:13px;min-width:0;">${label}${meta}</span>${btn}</div>`;
   // 1) Стандарт чеклист (үүссэнийг таниж тэмдэглэнэ)
@@ -4377,7 +4378,7 @@ function openNomaadPrepChecklist(quoteNo) {
   html += Object.keys(byGroup).map(g => grpHdr(g) + byGroup[g].map(({ c, idx }) => {
     const ex = findExisting(c);
     const meta = `<span style="color:var(--muted);font-size:11px;">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span>`;
-    return row(escapeHtml(c.title) + ' ', meta, pickBtn('prep', idx, ex ? ex.assignee : '', ex));
+    return row(escapeHtml(c.title) + ' ', meta, pickBtn('prep', idx, ex ? (ex.assignee || '') : '', ex));
   }).join('')).join('');
   // 2) Захиалгын бараа (түрээсийн эд хогшил)
   const items = o.items || [];
@@ -4391,7 +4392,6 @@ function openNomaadPrepChecklist(quoteNo) {
   }
   itemsEl.innerHTML = html;
   function setOwnerBtn(btn, key) {
-    if (btn.dataset.naExists === '1') return; // үүссэн ажлыг энд солихгүй
     btn.dataset.naOwner = key || '';
     if (key) { btn.textContent = memberName(key); btn.style.color = 'var(--text)'; btn.style.borderStyle = 'solid'; btn.style.fontWeight = '600'; }
     else { btn.textContent = '+ Хүн сонгох'; btn.style.color = 'var(--muted)'; btn.style.borderStyle = 'dashed'; btn.style.fontWeight = '400'; }
@@ -4417,9 +4417,13 @@ async function sendNomaadPrepTasks(quoteNo) {
   if (!o) return;
   const modal = document.getElementById('nomaad-assign-modal');
   const btns = [...modal.querySelectorAll('button.na-pick')];
-  // 1) Чеклистийн ажил — үүссэнийг алгасна, бүгдийг үүсгэнэ (хүн заавал биш).
+  // 1a) Чеклистийн ШИНЭ ажил — үүсээгүйг үүсгэнэ (хүн заавал биш).
   const prepPicks = btns.filter(b => b.dataset.naType === 'prep' && b.dataset.naExists !== '1')
     .map(b => ({ idx: Number(b.dataset.naItem), owner: b.dataset.naOwner || '' }));
+  // 1b) Үүссэн ажлыг ДАХИН ХУВИАРЛАХ — хариуцагч өөрчлөгдсөн бол шинэчилнэ.
+  const prepReassign = btns.filter(b => b.dataset.naType === 'prep' && b.dataset.naExists === '1'
+      && (b.dataset.naOwner || '') !== (b.dataset.naOrig || ''))
+    .map(b => ({ id: b.dataset.naTaskId, owner: b.dataset.naOwner || '' }));
   // 2) Захиалгын бараа — зөвхөн хүн сонгосныг хүнээр бүлэглэж нэг ажил болгоно.
   const byAssignee = {};
   btns.filter(b => b.dataset.naType === 'item' && b.dataset.naOwner).forEach(b => {
@@ -4427,8 +4431,8 @@ async function sendNomaadPrepTasks(quoteNo) {
     if (it) (byAssignee[b.dataset.naOwner] = byAssignee[b.dataset.naOwner] || []).push(it.name);
   });
   const itemOwners = Object.keys(byAssignee);
-  if (!prepPicks.length && !itemOwners.length) { showToast('Шинээр үүсгэх ажил алга.', 'warn', 3000); return; }
-  if (!(await showConfirm(`"${o.company}" — ${prepPicks.length} чеклист ажил + ${itemOwners.length} барааны ажил үүсгэх үү? (хүн сонгоогүй чеклист хариуцагчгүй үлдэнэ)`, { okText: 'Тийм, үүсгэх' }))) return;
+  if (!prepPicks.length && !prepReassign.length && !itemOwners.length) { showToast('Өөрчлөлт алга.', 'warn', 3000); return; }
+  if (!(await showConfirm(`"${o.company}" — ${prepPicks.length} шинэ ажил + ${prepReassign.length} дахин хувиарлах + ${itemOwners.length} барааны ажил. Үргэлжлүүлэх үү?`, { okText: 'Тийм' }))) return;
   modal.classList.remove('open');
   const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
   let n = 0, assigned = 0;
@@ -4460,9 +4464,19 @@ async function sendNomaadPrepTasks(quoteNo) {
     pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title }); assigned++;
     n++;
   }
+  // Үүссэн ажлыг дахин хувиарлах (хариуцагч өөрчлөх)
+  let reassigned = 0;
+  for (const r of prepReassign) {
+    const t = state.tasks.find(x => x.id === r.id);
+    if (!t) continue;
+    t.assignee = r.owner;
+    created.push(t);
+    if (r.owner) { pushBroadcast(r.owner, { type: 'task_assigned', task_id: t.id, title: 'Ажил хувиарлагдлаа', body: t.title }); }
+    reassigned++;
+  }
   saveLocal(); // локалд нэг л удаа бичнэ (шууд бэлэн)
   render();
-  showToast(`${n} ажил үүслээ (${assigned} хувиарласан). Сервэрт хадгалж байна…`, 'success', 3500);
+  showToast(`${n} шинэ ажил, ${reassigned} дахин хувиарлав. Сервэрт хадгалж байна…`, 'success', 3500);
   // ─── Сервэрт ЗЭРЭГЦЭЭ (арын) бичнэ ───
   // Бүгд шинэ, давхцахгүй ID-тай append тул сериал гинж шаардлагагүй. Browser өөрөө
   // ~6 concurrent-аар хязгаарладаг тул 30 ажил ~8 секундэд, UI гацуулахгүй бичигдэнэ.

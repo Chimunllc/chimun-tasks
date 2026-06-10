@@ -3882,7 +3882,7 @@ async function markHourlyPaid(workerKey) {
    nomaad Quote Log-оос Төлөв=ГЭРЭЭ/ГЭРЭЭ БАТЛАГДСАН гэрээг Quote Items-тэй нь
    /nomaad-orders webhook-оор татна. Нийт төлбөрийг гараар оруулж орлого бүртгэнэ. */
 // NOMAAD захиалга харах эрхтэй нэмэлт утаснууд: Анужин, Дэлгэрбат (+ CEO, нягтлан үргэлж).
-const NOMAAD_VIEWERS = ['88028216', '99179417'];
+const NOMAAD_VIEWERS = ['88028216', '99179417', '99337760'];  // Анужин, Дэлгэрбат, Батжаргал
 const NOMAAD_VIEWER_NAMES = ['алтансүх'];  // нэрээр зөвшөөрөх (утас тодорхойгүй)
 function canSeeNomaadOrders() {
   if (state.isCEO) return true;

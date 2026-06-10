@@ -1129,8 +1129,8 @@ function applyPendingFinanceWrites() {
   }
 }
 let _taskWriteChain = Promise.resolve();
-async function saveTask(task, deleted=false, hardDelete=false) {
-  saveLocal();
+async function saveTask(task, deleted=false, hardDelete=false, skipLocal=false) {
+  if (!skipLocal) saveLocal(); // багц үүсгэхэд (30+ ажил) skipLocal=true — saveLocal-г нэг л удаа дуудна
   if (!state.config.apiUrl) return; // backend тохируулаагүй — зөвхөн локал
   // ID-г нэр болгож хувиргаж Sheet рүү явуулна
   const wire = taskToWire(task);
@@ -4443,7 +4443,7 @@ async function sendNomaadPrepTasks(quoteNo) {
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: !!c.photo, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
-    state.tasks.unshift(t); saveTask(t);
+    state.tasks.unshift(t); saveTask(t, false, false, true); // skipLocal — доор нэг л удаа saveLocal
     if (p.owner) { pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ бэлтгэл ажил', body: t.title }); assigned++; }
     n++;
   }
@@ -4455,10 +4455,11 @@ async function sendNomaadPrepTasks(quoteNo) {
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: true, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
-    state.tasks.unshift(t); saveTask(t);
+    state.tasks.unshift(t); saveTask(t, false, false, true); // skipLocal
     pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title }); assigned++;
     n++;
   }
+  saveLocal(); // бүх ажлыг нэг л удаа localStorage-д бичнэ (гацалт арилна)
   render();
   showToast(`${n} ажил үүслээ (${assigned} хувиарласан). Сервэрт хадгалж байна…`, 'success', 3500);
 }

@@ -4501,14 +4501,14 @@ async function sendNomaadPrepTasks(quoteNo) {
     .map(b => ({ idx: Number(b.dataset.naItem), owner: b.dataset.naOwner || '' }));
   if (!picks.length) { showToast('Шинээр үүсгэх ажил алга — бүгд аль хэдийн үүссэн байна.', 'warn', 3000); return; }
   const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
-  if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} шинэ бэлтгэл ажил үүсгэх үү? (хувиараагүйг өөрт оноож дараа тараана)`, { okText: 'Тийм, үүсгэх' }))) return;
+  if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} шинэ бэлтгэл ажил үүсгэх үү? (хүн сонгоогүй нь хариуцагчгүй үлдэж, дараа хувиарлана)`, { okText: 'Тийм, үүсгэх' }))) return;
   // Модалыг шууд хаана — бичилтийг арын сериал гинжээр хийнэ (UI гацуулахгүй).
   modal.classList.remove('open');
   let n = 0, assigned = 0;
   for (const p of picks) {
     const c = NOMAAD_PREP_CHECKLIST[p.idx];
     if (!c) continue;
-    const ass = p.owner || state.me;
+    const ass = p.owner || '';  // сонгоогүй бол хариуцагчгүй — өөрт оноохгүй
     const t = {
       id: uid(),
       title: `${c.group}: ${c.title} (${c.deadline})`,

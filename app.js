@@ -4399,14 +4399,42 @@ async function sendNomaadAssignments(quoteNo) {
 
 /* ─── Арга хэмжээний бэлтгэлийн стандарт чеклист ───
    NOMAAD захиалга бүрт давтагддаг ажлууд. Шинэ зүйл нэмэх/засах бол энэ жагсаалтыг
-   засна. deadline нь гарчигт орно (task-д тусдаа цагийн талбар байхгүй). */
+   засна. group=бүлэг, deadline=цаг (гарчигт орно, task-д цагийн талбар байхгүй),
+   photo=зураг шаардах эсэх, detail=урт заавар (тайлбарт орно). */
 const NOMAAD_PREP_CHECKLIST = [
-  { title: 'Гадаа хог цэвэрлэх', deadline: '09:00-аас өмнө' },
-  { title: 'Ус авах — 00 (жорлон) болон гар угаалтуур ус дүүргэх', deadline: '09:00-аас өмнө' },
-  { title: 'Тайз, хөгжим, микрофон, гэрэл бэлэн байх', deadline: '09:00-аас өмнө' },
-  { title: 'Асрын ширээ сандал зөв байрлал + угаасан бүтээлэгтэй', deadline: '09:00-аас өмнө' },
-  { title: 'Асрын зүлэг соруулж цэвэрлэх', deadline: '09:00-аас өмнө' },
-  { title: 'Асрын гэрэлтүүлэг асахад бэлэн', deadline: '09:00-аас өмнө' },
+  // Эрчүүд — гадаа хог (өдөрт 3 удаа)
+  { group: 'Эрчүүд', title: 'Гадаа хог цэвэрлэх', deadline: '09:00-аас өмнө', photo: true },
+  { group: 'Эрчүүд', title: 'Гадаа хог цэвэрлэх', deadline: '15:00-аас өмнө', photo: true },
+  { group: 'Эрчүүд', title: 'Гадаа хог цэвэрлэх', deadline: '20:00-аас өмнө', photo: true },
+  // Охидууд — ариун цэврийн өрөө (өдөрт 3 удаа)
+  { group: 'Охидууд', title: 'Ариун цэврийн өрөө цэвэрлэх, хогны уут солих (00 дүүрсэн бол байршуулах)', deadline: '09:00-аас өмнө', photo: true },
+  { group: 'Охидууд', title: 'Ариун цэврийн өрөө цэвэрлэх, хогны уут солих', deadline: '15:00-аас өмнө', photo: true },
+  { group: 'Охидууд', title: 'Ариун цэврийн өрөө цэвэрлэх, хогны уут солих', deadline: '20:00-аас өмнө', photo: true },
+  // Ус — гар угаалтуур (өдөрт 3 удаа) + долоо хоногийн нөөц
+  { group: 'Ус', title: 'Гар угаалтуурын ус шалгаж дүүргэх', deadline: '09:00', photo: false },
+  { group: 'Ус', title: 'Гар угаалтуурын ус шалгаж дүүргэх', deadline: '15:00', photo: false },
+  { group: 'Ус', title: 'Гар угаалтуурын ус шалгаж дүүргэх', deadline: '20:00', photo: false },
+  { group: 'Ус', title: 'Долоо хоногийн усны хэрэглээг тооцоолж нөөц бэлтгэх — 00 (жорлон) + гар угаалтуур дүүргэх', deadline: '09:00-аас өмнө', photo: true, detail: 'Үйл ажиллагааны дундуур ус авахгүй байхаар тооцоолж усны нөөцийг урьдчилан бэлэн байлгах.' },
+  // Тайз / хөгжим / гэрэл
+  { group: 'Тайз/гэрэл', title: 'Тайз, хөгжим, микрофон, гэрэл шалгаж бэлэн байх + борооны хамгаалалт бэлэн', deadline: 'үйл ажиллагаанаас өмнө (09:00)', photo: true, detail: 'Цаг агаар шалгаж борооны хамгаалалтыг бэлэн байлгах.' },
+  { group: 'Тайз/гэрэл', title: 'Тайз, хөгжим, микрофон, гэрэл хайрцагт хийж хураах', deadline: 'үйл ажиллагааны дараа 00:00', photo: false },
+  // Хоолны асар
+  { group: 'Хоолны асар', title: 'Ширээ сандал зөв байрлал + угаасан бүтээлэгтэй + ширээ бүрд салфетка', deadline: '09:00-аас өмнө', photo: true },
+  { group: 'Хоолны асар', title: 'Асрын зүлэг шүүрдэж соруулж цэвэрлэх, хогны сав байрлуулах, гэрэл 20:00-д ажиллахад бэлэн', deadline: '09:00-аас өмнө', photo: true },
+  // Хоол (өдөр / орой)
+  { group: 'Хоол', title: 'Өдрийн хоолны бэлтгэл — аяга таваг тоолох, буфет цэвэрхэн, халуун цай/ус бэлэн', deadline: 'өдрийн хоолны өмнө', photo: false },
+  { group: 'Хоол', title: 'Өдрийн хоолны дараа аяга таваг хураах, 3 дамжлагаар угааж хатааж хайрцагт савлах', deadline: 'өдрийн хоолны дараа', photo: false },
+  { group: 'Хоол', title: 'Оройн хоолны бэлтгэл — аяга таваг тоолох, буфет цэвэрхэн, халуун цай/ус бэлэн', deadline: 'оройн хоолны өмнө', photo: false },
+  { group: 'Хоол', title: 'Оройн хоолны дараа аяга таваг хураах, 3 дамжлагаар угааж хатааж хайрцагт савлах', deadline: 'оройн хоолны дараа', photo: false },
+  // Майхан (хүлээн авах / checkout)
+  { group: 'Майхан', title: 'Хүлээн авах/checkout-ын майхан шалгалт (ор, мешок, гадас татлага)', deadline: 'хүлээн авах / checkout', photo: true, detail: 'Бүх залуучууд майхныг тэнцүү хувааж: орны эвдрэл, мешок тоо, бохирдол шалгах. Ор гадаа гаргаж охидууд цэвэрлэгээнд бэлдэх, дараа нь ор/мешокыг стандартаар байрлуулах. Гадас татлага бүрэн шалгаж стандартаар чангалах. Дутуу/эвдрэлтэй ор, бохир мешок байвал менежерт даалгавар үүсгэж яаралтай шийдвэрлүүлэх. Чийг/эвгүй үнэр шалгаж агааржуулалт нээх, бороонд хаах.' },
+  { group: 'Майхан', title: 'Checkout-ийн дараа гарсан майхныг цэвэрлэх + майхан бүрийн зураг дарж баталгаажуулах', deadline: 'өглөө checkout-ийн дараа', photo: true, detail: 'Бүх охидууд гарсан майхныг тэнцүү хувааж цэвэрлэгээ хийнэ. Цэвэрлэсэн майхан бүрийн зургийг дарж баталгаажуулна.' },
+  // Цахилгаан
+  { group: 'Цахилгаан', title: 'Цахилгаан үүсгүүрийн түлш + кабель хүрэлцээ хангах', deadline: 'үйл ажиллагаанаас өмнө', photo: false, detail: 'Түлшийг үйл ажиллагааны дундуур зөөхгүй байхаар тооцоолж хангана. Кабель хүрэлцээг хангаж, эвдэрсэн хангамжийг яаралтай шийдвэрлэх/ашиглалтаас гаргана.' },
+  // Хог тээвэр
+  { group: 'Хог', title: 'Хог Эрдэнэ сумын хогны цэгт тээвэрлэж асгах', deadline: 'үйл ажиллагааны дараа, даваа гараг', photo: true },
+  // Түүдэг гал
+  { group: 'Гал', title: 'Оройн түүдэг галын мод түүж бэлтгэх, бүрэнхийд асаах', deadline: 'орой', photo: false },
 ];
 // Бэлтгэлийн чеклистийг ажилтнуудад хувиарлах модал (assign модалын DOM-ыг дахин ашиглана).
 function openNomaadPrepChecklist(quoteNo) {
@@ -4416,11 +4444,16 @@ function openNomaadPrepChecklist(quoteNo) {
   document.getElementById('na-title').textContent = `Бэлтгэл үүсгэх · ${o.quote_no}`;
   document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDateWithDow(o.date_start)}`;
   const itemsEl = document.getElementById('na-items');
-  itemsEl.innerHTML = NOMAAD_PREP_CHECKLIST.map((c, idx) =>
-    `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-       <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">${escapeHtml(c.deadline)} · ✓зураг</span></span>
-       <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="" style="flex-shrink:0;min-width:150px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--muted);cursor:pointer;">+ Хүн сонгох</button>
-     </div>`
+  const byGroup = {};
+  NOMAAD_PREP_CHECKLIST.forEach((c, idx) => { (byGroup[c.group] = byGroup[c.group] || []).push({ c, idx }); });
+  itemsEl.innerHTML = Object.keys(byGroup).map(g =>
+    `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(g)}</div>` +
+    byGroup[g].map(({ c, idx }) =>
+      `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">· ${escapeHtml(c.deadline)}${c.photo ? ' · ✓зураг' : ''}</span></span>
+         <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--muted);cursor:pointer;">+ Хүн сонгох</button>
+       </div>`
+    ).join('')
   ).join('');
   function setOwnerBtn(btn, key) {
     btn.dataset.naOwner = key || '';
@@ -4458,10 +4491,10 @@ async function sendNomaadPrepTasks(quoteNo) {
     const ass = p.owner || state.me;
     const t = {
       id: uid(),
-      title: `NOMAAD ${o.quote_no} · ${c.title} (${c.deadline})`,
-      desc: `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDateWithDow(o.date_start)}\nЭцсийн хугацаа: арга хэмжээний өдрийн ${c.deadline}`,
+      title: `${c.group}: ${c.title} (${c.deadline})`,
+      desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDateWithDow(o.date_start)}\nЭцсийн хугацаа: ${c.deadline}${c.detail ? '\n\n' + c.detail : ''}`,
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
-      requires_photo: true,
+      requires_photo: !!c.photo,
       createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
     state.tasks.unshift(t);

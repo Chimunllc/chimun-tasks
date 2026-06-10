@@ -1384,26 +1384,39 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
     showToast('Upload endpoint тохируулагдаагүй. Settings шалгана уу.', 'error');
     return null;
   }
-  // File → base64 (FileReader)
-  const base64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+  // Зураг бол клиент талд ШАХНА (resize + JPEG) — сул сүлжээнд том зураг (4-8MB)
+  // орж өгдөггүй асуудлыг шийднэ. PDF/бусад файлыг хэвээр илгээнэ.
+  let base64, filename = file.name || 'file', contentType = file.type || 'application/octet-stream';
+  if (/^image\//i.test(file.type)) {
+    const maxSize = kind === 'completion' ? 1280 : 1600; // биелэлтийн зураг арай илүү шахна
+    const quality = kind === 'completion' ? 0.6 : 0.72;
+    try {
+      base64 = await resizeImageToBase64(file, maxSize, quality);
+      contentType = 'image/jpeg';
+      filename = filename.replace(/\.[^.]+$/, '') + '.jpg';
+    } catch (e) { base64 = null; /* шахалт амжилтгүй → доор эх файлаар */ }
+  }
+  if (!base64) {
+    base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
   try {
     const r = await fetchWithTimeout(withKey(state.config.uploadUrl), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        filename: file.name,
-        contentType: file.type || 'application/octet-stream',
+        filename,
+        contentType,
         base64,
         request_id: requestId,
         kind,
         task_title: taskTitle,
       })
-    });
+    }, 60000); // сул сүлжээнд 15с-д тасардаг тул upload-д 60с өгнө
     if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 100));
     // Try parse JSON; if empty body, give specific error
     const text = await r.text();

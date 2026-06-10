@@ -4089,6 +4089,7 @@ function nomaadCardHtml(o) {
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл үүсгэх</button>
           <button class="btn" data-nomaad-assign="${q}" style="padding:5px 14px;font-size:12px;">Ажил хувиарлах</button>
           ${incomeArea}
         </div>
@@ -4167,6 +4168,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-assign]').forEach(b => {
     b.addEventListener('click', () => openNomaadAssign(b.dataset.nomaadAssign));
+  });
+  document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
+    b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
   });
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
@@ -4391,6 +4395,83 @@ async function sendNomaadAssignments(quoteNo) {
   modal.classList.remove('open');
   render();
   showToast(`${keys.length} ажилтанд ажил илгээлээ`, 'success', 3000);
+}
+
+/* ─── Арга хэмжээний бэлтгэлийн стандарт чеклист ───
+   NOMAAD захиалга бүрт давтагддаг ажлууд. Шинэ зүйл нэмэх/засах бол энэ жагсаалтыг
+   засна. deadline нь гарчигт орно (task-д тусдаа цагийн талбар байхгүй). */
+const NOMAAD_PREP_CHECKLIST = [
+  { title: 'Гадаа хог цэвэрлэх', deadline: '09:00-аас өмнө' },
+  { title: 'Ус авах — 00 (жорлон) болон гар угаалтуур ус дүүргэх', deadline: '09:00-аас өмнө' },
+  { title: 'Тайз, хөгжим, микрофон, гэрэл бэлэн байх', deadline: '09:00-аас өмнө' },
+  { title: 'Асрын ширээ сандал зөв байрлал + угаасан бүтээлэгтэй', deadline: '09:00-аас өмнө' },
+  { title: 'Асрын зүлэг соруулж цэвэрлэх', deadline: '09:00-аас өмнө' },
+  { title: 'Асрын гэрэлтүүлэг асахад бэлэн', deadline: '09:00-аас өмнө' },
+];
+// Бэлтгэлийн чеклистийг ажилтнуудад хувиарлах модал (assign модалын DOM-ыг дахин ашиглана).
+function openNomaadPrepChecklist(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  const modal = document.getElementById('nomaad-assign-modal');
+  document.getElementById('na-title').textContent = `Бэлтгэл үүсгэх · ${o.quote_no}`;
+  document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDateWithDow(o.date_start)}`;
+  const itemsEl = document.getElementById('na-items');
+  itemsEl.innerHTML = NOMAAD_PREP_CHECKLIST.map((c, idx) =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+       <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">${escapeHtml(c.deadline)} · ✓зураг</span></span>
+       <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="" style="flex-shrink:0;min-width:150px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--muted);cursor:pointer;">+ Хүн сонгох</button>
+     </div>`
+  ).join('');
+  function setOwnerBtn(btn, key) {
+    btn.dataset.naOwner = key || '';
+    if (key) { btn.textContent = memberName(key); btn.style.color = 'var(--text)'; btn.style.borderStyle = 'solid'; btn.style.fontWeight = '600'; }
+    else { btn.textContent = '+ Хүн сонгох'; btn.style.color = 'var(--muted)'; btn.style.borderStyle = 'dashed'; btn.style.fontWeight = '400'; }
+  }
+  itemsEl.querySelectorAll('button.na-pick').forEach(btn => {
+    btn.onclick = async () => {
+      const picked = await openGroupSinglePicker(btn.dataset.naOwner || '', 'Хэн хариуцах вэ?');
+      if (picked === null) return;
+      setOwnerBtn(btn, picked);
+    };
+  });
+  document.getElementById('na-bulk').onclick = async () => {
+    const picked = await openGroupSinglePicker('', 'Бүгдийг хэнд оноох вэ?');
+    if (picked === null) return;
+    itemsEl.querySelectorAll('button.na-pick').forEach(b => setOwnerBtn(b, picked));
+  };
+  document.getElementById('na-cancel').onclick = () => modal.classList.remove('open');
+  document.getElementById('na-send').onclick = () => sendNomaadPrepTasks(quoteNo);
+  modal.classList.add('open');
+}
+async function sendNomaadPrepTasks(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  const modal = document.getElementById('nomaad-assign-modal');
+  const picks = [...modal.querySelectorAll('button.na-pick')].map(b => ({ idx: Number(b.dataset.naItem), owner: b.dataset.naOwner || '' }));
+  if (!picks.length) return;
+  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
+  if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} бэлтгэл ажил үүсгэх үү? (хувиараагүйг өөрт оноож дараа тараана)`, { okText: 'Тийм, үүсгэх' }))) return;
+  let n = 0, assigned = 0;
+  for (const p of picks) {
+    const c = NOMAAD_PREP_CHECKLIST[p.idx];
+    if (!c) continue;
+    const ass = p.owner || state.me;
+    const t = {
+      id: uid(),
+      title: `NOMAAD ${o.quote_no} · ${c.title} (${c.deadline})`,
+      desc: `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDateWithDow(o.date_start)}\nЭцсийн хугацаа: арга хэмжээний өдрийн ${c.deadline}`,
+      branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
+      requires_photo: true,
+      createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
+    };
+    state.tasks.unshift(t);
+    await saveTask(t);
+    if (p.owner) { pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ бэлтгэл ажил', body: t.title }); assigned++; }
+    n++;
+  }
+  modal.classList.remove('open');
+  render();
+  showToast(`${n} бэлтгэл ажил үүслээ (${assigned} хувиарласан)`, 'success', 3500);
 }
 
 /* ─── Гүйцэтгэл (Phase 1: объектив метрик) ─────────────────

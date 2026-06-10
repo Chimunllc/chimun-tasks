@@ -4502,6 +4502,8 @@ async function sendNomaadPrepTasks(quoteNo) {
   if (!picks.length) { showToast('Шинээр үүсгэх ажил алга — бүгд аль хэдийн үүссэн байна.', 'warn', 3000); return; }
   const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
   if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} шинэ бэлтгэл ажил үүсгэх үү? (хувиараагүйг өөрт оноож дараа тараана)`, { okText: 'Тийм, үүсгэх' }))) return;
+  // Модалыг шууд хаана — бичилтийг арын сериал гинжээр хийнэ (UI гацуулахгүй).
+  modal.classList.remove('open');
   let n = 0, assigned = 0;
   for (const p of picks) {
     const c = NOMAAD_PREP_CHECKLIST[p.idx];
@@ -4516,13 +4518,12 @@ async function sendNomaadPrepTasks(quoteNo) {
       createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
     state.tasks.unshift(t);
-    await saveTask(t);
+    saveTask(t);  // await ХИЙХГҮЙ — гинжид дараалуулна, арын дэвсгэрт хадгална
     if (p.owner) { pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ бэлтгэл ажил', body: t.title }); assigned++; }
     n++;
   }
-  modal.classList.remove('open');
   render();
-  showToast(`${n} бэлтгэл ажил үүслээ (${assigned} хувиарласан)`, 'success', 3500);
+  showToast(`${n} бэлтгэл ажил үүслээ (${assigned} хувиарласан). Сервэрт хадгалж байна…`, 'success', 3500);
 }
 
 /* ─── Гүйцэтгэл (Phase 1: объектив метрик) ─────────────────

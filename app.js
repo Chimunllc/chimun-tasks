@@ -4098,8 +4098,7 @@ function nomaadCardHtml(o) {
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл үүсгэх</button>
-          <button class="btn" data-nomaad-assign="${q}" style="padding:5px 14px;font-size:12px;">Ажил хувиарлах</button>
+          <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
           ${incomeArea}
         </div>
       </div>
@@ -4174,9 +4173,6 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-income]').forEach(b => {
     b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome));
-  });
-  document.querySelectorAll('button[data-nomaad-assign]').forEach(b => {
-    b.addEventListener('click', () => openNomaadAssign(b.dataset.nomaadAssign));
   });
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
@@ -4319,93 +4315,6 @@ function openGroupSinglePicker(currentKey = '', title = 'Хүн сонгох') {
   });
 }
 // Захиалгын Quote Items-ийг ажилтнуудад хувиарлах модал.
-function openNomaadAssign(quoteNo) {
-  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
-  if (!o) return;
-  const modal = document.getElementById('nomaad-assign-modal');
-  document.getElementById('na-title').textContent = `Ажил хувиарлах · ${o.quote_no}`;
-  document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${o.date_start || ''}`;
-  const items = o.items || [];
-  const byCat = {};
-  items.forEach((it, idx) => { (byCat[it.category || 'Бусад'] = byCat[it.category || 'Бусад'] || []).push({ it, idx }); });
-  const itemsEl = document.getElementById('na-items');
-  itemsEl.innerHTML = Object.keys(byCat).map(cat =>
-    `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(cat)}</div>` +
-    byCat[cat].map(({ it, idx }) =>
-      `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(it.name || '')} <span style="color:var(--muted);font-size:11px;">${it.qty || ''} ${escapeHtml(it.unit || '')}</span></span>
-         <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="" style="flex-shrink:0;min-width:150px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);color:var(--muted);cursor:pointer;">+ Хүн сонгох</button>
-       </div>`
-    ).join('')
-  ).join('');
-  // Зүйл дээр дарахад group-picker нээж, нэг хүн сонгоно
-  function setOwnerBtn(btn, key) {
-    btn.dataset.naOwner = key || '';
-    if (key) {
-      btn.textContent = memberName(key);
-      btn.style.color = 'var(--text)';
-      btn.style.borderStyle = 'solid';
-      btn.style.fontWeight = '600';
-    } else {
-      btn.textContent = '+ Хүн сонгох';
-      btn.style.color = 'var(--muted)';
-      btn.style.borderStyle = 'dashed';
-      btn.style.fontWeight = '400';
-    }
-  }
-  itemsEl.querySelectorAll('button.na-pick').forEach(btn => {
-    btn.onclick = async () => {
-      const picked = await openGroupSinglePicker(btn.dataset.naOwner || '', 'Хэн хариуцах вэ?');
-      if (picked === null) return;   // болих
-      setOwnerBtn(btn, picked);
-    };
-  });
-  // "Бүх зүйлийг нэг хүнд оноох" — нэг удаа сонгоод бүгдэд тараана
-  document.getElementById('na-bulk').onclick = async () => {
-    const picked = await openGroupSinglePicker('', 'Бүгдийг хэнд оноох вэ?');
-    if (picked === null) return;
-    itemsEl.querySelectorAll('button.na-pick').forEach(b => setOwnerBtn(b, picked));
-  };
-  document.getElementById('na-cancel').onclick = () => modal.classList.remove('open');
-  document.getElementById('na-send').onclick = () => sendNomaadAssignments(quoteNo);
-  modal.classList.add('open');
-}
-async function sendNomaadAssignments(quoteNo) {
-  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
-  if (!o) return;
-  const modal = document.getElementById('nomaad-assign-modal');
-  const byAssignee = {};
-  modal.querySelectorAll('button.na-pick').forEach(b => {
-    const owner = b.dataset.naOwner;
-    if (!owner) return;
-    const it = (o.items || [])[Number(b.dataset.naItem)];
-    if (it) (byAssignee[owner] = byAssignee[owner] || []).push(it.name);
-  });
-  const keys = Object.keys(byAssignee);
-  if (!keys.length) { showToast('Дор хаяж нэг зүйлд ажилтан сонгоно уу.', 'warn', 2500); return; }
-  if (!(await showConfirm(`${keys.length} ажилтанд "${o.company}" захиалгын бэлтгэл шалгах ажил илгээх үү?`, { okText: 'Тийм, илгээх' }))) return;
-  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
-  let n = 0;
-  for (const ass of keys) {
-    const names = byAssignee[ass];
-    const t = {
-      id: uid(),
-      title: `NOMAAD ${o.quote_no} · ${o.company} — бэлтгэл шалгах`,
-      desc: nomaadTaskDesc(o, names),
-      branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
-      requires_photo: true,  // биелэлтийн зураг заавал
-      createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
-    };
-    state.tasks.unshift(t);
-    await saveTask(t);
-    pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title });
-    n++;
-  }
-  modal.classList.remove('open');
-  render();
-  showToast(`${keys.length} ажилтанд ажил илгээлээ`, 'success', 3000);
-}
-
 /* ─── Арга хэмжээний бэлтгэлийн стандарт чеклист ───
    NOMAAD захиалга бүрт давтагддаг ажлууд. Шинэ зүйл нэмэх/засах бол энэ жагсаалтыг
    засна. group=бүлэг, deadline=цаг (гарчигт орно, task-д цагийн талбар байхгүй),
@@ -4444,32 +4353,45 @@ const NOMAAD_PREP_CHECKLIST = [
 ];
 // Ажлын гарчиг — модал (давхардал таних) ба үүсгэхэд ИЖИЛ байх ёстой. Хугацаагүй бол хаалт нэмэхгүй.
 function prepTaskTitle(c) { return `${c.group}: ${c.title}${c.deadline ? ` (${c.deadline})` : ''}`; }
-// Бэлтгэлийн чеклистийг ажилтнуудад хувиарлах модал (assign модалын DOM-ыг дахин ашиглана).
+// Нэгдсэн бэлтгэл модал — (1) стандарт чеклист + (2) захиалгын бараа. Нэг газраас хүн оноож үүсгэнэ.
 function openNomaadPrepChecklist(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) return;
   const modal = document.getElementById('nomaad-assign-modal');
-  document.getElementById('na-title').textContent = `Бэлтгэл үүсгэх · ${o.quote_no}`;
+  document.getElementById('na-title').textContent = `Бэлтгэл · ${o.quote_no}`;
   document.getElementById('na-sub').textContent = `${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн · ${nomaadDatePlain(o.date_start)}`;
   const itemsEl = document.getElementById('na-items');
+  const secHdr = (txt) => `<div style="font-size:12px;font-weight:800;color:var(--text);background:var(--bg-soft,#eef2f7);padding:8px 10px;margin:14px -4px 6px;border-radius:6px;">${escapeHtml(txt)}</div>`;
+  const grpHdr = (txt) => `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(txt)}</div>`;
+  const pickBtn = (type, idx, owner, exists) => {
+    const style = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
+    return `<button type="button" class="na-pick" data-na-type="${type}" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${exists ? '1' : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${style}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>`;
+  };
+  const row = (label, meta, btn) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="flex:1;font-size:13px;min-width:0;">${label}${meta}</span>${btn}</div>`;
+  // 1) Стандарт чеклист (үүссэнийг таниж тэмдэглэнэ)
   const byGroup = {};
   NOMAAD_PREP_CHECKLIST.forEach((c, idx) => { (byGroup[c.group] = byGroup[c.group] || []).push({ c, idx }); });
-  const prepTitle = prepTaskTitle;
-  const findExisting = (c) => (state.tasks || []).find(t => t.title === prepTitle(c)
+  const findExisting = (c) => (state.tasks || []).find(t => t.title === prepTaskTitle(c)
     && (t.desc || '').includes(`NOMAAD ${o.quote_no} `) && t.status !== 'deleted');
-  itemsEl.innerHTML = Object.keys(byGroup).map(g =>
-    `<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;margin:10px 0 4px;">${escapeHtml(g)}</div>` +
-    byGroup[g].map(({ c, idx }) => {
-      const ex = findExisting(c);
-      const owner = ex ? ex.assignee : '';
-      const ownerStyle = owner ? 'color:var(--text);border-style:solid;font-weight:600;' : 'color:var(--muted);border-style:dashed;font-weight:400;';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-         <span style="flex:1;font-size:13px;min-width:0;">${escapeHtml(c.title)} <span style="color:var(--muted);font-size:11px;">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span></span>
-         <button type="button" class="na-pick" data-na-item="${idx}" data-na-owner="${owner ? escapeHtml(owner) : ''}" data-na-exists="${ex ? '1' : ''}" style="flex-shrink:0;min-width:140px;text-align:left;padding:7px 10px;border:1px dashed var(--border-strong);border-radius:var(--r-md);font-size:12px;background:var(--panel);cursor:pointer;${ownerStyle}">${owner ? escapeHtml(memberName(owner)) : '+ Хүн сонгох'}</button>
-       </div>`;
-    }).join('')
-  ).join('');
+  let html = secHdr('1. Үйл ажиллагааны чеклист');
+  html += Object.keys(byGroup).map(g => grpHdr(g) + byGroup[g].map(({ c, idx }) => {
+    const ex = findExisting(c);
+    const meta = `<span style="color:var(--muted);font-size:11px;">${c.deadline ? '· ' + escapeHtml(c.deadline) : ''}${c.photo ? ' · ✓зураг' : ''}${ex ? ' · <b style="color:var(--ok)">✓ үүссэн</b>' : ''}</span>`;
+    return row(escapeHtml(c.title) + ' ', meta, pickBtn('prep', idx, ex ? ex.assignee : '', ex));
+  }).join('')).join('');
+  // 2) Захиалгын бараа (түрээсийн эд хогшил)
+  const items = o.items || [];
+  if (items.length) {
+    html += secHdr('2. Захиалгын бараа');
+    const byCat = {};
+    items.forEach((it, idx) => { (byCat[it.category || 'Бусад'] = byCat[it.category || 'Бусад'] || []).push({ it, idx }); });
+    html += Object.keys(byCat).map(cat => grpHdr(cat) + byCat[cat].map(({ it, idx }) =>
+      row(escapeHtml(it.name || '') + ' ', `<span style="color:var(--muted);font-size:11px;">${it.qty || ''} ${escapeHtml(it.unit || '')}</span>`, pickBtn('item', idx, '', false))
+    ).join('')).join('');
+  }
+  itemsEl.innerHTML = html;
   function setOwnerBtn(btn, key) {
+    if (btn.dataset.naExists === '1') return; // үүссэн ажлыг энд солихгүй
     btn.dataset.naOwner = key || '';
     if (key) { btn.textContent = memberName(key); btn.style.color = 'var(--text)'; btn.style.borderStyle = 'solid'; btn.style.fontWeight = '600'; }
     else { btn.textContent = '+ Хүн сонгох'; btn.style.color = 'var(--muted)'; btn.style.borderStyle = 'dashed'; btn.style.fontWeight = '400'; }
@@ -4494,35 +4416,51 @@ async function sendNomaadPrepTasks(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) return;
   const modal = document.getElementById('nomaad-assign-modal');
-  // Аль хэдийн үүссэн ажлыг (data-na-exists) алгасна — давхар үүсгэхгүй.
-  const picks = [...modal.querySelectorAll('button.na-pick')]
-    .filter(b => b.dataset.naExists !== '1')
+  const btns = [...modal.querySelectorAll('button.na-pick')];
+  // 1) Чеклистийн ажил — үүссэнийг алгасна, бүгдийг үүсгэнэ (хүн заавал биш).
+  const prepPicks = btns.filter(b => b.dataset.naType === 'prep' && b.dataset.naExists !== '1')
     .map(b => ({ idx: Number(b.dataset.naItem), owner: b.dataset.naOwner || '' }));
-  if (!picks.length) { showToast('Шинээр үүсгэх ажил алга — бүгд аль хэдийн үүссэн байна.', 'warn', 3000); return; }
-  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
-  if (!(await showConfirm(`"${o.company}" арга хэмжээнд ${picks.length} шинэ бэлтгэл ажил үүсгэх үү? (хүн сонгоогүй нь хариуцагчгүй үлдэж, дараа хувиарлана)`, { okText: 'Тийм, үүсгэх' }))) return;
-  // Модалыг шууд хаана — бичилтийг арын сериал гинжээр хийнэ (UI гацуулахгүй).
+  // 2) Захиалгын бараа — зөвхөн хүн сонгосныг хүнээр бүлэглэж нэг ажил болгоно.
+  const byAssignee = {};
+  btns.filter(b => b.dataset.naType === 'item' && b.dataset.naOwner).forEach(b => {
+    const it = (o.items || [])[Number(b.dataset.naItem)];
+    if (it) (byAssignee[b.dataset.naOwner] = byAssignee[b.dataset.naOwner] || []).push(it.name);
+  });
+  const itemOwners = Object.keys(byAssignee);
+  if (!prepPicks.length && !itemOwners.length) { showToast('Шинээр үүсгэх ажил алга.', 'warn', 3000); return; }
+  if (!(await showConfirm(`"${o.company}" — ${prepPicks.length} чеклист ажил + ${itemOwners.length} барааны ажил үүсгэх үү? (хүн сонгоогүй чеклист хариуцагчгүй үлдэнэ)`, { okText: 'Тийм, үүсгэх' }))) return;
   modal.classList.remove('open');
+  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
   let n = 0, assigned = 0;
-  for (const p of picks) {
+  // Чеклист — зүйл бүрд нэг ажил
+  for (const p of prepPicks) {
     const c = NOMAAD_PREP_CHECKLIST[p.idx];
     if (!c) continue;
-    const ass = p.owner || '';  // сонгоогүй бол хариуцагчгүй — өөрт оноохгүй
+    const ass = p.owner || '';
     const t = {
-      id: uid(),
-      title: prepTaskTitle(c),
+      id: uid(), title: prepTaskTitle(c),
       desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDatePlain(o.date_start)}${c.deadline ? '\nЭцсийн хугацаа: ' + c.deadline : ''}${c.detail ? '\n\n' + c.detail : ''}`,
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
-      requires_photo: !!c.photo,
-      createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
+      requires_photo: !!c.photo, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
-    state.tasks.unshift(t);
-    saveTask(t);  // await ХИЙХГҮЙ — гинжид дараалуулна, арын дэвсгэрт хадгална
+    state.tasks.unshift(t); saveTask(t);
     if (p.owner) { pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ бэлтгэл ажил', body: t.title }); assigned++; }
     n++;
   }
+  // Захиалгын бараа — хүн тус бүрд нэг ажил
+  for (const ass of itemOwners) {
+    const t = {
+      id: uid(), title: `Захиалгын бараа бэлтгэх · ${o.quote_no}`,
+      desc: nomaadTaskDesc(o, byAssignee[ass]),
+      branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
+      requires_photo: true, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
+    };
+    state.tasks.unshift(t); saveTask(t);
+    pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title }); assigned++;
+    n++;
+  }
   render();
-  showToast(`${n} бэлтгэл ажил үүслээ (${assigned} хувиарласан). Сервэрт хадгалж байна…`, 'success', 3500);
+  showToast(`${n} ажил үүслээ (${assigned} хувиарласан). Сервэрт хадгалж байна…`, 'success', 3500);
 }
 
 /* ─── Гүйцэтгэл (Phase 1: объектив метрик) ─────────────────

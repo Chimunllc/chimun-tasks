@@ -4432,6 +4432,7 @@ async function sendNomaadPrepTasks(quoteNo) {
   modal.classList.remove('open');
   const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
   let n = 0, assigned = 0;
+  const created = []; // үүсгэсэн бүх ажил — доор зэрэгцээ (арын) бичнэ
   // Чеклист — зүйл бүрд нэг ажил
   for (const p of prepPicks) {
     const c = NOMAAD_PREP_CHECKLIST[p.idx];
@@ -4443,7 +4444,7 @@ async function sendNomaadPrepTasks(quoteNo) {
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: !!c.photo, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
-    state.tasks.unshift(t); saveTask(t, false, false, true); // skipLocal — доор нэг л удаа saveLocal
+    state.tasks.unshift(t); created.push(t);
     if (p.owner) { pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ бэлтгэл ажил', body: t.title }); assigned++; }
     n++;
   }
@@ -4455,13 +4456,24 @@ async function sendNomaadPrepTasks(quoteNo) {
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
       requires_photo: true, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
     };
-    state.tasks.unshift(t); saveTask(t, false, false, true); // skipLocal
+    state.tasks.unshift(t); created.push(t);
     pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ ажил', body: t.title }); assigned++;
     n++;
   }
-  saveLocal(); // бүх ажлыг нэг л удаа localStorage-д бичнэ (гацалт арилна)
+  saveLocal(); // локалд нэг л удаа бичнэ (шууд бэлэн)
   render();
   showToast(`${n} ажил үүслээ (${assigned} хувиарласан). Сервэрт хадгалж байна…`, 'success', 3500);
+  // ─── Сервэрт ЗЭРЭГЦЭЭ (арын) бичнэ ───
+  // Бүгд шинэ, давхцахгүй ID-тай append тул сериал гинж шаардлагагүй. Browser өөрөө
+  // ~6 concurrent-аар хязгаарладаг тул 30 ажил ~8 секундэд, UI гацуулахгүй бичигдэнэ.
+  // Сериал гинжээр нэг нэгээр бичих нь (~45с) гацалт үүсгэдэг байсныг арилгав.
+  if (state.config.apiUrl) {
+    created.forEach(t => {
+      postWrite(state.config.apiUrl, { action: 'upsert', task: taskToWire(t) })
+        .then(ok => { if (!ok) enqueueWrite({ kind: 'task', action: 'upsert', payload: t, ts: Date.now() }); })
+        .catch(() => enqueueWrite({ kind: 'task', action: 'upsert', payload: t, ts: Date.now() }));
+    });
+  }
 }
 
 /* ─── Гүйцэтгэл (Phase 1: объектив метрик) ─────────────────

@@ -1248,8 +1248,27 @@ function financeAsTask(r) {
     purpose: r.purpose || '',          // зарцуулалт тайлбар — мөрөнд харуулна
     requested_at: r.requested_at || '', // илгээсэн цаг (UB-аар форматлана)
     dept_branch: r.dept_branch || '',  // салбар (ИВЕНТ/КЕМП/ЗАХ) — салбараар бүлэглэхэд
+    category: r.category || '',        // ангилал (код+нэр) — үндсэн/дэд ангиллаар бүлэглэхэд
+    beneficiary: r.beneficiary || '',
     _isFinance: true, // marker
   };
+}
+// Ангилалын код задлах ("1400 Урлагийн..." эсвэл "1400" → {main:'1000', sub:'1400'})
+function finCatCodes(category) {
+  const m = String(category || '').match(/(\d{4})/);
+  const sub = m ? m[1] : '';
+  return { main: sub ? sub[0] + '000' : '', sub };
+}
+function finMainName(category) {
+  const { main } = finCatCodes(category);
+  const c = FINANCE_MAIN_CATEGORIES.find(x => x.code === main);
+  return c ? `${c.code} ${c.name}` : 'Ангилалгүй';
+}
+function finSubName(category) {
+  const { main, sub } = finCatCodes(category);
+  if (!sub) return 'Ангилалгүй';
+  const c = (FINANCE_SUB_CATEGORIES[main] || []).find(x => x.code === sub);
+  return c ? `${c.code} ${c.name}` : sub;
 }
 
 /* -------------------- ФИНАНСЫН ХҮСЭЛТ (Finance request) --------------------
@@ -1716,11 +1735,6 @@ function finBranchLabel(b) {
   if (/camp|кемп/.test(s)) return 'КЕМП';
   return 'ЗАХ'; // зах/хамт/shared/бусад → захиргаа
 }
-// Санхүүгийн хүсэлтийн богино лавлагаа (банкны гүйлгээний утгад + мөшгөхөд) — id-аас.
-function finRef(r) {
-  const raw = String((r && r.id) || '').replace(/[^a-z0-9]/gi, '');
-  return 'СХ-' + (raw.slice(-5).toUpperCase() || '00000');
-}
 // Текст хуулах helper (clipboard API + fallback).
 async function copyText(text, okMsg = 'Хуулагдлаа') {
   text = String(text || '');
@@ -1839,7 +1853,11 @@ function openFinanceModal(id = null) {
     (function setupFinCopy() {
       const block = document.getElementById('f-copy-block');
       const preview = document.getElementById('f-memo-preview');
-      const memo = `${finRef(t)} ${t.purpose || ''}`.trim();
+      // Гүйлгээний утга = дэд ангилал + зорилго (эс бөгөөс зорилго/хүлээн авагч)
+      const sub = finSubName(t.category);
+      const memo = (sub && sub !== 'Ангилалгүй')
+        ? `${sub}${t.purpose ? ' · ' + t.purpose : ''}`.trim()
+        : (t.purpose || t.beneficiary || '').trim();
       const acct = String(t.account_number || '').trim();
       if (block) block.style.display = (acct || t.purpose) ? 'flex' : 'none';
       if (preview) preview.textContent = memo ? `Утга: ${memo}` : '';
@@ -2898,23 +2916,39 @@ function renderTaskList() {
     attachNomaadHandlers();
     return;
   } else if (state.view === 'finance') {
-    // Санхүүгийн хүсэлтийг САЛБАРААР (ИВЕНТ/КЕМП/ЗАХ) бүлэглэж харуулна.
+    // Санхүүгийн хүсэлт: САЛБАР → ҮНДСЭН АНГИЛАЛ → ДЭД АНГИЛАЛ гэсэн 3 түвшинд бүлэглэнэ.
     if (tableHead) tableHead.style.display = '';
     if (toolbar) toolbar.style.display = '';
     const list = filteredTasks();
     wrap.innerHTML = '';
     if (!list.length) { wrap.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml(); return; }
+    const sumOf = (arr) => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const groupBy = (arr, keyFn) => arr.reduce((o, t) => { const k = keyFn(t); (o[k] = o[k] || []).push(t); return o; }, {});
+    const hdrEl = (label, count, sum, level) => {
+      const styles = [
+        'padding:10px 12px;margin:14px 0 2px;background:var(--panel-hover);border-radius:8px;font-weight:800;font-size:14px;',       // 0: салбар
+        'padding:7px 12px;margin:8px 0 1px 10px;font-weight:700;font-size:12px;color:var(--text);border-left:3px solid var(--border-strong);',  // 1: үндсэн
+        'padding:4px 12px;margin:4px 0 1px 22px;font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;', // 2: дэд
+      ];
+      const d = document.createElement('div');
+      d.style.cssText = 'display:flex;justify-content:space-between;align-items:center;' + styles[level];
+      d.innerHTML = `<span>${escapeHtml(label)} <span style="color:var(--muted);font-weight:400;">(${count})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sum)}</span>`;
+      return d;
+    };
     const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ'];
-    const byBr = {};
-    list.forEach(t => { const b = finBranchLabel(t.dept_branch); (byBr[b] = byBr[b] || []).push(t); });
+    const byBr = groupBy(list, t => finBranchLabel(t.dept_branch));
     const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
     brs.forEach(b => {
-      const sum = byBr[b].reduce((s, t) => s + (Number(t.amount) || 0), 0);
-      const hdr = document.createElement('div');
-      hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:9px 12px;margin:12px 0 2px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:13px;';
-      hdr.innerHTML = `<span>${escapeHtml(b)} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sum)}</span>`;
-      wrap.appendChild(hdr);
-      byBr[b].forEach(t => wrap.appendChild(renderRow(t)));
+      wrap.appendChild(hdrEl(b, byBr[b].length, sumOf(byBr[b]), 0));
+      const byMain = groupBy(byBr[b], t => finMainName(t.category));
+      Object.keys(byMain).sort().forEach(main => {
+        wrap.appendChild(hdrEl(main, byMain[main].length, sumOf(byMain[main]), 1));
+        const bySub = groupBy(byMain[main], t => finSubName(t.category));
+        Object.keys(bySub).sort().forEach(sub => {
+          wrap.appendChild(hdrEl(sub, bySub[sub].length, sumOf(bySub[sub]), 2));
+          bySub[sub].forEach(t => wrap.appendChild(renderRow(t)));
+        });
+      });
     });
     return;
   } else {

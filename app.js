@@ -1380,6 +1380,7 @@ const FINANCE_BRANCHES = [
   { code: 'КЕМП',  name: 'Номаад кемп' },
   { code: 'ЗАХ',   name: 'Захиргаа' },
   { code: 'ХАМТ',  name: 'Хамтын зардал' },
+  { code: 'ХХК',   name: 'Чимун ХХК (хөрөнгө)' },
 ];
 
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
@@ -1739,13 +1740,14 @@ function closeFinanceModal() {
 function finBranchLabel(b) {
   const s = String(b || '').toLowerCase();
   if (/event|ивент/.test(s)) return 'ИВЕНТ';
-  if (/camp|кемп/.test(s)) return 'КЕМП';
+  if (/camp|кемп|номаад|nomaad/.test(s)) return 'КЕМП';
+  if (/ххк|хөрөнг|chimun|компани/.test(s)) return 'Чимун ХХК'; // компанийн хөрөнгө (CAPEX)
   return 'ЗАХ'; // зах/хамт/shared/бусад → захиргаа
 }
 // Гүйлгээний утгад зориулсан салбарын нэр (банкны утганд бичих хэлбэр)
 function finMemoBranch(deptBranch) {
   const b = finBranchLabel(deptBranch);
-  return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : 'Захиргаа';
+  return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : b === 'Чимун ХХК' ? 'Чимун' : 'Захиргаа';
 }
 // Текст хуулах helper (clipboard API + fallback).
 async function copyText(text, okMsg = 'Хуулагдлаа') {
@@ -2962,7 +2964,7 @@ function renderTaskList() {
     if (!list.length) { const e = document.createElement('div'); e.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml(); wrap.appendChild(e); return; }
     const groupBy = (arr, keyFn) => arr.reduce((o, t) => { const k = keyFn(t); (o[k] = o[k] || []).push(t); return o; }, {});
     const sumOf = (arr) => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ'];
+    const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
     const byBr = groupBy(list, t => finBranchLabel(t.dept_branch));
     const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
     brs.forEach(b => {
@@ -5096,7 +5098,7 @@ function renderFinanceReport(wrap) {
     d.addEventListener('click', () => openFinanceModal(t.id));  // дарвал модал нээгдэж ангилал/салбар засна
     return d;
   };
-  const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ'];
+  const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
   const byBr = groupBy(monthList, t => finBranchLabel(t.dept_branch));
   const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
   brs.forEach(b => {

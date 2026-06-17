@@ -5081,6 +5081,13 @@ function renderFinanceReport(wrap) {
   const sumOf = arr => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const monthList = base.filter(t => (t.requested_at || '').slice(0, 7) === month);
 
+  // ── Excel татах ──
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px;';
+  bar.innerHTML = `<button id="fin-export-xls" class="btn" style="padding:6px 12px;font-size:12.5px;">📥 Excel татах</button>`;
+  wrap.appendChild(bar);
+  bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
+
   // ── Толгой: сар сонгох + нийт дүн ──
   const head = document.createElement('div');
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
@@ -5178,6 +5185,69 @@ function renderFinanceReport(wrap) {
       if (cr) cr.style.transform = `rotate(${now ? -90 : 0}deg)`;
     });
   });
+}
+
+/* Санхүүгийн тайланг бодит Excel (SpreadsheetML .xls) болгож татна — гадны сангүй.
+   Одоогийн сар + салбар ленз + төлөвийн шүүлтийг дагана. */
+function exportFinanceReportExcel() {
+  const month = state.finReportMonth || new Date().toISOString().slice(0, 7);
+  const lens = effectiveBranchLens();
+  const wantBr = finLensBranch(lens);
+  let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
+  if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
+  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
+  const stPred = { all: () => true, pending: t => (t.decision || 'pending') === 'pending', approved: t => t.decision === 'approved', rejected: t => t.decision === 'rejected' }[state.finReportStatus || 'all'] || (() => true);
+  let rows = base.filter(t => (t.requested_at || '').slice(0, 7) === month && stPred(t));
+  if (!rows.length) { showToast('Татах гүйлгээ алга', 'warn'); return; }
+  const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
+  const brIdx = b => { const i = BR_ORDER.indexOf(b); return i < 0 ? 99 : i; };
+  rows.sort((a, b) => {
+    const ba = finEffBranch(a), bb = finEffBranch(b);
+    if (ba !== bb) return brIdx(ba) - brIdx(bb) || ba.localeCompare(bb);
+    const ca = String(a.category || ''), cb = String(b.category || '');
+    if (ca !== cb) return ca.localeCompare(cb);
+    return (a.requested_at || '').localeCompare(b.requested_at || '');
+  });
+  const stMn = t => t.decision === 'approved' ? 'Батлагдсан' : t.decision === 'rejected' ? 'Татгалзсан' : t.decision === 'deferred' ? 'Хойшлуулсан' : 'Хүлээгдэж буй';
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const C = (v, type, style) => `<Cell${style ? ` ss:StyleID="${style}"` : ''}><Data ss:Type="${type}">${esc(v)}</Data></Cell>`;
+  const headers = ['Огноо', 'Салбар', 'Үндсэн ангилал', 'Дэд ангилал', 'Хүлээн авагч', 'Гүйлгээний утга', 'Дүн', 'Төлөв'];
+  let bodyXml = '';
+  rows.forEach(t => {
+    bodyXml += '<Row>'
+      + C((t.requested_at || '').slice(0, 10), 'String')
+      + C(finBranchDisplay(finEffBranch(t)), 'String')
+      + C(finMainName(t.category), 'String')
+      + C(finSubName(t.category), 'String')
+      + C(t.beneficiary || memberName(t.createdBy) || '', 'String')
+      + C(t.purpose || '', 'String')
+      + C(Number(t.amount) || 0, 'Number', 'money')
+      + C(stMn(t), 'String')
+      + '</Row>';
+  });
+  const total = rows.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const totalRow = '<Row>' + C('', 'String').repeat(5) + C('НИЙТ', 'String', 'grp') + C(total, 'Number', 'grpMoney') + C('', 'String') + '</Row>';
+  const headRow = '<Row>' + headers.map(h => C(h, 'String', 'hdr')).join('') + '</Row>';
+  const cols = [80, 110, 180, 190, 130, 280, 100, 110].map(w => `<Column ss:Width="${w}"/>`).join('');
+  const sheetName = `Тайлан ${month}`.replace(/[\\\/\?\*\[\]:]/g, '-').slice(0, 31);
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'
+    + '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'
+    + '<Styles>'
+    + '<Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4338CA" ss:Pattern="Solid"/></Style>'
+    + '<Style ss:ID="money"><NumberFormat ss:Format="#,##0&quot;₮&quot;"/></Style>'
+    + '<Style ss:ID="grp"><Font ss:Bold="1"/></Style>'
+    + '<Style ss:ID="grpMoney"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0&quot;₮&quot;"/></Style>'
+    + '</Styles>\n'
+    + `<Worksheet ss:Name="${esc(sheetName)}"><Table>${cols}${headRow}${bodyXml}${totalRow}</Table></Worksheet>\n`
+    + '</Workbook>';
+  const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const lensLabel = lens === 'm-event' ? 'M-Event' : lens === 'camp' ? 'Camp' : lens === 'capital' ? 'Хөрөнгө' : 'Бүгд';
+  const a = document.createElement('a');
+  a.href = url; a.download = `Чимун-санхүү-${lensLabel}-${month}.xls`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`${rows.length} гүйлгээ Excel-д татагдлаа`, 'success');
 }
 
 function renderDashboard() {

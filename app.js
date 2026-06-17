@@ -1707,6 +1707,25 @@ function closeFinanceModal() {
   state._fPaymentPending = null;
 }
 
+// Санхүүгийн хүсэлтийн богино лавлагаа (банкны гүйлгээний утгад + мөшгөхөд) — id-аас.
+function finRef(r) {
+  const raw = String((r && r.id) || '').replace(/[^a-z0-9]/gi, '');
+  return 'СХ-' + (raw.slice(-5).toUpperCase() || '00000');
+}
+// Текст хуулах helper (clipboard API + fallback).
+async function copyText(text, okMsg = 'Хуулагдлаа') {
+  text = String(text || '');
+  try { await navigator.clipboard.writeText(text); showToast(okMsg, 'success', 1500); return; }
+  catch (e) { /* fallback доор */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand('copy'); ta.remove();
+    showToast(okMsg, 'success', 1500);
+  } catch (e2) { showToast('Хуулж чадсангүй', 'error'); }
+}
+
 function openFinanceModal(id = null) {
   const t = id ? state.financeRequests.find(x => x.id === id) : null;
   state.editingId = id || null;
@@ -1807,6 +1826,19 @@ function openFinanceModal(id = null) {
     document.getElementById('f-bank').value = t.bank || '';
     document.getElementById('f-account').value = t.account_number || '';
     document.getElementById('f-purpose').value = t.purpose || '';
+    // Гүйлгээ хийхэд хуулах товчнууд (нягтлан банкны апп руу) — данс + "дугаар зорилго" утга
+    (function setupFinCopy() {
+      const block = document.getElementById('f-copy-block');
+      const preview = document.getElementById('f-memo-preview');
+      const memo = `${finRef(t)} ${t.purpose || ''}`.trim();
+      const acct = String(t.account_number || '').trim();
+      if (block) block.style.display = (acct || t.purpose) ? 'flex' : 'none';
+      if (preview) preview.textContent = memo ? `Утга: ${memo}` : '';
+      const ba = document.getElementById('f-copy-account');
+      if (ba) ba.onclick = () => acct ? copyText(acct, 'Данс хуулагдлаа') : showToast('Данс хоосон', 'warn', 1500);
+      const bm = document.getElementById('f-copy-memo');
+      if (bm) bm.onclick = () => copyText(memo, 'Гүйлгээний утга хуулагдлаа');
+    })();
     document.getElementById('f-justification').value = t.justification || '';
     document.getElementById('f-due').value = t.due_date || '';
     // category талбарт "1400 Урлагийн үйлчилгээ" эсвэл хуучин "1400" эсвэл хуучин чөлөөт текст байж болно

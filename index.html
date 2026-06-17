@@ -550,6 +550,13 @@
     <label>Дансны дугаар</label>
     <input id="f-account" inputmode="numeric" placeholder="5045123456" />
 
+    <!-- Гүйлгээ хийхэд хуулах (нягтлан банкны апп руу) -->
+    <div id="f-copy-block" style="display:none;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <button type="button" id="f-copy-account" class="btn" style="font-size:12px;padding:7px 12px;">📋 Данс хуулах</button>
+      <button type="button" id="f-copy-memo" class="btn" style="font-size:12px;padding:7px 12px;">📋 Гүйлгээний утга хуулах</button>
+    </div>
+    <div id="f-memo-preview" style="font-size:11px;color:var(--muted);margin-top:5px;"></div>
+
     <label>Зэрэглэл</label>
     <select id="f-priority">
       <option value="med">🟡 Энгийн</option>

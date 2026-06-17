@@ -1630,13 +1630,14 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     justification: justification || '',
     due_date: dueDate || '',
     category: category || '',       // Нягтлан гараар сонгох
-    // dept_branch: илгээгчийн TEAM салбараас автомат — m-event → ИВЕНТ, camp → КЕМП, бусад → ЗАХ
-    dept_branch: deptBranch || (function(){
+    // dept_branch: АЖИЛТАН өөрөө илгээвэл АВТО өөрийн салбар (форм сонголтыг үл хэрэгсэнэ).
+    // Нягтлан/CEO өмнөөс оруулбал формоор сонгосон салбар (эс бөгөөс өөрийн default).
+    dept_branch: (function(){
       const me = (TEAM || []).find(m => personKey(m) === owner || (m.email && m.email === owner));
-      const primary = me?.branches?.[0];
-      if (primary === 'm-event') return 'ИВЕНТ';
-      if (primary === 'camp')    return 'КЕМП';
-      return 'ЗАХ';
+      const auto = (bs) => (bs || []).includes('m-event') ? 'ИВЕНТ' : (bs || []).includes('camp') ? 'КЕМП' : 'ЗАХ';
+      const isAcct = me && (/нягтлан/i.test(me.role || '') || (Number(me.level) || 0) >= 100);
+      if (me && !isAcct) return auto(me.branches);   // ажилтан → өөрийн салбар (автомат)
+      return deptBranch || auto(me && me.branches);  // нягтлан/CEO → сонгосон, эс бөгөөс default
     })(),
     frequency: frequency || 'Нэг удаагийн',
     priority: priority || 'med',

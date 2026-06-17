@@ -2557,10 +2557,10 @@ function filteredTasks() {
     if (!state.isCEO && state.me) {
       list = list.filter(r => r.assignee === state.me || r.createdBy === state.me);
     }
-    // Салбар ленз: сонгосон салбар + компанийн хөрөнгө (Чимун ХХК) үргэлж хамт.
-    // 'capital' ленз сонговол зөвхөн хөрөнгө үлдэнэ.
+    // Салбар ленз: сонгосон салбарыг л харуулна. Хөрөнгө (CAPEX) нь тусдаа '🏗 Хөрөнгө'
+    // лензтэй тул M-Event/Camp дотор НЭГТГЭХГҮЙ — эс бөгөөс салбарын нийт зардал хөөрөгдөнө.
     const fWB = finLensBranch(effectiveBranchLens());
-    if (fWB) list = list.filter(t => finEffBranch(t) === fWB || finEffBranch(t) === 'Чимун ХХК');
+    if (fWB) list = list.filter(t => finEffBranch(t) === fWB);
   }
   else if (state.view === 'overdue') list = list.filter(t => t.status === 'open' && t.due && t.due < today);
   else if (state.view === 'today') list = list.filter(t => t.due === today);
@@ -5095,9 +5095,9 @@ function renderFinanceReport(wrap) {
   const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
   if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
-  // Салбар лензээр шүүхэд компанийн хөрөнгө (Чимун ХХК / 6000) ҮРГЭЛЖ харагдана —
-  // энэ нь салбарын бус, компанийн хэмжээний зардал тул лензэд нуугдахгүй.
-  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr || finEffBranch(t) === 'Чимун ХХК');
+  // Салбар лензээр шүүхэд зөвхөн тухайн салбар. Хөрөнгө (CAPEX) нь '🏗 Хөрөнгө' тусдаа
+  // лензтэй тул салбар дотор нэгтгэхгүй — салбарын нийт зардал зөв (хөөрөгдөхгүй) харагдана.
+  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
 
   // Сар сонгох nav
   const nav = document.createElement('div');

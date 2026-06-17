@@ -1246,6 +1246,7 @@ function financeAsTask(r) {
     created: r.requested_at ? new Date(r.requested_at).getTime() : 0,
     purpose: r.purpose || '',          // зарцуулалт тайлбар — мөрөнд харуулна
     requested_at: r.requested_at || '', // илгээсэн цаг (UB-аар форматлана)
+    dept_branch: r.dept_branch || '',  // салбар (ИВЕНТ/КЕМП/ЗАХ) — салбараар бүлэглэхэд
     _isFinance: true, // marker
   };
 }
@@ -2844,6 +2845,26 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderNomaadOrders();
     attachNomaadHandlers();
+    return;
+  } else if (state.view === 'finance') {
+    // Санхүүгийн хүсэлтийг САЛБАРААР (ИВЕНТ/КЕМП/ЗАХ) бүлэглэж харуулна.
+    if (tableHead) tableHead.style.display = '';
+    if (toolbar) toolbar.style.display = '';
+    const list = filteredTasks();
+    wrap.innerHTML = '';
+    if (!list.length) { wrap.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml(); return; }
+    const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ'];
+    const byBr = {};
+    list.forEach(t => { const b = (String(t.dept_branch || '').toUpperCase()) || 'БУСАД'; (byBr[b] = byBr[b] || []).push(t); });
+    const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
+    brs.forEach(b => {
+      const sum = byBr[b].reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:9px 12px;margin:12px 0 2px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:13px;';
+      hdr.innerHTML = `<span>${escapeHtml(b)} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sum)}</span>`;
+      wrap.appendChild(hdr);
+      byBr[b].forEach(t => wrap.appendChild(renderRow(t)));
+    });
     return;
   } else {
     if (tableHead) tableHead.style.display = '';

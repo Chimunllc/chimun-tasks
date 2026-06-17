@@ -1708,6 +1708,13 @@ function closeFinanceModal() {
   state._fPaymentPending = null;
 }
 
+// Салбарын нэрийг 3 цэвэр ангилалд хөрвүүлнэ (хуучин дата: m-event/CAMP/ХАМТ/SHARED г.м зөрүүтэй).
+function finBranchLabel(b) {
+  const s = String(b || '').toLowerCase();
+  if (/event|ивент/.test(s)) return 'ИВЕНТ';
+  if (/camp|кемп/.test(s)) return 'КЕМП';
+  return 'ЗАХ'; // зах/хамт/shared/бусад → захиргаа
+}
 // Санхүүгийн хүсэлтийн богино лавлагаа (банкны гүйлгээний утгад + мөшгөхөд) — id-аас.
 function finRef(r) {
   const raw = String((r && r.id) || '').replace(/[^a-z0-9]/gi, '');
@@ -2855,7 +2862,7 @@ function renderTaskList() {
     if (!list.length) { wrap.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml(); return; }
     const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ'];
     const byBr = {};
-    list.forEach(t => { const b = (String(t.dept_branch || '').toUpperCase()) || 'БУСАД'; (byBr[b] = byBr[b] || []).push(t); });
+    list.forEach(t => { const b = finBranchLabel(t.dept_branch); (byBr[b] = byBr[b] || []).push(t); });
     const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
     brs.forEach(b => {
       const sum = byBr[b].reduce((s, t) => s + (Number(t.amount) || 0), 0);

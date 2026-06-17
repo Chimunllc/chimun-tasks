@@ -50,6 +50,13 @@
 - **Хөрөнгийн зардал (ангилал 6000) → ҮРГЭЛЖ "Чимун ХХК"** тайлан/жагсаалт/утганд (`finEffBranch`) — хадгалсан салбараас үл хамаарна (салбарын OPEX-оос хасна). Салбар сонгогчид "Чимун ХХК (хөрөнгө)" код `ХХК` бий.
 - 2026-06-16: хуучин 140 хүсэлтийн ангилал (утгаар) + 47 хүсэлтийн салбар (дүрмээр) bulk засав.
 
+### Санхүү салбар-засах эрх (self-service, 2026-06-17)
+- Тусгай ажилтнуудад **бүх санхүүгийн гүйлгээг ХАРАХ + зөвхөн САЛБАРЫГ нь засах** эрх (бусад бүх зүйл read-only — дүн/ангилал/батлах/төлөх/устгах БОЛОХГҮЙ).
+- **Эрх олгох газар:** Ажилтны удирдлага → хүн бүрийн доор **"🏦 Санхүү: салбар засах эрх"** чагт (зөвхөн CEO харна/тааруулна). `saveFinanceBranchPerm(key,name,grant)`.
+- **Хадгалалт:** Master Sheet хөндөхгүйгээр **`fin_categories` tab-д** `type='fin_branch_perm'`, `code=personKey`(утас), `active=1/0` мөрөөр. `loadFinanceCategories` нь ангилалтай хамт уншиж `state.finBranchPerms` (Set) болгоно. POST нь fin-categories endpoint руу (upsert by code).
+- **Шалгалт:** `isFinanceBranchEditor(key)` = CEO эсвэл finBranchPerms.has(key). Тайлан (`renderFinanceReport`) editor-т бүх гүйлгээ; модал (`openFinanceModal`) editor-т `f-accountant-only` хэсгийг харуулж зөвхөн `f-dept-branch`-ийг идэвхжүүлж авто хадгална (ангилал disabled).
+- 2026-06-17: О.Түвдэндаржаа, И.Алтансүх, Н.Анужин, Г.Сайнжаргал, Б.Дэлгэрбат-д урьдчилан олгов (CEO аль хэдийн эрхтэй).
+
 ### Санхүүгийн ангилал — Sheet-ээс татна (2026-06-16)
 - Үндсэн/дэд ангилал (`FINANCE_MAIN_CATEGORIES`/`FINANCE_SUB_CATEGORIES`) одоо **`let`** — `loadFinanceCategories()` нь **n8n `/webhook/fin-categories`** (workflow id `syQBuTvHE9H4Gssk`, "CHIMUN · Finance Categories API")-оос татаж орлоно. Татаж чадахгүй бол кодын default → localStorage кэш fallback (апп эвдрэхгүй). Эхлэлд `loadFinanceCategories()` дуудна.
 - **Хадгалалт:** Чимун_Tasks_DB (`1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc`) дотор **`fin_categories` tab**. Багана: `type` (main/sub), `code`, `name`, `parent` (дэдийн үндсэн код), `active` (0=нуух). 64 мөр seed хийсэн.

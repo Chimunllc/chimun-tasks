@@ -1486,16 +1486,20 @@ async function loadFinanceCategories() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const rows = Array.isArray(data) ? data : (data.categories || []);
-    const mains = [], subs = {};
+    const mains = [], subs = {}, perms = new Set();
     rows.forEach(rw => {
       const active = String(rw.active == null ? '1' : rw.active).trim().toLowerCase();
       if (active === '0' || active === 'false' || active === 'үгүй') return;
       const code = String(rw.code || '').trim();
+      if (!code) return;
+      // Санхүү салбар-засах эрх — мөн энэ tab-д type='fin_branch_perm', code=personKey-ээр хадгална.
+      if (rw.type === 'fin_branch_perm') { perms.add(code); return; }
       const name = String(rw.name || '').trim();
-      if (!code || !name) return;
+      if (!name) return;
       if (rw.type === 'main') mains.push({ code, name });
       else { const p = String(rw.parent || '').trim(); (subs[p] = subs[p] || []).push({ code, name }); }
     });
+    state.finBranchPerms = perms;
     if (!mains.length) return; // хоосон ирвэл default-аа хадгална
     mains.sort((a, b) => a.code.localeCompare(b.code));
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
@@ -1507,6 +1511,33 @@ async function loadFinanceCategories() {
     // Сүүлд амжилттай татсан кэш байвал түүгээр (default дээр давхарлана)
     try { const c = JSON.parse(localStorage.getItem('finCategories') || 'null'); if (c && c.mains && c.mains.length) { FINANCE_MAIN_CATEGORIES = c.mains; FINANCE_SUB_CATEGORIES = c.subs; } } catch (_) {}
     console.warn('loadFinanceCategories fail', e);
+  }
+}
+
+/* Санхүүгийн "салбар засах" эрх — CEO эсвэл тусгайлан зөвшөөрсөн ажилтан.
+   Эдгээр хүн бүх санхүүгийн гүйлгээг ХАРАХ + зөвхөн САЛБАРЫГ нь засна (бусад нь read-only). */
+function isFinanceBranchEditor(key = state.me) {
+  if (state.isCEO) return true;
+  return !!(key && state.finBranchPerms && state.finBranchPerms.has(key));
+}
+/* CEO ажилтанд салбар-засах эрх олгох/хураах. fin_categories tab-д type='fin_branch_perm'
+   мөрөөр (code=personKey, active=1/0) хадгална — Master Sheet schema хөндөхгүй. */
+async function saveFinanceBranchPerm(key, name, grant) {
+  if (!state.finBranchPerms) state.finBranchPerms = new Set();
+  if (grant) state.finBranchPerms.add(key); else state.finBranchPerms.delete(key);
+  const url = state.config.finCategoriesUrl;
+  if (!url) { showToast('Endpoint тохируулагдаагүй', 'error'); return false; }
+  try {
+    const r = await fetchWithTimeout(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: N8N_API_KEY, rows: [{ type: 'fin_branch_perm', code: key, name: name || '', parent: '', active: grant ? '1' : '0' }] }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast(grant ? `${name}: санхүүгийн салбар засах эрх олгов` : `${name}: эрх хураав`, 'success', 2500);
+    return true;
+  } catch (e) {
+    showToast('Хадгалахад алдаа: ' + e.message, 'error', 4000);
+    return false;
   }
 }
 
@@ -1947,25 +1978,36 @@ function openFinanceModal(id = null) {
     document.getElementById('f-dept-branch').value = t.dept_branch || '';
     // Ангилал/салбар + Stage 3/4 — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
     const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
-    // CEO/нягтлан — үндсэн/дэд ангилал ба салбарыг ХААГДСАН хүсэлт дээр ч засаж АВТО ХАДГАЛНА.
-    if (isAccountantOrCEOview) {
+    // Санхүү салбар-засагч (CEO/нягтлан биш) — ЗӨВХӨН салбарыг засна, ангилал read-only.
+    const branchOnly = !isAccountantOrCEOview && isFinanceBranchEditor();
+    if (isAccountantOrCEOview || branchOnly) {
       const mainSel = document.getElementById('f-main-category');
       const subSel = document.getElementById('f-category');
       const brSel = document.getElementById('f-dept-branch');
-      if (mainSel) mainSel.disabled = false;
-      if (brSel) brSel.disabled = false;
-      if (subSel) subSel.onchange = () => {
-        if (!subSel.value) return;
-        t.category = subSel.value; saveFinanceRequest(t);
-        showToast('Ангилал хадгалагдлаа', 'success', 1400);
-      };
-      if (brSel) brSel.onchange = () => {
-        t.dept_branch = brSel.value; saveFinanceRequest(t);
-        showToast('Салбар хадгалагдлаа', 'success', 1400);
-      };
+      // Салбар — хоёуланд засагдана (АВТО ХАДГАЛНА).
+      if (brSel) {
+        brSel.disabled = false;
+        brSel.onchange = () => {
+          t.dept_branch = brSel.value; saveFinanceRequest(t);
+          showToast('Салбар хадгалагдлаа', 'success', 1400);
+        };
+      }
+      if (isAccountantOrCEOview) {
+        // CEO/нягтлан — ангилал бас засна.
+        if (mainSel) mainSel.disabled = false;
+        if (subSel) subSel.onchange = () => {
+          if (!subSel.value) return;
+          t.category = subSel.value; saveFinanceRequest(t);
+          showToast('Ангилал хадгалагдлаа', 'success', 1400);
+        };
+      } else {
+        // branchOnly — ангилал зөвхөн харах (засагдахгүй).
+        if (mainSel) { mainSel.disabled = true; mainSel.onchange = null; }
+        if (subSel) { subSel.disabled = true; subSel.onchange = null; }
+      }
     }
     const acctSectionView = document.getElementById('f-accountant-only');
-    if (acctSectionView) acctSectionView.style.display = isAccountantOrCEOview ? '' : 'none';
+    if (acctSectionView) acctSectionView.style.display = (isAccountantOrCEOview || branchOnly) ? '' : 'none';
     // Хаах шатанд (зөвшөөрсөн + гүйлгээ хийгдсэн + хаагдаагүй) хүсэлт гаргагч ч баримтын хэсгийг
     // хараад баримт хавсаргаж хаах боломжтой байх ёстой.
     const atCloseStage = (t.decision === 'approved' && t.executed_at && t.status !== 'done');
@@ -5056,7 +5098,8 @@ function renderFinanceReport(wrap) {
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
-  if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
+  // CEO + санхүү салбар-засагч → бүх гүйлгээ. Бусад → зөвхөн өөрийн хүсэлт.
+  if (!isFinanceBranchEditor() && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
   // Салбар лензээр шүүхэд зөвхөн тухайн салбар. Хөрөнгө (CAPEX) нь '🏗 Хөрөнгө' тусдаа
   // лензтэй тул салбар дотор нэгтгэхгүй — салбарын нийт зардал зөв (хөөрөгдөхгүй) харагдана.
   if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
@@ -6359,6 +6402,7 @@ function renderStaffList() {
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+          ${state.isCEO && isActive ? `<label class="staff-finperm" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} style="margin:0;width:auto;" />🏦 Санхүү: салбар засах эрх</label>` : ''}
         </div>
         <span class="staff-status status-${statusCls}">${statusLabel}</span>
         ${isSelf ? '' : (
@@ -6380,6 +6424,13 @@ function renderStaffList() {
   ).join('');
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
+  });
+  // Санхүү салбар-засах эрх — CEO тус бүр дээр асаах/унтраах.
+  listEl.querySelectorAll('[data-finperm]').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      saveFinanceBranchPerm(cb.dataset.finperm, cb.dataset.finpermName, cb.checked);
+    });
   });
   listEl.querySelectorAll('.staff-action').forEach(btn => {
     btn.addEventListener('click', async () => {

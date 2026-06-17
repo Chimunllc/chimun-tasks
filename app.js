@@ -1786,6 +1786,14 @@ function finEffBranch(t) {
   if (finCatCodes(t && t.category).main === '6000') return 'Чимун ХХК';
   return finBranchLabel(t && t.dept_branch);
 }
+// Салбар ленз → санхүүгийн finEffBranch шүүлтийн утга (null = бүгд)
+function finLensBranch(lens) {
+  return lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : lens === 'capital' ? 'Чимун ХХК' : null;
+}
+// Тайлан/жагсаалтад салбарын бүлгийн харагдах нэр (хөрөнгийг тодотгоно)
+function finBranchDisplay(b) {
+  return b === 'Чимун ХХК' ? '🏗 Хөрөнгө (CAPEX)' : b;
+}
 // Текст хуулах helper (clipboard API + fallback).
 async function copyText(text, okMsg = 'Хуулагдлаа') {
   text = String(text || '');
@@ -2484,7 +2492,7 @@ function taskBranch(t) {
    - Нэг салбартай → зөвхөн өөрийн салбар (түгжээтэй — бусад салбар харахгүй)
    - Салбаргүй → ['all'] */
 function allowedLenses() {
-  if (state.isCEO) return ['all', 'm-event', 'camp'];
+  if (state.isCEO) return ['all', 'm-event', 'camp', 'capital'];
   const m = findMember(state.me);
   const bs = (m && Array.isArray(m.branches)) ? m.branches.filter(b => b === 'm-event' || b === 'camp') : [];
   if (bs.length >= 2) return ['all', 'm-event', 'camp'];
@@ -2549,6 +2557,10 @@ function filteredTasks() {
     if (!state.isCEO && state.me) {
       list = list.filter(r => r.assignee === state.me || r.createdBy === state.me);
     }
+    // Салбар ленз: сонгосон салбар + компанийн хөрөнгө (Чимун ХХК) үргэлж хамт.
+    // 'capital' ленз сонговол зөвхөн хөрөнгө үлдэнэ.
+    const fWB = finLensBranch(effectiveBranchLens());
+    if (fWB) list = list.filter(t => finEffBranch(t) === fWB || finEffBranch(t) === 'Чимун ХХК');
   }
   else if (state.view === 'overdue') list = list.filter(t => t.status === 'open' && t.due && t.due < today);
   else if (state.view === 'today') list = list.filter(t => t.due === today);
@@ -2786,7 +2798,7 @@ function render() {
   const blSel = document.getElementById('branch-lens');
   if (blSel) {
     const allowed = allowedLenses();
-    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp' };
+    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp', capital: '🏗 Хөрөнгө' };
     const key = allowed.join(',');
     if (blSel._builtFor !== key) {
       blSel.innerHTML = allowed.map(v => `<option value="${v}">${labels[v] || v}</option>`).join('');
@@ -3008,7 +3020,7 @@ function renderTaskList() {
     brs.forEach(b => {
       const hdr = document.createElement('div');
       hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:9px 12px;margin:12px 0 2px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:13px;';
-      hdr.innerHTML = `<span>${escapeHtml(b)} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sumOf(byBr[b]))}</span>`;
+      hdr.innerHTML = `<span>${escapeHtml(finBranchDisplay(b))} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sumOf(byBr[b]))}</span>`;
       wrap.appendChild(hdr);
       byBr[b].forEach(t => wrap.appendChild(renderRow(t)));
     });
@@ -5080,7 +5092,7 @@ function renderFinanceReport(wrap) {
   const month = state.finReportMonth;
   // Хамрах хүрээ: бүх санхүүгийн хүсэлт (статус филтрээс хамаарахгүй), хандалт + салбар лензээр
   const lens = effectiveBranchLens();
-  const wantBr = lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : null;
+  const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
   if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
   // Салбар лензээр шүүхэд компанийн хөрөнгө (Чимун ХХК / 6000) ҮРГЭЛЖ харагдана —
@@ -5142,7 +5154,7 @@ function renderFinanceReport(wrap) {
   const byBr = groupBy(monthList, t => finEffBranch(t));
   const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
   brs.forEach(b => {
-    wrap.appendChild(hdr(b, byBr[b].length, sumOf(byBr[b]), 0));
+    wrap.appendChild(hdr(finBranchDisplay(b), byBr[b].length, sumOf(byBr[b]), 0));
     const byMain = groupBy(byBr[b], t => finMainName(t.category));
     Object.keys(byMain).sort().forEach(main => {
       wrap.appendChild(hdr(main, byMain[main].length, sumOf(byMain[main]), 1));
@@ -5158,7 +5170,7 @@ function renderFinanceReport(wrap) {
 function renderDashboard() {
   // ─── Глобал салбар ленз (толгойн сонгогч) — доорх БҮХ тоо үүгээр шүүгдэнэ. Нэгдсэн (shared) хоёуланд. ───
   const dashBranch = effectiveBranchLens();
-  const wantFinBr = dashBranch === 'm-event' ? 'ИВЕНТ' : (dashBranch === 'camp' ? 'КЕМП' : null);
+  const wantFinBr = finLensBranch(dashBranch);
   const memberInDashBranch = (m) => dashBranch === 'all'
     || (Array.isArray(m.branches) && (m.branches.includes(dashBranch) || m.branches.includes('shared')))
     || !(m.branches && m.branches.length);

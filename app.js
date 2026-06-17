@@ -72,6 +72,7 @@ const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-order
 const DEFAULT_PRODUCTS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-products';
 // 360° гүйцэтгэлийн үнэлгээ — GET { evaluations:[...] }, POST нэг үнэлгээ (upsert id-аар).
 const DEFAULT_EVAL_URL = 'https://chimunllc.app.n8n.cloud/webhook/evaluations';
+const DEFAULT_FIN_CATEGORIES_URL = 'https://chimunllc.app.n8n.cloud/webhook/fin-categories';
 // NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
 const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
@@ -165,6 +166,7 @@ const state = {
       nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
       hourlyRatingUrl:  localStorage.getItem('hourlyRatingUrl')  || DEFAULT_HOURLY_RATING_URL || '',
       evalUrl:          localStorage.getItem('evalUrl')          || DEFAULT_EVAL_URL          || '',
+      finCategoriesUrl: localStorage.getItem('finCategoriesUrl') || DEFAULT_FIN_CATEGORIES_URL || '',
     };
   })(),
   // Кэшээс шууд ачаална (3 сек хүлээхгүй) — ард нь loadOrders/loadProductsCatalog шинэчилнэ.
@@ -1288,7 +1290,8 @@ function getFinanceExecutorEmail() {
    CEO-аас 2026-05-18-нд баталсан стандарт. МНББС-тэй нийцсэн.
    Canonical Sheet: Чимун_ХХК_Зардлын_Ангилал_Стандарт.xlsx
    Дэлгэрэнгүйг гүйлгээний утга дээр чөлөөт текстээр бичнэ. */
-const FINANCE_MAIN_CATEGORIES = [
+// let — Sheet-ээс татвал орлоно (доорх нь default/fallback). loadFinanceCategories() харна уу.
+let FINANCE_MAIN_CATEGORIES = [
   { code: '1000', name: 'Үйл ажиллагаа — Шууд' },
   { code: '2000', name: 'Үйл ажиллагаа — Тогтмол' },
   { code: '3000', name: 'Захиргаа' },
@@ -1299,7 +1302,7 @@ const FINANCE_MAIN_CATEGORIES = [
   { code: '9000', name: 'Бусад ба тусгай' },
 ];
 
-const FINANCE_SUB_CATEGORIES = {
+let FINANCE_SUB_CATEGORIES = {
   '1000': [
     { code: '1100', name: 'Гадны тоног түрээс' },
     { code: '1200', name: 'Угсралт, буулгалт, тээвэр' },
@@ -1477,6 +1480,39 @@ async function saveFinanceRequest(r, deleted = false) {
   const ok = await postWrite(state.config.financeUrl, { action: deleted ? 'delete' : 'upsert', request: wire });
   if (ok) { flushPendingWrites(); }
   else { enqueueWrite({ kind: 'finance', action: deleted ? 'delete' : 'upsert', payload: r, ts: Date.now() }); }
+}
+
+// Санхүүгийн ангилалыг Google Sheet (fin_categories tab)-аас татна. Амжилтгүй бол default/кэш хэвээр.
+async function loadFinanceCategories() {
+  const url = state.config.finCategoriesUrl;
+  if (!url) return;
+  try {
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const rows = Array.isArray(data) ? data : (data.categories || []);
+    const mains = [], subs = {};
+    rows.forEach(rw => {
+      const active = String(rw.active == null ? '1' : rw.active).trim().toLowerCase();
+      if (active === '0' || active === 'false' || active === 'үгүй') return;
+      const code = String(rw.code || '').trim();
+      const name = String(rw.name || '').trim();
+      if (!code || !name) return;
+      if (rw.type === 'main') mains.push({ code, name });
+      else { const p = String(rw.parent || '').trim(); (subs[p] = subs[p] || []).push({ code, name }); }
+    });
+    if (!mains.length) return; // хоосон ирвэл default-аа хадгална
+    mains.sort((a, b) => a.code.localeCompare(b.code));
+    Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
+    FINANCE_MAIN_CATEGORIES = mains;
+    FINANCE_SUB_CATEGORIES = subs;
+    try { localStorage.setItem('finCategories', JSON.stringify({ mains, subs })); } catch (e) {}
+    if (typeof render === 'function') render();
+  } catch (e) {
+    // Сүүлд амжилттай татсан кэш байвал түүгээр (default дээр давхарлана)
+    try { const c = JSON.parse(localStorage.getItem('finCategories') || 'null'); if (c && c.mains && c.mains.length) { FINANCE_MAIN_CATEGORIES = c.mains; FINANCE_SUB_CATEGORIES = c.subs; } } catch (_) {}
+    console.warn('loadFinanceCategories fail', e);
+  }
 }
 
 async function loadFinanceRequests() {
@@ -8739,6 +8775,7 @@ async function bootApp() {
   loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
   loadProductsCatalog();   // M-Event барааны каталог (CEO)
   loadEvaluations();   // 360° гүйцэтгэлийн үнэлгээ (бүх ажилтан)
+  loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   state._initialLoading = false;

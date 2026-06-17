@@ -5026,44 +5026,6 @@ function attachProductsHandlers() {
    - Хоцорсон таскын тоо
    Бүх chart нь inline SVG — гадны library хэрэггүй.
    CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
-/* Ангилал сонгогч (single-pick-modal-ийг дахин ашиглана). Дэд ангилал "код нэр" буцаана. */
-function openCategoryPicker(currentCat = '') {
-  const modal = document.getElementById('single-pick-modal');
-  const listEl = document.getElementById('sp-list');
-  const searchEl = document.getElementById('sp-search');
-  document.getElementById('sp-title').textContent = 'Ангилал сонгох';
-  const curCode = finCatCodes(currentCat).sub;
-  let finish;
-  function renderList() {
-    const q = (searchEl.value || '').toLowerCase().trim();
-    listEl.innerHTML = FINANCE_MAIN_CATEGORIES.map(mc => {
-      const subs = (FINANCE_SUB_CATEGORIES[mc.code] || []).filter(s => !q
-        || (`${s.code} ${s.name}`).toLowerCase().includes(q) || mc.name.toLowerCase().includes(q));
-      if (!subs.length) return '';
-      return `<div class="mp-group"><div style="padding:9px 12px;margin-top:6px;background:var(--panel-hover);border:1px solid var(--border);border-radius:var(--r-md);font-weight:700;font-size:13px;">${mc.code} ${escapeHtml(mc.name)}</div>`
-        + subs.map(s => `<button type="button" class="cat-pick" data-cat="${s.code} ${escapeHtml(s.name)}" style="width:100%;text-align:left;border:none;background:${s.code === curCode ? 'var(--panel-hover)' : 'transparent'};padding:9px 16px;cursor:pointer;font-size:13px;color:var(--text);">${s.code} ${escapeHtml(s.name)}${s.code === curCode ? ' <span style="color:var(--ok);">✓</span>' : ''}</button>`).join('')
-        + `</div>`;
-    }).join('') || '<div style="padding:14px;color:var(--muted);">Олдсонгүй</div>';
-    listEl.querySelectorAll('.cat-pick').forEach(b => b.onclick = () => finish(b.dataset.cat));
-  }
-  searchEl.value = ''; searchEl.oninput = renderList; renderList();
-  modal.classList.add('open');
-  return new Promise((resolve) => {
-    finish = (v) => { modal.classList.remove('open'); searchEl.oninput = null; resolve(v); };
-    document.getElementById('sp-cancel').onclick = () => finish(null);
-  });
-}
-async function recategorize(reqId) {
-  const r = (state.financeRequests || []).find(x => x.id === reqId);
-  if (!r) return;
-  const picked = await openCategoryPicker(r.category);
-  if (picked === null) return;
-  r.category = picked;
-  render();
-  try { await saveFinanceRequest(r); showToast('Ангилал шинэчлэгдлээ', 'success', 1500); }
-  catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
-}
-
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */
 function renderFinanceReport(wrap) {
   const curMonth = new Date().toISOString().slice(0, 7);
@@ -5118,16 +5080,13 @@ function renderFinanceReport(wrap) {
     return d;
   };
   const stMark = { approved: '✓', rejected: '✗', deferred: '🕐' };
-  const canRecat = state.isCEO || state.me === getFinanceExecutorEmail();
   const line = (t) => {
     const d = document.createElement('div');
-    d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 12px 5px 34px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;';
+    d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 12px 6px 34px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;';
     const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '');
     const purp = t.purpose ? ' · ' + escapeHtml(t.purpose) : '';
-    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${stMark[t.decision] || '⏳'} ${who}<span style="color:var(--muted);">${purp}</span></span><span style="display:flex;gap:8px;align-items:center;white-space:nowrap;"><b>${fmtMoney(Number(t.amount) || 0)}</b>${canRecat ? `<button class="recat-btn" data-recat="${escapeHtml(t.id)}" title="Ангилал солих" style="border:1px solid var(--border-strong);background:var(--panel);border-radius:6px;padding:2px 7px;cursor:pointer;font-size:12px;">✎</button>` : ''}</span>`;
-    d.addEventListener('click', (e) => { if (e.target.closest('.recat-btn')) return; openFinanceModal(t.id); });
-    const rb = d.querySelector('.recat-btn');
-    if (rb) rb.addEventListener('click', (e) => { e.stopPropagation(); recategorize(t.id); });
+    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${stMark[t.decision] || '⏳'} ${who}<span style="color:var(--muted);">${purp}</span></span><b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
+    d.addEventListener('click', () => openFinanceModal(t.id));  // дарвал модал нээгдэж ангилал/салбар засна
     return d;
   };
   const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ'];

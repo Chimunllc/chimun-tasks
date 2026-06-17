@@ -1892,6 +1892,23 @@ function openFinanceModal(id = null) {
     document.getElementById('f-dept-branch').value = t.dept_branch || '';
     // Ангилал/салбар + Stage 3/4 — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
     const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
+    // CEO/нягтлан — үндсэн/дэд ангилал ба салбарыг ХААГДСАН хүсэлт дээр ч засаж АВТО ХАДГАЛНА.
+    if (isAccountantOrCEOview) {
+      const mainSel = document.getElementById('f-main-category');
+      const subSel = document.getElementById('f-category');
+      const brSel = document.getElementById('f-dept-branch');
+      if (mainSel) mainSel.disabled = false;
+      if (brSel) brSel.disabled = false;
+      if (subSel) subSel.onchange = () => {
+        if (!subSel.value) return;
+        t.category = subSel.value; saveFinanceRequest(t);
+        showToast('Ангилал хадгалагдлаа', 'success', 1400);
+      };
+      if (brSel) brSel.onchange = () => {
+        t.dept_branch = brSel.value; saveFinanceRequest(t);
+        showToast('Салбар хадгалагдлаа', 'success', 1400);
+      };
+    }
     const acctSectionView = document.getElementById('f-accountant-only');
     if (acctSectionView) acctSectionView.style.display = isAccountantOrCEOview ? '' : 'none';
     // Хаах шатанд (зөвшөөрсөн + гүйлгээ хийгдсэн + хаагдаагүй) хүсэлт гаргагч ч баримтын хэсгийг

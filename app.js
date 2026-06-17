@@ -141,6 +141,7 @@ const state = {
   financeRequests: [],   // Финансын хүсэлт — тусдаа Sheet-аас sync хийгдэнэ
   projectsByBranch: {},  // { 'm-event': [...], 'camp': [...], ... }
   branch: localStorage.getItem('branch') || 'm-event',
+  branchLens: localStorage.getItem('branchLens') || '',  // '' = автомат (хэрэглэгчийн салбар) | all | m-event | camp
   view: 'mine',          // mine | delegated | finance | all | overdue | today | done | project:<id>
   statusFilter: 'all',   // all | open | done
   financeSort: 'smart',  // smart | date | amount | requester (зөвхөн Санхүү view)
@@ -2391,6 +2392,20 @@ function taskBranch(t) {
   // as M Event so existing data stays visible.
   return t.branch || 'm-event';
 }
+/* Глобал салбар ленз: '' (автомат) бол хэрэглэгчийн салбараас тогтооно (нэг салбартай бол
+   түүгээр, CEO/хоёр салбартай бол 'all'). Сонгосон бол хадгалсан утга. */
+function effectiveBranchLens() {
+  if (state.branchLens) return state.branchLens;
+  const m = findMember(state.me);
+  const bs = (m && Array.isArray(m.branches)) ? m.branches : [];
+  if (bs.length === 1 && (bs[0] === 'm-event' || bs[0] === 'camp')) return bs[0];
+  return 'all';
+}
+function setBranchLens(v) {
+  state.branchLens = v;
+  try { localStorage.setItem('branchLens', v); } catch (e) {}
+  render();
+}
 // "Гарсан" статустай ажилтны email-ийг хурдан хайхад зориулсан Set.
 // Active task жагсаалтаас тэдгээрийн оноосон ажлуудыг хасахад ашиглана —
 // гэхдээ "Дууссан" болон "Илгээсэн ажил" view-д үлдээж history алдагдахгүй.
@@ -2463,6 +2478,12 @@ function filteredTasks() {
   if (state.view !== 'done' && state.view !== 'delegated' && state.view !== 'finance' && !state.view.startsWith('staff:')) {
     const left = leftStaffEmails();
     if (left.size) list = list.filter(t => !left.has(String(t.assignee || '').toLowerCase()));
+  }
+  // ─── Глобал салбар ленз — тухайн салбар + нэгдсэн (shared) ажлыг харуулна ───
+  // (Санхүү нь dept_branch-аар тусдаа бүлэглэгддэг тул энд хасахгүй.)
+  const lens = effectiveBranchLens();
+  if (lens !== 'all' && state.view !== 'finance') {
+    list = list.filter(t => { const b = taskBranch(t); return b === lens || b === 'shared'; });
   }
   // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
   if (state.view === 'finance') {
@@ -2664,6 +2685,8 @@ function render() {
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
+  const blSel = document.getElementById('branch-lens');
+  if (blSel) blSel.value = effectiveBranchLens();
   renderSidebar();
   renderTitle();
   syncFilterPills();
@@ -2792,7 +2815,6 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderDashboard();
     // Dashboard action товчнууд
-    wrap.querySelectorAll('[data-dash-branch]').forEach(b => b.addEventListener('click', () => { state.dashBranch = b.dataset.dashBranch; render(); }));
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
@@ -4935,11 +4957,13 @@ function attachProductsHandlers() {
    Бүх chart нь inline SVG — гадны library хэрэггүй.
    CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
 function renderDashboard() {
-  // ─── Салбарын шүүлтүүр (Бүгд / M-Event / NOMAAD Camp) — доорх БҮХ тоо үүгээр шүүгдэнэ ───
-  const dashBranch = state.dashBranch || 'all';
+  // ─── Глобал салбар ленз (толгойн сонгогч) — доорх БҮХ тоо үүгээр шүүгдэнэ. Нэгдсэн (shared) хоёуланд. ───
+  const dashBranch = effectiveBranchLens();
   const wantFinBr = dashBranch === 'm-event' ? 'ИВЕНТ' : (dashBranch === 'camp' ? 'КЕМП' : null);
-  const memberInDashBranch = (m) => dashBranch === 'all' || (Array.isArray(m.branches) && m.branches.includes(dashBranch));
-  const tasks = (state.tasks || []).filter(t => dashBranch === 'all' || taskBranch(t) === dashBranch);
+  const memberInDashBranch = (m) => dashBranch === 'all'
+    || (Array.isArray(m.branches) && (m.branches.includes(dashBranch) || m.branches.includes('shared')))
+    || !(m.branches && m.branches.length);
+  const tasks = (state.tasks || []).filter(t => dashBranch === 'all' || taskBranch(t) === dashBranch || taskBranch(t) === 'shared');
   const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
     && (dashBranch === 'all' || finBranchLabel(r.dept_branch) === wantFinBr));
   const today = todayStr();
@@ -5086,10 +5110,6 @@ function renderDashboard() {
 
   return `
     <div class="dashboard">
-      <div class="dash-branch-toggle" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
-        ${[['all', 'Бүгд'], ['m-event', 'M-Event'], ['camp', 'NOMAAD Camp']].map(([v, l]) =>
-          `<button class="btn${dashBranch === v ? ' btn-primary' : ''}" data-dash-branch="${v}" style="padding:6px 16px;font-size:13px;">${l}</button>`).join('')}
-      </div>
       <div class="dashboard-actions">
         <button class="btn" id="dash-export-csv">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -8073,6 +8093,9 @@ function initEvents() {
     toggleTheme();
     updateThemeIcon();
   });
+
+  // ─── Глобал салбар сонгогч (толгой) ───
+  document.getElementById('branch-lens')?.addEventListener('change', (e) => setBranchLens(e.target.value));
 
   // ─── ⌘K / Ctrl+K — command palette ───
   document.addEventListener('keydown', (e) => {

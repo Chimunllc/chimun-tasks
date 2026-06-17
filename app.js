@@ -2792,6 +2792,7 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderDashboard();
     // Dashboard action товчнууд
+    wrap.querySelectorAll('[data-dash-branch]').forEach(b => b.addEventListener('click', () => { state.dashBranch = b.dataset.dashBranch; render(); }));
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
@@ -4934,8 +4935,13 @@ function attachProductsHandlers() {
    Бүх chart нь inline SVG — гадны library хэрэггүй.
    CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
 function renderDashboard() {
-  const tasks = state.tasks || [];
-  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted');
+  // ─── Салбарын шүүлтүүр (Бүгд / M-Event / NOMAAD Camp) — доорх БҮХ тоо үүгээр шүүгдэнэ ───
+  const dashBranch = state.dashBranch || 'all';
+  const wantFinBr = dashBranch === 'm-event' ? 'ИВЕНТ' : (dashBranch === 'camp' ? 'КЕМП' : null);
+  const memberInDashBranch = (m) => dashBranch === 'all' || (Array.isArray(m.branches) && m.branches.includes(dashBranch));
+  const tasks = (state.tasks || []).filter(t => dashBranch === 'all' || taskBranch(t) === dashBranch);
+  const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
+    && (dashBranch === 'all' || finBranchLabel(r.dept_branch) === wantFinBr));
   const today = todayStr();
   const isCEO = !!state.isCEO;
   const me = state.me;
@@ -4968,7 +4974,7 @@ function renderDashboard() {
   // 2) Per-staff active load — БҮХ идэвхтэй ажилтныг 0-ээс эхлүүлнэ (ачаалалгүй/чөлөөтэй
   //    хүмүүс ч харагдана — CEO хэнд ажил оноох боломжтойг шууд харна).
   const staffLoad = {};
-  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй').forEach(m => { staffLoad[personKey(m)] = 0; });
+  TEAM.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && memberInDashBranch(m)).forEach(m => { staffLoad[personKey(m)] = 0; });
   tasks.filter(t => t.status !== 'done' && t.assignee).forEach(t => {
     staffLoad[t.assignee] = (staffLoad[t.assignee] || 0) + 1;
   });
@@ -5080,6 +5086,10 @@ function renderDashboard() {
 
   return `
     <div class="dashboard">
+      <div class="dash-branch-toggle" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+        ${[['all', 'Бүгд'], ['m-event', 'M-Event'], ['camp', 'NOMAAD Camp']].map(([v, l]) =>
+          `<button class="btn${dashBranch === v ? ' btn-primary' : ''}" data-dash-branch="${v}" style="padding:6px 16px;font-size:13px;">${l}</button>`).join('')}
+      </div>
       <div class="dashboard-actions">
         <button class="btn" id="dash-export-csv">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -6008,6 +6018,17 @@ function openStaffManagement() {
   renderStaffList();
 }
 
+// Ажилтны салбарын шошго (branches[]-д суурилсан — Тоймын toggle-тэй нийцнэ).
+function staffBranchLabel(m) {
+  if (m.worker_type === 'daily') return 'Цагийн ажилтан';
+  const bs = (Array.isArray(m.branches) ? m.branches.join(' ') : String(m.group || m.branch || '')).toLowerCase();
+  const hasE = /m-event|event|ивент|эвент/.test(bs);
+  const hasC = /camp|кемп|номаад|nomaad/.test(bs);
+  if (hasE && hasC) return 'Нэгдсэн';
+  if (hasE) return 'M-Event';
+  if (hasC) return 'NOMAAD Camp';
+  return 'Нэгдсэн';
+}
 function renderStaffList() {
   const listEl = document.getElementById('staff-list');
   const q = (document.getElementById('staff-search')?.value || '').toLowerCase().trim();
@@ -6025,7 +6046,7 @@ function renderStaffList() {
     listEl.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;">Ажилтан олдсонгүй</div>';
     return;
   }
-  listEl.innerHTML = filtered.map(m => {
+  const rowHtml = (m) => {
     const status = m.status || 'идэвхтэй';
     const isActive = status === 'идэвхтэй';
     const isPending = status === 'хүлээж буй';
@@ -6049,7 +6070,16 @@ function renderStaffList() {
         )}
       </div>
     `;
-  }).join('');
+  };
+  // Салбараар бүлэглэх: M-Event → NOMAAD Camp → Нэгдсэн → Цагийн ажилтан
+  const groups = {};
+  filtered.forEach(m => { const g = staffBranchLabel(m); (groups[g] = groups[g] || []).push(m); });
+  const order = ['M-Event', 'NOMAAD Camp', 'Нэгдсэн', 'Цагийн ажилтан'];
+  const gkeys = [...order.filter(g => groups[g]), ...Object.keys(groups).filter(g => !order.includes(g)).sort()];
+  listEl.innerHTML = gkeys.map(g =>
+    `<div class="staff-group-head" style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:14px 4px 4px;">${escapeHtml(g)} <span style="color:var(--text-soft);">(${groups[g].length})</span></div>`
+    + groups[g].map(rowHtml).join('')
+  ).join('');
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
   });

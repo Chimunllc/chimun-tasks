@@ -2392,16 +2392,27 @@ function taskBranch(t) {
   // as M Event so existing data stays visible.
   return t.branch || 'm-event';
 }
-/* Глобал салбар ленз: '' (автомат) бол хэрэглэгчийн салбараас тогтооно (нэг салбартай бол
-   түүгээр, CEO/хоёр салбартай бол 'all'). Сонгосон бол хадгалсан утга. */
-function effectiveBranchLens() {
-  if (state.branchLens) return state.branchLens;
+/* Хэрэглэгч ямар салбарын лензийг ХАРЖ болох вэ:
+   - CEO эсвэл хоёр салбартай → ['all','m-event','camp'] (бүгдийг, солих эрхтэй)
+   - Нэг салбартай → зөвхөн өөрийн салбар (түгжээтэй — бусад салбар харахгүй)
+   - Салбаргүй → ['all'] */
+function allowedLenses() {
+  if (state.isCEO) return ['all', 'm-event', 'camp'];
   const m = findMember(state.me);
-  const bs = (m && Array.isArray(m.branches)) ? m.branches : [];
-  if (bs.length === 1 && (bs[0] === 'm-event' || bs[0] === 'camp')) return bs[0];
-  return 'all';
+  const bs = (m && Array.isArray(m.branches)) ? m.branches.filter(b => b === 'm-event' || b === 'camp') : [];
+  if (bs.length >= 2) return ['all', 'm-event', 'camp'];
+  if (bs.length === 1) return [bs[0]];
+  return ['all'];
+}
+/* Идэвхтэй ленз — зөвшөөрөгдсөнд хязгаарлана. Сонгосон утга зөвшөөрөгдөөгүй бол
+   нэг салбартай хүнд → түүний салбар, бусдад → 'all'. */
+function effectiveBranchLens() {
+  const allowed = allowedLenses();
+  if (state.branchLens && allowed.includes(state.branchLens)) return state.branchLens;
+  return allowed.length === 1 ? allowed[0] : 'all';
 }
 function setBranchLens(v) {
+  if (!allowedLenses().includes(v)) return; // зөвшөөрөгдөөгүй салбар руу шилжихгүй
   state.branchLens = v;
   try { localStorage.setItem('branchLens', v); } catch (e) {}
   render();
@@ -2686,7 +2697,17 @@ function render() {
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
   const blSel = document.getElementById('branch-lens');
-  if (blSel) blSel.value = effectiveBranchLens();
+  if (blSel) {
+    const allowed = allowedLenses();
+    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp' };
+    const key = allowed.join(',');
+    if (blSel._builtFor !== key) {
+      blSel.innerHTML = allowed.map(v => `<option value="${v}">${labels[v] || v}</option>`).join('');
+      blSel._builtFor = key;
+    }
+    blSel.value = effectiveBranchLens();
+    blSel.style.display = allowed.length <= 1 ? 'none' : '';  // нэг л салбартай хүнд сонгогч хэрэггүй
+  }
   renderSidebar();
   renderTitle();
   syncFilterPills();

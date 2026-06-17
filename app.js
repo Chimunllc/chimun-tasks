@@ -4059,6 +4059,12 @@ async function assignNomaadItemInline(quoteNo, itemName) {
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
   const income = Number(o.income_amount) || 0;
+  // Үлдэгдэл = гэрээний дүн − хүлээн авсан орлого (Эцсийн гэрээний дүн байвал тэрийг, эс бөгөөс Нийт дүн)
+  const contractTotal = Number(o.final_amount) || Number(o.grand_total) || 0;
+  const balance = contractTotal - income;
+  const balanceHtml = balance > 0
+    ? `<div style="font-weight:700;color:var(--warn);font-size:13px;">Үлдэгдэл: ${fmtMoney(balance)}</div>`
+    : `<div style="font-weight:700;color:var(--ok);font-size:13px;">✓ Бүрэн төлөгдсөн</div>`;
   const days = nomaadDaysLeft(o.date_start);
   const asgTasks = nomaadOrderTasks(o.quote_no);
   const asgDone  = asgTasks.filter(t => t.status === 'done').length;
@@ -4085,10 +4091,14 @@ function nomaadCardHtml(o) {
   const incomeArea = income > 0
     ? `<div style="text-align:right;">
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
+         ${balanceHtml}
          <div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>
          <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''} · <button class="btn" data-nomaad-income="${q}" style="padding:2px 8px;font-size:10px;">Засах</button></div>
        </div>`
-    : `<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>`;
+    : `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+         ${balanceHtml}
+         <button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>
+       </div>`;
   return `<div class="nomaad-card${open ? ' expanded' : ''}" data-nomaad="${q}">
     <div class="nomaad-card-head" data-nomaad-toggle="${q}">
       <div class="nomaad-card-main">
@@ -4098,7 +4108,7 @@ function nomaadCardHtml(o) {
       </div>
       <div class="nomaad-card-right">
         ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
-        ${income > 0 ? '<span class="nomaad-paid">✓</span>' : ''}
+        ${balance > 0 ? `<span title="Үлдэгдэл" style="color:var(--warn);font-weight:700;font-size:12px;">Үлд ${fmtMoney(balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓</span>'}
         <span class="nomaad-card-total">${fmtMoney(o.grand_total || 0)}</span>
         <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>

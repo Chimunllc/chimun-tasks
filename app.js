@@ -1293,6 +1293,7 @@ function getFinanceExecutorEmail() {
 // let — Sheet-ээс татвал орлоно (доорх нь default/fallback). loadFinanceCategories() харна уу.
 let FINANCE_MAIN_CATEGORIES = [
   { code: '1000', name: 'Үйл ажиллагаа — Шууд' },
+  { code: '2000', name: 'Тогтмол зардал' },
   { code: '3000', name: 'Захиргаа' },
   { code: '4000', name: 'Маркетинг' },
   { code: '5000', name: 'Санхүү ба татвар' },
@@ -1311,13 +1312,17 @@ let FINANCE_SUB_CATEGORIES = {
     { code: '1600', name: 'Ажилтны хоол, халамж' },
     { code: '1700', name: 'Тоног төхөөрөмжийн засвар, сэлбэг' },
     { code: '1800', name: 'Шатахуун, түлш (бензин, газ)' },
-    { code: '1900', name: 'Бусад тогтмол' },
+    { code: '1900', name: 'Бусад шууд зардал' },
+  ],
+  '2000': [
+    { code: '2100', name: 'Түрээс (агуулах, оффис)' },
+    { code: '2200', name: 'Цахилгаан, ус, дулаан' },
+    { code: '2300', name: 'Утас, интернэт' },
+    { code: '2400', name: 'Онлайн програм, апп төлбөр' },
+    { code: '2900', name: 'Бусад тогтмол зардал' },
   ],
   '3000': [
     { code: '3100', name: 'Оффисын хангамж' },
-    { code: '3200', name: 'Агуулах, оффис түрээс' },
-    { code: '3300', name: 'Онлайн програм хангамж' },
-    { code: '3400', name: 'Утас, интернэт (захиргааны)' },
     { code: '3500', name: 'Хууль зүйн зардал' },
     { code: '3600', name: 'Сургалт, семинар, багийн уур амьсгал' },
     { code: '3700', name: 'Бусад захиргаа' },
@@ -5078,7 +5083,9 @@ function renderFinanceReport(wrap) {
   const wantBr = lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : null;
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
   if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
-  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
+  // Салбар лензээр шүүхэд компанийн хөрөнгө (Чимун ХХК / 6000) ҮРГЭЛЖ харагдана —
+  // энэ нь салбарын бус, компанийн хэмжээний зардал тул лензэд нуугдахгүй.
+  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr || finEffBranch(t) === 'Чимун ХХК');
 
   // Сар сонгох nav
   const nav = document.createElement('div');

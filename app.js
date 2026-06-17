@@ -2997,33 +2997,11 @@ function renderTaskList() {
     attachNomaadHandlers();
     return;
   } else if (state.view === 'finance') {
-    if (tableHead) tableHead.style.display = '';
-    if (toolbar) toolbar.style.display = '';
-    const list = filteredTasks();
+    // Зөвхөн Тайлан — салбар/ангилалаар цэгцтэй задаргаа (жагсаалт нэгтгэгдсэн).
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = '';
-    // ─── Жагсаалт / Тайлан toggle ───
-    const finView = state.finView || 'list';
-    const toggle = document.createElement('div');
-    toggle.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;';
-    toggle.innerHTML = [['list', '📋 Жагсаалт'], ['report', '📊 Тайлан']].map(([v, l]) =>
-      `<button class="btn${finView === v ? ' btn-primary' : ''}" data-fin-view="${v}" style="padding:6px 16px;font-size:13px;">${l}</button>`).join('');
-    wrap.appendChild(toggle);
-    toggle.querySelectorAll('[data-fin-view]').forEach(b => b.addEventListener('click', () => { state.finView = b.dataset.finView; render(); }));
-    if (finView === 'report') { renderFinanceReport(wrap); return; }
-    // ─── ЖАГСААЛТ — зөвхөн салбараар бүлэглэнэ (ажлын дараалал цэвэрхэн) ───
-    if (!list.length) { const e = document.createElement('div'); e.innerHTML = state._initialLoading ? listSkeletonHtml() : emptyStateHtml(); wrap.appendChild(e); return; }
-    const groupBy = (arr, keyFn) => arr.reduce((o, t) => { const k = keyFn(t); (o[k] = o[k] || []).push(t); return o; }, {});
-    const sumOf = (arr) => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-    const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
-    const byBr = groupBy(list, t => finEffBranch(t));
-    const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
-    brs.forEach(b => {
-      const hdr = document.createElement('div');
-      hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:9px 12px;margin:12px 0 2px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:13px;';
-      hdr.innerHTML = `<span>${escapeHtml(finBranchDisplay(b))} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sumOf(byBr[b]))}</span>`;
-      wrap.appendChild(hdr);
-      byBr[b].forEach(t => wrap.appendChild(renderRow(t)));
-    });
+    renderFinanceReport(wrap);
     return;
   } else {
     if (tableHead) tableHead.style.display = '';
@@ -5090,7 +5068,7 @@ function renderFinanceReport(wrap) {
   const curMonth = new Date().toISOString().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
   const month = state.finReportMonth;
-  // Хамрах хүрээ: бүх санхүүгийн хүсэлт (статус филтрээс хамаарахгүй), хандалт + салбар лензээр
+  // Хамрах хүрээ: бүх санхүүгийн хүсэлт, хандалт + салбар лензээр
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
@@ -5099,12 +5077,19 @@ function renderFinanceReport(wrap) {
   // лензтэй тул салбар дотор нэгтгэхгүй — салбарын нийт зардал зөв (хөөрөгдөхгүй) харагдана.
   if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
 
-  // Сар сонгох nav
-  const nav = document.createElement('div');
-  nav.style.cssText = 'display:flex;align-items:center;gap:10px;justify-content:center;margin:6px 0 12px;';
-  nav.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:4px 14px;">‹</button><b style="font-size:15px;">${month}</b><button class="btn" data-fin-month="1" style="padding:4px 14px;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
-  wrap.appendChild(nav);
-  nav.querySelectorAll('[data-fin-month]').forEach(b => b.addEventListener('click', () => {
+  const groupBy = (arr, k) => arr.reduce((o, t) => { const x = k(t); (o[x] = o[x] || []).push(t); return o; }, {});
+  const sumOf = arr => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const monthList = base.filter(t => (t.requested_at || '').slice(0, 7) === month);
+
+  // ── Толгой: сар сонгох + нийт дүн ──
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
+  head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
+    + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month}</div>`
+    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList))}</b></div></div>`
+    + `<button class="btn" data-fin-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
+  wrap.appendChild(head);
+  head.querySelectorAll('[data-fin-month]').forEach(b => b.addEventListener('click', () => {
     const [y, m] = state.finReportMonth.split('-').map(Number);
     const d = new Date(y, m - 1 + Number(b.dataset.finMonth), 1);
     const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -5112,57 +5097,85 @@ function renderFinanceReport(wrap) {
     state.finReportMonth = nm; render();
   }));
 
-  const monthList = base.filter(t => (t.requested_at || '').slice(0, 7) === month);
-  if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:24px;'; e.textContent = 'Энэ сард санхүүгийн хүсэлт алга.'; wrap.appendChild(e); return; }
+  if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард санхүүгийн хүсэлт алга.'; wrap.appendChild(e); return; }
 
-  // Статусын товч дүн
-  const sumBy = (pred) => monthList.filter(pred).reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  const summ = document.createElement('div');
-  summ.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;';
-  summ.innerHTML = [
-    ['Батлагдсан/төлсөн', sumBy(t => t.decision === 'approved'), 'var(--ok)'],
-    ['Хүлээгдэж буй', sumBy(t => (t.decision || 'pending') === 'pending'), 'var(--warn)'],
-    ['Татгалзсан', sumBy(t => t.decision === 'rejected'), 'var(--danger)'],
-  ].map(([l, v, c]) => `<div style="flex:1;min-width:120px;background:var(--panel-hover);border-radius:8px;padding:8px 12px;"><div style="font-size:11px;color:var(--muted);">${l}</div><div style="font-weight:800;font-size:15px;color:${c};">${fmtMoney(v)}</div></div>`).join('');
-  wrap.appendChild(summ);
+  // ── Төлөвийн шүүлтийн чип (дарж шүүнэ) ──
+  const stDefs = [
+    ['all', 'Бүгд', () => true, 'var(--text)'],
+    ['pending', '⏳ Хүлээгдэж буй', t => (t.decision || 'pending') === 'pending', 'var(--warn)'],
+    ['approved', '✓ Батлагдсан', t => t.decision === 'approved', 'var(--ok)'],
+    ['rejected', '✗ Татгалзсан', t => t.decision === 'rejected', 'var(--danger)'],
+  ];
+  const stFilter = state.finReportStatus || 'all';
+  const chips = document.createElement('div');
+  chips.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;';
+  chips.innerHTML = stDefs.map(([k, l, pred, c]) => {
+    const items = monthList.filter(pred);
+    const on = stFilter === k;
+    return `<button data-fin-st="${k}" style="cursor:pointer;text-align:left;padding:9px 12px;border-radius:10px;border:1.5px solid ${on ? c : 'var(--border)'};background:${on ? 'var(--panel-hover)' : 'var(--panel)'};transition:all .12s;">`
+      + `<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l} · ${items.length}</div>`
+      + `<div style="font-weight:800;font-size:14px;color:${c};">${fmtMoney(sumOf(items))}</div></button>`;
+  }).join('');
+  wrap.appendChild(chips);
+  chips.querySelectorAll('[data-fin-st]').forEach(b => b.addEventListener('click', () => { state.finReportStatus = b.dataset.finSt; render(); }));
 
-  // Задаргаа: Салбар → Үндсэн → Дэд → мөр
-  const groupBy = (arr, k) => arr.reduce((o, t) => { const x = k(t); (o[x] = o[x] || []).push(t); return o; }, {});
-  const sumOf = arr => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  const hdr = (label, count, sum, level) => {
-    const st = [
-      'padding:10px 12px;margin:14px 0 2px;background:var(--panel-hover);border-radius:8px;font-weight:800;font-size:14px;',
-      'padding:7px 12px;margin:8px 0 1px 10px;font-weight:700;font-size:12px;border-left:3px solid var(--border-strong);',
-      'padding:4px 12px;margin:4px 0 1px 22px;font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase;',
-    ][level];
+  const shown = monthList.filter(stDefs.find(d => d[0] === stFilter)[2]);
+  if (!shown.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:24px 12px;'; e.textContent = 'Энэ төлөвт гүйлгээ алга.'; wrap.appendChild(e); return; }
+
+  // ── Задаргаа: Салбар → Үндсэн → Дэд → мөр (салбар бүлэг эвхэгддэг) ──
+  const stMark = (t) => t.decision === 'approved' ? '✓' : t.decision === 'rejected' ? '✗' : t.decision === 'deferred' ? '🕐' : '⏳';
+  const stCol = (t) => t.decision === 'approved' ? 'var(--ok)' : t.decision === 'rejected' ? 'var(--danger)' : 'var(--warn)';
+  const subHdr = (label, count, sum, level) => {
+    const st = level === 1
+      ? 'padding:7px 12px;margin:9px 0 1px 8px;font-weight:700;font-size:12px;border-left:3px solid var(--border-strong);'
+      : 'padding:4px 12px;margin:5px 0 1px 20px;font-weight:600;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;';
     const d = document.createElement('div');
-    d.style.cssText = 'display:flex;justify-content:space-between;align-items:center;' + st;
-    d.innerHTML = `<span>${escapeHtml(label)} <span style="color:var(--muted);font-weight:400;">(${count})</span></span><span style="color:var(--muted);font-weight:600;">${fmtMoney(sum)}</span>`;
+    d.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;' + st;
+    d.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)} <span style="color:var(--muted);font-weight:400;">(${count})</span></span><span style="color:var(--muted);font-weight:600;white-space:nowrap;">${fmtMoney(sum)}</span>`;
     return d;
   };
-  const stMark = { approved: '✓', rejected: '✗', deferred: '🕐' };
   const line = (t) => {
     const d = document.createElement('div');
-    d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 12px 6px 34px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;';
-    const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '');
-    const purp = t.purpose ? ' · ' + escapeHtml(t.purpose) : '';
-    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${stMark[t.decision] || '⏳'} ${who}<span style="color:var(--muted);">${purp}</span></span><b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
-    d.addEventListener('click', () => openFinanceModal(t.id));  // дарвал модал нээгдэж ангилал/салбар засна
+    d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:7px 12px 7px 30px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;';
+    d.onmouseenter = () => d.style.background = 'var(--panel-hover)';
+    d.onmouseleave = () => d.style.background = '';
+    const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '—');
+    const purp = t.purpose ? '<span style="color:var(--muted);"> · ' + escapeHtml(t.purpose) + '</span>' : '';
+    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">`
+      + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}</span>`
+      + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
+    d.addEventListener('click', () => openFinanceModal(t.id));
     return d;
   };
   const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
-  const byBr = groupBy(monthList, t => finEffBranch(t));
+  const byBr = groupBy(shown, t => finEffBranch(t));
   const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
   brs.forEach(b => {
-    wrap.appendChild(hdr(finBranchDisplay(b), byBr[b].length, sumOf(byBr[b]), 0));
+    const collapsed = !!(state.finReportCollapsed && state.finReportCollapsed[b]);
+    const bh = document.createElement('div');
+    bh.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;padding:11px 12px;margin:14px 0 2px;background:var(--panel-hover);border-radius:10px;font-weight:800;font-size:14px;';
+    const caret = `<span data-caret style="display:inline-block;transition:transform .12s;transform:rotate(${collapsed ? -90 : 0}deg);color:var(--muted);">▾</span>`;
+    bh.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${caret} ${escapeHtml(finBranchDisplay(b))} <span style="color:var(--muted);font-weight:400;">(${byBr[b].length})</span></span><span style="color:var(--muted);font-weight:700;white-space:nowrap;">${fmtMoney(sumOf(byBr[b]))}</span>`;
+    wrap.appendChild(bh);
+    const body = document.createElement('div');
+    body.style.display = collapsed ? 'none' : '';
     const byMain = groupBy(byBr[b], t => finMainName(t.category));
     Object.keys(byMain).sort().forEach(main => {
-      wrap.appendChild(hdr(main, byMain[main].length, sumOf(byMain[main]), 1));
+      body.appendChild(subHdr(main, byMain[main].length, sumOf(byMain[main]), 1));
       const bySub = groupBy(byMain[main], t => finSubName(t.category));
       Object.keys(bySub).sort().forEach(sub => {
-        wrap.appendChild(hdr(sub, bySub[sub].length, sumOf(bySub[sub]), 2));
-        bySub[sub].forEach(t => wrap.appendChild(line(t)));
+        body.appendChild(subHdr(sub, bySub[sub].length, sumOf(bySub[sub]), 2));
+        bySub[sub].forEach(t => body.appendChild(line(t)));
       });
+    });
+    wrap.appendChild(body);
+    bh.addEventListener('click', () => {
+      state.finReportCollapsed = state.finReportCollapsed || {};
+      const now = body.style.display !== 'none';
+      body.style.display = now ? 'none' : '';
+      state.finReportCollapsed[b] = now;
+      const cr = bh.querySelector('[data-caret]');
+      if (cr) cr.style.transform = `rotate(${now ? -90 : 0}deg)`;
     });
   });
 }

@@ -45,6 +45,12 @@
 - **Ленз = тухайн салбар + нэгдсэн (shared)** хоёуланд. `filteredTasks`-д шүүгдэнэ (task жагсаалт бүгд) + Тойм (`renderDashboard`). 
 - **Дагасан:** task жагсаалтууд, Тойм. **Дараагийн (хийх):** Санхүү/Ажилтан лензэд захируулах, Календарь, Гүйцэтгэл, Цагийн цалин (одоо Санхүү+Ажилтан зөвхөн салбараар БҮЛЭГЛЭГДСЭН, лензэд шүүгддэггүй). Аяндаа нэг салбарынх: NOMAAD захиалга/M-Event захиалга/Бараа.
 
+### Санхүүгийн ангилал — Sheet-ээс татна (2026-06-16)
+- Үндсэн/дэд ангилал (`FINANCE_MAIN_CATEGORIES`/`FINANCE_SUB_CATEGORIES`) одоо **`let`** — `loadFinanceCategories()` нь **n8n `/webhook/fin-categories`** (workflow id `syQBuTvHE9H4Gssk`, "CHIMUN · Finance Categories API")-оос татаж орлоно. Татаж чадахгүй бол кодын default → localStorage кэш fallback (апп эвдрэхгүй). Эхлэлд `loadFinanceCategories()` дуудна.
+- **Хадгалалт:** Чимун_Tasks_DB (`1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc`) дотор **`fin_categories` tab**. Багана: `type` (main/sub), `code`, `name`, `parent` (дэдийн үндсэн код), `active` (0=нуух). 64 мөр seed хийсэн.
+- **Засах:** CEO Sheet-д шууд мөр нэмж/нэр засаж/`active`=0 болгоно → апп дараагийн ачаалалд авна. (n8n GET унших + POST seed/append; CORS=*.)
+- Кодын `const FINANCE_*_CATEGORIES` нь зөвхөн default/fallback.
+
 ## Урт хугацааны зорилго
 
 Энэ аппыг **компанийн бүрэн ERP** болгон ургуулах. Одоо ERP-ийн ~30% хэмжээнд (цөм

@@ -1735,6 +1735,11 @@ function finBranchLabel(b) {
   if (/camp|кемп/.test(s)) return 'КЕМП';
   return 'ЗАХ'; // зах/хамт/shared/бусад → захиргаа
 }
+// Гүйлгээний утгад зориулсан салбарын нэр (банкны утганд бичих хэлбэр)
+function finMemoBranch(deptBranch) {
+  const b = finBranchLabel(deptBranch);
+  return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : 'Захиргаа';
+}
 // Текст хуулах helper (clipboard API + fallback).
 async function copyText(text, okMsg = 'Хуулагдлаа') {
   text = String(text || '');
@@ -1853,14 +1858,14 @@ function openFinanceModal(id = null) {
     (function setupFinCopy() {
       const block = document.getElementById('f-copy-block');
       const preview = document.getElementById('f-memo-preview');
-      // Гүйлгээний утга = дэд ангилал + зорилго (эс бөгөөс зорилго/хүлээн авагч)
+      // Гүйлгээний утга = "Зарлага: {салбар} {дэд ангилал} · {зорилго}"
       const sub = finSubName(t.category);
-      const memo = (sub && sub !== 'Ангилалгүй')
-        ? `${sub}${t.purpose ? ' · ' + t.purpose : ''}`.trim()
-        : (t.purpose || t.beneficiary || '').trim();
+      const catPart = (sub && sub !== 'Ангилалгүй') ? ' ' + sub : '';
+      const purpPart = t.purpose ? ' · ' + t.purpose : (t.beneficiary ? ' · ' + t.beneficiary : '');
+      const memo = `Зарлага: ${finMemoBranch(t.dept_branch)}${catPart}${purpPart}`.trim();
       const acct = String(t.account_number || '').trim();
       if (block) block.style.display = (acct || t.purpose) ? 'flex' : 'none';
-      if (preview) preview.textContent = memo ? `Утга: ${memo}` : '';
+      if (preview) preview.textContent = memo || '';
       const ba = document.getElementById('f-copy-account');
       if (ba) ba.onclick = () => acct ? copyText(acct, 'Данс хуулагдлаа') : showToast('Данс хоосон', 'warn', 1500);
       const bm = document.getElementById('f-copy-memo');

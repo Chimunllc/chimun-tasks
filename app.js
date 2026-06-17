@@ -1785,6 +1785,11 @@ function finMemoBranch(deptBranch) {
   const b = finBranchLabel(deptBranch);
   return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : b === 'Чимун ХХК' ? 'Чимун' : 'Захиргаа';
 }
+// Үр дүнгийн салбар: хөрөнгийн зардал (6000) ҮРГЭЛЖ "Чимун ХХК"-д (салбарын OPEX-ээс хасна).
+function finEffBranch(t) {
+  if (finCatCodes(t && t.category).main === '6000') return 'Чимун ХХК';
+  return finBranchLabel(t && t.dept_branch);
+}
 // Текст хуулах helper (clipboard API + fallback).
 async function copyText(text, okMsg = 'Хуулагдлаа') {
   text = String(text || '');
@@ -1907,7 +1912,8 @@ function openFinanceModal(id = null) {
       const sub = finSubName(t.category);
       const catPart = (sub && sub !== 'Ангилалгүй') ? ' ' + sub : '';
       const purpPart = t.purpose ? ' · ' + t.purpose : (t.beneficiary ? ' · ' + t.beneficiary : '');
-      const memo = `Зарлага: ${finMemoBranch(t.dept_branch)}${catPart}${purpPart}`.trim();
+      const memoBr = finEffBranch(t) === 'Чимун ХХК' ? 'Чимун' : finMemoBranch(t.dept_branch);
+      const memo = `Зарлага: ${memoBr}${catPart}${purpPart}`.trim();
       const acct = String(t.account_number || '').trim();
       if (block) block.style.display = (acct || t.purpose) ? 'flex' : 'none';
       if (preview) preview.textContent = memo || '';
@@ -3001,7 +3007,7 @@ function renderTaskList() {
     const groupBy = (arr, keyFn) => arr.reduce((o, t) => { const k = keyFn(t); (o[k] = o[k] || []).push(t); return o; }, {});
     const sumOf = (arr) => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
-    const byBr = groupBy(list, t => finBranchLabel(t.dept_branch));
+    const byBr = groupBy(list, t => finEffBranch(t));
     const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
     brs.forEach(b => {
       const hdr = document.createElement('div');
@@ -5081,7 +5087,7 @@ function renderFinanceReport(wrap) {
   const wantBr = lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : null;
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
   if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
-  if (wantBr) base = base.filter(t => finBranchLabel(t.dept_branch) === wantBr);
+  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
 
   // Сар сонгох nav
   const nav = document.createElement('div');
@@ -5135,7 +5141,7 @@ function renderFinanceReport(wrap) {
     return d;
   };
   const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
-  const byBr = groupBy(monthList, t => finBranchLabel(t.dept_branch));
+  const byBr = groupBy(monthList, t => finEffBranch(t));
   const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
   brs.forEach(b => {
     wrap.appendChild(hdr(b, byBr[b].length, sumOf(byBr[b]), 0));
@@ -5160,7 +5166,7 @@ function renderDashboard() {
     || !(m.branches && m.branches.length);
   const tasks = (state.tasks || []).filter(t => dashBranch === 'all' || taskBranch(t) === dashBranch || taskBranch(t) === 'shared');
   const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
-    && (dashBranch === 'all' || finBranchLabel(r.dept_branch) === wantFinBr));
+    && (dashBranch === 'all' || finEffBranch(r) === wantFinBr));
   const today = todayStr();
   const isCEO = !!state.isCEO;
   const me = state.me;

@@ -4337,6 +4337,7 @@ function nomaadCardHtml(o) {
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="btn" data-nomaad-quote="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал</button>
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
           ${incomeArea}
         </div>
@@ -4416,6 +4417,106 @@ function attachNomaadHandlers() {
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
   });
+  document.querySelectorAll('button[data-nomaad-quote]').forEach(b => {
+    b.addEventListener('click', () => openNomaadQuote(b.dataset.nomaadQuote));
+  });
+}
+
+/* ─── Үнийн санал — захиалгын өгөгдлөөр хэвлэх/PDF баримт үүсгэнэ (гадны сангүй). ─── */
+function buildNomaadQuoteHtml(o) {
+  const fmt = n => fmtMoney(Number(n) || 0);
+  const items = Array.isArray(o.items) ? o.items : [];
+  // Ангилалаар бүлэглэнэ (дараалал хадгална)
+  const cats = []; const byCat = {};
+  items.forEach(it => { const c = (it.category || 'Бусад').trim(); if (!byCat[c]) { byCat[c] = []; cats.push(c); } byCat[c].push(it); });
+  const isIncl = it => it.included || ((Number(it.unit_price) || 0) === 0 && (Number(it.total) || 0) === 0);
+  let body = '';
+  cats.forEach(c => {
+    body += `<tr class="cat"><td colspan="5">${escapeHtml(c)}</td></tr>`;
+    byCat[c].forEach((it, i) => {
+      const inc = isIncl(it);
+      const amt = inc ? '<span class="incl">Багцад багтсан</span>' : fmt(it.total || (Number(it.unit_price) || 0) * (Number(it.qty) || 0));
+      const up = inc ? '—' : fmt(it.unit_price);
+      body += `<tr><td class="c">${escapeHtml(String(it.qty || ''))} ${escapeHtml(it.unit || '')}</td>`
+        + `<td>${escapeHtml(it.name || '')}${it.note ? `<div class="note">${escapeHtml(it.note)}</div>` : ''}</td>`
+        + `<td class="r">${up}</td><td class="r">${amt}</td><td></td></tr>`;
+    });
+  });
+  const grand = Number(o.grand_total) || 0;
+  const fin = Number(o.final_amount) || 0;
+  const dep = Number(o.deposit) || 0;
+  const qDate = (o.contract_date || todayStr() || '').slice(0, 10);
+  const period = `${escapeHtml(o.date_start || '')} — ${escapeHtml(o.date_end || '')}`;
+  return `
+  <div class="np-head">
+    <div class="np-brand"><div class="np-logo">NOMAAD</div><div class="np-sub">Чимун ХХК</div></div>
+    <div class="np-title"><h1>ҮНИЙН САНАЛ</h1><div class="np-no">№ ${escapeHtml(o.quote_no || '')}</div><div class="np-date">${escapeHtml(qDate)}</div></div>
+  </div>
+  <div class="np-parties">
+    <div><b>Захиалагч:</b> ${escapeHtml(o.company || o.contact || '')}${o.reg_no ? ` (РД: ${escapeHtml(o.reg_no)})` : ''}<br>
+      ${o.contact ? 'Холбоо барих: ' + escapeHtml(o.contact) + '<br>' : ''}${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '  ' : ''}${o.email ? '· ' + escapeHtml(o.email) : ''}</div>
+    <div><b>Арга хэмжээ:</b> ${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}<br>
+      Зочид: ${escapeHtml(String(o.guests || ''))}<br>Хугацаа: ${period}</div>
+  </div>
+  <table class="np-items"><thead><tr><th class="c">Тоо</th><th>Үйлчилгээ / бараа</th><th class="r">Нэгж үнэ</th><th class="r">Дүн</th><th></th></tr></thead><tbody>${body}</tbody></table>
+  <div class="np-totals">
+    <div class="row"><span>Нийт дүн</span><b>${fmt(grand)}</b></div>
+    ${fin && fin !== grand ? `<div class="row"><span>Тохирсон дүн</span><b>${fmt(fin)}</b></div>` : ''}
+    <div class="row"><span>Урьдчилгаа (30%)</span><b>${fmt(dep)}</b></div>
+  </div>
+  <div class="np-foot">
+    <p>Энэхүү үнийн санал нь 14 хоног хүчинтэй. Үнэд НӨАТ багтсан болно. Захиалга баталгаажихад урьдчилгаа төлбөр шаардлагатай.</p>
+    <div class="np-sign"><div>Гүйцэтгэгч: Чимун ХХК / NOMAAD<br>______________________</div><div>Захиалагч: ${escapeHtml(o.company || '')}<br>______________________</div></div>
+  </div>`;
+}
+
+function openNomaadQuote(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  if (!document.getElementById('np-print-css')) {
+    const st = document.createElement('style');
+    st.id = 'np-print-css';
+    st.textContent = `
+    #np-host{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);overflow:auto;display:flex;flex-direction:column;align-items:center;padding:0 0 40px;}
+    #np-host .np-bar{position:sticky;top:0;align-self:stretch;display:flex;gap:8px;justify-content:center;padding:10px;background:#1f2430;}
+    #np-host .np-bar button{padding:8px 18px;font-size:14px;border:none;border-radius:8px;cursor:pointer;font-weight:600;}
+    #np-host .np-print{background:#4338CA;color:#fff;}
+    #np-host .np-close{background:#444;color:#fff;}
+    #np-paper{background:#fff;color:#111;width:760px;max-width:96vw;margin:18px;padding:40px;box-shadow:0 8px 40px rgba(0,0,0,.4);font-family:'Segoe UI',Arial,sans-serif;font-size:13px;line-height:1.5;}
+    #np-paper .np-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4338CA;padding-bottom:14px;margin-bottom:18px;}
+    #np-paper .np-logo{font-size:26px;font-weight:800;letter-spacing:2px;color:#4338CA;}
+    #np-paper .np-sub{font-size:12px;color:#666;}
+    #np-paper .np-title{text-align:right;} #np-paper .np-title h1{margin:0;font-size:22px;color:#222;} #np-paper .np-no{font-weight:700;margin-top:4px;} #np-paper .np-date{color:#666;font-size:12px;}
+    #np-paper .np-parties{display:flex;justify-content:space-between;gap:24px;margin-bottom:16px;}
+    #np-paper .np-parties>div{flex:1;}
+    #np-paper table.np-items{width:100%;border-collapse:collapse;margin:6px 0 14px;}
+    #np-paper .np-items th{background:#f3f4f6;text-align:left;padding:7px 9px;font-size:12px;border-bottom:2px solid #ddd;}
+    #np-paper .np-items td{padding:6px 9px;border-bottom:1px solid #eee;vertical-align:top;}
+    #np-paper .np-items td.r,#np-paper .np-items th.r{text-align:right;} #np-paper .np-items td.c,#np-paper .np-items th.c{text-align:center;white-space:nowrap;}
+    #np-paper .np-items tr.cat td{background:#eef0fb;font-weight:700;color:#4338CA;font-size:12px;}
+    #np-paper .np-items .note{color:#888;font-size:11px;} #np-paper .np-items .incl{color:#888;}
+    #np-paper .np-totals{margin-left:auto;width:300px;}
+    #np-paper .np-totals .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
+    #np-paper .np-totals .row:last-child{border-bottom:2px solid #4338CA;font-size:15px;}
+    #np-paper .np-foot{margin-top:20px;font-size:12px;color:#555;}
+    #np-paper .np-sign{display:flex;justify-content:space-between;gap:30px;margin-top:30px;}
+    @media print{
+      body *{visibility:hidden !important;}
+      #np-host,#np-host *{visibility:visible !important;}
+      #np-host{position:absolute;inset:auto;background:#fff;padding:0;display:block;}
+      #np-host .np-bar{display:none !important;}
+      #np-paper{box-shadow:none;margin:0;width:100%;max-width:100%;padding:0;}
+    }`;
+    document.head.appendChild(st);
+  }
+  document.getElementById('np-host')?.remove();
+  const host = document.createElement('div');
+  host.id = 'np-host';
+  host.innerHTML = `<div class="np-bar"><button class="np-print">🖨 Хэвлэх / PDF</button><button class="np-close">✕ Хаах</button></div><div id="np-paper">${buildNomaadQuoteHtml(o)}</div>`;
+  document.body.appendChild(host);
+  host.querySelector('.np-print').addEventListener('click', () => window.print());
+  host.querySelector('.np-close').addEventListener('click', () => host.remove());
+  host.addEventListener('click', (e) => { if (e.target === host) host.remove(); });
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
 function openNomaadIncomeModal(o) {

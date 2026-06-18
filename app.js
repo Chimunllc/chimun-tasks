@@ -3876,12 +3876,25 @@ function renderHourly() {
       <div>Цагийн ажилтан алга.</div>
       <div class="sub">Цагийн ажилтан "+ Шинэ ажилтан"-аар бүртгэгдэхэд энд харагдана.</div></div>`;
   }
+  const sortMode = state.hourlySort || 'recent';
+  // Ажилтан бүрийн цалингийн статистик — цалин авсан огноо = "хэзээ ажилласны" прокси
+  // (тусгай ажилласан огноо хадгалагддаггүй тул шилжүүлгийн огноог ашиглана).
+  const payDate = (p) => p.executed_at || p.requested_at || '';
+  const statOf = (m) => {
+    const ps = hourlyPayouts(m);
+    const sum = ps.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const dates = ps.map(payDate).filter(Boolean).sort();
+    const last = dates[dates.length - 1] || '';
+    return { ps, sum, count: ps.length, first: dates[0] || '', last, lastTs: last ? new Date(last).getTime() : 0 };
+  };
+  const stats = new Map(workers.map(m => [personKey(m), statOf(m)]));
   let totalPaid = 0;
+  workers.forEach(m => { totalPaid += stats.get(personKey(m)).sum; });
   const rowHtml = (m) => {
-    const payouts = hourlyPayouts(m);
-    const sum = payouts.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-    totalPaid += sum;
     const key = personKey(m);
+    const st = stats.get(key) || { ps: [], sum: 0, count: 0, first: '', last: '' };
+    const payouts = st.ps;
+    const sum = st.sum;
     // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
     const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : ''}</span>`;
     const bankLine = (m.bank || m.bank_account)
@@ -3900,12 +3913,19 @@ function renderHourly() {
     const noteLine = lastNote
       ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;font-style:italic;">“${escapeHtml(lastNote.note)}” — ${escapeHtml(lastNote.rater_name || '')}</div>`
       : '';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
+    // Ажилласан хугацаа (цалингийн идэвхээр) — анх/сүүлд цалин авсан огноо
+    const spanLine = st.count
+      ? `<div style="font-size:11.5px;color:var(--text-soft);margin-top:3px;">🕒 ${st.count > 1 ? 'Анх ' + escapeHtml(String(st.first).slice(0, 10)) + ' · ' : ''}Сүүлд <b>${escapeHtml(String(st.last).slice(0, 10))}</b> · ${st.count} удаа</div>`
+      : `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">🕒 Цалин аваагүй</div>`;
+    const nameKey = escapeHtml(String(m.name || '').toLowerCase());
+    const phoneKey = escapeHtml(String(m.phone || '').replace(/\D/g, ''));
+    return `<div data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
       <div style="display:flex;align-items:center;gap:12px;min-width:0;">
         ${avatar}
         <div style="min-width:0;">
           <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span></div>
           <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
+          ${spanLine}
           ${ratingLine}
           ${noteLine}
           ${paidLine}
@@ -3917,18 +3937,63 @@ function renderHourly() {
       </div>
     </div>`;
   };
-  // Салбараар бүлэглэх — M Event / NOMAAD / Бусад
+  // Сонгосон эрэмбийн comparator (бүлэг тус бүрд хэрэглэнэ)
+  const cmp = {
+    recent: (a, b) => (stats.get(personKey(b)).lastTs - stats.get(personKey(a)).lastTs) || String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
+    name:   (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
+    paid:   (a, b) => (stats.get(personKey(b)).sum - stats.get(personKey(a)).sum) || String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
+  }[sortMode] || ((a, b) => 0);
+  // Салбараар бүлэглэх — M Event / NOMAAD / Бусад (бүлэг бүрийг сонгосон эрэмбээр)
   const groups = { 'M Event': [], 'NOMAAD': [], 'Бусад': [] };
   workers.forEach(m => { (groups[hourlyBranchLabel(m)] || groups['Бусад']).push(m); });
   const sections = ['M Event', 'NOMAAD', 'Бусад']
     .filter(k => groups[k].length)
-    .map(k => `<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">${k} · ${groups[k].length}</div>` + groups[k].map(rowHtml).join(''))
+    .map(k => {
+      groups[k].sort(cmp);
+      return `<div data-hourly-group="${escapeHtml(k)}" style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">${k} · ${groups[k].length}</div>` + groups[k].map(rowHtml).join('');
+    })
     .join('');
   const header = `<div style="margin-bottom:8px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
     <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан</div>
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>. Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.</div>
   </div>`;
-  return header + sections;
+  // Хайлт + эрэмбийн хяналт
+  const controls = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+    <input id="hourly-search" type="text" placeholder="🔍 Нэрээр хайх..." value="${escapeHtml(state.hourlySearch || '')}" style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;" />
+    <select id="hourly-sort" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;cursor:pointer;">
+      <option value="recent">🕒 Сүүлд ажилласан</option>
+      <option value="name">🔤 Нэрээр</option>
+      <option value="paid">💰 Их цалинтай</option>
+    </select>
+  </div>`;
+  const emptyMsg = `<div id="hourly-empty-search" style="display:none;text-align:center;color:var(--muted);padding:24px;">Хайлтад тохирох ажилтан алга.</div>`;
+  return header + controls + emptyMsg + sections;
+}
+
+// Хайлтын текстээр цагийн ажилтны мөрүүдийг шүүх (re-render хийхгүй — фокус хадгалагдана).
+function applyHourlySearch() {
+  const q = (state.hourlySearch || '').trim().toLowerCase();
+  const qDigits = q.replace(/\D/g, '');
+  const rows = document.querySelectorAll('[data-hourly-name]');
+  let anyVisible = false;
+  rows.forEach(r => {
+    const nm = r.getAttribute('data-hourly-name') || '';
+    const ph = r.getAttribute('data-hourly-phone') || '';
+    const match = !q || nm.includes(q) || (!!qDigits && ph.includes(qDigits));
+    r.style.display = match ? '' : 'none';
+    if (match) anyVisible = true;
+  });
+  // Бүлгийн гарчгийг — доор нь харагдах мөр байгаа эсэхээр нуух
+  document.querySelectorAll('[data-hourly-group]').forEach(h => {
+    let n = h.nextElementSibling, vis = false;
+    while (n && !n.hasAttribute('data-hourly-group')) {
+      if (n.hasAttribute('data-hourly-name') && n.style.display !== 'none') { vis = true; break; }
+      n = n.nextElementSibling;
+    }
+    h.style.display = vis ? '' : 'none';
+  });
+  const empty = document.getElementById('hourly-empty-search');
+  if (empty) empty.style.display = anyVisible ? 'none' : '';
 }
 
 function attachHourlyHandlers() {
@@ -3938,6 +4003,16 @@ function attachHourlyHandlers() {
   document.querySelectorAll('button[data-hourly-rate]').forEach(b => {
     b.addEventListener('click', () => submitHourlyRating(b.dataset.hourlyRate));
   });
+  const sortEl = document.getElementById('hourly-sort');
+  if (sortEl) {
+    sortEl.value = state.hourlySort || 'recent';
+    sortEl.onchange = () => { state.hourlySort = sortEl.value; render(); };
+  }
+  const searchEl = document.getElementById('hourly-search');
+  if (searchEl) {
+    searchEl.oninput = () => { state.hourlySearch = searchEl.value; applyHourlySearch(); };
+  }
+  applyHourlySearch();
 }
 
 /* ─── Цагийн ажилтны үнэлгээ (од + тэмдэглэл) ───

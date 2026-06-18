@@ -227,6 +227,9 @@
   }
   .filter-pill:hover { background: var(--panel-hover); }
   .filter-pill.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary-soft); font-weight: 600; }
+  .fin-pill-cnt { margin-left: 5px; font-size: 11px; font-weight: 700; opacity: .65; }
+  .fin-pill-cnt:empty { display: none; }
+  .filter-pill.active .fin-pill-cnt { opacity: 1; }
   @media (max-width: 720px) {
     .filter-pill { padding: 9px 16px; min-height: 38px; font-size: 13px; }
   }

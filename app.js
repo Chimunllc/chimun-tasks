@@ -1812,6 +1812,44 @@ function closeFinanceModal() {
   state._fPaymentPending = null;
 }
 
+/* ─── Санхүүгийн ШИНЭ хүсэлтийн ноорог — даалгаврынхтай адил localStorage-д түр хадгална.
+   Зөвхөн шинэ хүсэлт (editingId хоосон) үед. Хальт хаагдвал/Болих дарвал алдагдахгүй,
+   дараагийн "Шинэ хүсэлт" нээхэд сэргэнэ. Амжилттай илгээмэгц цэвэрлэгдэнэ.
+   Зураг (File объект) болон нягтлан бөглөх ангилал/салбар орохгүй — зөвхөн бичсэн талбарууд. */
+function saveFinanceDraft() {
+  if (state.editingId) return; // зөвхөн шинэ
+  const modal = document.getElementById('finance-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+  const g = id => document.getElementById(id);
+  const draft = {
+    purpose:     g('f-purpose')?.value || '',
+    amount:      g('f-amount')?.value || '',
+    beneficiary: g('f-beneficiary')?.value || '',
+    bank:        g('f-bank')?.value || '',
+    account:     g('f-account')?.value || '',
+    priority:    g('f-priority')?.value || '',
+    due:         g('f-due')?.value || '',
+  };
+  // Утга оруулсан үед л хадгална (хоосон форм ноорог болохгүй)
+  if (!(draft.purpose || draft.amount || draft.beneficiary || draft.account || draft.due)) { clearFinanceDraft(); return; }
+  try { localStorage.setItem('financeDraft', JSON.stringify(draft)); } catch (e) {}
+}
+function clearFinanceDraft() { try { localStorage.removeItem('financeDraft'); } catch (e) {} }
+function restoreFinanceDraft() {
+  let draft = null;
+  try { draft = JSON.parse(localStorage.getItem('financeDraft') || 'null'); } catch (e) {}
+  if (!draft || !(draft.purpose || draft.amount || draft.beneficiary || draft.account || draft.due)) return;
+  const g = id => document.getElementById(id);
+  if (g('f-purpose'))     g('f-purpose').value     = draft.purpose || '';
+  if (g('f-amount'))      g('f-amount').value      = draft.amount || '';
+  if (g('f-beneficiary')) g('f-beneficiary').value = draft.beneficiary || '';
+  if (draft.bank && g('f-bank'))         g('f-bank').value     = draft.bank;
+  if (g('f-account'))     g('f-account').value     = draft.account || '';
+  if (draft.priority && g('f-priority')) g('f-priority').value = draft.priority;
+  if (g('f-due'))         g('f-due').value         = draft.due || '';
+  showToast('Хадгалаагүй ноорог сэргээгдлээ', 'info', 2500);
+}
+
 // Салбарын нэрийг 3 цэвэр ангилалд хөрвүүлнэ (хуучин дата: m-event/CAMP/ХАМТ/SHARED г.м зөрүүтэй).
 function finBranchLabel(b) {
   const s = String(b || '').toLowerCase();
@@ -1935,6 +1973,8 @@ function openFinanceModal(id = null) {
     const fSaveNew = document.getElementById('f-save');
     fSaveNew.style.display = '';
     fSaveNew.textContent = 'Илгээх';
+    // Хадгалаагүй ноорог байвал сэргээнэ (хоосон reset-ийн дараа)
+    restoreFinanceDraft();
   } else {
     // VIEW existing — populate read-only
     title.innerHTML = ICONS.wallet + ' Хүсэлт #' + escapeHtml(t.id.slice(-5));
@@ -2869,6 +2909,23 @@ function render() {
   renderCounts();
   renderNotifications();
 }
+// Санхүүгийн view-ийн үе шатуудын тоо — чипэн дээр харуулна (нэг харцаар хэдэн хүсэлт
+// шилжүүлэгдээгүй / хаагдаагүй байгааг мэдэх). Жагсаалтын filter-ийн predicate-уудтай яг таарна.
+// Хамрах хүрээ = жагсаалттай ижил (эрх + салбар ленз).
+function financeStageCounts() {
+  let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
+  if (!canSeeAllFinance() && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
+  const fWB = finLensBranch(effectiveBranchLens());
+  if (fWB) base = base.filter(t => finEffBranch(t) === fWB);
+  const c = { all: base.length, 'f-pending': 0, 'f-await-txn': 0, 'f-await-close': 0, 'f-done': 0 };
+  for (const t of base) {
+    if (t.status === 'done') c['f-done']++;
+    else if ((t.decision || 'pending') === 'pending') c['f-pending']++;
+    else if (t.decision === 'approved' && !t.executed_at) c['f-await-txn']++;
+    else if (t.decision === 'approved' && t.executed_at) c['f-await-close']++;
+  }
+  return c;
+}
 // Санхүүгийн view-д үе шатны filter, бусад view-д ажлын ерөнхий filter харуулна.
 // Идэвхтэй pill-ийг state.statusFilter-тэй тааруулна.
 function syncFilterPills() {
@@ -2879,6 +2936,14 @@ function syncFilterPills() {
   if (finG)  finG.style.display  = isFin ? '' : 'none';
   const finSort = document.getElementById('fin-sort');
   if (finSort) { finSort.style.display = isFin ? '' : 'none'; finSort.value = state.financeSort || 'smart'; }
+  // Санхүүгийн чипэн дээр үе шат бүрийн тоог шинэчилнэ
+  if (isFin && finG) {
+    const counts = financeStageCounts();
+    finG.querySelectorAll('.filter-pill').forEach(p => {
+      const cnt = p.querySelector('.fin-pill-cnt');
+      if (cnt) { const n = counts[p.dataset.status]; cnt.textContent = n ? ' ' + n : ''; }
+    });
+  }
   const grp = isFin ? finG : taskG;
   if (!grp) return;
   let matched = false;
@@ -9240,6 +9305,13 @@ function initEvents() {
   // NEW FINANCE REQUEST button
   document.getElementById('new-finance-btn')?.addEventListener('click', () => openFinanceModal());
   document.getElementById('f-cancel')?.addEventListener('click', () => closeFinanceModal());
+  // Шинэ санхүүгийн хүсэлтийн ноорог — талбар өөрчлөгдөх бүрд localStorage-д түр хадгална
+  ['f-purpose','f-amount','f-beneficiary','f-bank','f-account','f-priority','f-due'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', saveFinanceDraft);
+    el.addEventListener('change', saveFinanceDraft);
+  });
   document.getElementById('f-delete')?.addEventListener('click', (e) => {
     e.preventDefault();
     if (state.editingId) deleteFinanceRequest(state.editingId);
@@ -9454,6 +9526,7 @@ function initEvents() {
         newRequest.purchase_proof_urls = [...state._fPurchaseUrls];
         await saveFinanceRequest(newRequest);
       }
+      clearFinanceDraft();   // амжилттай илгээгдсэн — ноорог цэвэрлэнэ
       closeFinanceModal();
       showToast('Хүсэлт CEO-руу илгээгдсэн', 'success');
       render();

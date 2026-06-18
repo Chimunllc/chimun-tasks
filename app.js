@@ -4488,6 +4488,7 @@ function nomaadCardHtml(o) {
           <button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
           <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
+          ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">🗑 Устгах</button>`}
           ${incomeArea}
         </div>
       </div>
@@ -4742,6 +4743,9 @@ function attachNomaadHandlers() {
   document.querySelectorAll('button[data-nomaad-edit]').forEach(b => {
     b.addEventListener('click', () => openNomaadEditModal(b.dataset.nomaadEdit));
   });
+  document.querySelectorAll('button[data-nomaad-delete]').forEach(b => {
+    b.addEventListener('click', () => deleteNomaadQuote(b.dataset.nomaadDelete));
+  });
   document.querySelectorAll('button[data-nomaad-send]').forEach(b => {
     b.addEventListener('click', () => sendNomaadQuote(b.dataset.nomaadSend));
   });
@@ -4799,6 +4803,44 @@ function attachNomaadHandlers() {
       }, 60);
     });
   });
+}
+
+/* ─── NOMAAD үнийн санал устгах — зөвхөн урьдчилгаа/орлого бүртгэгдэхээс ӨМНӨ.
+   Байгууллагууд олон үнийн санал авдаг тул хувирахгүй саналыг цэвэрлэнэ. Quote Log-ийн
+   Төлөвийг "БОЛЬСОН" болгож аппын "АПП" шүүлтээс хасна (түүх Quote Log-д үлдэнэ).
+   Засах(update_quote)-тай ИЖИЛ бүрэн payload — дутуу талбар Quote Log-ийг хоослохгүй. ─── */
+async function deleteNomaadQuote(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  if (Number(o.income_advance) > 0 || Number(o.income_amount) > 0) {
+    showToast('Урьдчилгаа/орлого бүртгэгдсэн — устгах боломжгүй', 'warn', 4000); return;
+  }
+  const ok = await showConfirm(
+    `${o.company || 'Захиалга'} · ${quoteNo}\nЭнэ үнийн саналыг устгах уу? Жагсаалтаас хасна (Quote Log-д "Больсон" болж түүх үлдэнэ).`,
+    { title: 'Үнийн санал устгах', okText: 'Устгах', danger: true });
+  if (!ok) return;
+  if (!state.config.nomaadOrdersUrl) { showToast('NOMAAD backend тохируулаагүй', 'error'); return; }
+  const body = {
+    action: 'update_quote', quote_no: o.quote_no,
+    company: o.company || '', status: 'БОЛЬСОН', reg_no: o.reg_no || '',
+    contact: o.contact || '', phone: o.phone || '', email: o.email || '',
+    camp: o.camp || '', tier: o.tier || '', note: o.note || '',
+    final_amount: o.final_amount || '', date_start: o.date_start || '', date_end: o.date_end || '',
+    guests: o.guests || 0, grand_total: o.grand_total || 0, deposit: o.deposit || 0,
+    items: (o.items || []).map(it => ({ row_num: it.row_num, category: it.category, name: it.name, qty: it.qty, unit: it.unit, unit_price: it.unit_price, total: it.total, included: it.included, note: it.note })),
+  };
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.nomaadOrders = (state.nomaadOrders || []).filter(x => x.quote_no !== quoteNo);
+    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) {}
+    showToast('Үнийн санал устгагдлаа', 'success', 2500);
+    render();
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, 'error', 5000);
+  }
 }
 
 /* ─── NOMAAD захиалга засах — хүний тоо + мөр бүрийн үнэ/тоо + холбоо барих.

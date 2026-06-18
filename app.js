@@ -4410,10 +4410,19 @@ const NOMAAD_STAGES = [
   { key: 'done',       label: 'Гүйцэтгэсэн',           color: '#0d9488' },
   { key: 'cancelled',  label: 'Больсон',               color: '#94a3b8' },
 ];
+// Гараар сонгох төлөвүүд (value=Төлөв, label=ойлгомжтой нэр). Шат руу зурваслана.
+const NOMAAD_STATUSES = [
+  { value: 'ШИНЭ', label: 'Шинэ / Сонирхож буй' },
+  { value: 'ИЛГЭЭСЭН', label: 'Үнийн санал илгээсэн' },
+  { value: 'ГЭРЭЭ', label: 'Гэрээ хийгдсэн' },
+  { value: 'ДУУССАН', label: 'Гүйцэтгэсэн' },
+  { value: 'БОЛЬСОН', label: 'Больсон' },
+];
 // Захиалгын шатыг төлөв + орлого + огнооноос автоматаар тооцно
 function nomaadStage(o) {
   const su = String(o.status || '').toUpperCase();
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
+  if (su.includes('ДУУССАН') || su.includes('ГҮЙЦЭТГЭСЭН')) return 'done';
   const income = Number(o.income_amount) || 0;
   const contractTotal = Number(o.final_amount) || Number(o.grand_total) || 0;
   const fullyPaid = income > 0 && (contractTotal - income) <= 0;
@@ -4683,6 +4692,10 @@ function openNomaadEditModal(quoteNo) {
   const baseCamps = ['NOMAAD Summit', 'NOMAAD Meadow', 'NOMAAD Grove', 'Нүүдлийн кемп'];
   const campList = (o.camp && !baseCamps.includes(o.camp)) ? [o.camp, ...baseCamps] : baseCamps;
   const campOpts = campList.map(c => `<option${c === (o.camp || '') ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  const curStatus = String(o.status || '').trim();
+  const knownStatus = NOMAAD_STATUSES.some(s => s.value === curStatus);
+  const statusOpts = (knownStatus || !curStatus ? '' : `<option value="${escapeHtml(curStatus)}" selected>${escapeHtml(curStatus)} (одоогийн)</option>`)
+    + NOMAAD_STATUSES.map(s => `<option value="${escapeHtml(s.value)}"${s.value === curStatus ? ' selected' : ''}>${escapeHtml(s.label)}</option>`).join('');
   // Хадгалсан огноо ("2026-06-19 9:00", "2026-06-19", чөлөөт текст) → datetime-local утга.
   // Цагийг 2 орон болгож тааруулна. Parse хийж чадахгүй бол '' (хоосон) — хуучин утгыг save үед хадгална.
   const toLocalInput = (v) => {
@@ -4705,6 +4718,7 @@ function openNomaadEditModal(quoteNo) {
       <div class="naq-edit">
         <div class="naq-grid">
           <label class="full">Компанийн нэр<input id="ne-company" value="${escapeHtml(o.company || '')}" /></label>
+          <label class="full">Төлөв (шат)<select id="ne-status">${statusOpts}</select></label>
           <label>Регистр<input id="ne-reg" value="${escapeHtml(o.reg_no || '')}" /></label>
           <label>Холбоо барих<input id="ne-contact" value="${escapeHtml(o.contact || '')}" /></label>
           <label>Утас<input id="ne-phone" value="${escapeHtml(o.phone || '')}" /></label>
@@ -4763,6 +4777,7 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
   const endVal = modal.querySelector('#ne-end').value;
   const fields = {
     company: modal.querySelector('#ne-company').value.trim(),
+    status: modal.querySelector('#ne-status').value,
     reg_no: modal.querySelector('#ne-reg').value.trim(),
     contact: modal.querySelector('#ne-contact').value.trim(),
     phone: modal.querySelector('#ne-phone').value.trim(),

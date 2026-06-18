@@ -3048,7 +3048,7 @@ function renderTaskList() {
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadOrders();
+    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : renderNomaadOrders());
     attachNomaadHandlers();
     return;
   } else if (state.view === 'finance') {
@@ -4234,6 +4234,8 @@ function nomaadAssignedTasksHtml(quoteNo) {
 }
 // Нээлттэй (дэлгэрсэн) захиалгуудыг render хооронд хадгална
 let nomaadExpanded = new Set();
+let nomaadViewMode = 'list';   // NOMAAD захиалга: 'list' | 'calendar'
+let nomaadCalMonth = null;     // календарийн идэвхтэй сар { y, mo }
 // Бэлтгэл-шалгах task-ийн desc-ийг нэг хэвээр угсарна
 function nomaadTaskDesc(o, names) {
   return `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n');
@@ -4360,6 +4362,79 @@ function nomaadCardHtml(o) {
     </div>
   </div>`;
 }
+/* ===================== NOMAAD захиалга — Календарь харагдац ===================== */
+function nomaadParseDay(dateStr) {
+  const m = String(dateStr || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
+}
+function nomaadCampClass(o) {
+  const c = String(o.camp || '').toLowerCase();
+  if (c.includes('summit')) return 'na-cal-summit';
+  if (c.includes('meadow')) return 'na-cal-meadow';
+  if (c.includes('grove'))  return 'na-cal-grove';
+  return 'na-cal-other';
+}
+function nomaadIsCancelled(o) {
+  const s = String(o.status || '').toLowerCase();
+  return s.includes('больсон') || s.includes('цуцл');
+}
+function renderNomaadToggle() {
+  return `<div class="na-viewtoggle">
+    <button class="na-vt${nomaadViewMode === 'list' ? ' active' : ''}" data-na-view="list">📋 Жагсаалт</button>
+    <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
+  </div>`;
+}
+function renderNomaadCalendar() {
+  const orders = state.nomaadOrders || [];
+  if (!nomaadCalMonth) { const n = new Date(); nomaadCalMonth = { y: n.getFullYear(), mo: n.getMonth() + 1 }; }
+  const { y, mo } = nomaadCalMonth;
+  const byDay = {};
+  let thisMonth = 0, otherMonths = 0, noDate = 0;
+  orders.forEach(o => {
+    const p = nomaadParseDay(o.date_start);
+    if (!p) { noDate++; return; }
+    if (p.y === y && p.mo === mo) { (byDay[p.d] = byDay[p.d] || []).push(o); thisMonth++; }
+    else otherMonths++;
+  });
+  const firstDow = (new Date(y, mo - 1, 1).getDay() + 6) % 7;   // 0 = Даваа
+  const daysInMonth = new Date(y, mo, 0).getDate();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dows = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) cells += `<div class="na-cal-cell na-cal-empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const list = (byDay[d] || []).slice().sort((a, b) => (Number(b.grand_total) || 0) - (Number(a.grand_total) || 0));
+    const isToday = new Date(y, mo - 1, d).getTime() === today.getTime();
+    const chips = list.map(o => {
+      const tip = `${o.company || o.quote_no} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
+      return `<div class="na-cal-chip ${nomaadCampClass(o)}${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 22))}</div>`;
+    }).join('');
+    cells += `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}">
+      <div class="na-cal-daynum">${d}</div>
+      <div class="na-cal-chips">${chips}</div>
+    </div>`;
+  }
+  const hint = `<div class="na-cal-hint">Энэ сард <b>${thisMonth}</b> захиалга${otherMonths ? ` · өөр саруудад ${otherMonths}` : ''}${noDate ? ` · огноогүй ${noDate}` : ''}</div>`;
+  return `<div class="na-cal">
+    <div class="na-cal-head">
+      <button class="na-cal-nav" data-na-cal-nav="-1" aria-label="Өмнөх сар">‹</button>
+      <div class="na-cal-title">${y} оны ${mo}-р сар</div>
+      <button class="na-cal-nav" data-na-cal-nav="1" aria-label="Дараах сар">›</button>
+      <button class="na-cal-nav na-cal-todaybtn" data-na-cal-nav="0">Өнөөдөр</button>
+    </div>
+    <div class="na-cal-dows">${dows.map(x => `<div class="na-cal-dow">${x}</div>`).join('')}</div>
+    <div class="na-cal-grid">${cells}</div>
+    ${hint}
+    <div class="na-cal-legend">
+      <span><i class="na-lg na-cal-summit"></i>Summit</span>
+      <span><i class="na-lg na-cal-meadow"></i>Meadow</span>
+      <span><i class="na-lg na-cal-grove"></i>Grove</span>
+      <span><i class="na-lg na-cal-other"></i>Бусад</span>
+      <span><i class="na-lg na-lg-cancel"></i>Больсон</span>
+    </div>
+  </div>`;
+}
+
 function renderNomaadOrders() {
   const orders = state.nomaadOrders || [];
   if (!orders.length) {
@@ -4437,6 +4512,37 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-send]').forEach(b => {
     b.addEventListener('click', () => sendNomaadQuote(b.dataset.nomaadSend));
+  });
+  // Жагсаалт ↔ Календарь сэлгэх
+  document.querySelectorAll('[data-na-view]').forEach(b => {
+    b.addEventListener('click', () => { nomaadViewMode = b.dataset.naView; render(); });
+  });
+  // Календарь — сар сэлгэх (‹ › Өнөөдөр)
+  document.querySelectorAll('[data-na-cal-nav]').forEach(b => {
+    b.addEventListener('click', () => {
+      const delta = Number(b.dataset.naCalNav);
+      if (delta === 0) { const n = new Date(); nomaadCalMonth = { y: n.getFullYear(), mo: n.getMonth() + 1 }; }
+      else {
+        let { y, mo } = nomaadCalMonth || { y: new Date().getFullYear(), mo: new Date().getMonth() + 1 };
+        mo += delta; if (mo < 1) { mo = 12; y--; } if (mo > 12) { mo = 1; y++; }
+        nomaadCalMonth = { y, mo };
+      }
+      render();
+    });
+  });
+  // Календарийн захиалга дээр дарвал → жагсаалт руу шилжиж тэр захиалгыг дэлгэнэ
+  document.querySelectorAll('[data-na-cal-order]').forEach(el => {
+    el.addEventListener('click', () => {
+      const qn = el.dataset.naCalOrder;
+      nomaadViewMode = 'list';
+      nomaadExpanded.add(qn);
+      render();
+      setTimeout(() => {
+        const sel = (window.CSS && CSS.escape) ? CSS.escape(qn) : qn.replace(/"/g, '\\"');
+        const card = document.querySelector(`.nomaad-card[data-nomaad="${sel}"]`);
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    });
   });
 }
 

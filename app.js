@@ -6010,8 +6010,12 @@ function renderFinanceReport(wrap) {
     d.onmouseleave = () => d.style.background = '';
     const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '—');
     const purp = t.purpose ? '<span style="color:var(--muted);"> · ' + escapeHtml(t.purpose) + '</span>' : '';
-    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">`
-      + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}</span>`
+    // Баримтгүй/дутуу хаагдсан бол хаасан тайлбарыг мөрөнд шууд харуулна — нээлгүйгээр аудит.
+    const noteHtml = (t.close_note && (stMark(t) === '📝' || stMark(t) === '⚠'))
+      ? `<span style="color:var(--warn);"> · «${escapeHtml(t.close_note)}»</span>` : '';
+    const titleAttr = t.close_note ? ` title="${escapeHtml(t.close_note)}"` : '';
+    d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
+      + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', () => openFinanceModal(t.id));
     return d;

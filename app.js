@@ -4709,6 +4709,7 @@ function openNomaadEditModal(quoteNo) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  modal.classList.add('open');   // .modal-bg нь .open класстай үед л харагдана
   const itemsEl = modal.querySelector('#ne-items');
   const totalEl = modal.querySelector('#ne-total');
   const renderTotal = () => { totalEl.textContent = 'Нийт дүн: ' + fmtMoney(grand()) + ' · Урьдчилгаа 30%: ' + fmtMoney(Math.round(grand() * 0.3)); };
@@ -4872,6 +4873,7 @@ function openNomaadCreateModal() {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  modal.classList.add('open');   // .modal-bg нь .open класстай үед л харагдана
   const ib = nomaadItemsBindings(modal, items, '#nc-items', '#nc-total', '#nc-add');
   modal.querySelector('#nc-guests').addEventListener('input', (e) => {
     const g = Math.max(0, Number(e.target.value) || 0);

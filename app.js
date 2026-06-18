@@ -4290,11 +4290,16 @@ async function assignNomaadItemInline(quoteNo, itemName) {
   showToast(`${itemName} → ${memberName(picked)}`, 'success', 2000);
 }
 // Нэг захиалгын карт — эвхэгдсэн товч харагдац + дарахад нээгддэг дэлгэрэнгүй
+// Бодит/хүлээн зөвшөөрөгдөх дүн = Эцсийн гэрээний дүн (акт) байвал тэр, эс бөгөөс Нийт дүн (санал).
+// Орлого/тайланд grand_total биш ҮҮНИЙГ ашиглана — муу гүйцэтгэлийн хасалт орлогыг хөөрөгдөхгүй.
+const nomaadEffTotal = o => Number(o.final_amount) || Number(o.grand_total) || 0;
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
   const income = Number(o.income_amount) || 0;
   // Үлдэгдэл = гэрээний дүн − хүлээн авсан орлого (Эцсийн гэрээний дүн байвал тэрийг, эс бөгөөс Нийт дүн)
-  const contractTotal = Number(o.final_amount) || Number(o.grand_total) || 0;
+  const contractTotal = nomaadEffTotal(o);
+  const gtRaw = Number(o.grand_total) || 0;
+  const hasDed = Number(o.final_amount) > 0 && Number(o.final_amount) !== gtRaw;
   const balance = contractTotal - income;
   const balanceHtml = balance > 0
     ? `<div style="font-weight:700;color:var(--warn);font-size:13px;">Үлдэгдэл: ${fmtMoney(balance)}</div>`
@@ -4343,7 +4348,7 @@ function nomaadCardHtml(o) {
       <div class="nomaad-card-right">
         ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
         ${balance > 0 ? `<span title="Үлдэгдэл" style="color:var(--warn);font-weight:700;font-size:12px;">Үлд ${fmtMoney(balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓</span>'}
-        <span class="nomaad-card-total">${fmtMoney(o.grand_total || 0)}</span>
+        <span class="nomaad-card-total"${hasDed ? ` title="Акт дүн · гэрээний санал ${fmtMoney(gtRaw)}"` : ''}>${fmtMoney(contractTotal)}${hasDed ? ` <span class="nomaad-card-quote">${fmtMoney(gtRaw)}</span>` : ''}</span>
         <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
@@ -4430,7 +4435,7 @@ function nomaadStage(o) {
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
   if (su.includes('ДУУССАН') || su.includes('ГҮЙЦЭТГЭСЭН')) return 'done';
   const income = Number(o.income_amount) || 0;
-  const contractTotal = Number(o.final_amount) || Number(o.grand_total) || 0;
+  const contractTotal = nomaadEffTotal(o);
   const fullyPaid = income > 0 && (contractTotal - income) <= 0;
   const days = nomaadDaysLeft(o.date_start);
   const past = days != null && days < 0;
@@ -4455,7 +4460,7 @@ function renderNomaadPipeline() {
   const sections = NOMAAD_STAGES.map(s => {
     const list = (byStage[s.key] || []).slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
     if (!list.length) return '';
-    const total = list.reduce((sum, o) => sum + (Number(o.grand_total) || 0), 0);
+    const total = list.reduce((sum, o) => sum + nomaadEffTotal(o), 0);
     const collapsed = nomaadStageCollapsed.has(s.key);
     return `<div class="na-stage" id="na-stage-${s.key}">
       <div class="na-stage-head${collapsed ? ' collapsed' : ''}" data-na-stage-toggle="${s.key}" style="--seg:${s.color}">
@@ -4480,7 +4485,7 @@ function nomaadCalCellHtml(dateObj, list, today) {
     const laneKeys = NOMAAD_CAMP_LANES.map(x => x[0]);
     if ((byCamp.other || []).length) laneKeys.push('other');
     lanesHtml = '<div class="na-cal-lanes">' + laneKeys.map(k => {
-      const items = (byCamp[k] || []).slice().sort((a, b) => (Number(b.grand_total) || 0) - (Number(a.grand_total) || 0));
+      const items = (byCamp[k] || []).slice().sort((a, b) => nomaadEffTotal(b) - nomaadEffTotal(a));
       const chips = items.map(o => {
         const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
         return `<div class="na-cal-chip${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 22))}</div>`;

@@ -5008,6 +5008,7 @@ body.role-daily #add-project { display: none !important; }
 .nomaad-dow { font-weight: 700; color: var(--text-soft); }
 .nomaad-card-right { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
 .nomaad-card-total { font-weight: 700; font-size: 14px; color: var(--text); white-space: nowrap; }
+.nomaad-card-quote { font-weight: 500; font-size: 11.5px; color: var(--muted); text-decoration: line-through; margin-left: 3px; }
 .nomaad-paid { color: var(--ok); font-weight: 800; font-size: 14px; }
 .nomaad-chev { color: var(--muted); transition: transform .18s; flex-shrink: 0; }
 .nomaad-card.expanded .nomaad-chev { transform: rotate(180deg); }

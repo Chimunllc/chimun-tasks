@@ -5894,6 +5894,20 @@ function attachProductsHandlers() {
    - Хоцорсон таскын тоо
    Бүх chart нь inline SVG — гадны library хэрэггүй.
    CEO бус хэрэглэгчид зөвхөн хувийн KPI хэсэг (renderPersonalKPI) харагдана. */
+/* Санхүүгийн хүсэлтийн төлбөрийн үе шат — НЭГ эх сурвалж (тайлангийн карт, мөрийн тэмдэг,
+   Excel экспорт бүгд үүгээр). Батлагдсан хүсэлтийг шилжүүлсэн/шилжүүлээгүй/дууссанаар ялгана.
+   key: pending | untransferred | transferred | fdone | rejected | deferred */
+function finStage(t) {
+  const dec = t.decision || 'pending';
+  if (dec === 'rejected') return { key: 'rejected',      label: 'Татгалзсан',    mark: '✗',  color: 'var(--danger)' };
+  if (dec === 'deferred') return { key: 'deferred',      label: 'Хойшлуулсан',   mark: '🕐', color: 'var(--warn)' };
+  if (dec !== 'approved')  return { key: 'pending',       label: 'Хүлээгдэж буй', mark: '⏳', color: 'var(--warn)' };
+  // Батлагдсан → төлбөрийн үе шат
+  if (t.status === 'done') return { key: 'fdone',         label: 'Дууссан',       mark: '✓',  color: 'var(--ok)' };
+  if (t.executed_at)       return { key: 'transferred',   label: 'Шилжүүлсэн',    mark: '💵', color: 'var(--primary)' };
+  return                          { key: 'untransferred', label: 'Шилжүүлээгүй',  mark: '💸', color: 'var(--warn)' };
+}
+
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */
 function renderFinanceReport(wrap) {
   const curMonth = new Date().toISOString().slice(0, 7);
@@ -5939,11 +5953,15 @@ function renderFinanceReport(wrap) {
   if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард санхүүгийн хүсэлт алга.'; wrap.appendChild(e); return; }
 
   // ── Төлөвийн шүүлтийн чип (дарж шүүнэ) ──
+  // Үе шатууд = төлбөрийн амьдралын мөчлөг (батлагдсаныг шилжүүлсэн/шилжүүлээгүй/дууссанаар задлав).
+  // Дарвал тухайн үе шатны хүсэлтүүд тусдаа харагдана. finStage()-тэй НЭГ эх сурвалж.
   const stDefs = [
-    ['all', 'Бүгд', () => true, 'var(--text)'],
-    ['pending', '⏳ Хүлээгдэж буй', t => (t.decision || 'pending') === 'pending', 'var(--warn)'],
-    ['approved', '✓ Батлагдсан', t => t.decision === 'approved', 'var(--ok)'],
-    ['rejected', '✗ Татгалзсан', t => t.decision === 'rejected', 'var(--danger)'],
+    ['all',           'Бүгд',             () => true,                               'var(--text)'],
+    ['pending',       '⏳ Хүлээгдэж буй',  t => finStage(t).key === 'pending',       'var(--warn)'],
+    ['untransferred', '💸 Шилжүүлээгүй',   t => finStage(t).key === 'untransferred', 'var(--warn)'],
+    ['transferred',   '💵 Шилжүүлсэн',     t => finStage(t).key === 'transferred',   'var(--primary)'],
+    ['fdone',         '✓ Дууссан',         t => finStage(t).key === 'fdone',         'var(--ok)'],
+    ['rejected',      '✗ Татгалзсан',      t => finStage(t).key === 'rejected',      'var(--danger)'],
   ];
   const stFilter = state.finReportStatus || 'all';
   const chips = document.createElement('div');
@@ -5958,12 +5976,14 @@ function renderFinanceReport(wrap) {
   wrap.appendChild(chips);
   chips.querySelectorAll('[data-fin-st]').forEach(b => b.addEventListener('click', () => { state.finReportStatus = b.dataset.finSt; render(); }));
 
-  const shown = monthList.filter(stDefs.find(d => d[0] === stFilter)[2]);
+  // Хадгалагдсан шүүлт устсан түлхүүртэй байвал (хуучин 'approved') → Бүгд рүү унана.
+  const stDef = stDefs.find(d => d[0] === stFilter) || stDefs[0];
+  const shown = monthList.filter(stDef[2]);
   if (!shown.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:24px 12px;'; e.textContent = 'Энэ төлөвт гүйлгээ алга.'; wrap.appendChild(e); return; }
 
   // ── Задаргаа: Салбар → Үндсэн → Дэд → мөр (салбар бүлэг эвхэгддэг) ──
-  const stMark = (t) => t.decision === 'approved' ? '✓' : t.decision === 'rejected' ? '✗' : t.decision === 'deferred' ? '🕐' : '⏳';
-  const stCol = (t) => t.decision === 'approved' ? 'var(--ok)' : t.decision === 'rejected' ? 'var(--danger)' : 'var(--warn)';
+  const stMark = (t) => finStage(t).mark;
+  const stCol  = (t) => finStage(t).color;
   const subHdr = (label, count, sum, level) => {
     const st = level === 1
       ? 'padding:7px 12px;margin:9px 0 1px 8px;font-weight:700;font-size:12px;border-left:3px solid var(--border-strong);'
@@ -6028,7 +6048,8 @@ function exportFinanceReportExcel() {
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
   if (!state.isCEO && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
   if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
-  const stPred = { all: () => true, pending: t => (t.decision || 'pending') === 'pending', approved: t => t.decision === 'approved', rejected: t => t.decision === 'rejected' }[state.finReportStatus || 'all'] || (() => true);
+  const stKey = state.finReportStatus || 'all';
+  const stPred = stKey === 'all' ? () => true : (t => finStage(t).key === stKey);
   let rows = base.filter(t => (t.requested_at || '').slice(0, 7) === month && stPred(t));
   if (!rows.length) { showToast('Татах гүйлгээ алга', 'warn'); return; }
   const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
@@ -6040,7 +6061,7 @@ function exportFinanceReportExcel() {
     if (ca !== cb) return ca.localeCompare(cb);
     return (a.requested_at || '').localeCompare(b.requested_at || '');
   });
-  const stMn = t => t.decision === 'approved' ? 'Батлагдсан' : t.decision === 'rejected' ? 'Татгалзсан' : t.decision === 'deferred' ? 'Хойшлуулсан' : 'Хүлээгдэж буй';
+  const stMn = t => finStage(t).label;
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const C = (v, type, style) => `<Cell${style ? ` ss:StyleID="${style}"` : ''}><Data ss:Type="${type}">${esc(v)}</Data></Cell>`;
   const headers = ['Огноо', 'Салбар', 'Үндсэн ангилал', 'Дэд ангилал', 'Хүлээн авагч', 'Гүйлгээний утга', 'Дүн', 'Төлөв'];

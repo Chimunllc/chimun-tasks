@@ -4680,77 +4680,52 @@ function openNomaadEditModal(quoteNo) {
   }));
   items.forEach(it => { it.total = it.included ? 0 : it.unit_price * it.qty; });
   let guests = Number(o.guests) || 0;
-  const recalc = it => { it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); };
-  const grand = () => items.reduce((s, it) => s + (it.included ? 0 : (Number(it.total) || 0)), 0);
 
   document.getElementById('nomaad-edit-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
   modal.id = 'nomaad-edit-modal';
   modal.innerHTML = `
-    <div class="modal" style="max-width:600px;">
+    <div class="modal naq-modal">
       <h2>Захиалга засах · ${escapeHtml(o.quote_no || '')}</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <label style="flex:1;min-width:110px;">Хүний тоо<input id="ne-guests" type="number" min="1" value="${guests}" /></label>
-        <label style="flex:2;min-width:140px;">Холбоо барих<input id="ne-contact" value="${escapeHtml(o.contact || '')}" /></label>
+      <p class="naq-sub">${escapeHtml(o.company || '')} · ${escapeHtml(o.camp || '')}${o.tier ? ' · ' + escapeHtml(o.tier) : ''}</p>
+      <div class="naq-preview-wrap" style="display:none;"></div>
+      <div class="naq-edit">
+        <div class="naq-grid">
+          <label>Хүний тоо<input id="ne-guests" type="number" min="0" inputmode="numeric" value="${guests}" /></label>
+          <label>Холбоо барих<input id="ne-contact" value="${escapeHtml(o.contact || '')}" /></label>
+          <label>Утас<input id="ne-phone" value="${escapeHtml(o.phone || '')}" /></label>
+          <label>И-мэйл<input id="ne-email" value="${escapeHtml(o.email || '')}" /></label>
+        </div>
+        <span class="naq-sectitle">Бараа / үйлчилгээ <small>(багц = үнэгүй багтсан)</small></span>
+        <div id="ne-items" class="naq-items"></div>
+        <button class="naq-addbtn" id="ne-add">+ Мөр нэмэх</button>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <label style="flex:1;min-width:110px;">Утас<input id="ne-phone" value="${escapeHtml(o.phone || '')}" /></label>
-        <label style="flex:2;min-width:140px;">И-мэйл<input id="ne-email" value="${escapeHtml(o.email || '')}" /></label>
-      </div>
-      <label style="margin-top:10px;">Бараа / үйлчилгээ <span style="font-size:11px;color:var(--muted);font-weight:400;">(багц = үнэгүй багтсан)</span></label>
-      <div id="ne-items"></div>
-      <button class="btn" id="ne-add" style="margin-top:6px;">+ Мөр нэмэх</button>
-      <div id="ne-total" style="text-align:right;font-weight:800;margin-top:12px;font-size:15px;color:var(--primary);"></div>
-      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn" id="ne-cancel">Болих</button>
-        <button class="btn btn-primary" id="ne-save">💾 Хадгалах</button>
+      <div class="naq-foot">
+        <div id="ne-total" class="naq-total"></div>
+        <div class="naq-actions">
+          <button class="btn naq-pv-show">👁 Урьдчилан харах</button>
+          <button class="btn" id="ne-cancel">Болих</button>
+          <button class="btn btn-primary" id="ne-save">💾 Хадгалах</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.classList.add('open');   // .modal-bg нь .open класстай үед л харагдана
-  const itemsEl = modal.querySelector('#ne-items');
-  const totalEl = modal.querySelector('#ne-total');
-  const renderTotal = () => { totalEl.textContent = 'Нийт дүн: ' + fmtMoney(grand()) + ' · Урьдчилгаа 30%: ' + fmtMoney(Math.round(grand() * 0.3)); };
-  function renderItems() {
-    itemsEl.innerHTML = items.map((it, i) => `
-      <div class="ne-row" data-idx="${i}" style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap;">
-        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="Нэр" style="flex:2;min-width:130px;" />
-        <input class="ne-qty" type="number" min="0" value="${it.qty}" title="Тоо" style="width:58px;" />
-        <input class="ne-price" type="number" min="0" value="${it.unit_price}" title="Нэгж үнэ" style="width:96px;" ${it.included ? 'disabled' : ''} />
-        <span class="ne-amt" style="flex:1;min-width:80px;text-align:right;font-size:12px;color:var(--muted);">${fmtMoney(it.included ? 0 : (Number(it.total) || 0))}</span>
-        <label style="font-size:11px;display:flex;align-items:center;gap:3px;white-space:nowrap;"><input type="checkbox" class="ne-incl" ${it.included ? 'checked' : ''} style="width:auto;" />багц</label>
-        <button class="ne-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
-      </div>`).join('');
-    renderTotal();
-  }
-  renderItems();
+  const ib = nomaadItemsBindings(modal, items, '#ne-items', '#ne-total', '#ne-add');
   modal.querySelector('#ne-guests').addEventListener('input', (e) => {
     guests = Math.max(0, Number(e.target.value) || 0);
     const tb = items.find(it => it.category === 'Үндсэн багц');
-    if (tb) { tb.qty = guests; recalc(tb); renderItems(); } else renderTotal();
+    if (tb) { tb.qty = guests; ib.recalc(tb); ib.renderItems(); }
   });
-  itemsEl.addEventListener('input', (e) => {
-    const row = e.target.closest('.ne-row'); if (!row) return;
-    const it = items[+row.dataset.idx];
-    if (e.target.classList.contains('ne-name')) it.name = e.target.value;
-    else if (e.target.classList.contains('ne-qty')) { it.qty = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
-    else if (e.target.classList.contains('ne-price')) { it.unit_price = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
-  });
-  itemsEl.addEventListener('change', (e) => {
-    if (!e.target.classList.contains('ne-incl')) return;
-    const it = items[+e.target.closest('.ne-row').dataset.idx];
-    it.included = e.target.checked; recalc(it); renderItems();
-  });
-  itemsEl.addEventListener('click', (e) => {
-    if (!e.target.classList.contains('ne-rm')) return;
-    items.splice(+e.target.closest('.ne-row').dataset.idx, 1); renderItems();
-  });
-  modal.querySelector('#ne-add').addEventListener('click', () => {
-    items.push({ row_num: items.length + 1, category: 'Нэмэлт үйлчилгээ', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
-    renderItems();
-  });
+  nomaadWirePreview(modal, () => ({
+    quote_no: o.quote_no, company: o.company, camp: o.camp, tier: o.tier,
+    contact: modal.querySelector('#ne-contact').value.trim(),
+    phone: modal.querySelector('#ne-phone').value.trim(),
+    email: modal.querySelector('#ne-email').value.trim(),
+    guests: Number(modal.querySelector('#ne-guests').value) || 0,
+    date_start: o.date_start, date_end: o.date_end,
+  }), items);
   modal.querySelector('#ne-cancel').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
   modal.querySelector('#ne-save').addEventListener('click', (e) => saveNomaadEdit(o, items, guests, modal, e.currentTarget));
@@ -4793,6 +4768,88 @@ function nextNomaadQuoteNo() {
   });
   return 'NC-' + yr + '-' + String(max + 1).padStart(4, '0');
 }
+/* Нэг item-ийн карт (засварлах) — Үүсгэх ба Засах модалд хуваалцана */
+function nomaadItemCardHtml(it, i) {
+  const amt = it.included ? 0 : (Number(it.total) || 0);
+  return `
+    <div class="ne-row naq-item${it.included ? ' incl' : ''}" data-idx="${i}">
+      <div class="naq-item-top">
+        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="Бараа / үйлчилгээний нэр" />
+        <button class="ne-rm naq-rm" title="Мөр устгах" aria-label="Мөр устгах">×</button>
+      </div>
+      <div class="naq-item-mid">
+        <label>Тоо<input class="ne-qty naq-num" type="number" min="0" inputmode="numeric" value="${it.qty}" /></label>
+        <label>Нэгж үнэ ₮<input class="ne-price naq-price" type="number" min="0" inputmode="numeric" value="${it.unit_price}" ${it.included ? 'disabled' : ''} /></label>
+        <span class="ne-amt naq-amt">${fmtMoney(amt)}</span>
+      </div>
+      <label class="naq-incl"><input type="checkbox" class="ne-incl" ${it.included ? 'checked' : ''} /> Багцад үнэгүй багтсан</label>
+    </div>`;
+}
+
+/* Үнийн саналыг уншихад тохиромжтой хэлбэрээр урьдчилан харуулах */
+function nomaadQuotePreviewHtml(m, items) {
+  const live = items.filter(it => (it.name || '').trim() || Number(it.qty) || Number(it.unit_price));
+  const rows = live.map(it => {
+    const amt = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0);
+    return `<tr>
+      <td>${escapeHtml(it.name || '—')}${it.included ? ' <span class="naq-pv-free">үнэгүй</span>' : ''}</td>
+      <td class="r">${Number(it.qty) || 0}${it.unit ? ' ' + escapeHtml(it.unit) : ''}</td>
+      <td class="r">${it.included ? '—' : fmtMoney(it.unit_price)}</td>
+      <td class="r">${it.included ? '0₮' : fmtMoney(amt)}</td>
+    </tr>`;
+  }).join('');
+  const grand = items.reduce((s, it) => s + (it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0)), 0);
+  const dep = Math.round(grand * 0.3);
+  const dr = [m.date_start, m.date_end].filter(Boolean).map(d => String(d).replace('T', ' ').slice(0, 16)).join(' → ');
+  return `
+    <div class="naq-preview">
+      <button class="btn naq-pv-back" style="margin-bottom:14px;">← Засвар руу буцах</button>
+      <div class="naq-pv-card">
+        <div class="naq-pv-h">
+          <div>
+            <div class="naq-pv-title">Үнийн санал</div>
+            <div class="naq-pv-no">${escapeHtml(m.quote_no || '')}</div>
+          </div>
+          <div class="naq-pv-camp">${escapeHtml(m.camp || '')}${m.tier ? '<br>' + escapeHtml(m.tier) : ''}</div>
+        </div>
+        <div class="naq-pv-meta">
+          ${m.company ? `<div><b>${escapeHtml(m.company)}</b></div>` : ''}
+          ${m.contact ? `<div>${escapeHtml(m.contact)}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div>` : (m.phone ? `<div>${escapeHtml(m.phone)}</div>` : '')}
+          ${m.email ? `<div>${escapeHtml(m.email)}</div>` : ''}
+          ${dr ? `<div>📅 ${escapeHtml(dr)}</div>` : ''}
+          ${m.guests ? `<div>👥 ${m.guests} хүн</div>` : ''}
+        </div>
+        <table class="naq-pv-table">
+          <thead><tr><th>Бараа / үйлчилгээ</th><th class="r">Тоо</th><th class="r">Нэгж үнэ</th><th class="r">Дүн</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="4" class="naq-pv-empty">Мөр алга</td></tr>'}</tbody>
+        </table>
+        <div class="naq-pv-totals">
+          <div><span>Нийт дүн</span><b>${fmtMoney(grand)}</b></div>
+          <div><span>Урьдчилгаа (30%)</span><b>${fmtMoney(dep)}</b></div>
+          <div class="naq-pv-bal"><span>Үлдэгдэл төлбөр</span><b>${fmtMoney(grand - dep)}</b></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* "Урьдчилан харах" товчийг утсаар холбоно: засвар ⇄ preview солих */
+function nomaadWirePreview(modal, getMeta, items) {
+  const showBtn = modal.querySelector('.naq-pv-show');
+  const editWrap = modal.querySelector('.naq-edit');
+  const pvWrap = modal.querySelector('.naq-preview-wrap');
+  if (!showBtn || !editWrap || !pvWrap) return;
+  showBtn.addEventListener('click', () => {
+    pvWrap.innerHTML = nomaadQuotePreviewHtml(getMeta(), items);
+    editWrap.style.display = 'none';
+    pvWrap.style.display = 'block';
+    modal.querySelector('.modal').scrollTop = 0;
+    pvWrap.querySelector('.naq-pv-back').addEventListener('click', () => {
+      pvWrap.style.display = 'none';
+      editWrap.style.display = '';
+    });
+  });
+}
+
 function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
   const itemsEl = modal.querySelector(itemsSel);
   const totalEl = modal.querySelector(totalSel);
@@ -4800,15 +4857,7 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
   const grand = () => items.reduce((s, it) => s + (it.included ? 0 : (Number(it.total) || 0)), 0);
   const renderTotal = () => { totalEl.textContent = 'Нийт дүн: ' + fmtMoney(grand()) + ' · Урьдчилгаа 30%: ' + fmtMoney(Math.round(grand() * 0.3)); };
   function renderItems() {
-    itemsEl.innerHTML = items.map((it, i) => `
-      <div class="ne-row" data-idx="${i}" style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap;">
-        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="Нэр" style="flex:2;min-width:130px;" />
-        <input class="ne-qty" type="number" min="0" value="${it.qty}" title="Тоо" style="width:58px;" />
-        <input class="ne-price" type="number" min="0" value="${it.unit_price}" title="Нэгж үнэ" style="width:96px;" ${it.included ? 'disabled' : ''} />
-        <span class="ne-amt" style="flex:1;min-width:80px;text-align:right;font-size:12px;color:var(--muted);">${fmtMoney(it.included ? 0 : (Number(it.total) || 0))}</span>
-        <label style="font-size:11px;display:flex;align-items:center;gap:3px;white-space:nowrap;"><input type="checkbox" class="ne-incl" ${it.included ? 'checked' : ''} style="width:auto;" />багц</label>
-        <button class="ne-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
-      </div>`).join('');
+    itemsEl.innerHTML = items.map((it, i) => nomaadItemCardHtml(it, i)).join('');
     renderTotal();
   }
   renderItems();
@@ -4843,38 +4892,50 @@ function openNomaadCreateModal() {
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'nomaad-create-modal';
   modal.innerHTML = `
-    <div class="modal" style="max-width:640px;">
+    <div class="modal naq-modal">
       <h2>Шинэ үнийн санал · ${escapeHtml(quoteNo)}</h2>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <label style="flex:2;min-width:170px;">Компанийн нэр <span style="color:var(--danger)">*</span><input id="nc-company" placeholder="Компани / захиалагч" /></label>
-        <label style="flex:1;min-width:120px;">Регистр<input id="nc-reg" /></label>
+      <div class="naq-preview-wrap" style="display:none;"></div>
+      <div class="naq-edit">
+        <div class="naq-grid">
+          <label class="full">Компанийн нэр <span style="color:var(--danger)">*</span><input id="nc-company" placeholder="Компани / захиалагч" /></label>
+          <label>Регистр<input id="nc-reg" /></label>
+          <label>Утас<input id="nc-phone" /></label>
+          <label>Холбоо барих<input id="nc-contact" /></label>
+          <label>И-мэйл<input id="nc-email" /></label>
+          <label>Кемп<select id="nc-camp">${camps.map(c => `<option>${c}</option>`).join('')}</select></label>
+          <label>Багц<input id="nc-tier" placeholder="Стандарт..." /></label>
+          <label>Хүний тоо<input id="nc-guests" type="number" min="0" inputmode="numeric" value="0" /></label>
+          <label>Эхлэх<input id="nc-start" type="datetime-local" /></label>
+          <label>Дуусах<input id="nc-end" type="datetime-local" /></label>
+        </div>
+        <span class="naq-sectitle">Бараа / үйлчилгээ <small>(багц = үнэгүй багтсан · Үндсэн багц = Хүний тоогоор)</small></span>
+        <div id="nc-items" class="naq-items"></div>
+        <button class="naq-addbtn" id="nc-add">+ Мөр нэмэх</button>
       </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <label style="flex:2;min-width:140px;">Холбоо барих<input id="nc-contact" /></label>
-        <label style="flex:1;min-width:110px;">Утас<input id="nc-phone" /></label>
-        <label style="flex:2;min-width:150px;">И-мэйл<input id="nc-email" /></label>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <label style="flex:1;min-width:130px;">Кемп<select id="nc-camp">${camps.map(c => `<option>${c}</option>`).join('')}</select></label>
-        <label style="flex:1;min-width:110px;">Багц<input id="nc-tier" placeholder="Стандарт..." /></label>
-        <label style="flex:1;min-width:90px;">Хүний тоо<input id="nc-guests" type="number" min="0" value="0" /></label>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <label style="flex:1;min-width:160px;">Эхлэх<input id="nc-start" type="datetime-local" /></label>
-        <label style="flex:1;min-width:160px;">Дуусах<input id="nc-end" type="datetime-local" /></label>
-      </div>
-      <label style="margin-top:10px;">Бараа / үйлчилгээ <span style="font-size:11px;color:var(--muted);font-weight:400;">(багц = үнэгүй багтсан · Үндсэн багц нь Хүний тоогоор)</span></label>
-      <div id="nc-items"></div>
-      <button class="btn" id="nc-add" style="margin-top:6px;">+ Мөр нэмэх</button>
-      <div id="nc-total" style="text-align:right;font-weight:800;margin-top:12px;font-size:15px;color:var(--primary);"></div>
-      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
-        <button class="btn" id="nc-cancel">Болих</button>
-        <button class="btn btn-primary" id="nc-save">💾 Үүсгэх</button>
+      <div class="naq-foot">
+        <div id="nc-total" class="naq-total"></div>
+        <div class="naq-actions">
+          <button class="btn naq-pv-show">👁 Урьдчилан харах</button>
+          <button class="btn" id="nc-cancel">Болих</button>
+          <button class="btn btn-primary" id="nc-save">💾 Үүсгэх</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.classList.add('open');   // .modal-bg нь .open класстай үед л харагдана
   const ib = nomaadItemsBindings(modal, items, '#nc-items', '#nc-total', '#nc-add');
+  nomaadWirePreview(modal, () => ({
+    quote_no: quoteNo,
+    company: modal.querySelector('#nc-company').value.trim(),
+    contact: modal.querySelector('#nc-contact').value.trim(),
+    phone: modal.querySelector('#nc-phone').value.trim(),
+    email: modal.querySelector('#nc-email').value.trim(),
+    camp: modal.querySelector('#nc-camp').value,
+    tier: modal.querySelector('#nc-tier').value.trim(),
+    guests: Number(modal.querySelector('#nc-guests').value) || 0,
+    date_start: modal.querySelector('#nc-start').value,
+    date_end: modal.querySelector('#nc-end').value,
+  }), items);
   modal.querySelector('#nc-guests').addEventListener('input', (e) => {
     const g = Math.max(0, Number(e.target.value) || 0);
     const tb = items.find(it => it.category === 'Үндсэн багц');

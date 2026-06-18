@@ -5117,6 +5117,66 @@ body.role-daily #add-project { display: none !important; }
 .na-assign-hint { color: var(--muted); font-weight: 500; }
 .nomaad-item-assign:hover .na-assign-hint { color: var(--primary); }
 
+/* ─── NOMAAD үнийн санал — Үүсгэх / Засах модал (mobile-first) ─── */
+.naq-modal { max-width: 640px; }
+.naq-sub { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+.naq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-bottom: 4px; }
+.naq-grid label { display: flex; flex-direction: column; gap: 5px; margin: 0; font-size: 12px; color: var(--muted); font-weight: 500; }
+.naq-grid label.full { grid-column: 1 / -1; }
+.naq-grid input, .naq-grid select { margin: 0; }
+.naq-sectitle { display: block; font-size: 12px; color: var(--muted); font-weight: 600; margin: 16px 0 8px; }
+.naq-sectitle small { font-weight: 400; }
+
+.naq-items { display: flex; flex-direction: column; gap: 10px; }
+.naq-item { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--bg-soft, var(--card)); }
+.naq-item.incl { background: var(--ok-soft); border-color: var(--ok); }
+.naq-item-top { display: flex; gap: 8px; align-items: center; }
+.naq-item-top .ne-name { flex: 1; min-width: 0; font-weight: 600; }
+.naq-rm { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--danger); font-size: 20px; line-height: 1; cursor: pointer; padding: 0; }
+.naq-rm:hover { background: var(--danger-soft); border-color: var(--danger); }
+.naq-item-mid { display: flex; gap: 10px; align-items: flex-end; margin-top: 10px; }
+.naq-item-mid label { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 11px; color: var(--muted); font-weight: 500; }
+.naq-item-mid input { margin: 0; text-align: right; }
+.naq-num { width: 74px; }
+.naq-price { width: 116px; }
+.naq-amt { margin-left: auto; font-weight: 800; font-size: 15px; color: var(--text); white-space: nowrap; padding-bottom: 9px; }
+.naq-incl { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 12.5px; color: var(--text-soft); cursor: pointer; }
+.naq-incl input { width: auto; margin: 0; }
+.naq-addbtn { margin-top: 12px; width: 100%; padding: 11px; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--panel); color: var(--primary); font-weight: 700; font-size: 13.5px; cursor: pointer; }
+.naq-addbtn:hover { background: var(--primary-soft); border-color: var(--primary); }
+
+.naq-foot { position: sticky; bottom: -24px; background: var(--panel); padding: 14px 0 4px; margin-top: 14px; border-top: 1px solid var(--border); }
+.naq-total { text-align: right; font-weight: 800; font-size: 15px; color: var(--primary); }
+.naq-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.naq-actions .naq-pv-show { margin-right: auto; }
+
+/* Урьдчилан харах (preview) */
+.naq-preview { padding: 2px 0 8px; }
+.naq-pv-card { border: 1px solid var(--border); border-radius: 14px; padding: 18px; background: var(--panel); box-shadow: var(--shadow-sm); }
+.naq-pv-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 2px solid var(--primary); padding-bottom: 12px; margin-bottom: 12px; }
+.naq-pv-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.naq-pv-no { font-size: 19px; font-weight: 800; color: var(--text); }
+.naq-pv-camp { font-size: 13px; font-weight: 700; color: var(--primary); text-align: right; }
+.naq-pv-meta { font-size: 13px; color: var(--text-soft); line-height: 1.7; margin-bottom: 14px; }
+.naq-pv-meta b { color: var(--text); }
+.naq-pv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.naq-pv-table th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; padding: 0 0 7px; border-bottom: 1px solid var(--border); }
+.naq-pv-table td { padding: 9px 0; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+.naq-pv-table .r { text-align: right; white-space: nowrap; padding-left: 14px; }
+.naq-pv-table th:first-child, .naq-pv-table td:first-child { padding-right: 10px; width: 44%; }
+.naq-pv-free { font-size: 10.5px; font-weight: 700; color: var(--ok); background: var(--ok-soft); padding: 1px 6px; border-radius: 999px; margin-left: 6px; }
+.naq-pv-empty { text-align: center; color: var(--muted); padding: 16px 0; }
+.naq-pv-totals { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.naq-pv-totals > div { display: flex; justify-content: space-between; font-size: 14px; color: var(--text-soft); }
+.naq-pv-totals > div b { color: var(--text); }
+.naq-pv-totals .naq-pv-bal { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; font-size: 16px; }
+.naq-pv-totals .naq-pv-bal b { color: var(--primary); }
+
+@media (max-width: 480px) {
+  .naq-grid { grid-template-columns: 1fr; }
+  .naq-price { width: 100px; }
+}
+
 /* ─── M-Event Бараа (backoffice) view ───────────────────── */
 .prod-toolbar { display: flex; gap: 10px; align-items: center; margin: 4px 2px 10px; }
 .prod-search { flex: 1; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: 8px; font-family: inherit; font-size: 14px; background: var(--panel); color: var(--text); }

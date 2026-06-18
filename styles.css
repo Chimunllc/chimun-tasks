@@ -5072,8 +5072,37 @@ body.role-daily #add-project { display: none !important; }
   .na-cal-cell { min-height: 64px; padding: 3px; }
   .na-cal-chip { font-size: 10px; padding: 2px 4px; }
   .na-cal-daynum { font-size: 11px; }
-  .na-cal-title { font-size: 14px; min-width: 100px; }
+  .na-cal-title { font-size: 14px; min-width: 90px; }
+  .na-funnel-seg { min-width: 64px; }
+  .na-cal-weekgrid .na-cal-cell { min-height: 150px; }
 }
+
+/* Календарь — Сар / 7 хоног toggle + 7 хоногийн харагдац */
+.na-cal-head { flex-wrap: wrap; }
+.na-calmode { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; margin-right: 4px; }
+.na-cm { padding: 5px 11px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--muted); border: none; cursor: pointer; }
+.na-cm + .na-cm { border-left: 1px solid var(--border); }
+.na-cm.active { background: var(--primary); color: #fff; }
+.na-cal-weekgrid .na-cal-cell { min-height: 220px; }
+
+/* Pipeline — борлуулалтын юүлүүр + шатаар бүлэг */
+.na-funnel { display: flex; gap: 5px; align-items: flex-end; margin-bottom: 16px; overflow-x: auto; padding-bottom: 4px; }
+.na-funnel-seg { flex: 1; min-width: 78px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); cursor: pointer; }
+.na-funnel-seg:hover { border-color: var(--border-strong); }
+.na-funnel-seg.empty { opacity: .5; }
+.na-funnel-bar { width: 58%; min-height: 6px; border-radius: 4px 4px 0 0; background: var(--seg); }
+.na-funnel-n { font-size: 18px; font-weight: 800; color: var(--text); line-height: 1; }
+.na-funnel-l { font-size: 10.5px; font-weight: 600; color: var(--muted); text-align: center; line-height: 1.2; }
+.na-stage { margin-bottom: 12px; }
+.na-stage-head { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 9px; background: var(--bg-soft, var(--card)); border-left: 4px solid var(--seg); cursor: pointer; user-select: none; }
+.na-stage-head:hover { background: var(--panel-hover, rgba(0,0,0,.02)); }
+.na-stage-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--seg); flex-shrink: 0; }
+.na-stage-label { font-size: 14px; font-weight: 800; color: var(--text); }
+.na-stage-count { font-size: 12px; font-weight: 700; color: var(--muted); background: var(--border); padding: 1px 8px; border-radius: 999px; }
+.na-stage-total { margin-left: auto; font-size: 13px; font-weight: 700; color: var(--text-soft); white-space: nowrap; }
+.na-stage-chev { color: var(--muted); transition: transform .18s; flex-shrink: 0; }
+.na-stage-head.collapsed .na-stage-chev { transform: rotate(-90deg); }
+.na-stage-body { padding: 8px 0 2px; }
 .nomaad-task-line { display: flex; align-items: center; gap: 8px; }
 .nomaad-task-who { font-weight: 600; color: var(--text); }
 .nomaad-task-st { color: var(--muted); font-size: 12px; }

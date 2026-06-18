@@ -3048,7 +3048,7 @@ function renderTaskList() {
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : renderNomaadOrders());
+    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'pipeline' ? renderNomaadPipeline() : renderNomaadOrders());
     attachNomaadHandlers();
     return;
   } else if (state.view === 'finance') {
@@ -4234,8 +4234,10 @@ function nomaadAssignedTasksHtml(quoteNo) {
 }
 // Нээлттэй (дэлгэрсэн) захиалгуудыг render хооронд хадгална
 let nomaadExpanded = new Set();
-let nomaadViewMode = 'list';   // NOMAAD захиалга: 'list' | 'calendar'
-let nomaadCalMonth = null;     // календарийн идэвхтэй сар { y, mo }
+let nomaadViewMode = 'list';   // NOMAAD захиалга: 'list' | 'calendar' | 'pipeline'
+let nomaadCalMode = 'month';   // календарь: 'month' | 'week'
+let nomaadCalAnchor = null;    // календарийн анкор огноо (Date)
+let nomaadStageCollapsed = new Set(['done', 'cancelled']);  // pipeline: эвхэгдсэн шатууд
 // Бэлтгэл-шалгах task-ийн desc-ийг нэг хэвээр угсарна
 function nomaadTaskDesc(o, names) {
   return `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n');
@@ -4392,61 +4394,125 @@ function nomaadIsCancelled(o) {
 function renderNomaadToggle() {
   return `<div class="na-viewtoggle">
     <button class="na-vt${nomaadViewMode === 'list' ? ' active' : ''}" data-na-view="list">📋 Жагсаалт</button>
+    <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Шат</button>
     <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
   </div>`;
 }
+/* ---- Pipeline (борлуулалтын шат) ---- */
+const NOMAAD_STAGES = [
+  { key: 'interested', label: 'Сонирхож буй',          color: '#0ea5e9' },
+  { key: 'sent',       label: 'Үнийн санал илгээсэн',  color: '#8b5cf6' },
+  { key: 'deposit',    label: 'Урьдчилгаа төлсөн',     color: '#f59e0b' },
+  { key: 'contract',   label: 'Гэрээ хийгдсэн',        color: '#16a34a' },
+  { key: 'done',       label: 'Гүйцэтгэсэн',           color: '#0d9488' },
+  { key: 'cancelled',  label: 'Больсон',               color: '#94a3b8' },
+];
+// Захиалгын шатыг төлөв + орлого + огнооноос автоматаар тооцно
+function nomaadStage(o) {
+  const su = String(o.status || '').toUpperCase();
+  if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
+  const income = Number(o.income_amount) || 0;
+  const contractTotal = Number(o.final_amount) || Number(o.grand_total) || 0;
+  const fullyPaid = income > 0 && (contractTotal - income) <= 0;
+  const days = nomaadDaysLeft(o.date_start);
+  const past = days != null && days < 0;
+  if (past && fullyPaid) return 'done';
+  if (su.includes('ГЭРЭЭ') || String(o.contract_date || '').trim()) return 'contract';
+  if (Number(o.income_advance) > 0 || income > 0) return 'deposit';
+  if (su.includes('ИЛГЭЭСЭН')) return 'sent';
+  return 'interested';
+}
+function renderNomaadPipeline() {
+  const orders = state.nomaadOrders || [];
+  const byStage = {};
+  orders.forEach(o => { const k = nomaadStage(o); (byStage[k] = byStage[k] || []).push(o); });
+  const maxN = Math.max(1, ...NOMAAD_STAGES.map(s => (byStage[s.key] || []).length));
+  const funnel = NOMAAD_STAGES.map(s => {
+    const n = (byStage[s.key] || []).length;
+    return `<button class="na-funnel-seg${n ? '' : ' empty'}" data-na-stage-scroll="${s.key}" style="--seg:${s.color}">
+      <span class="na-funnel-bar" style="height:${6 + Math.round((n / maxN) * 34)}px"></span>
+      <span class="na-funnel-n">${n}</span><span class="na-funnel-l">${escapeHtml(s.label)}</span>
+    </button>`;
+  }).join('');
+  const sections = NOMAAD_STAGES.map(s => {
+    const list = (byStage[s.key] || []).slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
+    if (!list.length) return '';
+    const total = list.reduce((sum, o) => sum + (Number(o.grand_total) || 0), 0);
+    const collapsed = nomaadStageCollapsed.has(s.key);
+    return `<div class="na-stage" id="na-stage-${s.key}">
+      <div class="na-stage-head${collapsed ? ' collapsed' : ''}" data-na-stage-toggle="${s.key}" style="--seg:${s.color}">
+        <span class="na-stage-dot"></span>
+        <span class="na-stage-label">${escapeHtml(s.label)}</span>
+        <span class="na-stage-count">${list.length}</span>
+        <span class="na-stage-total">${fmtMoney(total)}</span>
+        <svg class="na-stage-chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="na-stage-body" style="display:${collapsed ? 'none' : 'block'}">${list.map(nomaadCardHtml).join('')}</div>
+    </div>`;
+  }).join('');
+  return `<div class="na-funnel">${funnel}</div>${sections}`;
+}
+// Нэг өдрийн нүд (camp зурвасууд) — сар ба 7 хоногийн харагдацад хоёуланд
+function nomaadCalCellHtml(dateObj, list, today) {
+  const isToday = dateObj.getTime() === today.getTime();
+  let lanesHtml = '';
+  if (list.length) {
+    const byCamp = {};
+    list.forEach(o => { const k = nomaadCampKey(o); (byCamp[k] = byCamp[k] || []).push(o); });
+    const laneKeys = NOMAAD_CAMP_LANES.map(x => x[0]);
+    if ((byCamp.other || []).length) laneKeys.push('other');
+    lanesHtml = '<div class="na-cal-lanes">' + laneKeys.map(k => {
+      const items = (byCamp[k] || []).slice().sort((a, b) => (Number(b.grand_total) || 0) - (Number(a.grand_total) || 0));
+      const chips = items.map(o => {
+        const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
+        return `<div class="na-cal-chip${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 22))}</div>`;
+      }).join('');
+      return `<div class="na-cal-lane na-lane-${k}${items.length ? ' has' : ''}"><span class="na-lane-tag">${NOMAAD_LANE_TAG[k]}</span><div class="na-lane-items">${chips}</div></div>`;
+    }).join('') + '</div>';
+  }
+  return `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}"><div class="na-cal-daynum">${dateObj.getDate()}</div>${lanesHtml}</div>`;
+}
 function renderNomaadCalendar() {
   const orders = state.nomaadOrders || [];
-  if (!nomaadCalMonth) { const n = new Date(); nomaadCalMonth = { y: n.getFullYear(), mo: n.getMonth() + 1 }; }
-  const { y, mo } = nomaadCalMonth;
-  const byDay = {};
-  let thisMonth = 0, otherMonths = 0, noDate = 0;
-  orders.forEach(o => {
-    const p = nomaadParseDay(o.date_start);
-    if (!p) { noDate++; return; }
-    if (p.y === y && p.mo === mo) { (byDay[p.d] = byDay[p.d] || []).push(o); thisMonth++; }
-    else otherMonths++;
-  });
-  const firstDow = (new Date(y, mo - 1, 1).getDay() + 6) % 7;   // 0 = Даваа
-  const daysInMonth = new Date(y, mo, 0).getDate();
+  if (!nomaadCalAnchor) nomaadCalAnchor = new Date();
+  const mode = nomaadCalMode || 'month';
+  const byKey = {};   // 'y-mo-d' -> [orders]
+  let noDate = 0;
+  orders.forEach(o => { const p = nomaadParseDay(o.date_start); if (!p) { noDate++; return; } const k = p.y + '-' + p.mo + '-' + p.d; (byKey[k] = byKey[k] || []).push(o); });
+  const keyFor = dt => dt.getFullYear() + '-' + (dt.getMonth() + 1) + '-' + dt.getDate();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const dows = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
-  let cells = '';
-  for (let i = 0; i < firstDow; i++) cells += `<div class="na-cal-cell na-cal-empty"></div>`;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const list = byDay[d] || [];
-    const isToday = new Date(y, mo - 1, d).getTime() === today.getTime();
-    let lanesHtml = '';
-    if (list.length) {
-      const byCamp = {};
-      list.forEach(o => { const k = nomaadCampKey(o); (byCamp[k] = byCamp[k] || []).push(o); });
-      const laneKeys = NOMAAD_CAMP_LANES.map(x => x[0]);
-      if ((byCamp.other || []).length) laneKeys.push('other');
-      lanesHtml = laneKeys.map(k => {
-        const items = (byCamp[k] || []).slice().sort((a, b) => (Number(b.grand_total) || 0) - (Number(a.grand_total) || 0));
-        const chips = items.map(o => {
-          const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
-          return `<div class="na-cal-chip${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 20))}</div>`;
-        }).join('');
-        return `<div class="na-cal-lane na-lane-${k}${items.length ? ' has' : ''}"><span class="na-lane-tag">${NOMAAD_LANE_TAG[k]}</span><div class="na-lane-items">${chips}</div></div>`;
-      }).join('');
-      lanesHtml = `<div class="na-cal-lanes">${lanesHtml}</div>`;
-    }
-    cells += `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}">
-      <div class="na-cal-daynum">${d}</div>
-      ${lanesHtml}
-    </div>`;
+  const a = nomaadCalAnchor;
+  let title, cells = '', shown = 0, gridCls = '';
+  if (mode === 'week') {
+    const mon = new Date(a.getFullYear(), a.getMonth(), a.getDate() - ((a.getDay() + 6) % 7));
+    const days = [];
+    for (let i = 0; i < 7; i++) days.push(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i));
+    cells = days.map(dt => { const l = byKey[keyFor(dt)] || []; shown += l.length; return nomaadCalCellHtml(dt, l, today); }).join('');
+    title = `${mon.getMonth() + 1}/${mon.getDate()} – ${days[6].getMonth() + 1}/${days[6].getDate()}`;
+    gridCls = ' na-cal-weekgrid';
+  } else {
+    const y = a.getFullYear(), m = a.getMonth();
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7;
+    const dim = new Date(y, m + 1, 0).getDate();
+    for (let i = 0; i < lead; i++) cells += `<div class="na-cal-cell na-cal-empty"></div>`;
+    for (let d = 1; d <= dim; d++) { const dt = new Date(y, m, d); const l = byKey[keyFor(dt)] || []; shown += l.length; cells += nomaadCalCellHtml(dt, l, today); }
+    title = `${y} оны ${m + 1}-р сар`;
   }
-  const hint = `<div class="na-cal-hint">Энэ сард <b>${thisMonth}</b> захиалга${otherMonths ? ` · өөр саруудад ${otherMonths}` : ''}${noDate ? ` · огноогүй ${noDate}` : ''}</div>`;
+  const hint = `<div class="na-cal-hint">Энэ ${mode === 'week' ? '7 хоногт' : 'сард'} <b>${shown}</b> захиалга${noDate ? ` · огноогүй ${noDate}` : ''}</div>`;
   return `<div class="na-cal">
     <div class="na-cal-head">
-      <button class="na-cal-nav" data-na-cal-nav="-1" aria-label="Өмнөх сар">‹</button>
-      <div class="na-cal-title">${y} оны ${mo}-р сар</div>
-      <button class="na-cal-nav" data-na-cal-nav="1" aria-label="Дараах сар">›</button>
+      <div class="na-calmode">
+        <button class="na-cm${mode === 'month' ? ' active' : ''}" data-na-cal-mode="month">Сар</button>
+        <button class="na-cm${mode === 'week' ? ' active' : ''}" data-na-cal-mode="week">7 хоног</button>
+      </div>
+      <button class="na-cal-nav" data-na-cal-nav="-1" aria-label="Өмнөх">‹</button>
+      <div class="na-cal-title">${escapeHtml(title)}</div>
+      <button class="na-cal-nav" data-na-cal-nav="1" aria-label="Дараах">›</button>
       <button class="na-cal-nav na-cal-todaybtn" data-na-cal-nav="0">Өнөөдөр</button>
     </div>
     <div class="na-cal-dows">${dows.map(x => `<div class="na-cal-dow">${x}</div>`).join('')}</div>
-    <div class="na-cal-grid">${cells}</div>
+    <div class="na-cal-grid${gridCls}">${cells}</div>
     ${hint}
     <div class="na-cal-legend">
       <span><i class="na-lg na-cal-summit"></i>S · Summit</span>
@@ -4541,17 +4607,36 @@ function attachNomaadHandlers() {
   document.querySelectorAll('[data-na-view]').forEach(b => {
     b.addEventListener('click', () => { nomaadViewMode = b.dataset.naView; render(); });
   });
-  // Календарь — сар сэлгэх (‹ › Өнөөдөр)
+  // Календарь — нав (‹ › Өнөөдөр): сар эсвэл 7 хоногоор
   document.querySelectorAll('[data-na-cal-nav]').forEach(b => {
     b.addEventListener('click', () => {
       const delta = Number(b.dataset.naCalNav);
-      if (delta === 0) { const n = new Date(); nomaadCalMonth = { y: n.getFullYear(), mo: n.getMonth() + 1 }; }
-      else {
-        let { y, mo } = nomaadCalMonth || { y: new Date().getFullYear(), mo: new Date().getMonth() + 1 };
-        mo += delta; if (mo < 1) { mo = 12; y--; } if (mo > 12) { mo = 1; y++; }
-        nomaadCalMonth = { y, mo };
-      }
+      const a = nomaadCalAnchor || new Date();
+      if (delta === 0) nomaadCalAnchor = new Date();
+      else if (nomaadCalMode === 'week') nomaadCalAnchor = new Date(a.getFullYear(), a.getMonth(), a.getDate() + delta * 7);
+      else nomaadCalAnchor = new Date(a.getFullYear(), a.getMonth() + delta, 1);
       render();
+    });
+  });
+  // Календарь — Сар / 7 хоног
+  document.querySelectorAll('[data-na-cal-mode]').forEach(b => {
+    b.addEventListener('click', () => { nomaadCalMode = b.dataset.naCalMode; render(); });
+  });
+  // Pipeline — шат эвхэх/дэлгэх
+  document.querySelectorAll('[data-na-stage-toggle]').forEach(h => {
+    h.addEventListener('click', (e) => {
+      if (e.target.closest('.nomaad-card')) return;
+      const k = h.dataset.naStageToggle;
+      if (nomaadStageCollapsed.has(k)) nomaadStageCollapsed.delete(k); else nomaadStageCollapsed.add(k);
+      render();
+    });
+  });
+  // Pipeline — юүлүүрээс шат руу гүйх
+  document.querySelectorAll('[data-na-stage-scroll]').forEach(b => {
+    b.addEventListener('click', () => {
+      const k = b.dataset.naStageScroll;
+      nomaadStageCollapsed.delete(k); render();
+      setTimeout(() => { const el = document.getElementById('na-stage-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     });
   });
   // Календарийн захиалга дээр дарвал → жагсаалт руу шилжиж тэр захиалгыг дэлгэнэ

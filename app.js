@@ -2909,23 +2909,6 @@ function render() {
   renderCounts();
   renderNotifications();
 }
-// Санхүүгийн view-ийн үе шатуудын тоо — чипэн дээр харуулна (нэг харцаар хэдэн хүсэлт
-// шилжүүлэгдээгүй / хаагдаагүй байгааг мэдэх). Жагсаалтын filter-ийн predicate-уудтай яг таарна.
-// Хамрах хүрээ = жагсаалттай ижил (эрх + салбар ленз).
-function financeStageCounts() {
-  let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
-  if (!canSeeAllFinance() && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
-  const fWB = finLensBranch(effectiveBranchLens());
-  if (fWB) base = base.filter(t => finEffBranch(t) === fWB);
-  const c = { all: base.length, 'f-pending': 0, 'f-await-txn': 0, 'f-await-close': 0, 'f-done': 0 };
-  for (const t of base) {
-    if (t.status === 'done') c['f-done']++;
-    else if ((t.decision || 'pending') === 'pending') c['f-pending']++;
-    else if (t.decision === 'approved' && !t.executed_at) c['f-await-txn']++;
-    else if (t.decision === 'approved' && t.executed_at) c['f-await-close']++;
-  }
-  return c;
-}
 // Санхүүгийн view-д үе шатны filter, бусад view-д ажлын ерөнхий filter харуулна.
 // Идэвхтэй pill-ийг state.statusFilter-тэй тааруулна.
 function syncFilterPills() {
@@ -2936,14 +2919,6 @@ function syncFilterPills() {
   if (finG)  finG.style.display  = isFin ? '' : 'none';
   const finSort = document.getElementById('fin-sort');
   if (finSort) { finSort.style.display = isFin ? '' : 'none'; finSort.value = state.financeSort || 'smart'; }
-  // Санхүүгийн чипэн дээр үе шат бүрийн тоог шинэчилнэ
-  if (isFin && finG) {
-    const counts = financeStageCounts();
-    finG.querySelectorAll('.filter-pill').forEach(p => {
-      const cnt = p.querySelector('.fin-pill-cnt');
-      if (cnt) { const n = counts[p.dataset.status]; cnt.textContent = n ? ' ' + n : ''; }
-    });
-  }
   const grp = isFin ? finG : taskG;
   if (!grp) return;
   let matched = false;

@@ -5025,7 +5025,10 @@ body.role-daily #add-project { display: none !important; }
 .nomaad-task-row:first-child { border-top: none; }
 
 /* NOMAAD захиалга — Жагсаалт/Календарь toggle + Календарь харагдац */
+.na-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .na-viewtoggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; margin-bottom: 14px; }
+.na-topbar .na-viewtoggle { margin-bottom: 0; }
+.na-newbtn { white-space: nowrap; }
 .na-vt { padding: 7px 16px; font-size: 13px; font-weight: 600; background: var(--panel); color: var(--muted); border: none; cursor: pointer; }
 .na-vt + .na-vt { border-left: 1px solid var(--border); }
 .na-vt.active { background: var(--primary); color: #fff; }

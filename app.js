@@ -4355,8 +4355,8 @@ function nomaadCardHtml(o) {
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          ${state._nomaadQuoteReady ? `<button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
-          <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>` : ''}
+          <button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
+          <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
           ${incomeArea}
         </div>
@@ -4392,10 +4392,13 @@ function nomaadIsCancelled(o) {
   return s.includes('больсон') || s.includes('цуцл');
 }
 function renderNomaadToggle() {
-  return `<div class="na-viewtoggle">
-    <button class="na-vt${nomaadViewMode === 'list' ? ' active' : ''}" data-na-view="list">📋 Жагсаалт</button>
-    <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Шат</button>
-    <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
+  return `<div class="na-topbar">
+    <div class="na-viewtoggle">
+      <button class="na-vt${nomaadViewMode === 'list' ? ' active' : ''}" data-na-view="list">📋 Жагсаалт</button>
+      <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Шат</button>
+      <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
+    </div>
+    <button class="btn btn-primary na-newbtn" data-na-new>+ Шинэ үнийн санал</button>
   </div>`;
 }
 /* ---- Pipeline (борлуулалтын шат) ---- */
@@ -4607,6 +4610,10 @@ function attachNomaadHandlers() {
   document.querySelectorAll('[data-na-view]').forEach(b => {
     b.addEventListener('click', () => { nomaadViewMode = b.dataset.naView; render(); });
   });
+  // + Шинэ үнийн санал
+  document.querySelectorAll('[data-na-new]').forEach(b => {
+    b.addEventListener('click', () => openNomaadCreateModal());
+  });
   // Календарь — нав (‹ › Өнөөдөр): сар эсвэл 7 хоногоор
   document.querySelectorAll('[data-na-cal-nav]').forEach(b => {
     b.addEventListener('click', () => {
@@ -4771,6 +4778,142 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
     modal.remove(); render();
   } catch (e) {
     showToast('Алдаа: ' + e.message + ' (засвар локалд үлдсэнгүй)', 'error', 5000);
+    btn.disabled = false;
+  }
+}
+
+/* ===================== Шинэ үнийн санал үүсгэх (аппаас) ===================== */
+function nextNomaadQuoteNo() {
+  const yr = new Date().getFullYear();
+  let max = 0;
+  (state.nomaadOrders || []).forEach(o => {
+    const m = String(o.quote_no || '').match(new RegExp('^NC-' + yr + '-(\\d+)$'));
+    if (m) max = Math.max(max, Number(m[1]));
+  });
+  return 'NC-' + yr + '-' + String(max + 1).padStart(4, '0');
+}
+function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
+  const itemsEl = modal.querySelector(itemsSel);
+  const totalEl = modal.querySelector(totalSel);
+  const recalc = it => { it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); };
+  const grand = () => items.reduce((s, it) => s + (it.included ? 0 : (Number(it.total) || 0)), 0);
+  const renderTotal = () => { totalEl.textContent = 'Нийт дүн: ' + fmtMoney(grand()) + ' · Урьдчилгаа 30%: ' + fmtMoney(Math.round(grand() * 0.3)); };
+  function renderItems() {
+    itemsEl.innerHTML = items.map((it, i) => `
+      <div class="ne-row" data-idx="${i}" style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap;">
+        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="Нэр" style="flex:2;min-width:130px;" />
+        <input class="ne-qty" type="number" min="0" value="${it.qty}" title="Тоо" style="width:58px;" />
+        <input class="ne-price" type="number" min="0" value="${it.unit_price}" title="Нэгж үнэ" style="width:96px;" ${it.included ? 'disabled' : ''} />
+        <span class="ne-amt" style="flex:1;min-width:80px;text-align:right;font-size:12px;color:var(--muted);">${fmtMoney(it.included ? 0 : (Number(it.total) || 0))}</span>
+        <label style="font-size:11px;display:flex;align-items:center;gap:3px;white-space:nowrap;"><input type="checkbox" class="ne-incl" ${it.included ? 'checked' : ''} style="width:auto;" />багц</label>
+        <button class="ne-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
+      </div>`).join('');
+    renderTotal();
+  }
+  renderItems();
+  itemsEl.addEventListener('input', (e) => {
+    const row = e.target.closest('.ne-row'); if (!row) return;
+    const it = items[+row.dataset.idx];
+    if (e.target.classList.contains('ne-name')) it.name = e.target.value;
+    else if (e.target.classList.contains('ne-qty')) { it.qty = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
+    else if (e.target.classList.contains('ne-price')) { it.unit_price = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
+  });
+  itemsEl.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('ne-incl')) return;
+    const it = items[+e.target.closest('.ne-row').dataset.idx];
+    it.included = e.target.checked; recalc(it); renderItems();
+  });
+  itemsEl.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('ne-rm')) return;
+    items.splice(+e.target.closest('.ne-row').dataset.idx, 1); renderItems();
+  });
+  modal.querySelector(addSel).addEventListener('click', () => {
+    items.push({ row_num: items.length + 1, category: 'Нэмэлт үйлчилгээ', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
+    renderItems();
+  });
+  return { renderItems, recalc };
+}
+function openNomaadCreateModal() {
+  if (!state.config.nomaadOrdersUrl) { showToast('NOMAAD backend тохируулаагүй', 'error'); return; }
+  const quoteNo = nextNomaadQuoteNo();
+  const items = [{ row_num: 1, category: 'Үндсэн багц', name: 'Багц үнэ', qty: 0, unit: 'хүн', unit_price: 0, included: false, total: 0, note: '' }];
+  const camps = ['NOMAAD Summit', 'NOMAAD Meadow', 'NOMAAD Grove', 'Нүүдлийн кемп'];
+  document.getElementById('nomaad-create-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'nomaad-create-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:640px;">
+      <h2>Шинэ үнийн санал · ${escapeHtml(quoteNo)}</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="flex:2;min-width:170px;">Компанийн нэр <span style="color:var(--danger)">*</span><input id="nc-company" placeholder="Компани / захиалагч" /></label>
+        <label style="flex:1;min-width:120px;">Регистр<input id="nc-reg" /></label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="flex:2;min-width:140px;">Холбоо барих<input id="nc-contact" /></label>
+        <label style="flex:1;min-width:110px;">Утас<input id="nc-phone" /></label>
+        <label style="flex:2;min-width:150px;">И-мэйл<input id="nc-email" /></label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="flex:1;min-width:130px;">Кемп<select id="nc-camp">${camps.map(c => `<option>${c}</option>`).join('')}</select></label>
+        <label style="flex:1;min-width:110px;">Багц<input id="nc-tier" placeholder="Стандарт..." /></label>
+        <label style="flex:1;min-width:90px;">Хүний тоо<input id="nc-guests" type="number" min="0" value="0" /></label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="flex:1;min-width:160px;">Эхлэх<input id="nc-start" type="datetime-local" /></label>
+        <label style="flex:1;min-width:160px;">Дуусах<input id="nc-end" type="datetime-local" /></label>
+      </div>
+      <label style="margin-top:10px;">Бараа / үйлчилгээ <span style="font-size:11px;color:var(--muted);font-weight:400;">(багц = үнэгүй багтсан · Үндсэн багц нь Хүний тоогоор)</span></label>
+      <div id="nc-items"></div>
+      <button class="btn" id="nc-add" style="margin-top:6px;">+ Мөр нэмэх</button>
+      <div id="nc-total" style="text-align:right;font-weight:800;margin-top:12px;font-size:15px;color:var(--primary);"></div>
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" id="nc-cancel">Болих</button>
+        <button class="btn btn-primary" id="nc-save">💾 Үүсгэх</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const ib = nomaadItemsBindings(modal, items, '#nc-items', '#nc-total', '#nc-add');
+  modal.querySelector('#nc-guests').addEventListener('input', (e) => {
+    const g = Math.max(0, Number(e.target.value) || 0);
+    const tb = items.find(it => it.category === 'Үндсэн багц');
+    if (tb) { tb.qty = g; ib.recalc(tb); ib.renderItems(); }
+  });
+  modal.querySelector('#nc-cancel').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#nc-save').addEventListener('click', (e) => saveNomaadCreate(quoteNo, items, modal, e.currentTarget));
+}
+async function saveNomaadCreate(quoteNo, items, modal, btn) {
+  const company = modal.querySelector('#nc-company').value.trim();
+  if (!company) { showToast('Компанийн нэр оруулна уу', 'warn'); return; }
+  btn.disabled = true;
+  items.forEach((it, idx) => { it.row_num = idx + 1; it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); });
+  const grand = items.reduce((s, it) => s + (it.included ? 0 : it.total), 0);
+  const fmtDT = v => v ? String(v).replace('T', ' ') : '';
+  const body = {
+    action: 'create_quote', quote_no: quoteNo, company,
+    reg_no: modal.querySelector('#nc-reg').value.trim(),
+    contact: modal.querySelector('#nc-contact').value.trim(),
+    phone: modal.querySelector('#nc-phone').value.trim(),
+    email: modal.querySelector('#nc-email').value.trim(),
+    camp: modal.querySelector('#nc-camp').value,
+    tier: modal.querySelector('#nc-tier').value.trim(),
+    guests: Number(modal.querySelector('#nc-guests').value) || 0,
+    date_start: fmtDT(modal.querySelector('#nc-start').value),
+    date_end: fmtDT(modal.querySelector('#nc-end').value),
+    grand_total: grand, deposit: Math.round(grand * 0.3), status: 'ШИНЭ',
+    items: items.map(it => ({ row_num: it.row_num, category: it.category, name: it.name, qty: it.qty, unit: it.unit, unit_price: it.unit_price, total: it.total, included: it.included, note: it.note })),
+  };
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    (state.nomaadOrders = state.nomaadOrders || []).unshift({ ...body, income_amount: 0 });
+    showToast('Үнийн санал үүслээ · ' + quoteNo, 'success', 3000);
+    modal.remove(); render();
+    loadNomaadOrders();
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, 'error', 5000);
     btn.disabled = false;
   }
 }

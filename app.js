@@ -1254,6 +1254,10 @@ function financeAsTask(r) {
     dept_branch: r.dept_branch || '',  // салбар (ИВЕНТ/КЕМП/ЗАХ) — салбараар бүлэглэхэд
     category: r.category || '',        // ангилал (код+нэр) — үндсэн/дэд ангиллаар бүлэглэхэд
     beneficiary: r.beneficiary || '',
+    close_type: r.close_type || '',    // хаасан хэлбэр (баримттай/дутуу/баримтгүй) — аудитад
+    close_note: r.close_note || '',    // баримтгүй/дутуу хаасан шалтгаан
+    has_receipt: Array.isArray(r.purchase_receipt_urls)  // хүлээн авалтын баримт хавсаргасан эсэх
+      ? r.purchase_receipt_urls.length > 0 : !!r.purchase_receipt_url,
     _isFinance: true, // marker
   };
 }
@@ -5903,7 +5907,13 @@ function finStage(t) {
   if (dec === 'deferred') return { key: 'deferred',      label: 'Хойшлуулсан',   mark: '🕐', color: 'var(--warn)' };
   if (dec !== 'approved')  return { key: 'pending',       label: 'Хүлээгдэж буй', mark: '⏳', color: 'var(--warn)' };
   // Батлагдсан → төлбөрийн үе шат
-  if (t.status === 'done') return { key: 'fdone',         label: 'Дууссан',       mark: '✓',  color: 'var(--ok)' };
+  if (t.status === 'done') {
+    // Дууссан хүсэлтийг баримтаар нь ялгана (аудит — нээлгүйгээр баримтгүйг шууд харах).
+    if (t.close_type === 'дутуу')                          return { key: 'fdone', label: 'Дууссан · дутуу',     mark: '⚠',  color: 'var(--warn)' };
+    if (t.close_type === 'баримтгүй' || t.has_receipt === false)
+                                                           return { key: 'fdone', label: 'Дууссан · баримтгүй',  mark: '📝', color: 'var(--warn)' };
+    return                                                        { key: 'fdone', label: 'Дууссан',             mark: '✓',  color: 'var(--ok)' };
+  }
   if (t.executed_at)       return { key: 'transferred',   label: 'Шилжүүлсэн',    mark: '💵', color: 'var(--primary)' };
   return                          { key: 'untransferred', label: 'Шилжүүлээгүй',  mark: '💸', color: 'var(--warn)' };
 }

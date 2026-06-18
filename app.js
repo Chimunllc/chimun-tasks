@@ -3799,6 +3799,7 @@ const HOURLY_VIEWERS = ['86657676','88028216','99337760','88394636','99179417','
 function canSeeHourlyPayroll() {
   if (isDailyWorker()) return false;
   if (state.isCEO) return true;
+  if (isFinanceAccountant()) return true;  // туслах нягтлан — цагийн цалин гүйцэтгэдэг тул заавал харна
   const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
   return !!myPhone && HOURLY_VIEWERS.some(p => myPhone.endsWith(p));
 }

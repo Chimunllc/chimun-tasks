@@ -2984,7 +2984,7 @@ function renderSidebar() {
   if (noNav) {
     noNav.style.display = canSeeNomaadOrders() ? '' : 'none';
     const noCnt = document.getElementById('cnt-nomaad');
-    if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(Number(o.income_amount) > 0)).length);
+    if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(Number(o.income_amount) > 0) && !nomaadIsCancelled(o)).length);
   }
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
@@ -4534,17 +4534,19 @@ function renderNomaadToggle() {
 }
 /* ---- Pipeline (борлуулалтын шат) ---- */
 const NOMAAD_STAGES = [
-  { key: 'interested', label: 'Сонирхож буй',          color: '#0ea5e9' },
-  { key: 'sent',       label: 'Үнийн санал илгээсэн',  color: '#8b5cf6' },
-  { key: 'deposit',    label: 'Урьдчилгаа төлсөн',     color: '#f59e0b' },
-  { key: 'contract',   label: 'Гэрээ хийгдсэн',        color: '#16a34a' },
-  { key: 'done',       label: 'Гүйцэтгэсэн',           color: '#0d9488' },
-  { key: 'cancelled',  label: 'Больсон',               color: '#94a3b8' },
+  { key: 'interested', label: 'Шинэ',                       color: '#0ea5e9' },
+  { key: 'sent',       label: 'Үнийн санал илгээсэн',       color: '#8b5cf6' },
+  { key: 'confirming', label: 'Баталгаажуулалт хүлээж буй', color: '#ec4899' },
+  { key: 'deposit',    label: 'Урьдчилгаа төлсөн',          color: '#f59e0b' },
+  { key: 'contract',   label: 'Гэрээ хийгдсэн',             color: '#16a34a' },
+  { key: 'done',       label: 'Гүйцэтгэсэн',                color: '#0d9488' },
+  { key: 'cancelled',  label: 'Больсон',                    color: '#94a3b8' },
 ];
 // Гараар сонгох төлөвүүд (value=Төлөв, label=ойлгомжтой нэр). Шат руу зурваслана.
 const NOMAAD_STATUSES = [
-  { value: 'ШИНЭ', label: 'Шинэ / Сонирхож буй' },
+  { value: 'ШИНЭ', label: 'Шинэ' },
   { value: 'ИЛГЭЭСЭН', label: 'Үнийн санал илгээсэн' },
+  { value: 'БАТАЛГААЖУУЛАЛТ', label: 'Баталгаажуулалт хүлээж буй' },
   { value: 'ГЭРЭЭ', label: 'Гэрээ хийгдсэн' },
   { value: 'ДУУССАН', label: 'Гүйцэтгэсэн' },
   { value: 'БОЛЬСОН', label: 'Больсон' },
@@ -4562,6 +4564,7 @@ function nomaadStage(o) {
   if (past && fullyPaid) return 'done';
   if (su.includes('ГЭРЭЭ') || String(o.contract_date || '').trim()) return 'contract';
   if (Number(o.income_advance) > 0 || income > 0) return 'deposit';
+  if (su.includes('БАТАЛГ')) return 'confirming';   // Баталгаажуулалт хүлээж буй (амаар тохирсон, гэрээ хүлээж буй)
   if (su.includes('ИЛГЭЭСЭН')) return 'sent';
   return 'interested';
 }
@@ -4616,7 +4619,7 @@ function nomaadCalCellHtml(dateObj, list, today) {
   return `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}"><div class="na-cal-daynum">${dateObj.getDate()}</div>${lanesHtml}</div>`;
 }
 function renderNomaadCalendar() {
-  const orders = state.nomaadOrders || [];
+  const orders = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));   // цуцалсныг харуулахгүй
   if (!nomaadCalAnchor) nomaadCalAnchor = new Date();
   const mode = nomaadCalMode || 'month';
   const byKey = {};   // 'y-mo-d' -> [orders]
@@ -4669,11 +4672,13 @@ function renderNomaadCalendar() {
 }
 
 function renderNomaadOrders() {
-  const orders = state.nomaadOrders || [];
+  // Цуцалсан/больсон захиалгыг жагсаалтаас хасна — жагсаалт цэвэр байна (Pipeline-д "Больсон"
+  // шатанд хэвээр харагдана). Устгасан (status=БОЛЬСОН) захиалга энд дахин гарч ирэхгүй.
+  const orders = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
   if (!orders.length) {
     if (state._initialLoading) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
-    return `<div class="orders-empty"><div class="icon">📑</div><div>Батлагдсан гэрээ алга.</div>
-      <div class="sub">nomaad Quote Log-д Төлөв "ГЭРЭЭ" / "ГЭРЭЭ БАТЛАГДСАН" болсон гэрээ энд харагдана.</div></div>`;
+    return `<div class="orders-empty"><div class="icon">📑</div><div>Идэвхтэй захиалга алга.</div>
+      <div class="sub">Цуцалсан захиалга "Шат" харагдацын "Больсон" хэсэгт харагдана.</div></div>`;
   }
   let totalIncome = 0;
   orders.forEach(o => { totalIncome += Number(o.income_amount) || 0; });

@@ -45,6 +45,12 @@ let TEAM = [];
 // n8n webhook URL — hardcoded so staff never have to configure anything.
 // Change here + push when the backend moves. Settings panel still lets the user
 // override locally for testing.
+//
+// BACKEND (2026-06-19): өгөгдөл одоо **Postgres (Supabase)** дээр — n8n workflow бүр
+// Google Sheets node-ийг Postgres node-оор сольсон (push-subscriptions л Sheets дээр
+// үлдсэн). Доорх "Sheet" гэсэн комментууд нь түүхэн нэр + ХАДГАЛСАН дамжуулах формат
+// (код↔монгол, массив→CSV)-ыг хэлнэ — энэ форматыг Postgres workflow-ууд хэвээр буцаадаг
+// тул `toWire/fromWire` хувиргалтыг БҮҮ устга (устгавал апп эвдэрнэ).
 const DEFAULT_API_URL     = 'https://chimunllc.app.n8n.cloud/webhook/checklist';
 // Staff roster sync — read-only GET endpoint that returns { team: [...] } from Master Sheet.
 // If reachable, replaces the hardcoded TEAM constant below at startup.
@@ -148,7 +154,7 @@ const state = {
   statusFilter: 'all',   // all | open | done
   financeSort: 'smart',  // smart | date | amount | requester (зөвхөн Санхүү view)
   search: '',
-  // Auth state — populated by Google Sign-In flow. `me` is set automatically.
+  // Auth state — PIN нэвтрэлтээр populate хийгдэнэ (Google OAuth 2026-05-17-нд хасагдсан).
   user: null,            // { name, role, email, picture, branches }
   me: null,              // user.email — task assignee, createdBy, forUser түлхүүр
   isCEO: false,          // whether this user has full access

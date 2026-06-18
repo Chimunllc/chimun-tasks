@@ -75,6 +75,7 @@ const DEFAULT_EVAL_URL = 'https://chimunllc.app.n8n.cloud/webhook/evaluations';
 const DEFAULT_FIN_CATEGORIES_URL = 'https://chimunllc.app.n8n.cloud/webhook/fin-categories';
 // NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
 const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
+const DEFAULT_NOMAAD_QUOTE_SEND_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-quote-send';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
 const DEFAULT_HOURLY_RATING_URL = 'https://chimunllc.app.n8n.cloud/webhook/hourly-rating';
 
@@ -164,6 +165,7 @@ const state = {
       ordersUrl:        localStorage.getItem('ordersUrl')        || DEFAULT_ORDERS_URL        || '',
       productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
       nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
+      nomaadQuoteSendUrl: localStorage.getItem('nomaadQuoteSendUrl') || DEFAULT_NOMAAD_QUOTE_SEND_URL || '',
       hourlyRatingUrl:  localStorage.getItem('hourlyRatingUrl')  || DEFAULT_HOURLY_RATING_URL || '',
       evalUrl:          localStorage.getItem('evalUrl')          || DEFAULT_EVAL_URL          || '',
       finCategoriesUrl: localStorage.getItem('finCategoriesUrl') || DEFAULT_FIN_CATEGORIES_URL || '',
@@ -1520,6 +1522,17 @@ function isFinanceBranchEditor(key = state.me) {
   if (state.isCEO) return true;
   return !!(key && state.finBranchPerms && state.finBranchPerms.has(key));
 }
+/* Туслах нягтлан мөн эсэх — role-аар (/нягтлан/) таньна (хэд хэдэн нягтлан байж болно). */
+function isFinanceAccountant(key = state.me) {
+  if (!key) return false;
+  if (key === getFinanceExecutorEmail()) return true;
+  const m = findMember(key);
+  return !!(m && /нягтлан/i.test(m.role || ''));
+}
+/* Бүх салбарын санхүүгийн хүсэлтийг харах эрх — CEO / нягтлан / салбар-засагч. */
+function canSeeAllFinance(key = state.me) {
+  return isFinanceBranchEditor(key) || isFinanceAccountant(key);
+}
 /* CEO ажилтанд салбар-засах эрх олгох/хураах. fin_categories tab-д type='fin_branch_perm'
    мөрөөр (code=personKey, active=1/0) хадгална — Master Sheet schema хөндөхгүй. */
 async function saveFinanceBranchPerm(key, name, grant) {
@@ -2595,8 +2608,8 @@ function filteredTasks() {
   else if (state.view === 'finance') {
     // Финансын хүсэлтийг task-loga adapter-аар render хийнэ (устгасныг хасна)
     list = state.financeRequests.filter(r => r.status !== 'deleted').map(financeAsTask);
-    // 'mine' эсвэл 'delegated' гэх view-ийн адил accessrolгүүл явна
-    if (!state.isCEO && state.me) {
+    // CEO / нягтлан / салбар-засагч → бүх салбар. Бусад → зөвхөн өөрийн хүсэлт.
+    if (!canSeeAllFinance() && state.me) {
       list = list.filter(r => r.assignee === state.me || r.createdBy === state.me);
     }
     // Салбар ленз: сонгосон салбарыг л харуулна. Хөрөнгө (CAPEX) нь тусдаа '🏗 Хөрөнгө'
@@ -4337,7 +4350,8 @@ function nomaadCardHtml(o) {
       <div class="order-foot">
         <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="btn" data-nomaad-quote="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал</button>
+          ${state._nomaadQuoteReady ? `<button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
+          <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>` : ''}
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
           ${incomeArea}
         </div>
@@ -4417,106 +4431,154 @@ function attachNomaadHandlers() {
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
   });
-  document.querySelectorAll('button[data-nomaad-quote]').forEach(b => {
-    b.addEventListener('click', () => openNomaadQuote(b.dataset.nomaadQuote));
+  document.querySelectorAll('button[data-nomaad-edit]').forEach(b => {
+    b.addEventListener('click', () => openNomaadEditModal(b.dataset.nomaadEdit));
+  });
+  document.querySelectorAll('button[data-nomaad-send]').forEach(b => {
+    b.addEventListener('click', () => sendNomaadQuote(b.dataset.nomaadSend));
   });
 }
 
-/* ─── Үнийн санал — захиалгын өгөгдлөөр хэвлэх/PDF баримт үүсгэнэ (гадны сангүй). ─── */
-function buildNomaadQuoteHtml(o) {
-  const fmt = n => fmtMoney(Number(n) || 0);
-  const items = Array.isArray(o.items) ? o.items : [];
-  // Ангилалаар бүлэглэнэ (дараалал хадгална)
-  const cats = []; const byCat = {};
-  items.forEach(it => { const c = (it.category || 'Бусад').trim(); if (!byCat[c]) { byCat[c] = []; cats.push(c); } byCat[c].push(it); });
-  const isIncl = it => it.included || ((Number(it.unit_price) || 0) === 0 && (Number(it.total) || 0) === 0);
-  let body = '';
-  cats.forEach(c => {
-    body += `<tr class="cat"><td colspan="5">${escapeHtml(c)}</td></tr>`;
-    byCat[c].forEach((it, i) => {
-      const inc = isIncl(it);
-      const amt = inc ? '<span class="incl">Багцад багтсан</span>' : fmt(it.total || (Number(it.unit_price) || 0) * (Number(it.qty) || 0));
-      const up = inc ? '—' : fmt(it.unit_price);
-      body += `<tr><td class="c">${escapeHtml(String(it.qty || ''))} ${escapeHtml(it.unit || '')}</td>`
-        + `<td>${escapeHtml(it.name || '')}${it.note ? `<div class="note">${escapeHtml(it.note)}</div>` : ''}</td>`
-        + `<td class="r">${up}</td><td class="r">${amt}</td><td></td></tr>`;
-    });
-  });
-  const grand = Number(o.grand_total) || 0;
-  const fin = Number(o.final_amount) || 0;
-  const dep = Number(o.deposit) || 0;
-  const qDate = (o.contract_date || todayStr() || '').slice(0, 10);
-  const period = `${escapeHtml(o.date_start || '')} — ${escapeHtml(o.date_end || '')}`;
-  return `
-  <div class="np-head">
-    <div class="np-brand"><div class="np-logo">NOMAAD</div><div class="np-sub">Чимун ХХК</div></div>
-    <div class="np-title"><h1>ҮНИЙН САНАЛ</h1><div class="np-no">№ ${escapeHtml(o.quote_no || '')}</div><div class="np-date">${escapeHtml(qDate)}</div></div>
-  </div>
-  <div class="np-parties">
-    <div><b>Захиалагч:</b> ${escapeHtml(o.company || o.contact || '')}${o.reg_no ? ` (РД: ${escapeHtml(o.reg_no)})` : ''}<br>
-      ${o.contact ? 'Холбоо барих: ' + escapeHtml(o.contact) + '<br>' : ''}${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '  ' : ''}${o.email ? '· ' + escapeHtml(o.email) : ''}</div>
-    <div><b>Арга хэмжээ:</b> ${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}<br>
-      Зочид: ${escapeHtml(String(o.guests || ''))}<br>Хугацаа: ${period}</div>
-  </div>
-  <table class="np-items"><thead><tr><th class="c">Тоо</th><th>Үйлчилгээ / бараа</th><th class="r">Нэгж үнэ</th><th class="r">Дүн</th><th></th></tr></thead><tbody>${body}</tbody></table>
-  <div class="np-totals">
-    <div class="row"><span>Нийт дүн</span><b>${fmt(grand)}</b></div>
-    ${fin && fin !== grand ? `<div class="row"><span>Тохирсон дүн</span><b>${fmt(fin)}</b></div>` : ''}
-    <div class="row"><span>Урьдчилгаа (30%)</span><b>${fmt(dep)}</b></div>
-  </div>
-  <div class="np-foot">
-    <p>Энэхүү үнийн санал нь 14 хоног хүчинтэй. Үнэд НӨАТ багтсан болно. Захиалга баталгаажихад урьдчилгаа төлбөр шаардлагатай.</p>
-    <div class="np-sign"><div>Гүйцэтгэгч: Чимун ХХК / NOMAAD<br>______________________</div><div>Захиалагч: ${escapeHtml(o.company || '')}<br>______________________</div></div>
-  </div>`;
-}
-
-function openNomaadQuote(quoteNo) {
+/* ─── NOMAAD захиалга засах — хүний тоо + мөр бүрийн үнэ/тоо + холбоо барих.
+   Хадгалбал nomaad-orders {action:'update_quote'} руу бичнэ → Quote Log/Items шинэчлэгдэнэ. ─── */
+function openNomaadEditModal(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
-  if (!document.getElementById('np-print-css')) {
-    const st = document.createElement('style');
-    st.id = 'np-print-css';
-    st.textContent = `
-    #np-host{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.5);overflow:auto;display:flex;flex-direction:column;align-items:center;padding:0 0 40px;}
-    #np-host .np-bar{position:sticky;top:0;align-self:stretch;display:flex;gap:8px;justify-content:center;padding:10px;background:#1f2430;}
-    #np-host .np-bar button{padding:8px 18px;font-size:14px;border:none;border-radius:8px;cursor:pointer;font-weight:600;}
-    #np-host .np-print{background:#4338CA;color:#fff;}
-    #np-host .np-close{background:#444;color:#fff;}
-    #np-paper{background:#fff;color:#111;width:760px;max-width:96vw;margin:18px;padding:40px;box-shadow:0 8px 40px rgba(0,0,0,.4);font-family:'Segoe UI',Arial,sans-serif;font-size:13px;line-height:1.5;}
-    #np-paper .np-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #4338CA;padding-bottom:14px;margin-bottom:18px;}
-    #np-paper .np-logo{font-size:26px;font-weight:800;letter-spacing:2px;color:#4338CA;}
-    #np-paper .np-sub{font-size:12px;color:#666;}
-    #np-paper .np-title{text-align:right;} #np-paper .np-title h1{margin:0;font-size:22px;color:#222;} #np-paper .np-no{font-weight:700;margin-top:4px;} #np-paper .np-date{color:#666;font-size:12px;}
-    #np-paper .np-parties{display:flex;justify-content:space-between;gap:24px;margin-bottom:16px;}
-    #np-paper .np-parties>div{flex:1;}
-    #np-paper table.np-items{width:100%;border-collapse:collapse;margin:6px 0 14px;}
-    #np-paper .np-items th{background:#f3f4f6;text-align:left;padding:7px 9px;font-size:12px;border-bottom:2px solid #ddd;}
-    #np-paper .np-items td{padding:6px 9px;border-bottom:1px solid #eee;vertical-align:top;}
-    #np-paper .np-items td.r,#np-paper .np-items th.r{text-align:right;} #np-paper .np-items td.c,#np-paper .np-items th.c{text-align:center;white-space:nowrap;}
-    #np-paper .np-items tr.cat td{background:#eef0fb;font-weight:700;color:#4338CA;font-size:12px;}
-    #np-paper .np-items .note{color:#888;font-size:11px;} #np-paper .np-items .incl{color:#888;}
-    #np-paper .np-totals{margin-left:auto;width:300px;}
-    #np-paper .np-totals .row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #eee;}
-    #np-paper .np-totals .row:last-child{border-bottom:2px solid #4338CA;font-size:15px;}
-    #np-paper .np-foot{margin-top:20px;font-size:12px;color:#555;}
-    #np-paper .np-sign{display:flex;justify-content:space-between;gap:30px;margin-top:30px;}
-    @media print{
-      body *{visibility:hidden !important;}
-      #np-host,#np-host *{visibility:visible !important;}
-      #np-host{position:absolute;inset:auto;background:#fff;padding:0;display:block;}
-      #np-host .np-bar{display:none !important;}
-      #np-paper{box-shadow:none;margin:0;width:100%;max-width:100%;padding:0;}
-    }`;
-    document.head.appendChild(st);
+  // Мөрүүдийн локал хуулбар (хадгалах хүртэл эх өгөгдөл хөндөхгүй)
+  const items = (Array.isArray(o.items) ? o.items : []).map(it => ({
+    row_num: Number(it.row_num) || 0,
+    category: it.category || 'Нэмэлт үйлчилгээ',
+    name: it.name || '',
+    qty: Number(it.qty) || 0,
+    unit: it.unit || '',
+    unit_price: Number(it.unit_price) || 0,
+    included: !!it.included,
+    note: it.note || '',
+  }));
+  items.forEach(it => { it.total = it.included ? 0 : it.unit_price * it.qty; });
+  let guests = Number(o.guests) || 0;
+  const recalc = it => { it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); };
+  const grand = () => items.reduce((s, it) => s + (it.included ? 0 : (Number(it.total) || 0)), 0);
+
+  document.getElementById('nomaad-edit-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'nomaad-edit-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:600px;">
+      <h2>Захиалга засах · ${escapeHtml(o.quote_no || '')}</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="flex:1;min-width:110px;">Хүний тоо<input id="ne-guests" type="number" min="1" value="${guests}" /></label>
+        <label style="flex:2;min-width:140px;">Холбоо барих<input id="ne-contact" value="${escapeHtml(o.contact || '')}" /></label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <label style="flex:1;min-width:110px;">Утас<input id="ne-phone" value="${escapeHtml(o.phone || '')}" /></label>
+        <label style="flex:2;min-width:140px;">И-мэйл<input id="ne-email" value="${escapeHtml(o.email || '')}" /></label>
+      </div>
+      <label style="margin-top:10px;">Бараа / үйлчилгээ <span style="font-size:11px;color:var(--muted);font-weight:400;">(багц = үнэгүй багтсан)</span></label>
+      <div id="ne-items"></div>
+      <button class="btn" id="ne-add" style="margin-top:6px;">+ Мөр нэмэх</button>
+      <div id="ne-total" style="text-align:right;font-weight:800;margin-top:12px;font-size:15px;color:var(--primary);"></div>
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" id="ne-cancel">Болих</button>
+        <button class="btn btn-primary" id="ne-save">💾 Хадгалах</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const itemsEl = modal.querySelector('#ne-items');
+  const totalEl = modal.querySelector('#ne-total');
+  const renderTotal = () => { totalEl.textContent = 'Нийт дүн: ' + fmtMoney(grand()) + ' · Урьдчилгаа 30%: ' + fmtMoney(Math.round(grand() * 0.3)); };
+  function renderItems() {
+    itemsEl.innerHTML = items.map((it, i) => `
+      <div class="ne-row" data-idx="${i}" style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap;">
+        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="Нэр" style="flex:2;min-width:130px;" />
+        <input class="ne-qty" type="number" min="0" value="${it.qty}" title="Тоо" style="width:58px;" />
+        <input class="ne-price" type="number" min="0" value="${it.unit_price}" title="Нэгж үнэ" style="width:96px;" ${it.included ? 'disabled' : ''} />
+        <span class="ne-amt" style="flex:1;min-width:80px;text-align:right;font-size:12px;color:var(--muted);">${fmtMoney(it.included ? 0 : (Number(it.total) || 0))}</span>
+        <label style="font-size:11px;display:flex;align-items:center;gap:3px;white-space:nowrap;"><input type="checkbox" class="ne-incl" ${it.included ? 'checked' : ''} style="width:auto;" />багц</label>
+        <button class="ne-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
+      </div>`).join('');
+    renderTotal();
   }
-  document.getElementById('np-host')?.remove();
-  const host = document.createElement('div');
-  host.id = 'np-host';
-  host.innerHTML = `<div class="np-bar"><button class="np-print">🖨 Хэвлэх / PDF</button><button class="np-close">✕ Хаах</button></div><div id="np-paper">${buildNomaadQuoteHtml(o)}</div>`;
-  document.body.appendChild(host);
-  host.querySelector('.np-print').addEventListener('click', () => window.print());
-  host.querySelector('.np-close').addEventListener('click', () => host.remove());
-  host.addEventListener('click', (e) => { if (e.target === host) host.remove(); });
+  renderItems();
+  modal.querySelector('#ne-guests').addEventListener('input', (e) => {
+    guests = Math.max(0, Number(e.target.value) || 0);
+    const tb = items.find(it => it.category === 'Үндсэн багц');
+    if (tb) { tb.qty = guests; recalc(tb); renderItems(); } else renderTotal();
+  });
+  itemsEl.addEventListener('input', (e) => {
+    const row = e.target.closest('.ne-row'); if (!row) return;
+    const it = items[+row.dataset.idx];
+    if (e.target.classList.contains('ne-name')) it.name = e.target.value;
+    else if (e.target.classList.contains('ne-qty')) { it.qty = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
+    else if (e.target.classList.contains('ne-price')) { it.unit_price = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
+  });
+  itemsEl.addEventListener('change', (e) => {
+    if (!e.target.classList.contains('ne-incl')) return;
+    const it = items[+e.target.closest('.ne-row').dataset.idx];
+    it.included = e.target.checked; recalc(it); renderItems();
+  });
+  itemsEl.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('ne-rm')) return;
+    items.splice(+e.target.closest('.ne-row').dataset.idx, 1); renderItems();
+  });
+  modal.querySelector('#ne-add').addEventListener('click', () => {
+    items.push({ row_num: items.length + 1, category: 'Нэмэлт үйлчилгээ', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
+    renderItems();
+  });
+  modal.querySelector('#ne-cancel').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#ne-save').addEventListener('click', (e) => saveNomaadEdit(o, items, guests, modal, e.currentTarget));
+}
+
+async function saveNomaadEdit(o, items, guests, modal, btn) {
+  btn.disabled = true;
+  items.forEach((it, idx) => { it.row_num = idx + 1; it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); });
+  const grand = items.reduce((s, it) => s + (it.included ? 0 : it.total), 0);
+  const deposit = Math.round(grand * 0.3);
+  const contact = modal.querySelector('#ne-contact').value.trim();
+  const phone = modal.querySelector('#ne-phone').value.trim();
+  const email = modal.querySelector('#ne-email').value.trim();
+  const body = {
+    action: 'update_quote', quote_no: o.quote_no,
+    guests, contact, phone, email, grand_total: grand, deposit,
+    items: items.map(it => ({ row_num: it.row_num, category: it.category, name: it.name, qty: it.qty, unit: it.unit, unit_price: it.unit_price, total: it.total, included: it.included, note: it.note })),
+  };
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    Object.assign(o, { guests, contact, phone, email, grand_total: grand, deposit, items });
+    showToast('Захиалга шинэчлэгдлээ', 'success', 2500);
+    modal.remove(); render();
+  } catch (e) {
+    showToast('Алдаа: ' + e.message + ' (засвар локалд үлдсэнгүй)', 'error', 5000);
+    btn.disabled = false;
+  }
+}
+
+/* Үнийн санал илгээх — nomaad-quote-send webhook (Төлөв=ИЛГЭЭХ) → хэрэглэгч рүү Gmail ноорог.
+   source:'app' тул Quote Log-ийн Төлөв "АПП-д нэмэх" хэвээр (захиалга аппд үлдэнэ). */
+async function sendNomaadQuote(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  const ok = await showConfirm(
+    `${o.company || quoteNo} — үнийн саналыг хэрэглэгч рүү илгээх Gmail ноорог үүсгэх үү?\n\nИмэйл: ${o.email || '⚠ имэйлгүй'}`,
+    { okText: 'Ноорог үүсгэх' });
+  if (!ok) return;
+  showToast('Илгээж байна…', 'info', 2000);
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadQuoteSendUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 'Төлөв': 'ИЛГЭЭХ', 'Үнийн саналын дугаар': quoteNo, source: 'app' }),
+    }, 30000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('Gmail-д ноорог үүслээ — шалгаад илгээнэ үү', 'success', 4500);
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, 'error', 5000);
+  }
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
 function openNomaadIncomeModal(o) {
@@ -5200,7 +5262,7 @@ function renderFinanceReport(wrap) {
   const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
   // CEO + санхүү салбар-засагч → бүх гүйлгээ. Бусад → зөвхөн өөрийн хүсэлт.
-  if (!isFinanceBranchEditor() && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
+  if (!canSeeAllFinance() && state.me) base = base.filter(t => t.assignee === state.me || t.createdBy === state.me);
   // Салбар лензээр шүүхэд зөвхөн тухайн салбар. Хөрөнгө (CAPEX) нь '🏗 Хөрөнгө' тусдаа
   // лензтэй тул салбар дотор нэгтгэхгүй — салбарын нийт зардал зөв (хөөрөгдөхгүй) харагдана.
   if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);

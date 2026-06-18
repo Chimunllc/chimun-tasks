@@ -5986,6 +5986,40 @@ function renderFinanceReport(wrap) {
   wrap.appendChild(chips);
   chips.querySelectorAll('[data-fin-st]').forEach(b => b.addEventListener('click', () => { state.finReportStatus = b.dataset.finSt; render(); }));
 
+  // ── Баримтын хяналт — дууссан зардлын дотор баримтгүй (📝/⚠) хувь, үндсэн ангилал бүрээр ──
+  (function renderReceiptAudit() {
+    const doneList = monthList.filter(t => finStage(t).key === 'fdone');
+    if (!doneList.length) return;
+    const noRcpt = (t) => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; };
+    const doneTotal = sumOf(doneList);
+    const nrList = doneList.filter(noRcpt);
+    const nrTotal = sumOf(nrList);
+    const pct = doneTotal ? Math.round(nrTotal / doneTotal * 100) : 0;
+    // Үндсэн ангилал бүрээр — баримтгүй дүнгээр буурахаар эрэмбэлж, баримтгүйтэй ангиллыг л харуулна
+    const byCat = groupBy(doneList, t => finMainName(t.category));
+    const cats = Object.keys(byCat).map(cat => {
+      const items = byCat[cat]; const tot = sumOf(items);
+      const nr = sumOf(items.filter(noRcpt)); const cnt = items.filter(noRcpt).length;
+      return { cat, tot, nr, cnt, pct: tot ? Math.round(nr / tot * 100) : 0 };
+    }).filter(c => c.nr > 0).sort((a, b) => b.nr - a.nr);
+    const barCol = (p) => p >= 50 ? 'var(--danger)' : p >= 20 ? 'var(--warn)' : 'var(--ok)';
+    const panel = document.createElement('div');
+    panel.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:16px;background:var(--panel);';
+    let html = `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">`
+      + `<span style="font-weight:800;font-size:13px;">📝 Баримтын хяналт <span style="color:var(--muted);font-weight:400;font-size:11px;">· дууссан зардал</span></span>`
+      + `<span style="font-weight:800;font-size:15px;color:${barCol(pct)};">${pct}% баримтгүй</span></div>`
+      + `<div style="font-size:11.5px;color:var(--muted);margin:2px 0 ${cats.length ? '11px' : '0'};">${fmtMoney(nrTotal)} / ${fmtMoney(doneTotal)} · ${nrList.length}/${doneList.length} хүсэлт</div>`;
+    cats.forEach(c => {
+      html += `<div style="margin-bottom:7px;">`
+        + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-bottom:2px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.cat)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:${barCol(c.pct)};">${c.pct}%</b> · ${fmtMoney(c.nr)}</span></div>`
+        + `<div style="height:5px;border-radius:3px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${c.pct}%;background:${barCol(c.pct)};"></div></div>`
+        + `</div>`;
+    });
+    if (!cats.length) html += `<div style="font-size:12px;color:var(--ok);font-weight:600;">✓ Бүх дууссан зардал баримттай</div>`;
+    panel.innerHTML = html;
+    wrap.appendChild(panel);
+  })();
+
   // Хадгалагдсан шүүлт устсан түлхүүртэй байвал (хуучин 'approved') → Бүгд рүү унана.
   const stDef = stDefs.find(d => d[0] === stFilter) || stDefs[0];
   const shown = monthList.filter(stDef[2]);

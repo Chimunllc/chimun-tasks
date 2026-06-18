@@ -4374,6 +4374,17 @@ function nomaadCampClass(o) {
   if (c.includes('grove'))  return 'na-cal-grove';
   return 'na-cal-other';
 }
+// Захиалгыг 4 camp + бусад-д ангилна (календарийн зурвасуудад)
+function nomaadCampKey(o) {
+  const c = String(o.camp || '').toLowerCase();
+  if (c.includes('summit')) return 'summit';
+  if (c.includes('meadow')) return 'meadow';
+  if (c.includes('grove'))  return 'grove';
+  if (c.includes('нүүд') || c.includes('nomad') || c.includes('нуудли')) return 'nomad';
+  return 'other';
+}
+const NOMAAD_CAMP_LANES = [['summit', 'S'], ['meadow', 'M'], ['grove', 'G'], ['nomad', 'Н']];
+const NOMAAD_LANE_TAG = { summit: 'S', meadow: 'M', grove: 'G', nomad: 'Н', other: 'Б' };
 function nomaadIsCancelled(o) {
   const s = String(o.status || '').toLowerCase();
   return s.includes('больсон') || s.includes('цуцл');
@@ -4403,15 +4414,27 @@ function renderNomaadCalendar() {
   let cells = '';
   for (let i = 0; i < firstDow; i++) cells += `<div class="na-cal-cell na-cal-empty"></div>`;
   for (let d = 1; d <= daysInMonth; d++) {
-    const list = (byDay[d] || []).slice().sort((a, b) => (Number(b.grand_total) || 0) - (Number(a.grand_total) || 0));
+    const list = byDay[d] || [];
     const isToday = new Date(y, mo - 1, d).getTime() === today.getTime();
-    const chips = list.map(o => {
-      const tip = `${o.company || o.quote_no} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
-      return `<div class="na-cal-chip ${nomaadCampClass(o)}${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 22))}</div>`;
-    }).join('');
+    let lanesHtml = '';
+    if (list.length) {
+      const byCamp = {};
+      list.forEach(o => { const k = nomaadCampKey(o); (byCamp[k] = byCamp[k] || []).push(o); });
+      const laneKeys = NOMAAD_CAMP_LANES.map(x => x[0]);
+      if ((byCamp.other || []).length) laneKeys.push('other');
+      lanesHtml = laneKeys.map(k => {
+        const items = (byCamp[k] || []).slice().sort((a, b) => (Number(b.grand_total) || 0) - (Number(a.grand_total) || 0));
+        const chips = items.map(o => {
+          const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
+          return `<div class="na-cal-chip${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 20))}</div>`;
+        }).join('');
+        return `<div class="na-cal-lane na-lane-${k}${items.length ? ' has' : ''}"><span class="na-lane-tag">${NOMAAD_LANE_TAG[k]}</span><div class="na-lane-items">${chips}</div></div>`;
+      }).join('');
+      lanesHtml = `<div class="na-cal-lanes">${lanesHtml}</div>`;
+    }
     cells += `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}">
       <div class="na-cal-daynum">${d}</div>
-      <div class="na-cal-chips">${chips}</div>
+      ${lanesHtml}
     </div>`;
   }
   const hint = `<div class="na-cal-hint">Энэ сард <b>${thisMonth}</b> захиалга${otherMonths ? ` · өөр саруудад ${otherMonths}` : ''}${noDate ? ` · огноогүй ${noDate}` : ''}</div>`;
@@ -4426,10 +4449,11 @@ function renderNomaadCalendar() {
     <div class="na-cal-grid">${cells}</div>
     ${hint}
     <div class="na-cal-legend">
-      <span><i class="na-lg na-cal-summit"></i>Summit</span>
-      <span><i class="na-lg na-cal-meadow"></i>Meadow</span>
-      <span><i class="na-lg na-cal-grove"></i>Grove</span>
-      <span><i class="na-lg na-cal-other"></i>Бусад</span>
+      <span><i class="na-lg na-cal-summit"></i>S · Summit</span>
+      <span><i class="na-lg na-cal-meadow"></i>M · Meadow</span>
+      <span><i class="na-lg na-cal-grove"></i>G · Grove</span>
+      <span><i class="na-lg na-lg-nomad"></i>Н · Нүүдлийн</span>
+      <span><i class="na-lg na-cal-other"></i>Б · Бусад</span>
       <span><i class="na-lg na-lg-cancel"></i>Больсон</span>
     </div>
   </div>`;

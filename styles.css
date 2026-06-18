@@ -5043,14 +5043,20 @@ body.role-daily #add-project { display: none !important; }
 .na-cal-today { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
 .na-cal-daynum { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 3px; }
 .na-cal-today .na-cal-daynum { color: var(--primary); }
-.na-cal-chips { display: flex; flex-direction: column; gap: 3px; overflow: hidden; min-width: 0; }
-.na-cal-chip { font-size: 11px; font-weight: 600; padding: 3px 6px; border-radius: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  background: var(--bg-soft, var(--card)); border: 1px solid var(--border); border-left: 3px solid var(--muted-soft); color: var(--text); }
+/* Өдрийг 4 camp зурвас (lane)-д хуваана: Summit / Meadow / Grove / Нүүдлийн (+Бусад) */
+.na-cal-lanes { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.na-cal-lane { display: flex; align-items: flex-start; gap: 4px; min-width: 0; min-height: 16px; padding-left: 5px; border-left: 3px solid var(--muted-soft); }
+.na-cal-lane:not(.has) { opacity: .4; }
+.na-lane-tag { font-size: 9px; font-weight: 800; flex-shrink: 0; width: 11px; text-align: center; line-height: 16px; color: var(--muted); }
+.na-lane-items { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.na-lane-summit { border-left-color: #6366f1; } .na-lane-summit > .na-lane-tag { color: #6366f1; }
+.na-lane-meadow { border-left-color: #16a34a; } .na-lane-meadow > .na-lane-tag { color: #16a34a; }
+.na-lane-grove  { border-left-color: #d97706; } .na-lane-grove > .na-lane-tag { color: #d97706; }
+.na-lane-nomad  { border-left-color: #9333ea; } .na-lane-nomad > .na-lane-tag { color: #9333ea; }
+.na-lane-other  { border-left-color: #64748b; } .na-lane-other > .na-lane-tag { color: #64748b; }
+.na-cal-chip { font-size: 10.5px; font-weight: 600; padding: 2px 5px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--bg-soft, var(--card)); border: 1px solid var(--border); color: var(--text); }
 .na-cal-chip:hover { border-color: var(--border-strong); }
-.na-cal-summit { border-left-color: #6366f1; }
-.na-cal-meadow { border-left-color: #16a34a; }
-.na-cal-grove  { border-left-color: #d97706; }
-.na-cal-other  { border-left-color: #64748b; }
 .na-cal-cancelled { opacity: .5; text-decoration: line-through; }
 .na-cal-hint { font-size: 12px; color: var(--muted); margin: 11px 2px 0; }
 .na-cal-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 9px; font-size: 12px; color: var(--muted); }
@@ -5059,6 +5065,7 @@ body.role-daily #add-project { display: none !important; }
 .na-lg.na-cal-summit { background: #6366f1; }
 .na-lg.na-cal-meadow { background: #16a34a; }
 .na-lg.na-cal-grove  { background: #d97706; }
+.na-lg-nomad { background: #9333ea; }
 .na-lg.na-cal-other  { background: #64748b; }
 .na-lg-cancel { background: var(--muted-soft); }
 @media (max-width: 640px) {

@@ -5287,4 +5287,19 @@ body.role-daily #add-project { display: none !important; }
 .perf-star { font-size: 22px; color: var(--border-strong); cursor: pointer; line-height: 1; }
 .perf-star.on { color: #f59e0b; }
 .perf-rate-note { width: 100%; margin: 8px 0; min-height: 44px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 7px; font-family: inherit; font-size: 13px; background: var(--panel); color: var(--text); }
+
+/* ─── Гүйцэтгэлийн суутгал ─── */
+.perf-penalty-row { color: var(--danger); }
+.perf-penalty-row b { color: var(--danger); }
+.perf-penalty-list { margin: 6px 0 2px; display: flex; flex-direction: column; gap: 5px; }
+.perf-penalty-item { font-size: 12.5px; color: var(--text-soft); background: var(--danger-soft); border-radius: 7px; padding: 6px 10px; }
+.perf-penalty-item span { font-weight: 800; color: var(--danger); margin-right: 6px; }
+.perf-penalty-btn { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: var(--danger); background: var(--danger-soft); border: 1px solid transparent; border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+.perf-penalty-btn:hover { border-color: var(--danger); }
+.pen-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 7px; }
+.pen-pts { font-weight: 800; color: var(--danger); flex-shrink: 0; }
+.pen-reason { flex: 1; min-width: 0; font-size: 13px; color: var(--text); }
+.pen-del { flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--panel); color: var(--danger); font-size: 17px; line-height: 1; cursor: pointer; }
+.pen-del:hover { background: var(--danger-soft); border-color: var(--danger); }
+.pen-empty { font-size: 13px; color: var(--muted); padding: 6px 2px; }
 .perf-kpi { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-family: inherit; }

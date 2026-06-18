@@ -5419,6 +5419,77 @@ async function saveEvaluation(ratee, fields) {
   } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 
+/* ─── Гүйцэтгэлийн суутгал: нэмэх / устгах (evaluations-д type=penalty мөр) ─── */
+async function postEvalRow(row) {
+  const idx = state.evaluations.findIndex(e => e.id === row.id);
+  if (idx >= 0) state.evaluations[idx] = { ...state.evaluations[idx], ...row }; else state.evaluations.push(row);
+  render();
+  const url = state.config.evalUrl;
+  if (!url) { showToast('evaluations backend тохируулаагүй', 'warn'); return; }
+  const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+function openPenaltyModal(ratee, name) {
+  const month = state.perfMonth;
+  document.getElementById('penalty-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'penalty-modal';
+  const renderList = () => {
+    const list = monthPenalties(ratee, month);
+    return list.length ? list.map(p => `
+      <div class="pen-item" data-pen-id="${escapeHtml(p.id)}">
+        <span class="pen-pts">−${Number(p.kpi_pct) || 0}</span>
+        <span class="pen-reason">${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</span>
+        <button class="pen-del" title="Цуцлах">×</button>
+      </div>`).join('') : '<div class="pen-empty">Энэ сард суутгал алга.</div>';
+  };
+  modal.innerHTML = `
+    <div class="modal naq-modal" style="max-width:440px;">
+      <h2>Суутгал · ${escapeHtml(name)}</h2>
+      <p class="naq-sub">${month} сар · нэгдсэн гүйцэтгэлийн онооноос хасагдана</p>
+      <div id="pen-list">${renderList()}</div>
+      <div class="naq-grid" style="margin-top:14px;">
+        <label>Хасах оноо<input id="pen-pts" type="number" min="1" max="100" inputmode="numeric" placeholder="жишээ: 10" /></label>
+        <label class="full">Шалтгаан<input id="pen-reason" placeholder="Жишээ: 3 удаа хоцорсон" /></label>
+      </div>
+      <div class="naq-foot">
+        <div class="naq-actions">
+          <button class="btn" id="pen-cancel">Хаах</button>
+          <button class="btn btn-primary" id="pen-add">➖ Суутгал нэмэх</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.classList.add('open');
+  const listEl = modal.querySelector('#pen-list');
+  const refresh = () => { listEl.innerHTML = renderList(); wireDel(); };
+  const wireDel = () => listEl.querySelectorAll('.pen-del').forEach(btn => btn.onclick = async (e) => {
+    const id = e.target.closest('.pen-item').dataset.penId;
+    const row = state.evaluations.find(x => x.id === id); if (!row) return;
+    e.target.disabled = true;
+    try { await postEvalRow({ ...row, kpi_pct: 0, ts: new Date().toISOString() }); refresh(); showToast('Суутгал цуцлагдлаа', 'success', 1500); }
+    catch (err) { showToast('Алдаа: ' + err.message, 'error'); e.target.disabled = false; }
+  });
+  wireDel();
+  modal.querySelector('#pen-cancel').onclick = () => modal.remove();
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#pen-add').onclick = async (e) => {
+    const pts = Math.round(Number(modal.querySelector('#pen-pts').value) || 0);
+    const reason = modal.querySelector('#pen-reason').value.trim();
+    if (pts <= 0) { showToast('Хасах оноо (1+) оруулна уу', 'warn'); return; }
+    if (!reason) { showToast('Шалтгаан заавал', 'warn'); return; }
+    e.target.disabled = true;
+    const ts = new Date().toISOString();
+    const row = { id: `pen|${month}|${ratee}|${ts}`, period: month, ratee, rater: state.me, type: 'penalty', kpi_pct: pts, note: reason, ts };
+    try {
+      await postEvalRow(row);
+      modal.querySelector('#pen-pts').value = ''; modal.querySelector('#pen-reason').value = '';
+      refresh(); showToast(`−${pts} оноо суутгалаа`, 'success', 1800);
+    } catch (err) { showToast('Алдаа: ' + err.message, 'error'); }
+    e.target.disabled = false;
+  };
+}
+
 function evalRowScore(e) {
   const vals = EVAL_COMPETENCIES.map(c => Number(e[c.id]) || 0).filter(v => v > 0);
   return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 20) : null;
@@ -5460,6 +5531,17 @@ async function saveTaskQuality(id, rating) {
   try { await saveTask(t); showToast(`Ажлын чанар: ${rating}★ хадгалагдлаа`, 'success', 1500); }
   catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
+/* ─── Гүйцэтгэлийн суутгал (гар торгууль) ───
+   Менежер тухайн ажилтанд тухайн сард шалтгаантай оноо хасч болно. evaluations
+   хадгалалтыг дахин ашиглана: type='penalty', kpi_pct=хасах оноо, note=шалтгаан.
+   id='pen|сар|ажилтан|ts' тул нэг сард олон суутгал болно. kpi_pct=0 → цуцлагдсан. */
+function monthPenalties(key, period) {
+  return (state.evaluations || []).filter(e =>
+    e.type === 'penalty' && e.ratee === key && e.period === period && (Number(e.kpi_pct) || 0) > 0);
+}
+function penaltyTotal(key, period) {
+  return monthPenalties(key, period).reduce((s, e) => s + (Number(e.kpi_pct) || 0), 0);
+}
 function unifiedScore(key, period) {
   const om = objectiveMetrics(key, period);
   const obj = om.score;
@@ -5467,14 +5549,18 @@ function unifiedScore(key, period) {
   const q = taskQualityScore(key, period);
   const quality = q.score;
   const e360 = eval360Score(key, period);
+  const penalty = penaltyTotal(key, period);
   const parts = [];
   // Цөөн ажилтай объективийг (lowData) нэгдсэн онооноос хасна — хиймэл өндөр оноо/бонусаас сэргийлнэ.
   if (obj != null && !objLowData) parts.push([obj, PERF_WEIGHTS.objective]);
   if (quality != null) parts.push([quality, PERF_WEIGHTS.quality]);
   if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
-  if (!parts.length) return { total: null, obj, objLowData, quality, qualityInfo: q, e360, partsUsed: 0 };
+  if (!parts.length) return { total: null, obj, objLowData, quality, qualityInfo: q, e360, partsUsed: 0, penalty, rawTotal: null };
   const wsum = parts.reduce((s, [, w]) => s + w, 0);
-  return { total: Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum), obj, objLowData, quality, qualityInfo: q, e360, partsUsed: parts.length };
+  const rawTotal = Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum);
+  // Суутгалыг нэгдсэн онооноос хасч 0-ээс доош болгохгүй.
+  const total = Math.max(0, rawTotal - penalty);
+  return { total, rawTotal, penalty, obj, objLowData, quality, qualityInfo: q, e360, partsUsed: parts.length };
 }
 function bonusPctForScore(s) {
   if (s == null) return 0;
@@ -5520,7 +5606,9 @@ function renderPerfMe() {
         ${bar('Объектив (цагтаа)', u.obj, PERF_WEIGHTS.objective)}
         ${bar('Ажлын чанар', u.quality, PERF_WEIGHTS.quality)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
+        ${u.penalty ? `<div class="perf-bar-row perf-penalty-row"><span>Суутгал ${u.rawTotal != null ? `<small>(${u.rawTotal} → ${u.total})</small>` : ''}</span><b>−${u.penalty}</b></div>` : ''}
       </div>
+      ${u.penalty ? `<div class="perf-penalty-list">${monthPenalties(state.me, month).map(p => `<div class="perf-penalty-item"><span>−${Number(p.kpi_pct) || 0}</span> ${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</div>`).join('')}</div>` : ''}
       ${u.total != null && u.partsUsed < 3 ? `<div class="perf-partial" style="color:var(--warn);font-size:12px;margin:4px 0;">⚠ Хэсэгчилсэн дата — оноо ${u.partsUsed}/3 бүрэлдэхүүнээс гарсан</div>` : ''}
       <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''} Чанар: ${u.qualityInfo && u.qualityInfo.rated ? `${u.qualityInfo.avg}★ (${u.qualityInfo.rated}/${u.qualityInfo.doneTotal} ажил үнэлэгдсэн)` : 'үнэлгээ хийгдээгүй'}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
     </div>`;
@@ -5535,7 +5623,7 @@ function renderPerfAll() {
     const bp = eligibleBonus(r.u);
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
-      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч</div></div>
+      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч${r.u.penalty ? ` · <span style="color:var(--danger)">−${r.u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">➖ Суутгал</button></div>
       <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
       <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
@@ -5576,6 +5664,10 @@ function renderPerfRate() {
 
 function attachPerformanceHandlers() {
   document.querySelectorAll('[data-perf-tab]').forEach(b => b.onclick = () => { state.perfTab = b.dataset.perfTab; render(); });
+  document.querySelectorAll('[data-penalty-key]').forEach(b => b.onclick = () => {
+    if (!(canManageOrders() || state.isCEO)) { showToast('Зөвхөн удирдлага суутгал хийнэ', 'warn'); return; }
+    openPenaltyModal(b.dataset.penaltyKey, b.dataset.penaltyName);
+  });
   document.querySelectorAll('[data-perf-nav]').forEach(btn => btn.addEventListener('click', () => {
     const [y, m] = state.perfMonth.split('-').map(Number);
     const d = new Date(y, m - 1 + Number(btn.dataset.perfNav), 1);

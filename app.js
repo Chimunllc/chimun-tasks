@@ -4680,6 +4680,18 @@ function openNomaadEditModal(quoteNo) {
   }));
   items.forEach(it => { it.total = it.included ? 0 : it.unit_price * it.qty; });
   let guests = Number(o.guests) || 0;
+  const baseCamps = ['NOMAAD Summit', 'NOMAAD Meadow', 'NOMAAD Grove', 'Нүүдлийн кемп'];
+  const campList = (o.camp && !baseCamps.includes(o.camp)) ? [o.camp, ...baseCamps] : baseCamps;
+  const campOpts = campList.map(c => `<option${c === (o.camp || '') ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  // Хадгалсан огноо ("2026-06-19 9:00", "2026-06-19", чөлөөт текст) → datetime-local утга.
+  // Цагийг 2 орон болгож тааруулна. Parse хийж чадахгүй бол '' (хоосон) — хуучин утгыг save үед хадгална.
+  const toLocalInput = (v) => {
+    if (!v) return '';
+    const m = String(v).match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?/);
+    if (!m) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${m[1]}-${pad(m[2])}-${pad(m[3])}T${m[4] != null ? pad(m[4]) + ':' + m[5] : '00:00'}`;
+  };
 
   document.getElementById('nomaad-edit-modal')?.remove();
   const modal = document.createElement('div');
@@ -4692,10 +4704,16 @@ function openNomaadEditModal(quoteNo) {
       <div class="naq-preview-wrap" style="display:none;"></div>
       <div class="naq-edit">
         <div class="naq-grid">
-          <label>Хүний тоо<input id="ne-guests" type="number" min="0" inputmode="numeric" value="${guests}" /></label>
+          <label class="full">Компанийн нэр<input id="ne-company" value="${escapeHtml(o.company || '')}" /></label>
+          <label>Регистр<input id="ne-reg" value="${escapeHtml(o.reg_no || '')}" /></label>
           <label>Холбоо барих<input id="ne-contact" value="${escapeHtml(o.contact || '')}" /></label>
           <label>Утас<input id="ne-phone" value="${escapeHtml(o.phone || '')}" /></label>
           <label>И-мэйл<input id="ne-email" value="${escapeHtml(o.email || '')}" /></label>
+          <label>Кемп<select id="ne-camp">${campOpts}</select></label>
+          <label>Багц<input id="ne-tier" value="${escapeHtml(o.tier || '')}" placeholder="Стандарт..." /></label>
+          <label>Хүний тоо<input id="ne-guests" type="number" min="0" inputmode="numeric" value="${guests}" /></label>
+          <label>Эхлэх<input id="ne-start" type="datetime-local" value="${toLocalInput(o.date_start)}" /></label>
+          <label>Дуусах<input id="ne-end" type="datetime-local" value="${toLocalInput(o.date_end)}" /></label>
         </div>
         <span class="naq-sectitle">Бараа / үйлчилгээ <small>(багц = үнэгүй багтсан)</small></span>
         <div id="ne-items" class="naq-items"></div>
@@ -4719,12 +4737,16 @@ function openNomaadEditModal(quoteNo) {
     if (tb) { tb.qty = guests; ib.recalc(tb); ib.renderItems(); }
   });
   nomaadWirePreview(modal, () => ({
-    quote_no: o.quote_no, company: o.company, camp: o.camp, tier: o.tier,
+    quote_no: o.quote_no,
+    company: modal.querySelector('#ne-company').value.trim(),
+    camp: modal.querySelector('#ne-camp').value,
+    tier: modal.querySelector('#ne-tier').value.trim(),
     contact: modal.querySelector('#ne-contact').value.trim(),
     phone: modal.querySelector('#ne-phone').value.trim(),
     email: modal.querySelector('#ne-email').value.trim(),
     guests: Number(modal.querySelector('#ne-guests').value) || 0,
-    date_start: o.date_start, date_end: o.date_end,
+    date_start: modal.querySelector('#ne-start').value,
+    date_end: modal.querySelector('#ne-end').value,
   }), items);
   modal.querySelector('#ne-cancel').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
@@ -4736,12 +4758,24 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
   items.forEach((it, idx) => { it.row_num = idx + 1; it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); });
   const grand = items.reduce((s, it) => s + (it.included ? 0 : it.total), 0);
   const deposit = Math.round(grand * 0.3);
-  const contact = modal.querySelector('#ne-contact').value.trim();
-  const phone = modal.querySelector('#ne-phone').value.trim();
-  const email = modal.querySelector('#ne-email').value.trim();
+  const fmtDT = v => v ? String(v).replace('T', ' ') : '';
+  const startVal = modal.querySelector('#ne-start').value;
+  const endVal = modal.querySelector('#ne-end').value;
+  const fields = {
+    company: modal.querySelector('#ne-company').value.trim(),
+    reg_no: modal.querySelector('#ne-reg').value.trim(),
+    contact: modal.querySelector('#ne-contact').value.trim(),
+    phone: modal.querySelector('#ne-phone').value.trim(),
+    email: modal.querySelector('#ne-email').value.trim(),
+    camp: modal.querySelector('#ne-camp').value,
+    tier: modal.querySelector('#ne-tier').value.trim(),
+    // Хоосон бол хуучин утгыг хадгална (parse хийгдэхгүй чөлөөт текст огноог хамгаална)
+    date_start: startVal ? fmtDT(startVal) : (o.date_start || ''),
+    date_end: endVal ? fmtDT(endVal) : (o.date_end || ''),
+  };
   const body = {
     action: 'update_quote', quote_no: o.quote_no,
-    guests, contact, phone, email, grand_total: grand, deposit,
+    ...fields, guests, grand_total: grand, deposit,
     items: items.map(it => ({ row_num: it.row_num, category: it.category, name: it.name, qty: it.qty, unit: it.unit, unit_price: it.unit_price, total: it.total, included: it.included, note: it.note })),
   };
   try {
@@ -4749,7 +4783,7 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    Object.assign(o, { guests, contact, phone, email, grand_total: grand, deposit, items });
+    Object.assign(o, { ...fields, guests, grand_total: grand, deposit, items });
     showToast('Захиалга шинэчлэгдлээ', 'success', 2500);
     modal.remove(); render();
   } catch (e) {

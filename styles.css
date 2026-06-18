@@ -5144,6 +5144,10 @@ body.role-daily #add-project { display: none !important; }
 .naq-incl input { width: auto; margin: 0; }
 .naq-addbtn { margin-top: 12px; width: 100%; padding: 11px; border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--panel); color: var(--primary); font-weight: 700; font-size: 13.5px; cursor: pointer; }
 .naq-addbtn:hover { background: var(--primary-soft); border-color: var(--primary); }
+.naq-deduct { margin-top: 8px; font-size: 13px; color: var(--text-soft); }
+.naq-deduct .naq-deduct-on { font-weight: 800; color: var(--danger); }
+.naq-deduct .naq-deduct-add { font-weight: 800; color: var(--ok); }
+.naq-deduct small { color: var(--muted); }
 
 .naq-foot { position: sticky; bottom: -24px; background: var(--panel); padding: 14px 0 4px; margin-top: 14px; border-top: 1px solid var(--border); }
 .naq-total { text-align: right; font-weight: 800; font-size: 15px; color: var(--primary); }

@@ -4353,7 +4353,13 @@ function nomaadCardHtml(o) {
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
-        <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}</span>
+        <span class="order-sub">Нийт дүн: ${fmtMoney(o.grand_total || 0)} · Урьдчилгаа: ${fmtMoney(o.deposit || 0)}${(() => {
+          const fa = Number(o.final_amount) || 0, gt = Number(o.grand_total) || 0;
+          if (!fa || fa === gt) return '';
+          return fa < gt
+            ? ` · <b style="color:var(--danger)">Акт: ${fmtMoney(fa)} (гүйцэтгэлийн хасалт −${fmtMoney(gt - fa)})</b>`
+            : ` · <b style="color:var(--ok)">Акт: ${fmtMoney(fa)} (нэмэгдэл +${fmtMoney(fa - gt)})</b>`;
+        })()}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           <button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
           <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
@@ -4732,6 +4738,12 @@ function openNomaadEditModal(quoteNo) {
         <span class="naq-sectitle">Бараа / үйлчилгээ <small>(багц = үнэгүй багтсан)</small></span>
         <div id="ne-items" class="naq-items"></div>
         <button class="naq-addbtn" id="ne-add">+ Мөр нэмэх</button>
+        <span class="naq-sectitle">Гэрээний гүйцэтгэл (акт) <small>(төлбөр гүйцэтгэлийн дараа — муу гүйцэтгэлийн хасалт энд)</small></span>
+        <div class="naq-grid">
+          <label>Эцсийн гэрээний дүн (акт) ₮<input id="ne-final" type="number" min="0" inputmode="numeric" value="${Number(o.final_amount) > 0 ? Number(o.final_amount) : ''}" placeholder="хоосон = гэрээтэй ижил" /></label>
+          <label>Хасалтын шалтгаан / тэмдэглэл<input id="ne-note" value="${escapeHtml(o.note || '')}" placeholder="жишээ: гүйцэтгэл актаар буурсан" /></label>
+        </div>
+        <div id="ne-deduct" class="naq-deduct"></div>
       </div>
       <div class="naq-foot">
         <div id="ne-total" class="naq-total"></div>
@@ -4745,10 +4757,28 @@ function openNomaadEditModal(quoteNo) {
   document.body.appendChild(modal);
   modal.classList.add('open');   // .modal-bg нь .open класстай үед л харагдана
   const ib = nomaadItemsBindings(modal, items, '#ne-items', '#ne-total', '#ne-add');
+  // Гэрээний дүн (бараа) − Эцсийн гэрээний дүн (акт) = гүйцэтгэлийн хасалт (live)
+  const curGrand = () => items.reduce((s, it) => s + (it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0)), 0);
+  const updateDeduct = () => {
+    const g = curGrand();
+    const fv = modal.querySelector('#ne-final').value;
+    const el = modal.querySelector('#ne-deduct');
+    if (fv === '') { el.innerHTML = `<small>Акт оруулаагүй — гэрээний дүн (${fmtMoney(g)}) хэвээр.</small>`; return; }
+    const final = Math.max(0, Number(fv) || 0);
+    const ded = g - final;
+    if (ded > 0) el.innerHTML = `<span class="naq-deduct-on">Гүйцэтгэлийн хасалт: −${fmtMoney(ded)}</span> <small>(гэрээ ${fmtMoney(g)} − акт ${fmtMoney(final)})</small>`;
+    else if (ded < 0) el.innerHTML = `<span class="naq-deduct-add">Нэмэгдэл: +${fmtMoney(-ded)}</span> <small>(акт ${fmtMoney(final)} > гэрээ ${fmtMoney(g)})</small>`;
+    else el.innerHTML = `<small>Акт = гэрээний дүн (хасалтгүй).</small>`;
+  };
+  modal.querySelector('#ne-final').addEventListener('input', updateDeduct);
+  ['input', 'change', 'click'].forEach(ev => modal.querySelector('#ne-items').addEventListener(ev, updateDeduct));
+  modal.querySelector('#ne-add').addEventListener('click', updateDeduct);
+  updateDeduct();
   modal.querySelector('#ne-guests').addEventListener('input', (e) => {
     guests = Math.max(0, Number(e.target.value) || 0);
     const tb = items.find(it => it.category === 'Үндсэн багц');
     if (tb) { tb.qty = guests; ib.recalc(tb); ib.renderItems(); }
+    updateDeduct();
   });
   nomaadWirePreview(modal, () => ({
     quote_no: o.quote_no,
@@ -4775,6 +4805,7 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
   const fmtDT = v => v ? String(v).replace('T', ' ') : '';
   const startVal = modal.querySelector('#ne-start').value;
   const endVal = modal.querySelector('#ne-end').value;
+  const finalVal = modal.querySelector('#ne-final').value;
   const fields = {
     company: modal.querySelector('#ne-company').value.trim(),
     status: modal.querySelector('#ne-status').value,
@@ -4784,6 +4815,9 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
     email: modal.querySelector('#ne-email').value.trim(),
     camp: modal.querySelector('#ne-camp').value,
     tier: modal.querySelector('#ne-tier').value.trim(),
+    note: modal.querySelector('#ne-note').value.trim(),
+    // Эцсийн гэрээний дүн (акт) — хоосон бол хуучин утгыг хадгална (санамсаргүй устгахаас сэргийлнэ)
+    final_amount: finalVal !== '' ? Math.max(0, Number(finalVal) || 0) : (o.final_amount || ''),
     // Хоосон бол хуучин утгыг хадгална (parse хийгдэхгүй чөлөөт текст огноог хамгаална)
     date_start: startVal ? fmtDT(startVal) : (o.date_start || ''),
     date_end: endVal ? fmtDT(endVal) : (o.date_end || ''),

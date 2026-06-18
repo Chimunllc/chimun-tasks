@@ -789,9 +789,6 @@ function currentProjects() {
   });
   return merged;
 }
-function currentBranchInfo() {
-  return BRANCHES.find(b => b.id === state.branch) || BRANCHES[0];
-}
 
 /* -------------------- STORAGE -------------------- */
 // Google Sheets returns string-typed columns as numbers when the value looks numeric
@@ -4500,13 +4497,6 @@ function nomaadParseDay(dateStr) {
   const m = String(dateStr || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
 }
-function nomaadCampClass(o) {
-  const c = String(o.camp || '').toLowerCase();
-  if (c.includes('summit')) return 'na-cal-summit';
-  if (c.includes('meadow')) return 'na-cal-meadow';
-  if (c.includes('grove'))  return 'na-cal-grove';
-  return 'na-cal-other';
-}
 // Захиалгыг 4 camp + бусад-д ангилна (календарийн зурвасуудад)
 function nomaadCampKey(o) {
   const c = String(o.camp || '').toLowerCase();
@@ -5330,7 +5320,6 @@ function memberOptgroupsHtml(selected, placeholder = true) {
   }
   return html;
 }
-function memberOptionsHtml(selected) { return memberOptgroupsHtml(selected, true); }
 // Бүлэг-эхэнд нэг хүн сонгох picker — жагсаалт дээр дарж сонгоно. personKey эсвэл null буцаана.
 function openGroupSinglePicker(currentKey = '', title = 'Хүн сонгох') {
   const modal = document.getElementById('single-pick-modal');
@@ -6800,10 +6789,6 @@ function exportTasksAsICS(tasks) {
   showToast(`${due.length} ажлыг календарт татсан`, 'success');
 }
 
-function addSingleTaskToCalendar(task) {
-  if (!task.due) { showToast('Эцсийн огноо тохируулна уу', 'warn'); return; }
-  exportTasksAsICS([task]);
-}
 
 /* ─── Personal KPI (ажилтны хувийн тойм) ───────────────── */
 function renderPersonalKPI() {
@@ -8113,49 +8098,6 @@ function promptCompletionPhoto(task, opts = {}) {
   });
 }
 
-async function toggleTask(id) {
-  const t = state.tasks.find(x=>x.id===id); if (!t) return;
-  // Going from open → done: enforce 5-stage dependency for act sub-tasks
-  if (t.status !== 'done') {
-    const block = canCompleteSubtask(t);
-    if (!block.ok) {
-      const prev = block.prev;
-      showToast(`Энэ дамжлагыг дуусгахын өмнө "${prev.title}" дуусгасан байх ёстой. Хариуцагч: ${memberName(prev.assignee)}`, 'warn', 4500);
-      return;
-    }
-    // ─── Биелэлтийн зураг modal — үргэлж нээнэ ───
-    if (!(t.completion_photos || []).length) {
-      const photos = await promptCompletionPhoto(t, { required: !!t.requires_photo });
-      if (photos === null) return; // Болих
-      if (t.requires_photo && !photos.length) {
-        showToast('⚠ Энэ даалгаврыг дуусгахын тулд зураг хавсаргах ёстой', 'warn', 3500);
-        return;
-      }
-      if (photos.length) t.completion_photos = photos;
-    }
-  } else {
-    // Going from done → open: warn if a later stage is already done (would create inconsistency)
-    if (t.kind === 'act_stage' && t.parent_id) {
-      const next = state.tasks.find(x => x.parent_id === t.parent_id && Number(x.stage) === Number(t.stage) + 1 && x.status === 'done');
-      if (next && !(await showConfirm(`Дараагийн дамжлага "${next.title}" аль хэдийн дуусчихсан байна. Энэ дамжлагыг буцаах уу?`, { okText: 'Буцаах', danger: true }))) return;
-    }
-  }
-  t.status = t.status === 'done' ? 'open' : 'done';
-  saveTask(t);
-  // Давтамж (recurring) онол UI-аас хасагдсан (2026-06-06) — автомат spawn хийхгүй.
-  // If this was the last sub-task and all are done, also auto-complete the parent
-  if (t.status === 'done' && t.parent_id) {
-    const parent = state.tasks.find(x => x.id === t.parent_id);
-    if (parent && parent.status !== 'done') {
-      const p = actProgress(parent.id);
-      if (p.total > 0 && p.done === p.total) {
-        parent.status = 'done';
-        saveTask(parent);
-      }
-    }
-  }
-  render();
-}
 /* Permission матриц:
    - CEO: бүх зүйл засах + устгах
    - Үүсгэгч өөрөө: бүх зүйл засах + устгах
@@ -8244,40 +8186,6 @@ async function deleteTask(id) {
   saveTask(t, true, hardDelete);
   render();
   showToast('Устгалаа', 'success', 1800);
-}
-/* ─── Recurring tasks — давтагдах ажил ───
-   Task done болоход дараагийн давтамжийн интервалаар шинэ task үүсгэнэ.
-   parent_id (буюу act stage)-той эсвэл act parent-ийг хасна — тэдгээр нь
-   тусдаа логиктой. */
-function spawnRecurringNext(orig) {
-  if (orig.parent_id || orig.kind === 'act_parent' || orig.kind === 'act_stage') return;
-  if (!orig.recurrence) return;
-  const intervalDays = { daily: 1, weekly: 7, biweekly: 14, monthly: null, quarterly: null };
-  // base date = current due (эсвэл өнөөдөр)
-  const baseDate = orig.due ? new Date(orig.due) : new Date();
-  const next = new Date(baseDate);
-  if (orig.recurrence === 'monthly') next.setMonth(next.getMonth() + 1);
-  else if (orig.recurrence === 'quarterly') next.setMonth(next.getMonth() + 3);
-  else {
-    const days = intervalDays[orig.recurrence];
-    if (!days) return;
-    next.setDate(next.getDate() + days);
-  }
-  const nextDue = next.toISOString().slice(0, 10);
-  const dup = {
-    ...orig,
-    id: 'T' + Date.now(),
-    due: nextDue,
-    status: 'open',
-    executed_at: null, executed_by: null,
-    decision: undefined, decision_at: undefined, decision_by: undefined,
-    comments: [], activity: [],
-    created_at: new Date().toISOString(),
-    parent_recurrence_id: orig.id,
-  };
-  state.tasks.unshift(dup);
-  saveData();
-  showToast(`Дараагийн давталт үүслээ: ${fmtDate(nextDue)}`, 'info', 2500);
 }
 
 /* ─── Bulk action — олон task сонгож нэг дороос үйлдэл хийх ─── */

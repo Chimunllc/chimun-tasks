@@ -4359,7 +4359,8 @@ let nomaadExpanded = new Set();
 let nomaadViewMode = 'pipeline';   // NOMAAD захиалга: 'pipeline' (Захиалга самбар) | 'calendar'. ('list' хасагдсан)
 let nomaadCalMode = 'month';   // календарь: 'month' | 'week'
 let nomaadCalAnchor = null;    // календарийн анкор огноо (Date)
-let nomaadStageCollapsed = new Set(['done', 'cancelled']);  // pipeline: эвхэгдсэн шатууд
+// Pipeline: бүх шат анхдагчаар ЭВХЭГДСЭН (цэвэр dropdown жагсаалт) — дарвал тухайн шат задарна.
+let nomaadStageCollapsed = new Set(['interested', 'sent', 'confirming', 'deposit', 'contract', 'done', 'cancelled']);
 // Бэлтгэл-шалгах task-ийн desc-ийг нэг хэвээр угсарна
 function nomaadTaskDesc(o, names) {
   return `Захиалга ${o.quote_no} · ${o.company}\n📅 ${o.date_start || ''} → ${o.date_end || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\n☎ ${o.phone || ''}\n\nБэлэн эсэхийг шалгах:\n` + names.map(x => '• ' + x).join('\n');
@@ -4503,6 +4504,17 @@ function nomaadParseDay(dateStr) {
   const m = String(dateStr || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
   return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
 }
+// Огноо+цаг → timestamp (ms). Цаг байхгүй бол 00:00. Цаг давхцал тооцоход.
+function nomaadParseDT(dateStr) {
+  const m = String(dateStr || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:\D+(\d{1,2}):(\d{2}))?/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0).getTime();
+}
+// "2026-06-26 11:00" → "11:00" (цаг байхгүй бол '')
+function nomaadStartTime(dateStr) {
+  const m = String(dateStr || '').match(/\d{1,2}:\d{2}/);
+  return m ? m[0] : '';
+}
 // Захиалгыг 4 camp + бусад-д ангилна (календарийн зурвасуудад)
 function nomaadCampKey(o) {
   const c = String(o.camp || '').toLowerCase();
@@ -4598,7 +4610,7 @@ function renderNomaadPipeline() {
   return header + `<div class="na-funnel">${funnel}</div>${sections}`;
 }
 // Нэг өдрийн нүд (camp зурвасууд) — сар ба 7 хоногийн харагдацад хоёуланд
-function nomaadCalCellHtml(dateObj, list, today) {
+function nomaadCalCellHtml(dateObj, list, today, conflicts) {
   const isToday = dateObj.getTime() === today.getTime();
   let lanesHtml = '';
   if (list.length) {
@@ -4609,8 +4621,17 @@ function nomaadCalCellHtml(dateObj, list, today) {
     lanesHtml = '<div class="na-cal-lanes">' + laneKeys.map(k => {
       const items = (byCamp[k] || []).slice().sort((a, b) => nomaadEffTotal(b) - nomaadEffTotal(a));
       const chips = items.map(o => {
-        const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн · ${o.status || ''}`;
-        return `<div class="na-cal-chip${nomaadIsCancelled(o) ? ' na-cal-cancelled' : ''}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(String(o.company || o.quote_no || '').slice(0, 22))}</div>`;
+        const confirmed = ['deposit', 'contract', 'done'].includes(nomaadStage(o));  // урьдчилгаа төлж баталгаажсан
+        const conflict = !!(conflicts && conflicts.has(o.quote_no));
+        const t = nomaadStartTime(o.date_start);
+        const cls = 'na-cal-chip'
+          + (nomaadIsCancelled(o) ? ' na-cal-cancelled' : '')
+          + (confirmed ? ' na-cal-confirmed' : '')
+          + (conflict ? ' na-cal-conflict' : '');
+        const prefix = (conflict ? '⚠' : '') + (confirmed ? '✓' : '');
+        const label = (prefix ? prefix + ' ' : '') + (t ? t + ' ' : '') + String(o.company || o.quote_no || '').slice(0, 16);
+        const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн\n${o.date_start || ''} → ${o.date_end || ''}\n${o.status || ''}${confirmed ? ' · ✓ урьдчилгаа төлсөн' : ''}${conflict ? '\n⚠ ЭНЭ КЕМП ДЭЭР ЦАГ ДАВХЦАЖ БАЙНА' : ''}`;
+        return `<div class="${cls}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(label)}</div>`;
       }).join('');
       return `<div class="na-cal-lane na-lane-${k}${items.length ? ' has' : ''}"><span class="na-lane-tag">${NOMAAD_LANE_TAG[k]}</span><div class="na-lane-items">${chips}</div></div>`;
     }).join('') + '</div>';
@@ -4624,6 +4645,26 @@ function renderNomaadCalendar() {
   const byKey = {};   // 'y-mo-d' -> [orders]
   let noDate = 0;
   orders.forEach(o => { const p = nomaadParseDay(o.date_start); if (!p) { noDate++; return; } const k = p.y + '-' + p.mo + '-' + p.d; (byKey[k] = byKey[k] || []).push(o); });
+  // ─── Цаг давхцал: ИЖИЛ камп дээр хугацаа давхцвал зөрчил (нэг камп зэрэг 2 захиалга хүлээж чадахгүй) ───
+  const conflicts = new Set(), conflictPairs = [];
+  const byCampDT = {};
+  orders.forEach(o => {
+    const camp = nomaadCampKey(o);
+    if (camp === 'other') return;   // тодорхой кампгүй — физик зөрчил тооцохгүй
+    const s = nomaadParseDT(o.date_start);
+    if (s == null) return;
+    let e = nomaadParseDT(o.date_end);
+    if (e == null || e <= s) e = s + 3600000;   // дуусах огноогүй бол 1 цаг гэж үзнэ
+    (byCampDT[camp] = byCampDT[camp] || []).push({ o, s, e });
+  });
+  Object.values(byCampDT).forEach(arr => {
+    arr.sort((a, b) => a.s - b.s);
+    for (let i = 0; i < arr.length; i++)
+      for (let j = i + 1; j < arr.length && arr[j].s < arr[i].e; j++) {
+        conflicts.add(arr[i].o.quote_no); conflicts.add(arr[j].o.quote_no);
+        conflictPairs.push([arr[i].o, arr[j].o, nomaadCampKey(arr[i].o)]);
+      }
+  });
   const keyFor = dt => dt.getFullYear() + '-' + (dt.getMonth() + 1) + '-' + dt.getDate();
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const dows = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
@@ -4633,7 +4674,7 @@ function renderNomaadCalendar() {
     const mon = new Date(a.getFullYear(), a.getMonth(), a.getDate() - ((a.getDay() + 6) % 7));
     const days = [];
     for (let i = 0; i < 7; i++) days.push(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i));
-    cells = days.map(dt => { const l = byKey[keyFor(dt)] || []; shown += l.length; return nomaadCalCellHtml(dt, l, today); }).join('');
+    cells = days.map(dt => { const l = byKey[keyFor(dt)] || []; shown += l.length; return nomaadCalCellHtml(dt, l, today, conflicts); }).join('');
     title = `${mon.getMonth() + 1}/${mon.getDate()} – ${days[6].getMonth() + 1}/${days[6].getDate()}`;
     gridCls = ' na-cal-weekgrid';
   } else {
@@ -4641,10 +4682,15 @@ function renderNomaadCalendar() {
     const lead = (new Date(y, m, 1).getDay() + 6) % 7;
     const dim = new Date(y, m + 1, 0).getDate();
     for (let i = 0; i < lead; i++) cells += `<div class="na-cal-cell na-cal-empty"></div>`;
-    for (let d = 1; d <= dim; d++) { const dt = new Date(y, m, d); const l = byKey[keyFor(dt)] || []; shown += l.length; cells += nomaadCalCellHtml(dt, l, today); }
+    for (let d = 1; d <= dim; d++) { const dt = new Date(y, m, d); const l = byKey[keyFor(dt)] || []; shown += l.length; cells += nomaadCalCellHtml(dt, l, today, conflicts); }
     title = `${y} оны ${m + 1}-р сар`;
   }
   const hint = `<div class="na-cal-hint">Энэ ${mode === 'week' ? '7 хоногт' : 'сард'} <b>${shown}</b> захиалга${noDate ? ` · огноогүй ${noDate}` : ''}</div>`;
+  const warnHtml = conflictPairs.length
+    ? `<div class="na-cal-warn">⚠ ${conflictPairs.length} цаг давхцал: ` + conflictPairs.slice(0, 4).map(([a, b, camp]) =>
+        `${escapeHtml(String(a.company || a.quote_no || '').slice(0, 14))} ↔ ${escapeHtml(String(b.company || b.quote_no || '').slice(0, 14))} (${NOMAAD_LANE_TAG[camp] || camp})`).join('; ')
+      + (conflictPairs.length > 4 ? ` …+${conflictPairs.length - 4}` : '') + '</div>'
+    : '';
   return `<div class="na-cal">
     <div class="na-cal-head">
       <div class="na-calmode">
@@ -4658,6 +4704,7 @@ function renderNomaadCalendar() {
     </div>
     <div class="na-cal-dows">${dows.map(x => `<div class="na-cal-dow">${x}</div>`).join('')}</div>
     <div class="na-cal-grid${gridCls}">${cells}</div>
+    ${warnHtml}
     ${hint}
     <div class="na-cal-legend">
       <span><i class="na-lg na-cal-summit"></i>S · Summit</span>
@@ -4666,6 +4713,8 @@ function renderNomaadCalendar() {
       <span><i class="na-lg na-lg-nomad"></i>Н · Нүүдлийн</span>
       <span><i class="na-lg na-cal-other"></i>Б · Бусад</span>
       <span><i class="na-lg na-lg-cancel"></i>Больсон</span>
+      <span style="color:var(--ok);font-weight:700;">✓ Урьдчилгаа төлсөн</span>
+      <span style="color:var(--danger);font-weight:700;">⚠ Цаг давхцал</span>
     </div>
   </div>`;
 }

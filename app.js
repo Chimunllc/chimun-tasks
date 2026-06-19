@@ -2570,13 +2570,15 @@ function fmtDate(s) {
   if (diff < -1 && diff >= -7) return `${Math.abs(Math.round(diff))} хоног өмнө`;
   return d.toLocaleDateString('mn-MN', { month: 'short', day: 'numeric' });
 }
-// Огноо + цаг — Улаанбаатарын цагаар (MM-DD HH:MM)
+// Огноо + цаг — Улаанбаатарын цагаар, монгол дараалал САР/ӨДӨР цаг:мин (06/19 17:41)
 function fmtDateTimeUB(val) {
   if (!val) return '';
   const d = new Date(val);
   if (isNaN(d.getTime())) return '';
   try {
-    return d.toLocaleString('sv-SE', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ulaanbaatar', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
+    const g = t => (p.find(x => x.type === t) || {}).value || '';
+    return `${g('month')}/${g('day')} ${g('hour')}:${g('minute')}`;
   } catch (e) {
     return d.toISOString().slice(5, 16).replace('T', ' ');
   }
@@ -6241,8 +6243,10 @@ function renderFinanceReport(wrap) {
     const noteHtml = (t.close_note && (stMark(t) === '📝' || stMark(t) === '⚠'))
       ? `<span style="color:var(--warn);"> · «${escapeHtml(t.close_note)}»</span>` : '';
     const titleAttr = t.close_note ? ` title="${escapeHtml(t.close_note)}"` : '';
+    const timeHtml = t.requested_at ? `<span style="white-space:nowrap;color:var(--muted);font-size:11px;">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>` : '';
     d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
+      + `${timeHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', () => openFinanceModal(t.id));
     return d;

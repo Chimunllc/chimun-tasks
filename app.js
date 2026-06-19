@@ -2971,6 +2971,9 @@ function renderSidebar() {
         : list.filter(canSeeOrder).length);
     }
   }
+  // Тайлан — зөвхөн бүх санхүү хардаг (CEO/нягтлан/салбар-засагч) — удирдлагын тайлан.
+  const repNav = document.getElementById('nav-reports');
+  if (repNav) repNav.style.display = canSeeAllFinance() ? '' : 'none';
   // Гүйцэтгэл — зөвхөн үндсэн ажилтанд (өдрийн ажилтанд хамаарахгүй).
   const perfNav = document.getElementById('nav-performance');
   if (perfNav) perfNav.style.display = isDailyWorker() ? 'none' : '';
@@ -3009,6 +3012,7 @@ function renderTitle() {
     mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Санхүүгийн хүсэлт', 'Зөвшөөрөл хүлээж буй болон гүйцэтгэгдсэн'],
+    reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Тайлан', 'Удирдлагад зориулсан тайлангууд'],
     performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Сарын объектив гүйцэтгэлийн үнэлгээ'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
@@ -3085,6 +3089,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderProducts();
     attachProductsHandlers();
+    return;
+  } else if (state.view === 'reports') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderReports();
+    attachReportsHandlers();
     return;
   } else if (state.view === 'performance') {
     if (tableHead) tableHead.style.display = 'none';
@@ -6088,6 +6098,62 @@ function finStage(t) {
 }
 
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */
+/* ─── ТАЙЛАН (Reports hub) — удирдлагын тайлангуудын төв цэг ───
+   P&L (ашиг) шууд энд + бусад тайлан руу очих картууд. Зөвхөн бүх санхүү хардаг. */
+function renderReports() {
+  const curMonth = new Date().toISOString().slice(0, 7);
+  if (!state.reportMonth) state.reportMonth = curMonth;
+  const month = state.reportMonth;
+  // P&L: компанийн NOMAAD орлого − батлагдсан санхүүгийн зардал (тухайн сар)
+  let income = 0, incomeN = 0;
+  (state.nomaadOrders || []).forEach(o => {
+    if (nomaadIsCancelled(o)) return;
+    if (String(o.income_date || '').slice(0, 7) === month) { income += Number(o.income_amount) || 0; incomeN++; }
+  });
+  let expense = 0, expN = 0;
+  (state.financeRequests || []).forEach(r => {
+    if (r.status === 'deleted') return;
+    if (String(r.requested_at || '').slice(0, 7) === month && r.decision === 'approved') { expense += Number(r.amount) || 0; expN++; }
+  });
+  const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
+  const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
+  const kpi = (label, val, col, sub) => `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:18px;color:${col};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
+  const pnl = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;">
+      <button class="btn" data-report-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>
+      <div style="text-align:center;flex:1;min-width:0;"><div style="font-weight:800;font-size:15px;">💰 Ашиг — ${month}</div><div style="font-size:11px;color:var(--muted);">Компани · NOMAAD орлого − батлагдсан зардал</div></div>
+      <button class="btn" data-report-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+      ${kpi('Орлого (NOMAAD)', fmtMoney(income), 'var(--ok)', incomeN + ' орлоготой захиалга')}
+      ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт')}
+      ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, '')}
+      ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, '')}
+    </div>`;
+  const card = (icon, title, desc, view) => `<button class="report-card" data-go-view="${view}" style="text-align:left;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--panel);display:flex;flex-direction:column;gap:4px;">
+      <div style="font-size:15px;font-weight:700;">${icon} ${escapeHtml(title)}</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.4;">${escapeHtml(desc)}</div></button>`;
+  const cards = [
+    card('💸', 'Зардлын тайлан', 'Санхүүгийн хүсэлт — салбар/ангилалаар задаргаа, баримтын хяналт (% баримтгүй), Excel татах', 'finance'),
+    canSeeNomaadOrders() ? card('🏕', 'NOMAAD борлуулалт', 'Үнийн саналын юүлүүр (шат бүрээр), орлого, больсон шалтгаан, календарь', 'nomaad') : '',
+    card('📊', 'Тойм самбар', 'Ажлын гүйцэтгэлийн тойм, ажилтны ачаалал, графикууд', 'dashboard'),
+    isDailyWorker() ? '' : card('🏅', 'Гүйцэтгэлийн үнэлгээ', 'Ажилтны объектив + ажлын чанар + 360° оноо, бонус', 'performance'),
+    canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
+  ].filter(Boolean).join('');
+  return pnl
+    + `<div style="font-weight:800;font-size:13px;margin:20px 0 8px;">📁 Дэлгэрэнгүй тайлангууд</div>`
+    + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">${cards}</div>`;
+}
+function attachReportsHandlers() {
+  document.querySelectorAll('[data-report-month]').forEach(b => b.onclick = () => {
+    const [y, m] = (state.reportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
+    const d = new Date(y, m - 1 + Number(b.dataset.reportMonth), 1);
+    const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (nm > new Date().toISOString().slice(0, 7)) return;
+    state.reportMonth = nm; render();
+  });
+  document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
+}
 function renderFinanceReport(wrap) {
   const curMonth = new Date().toISOString().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
@@ -6128,32 +6194,6 @@ function renderFinanceReport(wrap) {
     if (nm > curMonth) return;
     state.finReportMonth = nm; render();
   }));
-
-  // ── 💰 Ашиг: NOMAAD орлого − батлагдсан зардал = цэвэр ашиг + марж ──
-  // Зөвхөн бүх санхүү хардаг (CEO/нягтлан) + камп/бүгд лензэд (NOMAAD = камп орлого).
-  if (canSeeAllFinance() && (!wantBr || wantBr === 'КЕМП')) {
-    let nomaadIncome = 0;
-    (state.nomaadOrders || []).forEach(o => {
-      if (nomaadIsCancelled(o)) return;
-      if (String(o.income_date || '').slice(0, 7) === month) nomaadIncome += Number(o.income_amount) || 0;
-    });
-    const approvedExpense = sumOf(monthList.filter(t => t.decision === 'approved'));
-    const net = nomaadIncome - approvedExpense;
-    const margin = nomaadIncome > 0 ? Math.round(net / nomaadIncome * 100) : null;
-    const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
-    const cell = (label, val, col) => `<div style="padding:8px 10px;border-radius:9px;background:var(--panel-hover);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:14px;color:${col};">${val}</div></div>`;
-    const p = document.createElement('div');
-    p.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--panel);';
-    p.innerHTML = `<div style="font-weight:800;font-size:13px;margin-bottom:10px;">💰 Ашиг — ${month} <span style="color:var(--muted);font-weight:400;font-size:11px;">${wantBr === 'КЕМП' ? '(Кемп)' : '(NOMAAD орлого − батлагдсан зардал)'}</span></div>`
-      + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">`
-      + cell('Орлого (NOMAAD)', fmtMoney(nomaadIncome), 'var(--ok)')
-      + cell('Зарлага (батлагдсан)', fmtMoney(approvedExpense), 'var(--danger)')
-      + cell('Цэвэр ашиг', fmtMoney(net), netCol)
-      + cell('Ашгийн марж', margin === null ? '—' : margin + '%', netCol)
-      + `</div>`
-      + `<div style="font-size:10.5px;color:var(--muted);margin-top:8px;">Орлого = NOMAAD бүртгэсэн орлого (тухайн сар). Зарлага = батлагдсан санхүүгийн хүсэлт. Цэвэр ашиг = Орлого − Зарлага.</div>`;
-    wrap.appendChild(p);
-  }
 
   if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард санхүүгийн хүсэлт алга.'; wrap.appendChild(e); return; }
 

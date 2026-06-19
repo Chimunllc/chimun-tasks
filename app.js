@@ -46,46 +46,46 @@ let TEAM = [];
 // Change here + push when the backend moves. Settings panel still lets the user
 // override locally for testing.
 //
-// BACKEND (2026-06-19): өгөгдөл одоо **Postgres (Supabase)** дээр — n8n workflow бүр
-// Google Sheets node-ийг Postgres node-оор сольсон (push-subscriptions л Sheets дээр
-// үлдсэн). Доорх "Sheet" гэсэн комментууд нь түүхэн нэр + ХАДГАЛСАН дамжуулах формат
+// BACKEND (2026-06-20): n8n + Postgres одоо **өөрийн VPS дээр** (n8n.nomaadcamp.com,
+// Contabo/Singapore) — n8n cloud-аас гарсан. Дата Supabase→VPS Postgres-т зөөгдсөн.
+// Доорх "Sheet" гэсэн комментууд нь түүхэн нэр + ХАДГАЛСАН дамжуулах формат
 // (код↔монгол, массив→CSV)-ыг хэлнэ — энэ форматыг Postgres workflow-ууд хэвээр буцаадаг
 // тул `toWire/fromWire` хувиргалтыг БҮҮ устга (устгавал апп эвдэрнэ).
-const DEFAULT_API_URL     = 'https://chimunllc.app.n8n.cloud/webhook/checklist';
+const DEFAULT_API_URL     = 'https://n8n.nomaadcamp.com/webhook/checklist';
 // Staff roster sync — read-only GET endpoint that returns { team: [...] } from Master Sheet.
 // If reachable, replaces the hardcoded TEAM constant below at startup.
-const DEFAULT_STAFF_URL   = 'https://chimunllc.app.n8n.cloud/webhook/staff';
+const DEFAULT_STAFF_URL   = 'https://n8n.nomaadcamp.com/webhook/staff';
 // Finance request sync — separate Sheet for audit/reporting cleanliness.
 // GET returns { requests: [...] }; POST { action: 'upsert'|'delete', request } saves.
-const DEFAULT_FINANCE_URL = 'https://chimunllc.app.n8n.cloud/webhook/finance';
+const DEFAULT_FINANCE_URL = 'https://n8n.nomaadcamp.com/webhook/finance';
 // Receipt upload — POST { filename, contentType, base64, request_id, kind } → returns Drive URL.
-const DEFAULT_UPLOAD_URL  = 'https://chimunllc.app.n8n.cloud/webhook/upload-receipt';
+const DEFAULT_UPLOAD_URL  = 'https://n8n.nomaadcamp.com/webhook/upload-receipt';
 // Шинэ ажилтан бүртгэл — POST { name, role, group, phone, email, pin } → Master Sheet append → { id }
-const DEFAULT_REGISTER_URL = 'https://chimunllc.app.n8n.cloud/webhook/staff-register';
+const DEFAULT_REGISTER_URL = 'https://n8n.nomaadcamp.com/webhook/staff-register';
 // Web Push — Sheet өөрчлөгдөх бүрд n8n /push-broadcast bütee push-аар client-уудад мэдэгдэнэ.
 // Subscribe хийсэн endpoint-ийг хадгалах URL.
-const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-subscribe';
+const DEFAULT_PUSH_SUBSCRIBE_URL = 'https://n8n.nomaadcamp.com/webhook/push-subscribe';
 // Push broadcast — даалгавар үүсгэх/санхүүгийн хүсэлтийн дараа хариуцагч руу нэн даруй push илгээнэ.
-const DEFAULT_PUSH_BROADCAST_URL = 'https://chimunllc.app.n8n.cloud/webhook/push-broadcast';
+const DEFAULT_PUSH_BROADCAST_URL = 'https://n8n.nomaadcamp.com/webhook/push-broadcast';
 // Bootstrap — tasks + finance-ийг нэг хариунд татаж execution-ийг 2 → 1 болгож хэмнэнэ.
-const DEFAULT_BOOTSTRAP_URL = 'https://chimunllc.app.n8n.cloud/webhook/bootstrap';
+const DEFAULT_BOOTSTRAP_URL = 'https://n8n.nomaadcamp.com/webhook/bootstrap';
 // M-Event захиалга — GET { orders:[...] } унших, POST { order_no, status, assigned_to, task_id } → шинэчлэх.
 // Сайт (chimunllc.github.io/m-event-website-ready) → /webhook/m-event-site-order руу захиалга илгээж
 // MEVENT_Orders_DB Sheet-д хадгалагдана. Энэ нь тэр Sheet-ийг уншиж/шинэчилнэ.
-const DEFAULT_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-orders';
+const DEFAULT_ORDERS_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-orders';
 // M-Event бараа — GET бараа жагсаалт унших, POST { product | products:[...] } → нэмэх/засах.
 // Эх сурвалж: MEVENT_Orders_DB Sheet `products` tab. Сайт мөн эндээс уншина.
-const DEFAULT_PRODUCTS_URL = 'https://chimunllc.app.n8n.cloud/webhook/mevent-products';
+const DEFAULT_PRODUCTS_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-products';
 // 360° гүйцэтгэлийн үнэлгээ — GET { evaluations:[...] }, POST нэг үнэлгээ (upsert id-аар).
-const DEFAULT_EVAL_URL = 'https://chimunllc.app.n8n.cloud/webhook/evaluations';
-const DEFAULT_FIN_CATEGORIES_URL = 'https://chimunllc.app.n8n.cloud/webhook/fin-categories';
+const DEFAULT_EVAL_URL = 'https://n8n.nomaadcamp.com/webhook/evaluations';
+const DEFAULT_FIN_CATEGORIES_URL = 'https://n8n.nomaadcamp.com/webhook/fin-categories';
 // NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
-const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
-const DEFAULT_NOMAAD_QUOTE_SEND_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-quote-send';
+const DEFAULT_NOMAAD_ORDERS_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-orders';
+const DEFAULT_NOMAAD_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-quote-send';
 // Илгээсэн үнийн саналыг дахин үзэх — HTML болгож буцаана (имэйл явуулахгүй). Менежер аппаас харна.
-const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-quote-view';
+const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-quote-view';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
-const DEFAULT_HOURLY_RATING_URL = 'https://chimunllc.app.n8n.cloud/webhook/hourly-rating';
+const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rating';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check

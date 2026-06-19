@@ -4459,7 +4459,7 @@ function nomaadCardHtml(o) {
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
          ${balanceHtml}
          <div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>
-         <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''} · <button class="btn" data-nomaad-income="${q}" style="padding:2px 8px;font-size:10px;">Засах</button></div>
+         <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''}${isDoneQuote ? '' : ` · <button class="btn" data-nomaad-income="${q}" style="padding:2px 8px;font-size:10px;">Засах</button>`}</div>
        </div>`
     : `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
          ${balanceHtml}
@@ -4495,12 +4495,18 @@ function nomaadCardHtml(o) {
         })()}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           ${isDoneQuote
-            ? `<button class="btn" disabled title="Гүйцэтгэсэн захиалга — засах хаалттай. Мэдээллийг буруутгахаас сэргийлж түгжсэн." style="padding:5px 14px;font-size:12px;opacity:.5;cursor:not-allowed;">🔒 Засах хаалттай</button>`
-            : `<button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>`}
-          <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
-          <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
-          <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
-          ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">❌ Больсон болгох</button>`}
+            ? `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;" title="Гүйцэтгэсэн захиалга — мэдээллийг буруутгахаас сэргийлж бүх товч түгжсэн.">
+                 <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Засах</button>
+                 <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Харах</button>
+                 <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Илгээх</button>
+                 <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Бэлтгэл</button>
+                 <span style="font-size:11px;color:var(--ok);font-weight:700;">✓ Гүйцэтгэсэн · хаалттай</span>
+               </span>`
+            : `<button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
+               <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
+               <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
+               <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
+               ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">❌ Больсон болгох</button>`}`}
           ${incomeArea}
         </div>
       </div>

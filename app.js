@@ -6133,6 +6133,31 @@ function renderReports() {
       ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, '')}
       ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, '')}
     </div>`;
+  // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
+  const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
+    .filter(t => String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
+  const byCat = {};
+  expItems.forEach(t => { const c = finSubName(t.category) || 'Ангилалгүй'; byCat[c] = (byCat[c] || 0) + (Number(t.amount) || 0); });
+  const catRows = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const expTotal = catRows.reduce((s, [, v]) => s + v, 0);
+  const maxV = catRows.length ? catRows[0][1] : 1;
+  const PAL = ['#6366f1', '#f59e0b', '#16a34a', '#ec4899', '#0ea5e9', '#8b5cf6', '#ef4444', '#14b8a6', '#a855f7', '#f97316', '#64748b'];
+  const bars = catRows.length
+    ? catRows.map(([name, v], i) => {
+        const pct = expTotal ? Math.round(v / expTotal * 100) : 0;
+        const w = Math.max(2, Math.round(v / maxV * 100));
+        const col = PAL[i % PAL.length];
+        return `<div style="margin-bottom:9px;">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:3px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(v)}</b> · ${pct}%</span></div>
+          <div style="height:8px;border-radius:4px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${w}%;background:${col};border-radius:4px;"></div></div>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Энэ сард батлагдсан зардал алга.</div>';
+  const expChart = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);">
+    <div style="font-weight:800;font-size:13px;margin-bottom:12px;">📊 Зардлын задаргаа — ${month} <span style="color:var(--muted);font-weight:400;font-size:11px;">${escapeHtml(brLabel)} · батлагдсан</span></div>
+    ${bars}
+    ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт зардал</span><span>${fmtMoney(expTotal)}</span></div>` : ''}
+  </div>`;
   const card = (icon, title, desc, view) => `<button class="report-card" data-go-view="${view}" style="text-align:left;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--panel);display:flex;flex-direction:column;gap:4px;">
       <div style="font-size:15px;font-weight:700;">${icon} ${escapeHtml(title)}</div>
       <div style="font-size:12px;color:var(--muted);line-height:1.4;">${escapeHtml(desc)}</div></button>`;
@@ -6144,6 +6169,7 @@ function renderReports() {
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
   return pnl
+    + expChart
     + `<div style="font-weight:800;font-size:13px;margin:20px 0 8px;">📁 Дэлгэрэнгүй тайлангууд</div>`
     + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">${cards}</div>`;
 }

@@ -2188,6 +2188,7 @@ function openFinanceModal(id = null) {
     if (nextLine) info += `<div style="font-weight:400;font-size:12px;margin-top:4px;opacity:0.9;">${nextLine}</div>`;
     info += `</div>`;
     info += `<div style="margin-top:6px;color:var(--muted);font-size:11px;">Илгээгч: <strong>${escapeHtml(requester)}</strong>`;
+    if (t.requested_at) info += ` · 🕐 <strong>${escapeHtml(fmtDateTimeUB(t.requested_at))}</strong>`;
     if (t.decision_by) info += ` · CEO: <strong>${escapeHtml(memberName(t.decision_by))}</strong>`;
     if (t.executed_by) info += ` · Гүйлгэсэн: <strong>${escapeHtml(memberName(t.executed_by))}</strong>`;
     info += `</div>`;

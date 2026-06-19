@@ -82,6 +82,8 @@ const DEFAULT_FIN_CATEGORIES_URL = 'https://chimunllc.app.n8n.cloud/webhook/fin-
 // NOMAAD кемпийн батлагдсан гэрээ (Quote Log/Quote Items) — орлого бүртгэх backoffice.
 const DEFAULT_NOMAAD_ORDERS_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-orders';
 const DEFAULT_NOMAAD_QUOTE_SEND_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-quote-send';
+// Илгээсэн үнийн саналыг дахин үзэх — HTML болгож буцаана (имэйл явуулахгүй). Менежер аппаас харна.
+const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://chimunllc.app.n8n.cloud/webhook/nomaad-quote-view';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
 const DEFAULT_HOURLY_RATING_URL = 'https://chimunllc.app.n8n.cloud/webhook/hourly-rating';
 
@@ -172,6 +174,7 @@ const state = {
       productsUrl:      localStorage.getItem('productsUrl')      || DEFAULT_PRODUCTS_URL      || '',
       nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
       nomaadQuoteSendUrl: localStorage.getItem('nomaadQuoteSendUrl') || DEFAULT_NOMAAD_QUOTE_SEND_URL || '',
+      nomaadQuoteViewUrl: localStorage.getItem('nomaadQuoteViewUrl') || DEFAULT_NOMAAD_QUOTE_VIEW_URL || '',
       hourlyRatingUrl:  localStorage.getItem('hourlyRatingUrl')  || DEFAULT_HOURLY_RATING_URL || '',
       evalUrl:          localStorage.getItem('evalUrl')          || DEFAULT_EVAL_URL          || '',
       finCategoriesUrl: localStorage.getItem('finCategoriesUrl') || DEFAULT_FIN_CATEGORIES_URL || '',
@@ -4490,6 +4493,7 @@ function nomaadCardHtml(o) {
         })()}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           <button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
+          <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
           <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
           ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">🗑 Устгах</button>`}
@@ -4754,6 +4758,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-send]').forEach(b => {
     b.addEventListener('click', () => sendNomaadQuote(b.dataset.nomaadSend));
+  });
+  document.querySelectorAll('button[data-nomaad-view]').forEach(b => {
+    b.addEventListener('click', () => openNomaadQuoteView(b.dataset.nomaadView));
   });
   // Жагсаалт ↔ Календарь сэлгэх
   document.querySelectorAll('[data-na-view]').forEach(b => {
@@ -5234,6 +5241,15 @@ async function saveNomaadCreate(quoteNo, items, modal, btn) {
     showToast('Алдаа: ' + e.message, 'error', 5000);
     btn.disabled = false;
   }
+}
+
+/* Илгээсэн/одоогийн үнийн саналыг шинэ таб дээр харах — nomaad-quote-view webhook бүрэн
+   форматтай үнийн саналыг (PDF-ийн агуулга) HTML болгож буцаана. Имэйл явуулахгүй. */
+function openNomaadQuoteView(quoteNo) {
+  const url = state.config.nomaadQuoteViewUrl;
+  if (!url) { showToast('Үнийн санал харах backend тохируулаагүй', 'error'); return; }
+  const full = withKey(url + '?quote_no=' + encodeURIComponent(quoteNo));
+  window.open(full, '_blank', 'noopener');
 }
 
 /* Үнийн санал илгээх — nomaad-quote-send webhook (Төлөв=ИЛГЭЭХ) → хэрэглэгч рүү ШУУД Gmail-ээр

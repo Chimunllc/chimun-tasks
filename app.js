@@ -5236,14 +5236,18 @@ async function saveNomaadCreate(quoteNo, items, modal, btn) {
   }
 }
 
-/* Үнийн санал илгээх — nomaad-quote-send webhook (Төлөв=ИЛГЭЭХ) → хэрэглэгч рүү Gmail ноорог.
+/* Үнийн санал илгээх — nomaad-quote-send webhook (Төлөв=ИЛГЭЭХ) → хэрэглэгч рүү ШУУД Gmail-ээр
+   илгээнэ (PDF + гэрчилгээ хавсаргана). Ноорог биш — менежер CEO-гоор дамжихгүй өөрөө илгээнэ.
    source:'app' тул Quote Log-ийн Төлөв "АПП-д нэмэх" хэвээр (захиалга аппд үлдэнэ). */
 async function sendNomaadQuote(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  if (!o.email || !String(o.email).trim()) {
+    showToast('⚠ Имэйл хаяг алга — эхлээд ✏️ Засах дээр имэйл оруулна уу', 'warn', 5000); return;
+  }
   const ok = await showConfirm(
-    `${o.company || quoteNo} — үнийн саналыг хэрэглэгч рүү илгээх Gmail ноорог үүсгэх үү?\n\nИмэйл: ${o.email || '⚠ имэйлгүй'}`,
-    { okText: 'Ноорог үүсгэх' });
+    `${o.company || quoteNo} — үнийн саналыг доорх хаяг руу ШУУД илгээх үү?\nPDF + улсын бүртгэлийн гэрчилгээ хавсаргана. (Ноорог биш — шууд хүрнэ)\n\n📧 ${o.email}`,
+    { title: 'Үнийн санал илгээх', okText: 'Шууд илгээх' });
   if (!ok) return;
   showToast('Илгээж байна…', 'info', 2000);
   try {
@@ -5252,7 +5256,9 @@ async function sendNomaadQuote(quoteNo) {
       body: JSON.stringify({ 'Төлөв': 'ИЛГЭЭХ', 'Үнийн саналын дугаар': quoteNo, source: 'app' }),
     }, 30000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    showToast('Gmail-д ноорог үүслээ — шалгаад илгээнэ үү', 'success', 4500);
+    showToast(`✓ Үнийн санал ${o.email} рүү илгээгдлээ`, 'success', 4500);
+    // Төлөвийг локалд ИЛГЭЭСЭН болгож шууд "Үнийн санал илгээсэн" шатанд оруулна (backend ч шинэчилнэ)
+    if (!String(o.status || '').toUpperCase().includes('ИЛГЭЭ')) { o.status = 'ИЛГЭЭСЭН'; render(); }
   } catch (e) {
     showToast('Алдаа: ' + e.message, 'error', 5000);
   }

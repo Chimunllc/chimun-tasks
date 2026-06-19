@@ -6126,6 +6126,32 @@ function renderFinanceReport(wrap) {
     state.finReportMonth = nm; render();
   }));
 
+  // ── 💰 Ашиг: NOMAAD орлого − батлагдсан зардал = цэвэр ашиг + марж ──
+  // Зөвхөн бүх санхүү хардаг (CEO/нягтлан) + камп/бүгд лензэд (NOMAAD = камп орлого).
+  if (canSeeAllFinance() && (!wantBr || wantBr === 'КЕМП')) {
+    let nomaadIncome = 0;
+    (state.nomaadOrders || []).forEach(o => {
+      if (nomaadIsCancelled(o)) return;
+      if (String(o.income_date || '').slice(0, 7) === month) nomaadIncome += Number(o.income_amount) || 0;
+    });
+    const approvedExpense = sumOf(monthList.filter(t => t.decision === 'approved'));
+    const net = nomaadIncome - approvedExpense;
+    const margin = nomaadIncome > 0 ? Math.round(net / nomaadIncome * 100) : null;
+    const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
+    const cell = (label, val, col) => `<div style="padding:8px 10px;border-radius:9px;background:var(--panel-hover);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:14px;color:${col};">${val}</div></div>`;
+    const p = document.createElement('div');
+    p.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--panel);';
+    p.innerHTML = `<div style="font-weight:800;font-size:13px;margin-bottom:10px;">💰 Ашиг — ${month} <span style="color:var(--muted);font-weight:400;font-size:11px;">${wantBr === 'КЕМП' ? '(Кемп)' : '(NOMAAD орлого − батлагдсан зардал)'}</span></div>`
+      + `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">`
+      + cell('Орлого (NOMAAD)', fmtMoney(nomaadIncome), 'var(--ok)')
+      + cell('Зарлага (батлагдсан)', fmtMoney(approvedExpense), 'var(--danger)')
+      + cell('Цэвэр ашиг', fmtMoney(net), netCol)
+      + cell('Ашгийн марж', margin === null ? '—' : margin + '%', netCol)
+      + `</div>`
+      + `<div style="font-size:10.5px;color:var(--muted);margin-top:8px;">Орлого = NOMAAD бүртгэсэн орлого (тухайн сар). Зарлага = батлагдсан санхүүгийн хүсэлт. Цэвэр ашиг = Орлого − Зарлага.</div>`;
+    wrap.appendChild(p);
+  }
+
   if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард санхүүгийн хүсэлт алга.'; wrap.appendChild(e); return; }
 
   // ── Төлөвийн шүүлтийн чип (дарж шүүнэ) ──

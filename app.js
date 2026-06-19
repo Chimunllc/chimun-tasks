@@ -4497,7 +4497,7 @@ function nomaadCardHtml(o) {
           <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
           <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
-          ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">🗑 Устгах</button>`}
+          ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">❌ Больсон болгох</button>`}
           ${incomeArea}
         </div>
       </div>
@@ -4602,7 +4602,7 @@ function renderNomaadPipeline() {
         <span class="na-stage-dot"></span>
         <span class="na-stage-label">${escapeHtml(s.label)}</span>
         <span class="na-stage-count">${list.length}</span>
-        <span class="na-stage-total">${fmtMoney(total)}</span>
+        ${s.key === 'cancelled' ? '<span class="na-stage-total"></span>' : `<span class="na-stage-total">${fmtMoney(total)}</span>`}
         <svg class="na-stage-chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="na-stage-body" style="display:${collapsed ? 'none' : 'block'}">${list.map(nomaadCardHtml).join('')}</div>
@@ -4835,9 +4835,11 @@ async function deleteNomaadQuote(quoteNo) {
   if (reason === null || reason === undefined) return;          // болих
   if (!String(reason).trim()) { showToast('Шалтгаан заавал бичнэ үү', 'warn', 3500); return; }
   if (!state.config.nomaadOrdersUrl) { showToast('NOMAAD backend тохируулаагүй', 'error'); return; }
-  // Шалтгааныг note талбарт хадгална (хуучин тэмдэглэлийг ард нь хадгална). Pipeline-д харагдана.
-  const prevNote = String(o.note || '').replace(/^Больсон:[^|]*\|?\s*/, '').trim();
-  const cancelNote = 'Больсон: ' + String(reason).trim() + (prevNote ? ' | ' + prevNote : '');
+  // Шалтгааныг note талбарт ХЭН/ХЭЗЭЭ-тэй хадгална (хуучин тэмдэглэлийг ард нь хадгална). Pipeline-д харагдана.
+  const who = (state.user && state.user.name) || memberName(state.me) || 'тодорхойгүй';
+  const when = todayStr();
+  const prevNote = String(o.note || '').replace(/^Больсон[^|]*\|?\s*/, '').trim();   // хуучин "Больсон..." угтварыг хасна
+  const cancelNote = `Больсон (${who} · ${when}): ${String(reason).trim()}` + (prevNote ? ' | ' + prevNote : '');
   const body = {
     action: 'update_quote', quote_no: o.quote_no,
     company: o.company || '', status: 'БОЛЬСОН', reg_no: o.reg_no || '',

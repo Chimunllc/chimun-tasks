@@ -4421,6 +4421,7 @@ async function assignNomaadItemInline(quoteNo, itemName) {
 const nomaadEffTotal = o => Number(o.final_amount) || Number(o.grand_total) || 0;
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
+  const isDoneQuote = nomaadStage(o) === 'done';   // Гүйцэтгэсэн — засах хаалттай (түүх хамгаална)
   const income = Number(o.income_amount) || 0;
   // Үлдэгдэл = гэрээний дүн − хүлээн авсан орлого (Эцсийн гэрээний дүн байвал тэрийг, эс бөгөөс Нийт дүн)
   const contractTotal = nomaadEffTotal(o);
@@ -4493,7 +4494,9 @@ function nomaadCardHtml(o) {
             : ` · <b style="color:var(--ok)">Акт: ${fmtMoney(fa)} (нэмэгдэл +${fmtMoney(fa - gt)})</b>`;
         })()}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
+          ${isDoneQuote
+            ? `<button class="btn" disabled title="Гүйцэтгэсэн захиалга — засах хаалттай. Мэдээллийг буруутгахаас сэргийлж түгжсэн." style="padding:5px 14px;font-size:12px;opacity:.5;cursor:not-allowed;">🔒 Засах хаалттай</button>`
+            : `<button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>`}
           <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
           <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
           <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
@@ -4869,6 +4872,11 @@ async function deleteNomaadQuote(quoteNo) {
 function openNomaadEditModal(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  // Гүйцэтгэсэн захиалгыг засахыг хориглоно — дараа засвал түүх/орлогын мэдээлэл буруу болно.
+  if (nomaadStage(o) === 'done') {
+    showToast('Гүйцэтгэсэн захиалгыг засах боломжгүй (мэдээлэл хадгалагдана). Дэлгэрэнгүйг "📄 Үнийн санал харах"-аар үзнэ үү.', 'warn', 5000);
+    return;
+  }
   // Мөрүүдийн локал хуулбар (хадгалах хүртэл эх өгөгдөл хөндөхгүй)
   const items = (Array.isArray(o.items) ? o.items : []).map(it => ({
     row_num: Number(it.row_num) || 0,

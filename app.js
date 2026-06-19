@@ -3095,7 +3095,7 @@ function renderTaskList() {
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'pipeline' ? renderNomaadPipeline() : renderNomaadOrders());
+    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : renderNomaadPipeline());
     attachNomaadHandlers();
     return;
   } else if (state.view === 'finance') {
@@ -4356,7 +4356,7 @@ function nomaadAssignedTasksHtml(quoteNo) {
 }
 // Нээлттэй (дэлгэрсэн) захиалгуудыг render хооронд хадгална
 let nomaadExpanded = new Set();
-let nomaadViewMode = 'list';   // NOMAAD захиалга: 'list' | 'calendar' | 'pipeline'
+let nomaadViewMode = 'pipeline';   // NOMAAD захиалга: 'pipeline' (Захиалга самбар) | 'calendar'. ('list' хасагдсан)
 let nomaadCalMode = 'month';   // календарь: 'month' | 'week'
 let nomaadCalAnchor = null;    // календарийн анкор огноо (Date)
 let nomaadStageCollapsed = new Set(['done', 'cancelled']);  // pipeline: эвхэгдсэн шатууд
@@ -4521,8 +4521,7 @@ function nomaadIsCancelled(o) {
 function renderNomaadToggle() {
   return `<div class="na-topbar">
     <div class="na-viewtoggle">
-      <button class="na-vt${nomaadViewMode === 'list' ? ' active' : ''}" data-na-view="list">📋 Жагсаалт</button>
-      <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Шат</button>
+      <button class="na-vt${nomaadViewMode !== 'calendar' ? ' active' : ''}" data-na-view="pipeline">📊 Захиалга</button>
       <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
     </div>
     <button class="btn btn-primary na-newbtn" data-na-new>+ Шинэ үнийн санал</button>
@@ -4592,7 +4591,11 @@ function renderNomaadPipeline() {
       <div class="na-stage-body" style="display:${collapsed ? 'none' : 'block'}">${list.map(nomaadCardHtml).join('')}</div>
     </div>`;
   }).join('');
-  return `<div class="na-funnel">${funnel}</div>${sections}`;
+  // Нийт бүртгэсэн орлого (income_amount нийлбэр) + идэвхтэй захиалгын тоо
+  const totalIncome = orders.reduce((sum, o) => sum + (Number(o.income_amount) || 0), 0);
+  const activeN = orders.filter(o => !nomaadIsCancelled(o)).length;
+  const header = `<div style="margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${activeN} идэвхтэй захиалга</div>`;
+  return header + `<div class="na-funnel">${funnel}</div>${sections}`;
 }
 // Нэг өдрийн нүд (camp зурвасууд) — сар ба 7 хоногийн харагдацад хоёуланд
 function nomaadCalCellHtml(dateObj, list, today) {
@@ -4667,53 +4670,6 @@ function renderNomaadCalendar() {
   </div>`;
 }
 
-function renderNomaadOrders() {
-  // Цуцалсан/больсон захиалгыг жагсаалтаас хасна — жагсаалт цэвэр байна (Pipeline-д "Больсон"
-  // шатанд хэвээр харагдана). Устгасан (status=БОЛЬСОН) захиалга энд дахин гарч ирэхгүй.
-  const orders = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
-  if (!orders.length) {
-    if (state._initialLoading) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
-    return `<div class="orders-empty"><div class="icon">📑</div><div>Идэвхтэй захиалга алга.</div>
-      <div class="sub">Цуцалсан захиалга "Шат" харагдацын "Больсон" хэсэгт харагдана.</div></div>`;
-  }
-  let totalIncome = 0;
-  orders.forEach(o => { totalIncome += Number(o.income_amount) || 0; });
-
-  // 1) Camp-аар бүлэглэх (Summit / Meadow / Grove / Бусад)
-  const campOrder = ['NOMAAD Summit', 'NOMAAD Meadow', 'NOMAAD Grove'];
-  const byCamp = {};
-  orders.forEach(o => { const c = nomaadCampLabel(o); (byCamp[c] = byCamp[c] || []).push(o); });
-  const camps = [...campOrder.filter(c => byCamp[c]), ...Object.keys(byCamp).filter(c => !campOrder.includes(c)).sort()];
-
-  const sections = camps.map(camp => {
-    const list = byCamp[camp];
-    // 2) Багцаар (tier) дэд бүлэглэх
-    const byPkg = {};
-    list.forEach(o => { const p = (o.tier || '').trim() || 'Бусад'; (byPkg[p] = byPkg[p] || []).push(o); });
-    // Багц дэд бүлгүүдийг хамгийн ойрхон огноотой нь эхэнд (ойролцоо өдрүүдээр) эрэмбэлнэ
-    const pkgs = Object.keys(byPkg).sort((a, b) =>
-      Math.min(...byPkg[a].map(nomaadSortKey)) - Math.min(...byPkg[b].map(nomaadSortKey)));
-    const pkgSummary = pkgs.map(p => `${escapeHtml(p)} ${byPkg[p].length}`).join(' · ');
-    const blocks = pkgs.map(p => {
-      // 3) Багц доторх захиалгыг ойролцоо огноогоор эрэмбэлэх
-      const items = byPkg[p].slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
-      return `<div class="nomaad-pkg">
-        <div class="nomaad-pkg-label">${escapeHtml(p)} <span style="color:var(--muted);font-weight:400;">(${items.length})</span></div>
-        ${items.map(nomaadCardHtml).join('')}
-      </div>`;
-    }).join('');
-    return `<div class="nomaad-camp-section">
-      <div class="nomaad-camp-head">
-        <span class="nomaad-camp-name">${escapeHtml(camp)}</span>
-        <span class="nomaad-camp-sub">${list.length} захиалга · ${pkgSummary}</span>
-      </div>
-      ${blocks}
-    </div>`;
-  }).join('');
-
-  const header = `<div style="margin-bottom:14px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${orders.length} батлагдсан гэрээ</div>`;
-  return header + sections;
-}
 function attachNomaadHandlers() {
   document.querySelectorAll('[data-nomaad-toggle]').forEach(h => {
     h.addEventListener('click', (e) => {
@@ -4790,11 +4746,11 @@ function attachNomaadHandlers() {
       setTimeout(() => { const el = document.getElementById('na-stage-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     });
   });
-  // Календарийн захиалга дээр дарвал → жагсаалт руу шилжиж тэр захиалгыг дэлгэнэ
+  // Календарийн захиалга дээр дарвал → Захиалга самбар руу шилжиж тэр захиалгыг дэлгэнэ
   document.querySelectorAll('[data-na-cal-order]').forEach(el => {
     el.addEventListener('click', () => {
       const qn = el.dataset.naCalOrder;
-      nomaadViewMode = 'list';
+      nomaadViewMode = 'pipeline';
       nomaadExpanded.add(qn);
       render();
       setTimeout(() => {

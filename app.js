@@ -6104,29 +6104,32 @@ function renderReports() {
   const curMonth = new Date().toISOString().slice(0, 7);
   if (!state.reportMonth) state.reportMonth = curMonth;
   const month = state.reportMonth;
-  // P&L: компанийн NOMAAD орлого − батлагдсан санхүүгийн зардал (тухайн сар)
+  // P&L: салбар лензээр (Бүгд / Кемп / M-Event). Зардал = тухайн салбарын батлагдсан хүсэлт.
+  const lens = effectiveBranchLens();
+  const wantBr = finLensBranch(lens);          // null=бүгд, 'КЕМП', 'ИВЕНТ', 'ХХК'
+  const incomeRelevant = !wantBr || wantBr === 'КЕМП';   // NOMAAD = кемпийн орлого
   let income = 0, incomeN = 0;
-  (state.nomaadOrders || []).forEach(o => {
+  if (incomeRelevant) (state.nomaadOrders || []).forEach(o => {
     if (nomaadIsCancelled(o)) return;
     if (String(o.income_date || '').slice(0, 7) === month) { income += Number(o.income_amount) || 0; incomeN++; }
   });
   let expense = 0, expN = 0;
-  (state.financeRequests || []).forEach(r => {
-    if (r.status === 'deleted') return;
-    if (String(r.requested_at || '').slice(0, 7) === month && r.decision === 'approved') { expense += Number(r.amount) || 0; expN++; }
+  (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
+    if (String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
   });
+  const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
   const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
   const kpi = (label, val, col, sub) => `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:18px;color:${col};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
   const pnl = `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;">
       <button class="btn" data-report-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>
-      <div style="text-align:center;flex:1;min-width:0;"><div style="font-weight:800;font-size:15px;">💰 Ашиг — ${month}</div><div style="font-size:11px;color:var(--muted);">Компани · NOMAAD орлого − батлагдсан зардал</div></div>
+      <div style="text-align:center;flex:1;min-width:0;"><div style="font-weight:800;font-size:15px;">💰 Ашиг — ${month}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(brLabel)} · толгойн салбар лензээр</div></div>
       <button class="btn" data-report-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-      ${kpi('Орлого (NOMAAD)', fmtMoney(income), 'var(--ok)', incomeN + ' орлоготой захиалга')}
-      ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт')}
+      ${kpi('Орлого (NOMAAD)', fmtMoney(income), 'var(--ok)', incomeRelevant ? incomeN + ' орлоготой захиалга' : 'зөвхөн Кемп/Бүгд')}
+      ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
       ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, '')}
       ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, '')}
     </div>`;

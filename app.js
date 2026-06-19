@@ -4481,6 +4481,7 @@ function nomaadCardHtml(o) {
     <div class="nomaad-card-body" style="display:${open ? 'block' : 'none'};">
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
+      ${nomaadIsCancelled(o) && o.note ? `<div class="order-meta" style="color:var(--danger);font-weight:600;">❌ ${escapeHtml(o.note)}</div>` : ''}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
@@ -4828,16 +4829,20 @@ async function deleteNomaadQuote(quoteNo) {
   if (Number(o.income_advance) > 0 || Number(o.income_amount) > 0) {
     showToast('Урьдчилгаа/орлого бүртгэгдсэн — устгах боломжгүй', 'warn', 4000); return;
   }
-  const ok = await showConfirm(
-    `${o.company || 'Захиалга'} · ${quoteNo}\nЭнэ үнийн саналыг устгах уу? Жагсаалтаас хасна (Quote Log-д "Больсон" болж түүх үлдэнэ).`,
-    { title: 'Үнийн санал устгах', okText: 'Устгах', danger: true });
-  if (!ok) return;
+  const reason = await showPrompt(
+    `${o.company || 'Захиалга'} · ${quoteNo}\nЯагаад больсон бэ? Шалтгаанаа бичнэ үү (түүх + статистикт үлдэнэ).`,
+    { placeholder: 'Ж: үнэ тохирсонгүй / өөр компани сонгосон / хариу өгөхгүй / огноо таарсангүй...', okText: 'Больсон болгох' });
+  if (reason === null || reason === undefined) return;          // болих
+  if (!String(reason).trim()) { showToast('Шалтгаан заавал бичнэ үү', 'warn', 3500); return; }
   if (!state.config.nomaadOrdersUrl) { showToast('NOMAAD backend тохируулаагүй', 'error'); return; }
+  // Шалтгааныг note талбарт хадгална (хуучин тэмдэглэлийг ард нь хадгална). Pipeline-д харагдана.
+  const prevNote = String(o.note || '').replace(/^Больсон:[^|]*\|?\s*/, '').trim();
+  const cancelNote = 'Больсон: ' + String(reason).trim() + (prevNote ? ' | ' + prevNote : '');
   const body = {
     action: 'update_quote', quote_no: o.quote_no,
     company: o.company || '', status: 'БОЛЬСОН', reg_no: o.reg_no || '',
     contact: o.contact || '', phone: o.phone || '', email: o.email || '',
-    camp: o.camp || '', tier: o.tier || '', note: o.note || '',
+    camp: o.camp || '', tier: o.tier || '', note: cancelNote,
     final_amount: o.final_amount || '', date_start: o.date_start || '', date_end: o.date_end || '',
     guests: o.guests || 0, grand_total: o.grand_total || 0, deposit: o.deposit || 0,
     items: (o.items || []).map(it => ({ row_num: it.row_num, category: it.category, name: it.name, qty: it.qty, unit: it.unit, unit_price: it.unit_price, total: it.total, included: it.included, note: it.note })),
@@ -4847,9 +4852,10 @@ async function deleteNomaadQuote(quoteNo) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.nomaadOrders = (state.nomaadOrders || []).filter(x => x.quote_no !== quoteNo);
+    // Локалд Больсон болгож шалтгаан хадгална → жагсаалт/календараас алга, Pipeline-ийн "Больсон" шатанд шалтгаантай харагдана
+    o.status = 'БОЛЬСОН'; o.note = cancelNote;
     try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) {}
-    showToast('Үнийн санал устгагдлаа', 'success', 2500);
+    showToast('Больсон болголоо', 'success', 2500);
     render();
   } catch (e) {
     showToast('Алдаа: ' + e.message, 'error', 5000);

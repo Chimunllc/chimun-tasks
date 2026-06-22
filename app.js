@@ -4650,14 +4650,28 @@ function nomaadCalCellHtml(dateObj, list, today, conflicts) {
       const chips = items.map(o => {
         const confirmed = ['deposit', 'contract', 'done'].includes(nomaadStage(o));  // урьдчилгаа төлж баталгаажсан
         const conflict = !!(conflicts && conflicts.has(o.quote_no));
-        const t = nomaadStartTime(o.date_start);
+        // Олон өдрийн захиалга: энэ нүд хэддэх өдөр / нийт хэдэн өдөр вэ
+        const ps = nomaadParseDay(o.date_start);
+        const pe = nomaadParseDay(o.date_end) || ps;
+        let dayIdx = 1, dayTotal = 1;
+        if (ps && pe) {
+          const sd = new Date(ps.y, ps.mo - 1, ps.d), ed = new Date(pe.y, pe.mo - 1, pe.d);
+          dayTotal = Math.max(1, Math.round((ed - sd) / 86400000) + 1);
+          dayIdx = Math.min(dayTotal, Math.max(1, Math.round((dateObj - sd) / 86400000) + 1));
+        }
+        const multi = dayTotal > 1;
+        const t = (!multi || dayIdx === 1) ? nomaadStartTime(o.date_start) : '';        // эхлэх цаг → зөвхөн 1-р өдөр
+        const endT = (multi && dayIdx === dayTotal) ? nomaadStartTime(o.date_end) : '';  // дуусах цаг → сүүлийн өдөр
         const cls = 'na-cal-chip'
           + (nomaadIsCancelled(o) ? ' na-cal-cancelled' : '')
           + (confirmed ? ' na-cal-confirmed' : '')
-          + (conflict ? ' na-cal-conflict' : '');
+          + (conflict ? ' na-cal-conflict' : '')
+          + (multi ? ' na-cal-span' : '');
         const prefix = (conflict ? '⚠' : '') + (confirmed ? '✓' : '');
-        const label = (prefix ? prefix + ' ' : '') + (t ? t + ' ' : '') + String(o.company || o.quote_no || '').slice(0, 16);
-        const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн\n${o.date_start || ''} → ${o.date_end || ''}\n${o.status || ''}${confirmed ? ' · ✓ урьдчилгаа төлсөн' : ''}${conflict ? '\n⚠ ЭНЭ КЕМП ДЭЭР ЦАГ ДАВХЦАЖ БАЙНА' : ''}`;
+        const span = multi ? ` ${dayIdx}/${dayTotal}` : '';
+        const timePart = endT ? '→' + endT + ' ' : (t ? t + ' ' : '');
+        const label = (prefix ? prefix + ' ' : '') + timePart + String(o.company || o.quote_no || '').slice(0, 14) + span;
+        const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн\n${o.date_start || ''} → ${o.date_end || ''}${multi ? ` (${dayTotal} хоног · энэ ${dayIdx}-р өдөр)` : ''}\n${o.status || ''}${confirmed ? ' · ✓ урьдчилгаа төлсөн' : ''}${conflict ? '\n⚠ ЭНЭ КЕМП ДЭЭР ЦАГ ДАВХЦАЖ БАЙНА' : ''}`;
         return `<div class="${cls}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(label)}</div>`;
       }).join('');
       return `<div class="na-cal-lane na-lane-${k}${items.length ? ' has' : ''}"><span class="na-lane-tag">${NOMAAD_LANE_TAG[k]}</span><div class="na-lane-items">${chips}</div></div>`;
@@ -4671,7 +4685,19 @@ function renderNomaadCalendar() {
   const mode = nomaadCalMode || 'month';
   const byKey = {};   // 'y-mo-d' -> [orders]
   let noDate = 0;
-  orders.forEach(o => { const p = nomaadParseDay(o.date_start); if (!p) { noDate++; return; } const k = p.y + '-' + p.mo + '-' + p.d; (byKey[k] = byKey[k] || []).push(o); });
+  orders.forEach(o => {
+    const ps = nomaadParseDay(o.date_start); if (!ps) { noDate++; return; }
+    const pe = nomaadParseDay(o.date_end) || ps;
+    const sd = new Date(ps.y, ps.mo - 1, ps.d);
+    let ed = new Date(pe.y, pe.mo - 1, pe.d);
+    if (ed < sd) ed = new Date(sd);
+    // Олон өдрийн захиалгыг хамрах ӨДӨР БҮРТ байрлуулна (давхцал бүх өдөрт харагдана). 90 хоногоор хязгаарлав.
+    let guard = 0;
+    for (let dt = new Date(sd); dt <= ed && guard < 90; dt.setDate(dt.getDate() + 1), guard++) {
+      const k = dt.getFullYear() + '-' + (dt.getMonth() + 1) + '-' + dt.getDate();
+      (byKey[k] = byKey[k] || []).push(o);
+    }
+  });
   // ─── Цаг давхцал: ИЖИЛ камп дээр хугацаа давхцвал зөрчил (нэг камп зэрэг 2 захиалга хүлээж чадахгүй) ───
   const conflicts = new Set(), conflictPairs = [];
   const byCampDT = {};
@@ -4697,11 +4723,12 @@ function renderNomaadCalendar() {
   const dows = ['Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя', 'Ня'];
   const a = nomaadCalAnchor;
   let title, cells = '', shown = 0, gridCls = '';
+  const shownSet = new Set();   // өвөрмөц захиалга тоолох (олон өдрийнхийг давхар тоолохгүй)
   if (mode === 'week') {
     const mon = new Date(a.getFullYear(), a.getMonth(), a.getDate() - ((a.getDay() + 6) % 7));
     const days = [];
     for (let i = 0; i < 7; i++) days.push(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i));
-    cells = days.map(dt => { const l = byKey[keyFor(dt)] || []; shown += l.length; return nomaadCalCellHtml(dt, l, today, conflicts); }).join('');
+    cells = days.map(dt => { const l = byKey[keyFor(dt)] || []; l.forEach(o => shownSet.add(o.quote_no)); return nomaadCalCellHtml(dt, l, today, conflicts); }).join('');
     title = `${mon.getMonth() + 1}/${mon.getDate()} – ${days[6].getMonth() + 1}/${days[6].getDate()}`;
     gridCls = ' na-cal-weekgrid';
   } else {
@@ -4709,9 +4736,10 @@ function renderNomaadCalendar() {
     const lead = (new Date(y, m, 1).getDay() + 6) % 7;
     const dim = new Date(y, m + 1, 0).getDate();
     for (let i = 0; i < lead; i++) cells += `<div class="na-cal-cell na-cal-empty"></div>`;
-    for (let d = 1; d <= dim; d++) { const dt = new Date(y, m, d); const l = byKey[keyFor(dt)] || []; shown += l.length; cells += nomaadCalCellHtml(dt, l, today, conflicts); }
+    for (let d = 1; d <= dim; d++) { const dt = new Date(y, m, d); const l = byKey[keyFor(dt)] || []; l.forEach(o => shownSet.add(o.quote_no)); cells += nomaadCalCellHtml(dt, l, today, conflicts); }
     title = `${y} оны ${m + 1}-р сар`;
   }
+  shown = shownSet.size;   // өвөрмөц захиалгын тоо (өдөр дамнасан нь нэг л захиалга)
   const hint = `<div class="na-cal-hint">Энэ ${mode === 'week' ? '7 хоногт' : 'сард'} <b>${shown}</b> захиалга${noDate ? ` · огноогүй ${noDate}` : ''}</div>`;
   const warnHtml = conflictPairs.length
     ? `<div class="na-cal-warn">⚠ ${conflictPairs.length} цаг давхцал: ` + conflictPairs.slice(0, 4).map(([a, b, camp]) =>

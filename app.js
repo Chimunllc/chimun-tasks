@@ -533,13 +533,16 @@ function generateNotifications() {
     });
   });
 
-  // 5b. FINANCE — CEO-д ирсэн pending хүсэлт + S03-д ирсэн approved хүсэлт
-  if (state.isCEO) {
-    state.financeRequests.filter(r => (r.decision || 'pending') === 'pending' && r.status !== 'done' && r.status !== 'deleted').forEach(r => {
+  // 5b. FINANCE — батлах хүлээгдэж буй pending хүсэлт (өөрийн батлах ёстойг л харуулна)
+  //   CEO → >5сая / менежергүй салбарынх (өөрийн хүсэлт ч багтана — дээш ахиулах хүн алга)
+  //   Менежер → салбарынхаа ≤5сая (өөрийн хүсэлт авто CEO руу ахисан тул энд орохгүй)
+  {
+    const finApproverMatch = r => state.isCEO ? getFinanceApprover(r) === getCEOEmail() : getFinanceApprover(r) === state.me;
+    state.financeRequests.filter(r => (r.decision || 'pending') === 'pending' && r.status !== 'done' && r.status !== 'deleted' && finApproverMatch(r)).forEach(r => {
       const nid = `finance-pending-${r.id}`;
       if (!seen.has(nid)) {
         newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
-          msg: `💸 Хүсэлт: ${memberName(r.requested_by)} — ${Number(r.amount).toLocaleString('mn-MN')}₮ (${r.beneficiary})`,
+          msg: `💸 Батлах хүсэлт: ${memberName(r.requested_by)} — ${Number(r.amount).toLocaleString('mn-MN')}₮ (${r.beneficiary})`,
           ts: Date.now(), read: false });
       }
     });
@@ -1205,11 +1208,12 @@ function addDays(yyyymmdd, days) {
 /* Create a 5-stage act for an M Event order. Returns the parent task.
    Side-effect: pushes parent + 5 sub-tasks into state.tasks, persists via saveTask. */
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
-// Жижиг дүн (300,000₮-аас доош) → салбарын менежер баталдаг. Эрхгүй бол CEO.
+// 5,000,000₮ ба түүнээс доош → салбарын менежер баталдаг. Дээш бол CEO.
 //  ИВЕНТ — И.Алтансүх ·  КЕМП — Дэлгэрбат ·  ЗАХ — Анужин
+const FINANCE_MANAGER_LIMIT = 5000000;   // энэ дүн ба доош → менежер батлах, дээш → CEO
 function getFinanceApprover(r) {
   const amt = Number(r?.amount) || 0;
-  if (amt > 0 && amt < 300000) {
+  if (amt > 0 && amt <= FINANCE_MANAGER_LIMIT) {
     const branch = String(r?.dept_branch || '').toUpperCase();
     let needle = null;
     if (branch === 'ИВЕНТ') needle = 'алтансүх';

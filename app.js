@@ -3884,6 +3884,11 @@ function hourlyPayouts(m) {
   );
 }
 
+// Шилжүүлгийн justification-аас ажилласан хоногийг салгана ("× N өдөр").
+function hourlyPayoutDays(p) {
+  const m = String(p.justification || '').match(/×\s*(\d+(?:\.\d+)?)\s*өдөр/);
+  return m ? Number(m[1]) : 0;
+}
 // Цагийн ажилтны салбар (M Event / NOMAAD / Бусад) — group/branches талбараас.
 function hourlyBranchLabel(m) {
   const g = String((m.branches && m.branches[0]) || m.group || m.branch || '').toLowerCase().trim();
@@ -3906,9 +3911,13 @@ function renderHourly() {
   const statOf = (m) => {
     const ps = hourlyPayouts(m);
     const sum = ps.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    // Ажилласан хоног + өдрийн дундаж цалин (хоног бүртгэлтэй шилжүүлгээс)
+    let days = 0, paidWithDays = 0;
+    ps.forEach(r => { const d = hourlyPayoutDays(r); if (d > 0) { days += d; paidWithDays += (Number(r.amount) || 0); } });
+    const avgDaily = days > 0 ? Math.round(paidWithDays / days) : 0;
     const dates = ps.map(payDate).filter(Boolean).sort();
     const last = dates[dates.length - 1] || '';
-    return { ps, sum, count: ps.length, first: dates[0] || '', last, lastTs: last ? new Date(last).getTime() : 0 };
+    return { ps, sum, count: ps.length, days, avgDaily, first: dates[0] || '', last, lastTs: last ? new Date(last).getTime() : 0 };
   };
   const stats = new Map(workers.map(m => [personKey(m), statOf(m)]));
   let totalPaid = 0;
@@ -3927,7 +3936,8 @@ function renderHourly() {
     const paidLine = sum > 0
       ? `<div style="margin-top:4px;">
            <div style="font-size:12px;font-weight:600;color:var(--ok);">Авсан нийт: ${fmtMoney(sum)}</div>
-           ${payouts.map(p => `<div style="font-size:11px;color:var(--muted);margin-top:1px;">· ${fmtMoney(Number(p.amount) || 0)} · ${escapeHtml(fmtDateTimeUB(p.executed_at || p.requested_at || ''))}</div>`).join('')}
+           ${st.days > 0 ? `<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:1px;">📅 ${st.days} өдөр ажилласан · өдрийн дундаж <span style="color:var(--primary);">${fmtMoney(st.avgDaily)}</span></div>` : ''}
+           ${payouts.map(p => { const d = hourlyPayoutDays(p); return `<div style="font-size:11px;color:var(--muted);margin-top:1px;">· ${fmtMoney(Number(p.amount) || 0)}${d > 0 ? ` <span style="color:var(--text-soft);">(${d} өдөр)</span>` : ''} · ${escapeHtml(fmtDateTimeUB(p.executed_at || p.requested_at || ''))}</div>`; }).join('')}
          </div>`
       : '';
     const rlist = ratingsForWorker(m);

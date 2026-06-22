@@ -5048,21 +5048,22 @@ body.role-daily #add-project { display: none !important; }
 .na-cal-daynum { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 3px; }
 .na-cal-today .na-cal-daynum { color: var(--primary); }
 /* Өдрийг 4 camp зурвас (lane)-д хуваана: Summit / Meadow / Grove / Нүүдлийн (+Бусад) */
-.na-cal-lanes { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.na-cal-lanes { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .na-cal-lane { display: flex; align-items: flex-start; gap: 4px; min-width: 0; min-height: 16px; padding-left: 5px; border-left: 3px solid var(--muted-soft); }
 .na-cal-lane:not(.has) { opacity: .4; }
-.na-lane-tag { font-size: 9px; font-weight: 800; flex-shrink: 0; width: 11px; text-align: center; line-height: 16px; color: var(--muted); }
-.na-lane-items { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.na-lane-tag { font-size: 9px; font-weight: 800; flex-shrink: 0; width: 11px; text-align: center; line-height: 18px; color: var(--muted); }
+.na-lane-items { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1; }
 .na-lane-summit { border-left-color: #6366f1; } .na-lane-summit > .na-lane-tag { color: #6366f1; }
 .na-lane-meadow { border-left-color: #16a34a; } .na-lane-meadow > .na-lane-tag { color: #16a34a; }
 .na-lane-grove  { border-left-color: #d97706; } .na-lane-grove > .na-lane-tag { color: #d97706; }
 .na-lane-nomad  { border-left-color: #9333ea; } .na-lane-nomad > .na-lane-tag { color: #9333ea; }
 .na-lane-other  { border-left-color: #64748b; } .na-lane-other > .na-lane-tag { color: #64748b; }
-.na-cal-chip { font-size: 10.5px; font-weight: 600; padding: 2px 5px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  background: var(--bg-soft, var(--card)); border: 1px solid var(--border); color: var(--text); }
-.na-cal-chip:hover { border-color: var(--border-strong); }
+.na-cal-chip { font-size: 10.5px; font-weight: 600; padding: 3px 6px; border-radius: 5px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--panel); border: 1px solid var(--border-strong); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.na-cal-chip:hover { border-color: var(--primary); }
+.na-chip-t { font-weight: 800; margin-right: 1px; }   /* эхлэх цаг — тод, дараалал ойлгомжтой */
 .na-cal-cancelled { opacity: .5; text-decoration: line-through; }
-.na-cal-confirmed { border-color: var(--ok); box-shadow: inset 2px 0 0 var(--ok); font-weight: 700; }
+.na-cal-confirmed { border-color: var(--ok); box-shadow: inset 2px 0 0 var(--ok), 0 1px 2px rgba(0,0,0,.06); font-weight: 700; }
 .na-cal-conflict { border-color: var(--danger) !important; background: var(--danger-soft, rgba(220,38,38,.12)); color: var(--danger); font-weight: 700; }
 .na-cal-span { border-style: dashed; }   /* олон өдөр дамнасан захиалга — тасархай хүрээ */
 .na-cal-warn { font-size: 12px; color: var(--danger); font-weight: 700; margin: 8px 2px 0; }

@@ -4646,7 +4646,8 @@ function nomaadCalCellHtml(dateObj, list, today, conflicts) {
     const laneKeys = NOMAAD_CAMP_LANES.map(x => x[0]);
     if ((byCamp.other || []).length) laneKeys.push('other');
     lanesHtml = '<div class="na-cal-lanes">' + laneKeys.map(k => {
-      const items = (byCamp[k] || []).slice().sort((a, b) => nomaadEffTotal(b) - nomaadEffTotal(a));
+      // Эхлэх цагаар эрэмбэлнэ — нэг кемп дээрх дараалал (ба зай) ойлгомжтой харагдана
+      const items = (byCamp[k] || []).slice().sort((a, b) => (nomaadParseDT(a.date_start) || 0) - (nomaadParseDT(b.date_start) || 0));
       const chips = items.map(o => {
         const confirmed = ['deposit', 'contract', 'done'].includes(nomaadStage(o));  // урьдчилгаа төлж баталгаажсан
         const conflict = !!(conflicts && conflicts.has(o.quote_no));
@@ -4669,10 +4670,13 @@ function nomaadCalCellHtml(dateObj, list, today, conflicts) {
           + (multi ? ' na-cal-span' : '');
         const prefix = (conflict ? '⚠' : '') + (confirmed ? '✓' : '');
         const span = multi ? ` ${dayIdx}/${dayTotal}` : '';
-        const timePart = endT ? '→' + endT + ' ' : (t ? t + ' ' : '');
-        const label = (prefix ? prefix + ' ' : '') + timePart + String(o.company || o.quote_no || '').slice(0, 14) + span;
+        const timeStr = endT ? '→' + endT : (t || '');
+        const nameStr = String(o.company || o.quote_no || '').slice(0, 14) + span;
+        const inner = (prefix ? escapeHtml(prefix) + ' ' : '')
+          + (timeStr ? `<b class="na-chip-t">${escapeHtml(timeStr)}</b> ` : '')
+          + escapeHtml(nameStr);
         const tip = `${o.company || o.quote_no} · ${o.camp || ''} · ${o.tier || ''} · ${o.guests || 0} хүн\n${o.date_start || ''} → ${o.date_end || ''}${multi ? ` (${dayTotal} хоног · энэ ${dayIdx}-р өдөр)` : ''}\n${o.status || ''}${confirmed ? ' · ✓ урьдчилгаа төлсөн' : ''}${conflict ? '\n⚠ ЭНЭ КЕМП ДЭЭР ЦАГ ДАВХЦАЖ БАЙНА' : ''}`;
-        return `<div class="${cls}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${escapeHtml(label)}</div>`;
+        return `<div class="${cls}" data-na-cal-order="${escapeHtml(o.quote_no)}" title="${escapeHtml(tip)}">${inner}</div>`;
       }).join('');
       return `<div class="na-cal-lane na-lane-${k}${items.length ? ' has' : ''}"><span class="na-lane-tag">${NOMAAD_LANE_TAG[k]}</span><div class="na-lane-items">${chips}</div></div>`;
     }).join('') + '</div>';

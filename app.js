@@ -3355,73 +3355,305 @@ function computeOrderPricing(o) {
   return { days, rental, multiDayDiscount, vatDiscount, manualDiscount, hasVat, deposit, total };
 }
 
-function renderOrders() {
-  const canManage = canManageOrders();   // менежер — бүгдийг хараад бүрэн хяналт. Бусад — зөвхөн өөрийн шат.
-  const all = state.orders || [];
-  const orders = canManage ? all : all.filter(canSeeOrder);   // дамжлагын чиглүүлэлт
-  const topbar = canManage ? `<div class="orders-topbar" style="display:flex;justify-content:flex-end;margin-bottom:14px;">
-    <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
-  </div>` : '';
-  if (!orders.length) {
-    if (state._initialLoading && !all.length) {
-      return topbar + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
-    }
-    return topbar + `<div class="orders-empty"><div class="icon">🛒</div>
-      <div>${all.length ? 'Танд хамаарах захиалга одоогоор алга.' : 'Захиалга алга байна.'}</div>
-      <div class="sub">${canManage ? 'Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.' : 'Таны шатанд захиалга ирэхэд энд харагдана.'}</div></div>`;
+/* ─── Захиалгын самбар — UI туслахууд ──────────────────────── */
+// Шатуудыг 4 үе шатанд бүлэглэнэ (шүүлтүүр таб + board багана).
+const ORDER_PHASES = [
+  { key: 'new',     label: 'Шинэ',     statuses: ['Шинэ'] },
+  { key: 'prep',    label: 'Бэлтгэлд', statuses: ['Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан'] },
+  { key: 'deliver', label: 'Хүргэлт',  statuses: ['Хүргэсэн', 'Буцаан ирсэн'] },
+  { key: 'done',    label: 'Дууссан',  statuses: ['Дууссан'] },
+];
+function orderPhaseKey(status) {
+  for (const p of ORDER_PHASES) if (p.statuses.includes(status)) return p.key;
+  if (status === 'Цуцалсан') return 'cancelled';
+  return 'new';
+}
+
+// Хүргэх огнооны яаралтай байдал — date_start-ыг өнөөдөртэй харьцуулна (дуусаагүй захиалгад).
+function orderUrgency(o) {
+  if (['Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'].includes(o.status)) return null;
+  const ds = String(o.date_start || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(ds + 'T00:00:00');
+  const diff = Math.round((d - today) / 86400000);
+  if (diff < 0)   return { label: 'Хоцорсон', cls: 'ou-over' };
+  if (diff === 0) return { label: 'Өнөөдөр хүргэх', cls: 'ou-today' };
+  if (diff === 1) return { label: 'Маргааш хүргэх', cls: 'ou-soon' };
+  if (diff <= 3)  return { label: diff + ' хоногийн дараа', cls: 'ou-week' };
+  return null;
+}
+const _URGENCY_RANK = { 'ou-over': 0, 'ou-today': 1, 'ou-soon': 2, 'ou-week': 3 };
+
+// 10-шатны прогресс зураас (Цуцалсан = тусдаа улаан төлөв).
+function orderStepper(status) {
+  if (status === 'Цуцалсан') return `<div class="order-steps cancelled"><span class="os-cx">✕ Цуцалсан</span></div>`;
+  const flow = ORDER_STATUSES.filter(s => s !== 'Цуцалсан');
+  const idx = Math.max(0, flow.indexOf(status));
+  let dots = '';
+  for (let i = 0; i < flow.length; i++) {
+    const cls = i < idx ? 'done' : (i === idx ? 'cur' : 'future');
+    dots += `<span class="os-dot ${cls}" title="${escapeHtml(flow[i])}"></span>`;
+    if (i < flow.length - 1) dots += `<span class="os-bar ${i < idx ? 'done' : ''}"></span>`;
   }
-  const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
-  const cards = orders.map(o => {
-    const pr = computeOrderPricing(o);   // хоногоор зөв дахин тооцсон үнэ
-    const itemsRows = (o.items || []).map(it =>
-      `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0) * pr.days)}</td></tr>`
-    ).join('');
-    const humanNote = cleanOrderNote(o.note);
-    const opts = ORDER_STATUSES.map(s => `<option value="${s}"${s === o.status ? ' selected' : ''}>${s}</option>`).join('');
-    return `<div class="order-card" data-order="${escapeHtml(o.order_no)}">
-      <div class="order-head">
-        <div>
-          <span class="order-no">${escapeHtml(o.order_no)}</span>
-          <span class="order-badge ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span>
+  const next = orderStage(status).next;
+  const sub = `Одоо: <b>${escapeHtml(status)}</b>` + (next ? ` · дараах — ${escapeHtml(next)}` : '') + ` <span class="os-frac">(${idx + 1}/${flow.length})</span>`;
+  return `<div class="order-steps">${dots}</div><div class="order-step-sub">${sub}</div>`;
+}
+
+// Захиалга тухайн шүүлт/хайлтад тохирох эсэх.
+function orderMatchesFilter(o, f) {
+  const ph = orderPhaseKey(o.status);
+  if (f === 'active') return ph !== 'done' && ph !== 'cancelled';
+  if (f === 'await')  return o.status === 'Шинэ';
+  if (f === 'today')  { const u = orderUrgency(o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }
+  return ph === f;
+}
+function orderMatchesSearch(o, q) {
+  if (!q) return true;
+  return `${o.order_no} ${o.customer_name} ${o.company} ${o.phone}`.toLowerCase().includes(q);
+}
+
+// Захиалгатай холбоотой даалгаврууд (confirmOrderPayment үүсгэсэн) — тоо + хариуцагчид.
+function orderLinkedTasks(o) {
+  const ts = (state.tasks || []).filter(t => t.order_no && t.order_no === o.order_no);
+  const names = [...new Set(ts.map(t => findMember(t.assignee)?.name).filter(Boolean))];
+  return { count: ts.length, names };
+}
+
+// Нэг захиалгын карт (менежер + ажилтан хоёуланд).
+function orderCardHtml(o, canManage, canConfirm) {
+  const pr = computeOrderPricing(o);
+  const u = orderUrgency(o);
+  const humanNote = cleanOrderNote(o.note);
+  const esc = escapeHtml(o.order_no);
+  const itemsRows = (o.items || []).map(it =>
+    `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0) * pr.days)}</td></tr>`
+  ).join('');
+  const itemCount = (o.items || []).length;
+  const lt = orderLinkedTasks(o);
+  const isCancelled = o.status === 'Цуцалсан';
+  const stage = orderStage(o.status);
+  const flow = ORDER_STATUSES.filter(s => s !== 'Цуцалсан');
+  const idx = flow.indexOf(o.status);
+  const prev = idx > 0 ? flow[idx - 1] : null;
+
+  // Үйлдлийн товчнууд
+  let actions;
+  if (canManage) {
+    const parts = [];
+    if (o.status === 'Шинэ' && canConfirm) parts.push(`<button class="btn btn-primary" data-order-confirm="${esc}" style="padding:5px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>`);
+    if (o.status === 'Шинэ') parts.push(`<button class="btn" data-order-edit="${esc}" style="padding:5px 12px;font-size:12px;">✎ Засах</button>`);
+    // Урагшлуулах — Шинэ нь зөвхөн "Гүйлгээ амжилттай"-аар урагшилна (3 даалгавар үүсгэдэг тул).
+    if (o.status !== 'Шинэ' && stage.next) parts.push(`<button class="btn btn-primary" data-order-advance="${esc}" data-next="${escapeHtml(stage.next)}" style="padding:5px 14px;font-size:12px;">${stage.label}</button>`);
+    // ⋯ цэс — буцаах / цуцлах (баталгаажуулалттай, санамсаргүй алдаанаас хамгаална).
+    if (!isCancelled && o.status !== 'Дууссан') {
+      parts.push(`<div class="order-kebab-wrap">
+        <button class="btn order-kebab" data-order-kebab="${esc}" aria-label="Бусад үйлдэл" style="padding:4px 9px;font-size:15px;">⋯</button>
+        <div class="order-kebab-menu" hidden>
+          ${prev ? `<button data-order-revert="${esc}" data-prev="${escapeHtml(prev)}">← «${escapeHtml(prev)}» руу буцаах</button>` : ''}
+          <button class="km-danger" data-order-cancel="${esc}">✕ Захиалга цуцлах</button>
         </div>
-        <div class="order-total">${fmtMoney(pr.total)}</div>
+      </div>`);
+    }
+    actions = parts.join('') || '<span class="order-sub">—</span>';
+  } else {
+    actions = stage.next ? `<button class="btn btn-primary" data-order-advance="${esc}" data-next="${escapeHtml(stage.next)}" style="padding:6px 16px;">${stage.label}</button>` : '<span class="order-sub">—</span>';
+  }
+
+  const haystack = escapeHtml(`${o.order_no} ${o.customer_name} ${o.company} ${o.phone}`.toLowerCase());
+  return `<div class="order-card${u ? ' urg-' + u.cls : ''}" data-order="${esc}" data-haystack="${haystack}">
+    <div class="order-head">
+      <div class="order-head-l">
+        <span class="order-no">${esc}</span>
+        <span class="order-badge ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span>
+        ${u ? `<span class="order-urg ${u.cls}">⚠ ${escapeHtml(u.label)}</span>` : ''}
       </div>
-      <div class="order-cust">
-        <b>${escapeHtml(o.customer_name)}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}
-        · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>
-      </div>
-      <div class="order-meta">📍 ${escapeHtml(o.address || '—')}</div>
-      <div class="order-meta">📅 ${escapeHtml(o.date_start)} → ${escapeHtml(o.date_end)}${pr.days ? ' (' + pr.days + ' хоног)' : ''}</div>
-      ${humanNote ? `<div class="order-meta">📝 ${escapeHtml(humanNote)}</div>` : ''}
+      <div class="order-total">${fmtMoney(pr.total)}</div>
+    </div>
+    <div class="order-cust">
+      <b>${escapeHtml(o.customer_name)}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}
+      ${o.phone ? '· <a href="tel:' + escapeHtml(o.phone) + '">' + escapeHtml(o.phone) + '</a>' : ''}
+    </div>
+    ${o.address ? `<div class="order-meta">📍 ${escapeHtml(o.address)}</div>` : ''}
+    <div class="order-meta">📅 ${escapeHtml(o.date_start || '—')} → ${escapeHtml(o.date_end || '—')}${pr.days ? ' (' + pr.days + ' хоног)' : ''}</div>
+    ${humanNote ? `<div class="order-meta">📝 ${escapeHtml(humanNote)}</div>` : ''}
+    ${orderStepper(o.status)}
+    ${lt.count ? `<div class="order-meta order-tasks">🧩 ${lt.count} даалгавар${lt.names.length ? ' · ' + escapeHtml(lt.names.join(', ')) : ''}</div>` : ''}
+    <button class="order-items-toggle" data-order-items="${esc}"><span class="oit-caret">▸</span> ${itemCount} бараа${pr.deposit ? ' · Барьцаа ' + fmtMoney(pr.deposit) : ''}</button>
+    <div class="order-items-box" data-order-itemsbox="${esc}" hidden>
       <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
       ${pr.multiDayDiscount ? `<div class="order-meta">${pr.days} хоногийн хямдрал (−20%): −${fmtMoney(pr.multiDayDiscount)}</div>` : ''}
       ${pr.vatDiscount ? `<div class="order-meta">НӨАТ хасалт (−5%): −${fmtMoney(pr.vatDiscount)}</div>` : ''}
       ${pr.manualDiscount ? `<div class="order-meta">Нэмэлт хямдрал: −${fmtMoney(pr.manualDiscount)}</div>` : ''}
-      <div class="order-foot">
-        <span class="order-sub">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</span>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          ${canManage ? `
-            ${(o.status || 'Шинэ') === 'Шинэ' && canConfirm ? `<button class="btn btn-primary" data-order-confirm="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>` : ''}
-            ${(o.status || 'Шинэ') === 'Шинэ' ? `<button class="btn" data-order-edit="${escapeHtml(o.order_no)}" style="padding:4px 12px;font-size:12px;">✎ Засах</button>` : ''}
-            <label class="order-status-sel">Статус:
-              <select data-order-status="${escapeHtml(o.order_no)}">${opts}</select>
-            </label>
-          ` : (orderStage(o.status).next ? `<button class="btn btn-primary" data-order-advance="${escapeHtml(o.order_no)}" data-next="${escapeHtml(orderStage(o.status).next)}" style="padding:6px 16px;">${orderStage(o.status).label}</button>` : '<span class="order-sub">—</span>')}
-        </div>
-      </div>
-    </div>`;
+      <div class="order-meta">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</div>
+    </div>
+    <div class="order-foot">${actions}</div>
+  </div>`;
+}
+
+// Board (kanban) харагдац — үе шатаар багана.
+function renderOrdersBoard(list) {
+  const cols = ORDER_PHASES.map(p => {
+    const os = list.filter(o => orderPhaseKey(o.status) === p.key)
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    const cards = os.map(o => {
+      const pr = computeOrderPricing(o);
+      const u = orderUrgency(o);
+      return `<div class="oboard-card" data-order-open="${escapeHtml(o.order_no)}">
+        <div class="oboard-top"><span class="oboard-no">${escapeHtml(o.order_no)}</span>${u ? `<span class="order-urg ${u.cls}">${escapeHtml(u.label)}</span>` : ''}</div>
+        <div class="oboard-cust">${escapeHtml(o.customer_name || '—')}</div>
+        <div class="oboard-foot"><span class="oboard-status ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span><span class="oboard-total">${fmtMoney(pr.total)}</span></div>
+      </div>`;
+    }).join('') || `<div class="oboard-empty">—</div>`;
+    return `<div class="oboard-col"><div class="oboard-head">${p.label}<span class="oboard-count">${os.length}</span></div><div class="oboard-list">${cards}</div></div>`;
   }).join('');
-  return topbar + `<div class="orders-wrap">${cards}</div>`;
+  return `<div class="oboard">${cols}</div>`;
+}
+
+function renderOrders() {
+  const canManage = canManageOrders();   // менежер — бүгдийг хараад бүрэн хяналт. Бусад — зөвхөн өөрийн шат.
+  const all = state.orders || [];
+
+  // ── Ажилтан (менежер биш) — энгийн жагсаалт, зөвхөн өөрийн шатны захиалга ──
+  if (!canManage) {
+    const mine = all.filter(canSeeOrder);
+    if (!mine.length) {
+      if (state._initialLoading && !all.length) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
+      return `<div class="orders-empty"><div class="icon">🛒</div><div>Танд хамаарах захиалга одоогоор алга.</div><div class="sub">Таны шатанд захиалга ирэхэд энд харагдана.</div></div>`;
+    }
+    return `<div class="orders-wrap">${mine.map(o => orderCardHtml(o, false, false)).join('')}</div>`;
+  }
+
+  // ── Менежер / CEO ──
+  state.ordersFilter = state.ordersFilter || 'active';
+  state.ordersView = state.ordersView || 'list';
+  const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
+  const q = (state.ordersSearch || '').trim().toLowerCase();
+
+  const head = `<div class="orders-head">
+    <div class="orders-title">Захиалга</div>
+    <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
+  </div>`;
+
+  if (!all.length) {
+    if (state._initialLoading) return head + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
+    return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div><div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.</div></div>`;
+  }
+
+  // Анхаарлын чипүүд + энэ сарын дүн
+  const awaitN = all.filter(o => o.status === 'Шинэ').length;
+  const todayN = all.filter(o => { const u = orderUrgency(o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }).length;
+  const activeN = all.filter(o => orderMatchesFilter(o, 'active')).length;
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthOrders = all.filter(o => String(o.created_at || '').slice(0, 7) === ym);
+  const monthRental = monthOrders.reduce((s, o) => s + computeOrderPricing(o).rental, 0);
+  const chips = `<div class="orders-chips">
+    <button class="ochip ochip-info${state.ordersFilter === 'await' ? ' on' : ''}" data-ofilter="await"><span class="ochip-n">${awaitN}</span><span class="ochip-l">Батлах хүлээж буй</span></button>
+    <button class="ochip ochip-danger${state.ordersFilter === 'today' ? ' on' : ''}" data-ofilter="today"><span class="ochip-n">${todayN}</span><span class="ochip-l">Өнөөдөр хүргэх</span></button>
+    <button class="ochip${state.ordersFilter === 'active' ? ' on' : ''}" data-ofilter="active"><span class="ochip-n">${activeN}</span><span class="ochip-l">Идэвхтэй</span></button>
+    <div class="ochip ochip-static"><span class="ochip-n">${fmtMoney(monthRental)}</span><span class="ochip-l">Энэ сарын түрээс (${monthOrders.length})</span></div>
+  </div>`;
+
+  // Шүүлтүүр таб + хайлт + харагдац солих
+  const tabs = [
+    { key: 'active', label: 'Идэвхтэй' }, { key: 'new', label: 'Шинэ' },
+    { key: 'prep', label: 'Бэлтгэлд' }, { key: 'deliver', label: 'Хүргэлт' },
+    { key: 'done', label: 'Дууссан' }, { key: 'cancelled', label: 'Цуцалсан' },
+  ];
+  const tabsHtml = tabs.map(t => {
+    const n = all.filter(o => orderMatchesFilter(o, t.key)).length;
+    return `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>`;
+  }).join('');
+  const controls = `<div class="orders-controls">
+    <div class="otabs">${tabsHtml}</div>
+    <div class="orders-controls-r">
+      <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
+      <div class="oview-toggle">
+        <button class="oview${state.ordersView === 'list' ? ' on' : ''}" data-oview="list" aria-label="Жагсаалт">☰</button>
+        <button class="oview${state.ordersView === 'board' ? ' on' : ''}" data-oview="board" aria-label="Самбар">▦</button>
+      </div>
+    </div>
+  </div>`;
+
+  let body;
+  if (state.ordersView === 'board') {
+    body = renderOrdersBoard(all.filter(o => orderMatchesSearch(o, q)));
+  } else {
+    const shown = all.filter(o => orderMatchesFilter(o, state.ordersFilter) && orderMatchesSearch(o, q))
+      .sort((a, b) => {
+        const ua = orderUrgency(a), ub = orderUrgency(b);
+        const ka = ua ? (_URGENCY_RANK[ua.cls] ?? 5) : 9;
+        const kb = ub ? (_URGENCY_RANK[ub.cls] ?? 5) : 9;
+        if (ka !== kb) return ka - kb;
+        return (b.created_at || '').localeCompare(a.created_at || '');
+      });
+    body = shown.length
+      ? `<div class="orders-wrap">${shown.map(o => orderCardHtml(o, true, canConfirm)).join('')}</div>`
+      : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`;
+  }
+
+  return head + chips + controls + body;
+}
+
+function _closeOrderKebabs(e) {
+  if (e && e.target.closest && e.target.closest('.order-kebab-wrap')) return;
+  document.querySelectorAll('.order-kebab-menu').forEach(m => m.setAttribute('hidden', ''));
 }
 
 function attachOrdersHandlers() {
-  document.querySelectorAll('select[data-order-status]').forEach(sel => {
-    sel.onchange = (e) => {
-      const order_no = e.currentTarget.dataset.orderStatus;
-      updateOrderStatus(order_no, { status: e.currentTarget.value });
-    };
-  });
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
+
+  // Шүүлтүүр таб + анхаарлын чип → state.ordersFilter
+  document.querySelectorAll('[data-ofilter]').forEach(el => {
+    el.addEventListener('click', () => { state.ordersFilter = el.dataset.ofilter; render(); });
+  });
+  // Жагсаалт ⇄ Самбар
+  document.querySelectorAll('[data-oview]').forEach(el => {
+    el.addEventListener('click', () => { state.ordersView = el.dataset.oview; render(); });
+  });
+  // Board картаас тухайн захиалга руу (жагсаалт + хайлт)
+  document.querySelectorAll('[data-order-open]').forEach(el => {
+    el.addEventListener('click', () => { state.ordersView = 'list'; state.ordersSearch = el.dataset.orderOpen; render(); });
+  });
+
+  // Хайлт — DOM шүүлт (re-render-гүй, бичих фокус хадгална)
+  const search = document.getElementById('orders-search');
+  if (search) {
+    search.addEventListener('input', () => {
+      state.ordersSearch = search.value;
+      const q = search.value.trim().toLowerCase();
+      document.querySelectorAll('.orders-wrap .order-card').forEach(card => {
+        card.style.display = (!q || (card.dataset.haystack || '').includes(q)) ? '' : 'none';
+      });
+    });
+  }
+
+  // Бараа задлах/хаах
+  document.querySelectorAll('[data-order-items]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const box = btn.parentElement.querySelector('.order-items-box');
+      if (!box) return;
+      const open = !box.hasAttribute('hidden');
+      if (open) box.setAttribute('hidden', ''); else box.removeAttribute('hidden');
+      btn.classList.toggle('open', !open);
+    });
+  });
+
+  // ⋯ кебаб цэс нээх/хаах
+  document.querySelectorAll('[data-order-kebab]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = btn.parentElement.querySelector('.order-kebab-menu');
+      const wasHidden = menu.hasAttribute('hidden');
+      _closeOrderKebabs();
+      if (wasHidden) menu.removeAttribute('hidden');
+    });
+  });
+  if (!window._ordersKebabBound) { document.addEventListener('click', _closeOrderKebabs); window._ordersKebabBound = true; }
+
+  // Засах / Гүйлгээ амжилттай
   document.querySelectorAll('button[data-order-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
       const o = state.orders.find(x => x.order_no === btn.dataset.orderEdit);
@@ -3431,11 +3663,27 @@ function attachOrdersHandlers() {
   document.querySelectorAll('button[data-order-confirm]').forEach(btn => {
     btn.addEventListener('click', () => confirmOrderPayment(btn.dataset.orderConfirm));
   });
-  // Дараагийн шат руу шилжүүлэх (ажилтан зөвхөн өөрийн алхмаа дарна)
+
+  // Урагшлуулах (нэг алхам урагш)
   document.querySelectorAll('button[data-order-advance]').forEach(btn => {
     btn.addEventListener('click', () => {
       const next = btn.dataset.next;
       withBusy(btn, () => updateOrderStatus(btn.dataset.orderAdvance, { status: next }), { successText: next });
+    });
+  });
+  // Өмнөх шат руу буцаах (баталгаажуулалттай)
+  document.querySelectorAll('button[data-order-revert]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const prev = btn.dataset.prev;
+      const ok = await showConfirm(`Захиалгыг «${prev}» шат руу буцаах уу?`, { title: 'Шат буцаах', okText: 'Тийм, буцаах' });
+      if (ok) updateOrderStatus(btn.dataset.orderRevert, { status: prev });
+    });
+  });
+  // Цуцлах (баталгаажуулалттай)
+  document.querySelectorAll('button[data-order-cancel]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ok = await showConfirm('Энэ захиалгыг цуцлах уу? Дамжлагаас гарна.', { title: 'Захиалга цуцлах', okText: 'Тийм, цуцлах', danger: true });
+      if (ok) updateOrderStatus(btn.dataset.orderCancel, { status: 'Цуцалсан' });
     });
   });
 }

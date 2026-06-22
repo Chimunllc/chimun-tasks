@@ -4983,13 +4983,99 @@ body.role-daily #add-project { display: none !important; }
 .order-items th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); padding: 4px 6px; }
 .order-items td { padding: 4px 6px; border-bottom: 1px solid var(--border); color: var(--text-soft); }
 .order-items .num { text-align: right; }
-.order-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.order-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 .order-sub { font-size: 12px; color: var(--muted); }
 .order-status-sel { font-size: 12.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .order-status-sel select { font-family: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--panel); color: var(--text); cursor: pointer; }
 .orders-empty { text-align: center; padding: 64px 20px; color: var(--muted); }
 .orders-empty .icon { font-size: 40px; margin-bottom: 12px; }
 .orders-empty .sub { font-size: 13px; color: var(--muted-soft); margin-top: 6px; }
+
+/* Толгой + анхаарлын чипүүд */
+.orders-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+.orders-title { font-size: 18px; font-weight: 700; color: var(--text); }
+.orders-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.ochip { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); cursor: pointer; font-family: inherit; transition: border-color .12s, background .12s; }
+.ochip:hover { background: var(--panel-hover); }
+.ochip.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.ochip-n { font-size: 21px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.ochip-l { font-size: 12px; color: var(--muted); }
+.ochip-info { background: var(--info-soft); border-color: transparent; }
+.ochip-info .ochip-n, .ochip-info .ochip-l { color: var(--info); }
+.ochip-danger { background: var(--danger-soft); border-color: transparent; }
+.ochip-danger .ochip-n, .ochip-danger .ochip-l { color: var(--danger); }
+.ochip-static { cursor: default; }
+.ochip-static:hover { background: var(--panel); }
+
+/* Шүүлтүүр таб + хайлт + харагдац */
+.orders-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.otabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.otab { font-family: inherit; font-size: 12.5px; color: var(--text-soft); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: background .12s; }
+.otab:hover { background: var(--panel-hover); }
+.otab.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.otab-n { font-size: 11px; opacity: .7; }
+.otab.on .otab-n { opacity: .85; }
+.orders-controls-r { display: flex; align-items: center; gap: 8px; }
+.orders-search { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; font-size: 13px; }
+.orders-search input { border: none; background: none; outline: none; font-family: inherit; font-size: 13px; color: var(--text); width: 150px; }
+.oview-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.oview { font-family: inherit; font-size: 15px; line-height: 1; padding: 6px 10px; background: var(--panel); border: none; color: var(--muted); cursor: pointer; }
+.oview.on { background: var(--primary); color: #fff; }
+
+/* Яаралтай тэмдэг + картын ирмэг */
+.order-head-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.order-card.urg-ou-over, .order-card.urg-ou-today { border-left: 3px solid var(--danger); }
+.order-card.urg-ou-soon { border-left: 3px solid var(--warn); }
+.order-urg { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.order-urg.ou-over, .order-urg.ou-today { background: var(--danger-soft); color: var(--danger); }
+.order-urg.ou-soon { background: var(--warn-soft); color: var(--warn); }
+.order-urg.ou-week { background: var(--info-soft); color: var(--info); }
+.order-badge { margin-left: 0; }
+
+/* Прогресс stepper */
+.order-steps { display: flex; align-items: center; gap: 0; margin: 10px 0 4px; }
+.os-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); flex: none; }
+.os-dot.done { background: var(--ok); }
+.os-dot.cur { width: 11px; height: 11px; background: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.os-bar { flex: 1; height: 2px; background: var(--border); min-width: 4px; }
+.os-bar.done { background: var(--ok); }
+.order-steps.cancelled { margin: 10px 0; }
+.os-cx { font-size: 12px; font-weight: 600; color: var(--danger); }
+.order-step-sub { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+.order-step-sub b { color: var(--text-soft); font-weight: 600; }
+.os-frac { opacity: .7; }
+.order-tasks { color: var(--text-soft); }
+
+/* Эвхэгддэг бараа */
+.order-items-toggle { font-family: inherit; font-size: 12.5px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 4px 0; display: inline-flex; align-items: center; gap: 6px; }
+.order-items-toggle:hover { color: var(--text-soft); }
+.oit-caret { display: inline-block; transition: transform .12s; }
+.order-items-toggle.open .oit-caret { transform: rotate(90deg); }
+.order-items-box .order-items { margin-top: 4px; }
+
+/* ⋯ кебаб цэс */
+.order-kebab-wrap { position: relative; display: inline-block; }
+.order-kebab-menu { position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 30; background: var(--panel); border: 1px solid var(--border-strong); border-radius: 9px; box-shadow: 0 6px 20px rgba(0,0,0,.14); padding: 5px; min-width: 190px; display: flex; flex-direction: column; gap: 2px; }
+.order-kebab-menu[hidden] { display: none; }
+.order-kebab-menu button { font-family: inherit; font-size: 12.5px; text-align: left; background: none; border: none; color: var(--text-soft); padding: 8px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.order-kebab-menu button:hover { background: var(--panel-hover); }
+.order-kebab-menu button.km-danger { color: var(--danger); }
+
+/* Board (kanban) харагдац */
+.oboard { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; padding: 2px 2px 24px; overflow-x: auto; }
+.oboard-col { background: var(--panel-hover); border-radius: 10px; padding: 8px; min-width: 150px; }
+.oboard-head { font-size: 12.5px; font-weight: 700; color: var(--text-soft); padding: 4px 6px 8px; display: flex; justify-content: space-between; align-items: center; }
+.oboard-count { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--panel); border-radius: 999px; padding: 1px 7px; }
+.oboard-list { display: flex; flex-direction: column; gap: 8px; }
+.oboard-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; cursor: pointer; transition: border-color .12s; }
+.oboard-card:hover { border-color: var(--primary); }
+.oboard-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 3px; }
+.oboard-no { font-size: 12px; font-weight: 700; color: var(--text); }
+.oboard-cust { font-size: 12.5px; color: var(--text-soft); margin-bottom: 6px; }
+.oboard-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.oboard-status { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+.oboard-total { font-size: 12.5px; font-weight: 700; color: var(--primary); }
+.oboard-empty { font-size: 12px; color: var(--muted-soft); text-align: center; padding: 10px 0; }
 
 /* ─── NOMAAD захиалга — camp/багц бүлэглэл + эвхэгддэг карт ─── */
 .nomaad-camp-section { margin-bottom: 22px; }

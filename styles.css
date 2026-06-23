@@ -5077,6 +5077,17 @@ body.role-daily #add-project { display: none !important; }
 .oboard-total { font-size: 12.5px; font-weight: 700; color: var(--primary); }
 .oboard-empty { font-size: 12px; color: var(--muted-soft); text-align: center; padding: 10px 0; }
 
+/* Төлбөр — карт дээрх мөр + модал */
+.order-pay { color: var(--ok); font-weight: 500; }
+.order-pay-edit { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 2px; }
+.order-pay-edit:hover { color: var(--primary); }
+.pay-summary { background: var(--panel-hover); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
+.pay-breakdown { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.pay-seg { display: flex; gap: 6px; }
+.pay-seg button { flex: 1; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); color: var(--text-soft); cursor: pointer; }
+.pay-seg button.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+.pay-hint { font-size: 11.5px; color: var(--muted); margin: 10px 0 0; line-height: 1.5; }
+
 /* ─── NOMAAD захиалга — camp/багц бүлэглэл + эвхэгддэг карт ─── */
 .nomaad-camp-section { margin-bottom: 22px; }
 .nomaad-camp-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 8px 2px; border-bottom: 2px solid var(--border-strong); margin-bottom: 8px; }

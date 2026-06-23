@@ -3163,16 +3163,20 @@ function renderTaskList() {
    Backend: n8n /webhook/mevent-orders (GET унших, POST шинэчлэх) → MEVENT_Orders_DB Sheet.
    Зөвхөн CEO. */
 // Захиалгын дамжлага (queue). Шат бүр тодорхой role/хүнд хамаарна.
-const ORDER_STATUSES = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'];
+// «Баталсан» хасагдсан (2026-06-23) — төлбөр авах = захиалга батлах нэг алхам болов.
+// Хуучин дата дахь «Баталсан» нь normalizeOrder-т «Төлбөр авсан» болж буудаг.
+const ORDER_STATUSES = ['Шинэ', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'];
 
 // Дамжлагын чиглүүлэлт: захиалга тухайн статустай байх үед ХЭН харж, ХӨГ үйлдэл хийх вэ.
 //   role: 'manager' = зөвхөн менежер/CEO. Бусад нь ажилтны role-д тааруулах regex.
 //   next: дараагийн статус (тухайн хүн "дуусгах" товч дармагц). label: товчны бичиг.
 // Загвар: статус = өмнөх шат ДУУССАН гэсэн утга → дараагийн хүн авч ажиллана.
 const ORDER_FLOW = {
-  'Шинэ':           { role: 'manager',                          next: 'Баталсан',       label: '✓ Батлах' },
-  'Баталсан':       { role: /нягтлан/i,                         next: 'Төлбөр авсан',   label: '✓ Төлбөр авсан' },
+  // Шинэ → нягтлан төлбөр баталгаажуулна (openOrderPaymentModal) → Төлбөр авсан + 3 даалгавар.
+  'Шинэ':           { role: 'manager',                          next: 'Төлбөр авсан',   label: '✓ Төлбөр авах' },
   'Төлбөр авсан':   { role: /цэвэрлэгээ|цэврэлгээ|үйлчилгээ/i,  next: 'Цэвэрлэгээ',     label: '✓ Цэвэрлэсэн' },
+  // Хуучин дата зохицуулалт — «Баталсан» = төлбөр баталгаажсан (хасагдсан статус).
+  'Баталсан':       { role: /цэвэрлэгээ|цэврэлгээ|үйлчилгээ/i,  next: 'Цэвэрлэгээ',     label: '✓ Цэвэрлэсэн' },
   'Цэвэрлэгээ':     { role: /агуулахын ажилтан/i,               next: 'Түрээс бэлдсэн', label: '✓ Түрээс бэлдсэн' },
   'Түрээс бэлдсэн': { role: /нярав|агуулахын ахлах/i,           next: 'Гаргасан',       label: '✓ Гаргасан' },
   'Гаргасан':       { role: /агуулахын ажилтан|жолооч/i,        next: 'Хүргэсэн',       label: '✓ Хүргэсэн' },
@@ -3194,10 +3198,15 @@ function canSeeOrder(o) {
 function normalizeOrder(o) {
   let items = [];
   try { items = JSON.parse(o.items_json || '[]'); } catch(e) { items = []; }
+  // Хуучин «Баталсан» = төлбөр баталгаажсан (давхар статус хасагдсан) → буудна.
+  let status = o.status || 'Шинэ';
+  if (status === 'Баталсан') status = 'Төлбөр авсан';
+  // Төлбөрийн дэлгэрэнгүй — шинэ багана байвал тэндээс, эс бөгөөс note-д кодлогдсоноос.
+  const pay = parsePayment(o.note);
   return {
     order_no: o.order_no || '',
     created_at: o.created_at || '',
-    status: o.status || 'Шинэ',
+    status,
     customer_name: o.customer_name || '',
     phone: String(o.phone || ''),
     address: o.address || '',
@@ -3215,7 +3224,30 @@ function normalizeOrder(o) {
     source: o.source || '',
     assigned_to: o.assigned_to || '',
     task_id: o.task_id || '',
+    paid_amount: Number(o.paid_amount) || (pay ? pay.amount : 0),
+    paid_type: o.paid_type || (pay ? pay.type : ''),
+    paid_method: o.paid_method || (pay ? pay.method : ''),
+    paid_date: o.paid_date || (pay ? pay.date : ''),
   };
+}
+
+// Төлбөрийн мета — одоогоор note дотор кодлоно (backend багана нэмэгдвэл шууд тэндээс уншина).
+const PAY_TYPE_LABEL = { full: 'Бүтэн төлбөр', advance: 'Урьдчилгаа' };
+const PAY_METHOD_LABEL = { data: 'Данс', cash: 'Бэлэн', card: 'Карт' };
+function parsePayment(note) {
+  const m = String(note || '').match(/⟦PAY\|([^⟧]*)⟧/);
+  if (!m) return null;
+  const [amount, type, method, date] = m[1].split('|');
+  return { amount: Number(amount) || 0, type: type || 'full', method: method || 'data', date: date || '' };
+}
+function stripPaymentNote(note) {
+  return String(note || '').replace(/⟦PAY\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '').trim();
+}
+function encodePaymentNote(note, pay) {
+  const base = stripPaymentNote(note);
+  if (!pay || !pay.amount) return base;
+  const tok = `⟦PAY|${Math.round(pay.amount)}|${pay.type || 'full'}|${pay.method || 'data'}|${pay.date || ''}⟧`;
+  return base ? base + ' ' + tok : tok;
 }
 
 async function loadOrders() {
@@ -3244,6 +3276,8 @@ function orderToWire(o) {
     items_json: JSON.stringify(o.items || []), subtotal: Number(o.subtotal) || 0,
     deposit: Number(o.deposit) || 0, total: Number(o.total) || 0, note: o.note || '',
     source: o.source || '', assigned_to: o.assigned_to || '', task_id: o.task_id || '',
+    // Төлбөрийн дэлгэрэнгүй — Sheet-д багана нэмэгдвэл тэндээс хадгалагдана (одоогоор note-д кодлогддог).
+    paid_amount: Number(o.paid_amount) || 0, paid_type: o.paid_type || '', paid_method: o.paid_method || '', paid_date: o.paid_date || '',
   };
 }
 
@@ -3264,55 +3298,131 @@ async function updateOrderStatus(order_no, fields) {
   } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 
-// Туслах нягтлан "Гүйлгээ амжилттай" дарахад: захиалгыг баталгаажуулж, 3 даалгавар
-// (Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт) автоматаар үүсгэнэ. Эвент менежерт оноогдоно
-// → тэр тус бүрд ажилтан хуваарилна (даалгаврын reassign-аар).
-async function confirmOrderPayment(order_no) {
+// Нягтлан "Төлбөр авах" дарахад: төлбөрийн дэлгэрэнгүй (дүн/төрөл/хэлбэр/огноо) бүртгэх модал нээнэ.
+// Баталгаажуулмагц захиалга «Төлбөр авсан» болж, 3 даалгавар (Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт)
+// автоматаар үүснэ — Эвент менежерт оноогдож, тэр ажилтан хуваарилна.
+function openOrderPaymentModal(order_no, editMode) {
   const o = state.orders.find(x => x.order_no === order_no);
   if (!o) return;
   if (state.me !== getFinanceExecutorEmail() && !state.isCEO) {
-    showToast('Зөвхөн Туслах нягтлан төлбөр баталгаажуулна', 'error'); return;
+    showToast('Зөвхөн нягтлан/CEO төлбөр баталгаажуулна', 'error'); return;
   }
-  if ((o.status || 'Шинэ') !== 'Шинэ') { showToast('Аль хэдийн баталгаажсан', 'warn'); return; }
-  const ok = await showConfirm(
-    `${o.customer_name || o.order_no} — ${fmtMoney(o.total)}\nГүйлгээ амжилттай гэж баталгаажуулах уу?\n(Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт даалгавар үүснэ)`,
-    { title: 'Төлбөр баталгаажуулах', okText: 'Тийм, баталгаажуулах' });
-  if (!ok) return;
-  // Эвент менежер даалгаврын эзэн (creator) → тэр тус бүрд ажилтан хуваарилна.
-  const owner = findMemberEmailByRole('эвент', '') || state.me;
-  const cust = o.customer_name || o.order_no;
-  const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
-  const baseDesc = `Захиалга ${o.order_no} · ${cust}`
-    + (o.date_start ? `\n📅 ${o.date_start} → ${o.date_end}` : '')
-    + `\n📍 ${o.address || '—'} · ☎ ${o.phone || '—'}`;
-  const defs = [
-    { title: `Түрээс бэлдэх — ${cust}`, priority: 'high' },
-    { title: `Цэвэрлэгээ — ${cust}`, priority: 'med' },
-    { title: `Хүргэлт — ${cust}`, priority: 'high' },
-  ];
-  const ids = [];
-  for (let i = 0; i < defs.length; i++) {
-    const t = {
-      id: uid(), title: defs[i].title, desc: baseDesc, branch: 'm-event', project: 'event',
-      assignee: owner, due, priority: defs[i].priority, status: 'open',
-      order_no: o.order_no, createdBy: owner, created: Date.now() + i, comments: [], activity: [],
-    };
-    state.tasks.unshift(t);
-    ids.push(t.id);
-    await saveTask(t);
+  if (!editMode && (o.status || 'Шинэ') !== 'Шинэ') { showToast('Аль хэдийн төлбөр авсан', 'warn'); return; }
+  const pr = computeOrderPricing(o);
+  const rentalNet = pr.rental - pr.multiDayDiscount - pr.vatDiscount - pr.manualDiscount;
+  const d0 = new Date();
+  const todayIso = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
+  const curType = o.paid_type || 'full';
+  const curMethod = o.paid_method || 'data';
+  const curAmount = o.paid_amount || pr.total;
+  const curDate = o.paid_date || todayIso;
+
+  document.getElementById('mev-pay-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'mev-pay-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:440px;">
+      <h2>${editMode ? 'Төлбөр засах' : 'Төлбөр авах'} · ${escapeHtml(o.order_no)}</h2>
+      <div class="pay-summary">
+        <div><b>${escapeHtml(o.customer_name || '')}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}</div>
+        <div class="pay-breakdown">Түрээс ${fmtMoney(rentalNet)} · Барьцаа ${fmtMoney(pr.deposit)} · <b>Нийт ${fmtMoney(pr.total)}</b></div>
+      </div>
+      <label>Төлбөрийн төрөл</label>
+      <div class="pay-seg" id="pay-type">
+        <button type="button" data-v="full"${curType === 'full' ? ' class="on"' : ''}>Бүтэн төлбөр</button>
+        <button type="button" data-v="advance"${curType === 'advance' ? ' class="on"' : ''}>Урьдчилгаа</button>
+      </div>
+      <label style="margin-top:10px;">Төлсөн дүн (₮)</label>
+      <input id="pay-amount" type="number" min="0" value="${Math.round(curAmount)}" />
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <div style="flex:1;">
+          <label>Хэлбэр</label>
+          <select id="pay-method">
+            <option value="data"${curMethod === 'data' ? ' selected' : ''}>Данс</option>
+            <option value="cash"${curMethod === 'cash' ? ' selected' : ''}>Бэлэн</option>
+            <option value="card"${curMethod === 'card' ? ' selected' : ''}>Карт</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <label>Огноо</label>
+          <div class="mcal" style="position:relative;">
+            <input type="text" class="mcal-display" id="pay-date-disp" readonly placeholder="Огноо" style="width:100%;cursor:pointer;" />
+            <input type="hidden" id="pay-date" />
+            <div class="mc-pop" id="pay-date-pop" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+      ${editMode ? '' : '<p class="pay-hint">Баталгаажуулмагц захиалга «Төлбөр авсан» болж, Түрээс бэлдэх · Цэвэрлэгээ · Хүргэлт даалгавар үүснэ.</p>'}
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn" id="pay-cancel">Болих</button>
+        <button class="btn btn-primary" id="pay-save">${editMode ? '💾 Хадгалах' : '✓ Төлбөр баталгаажуулах'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#pay-type').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    modal.querySelectorAll('#pay-type button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+  });
+  mountCalendar(modal.querySelector('#pay-date-disp'), modal.querySelector('#pay-date'), modal.querySelector('#pay-date-pop'), null, curDate);
+  const close = () => modal.remove();
+  modal.querySelector('#pay-cancel').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#pay-save').addEventListener('click', (e) => submitOrderPayment(modal, o, !!editMode, e.currentTarget));
+  modal.classList.add('open');
+  setTimeout(() => modal.querySelector('#pay-amount')?.focus(), 50);
+}
+
+async function submitOrderPayment(modal, o, editMode, btn) {
+  const amount = Math.max(0, Number(modal.querySelector('#pay-amount').value) || 0);
+  if (!amount) { showToast('Төлсөн дүнг оруулна уу', 'warn'); return; }
+  const type = modal.querySelector('#pay-type button.on')?.dataset.v || 'full';
+  const method = modal.querySelector('#pay-method').value || 'data';
+  const date = modal.querySelector('#pay-date').value || '';
+  btn.disabled = true;
+  o.paid_amount = amount; o.paid_type = type; o.paid_method = method; o.paid_date = date;
+  o.note = encodePaymentNote(o.note, { amount, type, method, date });
+
+  if (!editMode) {
+    // Эвент менежер даалгаврын эзэн (creator) → тэр тус бүрд ажилтан хуваарилна.
+    const owner = findMemberEmailByRole('эвент', '') || state.me;
+    const cust = o.customer_name || o.order_no;
+    const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
+    const baseDesc = `Захиалга ${o.order_no} · ${cust}`
+      + (o.date_start ? `\n📅 ${o.date_start} → ${o.date_end}` : '')
+      + `\n📍 ${o.address || '—'} · ☎ ${o.phone || '—'}`;
+    const defs = [
+      { title: `Түрээс бэлдэх — ${cust}`, priority: 'high' },
+      { title: `Цэвэрлэгээ — ${cust}`, priority: 'med' },
+      { title: `Хүргэлт — ${cust}`, priority: 'high' },
+    ];
+    const ids = [];
+    for (let i = 0; i < defs.length; i++) {
+      const t = {
+        id: uid(), title: defs[i].title, desc: baseDesc, branch: 'm-event', project: 'event',
+        assignee: owner, due, priority: defs[i].priority, status: 'open',
+        order_no: o.order_no, createdBy: owner, created: Date.now() + i, comments: [], activity: [],
+      };
+      state.tasks.unshift(t);
+      ids.push(t.id);
+      await saveTask(t);
+    }
+    o.status = 'Төлбөр авсан';
+    o.task_id = ids.join(',');
   }
-  o.status = 'Баталсан';
-  o.task_id = ids.join(',');
-  const idx = state.orders.findIndex(x => x.order_no === order_no);
+
+  const idx = state.orders.findIndex(x => x.order_no === o.order_no);
   if (idx >= 0) state.orders[idx] = o;
+  modal.remove();
   render();
   try {
     const r = await fetchWithTimeout(withKey(state.config.ordersUrl || DEFAULT_ORDERS_URL), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderToWire(o)),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) { showToast('Захиалга sheet-д хадгалагдсангүй: ' + e.message, 'warn', 4000); }
-  showToast('Баталгаажлаа · 3 даалгавар үүслээ. Эвент менежер ажилтан хуваарилна.', 'success', 4000);
+  } catch (e) { showToast('Sheet-д хадгалагдсангүй: ' + e.message, 'warn', 4000); }
+  showToast(editMode ? 'Төлбөр шинэчлэгдлээ' : `Төлбөр авсан · ${fmtMoney(amount)} · 3 даалгавар үүслээ`, 'success', 4000);
 }
 
 function orderStatusClass(s) {
@@ -3333,6 +3443,7 @@ function orderStatusClass(s) {
 // Note-оос автомат хямдрал/НӨАТ мөрийг арилгаж зөвхөн хүний бичсэнийг үлдээнэ.
 function cleanOrderNote(note) {
   return String(note || '')
+    .replace(/⟦PAY\|[^⟧]*⟧/g, '')
     .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
     .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
     .replace(/·?\s*Хямдрал \(гар\):[^·]*/g, '')
@@ -3442,9 +3553,9 @@ function orderCardHtml(o, canManage, canConfirm) {
   let actions;
   if (canManage) {
     const parts = [];
-    if (o.status === 'Шинэ' && canConfirm) parts.push(`<button class="btn btn-primary" data-order-confirm="${esc}" style="padding:5px 12px;font-size:12px;">✓ Гүйлгээ амжилттай</button>`);
+    if (o.status === 'Шинэ' && canConfirm) parts.push(`<button class="btn btn-primary" data-order-confirm="${esc}" style="padding:5px 12px;font-size:12px;">💵 Төлбөр авах</button>`);
     if (o.status === 'Шинэ') parts.push(`<button class="btn" data-order-edit="${esc}" style="padding:5px 12px;font-size:12px;">✎ Засах</button>`);
-    // Урагшлуулах — Шинэ нь зөвхөн "Гүйлгээ амжилттай"-аар урагшилна (3 даалгавар үүсгэдэг тул).
+    // Урагшлуулах — Шинэ нь зөвхөн төлбөр авах модалаар урагшилна (3 даалгавар үүсгэдэг тул).
     if (o.status !== 'Шинэ' && stage.next) parts.push(`<button class="btn btn-primary" data-order-advance="${esc}" data-next="${escapeHtml(stage.next)}" style="padding:5px 14px;font-size:12px;">${stage.label}</button>`);
     // ⋯ цэс — буцаах / цуцлах (баталгаажуулалттай, санамсаргүй алдаанаас хамгаална).
     if (!isCancelled && o.status !== 'Дууссан') {
@@ -3479,6 +3590,7 @@ function orderCardHtml(o, canManage, canConfirm) {
     <div class="order-meta">📅 ${escapeHtml(o.date_start || '—')} → ${escapeHtml(o.date_end || '—')}${pr.days ? ' (' + pr.days + ' хоног)' : ''}</div>
     ${humanNote ? `<div class="order-meta">📝 ${escapeHtml(humanNote)}</div>` : ''}
     ${orderStepper(o.status)}
+    ${o.paid_amount ? `<div class="order-meta order-pay">💵 ${PAY_TYPE_LABEL[o.paid_type] || 'Төлбөр'} ${fmtMoney(o.paid_amount)} · ${PAY_METHOD_LABEL[o.paid_method] || ''}${o.paid_date ? ' · ' + escapeHtml(o.paid_date) : ''}${canManage && canConfirm ? ` <button class="order-pay-edit" data-order-paymentedit="${esc}" title="Төлбөр засах">✎</button>` : ''}</div>` : ''}
     ${lt.count ? `<div class="order-meta order-tasks">🧩 ${lt.count} даалгавар${lt.names.length ? ' · ' + escapeHtml(lt.names.join(', ')) : ''}</div>` : ''}
     <button class="order-items-toggle" data-order-items="${esc}"><span class="oit-caret">▸</span> ${itemCount} бараа${pr.deposit ? ' · Барьцаа ' + fmtMoney(pr.deposit) : ''}</button>
     <div class="order-items-box" data-order-itemsbox="${esc}" hidden>
@@ -3661,7 +3773,10 @@ function attachOrdersHandlers() {
     });
   });
   document.querySelectorAll('button[data-order-confirm]').forEach(btn => {
-    btn.addEventListener('click', () => confirmOrderPayment(btn.dataset.orderConfirm));
+    btn.addEventListener('click', () => openOrderPaymentModal(btn.dataset.orderConfirm));
+  });
+  document.querySelectorAll('button[data-order-paymentedit]').forEach(btn => {
+    btn.addEventListener('click', () => openOrderPaymentModal(btn.dataset.orderPaymentedit, true));
   });
 
   // Урагшлуулах (нэг алхам урагш)

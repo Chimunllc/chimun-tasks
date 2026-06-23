@@ -4522,25 +4522,23 @@ function productRowHtml(p) {
   const cost = (state.productCosts || {})[p.sku] || 0;
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
-  const utilStr = u.orders ? ` · <span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>` : '';
-  const roiStr = cost > 0 ? ` · <span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 өртөг ${fmtMoneyShort(invested)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>` : '';
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
-  return `<div class="prod-row${rentable ? '' : ' is-asset'}" data-id="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
+  const stats = [];
+  if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
+  if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
+  // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
+  return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
     <div class="prod-main">
-      <input class="prod-name" data-f="name" value="${escapeHtml(p.name || '')}">
-      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}${utilStr}${roiStr}</div>
+      <div class="prod-name-d">${escapeHtml(p.name || '(нэргүй)')}</div>
+      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}${stats.length ? ' · ' + stats.join(' · ') : ''}</div>
     </div>
-    <label class="prod-rentable" title="Чагтлахад сайтад түрээсээр харагдана. Чагтгүй бол зөвхөн дотоод хөрөнгө.">
-      <input type="checkbox" data-f="rentable" ${rentable ? 'checked' : ''}><span>Түрээслэх</span>
-    </label>
-    <label class="prod-fld">Үнэ<input type="number" data-f="price" value="${Number(p.price) || 0}"></label>
-    <label class="prod-fld">Барьцаа<input type="number" data-f="deposit" value="${Number(p.deposit) || 0}"></label>
-    <label class="prod-fld sm">Нөөц<input type="number" data-f="stock" value="${Number(p.stock) || 0}"></label>
-    <button class="btn prod-save" data-id="${escapeHtml(p.id)}">Хадгалах</button>
-    <label class="prod-desc-fld">Тайлбар <span class="prod-desc-hint">(сайтад харагдана)</span>
-      <textarea data-f="description" rows="2" placeholder="Сайтад харагдах барааны тайлбар...">${escapeHtml(p.description || '')}</textarea>
-    </label>
+    <div class="prod-badges">
+      <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
+      <span class="prod-stock-b">Нөөц ${Number(p.stock) || 0}</span>
+      <span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>
+    </div>
+    <span class="prod-chev">›</span>
   </div>`;
 }
 
@@ -6739,41 +6737,111 @@ function renderProducts() {
     <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
     ${assetLine}
     <div class="prod-count" id="prod-count">${list.length} бараа</div>
-    <div id="prod-new-form"></div>
     <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
   `;
 }
 
-function newProductFormHtml() {
-  const cats = [...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort();
-  const opts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
-  return `<div class="pnf">
-    <div class="pnf-grid">
-      <label>Нэр*<input id="pnf-name" placeholder="Барааны нэр"></label>
-      <label>Ангилал<input id="pnf-cat" list="pnf-cats" placeholder="Ангилал"><datalist id="pnf-cats">${opts}</datalist></label>
-      <label>SKU<input id="pnf-sku" placeholder="SKU код"></label>
-      <label>Үнэ<input id="pnf-price" type="number" value="0"></label>
-      <label>Барьцаа<input id="pnf-deposit" type="number" value="0"></label>
-      <label>Нөөц<input id="pnf-stock" type="number" value="1"></label>
-      <label class="pnf-wide">Зураг
-        <div class="pnf-photo-row">
-          <input id="pnf-photo" placeholder="https://... эсвэл зураг оруул →">
-          <label class="btn pnf-upbtn" for="pnf-photo-file">📷 Зураг оруулах</label>
-          <input type="file" id="pnf-photo-file" accept="image/*" hidden>
-        </div>
-        <div id="pnf-photo-preview" class="pnf-photo-preview"></div>
+// Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
+function openProductModal(p) {
+  const isEdit = !!p;
+  const cost = isEdit ? ((state.productCosts || {})[p.sku] || 0) : 0;
+  const u = isEdit ? productUtilization(p.name) : { orders: 0, revenue: 0 };
+  const invested = cost * (Number(p && p.stock) || 0);
+  const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;
+  const rentable = isEdit ? isRentable(p) : true;
+  const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
+  const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
+  const v = (x) => escapeHtml((p && p[x]) || '');
+  document.getElementById('prod-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'prod-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:540px;">
+      <h2>${isEdit ? 'Бараа засах' : 'Шинэ бараа'}</h2>
+      ${isEdit && (u.orders || cost) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
+      <div class="pm-grid">
+        <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
+        <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
+        <label>SKU<input id="pm-sku" value="${v('sku')}" placeholder="SKU код"></label>
+        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="number" value="${Number(p && p.price) || 0}"></label>
+        <label>Барьцаа (₮)<input id="pm-deposit" type="number" value="${Number(p && p.deposit) || 0}"></label>
+        <label>Нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
+        <label>Нэгж өртөг (₮)<input id="pm-cost" type="number" value="${cost || 0}"></label>
+      </div>
+      <label class="pm-rentable">
+        <input type="checkbox" id="pm-rentable" ${rentable ? 'checked' : ''}>
+        <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
       </label>
-      <label class="pnf-wide">Тайлбар<input id="pnf-desc" placeholder="Тайлбар"></label>
-    </div>
-    <label class="pnf-rentable-row">
-      <input type="checkbox" id="pnf-rentable" checked>
-      <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
-    </label>
-    <div class="pnf-actions">
-      <button class="btn" id="pnf-cancel">Болих</button>
-      <button class="btn btn-primary" id="pnf-save">Нэмэх</button>
-    </div>
-  </div>`;
+      <label class="pm-block">Зураг
+        <div class="pnf-photo-row">
+          <input id="pm-photo" value="${v('photo')}" placeholder="https://... эсвэл зураг оруул →">
+          <label class="btn pnf-upbtn" for="pm-photo-file">📷 Зураг</label>
+          <input type="file" id="pm-photo-file" accept="image/*" hidden>
+        </div>
+        <div id="pm-photo-preview" class="pnf-photo-preview">${p && p.photo ? `<img src="${escapeHtml(p.photo)}" alt="">` : ''}</div>
+      </label>
+      <label class="pm-block">Тайлбар <span style="color:var(--muted);font-weight:400;">(сайтад харагдана)</span>
+        <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
+      </label>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn" id="pm-cancel">Болих</button>
+        <button class="btn btn-primary" id="pm-save">${isEdit ? '💾 Хадгалах' : 'Нэмэх'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const fileInput = modal.querySelector('#pm-photo-file');
+  fileInput.onchange = async () => {
+    const f = fileInput.files && fileInput.files[0]; if (!f) return;
+    const prev = modal.querySelector('#pm-photo-preview');
+    prev.innerHTML = '<span class="pnf-up-busy">⏳ Хуулж байна…</span>';
+    try { const url = await uploadProductImage(f); modal.querySelector('#pm-photo').value = url; prev.innerHTML = `<img src="${escapeHtml(url)}" alt=""><span class="pnf-up-ok">✓ Орлоо</span>`; }
+    catch (e) { prev.innerHTML = `<span class="pnf-up-err">⚠ ${escapeHtml(e.message)}</span>`; }
+  };
+  const close = () => modal.remove();
+  modal.querySelector('#pm-cancel').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#pm-save').onclick = (e) => submitProductModal(modal, p, e.currentTarget);
+  modal.classList.add('open');
+  setTimeout(() => modal.querySelector('#pm-name')?.focus(), 50);
+}
+
+async function submitProductModal(modal, orig, btn) {
+  const g = (id) => (modal.querySelector('#' + id)?.value || '').trim();
+  const name = g('pm-name');
+  if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
+  const cat = g('pm-cat'), sku = g('pm-sku');
+  const base = {
+    name, category: cat, sku,
+    price: Number(g('pm-price')) || 0, deposit: Number(g('pm-deposit')) || 0,
+    stock: Number(g('pm-stock')) || 0, photo: g('pm-photo'),
+    description: modal.querySelector('#pm-desc').value,
+    type: modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset',
+    all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
+  };
+  const product = orig ? { ...orig, ...base } : base;
+  const cost = Number(g('pm-cost')) || 0;
+  btn.disabled = true;
+  try {
+    await saveProduct(product);                 // каталог → Sheet
+    if (sku) await saveProductCost(sku, cost);  // өртөг → Supabase Postgres
+    modal.remove();
+  } catch (e) { showToast('Алдаа: ' + e.message, 'error'); btn.disabled = false; }
+}
+
+// Барааны өртгийг Supabase Postgres-д бичнэ (anon UPDATE policy шаардана).
+async function saveProductCost(sku, cost) {
+  state.productCosts = state.productCosts || {};
+  state.productCosts[sku] = cost;   // optimistic local (ROI шууд шинэчлэгдэнэ)
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ cost }),
+    }, 15000);
+    if (!r.ok) showToast('Өртөг Supabase-д хадгалагдсангүй (anon UPDATE эрх хэрэгтэй)', 'warn', 4000);
+  } catch (e) { showToast('Өртөг хадгалах алдаа: ' + e.message, 'warn'); }
 }
 
 function attachProductsHandlers() {
@@ -6795,61 +6863,15 @@ function attachProductsHandlers() {
     const c = document.getElementById('prod-count');
     if (c) c.textContent = `${n} бараа${q ? ' (шүүсэн)' : ''}`;
   };
-  // Мөр хадгалах
-  document.querySelectorAll('.prod-save').forEach(btn => {
-    btn.onclick = () => {
-      const row = btn.closest('.prod-row');
-      const id = row.dataset.id;
-      const orig = state.products.find(p => p.id === id) || {};
-      const get = f => row.querySelector(`[data-f="${f}"]`);
-      const product = { ...orig, id,
-        name: get('name').value.trim(),
-        price: Number(get('price').value) || 0,
-        deposit: Number(get('deposit').value) || 0,
-        stock: Number(get('stock').value) || 0,
-        type: get('rentable')?.checked ? 'rental' : 'asset',   // түрээсийн эсвэл хөрөнгө
-        description: get('description') ? get('description').value : orig.description,
-      };
-      withBusy(btn, () => saveProduct(product), { successText: 'Хадгалсан' });
-    };
+  // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх
+  document.querySelectorAll('[data-product-open]').forEach(row => {
+    row.addEventListener('click', () => {
+      const p = (state.products || []).find(x => x.id === row.dataset.productOpen);
+      if (p) openProductModal(p);
+    });
   });
-  // Шинэ бараа
-  document.getElementById('prod-new')?.addEventListener('click', () => {
-    const wrap = document.getElementById('prod-new-form');
-    if (!wrap) return;
-    if (wrap.innerHTML.trim()) { wrap.innerHTML = ''; return; }
-    wrap.innerHTML = newProductFormHtml();
-    wrap.querySelector('#pnf-cancel').onclick = () => { wrap.innerHTML = ''; };
-    // Зураг сонгоход Supabase-д шууд upload → URL талбарт оруулна.
-    const fileInput = wrap.querySelector('#pnf-photo-file');
-    if (fileInput) fileInput.onchange = async () => {
-      const f = fileInput.files && fileInput.files[0]; if (!f) return;
-      const prev = wrap.querySelector('#pnf-photo-preview');
-      if (prev) prev.innerHTML = '<span class="pnf-up-busy">⏳ Хуулж байна…</span>';
-      try {
-        const url = await uploadProductImage(f);
-        wrap.querySelector('#pnf-photo').value = url;
-        if (prev) prev.innerHTML = `<img src="${escapeHtml(url)}" alt=""><span class="pnf-up-ok">✓ Орлоо</span>`;
-      } catch (e) {
-        if (prev) prev.innerHTML = `<span class="pnf-up-err">⚠ ${escapeHtml(e.message)}</span>`;
-      }
-    };
-    wrap.querySelector('#pnf-save').onclick = (e) => {
-      const g = id => (wrap.querySelector('#' + id)?.value || '').trim();
-      const name = g('pnf-name');
-      if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
-      const cat = g('pnf-cat');
-      const product = {
-        name, category: cat, sku: g('pnf-sku'),
-        price: Number(g('pnf-price')) || 0, deposit: Number(g('pnf-deposit')) || 0,
-        stock: Number(g('pnf-stock')) || 0, photo: g('pnf-photo'), description: g('pnf-desc'),
-        type: wrap.querySelector('#pnf-rentable')?.checked ? 'rental' : 'asset',
-        all_categories: cat ? [cat] : [],
-      };
-      withBusy(e.currentTarget, () => saveProduct(product), { successText: 'Нэмсэн' });
-      wrap.innerHTML = '';
-    };
-  });
+  // Шинэ бараа → хоосон модал
+  document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
 }
 
 /* ─── CEO Dashboard ───────────────────────────────────────

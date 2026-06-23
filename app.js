@@ -4424,7 +4424,25 @@ async function loadProductsCatalog() {
     state.products = Array.isArray(data) ? data : (data.products || []);
     try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch(e) {}
     if (typeof render === 'function') render();
+    loadProductCosts();   // өртгийг Supabase-аас зэрэгцээ татна (ROI)
   } catch(e) { console.warn('loadProductsCatalog fail', e); }
+}
+
+// Барааны өртгийг Supabase Postgres-аас уншина (sku→cost). ROI/хөрөнгийн үнэ цэнэд ашиглана.
+// Каталог Sheet-ээс, өртөг Postgres-ээс (миграцийн дундах түр hybrid).
+async function loadProductCosts() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?select=sku,cost,purchase_date&cost=gt.0`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+    }, 15000);
+    if (!r.ok) return;
+    const rows = await r.json();
+    const map = {};
+    rows.forEach(x => { if (x.sku) map[x.sku] = Number(x.cost) || 0; });
+    state.productCosts = map;
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadProductCosts', e); }
 }
 
 // Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
@@ -4501,13 +4519,17 @@ function productRowHtml(p) {
     : '<div class="ph">📦</div>';
   const rentable = isRentable(p);
   const u = productUtilization(p.name);
+  const cost = (state.productCosts || {})[p.sku] || 0;
+  const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
+  const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
   const utilStr = u.orders ? ` · <span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>` : '';
+  const roiStr = cost > 0 ? ` · <span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 өртөг ${fmtMoneyShort(invested)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>` : '';
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
   return `<div class="prod-row${rentable ? '' : ' is-asset'}" data-id="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
     <div class="prod-main">
       <input class="prod-name" data-f="name" value="${escapeHtml(p.name || '')}">
-      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}${utilStr}</div>
+      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}${utilStr}${roiStr}</div>
     </div>
     <label class="prod-rentable" title="Чагтлахад сайтад түрээсээр харагдана. Чагтгүй бол зөвхөн дотоод хөрөнгө.">
       <input type="checkbox" data-f="rentable" ${rentable ? 'checked' : ''}><span>Түрээслэх</span>
@@ -6705,12 +6727,17 @@ function renderProducts() {
              : all;
   const rows = list.map(productRowHtml).join('');
   const tab = (k, label, n) => `<button class="prod-tab${state.prodFilter === k ? ' on' : ''}" data-prodfilter="${k}">${label} <span class="prod-tab-n">${n}</span></button>`;
+  const costs = state.productCosts || {};
+  const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * (Number(p.stock) || 0), 0);
+  const costedN = all.filter(p => (costs[p.sku] || 0) > 0).length;
+  const assetLine = assetValue > 0 ? `<div class="prod-assetval">🏛 Нийт хөрөнгийн үнэ цэнэ: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${all.length} барааны өртөг оруулсан)</span></div>` : '';
   return `
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
     <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
+    ${assetLine}
     <div class="prod-count" id="prod-count">${list.length} бараа</div>
     <div id="prod-new-form"></div>
     <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>

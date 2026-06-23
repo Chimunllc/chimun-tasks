@@ -3480,13 +3480,26 @@ function cleanOrderNote(note) {
     .replace(/·?\s*Хямдрал \(гар\):[^·]*/g, '')
     .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
 }
+// Түрээсийн хугацааны хямдралын ШАТ — урт түрээслэх тусам хямд. Засах бол энэ массивыг.
+const RENTAL_TIERS = [
+  { min: 30, pct: 0.55, label: 'Сарын хямдрал' },      // 30+ хоног
+  { min: 7,  pct: 0.40, label: '7+ хоногийн хямдрал' }, // 7-29 хоног
+  { min: 2,  pct: 0.20, label: 'Олон хоногийн хямдрал' }, // 2-6 хоног
+];
+function rentalDiscount(days) {
+  days = Math.max(1, Number(days) || 1);
+  for (const t of RENTAL_TIERS) if (days >= t.min) return t;
+  return { min: 1, pct: 0, label: '' };
+}
+
 // Захиалгын үнийг items + хоногоор ДАХИН тооцоолно (хадгалагдсан дүн хуучин/буруу байж болзошгүй тул).
-// Түрээс = (үнэ×тоо)×хоног, дараа нь 2+ хоног −20%, НӨАТ (note-д байвал) −5%, дээр нь барьцаа.
+// Түрээс = (үнэ×тоо)×хоног, дараа нь хугацааны шатлалын хямдрал, НӨАТ (note-д байвал) −5%, дээр нь барьцаа.
 function computeOrderPricing(o) {
   const days = Math.max(1, Number(o.days) || 1);
   const daily = (o.items || []).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
   const rental = daily * days;
-  const multiDayDiscount = days >= 2 ? Math.round(rental * 0.20) : 0;
+  const tier = rentalDiscount(days);
+  const multiDayDiscount = Math.round(rental * tier.pct);
   const afterMd = rental - multiDayDiscount;
   const hasVat = /НӨАТ/i.test(String(o.note || ''));
   const vatDiscount = hasVat ? Math.round(afterMd * 0.05) : 0;
@@ -3494,7 +3507,7 @@ function computeOrderPricing(o) {
   const manualDiscount = dm ? (parseInt(dm[1].replace(/\D/g, ''), 10) || 0) : 0;
   const deposit = Number(o.deposit) || 0;
   const total = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
-  return { days, rental, multiDayDiscount, vatDiscount, manualDiscount, hasVat, deposit, total };
+  return { days, rental, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, hasVat, deposit, total };
 }
 
 /* ─── Захиалгын самбар — UI туслахууд ──────────────────────── */
@@ -3627,7 +3640,7 @@ function orderCardHtml(o, canManage, canConfirm) {
     <button class="order-items-toggle" data-order-items="${esc}"><span class="oit-caret">▸</span> ${itemCount} бараа${pr.deposit ? ' · Барьцаа ' + fmtMoney(pr.deposit) : ''}</button>
     <div class="order-items-box" data-order-itemsbox="${esc}" hidden>
       <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
-      ${pr.multiDayDiscount ? `<div class="order-meta">${pr.days} хоногийн хямдрал (−20%): −${fmtMoney(pr.multiDayDiscount)}</div>` : ''}
+      ${pr.multiDayDiscount ? `<div class="order-meta">${pr.days} хоног · ${pr.multiDayLabel} (−${Math.round(pr.multiDayPct * 100)}%): −${fmtMoney(pr.multiDayDiscount)}</div>` : ''}
       ${pr.vatDiscount ? `<div class="order-meta">НӨАТ хасалт (−5%): −${fmtMoney(pr.vatDiscount)}</div>` : ''}
       ${pr.manualDiscount ? `<div class="order-meta">Нэмэлт хямдрал: −${fmtMoney(pr.manualDiscount)}</div>` : ''}
       <div class="order-meta">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</div>
@@ -4252,15 +4265,16 @@ function openNewMeventOrder(editOrder) {
     // Түрээс = (барааны үнэ × тоо) × хоног
     const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * days;
     const deposit = Number(depositEl.value) || 0;
-    // 2+ хоног түрээслэвэл түрээсийн үнээс 20% хямдрал
-    const multiDayDiscount = days >= 2 ? Math.round(subtotal * 0.20) : 0;
+    // Хугацааны шатлалын хямдрал (өдөр/7хоног/сар)
+    const tier = rentalDiscount(days);
+    const multiDayDiscount = Math.round(subtotal * tier.pct);
     const afterMd = subtotal - multiDayDiscount;
     // НӨАТ хасалт — хямдарсан түрээсийн үнээс 5% (барьцаанаас хасагдахгүй)
     const vatDiscount = vatEl.checked ? Math.round(afterMd * 0.05) : 0;
     // Гар (нэмэлт) хямдрал — менежер тавина
     const manualDiscount = Math.max(0, Number(discountEl.value) || 0);
     const grand = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
-    return { subtotal, deposit, days, multiDayDiscount, vatDiscount, manualDiscount, grand };
+    return { subtotal, deposit, days, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, grand };
   }
   depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
   vatEl.addEventListener('change', () => renderTotals());
@@ -4299,7 +4313,7 @@ function openNewMeventOrder(editOrder) {
   function renderTotals() {
     const t = computeTotals();
     totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b>`
-      + (t.multiDayDiscount ? `<br>${t.days} хоногийн хямдрал (20%): <b style="color:var(--ok);">−${fmtMoney(t.multiDayDiscount)}</b>` : '')
+      + (t.multiDayDiscount ? `<br>${t.days} хоног · ${t.multiDayLabel} (${Math.round(t.multiDayPct * 100)}%): <b style="color:var(--ok);">−${fmtMoney(t.multiDayDiscount)}</b>` : '')
       + (t.vatDiscount ? `<br>НӨАТ хасалт (5%): <b style="color:var(--danger);">−${fmtMoney(t.vatDiscount)}</b>` : '')
       + (t.manualDiscount ? `<br>Нэмэлт хямдрал: <b style="color:var(--ok);">−${fmtMoney(t.manualDiscount)}</b>` : '')
       + `<br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
@@ -4381,7 +4395,7 @@ async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
   const vatOff = !!modal.querySelector('#mo-vat')?.checked;
   // Хэрэглэгчийн note-оос өмнө автоматаар нэмсэн хямдрал/НӨАТ мөрийг арилгаад (давхардахаас сэргийлж) дахин нэмнэ.
   let note = cleanOrderNote(val('#mo-note'));
-  if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−20% = ${fmtMoney(totals.multiDayDiscount)})`;
+  if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−${Math.round(totals.multiDayPct * 100)}% = ${fmtMoney(totals.multiDayDiscount)})`;
   if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
   if (totals.manualDiscount) note = (note ? note + ' · ' : '') + `Хямдрал (гар): −${fmtMoney(totals.manualDiscount)}`;
 

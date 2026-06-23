@@ -2909,6 +2909,7 @@ function render() {
   // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'booqable' && !state.isCEO) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
@@ -2994,6 +2995,9 @@ function renderSidebar() {
     const pCnt = document.getElementById('cnt-products');
     if (pCnt) pCnt.textContent = String((state.products || []).length);
   }
+  // Түрээсийн түүх (Booqable аналитик) — зөвхөн CEO.
+  const bqNav = document.getElementById('nav-booqable');
+  if (bqNav) bqNav.style.display = state.isCEO ? '' : 'none';
   // Цагийн цалин — CEO/нягтлан/менежер. Badge нь төлбөргүй цагийн ажилтны тоо.
   const hrNav = document.getElementById('nav-hourly');
   if (hrNav) {
@@ -3099,6 +3103,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderProducts();
     attachProductsHandlers();
+    return;
+  } else if (state.view === 'booqable') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderBooqable();
+    attachBooqableHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
@@ -4413,8 +4423,26 @@ function fmtMoney(n) {
    Барааны үнэ/нөөц/нэр засах + шинэ бараа нэмэх. Эх сурвалж: MEVENT_Orders_DB `products` tab.
    Засвар нь n8n-ээр Sheet-д хадгалагдаж, сайт (m-event-website) шууд тэр өгөгдлийг уншина.
    Зөвхөн CEO. */
+// Бараа — ҮНДСЭН эх сурвалж Supabase Postgres (нэг эх сурвалж). Унавал n8n Sheet webhook (нөөц).
 async function loadProductsCatalog() {
   if (!canManageOrders()) return;   // order manager-д бараа сонгох форм хэрэгтэй
+  if (SUPABASE_ANON_KEY) {
+    try {
+      const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      }, 15000);
+      if (!r.ok) throw new Error('PG HTTP ' + r.status);
+      const rows = await r.json();
+      state.products = rows;
+      const map = {};
+      rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
+      state.productCosts = map;
+      try { localStorage.setItem('mevProducts', JSON.stringify(rows)); } catch(e) {}
+      if (typeof render === 'function') render();
+      return;
+    } catch (e) { console.warn('Postgres products унш чадсангүй, Sheet fallback:', e.message); }
+  }
+  // Fallback: n8n Sheet webhook
   const url = state.config.productsUrl;
   if (!url) return;
   try {
@@ -4424,25 +4452,7 @@ async function loadProductsCatalog() {
     state.products = Array.isArray(data) ? data : (data.products || []);
     try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch(e) {}
     if (typeof render === 'function') render();
-    loadProductCosts();   // өртгийг Supabase-аас зэрэгцээ татна (ROI)
-  } catch(e) { console.warn('loadProductsCatalog fail', e); }
-}
-
-// Барааны өртгийг Supabase Postgres-аас уншина (sku→cost). ROI/хөрөнгийн үнэ цэнэд ашиглана.
-// Каталог Sheet-ээс, өртөг Postgres-ээс (миграцийн дундах түр hybrid).
-async function loadProductCosts() {
-  if (!SUPABASE_ANON_KEY) return;
-  try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?select=sku,cost,purchase_date&cost=gt.0`, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
-    }, 15000);
-    if (!r.ok) return;
-    const rows = await r.json();
-    const map = {};
-    rows.forEach(x => { if (x.sku) map[x.sku] = Number(x.cost) || 0; });
-    state.productCosts = map;
-    if (typeof render === 'function') render();
-  } catch (e) { console.warn('loadProductCosts', e); }
+  } catch(e) { console.warn('loadProductsCatalog fallback fail', e); }
 }
 
 // Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
@@ -4469,22 +4479,37 @@ async function uploadProductImage(file) {
   return `${SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${name}`;
 }
 
+// Бараа хадгалах → Supabase Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
 async function saveProduct(product) {
-  const url = state.config.productsUrl;
-  const idx = state.products.findIndex(p => p.id === product.id);
+  if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  if (!product.id) product.id = product.sku;
+  const idx = state.products.findIndex(p => p.sku === product.sku);
   if (idx >= 0) state.products[idx] = { ...state.products[idx], ...product };
   else state.products.unshift(product);
+  if (product.cost != null) {
+    state.productCosts = state.productCosts || {};
+    if (Number(product.cost) > 0) state.productCosts[product.sku] = Number(product.cost);
+    else delete state.productCosts[product.sku];
+  }
   render();
-  if (!url) return;
+  if (!SUPABASE_ANON_KEY) { showToast('Supabase тохируулаагүй', 'error'); return; }
+  const row = {
+    sku: product.sku, id: product.id, name: product.name || '', category: product.category || '',
+    all_categories: Array.isArray(product.all_categories) ? product.all_categories : (product.category ? [product.category] : []),
+    type: product.type || 'rental', price: Number(product.price) || 0, deposit: Number(product.deposit) || 0,
+    stock: Number(product.stock) || 0, photo: product.photo || '', description: product.description || '',
+  };
+  if (product.cost != null) row.cost = Number(product.cost) || 0;
   try {
-    const r = await fetchWithTimeout(withKey(url), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product }),
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(row),
     }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
     showToast('Бараа хадгалагдлаа', 'success', 1500);
     loadProductsCatalog();
-  } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
+  } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 5000); }
 }
 
 // Бараа түрээслэх боломжтой эсэх — type='asset' бол зөвхөн дотоод хөрөнгө (сайтад харагдахгүй).
@@ -6820,28 +6845,12 @@ async function submitProductModal(modal, orig, btn) {
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
   };
   const product = orig ? { ...orig, ...base } : base;
-  const cost = Number(g('pm-cost')) || 0;
+  product.cost = Number(g('pm-cost')) || 0;
   btn.disabled = true;
   try {
-    await saveProduct(product);                 // каталог → Sheet
-    if (sku) await saveProductCost(sku, cost);  // өртөг → Supabase Postgres
+    await saveProduct(product);   // каталог + өртөг → Supabase Postgres (upsert)
     modal.remove();
   } catch (e) { showToast('Алдаа: ' + e.message, 'error'); btn.disabled = false; }
-}
-
-// Барааны өртгийг Supabase Postgres-д бичнэ (anon UPDATE policy шаардана).
-async function saveProductCost(sku, cost) {
-  state.productCosts = state.productCosts || {};
-  state.productCosts[sku] = cost;   // optimistic local (ROI шууд шинэчлэгдэнэ)
-  if (!SUPABASE_ANON_KEY) return;
-  try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`, {
-      method: 'PATCH',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ cost }),
-    }, 15000);
-    if (!r.ok) showToast('Өртөг Supabase-д хадгалагдсангүй (anon UPDATE эрх хэрэгтэй)', 'warn', 4000);
-  } catch (e) { showToast('Өртөг хадгалах алдаа: ' + e.message, 'warn'); }
 }
 
 function attachProductsHandlers() {
@@ -6900,6 +6909,184 @@ function finStage(t) {
   }
   if (t.executed_at)       return { key: 'transferred',   label: 'Шилжүүлсэн',    mark: '💵', color: 'var(--primary)' };
   return                          { key: 'untransferred', label: 'Шилжүүлээгүй',  mark: '💸', color: 'var(--warn)' };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ТҮРЭЭСИЙН ТҮҮХ (Booqable аналитик) — зөвхөн CEO
+   2024–2026 Booqable түрээсийн бүрэн түүхийг Supabase Postgres-ийн bq_v_*
+   аналитик view-уудаас (PostgREST, anon SELECT) уншиж шийдвэр гаргалтад
+   зориулсан самбараар харуулна. Дата статик (түүх) тул view нээх үед НЭГ
+   удаа lazy-load хийнэ (polling-д ороогүй).
+   Schema+backfill: postgres-migration/bq_01_schema.sql .. bq_07_*.sql
+═══════════════════════════════════════════════════════════════════════ */
+async function loadBooqable(force) {
+  if (state._bqLoading) return;
+  if (state.booqable && !state.booqable.error && !force) return;
+  if (!SUPABASE_ANON_KEY) { state.booqable = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
+  state._bqLoading = true;
+  const H = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
+  const get = async (view, qs) => {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${view}?select=*${qs || ''}`, { headers: H }, 20000);
+    if (!r.ok) throw new Error(view + ' HTTP ' + r.status);
+    return r.json();
+  };
+  try {
+    const [summary, monthly, methods, products, customers, usage] = await Promise.all([
+      get('bq_v_summary'),
+      get('bq_v_monthly_revenue', '&order=month.asc'),
+      get('bq_v_payment_method'),
+      get('bq_v_revenue_by_product', '&order=revenue_mnt.desc.nullslast&limit=40'),
+      get('bq_v_revenue_by_customer', '&order=revenue_mnt.desc.nullslast&limit=40'),
+      get('bq_v_product_utilization', '&order=item_days_out.desc.nullslast&limit=40'),
+    ]);
+    state.booqable = {
+      summary: summary[0] || null,
+      monthly: monthly || [],
+      methods: methods || [],
+      products: products || [],
+      customers: customers || [],
+      usage: usage || [],
+      loadedAt: Date.now(),
+    };
+  } catch (e) {
+    console.warn('loadBooqable', e);
+    // Хүснэгт/view үүсээгүй (SQL ачаалаагүй) бол энд унана.
+    state.booqable = { error: 'load', msg: String(e.message || e) };
+  } finally {
+    state._bqLoading = false;
+    if (typeof render === 'function') render();
+  }
+}
+
+// Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг
+function bqBar(label, value, max, color, sub) {
+  const pct = max > 0 ? Math.max(2, Math.round(value / max * 100)) : 0;
+  return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;">
+    <div style="flex:0 0 42%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(String(label))}">${escapeHtml(String(label))}${sub ? `<span style="color:var(--muted);font-size:10.5px;"> · ${escapeHtml(String(sub))}</span>` : ''}</div>
+    <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${color || 'var(--ok)'};border-radius:5px;"></div></div>
+    <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(value)}</div>
+  </div>`;
+}
+
+function renderBooqable() {
+  const bq = state.booqable;
+  const head = (extra) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
+      <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх — Booqable</div><div style="font-size:11px;color:var(--muted);">2024–2026 · бүрэн түрээсийн дата · шийдвэр гаргалтад</div></div>
+      <button class="btn" data-bq-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
+    </div>${extra || ''}`;
+
+  if (state._bqLoading && !bq) {
+    return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`;
+  }
+  if (!bq) { setTimeout(() => loadBooqable(), 0); return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`; }
+
+  if (bq.error) {
+    const isLoad = bq.error === 'load';
+    return `<div style="padding:4px;">${head()}
+      <div style="border:1px solid var(--warn);background:var(--warn-soft);border-radius:12px;padding:16px;font-size:13px;line-height:1.6;">
+        <div style="font-weight:700;margin-bottom:6px;">⚠ Дата ачаалагдсангүй</div>
+        ${isLoad
+          ? `Supabase-д <b>bq_*</b> хүснэгт/view хараахан үүсээгүй байж магадгүй. Эхлээд <b>postgres-migration/</b> доторх SQL-уудыг Supabase SQL Editor-т дарааллаар нь RUN хийнэ:<br>
+             <code style="font-size:11.5px;">bq_01_schema → bq_02_products → bq_03_customers → bq_04_orders → bq_05_payments → bq_06_order_lines → bq_07_plannings</code><br>
+             <div style="color:var(--muted);font-size:11px;margin-top:8px;">Алдаа: ${escapeHtml(bq.msg || '')}</div>`
+          : `Supabase anon key тохируулагдаагүй байна.`}
+      </div></div>`;
+  }
+
+  const s = bq.summary || {};
+  const N = (x) => Number(x) || 0;
+  const tab = state.bqTab || 'revenue';
+  const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
+
+  // KPI толгой (бүх таб дээр)
+  const range = (s.first_payment_at && s.last_payment_at)
+    ? `${String(s.first_payment_at).slice(0, 10)} → ${String(s.last_payment_at).slice(0, 10)}` : '';
+  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+    ${kpi('Цэвэр орлого', fmtMoney(N(s.net_revenue_mnt)), 'var(--ok)', 'орлого − буцаалт')}
+    ${kpi('Нийт орлого', fmtMoney(N(s.total_charges_mnt)), 'var(--text)', range)}
+    ${kpi('Буцаалт', fmtMoney(N(s.total_refunds_mnt)), 'var(--danger)', '')}
+    ${kpi('Бодит захиалга', `${N(s.real_orders).toLocaleString('mn-MN')}`, 'var(--text)', `нийт ${N(s.total_orders).toLocaleString('mn-MN')} (draft/цуцлахыг хассан)`)}
+    ${kpi('Идэвхтэй харилцагч', `${N(s.active_customers).toLocaleString('mn-MN')}`, 'var(--text)', '')}
+  </div>`;
+
+  // Таб сонгогч
+  const tabs = [['revenue', '💰 Орлого'], ['products', '📦 Бараа'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
+    `<button class="btn${k === tab ? ' btn-primary' : ''}" data-bq-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
+
+  let body = '';
+  const card = (title, inner, note) => `<div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:14px;margin-bottom:14px;">
+    <div style="font-weight:700;font-size:13px;margin-bottom:${note ? 2 : 10}px;">${title}</div>${note ? `<div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">${note}</div>` : ''}${inner}</div>`;
+
+  if (tab === 'revenue') {
+    // Сар бүрийн орлого — босоо bar (бүх сар, хэвтээ scroll, шинэ нь баруунд)
+    const m = bq.monthly || [];
+    const maxNet = Math.max(1, ...m.map(x => N(x.net_mnt)));
+    const bars = m.map(x => {
+      const net = N(x.net_mnt);
+      const h = Math.max(3, Math.round(net / maxNet * 130));
+      return `<div style="flex:0 0 auto;width:38px;display:flex;flex-direction:column;align-items:center;gap:3px;" title="${x.month}: орлого ${fmtMoney(N(x.charges_mnt))}, буцаалт ${fmtMoney(N(x.refunds_mnt))}, цэвэр ${fmtMoney(net)}">
+        <div style="font-size:8.5px;color:var(--muted);white-space:nowrap;">${(net / 1e6).toFixed(net >= 1e7 ? 0 : 1).replace(/\.0$/, '')}</div>
+        <div style="width:24px;height:${h}px;background:var(--ok);border-radius:4px 4px 0 0;"></div>
+        <div style="font-size:8.5px;color:var(--muted);transform:rotate(-50deg);transform-origin:center;white-space:nowrap;margin-top:4px;">${String(x.month).slice(2)}</div>
+      </div>`;
+    }).join('');
+    const monthChart = card('Сар бүрийн цэвэр орлого (сая₮)',
+      `<div style="display:flex;align-items:flex-end;gap:5px;height:180px;overflow-x:auto;padding:6px 2px 2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
+      'Багана = тухайн сард бодитоор орсон цэвэр орлого (орлого − буцаалт), төлбөрийн огноогоор');
+
+    // Төлбөрийн хэлбэр
+    const pm = bq.methods || [];
+    const maxPm = Math.max(1, ...pm.map(x => N(x.charges_mnt)));
+    const mLabel = { bank: 'Банк', cash: 'Бэлэн', card: 'Карт', other: 'Бусад' };
+    const methodCard = card('Төлбөрийн хэлбэрээр',
+      pm.map(x => bqBar(mLabel[x.method] || x.method, N(x.charges_mnt), maxPm, 'var(--primary)', `${N(x.charge_count)} гүйлгээ`)).join(''));
+    body = kpis + monthChart + methodCard;
+
+  } else if (tab === 'products') {
+    const p = bq.products || [];
+    const maxRev = Math.max(1, ...p.map(x => N(x.revenue_mnt)));
+    body = kpis + card('Орлого төрүүлсэн топ бараа',
+      (p.length ? p.map(x => bqBar(x.product || '—', N(x.revenue_mnt), maxRev, 'var(--ok)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('')
+        : '<span style="color:var(--muted);">дата алга</span>'),
+      'Зөвхөн орлого авчирсан захиалгууд (draft/цуцлахыг хассан). "НӨАТ", "Хүргэлт" зэрэг нь бараа биш ч орлогын мөр.');
+
+  } else if (tab === 'customers') {
+    const c = bq.customers || [];
+    const maxRev = Math.max(1, ...c.map(x => N(x.revenue_mnt)));
+    body = kpis + card('Орлогоор топ харилцагч',
+      (c.length ? c.map(x => bqBar(x.customer || '—', N(x.revenue_mnt), maxRev, 'var(--primary)',
+        `${N(x.order_count)} захиалга · дунд. ${fmtMoneyShort(N(x.avg_order_mnt))}`)).join('')
+        : '<span style="color:var(--muted);">дата алга</span>'),
+      'Booqable-ийн бүртгэсэн нийт орлого тус бүрийн харилцагчаар');
+
+  } else if (tab === 'usage') {
+    const u = bq.usage || [];
+    const maxDays = Math.max(1, ...u.map(x => N(x.item_days_out)));
+    body = kpis + card('Барааны ашиглалт (бараа-өдөр гадаа)',
+      (u.length ? u.map(x => {
+        const days = N(x.item_days_out);
+        const pct = maxDays > 0 ? Math.max(2, Math.round(days / maxDays * 100)) : 0;
+        return `<div style="display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px;">
+          <div style="flex:0 0 42%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}<span style="color:var(--muted);font-size:10.5px;"> · ${N(x.bookings)} удаа</span></div>
+          <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--warn);border-radius:5px;"></div></div>
+          <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${days.toLocaleString('mn-MN')} ө</div>
+        </div>`;
+      }).join('') : '<span style="color:var(--muted);">дата алга</span>'),
+      'Бараа-өдөр = хуваарийн (planning) хугацаа × тоо ширхэг. Хамгийн их эргэлттэй хөрөнгийг харуулна.');
+  }
+
+  return `<div style="padding:4px;">${head(tabBar)}${body}</div>`;
+}
+
+function attachBooqableHandlers() {
+  document.querySelector('[data-bq-refresh]')?.addEventListener('click', () => loadBooqable(true));
+  document.querySelectorAll('[data-bq-tab]').forEach(b => b.addEventListener('click', () => {
+    state.bqTab = b.dataset.bqTab;
+    render();
+  }));
+  // view нээгдэхэд анх удаа татна
+  if (!state.booqable && !state._bqLoading) loadBooqable();
 }
 
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */

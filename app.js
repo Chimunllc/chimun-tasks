@@ -4390,17 +4390,25 @@ async function saveProduct(product) {
   } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 
+// Бараа түрээслэх боломжтой эсэх — type='asset' бол зөвхөн дотоод хөрөнгө (сайтад харагдахгүй).
+// Хуучин/type-гүй бараа = түрээсийн (буцаад нийцтэй). Зөвхөн ил 'asset' нь хөрөнгө.
+function isRentable(p) { return String((p && p.type) || 'rental') !== 'asset'; }
+
 function productRowHtml(p) {
   const img = p.photo
     ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
     : '<div class="ph">📦</div>';
+  const rentable = isRentable(p);
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
-  return `<div class="prod-row" data-id="${escapeHtml(p.id)}" data-search="${escapeHtml(search)}">
+  return `<div class="prod-row${rentable ? '' : ' is-asset'}" data-id="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
     <div class="prod-main">
       <input class="prod-name" data-f="name" value="${escapeHtml(p.name || '')}">
       <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}</div>
     </div>
+    <label class="prod-rentable" title="Чагтлахад сайтад түрээсээр харагдана. Чагтгүй бол зөвхөн дотоод хөрөнгө.">
+      <input type="checkbox" data-f="rentable" ${rentable ? 'checked' : ''}><span>Түрээслэх</span>
+    </label>
     <label class="prod-fld">Үнэ<input type="number" data-f="price" value="${Number(p.price) || 0}"></label>
     <label class="prod-fld">Барьцаа<input type="number" data-f="deposit" value="${Number(p.deposit) || 0}"></label>
     <label class="prod-fld sm">Нөөц<input type="number" data-f="stock" value="${Number(p.stock) || 0}"></label>
@@ -6582,16 +6590,24 @@ function attachPerformanceHandlers() {
 }
 
 function renderProducts() {
-  let list = state.products || [];
+  const all = state.products || [];
+  state.prodFilter = state.prodFilter || 'all';
+  const rentN = all.filter(isRentable).length;
+  const assetN = all.length - rentN;
+  const list = state.prodFilter === 'rental' ? all.filter(isRentable)
+             : state.prodFilter === 'asset' ? all.filter(p => !isRentable(p))
+             : all;
   const rows = list.map(productRowHtml).join('');
+  const tab = (k, label, n) => `<button class="prod-tab${state.prodFilter === k ? ' on' : ''}" data-prodfilter="${k}">${label} <span class="prod-tab-n">${n}</span></button>`;
   return `
     <div class="prod-toolbar">
-      <input type="search" id="prod-search" class="prod-search" placeholder="Бараа хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
+      <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
+    <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
     <div class="prod-count" id="prod-count">${list.length} бараа</div>
     <div id="prod-new-form"></div>
-    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
+    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
   `;
 }
 
@@ -6616,6 +6632,10 @@ function newProductFormHtml() {
       </label>
       <label class="pnf-wide">Тайлбар<input id="pnf-desc" placeholder="Тайлбар"></label>
     </div>
+    <label class="pnf-rentable-row">
+      <input type="checkbox" id="pnf-rentable" checked>
+      <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
+    </label>
     <div class="pnf-actions">
       <button class="btn" id="pnf-cancel">Болих</button>
       <button class="btn btn-primary" id="pnf-save">Нэмэх</button>
@@ -6624,6 +6644,10 @@ function newProductFormHtml() {
 }
 
 function attachProductsHandlers() {
+  // Шүүлтүүр таб — Бүгд / Түрээсийн / Хөрөнгө
+  document.querySelectorAll('[data-prodfilter]').forEach(b => {
+    b.onclick = () => { state.prodFilter = b.dataset.prodfilter; render(); };
+  });
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');
   if (s) s.oninput = (e) => {
@@ -6650,6 +6674,7 @@ function attachProductsHandlers() {
         price: Number(get('price').value) || 0,
         deposit: Number(get('deposit').value) || 0,
         stock: Number(get('stock').value) || 0,
+        type: get('rentable')?.checked ? 'rental' : 'asset',   // түрээсийн эсвэл хөрөнгө
       };
       withBusy(btn, () => saveProduct(product), { successText: 'Хадгалсан' });
     };
@@ -6684,7 +6709,8 @@ function attachProductsHandlers() {
         name, category: cat, sku: g('pnf-sku'),
         price: Number(g('pnf-price')) || 0, deposit: Number(g('pnf-deposit')) || 0,
         stock: Number(g('pnf-stock')) || 0, photo: g('pnf-photo'), description: g('pnf-desc'),
-        type: 'rental', all_categories: cat ? [cat] : [],
+        type: wrap.querySelector('#pnf-rentable')?.checked ? 'rental' : 'asset',
+        all_categories: cat ? [cat] : [],
       };
       withBusy(e.currentTarget, () => saveProduct(product), { successText: 'Нэмсэн' });
       wrap.innerHTML = '';

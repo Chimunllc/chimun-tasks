@@ -3677,6 +3677,7 @@ function orderCardHtml(o, canManage, canConfirm) {
       parts.push(`<div class="order-kebab-wrap">
         <button class="btn order-kebab" data-order-kebab="${esc}" aria-label="Бусад үйлдэл" style="padding:4px 9px;font-size:15px;">⋯</button>
         <div class="order-kebab-menu" hidden>
+          ${itemCount ? `<button data-order-scan="${esc}">📷 Бараа скан (${itemCount})</button>` : ''}
           ${prev ? `<button data-order-revert="${esc}" data-prev="${escapeHtml(prev)}">← «${escapeHtml(prev)}» руу буцаах</button>` : ''}
           <button class="km-danger" data-order-cancel="${esc}">✕ Захиалга цуцлах</button>
         </div>
@@ -4057,6 +4058,12 @@ function attachOrdersHandlers() {
     });
   });
   // Өмнөх шат руу буцаах (баталгаажуулалттай)
+  document.querySelectorAll('button[data-order-scan]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.order-kebab-menu').forEach(m => m.setAttribute('hidden', ''));
+      openOrderScanModal(btn.dataset.orderScan);
+    });
+  });
   document.querySelectorAll('button[data-order-revert]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const prev = btn.dataset.prev;
@@ -4622,7 +4629,35 @@ function renderProductQR(el, sku) {
   }).catch(() => { el.textContent = 'QR ачаалж чадсангүй'; });
 }
 
-let _scanStream = null;
+// Камер нээж QR-ийг ТАСРАЛТГҮЙ таних. onCode(text) бүр сканнердахад дуудна. Зогсоох функц буцаана.
+async function startQRScan(video, status, onCode) {
+  let stream = null, closed = false;
+  const stop = () => { closed = true; if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } };
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream; await video.play();
+    if (status) status.textContent = 'QR кодыг хүрээнд тааруул…';
+  } catch (e) { if (status) status.textContent = 'Камер нээж чадсангүй: ' + e.message; return stop; }
+  const detector = ('BarcodeDetector' in window) ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
+  let jsqr = null;
+  if (!detector) { try { jsqr = await loadJsQR(); } catch (e) { if (status) status.textContent = e.message; stop(); return stop; } }
+  const canvas = document.createElement('canvas');
+  const loop = async () => {
+    if (closed) return;
+    if (!video.videoWidth) { requestAnimationFrame(loop); return; }
+    try {
+      let code = null;
+      if (detector) { const cs = await detector.detect(video); if (cs && cs.length) code = cs[0].rawValue; }
+      else { canvas.width = video.videoWidth; canvas.height = video.videoHeight; const ctx = canvas.getContext('2d'); ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const c = jsqr(img.data, img.width, img.height); if (c) code = c.data; }
+      if (code) onCode(String(code).trim());
+    } catch (e) {}
+    if (!closed) requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+  return stop;
+}
+
+// Нэг QR скан → барааг олж модалаа нээнэ (агуулахын таних).
 async function openScanner() {
   document.getElementById('scan-modal')?.remove();
   const modal = document.createElement('div');
@@ -4637,38 +4672,74 @@ async function openScanner() {
     </div>`;
   document.body.appendChild(modal);
   modal.classList.add('open');
-  const video = modal.querySelector('#scan-video');
-  const status = modal.querySelector('#scan-status');
-  let closed = false;
-  const cleanup = () => { closed = true; if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; } modal.remove(); };
+  let stop = () => {};
+  const cleanup = () => { stop(); modal.remove(); };
   modal.querySelector('#scan-cancel').onclick = cleanup;
   modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
-  try {
-    _scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    video.srcObject = _scanStream; await video.play();
-    status.textContent = 'QR кодыг хүрээнд тааруул…';
-  } catch (e) { status.textContent = 'Камер нээж чадсангүй: ' + e.message; return; }
-  const detector = ('BarcodeDetector' in window) ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
-  let jsqr = null;
-  if (!detector) { try { jsqr = await loadJsQR(); } catch (e) { status.textContent = e.message; return; } }
-  const canvas = document.createElement('canvas');
-  const onScan = (text) => {
-    const code = String(text || '').trim();
+  stop = await startQRScan(modal.querySelector('#scan-video'), modal.querySelector('#scan-status'), (code) => {
     const p = (state.products || []).find(x => x.sku === code || x.id === code);
     cleanup();
     if (p) openProductModal(p);
     else showToast('Бараа олдсонгүй: ' + code, 'warn', 3000);
+  });
+}
+
+// Захиалгын бараа гаргах/буцаах скан — бараа бүрийг сканнердаж бүгд бэлэн эсэхийг шалгана.
+function openOrderScanModal(order_no) {
+  const o = state.orders.find(x => x.order_no === order_no);
+  if (!o) return;
+  const items = (o.items || []).map(it => ({ name: it.name || '', qty: Math.max(1, Number(it.qty) || 1), scanned: 0 }));
+  if (!items.length) { showToast('Энэ захиалгад бараа алга', 'warn'); return; }
+  document.getElementById('oscan-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'oscan-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <h2>📷 Бараа скан · ${escapeHtml(o.order_no)}</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">${escapeHtml(o.customer_name || '')} — бараа бүрийн QR-ийг сканнердаж бүгд бэлэн эсэхийг шалга.</p>
+      <div class="scan-box"><video id="oscan-video" playsinline muted></video><div class="scan-frame"></div></div>
+      <div id="oscan-status" class="scan-status">Камер ачаалж байна…</div>
+      <div id="oscan-progress" class="oscan-progress"></div>
+      <div id="oscan-list" class="oscan-list"></div>
+      <div class="modal-actions" style="margin-top:14px;"><button class="btn btn-primary" id="oscan-done">Дуусгах</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.classList.add('open');
+  const listEl = modal.querySelector('#oscan-list');
+  const progEl = modal.querySelector('#oscan-progress');
+  function renderList() {
+    const done = items.reduce((s, i) => s + Math.min(i.scanned, i.qty), 0);
+    const total = items.reduce((s, i) => s + i.qty, 0);
+    progEl.innerHTML = `<b>${done}/${total}</b> ширхэг сканнердсан${done >= total ? ' · <span style="color:var(--ok)">✅ Бүгд бэлэн</span>' : ''}`;
+    listEl.innerHTML = items.map((it, i) => {
+      const ok = it.scanned >= it.qty;
+      return `<div class="oscan-row${ok ? ' ok' : ''}"><span class="oscan-name">${ok ? '✅' : '⬜'} ${escapeHtml(it.name)}</span><span class="oscan-cnt"><button type="button" data-dec="${i}">−</button> ${it.scanned}/${it.qty} <button type="button" data-inc="${i}">+</button></span></div>`;
+    }).join('');
+  }
+  renderList();
+  listEl.onclick = (e) => {
+    const inc = e.target.closest('[data-inc]'), dec = e.target.closest('[data-dec]');
+    if (inc) { const i = +inc.dataset.inc; items[i].scanned = Math.min(items[i].qty, items[i].scanned + 1); renderList(); }
+    else if (dec) { const i = +dec.dataset.dec; items[i].scanned = Math.max(0, items[i].scanned - 1); renderList(); }
   };
-  const loop = async () => {
-    if (closed) return;
-    if (!video.videoWidth) { requestAnimationFrame(loop); return; }
-    try {
-      if (detector) { const codes = await detector.detect(video); if (codes && codes.length) return onScan(codes[0].rawValue); }
-      else { canvas.width = video.videoWidth; canvas.height = video.videoHeight; const ctx = canvas.getContext('2d'); ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const c = jsqr(img.data, img.width, img.height); if (c) return onScan(c.data); }
-    } catch (e) {}
-    if (!closed) requestAnimationFrame(loop);
+  let lastCode = '', lastTime = 0, stop = () => {};
+  const onCode = (code) => {
+    const now = Date.now();
+    if (code === lastCode && now - lastTime < 1500) return;   // ижил кодыг дахин тоолохгүй
+    lastCode = code; lastTime = now;
+    const prod = (state.products || []).find(x => x.sku === code || x.id === code);
+    const nm = prod ? _normProdName(prod.name) : _normProdName(code);
+    const it = items.find(x => _normProdName(x.name) === nm);
+    if (it) {
+      if (it.scanned < it.qty) { it.scanned++; renderList(); if (navigator.vibrate) navigator.vibrate(60); }
+      else showToast(`${it.name} — аль хэдийн бүгд`, 'warn', 1500);
+    } else showToast('Энэ захиалгад алга: ' + (prod ? prod.name : code), 'warn', 2000);
   };
-  requestAnimationFrame(loop);
+  const cleanup = () => { stop(); modal.remove(); };
+  modal.querySelector('#oscan-done').onclick = cleanup;
+  modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+  startQRScan(modal.querySelector('#oscan-video'), modal.querySelector('#oscan-status'), onCode).then(s => { stop = s; });
 }
 
 // Бараа хадгалах → Supabase Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.

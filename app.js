@@ -4602,6 +4602,75 @@ async function uploadProductImage(file) {
   return `${SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${name}`;
 }
 
+/* ─── QR/баркод — агуулахын скан ───────────────────────────
+   Бараа бүрт SKU кодлосон QR (модалд харагдана, хэвлэх боломжтой). Камераар сканнердаж
+   барааг шууд таниж модалаа нээнэ. BarcodeDetector (native) эсвэл jsQR (fallback). */
+function loadQRGen() {
+  if (window.qrcode) return Promise.resolve(window.qrcode);
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js'; s.onload = () => res(window.qrcode); s.onerror = () => rej(new Error('QR сан ачаалж чадсангүй')); document.head.appendChild(s); });
+}
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve(window.jsQR);
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; s.onload = () => res(window.jsQR); s.onerror = () => rej(new Error('Скан сан ачаалж чадсангүй')); document.head.appendChild(s); });
+}
+// SKU-г QR болгож контейнерт зурна (хэвлэх/наахад).
+function renderProductQR(el, sku) {
+  if (!el || !sku) return;
+  loadQRGen().then(qrcode => {
+    const qr = qrcode(0, 'M'); qr.addData(sku); qr.make();
+    el.innerHTML = qr.createSvgTag({ cellSize: 3, margin: 1 }) + `<div class="pm-qr-sku">${escapeHtml(sku)}</div>`;
+  }).catch(() => { el.textContent = 'QR ачаалж чадсангүй'; });
+}
+
+let _scanStream = null;
+async function openScanner() {
+  document.getElementById('scan-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'scan-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:400px;">
+      <h2>📷 Бараа скан</h2>
+      <div class="scan-box"><video id="scan-video" playsinline muted></video><div class="scan-frame"></div></div>
+      <div id="scan-status" class="scan-status">Камер ачаалж байна…</div>
+      <div class="modal-actions"><button class="btn" id="scan-cancel">Хаах</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.classList.add('open');
+  const video = modal.querySelector('#scan-video');
+  const status = modal.querySelector('#scan-status');
+  let closed = false;
+  const cleanup = () => { closed = true; if (_scanStream) { _scanStream.getTracks().forEach(t => t.stop()); _scanStream = null; } modal.remove(); };
+  modal.querySelector('#scan-cancel').onclick = cleanup;
+  modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+  try {
+    _scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = _scanStream; await video.play();
+    status.textContent = 'QR кодыг хүрээнд тааруул…';
+  } catch (e) { status.textContent = 'Камер нээж чадсангүй: ' + e.message; return; }
+  const detector = ('BarcodeDetector' in window) ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
+  let jsqr = null;
+  if (!detector) { try { jsqr = await loadJsQR(); } catch (e) { status.textContent = e.message; return; } }
+  const canvas = document.createElement('canvas');
+  const onScan = (text) => {
+    const code = String(text || '').trim();
+    const p = (state.products || []).find(x => x.sku === code || x.id === code);
+    cleanup();
+    if (p) openProductModal(p);
+    else showToast('Бараа олдсонгүй: ' + code, 'warn', 3000);
+  };
+  const loop = async () => {
+    if (closed) return;
+    if (!video.videoWidth) { requestAnimationFrame(loop); return; }
+    try {
+      if (detector) { const codes = await detector.detect(video); if (codes && codes.length) return onScan(codes[0].rawValue); }
+      else { canvas.width = video.videoWidth; canvas.height = video.videoHeight; const ctx = canvas.getContext('2d'); ctx.drawImage(video, 0, 0); const img = ctx.getImageData(0, 0, canvas.width, canvas.height); const c = jsqr(img.data, img.width, img.height); if (c) return onScan(c.data); }
+    } catch (e) {}
+    if (!closed) requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
 // Бараа хадгалах → Supabase Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
 async function saveProduct(product) {
   if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -7250,8 +7319,8 @@ function renderBooqable() {
       `<div style="display:flex;align-items:flex-end;gap:5px;height:180px;overflow-x:auto;padding:6px 2px 2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
       'Багана = тухайн сард бодитоор орсон цэвэр орлого (орлого − буцаалт), төлбөрийн огноогоор');
 
-    // Төлбөрийн хэлбэр
-    const pm = bq.methods || [];
+    // Төлбөрийн хэлбэр (зөвхөн орлоготой — refund-only/0₮ мөрийг нууна)
+    const pm = (bq.methods || []).filter(x => N(x.charges_mnt) > 0);
     const maxPm = Math.max(1, ...pm.map(x => N(x.charges_mnt)));
     const mLabel = { bank: 'Банк', cash: 'Бэлэн', card: 'Карт', other: 'Бусад' };
     const methodCard = card('Төлбөрийн хэлбэрээр',

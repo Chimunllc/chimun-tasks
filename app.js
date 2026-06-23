@@ -3327,6 +3327,11 @@ function openOrderPaymentModal(order_no, editMode) {
   const curMethod = o.paid_method || 'data';
   const curAmount = o.paid_amount || pr.total;
   const curDate = o.paid_date || todayIso;
+  // Давхар захиалга — энэ захиалгын бараа өөрийн огноонд хүрэлцэхгүй бол анхааруулна.
+  const _short = orderShortages(o.items, o.date_start, o.date_end, o.order_no);
+  const shortageHtml = _short.length
+    ? `<div class="pay-shortage">⚠ Бараа хүрэлцэхгүй байж магадгүй: ${_short.map(s => `${escapeHtml(s.name)} (${s.avail}/${s.need} сул)`).join(', ')}. Давхар захиалга шалгана уу.</div>`
+    : '';
 
   document.getElementById('mev-pay-modal')?.remove();
   const modal = document.createElement('div');
@@ -3339,6 +3344,7 @@ function openOrderPaymentModal(order_no, editMode) {
         <div><b>${escapeHtml(o.customer_name || '')}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}</div>
         <div class="pay-breakdown">Түрээс ${fmtMoney(rentalNet)} · Барьцаа ${fmtMoney(pr.deposit)} · <b>Нийт ${fmtMoney(pr.total)}</b></div>
       </div>
+      ${shortageHtml}
       <label>Төлбөрийн төрөл</label>
       <div class="pay-seg" id="pay-type">
         <button type="button" data-v="full"${curType === 'full' ? ' class="on"' : ''}>Бүтэн төлбөр</button>
@@ -4034,6 +4040,50 @@ function mountCalendar(displayEl, hiddenEl, popEl, onChange, initial) {
 
 /* Вэбсайт шиг бүрэн захиалга гараар үүсгэх (үйлчлүүлэгч + бараа + дүн) →
    /webhook/m-event-site-order руу илгээж MEVENT_Orders_DB-д "Шинэ" төлөвтэй нэмнэ. */
+/* ─── Бараа сул эсэх — давхар захиалгаас сэргийлэх ─────────────
+   Тухайн бараа сонгосон огноонд өөр захиалгуудаар хэдэн ширхэг эзлэгдсэнийг
+   тооцоод нөөцтэй харьцуулна. Эзэлдэг статус: Шинэ→Хүргэсэн. Буцаан ирсэн/
+   Дууссан/Цуцалсан = чөлөөтэй (бараа агуулахад буцсан). */
+function _normProdName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+function productStockByName(name) {
+  const n = _normProdName(name);
+  const p = (state.products || []).find(x => _normProdName(x.name) === n);
+  return p ? (Number(p.stock) || 0) : null;   // null = каталогт алга
+}
+const _ORDER_OCCUPYING = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн'];
+function bookedQtyForRange(name, start, end, excludeOrderNo) {
+  const n = _normProdName(name);
+  const s = String(start || '').slice(0, 10), e = String(end || '').slice(0, 10);
+  if (!s || !e || !n) return 0;
+  let total = 0;
+  for (const o of (state.orders || [])) {
+    if (excludeOrderNo && o.order_no === excludeOrderNo) continue;
+    if (!_ORDER_OCCUPYING.includes(o.status)) continue;
+    const os = String(o.date_start || '').slice(0, 10), oe = String(o.date_end || '').slice(0, 10);
+    if (!os || !oe) continue;
+    if (s <= oe && os <= e) {   // огнооны давхцал
+      for (const it of (o.items || [])) if (_normProdName(it.name) === n) total += Number(it.qty) || 0;
+    }
+  }
+  return total;
+}
+function availabilityFor(name, start, end, excludeOrderNo) {
+  const stock = productStockByName(name);
+  if (stock === null) return null;
+  const booked = bookedQtyForRange(name, start, end, excludeOrderNo);
+  return { stock, booked, avail: stock - booked };
+}
+// Захиалгын item-уудаас хүрэлцэхгүй (over-booked) барааг олно.
+function orderShortages(items, start, end, excludeOrderNo) {
+  const out = [];
+  for (const it of (items || [])) {
+    const name = (it.name || '').trim(); if (!name) continue;
+    const a = availabilityFor(name, start, end, excludeOrderNo);
+    if (a && (Number(it.qty) || 0) > a.avail) out.push({ name, need: Number(it.qty) || 0, avail: a.avail, stock: a.stock, booked: a.booked });
+  }
+  return out;
+}
+
 function openNewMeventOrder(editOrder) {
   const isEdit = !!editOrder;
   const products = state.products || [];
@@ -4173,16 +4223,34 @@ function openNewMeventOrder(editOrder) {
   discountEl.addEventListener('input', () => renderTotals());
   function renderItems() {
     itemsEl.innerHTML = items.map((it, i) => `
-      <div class="mo-item-row" data-idx="${i}" style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;">
-        <div class="mo-name-wrap" style="flex:1;min-width:0;">
-          <input class="mo-it-name" list="mo-prod-list" autocomplete="off" value="${escapeHtml(it.name || '')}" placeholder="Бараа хайх/бичих" style="width:100%;" />
+      <div class="mo-item-row" data-idx="${i}" style="margin-bottom:8px;">
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <div class="mo-name-wrap" style="flex:1;min-width:0;">
+            <input class="mo-it-name" list="mo-prod-list" autocomplete="off" value="${escapeHtml(it.name || '')}" placeholder="Бараа хайх/бичих" style="width:100%;" />
+          </div>
+          <input class="mo-it-qty" type="number" min="1" value="${it.qty || 1}" style="width:56px;" title="Тоо" />
+          <input class="mo-it-price" type="number" value="${it.price || 0}" style="width:104px;background:var(--panel-hover);color:var(--muted);cursor:not-allowed;" title="Каталогийн үнэ (засагдахгүй)" readonly tabindex="-1" />
+          <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
         </div>
-        <input class="mo-it-qty" type="number" min="1" value="${it.qty || 1}" style="width:56px;" title="Тоо" />
-        <input class="mo-it-price" type="number" value="${it.price || 0}" style="width:104px;background:var(--panel-hover);color:var(--muted);cursor:not-allowed;" title="Каталогийн үнэ (засагдахгүй)" readonly tabindex="-1" />
-        <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
+        <div class="mo-avail" data-ai="${i}"></div>
       </div>`).join('');
     syncAutoDeposit();
     renderTotals();
+  }
+  // Сонгосон огноонд бараа сул эсэхийг мөр бүрт харуулна (давхар захиалга сэргийлэх).
+  function updateAvail() {
+    const sd = startDateEl.value, ed = endDateEl.value;
+    items.forEach((it, i) => {
+      const el = itemsEl.querySelector(`.mo-avail[data-ai="${i}"]`);
+      if (!el) return;
+      const name = (it.name || '').trim();
+      const a = name ? availabilityFor(name, sd, ed, editOrder && editOrder.order_no) : null;
+      if (!name || !a) { el.textContent = ''; el.className = 'mo-avail'; return; }
+      if (!sd || !ed) { el.textContent = `Нөөц: ${a.stock}`; el.className = 'mo-avail'; return; }
+      const need = Number(it.qty) || 0;
+      if (need > a.avail) { el.textContent = `⚠ Хүрэлцэхгүй: энэ өдөр ${a.avail} сул (${a.stock} нөөц − ${a.booked} захиалсан)`; el.className = 'mo-avail bad'; }
+      else { el.textContent = `✓ ${a.avail} сул (${a.stock} нөөц − ${a.booked} захиалсан)`; el.className = 'mo-avail ok'; }
+    });
   }
   function renderTotals() {
     const t = computeTotals();
@@ -4191,6 +4259,7 @@ function openNewMeventOrder(editOrder) {
       + (t.vatDiscount ? `<br>НӨАТ хасалт (5%): <b style="color:var(--danger);">−${fmtMoney(t.vatDiscount)}</b>` : '')
       + (t.manualDiscount ? `<br>Нэмэлт хямдрал: <b style="color:var(--ok);">−${fmtMoney(t.manualDiscount)}</b>` : '')
       + `<br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
+    updateAvail();
   }
   // Барааны жагсаалт — native <datalist> (утсан дээр найдвартай, бичсэн утга алга болохгүй).
   function fillProdList() {
@@ -4271,6 +4340,16 @@ async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
   if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−20% = ${fmtMoney(totals.multiDayDiscount)})`;
   if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
   if (totals.manualDiscount) note = (note ? note + ' · ' : '') + `Хямдрал (гар): −${fmtMoney(totals.manualDiscount)}`;
+
+  // Давхар захиалга шалгах — бараа сонгосон огноонд хүрэлцэхгүй бол анхааруулна (зогсоохгүй, баталгаажуулна).
+  if (sd && ed) {
+    const short = orderShortages(cleanItems, sd, ed, editOrder && editOrder.order_no);
+    if (short.length) {
+      const lines = short.map(s => `• ${s.name}: ${s.need} захиалж буй ч ${s.avail} л сул (${s.stock} нөөц − ${s.booked} өөр захиалга)`).join('\n');
+      const ok = await showConfirm(`⚠ Зарим бараа энэ өдрүүдэд хүрэлцэхгүй байна:\n\n${lines}\n\nДавхар захиалга үүсч болзошгүй. Үргэлжлүүлэх үү?`, { title: 'Бараа хүрэлцэхгүй', okText: 'Тийм, үргэлжлүүлэх', danger: true });
+      if (!ok) return;
+    }
+  }
   btn.disabled = true;
 
   // ── EDIT — бүрэн мөрийг /webhook/mevent-orders руу update хийнэ ──

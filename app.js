@@ -4499,6 +4499,7 @@ async function saveProduct(product) {
     type: product.type || 'rental', price: Number(product.price) || 0, deposit: Number(product.deposit) || 0,
     stock: Number(product.stock) || 0, photo: product.photo || '', description: product.description || '',
   };
+  if (Array.isArray(product.photos)) row.photos = product.photos;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
@@ -6798,14 +6799,13 @@ function openProductModal(p) {
         <input type="checkbox" id="pm-rentable" ${rentable ? 'checked' : ''}>
         <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
       </label>
-      <label class="pm-block">Зураг
-        <div class="pnf-photo-row">
-          <input id="pm-photo" value="${v('photo')}" placeholder="https://... эсвэл зураг оруул →">
-          <label class="btn pnf-upbtn" for="pm-photo-file">📷 Зураг</label>
-          <input type="file" id="pm-photo-file" accept="image/*" hidden>
+      <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
+        <div id="pm-gallery" class="pm-gallery"></div>
+        <div class="pm-gallery-actions">
+          <label class="btn pnf-upbtn" for="pm-photo-file">📷 Зураг нэмэх</label>
+          <input type="file" id="pm-photo-file" accept="image/*" multiple hidden>
         </div>
-        <div id="pm-photo-preview" class="pnf-photo-preview">${p && p.photo ? `<img src="${escapeHtml(p.photo)}" alt="">` : ''}</div>
-      </label>
+      </div>
       <label class="pm-block">Тайлбар <span style="color:var(--muted);font-weight:400;">(сайтад харагдана)</span>
         <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
       </label>
@@ -6815,13 +6815,32 @@ function openProductModal(p) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
+  let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);
+  modal._images = images;
+  const gallery = modal.querySelector('#pm-gallery');
+  function renderGallery() {
+    gallery.innerHTML = images.length ? images.map((u, i) => `
+      <div class="pm-thumb${i === 0 ? ' main' : ''}">
+        <img src="${escapeHtml(u)}" alt="" loading="lazy">
+        ${i === 0 ? '<span class="pm-thumb-tag">Нүүр</span>' : `<button type="button" class="pm-thumb-star" data-star="${i}" title="Нүүр болгох">★</button>`}
+        <button type="button" class="pm-thumb-rm" data-rm="${i}" title="Хасах">×</button>
+      </div>`).join('') : '<div class="pm-gallery-empty">Зураг алга — доороос нэмнэ үү</div>';
+  }
+  renderGallery();
+  gallery.onclick = (e) => {
+    const star = e.target.closest('[data-star]'), rm = e.target.closest('[data-rm]');
+    if (star) { const i = +star.dataset.star; const [u] = images.splice(i, 1); images.unshift(u); renderGallery(); }
+    else if (rm) { images.splice(+rm.dataset.rm, 1); renderGallery(); }
+  };
   const fileInput = modal.querySelector('#pm-photo-file');
   fileInput.onchange = async () => {
-    const f = fileInput.files && fileInput.files[0]; if (!f) return;
-    const prev = modal.querySelector('#pm-photo-preview');
-    prev.innerHTML = '<span class="pnf-up-busy">⏳ Хуулж байна…</span>';
-    try { const url = await uploadProductImage(f); modal.querySelector('#pm-photo').value = url; prev.innerHTML = `<img src="${escapeHtml(url)}" alt=""><span class="pnf-up-ok">✓ Орлоо</span>`; }
-    catch (e) { prev.innerHTML = `<span class="pnf-up-err">⚠ ${escapeHtml(e.message)}</span>`; }
+    const files = [...(fileInput.files || [])]; if (!files.length) return;
+    for (const f of files) {
+      try { const url = await uploadProductImage(f); images.push(url); renderGallery(); }
+      catch (e) { showToast('Зураг алдаа: ' + e.message, 'error', 4000); }
+    }
+    fileInput.value = '';
   };
   const close = () => modal.remove();
   modal.querySelector('#pm-cancel').onclick = close;
@@ -6836,10 +6855,12 @@ async function submitProductModal(modal, orig, btn) {
   const name = g('pm-name');
   if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
   const cat = g('pm-cat'), sku = g('pm-sku');
+  const images = (modal._images || []).filter(Boolean);
   const base = {
     name, category: cat, sku,
     price: Number(g('pm-price')) || 0, deposit: Number(g('pm-deposit')) || 0,
-    stock: Number(g('pm-stock')) || 0, photo: g('pm-photo'),
+    stock: Number(g('pm-stock')) || 0,
+    photos: images, photo: images[0] || '',   // эхний зураг = нүүр
     description: modal.querySelector('#pm-desc').value,
     type: modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset',
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),

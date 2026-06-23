@@ -91,6 +91,12 @@ const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rat
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
 // хийх ёстой (одоохондоо төлөвлөгөөнд байгаа).
 const N8N_API_KEY = '1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
+
+// Supabase Storage — барааны зураг (product-images bucket). anon key нь PUBLIC, frontend-д
+// ил байх нь зөв (RLS/storage policy-оор хамгаална). Зөвхөн зураг bucket-д upload зөвшөөрнө.
+const SUPABASE_URL = 'https://pydgnbzntldpzzjhtaal.supabase.co';
+const SUPABASE_ANON_KEY = '';   // ← Supabase → Settings → API → anon/public key (PUBLIC, оруулна)
+const PRODUCT_IMAGE_BUCKET = 'product-images';
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
 function withKey(url) {
   if (!url) return url;
@@ -4342,6 +4348,30 @@ async function loadProductsCatalog() {
   } catch(e) { console.warn('loadProductsCatalog fail', e); }
 }
 
+// Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
+// Зургийг эхлээд клиент талд шахна (resizeImageToBase64), дараа нь bucket-д тавина.
+async function uploadProductImage(file) {
+  if (!SUPABASE_ANON_KEY) throw new Error('Supabase anon key тохируулаагүй байна');
+  let blob = file;
+  if (/^image\//i.test(file.type)) {
+    try {
+      const b64 = await resizeImageToBase64(file, 1200, 0.78);   // data URL
+      blob = await (await fetch(b64)).blob();                    // data URL → Blob
+    } catch (e) { blob = file; }   // шахалт амжилтгүй → эх файлаар
+  }
+  const name = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const r = await fetchWithTimeout(`${SUPABASE_URL}/storage/v1/object/${PRODUCT_IMAGE_BUCKET}/${name}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'Cache-Control': 'max-age=31536000',
+    },
+    body: blob,
+  }, 60000);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 120));
+  return `${SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${name}`;
+}
+
 async function saveProduct(product) {
   const url = state.config.productsUrl;
   const idx = state.products.findIndex(p => p.id === product.id);
@@ -6576,7 +6606,14 @@ function newProductFormHtml() {
       <label>Үнэ<input id="pnf-price" type="number" value="0"></label>
       <label>Барьцаа<input id="pnf-deposit" type="number" value="0"></label>
       <label>Нөөц<input id="pnf-stock" type="number" value="1"></label>
-      <label class="pnf-wide">Зургийн URL<input id="pnf-photo" placeholder="https://..."></label>
+      <label class="pnf-wide">Зураг
+        <div class="pnf-photo-row">
+          <input id="pnf-photo" placeholder="https://... эсвэл зураг оруул →">
+          <label class="btn pnf-upbtn" for="pnf-photo-file">📷 Зураг оруулах</label>
+          <input type="file" id="pnf-photo-file" accept="image/*" hidden>
+        </div>
+        <div id="pnf-photo-preview" class="pnf-photo-preview"></div>
+      </label>
       <label class="pnf-wide">Тайлбар<input id="pnf-desc" placeholder="Тайлбар"></label>
     </div>
     <div class="pnf-actions">
@@ -6624,6 +6661,20 @@ function attachProductsHandlers() {
     if (wrap.innerHTML.trim()) { wrap.innerHTML = ''; return; }
     wrap.innerHTML = newProductFormHtml();
     wrap.querySelector('#pnf-cancel').onclick = () => { wrap.innerHTML = ''; };
+    // Зураг сонгоход Supabase-д шууд upload → URL талбарт оруулна.
+    const fileInput = wrap.querySelector('#pnf-photo-file');
+    if (fileInput) fileInput.onchange = async () => {
+      const f = fileInput.files && fileInput.files[0]; if (!f) return;
+      const prev = wrap.querySelector('#pnf-photo-preview');
+      if (prev) prev.innerHTML = '<span class="pnf-up-busy">⏳ Хуулж байна…</span>';
+      try {
+        const url = await uploadProductImage(f);
+        wrap.querySelector('#pnf-photo').value = url;
+        if (prev) prev.innerHTML = `<img src="${escapeHtml(url)}" alt=""><span class="pnf-up-ok">✓ Орлоо</span>`;
+      } catch (e) {
+        if (prev) prev.innerHTML = `<span class="pnf-up-err">⚠ ${escapeHtml(e.message)}</span>`;
+      }
+    };
     wrap.querySelector('#pnf-save').onclick = (e) => {
       const g = id => (wrap.querySelector('#' + id)?.value || '').trim();
       const name = g('pnf-name');

@@ -3270,6 +3270,20 @@ function encodePaymentNote(note, pay) {
   const tok = `⟦PAY|${Math.round(pay.amount)}|${pay.type || 'full'}|${pay.method || 'data'}|${pay.date || ''}|${ref}⟧`;
   return base ? base + ' ' + tok : tok;
 }
+// Буцаалтын эвдрэл/гээгдэл — барьцаанаас хасах дүн + тэмдэглэл (note-д ⟦DMG|дүн|тэмдэглэл⟧).
+function parseDamage(note) {
+  const m = String(note || '').match(/⟦DMG\|([^⟧]*)⟧/);
+  if (!m) return null;
+  const parts = m[1].split('|');
+  return { amount: Number(parts[0]) || 0, note: parts.slice(1).join('|') || '' };
+}
+function encodeDamageNote(note, dmg) {
+  const base = String(note || '').replace(/⟦DMG\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').trim();
+  if (!dmg || !dmg.amount) return base;
+  const dn = String(dmg.note || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tok = `⟦DMG|${Math.round(dmg.amount)}|${dn}⟧`;
+  return base ? base + ' ' + tok : tok;
+}
 
 async function loadOrders() {
   if (!canSeeOrders()) return;
@@ -3456,6 +3470,58 @@ async function submitOrderPayment(modal, o, editMode, btn) {
   showToast(editMode ? 'Төлбөр шинэчлэгдлээ' : `Төлбөр авсан · ${fmtMoney(amount)} · 3 даалгавар үүслээ`, 'success', 4000);
 }
 
+// Буцаалт ба барьцаа — захиалга дуусгахад (Буцаан ирсэн → Дууссан) эвдрэл/гээгдлийн дүн авч
+// барьцаанаас хасна. Дүн note-д ⟦DMG⟧-ээр хадгалагдаж картад харагдана.
+function openReturnModal(order_no) {
+  const o = state.orders.find(x => x.order_no === order_no);
+  if (!o) return;
+  const pr = computeOrderPricing(o);
+  const existing = parseDamage(o.note);
+  document.getElementById('mev-return-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'mev-return-modal';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:440px;">
+      <h2>Буцаалт ба барьцаа · ${escapeHtml(o.order_no)}</h2>
+      <div class="pay-summary">
+        <div><b>${escapeHtml(o.customer_name || '')}</b></div>
+        <div class="pay-breakdown">Авсан барьцаа: <b>${fmtMoney(pr.deposit)}</b></div>
+      </div>
+      <label>Эвдрэл/гээгдлийн дүн (₮) <span style="color:var(--muted);font-weight:400;">— барьцаанаас хасна</span></label>
+      <input id="rt-damage" type="number" min="0" value="${existing ? existing.amount : 0}">
+      <label style="margin-top:10px;">Тэмдэглэл (юу эвдэрсэн/дутсан)</label>
+      <textarea id="rt-note" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 кабель дутсан">${existing ? escapeHtml(existing.note) : ''}</textarea>
+      <div id="rt-return" class="rt-return"></div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn" id="rt-cancel">Болих</button>
+        <button class="btn btn-primary" id="rt-save">✓ Дуусгах</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const dmgEl = modal.querySelector('#rt-damage');
+  const retEl = modal.querySelector('#rt-return');
+  const upd = () => {
+    const d = Math.min(pr.deposit, Math.max(0, Number(dmgEl.value) || 0));
+    retEl.innerHTML = `Үйлчлүүлэгчид буцаах барьцаа: <b style="color:var(--ok)">${fmtMoney(pr.deposit - d)}</b>${d ? ` · эвдрэл хасав −${fmtMoney(d)}` : ''}`;
+  };
+  dmgEl.oninput = upd; upd();
+  const close = () => modal.remove();
+  modal.querySelector('#rt-cancel').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#rt-save').onclick = async (e) => {
+    const amount = Math.min(pr.deposit, Math.max(0, Number(dmgEl.value) || 0));
+    const note = modal.querySelector('#rt-note').value.trim();
+    e.currentTarget.disabled = true;
+    const newNote = encodeDamageNote(o.note, { amount, note });
+    modal.remove();
+    await updateOrderStatus(order_no, { status: 'Дууссан', note: newNote });
+    showToast(amount ? `Дууслаа · эвдрэл −${fmtMoney(amount)} · барьцаа буцаах ${fmtMoney(pr.deposit - amount)}` : 'Дууслаа · барьцаа бүтэн буцаана', 'success', 4500);
+  };
+  modal.classList.add('open');
+  setTimeout(() => dmgEl.focus(), 50);
+}
+
 function orderStatusClass(s) {
   return ({
     'Шинэ': 'os-new',
@@ -3475,6 +3541,7 @@ function orderStatusClass(s) {
 function cleanOrderNote(note) {
   return String(note || '')
     .replace(/⟦PAY\|[^⟧]*⟧/g, '')
+    .replace(/⟦DMG\|[^⟧]*⟧/g, '')
     .replace(/·?\s*\d+\s*хоногийн хямдрал[^·]*/g, '')
     .replace(/·?\s*НӨАТ хасав[^·]*/g, '')
     .replace(/·?\s*Хямдрал \(гар\):[^·]*/g, '')
@@ -3507,7 +3574,11 @@ function computeOrderPricing(o) {
   const manualDiscount = dm ? (parseInt(dm[1].replace(/\D/g, ''), 10) || 0) : 0;
   const deposit = Number(o.deposit) || 0;
   const total = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
-  return { days, rental, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, hasVat, deposit, total };
+  // Буцаалтын эвдрэл/гээгдэл → барьцаанаас хасаж буцаана.
+  const dmg = parseDamage(o.note);
+  const damage = dmg ? Math.min(deposit, Math.max(0, dmg.amount)) : 0;
+  const depositReturn = deposit - damage;
+  return { days, rental, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, hasVat, deposit, total, damage, depositReturn, damageNote: dmg ? dmg.note : '' };
 }
 
 /* ─── Захиалгын самбар — UI туслахууд ──────────────────────── */
@@ -3644,6 +3715,7 @@ function orderCardHtml(o, canManage, canConfirm) {
       ${pr.vatDiscount ? `<div class="order-meta">НӨАТ хасалт (−5%): −${fmtMoney(pr.vatDiscount)}</div>` : ''}
       ${pr.manualDiscount ? `<div class="order-meta">Нэмэлт хямдрал: −${fmtMoney(pr.manualDiscount)}</div>` : ''}
       <div class="order-meta">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</div>
+      ${pr.damage ? `<div class="order-meta order-dmg">⚠ Эвдрэл/гээгдэл: −${fmtMoney(pr.damage)}${pr.damageNote ? ' (' + escapeHtml(pr.damageNote) + ')' : ''} · Барьцаа буцаах: <b>${fmtMoney(pr.depositReturn)}</b></div>` : ''}
     </div>
     <div class="order-foot">${actions}</div>
   </div>`;
@@ -3980,6 +4052,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('button[data-order-advance]').forEach(btn => {
     btn.addEventListener('click', () => {
       const next = btn.dataset.next;
+      if (next === 'Дууссан') { openReturnModal(btn.dataset.orderAdvance); return; }   // буцаалт+барьцаа
       withBusy(btn, () => updateOrderStatus(btn.dataset.orderAdvance, { status: next }), { successText: next });
     });
   });

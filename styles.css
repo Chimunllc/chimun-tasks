@@ -5092,6 +5092,8 @@ body.role-daily #add-project { display: none !important; }
 .mo-avail.ok { color: var(--ok); }
 .mo-avail.bad { color: var(--danger); font-weight: 600; }
 .pay-shortage { font-size: 12px; color: var(--danger); font-weight: 500; background: var(--danger-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.4; }
+.order-dmg { color: var(--danger); }
+.rt-return { font-size: 13px; color: var(--text-soft); background: var(--panel-hover); border-radius: 8px; padding: 9px 12px; margin-top: 12px; }
 
 /* Банкны тулгалт */
 .recon-wrap { padding: 2px 2px 24px; }

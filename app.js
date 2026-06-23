@@ -6959,6 +6959,7 @@ function renderProducts() {
   return `
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
+      <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
     <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
@@ -7023,12 +7024,14 @@ function openProductModal(p) {
       <label class="pm-block">Тайлбар <span style="color:var(--muted);font-weight:400;">(сайтад харагдана)</span>
         <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
       </label>
+      ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span style="color:var(--muted);font-weight:400;">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
       <div class="modal-actions" style="margin-top:16px;">
         <button class="btn" id="pm-cancel">Болих</button>
         <button class="btn btn-primary" id="pm-save">${isEdit ? '💾 Хадгалах' : 'Нэмэх'}</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+  if (isEdit && p.sku) renderProductQR(modal.querySelector('#pm-qr'), p.sku);
   // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
   let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);
   modal._images = images;
@@ -7165,6 +7168,8 @@ function attachProductsHandlers() {
   });
   // Шинэ бараа → хоосон модал
   document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
+  // QR скан → бараа таних
+  document.getElementById('prod-scan')?.addEventListener('click', () => openScanner());
 }
 
 /* ─── CEO Dashboard ───────────────────────────────────────

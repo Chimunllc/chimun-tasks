@@ -3633,6 +3633,133 @@ function renderOrdersBoard(list) {
   return `<div class="oboard">${cols}</div>`;
 }
 
+/* ─── Банкны тулгалт (Голомт дансны хуулга ↔ бүртгэсэн төлбөр) ───
+   .xlsx/.csv хуулга оруулж, нягтлан бүртгэсэн төлбөрийн утга+дүн+огноогоор тулгана.
+   Голомт формат: толгойн мөр = "Гүйлгээний огноо | утга | Харьцсан дансны нэр | данс | Ханш | Орлого | Зарлага".
+   Тулгалтад Орлого (ирсэн төлбөр) мөрүүд л хамаатай. AI-гүй, frontend дангаар. */
+let _xlsxPromise = null;
+function loadSheetJS() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (_xlsxPromise) return _xlsxPromise;
+  _xlsxPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = () => { _xlsxPromise = null; reject(new Error('Excel уншигч ачаалж чадсангүй (интернэт шалгана уу)')); };
+    document.head.appendChild(s);
+  });
+  return _xlsxPromise;
+}
+// CSV-г 2D массив болгоно (хашилттай талбар, таб/таслал/цэг таслал автомат).
+function csvToMatrix(text) {
+  const t = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const first = t.split('\n')[0] || '';
+  const delim = first.indexOf('\t') >= 0 ? '\t' : (first.split(';').length > first.split(',').length ? ';' : ',');
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (q) { if (ch === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur.length || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+async function statementFileToMatrix(file) {
+  const name = (file.name || '').toLowerCase();
+  if (name.endsWith('.csv') || file.type === 'text/csv') return csvToMatrix(await file.text());
+  const XLSX = await loadSheetJS();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+}
+
+// Хуулгын 2D массиваас гүйлгээний мөр гаргана — толгойн мөрийг автоматаар олж баганыг нэрээр ононо.
+function parseStatement(matrix) {
+  if (!Array.isArray(matrix) || !matrix.length) return { rows: [], headerRow: -1, cols: {} };
+  let hr = -1, cols = {};
+  for (let i = 0; i < Math.min(matrix.length, 20); i++) {
+    const cells = (matrix[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
+    const find = (re) => cells.findIndex(c => re.test(c));
+    const dIdx = find(/огноо|date/);
+    const inIdx = find(/^орлого|кредит|credit/);
+    const memIdx = find(/утга|тайлбар|description|narrat/);
+    if (dIdx >= 0 && (inIdx >= 0 || memIdx >= 0)) {
+      cols = { date: dIdx, memo: memIdx, name: find(/нэр|харьцагч/),
+        account: cells.findIndex(c => /харьцсан данс|данс|iban|account/.test(c) && !/нэр/.test(c)),
+        credit: inIdx, debit: find(/^зарлага|дебит|debit/) };
+      hr = i; break;
+    }
+  }
+  if (hr < 0) return { rows: [], headerRow: -1, cols };
+  const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
+  const cell = (r, idx) => (idx >= 0 ? String(r[idx] == null ? '' : r[idx]).trim() : '');
+  const rows = [];
+  for (let i = hr + 1; i < matrix.length; i++) {
+    const r = matrix[i] || [];
+    const dm = cell(r, cols.date).match(/(\d{4})[-.\/](\d{2})[-.\/](\d{2})/);
+    if (!dm) continue;   // огноогүй мөр (footer "Нийт орлого" г.м.) → алгасна
+    rows.push({ date: `${dm[1]}-${dm[2]}-${dm[3]}`, memo: cell(r, cols.memo), name: cell(r, cols.name),
+      account: cell(r, cols.account), credit: cols.credit >= 0 ? num(r[cols.credit]) : 0, debit: cols.debit >= 0 ? num(r[cols.debit]) : 0 });
+  }
+  return { rows, headerRow: hr, cols };
+}
+
+// Ирсэн (Орлого) мөрүүдийг бүртгэсэн төлбөртэй тулгана → 4 хуваарь.
+function reconcileOrders(stmtRows, orders, opts) {
+  const tol = (opts && opts.amountTol) || 0;
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const credits = stmtRows.filter(r => r.credit > 0).map(r => ({ ...r, used: false }));
+  const paidOrders = (orders || []).filter(o => Number(o.paid_amount) > 0);
+  const matched = [], mismatch = [], missing = [];
+  for (const o of paidOrders) {
+    const ref = norm(o.paid_ref), cust = norm(o.customer_name);
+    let best = null, bestScore = -1;
+    for (const c of credits) {
+      if (c.used) continue;
+      const m = norm(c.memo), nm = norm(c.name);
+      let s = 0;
+      if (ref && (m === ref || m.includes(ref) || ref.includes(m))) s += 3;
+      if (cust && (nm.includes(cust) || cust.includes(nm) || m.includes(cust))) s += 2;
+      if (Math.abs(c.credit - o.paid_amount) <= tol) s += 2;
+      if (o.paid_date && c.date === String(o.paid_date).slice(0, 10)) s += 1;
+      if (s > bestScore) { bestScore = s; best = c; }
+    }
+    if (best && bestScore >= 3) {
+      best.used = true;
+      (Math.abs(best.credit - o.paid_amount) <= tol ? matched : mismatch).push({ order: o, row: best });
+    } else missing.push({ order: o });
+  }
+  return { matched, mismatch, missing, untracked: credits.filter(c => !c.used), incomeCount: credits.length };
+}
+
+function renderReconcilePanel() {
+  const res = state._reconResult;
+  let resultHtml = '';
+  if (res) {
+    const sec = (title, cls, items, fn) => `<div class="recon-sec ${cls}">
+      <div class="recon-sec-h">${title} <span class="recon-n">${items.length}</span></div>
+      ${items.length ? `<div class="recon-rows">${items.map(fn).join('')}</div>` : '<div class="recon-empty">—</div>'}
+    </div>`;
+    resultHtml = `<div class="recon-summary">${escapeHtml(res._fileName || '')} · Хуулгын ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ</div>
+      ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
+      ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.row.credit)}</span></div>`)}
+      ${sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
+      ${sec('💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}`;
+  }
+  return `<div class="recon-wrap">
+    <div class="recon-intro">Голомтын дансны хуулгыг (.xlsx) оруулбал бүртгэсэн төлбөртэй автоматаар тулгана. Утга банкнаас яг хуулагдсан тул шууд таарна.</div>
+    <div class="recon-upload">
+      <label class="btn btn-primary" for="recon-file" style="cursor:pointer;">📂 Хуулга оруулах (.xlsx / .csv)</label>
+      <input type="file" id="recon-file" accept=".xlsx,.xls,.csv" style="display:none;" />
+      <span id="recon-status" class="recon-status"></span>
+    </div>
+    ${resultHtml}
+  </div>`;
+}
+
 function renderOrders() {
   const canManage = canManageOrders();   // менежер — бүгдийг хараад бүрэн хяналт. Бусад — зөвхөн өөрийн шат.
   const all = state.orders || [];
@@ -3654,9 +3781,14 @@ function renderOrders() {
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
   const head = `<div class="orders-head">
-    <div class="orders-title">Захиалга</div>
-    <button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>
+    <div class="orders-title">${state.ordersRecon ? 'Банкны тулгалт' : 'Захиалга'}</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn${state.ordersRecon ? ' btn-primary' : ''}" id="orders-recon-toggle">${state.ordersRecon ? '← Захиалга' : '📊 Тулгалт'}</button>
+      ${state.ordersRecon ? '' : '<button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>'}
+    </div>
   </div>`;
+
+  if (state.ordersRecon) return head + renderReconcilePanel();
 
   if (!all.length) {
     if (state._initialLoading) return head + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
@@ -3726,6 +3858,26 @@ function _closeOrderKebabs(e) {
 
 function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
+
+  // Банкны тулгалт — горим солих, хуулга оруулах, зөрүүтэй мөрөөс захиалга нээх
+  document.getElementById('orders-recon-toggle')?.addEventListener('click', () => { state.ordersRecon = !state.ordersRecon; render(); });
+  const reconFile = document.getElementById('recon-file');
+  if (reconFile) reconFile.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    const status = document.getElementById('recon-status');
+    if (status) status.textContent = 'Уншиж байна…';
+    try {
+      const matrix = await statementFileToMatrix(file);
+      const parsed = parseStatement(matrix);
+      if (parsed.headerRow < 0) { if (status) status.textContent = 'Хуулгын багана танигдсангүй — Голомтын Excel мөн эсэхийг шалгана уу.'; return; }
+      state._reconResult = reconcileOrders(parsed.rows, state.orders || []);
+      state._reconResult._fileName = file.name;
+      render();
+    } catch (err) { if (status) status.textContent = 'Алдаа: ' + err.message; }
+  });
+  document.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
+    state.ordersRecon = false; state.ordersView = 'list'; state.ordersSearch = el.dataset.reconOpen; render();
+  }));
 
   // Шүүлтүүр таб + анхаарлын чип → state.ordersFilter
   document.querySelectorAll('[data-ofilter]').forEach(el => {

@@ -4055,10 +4055,21 @@ function mountCalendar(displayEl, hiddenEl, popEl, onChange, initial) {
    тооцоод нөөцтэй харьцуулна. Эзэлдэг статус: Шинэ→Хүргэсэн. Буцаан ирсэн/
    Дууссан/Цуцалсан = чөлөөтэй (бараа агуулахад буцсан). */
 function _normProdName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+function productBySku(sku) { return (state.products || []).find(p => p.sku === sku); }
+function productByName(name) { const n = _normProdName(name); return (state.products || []).find(p => _normProdName(p.name) === n); }
+function isPackage(p) { return !!(p && p.type === 'package'); }
+function packageComponents(p) { return (p && Array.isArray(p.bundle_items)) ? p.bundle_items.filter(c => c && c.sku) : []; }
+// Багцын одоогийн нөөц = бүрэлдэхүүн бүрийн (нөөц ÷ тоо)-ны минимум.
+function packageStock(p) {
+  const cs = packageComponents(p); if (!cs.length) return 0;
+  let m = Infinity;
+  for (const c of cs) { const cp = productBySku(c.sku); if (!cp) return 0; m = Math.min(m, Math.floor((Number(cp.stock) || 0) / Math.max(1, Number(c.qty) || 1))); }
+  return isFinite(m) ? m : 0;
+}
 function productStockByName(name) {
-  const n = _normProdName(name);
-  const p = (state.products || []).find(x => _normProdName(x.name) === n);
-  return p ? (Number(p.stock) || 0) : null;   // null = каталогт алга
+  const p = productByName(name);
+  if (!p) return null;   // каталогт алга
+  return isPackage(p) ? packageStock(p) : (Number(p.stock) || 0);
 }
 const _ORDER_OCCUPYING = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн'];
 function bookedQtyForRange(name, start, end, excludeOrderNo) {
@@ -4071,13 +4082,36 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
     if (!_ORDER_OCCUPYING.includes(o.status)) continue;
     const os = String(o.date_start || '').slice(0, 10), oe = String(o.date_end || '').slice(0, 10);
     if (!os || !oe) continue;
-    if (s <= oe && os <= e) {   // огнооны давхцал
-      for (const it of (o.items || [])) if (_normProdName(it.name) === n) total += Number(it.qty) || 0;
+    if (!(s <= oe && os <= e)) continue;   // огнооны давхцал
+    for (const it of (o.items || [])) {
+      const q = Number(it.qty) || 0;
+      if (_normProdName(it.name) === n) { total += q; continue; }   // шууд таарах
+      const prod = productByName(it.name);   // багц байвал бүрэлдэхүүн рүү задлана
+      if (prod && isPackage(prod)) {
+        for (const c of packageComponents(prod)) {
+          const cp = productBySku(c.sku);
+          if (cp && _normProdName(cp.name) === n) total += q * (Number(c.qty) || 0);
+        }
+      }
     }
   }
   return total;
 }
 function availabilityFor(name, start, end, excludeOrderNo) {
+  const p = productByName(name);
+  if (p && isPackage(p)) {   // багц = бүрэлдэхүүн бүрийн (сул ÷ тоо)-ны минимум
+    let minAvail = Infinity, minStock = Infinity;
+    for (const c of packageComponents(p)) {
+      const cp = productBySku(c.sku); if (!cp) return { stock: 0, booked: 0, avail: 0, isPackage: true };
+      const cq = Math.max(1, Number(c.qty) || 1);
+      const ca = availabilityFor(cp.name, start, end, excludeOrderNo);
+      if (!ca) continue;
+      minAvail = Math.min(minAvail, Math.floor(ca.avail / cq));
+      minStock = Math.min(minStock, Math.floor(ca.stock / cq));
+    }
+    if (!isFinite(minAvail)) return null;
+    return { stock: isFinite(minStock) ? minStock : 0, booked: (isFinite(minStock) ? minStock : 0) - minAvail, avail: minAvail, isPackage: true };
+  }
   const stock = productStockByName(name);
   if (stock === null) return null;
   const booked = bookedQtyForRange(name, start, end, excludeOrderNo);
@@ -4500,6 +4534,7 @@ async function saveProduct(product) {
     stock: Number(product.stock) || 0, photo: product.photo || '', description: product.description || '',
   };
   if (Array.isArray(product.photos)) row.photos = product.photos;
+  if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
@@ -4544,14 +4579,18 @@ function productRowHtml(p) {
     ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
     : '<div class="ph">📦</div>';
   const rentable = isRentable(p);
+  const pkg = isPackage(p);
   const u = productUtilization(p.name);
   const cost = (state.productCosts || {})[p.sku] || 0;
+  const stock = pkg ? packageStock(p) : (Number(p.stock) || 0);
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
   const stats = [];
+  if (pkg) stats.push(`<span class="prod-pkg">📦 ${packageComponents(p).length} бараа</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
+  const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : `<span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>`;
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
   return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
@@ -4561,8 +4600,8 @@ function productRowHtml(p) {
     </div>
     <div class="prod-badges">
       <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
-      <span class="prod-stock-b">Нөөц ${Number(p.stock) || 0}</span>
-      <span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>
+      <span class="prod-stock-b">Нөөц ${stock}</span>
+      ${typeBadge}
     </div>
     <span class="prod-chev">›</span>
   </div>`;
@@ -6799,6 +6838,16 @@ function openProductModal(p) {
         <input type="checkbox" id="pm-rentable" ${rentable ? 'checked' : ''}>
         <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
       </label>
+      <label class="pm-rentable">
+        <input type="checkbox" id="pm-ispackage" ${isPackage(p) ? 'checked' : ''}>
+        <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
+      </label>
+      <div id="pm-bundle" class="pm-bundle"${isPackage(p) ? '' : ' hidden'}>
+        <div id="pm-bundle-list"></div>
+        <button type="button" class="btn pm-bundle-add" id="pm-bundle-add">+ Бараа нэмэх</button>
+        <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
+        <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
+      </div>
       <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
         <div id="pm-gallery" class="pm-gallery"></div>
         <div class="pm-gallery-actions">
@@ -6842,6 +6891,39 @@ function openProductModal(p) {
     }
     fileInput.value = '';
   };
+  // Багц бараа — бүрэлдэхүүний жагсаалт ({sku,qty}). modal._bundle-д хадгална.
+  let bundle = (p && Array.isArray(p.bundle_items)) ? p.bundle_items.filter(c => c && c.sku).map(c => ({ sku: c.sku, qty: Number(c.qty) || 1 })) : [];
+  modal._bundle = bundle;
+  const bundleList = modal.querySelector('#pm-bundle-list');
+  const bundleSum = modal.querySelector('#pm-bundle-sum');
+  function bundleSumText() {
+    let sum = 0; bundle.forEach(c => { const cp = productBySku(c.sku); if (cp) sum += (Number(cp.price) || 0) * (Number(c.qty) || 1); });
+    bundleSum.textContent = bundle.length ? `Бүрэлдэхүүний нийт үнэ: ${fmtMoney(sum)} · Багцын нөөц: ${packageStock({ bundle_items: bundle })}` : '';
+  }
+  function renderBundle() {
+    bundleList.innerHTML = bundle.length ? bundle.map((c, i) => {
+      const cp = productBySku(c.sku);
+      return `<div class="pm-bi-row" data-bi="${i}">
+        <input class="pm-bi-name" list="pm-prod-list" value="${escapeHtml(cp ? cp.name : '')}" placeholder="Бараа сонгох">
+        <input class="pm-bi-qty" type="number" min="1" value="${c.qty || 1}" title="Тоо">
+        <button type="button" class="pm-bi-rm" data-birm="${i}" title="Хасах">×</button>
+      </div>`;
+    }).join('') : '<div class="pm-bundle-empty">Бараа нэмнэ үү</div>';
+    bundleSumText();
+  }
+  renderBundle();
+  modal.querySelector('#pm-ispackage').onchange = (e) => { modal.querySelector('#pm-bundle').hidden = !e.target.checked; };
+  modal.querySelector('#pm-bundle-add').onclick = () => { bundle.push({ sku: '', qty: 1 }); renderBundle(); };
+  bundleList.addEventListener('input', (e) => {
+    const row = e.target.closest('.pm-bi-row'); if (!row) return; const i = +row.dataset.bi;
+    if (e.target.classList.contains('pm-bi-name')) { const prod = productByName(e.target.value); bundle[i].sku = prod ? prod.sku : ''; }
+    else if (e.target.classList.contains('pm-bi-qty')) { bundle[i].qty = Math.max(1, Number(e.target.value) || 1); }
+    bundleSumText();
+  });
+  bundleList.addEventListener('click', (e) => {
+    const rm = e.target.closest('[data-birm]'); if (!rm) return;
+    bundle.splice(+rm.dataset.birm, 1); renderBundle();
+  });
   const close = () => modal.remove();
   modal.querySelector('#pm-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
@@ -6856,13 +6938,17 @@ async function submitProductModal(modal, orig, btn) {
   if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
   const cat = g('pm-cat'), sku = g('pm-sku');
   const images = (modal._images || []).filter(Boolean);
+  const isPkg = !!modal.querySelector('#pm-ispackage')?.checked;
+  const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku) : [];
+  if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
   const base = {
     name, category: cat, sku,
     price: Number(g('pm-price')) || 0, deposit: Number(g('pm-deposit')) || 0,
-    stock: Number(g('pm-stock')) || 0,
+    stock: isPkg ? packageStock({ bundle_items: bundle }) : (Number(g('pm-stock')) || 0),
     photos: images, photo: images[0] || '',   // эхний зураг = нүүр
     description: modal.querySelector('#pm-desc').value,
-    type: modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset',
+    type: isPkg ? 'package' : (modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset'),
+    bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
   };
   const product = orig ? { ...orig, ...base } : base;

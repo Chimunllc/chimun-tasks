@@ -7439,7 +7439,7 @@ function renderBooqable() {
   </div>`;
 
   // Таб сонгогч
-  const tabs = [['revenue', '💰 Орлого'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
+  const tabs = [['revenue', '💰 Орлого'], ['branch', '🏢 Салбар'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
   const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-bq-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
 
@@ -7534,6 +7534,44 @@ function renderBooqable() {
         </div>`;
       }).join('') : '<span style="color:var(--muted);">дата алга</span>'),
       'Бараа-өдөр = хуваарийн (planning) хугацаа × тоо ширхэг. Хамгийн их эргэлттэй хөрөнгийг харуулна.');
+
+  } else if (tab === 'branch') {
+    // Компанийн орлого 2 салбараар (ТУСДАА — давхар тоолохгүй): Эвент(Booqable) + Кемп(NOMAAD)
+    const ev = {};                                   // Эвент сараар (Booqable цэвэр орлого)
+    (bq.monthly || []).forEach(x => { ev[x.month] = N(x.net_mnt); });
+    const cm = {};                                   // Кемп сараар (NOMAAD бүртгэсэн орлого)
+    const cancelled = (typeof nomaadIsCancelled === 'function') ? nomaadIsCancelled : () => false;
+    (state.nomaadOrders || []).forEach(o => {
+      if (cancelled(o)) return;
+      const a = Number(o.income_amount) || 0, mo = String(o.income_date || '').slice(0, 7);
+      if (a > 0 && mo) cm[mo] = (cm[mo] || 0) + a;
+    });
+    const evTot = Object.values(ev).reduce((a, b) => a + b, 0);
+    const cmTot = Object.values(cm).reduce((a, b) => a + b, 0);
+    const campHas = Object.keys(cm).length > 0;
+    const branchKpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;">
+      ${kpi('🎪 Эвент салбар (Booqable)', fmtMoney(evTot), 'var(--ok)', 'цэвэр орлого · 2024–2026')}
+      ${kpi('🏕 Кемп салбар (NOMAAD)', campHas ? fmtMoney(cmTot) : '—', 'var(--primary)', campHas ? 'бүртгэсэн орлого' : 'дата ачаалаагүй')}
+    </div>`;
+    // Сүүлийн 12 сар — хоёр салбарын багана зэрэгцүүлэв
+    const allMonths = Array.from(new Set([...Object.keys(ev), ...Object.keys(cm)])).sort();
+    const recent = allMonths.slice(-12);
+    const maxV = Math.max(1, ...recent.map(m => Math.max(ev[m] || 0, cm[m] || 0)));
+    const bars = recent.map(m => {
+      const e = ev[m] || 0, c = cm[m] || 0;
+      const eh = Math.max(2, Math.round(e / maxV * 118)), ch = Math.max(2, Math.round(c / maxV * 118));
+      return `<div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;width:48px;" title="${m}: Эвент ${fmtMoney(e)} · Кемп ${fmtMoney(c)}">
+        <div style="display:flex;align-items:flex-end;gap:2px;height:122px;">
+          <div style="width:15px;height:${eh}px;background:var(--ok);border-radius:3px 3px 0 0;"></div>
+          <div style="width:15px;height:${ch}px;background:var(--primary);border-radius:3px 3px 0 0;"></div>
+        </div>
+        <div style="font-size:8.5px;color:var(--muted);">${m.slice(2)}</div>
+      </div>`;
+    }).join('');
+    body = branchKpis + card('Орлого — салбараар (сүүлийн 12 сар, сая₮)',
+      `<div style="display:flex;gap:16px;font-size:11px;margin-bottom:8px;"><span style="color:var(--ok);font-weight:600;">■ Эвент</span><span style="color:var(--primary);font-weight:600;">■ Кемп</span></div>
+       <div style="display:flex;align-items:flex-end;gap:6px;height:148px;overflow-x:auto;padding:2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
+      'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй (M-Event/Booqable нэг эвентийн салбар, NOMAAD кемп тусдаа). Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
   }
 
   return `<div style="padding:4px;">${head(tabBar)}${body}</div>`;

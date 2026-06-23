@@ -4413,6 +4413,9 @@ function productRowHtml(p) {
     <label class="prod-fld">Барьцаа<input type="number" data-f="deposit" value="${Number(p.deposit) || 0}"></label>
     <label class="prod-fld sm">Нөөц<input type="number" data-f="stock" value="${Number(p.stock) || 0}"></label>
     <button class="btn prod-save" data-id="${escapeHtml(p.id)}">Хадгалах</button>
+    <label class="prod-desc-fld">Тайлбар <span class="prod-desc-hint">(сайтад харагдана)</span>
+      <textarea data-f="description" rows="2" placeholder="Сайтад харагдах барааны тайлбар...">${escapeHtml(p.description || '')}</textarea>
+    </label>
   </div>`;
 }
 
@@ -6675,6 +6678,7 @@ function attachProductsHandlers() {
         deposit: Number(get('deposit').value) || 0,
         stock: Number(get('stock').value) || 0,
         type: get('rentable')?.checked ? 'rental' : 'asset',   // түрээсийн эсвэл хөрөнгө
+        description: get('description') ? get('description').value : orig.description,
       };
       withBusy(btn, () => saveProduct(product), { successText: 'Хадгалсан' });
     };

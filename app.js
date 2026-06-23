@@ -4072,17 +4072,19 @@ function productBySku(sku) { return (state.products || []).find(p => p.sku === s
 function productByName(name) { const n = _normProdName(name); return (state.products || []).find(p => _normProdName(p.name) === n); }
 function isPackage(p) { return !!(p && p.type === 'package'); }
 function packageComponents(p) { return (p && Array.isArray(p.bundle_items)) ? p.bundle_items.filter(c => c && c.sku) : []; }
-// Багцын одоогийн нөөц = бүрэлдэхүүн бүрийн (нөөц ÷ тоо)-ны минимум.
+// Бүтэн нөөц = нийт нөөц − эвдэрсэн − засварт (зөвхөн бүтэн нэгж түрээслэгдэнэ).
+function workingStock(p) { return Math.max(0, (Number(p && p.stock) || 0) - (Number(p && p.broken) || 0) - (Number(p && p.maintenance) || 0)); }
+// Багцын одоогийн нөөц = бүрэлдэхүүн бүрийн (бүтэн нөөц ÷ тоо)-ны минимум.
 function packageStock(p) {
   const cs = packageComponents(p); if (!cs.length) return 0;
   let m = Infinity;
-  for (const c of cs) { const cp = productBySku(c.sku); if (!cp) return 0; m = Math.min(m, Math.floor((Number(cp.stock) || 0) / Math.max(1, Number(c.qty) || 1))); }
+  for (const c of cs) { const cp = productBySku(c.sku); if (!cp) return 0; m = Math.min(m, Math.floor(workingStock(cp) / Math.max(1, Number(c.qty) || 1))); }
   return isFinite(m) ? m : 0;
 }
 function productStockByName(name) {
   const p = productByName(name);
   if (!p) return null;   // каталогт алга
-  return isPackage(p) ? packageStock(p) : (Number(p.stock) || 0);
+  return isPackage(p) ? packageStock(p) : workingStock(p);
 }
 const _ORDER_OCCUPYING = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн'];
 function bookedQtyForRange(name, start, end, excludeOrderNo) {
@@ -4546,6 +4548,7 @@ async function saveProduct(product) {
     all_categories: Array.isArray(product.all_categories) ? product.all_categories : (product.category ? [product.category] : []),
     type: product.type || 'rental', price: Number(product.price) || 0, deposit: Number(product.deposit) || 0,
     stock: Number(product.stock) || 0, photo: product.photo || '', description: product.description || '',
+    broken: Number(product.broken) || 0, maintenance: Number(product.maintenance) || 0,
   };
   if (Array.isArray(product.photos)) row.photos = product.photos;
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
@@ -4596,12 +4599,15 @@ function productRowHtml(p) {
   const pkg = isPackage(p);
   const u = productUtilization(p.name);
   const cost = (state.productCosts || {})[p.sku] || 0;
-  const stock = pkg ? packageStock(p) : (Number(p.stock) || 0);
+  const totalStock = pkg ? packageStock(p) : (Number(p.stock) || 0);
+  const stock = pkg ? totalStock : workingStock(p);   // түрээслэх боломжтой (бүтэн)
+  const broken = Number(p.broken) || 0, maint = Number(p.maintenance) || 0;
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
   const stats = [];
   if (pkg) stats.push(`<span class="prod-pkg">📦 ${packageComponents(p).length} бараа</span>`);
+  if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : `<span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>`;
@@ -4614,7 +4620,7 @@ function productRowHtml(p) {
     </div>
     <div class="prod-badges">
       <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
-      <span class="prod-stock-b">Нөөц ${stock}</span>
+      <span class="prod-stock-b${(!pkg && totalStock !== stock) ? ' part' : ''}">Нөөц ${stock}${(!pkg && totalStock !== stock) ? `/${totalStock}` : ''}</span>
       ${typeBadge}
     </div>
     <span class="prod-chev">›</span>
@@ -6845,9 +6851,12 @@ function openProductModal(p) {
         <label>SKU<input id="pm-sku" value="${v('sku')}" placeholder="SKU код"></label>
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="number" value="${Number(p && p.price) || 0}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="number" value="${Number(p && p.deposit) || 0}"></label>
-        <label>Нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
+        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
         <label>Нэгж өртөг (₮)<input id="pm-cost" type="number" value="${cost || 0}"></label>
+        <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
+        <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
       </div>
+      <div class="pm-working" id="pm-working"></div>
       <label class="pm-rentable">
         <input type="checkbox" id="pm-rentable" ${rentable ? 'checked' : ''}>
         <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
@@ -6938,6 +6947,16 @@ function openProductModal(p) {
     const rm = e.target.closest('[data-birm]'); if (!rm) return;
     bundle.splice(+rm.dataset.birm, 1); renderBundle();
   });
+  // Бүтэн нөөц (түрээслэх боломжтой) — нийт − эвдэрсэн − засварт, шууд шинэчлэгдэнэ.
+  const workingEl = modal.querySelector('#pm-working');
+  function updateWorking() {
+    const st = Number(modal.querySelector('#pm-stock').value) || 0;
+    const br = Number(modal.querySelector('#pm-broken').value) || 0;
+    const mn = Number(modal.querySelector('#pm-maintenance').value) || 0;
+    workingEl.innerHTML = (br || mn) ? `✅ Түрээслэх боломжтой: <b>${Math.max(0, st - br - mn)}</b> ширхэг${br ? ` · <span style="color:var(--danger)">⚠ ${br} эвдэрсэн</span>` : ''}${mn ? ` · <span style="color:var(--warn)">🔧 ${mn} засварт</span>` : ''}` : '';
+  }
+  ['pm-stock', 'pm-broken', 'pm-maintenance'].forEach(id => modal.querySelector('#' + id)?.addEventListener('input', updateWorking));
+  updateWorking();
   const close = () => modal.remove();
   modal.querySelector('#pm-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
@@ -6959,6 +6978,8 @@ async function submitProductModal(modal, orig, btn) {
     name, category: cat, sku,
     price: Number(g('pm-price')) || 0, deposit: Number(g('pm-deposit')) || 0,
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (Number(g('pm-stock')) || 0),
+    broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
+    maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
     photos: images, photo: images[0] || '',   // эхний зураг = нүүр
     description: modal.querySelector('#pm-desc').value,
     type: isPkg ? 'package' : (modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset'),

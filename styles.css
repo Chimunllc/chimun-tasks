@@ -5377,6 +5377,10 @@ body.role-daily #add-project { display: none !important; }
 .pm-gallery-empty { font-size: 12px; color: var(--muted-soft); padding: 14px; border: 1px dashed var(--border-strong); border-radius: 8px; width: 100%; text-align: center; }
 .pm-gallery-actions { margin-top: 4px; }
 .prod-pkg { color: var(--info); font-weight: 500; }
+.prod-cond { color: var(--warn); font-weight: 500; }
+.prod-stock-b.part { background: var(--warn-soft); color: var(--warn); }
+.pm-working { font-size: 12px; color: var(--text-soft); background: var(--panel-hover); border-radius: 7px; padding: 7px 10px; margin: 8px 0 0; }
+.pm-working:empty { display: none; }
 .prod-type-b.pk { background: var(--info-soft); color: var(--info); }
 .pm-bundle { background: var(--panel-hover); border-radius: 8px; padding: 10px; margin: -4px 0 8px; }
 .pm-bundle[hidden] { display: none; }

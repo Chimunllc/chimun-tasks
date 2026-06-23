@@ -7220,13 +7220,14 @@ async function loadBooqable(force) {
     return r.json();
   };
   try {
-    const [summary, monthly, methods, products, customers, usage] = await Promise.all([
+    const [summary, monthly, methods, products, customers, usage, roi] = await Promise.all([
       get('bq_v_summary'),
       get('bq_v_monthly_revenue', '&order=month.asc'),
       get('bq_v_payment_method'),
       get('bq_v_revenue_by_product', '&order=revenue_mnt.desc.nullslast&limit=40'),
       get('bq_v_revenue_by_customer', '&order=revenue_mnt.desc.nullslast&limit=40'),
       get('bq_v_product_utilization', '&order=item_days_out.desc.nullslast&limit=40'),
+      get('bq_v_product_roi', '&order=revenue_mnt.desc.nullslast&limit=80').catch(() => []),  // view байхгүй бол хоосон (бусдыг эвдэхгүй)
     ]);
     state.booqable = {
       summary: summary[0] || null,
@@ -7235,6 +7236,7 @@ async function loadBooqable(force) {
       products: products || [],
       customers: customers || [],
       usage: usage || [],
+      roi: roi || [],
       loadedAt: Date.now(),
     };
   } catch (e) {
@@ -7254,6 +7256,73 @@ function bqBar(label, value, max, color, sub) {
     <div style="flex:0 0 42%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(String(label))}">${escapeHtml(String(label))}${sub ? `<span style="color:var(--muted);font-size:10.5px;"> · ${escapeHtml(String(sub))}</span>` : ''}</div>
     <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${color || 'var(--ok)'};border-radius:5px;"></div></div>
     <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(value)}</div>
+  </div>`;
+}
+
+// Автомат дүгнэлт — CEO "нэг хараад ойлгох" мөрүүд (тоо биш, шийдвэр)
+function bqInsights(bq) {
+  const N = x => Number(x) || 0;
+  const out = [];
+  const m = (bq.monthly || []).slice().sort((a, b) => String(a.month).localeCompare(String(b.month)));
+  const sumNet = arr => arr.reduce((s, x) => s + N(x.net_mnt), 0);
+  // Өсөлт: сүүлийн ДУУССАН сарыг өнгөрсөн оны мөн сартай (улирлын нөлөөгүй YoY).
+  // Боломжгүй бол сүүлийн 3 сарыг өмнөх 3 сартай.
+  const curMonth = (new Date()).toISOString().slice(0, 7);
+  const done = m.filter(x => String(x.month) < curMonth);   // дуусаагүй (өнөөгийн) сарыг хасна
+  const base = done.length ? done : m;
+  const last = base[base.length - 1];
+  if (last) {
+    const parts = String(last.month).split('-'), mo = parts[1];
+    const prev = base.find(x => x.month === (Number(parts[0]) - 1) + '-' + mo);
+    if (prev && N(prev.net_mnt) > 0) {
+      const g = Math.round((N(last.net_mnt) / N(prev.net_mnt) - 1) * 100);
+      out.push(`${g >= 0 ? '📈' : '📉'} ${Number(mo)}-р сар өнгөрсөн оны мөн үеэс <b>${g >= 0 ? '+' : ''}${g}%</b> (${fmtMoneyShort(N(last.net_mnt))} vs ${fmtMoneyShort(N(prev.net_mnt))})`);
+    } else if (base.length >= 6) {
+      const a = sumNet(base.slice(-3)), b = sumNet(base.slice(-6, -3));
+      if (b > 0) { const g = Math.round((a / b - 1) * 100); out.push(`${g >= 0 ? '📈' : '📉'} Сүүлийн 3 сар өмнөх 3 сараас <b>${g >= 0 ? '+' : ''}${g}%</b>`); }
+    }
+  }
+  // Барааны төвлөрөл
+  const prods = bq.products || [];
+  const ptot = prods.reduce((s, x) => s + N(x.revenue_mnt), 0);
+  if (ptot > 0 && prods.length >= 5) out.push(`🎯 Топ 5 бараа орлогын <b>${Math.round(prods.slice(0, 5).reduce((s, x) => s + N(x.revenue_mnt), 0) / ptot * 100)}%</b>-ийг бүрдүүлж байна`);
+  // Харилцагчийн төвлөрөл (эрсдэл)
+  const custs = bq.customers || [];
+  const ctot = custs.reduce((s, x) => s + N(x.revenue_mnt), 0);
+  if (ctot > 0 && custs.length >= 10) out.push(`👤 Топ 10 харилцагч орлогын <b>${Math.round(custs.slice(0, 10).reduce((s, x) => s + N(x.revenue_mnt), 0) / ctot * 100)}%</b> — нэгд хэт хамаарах эрсдэлийг хар`);
+  // Царцсан хөрөнгө (ROI<1) — ROI view байгаа бол
+  const roi = bq.roi || [];
+  const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1);
+  if (stuck.length) out.push(`⚠️ <b>${stuck.length}</b> бараа түрээсийн орлогоороо өртгөө нөхөөгүй (ROI&lt;1) — хасах/зарах боломжтой`);
+  // Оргил улирал
+  const seas = {};
+  m.forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
+  let bestMo = null, bestAvg = -1;
+  Object.entries(seas).forEach(([mo, arr]) => { const avg = arr.reduce((p, q) => p + q, 0) / arr.length; if (avg > bestAvg) { bestAvg = avg; bestMo = mo; } });
+  if (bestMo) out.push(`📅 Дунджаар <b>${Number(bestMo)}-р сар</b> хамгийн өндөр орлоготой — урьдчилан бэлдэх`);
+  return out;
+}
+
+// Улирлын хэв маяг — сарын дундаж (1–12), оргилыг тодруулна
+function bqSeasonChart(bq) {
+  const N = x => Number(x) || 0;
+  const seas = {};
+  (bq.monthly || []).forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
+  const arr = Array.from({ length: 12 }, (_, i) => { const mo = String(i + 1).padStart(2, '0'); const a = seas[mo] || []; return { n: i + 1, avg: a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0, yrs: a.length }; });
+  const max = Math.max(1, ...arr.map(x => x.avg));
+  const bars = arr.map(x => {
+    const h = Math.max(3, Math.round(x.avg / max * 110));
+    const peak = x.avg === max && max > 1;
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;" title="${x.n}-р сар: дундаж ${fmtMoney(x.avg)} (${x.yrs} жилийн)">
+      <div style="font-size:8px;color:var(--muted);">${x.avg > 0 ? (x.avg / 1e6).toFixed(0) : ''}</div>
+      <div style="width:72%;height:${h}px;background:${peak ? 'var(--ok)' : 'var(--muted-soft)'};border-radius:3px 3px 0 0;"></div>
+      <div style="font-size:9px;color:${peak ? 'var(--ok)' : 'var(--muted)'};font-weight:${peak ? 700 : 400};">${x.n}</div>
+    </div>`;
+  }).join('');
+  return `<div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:14px;margin-bottom:14px;">
+    <div style="font-weight:700;font-size:13px;">Улирлын хэв маяг (сарын дундаж, сая₮)</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">Аль сард дунджаар их орлоготойг харуулна — бараа/ажилтан/маркетингаа урьдчилан төлөвлөх</div>
+    <div style="display:flex;align-items:flex-end;gap:4px;height:150px;">${bars}</div>
   </div>`;
 }
 
@@ -7299,7 +7368,7 @@ function renderBooqable() {
   </div>`;
 
   // Таб сонгогч
-  const tabs = [['revenue', '💰 Орлого'], ['products', '📦 Бараа'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
+  const tabs = [['revenue', '💰 Орлого'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
   const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-bq-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
 
@@ -7330,15 +7399,46 @@ function renderBooqable() {
     const mLabel = { bank: 'Банк', cash: 'Бэлэн', card: 'Карт', other: 'Бусад' };
     const methodCard = card('Төлбөрийн хэлбэрээр',
       pm.map(x => bqBar(mLabel[x.method] || x.method, N(x.charges_mnt), maxPm, 'var(--primary)', `${N(x.charge_count)} гүйлгээ`)).join(''));
-    body = kpis + monthChart + methodCard;
+    // Автомат дүгнэлт (CEO нэг хараад ойлгох)
+    const ins = bqInsights(bq);
+    const insightsBanner = ins.length ? `<div style="border:1px solid var(--primary);background:var(--primary-soft);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+      <div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--primary-hover);">📌 Гол дүгнэлт</div>
+      ${ins.map(t => `<div style="font-size:12.5px;line-height:1.75;">${t}</div>`).join('')}
+    </div>` : '';
+    body = kpis + insightsBanner + monthChart + bqSeasonChart(bq) + methodCard;
 
   } else if (tab === 'products') {
-    const p = bq.products || [];
-    const maxRev = Math.max(1, ...p.map(x => N(x.revenue_mnt)));
-    body = kpis + card('Орлого төрүүлсэн топ бараа',
-      (p.length ? p.map(x => bqBar(x.product || '—', N(x.revenue_mnt), maxRev, 'var(--ok)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('')
-        : '<span style="color:var(--muted);">дата алга</span>'),
-      'Зөвхөн орлого авчирсан захиалгууд (draft/цуцлахыг хассан). "НӨАТ", "Хүргэлт" зэрэг нь бараа биш ч орлогын мөр.');
+    const roi = bq.roi || [];
+    if (roi.length) {
+      const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
+      const roiRow = (x) => {
+        const rev = N(x.revenue_mnt), cost = N(x.unit_cost_mnt), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
+        const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
+        const badge = cost <= 0 ? `<span style="color:var(--muted);">өртөг ?</span>`
+          : `<span style="color:${rx >= 3 ? 'var(--ok)' : rx >= 1 ? 'var(--warn)' : 'var(--danger)'};font-weight:700;">ROI ${rx}×</span>`;
+        return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;">
+          <div style="flex:0 0 40%;min-width:0;">
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}</div>
+            <div style="font-size:10px;color:var(--muted);">${badge} · өртөг ${fmtMoneyShort(cost)} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
+          </div>
+          <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:5px;"></div></div>
+          <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>
+        </div>`;
+      };
+      const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
+      body = kpis
+        + card('Орлого × ROI — бараа бүр', roi.map(roiRow).join(''),
+            'ROI× = нийт түрээсийн орлого ÷ нэгж өртөг (өртгөө хэдэн дахин нөхсөн). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
+        + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
+            stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '');
+    } else {
+      const p = bq.products || [];
+      const maxRev = Math.max(1, ...p.map(x => N(x.revenue_mnt)));
+      body = kpis + card('Орлого төрүүлсэн топ бараа',
+        (p.length ? p.map(x => bqBar(x.product || '—', N(x.revenue_mnt), maxRev, 'var(--ok)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('')
+          : '<span style="color:var(--muted);">дата алга</span>'),
+        'ROI/өртөг харахын тулд bq_v_product_roi view-г Supabase-д нэмнэ үү (доорх SQL).');
+    }
 
   } else if (tab === 'customers') {
     const c = bq.customers || [];

@@ -3228,6 +3228,7 @@ function normalizeOrder(o) {
     paid_type: o.paid_type || (pay ? pay.type : ''),
     paid_method: o.paid_method || (pay ? pay.method : ''),
     paid_date: o.paid_date || (pay ? pay.date : ''),
+    paid_ref: o.paid_ref || (pay ? pay.ref : ''),
   };
 }
 
@@ -3237,8 +3238,10 @@ const PAY_METHOD_LABEL = { data: 'Данс', cash: 'Бэлэн', card: 'Карт
 function parsePayment(note) {
   const m = String(note || '').match(/⟦PAY\|([^⟧]*)⟧/);
   if (!m) return null;
-  const [amount, type, method, date] = m[1].split('|');
-  return { amount: Number(amount) || 0, type: type || 'full', method: method || 'data', date: date || '' };
+  const parts = m[1].split('|');
+  const [amount, type, method, date] = parts;
+  const ref = parts.slice(4).join('|') || '';   // гүйлгээний утга (банкнаас хуулсан) — сүүлд
+  return { amount: Number(amount) || 0, type: type || 'full', method: method || 'data', date: date || '', ref };
 }
 function stripPaymentNote(note) {
   return String(note || '').replace(/⟦PAY\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '').trim();
@@ -3246,7 +3249,9 @@ function stripPaymentNote(note) {
 function encodePaymentNote(note, pay) {
   const base = stripPaymentNote(note);
   if (!pay || !pay.amount) return base;
-  const tok = `⟦PAY|${Math.round(pay.amount)}|${pay.type || 'full'}|${pay.method || 'data'}|${pay.date || ''}⟧`;
+  // ref-д токены тусгай тэмдэгт орохоос сэргийлж цэвэрлэнэ.
+  const ref = String(pay.ref || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tok = `⟦PAY|${Math.round(pay.amount)}|${pay.type || 'full'}|${pay.method || 'data'}|${pay.date || ''}|${ref}⟧`;
   return base ? base + ' ' + tok : tok;
 }
 
@@ -3277,7 +3282,7 @@ function orderToWire(o) {
     deposit: Number(o.deposit) || 0, total: Number(o.total) || 0, note: o.note || '',
     source: o.source || '', assigned_to: o.assigned_to || '', task_id: o.task_id || '',
     // Төлбөрийн дэлгэрэнгүй — Sheet-д багана нэмэгдвэл тэндээс хадгалагдана (одоогоор note-д кодлогддог).
-    paid_amount: Number(o.paid_amount) || 0, paid_type: o.paid_type || '', paid_method: o.paid_method || '', paid_date: o.paid_date || '',
+    paid_amount: Number(o.paid_amount) || 0, paid_type: o.paid_type || '', paid_method: o.paid_method || '', paid_date: o.paid_date || '', paid_ref: o.paid_ref || '',
   };
 }
 
@@ -3353,6 +3358,9 @@ function openOrderPaymentModal(order_no, editMode) {
           </div>
         </div>
       </div>
+      <label style="margin-top:10px;">Гүйлгээний утга <span style="color:var(--muted);font-weight:400;">(банкнаас яг хуулна)</span></label>
+      <textarea id="pay-ref" rows="2" placeholder="Жишээ: ITZONE -SHIREE SANDAL-ЛХАМЦЭДЭН ХАЖИДСҮРЭН">${escapeHtml(o.paid_ref || '')}</textarea>
+      <p class="pay-hint">Сар бүрийн дансны тулгалт энэ утгаар таарна — банкны бичсэнээр яг хуулж тавь.</p>
       ${editMode ? '' : '<p class="pay-hint">Баталгаажуулмагц захиалга «Төлбөр авсан» болж, Түрээс бэлдэх · Цэвэрлэгээ · Хүргэлт даалгавар үүснэ.</p>'}
       <div class="modal-actions" style="margin-top:16px;">
         <button class="btn" id="pay-cancel">Болих</button>
@@ -3380,9 +3388,10 @@ async function submitOrderPayment(modal, o, editMode, btn) {
   const type = modal.querySelector('#pay-type button.on')?.dataset.v || 'full';
   const method = modal.querySelector('#pay-method').value || 'data';
   const date = modal.querySelector('#pay-date').value || '';
+  const ref = (modal.querySelector('#pay-ref')?.value || '').trim();
   btn.disabled = true;
-  o.paid_amount = amount; o.paid_type = type; o.paid_method = method; o.paid_date = date;
-  o.note = encodePaymentNote(o.note, { amount, type, method, date });
+  o.paid_amount = amount; o.paid_type = type; o.paid_method = method; o.paid_date = date; o.paid_ref = ref;
+  o.note = encodePaymentNote(o.note, { amount, type, method, date, ref });
 
   if (!editMode) {
     // Эвент менежер даалгаврын эзэн (creator) → тэр тус бүрд ажилтан хуваарилна.
@@ -3591,6 +3600,7 @@ function orderCardHtml(o, canManage, canConfirm) {
     ${humanNote ? `<div class="order-meta">📝 ${escapeHtml(humanNote)}</div>` : ''}
     ${orderStepper(o.status)}
     ${o.paid_amount ? `<div class="order-meta order-pay">💵 ${PAY_TYPE_LABEL[o.paid_type] || 'Төлбөр'} ${fmtMoney(o.paid_amount)} · ${PAY_METHOD_LABEL[o.paid_method] || ''}${o.paid_date ? ' · ' + escapeHtml(o.paid_date) : ''}${canManage && canConfirm ? ` <button class="order-pay-edit" data-order-paymentedit="${esc}" title="Төлбөр засах">✎</button>` : ''}</div>` : ''}
+    ${o.paid_ref ? `<div class="order-meta order-payref" title="${escapeHtml(o.paid_ref)}">🔖 ${escapeHtml(o.paid_ref)}</div>` : ''}
     ${lt.count ? `<div class="order-meta order-tasks">🧩 ${lt.count} даалгавар${lt.names.length ? ' · ' + escapeHtml(lt.names.join(', ')) : ''}</div>` : ''}
     <button class="order-items-toggle" data-order-items="${esc}"><span class="oit-caret">▸</span> ${itemCount} бараа${pr.deposit ? ' · Барьцаа ' + fmtMoney(pr.deposit) : ''}</button>
     <div class="order-items-box" data-order-itemsbox="${esc}" hidden>

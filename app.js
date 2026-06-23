@@ -4473,17 +4473,41 @@ async function saveProduct(product) {
 // Хуучин/type-гүй бараа = түрээсийн (буцаад нийцтэй). Зөвхөн ил 'asset' нь хөрөнгө.
 function isRentable(p) { return String((p && p.type) || 'rental') !== 'asset'; }
 
+// Барааны ашиглалт — захиалгын түүхээс хэдэн удаа түрээслэгдэж, нийт хэдэн төгрөгийн орлого олсон.
+function productUtilization(name) {
+  const n = _normProdName(name);
+  let orders = 0, qty = 0, revenue = 0;
+  for (const o of (state.orders || [])) {
+    if (o.status === 'Цуцалсан') continue;
+    const its = (o.items || []).filter(it => _normProdName(it.name) === n);
+    if (!its.length) continue;
+    orders++;
+    const d = Math.max(1, Number(o.days) || 1);
+    for (const it of its) { qty += Number(it.qty) || 0; revenue += (Number(it.price) || 0) * (Number(it.qty) || 0) * d; }
+  }
+  return { orders, qty, revenue };
+}
+// Богино мөнгөн формат (сая/мянга) — жижиг стат мөрд.
+function fmtMoneyShort(n) {
+  n = Math.round(Number(n) || 0);
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'сая₮';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'мянга₮';
+  return n + '₮';
+}
+
 function productRowHtml(p) {
   const img = p.photo
     ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
     : '<div class="ph">📦</div>';
   const rentable = isRentable(p);
+  const u = productUtilization(p.name);
+  const utilStr = u.orders ? ` · <span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>` : '';
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
   return `<div class="prod-row${rentable ? '' : ' is-asset'}" data-id="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
     <div class="prod-main">
       <input class="prod-name" data-f="name" value="${escapeHtml(p.name || '')}">
-      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}</div>
+      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}${utilStr}</div>
     </div>
     <label class="prod-rentable" title="Чагтлахад сайтад түрээсээр харагдана. Чагтгүй бол зөвхөн дотоод хөрөнгө.">
       <input type="checkbox" data-f="rentable" ${rentable ? 'checked' : ''}><span>Түрээслэх</span>

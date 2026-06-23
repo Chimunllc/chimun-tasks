@@ -5340,6 +5340,7 @@ body.role-daily #add-project { display: none !important; }
 .prod-name { width: 100%; font-size: 14px; font-weight: 600; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; background: transparent; color: var(--text); font-family: inherit; }
 .prod-name:hover, .prod-name:focus { border-color: var(--border-strong); background: var(--panel); outline: none; }
 .prod-sub { font-size: 11.5px; color: var(--muted); padding-left: 6px; margin-top: 2px; }
+.prod-util { color: var(--ok); font-weight: 500; }
 .prod-fld { display: flex; flex-direction: column; font-size: 10.5px; color: var(--muted); gap: 2px; }
 .prod-fld input { width: 96px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-size: 13px; font-family: inherit; text-align: right; background: var(--panel); color: var(--text); }
 .prod-fld.sm input { width: 64px; }

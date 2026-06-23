@@ -4704,7 +4704,7 @@ function fallbackCopy(text, done) {
   } catch (e) { showToast('Хуулж чадсангүй', 'warn', 1500); }
 }
 
-// Цалин шилжүүлэх модал — данс/утга хуулах + өдрийн цалин × өдөр + эхэлсэн огноо. {rate,days,start} эсвэл null.
+// Цалин шилжүүлэх модал — данс/утга хуулах + нийт цалин (өдрөөр ҮРЖИХГҮЙ) + эхэлсэн огноо. {rate,days,start} эсвэл null.
 function openHourlyPayModal(m) {
   return new Promise((resolve) => {
     const modal = document.getElementById('hourly-pay-modal');
@@ -4729,7 +4729,8 @@ function openHourlyPayModal(m) {
       return ['Зарлага: Өдрийн цалин', dPart, (m.name || ''), md].filter(Boolean).join(' ');
     };
     const upd = () => {
-      totalEl.textContent = 'Дүн: ' + fmtMoney(Math.round((Number(rateEl.value) || 0) * (Number(daysEl.value) || 0)));
+      // Оруулсан дүн = нийт олгох цалин (өдрөөр ҮРЖИХГҮЙ). Өдөр нь зөвхөн гүйлгээний утганд.
+      totalEl.textContent = 'Дүн: ' + fmtMoney(Number(rateEl.value) || 0);
       memoEl.textContent = memoText();
     };
     rateEl.oninput = upd; daysEl.oninput = upd; startEl.oninput = upd; startEl.onchange = upd; upd();
@@ -4743,7 +4744,7 @@ function openHourlyPayModal(m) {
     }
     okBtn.onclick = () => {
       const rate = Number(rateEl.value) || 0, days = Number(daysEl.value) || 0;
-      if (rate <= 0) { showToast('Өдрийн цалинг оруулна уу.', 'warn', 2000); return; }
+      if (rate <= 0) { showToast('Нийт цалинг оруулна уу.', 'warn', 2000); return; }
       if (days <= 0) { showToast('Ажилласан өдрийг оруулна уу.', 'warn', 2000); return; }
       cleanup({ rate, days, start: startEl.value || '' });
     };
@@ -4759,8 +4760,8 @@ async function markHourlyPaid(workerKey) {
   const res = await openHourlyPayModal(m);
   if (!res) return;
   const { rate, days, start } = res;
-  const amount = Math.round(rate * days);
-  if (!(await showConfirm(`${m.name}: ${fmtMoney(rate)} × ${days} өдөр = ${fmtMoney(amount)}\nЭхэлсэн: ${start || '-'}\n${HOURLY_FUND_LABEL}-наас шилжүүлснийг бүртгэх үү?`, { okText: 'Тийм, шилжүүлсэн' }))) return;
+  const amount = Math.round(rate);   // оруулсан дүн = нийт олгох цалин (өдрөөр үржихгүй)
+  if (!(await showConfirm(`${m.name}: ${fmtMoney(amount)} · ${days} өдрийн цалин\nЭхэлсэн: ${start || '-'}\n${HOURLY_FUND_LABEL}-наас шилжүүлснийг бүртгэх үү?`, { okText: 'Тийм, шилжүүлсэн' }))) return;
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
   const r = {
@@ -4772,7 +4773,7 @@ async function markHourlyPaid(workerKey) {
     bank: m.bank || '',
     account_number: m.bank_account || '',
     purpose: `Цагийн цалин · ${m.name} · ${start || today}`,
-    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(rate)} × ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'}`,
+    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(amount)} · ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'}`,
     due_date: start || today,
     category: 'Цалин',
     dept_branch: (m.branches && m.branches[0]) || 'shared',

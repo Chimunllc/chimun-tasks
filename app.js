@@ -95,7 +95,7 @@ const N8N_API_KEY = '1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
 // Supabase Storage — барааны зураг (product-images bucket). anon key нь PUBLIC, frontend-д
 // ил байх нь зөв (RLS/storage policy-оор хамгаална). Зөвхөн зураг bucket-д upload зөвшөөрнө.
 const SUPABASE_URL = 'https://pydgnbzntldpzzjhtaal.supabase.co';
-const SUPABASE_ANON_KEY = '';   // ← Supabase → Settings → API → anon/public key (PUBLIC, оруулна)
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZGduYnpudGxkcHp6amh0YWFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzQ2OTUsImV4cCI6MjA5NzMxMDY5NX0.9fKMMB3HHJtiQl2cc0a_SDxxI-Wlp9-1aFmrbWXND0c';   // PUBLIC anon key (frontend-safe)
 const PRODUCT_IMAGE_BUCKET = 'product-images';
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
 function withKey(url) {

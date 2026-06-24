@@ -7320,6 +7320,31 @@ async function loadBooqable(force) {
   }
 }
 
+// Захиалгын жагсаалтыг lazy татна (зөвхөн "Захиалга" таб нээхэд). bq_v_orders view.
+async function loadBooqableOrders() {
+  if (state._bqOrdersLoading || !state.booqable || state.booqable.orders) return;
+  if (!SUPABASE_ANON_KEY) { state.booqable.orders = []; return; }
+  state._bqOrdersLoading = true;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_orders?select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 25000);
+    state.booqable.orders = r.ok ? await r.json() : [];   // view байхгүй бол хоосон
+  } catch (e) { console.warn('loadBooqableOrders', e); state.booqable.orders = []; }
+  finally { state._bqOrdersLoading = false; if (typeof render === 'function') render(); }
+}
+
+// Нэг захиалгын бараа (мөр)-ийг шаардахад татна, кэшилнэ. bq_v_order_items view.
+async function loadBooqableOrderItems(orderId) {
+  state.booqable._items = state.booqable._items || {};
+  if (state.booqable._items[orderId]) return state.booqable._items[orderId];
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    state.booqable._items[orderId] = r.ok ? await r.json() : [];
+  } catch (e) { console.warn('loadBooqableOrderItems', e); state.booqable._items[orderId] = []; }
+  return state.booqable._items[orderId];
+}
+
 // Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг
 function bqBar(label, value, max, color, sub) {
   const pct = max > 0 ? Math.max(2, Math.round(value / max * 100)) : 0;
@@ -7439,7 +7464,7 @@ function renderBooqable() {
   </div>`;
 
   // Таб сонгогч
-  const tabs = [['revenue', '💰 Орлого'], ['branch', '🏢 Салбар'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
+  const tabs = [['revenue', '💰 Орлого'], ['branch', '🏢 Салбар'], ['orders', '📋 Захиалга'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
   const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-bq-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
 
@@ -7572,6 +7597,39 @@ function renderBooqable() {
       `<div style="display:flex;gap:16px;font-size:11px;margin-bottom:8px;"><span style="color:var(--ok);font-weight:600;">■ Эвент</span><span style="color:var(--primary);font-weight:600;">■ Кемп</span></div>
        <div style="display:flex;align-items:flex-end;gap:6px;height:148px;overflow-x:auto;padding:2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
       'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй (M-Event/Booqable нэг эвентийн салбар, NOMAAD кемп тусдаа). Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
+
+  } else if (tab === 'orders') {
+    const list = bq.orders;
+    if (list === undefined) {
+      setTimeout(loadBooqableOrders, 0);
+      body = '<div style="text-align:center;color:var(--muted);padding:40px 0;">Захиалгууд татаж байна…</div>';
+    } else if (!list.length) {
+      body = card('Захиалга', '<span style="color:var(--muted);">Захиалга алга — `bq_v_orders` view-г Supabase-д нэмнэ үү (доорх SQL).</span>');
+    } else {
+      const stColor = { archived: 'var(--muted)', stopped: 'var(--ok)', started: 'var(--primary)', reserved: 'var(--warn)', canceled: 'var(--danger)', draft: 'var(--muted-soft)' };
+      const stLabel = { archived: 'Архив', stopped: 'Дууссан', started: 'Гарсан', reserved: 'Захиалсан', canceled: 'Цуцалсан', draft: 'Ноорог' };
+      const rows = list.map(o => {
+        const total = N(o.total_mnt);
+        const dt = o.starts_at ? String(o.starts_at).slice(0, 10) : '';
+        const st = String(o.status || '');
+        const searchKey = (String(o.customer || '') + ' ' + (o.number ?? '')).toLowerCase();
+        return `<div class="bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(searchKey)}" style="border:1px solid var(--border);border-radius:9px;margin:5px 0;overflow:hidden;">
+          <div class="bq-order-head" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:12px;">
+            <span style="font-weight:700;color:var(--muted);flex:0 0 auto;">#${o.number ?? '—'}</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '?')}</span>
+            <span style="flex:0 0 auto;font-size:10px;color:var(--muted);">${dt}</span>
+            <span style="flex:0 0 auto;font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-hover);color:${stColor[st] || 'var(--muted)'};">${stLabel[st] || st}</span>
+            <span style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;min-width:72px;text-align:right;">${fmtMoneyShort(total)}</span>
+          </div>
+          <div class="bq-order-items" style="display:none;padding:2px 10px 9px;font-size:11.5px;"></div>
+        </div>`;
+      }).join('');
+      body = card(`Бүх захиалга — ${list.length}`,
+        `<input id="bq-order-search" placeholder="🔍 Харилцагч эсвэл дугаараар хайх…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;font-size:13px;background:var(--panel);color:var(--text);">
+         <div id="bq-order-count" style="font-size:10.5px;color:var(--muted);margin-bottom:6px;"></div>
+         <div id="bq-order-list">${rows}</div>`,
+        'Захиалга дээр дарж дотор нь ямар бараа түрээслэснийг харна. Огноо = түрээс эхлэх өдөр.');
+    }
   }
 
   return `<div style="padding:4px;">${head(tabBar)}${body}</div>`;
@@ -7583,6 +7641,46 @@ function attachBooqableHandlers() {
     state.bqTab = b.dataset.bqTab;
     render();
   }));
+
+  // Захиалга таб: хайлт (мөр нуух/харуулах, re-render-гүй) + захиалга дарж бараа задлах
+  const oSearch = document.getElementById('bq-order-search');
+  const oList = document.getElementById('bq-order-list');
+  const oCount = document.getElementById('bq-order-count');
+  if (oSearch && oList) {
+    const apply = () => {
+      const q = oSearch.value.toLowerCase().trim();
+      let shown = 0;
+      oList.querySelectorAll('.bq-order').forEach(r => {
+        const ok = !q || (r.dataset.search || '').includes(q);
+        r.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+      });
+      if (oCount) oCount.textContent = q ? `${shown} илэрц` : '';
+    };
+    oSearch.addEventListener('input', apply);
+  }
+  document.querySelectorAll('.bq-order-head').forEach(h => h.addEventListener('click', async () => {
+    const row = h.closest('.bq-order');
+    const box = row && row.querySelector('.bq-order-items');
+    if (!box) return;
+    if (box.style.display === 'none') {
+      box.style.display = 'block';
+      if (!box.dataset.loaded) {
+        box.dataset.loaded = '1';
+        box.innerHTML = '<div style="color:var(--muted);padding:4px 0;">Татаж байна…</div>';
+        const items = await loadBooqableOrderItems(row.dataset.oid);
+        box.innerHTML = items.length
+          ? items.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-top:1px solid var(--border);">
+              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.title || '—')} <span style="color:var(--muted);">× ${Number(it.quantity) || 0}</span></span>
+              <span style="flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--muted);">${fmtMoneyShort(Number(it.price_mnt) || 0)}</span>
+            </div>`).join('')
+          : '<div style="color:var(--muted);padding:4px 0;">бараа алга</div>';
+      }
+    } else {
+      box.style.display = 'none';
+    }
+  }));
+
   // view нээгдэхэд анх удаа татна
   if (!state.booqable && !state._bqLoading) loadBooqable();
 }

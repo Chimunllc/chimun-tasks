@@ -3883,7 +3883,7 @@ function renderOrders() {
   }
 
   // ── Менежер / CEO ──
-  state.ordersFilter = state.ordersFilter || 'active';
+  state.ordersFilter = state.ordersFilter || 'all';
   state.ordersView = state.ordersView || 'list';
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
@@ -3907,36 +3907,29 @@ function renderOrders() {
     return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div><div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор үүсгэнэ.</div></div>`;
   }
 
-  // Нэгдсэн статус шүүлт (M-Event + Booqable түүх)
+  // Нэгдсэн статус шүүлт — 6 төлвөөр (e.skey). await/today = M-Event операцийн дохио.
   const matchFilter = (e, f) => {
     if (f === 'all') return true;
-    if (f === 'await') return e.status === 'Шинэ';
+    if (f === 'await') return e.src === 'me' && e.status === 'Шинэ';
     if (f === 'today') { if (e.src !== 'me') return false; const u = orderUrgency(e.o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }
-    if (f === 'active') { const ph = orderPhaseKey(e.status); return ph !== 'done' && ph !== 'cancelled'; }
-    return orderPhaseKey(e.status) === f;
+    return e.skey === f;
   };
 
-  // Анхаарлын чипүүд — операцийн дохио (M-Event идэвхтэй)
+  // Анхаарлын чипүүд — операцийн дохио (M-Event)
   const meAll = state.orders || [];
   const awaitN = meAll.filter(o => o.status === 'Шинэ').length;
   const todayN = meAll.filter(o => { const u = orderUrgency(o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }).length;
-  const activeN = combined.filter(e => matchFilter(e, 'active')).length;
   const chips = `<div class="orders-chips">
     <button class="ochip ochip-info${state.ordersFilter === 'await' ? ' on' : ''}" data-ofilter="await"><span class="ochip-n">${awaitN}</span><span class="ochip-l">Батлах хүлээж буй</span></button>
     <button class="ochip ochip-danger${state.ordersFilter === 'today' ? ' on' : ''}" data-ofilter="today"><span class="ochip-n">${todayN}</span><span class="ochip-l">Өнөөдөр хүргэх</span></button>
-    <button class="ochip${state.ordersFilter === 'active' ? ' on' : ''}" data-ofilter="active"><span class="ochip-n">${activeN}</span><span class="ochip-l">Идэвхтэй</span></button>
     <div class="ochip ochip-static"><span class="ochip-n">${(combined.length).toLocaleString('mn-MN')}</span><span class="ochip-l">Нийт захиалга</span></div>
   </div>`;
 
-  // Төлөв таб (нэгдсэн тоо) + он-сар филтер + хайлт + харагдац
-  const tabs = [
-    { key: 'all', label: 'Бүгд' }, { key: 'active', label: 'Идэвхтэй' }, { key: 'new', label: 'Шинэ' },
-    { key: 'prep', label: 'Бэлтгэлд' }, { key: 'deliver', label: 'Хүргэлт' },
-    { key: 'done', label: 'Дууссан' }, { key: 'cancelled', label: 'Цуцалсан' },
-  ];
+  // Төлөв таб (6 төлөв, нэгдсэн тоо) + он-сар филтер + хайлт + харагдац
+  const tabs = [{ key: 'all', label: 'Бүгд' }].concat(BQ_STATUS_ORDER.map(k => ({ key: k, label: BQ_STATUS[k].label })));
   const tabsHtml = tabs.map(t => {
     const n = t.key === 'all' ? combined.length : combined.filter(e => matchFilter(e, t.key)).length;
-    return (n || t.key === 'all' || t.key === 'active') ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
+    return (n || t.key === 'all') ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
   }).join('');
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
   const ymF = state.ordersYM || '';
@@ -7392,42 +7385,62 @@ async function loadBooqableOrderItems(orderId) {
   return state.bqOrderItems[orderId];
 }
 
-// Booqable статус → аппын төрөлх статус (төрөлх badge харагдуулахын тулд)
-function bqMapStatus(st) {
-  if (st === 'canceled') return 'Цуцалсан';
-  if (st === 'draft') return 'Ноорог';
-  if (st === 'reserved' || st === 'started') return 'Идэвхтэй';
-  return 'Дууссан';   // archived / stopped
+// Booqable түрээсийн 6 төлөв — нэр/өнгө/icon. Дараалал: Ноорог→Захиалсан→Эхэлсэн→Дууссан→Архивласан→Цуцалсан.
+// Дэвсгэр (light) + бараан текст (WCAG AA контраст) + зүүн талын тод цэг.
+const BQ_STATUS = {
+  draft:    { label: 'Ноорог',     dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
+  reserved: { label: 'Захиалсан',  dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
+  started:  { label: 'Эхэлсэн',    dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
+  stopped:  { label: 'Дууссан',    dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  archived: { label: 'Архивласан', dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
+  canceled: { label: 'Цуцалсан',   dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
+};
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'started', 'stopped', 'archived', 'canceled'];
+// Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
+function bqStatusBadge(raw) {
+  const s = BQ_STATUS[raw] || { label: raw || '—', dot: '#9CA3AF', bg: '#F3F4F6', tx: '#374151' };
+  return `<span class="bq-badge" style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.7;background:${s.bg};color:${s.tx};white-space:nowrap;">
+    <span style="width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:${s.dot};"></span>${escapeHtml(s.label)}</span>`;
+}
+// M-Event төлвийг 6 төлвийн аль нэгэнд буулгана (нэгдсэн шүүлтэд)
+function meStatusKey(st) {
+  if (st === 'Цуцалсан') return 'canceled';
+  if (st === 'Дууссан') return 'stopped';
+  if (st === 'Шинэ') return 'reserved';
+  return 'started';   // Төлбөр авсан/Цэвэрлэгээ/Түрээс бэлдсэн/Гаргасан/Хүргэсэн/Буцаан ирсэн
 }
 
 // Нэгдсэн жагсаалт — M-Event (идэвхтэй) + Booqable түүх нэг массив, нормчлогдсон.
 function unifiedOrders() {
   const me = (state.orders || []).map(o => ({
-    src: 'me', o, status: o.status || 'Шинэ',
+    src: 'me', o, status: o.status || 'Шинэ', skey: meStatusKey(o.status || 'Шинэ'),
     ym: String(o.date_start || o.created_at || '').slice(0, 7),
     date: o.date_start || o.created_at || '',
     total: Number(o.total) || 0,
     hay: `${o.order_no || ''} ${o.customer_name || ''} ${o.company || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase(),
   }));
-  const bq = (state.bqOrders || []).map(o => ({
-    src: 'bq', o, status: bqMapStatus(String(o.status || '')),
-    ym: String(o.starts_at || o.created_at || '').slice(0, 7),
-    date: o.starts_at || o.created_at || '',
-    total: Number(o.total_mnt) || 0,
-    hay: `#${o.number ?? ''} ${o.customer || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase(),
-  }));
+  const bq = (state.bqOrders || []).map(o => {
+    const raw = String(o.status || '');
+    return {
+      src: 'bq', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'archived',
+      ym: String(o.starts_at || o.created_at || '').slice(0, 7),
+      date: o.starts_at || o.created_at || '',
+      total: Number(o.total_mnt) || 0,
+      hay: `#${o.number ?? ''} ${o.customer || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase(),
+    };
+  });
   return me.concat(bq);
 }
 
 // Booqable түүх захиалгын ТӨРӨЛХ карт (read-only) — нэгдсэн жагсаалтад
 function bqOrderCard(o) {
   const N = x => Number(x) || 0;
-  const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || ''), mapped = bqMapStatus(st);
+  const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || '');
   const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
   const addr = o.delivery_address || o.customer_address || '';
   const payLabel = { paid: 'Төлсөн', payment_due: 'Төлбөр хүлээгдэж буй', partially_paid: 'Хэсэгчилсэн', overpaid: 'Илүү төлсөн', process_deposit: 'Барьцаа' };
   return `<div class="order-card bq-order" data-oid="${escapeHtml(String(o.id))}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span><span class="order-badge ${orderStatusClass(mapped)}">${escapeHtml(mapped)}</span></div><div class="order-total">${fmtMoney(total)}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}

@@ -7613,7 +7613,7 @@ function renderBooqable() {
         const dt = o.starts_at ? String(o.starts_at).slice(0, 10) : '';
         const st = String(o.status || '');
         const searchKey = (String(o.customer || '') + ' ' + (o.number ?? '')).toLowerCase();
-        return `<div class="bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(searchKey)}" style="border:1px solid var(--border);border-radius:9px;margin:5px 0;overflow:hidden;">
+        return `<div class="bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(searchKey)}" data-status="${escapeHtml(st)}" data-total="${total}" style="border:1px solid var(--border);border-radius:9px;margin:5px 0;overflow:hidden;">
           <div class="bq-order-head" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:12px;">
             <span style="font-weight:700;color:var(--muted);flex:0 0 auto;">#${o.number ?? '—'}</span>
             <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '?')}</span>
@@ -7624,11 +7624,18 @@ function renderBooqable() {
           <div class="bq-order-items" style="display:none;padding:2px 10px 9px;font-size:11.5px;"></div>
         </div>`;
       }).join('');
+      const statusOrder = ['archived', 'stopped', 'started', 'reserved', 'draft', 'canceled'];
+      const counts = {}; list.forEach(o => { const s = String(o.status || ''); counts[s] = (counts[s] || 0) + 1; });
+      const chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="bq-ostatus btn btn-primary" data-status="" style="padding:4px 10px;font-size:11px;">Бүгд (${list.length})</button>
+        ${statusOrder.filter(s => counts[s]).map(s => `<button class="bq-ostatus btn" data-status="${s}" style="padding:4px 10px;font-size:11px;">${stLabel[s] || s} (${counts[s]})</button>`).join('')}
+      </div>`;
       body = card(`Бүх захиалга — ${list.length}`,
-        `<input id="bq-order-search" placeholder="🔍 Харилцагч эсвэл дугаараар хайх…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;font-size:13px;background:var(--panel);color:var(--text);">
-         <div id="bq-order-count" style="font-size:10.5px;color:var(--muted);margin-bottom:6px;"></div>
+        chips +
+        `<input id="bq-order-search" placeholder="🔍 Харилцагч эсвэл дугаараар хайх…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:13px;background:var(--panel);color:var(--text);">
+         <div id="bq-order-sum" style="font-weight:700;font-size:12.5px;margin:4px 0 8px;color:var(--text);"></div>
          <div id="bq-order-list">${rows}</div>`,
-        'Захиалга дээр дарж дотор нь ямар бараа түрээслэснийг харна. Огноо = түрээс эхлэх өдөр.');
+        'Статусаар шүүх / харилцагч-дугаараар хайх → нийт дүн доор шинэчлэгдэнэ. Захиалга дээр дарж бараагаа задлана.');
     }
   }
 
@@ -7642,22 +7649,29 @@ function attachBooqableHandlers() {
     render();
   }));
 
-  // Захиалга таб: хайлт (мөр нуух/харуулах, re-render-гүй) + захиалга дарж бараа задлах
+  // Захиалга таб: статус шүүлт + хайлт (мөр нуух/харуулах, re-render-гүй) + нийт дүн + бараа задлах
   const oSearch = document.getElementById('bq-order-search');
   const oList = document.getElementById('bq-order-list');
-  const oCount = document.getElementById('bq-order-count');
-  if (oSearch && oList) {
-    const apply = () => {
-      const q = oSearch.value.toLowerCase().trim();
-      let shown = 0;
+  const oSum = document.getElementById('bq-order-sum');
+  if (oList) {
+    let activeStatus = '';
+    const applyFilter = () => {
+      const q = (oSearch ? oSearch.value : '').toLowerCase().trim();
+      let shown = 0, sum = 0;
       oList.querySelectorAll('.bq-order').forEach(r => {
-        const ok = !q || (r.dataset.search || '').includes(q);
+        const ok = (!activeStatus || r.dataset.status === activeStatus) && (!q || (r.dataset.search || '').includes(q));
         r.style.display = ok ? '' : 'none';
-        if (ok) shown++;
+        if (ok) { shown++; sum += Number(r.dataset.total) || 0; }
       });
-      if (oCount) oCount.textContent = q ? `${shown} илэрц` : '';
+      if (oSum) oSum.textContent = `${shown.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sum)}`;
     };
-    oSearch.addEventListener('input', apply);
+    if (oSearch) oSearch.addEventListener('input', applyFilter);
+    document.querySelectorAll('.bq-ostatus').forEach(ch => ch.addEventListener('click', () => {
+      activeStatus = ch.dataset.status || '';
+      document.querySelectorAll('.bq-ostatus').forEach(c => c.classList.toggle('btn-primary', c === ch));
+      applyFilter();
+    }));
+    applyFilter();   // анхны нийт дүн
   }
   document.querySelectorAll('.bq-order-head').forEach(h => h.addEventListener('click', async () => {
     const row = h.closest('.bq-order');

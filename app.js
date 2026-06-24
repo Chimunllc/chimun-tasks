@@ -3983,8 +3983,13 @@ function attachOrdersHandlers() {
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
 
-  // Идэвхтэй Booqable захиалгыг M-Event рүү зөөх
-  document.querySelectorAll('[data-bq-migrate]').forEach(b => b.addEventListener('click', () => migrateBqToMevent(b.dataset.bqMigrate, b)));
+  // Booqable захиалгын төлөв урагшлуулах / цуцлах (байрандаа засах)
+  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to)));
+  document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
+    const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
+    const isDraft = o && o.status === 'draft';
+    bqUpdateStatus(b.dataset.bqCancel, 'canceled', { confirm: isDraft ? `#${o ? o.number : ''} ноорогийг устгах уу? (цуцлагдсан болж жагсаалтаас алга болно)` : `#${o ? o.number : ''} захиалгыг цуцлах уу?`, danger: true, okText: isDraft ? 'Устгах' : 'Цуцлах', toast: isDraft ? 'Устгалаа' : 'Цуцаллаа' });
+  }));
 
   // Түүх захиалгын бараа задлах (read-only карт)
   document.querySelectorAll('.bqa-items-toggle').forEach(btn => btn.addEventListener('click', async () => {
@@ -7399,6 +7404,13 @@ const BQ_STATUS = {
   canceled: { label: 'Цуцалсан',   dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
 };
 const BQ_STATUS_ORDER = ['draft', 'reserved', 'started', 'stopped', 'archived', 'canceled'];
+// Лайфциклийн дараагийн алхам (карт бүрийн үндсэн товч)
+const BQ_NEXT = {
+  draft:    { to: 'reserved', label: '💵 Төлбөр авах' },
+  reserved: { to: 'started',  label: '📦 Гаргах' },
+  started:  { to: 'stopped',  label: '↩ Буцаан авах' },
+  stopped:  { to: 'archived', label: '🗄 Архивлах' },
+};
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
 function bqStatusBadge(raw) {
   const s = BQ_STATUS[raw] || { label: raw || '—', dot: '#9CA3AF', bg: '#F3F4F6', tx: '#374151' };
@@ -7443,50 +7455,47 @@ function bqOrderCard(o) {
   const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
   const addr = o.delivery_address || o.customer_address || '';
   const payLabel = { paid: 'Төлсөн', payment_due: 'Төлбөр хүлээгдэж буй', partially_paid: 'Хэсэгчилсэн', overpaid: 'Илүү төлсөн', process_deposit: 'Барьцаа' };
-  const active = st === 'draft' || st === 'reserved' || st === 'started';
-  return `<div class="order-card bq-order" data-oid="${escapeHtml(String(o.id))}">
+  const id = escapeHtml(String(o.id));
+  const next = BQ_NEXT[st];
+  const canCancel = st === 'draft' || st === 'reserved' || st === 'started';
+  const foot = (next || canCancel) ? `<div class="order-foot">
+    ${next ? `<button class="btn btn-primary" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
+    ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${st === 'draft' ? '🗑 Устгах' : '✕ Цуцлах'}</button>` : ''}
+  </div>` : '';
+  return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
     <div class="order-meta">📅 ${start || '—'}${stop ? ' → ' + stop : ''}${o.payment_status ? ' · ' + (payLabel[o.payment_status] || o.payment_status) : ''}</div>
     ${(paid && st !== 'canceled') ? `<div class="order-meta order-pay">💵 Төлсөн ${fmtMoney(paid)}</div>` : ''}
-    <button class="order-items-toggle bqa-items-toggle" data-oid="${escapeHtml(String(o.id))}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
+    <button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
-    ${active ? `<div class="order-foot"><button class="btn btn-primary" data-bq-migrate="${escapeHtml(String(o.id))}" style="padding:5px 12px;font-size:12px;">→ M-Event рүү зөөх</button><span class="order-sub" style="font-size:10.5px;color:var(--muted);">амьд систем рүү (засаж/удирдахаар)</span></div>` : ''}
+    ${foot}
   </div>`;
 }
 
-// Идэвхтэй Booqable захиалгыг M-Event амьд систем рүү зөөх (нотлогдсон capture webhook-аар).
-async function migrateBqToMevent(oid, btn) {
+// Booqable захиалгын төлвийг БАЙРАНДАА засах (Supabase anon PATCH, зөвхөн status багана).
+// Optimistic: эхлээд UI шинэчилж, амжилтгүй бол буцаана.
+async function bqUpdateStatus(oid, to, opts = {}) {
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
-  if (!(await showConfirm(`#${o.number} (${o.customer || '?'}) захиалгыг M-Event амьд систем рүү зөөх үү? M-Event-д "Шинэ" төлөвтэй үүсэж, тэндээс засаж/удирдана.`, { okText: 'Зөөх' }))) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Зөөж байна…'; }
+  if (opts.confirm && !(await showConfirm(opts.confirm, { okText: opts.okText || 'Тийм', danger: opts.danger }))) return;
+  const prev = o.status;
+  o.status = to;          // optimistic
+  render();
   try {
-    const items = (await loadBooqableOrderItems(oid)).map(it => ({ name: it.title || '', qty: Number(it.quantity) || 1, price: Number(it.price_each_mnt) || 0 }));
-    const fmtDT = s => s ? String(s).slice(0, 16).replace('T', ' ') : '';
-    let days = 1;
-    if (o.starts_at && o.stops_at) days = Math.max(1, Math.round((new Date(o.stops_at) - new Date(o.starts_at)) / 86400000));
-    const total = Number(o.total_mnt) || 0;
-    const payload = {
-      customer: { name: o.customer || '', phone: o.phone || '', address: o.delivery_address || o.customer_address || '', email: o.email || '', company: '', register: '' },
-      dates: { start: fmtDT(o.starts_at), end: fmtDT(o.stops_at) },
-      totals: { days, subtotal: total, deposit: 0, grand: total },
-      items,
-      note: `Booqable #${o.number}-ээс шилжүүлсэн${Number(o.paid_mnt) > 0 ? ` · төлсөн ${fmtMoney(Number(o.paid_mnt))}` : ''}`,
-      source: 'booqable',
-    };
-    const base = state.config.ordersUrl || DEFAULT_ORDERS_URL;
-    const captureUrl = base.replace(/\/[^/]+$/, '/m-event-site-order');
-    const r = await fetchWithTimeout(withKey(captureUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    showToast(`#${o.number} → M-Event-д шилжлээ`, 'success', 2800);
-    state.ordersFilter = 'await';   // шинэ захиалга руу анхаарал
-    loadOrders();
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_orders?id=eq.${encodeURIComponent(oid)}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ status: to, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    showToast(opts.toast || `Төлөв: ${(BQ_STATUS[to] || {}).label || to}`, 'success', 2000);
   } catch (e) {
-    showToast('Алдаа: ' + e.message, 'error', 4000);
-    if (btn) { btn.disabled = false; btn.textContent = '→ M-Event рүү зөөх'; }
+    o.status = prev;     // буцаах
+    render();
+    showToast('Засах эрх алга эсвэл алдаа: ' + e.message, 'error', 5000);
   }
 }
 

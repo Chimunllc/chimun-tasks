@@ -3896,11 +3896,19 @@ function renderOrders() {
     </div>
   </div>`;
 
-  if (state.ordersRecon) return head + renderReconcilePanel();
+  // Эх сурвалж сонгогч: Идэвхтэй (M-Event ажлын самбар) ⇄ Booqable түүх (бүх захиалгын архив)
+  state.ordersSource = state.ordersSource || 'active';
+  const srcToggle = `<div class="orders-source" style="display:flex;gap:6px;margin:2px 0 12px;flex-wrap:wrap;">
+    <button class="btn${state.ordersSource === 'active' ? ' btn-primary' : ''}" data-osource="active" style="padding:6px 12px;font-size:12px;">📋 Идэвхтэй (M-Event)</button>
+    <button class="btn${state.ordersSource === 'booqable' ? ' btn-primary' : ''}" data-osource="booqable" style="padding:6px 12px;font-size:12px;">📚 Booqable түүх${state.bqOrders ? ` (${state.bqOrders.length})` : ''}</button>
+  </div>`;
+  if (state.ordersSource === 'booqable') return head + srcToggle + renderBooqableArchive();
+
+  if (state.ordersRecon) return head + srcToggle + renderReconcilePanel();
 
   if (!all.length) {
-    if (state._initialLoading) return head + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
-    return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div><div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ.</div></div>`;
+    if (state._initialLoading) return head + srcToggle + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
+    return head + srcToggle + `<div class="orders-empty"><div class="icon">🛒</div><div>Идэвхтэй захиалга алга байна.</div><div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор гараар үүсгэнэ. Хуучин түрээсийн түүхийг "📚 Booqable түүх"-ээс үзнэ.</div></div>`;
   }
 
   // Анхаарлын чипүүд + энэ сарын дүн
@@ -3956,7 +3964,7 @@ function renderOrders() {
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`;
   }
 
-  return head + chips + controls + body;
+  return head + srcToggle + chips + controls + body;
 }
 
 function _closeOrderKebabs(e) {
@@ -3966,6 +3974,13 @@ function _closeOrderKebabs(e) {
 
 function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
+
+  // Эх сурвалж сонгогч (Идэвхтэй ⇄ Booqable түүх)
+  document.querySelectorAll('[data-osource]').forEach(el => el.addEventListener('click', () => {
+    state.ordersSource = el.dataset.osource; render();
+  }));
+  // Booqable түүх архивын handler-ууд (зөвхөн тэр горимд)
+  if (state.ordersSource === 'booqable') { attachBooqableArchiveHandlers(); return; }
 
   // Банкны тулгалт — горим солих, хуулга оруулах, зөрүүтэй мөрөөс захиалга нээх
   document.getElementById('orders-recon-toggle')?.addEventListener('click', () => { state.ordersRecon = !state.ordersRecon; render(); });
@@ -7320,29 +7335,73 @@ async function loadBooqable(force) {
   }
 }
 
-// Захиалгын жагсаалтыг lazy татна (зөвхөн "Захиалга" таб нээхэд). bq_v_orders view.
+// Booqable түүх захиалгуудыг lazy татна (үндсэн Захиалга самбарын архив). bq_v_orders view.
+// state.bqOrders — top-level (Түрээсийн түүх самбар нээгээгүй ч ажиллана).
 async function loadBooqableOrders() {
-  if (state._bqOrdersLoading || !state.booqable || state.booqable.orders) return;
-  if (!SUPABASE_ANON_KEY) { state.booqable.orders = []; return; }
+  if (state._bqOrdersLoading || state.bqOrders) return;
+  if (!SUPABASE_ANON_KEY) { state.bqOrders = []; return; }
   state._bqOrdersLoading = true;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_orders?select=*`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 25000);
-    state.booqable.orders = r.ok ? await r.json() : [];   // view байхгүй бол хоосон
-  } catch (e) { console.warn('loadBooqableOrders', e); state.booqable.orders = []; }
+    state.bqOrders = r.ok ? await r.json() : [];   // view байхгүй бол хоосон
+  } catch (e) { console.warn('loadBooqableOrders', e); state.bqOrders = []; }
   finally { state._bqOrdersLoading = false; if (typeof render === 'function') render(); }
 }
 
 // Нэг захиалгын бараа (мөр)-ийг шаардахад татна, кэшилнэ. bq_v_order_items view.
 async function loadBooqableOrderItems(orderId) {
-  state.booqable._items = state.booqable._items || {};
-  if (state.booqable._items[orderId]) return state.booqable._items[orderId];
+  state.bqOrderItems = state.bqOrderItems || {};
+  if (state.bqOrderItems[orderId]) return state.bqOrderItems[orderId];
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
-    state.booqable._items[orderId] = r.ok ? await r.json() : [];
-  } catch (e) { console.warn('loadBooqableOrderItems', e); state.booqable._items[orderId] = []; }
-  return state.booqable._items[orderId];
+    state.bqOrderItems[orderId] = r.ok ? await r.json() : [];
+  } catch (e) { console.warn('loadBooqableOrderItems', e); state.bqOrderItems[orderId] = []; }
+  return state.bqOrderItems[orderId];
+}
+
+// ── Booqable түүх архив — бүх захиалга бүрэн дэлгэрэнгүй (үндсэн Захиалга самбарт) ──
+function renderBooqableArchive() {
+  const N = x => Number(x) || 0;
+  const list = state.bqOrders;
+  if (list === undefined) { setTimeout(loadBooqableOrders, 0); return `<div class="orders-empty"><div class="icon">⏳</div><div>Booqable түүх захиалга татаж байна…</div></div>`; }
+  if (!list.length) return `<div class="orders-empty"><div class="icon">📚</div><div>Түүх алга.</div><div class="sub">bq_v_orders / bq_v_order_items view болон bq_10_contact.sql-г Supabase-д ажиллуулсан эсэхээ шалгана уу.</div></div>`;
+  const stColor = { archived: 'var(--muted)', stopped: 'var(--ok)', started: 'var(--primary)', reserved: 'var(--warn)', canceled: 'var(--danger)', draft: 'var(--muted-soft)' };
+  const stLabel = { archived: 'Архив', stopped: 'Дууссан', started: 'Гарсан', reserved: 'Захиалсан', canceled: 'Цуцалсан', draft: 'Ноорог' };
+  const payLabel = { paid: 'Төлсөн', payment_due: 'Төлбөр хүлээгдэж буй', partially_paid: 'Хэсэгчилсэн', overpaid: 'Илүү төлсөн', process_deposit: 'Барьцаа' };
+  const statusOrder = ['archived', 'stopped', 'started', 'reserved', 'draft', 'canceled'];
+  const counts = {}; list.forEach(o => { const s = String(o.status || ''); counts[s] = (counts[s] || 0) + 1; });
+  const chips = `<div class="bqa-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+    <button class="bq-ostatus btn btn-primary" data-status="" style="padding:4px 10px;font-size:11px;">Бүгд (${list.length})</button>
+    ${statusOrder.filter(s => counts[s]).map(s => `<button class="bq-ostatus btn" data-status="${s}" style="padding:4px 10px;font-size:11px;">${stLabel[s] || s} (${counts[s]})</button>`).join('')}
+  </div>`;
+  const rows = list.map(o => {
+    const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || '');
+    const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
+    const contact = [o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ');
+    const addr = o.delivery_address || o.customer_address || '';
+    const search = (String(o.customer || '') + ' ' + (o.phone || '') + ' ' + (o.email || '') + ' ' + (o.number ?? '')).toLowerCase();
+    const paidNote = (st !== 'canceled' && paid && paid !== total) ? ` · төлсөн ${fmtMoneyShort(paid)}` : '';
+    return `<div class="bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(search)}" data-status="${escapeHtml(st)}" data-total="${total}" style="border:1px solid var(--border);border-radius:11px;margin:7px 0;overflow:hidden;background:var(--panel);">
+      <div class="bq-order-head" style="cursor:pointer;padding:10px 12px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+          <span style="font-size:13px;"><b>#${o.number ?? '—'}</b> <span style="font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-hover);color:${stColor[st] || 'var(--muted)'};">${stLabel[st] || st}</span></span>
+          <span style="font-weight:800;font-variant-numeric:tabular-nums;">${fmtMoney(total)}</span>
+        </div>
+        <div style="font-size:12.5px;font-weight:600;margin-top:3px;">${escapeHtml(o.customer || '?')}${contact ? `<span style="font-weight:400;color:var(--muted);"> · ${contact}</span>` : ''}</div>
+        ${addr ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">📍 ${escapeHtml(addr)}</div>` : ''}
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">📅 ${start}${stop ? ' → ' + stop : ''}${o.payment_status ? ' · ' + (payLabel[o.payment_status] || o.payment_status) : ''}${paidNote} · ${N(o.item_count)} бараа</div>
+      </div>
+      <div class="bq-order-items" style="display:none;padding:0 12px 10px;font-size:11.5px;"></div>
+    </div>`;
+  }).join('');
+  return `<div class="bqa-wrap">
+    ${chips}
+    <div class="orders-search" style="margin-bottom:6px;">🔍<input type="search" id="bqa-search" placeholder="Нэр, утас, имэйл, дугаар" /></div>
+    <div id="bqa-sum" style="font-weight:700;font-size:12.5px;margin:4px 0 8px;"></div>
+    <div id="bqa-list">${rows}</div>
+  </div>`;
 }
 
 // Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг
@@ -7464,7 +7523,7 @@ function renderBooqable() {
   </div>`;
 
   // Таб сонгогч
-  const tabs = [['revenue', '💰 Орлого'], ['branch', '🏢 Салбар'], ['orders', '📋 Захиалга'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
+  const tabs = [['revenue', '💰 Орлого'], ['branch', '🏢 Салбар'], ['products', '📦 Бараа · ROI'], ['customers', '👤 Харилцагч'], ['usage', '🔁 Ашиглалт']];
   const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-bq-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
 
@@ -7598,45 +7657,6 @@ function renderBooqable() {
        <div style="display:flex;align-items:flex-end;gap:6px;height:148px;overflow-x:auto;padding:2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
       'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй (M-Event/Booqable нэг эвентийн салбар, NOMAAD кемп тусдаа). Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
 
-  } else if (tab === 'orders') {
-    const list = bq.orders;
-    if (list === undefined) {
-      setTimeout(loadBooqableOrders, 0);
-      body = '<div style="text-align:center;color:var(--muted);padding:40px 0;">Захиалгууд татаж байна…</div>';
-    } else if (!list.length) {
-      body = card('Захиалга', '<span style="color:var(--muted);">Захиалга алга — `bq_v_orders` view-г Supabase-д нэмнэ үү (доорх SQL).</span>');
-    } else {
-      const stColor = { archived: 'var(--muted)', stopped: 'var(--ok)', started: 'var(--primary)', reserved: 'var(--warn)', canceled: 'var(--danger)', draft: 'var(--muted-soft)' };
-      const stLabel = { archived: 'Архив', stopped: 'Дууссан', started: 'Гарсан', reserved: 'Захиалсан', canceled: 'Цуцалсан', draft: 'Ноорог' };
-      const rows = list.map(o => {
-        const total = N(o.total_mnt);
-        const dt = o.starts_at ? String(o.starts_at).slice(0, 10) : '';
-        const st = String(o.status || '');
-        const searchKey = (String(o.customer || '') + ' ' + (o.number ?? '')).toLowerCase();
-        return `<div class="bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(searchKey)}" data-status="${escapeHtml(st)}" data-total="${total}" style="border:1px solid var(--border);border-radius:9px;margin:5px 0;overflow:hidden;">
-          <div class="bq-order-head" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;font-size:12px;">
-            <span style="font-weight:700;color:var(--muted);flex:0 0 auto;">#${o.number ?? '—'}</span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '?')}</span>
-            <span style="flex:0 0 auto;font-size:10px;color:var(--muted);">${dt}</span>
-            <span style="flex:0 0 auto;font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-hover);color:${stColor[st] || 'var(--muted)'};">${stLabel[st] || st}</span>
-            <span style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;min-width:72px;text-align:right;">${fmtMoneyShort(total)}</span>
-          </div>
-          <div class="bq-order-items" style="display:none;padding:2px 10px 9px;font-size:11.5px;"></div>
-        </div>`;
-      }).join('');
-      const statusOrder = ['archived', 'stopped', 'started', 'reserved', 'draft', 'canceled'];
-      const counts = {}; list.forEach(o => { const s = String(o.status || ''); counts[s] = (counts[s] || 0) + 1; });
-      const chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-        <button class="bq-ostatus btn btn-primary" data-status="" style="padding:4px 10px;font-size:11px;">Бүгд (${list.length})</button>
-        ${statusOrder.filter(s => counts[s]).map(s => `<button class="bq-ostatus btn" data-status="${s}" style="padding:4px 10px;font-size:11px;">${stLabel[s] || s} (${counts[s]})</button>`).join('')}
-      </div>`;
-      body = card(`Бүх захиалга — ${list.length}`,
-        chips +
-        `<input id="bq-order-search" placeholder="🔍 Харилцагч эсвэл дугаараар хайх…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:13px;background:var(--panel);color:var(--text);">
-         <div id="bq-order-sum" style="font-weight:700;font-size:12.5px;margin:4px 0 8px;color:var(--text);"></div>
-         <div id="bq-order-list">${rows}</div>`,
-        'Статусаар шүүх / харилцагч-дугаараар хайх → нийт дүн доор шинэчлэгдэнэ. Захиалга дээр дарж бараагаа задлана.');
-    }
   }
 
   return `<div style="padding:4px;">${head(tabBar)}${body}</div>`;
@@ -7649,31 +7669,36 @@ function attachBooqableHandlers() {
     render();
   }));
 
-  // Захиалга таб: статус шүүлт + хайлт (мөр нуух/харуулах, re-render-гүй) + нийт дүн + бараа задлах
-  const oSearch = document.getElementById('bq-order-search');
-  const oList = document.getElementById('bq-order-list');
-  const oSum = document.getElementById('bq-order-sum');
-  if (oList) {
+  // view нээгдэхэд анх удаа татна
+  if (!state.booqable && !state._bqLoading) loadBooqable();
+}
+
+// Booqable түүх архивын handler-ууд (үндсэн Захиалга самбарт). Статус шүүлт + хайлт + нийт дүн + бараа задлах.
+function attachBooqableArchiveHandlers() {
+  const sb = document.getElementById('bqa-search');
+  const lst = document.getElementById('bqa-list');
+  const sum = document.getElementById('bqa-sum');
+  if (lst) {
     let activeStatus = '';
     const applyFilter = () => {
-      const q = (oSearch ? oSearch.value : '').toLowerCase().trim();
-      let shown = 0, sum = 0;
-      oList.querySelectorAll('.bq-order').forEach(r => {
+      const q = (sb ? sb.value : '').toLowerCase().trim();
+      let shown = 0, total = 0;
+      lst.querySelectorAll('.bq-order').forEach(r => {
         const ok = (!activeStatus || r.dataset.status === activeStatus) && (!q || (r.dataset.search || '').includes(q));
         r.style.display = ok ? '' : 'none';
-        if (ok) { shown++; sum += Number(r.dataset.total) || 0; }
+        if (ok) { shown++; total += Number(r.dataset.total) || 0; }
       });
-      if (oSum) oSum.textContent = `${shown.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sum)}`;
+      if (sum) sum.textContent = `${shown.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(total)}`;
     };
-    if (oSearch) oSearch.addEventListener('input', applyFilter);
-    document.querySelectorAll('.bq-ostatus').forEach(ch => ch.addEventListener('click', () => {
+    if (sb) sb.addEventListener('input', applyFilter);
+    document.querySelectorAll('.bqa-chips .bq-ostatus').forEach(ch => ch.addEventListener('click', () => {
       activeStatus = ch.dataset.status || '';
-      document.querySelectorAll('.bq-ostatus').forEach(c => c.classList.toggle('btn-primary', c === ch));
+      document.querySelectorAll('.bqa-chips .bq-ostatus').forEach(c => c.classList.toggle('btn-primary', c === ch));
       applyFilter();
     }));
     applyFilter();   // анхны нийт дүн
   }
-  document.querySelectorAll('.bq-order-head').forEach(h => h.addEventListener('click', async () => {
+  document.querySelectorAll('.bqa-wrap .bq-order-head').forEach(h => h.addEventListener('click', async () => {
     const row = h.closest('.bq-order');
     const box = row && row.querySelector('.bq-order-items');
     if (!box) return;
@@ -7684,7 +7709,7 @@ function attachBooqableHandlers() {
         box.innerHTML = '<div style="color:var(--muted);padding:4px 0;">Татаж байна…</div>';
         const items = await loadBooqableOrderItems(row.dataset.oid);
         box.innerHTML = items.length
-          ? items.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-top:1px solid var(--border);">
+          ? '<div style="font-weight:600;color:var(--muted);font-size:10.5px;margin:2px 0;">Түрээслэсэн бараа</div>' + items.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border);">
               <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.title || '—')} <span style="color:var(--muted);">× ${Number(it.quantity) || 0}</span></span>
               <span style="flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--muted);">${fmtMoneyShort(Number(it.price_mnt) || 0)}</span>
             </div>`).join('')
@@ -7694,9 +7719,6 @@ function attachBooqableHandlers() {
       box.style.display = 'none';
     }
   }));
-
-  // view нээгдэхэд анх удаа татна
-  if (!state.booqable && !state._bqLoading) loadBooqable();
 }
 
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */

@@ -3983,6 +3983,9 @@ function attachOrdersHandlers() {
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
 
+  // Идэвхтэй Booqable захиалгыг M-Event рүү зөөх
+  document.querySelectorAll('[data-bq-migrate]').forEach(b => b.addEventListener('click', () => migrateBqToMevent(b.dataset.bqMigrate, b)));
+
   // Түүх захиалгын бараа задлах (read-only карт)
   document.querySelectorAll('.bqa-items-toggle').forEach(btn => btn.addEventListener('click', async () => {
     const row = btn.closest('.bq-order');
@@ -7432,13 +7435,15 @@ function unifiedOrders() {
   return me.concat(bq);
 }
 
-// Booqable түүх захиалгын ТӨРӨЛХ карт (read-only) — нэгдсэн жагсаалтад
+// Booqable түүх захиалгын ТӨРӨЛХ карт (read-only) — нэгдсэн жагсаалтад.
+// Идэвхтэй (draft/reserved/started) бол "→ M-Event рүү зөөх" товчтой (амьд систем рүү).
 function bqOrderCard(o) {
   const N = x => Number(x) || 0;
   const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || '');
   const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
   const addr = o.delivery_address || o.customer_address || '';
   const payLabel = { paid: 'Төлсөн', payment_due: 'Төлбөр хүлээгдэж буй', partially_paid: 'Хэсэгчилсэн', overpaid: 'Илүү төлсөн', process_deposit: 'Барьцаа' };
+  const active = st === 'draft' || st === 'reserved' || st === 'started';
   return `<div class="order-card bq-order" data-oid="${escapeHtml(String(o.id))}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
@@ -7448,7 +7453,41 @@ function bqOrderCard(o) {
     ${(paid && st !== 'canceled') ? `<div class="order-meta order-pay">💵 Төлсөн ${fmtMoney(paid)}</div>` : ''}
     <button class="order-items-toggle bqa-items-toggle" data-oid="${escapeHtml(String(o.id))}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
+    ${active ? `<div class="order-foot"><button class="btn btn-primary" data-bq-migrate="${escapeHtml(String(o.id))}" style="padding:5px 12px;font-size:12px;">→ M-Event рүү зөөх</button><span class="order-sub" style="font-size:10.5px;color:var(--muted);">амьд систем рүү (засаж/удирдахаар)</span></div>` : ''}
   </div>`;
+}
+
+// Идэвхтэй Booqable захиалгыг M-Event амьд систем рүү зөөх (нотлогдсон capture webhook-аар).
+async function migrateBqToMevent(oid, btn) {
+  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  if (!(await showConfirm(`#${o.number} (${o.customer || '?'}) захиалгыг M-Event амьд систем рүү зөөх үү? M-Event-д "Шинэ" төлөвтэй үүсэж, тэндээс засаж/удирдана.`, { okText: 'Зөөх' }))) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Зөөж байна…'; }
+  try {
+    const items = (await loadBooqableOrderItems(oid)).map(it => ({ name: it.title || '', qty: Number(it.quantity) || 1, price: Number(it.price_each_mnt) || 0 }));
+    const fmtDT = s => s ? String(s).slice(0, 16).replace('T', ' ') : '';
+    let days = 1;
+    if (o.starts_at && o.stops_at) days = Math.max(1, Math.round((new Date(o.stops_at) - new Date(o.starts_at)) / 86400000));
+    const total = Number(o.total_mnt) || 0;
+    const payload = {
+      customer: { name: o.customer || '', phone: o.phone || '', address: o.delivery_address || o.customer_address || '', email: o.email || '', company: '', register: '' },
+      dates: { start: fmtDT(o.starts_at), end: fmtDT(o.stops_at) },
+      totals: { days, subtotal: total, deposit: 0, grand: total },
+      items,
+      note: `Booqable #${o.number}-ээс шилжүүлсэн${Number(o.paid_mnt) > 0 ? ` · төлсөн ${fmtMoney(Number(o.paid_mnt))}` : ''}`,
+      source: 'booqable',
+    };
+    const base = state.config.ordersUrl || DEFAULT_ORDERS_URL;
+    const captureUrl = base.replace(/\/[^/]+$/, '/m-event-site-order');
+    const r = await fetchWithTimeout(withKey(captureUrl), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast(`#${o.number} → M-Event-д шилжлээ`, 'success', 2800);
+    state.ordersFilter = 'await';   // шинэ захиалга руу анхаарал
+    loadOrders();
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, 'error', 4000);
+    if (btn) { btn.disabled = false; btn.textContent = '→ M-Event рүү зөөх'; }
+  }
 }
 
 // Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг

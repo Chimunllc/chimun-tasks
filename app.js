@@ -3899,8 +3899,8 @@ function renderOrders() {
   // Эх сурвалж сонгогч: Идэвхтэй (M-Event ажлын самбар) ⇄ Booqable түүх (бүх захиалгын архив)
   state.ordersSource = state.ordersSource || 'active';
   const srcToggle = `<div class="orders-source" style="display:flex;gap:6px;margin:2px 0 12px;flex-wrap:wrap;">
-    <button class="btn${state.ordersSource === 'active' ? ' btn-primary' : ''}" data-osource="active" style="padding:6px 12px;font-size:12px;">📋 Идэвхтэй (M-Event)</button>
-    <button class="btn${state.ordersSource === 'booqable' ? ' btn-primary' : ''}" data-osource="booqable" style="padding:6px 12px;font-size:12px;">📚 Booqable түүх${state.bqOrders ? ` (${state.bqOrders.length})` : ''}</button>
+    <button class="btn${state.ordersSource === 'active' ? ' btn-primary' : ''}" data-osource="active" style="padding:6px 12px;font-size:12px;">📋 Идэвхтэй</button>
+    <button class="btn${state.ordersSource === 'booqable' ? ' btn-primary' : ''}" data-osource="booqable" style="padding:6px 12px;font-size:12px;">📚 Бүх захиалга${state.bqOrders ? ` (${state.bqOrders.length})` : ''}</button>
   </div>`;
   if (state.ordersSource === 'booqable') return head + srcToggle + renderBooqableArchive();
 
@@ -7361,46 +7361,54 @@ async function loadBooqableOrderItems(orderId) {
   return state.bqOrderItems[orderId];
 }
 
-// ── Booqable түүх архив — бүх захиалга бүрэн дэлгэрэнгүй (үндсэн Захиалга самбарт) ──
+// Booqable статус → аппын төрөлх статус (төрөлх badge харагдуулахын тулд)
+function bqMapStatus(st) {
+  if (st === 'canceled') return 'Цуцалсан';
+  if (st === 'draft') return 'Ноорог';
+  if (st === 'reserved' || st === 'started') return 'Идэвхтэй';
+  return 'Дууссан';   // archived / stopped
+}
+
+// ── Бүх захиалгын түүх — аппын ТӨРӨЛХ захиалгын карт маягаар (read-only) ──
 function renderBooqableArchive() {
   const N = x => Number(x) || 0;
   const list = state.bqOrders;
-  if (list === undefined) { setTimeout(loadBooqableOrders, 0); return `<div class="orders-empty"><div class="icon">⏳</div><div>Booqable түүх захиалга татаж байна…</div></div>`; }
-  if (!list.length) return `<div class="orders-empty"><div class="icon">📚</div><div>Түүх алга.</div><div class="sub">bq_v_orders / bq_v_order_items view болон bq_10_contact.sql-г Supabase-д ажиллуулсан эсэхээ шалгана уу.</div></div>`;
-  const stColor = { archived: 'var(--muted)', stopped: 'var(--ok)', started: 'var(--primary)', reserved: 'var(--warn)', canceled: 'var(--danger)', draft: 'var(--muted-soft)' };
-  const stLabel = { archived: 'Архив', stopped: 'Дууссан', started: 'Гарсан', reserved: 'Захиалсан', canceled: 'Цуцалсан', draft: 'Ноорог' };
+  if (list === undefined) { setTimeout(loadBooqableOrders, 0); return `<div class="orders-empty"><div class="icon">⏳</div><div>Захиалгын түүх татаж байна…</div></div>`; }
+  if (!list.length) return `<div class="orders-empty"><div class="icon">📚</div><div>Түүх алга.</div><div class="sub">Дата ачаалагдсан эсэхийг шалгана уу.</div></div>`;
   const payLabel = { paid: 'Төлсөн', payment_due: 'Төлбөр хүлээгдэж буй', partially_paid: 'Хэсэгчилсэн', overpaid: 'Илүү төлсөн', process_deposit: 'Барьцаа' };
-  const statusOrder = ['archived', 'stopped', 'started', 'reserved', 'draft', 'canceled'];
-  const counts = {}; list.forEach(o => { const s = String(o.status || ''); counts[s] = (counts[s] || 0) + 1; });
+  const chipOrder = ['Дууссан', 'Идэвхтэй', 'Ноорог', 'Цуцалсан'];
+  const counts = {}; list.forEach(o => { const m = bqMapStatus(String(o.status || '')); counts[m] = (counts[m] || 0) + 1; });
   const chips = `<div class="bqa-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
     <button class="bq-ostatus btn btn-primary" data-status="" style="padding:4px 10px;font-size:11px;">Бүгд (${list.length})</button>
-    ${statusOrder.filter(s => counts[s]).map(s => `<button class="bq-ostatus btn" data-status="${s}" style="padding:4px 10px;font-size:11px;">${stLabel[s] || s} (${counts[s]})</button>`).join('')}
+    ${chipOrder.filter(m => counts[m]).map(m => `<button class="bq-ostatus btn" data-status="${m}" style="padding:4px 10px;font-size:11px;">${m} (${counts[m]})</button>`).join('')}
   </div>`;
   const rows = list.map(o => {
-    const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || '');
+    const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || ''), mapped = bqMapStatus(st);
     const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
-    const contact = [o.phone, o.email].filter(Boolean).map(escapeHtml).join(' · ');
     const addr = o.delivery_address || o.customer_address || '';
     const search = (String(o.customer || '') + ' ' + (o.phone || '') + ' ' + (o.email || '') + ' ' + (o.number ?? '')).toLowerCase();
-    const paidNote = (st !== 'canceled' && paid && paid !== total) ? ` · төлсөн ${fmtMoneyShort(paid)}` : '';
-    return `<div class="bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(search)}" data-status="${escapeHtml(st)}" data-total="${total}" style="border:1px solid var(--border);border-radius:11px;margin:7px 0;overflow:hidden;background:var(--panel);">
-      <div class="bq-order-head" style="cursor:pointer;padding:10px 12px;">
-        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
-          <span style="font-size:13px;"><b>#${o.number ?? '—'}</b> <span style="font-size:9.5px;padding:1px 6px;border-radius:5px;background:var(--panel-hover);color:${stColor[st] || 'var(--muted)'};">${stLabel[st] || st}</span></span>
-          <span style="font-weight:800;font-variant-numeric:tabular-nums;">${fmtMoney(total)}</span>
+    return `<div class="order-card bq-order" data-oid="${escapeHtml(String(o.id))}" data-search="${escapeHtml(search)}" data-status="${escapeHtml(mapped)}" data-total="${total}">
+      <div class="order-head">
+        <div class="order-head-l">
+          <span class="order-no">#${o.number ?? '—'}</span>
+          <span class="order-badge ${orderStatusClass(mapped)}">${escapeHtml(mapped)}</span>
         </div>
-        <div style="font-size:12.5px;font-weight:600;margin-top:3px;">${escapeHtml(o.customer || '?')}${contact ? `<span style="font-weight:400;color:var(--muted);"> · ${contact}</span>` : ''}</div>
-        ${addr ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">📍 ${escapeHtml(addr)}</div>` : ''}
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">📅 ${start}${stop ? ' → ' + stop : ''}${o.payment_status ? ' · ' + (payLabel[o.payment_status] || o.payment_status) : ''}${paidNote} · ${N(o.item_count)} бараа</div>
+        <div class="order-total">${fmtMoney(total)}</div>
       </div>
-      <div class="bq-order-items" style="display:none;padding:0 12px 10px;font-size:11.5px;"></div>
+      <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
+      ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
+      ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
+      <div class="order-meta">📅 ${start || '—'}${stop ? ' → ' + stop : ''}${o.payment_status ? ' · ' + (payLabel[o.payment_status] || o.payment_status) : ''}</div>
+      ${(paid && st !== 'canceled') ? `<div class="order-meta order-pay">💵 Төлсөн ${fmtMoney(paid)}</div>` : ''}
+      <button class="order-items-toggle bqa-items-toggle" data-oid="${escapeHtml(String(o.id))}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
+      <div class="order-items-box bq-order-items" hidden></div>
     </div>`;
   }).join('');
   return `<div class="bqa-wrap">
     ${chips}
     <div class="orders-search" style="margin-bottom:6px;">🔍<input type="search" id="bqa-search" placeholder="Нэр, утас, имэйл, дугаар" /></div>
     <div id="bqa-sum" style="font-weight:700;font-size:12.5px;margin:4px 0 8px;"></div>
-    <div id="bqa-list">${rows}</div>
+    <div class="orders-wrap" id="bqa-list">${rows}</div>
   </div>`;
 }
 
@@ -7484,7 +7492,7 @@ function bqSeasonChart(bq) {
 function renderBooqable() {
   const bq = state.booqable;
   const head = (extra) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх — Booqable</div><div style="font-size:11px;color:var(--muted);">2024–2026 · бүрэн түрээсийн дата · шийдвэр гаргалтад</div></div>
+      <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх</div><div style="font-size:11px;color:var(--muted);">2024–2026 · бүрэн түрээсийн дата · шийдвэр гаргалтад</div></div>
       <button class="btn" data-bq-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
     </div>${extra || ''}`;
 
@@ -7698,25 +7706,25 @@ function attachBooqableArchiveHandlers() {
     }));
     applyFilter();   // анхны нийт дүн
   }
-  document.querySelectorAll('.bqa-wrap .bq-order-head').forEach(h => h.addEventListener('click', async () => {
-    const row = h.closest('.bq-order');
+  document.querySelectorAll('.bqa-wrap .bqa-items-toggle').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.bq-order');
     const box = row && row.querySelector('.bq-order-items');
     if (!box) return;
-    if (box.style.display === 'none') {
-      box.style.display = 'block';
+    const caret = btn.querySelector('.oit-caret');
+    if (box.hasAttribute('hidden')) {
+      box.removeAttribute('hidden');
+      if (caret) caret.textContent = '▾';
       if (!box.dataset.loaded) {
         box.dataset.loaded = '1';
-        box.innerHTML = '<div style="color:var(--muted);padding:4px 0;">Татаж байна…</div>';
+        box.innerHTML = '<div class="order-meta">Татаж байна…</div>';
         const items = await loadBooqableOrderItems(row.dataset.oid);
         box.innerHTML = items.length
-          ? '<div style="font-weight:600;color:var(--muted);font-size:10.5px;margin:2px 0;">Түрээслэсэн бараа</div>' + items.map(it => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--border);">
-              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.title || '—')} <span style="color:var(--muted);">× ${Number(it.quantity) || 0}</span></span>
-              <span style="flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--muted);">${fmtMoneyShort(Number(it.price_mnt) || 0)}</span>
-            </div>`).join('')
-          : '<div style="color:var(--muted);padding:4px 0;">бараа алга</div>';
+          ? `<table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th></tr></thead><tbody>${items.map(it => `<tr><td>${escapeHtml(it.title || '—')}</td><td class="num">${Number(it.quantity) || 0}</td><td class="num">${fmtMoney(Number(it.price_mnt) || 0)}</td></tr>`).join('')}</tbody></table>`
+          : '<div class="order-meta">бараа алга</div>';
       }
     } else {
-      box.style.display = 'none';
+      box.setAttribute('hidden', '');
+      if (caret) caret.textContent = '▸';
     }
   }));
 }

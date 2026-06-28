@@ -5335,7 +5335,41 @@ async function loadNomaadOrders() {
     state.nomaadOrders = Array.isArray(data.orders) ? data.orders : [];
     try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch(e) {}
     if (typeof render === 'function') render();
+    loadNomaadPayments();   // төлбөрийн лог зэрэгцээ татна
   } catch(e) { console.warn('loadNomaadOrders fail', e); }
+}
+
+// NOMAAD төлбөрийн лог татна (quote_no-гоор бүлэглэнэ). Supabase anon SELECT.
+async function loadNomaadPayments() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments?select=*&order=recorded_at.asc`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) return;   // хүснэгт үүсээгүй бол чимээгүй
+    const rows = await r.json();
+    const byQ = {};
+    rows.forEach(p => { (byQ[p.quote_no] = byQ[p.quote_no] || []).push(p); });
+    state.nomaadPayments = byQ;
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadNomaadPayments', e); }
+}
+
+// NOMAAD орлого бүртгэх бүрт логт нэг мөр нэмнэ (хэн/хэзээ/хэдэн — дарж бичихгүй).
+async function logNomaadPayment(o, res) {
+  if (!SUPABASE_ANON_KEY) return;
+  const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'np-' + Date.now();
+  const at = new Date().toISOString();
+  const row = { id, quote_no: o.quote_no, company: o.company || '', total: res.total, advance: res.advance, balance: res.balance, addon: res.addon, damage: res.damage, recorded_by: state.me, recorded_at: at, pay_date: at.slice(0, 10) };
+  // локал кэшид шууд (UI түргэн)
+  state.nomaadPayments = state.nomaadPayments || {};
+  (state.nomaadPayments[o.quote_no] = state.nomaadPayments[o.quote_no] || []).push(row);
+  try {
+    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(row),
+    }, 15000);
+  } catch (e) { console.warn('logNomaadPayment', e); }
 }
 // date_start-аас өнөөдрийг хүртэлх үлдсэн хоног (null = огноо алга/буруу)
 function nomaadDaysLeft(dateStr) {
@@ -5486,6 +5520,16 @@ function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
   const isDoneQuote = nomaadStage(o) === 'done';   // Гүйцэтгэсэн — засах хаалттай (түүх хамгаална)
   const income = Number(o.income_amount) || 0;
+  // Төлбөрийн лог (хэн/хэзээ/хэдэн бүртгэсэн бүрэн түүх). Лог байхгүй бол сүүлийн income_by-д унана.
+  const plog = (state.nomaadPayments && state.nomaadPayments[o.quote_no]) || [];
+  const _lastLog = plog[plog.length - 1];
+  const regLine = plog.length
+    ? `📝 ${plog.length} удаа бүртгэсэн · сүүлд <b style="font-weight:600;">${escapeHtml(memberName(_lastLog.recorded_by))}</b> · ${escapeHtml(String(_lastLog.recorded_at || '').slice(0, 10))}`
+    : (income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй');
+  const logHistoryHtml = plog.length ? `<div class="order-meta" style="margin-top:6px;background:var(--panel-hover);border-radius:8px;padding:8px 10px;">
+    <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:4px;">📝 Бүртгэлийн түүх (${plog.length})</div>
+    ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;"><span>${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b></span><span style="font-variant-numeric:tabular-nums;color:var(--muted);">${fmtMoney(p.total)}</span></div>`).join('')}
+  </div>` : '';
   // Үлдэгдэл = гэрээний дүн − хүлээн авсан орлого (Эцсийн гэрээний дүн байвал тэрийг, эс бөгөөс Нийт дүн)
   const contractTotal = nomaadEffTotal(o);
   const gtRaw = Number(o.grand_total) || 0;
@@ -5534,7 +5578,7 @@ function nomaadCardHtml(o) {
         ${nomaadCountdownBadge(days)}
         <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>
         <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
-        <span class="nomaad-card-reg" style="font-size:10.5px;color:var(--muted);flex-basis:100%;width:100%;margin-top:2px;">${income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй'}</span>
+        <span class="nomaad-card-reg" style="font-size:10.5px;color:var(--muted);flex-basis:100%;width:100%;margin-top:2px;">${regLine}</span>
       </div>
       <div class="nomaad-card-right">
         ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
@@ -5547,6 +5591,7 @@ function nomaadCardHtml(o) {
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
       ${nomaadIsCancelled(o) && o.note ? `<div class="order-meta" style="color:var(--danger);font-weight:600;">❌ ${escapeHtml(o.note)}</div>` : ''}
+      ${logHistoryHtml}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
@@ -6433,6 +6478,7 @@ async function recordNomaadIncome(quoteNo) {
   if (!(await showConfirm(`${o.company}: нийт ${fmtMoney(res.total)} орлого бүртгэх үү?\n(Урьд ${fmtMoney(res.advance)} · Үлд ${fmtMoney(res.balance)} · Нэм ${fmtMoney(res.addon)} · Эвд ${fmtMoney(res.damage)})`, { okText: 'Тийм, бүртгэх' }))) return;
   const today = new Date().toISOString().slice(0, 10);
   Object.assign(o, { income_amount: res.total, income_advance: res.advance, income_balance: res.balance, income_addon: res.addon, income_damage: res.damage, income_date: today, income_by: state.me });
+  logNomaadPayment(o, res);   // төлбөрийн логт бүртгэх бүрт мөр нэмнэ (хэн/хэзээ/хэдэн)
   render();
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {

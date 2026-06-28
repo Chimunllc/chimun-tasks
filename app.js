@@ -98,10 +98,8 @@ const N8N_API_KEY = '1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
 // гарсан (2026-06-28 нэгтгэл). Бусад апп шиг бүх дата одоо VPS дээр.
 const SUPABASE_URL = 'https://n8n.nomaadcamp.com/db';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s';   // VPS PostgREST anon JWT (role=anon, PUBLIC/frontend-safe)
-const PRODUCT_IMAGE_BUCKET = 'product-images';
-// Барааны зураг ТҮР Supabase Storage дээр (DB→VPS шилжсэн; зураг дараа VPS рүү шилжинэ).
-const SUPABASE_STORAGE_URL = 'https://pydgnbzntldpzzjhtaal.supabase.co';
-const SUPABASE_STORAGE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZGduYnpudGxkcHp6amh0YWFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzQ2OTUsImV4cCI6MjA5NzMxMDY5NX0.9fKMMB3HHJtiQl2cc0a_SDxxI-Wlp9-1aFmrbWXND0c';
+// Хуучин барааны зураг VPS дээр (n8n.nomaadcamp.com/img/<file>). Шинэ upload = base64 data URL
+// (uploadProductImage). Supabase Storage-аас бүрэн салав — тусдаа storage тогтмол хэрэггүй.
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
 function withKey(url) {
   if (!url) return url;
@@ -4635,25 +4633,10 @@ async function loadProductsCatalog() {
 // Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
 // Зургийг эхлээд клиент талд шахна (resizeImageToBase64), дараа нь bucket-д тавина.
 async function uploadProductImage(file) {
-  if (!SUPABASE_STORAGE_KEY) throw new Error('Storage key тохируулаагүй байна');
-  let blob = file;
-  if (/^image\//i.test(file.type)) {
-    try {
-      const b64 = await resizeImageToBase64(file, 1200, 0.78);   // data URL
-      blob = await (await fetch(b64)).blob();                    // data URL → Blob
-    } catch (e) { blob = file; }   // шахалт амжилтгүй → эх файлаар
-  }
-  const name = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-  const r = await fetchWithTimeout(`${SUPABASE_STORAGE_URL}/storage/v1/object/${PRODUCT_IMAGE_BUCKET}/${name}`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_STORAGE_KEY, Authorization: 'Bearer ' + SUPABASE_STORAGE_KEY,
-      'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'Cache-Control': 'max-age=31536000',
-    },
-    body: blob,
-  }, 60000);
-  if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 120));
-  return `${SUPABASE_STORAGE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${name}`;
+  // Supabase Storage-аас салав. Шинэ зургийг клиент талд 1200px/0.78 чанартай шахаж
+  // base64 data URL-ээр буцаана → products.photo-д шууд хадгалагдана (тусдаа файл хостлох
+  // шаардлагагүй). Хуучин 228 зураг VPS Caddy-аас (n8n.nomaadcamp.com/img/) үйлчилгээтэй.
+  return await resizeImageToBase64(file, 1200, 0.78);
 }
 
 /* ─── QR/баркод — агуулахын скан ───────────────────────────

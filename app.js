@@ -4015,6 +4015,27 @@ function attachOrdersHandlers() {
     }
   }));
 
+  // Түүх захиалгын баримт задлах (нэхэмжлэх/үнийн санал/гэрээ, read-only)
+  document.querySelectorAll('.bqa-docs-toggle').forEach(btn => btn.addEventListener('click', async () => {
+    const row = btn.closest('.bq-order');
+    const box = row && row.querySelector('.bq-order-docs');
+    if (!box) return;
+    const caret = btn.querySelector('.oit-caret');
+    if (box.hasAttribute('hidden')) {
+      box.removeAttribute('hidden');
+      if (caret) caret.textContent = '▾';
+      if (!box.dataset.loaded) {
+        box.dataset.loaded = '1';
+        box.innerHTML = '<div class="order-meta">Татаж байна…</div>';
+        const docs = await loadBooqableDocuments(row.dataset.oid);
+        box.innerHTML = bqDocsHtml(docs);
+      }
+    } else {
+      box.setAttribute('hidden', '');
+      if (caret) caret.textContent = '▸';
+    }
+  }));
+
   // Банкны тулгалт — горим солих, хуулга оруулах, зөрүүтэй мөрөөс захиалга нээх
   document.getElementById('orders-recon-toggle')?.addEventListener('click', () => { state.ordersRecon = !state.ordersRecon; render(); });
   const reconFile = document.getElementById('recon-file');
@@ -7441,6 +7462,55 @@ async function loadBooqableOrderItems(orderId) {
   return state.bqOrderItems[orderId];
 }
 
+// Захиалгын баримт (нэхэмжлэх/үнийн санал/гэрээ) — lazy, bq_v_documents (PII-гүй).
+async function loadBooqableDocuments(orderId) {
+  state.bqDocuments = state.bqDocuments || {};
+  if (state.bqDocuments[orderId]) return state.bqDocuments[orderId];
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    state.bqDocuments[orderId] = r.ok ? await r.json() : [];
+  } catch (e) { console.warn('loadBooqableDocuments', e); state.bqDocuments[orderId] = []; }
+  return state.bqDocuments[orderId];
+}
+
+const BQ_DOC_TYPE = {
+  invoice:  { icon: '💵', label: 'Нэхэмжлэх' },
+  quote:    { icon: '📝', label: 'Үнийн санал' },
+  contract: { icon: '📋', label: 'Гэрээ' },
+};
+const BQ_DOC_STATUS = {
+  paid:           { label: 'Төлсөн',           cls: 'ok' },
+  partially_paid: { label: 'Хэсэгчилсэн',      cls: 'warn' },
+  payment_due:    { label: 'Төлбөр хүлээж буй', cls: 'warn' },
+  overpaid:       { label: 'Илүү төлсөн',       cls: 'ok' },
+  revised:        { label: 'Шинэчилсэн',        cls: 'muted' },
+  confirmed:      { label: 'Баталсан',          cls: 'ok' },
+  draft:          { label: 'Ноорог',            cls: 'muted' },
+  sent:           { label: 'Илгээсэн',          cls: '' },
+};
+// Захиалгын баримтуудыг HTML болгоно (төрлөөр эрэмбэлж: гэрээ→үнийн санал→нэхэмжлэх).
+function bqDocsHtml(docs) {
+  if (!docs || !docs.length) return '<div class="order-meta">баримт алга</div>';
+  const ORD = { contract: 0, quote: 1, invoice: 2 };
+  const sorted = docs.slice().sort((a, b) =>
+    (ORD[a.document_type] ?? 9) - (ORD[b.document_type] ?? 9)
+    || String(b.doc_date || '').localeCompare(String(a.doc_date || '')));
+  const rows = sorted.map(d => {
+    const t = BQ_DOC_TYPE[d.document_type] || { icon: '📄', label: d.document_type || 'Баримт' };
+    const s = BQ_DOC_STATUS[d.status] || { label: d.status || '', cls: '' };
+    const date = d.doc_date ? String(d.doc_date).slice(0, 10) : '';
+    const total = Number(d.total_mnt) || 0, paid = Number(d.paid_mnt) || 0;
+    const isInv = d.document_type === 'invoice';
+    return `<div class="bq-doc${d.revised ? ' bq-doc-revised' : ''}">
+      <span class="bq-doc-t">${t.icon} ${escapeHtml(t.label)}${d.prefix_number ? ' ' + escapeHtml(d.prefix_number) : ''}</span>
+      <span class="bq-doc-m">${date}${total ? ' · ' + fmtMoney(total) : ''}${isInv && paid && paid !== total ? ' · төл. ' + fmtMoney(paid) : ''}${d.document_type === 'contract' && d.signed ? ' · ✍' : ''}</span>
+      ${s.label ? `<span class="bq-doc-s ${s.cls}">${escapeHtml(s.label)}</span>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="bq-docs">${rows}</div>`;
+}
+
 // Booqable түрээсийн 6 төлөв — нэр/өнгө/icon. Дараалал: Ноорог→Захиалсан→Эхэлсэн→Дууссан→Архивласан→Цуцалсан.
 // Дэвсгэр (light) + бараан текст (WCAG AA контраст) + зүүн талын тод цэг.
 const BQ_STATUS = {
@@ -7524,6 +7594,8 @@ function bqOrderCard(o) {
     ${payRow}
     <button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
+    <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
+    <div class="order-items-box bq-order-docs" hidden></div>
     ${foot}
   </div>`;
 }

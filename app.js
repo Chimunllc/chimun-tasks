@@ -3286,18 +3286,10 @@ function encodeDamageNote(note, dmg) {
 }
 
 async function loadOrders() {
-  if (!canSeeOrders()) return;
-  const url = state.config.ordersUrl;
-  if (!url) return;
-  try {
-    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    state.orders = (data.orders || []).map(normalizeOrder)
-      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-    try { localStorage.setItem('orders', JSON.stringify(state.orders)); } catch(e) {}
-    if (typeof render === 'function') render();   // badge + view шинэчлэх
-  } catch(e) { console.warn('loadOrders fail', e); }
+  // M-Event захиалгын давхарга цуцлагдсан (2026-06-28) — Booqable нь захиалгын ЦОРЫН ГАНЦ эх.
+  // Хуучин MEVENT_Orders_DB Sheet-ийг апп уншихаа больсон. state.orders үргэлж хоосон.
+  state.orders = [];
+  try { localStorage.removeItem('orders'); } catch (e) {}
 }
 
 // Захиалгын объектыг sheet-ийн 21 баганы бүтцэд хөрвүүлнэ. appendOrUpdate нь бүх
@@ -3889,39 +3881,37 @@ function renderOrders() {
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
   const head = `<div class="orders-head">
-    <div class="orders-title">${state.ordersRecon ? 'Банкны тулгалт' : 'Захиалга'}</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn${state.ordersRecon ? ' btn-primary' : ''}" id="orders-recon-toggle">${state.ordersRecon ? '← Захиалга' : '📊 Тулгалт'}</button>
-      ${state.ordersRecon ? '' : '<button class="btn btn-primary" id="new-mevent-order">+ Шинэ захиалга</button>'}
-    </div>
+    <div class="orders-title">Захиалга</div>
   </div>`;
 
-  if (state.ordersRecon) return head + renderReconcilePanel();
-
-  // Booqable түүхийг lazy татаад M-Event-тэй НЭГ жагсаалт болгоно.
+  // Booqable захиалгыг lazy татна (захиалгын цорын ганц эх).
   if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
   const combined = unifiedOrders();
 
   if (!combined.length) {
     if (state._initialLoading || state._bqOrdersLoading) return head + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
-    return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div><div class="sub">Сайтаас ирэх эсвэл "+ Шинэ захиалга" товчоор үүсгэнэ.</div></div>`;
+    return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div></div>`;
   }
 
-  // Нэгдсэн статус шүүлт — 6 төлвөөр (e.skey). await/today = M-Event операцийн дохио.
+  // Booqable төлөв шүүлт (e.skey). today = өнөөдөр эхлэх/дуусах захиалга.
+  const _t = new Date();
+  const todayStr = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
+  const isToday = (e) => {
+    const s = String(e.o.starts_at || '').slice(0, 10), st = String(e.o.stops_at || '').slice(0, 10);
+    return s === todayStr || st === todayStr;
+  };
   const matchFilter = (e, f) => {
     if (f === 'all') return true;
-    if (f === 'await') return e.src === 'me' && e.status === 'Шинэ';
-    if (f === 'today') { if (e.src !== 'me') return false; const u = orderUrgency(e.o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }
+    if (f === 'today') return isToday(e);
     return e.skey === f;
   };
 
-  // Анхаарлын чипүүд — операцийн дохио (M-Event)
-  const meAll = state.orders || [];
-  const awaitN = meAll.filter(o => o.status === 'Шинэ').length;
-  const todayN = meAll.filter(o => { const u = orderUrgency(o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }).length;
+  // Анхаарлын чипүүд — Booqable операцийн дохио
+  const todayN = combined.filter(isToday).length;
+  const reservedN = combined.filter(e => e.skey === 'reserved').length;
   const chips = `<div class="orders-chips">
-    <button class="ochip ochip-info${state.ordersFilter === 'await' ? ' on' : ''}" data-ofilter="await"><span class="ochip-n">${awaitN}</span><span class="ochip-l">Батлах хүлээж буй</span></button>
-    <button class="ochip ochip-danger${state.ordersFilter === 'today' ? ' on' : ''}" data-ofilter="today"><span class="ochip-n">${todayN}</span><span class="ochip-l">Өнөөдөр хүргэх</span></button>
+    <button class="ochip ochip-danger${state.ordersFilter === 'today' ? ' on' : ''}" data-ofilter="today"><span class="ochip-n">${todayN}</span><span class="ochip-l">Өнөөдөр</span></button>
+    <button class="ochip ochip-info${state.ordersFilter === 'reserved' ? ' on' : ''}" data-ofilter="reserved"><span class="ochip-n">${reservedN}</span><span class="ochip-l">Захиалсан</span></button>
     <div class="ochip ochip-static"><span class="ochip-n">${(combined.length).toLocaleString('mn-MN')}</span><span class="ochip-l">Нийт захиалга</span></div>
   </div>`;
 
@@ -3942,32 +3932,18 @@ function renderOrders() {
     <div class="orders-controls-r">
       ${ymSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
-      <div class="oview-toggle">
-        <button class="oview${state.ordersView === 'list' ? ' on' : ''}" data-oview="list" aria-label="Жагсаалт">☰</button>
-        <button class="oview${state.ordersView === 'board' ? ' on' : ''}" data-oview="board" aria-label="Самбар">▦</button>
-      </div>
     </div>
   </div>`;
 
-  let body;
-  if (state.ordersView === 'board') {
-    body = renderOrdersBoard(meAll.filter(o => orderMatchesSearch(o, q)));
-  } else {
-    const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)));
-    shown.sort((a, b) => {
-      const ua = a.src === 'me' ? orderUrgency(a.o) : null, ub = b.src === 'me' ? orderUrgency(b.o) : null;
-      const ka = ua ? (_URGENCY_RANK[ua.cls] ?? 5) : 9, kb = ub ? (_URGENCY_RANK[ub.cls] ?? 5) : 9;
-      if (ka !== kb) return ka - kb;
-      return String(b.date).localeCompare(String(a.date));
-    });
-    const sumTotal = shown.reduce((s, e) => s + e.total, 0);
-    const CAP = 200;
-    const cards = shown.slice(0, CAP).map(e => e.src === 'bq' ? bqOrderCard(e.o) : orderCardHtml(e.o, true, canConfirm)).join('');
-    const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:12.5px;margin:2px 2px 8px;">${shown.length.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sumTotal)}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
-    body = shown.length
-      ? sumLine + `<div class="orders-wrap">${cards}</div>`
-      : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`;
-  }
+  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)));
+  shown.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const sumTotal = shown.reduce((s, e) => s + e.total, 0);
+  const CAP = 200;
+  const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:12.5px;margin:2px 2px 8px;">${shown.length.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sumTotal)}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const body = shown.length
+    ? sumLine + `<div class="orders-wrap">${cards}</div>`
+    : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`;
 
   return head + chips + controls + body;
 }
@@ -7544,16 +7520,9 @@ function meStatusKey(st) {
   return 'started';   // Төлбөр авсан/Цэвэрлэгээ/Түрээс бэлдсэн/Гаргасан/Хүргэсэн/Буцаан ирсэн
 }
 
-// Нэгдсэн жагсаалт — M-Event (идэвхтэй) + Booqable түүх нэг массив, нормчлогдсон.
+// Захиалгын жагсаалт — Booqable нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
 function unifiedOrders() {
-  const me = (state.orders || []).map(o => ({
-    src: 'me', o, status: o.status || 'Шинэ', skey: meStatusKey(o.status || 'Шинэ'),
-    ym: String(o.date_start || o.created_at || '').slice(0, 7),
-    date: o.date_start || o.created_at || '',
-    total: Number(o.total) || 0,
-    hay: `${o.order_no || ''} ${o.customer_name || ''} ${o.company || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase(),
-  }));
-  const bq = (state.bqOrders || []).map(o => {
+  return (state.bqOrders || []).map(o => {
     const raw = String(o.status || '');
     return {
       src: 'bq', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'archived',
@@ -7563,7 +7532,6 @@ function unifiedOrders() {
       hay: `#${o.number ?? ''} ${o.customer || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase(),
     };
   });
-  return me.concat(bq);
 }
 
 // Booqable түүх захиалгын ТӨРӨЛХ карт — байрандаа засагдана (төлөв workflow + төлбөр бүртгэх + үлдэгдэл).

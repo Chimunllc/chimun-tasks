@@ -94,9 +94,14 @@ const N8N_API_KEY = '1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
 
 // Supabase Storage — барааны зураг (product-images bucket). anon key нь PUBLIC, frontend-д
 // ил байх нь зөв (RLS/storage policy-оор хамгаална). Зөвхөн зураг bucket-д upload зөвшөөрнө.
-const SUPABASE_URL = 'https://pydgnbzntldpzzjhtaal.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZGduYnpudGxkcHp6amh0YWFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzQ2OTUsImV4cCI6MjA5NzMxMDY5NX0.9fKMMB3HHJtiQl2cc0a_SDxxI-Wlp9-1aFmrbWXND0c';   // PUBLIC anon key (frontend-safe)
+// DB → өөрийн VPS Postgres (PostgREST дамжуулан, n8n.nomaadcamp.com/db). Supabase cloud-аас
+// гарсан (2026-06-28 нэгтгэл). Бусад апп шиг бүх дата одоо VPS дээр.
+const SUPABASE_URL = 'https://n8n.nomaadcamp.com/db';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s';   // VPS PostgREST anon JWT (role=anon, PUBLIC/frontend-safe)
 const PRODUCT_IMAGE_BUCKET = 'product-images';
+// Барааны зураг ТҮР Supabase Storage дээр (DB→VPS шилжсэн; зураг дараа VPS рүү шилжинэ).
+const SUPABASE_STORAGE_URL = 'https://pydgnbzntldpzzjhtaal.supabase.co';
+const SUPABASE_STORAGE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5ZGduYnpudGxkcHp6amh0YWFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MzQ2OTUsImV4cCI6MjA5NzMxMDY5NX0.9fKMMB3HHJtiQl2cc0a_SDxxI-Wlp9-1aFmrbWXND0c';
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
 function withKey(url) {
   if (!url) return url;
@@ -4630,7 +4635,7 @@ async function loadProductsCatalog() {
 // Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
 // Зургийг эхлээд клиент талд шахна (resizeImageToBase64), дараа нь bucket-д тавина.
 async function uploadProductImage(file) {
-  if (!SUPABASE_ANON_KEY) throw new Error('Supabase anon key тохируулаагүй байна');
+  if (!SUPABASE_STORAGE_KEY) throw new Error('Storage key тохируулаагүй байна');
   let blob = file;
   if (/^image\//i.test(file.type)) {
     try {
@@ -4639,16 +4644,16 @@ async function uploadProductImage(file) {
     } catch (e) { blob = file; }   // шахалт амжилтгүй → эх файлаар
   }
   const name = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-  const r = await fetchWithTimeout(`${SUPABASE_URL}/storage/v1/object/${PRODUCT_IMAGE_BUCKET}/${name}`, {
+  const r = await fetchWithTimeout(`${SUPABASE_STORAGE_URL}/storage/v1/object/${PRODUCT_IMAGE_BUCKET}/${name}`, {
     method: 'POST',
     headers: {
-      apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+      apikey: SUPABASE_STORAGE_KEY, Authorization: 'Bearer ' + SUPABASE_STORAGE_KEY,
       'Content-Type': 'image/jpeg', 'x-upsert': 'true', 'Cache-Control': 'max-age=31536000',
     },
     body: blob,
   }, 60000);
   if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 120));
-  return `${SUPABASE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${name}`;
+  return `${SUPABASE_STORAGE_URL}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${name}`;
 }
 
 /* ─── QR/баркод — агуулахын скан ───────────────────────────

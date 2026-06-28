@@ -1228,11 +1228,8 @@ function getFinanceApprover(r) {
     if (needle) {
       const found = (TEAM || []).find(m => String(m.name || '').toLowerCase().includes(needle));
       if (found) {
-        const approverKey = personKey(found);
-        // Өөрөө өөрийнхөө хүсэлтийг батлахаас сэргийлнэ — батлагч нь илгээгч мөн бол
-        // шийдвэрийг нэг шат дээш (CEO) руу ахиулна.
-        if (approverKey && approverKey === r?.requested_by) return getCEOEmail();
-        return approverKey;
+        // Менежер өөрийн хүсэлтийг ч өөрөө батална (CEO зөвшөөрсөн — лимит дотор).
+        return personKey(found);
       }
     }
   }
@@ -2215,8 +2212,8 @@ function openFinanceModal(id = null) {
     const isReqOrCEO = (state.me === t.requested_by) || state.isCEO;
     // Гүйлгээ хийгдсэн гэж тэмдэглэх нь зөвхөн туслах нягтлангийн үүрэг. CEO тэр үүрэгт оролцохгүй —
     // ажил үүргийн зааг ялгана. isExecutor дээр populate секцэд тодорхойлогдсон.
-    // Хүсэлт гаргагч өөрөө бол шийдвэрийн/гүйцэтгэлийн товчнууд харагдахгүй (isRequester
-    // populate секцэд тодорхойлогдсон).
+    // Шийдвэрийн товч = томилогдсон approver-т (өөрийн хүсэлт ч мөн). Гүйцэтгэл (шилжүүлэг)
+    // = зөвхөн туслах нягтлан. isRequester нь зураг засах эрхэд (canEditPurchase) ашиглагдана.
     if (inViewMode) {
       // Засах товч — зөвхөн pending + edit эрхтэй үед
       if (canEditFields) {
@@ -2230,9 +2227,9 @@ function openFinanceModal(id = null) {
       //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах
       const approverEmail = getFinanceApprover(t);
       const isApprover = (state.me === approverEmail);
-      // Зөвхөн томилогдсон approver товч хардаг. Өөрийн хүсэлтийг өөрөө батлахыг
-      // хориглоно — цорын ганц онцгой тохиолдол нь CEO (дээд эрх, дээш ахиулах хүн алга).
-      if (dec === 'pending' && isApprover && (!isRequester || state.isCEO)) {
+      // Зөвхөн томилогдсон approver товч хардаг. Менежер/CEO бол өөрийн хүсэлтийг ч
+      // өөрөө батална (getFinanceApprover нь өөрийг нь батлагч болгож тооцно).
+      if (dec === 'pending' && isApprover) {
         decisionActions.style.setProperty('display', 'flex', 'important');
       } else if (dec === 'approved' && !t.executed_at && isExecutor) {
         executeActions.style.setProperty('display', 'flex', 'important');

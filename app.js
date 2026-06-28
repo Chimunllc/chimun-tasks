@@ -5558,7 +5558,9 @@ function nomaadCardHtml(o) {
   const balance = contractTotal - income;
   const balanceHtml = balance > 0
     ? `<div style="font-weight:700;color:var(--warn);font-size:13px;">Үлдэгдэл: ${fmtMoney(balance)}</div>`
-    : `<div style="font-weight:700;color:var(--ok);font-size:13px;">✓ Бүрэн төлөгдсөн</div>`;
+    : balance < 0
+      ? `<div style="font-weight:700;color:var(--danger);font-size:13px;" title="Хүлээн авсан орлого гэрээний дүнгээс их — хүн нэмэгдсэн бол гэрээний дүнг Засах-аар шинэчилнэ үү.">⚠ Илүү төлсөн: ${fmtMoney(-balance)}</div>`
+      : `<div style="font-weight:700;color:var(--ok);font-size:13px;">✓ Бүрэн төлөгдсөн</div>`;
   const days = nomaadDaysLeft(o.date_start);
   const asgTasks = nomaadOrderTasks(o.quote_no);
   const asgDone  = asgTasks.filter(t => t.status === 'done').length;
@@ -5603,7 +5605,7 @@ function nomaadCardHtml(o) {
       </div>
       <div class="nomaad-card-right">
         ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
-        ${balance > 0 ? `<span title="Үлдэгдэл" style="color:var(--warn);font-weight:700;font-size:12px;">Үлд ${fmtMoney(balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓</span>'}
+        ${balance > 0 ? `<span title="Үлдэгдэл" style="color:var(--warn);font-weight:700;font-size:12px;">Үлд ${fmtMoney(balance)}</span>` : balance < 0 ? `<span title="Илүү төлсөн — гэрээний дүнг шинэчлэх шаардлагатай" style="color:var(--danger);font-weight:700;font-size:12px;">⚠ Илүү ${fmtMoney(-balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓</span>'}
         <span class="nomaad-card-total"${hasDed ? ` title="Акт дүн · гэрээний санал ${fmtMoney(gtRaw)}"` : ''}>${fmtMoney(contractTotal)}${hasDed ? ` <span class="nomaad-card-quote">${fmtMoney(gtRaw)}</span>` : ''}</span>
         <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>

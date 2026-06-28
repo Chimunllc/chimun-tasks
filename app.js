@@ -6487,49 +6487,65 @@ async function sendNomaadQuote(quoteNo) {
   }
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
+// Орлого бүртгэх модал — ЭНГИЙН: дүн + тайлбар + огноо. Бүртгэл бүр = тусдаа төлбөр (нэмэгдэнэ).
 function openNomaadIncomeModal(o) {
   return new Promise((resolve) => {
-    const modal = document.getElementById('nomaad-income-modal');
-    const fA = document.getElementById('ni-advance'), fB = document.getElementById('ni-balance'),
-          fN = document.getElementById('ni-addon'), fD = document.getElementById('ni-damage');
-    const totalEl = document.getElementById('ni-total');
-    const okBtn = document.getElementById('ni-ok'), cancelBtn = document.getElementById('ni-cancel');
-    const fields = [fA, fB, fN, fD];
-    document.getElementById('ni-company').textContent = (o.company || '') + ' · ' + (o.quote_no || '');
-    // Урьдчилгаа = deposit, Үлдэгдэл = нийт − урьдчилгаа (засаж болно)
-    fA.value = o.income_advance != null && o.income_amount ? o.income_advance : (o.deposit || '');
-    fB.value = o.income_balance != null && o.income_amount ? o.income_balance : ((Number(o.grand_total) || 0) - (Number(o.deposit) || 0) || '');
-    fN.value = o.income_addon || ''; fD.value = o.income_damage || '';
-    const sum = () => fields.reduce((s, f) => s + (Number(f.value) || 0), 0);
-    const upd = () => { totalEl.textContent = 'Нийт орлого: ' + fmtMoney(Math.round(sum())); };
-    fields.forEach(f => f.oninput = upd); upd();
-    function cleanup(result) { modal.classList.remove('open'); okBtn.onclick = null; cancelBtn.onclick = null; fields.forEach(f => f.oninput = null); resolve(result); }
-    okBtn.onclick = () => {
-      const total = Math.round(sum());
-      if (total <= 0) { showToast('Дор хаяж нэг дүн оруулна уу.', 'warn', 2000); return; }
-      cleanup({ advance: Number(fA.value) || 0, balance: Number(fB.value) || 0, addon: Number(fN.value) || 0, damage: Number(fD.value) || 0, total });
-    };
-    cancelBtn.onclick = () => cleanup(null);
+    const total = Number(o.grand_total) || 0;
+    const prevPaid = Number(o.income_amount) || 0;
+    const bal = Math.max(0, total - prevPaid);
+    document.getElementById('ni-dyn-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg'; modal.id = 'ni-dyn-modal';
+    modal.innerHTML = `<div class="modal" style="max-width:420px;">
+      <h2>💵 Орлого бүртгэх</h2>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
+      <div style="background:var(--panel-hover);border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
+        <div>Гэрээний дүн: <b>${fmtMoney(total)}</b></div>
+        <div>Өмнө төлсөн: ${fmtMoney(prevPaid)}</div>
+        <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--warn)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
+      </div>
+      <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)
+        <input id="ni-amount" type="number" min="0" value="${bal || ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
+      <label style="display:block;margin-bottom:10px;font-size:13px;">Тайлбар
+        <textarea id="ni-note" rows="2" placeholder="Ж: урьдчилгаа / үлдэгдэл / бэлнээр / Голомт банк / нэмэлт..." style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;"></textarea></label>
+      <label style="display:block;margin-bottom:16px;font-size:13px;">Огноо
+        <input id="ni-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);"></label>
+      <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" id="ni-cancel">Болих</button>
+        <button class="btn btn-primary" id="ni-save">Бүртгэх</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    const close = (r) => { modal.remove(); resolve(r); };
+    modal.querySelector('#ni-cancel').addEventListener('click', () => close(null));
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(null); });
+    modal.querySelector('#ni-save').addEventListener('click', () => {
+      const amount = Math.max(0, Number(modal.querySelector('#ni-amount').value) || 0);
+      if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn', 2000); return; }
+      close({ amount, note: modal.querySelector('#ni-note').value.trim(), date: modal.querySelector('#ni-date').value || new Date().toISOString().slice(0, 10) });
+    });
     modal.classList.add('open');
-    setTimeout(() => fA.focus(), 50);
+    setTimeout(() => modal.querySelector('#ni-amount')?.focus(), 50);
   });
 }
+// Орлого бүртгэх — НЭМЭГДДЭГ (running total). Төлбөр бүр лог-д тусдаа мөр + тайлбартай.
 async function recordNomaadIncome(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) return;
   const res = await openNomaadIncomeModal(o);
   if (!res) return;
-  if (!(await showConfirm(`${o.company}: нийт ${fmtMoney(res.total)} орлого бүртгэх үү?\n(Урьд ${fmtMoney(res.advance)} · Үлд ${fmtMoney(res.balance)} · Нэм ${fmtMoney(res.addon)} · Эвд ${fmtMoney(res.damage)})`, { okText: 'Тийм, бүртгэх' }))) return;
-  const today = new Date().toISOString().slice(0, 10);
-  Object.assign(o, { income_amount: res.total, income_advance: res.advance, income_balance: res.balance, income_addon: res.addon, income_damage: res.damage, income_date: today, income_by: state.me });
-  logNomaadPayment(o, res);   // төлбөрийн логт бүртгэх бүрт мөр нэмнэ (хэн/хэзээ/хэдэн)
+  const prevPaid = Number(o.income_amount) || 0;
+  const newTotal = prevPaid + res.amount;
+  const today = res.date || new Date().toISOString().slice(0, 10);
+  Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
+  logNomaadPayment(o, res);   // тусдаа төлбөр (дүн + тайлбар + хэн/хэзээ)
   render();
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: res.total, income_advance: res.advance, income_balance: res.balance, income_addon: res.addon, income_damage: res.damage, income_date: today, income_by: state.me }),
+      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: newTotal, income_advance: 0, income_balance: 0, income_addon: 0, income_damage: 0, income_date: today, income_by: state.me }),
     }, 15000);
-    if (r.ok) showToast(`${o.company} — ${fmtMoney(res.total)} орлого бүртгэлээ`, 'success', 2500);
+    if (r.ok) showToast(`${fmtMoney(res.amount)} бүртгэлээ · нийт ${fmtMoney(newTotal)}`, 'success', 2800);
     else showToast('Локалд хадгалсан. Sheet sync хийгдээгүй.', 'warn');
   } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
 }
@@ -11613,13 +11629,7 @@ function initEvents() {
       showToast('Зураг upload дуусахыг хүлээнэ үү...', 'warn', 3000);
       return;
     }
-    // Зураг/баримт ЗААВАЛ хавсаргасан байх ёстой — CEO нь яг юу болохыг харах ёстой
-    const pendingCount = (state._fPurchasePendingFiles || []).length;
-    const hasAttach = (Array.isArray(state._fPurchaseUrls) && state._fPurchaseUrls.length > 0) || pendingCount > 0;
-    if (!hasAttach) {
-      showToast('⚠ Бараа бүтээгдэхүүний зураг эсвэл нэхэмжлэх ЗААВАЛ хавсаргах ёстой', 'warn', 5000);
-      return;
-    }
+    // Зураг/баримт нь СОНГОЛТТОЙ — заавал биш (хавсаргавал CEO юу авахыг шууд харна).
     // Хэрэв дүн+банк+данс бүгд хоосон бол анхааруулга (гэхдээ үргэлжлүүлэх боломжтой)
     if ((!amount || Number(amount) <= 0) && !bank && !accountNumber && !purchaseFile) {
       if (!(await showConfirm('Дүн, банк, данс, баримт бүгд хоосон байна. CEO юу авах хэрэгтэйг ойлгох уу?\n\nҮргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' }))) return;

@@ -44,3 +44,10 @@ scratch/
 # Sub-project (өөрийн git-тэй marketing site)
 m-event-website/
 n8n-workflows-backup/
+
+# VPS deploy — public репод БҮҮ оруул (backend workflow логик + DB холболт). Локал → scp-ээр серверт.
+vps-deploy/
+
+# Миграцийн дев-хэрэгсэл + дата — харилцагч/ажилтны PII (РД, утас, цалин, санхүү) агуулдаг.
+# Public repo-д ОРОХГҮЙ. Локалд үлдэнэ. (2026-06-28: бүхэл фолдер track-аас гаргаж түүхээс цэвэрлэв.)
+postgres-migration/

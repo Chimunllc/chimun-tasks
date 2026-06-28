@@ -5614,7 +5614,9 @@ function nomaadCardHtml(o) {
                <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
                <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
                <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
-               ${(income > 0 || Number(o.income_advance) > 0) ? '' : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">❌ Больсон болгох</button>`}`}
+               ${(income > 0 || Number(o.income_advance) > 0)
+                 ? `<button class="btn" data-nomaad-cancelco="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">🚫 Манайхаас цуцлах</button>`
+                 : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">❌ Больсон болгох</button>`}`}
           ${incomeArea}
         </div>
       </div>
@@ -5906,6 +5908,9 @@ function attachNomaadHandlers() {
   document.querySelectorAll('button[data-nomaad-delete]').forEach(b => {
     b.addEventListener('click', () => deleteNomaadQuote(b.dataset.nomaadDelete));
   });
+  document.querySelectorAll('button[data-nomaad-cancelco]').forEach(b => {
+    b.addEventListener('click', () => cancelNomaadCompany(b.dataset.nomaadCancelco));
+  });
   document.querySelectorAll('button[data-nomaad-send]').forEach(b => {
     b.addEventListener('click', () => sendNomaadQuote(b.dataset.nomaadSend));
   });
@@ -6007,6 +6012,46 @@ async function deleteNomaadQuote(quoteNo) {
     o.status = 'БОЛЬСОН'; o.note = cancelNote;
     try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) {}
     showToast('Больсон болголоо', 'success', 2500);
+    render();
+  } catch (e) {
+    showToast('Алдаа: ' + e.message, 'error', 5000);
+  }
+}
+
+/* ─── Манайхаас цуцлах — баталгаажсан/орлоготой захиалгыг ЦУЦЛАХ (кемп дүүрсэн г.м.).
+   deleteNomaadQuote-аас ялгаатай: орлоготой ч ажиллана, "Манайхаас цуцалсан" тэмдэглэлтэй,
+   урьдчилгаа байвал буцаахыг сануулна. Статус → БОЛЬСОН. ─── */
+async function cancelNomaadCompany(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  const paid = Number(o.income_amount) || Number(o.income_advance) || 0;
+  const reason = await showPrompt(
+    `${o.company || 'Захиалга'} · ${quoteNo}\nМанайхаас цуцлах шалтгаан? (түүхэд үлдэнэ)${paid > 0 ? `\n⚠ Хүлээн авсан ${fmtMoney(paid)} — буцаах эсэхээ анхаар.` : ''}`,
+    { placeholder: 'Ж: кемп дүүрсэн / давхар захиалга / хүлээж авах боломжгүй...', okText: 'Манайхаас цуцлах' });
+  if (reason === null || reason === undefined) return;
+  if (!String(reason).trim()) { showToast('Шалтгаан заавал бичнэ үү', 'warn', 3500); return; }
+  if (!state.config.nomaadOrdersUrl) { showToast('NOMAAD backend тохируулаагүй', 'error'); return; }
+  const who = (state.user && state.user.name) || memberName(state.me) || 'тодорхойгүй';
+  const when = todayStr();
+  const prevNote = String(o.note || '').replace(/^(Больсон|Манайхаас цуцалсан)[^|]*\|?\s*/, '').trim();
+  const cancelNote = `Манайхаас цуцалсан (${who} · ${when}): ${String(reason).trim()}${paid > 0 ? ` · хүлээн авсан ${fmtMoney(paid)} буцаах` : ''}` + (prevNote ? ' | ' + prevNote : '');
+  const body = {
+    action: 'update_quote', quote_no: o.quote_no,
+    company: o.company || '', status: 'БОЛЬСОН', reg_no: o.reg_no || '',
+    contact: o.contact || '', phone: o.phone || '', email: o.email || '',
+    camp: o.camp || '', tier: o.tier || '', note: cancelNote,
+    final_amount: o.final_amount || '', date_start: o.date_start || '', date_end: o.date_end || '',
+    guests: o.guests || 0, grand_total: o.grand_total || 0, deposit: o.deposit || 0,
+    items: (o.items || []).map(it => ({ row_num: it.row_num, category: it.category, name: it.name, qty: it.qty, unit: it.unit, unit_price: it.unit_price, total: it.total, included: it.included, note: it.note })),
+  };
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    o.status = 'БОЛЬСОН'; o.note = cancelNote;
+    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) {}
+    showToast('Манайхаас цуцаллаа', 'success', 2500);
     render();
   } catch (e) {
     showToast('Алдаа: ' + e.message, 'error', 5000);

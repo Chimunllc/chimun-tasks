@@ -5534,6 +5534,7 @@ function nomaadCardHtml(o) {
         ${nomaadCountdownBadge(days)}
         <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>
         <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
+        <span class="nomaad-card-reg" style="font-size:10.5px;color:var(--muted);flex-basis:100%;width:100%;margin-top:2px;">${income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй'}</span>
       </div>
       <div class="nomaad-card-right">
         ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}

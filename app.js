@@ -5562,6 +5562,19 @@ function _ordersDefaultFor(m) {
   if ((m && m.level || 0) >= 60) return true;
   return /менежер|нягтлан|агуулах|цэвэрлэгээ|нярав|жолооч|захирал/i.test(role);
 }
+// Тухайн албан тушаалын нэг view-ийн DEFAULT (загваргүй үед) — гишүүдийнх нь одоогийн хандалтаар.
+// Матрицыг нээхэд "одоо юу хардаг" нь урьдчилан чагтлагдсан байхын тулд.
+function defaultViewForRole(roleKey, viewKey) {
+  if (viewKey === 'products' || viewKey === 'booqable' || viewKey === 'receivables') return false; // default зөвхөн CEO
+  const members = (TEAM || []).filter(m => normRole(m.role) === roleKey && (m.status || 'идэвхтэй') !== 'гарсан');
+  return members.some(m => {
+    if (viewKey === 'reports') return canSeeAllFinance(personKey(m));
+    if (viewKey === 'nomaad') return _nomaadDefaultFor(m);
+    if (viewKey === 'hourly') return _hourlyDefaultFor(m);
+    if (viewKey === 'orders') return _ordersDefaultFor(m);
+    return false;
+  });
+}
 // Гишүүний одоогийн хандалт (override байвал тэр, эс бөгөөс default). { access, hasOverride, isCeo }
 function memberAccessState(m) {
   const key = personKey(m);
@@ -5623,8 +5636,8 @@ function renderAccessRoles() {
       : `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
           const viewChip = menu.core
             ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
-            : (() => { const vc = tmpl[menu.key] === true;
-                return `<label class="ac-chip${vc ? ' on' : ''}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${menu.key}" data-cap-kind="view" ${vc ? 'checked' : ''}>👁 Харах</label>`; })();
+            : (() => { const vc = Object.prototype.hasOwnProperty.call(tmpl, menu.key) ? !!tmpl[menu.key] : defaultViewForRole(r.key, menu.key);
+                return `<label class="ac-chip${vc ? ' on' : ' act-off'}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${menu.key}" data-cap-kind="view" ${vc ? 'checked' : ''}>👁 Харах</label>`; })();
           const actChips = menu.actions.map(a => {
             const denied = tmpl[a.key] === false;
             return `<label class="ac-chip${denied ? ' act-off' : ' on'}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${a.key}" data-cap-kind="action" ${denied ? '' : 'checked'}>${escapeHtml(a.label)}</label>`;
@@ -5658,8 +5671,8 @@ function attachAccessHandlers() {
     const perms = {};
     scope.querySelectorAll('input[data-cap-key]').forEach(x => {
       const kind = x.dataset.capKind;
-      if (kind === 'view') { if (x.checked) perms[x.dataset.capKey] = true; }       // зөвхөн нээснийг хадгална
-      else { if (!x.checked) perms[x.dataset.capKey] = false; }                       // зөвхөн хориглосныг хадгална
+      if (kind === 'view') { perms[x.dataset.capKey] = x.checked; }                   // view: ил тод (чагт=харна, авбал=НУУНА)
+      else { if (!x.checked) perms[x.dataset.capKey] = false; }                        // action: зөвхөн хориглосныг хадгална
     });
     saveRolePerms(role, perms);
     showToast('Албан тушаалын эрх хадгаллаа', 'success', 1500);

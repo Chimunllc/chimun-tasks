@@ -5358,9 +5358,10 @@ async function markHourlyPaid(workerKey) {
 const NOMAAD_VIEWERS = ['88028216', '99179417', '99337760'];  // Анужин, Дэлгэрбат, Батжаргал
 const NOMAAD_VIEWER_NAMES = ['алтансүх'];  // нэрээр зөвшөөрөх (утас тодорхойгүй)
 
-// Бүрэн эрх (CEO-тэй адил БҮХ зүйл харах+засах) — CEO-аас гадна нэмэлт хүмүүс.
-// CEO баталсан: И.Алтансүх (m-event захирал). Утас мэдэгдвэл FULL_ACCESS_PHONES-д нэмбэл илүү найдвартай.
-const FULL_ACCESS_NAMES = ['алтансүх'];
+// Бүрэн эрх (CEO-тэй адил БҮХ зүйл) — кодоор хатуу бэхлэх хүмүүс. ОДОО ХООСОН:
+// эрхийг бүгдийг "🔑 Эрх удирдах" матрицаар (member_perms) удирдана. (И.Алтансүх-ийг
+// 2026-06-29-нд кодын бэхэлгээнээс хасч, матрицаар удирддаг болгов.)
+const FULL_ACCESS_NAMES = [];
 const FULL_ACCESS_PHONES = [];
 function isFullAccessMember(m) {
   if (!m) return false;

@@ -14,11 +14,21 @@
 
 Компанийн дотоод даалгавар / ажлын урсгалын менежментийн PWA. Байршил: `АПП ЧИМУН ХХК/`.
 
-- **Frontend:** нэг файлын `app.js` (~6000 мөр) + `index.html` + `styles.css`. Build систем байхгүй.
-- **Backend:** n8n + Google Sheets. 10 workflow → `n8n-workflows-backup/`.
+- **Frontend:** нэг файлын `app.js` (~12,700 мөр) + `index.html` + `styles.css`. Build систем байхгүй.
+- **Backend (2026-06-28 шинэчлэв):** **бүх дата өөрийн Contabo VPS дээр** (n8n + Postgres + PostgREST + Caddy, `n8n.nomaadcamp.com`). Google Sheets БА Supabase cloud-аас БҮРЭН гарсан. Дэлгэрэнгүй: ↓ "2026-06-28 МИГРАЦ".
 - **PWA:** service worker, Web Push (VAPID), офлайн ажиллагаа.
-- **Чадвар:** роль/эрх, PIN нэвтрэлт, санхүүгийн хүсэлт, KPI, 5-дамжлагат "акт" урсгал, аппын доторх + push мэдэгдэл, **M-Event захиалгын самбар (CEO)**.
+- **Чадвар:** роль/эрх, PIN нэвтрэлт, санхүүгийн хүсэлт, KPI, 5-дамжлагат "акт" урсгал, аппын доторх + push мэдэгдэл, **захиалгын самбар (Booqable, CEO)**.
 - **Hosting:** GitHub Pages.
+
+### ⭐ 2026-06-28 МИГРАЦ — бүх дата VPS Postgres-д (доорх ХУУЧИН хэсгүүдийг дарна)
+> Доорх "M-Event захиалга", "Барааны зураг — Supabase Storage", "Түрээсийн түүх" зэрэг хэсгүүд нь Google Sheets/Supabase cloud гэж бичсэн — **ХОЦРОГДСОН**. Бодит байдал:
+- **Дата = VPS Postgres `chimun` DB** (Contabo 62.146.232.100). Sheets ч, Supabase cloud ч ХЭРЭГЛЭХГҮЙ.
+- **Унших:** апп `SUPABASE_URL='https://n8n.nomaadcamp.com/db'` (Caddy `/db/rest/v1/*`→PostgREST), `SUPABASE_ANON_KEY`=VPS anon JWT. Tasks/finance/staff/nomaad = n8n webhook-оор (бүгд Postgres). products/bq_* = PostgREST шууд.
+- **Бичих:** anon grant (Supabase-тэй адил) — products/bq_orders(status,total_paid)/bq_payments/nomaad_payments.
+- **Захиалга = ЗӨВХӨН Booqable** (M-Event давхарга цуцлагдсан). `unifiedOrders()` зөвхөн `state.bqOrders`. `loadOrders` no-op. M-Event функцууд (`openNewMeventOrder`/`orderCardHtml`/`openOrderPaymentModal`/`renderOrdersBoard`/`reconcileOrders`) ҮХСЭН КОД — хүрэлцэхгүй. Захиалгын карт=`bqOrderCard` (төлбөр/гаргах/буцаах/скан). `openOrderScanModal` Booqable-аар.
+- **Зураг:** хуучин 228 = VPS Caddy (`n8n.nomaadcamp.com/img/`). Шинэ upload = base64 data URL (products.photo-д). Supabase Storage ХЭРЭГЛЭХГҮЙ.
+- **Файл (нэхэмжлэх/ажлын зураг):** Google Drive-д ХЭВЭЭР (n8n→Drive, `driveThumbUrl`/lh3). Supabase-тэй хамаагүй.
+- **⚠ VPS:** SSH=агентын `claude-chimun-migration` түлхүүр. CORS gotcha: Caddy `header_down`-ийг `caddy reload` БИШ, зөвхөн `docker compose restart caddy` хэрэгжүүлдэг. VPS root нууц үг чатад ил болсон → солих. Дэлгэрэнгүй memory: [[project_vps_selfhost]], [[project_booqable_history]].
 
 ### M-Event захиалга (backoffice эхлэл, 2026-05-31)
 - M-Event түрээсийн сайт (`chimunllc.github.io/m-event-website-ready`) захиалгыг хүлээж авах backoffice.

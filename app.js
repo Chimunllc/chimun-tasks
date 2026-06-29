@@ -2975,11 +2975,9 @@ function renderSidebar() {
     ordersNav.style.display = canSeeOrders() ? '' : 'none';
     const oCnt = document.getElementById('cnt-orders');
     if (oCnt) {
-      const list = state.orders || [];
-      // Менежер — шинэ захиалгын тоо. Бусад — өөрийн шатанд хүлээж буй захиалгын тоо.
-      oCnt.textContent = String(canManageOrders()
-        ? list.filter(o => (o.status || 'Шинэ') === 'Шинэ').length
-        : list.filter(canSeeOrder).length);
+      // Захиалга = Booqable. Анхаарал шаардсан = "Захиалсан" (reserved, удахгүй гаргах).
+      // bqOrders lazy тул нээгээгүй бол 0 (захиалга нээмэгц зөв болно).
+      oCnt.textContent = String((state.bqOrders || []).filter(o => o.status === 'reserved').length);
     }
   }
   // Тайлан — зөвхөн бүх санхүү хардаг (CEO/нягтлан/салбар-засагч) — удирдлагын тайлан.
@@ -3669,7 +3667,6 @@ function orderCardHtml(o, canManage, canConfirm) {
       parts.push(`<div class="order-kebab-wrap">
         <button class="btn order-kebab" data-order-kebab="${esc}" aria-label="Бусад үйлдэл" style="padding:4px 9px;font-size:15px;">⋯</button>
         <div class="order-kebab-menu" hidden>
-          ${itemCount ? `<button data-order-scan="${esc}">📷 Бараа скан (${itemCount})</button>` : ''}
           ${prev ? `<button data-order-revert="${esc}" data-prev="${escapeHtml(prev)}">← «${escapeHtml(prev)}» руу буцаах</button>` : ''}
           <button class="km-danger" data-order-cancel="${esc}">✕ Захиалга цуцлах</button>
         </div>
@@ -3961,6 +3958,7 @@ function attachOrdersHandlers() {
 
   // Booqable захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
+  document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to)));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
     const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
@@ -4103,12 +4101,6 @@ function attachOrdersHandlers() {
     });
   });
   // Өмнөх шат руу буцаах (баталгаажуулалттай)
-  document.querySelectorAll('button[data-order-scan]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.order-kebab-menu').forEach(m => m.setAttribute('hidden', ''));
-      openOrderScanModal(btn.dataset.orderScan);
-    });
-  });
   document.querySelectorAll('button[data-order-revert]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const prev = btn.dataset.prev;
@@ -4715,10 +4707,12 @@ async function openScanner() {
 }
 
 // Захиалгын бараа гаргах/буцаах скан — бараа бүрийг сканнердаж бүгд бэлэн эсэхийг шалгана.
-function openOrderScanModal(order_no) {
-  const o = state.orders.find(x => x.order_no === order_no);
+async function openOrderScanModal(oid) {
+  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
-  const items = (o.items || []).map(it => ({ name: it.name || '', qty: Math.max(1, Number(it.qty) || 1), scanned: 0 }));
+  const raw = await loadBooqableOrderItems(oid);
+  const items = (raw || []).map(it => ({ name: it.title || '', qty: Math.max(1, Math.round(Number(it.quantity) || 1)), scanned: 0 }))
+    .filter(it => it.name);
   if (!items.length) { showToast('Энэ захиалгад бараа алга', 'warn'); return; }
   document.getElementById('oscan-modal')?.remove();
   const modal = document.createElement('div');
@@ -4726,8 +4720,8 @@ function openOrderScanModal(order_no) {
   modal.id = 'oscan-modal';
   modal.innerHTML = `
     <div class="modal" style="max-width:460px;">
-      <h2>📷 Бараа скан · ${escapeHtml(o.order_no)}</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">${escapeHtml(o.customer_name || '')} — бараа бүрийн QR-ийг сканнердаж бүгд бэлэн эсэхийг шалга.</p>
+      <h2>📷 Бараа скан · #${o.number ?? '—'}</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">${escapeHtml(o.customer || '')} — бараа бүрийн QR-ийг сканнердаж бүгд бэлэн эсэхийг шалга.</p>
       <div class="scan-box"><video id="oscan-video" playsinline muted></video><div class="scan-frame"></div></div>
       <div id="oscan-status" class="scan-status">Камер ачаалж байна…</div>
       <div id="oscan-progress" class="oscan-progress"></div>
@@ -7596,9 +7590,11 @@ function bqOrderCard(o) {
   const payRow = (total > 0 && st !== 'canceled')
     ? `<div class="order-meta">💵 Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
     : '';
-  const foot = (canPay || next || canCancel) ? `<div class="order-foot">
+  const canScan = activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
+  const foot = (canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
+    ${canScan ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}
     ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${st === 'draft' ? '🗑 Устгах' : '✕ Цуцлах'}</button>` : ''}
   </div>` : '';
   return `<div class="order-card bq-order" data-oid="${id}">
@@ -11129,11 +11125,8 @@ function initEvents() {
   });
 
   const fabSheetBg = document.getElementById('fab-sheet-bg');
-  const fabSheetOrder = document.getElementById('fab-sheet-order');
   function openFabSheet() {
-    // "Захиалга" үүсгэх сонголт — зөвхөн менежер (CEO / эвент-захиалгын менежер).
-    // Бусад M Event хүн зүүн талын "Захиалга" view-ээс хараад статус л өөрчилнө.
-    if (fabSheetOrder) fabSheetOrder.style.display = canManageOrders() ? '' : 'none';
+    // Захиалга Booqable-аас ирдэг болсон тул FAB-д зөвхөн Даалгавар/Санхүү (захиалга үүсгэхгүй).
     fabSheetBg?.classList.add('open');
   }
   function closeFabSheet() { fabSheetBg?.classList.remove('open'); }
@@ -11151,7 +11144,6 @@ function initEvents() {
       setTimeout(() => {
         if (action === 'task') openTaskModal();
         else if (action === 'finance') openFinanceModal();
-        else if (action === 'order') openNewMeventOrder();
       }, 180);
     });
   });

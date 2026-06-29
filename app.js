@@ -5026,7 +5026,7 @@ function renderHourly() {
     const payouts = st.ps;
     const sum = st.sum;
     // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
-    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : ''}</span>`;
+    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : ''}</span>`;
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
@@ -10221,7 +10221,7 @@ function renderStaffList() {
     const key = personKey(m);
     return `
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
-        <span class="staff-avatar">${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />` : escapeHtml(memberInitials(key))}</span>
+        <span class="staff-avatar">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />` : ''}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>

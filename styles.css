@@ -4831,6 +4831,8 @@ body.role-daily #add-project { display: none !important; }
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
 }
 .staff-row.staff-left .staff-avatar {
   background: var(--muted-soft);

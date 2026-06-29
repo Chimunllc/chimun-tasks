@@ -10,7 +10,7 @@
  * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
  */
 
-const CACHE_VERSION = 'chimun-tasks-v345-staff-photo-2026-06-29';
+const CACHE_VERSION = 'chimun-tasks-v346-staff-age-2026-06-29';
 const SHELL_FILES = [
   './',
   './index.html',

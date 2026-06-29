@@ -10180,6 +10180,21 @@ function openStaffManagement() {
 }
 
 // Ажилтны салбарын шошго (branches[]-д суурилсан — Тоймын toggle-тэй нийцнэ).
+// Монгол РД-аас нас тооцох. Формат: 2 үсэг + YYMMDD + 2 серал. Сар 21-32 = 2000-аад (сар−20).
+function ageFromRD(rd) {
+  const d = String(rd || '').replace(/\D/g, '');
+  if (d.length < 6) return null;
+  let yy = +d.slice(0, 2), mm = +d.slice(2, 4), dd = +d.slice(4, 6), year;
+  if (mm >= 21 && mm <= 32) { year = 2000 + yy; mm -= 20; }
+  else if (mm >= 1 && mm <= 12) { year = 1900 + yy; }
+  else return null;
+  if (dd < 1 || dd > 31) return null;
+  const now = new Date();
+  if (year > now.getFullYear()) return null;
+  let age = now.getFullYear() - year;
+  if (now.getMonth() + 1 < mm || (now.getMonth() + 1 === mm && now.getDate() < dd)) age--;
+  return (age >= 14 && age <= 90) ? age : null;
+}
 function staffBranchLabel(m) {
   if (m.worker_type === 'daily') return 'Цагийн ажилтан';
   const bs = (Array.isArray(m.branches) ? m.branches.join(' ') : String(m.group || m.branch || '')).toLowerCase();
@@ -10223,7 +10238,7 @@ function renderStaffList() {
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
         <span class="staff-avatar">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />` : ''}</span>
         <div class="staff-info">
-          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}</div>
+          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
           ${state.isCEO && isActive ? `<label class="staff-finperm" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} style="margin:0;width:auto;" />🏦 Санхүү: салбар засах эрх</label>` : ''}
         </div>

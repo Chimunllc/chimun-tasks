@@ -4631,14 +4631,16 @@ function moneyFmtInput(n) {
 }
 // .money-input талбарын утгыг (таслал арилгаад) тоо болгож унших
 function moneyVal(el) {
-  return Math.max(0, Math.round(Number(String((el && el.value) || '').replace(/[^\d]/g, '')) || 0));
+  // Десимал хэсгийг (.00 г.м.) ХАЯНА — эс бөгөөс "13,818,000.00" → "1381800000" (×100 алдаа).
+  return Math.max(0, Math.round(Number(String((el && el.value) || '').split('.')[0].replace(/[^\d]/g, '')) || 0));
 }
 // Бичих үед амьд форматлах + курсорын байрлал хадгалах
 function _fmtMoneyInputEl(el) {
   const old = String(el.value || '');
   const sel = el.selectionStart == null ? old.length : el.selectionStart;
-  const before = old.slice(0, sel).replace(/[^\d]/g, '').length;
-  const digits = old.replace(/[^\d]/g, '').replace(/^0+(?=\d)/, '');
+  const intPart = old.split('.')[0];   // десимал хэсгийг хаяна (paste-д .00 → ×100 болгохгүй)
+  const before = intPart.slice(0, sel).replace(/[^\d]/g, '').length;
+  const digits = intPart.replace(/[^\d]/g, '').replace(/^0+(?=\d)/, '');
   const out = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
   if (out === old) return;
   el.value = out;

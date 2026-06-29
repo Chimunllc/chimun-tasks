@@ -2910,6 +2910,7 @@ function render() {
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !state.isCEO) state.view = 'mine';
   if (state.view === 'booqable' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'receivables' && !state.isCEO) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
@@ -2996,6 +2997,15 @@ function renderSidebar() {
   // Түрээсийн түүх (Booqable аналитик) — зөвхөн CEO.
   const bqNav = document.getElementById('nav-booqable');
   if (bqNav) bqNav.style.display = state.isCEO ? '' : 'none';
+  // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
+  const arNav = document.getElementById('nav-receivables');
+  if (arNav) {
+    arNav.style.display = state.isCEO ? '' : 'none';
+    const arCnt = document.getElementById('cnt-receivables');
+    if (arCnt && state.isCEO && (state.bqOrders || (state.nomaadOrders && state.nomaadOrders.length))) {
+      try { const od = receivablesData().items.filter(i => i.overdue).length; arCnt.textContent = String(od); arCnt.style.display = od ? '' : 'none'; } catch (e) {}
+    }
+  }
   // Цагийн цалин — CEO/нягтлан/менежер. Badge нь төлбөргүй цагийн ажилтны тоо.
   const hrNav = document.getElementById('nav-hourly');
   if (hrNav) {
@@ -3030,6 +3040,7 @@ function renderTitle() {
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
+    receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -3077,6 +3088,8 @@ function renderTaskList() {
         render();
       });
     });
+    // "Яг одоо" тууз — авлага нүд дээр дарж Авлага view руу
+    wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
     // CEO бус хэрэглэгчид permissions/staff/email digest нуух
     if (!state.isCEO) {
       document.getElementById('dash-permissions')?.style.setProperty('display', 'none');
@@ -3107,6 +3120,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderBooqable();
     attachBooqableHandlers();
+    return;
+  } else if (state.view === 'receivables') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderReceivables();
+    attachReceivablesHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
@@ -5366,16 +5385,23 @@ async function logNomaadPayment(o, res) {
   if (!SUPABASE_ANON_KEY) return;
   const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'np-' + Date.now();
   const at = new Date().toISOString();
-  const row = { id, quote_no: o.quote_no, company: o.company || '', total: res.total, advance: res.advance, balance: res.balance, addon: res.addon, damage: res.damage, recorded_by: state.me, recorded_at: at, pay_date: at.slice(0, 10) };
+  const pay_date = (res && res.date) || at.slice(0, 10);
+  // res = { amount, note, date } (шинэ орлого модал). Дүн = res.amount.
+  const row = { id, quote_no: o.quote_no, company: o.company || '', total: Number(res.amount) || 0, advance: 0, balance: 0, addon: 0, damage: 0, note: (res.note || ''), recorded_by: state.me, recorded_at: at, pay_date };
   // локал кэшид шууд (UI түргэн)
   state.nomaadPayments = state.nomaadPayments || {};
   (state.nomaadPayments[o.quote_no] = state.nomaadPayments[o.quote_no] || []).push(row);
+  const post = (body) => fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  }, 15000);
   try {
-    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify(row),
-    }, 15000);
+    let r = await post(row);
+    if (!r.ok) {   // nomaad_payments-д 'note' багана байхгүй бол түүнгүйгээр дахин (дүн заавал хадгалагдана)
+      const { note, ...noNote } = row;
+      await post(noNote);
+    }
   } catch (e) { console.warn('logNomaadPayment', e); }
 }
 // date_start-аас өнөөдрийг хүртэлх үлдсэн хоног (null = огноо алга/буруу)
@@ -5535,7 +5561,7 @@ function nomaadCardHtml(o) {
     : (income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй');
   const logHistoryHtml = plog.length ? `<div class="order-meta" style="margin-top:6px;background:var(--panel-hover);border-radius:8px;padding:8px 10px;">
     <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:4px;">📝 Бүртгэлийн түүх (${plog.length})</div>
-    ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;"><span>${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b></span><span style="font-variant-numeric:tabular-nums;color:var(--muted);">${fmtMoney(p.total)}</span></div>`).join('')}
+    ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;"><span>${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;">${fmtMoney(p.total)}</span></div>`).join('')}
   </div>` : '';
   // Үлдэгдэл = гэрээний дүн − хүлээн авсан орлого (Эцсийн гэрээний дүн байвал тэрийг, эс бөгөөс Нийт дүн)
   const contractTotal = nomaadEffTotal(o);
@@ -7747,6 +7773,187 @@ async function submitBqPayment(oid, modal, btn) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// АВЛАГА (Receivables) — Эвент түрээс (Booqable) + NOMAAD-ийн төлөгдөөгүй үлдэгдэл.
+// Booqable дата бүрэн/үнэн. NOMAAD орлого дахин бүртгэгдэж байгаа тул урьдчилсан.
+// ─────────────────────────────────────────────────────────────
+function receivablesData() {
+  const today = new Date().toISOString().slice(0, 10);
+  const items = [];
+  // Booqable: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна
+  (state.bqOrders || []).forEach(o => {
+    const st = String(o.status || '');
+    if (st === 'draft' || st === 'canceled') return;
+    const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
+    const bal = total - paid;
+    if (bal <= 0) return;
+    const stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
+    items.push({
+      branch: 'bq', id: String(o.id), name: o.customer || '?', sub: '#' + (o.number ?? '—'),
+      phone: o.phone || '', status: st, total, paid, balance: bal,
+      dateStart: o.starts_at ? String(o.starts_at).slice(0, 10) : '', dateStop: stop,
+      overdue: !!stop && stop < today,
+    });
+  });
+  // NOMAAD: үлдэгдэл = гэрээний дүн − хүлээн авсан орлого; цуцлахыг хасна
+  let noTotal = 0, noRecorded = 0;
+  (state.nomaadOrders || []).forEach(o => {
+    if (nomaadIsCancelled(o)) return;
+    noTotal++;
+    if (Number(o.income_amount) > 0) noRecorded++;
+    const contract = nomaadEffTotal(o);
+    if (contract <= 0) return;
+    const inc = Number(o.income_amount) || 0;
+    const bal = contract - inc;
+    if (bal <= 0) return;
+    const end = o.date_end ? String(o.date_end).slice(0, 10) : '';
+    items.push({
+      branch: 'nomaad', id: o.quote_no, name: o.company || '?', sub: o.quote_no || '',
+      phone: o.phone || '', status: o.status || '', total: contract, paid: inc, balance: bal,
+      dateStart: o.date_start ? String(o.date_start).slice(0, 10) : '', dateStop: end,
+      overdue: !!end && end < today,
+    });
+  });
+  items.sort((a, b) => b.balance - a.balance);
+  const bqTotal = items.filter(i => i.branch === 'bq').reduce((s, i) => s + i.balance, 0);
+  const nomaadTotal = items.filter(i => i.branch === 'nomaad').reduce((s, i) => s + i.balance, 0);
+  return { items, bqTotal, nomaadTotal, nomaadCoverage: { recorded: noRecorded, total: noTotal } };
+}
+
+function arRow(i) {
+  const isBq = i.branch === 'bq';
+  const badge = isBq ? bqStatusBadge(i.status)
+    : `<span style="display:inline-block;padding:1px 8px;border-radius:20px;font-size:10.5px;background:var(--panel-hover);color:var(--muted);">${escapeHtml(i.status)}</span>`;
+  const brIcon = isBq ? '🎪' : '⛺';
+  const dates = i.dateStart ? `${i.dateStart}${i.dateStop ? ' → ' + i.dateStop : ''}` : '';
+  const payBtn = isBq
+    ? `<button class="btn btn-primary" data-bq-pay="${escapeHtml(i.id)}" style="padding:5px 12px;font-size:12px;">💵 Төлбөр</button>`
+    : `<button class="btn btn-primary" data-nomaad-income="${escapeHtml(i.id)}" style="padding:5px 12px;font-size:12px;">💵 Орлого</button>`;
+  const hay = (i.name + ' ' + i.sub + ' ' + i.phone).toLowerCase();
+  return `<div class="order-card" data-haystack="${escapeHtml(hay)}" style="margin-bottom:8px;">
+    <div class="order-head"><div class="order-head-l"><span style="font-size:13px;">${brIcon}</span> <span class="order-no">${escapeHtml(i.sub)}</span> ${badge}${i.overdue ? ` <span style="color:var(--danger);font-size:10.5px;font-weight:700;">⚠ хугацаа хэтэрсэн</span>` : ''}</div><div class="order-total" style="color:var(--warn);">${fmtMoney(i.balance)}</div></div>
+    <div class="order-cust"><b>${escapeHtml(i.name)}</b>${i.phone ? ` · <a href="tel:${escapeHtml(i.phone)}">${escapeHtml(i.phone)}</a>` : ''}</div>
+    <div class="order-meta">Нийт ${fmtMoney(i.total)} · Төлсөн ${fmtMoney(i.paid)} · <b style="color:var(--warn);">Үлдэгдэл ${fmtMoney(i.balance)}</b></div>
+    ${dates ? `<div class="order-meta">📅 ${dates}</div>` : ''}
+    <div class="order-foot">${payBtn}</div>
+  </div>`;
+}
+
+function renderReceivables() {
+  // Lazy ачаалал — захиалгын дата байхгүй бол татна (татаж дуусахад render дахин дуудагдана)
+  if (!state.bqOrders) loadBooqableOrders();
+  if (!state._arLoadedNomaad && (!state.nomaadOrders || !state.nomaadOrders.length)) { state._arLoadedNomaad = true; if (typeof loadNomaadOrders === 'function') loadNomaadOrders(); }
+
+  const d = receivablesData();
+  const filter = state.arFilter || 'all';
+  let list = d.items;
+  if (filter !== 'all') list = list.filter(i => i.branch === filter);
+  const shownTotal = list.reduce((s, i) => s + i.balance, 0);
+  const overdue = list.filter(i => i.overdue);
+  const overdueAmt = overdue.reduce((s, i) => s + i.balance, 0);
+
+  const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
+
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
+      <div><div style="font-weight:800;font-size:16px;">💰 Авлага</div><div style="font-size:11px;color:var(--muted);">Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө</div></div>
+      <button class="btn" data-ar-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
+    </div>`;
+
+  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+    ${kpi('Нийт авлага', fmtMoney(d.bqTotal + d.nomaadTotal), 'var(--warn)', `${d.items.length} захиалга`)}
+    ${kpi('🎪 Эвент түрээс', fmtMoney(d.bqTotal), 'var(--text)', 'Booqable')}
+    ${kpi('⛺ NOMAAD', fmtMoney(d.nomaadTotal), 'var(--text)', 'урьдчилсан')}
+    ${kpi('⚠ Хугацаа хэтэрсэн', fmtMoney(overdueAmt), overdue.length ? 'var(--danger)' : 'var(--muted)', `${overdue.length} захиалга`)}
+  </div>`;
+
+  const cov = d.nomaadCoverage;
+  const noWarn = (cov.total && cov.recorded < cov.total && (filter === 'all' || filter === 'nomaad'))
+    ? `<div style="border:1px solid var(--warn);background:var(--warn-soft);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.5;margin-bottom:12px;">
+        ⚠ <b>NOMAAD авлага урьдчилсан.</b> Орлого ${cov.recorded}/${cov.total} захиалгад л бүртгэгдсэн — бүртгэгдээгүй захиалгууд "бүтэн өртэй" мэт харагдаж магадгүй. Орлого бүрэн бүртгэгдсэний дараа таарна.
+      </div>` : '';
+
+  const tabs = [['all', 'Бүгд'], ['bq', '🎪 Эвент түрээс'], ['nomaad', '⛺ NOMAAD']];
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
+    `<button class="btn${k === filter ? ' btn-primary' : ''}" data-ar-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
+
+  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="ar-search" placeholder="Харилцагч, дугаар, утас" value="${escapeHtml(state.arSearch || '')}" /></div>`;
+  const sumLine = `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Харагдаж буй дүн: <b style="color:var(--warn);">${fmtMoney(shownTotal)}</b> · ${list.length} захиалга</div>`;
+  const rows = list.length ? list.map(arRow).join('')
+    : `<div style="text-align:center;color:var(--muted);padding:36px 0;font-size:13px;">✓ Авлага алга</div>`;
+
+  return `<div style="padding:4px;">${head}${kpis}${noWarn}${tabBar}${searchBar}${sumLine}<div class="ar-wrap">${rows}</div></div>`;
+}
+
+function attachReceivablesHandlers() {
+  document.querySelector('[data-ar-refresh]')?.addEventListener('click', () => {
+    state.bqOrders = null; loadBooqableOrders();
+    if (typeof loadNomaadOrders === 'function') loadNomaadOrders();
+    showToast('Шинэчилж байна…', 'info', 1500);
+  });
+  document.querySelectorAll('[data-ar-tab]').forEach(b => b.addEventListener('click', () => { state.arFilter = b.dataset.arTab; render(); }));
+  // Хайлт — захиалгын жагсаалттай ижил: дахин render-гүй, зөвхөн display нуух
+  const se = document.getElementById('ar-search');
+  if (se) se.addEventListener('input', () => {
+    state.arSearch = se.value;
+    const q = se.value.trim().toLowerCase();
+    document.querySelectorAll('.ar-wrap .order-card').forEach(card => {
+      card.style.display = (!q || (card.dataset.haystack || '').includes(q)) ? '' : 'none';
+    });
+  });
+  // Төлбөр/Орлого товч — одоо байгаа модалуудыг дахин ашиглана (амжилтад render → жагсаалт шинэчлэгдэнэ)
+  document.querySelectorAll('.ar-wrap [data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
+  document.querySelectorAll('.ar-wrap [data-nomaad-income]').forEach(b => b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome)));
+}
+
+// CEO "Яг одоо" тууз (Тойм дээд талд) — энэ сарын орлого · нийт авлага · ойртож буй хүргэлт/буцаалт.
+function ceoNowStrip() {
+  if (!state.booqable && !state._bqLoading) loadBooqable();          // аналитик (сар бүрийн орлого) — lazy
+  if (!state.bqOrders && !state._bqOrdersLoading) loadBooqableOrders(); // захиалгууд (авлага/ойртож буй) — lazy
+  const loadingBq = !state.bqOrders || !state.booqable;
+  const ym = new Date().toISOString().slice(0, 7);
+
+  // Энэ сарын орлого: Booqable (bq_v_monthly_revenue) + NOMAAD (төлбөрийн лог pay_date)
+  let bqMonth = 0;
+  if (state.booqable && Array.isArray(state.booqable.monthly)) {
+    const m = state.booqable.monthly.find(x => String(x.month || '').slice(0, 7) === ym);
+    bqMonth = m ? (Number(m.net_mnt) || 0) : 0;
+  }
+  let noMonth = 0;
+  const np = state.nomaadPayments || {};
+  Object.keys(np).forEach(q => (np[q] || []).forEach(p => { if (String(p.pay_date || '').slice(0, 7) === ym) noMonth += Number(p.total) || 0; }));
+  const monthTotal = bqMonth + noMonth;
+
+  // Нийт авлага
+  const ar = receivablesData();
+  const arTotal = ar.bqTotal + ar.nomaadTotal;
+  const overdueCnt = ar.items.filter(i => i.overdue).length;
+
+  // Ойртож буй 7 хоног
+  const today = new Date().toISOString().slice(0, 10);
+  const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = d7.toISOString().slice(0, 10);
+  const inWin = (s) => s && s >= today && s <= in7;
+  let deliveries = 0, returns = 0;
+  (state.bqOrders || []).forEach(o => {
+    const st = String(o.status || '');
+    if (st === 'reserved' && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
+    if (st === 'started' && inWin(String(o.stops_at || '').slice(0, 10))) returns++;
+  });
+  (state.nomaadOrders || []).forEach(o => { if (!nomaadIsCancelled(o) && inWin(String(o.date_start || '').slice(0, 10))) deliveries++; });
+
+  const cell = (label, val, col, sub, view) => `<div ${view ? `data-ceo-now="${view}" ` : ''}style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 12px;${view ? 'cursor:pointer;' : ''}">
+    <div style="font-size:10.5px;color:var(--muted);">${label}</div>
+    <div style="font-weight:800;font-size:16px;color:${col || 'var(--text)'};margin-top:2px;line-height:1.2;">${val}</div>
+    ${sub ? `<div style="font-size:10px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}
+  </div>`;
+
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px;">
+    ${cell('💰 Энэ сарын орлого', loadingBq ? '…' : fmtMoney(monthTotal), 'var(--ok)', ym)}
+    ${cell('📥 Нийт авлага', loadingBq ? '…' : fmtMoney(arTotal), 'var(--warn)', `${ar.items.length} захиалга${overdueCnt ? ` · ⚠${overdueCnt} хэтэрсэн` : ''}`, 'receivables')}
+    ${cell('🚚 Ойртож буй хүргэлт', loadingBq ? '…' : String(deliveries), deliveries ? 'var(--text)' : 'var(--muted)', '7 хоногт')}
+    ${cell('↩ Ойртож буй буцаалт', loadingBq ? '…' : String(returns), returns ? 'var(--text)' : 'var(--muted)', '7 хоногт')}
+  </div>`;
+}
+
 // Хэвтээ bar мөр (нэр | bar | утга) — тайлантай ижил хэв маяг
 function bqBar(label, value, max, color, sub) {
   const pct = max > 0 ? Math.max(2, Math.round(value / max * 100)) : 0;
@@ -8490,6 +8697,7 @@ function renderDashboard() {
 
   return `
     <div class="dashboard">
+      ${isCEO ? ceoNowStrip() : ''}
       <div class="dashboard-actions">
         <button class="btn" id="dash-export-csv">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -11911,6 +12119,7 @@ async function bootApp() {
     if (state.view === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
     else if (state.view === 'orders' && canSeeOrders()) loadOrders();
     else if (state.view === 'products' && state.isCEO) loadProductsCatalog();
+    else if (state.view === 'receivables' && state.isCEO) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   }, 45_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —
   // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 90 сек throttle.

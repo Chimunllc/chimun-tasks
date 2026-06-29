@@ -194,6 +194,7 @@ const state = {
   products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
   memberPerms: (() => { try { return JSON.parse(localStorage.getItem('memberPerms') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн view хандалтын override {personKey: {orders:true,...}}
+  rolePerms: (() => { try { return JSON.parse(localStorage.getItem('rolePerms') || '{}'); } catch(e) { return {}; } })(),  // албан тушаал бүрийн эрх загвар {roleNorm: {orders:true, 'tasks.delete':false,...}}
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   evaluations: (() => { try { return JSON.parse(localStorage.getItem('evaluations') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
@@ -1725,6 +1726,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
 async function decideFinanceRequest(id, decision, reason = '') {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
+  if (!can('finance.approve')) { showToast('Танд санхүү батлах эрх олгогдоогүй', 'warn', 3000); return; }
   // Approver: CEO эсвэл салбарын менежер (жижиг дүн дээр)
   const approverEmail = getFinanceApprover(r);
   if (!state.isCEO && state.me !== approverEmail) {
@@ -3995,6 +3997,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to)));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
+    if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
     const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
     const isDraft = o && o.status === 'draft';
     bqUpdateStatus(b.dataset.bqCancel, 'canceled', { confirm: isDraft ? `#${o ? o.number : ''} ноорогийг устгах уу? (цуцлагдсан болж жагсаалтаас алга болно)` : `#${o ? o.number : ''} захиалгыг цуцлах уу?`, danger: true, okText: isDraft ? 'Устгах' : 'Цуцлах', toast: isDraft ? 'Устгалаа' : 'Цуцаллаа' });
@@ -5385,14 +5388,57 @@ const PERM_VIEWS = [
   { key: 'nomaad',      label: 'NOMAAD' },
   { key: 'hourly',      label: 'Цагийн цалин' },
 ];
-// Тухайн нэвтэрсэн хэрэглэгчийн override (байвал) — эс бөгөөс null
+// Бүх удирдах боломжтой эрх (меню + үйлдэл) — Эрх самбарын матрицад.
+const CAP_GROUPS = [
+  { label: 'Цэс (харах)', kind: 'view', caps: [
+    { key: 'orders', label: 'Захиалга' },
+    { key: 'receivables', label: 'Авлага' },
+    { key: 'booqable', label: 'Түрээсийн түүх' },
+    { key: 'products', label: 'Бараа' },
+    { key: 'reports', label: 'Тайлан' },
+    { key: 'nomaad', label: 'NOMAAD' },
+    { key: 'hourly', label: 'Цагийн цалин' },
+  ]},
+  { label: 'Үйлдэл (хийж болох)', kind: 'action', caps: [
+    { key: 'tasks.delete', label: 'Ажил устгах' },
+    { key: 'tasks.create', label: 'Ажил үүсгэх' },
+    { key: 'orders.cancel', label: 'Захиалга цуцлах/устгах' },
+    { key: 'orders.pay', label: 'Захиалгын төлбөр бүртгэх' },
+    { key: 'nomaad.cancel', label: 'NOMAAD цуцлах' },
+    { key: 'nomaad.income', label: 'NOMAAD орлого бүртгэх' },
+    { key: 'finance.approve', label: 'Санхүү батлах' },
+  ]},
+];
+const VIEW_CAP_KEYS = CAP_GROUPS[0].caps.map(c => c.key);
+const ACTION_CAP_KEYS = CAP_GROUPS[1].caps.map(c => c.key);
+function normRole(role) { return String(role || '').trim().toLowerCase(); }
+// Тухайн нэвтэрсэн хэрэглэгчийн хувийн override (байвал) — эс бөгөөс null
 function myPermOverride() { return (state.memberPerms && state.memberPerms[state.me]) || null; }
-// Нэг хэсэгт хандах эрх: CEO бүгдийг → override (байвал) → default fallback.
-function canAccessView(key, fallback) {
+// Тухайн хүний албан тушаалын эрх загвар (байвал)
+function roleTemplateFor(meKey) {
+  const m = (typeof findMember === 'function') ? findMember(meKey) : null;
+  const r = normRole(m && m.role);
+  return (r && state.rolePerms && state.rolePerms[r]) || null;
+}
+// Давхаргат шийдвэрлэлт: CEO → хувь хүний override → албан тушаалын загвар → undefined (тохируулаагүй).
+function capValue(key) {
   if (state.isCEO) return true;
   const ov = myPermOverride();
   if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
+  const rt = roleTemplateFor(state.me);
+  if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
+  return undefined;
+}
+// Меню хандалт: тохируулаагүй бол одоогийн default (fallback).
+function canAccessView(key, fallback) {
+  const v = capValue(key);
+  if (v !== undefined) return v;
   return typeof fallback === 'function' ? !!fallback() : !!fallback;
+}
+// Үйлдэл: тохируулаагүй бол ЗӨВШӨӨРНӨ (одоогийн зан төлөв). Зөвхөн тусгайлан хориглоход блоклоно.
+function can(key) {
+  const v = capValue(key);
+  return v === undefined ? true : v;
 }
 function canSeeProducts() { return canAccessView('products', false); }       // default: зөвхөн CEO
 function canSeeBooqable() { return canAccessView('booqable', false); }
@@ -5444,6 +5490,51 @@ async function clearMemberPerms(personKey) {
   } catch (e) { console.warn('clearMemberPerms', e); }
 }
 
+// ── Албан тушаалын эрх загвар (role_perms, PostgREST anon) ──
+async function loadRolePerms() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms?select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) return;
+    const rows = await r.json();
+    const map = {};
+    rows.forEach(p => { if (p && p.role) map[normRole(p.role)] = p.perms || {}; });
+    state.rolePerms = map;
+    try { localStorage.setItem('rolePerms', JSON.stringify(map)); } catch (e) {}
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadRolePerms', e); }
+}
+async function saveRolePerms(role, perms) {
+  const rn = normRole(role);
+  if (!rn) return;
+  state.rolePerms = state.rolePerms || {};
+  state.rolePerms[rn] = perms;   // optimistic
+  try { localStorage.setItem('rolePerms', JSON.stringify(state.rolePerms)); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ role: rn, perms, updated_by: state.me, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
+  } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4500); }
+}
+async function clearRolePerms(role) {
+  const rn = normRole(role);
+  if (!rn) return;
+  if (state.rolePerms) delete state.rolePerms[rn];
+  try { localStorage.setItem('rolePerms', JSON.stringify(state.rolePerms || {})); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms?role=eq.${encodeURIComponent(rn)}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' },
+    }, 15000);
+  } catch (e) { console.warn('clearRolePerms', e); }
+}
+
 // ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──
 function _phoneDigits(m) { return String((m && m.phone) || '').replace(/\D/g, ''); }
 function _nomaadDefaultFor(m) {
@@ -5475,27 +5566,77 @@ function memberAccessState(m) {
     nomaad: isCeo || _nomaadDefaultFor(m),
     hourly: isCeo || _hourlyDefaultFor(m),
   };
-  if (ov) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(ov, v.key)) base[v.key] = !!ov[v.key]; });
+  const rt = (state.rolePerms && state.rolePerms[normRole(m.role)]) || null;
+  if (rt) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(rt, v.key)) base[v.key] = !!rt[v.key]; });  // албан тушаалын давхарга
+  if (ov) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(ov, v.key)) base[v.key] = !!ov[v.key]; });  // хувь хүний override
   return { access: base, hasOverride: !!ov, isCeo };
 }
 
 function renderAccess() {
-  if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); }
+  if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }
+  const tab = state.accessTab || 'role';
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
+      <div><div style="font-weight:800;font-size:16px;">🔑 Эрх удирдах</div><div style="font-size:11px;color:var(--muted);">Албан тушаал бүрт эрх → хүмүүс өвлөнө. Хүн тус бүрд онцгой тохиргоо.</div></div>
+      <button class="btn" data-access-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
+    </div>`;
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+    <button class="btn${tab === 'role' ? ' btn-primary' : ''}" data-access-tab="role" style="padding:6px 12px;font-size:12px;">👔 Албан тушаалаар</button>
+    <button class="btn${tab === 'person' ? ' btn-primary' : ''}" data-access-tab="person" style="padding:6px 12px;font-size:12px;">👤 Хүн тус бүр</button>
+  </div>`;
+  const body = tab === 'person' ? renderAccessPersons() : renderAccessRoles();
+  return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
+}
+
+// ── Албан тушаалаар (role templates) ──
+function renderAccessRoles() {
+  const roleMap = {};
+  (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => {
+    const rn = normRole(m.role); if (!rn) return;
+    roleMap[rn] = roleMap[rn] || { role: m.role, count: 0, level: 0 };
+    roleMap[rn].count++; roleMap[rn].level = Math.max(roleMap[rn].level, m.level || 0);
+  });
+  const q = (state.accessSearch || '').toLowerCase().trim();
+  const roles = Object.keys(roleMap).map(k => ({ key: k, ...roleMap[k] }))
+    .filter(r => !q || r.role.toLowerCase().includes(q))
+    .sort((a, b) => (b.level - a.level) || a.role.localeCompare(b.role));
+  const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+    Албан тушаал дээр дарж задлаад тохируул. <b>Цэс:</b> чагт = тэр албан тушаалынхан уг цэсийг харна. <b>Үйлдэл:</b> чагт = зөвшөөрнө, авбал = хориглоно. Өөрчлөлт тухайн хүмүүс <b>дахин нэвтрэхэд</b> хүчинтэй. CEO (level 100) хязгаарлагдахгүй.
+  </div>`;
+  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Албан тушаал хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
+  const exp = state.accessExpandedRole || '';
+  const rows = roles.map(r => {
+    const tmpl = (state.rolePerms && state.rolePerms[r.key]) || {};
+    const configured = Object.keys(tmpl).length > 0;
+    const isExp = exp === r.key;
+    const isFull = r.level >= 100;
+    const summary = `<div class="ac-role-head" data-role-toggle="${escapeHtml(r.key)}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
+      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${isExp ? '▾' : '▸'}</span> <b style="font-size:13.5px;">${escapeHtml(r.role)}</b> <span style="font-size:11px;color:var(--muted);">· ${r.count} хүн</span></div>
+      ${isFull ? `<span style="font-size:10px;color:var(--ok);font-weight:700;">БҮРЭН ЭРХ</span>` : configured ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">тохируулсан</span>` : `<span style="font-size:10px;color:var(--muted);">default</span>`}
+    </div>`;
+    if (!isExp) return `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${summary}</div>`;
+    const groups = isFull ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Энэ албан тушаал бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>` : CAP_GROUPS.map(g => {
+      const chips = g.caps.map(c => {
+        const checked = g.kind === 'view' ? (tmpl[c.key] === true) : !(tmpl[c.key] === false);
+        return `<label class="ac-chip${checked ? ' on' : ''}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${c.key}" data-cap-kind="${g.kind}" ${checked ? 'checked' : ''} style="margin:0 5px 0 0;">${escapeHtml(c.label)}</label>`;
+      }).join('');
+      return `<div style="margin-top:10px;"><div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-bottom:5px;">${g.label}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div></div>`;
+    }).join('') + (configured ? `<div style="margin-top:10px;"><button class="btn" data-role-reset="${escapeHtml(r.key)}" style="padding:3px 10px;font-size:11px;">↺ Default руу буцаах</button></div>` : '');
+    return `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${summary}${groups}</div>`;
+  }).join('');
+  return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Албан тушаал алга</div>'}</div>`;
+}
+
+// ── Хүн тус бүр (person override — зөвхөн цэс хандалт) ──
+function renderAccessPersons() {
   const q = (state.accessSearch || '').toLowerCase().trim();
   const members = (TEAM || [])
     .filter(m => (m.status || 'идэвхтэй') !== 'гарсан')
     .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
     .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
-
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">🔑 Эрх удирдах</div><div style="font-size:11px;color:var(--muted);">Хүн бүр аль хэсгийг ашиглахыг тохируулна</div></div>
-      <button class="btn" data-access-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
-    </div>`;
   const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
-    ✓ = тухайн хүн уг хэсгийг харж/ашиглаж чадна. Өөрчлөхөд тухайн хүн <b>дахин нэвтрэхэд</b> хүчинтэй. «Бүрэн эрх» хүмүүс (CEO/захирал) бүгдийг хардаг — тэднийг энд хязгаарлахгүй.
+    Энд тухайн <b>нэг хүнд</b> онцгой цэс хандалт өгнө (албан тушаалын эрхийг дарна). Жирийн тохиолдолд «Албан тушаалаар» таб ашигла.
   </div>`;
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
-
   const rows = members.map(m => {
     const key = personKey(m);
     const st = memberAccessState(m);
@@ -5506,7 +5647,7 @@ function renderAccess() {
         <input type="checkbox" data-ac-person="${escapeHtml(key)}" data-ac-key="${v.key}" ${on ? 'checked' : ''} ${dis} style="margin:0 5px 0 0;" />${escapeHtml(v.label)}</label>`;
     }).join('');
     const tag = st.isCeo ? `<span style="font-size:10px;color:var(--ok);font-weight:700;">БҮРЭН ЭРХ</span>`
-      : st.hasOverride ? `<button class="btn" data-ac-reset="${escapeHtml(key)}" style="padding:2px 8px;font-size:10px;">↺ default</button>` : `<span style="font-size:10px;color:var(--muted);">default (албан тушаал)</span>`;
+      : st.hasOverride ? `<button class="btn" data-ac-reset="${escapeHtml(key)}" style="padding:2px 8px;font-size:10px;">↺ default</button>` : `<span style="font-size:10px;color:var(--muted);">албан тушаалаар</span>`;
     return `<div class="ac-row" data-ac-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
         <div style="min-width:0;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span></div>
@@ -5515,19 +5656,42 @@ function renderAccess() {
       <div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
     </div>`;
   }).join('');
-
-  return `<div style="padding:4px;">${head}${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+  return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
 }
 
 function attachAccessHandlers() {
-  document.querySelector('[data-access-refresh]')?.addEventListener('click', () => { state._permsLoaded = false; loadMemberPerms(); showToast('Шинэчилж байна…', 'info', 1200); });
+  document.querySelectorAll('[data-access-tab]').forEach(b => b.addEventListener('click', () => { state.accessTab = b.dataset.accessTab; state.accessSearch = ''; render(); }));
+  document.querySelector('[data-access-refresh]')?.addEventListener('click', () => { state._permsLoaded = false; loadMemberPerms(); loadRolePerms(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('access-search');
   if (se) se.addEventListener('input', () => {
     state.accessSearch = se.value;
     const qq = se.value.trim().toLowerCase();
     document.querySelectorAll('.ac-wrap .ac-row').forEach(r => { r.style.display = (!qq || (r.dataset.acHaystack || '').includes(qq)) ? '' : 'none'; });
   });
-  // Чагт солих → тухайн хүний 7 төлвийг бүтэн override болгож хадгална
+  // ── Албан тушаал: задлах/хаах ──
+  document.querySelectorAll('[data-role-toggle]').forEach(h => h.addEventListener('click', () => {
+    const k = h.dataset.roleToggle;
+    state.accessExpandedRole = (state.accessExpandedRole === k) ? '' : k;
+    render();
+  }));
+  // ── Албан тушаалын cap солих → partial template (цэс=grant, үйлдэл=deny) ──
+  document.querySelectorAll('input[data-role-cap]').forEach(cb => cb.addEventListener('change', () => {
+    const role = cb.dataset.roleCap;
+    const scope = cb.closest('.ac-role-row');
+    const perms = {};
+    scope.querySelectorAll('input[data-cap-key]').forEach(x => {
+      const kind = x.dataset.capKind;
+      if (kind === 'view') { if (x.checked) perms[x.dataset.capKey] = true; }       // зөвхөн нээснийг хадгална
+      else { if (!x.checked) perms[x.dataset.capKey] = false; }                       // зөвхөн хориглосныг хадгална
+    });
+    saveRolePerms(role, perms);
+    showToast('Албан тушаалын эрх хадгаллаа', 'success', 1500);
+    render();
+  }));
+  document.querySelectorAll('[data-role-reset]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); clearRolePerms(b.dataset.roleReset); showToast('Default руу буцаалаа', 'success', 1500); render();
+  }));
+  // ── Хүн тус бүр: цэс override ──
   document.querySelectorAll('.ac-wrap input[data-ac-person]').forEach(cb => cb.addEventListener('change', () => {
     const key = cb.dataset.acPerson;
     const row = cb.closest('.ac-row');
@@ -6261,6 +6425,7 @@ async function deleteNomaadQuote(quoteNo) {
 async function cancelNomaadCompany(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  if (!can('nomaad.cancel')) { showToast('Танд цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
   const paid = Number(o.income_amount) || Number(o.income_advance) || 0;
   const reason = await showPrompt(
     `${o.company || 'Захиалга'} · ${quoteNo}\nМанайхаас цуцлах шалтгаан? (түүхэд үлдэнэ)${paid > 0 ? `\n⚠ Хүлээн авсан ${fmtMoney(paid)} — буцаах эсэхээ анхаар.` : ''}`,
@@ -6769,6 +6934,7 @@ function openNomaadIncomeModal(o) {
 async function recordNomaadIncome(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) return;
+  if (!can('nomaad.income')) { showToast('Танд орлого бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
   const res = await openNomaadIncomeModal(o);
   if (!res) return;
   const prevPaid = Number(o.income_amount) || 0;
@@ -7898,6 +8064,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
 function openBqPaymentModal(oid) {
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
+  if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
   const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0, bal = Math.max(0, total - paid);
   document.getElementById('bq-pay-modal')?.remove();
   const modal = document.createElement('div');
@@ -10637,6 +10804,7 @@ function canDeleteTask(t) {
 async function deleteTask(id) {
   const t = state.tasks.find(x=>x.id===id);
   if (!t) return;
+  if (!can('tasks.delete')) { showToast('Танд ажил устгах эрх олгогдоогүй', 'warn', 3000); return; }
   const check = canDeleteTask(t);
   if (!check.ok) {
     if (check.reason === 'executed') {
@@ -10802,6 +10970,7 @@ function duplicateTask(id) {
 }
 
 function openTaskModal(id) {
+  if (!id && !can('tasks.create')) { showToast('Танд ажил үүсгэх эрх олгогдоогүй', 'warn', 3000); return; }
   const t = id ? state.tasks.find(x=>x.id===id) : null;
   state.editingId = id || null;
 
@@ -12299,6 +12468,7 @@ async function bootApp() {
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
+  loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   state._initialLoading = false;
   generateNotifications();
   render();

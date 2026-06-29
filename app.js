@@ -5026,7 +5026,7 @@ function renderHourly() {
     const payouts = st.ps;
     const sum = st.sum;
     // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
-    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : ''}</span>`;
+    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}<img src="${escapeHtml(staffPhotoUrl(key))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></span>`;
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
@@ -10180,6 +10180,11 @@ function openStaffManagement() {
 }
 
 // Ажилтны салбарын шошго (branches[]-д суурилсан — Тоймын toggle-тэй нийцнэ).
+// Ажилтны зураг — VPS Caddy дээр (Drive-аас зөөсөн). Файл нэр = personKey. Байхгүй бол onerror→нэрийн үсэг.
+function staffPhotoUrl(personKey) {
+  const k = String(personKey || '').trim();
+  return k ? `https://n8n.nomaadcamp.com/img/staff/${encodeURIComponent(k)}.jpg` : '';
+}
 // Монгол РД-аас нас тооцох. Формат: 2 үсэг + YYMMDD + 2 серал. Сар 21-32 = 2000-аад (сар−20).
 function ageFromRD(rd) {
   const d = String(rd || '').replace(/\D/g, '');
@@ -10236,7 +10241,7 @@ function renderStaffList() {
     const key = personKey(m);
     return `
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
-        <span class="staff-avatar">${escapeHtml(memberInitials(key))}${m.photo ? `<img src="${escapeHtml(driveThumbUrl(m.photo, 96))}" alt="" referrerpolicy="no-referrer" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" />` : ''}</span>
+        <span class="staff-avatar">${escapeHtml(memberInitials(key))}<img src="${escapeHtml(staffPhotoUrl(key))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" /></span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>

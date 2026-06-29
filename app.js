@@ -4954,12 +4954,9 @@ const HOURLY_FUND_LABEL = 'Цагийн ажилтны данс · Хаан ба
 // Цагийн цалин харах эрхтэй утаснууд (+ CEO үргэлж). Утсаар тааруулна.
 const HOURLY_VIEWERS = ['86657676','88028216','99337760','88394636','99179417','80535220','99285468','89904109'];
 function canSeeHourlyPayroll() {
-  if (isDailyWorker()) return false;
-  if (state.isCEO) return true;
-  { const v = capValue('hourly'); if (v !== undefined) return v; }
-  if (isFinanceAccountant()) return true;  // туслах нягтлан — цагийн цалин гүйцэтгэдэг тул заавал харна
-  const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
-  return !!myPhone && HOURLY_VIEWERS.some(p => myPhone.endsWith(p));
+  if (isDailyWorker()) return false;  // өдрийн ажилтан өөрөө цалингийн самбар харахгүй
+  // Эрх удирдах самбар = эх сурвалж: CEO → роль тохиргоо → default(_hourlyDefaultFor).
+  return canAccessView('hourly', () => _hourlyDefaultFor(findMember(state.me)) || isFinanceAccountant());
 }
 function hourlyWorkers() {
   // Бүх цагийн ажилтан — салбар/идэвхтэй эсэхээс үл хамаарна (ad-hoc дуудаж ажиллуулдаг).
@@ -5892,14 +5889,9 @@ function attachHubPeople() {
   if (se) se.addEventListener('input', () => { state.staffSearch = se.value; renderStaffList(); });
 }
 function canSeeNomaadOrders() {
-  if (state.isCEO) return true;
-  { const v = capValue('nomaad'); if (v !== undefined) return v; }
-  if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
-  const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
-  if (myPhone && NOMAAD_VIEWERS.some(p => myPhone.endsWith(p))) return true;
-  const me = (typeof findMember === 'function') ? findMember(state.me) : null;
-  const myName = String((me && me.name) || (state.user && state.user.name) || '').toLowerCase();
-  return NOMAAD_VIEWER_NAMES.some(n => myName.includes(n));
+  // Эрх удирдах самбар = эх сурвалж: CEO → роль тохиргоо → default(_nomaadDefaultFor).
+  // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
+  return canAccessView('nomaad', () => _nomaadDefaultFor(findMember(state.me)) || (state.me === getFinanceExecutorEmail()));
 }
 async function loadNomaadOrders() {
   if (!canSeeNomaadOrders()) return;

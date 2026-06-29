@@ -5541,3 +5541,16 @@ body.role-daily #add-project { display: none !important; }
 .pen-del:hover { background: var(--danger-soft); border-color: var(--danger); }
 .pen-empty { font-size: 13px; color: var(--muted); padding: 6px 2px; }
 .perf-kpi { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-family: inherit; }
+
+/* ── Эрх удирдах — capability chip ── */
+.ac-chip { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 12px; cursor: pointer; user-select: none; background: var(--panel); color: var(--muted); transition: background .12s, border-color .12s, color .12s; }
+.ac-chip:hover { border-color: var(--muted); }
+.ac-chip input { width: 14px; height: 14px; cursor: pointer; accent-color: var(--ok); }
+.ac-chip.on { background: var(--ok-soft, rgba(22,163,74,.13)); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.ac-chip.locked { opacity: .6; cursor: default; }
+.ac-chip.locked input { cursor: default; }
+/* Хориглосон үйлдэл (action chip, off) — улаавтар сэрэмжлүүлэг */
+.ac-chip.act-off { border-color: var(--danger); color: var(--danger); background: var(--danger-soft, rgba(220,38,38,.08)); font-weight: 600; }
+.ac-menu { border-top: 1px solid var(--border); padding: 9px 0; }
+.ac-menu:first-child { border-top: none; }
+.ac-menu-name { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }

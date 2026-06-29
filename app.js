@@ -1914,6 +1914,7 @@ async function copyText(text, okMsg = 'Хуулагдлаа') {
 }
 
 function openFinanceModal(id = null) {
+  if (!id && !can('finance.create')) { showToast('Танд санхүүгийн хүсэлт илгээх эрх олгогдоогүй', 'warn', 3000); return; }
   const t = id ? state.financeRequests.find(x => x.id === id) : null;
   state.editingId = id || null;
   const modal = document.getElementById('finance-modal');
@@ -2415,6 +2416,7 @@ async function deleteFinanceRequest(id) {
 async function executeFinanceRequest(id) {
   const r = state.financeRequests.find(x => x.id === id);
   if (!r) return;
+  if (!can('finance.execute')) { showToast('Танд гүйлгээ хийх эрх олгогдоогүй', 'warn', 3000); return; }
   if (r.decision !== 'approved') { showToast('Зөвхөн зөвшөөрсөн хүсэлтийг гүйцэтгэх боломжтой', 'warn'); return; }
   const executorId = r.executor || getFinanceExecutorEmail();
   if (state.me !== executorId && !state.isCEO) {
@@ -2545,7 +2547,7 @@ function canManageOrders() {
 // Удирдах биш, харах/филтер хийх зорилгоор өргөн нээлттэй.
 function canSeeOrders() {
   if (state.isCEO) return true;
-  { const ov = myPermOverride(); if (ov && Object.prototype.hasOwnProperty.call(ov, 'orders')) return !!ov.orders; }
+  { const v = capValue('orders'); if (v !== undefined) return v; }
   if (canManageOrders()) return true;
   // Дамжлагын аль нэг шатыг хариуцдаг role-тэй бол (нягтлан, агуулах, цэвэрлэгээ, нярав...) харна.
   const role = String(findMember(state.me)?.role || '');
@@ -3995,7 +3997,7 @@ function attachOrdersHandlers() {
   // Booqable захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
-  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to)));
+  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => { if (!can('orders.advance')) { showToast('Танд төлөв шилжүүлэх эрх олгогдоогүй', 'warn', 3000); return; } bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to); }));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
     if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
     const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
@@ -4947,7 +4949,7 @@ const HOURLY_VIEWERS = ['86657676','88028216','99337760','88394636','99179417','
 function canSeeHourlyPayroll() {
   if (isDailyWorker()) return false;
   if (state.isCEO) return true;
-  { const ov = myPermOverride(); if (ov && Object.prototype.hasOwnProperty.call(ov, 'hourly')) return !!ov.hourly; }
+  { const v = capValue('hourly'); if (v !== undefined) return v; }
   if (isFinanceAccountant()) return true;  // туслах нягтлан — цагийн цалин гүйцэтгэдэг тул заавал харна
   const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
   return !!myPhone && HOURLY_VIEWERS.some(p => myPhone.endsWith(p));
@@ -5314,6 +5316,7 @@ function openHourlyPayModal(m) {
 async function markHourlyPaid(workerKey) {
   const m = findMember(workerKey);
   if (!m) return;
+  if (!can('hourly.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const res = await openHourlyPayModal(m);
   if (!res) return;
   const { rate, days, start } = res;
@@ -5391,42 +5394,47 @@ const PERM_VIEWS = [
   { key: 'hourly',      label: 'Цагийн цалин' },
 ];
 // Бүх удирдах боломжтой эрх (меню + үйлдэл) — Эрх самбарын матрицад.
-const CAP_GROUPS = [
-  { label: 'Цэс (харах)', kind: 'view', caps: [
-    { key: 'orders', label: 'Захиалга' },
-    { key: 'receivables', label: 'Авлага' },
-    { key: 'booqable', label: 'Түрээсийн түүх' },
-    { key: 'products', label: 'Бараа' },
-    { key: 'reports', label: 'Тайлан' },
-    { key: 'nomaad', label: 'NOMAAD' },
-    { key: 'hourly', label: 'Цагийн цалин' },
-  ]},
-  { label: 'Үйлдэл (хийж болох)', kind: 'action', caps: [
-    { key: 'tasks.delete', label: 'Ажил устгах' },
-    { key: 'tasks.create', label: 'Ажил үүсгэх' },
-    { key: 'orders.cancel', label: 'Захиалга цуцлах/устгах' },
-    { key: 'orders.pay', label: 'Захиалгын төлбөр бүртгэх' },
-    { key: 'nomaad.cancel', label: 'NOMAAD цуцлах' },
-    { key: 'nomaad.income', label: 'NOMAAD орлого бүртгэх' },
-    { key: 'finance.approve', label: 'Санхүү батлах' },
-  ]},
+// Бүх цэс (sidebar нэрээрээ) + цэс тус бүрийн нарийн үйлдэл — Эрх удирдах матрицын бүтэц.
+// core:true = үндсэн цэс (бүгдэд үргэлж нээлттэй, нуухгүй). Бусдын харах эрхийг роль/CEO удирдана.
+const PERM_MENUS = [
+  { key: 'dashboard',   label: 'Тойм',            core: true, actions: [] },
+  { key: 'calendar',    label: 'Календарь',       core: true, actions: [] },
+  { key: 'mine',        label: 'Ирсэн ажил',      core: true, actions: [] },
+  { key: 'delegated',   label: 'Илгээсэн ажил',   core: true, actions: [
+      { key: 'tasks.create', label: 'Ажил үүсгэх' },
+      { key: 'tasks.delete', label: 'Ажил устгах' } ] },
+  { key: 'finance',     label: 'Санхүү',          core: true, actions: [
+      { key: 'finance.create',  label: 'Хүсэлт илгээх' },
+      { key: 'finance.approve', label: 'Батлах' },
+      { key: 'finance.execute', label: 'Гүйлгээ хийх' } ] },
+  { key: 'performance', label: 'Гүйцэтгэл',       core: true, actions: [] },
+  { key: 'reports',     label: 'Тайлан',          actions: [] },
+  { key: 'hourly',      label: 'Цагийн цалин',    actions: [
+      { key: 'hourly.pay', label: 'Цалин/урьдчилгаа олгох' } ] },
+  { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
+      { key: 'nomaad.income', label: 'Орлого бүртгэх' },
+      { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
+  { key: 'orders',      label: 'Захиалга',        actions: [
+      { key: 'orders.pay',     label: 'Төлбөр бүртгэх' },
+      { key: 'orders.advance', label: 'Төлөв шилжүүлэх' },
+      { key: 'orders.cancel',  label: 'Цуцлах / устгах' } ] },
+  { key: 'products',    label: 'Бараа',           actions: [
+      { key: 'products.edit', label: 'Засах / нэмэх' } ] },
+  { key: 'receivables', label: 'Авлага',          actions: [
+      { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
+  { key: 'booqable',    label: 'Түрээсийн түүх',  actions: [] },
 ];
-const VIEW_CAP_KEYS = CAP_GROUPS[0].caps.map(c => c.key);
-const ACTION_CAP_KEYS = CAP_GROUPS[1].caps.map(c => c.key);
+const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 function normRole(role) { return String(role || '').trim().toLowerCase(); }
-// Тухайн нэвтэрсэн хэрэглэгчийн хувийн override (байвал) — эс бөгөөс null
-function myPermOverride() { return (state.memberPerms && state.memberPerms[state.me]) || null; }
 // Тухайн хүний албан тушаалын эрх загвар (байвал)
 function roleTemplateFor(meKey) {
   const m = (typeof findMember === 'function') ? findMember(meKey) : null;
   const r = normRole(m && m.role);
   return (r && state.rolePerms && state.rolePerms[r]) || null;
 }
-// Давхаргат шийдвэрлэлт: CEO → хувь хүний override → албан тушаалын загвар → undefined (тохируулаагүй).
+// Давхаргат шийдвэрлэлт (РОЛЬ-д суурилсан): CEO → албан тушаалын загвар → undefined (тохируулаагүй).
 function capValue(key) {
   if (state.isCEO) return true;
-  const ov = myPermOverride();
-  if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
   const rt = roleTemplateFor(state.me);
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
   return undefined;
@@ -5610,13 +5618,20 @@ function renderAccessRoles() {
       ${isFull ? `<span style="font-size:10px;color:var(--ok);font-weight:700;">БҮРЭН ЭРХ</span>` : configured ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">тохируулсан</span>` : `<span style="font-size:10px;color:var(--muted);">default</span>`}
     </div>`;
     if (!isExp) return `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${summary}</div>`;
-    const groups = isFull ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Энэ албан тушаал бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>` : CAP_GROUPS.map(g => {
-      const chips = g.caps.map(c => {
-        const checked = g.kind === 'view' ? (tmpl[c.key] === true) : !(tmpl[c.key] === false);
-        return `<label class="ac-chip${checked ? ' on' : ''}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${c.key}" data-cap-kind="${g.kind}" ${checked ? 'checked' : ''} style="margin:0 5px 0 0;">${escapeHtml(c.label)}</label>`;
-      }).join('');
-      return `<div style="margin-top:10px;"><div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-bottom:5px;">${g.label}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div></div>`;
-    }).join('') + (configured ? `<div style="margin-top:10px;"><button class="btn" data-role-reset="${escapeHtml(r.key)}" style="padding:3px 10px;font-size:11px;">↺ Default руу буцаах</button></div>` : '');
+    const groups = isFull
+      ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Энэ албан тушаал бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>`
+      : `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
+          const viewChip = menu.core
+            ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
+            : (() => { const vc = tmpl[menu.key] === true;
+                return `<label class="ac-chip${vc ? ' on' : ''}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${menu.key}" data-cap-kind="view" ${vc ? 'checked' : ''}>👁 Харах</label>`; })();
+          const actChips = menu.actions.map(a => {
+            const denied = tmpl[a.key] === false;
+            return `<label class="ac-chip${denied ? ' act-off' : ' on'}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${a.key}" data-cap-kind="action" ${denied ? '' : 'checked'}>${escapeHtml(a.label)}</label>`;
+          }).join('');
+          return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
+        }).join('') + `</div>`
+        + (configured ? `<div style="margin-top:12px;"><button class="btn" data-role-reset="${escapeHtml(r.key)}" style="padding:4px 11px;font-size:11px;">↺ Default руу буцаах</button></div>` : '');
     return `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${summary}${groups}</div>`;
   }).join('');
   return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Албан тушаал алга</div>'}</div>`;
@@ -5656,7 +5671,7 @@ function attachAccessHandlers() {
 }
 function canSeeNomaadOrders() {
   if (state.isCEO) return true;
-  { const ov = myPermOverride(); if (ov && Object.prototype.hasOwnProperty.call(ov, 'nomaad')) return !!ov.nomaad; }
+  { const v = capValue('nomaad'); if (v !== undefined) return v; }
   if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
   const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
   if (myPhone && NOMAAD_VIEWERS.some(p => myPhone.endsWith(p))) return true;
@@ -7549,6 +7564,7 @@ function renderProducts() {
 
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
 function openProductModal(p) {
+  if (!can('products.edit')) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
   const isEdit = !!p;
   const cost = isEdit ? ((state.productCosts || {})[p.sku] || 0) : 0;
   const u = isEdit ? productUtilization(p.name) : { orders: 0, revenue: 0 };

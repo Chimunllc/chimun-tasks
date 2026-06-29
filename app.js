@@ -10104,7 +10104,12 @@ function renderStaffList() {
 
 // Бүртгэлийн формын role сонголтуудыг runtime-д уншина (давхардуулахгүй).
 function getRoleOptions() {
-  return [...document.querySelectorAll('#reg-role option')].map(o => o.value).filter(Boolean);
+  // Бүх байгаа албан тушаал: бүртгэлийн жагсаалт + одоо ажилтнуудад байгаа + эрхийн загвар (role_perms).
+  const set = new Map();   // normRole → харагдах нэр (эх бичигдсэн хэлбэр)
+  [...document.querySelectorAll('#reg-role option')].forEach(o => { const v = String(o.value || '').trim(); if (v) set.set(normRole(v), v); });
+  (TEAM || []).forEach(m => { const v = String(m.role || '').trim(); if (v && !set.has(normRole(v))) set.set(normRole(v), v); });
+  Object.keys(state.rolePerms || {}).forEach(rn => { if (rn && !set.has(rn)) set.set(rn, rn); });
+  return [...set.values()].sort((a, b) => a.localeCompare(b));
 }
 
 // Ажилтны албан тушаал (role)-ийг мөр дотор inline select-ээр засна.
@@ -10119,11 +10124,20 @@ function editStaffRole(key) {
   if (cur && !roles.includes(cur)) roles.unshift(cur);   // одоогийн role жагсаалтад байхгүй бол нэмнэ
   const sel = document.createElement('select');
   sel.className = 'staff-role-select';
-  sel.innerHTML = roles.map(r => `<option value="${escapeHtml(r)}"${r === cur ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('');
+  sel.innerHTML = roles.map(r => `<option value="${escapeHtml(r)}"${r === cur ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('')
+    + `<option value="__new__">+ Шинэ албан тушаал…</option>`;
   roleDiv.innerHTML = '';
   roleDiv.appendChild(sel);
   sel.focus();
-  sel.addEventListener('change', () => saveStaffRole(member, sel.value));
+  sel.addEventListener('change', async () => {
+    if (sel.value === '__new__') {
+      const nv = await showPrompt('Шинэ албан тушаалын нэр:', { placeholder: 'Ж: Эвент менежер', okText: 'Хадгалах' });
+      if (nv && nv.trim()) saveStaffRole(member, nv.trim());
+      else renderStaffList();
+      return;
+    }
+    saveStaffRole(member, sel.value);
+  });
   sel.addEventListener('blur', () => setTimeout(renderStaffList, 100));
 }
 

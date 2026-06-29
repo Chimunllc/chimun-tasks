@@ -195,6 +195,9 @@ const state = {
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
   memberPerms: (() => { try { return JSON.parse(localStorage.getItem('memberPerms') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн view хандалтын override {personKey: {orders:true,...}}
   rolePerms: (() => { try { return JSON.parse(localStorage.getItem('rolePerms') || '{}'); } catch(e) { return {}; } })(),  // албан тушаал бүрийн эрх загвар {roleNorm: {orders:true, 'tasks.delete':false,...}}
+  salaries: (() => { try { return JSON.parse(localStorage.getItem('salaries') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн суурь сарын цалин {personKey: amount}
+  salaryPayments: [],   // сарын цалингийн олголтын лог (salary_payments)
+  salaryYM: new Date().toISOString().slice(0, 7),   // Цалин view-ийн сонгосон сар
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   evaluations: (() => { try { return JSON.parse(localStorage.getItem('evaluations') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
@@ -2922,6 +2925,7 @@ function render() {
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'access' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'salary' && !canSeeSalary()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
   const blSel = document.getElementById('branch-lens');
@@ -3009,6 +3013,9 @@ function renderSidebar() {
   // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
   const acNav = document.getElementById('nav-access');
   if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
+  // Сарын цалин — CEO/нягтлан/эрх олгогдсон.
+  const salNav = document.getElementById('nav-salary');
+  if (salNav) salNav.style.display = canSeeSalary() ? '' : 'none';
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
   const arNav = document.getElementById('nav-receivables');
   if (arNav) {
@@ -3054,6 +3061,7 @@ function renderTitle() {
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
     access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>', 'Эрх удирдах', 'Хүн бүрийн хэсэг хандалтыг тохируулах'],
+    salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -3145,6 +3153,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderAccess();
     attachAccessHandlers();
+    return;
+  } else if (state.view === 'salary') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderSalary();
+    attachSalaryHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
@@ -5411,6 +5425,9 @@ const PERM_MENUS = [
   { key: 'reports',     label: 'Тайлан',          actions: [] },
   { key: 'hourly',      label: 'Цагийн цалин',    actions: [
       { key: 'hourly.pay', label: 'Цалин/урьдчилгаа олгох' } ] },
+  { key: 'salary',      label: 'Цалин (сарын)',   actions: [
+      { key: 'salary.edit', label: 'Суурь цалин тохируулах' },
+      { key: 'salary.pay',  label: 'Цалин олгох' } ] },
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -5543,6 +5560,160 @@ async function clearRolePerms(role) {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' },
     }, 15000);
   } catch (e) { console.warn('clearRolePerms', e); }
+}
+
+// ════════════ САРЫН ЦАЛИН (хүн бүрт суурь цалин + сар бүрийн олголт) ════════════
+function canSeeSalary() { return canAccessView('salary', () => state.isCEO || (typeof isFinanceAccountant === 'function' && isFinanceAccountant())); }
+const _SAL_H = () => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY });
+async function loadSalaries() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary?select=*`, { headers: _SAL_H() }, 15000);
+    if (!r.ok) return;
+    const rows = await r.json(); const map = {};
+    rows.forEach(p => { if (p && p.person_key) map[p.person_key] = Number(p.amount) || 0; });
+    state.salaries = map;
+    try { localStorage.setItem('salaries', JSON.stringify(map)); } catch (e) {}
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadSalaries', e); }
+}
+async function loadSalaryPayments() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/salary_payments?select=*&order=paid_at.desc`, { headers: _SAL_H() }, 15000);
+    if (!r.ok) return;
+    state.salaryPayments = await r.json();
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadSalaryPayments', e); }
+}
+async function saveSalary(personKey, amount) {
+  if (!personKey) return;
+  state.salaries = state.salaries || {}; state.salaries[personKey] = Number(amount) || 0;
+  try { localStorage.setItem('salaries', JSON.stringify(state.salaries)); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary`, {
+      method: 'POST', headers: { ..._SAL_H(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ person_key: personKey, amount: Number(amount) || 0, updated_by: state.me, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { showToast('Цалин хадгалах алдаа: ' + e.message, 'error', 4000); }
+}
+async function paySalary(personKey, ym, amount, note) {
+  const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'sal-' + Date.now();
+  const row = { id, person_key: personKey, ym, amount: Number(amount) || 0, note: note || '', paid_by: state.me, paid_at: new Date().toISOString() };
+  state.salaryPayments = state.salaryPayments || []; state.salaryPayments.unshift(row);
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/salary_payments`, {
+      method: 'POST', headers: { ..._SAL_H(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(row),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { showToast('Олголт хадгалах алдаа: ' + e.message, 'error', 4000); }
+}
+// Тухайн хүний тухайн сард олгосон нийт
+function salaryPaidFor(personKey, ym) {
+  return (state.salaryPayments || []).filter(p => p.person_key === personKey && p.ym === ym).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+}
+// Сарын цалин авах ажилтнууд (өдрийн/цагийн ажилтнаас бусад идэвхтэй)
+function salaryStaff() {
+  return (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && String(m.worker_type || '') !== 'daily');
+}
+
+function renderSalary() {
+  if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
+  const q = (state.salarySearch || '').toLowerCase().trim();
+  const staff = salaryStaff()
+    .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
+    .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
+  const allStaff = salaryStaff();
+  const totalBase = allStaff.reduce((s, m) => s + (Number((state.salaries || {})[personKey(m)]) || 0), 0);
+  const paidThis = allStaff.reduce((s, m) => s + salaryPaidFor(personKey(m), ym), 0);
+  const unpaidCnt = allStaff.filter(m => { const base = Number((state.salaries || {})[personKey(m)]) || 0; return base > 0 && salaryPaidFor(personKey(m), ym) <= 0; }).length;
+  const editable = can('salary.edit'), payable = can('salary.pay');
+
+  const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
+      <div><div style="font-weight:800;font-size:16px;">💵 Сарын цалин</div><div style="font-size:11px;color:var(--muted);">Ажилтан бүрийн суурь цалин + сар бүрийн олголт</div></div>
+      <div style="display:flex;gap:8px;align-items:center;"><input type="month" id="sal-ym" value="${ym}" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;"><button class="btn" data-sal-refresh style="padding:6px 12px;font-size:12px;">↻</button></div>
+    </div>`;
+  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+    ${kpi('Нийт сарын цалин', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
+    ${kpi('Энэ сар олгосон', fmtMoney(paidThis), 'var(--ok)', ym)}
+    ${kpi('Олгоогүй', fmtMoney(Math.max(0, totalBase - paidThis)), unpaidCnt ? 'var(--warn)' : 'var(--muted)', `${unpaidCnt} хүн`)}
+  </div>`;
+  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
+  const rows = staff.map(m => {
+    const key = personKey(m);
+    const base = Number((state.salaries || {})[key]) || 0;
+    const paid = salaryPaidFor(key, ym);
+    const isPaid = paid > 0;
+    const baseCell = editable
+      ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(key)}" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:130px;box-sizing:border-box;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;text-align:right;">`
+      : `<span style="font-weight:600;">${fmtMoney(base)}</span>`;
+    const payCell = isPaid
+      ? `<span style="color:var(--ok);font-size:12px;font-weight:600;">✓ ${fmtMoney(paid)}</span>`
+      : (payable && base > 0 ? `<button class="btn btn-primary" data-sal-pay="${escapeHtml(key)}" style="padding:5px 12px;font-size:12px;">💵 Олгох</button>` : `<span style="color:var(--muted);font-size:11px;">${base > 0 ? 'олгоогүй' : 'цалин тохируулаагүй'}</span>`);
+    return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 13px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div style="min-width:140px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span></div>
+      <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:10.5px;color:var(--muted);">Суурь</span>${baseCell}<div style="min-width:90px;text-align:right;">${payCell}</div></div>
+    </div>`;
+  }).join('');
+  return `<div style="padding:4px;">${head}${kpis}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+}
+
+function attachSalaryHandlers() {
+  document.getElementById('sal-ym')?.addEventListener('change', (e) => { state.salaryYM = e.target.value; render(); });
+  document.querySelector('[data-sal-refresh]')?.addEventListener('click', () => { state._salLoaded = false; loadSalaries(); loadSalaryPayments(); showToast('Шинэчилж байна…', 'info', 1200); });
+  const se = document.getElementById('sal-search');
+  if (se) se.addEventListener('input', () => {
+    state.salarySearch = se.value;
+    const qq = se.value.trim().toLowerCase();
+    document.querySelectorAll('.sal-wrap .ac-row').forEach(r => { r.style.display = (!qq || (r.dataset.salHaystack || '').includes(qq)) ? '' : 'none'; });
+  });
+  document.querySelectorAll('.sal-base').forEach(inp => inp.addEventListener('change', () => {
+    if (!can('salary.edit')) { showToast('Танд цалин тохируулах эрх алга', 'warn', 3000); render(); return; }
+    saveSalary(inp.dataset.salPerson, moneyVal(inp));
+    showToast('Цалин хадгаллаа', 'success', 1200);
+  }));
+  document.querySelectorAll('[data-sal-pay]').forEach(b => b.addEventListener('click', () => openSalaryPayModal(b.dataset.salPay)));
+}
+
+async function openSalaryPayModal(personKey) {
+  if (!can('salary.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
+  const m = findMember(personKey); if (!m) return;
+  const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
+  const base = Number((state.salaries || {})[personKey]) || 0;
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `<div class="modal-content" style="max-width:380px;">
+    <div style="font-weight:800;font-size:15px;margin-bottom:2px;">💵 Цалин олгох</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${escapeHtml(m.name || '')} · ${escapeHtml(ym)}</div>
+    <label style="display:block;margin-bottom:10px;font-size:13px;">Дүн (₮)
+      <input id="sal-amt" type="text" inputmode="numeric" class="money-input" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
+    <label style="display:block;margin-bottom:16px;font-size:13px;">Тайлбар
+      <input id="sal-note" type="text" placeholder="Ж: ${escapeHtml(ym)} сарын цалин / бонус / суутгал" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);"></label>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="sal-cancel">Болих</button>
+      <button class="btn btn-primary" id="sal-save">Олгох</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#sal-cancel').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#sal-save').onclick = async () => {
+    const amount = moneyVal(modal.querySelector('#sal-amt'));
+    if (!amount) { showToast('Дүн оруулна уу', 'warn', 2000); return; }
+    const note = modal.querySelector('#sal-note').value.trim();
+    close();
+    await paySalary(personKey, ym, amount, note);
+    showToast(`${m.name}: ${fmtMoney(amount)} олголоо`, 'success', 2500);
+    render();
+  };
+  modal.classList.add('open');
+  setTimeout(() => modal.querySelector('#sal-amt')?.focus(), 50);
 }
 
 // ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──
@@ -12461,6 +12632,7 @@ async function bootApp() {
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
+  if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
   render();

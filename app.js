@@ -3365,7 +3365,7 @@ function openOrderPaymentModal(order_no, editMode) {
         <button type="button" data-v="advance"${curType === 'advance' ? ' class="on"' : ''}>Урьдчилгаа</button>
       </div>
       <label style="margin-top:10px;">Төлсөн дүн (₮)</label>
-      <input id="pay-amount" type="number" min="0" value="${Math.round(curAmount)}" />
+      <input id="pay-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(curAmount)}" />
       <div style="display:flex;gap:8px;margin-top:10px;">
         <div style="flex:1;">
           <label>Хэлбэр</label>
@@ -3409,7 +3409,7 @@ function openOrderPaymentModal(order_no, editMode) {
 }
 
 async function submitOrderPayment(modal, o, editMode, btn) {
-  const amount = Math.max(0, Number(modal.querySelector('#pay-amount').value) || 0);
+  const amount = moneyVal(modal.querySelector('#pay-amount'));
   if (!amount) { showToast('Төлсөн дүнг оруулна уу', 'warn'); return; }
   const type = modal.querySelector('#pay-type button.on')?.dataset.v || 'full';
   const method = modal.querySelector('#pay-method').value || 'data';
@@ -3479,7 +3479,7 @@ function openReturnModal(order_no) {
         <div class="pay-breakdown">Авсан барьцаа: <b>${fmtMoney(pr.deposit)}</b></div>
       </div>
       <label>Эвдрэл/гээгдлийн дүн (₮) <span style="color:var(--muted);font-weight:400;">— барьцаанаас хасна</span></label>
-      <input id="rt-damage" type="number" min="0" value="${existing ? existing.amount : 0}">
+      <input id="rt-damage" type="text" inputmode="numeric" class="money-input" value="${existing ? moneyFmtInput(existing.amount) : '0'}">
       <label style="margin-top:10px;">Тэмдэглэл (юу эвдэрсэн/дутсан)</label>
       <textarea id="rt-note" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 кабель дутсан">${existing ? escapeHtml(existing.note) : ''}</textarea>
       <div id="rt-return" class="rt-return"></div>
@@ -3492,7 +3492,7 @@ function openReturnModal(order_no) {
   const dmgEl = modal.querySelector('#rt-damage');
   const retEl = modal.querySelector('#rt-return');
   const upd = () => {
-    const d = Math.min(pr.deposit, Math.max(0, Number(dmgEl.value) || 0));
+    const d = Math.min(pr.deposit, moneyVal(dmgEl));
     retEl.innerHTML = `Үйлчлүүлэгчид буцаах барьцаа: <b style="color:var(--ok)">${fmtMoney(pr.deposit - d)}</b>${d ? ` · эвдрэл хасав −${fmtMoney(d)}` : ''}`;
   };
   dmgEl.oninput = upd; upd();
@@ -3500,7 +3500,7 @@ function openReturnModal(order_no) {
   modal.querySelector('#rt-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#rt-save').onclick = async (e) => {
-    const amount = Math.min(pr.deposit, Math.max(0, Number(dmgEl.value) || 0));
+    const amount = Math.min(pr.deposit, moneyVal(dmgEl));
     const note = modal.querySelector('#rt-note').value.trim();
     e.currentTarget.disabled = true;
     const newNote = encodeDamageNote(o.note, { amount, note });
@@ -4584,6 +4584,37 @@ async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
 // Мөнгөн дүн форматлагч (₮). fmt-тэй давхцахгүй, орон тусгаарлана.
 function fmtMoney(n) {
   return new Intl.NumberFormat('mn-MN').format(Math.round(Number(n) || 0)) + '₮';
+}
+
+// ── Мөнгөн ОРОЛТ — орон таслалтай харуулна (3,750,000). type="text" .money-input талбарт ──
+// Эхний value-г template дотор moneyFmtInput()-аар форматлана; бичих үед global listener шинэчилнэ.
+function moneyFmtInput(n) {
+  const d = String(Math.round(Number(n) || 0));
+  return d.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+// .money-input талбарын утгыг (таслал арилгаад) тоо болгож унших
+function moneyVal(el) {
+  return Math.max(0, Math.round(Number(String((el && el.value) || '').replace(/[^\d]/g, '')) || 0));
+}
+// Бичих үед амьд форматлах + курсорын байрлал хадгалах
+function _fmtMoneyInputEl(el) {
+  const old = String(el.value || '');
+  const sel = el.selectionStart == null ? old.length : el.selectionStart;
+  const before = old.slice(0, sel).replace(/[^\d]/g, '').length;
+  const digits = old.replace(/[^\d]/g, '').replace(/^0+(?=\d)/, '');
+  const out = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+  if (out === old) return;
+  el.value = out;
+  let pos = 0, seen = 0;
+  while (pos < out.length && seen < before) { const c = out.charCodeAt(pos); if (c >= 48 && c <= 57) seen++; pos++; }
+  try { el.setSelectionRange(pos, pos); } catch (_) {}
+}
+if (typeof document !== 'undefined' && !window.__moneyInputBound) {
+  window.__moneyInputBound = true;
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains('money-input')) _fmtMoneyInputEl(t);
+  }, true);
 }
 
 /* ─── M-Event Бараа (backoffice) ────────────────────────────
@@ -6105,7 +6136,7 @@ function openNomaadEditModal(quoteNo) {
         <button class="naq-addbtn" id="ne-add">+ Мөр нэмэх</button>
         <span class="naq-sectitle">Гэрээний гүйцэтгэл (акт) <small>(төлбөр гүйцэтгэлийн дараа — муу гүйцэтгэлийн хасалт энд)</small></span>
         <div class="naq-grid">
-          <label>Эцсийн гэрээний дүн (акт) ₮<input id="ne-final" type="number" min="0" inputmode="numeric" value="${Number(o.final_amount) > 0 ? Number(o.final_amount) : ''}" placeholder="хоосон = гэрээтэй ижил" /></label>
+          <label>Эцсийн гэрээний дүн (акт) ₮<input id="ne-final" type="text" inputmode="numeric" class="money-input" value="${Number(o.final_amount) > 0 ? moneyFmtInput(o.final_amount) : ''}" placeholder="хоосон = гэрээтэй ижил" /></label>
           <label>Хасалтын шалтгаан / тэмдэглэл<input id="ne-note" value="${escapeHtml(o.note || '')}" placeholder="жишээ: гүйцэтгэл актаар буурсан" /></label>
         </div>
         <div id="ne-deduct" class="naq-deduct"></div>
@@ -6129,7 +6160,7 @@ function openNomaadEditModal(quoteNo) {
     const fv = modal.querySelector('#ne-final').value;
     const el = modal.querySelector('#ne-deduct');
     if (fv === '') { el.innerHTML = `<small>Акт оруулаагүй — гэрээний дүн (${fmtMoney(g)}) хэвээр.</small>`; return; }
-    const final = Math.max(0, Number(fv) || 0);
+    const final = moneyVal(modal.querySelector('#ne-final'));
     const ded = g - final;
     if (ded > 0) el.innerHTML = `<span class="naq-deduct-on">Гүйцэтгэлийн хасалт: −${fmtMoney(ded)}</span> <small>(гэрээ ${fmtMoney(g)} − акт ${fmtMoney(final)})</small>`;
     else if (ded < 0) el.innerHTML = `<span class="naq-deduct-add">Нэмэгдэл: +${fmtMoney(-ded)}</span> <small>(акт ${fmtMoney(final)} > гэрээ ${fmtMoney(g)})</small>`;
@@ -6182,7 +6213,7 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
     tier: modal.querySelector('#ne-tier').value.trim(),
     note: modal.querySelector('#ne-note').value.trim(),
     // Эцсийн гэрээний дүн (акт) — хоосон бол хуучин утгыг хадгална (санамсаргүй устгахаас сэргийлнэ)
-    final_amount: finalVal !== '' ? Math.max(0, Number(finalVal) || 0) : (o.final_amount || ''),
+    final_amount: finalVal !== '' ? moneyVal(modal.querySelector('#ne-final')) : (o.final_amount || ''),
     // Хоосон бол хуучин утгыг хадгална (parse хийгдэхгүй чөлөөт текст огноог хамгаална)
     date_start: startVal ? fmtDT(startVal) : (o.date_start || ''),
     date_end: endVal ? fmtDT(endVal) : (o.date_end || ''),
@@ -6227,7 +6258,7 @@ function nomaadItemCardHtml(it, i) {
       </div>
       <div class="naq-item-mid">
         <label>Тоо<input class="ne-qty naq-num" type="number" min="0" inputmode="numeric" value="${it.qty}" /></label>
-        <label>Нэгж үнэ ₮<input class="ne-price naq-price" type="number" min="0" inputmode="numeric" value="${it.unit_price}" ${it.included ? 'disabled' : ''} /></label>
+        <label>Нэгж үнэ ₮<input class="ne-price naq-price money-input" type="text" inputmode="numeric" value="${moneyFmtInput(it.unit_price)}" ${it.included ? 'disabled' : ''} /></label>
         <span class="ne-amt naq-amt">${fmtMoney(amt)}</span>
       </div>
       <label class="naq-incl"><input type="checkbox" class="ne-incl" ${it.included ? 'checked' : ''} /> Багцад үнэгүй багтсан</label>
@@ -6314,7 +6345,7 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
     const it = items[+row.dataset.idx];
     if (e.target.classList.contains('ne-name')) it.name = e.target.value;
     else if (e.target.classList.contains('ne-qty')) { it.qty = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
-    else if (e.target.classList.contains('ne-price')) { it.unit_price = Math.max(0, Number(e.target.value) || 0); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
+    else if (e.target.classList.contains('ne-price')) { it.unit_price = moneyVal(e.target); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
   });
   itemsEl.addEventListener('change', (e) => {
     if (!e.target.classList.contains('ne-incl')) return;
@@ -6484,7 +6515,7 @@ function openNomaadIncomeModal(o) {
         <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--warn)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
       </div>
       <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)
-        <input id="ni-amount" type="number" min="0" value="${bal || ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
+        <input id="ni-amount" type="text" inputmode="numeric" class="money-input" value="${bal ? moneyFmtInput(bal) : ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
       <label style="display:block;margin-bottom:10px;font-size:13px;">Тайлбар
         <textarea id="ni-note" rows="2" placeholder="Ж: урьдчилгаа / үлдэгдэл / бэлнээр / Голомт банк / нэмэлт..." style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;"></textarea></label>
       <label style="display:block;margin-bottom:16px;font-size:13px;">Огноо
@@ -6499,7 +6530,7 @@ function openNomaadIncomeModal(o) {
     modal.querySelector('#ni-cancel').addEventListener('click', () => close(null));
     modal.addEventListener('click', (e) => { if (e.target === modal) close(null); });
     modal.querySelector('#ni-save').addEventListener('click', () => {
-      const amount = Math.max(0, Number(modal.querySelector('#ni-amount').value) || 0);
+      const amount = moneyVal(modal.querySelector('#ni-amount'));
       if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn', 2000); return; }
       close({ amount, note: modal.querySelector('#ni-note').value.trim(), date: modal.querySelector('#ni-date').value || new Date().toISOString().slice(0, 10) });
     });
@@ -7197,10 +7228,10 @@ function openProductModal(p) {
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>SKU<input id="pm-sku" value="${v('sku')}" placeholder="SKU код"></label>
-        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="number" value="${Number(p && p.price) || 0}"></label>
-        <label>Барьцаа (₮)<input id="pm-deposit" type="number" value="${Number(p && p.deposit) || 0}"></label>
+        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
+        <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
-        <label>Нэгж өртөг (₮)<input id="pm-cost" type="number" value="${cost || 0}"></label>
+        <label>Нэгж өртөг (₮)<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
       </div>
@@ -7326,7 +7357,7 @@ async function submitProductModal(modal, orig, btn) {
   if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
   const base = {
     name, category: cat, sku,
-    price: Number(g('pm-price')) || 0, deposit: Number(g('pm-deposit')) || 0,
+    price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (Number(g('pm-stock')) || 0),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
     maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
@@ -7337,7 +7368,7 @@ async function submitProductModal(modal, orig, btn) {
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
   };
   const product = orig ? { ...orig, ...base } : base;
-  product.cost = Number(g('pm-cost')) || 0;
+  product.cost = moneyVal(modal.querySelector('#pm-cost'));
   btn.disabled = true;
   try {
     await saveProduct(product);   // каталог + өртөг → Supabase Postgres (upsert)
@@ -7653,7 +7684,7 @@ function openBqPaymentModal(oid) {
       <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
     </div>
     <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)
-      <input id="bqp-amount" type="number" min="0" value="${bal || total}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
+      <input id="bqp-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(bal || total)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
     <label style="display:block;margin-bottom:10px;font-size:13px;">Хэлбэр
       <select id="bqp-method" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);">
         <option value="bank">Банк</option><option value="cash">Бэлэн</option><option value="card">Карт</option><option value="other">Бусад</option>
@@ -7679,7 +7710,7 @@ function openBqPaymentModal(oid) {
 async function submitBqPayment(oid, modal, btn) {
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
-  const amount = Math.max(0, Number(modal.querySelector('#bqp-amount').value) || 0);
+  const amount = moneyVal(modal.querySelector('#bqp-amount'));
   if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
   const method = modal.querySelector('#bqp-method').value || 'bank';
   const date = modal.querySelector('#bqp-date').value || new Date().toISOString().slice(0, 10);

@@ -5341,6 +5341,18 @@ async function markHourlyPaid(workerKey) {
 // NOMAAD захиалга харах эрхтэй нэмэлт утаснууд: Анужин, Дэлгэрбат (+ CEO, нягтлан үргэлж).
 const NOMAAD_VIEWERS = ['88028216', '99179417', '99337760'];  // Анужин, Дэлгэрбат, Батжаргал
 const NOMAAD_VIEWER_NAMES = ['алтансүх'];  // нэрээр зөвшөөрөх (утас тодорхойгүй)
+
+// Бүрэн эрх (CEO-тэй адил БҮХ зүйл харах+засах) — CEO-аас гадна нэмэлт хүмүүс.
+// CEO баталсан: И.Алтансүх (m-event захирал). Утас мэдэгдвэл FULL_ACCESS_PHONES-д нэмбэл илүү найдвартай.
+const FULL_ACCESS_NAMES = ['алтансүх'];
+const FULL_ACCESS_PHONES = [];
+function isFullAccessMember(m) {
+  if (!m) return false;
+  const phone = String(m.phone || '').replace(/\D/g, '');
+  if (phone && FULL_ACCESS_PHONES.some(p => phone.endsWith(p))) return true;
+  const name = String(m.name || '').toLowerCase();
+  return FULL_ACCESS_NAMES.some(n => name.includes(n));
+}
 function canSeeNomaadOrders() {
   if (state.isCEO) return true;
   if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
@@ -12045,9 +12057,10 @@ function setUser(member, profile) {
   // Identity = утасны дугаар (давтагдашгүй, бүгдэд бий). Утасгүй бол email/нэр рүү уналт.
   // Өмнө нь email байсан тул и-мэйлгүй ажилтан хоосон болж, хүсэлт буруугаар CEO-д онооддог байсан.
   state.me = personKey(member);
-  // CEO эрх — level === 100-аар тогтооно.
-  state.isCEO = ((member.level || 0) >= 100);
-  state.myLevel = member.level || 0;
+  // CEO эрх — level === 100-аар тогтооно. + FULL_ACCESS allowlist (CEO баталсан нэмэлт хүмүүс).
+  const _fullAccess = isFullAccessMember(member);
+  state.isCEO = ((member.level || 0) >= 100) || _fullAccess;
+  state.myLevel = _fullAccess ? 100 : (member.level || 0);
   // Constrain branch to one the user actually belongs to
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
@@ -12500,8 +12513,9 @@ function tryRestoreSession() {
   // Restore without picture (we didn't cache it) — user chip will show initials
   state.user = { ...member, email: member.email, picture: '' };
   state.me = personKey(member);
-  state.isCEO = ((member.level || 0) >= 100);
-  state.myLevel = member.level || 0;
+  const _fullAccess = isFullAccessMember(member);
+  state.isCEO = ((member.level || 0) >= 100) || _fullAccess;
+  state.myLevel = _fullAccess ? 100 : (member.level || 0);
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
   }

@@ -2549,16 +2549,9 @@ function canManageOrders() {
 // M-Event захиалга ХАРАХ эрх — менежер + M Event салбарын бүх хүн (нярав, агуулах, цэвэрлэгээ г.м.).
 // Удирдах биш, харах/филтер хийх зорилгоор өргөн нээлттэй.
 function canSeeOrders() {
-  if (state.isCEO) return true;
-  { const v = capValue('orders'); if (v !== undefined) return v; }
-  if (canManageOrders()) return true;
-  // Дамжлагын аль нэг шатыг хариуцдаг role-тэй бол (нягтлан, агуулах, цэвэрлэгээ, нярав...) харна.
-  const role = String(findMember(state.me)?.role || '');
-  const hasStageRole = (typeof ORDER_FLOW !== 'undefined') &&
-    Object.values(ORDER_FLOW).some(s => s.role !== 'manager' && s.role.test(role));
-  if (hasStageRole) return true;
-  const branches = (state.user?.branches) || (findMember(state.me)?.branches) || [];
-  return Array.isArray(branches) && branches.includes('m-event');
+  // Эрх удирдах самбар = эх сурвалж: CEO → албан тушаалын тохиргоо → default(_ordersDefaultFor).
+  // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
+  return canAccessView('orders', () => _ordersDefaultFor(findMember(state.me)));
 }
 function projectName(id) {
   // Look up across all branches so cross-branch tasks still show project name correctly.
@@ -5729,10 +5722,16 @@ function _hourlyDefaultFor(m) {
   const ph = _phoneDigits(m); if (ph && typeof HOURLY_VIEWERS !== 'undefined' && HOURLY_VIEWERS.some(p => ph.endsWith(p))) return true;
   return /нягтлан/i.test(String((m && m.role) || ''));
 }
+// Захиалга харах DEFAULT (загваргүй роль). Самбарын pre-check БА canSeeOrders хоёул ҮҮНИЙГ л ашиглана
+// → самбарт харагдаж буй нь яг бодит дүртэй тохирно (хатуу кодын зөрүүгүй).
 function _ordersDefaultFor(m) {
-  const role = String((m && m.role) || '');
-  if ((m && m.level || 0) >= 60) return true;
-  return /менежер|нягтлан|агуулах|цэвэрлэгээ|нярав|жолооч|захирал/i.test(role);
+  if (!m) return false;
+  if ((m.level || 0) >= 60) return true;
+  const role = String(m.role || '');
+  if (/эвент|захиалг|менежер|нягтлан|агуулах|цэвэрлэгээ|нярав|жолооч|захирал/i.test(role)) return true;
+  if (typeof ORDER_FLOW !== 'undefined' && Object.values(ORDER_FLOW).some(s => s.role !== 'manager' && s.role.test(role))) return true;
+  const bs = Array.isArray(m.branches) ? m.branches : [];
+  return bs.includes('m-event');
 }
 // Тухайн албан тушаалын нэг view-ийн DEFAULT (загваргүй үед) — гишүүдийнх нь одоогийн хандалтаар.
 // Матрицыг нээхэд "одоо юу хардаг" нь урьдчилан чагтлагдсан байхын тулд.

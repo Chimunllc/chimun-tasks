@@ -3903,17 +3903,22 @@ function renderReconcilePanel() {
 }
 
 function renderOrders() {
-  const canManage = canManageOrders();   // менежер — бүгдийг хараад бүрэн хяналт. Бусад — зөвхөн өөрийн шат.
+  // Захиалга = Booqable (M-Event үхсэн). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
+  // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
+  // байсан тул ҮАХ захирал зэрэг хүн хоосон харж байв.)
+  const canManage = canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
   const all = state.orders || [];
 
-  // ── Ажилтан (менежер биш) — энгийн жагсаалт, зөвхөн өөрийн шатны захиалга ──
+  // ── Захиалга харах эрхтэй (менежер биш) ажилтан — Booqable жагсаалтыг харна (энгийн, read) ──
+  // M-Event давхарга үхсэн тул хуучин state.orders биш unifiedOrders (Booqable) ашиглана.
   if (!canManage) {
-    const mine = all.filter(canSeeOrder);
-    if (!mine.length) {
-      if (state._initialLoading && !all.length) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
-      return `<div class="orders-empty"><div class="icon">🛒</div><div>Танд хамаарах захиалга одоогоор алга.</div><div class="sub">Таны шатанд захиалга ирэхэд энд харагдана.</div></div>`;
+    if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
+    const combined = unifiedOrders();
+    if (!combined.length) {
+      if (state._initialLoading || state._bqOrdersLoading) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
+      return `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div></div>`;
     }
-    return `<div class="orders-wrap">${mine.map(o => orderCardHtml(o, false, false)).join('')}</div>`;
+    return `<div class="orders-wrap">${combined.map(e => bqOrderCard(e.o)).join('')}</div>`;
   }
 
   // ── Менежер / CEO ──

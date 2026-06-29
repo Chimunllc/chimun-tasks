@@ -3013,9 +3013,9 @@ function renderSidebar() {
   // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
   const acNav = document.getElementById('nav-access');
   if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
-  // Сарын цалин — CEO/нягтлан/эрх олгогдсон.
+  // Сарын цалин — нягтлан/эрхтэй (CEO биш) тусдаа цэсээр. CEO нь "Ажилтан удирдах" төвөөс хардаг.
   const salNav = document.getElementById('nav-salary');
-  if (salNav) salNav.style.display = canSeeSalary() ? '' : 'none';
+  if (salNav) salNav.style.display = (canSeeSalary() && !state.isCEO) ? '' : 'none';
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
   const arNav = document.getElementById('nav-receivables');
   if (arNav) {
@@ -3060,7 +3060,7 @@ function renderTitle() {
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
-    access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>', 'Эрх удирдах', 'Хүн бүрийн хэсэг хандалтыг тохируулах'],
+    access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Ажилтан удирдах', 'Ажилтан, албан тушаал & эрх, цалин'],
     salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
@@ -3096,7 +3096,7 @@ function renderTaskList() {
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
     document.getElementById('dash-permissions')?.addEventListener('click', openPermissionsModal);
     document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
-    document.getElementById('dash-staff')?.addEventListener('click', openStaffManagement);
+    document.getElementById('dash-staff')?.addEventListener('click', () => { if (!state.isCEO) return; state.view = 'access'; state.hubTab = 'people'; render(); });
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     // Ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг жагсаалтаар харах
     wrap.querySelectorAll('.dash-staff-clickable').forEach(row => {
@@ -5766,13 +5766,25 @@ function memberAccessState(m) {
   return { access: base, hasOverride: !!ov, isCeo };
 }
 
+// ════════════ АЖИЛТАН УДИРДАХ ТӨВ (Ажилтан / Албан тушаал & Эрх / Цалин) ════════════
 function renderAccess() {
   if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">🔑 Эрх удирдах</div><div style="font-size:11px;color:var(--muted);">Албан тушаал бүрт эрх тохируул → тэр албан тушаалтай бүх хүн өвлөнө.</div></div>
-      <button class="btn" data-access-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
-    </div>`;
-  return `<div style="padding:4px;">${head}${renderAccessRoles()}</div>`;
+  const tab = state.hubTab || 'people';
+  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилтан удирдах</div><div style="font-size:11px;color:var(--muted);">Ажилтан · албан тушаал & эрх · цалин — нэг дороос</div></div>`;
+  const tabs = [['people', '👤 Ажилтан'], ['roles', '🔑 Албан тушаал & Эрх'], ['salary', '💵 Цалин']];
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
+    `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>`;
+  let body;
+  if (tab === 'roles') body = renderAccessRoles();
+  else if (tab === 'salary') body = renderSalary();
+  else body = renderStaffPeople();
+  return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
+}
+// "Ажилтан" таб — ажилтны жагсаалт (renderStaffList дүүргэнэ).
+function renderStaffPeople() {
+  state._staffListId = 'hub-staff-list'; state._staffSearchId = 'hub-staff-search';
+  return `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="hub-staff-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.staffSearch || '')}" /></div>
+    <div id="hub-staff-list" style="display:flex;flex-direction:column;gap:6px;"></div>`;
 }
 
 // ── Албан тушаалаар (role templates) ──
@@ -5822,6 +5834,12 @@ function renderAccessRoles() {
 }
 
 function attachAccessHandlers() {
+  // Таб солих
+  document.querySelectorAll('[data-hub-tab]').forEach(b => b.addEventListener('click', () => { state.hubTab = b.dataset.hubTab; render(); }));
+  const tab = state.hubTab || 'people';
+  if (tab === 'people') { attachHubPeople(); return; }
+  if (tab === 'salary') { attachSalaryHandlers(); return; }
+  // ── Албан тушаал & Эрх таб ──
   document.querySelector('[data-access-refresh]')?.addEventListener('click', () => { state._permsLoaded = false; loadMemberPerms(); loadRolePerms(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('access-search');
   if (se) se.addEventListener('input', () => {
@@ -5829,21 +5847,19 @@ function attachAccessHandlers() {
     const qq = se.value.trim().toLowerCase();
     document.querySelectorAll('.ac-wrap .ac-row').forEach(r => { r.style.display = (!qq || (r.dataset.acHaystack || '').includes(qq)) ? '' : 'none'; });
   });
-  // ── Албан тушаал: задлах/хаах ──
   document.querySelectorAll('[data-role-toggle]').forEach(h => h.addEventListener('click', () => {
     const k = h.dataset.roleToggle;
     state.accessExpandedRole = (state.accessExpandedRole === k) ? '' : k;
     render();
   }));
-  // ── Албан тушаалын cap солих → partial template (цэс=grant, үйлдэл=deny) ──
   document.querySelectorAll('input[data-role-cap]').forEach(cb => cb.addEventListener('change', () => {
     const role = cb.dataset.roleCap;
     const scope = cb.closest('.ac-role-row');
     const perms = {};
     scope.querySelectorAll('input[data-cap-key]').forEach(x => {
       const kind = x.dataset.capKind;
-      if (kind === 'view') { perms[x.dataset.capKey] = x.checked; }                   // view: ил тод (чагт=харна, авбал=НУУНА)
-      else { if (!x.checked) perms[x.dataset.capKey] = false; }                        // action: зөвхөн хориглосныг хадгална
+      if (kind === 'view') { perms[x.dataset.capKey] = x.checked; }
+      else { if (!x.checked) perms[x.dataset.capKey] = false; }
     });
     saveRolePerms(role, perms);
     showToast('Албан тушаалын эрх хадгаллаа', 'success', 1500);
@@ -5852,6 +5868,13 @@ function attachAccessHandlers() {
   document.querySelectorAll('[data-role-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearRolePerms(b.dataset.roleReset); showToast('Default руу буцаалаа', 'success', 1500); render();
   }));
+}
+// "Ажилтан" табын handler — renderStaffList дүүргэж, хайлт холбоно (бүх мөрийн handler renderStaffList дотор).
+function attachHubPeople() {
+  state._staffListId = 'hub-staff-list'; state._staffSearchId = 'hub-staff-search';
+  renderStaffList();
+  const se = document.getElementById('hub-staff-search');
+  if (se) se.addEventListener('input', () => { state.staffSearch = se.value; renderStaffList(); });
 }
 function canSeeNomaadOrders() {
   if (state.isCEO) return true;
@@ -10135,6 +10158,7 @@ function openPendingRegistration(member) {
    Webhook URL нь n8n-ийн /staff-update endpoint руу POST хийнэ. */
 function openStaffManagement() {
   if (!state.isCEO) { showToast('Зөвхөн CEO эрхтэй', 'warn'); return; }
+  state._staffListId = 'staff-list'; state._staffSearchId = 'staff-search';
   document.getElementById('staff-modal').classList.add('open');
   renderStaffList();
 }
@@ -10151,8 +10175,9 @@ function staffBranchLabel(m) {
   return 'Нэгдсэн';
 }
 function renderStaffList() {
-  const listEl = document.getElementById('staff-list');
-  const q = (document.getElementById('staff-search')?.value || '').toLowerCase().trim();
+  const listEl = document.getElementById(state._staffListId || 'staff-list');
+  if (!listEl) return;
+  const q = (document.getElementById(state._staffSearchId || 'staff-search')?.value || '').toLowerCase().trim();
   const all = [...TEAM].sort((a, b) => {
     // Active first, then by level
     const aActive = (a.status || 'идэвхтэй') === 'идэвхтэй';

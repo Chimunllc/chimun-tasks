@@ -5625,10 +5625,11 @@ function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
   const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
   const q = (state.salarySearch || '').toLowerCase().trim();
-  const staff = salaryStaff()
+  const brAll = salaryStaff().filter(m => _inHubBranch(m, state.hubBranch || 'all'));   // салбараар (тусдаа P&L)
+  const staff = brAll
     .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
     .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
-  const allStaff = salaryStaff();
+  const allStaff = brAll;
   const totalBase = allStaff.reduce((s, m) => s + (Number((state.salaries || {})[personKey(m)]) || 0), 0);
   const paidThis = allStaff.reduce((s, m) => s + salaryPaidFor(personKey(m), ym), 0);
   const unpaidCnt = allStaff.filter(m => { const base = Number((state.salaries || {})[personKey(m)]) || 0; return base > 0 && salaryPaidFor(personKey(m), ym) <= 0; }).length;
@@ -5772,13 +5773,26 @@ function renderAccess() {
   const tab = state.hubTab || 'people';
   const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилтан удирдах</div><div style="font-size:11px;color:var(--muted);">Ажилтан · албан тушаал & эрх · цалин — нэг дороос</div></div>`;
   const tabs = [['people', '👤 Ажилтан'], ['roles', '🔑 Албан тушаал & Эрх'], ['salary', '💵 Цалин']];
-  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>`;
+  // Салбар шүүлтүүр — тусдаа компани тул салбар бүрээр харна
+  const br = state.hubBranch || 'all';
+  const brList = [['all', '🏢 Бүгд'], ['m-event', '⛺ M-Event'], ['camp', '🏔 NOMAAD']];
+  const brBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;border-top:1px dashed var(--border);padding-top:10px;">
+    <span style="font-size:11px;color:var(--muted);align-self:center;margin-right:2px;">Салбар:</span>
+    ${brList.map(([k, l]) => `<button class="btn${k === br ? ' btn-primary' : ''}" data-hub-branch="${k}" style="padding:4px 10px;font-size:11.5px;">${l}</button>`).join('')}</div>`;
   let body;
   if (tab === 'roles') body = renderAccessRoles();
   else if (tab === 'salary') body = renderSalary();
   else body = renderStaffPeople();
-  return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
+  return `<div style="padding:4px;">${head}${tabBar}${brBar}${body}</div>`;
+}
+// Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
+function _inHubBranch(m, br) {
+  if (!br || br === 'all') return true;
+  const bs = Array.isArray(m.branches) ? m.branches : [];
+  if (!bs.length) return true;
+  return bs.includes(br) || bs.includes('shared');
 }
 // "Ажилтан" таб — ажилтны жагсаалт (renderStaffList дүүргэнэ).
 function renderStaffPeople() {
@@ -5790,7 +5804,7 @@ function renderStaffPeople() {
 // ── Албан тушаалаар (role templates) ──
 function renderAccessRoles() {
   const roleMap = {};
-  (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').forEach(m => {
+  (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, state.hubBranch || 'all')).forEach(m => {
     const rn = normRole(m.role); if (!rn) return;
     roleMap[rn] = roleMap[rn] || { role: m.role, count: 0, level: 0 };
     roleMap[rn].count++; roleMap[rn].level = Math.max(roleMap[rn].level, m.level || 0);
@@ -5836,6 +5850,8 @@ function renderAccessRoles() {
 function attachAccessHandlers() {
   // Таб солих
   document.querySelectorAll('[data-hub-tab]').forEach(b => b.addEventListener('click', () => { state.hubTab = b.dataset.hubTab; render(); }));
+  // Салбар солих
+  document.querySelectorAll('[data-hub-branch]').forEach(b => b.addEventListener('click', () => { state.hubBranch = b.dataset.hubBranch; render(); }));
   const tab = state.hubTab || 'people';
   if (tab === 'people') { attachHubPeople(); return; }
   if (tab === 'salary') { attachSalaryHandlers(); return; }
@@ -10185,8 +10201,10 @@ function renderStaffList() {
     if (aActive !== bActive) return aActive ? -1 : 1;
     return (b.level || 0) - (a.level || 0);
   });
+  const lensBr = (state._staffListId === 'hub-staff-list') ? (state.hubBranch || 'all') : 'all';   // салбар шүүлт зөвхөн хабд
   const filtered = all.filter(m =>
-    !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q)
+    _inHubBranch(m, lensBr) &&
+    (!q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
   );
   if (!filtered.length) {
     listEl.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;">Ажилтан олдсонгүй</div>';

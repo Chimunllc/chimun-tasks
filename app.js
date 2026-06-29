@@ -193,6 +193,7 @@ const state = {
   orders: (() => { try { return JSON.parse(localStorage.getItem('orders') || '[]'); } catch(e) { return []; } })(),
   products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
+  memberPerms: (() => { try { return JSON.parse(localStorage.getItem('memberPerms') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн view хандалтын override {personKey: {orders:true,...}}
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   evaluations: (() => { try { return JSON.parse(localStorage.getItem('evaluations') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
@@ -2541,6 +2542,8 @@ function canManageOrders() {
 // M-Event захиалга ХАРАХ эрх — менежер + M Event салбарын бүх хүн (нярав, агуулах, цэвэрлэгээ г.м.).
 // Удирдах биш, харах/филтер хийх зорилгоор өргөн нээлттэй.
 function canSeeOrders() {
+  if (state.isCEO) return true;
+  { const ov = myPermOverride(); if (ov && Object.prototype.hasOwnProperty.call(ov, 'orders')) return !!ov.orders; }
   if (canManageOrders()) return true;
   // Дамжлагын аль нэг шатыг хариуцдаг role-тэй бол (нягтлан, агуулах, цэвэрлэгээ, нярав...) харна.
   const role = String(findMember(state.me)?.role || '');
@@ -2908,11 +2911,13 @@ function render() {
   }
   // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
-  if (state.view === 'products' && !state.isCEO) state.view = 'mine';
-  if (state.view === 'booqable' && !state.isCEO) state.view = 'mine';
-  if (state.view === 'receivables' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
+  if (state.view === 'booqable' && !canSeeBooqable()) state.view = 'mine';
+  if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
+  if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
+  if (state.view === 'access' && !state.isCEO) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
   const blSel = document.getElementById('branch-lens');
@@ -2983,26 +2988,29 @@ function renderSidebar() {
   }
   // Тайлан — зөвхөн бүх санхүү хардаг (CEO/нягтлан/салбар-засагч) — удирдлагын тайлан.
   const repNav = document.getElementById('nav-reports');
-  if (repNav) repNav.style.display = canSeeAllFinance() ? '' : 'none';
+  if (repNav) repNav.style.display = canSeeReports() ? '' : 'none';
   // Гүйцэтгэл — зөвхөн үндсэн ажилтанд (өдрийн ажилтанд хамаарахгүй).
   const perfNav = document.getElementById('nav-performance');
   if (perfNav) perfNav.style.display = isDailyWorker() ? 'none' : '';
   // Бараа — зөвхөн CEO. Badge нь нийт барааны тоо.
   const prodNav = document.getElementById('nav-products');
   if (prodNav) {
-    prodNav.style.display = state.isCEO ? '' : 'none';
+    prodNav.style.display = canSeeProducts() ? '' : 'none';
     const pCnt = document.getElementById('cnt-products');
     if (pCnt) pCnt.textContent = String((state.products || []).length);
   }
   // Түрээсийн түүх (Booqable аналитик) — зөвхөн CEO.
   const bqNav = document.getElementById('nav-booqable');
-  if (bqNav) bqNav.style.display = state.isCEO ? '' : 'none';
+  if (bqNav) bqNav.style.display = canSeeBooqable() ? '' : 'none';
+  // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
+  const acNav = document.getElementById('nav-access');
+  if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
   const arNav = document.getElementById('nav-receivables');
   if (arNav) {
-    arNav.style.display = state.isCEO ? '' : 'none';
+    arNav.style.display = canSeeReceivables() ? '' : 'none';
     const arCnt = document.getElementById('cnt-receivables');
-    if (arCnt && state.isCEO && (state.bqOrders || (state.nomaadOrders && state.nomaadOrders.length))) {
+    if (arCnt && canSeeReceivables() && (state.bqOrders || (state.nomaadOrders && state.nomaadOrders.length))) {
       try { const od = receivablesData().items.filter(i => i.overdue).length; arCnt.textContent = String(od); arCnt.style.display = od ? '' : 'none'; } catch (e) {}
     }
   }
@@ -3041,6 +3049,7 @@ function renderTitle() {
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
+    access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>', 'Эрх удирдах', 'Хүн бүрийн хэсэг хандалтыг тохируулах'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -3126,6 +3135,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderReceivables();
     attachReceivablesHandlers();
+    return;
+  } else if (state.view === 'access') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderAccess();
+    attachAccessHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
@@ -4927,6 +4942,7 @@ const HOURLY_VIEWERS = ['86657676','88028216','99337760','88394636','99179417','
 function canSeeHourlyPayroll() {
   if (isDailyWorker()) return false;
   if (state.isCEO) return true;
+  { const ov = myPermOverride(); if (ov && Object.prototype.hasOwnProperty.call(ov, 'hourly')) return !!ov.hourly; }
   if (isFinanceAccountant()) return true;  // туслах нягтлан — цагийн цалин гүйцэтгэдэг тул заавал харна
   const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
   return !!myPhone && HOURLY_VIEWERS.some(p => myPhone.endsWith(p));
@@ -5353,8 +5369,180 @@ function isFullAccessMember(m) {
   const name = String(m.name || '').toLowerCase();
   return FULL_ACCESS_NAMES.some(n => name.includes(n));
 }
+
+// ─────────────────────────────────────────────────────────────
+// ЭРХ — хүн бүрийн хэсэг (view) хандалтыг CEO нарийвчлан удирдана.
+// member_perms (Postgres, PostgREST anon) хүснэгтэд person_key → {orders:true,...} JSON.
+// override байвал тухайн хүний default role-эрхийг ДАРНА (нээх ч, хаах ч).
+// ─────────────────────────────────────────────────────────────
+const PERM_VIEWS = [
+  { key: 'orders',      label: 'Захиалга' },
+  { key: 'receivables', label: 'Авлага' },
+  { key: 'booqable',    label: 'Түрээсийн түүх' },
+  { key: 'products',    label: 'Бараа' },
+  { key: 'reports',     label: 'Тайлан' },
+  { key: 'nomaad',      label: 'NOMAAD' },
+  { key: 'hourly',      label: 'Цагийн цалин' },
+];
+// Тухайн нэвтэрсэн хэрэглэгчийн override (байвал) — эс бөгөөс null
+function myPermOverride() { return (state.memberPerms && state.memberPerms[state.me]) || null; }
+// Нэг хэсэгт хандах эрх: CEO бүгдийг → override (байвал) → default fallback.
+function canAccessView(key, fallback) {
+  if (state.isCEO) return true;
+  const ov = myPermOverride();
+  if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
+  return typeof fallback === 'function' ? !!fallback() : !!fallback;
+}
+function canSeeProducts() { return canAccessView('products', false); }       // default: зөвхөн CEO
+function canSeeBooqable() { return canAccessView('booqable', false); }
+function canSeeReceivables() { return canAccessView('receivables', false); }
+function canSeeReports() { return canAccessView('reports', () => canSeeAllFinance()); }
+
+// member_perms татах (PostgREST anon SELECT). Хүснэгт байхгүй бол чимээгүй.
+async function loadMemberPerms() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms?select=*`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) return;
+    const rows = await r.json();
+    const map = {};
+    rows.forEach(p => { if (p && p.person_key) map[p.person_key] = p.perms || {}; });
+    state.memberPerms = map;
+    try { localStorage.setItem('memberPerms', JSON.stringify(map)); } catch (e) {}
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadMemberPerms', e); }
+}
+// Нэг хүний perms хадгалах (UPSERT). Optimistic.
+async function saveMemberPerms(personKey, perms) {
+  if (!personKey) return;
+  state.memberPerms = state.memberPerms || {};
+  state.memberPerms[personKey] = perms;   // optimistic
+  try { localStorage.setItem('memberPerms', JSON.stringify(state.memberPerms)); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ person_key: personKey, perms, updated_by: state.me, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
+  } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4500); }
+}
+// Override устгах (default role руу буцаах) — PostgREST DELETE.
+async function clearMemberPerms(personKey) {
+  if (!personKey) return;
+  if (state.memberPerms) delete state.memberPerms[personKey];
+  try { localStorage.setItem('memberPerms', JSON.stringify(state.memberPerms || {})); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms?person_key=eq.${encodeURIComponent(personKey)}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' },
+    }, 15000);
+  } catch (e) { console.warn('clearMemberPerms', e); }
+}
+
+// ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──
+function _phoneDigits(m) { return String((m && m.phone) || '').replace(/\D/g, ''); }
+function _nomaadDefaultFor(m) {
+  const ph = _phoneDigits(m); if (ph && NOMAAD_VIEWERS.some(p => ph.endsWith(p))) return true;
+  const nm = String((m && m.name) || '').toLowerCase(); if (NOMAAD_VIEWER_NAMES.some(n => nm.includes(n))) return true;
+  return /нягтлан/i.test(String((m && m.role) || ''));
+}
+function _hourlyDefaultFor(m) {
+  if (String((m && m.worker_type)) === 'daily') return false;
+  const ph = _phoneDigits(m); if (ph && typeof HOURLY_VIEWERS !== 'undefined' && HOURLY_VIEWERS.some(p => ph.endsWith(p))) return true;
+  return /нягтлан/i.test(String((m && m.role) || ''));
+}
+function _ordersDefaultFor(m) {
+  const role = String((m && m.role) || '');
+  if ((m && m.level || 0) >= 60) return true;
+  return /менежер|нягтлан|агуулах|цэвэрлэгээ|нярав|жолооч|захирал/i.test(role);
+}
+// Гишүүний одоогийн хандалт (override байвал тэр, эс бөгөөс default). { access, hasOverride, isCeo }
+function memberAccessState(m) {
+  const key = personKey(m);
+  const ov = (state.memberPerms && state.memberPerms[key]) || null;
+  const isCeo = ((m && m.level) || 0) >= 100 || isFullAccessMember(m);
+  const base = {
+    orders: isCeo || _ordersDefaultFor(m),
+    receivables: isCeo,
+    booqable: isCeo,
+    products: isCeo,
+    reports: isCeo || canSeeAllFinance(key),
+    nomaad: isCeo || _nomaadDefaultFor(m),
+    hourly: isCeo || _hourlyDefaultFor(m),
+  };
+  if (ov) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(ov, v.key)) base[v.key] = !!ov[v.key]; });
+  return { access: base, hasOverride: !!ov, isCeo };
+}
+
+function renderAccess() {
+  if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); }
+  const q = (state.accessSearch || '').toLowerCase().trim();
+  const members = (TEAM || [])
+    .filter(m => (m.status || 'идэвхтэй') !== 'гарсан')
+    .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
+    .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
+
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
+      <div><div style="font-weight:800;font-size:16px;">🔑 Эрх удирдах</div><div style="font-size:11px;color:var(--muted);">Хүн бүр аль хэсгийг ашиглахыг тохируулна</div></div>
+      <button class="btn" data-access-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
+    </div>`;
+  const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+    ✓ = тухайн хүн уг хэсгийг харж/ашиглаж чадна. Өөрчлөхөд тухайн хүн <b>дахин нэвтрэхэд</b> хүчинтэй. «Бүрэн эрх» хүмүүс (CEO/захирал) бүгдийг хардаг — тэднийг энд хязгаарлахгүй.
+  </div>`;
+  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
+
+  const rows = members.map(m => {
+    const key = personKey(m);
+    const st = memberAccessState(m);
+    const chips = PERM_VIEWS.map(v => {
+      const on = !!st.access[v.key];
+      const dis = st.isCeo ? 'disabled' : '';
+      return `<label class="ac-chip${on ? ' on' : ''}${st.isCeo ? ' locked' : ''}" title="${escapeHtml(v.label)}">
+        <input type="checkbox" data-ac-person="${escapeHtml(key)}" data-ac-key="${v.key}" ${on ? 'checked' : ''} ${dis} style="margin:0 5px 0 0;" />${escapeHtml(v.label)}</label>`;
+    }).join('');
+    const tag = st.isCeo ? `<span style="font-size:10px;color:var(--ok);font-weight:700;">БҮРЭН ЭРХ</span>`
+      : st.hasOverride ? `<button class="btn" data-ac-reset="${escapeHtml(key)}" style="padding:2px 8px;font-size:10px;">↺ default</button>` : `<span style="font-size:10px;color:var(--muted);">default (албан тушаал)</span>`;
+    return `<div class="ac-row" data-ac-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+        <div style="min-width:0;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span></div>
+        ${tag}
+      </div>
+      <div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
+    </div>`;
+  }).join('');
+
+  return `<div style="padding:4px;">${head}${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+}
+
+function attachAccessHandlers() {
+  document.querySelector('[data-access-refresh]')?.addEventListener('click', () => { state._permsLoaded = false; loadMemberPerms(); showToast('Шинэчилж байна…', 'info', 1200); });
+  const se = document.getElementById('access-search');
+  if (se) se.addEventListener('input', () => {
+    state.accessSearch = se.value;
+    const qq = se.value.trim().toLowerCase();
+    document.querySelectorAll('.ac-wrap .ac-row').forEach(r => { r.style.display = (!qq || (r.dataset.acHaystack || '').includes(qq)) ? '' : 'none'; });
+  });
+  // Чагт солих → тухайн хүний 7 төлвийг бүтэн override болгож хадгална
+  document.querySelectorAll('.ac-wrap input[data-ac-person]').forEach(cb => cb.addEventListener('change', () => {
+    const key = cb.dataset.acPerson;
+    const row = cb.closest('.ac-row');
+    const perms = {};
+    row.querySelectorAll('input[data-ac-key]').forEach(x => { perms[x.dataset.acKey] = x.checked; });
+    saveMemberPerms(key, perms);
+    showToast('Эрх хадгаллаа', 'success', 1500);
+    render();
+  }));
+  document.querySelectorAll('[data-ac-reset]').forEach(b => b.addEventListener('click', () => {
+    clearMemberPerms(b.dataset.acReset); showToast('Default руу буцаалаа', 'success', 1500); render();
+  }));
+}
 function canSeeNomaadOrders() {
   if (state.isCEO) return true;
+  { const ov = myPermOverride(); if (ov && Object.prototype.hasOwnProperty.call(ov, 'nomaad')) return !!ov.nomaad; }
   if (state.me === getFinanceExecutorEmail()) return true; // нягтлан
   const myPhone = String((state.user && state.user.phone) || state.me || '').replace(/\D/g, '');
   if (myPhone && NOMAAD_VIEWERS.some(p => myPhone.endsWith(p))) return true;
@@ -12109,6 +12297,7 @@ async function bootApp() {
   loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
+  loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   state._initialLoading = false;
   generateNotifications();
   render();

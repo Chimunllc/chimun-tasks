@@ -8517,6 +8517,28 @@ function unifiedOrders() {
   return [...app, ...bq];   // app (шинэ) эхэндээ
 }
 
+// Түрээсийн хоног: 24ц = 1 хоног, 24ц-аас хэтэрвэл +1 хоног (минут тоохгүй, зөвхөн цагаар). Доод тал 1 хоног.
+function rentalDays(startMs, stopMs) {
+  const h = (stopMs - startMs) / 3600000;
+  if (!(h > 0)) return 1;
+  return Math.max(1, Math.ceil(h / 24));
+}
+// Эхлэх/дуусах ЦАГ-ийг note token-оор хадгална (app_orders-д timestamptz багана нэмэхгүйгээр; codebase-ийн ⟦…⟧ загвартай нийцнэ).
+const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
+function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
+function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
+function cleanAppNote(note) { return String(note || '').replace(_RT_RE, '').trim(); }
+function _pad2(n) { return String(n).padStart(2, '0'); }
+// Захиалгын огноо+цаг → түрээсийн хоног (карт + модал хуваалцана). Цаг note token-д байхгүй бол 09:00 default.
+function orderRentalDays(o) {
+  const sd = String(o.starts_at || '').slice(0, 10), ed = String(o.stops_at || '').slice(0, 10);
+  if (!sd || !ed) return 1;
+  const t = parseOrderTimes(o.note) || { sh: 9, eh: 9 };
+  const sMs = Date.parse(`${sd}T${_pad2(t.sh)}:00:00`), eMs = Date.parse(`${ed}T${_pad2(t.eh)}:00:00`);
+  if (isNaN(sMs) || isNaN(eMs)) return 1;
+  return rentalDays(sMs, eMs);
+}
+
 // ── Шинэ захиалга үүсгэх / засах модал (Booqable шиг — зурагтай picker, барьцаа+лог, хөнгөлөлт) ──
 function openNewOrder(editOrder) {
   if (!(canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true)) {
@@ -8528,6 +8550,8 @@ function openNewOrder(editOrder) {
   let depositManual = isEdit;   // засварт хадгалсан барьцаа хэвээр; шинэд авто
   const depLog = isEdit ? (editOrder.deposit_log || []).slice() : [];
   const today = new Date().toISOString().slice(0, 10);
+  const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
+  const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
@@ -8542,8 +8566,8 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
       <label class="no-lbl">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Хаяг"></label>
-      <label class="no-lbl">Эхлэх<input id="no-start" type="date" value="${isEdit ? (editOrder.starts_at || '') : today}"></label>
-      <label class="no-lbl">Дуусах<input id="no-stop" type="date" value="${isEdit ? (editOrder.stops_at || '') : today}"></label>
+      <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
+      <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
       ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}>${BQ_STATUS[k].label}</option>`).join('')}</select></label>` : ''}
     </div>
     <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
@@ -8557,6 +8581,8 @@ function openNewOrder(editOrder) {
       ${isEdit ? `<label class="no-lbl">Төлсөн<input id="no-paid" class="money-input" type="text" inputmode="numeric" value="${moneyFmtInput(editOrder.paid_mnt || 0)}"></label>` : ''}
     </div>
     <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
       <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
       <div style="display:flex;justify-content:space-between;font-size:15px;"><span><b>Нийт дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
@@ -8621,13 +8647,25 @@ function openNewOrder(editOrder) {
   if (isEdit && editOrder.deposit_mnt != null) depEl.value = moneyFmtInput(editOrder.deposit_mnt);
   depEl.addEventListener('input', () => { depositManual = true; recalc(); });
 
+  // Сонгосон огноо+цагаас түрээсийн хоног (24ц=1, хэтэрвэл +1)
+  function currentDays() {
+    const sd = $('#no-start').value, ed = $('#no-stop').value;
+    if (!sd || !ed) return 1;
+    const sMs = Date.parse(`${sd}T${_pad2(+$('#no-start-h').value)}:00:00`), eMs = Date.parse(`${ed}T${_pad2(+$('#no-stop-h').value)}:00:00`);
+    if (isNaN(sMs) || isNaN(eMs)) return 1;
+    return rentalDays(sMs, eMs);
+  }
   function recalc() {
-    const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+    const perDay = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+    const days = currentDays();
+    const subtotal = perDay * days;   // түрээс = өдрийн дүн × хоног
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
     const total = Math.max(0, subtotal - discount);
-    const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);
+    const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);   // барьцаа = нэг удаагийн (хоногоор үржихгүй)
     if (!depositManual) depEl.value = moneyFmtInput(autoDep);
+    $('#no-perday').textContent = fmtMoney(perDay);
+    $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
     $('#no-total').textContent = fmtMoney(total);
@@ -8636,6 +8674,7 @@ function openNewOrder(editOrder) {
   }
   $('#no-discval').addEventListener('input', recalc);
   $('#no-disctype').addEventListener('change', recalc);
+  ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
   if (isEdit) $('#no-paid').addEventListener('input', recalc);
   recalc();
 
@@ -8643,7 +8682,8 @@ function openNewOrder(editOrder) {
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }
     const customer = $('#no-customer').value.trim();
     if (!customer) { showToast('Харилцагчийн нэр оруулна уу', 'warn'); return; }
-    const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+    const days = currentDays();
+    const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
     const total = Math.max(0, subtotal - discount);
@@ -8660,7 +8700,7 @@ function openNewOrder(editOrder) {
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
-      note: isEdit ? (editOrder.note || null) : null,
+      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value)).trim(),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -8679,6 +8719,9 @@ function bqOrderCard(o) {
   const addr = o.delivery_address || o.customer_address || '';
   const id = escapeHtml(String(o.id));
   const isApp = !!o._app;   // апп-д үүсгэсэн захиалга
+  const _rt = isApp ? parseOrderTimes(o.note) : null;   // эхлэх/дуусах цаг (app захиалгад)
+  const _sh = _rt ? ' ' + _pad2(_rt.sh) + ':00' : '', _eh = _rt ? ' ' + _pad2(_rt.eh) + ':00' : '';
+  const _days = isApp && start && stop ? orderRentalDays(o) : 0;
   const next = BQ_NEXT[st];
   const activeSt = st === 'draft' || st === 'reserved' || st === 'started';
   const canPay = !isApp && activeSt && bal > 0;
@@ -8709,7 +8752,7 @@ function bqOrderCard(o) {
     ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">📄 ${escapeHtml(o.contract_no)}</div>` : ''}
-    <div class="order-meta">📅 ${start || '—'}${stop ? ' → ' + stop : ''}</div>
+    <div class="order-meta">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
     ${itemsSection}
     ${foot}

@@ -5544,6 +5544,10 @@ body.role-daily #add-project { display: none !important; }
 .pen-empty { font-size: 13px; color: var(--muted); padding: 6px 2px; }
 .perf-kpi { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-family: inherit; }
 
+/* ── Шинэ захиалга модал ── */
+.no-lbl { display: block; font-size: 11px; color: var(--muted); }
+.no-lbl input, .no-lbl select { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 13px; margin-top: 3px; }
+
 /* ── Эрх удирдах — capability chip ── */
 .ac-chip { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 12px; cursor: pointer; user-select: none; background: var(--panel); color: var(--muted); transition: background .12s, border-color .12s, color .12s; }
 .ac-chip:hover { border-color: var(--muted); }

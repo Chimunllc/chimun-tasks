@@ -3927,12 +3927,14 @@ function renderOrders() {
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
-  const head = `<div class="orders-head">
+  const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
     <div class="orders-title">Захиалга</div>
+    <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
   </div>`;
 
-  // Booqable захиалгыг lazy татна (захиалгын цорын ганц эх).
+  // Booqable + app захиалгыг lazy татна.
   if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const combined = unifiedOrders();
 
   if (!combined.length) {
@@ -4002,6 +4004,15 @@ function _closeOrderKebabs(e) {
 
 function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
+  // Шинэ захиалга үүсгэх / app захиалга засах·устгах
+  document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
+  document.querySelectorAll('[data-app-edit]').forEach(b => b.addEventListener('click', () => {
+    const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appEdit)); if (ao) openNewOrder(ao);
+  }));
+  document.querySelectorAll('[data-app-del]').forEach(b => b.addEventListener('click', async () => {
+    const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appDel)); if (!ao) return;
+    if (await showConfirm(`#${ao.number} захиалгыг устгах уу?`, { okText: 'Устгах', danger: true })) { deleteAppOrder(ao.id); showToast('Устгалаа', 'success', 1500); }
+  }));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -8223,17 +8234,220 @@ function meStatusKey(st) {
 }
 
 // Захиалгын жагсаалт — Booqable нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
+// ── App-д үүсгэсэн захиалга (app_orders — Booqable түүхээс ТУСДАА, refresh устгахгүй) ──
+async function loadAppOrders() {
+  if (!SUPABASE_ANON_KEY) { state.appOrders = state.appOrders || []; return; }
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?select=*&order=number.desc.nullslast`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 20000);
+    if (r.ok) state.appOrders = await r.json();
+  } catch (e) { console.warn('loadAppOrders', e); }
+  state.appOrders = state.appOrders || [];
+  if (typeof render === 'function') render();
+}
+// Дараагийн захиалгын дугаар (Booqable + app дотроос хамгийн их + 1)
+function nextOrderNumber() {
+  let mx = 0;
+  (state.bqOrders || []).forEach(o => { const n = Number(o.number) || 0; if (n > mx) mx = n; });
+  (state.appOrders || []).forEach(o => { const n = Number(o.number) || 0; if (n > mx) mx = n; });
+  return mx + 1;
+}
+// Дараагийн гэрээний дугаар ME-YYYY-NNNN
+function nextContractNo() {
+  const yr = new Date().getFullYear(); const re = new RegExp('^ME-' + yr + '-(\\d+)$'); let mx = 0;
+  (state.appOrders || []).forEach(o => { const m = String(o.contract_no || '').match(re); if (m) mx = Math.max(mx, +m[1]); });
+  return `ME-${yr}-${String(mx + 1).padStart(4, '0')}`;
+}
+// App захиалга хадгалах (UPSERT). Optimistic.
+async function saveAppOrder(ord) {
+  state.appOrders = state.appOrders || [];
+  const idx = state.appOrders.findIndex(o => o.id === ord.id);
+  if (idx >= 0) state.appOrders[idx] = ord; else state.appOrders.unshift(ord);
+  if (typeof render === 'function') render();
+  if (!SUPABASE_ANON_KEY) return;
+  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(ord),
+  }, 20000);
+  if (!r.ok) { showToast('Хадгалах алдаа: ' + (await r.text()).slice(0, 80), 'error', 5000); throw new Error('save fail'); }
+}
+async function deleteAppOrder(id) {
+  state.appOrders = (state.appOrders || []).filter(o => o.id !== id);
+  if (typeof render === 'function') render();
+  if (!SUPABASE_ANON_KEY) return;
+  try { await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
+}
 function unifiedOrders() {
-  return (state.bqOrders || []).map(o => {
+  const bq = (state.bqOrders || []).map(o => {
     const raw = String(o.status || '');
-    return {
-      src: 'bq', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'archived',
-      ym: String(o.starts_at || o.created_at || '').slice(0, 7),
-      date: o.starts_at || o.created_at || '',
+    return { src: 'bq', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'archived',
+      ym: String(o.starts_at || o.created_at || '').slice(0, 7), date: o.starts_at || o.created_at || '',
       total: Number(o.total_mnt) || 0,
-      hay: `#${o.number ?? ''} ${o.customer || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase(),
-    };
+      hay: `#${o.number ?? ''} ${o.customer || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase() };
   });
+  const app = (state.appOrders || []).map(ao => {
+    const raw = String(ao.status || 'reserved');
+    const o = { ...ao, item_count: (ao.items || []).length, _app: true };
+    return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
+      ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',
+      total: Number(ao.total_mnt) || 0,
+      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${ao.contract_no || ''}`.toLowerCase() };
+  });
+  return [...app, ...bq];   // app (шинэ) эхэндээ
+}
+
+// ── Шинэ захиалга үүсгэх / засах модал (Booqable шиг — зурагтай picker, барьцаа+лог, хөнгөлөлт) ──
+function openNewOrder(editOrder) {
+  if (!(canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true)) {
+    showToast('Танд захиалга үүсгэх эрх алга', 'warn', 3000); return;
+  }
+  if (!state.products || !state.products.length) loadProductsCatalog();
+  const isEdit = !!editOrder;
+  const items = isEdit ? (editOrder.items || []).map(x => ({ ...x })) : [];
+  let depositManual = isEdit;   // засварт хадгалсан барьцаа хэвээр; шинэд авто
+  const depLog = isEdit ? (editOrder.deposit_log || []).slice() : [];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.innerHTML = `<div class="modal" style="max-width:640px;width:96%;max-height:92vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:17px;">${isEdit ? '✎ Захиалга засах · #' + (editOrder.number ?? '') : '+ Шинэ захиалга'}</h2>
+      <button class="btn" id="no-close" style="padding:5px 10px;">✕</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
+      <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
+      <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
+      <label class="no-lbl">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Хаяг"></label>
+      <label class="no-lbl">Эхлэх<input id="no-start" type="date" value="${isEdit ? (editOrder.starts_at || '') : today}"></label>
+      <label class="no-lbl">Дуусах<input id="no-stop" type="date" value="${isEdit ? (editOrder.stops_at || '') : today}"></label>
+      ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}>${BQ_STATUS[k].label}</option>`).join('')}</select></label>` : ''}
+    </div>
+    <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
+    <div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
+    <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
+    <div id="no-items" style="margin-bottom:12px;"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <label class="no-lbl">Хөнгөлөлт<div style="display:flex;gap:4px;margin-top:3px;"><select id="no-disctype" style="flex:0 0 56px;margin-top:0;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0" style="flex:1;margin-top:0;"></div></label>
+      <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
+      ${isEdit ? `<label class="no-lbl">Төлсөн<input id="no-paid" class="money-input" type="text" inputmode="numeric" value="${moneyFmtInput(editOrder.paid_mnt || 0)}"></label>` : ''}
+    </div>
+    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:15px;"><span><b>Нийт дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барьцаа</span><span id="no-dep">0₮</span></div>
+      ${isEdit ? `<div style="display:flex;justify-content:space-between;"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
+    </div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="no-cancel">Болих</button>
+      <button class="btn btn-primary" id="no-save">${isEdit ? '💾 Хадгалах' : '✓ Захиалга үүсгэх'}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = s => modal.querySelector(s);
+  const close = () => modal.remove();
+  $('#no-close').onclick = close; $('#no-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  if (isEdit && editOrder.discount_type === 'pct') $('#no-disctype').value = 'pct';
+
+  const catalog = $('#no-catalog');
+  function renderCatalog() {
+    const q = ($('#no-prodsearch').value || '').toLowerCase().trim();
+    const prods = (state.products || []).filter(p => isRentable(p) && (!q || (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))).slice(0, 60);
+    catalog.innerHTML = prods.map(p => {
+      const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:52px;object-fit:cover;border-radius:6px;">` : `<div style="height:52px;border-radius:6px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:18px;">📦</div>`;
+      return `<button type="button" data-add="${escapeHtml(p.sku || p.name)}" style="border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:4px;cursor:pointer;text-align:left;font-size:10px;color:var(--text);">${ph}<div style="font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div><div style="color:var(--muted);">${fmtMoney(Number(p.price) || 0)}</div></button>`;
+    }).join('') || `<div style="grid-column:1/-1;color:var(--muted);font-size:12px;text-align:center;padding:12px;">Бараа олдсонгүй</div>`;
+  }
+  renderCatalog();
+  $('#no-prodsearch').addEventListener('input', renderCatalog);
+  catalog.addEventListener('click', e => {
+    const b = e.target.closest('[data-add]'); if (!b) return;
+    const p = (state.products || []).find(x => (x.sku || x.name) === b.dataset.add); if (!p) return;
+    const ex = items.find(it => it.sku === (p.sku || p.name));
+    if (ex) ex.qty = (Number(ex.qty) || 0) + 1;
+    else items.push({ sku: p.sku || p.name, name: p.name, qty: 1, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, photo: p.photo || '' });
+    renderItems(); recalc();
+  });
+
+  const itemsBox = $('#no-items');
+  function renderItems() {
+    $('#no-itemn').textContent = items.length;
+    itemsBox.innerHTML = items.length ? items.map((it, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      ${it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<span style="width:34px;height:34px;border-radius:6px;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">📦</span>`}
+      <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.name || '')}</div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px;color:var(--muted);font-size:11px;"><input type="number" min="1" value="${Number(it.qty) || 1}" data-iq="${i}" style="width:46px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"> × <input type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}" style="width:92px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"></div></div>
+      <b style="font-size:12px;font-variant-numeric:tabular-nums;" data-iamt="${i}">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
+      <button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:13px;color:var(--danger);">✕</button>
+    </div>`).join('') : `<div style="color:var(--muted);font-size:12px;padding:6px 0;">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
+  }
+  renderItems();
+  itemsBox.addEventListener('input', e => {
+    const t = e.target; let i;
+    if (t.dataset.iq != null) { i = +t.dataset.iq; items[i].qty = Math.max(1, Number(t.value) || 1); }
+    else if (t.dataset.ip != null) { i = +t.dataset.ip; items[i].price = moneyVal(t); }
+    else return;
+    const amtEl = itemsBox.querySelector(`[data-iamt="${i}"]`); if (amtEl) amtEl.textContent = fmtMoney((Number(items[i].qty) || 0) * (Number(items[i].price) || 0));
+    recalc();
+  });
+  itemsBox.addEventListener('click', e => { const b = e.target.closest('[data-irm]'); if (!b) return; items.splice(+b.dataset.irm, 1); renderItems(); recalc(); });
+
+  const depEl = $('#no-deposit');
+  if (isEdit && editOrder.deposit_mnt != null) depEl.value = moneyFmtInput(editOrder.deposit_mnt);
+  depEl.addEventListener('input', () => { depositManual = true; recalc(); });
+
+  function recalc() {
+    const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+    const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
+    const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
+    const total = Math.max(0, subtotal - discount);
+    const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);
+    if (!depositManual) depEl.value = moneyFmtInput(autoDep);
+    $('#no-subtotal').textContent = fmtMoney(subtotal);
+    $('#no-disc').textContent = '−' + fmtMoney(discount);
+    $('#no-total').textContent = fmtMoney(total);
+    $('#no-dep').textContent = fmtMoney(moneyVal(depEl));
+    if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - moneyVal($('#no-paid'))));
+  }
+  $('#no-discval').addEventListener('input', recalc);
+  $('#no-disctype').addEventListener('change', recalc);
+  if (isEdit) $('#no-paid').addEventListener('input', recalc);
+  recalc();
+
+  $('#no-save').onclick = async (e) => {
+    if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }
+    const customer = $('#no-customer').value.trim();
+    if (!customer) { showToast('Харилцагчийн нэр оруулна уу', 'warn'); return; }
+    const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
+    const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
+    const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
+    const total = Math.max(0, subtotal - discount);
+    const deposit = moneyVal(depEl);
+    const prevDep = isEdit ? Number(editOrder.deposit_mnt) || 0 : 0;
+    if (deposit !== prevDep) depLog.push({ by: state.me, at: new Date().toISOString(), from: prevDep, to: deposit });
+    const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
+    const ord = {
+      id: isEdit ? editOrder.id : uid,
+      number: isEdit ? editOrder.number : nextOrderNumber(),
+      contract_no: isEdit ? editOrder.contract_no : nextContractNo(),
+      customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: $('#no-addr').value.trim(),
+      status: isEdit ? $('#no-status').value : 'reserved',
+      starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
+      items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
+      note: isEdit ? (editOrder.note || null) : null,
+      created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
+      created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    e.currentTarget.disabled = true;
+    try { await saveAppOrder(ord); close(); showToast(isEdit ? 'Захиалга шинэчлэгдлээ' : `Захиалга #${ord.number} үүслээ`, 'success', 2800); }
+    catch (err) { e.currentTarget.disabled = false; }
+  };
 }
 
 // Booqable түүх захиалгын ТӨРӨЛХ карт — байрандаа засагдана (төлөв workflow + төлбөр бүртгэх + үлдэгдэл).
@@ -8244,32 +8458,40 @@ function bqOrderCard(o) {
   const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
   const addr = o.delivery_address || o.customer_address || '';
   const id = escapeHtml(String(o.id));
+  const isApp = !!o._app;   // апп-д үүсгэсэн захиалга
   const next = BQ_NEXT[st];
   const activeSt = st === 'draft' || st === 'reserved' || st === 'started';
-  const canPay = activeSt && bal > 0;
-  const canCancel = activeSt;
+  const canPay = !isApp && activeSt && bal > 0;
+  const canCancel = !isApp && activeSt;
   // Төлбөрийн мөр — Нийт · Төлсөн · Үлдэгдэл (цуцлахаас бусдад)
   const payRow = (total > 0 && st !== 'canceled')
     ? `<div class="order-meta">💵 Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
     : '';
-  const canScan = activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
-  const foot = (canPay || next || canCancel || canScan) ? `<div class="order-foot">
+  const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
+  const foot = isApp
+    ? `<div class="order-foot"><button class="btn btn-primary" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button><button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button></div>`
+    : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
     ${canScan ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}
     ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${st === 'draft' ? '🗑 Устгах' : '✕ Цуцлах'}</button>` : ''}
-  </div>` : '';
+  </div>` : '');
+  // Бараа: app бол inline (o.items), Booqable бол lazy toggle + баримт
+  const itemsSection = isApp
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">🔒 Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
+    <div class="order-items-box bq-order-items" hidden></div>
+    <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
+    <div class="order-items-box bq-order-docs" hidden></div>`;
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}</div><div class="order-total">${fmtMoney(total)}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
+    ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">📄 ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">📅 ${start || '—'}${stop ? ' → ' + stop : ''}</div>
     ${payRow}
-    <button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
-    <div class="order-items-box bq-order-items" hidden></div>
-    <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
-    <div class="order-items-box bq-order-docs" hidden></div>
+    ${itemsSection}
     ${foot}
   </div>`;
 }
@@ -12767,7 +12989,7 @@ async function bootApp() {
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     if (state.view === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
-    else if (state.view === 'orders' && canSeeOrders()) loadOrders();
+    else if (state.view === 'orders' && canSeeOrders()) { loadAppOrders(); loadBooqableOrders(); }
     else if (state.view === 'products' && state.isCEO) loadProductsCatalog();
     else if (state.view === 'receivables' && state.isCEO) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   }, 45_000);

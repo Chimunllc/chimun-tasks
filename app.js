@@ -5444,9 +5444,11 @@ function roleTemplateFor(meKey) {
   const r = normRole(m && m.role);
   return (r && state.rolePerms && state.rolePerms[r]) || null;
 }
-// Давхаргат шийдвэрлэлт (РОЛЬ-д суурилсан): CEO → албан тушаалын загвар → undefined (тохируулаагүй).
+// Давхаргат шийдвэрлэлт: CEO → ХУВЬ ХҮНИЙ онцгой тохиргоо → албан тушаалын загвар → undefined.
 function capValue(key) {
   if (state.isCEO) return true;
+  const ov = state.memberPerms && state.memberPerms[state.me];   // хувь хүний онцгой эрх (албан тушаалыг дарна)
+  if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
   const rt = roleTemplateFor(state.me);
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
   return undefined;
@@ -5803,49 +5805,84 @@ function renderStaffPeople() {
 }
 
 // ── Албан тушаалаар (role templates) ──
+// Хүний бодит эрх (pre-check): хувь хүний онцгой → албан тушаал → default.
+function effectiveCapForMember(m, key, kind) {
+  const pk = personKey(m);
+  const ov = state.memberPerms && state.memberPerms[pk];
+  if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
+  const rt = state.rolePerms && state.rolePerms[normRole(m && m.role)];
+  if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
+  if (kind === 'view') return defaultViewForRole(normRole(m && m.role), key);
+  return true; // үйлдэл default = зөвшөөрнө
+}
+// Эрхийн чагтны матриц (цэс бүр: 👁 Харах + үйлдлүүд). getVal(key,kind)->bool.
+function capMatrixHtml(dataAttr, holderKey, getVal) {
+  return `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
+    const viewChip = menu.core
+      ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
+      : (() => { const vc = getVal(menu.key, 'view');
+          return `<label class="ac-chip${vc ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${menu.key}" data-cap-kind="view" ${vc ? 'checked' : ''}>👁 Харах</label>`; })();
+    const actChips = menu.actions.map(a => {
+      const allowed = getVal(a.key, 'action');
+      return `<label class="ac-chip${allowed ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${a.key}" data-cap-kind="action" ${allowed ? 'checked' : ''}>${escapeHtml(a.label)}</label>`;
+    }).join('');
+    return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
+  }).join('') + `</div>`;
+}
 function renderAccessRoles() {
+  const br = state.hubBranch || 'all';
   const roleMap = {};
-  (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, state.hubBranch || 'all')).forEach(m => {
+  (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, br)).forEach(m => {
     const rn = normRole(m.role); if (!rn) return;
-    roleMap[rn] = roleMap[rn] || { role: m.role, count: 0, level: 0 };
-    roleMap[rn].count++; roleMap[rn].level = Math.max(roleMap[rn].level, m.level || 0);
+    (roleMap[rn] = roleMap[rn] || { role: m.role, level: 0, people: [] });
+    roleMap[rn].level = Math.max(roleMap[rn].level, m.level || 0); roleMap[rn].people.push(m);
   });
   const q = (state.accessSearch || '').toLowerCase().trim();
   const roles = Object.keys(roleMap).map(k => ({ key: k, ...roleMap[k] }))
-    .filter(r => !q || r.role.toLowerCase().includes(q))
+    .filter(r => !q || r.role.toLowerCase().includes(q) || r.people.some(p => (p.name || '').toLowerCase().includes(q)))
     .sort((a, b) => (b.level - a.level) || a.role.localeCompare(b.role));
   const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
-    Албан тушаал дээр дарж задлаад тохируул. <b>Цэс:</b> чагт = тэр албан тушаалынхан уг цэсийг харна. <b>Үйлдэл:</b> чагт = зөвшөөрнө, авбал = хориглоно. Өөрчлөлт тухайн хүмүүс <b>дахин нэвтрэхэд</b> хүчинтэй. CEO (level 100) хязгаарлагдахгүй.
+    Албан тушаал дээр дарж задлаад тохируул → дотор нь <b>ХҮН</b> дээр дарж онцгой эрх өг. Чагт = зөвшөөрнө, авбал = хориглоно. <b>Хувь хүний тохиргоо албан тушаалыг дарна.</b> Өөрчлөлт тухайн хүн <b>дахин нэвтрэхэд</b> хүчинтэй. CEO хязгаарлагдахгүй.
   </div>`;
-  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Албан тушаал хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
-  const exp = state.accessExpandedRole || '';
+  const ovCount = Object.keys(state.memberPerms || {}).length;
+  const clearBanner = ovCount ? `<div style="border:1px solid var(--warn);background:var(--warn-soft,rgba(217,119,6,.1));border-radius:10px;padding:9px 12px;font-size:11.5px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>⚠ <b>${ovCount}</b> хүнд хувийн онцгой тохиргоо байна.</span><button class="btn" data-clear-all-overrides style="padding:3px 10px;font-size:11px;">🧹 Бүгдийг цэвэрлэх</button></div>` : '';
+  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Албан тушаал / нэр хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
+  const expRole = state.accessExpandedRole || '';
+  const expPerson = state.accessExpandedPerson || '';
+  const wrap = (inner) => `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${inner}</div>`;
   const rows = roles.map(r => {
     const tmpl = (state.rolePerms && state.rolePerms[r.key]) || {};
     const configured = Object.keys(tmpl).length > 0;
-    const isExp = exp === r.key;
+    const isExp = expRole === r.key;
     const isFull = r.level >= 100;
     const summary = `<div class="ac-role-head" data-role-toggle="${escapeHtml(r.key)}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
-      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${isExp ? '▾' : '▸'}</span> <b style="font-size:13.5px;">${escapeHtml(r.role)}</b> <span style="font-size:11px;color:var(--muted);">· ${r.count} хүн</span></div>
+      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${isExp ? '▾' : '▸'}</span> <b style="font-size:13.5px;">${escapeHtml(r.role)}</b> <span style="font-size:11px;color:var(--muted);">· ${r.people.length} хүн</span></div>
       ${isFull ? `<span style="font-size:10px;color:var(--ok);font-weight:700;">БҮРЭН ЭРХ</span>` : configured ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">тохируулсан</span>` : `<span style="font-size:10px;color:var(--muted);">default</span>`}
     </div>`;
-    if (!isExp) return `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${summary}</div>`;
-    const groups = isFull
-      ? `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Энэ албан тушаал бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>`
-      : `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
-          const viewChip = menu.core
-            ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
-            : (() => { const vc = Object.prototype.hasOwnProperty.call(tmpl, menu.key) ? !!tmpl[menu.key] : defaultViewForRole(r.key, menu.key);
-                return `<label class="ac-chip${vc ? ' on' : ' act-off'}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${menu.key}" data-cap-kind="view" ${vc ? 'checked' : ''}>👁 Харах</label>`; })();
-          const actChips = menu.actions.map(a => {
-            const denied = tmpl[a.key] === false;
-            return `<label class="ac-chip${denied ? ' act-off' : ' on'}"><input type="checkbox" data-role-cap="${escapeHtml(r.key)}" data-cap-key="${a.key}" data-cap-kind="action" ${denied ? '' : 'checked'}>${escapeHtml(a.label)}</label>`;
-          }).join('');
-          return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
-        }).join('') + `</div>`
-        + (configured ? `<div style="margin-top:12px;"><button class="btn" data-role-reset="${escapeHtml(r.key)}" style="padding:4px 11px;font-size:11px;">↺ Default руу буцаах</button></div>` : '');
-    return `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${summary}${groups}</div>`;
+    if (!isExp) return wrap(summary);
+    if (isFull) return wrap(summary + `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Энэ албан тушаал бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>`);
+    // ── Албан тушаалын эрх ──
+    const roleGetVal = (key, kind) => { if (Object.prototype.hasOwnProperty.call(tmpl, key)) return !!tmpl[key]; if (kind === 'view') return defaultViewForRole(r.key, key); return true; };
+    const roleMatrix = `<div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-top:8px;">АЛБАН ТУШААЛЫН ЭРХ (бүгдэд)</div>`
+      + capMatrixHtml('role-cap', r.key, roleGetVal)
+      + (configured ? `<div style="margin-top:8px;"><button class="btn" data-role-reset="${escapeHtml(r.key)}" style="padding:4px 11px;font-size:11px;">↺ Default руу буцаах</button></div>` : '');
+    // ── Хүмүүс (онцгой эрх) ──
+    const people = r.people.slice().sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
+    const peopleHtml = `<div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-top:14px;border-top:1px solid var(--border);padding-top:10px;">👥 ХҮМҮҮС (${people.length}) — хүн тус бүрд онцгой эрх</div>`
+      + people.map(m => {
+        const pk = personKey(m);
+        const pov = state.memberPerms && state.memberPerms[pk];
+        const hasOv = pov && Object.keys(pov).length > 0;
+        const pExp = expPerson === pk;
+        const pSummary = `<div class="ac-person-head" data-person-toggle="${escapeHtml(pk)}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;padding:7px 0;">
+          <div style="min-width:0;"><span style="font-size:10px;color:var(--muted);">${pExp ? '▾' : '▸'}</span> <b style="font-size:12.5px;">${escapeHtml(m.name || '?')}</b></div>
+          <div style="flex-shrink:0;">${hasOv ? `<span style="font-size:9.5px;color:var(--accent,#2563EB);font-weight:700;">онцгой</span> <button class="btn" data-person-reset="${escapeHtml(pk)}" style="padding:1px 7px;font-size:10px;" title="Албан тушаал руу буцаах">↺</button>` : `<span style="font-size:9.5px;color:var(--muted);">албан тушаалаар</span>`}</div>
+        </div>`;
+        return pExp ? pSummary + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind)) : pSummary;
+      }).join('');
+    return wrap(summary + roleMatrix + peopleHtml);
   }).join('');
-  return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Албан тушаал алга</div>'}</div>`;
+  return `${note}${clearBanner}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Албан тушаал алга</div>'}</div>`;
 }
 
 function attachAccessHandlers() {
@@ -5869,22 +5906,39 @@ function attachAccessHandlers() {
     state.accessExpandedRole = (state.accessExpandedRole === k) ? '' : k;
     render();
   }));
+  const gather = (inputs) => { const perms = {}; inputs.forEach(x => { const kind = x.dataset.capKind; if (kind === 'view') perms[x.dataset.capKey] = x.checked; else if (!x.checked) perms[x.dataset.capKey] = false; }); return perms; };
+  // Албан тушаалын эрх (зөвхөн data-role-cap, хүний чагтыг хамруулахгүй)
   document.querySelectorAll('input[data-role-cap]').forEach(cb => cb.addEventListener('change', () => {
     const role = cb.dataset.roleCap;
-    const scope = cb.closest('.ac-role-row');
-    const perms = {};
-    scope.querySelectorAll('input[data-cap-key]').forEach(x => {
-      const kind = x.dataset.capKind;
-      if (kind === 'view') { perms[x.dataset.capKey] = x.checked; }
-      else { if (!x.checked) perms[x.dataset.capKey] = false; }
-    });
-    saveRolePerms(role, perms);
+    const inputs = [...document.querySelectorAll(`input[data-role-cap="${CSS.escape(role)}"]`)];
+    saveRolePerms(role, gather(inputs));
     showToast('Албан тушаалын эрх хадгаллаа', 'success', 1500);
     render();
   }));
   document.querySelectorAll('[data-role-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearRolePerms(b.dataset.roleReset); showToast('Default руу буцаалаа', 'success', 1500); render();
   }));
+  // ── Хувь хүн (онцгой эрх) ──
+  document.querySelectorAll('[data-person-toggle]').forEach(h => h.addEventListener('click', () => {
+    const k = h.dataset.personToggle;
+    state.accessExpandedPerson = (state.accessExpandedPerson === k) ? '' : k;
+    render();
+  }));
+  document.querySelectorAll('input[data-person-cap]').forEach(cb => cb.addEventListener('change', () => {
+    const pk = cb.dataset.personCap;
+    const inputs = [...document.querySelectorAll(`input[data-person-cap="${CSS.escape(pk)}"]`)];
+    saveMemberPerms(pk, gather(inputs));
+    showToast('Хувь хүний эрх хадгаллаа', 'success', 1500);
+    render();
+  }));
+  document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); clearMemberPerms(b.dataset.personReset); showToast('Албан тушаал руу буцаалаа', 'success', 1500); render();
+  }));
+  document.querySelector('[data-clear-all-overrides]')?.addEventListener('click', async () => {
+    if (!(await showConfirm('Бүх хүний онцгой тохиргоог цэвэрлэх үү? Хүн бүр албан тушаалынхаа эрхэд буцна.', { okText: 'Цэвэрлэх', danger: true }))) return;
+    for (const k of Object.keys(state.memberPerms || {})) await clearMemberPerms(k);
+    showToast('Цэвэрлэлээ', 'success', 2000); render();
+  });
 }
 // "Ажилтан" табын handler — renderStaffList дүүргэж, хайлт холбоно (бүх мөрийн handler renderStaffList дотор).
 function attachHubPeople() {

@@ -7190,20 +7190,24 @@ function nomaadContractHtml(o) {
   const svcTable = items.length
     ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt" style="font-weight:700">Нийт дүн (НӨАТ багтсан):</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr></table>`
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
-  const sigCust = `<div class="sig"><b>Захиалагч: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ______________________<br>Хаяг: …………………………<br>Утас: ……………………</div>`;
-  const sigChi = `<div class="sig" style="text-align:right;"><b>Гүйцэтгэгч: ${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ______________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}</div>`;
+  const sigCust = `<b>Захиалагч: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ______________________<br>Хаяг: …………………………<br>Утас: ……………………`;
+  const sigChi = `<b>Гүйцэтгэгч: ${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ______________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}`;
+  const sigTable = `<table class="sigt"><tr><td>${sigCust}</td><td class="r">${sigChi}</td></tr></table>`;
+  const topSig = `<table class="sigt"><tr><td><b>БАТЛАВ: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………</td><td class="r"><b>БАТЛАВ: ${C.name}</b><br>${C.directorTitle.toUpperCase()}: ${C.director}</td></tr></table>`;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Гэрээ — ${co} (${escapeHtml(o.quote_no || '')})</title>
 <style>
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.55;max-width:820px;margin:0 auto;padding:26px 32px 60px;font-size:13.5px}
-  h1{text-align:center;font-size:17px;margin:16px 0 4px}
-  h2{font-size:14px;margin:18px 0 6px}
+  h1{text-align:center;font-size:18px;margin:14px 0 2px;letter-spacing:.3px}
+  h2{font-size:14px;margin:17px 0 7px;border-bottom:1.5px solid #1f2937;padding-bottom:3px}
   p{margin:5px 0;text-align:justify}
-  .place{text-align:right;margin:6px 0 8px}
-  .topsig,.botsig{display:flex;gap:24px;margin:8px 0 16px;font-size:12.5px}
-  .sig{flex:1}
+  .place{text-align:right;margin:4px 0 10px;color:#444}
+  .sigt{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:12.5px}
+  .sigt td{width:50%;vertical-align:top;padding:2px 12px;border:0;line-height:1.7}
+  .sigt td.r{text-align:right}
+  .apx{page-break-before:always}
   .muted{color:#888}
   .cath{font-weight:600;margin:9px 0 2px}
   .bul{margin-left:6px;margin:2px 0 2px 6px}
@@ -7226,10 +7230,7 @@ function nomaadContractHtml(o) {
 <body>
 <div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг энд бичиж засаж болно</span></div>
 <div contenteditable="true">
-  <div class="topsig">
-    <div class="sig"><b>БАТЛАВ: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………</div>
-    <div class="sig" style="text-align:right"><b>БАТЛАВ: ${C.name}</b><br>${C.directorTitle.toUpperCase()}: ${C.director}</div>
-  </div>
+  ${topSig}
   <h1>КОРПОРАТ АРГА ХЭМЖЭЭ ЗОХИОН БАЙГУУЛАХ ГЭРЭЭ</h1>
   <div class="place">${now.getFullYear()} оны ${now.getMonth() + 1}-р сарын ${now.getDate()} өдөр &nbsp;&nbsp; Улаанбаатар хот</div>
 
@@ -7285,10 +7286,9 @@ function nomaadContractHtml(o) {
   <p><b>6.4</b> Талууд энэхүү гэрээгээр хүлээсэн эрх үүргээ аль нэг талын албан ёсны зөвшөөрөлгүйгээр гуравдагч этгээдэд хэсэгчлэн болон бүрэн хэмжээгээр шилжүүлэх эрхгүй.</p>
   <p><b>6.5</b> Энэхүү гэрээг Монгол хэл дээр 2 хувь үйлдэж, талууд тус бүр нэг хувийг хадгалах бөгөөд хувь тус бүр нь хууль зүйн адил хүчинтэй байна.</p>
 
-  <div class="botsig">${sigCust}${sigChi}</div>
+  ${sigTable}
 
-  <div class="pb"></div>
-  <h2>Хавсралт №1 — Үйлчилгээний дэлгэрэнгүй</h2>
+  <h2 class="apx">Хавсралт №1 — Үйлчилгээний дэлгэрэнгүй</h2>
   <table class="meta">
     <tr><td>Кемп</td><td>${camp}</td></tr>
     <tr><td>Багц</td><td>${tier}</td></tr>
@@ -7296,7 +7296,7 @@ function nomaadContractHtml(o) {
     <tr><td>Арга хэмжээний хугацаа</td><td>${ds.y}.${ds.mo}.${ds.d} ${ds.time} → ${de.y}.${de.mo}.${de.d} ${de.time}</td></tr>
   </table>
   ${svcTable}
-  <div class="botsig">${sigCust}${sigChi}</div>
+  ${sigTable}
 </div>
 <script>
 var CT_FILE=${JSON.stringify(fname)};

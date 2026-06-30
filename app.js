@@ -7158,30 +7158,37 @@ function nomaadContractHtml(o) {
   const coReg = o.reg_no ? ' ' + escapeHtml(o.reg_no) : ' …………';
   const items = (o.items || []);
   const isPkg = it => /үндсэн багц/i.test(it.category || '');
-  const isAddon = it => /нэмэлт/i.test(it.category || '');
-  const isTrans = it => /тээвэр/i.test(it.category || '') || /тээвэр/i.test(it.name || '');
+  const itTotal = it => Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0);
   const pkg = items.find(isPkg);
   const guests = Number(o.guests) || (pkg ? Number(pkg.qty) : 0) || 0;
   const total = Number(o.final_amount) > 0 ? Number(o.final_amount) : (Number(o.grand_total) || 0);
-  const addons = items.filter(it => isAddon(it) && !isPkg(it));
-  const transports = items.filter(it => isTrans(it) && !isPkg(it) && !isAddon(it));
-  const addonTotal = addons.reduce((s, it) => s + (Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0)), 0);
-  const perPerson = pkg ? (Number(pkg.unit_price) || 0) : (guests ? Math.round((total - addonTotal) / guests) : 0);
+  const packageTotal = pkg ? (Number(pkg.total) || (Number(pkg.unit_price) || 0) * guests) : 0;
+  const perPerson = pkg ? (Number(pkg.unit_price) || 0) : (guests ? Math.round(total / guests) : 0);
+  const addonTotal = pkg ? Math.max(0, total - packageTotal) : 0;
   const deposit = Math.round(total * 0.3);
   const balance = total - deposit;
   const ds = _ctDT(o.date_start), de = _ctDT(o.date_end), now = new Date();
   const camp = escapeHtml(o.camp || '………'), tier = escapeHtml(o.tier || '………');
   const campPhrase = /кемп/i.test(o.camp || '') ? camp : camp + ' кемп';
-  // Хавсралт — багцад орсон үйлчилгээ ангилалаар
-  const included = items.filter(it => !isPkg(it) && !isAddon(it) && !isTrans(it));
-  const byCat = {};
-  included.forEach(it => { const c = it.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(it); });
-  const catOrder = ['Хоол, ресторан', 'Энтертайнмент', 'Амралт', 'Спорт', 'Ариун цэвэр', 'Кемп'];
-  const cats = [...catOrder.filter(c => byCat[c]), ...Object.keys(byCat).filter(c => !catOrder.includes(c))];
-  const bullet = it => { const q = Number(it.qty) || 0, u = escapeHtml(it.unit || ''); return `<div class="bul">• ${escapeHtml(it.name || '')}${q > 1 ? ` · ${q}${u ? ' ' + u : ''}` : ''}</div>`; };
-  const inclHtml = cats.length ? cats.map(c => `<div class="cath">— ${escapeHtml(c)} —</div>${byCat[c].map(bullet).join('')}`).join('') : '<div class="muted">(багцын дэлгэрэнгүй оруулаагүй)</div>';
-  const addonHtml = addons.length ? addons.map(it => `<div class="bul">• ${escapeHtml(it.name || '')}${Number(it.qty) > 1 ? ` · ${Number(it.qty)}` : ''} — ${fmtMoney(Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0))}</div>`).join('') : '<div class="muted">(Нэмэлт төлбөртэй үйлчилгээ сонгоогүй)</div>';
-  const transHtml = transports.length ? transports.map(it => `<div class="bul">• ${escapeHtml(it.name || '')} — ${fmtMoney(Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0))}</div>`).join('') : '<div class="muted">(Тээврийн үйлчилгээ сонгоогүй)</div>';
+  // Хавсралт №1 — "Үнийн санал харах"-тай ИЖИЛ бүрэн хүснэгт (ангилалаар, тоо/нэгж/үнэ/багцад)
+  const grouped = {}, catSeq = [];
+  items.forEach(it => { const c = it.category || 'Бусад'; if (!grouped[c]) { grouped[c] = []; catSeq.push(c); } grouped[c].push(it); });
+  const CAT_ORD = ['Үндсэн багц', 'Хоол, ресторан', 'Энтертайнмент', 'Амралт', 'Спорт', 'Ариун цэвэр', 'Кемп', 'Нэмэлт үйлчилгээ', 'Тээвэр'];
+  const catRank = c => { const i = CAT_ORD.indexOf(c); return i < 0 ? 50 : i; };
+  const svcRows = catSeq.sort((a, b) => catRank(a) - catRank(b)).map(c => {
+    const head = `<tr><td colspan="3" class="cat">${escapeHtml((c || '').toUpperCase())}</td></tr>`;
+    const rows = grouped[c].map(it => {
+      const tot = itTotal(it), incl = it.included || (tot === 0 && !isPkg(it));
+      const price = isPkg(it) ? fmtMoney(tot) : (incl ? '<span style="color:#15803d">Багцад багтсан</span>' : fmtMoney(tot));
+      const q = Number(it.qty) || 0, u = escapeHtml(it.unit || '');
+      const note = it.note ? `<div class="inote">${escapeHtml(it.note)}</div>` : '';
+      return `<tr><td>${escapeHtml(it.name || '')}${note}</td><td class="ctr">${q ? `${q}${u ? ' ' + u : ''}` : ''}</td><td class="rt">${price}</td></tr>`;
+    }).join('');
+    return head + rows;
+  }).join('');
+  const svcTable = items.length
+    ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt" style="font-weight:700">Нийт дүн (НӨАТ багтсан):</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr></table>`
+    : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
   const sigCust = `<div class="sig"><b>Захиалагч: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ______________________<br>Хаяг: …………………………<br>Утас: ……………………</div>`;
   const sigChi = `<div class="sig" style="text-align:right;"><b>Гүйцэтгэгч: ${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ______________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}</div>`;
 
@@ -7199,9 +7206,16 @@ function nomaadContractHtml(o) {
   .muted{color:#888}
   .cath{font-weight:600;margin:9px 0 2px}
   .bul{margin-left:6px;margin:2px 0 2px 6px}
-  table{width:100%;border-collapse:collapse;margin:8px 0}
-  td{border:1px solid #bbb;padding:4px 9px}
-  td:first-child{font-weight:600;width:34%}
+  .meta{width:100%;border-collapse:collapse;margin:8px 0}
+  .meta td{border:1px solid #bbb;padding:4px 9px}
+  .meta td:first-child{font-weight:600;width:34%}
+  .svc{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px}
+  .svc th,.svc td{border:1px solid #ccc;padding:4px 8px;vertical-align:top}
+  .svc th{background:#eee;text-align:left}
+  .svc .cat{background:#f0f0f0;font-weight:700}
+  .ctr{text-align:center;white-space:nowrap}
+  .rt{text-align:right;white-space:nowrap}
+  .inote{font-size:11px;color:#666;margin-top:1px}
   .total{font-size:15px;font-weight:700;margin:10px 0}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
   .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
@@ -7274,19 +7288,13 @@ function nomaadContractHtml(o) {
 
   <div class="pb"></div>
   <h2>Хавсралт №1 — Үйлчилгээний дэлгэрэнгүй</h2>
-  <table>
+  <table class="meta">
     <tr><td>Кемп</td><td>${camp}</td></tr>
     <tr><td>Багц</td><td>${tier}</td></tr>
     <tr><td>Хүний тоо</td><td>${guests} хүн</td></tr>
     <tr><td>Арга хэмжээний хугацаа</td><td>${ds.y}.${ds.mo}.${ds.d} ${ds.time} → ${de.y}.${de.mo}.${de.d} ${de.time}</td></tr>
   </table>
-  <div class="cath">Багцад орсон үйлчилгээ:</div>
-  ${inclHtml}
-  <div class="cath">Нэмэлт төлбөрт үйлчилгээ:</div>
-  ${addonHtml}
-  <div class="cath">Тээврийн үйлчилгээ:</div>
-  ${transHtml}
-  <div class="total">Нийт дүн: ${fmtMoney(total)}</div>
+  ${svcTable}
   <div class="botsig">${sigCust}${sigChi}</div>
 </div>
 </body></html>`;

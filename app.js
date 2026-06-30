@@ -6263,6 +6263,7 @@ function nomaadCardHtml(o) {
                <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
                <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
                <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
+               <button class="btn" data-nomaad-contract="${q}" style="padding:5px 14px;font-size:12px;">📜 Гэрээ үүсгэх</button>
                ${(income > 0 || Number(o.income_advance) > 0)
                  ? `<button class="btn" data-nomaad-cancelco="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">🚫 Манайхаас цуцлах</button>`
                  : `<button class="btn" data-nomaad-delete="${q}" style="padding:5px 14px;font-size:12px;color:var(--danger);border-color:var(--danger);">❌ Больсон болгох</button>`}`}
@@ -6550,6 +6551,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
+  });
+  document.querySelectorAll('button[data-nomaad-contract]').forEach(b => {
+    b.addEventListener('click', () => openNomaadContract(b.dataset.nomaadContract));
   });
   document.querySelectorAll('button[data-nomaad-edit]').forEach(b => {
     b.addEventListener('click', () => openNomaadEditModal(b.dataset.nomaadEdit));
@@ -7107,6 +7111,194 @@ function openNomaadQuoteView(quoteNo) {
   if (!url) { showToast('Үнийн санал харах backend тохируулаагүй', 'error'); return; }
   const full = withKey(url + '?quote_no=' + encodeURIComponent(quoteNo));
   window.open(full, '_blank', 'noopener');
+}
+
+/* ===================== NOMAAD — ГЭРЭЭНИЙ ДРАФТ ҮҮСГЭГЧ =====================
+   Захиалгын датагаар "Корпорат арга хэмжээ зохион байгуулах гэрээ"-ний драфт
+   үүсгэж шинэ цонхонд нээнэ (хэвлэх → PDF). Талбарыг шууд засаж болно (contenteditable).
+   Чимун ХХК-ийн хууль ёсны мэдээлэл доор тогтмолоор хадгалагдсан. */
+const CHIMUN_LEGAL = {
+  name: '"ЧИМУН" ХХК', reg: '6614337',
+  director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
+  address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
+  bank: 'Голомт банк', account: '3635185058',
+  phones: '7700-6790 (Захиалга), 9917-9417 (Менежер), 8802-8216 (Менежер)',
+};
+// 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
+function _mnTriad(n) {
+  const o = ['', 'нэгэн', 'хоёр', 'гурван', 'дөрвөн', 'таван', 'зургаан', 'долоон', 'найман', 'есөн'];
+  const t = ['', 'арван', 'хорин', 'гучин', 'дөчин', 'тавин', 'жаран', 'далан', 'наян', 'ерэн'];
+  const h = Math.floor(n / 100), tt = Math.floor((n % 100) / 10), oo = n % 10, p = [];
+  if (h) p.push((h === 1 ? 'нэг' : o[h]) + ' зуун');
+  if (tt) p.push(t[tt]);
+  if (oo) p.push(o[oo]);
+  return p.join(' ');
+}
+// Бүхэл тоог Монгол үгээр: 13750000 → "арван гурван сая долоон зуун тавин мянган"
+function mnNumToWords(n) {
+  n = Math.round(Number(n) || 0);
+  if (n === 0) return 'тэг';
+  const sc = [['тэрбум', 1e9], ['сая', 1e6], ['мянган', 1e3]];
+  let rem = n, out = [];
+  for (const [w, v] of sc) { const c = Math.floor(rem / v); if (c) { out.push(_mnTriad(c) + ' ' + w); rem %= v; } }
+  if (rem) out.push(_mnTriad(rem));
+  return out.join(' ');
+}
+// "2026-07-03T09:00" / "2026-07-05 08:19" → {y, mo, d, time}
+function _ctDT(s) {
+  const m = String(s || '').match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2}))?/);
+  if (!m) return { y: '….', mo: '..', d: '..', time: '……' };
+  return { y: m[1], mo: String(+m[2]), d: String(+m[3]), time: m[4] != null ? (m[4].padStart(2, '0') + ':' + m[5]) : '……' };
+}
+function _amt(n) { return `${fmtMoney(n)} (${mnNumToWords(n)})`; }
+
+function nomaadContractHtml(o) {
+  const C = CHIMUN_LEGAL;
+  const co = escapeHtml(o.company || '…………………');
+  const coReg = o.reg_no ? ' ' + escapeHtml(o.reg_no) : ' …………';
+  const items = (o.items || []);
+  const isPkg = it => /үндсэн багц/i.test(it.category || '');
+  const isAddon = it => /нэмэлт/i.test(it.category || '');
+  const isTrans = it => /тээвэр/i.test(it.category || '') || /тээвэр/i.test(it.name || '');
+  const pkg = items.find(isPkg);
+  const guests = Number(o.guests) || (pkg ? Number(pkg.qty) : 0) || 0;
+  const total = Number(o.final_amount) > 0 ? Number(o.final_amount) : (Number(o.grand_total) || 0);
+  const addons = items.filter(it => isAddon(it) && !isPkg(it));
+  const transports = items.filter(it => isTrans(it) && !isPkg(it) && !isAddon(it));
+  const addonTotal = addons.reduce((s, it) => s + (Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0)), 0);
+  const perPerson = pkg ? (Number(pkg.unit_price) || 0) : (guests ? Math.round((total - addonTotal) / guests) : 0);
+  const deposit = Math.round(total * 0.3);
+  const balance = total - deposit;
+  const ds = _ctDT(o.date_start), de = _ctDT(o.date_end), now = new Date();
+  const camp = escapeHtml(o.camp || '………'), tier = escapeHtml(o.tier || '………');
+  const campPhrase = /кемп/i.test(o.camp || '') ? camp : camp + ' кемп';
+  // Хавсралт — багцад орсон үйлчилгээ ангилалаар
+  const included = items.filter(it => !isPkg(it) && !isAddon(it) && !isTrans(it));
+  const byCat = {};
+  included.forEach(it => { const c = it.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(it); });
+  const catOrder = ['Хоол, ресторан', 'Энтертайнмент', 'Амралт', 'Спорт', 'Ариун цэвэр', 'Кемп'];
+  const cats = [...catOrder.filter(c => byCat[c]), ...Object.keys(byCat).filter(c => !catOrder.includes(c))];
+  const bullet = it => { const q = Number(it.qty) || 0, u = escapeHtml(it.unit || ''); return `<div class="bul">• ${escapeHtml(it.name || '')}${q > 1 ? ` · ${q}${u ? ' ' + u : ''}` : ''}</div>`; };
+  const inclHtml = cats.length ? cats.map(c => `<div class="cath">— ${escapeHtml(c)} —</div>${byCat[c].map(bullet).join('')}`).join('') : '<div class="muted">(багцын дэлгэрэнгүй оруулаагүй)</div>';
+  const addonHtml = addons.length ? addons.map(it => `<div class="bul">• ${escapeHtml(it.name || '')}${Number(it.qty) > 1 ? ` · ${Number(it.qty)}` : ''} — ${fmtMoney(Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0))}</div>`).join('') : '<div class="muted">(Нэмэлт төлбөртэй үйлчилгээ сонгоогүй)</div>';
+  const transHtml = transports.length ? transports.map(it => `<div class="bul">• ${escapeHtml(it.name || '')} — ${fmtMoney(Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0))}</div>`).join('') : '<div class="muted">(Тээврийн үйлчилгээ сонгоогүй)</div>';
+  const sigCust = `<div class="sig"><b>Захиалагч: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ______________________<br>Хаяг: …………………………<br>Утас: ……………………</div>`;
+  const sigChi = `<div class="sig" style="text-align:right;"><b>Гүйцэтгэгч: ${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ______________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}</div>`;
+
+  return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Гэрээ — ${co} (${escapeHtml(o.quote_no || '')})</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.55;max-width:820px;margin:0 auto;padding:26px 32px 60px;font-size:13.5px}
+  h1{text-align:center;font-size:17px;margin:16px 0 4px}
+  h2{font-size:14px;margin:18px 0 6px}
+  p{margin:5px 0;text-align:justify}
+  .place{text-align:right;margin:6px 0 8px}
+  .topsig,.botsig{display:flex;gap:24px;margin:8px 0 16px;font-size:12.5px}
+  .sig{flex:1}
+  .muted{color:#888}
+  .cath{font-weight:600;margin:9px 0 2px}
+  .bul{margin-left:6px;margin:2px 0 2px 6px}
+  table{width:100%;border-collapse:collapse;margin:8px 0}
+  td{border:1px solid #bbb;padding:4px 9px}
+  td:first-child{font-weight:600;width:34%}
+  .total{font-size:15px;font-weight:700;margin:10px 0}
+  .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
+  .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
+  .pb{page-break-before:always}
+  @media print{.toolbar{display:none}body{padding:0}}
+</style></head>
+<body>
+<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF хадгалах</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг шууд энд бичиж засаж болно</span></div>
+<div contenteditable="true">
+  <div class="topsig">
+    <div class="sig"><b>БАТЛАВ: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………</div>
+    <div class="sig" style="text-align:right"><b>БАТЛАВ: ${C.name}</b><br>${C.directorTitle.toUpperCase()}: ${C.director}</div>
+  </div>
+  <h1>КОРПОРАТ АРГА ХЭМЖЭЭ ЗОХИОН БАЙГУУЛАХ ГЭРЭЭ</h1>
+  <div class="place">${now.getFullYear()} оны ${now.getMonth() + 1}-р сарын ${now.getDate()} өдөр &nbsp;&nbsp; Улаанбаатар хот</div>
+
+  <h2>НЭГ. НИЙТЛЭГ ҮНДЭСЛЭЛ</h2>
+  <p><b>1.1</b> Энэхүү гэрээг нэг талаас РД:${coReg} "${co}" (цаашид "Захиалагч" тал гэх) түүнийг төлөөлж …………………………, нөгөө талаас РД:${C.reg} ${C.name} (цаашид "Гүйцэтгэгч" гэх) түүнийг төлөөлж ${C.directorTitle} ${C.director} нар (цаашид хамтад нь "Талууд" гэх) дараах нөхцөлөөр харилцан тохиролцож энэхүү гэрээг байгуулав.</p>
+  <p><b>1.2</b> Энэхүү гэрээгээр Гүйцэтгэгч нь Захиалагчийн захиалгын дагуу иж бүрэн шаардлага хангасан КОРПОРАТ АРГА ХЭМЖЭЭ ЗОХИОН БАЙГУУЛАХ үйлчилгээ (цаашид цогцоор нь "АРГА ХЭМЖЭЭ" гэх)-г үзүүлэх, төлбөр тооцоог төлөхтэй холбогдсон харилцааг зохицуулна.</p>
+
+  <h2>ХОЁР. ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭХ ХУГАЦАА, ҮНЭ, ТӨЛБӨР ТООЦОО</h2>
+  <p><b>2.1</b> Гүйцэтгэгч нь үйлчилгээг ${ds.y} оны ${ds.mo}-р сарын ${ds.d}-ний өдрийн ${ds.time} цагаас эхэлж, ${de.y} оны ${de.mo}-р сарын ${de.d}-ны өдрийн ${de.time} цаг хүртэлх хугацаанд үзүүлнэ.</p>
+  <p><b>2.2</b> Захиалагч нь гэрээний Хавсралт №1-д заасан үйлчилгээний дагуу <b>${guests}</b> хүнээр тооцож захиалга өгөх бөгөөд ${campPhrase}ийн ${tier} багцын дагуу нэг хүнд тооцох үнэ ${_amt(perPerson)} төгрөг, нэмэлт үйлчилгээний нийт төлбөр ${_amt(addonTotal)} төгрөг ба гэрээний нийт үнийн дүн <b>${_amt(total)}</b> төгрөг болно. Бүх үнэ НӨАТ багтсан болно.</p>
+  <p><b>2.3</b> Захиалагч нь гэрээний нийт төлбөрийн 30 хувь буюу ${_amt(deposit)} төгрөгийг ажлын 2 хоногийн дотор Гүйцэтгэгчийн ${C.bank} дахь ${C.name}-ийн ${C.account} тоот дансанд урьдчилгаа болгон шилжүүлснээр захиалга баталгаажна.</p>
+  <p><b>2.4</b> Захиалагч нь гэрээний үлдэгдэл төлбөр болох 70 хувь буюу ${_amt(balance)} төгрөгийг арга хэмжээ эхлэхээс 7 хоногийн өмнө 2.3-т заасан Гүйцэтгэгчийн дансанд шилжүүлнэ.</p>
+  <p><b>2.5</b> Хүний тоо өөрчлөх хүсэлт нь 5 хүнээс хэтрэхгүй байна.</p>
+  <p><b>2.6</b> Арга хэмжээ эхлэхээс 7 хоногийн өмнө хүний тоонд өөрчлөлт оруулах хүсэлтийг бичгээр мэдэгдэх бөгөөд мэдэгдээгүй бол 2.2-т заасан хүний тоогоор захиалгыг баталгаажуулна.</p>
+  <p><b>2.7</b> Энэ гэрээний 2.2-т заасан нэг хүний төлбөрийн үнэ өөрчлөгдөхгүй бөгөөд тогтвортой байна.</p>
+  <p><b>2.8</b> Илүү цагийн төлбөр: гэрээнд заасан хугацааг хэтрүүлэх тохиолдолд 1 цаг тутамд 300,000₮ (гурван зуун мянган) төгрөгийн нэмэлт төлбөр тооцно.</p>
+
+  <h2>ГУРАВ. ГҮЙЦЭТГЭГЧИЙН ЭРХ, ҮҮРЭГ</h2>
+  <p><b>3.1</b> Гүйцэтгэгч нь захиалагч талаас өгсөн захиалга, хугацааны дагуу гэрээний Хавсралт №1-д заасан үйлчилгээг бүрэн үзүүлнэ.</p>
+  <p><b>3.2</b> Гүйцэтгэгч нь захиалагчтай харилцан тохиролцсон гэрээний дагуу арга хэмжээнд шаардлагатай майхан кемп, тоног төхөөрөмж, тогооч, үйлчлэгч зэрэг боловсон хүчнээр мэргэжлийн өндөр түвшинд үйлчилнэ.</p>
+  <p><b>3.3</b> Арга хэмжээний үеэр өөрийгөө хянах чадамжгүй болтлоо согтсон зочин гарсан, эмх замбараагүй байдал үүссэн тохиолдолд захиалагч талд мэдэгдэж зохицуулах бөгөөд аливаа эрсдэл гарсан тохиолдолд захиалагч тал бүрэн хариуцна.</p>
+  <p><b>3.4</b> Гэрээнд заасан хугацааны дагуу болон илүү цагийн нэмэлт үйлчилгээ үзүүлсний төлбөрийг нэхэмжлэх, шаардах.</p>
+  <p><b>3.5</b> Захиалга өгсөн өдөр, тогтоосон цагт үйлчилгээг үзүүлэхэд бэлэн байх, байрлах газрын тохижилт, үйлчилгээ, техник хэрэгсэл, тоног төхөөрөмж зэргийн хэвийн тасралтгүй ажиллагааг бүрэн хангасан байна.</p>
+  <p><b>3.6</b> Захиалагчаас үл хамаарах шалтгаанаар майхан кемп үйлчилгээ доголдсон, тасалдсан тохиолдолд захиалагчид урьдчилан мэдэгдэж гэрээний хугацааг сунгаж, уг сунгасан хугацаанд үйлчилгээг чанартай үзүүлэх.</p>
+
+  <h2>ДӨРӨВ. ЗАХИАЛАГЧИЙН ЭРХ, ҮҮРЭГ</h2>
+  <p><b>4.1</b> Гэрээнд заасан хугацааны дагуу төлбөрийг бүрэн гүйцэт төлөх.</p>
+  <p><b>4.2</b> Захиалагч нь захиалга өгөхдөө гэрээний хавсралтын дагуу оролцох хүний тоо, хоолны цэс, хэрэглэгдэх тоног төхөөрөмжийг маш тодорхой, нарийн тохиролцож баталгаажуулан гарын үсэг зурна.</p>
+  <p><b>4.3</b> Захиалагч нь арга хэмжээг захиалгын дагуу гэрээнд заасан хугацаандаа эхэлж, дуусах хугацаандаа дуусгах үүрэгтэй.</p>
+  <p><b>4.4</b> Захиалагч нь майхан кемп дахь үйлчлүүлэгчдийн хувцас, цүнх болон бусад эд зүйлсийн бүрэн бүтэн байдалд хяналт тавьж хариуцна.</p>
+  <p><b>4.5</b> Хүлээн авалтын үеэр эрүүгийн шинж чанартай үйлдэл, нийтийг хамарсан эмх замбараагүй асуудал гаргахгүй байхыг захиалагч тал бүрэн хариуцах бөгөөд уг нөхцөл байдлаас үүсэн гарах аливаа эрсдэлийг бүрэн хариуцна.</p>
+  <p><b>4.6</b> Захиалагч тал нийтээр архидан согтуурах байдлыг хяналтаасаа гаргахгүй бүрэн хариуцаж ажиллана.</p>
+  <p><b>4.7</b> Захиалагч нь арга хэмжээнд оролцох хүний тоо, байршуулах хэрэгслийн өөрчлөлт зэргийн мэдээллийг үйлчилгээ авахаас 7 хоногийн өмнө эцсийн байдлаар Гүйцэтгэгч талд мэдэгдэж баталгаажуулна.</p>
+  <p><b>4.8</b> Захиалагч нь үйлчилгээний тогтсон цагт соёлтой боловсон үйлчлүүлэх ба хэрвээ эд хогшил, тоног төхөөрөмж, багаж хэрэгсэлд гэмтэл учруулсан тохиолдолд хохирлыг Монгол улсын тухайн үеийн зах зээлийн үнэлгээгээр Гүйцэтгэгч талд бүрэн барагдуулна.</p>
+  <p><b>4.9</b> Захиалагч нь Гүйцэтгэгчид өгсөн захиалгын дагуу бүх үйлчилгээг чанартай гүйцэтгэхийг шаардах эрхтэй бөгөөд өөрийн талаас нэг төлөөлөгч томилж үйлчилгээний талаар болон гэрээний Хавсралт №1-д заасан цэсийн дагуу үйлчилсэн эсэх талаар хяналт тавина.</p>
+
+  <h2>ТАВ. ТАЛУУДЫН ХҮЛЭЭХ ХАРИУЦЛАГА</h2>
+  <p><b>5.1</b> Майхан кемпийн орчинд захиалагчийн зочин, үйлчлүүлэгч нар өөрсдийн үнэт эдлэл, зургийн аппарат, камер, цүнх болон бусад эд зүйлийг өөрсдөө хариуцах бөгөөд алдаж үрэгдүүлсэн тохиолдолд Гүйцэтгэгч хариуцлага хүлээхгүй, энэхүү асуудлыг зохицуулахад хамтран ажиллана.</p>
+  <p><b>5.2</b> Захиалагч тал гэрээг цуцалсан тохиолдолд төлбөрийн буцаалт дараах хуваарийн дагуу хийгдэнэ:</p>
+  <p style="margin-left:16px"><b>а)</b> Арга хэмжээ эхлэхээс 14-өөс дээш хоногийн өмнө цуцалбал захиалагчийн төлсөн төлбөрийг бүрэн (100%) буцаана.</p>
+  <p style="margin-left:16px"><b>б)</b> 7-13 хоногийн өмнө цуцалбал төлсөн төлбөрийн 50%-ийг буцаана.</p>
+  <p style="margin-left:16px"><b>в)</b> 7 хоногийн дотор цуцалбал төлсөн төлбөрийг буцаахгүй бөгөөд гэрээгээр шаардагдах үлдэгдэл төлбөрийг шаардахгүй.</p>
+  <p style="margin-left:16px"><b>г)</b> Гэнэтийн давагдашгүй хүчин зүйл (6.1)-ийн улмаас цуцлах тохиолдолд цуцлалт биш аяллын огноог талуудын харилцан тохиролцооны дагуу шилжүүлнэ.</p>
+  <p style="margin-left:16px"><b>д)</b> Захиалагч талбайн боломжоос хамаарч огноог сольж шилжүүлэх хүсэлтийг арга хэмжээ эхлэхээс 7-оос дээш хоногийн өмнө илгээсэн тохиолдолд Гүйцэтгэгч нэмэлт төлбөргүйгээр шилжүүлнэ.</p>
+  <p><b>5.3</b> Захиалагч нь гэрээнд заасан хугацаанд төлбөрөө төлөөгүй тохиолдолд хугацаа хэтрүүлсэн хоног тутамд төлбөл зохих үнийн дүнгийн 0.3 хувьтай тэнцэх хэмжээний алдангийг Гүйцэтгэгчид төлнө.</p>
+  <p><b>5.4</b> Учирсан хохирол гэдэгт талууд гэрээний үүргээ зохих ёсоор биелүүлээгүйн улмаас нөгөө талд учирсан нэмэлт зардал, илүү төлбөр, гэрээний үүргээ зохих ёсоор биелүүлсэн бол гарахгүй байсан зардал зэрэг хохирлыг тооцно.</p>
+  <p><b>5.5</b> Гүйцэтгэгч нь майхан кемп үйлчилгээний заавар, зөвлөгөө, майхан болон бусад эд хэрэгсэл, төхөөрөмжтэй харьцах зааварчилгааг өгнө.</p>
+
+  <h2>ЗУРГАА. БУСАД</h2>
+  <p><b>6.1</b> Хууль тогтоомжид заасан гэнэтийн давагдашгүй хүчин зүйлсийн улмаас талуудын аль нэг нь гэрээнд заасан үүргээ биелүүлэх боломжгүй болсон тохиолдолд нөгөө талдаа ажлын 3 хоногийн дотор бичгээр мэдэгдэх ба энэ тохиолдолд үүрэг гүйцэтгэх хугацаа нь энэхүү нөхцөл байдал үргэлжлэх хугацаагаар хойшлогдоно.</p>
+  <p><b>6.2</b> Гэнэтийн давагдашгүй хүчин зүйлс гэдэгт гал түймэр, газар хөдлөлт, салхи шуурга, аянга цахилгаан, үер усны гамшиг зэрэг байгалийн гамшиг, нийтийг хамарсан үймээн эсэргүүцлийн хөдөлгөөн, төрийн эрх бүхий байгууллагын шийдвэр, хорио цээр зэрэг хамаарна.</p>
+  <p><b>6.3</b> Энэхүү гэрээтэй холбоотой үүссэн аливаа маргааныг эвийн журмаар шийдвэрлэх бөгөөд шийдвэрлэж чадаагүй тохиолдолд Монгол Улсын хуулийн дагуу шийдвэрлэнэ.</p>
+  <p><b>6.4</b> Талууд энэхүү гэрээгээр хүлээсэн эрх үүргээ аль нэг талын албан ёсны зөвшөөрөлгүйгээр гуравдагч этгээдэд хэсэгчлэн болон бүрэн хэмжээгээр шилжүүлэх эрхгүй.</p>
+  <p><b>6.5</b> Энэхүү гэрээг Монгол хэл дээр 2 хувь үйлдэж, талууд тус бүр нэг хувийг хадгалах бөгөөд хувь тус бүр нь хууль зүйн адил хүчинтэй байна.</p>
+
+  <div class="botsig">${sigCust}${sigChi}</div>
+
+  <div class="pb"></div>
+  <h2>Хавсралт №1 — Үйлчилгээний дэлгэрэнгүй</h2>
+  <table>
+    <tr><td>Кемп</td><td>${camp}</td></tr>
+    <tr><td>Багц</td><td>${tier}</td></tr>
+    <tr><td>Хүний тоо</td><td>${guests} хүн</td></tr>
+    <tr><td>Арга хэмжээний хугацаа</td><td>${ds.y}.${ds.mo}.${ds.d} ${ds.time} → ${de.y}.${de.mo}.${de.d} ${de.time}</td></tr>
+  </table>
+  <div class="cath">Багцад орсон үйлчилгээ:</div>
+  ${inclHtml}
+  <div class="cath">Нэмэлт төлбөрт үйлчилгээ:</div>
+  ${addonHtml}
+  <div class="cath">Тээврийн үйлчилгээ:</div>
+  ${transHtml}
+  <div class="total">Нийт дүн: ${fmtMoney(total)}</div>
+  <div class="botsig">${sigCust}${sigChi}</div>
+</div>
+</body></html>`;
+}
+
+function openNomaadContract(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрөөд дахин оролдоно уу', 'warn', 4000); return; }
+  w.document.write(nomaadContractHtml(o));
+  w.document.close();
 }
 
 /* Үнийн санал илгээх — nomaad-quote-send webhook (Төлөв=ИЛГЭЭХ) → хэрэглэгч рүү ШУУД Gmail-ээр

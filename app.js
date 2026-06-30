@@ -7190,23 +7190,28 @@ function nomaadContractHtml(o) {
   const svcTable = items.length
     ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt" style="font-weight:700">Нийт дүн (НӨАТ багтсан):</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr></table>`
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
-  const sigCust = `<b>Захиалагч: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ______________________<br>Хаяг: …………………………<br>Утас: ……………………`;
-  const sigChi = `<b>Гүйцэтгэгч: ${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ______________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}`;
+  const seal = '<div class="seal">( Тамга )</div>';
+  const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ____________________<br>Хаяг: …………………………<br>Утас: ……………………${seal}`;
+  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ____________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}${seal}`;
   const sigTable = `<table class="sigt"><tr><td>${sigCust}</td><td class="r">${sigChi}</td></tr></table>`;
-  const topSig = `<table class="sigt"><tr><td><b>БАТЛАВ: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………</td><td class="r"><b>БАТЛАВ: ${C.name}</b><br>${C.directorTitle.toUpperCase()}: ${C.director}</td></tr></table>`;
+  const topSig = `<table class="sigt"><tr><td><div class="sg-role">БАТЛАВ:</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ____________________${seal}</td><td class="r"><div class="sg-role">БАТЛАВ:</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ____________________${seal}</td></tr></table>`;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Гэрээ — ${co} (${escapeHtml(o.quote_no || '')})</title>
 <style>
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.55;max-width:820px;margin:0 auto;padding:26px 32px 60px;font-size:13.5px}
-  h1{text-align:center;font-size:18px;margin:14px 0 2px;letter-spacing:.3px}
+  h1{text-align:center;font-size:19px;margin:10px 0 4px;letter-spacing:.5px;font-weight:700}
   h2{font-size:14px;margin:17px 0 7px;border-bottom:1.5px solid #1f2937;padding-bottom:3px}
   p{margin:5px 0;text-align:justify}
-  .place{text-align:right;margin:4px 0 10px;color:#444}
-  .sigt{width:100%;border-collapse:collapse;margin:12px 0 18px;font-size:12.5px}
-  .sigt td{width:50%;vertical-align:top;padding:2px 12px;border:0;line-height:1.7}
+  .rule-t{border-top:2.5px solid #1f2937;margin:18px 0 0}
+  .rule-b{border-top:1px solid #1f2937;margin:5px 0 16px}
+  .meta-line{text-align:center;color:#444;font-size:12px;margin:4px 0 0}
+  .sigt{width:100%;border-collapse:collapse;margin:10px 0 16px;font-size:12.5px}
+  .sigt td{width:50%;vertical-align:top;padding:6px 14px;border:0;line-height:1.75}
   .sigt td.r{text-align:right}
+  .sg-role{font-size:11px;font-weight:700;letter-spacing:.6px;color:#1f2937;margin-bottom:2px}
+  .seal{margin-top:12px;color:#9ca3af;font-style:italic;font-size:11.5px}
   .apx{page-break-before:always}
   .muted{color:#888}
   .cath{font-weight:600;margin:9px 0 2px}
@@ -7231,8 +7236,10 @@ function nomaadContractHtml(o) {
 <div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг энд бичиж засаж болно</span></div>
 <div contenteditable="true">
   ${topSig}
+  <div class="rule-t"></div>
   <h1>КОРПОРАТ АРГА ХЭМЖЭЭ ЗОХИОН БАЙГУУЛАХ ГЭРЭЭ</h1>
-  <div class="place">${now.getFullYear()} оны ${now.getMonth() + 1}-р сарын ${now.getDate()} өдөр &nbsp;&nbsp; Улаанбаатар хот</div>
+  <div class="meta-line">Гэрээний дугаар: <b>${escapeHtml(o.quote_no || '')}</b> &nbsp;·&nbsp; ${now.getFullYear()} оны ${now.getMonth() + 1}-р сарын ${now.getDate()} өдөр &nbsp;·&nbsp; Улаанбаатар хот</div>
+  <div class="rule-b"></div>
 
   <h2>НЭГ. НИЙТЛЭГ ҮНДЭСЛЭЛ</h2>
   <p><b>1.1</b> Энэхүү гэрээг нэг талаас РД:${coReg} "${co}" (цаашид "Захиалагч" тал гэх) түүнийг төлөөлж …………………………, нөгөө талаас РД:${C.reg} ${C.name} (цаашид "Гүйцэтгэгч" гэх) түүнийг төлөөлж ${C.directorTitle} ${C.director} нар (цаашид хамтад нь "Талууд" гэх) дараах нөхцөлөөр харилцан тохиролцож энэхүү гэрээг байгуулав.</p>

@@ -7122,7 +7122,7 @@ const CHIMUN_LEGAL = {
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
   bank: 'Голомт банк', account: '3635185058',
-  phones: '7700-6790 (Захиалга), 9917-9417 (Менежер), 8802-8216 (Менежер)',
+  phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
 function _mnTriad(n) {
@@ -7190,11 +7190,11 @@ function nomaadContractHtml(o) {
   const svcTable = items.length
     ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt" style="font-weight:700">Нийт дүн (НӨАТ багтсан):</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr></table>`
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
-  const seal = '<div class="seal">( Тамга )</div>';
-  const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ____________________<br>Хаяг: …………………………<br>Утас: ……………………${seal}`;
-  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ____________________<br>Хаяг: ${C.address}<br>Утас: ${C.phones}${seal}`;
+  const seal = ' &nbsp;&nbsp; <span class="seal">( Тамга )</span>';
+  const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}<br>Хаяг: …………………………<br>Утас: ……………………`;
+  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}<br>Хаяг: ${C.address}<br>Утас: ${C.phones}`;
   const sigTable = `<table class="sigt"><tr><td>${sigCust}</td><td class="r">${sigChi}</td></tr></table>`;
-  const topSig = `<table class="sigt"><tr><td><div class="sg-role">БАТЛАВ:</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ____________________${seal}</td><td class="r"><div class="sg-role">БАТЛАВ:</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ____________________${seal}</td></tr></table>`;
+  const topSig = `<table class="sigt"><tr><td><div class="sg-role">БАТЛАВ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}</td><td class="r"><div class="sg-role">БАТЛАВ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}</td></tr></table>`;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Гэрээ — ${co} (${escapeHtml(o.quote_no || '')})</title>
@@ -7202,7 +7202,7 @@ function nomaadContractHtml(o) {
   *{box-sizing:border-box}
   body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.55;max-width:820px;margin:0 auto;padding:26px 32px 60px;font-size:13.5px}
   h1{text-align:center;font-size:19px;margin:10px 0 4px;letter-spacing:.5px;font-weight:700}
-  h2{font-size:14px;margin:17px 0 7px;border-bottom:1.5px solid #1f2937;padding-bottom:3px}
+  h2{font-size:14px;margin:17px 0 7px;border-bottom:1px solid #888;padding-bottom:3px}
   p{margin:5px 0;text-align:justify}
   .rule-t{border-top:2.5px solid #1f2937;margin:18px 0 0}
   .rule-b{border-top:1px solid #1f2937;margin:5px 0 16px}
@@ -7211,7 +7211,7 @@ function nomaadContractHtml(o) {
   .sigt td{width:50%;vertical-align:top;padding:6px 14px;border:0;line-height:1.75}
   .sigt td.r{text-align:right}
   .sg-role{font-size:11px;font-weight:700;letter-spacing:.6px;color:#1f2937;margin-bottom:2px}
-  .seal{margin-top:12px;color:#9ca3af;font-style:italic;font-size:11.5px}
+  .seal{color:#9ca3af;font-style:italic;font-size:11.5px}
   .apx{page-break-before:always}
   .muted{color:#888}
   .cath{font-weight:600;margin:9px 0 2px}

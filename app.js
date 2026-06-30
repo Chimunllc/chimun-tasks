@@ -7170,6 +7170,7 @@ function nomaadContractHtml(o) {
   const ds = _ctDT(o.date_start), de = _ctDT(o.date_end), now = new Date();
   const camp = escapeHtml(o.camp || '………'), tier = escapeHtml(o.tier || '………');
   const campPhrase = /кемп/i.test(o.camp || '') ? camp : camp + ' кемп';
+  const fname = ('Гэрээ ' + (o.company || 'NOMAAD') + ' ' + (o.quote_no || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
   // Хавсралт №1 — "Үнийн санал харах"-тай ИЖИЛ бүрэн хүснэгт (ангилалаар, тоо/нэгж/үнэ/багцад)
   const grouped = {}, catSeq = [];
   items.forEach(it => { const c = it.category || 'Бусад'; if (!grouped[c]) { grouped[c] = []; catSeq.push(c); } grouped[c].push(it); });
@@ -7223,7 +7224,7 @@ function nomaadContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF хадгалах</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг шууд энд бичиж засаж болно</span></div>
+<div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг энд бичиж засаж болно</span></div>
 <div contenteditable="true">
   <div class="topsig">
     <div class="sig"><b>БАТЛАВ: "${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………</div>
@@ -7297,6 +7298,18 @@ function nomaadContractHtml(o) {
   ${svcTable}
   <div class="botsig">${sigCust}${sigChi}</div>
 </div>
+<script>
+var CT_FILE=${JSON.stringify(fname)};
+function ctWord(){
+  var css=document.querySelector('style').innerHTML;
+  var body=document.querySelector('[contenteditable]').innerHTML;
+  var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>'+css+' @page{size:A4;margin:1.6cm 1.8cm} body{padding:0;max-width:none}</style></head><body>'+body+'</body></html>';
+  var blob=new Blob([String.fromCharCode(0xFEFF)+doc],{type:'application/msword'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=CT_FILE+'.doc';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href); a.remove();},1500);
+}
+</script>
 </body></html>`;
 }
 

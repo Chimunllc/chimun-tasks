@@ -13779,7 +13779,7 @@ async function refreshFromServer() {
     const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];
     // M-Event захиалга/бараа — refresh бүрд дахин татна (статус өөрчлөгдөхөд бусад ажилтанд хүрэх тулд).
     // Дотроо canSeeOrders/isCEO-аар хаалттай тул хамааралгүй хүмүүст no-op.
-    taskPromises.push(loadOrders(), loadProductsCatalog(), loadEvaluations());
+    taskPromises.push(loadOrders(), loadProductsCatalog(), loadEvaluations(), loadMemberPerms(), loadRolePerms());   // эрх refresh бүрд шинэчилнэ → CEO өгсөн эрх дахин нэвтрэхгүйгээр хүчинтэй
     // Ажилтны жагсаалт ховор өөрчлөгддөг — refresh бүрд биш, зөвхөн 2 цаг өнгөрсөн бол
     // дахин татна (n8n execution хэмнэх). Бүртгэл/засвар үед тусдаа шууд татагдсаар.
     const teamAge = Date.now() - (Number(localStorage.getItem('teamCacheAt')) || 0);

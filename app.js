@@ -9153,6 +9153,49 @@ function qWord(){var css=document.querySelector('style').innerHTML;var body=docu
   w.document.write(html); w.document.close();
 }
 
+// ── Банкны баримт PDF → автомат бөглөх (pdf.js CDN-ээс lazy) ──
+let _pdfjsPromise = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (_pdfjsPromise) return _pdfjsPromise;
+  _pdfjsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      } else reject(new Error('pdf.js ачаалагдсангүй'));
+    };
+    s.onerror = () => reject(new Error('pdf.js татаж чадсангүй — интернэт шалгана уу'));
+    document.head.appendChild(s);
+  });
+  return _pdfjsPromise;
+}
+async function extractPdfText(file) {
+  const pdfjsLib = await loadPdfJs();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join('\n') + '\n';
+  }
+  return text;
+}
+// Голомт (болон ижил төстэй) цахим гүйлгээний баримтаас дүн/огноо/гүйлгээний утга задлана
+function parseBankReceipt(text) {
+  const out = {};
+  const amt = text.match(/([\d]{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:MNT|₮|төг)/i);
+  if (amt) out.amount = Math.round(parseFloat(amt[1].replace(/,/g, '')));
+  const dt = (text.match(/Гүйлгээний\s*огноо[^\d]{0,20}(\d{4}-\d{2}-\d{2})/i)
+    || text.match(/(\d{4}-\d{2}-\d{2})/));
+  if (dt) out.date = dt[1];
+  const ref = text.match(/Гүйлгээний\s*утга\s*([\s\S]*?)\s*(?:Гүйлгээний\s*дүн|Гүйлгээний\s*төлөв)/i);
+  if (ref) out.ref = ref[1].replace(/\s+/g, ' ').trim();
+  return out;
+}
 function openBqPaymentModal(oid) {
   // Нэгдсэн төлбөрийн модал — bq_orders эсвэл app_orders хоёуланд ажиллана.
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
@@ -9170,6 +9213,11 @@ function openBqPaymentModal(oid) {
       <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
       <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
     </div>
+    <label for="bqp-pdf" style="display:block;margin-bottom:14px;font-size:12.5px;border:1.5px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+      📄 <b>Банкны баримт (PDF)</b> оруулж автомат бөглөх
+      <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" hidden>
+      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:3px;">дүн · огноо · гүйлгээний утга автоматаар</div>
+    </label>
     <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)
       <input id="bqp-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(bal || total)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
     <label style="display:block;margin-bottom:10px;font-size:13px;">Хэлбэр
@@ -9190,6 +9238,22 @@ function openBqPaymentModal(oid) {
   modal.querySelector('#bqp-cancel').addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#bqp-save').addEventListener('click', (e) => submitBqPayment(oid, modal, e.currentTarget));
+  // Банкны баримт PDF → автомат бөглөх
+  modal.querySelector('#bqp-pdf').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const status = modal.querySelector('#bqp-pdf-status');
+    status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
+    try {
+      const text = await extractPdfText(file);
+      const d = parseBankReceipt(text);
+      if (d.amount) modal.querySelector('#bqp-amount').value = moneyFmtInput(d.amount);
+      if (d.date) modal.querySelector('#bqp-date').value = d.date;
+      if (d.ref) modal.querySelector('#bqp-ref').value = d.ref;
+      const filled = [d.amount ? 'дүн' : null, d.date ? 'огноо' : null, d.ref ? 'утга' : null].filter(Boolean);
+      status.textContent = filled.length ? `✓ ${filled.join(' · ')} бөглөв — шалгаад Бүртгэ` : '⚠ Мэдээлэл олдсонгүй — гараар бөглөнө үү';
+      status.style.color = filled.length ? 'var(--ok)' : 'var(--warn)';
+    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
+  });
   modal.classList.add('open');
   setTimeout(() => modal.querySelector('#bqp-amount')?.focus(), 50);
 }

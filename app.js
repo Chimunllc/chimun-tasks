@@ -9048,6 +9048,7 @@ function openBqPaymentModal(oid) {
       </select></label>
     <label style="display:block;margin-bottom:16px;font-size:13px;">Огноо
       <input id="bqp-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);"></label>
+    <label style="display:block;margin-bottom:14px;font-size:13px;">Гүйлгээний утга <span style="color:var(--muted);font-weight:400;">(банкнаас яг хуулна — тулгалтад)</span><textarea id="bqp-ref" rows="2" placeholder="Жишээ: ITZONE -SHIREE SANDAL-нэр" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;">${escapeHtml(o.paid_ref || '')}</textarea></label>
     ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="bqp-cancel">Болих</button>
@@ -9071,13 +9072,14 @@ async function submitBqPayment(oid, modal, btn) {
   if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
   const method = modal.querySelector('#bqp-method').value || 'bank';
   const date = modal.querySelector('#bqp-date').value || new Date().toISOString().slice(0, 10);
+  const ref = (modal.querySelector('#bqp-ref')?.value || '').trim();
   btn.disabled = true;
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;
   const prevPaid = o.paid_mnt, prevStatus = o.status;
-  o.paid_mnt = newPaid; o.status = newStatus;   // optimistic
+  o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic
   try {
-    const body = { total_paid_in_cents: Math.round(newPaid * 100), updated_at: new Date().toISOString() };
+    const body = { total_paid_in_cents: Math.round(newPaid * 100), updated_at: new Date().toISOString(), paid_ref: ref, paid_method: method, paid_date: date };
     if (newStatus !== prevStatus) body.status = newStatus;
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_orders?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',

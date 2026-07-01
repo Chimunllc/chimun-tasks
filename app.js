@@ -10369,11 +10369,17 @@ function renderCalendar() {
   // НЭГДСЭН эвент — даалгавар + захиалга + NOMAAD-ыг огноогоор бүлэглэх
   if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  const cb = state.calBranch || 'all';
+  const isCampTask = (t) => /camp|кемп|nomaad|номаад/i.test(t.branch || '');
+  const isMEvTask = (t) => /m-event|event|ивент/i.test(t.branch || '');
+  const taskOk = (t) => cb === 'all' || (cb === 'm-event' ? !isCampTask(t) : !isMEvTask(t));
   const byDate = {};
   const addEv = (date, ev) => { const d = String(date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; (byDate[d] = byDate[d] || []).push(ev); };
-  state.tasks.forEach(t => { if (t.due && t.status !== 'deleted') addEv(t.due, { type: 'task', title: t.title, sub: memberName(t.assignee), done: t.status === 'done', priority: t.priority, id: t.id }); });
-  (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0) }); });
-  (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}` }); });
+  state.tasks.forEach(t => { if (t.due && t.status !== 'deleted' && taskOk(t)) addEv(t.due, { type: 'task', title: t.title, sub: memberName(t.assignee), done: t.status === 'done', priority: t.priority, id: t.id }); });
+  // Захиалга = M-Event салбар. Зөвхөн БАТАЛГААЖСАН (ноорог/цуцлагдсан/архив хасна).
+  if (cb !== 'camp') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0) }); });
+  // NOMAAD эвент = camp салбар.
+  if (cb !== 'm-event') (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}` }); });
 
   // Сонгосон өдөр
   const selected = state.calendarSelected || today;
@@ -10406,6 +10412,9 @@ function renderCalendar() {
         <div class="cal-title">${monthNames[month]} ${year}</div>
         <button class="cal-nav" id="cal-next" aria-label="Дараагийн сар">›</button>
         <button class="cal-today-btn" id="cal-today">Өнөөдөр</button>
+      </div>
+      <div class="cal-branch" style="display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap;">
+        ${[['all', '🏢 Бүгд'], ['m-event', '⛺ M-Event'], ['camp', '🏔 NOMAAD']].map(([v, l]) => `<button data-calbranch="${v}" style="padding:3px 13px;font-size:12px;border:1px solid ${cb === v ? 'var(--accent)' : 'var(--border)'};border-radius:14px;background:${cb === v ? 'var(--accent)' : 'transparent'};color:${cb === v ? '#fff' : 'var(--text)'};cursor:pointer;">${l}</button>`).join('')}
       </div>
       <div class="cal-weekdays">
         ${dayNames.map(d => `<div>${d}</div>`).join('')}
@@ -10453,6 +10462,9 @@ function attachCalendarHandlers() {
     state.calendarMonth = { year: now.getFullYear(), month: now.getMonth() };
     state.calendarSelected = todayStr();
     render();
+  });
+  document.querySelectorAll('[data-calbranch]').forEach(b => {
+    b.addEventListener('click', () => { state.calBranch = b.dataset.calbranch; render(); });
   });
   document.querySelectorAll('.cal-cell[data-date]').forEach(el => {
     el.addEventListener('click', () => {

@@ -6153,11 +6153,15 @@ function attachAccessHandlers() {
   }));
   document.querySelectorAll('input[data-person-cap]').forEach(cb => cb.addEventListener('change', () => {
     const pk = cb.dataset.personCap;
+    // Ижил эрх (capKey) олон цэсэнд байвал (ж orders.pay = Захиалга + Авлага) БҮГДИЙГ синк хийнэ,
+    // эс бөгөөс gatherFull-д сүүлийнх нь ялж, зөрчилдөнө.
+    document.querySelectorAll(`input[data-person-cap="${CSS.escape(pk)}"][data-cap-key="${CSS.escape(cb.dataset.capKey)}"]`).forEach(x => {
+      x.checked = cb.checked;
+      const c = x.closest('.ac-chip'); if (c) { c.classList.toggle('on', cb.checked); c.classList.toggle('act-off', !cb.checked); }
+    });
     const inputs = [...document.querySelectorAll(`input[data-person-cap="${CSS.escape(pk)}"]`)];
     saveMemberPerms(pk, gatherFull(inputs));   // БҮРЭН — хүний эрх албан тушаалыг дарна
     showToast('Эрх хадгаллаа', 'success', 1500);
-    const chip = cb.closest('.ac-chip');   // байрандаа шинэчилнэ (full render → scroll үсрэхгүй)
-    if (chip) { chip.classList.toggle('on', cb.checked); chip.classList.toggle('act-off', !cb.checked); }
   }));
   document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearMemberPerms(b.dataset.personReset); showToast('Албан тушаал руу буцаалаа', 'success', 1500); render();

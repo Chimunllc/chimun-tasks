@@ -2922,6 +2922,9 @@ function render() {
   if (state.view === 'salary' && !canSeeSalary()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
+  // View СОЛИГДОХОД тухайн view-ийн датаг шинээр татна → бусад төхөөрөмж дээр хийсэн
+  // өөрчлөлт (захиалга/бараа/шилжүүлэг) навигац хиймэгц шууд харагдана (re-login хэрэггүй).
+  if (state._renderedView !== state.view) { state._renderedView = state.view; if (typeof refreshViewData === 'function') setTimeout(refreshViewData, 0); }
   const blSel = document.getElementById('branch-lens');
   if (blSel) {
     const allowed = allowedLenses();
@@ -13694,6 +13697,16 @@ async function ensurePushSubscription() {
 }
 
 // Сэрвэрээс дата татаж дэлгэцийг шинэчлэх (poll + visibility-д хуваалцсан).
+// Тухайн харж буй view-ийн датаг шинээр татна (view сэлгэх бүрд). Эрхээр хаалттай view-д no-op.
+function refreshViewData() {
+  const v = state.view;
+  if (v === 'products' && canSeeProducts()) loadProductsCatalog();
+  else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadBooqableOrders(); }
+  else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
+  else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
+  else if (v === 'booqable' && canSeeBooqable()) loadBooqable(true);
+}
+
 async function refreshFromServer() {
   if (document.hidden) return; // нуугдсан үед сэрвэр дуудахгүй
   try {

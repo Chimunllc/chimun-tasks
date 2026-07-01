@@ -4053,7 +4053,6 @@ function attachOrdersHandlers() {
     const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appDel)); if (!ao) return;
     if (await showConfirm(`#${ao.number} захиалгыг устгах уу?`, { okText: 'Устгах', danger: true })) { deleteAppOrder(ao.id); showToast('Устгалаа', 'success', 1500); }
   }));
-  document.querySelectorAll('[data-app-pay]').forEach(b => b.addEventListener('click', () => openAppPaymentModal(b.dataset.appPay)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
 
   // Он-сар филтер
@@ -8852,7 +8851,7 @@ function bqOrderCard(o) {
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const appActive = st === 'draft' || st === 'reserved' || st === 'started';
   const foot = isApp
-    ? `<div class="order-foot">${appActive && appBal > 0 ? `<button class="btn btn-primary" data-app-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}${next && st !== 'draft' ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : (appActive ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appActive && appBal > 0 ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}${next && st !== 'draft' ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : (appActive ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -8907,72 +8906,6 @@ async function bqUpdateStatus(oid, to, opts = {}) {
 }
 
 // Төлбөр бүртгэх модал нээх (түүх захиалга)
-// ── App захиалгын төлбөр — app_orders (PATCH). Гүйлгээний утга (paid_ref) тулгалтад. Ноорог→Захиалсан ──
-function openAppPaymentModal(oid) {
-  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
-  if (!o) return;
-  if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
-  const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0, bal = Math.max(0, total - paid);
-  document.getElementById('app-pay-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg'; modal.id = 'app-pay-modal';
-  const inpCss = 'width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);';
-  modal.innerHTML = `<div class="modal" style="max-width:420px;">
-    <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
-    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
-      <div>Нийт дүн: <b>${fmtMoney(total)}</b></div>
-      <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
-      <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
-    </div>
-    <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)<input id="app-pay-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(bal || total)}" style="${inpCss}font-size:15px;"></label>
-    <label style="display:block;margin-bottom:10px;font-size:13px;">Хэлбэр<select id="app-pay-method" style="${inpCss}"><option value="bank">Банк</option><option value="cash">Бэлэн</option><option value="card">Карт</option><option value="other">Бусад</option></select></label>
-    <label style="display:block;margin-bottom:10px;font-size:13px;">Огноо<input id="app-pay-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="${inpCss}"></label>
-    <label style="display:block;margin-bottom:14px;font-size:13px;">Гүйлгээний утга <span style="color:var(--muted);font-weight:400;">(банкнаас яг хуулна — тулгалтад)</span><textarea id="app-pay-ref" rows="2" placeholder="Жишээ: ITZONE -SHIREE SANDAL-нэр" style="${inpCss}resize:vertical;">${escapeHtml(o.paid_ref || '')}</textarea></label>
-    ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
-      <button class="btn" id="app-pay-cancel">Болих</button>
-      <button class="btn btn-primary" id="app-pay-save">Бүртгэх</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-  const close = () => modal.remove();
-  modal.querySelector('#app-pay-cancel').addEventListener('click', close);
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('#app-pay-save').addEventListener('click', (e) => submitAppPayment(oid, modal, e.currentTarget));
-  modal.classList.add('open');
-  setTimeout(() => modal.querySelector('#app-pay-amount')?.focus(), 50);
-}
-
-async function submitAppPayment(oid, modal, btn) {
-  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
-  if (!o) return;
-  const amount = moneyVal(modal.querySelector('#app-pay-amount'));
-  if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
-  const method = modal.querySelector('#app-pay-method').value || 'bank';
-  const date = modal.querySelector('#app-pay-date').value || new Date().toISOString().slice(0, 10);
-  const ref = (modal.querySelector('#app-pay-ref').value || '').trim();
-  btn.disabled = true;
-  const newPaid = (Number(o.paid_mnt) || 0) + amount;
-  const newStatus = o.status === 'draft' ? 'reserved' : o.status;
-  const prev = { paid_mnt: o.paid_mnt, status: o.status, paid_ref: o.paid_ref, paid_method: o.paid_method, paid_date: o.paid_date };
-  o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic
-  render();
-  try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
-      method: 'PATCH',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ paid_mnt: newPaid, status: newStatus, paid_ref: ref, paid_method: method, paid_date: date, updated_at: new Date().toISOString() }),
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
-    modal.remove();
-    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${newStatus !== prev.status ? ' · Захиалсан боллоо' : ''}`, 'success', 2800);
-    render();
-  } catch (e) {
-    Object.assign(o, prev); btn.disabled = false; render();
-    showToast('Алдаа: ' + e.message, 'error', 5000);
-  }
-}
-
 // ── Захиалгын ҮНИЙН САНАЛ — захиалгын датагаар хэвлэх/Word баримт (NOMAAD-тай ижил маягаар) ──
 function openOrderQuote(oid) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
@@ -9028,7 +8961,8 @@ function qWord(){var css=document.querySelector('style').innerHTML;var body=docu
 }
 
 function openBqPaymentModal(oid) {
-  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  // Нэгдсэн төлбөрийн модал — bq_orders эсвэл app_orders хоёуланд ажиллана.
+  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
   if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
   const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0, bal = Math.max(0, total - paid);
@@ -9069,8 +9003,10 @@ function openBqPaymentModal(oid) {
 
 // Төлбөр бүртгэх — bq_orders.total_paid шинэчлэх + bq_payments-д бичих (audit). Ноорог→Захиалсан.
 async function submitBqPayment(oid, modal, btn) {
-  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  const o = bqO || (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
+  const isApp = !bqO;
   const amount = moneyVal(modal.querySelector('#bqp-amount'));
   if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
   const method = modal.querySelector('#bqp-method').value || 'bank';
@@ -9082,16 +9018,18 @@ async function submitBqPayment(oid, modal, btn) {
   const prevPaid = o.paid_mnt, prevStatus = o.status;
   o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic
   try {
-    const body = { total_paid_in_cents: Math.round(newPaid * 100), updated_at: new Date().toISOString(), paid_ref: ref, paid_method: method, paid_date: date };
+    const table = isApp ? 'app_orders' : 'bq_orders';
+    const body = { updated_at: new Date().toISOString(), paid_ref: ref, paid_method: method, paid_date: date };
+    if (isApp) body.paid_mnt = newPaid; else body.total_paid_in_cents = Math.round(newPaid * 100);
     if (newStatus !== prevStatus) body.status = newStatus;
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_orders?id=eq.${encodeURIComponent(oid)}`, {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
-    // Аудит — bq_payments-д бичих (амжилтгүй болоход эгзэгтэй биш)
-    try {
+    // Аудит — зөвхөн Booqable захиалгад bq_payments-д бичих (амжилтгүй болоход эгзэгтэй биш)
+    if (!isApp) try {
       const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now();
       await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_payments`, {
         method: 'POST',
@@ -9100,7 +9038,7 @@ async function submitBqPayment(oid, modal, btn) {
       }, 15000);
     } catch (e2) { console.warn('bq payment record', e2); }
     modal.remove();
-    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}`, 'success', 2800);
+    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${newStatus !== prevStatus ? ' · Захиалсан' : ''}`, 'success', 2800);
     render();
   } catch (e) {
     o.paid_mnt = prevPaid; o.status = prevStatus;   // буцаах

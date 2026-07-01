@@ -547,6 +547,14 @@ function generateNotifications() {
     });
   });
 
+  // 5r. ҮНЭЛГЭЭ ХҮЛЭЭЖ БУЙ — миний үүсгэсэн ажил дуусаад оноо өгөөгүй (хаагдаагүй)
+  state.tasks.filter(t => needsRating(t) && t.createdBy === state.me).forEach(t => {
+    const nid = `rate-pending-${t.id}`;
+    if (!seen.has(nid)) {
+      newOnes.push({ id: nid, type: 'assigned', taskId: t.id, msg: `★ Үнэлгээ өгнө үү: ${t.title} (${memberName(t.assignee)})`, ts: Date.now(), read: false });
+    }
+  });
+
   // 5b. FINANCE — батлах хүлээгдэж буй pending хүсэлт (өөрийн батлах ёстойг л харуулна)
   //   CEO → >5сая / менежергүй салбарынх (өөрийн хүсэлт ч багтана — дээш ахиулах хүн алга)
   //   Менежер → салбарынхаа ≤5сая (өөрийн хүсэлт авто CEO руу ахисан тул энд орохгүй)
@@ -2727,8 +2735,9 @@ function filteredTasks() {
     // 'all' эсвэл бусад → бүгд (татгалзсан/хойшлогдсон ч энд харагдана)
   } else {
     // status filter (Бүгд / Идэвхтэй / Хоцорсон / Өнөөдөр / Дууссан)
-    if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done');
-    else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done');
+    // Үнэлгээ хүлээж буй (миний үүсгэсэн, дуусаад оноогүй) = "хаагдаагүй" → Идэвхтэйд үлдэнэ, Дуусснаас хасагдана.
+    if (state.statusFilter === 'open') list = list.filter(t => t.status !== 'done' || (needsRating(t) && t.createdBy === state.me));
+    else if (state.statusFilter === 'done') list = list.filter(t => t.status === 'done' && !(needsRating(t) && t.createdBy === state.me));
     else if (state.statusFilter === 'overdue') list = list.filter(t => t.status !== 'done' && t.due && t.due < today);
     else if (state.statusFilter === 'today') list = list.filter(t => t.status !== 'done' && t.due === today);
     else if (state.statusFilter === 'week') {
@@ -8066,6 +8075,15 @@ function taskQualityScore(key, month) {
   const avg = rated.reduce((a, b) => a + b, 0) / rated.length;
   return { score: Math.round(avg * 20), rated: rated.length, doneTotal: done.length, avg: Math.round(avg * 10) / 10 };
 }
+// Ажил дууссан ч ҮҮСГЭГЧ (даалгавар өгөгч) чанарын үнэлгээ өгөөгүй бол "хаагдаагүй" — үнэлгээ хүлээж буй.
+// taskQualityScore-той нийцтэй: act_parent/санхүүгээс бусад, createdBy≠гүйцэтгэгч, оноогүй ажил.
+function needsRating(t) {
+  if (!t || t.status !== 'done') return false;
+  if (t.kind === 'finance_request' || t.kind === 'act_parent' || t._isFinance) return false;
+  if (!t.createdBy || t.createdBy === t.assignee) return false;
+  const q = Number(t.kpi_code);
+  return !(q >= 1 && q <= 5);
+}
 async function saveTaskQuality(id, rating) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
@@ -11596,6 +11614,12 @@ function renderRow(t) {
     }
     if (pillHtml) extraHtml += pillHtml;
   }
+  // Үнэлгээ хүлээж буй — дуусаад үүсгэгч оноо өгөөгүй (хаагдаагүй) тэмдэг
+  if (needsRating(t)) {
+    extraHtml += t.createdBy === state.me
+      ? '<span class="rate-pending own">★ Үнэлгээ өгнө үү</span>'
+      : '<span class="rate-pending">★ Үнэлгээ хүлээж буй</span>';
+  }
 
   // Status dot — shows current task state subtly
   const statusClass = t.status === 'done' ? 'done'
@@ -12197,15 +12221,18 @@ function openTaskModal(id) {
         <div style="display:flex;flex-wrap:wrap;gap:6px;">${imageThumbsHtml(attachImgs, { size: 92, label: 'Зураг' })}</div>
       </div>`;
     }
-    // ⭐ Ажлын чанар — зөвхөн даалгавар өгөгч (эсвэл CEO) дуусгасан ажлыг үнэлнэ.
+    // ⭐ Ажлын чанар — ЗӨВХӨН даалгавар өгөгч (үүсгэгч) үнэлнэ. Оноо өгөөгүй бол ажил ХААГДАХГҮЙ.
     // Үнэлгээ task.kpi_code баганд хадгалагдана (Sheet "KPI код", backend засваргүй).
-    const canRateQuality = t.status === 'done' && (state.me === t.createdBy || state.isCEO);
-    if (canRateQuality) {
-      const qVal = Number(t.kpi_code) || 0;
+    const qVal = Number(t.kpi_code) || 0;
+    const iAmCreator = t.status === 'done' && state.me === t.createdBy && t.createdBy !== t.assignee;
+    if (iAmCreator) {
+      const rated = qVal >= 1;
       info += `<div id="t-quality-block" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">⭐ Ажлын чанар — таны үнэлгээ (гүйцэтгэлийн оноонд 40% жинтэй)</div>
+        <div style="font-size:11px;color:${rated ? 'var(--muted)' : 'var(--warn)'};margin-bottom:6px;font-weight:${rated ? '400' : '700'};">⭐ Ажлын чанар — таны үнэлгээ${rated ? ' (гүйцэтгэлийн оноонд 40%)' : ' · оноо өгснөөр ажил ХААГДАНА'}</div>
         <div class="q-stars" style="display:flex;gap:6px;font-size:26px;line-height:1;cursor:pointer;">${[1,2,3,4,5].map(n => `<span class="q-star" data-q="${n}" style="color:${qVal >= n ? '#f59e0b' : 'var(--border)'};">★</span>`).join('')}</div>
       </div>`;
+    } else if (needsRating(t)) {
+      info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--warn);font-weight:600;">⏳ Үүсгэгч (${escapeHtml(memberName(t.createdBy))}) үнэлгээ өгөхийг хүлээж байна — үнэлэгдтэл ажил хаагдахгүй.</div>`;
     }
     creatorInfo.innerHTML = info;
     creatorInfo.style.display = 'block';

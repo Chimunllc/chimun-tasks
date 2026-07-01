@@ -9184,16 +9184,24 @@ async function extractPdfText(file) {
   }
   return text;
 }
-// Голомт (болон ижил төстэй) цахим гүйлгээний баримтаас дүн/огноо/гүйлгээний утга задлана
+// Голомт цахим гүйлгээний баримтаас БҮХ талбар (label-based): дүн/огноо/шилжүүлэгч/хүлээн авагч
+const _RECEIPT_LABELS = ['Хүлээн авагчийн банк', 'Хүлээн авагчийн данс', 'Хүлээн авагчийн нэр', 'Гүйлгээний дүн', 'Гүйлгээний огноо', 'Гүйлгээний утга', 'Гүйлгээний төлөв', 'Шилжүүлэгчийн нэр', 'Шилжүүлэгчийн дансны дугаар', 'Хүсэлтийн лавлах дугаар', 'Татсан огноо'];
 function parseBankReceipt(text) {
+  const lines = text.split('\n').map(l => l.replace(/ /g, ' ').trim()).filter(Boolean);
+  const isLabel = (l) => _RECEIPT_LABELS.some(lb => l === lb || l === lb + ':' || l.startsWith(lb));
+  const get = (label) => { const idx = lines.findIndex(l => l === label || l === label + ':' || l.startsWith(label)); if (idx < 0) return ''; const nx = lines[idx + 1]; return (nx && !isLabel(nx)) ? nx.trim() : ''; };
   const out = {};
-  const amt = text.match(/([\d]{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:MNT|₮|төг)/i);
-  if (amt) out.amount = Math.round(parseFloat(amt[1].replace(/,/g, '')));
-  const dt = (text.match(/Гүйлгээний\s*огноо[^\d]{0,20}(\d{4}-\d{2}-\d{2})/i)
-    || text.match(/(\d{4}-\d{2}-\d{2})/));
-  if (dt) out.date = dt[1];
-  const ref = text.match(/Гүйлгээний\s*утга\s*([\s\S]*?)\s*(?:Гүйлгээний\s*дүн|Гүйлгээний\s*төлөв)/i);
-  if (ref) out.ref = ref[1].replace(/\s+/g, ' ').trim();
+  const amtM = (get('Гүйлгээний дүн').match(/([\d,]+(?:\.\d+)?)/) || text.match(/([\d,]+(?:\.\d+)?)\s*MNT/i));
+  if (amtM) out.amount = Math.round(parseFloat(amtM[1].replace(/,/g, '')));
+  const dM = ((get('Гүйлгээний огноо') + get('Татсан огноо')).match(/\d{4}-\d{2}-\d{2}/) || text.match(/\d{4}-\d{2}-\d{2}/));
+  if (dM) out.date = dM[0];
+  out.receiverBank = get('Хүлээн авагчийн банк');
+  out.receiverAcct = get('Хүлээн авагчийн данс');
+  out.receiverName = get('Хүлээн авагчийн нэр');
+  out.senderName = get('Шилжүүлэгчийн нэр');
+  out.senderAcct = get('Шилжүүлэгчийн дансны дугаар');
+  out.ref = get('Гүйлгээний утга');
+  out.status = get('Гүйлгээний төлөв');
   return out;
 }
 function openBqPaymentModal(oid) {
@@ -9206,31 +9214,34 @@ function openBqPaymentModal(oid) {
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
   modal.id = 'bq-pay-modal';
-  modal.innerHTML = `<div class="modal" style="max-width:400px;">
+  const CHIMUN_ACCT = '3635185058';   // Чимун ХХК Голомт данс — баримтын хүлээн авагчтай тулгах
+  const rowCss = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border);';
+  modal.innerHTML = `<div class="modal" style="max-width:430px;">
     <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
     <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
       <div>Нийт дүн: <b>${fmtMoney(total)}</b></div>
       <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
       <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
     </div>
-    <label for="bqp-pdf" style="display:block;margin-bottom:14px;font-size:12.5px;border:1.5px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Банкны баримт (PDF)</b> оруулж автомат бөглөх
+    <label for="bqp-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+      📄 <b>Банкны баримт (PDF) оруулах</b>
       <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" hidden>
-      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:3px;">дүн · огноо · гүйлгээний утга автоматаар</div>
+      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Дүн · огноо · шилжүүлэгч автоматаар. <b>Гараар бүртгэх боломжгүй.</b></div>
     </label>
-    <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)
-      <input id="bqp-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(bal || total)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
-    <label style="display:block;margin-bottom:10px;font-size:13px;">Хэлбэр
-      <select id="bqp-method" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);">
-        <option value="bank">Банк</option><option value="cash">Бэлэн</option><option value="card">Карт</option><option value="other">Бусад</option>
-      </select></label>
-    <label style="display:block;margin-bottom:16px;font-size:13px;">Огноо
-      <input id="bqp-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);"></label>
-    <label style="display:block;margin-bottom:14px;font-size:13px;">Гүйлгээний утга <span style="color:var(--danger);font-weight:700;">*</span> <span style="color:var(--muted);font-weight:400;">(банкнаас яг хуулна — заавал, тулгалтад)</span><textarea id="bqp-ref" rows="2" placeholder="Жишээ: ITZONE -SHIREE SANDAL-нэр" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;">${escapeHtml(o.paid_ref || '')}</textarea></label>
+    <div id="bqp-fields" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:14px;">
+      <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний дүн</span><b id="bqp-amount-disp" style="font-size:15px;color:var(--ok);"></b></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Огноо</span><span id="bqp-date-disp"></span></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Шилжүүлэгч</span><b id="bqp-sender-disp" style="text-align:right;"></b></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Шилжүүлэгчийн данс</span><span id="bqp-sacct-disp"></span></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Хүлээн авагч</span><span id="bqp-receiver-disp" style="text-align:right;"></span></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний утга</span><span id="bqp-ref-disp" style="text-align:right;color:var(--muted);"></span></div>
+      <div style="${rowCss}border-bottom:none;"><span style="color:var(--muted);">Төлөв</span><span id="bqp-status-disp"></span></div>
+    </div>
+    <input type="hidden" id="bqp-amount"><input type="hidden" id="bqp-date"><input type="hidden" id="bqp-method" value="bank"><input type="hidden" id="bqp-ref">
     ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="bqp-cancel">Болих</button>
-      <button class="btn btn-primary" id="bqp-save">Бүртгэх</button>
+      <button class="btn btn-primary" id="bqp-save" disabled style="opacity:.45;cursor:not-allowed;">Бүртгэх</button>
     </div>
   </div>`;
   document.body.appendChild(modal);
@@ -9238,24 +9249,37 @@ function openBqPaymentModal(oid) {
   modal.querySelector('#bqp-cancel').addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#bqp-save').addEventListener('click', (e) => submitBqPayment(oid, modal, e.currentTarget));
-  // Банкны баримт PDF → автомат бөглөх
+  const saveBtn = modal.querySelector('#bqp-save');
+  const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  // Банкны баримт PDF → автомат задалж, зөвхөн үүгээр бүртгэнэ (гараар оруулах боломжгүй)
   modal.querySelector('#bqp-pdf').addEventListener('change', async (e) => {
     const file = e.target.files[0]; if (!file) return;
     const status = modal.querySelector('#bqp-pdf-status');
-    status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
+    status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)'; enableSave(false);
     try {
-      const text = await extractPdfText(file);
-      const d = parseBankReceipt(text);
-      if (d.amount) modal.querySelector('#bqp-amount').value = moneyFmtInput(d.amount);
-      if (d.date) modal.querySelector('#bqp-date').value = d.date;
-      if (d.ref) modal.querySelector('#bqp-ref').value = d.ref;
-      const filled = [d.amount ? 'дүн' : null, d.date ? 'огноо' : null, d.ref ? 'утга' : null].filter(Boolean);
-      status.textContent = filled.length ? `✓ ${filled.join(' · ')} бөглөв — шалгаад Бүртгэ` : '⚠ Мэдээлэл олдсонгүй — гараар бөглөнө үү';
-      status.style.color = filled.length ? 'var(--ok)' : 'var(--warn)';
-    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
+      const d = parseBankReceipt(await extractPdfText(file));
+      if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт гүйлгээний баримт мөн эсэхийг шалгана уу');
+      modal.querySelector('#bqp-amount-disp').textContent = fmtMoney(d.amount);
+      modal.querySelector('#bqp-date-disp').textContent = d.date || '—';
+      modal.querySelector('#bqp-sender-disp').textContent = d.senderName || '—';
+      modal.querySelector('#bqp-sacct-disp').textContent = d.senderAcct || '—';
+      modal.querySelector('#bqp-receiver-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
+      modal.querySelector('#bqp-ref-disp').textContent = d.ref || '—';
+      modal.querySelector('#bqp-status-disp').textContent = d.status || '—';
+      modal.querySelector('#bqp-fields').style.display = '';
+      modal.querySelector('#bqp-amount').value = String(d.amount);
+      modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
+      modal.querySelector('#bqp-ref').value = [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · ');
+      // Анхааруулга: хүлээн авагчийн данс Чимунийх биш / төлөв амжилтгүй бол
+      const warns = [];
+      if (d.receiverAcct && d.receiverAcct.replace(/\D/g, '') !== CHIMUN_ACCT) warns.push('хүлээн авагчийн данс Чимунийх биш');
+      if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
+      status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
+      status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';
+      enableSave(true);
+    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; enableSave(false); }
   });
   modal.classList.add('open');
-  setTimeout(() => modal.querySelector('#bqp-amount')?.focus(), 50);
 }
 
 // Төлбөр бүртгэх — bq_orders.total_paid шинэчлэх + bq_payments-д бичих (audit). Ноорог→Захиалсан.
@@ -9268,8 +9292,7 @@ async function submitBqPayment(oid, modal, btn) {
   if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
   const method = modal.querySelector('#bqp-method').value || 'bank';
   const date = modal.querySelector('#bqp-date').value || new Date().toISOString().slice(0, 10);
-  const ref = (modal.querySelector('#bqp-ref')?.value || '').trim();
-  if (!ref) { showToast('Гүйлгээний утгыг ЗААВАЛ оруулна уу (банкны хуулгатай тулгахад хэрэгтэй)', 'warn', 4000); modal.querySelector('#bqp-ref')?.focus(); return; }
+  const ref = (modal.querySelector('#bqp-ref')?.value || '').trim();   // PDF-ээс: шилжүүлэгч · данс · утга (гүйлгээний утга дангаараа шаардлагагүй)
   btn.disabled = true;
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;

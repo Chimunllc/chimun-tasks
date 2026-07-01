@@ -10701,6 +10701,7 @@ function openPendingRegistration(member) {
     fmt('Утас', member.phone),
     fmt('И-мэйл', member.email),
     fmt('РД', member.rd),
+    fmt('Хүйс', member.gender),
     fmt('Гэрийн хаяг', member.address),
     fmt('Яаралтай үед', `${member.emergency_name || ''}${member.emergency_phone ? ' — ' + member.emergency_phone : ''}`),
     fmt('Хүсэлт өгсөн', member.requested_at ? new Date(member.requested_at).toLocaleString('mn-MN') : ''),
@@ -10866,8 +10867,9 @@ function renderStaffList() {
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
         <span class="staff-avatar">${escapeHtml(memberInitials(key))}<img src="${escapeHtml(staffPhotoUrl(key))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" /></span>
         <div class="staff-info">
-          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
+          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${m.gender ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм'}</span>` : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+          ${state.isCEO ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;">Хүйс: <button data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эрэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эр</button><button data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эмэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эм</button></div>` : ''}
           ${state.isCEO && isActive ? `<label class="staff-finperm" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} style="margin:0;width:auto;" />🏦 Санхүү: салбар засах эрх</label>` : ''}
         </div>
         <span class="staff-status status-${statusCls}">${statusLabel}</span>
@@ -10890,6 +10892,9 @@ function renderStaffList() {
   ).join('');
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
+  });
+  listEl.querySelectorAll('[data-staff-gender]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); const m = findMember(btn.dataset.staffGender); if (m) saveStaffGender(m, btn.dataset.gender); });
   });
   // Санхүү салбар-засах эрх — CEO тус бүр дээр асаах/унтраах.
   listEl.querySelectorAll('[data-finperm]').forEach(cb => {
@@ -11019,6 +11024,32 @@ async function saveStaffRole(member, role) {
   } catch(e) {
     member.role = prev;
     try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch(_) {}
+    renderStaffList();
+    showToast('Алдаа: ' + e.message, 'error');
+  }
+}
+
+// Хүйс тохируулах (CEO) — staff-update {action:'update_gender'} → employees.gender
+async function saveStaffGender(member, gender) {
+  gender = String(gender || '').trim();
+  if (gender === (member.gender || '')) return;
+  const prev = member.gender || '';
+  member.gender = gender;
+  try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch (e) {}
+  renderStaffList();
+  const base = state.config.staffUrl;
+  if (!base) { showToast('Локалд хадгаллаа (sync алга)', 'warn'); return; }
+  const url = base.replace(/\/[^\/]+$/, '/staff-update');
+  try {
+    const r = await fetchWithTimeout(withKey(url), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_gender', phone: member.phone, gender }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast(`${member.name}: хүйс → ${gender || '—'}`, 'success', 2200);
+  } catch (e) {
+    member.gender = prev;
+    try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch (_) {}
     renderStaffList();
     showToast('Алдаа: ' + e.message, 'error');
   }

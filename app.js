@@ -2983,9 +2983,8 @@ function renderSidebar() {
     ordersNav.style.display = canSeeOrders() ? '' : 'none';
     const oCnt = document.getElementById('cnt-orders');
     if (oCnt) {
-      // Захиалга = Booqable. Анхаарал шаардсан = "Захиалсан" (reserved, удахгүй гаргах).
-      // bqOrders lazy тул нээгээгүй бол 0 (захиалга нээмэгц зөв болно).
-      oCnt.textContent = String((state.bqOrders || []).filter(o => o.status === 'reserved').length);
+      // Анхаарал шаардсан = "Захиалсан" (reserved, удахгүй гаргах). Захиалга бүр app_orders-т.
+      oCnt.textContent = String((state.appOrders || []).filter(o => o.status === 'reserved').length);
     }
   }
   // Тайлан — зөвхөн бүх санхүү хардаг (CEO/нягтлан/салбар-засагч) — удирдлагын тайлан.
@@ -3022,7 +3021,7 @@ function renderSidebar() {
   if (arNav) {
     arNav.style.display = canSeeReceivables() ? '' : 'none';
     const arCnt = document.getElementById('cnt-receivables');
-    if (arCnt && canSeeReceivables() && (state.bqOrders || (state.nomaadOrders && state.nomaadOrders.length))) {
+    if (arCnt && canSeeReceivables() && (state.appOrders || (state.nomaadOrders && state.nomaadOrders.length))) {
       try { const od = receivablesData().items.filter(i => i.overdue).length; arCnt.textContent = String(od); arCnt.style.display = od ? '' : 'none'; } catch (e) {}
     }
   }
@@ -4846,10 +4845,9 @@ async function openScanner() {
 
 // Захиалгын бараа гаргах/буцаах скан — бараа бүрийг сканнердаж бүгд бэлэн эсэхийг шалгана.
 async function openOrderScanModal(oid) {
-  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
-  const raw = await loadBooqableOrderItems(oid);
-  const items = (raw || []).map(it => ({ name: it.title || '', qty: Math.max(1, Math.round(Number(it.quantity) || 1)), scanned: 0 }))
+  const items = (o.items || []).map(it => ({ name: it.name || it.title || '', qty: Math.max(1, Math.round(Number(it.qty ?? it.quantity) || 1)), scanned: 0 }))
     .filter(it => it.name);
   if (!items.length) { showToast('Энэ захиалгад бараа алга', 'warn'); return; }
   document.getElementById('oscan-modal')?.remove();
@@ -8467,15 +8465,11 @@ async function loadBooqable(force) {
 // Booqable түүх захиалгуудыг lazy татна (үндсэн Захиалга самбарын архив). bq_v_orders view.
 // state.bqOrders — top-level (Түрээсийн түүх самбар нээгээгүй ч ажиллана).
 async function loadBooqableOrders() {
-  if (state._bqOrdersLoading || state.bqOrders) return;
-  if (!SUPABASE_ANON_KEY) { state.bqOrders = []; return; }
-  state._bqOrdersLoading = true;
-  try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_orders?select=*`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 25000);
-    state.bqOrders = r.ok ? await r.json() : [];   // view байхгүй бол хоосон
-  } catch (e) { console.warn('loadBooqableOrders', e); state.bqOrders = []; }
-  finally { state._bqOrdersLoading = false; if (typeof render === 'function') render(); }
+  // Захиалга бүр одоо app_orders-т НЭГДСЭН (Booqable архивыг app_orders руу migrate хийсэн).
+  // bqOrders-ийг хоосон байлгана → төлбөр/статусын routing бүгд app_orders руу орно.
+  // Жагсаалт/авлага/дашборд/badge бүгд state.appOrders уншина. Аналитик (bq_v_* view) тусдаа.
+  state.bqOrders = [];
+  return loadAppOrders();
 }
 
 // Нэг захиалгын бараа (мөр)-ийг шаардахад татна, кэшилнэ. bq_v_order_items view.
@@ -8616,14 +8610,9 @@ async function deleteAppOrder(id) {
   try { await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
 }
 function unifiedOrders() {
-  const bq = (state.bqOrders || []).map(o => {
-    const raw = String(o.status || '');
-    return { src: 'bq', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'archived',
-      ym: String(o.starts_at || o.created_at || '').slice(0, 7), date: o.starts_at || o.created_at || '',
-      total: Number(o.total_mnt) || 0,
-      hay: `#${o.number ?? ''} ${o.customer || ''} ${o.phone || ''} ${o.email || ''}`.toLowerCase() };
-  });
-  const app = (state.appOrders || []).map(ao => {
+  // Захиалга бүр app_orders-т нэгдсэн (Booqable архив + шинэ захиалга). Нэг эх сурвалж.
+  // source='booqable' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
+  return (state.appOrders || []).map(ao => {
     const raw = String(ao.status || 'reserved');
     const o = { ...ao, item_count: (ao.items || []).length, _app: true };
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
@@ -8631,7 +8620,6 @@ function unifiedOrders() {
       total: Number(ao.total_mnt) || 0,
       hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${ao.contract_no || ''}`.toLowerCase() };
   });
-  return [...app, ...bq];   // app (шинэ) эхэндээ
 }
 
 // Түрээсийн хоног: 24ц = 1 хоног, 24ц-аас хэтэрвэл +1 хоног (минут тоохгүй, зөвхөн цагаар). Доод тал 1 хоног.
@@ -9054,8 +9042,8 @@ async function submitBqPayment(oid, modal, btn) {
 function receivablesData() {
   const today = new Date().toISOString().slice(0, 10);
   const items = [];
-  // Booqable: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна
-  (state.bqOrders || []).forEach(o => {
+  // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
+  (state.appOrders || []).forEach(o => {
     const st = String(o.status || '');
     if (st === 'draft' || st === 'canceled') return;
     const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
@@ -9207,7 +9195,7 @@ function ceoNowStrip() {
   const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = d7.toISOString().slice(0, 10);
   const inWin = (s) => s && s >= today && s <= in7;
   let deliveries = 0, returns = 0;
-  (state.bqOrders || []).forEach(o => {
+  (state.appOrders || []).forEach(o => {
     const st = String(o.status || '');
     if (st === 'reserved' && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
     if (st === 'started' && inWin(String(o.stops_at || '').slice(0, 10))) returns++;

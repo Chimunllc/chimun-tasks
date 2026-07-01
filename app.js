@@ -4053,6 +4053,8 @@ function attachOrdersHandlers() {
     const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appDel)); if (!ao) return;
     if (await showConfirm(`#${ao.number} захиалгыг устгах уу?`, { okText: 'Устгах', danger: true })) { deleteAppOrder(ao.id); showToast('Устгалаа', 'success', 1500); }
   }));
+  document.querySelectorAll('[data-app-pay]').forEach(b => b.addEventListener('click', () => openAppPaymentModal(b.dataset.appPay)));
+  document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -8684,7 +8686,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Хаяг"></label>
       <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
-      ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}>${BQ_STATUS[k].label}</option>`).join('')}</select></label>` : ''}
+      ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
     </div>
     <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
     <div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
@@ -8847,8 +8849,10 @@ function bqOrderCard(o) {
     ? `<div class="order-meta">💵 Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
+  const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
+  const appActive = st === 'draft' || st === 'reserved' || st === 'started';
   const foot = isApp
-    ? `<div class="order-foot"><button class="btn btn-primary" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button><button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button></div>`
+    ? `<div class="order-foot">${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${appActive && appBal > 0 ? `<button class="btn btn-primary" data-app-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : ''}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -8900,6 +8904,126 @@ async function bqUpdateStatus(oid, to, opts = {}) {
 }
 
 // Төлбөр бүртгэх модал нээх (түүх захиалга)
+// ── App захиалгын төлбөр — app_orders (PATCH). Гүйлгээний утга (paid_ref) тулгалтад. Ноорог→Захиалсан ──
+function openAppPaymentModal(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
+  const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0, bal = Math.max(0, total - paid);
+  document.getElementById('app-pay-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'app-pay-modal';
+  const inpCss = 'width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h2>💵 Төлбөр бүртгэх — #${o.number}</h2>
+    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
+      <div>Нийт дүн: <b>${fmtMoney(total)}</b></div>
+      <div>Өмнө төлсөн: ${fmtMoney(paid)}</div>
+      <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
+    </div>
+    <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)<input id="app-pay-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(bal || total)}" style="${inpCss}font-size:15px;"></label>
+    <label style="display:block;margin-bottom:10px;font-size:13px;">Хэлбэр<select id="app-pay-method" style="${inpCss}"><option value="bank">Банк</option><option value="cash">Бэлэн</option><option value="card">Карт</option><option value="other">Бусад</option></select></label>
+    <label style="display:block;margin-bottom:10px;font-size:13px;">Огноо<input id="app-pay-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="${inpCss}"></label>
+    <label style="display:block;margin-bottom:14px;font-size:13px;">Гүйлгээний утга <span style="color:var(--muted);font-weight:400;">(банкнаас яг хуулна — тулгалтад)</span><textarea id="app-pay-ref" rows="2" placeholder="Жишээ: ITZONE -SHIREE SANDAL-нэр" style="${inpCss}resize:vertical;">${escapeHtml(o.paid_ref || '')}</textarea></label>
+    ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="app-pay-cancel">Болих</button>
+      <button class="btn btn-primary" id="app-pay-save">Бүртгэх</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#app-pay-cancel').addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#app-pay-save').addEventListener('click', (e) => submitAppPayment(oid, modal, e.currentTarget));
+  modal.classList.add('open');
+  setTimeout(() => modal.querySelector('#app-pay-amount')?.focus(), 50);
+}
+
+async function submitAppPayment(oid, modal, btn) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const amount = moneyVal(modal.querySelector('#app-pay-amount'));
+  if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
+  const method = modal.querySelector('#app-pay-method').value || 'bank';
+  const date = modal.querySelector('#app-pay-date').value || new Date().toISOString().slice(0, 10);
+  const ref = (modal.querySelector('#app-pay-ref').value || '').trim();
+  btn.disabled = true;
+  const newPaid = (Number(o.paid_mnt) || 0) + amount;
+  const newStatus = o.status === 'draft' ? 'reserved' : o.status;
+  const prev = { paid_mnt: o.paid_mnt, status: o.status, paid_ref: o.paid_ref, paid_method: o.paid_method, paid_date: o.paid_date };
+  o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic
+  render();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ paid_mnt: newPaid, status: newStatus, paid_ref: ref, paid_method: method, paid_date: date, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+    modal.remove();
+    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${newStatus !== prev.status ? ' · Захиалсан боллоо' : ''}`, 'success', 2800);
+    render();
+  } catch (e) {
+    Object.assign(o, prev); btn.disabled = false; render();
+    showToast('Алдаа: ' + e.message, 'error', 5000);
+  }
+}
+
+// ── Захиалгын ҮНИЙН САНАЛ — захиалгын датагаар хэвлэх/Word баримт (NOMAAD-тай ижил маягаар) ──
+function openOrderQuote(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
+  const items = (o.items || []);
+  const itemRows = items.map((it, i) => { const qty = Number(it.qty) || 1, price = Number(it.price) || 0; return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}</td><td class="ctr">${qty}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price)}</td></tr>`; }).join('');
+  const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
+  const discount = subtotal > total ? subtotal - total : 0;
+  const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
+  const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
+  const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
+  const fname = ('Үнийн санал ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
+  const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
+<style>
+  *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.5;max-width:760px;margin:0 auto;padding:26px 32px 50px;font-size:13.5px}
+  h1{text-align:center;font-size:20px;letter-spacing:.5px;margin:8px 0 4px} .rule{border-top:2.5px solid #1f2937;margin:12px 0}
+  .meta-line{text-align:center;color:#444;font-size:12px;margin:2px 0 12px}
+  .cols{display:flex;gap:24px;margin:10px 0 16px;font-size:12.5px} .col{flex:1} .lbl{color:#666;font-size:11px;font-weight:700}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px} th,td{border:1px solid #ccc;padding:5px 9px} th{background:#eee;text-align:left}
+  .ctr{text-align:center;white-space:nowrap} .rt{text-align:right;white-space:nowrap}
+  .totals{margin:8px 0 0 auto;width:290px} .totals td{border:0;padding:3px 6px} .totals .g td{font-size:15px;font-weight:700;border-top:2px solid #1f2937}
+  .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
+  .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
+  @media print{.toolbar{display:none}body{padding:0}}
+</style></head><body>
+<div class="toolbar"><button onclick="qWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button></div>
+<div id="q">
+  <div class="rule"></div>
+  <h1>ҮНИЙН САНАЛ</h1>
+  <div class="meta-line">Дугаар: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; ${fd(now)} &nbsp;·&nbsp; Хүчинтэй: ${fd(valid)} хүртэл</div>
+  <div class="rule" style="border-top-width:1px"></div>
+  <div class="cols">
+    <div class="col"><div class="lbl">ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭГЧ</div><b>${C.name}</b><br>РД: ${C.reg}<br>${C.address}<br>Утас: 7700-6790<br>Данс: ${C.bank} — ${C.account}</div>
+    <div class="col"><div class="lbl">ҮЙЛЧЛҮҮЛЭГЧ</div><b>${escapeHtml(o.customer || '—')}</b><br>${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? 'Хаяг: ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? '<b>Хугацаа:</b> ' + period : ''}</div>
+  </div>
+  <table><tr><th class="ctr">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Нэгж үнэ</th><th class="rt">Дүн</th></tr>${itemRows || '<tr><td colspan="5" style="text-align:center;color:#888">Бараа оруулаагүй</td></tr>'}</table>
+  <table class="totals">
+    ${discount ? `<tr><td>Дэд дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr><tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
+    ${deposit ? `<tr><td>Барьцаа (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
+    <tr class="g"><td>НИЙТ ДҮН:</td><td class="rt">${fmtMoney(total)}</td></tr>
+  </table>
+  <div style="clear:both"></div>
+  <p style="margin-top:22px;font-size:12px;color:#555;line-height:1.7;">• Үнэ НӨАТ багтсан. &nbsp; • Захиалга баталгаажуулахад нийт дүнгийн 30% урьдчилгаа. &nbsp; • Төлбөрийн данс: <b>${C.bank} — ${C.account}</b> (${C.name}).</p>
+</div>
+<script>
+function qWord(){var css=document.querySelector('style').innerHTML;var body=document.getElementById('q').innerHTML;var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>'+css+' @page{size:A4;margin:1.6cm} body{padding:0;max-width:none}</style></head><body>'+body+'</body></html>';var blob=new Blob([String.fromCharCode(0xFEFF)+doc],{type:'application/msword'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=${JSON.stringify(fname)}+'.doc';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1500);}
+</script>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  w.document.write(html); w.document.close();
+}
+
 function openBqPaymentModal(oid) {
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;

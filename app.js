@@ -4937,13 +4937,19 @@ async function saveProduct(product) {
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
-  // Салбарын нөөц: шинэ бол анхны хуваарилалт (asset→Чимун, бусад→M-Event); засварт нөөцийн зөрүүг M-Event-д тохируулж нийлбэрийг stock-тэй тэнцүү барина
+  // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
+  // Эс бол хуучин дедукц (asset→Чимун, бусад→M-Event; засварт зөрүүг M-Event-д).
   const _cur = state.products.find(x => x.sku === product.sku) || {};
-  let _qc = idx < 0 ? 0 : (Number(_cur.qty_chimun) || 0);
-  let _qm = idx < 0 ? 0 : (Number(_cur.qty_mevent) || 0);
-  let _qn = idx < 0 ? 0 : (Number(_cur.qty_nomaad) || 0);
-  if (idx < 0) { if (row.type === 'asset') _qc = row.stock; else _qm = row.stock; }
-  else { const _diff = row.stock - (_qc + _qm + _qn); if (_diff !== 0) _qm = Math.max(0, _qm + _diff); }
+  let _qc, _qm, _qn;
+  if (product.qty_mevent != null || product.qty_chimun != null || product.qty_nomaad != null) {
+    _qc = Number(product.qty_chimun) || 0; _qm = Number(product.qty_mevent) || 0; _qn = Number(product.qty_nomaad) || 0;
+  } else {
+    _qc = idx < 0 ? 0 : (Number(_cur.qty_chimun) || 0);
+    _qm = idx < 0 ? 0 : (Number(_cur.qty_mevent) || 0);
+    _qn = idx < 0 ? 0 : (Number(_cur.qty_nomaad) || 0);
+    if (idx < 0) { if (row.type === 'asset') _qc = row.stock; else _qm = row.stock; }
+    else { const _diff = row.stock - (_qc + _qm + _qn); if (_diff !== 0) _qm = Math.max(0, _qm + _diff); }
+  }
   row.qty_chimun = _qc; row.qty_mevent = _qm; row.qty_nomaad = _qn;
   _cur.qty_chimun = _qc; _cur.qty_mevent = _qm; _cur.qty_nomaad = _qn;
   try {
@@ -6146,7 +6152,8 @@ function attachAccessHandlers() {
     const inputs = [...document.querySelectorAll(`input[data-role-cap="${CSS.escape(role)}"]`)];
     saveRolePerms(role, gather(inputs));
     showToast('Албан тушаалын эрх хадгаллаа', 'success', 1500);
-    render();
+    const chip = cb.closest('.ac-chip');   // байрандаа шинэчилнэ (full render → scroll үсрэхгүй)
+    if (chip) { chip.classList.toggle('on', cb.checked); chip.classList.toggle('act-off', !cb.checked); }
   }));
   document.querySelectorAll('[data-role-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearRolePerms(b.dataset.roleReset); showToast('Default руу буцаалаа', 'success', 1500); render();
@@ -6162,7 +6169,8 @@ function attachAccessHandlers() {
     const inputs = [...document.querySelectorAll(`input[data-person-cap="${CSS.escape(pk)}"]`)];
     saveMemberPerms(pk, gather(inputs));
     showToast('Хувь хүний эрх хадгаллаа', 'success', 1500);
-    render();
+    const chip = cb.closest('.ac-chip');   // байрандаа шинэчилнэ (full render → scroll үсрэхгүй)
+    if (chip) { chip.classList.toggle('on', cb.checked); chip.classList.toggle('act-off', !cb.checked); }
   }));
   document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearMemberPerms(b.dataset.personReset); showToast('Албан тушаал руу буцаалаа', 'success', 1500); render();
@@ -8328,7 +8336,16 @@ function openProductModal(p) {
   const u = isEdit ? productUtilization(p.name) : { orders: 0, revenue: 0 };
   const invested = cost * (Number(p && p.stock) || 0);
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;
-  const rentable = isEdit ? isRentable(p) : true;
+  // Салбарын нөөцийн анхны утга — шинэ/түрээсийн бол бүгд M-Event, asset бол Чимун
+  const _st0 = isEdit ? (Number(p.stock) || 0) : 1;
+  let _qm0, _qc0, _qn0;
+  if (isEdit && (p.qty_mevent != null || p.qty_chimun != null || p.qty_nomaad != null)) {
+    _qm0 = Number(p.qty_mevent) || 0; _qc0 = Number(p.qty_chimun) || 0; _qn0 = Number(p.qty_nomaad) || 0;
+  } else if (isEdit && String(p.type || 'rental') === 'asset') {
+    _qc0 = _st0; _qm0 = 0; _qn0 = 0;
+  } else {
+    _qm0 = _st0; _qc0 = 0; _qn0 = 0;
+  }
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
   const vgroups = [...new Set((state.products || []).map(x => x.variant_group).filter(Boolean))].sort();
@@ -8356,10 +8373,15 @@ function openProductModal(p) {
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
       </div>
       <div class="pm-working" id="pm-working"></div>
-      <label class="pm-rentable">
-        <input type="checkbox" id="pm-rentable" ${rentable ? 'checked' : ''}>
-        <span><b>Түрээслэх боломжтой</b> — чагтлахад сайтад харагдана. Чагтгүй бол зөвхөн Чимун ХХК-ийн дотоод хөрөнгө.</span>
-      </label>
+      <div class="pm-branch">
+        <div class="pm-branch-head">🏢 Салбарын хуваарилалт <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
+        <div class="pm-branch-grid">
+          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"></label>
+          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"></label>
+          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"></label>
+        </div>
+        <div class="pm-branch-status" id="pm-branch-status"></div>
+      </div>
       <label class="pm-rentable">
         <input type="checkbox" id="pm-ispackage" ${isPackage(p) ? 'checked' : ''}>
         <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
@@ -8458,6 +8480,25 @@ function openProductModal(p) {
   }
   ['pm-stock', 'pm-broken', 'pm-maintenance'].forEach(id => modal.querySelector('#' + id)?.addEventListener('input', updateWorking));
   updateWorking();
+  // Салбарын хуваарилалт — M-Event>0 бол сайтад түрээслэгдэнэ. M-Event = Нийт − Чимун − NOMAAD (авто).
+  const qmEl = modal.querySelector('#pm-qm'), qcEl = modal.querySelector('#pm-qc'), qnEl = modal.querySelector('#pm-qn');
+  const stockEl = modal.querySelector('#pm-stock'), branchStatus = modal.querySelector('#pm-branch-status');
+  function updateBranch() {
+    const qm = Number(qmEl.value) || 0;
+    branchStatus.innerHTML = `<span style="color:${qm > 0 ? 'var(--ok)' : 'var(--muted)'};font-weight:600;">${qm > 0 ? '✅ Сайтад түрээслэгдэнэ' : '🔒 Зөвхөн дотоод хөрөнгө — сайтад харагдахгүй'}</span>`;
+  }
+  function fillMevent() {   // Нийт эсвэл Чимун/NOMAAD өөрчлөгдвөл M-Event = үлдэгдэл
+    const st = Number(stockEl.value) || 0, qc = Number(qcEl.value) || 0, qn = Number(qnEl.value) || 0;
+    qmEl.value = Math.max(0, st - qc - qn); updateBranch();
+  }
+  stockEl.addEventListener('input', fillMevent);
+  qcEl.addEventListener('input', fillMevent);
+  qnEl.addEventListener('input', fillMevent);
+  qmEl.addEventListener('input', () => {   // M-Event гараар өөрчилвөл Нийт нөөцийг нийлбэрт тэнцүүлнэ
+    stockEl.value = (Number(qmEl.value) || 0) + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0);
+    updateWorking(); updateBranch();
+  });
+  updateBranch();
   const close = () => modal.remove();
   modal.querySelector('#pm-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
@@ -8475,15 +8516,19 @@ async function submitProductModal(modal, orig, btn) {
   const isPkg = !!modal.querySelector('#pm-ispackage')?.checked;
   const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku) : [];
   if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
+  const _qm = Number(modal.querySelector('#pm-qm')?.value) || 0;
+  const _qc = Number(modal.querySelector('#pm-qc')?.value) || 0;
+  const _qn = Number(modal.querySelector('#pm-qn')?.value) || 0;
   const base = {
     name, category: cat, sku,
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
-    stock: isPkg ? packageStock({ bundle_items: bundle }) : (Number(g('pm-stock')) || 0),
+    stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
     maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
     photos: images, photo: images[0] || '',   // эхний зураг = нүүр
     description: modal.querySelector('#pm-desc').value,
-    type: isPkg ? 'package' : (modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset'),
+    type: isPkg ? 'package' : (_qm > 0 ? 'rental' : 'asset'),   // M-Event>0 = түрээслэгдэнэ
+    qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn,
     bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
     variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,

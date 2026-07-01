@@ -9184,24 +9184,38 @@ async function extractPdfText(file) {
   }
   return text;
 }
-// Голомт цахим гүйлгээний баримтаас БҮХ талбар (label-based): дүн/огноо/шилжүүлэгч/хүлээн авагч
+// Банкны гүйлгээний баримтаас БҮХ талбар — Голомт (label-based) БА Хаан (Дт/Кт) хоёуланг дэмжинэ.
 const _RECEIPT_LABELS = ['Хүлээн авагчийн банк', 'Хүлээн авагчийн данс', 'Хүлээн авагчийн нэр', 'Гүйлгээний дүн', 'Гүйлгээний огноо', 'Гүйлгээний утга', 'Гүйлгээний төлөв', 'Шилжүүлэгчийн нэр', 'Шилжүүлэгчийн дансны дугаар', 'Хүсэлтийн лавлах дугаар', 'Татсан огноо'];
 function parseBankReceipt(text) {
-  const lines = text.split('\n').map(l => l.replace(/ /g, ' ').trim()).filter(Boolean);
-  const isLabel = (l) => _RECEIPT_LABELS.some(lb => l === lb || l === lb + ':' || l.startsWith(lb));
-  const get = (label) => { const idx = lines.findIndex(l => l === label || l === label + ':' || l.startsWith(label)); if (idx < 0) return ''; const nx = lines[idx + 1]; return (nx && !isLabel(nx)) ? nx.trim() : ''; };
-  const out = {};
-  const amtM = (get('Гүйлгээний дүн').match(/([\d,]+(?:\.\d+)?)/) || text.match(/([\d,]+(?:\.\d+)?)\s*MNT/i));
+  const flat = text.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+  const isKhan = /ХААН\s*БАНК|Journal\s*No|Transaction information/i.test(flat);
+  const out = { bank: isKhan ? 'Хаан' : 'Голомт' };
+  const amtM = flat.match(/([\d][\d,]*(?:\.\d+)?)\s*MNT/i);
   if (amtM) out.amount = Math.round(parseFloat(amtM[1].replace(/,/g, '')));
-  const dM = ((get('Гүйлгээний огноо') + get('Татсан огноо')).match(/\d{4}-\d{2}-\d{2}/) || text.match(/\d{4}-\d{2}-\d{2}/));
-  if (dM) out.date = dM[0];
-  out.receiverBank = get('Хүлээн авагчийн банк');
-  out.receiverAcct = get('Хүлээн авагчийн данс');
-  out.receiverName = get('Хүлээн авагчийн нэр');
-  out.senderName = get('Шилжүүлэгчийн нэр');
-  out.senderAcct = get('Шилжүүлэгчийн дансны дугаар');
-  out.ref = get('Гүйлгээний утга');
-  out.status = get('Гүйлгээний төлөв');
+  const dM = (flat.match(/(?:\/Date|Гүйлгээний огноо)[^\d]{0,15}(\d{4}-\d{2}-\d{2})/i) || flat.match(/(\d{4}-\d{2}-\d{2})/));
+  if (dM) out.date = dM[1];
+  if (isKhan) {
+    out.receiverBank = 'ХААН БАНК';
+    const jm = flat.match(/Journal\s*No:?\s*(\d+)/i); if (jm) out.receiptId = 'KH' + jm[1];
+    const parties = [...flat.matchAll(/(\d{7,20})\s+([А-ЯӨҮЁA-Z][А-ЯӨҮЁA-Za-z .\-]*?)(?=\s+[\d,]+\.\d{2}|\s+Гүйлгээний|\s+[KК]т|$)/g)].map(m => ({ acct: m[1], name: m[2].trim() }));
+    if (parties[0]) { out.senderAcct = parties[0].acct; out.senderName = parties[0].name; }
+    if (parties[1]) { out.receiverAcct = parties[1].acct; out.receiverName = parties[1].name; }
+    const rm = flat.match(/Transaction description:\s*(.+?)(?:\s*Харилцагч|\s*Гүйлгээний баримтыг|$)/i);
+    if (rm) out.ref = rm[1].trim();
+    out.status = /амжилттай|success/i.test(flat) ? 'Амжилттай' : '';
+  } else {
+    const lines = text.split('\n').map(l => l.replace(/ /g, ' ').trim()).filter(Boolean);
+    const isLabel = (l) => _RECEIPT_LABELS.some(lb => l === lb || l === lb + ':' || l.startsWith(lb));
+    const get = (label) => { const idx = lines.findIndex(l => l === label || l === label + ':' || l.startsWith(label)); if (idx < 0) return ''; const nx = lines[idx + 1]; return (nx && !isLabel(nx)) ? nx.trim() : ''; };
+    out.receiverBank = get('Хүлээн авагчийн банк');
+    out.receiverAcct = get('Хүлээн авагчийн данс');
+    out.receiverName = get('Хүлээн авагчийн нэр');
+    out.senderName = get('Шилжүүлэгчийн нэр');
+    out.senderAcct = get('Шилжүүлэгчийн дансны дугаар');
+    out.ref = get('Гүйлгээний утга');
+    out.status = get('Гүйлгээний төлөв');
+    const lm = flat.match(/Хүсэлтийн лавлах дугаар:?\s*(\d+)/i); if (lm) out.receiptId = 'GL' + lm[1];
+  }
   return out;
 }
 function openBqPaymentModal(oid) {
@@ -9267,12 +9281,17 @@ function openBqPaymentModal(oid) {
       modal.querySelector('#bqp-ref-disp').textContent = d.ref || '—';
       modal.querySelector('#bqp-status-disp').textContent = d.status || '—';
       modal.querySelector('#bqp-fields').style.display = '';
+      // Давхцал: энэ баримт (receiptId) аль хэдийн бүртгэгдсэн эсэх — нэг PDF нэг л удаа
+      if (d.receiptId) {
+        const dup = (state.appOrders || []).find(x => String(x.paid_ref || '').includes('[#' + d.receiptId + ']'));
+        if (dup) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн — захиалга #${dup.number}`);
+      }
       modal.querySelector('#bqp-amount').value = String(d.amount);
       modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
-      modal.querySelector('#bqp-ref').value = [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · ');
-      // Анхааруулга: хүлээн авагчийн данс Чимунийх биш / төлөв амжилтгүй бол
+      modal.querySelector('#bqp-ref').value = (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · ');
+      // Анхааруулга: Чимун оролцоогүй / гүйлгээ амжилтгүй бол
       const warns = [];
-      if (d.receiverAcct && d.receiverAcct.replace(/\D/g, '') !== CHIMUN_ACCT) warns.push('хүлээн авагчийн данс Чимунийх биш');
+      if (!/чимун/i.test((d.senderName || '') + ' ' + (d.receiverName || ''))) warns.push('Чимун оролцоогүй бололтой');
       if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
       status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
       status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';

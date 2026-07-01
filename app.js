@@ -9333,9 +9333,9 @@ function renderBooqable() {
   const range = (s.first_payment_at && s.last_payment_at)
     ? `${String(s.first_payment_at).slice(0, 10)} → ${String(s.last_payment_at).slice(0, 10)}` : '';
   const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
-    ${kpi('Цэвэр орлого', fmtMoney(N(s.net_revenue_mnt)), 'var(--ok)', 'орлого − буцаалт')}
-    ${kpi('Нийт орлого', fmtMoney(N(s.total_charges_mnt)), 'var(--text)', range)}
-    ${kpi('Буцаалт', fmtMoney(N(s.total_refunds_mnt)), 'var(--danger)', '')}
+    ${kpi('Нийт орлого', fmtMoney(N(s.net_revenue_mnt)), 'var(--ok)', 'эвентийн огноогоор (accrual)')}
+    ${kpi('Цуглуулсан', fmtMoney(N(s.collected_mnt)), 'var(--text)', 'бэлэн мөнгө')}
+    ${kpi('Авлага', fmtMoney(N(s.net_revenue_mnt) - N(s.collected_mnt)), 'var(--warn)', 'төлөгдөөгүй үлдэгдэл')}
     ${kpi('Бодит захиалга', `${N(s.real_orders).toLocaleString('mn-MN')}`, 'var(--text)', `нийт ${N(s.total_orders).toLocaleString('mn-MN')} (draft/цуцлахыг хассан)`)}
     ${kpi('Идэвхтэй харилцагч', `${N(s.active_customers).toLocaleString('mn-MN')}`, 'var(--text)', '')}
   </div>`;
@@ -9356,7 +9356,7 @@ function renderBooqable() {
     const bars = m.map(x => {
       const net = N(x.net_mnt);
       const h = Math.max(3, Math.round(net / maxNet * 130));
-      return `<div style="flex:0 0 auto;width:38px;display:flex;flex-direction:column;align-items:center;gap:3px;" title="${x.month}: орлого ${fmtMoney(N(x.charges_mnt))}, буцаалт ${fmtMoney(N(x.refunds_mnt))}, цэвэр ${fmtMoney(net)}">
+      return `<div style="flex:0 0 auto;width:38px;display:flex;flex-direction:column;align-items:center;gap:3px;" title="${x.month}: орлого ${fmtMoney(net)} · ${N(x.charge_count)} эвент (эвентийн огноогоор)">
         <div style="font-size:8.5px;color:var(--muted);white-space:nowrap;">${(net / 1e6).toFixed(net >= 1e7 ? 0 : 1).replace(/\.0$/, '')}</div>
         <div style="width:24px;height:${h}px;background:var(--ok);border-radius:4px 4px 0 0;"></div>
         <div style="font-size:8.5px;color:var(--muted);transform:rotate(-50deg);transform-origin:center;white-space:nowrap;margin-top:4px;">${String(x.month).slice(2)}</div>

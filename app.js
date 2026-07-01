@@ -2915,6 +2915,7 @@ function render() {
   if (state.view === 'booqable' && !canSeeBooqable()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
   if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
+  if (state.view === 'workload' && !canSeeWorkload()) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'access' && !state.isCEO) state.view = 'mine';
@@ -2990,6 +2991,13 @@ function renderSidebar() {
   // Тайлан — зөвхөн бүх санхүү хардаг (CEO/нягтлан/салбар-засагч) — удирдлагын тайлан.
   const repNav = document.getElementById('nav-reports');
   if (repNav) repNav.style.display = canSeeReports() ? '' : 'none';
+  // Багийн ачаалал — удирдлага/CEO. Badge = нийт идэвхтэй ажлын тоо.
+  const wlNav = document.getElementById('nav-workload');
+  if (wlNav) {
+    wlNav.style.display = canSeeWorkload() ? '' : 'none';
+    const wlCnt = document.getElementById('cnt-workload');
+    if (wlCnt) wlCnt.textContent = String(state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined').length);
+  }
   // Гүйцэтгэл — зөвхөн үндсэн ажилтанд (өдрийн ажилтанд хамаарахгүй).
   const perfNav = document.getElementById('nav-performance');
   if (perfNav) perfNav.style.display = isDailyWorker() ? 'none' : '';
@@ -3152,6 +3160,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderSalary();
     attachSalaryHandlers();
+    return;
+  } else if (state.view === 'workload') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderWorkload();
+    attachWorkloadHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
@@ -5479,6 +5493,80 @@ function canSeeProducts() { return canAccessView('products', false); }       // 
 function canSeeBooqable() { return canAccessView('booqable', false); }
 function canSeeReceivables() { return canAccessView('receivables', false); }
 function canSeeReports() { return canAccessView('reports', () => canSeeAllFinance()); }
+
+/* ═══════════ БАГИЙН АЧААЛАЛ — удирдлага хүн бүрийн идэвхтэй ажлыг нэг дэлгэцээс ═══════════
+   Хэн юу хийж байгаа, ажил давхцаж буй эсэхийг харна. Идэвхтэй ажлыг хариуцагчаар бүлэглэж,
+   хоцролт/тоо + үүсгэгчийг харуулна. Зөвхөн удирдлага/CEO (эрхийн системээр тохируулж болно). */
+function canSeeWorkload() { return canAccessView('workload', () => state.isCEO); }
+let _workloadSearch = '';
+function _wlActiveTasks() {
+  return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined');
+}
+function wlHeaderHtml() {
+  const today = todayStr();
+  const active = _wlActiveTasks();
+  const people = new Set(active.filter(t => t.assignee).map(t => t.assignee)).size;
+  const overdue = active.filter(t => t.due && t.due < today).length;
+  const kpi = (n, l, c) => `<div style="flex:1;min-width:90px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;"><div style="font-size:22px;font-weight:700;${c ? `color:${c}` : ''}">${n}</div><div style="font-size:11.5px;color:var(--muted);">${l}</div></div>`;
+  return `<div style="margin-bottom:14px;">
+    <h2 style="margin:0 0 2px;">Багийн ачаалал</h2>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Хэн юу хийж байна — идэвхтэй ажил хариуцагчаар</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">${kpi(active.length, 'Идэвхтэй ажил')}${kpi(people, 'Ажилтан')}${kpi(overdue, 'Хоцорсон', overdue ? 'var(--danger)' : '')}</div>
+    <input id="workload-search" placeholder="🔍 Ажил эсвэл хүн хайх" value="${escapeHtml(_workloadSearch)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--panel);color:var(--text);">
+  </div>`;
+}
+function wlListHtml() {
+  const today = todayStr();
+  const statusMn = { open: 'Шинэ', in_progress: 'Хийж байна' };
+  const prioColor = { high: 'var(--danger)', med: 'var(--warn)', low: 'var(--muted)' };
+  const active = _wlActiveTasks();
+  const q = (_workloadSearch || '').toLowerCase().trim();
+  const byPerson = {}, createdCount = {};
+  active.forEach(t => {
+    const k = t.assignee || '__none__';
+    (byPerson[k] = byPerson[k] || []).push(t);
+    if (t.createdBy && t.createdBy !== t.assignee) createdCount[t.createdBy] = (createdCount[t.createdBy] || 0) + 1;
+  });
+  const keys = Object.keys(byPerson).sort((a, b) => {
+    if (a === '__none__') return -1; if (b === '__none__') return 1;
+    return byPerson[b].length - byPerson[a].length;
+  });
+  const cards = keys.map(k => {
+    const all = byPerson[k];
+    let tasks = q ? all.filter(t => (t.title || '').toLowerCase().includes(q) || memberName(k).toLowerCase().includes(q)) : all;
+    if (!tasks.length) return '';
+    tasks = tasks.slice().sort((a, b) => {
+      const ao = (a.due && a.due < today) ? 0 : 1, bo = (b.due && b.due < today) ? 0 : 1;
+      if (ao !== bo) return ao - bo;
+      return (a.due || '9999') < (b.due || '9999') ? -1 : 1;
+    });
+    const overdue = all.filter(t => t.due && t.due < today).length;
+    const inProg = all.filter(t => t.status === 'in_progress').length;
+    const isNone = k === '__none__';
+    const name = isNone ? '⚠ Хариуцагчгүй' : memberName(k);
+    const m = isNone ? null : findMember(k);
+    const role = m && m.role ? m.role : '';
+    const created = createdCount[k] || 0;
+    const rows = tasks.map(t => {
+      const od = t.due && t.due < today;
+      const creator = (t.createdBy && t.createdBy !== k) ? memberName(t.createdBy) : '';
+      return `<div class="wl-task"><span class="wl-dot" style="background:${prioColor[t.priority] || 'var(--muted)'}"></span><span class="wl-title">${escapeHtml(t.title || '(гарчиггүй)')}</span><span class="wl-status">${statusMn[t.status] || t.status || ''}</span>${t.due ? `<span class="wl-due"${od ? ' style="color:var(--danger);font-weight:700"' : ''}>${od ? '⚠ ' : ''}${escapeHtml(t.due)}</span>` : ''}${creator ? `<span class="wl-by">← ${escapeHtml(creator)}</span>` : ''}</div>`;
+    }).join('');
+    return `<div class="wl-person"><div class="wl-phead"><div><b>${escapeHtml(name)}</b>${role ? ` <span class="wl-role">${escapeHtml(role)}</span>` : ''}</div><div class="wl-badges"><span>${all.length} ажил</span>${inProg ? `<span style="color:var(--accent)">${inProg} хийж буй</span>` : ''}${overdue ? `<span style="color:var(--danger);font-weight:700">${overdue} хоцорсон</span>` : ''}${created ? `<span class="wl-role">${created} үүсгэсэн</span>` : ''}</div></div>${rows}</div>`;
+  }).filter(Boolean).join('');
+  return cards || '<div style="color:var(--muted);padding:20px;text-align:center;">Идэвхтэй ажил алга.</div>';
+}
+function renderWorkload() {
+  return `<div style="max-width:900px;">${wlHeaderHtml()}<div id="wl-list">${wlListHtml()}</div></div>`;
+}
+function attachWorkloadHandlers() {
+  const s = document.getElementById('workload-search');
+  if (s) s.addEventListener('input', e => {
+    _workloadSearch = e.target.value;
+    const list = document.getElementById('wl-list');
+    if (list) list.innerHTML = wlListHtml();
+  });
+}
 
 // member_perms татах (PostgREST anon SELECT). Хүснэгт байхгүй бол чимээгүй.
 async function loadMemberPerms() {

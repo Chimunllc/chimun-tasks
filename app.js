@@ -5575,6 +5575,7 @@ const PERM_MENUS = [
       { key: 'finance.approve', label: 'Батлах' },
       { key: 'finance.execute', label: 'Гүйлгээ хийх' } ] },
   { key: 'performance', label: 'Гүйцэтгэл',       core: true, actions: [] },
+  { key: 'workload',    label: 'Багийн ачаалал',  actions: [] },
   { key: 'reports',     label: 'Тайлан',          actions: [] },
   { key: 'hourly',      label: 'Цагийн цалин',    actions: [
       { key: 'hourly.pay', label: 'Цалин/урьдчилгаа олгох' } ] },
@@ -5630,7 +5631,7 @@ function canSeeReports() { return canAccessView('reports', () => canSeeAllFinanc
 /* ═══════════ БАГИЙН АЧААЛАЛ — удирдлага хүн бүрийн идэвхтэй ажлыг нэг дэлгэцээс ═══════════
    Хэн юу хийж байгаа, ажил давхцаж буй эсэхийг харна. Идэвхтэй ажлыг хариуцагчаар бүлэглэж,
    хоцролт/тоо + үүсгэгчийг харуулна. Зөвхөн удирдлага/CEO (эрхийн системээр тохируулж болно). */
-function canSeeWorkload() { return canAccessView('workload', () => state.isCEO); }
+function canSeeWorkload() { return canAccessView('workload', () => state.isCEO || (state.myLevel || 0) >= 80); }   // захирал (level 80+) баг харна; CEO Эрх удирдахаар нарийвчилж болно
 let _workloadSearch = '';
 function _wlActiveTasks() {
   return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined');
@@ -8136,7 +8137,7 @@ function eligibleBonus(u) {
 const perfScoreColor = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' : s >= 60 ? 'var(--warn)' : 'var(--danger)';
 
 function renderPerformance() {
-  const isMgr = canManageOrders() || state.isCEO;
+  const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
   const cur = new Date().toISOString().slice(0, 7);
   const tabs = [{ id: 'me', label: 'Миний оноо' }, ...(isMgr ? [{ id: 'all', label: 'Бүх ажилтан' }] : []), { id: 'rate', label: 'Үнэлэх' }];

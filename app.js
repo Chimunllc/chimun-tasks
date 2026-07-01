@@ -9281,6 +9281,8 @@ function openBqPaymentModal(oid) {
       modal.querySelector('#bqp-ref-disp').textContent = d.ref || '—';
       modal.querySelector('#bqp-status-disp').textContent = d.status || '—';
       modal.querySelector('#bqp-fields').style.display = '';
+      // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ байх ёстой (орлого = Чимунд ИРСЭН гүйлгээ). Эс бөгөөс бүртгэхгүй.
+      if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
       // Давхцал: энэ баримт (receiptId) аль хэдийн бүртгэгдсэн эсэх — нэг PDF нэг л удаа
       if (d.receiptId) {
         const dup = (state.appOrders || []).find(x => String(x.paid_ref || '').includes('[#' + d.receiptId + ']'));
@@ -9289,9 +9291,8 @@ function openBqPaymentModal(oid) {
       modal.querySelector('#bqp-amount').value = String(d.amount);
       modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
       modal.querySelector('#bqp-ref').value = (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · ');
-      // Анхааруулга: Чимун оролцоогүй / гүйлгээ амжилтгүй бол
+      // Анхааруулга: гүйлгээ амжилтгүй бол (Чимун хүлээн авагч эсэх нь дээр хатуу шалгагдсан)
       const warns = [];
-      if (!/чимун/i.test((d.senderName || '') + ' ' + (d.receiverName || ''))) warns.push('Чимун оролцоогүй бололтой');
       if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
       status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
       status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';

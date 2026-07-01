@@ -4323,18 +4323,22 @@ function packageStock(p) {
 function productStockByName(name) {
   const p = productByName(name);
   if (!p) return null;   // каталогт алга
-  return isPackage(p) ? packageStock(p) : workingStock(p);
+  if (isPackage(p)) return packageStock(p);
+  // Түрээслэх боломжтой суурь = M-EVENT салбарын нөөц (qty_mevent) − эвдэрсэн/засварт
+  const mev = (p.qty_mevent != null) ? (Number(p.qty_mevent) || 0) : (Number(p.stock) || 0);
+  return Math.max(0, mev - (Number(p.broken) || 0) - (Number(p.maintenance) || 0));
 }
-const _ORDER_OCCUPYING = ['Шинэ', 'Баталсан', 'Төлбөр авсан', 'Цэвэрлэгээ', 'Түрээс бэлдсэн', 'Гаргасан', 'Хүргэсэн'];
+// Нөөц ЭЗЛЭХ статус: төлбөр төлөгдсөнөөс (reserved) гаргах хүртэл. Буцаж ирвэл (stopped/archived) чөлөөлнө.
+const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'started'];
 function bookedQtyForRange(name, start, end, excludeOrderNo) {
   const n = _normProdName(name);
   const s = String(start || '').slice(0, 10), e = String(end || '').slice(0, 10);
   if (!s || !e || !n) return 0;
   let total = 0;
-  for (const o of (state.orders || [])) {
-    if (excludeOrderNo && o.order_no === excludeOrderNo) continue;
-    if (!_ORDER_OCCUPYING.includes(o.status)) continue;
-    const os = String(o.date_start || '').slice(0, 10), oe = String(o.date_end || '').slice(0, 10);
+  for (const o of (state.appOrders || [])) {
+    if (excludeOrderNo && o.number === excludeOrderNo) continue;
+    if (!_ORDER_OCCUPYING.includes(String(o.status))) continue;
+    const os = String(o.starts_at || '').slice(0, 10), oe = String(o.stops_at || '').slice(0, 10);
     if (!os || !oe) continue;
     if (!(s <= oe && os <= e)) continue;   // огнооны давхцал
     for (const it of (o.items || [])) {
@@ -10762,14 +10766,15 @@ function renderCalendar() {
     const isToday = dateStr === today;
     const isSelected = dateStr === selected;
     const isOverdue = dateStr < today;
-    const dotCls = (ev) => ev.type === 'order' ? 'cal-dot-order' : ev.type === 'nomaad' ? 'cal-dot-nomaad' : (ev.done ? 'cal-dot-done' : ev.priority === 'high' ? 'cal-dot-high' : ev.priority === 'med' ? 'cal-dot-med' : 'cal-dot-low');
-    const dots = evs.slice(0, 4).map(ev => `<span class="cal-dot ${dotCls(ev)}"></span>`).join('');
-    const more = evs.length > 4 ? `<span class="cal-more">+${evs.length - 4}</span>` : '';
+    const chipCls = (ev) => ev.type === 'order' ? 'ev-order' : ev.type === 'nomaad' ? 'ev-nomaad' : (ev.done ? 'ev-done' : ev.priority === 'high' ? 'ev-high' : ev.priority === 'med' ? 'ev-med' : 'ev-task');
+    const chipAttr = (ev) => ev.type === 'task' && ev.id ? ` data-cal-task="${escapeHtml(ev.id)}"` : ev.type === 'order' ? ' data-cal-goto="orders"' : ev.type === 'nomaad' ? ' data-cal-goto="nomaad"' : '';
+    const chips = evs.slice(0, 3).map(ev => `<span class="cal-chip ${chipCls(ev)}"${chipAttr(ev)} title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</span>`).join('');
+    const more = evs.length > 3 ? `<span class="cal-chip-more">+${evs.length - 3}</span>` : '';
     cells.push(`
-      <button class="cal-cell ${isToday?'cal-today':''} ${isSelected?'cal-selected':''} ${isOverdue && evs.some(ev=>ev.type==='task' && !ev.done)?'cal-overdue':''}" data-date="${dateStr}">
+      <div class="cal-cell ${isToday?'cal-today':''} ${isSelected?'cal-selected':''} ${isOverdue && evs.some(ev=>ev.type==='task' && !ev.done)?'cal-overdue':''}" data-date="${dateStr}">
         <span class="cal-num">${d}</span>
-        <span class="cal-dots">${dots}${more}</span>
-      </button>
+        <div class="cal-chips">${chips}${more}</div>
+      </div>
     `);
   }
 
@@ -10799,10 +10804,12 @@ function renderCalendar() {
         <div class="cal-selected-date">${selected === today ? 'Өнөөдөр' : fmtDate(selected)} — ${selectedEvents.length}</div>
         ${selectedEvents.length ? selectedEvents.map(ev => {
           const icon = ev.type === 'order' ? '🛒' : ev.type === 'nomaad' ? '🏕️' : '📋';
-          return `<div class="cal-task"${ev.type === 'task' && ev.id ? ` data-task-id="${escapeHtml(ev.id)}"` : ''}>
+          const clickAttr = ev.type === 'task' && ev.id ? ` data-task-id="${escapeHtml(ev.id)}"` : ev.type === 'order' ? ' data-cal-goto="orders"' : ev.type === 'nomaad' ? ' data-cal-goto="nomaad"' : '';
+          return `<div class="cal-task${clickAttr ? ' clickable' : ''}"${clickAttr}>
             <span class="cal-ev-icon" style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
             <span class="cal-task-title ${ev.done ? 'done' : ''}">${escapeHtml(ev.title)}</span>
             <span class="cal-task-assignee">${escapeHtml(ev.sub || '')}</span>
+            ${clickAttr ? '<span style="margin-left:auto;color:var(--muted);font-size:12px;flex-shrink:0;">›</span>' : ''}
           </div>`;
         }).join('') : '<div class="cal-empty-msg">Энэ өдөрт зүйл алга</div>'}
       </div>
@@ -10835,13 +10842,23 @@ function attachCalendarHandlers() {
     b.addEventListener('click', () => { state.calBranch = b.dataset.calbranch; render(); });
   });
   document.querySelectorAll('.cal-cell[data-date]').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-cal-task],[data-cal-goto]');
+      if (chip) {
+        e.stopPropagation();
+        if (chip.dataset.calTask) return openTaskModal(chip.dataset.calTask);
+        if (chip.dataset.calGoto) { state.view = chip.dataset.calGoto; render(); return; }
+      }
       state.calendarSelected = el.dataset.date;
       render();
     });
   });
+  // Доод сонгосон-өдрийн жагсаалт — ажил/захиалга/NOMAAD бүгд дарж нээгдэнэ
   document.querySelectorAll('.cal-task[data-task-id]').forEach(el => {
     el.addEventListener('click', () => openTaskModal(el.dataset.taskId));
+  });
+  document.querySelectorAll('.cal-task[data-cal-goto]').forEach(el => {
+    el.addEventListener('click', () => { state.view = el.dataset.calGoto; render(); });
   });
 }
 

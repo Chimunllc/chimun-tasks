@@ -3990,16 +3990,42 @@ function renderOrders() {
     <option value="">📅 Бүх хугацаа</option>
     ${yms.map(m => `<option value="${m}"${ymF === m ? ' selected' : ''}>${m}</option>`).join('')}
   </select>`;
+  const sortF = state.ordersSort || 'new';
+  const sortOpts = [['new', '🆕 Шинэ нь дээр'], ['event', '📅 Арга хэмжээ ойртсон'], ['amount', '💰 Дүн ихээр'], ['old', '🕐 Хуучин нь дээр']];
+  const sortSelect = `<select id="orders-sort" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
+    ${sortOpts.map(([v, l]) => `<option value="${v}"${sortF === v ? ' selected' : ''}>${l}</option>`).join('')}
+  </select>`;
+  const payFC = state.ordersPay || '';
+  const payOpts = [['', '💵 Төлбөр: бүгд'], ['unpaid', '⚠ Төлөгдөөгүй'], ['partial', '◐ Дутуу'], ['paid', '✓ Бүрэн']];
+  const paySelect = `<select id="orders-pay" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
+    ${payOpts.map(([v, l]) => `<option value="${v}"${payFC === v ? ' selected' : ''}>${l}</option>`).join('')}
+  </select>`;
   const controls = `<div class="orders-controls">
     <div class="otabs">${tabsHtml}</div>
     <div class="orders-controls-r">
+      ${sortSelect}
+      ${paySelect}
       ${ymSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;
 
-  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)));
-  shown.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  state.ordersSort = state.ordersSort || 'new';
+  const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
+  const payF = state.ordersPay || '';
+  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
+  const _sortFns = {
+    new: (a, b) => String(b.date).localeCompare(String(a.date)),
+    old: (a, b) => String(a.date).localeCompare(String(b.date)),
+    amount: (a, b) => b.total - a.total,
+    event: (a, b) => {
+      const as = String(a.o.starts_at || '').slice(0, 10), bs = String(b.o.starts_at || '').slice(0, 10);
+      const af = as && as >= todayStr, bf = bs && bs >= todayStr;
+      if (af !== bf) return af ? -1 : 1;             // ирээдүйн (ойртож буй) эхэнд
+      return af ? as.localeCompare(bs) : bs.localeCompare(as);  // ирээдүй өсөхөөр, өнгөрсөн буурахаар
+    },
+  };
+  shown.sort(_sortFns[state.ordersSort] || _sortFns.new);
   const sumTotal = shown.reduce((s, e) => s + e.total, 0);
   const CAP = 200;
   const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
@@ -4030,6 +4056,8 @@ function attachOrdersHandlers() {
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
+  document.getElementById('orders-sort')?.addEventListener('change', (e) => { state.ordersSort = e.target.value; render(); });
+  document.getElementById('orders-pay')?.addEventListener('change', (e) => { state.ordersPay = e.target.value; render(); });
 
   // Booqable захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));

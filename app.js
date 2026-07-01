@@ -5066,8 +5066,10 @@ function productRowHtml(p) {
   const pkg = isPackage(p);
   const u = productUtilization(p.name);
   const cost = (state.productCosts || {})[p.sku] || 0;
+  // Салбар сонгосон/түгжсэн үед "Нөөц" нь ТУХАЙН САЛБАРЫН тоог харуулна (нийт биш)
+  const _actBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
   const totalStock = pkg ? packageStock(p) : (Number(p.stock) || 0);
-  const stock = pkg ? totalStock : workingStock(p);   // түрээслэх боломжтой (бүтэн)
+  const stock = pkg ? totalStock : (_actBranch ? branchQty(p, _actBranch) : workingStock(p));   // салбар идэвхтэй бол тэр салбарын нөөц
   const broken = Number(p.broken) || 0, maint = Number(p.maintenance) || 0;
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
@@ -5077,7 +5079,7 @@ function productRowHtml(p) {
   if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
-  if (!pkg) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);
+  if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : `<span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>`;
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
   return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
@@ -5088,7 +5090,7 @@ function productRowHtml(p) {
     </div>
     <div class="prod-badges">
       <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
-      <span class="prod-stock-b${(!pkg && totalStock !== stock) ? ' part' : ''}">Нөөц ${stock}${(!pkg && totalStock !== stock) ? `/${totalStock}` : ''}</span>
+      <span class="prod-stock-b${(!pkg && !_actBranch && totalStock !== stock) ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}Нөөц ${stock}${(!pkg && !_actBranch && totalStock !== stock) ? `/${totalStock}` : ''}</span>
       ${typeBadge}
       ${(!pkg && can('products.edit')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
     </div>

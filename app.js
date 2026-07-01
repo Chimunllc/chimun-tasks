@@ -8691,19 +8691,23 @@ function bqDocsHtml(docs) {
 // Booqable түрээсийн 6 төлөв — нэр/өнгө/icon. Дараалал: Ноорог→Захиалсан→Эхэлсэн→Дууссан→Архивласан→Цуцалсан.
 // Дэвсгэр (light) + бараан текст (WCAG AA контраст) + зүүн талын тод цэг.
 const BQ_STATUS = {
-  draft:    { label: 'Ноорог',     dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
-  reserved: { label: 'Захиалсан',  dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
-  started:  { label: 'Эхэлсэн',    dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
-  stopped:  { label: 'Дууссан',    dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
-  archived: { label: 'Архивласан', dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
-  canceled: { label: 'Цуцалсан',   dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
+  draft:       { label: 'Ноорог',     dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
+  reserved:    { label: 'Захиалсан',  dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
+  preparation: { label: 'Бэлтгэл',    dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
+  cleaning:    { label: 'Цэвэрлэгээ', dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  started:     { label: 'Гарсан',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
+  stopped:     { label: 'Дууссан',    dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  archived:    { label: 'Архивласан', dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
+  canceled:    { label: 'Цуцалсан',   dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'started', 'stopped', 'archived', 'canceled'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'preparation', 'cleaning', 'started', 'stopped', 'archived', 'canceled'];
 // Лайфциклийн дараагийн алхам (карт бүрийн advance товч). Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 const BQ_NEXT = {
-  reserved: { to: 'started',  label: '📦 Гаргах' },
-  started:  { to: 'stopped',  label: '↩ Буцаан авах' },
-  stopped:  { to: 'archived', label: '🗄 Архивлах' },
+  reserved:    { to: 'preparation', label: '🧰 Бэлтгэх' },
+  preparation: { to: 'cleaning',    label: '✅ Бэлтгэсэн' },
+  cleaning:    { to: 'started',     label: '📦 Гаргах' },
+  started:     { to: 'stopped',     label: '↩ Буцаан авах' },
+  stopped:     { to: 'archived',    label: '🗄 Архивлах' },
 };
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
 function bqStatusBadge(raw) {
@@ -8983,7 +8987,7 @@ function bqOrderCard(o) {
   const _sh = _rt ? ' ' + _pad2(_rt.sh) + ':00' : '', _eh = _rt ? ' ' + _pad2(_rt.eh) + ':00' : '';
   const _days = isApp && start && stop ? orderRentalDays(o) : 0;
   const next = BQ_NEXT[st];
-  const activeSt = st === 'draft' || st === 'reserved' || st === 'started';
+  const activeSt = ['draft', 'reserved', 'preparation', 'cleaning', 'started'].includes(st);
   const canPay = !isApp && activeSt && bal > 0;
   const canCancel = !isApp && activeSt;
   // Төлбөрийн мөр — Нийт · Төлсөн · Үлдэгдэл (цуцлахаас бусдад)
@@ -8992,9 +8996,9 @@ function bqOrderCard(o) {
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
-  const appActive = st === 'draft' || st === 'reserved' || st === 'started';
+  const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'started'].includes(st);
   const foot = isApp
-    ? `<div class="order-foot">${appActive && appBal > 0 ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}${next && st !== 'draft' ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}${(st === 'reserved' || st === 'started') && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : (appActive ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appActive && appBal > 0 ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}${next && st !== 'draft' ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}${['reserved', 'preparation', 'cleaning', 'started'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : (appActive ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -9352,7 +9356,7 @@ function ceoNowStrip() {
   let deliveries = 0, returns = 0;
   (state.appOrders || []).forEach(o => {
     const st = String(o.status || '');
-    if (st === 'reserved' && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
+    if (['reserved', 'preparation', 'cleaning'].includes(st) && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
     if (st === 'started' && inWin(String(o.stops_at || '').slice(0, 10))) returns++;
   });
   (state.nomaadOrders || []).forEach(o => { if (!nomaadIsCancelled(o) && inWin(String(o.date_start || '').slice(0, 10))) deliveries++; });

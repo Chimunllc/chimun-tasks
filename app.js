@@ -4935,6 +4935,8 @@ async function saveProduct(product) {
   if (Array.isArray(product.photos)) row.photos = product.photos;
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
+  if (product.variant_group !== undefined) row.variant_group = product.variant_group;
+  if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: шинэ бол анхны хуваарилалт (asset→Чимун, бусад→M-Event); засварт нөөцийн зөрүүг M-Event-д тохируулж нийлбэрийг stock-тэй тэнцүү барина
   const _cur = state.products.find(x => x.sku === product.sku) || {};
   let _qc = idx < 0 ? 0 : (Number(_cur.qty_chimun) || 0);
@@ -8328,6 +8330,8 @@ function openProductModal(p) {
   const rentable = isEdit ? isRentable(p) : true;
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
+  const vgroups = [...new Set((state.products || []).map(x => x.variant_group).filter(Boolean))].sort();
+  const vgroupOpts = vgroups.map(gr => `<option value="${escapeHtml(gr)}">`).join('');
   const v = (x) => escapeHtml((p && p[x]) || '');
   document.getElementById('prod-modal')?.remove();
   const modal = document.createElement('div');
@@ -8341,6 +8345,8 @@ function openProductModal(p) {
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>SKU<input id="pm-sku" value="${v('sku')}" placeholder="SKU код"></label>
+        <label>🎨 Хувилбарын бүлэг<input id="pm-vgroup" list="pm-vgroups" value="${v('variant_group')}" placeholder="ижил зүйлд адил (ж: Эвхдэг сандал)"><datalist id="pm-vgroups">${vgroupOpts}</datalist></label>
+        <label>Өнгө / хэмжээ<input id="pm-vlabel" value="${v('variant_label')}" placeholder="ж: Цагаан"></label>
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
@@ -8479,6 +8485,8 @@ async function submitProductModal(modal, orig, btn) {
     type: isPkg ? 'package' : (modal.querySelector('#pm-rentable').checked ? 'rental' : 'asset'),
     bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
+    variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
+    variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
   };
   const product = orig ? { ...orig, ...base } : base;
   product.cost = moneyVal(modal.querySelector('#pm-cost'));

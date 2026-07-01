@@ -4958,7 +4958,13 @@ async function saveProduct(product) {
 
 // Бараа түрээслэх боломжтой эсэх — type='asset' бол зөвхөн дотоод хөрөнгө (сайтад харагдахгүй).
 // Хуучин/type-гүй бараа = түрээсийн (буцаад нийцтэй). Зөвхөн ил 'asset' нь хөрөнгө.
-function isRentable(p) { return String((p && p.type) || 'rental') !== 'asset'; }
+// Түрээслэх боломжтой = M-EVENT САЛБАРТ нөөцтэй (эсвэл үйлчилгээ/багц). Салбар нь хуучин type='asset'-ийг орлоно.
+function isRentable(p) {
+  if (!p) return false;
+  if (p.type === 'service' || p.type === 'package') return true;
+  if (p.qty_mevent == null && p.qty_nomaad == null && p.qty_chimun == null) return String(p.type || 'rental') !== 'asset';  // хуучин дата (qty багануудгүй) — type-аар
+  return (Number(p.qty_mevent) || 0) > 0;
+}
 
 // Барааны ашиглалт — захиалгын түүхээс хэдэн удаа түрээслэгдэж, нийт хэдэн төгрөгийн орлого олсон.
 function productUtilization(name) {
@@ -5080,7 +5086,7 @@ function productRowHtml(p) {
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
   if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
-  const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : `<span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>`;
+  const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';   // Түрээсийн/Хөрөнгө таг устгав — салбар (ленз) нь түрээслэх боломжийг тодорхойлно
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
   return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
@@ -8262,11 +8268,7 @@ function renderProducts() {
   const _prodMgmt = state.isCEO || (Number(_me.level) || 0) >= 80 || _myBr.includes('shared') || _myBr.length !== 1;
   const _lockedBranch = !_prodMgmt ? ({ 'm-event': 'mevent', 'camp': 'nomaad' })[_myBr[0]] : null;
   if (_lockedBranch) state.prodBranch = _lockedBranch;
-  const rentN = all.filter(isRentable).length;
-  const assetN = all.length - rentN;
-  let list = state.prodFilter === 'rental' ? all.filter(isRentable)
-             : state.prodFilter === 'asset' ? all.filter(p => !isRentable(p))
-             : all;
+  let list = all.slice();
   if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
   // Ангилал шүүлтүүр + эрэмбэлэлт (өртөг/үнэ/нөөц)
   state.prodCategory = state.prodCategory || 'all';
@@ -8282,7 +8284,6 @@ function renderProducts() {
   };
   list = list.slice().sort(_prodSorters[state.prodSort] || _prodSorters.name);
   const rows = list.map(productRowHtml).join('');
-  const tab = (k, label, n) => `<button class="prod-tab${state.prodFilter === k ? ' on' : ''}" data-prodfilter="${k}">${label} <span class="prod-tab-n">${n}</span></button>`;
   // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
@@ -8308,7 +8309,6 @@ function renderProducts() {
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
-    <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
     ${branchBar}
     ${filterBar}
     ${assetLine}

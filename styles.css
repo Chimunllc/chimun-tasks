@@ -5371,6 +5371,13 @@ body.role-daily #add-project { display: none !important; }
 .pm-grid input { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 7px; font-size: 14px; font-family: inherit; background: var(--panel); color: var(--text); }
 .pm-rentable { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0; font-size: 12px; color: var(--text-soft); line-height: 1.5; cursor: pointer; }
 .pm-rentable input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; cursor: pointer; }
+.pm-branch { margin: 12px 0; padding: 10px 12px; background: var(--panel-hover); border-radius: 9px; }
+.pm-branch-head { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.pm-branch-head span { font-weight: 400; color: var(--muted); }
+.pm-branch-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.pm-branch-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-soft); font-weight: 600; }
+.pm-branch-grid input { padding: 7px 8px; border: 1px solid var(--border-strong); border-radius: 7px; font-size: 15px; background: var(--panel); color: var(--text); text-align: center; }
+.pm-branch-status { margin-top: 8px; font-size: 12px; }
 .pm-block { display: flex; flex-direction: column; font-size: 11.5px; color: var(--muted); gap: 4px; margin-top: 10px; }
 .pm-block textarea { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 7px; font-size: 14px; font-family: inherit; background: var(--panel); color: var(--text); resize: vertical; line-height: 1.5; }
 .pm-gallery { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }

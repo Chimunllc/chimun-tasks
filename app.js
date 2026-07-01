@@ -4735,7 +4735,7 @@ if (typeof document !== 'undefined' && !window.__moneyInputBound) {
    Зөвхөн CEO. */
 // Бараа — ҮНДСЭН эх сурвалж Supabase Postgres (нэг эх сурвалж). Унавал n8n Sheet webhook (нөөц).
 async function loadProductsCatalog() {
-  if (!canManageOrders()) return;   // order manager-д бараа сонгох форм хэрэгтэй
+  if (!canManageOrders() && !canSeeProducts()) return;   // order manager (захиалгын форм) ЭСВЭЛ Бараа view эрхтэй ажилтан
   if (SUPABASE_ANON_KEY) {
     try {
       const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
@@ -5087,7 +5087,7 @@ function productRowHtml(p) {
       <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
       <span class="prod-stock-b${(!pkg && totalStock !== stock) ? ' part' : ''}">Нөөц ${stock}${(!pkg && totalStock !== stock) ? `/${totalStock}` : ''}</span>
       ${typeBadge}
-      ${!pkg ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
+      ${(!pkg && can('products.edit')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
     </div>
     <span class="prod-chev">›</span>
   </div>`;
@@ -8251,6 +8251,12 @@ function renderProducts() {
   const all = state.products || [];
   state.prodFilter = state.prodFilter || 'all';
   state.prodBranch = state.prodBranch || 'all';
+  // Ажилтан өөрийн салбарт ТҮГЖИГДЭНЭ (удирдлага/CEO/олон салбар бүгдийг харна)
+  const _me = findMember(state.me) || {};
+  const _myBr = Array.isArray(_me.branches) ? _me.branches : [];
+  const _prodMgmt = state.isCEO || (Number(_me.level) || 0) >= 80 || _myBr.includes('shared') || _myBr.length !== 1;
+  const _lockedBranch = !_prodMgmt ? ({ 'm-event': 'mevent', 'camp': 'nomaad' })[_myBr[0]] : null;
+  if (_lockedBranch) state.prodBranch = _lockedBranch;
   const rentN = all.filter(isRentable).length;
   const assetN = all.length - rentN;
   let list = state.prodFilter === 'rental' ? all.filter(isRentable)
@@ -8276,7 +8282,9 @@ function renderProducts() {
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
   const brTab = (k, label) => `<button class="prod-tab${state.prodBranch === k ? ' on' : ''}" data-prodbranch="${k}">${label}${k !== 'all' ? ` <span class="prod-tab-n">${brQtySum(k)}ш</span>` : ''}</button>`;
-  const branchBar = `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
+  const branchBar = _lockedBranch
+    ? `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${branchInfo(_lockedBranch).icon} ${branchInfo(_lockedBranch).label} салбар <span class="prod-tab-n">${brQtySum(_lockedBranch)}ш</span></span></div>`
+    : `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
@@ -8288,7 +8296,7 @@ function renderProducts() {
   const costs = state.productCosts || {};
   const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * (Number(p.stock) || 0), 0);
   const costedN = all.filter(p => (costs[p.sku] || 0) > 0).length;
-  const assetLine = assetValue > 0 ? `<div class="prod-assetval">🏛 Нийт хөрөнгийн үнэ цэнэ: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${all.length} барааны өртөг оруулсан)</span></div>` : '';
+  const assetLine = (assetValue > 0 && !_lockedBranch) ? `<div class="prod-assetval">🏛 Нийт хөрөнгийн үнэ цэнэ: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${all.length} барааны өртөг оруулсан)</span></div>` : '';
   return `
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
@@ -13604,7 +13612,7 @@ async function bootApp() {
     if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     if (state.view === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
     else if (state.view === 'orders' && canSeeOrders()) { loadAppOrders(); loadBooqableOrders(); }
-    else if (state.view === 'products' && state.isCEO) loadProductsCatalog();
+    else if (state.view === 'products' && canSeeProducts()) loadProductsCatalog();
     else if (state.view === 'receivables' && state.isCEO) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   }, 45_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —

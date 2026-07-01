@@ -8784,7 +8784,7 @@ function openNewOrder(editOrder) {
       number: isEdit ? editOrder.number : nextOrderNumber(),
       contract_no: isEdit ? editOrder.contract_no : nextContractNo(),
       customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: $('#no-addr').value.trim(),
-      status: isEdit ? $('#no-status').value : 'reserved',
+      status: isEdit ? $('#no-status').value : 'draft',
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,

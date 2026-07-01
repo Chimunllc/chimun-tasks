@@ -4067,7 +4067,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => { if (!can('orders.advance')) { showToast('Танд төлөв шилжүүлэх эрх олгогдоогүй', 'warn', 3000); return; } bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to); }));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
     if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
-    const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
+    const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel)) || (state.appOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
     const isDraft = o && o.status === 'draft';
     bqUpdateStatus(b.dataset.bqCancel, 'canceled', { confirm: isDraft ? `#${o ? o.number : ''} ноорогийг устгах уу? (цуцлагдсан болж жагсаалтаас алга болно)` : `#${o ? o.number : ''} захиалгыг цуцлах уу?`, danger: true, okText: isDraft ? 'Устгах' : 'Цуцлах', toast: isDraft ? 'Устгалаа' : 'Цуцаллаа' });
   }));
@@ -8852,7 +8852,7 @@ function bqOrderCard(o) {
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const appActive = st === 'draft' || st === 'reserved' || st === 'started';
   const foot = isApp
-    ? `<div class="order-foot">${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${appActive && appBal > 0 ? `<button class="btn btn-primary" data-app-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : ''}</div>`
+    ? `<div class="order-foot">${appActive && appBal > 0 ? `<button class="btn btn-primary" data-app-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}${next && st !== 'draft' ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : (appActive ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -8882,14 +8882,17 @@ function bqOrderCard(o) {
 // Booqable захиалгын төлвийг БАЙРАНДАА засах (Supabase anon PATCH, зөвхөн status багана).
 // Optimistic: эхлээд UI шинэчилж, амжилтгүй бол буцаана.
 async function bqUpdateStatus(oid, to, opts = {}) {
-  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
+  let o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  const table = o ? 'bq_orders' : 'app_orders';
+  if (!o) o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
   if (opts.confirm && !(await showConfirm(opts.confirm, { okText: opts.okText || 'Тийм', danger: opts.danger }))) return;
   const prev = o.status;
   o.status = to;          // optimistic
   render();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_orders?id=eq.${encodeURIComponent(oid)}`, {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ status: to, updated_at: new Date().toISOString() }),

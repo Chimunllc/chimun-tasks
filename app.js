@@ -4932,6 +4932,15 @@ async function saveProduct(product) {
   if (Array.isArray(product.photos)) row.photos = product.photos;
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
+  // Салбарын нөөц: шинэ бол анхны хуваарилалт (asset→Чимун, бусад→M-Event); засварт нөөцийн зөрүүг M-Event-д тохируулж нийлбэрийг stock-тэй тэнцүү барина
+  const _cur = state.products.find(x => x.sku === product.sku) || {};
+  let _qc = idx < 0 ? 0 : (Number(_cur.qty_chimun) || 0);
+  let _qm = idx < 0 ? 0 : (Number(_cur.qty_mevent) || 0);
+  let _qn = idx < 0 ? 0 : (Number(_cur.qty_nomaad) || 0);
+  if (idx < 0) { if (row.type === 'asset') _qc = row.stock; else _qm = row.stock; }
+  else { const _diff = row.stock - (_qc + _qm + _qn); if (_diff !== 0) _qm = Math.max(0, _qm + _diff); }
+  row.qty_chimun = _qc; row.qty_mevent = _qm; row.qty_nomaad = _qn;
+  _cur.qty_chimun = _qc; _cur.qty_mevent = _qm; _cur.qty_nomaad = _qn;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
@@ -4970,6 +4979,82 @@ function fmtMoneyShort(n) {
   return n + '₮';
 }
 
+// ── Салбарын нөөц хуваарилалт (Чимун ХХК / M-Event / NOMAAD) — нэг барааны нөөцийг тоогоор хуваана ──
+const PROD_BRANCHES = [
+  { k: 'chimun', label: 'Чимун ХХК', icon: '🏢', color: 'var(--muted)' },
+  { k: 'mevent', label: 'M-Event',   icon: '🎪', color: 'var(--accent,#7c3aed)' },
+  { k: 'nomaad', label: 'NOMAAD',     icon: '⛺', color: '#0d9488' },
+];
+function branchInfo(k) { return PROD_BRANCHES.find(b => b.k === k) || { k, label: k, icon: '', color: 'var(--text)' }; }
+function branchQty(p, k) { return Number(p && p['qty_' + k]) || 0; }
+function branchStockHtml(p) {
+  const parts = PROD_BRANCHES.filter(b => branchQty(p, b.k) > 0)
+    .map(b => `<span title="${b.label}" style="color:${b.color};font-weight:700;">${b.icon} ${branchQty(p, b.k)}</span>`);
+  return parts.length ? parts.join(' · ') : '<span style="color:var(--muted);">хуваарилаагүй</span>';
+}
+
+// Салбар хооронд нөөц шилжүүлэх модал — тоогоор, лог-той (маргаан таслах түүх)
+function openTransferModal(pid) {
+  if (!can('products.edit')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
+  const p = (state.products || []).find(x => String(x.id) === String(pid));
+  if (!p) return;
+  document.getElementById('trans-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.id = 'trans-modal';
+  const opt = (sel) => PROD_BRANCHES.map(b => `<option value="${b.k}"${b.k === sel ? ' selected' : ''}>${b.icon} ${b.label} (${branchQty(p, b.k)})</option>`).join('');
+  modal.innerHTML = `<div class="modal" style="max-width:400px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <h2 style="margin:0;font-size:16px;">⇄ Нөөц шилжүүлэх</h2>
+      <button class="btn" id="tr-close" style="padding:4px 9px;">✕</button>
+    </div>
+    <div style="font-size:13px;font-weight:700;">${escapeHtml(p.name || '')}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Нийт ${Number(p.stock) || 0} · одоо: ${branchStockHtml(p)}</div>
+    <label class="no-lbl">Хаанаас<select id="tr-from">${opt('mevent')}</select></label>
+    <label class="no-lbl" style="margin-top:8px;">Хаашаа<select id="tr-to">${opt('nomaad')}</select></label>
+    <label class="no-lbl" style="margin-top:8px;">Тоо ширхэг<input id="tr-qty" type="number" min="1" value="1"></label>
+    <label class="no-lbl" style="margin-top:8px;">Тэмдэглэл (сонголт)<input id="tr-note" placeholder="жишээ: зуни кемп"></label>
+    <button class="btn btn-primary" id="tr-save" style="width:100%;margin-top:14px;">Шилжүүлэх</button>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#tr-close').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#tr-save').onclick = () => saveBranchTransfer(p, modal);
+}
+
+async function saveBranchTransfer(p, modal) {
+  const from = modal.querySelector('#tr-from').value, to = modal.querySelector('#tr-to').value;
+  const qty = Math.floor(Number(modal.querySelector('#tr-qty').value) || 0);
+  const note = (modal.querySelector('#tr-note').value || '').trim();
+  if (from === to) { showToast('Ижил салбар руу шилжүүлэх боломжгүй', 'warn'); return; }
+  if (qty < 1) { showToast('Тоо ширхэг оруулна уу', 'warn'); return; }
+  if (qty > branchQty(p, from)) { showToast(`${branchInfo(from).label}-д ${branchQty(p, from)} л байна`, 'warn'); return; }
+  const prevFrom = branchQty(p, from), prevTo = branchQty(p, to);
+  p['qty_' + from] = prevFrom - qty; p['qty_' + to] = prevTo + qty;   // optimistic
+  render(); modal.remove();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?id=eq.${encodeURIComponent(p.id)}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ ['qty_' + from]: p['qty_' + from], ['qty_' + to]: p['qty_' + to], updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
+    try {
+      const tid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'tr-' + Date.now();
+      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/product_transfers`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ id: tid, product_id: p.id, sku: p.sku, from_branch: from, to_branch: to, qty, note, moved_by: state.me || '', created_at: new Date().toISOString() }),
+      }, 12000);
+    } catch (e2) { console.warn('transfer log', e2); }
+    showToast(`${qty} ширхэг: ${branchInfo(from).icon} → ${branchInfo(to).icon}`, 'success', 2600);
+  } catch (e) {
+    p['qty_' + from] = prevFrom; p['qty_' + to] = prevTo; render();   // буцаах
+    showToast('Шилжүүлэх алдаа: ' + e.message, 'error', 5000);
+  }
+}
+
 function productRowHtml(p) {
   const img = p.photo
     ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
@@ -4989,6 +5074,7 @@ function productRowHtml(p) {
   if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
+  if (!pkg) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : `<span class="prod-type-b ${rentable ? 'rt' : 'as'}">${rentable ? '🏷 Түрээсийн' : '🏢 Хөрөнгө'}</span>`;
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
   return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
@@ -5001,6 +5087,7 @@ function productRowHtml(p) {
       <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
       <span class="prod-stock-b${(!pkg && totalStock !== stock) ? ' part' : ''}">Нөөц ${stock}${(!pkg && totalStock !== stock) ? `/${totalStock}` : ''}</span>
       ${typeBadge}
+      ${!pkg ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
     </div>
     <span class="prod-chev">›</span>
   </div>`;
@@ -8163,13 +8250,20 @@ function attachPerformanceHandlers() {
 function renderProducts() {
   const all = state.products || [];
   state.prodFilter = state.prodFilter || 'all';
+  state.prodBranch = state.prodBranch || 'all';
   const rentN = all.filter(isRentable).length;
   const assetN = all.length - rentN;
-  const list = state.prodFilter === 'rental' ? all.filter(isRentable)
+  let list = state.prodFilter === 'rental' ? all.filter(isRentable)
              : state.prodFilter === 'asset' ? all.filter(p => !isRentable(p))
              : all;
+  if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
   const rows = list.map(productRowHtml).join('');
   const tab = (k, label, n) => `<button class="prod-tab${state.prodFilter === k ? ' on' : ''}" data-prodfilter="${k}">${label} <span class="prod-tab-n">${n}</span></button>`;
+  // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
+  const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
+  const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
+  const brTab = (k, label) => `<button class="prod-tab${state.prodBranch === k ? ' on' : ''}" data-prodbranch="${k}">${label}${k !== 'all' ? ` <span class="prod-tab-n">${brQtySum(k)}ш</span>` : ''}</button>`;
+  const branchBar = `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
   const costs = state.productCosts || {};
   const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * (Number(p.stock) || 0), 0);
   const costedN = all.filter(p => (costs[p.sku] || 0) > 0).length;
@@ -8181,6 +8275,7 @@ function renderProducts() {
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
     <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
+    ${branchBar}
     ${assetLine}
     <div class="prod-count" id="prod-count">${list.length} бараа</div>
     <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
@@ -8363,6 +8458,14 @@ function attachProductsHandlers() {
   // Шүүлтүүр таб — Бүгд / Түрээсийн / Хөрөнгө
   document.querySelectorAll('[data-prodfilter]').forEach(b => {
     b.onclick = () => { state.prodFilter = b.dataset.prodfilter; render(); };
+  });
+  // Салбарын ленз — Бүх салбар / M-Event / NOMAAD / Чимун
+  document.querySelectorAll('[data-prodbranch]').forEach(b => {
+    b.onclick = () => { state.prodBranch = b.dataset.prodbranch; render(); };
+  });
+  // Салбар хооронд шилжүүлэх (мөр нээхээс сэргийлж stopPropagation)
+  document.querySelectorAll('[data-transfer]').forEach(b => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); openTransferModal(b.dataset.transfer); });
   });
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');

@@ -4062,7 +4062,13 @@ function attachOrdersHandlers() {
   // Booqable захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
-  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => { if (!can('orders.advance')) { showToast('Танд төлөв шилжүүлэх эрх олгогдоогүй', 'warn', 3000); return; } bqUpdateStatus(b.dataset.bqAdvance, b.dataset.to); }));
+  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => {
+    if (!can('orders.advance')) { showToast('Танд төлөв шилжүүлэх эрх олгогдоогүй', 'warn', 3000); return; }
+    const to = b.dataset.to;
+    const o = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.bqAdvance));
+    const toLabel = (BQ_STATUS[to] || {}).label || to;
+    bqUpdateStatus(b.dataset.bqAdvance, to, { confirm: `#${o ? (o.number ?? '') : ''} захиалгыг «${toLabel}» төлөвт шилжүүлэх үү?`, okText: toLabel, toast: `Төлөв: ${toLabel}` });
+  }));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
     if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
     const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel)) || (state.appOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));

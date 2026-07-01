@@ -10749,9 +10749,9 @@ function renderCalendar() {
   const addEv = (date, ev) => { const d = String(date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; (byDate[d] = byDate[d] || []).push(ev); };
   state.tasks.forEach(t => { if (t.due && t.status !== 'deleted' && taskOk(t)) addEv(t.due, { type: 'task', title: t.title, sub: memberName(t.assignee), done: t.status === 'done', priority: t.priority, id: t.id }); });
   // Захиалга = M-Event салбар. Зөвхөн БАТАЛГААЖСАН (ноорог/цуцлагдсан/архив хасна).
-  if (cb !== 'camp') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0) }); });
+  if (cb !== 'camp') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0), oid: o.id }); });
   // NOMAAD эвент = camp салбар.
-  if (cb !== 'm-event') (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}` }); });
+  if (cb !== 'm-event') (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}`, nq: o.quote_no }); });
 
   // Сонгосон өдөр
   const selected = state.calendarSelected || today;
@@ -10767,7 +10767,7 @@ function renderCalendar() {
     const isSelected = dateStr === selected;
     const isOverdue = dateStr < today;
     const chipCls = (ev) => ev.type === 'order' ? 'ev-order' : ev.type === 'nomaad' ? 'ev-nomaad' : (ev.done ? 'ev-done' : ev.priority === 'high' ? 'ev-high' : ev.priority === 'med' ? 'ev-med' : 'ev-task');
-    const chipAttr = (ev) => ev.type === 'task' && ev.id ? ` data-cal-task="${escapeHtml(ev.id)}"` : ev.type === 'order' ? ' data-cal-goto="orders"' : ev.type === 'nomaad' ? ' data-cal-goto="nomaad"' : '';
+    const chipAttr = (ev) => ev.type === 'task' && ev.id ? ` data-cal-task="${escapeHtml(ev.id)}"` : ev.type === 'order' && ev.oid ? ` data-cal-order="${escapeHtml(String(ev.oid))}"` : ev.type === 'nomaad' && ev.nq ? ` data-cal-nomaad="${escapeHtml(String(ev.nq))}"` : '';
     const chips = evs.slice(0, 3).map(ev => `<span class="cal-chip ${chipCls(ev)}"${chipAttr(ev)} title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)}</span>`).join('');
     const more = evs.length > 3 ? `<span class="cal-chip-more">+${evs.length - 3}</span>` : '';
     cells.push(`
@@ -10804,7 +10804,7 @@ function renderCalendar() {
         <div class="cal-selected-date">${selected === today ? 'Өнөөдөр' : fmtDate(selected)} — ${selectedEvents.length}</div>
         ${selectedEvents.length ? selectedEvents.map(ev => {
           const icon = ev.type === 'order' ? '🛒' : ev.type === 'nomaad' ? '🏕️' : '📋';
-          const clickAttr = ev.type === 'task' && ev.id ? ` data-task-id="${escapeHtml(ev.id)}"` : ev.type === 'order' ? ' data-cal-goto="orders"' : ev.type === 'nomaad' ? ' data-cal-goto="nomaad"' : '';
+          const clickAttr = ev.type === 'task' && ev.id ? ` data-task-id="${escapeHtml(ev.id)}"` : ev.type === 'order' && ev.oid ? ` data-cal-order="${escapeHtml(String(ev.oid))}"` : ev.type === 'nomaad' && ev.nq ? ` data-cal-nomaad="${escapeHtml(String(ev.nq))}"` : '';
           return `<div class="cal-task${clickAttr ? ' clickable' : ''}"${clickAttr}>
             <span class="cal-ev-icon" style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
             <span class="cal-task-title ${ev.done ? 'done' : ''}">${escapeHtml(ev.title)}</span>
@@ -10843,23 +10843,81 @@ function attachCalendarHandlers() {
   });
   document.querySelectorAll('.cal-cell[data-date]').forEach(el => {
     el.addEventListener('click', (e) => {
-      const chip = e.target.closest('[data-cal-task],[data-cal-goto]');
+      const chip = e.target.closest('[data-cal-task],[data-cal-order],[data-cal-nomaad]');
       if (chip) {
         e.stopPropagation();
         if (chip.dataset.calTask) return openTaskModal(chip.dataset.calTask);
-        if (chip.dataset.calGoto) { state.view = chip.dataset.calGoto; render(); return; }
+        if (chip.dataset.calOrder) return openCalOrderModal(chip.dataset.calOrder);
+        if (chip.dataset.calNomaad) return openCalNomaadModal(chip.dataset.calNomaad);
       }
       state.calendarSelected = el.dataset.date;
       render();
     });
   });
-  // Доод сонгосон-өдрийн жагсаалт — ажил/захиалга/NOMAAD бүгд дарж нээгдэнэ
+  // Доод сонгосон-өдрийн жагсаалт — ажил/захиалга/NOMAAD бүгд БАЙРАНДАА поп-апаар нээгдэнэ
   document.querySelectorAll('.cal-task[data-task-id]').forEach(el => {
     el.addEventListener('click', () => openTaskModal(el.dataset.taskId));
   });
-  document.querySelectorAll('.cal-task[data-cal-goto]').forEach(el => {
-    el.addEventListener('click', () => { state.view = el.dataset.calGoto; render(); });
+  document.querySelectorAll('.cal-task[data-cal-order]').forEach(el => {
+    el.addEventListener('click', () => openCalOrderModal(el.dataset.calOrder));
   });
+  document.querySelectorAll('.cal-task[data-cal-nomaad]').forEach(el => {
+    el.addEventListener('click', () => openCalNomaadModal(el.dataset.calNomaad));
+  });
+}
+
+// Календарь дээрээс гарахгүйгээр захиалга/эвентийн дэлгэрэнгүйг БАЙРАНДАА поп-апаар харуулна.
+function _calPopup(inner) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.innerHTML = `<div class="modal" style="max-width:460px;width:94%;">${inner}
+    <div class="modal-actions" style="justify-content:space-between;margin-top:14px;gap:8px;">
+      <button class="btn" data-cal-goto="${inner.includes('🏕') ? 'nomaad' : 'orders'}" style="font-size:12px;">Самбар руу →</button>
+      <button class="btn btn-primary" data-cal-close>Хаах</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal || e.target.closest('[data-cal-close]')) return close();
+    const g = e.target.closest('[data-cal-goto]');
+    if (g) { close(); state.view = g.dataset.calGoto; render(); }
+  });
+  return modal;
+}
+function openCalOrderModal(id) {
+  const e = (typeof unifiedOrders === 'function' ? unifiedOrders() : []).find(x => String((x.o || {}).id) === String(id));
+  const o = e && e.o;
+  if (!o) { showToast('Захиалга олдсонгүй', 'warn'); return; }
+  const N = x => Number(x) || 0;
+  const total = N(o.total_mnt), paid = N(o.paid_mnt), bal = Math.max(0, total - paid);
+  const items = Array.isArray(o.items) ? o.items : [];
+  const st = (typeof BQ_STATUS !== 'undefined' && BQ_STATUS[o.status]) ? BQ_STATUS[o.status].label : (o.status || '');
+  _calPopup(`
+    <h2 style="margin:0 0 4px;font-size:17px;">🛒 Захиалга #${escapeHtml(String(o.number ?? ''))}</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">${escapeHtml(o.customer || '')}${o.phone ? ' · ' + escapeHtml(o.phone) : ''}</div>
+    <div style="font-size:13px;line-height:1.9;">
+      <div>📅 ${escapeHtml(String(o.starts_at || '').slice(0, 10))}${o.stops_at ? ' → ' + escapeHtml(String(o.stops_at).slice(0, 10)) : ''}</div>
+      ${st ? `<div>Төлөв: <b>${escapeHtml(st)}</b></div>` : ''}
+      <div style="display:flex;justify-content:space-between;"><span>Нийт дүн</span><b>${fmtMoney(total)}</b></div>
+      ${paid ? `<div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Төлсөн</span><span>${fmtMoney(paid)}</span></div>` : ''}
+      ${bal ? `<div style="display:flex;justify-content:space-between;"><span>Үлдэгдэл</span><b style="color:var(--warn)">${fmtMoney(bal)}</b></div>` : ''}
+    </div>
+    ${items.length ? `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;font-size:12px;max-height:180px;overflow-y:auto;">${items.map(it => `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>${escapeHtml(it.name || '')} ×${N(it.qty)}</span><span>${fmtMoney(N(it.qty) * N(it.price))}</span></div>`).join('')}</div>` : (o.item_count ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);">${o.item_count} төрлийн бараа</div>` : '')}
+  `);
+}
+function openCalNomaadModal(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => String(x.quote_no) === String(quoteNo));
+  if (!o) { showToast('Захиалга олдсонгүй', 'warn'); return; }
+  _calPopup(`
+    <h2 style="margin:0 0 4px;font-size:17px;">🏕 ${escapeHtml(o.company || 'NOMAAD')}</h2>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">${escapeHtml(o.quote_no || '')}${o.phone ? ' · ' + escapeHtml(o.phone) : ''}</div>
+    <div style="font-size:13px;line-height:1.9;">
+      <div>📅 ${escapeHtml(o.date_start || '')}${o.date_end ? ' → ' + escapeHtml(o.date_end) : ''}</div>
+      ${o.camp ? `<div>Кемп: <b>${escapeHtml(o.camp)}</b>${o.tier ? ' · ' + escapeHtml(o.tier) : ''}</div>` : ''}
+      ${o.guests ? `<div>Зочид: <b>${escapeHtml(String(o.guests))}</b> хүн</div>` : ''}
+      ${o.status ? `<div>Төлөв: <b>${escapeHtml(o.status)}</b></div>` : ''}
+    </div>
+  `);
 }
 
 // Анхны ачааллын skeleton — cache хоосон, сервер дата хүлээж буй үед "Даалгавар алга"

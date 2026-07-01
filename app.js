@@ -8257,6 +8257,19 @@ function renderProducts() {
              : state.prodFilter === 'asset' ? all.filter(p => !isRentable(p))
              : all;
   if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
+  // Ангилал шүүлтүүр + эрэмбэлэлт (өртөг/үнэ/нөөц)
+  state.prodCategory = state.prodCategory || 'all';
+  state.prodSort = state.prodSort || 'name';
+  if (state.prodCategory !== 'all') list = list.filter(p => p.category === state.prodCategory || (Array.isArray(p.all_categories) && p.all_categories.includes(state.prodCategory)));
+  const costOf = (p) => (state.productCosts || {})[p.sku] || 0;
+  const _prodSorters = {
+    name: (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
+    value_desc: (a, b) => costOf(b) * (Number(b.stock) || 0) - costOf(a) * (Number(a.stock) || 0),
+    cost_desc: (a, b) => costOf(b) - costOf(a),
+    price_desc: (a, b) => (Number(b.price) || 0) - (Number(a.price) || 0),
+    stock_desc: (a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0),
+  };
+  list = list.slice().sort(_prodSorters[state.prodSort] || _prodSorters.name);
   const rows = list.map(productRowHtml).join('');
   const tab = (k, label, n) => `<button class="prod-tab${state.prodFilter === k ? ' on' : ''}" data-prodfilter="${k}">${label} <span class="prod-tab-n">${n}</span></button>`;
   // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
@@ -8264,6 +8277,14 @@ function renderProducts() {
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
   const brTab = (k, label) => `<button class="prod-tab${state.prodBranch === k ? ' on' : ''}" data-prodbranch="${k}">${label}${k !== 'all' ? ` <span class="prod-tab-n">${brQtySum(k)}ш</span>` : ''}</button>`;
   const branchBar = `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
+  // Ангилал + эрэмбэ сонгогч
+  const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
+  const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
+  const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
+  const filterBar = `<div style="display:flex;gap:8px;margin:6px 0 2px;flex-wrap:wrap;">
+    <select id="prod-cat" style="flex:1;min-width:140px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${catOpts}</select>
+    <select id="prod-sort" style="flex:1;min-width:140px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${sortOpts}</select>
+  </div>`;
   const costs = state.productCosts || {};
   const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * (Number(p.stock) || 0), 0);
   const costedN = all.filter(p => (costs[p.sku] || 0) > 0).length;
@@ -8276,6 +8297,7 @@ function renderProducts() {
     </div>
     <div class="prod-tabs">${tab('all', 'Бүгд', all.length)}${tab('rental', '🏷 Түрээсийн', rentN)}${tab('asset', '🏢 Хөрөнгө', assetN)}</div>
     ${branchBar}
+    ${filterBar}
     ${assetLine}
     <div class="prod-count" id="prod-count">${list.length} бараа</div>
     <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
@@ -8463,6 +8485,9 @@ function attachProductsHandlers() {
   document.querySelectorAll('[data-prodbranch]').forEach(b => {
     b.onclick = () => { state.prodBranch = b.dataset.prodbranch; render(); };
   });
+  // Ангилал шүүлт + эрэмбэ
+  document.getElementById('prod-cat')?.addEventListener('change', (e) => { state.prodCategory = e.target.value; render(); });
+  document.getElementById('prod-sort')?.addEventListener('change', (e) => { state.prodSort = e.target.value; render(); });
   // Салбар хооронд шилжүүлэх (мөр нээхээс сэргийлж stopPropagation)
   document.querySelectorAll('[data-transfer]').forEach(b => {
     b.addEventListener('click', (e) => { e.stopPropagation(); openTransferModal(b.dataset.transfer); });

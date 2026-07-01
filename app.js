@@ -5631,7 +5631,7 @@ function canSeeReports() { return canAccessView('reports', () => canSeeAllFinanc
 /* ═══════════ БАГИЙН АЧААЛАЛ — удирдлага хүн бүрийн идэвхтэй ажлыг нэг дэлгэцээс ═══════════
    Хэн юу хийж байгаа, ажил давхцаж буй эсэхийг харна. Идэвхтэй ажлыг хариуцагчаар бүлэглэж,
    хоцролт/тоо + үүсгэгчийг харуулна. Зөвхөн удирдлага/CEO (эрхийн системээр тохируулж болно). */
-function canSeeWorkload() { return canAccessView('workload', () => state.isCEO || (state.myLevel || 0) >= 80); }   // захирал (level 80+) баг харна; CEO Эрх удирдахаар нарийвчилж болно
+function canSeeWorkload() { return canAccessView('workload', () => state.isCEO); }   // эрх нь Эрх удирдах матрицаас (role_perms/member_perms) — хатуу код БИШ
 let _workloadSearch = '';
 function _wlActiveTasks() {
   return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined');

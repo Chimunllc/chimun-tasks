@@ -4114,6 +4114,8 @@ body {
 .cal-dot-med, .cal-task-priority.cal-dot-med { background: var(--accent-amber); }
 .cal-dot-low, .cal-task-priority.cal-dot-low { background: var(--accent-blue); }
 .cal-dot-done { background: var(--accent-green); }
+.cal-dot-order { background: #7c3aed; }   /* Захиалга — нил ягаан */
+.cal-dot-nomaad { background: #0d9488; }  /* NOMAAD эвент — ногоон-цэнхэр */
 .cal-more {
   font-size: 9px;
   color: var(--muted);

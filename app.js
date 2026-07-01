@@ -10366,36 +10366,33 @@ function renderCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = todayStr();
 
-  // Task-уудыг date-аар бүлэглэх
+  // НЭГДСЭН эвент — даалгавар + захиалга + NOMAAD-ыг огноогоор бүлэглэх
+  if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const byDate = {};
-  state.tasks.forEach(t => {
-    if (!t.due) return;
-    (byDate[t.due] = byDate[t.due] || []).push(t);
-  });
+  const addEv = (date, ev) => { const d = String(date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; (byDate[d] = byDate[d] || []).push(ev); };
+  state.tasks.forEach(t => { if (t.due && t.status !== 'deleted') addEv(t.due, { type: 'task', title: t.title, sub: memberName(t.assignee), done: t.status === 'done', priority: t.priority, id: t.id }); });
+  (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0) }); });
+  (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}` }); });
 
-  // Selected day (default: today if visible, else 1st)
+  // Сонгосон өдөр
   const selected = state.calendarSelected || today;
-  const selectedTasks = byDate[selected] || [];
+  const selectedEvents = byDate[selected] || [];
 
   // Grid cells
   const cells = [];
   for (let i = 0; i < firstDow; i++) cells.push('<div class="cal-cell cal-empty"></div>');
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const dayTasks = byDate[dateStr] || [];
+    const evs = byDate[dateStr] || [];
     const isToday = dateStr === today;
     const isSelected = dateStr === selected;
     const isOverdue = dateStr < today;
-    const dotCount = Math.min(dayTasks.length, 3);
-    const dots = dayTasks.slice(0, 3).map(t => {
-      const cls = t.status === 'done' ? 'cal-dot-done'
-        : (t.priority === 'high' ? 'cal-dot-high'
-        : (t.priority === 'med' ? 'cal-dot-med' : 'cal-dot-low'));
-      return `<span class="cal-dot ${cls}"></span>`;
-    }).join('');
-    const more = dayTasks.length > 3 ? `<span class="cal-more">+${dayTasks.length - 3}</span>` : '';
+    const dotCls = (ev) => ev.type === 'order' ? 'cal-dot-order' : ev.type === 'nomaad' ? 'cal-dot-nomaad' : (ev.done ? 'cal-dot-done' : ev.priority === 'high' ? 'cal-dot-high' : ev.priority === 'med' ? 'cal-dot-med' : 'cal-dot-low');
+    const dots = evs.slice(0, 4).map(ev => `<span class="cal-dot ${dotCls(ev)}"></span>`).join('');
+    const more = evs.length > 4 ? `<span class="cal-more">+${evs.length - 4}</span>` : '';
     cells.push(`
-      <button class="cal-cell ${isToday?'cal-today':''} ${isSelected?'cal-selected':''} ${isOverdue && dayTasks.some(t=>t.status!=='done')?'cal-overdue':''}" data-date="${dateStr}">
+      <button class="cal-cell ${isToday?'cal-today':''} ${isSelected?'cal-selected':''} ${isOverdue && evs.some(ev=>ev.type==='task' && !ev.done)?'cal-overdue':''}" data-date="${dateStr}">
         <span class="cal-num">${d}</span>
         <span class="cal-dots">${dots}${more}</span>
       </button>
@@ -10416,15 +10413,21 @@ function renderCalendar() {
       <div class="cal-grid">
         ${cells.join('')}
       </div>
+      <div class="cal-legend" style="display:flex;gap:14px;justify-content:center;font-size:11px;color:var(--muted);margin:8px 0 2px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="cal-dot cal-dot-low"></span>Даалгавар</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="cal-dot cal-dot-order"></span>Захиалга</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;"><span class="cal-dot cal-dot-nomaad"></span>NOMAAD эвент</span>
+      </div>
       <div class="cal-selected-info">
-        <div class="cal-selected-date">${selected === today ? 'Өнөөдөр' : fmtDate(selected)} — ${selectedTasks.length} ажил</div>
-        ${selectedTasks.length ? selectedTasks.map(t => `
-          <div class="cal-task" data-task-id="${escapeHtml(t.id)}">
-            <span class="cal-task-priority cal-dot-${t.priority || 'low'}"></span>
-            <span class="cal-task-title ${t.status === 'done' ? 'done' : ''}">${escapeHtml(t.title)}</span>
-            <span class="cal-task-assignee">${escapeHtml(memberName(t.assignee))}</span>
-          </div>
-        `).join('') : '<div class="cal-empty-msg">Энэ өдөрт ажил алга</div>'}
+        <div class="cal-selected-date">${selected === today ? 'Өнөөдөр' : fmtDate(selected)} — ${selectedEvents.length}</div>
+        ${selectedEvents.length ? selectedEvents.map(ev => {
+          const icon = ev.type === 'order' ? '🛒' : ev.type === 'nomaad' ? '🏕️' : '📋';
+          return `<div class="cal-task"${ev.type === 'task' && ev.id ? ` data-task-id="${escapeHtml(ev.id)}"` : ''}>
+            <span class="cal-ev-icon" style="width:20px;text-align:center;flex-shrink:0;">${icon}</span>
+            <span class="cal-task-title ${ev.done ? 'done' : ''}">${escapeHtml(ev.title)}</span>
+            <span class="cal-task-assignee">${escapeHtml(ev.sub || '')}</span>
+          </div>`;
+        }).join('') : '<div class="cal-empty-msg">Энэ өдөрт зүйл алга</div>'}
       </div>
     </div>
   `;

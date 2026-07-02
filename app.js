@@ -4166,7 +4166,10 @@ function renderOrders() {
 
   const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
     <div class="orders-title">Захиалга</div>
-    <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
+    <div style="display:flex;gap:8px;align-items:center;">
+      ${state.isCEO ? `<button class="btn" id="test-cleanup-btn" style="padding:6px 11px;font-size:12px;color:var(--danger);" title="Тест захиалга устгах">🧪 Тест цэвэрлэх</button>` : ''}
+      <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
+    </div>
   </div>`;
 
   // Booqable + app захиалгыг lazy татна.
@@ -4276,6 +4279,7 @@ function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
   // Шинэ захиалга үүсгэх / app захиалга засах·устгах
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
+  document.getElementById('test-cleanup-btn')?.addEventListener('click', () => openTestCleanupModal());
   document.querySelectorAll('[data-app-edit]').forEach(b => b.addEventListener('click', () => {
     const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appEdit)); if (ao) openNewOrder(ao);
   }));
@@ -9416,6 +9420,47 @@ async function saveAppOrder(ord) {
     body: JSON.stringify(ord),
   }, 20000);
   if (!r.ok) { showToast('Хадгалах алдаа: ' + (await r.text()).slice(0, 80), 'error', 5000); throw new Error('save fail'); }
+}
+// Тест захиалга цэвэрлэх (ЗӨВХӨН CEO) — нэрэнд test/тест/demo орсныг сонгож бүрмөсөн устгана
+const _TEST_ORDER_RE = /\btest\b|тест|demo|туршил|жишээ|sample/i;
+function openTestCleanupModal() {
+  if (!state.isCEO) { showToast('Зөвхөн CEO энэ үйлдлийг хийнэ', 'warn', 3000); return; }
+  const cands = (state.appOrders || []).filter(o => _TEST_ORDER_RE.test(o.customer || ''));
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '9600';
+  modal.innerHTML = `<div class="modal" style="max-width:480px;width:96%;max-height:88vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><h2 style="margin:0;font-size:16px;">🧪 Тест захиалга устгах</h2><button class="btn" id="tc-close" style="padding:5px 10px;">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Нэрэнд «test / тест / demo» орсон захиалгууд. Устгавал БҮРМӨСӨН арилна (буцаах боломжгүй).</div>
+    ${cands.length ? `<div id="tc-list">${cands.map(o => `<label style="display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;">
+      <input type="checkbox" class="tc-cb" data-id="${escapeHtml(String(o.id))}" checked style="width:auto;margin:0;">
+      <b>#${o.number ?? '—'}</b>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '?')}</span>
+      <span style="color:var(--muted);font-size:11px;">${escapeHtml((BQ_STATUS[o.status] || {}).label || o.status || '')}</span>
+      <b style="font-variant-numeric:tabular-nums;">${fmtMoney(o.total_mnt || 0)}</b>
+    </label>`).join('')}</div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+      <button class="btn" id="tc-cancel">Болих</button>
+      <button class="btn" id="tc-del" style="background:var(--danger);color:#fff;border-color:var(--danger);">🗑 Устгах (<span id="tc-n">${cands.length}</span>)</button>
+    </div>` : `<div style="text-align:center;color:var(--muted);padding:24px;">Тест захиалга олдсонгүй ✓</div>`}
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#tc-close').onclick = close;
+  modal.querySelector('#tc-cancel')?.addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const updateN = () => { const el = modal.querySelector('#tc-n'); if (el) el.textContent = modal.querySelectorAll('.tc-cb:checked').length; };
+  modal.querySelectorAll('.tc-cb').forEach(cb => cb.addEventListener('change', updateN));
+  modal.querySelector('#tc-del')?.addEventListener('click', async (e) => {
+    const ids = [...modal.querySelectorAll('.tc-cb:checked')].map(cb => cb.dataset.id);
+    if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
+    if (!(await showConfirm(`${ids.length} тест захиалгыг БҮРМӨСӨН устгах уу?`, { okText: 'Устгах', danger: true }))) return;
+    e.currentTarget.disabled = true;
+    let ok = 0;
+    for (const id of ids) { try { await deleteAppOrder(id); ok++; } catch (err) { console.warn('test del', err); } }
+    close();
+    showToast(`${ok} тест захиалга устгалаа`, 'success', 2800);
+    if (typeof render === 'function') render();
+  });
 }
 async function deleteAppOrder(id) {
   state.appOrders = (state.appOrders || []).filter(o => o.id !== id);

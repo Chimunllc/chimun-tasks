@@ -6186,18 +6186,17 @@ function renderAccessRoles() {
   const dailyCard = (() => {
     if (!dailyPeople.length) return '';
     const gExp = expPerson === '__daily__';
-    const gt = (state.rolePerms && state.rolePerms[DAILY_ROLE_KEY]) || null;
-    const granted = gt ? Object.keys(gt).filter(k => gt[k]).length : 0;
     const head = `<div class="ac-person-head" data-person-toggle="__daily__" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
       <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${gExp ? '▾' : '▸'}</span> <b style="font-size:13px;">⏱ Цагийн ажилтан</b> <span style="font-size:11px;color:var(--muted);">· ${dailyPeople.length} хүн (нэг бүлэг)</span></div>
-      ${granted ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">${granted} эрх нээсэн</span>` : `<span style="font-size:10px;color:var(--muted);">хаалттай</span>`}
+      <span style="font-size:10px;color:var(--ok);font-weight:700;">зөвхөн Ирсэн ажил</span>
     </div>`;
     if (!gExp) return wrap(head);
-    const names = `<div style="font-size:11px;color:var(--muted);margin:6px 0 2px;line-height:1.6;">Багт (${dailyPeople.length}): ${dailyPeople.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
-    const info = `<div style="font-size:11px;color:var(--muted);margin:4px 0 2px;">Энд тохируулсан эрх <b>бүх цагийн ажилтанд</b> хамаарна. Default: зөвхөн өөрийн ирсэн ажил (Тойм/Санхүү/Календарь/бусад бүгд хаалттай). Чагт тавьж л эрх нээнэ.</div>`;
-    const matrix = capMatrixHtml('daily-cap', DAILY_ROLE_KEY, (key) => !!(gt && gt[key]));
-    const reset = granted ? `<div style="margin-top:8px;"><button class="btn" data-daily-reset="1" style="padding:4px 11px;font-size:11px;">↺ Бүгдийг хаах</button></div>` : '';
-    return wrap(head + names + info + matrix + reset);
+    const names = `<div style="font-size:11px;color:var(--muted);margin:6px 0 6px;line-height:1.6;">Багт (${dailyPeople.length}): ${dailyPeople.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
+    const only = `<div style="display:flex;align-items:flex-start;gap:9px;background:var(--panel-hover);border-radius:10px;padding:11px 13px;">
+      <span class="ac-chip on locked" style="white-space:nowrap;">✓ Ирсэн ажил</span>
+      <span style="font-size:12px;color:var(--muted);line-height:1.55;">Цагийн ажилтан зөвхөн өөрт нь оноосон ажлыг л хардаг. Тойм, Календарь, Санхүү, Гүйцэтгэл, Захиалга, Тайлан зэрэг бусад бүх цэс хаалттай.</span>
+    </div>`;
+    return wrap(head + names + only);
   })();
   // ── Хувь хүнээр (үндсэн ажилтан) ──
   const rows = nonDaily.map(m => {
@@ -6276,18 +6275,6 @@ function attachAccessHandlers() {
   document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearMemberPerms(b.dataset.personReset); showToast('Албан тушаал руу буцаалаа', 'success', 1500); render();
   }));
-  // ── Цагийн ажилтны БҮЛГИЙН эрх (role_perms['цагийн ажилтан']) — БҮГДИЙГ true/false хадгална (default хаалттай) ──
-  document.querySelectorAll('input[data-daily-cap]').forEach(cb => cb.addEventListener('change', () => {
-    document.querySelectorAll(`input[data-daily-cap][data-cap-key="${CSS.escape(cb.dataset.capKey)}"]`).forEach(x => {   // ижил capKey олон цэсэнд → синк
-      x.checked = cb.checked;
-      const c = x.closest('.ac-chip'); if (c) { c.classList.toggle('on', cb.checked); c.classList.toggle('act-off', !cb.checked); }
-    });
-    saveRolePerms(DAILY_ROLE_KEY, gatherFull([...document.querySelectorAll('input[data-daily-cap]')]));
-    showToast('Цагийн ажилтны бүлгийн эрх хадгаллаа', 'success', 1500);
-  }));
-  document.querySelector('[data-daily-reset]')?.addEventListener('click', (e) => {
-    e.stopPropagation(); clearRolePerms(DAILY_ROLE_KEY); showToast('Цагийн ажилтныг хаалттай болголоо', 'success', 1500); render();
-  });
   document.querySelector('[data-clear-all-overrides]')?.addEventListener('click', async () => {
     if (!(await showConfirm('Бүх хүний онцгой тохиргоог цэвэрлэх үү? Хүн бүр албан тушаалынхаа эрхэд буцна.', { okText: 'Цэвэрлэх', danger: true }))) return;
     for (const k of Object.keys(state.memberPerms || {})) await clearMemberPerms(k);
@@ -8948,7 +8935,11 @@ const BQ_STATUS_ORDER = ['draft', 'reserved', 'preparation', 'cleaning', 'ready'
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
 // Очиж авах:   … Гарахад бэлэн→[Олгосон]→Дууссан
-function isDeliveryOrder(o) { return !!String((o && (o.delivery_address || o.customer_address)) || '').trim(); }
+function isDeliveryOrder(o) {
+  const d = (typeof parseDelivery === 'function') ? parseDelivery(o && o.note) : null;
+  if (d) return d.zone === 'city' || d.zone === 'out';   // DLV token байвал ЭНЭ шийднэ
+  return !!String((o && (o.delivery_address || o.customer_address)) || '').trim();   // хуучин дата — хаягаар
+}
 function orderNextStep(o) {
   const st = String((o && o.status) || '');
   const deliv = isDeliveryOrder(o);
@@ -9056,7 +9047,27 @@ function rentalDays(startMs, stopMs) {
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
-function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX|…⟧ token-ийг арилгана (RT, SL г.м.)
+function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV г.м.)
+
+// ── Хүргэлтийн төлбөр — байршлаар автомат (сайт+апп нэг томьёо) ──
+// Хот дотор = тогтмол (очих+буцах багтсан). Хотоос гадна = нэг талын км × 2 (очих+буцах) × км-ийн үнэ.
+const DELIVERY_CITY_FEE = 150000;   // ₮ хот дотор
+const DELIVERY_PER_KM = 5000;       // ₮ нэг талын км тутам
+function calcDeliveryFee(zone, km) {
+  if (zone === 'city') return DELIVERY_CITY_FEE;
+  if (zone === 'out') return Math.max(0, (Math.round(Number(km) || 0)) * 2 * DELIVERY_PER_KM);
+  return 0;   // pickup / хоосон
+}
+// ⟦DLV|zone|km|fee⟧ note token (zone=city|out|pickup). app_orders-д багана нэмэхгүйгээр (RT/SL-тэй ижил).
+const _DLV_RE = /⟦DLV\|([a-z]+)\|(\d+)\|(\d+)⟧/;
+function parseDelivery(note) { const m = String(note || '').match(_DLV_RE); return m ? { zone: m[1], km: +m[2], fee: +m[3] } : null; }
+function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Math.round(km) || 0}|${Math.round(fee) || 0}⟧`; }
+function deliveryLabel(d) {
+  if (!d || d.zone === 'pickup') return '';
+  if (d.zone === 'city') return 'Хот дотор';
+  if (d.zone === 'out') return `Хотоос гадна ${d.km}км (очих+буцах ${d.km * 2}км)`;
+  return '';
+}
 function _pad2(n) { return String(n).padStart(2, '0'); }
 
 // ── Дамжлагын ажилтны бүртгэл — note доторх ⟦SL|stage~email~date;…⟧ token-оор (app_orders-д багана нэмэхгүйгээр, ⟦RT⟧-тэй ижил загвар) ──
@@ -9103,6 +9114,7 @@ function openNewOrder(editOrder) {
   const depLog = isEdit ? (editOrder.deposit_log || []).slice() : [];
   const today = new Date().toISOString().slice(0, 10);
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
+  const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
@@ -9117,10 +9129,21 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
-      <label class="no-lbl">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Хаяг"></label>
       <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
       ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
+    </div>
+    <div style="background:var(--panel-hover);border-radius:10px;padding:8px 10px;margin-bottom:10px;">
+      <div style="display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:end;">
+        <label class="no-lbl">🚚 Хүргэлт<select id="no-delivzone" style="margin-top:3px;">
+          <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Очиж авах (хүргэлтгүй)</option>
+          <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор — 150,000₮</option>
+          <option value="out"${_dlv0.zone === 'out' ? ' selected' : ''}>🚚 Хотоос гадна (км-ээр)</option>
+        </select></label>
+        <label class="no-lbl" id="no-delivkm-wrap" style="${_dlv0.zone === 'out' ? '' : 'display:none;'}">Нэг тал (км)<input id="no-delivkm" type="number" min="0" value="${_dlv0.km || ''}" placeholder="0" style="margin-top:3px;"></label>
+      </div>
+      <label class="no-lbl" id="no-addr-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Хаяг"></label>
+      <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
     <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
     <div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
@@ -9138,6 +9161,7 @@ function openNewOrder(editOrder) {
       <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
       <div style="display:flex;justify-content:space-between;font-size:15px;border-top:1px solid var(--border);padding-top:5px;margin-top:2px;"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
       ${isEdit ? `<div style="display:flex;justify-content:space-between;"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
     </div>
@@ -9207,6 +9231,12 @@ function openNewOrder(editOrder) {
     if (isNaN(sMs) || isNaN(eMs)) return 1;
     return rentalDays(sMs, eMs);
   }
+  // Одоогийн хүргэлт — сонгосон бүс/км-ээс автомат тооцоо
+  function currentDelivery() {
+    const zone = $('#no-delivzone').value;
+    const km = zone === 'out' ? (Number($('#no-delivkm').value) || 0) : 0;
+    return { zone, km, fee: calcDeliveryFee(zone, km) };
+  }
   function recalc() {
     const perDay = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0);
     const days = currentDays();
@@ -9217,15 +9247,28 @@ function openNewOrder(editOrder) {
     const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);   // барьцаа = нэг удаагийн (хоногоор үржихгүй)
     if (!depositManual) depEl.value = moneyFmtInput(autoDep);
     const deposit = moneyVal(depEl);
-    const total = rentalNet + deposit;   // Нийт = түрээс − хөнгөлөлт + БАРЬЦАА (үйлчлүүлэгч бүгдийг төлнө)
+    const dlv = currentDelivery();
+    const total = rentalNet + deposit + dlv.fee;   // Нийт = түрээс − хөнгөлөлт + БАРЬЦАА + ХҮРГЭЛТ
     $('#no-perday').textContent = fmtMoney(perDay);
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
     $('#no-dep').textContent = fmtMoney(deposit);
+    $('#no-deliv').textContent = fmtMoney(dlv.fee);
+    $('#no-delivrow').style.display = dlv.zone === 'pickup' ? 'none' : 'flex';
+    $('#no-delivfee').textContent = fmtMoney(dlv.fee);
     $('#no-total').textContent = fmtMoney(total);
     if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - moneyVal($('#no-paid'))));
   }
+  // Хүргэлтийн бүс солих — км/хаяг талбар харуулах/нуух + дахин тооцоо
+  $('#no-delivzone').addEventListener('change', () => {
+    const z = $('#no-delivzone').value;
+    $('#no-delivkm-wrap').style.display = z === 'out' ? '' : 'none';
+    $('#no-addr-wrap').style.display = z === 'pickup' ? 'none' : '';
+    $('#no-delivfee-row').style.display = z === 'pickup' ? 'none' : 'flex';
+    recalc();
+  });
+  $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
   $('#no-disctype').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
@@ -9242,6 +9285,11 @@ function openNewOrder(editOrder) {
     const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
     const total = Math.max(0, subtotal - discount);
     const deposit = moneyVal(depEl);
+    const dlv = currentDelivery();
+    const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
+    const addr = $('#no-addr').value.trim();
+    if (isDeliv && !addr) { showToast('Хүргэх хаяг оруулна уу', 'warn'); return; }
+    if (dlv.zone === 'out' && !dlv.km) { showToast('Хотоос гадна: км оруулна уу', 'warn'); return; }
     const prevDep = isEdit ? Number(editOrder.deposit_mnt) || 0 : 0;
     if (deposit !== prevDep) depLog.push({ by: state.me, at: new Date().toISOString(), from: prevDep, to: deposit });
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
@@ -9249,12 +9297,12 @@ function openNewOrder(editOrder) {
       id: isEdit ? editOrder.id : uid,
       number: isEdit ? editOrder.number : nextOrderNumber(),
       contract_no: isEdit ? editOrder.contract_no : nextContractNo(),
-      customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: $('#no-addr').value.trim(),
+      customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: isDeliv ? addr : '',
       status: isEdit ? ((moneyVal($('#no-paid')) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft',
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
-      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(),
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
+      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -9277,9 +9325,14 @@ function bqOrderCard(o) {
   const _sh = _rt ? ' ' + _pad2(_rt.sh) + ':00' : '', _eh = _rt ? ' ' + _pad2(_rt.eh) + ':00' : '';
   const _days = isApp && start && stop ? orderRentalDays(o) : 0;
   const next = isApp ? orderNextStep(o) : BQ_NEXT[st];   // app: салаалсан урсгал (эрх/хүргэлтээр); bq: хуучин map
-  // Хүргэлттэй эсэх — хаяг байвал бид хүргэнэ, эс бол үйлчлүүлэгч очиж авна
+  // Хүргэлттэй эсэх — DLV token эсвэл хаягаар. Хүргэлттэй бол төлбөр/бүсийг харуулна.
+  const _dlv = isApp ? parseDelivery(o.note) : null;
+  const _isDeliv = isDeliveryOrder(o);
   const delivBadge = isApp
-    ? (addr ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Очиж авах</span>`)
+    ? (_isDeliv ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Очиж авах</span>`)
+    : '';
+  const delivMeta = (isApp && _dlv && _dlv.fee > 0)
+    ? `<div class="order-meta">🚚 Хүргэлт: <b>${fmtMoney(_dlv.fee)}</b>${deliveryLabel(_dlv) ? ` · ${escapeHtml(deliveryLabel(_dlv))}` : ''}</div>`
     : '';
   // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
   const slog = isApp ? parseStageLog(o.note) : {};
@@ -9325,6 +9378,7 @@ function bqOrderCard(o) {
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
+    ${delivMeta}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">📄 ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}

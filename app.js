@@ -8031,6 +8031,21 @@ function taskCompletedDate(t) {
         : (t.updated ? new Date(t.updated).getTime() : 0)));
   return ms ? new Date(ms).toISOString().slice(0, 10) : '';
 }
+// Ажил хугацаанаасаа хэдэн хоног хоцорсон (+) эсвэл эрт (−) дууссан бэ. null = тооцох боломжгүй.
+function taskLatenessDays(t) {
+  if (!t || t.status !== 'done') return null;
+  const cd = taskCompletedDate(t);
+  const due = String(t.due || '').slice(0, 10);
+  if (!cd || !due) return null;
+  return Math.round((new Date(cd + 'T00:00:00') - new Date(due + 'T00:00:00')) / 86400000);
+}
+function taskLatenessLabel(t) {
+  const d = taskLatenessDays(t);
+  if (d == null) return '';
+  if (d > 0) return `<span style="color:var(--danger);font-weight:700;">⚠ ${d} хоног хоцорсон</span>`;
+  if (d === 0) return `<span style="color:var(--ok);font-weight:700;">✓ Хугацаандаа дуусгасан</span>`;
+  return `<span style="color:var(--ok);font-weight:700;">✓ ${-d} хоногийн өмнө дуусгасан</span>`;
+}
 function objectiveMetrics(key, month) {
   const today = todayStr();
   const mine = (state.tasks || []).filter(t =>
@@ -12509,6 +12524,11 @@ function openTaskModal(id) {
     } else if (canEdit.none) {
       info += `<br><span style="color:var(--danger);font-weight:600;">🔒 Танд засах эрхгүй (зөвхөн харах).</span>`;
     }
+    // Хугацаа — хоцорсон эсэхийг хоногоор (объектив оноонд автоматаар ордог хэмжүүр)
+    if (t.status === 'done') {
+      const lateHtml = taskLatenessLabel(t);
+      if (lateHtml) info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12.5px;">🕒 ${lateHtml}${t.due ? ` <span style="color:var(--muted);">· товлосон ${escapeHtml(String(t.due).slice(0, 10))}</span>` : ''}</div>`;
+    }
     // Биелэлтийн зураг(ууд) — дууссан даалгаврын баталгаа
     const photos = Array.isArray(t.completion_photos) ? t.completion_photos
                   : (t.completion_photo_url ? [t.completion_photo_url] : []);
@@ -12534,9 +12554,9 @@ function openTaskModal(id) {
     if (iAmCreator) {
       const rated = qVal >= 1;
       info += `<div id="t-quality-block" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;color:${rated ? 'var(--muted)' : 'var(--warn)'};margin-bottom:6px;font-weight:${rated ? '400' : '700'};">⭐ Ажлын чанар — таны үнэлгээ${rated ? ' (гүйцэтгэлийн оноонд 40%)' : ' · оноо + тайлбар өгснөөр ажил ХААГДАНА'}</div>
+        <div style="font-size:11px;color:${rated ? 'var(--muted)' : 'var(--warn)'};margin-bottom:6px;font-weight:${rated ? '400' : '700'};">⭐ Ажлын чанар — таны үнэлгээ${rated ? ' (гүйцэтгэлийн оноонд 40%)' : ' · оноо өгснөөр ажил ХААГДАНА'}</div>
         <div class="q-stars" style="display:flex;gap:6px;font-size:26px;line-height:1;cursor:pointer;">${[1,2,3,4,5].map(n => `<span class="q-star" data-q="${n}" style="color:${qVal >= n ? '#f59e0b' : 'var(--border)'};">★</span>`).join('')}</div>
-        <textarea id="t-quality-note" rows="2" placeholder="Үнэлгээний тайлбар — гүйцэтгэгчид харагдана (заавал)" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-family:inherit;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;">${escapeHtml(qNote)}</textarea>
+        <textarea id="t-quality-note" rows="2" placeholder="Үнэлгээний тайлбар (сонголттой) — гүйцэтгэгчид харагдана" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-family:inherit;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;">${escapeHtml(qNote)}</textarea>
         <button class="btn btn-primary" id="t-quality-save" style="margin-top:8px;width:100%;">${rated ? '✓ Үнэлгээ шинэчлэх' : 'Үнэлгээ хадгалах'}</button>
       </div>`;
     } else if (qVal >= 1) {
@@ -12560,7 +12580,6 @@ function openTaskModal(id) {
       qBlock.querySelector('#t-quality-save').onclick = () => {
         const note = qBlock.querySelector('#t-quality-note').value.trim();
         if (pending < 1) { showToast('Од (1-5) өгнө үү', 'warn', 2000); return; }
-        if (!note) { showToast('Үнэлгээний тайлбар бичнэ үү — гүйцэтгэгчид харагдана', 'warn', 3000); return; }
         saveTaskQuality(t.id, pending, note);
       };
     }

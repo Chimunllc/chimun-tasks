@@ -4020,6 +4020,53 @@ function renderReconcilePanel() {
   </div>`;
 }
 
+// Захиалгын яаралтай зэрэглэл (эрэмбэ + тэмдэг). Гарах шатанд starts_at, түрээсэнд stops_at-аар.
+function orderUrgRank(o, stage, todayStr) {
+  const dt = ['rented', 'returning', 'started'].includes(stage) ? o.stops_at : o.starts_at;
+  const d = String(dt || '').slice(0, 10);
+  if (!d) return 9;
+  if (d < todayStr) return 0;                 // хугацаа хэтэрсэн
+  if (d === todayStr) return 1;               // өнөөдөр
+  const diff = (Date.parse(d) - Date.parse(todayStr)) / 86400000;
+  return (diff <= 2) ? 2 : 3;                  // удахгүй / дараа
+}
+// Дамжлагын самбар — шат бүрээр эвхэгддэг, идэвхтэй шат дотор хүргэлт/очиж авах дэд бүлэг + яаралтай эрэмбэ
+const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕' };
+function renderOrderPipelineBoard(shown, todayStr) {
+  const byStage = {};
+  shown.forEach(e => { (byStage[e.o.status] = byStage[e.o.status] || []).push(e); });
+  const ALWAYS = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
+  const open = state.ordersBoardOpen || new Set();
+  const secs = BQ_STATUS_ORDER.map(k => {
+    const list = byStage[k] || [];
+    if (!list.length && !ALWAYS.has(k)) return '';
+    const st = BQ_STATUS[k] || {};
+    const total = list.reduce((sm, e) => sm + e.total, 0);
+    const isOpen = open.has(k) && list.length;
+    let bodyHtml = '';
+    if (isOpen) {
+      const byRank = arr => arr.slice().sort((a, b) => orderUrgRank(a.o, k, todayStr) - orderUrgRank(b.o, k, todayStr) || String(a.o.starts_at || '').localeCompare(String(b.o.starts_at || '')));
+      const sub = (arr, label, icon) => {
+        if (!arr.length) return '';
+        const urgN = arr.filter(e => orderUrgRank(e.o, k, todayStr) <= 1).length;
+        return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + byRank(arr).map(e => bqOrderCard(e.o)).join('');
+      };
+      const deliv = list.filter(e => isDeliveryOrder(e.o));
+      const pick = list.filter(e => !isDeliveryOrder(e.o));
+      bodyHtml = `<div class="board-body">${sub(deliv, 'Хүргэлттэй', '🚚')}${sub(pick, 'Очиж авах', '🏬')}</div>`;
+    }
+    return `<div class="board-sec" style="border-left-color:${st.dot || '#888'};">
+      <div class="board-head" data-board-stage="${k}">
+        <span class="board-icon">${_BOARD_ICON[k] || '•'}</span>
+        <span class="board-name">${escapeHtml(st.label || k)}</span>
+        <span class="board-count">${list.length}</span>
+        ${total ? `<span class="board-total">${fmtMoney(total)}</span>` : ''}
+        <span class="board-caret">${isOpen ? '▾' : '▸'}</span>
+      </div>${bodyHtml}
+    </div>`;
+  }).join('');
+  return `<div class="orders-board">${secs}</div>`;
+}
 function renderOrders() {
   // Захиалга = Booqable (M-Event үхсэн). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
@@ -4042,6 +4089,7 @@ function renderOrders() {
   // ── Менежер / CEO ──
   state.ordersFilter = state.ordersFilter || 'all';
   state.ordersView = state.ordersView || 'list';
+  if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
@@ -4106,9 +4154,15 @@ function renderOrders() {
   const paySelect = `<select id="orders-pay" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
     ${payOpts.map(([v, l]) => `<option value="${v}"${payFC === v ? ' selected' : ''}>${l}</option>`).join('')}
   </select>`;
+  const _ov = state.ordersView || 'list';
+  const viewToggle = `<div class="oview-toggle">
+    <button class="oview-btn${_ov === 'list' ? ' on' : ''}" data-oview="list">☰ Жагсаалт</button>
+    <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
+  </div>`;
   const controls = `<div class="orders-controls">
     <div class="otabs">${tabsHtml}</div>
     <div class="orders-controls-r">
+      ${viewToggle}
       ${sortSelect}
       ${paySelect}
       ${ymSelect}
@@ -4138,9 +4192,11 @@ function renderOrders() {
   const CAP = 200;
   const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
   const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:12.5px;margin:2px 2px 8px;">${shown.length.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sumTotal)}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
-  const body = shown.length
-    ? sumLine + `<div class="orders-wrap">${cards}</div>`
-    : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`;
+  const body = (state.ordersView === 'board')
+    ? sumLine + renderOrderPipelineBoard(shown, todayStr)
+    : (shown.length
+      ? sumLine + `<div class="orders-wrap">${cards}</div>`
+      : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
   return head + chips + controls + body;
 }
@@ -4252,6 +4308,15 @@ function attachOrdersHandlers() {
   // Жагсаалт ⇄ Самбар
   document.querySelectorAll('[data-oview]').forEach(el => {
     el.addEventListener('click', () => { state.ordersView = el.dataset.oview; render(); });
+  });
+  // Самбарын шат эвхэх/дэлгэх
+  document.querySelectorAll('[data-board-stage]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.order-card') || e.target.closest('button')) return;
+      const k = el.dataset.boardStage; const set = state.ordersBoardOpen;
+      if (set.has(k)) set.delete(k); else set.add(k);
+      render();
+    });
   });
   // Board картаас тухайн захиалга руу (жагсаалт + хайлт)
   document.querySelectorAll('[data-order-open]').forEach(el => {

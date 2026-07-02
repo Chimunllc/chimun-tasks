@@ -4084,9 +4084,11 @@ function renderOrders() {
 
   // Төлөв таб (6 төлөв, нэгдсэн тоо) + он-сар филтер + хайлт + харагдац
   const tabs = [{ key: 'all', label: 'Бүгд' }].concat(BQ_STATUS_ORDER.map(k => ({ key: k, label: BQ_STATUS[k].label })));
+  // Идэвхтэй дамжлагын шатууд — захиалга байхгүй байсан ч ҮРГЭЛЖ харуулна (бүрэн урсгал харагдана)
+  const _PIPE_TABS = new Set(['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned']);
   const tabsHtml = tabs.map(t => {
     const n = combined.filter(e => matchFilter(e, t.key)).length;   // 'all' нь matchFilter-ээр цуцалсныг хасна
-    return (n || t.key === 'all') ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
+    return (n || t.key === 'all' || _PIPE_TABS.has(t.key)) ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
   }).join('');
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
   const ymF = state.ordersYM || '';

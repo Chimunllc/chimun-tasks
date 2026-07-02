@@ -9040,8 +9040,8 @@ function openNewOrder(editOrder) {
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
       <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:15px;"><span><b>Нийт дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барьцаа</span><span id="no-dep">0₮</span></div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:15px;border-top:1px solid var(--border);padding-top:5px;margin-top:2px;"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
       ${isEdit ? `<div style="display:flex;justify-content:space-between;"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
     </div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
@@ -9116,15 +9116,17 @@ function openNewOrder(editOrder) {
     const subtotal = perDay * days;   // түрээс = өдрийн дүн × хоног
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
-    const total = Math.max(0, subtotal - discount);
+    const rentalNet = Math.max(0, subtotal - discount);
     const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);   // барьцаа = нэг удаагийн (хоногоор үржихгүй)
     if (!depositManual) depEl.value = moneyFmtInput(autoDep);
+    const deposit = moneyVal(depEl);
+    const total = rentalNet + deposit;   // Нийт = түрээс − хөнгөлөлт + БАРЬЦАА (үйлчлүүлэгч бүгдийг төлнө)
     $('#no-perday').textContent = fmtMoney(perDay);
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
+    $('#no-dep').textContent = fmtMoney(deposit);
     $('#no-total').textContent = fmtMoney(total);
-    $('#no-dep').textContent = fmtMoney(moneyVal(depEl));
     if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - moneyVal($('#no-paid'))));
   }
   $('#no-discval').addEventListener('input', recalc);
@@ -9154,7 +9156,7 @@ function openNewOrder(editOrder) {
       status: isEdit ? ((moneyVal($('#no-paid')) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft',
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
       note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value)).trim(),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),

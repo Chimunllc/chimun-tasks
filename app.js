@@ -1283,6 +1283,7 @@ function financeAsTask(r) {
     dept_branch: r.dept_branch || '',  // салбар (ИВЕНТ/КЕМП/ЗАХ) — салбараар бүлэглэхэд
     category: r.category || '',        // ангилал (код+нэр) — үндсэн/дэд ангиллаар бүлэглэхэд
     beneficiary: r.beneficiary || '',
+    link_type: r.link_type || '', link_label: r.link_label || '', link_id: r.link_id || '',   // бодит объект холбоос
     close_type: r.close_type || '',    // хаасан хэлбэр (баримттай/дутуу/баримтгүй) — аудитад
     close_note: r.close_note || '',    // баримтгүй/дутуу хаасан шалтгаан
     has_receipt: Array.isArray(r.purchase_receipt_urls)  // хүлээн авалтын баримт хавсаргасан эсэх
@@ -1635,6 +1636,10 @@ function requestToWire(r) {
   // Код → монгол
   out.status   = _xlate(out.status, _FIN_STATUS_E2M);
   out.decision = _xlate(out.decision, _FIN_DEC_E2M);
+  // ⏳ link_* (объект холбоос) — DB багана + n8n mapping (Step 1) хийгдтэл wire-т ИЛГЭЭХГҮЙ.
+  // Ингэснээр одоогийн finance upsert эвдрэхгүй. localStorage-д хадгалагдаж UI-д харагдана.
+  // Step 1 дууссаны дараа энэ 1 мөрийг устгавал сервер рүү хадгалагдана.
+  delete out.link_type; delete out.link_id; delete out.link_label;
   return out;
 }
 function requestFromWire(r) {
@@ -1681,7 +1686,7 @@ function normalizeFinance(r) {
   return out;
 }
 
-async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber, priority }) {
+async function createFinanceRequest({ amount, purpose, beneficiary, justification, dueDate, category, deptBranch, frequency, bank, accountNumber, priority, linkType, linkId, linkLabel }) {
   // Илгээгчийг нэвтэрсэн хэрэглэгчийн identity-гээр тогтооно. ХЭЗЭЭ Ч CEO рүү
   // автоматаар бүү оноо — өмнө нь и-мэйлгүй ажилтан (state.me='') хүсэлт үүсгэхэд
   // буруугаар CEO-д бичигддэг алдаа байсан.
@@ -1702,6 +1707,8 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     justification: justification || '',
     due_date: dueDate || '',
     category: category || '',       // Нягтлан гараар сонгох
+    link_type: linkType || 'general', link_id: linkId || '', link_label: linkLabel || '',   // бодит объект холбоос
+
     // dept_branch: АЖИЛТАН өөрөө илгээвэл АВТО өөрийн салбар (форм сонголтыг үл хэрэгсэнэ).
     // Нягтлан/CEO өмнөөс оруулбал формоор сонгосон салбар (эс бөгөөс өөрийн default).
     dept_branch: (function(){
@@ -1924,6 +1931,60 @@ async function copyText(text, okMsg = 'Хуулагдлаа') {
   } catch (e2) { showToast('Хуулж чадсангүй', 'error'); }
 }
 
+// ── Санхүүгийн хүсэлт → бодит объект холбоос (машин/бараа/захиалга). Сонголтоор, default Ерөнхий. ──
+// Category-г ОРЛОХГҮЙ — зэрэгцээ "энэ зардал юунтай холбоотой" гэдгийг тэмдэглэнэ.
+// link_type/link_id/link_label талбарууд request-д нэмэгдэж requestToWire spread-ээр авто дамжина.
+const FIN_LINK_PH = { car: 'Улсын дугаар / машины нэр', product: 'Бараа хайх (нэр / SKU)', order: 'Захиалга (#дугаар / харилцагч)' };
+let _finLinkBound = false;
+function _finLinkPopulate(type) {
+  const dl = document.getElementById('f-link-dl'); if (!dl) return;
+  if (type === 'product') {
+    if (!state.products || !state.products.length) loadProductsCatalog();
+    dl.innerHTML = (state.products || []).filter(p => p && p.name).map(p => `<option value="${escapeHtml(p.name + (p.sku ? ' — ' + p.sku : ''))}"></option>`).join('');
+  } else if (type === 'order') {
+    if (state.bqOrders === undefined && !state._bqOrdersLoading) loadBooqableOrders();
+    if (state.appOrders === undefined) loadAppOrders();
+    const list = (typeof unifiedOrders === 'function' ? unifiedOrders() : []);
+    dl.innerHTML = list.slice(0, 300).map(e => { const o = e.o || {}; return `<option value="${escapeHtml('#' + (o.number ?? '') + ' · ' + (o.customer || ''))}"></option>`; }).join('');
+  } else { dl.innerHTML = ''; }
+}
+function _finLinkSelect(type) {
+  state._finLinkType = type || 'general';
+  document.querySelectorAll('#f-link-types .f-link-type').forEach(b => b.classList.toggle('on', b.dataset.flink === state._finLinkType));
+  const inp = document.getElementById('f-link-input'); if (!inp) return;
+  if (state._finLinkType === 'general') { inp.style.display = 'none'; inp.value = ''; }
+  else { inp.style.display = ''; inp.placeholder = FIN_LINK_PH[state._finLinkType] || ''; _finLinkPopulate(state._finLinkType); }
+}
+function financeLinkReset(t) {
+  if (!_finLinkBound) {
+    document.querySelectorAll('#f-link-types .f-link-type').forEach(b => b.addEventListener('click', () => _finLinkSelect(b.dataset.flink)));
+    _finLinkBound = true;
+  }
+  _finLinkSelect((t && t.link_type) ? t.link_type : 'general');
+  const inp = document.getElementById('f-link-input');
+  if (inp && t && t.link_type && t.link_type !== 'general') inp.value = t.link_label || '';
+}
+function financeLinkRead() {
+  const type = state._finLinkType || 'general';
+  if (type === 'general') return { link_type: 'general', link_id: '', link_label: '' };
+  const val = (document.getElementById('f-link-input')?.value || '').trim();
+  if (!val) return { link_type: 'general', link_id: '', link_label: '' };
+  if (type === 'product') {
+    const p = (state.products || []).find(x => x && ((x.name + (x.sku ? ' — ' + x.sku : '')) === val || x.name === val || x.sku === val));
+    return { link_type: 'product', link_id: p ? (p.sku || '') : '', link_label: p ? p.name : val };
+  }
+  if (type === 'order') {
+    const e = (typeof unifiedOrders === 'function' ? unifiedOrders() : []).find(x => ('#' + ((x.o || {}).number ?? '') + ' · ' + ((x.o || {}).customer || '')) === val);
+    return { link_type: 'order', link_id: e ? String((e.o || {}).id || '') : '', link_label: val };
+  }
+  return { link_type: 'car', link_id: val, link_label: val };   // машин — vehicles хүснэгт хүртэл чөлөөт текст
+}
+function finLinkChip(r) {
+  if (!r || !r.link_label || r.link_type === 'general' || !r.link_type) return '';
+  const ic = r.link_type === 'car' ? '🚗' : r.link_type === 'product' ? '📦' : r.link_type === 'order' ? '🛒' : '🏢';
+  return `<span class="fin-link-chip">${ic} ${escapeHtml(r.link_label)}</span>`;
+}
+
 function openFinanceModal(id = null) {
   if (!id && !can('finance.create')) { showToast('Танд санхүүгийн хүсэлт илгээх эрх олгогдоогүй', 'warn', 3000); return; }
   const t = id ? state.financeRequests.find(x => x.id === id) : null;
@@ -1955,6 +2016,8 @@ function openFinanceModal(id = null) {
 
   // Dropdown options-уудыг шинэчилэх (modal нээх бүрд)
   fillFinanceSelects();
+  // Объект холбоос — шинэд Ерөнхий, засварт хадгалсан төрлөөр
+  financeLinkReset(t);
 
   if (!t) {
     // NEW request — submit mode
@@ -11800,6 +11863,7 @@ function renderRow(t) {
       else                            pillHtml = '<span class="finance-pill approved">✓ Зөвшөөрсөн · гүйлгээ хүлээж буй</span>';
     }
     if (pillHtml) extraHtml += pillHtml;
+    extraHtml += finLinkChip(t);   // 🚗/📦/🛒 объект холбоос (байвал)
   }
   // Үнэлгээ хүлээж буй — дуусаад үүсгэгч оноо өгөөгүй (хаагдаагүй) тэмдэг
   if (needsRating(t)) {
@@ -13556,6 +13620,7 @@ function initEvents() {
       await applyCeoEditsBeforeDecision(state.editingId);
       const r = state.financeRequests.find(x => x.id === state.editingId);
       if (r) {
+        Object.assign(r, financeLinkRead());   // объект холбоос шинэчлэх
         r.updated = new Date().toISOString();
         await saveFinanceRequest(r);
         showToast('Хадгалагдлаа', 'success', 2000);
@@ -13598,7 +13663,8 @@ function initEvents() {
     const btn = document.getElementById('f-save');
     btn.disabled = true;
     try {
-      const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency, priority });
+      const _link = financeLinkRead();
+      const newRequest = await createFinanceRequest({ amount, beneficiary, bank, accountNumber, purpose, justification, dueDate, category, deptBranch, frequency, priority, linkType: _link.link_type, linkId: _link.link_id, linkLabel: _link.link_label });
       // Хойшлогдсон файлуудыг ОДОО Drive-руу upload хийнэ (request бүртгэгдсэний дараа real ID ашиглана)
       const pendingFiles = state._fPurchasePendingFiles || [];
       if (pendingFiles.length) {

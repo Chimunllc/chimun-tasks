@@ -538,6 +538,17 @@
     <label>Санхүүгийн хүсэлтийн зарцуулалт тайлбар <span class="req">*</span></label>
     <input id="f-purpose" placeholder="Жишээ: Дуучин Болд — 5/22 концерт" />
 
+    <!-- Объект холбоос — энэ зардал юунтай холбоотой (машин/бараа/захиалга). Бүх ажилтанд, сонголтоор. -->
+    <label>Юунтай холбоотой вэ? <span style="font-weight:400;color:var(--muted);font-size:12px;">(сонголтоор)</span></label>
+    <div id="f-link-types" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+      <button type="button" class="f-link-type on" data-flink="general">🏢 Ерөнхий</button>
+      <button type="button" class="f-link-type" data-flink="car">🚗 Машин</button>
+      <button type="button" class="f-link-type" data-flink="product">📦 Бараа</button>
+      <button type="button" class="f-link-type" data-flink="order">🛒 Захиалга</button>
+    </div>
+    <input id="f-link-input" list="f-link-dl" placeholder="" autocomplete="off" style="display:none;" />
+    <datalist id="f-link-dl"></datalist>
+
     <!-- Дансны ангилал/салбар нь зөвхөн нягтлан/CEO-д харагдана. Энгийн ажилтан мэдэхгүй учир хоосон үлдээнэ. -->
     <div id="f-accountant-only" style="display:none;">
       <label>Үндсэн ангилал <span class="req">*</span> <span style="font-size:11px;color:var(--muted);font-weight:400;">(нягтлан бөглөх)</span></label>

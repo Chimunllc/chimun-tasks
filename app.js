@@ -4422,7 +4422,7 @@ function productStockByName(name) {
   return Math.max(0, mev - (Number(p.broken) || 0) - (Number(p.maintenance) || 0));
 }
 // Нөөц ЭЗЛЭХ статус: төлбөр төлөгдсөнөөс (reserved) гаргах хүртэл. Буцаж ирвэл (stopped/archived) чөлөөлнө.
-const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'started'];
+const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'];
 function bookedQtyForRange(name, start, end, excludeOrderNo) {
   const n = _normProdName(name);
   const s = String(start || '').slice(0, 10), e = String(end || '').slice(0, 10);
@@ -9016,17 +9016,23 @@ function bqDocsHtml(docs) {
 // Booqable түрээсийн 6 төлөв — нэр/өнгө/icon. Дараалал: Ноорог→Захиалсан→Эхэлсэн→Дууссан→Архивласан→Цуцалсан.
 // Дэвсгэр (light) + бараан текст (WCAG AA контраст) + зүүн талын тод цэг.
 const BQ_STATUS = {
-  draft:       { label: 'Ноорог',     dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
-  reserved:    { label: 'Захиалсан',  dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
-  preparation: { label: 'Бэлтгэл',    dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
-  cleaning:    { label: 'Цэвэрлэгээ', dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  draft:       { label: 'Ноорог',        dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
+  reserved:    { label: 'Захиалсан',     dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
+  prepared:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  delivering:  { label: 'Хүргэгдэж байна', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
+  rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
+  returning:   { label: 'Хүргэлт буцах', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
+  returned:    { label: 'Хүлээн авсан',  dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
+  canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
+  // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
+  preparation: { label: 'Бэлтгэл',       dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
+  cleaning:    { label: 'Цэвэрлэгээ',    dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
   ready:       { label: 'Гаргахад бэлэн', dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
-  started:     { label: 'Гарсан',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
-  stopped:     { label: 'Дууссан',    dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
-  archived:    { label: 'Архивласан', dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
-  canceled:    { label: 'Цуцалсан',   dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
+  started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
+  stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'stopped', 'archived', 'canceled'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned', 'stopped', 'archived', 'canceled'];
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
@@ -9041,13 +9047,20 @@ function orderNextStep(o) {
   const deliv = isDeliveryOrder(o);
   switch (st) {
     case 'reserved':
-    case 'preparation': return { to: 'cleaning', label: '🧰 Бэлтгэх',   cap: 'orders.prepare' };
-    case 'cleaning':    return { to: 'ready',    label: '🧹 Цэвэрлсэн',  cap: 'orders.clean' };
+    case 'preparation':
+    case 'cleaning':    return { to: 'prepared', label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
+    case 'prepared':
     case 'ready':       return deliv
-                          ? { to: 'started', label: '📦 Агуулахаас гарсан', cap: 'orders.dispatch' }
-                          : { to: 'stopped', label: '🤝 Олгосон',           cap: 'orders.dispatch' };
-    case 'started':     return { to: 'stopped',  label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
-    case 'stopped':     return { to: 'archived', label: '🗄 Архивлах',     cap: 'orders.advance' };
+                          ? { to: 'delivering', label: '🚚 Жолоочид хүлээлгэн өгөх', cap: 'orders.dispatch' }
+                          : { to: 'rented',     label: '🤝 Хүлээлгэн өгөх',          cap: 'orders.dispatch' };
+    case 'delivering':  return { to: 'rented',    label: '🤝 Хүргэж өгсөн', cap: 'orders.deliver' };
+    case 'rented':
+    case 'started':     return deliv
+                          ? { to: 'returning', label: '↩ Хүргэлт буцаах',       cap: 'orders.deliver' }
+                          : { to: 'returned',  label: '📥 Буцаан хүлээн авсан', cap: 'orders.dispatch' };
+    case 'returning':   return { to: 'returned', label: '📦 Агуулахад хүлээн авсан', cap: 'orders.dispatch' };
+    case 'returned':
+    case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
     default: return null;
   }
 }
@@ -9064,10 +9077,11 @@ const BQ_NEXT = {
 // ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──
 // Шат бүрд ажил хийх эрх (cap) + fallback роль + үйлдлийн нэр. Захиалга шат руу орох бүрд ажил үүснэ.
 const STAGE_AUTOTASK = {
-  reserved: { cap: 'orders.prepare',  role: /нярав|агуулах|бэлтгэ/i, verb: '🧰 Захиалга бэлтгэх' },
-  cleaning: { cap: 'orders.clean',    role: /цэвэрл/i,               verb: '🧹 Захиалга цэвэрлэх' },
-  ready:    { cap: 'orders.dispatch', role: /нярав|агуулах/i,        verb: '📦 Агуулахаас гаргах / олгох' },
-  started:  { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,   verb: '🚚 Хүргэж өгөх' },
+  reserved:   { cap: 'orders.clean',    role: /цэвэрл/i,              verb: '🧹 Захиалга цэвэрлэх' },
+  prepared:   { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Хүлээлгэн өгөх' },
+  delivering: { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '🚚 Хүргэж өгөх' },
+  rented:     { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '↩ Түрээс дуусахад буцаан авах' },
+  returning:  { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Агуулахад хүлээн авах' },
 };
 // Эрх (cap)-ыг ТОДОРХОЙ эзэмшигчид (role_perms/member_perms) — CEO-ийн бүх эрхийг ОРУУЛАХГҮЙ (эс бол бүх ажил CEO-д очно)
 function membersWithCap(cap) {
@@ -9116,16 +9130,24 @@ async function advanceOrderFromTask(task) {
 
 // Дамжлагын шат: (from>to) → үйлдэл + өмнөх шат (үнэлэх). Товч бүрд зураг + өмнөхийн үнэлгээ
 const STAGE_ACTION = {
-  'reserved>cleaning':   { key: 'prepare',  label: 'Бэлтгэх',           prev: null },
-  'preparation>cleaning':{ key: 'prepare',  label: 'Бэлтгэх',           prev: null },
-  'cleaning>ready':      { key: 'clean',     label: 'Цэвэрлэх',          prev: { key: 'prepare',  label: 'Бэлтгэл' } },
-  'ready>started':       { key: 'dispatch',  label: 'Агуулахаас гаргах', prev: { key: 'clean',    label: 'Цэвэрлэгээ' } },
-  'ready>stopped':       { key: 'handover',  label: 'Олгох',             prev: { key: 'clean',    label: 'Цэвэрлэгээ' } },
-  'started>stopped':     { key: 'deliver',   label: 'Хүргэж өгөх',       prev: { key: 'dispatch', label: 'Гаргалт' } },
-  'stopped>archived':    { key: 'archive',   label: 'Архивлах',          prev: null },
+  'reserved>prepared':    { key: 'clean',    label: 'Цэвэрлэх',                q: 'Бэлтгэл/цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
+  'preparation>prepared': { key: 'clean',    label: 'Цэвэрлэх',                q: 'Бэлтгэл/цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
+  'cleaning>prepared':    { key: 'clean',    label: 'Цэвэрлэх',                q: 'Бэлтгэл/цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
+  'prepared>delivering':  { key: 'dispatch', label: 'Жолоочид хүлээлгэн өгөх', q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'prepared>rented':      { key: 'handover', label: 'Хүлээлгэн өгөх',          q: 'Захиалга бүрэн, зөв хүлээлгэн өгсөн үү?' },
+  'ready>delivering':     { key: 'dispatch', label: 'Жолоочид хүлээлгэн өгөх', q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'ready>rented':         { key: 'handover', label: 'Хүлээлгэн өгөх',          q: 'Захиалга бүрэн, зөв хүлээлгэн өгсөн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',            q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Хүргэлт буцаах',          q: 'Бараа бүрэн бүтэн байна уу?' },
+  'rented>returned':      { key: 'received', label: 'Буцаан хүлээн авсан',      q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'started>returning':    { key: 'retstart', label: 'Хүргэлт буцаах',          q: 'Бараа бүрэн бүтэн байна уу?' },
+  'started>returned':     { key: 'received', label: 'Буцаан хүлээн авсан',      q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'returning>returned':   { key: 'received', label: 'Агуулахад хүлээн авсан',   q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'returned>archived':    { key: 'archive',  label: 'Архивлах',                q: null },
+  'stopped>archived':     { key: 'archive',  label: 'Архивлах',                q: null },
 };
-function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, prev: null }; }
-const STAGE_META_LABEL = { prepare: '🧰 Бэлтгэл', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Гаргалт', handover: '🤝 Олголт', deliver: '🚚 Хүргэлт', archive: '🗄 Архив' };
+function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Хүлээн авсан', archive: '🗄 Архив' };
 // Дамжлагын зураг + үнэлгээ — БҮХ ажилтанд харагдана (картын доор)
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
@@ -9150,9 +9172,7 @@ function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
   const needPhoto = act.key !== 'archive';
-  const prev = act.prev;
-  const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
-  const prevBy = prev && sm[prev.key] ? (sm[prev.key].by || '') : '';
+  const q = act.q;
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
@@ -9162,7 +9182,7 @@ function openStageAdvanceModal(oid, to) {
       <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
       <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
-    ${prev ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ Өмнөх шат «${escapeHtml(prev.label)}»${prevBy ? ' · ' + escapeHtml(memberName(prevBy) || prevBy) : ''} — хэр хийсэн бэ? <span style="color:var(--danger);">*</span></div>
+    ${q ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(q)} <span style="color:var(--danger);">*</span></div>
       <div id="sa-stars" style="font-size:34px;letter-spacing:5px;margin:2px 0 4px;user-select:none;">${[1, 2, 3, 4, 5].map(i => `<span data-star="${i}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>
       <textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
     <div style="display:flex;gap:8px;justify-content:flex-end;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
@@ -9173,7 +9193,7 @@ function openStageAdvanceModal(oid, to) {
   $('#sa-close').onclick = close; $('#sa-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const photos = []; let rating = 0;
-  const validate = () => { $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && (!prev || rating > 0)); };
+  const validate = () => { $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && (!q || rating > 0)); };
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
@@ -9186,7 +9206,7 @@ function openStageAdvanceModal(oid, to) {
       catch (err) { $('#sa-photo-status').textContent = '⚠ ' + err.message; $('#sa-photo-status').style.color = 'var(--danger)'; }
     };
   }
-  if (prev) {
+  if (q) {
     const paint = () => $('#sa-stars').querySelectorAll('[data-star]').forEach(sp => { sp.style.color = (+sp.dataset.star <= rating) ? '#f5a623' : 'var(--border-strong)'; });
     $('#sa-stars').querySelectorAll('[data-star]').forEach(sp => sp.onclick = () => { rating = +sp.dataset.star; paint(); validate(); });
   }
@@ -9194,8 +9214,10 @@ function openStageAdvanceModal(oid, to) {
     $('#sa-submit').disabled = true;
     const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
     const nowD = new Date().toISOString().slice(0, 10);
-    if (needPhoto) sm2[act.key] = Object.assign({}, sm2[act.key], { photos: photos.slice(), by: state.me, at: nowD });
-    if (prev && rating > 0) sm2[prev.key] = Object.assign({}, sm2[prev.key], { rating, ratedBy: state.me, ratedAt: nowD, comment: ($('#sa-comment').value || '').trim() });
+    const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
+    if (needPhoto) entry.photos = photos.slice();
+    if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; }
+    sm2[act.key] = entry;
     close();
     await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${act.label} ✓` });
   };
@@ -9329,13 +9351,8 @@ function stageLogSet(note, stage, email, date) {
 }
 // Дамжлагын алхам бүрийн харагдах шошго — товч дарсан ажилтныг картад ангилж харуулна.
 // stage = ямар төлөв рүү шилжсэн (bqUpdateStatus `to`-гоор stamp хийдэг).
-const STAGE_LOG_LABEL = { preparation: '🧰 Бэлтгэсэн', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Агуулахаас гаргасан', stopped: '🚚 Хүргэж өгсөн', archived: '🗄 Архивласан' };
-// Дууссан (stopped) хоёр замаар ирнэ: хүргэлт → «Хүргэж өгсөн», очиж авах → «Олгосон».
-// started алхам бүхий бол хүргэлт байсан гэж үзнэ (агуулахаас гарсан).
-function stageLogLabel(stage, log) {
-  if (stage === 'stopped') return (log && log.started) ? '🚚 Хүргэж өгсөн' : '🤝 Олгосон';
-  return STAGE_LOG_LABEL[stage] || stage;
-}
+const STAGE_LOG_LABEL = { prepared: '🧹 Цэвэрлэсэн', delivering: '🚚 Жолоочид өгсөн', rented: '🤝 Хүлээлгэн өгсөн', returning: '↩ Буцаалт эхэлсэн', returned: '📥 Хүлээн авсан', archived: '🗄 Архивласан', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Гаргасан', stopped: '🚚 Хүргэсэн' };
+function stageLogLabel(stage, log) { return STAGE_LOG_LABEL[stage] || stage; }
 // Захиалгын огноо+цаг → түрээсийн хоног (карт + модал хуваалцана). Цаг note token-д байхгүй бол 09:00 default.
 function orderRentalDays(o) {
   const sd = String(o.starts_at || '').slice(0, 10), ed = String(o.stops_at || '').slice(0, 10);
@@ -9580,11 +9597,11 @@ function bqOrderCard(o) {
     : '';
   // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
   const slog = isApp ? parseStageLog(o.note) : {};
-  const slogKeys = ['preparation', 'cleaning', 'ready', 'started', 'stopped', 'archived'].filter(k => slog[k] && slog[k].by);
+  const slogKeys = ['prepared', 'delivering', 'rented', 'returning', 'returned', 'archived'].filter(k => slog[k] && slog[k].by);
   const slogHtml = slogKeys.length
     ? `<div class="order-stagelog">${slogKeys.map(k => `<div class="order-meta stagelog-row">${stageLogLabel(k, slog)}: <b>${escapeHtml(memberName(slog[k].by) || slog[k].by || '—')}</b>${slog[k].at ? ` · ${escapeHtml(String(slog[k].at).slice(5))}` : ''}</div>`).join('')}</div>`
     : '';
-  const activeSt = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st);
+  const activeSt = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
   const canPay = !isApp && activeSt && bal > 0;
   const canCancel = !isApp && activeSt;
   // Төлбөрийн мөр — Нийт · Төлсөн · Үлдэгдэл (цуцлахаас бусдад)
@@ -9593,8 +9610,8 @@ function bqOrderCard(o) {
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
-  const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st);
-  const appEditable = ['draft', 'reserved', 'preparation', 'cleaning', 'ready'].includes(st);   // Гарсан/Дууссан/Архивласан/Цуцалсан → засахгүй
+  const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
+  const appEditable = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'prepared'].includes(st);   // Гарсан/Дууссан/Архивласан/Цуцалсан → засахгүй
   const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
   const advCap = next ? (next.cap || 'orders.advance') : null;
@@ -9603,7 +9620,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -10225,8 +10242,8 @@ function ceoNowStrip() {
   let deliveries = 0, returns = 0;
   (state.appOrders || []).forEach(o => {
     const st = String(o.status || '');
-    if (['reserved', 'preparation', 'cleaning', 'ready'].includes(st) && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
-    if (st === 'started' && inWin(String(o.stops_at || '').slice(0, 10))) returns++;
+    if (['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering'].includes(st) && inWin(String(o.starts_at || '').slice(0, 10))) deliveries++;
+    if (['started', 'rented', 'returning'].includes(st) && inWin(String(o.stops_at || '').slice(0, 10))) returns++;
   });
   (state.nomaadOrders || []).forEach(o => { if (!nomaadIsCancelled(o) && inWin(String(o.date_start || '').slice(0, 10))) deliveries++; });
 

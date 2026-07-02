@@ -6506,7 +6506,7 @@ function nomaadCardHtml(o) {
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
          ${balanceHtml}
          ${subBreak > 0 ? `<div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>` : ''}
-         ${isDoneQuote ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}</div>` : `<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:4px 12px;font-size:11px;">+ Төлбөр нэмэх (PDF)</button>`}
+         <button class="btn btn-primary" data-nomaad-income="${q}" style="padding:4px 12px;font-size:11px;">+ Төлбөр нэмэх (PDF)</button>
        </div>`
     : `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
          ${balanceHtml}
@@ -9188,8 +9188,10 @@ function bqOrderCard(o) {
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'started'].includes(st);
+  const appEditable = ['draft', 'reserved', 'preparation', 'cleaning'].includes(st);   // Гарсан/Дууссан/Архивласан/Цуцалсан → засахгүй
+  const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   const foot = isApp
-    ? `<div class="order-foot">${appActive && appBal > 0 && can('orders.pay') ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}${next && st !== 'draft' && can('orders.advance') ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}${['reserved', 'preparation', 'cleaning', 'started'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${next && st !== 'draft' && can('orders.advance') ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}${['reserved', 'preparation', 'cleaning', 'started'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -9443,20 +9445,12 @@ function openBqPaymentModal(oid) {
       <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--danger)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
     </div>
     <label for="bqp-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Банкны баримт (PDF) оруулах</b>
-      <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" hidden>
-      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Дүн · огноо · шилжүүлэгч автоматаар. <b>Гараар бүртгэх боломжгүй.</b></div>
+      📄 <b>Банкны баримт (PDF) оруулах</b> <span style="font-weight:400;color:var(--muted);font-size:11px;">— олон файл сонгож болно</span>
+      <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" multiple hidden>
+      <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Дүн · огноо · шилжүүлэгч автоматаар. Олон гүйлгээ = олон PDF сонго. <b>Гараар бүртгэх боломжгүй.</b></div>
     </label>
-    <div id="bqp-fields" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:14px;">
-      <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний дүн</span><b id="bqp-amount-disp" style="font-size:15px;color:var(--ok);"></b></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Огноо</span><span id="bqp-date-disp"></span></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Шилжүүлэгч</span><b id="bqp-sender-disp" style="text-align:right;"></b></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Шилжүүлэгчийн данс</span><span id="bqp-sacct-disp"></span></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Хүлээн авагч</span><span id="bqp-receiver-disp" style="text-align:right;"></span></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний утга</span><span id="bqp-ref-disp" style="text-align:right;color:var(--muted);"></span></div>
-      <div style="${rowCss}border-bottom:none;"><span style="color:var(--muted);">Төлөв</span><span id="bqp-status-disp"></span></div>
-    </div>
-    <input type="hidden" id="bqp-amount"><input type="hidden" id="bqp-date"><input type="hidden" id="bqp-method" value="bank"><input type="hidden" id="bqp-ref"><input type="hidden" id="bqp-fpkey">
+    <div id="bqp-list" style="margin-bottom:14px;"></div>
+    <input type="hidden" id="bqp-method" value="bank">
     ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="bqp-cancel">Болих</button>

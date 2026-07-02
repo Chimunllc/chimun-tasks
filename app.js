@@ -2686,6 +2686,22 @@ function taskBranch(t) {
   // as M Event so existing data stays visible.
   return t.branch || 'm-event';
 }
+// Салбарын ленз шүүлт — удирдлагын view-үүдэд (Календарь/Ачаалал/Гүйцэтгэл/Авлага).
+// lens='all'/'capital' бол бүгд; эс бөгөөс тухайн салбар + shared/хоосон.
+function branchInLens(b) {
+  const lens = effectiveBranchLens();
+  if (lens === 'all' || lens === 'capital') return true;
+  const bb = String(b || '').toLowerCase();
+  return bb === lens || bb === 'shared';
+}
+// Хүн лензийн салбарт хамаарах эсэх (гүйцэтгэл/ачаалалд). Салбаргүй хүн бүгдэд харагдана.
+function memberInLens(m) {
+  const lens = effectiveBranchLens();
+  if (lens === 'all' || lens === 'capital') return true;
+  const bs = memberBranchesOf(m);
+  if (!bs.length) return true;
+  return bs.includes(lens);
+}
 /* Хэрэглэгч ямар салбарын лензийг ХАРЖ болох вэ:
    - CEO эсвэл хоёр салбартай → ['all','m-event','camp'] (бүгдийг, солих эрхтэй)
    - Нэг салбартай → зөвхөн өөрийн салбар (түгжээтэй — бусад салбар харахгүй)
@@ -4153,9 +4169,12 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => {
     if (!can(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
     const to = b.dataset.to;
-    const o = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.bqAdvance));
+    const oid = b.dataset.bqAdvance;
+    const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+    // app захиалга бол — зураг + өмнөх шатны үнэлгээ модал (архивлахаас бусад)
+    if (o && stageActionFor(String(o.status || ''), to).key !== 'archive') { openStageAdvanceModal(oid, to); return; }
     const actLabel = (b.textContent || '').trim() || (BQ_STATUS[to] || {}).label || to;
-    bqUpdateStatus(b.dataset.bqAdvance, to, { confirm: `#${o ? (o.number ?? '') : ''} — «${actLabel}» гэж тэмдэглэх үү?`, okText: actLabel, toast: `${actLabel} ✓` });
+    bqUpdateStatus(oid, to, { confirm: `#${o ? (o.number ?? '') : ''} — «${actLabel}» гэж тэмдэглэх үү?`, okText: actLabel, toast: `${actLabel} ✓` });
   }));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.bqCancel)));
 
@@ -5738,7 +5757,7 @@ function canSeeReports() { return canAccessView('reports', () => canSeeAllFinanc
 function canSeeWorkload() { return canAccessView('workload', () => state.isCEO); }   // эрх нь Эрх удирдах матрицаас (role_perms/member_perms) — хатуу код БИШ
 let _workloadSearch = '';
 function _wlActiveTasks() {
-  return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined');
+  return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined' && branchInLens(taskBranch(t)));
 }
 function wlHeaderHtml() {
   const today = todayStr();
@@ -8427,7 +8446,7 @@ function renderPerfMe() {
 
 function renderPerfAll() {
   const month = state.perfMonth;
-  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m));
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m) && memberInLens(m));
   const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0 }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
@@ -8447,13 +8466,13 @@ function renderPerfAll() {
 function renderPerfRate() {
   const month = state.perfMonth;
   const me = findMember(state.me) || {};
-  const myBranches = me.branches || [];
+  const myBranches = memberBranchesOf(me);
   const myLevel = Number(me.level) || 0;
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m));
   const targets = active.filter(m => {
     const k = personKey(m);
     if (k === state.me) return true;
-    return (m.branches || []).some(b => myBranches.includes(b));
+    return memberBranchesOf(m).some(b => myBranches.includes(b));
   });
   const cards = targets.map(m => {
     const key = personKey(m);
@@ -9086,7 +9105,81 @@ async function advanceOrderFromTask(task) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(p.orderId)); if (!o) return;
   if (String(o.status) === p.toStatus) return;              // аль хэдийн шилжсэн
   const next = orderNextStep(o); if (!next || next.to !== p.toStatus) return;   // зөвхөн зөв дараагийн алхам
-  await bqUpdateStatus(o.id, p.toStatus, { toast: `Захиалга #${o.number ?? ''}: ${next.label} ✓`, byTask: true });
+  // Ажлын зургийг захиалгын stage_meta-д хуулж бүх ажилтанд харагдуулна
+  const act = stageActionFor(String(o.status || ''), p.toStatus);
+  const sm = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
+  const photos = (task.completion_photos || []).filter(Boolean);
+  if (photos.length) sm[act.key] = Object.assign({}, sm[act.key], { photos, by: task.assignee || state.me, at: new Date().toISOString().slice(0, 10) });
+  await bqUpdateStatus(o.id, p.toStatus, { stageMeta: photos.length ? sm : undefined, toast: `Захиалга #${o.number ?? ''}: ${next.label} ✓`, byTask: true });
+}
+
+// Дамжлагын шат: (from>to) → үйлдэл + өмнөх шат (үнэлэх). Товч бүрд зураг + өмнөхийн үнэлгээ
+const STAGE_ACTION = {
+  'reserved>cleaning':   { key: 'prepare',  label: 'Бэлтгэх',           prev: null },
+  'preparation>cleaning':{ key: 'prepare',  label: 'Бэлтгэх',           prev: null },
+  'cleaning>ready':      { key: 'clean',     label: 'Цэвэрлэх',          prev: { key: 'prepare',  label: 'Бэлтгэл' } },
+  'ready>started':       { key: 'dispatch',  label: 'Агуулахаас гаргах', prev: { key: 'clean',    label: 'Цэвэрлэгээ' } },
+  'ready>stopped':       { key: 'handover',  label: 'Олгох',             prev: { key: 'clean',    label: 'Цэвэрлэгээ' } },
+  'started>stopped':     { key: 'deliver',   label: 'Хүргэж өгөх',       prev: { key: 'dispatch', label: 'Гаргалт' } },
+  'stopped>archived':    { key: 'archive',   label: 'Архивлах',          prev: null },
+};
+function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, prev: null }; }
+const STAGE_META_LABEL = { prepare: '🧰 Бэлтгэл', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Гаргалт', handover: '🤝 Олголт', deliver: '🚚 Хүргэлт', archive: '🗄 Архив' };
+
+// Товч дарахад — зураг (ЗААВАЛ) + өмнөх шатны үнэлгээ (ЗААВАЛ, сэтгэгдэл заавал биш)
+function openStageAdvanceModal(oid, to) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
+  const act = stageActionFor(String(o.status || ''), to);
+  const needPhoto = act.key !== 'archive';
+  const prev = act.prev;
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  const prevBy = prev && sm[prev.key] ? (sm[prev.key].by || '') : '';
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
+  modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">${escapeHtml(act.label)} · #${o.number ?? ''}</h2><button class="btn" id="sa-close" style="padding:5px 10px;">✕</button></div>
+    ${needPhoto ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 Гүйцэтгэлийн зураг <span style="color:var(--danger);">*</span></div>
+      <div id="sa-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
+      <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
+      <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
+      <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
+    ${prev ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ Өмнөх шат «${escapeHtml(prev.label)}»${prevBy ? ' · ' + escapeHtml(memberName(prevBy) || prevBy) : ''} — хэр хийсэн бэ? <span style="color:var(--danger);">*</span></div>
+      <div id="sa-stars" style="font-size:34px;letter-spacing:5px;margin:2px 0 4px;user-select:none;">${[1, 2, 3, 4, 5].map(i => `<span data-star="${i}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>
+      <textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = s => modal.querySelector(s);
+  const close = () => modal.remove();
+  $('#sa-close').onclick = close; $('#sa-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const photos = []; let rating = 0;
+  const validate = () => { $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && (!prev || rating > 0)); };
+  if (needPhoto) {
+    const renderPhotos = () => {
+      $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
+      $('#sa-photos').querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.prm, 1); renderPhotos(); validate(); });
+    };
+    $('#sa-photo-input').onchange = async (e) => {
+      const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+      $('#sa-photo-status').textContent = '⏳ Илгээж байна...'; $('#sa-photo-status').style.color = 'var(--muted)';
+      try { const url = await uploadReceipt(f, o.id, 'completion', `Захиалга #${o.number} ${act.label}`); if (url) { photos.push(url); renderPhotos(); $('#sa-photo-status').textContent = `✓ ${photos.length} зураг`; $('#sa-photo-status').style.color = 'var(--ok)'; validate(); } else { $('#sa-photo-status').textContent = '⚠ Хадгалж чадсангүй'; $('#sa-photo-status').style.color = 'var(--danger)'; } }
+      catch (err) { $('#sa-photo-status').textContent = '⚠ ' + err.message; $('#sa-photo-status').style.color = 'var(--danger)'; }
+    };
+  }
+  if (prev) {
+    const paint = () => $('#sa-stars').querySelectorAll('[data-star]').forEach(sp => { sp.style.color = (+sp.dataset.star <= rating) ? '#f5a623' : 'var(--border-strong)'; });
+    $('#sa-stars').querySelectorAll('[data-star]').forEach(sp => sp.onclick = () => { rating = +sp.dataset.star; paint(); validate(); });
+  }
+  $('#sa-submit').onclick = async () => {
+    $('#sa-submit').disabled = true;
+    const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
+    const nowD = new Date().toISOString().slice(0, 10);
+    if (needPhoto) sm2[act.key] = Object.assign({}, sm2[act.key], { photos: photos.slice(), by: state.me, at: nowD });
+    if (prev && rating > 0) sm2[prev.key] = Object.assign({}, sm2[prev.key], { rating, ratedBy: state.me, ratedAt: nowD, comment: ($('#sa-comment').value || '').trim() });
+    close();
+    await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${act.label} ✓` });
+  };
 }
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
 function bqStatusBadge(raw) {
@@ -9559,10 +9652,17 @@ async function bqUpdateStatus(oid, to, opts = {}) {
       o.note = notePatch;
     }
   }
+  // Дамжлагын зураг + үнэлгээ (stage_meta jsonb) — товчны модалаас ирнэ
+  let prevStageMeta = null;
+  if (table === 'app_orders' && opts.stageMeta) {
+    prevStageMeta = o.stage_meta;
+    o.stage_meta = opts.stageMeta;
+  }
   render();
   try {
     const body = { status: to, updated_at: new Date().toISOString() };
     if (notePatch !== null) body.note = notePatch;
+    if (opts.stageMeta && table === 'app_orders') body.stage_meta = opts.stageMeta;
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
@@ -9582,6 +9682,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     }
   } catch (e) {
     o.status = prev; o.note = prevNote;     // буцаах
+    if (prevStageMeta !== null) o.stage_meta = prevStageMeta;
     render();
     showToast('Засах эрх алга эсвэл алдаа: ' + e.message, 'error', 5000);
   }
@@ -9949,6 +10050,7 @@ function receivablesData() {
   const items = [];
   // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
   (state.appOrders || []).forEach(o => {
+    if (!branchInLens('m-event')) return;   // салбарын ленз: M-Event салбар биш бол хасна
     const st = String(o.status || '');
     if (st === 'draft' || st === 'canceled') return;
     const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
@@ -9965,6 +10067,7 @@ function receivablesData() {
   // NOMAAD: үлдэгдэл = гэрээний дүн − хүлээн авсан орлого; цуцлахыг хасна
   let noTotal = 0, noRecorded = 0;
   (state.nomaadOrders || []).forEach(o => {
+    if (!branchInLens('camp')) return;   // салбарын ленз: NOMAAD салбар биш бол хасна
     if (nomaadIsCancelled(o)) return;
     noTotal++;
     if (Number(o.income_amount) > 0) noRecorded++;
@@ -11329,7 +11432,9 @@ function renderCalendar() {
   // НЭГДСЭН эвент — даалгавар + захиалга + NOMAAD-ыг огноогоор бүлэглэх
   if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
-  const cb = state.calBranch || 'all';
+  // Салбарын ленз түгжээтэй (нэг салбартай хүн) бол календарь мөн тухайн салбарт хязгаарлагдана
+  const _calLens = effectiveBranchLens();
+  const cb = (_calLens === 'm-event' || _calLens === 'camp') ? _calLens : (state.calBranch || 'all');
   const isCampTask = (t) => /camp|кемп|nomaad|номаад/i.test(t.branch || '');
   const isMEvTask = (t) => /m-event|event|ивент/i.test(t.branch || '');
   const taskOk = (t) => cb === 'all' || (cb === 'm-event' ? !isCampTask(t) : !isMEvTask(t));

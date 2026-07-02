@@ -7727,7 +7727,7 @@ function openNomaadIncomeModal(o) {
         parsed = {
           amount: d.amount,
           date: d.date || new Date().toISOString().slice(0, 10),
-          note: (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · '),
+          note: (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
         };
         const warns = [];
         if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
@@ -9343,7 +9343,7 @@ function parseBankReceipt(text) {
   if (dM) out.date = dM[1];
   if (isKhan) {
     out.receiverBank = 'ХААН БАНК';
-    const jm = flat.match(/Journal\s*No:?\s*(\d+)/i); if (jm) out.receiptId = 'KH' + jm[1];
+    const jm = flat.match(/Journal\s*No:?\s*(\w+)/i); if (jm) out.bankRef = 'KH' + jm[1];   // харах/аудит (dedup биш)
     const parties = [...flat.matchAll(/(\d{7,20})\s+([А-ЯӨҮЁA-Z][А-ЯӨҮЁA-Za-z .\-]*?)(?=\s+[\d,]+\.\d{2}|\s+Гүйлгээний|\s+[KК]т|$)/g)].map(m => ({ acct: m[1], name: m[2].trim() }));
     if (parties[0]) { out.senderAcct = parties[0].acct; out.senderName = parties[0].name; }
     if (parties[1]) { out.receiverAcct = parties[1].acct; out.receiverName = parties[1].name; }
@@ -9361,7 +9361,7 @@ function parseBankReceipt(text) {
     out.senderAcct = get('Шилжүүлэгчийн дансны дугаар');
     out.ref = get('Гүйлгээний утга');
     out.status = get('Гүйлгээний төлөв');
-    const lm = flat.match(/Хүсэлтийн лавлах дугаар:?\s*(\d+)/i); if (lm) out.receiptId = 'GL' + lm[1];
+    const lm = flat.match(/Хүсэлтийн лавлах дугаар:?\s*([A-Za-z0-9]+)/i); if (lm) out.bankRef = 'GL' + lm[1];   // S-үсгээр эхэлж болно; харах/аудит (dedup биш)
   }
   return out;
 }
@@ -9379,11 +9379,12 @@ async function loadUsedReceipts() {
 }
 function receiptIdFromRef(s) { const m = String(s || '').match(/\[#([^\]]+)\]/); return m ? m[1] : ''; }
 function receiptAlreadyUsed(id) { return !!id && state.usedReceipts instanceof Set && state.usedReceipts.has(id); }
-// Баримтын давхцалгүй ТҮЛХҮҮР: банкны лавлах дугаар (receiptId) байвал тэрийг; байхгүй бол
-// дүн+огноо+шилжүүлэгчийн нэрээр хурууны хээ (олон Голомт баримтад лавлах дугаар байдаггүй).
+// Баримтын давхцалгүй ТҮЛХҮҮР — ҮРГЭЛЖ дүн+огноо+шилжүүлэгчийн нэрээр хурууны хээ.
+// Банкны лавлах дугаарын формат банк бүрт өөр (Голомт зарим баримтад байдаггүй, зарим нь
+// S-үсгээр эхэлдэг) тул түүнд НАЙДАХГҮЙ — үргэлж тогтвортой, backfill-тэй нийцтэй түлхүүр.
+// Банкны лавлах дугаар (d.bankRef) нь зөвхөн харах/аудитын мэдээлэл, dedup-д ороогүй.
 function _normFp(s) { return String(s || '').replace(/[\s.,\-]/g, '').toUpperCase(); }
 function receiptFingerprint(d) {
-  if (d && d.receiptId) return d.receiptId;
   const amt = (d && d.amount) || 0;
   const dt = String((d && d.date) || '').replace(/-/g, '');
   return 'FP-' + amt + '-' + dt + '-' + _normFp(d && d.senderName).slice(0, 32);
@@ -9480,7 +9481,7 @@ function openBqPaymentModal(oid) {
       }
       modal.querySelector('#bqp-amount').value = String(d.amount);
       modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
-      modal.querySelector('#bqp-ref').value = (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · ');
+      modal.querySelector('#bqp-ref').value = (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ');
       // Анхааруулга: гүйлгээ амжилтгүй бол (Чимун хүлээн авагч эсэх нь дээр хатуу шалгагдсан)
       const warns = [];
       if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');

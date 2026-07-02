@@ -4048,7 +4048,7 @@ function renderOrders() {
     return s === todayStr || st === todayStr;
   };
   const matchFilter = (e, f) => {
-    if (f === 'all') return true;
+    if (f === 'all') return e.skey !== 'canceled';   // "Бүгд" — цуцалсан захиалгыг харуулахгүй (зөвхөн "Цуцалсан" табд)
     if (f === 'today') return isToday(e);
     return e.skey === f;
   };
@@ -4059,13 +4059,13 @@ function renderOrders() {
   const chips = `<div class="orders-chips">
     <button class="ochip ochip-danger${state.ordersFilter === 'today' ? ' on' : ''}" data-ofilter="today"><span class="ochip-n">${todayN}</span><span class="ochip-l">Өнөөдөр</span></button>
     <button class="ochip ochip-info${state.ordersFilter === 'reserved' ? ' on' : ''}" data-ofilter="reserved"><span class="ochip-n">${reservedN}</span><span class="ochip-l">Захиалсан</span></button>
-    <div class="ochip ochip-static"><span class="ochip-n">${(combined.length).toLocaleString('mn-MN')}</span><span class="ochip-l">Нийт захиалга</span></div>
+    <div class="ochip ochip-static"><span class="ochip-n">${(combined.filter(e => e.skey !== 'canceled').length).toLocaleString('mn-MN')}</span><span class="ochip-l">Нийт захиалга</span></div>
   </div>`;
 
   // Төлөв таб (6 төлөв, нэгдсэн тоо) + он-сар филтер + хайлт + харагдац
   const tabs = [{ key: 'all', label: 'Бүгд' }].concat(BQ_STATUS_ORDER.map(k => ({ key: k, label: BQ_STATUS[k].label })));
   const tabsHtml = tabs.map(t => {
-    const n = t.key === 'all' ? combined.length : combined.filter(e => matchFilter(e, t.key)).length;
+    const n = combined.filter(e => matchFilter(e, t.key)).length;   // 'all' нь matchFilter-ээр цуцалсныг хасна
     return (n || t.key === 'all') ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
   }).join('');
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
@@ -4135,10 +4135,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-edit]').forEach(b => b.addEventListener('click', () => {
     const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appEdit)); if (ao) openNewOrder(ao);
   }));
-  document.querySelectorAll('[data-app-del]').forEach(b => b.addEventListener('click', async () => {
-    const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appDel)); if (!ao) return;
-    if (await showConfirm(`#${ao.number} захиалгыг устгах уу?`, { okText: 'Устгах', danger: true })) { deleteAppOrder(ao.id); showToast('Устгалаа', 'success', 1500); }
-  }));
+  document.querySelectorAll('[data-app-del]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.appDel)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
 
   // Он-сар филтер
@@ -4156,12 +4153,7 @@ function attachOrdersHandlers() {
     const actLabel = (b.textContent || '').trim() || (BQ_STATUS[to] || {}).label || to;
     bqUpdateStatus(b.dataset.bqAdvance, to, { confirm: `#${o ? (o.number ?? '') : ''} — «${actLabel}» гэж тэмдэглэх үү?`, okText: actLabel, toast: `${actLabel} ✓` });
   }));
-  document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
-    if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
-    const o = (state.bqOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel)) || (state.appOrders || []).find(x => String(x.id) === String(b.dataset.bqCancel));
-    const isDraft = o && o.status === 'draft';
-    bqUpdateStatus(b.dataset.bqCancel, 'canceled', { confirm: isDraft ? `#${o ? o.number : ''} ноорогийг устгах уу? (цуцлагдсан болж жагсаалтаас алга болно)` : `#${o ? o.number : ''} захиалгыг цуцлах уу?`, danger: true, okText: isDraft ? 'Устгах' : 'Цуцлах', toast: isDraft ? 'Устгалаа' : 'Цуцаллаа' });
-  }));
+  document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.bqCancel)));
 
   // Түүх захиалгын бараа задлах (read-only карт)
   document.querySelectorAll('.bqa-items-toggle').forEach(btn => btn.addEventListener('click', async () => {
@@ -9071,7 +9063,15 @@ function rentalDays(startMs, stopMs) {
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
-function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV г.м.)
+function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
+// Цуцлах/устгах шалтгаан — note-д ⟦CX|шалтгаан⟧ token-оор (app_orders-д багана нэмэхгүйгээр). cleanAppNote нуудаг.
+const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
+function cancelReasonOf(note) { const m = String(note || '').match(_CX_RE); return m ? m[1].trim() : ''; }
+function setCancelReason(note, reason) {
+  const base = String(note || '').replace(_CX_RE, '').trim();
+  const r = String(reason || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (base ? base + ' ' : '') + `⟦CX|${r}⟧`;
+}
 
 // ── Хүргэлтийн төлбөр — байршлаар автомат (сайт+апп нэг томьёо) ──
 // Хот дотор = тогтмол (очих+буцах багтсан). Хотоос гадна = нэг талын км × 2 (очих+буцах) × км-ийн үнэ.
@@ -9406,6 +9406,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">📄 ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
+    ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${slogHtml}
     ${itemsSection}
     ${foot}
@@ -9414,6 +9415,22 @@ function bqOrderCard(o) {
 
 // Booqable захиалгын төлвийг БАЙРАНДАА засах (Supabase anon PATCH, зөвхөн status багана).
 // Optimistic: эхлээд UI шинэчилж, амжилтгүй бол буцаана.
+// Захиалга/ноорог цуцлах — ШАЛТГААН заавал асууж, ⟦CX⟧-ээр хадгална. Ноорог "устгах" ч мөн энэ
+// (hard delete биш — цуцалсан болж "Бүгд"-ээс алга, шалтгаан + түүх үлдэнэ).
+async function cancelOrderWithReason(oid) {
+  if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
+  const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
+  const isDraft = o && o.status === 'draft';
+  const num = o ? (o.number ?? '') : '';
+  const reason = await showPrompt(`#${num} ${isDraft ? 'ноорогийг' : 'захиалгыг'} ${isDraft ? 'устгах' : 'цуцлах'} шалтгаанаа бичнэ үү:`, {
+    title: isDraft ? '🗑 Ноорог устгах' : '✕ Захиалга цуцлах',
+    okText: isDraft ? 'Устгах' : 'Цуцлах',
+    placeholder: 'Ж: давхардсан, харилцагч больсон, тест захиалга…',
+  });
+  if (reason == null) return;                                             // болих
+  if (!reason.trim()) { showToast('Шалтгаанаа бичнэ үү', 'warn', 2500); return; }
+  bqUpdateStatus(oid, 'canceled', { reason: reason.trim(), toast: isDraft ? 'Устгаж тэмдэглэлээ' : 'Цуцаллаа' });
+}
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
   let o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -9423,11 +9440,16 @@ async function bqUpdateStatus(oid, to, opts = {}) {
   if (opts.confirm && !(await showConfirm(opts.confirm, { okText: opts.okText || 'Тийм', danger: opts.danger }))) return;
   const prev = o.status, prevNote = o.note;
   o.status = to;          // optimistic
-  // Дамжлагын алхмыг ХЭН дарсныг тэмдэглэнэ (app_orders, цуцлахаас бусад алхам)
+  // app_orders note-д тэмдэглэл: цуцлах бол ШАЛТГААН (⟦CX⟧), бусад алхамд ХЭН дарсныг (⟦SL⟧)
   let notePatch = null;
-  if (table === 'app_orders' && to !== 'canceled' && state.me) {
-    notePatch = stageLogSet(o.note, to, state.me, new Date().toISOString().slice(0, 10));
-    o.note = notePatch;
+  if (table === 'app_orders' && state.me) {
+    if (to === 'canceled' && opts.reason) {
+      notePatch = setCancelReason(o.note, opts.reason);
+      o.note = notePatch;
+    } else if (to !== 'canceled') {
+      notePatch = stageLogSet(o.note, to, state.me, new Date().toISOString().slice(0, 10));
+      o.note = notePatch;
+    }
   }
   render();
   try {

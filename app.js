@@ -985,6 +985,10 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (newStatus === 'declined') task.decline_reason = reason || '';
   logTaskActivity(task, 'status_changed', { from: oldStatus, to: newStatus, reason });
   await saveTask(task);
+  // Дамжлагын ажил (зурагтай) дуусвал → холбоотой захиалгыг дараагийн шатанд шилжүүлнэ
+  if (newStatus === 'done' && parseStageTaskId(task.id)) {
+    try { await advanceOrderFromTask(task); } catch (e) { console.warn('advanceOrderFromTask', e); }
+  }
 }
 
 /* Bootstrap fetch — tasks + finance-ийг нэг webhook-аас зэрэг татна. n8n execution тоог
@@ -8980,6 +8984,54 @@ const BQ_NEXT = {
   started:     { to: 'stopped',  label: '🚚 Хүргэж өгсөн' },
   stopped:     { to: 'archived', label: '🗄 Архивлах' },
 };
+
+// ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──
+// Шат бүрд ажил хийх эрх (cap) + fallback роль + үйлдлийн нэр. Захиалга шат руу орох бүрд ажил үүснэ.
+const STAGE_AUTOTASK = {
+  reserved: { cap: 'orders.prepare',  role: /нярав|агуулах|бэлтгэ/i, verb: '🧰 Захиалга бэлтгэх' },
+  cleaning: { cap: 'orders.clean',    role: /цэвэрл/i,               verb: '🧹 Захиалга цэвэрлэх' },
+  ready:    { cap: 'orders.dispatch', role: /нярав|агуулах/i,        verb: '📦 Агуулахаас гаргах / олгох' },
+  started:  { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,   verb: '🚚 Хүргэж өгөх' },
+};
+// Эрх (cap)-ыг ТОДОРХОЙ эзэмшигчид (role_perms/member_perms) — CEO-ийн бүх эрхийг ОРУУЛАХГҮЙ (эс бол бүх ажил CEO-д очно)
+function membersWithCap(cap) {
+  const out = [];
+  for (const m of (typeof TEAM !== 'undefined' ? TEAM : [])) {
+    const key = personKey(m);
+    const mp = state.memberPerms && state.memberPerms[key];
+    if (mp && Object.prototype.hasOwnProperty.call(mp, cap)) { if (mp[cap]) out.push(key); continue; }
+    const rp = state.rolePerms && state.rolePerms[normRole(m.role)];
+    if (rp && rp[cap]) out.push(key);
+  }
+  return out;
+}
+// Ажлын id-д захиалга+шат кодлоно (reload-д хадгалагдана, тусдаа багана хэрэггүй)
+function stageTaskId(orderId, toStatus) { return 'ordstage__' + orderId + '__' + toStatus; }
+function parseStageTaskId(id) { const p = String(id || '').split('__'); return (p[0] === 'ordstage' && p.length === 3) ? { orderId: p[1], toStatus: p[2] } : null; }
+// Захиалга тухайн шатанд орох үед хариуцагчид ажил үүсгэнэ (давхардахгүй)
+function ensureStageTask(o) {
+  if (!o || !o.id) return;
+  const cfg = STAGE_AUTOTASK[String(o.status || '')]; if (!cfg) return;
+  const next = orderNextStep(o); if (!next) return;
+  const id = stageTaskId(o.id, next.to);
+  if ((state.tasks || []).some(t => t.id === id)) return;   // аль хэдийн үүссэн
+  let assignee = membersWithCap(cfg.cap)[0] || findMemberEmailByRole(cfg.role, '');
+  const t = {
+    id, title: `${cfg.verb} · захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''}`,
+    branch: 'm-event', project: '', assignee: assignee || '', due: o.starts_at || '',
+    priority: 'high', status: 'open', requires_photo: true,
+    createdBy: state.me || getCEOEmail(), created: Date.now(), comments: [], activity: [],
+  };
+  try { saveTask(t); } catch (e) { console.warn('ensureStageTask', e); }
+}
+// Ажил (зурагтай) дуусахад холбоотой захиалгыг дараагийн шатанд шилжүүлнэ
+async function advanceOrderFromTask(task) {
+  const p = parseStageTaskId(task && task.id); if (!p) return;
+  const o = (state.appOrders || []).find(x => String(x.id) === String(p.orderId)); if (!o) return;
+  if (String(o.status) === p.toStatus) return;              // аль хэдийн шилжсэн
+  const next = orderNextStep(o); if (!next || next.to !== p.toStatus) return;   // зөвхөн зөв дараагийн алхам
+  await bqUpdateStatus(o.id, p.toStatus, { toast: `Захиалга #${o.number ?? ''}: ${next.label} ✓`, byTask: true });
+}
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
 function bqStatusBadge(raw) {
   const s = BQ_STATUS[raw] || { label: raw || '—', dot: '#9CA3AF', bg: '#F3F4F6', tx: '#374151' };
@@ -9462,6 +9514,16 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
     showToast(opts.toast || `Төлөв: ${(BQ_STATUS[to] || {}).label || to}`, 'success', 2000);
+    // Автомат ажил: шилжсэн шатны хүлээгдэж буй ажлыг хаах + дараагийн шатны ажил үүсгэх (зөвхөн app захиалга)
+    if (table === 'app_orders' && to !== 'canceled') {
+      try {
+        if (!opts.byTask) {   // товчоор гараар шилжүүлбэл хүлээгдэж буй ажлыг хаана (ажил дуусгаснаас шилжсэн бол аль хэдийн хаагдсан)
+          const pend = (state.tasks || []).find(t => t.id === stageTaskId(oid, to) && t.status !== 'done');
+          if (pend) { pend.status = 'done'; pend.completed_at = Date.now(); try { saveTask(pend); } catch (e2) {} }
+        }
+        ensureStageTask(o);
+      } catch (e3) { console.warn('stage autotask', e3); }
+    }
   } catch (e) {
     o.status = prev; o.note = prevNote;     // буцаах
     render();
@@ -9772,6 +9834,8 @@ async function submitBqPayment(oid, modal, btn) {
     } catch (e2) { console.warn('bq payment record', e2); }
     modal.remove();
     showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${okR.length > 1 ? ` (${okR.length} баримт)` : ''}${newStatus !== prevStatus ? ' · Захиалсан' : ''}`, 'success', 2800);
+    // Төлбөр → Захиалсан болмогц эхний дамжлагын ажил (Бэлтгэх) хариуцагчид автоматаар үүснэ
+    if (isApp && newStatus === 'reserved') { try { ensureStageTask(o); } catch (e4) { console.warn('ensureStageTask pay', e4); } }
     render();
   } catch (e) {
     o.paid_mnt = prevPaid; o.status = prevStatus;   // буцаах

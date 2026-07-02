@@ -1934,13 +1934,15 @@ async function copyText(text, okMsg = 'Хуулагдлаа') {
 // ── Санхүүгийн хүсэлт → бодит объект холбоос (машин/бараа/захиалга). Сонголтоор, default Ерөнхий. ──
 // Category-г ОРЛОХГҮЙ — зэрэгцээ "энэ зардал юунтай холбоотой" гэдгийг тэмдэглэнэ.
 // link_type/link_id/link_label талбарууд request-д нэмэгдэж requestToWire spread-ээр авто дамжина.
-const FIN_LINK_PH = { car: 'Улсын дугаар / машины нэр', product: 'Бараа хайх (нэр / SKU)', order: 'Захиалга (#дугаар / харилцагч)' };
+const FIN_LINK_PH = { car: 'Машин сонгох (Агуулахын хөрөнгө)', product: 'Агуулах хайх (бараа/хөрөнгө/машин)', order: 'Захиалга (#дугаар / харилцагч)' };
 let _finLinkBound = false;
 function _finLinkPopulate(type) {
   const dl = document.getElementById('f-link-dl'); if (!dl) return;
-  if (type === 'product') {
+  if (type === 'product' || type === 'car') {
+    // Агуулах = бүх бараа; Машин = зөвхөн хөрөнгө (type='asset'). Хоёул products.sku-д холбогдоно.
     if (!state.products || !state.products.length) loadProductsCatalog();
-    dl.innerHTML = (state.products || []).filter(p => p && p.name).map(p => `<option value="${escapeHtml(p.name + (p.sku ? ' — ' + p.sku : ''))}"></option>`).join('');
+    const src = (state.products || []).filter(p => p && p.name && (type === 'product' || String(p.type) === 'asset'));
+    dl.innerHTML = src.map(p => `<option value="${escapeHtml(p.name + (p.sku ? ' — ' + p.sku : ''))}"></option>`).join('');
   } else if (type === 'order') {
     if (state.bqOrders === undefined && !state._bqOrdersLoading) loadBooqableOrders();
     if (state.appOrders === undefined) loadAppOrders();
@@ -1969,19 +1971,20 @@ function financeLinkRead() {
   if (type === 'general') return { link_type: 'general', link_id: '', link_label: '' };
   const val = (document.getElementById('f-link-input')?.value || '').trim();
   if (!val) return { link_type: 'general', link_id: '', link_label: '' };
-  if (type === 'product') {
+  if (type === 'product' || type === 'car') {
+    // Машин ч, бараа ч products.sku-д холбогдоно (машин = агуулахын хөрөнгө). Олдохгүй бол чөлөөт нэр.
     const p = (state.products || []).find(x => x && ((x.name + (x.sku ? ' — ' + x.sku : '')) === val || x.name === val || x.sku === val));
-    return { link_type: 'product', link_id: p ? (p.sku || '') : '', link_label: p ? p.name : val };
+    return { link_type: type, link_id: p ? (p.sku || '') : '', link_label: p ? p.name : val };
   }
   if (type === 'order') {
     const e = (typeof unifiedOrders === 'function' ? unifiedOrders() : []).find(x => ('#' + ((x.o || {}).number ?? '') + ' · ' + ((x.o || {}).customer || '')) === val);
     return { link_type: 'order', link_id: e ? String((e.o || {}).id || '') : '', link_label: val };
   }
-  return { link_type: 'car', link_id: val, link_label: val };   // машин — vehicles хүснэгт хүртэл чөлөөт текст
+  return { link_type: 'general', link_id: '', link_label: '' };
 }
 function finLinkChip(r) {
   if (!r || !r.link_label || r.link_type === 'general' || !r.link_type) return '';
-  const ic = r.link_type === 'car' ? '🚗' : r.link_type === 'product' ? '📦' : r.link_type === 'order' ? '🛒' : '🏢';
+  const ic = r.link_type === 'car' ? '🚗' : r.link_type === 'product' ? '🏭' : r.link_type === 'order' ? '🛒' : '🏢';
   return `<span class="fin-link-chip">${ic} ${escapeHtml(r.link_label)}</span>`;
 }
 
@@ -3131,7 +3134,7 @@ function renderTitle() {
     reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Тайлан', 'Удирдлагад зориулсан тайлангууд'],
     performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Сарын объектив гүйцэтгэлийн үнэлгээ'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
-    products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа', 'M Event барааны үнэ, нөөц — сайт шууд шинэчлэгдэнэ'],
+    products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Агуулах', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
@@ -5637,7 +5640,7 @@ const PERM_VIEWS = [
   { key: 'orders',      label: 'Захиалга' },
   { key: 'receivables', label: 'Авлага' },
   { key: 'booqable',    label: 'Түрээсийн түүх' },
-  { key: 'products',    label: 'Бараа' },
+  { key: 'products',    label: 'Агуулах' },
   { key: 'reports',     label: 'Тайлан' },
   { key: 'nomaad',      label: 'NOMAAD' },
   { key: 'hourly',      label: 'Цагийн цалин' },
@@ -5671,7 +5674,7 @@ const PERM_MENUS = [
       { key: 'orders.pay',     label: 'Төлбөр бүртгэх' },
       { key: 'orders.advance', label: 'Төлөв шилжүүлэх' },
       { key: 'orders.cancel',  label: 'Цуцлах / устгах' } ] },
-  { key: 'products',    label: 'Бараа',           actions: [
+  { key: 'products',    label: 'Агуулах',         actions: [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },

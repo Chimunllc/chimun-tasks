@@ -2967,12 +2967,19 @@ function filteredTasks() {
 
 /* Цагийн ажилтан (worker_type='daily') — хязгаарлагдмал хандалт. Зөвхөн өөрийн
    "Ирсэн ажил"-ыг хардаг: санхүү, тойм, илгээсэн, календарь, бусад ажилтан харагдахгүй. */
+// Цагийн/өдрийн ажилтан — worker_type='daily' ЭСВЭЛ албан тушаал нь "өдрийн/цагийн ажил*".
+// (worker_type тавиагүй ч роль нь "Өдрийн ажилтан" бол мөн адил хязгаарлагдмал бүлэгт орно.)
+function isDailyMember(m) {
+  if (!m) return false;
+  if (String(m.worker_type || '') === 'daily') return true;
+  return /өдрийн\s*ажил|цагийн\s*ажил/i.test(String(m.role || ''));
+}
 function isDailyWorker() {
-  return (state.user && state.user.worker_type === 'daily');
+  return isDailyMember(state.user);
 }
 // Үндсэн ажилтан (өдрийн/цагийн биш) — гүйцэтгэлийн үнэлгээ зөвхөн эдгээрт хамаарна.
 function isPermanentStaff(m) {
-  return m && String(m.worker_type || 'permanent') !== 'daily';
+  return !!m && !isDailyMember(m);
 }
 
 /* -------------------- RENDER -------------------- */
@@ -6144,7 +6151,7 @@ function effectiveCapForMember(m, key, kind) {
   const pk = personKey(m);
   const ov = state.memberPerms && state.memberPerms[pk];
   if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
-  if (String(m && m.worker_type) === 'daily') {   // цагийн ажилтан = бүлгийн загвар, default хориглоно
+  if (isDailyMember(m)) {   // цагийн/өдрийн ажилтан = бүлгийн загвар, default хориглоно
     const gt = state.rolePerms && state.rolePerms[DAILY_ROLE_KEY];
     return !!(gt && gt[key]);
   }
@@ -6182,8 +6189,8 @@ function renderAccessRoles() {
   const expPerson = state.accessExpandedPerson || '';
   const wrap = (inner) => `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${inner}</div>`;
   // Цагийн/өдрийн ажилчид → НЭГ бүлэг карт (нэг бүрчлэн биш). Бусад ажилтан → хувь хүнээр.
-  const dailyPeople = people.filter(m => String(m.worker_type) === 'daily');
-  const nonDaily = people.filter(m => String(m.worker_type) !== 'daily');
+  const dailyPeople = people.filter(m => isDailyMember(m));
+  const nonDaily = people.filter(m => !isDailyMember(m));
   // ── Цагийн ажилтны бүлгийн карт ──
   const dailyCard = (() => {
     if (!dailyPeople.length) return '';

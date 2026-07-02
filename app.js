@@ -11847,6 +11847,10 @@ function renderStaffList() {
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${m.gender ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм'}</span>` : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
+          ${state.isCEO ? `<div class="staff-cred" style="margin-top:4px;font-size:12px;color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
+            <span>📞 <b>${escapeHtml(m.phone || key || '—')}</b></span>
+            <span>🔑 PIN: <b class="staff-pin" data-pin-for="${escapeHtml(key)}" style="letter-spacing:2px;">${m.pin ? '••••' : '<span style=\'color:var(--muted);font-weight:400;letter-spacing:0;\'>тохируулаагүй</span>'}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}" style="padding:1px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">харах</button>` : ''}</span>
+          </div>` : ''}
           ${state.isCEO ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;">Хүйс: <button data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эрэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эр</button><button data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эмэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эм</button></div>` : ''}
           ${state.isCEO && isActive ? `<label class="staff-finperm" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} style="margin:0;width:auto;" />🏦 Санхүү: салбар засах эрх</label>` : ''}
         </div>
@@ -11870,6 +11874,20 @@ function renderStaffList() {
   ).join('');
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
+  });
+  // PIN «харах/нуух» — зөвхөн CEO. PIN-ийг TEAM-аас (санах ой) авна, HTML-д урьдчилан бичихгүй.
+  listEl.querySelectorAll('[data-pin-show]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!state.isCEO) return;
+      const key = btn.dataset.pinShow;
+      const el = listEl.querySelector(`.staff-pin[data-pin-for="${CSS.escape(key)}"]`);
+      const m = findMember(key);
+      if (!el || !m) return;
+      const shown = btn.textContent === 'нуух';
+      if (shown) { el.textContent = '••••'; btn.textContent = 'харах'; }
+      else { el.textContent = String(m.pin || '—'); btn.textContent = 'нуух'; }
+    });
   });
   listEl.querySelectorAll('[data-staff-gender]').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); const m = findMember(btn.dataset.staffGender); if (m) saveStaffGender(m, btn.dataset.gender); });

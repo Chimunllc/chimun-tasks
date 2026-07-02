@@ -7714,6 +7714,7 @@ function openNomaadIncomeModal(o) {
         modal.querySelector('#ni-fields').style.display = '';
         // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
         if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
+        d.receiptId = receiptFingerprint(d);   // лавлах дугаар байхгүй бол дүн+огноо+шилжүүлэгчээр түлхүүр
         // Давхцал: нэг баримт аппын хаана ч НЭГ л удаа (нэгдсэн ledger + NOMAAD лог + M-Event аль нь ч)
         if (d.receiptId) {
           if (receiptAlreadyUsed(d.receiptId)) throw new Error('Энэ баримт аппд аль хэдийн бүртгэгдсэн (өөр захиалга/салбарт) — дахин бүртгэх боломжгүй');
@@ -9378,6 +9379,15 @@ async function loadUsedReceipts() {
 }
 function receiptIdFromRef(s) { const m = String(s || '').match(/\[#([^\]]+)\]/); return m ? m[1] : ''; }
 function receiptAlreadyUsed(id) { return !!id && state.usedReceipts instanceof Set && state.usedReceipts.has(id); }
+// Баримтын давхцалгүй ТҮЛХҮҮР: банкны лавлах дугаар (receiptId) байвал тэрийг; байхгүй бол
+// дүн+огноо+шилжүүлэгчийн нэрээр хурууны хээ (олон Голомт баримтад лавлах дугаар байдаггүй).
+function _normFp(s) { return String(s || '').replace(/[\s.,\-]/g, '').toUpperCase(); }
+function receiptFingerprint(d) {
+  if (d && d.receiptId) return d.receiptId;
+  const amt = (d && d.amount) || 0;
+  const dt = String((d && d.date) || '').replace(/-/g, '');
+  return 'FP-' + amt + '-' + dt + '-' + _normFp(d && d.senderName).slice(0, 32);
+}
 // Баримтыг эзэмших (ledger-т бичих). 'ok' = эзэмшсэн, 'dup' = аль хэдийн бүртгэгдсэн (409), 'err' = алдаа.
 async function reserveReceipt(receiptId, meta) {
   if (!receiptId || !SUPABASE_ANON_KEY) return 'ok';   // receiptId алга бол хаалт тавихгүй
@@ -9459,6 +9469,7 @@ function openBqPaymentModal(oid) {
       modal.querySelector('#bqp-fields').style.display = '';
       // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ байх ёстой (орлого = Чимунд ИРСЭН гүйлгээ). Эс бөгөөс бүртгэхгүй.
       if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
+      d.receiptId = receiptFingerprint(d);   // лавлах дугаар байхгүй бол дүн+огноо+шилжүүлэгчээр түлхүүр
       // Давхцал: нэг баримт аппын хаана ч НЭГ л удаа (нэгдсэн ledger + M-Event захиалга + NOMAAD орлого)
       if (d.receiptId) {
         if (receiptAlreadyUsed(d.receiptId)) throw new Error('Энэ баримт аппд аль хэдийн бүртгэгдсэн (өөр захиалга/салбарт) — дахин бүртгэх боломжгүй');

@@ -7652,6 +7652,7 @@ async function sendNomaadQuote(quoteNo) {
 // Орлого бүртгэх модал — ЗӨВХӨН PDF (M-Event-тэй ижил). Голомт/Хаан баримт → дүн/огноо/шилжүүлэгч
 // автоматаар; Чимун ХХК ЗААВАЛ хүлээн авагч; нэг баримт нэг л удаа (dedup). Гараар оруулах боломжгүй.
 function openNomaadIncomeModal(o) {
+  loadUsedReceipts();   // нэгдсэн баримтын жагсаалтыг шинэчил (шуурхай давхцал шалгах)
   return new Promise((resolve) => {
     const total = nomaadEffTotal(o);
     const prevPaid = Number(o.income_amount) || 0;
@@ -7713,11 +7714,14 @@ function openNomaadIncomeModal(o) {
         modal.querySelector('#ni-fields').style.display = '';
         // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
         if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
-        // Давхцал: энэ баримт (receiptId) NOMAAD төлбөрийн лог-д аль хэдийн байгаа эсэх — нэг PDF нэг л удаа
+        // Давхцал: нэг баримт аппын хаана ч НЭГ л удаа (нэгдсэн ledger + NOMAAD лог + M-Event аль нь ч)
         if (d.receiptId) {
+          if (receiptAlreadyUsed(d.receiptId)) throw new Error('Энэ баримт аппд аль хэдийн бүртгэгдсэн (өөр захиалга/салбарт) — дахин бүртгэх боломжгүй');
           const allPays = Object.values(state.nomaadPayments || {}).flat();
           const dup = allPays.find(p => String(p.note || '').includes('[#' + d.receiptId + ']'));
           if (dup) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн — ${dup.quote_no || ''}`);
+          const dupMe = (state.appOrders || []).find(x => String(x.paid_ref || '').includes('[#' + d.receiptId + ']'));
+          if (dupMe) throw new Error(`Энэ баримт M-Event захиалга #${dupMe.number}-д бүртгэгдсэн`);
         }
         parsed = {
           amount: d.amount,
@@ -7741,6 +7745,10 @@ async function recordNomaadIncome(quoteNo) {
   if (!can('nomaad.income')) { showToast('Танд орлого бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
   const res = await openNomaadIncomeModal(o);
   if (!res) return;
+  // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
+  const receiptId = receiptIdFromRef(res.note);
+  const rr = await reserveReceipt(receiptId, { amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
+  if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
   const prevPaid = Number(o.income_amount) || 0;
   const newTotal = prevPaid + res.amount;
   const today = res.date || new Date().toISOString().slice(0, 10);
@@ -8916,6 +8924,7 @@ async function loadAppOrders() {
     if (r.ok) state.appOrders = await r.json();
   } catch (e) { console.warn('loadAppOrders', e); }
   state.appOrders = state.appOrders || [];
+  loadUsedReceipts();   // нэгдсэн баримтын ledger-ийг startup-д ачаална (давхцал шалгах)
   if (typeof render === 'function') render();
 }
 // Дараагийн захиалгын дугаар (Booqable + app дотроос хамгийн их + 1)
@@ -9355,11 +9364,41 @@ function parseBankReceipt(text) {
   }
   return out;
 }
+// ─── НЭГДСЭН БАРИМТЫН LEDGER — нэг банкны баримт аппын хаана ч НЭГ л удаа ───────
+// bank_receipts (receipt_id PK). M-Event төлбөр БА NOMAAD орлого хоёул энд шалгаж/эзэмшинэ.
+// Салангид биш нэгдсэн тул нэг баримтыг өөр захиалга/салбарт дахин бүртгэх БОЛОМЖГҮЙ.
+async function loadUsedReceipts() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?select=receipt_id`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) return;
+    state.usedReceipts = new Set((await r.json()).map(x => x.receipt_id));
+  } catch (e) { console.warn('loadUsedReceipts', e); }
+}
+function receiptIdFromRef(s) { const m = String(s || '').match(/\[#([^\]]+)\]/); return m ? m[1] : ''; }
+function receiptAlreadyUsed(id) { return !!id && state.usedReceipts instanceof Set && state.usedReceipts.has(id); }
+// Баримтыг эзэмших (ledger-т бичих). 'ok' = эзэмшсэн, 'dup' = аль хэдийн бүртгэгдсэн (409), 'err' = алдаа.
+async function reserveReceipt(receiptId, meta) {
+  if (!receiptId || !SUPABASE_ANON_KEY) return 'ok';   // receiptId алга бол хаалт тавихгүй
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ receipt_id: receiptId, amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', used_in: meta.usedIn || '', recorded_by: state.me }),
+    }, 15000);
+    if (r.status === 409) return 'dup';
+    if (!r.ok) return 'err';
+    (state.usedReceipts = state.usedReceipts instanceof Set ? state.usedReceipts : new Set()).add(receiptId);
+    return 'ok';
+  } catch (e) { console.warn('reserveReceipt', e); return 'err'; }
+}
 function openBqPaymentModal(oid) {
   // Нэгдсэн төлбөрийн модал — bq_orders эсвэл app_orders хоёуланд ажиллана.
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
   if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
+  loadUsedReceipts();   // нэгдсэн баримтын жагсаалтыг шинэчил (шуурхай давхцал шалгах)
   const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0, bal = Math.max(0, total - paid);
   document.getElementById('bq-pay-modal')?.remove();
   const modal = document.createElement('div');
@@ -9420,10 +9459,13 @@ function openBqPaymentModal(oid) {
       modal.querySelector('#bqp-fields').style.display = '';
       // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ байх ёстой (орлого = Чимунд ИРСЭН гүйлгээ). Эс бөгөөс бүртгэхгүй.
       if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
-      // Давхцал: энэ баримт (receiptId) аль хэдийн бүртгэгдсэн эсэх — нэг PDF нэг л удаа
+      // Давхцал: нэг баримт аппын хаана ч НЭГ л удаа (нэгдсэн ledger + M-Event захиалга + NOMAAD орлого)
       if (d.receiptId) {
+        if (receiptAlreadyUsed(d.receiptId)) throw new Error('Энэ баримт аппд аль хэдийн бүртгэгдсэн (өөр захиалга/салбарт) — дахин бүртгэх боломжгүй');
         const dup = (state.appOrders || []).find(x => String(x.paid_ref || '').includes('[#' + d.receiptId + ']'));
         if (dup) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн — захиалга #${dup.number}`);
+        const dupNo = Object.values(state.nomaadPayments || {}).flat().find(p => String(p.note || '').includes('[#' + d.receiptId + ']'));
+        if (dupNo) throw new Error(`Энэ баримт NOMAAD орлого ${dupNo.quote_no || ''}-д бүртгэгдсэн`);
       }
       modal.querySelector('#bqp-amount').value = String(d.amount);
       modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
@@ -9451,6 +9493,10 @@ async function submitBqPayment(oid, modal, btn) {
   const date = modal.querySelector('#bqp-date').value || new Date().toISOString().slice(0, 10);
   const ref = (modal.querySelector('#bqp-ref')?.value || '').trim();   // PDF-ээс: шилжүүлэгч · данс · утга (гүйлгээний утга дангаараа шаардлагагүй)
   btn.disabled = true;
+  // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (NOMAAD/өөр захиалга) бүртгэсэн бол блоклоно
+  const receiptId = receiptIdFromRef(ref);
+  const rr = await reserveReceipt(receiptId, { amount, date, ref, usedIn: 'mevent:#' + o.number });
+  if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); btn.disabled = false; return; }
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;
   const prevPaid = o.paid_mnt, prevStatus = o.status;

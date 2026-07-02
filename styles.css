@@ -5061,6 +5061,15 @@ body.role-daily #add-project { display: none !important; }
 .order-stagelog { margin: 4px 0 2px; padding: 5px 8px; background: var(--panel-2, #F1F5F9); border-radius: 8px; }
 .order-stagelog .stagelog-row { font-size: 11.5px; margin: 1px 0; color: var(--muted); }
 .order-stagelog .stagelog-row b { color: var(--text); font-weight: 700; }
+/* Дамжлагын зураг + үнэлгээ — бүх ажилтанд харагдана */
+.order-stagemeta { margin: 5px 0 2px; display: flex; flex-direction: column; gap: 6px; }
+.order-stagemeta .sm-row { padding: 6px 8px; background: var(--panel-2, #F1F5F9); border-radius: 8px; }
+.order-stagemeta .sm-head { font-size: 11.5px; color: var(--muted); }
+.order-stagemeta .sm-head b { color: var(--text); font-weight: 700; }
+.order-stagemeta .sm-stars { color: #f5a623; letter-spacing: 1px; }
+.order-stagemeta .sm-comment { font-size: 11.5px; color: var(--text); margin-top: 2px; }
+.order-stagemeta .sm-photos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.order-stagemeta .sm-photos img { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
 .order-card.urg-ou-over, .order-card.urg-ou-today { border-left: 3px solid var(--danger); }
 .order-card.urg-ou-soon { border-left: 3px solid var(--warn); }
 .order-urg { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }

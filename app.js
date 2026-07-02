@@ -4166,6 +4166,7 @@ function attachOrdersHandlers() {
   // Booqable захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
+  document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => {
     if (!can(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
     const to = b.dataset.to;
@@ -9125,6 +9126,24 @@ const STAGE_ACTION = {
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, prev: null }; }
 const STAGE_META_LABEL = { prepare: '🧰 Бэлтгэл', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Гаргалт', handover: '🤝 Олголт', deliver: '🚚 Хүргэлт', archive: '🗄 Архив' };
+// Дамжлагын зураг + үнэлгээ — БҮХ ажилтанд харагдана (картын доор)
+function stageMetaHtml(o) {
+  const sm = o && o.stage_meta;
+  if (!sm || typeof sm !== 'object') return '';
+  const keys = ['prepare', 'clean', 'dispatch', 'handover', 'deliver'].filter(k => sm[k] && ((sm[k].photos && sm[k].photos.length) || sm[k].rating || sm[k].by));
+  if (!keys.length) return '';
+  return `<div class="order-stagemeta">${keys.map(k => {
+    const e = sm[k]; const photos = (e.photos || []).filter(Boolean);
+    const stars = e.rating ? `<span class="sm-stars" title="${e.ratedBy ? escapeHtml((memberName(e.ratedBy) || e.ratedBy) + ' үнэлэв') : ''}">${'★'.repeat(e.rating)}<span style="color:var(--border-strong);">${'★'.repeat(5 - e.rating)}</span></span>` : '';
+    return `<div class="sm-row"><div class="sm-head">${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${stars ? ' · ' + stars : ''}</div>${e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>` : ''}${photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+function openStagePhoto(url) {
+  const ov = document.createElement('div'); ov.className = 'modal-bg open'; ov.style.zIndex = '10001';
+  ov.innerHTML = `<div style="max-width:96%;max-height:94vh;display:flex;align-items:center;justify-content:center;"><img src="${escapeHtml(driveThumbUrl(url, 1400))}" referrerpolicy="no-referrer" style="max-width:100%;max-height:94vh;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.4);" /></div>`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+}
 
 // Товч дарахад — зураг (ЗААВАЛ) + өмнөх шатны үнэлгээ (ЗААВАЛ, сэтгэгдэл заавал биш)
 function openStageAdvanceModal(oid, to) {
@@ -9609,6 +9628,7 @@ function bqOrderCard(o) {
     ${payRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${slogHtml}
+    ${stageMetaHtml(o)}
     ${itemsSection}
     ${foot}
   </div>`;

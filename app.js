@@ -4143,11 +4143,11 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => {
-    if (!can('orders.advance')) { showToast('Танд төлөв шилжүүлэх эрх олгогдоогүй', 'warn', 3000); return; }
+    if (!can(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
     const to = b.dataset.to;
     const o = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.bqAdvance));
-    const toLabel = (BQ_STATUS[to] || {}).label || to;
-    bqUpdateStatus(b.dataset.bqAdvance, to, { confirm: `#${o ? (o.number ?? '') : ''} захиалгыг «${toLabel}» төлөвт шилжүүлэх үү?`, okText: toLabel, toast: `Төлөв: ${toLabel}` });
+    const actLabel = (b.textContent || '').trim() || (BQ_STATUS[to] || {}).label || to;
+    bqUpdateStatus(b.dataset.bqAdvance, to, { confirm: `#${o ? (o.number ?? '') : ''} — «${actLabel}» гэж тэмдэглэх үү?`, okText: actLabel, toast: `${actLabel} ✓` });
   }));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => {
     if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
@@ -5673,9 +5673,13 @@ const PERM_MENUS = [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
   { key: 'orders',      label: 'Захиалга',        actions: [
-      { key: 'orders.pay',     label: 'Төлбөр бүртгэх' },
-      { key: 'orders.advance', label: 'Төлөв шилжүүлэх' },
-      { key: 'orders.cancel',  label: 'Цуцлах / устгах' } ] },
+      { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
+      { key: 'orders.prepare',  label: 'Бэлтгэх (нярав)' },
+      { key: 'orders.clean',    label: 'Цэвэрлсэн (цэвэрлэгч)' },
+      { key: 'orders.dispatch', label: 'Гаргах / Олгох (нярав)' },
+      { key: 'orders.deliver',  label: 'Хүргэж өгсөн (хүргэгч)' },
+      { key: 'orders.advance',  label: 'Архивлах / бусад шилжүүлэх' },
+      { key: 'orders.cancel',   label: 'Цуцлах / устгах' } ] },
   { key: 'products',    label: 'Агуулах',         actions: [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
@@ -8894,14 +8898,34 @@ const BQ_STATUS = {
   canceled:    { label: 'Цуцалсан',   dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
 };
 const BQ_STATUS_ORDER = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'stopped', 'archived', 'canceled'];
-// Лайфциклийн дараагийн алхам (карт бүрийн advance товч). Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
+// Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
+// ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
+// Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
+// Очиж авах:   … Гарахад бэлэн→[Олгосон]→Дууссан
+function isDeliveryOrder(o) { return !!String((o && (o.delivery_address || o.customer_address)) || '').trim(); }
+function orderNextStep(o) {
+  const st = String((o && o.status) || '');
+  const deliv = isDeliveryOrder(o);
+  switch (st) {
+    case 'reserved':
+    case 'preparation': return { to: 'cleaning', label: '🧰 Бэлтгэх',   cap: 'orders.prepare' };
+    case 'cleaning':    return { to: 'ready',    label: '🧹 Цэвэрлсэн',  cap: 'orders.clean' };
+    case 'ready':       return deliv
+                          ? { to: 'started', label: '📦 Агуулахаас гарсан', cap: 'orders.dispatch' }
+                          : { to: 'stopped', label: '🤝 Олгосон',           cap: 'orders.dispatch' };
+    case 'started':     return { to: 'stopped',  label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+    case 'stopped':     return { to: 'archived', label: '🗄 Архивлах',     cap: 'orders.advance' };
+    default: return null;
+  }
+}
+// Хуучин статик map (легаси/bq картын fallback) — orderNextStep-ийн хүргэлт хувилбар
 const BQ_NEXT = {
-  reserved:    { to: 'preparation', label: '🧰 Бэлтгэх' },
-  preparation: { to: 'cleaning',    label: '✅ Бэлтгэсэн' },
-  cleaning:    { to: 'ready',       label: '🧹 Цэвэрлсэн' },
-  ready:       { to: 'started',     label: '📦 Гаргах' },
-  started:     { to: 'stopped',     label: '↩ Буцаан авах' },
-  stopped:     { to: 'archived',    label: '🗄 Архивлах' },
+  reserved:    { to: 'cleaning', label: '🧰 Бэлтгэх' },
+  preparation: { to: 'cleaning', label: '🧰 Бэлтгэх' },
+  cleaning:    { to: 'ready',    label: '🧹 Цэвэрлсэн' },
+  ready:       { to: 'started',  label: '📦 Агуулахаас гарсан' },
+  started:     { to: 'stopped',  label: '🚚 Хүргэж өгсөн' },
+  stopped:     { to: 'archived', label: '🗄 Архивлах' },
 };
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
 function bqStatusBadge(raw) {
@@ -9002,8 +9026,15 @@ function stageLogSet(note, stage, email, date) {
   const base = String(note || '').replace(_SL_RE, '').trim();
   return `${base ? base + ' ' : ''}⟦SL|${enc}⟧`;
 }
-// Дамжлагын алхам бүрийн харагдах шошго — товч дарсан ажилтныг картад ангилж харуулна
-const STAGE_LOG_LABEL = { preparation: '🧰 Бэлтгэж эхэлсэн', cleaning: '✅ Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Гаргасан', stopped: '↩ Буцаан авсан', archived: '🗄 Архивласан' };
+// Дамжлагын алхам бүрийн харагдах шошго — товч дарсан ажилтныг картад ангилж харуулна.
+// stage = ямар төлөв рүү шилжсэн (bqUpdateStatus `to`-гоор stamp хийдэг).
+const STAGE_LOG_LABEL = { preparation: '🧰 Бэлтгэсэн', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Агуулахаас гаргасан', stopped: '🚚 Хүргэж өгсөн', archived: '🗄 Архивласан' };
+// Дууссан (stopped) хоёр замаар ирнэ: хүргэлт → «Хүргэж өгсөн», очиж авах → «Олгосон».
+// started алхам бүхий бол хүргэлт байсан гэж үзнэ (агуулахаас гарсан).
+function stageLogLabel(stage, log) {
+  if (stage === 'stopped') return (log && log.started) ? '🚚 Хүргэж өгсөн' : '🤝 Олгосон';
+  return STAGE_LOG_LABEL[stage] || stage;
+}
 // Захиалгын огноо+цаг → түрээсийн хоног (карт + модал хуваалцана). Цаг note token-д байхгүй бол 09:00 default.
 function orderRentalDays(o) {
   const sd = String(o.starts_at || '').slice(0, 10), ed = String(o.stops_at || '').slice(0, 10);
@@ -9199,7 +9230,7 @@ function bqOrderCard(o) {
   const _rt = isApp ? parseOrderTimes(o.note) : null;   // эхлэх/дуусах цаг (app захиалгад)
   const _sh = _rt ? ' ' + _pad2(_rt.sh) + ':00' : '', _eh = _rt ? ' ' + _pad2(_rt.eh) + ':00' : '';
   const _days = isApp && start && stop ? orderRentalDays(o) : 0;
-  const next = BQ_NEXT[st];
+  const next = isApp ? orderNextStep(o) : BQ_NEXT[st];   // app: салаалсан урсгал (эрх/хүргэлтээр); bq: хуучин map
   // Хүргэлттэй эсэх — хаяг байвал бид хүргэнэ, эс бол үйлчлүүлэгч очиж авна
   const delivBadge = isApp
     ? (addr ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Очиж авах</span>`)
@@ -9208,7 +9239,7 @@ function bqOrderCard(o) {
   const slog = isApp ? parseStageLog(o.note) : {};
   const slogKeys = ['preparation', 'cleaning', 'ready', 'started', 'stopped', 'archived'].filter(k => slog[k] && slog[k].by);
   const slogHtml = slogKeys.length
-    ? `<div class="order-stagelog">${slogKeys.map(k => `<div class="order-meta stagelog-row">${STAGE_LOG_LABEL[k]}: <b>${escapeHtml(memberName(slog[k].by) || slog[k].by || '—')}</b>${slog[k].at ? ` · ${escapeHtml(String(slog[k].at).slice(5))}` : ''}</div>`).join('')}</div>`
+    ? `<div class="order-stagelog">${slogKeys.map(k => `<div class="order-meta stagelog-row">${stageLogLabel(k, slog)}: <b>${escapeHtml(memberName(slog[k].by) || slog[k].by || '—')}</b>${slog[k].at ? ` · ${escapeHtml(String(slog[k].at).slice(5))}` : ''}</div>`).join('')}</div>`
     : '';
   const activeSt = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st);
   const canPay = !isApp && activeSt && bal > 0;
@@ -9222,8 +9253,14 @@ function bqOrderCard(o) {
   const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st);
   const appEditable = ['draft', 'reserved', 'preparation', 'cleaning', 'ready'].includes(st);   // Гарсан/Дууссан/Архивласан/Цуцалсан → засахгүй
   const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
+  // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
+  const advCap = next ? (next.cap || 'orders.advance') : null;
+  const advOk = next ? can(advCap) : false;
+  const advBtn = (next && st !== 'draft')
+    ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
+    : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${next && st !== 'draft' && can('orders.advance') ? `<button class="btn${appBal > 0 ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}${['reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}

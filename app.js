@@ -6500,16 +6500,17 @@ function nomaadCardHtml(o) {
     return `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0} ${escapeHtml(it.unit || '')}</td>${ownerCell}<td class="num">${it.included ? '<span style="color:var(--muted)">багцад</span>' : fmtMoney(it.total || 0)}</td></tr>`;
   }).join('');
   const open = nomaadExpanded.has(o.quote_no);
+  const subBreak = (Number(o.income_advance) || 0) + (Number(o.income_balance) || 0) + (Number(o.income_addon) || 0) + (Number(o.income_damage) || 0);
   const incomeArea = income > 0
-    ? `<div style="text-align:right;">
+    ? `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
          ${balanceHtml}
-         <div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>
-         <div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}${o.income_by ? ' · ' + escapeHtml(memberName(o.income_by)) : ''}${isDoneQuote ? '' : ` · <button class="btn" data-nomaad-income="${q}" style="padding:2px 8px;font-size:10px;">Засах</button>`}</div>
+         ${subBreak > 0 ? `<div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>` : ''}
+         ${isDoneQuote ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(o.income_date || '')}</div>` : `<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:4px 12px;font-size:11px;">+ Төлбөр нэмэх (PDF)</button>`}
        </div>`
     : `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
          ${balanceHtml}
-         <button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх</button>
+         <button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх (PDF)</button>
        </div>`;
   return `<div class="nomaad-card${open ? ' expanded' : ''}" data-nomaad="${q}">
     <div class="nomaad-card-head" data-nomaad-toggle="${q}">

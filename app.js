@@ -4034,7 +4034,19 @@ function orderUrgRank(o, stage, todayStr) {
 const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕' };
 // Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
 // Мөрөн дээрх дараагийн үйлдлийн товчны БОГИНО шошго
-const _ACT_SHORT = { clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
+// Үндсэн 6 төлөв (dropdown/самбарын бүлэг). Дэд шатууд эдгээрт багтана.
+const ORDER_BUCKETS = [
+  { key: 'draft',    label: 'Ноорог',           icon: '📝', dot: '#6B7280', st: ['draft'] },
+  { key: 'reserved', label: 'Захиалсан',        icon: '📋', dot: '#D97706', st: ['reserved', 'cleaning', 'ready', 'preparation', 'prepared'] },
+  { key: 'rented',   label: 'Түрээслэгдэж буй',  icon: '📦', dot: '#2563EB', st: ['delivering', 'rented', 'returning', 'started'] },
+  { key: 'done',     label: 'Дууссан',          icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
+  { key: 'archived', label: 'Архив',            icon: '🗄', dot: '#475569', st: ['archived'] },
+  { key: 'canceled', label: 'Устгасан',         icon: '✕', dot: '#DC2626', st: ['canceled'] },
+];
+const _BUCKET_OF = {};
+ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
+function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'reserved'; }
+const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
 function boardOrderRow(e, k, todayStr) {
   const o = e.o;
   const rank = orderUrgRank(o, k, todayStr);
@@ -4063,55 +4075,59 @@ function boardOrderRow(e, k, todayStr) {
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
 }
 function renderOrderPipelineBoard(shown, todayStr) {
-  const byStage = {};
-  shown.forEach(e => { (byStage[e.o.status] = byStage[e.o.status] || []).push(e); });
-  const ALWAYS = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
+  const byB = {};
+  shown.forEach(e => { const bk = bucketOf(e.o.status); (byB[bk] = byB[bk] || []).push(e); });
+  const ALWAYS = new Set(['reserved', 'rented']);
   const open = state.ordersBoardOpen || new Set();
   const searching = !!(state.ordersSearch || '').trim();
-  const shownStages = BQ_STATUS_ORDER.filter(k => (byStage[k] || []).length || ALWAYS.has(k));
+  const buckets = ORDER_BUCKETS.filter(b => (byB[b.key] || []).length || ALWAYS.has(b.key));
 
-  // 📊 Дээд stepper — шат бүр (тоо), дарж дэлгэж/гүйлгэнэ
-  const stepper = `<div class="board-stepper">${shownStages.map(k => {
-    const list = byStage[k] || []; const st = BQ_STATUS[k] || {};
-    return `<button class="bstep${list.length ? '' : ' empty'}" data-board-jump="${k}"><span class="bstep-dot" style="background:${st.dot || '#888'};"></span>${escapeHtml(st.label || k)}<span class="bstep-n">${list.length}</span></button>`;
+  // 📊 Дээд stepper — 6 үндсэн төлөв
+  const stepper = `<div class="board-stepper">${buckets.map(b => {
+    const list = byB[b.key] || [];
+    return `<button class="bstep${list.length ? '' : ' empty'}" data-board-jump="${b.key}"><span class="bstep-dot" style="background:${b.dot};"></span>${escapeHtml(b.label)}<span class="bstep-n">${list.length}</span></button>`;
   }).join('')}</div>`;
 
-  // 🎯 Өнөөдөр/яаралтай хийх — шат бүрийн due (хугацаа хэтэрсэн/өнөөдөр) захиалгын дараагийн үйлдэл
-  const ACTIONABLE = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
-  const dueChips = shownStages.filter(k => ACTIONABLE.has(k)).map(k => {
-    const due = (byStage[k] || []).filter(e => orderUrgRank(e.o, k, todayStr) <= 1);
-    const nx = due.length ? orderNextStep(due[0].o) : null;
-    if (!due.length || !nx) return '';
-    return `<button class="due-chip" data-board-jump="${k}">${escapeHtml(nx.label)} <b>${due.length}</b></button>`;
-  }).filter(Boolean).join('');
+  // 🎯 Өнөөдөр/яаралтай — due захиалгыг дараагийн үйлдлээр бүлэглэнэ
+  const dueByAction = {};
+  shown.forEach(e => {
+    const stt = e.o.status, bk = bucketOf(stt);
+    if (bk !== 'reserved' && bk !== 'rented') return;
+    if (orderUrgRank(e.o, stt, todayStr) > 1) return;
+    const nx = orderNextStep(e.o); if (!nx) return;
+    (dueByAction[nx.label] = dueByAction[nx.label] || { n: 0, bucket: bk }).n++;
+  });
+  const dueChips = Object.keys(dueByAction).map(label => {
+    const v = dueByAction[label];
+    return `<button class="due-chip" data-board-jump="${v.bucket}">${escapeHtml(label)} <b>${v.n}</b></button>`;
+  }).join('');
   const band = dueChips
     ? `<div class="board-today">🎯 Өнөөдөр/яаралтай: ${dueChips}</div>`
     : `<div class="board-today board-today-ok">✓ Өнөөдөр яаралтай ажил алга</div>`;
 
-  const secs = shownStages.map(k => {
-    const list = byStage[k] || [];
-    const st = BQ_STATUS[k] || {};
+  const secs = buckets.map(b => {
+    const list = byB[b.key] || [];
     const total = list.reduce((sm, e) => sm + e.total, 0);
-    const isOpen = (open.has(k) || searching) && list.length;
+    const isOpen = (open.has(b.key) || searching) && list.length;
     let bodyHtml = '';
     if (isOpen) {
-      const byRank = arr => arr.slice().sort((a, b) => orderUrgRank(a.o, k, todayStr) - orderUrgRank(b.o, k, todayStr) || String(a.o.starts_at || '').localeCompare(String(b.o.starts_at || '')));
+      const byRank = arr => arr.slice().sort((a, c) => orderUrgRank(a.o, a.o.status, todayStr) - orderUrgRank(c.o, c.o.status, todayStr) || String(a.o.starts_at || '').localeCompare(String(c.o.starts_at || '')));
       const sub = (arr, label, icon) => {
         if (!arr.length) return '';
-        const urgN = arr.filter(e => orderUrgRank(e.o, k, todayStr) <= 1).length;
+        const urgN = arr.filter(e => orderUrgRank(e.o, e.o.status, todayStr) <= 1).length;
         const CAP2 = 60;
-        const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, k, todayStr)).join('');
-        const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлт эсвэл Жагсаалтаас</div>` : '';
+        const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('');
+        const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлтаар</div>` : '';
         return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + rows + more;
       };
       const deliv = list.filter(e => isDeliveryOrder(e.o));
       const pick = list.filter(e => !isDeliveryOrder(e.o));
       bodyHtml = `<div class="board-body">${sub(deliv, 'Хүргэлттэй', '🚚')}${sub(pick, 'Очиж авах', '🏬')}</div>`;
     }
-    return `<div class="board-sec" id="bsec-${k}" style="border-left-color:${st.dot || '#888'};">
-      <div class="board-head" data-board-stage="${k}">
-        <span class="board-icon">${_BOARD_ICON[k] || '•'}</span>
-        <span class="board-name">${escapeHtml(st.label || k)}</span>
+    return `<div class="board-sec" id="bsec-${b.key}" style="border-left-color:${b.dot};">
+      <div class="board-head" data-board-stage="${b.key}">
+        <span class="board-icon">${b.icon}</span>
+        <span class="board-name">${escapeHtml(b.label)}</span>
         <span class="board-count">${list.length}</span>
         ${total ? `<span class="board-total">${fmtMoney(total)}</span>` : ''}
         <span class="board-caret">${isOpen ? '▾' : '▸'}</span>
@@ -4144,7 +4160,7 @@ function renderOrders() {
   state.ordersView = 'board';   // зөвхөн Самбар (Жагсаалт хассан)
   const isBoard = true;
   state.ordersFilter = 'all';
-  if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
+  if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'rented']);
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
@@ -4223,7 +4239,7 @@ function renderOrders() {
   state.ordersSort = state.ordersSort || 'number';
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
   const payF = state.ordersPay || '';
-  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
+  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
   const _sortFns = {
     number: (a, b) => (Number(b.o.number) || 0) - (Number(a.o.number) || 0),
     number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
@@ -9152,8 +9168,8 @@ const BQ_STATUS = {
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
   // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
   preparation: { label: 'Бэлтгэл',       dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
-  cleaning:    { label: 'Цэвэрлэгээ',    dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
-  ready:       { label: 'Гаргахад бэлэн', dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
+  cleaning:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  ready:       { label: 'Цэвэрлэсэн',  dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
@@ -9172,17 +9188,17 @@ function orderNextStep(o) {
   const deliv = isDeliveryOrder(o);
   switch (st) {
     case 'reserved':
-    case 'preparation':
-    case 'cleaning':    return { to: 'prepared', label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
+    case 'preparation': return { to: 'cleaning', label: '🧰 Бэлдэх', cap: 'orders.prepare' };
+    case 'cleaning':    return { to: 'ready',    label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
     case 'prepared':
     case 'ready':       return deliv
-                          ? { to: 'delivering', label: '🚚 Жолоочид хүлээлгэн өгөх', cap: 'orders.dispatch' }
-                          : { to: 'rented',     label: '🤝 Хүлээлгэн өгөх',          cap: 'orders.dispatch' };
-    case 'delivering':  return { to: 'rented',    label: '🤝 Хүргэж өгсөн', cap: 'orders.deliver' };
+                          ? { to: 'delivering', label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' }
+                          : { to: 'rented',     label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' };
+    case 'delivering':  return { to: 'rented',    label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
     case 'rented':
     case 'started':     return deliv
-                          ? { to: 'returning', label: '↩ Хүргэлт буцаах',       cap: 'orders.deliver' }
-                          : { to: 'returned',  label: '📥 Буцаан хүлээн авсан', cap: 'orders.dispatch' };
+                          ? { to: 'returning', label: '↩ Буцааж авахаар гарах', cap: 'orders.deliver' }
+                          : { to: 'returned',  label: '📥 Буцаан хүлээж авсан', cap: 'orders.dispatch' };
     case 'returning':   return { to: 'returned', label: '📦 Агуулахад хүлээн авсан', cap: 'orders.dispatch' };
     case 'returned':
     case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
@@ -9255,21 +9271,21 @@ async function advanceOrderFromTask(task) {
 
 // Дамжлагын шат: (from>to) → үйлдэл + өмнөх шат (үнэлэх). Товч бүрд зураг + өмнөхийн үнэлгээ
 const STAGE_ACTION = {
-  'reserved>prepared':    { key: 'clean',    label: 'Цэвэрлэх',                q: 'Бэлтгэл/цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
-  'preparation>prepared': { key: 'clean',    label: 'Цэвэрлэх',                q: 'Бэлтгэл/цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
-  'cleaning>prepared':    { key: 'clean',    label: 'Цэвэрлэх',                q: 'Бэлтгэл/цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
-  'prepared>delivering':  { key: 'dispatch', label: 'Жолоочид хүлээлгэн өгөх', q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
-  'prepared>rented':      { key: 'handover', label: 'Хүлээлгэн өгөх',          q: 'Захиалга бүрэн, зөв хүлээлгэн өгсөн үү?' },
-  'ready>delivering':     { key: 'dispatch', label: 'Жолоочид хүлээлгэн өгөх', q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
-  'ready>rented':         { key: 'handover', label: 'Хүлээлгэн өгөх',          q: 'Захиалга бүрэн, зөв хүлээлгэн өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',            q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
-  'rented>returning':     { key: 'retstart', label: 'Хүргэлт буцаах',          q: 'Бараа бүрэн бүтэн байна уу?' },
-  'rented>returned':      { key: 'received', label: 'Буцаан хүлээн авсан',      q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'started>returning':    { key: 'retstart', label: 'Хүргэлт буцаах',          q: 'Бараа бүрэн бүтэн байна уу?' },
-  'started>returned':     { key: 'received', label: 'Буцаан хүлээн авсан',      q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'returning>returned':   { key: 'received', label: 'Агуулахад хүлээн авсан',   q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
-  'returned>archived':    { key: 'archive',  label: 'Архивлах',                q: null },
-  'stopped>archived':     { key: 'archive',  label: 'Архивлах',                q: null },
+  'reserved>cleaning':    { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
+  'preparation>cleaning': { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
+  'cleaning>ready':       { key: 'clean',    label: 'Цэвэрлэх',              q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
+  'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'ready>rented':         { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
+  'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'prepared>rented':      { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
+  'rented>returned':      { key: 'received', label: 'Буцаан хүлээж авсан',    q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'started>returning':    { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
+  'started>returned':     { key: 'received', label: 'Буцаан хүлээж авсан',    q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'returning>returned':   { key: 'received', label: 'Агуулахад хүлээн авсан', q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
+  'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
 const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Хүлээн авсан', archive: '🗄 Архив' };

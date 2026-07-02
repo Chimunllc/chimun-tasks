@@ -4062,11 +4062,12 @@ function renderOrderPipelineBoard(shown, todayStr) {
   }).join('')}</div>`;
 
   // 🎯 Өнөөдөр/яаралтай хийх — шат бүрийн due (хугацаа хэтэрсэн/өнөөдөр) захиалгын дараагийн үйлдэл
-  const dueChips = shownStages.map(k => {
+  const ACTIONABLE = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
+  const dueChips = shownStages.filter(k => ACTIONABLE.has(k)).map(k => {
     const due = (byStage[k] || []).filter(e => orderUrgRank(e.o, k, todayStr) <= 1);
-    if (!due.length) return '';
-    const nx = orderNextStep(due[0].o);
-    return `<button class="due-chip" data-board-jump="${k}">${nx ? escapeHtml(nx.label) : escapeHtml((BQ_STATUS[k] || {}).label || k)} <b>${due.length}</b></button>`;
+    const nx = due.length ? orderNextStep(due[0].o) : null;
+    if (!due.length || !nx) return '';
+    return `<button class="due-chip" data-board-jump="${k}">${escapeHtml(nx.label)} <b>${due.length}</b></button>`;
   }).filter(Boolean).join('');
   const band = dueChips
     ? `<div class="board-today">🎯 Өнөөдөр/яаралтай: ${dueChips}</div>`
@@ -4083,7 +4084,10 @@ function renderOrderPipelineBoard(shown, todayStr) {
       const sub = (arr, label, icon) => {
         if (!arr.length) return '';
         const urgN = arr.filter(e => orderUrgRank(e.o, k, todayStr) <= 1).length;
-        return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + byRank(arr).map(e => boardOrderRow(e, k, todayStr)).join('');
+        const CAP2 = 60;
+        const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, k, todayStr)).join('');
+        const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлт эсвэл Жагсаалтаас</div>` : '';
+        return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + rows + more;
       };
       const deliv = list.filter(e => isDeliveryOrder(e.o));
       const pick = list.filter(e => !isDeliveryOrder(e.o));
@@ -4122,7 +4126,9 @@ function renderOrders() {
 
   // ── Менежер / CEO ──
   state.ordersFilter = state.ordersFilter || 'all';
-  state.ordersView = state.ordersView || 'list';
+  state.ordersView = state.ordersView || 'board';
+  const isBoard = (state.ordersView === 'board');
+  if (isBoard) state.ordersFilter = 'all';   // самбарт бүх шат accordion-оор → таб хэрэггүй
   if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
@@ -4194,12 +4200,10 @@ function renderOrders() {
     <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
   </div>`;
   const controls = `<div class="orders-controls">
-    <div class="otabs">${tabsHtml}</div>
+    ${isBoard ? '' : `<div class="otabs">${tabsHtml}</div>`}
     <div class="orders-controls-r">
       ${viewToggle}
-      ${sortSelect}
-      ${paySelect}
-      ${ymSelect}
+      ${isBoard ? '' : sortSelect + paySelect + ymSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;
@@ -4225,14 +4229,14 @@ function renderOrders() {
   const sumTotal = shown.reduce((s, e) => s + e.total, 0);
   const CAP = 200;
   const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:12.5px;margin:2px 2px 8px;">${shown.length.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sumTotal)}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:12.5px;margin:2px 2px 8px;">${shown.length.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sumTotal)}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length
       ? sumLine + `<div class="orders-wrap">${cards}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  return head + chips + controls + body;
+  return head + (isBoard ? '' : chips) + controls + body;
 }
 
 function _closeOrderKebabs(e) {
@@ -4341,7 +4345,7 @@ function attachOrdersHandlers() {
   });
   // Жагсаалт ⇄ Самбар
   document.querySelectorAll('[data-oview]').forEach(el => {
-    el.addEventListener('click', () => { state.ordersView = el.dataset.oview; render(); });
+    el.addEventListener('click', () => { state.ordersView = el.dataset.oview; if (el.dataset.oview === 'board') state.ordersFilter = 'all'; render(); });
   });
   // Самбарын шат эвхэх/дэлгэх
   document.querySelectorAll('[data-board-stage]').forEach(el => {

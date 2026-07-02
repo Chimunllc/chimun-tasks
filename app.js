@@ -13648,27 +13648,27 @@ function initEvents() {
     const reason = get('f-decision-reason');
     if (reason) r.decision_reason = reason;
   }
-  document.getElementById('f-approve')?.addEventListener('click', async () => {
-    if (state.editingId) {
-      await applyCeoEditsBeforeDecision(state.editingId);
-      await decideFinanceRequest(state.editingId, 'approved');
-      closeFinanceModal();
-    }
-  });
+  document.getElementById('f-approve')?.addEventListener('click', () => withBusy(document.getElementById('f-approve'), async () => {
+    if (!state.editingId) return;
+    await applyCeoEditsBeforeDecision(state.editingId);
+    await decideFinanceRequest(state.editingId, 'approved');
+    closeFinanceModal();
+  }, { successText: 'Зөвшөөрлөө' }));
   document.getElementById('f-reject')?.addEventListener('click', async () => {
     if (!state.editingId) return;
     if (!(await showConfirm('Энэ хүсэлтийг татгалзах уу? Дахин нээгдэхгүй.', { okText: 'Татгалзах', danger: true }))) return;
-    await applyCeoEditsBeforeDecision(state.editingId);
-    await decideFinanceRequest(state.editingId, 'rejected');
-    closeFinanceModal();
-  });
-  document.getElementById('f-defer')?.addEventListener('click', async () => {
-    if (state.editingId) {
+    await withBusy(document.getElementById('f-reject'), async () => {
       await applyCeoEditsBeforeDecision(state.editingId);
-      await decideFinanceRequest(state.editingId, 'deferred');
+      await decideFinanceRequest(state.editingId, 'rejected');
       closeFinanceModal();
-    }
+    });
   });
+  document.getElementById('f-defer')?.addEventListener('click', () => withBusy(document.getElementById('f-defer'), async () => {
+    if (!state.editingId) return;
+    await applyCeoEditsBeforeDecision(state.editingId);
+    await decideFinanceRequest(state.editingId, 'deferred');
+    closeFinanceModal();
+  }, { successText: 'Хойшлууллаа' }));
   document.getElementById('f-execute')?.addEventListener('click', async () => {
     if (!state.editingId) return;
     const paymentFile = document.getElementById('f-payment-file').files[0];
@@ -13676,17 +13676,19 @@ function initEvents() {
       const proceed = await showConfirm('Төлбөрийн баримт хавсаргаагүй байна. Үргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' });
       if (!proceed) return;
     } else if (!(await showConfirm('Энэ гүйлгээг хийсэн гэж тэмдэглэх үү?', { okText: 'Гүйцэтгэсэн' }))) return;
-    // Upload payment proof first if provided
-    if (paymentFile) {
-      showToast('Баримт upload хийж байна...', '', 2000);
-      const url = await uploadReceipt(paymentFile, state.editingId, 'payment');
-      if (url) {
-        const r = state.financeRequests.find(x => x.id === state.editingId);
-        if (r) { r.payment_proof_url = url; await saveFinanceRequest(r); }
+    await withBusy(document.getElementById('f-execute'), async () => {
+      // Upload payment proof first if provided
+      if (paymentFile) {
+        showToast('Баримт upload хийж байна...', '', 2000);
+        const url = await uploadReceipt(paymentFile, state.editingId, 'payment');
+        if (url) {
+          const r = state.financeRequests.find(x => x.id === state.editingId);
+          if (r) { r.payment_proof_url = url; await saveFinanceRequest(r); }
+        }
       }
-    }
-    await executeFinanceRequest(state.editingId);
-    closeFinanceModal();
+      await executeFinanceRequest(state.editingId);
+      closeFinanceModal();
+    });
   });
 
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };

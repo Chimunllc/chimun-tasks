@@ -7648,16 +7648,18 @@ async function sendNomaadQuote(quoteNo) {
   }
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.
-// Орлого бүртгэх модал — ЭНГИЙН: дүн + тайлбар + огноо. Бүртгэл бүр = тусдаа төлбөр (нэмэгдэнэ).
+// Орлого бүртгэх модал — ЗӨВХӨН PDF (M-Event-тэй ижил). Голомт/Хаан баримт → дүн/огноо/шилжүүлэгч
+// автоматаар; Чимун ХХК ЗААВАЛ хүлээн авагч; нэг баримт нэг л удаа (dedup). Гараар оруулах боломжгүй.
 function openNomaadIncomeModal(o) {
   return new Promise((resolve) => {
-    const total = Number(o.grand_total) || 0;
+    const total = nomaadEffTotal(o);
     const prevPaid = Number(o.income_amount) || 0;
     const bal = Math.max(0, total - prevPaid);
     document.getElementById('ni-dyn-modal')?.remove();
     const modal = document.createElement('div');
     modal.className = 'modal-bg'; modal.id = 'ni-dyn-modal';
-    modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    const rowCss = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border);';
+    modal.innerHTML = `<div class="modal" style="max-width:430px;">
       <h2>💵 Орлого бүртгэх</h2>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
       <div style="background:var(--panel-hover);border-radius:10px;padding:9px 12px;margin-bottom:14px;font-size:13px;line-height:1.8;">
@@ -7665,28 +7667,70 @@ function openNomaadIncomeModal(o) {
         <div>Өмнө төлсөн: ${fmtMoney(prevPaid)}</div>
         <div>Үлдэгдэл: <b style="color:${bal > 0 ? 'var(--warn)' : 'var(--ok)'};">${fmtMoney(bal)}</b></div>
       </div>
-      <label style="display:block;margin-bottom:10px;font-size:13px;">Төлбөрийн дүн (₮)
-        <input id="ni-amount" type="text" inputmode="numeric" class="money-input" value="${bal ? moneyFmtInput(bal) : ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
-      <label style="display:block;margin-bottom:10px;font-size:13px;">Тайлбар
-        <textarea id="ni-note" rows="2" placeholder="Ж: урьдчилгаа / үлдэгдэл / бэлнээр / Голомт банк / нэмэлт..." style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;"></textarea></label>
-      <label style="display:block;margin-bottom:16px;font-size:13px;">Огноо
-        <input id="ni-date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:14px;background:var(--panel);color:var(--text);"></label>
+      <label for="ni-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+        📄 <b>Банкны баримт (PDF) оруулах</b>
+        <input id="ni-pdf" type="file" accept="application/pdf,.pdf" hidden>
+        <div id="ni-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Голомт/Хаан баримт · дүн·огноо·шилжүүлэгч автоматаар. <b>Гараар бүртгэх боломжгүй.</b></div>
+      </label>
+      <div id="ni-fields" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:14px;">
+        <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний дүн</span><b id="ni-amount-disp" style="font-size:15px;color:var(--ok);"></b></div>
+        <div style="${rowCss}"><span style="color:var(--muted);">Огноо</span><span id="ni-date-disp"></span></div>
+        <div style="${rowCss}"><span style="color:var(--muted);">Шилжүүлэгч</span><b id="ni-sender-disp" style="text-align:right;"></b></div>
+        <div style="${rowCss}"><span style="color:var(--muted);">Шилжүүлэгчийн данс</span><span id="ni-sacct-disp"></span></div>
+        <div style="${rowCss}"><span style="color:var(--muted);">Хүлээн авагч</span><span id="ni-receiver-disp" style="text-align:right;"></span></div>
+        <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний утга</span><span id="ni-ref-disp" style="text-align:right;color:var(--muted);"></span></div>
+        <div style="${rowCss}border-bottom:none;"><span style="color:var(--muted);">Төлөв</span><span id="ni-status-disp"></span></div>
+      </div>
       <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn" id="ni-cancel">Болих</button>
-        <button class="btn btn-primary" id="ni-save">Бүртгэх</button>
+        <button class="btn btn-primary" id="ni-save" disabled style="opacity:.45;cursor:not-allowed;">Бүртгэх</button>
       </div>
     </div>`;
     document.body.appendChild(modal);
+    let parsed = null;
     const close = (r) => { modal.remove(); resolve(r); };
     modal.querySelector('#ni-cancel').addEventListener('click', () => close(null));
     modal.addEventListener('click', (e) => { if (e.target === modal) close(null); });
-    modal.querySelector('#ni-save').addEventListener('click', () => {
-      const amount = moneyVal(modal.querySelector('#ni-amount'));
-      if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn', 2000); return; }
-      close({ amount, note: modal.querySelector('#ni-note').value.trim(), date: modal.querySelector('#ni-date').value || new Date().toISOString().slice(0, 10) });
+    const saveBtn = modal.querySelector('#ni-save');
+    const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+    saveBtn.addEventListener('click', () => { if (parsed) close(parsed); });
+    // Банкны баримт PDF → автомат задалж, зөвхөн үүгээр бүртгэнэ (гараар оруулах боломжгүй)
+    modal.querySelector('#ni-pdf').addEventListener('change', async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const status = modal.querySelector('#ni-pdf-status');
+      status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)'; enableSave(false); parsed = null;
+      try {
+        const d = parseBankReceipt(await extractPdfText(file));
+        if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан гүйлгээний баримт мөн эсэхийг шалгана уу');
+        modal.querySelector('#ni-amount-disp').textContent = fmtMoney(d.amount);
+        modal.querySelector('#ni-date-disp').textContent = d.date || '—';
+        modal.querySelector('#ni-sender-disp').textContent = d.senderName || '—';
+        modal.querySelector('#ni-sacct-disp').textContent = d.senderAcct || '—';
+        modal.querySelector('#ni-receiver-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
+        modal.querySelector('#ni-ref-disp').textContent = d.ref || '—';
+        modal.querySelector('#ni-status-disp').textContent = d.status || '—';
+        modal.querySelector('#ni-fields').style.display = '';
+        // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
+        if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
+        // Давхцал: энэ баримт (receiptId) NOMAAD төлбөрийн лог-д аль хэдийн байгаа эсэх — нэг PDF нэг л удаа
+        if (d.receiptId) {
+          const allPays = Object.values(state.nomaadPayments || {}).flat();
+          const dup = allPays.find(p => String(p.note || '').includes('[#' + d.receiptId + ']'));
+          if (dup) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн — ${dup.quote_no || ''}`);
+        }
+        parsed = {
+          amount: d.amount,
+          date: d.date || new Date().toISOString().slice(0, 10),
+          note: (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref].filter(Boolean).join(' · '),
+        };
+        const warns = [];
+        if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
+        status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
+        status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';
+        enableSave(true);
+      } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; parsed = null; enableSave(false); }
     });
     modal.classList.add('open');
-    setTimeout(() => modal.querySelector('#ni-amount')?.focus(), 50);
   });
 }
 // Орлого бүртгэх — НЭМЭГДДЭГ (running total). Төлбөр бүр лог-д тусдаа мөр + тайлбартай.
@@ -8139,12 +8183,17 @@ function eval360Score(key, period) {
    Даалгавар өгөгч (удирдлага) дуусгасан ажил бүрийг 1-5★ үнэлнэ. Үнэлгээ нь
    task.kpi_code баганд хадгалагдана (Sheet "KPI код" — backend засваргүй persist).
    Сарын дундаж ×20 → 0-100. Объектив (цагтаа)-оос ӨӨР хэмжүүр: чанар. */
+// kpi_code = "<оноо>" эсвэл "<оноо>⟦N⟧<тайлбар>" — үнэлгээний тайлбарыг backend багана нэмэхгүйгээр хадгална.
+const _QNOTE_SEP = '⟦N⟧';
+function taskQualityRating(t) { return Number(String((t && t.kpi_code) || '').split(_QNOTE_SEP)[0]) || 0; }
+function taskQualityNote(t) { const p = String((t && t.kpi_code) || '').split(_QNOTE_SEP); return p.length > 1 ? p.slice(1).join(_QNOTE_SEP).trim() : ''; }
+function encodeQuality(rating, note) { note = String(note || '').trim(); return note ? (rating + _QNOTE_SEP + note) : String(rating); }
 function taskQualityScore(key, month) {
   const done = (state.tasks || []).filter(t =>
     t.assignee === key && t.status === 'done' && t.kind !== 'act_parent'
     && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
-  const rated = done.map(t => Number(t.kpi_code)).filter(v => v >= 1 && v <= 5);
+  const rated = done.map(t => taskQualityRating(t)).filter(v => v >= 1 && v <= 5);
   if (!rated.length) return { score: null, rated: 0, doneTotal: done.length };
   const avg = rated.reduce((a, b) => a + b, 0) / rated.length;
   return { score: Math.round(avg * 20), rated: rated.length, doneTotal: done.length, avg: Math.round(avg * 10) / 10 };
@@ -8155,17 +8204,19 @@ function needsRating(t) {
   if (!t || t.status !== 'done') return false;
   if (t.kind === 'finance_request' || t.kind === 'act_parent' || t._isFinance) return false;
   if (!t.createdBy || t.createdBy === t.assignee) return false;
-  const q = Number(t.kpi_code);
+  const q = taskQualityRating(t);
   return !(q >= 1 && q <= 5);
 }
-async function saveTaskQuality(id, rating) {
+async function saveTaskQuality(id, rating, note) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
-  t.kpi_code = String(rating);
-  document.querySelectorAll('#t-quality-block .q-star').forEach(s => {
-    s.style.color = Number(s.dataset.q) <= rating ? '#f59e0b' : 'var(--border)';
-  });
-  try { await saveTask(t); showToast(`Ажлын чанар: ${rating}★ хадгалагдлаа`, 'success', 1500); }
+  t.kpi_code = encodeQuality(rating, note);
+  try {
+    await saveTask(t);
+    showToast(`Ажлын чанар: ${rating}★ хадгалагдлаа`, 'success', 1800);
+    closeTaskModal();
+    render();
+  }
   catch (e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 /* ─── Гүйцэтгэлийн суутгал (гар торгууль) ───
@@ -12477,21 +12528,42 @@ function openTaskModal(id) {
     }
     // ⭐ Ажлын чанар — ЗӨВХӨН даалгавар өгөгч (үүсгэгч) үнэлнэ. Оноо өгөөгүй бол ажил ХААГДАХГҮЙ.
     // Үнэлгээ task.kpi_code баганд хадгалагдана (Sheet "KPI код", backend засваргүй).
-    const qVal = Number(t.kpi_code) || 0;
+    const qVal = taskQualityRating(t);
+    const qNote = taskQualityNote(t);
     const iAmCreator = t.status === 'done' && state.me === t.createdBy && t.createdBy !== t.assignee;
     if (iAmCreator) {
       const rated = qVal >= 1;
       info += `<div id="t-quality-block" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-        <div style="font-size:11px;color:${rated ? 'var(--muted)' : 'var(--warn)'};margin-bottom:6px;font-weight:${rated ? '400' : '700'};">⭐ Ажлын чанар — таны үнэлгээ${rated ? ' (гүйцэтгэлийн оноонд 40%)' : ' · оноо өгснөөр ажил ХААГДАНА'}</div>
+        <div style="font-size:11px;color:${rated ? 'var(--muted)' : 'var(--warn)'};margin-bottom:6px;font-weight:${rated ? '400' : '700'};">⭐ Ажлын чанар — таны үнэлгээ${rated ? ' (гүйцэтгэлийн оноонд 40%)' : ' · оноо + тайлбар өгснөөр ажил ХААГДАНА'}</div>
         <div class="q-stars" style="display:flex;gap:6px;font-size:26px;line-height:1;cursor:pointer;">${[1,2,3,4,5].map(n => `<span class="q-star" data-q="${n}" style="color:${qVal >= n ? '#f59e0b' : 'var(--border)'};">★</span>`).join('')}</div>
+        <textarea id="t-quality-note" rows="2" placeholder="Үнэлгээний тайлбар — гүйцэтгэгчид харагдана (заавал)" style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-family:inherit;font-size:13px;background:var(--panel);color:var(--text);resize:vertical;">${escapeHtml(qNote)}</textarea>
+        <button class="btn btn-primary" id="t-quality-save" style="margin-top:8px;width:100%;">${rated ? '✓ Үнэлгээ шинэчлэх' : 'Үнэлгээ хадгалах'}</button>
+      </div>`;
+    } else if (qVal >= 1) {
+      // Гүйцэтгэгч (болон бусад) — үүсгэгчийн үнэлгээ + тайлбарыг харна
+      info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">⭐ Үүсгэгчийн үнэлгээ (${escapeHtml(memberName(t.createdBy))})</div>
+        <div style="font-size:22px;line-height:1;">${[1,2,3,4,5].map(n => `<span style="color:${qVal >= n ? '#f59e0b' : 'var(--border)'};">★</span>`).join('')}</div>
+        ${qNote ? `<div style="font-size:13px;color:var(--text);margin-top:8px;background:var(--bg-soft,var(--card));border-radius:8px;padding:9px 11px;line-height:1.5;">“${escapeHtml(qNote)}”</div>` : ''}
       </div>`;
     } else if (needsRating(t)) {
       info += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--warn);font-weight:600;">⏳ Үүсгэгч (${escapeHtml(memberName(t.createdBy))}) үнэлгээ өгөхийг хүлээж байна — үнэлэгдтэл ажил хаагдахгүй.</div>`;
     }
     creatorInfo.innerHTML = info;
     creatorInfo.style.display = 'block';
-    const qStars = creatorInfo.querySelector('.q-stars');
-    if (qStars) qStars.querySelectorAll('.q-star').forEach(s => s.onclick = () => saveTaskQuality(t.id, Number(s.dataset.q)));
+    const qBlock = creatorInfo.querySelector('#t-quality-block');
+    if (qBlock) {
+      let pending = qVal;
+      const stars = qBlock.querySelectorAll('.q-star');
+      const paint = (v) => stars.forEach(s => s.style.color = Number(s.dataset.q) <= v ? '#f59e0b' : 'var(--border)');
+      stars.forEach(s => s.onclick = () => { pending = Number(s.dataset.q); paint(pending); });
+      qBlock.querySelector('#t-quality-save').onclick = () => {
+        const note = qBlock.querySelector('#t-quality-note').value.trim();
+        if (pending < 1) { showToast('Од (1-5) өгнө үү', 'warn', 2000); return; }
+        if (!note) { showToast('Үнэлгээний тайлбар бичнэ үү — гүйцэтгэгчид харагдана', 'warn', 3000); return; }
+        saveTaskQuality(t.id, pending, note);
+      };
+    }
   } else {
     creatorInfo.style.display = 'none';
   }

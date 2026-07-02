@@ -5057,6 +5057,32 @@ body.role-daily #add-project { display: none !important; }
 .board-sub { font-size: 11.5px; font-weight: 700; color: var(--muted); margin: 10px 2px 6px; display: flex; align-items: center; gap: 8px; }
 .board-urg { color: var(--danger); font-weight: 700; }
 .board-body .order-card { margin-bottom: 8px; }
+/* Дээд stepper */
+.board-stepper { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; -webkit-overflow-scrolling: touch; }
+.bstep { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); padding: 5px 12px; font-size: 12px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.bstep:hover { background: var(--panel-hover); }
+.bstep.empty { opacity: .5; }
+.bstep-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.bstep-n { font-weight: 700; background: var(--panel-2, #eef2f7); border-radius: 999px; padding: 0 7px; font-size: 11px; }
+/* 🎯 Өнөөдөр/яаралтай зурвас */
+.board-today { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; margin: 0 0 12px; }
+.board-today-ok { color: var(--ok); font-weight: 600; }
+.due-chip { font-family: inherit; border: 1px solid var(--warn, #D97706); background: var(--warn-soft, #FEF3C7); color: var(--warn, #92400E); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.due-chip b { margin-left: 2px; }
+/* Авсаархан мөр (details) */
+.board-order { margin-bottom: 6px; }
+.board-order > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); cursor: pointer; font-size: 12.5px; }
+.board-order > summary::-webkit-details-marker { display: none; }
+.board-order[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.board-order.urg-over > summary, .board-order.urg-today > summary { border-left: 3px solid var(--danger); }
+.board-order.urg-soon > summary { border-left: 3px solid var(--warn); }
+.br-num { font-weight: 700; }
+.br-cust { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-badge { flex-shrink: 0; }
+.br-date { color: var(--muted); flex-shrink: 0; }
+.br-amt { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.board-detail { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 8px; background: var(--panel-hover); }
+.board-detail .order-card { margin: 0; }
 .otab { font-family: inherit; font-size: 12.5px; color: var(--text-soft); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: background .12s; }
 .otab:hover { background: var(--panel-hover); }
 .otab.on { background: var(--text); color: var(--bg); border-color: var(--text); }

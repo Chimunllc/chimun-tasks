@@ -4032,14 +4032,48 @@ function orderUrgRank(o, stage, todayStr) {
 }
 // Дамжлагын самбар — шат бүрээр эвхэгддэг, идэвхтэй шат дотор хүргэлт/очиж авах дэд бүлэг + яаралтай эрэмбэ
 const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕' };
+// Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
+function boardOrderRow(e, k, todayStr) {
+  const o = e.o;
+  const rank = orderUrgRank(o, k, todayStr);
+  const urgCls = rank === 0 ? 'urg-over' : rank === 1 ? 'urg-today' : rank === 2 ? 'urg-soon' : '';
+  const deliv = isDeliveryOrder(o) ? '🚚' : '🏬';
+  const dt = ['rented', 'returning', 'started'].includes(k) ? o.stops_at : o.starts_at;
+  const dstr = String(dt || '').slice(5, 10).replace('-', '/');
+  return `<details class="board-order ${urgCls}"><summary class="board-row">
+    <span class="br-num">#${o.number ?? ''}</span>
+    <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
+    <span class="br-badge">${deliv}</span>
+    <span class="br-date">${dstr || '—'}</span>
+    <span class="br-amt">${fmtMoney(o.total_mnt || 0)}</span>
+  </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
+}
 function renderOrderPipelineBoard(shown, todayStr) {
   const byStage = {};
   shown.forEach(e => { (byStage[e.o.status] = byStage[e.o.status] || []).push(e); });
   const ALWAYS = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
   const open = state.ordersBoardOpen || new Set();
-  const secs = BQ_STATUS_ORDER.map(k => {
+  const shownStages = BQ_STATUS_ORDER.filter(k => (byStage[k] || []).length || ALWAYS.has(k));
+
+  // 📊 Дээд stepper — шат бүр (тоо), дарж дэлгэж/гүйлгэнэ
+  const stepper = `<div class="board-stepper">${shownStages.map(k => {
+    const list = byStage[k] || []; const st = BQ_STATUS[k] || {};
+    return `<button class="bstep${list.length ? '' : ' empty'}" data-board-jump="${k}"><span class="bstep-dot" style="background:${st.dot || '#888'};"></span>${escapeHtml(st.label || k)}<span class="bstep-n">${list.length}</span></button>`;
+  }).join('')}</div>`;
+
+  // 🎯 Өнөөдөр/яаралтай хийх — шат бүрийн due (хугацаа хэтэрсэн/өнөөдөр) захиалгын дараагийн үйлдэл
+  const dueChips = shownStages.map(k => {
+    const due = (byStage[k] || []).filter(e => orderUrgRank(e.o, k, todayStr) <= 1);
+    if (!due.length) return '';
+    const nx = orderNextStep(due[0].o);
+    return `<button class="due-chip" data-board-jump="${k}">${nx ? escapeHtml(nx.label) : escapeHtml((BQ_STATUS[k] || {}).label || k)} <b>${due.length}</b></button>`;
+  }).filter(Boolean).join('');
+  const band = dueChips
+    ? `<div class="board-today">🎯 Өнөөдөр/яаралтай: ${dueChips}</div>`
+    : `<div class="board-today board-today-ok">✓ Өнөөдөр яаралтай ажил алга</div>`;
+
+  const secs = shownStages.map(k => {
     const list = byStage[k] || [];
-    if (!list.length && !ALWAYS.has(k)) return '';
     const st = BQ_STATUS[k] || {};
     const total = list.reduce((sm, e) => sm + e.total, 0);
     const isOpen = open.has(k) && list.length;
@@ -4049,13 +4083,13 @@ function renderOrderPipelineBoard(shown, todayStr) {
       const sub = (arr, label, icon) => {
         if (!arr.length) return '';
         const urgN = arr.filter(e => orderUrgRank(e.o, k, todayStr) <= 1).length;
-        return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + byRank(arr).map(e => bqOrderCard(e.o)).join('');
+        return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + byRank(arr).map(e => boardOrderRow(e, k, todayStr)).join('');
       };
       const deliv = list.filter(e => isDeliveryOrder(e.o));
       const pick = list.filter(e => !isDeliveryOrder(e.o));
       bodyHtml = `<div class="board-body">${sub(deliv, 'Хүргэлттэй', '🚚')}${sub(pick, 'Очиж авах', '🏬')}</div>`;
     }
-    return `<div class="board-sec" style="border-left-color:${st.dot || '#888'};">
+    return `<div class="board-sec" id="bsec-${k}" style="border-left-color:${st.dot || '#888'};">
       <div class="board-head" data-board-stage="${k}">
         <span class="board-icon">${_BOARD_ICON[k] || '•'}</span>
         <span class="board-name">${escapeHtml(st.label || k)}</span>
@@ -4065,7 +4099,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
       </div>${bodyHtml}
     </div>`;
   }).join('');
-  return `<div class="orders-board">${secs}</div>`;
+  return `<div class="orders-board">${stepper}${band}${secs}</div>`;
 }
 function renderOrders() {
   // Захиалга = Booqable (M-Event үхсэн). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
@@ -4316,6 +4350,13 @@ function attachOrdersHandlers() {
       const k = el.dataset.boardStage; const set = state.ordersBoardOpen;
       if (set.has(k)) set.delete(k); else set.add(k);
       render();
+    });
+  });
+  // Stepper / Өнөөдөр зурвас → тухайн шатыг дэлгэж гүйлгэнэ
+  document.querySelectorAll('[data-board-jump]').forEach(el => {
+    el.addEventListener('click', () => {
+      const k = el.dataset.boardJump; (state.ordersBoardOpen = state.ordersBoardOpen || new Set()).add(k); render();
+      setTimeout(() => { const sec = document.getElementById('bsec-' + k); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     });
   });
   // Board картаас тухайн захиалга руу (жагсаалт + хайлт)

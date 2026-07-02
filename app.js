@@ -405,6 +405,11 @@ function loadNotifications() {
     const raw = localStorage.getItem('notifications');
     state.notifications = raw ? JSON.parse(raw) : [];
   } catch(e) { state.notifications = []; }
+  // 7 хоногоос хуучин мэдэгдлийг автомат цэвэрлэнэ — badge үнэ цэнээ хадгална
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const before = state.notifications.length;
+  state.notifications = state.notifications.filter(n => (n.ts || 0) >= cutoff);
+  if (state.notifications.length !== before) { try { localStorage.setItem('notifications', JSON.stringify(state.notifications)); } catch(e) {} }
 }
 function saveNotifications() {
   // Keep only the most recent 50 to avoid localStorage bloat
@@ -3144,6 +3149,12 @@ function renderSidebar() {
     const noCnt = document.getElementById('cnt-nomaad');
     if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(Number(o.income_amount) > 0) && !nomaadIsCancelled(o)).length);
   }
+  // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
+  const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
+  const gBr = document.getElementById('nav-group-branch');
+  if (gBr) gBr.style.display = _grpVisible(['nav-orders', 'nav-nomaad', 'nav-products', 'nav-receivables']) ? '' : 'none';
+  const gMg = document.getElementById('nav-group-mgmt');
+  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-workload', 'nav-performance', 'nav-hourly', 'nav-salary', 'nav-booqable', 'nav-access']) ? '' : 'none';
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
@@ -4168,12 +4179,10 @@ function renderOrders() {
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
-  const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-    <div class="orders-title">Захиалга</div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      ${state.isCEO ? `<button class="btn" id="orders-manage-btn" style="padding:6px 11px;font-size:12px;${state.ordersSelect ? 'color:var(--danger);' : ''}">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
-      <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
-    </div>
+  // Гарчиг header-т аль хэдийн бий (давхардуулахгүй) — энд зөвхөн үйлдлийн товчнууд
+  const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+    ${state.isCEO ? `<button class="btn" id="orders-manage-btn" style="padding:6px 11px;font-size:12px;${state.ordersSelect ? 'color:var(--danger);' : ''}">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
+    <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
   </div>`;
 
   // Booqable + app захиалгыг lazy татна.
@@ -5375,7 +5384,7 @@ function productRowHtml(p) {
   if (pkg) stats.push(`<span class="prod-pkg">📦 ${packageComponents(p).length} бараа</span>`);
   if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
-  if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">💰 нэгж ${fmtMoneyShort(cost)}${roi != null ? ` · ${roi}% нөхсөн` : ''}</span>`);
+  if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">Өртөг ${fmtMoneyShort(cost)}${roi != null ? ` · ROI ${roi}%` : ''}</span>`);
   if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';   // Түрээсийн/Хөрөнгө таг устгав — салбар (ленз) нь түрээслэх боломжийг тодорхойлно
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
@@ -6942,14 +6951,6 @@ function renderNomaadPipeline() {
   const orders = state.nomaadOrders || [];
   const byStage = {};
   orders.forEach(o => { const k = nomaadStage(o); (byStage[k] = byStage[k] || []).push(o); });
-  const maxN = Math.max(1, ...NOMAAD_STAGES.map(s => (byStage[s.key] || []).length));
-  const funnel = NOMAAD_STAGES.map(s => {
-    const n = (byStage[s.key] || []).length;
-    return `<button class="na-funnel-seg${n ? '' : ' empty'}" data-na-stage-scroll="${s.key}" style="--seg:${s.color}">
-      <span class="na-funnel-bar" style="height:${6 + Math.round((n / maxN) * 34)}px"></span>
-      <span class="na-funnel-n">${n}</span><span class="na-funnel-l">${escapeHtml(s.label)}</span>
-    </button>`;
-  }).join('');
   const sections = NOMAAD_STAGES.map(s => {
     const list = (byStage[s.key] || []).slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
     if (!list.length) return '';
@@ -6970,7 +6971,7 @@ function renderNomaadPipeline() {
   const totalIncome = orders.reduce((sum, o) => sum + (Number(o.income_amount) || 0), 0);
   const activeN = orders.filter(o => !nomaadIsCancelled(o)).length;
   const header = `<div style="margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${activeN} идэвхтэй захиалга</div>`;
-  return header + `<div class="na-funnel">${funnel}</div>${sections}`;
+  return header + sections;   // funnel картууд хасагдсан — stage жагсаалттай давхардаж байсан
 }
 // Нэг өдрийн нүд (camp зурвасууд) — сар ба 7 хоногийн харагдацад хоёуланд
 function nomaadCalCellHtml(dateObj, list, today, conflicts) {
@@ -7189,14 +7190,6 @@ function attachNomaadHandlers() {
       const k = h.dataset.naStageToggle;
       if (nomaadStageCollapsed.has(k)) nomaadStageCollapsed.delete(k); else nomaadStageCollapsed.add(k);
       render();
-    });
-  });
-  // Pipeline — юүлүүрээс шат руу гүйх
-  document.querySelectorAll('[data-na-stage-scroll]').forEach(b => {
-    b.addEventListener('click', () => {
-      const k = b.dataset.naStageScroll;
-      nomaadStageCollapsed.delete(k); render();
-      setTimeout(() => { const el = document.getElementById('na-stage-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     });
   });
   // Календарийн захиалга дээр дарвал → Захиалга самбар руу шилжиж тэр захиалгыг дэлгэнэ
@@ -9838,7 +9831,7 @@ function bqOrderCard(o) {
     ? (_isDeliv ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Очиж авах</span>`)
     : '';
   const delivMeta = (isApp && _dlv && _dlv.fee > 0)
-    ? `<div class="order-meta">🚚 Хүргэлт: <b>${fmtMoney(_dlv.fee)}</b>${deliveryLabel(_dlv) ? ` · ${escapeHtml(deliveryLabel(_dlv))}` : ''}</div>`
+    ? `<div class="order-meta">Хүргэлт: <b>${fmtMoney(_dlv.fee)}</b>${deliveryLabel(_dlv) ? ` · ${escapeHtml(deliveryLabel(_dlv))}` : ''}</div>`
     : '';
   // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
   const slog = isApp ? parseStageLog(o.note) : {};
@@ -9851,7 +9844,7 @@ function bqOrderCard(o) {
   const canCancel = !isApp && activeSt;
   // Төлбөрийн мөр — Нийт · Төлсөн · Үлдэгдэл (цуцлахаас бусдад)
   const payRow = (total > 0 && st !== 'canceled')
-    ? `<div class="order-meta">💵 Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
+    ? `<div class="order-meta">Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
@@ -9874,7 +9867,7 @@ function bqOrderCard(o) {
   </div>` : '');
   // Бараа: app бол inline (o.items), Booqable бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">🔒 Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
@@ -9882,11 +9875,11 @@ function bqOrderCard(o) {
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
-    ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
-    ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
+    ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
+    ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
     ${delivMeta}
-    ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">📄 ${escapeHtml(o.contract_no)}</div>` : ''}
-    <div class="order-meta">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
+    ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
+    <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${slogHtml}
@@ -10386,7 +10379,7 @@ function arRow(i) {
     <div class="order-head"><div class="order-head-l"><span style="font-size:13px;">${brIcon}</span> <span class="order-no">${escapeHtml(i.sub)}</span> ${badge}${i.overdue ? ` <span style="color:var(--danger);font-size:10.5px;font-weight:700;">⚠ хугацаа хэтэрсэн</span>` : ''}</div><div class="order-total" style="color:var(--warn);">${fmtMoney(i.balance)}</div></div>
     <div class="order-cust"><b>${escapeHtml(i.name)}</b>${i.phone ? ` · <a href="tel:${escapeHtml(i.phone)}">${escapeHtml(i.phone)}</a>` : ''}</div>
     <div class="order-meta">Нийт ${fmtMoney(i.total)} · Төлсөн ${fmtMoney(i.paid)} · <b style="color:var(--warn);">Үлдэгдэл ${fmtMoney(i.balance)}</b></div>
-    ${dates ? `<div class="order-meta">📅 ${dates}</div>` : ''}
+    ${dates ? `<div class="order-meta">${dates}</div>` : ''}
     <div class="order-foot">${payBtn}</div>
   </div>`;
 }
@@ -10406,8 +10399,8 @@ function renderReceivables() {
 
   const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
 
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">💰 Авлага</div><div style="font-size:11px;color:var(--muted);">Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө</div></div>
+  // Гарчиг header-т аль хэдийн бий (давхардуулахгүй) — энд зөвхөн Шинэчлэх товч
+  const head = `<div style="display:flex;align-items:center;justify-content:flex-end;margin:2px 0 12px;">
       <button class="btn" data-ar-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
     </div>`;
 

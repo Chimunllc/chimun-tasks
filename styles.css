@@ -835,6 +835,8 @@
     .mobile-menu-btn { display: inline-flex; }
     .mobile-bottom-nav { display: block; }
     .fab { display: block; }
+    /* FAB + доод nav контентын сүүлийн картыг дарахгүй — жагсаалтын доод зай */
+    .tasks { padding-bottom: 140px !important; }
 
     /* Header — мобайлд хэт олон товч хасах. Зөвхөн menu + theme + bell + + */
     .header { padding: 12px 14px; }
@@ -1378,19 +1380,19 @@ html, body {
   .header > div:first-of-type {
     flex: none !important;
   }
-  /* Large title */
+  /* Компакт гарчиг — нэг мөр, тайлбаргүй (дэлгэцийн зайг контентод) */
   .header h1 {
-    font-size: 28px !important;
+    font-size: 19px !important;
     font-weight: 800 !important;
-    letter-spacing: -0.02em !important;
-    line-height: 1.15 !important;
-    margin: 4px 0 2px !important;
+    letter-spacing: -0.01em !important;
+    line-height: 1.2 !important;
+    margin: 2px 0 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: calc(100vw - 170px) !important;
   }
-  .header .sub {
-    font-size: 14px !important;
-    color: var(--muted) !important;
-    margin-top: 4px !important;
-  }
+  .header .sub { display: none !important; }
 
   /* ── Header-ийн ачаалал арилгах: хамгийн чухал товч (3) л үлдээх ── */
   .header-actions {
@@ -2631,10 +2633,8 @@ body {
     padding-right: 96px !important;
   }
   .header h1 {
-    font-size: 26px !important;
-    line-height: 1.15 !important;
-    word-break: break-word;
-    hyphens: auto;
+    font-size: 19px !important;   /* компакт нэг мөр — дэлгэцийн зайг контентод (v406 UX) */
+    line-height: 1.2 !important;
   }
   /* Bell/theme товчны байрлал — header-ын дотор тогтоох */
   .header-actions {

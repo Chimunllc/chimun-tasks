@@ -4064,8 +4064,9 @@ function boardOrderRow(e, k, todayStr) {
     const ok = can(next.cap || 'orders.advance');
     actBtn = `<button type="button" class="br-act${ok ? '' : ' br-act-off'}" ${ok ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${next.cap}"` : `disabled title="Эрх алга"`}>${escapeHtml(short)}</button>`;
   }
+  const selBox = state.ordersSelect ? `<input type="checkbox" class="board-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
   return `<details class="board-order ${urgCls}"><summary class="board-row">
-    <span class="br-num">#${o.number ?? ''}</span>
+    ${selBox}<span class="br-num">#${o.number ?? ''}</span>
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
     <span class="br-badge">${deliv}</span>
     <span class="br-date">${dstr || '—'}</span>
@@ -4104,6 +4105,8 @@ function renderOrderPipelineBoard(shown, todayStr) {
   const band = dueChips
     ? `<div class="board-today">🎯 Өнөөдөр/яаралтай: ${dueChips}</div>`
     : `<div class="board-today board-today-ok">✓ Өнөөдөр яаралтай ажил алга</div>`;
+  const selN = state.ordersSelected ? state.ordersSelected.size : 0;
+  const bulkBar = state.ordersSelect ? `<div class="board-bulk"><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span style="flex:1;"></span><button class="btn" id="bulk-restore">↩ Сэргээх</button><button class="btn" id="bulk-delete" style="color:#fff;background:var(--danger);border-color:var(--danger);">🗑 Устгах</button><button class="btn" id="bulk-clear">Цэвэрлэх</button></div>` : '';
 
   const secs = buckets.map(b => {
     const list = byB[b.key] || [];
@@ -4126,6 +4129,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
     }
     return `<div class="board-sec" id="bsec-${b.key}" style="border-left-color:${b.dot};">
       <div class="board-head" data-board-stage="${b.key}">
+        ${state.ordersSelect ? `<input type="checkbox" class="board-selall" data-sel-bucket="${b.key}" onclick="event.stopPropagation()" title="Бүлгийн бүгдийг сонгох">` : ''}
         <span class="board-icon">${b.icon}</span>
         <span class="board-name">${escapeHtml(b.label)}</span>
         <span class="board-count">${list.length}</span>
@@ -4134,7 +4138,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
       </div>${bodyHtml}
     </div>`;
   }).join('');
-  return `<div class="orders-board">${stepper}${band}${secs}</div>`;
+  return `<div class="orders-board">${stepper}${bulkBar}${band}${secs}</div>`;
 }
 function renderOrders() {
   // Захиалга = Booqable (M-Event үхсэн). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
@@ -4167,7 +4171,7 @@ function renderOrders() {
   const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
     <div class="orders-title">Захиалга</div>
     <div style="display:flex;gap:8px;align-items:center;">
-      ${state.isCEO ? `<button class="btn" id="test-cleanup-btn" style="padding:6px 11px;font-size:12px;color:var(--danger);" title="Тест захиалга устгах">🧪 Тест цэвэрлэх</button>` : ''}
+      ${state.isCEO ? `<button class="btn" id="orders-manage-btn" style="padding:6px 11px;font-size:12px;${state.ordersSelect ? 'color:var(--danger);' : ''}">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
       <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
     </div>
   </div>`;
@@ -4279,7 +4283,35 @@ function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
   // Шинэ захиалга үүсгэх / app захиалга засах·устгах
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
-  document.getElementById('test-cleanup-btn')?.addEventListener('click', () => openTestCleanupModal());
+  document.getElementById('orders-manage-btn')?.addEventListener('click', () => { state.ordersSelect = !state.ordersSelect; if (!state.ordersSelect) state.ordersSelected = new Set(); render(); });
+  document.querySelectorAll('[data-sel-id]').forEach(cb => cb.addEventListener('change', () => {
+    state.ordersSelected = state.ordersSelected || new Set();
+    if (cb.checked) state.ordersSelected.add(cb.dataset.selId); else state.ordersSelected.delete(cb.dataset.selId);
+    const c = document.getElementById('bulk-n'); if (c) c.textContent = state.ordersSelected.size;
+  }));
+  document.querySelectorAll('[data-sel-bucket]').forEach(cb => cb.addEventListener('change', () => {
+    state.ordersSelected = state.ordersSelected || new Set();
+    const bk = cb.dataset.selBucket;
+    (state.appOrders || []).forEach(o => { if (bucketOf(o.status) === bk) { if (cb.checked) state.ordersSelected.add(String(o.id)); else state.ordersSelected.delete(String(o.id)); } });
+    render();
+  }));
+  document.getElementById('bulk-clear')?.addEventListener('click', () => { state.ordersSelected = new Set(); render(); });
+  document.getElementById('bulk-delete')?.addEventListener('click', async () => {
+    const ids = [...(state.ordersSelected || [])];
+    if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
+    if (!(await showConfirm(`${ids.length} захиалгыг БҮРМӨСӨН устгах уу? (буцаах боломжгүй)`, { okText: 'Устгах', danger: true }))) return;
+    await bulkDeleteOrders(ids);
+    state.ordersSelected = new Set();
+    showToast(`${ids.length} захиалга устгалаа`, 'success', 2800); render();
+  });
+  document.getElementById('bulk-restore')?.addEventListener('click', async () => {
+    const ids = [...(state.ordersSelected || [])];
+    if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
+    if (!(await showConfirm(`${ids.length} захиалгыг сэргээх (Захиалсан идэвхтэй болгох) уу?`, { okText: 'Сэргээх' }))) return;
+    await bulkRestoreOrders(ids);
+    state.ordersSelected = new Set();
+    showToast(`${ids.length} захиалга сэргээлээ`, 'success', 2800); render();
+  });
   document.querySelectorAll('[data-app-edit]').forEach(b => b.addEventListener('click', () => {
     const ao = (state.appOrders || []).find(x => String(x.id) === String(b.dataset.appEdit)); if (ao) openNewOrder(ao);
   }));
@@ -9461,6 +9493,33 @@ function openTestCleanupModal() {
     showToast(`${ok} тест захиалга устгалаа`, 'success', 2800);
     if (typeof render === 'function') render();
   });
+}
+// CEO бөөн үйлдэл — сонгосон захиалгыг устгах/сэргээх (PostgREST id=in.() багцаар)
+async function bulkDeleteOrders(ids) {
+  const idSet = new Set(ids.map(String));
+  state.appOrders = (state.appOrders || []).filter(o => !idSet.has(String(o.id)));
+  if (typeof render === 'function') render();
+  if (!SUPABASE_ANON_KEY) return;
+  for (let i = 0; i < ids.length; i += 80) {
+    const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
+    try {
+      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+        { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 30000);
+    } catch (e) { console.warn('bulkDelete', e); }
+  }
+}
+async function bulkRestoreOrders(ids) {
+  const idSet = new Set(ids.map(String));
+  (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) o.status = 'reserved'; });
+  if (typeof render === 'function') render();
+  if (!SUPABASE_ANON_KEY) return;
+  for (let i = 0; i < ids.length; i += 80) {
+    const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
+    try {
+      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+        { method: 'PATCH', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
+    } catch (e) { console.warn('bulkRestore', e); }
+  }
 }
 async function deleteAppOrder(id) {
   state.appOrders = (state.appOrders || []).filter(o => o.id !== id);

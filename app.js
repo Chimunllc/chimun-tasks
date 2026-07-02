@@ -5694,11 +5694,19 @@ function roleTemplateFor(meKey) {
   const r = normRole(m && m.role);
   return (r && state.rolePerms && state.rolePerms[r]) || null;
 }
-// Давхаргат шийдвэрлэлт: CEO → ХУВЬ ХҮНИЙ онцгой тохиргоо → албан тушаалын загвар → undefined.
+// Цагийн/өдрийн ажилтны БҮЛГИЙН эрхийн загвар (role_perms-д энэ түлхүүрээр хадгална). БҮХ цагийн
+// ажилтан үүнийг ХУВААЛЦАНА — нэг бүрчлэн биш, бүлгээр удирдана. Default = бүх нэмэлт эрх хаалттай.
+const DAILY_ROLE_KEY = 'цагийн ажилтан';
+// Давхаргат шийдвэрлэлт: CEO → ХУВЬ ХҮНИЙ онцгой → (цагийн ажилтан бол БҮЛГИЙН загвар, үлдсэн нь
+//   ХОРИГЛОНО — least privilege) → албан тушаалын загвар → undefined.
 function capValue(key) {
   if (state.isCEO) return true;
-  const ov = state.memberPerms && state.memberPerms[state.me];   // хувь хүний онцгой эрх (албан тушаалыг дарна)
+  const ov = state.memberPerms && state.memberPerms[state.me];   // хувь хүний онцгой эрх (бусдыг дарна)
   if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
+  if (isDailyWorker()) {   // цагийн ажилтан: зөвхөн бүлгийн загварт зөвшөөрснийг л, үлдсэн нь хориглоно
+    const gt = state.rolePerms && state.rolePerms[DAILY_ROLE_KEY];
+    return !!(gt && gt[key]);
+  }
   const rt = roleTemplateFor(state.me);
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
   return undefined;
@@ -6134,6 +6142,10 @@ function effectiveCapForMember(m, key, kind) {
   const pk = personKey(m);
   const ov = state.memberPerms && state.memberPerms[pk];
   if (ov && Object.prototype.hasOwnProperty.call(ov, key)) return !!ov[key];
+  if (String(m && m.worker_type) === 'daily') {   // цагийн ажилтан = бүлгийн загвар, default хориглоно
+    const gt = state.rolePerms && state.rolePerms[DAILY_ROLE_KEY];
+    return !!(gt && gt[key]);
+  }
   const rt = state.rolePerms && state.rolePerms[normRole(m && m.role)];
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
   if (kind === 'view') return defaultViewForRole(normRole(m && m.role), key);
@@ -6167,7 +6179,28 @@ function renderAccessRoles() {
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Нэр / албан тушаал хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
   const expPerson = state.accessExpandedPerson || '';
   const wrap = (inner) => `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${inner}</div>`;
-  const rows = people.map(m => {
+  // Цагийн/өдрийн ажилчид → НЭГ бүлэг карт (нэг бүрчлэн биш). Бусад ажилтан → хувь хүнээр.
+  const dailyPeople = people.filter(m => String(m.worker_type) === 'daily');
+  const nonDaily = people.filter(m => String(m.worker_type) !== 'daily');
+  // ── Цагийн ажилтны бүлгийн карт ──
+  const dailyCard = (() => {
+    if (!dailyPeople.length) return '';
+    const gExp = expPerson === '__daily__';
+    const gt = (state.rolePerms && state.rolePerms[DAILY_ROLE_KEY]) || null;
+    const granted = gt ? Object.keys(gt).filter(k => gt[k]).length : 0;
+    const head = `<div class="ac-person-head" data-person-toggle="__daily__" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
+      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${gExp ? '▾' : '▸'}</span> <b style="font-size:13px;">⏱ Цагийн ажилтан</b> <span style="font-size:11px;color:var(--muted);">· ${dailyPeople.length} хүн (нэг бүлэг)</span></div>
+      ${granted ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">${granted} эрх нээсэн</span>` : `<span style="font-size:10px;color:var(--muted);">хаалттай</span>`}
+    </div>`;
+    if (!gExp) return wrap(head);
+    const names = `<div style="font-size:11px;color:var(--muted);margin:6px 0 2px;line-height:1.6;">Багт (${dailyPeople.length}): ${dailyPeople.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
+    const info = `<div style="font-size:11px;color:var(--muted);margin:4px 0 2px;">Энд тохируулсан эрх <b>бүх цагийн ажилтанд</b> хамаарна. Default: зөвхөн өөрийн ирсэн ажил (Тойм/Санхүү/Календарь/бусад бүгд хаалттай). Чагт тавьж л эрх нээнэ.</div>`;
+    const matrix = capMatrixHtml('daily-cap', DAILY_ROLE_KEY, (key) => !!(gt && gt[key]));
+    const reset = granted ? `<div style="margin-top:8px;"><button class="btn" data-daily-reset="1" style="padding:4px 11px;font-size:11px;">↺ Бүгдийг хаах</button></div>` : '';
+    return wrap(head + names + info + matrix + reset);
+  })();
+  // ── Хувь хүнээр (үндсэн ажилтан) ──
+  const rows = nonDaily.map(m => {
     const pk = personKey(m);
     const isFull = (m.level || 0) >= 100 || isFullAccessMember(m);
     const pExp = expPerson === pk;
@@ -6182,7 +6215,8 @@ function renderAccessRoles() {
     const reset = hasOv ? `<div style="margin-top:8px;"><button class="btn" data-person-reset="${escapeHtml(pk)}" style="padding:4px 11px;font-size:11px;">↺ Анхны байдал руу</button></div>` : '';
     return wrap(summary + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind)) + reset);
   }).join('');
-  return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
+  const body = dailyCard + rows;
+  return `${note}${searchBar}<div class="ac-wrap">${body || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
 }
 
 function attachAccessHandlers() {
@@ -6242,6 +6276,18 @@ function attachAccessHandlers() {
   document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearMemberPerms(b.dataset.personReset); showToast('Албан тушаал руу буцаалаа', 'success', 1500); render();
   }));
+  // ── Цагийн ажилтны БҮЛГИЙН эрх (role_perms['цагийн ажилтан']) — БҮГДИЙГ true/false хадгална (default хаалттай) ──
+  document.querySelectorAll('input[data-daily-cap]').forEach(cb => cb.addEventListener('change', () => {
+    document.querySelectorAll(`input[data-daily-cap][data-cap-key="${CSS.escape(cb.dataset.capKey)}"]`).forEach(x => {   // ижил capKey олон цэсэнд → синк
+      x.checked = cb.checked;
+      const c = x.closest('.ac-chip'); if (c) { c.classList.toggle('on', cb.checked); c.classList.toggle('act-off', !cb.checked); }
+    });
+    saveRolePerms(DAILY_ROLE_KEY, gatherFull([...document.querySelectorAll('input[data-daily-cap]')]));
+    showToast('Цагийн ажилтны бүлгийн эрх хадгаллаа', 'success', 1500);
+  }));
+  document.querySelector('[data-daily-reset]')?.addEventListener('click', (e) => {
+    e.stopPropagation(); clearRolePerms(DAILY_ROLE_KEY); showToast('Цагийн ажилтныг хаалттай болголоо', 'success', 1500); render();
+  });
   document.querySelector('[data-clear-all-overrides]')?.addEventListener('click', async () => {
     if (!(await showConfirm('Бүх хүний онцгой тохиргоог цэвэрлэх үү? Хүн бүр албан тушаалынхаа эрхэд буцна.', { okText: 'Цэвэрлэх', danger: true }))) return;
     for (const k of Object.keys(state.memberPerms || {})) await clearMemberPerms(k);

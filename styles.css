@@ -5051,6 +5051,14 @@ body.role-daily #add-project { display: none !important; }
 
 /* Яаралтай тэмдэг + картын ирмэг */
 .order-head-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+/* Хүргэлт / очиж авах badge */
+.deliv-badge { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.deliv-badge.deliv-yes { background: var(--warn-soft, #FEF3C7); color: var(--warn, #B45309); }
+.deliv-badge.deliv-no { background: var(--panel-2, #EEF2F7); color: var(--muted, #64748B); }
+/* Дамжлагын ажилтны бүртгэл — картын доод хэсэгт */
+.order-stagelog { margin: 4px 0 2px; padding: 5px 8px; background: var(--panel-2, #F1F5F9); border-radius: 8px; }
+.order-stagelog .stagelog-row { font-size: 11.5px; margin: 1px 0; color: var(--muted); }
+.order-stagelog .stagelog-row b { color: var(--text); font-weight: 700; }
 .order-card.urg-ou-over, .order-card.urg-ou-today { border-left: 3px solid var(--danger); }
 .order-card.urg-ou-soon { border-left: 3px solid var(--warn); }
 .order-urg { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }

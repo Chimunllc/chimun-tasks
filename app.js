@@ -4067,8 +4067,8 @@ function renderOrders() {
     <option value="">📅 Бүх хугацаа</option>
     ${yms.map(m => `<option value="${m}"${ymF === m ? ' selected' : ''}>${m}</option>`).join('')}
   </select>`;
-  const sortF = state.ordersSort || 'new';
-  const sortOpts = [['new', '🆕 Шинэ нь дээр'], ['event', '📅 Арга хэмжээ ойртсон'], ['amount', '💰 Дүн ихээр'], ['old', '🕐 Хуучин нь дээр']];
+  const sortF = state.ordersSort || 'number';
+  const sortOpts = [['number', '🔢 Дугаараар (шинэ→хуучин)'], ['number_asc', '🔢 Дугаараар (1→сүүл)'], ['new', '🆕 Шинэ нь дээр'], ['event', '📅 Арга хэмжээ ойртсон'], ['amount', '💰 Дүн ихээр'], ['old', '🕐 Хуучин нь дээр']];
   const sortSelect = `<select id="orders-sort" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
     ${sortOpts.map(([v, l]) => `<option value="${v}"${sortF === v ? ' selected' : ''}>${l}</option>`).join('')}
   </select>`;
@@ -4087,11 +4087,13 @@ function renderOrders() {
     </div>
   </div>`;
 
-  state.ordersSort = state.ordersSort || 'new';
+  state.ordersSort = state.ordersSort || 'number';
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
   const payF = state.ordersPay || '';
   const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
   const _sortFns = {
+    number: (a, b) => (Number(b.o.number) || 0) - (Number(a.o.number) || 0),
+    number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
     new: (a, b) => String(b.date).localeCompare(String(a.date)),
     old: (a, b) => String(a.date).localeCompare(String(b.date)),
     amount: (a, b) => b.total - a.total,
@@ -4102,7 +4104,7 @@ function renderOrders() {
       return af ? as.localeCompare(bs) : bs.localeCompare(as);  // ирээдүй өсөхөөр, өнгөрсөн буурахаар
     },
   };
-  shown.sort(_sortFns[state.ordersSort] || _sortFns.new);
+  shown.sort(_sortFns[state.ordersSort] || _sortFns.number);
   const sumTotal = shown.reduce((s, e) => s + e.total, 0);
   const CAP = 200;
   const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
@@ -8895,7 +8897,7 @@ const BQ_STATUS_ORDER = ['draft', 'reserved', 'preparation', 'cleaning', 'starte
 const BQ_NEXT = {
   reserved:    { to: 'preparation', label: '🧰 Бэлтгэх' },
   preparation: { to: 'cleaning',    label: '✅ Бэлтгэсэн' },
-  cleaning:    { to: 'started',     label: '📦 Гаргах' },
+  cleaning:    { to: 'started',     label: '🧹 Цэвэрлж гаргах' },
   started:     { to: 'stopped',     label: '↩ Буцаан авах' },
   stopped:     { to: 'archived',    label: '🗄 Архивлах' },
 };
@@ -8982,8 +8984,24 @@ function rentalDays(startMs, stopMs) {
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
-function cleanAppNote(note) { return String(note || '').replace(_RT_RE, '').trim(); }
+function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX|…⟧ token-ийг арилгана (RT, SL г.м.)
 function _pad2(n) { return String(n).padStart(2, '0'); }
+
+// ── Дамжлагын ажилтны бүртгэл — note доторх ⟦SL|stage~email~date;…⟧ token-оор (app_orders-д багана нэмэхгүйгээр, ⟦RT⟧-тэй ижил загвар) ──
+const _SL_RE = /⟦SL\|([^⟧]*)⟧/;
+function parseStageLog(note) {
+  const m = String(note || '').match(_SL_RE); const out = {};
+  if (m) m[1].split(';').filter(Boolean).forEach(p => { const a = p.split('~'); if (a[0]) out[a[0]] = { by: a[1] || '', at: a[2] || '' }; });
+  return out;
+}
+function stageLogSet(note, stage, email, date) {
+  const log = parseStageLog(note); log[stage] = { by: email || '', at: date || '' };
+  const enc = Object.keys(log).map(k => `${k}~${log[k].by}~${log[k].at}`).join(';');
+  const base = String(note || '').replace(_SL_RE, '').trim();
+  return `${base ? base + ' ' : ''}⟦SL|${enc}⟧`;
+}
+// Дамжлагын алхам бүрийн харагдах шошго — товч дарсан ажилтныг картад ангилж харуулна
+const STAGE_LOG_LABEL = { preparation: '🧰 Бэлтгэж эхэлсэн', cleaning: '✅ Бэлтгэсэн', started: '🧹 Цэвэрлж гаргасан', stopped: '↩ Буцаан авсан', archived: '🗄 Архивласан' };
 // Захиалгын огноо+цаг → түрээсийн хоног (карт + модал хуваалцана). Цаг note token-д байхгүй бол 09:00 default.
 function orderRentalDays(o) {
   const sd = String(o.starts_at || '').slice(0, 10), ed = String(o.stops_at || '').slice(0, 10);
@@ -9157,7 +9175,7 @@ function openNewOrder(editOrder) {
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
-      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value)).trim(),
+      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -9180,6 +9198,16 @@ function bqOrderCard(o) {
   const _sh = _rt ? ' ' + _pad2(_rt.sh) + ':00' : '', _eh = _rt ? ' ' + _pad2(_rt.eh) + ':00' : '';
   const _days = isApp && start && stop ? orderRentalDays(o) : 0;
   const next = BQ_NEXT[st];
+  // Хүргэлттэй эсэх — хаяг байвал бид хүргэнэ, эс бол үйлчлүүлэгч очиж авна
+  const delivBadge = isApp
+    ? (addr ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Очиж авах</span>`)
+    : '';
+  // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
+  const slog = isApp ? parseStageLog(o.note) : {};
+  const slogKeys = ['preparation', 'cleaning', 'started', 'stopped', 'archived'].filter(k => slog[k] && slog[k].by);
+  const slogHtml = slogKeys.length
+    ? `<div class="order-stagelog">${slogKeys.map(k => `<div class="order-meta stagelog-row">${STAGE_LOG_LABEL[k]}: <b>${escapeHtml(memberName(slog[k].by) || slog[k].by || '—')}</b>${slog[k].at ? ` · ${escapeHtml(String(slog[k].at).slice(5))}` : ''}</div>`).join('')}</div>`
+    : '';
   const activeSt = ['draft', 'reserved', 'preparation', 'cleaning', 'started'].includes(st);
   const canPay = !isApp && activeSt && bal > 0;
   const canCancel = !isApp && activeSt;
@@ -9208,13 +9236,14 @@ function bqOrderCard(o) {
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
     <div class="order-items-box bq-order-docs" hidden></div>`;
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">✉ ${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">📍 ${escapeHtml(addr)}</div>` : ''}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">📄 ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
+    ${slogHtml}
     ${itemsSection}
     ${foot}
   </div>`;
@@ -9229,19 +9258,27 @@ async function bqUpdateStatus(oid, to, opts = {}) {
   if (!o) o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
   if (opts.confirm && !(await showConfirm(opts.confirm, { okText: opts.okText || 'Тийм', danger: opts.danger }))) return;
-  const prev = o.status;
+  const prev = o.status, prevNote = o.note;
   o.status = to;          // optimistic
+  // Дамжлагын алхмыг ХЭН дарсныг тэмдэглэнэ (app_orders, цуцлахаас бусад алхам)
+  let notePatch = null;
+  if (table === 'app_orders' && to !== 'canceled' && state.me) {
+    notePatch = stageLogSet(o.note, to, state.me, new Date().toISOString().slice(0, 10));
+    o.note = notePatch;
+  }
   render();
   try {
+    const body = { status: to, updated_at: new Date().toISOString() };
+    if (notePatch !== null) body.note = notePatch;
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ status: to, updated_at: new Date().toISOString() }),
+      body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
     showToast(opts.toast || `Төлөв: ${(BQ_STATUS[to] || {}).label || to}`, 'success', 2000);
   } catch (e) {
-    o.status = prev;     // буцаах
+    o.status = prev; o.note = prevNote;     // буцаах
     render();
     showToast('Засах эрх алга эсвэл алдаа: ' + e.message, 'error', 5000);
   }

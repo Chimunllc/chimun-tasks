@@ -7714,20 +7714,18 @@ function openNomaadIncomeModal(o) {
         modal.querySelector('#ni-fields').style.display = '';
         // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
         if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
-        d.receiptId = receiptFingerprint(d);   // лавлах дугаар байхгүй бол дүн+огноо+шилжүүлэгчээр түлхүүр
-        // Давхцал: нэг баримт аппын хаана ч НЭГ л удаа (нэгдсэн ledger + NOMAAD лог + M-Event аль нь ч)
-        if (d.receiptId) {
-          if (receiptAlreadyUsed(d.receiptId)) throw new Error('Энэ баримт аппд аль хэдийн бүртгэгдсэн (өөр захиалга/салбарт) — дахин бүртгэх боломжгүй');
-          const allPays = Object.values(state.nomaadPayments || {}).flat();
-          const dup = allPays.find(p => String(p.note || '').includes('[#' + d.receiptId + ']'));
-          if (dup) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн — ${dup.quote_no || ''}`);
-          const dupMe = (state.appOrders || []).find(x => String(x.paid_ref || '').includes('[#' + d.receiptId + ']'));
-          if (dupMe) throw new Error(`Энэ баримт M-Event захиалга #${dupMe.number}-д бүртгэгдсэн`);
-        }
+        const fpKey = receiptFingerprint(d);
+        const refKey = d.bankRef || '';
+        d.receiptId = refKey || fpKey;   // канон түлхүүр: банкны лавлах дугаар байвал тэр, эс бөгөөс хээ
+        // Давхцал: нэг баримт аппд НЭГ л удаа. ⭐ Ижил дүн/огноо/шилжүүлэгч ч ӨӨР лавлах дугаартай бол
+        // өөр бодит гүйлгээ гэж зөвшөөрнө (ижил дүнгээр 2 удаа төлөхийг блоклохгүй).
+        const reason = receiptDupReason(refKey, fpKey);
+        if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
         parsed = {
           amount: d.amount,
           date: d.date || new Date().toISOString().slice(0, 10),
-          note: (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
+          canonKey: d.receiptId, fpKey,
+          note: '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
         };
         const warns = [];
         if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
@@ -7747,8 +7745,8 @@ async function recordNomaadIncome(quoteNo) {
   const res = await openNomaadIncomeModal(o);
   if (!res) return;
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
-  const receiptId = receiptIdFromRef(res.note);
-  const rr = await reserveReceipt(receiptId, { amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
+  const canonKey = res.canonKey || receiptIdFromRef(res.note);
+  const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
   const prevPaid = Number(o.income_amount) || 0;
   const newTotal = prevPaid + res.amount;
@@ -9366,41 +9364,61 @@ function parseBankReceipt(text) {
   return out;
 }
 // ─── НЭГДСЭН БАРИМТЫН LEDGER — нэг банкны баримт аппын хаана ч НЭГ л удаа ───────
-// bank_receipts (receipt_id PK). M-Event төлбөр БА NOMAAD орлого хоёул энд шалгаж/эзэмшинэ.
-// Салангид биш нэгдсэн тул нэг баримтыг өөр захиалга/салбарт дахин бүртгэх БОЛОМЖГҮЙ.
+// bank_receipts: receipt_id (PK) = банкны лавлах дугаар байвал тэр, эс бөгөөс fp (хурууны хээ).
+// fp багана = ҮРГЭЛЖ хурууны хээ (дүн+огноо+шилжүүлэгч). ⭐ Ижил дүн/огноо/шилжүүлэгчтэй ч
+// ӨӨР лавлах дугаартай = ӨӨР гүйлгээ (зөвшөөрнө) — ижил дүнгээр 2 удаа төлөхийг блоклохгүй.
+// M-Event төлбөр + NOMAAD орлого хоёул энд шалгаж/эзэмшинэ (салбар хооронд ч давхцахгүй).
 async function loadUsedReceipts() {
   if (!SUPABASE_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?select=receipt_id`,
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?select=receipt_id,fp`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
     if (!r.ok) return;
-    state.usedReceipts = new Set((await r.json()).map(x => x.receipt_id));
+    const rows = await r.json();
+    state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
+    state.usedFps = new Set(rows.map(x => x.fp).filter(Boolean));                               // бүх хурууны хээ
+    state.refLessFps = new Set(rows.filter(x => x.fp && x.fp === x.receipt_id).map(x => x.fp)); // лавлах дугааргүй бичлэгийн хээ
   } catch (e) { console.warn('loadUsedReceipts', e); }
 }
 function receiptIdFromRef(s) { const m = String(s || '').match(/\[#([^\]]+)\]/); return m ? m[1] : ''; }
-function receiptAlreadyUsed(id) { return !!id && state.usedReceipts instanceof Set && state.usedReceipts.has(id); }
-// Баримтын давхцалгүй ТҮЛХҮҮР — ҮРГЭЛЖ дүн+огноо+шилжүүлэгчийн нэрээр хурууны хээ.
-// Банкны лавлах дугаарын формат банк бүрт өөр (Голомт зарим баримтад байдаггүй, зарим нь
-// S-үсгээр эхэлдэг) тул түүнд НАЙДАХГҮЙ — үргэлж тогтвортой, backfill-тэй нийцтэй түлхүүр.
-// Банкны лавлах дугаар (d.bankRef) нь зөвхөн харах/аудитын мэдээлэл, dedup-д ороогүй.
+// Давхцлын шалтгаан ('' = давхцалгүй). refKey=банкны лавлах дугаар (байхгүй ч болно), fpKey=хурууны хээ.
+// (1) ижил лавлах дугаар өмнө орсон → яг НЭГ баримт. (2) лавлах-дугааргүй хуучин бичлэгтэй хээ таарав
+// → магадгүй нэг гүйлгээ (v374-ээс өмнөх 20 бичлэг). (3) лавлах дугааргүй ШИНЭ баримтын хээ өмнө орсон.
+// ⭐ ӨӨР лавлах дугаартай ижил дүн/огноо/шилжүүлэгч = ЗӨВШӨӨРНӨ (өөр бодит гүйлгээ).
+function receiptDupReason(refKey, fpKey) {
+  const uR = state.usedReceipts instanceof Set ? state.usedReceipts : null;
+  const uF = state.usedFps instanceof Set ? state.usedFps : null;
+  const rL = state.refLessFps instanceof Set ? state.refLessFps : null;
+  if (refKey && uR && uR.has(refKey)) return `лавлах дугаар ${refKey}`;
+  if (rL && fpKey && rL.has(fpKey)) return 'ижил дүн/огноо/шилжүүлэгч (өмнө бүртгэсэн)';
+  if (!refKey && uF && fpKey && uF.has(fpKey)) return 'ижил дүн/огноо/шилжүүлэгч (өмнө бүртгэсэн)';
+  return '';
+}
+// Баримтын давхцлын ХУРУУНЫ ХЭЭ — ҮРГЭЛЖ дүн+огноо+шилжүүлэгчийн нэрээр (банкны лавлах формат эмзэг).
 function _normFp(s) { return String(s || '').replace(/[\s.,\-]/g, '').toUpperCase(); }
 function receiptFingerprint(d) {
   const amt = (d && d.amount) || 0;
   const dt = String((d && d.date) || '').replace(/-/g, '');
   return 'FP-' + amt + '-' + dt + '-' + _normFp(d && d.senderName).slice(0, 32);
 }
-// Баримтыг эзэмших (ledger-т бичих). 'ok' = эзэмшсэн, 'dup' = аль хэдийн бүртгэгдсэн (409), 'err' = алдаа.
+// Баримтыг эзэмших (ledger-т бичих). receiptId=канон түлхүүр (лавлах дугаар эсвэл fp), meta.fp=хурууны хээ.
+// 'ok' = эзэмшсэн, 'dup' = аль хэдийн бүртгэгдсэн (409 PK эсвэл хээ таарсан), 'err' = алдаа.
 async function reserveReceipt(receiptId, meta) {
-  if (!receiptId || !SUPABASE_ANON_KEY) return 'ok';   // receiptId алга бол хаалт тавихгүй
+  if (!receiptId || !SUPABASE_ANON_KEY) return 'ok';   // түлхүүр алга бол хаалт тавихгүй
+  const fpKey = meta.fp || receiptId;
+  // client-талын дүрэм: лавлах-дугааргүй хуучин бичлэг эсвэл лавлах дугааргүй давхцал (DB PK хамрахгүй хэсэг)
+  if (receiptDupReason(receiptId === fpKey ? '' : receiptId, fpKey)) return 'dup';
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts`, {
       method: 'POST',
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ receipt_id: receiptId, amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', used_in: meta.usedIn || '', recorded_by: state.me }),
+      body: JSON.stringify({ receipt_id: receiptId, fp: fpKey, amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', used_in: meta.usedIn || '', recorded_by: state.me }),
     }, 15000);
     if (r.status === 409) return 'dup';
     if (!r.ok) return 'err';
     (state.usedReceipts = state.usedReceipts instanceof Set ? state.usedReceipts : new Set()).add(receiptId);
+    (state.usedFps = state.usedFps instanceof Set ? state.usedFps : new Set()).add(fpKey);
+    if (receiptId === fpKey) (state.refLessFps = state.refLessFps instanceof Set ? state.refLessFps : new Set()).add(fpKey);
     return 'ok';
   } catch (e) { console.warn('reserveReceipt', e); return 'err'; }
 }
@@ -9438,7 +9456,7 @@ function openBqPaymentModal(oid) {
       <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний утга</span><span id="bqp-ref-disp" style="text-align:right;color:var(--muted);"></span></div>
       <div style="${rowCss}border-bottom:none;"><span style="color:var(--muted);">Төлөв</span><span id="bqp-status-disp"></span></div>
     </div>
-    <input type="hidden" id="bqp-amount"><input type="hidden" id="bqp-date"><input type="hidden" id="bqp-method" value="bank"><input type="hidden" id="bqp-ref">
+    <input type="hidden" id="bqp-amount"><input type="hidden" id="bqp-date"><input type="hidden" id="bqp-method" value="bank"><input type="hidden" id="bqp-ref"><input type="hidden" id="bqp-fpkey">
     ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="bqp-cancel">Болих</button>
@@ -9470,18 +9488,16 @@ function openBqPaymentModal(oid) {
       modal.querySelector('#bqp-fields').style.display = '';
       // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ байх ёстой (орлого = Чимунд ИРСЭН гүйлгээ). Эс бөгөөс бүртгэхгүй.
       if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
-      d.receiptId = receiptFingerprint(d);   // лавлах дугаар байхгүй бол дүн+огноо+шилжүүлэгчээр түлхүүр
-      // Давхцал: нэг баримт аппын хаана ч НЭГ л удаа (нэгдсэн ledger + M-Event захиалга + NOMAAD орлого)
-      if (d.receiptId) {
-        if (receiptAlreadyUsed(d.receiptId)) throw new Error('Энэ баримт аппд аль хэдийн бүртгэгдсэн (өөр захиалга/салбарт) — дахин бүртгэх боломжгүй');
-        const dup = (state.appOrders || []).find(x => String(x.paid_ref || '').includes('[#' + d.receiptId + ']'));
-        if (dup) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн — захиалга #${dup.number}`);
-        const dupNo = Object.values(state.nomaadPayments || {}).flat().find(p => String(p.note || '').includes('[#' + d.receiptId + ']'));
-        if (dupNo) throw new Error(`Энэ баримт NOMAAD орлого ${dupNo.quote_no || ''}-д бүртгэгдсэн`);
-      }
+      const fpKey = receiptFingerprint(d);
+      const refKey = d.bankRef || '';
+      d.receiptId = refKey || fpKey;   // канон түлхүүр: банкны лавлах дугаар байвал тэр, эс бөгөөс хээ
+      // Давхцал: нэг баримт аппд НЭГ л удаа. ⭐ Ижил дүн ч ӨӨР лавлах дугаартай = өөр гүйлгээ (зөвшөөрнө).
+      const reason = receiptDupReason(refKey, fpKey);
+      if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
       modal.querySelector('#bqp-amount').value = String(d.amount);
       modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
-      modal.querySelector('#bqp-ref').value = (d.receiptId ? '[#' + d.receiptId + '] ' : '') + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ');
+      modal.querySelector('#bqp-fpkey').value = fpKey;
+      modal.querySelector('#bqp-ref').value = '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ');
       // Анхааруулга: гүйлгээ амжилтгүй бол (Чимун хүлээн авагч эсэх нь дээр хатуу шалгагдсан)
       const warns = [];
       if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
@@ -9506,8 +9522,9 @@ async function submitBqPayment(oid, modal, btn) {
   const ref = (modal.querySelector('#bqp-ref')?.value || '').trim();   // PDF-ээс: шилжүүлэгч · данс · утга (гүйлгээний утга дангаараа шаардлагагүй)
   btn.disabled = true;
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (NOMAAD/өөр захиалга) бүртгэсэн бол блоклоно
-  const receiptId = receiptIdFromRef(ref);
-  const rr = await reserveReceipt(receiptId, { amount, date, ref, usedIn: 'mevent:#' + o.number });
+  const canonKey = receiptIdFromRef(ref);
+  const fpKey = modal.querySelector('#bqp-fpkey')?.value || canonKey;
+  const rr = await reserveReceipt(canonKey, { fp: fpKey, amount, date, ref, usedIn: 'mevent:#' + o.number });
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); btn.disabled = false; return; }
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;

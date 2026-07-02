@@ -9464,41 +9464,39 @@ function openBqPaymentModal(oid) {
   modal.querySelector('#bqp-save').addEventListener('click', (e) => submitBqPayment(oid, modal, e.currentTarget));
   const saveBtn = modal.querySelector('#bqp-save');
   const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
-  // Банкны баримт PDF → автомат задалж, зөвхөн үүгээр бүртгэнэ (гараар оруулах боломжгүй)
+  // Банкны баримт PDF (ОЛОН) → тус бүрийг автомат задалж жагсаалтад нэмнэ. Гараар бүртгэх боломжгүй.
+  modal._receipts = [];
+  const listEl = modal.querySelector('#bqp-list');
+  function renderReceipts() {
+    if (!modal._receipts.length) { listEl.innerHTML = ''; enableSave(false); return; }
+    const sum = modal._receipts.reduce((s, r) => s + r.amount, 0);
+    listEl.innerHTML = modal._receipts.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--panel);">
+      <div style="min-width:0;flex:1;"><b style="color:var(--ok);font-size:14px;">${fmtMoney(r.amount)}</b> <span style="color:var(--muted);">· ${escapeHtml(r.date || '')}</span><div style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.senderName || '—')}${r.warn ? ` · <span style="color:var(--warn);">⚠ ${escapeHtml(r.warn)}</span>` : ''}</div></div>
+      <button type="button" data-rrm="${i}" class="btn" style="padding:2px 8px;color:var(--danger);flex-shrink:0;">✕</button>
+    </div>`).join('') + `<div style="display:flex;justify-content:space-between;font-weight:700;padding:8px 10px 2px;font-size:14px;"><span>Нийт төлбөр (${modal._receipts.length})</span><b style="color:var(--ok);">${fmtMoney(sum)}</b></div>`;
+    enableSave(true);
+  }
+  listEl.addEventListener('click', (e) => { const b = e.target.closest('[data-rrm]'); if (!b) return; modal._receipts.splice(+b.dataset.rrm, 1); renderReceipts(); });
   modal.querySelector('#bqp-pdf').addEventListener('change', async (e) => {
-    const file = e.target.files[0]; if (!file) return;
+    const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
     const status = modal.querySelector('#bqp-pdf-status');
-    status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)'; enableSave(false);
-    try {
-      const d = parseBankReceipt(await extractPdfText(file));
-      if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт гүйлгээний баримт мөн эсэхийг шалгана уу');
-      modal.querySelector('#bqp-amount-disp').textContent = fmtMoney(d.amount);
-      modal.querySelector('#bqp-date-disp').textContent = d.date || '—';
-      modal.querySelector('#bqp-sender-disp').textContent = d.senderName || '—';
-      modal.querySelector('#bqp-sacct-disp').textContent = d.senderAcct || '—';
-      modal.querySelector('#bqp-receiver-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
-      modal.querySelector('#bqp-ref-disp').textContent = d.ref || '—';
-      modal.querySelector('#bqp-status-disp').textContent = d.status || '—';
-      modal.querySelector('#bqp-fields').style.display = '';
-      // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ байх ёстой (орлого = Чимунд ИРСЭН гүйлгээ). Эс бөгөөс бүртгэхгүй.
-      if (!/чимун/i.test(d.receiverName || '')) throw new Error(`Чимун ХХК-д ирээгүй гүйлгээ (хүлээн авагч: ${d.receiverName || '?'}) — орлого бүртгэх боломжгүй`);
-      const fpKey = receiptFingerprint(d);
-      const refKey = d.bankRef || '';
-      d.receiptId = refKey || fpKey;   // канон түлхүүр: банкны лавлах дугаар байвал тэр, эс бөгөөс хээ
-      // Давхцал: нэг баримт аппд НЭГ л удаа. ⭐ Ижил дүн ч ӨӨР лавлах дугаартай = өөр гүйлгээ (зөвшөөрнө).
-      const reason = receiptDupReason(refKey, fpKey);
-      if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
-      modal.querySelector('#bqp-amount').value = String(d.amount);
-      modal.querySelector('#bqp-date').value = d.date || new Date().toISOString().slice(0, 10);
-      modal.querySelector('#bqp-fpkey').value = fpKey;
-      modal.querySelector('#bqp-ref').value = '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ');
-      // Анхааруулга: гүйлгээ амжилтгүй бол (Чимун хүлээн авагч эсэх нь дээр хатуу шалгагдсан)
-      const warns = [];
-      if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
-      status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
-      status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';
-      enableSave(true);
-    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; enableSave(false); }
+    for (const file of files) {
+      status.textContent = `📄 ${file.name} уншиж байна…`; status.style.color = 'var(--muted)';
+      try {
+        const d = parseBankReceipt(await extractPdfText(file));
+        if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
+        // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
+        if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
+        const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
+        const reason = receiptDupReason(refKey, fpKey);
+        if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
+        if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
+        const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
+        modal._receipts.push({ amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn });
+        status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
+      } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
+    }
+    renderReceipts();
   });
   modal.classList.add('open');
 }
@@ -9509,17 +9507,21 @@ async function submitBqPayment(oid, modal, btn) {
   const o = bqO || (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
   const isApp = !bqO;
-  const amount = moneyVal(modal.querySelector('#bqp-amount'));
-  if (!amount) { showToast('Төлбөрийн дүнг оруулна уу', 'warn'); return; }
-  const method = modal.querySelector('#bqp-method').value || 'bank';
-  const date = modal.querySelector('#bqp-date').value || new Date().toISOString().slice(0, 10);
-  const ref = (modal.querySelector('#bqp-ref')?.value || '').trim();   // PDF-ээс: шилжүүлэгч · данс · утга (гүйлгээний утга дангаараа шаардлагагүй)
+  const receipts = (modal._receipts || []).slice();
+  if (!receipts.length) { showToast('Банкны баримт (PDF) оруулна уу', 'warn'); return; }
+  const method = modal.querySelector('#bqp-method')?.value || 'bank';
   btn.disabled = true;
-  // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (NOMAAD/өөр захиалга) бүртгэсэн бол блоклоно
-  const canonKey = receiptIdFromRef(ref);
-  const fpKey = modal.querySelector('#bqp-fpkey')?.value || canonKey;
-  const rr = await reserveReceipt(canonKey, { fp: fpKey, amount, date, ref, usedIn: 'mevent:#' + o.number });
-  if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); btn.disabled = false; return; }
+  // Баримт БҮРИЙГ нэгдсэн ledger-т эзэмших (давхцвал тухайныг алгасна)
+  const okR = [];
+  for (const rc of receipts) {
+    const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'mevent:#' + o.number });
+    if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
+    okR.push(rc);
+  }
+  if (!okR.length) { showToast('Бүх баримт давхцсан — бүртгэсэнгүй', 'error', 4000); btn.disabled = false; return; }
+  const amount = okR.reduce((s, r) => s + r.amount, 0);
+  const date = okR.map(r => r.date).sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
+  const ref = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;
   const prevPaid = o.paid_mnt, prevStatus = o.status;
@@ -9535,17 +9537,17 @@ async function submitBqPayment(oid, modal, btn) {
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
-    // Аудит — зөвхөн Booqable захиалгад bq_payments-д бичих (амжилтгүй болоход эгзэгтэй биш)
-    if (!isApp) try {
-      const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now();
+    // Аудит — зөвхөн Booqable захиалгад bq_payments (баримт БҮРД нэг мөр)
+    if (!isApp) for (const rc of okR) try {
+      const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now() + '-' + Math.round(rc.amount);
       await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_payments`, {
         method: 'POST',
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ id: pid, order_id: oid, ptype: 'payment_charges', provider_method: method, status: 'succeeded', mode: 'manual', amount_in_cents: Math.round(amount * 100), currency: 'mnt', succeeded_at: date + 'T00:00:00+00:00', created_at: new Date().toISOString() }),
+        body: JSON.stringify({ id: pid, order_id: oid, ptype: 'payment_charges', provider_method: method, status: 'succeeded', mode: 'manual', amount_in_cents: Math.round(rc.amount * 100), currency: 'mnt', succeeded_at: rc.date + 'T00:00:00+00:00', created_at: new Date().toISOString() }),
       }, 15000);
     } catch (e2) { console.warn('bq payment record', e2); }
     modal.remove();
-    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${newStatus !== prevStatus ? ' · Захиалсан' : ''}`, 'success', 2800);
+    showToast(`Төлбөр бүртгэлээ: ${fmtMoney(amount)}${okR.length > 1 ? ` (${okR.length} баримт)` : ''}${newStatus !== prevStatus ? ' · Захиалсан' : ''}`, 'success', 2800);
     render();
   } catch (e) {
     o.paid_mnt = prevPaid; o.status = prevStatus;   // буцаах

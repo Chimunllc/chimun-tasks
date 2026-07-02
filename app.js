@@ -4053,6 +4053,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
   shown.forEach(e => { (byStage[e.o.status] = byStage[e.o.status] || []).push(e); });
   const ALWAYS = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
   const open = state.ordersBoardOpen || new Set();
+  const searching = !!(state.ordersSearch || '').trim();
   const shownStages = BQ_STATUS_ORDER.filter(k => (byStage[k] || []).length || ALWAYS.has(k));
 
   // 📊 Дээд stepper — шат бүр (тоо), дарж дэлгэж/гүйлгэнэ
@@ -4077,7 +4078,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
     const list = byStage[k] || [];
     const st = BQ_STATUS[k] || {};
     const total = list.reduce((sm, e) => sm + e.total, 0);
-    const isOpen = open.has(k) && list.length;
+    const isOpen = (open.has(k) || searching) && list.length;
     let bodyHtml = '';
     if (isOpen) {
       const byRank = arr => arr.slice().sort((a, b) => orderUrgRank(a.o, k, todayStr) - orderUrgRank(b.o, k, todayStr) || String(a.o.starts_at || '').localeCompare(String(b.o.starts_at || '')));
@@ -4126,9 +4127,9 @@ function renderOrders() {
 
   // ── Менежер / CEO ──
   state.ordersFilter = state.ordersFilter || 'all';
-  state.ordersView = state.ordersView || 'board';
-  const isBoard = (state.ordersView === 'board');
-  if (isBoard) state.ordersFilter = 'all';   // самбарт бүх шат accordion-оор → таб хэрэггүй
+  state.ordersView = 'board';   // зөвхөн Самбар (Жагсаалт хассан)
+  const isBoard = true;
+  state.ordersFilter = 'all';
   if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'prepared', 'delivering', 'rented', 'returning']);
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
@@ -4200,10 +4201,7 @@ function renderOrders() {
     <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
   </div>`;
   const controls = `<div class="orders-controls">
-    ${isBoard ? '' : `<div class="otabs">${tabsHtml}</div>`}
     <div class="orders-controls-r">
-      ${viewToggle}
-      ${isBoard ? '' : sortSelect + paySelect + ymSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;

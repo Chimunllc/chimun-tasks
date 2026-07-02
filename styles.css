@@ -5084,6 +5084,11 @@ body.role-daily #add-project { display: none !important; }
 .board-detail { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 8px; background: var(--panel-hover); }
 .board-detail .order-card { margin: 0; }
 .board-more { font-size: 12px; color: var(--muted); text-align: center; padding: 8px; }
+/* Мөрөн дээрх дараагийн үйлдлийн товч + төлбөрийн анхааруулга */
+.br-paywarn { flex-shrink: 0; font-size: 12px; cursor: help; }
+.br-act { flex-shrink: 0; font-family: inherit; font-size: 11.5px; font-weight: 600; white-space: nowrap; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--accent, #7c3aed); background: var(--accent, #7c3aed); color: #fff; cursor: pointer; }
+.br-act:hover { filter: brightness(1.08); }
+.br-act-off { border-color: var(--border); background: transparent; color: var(--muted); opacity: .55; cursor: not-allowed; }
 .otab { font-family: inherit; font-size: 12.5px; color: var(--text-soft); background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: background .12s; }
 .otab:hover { background: var(--panel-hover); }
 .otab.on { background: var(--text); color: var(--bg); border-color: var(--text); }

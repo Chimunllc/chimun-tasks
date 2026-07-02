@@ -4033,6 +4033,8 @@ function orderUrgRank(o, stage, todayStr) {
 // Дамжлагын самбар — шат бүрээр эвхэгддэг, идэвхтэй шат дотор хүргэлт/очиж авах дэд бүлэг + яаралтай эрэмбэ
 const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕' };
 // Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
+// Мөрөн дээрх дараагийн үйлдлийн товчны БОГИНО шошго
+const _ACT_SHORT = { clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
 function boardOrderRow(e, k, todayStr) {
   const o = e.o;
   const rank = orderUrgRank(o, k, todayStr);
@@ -4040,12 +4042,24 @@ function boardOrderRow(e, k, todayStr) {
   const deliv = isDeliveryOrder(o) ? '🚚' : '🏬';
   const dt = ['rented', 'returning', 'started'].includes(k) ? o.stops_at : o.starts_at;
   const dstr = String(dt || '').slice(5, 10).replace('-', '/');
+  const bal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
+  const payWarn = bal > 0 ? `<span class="br-paywarn" title="Үлдэгдэл ${escapeHtml(fmtMoney(bal))}">💵</span>` : '';
+  const next = orderNextStep(o);
+  const id = escapeHtml(String(o.id));
+  let actBtn = '';
+  if (next && next.cap !== 'orders.advance') {   // архивлахаас бусад дараагийн үйлдэл — мөрөн дээр шууд
+    const short = _ACT_SHORT[stageActionFor(String(o.status || ''), next.to).key] || next.label;
+    const ok = can(next.cap || 'orders.advance');
+    actBtn = `<button type="button" class="br-act${ok ? '' : ' br-act-off'}" ${ok ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${next.cap}"` : `disabled title="Эрх алга"`}>${escapeHtml(short)}</button>`;
+  }
   return `<details class="board-order ${urgCls}"><summary class="board-row">
     <span class="br-num">#${o.number ?? ''}</span>
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
     <span class="br-badge">${deliv}</span>
     <span class="br-date">${dstr || '—'}</span>
+    ${payWarn}
     <span class="br-amt">${fmtMoney(o.total_mnt || 0)}</span>
+    ${actBtn}
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
 }
 function renderOrderPipelineBoard(shown, todayStr) {
@@ -4261,7 +4275,8 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
-  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); e.preventDefault();
     if (!can(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
     const to = b.dataset.to;
     const oid = b.dataset.bqAdvance;

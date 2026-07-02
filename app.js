@@ -4378,6 +4378,7 @@ function _normProdName(s) { return String(s || '').trim().toLowerCase().replace(
 function productBySku(sku) { return (state.products || []).find(p => p.sku === sku); }
 function productByName(name) { const n = _normProdName(name); return (state.products || []).find(p => _normProdName(p.name) === n); }
 function isPackage(p) { return !!(p && p.type === 'package'); }
+function isService(p) { return !!(p && p.type === 'service'); }   // үйлчилгээ — нөөц/ROI-д ОРОХГҮЙ (хүргэлт, суурилуулалт, оператор г.м.)
 function packageComponents(p) { return (p && Array.isArray(p.bundle_items)) ? p.bundle_items.filter(c => c && c.sku) : []; }
 // Бүтэн нөөц = нийт нөөц − эвдэрсэн − засварт (зөвхөн бүтэн нэгж түрээслэгдэнэ).
 function workingStock(p) { return Math.max(0, (Number(p && p.stock) || 0) - (Number(p && p.broken) || 0) - (Number(p && p.maintenance) || 0)); }
@@ -4391,6 +4392,7 @@ function packageStock(p) {
 function productStockByName(name) {
   const p = productByName(name);
   if (!p) return null;   // каталогт алга
+  if (isService(p)) return null;   // үйлчилгээ — нөөцгүй → availability/shortage шалгалтыг алгасна
   if (isPackage(p)) return packageStock(p);
   // Түрээслэх боломжтой суурь = M-EVENT салбарын нөөц (qty_mevent) − эвдэрсэн/засварт
   const mev = (p.qty_mevent != null) ? (Number(p.qty_mevent) || 0) : (Number(p.stock) || 0);
@@ -8575,6 +8577,10 @@ function openProductModal(p) {
         <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
         <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
       </div>
+      <label class="pm-rentable">
+        <input type="checkbox" id="pm-isservice" ${isService(p) ? 'checked' : ''}>
+        <span><b>🛠 Үйлчилгээ</b> — суурилуулалт, оператор г.м. (хүргэлт бол захиалгын хэсэгт тусад нь). Нөөц/агуулах/ROI-д ОРОХГҮЙ, зөвхөн үнэтэй мөр.</span>
+      </label>
       <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
         <div id="pm-gallery" class="pm-gallery"></div>
         <div class="pm-gallery-actions">
@@ -8641,7 +8647,17 @@ function openProductModal(p) {
     bundleSumText();
   }
   renderBundle();
-  modal.querySelector('#pm-ispackage').onchange = (e) => { modal.querySelector('#pm-bundle').hidden = !e.target.checked; };
+  // Багц / Үйлчилгээ харилцан үл нийцэх; үйлчилгээ бол нөөц/салбар хуваарь хэрэггүй
+  const _svcEl = modal.querySelector('#pm-isservice');
+  const _pkgEl = modal.querySelector('#pm-ispackage');
+  const _stockBlk = modal.querySelector('.pm-branch');
+  const _syncType = () => {
+    modal.querySelector('#pm-bundle').hidden = !_pkgEl.checked;
+    if (_stockBlk) _stockBlk.style.display = _svcEl.checked ? 'none' : '';
+  };
+  _pkgEl.onchange = () => { if (_pkgEl.checked) _svcEl.checked = false; _syncType(); };
+  _svcEl.onchange = () => { if (_svcEl.checked) _pkgEl.checked = false; _syncType(); };
+  _syncType();
   modal.querySelector('#pm-bundle-add').onclick = () => { bundle.push({ sku: '', qty: 1 }); renderBundle(); };
   bundleList.addEventListener('input', (e) => {
     const row = e.target.closest('.pm-bi-row'); if (!row) return; const i = +row.dataset.bi;
@@ -8697,6 +8713,7 @@ async function submitProductModal(modal, orig, btn) {
   const cat = g('pm-cat'), sku = g('pm-sku');
   const images = (modal._images || []).filter(Boolean);
   const isPkg = !!modal.querySelector('#pm-ispackage')?.checked;
+  const isSvc = !isPkg && !!modal.querySelector('#pm-isservice')?.checked;
   const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku) : [];
   if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
   const _qm = Number(modal.querySelector('#pm-qm')?.value) || 0;
@@ -8710,7 +8727,7 @@ async function submitProductModal(modal, orig, btn) {
     maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
     photos: images, photo: images[0] || '',   // эхний зураг = нүүр
     description: modal.querySelector('#pm-desc').value,
-    type: isPkg ? 'package' : (_qm > 0 ? 'rental' : 'asset'),   // M-Event>0 = түрээслэгдэнэ
+    type: isPkg ? 'package' : (isSvc ? 'service' : (_qm > 0 ? 'rental' : 'asset')),   // Багц / Үйлчилгээ / M-Event>0=түрээс / асет
     qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn,
     bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),

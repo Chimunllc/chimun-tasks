@@ -2693,9 +2693,9 @@ function taskBranch(t) {
 function allowedLenses() {
   if (state.isCEO) return ['all', 'm-event', 'camp', 'capital'];
   const m = findMember(state.me);
-  const bs = (m && Array.isArray(m.branches)) ? m.branches.filter(b => b === 'm-event' || b === 'camp') : [];
+  const bs = memberBranchesOf(m).filter(b => b === 'm-event' || b === 'camp');
   if (bs.length >= 2) return ['all', 'm-event', 'camp'];
-  if (bs.length === 1) return [bs[0]];
+  if (bs.length === 1) return [bs[0]];   // нэг салбартай хүн → тухайн салбартаа ТҮГЖИГДЭНЭ
   return ['all'];
 }
 /* Идэвхтэй ленз — зөвшөөрөгдсөнд хязгаарлана. Сонгосон утга зөвшөөрөгдөөгүй бол
@@ -5837,6 +5837,45 @@ async function saveMemberPerms(personKey, perms) {
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
   } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4500); }
 }
+
+// ─── САЛБАР ОНООЛТ (member_branches, PostgREST anon) — хүн аль салбар(ууд)-ынх ──────────
+// Дата ХАМРАХ ХҮРЭЭ = хүний салбар. Sheet-ийн branches-ийг ДАРНА (тохируулсан бол). CEO оноодог.
+async function loadMemberBranches() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_branches?select=person_key,branches`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) return;
+    const map = {};
+    (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
+    state.memberBranches = map;
+    try { localStorage.setItem('memberBranches', JSON.stringify(map)); } catch (e) {}
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadMemberBranches', e); }
+}
+async function saveMemberBranches(personKey, branches) {
+  if (!personKey) return;
+  state.memberBranches = state.memberBranches || {};
+  state.memberBranches[personKey] = branches;   // optimistic
+  try { localStorage.setItem('memberBranches', JSON.stringify(state.memberBranches)); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_branches`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ person_key: personKey, branches, updated_by: state.me, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
+  } catch (e) { showToast('Салбар хадгалах алдаа: ' + e.message, 'error', 4500); }
+}
+// Хүний ҮР ДҮНГИЙН салбарууд — member_branches override → Sheet branches → хоосон.
+function memberBranchesOf(m) {
+  if (!m) return [];
+  const pk = personKey(m);
+  const ov = state.memberBranches && state.memberBranches[pk];
+  if (Array.isArray(ov)) return ov;
+  return Array.isArray(m.branches) ? m.branches : [];
+}
 // Override устгах (default role руу буцаах) — PostgREST DELETE.
 async function clearMemberPerms(personKey) {
   if (!personKey) return;
@@ -6054,6 +6093,9 @@ async function openSalaryPayModal(personKey) {
 // ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──
 function _phoneDigits(m) { return String((m && m.phone) || '').replace(/\D/g, ''); }
 function _nomaadDefaultFor(m) {
+  const bs = memberBranchesOf(m);
+  if (bs.length) return bs.includes('camp');   // салбар оноосон бол ХАТУУ: зөвхөн NOMAAD (camp) салбарынхан
+  // Салбар оноогоогүй бол хуучин fallback (шилжилтийн үед хандалт алдагдахгүй)
   const ph = _phoneDigits(m); if (ph && NOMAAD_VIEWERS.some(p => ph.endsWith(p))) return true;
   const nm = String((m && m.name) || '').toLowerCase(); if (NOMAAD_VIEWER_NAMES.some(n => nm.includes(n))) return true;
   return /нягтлан/i.test(String((m && m.role) || ''));
@@ -6067,12 +6109,14 @@ function _hourlyDefaultFor(m) {
 // → самбарт харагдаж буй нь яг бодит дүртэй тохирно (хатуу кодын зөрүүгүй).
 function _ordersDefaultFor(m) {
   if (!m) return false;
+  const bs = memberBranchesOf(m);
+  if (bs.length) return bs.includes('m-event');   // салбар оноосон бол ХАТУУ: зөвхөн M-Event салбарынхан
+  // Салбар оноогоогүй бол хуучин роль-суурьтай fallback (шилжилтийн үед хандалт алдагдахгүй)
   if ((m.level || 0) >= 60) return true;
   const role = String(m.role || '');
   if (/эвент|захиалг|менежер|нягтлан|агуулах|цэвэрлэгээ|нярав|жолооч|захирал/i.test(role)) return true;
   if (typeof ORDER_FLOW !== 'undefined' && Object.values(ORDER_FLOW).some(s => s.role !== 'manager' && s.role.test(role))) return true;
-  const bs = Array.isArray(m.branches) ? m.branches : [];
-  return bs.includes('m-event');
+  return false;
 }
 // Тухайн албан тушаалын нэг view-ийн DEFAULT (загваргүй үед) — гишүүдийнх нь одоогийн хандалтаар.
 // Матрицыг нээхэд "одоо юу хардаг" нь урьдчилан чагтлагдсан байхын тулд.
@@ -6217,7 +6261,11 @@ function renderAccessRoles() {
     if (!pExp) return wrap(summary);
     if (isFull) return wrap(summary + `<div style="font-size:11.5px;color:var(--muted);margin-top:8px;">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>`);
     const reset = hasOv ? `<div style="margin-top:8px;"><button class="btn" data-person-reset="${escapeHtml(pk)}" style="padding:4px 11px;font-size:11px;">↺ Анхны байдал руу</button></div>` : '';
-    return wrap(summary + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind)) + reset);
+    // 🏢 Салбар — дата ХАМРАХ ХҮРЭЭ. Нэг салбар сонговол тухайн хүн зөвхөн түүнийг л хардаг (захиалга/санхүү/ажилтан…). Хоосон=бүгд.
+    const bs = memberBranchesOf(m);
+    const brChip = (val, label) => `<label class="ac-chip${bs.includes(val) ? ' on' : ' act-off'}"><input type="checkbox" data-branch-cap="${escapeHtml(pk)}" data-branch-val="${val}" ${bs.includes(val) ? 'checked' : ''}>${label}</label>`;
+    const branchPick = `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>`;
+    return wrap(summary + branchPick + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind)) + reset);
   }).join('');
   const body = dailyCard + rows;
   return `${note}${searchBar}<div class="ac-wrap">${body || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
@@ -6279,6 +6327,14 @@ function attachAccessHandlers() {
   }));
   document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); clearMemberPerms(b.dataset.personReset); showToast('Албан тушаал руу буцаалаа', 'success', 1500); render();
+  }));
+  // 🏢 Салбар оноох — тухайн хүний харах дата хамрах хүрээ (member_branches)
+  document.querySelectorAll('input[data-branch-cap]').forEach(cb => cb.addEventListener('change', () => {
+    const pk = cb.dataset.branchCap;
+    const vals = [...document.querySelectorAll(`input[data-branch-cap="${CSS.escape(pk)}"]`)].filter(x => x.checked).map(x => x.dataset.branchVal);
+    saveMemberBranches(pk, vals);
+    showToast(vals.length ? 'Салбар хадгаллаа: ' + vals.join(', ') : 'Салбар цэвэрлэлээ (бүгд)', 'success', 1600);
+    const chip = cb.closest('.ac-chip'); if (chip) { chip.classList.toggle('on', cb.checked); chip.classList.toggle('act-off', !cb.checked); }
   }));
   document.querySelector('[data-clear-all-overrides]')?.addEventListener('click', async () => {
     if (!(await showConfirm('Бүх хүний онцгой тохиргоог цэвэрлэх үү? Хүн бүр албан тушаалынхаа эрхэд буцна.', { okText: 'Цэвэрлэх', danger: true }))) return;
@@ -9617,6 +9673,41 @@ async function extractPdfText(file) {
   }
   return text;
 }
+// PDF баримтыг АПП ДОТОР харах — pdf.js-ээр canvas-д render (iOS PWA-д iframe найдваргүй тул). file = File эсвэл Blob.
+async function openReceiptPdfViewer(file, meta) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-bg open';
+  overlay.style.zIndex = '10000';
+  overlay.innerHTML = `<div class="modal" style="max-width:720px;width:97%;max-height:94vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;position:sticky;top:0;background:var(--panel);padding-bottom:6px;z-index:1;">
+      <h2 style="margin:0;font-size:15px;">📄 Банкны баримт${meta && meta.amount ? ' · ' + fmtMoney(meta.amount) : ''}</h2>
+      <button class="btn" id="pdfv-close" style="padding:5px 10px;">✕ Хаах</button>
+    </div>
+    <div id="pdfv-pages" style="text-align:center;color:var(--muted);padding:20px;">Уншиж байна…</div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#pdfv-close').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  try {
+    const pdfjsLib = await loadPdfJs();
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const box = overlay.querySelector('#pdfv-pages'); box.innerHTML = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const vp = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      canvas.width = vp.width; canvas.height = vp.height;
+      canvas.style.cssText = 'width:100%;max-width:660px;height:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);';
+      box.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    }
+  } catch (e) {
+    const box = overlay.querySelector('#pdfv-pages');
+    if (box) { box.style.color = 'var(--danger)'; box.textContent = 'PDF харуулж чадсангүй: ' + e.message; }
+  }
+}
 // Банкны гүйлгээний баримтаас БҮХ талбар — Голомт (label-based) БА Хаан (Дт/Кт) хоёуланг дэмжинэ.
 const _RECEIPT_LABELS = ['Хүлээн авагчийн банк', 'Хүлээн авагчийн данс', 'Хүлээн авагчийн нэр', 'Гүйлгээний дүн', 'Гүйлгээний огноо', 'Гүйлгээний утга', 'Гүйлгээний төлөв', 'Шилжүүлэгчийн нэр', 'Шилжүүлэгчийн дансны дугаар', 'Хүсэлтийн лавлах дугаар', 'Татсан огноо'];
 function parseBankReceipt(text) {
@@ -9758,11 +9849,16 @@ function openBqPaymentModal(oid) {
     const sum = modal._receipts.reduce((s, r) => s + r.amount, 0);
     listEl.innerHTML = modal._receipts.map((r, i) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12px;background:var(--panel);">
       <div style="min-width:0;flex:1;"><b style="color:var(--ok);font-size:14px;">${fmtMoney(r.amount)}</b> <span style="color:var(--muted);">· ${escapeHtml(r.date || '')}</span><div style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.senderName || '—')}${r.warn ? ` · <span style="color:var(--warn);">⚠ ${escapeHtml(r.warn)}</span>` : ''}</div></div>
+      ${r._file ? `<button type="button" data-rrview="${i}" class="btn" style="padding:2px 9px;color:var(--accent);flex-shrink:0;">👁 Харах</button>` : ''}
       <button type="button" data-rrm="${i}" class="btn" style="padding:2px 8px;color:var(--danger);flex-shrink:0;">✕</button>
     </div>`).join('') + `<div style="display:flex;justify-content:space-between;font-weight:700;padding:8px 10px 2px;font-size:14px;"><span>Нийт төлбөр (${modal._receipts.length})</span><b style="color:var(--ok);">${fmtMoney(sum)}</b></div>`;
     enableSave(true);
   }
-  listEl.addEventListener('click', (e) => { const b = e.target.closest('[data-rrm]'); if (!b) return; modal._receipts.splice(+b.dataset.rrm, 1); renderReceipts(); });
+  listEl.addEventListener('click', (e) => {
+    const v = e.target.closest('[data-rrview]');
+    if (v) { const r = modal._receipts[+v.dataset.rrview]; if (r && r._file) openReceiptPdfViewer(r._file, r); return; }
+    const b = e.target.closest('[data-rrm]'); if (!b) return; modal._receipts.splice(+b.dataset.rrm, 1); renderReceipts();
+  });
   modal.querySelector('#bqp-pdf').addEventListener('change', async (e) => {
     const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
     const status = modal.querySelector('#bqp-pdf-status');
@@ -9778,7 +9874,7 @@ function openBqPaymentModal(oid) {
         if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
         if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
         const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
-        modal._receipts.push({ amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn });
+        modal._receipts.push({ amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
         status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
       } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
     }
@@ -14384,6 +14480,7 @@ async function bootApp() {
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
+  loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)
   if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
@@ -14515,7 +14612,7 @@ async function refreshFromServer() {
     // Эрх refresh бүрд шинэчилнэ → CEO өгсөн эрх дахин нэвтрэхгүйгээр хүчинтэй.
     // ⚠ ГЭХДЭЭ CEO эрх засаж байх (access view) үед ДАХИН АЧААЛАХГҮЙ — эс бөгөөс хагас хийсэн
     //    засварыг DB-ийн хуучин утгаар дарж, chip буцаад улаана (race condition).
-    if (state.view !== 'access') taskPromises.push(loadMemberPerms(), loadRolePerms());
+    if (state.view !== 'access') taskPromises.push(loadMemberPerms(), loadRolePerms(), loadMemberBranches());
     // Ажилтны жагсаалт ховор өөрчлөгддөг — refresh бүрд биш, зөвхөн 2 цаг өнгөрсөн бол
     // дахин татна (n8n execution хэмнэх). Бүртгэл/засвар үед тусдаа шууд татагдсаар.
     const teamAge = Date.now() - (Number(localStorage.getItem('teamCacheAt')) || 0);

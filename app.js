@@ -4037,8 +4037,8 @@ const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', deliver
 // Үндсэн 6 төлөв (dropdown/самбарын бүлэг). Дэд шатууд эдгээрт багтана.
 const ORDER_BUCKETS = [
   { key: 'draft',    label: 'Ноорог',           icon: '📝', dot: '#6B7280', st: ['draft'] },
-  { key: 'reserved', label: 'Захиалсан',        icon: '📋', dot: '#D97706', st: ['reserved', 'cleaning', 'ready', 'preparation', 'prepared'] },
-  { key: 'rented',   label: 'Түрээслэгдэж буй',  icon: '📦', dot: '#2563EB', st: ['delivering', 'rented', 'returning', 'started'] },
+  { key: 'reserved', label: 'Захиалсан',        icon: '📋', dot: '#D97706', st: ['reserved', 'cleaning', 'ready', 'preparation', 'prepared', 'delivering'] },
+  { key: 'rented',   label: 'Түрээслэгдэж буй',  icon: '📦', dot: '#2563EB', st: ['rented', 'returning', 'started'] },
   { key: 'done',     label: 'Дууссан',          icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
   { key: 'archived', label: 'Архив',            icon: '🗄', dot: '#475569', st: ['archived'] },
   { key: 'canceled', label: 'Устгасан',         icon: '✕', dot: '#DC2626', st: ['canceled'] },

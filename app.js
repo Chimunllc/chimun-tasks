@@ -4054,6 +4054,20 @@ function orderUrgRank(o, stage, todayStr) {
   const diff = (Date.parse(d) - Date.parse(todayStr)) / 86400000;
   return (diff <= 2) ? 2 : 3;                  // удахгүй / дараа
 }
+// Захиалгыг ойрын огноогоор бүлэглэх түлхүүр — самбарт шат доторх дэд бүлгүүд
+// (хэтэрсэн / өнөөдөр / маргааш / 3 хоног / долоо хоног / дараа / огноогүй)
+function timeGroupKey(o, todayStr) {
+  const dt = ['rented', 'returning', 'started'].includes(o.status) ? o.stops_at : o.starts_at;
+  const d = String(dt || '').slice(0, 10);
+  if (!d) return 'none';
+  if (d < todayStr) return 'over';
+  if (d === todayStr) return 'today';
+  const diff = Math.round((Date.parse(d) - Date.parse(todayStr)) / 86400000);
+  if (diff === 1) return 'tomorrow';
+  if (diff <= 3) return 'd3';
+  if (diff <= 7) return 'week';
+  return 'later';
+}
 // Дамжлагын самбар — шат бүрээр эвхэгддэг, идэвхтэй шат дотор хүргэлт/очиж авах дэд бүлэг + яаралтай эрэмбэ
 const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕' };
 // Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
@@ -4140,17 +4154,18 @@ function renderOrderPipelineBoard(shown, todayStr) {
     let bodyHtml = '';
     if (isOpen) {
       const byRank = arr => arr.slice().sort((a, c) => orderUrgRank(a.o, a.o.status, todayStr) - orderUrgRank(c.o, c.o.status, todayStr) || String(a.o.starts_at || '').localeCompare(String(c.o.starts_at || '')));
-      const sub = (arr, label, icon) => {
+      const CAP2 = 60;
+      const sub = (arr, label, urgent) => {
         if (!arr.length) return '';
-        const urgN = arr.filter(e => orderUrgRank(e.o, e.o.status, todayStr) <= 1).length;
-        const CAP2 = 60;
         const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('');
         const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлтаар</div>` : '';
-        return `<div class="board-sub">${icon} ${label} · ${arr.length}${urgN ? ` <span class="board-urg">🔴 ${urgN} яаралтай</span>` : ''}</div>` + rows + more;
+        return `<div class="board-sub${urgent ? ' board-sub-urg' : ''}">${label} · ${arr.length}</div>` + rows + more;
       };
-      const deliv = list.filter(e => isDeliveryOrder(e.o));
-      const pick = list.filter(e => !isDeliveryOrder(e.o));
-      bodyHtml = `<div class="board-body">${sub(deliv, 'Хүргэлттэй', '🚚')}${sub(pick, 'Очиж авах', '🏬')}</div>`;
+      // ⏱ Ойрын огноогоор бүлэглэнэ (шат бүрийн доор). Мөр бүр 🚚/🏬 badge-тэй хэвээр.
+      const TG = [['over', '⏰ Хугацаа хэтэрсэн', 1], ['today', '🔴 Өнөөдөр', 1], ['tomorrow', '🟡 Маргааш', 0], ['d3', '📅 3 хоногт', 0], ['week', '📆 Энэ долоо хоногт', 0], ['later', '⚪ Дараа', 0], ['none', '🗓 Огноогүй', 0]];
+      const grp = {};
+      list.forEach(e => { const k = timeGroupKey(e.o, todayStr); (grp[k] = grp[k] || []).push(e); });
+      bodyHtml = `<div class="board-body">${TG.map(([k, lb, urg]) => sub(grp[k] || [], lb, urg)).join('')}</div>`;
     }
     return `<div class="board-sec" id="bsec-${b.key}" style="border-left-color:${b.dot};">
       <div class="board-head" data-board-stage="${b.key}">

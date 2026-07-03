@@ -5064,6 +5064,7 @@ body.role-daily #add-project { display: none !important; }
 .board-head .board-caret:only-of-type { margin-left: auto; }
 .board-body { padding: 4px 12px 12px; }
 .board-sub { font-size: 11.5px; font-weight: 700; color: var(--muted); margin: 10px 2px 6px; display: flex; align-items: center; gap: 8px; }
+.board-sub-urg { color: var(--danger); }
 .board-urg { color: var(--danger); font-weight: 700; }
 .board-body .order-card { margin-bottom: 8px; }
 /* Дээд stepper */

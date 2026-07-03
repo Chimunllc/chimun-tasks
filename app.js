@@ -4180,6 +4180,78 @@ function renderOrderPipelineBoard(shown, todayStr) {
   }).join('');
   return `<div class="orders-board">${stepper}${bulkBar}${band}${secs}</div>`;
 }
+
+// 📥 Дууссан захиалгын тайлан — Дууссан+Архив-ыг огноогоор (өдөр/сар/жил) харах + CSV татах
+const _CR_DONE = new Set(['done', 'archived']);
+function _crDate(e) { return String((e.o && (e.o.starts_at || e.o.created_at)) || e.date || '').slice(0, 10); }
+function openCompletedReport() {
+  const done = unifiedOrders().filter(e => _CR_DONE.has(bucketOf(e.o.status)));
+  let gran = 'month';                       // 'day' | 'month' | 'year'
+  state._crOpen = new Set();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const pKey = d => gran === 'year' ? d.slice(0, 4) : gran === 'day' ? d : d.slice(0, 7);
+  const render = () => {
+    const groups = {};
+    done.forEach(e => { const d = _crDate(e); const k = d ? pKey(d) : '⚪ Огноогүй'; (groups[k] = groups[k] || []).push(e); });
+    const keys = Object.keys(groups).sort().reverse();
+    const totalSum = done.reduce((s, e) => s + e.total, 0);
+    const rows = keys.map(k => {
+      const arr = groups[k]; const sum = arr.reduce((s, e) => s + e.total, 0);
+      const isOpen = state._crOpen.has(k);
+      const orders = isOpen ? `<div style="padding:2px 8px 8px;">${arr.slice().sort((a, c) => String(_crDate(c)).localeCompare(_crDate(a))).map(e => {
+        const o = e.o;
+        return `<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;padding:3px 0;border-top:1px solid var(--border);">
+          <span style="font-weight:700;flex:0 0 52px;">#${o.number ?? ''}</span>
+          <span style="flex:0 0 78px;color:var(--muted);">${escapeHtml(_crDate(e))}</span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.customer || '—')}</span>
+          <span style="flex:0 0 auto;color:var(--muted);">${escapeHtml((BQ_STATUS[o.status] || {}).label || o.status || '')}</span>
+          <span style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoney(e.total)}</span>
+        </div>`;
+      }).join('')}</div>` : '';
+      return `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:6px;overflow:hidden;">
+        <div data-cr-key="${escapeHtml(k)}" style="display:flex;gap:8px;align-items:center;padding:8px 10px;cursor:pointer;background:var(--panel-hover);font-size:12.5px;">
+          <span>${isOpen ? '▾' : '▸'}</span><b>${escapeHtml(k)}</b>
+          <span style="color:var(--muted);">${arr.length} захиалга</span><span style="flex:1;"></span>
+          <b style="font-variant-numeric:tabular-nums;">${fmtMoney(sum)}</b>
+        </div>${orders}</div>`;
+    }).join('');
+    modal.innerHTML = `<div class="modal" style="max-width:660px;width:96%;max-height:90vh;overflow:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h2 style="margin:0;font-size:16px;">📥 Дууссан захиалгын тайлан</h2>
+        <button class="btn" id="cr-close" style="padding:5px 10px;">✕</button></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        ${[['day', 'Өдөр'], ['month', 'Сар'], ['year', 'Жил']].map(([g, l]) => `<button class="btn${gran === g ? ' btn-primary' : ''}" data-cr-gran="${g}" style="padding:5px 13px;font-size:12px;">${l}</button>`).join('')}
+        <span style="flex:1;"></span>
+        <button class="btn btn-primary" id="cr-csv" style="padding:6px 13px;font-size:12.5px;">📥 CSV татах</button></div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Нийт <b>${done.length}</b> захиалга · <b>${fmtMoney(totalSum)}</b> (Дууссан + Архив)</div>
+      <div>${rows || '<div style="color:var(--muted);padding:14px;text-align:center;">Дууссан захиалга алга</div>'}</div>
+    </div>`;
+    modal.querySelector('#cr-close').onclick = close;
+    modal.querySelectorAll('[data-cr-gran]').forEach(b => b.onclick = () => { gran = b.dataset.crGran; state._crOpen = new Set(); render(); });
+    modal.querySelectorAll('[data-cr-key]').forEach(h => h.onclick = () => { const k = h.dataset.crKey; state._crOpen.has(k) ? state._crOpen.delete(k) : state._crOpen.add(k); render(); });
+    modal.querySelector('#cr-csv').onclick = () => downloadCompletedCsv(done);
+  };
+  render();
+}
+function downloadCompletedCsv(list) {
+  const header = ['Дугаар', 'Эхлэх огноо', 'Дуусах огноо', 'Харилцагч', 'Утас', 'И-мэйл', 'Төлөв', 'Нийт дүн', 'Төлсөн', 'Үлдэгдэл', 'Хүргэлт'].join(',');
+  const rows = list.slice().sort((a, c) => String(_crDate(c)).localeCompare(_crDate(a))).map(e => {
+    const o = e.o, tot = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
+    return [o.number ?? '', _crDate(e), String(o.stops_at || '').slice(0, 10), o.customer || '', o.phone || '', o.email || '',
+      (BQ_STATUS[o.status] || {}).label || o.status || '', tot, paid, Math.max(0, tot - paid),
+      isDeliveryOrder(o) ? 'Хүргэлт' : 'Өөрөө авах'].map(csvCell).join(',');
+  });
+  const csv = '﻿' + header + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `Чимун-дууссан-захиалга-${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  showToast(`${list.length} захиалга татагдлаа`, 'success');
+}
 function renderOrders() {
   // Захиалга = Booqable (M-Event үхсэн). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
@@ -4210,6 +4282,7 @@ function renderOrders() {
 
   // Гарчиг header-т аль хэдийн бий (давхардуулахгүй) — энд зөвхөн үйлдлийн товчнууд
   const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
+    <button class="btn" id="orders-report-btn" style="padding:6px 11px;font-size:12px;" title="Дууссан захиалгыг огноогоор харах + татах">📥 Дууссан</button>
     ${state.isCEO ? `<button class="btn" id="orders-manage-btn" style="padding:6px 11px;font-size:12px;${state.ordersSelect ? 'color:var(--danger);' : ''}">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
     <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
   </div>`;
@@ -4321,6 +4394,7 @@ function attachOrdersHandlers() {
   document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
   // Шинэ захиалга үүсгэх / app захиалга засах·устгах
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
+  document.getElementById('orders-report-btn')?.addEventListener('click', openCompletedReport);
   document.getElementById('orders-manage-btn')?.addEventListener('click', () => { state.ordersSelect = !state.ordersSelect; if (!state.ordersSelect) state.ordersSelected = new Set(); render(); });
   document.querySelectorAll('[data-sel-id]').forEach(cb => cb.addEventListener('change', () => {
     state.ordersSelected = state.ordersSelected || new Set();

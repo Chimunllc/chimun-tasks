@@ -79,6 +79,10 @@
 
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
+  /* color-scheme: аппын идэвхтэй theme-ийг браузерт мэдэгдэнэ — Samsung force-dark давхар
+     хувиргалтаас хамгаална, native контрол (select/scrollbar) theme-тэй таарна */
+  :root { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: var(--bg);
@@ -87,6 +91,8 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;   /* iPhone хөндлөн эргүүлэхэд текст автомат томрохгүй */
+    text-size-adjust: 100%;
   }
 
   /* ─── ШИНЭ DESIGN TOKEN-ЫН ҮНДСЭН СТАНДАРТ КЛАСС-УУД ─── */
@@ -151,7 +157,9 @@
     transition: all var(--duration) var(--ease);
   }
   .theme-toggle:hover { background: var(--panel-hover); color: var(--text); }
-  .app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
+  /* 100dvh = браузерын хаягийн мөрийг тооцсон БОДИТ өндөр (Safari/Samsung Internet-д
+     доод nav таслагдахаас сэргийлнэ). Хуучин утсанд 100vh fallback. */
+  .app { display: grid; grid-template-columns: 260px 1fr; height: 100vh; height: 100dvh; }
   /* SIDEBAR */
   .sidebar {
     background: var(--panel);
@@ -5683,3 +5691,18 @@ body.role-daily #add-project { display: none !important; }
 .wl-status { font-size: 11px; color: var(--muted); }
 .wl-due { font-size: 12px; color: var(--muted); }
 .wl-by { font-size: 11px; color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════════
+   iPhone ИНПУТ-ZOOM ХАМГААЛАЛТ (2026-07-03)
+   iOS Safari: form талбарын үсэг 16px-ээс жижиг бол фокус хийхэд
+   дэлгэцийг автоматаар томруулдаг (zoom). Аппд 200+ инпут 12–15px
+   тул утсан дээр бүгдийг 16px болгож zoom-оос сэргийлнэ.
+   (inline style-ийг ч дарахын тулд !important — санаатай.)
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 720px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

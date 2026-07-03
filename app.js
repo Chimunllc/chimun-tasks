@@ -5925,9 +5925,9 @@ const PERM_MENUS = [
   { key: 'orders',      label: 'Захиалга',        actions: [
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
       { key: 'orders.prepare',  label: 'Бэлтгэх (нярав)' },
-      { key: 'orders.clean',    label: 'Цэвэрлсэн (цэвэрлэгч)' },
+      { key: 'orders.clean',    label: 'Цэвэрлэх (цэвэрлэгч)' },
       { key: 'orders.dispatch', label: 'Гаргах / Олгох (нярав)' },
-      { key: 'orders.deliver',  label: 'Хүргэж өгсөн (хүргэгч)' },
+      { key: 'orders.deliver',  label: 'Хүргэж өгөх (хүргэгч)' },
       { key: 'orders.advance',  label: 'Архивлах / бусад шилжүүлэх' },
       { key: 'orders.cancel',   label: 'Цуцлах / устгах' } ] },
   { key: 'products',    label: 'Агуулах',         actions: [
@@ -9230,8 +9230,8 @@ const BQ_STATUS = {
   prepared:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
   delivering:  { label: 'Хүргэгдэж байна', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
-  returning:   { label: 'Хүргэлт буцах', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
-  returned:    { label: 'Хүлээн авсан',  dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  returning:   { label: 'Буцаалт замд', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
+  returned:    { label: 'Буцаан авсан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
   // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
@@ -9262,12 +9262,12 @@ function orderNextStep(o) {
     case 'ready':       return deliv
                           ? { to: 'delivering', label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' }
                           : { to: 'rented',     label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' };
-    case 'delivering':  return { to: 'rented',    label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+    case 'delivering':  return { to: 'rented',    label: '🚚 Хүргэж өгөх', cap: 'orders.deliver' };
     case 'rented':
     case 'started':     return deliv
                           ? { to: 'returning', label: '↩ Буцааж авахаар гарах', cap: 'orders.deliver' }
-                          : { to: 'returned',  label: '📥 Буцаан хүлээж авсан', cap: 'orders.dispatch' };
-    case 'returning':   return { to: 'returned', label: '📦 Агуулахад хүлээн авсан', cap: 'orders.dispatch' };
+                          : { to: 'returned',  label: '📥 Буцаан хүлээж авах', cap: 'orders.dispatch' };
+    case 'returning':   return { to: 'returned', label: '📦 Агуулахад хүлээн авах', cap: 'orders.dispatch' };
     case 'returned':
     case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
     default: return null;
@@ -9279,7 +9279,7 @@ const BQ_NEXT = {
   preparation: { to: 'cleaning', label: '🧰 Бэлтгэх' },
   cleaning:    { to: 'ready',    label: '🧹 Цэвэрлсэн' },
   ready:       { to: 'started',  label: '📦 Агуулахаас гарсан' },
-  started:     { to: 'stopped',  label: '🚚 Хүргэж өгсөн' },
+  started:     { to: 'stopped',  label: '🚚 Хүргэж өгөх' },
   stopped:     { to: 'archived', label: '🗄 Архивлах' },
 };
 
@@ -9334,7 +9334,7 @@ async function advanceOrderFromTask(task) {
   const sm = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
   const photos = (task.completion_photos || []).filter(Boolean);
   if (photos.length) sm[act.key] = Object.assign({}, sm[act.key], { photos, by: task.assignee || state.me, at: new Date().toISOString().slice(0, 10) });
-  await bqUpdateStatus(o.id, p.toStatus, { stageMeta: photos.length ? sm : undefined, toast: `Захиалга #${o.number ?? ''}: ${next.label} ✓`, byTask: true });
+  await bqUpdateStatus(o.id, p.toStatus, { stageMeta: photos.length ? sm : undefined, toast: `Захиалга #${o.number ?? ''}: ${(BQ_STATUS[p.toStatus] || {}).label || ''} ✓`, byTask: true });
 }
 
 // Дамжлагын шат: (from>to) → үйлдэл + өмнөх шат (үнэлэх). Товч бүрд зураг + өмнөхийн үнэлгээ
@@ -9346,12 +9346,12 @@ const STAGE_ACTION = {
   'ready>rented':         { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгөх',           q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'rented>returning':     { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
-  'rented>returned':      { key: 'received', label: 'Буцаан хүлээж авсан',    q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'rented>returned':      { key: 'received', label: 'Буцаан хүлээж авах',     q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'started>returning':    { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
-  'started>returned':     { key: 'received', label: 'Буцаан хүлээж авсан',    q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'returning>returned':   { key: 'received', label: 'Агуулахад хүлээн авсан', q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
+  'started>returned':     { key: 'received', label: 'Буцаан хүлээж авах',     q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'returning>returned':   { key: 'received', label: 'Агуулахад хүлээн авах',  q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
   'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
@@ -9428,7 +9428,7 @@ function openStageAdvanceModal(oid, to) {
     if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; }
     sm2[act.key] = entry;
     close();
-    await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${act.label} ✓` });
+    await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${(BQ_STATUS[to] || {}).label || act.label} ✓` });
   };
 }
 // Badge — цэг + бараан текст (өнгөнд бус, текст+цэгээр ялгана). pill хэлбэр.
@@ -9653,7 +9653,7 @@ function stageLogSet(note, stage, email, date) {
 }
 // Дамжлагын алхам бүрийн харагдах шошго — товч дарсан ажилтныг картад ангилж харуулна.
 // stage = ямар төлөв рүү шилжсэн (bqUpdateStatus `to`-гоор stamp хийдэг).
-const STAGE_LOG_LABEL = { prepared: '🧹 Цэвэрлэсэн', delivering: '🚚 Жолоочид өгсөн', rented: '🤝 Хүлээлгэн өгсөн', returning: '↩ Буцаалт эхэлсэн', returned: '📥 Хүлээн авсан', archived: '🗄 Архивласан', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Гаргасан', stopped: '🚚 Хүргэсэн' };
+const STAGE_LOG_LABEL = { prepared: '🧹 Цэвэрлэсэн', delivering: '🚚 Жолоочид өгсөн', rented: '🤝 Хүлээлгэн өгсөн', returning: '↩ Буцаалт эхэлсэн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Гаргасан', stopped: '🚚 Хүргэсэн' };
 function stageLogLabel(stage, log) { return STAGE_LOG_LABEL[stage] || stage; }
 // Захиалгын огноо+цаг → түрээсийн хоног (карт + модал хуваалцана). Цаг note token-д байхгүй бол 09:00 default.
 function orderRentalDays(o) {
@@ -9699,7 +9699,7 @@ function openNewOrder(editOrder) {
     <div style="background:var(--panel-hover);border-radius:10px;padding:8px 10px;margin-bottom:10px;">
       <div style="display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:end;">
         <label class="no-lbl">🚚 Хүргэлт<select id="no-delivzone" style="margin-top:3px;">
-          <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Очиж авах (хүргэлтгүй)</option>
+          <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Өөрөө авах (хүргэлтгүй)</option>
           <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор — 150,000₮</option>
           <option value="out"${_dlv0.zone === 'out' ? ' selected' : ''}>🚚 Хотоос гадна (км-ээр)</option>
         </select></label>
@@ -9892,7 +9892,7 @@ function bqOrderCard(o) {
   const _dlv = isApp ? parseDelivery(o.note) : null;
   const _isDeliv = isDeliveryOrder(o);
   const delivBadge = isApp
-    ? (_isDeliv ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Очиж авах</span>`)
+    ? (_isDeliv ? `<span class="deliv-badge deliv-yes">🚚 Хүргэлттэй</span>` : `<span class="deliv-badge deliv-no">🏬 Өөрөө авах</span>`)
     : '';
   const delivMeta = (isApp && _dlv && _dlv.fee > 0)
     ? `<div class="order-meta">Хүргэлт: <b>${fmtMoney(_dlv.fee)}</b>${deliveryLabel(_dlv) ? ` · ${escapeHtml(deliveryLabel(_dlv))}` : ''}</div>`

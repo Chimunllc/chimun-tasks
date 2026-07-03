@@ -1645,9 +1645,14 @@ function requestToWire(r) {
   // Код → монгол
   out.status   = _xlate(out.status, _FIN_STATUS_E2M);
   out.decision = _xlate(out.decision, _FIN_DEC_E2M);
-  // ⏳ link_* (объект холбоос) — DB багана + n8n mapping (Step 1) хийгдтэл wire-т ИЛГЭЭХГҮЙ.
-  // Ингэснээр одоогийн finance upsert эвдрэхгүй. localStorage-д хадгалагдаж UI-д харагдана.
-  // Step 1 дууссаны дараа энэ 1 мөрийг устгавал сервер рүү хадгалагдана.
+  // Объект холбоосыг ⟦LNK|төрөл|id|нэр⟧ token-оор justification-д ХАДГАЛНА (DB багана/n8n
+  // mapping хөндөхгүй — RT/SL/DLV-тэй ижил тогтсон загвар). normalizeFinance буцааж задална.
+  out.justification = String(out.justification || '').replace(/\s*⟦LNK\|[^⟧]*⟧/g, '').trim();
+  if (out.link_type && out.link_type !== 'general') {
+    const _lid = String(out.link_id || '').replace(/[⟦⟧|]/g, '');
+    const _lbl = String(out.link_label || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
+    out.justification = (out.justification ? out.justification + ' ' : '') + `⟦LNK|${out.link_type}|${_lid}|${_lbl}⟧`;
+  }
   delete out.link_type; delete out.link_id; delete out.link_label;
   return out;
 }
@@ -1692,6 +1697,12 @@ function normalizeFinance(r) {
   const out = { ...r };
   for (const f of stringFields) if (out[f] != null) out[f] = String(out[f]);
   if (out.amount != null && out.amount !== '') out.amount = Number(out.amount) || 0;
+  // ⟦LNK|төрөл|id|нэр⟧ token → объект холбоосын талбарууд (requestToWire-ийн эсрэг тал)
+  const _lm = String(out.justification || '').match(/⟦LNK\|([a-z]+)\|([^|⟧]*)\|([^⟧]*)⟧/);
+  if (_lm) {
+    out.link_type = _lm[1]; out.link_id = _lm[2]; out.link_label = _lm[3];
+    out.justification = String(out.justification).replace(/\s*⟦LNK\|[^⟧]*⟧/g, '').trim();
+  }
   return out;
 }
 
@@ -1943,7 +1954,7 @@ async function copyText(text, okMsg = 'Хуулагдлаа') {
 // ── Санхүүгийн хүсэлт → бодит объект холбоос (машин/бараа/захиалга). Сонголтоор, default Ерөнхий. ──
 // Category-г ОРЛОХГҮЙ — зэрэгцээ "энэ зардал юунтай холбоотой" гэдгийг тэмдэглэнэ.
 // link_type/link_id/link_label талбарууд request-д нэмэгдэж requestToWire spread-ээр авто дамжина.
-const FIN_LINK_PH = { car: 'Машин сонгох (Агуулахын хөрөнгө)', product: 'Агуулах хайх (бараа/хөрөнгө/машин)', order: 'Захиалга (#дугаар / харилцагч)' };
+const FIN_LINK_PH = { car: 'Машин сонгох (Агуулахын хөрөнгө)', product: 'Агуулах хайх (бараа/хөрөнгө/машин)', order: 'M-Event захиалга (#дугаар / харилцагч)', nomaad: 'NOMAAD захиалга (NC-дугаар / компани)' };
 let _finLinkBound = false;
 function _finLinkPopulate(type) {
   const dl = document.getElementById('f-link-dl'); if (!dl) return;
@@ -1957,26 +1968,37 @@ function _finLinkPopulate(type) {
     if (state.appOrders === undefined) loadAppOrders();
     const list = (typeof unifiedOrders === 'function' ? unifiedOrders() : []);
     dl.innerHTML = list.slice(0, 300).map(e => { const o = e.o || {}; return `<option value="${escapeHtml('#' + (o.number ?? '') + ' · ' + (o.customer || ''))}"></option>`; }).join('');
+  } else if (type === 'nomaad') {
+    if (!state.nomaadOrders && typeof loadNomaadOrders === 'function') loadNomaadOrders();
+    const list = (state.nomaadOrders || []).filter(o => !(typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)));
+    dl.innerHTML = list.map(o => `<option value="${escapeHtml((o.quote_no || '') + ' · ' + (o.company || ''))}"></option>`).join('');
   } else { dl.innerHTML = ''; }
 }
-function _finLinkSelect(type) {
-  state._finLinkType = type || 'general';
+function _finLinkSelect(type, opts = {}) {
+  state._finLinkType = type || '';   // '' = хараахан сонгоогүй (шинэ хүсэлтэд ЗААВАЛ сонгуулна)
   document.querySelectorAll('#f-link-types .f-link-type').forEach(b => b.classList.toggle('on', b.dataset.flink === state._finLinkType));
   const inp = document.getElementById('f-link-input'); if (!inp) return;
-  if (state._finLinkType === 'general') { inp.style.display = 'none'; inp.value = ''; }
+  if (!state._finLinkType || state._finLinkType === 'general') { inp.style.display = 'none'; inp.value = ''; }
   else { inp.style.display = ''; inp.placeholder = FIN_LINK_PH[state._finLinkType] || ''; _finLinkPopulate(state._finLinkType); }
+  // Категори автомат санал — объект сонгоход үндсэн ангилал өөрөө бөглөгдөнө (нягтлан будилахгүй; өөрчилж болно)
+  if (!opts.noSuggest && state._finLinkType) {
+    const sug = { order: '1000', nomaad: '1000', car: '6000', product: '6000', general: '2000' }[state._finLinkType];
+    const mc = document.getElementById('f-main-category');
+    if (sug && mc && [...mc.options].some(o => o.value === sug)) { mc.value = sug; mc.dispatchEvent(new Event('change')); }
+  }
 }
 function financeLinkReset(t) {
   if (!_finLinkBound) {
     document.querySelectorAll('#f-link-types .f-link-type').forEach(b => b.addEventListener('click', () => _finLinkSelect(b.dataset.flink)));
     _finLinkBound = true;
   }
-  _finLinkSelect((t && t.link_type) ? t.link_type : 'general');
+  // Хуучин хүсэлт засахад байгаа төрлөөр; ШИНЭ хүсэлтэд хоосон (заавал сонгуулна). Категори автомат санал алгасна (хуучин утгыг дарахгүй).
+  _finLinkSelect((t && t.link_type) ? t.link_type : (t ? 'general' : ''), { noSuggest: true });
   const inp = document.getElementById('f-link-input');
   if (inp && t && t.link_type && t.link_type !== 'general') inp.value = t.link_label || '';
 }
 function financeLinkRead() {
-  const type = state._finLinkType || 'general';
+  const type = state._finLinkType || 'general';   // шинэ хүсэлтийн ЗААВАЛ шалгалт submit дээр тусдаа
   if (type === 'general') return { link_type: 'general', link_id: '', link_label: '' };
   const val = (document.getElementById('f-link-input')?.value || '').trim();
   if (!val) return { link_type: 'general', link_id: '', link_label: '' };
@@ -1989,11 +2011,15 @@ function financeLinkRead() {
     const e = (typeof unifiedOrders === 'function' ? unifiedOrders() : []).find(x => ('#' + ((x.o || {}).number ?? '') + ' · ' + ((x.o || {}).customer || '')) === val);
     return { link_type: 'order', link_id: e ? String((e.o || {}).id || '') : '', link_label: val };
   }
+  if (type === 'nomaad') {
+    const o = (state.nomaadOrders || []).find(x => ((x.quote_no || '') + ' · ' + (x.company || '')) === val || x.quote_no === val);
+    return { link_type: 'nomaad', link_id: o ? String(o.quote_no || '') : '', link_label: val };
+  }
   return { link_type: 'general', link_id: '', link_label: '' };
 }
 function finLinkChip(r) {
   if (!r || !r.link_label || r.link_type === 'general' || !r.link_type) return '';
-  const ic = r.link_type === 'car' ? '🚗' : r.link_type === 'product' ? '🏭' : r.link_type === 'order' ? '🛒' : '🏢';
+  const ic = r.link_type === 'car' ? '🚗' : r.link_type === 'product' ? '📦' : r.link_type === 'order' ? '🎪' : r.link_type === 'nomaad' ? '🏕' : '🏢';
   return `<span class="fin-link-chip">${ic} ${escapeHtml(r.link_label)}</span>`;
 }
 
@@ -15109,6 +15135,11 @@ function initEvents() {
     // Хэрэв дүн+банк+данс бүгд хоосон бол анхааруулга (гэхдээ үргэлжлүүлэх боломжтой)
     if ((!amount || Number(amount) <= 0) && !bank && !accountNumber && !purchaseFile) {
       if (!(await showConfirm('Дүн, банк, данс, баримт бүгд хоосон байна. CEO юу авах хэрэгтэйг ойлгох уу?\n\nҮргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' }))) return;
+    }
+    // Объект холбоос ЗААВАЛ — зардал бүр эзэнтэй (юуны зардал нь тодорхойгүй хүсэлт үүсэхгүй)
+    if (!state._finLinkType) { showToast('«Энэ ЮУНЫ зардал вэ?» — сонгоно уу (NOMAAD/M-Event/Хөрөнгө/Удирдлага)', 'warn', 4000); return; }
+    if (state._finLinkType !== 'general' && !(document.getElementById('f-link-input')?.value || '').trim()) {
+      showToast('Сонгосон төрлийнхөө объектыг заана уу (аль захиалга/хөрөнгө вэ)', 'warn', 4000); return;
     }
     const btn = document.getElementById('f-save');
     btn.disabled = true;

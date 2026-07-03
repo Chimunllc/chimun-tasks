@@ -946,8 +946,9 @@
   body { font-size: 15px; line-height: 1.5; }
 
   /* iOS Safari: input font-size < 16px бол focus хийхэд zoom хийдэг.
-     Бүх input/select/textarea-г 16px болгоё. */
-  input, select, textarea, button {
+     ЗӨВХӨН бичих талбарууд — button zoom үүсгэдэггүй тул оруулахгүй
+     (өмнө нь button орсноос бүх товч 16px болж томордог байсан). */
+  input, select, textarea {
     font-size: 16px !important;
   }
 
@@ -5809,6 +5810,12 @@ body.role-daily #add-project { display: none !important; }
 
   /* ── Үсгийн жигд scale (том/жижиг зөрөөг арилгана) ──
      Гарчиг 18 · картын гарчиг 15 · үндсэн текст 14 · туслах 13 · жижиг тэмдэг 11-12 */
+  /* ── Товчнууд: харагдах хэмжээ жижиг ч дарах тал (touch target) хангалттай ──
+     (хуучин "бүх button 16px" дүрэм халагдсан — товч бүр өөрийн хэмжээгээр) */
+  .btn { min-height: 34px; }
+  .br-act { font-size: 12px !important; padding: 5px 12px !important; min-height: 28px; }
+  .due-chip { font-size: 12px !important; padding: 5px 12px !important; min-height: 28px; }
+  .bstep { font-size: 12px !important; min-height: 28px; }
   .task-title { font-size: 15px !important; line-height: 1.4 !important; }
   .task-row .assignee, .task-meta, .task-row .meta { font-size: 13px !important; }
   .filter-pill { font-size: 13px !important; min-height: 34px !important; padding: 7px 13px !important; }

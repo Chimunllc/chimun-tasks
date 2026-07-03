@@ -8174,144 +8174,156 @@ function openNomaadContract(quoteNo) {
 function meventContractHtml(o) {
   const C = CHIMUN_LEGAL;
   const cust = escapeHtml(o.customer || '……………………………');
-  const custReg = o.reg_no ? escapeHtml(o.reg_no) : '……………';
   const items = (o.items || []);
   const uPrice = it => Number(it.price != null ? it.price : it.unit_price) || 0;
   const qty = it => Number(it.qty != null ? it.qty : it.quantity) || 0;
-  const rowTot = it => Number(it.total) || uPrice(it) * qty(it);
-  const itemsTotal = items.reduce((s, it) => s + rowTot(it), 0);
-  const total = Number(o.total_mnt) || itemsTotal;
+  const baseLine = it => Number(it.total) || uPrice(it) * qty(it);
+  const baseSum = items.reduce((s, it) => s + baseLine(it), 0) || 1;
+  const total = Number(o.total_mnt) || items.reduce((s, it) => s + baseLine(it), 0);   // НӨАТ багтсан Төлбөр
+  const preVat = Math.round(total / 1.1);           // НӨАТ ороогүй дүн
+  const vat = total - preVat;                       // НӨАТ (10%)
   const deposit = Number(o.deposit_mnt) || 0;
+  const _days = (a, b) => { const t = Date.parse(String(a || '').slice(0, 10)), u = Date.parse(String(b || '').slice(0, 10)); const d = Math.round((u - t) / 86400000); return d > 0 ? d : 1; };
+  const days = _days(o.starts_at, o.stops_at);
   const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
   const contractNo = escapeHtml(o.contract_no || '');
   const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
-  const itemRows = items.length ? items.map((it, i) =>
-    `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}</td><td class="ctr">${qty(it) || ''}</td><td class="rt">${fmtMoney(uPrice(it))}</td><td class="rt">${fmtMoney(rowTot(it))}</td></tr>`).join('')
-    : `<tr><td colspan="5" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
-  const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Түрээсийн бараа, төхөөрөмж</th><th class="ctr">Тоо</th><th class="rt">Нэгж үнэ</th><th class="rt">Дүн</th></tr>${itemRows}
-    <tr><td colspan="4" class="rt" style="font-weight:700">Нийт түрээсийн төлбөр:</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr>
-    ${deposit > 0 ? `<tr><td colspan="4" class="rt">Барьцаа төлбөр:</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}</table>`;
-  const dmgTable = `<table class="svc"><tr><th class="ctr">№</th><th>Эвдрэл, гэмтлийн төрөл</th><th>Тодорхойлолт</th><th class="rt">Нөхөн төлбөр</th></tr>
-    <tr><td class="ctr">1</td><td>Бага</td><td>Жижиг зураас, толбо гэх мэт</td><td class="rt">Үнэлгээний 0%</td></tr>
-    <tr><td class="ctr">2</td><td>Дунд</td><td>Жижиг эд анги эвдэрсэн</td><td class="rt">Үнэлгээний 30%</td></tr>
-    <tr><td class="ctr">3</td><td>Ноцтой</td><td>Үндсэн эд анги эвдэрсэн</td><td class="rt">Үнэлгээний 50%</td></tr>
-    <tr><td class="ctr">4</td><td>Бүрэн эвдэрсэн</td><td>Засварлах боломжгүй</td><td class="rt">Үнэлгээний 100%</td></tr></table>`;
-  const chkTable = `<table class="svc"><tr><th class="ctr">№</th><th>Шалгах зүйлс</th><th class="ctr">Байдал (✓/✗)</th><th>Тайлбар</th></tr>
-    <tr><td class="ctr">1</td><td>Төхөөрөмжийн бүрэн бүтэн байдал</td><td></td><td></td></tr>
+  // Барааны мөр — pre-НӨАТ дүнг жингээр хуваарилж нийлбэр нь preVat-тай яг таарна (сүүлийн мөр үлдэгдлийг авна)
+  let alloc = 0;
+  const itemRows = items.length ? items.map((it, i) => {
+    const line = (i === items.length - 1) ? Math.max(0, preVat - alloc) : Math.round(preVat * baseLine(it) / baseSum);
+    alloc += line;
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">−</td><td class="rt">${fmtMoney(line)}</td></tr>`;
+  }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
+  const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
+    <table class="totb"><tbody>
+      <tr><td>Нийт дүн:</td><td class="rt">${fmtMoney(preVat)}</td></tr>
+      <tr><td>НӨАТ ороогүй дүн:</td><td class="rt">${fmtMoney(preVat)}</td></tr>
+      <tr><td>НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>
+      <tr class="tb-total"><td>Төлбөр:</td><td class="rt">${fmtMoney(total)}</td></tr>
+      ${deposit > 0 ? `<tr><td>Барьцаа төлбөр:</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
+    </tbody></table>`;
+  const chk = (title) => `<table class="svc"><tr><th class="ctr">№</th><th>Шалгах зүйлс</th><th class="ctr">Байдал (✓/✗)</th><th>Тайлбар</th></tr>
+    <tr><td class="ctr">1</td><td>Бүрэн бүтэн байдал</td><td></td><td></td></tr>
     <tr><td class="ctr">2</td><td>Ажиллагаа хэвийн эсэх</td><td></td><td></td></tr>
     <tr><td class="ctr">3</td><td>Иж бүрдэл бүрэн эсэх</td><td></td><td></td></tr>
     <tr><td class="ctr">4</td><td>Гадна өнгө үзэмж цэвэр эсэх</td><td></td><td></td></tr></table>`;
-  const seal = ' &nbsp;&nbsp; <span class="seal">( Тамга )</span>';
-  const sigTable = `<table class="sigt"><tr>
-    <td><div class="sg-role">ТҮРЭЭСЛҮҮЛЭГЧИЙГ ТӨЛӨӨЛЖ</div><b>${C.name}</b><br>Бараа, төхөөрөмжийн түрээс хариуцсан ажилтан:<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}</td>
-    <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧИЙГ ТӨЛӨӨЛЖ</div><b>"${cust}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}</td></tr></table>`;
+  const sigLine = 'Овог нэр: ____________________________ &nbsp;&nbsp; Гарын үсэг: ____________________________';
+  const dtLine = 'Сар ………… Өдөр ………… Цаг ………… Минут …………';
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Түрээсийн гэрээ — ${cust} (#${o.number ?? ''})</title>
 <style>
   *{box-sizing:border-box}
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.55;max-width:820px;margin:0 auto;padding:26px 32px 60px;font-size:13.5px}
-  h1{text-align:center;font-size:18px;margin:8px 0 4px;letter-spacing:.3px;font-weight:700}
-  h2{font-size:14px;margin:16px 0 6px;border-bottom:1px solid #888;padding-bottom:3px}
-  p{margin:4px 0;text-align:justify}
-  .meta-line{text-align:center;color:#444;font-size:12px;margin:4px 0}
-  .apx-title{text-align:center;font-size:15px;font-weight:700;margin:6px 0}
-  .sigt{width:100%;border-collapse:collapse;margin:12px 0 16px;font-size:12.5px}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.5;max-width:820px;margin:0 auto;padding:26px 32px 60px;font-size:13px}
+  h1{text-align:center;font-size:18px;margin:6px 0 10px;letter-spacing:.3px;font-weight:700}
+  h2{font-size:13.5px;margin:15px 0 5px;border-bottom:1px solid #999;padding-bottom:2px}
+  p{margin:3px 0;text-align:justify}
+  .chead{width:100%;border-collapse:collapse;margin:2px 0 8px;font-size:12.5px}
+  .chead td{width:50%;vertical-align:top;padding:8px 12px;border:1px solid #ccc;line-height:1.6}
+  .chead td.r{text-align:right}
+  .ch-role{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:#1f2937;margin-bottom:3px}
+  .meta-line{color:#333;font-size:12px;margin:4px 0 2px;text-align:center}
+  .apx-title{text-align:center;font-size:15px;font-weight:700;margin:8px 0 4px}
+  .sub-title{font-weight:700;font-size:12.5px;margin:12px 0 4px}
+  .sigt{width:100%;border-collapse:collapse;margin:10px 0 12px;font-size:12.5px}
   .sigt td{width:50%;vertical-align:top;padding:6px 14px;border:0;line-height:1.9}
   .sigt td.r{text-align:right}
   .sg-role{font-size:11px;font-weight:700;letter-spacing:.5px;color:#1f2937;margin-bottom:2px}
   .seal{color:#9ca3af;font-style:italic;font-size:11.5px}
   .muted{color:#888}
   .foot{font-size:12px;color:#333;margin-top:14px;border-top:1px solid #ccc;padding-top:8px}
-  .svc{width:100%;border-collapse:collapse;margin:8px 0;font-size:12.5px}
+  .svc{width:100%;border-collapse:collapse;margin:6px 0;font-size:12.5px}
   .svc th,.svc td{border:1px solid #ccc;padding:4px 8px;vertical-align:top}
   .svc th{background:#eee;text-align:left}
+  .totb{border-collapse:collapse;margin:0 0 6px auto;font-size:12.5px;min-width:300px}
+  .totb td{padding:3px 10px}
+  .totb td.rt{text-align:right;white-space:nowrap;min-width:120px}
+  .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
+  .sig-block{margin:6px 0 2px;line-height:2.2}
   .pb{page-break-before:always}
-  .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
+  .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc;z-index:9}
   .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;margin:0 3px}
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
 <div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted" style="font-size:12px">…… талбаруудыг шууд бичиж засаж болно</span></div>
 <div contenteditable="true">
-  <h1>"БАРАА, ТӨХӨӨРӨМЖ ТҮРЭЭСЭЭР АШИГЛУУЛАХ ГЭРЭЭ"</h1>
-  <div class="meta-line">Гэрээний дугаар: <b>${contractNo || '……'}</b> &nbsp;·&nbsp; Захиалгын дугаар: <b>#${o.number ?? ''}</b></div>
-  <div class="meta-line">Гэрээ байгуулсан огноо: ${now.getFullYear()} оны ${now.getMonth() + 1}-р сарын ${now.getDate()}-ны өдөр &nbsp;·&nbsp; Улаанбаатар хот</div>
-  <p>Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай Монгол улсын хуулийн этгээд болох ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас ${custReg} регистрийн дугаартай "${cust}" ("Хэрэглэгч", хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
+  <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
+  <table class="chead"><tr>
+    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b><br>${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}Байгууллагын РД: …………………</td>
+    <td class="r"><div class="ch-role">ТҮРЭЭСЛҮҮЛЭГЧ</div><b>${C.name}</b><br>${C.address}<br>Улаанбаатар, 11000<br>Утас: 7755-1010<br>Hello@Mevent.mn</td>
+  </tr></table>
+  <div class="meta-line">Он сар: <b>${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}</b> &nbsp;·&nbsp; Захиалга: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; Гэрээний дугаар: <b>${contractNo || '……'}</b></div>
+  <div class="meta-line">Эхлэх: <b>${ds.y}-${String(ds.mo).padStart(2, '0')}-${String(ds.d).padStart(2, '0')} ${ds.time}</b> &nbsp;·&nbsp; Дуусах: <b>${de.y}-${String(de.mo).padStart(2, '0')}-${String(de.d).padStart(2, '0')} ${de.time}</b></div>
 
-  <h2>НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ</h2>
-  <p><b>1.1.</b> Түрээслүүлэгч нь хавсралт 1-т заасан бараа, төхөөрөмжийг хэрэглэгчид ашиглуулна.</p>
-  <p><b>1.2.</b> Гэрээний хавсралт 1 нь уг гэрээний салшгүй нэг хэсэг байна.</p>
-  <p><b>1.3.</b> Хэрэглэгч зөвхөн ашиглах эрхтэй бөгөөд өмчлөх эрх шилжихгүй.</p>
-  <p><b>1.4.</b> Гэрээний нэмэлт өөрчлөлтийг талууд харилцан тохиролцож, бичгээр баталгаажуулна.</p>
-
-  <h2>ХОЁР. ТҮРЭЭСИЙН НӨХЦӨЛ</h2>
-  <p><b>2.1.</b> Түрээсийн төлбөр болон барьцааг гэрээний хүчин төгөлдөр болохоос өмнө төлнө.</p>
-  <p><b>2.2.</b> Түрээсийн нөхцөл, үнийн дүнг хавсралт 1-т тусгасан байгаа. Түрээсийн хугацаа: ${ds.y} оны ${ds.mo}-р сарын ${ds.d}-ны өдрийн ${ds.time} цагаас ${de.y} оны ${de.mo}-р сарын ${de.d}-ны өдрийн ${de.time} цаг хүртэл.</p>
-
-  <h2>ГУРАВ. ХУГАЦАА СУНГАХ</h2>
-  <p><b>3.1.</b> Түрээсийн хугацааг сунгах бол түрээслэгч урьдчилан 24 цагийн өмнө мэдэгдэж, төлбөрийг бүрэн төлнө. Мэдэгдээгүй тохиолдолд 1 хоногийн төлбөрийг барьцаа төлбөрөөс суутгана.</p>
-
-  <h2>ДӨРӨВ. ТҮРЭЭСЛЭГЧИЙН ҮҮРЭГ</h2>
-  <p><b>4.1.</b> Төхөөрөмжийг зааврын дагуу зөв ашиглах.</p>
-  <p><b>4.2.</b> Бараа, төхөөрөмжид эвдрэл гэмтэл гарвал 24 цагийн дотор мэдэгдэх.</p>
-  <p><b>4.3.</b> Төхөөрөмжийг гэрээнд заасан хугацаанд, бүрэн бүтэн, цэвэр байдлаар буцаах.</p>
-
-  <h2>ТАВ. ТҮРЭЭСЛҮҮЛЭГЧИЙН ҮҮРЭГ</h2>
-  <p><b>5.1.</b> Төхөөрөмжийг ажиллагааны хэвийн байдалтайгаар хүлээлгэн өгөх.</p>
-  <p><b>5.2.</b> Хэрэглэгчийн хүсэлтээр ашиглах зааварчилгаа өгөх.</p>
-  <p><b>5.3.</b> Түрээсийн хугацаанд төхөөрөмжид үзлэг хийх эрхтэй.</p>
-
-  <h2>ЗУРГАА. ТӨХӨӨРӨМЖ ХҮЛЭЭЛЦЭХ ЖУРАМ</h2>
-  <p><b>6.1.</b> Түрээслүүлэгч төхөөрөмжийг хүлээлгэн өгөх үед бүрэн бүтэн байдлыг хоёр талын төлөөлөл шалгана.</p>
-  <p><b>6.2.</b> Хэрэглэгч төхөөрөмжийг буцаахдаа цэвэрлэж, иж бүрдлийг бүрэн шалгуулна.</p>
-
-  <h2>ДОЛОО. ХАРИУЦЛАГА</h2>
-  <p><b>7.1.</b> Хэрэглэгчийн буруутай үйлдлээс үүдэн гарсан хохирлыг үл маргах журмаар бүрэн нөхөн төлнө.</p>
-  <p><b>7.2.</b> Хэрэглэгч хугацаа хэтрүүлсэн тохиолдолд түрээсийн нэмэлт хоногийн төлбөрийг нэмж төлнө.</p>
-
-  <h2>НАЙМ. БАРЬЦАА ТӨЛБӨР</h2>
-  <p><b>8.1.</b> Хэрэглэгч нь тоног төхөөрөмжийг түрээслэхэд нэг өдрийн нийт төлбөртэй тэнцэх хэмжээний барьцаа төлбөр төлнө.</p>
-  <p><b>8.2.</b> Хэрэглэгч нь гэрээний бүх үүргээ биелүүлж, төхөөрөмжийг бүрэн бүтэн, цэвэр байдлаар буцаасан тохиолдолд барьцаа төлбөрийг буцаан олгоно.</p>
-  <p><b>8.3.</b> Барьцаа төлбөрийг төхөөрөмж буцаасан өдрөөс хойш ажлын 2 хоногийн дотор хэрэглэгчийн заасан данс руу шилжүүлнэ.</p>
-
-  <h2>ЕС. МАРГААН ШИЙДВЭРЛЭХ</h2>
-  <p><b>9.1.</b> Гэрээтэй холбоотой маргааныг талууд харилцан зөвшилцөх замаар шийдвэрлэнэ.</p>
-  <p><b>9.2.</b> Зөвшилцөлд хүрээгүй тохиолдолд Монгол Улсын хууль тогтоомжийн дагуу шийдвэрлэнэ.</p>
-
-  <h2>АРАВ. БУСАД НӨХЦӨЛ</h2>
-  <p><b>10.1.</b> Гэрээний аливаа өөрчлөлтийг бичгээр баталгаажуулна.</p>
-  <p><b>10.2.</b> Гэрээ нь хоёр хувь үйлдэгдэж, тал тус бүрт нэг хувь хадгалагдана.</p>
-
-  <p style="margin-top:14px;font-weight:700">ГЭРЭЭ БАЙГУУЛСАН:</p>
-  ${sigTable}
-  <div class="foot">Хаяг: ${C.address}<br>Холбогдох утас: 7755-1010, 8665-7676</div>
-
-  <div class="pb apx-title">ТҮРЭЭСИЙН ГЭРЭЭНИЙ ХАВСРАЛТ 1</div>
-  <p>Энэхүү хавсралт нь түрээсийн гэрээний салшгүй хэсэг бөгөөд түрээслэгч, түрээслүүлэгч хооронд хүлээлцэх тоног төхөөрөмжийн жагсаалт, бүрэн бүтэн байдал болон гэмтлийн нөхцлийг тодорхойлно.</p>
-
-  <h2>1. Түрээсийн бараа, төхөөрөмжийн жагсаалт, үнийн дүн</h2>
   ${itemTable}
 
-  <h2>2. Эвдрэл, гэмтлийн төрлүүд</h2>
-  ${dmgTable}
-  <p class="muted" style="font-size:11.5px">Нөхөн төлбөрийн хэмжээ нь тухайн төхөөрөмжид учирсан хохирлын түвшнээс хамаарна. Засварлах боломжгүй тохиолдолд шинэ тоног төхөөрөмжийн өртгийг тооцно.</p>
+  <p style="margin-top:8px">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас "${cust}" ("Хэрэглэгч", хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
 
-  <h2>3. Хүлээлгэн өгөх үеийн шалгах зүйлс (Хэрэглэгч)</h2>
-  ${chkTable}
+  <h2>НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ</h2>
+  <p><b>1.1.</b> Түрээслүүлэгч нь дээр заасан бараа, төхөөрөмжийг хэрэглэгчид түр хугацаагаар ашиглуулна. Хэрэглэгч зөвхөн ашиглах эрхтэй, өмчлөх эрх шилжихгүй.</p>
+  <p><b>1.2.</b> Гэрээний нэмэлт өөрчлөлтийг талууд харилцан тохиролцож бичгээр баталгаажуулна.</p>
 
-  <h2>4. Барьцаа төлбөр буцаах</h2>
-  <p>Банк: ……………………… &nbsp; Данс: ……………………… &nbsp; Нэр: ………………………</p>
-  <p style="margin-top:10px">Хүлээн авсан — Хэрэглэгчийн төлөөлөл: ____________________________ (Гарын үсэг)</p>
+  <h2>ХОЁР. ТӨЛБӨР БА БАРЬЦАА</h2>
+  <p><b>2.1.</b> Түрээсийн төлбөр болон барьцааг гэрээ хүчин төгөлдөр болохоос өмнө бүрэн төлнө.</p>
+  <p><b>2.2.</b> Барьцаа төлбөрийг төхөөрөмжийг бүрэн бүтэн, хэт бохирдолгүй, иж бүрдэл бүрэн буцаасан тохиолдолд буцаан олгоно.</p>
+  <p><b>2.3.</b> Барьцааг төхөөрөмж буцаасан өдрөөс хойш ажлын 3 хоногийн дотор хэрэглэгчийн заасан данс руу буцаана.</p>
+  <p><b>2.4.</b> Дараах нөхцөлд барьцаанаас суутгал хийнэ: хугацаа хэтрүүлсэн, эвдрэл гэмтэл гарсан, иж бүрдэл дутсан, хэт бохирдолтой буцаасан, засвар тээврийн нэмэлт зардал гарсан.</p>
+
+  <h2>ГУРАВ. ХУГАЦАА СУНГАХ</h2>
+  <p><b>3.1.</b> Хугацаа сунгах бол дор хаяж 24 цагийн өмнө мэдэгдэж нэмэлт төлбөр төлнө.</p>
+  <p><b>3.2.</b> Мэдэгдэлгүй хэтрүүлсэн тохиолдолд нэмэлт хоногийн төлбөрийг барьцаанаас суутгана.</p>
+
+  <h2>ДӨРӨВ. ХЭРЭГЛЭГЧИЙН ҮҮРЭГ</h2>
+  <p><b>4.1.</b> Хэрэглэгч төхөөрөмжийг зориулалтын дагуу зөв, аюулгүй орчинд ашиглаж хадгална.</p>
+  <p><b>4.2.</b> Эвдрэл гэмтэл гарвал 24 цагийн дотор мэдэгдэнэ.</p>
+  <p><b>4.3.</b> Дараах үйлдлийг хориглоно: гуравдагч этгээдэд дамжуулах, зөвшөөрөлгүй задлах, засварлах, өөрчлөх, зориулалтын бусаар ашиглах.</p>
+  <p><b>4.4.</b> Төхөөрөмжийг гэрээнд заасан хугацаанд бүрэн бүтэн, хэт бохирдолгүй, иж бүрдэл бүрэн буцаана.</p>
+
+  <h2>ТАВ. ЭВДРЭЛ АЛДАГДЛЫН ХАРИУЦЛАГА</h2>
+  <p><b>5.1.</b> Хэрэглэгчийн эзэмшил, ашиглалтын хугацаанд гарсан аливаа эвдрэл, гэмтэл, алдагдлыг хэрэглэгч бүрэн хариуцна. Үүнд хэрэглэгчийн ажилтан, зочин, гуравдагч этгээдийн үйлдлээс үүссэн эвдрэл мөн хамаарна.</p>
+  <p><b>5.2.</b> Засварлах боломжтой эвдрэлийн засварын зардлыг хэрэглэгч хариуцна.</p>
+  <p><b>5.3.</b> Засварлах боломжгүй эвдрэл болон бараа, төхөөрөмж алдагдсан тохиолдолд тухайн бараа, төхөөрөмжийн барааны үнэлгээнд заасан дүнг үл маргах журмаар бүрэн нөхөн төлнө.</p>
+  <p><b>5.4.</b> Түрээслүүлэгч нь төхөөрөмж ашигласнаас үүдсэн шууд бус хохирол, ашиг орлогын алдагдлыг хариуцахгүй.</p>
+  <p><b>5.5.</b> Байгалийн нөхцөл, гуравдагч этгээдийн үйлдэл, осол, гэмтэл зэрэг аливаа шалтгаанаас үүссэн эвдрэл, алдагдлыг хэрэглэгч бүрэн хариуцна.</p>
+
+  <h2>ЗУРГАА. ТӨХӨӨРӨМЖ ХҮЛЭЭЛЦЭХ ЖУРАМ</h2>
+  <p><b>6.1.</b> Хүлээлгэн өгөх болон буцаах үед хоёр талын төлөөлөл бараа, төхөөрөмжийг бүрэн бүтэн байдал, хэвийн ажиллагаа, иж бүрдэл бүрэн эсэхийг шалгаж баталгаажуулна.</p>
+
+  <h2>ДОЛОО. МАРГААН ШИЙДВЭРЛЭХ</h2>
+  <p><b>7.1.</b> Гэрээтэй холбоотой маргааныг талууд харилцан зөвшилцөх замаар шийдвэрлэнэ.</p>
+  <p><b>7.2.</b> Зөвшилцөлд хүрээгүй тохиолдолд Монгол Улсын Хууль тогтоомжийн дагуу шийдвэрлэнэ.</p>
+
+  <h2>НАЙМ. БУСАД</h2>
+  <p><b>8.1.</b> Гэрээний өөрчлөлтийг бичгээр баталгаажуулна.</p>
+  <p><b>8.2.</b> Гэрээ нь талууд гарын үсэг зурж, төлбөр бүрэн төлөгдсөн өдрөөс хүчин төгөлдөр болно.</p>
+
+  <p style="margin-top:12px;font-weight:700">ГЭРЭЭ БАЙГУУЛСАН</p>
+  <table class="sigt"><tr>
+    <td><div class="sg-role">ТҮРЭЭСЛҮҮЛЭГЧ</div>Бараа, төхөөрөмжийн түрээс борлуулалт хариуцсан ажилтан:<br>Овог нэр: …………………………<br>Гарын үсэг: ________________ <span class="seal">( Тамга )</span></td>
+    <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>Овог нэр: …………………………<br>Гарын үсэг: ________________</td>
+  </tr></table>
+  <div class="foot">Хаяг: ${C.address}<br>Холбогдох утас: 7755-1010</div>
+
+  <div class="pb apx-title">ХАВСРАЛТ №2 — ТОНОГ ТӨХӨӨРӨМЖИЙН БАЙДЛЫН ҮНЭЛГЭЭ</div>
+
+  <div class="sub-title">А. ХҮЛЭЭЛГЭН ӨГӨХ — Хэрэглэгч хүлээн авах үеийн шалгалт</div>
+  ${chk()}
+  <div class="sig-block"><b>Шалгаад хүлээлгэн өгсөн ажилтан:</b> ${sigLine}<br><b>Хүлээн авсан — Хэрэглэгчийн төлөөлөл:</b> ${sigLine}<br>${dtLine}</div>
+
+  <div class="sub-title" style="margin-top:16px">Б. БУЦААХ — Түрээслүүлэгч хүлээн авах үеийн шалгалт</div>
+  ${chk()}
+  <div class="sig-block"><b>Шалгаад хүлээлгэн өгсөн түрээслэгч:</b> ${sigLine}<br><b>Хүлээн авсан — Түрээслүүлэгчийн төлөөлөл:</b> ${sigLine}<br>${dtLine}</div>
 </div>
 <script>
 var CT_FILE=${JSON.stringify(fname)};
 function ctWord(){
   var css=document.querySelector('style').innerHTML;
   var body=document.querySelector('[contenteditable]').innerHTML;
-  var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>'+css+' @page{size:A4;margin:1.6cm 1.8cm} body{padding:0;max-width:none}</style></head><body>'+body+'</body></html>';
+  var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>'+css+' @page{size:A4;margin:1.5cm 1.6cm} body{padding:0;max-width:none}</style></head><body>'+body+'</body></html>';
   var blob=new Blob([String.fromCharCode(0xFEFF)+doc],{type:'application/msword'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=CT_FILE+'.doc';
   document.body.appendChild(a); a.click();

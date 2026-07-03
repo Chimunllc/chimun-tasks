@@ -9246,10 +9246,18 @@ const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'delivering', 'rented'
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
 // Очиж авах:   … Гарахад бэлэн→[Олгосон]→Дууссан
+// Хуучин захиалгад хүргэлт нь ТУСДАА бараа мөр болж орсон (⟦DLV⟧ token/хаяггүй).
+// Нэрээр таниж эдгээрийг ч хүргэлттэй гэж үзнэ (зөвхөн хүргэлт/тээвэр — суурилуулалт/оператор БИШ).
+const _DELIVERY_ITEM_RE = /хүргэл|тээвэр|достав|deliver/i;
+function orderHasDeliveryItem(o) {
+  const items = (o && o.items) || [];
+  return Array.isArray(items) && items.some(it => _DELIVERY_ITEM_RE.test(String((it && (it.name || it.title || it.product)) || '')));
+}
 function isDeliveryOrder(o) {
   const d = (typeof parseDelivery === 'function') ? parseDelivery(o && o.note) : null;
-  if (d) return d.zone === 'city' || d.zone === 'out';   // DLV token байвал ЭНЭ шийднэ
-  return !!String((o && (o.delivery_address || o.customer_address)) || '').trim();   // хуучин дата — хаягаар
+  if (d && (d.zone === 'city' || d.zone === 'out')) return true;   // DLV token хот/гадна
+  if (String((o && (o.delivery_address || o.customer_address)) || '').trim()) return true;   // хаягтай
+  return orderHasDeliveryItem(o);   // хуучин захиалга — хүргэлт нь бараа мөр
 }
 function orderNextStep(o) {
   const st = String((o && o.status) || '');

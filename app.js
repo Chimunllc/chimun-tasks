@@ -9460,7 +9460,22 @@ function meStatusKey(st) {
 // шинэчилнэ — өмнө нь 1.7MB-ийг бүтнээр нь татдаг байсан (утсанд хэдэн секунд).
 const _ARCHIVE_STATUSES = ['archived', 'canceled'];
 async function loadAppOrders() {
+  // Давхар дуудлагыг нэгтгэнэ (view нээх + poll хоёул зэрэг дуудахад НЭГ л fetch явна)
+  if (state._ordersInflight) return state._ordersInflight;
+  state._ordersInflight = _loadAppOrdersImpl();
+  try { return await state._ordersInflight; } finally { state._ordersInflight = null; }
+}
+async function _loadAppOrdersImpl() {
   if (!SUPABASE_ANON_KEY) { state.appOrders = state.appOrders || []; return; }
+  // КЭШ-ТҮРҮҮЛЖ ЗУРАХ: өмнөх сессийн идэвхтэй захиалгыг localStorage-оос шууд гаргана
+  // (даалгаврын cache-first загвартай ижил) — сүлжээ иртэл хоосон "Ачаалж байна" харагдахгүй.
+  if (!(state.appOrders || []).length && !state._ordersCacheSeeded) {
+    state._ordersCacheSeeded = true;
+    try {
+      const c = localStorage.getItem('appOrdersActive');
+      if (c) { state.appOrders = JSON.parse(c); if (typeof render === 'function') render(); }
+    } catch (e) {}
+  }
   const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } };
   const isArch = (o) => _ARCHIVE_STATUSES.includes(String(o.status));
   try {
@@ -9470,6 +9485,7 @@ async function loadAppOrders() {
       const active = await r.json();
       const archive = (state.appOrders || []).filter(isArch);   // санах ойд буй архивыг хадгална
       state.appOrders = active.concat(archive);
+      try { localStorage.setItem('appOrdersActive', JSON.stringify(active)); } catch (e) {}   // дараагийн нээлтэд шууд зурна
       if (typeof render === 'function') render();
     }
   } catch (e) { console.warn('loadAppOrders active', e); }
@@ -14979,7 +14995,7 @@ async function bootApp() {
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     if (state.view === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
-    else if (state.view === 'orders' && canSeeOrders()) { loadAppOrders(); loadBooqableOrders(); }
+    else if (state.view === 'orders' && canSeeOrders()) loadBooqableOrders();   // дотроо loadAppOrders дуудна (давхар татахгүй)
     else if (state.view === 'products' && canSeeProducts()) loadProductsCatalog();
     else if (state.view === 'receivables' && state.isCEO) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   }, 45_000);

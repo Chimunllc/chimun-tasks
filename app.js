@@ -4089,7 +4089,8 @@ function boardOrderRow(e, k, todayStr) {
     actBtn = `<button type="button" class="br-act${ok ? '' : ' br-act-off'}" ${ok ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${next.cap}"` : `disabled title="Эрх алга"`}>${escapeHtml(short)}</button>`;
   }
   const selBox = state.ordersSelect ? `<input type="checkbox" class="board-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
-  return `<details class="board-order ${urgCls}"><summary class="board-row">
+  const _rowOpen = state.ordersRowOpen instanceof Set && state.ordersRowOpen.has(String(o.id));
+  return `<details class="board-order ${urgCls}" data-row-oid="${id}"${_rowOpen ? ' open' : ''}><summary class="board-row">
     ${selBox}<span class="br-num">#${o.number ?? ''}</span>
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
     <span class="br-badge">${deliv}</span>
@@ -4444,6 +4445,16 @@ function attachOrdersHandlers() {
     });
   });
   // Stepper / Өнөөдөр зурвас → тухайн шатыг дэлгэж гүйлгэнэ
+  // Захиалгын мөр дэлгэх/хаах — төлөвийг state-д хадгална. Эс бөгөөс polling render()
+  // бүх жагсаалтыг дахин зурахад нээсэн мөр агшинд хаагддаг (утсан дээр "дарахаар хаагдана" гэж мэдрэгддэг байсан).
+  document.querySelectorAll('details.board-order[data-row-oid]').forEach(d => d.addEventListener('toggle', () => {
+    state.ordersRowOpen = state.ordersRowOpen instanceof Set ? state.ordersRowOpen : new Set();
+    if (d.open) state.ordersRowOpen.add(d.dataset.rowOid); else state.ordersRowOpen.delete(d.dataset.rowOid);
+  }));
+  document.querySelectorAll('details.order-items-det[data-items-oid]').forEach(d => d.addEventListener('toggle', () => {
+    state.ordersItemsOpen = state.ordersItemsOpen instanceof Set ? state.ordersItemsOpen : new Set();
+    if (d.open) state.ordersItemsOpen.add(d.dataset.itemsOid); else state.ordersItemsOpen.delete(d.dataset.itemsOid);
+  }));
   document.querySelectorAll('[data-board-jump]').forEach(el => {
     el.addEventListener('click', () => {
       const k = el.dataset.boardJump; (state.ordersBoardOpen = state.ordersBoardOpen || new Set()).add(k); render();
@@ -9880,7 +9891,7 @@ function bqOrderCard(o) {
   </div>` : '');
   // Бараа: app бол inline (o.items), Booqable бол lazy toggle + баримт
   const itemsSection = isApp
-    ? ((o.items && o.items.length) ? `<details class="order-items-det" style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
+    ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''} style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>

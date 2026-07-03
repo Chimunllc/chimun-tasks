@@ -15241,15 +15241,35 @@ function initEvents() {
     if (!box) return;
     box.style.display = ''; box.style.color = 'var(--muted)'; box.textContent = '📄 Баримт уншиж байна…';
     try {
+      try { await loadUsedReceipts(); } catch (e2) {}   // давхардлын шалгалтад нэгдсэн ledger-ийг шинэчилнэ
       const d = parseBankReceipt(await extractPdfText(file));
       if (!d.amount) throw new Error('дүн олдсонгүй');
-      state._finPdfCheck = { amount: d.amount, date: d.date || '', sender: d.senderName || '', receiver: d.receiverName || '' };
+      const fpKey = receiptFingerprint(d);
+      const canonKey = d.bankRef || fpKey;
+      const dup = receiptDupReason(d.bankRef || '', fpKey);
       const r = (state.financeRequests || []).find(x => x.id === state.editingId);
       const req = Number(r && r.amount) || 0;
-      const meta = [d.date, d.receiverName || d.senderName].filter(Boolean).join(' · ');
-      if (req && d.amount === req) { box.style.color = 'var(--ok)'; box.textContent = `✓ Баримтын дүн ${fmtMoney(d.amount)} — хүсэлтийн дүнтэй таарч байна${meta ? ' · ' + meta : ''}`; }
-      else if (req) { box.style.color = 'var(--danger)'; box.textContent = `⚠ Баримтын дүн ${fmtMoney(d.amount)} ≠ хүсэлтийн ${fmtMoney(req)} — зөрүү ${fmtMoney(Math.abs(d.amount - req))}`; }
-      else { box.style.color = 'var(--ok)'; box.textContent = `✓ Баримтын дүн ${fmtMoney(d.amount)}${meta ? ' · ' + meta : ''}`; }
+      // ЗАРЛАГА = Чимунаас ГАРСАН байх ёстой (орлогын эсрэг чиглэл)
+      const senderChimun = /чимун/i.test(d.senderName || '');
+      const receiverChimun = /чимун/i.test(d.receiverName || '');
+      const wrongDirection = receiverChimun && !senderChimun;
+      // Хүлээн авагч ~ хүсэлтийн хүлээн авагч (нэрийн хэсэгчилсэн тулгалт)
+      const _nrm = t => String(t || '').replace(/[А-ЯЁҮӨA-Zа-яёүөa-z]\./g, '').toLowerCase().replace(/[^а-яёүөa-z0-9]/g, '');   // 'Б.Дэлгэрбат' → 'дэлгэрбат' (JS \b кириллд ажилладаггүй)
+      const ben = _nrm(r && r.beneficiary), rcv = _nrm(d.receiverName);
+      const receiverMismatch = !!(ben && rcv && ben.length >= 4 && !rcv.includes(ben.slice(0, 10)) && !ben.includes(rcv.slice(0, 10)));
+      state._finPdfCheck = { amount: d.amount, date: d.date || '', sender: d.senderName || '', receiver: d.receiverName || '', canonKey, fpKey, dup: !!dup, wrongDirection, receiverMismatch };
+      const lines = [];
+      if (req && d.amount === req) lines.push(`<div style="color:var(--ok);">✓ Дүн ${fmtMoney(d.amount)} — хүсэлттэй таарч байна</div>`);
+      else if (req) lines.push(`<div style="color:var(--danger);">⚠ Дүн ${fmtMoney(d.amount)} ≠ хүсэлтийн ${fmtMoney(req)} (зөрүү ${fmtMoney(Math.abs(d.amount - req))})</div>`);
+      else lines.push(`<div style="color:var(--ok);">✓ Дүн ${fmtMoney(d.amount)}</div>`);
+      if (dup) lines.push(`<div style="color:var(--danger);">⛔ Энэ баримт өөр гүйлгээнд аль хэдийн ашиглагдсан (${escapeHtml(dup)}) — гүйцэтгэх боломжгүй</div>`);
+      if (wrongDirection) lines.push(`<div style="color:var(--danger);">⚠ Чимун ХҮЛЭЭН АВАГЧ байна — энэ ОРЛОГЫН баримт, зарлагынх биш</div>`);
+      else if (d.senderName && !senderChimun) lines.push(`<div style="color:var(--warn);">⚠ Шилжүүлэгч: ${escapeHtml(d.senderName)} (Чимун биш — өөр данснаас гарсан бол зүгээр)</div>`);
+      else if (senderChimun) lines.push(`<div style="color:var(--ok);">✓ Чимун ХХК-аас гарсан</div>`);
+      if (receiverMismatch) lines.push(`<div style="color:var(--warn);">⚠ Хүлээн авагч «${escapeHtml(d.receiverName)}» ≠ хүсэлтийн «${escapeHtml(r ? r.beneficiary : '')}»</div>`);
+      else if (rcv && ben) lines.push(`<div style="color:var(--ok);">✓ Хүлээн авагч: ${escapeHtml(d.receiverName)}</div>`);
+      if (d.date) lines.push(`<div style="color:var(--muted);">Огноо: ${escapeHtml(d.date)}</div>`);
+      box.style.color = ''; box.innerHTML = lines.join('');
     } catch (err) { box.style.color = 'var(--warn)'; box.textContent = '⚠ PDF-ээс дүн уншигдсангүй — гараар шалгана уу'; }
   });
   document.getElementById('f-execute')?.addEventListener('click', async () => {
@@ -15258,11 +15278,24 @@ function initEvents() {
     if (!paymentFile) {
       const proceed = await showConfirm('Төлбөрийн баримт хавсаргаагүй байна. Үргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' });
       if (!proceed) return;
-    } else if (state._finPdfCheck && (() => { const r0 = (state.financeRequests || []).find(x => x.id === state.editingId); return r0 && Number(r0.amount) && state._finPdfCheck.amount !== Number(r0.amount); })()) {
+    } else {
+      const pc = state._finPdfCheck;
+      if (pc && pc.dup) { showToast('⛔ Энэ баримт өөр гүйлгээнд аль хэдийн ашиглагдсан — өөр баримт хавсаргана уу', 'error', 5000); return; }
       const r0 = (state.financeRequests || []).find(x => x.id === state.editingId);
-      if (!(await showConfirm(`⚠ Баримтын дүн ${fmtMoney(state._finPdfCheck.amount)} нь хүсэлтийн ${fmtMoney(r0.amount)}-тай ЗӨРЖ байна. Зөрүүтэй ч гүйцэтгэсэн гэж тэмдэглэх үү?`, { okText: 'Зөрүүтэй ч тэмдэглэ', danger: true }))) return;
-    } else if (!(await showConfirm('Энэ гүйлгээг хийсэн гэж тэмдэглэх үү?', { okText: 'Гүйцэтгэсэн' }))) return;
+      const warns = [];
+      if (pc && r0 && Number(r0.amount) && pc.amount !== Number(r0.amount)) warns.push(`дүн зөрүүтэй (${fmtMoney(pc.amount)} ≠ ${fmtMoney(r0.amount)})`);
+      if (pc && pc.wrongDirection) warns.push('Чимун ХҮЛЭЭН АВАГЧ байна (орлогын баримт байж магадгүй)');
+      if (pc && pc.receiverMismatch) warns.push('хүлээн авагч хүсэлтийнхтэй таарахгүй');
+      if (warns.length) {
+        if (!(await showConfirm('⚠ ' + warns.join(' · ') + '. Зөрүүтэй ч гүйцэтгэсэн гэж тэмдэглэх үү?', { okText: 'Зөрүүтэй ч тэмдэглэ', danger: true }))) return;
+      } else if (!(await showConfirm('Энэ гүйлгээг хийсэн гэж тэмдэглэх үү?', { okText: 'Гүйцэтгэсэн' }))) return;
+    }
     await withBusy(document.getElementById('f-execute'), async () => {
+      // Баримтыг нэгдсэн ledger-т ЭЗЭМШИНЭ — нэг баримт орлого/захиалга/өөр хүсэлтэд дахин орохгүй
+      if (paymentFile && state._finPdfCheck && state._finPdfCheck.canonKey) {
+        const rr = await reserveReceipt(state._finPdfCheck.canonKey, { fp: state._finPdfCheck.fpKey, amount: state._finPdfCheck.amount, date: state._finPdfCheck.date, ref: 'зарлага · ' + (state._finPdfCheck.receiver || ''), usedIn: 'fin:' + state.editingId });
+        if (rr === 'dup') { showToast('⛔ Энэ баримт аль хэдийн өөр гүйлгээнд ашиглагдсан — гүйцэтгэл цуцлагдлаа', 'error', 5000); return; }
+      }
       // Upload payment proof first if provided
       if (paymentFile) {
         showToast('Баримт upload хийж байна...', '', 2000);

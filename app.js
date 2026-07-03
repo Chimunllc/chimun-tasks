@@ -2051,6 +2051,7 @@ function openFinanceModal(id = null) {
     const fpNew = document.getElementById('f-priority'); if (fpNew) fpNew.value = 'med';
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
+    { const _b = document.getElementById('f-payment-pdf-check'); if (_b) { _b.style.display = 'none'; _b.textContent = ''; } state._finPdfCheck = null; }
     document.getElementById('f-receipt-file').value = '';
     document.getElementById('f-purchase-preview').innerHTML = '';
     document.getElementById('f-payment-preview').innerHTML = '';
@@ -2207,6 +2208,7 @@ function openFinanceModal(id = null) {
     renderProofPreview('f-payment-preview', t.payment_proof_url, 'Төлбөрийн');
     document.getElementById('f-purchase-file').value = '';
     document.getElementById('f-payment-file').value = '';
+    { const _b = document.getElementById('f-payment-pdf-check'); if (_b) { _b.style.display = 'none'; _b.textContent = ''; } state._finPdfCheck = null; }
     document.getElementById('f-receipt-file').value = '';
     [...modal.querySelectorAll('input, textarea')].forEach(el => el.setAttribute('readonly','readonly'));
     // File picker нь readonly биш — upload боломжтой
@@ -14911,12 +14913,37 @@ function initEvents() {
     await decideFinanceRequest(state.editingId, 'deferred');
     closeFinanceModal();
   }, { successText: 'Хойшлууллаа' }));
+  // Шилжүүлгийн баримт PDF бол автоматаар уншиж дүнг хүсэлтийн дүнтэй ТУЛГАНА
+  // (Голомт/Хаан parseBankReceipt дахин ашиглана — захиалга/NOMAAD-тай ижил хөдөлгүүр).
+  document.getElementById('f-payment-file')?.addEventListener('change', async (e) => {
+    const box = document.getElementById('f-payment-pdf-check');
+    state._finPdfCheck = null;
+    if (box) { box.style.display = 'none'; box.textContent = ''; }
+    const file = e.target.files[0];
+    if (!file || !(/pdf$/i.test(file.type) || /\.pdf$/i.test(file.name || ''))) return;
+    if (!box) return;
+    box.style.display = ''; box.style.color = 'var(--muted)'; box.textContent = '📄 Баримт уншиж байна…';
+    try {
+      const d = parseBankReceipt(await extractPdfText(file));
+      if (!d.amount) throw new Error('дүн олдсонгүй');
+      state._finPdfCheck = { amount: d.amount, date: d.date || '', sender: d.senderName || '', receiver: d.receiverName || '' };
+      const r = (state.financeRequests || []).find(x => x.id === state.editingId);
+      const req = Number(r && r.amount) || 0;
+      const meta = [d.date, d.receiverName || d.senderName].filter(Boolean).join(' · ');
+      if (req && d.amount === req) { box.style.color = 'var(--ok)'; box.textContent = `✓ Баримтын дүн ${fmtMoney(d.amount)} — хүсэлтийн дүнтэй таарч байна${meta ? ' · ' + meta : ''}`; }
+      else if (req) { box.style.color = 'var(--danger)'; box.textContent = `⚠ Баримтын дүн ${fmtMoney(d.amount)} ≠ хүсэлтийн ${fmtMoney(req)} — зөрүү ${fmtMoney(Math.abs(d.amount - req))}`; }
+      else { box.style.color = 'var(--ok)'; box.textContent = `✓ Баримтын дүн ${fmtMoney(d.amount)}${meta ? ' · ' + meta : ''}`; }
+    } catch (err) { box.style.color = 'var(--warn)'; box.textContent = '⚠ PDF-ээс дүн уншигдсангүй — гараар шалгана уу'; }
+  });
   document.getElementById('f-execute')?.addEventListener('click', async () => {
     if (!state.editingId) return;
     const paymentFile = document.getElementById('f-payment-file').files[0];
     if (!paymentFile) {
       const proceed = await showConfirm('Төлбөрийн баримт хавсаргаагүй байна. Үргэлжлүүлэх үү?', { okText: 'Үргэлжлүүлэх' });
       if (!proceed) return;
+    } else if (state._finPdfCheck && (() => { const r0 = (state.financeRequests || []).find(x => x.id === state.editingId); return r0 && Number(r0.amount) && state._finPdfCheck.amount !== Number(r0.amount); })()) {
+      const r0 = (state.financeRequests || []).find(x => x.id === state.editingId);
+      if (!(await showConfirm(`⚠ Баримтын дүн ${fmtMoney(state._finPdfCheck.amount)} нь хүсэлтийн ${fmtMoney(r0.amount)}-тай ЗӨРЖ байна. Зөрүүтэй ч гүйцэтгэсэн гэж тэмдэглэх үү?`, { okText: 'Зөрүүтэй ч тэмдэглэ', danger: true }))) return;
     } else if (!(await showConfirm('Энэ гүйлгээг хийсэн гэж тэмдэглэх үү?', { okText: 'Гүйцэтгэсэн' }))) return;
     await withBusy(document.getElementById('f-execute'), async () => {
       // Upload payment proof first if provided

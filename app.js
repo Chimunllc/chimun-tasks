@@ -14826,6 +14826,8 @@ let _pollTimer = null;
 let _visibilityBound = false;
 async function bootApp() {
   initTheme();
+  // Утсанд хайлтын урт placeholder багтдаггүй — богино хувилбар (title-д бүрэн заавар хэвээр)
+  if (window.innerWidth <= 720) { const _se = document.getElementById('search'); if (_se) _se.placeholder = 'Хайх...'; }
   if (!_eventsBound) {
     initEvents();
     _eventsBound = true;

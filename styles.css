@@ -1398,7 +1398,7 @@ html, body {
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
-    max-width: calc(100vw - 170px) !important;
+    max-width: calc(100vw - 215px) !important;   /* hamburger + lens(92) + theme + bell багтана */
   }
   .header .sub { display: none !important; }
 
@@ -5705,4 +5705,44 @@ body.role-daily #add-project { display: none !important; }
   textarea {
     font-size: 16px !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   БОДИТ УТАСНЫ ЗАСВАРУУД (2026-07-03, iPhone дэлгэцийн зургаас)
+   1) Суулгасан PWA-д дээд зай ДАВХАР тооцогдож байсан (body + header
+      хоёул safe-area нэмдэг) → header-т зөвхөн жижиг padding үлдээв.
+   2) Салбарын сонгогч (M-Event lens) гарчгийг дарж байсан → өргөн хязгаарлав.
+   3) Шүүлтийн pill-үүд 4 мөр болж овоордог → нэг мөр хажуу scroll,
+      хайлт доороо бүтэн өргөнтэй.
+   ═══════════════════════════════════════════════════════════ */
+@media (display-mode: standalone) and (max-width: 720px) {
+  /* body аль хэдийн env(safe-area-inset-top) зай нэмсэн — header давхар нэмэхгүй */
+  .header { padding-top: 8px !important; }
+  .header-actions { top: 8px !important; }
+}
+@media (max-width: 720px) {
+  /* Салбарын сонгогч — гарчигтай мөр булаалдахгүй жижиг хэлбэр */
+  #branch-lens {
+    max-width: 92px !important;
+    font-size: 12px !important;
+    padding: 6px 4px !important;
+    text-overflow: ellipsis;
+  }
+  /* Шүүлтийн pill-үүд — НЭГ мөр, хажуу тийш гүйлгэдэг (овоорохгүй) */
+  .toolbar { flex-direction: column; align-items: stretch; gap: 8px; flex-wrap: nowrap; }
+  /* :not([style*="none"]) — JS-ээр нуусан бүлгийг (fin-filters г.м.) ил гаргачихгүй */
+  .filter-group:not([style*="none"]) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+  .filter-group::-webkit-scrollbar { display: none; }
+  .filter-pill { flex-shrink: 0; }
+  /* Хайлт — өөрийн мөрөнд бүтэн өргөн */
+  .toolbar .search { width: 100%; }
+  .toolbar .search input { width: 100% !important; box-sizing: border-box; }
 }

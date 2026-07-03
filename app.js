@@ -10768,14 +10768,15 @@ function renderBooqable() {
     if (roi.length) {
       const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
       const roiRow = (x) => {
-        const rev = N(x.revenue_mnt), cost = N(x.unit_cost_mnt), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
+        const rev = N(x.revenue_mnt), owned = N(x.owned_qty) || 1, tot = N(x.total_cost_mnt) || (N(x.unit_cost_mnt) * owned), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
         const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
-        const badge = cost <= 0 ? `<span style="color:var(--muted);">өртөг ?</span>`
+        const badge = (tot <= 0 || rx == null) ? `<span style="color:var(--muted);">өртөг ?</span>`
           : `<span style="color:${rx >= 3 ? 'var(--ok)' : rx >= 1 ? 'var(--warn)' : 'var(--danger)'};font-weight:700;">ROI ${rx}×</span>`;
+        const costStr = tot > 0 ? `хөрөнгө ${fmtMoneyShort(tot)}${owned > 1 ? ` (${owned.toLocaleString('mn-MN')}ш)` : ''}` : 'өртөг ?';
         return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;">
           <div style="flex:0 0 40%;min-width:0;">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}</div>
-            <div style="font-size:10px;color:var(--muted);">${badge} · өртөг ${fmtMoneyShort(cost)} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
+            <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
           </div>
           <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:5px;"></div></div>
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>
@@ -10784,7 +10785,7 @@ function renderBooqable() {
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
       body = kpis
         + card('Орлого × ROI — бараа бүр', roi.map(roiRow).join(''),
-            'ROI× = нийт түрээсийн орлого ÷ нэгж өртөг (өртгөө хэдэн дахин нөхсөн). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
+            'ROI× = бодит цуглуулсан орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
             stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '')
         + svcCard(svc);

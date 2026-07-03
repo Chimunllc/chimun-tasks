@@ -3063,6 +3063,8 @@ function syncFilterPills() {
   if (finG)  finG.style.display  = isFin ? '' : 'none';
   const finSort = document.getElementById('fin-sort');
   if (finSort) { finSort.style.display = isFin ? '' : 'none'; finSort.value = state.financeSort || 'smart'; }
+  const finRecon = document.getElementById('fin-recon-btn');
+  if (finRecon) finRecon.style.display = (isFin && (state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()))) ? '' : 'none';
   const grp = isFin ? finG : taskG;
   if (!grp) return;
   let matched = false;
@@ -3993,6 +3995,102 @@ function parseStatement(matrix) {
   return { rows, headerRow: hr, cols };
 }
 
+// ─── САНХҮҮГИЙН ТУЛГАЛТ — банкны хуулга (xlsx/csv) × аппын Дууссан хүсэлтүүд ───────
+// Голомтын хуулга upload → дүн яг ижил ±14 хоногоор тулгаж 5 ангилалд хуваана.
+// (Оффлайн Python тулгалттай ижил логик — 2026-07-03-ны 6-р сарын тулгалтаар батлагдсан.)
+async function runFinRecon(files) {
+  const allRows = []; const ownAccts = new Set();
+  for (const f of files) {
+    const matrix = await statementFileToMatrix(f);
+    // Өөрийн дансны дугаар — хуулгын толгойн "Дансны дугаар" нүдний хажуугаас
+    for (let i = 0; i < Math.min(3, matrix.length); i++) {
+      const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
+      cells.forEach((c, j) => { if (/дансны дугаар/i.test(c) && cells[j + 1]) { const m = String(cells[j + 1]).match(/\d{6,}/); if (m) ownAccts.add(m[0]); } });
+    }
+    const { rows } = parseStatement(matrix);
+    rows.forEach(r => allRows.push(r));
+  }
+  if (!allRows.length) throw new Error('Хуулгаас гүйлгээ уншигдсангүй — Голомтын xlsx мөн эсэхийг шалгана уу');
+  const isFee = r => /charges for pord/i.test(r.memo) || (/шимтгэл/i.test(r.memo) && r.debit <= 500);
+  const debits = allRows.filter(r => r.debit > 0 && !isFee(r)).map(r => ({ ...r, used: false }));
+  const dates = allRows.map(r => r.date).filter(Boolean).sort();
+  const d0 = dates[0], d1 = dates[dates.length - 1];
+  const addD = (ds, n) => { const d = new Date(ds); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const reqs = (state.financeRequests || [])
+    .filter(x => x.status === 'done' && Number(x.amount) > 0)
+    .map(x => ({ id: x.id, amt: Number(x.amount), ts: String(x.executed_at || x.requested_at || '').slice(0, 10),
+      ben: x.beneficiary || '', purpose: x.purpose || '', bank: x.bank || '', matched: null }))
+    .filter(x => x.ts >= addD(d0, -14) && x.ts <= addD(d1, 14));
+  const dayDiff = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
+  for (const q of reqs) {
+    let best = null, bs = 1e9;
+    for (const st of debits) {
+      if (st.used || st.debit !== q.amt) continue;
+      const dd = dayDiff(st.date, q.ts);
+      if (dd > 14 || dd >= bs) continue;
+      bs = dd; best = st;
+    }
+    if (best) { best.used = true; q.matched = best; }
+  }
+  const isOwn = st => [...ownAccts].some(a => String(st.account || '').includes(a)) || /чимун/i.test(st.memo);   // өөрийн данс/нэр рүү = зарлага биш
+  const isKhan = st => /хаан|данс хооронд/i.test(st.memo);
+  const leftovers = debits.filter(st => !st.used);
+  return {
+    period: [d0, d1], nStmt: allRows.length, nAcct: ownAccts.size,
+    matched: reqs.filter(q => q.matched),
+    notFound: reqs.filter(q => !q.matched),
+    inter: leftovers.filter(isOwn),
+    khan: leftovers.filter(st => !isOwn(st) && isKhan(st)),
+    unrec: leftovers.filter(st => !isOwn(st) && !isKhan(st)),
+  };
+}
+function openFinReconModal() {
+  document.getElementById('finrecon-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'finrecon-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:760px;max-height:88vh;overflow-y:auto;">
+    <h2>📊 Санхүүгийн тулгалт</h2>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Голомтын дансны хуулга (xlsx/csv) оруулна — хэд хэдэн дансны хуулгыг ЗЭРЭГ сонгож болно. Аппын «Дууссан» хүсэлтүүдтэй дүн+огноогоор автоматаар тулгана.</div>
+    <label for="finrecon-file" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:16px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+      📄 <b>Хуулга сонгох</b> (xlsx / csv — олон файл зэрэг болно)
+      <input id="finrecon-file" type="file" accept=".xlsx,.xls,.csv" multiple hidden>
+      <div id="finrecon-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Файл сонгомогц шууд тулгана.</div>
+    </label>
+    <div id="finrecon-out"></div>
+    <div class="modal-actions" style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn" id="finrecon-close">Хаах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#finrecon-close').addEventListener('click', () => modal.remove());
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#finrecon-file').addEventListener('change', async (e) => {
+    const files = [...e.target.files]; if (!files.length) return;
+    const st = modal.querySelector('#finrecon-status');
+    st.textContent = '⏳ Уншиж, тулгаж байна…';
+    try {
+      const R = await runFinRecon(files);
+      st.textContent = `✓ ${files.map(f => f.name).join(', ')} — ${R.nStmt} гүйлгээ (${R.period[0]} → ${R.period[1]}, ${R.nAcct} данс)`;
+      const money = n => fmtMoney(n);
+      const sum = a => a.reduce((s, x) => s + (x.amt != null ? x.amt : x.debit), 0);
+      const catRow = (icon, label, arr, col, note, bodyHtml) => `<details style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--panel);">
+        <summary style="display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;list-style:none;">
+          <span style="font-size:15px;">${icon}</span><b style="flex:1;">${label}</b>
+          <span style="font-weight:700;">${arr.length}</span><span style="color:${col};font-weight:700;min-width:120px;text-align:right;">${money(sum(arr))}</span>
+        </summary>
+        <div style="padding:4px 13px 10px;font-size:11.5px;color:var(--muted);">${note}</div>
+        <div style="max-height:260px;overflow-y:auto;padding:0 13px 10px;">${bodyHtml || '<div style="color:var(--muted);font-size:12px;">Хоосон</div>'}</div>
+      </details>`;
+      const reqRow = q => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(q.ts.slice(5))} · <b>${escapeHtml(q.ben)}</b> · ${escapeHtml(q.purpose.slice(0, 36))}${q.bank ? ` · <span style="color:var(--muted);">${escapeHtml(q.bank)}</span>` : ''}</span><b style="white-space:nowrap;">${money(q.amt)}</b></div>`;
+      const stRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 48))}</span><b style="white-space:nowrap;">${money(x.debit)}</b></div>`;
+      modal.querySelector('#finrecon-out').innerHTML =
+        catRow('✅', 'Банкинд таарсан', R.matched, 'var(--ok)', 'Дүн яг ижил, огноо ±14 хоногт. Асуудалгүй.', R.matched.map(reqRow).join('')) +
+        catRow('❓', 'Банкинд олдоогүй хүсэлт', R.notFound, 'var(--danger)', 'Аппд Дууссан гэсэн ч энэ хуулгад алга. Өөр банкны данснаас (ж: Хаан) төлөгдсөн бол тэр хуулгыг нэмж оруулна уу.', R.notFound.map(reqRow).join('')) +
+        catRow('💰', 'Аппд бүртгэлгүй зарлага', R.unrec, 'var(--warn)', 'Банкнаас гарсан ч аппд хүсэлтгүй — зардлын тайланд ороогүй. Нөхөж бүртгэх.', R.unrec.map(stRow).join('')) +
+        catRow('🏦', 'Хаан банк / данс хооронд', R.khan, 'var(--muted)', 'Мөнгө өөр данс руу шилжсэн — зарлага биш.', R.khan.map(stRow).join('')) +
+        catRow('💸', 'Өөрийн данс хоорондын', R.inter, 'var(--muted)', 'Оруулсан хуулгуудын данс хоорондын шилжүүлэг — зарлага биш.', R.inter.map(stRow).join(''));
+    } catch (err) { st.textContent = '⚠ ' + err.message; }
+  });
+  modal.classList.add('open');
+}
 // Ирсэн (Орлого) мөрүүдийг бүртгэсэн төлбөртэй тулгана → 4 хуваарь.
 function reconcileOrders(stmtRows, orders, opts) {
   const tol = (opts && opts.amountTol) || 0;
@@ -15124,6 +15222,7 @@ function initEvents() {
 
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };
   document.getElementById('fin-sort')?.addEventListener('change', (e) => { state.financeSort = e.target.value; render(); });
+  document.getElementById('fin-recon-btn')?.addEventListener('click', openFinReconModal);
 
   // settings — modal-д зөвхөн notification permission helper (initEvents-д dynamic нэмэгдэнэ)
   document.getElementById('export-btn')?.addEventListener('click', exportTasksReport);

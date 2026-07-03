@@ -7056,6 +7056,19 @@ async function assignNomaadItemInline(quoteNo, itemName) {
 // Бодит/хүлээн зөвшөөрөгдөх дүн = Эцсийн гэрээний дүн (акт) байвал тэр, эс бөгөөс Нийт дүн (санал).
 // Орлого/тайланд grand_total биш ҮҮНИЙГ ашиглана — муу гүйцэтгэлийн хасалт орлогыг хөөрөгдөхгүй.
 const nomaadEffTotal = o => Number(o.final_amount) || Number(o.grand_total) || 0;
+// Захиалгад холбогдсон ЗАРДЛЫН нийлбэр (⟦LNK⟧ объект холбоос, Дууссан хүсэлтүүд).
+// type='nomaad' бол id=quote_no, type='order' бол id=app_orders.id.
+function linkedExpenseSum(type, id) {
+  if (!id) return { n: 0, sum: 0 };
+  let n = 0, sum = 0;
+  (state.financeRequests || []).forEach(r => {
+    if (r.status !== 'done' || r.link_type !== type || String(r.link_id) !== String(id)) return;
+    n++; sum += Number(r.amount) || 0;
+  });
+  return { n, sum };
+}
+// Ашгийн мөр зөвхөн бүх санхүүг хардаг хүнд (ажилтанд зөвхөн өөрийн хүсэлт ирдэг тул дутуу дүн харагдана)
+function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
   const isDoneQuote = nomaadStage(o) === 'done';   // Гүйцэтгэсэн — засах хаалттай (түүх хамгаална)
@@ -7080,6 +7093,11 @@ function nomaadCardHtml(o) {
     : balance < 0
       ? `<div style="font-weight:700;color:var(--danger);font-size:13px;" title="Хүлээн авсан орлого гэрээний дүнгээс их — хүн нэмэгдсэн бол гэрээний дүнг Засах-аар шинэчилнэ үү.">⚠ Илүү төлсөн: ${fmtMoney(-balance)}</div>`
       : `<div style="font-weight:700;color:var(--ok);font-size:13px;">✓ Бүрэн төлөгдсөн</div>`;
+  // Ашиг = гэрээний дүн (accrual орлого) − холбогдсон зардал
+  const _exp = canSeeProfit() ? linkedExpenseSum('nomaad', o.quote_no) : { n: 0, sum: 0 };
+  const profitHtml = _exp.n
+    ? `<div class="order-meta">Зардал (${_exp.n}): <b>${fmtMoney(_exp.sum)}</b> · Ашиг: <b style="color:${(contractTotal - _exp.sum) >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(contractTotal - _exp.sum)}</b></div>`
+    : '';
   const days = nomaadDaysLeft(o.date_start);
   const asgTasks = nomaadOrderTasks(o.quote_no);
   const asgDone  = asgTasks.filter(t => t.status === 'done').length;
@@ -7134,6 +7152,7 @@ function nomaadCardHtml(o) {
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
       ${nomaadIsCancelled(o) && o.note ? `<div class="order-meta" style="color:var(--danger);font-weight:600;">❌ ${escapeHtml(o.note)}</div>` : ''}
+      ${profitHtml}
       ${logHistoryHtml}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
@@ -10361,6 +10380,11 @@ function bqOrderCard(o) {
   const activeSt = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
   const canPay = !isApp && activeSt && bal > 0;
   const canCancel = !isApp && activeSt;
+  // Ашиг = захиалгын дүн (accrual) − холбогдсон зардал (зөвхөн бүх санхүү хардаг хүнд)
+  const _oExp = (isApp && canSeeProfit()) ? linkedExpenseSum('order', o.id) : { n: 0, sum: 0 };
+  const profitRow = _oExp.n
+    ? `<div class="order-meta">Зардал (${_oExp.n}): <b>${fmtMoney(_oExp.sum)}</b> · Ашиг: <b style="color:${(total - _oExp.sum) >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(total - _oExp.sum)}</b></div>`
+    : '';
   // Төлбөрийн мөр — Нийт · Төлсөн · Үлдэгдэл (цуцлахаас бусдад)
   const payRow = (total > 0 && st !== 'canceled')
     ? `<div class="order-meta">Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
@@ -10400,6 +10424,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
+    ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${slogHtml}
     ${stageMetaHtml(o)}

@@ -1732,6 +1732,9 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     // dept_branch: АЖИЛТАН өөрөө илгээвэл АВТО өөрийн салбар (форм сонголтыг үл хэрэгсэнэ).
     // Нягтлан/CEO өмнөөс оруулбал формоор сонгосон салбар (эс бөгөөс өөрийн default).
     dept_branch: (function(){
+      // ОБЪЕКТ сонгосон бол салбар түүнээс АВТОМАТ гарна — хэн илгээснээс үл хамааран (давхар асуухгүй).
+      const byLink = { nomaad: 'КЕМП', order: 'ИВЕНТ', car: 'ХХК', product: 'ХХК', general: 'ЗАХ' }[linkType];
+      if (byLink) return byLink;
       const me = (TEAM || []).find(m => personKey(m) === owner || (m.email && m.email === owner));
       const auto = (bs) => (bs || []).includes('m-event') ? 'ИВЕНТ' : (bs || []).includes('camp') ? 'КЕМП' : 'ЗАХ';
       const isAcct = me && (/нягтлан/i.test(me.role || '') || (Number(me.level) || 0) >= 100);
@@ -1985,6 +1988,17 @@ function _finLinkSelect(type, opts = {}) {
     const sug = { order: '1000', nomaad: '1000', car: '6000', product: '6000', general: '2000' }[state._finLinkType];
     const mc = document.getElementById('f-main-category');
     if (sug && mc && [...mc.options].some(o => o.value === sug)) { mc.value = sug; mc.dispatchEvent(new Event('change')); }
+  }
+  // Салбар объектоос АВТОМАТ — шинэ хүсэлтэд "Аль салбарт?" талбарыг нууж, автомат утгыг тэмдэглэнэ
+  const _brMap = { nomaad: 'КЕМП', order: 'ИВЕНТ', car: 'ХХК', product: 'ХХК', general: 'ЗАХ' };
+  const _br = _brMap[state._finLinkType];
+  const _row = document.getElementById('f-branch-row'), _note = document.getElementById('f-branch-auto');
+  if (_row && _note) {
+    if (_br && !state.editingId) {
+      const _sel = document.getElementById('f-dept-branch'); if (_sel) _sel.value = _br;
+      const _nm = ((typeof FINANCE_BRANCHES !== 'undefined' && FINANCE_BRANCHES.find(b => b.code === _br)) || {}).name || _br;
+      _row.style.display = 'none'; _note.style.display = ''; _note.textContent = `Салбар: ${_nm} — сонгосон объектоос автомат`;
+    } else { _row.style.display = ''; _note.style.display = 'none'; }
   }
 }
 function financeLinkReset(t) {

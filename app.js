@@ -4114,6 +4114,34 @@ function boardOrderRow(e, k, todayStr) {
     ${actBtn}
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
 }
+// Бүлэг доторх эрэмбэ — бүлэг бүр өөрийн сонголттой (state.bucketSort[key])
+const _ORDER_SORTS = [
+  ['smart', '⏱ Ойрын огноогоор'],
+  ['num_desc', '№ Дугаар: шинэ→хуучин'],
+  ['num_asc', '№ Дугаар: хуучин→шинэ'],
+  ['date_desc', '📅 Огноо: шинэ→хуучин'],
+  ['date_asc', '📅 Огноо: хуучин→шинэ'],
+  ['amount_desc', '💰 Дүн: их→бага'],
+  ['unpaid', '💵 Төлбөргүй эхэнд'],
+];
+// Терминал бүлгүүд (дуусан/архив г.м.) огнооны бүлэглэлт утгагүй тул огноогоор эрэмбэлнэ default
+const _BUCKET_DEFAULT_SORT = { done: 'date_desc', archived: 'date_desc', canceled: 'num_desc', draft: 'num_desc' };
+function bucketSortMode(key) { return (state.bucketSort && state.bucketSort[key]) || _BUCKET_DEFAULT_SORT[key] || 'smart'; }
+function sortOrders(arr, mode) {
+  const num = e => Number(e.o.number) || 0;
+  const dt = e => String(e.o.starts_at || e.o.created_at || '');
+  const bal = e => Math.max(0, (Number(e.o.total_mnt) || 0) - (Number(e.o.paid_mnt) || 0));
+  const a = arr.slice();
+  switch (mode) {
+    case 'num_desc': return a.sort((x, y) => num(y) - num(x));
+    case 'num_asc': return a.sort((x, y) => num(x) - num(y));
+    case 'date_desc': return a.sort((x, y) => dt(y).localeCompare(dt(x)) || num(y) - num(x));
+    case 'date_asc': return a.sort((x, y) => dt(x).localeCompare(dt(y)) || num(x) - num(y));
+    case 'amount_desc': return a.sort((x, y) => (y.total - x.total) || num(y) - num(x));
+    case 'unpaid': return a.sort((x, y) => bal(y) - bal(x) || num(y) - num(x));
+    default: return a;
+  }
+}
 function renderOrderPipelineBoard(shown, todayStr) {
   const byB = {};
   shown.forEach(e => { const bk = bucketOf(e.o.status); (byB[bk] = byB[bk] || []).push(e); });
@@ -4153,19 +4181,30 @@ function renderOrderPipelineBoard(shown, todayStr) {
     const isOpen = (open.has(b.key) || searching) && list.length;
     let bodyHtml = '';
     if (isOpen) {
-      const byRank = arr => arr.slice().sort((a, c) => orderUrgRank(a.o, a.o.status, todayStr) - orderUrgRank(c.o, c.o.status, todayStr) || String(a.o.starts_at || '').localeCompare(String(c.o.starts_at || '')));
+      const mode = bucketSortMode(b.key);
       const CAP2 = 60;
-      const sub = (arr, label, urgent) => {
-        if (!arr.length) return '';
-        const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('');
-        const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлтаар</div>` : '';
-        return `<div class="board-sub${urgent ? ' board-sub-urg' : ''}">${label} · ${arr.length}</div>` + rows + more;
-      };
-      // ⏱ Ойрын огноогоор бүлэглэнэ (шат бүрийн доор). Мөр бүр 🚚/🏬 badge-тэй хэвээр.
-      const TG = [['over', '⏰ Хугацаа хэтэрсэн', 1], ['today', '🔴 Өнөөдөр', 1], ['tomorrow', '🟡 Маргааш', 0], ['d3', '📅 3 хоногт', 0], ['week', '📆 Энэ долоо хоногт', 0], ['later', '⚪ Дараа', 0], ['none', '🗓 Огноогүй', 0]];
-      const grp = {};
-      list.forEach(e => { const k = timeGroupKey(e.o, todayStr); (grp[k] = grp[k] || []).push(e); });
-      bodyHtml = `<div class="board-body">${TG.map(([k, lb, urg]) => sub(grp[k] || [], lb, urg)).join('')}</div>`;
+      // Эрэмбэлэх сонголт (бүлэг бүрд тусдаа)
+      const sortSel = `<div class="board-sortbar"><span class="board-sort-lbl">Эрэмбэ:</span><select class="board-sort" data-sort-bucket="${b.key}">${_ORDER_SORTS.map(([v, l]) => `<option value="${v}"${mode === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>`;
+      let inner;
+      if (mode === 'smart') {
+        // ⏱ Ойрын огноогоор бүлэглэнэ. Мөр бүр 🚚/🏬 badge-тэй хэвээр.
+        const byRank = arr => arr.slice().sort((a, c) => orderUrgRank(a.o, a.o.status, todayStr) - orderUrgRank(c.o, c.o.status, todayStr) || String(a.o.starts_at || '').localeCompare(String(c.o.starts_at || '')));
+        const sub = (arr, label, urgent) => {
+          if (!arr.length) return '';
+          const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('');
+          const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлтаар</div>` : '';
+          return `<div class="board-sub${urgent ? ' board-sub-urg' : ''}">${label} · ${arr.length}</div>` + rows + more;
+        };
+        const TG = [['over', '⏰ Хугацаа хэтэрсэн', 1], ['today', '🔴 Өнөөдөр', 1], ['tomorrow', '🟡 Маргааш', 0], ['d3', '📅 3 хоногт', 0], ['week', '📆 Энэ долоо хоногт', 0], ['later', '⚪ Дараа', 0], ['none', '🗓 Огноогүй', 0]];
+        const grp = {};
+        list.forEach(e => { const k = timeGroupKey(e.o, todayStr); (grp[k] = grp[k] || []).push(e); });
+        inner = TG.map(([k, lb, urg]) => sub(grp[k] || [], lb, urg)).join('');
+      } else {
+        const sorted = sortOrders(list, mode);
+        inner = sorted.slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('')
+          + (list.length > CAP2 ? `<div class="board-more">…+${list.length - CAP2} захиалга — хайлтаар</div>` : '');
+      }
+      bodyHtml = `<div class="board-body">${sortSel}${inner}</div>`;
     }
     return `<div class="board-sec" id="bsec-${b.key}" style="border-left-color:${b.dot};">
       <div class="board-head" data-board-stage="${b.key}">
@@ -4532,6 +4571,10 @@ function attachOrdersHandlers() {
       if (set.has(k)) set.delete(k); else set.add(k);
       render();
     });
+  });
+  // Бүлэг доторх эрэмбэ солих (бүлэг бүрд тусдаа)
+  document.querySelectorAll('select.board-sort[data-sort-bucket]').forEach(sel => {
+    sel.addEventListener('change', () => { (state.bucketSort = state.bucketSort || {})[sel.dataset.sortBucket] = sel.value; render(); });
   });
   // Stepper / Өнөөдөр зурвас → тухайн шатыг дэлгэж гүйлгэнэ
   // Захиалгын мөр дэлгэх/хаах — төлөвийг state-д хадгална. Эс бөгөөс polling render()

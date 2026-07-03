@@ -9432,16 +9432,41 @@ function meStatusKey(st) {
 
 // Захиалгын жагсаалт — Booqable нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
 // ── App-д үүсгэсэн захиалга (app_orders — Booqable түүхээс ТУСДАА, refresh устгахгүй) ──
+// 2 шаттай ачаалалт: ИДЭВХТЭЙ (~50 мөр) түрүүлж → шууд харагдана; АРХИВ/ЦУЦАЛСАН
+// түүх (~1300 мөр, датаны 95%) арын фонд НЭГ л удаа. Poll бүрд зөвхөн идэвхтэйг
+// шинэчилнэ — өмнө нь 1.7MB-ийг бүтнээр нь татдаг байсан (утсанд хэдэн секунд).
+const _ARCHIVE_STATUSES = ['archived', 'canceled'];
 async function loadAppOrders() {
   if (!SUPABASE_ANON_KEY) { state.appOrders = state.appOrders || []; return; }
+  const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } };
+  const isArch = (o) => _ARCHIVE_STATUSES.includes(String(o.status));
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?select=*&order=number.desc.nullslast`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 20000);
-    if (r.ok) state.appOrders = await r.json();
-  } catch (e) { console.warn('loadAppOrders', e); }
+    // 1-р шат: идэвхтэй захиалгууд — жижиг, хурдан
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?select=*&status=not.in.(archived,canceled)&order=number.desc.nullslast`, H, 20000);
+    if (r.ok) {
+      const active = await r.json();
+      const archive = (state.appOrders || []).filter(isArch);   // санах ойд буй архивыг хадгална
+      state.appOrders = active.concat(archive);
+      if (typeof render === 'function') render();
+    }
+  } catch (e) { console.warn('loadAppOrders active', e); }
   state.appOrders = state.appOrders || [];
-  loadUsedReceipts();   // нэгдсэн баримтын ledger-ийг startup-д ачаална (давхцал шалгах)
-  if (typeof render === 'function') render();
+  loadUsedReceipts();   // нэгдсэн баримтын ledger (давхцал шалгах)
+  // 2-р шат: архив/цуцалсан түүх — сессэд нэг л удаа (ховор өөрчлөгдөнө; аппын үйлдэл optimistic)
+  if (!state._archiveLoaded && !state._archiveLoading) {
+    state._archiveLoading = true;
+    try {
+      const r2 = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?select=*&status=in.(archived,canceled)&order=number.desc.nullslast`, H, 30000);
+      if (r2.ok) {
+        const archive = await r2.json();
+        const active = (state.appOrders || []).filter(o => !isArch(o));
+        state.appOrders = active.concat(archive);
+        state._archiveLoaded = true;
+        if (typeof render === 'function') render();
+      }
+    } catch (e) { console.warn('loadAppOrders archive', e); }
+    state._archiveLoading = false;
+  }
 }
 // Дараагийн захиалгын дугаар (Booqable + app дотроос хамгийн их + 1)
 function nextOrderNumber() {

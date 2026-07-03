@@ -5746,3 +5746,82 @@ body.role-daily #add-project { display: none !important; }
   .toolbar .search { width: 100%; }
   .toolbar .search input { width: 100% !important; box-sizing: border-box; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   УТАСНЫ НЭГ МӨРТ APP BAR + ҮСГИЙН ЖИГД SCALE (2026-07-03 v406)
+   Өмнөх: гарчгийн блок 44px нэмэлт padding + салбар сонгогч absolute
+   мөр эзэлж дээд ~150px үрдэг байсан. Одоо: ☰ | Гарчиг | ☀ 🔔 нэг мөр.
+   Салбар сонгогч утсанд sidebar дотор (чипс), header-т байхгүй.
+   ЭНЭ БЛОК ФАЙЛЫН ТӨГСГӨЛД БАЙХ ЁСТОЙ (өмнөх бүх mobile дүрмийг дарна).
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 720px) {
+  /* ── Нэг мөрт header ── */
+  .header {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: max(8px, env(safe-area-inset-top, 8px)) 12px 8px 10px !important;
+  }
+  .mobile-menu-btn {
+    position: static !important;
+    width: 38px !important; height: 38px !important;
+    flex-shrink: 0 !important;
+    font-size: 18px !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+    display: inline-flex !important; align-items: center; justify-content: center;
+    padding: 0 !important;
+  }
+  .header > div:first-of-type,
+  .header > div:nth-child(2) {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    padding-top: 0 !important;   /* хуучин 44px зайг устгана */
+    margin: 0 !important;
+  }
+  .header h1 {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+    max-width: none !important;   /* flex min-width:0 + ellipsis хангалттай */
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .header-actions {
+    position: static !important;
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+    display: flex !important; align-items: center !important; gap: 4px !important;
+  }
+  /* Салбар сонгогч header-т утсанд байхгүй — sidebar доторх чипсээр */
+  .header #branch-lens { display: none !important; }
+
+  /* ── Sidebar доторх салбар чипс ── */
+  .sidebar-lens { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 12px; }
+  .slens-chip {
+    padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  .slens-chip.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  /* ── Үсгийн жигд scale (том/жижиг зөрөөг арилгана) ──
+     Гарчиг 18 · картын гарчиг 15 · үндсэн текст 14 · туслах 13 · жижиг тэмдэг 11-12 */
+  .task-title { font-size: 15px !important; line-height: 1.4 !important; }
+  .task-row .assignee, .task-meta, .task-row .meta { font-size: 13px !important; }
+  .filter-pill { font-size: 13px !important; min-height: 34px !important; padding: 7px 13px !important; }
+  .order-meta { font-size: 12.5px !important; }
+  .order-cust { font-size: 14px !important; }
+  .section-label { font-size: 11px !important; }
+  .empty-state, #task-list:empty::after { font-size: 14px !important; }
+}
+/* Суулгасан PWA: body аль хэдийн env(safe-area-inset-top) зай нэмсэн — header давхар нэмэхгүй */
+@media (display-mode: standalone) and (max-width: 720px) {
+  .header { padding-top: 8px !important; }
+}
+/* Десктопод sidebar чипс хэрэггүй (header-ийн select ажиллана) */
+@media (min-width: 721px) {
+  #sidebar-lens { display: none !important; }
+}

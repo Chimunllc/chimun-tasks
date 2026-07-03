@@ -3149,6 +3149,19 @@ function renderSidebar() {
     const noCnt = document.getElementById('cnt-nomaad');
     if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(Number(o.income_amount) > 0) && !nomaadIsCancelled(o)).length);
   }
+  // Утасны салбар сонгогч — sidebar доторх чипс (header-ийн select утсанд нуугддаг).
+  // Нэг салбарт түгжигдсэн хүнд сонголт байхгүй тул огт харуулахгүй.
+  const slens = document.getElementById('sidebar-lens');
+  if (slens) {
+    const allowed = allowedLenses();
+    if (allowed.length > 1) {
+      const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD', capital: '🏗 Хөрөнгө' };
+      const cur = effectiveBranchLens();
+      slens.style.display = '';
+      slens.innerHTML = allowed.map(v => `<button class="slens-chip${v === cur ? ' on' : ''}" data-slens="${v}">${labels[v] || v}</button>`).join('');
+      slens.querySelectorAll('[data-slens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.slens)));
+    } else slens.style.display = 'none';
+  }
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const gBr = document.getElementById('nav-group-branch');

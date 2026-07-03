@@ -10574,6 +10574,11 @@ function bqBar(label, value, max, color, sub) {
 }
 
 // Автомат дүгнэлт — CEO "нэг хараад ойлгох" мөрүүд (тоо биш, шийдвэр)
+// Booqable түүхэн зүйлийг үйлчилгээ (хүргэлт/суурилуулалт г.м.) эсэхийг НЭРЭЭР таних.
+// Booqable-д хүргэлт нь "бараа" мөр болж бүртгэгдсэн тул ROI/бараа аналитикаас салгана
+// (орлого хэвээр — зөвхөн ангилал). Амьд каталогийн type='service'-тэй ижил санаа.
+const _BQ_SERVICE_RE = /хүргэл|тээвэр|достав|deliver|суурилуул|угсрал|буулгал|оператор|унаа|такси/i;
+function bqIsService(name) { return _BQ_SERVICE_RE.test(String(name || '')); }
 function bqInsights(bq) {
   const N = x => Number(x) || 0;
   const out = [];
@@ -10596,8 +10601,8 @@ function bqInsights(bq) {
       if (b > 0) { const g = Math.round((a / b - 1) * 100); out.push(`${g >= 0 ? '📈' : '📉'} Сүүлийн 3 сар өмнөх 3 сараас <b>${g >= 0 ? '+' : ''}${g}%</b>`); }
     }
   }
-  // Барааны төвлөрөл
-  const prods = bq.products || [];
+  // Барааны төвлөрөл (үйлчилгээ/хүргэлтийг хасна — бараа биш)
+  const prods = (bq.products || []).filter(x => !bqIsService(x.product));
   const ptot = prods.reduce((s, x) => s + N(x.revenue_mnt), 0);
   if (ptot > 0 && prods.length >= 5) out.push(`🎯 Топ 5 бараа орлогын <b>${Math.round(prods.slice(0, 5).reduce((s, x) => s + N(x.revenue_mnt), 0) / ptot * 100)}%</b>-ийг бүрдүүлж байна`);
   // Харилцагчийн төвлөрөл (эрсдэл)
@@ -10722,7 +10727,20 @@ function renderBooqable() {
     body = kpis + insightsBanner + monthChart + bqSeasonChart(bq) + methodCard;
 
   } else if (tab === 'products') {
-    const roi = bq.roi || [];
+    const roiAll = bq.roi || [];
+    // Хүргэлт/үйлчилгээг барааны ROI-аас САЛГАНА (орлого хэвээр, зөвхөн ангилал)
+    const roi = roiAll.filter(x => !bqIsService(x.product));
+    const svc = roiAll.filter(x => bqIsService(x.product));
+    // Тусдаа "Үйлчилгээ" карт — орлого харагдана, ROI/өртөг тооцохгүй
+    const svcCard = (list) => {
+      if (!list.length) return '';
+      const mx = Math.max(1, ...list.map(x => N(x.revenue_mnt)));
+      const rows = list.slice().sort((a, b) => N(b.revenue_mnt) - N(a.revenue_mnt))
+        .map(x => bqBar(x.product || '—', N(x.revenue_mnt), mx, 'var(--primary)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('');
+      const tot = list.reduce((s, x) => s + N(x.revenue_mnt), 0);
+      return card(`🛠 Үйлчилгээ (хүргэлт г.м.) — ${fmtMoneyShort(tot)}`, rows,
+        'Хүргэлт/тээвэр — бараа биш үйлчилгээ. Орлогод багтсан ч ROI/нөөцөд тооцохгүй.');
+    };
     if (roi.length) {
       const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
       const roiRow = (x) => {
@@ -10744,14 +10762,18 @@ function renderBooqable() {
         + card('Орлого × ROI — бараа бүр', roi.map(roiRow).join(''),
             'ROI× = нийт түрээсийн орлого ÷ нэгж өртөг (өртгөө хэдэн дахин нөхсөн). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
-            stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '');
+            stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '')
+        + svcCard(svc);
     } else {
-      const p = bq.products || [];
+      const pAll = bq.products || [];
+      const p = pAll.filter(x => !bqIsService(x.product));
+      const pSvc = pAll.filter(x => bqIsService(x.product));
       const maxRev = Math.max(1, ...p.map(x => N(x.revenue_mnt)));
       body = kpis + card('Орлого төрүүлсэн топ бараа',
         (p.length ? p.map(x => bqBar(x.product || '—', N(x.revenue_mnt), maxRev, 'var(--ok)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('')
           : '<span style="color:var(--muted);">дата алга</span>'),
-        'ROI/өртөг харахын тулд bq_v_product_roi view-г Supabase-д нэмнэ үү (доорх SQL).');
+        'ROI/өртөг харахын тулд bq_v_product_roi view-г Supabase-д нэмнэ үү (доорх SQL).')
+        + svcCard(pSvc);
     }
 
   } else if (tab === 'customers') {

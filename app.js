@@ -8451,18 +8451,26 @@ async function sendNomaadQuote(quoteNo) {
     `${o.company || quoteNo} — үнийн саналыг доорх хаяг руу ШУУД илгээх үү?\nPDF + улсын бүртгэлийн гэрчилгээ хавсаргана. (Ноорог биш — шууд хүрнэ)\n\n📧 ${o.email}`,
     { title: 'Үнийн санал илгээх', okText: 'Шууд илгээх' });
   if (!ok) return;
-  showToast('Илгээж байна…', 'info', 2000);
+  showToast('Илгээж байна… (PDF бэлдэж имэйлдэх тул ~1 минут болно)', 'info', 5000);
   try {
+    // PDF рендер + Gmail хавсралт ~40-50с болдог — богино timeout нь амжилттай илгээлтийг
+    // "алдаа" гэж харуулж давхар илгээлтэд хүргэж байсан тул 120с болгов.
     const r = await fetchWithTimeout(withKey(state.config.nomaadQuoteSendUrl), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 'Төлөв': 'ИЛГЭЭХ', 'Үнийн саналын дугаар': quoteNo, source: 'app' }),
-    }, 30000);
+    }, 120000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast(`✓ Үнийн санал ${o.email} рүү илгээгдлээ`, 'success', 4500);
     // Төлөвийг локалд ИЛГЭЭСЭН болгож шууд "Үнийн санал илгээсэн" шатанд оруулна (backend ч шинэчилнэ)
     if (!String(o.status || '').toUpperCase().includes('ИЛГЭЭ')) { o.status = 'ИЛГЭЭСЭН'; render(); }
   } catch (e) {
-    showToast('Алдаа: ' + e.message, 'error', 5000);
+    if (e && e.name === 'AbortError') {
+      // Хугацаа хэтэрсэн ч сервер талд илгээлт ҮРГЭЛЖИЛЖ байж магадгүй — давхар илгээхээс сэргийлнэ
+      showToast('⚠ Хариу удаж байна — илгээлт ар талд үргэлжилж байж магадгүй. ДАХИН БҮҮ ДАРААРАЙ, 1 минутын дараа төлөв шинэчлэгдэнэ.', 'warn', 8000);
+      setTimeout(() => loadNomaadOrders(), 60000);
+    } else {
+      showToast('Алдаа: ' + e.message, 'error', 5000);
+    }
   }
 }
 // Орлого модал — 4 хэсэг (урьдчилгаа/үлдэгдэл/нэмэлт/эвдрэл) + нийт. Объект эсвэл null.

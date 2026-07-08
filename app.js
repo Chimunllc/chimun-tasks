@@ -15342,6 +15342,14 @@ function initEvents() {
   document.getElementById('f-payment-file')?.addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    // ЗӨВХӨН PDF — зураг/скринд банкны шалгалт (дүн/давхардал/чиглэл/хүлээн авагч)
+    // ажиллах боломжгүй тул ямар ч файл шалгалтгүй өнгөрдөг байсан. Орлоготой ижил дүрэм.
+    if (!(f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) {
+      e.target.value = '';
+      state._fPaymentPending = null;
+      showToast('⛔ Шилжүүлгийн баримт зөвхөн банкны PDF байна — зураг/скриншот хүлээн авахгүй (дүн/давхардлын шалгалт хийх боломжгүй тул). Банкны аппаасаа PDF-ээр татаж хавсаргана уу.', 'error', 6000);
+      return;
+    }
     state._fPaymentPending = f;
     const prev = document.getElementById('f-payment-preview');
     if (prev) {

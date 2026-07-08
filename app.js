@@ -9279,8 +9279,10 @@ function openProductModal(p) {
     _qm0 = Number(p.qty_mevent) || 0; _qc0 = Number(p.qty_chimun) || 0; _qn0 = Number(p.qty_nomaad) || 0;
   } else if (isEdit && String(p.type || 'rental') === 'asset') {
     _qc0 = _st0; _qm0 = 0; _qn0 = 0;
-  } else {
+  } else if (isEdit) {
     _qm0 = _st0; _qc0 = 0; _qn0 = 0;
+  } else {
+    _qm0 = 0; _qc0 = 0; _qn0 = 0;   // шинэ бараа — салбараа ИЛЭЭР сонгоно (чимээгүй default байхгүй)
   }
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
@@ -9311,7 +9313,12 @@ function openProductModal(p) {
       </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
-        <div class="pm-branch-head">🏢 Салбарын хуваарилалт <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
+        <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
+        ${isEdit ? '' : `<div class="pm-branch-pick" id="pm-branch-pick" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
+          <button type="button" class="f-link-type" data-brpick="m">🎪 M-Event</button>
+          <button type="button" class="f-link-type" data-brpick="c">🏢 Чимун дотоод</button>
+          <button type="button" class="f-link-type" data-brpick="n">⛺ NOMAAD</button>
+        </div>`}
         <div class="pm-branch-grid">
           <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"></label>
           <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"></label>
@@ -9432,24 +9439,49 @@ function openProductModal(p) {
   ['pm-stock', 'pm-broken', 'pm-maintenance'].forEach(id => modal.querySelector('#' + id)?.addEventListener('input', updateWorking));
   updateWorking();
   // Салбарын хуваарилалт — M-Event>0 бол сайтад түрээслэгдэнэ. M-Event = Нийт − Чимун − NOMAAD (авто).
+  // Шинэ бараанд салбараа ИЛЭЭР сонготол (чип эсвэл гараар тоо) авто-бөглөхгүй, хадгалахыг блоклоно.
   const qmEl = modal.querySelector('#pm-qm'), qcEl = modal.querySelector('#pm-qc'), qnEl = modal.querySelector('#pm-qn');
   const stockEl = modal.querySelector('#pm-stock'), branchStatus = modal.querySelector('#pm-branch-status');
+  let branchTouched = isEdit;
+  modal._branchTouched = () => branchTouched;
   function updateBranch() {
     const qm = Number(qmEl.value) || 0;
+    const sum = qm + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0);
+    if (!branchTouched && !sum) {
+      branchStatus.innerHTML = `<span style="color:var(--warn);font-weight:600;">⚠ Аль салбарт байхыг сонгоно уу</span>`;
+      return;
+    }
     branchStatus.innerHTML = `<span style="color:${qm > 0 ? 'var(--ok)' : 'var(--muted)'};font-weight:600;">${qm > 0 ? '✅ Сайтад түрээслэгдэнэ' : '🔒 Зөвхөн дотоод хөрөнгө — сайтад харагдахгүй'}</span>`;
   }
-  function fillMevent() {   // Нийт эсвэл Чимун/NOMAAD өөрчлөгдвөл M-Event = үлдэгдэл
+  function syncPickChips() {   // гараар тоо өөрчилбөл чипийн тодруулгыг таарууна
+    const qm = Number(qmEl.value) || 0, qc = Number(qcEl.value) || 0, qn = Number(qnEl.value) || 0;
+    modal.querySelectorAll('[data-brpick]').forEach(b => {
+      const only = { m: qm > 0 && !qc && !qn, c: qc > 0 && !qm && !qn, n: qn > 0 && !qm && !qc }[b.dataset.brpick];
+      b.classList.toggle('on', !!only);
+    });
+  }
+  function fillMevent() {   // Нийт эсвэл Чимун/NOMAAD өөрчлөгдвөл M-Event = үлдэгдэл (салбар сонгосны дараа л)
+    if (!branchTouched) { updateBranch(); return; }
     const st = Number(stockEl.value) || 0, qc = Number(qcEl.value) || 0, qn = Number(qnEl.value) || 0;
-    qmEl.value = Math.max(0, st - qc - qn); updateBranch();
+    qmEl.value = Math.max(0, st - qc - qn); updateBranch(); syncPickChips();
   }
   stockEl.addEventListener('input', fillMevent);
-  qcEl.addEventListener('input', fillMevent);
-  qnEl.addEventListener('input', fillMevent);
+  [qcEl, qnEl].forEach(el => el.addEventListener('input', () => { branchTouched = true; fillMevent(); }));
   qmEl.addEventListener('input', () => {   // M-Event гараар өөрчилвөл Нийт нөөцийг нийлбэрт тэнцүүлнэ
+    branchTouched = true;
     stockEl.value = (Number(qmEl.value) || 0) + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0);
-    updateWorking(); updateBranch();
+    updateWorking(); updateBranch(); syncPickChips();
   });
-  updateBranch();
+  modal.querySelectorAll('[data-brpick]').forEach(b => b.addEventListener('click', () => {
+    branchTouched = true;
+    const st = Math.max(1, Number(stockEl.value) || 0);
+    stockEl.value = st;
+    qmEl.value = b.dataset.brpick === 'm' ? st : 0;
+    qcEl.value = b.dataset.brpick === 'c' ? st : 0;
+    qnEl.value = b.dataset.brpick === 'n' ? st : 0;
+    updateWorking(); updateBranch(); syncPickChips();
+  }));
+  updateBranch(); syncPickChips();
   const close = () => modal.remove();
   modal.querySelector('#pm-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
@@ -9473,6 +9505,15 @@ async function submitProductModal(modal, orig, btn) {
     showToast('Нэгж өртөг заавал оруулна (худалдан авсан үнэ)', 'warn', 3500);
     modal.querySelector('#pm-cost')?.focus();
     return;
+  }
+  // Шинэ бараанд салбарын хуваарилалт ЗААВАЛ — аль салбарт хэдэн ширхэг байхыг сонгоно
+  if (!orig && !isPkg && !isSvc) {
+    const _qsum = (Number(modal.querySelector('#pm-qm')?.value) || 0) + (Number(modal.querySelector('#pm-qc')?.value) || 0) + (Number(modal.querySelector('#pm-qn')?.value) || 0);
+    if (!_qsum) {
+      showToast('Салбарын хуваарилалт: аль салбарт байхыг сонгоно уу', 'warn', 3500);
+      modal.querySelector('#pm-branch-pick')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
   }
   const _qm = Number(modal.querySelector('#pm-qm')?.value) || 0;
   const _qc = Number(modal.querySelector('#pm-qc')?.value) || 0;

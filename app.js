@@ -5537,6 +5537,7 @@ async function saveProduct(product) {
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
+  if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
@@ -5709,6 +5710,7 @@ function productRowHtml(p) {
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">Өртөг ${fmtMoneyShort(cost)}${roi != null ? ` · ROI ${roi}%` : ''}</span>`);
   if (p.purchase_date) { const _age = productAge(p.purchase_date); stats.push(`<span class="prod-age" title="Худалдан авсан огноо">📅 ${escapeHtml(String(p.purchase_date).slice(0, 10))}${_age ? ` · ${_age} ашигласан` : ''}</span>`); }
+  { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); stats.push(`<span class="prod-origin" title="Гарал үүсэл: ${escapeHtml(_org)}">🏬 ${_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 22 ? _org.slice(0, 22) + '…' : _org)}</span>`); } }
   if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';   // Түрээсийн/Хөрөнгө таг устгав — салбар (ленз) нь түрээслэх боломжийг тодорхойлно
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
@@ -9340,7 +9342,7 @@ function openProductModal(p) {
         <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
-        <label class="pm-wide">🔗 Худалдан авсан эх сурвалж${/^https?:\/\//.test((p && p.source_url) || '') ? ` <a href="${escapeHtml(p.source_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${v('source_url')}" placeholder="ж: taobao/1688 линк эсвэл дэлгүүрийн нэр"></label>
+        <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
       </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
@@ -9569,6 +9571,7 @@ async function submitProductModal(modal, orig, btn) {
     variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
     variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
     source_url: g('pm-source') || null,
+    supplier: g('pm-source') || null,
     purchase_date: g('pm-purchase') || null,
   };
   const product = orig ? { ...orig, ...base } : base;

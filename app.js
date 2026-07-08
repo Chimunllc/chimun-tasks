@@ -5615,7 +5615,7 @@ function branchStockHtml(p) {
 // Салбар хооронд нөөц шилжүүлэх модал — тоогоор, лог-той (маргаан таслах түүх)
 function openTransferModal(pid) {
   if (!can('products.edit')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
-  const p = (state.products || []).find(x => String(x.id) === String(pid));
+  const p = (state.products || []).find(x => String(x.id) === String(pid) || String(x.sku) === String(pid));
   if (!p) return;
   document.getElementById('trans-modal')?.remove();
   const modal = document.createElement('div');
@@ -5698,7 +5698,7 @@ function productRowHtml(p) {
   if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';   // Түрээсийн/Хөрөнгө таг устгав — салбар (ленз) нь түрээслэх боломжийг тодорхойлно
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
-  return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
+  return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id || p.sku)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
     <div class="prod-main">
       <div class="prod-name-d">${escapeHtml(p.name || '(нэргүй)')}</div>
@@ -5708,7 +5708,7 @@ function productRowHtml(p) {
       <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
       <span class="prod-stock-b${(!pkg && !_actBranch && totalStock !== stock) ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}Нөөц ${stock}${(!pkg && !_actBranch && totalStock !== stock) ? `/${totalStock}` : ''}</span>
       ${typeBadge}
-      ${(!pkg && can('products.edit')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
+      ${(!pkg && can('products.edit')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id || p.sku)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
     </div>
     <span class="prod-chev">›</span>
   </div>`;
@@ -9596,7 +9596,8 @@ function attachProductsHandlers() {
   // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх
   document.querySelectorAll('[data-product-open]').forEach(row => {
     row.addEventListener('click', () => {
-      const p = (state.products || []).find(x => x.id === row.dataset.productOpen);
+      const v = row.dataset.productOpen;
+      const p = (state.products || []).find(x => String(x.id) === v || String(x.sku) === v);
       if (p) openProductModal(p);
     });
   });

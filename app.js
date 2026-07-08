@@ -1760,6 +1760,16 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     purchase_proof_urls: [],     // Stage 1 — олон бараа зураг / нэхэмжлэх
     purchase_receipt_urls: [],   // Stage 4 — олон НӨАТ / хүлээн авалтын баримт
   };
+  // Тулгалтын хуулгаас нөхөж бүртгэх горим — банкнаас аль хэдийн гарсан зарлага тул
+  // CEO/нягтлан үүсгэмэгц ШУУД Дууссан (батлах/гүйцэтгэх шат давхардуулахгүй).
+  if (state._finBackfill && (state.isCEO || state.me === getFinanceExecutorEmail())) {
+    const bfDate = `${state._finBackfill.date}T12:00:00.000Z`;
+    r.decision = 'approved'; r.decision_at = bfDate; r.decision_by = state.me;
+    r.executed_at = bfDate; r.executed_by = state.me;
+    r.status = 'done'; r.close_type = 'хуулгаар';
+    r.close_note = 'Дансны хуулгын тулгалтаас нөхөж бүртгэсэн';
+    state._finBackfill = null;
+  }
   state.financeRequests.unshift(r);
   await saveFinanceRequest(r);
   return r;
@@ -1871,6 +1881,7 @@ function closeFinanceModal() {
   document.getElementById('finance-modal').classList.remove('open');
   state.editingId = null;
   state._financeViewMode = null;
+  state._finBackfill = null;   // тулгалтын нөхөж-бүртгэх горим — модал хаагдахад цуцлагдана
   // Болих/X дарвал хойшлогдсон файлуудыг хаяна — Drive-руу илгээгдэхгүй
   state._fPurchasePendingFiles = [];
   state._fReceiptPending = [];
@@ -2326,6 +2337,8 @@ function openFinanceModal(id = null) {
         headline = 'Хаагдсан · баримт таарсан';
       } else if (t.close_type === 'шилжүүлгээр') {
         headline = 'Хаагдсан · шилжүүлгийн баримттай';
+      } else if (t.close_type === 'хуулгаар') {
+        headline = 'Хаагдсан · дансны хуулгаас нөхөж бүртгэсэн';
       } else {
         headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
       }
@@ -4034,11 +4047,16 @@ function parseStatement(matrix) {
   const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
   const cell = (r, idx) => (idx >= 0 ? String(r[idx] == null ? '' : r[idx]).trim() : '');
   const rows = [];
+  const pad2 = (v) => String(v).padStart(2, '0');
   for (let i = hr + 1; i < matrix.length; i++) {
     const r = matrix[i] || [];
-    const dm = cell(r, cols.date).match(/(\d{4})[-.\/](\d{2})[-.\/](\d{2})/);
-    if (!dm) continue;   // огноогүй мөр (footer "Нийт орлого" г.м.) → алгасна
-    rows.push({ date: `${dm[1]}-${dm[2]}-${dm[3]}`, memo: cell(r, cols.memo), name: cell(r, cols.name),
+    // Голомт: YYYY-MM-DD; Хаан г.м: 1 оронтой сар/өдөр эсвэл DD.MM.YYYY хэлбэрийг ч ойлгоно
+    const dc = cell(r, cols.date);
+    let dm = dc.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+    let dateStr = dm ? `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}` : '';
+    if (!dateStr) { dm = dc.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dm) dateStr = `${dm[3]}-${pad2(dm[2])}-${pad2(dm[1])}`; }
+    if (!dateStr) continue;   // огноогүй мөр (footer "Нийт орлого" г.м.) → алгасна
+    rows.push({ date: dateStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
       account: cell(r, cols.account), credit: cols.credit >= 0 ? num(r[cols.credit]) : 0, debit: cols.debit >= 0 ? num(r[cols.debit]) : 0 });
   }
   return { rows, headerRow: hr, cols };
@@ -4054,12 +4072,17 @@ async function runFinRecon(files) {
     // Өөрийн дансны дугаар — хуулгын толгойн "Дансны дугаар" нүдний хажуугаас
     for (let i = 0; i < Math.min(3, matrix.length); i++) {
       const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
-      cells.forEach((c, j) => { if (/дансны дугаар/i.test(c) && cells[j + 1]) { const m = String(cells[j + 1]).match(/\d{6,}/); if (m) ownAccts.add(m[0]); } });
+      cells.forEach((c, j) => {
+        if (!/дансны дугаар|данс\s*:/i.test(c)) return;
+        // Дугаар нь дараагийн нүдэнд (Голомт) ЭСВЭЛ мөн нүдэндээ "Данс: 5001..." (Хаан) байж болно
+        const m = String(c).match(/\d{6,}/) || String(cells[j + 1] || '').match(/\d{6,}/);
+        if (m) ownAccts.add(m[0]);
+      });
     }
     const { rows } = parseStatement(matrix);
     rows.forEach(r => allRows.push(r));
   }
-  if (!allRows.length) throw new Error('Хуулгаас гүйлгээ уншигдсангүй — Голомтын xlsx мөн эсэхийг шалгана уу');
+  if (!allRows.length) throw new Error('Хуулгаас гүйлгээ уншигдсангүй — банкны (Голомт/Хаан) xlsx хуулга мөн эсэхийг шалгана уу');
   const isFee = r => /charges for pord/i.test(r.memo) || (/шимтгэл/i.test(r.memo) && r.debit <= 500);
   const debits = allRows.filter(r => r.debit > 0 && !isFee(r)).map(r => ({ ...r, used: false }));
   const dates = allRows.map(r => r.date).filter(Boolean).sort();
@@ -4099,7 +4122,7 @@ function openFinReconModal() {
   modal.className = 'modal-bg'; modal.id = 'finrecon-modal';
   modal.innerHTML = `<div class="modal" style="max-width:760px;max-height:88vh;overflow-y:auto;">
     <h2>📊 Санхүүгийн тулгалт</h2>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Голомтын дансны хуулга (xlsx/csv) оруулна — хэд хэдэн дансны хуулгыг ЗЭРЭГ сонгож болно. Аппын «Дууссан» хүсэлтүүдтэй дүн+огноогоор автоматаар тулгана.</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Банкны дансны хуулга (Голомт, Хаан г.м. — xlsx/csv) оруулна. Хэд хэдэн данс/банкны хуулгыг ЗЭРЭГ сонгож болно — аппын «Дууссан» хүсэлтүүдтэй дүн+огноогоор автоматаар тулгана.</div>
     <label for="finrecon-file" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:16px;text-align:center;cursor:pointer;background:var(--panel-hover);">
       📄 <b>Хуулга сонгох</b> (xlsx / csv — олон файл зэрэг болно)
       <input id="finrecon-file" type="file" accept=".xlsx,.xls,.csv" multiple hidden>
@@ -4111,6 +4134,23 @@ function openFinReconModal() {
   document.body.appendChild(modal);
   modal.querySelector('#finrecon-close').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  // ➕ Бүртгэх — хуулгын мөрөөс зардлын хүсэлт нөхөж үүсгэх (CEO/нягтлан)
+  modal.querySelector('#finrecon-out').addEventListener('click', (e) => {
+    const bf = e.target.closest('[data-backfill]');
+    if (!bf) return;
+    let x; try { x = JSON.parse(bf.dataset.backfill); } catch (_) { return; }
+    modal.remove();
+    openFinanceModal(null);
+    setTimeout(() => {
+      const set = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } };
+      set('f-amount', x.a);
+      set('f-beneficiary', x.n || x.m.split(/\s+/).slice(0, 3).join(' '));
+      set('f-purpose', x.m);
+      set('f-justification', `Дансны хуулгаас нөхөж бүртгэв — ${x.d} · ${x.m}`);
+      state._finBackfill = { date: x.d };
+      showToast('Хуулгын мөрөөс бөглөгдлөө — объект + ангилал сонгоод хадгалахад ШУУД Дууссан болно', 'info', 6000);
+    }, 150);
+  });
   modal.querySelector('#finrecon-file').addEventListener('change', async (e) => {
     const files = [...e.target.files]; if (!files.length) return;
     const st = modal.querySelector('#finrecon-status');
@@ -4130,10 +4170,12 @@ function openFinReconModal() {
       </details>`;
       const reqRow = q => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(q.ts.slice(5))} · <b>${escapeHtml(q.ben)}</b> · ${escapeHtml(q.purpose.slice(0, 36))}${q.bank ? ` · <span style="color:var(--muted);">${escapeHtml(q.bank)}</span>` : ''}</span><b style="white-space:nowrap;">${money(q.amt)}</b></div>`;
       const stRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 48))}</span><b style="white-space:nowrap;">${money(x.debit)}</b></div>`;
+      // Бүртгэлгүй зарлага — ➕ нэг даралтаар зардлын бүртгэл үүсгэнэ (нөхөж бүртгэх)
+      const bfRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 44))}</span><b style="white-space:nowrap;">${money(x.debit)}</b><button type="button" class="btn" data-backfill="${escapeHtml(JSON.stringify({ d: x.date, m: String(x.memo).slice(0, 90), a: x.debit, n: String(x.name || '').slice(0, 60) }))}" style="padding:2px 9px;font-size:11px;white-space:nowrap;">➕ Бүртгэх</button></div>`;
       modal.querySelector('#finrecon-out').innerHTML =
         catRow('✅', 'Банкинд таарсан', R.matched, 'var(--ok)', 'Дүн яг ижил, огноо ±14 хоногт. Асуудалгүй.', R.matched.map(reqRow).join('')) +
         catRow('❓', 'Банкинд олдоогүй хүсэлт', R.notFound, 'var(--danger)', 'Аппд Дууссан гэсэн ч энэ хуулгад алга. Өөр банкны данснаас (ж: Хаан) төлөгдсөн бол тэр хуулгыг нэмж оруулна уу.', R.notFound.map(reqRow).join('')) +
-        catRow('💰', 'Аппд бүртгэлгүй зарлага', R.unrec, 'var(--warn)', 'Банкнаас гарсан ч аппд хүсэлтгүй — зардлын тайланд ороогүй. Нөхөж бүртгэх.', R.unrec.map(stRow).join('')) +
+        catRow('💰', 'Аппд бүртгэлгүй зарлага', R.unrec, 'var(--warn)', 'Банкнаас гарсан ч аппд хүсэлтгүй — зардлын тайланд ороогүй. ➕ дарж нөхөж бүртгэнэ (объект + ангилал сонгоод хадгалахад шууд Дууссан болно).', R.unrec.map(bfRow).join('')) +
         catRow('🏦', 'Хаан банк / данс хооронд', R.khan, 'var(--muted)', 'Мөнгө өөр данс руу шилжсэн — зарлага биш.', R.khan.map(stRow).join('')) +
         catRow('💸', 'Өөрийн данс хоорондын', R.inter, 'var(--muted)', 'Оруулсан хуулгуудын данс хоорондын шилжүүлэг — зарлага биш.', R.inter.map(stRow).join(''));
     } catch (err) { st.textContent = '⚠ ' + err.message; }
@@ -9665,6 +9707,7 @@ function finStage(t) {
   if (t.status === 'done') {
     // Дууссан хүсэлтийг баримтаар нь ялгана (аудит — нээлгүйгээр баримтгүйг шууд харах).
     if (t.close_type === 'дутуу')                          return { key: 'fdone', label: 'Дууссан · дутуу',     mark: '⚠',  color: 'var(--warn)' };
+    if (t.close_type === 'хуулгаар')                       return { key: 'fdone', label: 'Дууссан · хуулгаар',  mark: '🏦', color: 'var(--ok)' };
     if (t.close_type === 'баримтгүй' || (t.has_receipt === false && t.close_type !== 'шилжүүлгээр'))
                                                            return { key: 'fdone', label: 'Дууссан · баримтгүй',  mark: '📝', color: 'var(--warn)' };
     return                                                        { key: 'fdone', label: 'Дууссан',             mark: '✓',  color: 'var(--ok)' };
@@ -11608,6 +11651,36 @@ function renderFinanceReport(wrap) {
   }).join('');
   wrap.appendChild(chips);
   chips.querySelectorAll('[data-fin-st]').forEach(b => b.addEventListener('click', () => { state.finReportStatus = b.dataset.finSt; render(); }));
+
+  // ── Мөнгөн урсгал — орлого (захиалга, accrual) vs зарлага (дууссан хүсэлт), CEO харагдац ──
+  (function renderCashflow() {
+    if (!canSeeAllFinance() || wantBr) return;
+    // Эвентийн орлогод захиалгын дата хэрэгтэй — байхгүй бол ачаална (ирмэгц дахин зурагдана)
+    if (!(state.bqOrders || []).length && typeof loadAppOrders === 'function') loadAppOrders();
+    const evOrders = (state.bqOrders || []).filter(o => String(o.starts_at || '').slice(0, 7) === month && !/cancel|цуцал|archiv/i.test(String(o.status || '')));
+    const evInc = evOrders.reduce((s, o) => s + (Number(o.total_mnt) || 0), 0);
+    const noOrders = (state.nomaadOrders || []).filter(o => String(o.date_start || '').slice(0, 7) === month && !nomaadIsCancelled(o));
+    const noInc = noOrders.reduce((s, o) => s + nomaadEffTotal(o), 0);
+    const inc = evInc + noInc;
+    const expList = monthList.filter(t => finStage(t).key === 'fdone');
+    const exp = sumOf(expList);
+    const byBr = groupBy(expList, t => finEffBranch(t));
+    const expEv = sumOf(byBr['ИВЕНТ'] || []), expNo = sumOf(byBr['КЕМП'] || []);
+    const expOther = exp - expEv - expNo;
+    const net = inc - exp;
+    const panel = document.createElement('div');
+    panel.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--panel);';
+    const row = (l, v, c) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;"><span style="color:var(--muted);">${l}</span><b style="color:${c || 'var(--text)'};white-space:nowrap;">${fmtMoney(v)}</b></div>`;
+    panel.innerHTML = `<div style="font-weight:800;font-size:13px;margin-bottom:6px;">💹 Мөнгөн урсгал · ${month} <span style="font-weight:400;color:var(--muted);font-size:11px;">(орлого = эвентийн огноогоор, accrual)</span></div>`
+      + row(`Орлого — Эвент · ${evOrders.length} захиалга`, evInc, 'var(--ok)')
+      + row(`Орлого — Кемп · ${noOrders.length} захиалга`, noInc, 'var(--ok)')
+      + row('Зарлага — Ивент', -expEv)
+      + row('Зарлага — Кемп', -expNo)
+      + row('Зарлага — Захиргаа / Хөрөнгө / бусад', -expOther)
+      + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`
+      + ((state.bqOrders || []).length ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:4px;">⏳ Эвентийн захиалгын дата ачаалж байна…</div>`);
+    wrap.appendChild(panel);
+  })();
 
   // ── Баримтын хяналт — дууссан зардлын дотор баримтгүй (📝/⚠) хувь, үндсэн ангилал бүрээр ──
   (function renderReceiptAudit() {

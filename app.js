@@ -11612,6 +11612,75 @@ function renderFinanceReport(wrap) {
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
 
+  // ── БАТЛАХ САМБАР — хүлээгдэж буй хүсэлт бүр карт: хавсралт ил, автомат анхааруулга,
+  //    картан дээрээ ✓ Батлах / ✗ Татгалзах. Нэг нэгээр нээж ухах шаардлагагүй. ──
+  (function renderApprovalQueue() {
+    const pend = (state.financeRequests || [])
+      .filter(r => r.status !== 'deleted' && (r.decision || 'pending') === 'pending')
+      .filter(r => state.isCEO || state.me === getFinanceApprover(r))
+      .sort((a, b) => String(a.requested_at || '').localeCompare(String(b.requested_at || '')));
+    if (!pend.length) return;
+    const all = (state.financeRequests || []).filter(r => r.status !== 'deleted');
+    const nowMonth = new Date().toISOString().slice(0, 7);
+    const digitsOk = a => /^\d{8,20}$/.test(String(a || '').replace(/[\s-]/g, ''));
+    const normBen = s => String(s || '').trim().toLowerCase();
+    const cardHtml = (r) => {
+      const warns = [];
+      const dups = all.filter(x => x.id !== r.id && x.decision !== 'rejected'
+        && Number(x.amount) === Number(r.amount) && normBen(x.beneficiary) === normBen(r.beneficiary)
+        && Math.abs(new Date(x.requested_at || 0) - new Date(r.requested_at || 0)) < 30 * 86400000);
+      if (dups.length) warns.push(`⚠ 30 хоногт ижил дүн+хүлээн авагчтай ${dups.length} хүсэлт — давхардал эсэхийг шалга`);
+      const proofs = Array.isArray(r.purchase_proof_urls) ? r.purchase_proof_urls.filter(Boolean) : [];
+      if (!proofs.length) warns.push('⚠ Нэхэмжлэх/баримт хавсаргаагүй');
+      if (!digitsOk(r.account_number)) warns.push('⚠ Данс хоосон эсвэл буруу');
+      if (!all.some(x => x.id !== r.id && normBen(x.beneficiary) === normBen(r.beneficiary) && String(x.requested_at || '') < String(r.requested_at || ''))) warns.push('🆕 Анх удаагийн хүлээн авагч');
+      const hist = all.filter(x => x.requested_by === r.requested_by && String(x.requested_at || '').slice(0, 7) === nowMonth);
+      const histSum = hist.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+      return `<div style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin-bottom:9px;background:var(--panel);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+          <b style="font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.beneficiary || '—')}</b>
+          <b style="font-size:15px;white-space:nowrap;">${fmtMoney(Number(r.amount) || 0)}</b>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px;">${escapeHtml(memberName(r.requested_by))} · энэ сард ${hist.length} хүсэлт · ${fmtMoney(histSum)}${r.requested_at ? ' · 🕐 ' + escapeHtml(fmtDateTimeUB(r.requested_at)) : ''}${r.category ? ' · ' + escapeHtml(String(r.category).slice(0, 26)) : ''}</div>
+        <div style="font-size:12.5px;margin-bottom:5px;">${escapeHtml(r.purpose || '')}${finLinkChip(r)}</div>
+        ${warns.length ? `<div style="font-size:11.5px;color:var(--warn);font-weight:600;line-height:1.7;margin-bottom:5px;">${warns.map(escapeHtml).join('<br>')}</div>` : ''}
+        ${proofs.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">${imageThumbsHtml(proofs, { size: 64, label: 'Баримт' })}</div>` : ''}
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn" data-apq-open="${escapeHtml(r.id)}" style="padding:5px 12px;font-size:12px;">Нээх</button>
+          <button type="button" class="btn" data-apq-reject="${escapeHtml(r.id)}" style="padding:5px 12px;font-size:12px;color:var(--danger);">✗ Татгалзах</button>
+          <button type="button" class="btn btn-primary" data-apq-approve="${escapeHtml(r.id)}" style="padding:5px 14px;font-size:12px;">✓ Батлах</button>
+        </div>
+      </div>`;
+    };
+    const box = document.createElement('div');
+    box.style.cssText = 'margin-bottom:16px;';
+    box.innerHTML = `<div style="font-weight:800;font-size:13.5px;margin-bottom:8px;">🕐 Батлахыг хүлээж буй · ${pend.length}</div>` + pend.map(cardHtml).join('');
+    wrap.appendChild(box);
+    box.addEventListener('click', async (e) => {
+      if (e.target.closest('[data-lightbox]')) return;   // баримтын зураг → lightbox
+      const op = e.target.closest('[data-apq-open]');
+      if (op) { openFinanceModal(op.dataset.apqOpen); return; }
+      const ap = e.target.closest('[data-apq-approve]');
+      if (ap) {
+        const r = state.financeRequests.find(x => x.id === ap.dataset.apqApprove);
+        if (!r) return;
+        if (!(await showConfirm(`${r.beneficiary || ''} — ${fmtMoney(Number(r.amount) || 0)}\nЗөвшөөрөх үү?`, { okText: 'Зөвшөөрөх' }))) return;
+        await decideFinanceRequest(r.id, 'approved');
+        render();
+        return;
+      }
+      const rj = e.target.closest('[data-apq-reject]');
+      if (rj) {
+        const r = state.financeRequests.find(x => x.id === rj.dataset.apqReject);
+        if (!r) return;
+        const reason = await showPrompt(`${r.beneficiary || ''} — ${fmtMoney(Number(r.amount) || 0)}\nТатгалзах шалтгаан (заавал):`, { okText: 'Татгалзах' });
+        if (!reason || !reason.trim()) return;
+        await decideFinanceRequest(r.id, 'rejected', reason.trim());
+        render();
+      }
+    });
+  })();
+
   // ── Толгой: сар сонгох + нийт дүн ──
   const head = document.createElement('div');
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';

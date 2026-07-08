@@ -3125,8 +3125,6 @@ function syncFilterPills() {
   if (finG)  finG.style.display  = isFin ? '' : 'none';
   const finSort = document.getElementById('fin-sort');
   if (finSort) { finSort.style.display = isFin ? '' : 'none'; finSort.value = state.financeSort || 'smart'; }
-  const finRecon = document.getElementById('fin-recon-btn');
-  if (finRecon) finRecon.style.display = (isFin && (state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()))) ? '' : 'none';
   const grp = isFin ? finG : taskG;
   if (!grp) return;
   let matched = false;
@@ -11603,12 +11601,15 @@ function renderFinanceReport(wrap) {
   const sumOf = arr => arr.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const monthList = base.filter(t => (t.requested_at || '').slice(0, 7) === month);
 
-  // ── Excel татах ──
+  // ── Тулгалт + Excel татах ──
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:6px;';
-  bar.innerHTML = `<button id="fin-export-xls" class="btn" style="padding:6px 12px;font-size:12.5px;">📥 Excel татах</button>`;
+  bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
+  const canRecon = state.isCEO || canSeeAllFinance();
+  bar.innerHTML = (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
+    + `<button id="fin-export-xls" class="btn" style="padding:6px 12px;font-size:12.5px;">📥 Excel татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
+  bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
 
   // ── Толгой: сар сонгох + нийт дүн ──
   const head = document.createElement('div');
@@ -15539,7 +15540,6 @@ function initEvents() {
 
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };
   document.getElementById('fin-sort')?.addEventListener('change', (e) => { state.financeSort = e.target.value; render(); });
-  document.getElementById('fin-recon-btn')?.addEventListener('click', openFinReconModal);
 
   // settings — modal-д зөвхөн notification permission helper (initEvents-д dynamic нэмэгдэнэ)
   document.getElementById('export-btn')?.addEventListener('click', exportTasksReport);

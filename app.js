@@ -2320,6 +2320,8 @@ function openFinanceModal(id = null) {
         if (t.close_note) nextLine = `Тайлбар: ${escapeHtml(t.close_note)}`;
       } else if (t.close_type === 'баримттай') {
         headline = 'Хаагдсан · баримт таарсан';
+      } else if (t.close_type === 'шилжүүлгээр') {
+        headline = 'Хаагдсан · шилжүүлгийн баримттай';
       } else {
         headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
       }
@@ -2587,12 +2589,15 @@ async function executeFinanceRequest(id) {
     state._fPaymentPending = null;
     if (paymentInput) paymentInput.value = '';
   }
-  // Шилжүүлэг хийгдсэн — status=done БҮҮ тогтоо. Status open хэвээр үлдэж, дараа нь
-  // closeFinanceRequest (Бараа хүлээн авч хаах) дуудагдмагц л status=done болно.
+  // Шилжүүлэг + баримт = хүсэлт ШУУД ХААГДАНА (Дууссан). Өмнөх 2 алхамт урсгал
+  // ("бараа хүлээн авч хаах"-ыг хүлээдэг) 40 хүсэлтийг хаагдалгүй гацаасан тул
+  // 2026-07-08-нд болиулав. Хуучин гацсан хүсэлтэд хаах товчнууд хэвээр ажиллана.
   r.executed_at = new Date().toISOString();
   r.executed_by = state.me;
+  r.status = 'done';
+  if (!r.close_type) r.close_type = 'шилжүүлгээр';
   await saveFinanceRequest(r);
-  showToast('Шилжүүлэг хийгдсэн гэж тэмдэглэгдлээ. Бараа ирмэгц хүлээн авч хаа.', 'success', 4000);
+  showToast('Шилжүүлэг хийгдсэн — хүсэлт хаагдлаа ✓', 'success', 4000);
   closeFinanceModal();
   render();
 }
@@ -9648,7 +9653,7 @@ function finStage(t) {
   if (t.status === 'done') {
     // Дууссан хүсэлтийг баримтаар нь ялгана (аудит — нээлгүйгээр баримтгүйг шууд харах).
     if (t.close_type === 'дутуу')                          return { key: 'fdone', label: 'Дууссан · дутуу',     mark: '⚠',  color: 'var(--warn)' };
-    if (t.close_type === 'баримтгүй' || t.has_receipt === false)
+    if (t.close_type === 'баримтгүй' || (t.has_receipt === false && t.close_type !== 'шилжүүлгээр'))
                                                            return { key: 'fdone', label: 'Дууссан · баримтгүй',  mark: '📝', color: 'var(--warn)' };
     return                                                        { key: 'fdone', label: 'Дууссан',             mark: '✓',  color: 'var(--ok)' };
   }

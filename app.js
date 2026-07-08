@@ -2338,6 +2338,8 @@ function openFinanceModal(id = null) {
         headline = 'Хаагдсан · шилжүүлгийн баримттай';
       } else if (t.close_type === 'хуулгаар') {
         headline = 'Хаагдсан · дансны хуулгаас нөхөж бүртгэсэн';
+      } else if (t.close_type === 'захирал') {
+        headline = 'Хаагдсан · захирал хүлээн зөвшөөрсөн';
       } else {
         headline = 'Бүх шат дууссан · хүсэлт хаагдсан';
       }
@@ -2391,6 +2393,9 @@ function openFinanceModal(id = null) {
         // Дахин баталгаажуулалт: гүйцэтгэгч/CEO банкны PDF хавсаргаад «Шилжүүлсэн»-ээр хааж болно
         if (isExecutor) executeActions.style.setProperty('display', 'flex', 'important');
       }
+      // Захирлын хаалт — CEO баримт/хуулга шаардалгүйгээр хүлээн зөвшөөрч хаана (эзний авалт г.м.)
+      const ceoCloseBtn = document.getElementById('f-ceo-close');
+      if (ceoCloseBtn) ceoCloseBtn.style.display = (state.isCEO && dec === 'approved' && t.status !== 'done') ? '' : 'none';
       // Устгах — зөвхөн өөрийн илгээсэн хүсэлт, гүйлгээ хийгдэхээс ӨМНӨ (CEO ч устгаж болно)
       const fDelete = document.getElementById('f-delete');
       if (fDelete) {
@@ -9727,6 +9732,7 @@ function finStage(t) {
     // Дууссан хүсэлтийг баримтаар нь ялгана (аудит — нээлгүйгээр баримтгүйг шууд харах).
     if (t.close_type === 'дутуу')                          return { key: 'fdone', label: 'Дууссан · дутуу',     mark: '⚠',  color: 'var(--warn)' };
     if (t.close_type === 'хуулгаар')                       return { key: 'fdone', label: 'Дууссан · хуулгаар',  mark: '🏦', color: 'var(--ok)' };
+    if (t.close_type === 'захирал')                        return { key: 'fdone', label: 'Дууссан · захирал',   mark: '👤', color: 'var(--ok)' };
     if (t.close_type === 'баримтгүй' || (t.has_receipt === false && t.close_type !== 'шилжүүлгээр'))
                                                            return { key: 'fdone', label: 'Дууссан · баримтгүй',  mark: '📝', color: 'var(--warn)' };
     return                                                        { key: 'fdone', label: 'Дууссан',             mark: '✓',  color: 'var(--ok)' };
@@ -15663,6 +15669,28 @@ function initEvents() {
       await executeFinanceRequest(state.editingId);
       closeFinanceModal();
     });
+  });
+
+  // 👤 Захирал хүлээн зөвшөөрч хаах — зөвхөн CEO, баримт/хуулга шаардахгүй (эзний авалт г.м.)
+  document.getElementById('f-ceo-close')?.addEventListener('click', async () => {
+    if (!state.editingId || !state.isCEO) return;
+    const r = state.financeRequests.find(x => x.id === state.editingId);
+    if (!r) return;
+    const ok = await showConfirm(
+      `${r.beneficiary || ''} — ${fmtMoney(Number(r.amount) || 0)}\nЗахирал хүлээн зөвшөөрч БАРИМТГҮЙГЭЭР хаах уу?`,
+      { title: 'Захирал хүлээн зөвшөөрөх', okText: 'Зөвшөөрч хаах' });
+    if (!ok) return;
+    const now = new Date().toISOString();
+    if (!r.executed_at) { r.executed_at = now; r.executed_by = state.me; }
+    r.status = 'done';
+    r.close_type = 'захирал';
+    r.close_note = 'Захирал хүлээн зөвшөөрсөн (' + now.slice(0, 10) + ')';
+    r.received_at = now;
+    r.received_by = state.me;
+    await saveFinanceRequest(r);
+    showToast('Захирал хүлээн зөвшөөрч хаалаа 👤', 'success', 3000);
+    closeFinanceModal();
+    render();
   });
 
   document.getElementById('search').oninput = (e) => { state.search = e.target.value; render(); };

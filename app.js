@@ -5336,6 +5336,8 @@ async function loadProductsCatalog() {
       if (!r.ok) throw new Error('PG HTTP ' + r.status);
       const rows = await r.json();
       state.products = rows;
+      // source_url багана DB-д нэмэгдсэн эсэх (нэмэгдээгүй бол бичихгүй — INSERT 400 болохоос сэргийлнэ)
+      state._prodHasSource = rows.length ? ('source_url' in rows[0]) : true;
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -5501,6 +5503,16 @@ async function openOrderScanModal(oid) {
 }
 
 // Бараа хадгалах → Supabase Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
+// Дараагийн чөлөөт SKU — одоо байгаа CH_NNN дугааруудын max+1 (ж: CH_250)
+function nextProductSKU() {
+  let max = 0;
+  (state.products || []).forEach(p => {
+    const m = /^CH[_-]?(\d+)$/.exec(String(p.sku || '').trim());
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  return 'CH_' + String(max + 1).padStart(3, '0');
+}
+
 async function saveProduct(product) {
   if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (!product.id) product.id = product.sku;
@@ -5524,6 +5536,7 @@ async function saveProduct(product) {
   if (Array.isArray(product.photos)) row.photos = product.photos;
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
+  if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
@@ -9285,15 +9298,16 @@ function openProductModal(p) {
       <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
-        <label>SKU<input id="pm-sku" value="${v('sku')}" placeholder="SKU код"></label>
+        <label>SKU${isEdit ? '' : ' <span style="color:var(--muted);font-weight:400;">(автомат)</span>'}<input id="pm-sku" value="${isEdit ? v('sku') : escapeHtml(nextProductSKU())}" placeholder="SKU код"></label>
         <label>🎨 Хувилбарын бүлэг<input id="pm-vgroup" list="pm-vgroups" value="${v('variant_group')}" placeholder="ижил зүйлд адил (ж: Эвхдэг сандал)"><datalist id="pm-vgroups">${vgroupOpts}</datalist></label>
         <label>Өнгө / хэмжээ<input id="pm-vlabel" value="${v('variant_label')}" placeholder="ж: Цагаан"></label>
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
-        <label>Нэгж өртөг (₮)<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
+        <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
+        <label class="pm-wide">🔗 Худалдан авсан эх сурвалж${/^https?:\/\//.test((p && p.source_url) || '') ? ` <a href="${escapeHtml(p.source_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${v('source_url')}" placeholder="ж: taobao/1688 линк эсвэл дэлгүүрийн нэр"></label>
       </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
@@ -9454,6 +9468,12 @@ async function submitProductModal(modal, orig, btn) {
   const isSvc = !isPkg && !!modal.querySelector('#pm-isservice')?.checked;
   const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku) : [];
   if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
+  // Шинэ бараанд нэгж өртөг ЗААВАЛ (багц=бүрэлдэхүүнээс, үйлчилгээ=өртөггүй тул хасна)
+  if (!orig && !isPkg && !isSvc && !(moneyVal(modal.querySelector('#pm-cost')) > 0)) {
+    showToast('Нэгж өртөг заавал оруулна (худалдан авсан үнэ)', 'warn', 3500);
+    modal.querySelector('#pm-cost')?.focus();
+    return;
+  }
   const _qm = Number(modal.querySelector('#pm-qm')?.value) || 0;
   const _qc = Number(modal.querySelector('#pm-qc')?.value) || 0;
   const _qn = Number(modal.querySelector('#pm-qn')?.value) || 0;
@@ -9471,6 +9491,7 @@ async function submitProductModal(modal, orig, btn) {
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
     variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
     variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
+    source_url: g('pm-source') || null,
   };
   const product = orig ? { ...orig, ...base } : base;
   product.cost = moneyVal(modal.querySelector('#pm-cost'));

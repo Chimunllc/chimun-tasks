@@ -5537,6 +5537,7 @@ async function saveProduct(product) {
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
+  if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
@@ -5674,6 +5675,18 @@ async function saveBranchTransfer(p, modal) {
   }
 }
 
+// Худалдан авсан огнооноос эзэмшсэн/ашигласан хугацаа: "2 жил 4 сар" / "5 сар" / "12 хоног"
+function productAge(dateStr) {
+  const d = String(dateStr || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+  const then = Date.parse(d), now = Date.now();
+  if (isNaN(then) || then > now) return '';
+  let mo = Math.floor((now - then) / 86400000 / 30.44);
+  const y = Math.floor(mo / 12); mo = mo % 12;
+  if (y > 0) return mo > 0 ? `${y} жил ${mo} сар` : `${y} жил`;
+  if (mo > 0) return `${mo} сар`;
+  return `${Math.max(0, Math.floor((now - then) / 86400000))} хоног`;
+}
 function productRowHtml(p) {
   const img = p.photo
     ? `<img src="${escapeHtml(p.photo)}" loading="lazy" onerror="this.style.visibility='hidden'">`
@@ -5695,6 +5708,7 @@ function productRowHtml(p) {
   if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
   if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">Өртөг ${fmtMoneyShort(cost)}${roi != null ? ` · ROI ${roi}%` : ''}</span>`);
+  if (p.purchase_date) { const _age = productAge(p.purchase_date); stats.push(`<span class="prod-age" title="Худалдан авсан огноо">📅 ${escapeHtml(String(p.purchase_date).slice(0, 10))}${_age ? ` · ${_age} ашигласан` : ''}</span>`); }
   if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
   const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';   // Түрээсийн/Хөрөнгө таг устгав — салбар (ленз) нь түрээслэх боломжийг тодорхойлно
   // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
@@ -9230,6 +9244,7 @@ function renderProducts() {
       nocost: p => costOf(p) <= 0,
       noprice: p => (Number(p.price) || 0) <= 0,
       noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0,
+      nodate: p => !p.purchase_date,
     }[state.prodMissing];
     if (f) list = list.filter(f);
   }
@@ -9239,6 +9254,7 @@ function renderProducts() {
     cost_desc: (a, b) => costOf(b) - costOf(a),
     price_desc: (a, b) => (Number(b.price) || 0) - (Number(a.price) || 0),
     stock_desc: (a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0),
+    purchase_asc: (a, b) => String(a.purchase_date || '9999-99-99').localeCompare(String(b.purchase_date || '9999-99-99')),
   };
   list = list.slice().sort(_prodSorters[state.prodSort] || _prodSorters.name);
   const rows = list.map(productRowHtml).join('');
@@ -9252,9 +9268,9 @@ function renderProducts() {
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
-  const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
-  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0 }[key]).length;
-  const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
+  const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓'], ['purchase_asc', '📅 Хамгийн удаан эзэмшсэн']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
+  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0, nodate: p => !p.purchase_date }[key]).length;
+  const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй'], ['nodate', '📅 Огноогүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
   const filterBar = `<div style="display:flex;gap:8px;margin:6px 0 2px;flex-wrap:wrap;">
     <select id="prod-cat" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${catOpts}</select>
     <select id="prod-missing" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${missOpts}</select>
@@ -9321,6 +9337,7 @@ function openProductModal(p) {
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
         <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
+        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
         <label class="pm-wide">🔗 Худалдан авсан эх сурвалж${/^https?:\/\//.test((p && p.source_url) || '') ? ` <a href="${escapeHtml(p.source_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${v('source_url')}" placeholder="ж: taobao/1688 линк эсвэл дэлгүүрийн нэр"></label>
@@ -9552,6 +9569,7 @@ async function submitProductModal(modal, orig, btn) {
     variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
     variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
     source_url: g('pm-source') || null,
+    purchase_date: g('pm-purchase') || null,
   };
   const product = orig ? { ...orig, ...base } : base;
   product.cost = moneyVal(modal.querySelector('#pm-cost'));

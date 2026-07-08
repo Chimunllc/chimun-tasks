@@ -4144,11 +4144,26 @@ function openFinReconModal() {
     modal.remove();
     openFinanceModal(null);
     setTimeout(() => {
-      const set = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } };
+      const set = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } };
       set('f-amount', x.a);
-      set('f-beneficiary', x.n || x.m.split(/\s+/).slice(0, 3).join(' '));
+      // 'EB-Зарлага:' маягийн угтварыг хүлээн авагчийн саналаас цэвэрлэнэ
+      const _memoClean = String(x.m || '').replace(/^eb[-\s]*(зарлага|орлого)?\s*:?\s*/i, '').trim();
+      set('f-beneficiary', x.n || _memoClean.split(/\s+/).slice(0, 3).join(' '));
       set('f-purpose', x.m);
       set('f-justification', `Дансны хуулгаас нөхөж бүртгэв — ${x.d} · ${x.m}`);
+      // Харьцсан данс → хүлээн авагчийн данс; нүдэнд банкны нэр (3+ үсэг) байвал банкыг ч тааруулна
+      const _digits = String(x.acct || '').replace(/\D/g, '');
+      if (_digits.length >= 8) set('f-account', _digits);
+      const _bankSel = document.getElementById('f-bank');
+      if (_bankSel) {
+        const _hay = (String(x.acct || '') + ' ' + String(x.m || '')).toLowerCase();
+        const _hit = [...(_bankSel.options || [])].find(o => {
+          if (!o.value) return false;
+          const _w = String(o.value).toLowerCase().replace('банк', ' ').trim().split(/\s+/)[0];
+          return _w && _w.length >= 3 && _hay.includes(_w);
+        });
+        if (_hit) set('f-bank', _hit.value);
+      }
       state._finBackfill = { date: x.d };
       showToast('Хуулгын мөрөөс бөглөгдлөө — объект + ангилал сонгоод хадгалахад ШУУД Дууссан болно', 'info', 6000);
     }, 150);
@@ -4173,7 +4188,7 @@ function openFinReconModal() {
       const reqRow = q => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(q.ts.slice(5))} · <b>${escapeHtml(q.ben)}</b> · ${escapeHtml(q.purpose.slice(0, 36))}${q.bank ? ` · <span style="color:var(--muted);">${escapeHtml(q.bank)}</span>` : ''}</span><b style="white-space:nowrap;">${money(q.amt)}</b></div>`;
       const stRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 48))}</span><b style="white-space:nowrap;">${money(x.debit)}</b></div>`;
       // Бүртгэлгүй зарлага — ➕ нэг даралтаар зардлын бүртгэл үүсгэнэ (нөхөж бүртгэх)
-      const bfRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 44))}</span><b style="white-space:nowrap;">${money(x.debit)}</b><button type="button" class="btn" data-backfill="${escapeHtml(JSON.stringify({ d: x.date, m: String(x.memo).slice(0, 90), a: x.debit, n: String(x.name || '').slice(0, 60) }))}" style="padding:2px 9px;font-size:11px;white-space:nowrap;">➕ Бүртгэх</button></div>`;
+      const bfRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 44))}</span><b style="white-space:nowrap;">${money(x.debit)}</b><button type="button" class="btn" data-backfill="${escapeHtml(JSON.stringify({ d: x.date, m: String(x.memo).slice(0, 90), a: x.debit, n: String(x.name || '').slice(0, 60), acct: String(x.account || '').slice(0, 24) }))}" style="padding:2px 9px;font-size:11px;white-space:nowrap;">➕ Бүртгэх</button></div>`;
       modal.querySelector('#finrecon-out').innerHTML =
         catRow('✅', 'Банкинд таарсан', R.matched, 'var(--ok)', 'Дүн яг ижил, огноо ±14 хоногт. Асуудалгүй.', R.matched.map(reqRow).join('')) +
         catRow('❓', 'Банкинд олдоогүй хүсэлт', R.notFound, 'var(--danger)', 'Аппд Дууссан гэсэн ч энэ хуулгад алга. Өөр банкны данснаас (ж: Хаан) төлөгдсөн бол тэр хуулгыг нэмж оруулна уу.', R.notFound.map(reqRow).join('')) +

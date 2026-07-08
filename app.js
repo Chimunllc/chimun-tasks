@@ -6173,7 +6173,8 @@ async function markHourlyPaid(workerKey) {
     bank: m.bank || '',
     account_number: m.bank_account || '',
     purpose: `Цагийн цалин · ${m.name} · ${start || today}`,
-    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(amount)} · ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'}`,
+    // ⟦LNK⟧ — автомат үүсдэг хүсэлт ч объект-холбоостой байх ёстой (аудит: холбоосгүй гэж тоологдохгүй)
+    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(amount)} · ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'} ⟦LNK|general||Цагийн цалин⟧`,
     due_date: start || today,
     category: 'Цалин',
     dept_branch: (m.branches && m.branches[0]) || 'shared',
@@ -15382,6 +15383,15 @@ function initEvents() {
     if (!state._finLinkType) { showToast('«Энэ ЮУНЫ зардал вэ?» — сонгоно уу (NOMAAD/M-Event/Хөрөнгө/Удирдлага)', 'warn', 4000); return; }
     if (state._finLinkType !== 'general' && !(document.getElementById('f-link-input')?.value || '').trim()) {
       showToast('Сонгосон төрлийнхөө объектыг заана уу (аль захиалга/хөрөнгө вэ)', 'warn', 4000); return;
+    }
+    // Дансны дугаар — бөглөсөн бол зөвхөн цифр, 8-20 орон (алдаатай данс руу шилжүүлэхээс сэргийлнэ)
+    if (accountNumber) {
+      const _digits = String(accountNumber).replace(/[\s-]/g, '');
+      if (!/^\d{8,20}$/.test(_digits)) {
+        showToast('⚠ Дансны дугаар буруу байна — зөвхөн цифр, 8-20 орон (одоо: «' + accountNumber + '»)', 'warn', 5000);
+        document.getElementById('f-account')?.focus();
+        return;
+      }
     }
     const btn = document.getElementById('f-save');
     btn.disabled = true;

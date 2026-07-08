@@ -2291,10 +2291,9 @@ function openFinanceModal(id = null) {
         document.getElementById('f-decision-reason-label').style.display = 'none';
       }
     }
-    // Payment file picker — Stage 3: approved + НЭ гүйцэтгэгдээгүй + гүйцэтгэгч/CEO.
-    // executed_at тогтоогдсон бол Stage 3 дууссан, товчийг нуунa (давхар харагдвал
-    // хэрэглэгч Stage 4-ийн оронд буруу газар файл хавсаргадаг).
-    const showPayment = (t.decision === 'approved' && !t.executed_at && isExecutor);
+    // Payment file picker — approved + хаагдаагүй + гүйцэтгэгч/CEO. Шилжүүлсэн-хаагдаагүй
+    // (дахин баталгаажуулах) төлөвт ч PDF хавсаргаж болно — шинэ PDF хуучин баримтыг орлоно.
+    const showPayment = (t.decision === 'approved' && t.status !== 'done' && isExecutor);
     toggleFinanceFileInput('f-payment-file', showPayment);
     // Stage 4 receipt picker — gүйцэтгэгдсэн + хаагдаагүй + туслах нягтлан (canEditReceipt
     // дээр аль хэдийн зөв тогтоосон). showReceipt-ийг устгана — давхардсан логик.
@@ -2389,6 +2388,8 @@ function openFinanceModal(id = null) {
         executeActions.style.setProperty('display', 'flex', 'important');
       } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && (isExecutor || state.me === t.requested_by)) {
         receiptActions.style.setProperty('display', 'flex', 'important');
+        // Дахин баталгаажуулалт: гүйцэтгэгч/CEO банкны PDF хавсаргаад «Шилжүүлсэн»-ээр хааж болно
+        if (isExecutor) executeActions.style.setProperty('display', 'flex', 'important');
       }
       // Устгах — зөвхөн өөрийн илгээсэн хүсэлт, гүйлгээ хийгдэхээс ӨМНӨ (CEO ч устгаж болно)
       const fDelete = document.getElementById('f-delete');
@@ -10852,13 +10853,16 @@ function parseBankReceipt(text) {
 async function loadUsedReceipts() {
   if (!SUPABASE_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?select=receipt_id,fp`,
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
     state.usedFps = new Set(rows.map(x => x.fp).filter(Boolean));                               // бүх хурууны хээ
     state.refLessFps = new Set(rows.filter(x => x.fp && x.fp === x.receipt_id).map(x => x.fp)); // лавлах дугааргүй бичлэгийн хээ
+    // Түлхүүр → хаана ашигласан (өөрийн хүсэлтэд ДАХИН хавсаргахыг давхардалд тооцохгүйн тулд)
+    state.receiptOwners = new Map(rows.map(x => [x.receipt_id, x.used_in || '']));
+    state.fpOwners = new Map(rows.filter(x => x.fp).map(x => [x.fp, x.used_in || '']));
   } catch (e) { console.warn('loadUsedReceipts', e); }
 }
 function receiptIdFromRef(s) { const m = String(s || '').match(/\[#([^\]]+)\]/); return m ? m[1] : ''; }
@@ -10866,13 +10870,16 @@ function receiptIdFromRef(s) { const m = String(s || '').match(/\[#([^\]]+)\]/);
 // (1) ижил лавлах дугаар өмнө орсон → яг НЭГ баримт. (2) лавлах-дугааргүй хуучин бичлэгтэй хээ таарав
 // → магадгүй нэг гүйлгээ (v374-ээс өмнөх 20 бичлэг). (3) лавлах дугааргүй ШИНЭ баримтын хээ өмнө орсон.
 // ⭐ ӨӨР лавлах дугаартай ижил дүн/огноо/шилжүүлэгч = ЗӨВШӨӨРНӨ (өөр бодит гүйлгээ).
-function receiptDupReason(refKey, fpKey) {
+function receiptDupReason(refKey, fpKey, selfTag) {
   const uR = state.usedReceipts instanceof Set ? state.usedReceipts : null;
   const uF = state.usedFps instanceof Set ? state.usedFps : null;
   const rL = state.refLessFps instanceof Set ? state.refLessFps : null;
-  if (refKey && uR && uR.has(refKey)) return `лавлах дугаар ${refKey}`;
-  if (rL && fpKey && rL.has(fpKey)) return 'ижил дүн/огноо/шилжүүлэгч (өмнө бүртгэсэн)';
-  if (!refKey && uF && fpKey && uF.has(fpKey)) return 'ижил дүн/огноо/шилжүүлэгч (өмнө бүртгэсэн)';
+  // selfTag ('fin:<id>' г.м.) — тухайн бичлэгийг ЭЗЭМШИГЧ нь мөн бол давхардал БИШ
+  // (нэг хүсэлтэд ижил баримтаа дахин хавсаргах = дахин баталгаажуулалт, хориглохгүй)
+  const own = (key, map) => selfTag && map instanceof Map && map.get(key) === selfTag;
+  if (refKey && uR && uR.has(refKey) && !own(refKey, state.receiptOwners)) return `лавлах дугаар ${refKey}`;
+  if (rL && fpKey && rL.has(fpKey) && !own(fpKey, state.fpOwners)) return 'ижил дүн/огноо/шилжүүлэгч (өмнө бүртгэсэн)';
+  if (!refKey && uF && fpKey && uF.has(fpKey) && !own(fpKey, state.fpOwners)) return 'ижил дүн/огноо/шилжүүлэгч (өмнө бүртгэсэн)';
   return '';
 }
 // Баримтын давхцлын ХУРУУНЫ ХЭЭ — ҮРГЭЛЖ дүн+огноо+шилжүүлэгчийн нэрээр (банкны лавлах формат эмзэг).
@@ -10888,14 +10895,27 @@ async function reserveReceipt(receiptId, meta) {
   if (!receiptId || !SUPABASE_ANON_KEY) return 'ok';   // түлхүүр алга бол хаалт тавихгүй
   const fpKey = meta.fp || receiptId;
   // client-талын дүрэм: лавлах-дугааргүй хуучин бичлэг эсвэл лавлах дугааргүй давхцал (DB PK хамрахгүй хэсэг)
-  if (receiptDupReason(receiptId === fpKey ? '' : receiptId, fpKey)) return 'dup';
+  if (receiptDupReason(receiptId === fpKey ? '' : receiptId, fpKey, meta.usedIn)) {
+    return 'dup';
+  }
+  // Өөрийн хүсэлтэд аль хэдийн эзэмшсэн баримт — дахин бичилт хэрэггүй, шууд ok
+  if (state.receiptOwners instanceof Map && state.receiptOwners.get(receiptId) === meta.usedIn) return 'ok';
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts`, {
       method: 'POST',
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ receipt_id: receiptId, fp: fpKey, amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', used_in: meta.usedIn || '', recorded_by: state.me }),
     }, 15000);
-    if (r.status === 409) return 'dup';
+    if (r.status === 409) {
+      // PK мөргөлдөөн — эзэмшигч нь мөн энэ хүсэлт бол ok (кэш хуучирсан байж болно)
+      try {
+        const q = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=used_in`,
+          { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 10000);
+        const ex = await q.json();
+        if (ex[0] && ex[0].used_in === meta.usedIn) return 'ok';
+      } catch (e) {}
+      return 'dup';
+    }
     if (!r.ok) return 'err';
     (state.usedReceipts = state.usedReceipts instanceof Set ? state.usedReceipts : new Set()).add(receiptId);
     (state.usedFps = state.usedFps instanceof Set ? state.usedFps : new Set()).add(fpKey);
@@ -15580,7 +15600,8 @@ function initEvents() {
       if (!d.amount) throw new Error('дүн олдсонгүй');
       const fpKey = receiptFingerprint(d);
       const canonKey = d.bankRef || fpKey;
-      const dup = receiptDupReason(d.bankRef || '', fpKey);
+      // Өөрийн хүсэлтэд өмнө нь хавсаргасан баримтаа ДАХИН хавсаргах = давхардал биш
+      const dup = receiptDupReason(d.bankRef || '', fpKey, 'fin:' + state.editingId);
       const r = (state.financeRequests || []).find(x => x.id === state.editingId);
       const req = Number(r && r.amount) || 0;
       // ЗАРЛАГА = Чимунаас ГАРСАН байх ёстой (орлогын эсрэг чиглэл)

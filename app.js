@@ -1295,6 +1295,7 @@ function financeAsTask(r) {
     link_type: r.link_type || '', link_label: r.link_label || '', link_id: r.link_id || '',   // бодит объект холбоос
     close_type: r.close_type || '',    // хаасан хэлбэр (баримттай/дутуу/баримтгүй) — аудитад
     close_note: r.close_note || '',    // баримтгүй/дутуу хаасан шалтгаан
+    payment_proof_url: r.payment_proof_url || '',   // шилжүүлгийн баримт — мөрөнд thumbnail
     has_receipt: Array.isArray(r.purchase_receipt_urls)  // хүлээн авалтын баримт хавсаргасан эсэх
       ? r.purchase_receipt_urls.length > 0 : !!r.purchase_receipt_url,
     _isFinance: true, // marker
@@ -11660,11 +11661,14 @@ function renderFinanceReport(wrap) {
       ? `<span style="color:var(--warn);"> · «${escapeHtml(t.close_note)}»</span>` : '';
     const titleAttr = t.close_note ? ` title="${escapeHtml(t.close_note)}"` : '';
     const timeHtml = t.requested_at ? `<span style="white-space:nowrap;color:var(--muted);font-size:11px;">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>` : '';
+    // Шилжүүлгийн баримт — мөрөнд ШУУД thumbnail (дарвал томруулна, модал нээхгүй)
+    const proofHtml = (t.payment_proof_url && /^http/.test(t.payment_proof_url))
+      ? `<button type="button" class="fin-proof-thumb" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" data-fallback="${escapeHtml(t.payment_proof_url)}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>` : '';
     d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
-      + `${timeHtml}`
+      + `${timeHtml}${proofHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
-    d.addEventListener('click', () => openFinanceModal(t.id));
+    d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openFinanceModal(t.id); });
     return d;
   };
   const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
@@ -13463,6 +13467,10 @@ function renderRow(t) {
     }
     if (pillHtml) extraHtml += pillHtml;
     extraHtml += finLinkChip(t);   // 🚗/📦/🛒 объект холбоос (байвал)
+    // Шилжүүлгийн баримт — мөрөнд ШУУД thumbnail (дарвал томруулна, модал нээхгүй)
+    if (t.payment_proof_url && /^http/.test(t.payment_proof_url)) {
+      extraHtml += `<button type="button" class="fin-proof-thumb" data-act="proof" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" data-fallback="${escapeHtml(t.payment_proof_url)}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>`;
+    }
   }
   // Үнэлгээ хүлээж буй — дуусаад үүсгэгч оноо өгөөгүй (хаагдаагүй) тэмдэг
   if (needsRating(t)) {
@@ -13531,6 +13539,7 @@ function renderRow(t) {
     const actEl = e.target.closest('[data-act]');
     const act = actEl?.dataset.act;
     // Delete + locked + menu үлдсэн — бусад бүх click модал нээнэ.
+    if (act === 'proof') return;   // баримтын thumb — document-ийн lightbox handler нээнэ, модал нээхгүй
     if (act === 'menu') { e.stopPropagation(); openRowMenu(t, actEl); return; }
     if (act === 'delete') { deleteTask(t.id); return; }
     if (act === 'locked') {

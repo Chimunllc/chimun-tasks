@@ -11837,6 +11837,64 @@ function renderFinanceReport(wrap) {
   const shown = monthList.filter(stDef[2]);
   if (!shown.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:24px 12px;'; e.textContent = 'Энэ төлөвт гүйлгээ алга.'; wrap.appendChild(e); return; }
 
+  // ── ШҮҮЛТҮҮР — дүн / эх данс / шинж (ангилалгүй г.м.) / хүлээн авагч / эрэмбэ ──
+  const F = state.finF = state.finF || { min: 0, src: '', flags: [], ben: '', sort: '' };
+  const srcOf = (t) => { const m = /импортолсон \(([^)]+)\)/.exec(String(t.desc || '')); return m ? m[1] : ''; };
+  const FLAGS = {
+    nocat:    ['🏷 Ангилалгүй', t => !String(t.category || '').trim()],
+    nobranch: ['🏢 Салбаргүй',  t => !String(t.dept_branch || '').trim()],
+    nolink:   ['🔗 Объектгүй',  t => !t.link_type],
+    norcpt:   ['📝 Баримтгүй',  t => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; }],
+    open:     ['⏳ Хаагдаагүй', t => t.status !== 'done'],
+  };
+  const flt = shown.filter(t => (Number(t.amount) || 0) >= (F.min || 0)
+    && (!F.src || (F.src === '__manual' ? !srcOf(t) : srcOf(t) === F.src))
+    && (!F.ben || String(t.beneficiary || '').trim() === F.ben)
+    && (F.flags || []).every(k => FLAGS[k] && FLAGS[k][1](t)));
+  const fActive = !!(F.min || F.src || F.ben || (F.flags || []).length || F.sort);
+  const fbar = document.createElement('div');
+  fbar.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 10px;';
+  const selCss = 'padding:6px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--text);max-width:46vw;';
+  const chipCss = (on) => `padding:5px 10px;font-size:11.5px;border-radius:14px;cursor:pointer;border:1px solid ${on ? 'var(--primary)' : 'var(--border-strong)'};background:${on ? 'var(--primary)' : 'var(--panel)'};color:${on ? '#fff' : 'var(--text)'};`;
+  const srcs = [...new Set(shown.map(srcOf).filter(Boolean))].sort();
+  const MINS = [[0, 'Бүх дүн'], [100000, '100 мянга+'], [500000, '500 мянга+'], [1000000, '1 сая+'], [5000000, '5 сая+'], [10000000, '10 сая+']];
+  fbar.innerHTML =
+    `<select id="ff-sort" style="${selCss}">
+      <option value="">📂 Бүлэглэсэн</option>
+      <option value="amt_desc"${F.sort === 'amt_desc' ? ' selected' : ''}>💰 Их дүн эхэндээ</option>
+      <option value="amt_asc"${F.sort === 'amt_asc' ? ' selected' : ''}>💰 Бага дүн эхэндээ</option>
+      <option value="date_desc"${F.sort === 'date_desc' ? ' selected' : ''}>🕐 Шинэ эхэндээ</option>
+      <option value="ben"${F.sort === 'ben' ? ' selected' : ''}>👤 Топ хүлээн авагч</option>
+    </select>`
+    + `<select id="ff-min" style="${selCss}">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
+    + (srcs.length ? `<select id="ff-src" style="${selCss}">
+        <option value="">🏦 Бүх эх данс</option>
+        ${srcs.map(s => `<option value="${escapeHtml(s)}"${F.src === s ? ' selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+        <option value="__manual"${F.src === '__manual' ? ' selected' : ''}>Гараар бүртгэсэн</option>
+      </select>` : '')
+    + Object.entries(FLAGS).map(([k, [l]]) => `<button type="button" data-ff-flag="${k}" style="${chipCss((F.flags || []).includes(k))}">${l}</button>`).join('')
+    + (F.ben ? `<span style="font-size:11.5px;background:var(--primary);color:#fff;border-radius:14px;padding:5px 10px;">👤 ${escapeHtml(F.ben)} <b data-ff-clearben style="cursor:pointer;margin-left:4px;">×</b></span>` : '')
+    + (fActive ? `<button type="button" data-ff-clear style="padding:5px 10px;font-size:11.5px;border-radius:14px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;">✕ Цэвэрлэх</button>` : '');
+  wrap.appendChild(fbar);
+  fbar.querySelector('#ff-sort')?.addEventListener('change', e => { F.sort = e.target.value; render(); });
+  fbar.querySelector('#ff-min')?.addEventListener('change', e => { F.min = Number(e.target.value) || 0; render(); });
+  fbar.querySelector('#ff-src')?.addEventListener('change', e => { F.src = e.target.value; render(); });
+  fbar.querySelectorAll('[data-ff-flag]').forEach(b => b.addEventListener('click', () => {
+    F.flags = F.flags || [];
+    const k = b.dataset.ffFlag;
+    F.flags = F.flags.includes(k) ? F.flags.filter(x => x !== k) : [...F.flags, k];
+    render();
+  }));
+  fbar.querySelector('[data-ff-clear]')?.addEventListener('click', () => { state.finF = { min: 0, src: '', flags: [], ben: '', sort: '' }; render(); });
+  fbar.querySelector('[data-ff-clearben]')?.addEventListener('click', () => { F.ben = ''; render(); });
+  if (fActive) {
+    const info = document.createElement('div');
+    info.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:8px;';
+    info.innerHTML = `Шүүлтээр: <b style="color:var(--text);">${flt.length} гүйлгээ · ${fmtMoney(sumOf(flt))}</b>`;
+    wrap.appendChild(info);
+  }
+  if (!flt.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:24px 12px;'; e.textContent = 'Шүүлтэд тохирох гүйлгээ алга.'; wrap.appendChild(e); return; }
+
   // ── Задаргаа: Салбар → Үндсэн → Дэд → мөр (салбар бүлэг эвхэгддэг) ──
   const stMark = (t) => finStage(t).mark;
   const stCol  = (t) => finStage(t).color;
@@ -11871,8 +11929,32 @@ function renderFinanceReport(wrap) {
     d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openFinanceModal(t.id); });
     return d;
   };
+  // 👤 Топ хүлээн авагч — нэрээр нэгтгэж, их дүнгээс нь эрэмбэлнэ (дарвал тухайн хүнээр шүүнэ)
+  if (F.sort === 'ben') {
+    const agg = {};
+    flt.forEach(t => { const k = String(t.beneficiary || '—').trim() || '—'; (agg[k] = agg[k] || []).push(t); });
+    Object.entries(agg).sort((a, b) => sumOf(b[1]) - sumOf(a[1])).forEach(([name, items]) => {
+      const d = document.createElement('div');
+      d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--border);cursor:pointer;';
+      d.onmouseenter = () => d.style.background = 'var(--panel-hover)';
+      d.onmouseleave = () => d.style.background = '';
+      d.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">👤 <b>${escapeHtml(name)}</b> <span style="color:var(--muted);">· ${items.length} гүйлгээ</span></span><b style="white-space:nowrap;">${fmtMoney(sumOf(items))}</b>`;
+      d.addEventListener('click', () => { F.ben = name; F.sort = 'amt_desc'; render(); });
+      wrap.appendChild(d);
+    });
+    return;
+  }
+  // Хавтгай горим — эрэмбэ сонгосон үед бүлэглэлгүй шууд жагсаана
+  if (F.sort) {
+    [...flt].sort((a, b) =>
+      F.sort === 'amt_asc' ? (Number(a.amount) || 0) - (Number(b.amount) || 0)
+      : F.sort === 'date_desc' ? String(b.requested_at || '').localeCompare(String(a.requested_at || ''))
+      : (Number(b.amount) || 0) - (Number(a.amount) || 0)
+    ).forEach(t => wrap.appendChild(line(t)));
+    return;
+  }
   const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
-  const byBr = groupBy(shown, t => finEffBranch(t));
+  const byBr = groupBy(flt, t => finEffBranch(t));
   const brs = [...BR_ORDER.filter(b => byBr[b]), ...Object.keys(byBr).filter(b => !BR_ORDER.includes(b)).sort()];
   brs.forEach(b => {
     const collapsed = !!(state.finReportCollapsed && state.finReportCollapsed[b]);

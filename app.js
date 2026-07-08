@@ -4054,8 +4054,9 @@ function parseStatement(matrix) {
     let dateStr = dm ? `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}` : '';
     if (!dateStr) { dm = dc.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dm) dateStr = `${dm[3]}-${pad2(dm[2])}-${pad2(dm[1])}`; }
     if (!dateStr) continue;   // огноогүй мөр (footer "Нийт орлого" г.м.) → алгасна
+    // Хаан дебитээ СӨРӨГ тоогоор бичдэг (-180000), Голомт эерэгээр — abs() хоёуланд зөв
     rows.push({ date: dateStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
-      account: cell(r, cols.account), credit: cols.credit >= 0 ? num(r[cols.credit]) : 0, debit: cols.debit >= 0 ? num(r[cols.debit]) : 0 });
+      account: cell(r, cols.account), credit: cols.credit >= 0 ? Math.abs(num(r[cols.credit])) : 0, debit: cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0 });
   }
   return { rows, headerRow: hr, cols };
 }
@@ -4071,6 +4072,9 @@ async function runFinRecon(files) {
     for (let i = 0; i < Math.min(3, matrix.length); i++) {
       const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
       cells.forEach((c, j) => {
+        // Хаан: "IBAN: MN670005005222003015" — сүүлийн 10 орон = дансны дугаар
+        const ib = String(c).match(/iban[:\s]*mn\d{2}(\d{4})(\d{6,})/i);
+        if (ib) { ownAccts.add(ib[2]); if (ib[2].length > 10) ownAccts.add(ib[2].slice(-10)); return; }
         if (!/дансны дугаар|данс\s*:/i.test(c)) return;
         // Дугаар нь дараагийн нүдэнд (Голомт) ЭСВЭЛ мөн нүдэндээ "Данс: 5001..." (Хаан) байж болно
         const m = String(c).match(/\d{6,}/) || String(cells[j + 1] || '').match(/\d{6,}/);

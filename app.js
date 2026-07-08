@@ -9221,7 +9221,18 @@ function renderProducts() {
   state.prodCategory = state.prodCategory || 'all';
   state.prodSort = state.prodSort || 'name';
   if (state.prodCategory !== 'all') list = list.filter(p => p.category === state.prodCategory || (Array.isArray(p.all_categories) && p.all_categories.includes(state.prodCategory)));
-  const costOf = (p) => (state.productCosts || {})[p.sku] || 0;
+  const costOf = (p) => (state.productCosts || {})[p.sku] || Number(p.cost) || 0;
+  // Дутуу мэдээллийн шүүлт — зураггүй / өртөггүй / түрээсийн үнэгүй / хуваарилаагүй (нөхөх ажилд)
+  state.prodMissing = state.prodMissing || 'all';
+  if (state.prodMissing !== 'all') {
+    const f = {
+      nophoto: p => !String(p.photo || '').trim(),
+      nocost: p => costOf(p) <= 0,
+      noprice: p => (Number(p.price) || 0) <= 0,
+      noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0,
+    }[state.prodMissing];
+    if (f) list = list.filter(f);
+  }
   const _prodSorters = {
     name: (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
     value_desc: (a, b) => costOf(b) * (Number(b.stock) || 0) - costOf(a) * (Number(a.stock) || 0),
@@ -9242,9 +9253,12 @@ function renderProducts() {
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
   const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
+  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0 }[key]).length;
+  const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
   const filterBar = `<div style="display:flex;gap:8px;margin:6px 0 2px;flex-wrap:wrap;">
-    <select id="prod-cat" style="flex:1;min-width:140px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${catOpts}</select>
-    <select id="prod-sort" style="flex:1;min-width:140px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${sortOpts}</select>
+    <select id="prod-cat" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${catOpts}</select>
+    <select id="prod-missing" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${missOpts}</select>
+    <select id="prod-sort" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${sortOpts}</select>
   </div>`;
   const costs = state.productCosts || {};
   const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * (Number(p.stock) || 0), 0);
@@ -9481,6 +9495,11 @@ function openProductModal(p) {
     qnEl.value = b.dataset.brpick === 'n' ? st : 0;
     updateWorking(); updateBranch(); syncPickChips();
   }));
+  if (!isEdit) {   // Шинэ бараа — default салбар = 🏢 Чимун дотоод (шаардлагатай бол дараа сольж болно)
+    branchTouched = true;
+    const st = Math.max(1, Number(stockEl.value) || 0);
+    qcEl.value = st; qmEl.value = 0; qnEl.value = 0;
+  }
   updateBranch(); syncPickChips();
   const close = () => modal.remove();
   modal.querySelector('#pm-cancel').onclick = close;
@@ -9554,6 +9573,7 @@ function attachProductsHandlers() {
   });
   // Ангилал шүүлт + эрэмбэ
   document.getElementById('prod-cat')?.addEventListener('change', (e) => { state.prodCategory = e.target.value; render(); });
+  document.getElementById('prod-missing')?.addEventListener('change', (e) => { state.prodMissing = e.target.value; render(); });
   document.getElementById('prod-sort')?.addEventListener('change', (e) => { state.prodSort = e.target.value; render(); });
   // Салбар хооронд шилжүүлэх (мөр нээхээс сэргийлж stopPropagation)
   document.querySelectorAll('[data-transfer]').forEach(b => {

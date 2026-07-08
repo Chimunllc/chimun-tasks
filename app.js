@@ -2229,7 +2229,10 @@ function openFinanceModal(id = null) {
     state._fPurchaseUrls = [...purchaseUrls];
     state._fReceiptUrls = [...receiptUrls];
     const isRequester = (state.me === t.requested_by);
-    const isExecutor = (state.me === getFinanceExecutorEmail());
+    // Гүйцэтгэгч = хүсэлтэд томилогдсон executor эсвэл нягтлан; CEO ҮРГЭЛЖ гүйцэтгэж чадна
+    // (executeFinanceRequest CEO-г аль хэдийн зөвшөөрдөг — өмнө нь UI товч нь л нуугдаж,
+    // CEO баримтаар хааж чадахгүй байсан).
+    const isExecutor = (state.me === (t.executor || getFinanceExecutorEmail())) || state.isCEO;
     const dec0 = t.decision || 'pending';
     // Stage 1 picker — илгээгч pending үед нэмэх боломжтой; бусдад read-only thumbs.
     // Хавсралтгүй ч label-ыг үргэлж харуулна — CEO юу дутууг шууд харах
@@ -2277,10 +2280,10 @@ function openFinanceModal(id = null) {
         document.getElementById('f-decision-reason-label').style.display = 'none';
       }
     }
-    // Payment file picker — Stage 3: approved + НЭ гүйцэтгэгдээгүй + туслах нягтлан.
+    // Payment file picker — Stage 3: approved + НЭ гүйцэтгэгдээгүй + гүйцэтгэгч/CEO.
     // executed_at тогтоогдсон бол Stage 3 дууссан, товчийг нуунa (давхар харагдвал
     // хэрэглэгч Stage 4-ийн оронд буруу газар файл хавсаргадаг).
-    const showPayment = (t.decision === 'approved' && !t.executed_at && state.me === getFinanceExecutorEmail());
+    const showPayment = (t.decision === 'approved' && !t.executed_at && isExecutor);
     toggleFinanceFileInput('f-payment-file', showPayment);
     // Stage 4 receipt picker — gүйцэтгэгдсэн + хаагдаагүй + туслах нягтлан (canEditReceipt
     // дээр аль хэдийн зөв тогтоосон). showReceipt-ийг устгана — давхардсан логик.

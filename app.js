@@ -7587,7 +7587,9 @@ function nomaadCalCellHtml(dateObj, list, today, conflicts) {
   return `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}"><div class="na-cal-daynum">${dateObj.getDate()}</div>${lanesHtml}</div>`;
 }
 function renderNomaadCalendar() {
-  const orders = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));   // цуцалсныг харуулахгүй
+  // Зөвхөн урьдчилгаа төлсөн / гэрээ хийгдсэн / гүйцэтгэсэн захиалга харуулна
+  // (Шинэ/Үнийн санал/Баталгаажуулалт хүлээж буй/Больсон — календарьт ОРОХГҮЙ)
+  const orders = (state.nomaadOrders || []).filter(o => ['deposit', 'contract', 'done'].includes(nomaadStage(o)));
   if (!nomaadCalAnchor) nomaadCalAnchor = new Date();
   const mode = nomaadCalMode || 'month';
   const byKey = {};   // 'y-mo-d' -> [orders]

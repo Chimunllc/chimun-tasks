@@ -590,29 +590,35 @@
     <datalist id="f-ben-dl"></datalist>
     <div id="f-ben-auto" style="display:none; font-size:12px; color:var(--ok); margin:2px 0 8px;"></div>
 
-    <label>Банк</label>
-    <select id="f-bank"></select>
+    <!-- Данс + нэмэлт — танил хүлээн авагчид автоматаар бөглөгдөж ЭВХЭЭСТЭЙ үлдэнэ,
+         шинэ хүлээн авагчид автоматаар дэлгэгдэнэ. Хадгалсан хүсэлт харахад үргэлж нээлттэй. -->
+    <details id="f-extra" style="border:1px solid var(--border); border-radius:10px; padding:4px 12px 10px; margin:10px 0;">
+      <summary id="f-extra-sum" style="cursor:pointer; font-size:13px; font-weight:600; padding:8px 0; list-style-position:inside;">💳 Данс, нэмэлт мэдээлэл</summary>
 
-    <label>Дансны дугаар</label>
-    <input id="f-account" inputmode="numeric" placeholder="5045123456" />
+      <label>Банк</label>
+      <select id="f-bank"></select>
 
-    <!-- Гүйлгээ хийхэд хуулах (нягтлан банкны апп руу) -->
-    <div id="f-copy-block" style="display:none;gap:8px;flex-wrap:wrap;margin-top:8px;">
-      <button type="button" id="f-copy-account" class="btn" style="font-size:12px;padding:7px 12px;">📋 Данс хуулах</button>
-      <button type="button" id="f-copy-memo" class="btn" style="font-size:12px;padding:7px 12px;">📋 Гүйлгээний утга хуулах</button>
-    </div>
-    <div id="f-memo-preview" style="font-size:11px;color:var(--muted);margin-top:5px;"></div>
+      <label>Дансны дугаар</label>
+      <input id="f-account" inputmode="numeric" placeholder="5045123456" />
 
-    <label>Зэрэглэл</label>
-    <select id="f-priority">
-      <option value="med">🟡 Энгийн</option>
-      <option value="high">🔴 Чухал</option>
-      <option value="low">⚪ Чөлөөтэй</option>
-    </select>
+      <!-- Гүйлгээ хийхэд хуулах (нягтлан банкны апп руу) -->
+      <div id="f-copy-block" style="display:none;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button type="button" id="f-copy-account" class="btn" style="font-size:12px;padding:7px 12px;">📋 Данс хуулах</button>
+        <button type="button" id="f-copy-memo" class="btn" style="font-size:12px;padding:7px 12px;">📋 Гүйлгээний утга хуулах</button>
+      </div>
+      <div id="f-memo-preview" style="font-size:11px;color:var(--muted);margin-top:5px;"></div>
 
-    <!-- Хугацаа — хэзээ хэрэгтэй / гүйлгээ хийгдэх эцсийн огноо. Нэмэлт тайлбар + Давтагдах hidden үлдээв. -->
-    <label>Хэзээ хэрэгтэй вэ? <span style="font-weight:400;color:var(--muted);font-size:12px;">(сонголтоор — гүйлгээний эцсийн хугацаа)</span></label>
-    <input id="f-due" type="date" />
+      <label>Зэрэглэл</label>
+      <select id="f-priority">
+        <option value="med">🟡 Энгийн</option>
+        <option value="high">🔴 Чухал</option>
+        <option value="low">⚪ Чөлөөтэй</option>
+      </select>
+
+      <!-- Хугацаа — хэзээ хэрэгтэй / гүйлгээ хийгдэх эцсийн огноо. Нэмэлт тайлбар + Давтагдах hidden үлдээв. -->
+      <label>Хэзээ хэрэгтэй вэ? <span style="font-weight:400;color:var(--muted);font-size:12px;">(сонголтоор — гүйлгээний эцсийн хугацаа)</span></label>
+      <input id="f-due" type="date" />
+    </details>
     <textarea id="f-justification" style="display:none;"></textarea>
     <select id="f-frequency" style="display:none;"></select>
 

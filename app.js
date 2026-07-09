@@ -2137,6 +2137,11 @@ function openFinanceModal(id = null) {
     }
     state._benAutoBank = null; state._benAutoAcct = null; state._benCatSuggest = '';
     const _bn = document.getElementById('f-ben-auto'); if (_bn) { _bn.style.display = 'none'; _bn.textContent = ''; }
+    // Данс/нэмэлт хэсэг — шинэ хүсэлтэд эвхээстэй эхэлнэ (танил нэрэнд автомат, шинэд дэлгэгдэнэ)
+    const _fx = document.getElementById('f-extra');
+    if (_fx) _fx.open = false;
+    const _fxs = document.getElementById('f-extra-sum');
+    if (_fxs) _fxs.textContent = '💳 Данс, нэмэлт мэдээлэл';
     document.getElementById('f-purpose').value = '';
     document.getElementById('f-justification').value = '';
     document.getElementById('f-due').value = '';
@@ -2200,6 +2205,8 @@ function openFinanceModal(id = null) {
     }
     document.getElementById('f-beneficiary').value = t.beneficiary || '';
     document.getElementById('f-bank').value = t.bank || '';
+    // Хадгалсан хүсэлт — данс/нэмэлт хэсэг үргэлж дэлгээстэй (нягтлан данс хуулж авдаг)
+    { const _fx = document.getElementById('f-extra'); if (_fx) _fx.open = true; }
     document.getElementById('f-account').value = t.account_number || '';
     document.getElementById('f-purpose').value = t.purpose || '';
     // Гүйлгээ хийхэд хуулах товчнууд (нягтлан банкны апп руу) — данс + "дугаар зорилго" утга
@@ -15546,13 +15553,19 @@ function initEvents() {
   document.getElementById('f-beneficiary')?.addEventListener('input', () => {
     if (state.editingId) return;
     const note = document.getElementById('f-ben-auto');
+    const fx = document.getElementById('f-extra');
+    const fxs = document.getElementById('f-extra-sum');
     const v = document.getElementById('f-beneficiary').value.trim().toLowerCase();
     const e = v.length >= 2 ? finBenDirectory().get(v) : null;
     if (!e) {
       if (note) note.style.display = 'none';
       state._benCatSuggest = '';
+      // Шинэ/танигдаагүй хүлээн авагч — данс гараар оруулах хэрэгтэй тул хэсгийг дэлгэнэ
+      if (v.length >= 3 && fx && !fx.open) { fx.open = true; }
+      if (fxs) fxs.textContent = '💳 Данс, нэмэлт мэдээлэл' + (v.length >= 3 ? ' — шинэ хүлээн авагч, данс оруулна уу' : '');
       return;
     }
+    if (fxs && e.bank && e.acct) fxs.textContent = `💳 ${e.bank} · ${e.acct} — түүхээс автомат ✓`;
     const bankSel = document.getElementById('f-bank');
     const acctIn = document.getElementById('f-account');
     // Гараар бөглөснийг дарж бичихгүй — зөвхөн хоосон/өмнө нь автоматаар бөглөгдсөн талбарыг шинэчилнэ

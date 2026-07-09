@@ -1309,8 +1309,12 @@ function finBenDirectory() {
   if (state._benDir && now - (state._benDirAt || 0) < 60000) return state._benDir;
   const map = new Map();
   const okAcct = a => /^\d{8,20}$/.test(String(a || '').replace(/[\s-]/g, ''));
+  // ЗӨВХӨН БАТАЛГААЖСАН түүхээс суралцана — шалгагдаагүй бичлэг автоматжуулалтын суурь болохгүй
+  // (баримтгүй/нээлттэй бичлэгийн алдааг тарааж баталгаажуулахаас сэргийлнэ)
+  const verified = r => (r.status || '') === 'done'
+    && (['шилжүүлгээр', 'хуулгаар', 'баримттай', 'захирал'].includes(r.close_type || '') || !!r.payment_proof_url);
   (state.financeRequests || []).forEach(r => {
-    if ((r.status || '') === 'deleted') return;
+    if (!verified(r)) return;
     const nm = String(r.beneficiary || '').trim();
     if (nm.length < 2) return;
     const k = nm.toLowerCase();
@@ -1326,6 +1330,14 @@ function finBenDirectory() {
   state._benDir = map;
   state._benDirAt = now;
   return map;
+}
+
+// Ангилал/салбар засварын АУДИТЫН МӨР — хуучин утга хэзээ ч алга болохгүй.
+// ⟦CAT|хуучин|шинэ|хэн|огноо⟧ токен justification-д нэмэгдэж үүрд үлдэнэ (LNK-тэй ижил загвар,
+// normalizeFinance үүнийг цэвэрлэдэггүй тул давтан хадгалалтад хадгалагдана).
+function finAuditToken(kind, oldV, newV) {
+  const cl = s => String(s || '—').replace(/[|⟦⟧]/g, ' ').trim().slice(0, 34) || '—';
+  return ` ⟦${kind}|${cl(oldV)}|${cl(newV)}|${cl(memberName(state.me))}|${new Date().toISOString().slice(0, 10)}⟧`;
 }
 
 // Ангилалын код задлах ("1400 Урлагийн..." эсвэл "1400" → {main:'1000', sub:'1400'})
@@ -2246,6 +2258,9 @@ function openFinanceModal(id = null) {
       if (brSel) {
         brSel.disabled = false;
         brSel.onchange = () => {
+          if (brSel.value !== (t.dept_branch || '')) {
+            t.justification = ((t.justification || '') + finAuditToken('BR', t.dept_branch, brSel.value)).trim();
+          }
           t.dept_branch = brSel.value; saveFinanceRequest(t);
           showToast('Салбар хадгалагдлаа', 'success', 1400);
         };
@@ -2255,6 +2270,12 @@ function openFinanceModal(id = null) {
         if (mainSel) mainSel.disabled = false;
         if (subSel) subSel.onchange = () => {
           if (!subSel.value) return;
+          // Аудит: ангилал өөрчлөгдвөл хуучин утгыг токеноор мөрдөнө
+          const _oldCode = (String(t.category || '').match(/^\d{4}/) || [])[0] || '';
+          if (subSel.value !== _oldCode) {
+            const _newTxt = subSel.options[subSel.selectedIndex] ? subSel.options[subSel.selectedIndex].text : subSel.value;
+            t.justification = ((t.justification || '') + finAuditToken('CAT', t.category, _newTxt)).trim();
+          }
           t.category = subSel.value; saveFinanceRequest(t);
           showToast('Ангилал хадгалагдлаа', 'success', 1400);
         };
@@ -2632,9 +2653,16 @@ async function executeFinanceRequest(id) {
     branchSel?.focus();
     return;
   }
-  // Шинэ утга байвал хадгална (нягтлан сонгосон утга)
-  if (catValue !== r.category) r.category = catValue;
-  if (branchValue !== r.dept_branch) r.dept_branch = branchValue;
+  // Шинэ утга байвал хадгална (нягтлан сонгосон утга) — өөрчлөлтийг аудит токеноор мөрдөнө
+  if (catValue !== r.category) {
+    const _newTxt = catSel && catSel.options[catSel.selectedIndex] ? catSel.options[catSel.selectedIndex].text : catValue;
+    r.justification = ((r.justification || '') + finAuditToken('CAT', r.category, _newTxt)).trim();
+    r.category = catValue;
+  }
+  if (branchValue !== r.dept_branch) {
+    r.justification = ((r.justification || '') + finAuditToken('BR', r.dept_branch, branchValue)).trim();
+    r.dept_branch = branchValue;
+  }
 
   // Шилжүүлгийн баримт заавал хавсаргасан байх ёстой — input.files эсвэл pending state эсвэл өмнө upload-сан URL
   const paymentInput = document.getElementById('f-payment-file');
@@ -11720,6 +11748,12 @@ function renderFinanceReport(wrap) {
       const proofs = Array.isArray(r.purchase_proof_urls) ? r.purchase_proof_urls.filter(Boolean) : [];
       if (!proofs.length) warns.push('⚠ Нэхэмжлэх/баримт хавсаргаагүй');
       if (!digitsOk(r.account_number)) warns.push('⚠ Данс хоосон эсвэл буруу');
+      // Данс СОЛИГДСОН — түүхэн баталгаажсан данснаас өөр данс заасан бол (залилангийн хамгаалалт)
+      const _dirE = finBenDirectory().get(normBen(r.beneficiary));
+      const _reqAcct = String(r.account_number || '').replace(/[\s-]/g, '');
+      if (_dirE && _dirE.acct && _reqAcct && _reqAcct !== _dirE.acct) {
+        warns.push(`🔴 ДАНС ӨӨРЧЛӨГДСӨН — өмнөх баталгаажсан данс: ${_dirE.acct} (${_dirE.n} гүйлгээ). Утсаар баталгаажуулаарай`);
+      }
       if (!all.some(x => x.id !== r.id && normBen(x.beneficiary) === normBen(r.beneficiary) && String(x.requested_at || '') < String(r.requested_at || ''))) warns.push('🆕 Анх удаагийн хүлээн авагч');
       const hist = all.filter(x => x.requested_by === r.requested_by && String(x.requested_at || '').slice(0, 7) === nowMonth);
       const histSum = hist.reduce((s, x) => s + (Number(x.amount) || 0), 0);

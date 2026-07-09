@@ -2066,10 +2066,32 @@ function _finLinkSelect(type, opts = {}) {
       _row.style.display = 'none'; _note.style.display = ''; _note.textContent = `Салбар: ${_nm} — сонгосон объектоос автомат`;
     } else { _row.style.display = ''; _note.style.display = 'none'; }
   }
+  // ХАДГАЛСАН хүсэлт засаж байгаа бол объект холбоосыг ШУУД хадгална (ангилал/салбартай ижил зан)
+  if (state.editingId && !opts.noSuggest && (state.isCEO || state.me === getFinanceExecutorEmail() || isFinanceBranchEditor())) {
+    _finLinkSaveToRequest();
+  }
+}
+// Модал дахь объект холбоосыг засаж буй хүсэлтэд бичиж хадгална (нэр талбар өөрчлөгдөхөд ч)
+function _finLinkSaveToRequest() {
+  if (!state.editingId) return;
+  const r = (state.financeRequests || []).find(x => x.id === state.editingId);
+  if (!r) return;
+  const link = financeLinkRead();
+  r.link_type = link.link_type; r.link_id = link.link_id; r.link_label = link.link_label;
+  // Салбар объектоос автомат (nomaad→КЕМП, order→ИВЕНТ, car/product→ХХК, general→ЗАХ) —
+  // объект холбогдмогц салбарыг зохих кодоор шинэчилнэ (хөрөнгийн ангилал finEffBranch-аар ХХК болно)
+  const _brMap = { nomaad: 'КЕМП', order: 'ИВЕНТ', car: 'ХХК', product: 'ХХК', general: 'ЗАХ' };
+  const _br = _brMap[link.link_type];
+  if (_br) { r.dept_branch = _br; const _sel = document.getElementById('f-dept-branch'); if (_sel) _sel.value = _br; }
+  saveFinanceRequest(r);
+  showToast('✓ Объект холбоос хадгалагдлаа', 'success', 1400);
 }
 function financeLinkReset(t) {
   if (!_finLinkBound) {
     document.querySelectorAll('#f-link-types .f-link-type').forEach(b => b.addEventListener('click', () => _finLinkSelect(b.dataset.flink)));
+    // Объектын нэр (NC-дугаар/бараа) талбар өөрчлөгдөхөд ч хадгалсан хүсэлтэд шууд бичнэ
+    const _li = document.getElementById('f-link-input');
+    if (_li) _li.addEventListener('change', () => { if (state.editingId) _finLinkSaveToRequest(); });
     _finLinkBound = true;
   }
   // Хуучин хүсэлт засахад байгаа төрлөөр; ШИНЭ хүсэлтэд хоосон (заавал сонгуулна). Категори автомат санал алгасна (хуучин утгыг дарахгүй).
@@ -2315,6 +2337,8 @@ function openFinanceModal(id = null, cardMode = false) {
     }
     const acctSectionView = document.getElementById('f-accountant-only');
     if (acctSectionView) acctSectionView.style.display = (isAccountantOrCEOview || branchOnly) ? '' : 'none';
+    // Хадгалсан хүсэлт засаж буй нягтлан/CEO-д "шууд хадгалагдана" тайлбар харуулна
+    { const _eh = document.getElementById('f-edit-hint'); if (_eh) _eh.style.display = (isAccountantOrCEOview || branchOnly) ? '' : 'none'; }
     // Хаах шатанд (зөвшөөрсөн + гүйлгээ хийгдсэн + хаагдаагүй) хүсэлт гаргагч ч баримтын хэсгийг
     // хараад баримт хавсаргаж хаах боломжтой байх ёстой.
     const atCloseStage = (t.decision === 'approved' && t.executed_at && t.status !== 'done');

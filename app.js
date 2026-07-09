@@ -11728,20 +11728,24 @@ function renderReports() {
   // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
   const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
     .filter(t => String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
-  const byCat = {};
-  expItems.forEach(t => { const c = finSubName(t.category) || 'Ангилалгүй'; byCat[c] = (byCat[c] || 0) + (Number(t.amount) || 0); });
+  const byCat = {}; const txByCat = {};
+  expItems.forEach(t => { const c = finSubName(t.category) || 'Ангилалгүй'; byCat[c] = (byCat[c] || 0) + (Number(t.amount) || 0); (txByCat[c] = txByCat[c] || []).push(t); });
   const catRows = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const expTotal = catRows.reduce((s, [, v]) => s + v, 0);
   const maxV = catRows.length ? catRows[0][1] : 1;
   const PAL = ['#6366f1', '#f59e0b', '#16a34a', '#ec4899', '#0ea5e9', '#8b5cf6', '#ef4444', '#14b8a6', '#a855f7', '#f97316', '#64748b'];
+  // Ангилал дээр дарахад гүйлгээ нь задардаг тул тухайн сарын tx-г state-д хадгална (attachReportsHandlers уншина)
+  state._reportCatTx = txByCat;
   const bars = catRows.length
     ? catRows.map(([name, v], i) => {
         const pct = expTotal ? Math.round(v / expTotal * 100) : 0;
         const w = Math.max(2, Math.round(v / maxV * 100));
         const col = PAL[i % PAL.length];
+        const n = (txByCat[name] || []).length;
         return `<div style="margin-bottom:9px;">
-          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:3px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(v)}</b> · ${pct}%</span></div>
+          <div data-cat-toggle="${escapeHtml(name)}" style="display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;margin-bottom:3px;cursor:pointer;user-select:none;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span data-cat-caret style="display:inline-block;width:12px;color:var(--muted);transition:transform .12s;">▸</span> ${escapeHtml(name)} <span style="color:var(--muted);">(${n})</span></span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(v)}</b> · ${pct}%</span></div>
           <div style="height:8px;border-radius:4px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${w}%;background:${col};border-radius:4px;"></div></div>
+          <div class="cat-detail" data-cat-detail="${escapeHtml(name)}" style="display:none;margin:6px 0 4px 14px;"></div>
         </div>`;
       }).join('')
     : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Энэ сард батлагдсан зардал алга.</div>';
@@ -11774,6 +11778,30 @@ function attachReportsHandlers() {
     state.reportMonth = nm; render();
   });
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
+  // Ангиллын мөр дээр дарахад тэр дор нь гүйлгээ задарна (хуудсаас гарахгүй, inline)
+  document.querySelectorAll('[data-cat-toggle]').forEach(row => row.addEventListener('click', () => {
+    const name = row.dataset.catToggle;
+    const detail = document.querySelector(`[data-cat-detail="${CSS.escape(name)}"]`);
+    const caret = row.querySelector('[data-cat-caret]');
+    if (!detail) return;
+    const open = detail.style.display !== 'none';
+    if (open) { detail.style.display = 'none'; if (caret) caret.style.transform = ''; return; }
+    if (!detail.dataset.built) {
+      const txs = (state._reportCatTx && state._reportCatTx[name] || []).slice().sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
+      detail.innerHTML = txs.map(t => {
+        const mark = finStage(t).mark, col = finStage(t).color;
+        const who = escapeHtml(t.beneficiary || memberName(t.createdBy) || '—');
+        const purp = t.purpose ? `<span style="color:var(--muted);"> · ${escapeHtml(String(t.purpose).slice(0, 40))}</span>` : '';
+        const dt = t.requested_at ? `<span style="color:var(--muted);white-space:nowrap;">${escapeHtml(String(t.requested_at).slice(5, 10))}</span>` : '';
+        return `<div data-fin-open="${escapeHtml(t.id)}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b style="color:${col};">${mark}</b> ${who}${purp}</span>${dt}<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b></div>`;
+      }).join('');
+      detail.querySelectorAll('[data-fin-open]').forEach(r => r.addEventListener('click', () => openFinanceModal(r.dataset.finOpen)));
+      detail.dataset.built = '1';
+    }
+    detail.style.display = '';
+    if (caret) caret.style.transform = 'rotate(90deg)';
+  }));
 }
 function renderFinanceReport(wrap) {
   const curMonth = new Date().toISOString().slice(0, 7);

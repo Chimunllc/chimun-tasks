@@ -11911,7 +11911,7 @@ function renderFinanceReport(wrap) {
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month}</div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList))}</b></div></div>`
+    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList))}</b>${(() => { const ol = sumOf(monthList.filter(t => String(t.category || '').startsWith('6900'))); return ol ? ` <span style="font-size:11px;">(үүнээс эзний зээл ${fmtMoney(ol)} — зардал биш)</span>` : ''; })()}</div></div>`
     + `<button class="btn" data-fin-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
   wrap.appendChild(head);
   head.querySelectorAll('[data-fin-month]').forEach(b => b.addEventListener('click', () => {
@@ -11958,7 +11958,11 @@ function renderFinanceReport(wrap) {
     const noOrders = (state.nomaadOrders || []).filter(o => String(o.date_start || '').slice(0, 7) === month && !nomaadIsCancelled(o));
     const noInc = noOrders.reduce((s, o) => s + nomaadEffTotal(o), 0);
     const inc = evInc + noInc;
-    const expList = monthList.filter(t => finStage(t).key === 'fdone');
+    // Эзний зээлийн эргэн төлөлт (6900) = ЗАРДАЛ БИШ (компанийн өглөгийн буцаалт) — цэвэр зардлаас хасна
+    const isOwnerLoan = t => String(t.category || '').startsWith('6900');
+    const expAll = monthList.filter(t => finStage(t).key === 'fdone');
+    const ownerLoan = sumOf(expAll.filter(isOwnerLoan));
+    const expList = expAll.filter(t => !isOwnerLoan(t));
     const exp = sumOf(expList);
     const byBr = groupBy(expList, t => finEffBranch(t));
     const expEv = sumOf(byBr['ИВЕНТ'] || []), expNo = sumOf(byBr['КЕМП'] || []);
@@ -11973,7 +11977,10 @@ function renderFinanceReport(wrap) {
       + row('Зарлага — Ивент', -expEv)
       + row('Зарлага — Кемп', -expNo)
       + row('Зарлага — Захиргаа / Хөрөнгө / бусад', -expOther)
-      + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`
+      + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0 1px;border-top:1px solid var(--border);margin-top:4px;"><b>Цэвэр зардал</b><b>${fmtMoney(-exp)}</b></div>`
+      + (ownerLoan ? row('↩ Эзний зээл эргэн төлөлт (зардал БИШ)', -ownerLoan, 'var(--muted)') : '')
+      + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үйл ажиллагааны үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`
+      + `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Үлдэгдэл = орлого − цэвэр зардал (эзний зээл ороогүй).</div>`
       + ((state.bqOrders || []).length ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:4px;">⏳ Эвентийн захиалгын дата ачаалж байна…</div>`);
     wrap.appendChild(panel);
   })();

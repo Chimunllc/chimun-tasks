@@ -586,7 +586,9 @@
     <div id="f-purchase-preview" style="margin-top:6px;font-size:12px;"></div>
 
     <label>Дансны нэр</label>
-    <input id="f-beneficiary" placeholder="Шинэст ХХК / Б.Алтансүх" />
+    <input id="f-beneficiary" list="f-ben-dl" autocomplete="off" placeholder="Шинэст ХХК / Б.Алтансүх" />
+    <datalist id="f-ben-dl"></datalist>
+    <div id="f-ben-auto" style="display:none; font-size:12px; color:var(--ok); margin:2px 0 8px;"></div>
 
     <label>Банк</label>
     <select id="f-bank"></select>

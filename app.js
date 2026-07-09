@@ -1301,6 +1301,33 @@ function financeAsTask(r) {
     _isFinance: true, // marker
   };
 }
+/* ─── ХҮЛЭЭН АВАГЧИЙН САН — өмнөх бүх хүсэлтээс нэр → банк/данс/ангилал.
+   "Хүн зөвхөн хэнд төлөхөө бичнэ, түүх нь үлдсэнийг бөглөнө" зарчмын цөм:
+   нэр таармагц банк+данс автоматаар, ангилал нь нягтланд санал болж очно. ─── */
+function finBenDirectory() {
+  const now = Date.now();
+  if (state._benDir && now - (state._benDirAt || 0) < 60000) return state._benDir;
+  const map = new Map();
+  const okAcct = a => /^\d{8,20}$/.test(String(a || '').replace(/[\s-]/g, ''));
+  (state.financeRequests || []).forEach(r => {
+    if ((r.status || '') === 'deleted') return;
+    const nm = String(r.beneficiary || '').trim();
+    if (nm.length < 2) return;
+    const k = nm.toLowerCase();
+    const e = map.get(k) || { name: nm, n: 0, banks: {}, accts: {}, cats: {} };
+    e.n++;
+    if (r.bank) e.banks[r.bank] = (e.banks[r.bank] || 0) + 1;
+    if (okAcct(r.account_number)) { const a = String(r.account_number).replace(/[\s-]/g, ''); e.accts[a] = (e.accts[a] || 0) + 1; }
+    if (r.category) e.cats[r.category] = (e.cats[r.category] || 0) + 1;
+    map.set(k, e);
+  });
+  const top = o => { const s = Object.entries(o).sort((a, b) => b[1] - a[1]); return s.length ? s[0][0] : ''; };
+  map.forEach(e => { e.bank = top(e.banks); e.acct = top(e.accts); e.cat = top(e.cats); });
+  state._benDir = map;
+  state._benDirAt = now;
+  return map;
+}
+
 // Ангилалын код задлах ("1400 Урлагийн..." эсвэл "1400" → {main:'1000', sub:'1400'})
 function finCatCodes(category) {
   const m = String(category || '').match(/(\d{4})/);
@@ -2090,6 +2117,14 @@ function openFinanceModal(id = null) {
     document.getElementById('f-beneficiary').value = '';
     document.getElementById('f-bank').value = '';
     document.getElementById('f-account').value = '';
+    // Хүлээн авагчийн сан — түүхээс нэрсийг datalist-д (олон удаагийнх эхэндээ)
+    const _dl = document.getElementById('f-ben-dl');
+    if (_dl) {
+      const _dir = [...finBenDirectory().values()].sort((a, b) => b.n - a.n).slice(0, 300);
+      _dl.innerHTML = _dir.map(e => `<option value="${escapeHtml(e.name)}">`).join('');
+    }
+    state._benAutoBank = null; state._benAutoAcct = null; state._benCatSuggest = '';
+    const _bn = document.getElementById('f-ben-auto'); if (_bn) { _bn.style.display = 'none'; _bn.textContent = ''; }
     document.getElementById('f-purpose').value = '';
     document.getElementById('f-justification').value = '';
     document.getElementById('f-due').value = '';
@@ -2177,7 +2212,13 @@ function openFinanceModal(id = null) {
     document.getElementById('f-due').value = t.due_date || '';
     // category талбарт "1400 Урлагийн үйлчилгээ" эсвэл хуучин "1400" эсвэл хуучин чөлөөт текст байж болно
     // Дэд код нь '1100' хэлбэртэй 4 оронтой тоо
-    const catRaw = String(t.category || '');
+    let catRaw = String(t.category || '');
+    let catSuggested = false;
+    // Ангилалгүй хүсэлт — хүлээн авагчийн түүхээс нягтланд САНАЛ болгоно (хадгалагдаагүй, зөвхөн урьдчилан сонголт)
+    if (!catRaw.trim()) {
+      const _e = finBenDirectory().get(String(t.beneficiary || '').trim().toLowerCase());
+      if (_e && _e.cat) { catRaw = _e.cat; catSuggested = true; }
+    }
     const subMatch = catRaw.match(/^(\d{4})/);
     const subCode = subMatch ? subMatch[1] : '';
     const mainCode = subCode ? subCode[0] + '000' : '';
@@ -2191,6 +2232,7 @@ function openFinanceModal(id = null) {
       document.getElementById('f-category').disabled = false;
       document.getElementById('f-category').value = subCode;
     }
+    if (catSuggested) showToast(`💡 Ангилал түүхээс санал болгов: ${catRaw.slice(0, 40)} — шалгаад гүйцэтгээрэй`, 'info', 4000);
     document.getElementById('f-dept-branch').value = t.dept_branch || '';
     // Ангилал/салбар + Stage 3/4 — view/edit үед нягтлан/CEO харна. Энгийн ажилтанд нуугдана.
     const isAccountantOrCEOview = state.isCEO || (state.me === getFinanceExecutorEmail());
@@ -15466,6 +15508,29 @@ function initEvents() {
     showToast(`${files.length} файл сонгогдсон — "Хүлээн авч хаах" товч дарж хадгална`, 'info', 3000);
   });
   // Stage 3 payment picker — change үед файлыг pending state-д хадгална
+  // Хүлээн авагчийн сан — нэр таармагц банк/данс түүхээс автоматаар бөглөгдөнө (зөвхөн шинэ хүсэлтэд)
+  document.getElementById('f-beneficiary')?.addEventListener('input', () => {
+    if (state.editingId) return;
+    const note = document.getElementById('f-ben-auto');
+    const v = document.getElementById('f-beneficiary').value.trim().toLowerCase();
+    const e = v.length >= 2 ? finBenDirectory().get(v) : null;
+    if (!e) {
+      if (note) note.style.display = 'none';
+      state._benCatSuggest = '';
+      return;
+    }
+    const bankSel = document.getElementById('f-bank');
+    const acctIn = document.getElementById('f-account');
+    // Гараар бөглөснийг дарж бичихгүй — зөвхөн хоосон/өмнө нь автоматаар бөглөгдсөн талбарыг шинэчилнэ
+    if (e.bank && bankSel && (!bankSel.value || bankSel.value === state._benAutoBank)) { bankSel.value = e.bank; state._benAutoBank = e.bank; }
+    if (e.acct && acctIn && (!acctIn.value.trim() || acctIn.value.trim() === (state._benAutoAcct || ''))) { acctIn.value = e.acct; state._benAutoAcct = e.acct; }
+    state._benCatSuggest = e.cat || '';
+    if (note) {
+      note.style.display = '';
+      note.textContent = `✓ Түүхээс автомат: ${e.bank || 'банк ?'} · ${e.acct ? e.acct : 'данс ?'} (өмнө ${e.n} удаа${e.cat ? ' · ' + e.cat.slice(0, 30) : ''})`;
+    }
+  });
+
   document.getElementById('f-payment-file')?.addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -15559,7 +15624,8 @@ function initEvents() {
     const purpose = document.getElementById('f-purpose').value.trim();
     const justification = document.getElementById('f-justification').value.trim();
     const dueDate = document.getElementById('f-due').value;
-    const category = document.getElementById('f-category').value;
+    // Ангилал: сонгоогүй бол хүлээн авагчийн түүхэн саналыг ашиглана (нягтлан гүйцэтгэхдээ шалгана)
+    const category = document.getElementById('f-category').value || state._benCatSuggest || '';
     const deptBranch = document.getElementById('f-dept-branch').value;
     const frequency = document.getElementById('f-frequency').value;
     const priority = document.getElementById('f-priority')?.value || 'med';

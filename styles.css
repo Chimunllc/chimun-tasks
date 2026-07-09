@@ -4608,25 +4608,6 @@ body.role-daily #add-project { display: none !important; }
   .task-row[draggable="true"] { cursor: pointer; }
 }
 
-/* ═══ Permissions UI rows ═══ */
-.perm-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--panel-hover);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 100ms ease;
-}
-.perm-row:hover { background: var(--border); }
-.perm-row input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
 /* ═══ Offline banner ═══ */
 .offline-banner {
   position: fixed;

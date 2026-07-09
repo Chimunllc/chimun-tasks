@@ -3415,7 +3415,6 @@ function renderTaskList() {
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
-    document.getElementById('dash-permissions')?.addEventListener('click', openPermissionsModal);
     document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
     document.getElementById('dash-staff')?.addEventListener('click', () => { if (!state.isCEO) return; state.view = 'access'; state.hubTab = 'people'; render(); });
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
@@ -3434,7 +3433,6 @@ function renderTaskList() {
     wrap.querySelectorAll('[data-ceo-now]').forEach(c => c.addEventListener('click', () => { state.view = c.dataset.ceoNow; render(); }));
     // CEO бус хэрэглэгчид permissions/staff/email digest нуух
     if (!state.isCEO) {
-      document.getElementById('dash-permissions')?.style.setProperty('display', 'none');
       document.getElementById('dash-email-digest')?.style.setProperty('display', 'none');
       document.getElementById('dash-staff')?.style.setProperty('display', 'none');
     }
@@ -12415,10 +12413,6 @@ function renderDashboard() {
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Ажилтан удирдах
         </button>
-        <button class="btn" id="dash-permissions">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px;"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
-          Эрх тохируулах
-        </button>
       </div>
       <div class="dashboard-grid">
         <!-- ─── Миний ажил (бүх ажилтанд) ─── -->
@@ -13685,44 +13679,9 @@ function setupStaffManagement() {
 }
 
 /* ─── Permissions UI (CEO only) ─── */
-function openPermissionsModal() {
-  if (!state.isCEO) return;
-  const list = document.getElementById('perm-list');
-  const perms = JSON.parse(localStorage.getItem('permissions') || '{}');
-  // Боломжит эрхүүд
-  const features = [
-    { key: 'create_task', label: 'Шинэ ажил үүсгэх' },
-    { key: 'create_finance', label: 'Санхүүгийн хүсэлт илгээх' },
-    { key: 'create_order', label: 'Шинэ захиалга (5-дамжлагат акт) үүсгэх' },
-    { key: 'edit_others', label: 'Өөр хүний ажлыг засах' },
-    { key: 'delete_tasks', label: 'Ажил устгах' },
-    { key: 'view_dashboard', label: 'Тойм үзэх' },
-  ];
-  list.innerHTML = features.map(f => {
-    const enabled = perms[f.key] !== false; // default true
-    return `
-      <label class="perm-row">
-        <input type="checkbox" data-perm-key="${f.key}" ${enabled ? 'checked' : ''} />
-        <span>${escapeHtml(f.label)}</span>
-      </label>
-    `;
-  }).join('');
-  document.getElementById('permissions-modal').classList.add('open');
-}
-
-function setupPermissionsModal() {
-  document.getElementById('perm-cancel')?.addEventListener('click', () =>
-    document.getElementById('permissions-modal').classList.remove('open'));
-  document.getElementById('perm-save')?.addEventListener('click', () => {
-    const perms = {};
-    document.querySelectorAll('#perm-list input[data-perm-key]').forEach(cb => {
-      perms[cb.dataset.permKey] = cb.checked;
-    });
-    localStorage.setItem('permissions', JSON.stringify(perms));
-    document.getElementById('permissions-modal').classList.remove('open');
-    showToast('Эрхийн тохиргоо хадгалагдсан', 'success');
-  });
-}
+/* openPermissionsModal / setupPermissionsModal — устгагдсан (2026-07-09).
+   localStorage.permissions-д хадгалдаг байсан ч can()/role_perms шалгалт үүнийг УНШДАГГҮЙ
+   байсан тул юунд ч нөлөөгүй үхмэл код. Бодит эрх = Эрх удирдах view. */
 
 /* ─── Drag-drop reorder (desktop) ─── */
 let _dragSrcId = null;
@@ -16019,8 +15978,6 @@ function initEvents() {
 
   // Profile modal setup
   setupProfileModal();
-  // Permissions modal (CEO only)
-  setupPermissionsModal();
   // Staff management (CEO only)
   setupStaffManagement();
 

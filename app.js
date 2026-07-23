@@ -8269,7 +8269,7 @@ const CHIMUN_LEGAL = {
   name: '"ЧИМУН" ХХК', reg: '6614337',
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
-  bank: 'Голомт банк', account: '3635185058',
+  bank: 'Голомт банк', account: '3635161180',
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
@@ -10563,7 +10563,10 @@ function openNewOrder(editOrder) {
   catalog.addEventListener('click', e => {
     const b = e.target.closest('[data-add]'); if (!b) return;
     const p = (state.products || []).find(x => (x.sku || x.name) === b.dataset.add); if (!p) return;
-    const ex = items.find(it => it.sku === (p.sku || p.name));
+    // Нэгтгэх түлхүүр ЗААВАЛ утгатай байх — эс бөгөөс sku-гүй хоёр өөр бараа
+    // (undefined === undefined) таарч буруу мөр рүү нэгддэг байсан.
+    const key = p.sku || p.name;
+    const ex = key ? items.find(it => (it.sku || it.name) === key) : null;
     if (ex) ex.qty = (Number(ex.qty) || 0) + 1;
     else items.push({ sku: p.sku || p.name, name: p.name, qty: 1, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, photo: p.photo || '' });
     renderItems(); recalc();
@@ -10727,7 +10730,9 @@ function bqOrderCard(o) {
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
-  const appEditable = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'prepared'].includes(st);   // Гарсан/Дууссан/Архивласан/Цуцалсан → засахгүй
+  // Захиалга ХААГДТАЛ засагдана (бараа нэмэх/хасах, тоо/үнэ өөрчлөх) — эвентийн үеэр бараа
+  // нэмэгддэг тул гарсан/түрээслэгдсэн үед ч засах шаардлагатай. Дууссан/Архив/Цуцалсан л хаалттай.
+  const appEditable = !['stopped', 'archived', 'canceled', 'done'].includes(st);
   const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
   const advCap = next ? (next.cap || 'orders.advance') : null;
@@ -10736,7 +10741,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st === 'draft' ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -10849,9 +10854,20 @@ function openOrderQuote(oid) {
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
   const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
-  const itemRows = items.map((it, i) => { const qty = Number(it.qty) || 1, price = Number(it.price) || 0; return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}</td><td class="ctr">${qty}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price)}</td></tr>`; }).join('');
+  // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
+  const days = orderRentalDays(o);
+  const itemRows = items.map((it, i) => {
+    const qty = Number(it.qty) || 1, price = Number(it.price) || 0;
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}</td><td class="ctr">${qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price * days)}</td></tr>`;
+  }).join('');
   const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
-  const discount = subtotal > total ? subtotal - total : 0;
+  // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс ЯГ тооцно.
+  // (Өмнө нь subtotal−total гэж боддог байсан нь хүргэлт/барьцааг хөнгөлөлтөөс хасаж буруу дүн гаргадаг байв.)
+  const _dval = Number(o.discount_value) || 0;
+  const discount = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
+  const _dlv = parseDelivery(o.note);
+  const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
+  const delivLbl = deliveryLabel(_dlv);
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
   const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
@@ -10879,9 +10895,11 @@ function openOrderQuote(oid) {
     <div class="col"><div class="lbl">ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭГЧ</div><b>${C.name}</b><br>РД: ${C.reg}<br>${C.address}<br>Утас: 7700-6790<br>Данс: ${C.bank} — ${C.account}</div>
     <div class="col"><div class="lbl">ҮЙЛЧЛҮҮЛЭГЧ</div><b>${escapeHtml(o.customer || '—')}</b><br>${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? 'Хаяг: ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? '<b>Хугацаа:</b> ' + period : ''}</div>
   </div>
-  <table><tr><th class="ctr">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Нэгж үнэ</th><th class="rt">Дүн</th></tr>${itemRows || '<tr><td colspan="5" style="text-align:center;color:#888">Бараа оруулаагүй</td></tr>'}</table>
+  <table><tr><th class="ctr">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="ctr">Хоног</th><th class="rt">Нэгж үнэ / хоног</th><th class="rt">Дүн</th></tr>${itemRows || '<tr><td colspan="6" style="text-align:center;color:#888">Бараа оруулаагүй</td></tr>'}</table>
   <table class="totals">
-    ${discount ? `<tr><td>Дэд дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr><tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
+    <tr><td>Түрээсийн дүн (${days} хоног):</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
+    ${discount ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
+    ${delivFee ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
     ${deposit ? `<tr><td>Барьцаа (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
     <tr class="g"><td>НИЙТ ДҮН:</td><td class="rt">${fmtMoney(total)}</td></tr>
   </table>

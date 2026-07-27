@@ -7519,13 +7519,17 @@ function renderNomaadPipeline() {
     const list = (byStage[s.key] || []).slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
     if (!list.length) return '';
     const total = list.reduce((sum, o) => sum + nomaadEffTotal(o), 0);
+    // Төлсөн (income_amount нийлбэр) + үлдэгдэл — төлбөр хийгдэж эхэлсэн шатуудад л харуулна
+    const paid = list.reduce((sum, o) => sum + (Number(o.income_amount) || 0), 0);
+    const remain = Math.max(0, total - paid);
+    const showPay = ['deposit', 'contract', 'done'].includes(s.key) && total > 0;
     const collapsed = nomaadStageCollapsed.has(s.key);
     return `<div class="na-stage" id="na-stage-${s.key}">
       <div class="na-stage-head${collapsed ? ' collapsed' : ''}" data-na-stage-toggle="${s.key}" style="--seg:${s.color}">
         <span class="na-stage-dot"></span>
         <span class="na-stage-label">${escapeHtml(s.label)}</span>
         <span class="na-stage-count">${list.length}</span>
-        ${s.key === 'cancelled' ? '<span class="na-stage-total"></span>' : `<span class="na-stage-total">${fmtMoney(total)}</span>`}
+        ${s.key === 'cancelled' ? '<span class="na-stage-total"></span>' : `<span class="na-stage-total" style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.35;">${fmtMoney(total)}${showPay ? `<span style="font-size:11px;font-weight:500;color:var(--muted);">💵 ${fmtMoney(paid)}${remain > 0 ? ` · <span style="color:var(--warn);">үлд ${fmtMoney(remain)}</span>` : ' · <span style="color:var(--ok);">бүрэн ✓</span>'}</span>` : ''}</span>`}
         <svg class="na-stage-chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="na-stage-body" style="display:${collapsed ? 'none' : 'block'}">${list.map(nomaadCardHtml).join('')}</div>
@@ -7534,7 +7538,18 @@ function renderNomaadPipeline() {
   // Нийт бүртгэсэн орлого (income_amount нийлбэр) + идэвхтэй захиалгын тоо
   const totalIncome = orders.reduce((sum, o) => sum + (Number(o.income_amount) || 0), 0);
   const activeN = orders.filter(o => !nomaadIsCancelled(o)).length;
-  const header = `<div style="margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${activeN} идэвхтэй захиалга</div>`;
+  // Урьдчилгаа/гэрээ/гүйцэтгэсэн шатны нийт гэрээ − төлсөн = хүлээгдэж буй авлага
+  const payStages = orders.filter(o => ['deposit', 'contract', 'done'].includes(nomaadStage(o)));
+  const payTotal = payStages.reduce((s, o) => s + nomaadEffTotal(o), 0);
+  const payPaid = payStages.reduce((s, o) => s + (Number(o.income_amount) || 0), 0);
+  const payRemain = Math.max(0, payTotal - payPaid);
+  const header = `<div style="margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">`
+    + `Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${activeN} идэвхтэй захиалга`
+    + (payTotal > 0 ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted);">`
+        + `<span>Баталгаажсан гэрээ: <b style="color:var(--text);">${fmtMoney(payTotal)}</b></span>`
+        + `<span>💵 Төлсөн: <b style="color:var(--ok);">${fmtMoney(payPaid)}</b></span>`
+        + `<span>⏳ Авлага: <b style="color:var(--warn);">${fmtMoney(payRemain)}</b></span></div>` : '')
+    + `</div>`;
   return header + sections;   // funnel картууд хасагдсан — stage жагсаалттай давхардаж байсан
 }
 // Нэг өдрийн нүд (camp зурвасууд) — сар ба 7 хоногийн харагдацад хоёуланд

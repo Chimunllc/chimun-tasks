@@ -8501,31 +8501,38 @@ function meventContractHtml(o) {
   const items = (o.items || []);
   const uPrice = it => Number(it.price != null ? it.price : it.unit_price) || 0;
   const qty = it => Number(it.qty != null ? it.qty : it.quantity) || 0;
-  const baseLine = it => Number(it.total) || uPrice(it) * qty(it);
-  const baseSum = items.reduce((s, it) => s + baseLine(it), 0) || 1;
-  const total = Number(o.total_mnt) || items.reduce((s, it) => s + baseLine(it), 0);   // НӨАТ багтсан Төлбөр
-  const preVat = Math.round(total / 1.1);           // НӨАТ ороогүй дүн
-  const vat = total - preVat;                       // НӨАТ (10%)
-  const deposit = Number(o.deposit_mnt) || 0;
   const _days = (a, b) => { const t = Date.parse(String(a || '').slice(0, 10)), u = Date.parse(String(b || '').slice(0, 10)); const d = Math.round((u - t) / 86400000); return d > 0 ? d : 1; };
   const days = _days(o.starts_at, o.stops_at);
+  // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног (НӨАТ багтсан) — үнийн саналтай ЯГ ижил.
+  const lineOf = it => Number(it.total) || uPrice(it) * qty(it) * days;
+  const subtotal = Number(o.subtotal_mnt) || items.reduce((s, it) => s + lineOf(it), 0);
+  // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс (үнийн саналтай ижил логик).
+  const _dval = Number(o.discount_value) || 0;
+  const discount = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
+  const _dlv = parseDelivery(o.note);
+  const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
+  const delivLbl = deliveryLabel(_dlv);
+  const deposit = Number(o.deposit_mnt) || 0;
+  const rentalNet = Math.max(0, subtotal - discount + delivFee);   // НӨАТ багтсан түрээс+үйлчилгээ (барьцаа ОРООГҮЙ)
+  const total = Number(o.total_mnt) || (rentalNet + deposit);      // нийт төлбөр
+  const preVat = Math.round(rentalNet / 1.1);                      // НӨАТ ороогүй дүн
+  const vat = rentalNet - preVat;                                  // НӨАТ (10%, түрээст багтсан)
   const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
   const contractNo = escapeHtml(o.contract_no || '');
   const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
-  // Барааны мөр — pre-НӨАТ дүнг жингээр хуваарилж нийлбэр нь preVat-тай яг таарна (сүүлийн мөр үлдэгдлийг авна)
-  let alloc = 0;
+  // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
   const itemRows = items.length ? items.map((it, i) => {
-    const line = (i === items.length - 1) ? Math.max(0, preVat - alloc) : Math.round(preVat * baseLine(it) / baseSum);
-    alloc += line;
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">−</td><td class="rt">${fmtMoney(line)}</td></tr>`;
+    const line = lineOf(it);
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">багтсан</td><td class="rt">${fmtMoney(line)}</td></tr>`;
   }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
   const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
-      <tr><td>Нийт дүн:</td><td class="rt">${fmtMoney(preVat)}</td></tr>
-      <tr><td>НӨАТ ороогүй дүн:</td><td class="rt">${fmtMoney(preVat)}</td></tr>
-      <tr><td>НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>
-      <tr class="tb-total"><td>Төлбөр:</td><td class="rt">${fmtMoney(total)}</td></tr>
-      ${deposit > 0 ? `<tr><td>Барьцаа төлбөр:</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
+      <tr><td>Түрээсийн дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
+      ${discount > 0 ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
+      ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
+      <tr><td>Үүнээс НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>
+      ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
+      <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
     </tbody></table>`;
   const chk = (title) => `<table class="svc"><tr><th class="ctr">№</th><th>Шалгах зүйлс</th><th class="ctr">Байдал (✓/✗)</th><th>Тайлбар</th></tr>
     <tr><td class="ctr">1</td><td>Бүрэн бүтэн байдал</td><td></td><td></td></tr>

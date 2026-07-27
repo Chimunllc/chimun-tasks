@@ -11722,6 +11722,133 @@ function attachBooqableHandlers() {
   if (!state.booqable && !state._bqLoading) loadBooqable();
 }
 
+/* ═══ Mevent (эвент түрээс) орлогын аналитик — Захиалга модулиас (app_orders) ═══
+   Орлого = тухайн эвентийн сард (starts_at) хамаарах захиалгуудын төлсөн дүн (paid_mnt).
+   Ангилал/бараа задаргаа = түрээсийн мөрийн үнэ (нэгж үнэ × тоо × хоног) — вэб барааны ангиллаар. */
+// Вэб барааны ангилал индекс: SKU/нэр → ангилал
+function _prodCatOf() {
+  const bySku = {}, byName = {};
+  (state.products || []).forEach(p => {
+    const c = String(p.category || '').trim() || 'Бусад';
+    if (p.sku) bySku[String(p.sku).toLowerCase()] = c;
+    if (p.name) byName[_normProdName(p.name)] = c;
+  });
+  return it => bySku[String(it.sku || '').toLowerCase()] || byName[_normProdName(it.name || '')] || 'Бусад';
+}
+// Захиалгын түрээсийн хоног (эхлэх→дуусах, доод тал 1)
+function _orderDays(o) {
+  const s = String(o.starts_at || '').slice(0, 10), e = String(o.stops_at || s).slice(0, 10);
+  const sm = Date.parse(s), em = Date.parse(e);
+  if (!s || isNaN(sm) || !(em > sm)) return 1;
+  return Math.max(1, Math.round((em - sm) / 86400000));
+}
+function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'canceled' && st !== 'cancelled'; }
+// Тухайн сарын Mevent орлого — задаргаатай (захиалга/ангилал/бараа)
+function meventIncome(month) {
+  const catOf = _prodCatOf();
+  const orders = (state.appOrders || []).filter(o => _orderActive(o) &&
+    String(o.starts_at || o.created_at || '').slice(0, 7) === month);
+  const byOrder = [], byCat = {}, byProd = {};
+  let paidSum = 0, rentalSum = 0;
+  orders.forEach(o => {
+    const paid = Number(o.paid_mnt) || 0, total = Number(o.total_mnt) || 0, days = _orderDays(o);
+    let rental = 0;
+    (o.items || []).forEach(it => {
+      const line = (Number(it.price) || 0) * (Number(it.qty) || 0) * days;
+      if (line <= 0) return;
+      rental += line;
+      const cat = catOf(it);
+      byCat[cat] = (byCat[cat] || 0) + line;
+      const key = _normProdName(it.name || '') || String(it.sku || '');
+      const pr = byProd[key] || (byProd[key] = { name: it.name || key, cat, revenue: 0, unitDays: 0, orders: 0 });
+      pr.revenue += line; pr.unitDays += (Number(it.qty) || 0) * days; pr.orders++;
+    });
+    paidSum += paid; rentalSum += rental;
+    byOrder.push({ no: o.number, customer: o.customer || '—', date: String(o.starts_at || '').slice(0, 10), days, paid, total, rental, status: o.status });
+  });
+  byOrder.sort((a, b) => b.paid - a.paid || b.total - a.total);
+  return { orders, byOrder, byCat, byProd, paidSum, rentalSum, count: orders.length };
+}
+// Бараа бүрийн БҮХ ЦАГИЙН түрээсийн орлого (ROI-д) — нэрээр, кэштэй
+function _productLifetimeRev() {
+  const n = (state.appOrders || []).length;
+  if (state._prodLifeRev && state._prodLifeRevN === n) return state._prodLifeRev;
+  const map = {};
+  (state.appOrders || []).forEach(o => {
+    if (!_orderActive(o)) return;
+    const days = _orderDays(o);
+    (o.items || []).forEach(it => {
+      const key = _normProdName(it.name || '');
+      if (!key) return;
+      map[key] = (map[key] || 0) + (Number(it.price) || 0) * (Number(it.qty) || 0) * days;
+    });
+  });
+  state._prodLifeRev = map; state._prodLifeRevN = n;
+  return map;
+}
+// Орлогын 3 задаргаа (ангилал / захиалга / бараа) — HTML
+function renderIncomeSections(month, mi) {
+  const [yy, mm] = month.split('-').map(Number);
+  const daysInMonth = new Date(yy, mm, 0).getDate();
+  const PAL = ['#16a34a', '#0ea5e9', '#6366f1', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#ef4444', '#a855f7', '#f97316', '#64748b'];
+  // ── Ангиллаар ──
+  const catRows = Object.entries(mi.byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const catTotal = catRows.reduce((s, [, v]) => s + v, 0) || 1;
+  const catMax = catRows.length ? catRows[0][1] : 1;
+  const catBars = catRows.length ? catRows.map(([name, v], i) => {
+    const pct = Math.round(v / catTotal * 100), w = Math.max(2, Math.round(v / catMax * 100));
+    return `<div style="margin-bottom:9px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:3px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(v)}</b> · ${pct}%</span></div>
+      <div style="height:8px;border-radius:4px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${w}%;background:${PAL[i % PAL.length]};border-radius:4px;"></div></div>
+    </div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Энэ сард түрээсийн орлого алга.</div>';
+  const catCard = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);">
+    <div style="font-weight:800;font-size:13px;margin-bottom:12px;">🏷 Орлого ангиллаар — ${month} <span style="color:var(--muted);font-weight:400;font-size:11px;">түрээсийн үнээр</span></div>
+    ${catBars}
+    ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт түрээс</span><span>${fmtMoney(mi.rentalSum)}</span></div>` : ''}
+  </div>`;
+  // ── Захиалгаар ──
+  const shown = mi.byOrder.slice(0, 15);
+  const ordRows = shown.map(x => {
+    const bal = Math.max(0, x.total - x.paid);
+    return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 8px;font-size:12px;border-bottom:1px solid var(--border);">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b>#${x.no ?? '—'}</b> ${escapeHtml(x.customer)} <span style="color:var(--muted);">· ${escapeHtml(x.date)} · ${x.days}х</span></span>
+      <span style="white-space:nowrap;color:var(--ok);font-weight:700;">${fmtMoney(x.paid)}</span>${bal > 0 ? `<span style="white-space:nowrap;color:var(--warn);font-size:11px;">үлд ${fmtMoney(bal)}</span>` : '<span style="white-space:nowrap;color:var(--ok);font-size:11px;">✓</span>'}</div>`;
+  }).join('');
+  const ordCard = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><div style="font-weight:800;font-size:13px;">🧾 Орлого захиалгаар — ${month} <span style="color:var(--muted);font-weight:400;font-size:11px;">${mi.count} захиалга</span></div><button class="btn" data-income-xls style="padding:5px 11px;font-size:12px;">📥 Excel</button></div>
+    ${mi.byOrder.length ? ordRows : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Энэ сард захиалга алга.</div>'}
+    ${mi.byOrder.length > 15 ? `<div style="color:var(--muted);font-size:11px;margin-top:8px;">…бусад ${mi.byOrder.length - 15} захиалга (Excel-д бүгд орно)</div>` : ''}
+    ${mi.byOrder.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт төлсөн</span><span style="color:var(--ok);">${fmtMoney(mi.paidSum)}</span></div>` : ''}
+  </div>`;
+  // ── Бараа бүрийн үзүүлэлт ──
+  const life = _productLifetimeRev();
+  const prods = Object.values(mi.byProd).sort((a, b) => b.revenue - a.revenue);
+  const prodRows = prods.slice(0, 20).map(p => {
+    const stock = productStockByName(p.name);
+    const util = stock ? Math.min(999, Math.round(p.unitDays / (daysInMonth * stock) * 100)) : null;
+    const pd = productByName(p.name);
+    const cost = pd && Number(pd.cost) > 0 ? Number(pd.cost) : 0;
+    const lifeRev = life[_normProdName(p.name)] || 0;
+    const roi = cost > 0 && stock ? (lifeRev / (cost * stock)) : null;
+    const utilCol = util == null ? 'var(--muted)' : util >= 60 ? 'var(--ok)' : util >= 25 ? 'var(--warn)' : 'var(--danger)';
+    const roiCol = roi == null ? 'var(--muted)' : roi >= 3 ? 'var(--ok)' : roi >= 1 ? 'var(--warn)' : 'var(--danger)';
+    return `<tr style="border-bottom:1px solid var(--border);font-size:12px;">
+      <td style="padding:6px 8px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name)}<div style="font-size:10px;color:var(--muted);">${escapeHtml(p.cat)}</div></td>
+      <td style="padding:6px 8px;text-align:right;font-weight:700;">${fmtMoney(p.revenue)}</td>
+      <td style="padding:6px 8px;text-align:right;color:var(--muted);">${stock ?? '—'}</td>
+      <td style="padding:6px 8px;text-align:right;color:${utilCol};font-weight:700;">${util == null ? '—' : util + '%'}</td>
+      <td style="padding:6px 8px;text-align:right;color:${roiCol};font-weight:700;">${roi == null ? '—' : roi.toFixed(1) + '×'}</td>
+    </tr>`;
+  }).join('');
+  const prodCard = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);overflow-x:auto;">
+    <div style="font-weight:800;font-size:13px;margin-bottom:4px;">📦 Барааны үзүүлэлт — ${month}</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">Ашиглалт % = түрээслэгдсэн нэгж-хоног ÷ (сарын хоног × нөөц). ROI× = бүх цагийн орлого ÷ (өртөг × нөөц).</div>
+    ${prods.length ? `<table style="width:100%;border-collapse:collapse;min-width:440px;"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right;"><th style="padding:4px 8px;text-align:left;">Бараа</th><th style="padding:4px 8px;">Түрээс (сар)</th><th style="padding:4px 8px;">Нөөц</th><th style="padding:4px 8px;">Ашиглалт</th><th style="padding:4px 8px;">ROI</th></tr></thead><tbody>${prodRows}</tbody></table>${prods.length > 20 ? `<div style="color:var(--muted);font-size:11px;margin-top:8px;">…бусад ${prods.length - 20} бараа (Excel-д бүгд орно)</div>` : ''}` : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Энэ сард бараа түрээслэгдээгүй.</div>'}
+  </div>`;
+  return catCard + ordCard + prodCard;
+}
+
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */
 /* ─── ТАЙЛАН (Reports hub) — удирдлагын тайлангуудын төв цэг ───
    P&L (ашиг) шууд энд + бусад тайлан руу очих картууд. Зөвхөн бүх санхүү хардаг. */
@@ -11729,15 +11856,26 @@ function renderReports() {
   const curMonth = new Date().toISOString().slice(0, 7);
   if (!state.reportMonth) state.reportMonth = curMonth;
   const month = state.reportMonth;
+  // Тайланд шаардлагатай дата (захиалга/бараа/өртөг) — байхгүй бол анх удаа татна
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  if (!state.products || !state.products.length) loadProductsCatalog();
   // P&L: салбар лензээр (Бүгд / Кемп / M-Event). Зардал = тухайн салбарын батлагдсан хүсэлт.
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);          // null=бүгд, 'КЕМП', 'ИВЕНТ', 'ХХК'
-  const incomeRelevant = !wantBr || wantBr === 'КЕМП';   // NOMAAD = кемпийн орлого
-  let income = 0, incomeN = 0;
-  if (incomeRelevant) (state.nomaadOrders || []).forEach(o => {
-    if (nomaadIsCancelled(o)) return;
-    if (String(o.income_date || '').slice(0, 7) === month) { income += Number(o.income_amount) || 0; incomeN++; }
-  });
+  // Орлого: КЕМП лензэд NOMAAD; бусад (Бүгд/Ивент) лензэд Захиалга модул (Mevent, app_orders төлсөн дүн).
+  const isKemp = wantBr === 'КЕМП';
+  let income = 0, incomeN = 0, incomeLabel, incomeSub, mi = null;
+  if (isKemp) {
+    (state.nomaadOrders || []).forEach(o => {
+      if (nomaadIsCancelled(o)) return;
+      if (String(o.income_date || '').slice(0, 7) === month) { income += Number(o.income_amount) || 0; incomeN++; }
+    });
+    incomeLabel = 'Орлого (NOMAAD)'; incomeSub = incomeN + ' орлоготой захиалга';
+  } else {
+    mi = meventIncome(month);
+    income = mi.paidSum; incomeN = mi.count;
+    incomeLabel = 'Орлого (Mevent)'; incomeSub = incomeN + ' захиалга · төлсөн дүн';
+  }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
@@ -11753,11 +11891,16 @@ function renderReports() {
       <button class="btn" data-report-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-      ${kpi('Орлого (NOMAAD)', fmtMoney(income), 'var(--ok)', incomeRelevant ? incomeN + ' орлоготой захиалга' : 'зөвхөн Кемп/Бүгд')}
+      ${kpi(incomeLabel, fmtMoney(income), 'var(--ok)', incomeSub)}
       ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
       ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, '')}
       ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, '')}
+    </div>
+    <div style="display:flex;justify-content:center;margin-top:12px;">
+      <button class="btn btn-primary" data-report-all-xls style="padding:7px 16px;font-size:12.5px;">📥 Бүгдийг татах (Excel — ${month})</button>
     </div>`;
+  // Орлогын задаргаа (ангилал/захиалга/бараа) — зөвхөн Mevent лензэд (КЕМП биш)
+  const incomeSections = (!isKemp && mi) ? renderIncomeSections(month, mi) : '';
   // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
   const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
     .filter(t => String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
@@ -11798,6 +11941,7 @@ function renderReports() {
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
   return pnl
+    + incomeSections
     + expChart
     + `<div style="font-weight:800;font-size:13px;margin:20px 0 8px;">📁 Дэлгэрэнгүй тайлангууд</div>`
     + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">${cards}</div>`;
@@ -11811,6 +11955,8 @@ function attachReportsHandlers() {
     state.reportMonth = nm; render();
   });
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
+  const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
+  const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;
   // Ангиллын мөр дээр дарахад тэр дор нь гүйлгээ задарна (хуудсаас гарахгүй, inline)
   document.querySelectorAll('[data-cat-toggle]').forEach(row => row.addEventListener('click', () => {
     const name = row.dataset.catToggle;
@@ -12268,6 +12414,137 @@ function exportFinanceReportExcel() {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast(`${rows.length} гүйлгээ Excel-д татагдлаа`, 'success');
+}
+
+/* ═══ Ерөнхий олон-sheet Excel экспорт (SpreadsheetML .xls, гадны сангүй) ═══
+   sheets: [{ name, columns:[өргөн], head:[...], rows:[[{v,t,s}...]] }]
+   t = 'String'|'Number', s = styleID ('money'|'pct'|'grp'|'grpMoney'|'hdr') */
+function _xlsEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function _xlsCell(v, t, s) { return `<Cell${s ? ` ss:StyleID="${s}"` : ''}><Data ss:Type="${t || 'String'}">${_xlsEsc(v)}</Data></Cell>`; }
+function exportXlsSheets(sheets, filename) {
+  const styles = '<Styles>'
+    + '<Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4338CA" ss:Pattern="Solid"/></Style>'
+    + '<Style ss:ID="money"><NumberFormat ss:Format="#,##0&quot;₮&quot;"/></Style>'
+    + '<Style ss:ID="pct"><NumberFormat ss:Format="0&quot;%&quot;"/></Style>'
+    + '<Style ss:ID="grp"><Font ss:Bold="1"/></Style>'
+    + '<Style ss:ID="grpMoney"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0&quot;₮&quot;"/></Style>'
+    + '</Styles>';
+  let ws = '';
+  sheets.forEach(sh => {
+    const cols = (sh.columns || []).map(w => `<Column ss:Width="${w}"/>`).join('');
+    const headRow = sh.head ? '<Row>' + sh.head.map(h => _xlsCell(h, 'String', 'hdr')).join('') + '</Row>' : '';
+    const body = (sh.rows || []).map(r => '<Row>' + r.map(c => _xlsCell(c.v, c.t, c.s)).join('') + '</Row>').join('');
+    const nm = String(sh.name || 'Sheet').replace(/[\\\/\?\*\[\]:]/g, '-').slice(0, 31);
+    ws += `<Worksheet ss:Name="${_xlsEsc(nm)}"><Table>${cols}${headRow}${body}</Table></Worksheet>\n`;
+  });
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'
+    + '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'
+    + styles + '\n' + ws + '</Workbook>';
+  const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Зөвхөн "Орлого захиалгаар" sheet-ийг татна
+function exportIncomeOrdersExcel() {
+  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const mi = meventIncome(month);
+  if (!mi.byOrder.length) { showToast('Татах захиалга алга', 'warn'); return; }
+  exportXlsSheets([incomeOrdersSheet(month, mi)], `Чимун-орлого-захиалгаар-${month}.xls`);
+  showToast(`${mi.byOrder.length} захиалга Excel-д татагдлаа`, 'success');
+}
+
+// ── Тайлан бүрийн sheet builder-ууд (Бүгдийг татах + ганцаар татахад дундын) ──
+function pnlSheet(month, mi, expense, expByCat) {
+  const net = mi.paidSum - expense, margin = mi.paidSum > 0 ? Math.round(net / mi.paidSum * 100) : 0;
+  return { name: `Ашиг ${month}`, columns: [220, 140],
+    head: ['Үзүүлэлт', 'Дүн'],
+    rows: [
+      [{ v: 'Орлого (Mevent, төлсөн)', t: 'String' }, { v: mi.paidSum, t: 'Number', s: 'money' }],
+      [{ v: 'Зарлага (батлагдсан)', t: 'String' }, { v: expense, t: 'Number', s: 'money' }],
+      [{ v: 'Цэвэр ашиг', t: 'String', s: 'grp' }, { v: net, t: 'Number', s: 'grpMoney' }],
+      [{ v: 'Ашгийн марж', t: 'String' }, { v: margin + '%', t: 'String' }],
+    ] };
+}
+function incomeCatSheet(month, mi) {
+  const rows = Object.entries(mi.byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const tot = rows.reduce((s, [, v]) => s + v, 0) || 1;
+  return { name: 'Орлого (ангиллаар)', columns: [220, 140, 80],
+    head: ['Ангилал', 'Түрээсийн үнэ', 'Хувь'],
+    rows: rows.map(([n, v]) => [{ v: n, t: 'String' }, { v, t: 'Number', s: 'money' }, { v: Math.round(v / tot * 100) + '%', t: 'String' }])
+      .concat([[{ v: 'НИЙТ', t: 'String', s: 'grp' }, { v: mi.rentalSum, t: 'Number', s: 'grpMoney' }, { v: '', t: 'String' }]]) };
+}
+function incomeOrdersSheet(month, mi) {
+  return { name: 'Орлого (захиалгаар)', columns: [70, 160, 90, 55, 120, 120, 120, 90],
+    head: ['Дугаар', 'Харилцагч', 'Огноо', 'Хоног', 'Түрээс', 'Төлсөн', 'Нийт', 'Үлдэгдэл'],
+    rows: mi.byOrder.map(x => [
+      { v: x.no ?? '', t: 'String' }, { v: x.customer, t: 'String' }, { v: x.date, t: 'String' },
+      { v: x.days, t: 'Number' }, { v: x.rental, t: 'Number', s: 'money' },
+      { v: x.paid, t: 'Number', s: 'money' }, { v: x.total, t: 'Number', s: 'money' },
+      { v: Math.max(0, x.total - x.paid), t: 'Number', s: 'money' },
+    ]).concat([[{ v: '', t: 'String' }, { v: 'НИЙТ', t: 'String', s: 'grp' }, { v: '', t: 'String' }, { v: '', t: 'String' }, { v: mi.rentalSum, t: 'Number', s: 'grpMoney' }, { v: mi.paidSum, t: 'Number', s: 'grpMoney' }, { v: '', t: 'String' }, { v: '', t: 'String' }]]) };
+}
+function productMetricsSheet(month, mi) {
+  const [yy, mm] = month.split('-').map(Number);
+  const daysInMonth = new Date(yy, mm, 0).getDate();
+  const life = _productLifetimeRev();
+  const prods = Object.values(mi.byProd).sort((a, b) => b.revenue - a.revenue);
+  return { name: 'Барааны үзүүлэлт', columns: [180, 150, 130, 70, 80, 120, 70],
+    head: ['Бараа', 'Ангилал', 'Түрээс (сар)', 'Нөөц', 'Ашиглалт%', 'Нэгж өртөг', 'ROI×'],
+    rows: prods.map(p => {
+      const stock = productStockByName(p.name);
+      const util = stock ? Math.min(999, Math.round(p.unitDays / (daysInMonth * stock) * 100)) : '';
+      const pd = productByName(p.name);
+      const cost = pd && Number(pd.cost) > 0 ? Number(pd.cost) : 0;
+      const lifeRev = life[_normProdName(p.name)] || 0;
+      const roi = cost > 0 && stock ? (lifeRev / (cost * stock)) : '';
+      return [
+        { v: p.name, t: 'String' }, { v: p.cat, t: 'String' }, { v: p.revenue, t: 'Number', s: 'money' },
+        { v: stock ?? '', t: stock == null ? 'String' : 'Number' }, { v: util === '' ? '' : util, t: util === '' ? 'String' : 'Number' },
+        { v: cost || '', t: cost ? 'Number' : 'String', s: cost ? 'money' : undefined },
+        { v: roi === '' ? '' : Number(roi.toFixed(1)), t: roi === '' ? 'String' : 'Number' },
+      ];
+    }) };
+}
+function expenseSheet(month, wantBr, brLabel) {
+  let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
+  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
+  const rows = base.filter(t => (t.requested_at || '').slice(0, 7) === month && t.decision === 'approved')
+    .sort((a, b) => (finEffBranch(a) || '').localeCompare(finEffBranch(b) || '') || String(a.category).localeCompare(String(b.category)));
+  const total = rows.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  return { name: 'Зарлага', columns: [80, 110, 180, 190, 140, 260, 110],
+    head: ['Огноо', 'Салбар', 'Үндсэн ангилал', 'Дэд ангилал', 'Хүлээн авагч', 'Утга', 'Дүн'],
+    rows: rows.map(t => [
+      { v: (t.requested_at || '').slice(0, 10), t: 'String' }, { v: finBranchDisplay(finEffBranch(t)), t: 'String' },
+      { v: finMainName(t.category), t: 'String' }, { v: finSubName(t.category), t: 'String' },
+      { v: t.beneficiary || memberName(t.createdBy) || '', t: 'String' }, { v: t.purpose || '', t: 'String' },
+      { v: Number(t.amount) || 0, t: 'Number', s: 'money' },
+    ]).concat([[{ v: '', t: 'String' }, { v: '', t: 'String' }, { v: '', t: 'String' }, { v: '', t: 'String' }, { v: '', t: 'String' }, { v: 'НИЙТ', t: 'String', s: 'grp' }, { v: total, t: 'Number', s: 'grpMoney' }]]) };
+}
+
+// "Бүгдийг татах" — сонгосон сарын бүх тайланг нэг Excel-д, тус бүр sheet-ээр
+function exportAllReports() {
+  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const lens = effectiveBranchLens();
+  const wantBr = finLensBranch(lens);
+  const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
+  const mi = meventIncome(month);
+  let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
+  if (wantBr) base = base.filter(t => finEffBranch(t) === wantBr);
+  const expense = base.filter(t => (t.requested_at || '').slice(0, 7) === month && t.decision === 'approved')
+    .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const sheets = [
+    pnlSheet(month, mi, expense),
+    incomeCatSheet(month, mi),
+    incomeOrdersSheet(month, mi),
+    expenseSheet(month, wantBr, brLabel),
+    productMetricsSheet(month, mi),
+  ];
+  exportXlsSheets(sheets, `Чимун-тайлан-${month}.xls`);
+  showToast(`${month} сарын бүх тайлан Excel-д татагдлаа`, 'success');
 }
 
 function renderDashboard() {

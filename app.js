@@ -7433,16 +7433,18 @@ function nomaadCardHtml(o) {
   }).join('');
   const open = nomaadExpanded.has(o.quote_no);
   const subBreak = (Number(o.income_advance) || 0) + (Number(o.income_balance) || 0) + (Number(o.income_addon) || 0) + (Number(o.income_damage) || 0);
+  // Зөвхөн захирал — хувийн дансаар орсон төлбөрийг PDF-гүй гар аргаар бүртгэнэ
+  const manualBtn = state.isCEO ? `<button class="btn" data-nomaad-income-manual="${q}" style="padding:4px 12px;font-size:11px;" title="Хувийн дансаар орсон төлбөр — гар аргаар (баримт шаардахгүй, зөвхөн захирал)">🔒 Хувийн данс (гар)</button>` : '';
   const incomeArea = income > 0
     ? `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
          <span style="font-weight:700;color:var(--ok);">Орлого: ${fmtMoney(income)}</span>
          ${balanceHtml}
          ${subBreak > 0 ? `<div style="font-size:11px;color:var(--muted);">Урьд ${fmtMoney(o.income_advance || 0)} · Үлд ${fmtMoney(o.income_balance || 0)} · Нэм ${fmtMoney(o.income_addon || 0)} · Эвд ${fmtMoney(o.income_damage || 0)}</div>` : ''}
-         <button class="btn btn-primary" data-nomaad-income="${q}" style="padding:4px 12px;font-size:11px;">+ Төлбөр нэмэх (PDF)</button>
+         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${manualBtn}<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:4px 12px;font-size:11px;">+ Төлбөр нэмэх (PDF)</button></div>
        </div>`
     : `<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
          ${balanceHtml}
-         <button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх (PDF)</button>
+         <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">${manualBtn}<button class="btn btn-primary" data-nomaad-income="${q}" style="padding:5px 14px;font-size:12px;">Орлого бүртгэх (PDF)</button></div>
        </div>`;
   return `<div class="nomaad-card${open ? ' expanded' : ''}" data-nomaad="${q}">
     <div class="nomaad-card-head" data-nomaad-toggle="${q}">
@@ -7796,6 +7798,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-retry]').forEach(b => {
     b.addEventListener('click', (e) => { e.stopPropagation(); retryNomaadSave(b.dataset.nomaadRetry); });
+  });
+  document.querySelectorAll('button[data-nomaad-income-manual]').forEach(b => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); recordNomaadIncomeManual(b.dataset.nomaadIncomeManual); });
   });
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
@@ -8899,6 +8904,69 @@ async function recordNomaadIncome(quoteNo) {
     showToast('⚠ Серверт хадгалагдсангүй — картаас «Дахин оролдох» дарж дахин илгээнэ үү', 'error', 7000);
     render();
   }
+}
+
+// Захирлын ГАР бүртгэл — хувийн дансаар орсон төлбөр (PDF/баримт шаардахгүй). ЗӨВХӨН CEO.
+async function recordNomaadIncomeManual(quoteNo) {
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  if (!o) return;
+  if (!state.isCEO) { showToast('Зөвхөн захирал хувийн дансны гар бүртгэл хийнэ', 'warn', 3500); return; }
+  const res = await openNomaadManualIncomeModal(o);
+  if (!res) return;
+  const prevPaid = nomaadPaid(o);
+  const newTotal = prevPaid + res.amount;
+  const today = res.date || new Date().toISOString().slice(0, 10);
+  Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
+  const logRes = await logNomaadPayment(o, { amount: res.amount, date: today, note: res.note });   // дедуп/баримтгүй
+  render();
+  const incomeOk = await postNomaadIncome(quoteNo, newTotal, today, state.me);
+  if (logRes.ok && incomeOk) {
+    showToast(`🔒 ${fmtMoney(res.amount)} хувийн дансаар бүртгэлээ · нийт ${fmtMoney(newTotal)}`, 'success', 3000);
+  } else {
+    addNomaadPending({ quote_no: quoteNo, row: logRes.row, newTotal, income_date: today, income_by: state.me, logSaved: logRes.ok, incomeSaved: incomeOk });
+    showToast('⚠ Серверт хадгалагдсангүй — картаас «Дахин оролдох»', 'error', 7000);
+    render();
+  }
+}
+// Гар бүртгэлийн энгийн модал — дүн + огноо + тайлбар (PDF-гүй). {amount, date, note} эсвэл null.
+function openNomaadManualIncomeModal(o) {
+  return new Promise((resolve) => {
+    const total = nomaadEffTotal(o);
+    const bal = Math.max(0, total - nomaadPaid(o));
+    const todayS = new Date().toISOString().slice(0, 10);
+    document.getElementById('nim-modal')?.remove();
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg'; modal.id = 'nim-modal';
+    modal.innerHTML = `<div class="modal" style="max-width:400px;">
+      <h2>🔒 Хувийн дансаар — гар бүртгэл</h2>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
+      <div style="background:rgba(245,158,11,.12);border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11.5px;color:var(--warn);">Захирлын хувийн дансруу орсон төлбөр — баримт шаардахгүй. Дүн/огноог зөв оруулна уу. Үлдэгдэл: <b>${fmtMoney(bal)}</b></div>
+      <label style="font-size:12px;font-weight:600;">Дүн (₮)</label>
+      <input id="nim-amount" type="number" inputmode="numeric" placeholder="0" style="width:100%;margin:4px 0 10px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:15px;box-sizing:border-box;" />
+      <label style="font-size:12px;font-weight:600;">Огноо</label>
+      <input id="nim-date" type="date" value="${todayS}" style="width:100%;margin:4px 0 10px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" />
+      <label style="font-size:12px;font-weight:600;">Тайлбар (хэн/юугаар)</label>
+      <input id="nim-note" type="text" placeholder="ж: бэлнээр / хувийн Хаан данс / нэр" style="width:100%;margin:4px 0 14px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box;" />
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" id="nim-cancel" style="padding:8px 16px;">Болих</button>
+        <button class="btn btn-primary" id="nim-save" style="padding:8px 16px;">Бүртгэх</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.classList.add('open');
+    const close = (val) => { modal.remove(); resolve(val); };
+    modal.querySelector('#nim-cancel').onclick = () => close(null);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(null); });
+    modal.querySelector('#nim-save').onclick = () => {
+      const amount = Math.round(Number(modal.querySelector('#nim-amount').value) || 0);
+      const date = modal.querySelector('#nim-date').value || todayS;
+      const rawNote = modal.querySelector('#nim-note').value.trim();
+      if (amount <= 0) { showToast('Дүн оруулна уу', 'warn'); return; }
+      const note = '🔒 Хувийн данс (гар бүртгэл)' + (rawNote ? ' · ' + rawNote : '');
+      close({ amount, date, note });
+    };
+    setTimeout(() => modal.querySelector('#nim-amount')?.focus(), 50);
+  });
 }
 
 // Ажилтны бүлэг — Master Sheet-ийн "Бүлэг" багана (m.group). Цагийн ажилтныг

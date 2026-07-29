@@ -7132,12 +7132,41 @@ async function loadNomaadPayments() {
     rows.forEach(p => { (byQ[p.quote_no] = byQ[p.quote_no] || []).push(p); });
     state.nomaadPayments = byQ;
     if (typeof render === 'function') render();
+    // Хадгалагдаагүй үлдсэн төлбөр байвал (интернэт сэргэсэн) чимээгүй дахин илгээж үзнэ
+    if (navigator.onLine !== false && loadNomaadPending().length) retryAllNomaadPending();
   } catch (e) { console.warn('loadNomaadPayments', e); }
 }
 
 // NOMAAD орлого бүртгэх бүрт логт нэг мөр нэмнэ (хэн/хэзээ/хэдэн — дарж бичихгүй).
+// nomaad_payments мөрийг серверт бичнэ (upsert — дахин оролдоход давхардуулахгүй). ok/false буцаана.
+async function postNomaadPaymentRow(row) {
+  if (!SUPABASE_ANON_KEY) return false;
+  const post = (body) => fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=merge-duplicates' },
+    body: JSON.stringify(body),
+  }, 15000);
+  try {
+    let r = await post(row);
+    if (!r.ok) {   // nomaad_payments-д 'note' багана байхгүй бол түүнгүйгээр дахин (дүн заавал хадгалагдана)
+      const { note, ...noNote } = row;
+      r = await post(noNote);
+    }
+    return r.ok;
+  } catch (e) { console.warn('postNomaadPaymentRow', e); return false; }
+}
+// Захиалгын running total-ыг серверт бичнэ (n8n record_income). ok/false буцаана.
+async function postNomaadIncome(quoteNo, newTotal, date, by) {
+  if (!state.config.nomaadOrdersUrl) return false;
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: newTotal, income_advance: 0, income_balance: 0, income_addon: 0, income_damage: 0, income_date: date, income_by: by }),
+    }, 15000);
+    return r.ok;
+  } catch (e) { return false; }
+}
 async function logNomaadPayment(o, res) {
-  if (!SUPABASE_ANON_KEY) return;
   const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'np-' + Date.now();
   const at = new Date().toISOString();
   const pay_date = (res && res.date) || at.slice(0, 10);
@@ -7146,18 +7175,46 @@ async function logNomaadPayment(o, res) {
   // локал кэшид шууд (UI түргэн)
   state.nomaadPayments = state.nomaadPayments || {};
   (state.nomaadPayments[o.quote_no] = state.nomaadPayments[o.quote_no] || []).push(row);
-  const post = (body) => fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify(body),
-  }, 15000);
-  try {
-    let r = await post(row);
-    if (!r.ok) {   // nomaad_payments-д 'note' багана байхгүй бол түүнгүйгээр дахин (дүн заавал хадгалагдана)
-      const { note, ...noNote } = row;
-      await post(noNote);
-    }
-  } catch (e) { console.warn('logNomaadPayment', e); }
+  const ok = await postNomaadPaymentRow(row);
+  return { ok, row };
+}
+
+/* ─── Хадгалагдаагүй төлбөрийн safety-net ───
+   upload хийх агшинд интернэт/сервер унавал төлбөр серверт хадгалагдахгүй үлдэж болно.
+   Ийм бичлэгийг localStorage-д хадгалж, картад улаан анхааруулга + «Дахин оролдох», мөн
+   интернэт сэргэхэд/тайлан ачаалахад автоматаар дахин илгээнэ. */
+function loadNomaadPending() {
+  if (!state.nomaadPending) { try { state.nomaadPending = JSON.parse(localStorage.getItem('nomaadPendingSaves') || '[]'); } catch (e) { state.nomaadPending = []; } }
+  return state.nomaadPending;
+}
+function saveNomaadPending() { try { localStorage.setItem('nomaadPendingSaves', JSON.stringify(loadNomaadPending())); } catch (e) {} }
+function addNomaadPending(entry) {
+  loadNomaadPending();
+  entry.key = (entry.row && entry.row.id) || ('p-' + Date.now());
+  state.nomaadPending = state.nomaadPending.filter(p => p.key !== entry.key);
+  state.nomaadPending.push(entry); saveNomaadPending();
+}
+function nomaadPendingFor(quoteNo) { return loadNomaadPending().filter(p => p.quote_no === quoteNo); }
+async function retryNomaadSave(quoteNo) {
+  loadNomaadPending();
+  const pend = state.nomaadPending.filter(p => p.quote_no === quoteNo);
+  if (!pend.length) return;
+  showToast('Дахин хадгалж байна…', 'info', 1500);
+  let allOk = true;
+  for (const p of pend) {
+    if (!p.logSaved) p.logSaved = await postNomaadPaymentRow(p.row);
+    if (!p.incomeSaved) p.incomeSaved = await postNomaadIncome(p.quote_no, p.newTotal, p.income_date, p.income_by);
+    if (!(p.logSaved && p.incomeSaved)) allOk = false;
+  }
+  state.nomaadPending = state.nomaadPending.filter(p => !(p.logSaved && p.incomeSaved));
+  saveNomaadPending();
+  showToast(allOk ? '✓ Серверт хадгаллаа' : '⚠ Дахин амжилтгүй — интернэтээ шалгаад дахин оролдоно уу', allOk ? 'success' : 'error', allOk ? 2500 : 5000);
+  render();
+}
+async function retryAllNomaadPending() {
+  loadNomaadPending();
+  const quotes = [...new Set(state.nomaadPending.map(p => p.quote_no))];
+  for (const q of quotes) await retryNomaadSave(q);
 }
 // date_start-аас өнөөдрийг хүртэлх үлдсэн хоног (null = огноо алга/буруу)
 function nomaadDaysLeft(dateStr) {
@@ -7331,6 +7388,12 @@ function nomaadCardHtml(o) {
     <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:4px;">📝 Бүртгэлийн түүх (${plog.length})</div>
     ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;"><span>${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;">${fmtMoney(p.total)}</span></div>`).join('')}
   </div>` : '';
+  // Серверт хадгалагдаагүй төлбөр (upload үед интернэт/сервер унасан) — улаан анхааруулга + дахин оролдох
+  const pend = nomaadPendingFor(o.quote_no);
+  const pendingBanner = pend.length ? `<div style="margin:6px 0;background:rgba(239,68,68,.12);border:1px solid var(--danger);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;">
+    <span style="color:var(--danger);font-weight:600;">⚠ ${pend.length} төлбөр серверт хадгалагдаагүй</span>
+    <button class="btn btn-primary" data-nomaad-retry="${q}" style="padding:4px 12px;font-size:11.5px;">↻ Дахин оролдох</button>
+  </div>` : '';
   // Үлдэгдэл = гэрээний дүн − хүлээн авсан орлого (Эцсийн гэрээний дүн байвал тэрийг, эс бөгөөс Нийт дүн)
   const contractTotal = nomaadEffTotal(o);
   const gtRaw = Number(o.grand_total) || 0;
@@ -7390,6 +7453,7 @@ function nomaadCardHtml(o) {
         <span class="nomaad-card-reg" style="font-size:10.5px;color:var(--muted);flex-basis:100%;width:100%;margin-top:2px;">${regLine}</span>
       </div>
       <div class="nomaad-card-right">
+        ${pend.length ? `<span title="Серверт хадгалагдаагүй төлбөр байна — картыг нээж «Дахин оролдох»" style="color:var(--danger);font-weight:700;font-size:12px;">⚠ хадгалаагүй</span>` : ''}
         ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
         ${balance > 0 ? `<span title="Үлдэгдэл" style="color:var(--warn);font-weight:700;font-size:12px;">Үлд ${fmtMoney(balance)}</span>` : balance < 0 ? `<span title="Илүү төлсөн — гэрээний дүнг шинэчлэх шаардлагатай" style="color:var(--danger);font-weight:700;font-size:12px;">⚠ Илүү ${fmtMoney(-balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓</span>'}
         <span class="nomaad-card-total"${hasDed ? ` title="Акт дүн · гэрээний санал ${fmtMoney(gtRaw)}"` : ''}>${fmtMoney(contractTotal)}${hasDed ? ` <span class="nomaad-card-quote">${fmtMoney(gtRaw)}</span>` : ''}</span>
@@ -7400,6 +7464,7 @@ function nomaadCardHtml(o) {
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
       <div class="order-meta">${escapeHtml(o.camp || '')} · ${escapeHtml(o.tier || '')}</div>
       ${nomaadIsCancelled(o) && o.note ? `<div class="order-meta" style="color:var(--danger);font-weight:600;">❌ ${escapeHtml(o.note)}</div>` : ''}
+      ${pendingBanner}
       ${profitHtml}
       ${logHistoryHtml}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
@@ -7728,6 +7793,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-income]').forEach(b => {
     b.addEventListener('click', () => recordNomaadIncome(b.dataset.nomaadIncome));
+  });
+  document.querySelectorAll('button[data-nomaad-retry]').forEach(b => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); retryNomaadSave(b.dataset.nomaadRetry); });
   });
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
@@ -8820,16 +8888,17 @@ async function recordNomaadIncome(quoteNo) {
   const newTotal = prevPaid + res.amount;
   const today = res.date || new Date().toISOString().slice(0, 10);
   Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
-  logNomaadPayment(o, res);   // тусдаа төлбөр (дүн + тайлбар + хэн/хэзээ)
+  const logRes = await logNomaadPayment(o, res);          // лог руу локал+сервер (ok/false)
   render();
-  try {
-    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: newTotal, income_advance: 0, income_balance: 0, income_addon: 0, income_damage: 0, income_date: today, income_by: state.me }),
-    }, 15000);
-    if (r.ok) showToast(`${fmtMoney(res.amount)} бүртгэлээ · нийт ${fmtMoney(newTotal)}`, 'success', 2800);
-    else showToast('Локалд хадгалсан. Sheet sync хийгдээгүй.', 'warn');
-  } catch (e) { showToast('Локалд хадгалсан, sheet sync алдаатай.', 'warn'); }
+  const incomeOk = await postNomaadIncome(quoteNo, newTotal, today, state.me);   // running total сервер
+  if (logRes.ok && incomeOk) {
+    showToast(`${fmtMoney(res.amount)} бүртгэлээ · нийт ${fmtMoney(newTotal)}`, 'success', 2800);
+  } else {
+    // Аль нэг нь серверт хадгалагдсангүй — safety-net дараалалд хийж, картад «Дахин оролдох» гаргана
+    addNomaadPending({ quote_no: quoteNo, row: logRes.row, newTotal, income_date: today, income_by: state.me, logSaved: logRes.ok, incomeSaved: incomeOk });
+    showToast('⚠ Серверт хадгалагдсангүй — картаас «Дахин оролдох» дарж дахин илгээнэ үү', 'error', 7000);
+    render();
+  }
 }
 
 // Ажилтны бүлэг — Master Sheet-ийн "Бүлэг" багана (m.group). Цагийн ажилтныг
@@ -13534,6 +13603,7 @@ function updateOnlineStatus() {
 window.addEventListener('online', () => {
   showToast('Интернэт сэргэв — синк хийж байна...', 'info', 2000);
   updateOnlineStatus();
+  if (typeof retryAllNomaadPending === 'function' && loadNomaadPending().length) retryAllNomaadPending();
 });
 window.addEventListener('offline', () => {
   showToast('Интернэтгүй боллоо — офлайн горим', 'warn', 3000);

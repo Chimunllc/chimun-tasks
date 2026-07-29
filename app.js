@@ -3339,7 +3339,7 @@ function renderSidebar() {
   if (noNav) {
     noNav.style.display = canSeeNomaadOrders() ? '' : 'none';
     const noCnt = document.getElementById('cnt-nomaad');
-    if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(Number(o.income_amount) > 0) && !nomaadIsCancelled(o)).length);
+    if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(nomaadPaid(o) > 0) && !nomaadIsCancelled(o)).length);
   }
   // Утасны салбар сонгогч — sidebar доторх чипс (header-ийн select утсанд нуугддаг).
   // Нэг салбарт түгжигдсэн хүнд сонголт байхгүй тул огт харуулахгүй.
@@ -7320,9 +7320,9 @@ function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'fu
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
   const isDoneQuote = nomaadStage(o) === 'done';   // Гүйцэтгэсэн — засах хаалттай (түүх хамгаална)
-  const income = Number(o.income_amount) || 0;
   // Төлбөрийн лог (хэн/хэзээ/хэдэн бүртгэсэн бүрэн түүх). Лог байхгүй бол сүүлийн income_by-д унана.
   const plog = (state.nomaadPayments && state.nomaadPayments[o.quote_no]) || [];
+  const income = nomaadPaid(o);   // running total гацсан бол логийн нийлбэрээр эдгэрнэ
   const _lastLog = plog[plog.length - 1];
   const regLine = plog.length
     ? `📝 ${plog.length} удаа бүртгэсэн · сүүлд <b style="font-weight:600;">${escapeHtml(memberName(_lastLog.recorded_by))}</b> · ${escapeHtml(String(_lastLog.recorded_at || '').slice(0, 10))}`
@@ -7495,11 +7495,20 @@ const NOMAAD_STATUSES = [
   { value: 'БОЛЬСОН', label: 'Больсон' },
 ];
 // Захиалгын шатыг төлөв + орлого + огнооноос автоматаар тооцно
+// Төлсөн дүн — income_amount (running total) БА төлбөрийн логийн (nomaadPayments) нийлбэрийн аль их.
+// Зарим захиалгад running total нэг upload-ийн дараа хадгалагдалгүй гацдаг тул төлбөрийн лог
+// (upload бүр = 1 мөр) илүү бүрэн эх сурвалж — аль ихийг авч зөрүүг автоматаар эдгээнэ.
+function nomaadPaid(o) {
+  const field = Number(o && o.income_amount) || 0;
+  const log = (state.nomaadPayments && state.nomaadPayments[o && o.quote_no]) || [];
+  const logSum = log.reduce((s, p) => s + (Number(p.total) || 0), 0);
+  return Math.max(field, logSum);
+}
 function nomaadStage(o) {
   const su = String(o.status || '').toUpperCase();
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
   if (su.includes('ДУУССАН') || su.includes('ГҮЙЦЭТГЭСЭН')) return 'done';
-  const income = Number(o.income_amount) || 0;
+  const income = nomaadPaid(o);
   const contractTotal = nomaadEffTotal(o);
   const fullyPaid = income > 0 && (contractTotal - income) <= 0;
   const days = nomaadDaysLeft(o.date_start);
@@ -7519,8 +7528,8 @@ function renderNomaadPipeline() {
     const list = (byStage[s.key] || []).slice().sort((a, b) => nomaadSortKey(a) - nomaadSortKey(b));
     if (!list.length) return '';
     const total = list.reduce((sum, o) => sum + nomaadEffTotal(o), 0);
-    // Төлсөн (income_amount нийлбэр) + үлдэгдэл — төлбөр хийгдэж эхэлсэн шатуудад л харуулна
-    const paid = list.reduce((sum, o) => sum + (Number(o.income_amount) || 0), 0);
+    // Төлсөн (лог/running total-ийн аль их) + үлдэгдэл — төлбөр хийгдэж эхэлсэн шатуудад л харуулна
+    const paid = list.reduce((sum, o) => sum + nomaadPaid(o), 0);
     const remain = Math.max(0, total - paid);
     const showPay = ['deposit', 'contract', 'done'].includes(s.key) && total > 0;
     const collapsed = nomaadStageCollapsed.has(s.key);
@@ -7535,13 +7544,13 @@ function renderNomaadPipeline() {
       <div class="na-stage-body" style="display:${collapsed ? 'none' : 'block'}">${list.map(nomaadCardHtml).join('')}</div>
     </div>`;
   }).join('');
-  // Нийт бүртгэсэн орлого (income_amount нийлбэр) + идэвхтэй захиалгын тоо
-  const totalIncome = orders.reduce((sum, o) => sum + (Number(o.income_amount) || 0), 0);
+  // Нийт бүртгэсэн орлого (лог/running total-ийн аль их) + идэвхтэй захиалгын тоо
+  const totalIncome = orders.reduce((sum, o) => sum + nomaadPaid(o), 0);
   const activeN = orders.filter(o => !nomaadIsCancelled(o)).length;
   // Урьдчилгаа/гэрээ/гүйцэтгэсэн шатны нийт гэрээ − төлсөн = хүлээгдэж буй авлага
   const payStages = orders.filter(o => ['deposit', 'contract', 'done'].includes(nomaadStage(o)));
   const payTotal = payStages.reduce((s, o) => s + nomaadEffTotal(o), 0);
-  const payPaid = payStages.reduce((s, o) => s + (Number(o.income_amount) || 0), 0);
+  const payPaid = payStages.reduce((s, o) => s + nomaadPaid(o), 0);
   const payRemain = Math.max(0, payTotal - payPaid);
   const header = `<div style="margin-bottom:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));font-size:13px;">`
     + `Нийт бүртгэсэн орлого: <b style="color:var(--ok)">${fmtMoney(totalIncome)}</b> · ${activeN} идэвхтэй захиалга`
@@ -7796,7 +7805,7 @@ function attachNomaadHandlers() {
 async function deleteNomaadQuote(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
-  if (Number(o.income_advance) > 0 || Number(o.income_amount) > 0) {
+  if (Number(o.income_advance) > 0 || nomaadPaid(o) > 0) {
     showToast('Урьдчилгаа/орлого бүртгэгдсэн — устгах боломжгүй', 'warn', 4000); return;
   }
   const reason = await showPrompt(
@@ -7841,7 +7850,7 @@ async function cancelNomaadCompany(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
   if (!can('nomaad.cancel')) { showToast('Танд цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
-  const paid = Number(o.income_amount) || Number(o.income_advance) || 0;
+  const paid = nomaadPaid(o) || Number(o.income_advance) || 0;
   const reason = await showPrompt(
     `${o.company || 'Захиалга'} · ${quoteNo}\nМанайхаас цуцлах шалтгаан? (түүхэд үлдэнэ)${paid > 0 ? `\n⚠ Хүлээн авсан ${fmtMoney(paid)} — буцаах эсэхээ анхаар.` : ''}`,
     { placeholder: 'Ж: кемп дүүрсэн / давхар захиалга / хүлээж авах боломжгүй...', okText: 'Манайхаас цуцлах' });
@@ -8714,7 +8723,7 @@ function openNomaadIncomeModal(o) {
   loadUsedReceipts();   // нэгдсэн баримтын жагсаалтыг шинэчил (шуурхай давхцал шалгах)
   return new Promise((resolve) => {
     const total = nomaadEffTotal(o);
-    const prevPaid = Number(o.income_amount) || 0;
+    const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээж, дараагийн төлбөр зөв нэмэгдэнэ
     const bal = Math.max(0, total - prevPaid);
     document.getElementById('ni-dyn-modal')?.remove();
     const modal = document.createElement('div');
@@ -8807,7 +8816,7 @@ async function recordNomaadIncome(quoteNo) {
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
-  const prevPaid = Number(o.income_amount) || 0;
+  const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
   const newTotal = prevPaid + res.amount;
   const today = res.date || new Date().toISOString().slice(0, 10);
   Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
@@ -11283,10 +11292,10 @@ function receivablesData() {
     if (!branchInLens('camp')) return;   // салбарын ленз: NOMAAD салбар биш бол хасна
     if (nomaadIsCancelled(o)) return;
     noTotal++;
-    if (Number(o.income_amount) > 0) noRecorded++;
+    if (nomaadPaid(o) > 0) noRecorded++;
     const contract = nomaadEffTotal(o);
     if (contract <= 0) return;
-    const inc = Number(o.income_amount) || 0;
+    const inc = nomaadPaid(o);
     const bal = contract - inc;
     if (bal <= 0) return;
     const end = o.date_end ? String(o.date_end).slice(0, 10) : '';
@@ -11683,7 +11692,7 @@ function renderBooqable() {
     const cancelled = (typeof nomaadIsCancelled === 'function') ? nomaadIsCancelled : () => false;
     (state.nomaadOrders || []).forEach(o => {
       if (cancelled(o)) return;
-      const a = Number(o.income_amount) || 0, mo = String(o.income_date || '').slice(0, 7);
+      const a = nomaadPaid(o), mo = String(o.income_date || '').slice(0, 7);
       if (a > 0 && mo) cm[mo] = (cm[mo] || 0) + a;
     });
     const evTot = Object.values(ev).reduce((a, b) => a + b, 0);
@@ -11875,7 +11884,7 @@ function renderReports() {
   if (isKemp) {
     (state.nomaadOrders || []).forEach(o => {
       if (nomaadIsCancelled(o)) return;
-      if (String(o.income_date || '').slice(0, 7) === month) { income += Number(o.income_amount) || 0; incomeN++; }
+      if (String(o.income_date || '').slice(0, 7) === month) { income += nomaadPaid(o); incomeN++; }
     });
     incomeLabel = 'Орлого (NOMAAD)'; incomeSub = incomeN + ' орлоготой захиалга';
   } else {

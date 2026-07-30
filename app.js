@@ -8447,7 +8447,9 @@ function nomaadContractHtml(o) {
   const itTotal = it => Number(it.total) || (Number(it.unit_price) || 0) * (Number(it.qty) || 0);
   const pkg = items.find(isPkg);
   const guests = Number(o.guests) || (pkg ? Number(pkg.qty) : 0) || 0;
-  const total = Number(o.final_amount) > 0 ? Number(o.final_amount) : (Number(o.grand_total) || 0);
+  // Гэрээ = тохирсон дүн (grand_total). Акт (final_amount = гүйцэтгэлийн хасалт) бол
+  // арга хэмжээний ДАРАА гардаг тусдаа зүйл тул гэрээнд оруулахгүй.
+  const total = Number(o.grand_total) || items.reduce((s, it) => s + (it.included ? 0 : itTotal(it)), 0);
   const packageTotal = pkg ? (Number(pkg.total) || (Number(pkg.unit_price) || 0) * guests) : 0;
   const perPerson = pkg ? (Number(pkg.unit_price) || 0) : (guests ? Math.round(total / guests) : 0);
   const addonTotal = pkg ? Math.max(0, total - packageTotal) : 0;

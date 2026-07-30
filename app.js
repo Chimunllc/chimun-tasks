@@ -8059,11 +8059,27 @@ function openNomaadEditModal(quoteNo) {
   ['input', 'change', 'click'].forEach(ev => modal.querySelector('#ne-items').addEventListener(ev, updateDeduct));
   modal.querySelector('#ne-add').addEventListener('click', updateDeduct);
   updateDeduct();
-  modal.querySelector('#ne-guests').addEventListener('input', (e) => {
+  // Хүний тоо өөрчлөгдөхөд: (1) Үндсэн багц шууд дагана (амьд, бичих явцад),
+  // (2) хүний тоогоор тавьсан бусад бараа (өмнөх тоо = өмнөх хүний тоо, ж: Ширээ сандал 600)
+  //     нь бичиж дуусаад (change) дагана — бичих явцын завсрын утгаар эвдрэхээс сэргийлж change дээр.
+  let prevGuests = guests;
+  const guestEl = modal.querySelector('#ne-guests');
+  guestEl.addEventListener('input', (e) => {
     guests = Math.max(0, Number(e.target.value) || 0);
     const tb = items.find(it => it.category === 'Үндсэн багц');
     if (tb) { tb.qty = guests; ib.recalc(tb); ib.renderItems(); }
     updateDeduct();
+  });
+  guestEl.addEventListener('change', (e) => {
+    const ng = Math.max(0, Number(e.target.value) || 0);
+    if (prevGuests > 0 && ng !== prevGuests) {
+      let changed = 0;
+      items.forEach(it => {
+        if (it.category !== 'Үндсэн багц' && Number(it.qty) === prevGuests) { it.qty = ng; ib.recalc(it); changed++; }
+      });
+      if (changed) { ib.renderItems(); updateDeduct(); showToast(`${changed} барааны тоо ${prevGuests}→${ng} боллоо`, 'info', 2500); }
+    }
+    guests = ng; prevGuests = ng;
   });
   nomaadWirePreview(modal, () => ({
     quote_no: o.quote_no,
@@ -8304,10 +8320,22 @@ function openNomaadCreateModal() {
     date_start: modal.querySelector('#nc-start').value,
     date_end: modal.querySelector('#nc-end').value,
   }), items);
+  let ncPrevGuests = Number(modal.querySelector('#nc-guests').value) || 0;
   modal.querySelector('#nc-guests').addEventListener('input', (e) => {
     const g = Math.max(0, Number(e.target.value) || 0);
     const tb = items.find(it => it.category === 'Үндсэн багц');
     if (tb) { tb.qty = g; ib.recalc(tb); ib.renderItems(); }
+  });
+  modal.querySelector('#nc-guests').addEventListener('change', (e) => {
+    const ng = Math.max(0, Number(e.target.value) || 0);
+    if (ncPrevGuests > 0 && ng !== ncPrevGuests) {
+      let changed = 0;
+      items.forEach(it => {
+        if (it.category !== 'Үндсэн багц' && Number(it.qty) === ncPrevGuests) { it.qty = ng; ib.recalc(it); changed++; }
+      });
+      if (changed) { ib.renderItems(); showToast(`${changed} барааны тоо ${ncPrevGuests}→${ng} боллоо`, 'info', 2500); }
+    }
+    ncPrevGuests = ng;
   });
   modal.querySelector('#nc-cancel').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });

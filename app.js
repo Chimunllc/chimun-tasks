@@ -7959,6 +7959,23 @@ async function cancelNomaadCompany(quoteNo) {
 
 /* ─── NOMAAD захиалга засах — хүний тоо + мөр бүрийн үнэ/тоо + холбоо барих.
    Хадгалбал nomaad-orders {action:'update_quote'} руу бичнэ → Quote Log/Items шинэчлэгдэнэ. ─── */
+// Хүний тоо өөрчлөгдөхөд барааны тоог шинэчлэх дүрэм. true = өөрчлөгдсөн (дараа нь ib.recalc дуудна).
+// - Майхан "N хүний" → ceil(шинэ хүн / N), default 6 (нэг майханд 6 хүн).
+// - Хүний тоогоор тавьсан бусад бараа (өмнөх тоо = өмнөх хүн, ж: Ширээ сандал) → шинэ хүн.
+// - Үндсэн багц энд БИШ (тусад нь амьд дагадаг).
+function nomaadScaleItem(it, newG, prevG) {
+  if (!it || it.category === 'Үндсэн багц') return false;
+  const name = String(it.name || '');
+  if (/майхан/i.test(name)) {
+    const m = name.match(/(\d+)\s*хүн/i);
+    const per = m ? Math.max(1, Number(m[1])) : 6;
+    const nq = Math.max(1, Math.ceil((Number(newG) || 0) / per));
+    if (Number(it.qty) !== nq) { it.qty = nq; return true; }
+    return false;
+  }
+  if (prevG > 0 && Number(it.qty) === prevG) { it.qty = newG; return true; }
+  return false;
+}
 function openNomaadEditModal(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
@@ -8072,12 +8089,10 @@ function openNomaadEditModal(quoteNo) {
   });
   guestEl.addEventListener('change', (e) => {
     const ng = Math.max(0, Number(e.target.value) || 0);
-    if (prevGuests > 0 && ng !== prevGuests) {
+    if (ng !== prevGuests) {
       let changed = 0;
-      items.forEach(it => {
-        if (it.category !== 'Үндсэн багц' && Number(it.qty) === prevGuests) { it.qty = ng; ib.recalc(it); changed++; }
-      });
-      if (changed) { ib.renderItems(); updateDeduct(); showToast(`${changed} барааны тоо ${prevGuests}→${ng} боллоо`, 'info', 2500); }
+      items.forEach(it => { if (nomaadScaleItem(it, ng, prevGuests)) { ib.recalc(it); changed++; } });
+      if (changed) { ib.renderItems(); updateDeduct(); showToast(`${changed} барааны тоо шинэчлэгдлээ`, 'info', 2500); }
     }
     guests = ng; prevGuests = ng;
   });
@@ -8328,12 +8343,10 @@ function openNomaadCreateModal() {
   });
   modal.querySelector('#nc-guests').addEventListener('change', (e) => {
     const ng = Math.max(0, Number(e.target.value) || 0);
-    if (ncPrevGuests > 0 && ng !== ncPrevGuests) {
+    if (ng !== ncPrevGuests) {
       let changed = 0;
-      items.forEach(it => {
-        if (it.category !== 'Үндсэн багц' && Number(it.qty) === ncPrevGuests) { it.qty = ng; ib.recalc(it); changed++; }
-      });
-      if (changed) { ib.renderItems(); showToast(`${changed} барааны тоо ${ncPrevGuests}→${ng} боллоо`, 'info', 2500); }
+      items.forEach(it => { if (nomaadScaleItem(it, ng, ncPrevGuests)) { ib.recalc(it); changed++; } });
+      if (changed) { ib.renderItems(); showToast(`${changed} барааны тоо шинэчлэгдлээ`, 'info', 2500); }
     }
     ncPrevGuests = ng;
   });
@@ -8438,8 +8451,13 @@ function nomaadContractHtml(o) {
   const packageTotal = pkg ? (Number(pkg.total) || (Number(pkg.unit_price) || 0) * guests) : 0;
   const perPerson = pkg ? (Number(pkg.unit_price) || 0) : (guests ? Math.round(total / guests) : 0);
   const addonTotal = pkg ? Math.max(0, total - packageTotal) : 0;
-  const deposit = Math.round(total * 0.3);
-  const balance = total - deposit;
+  // Урьдчилгаа = бүртгэсэн бодит орлого (байвал), эс бөгөөс шаардлагатай 30% (default).
+  // Үлдэгдэл = нийт − урьдчилгаа. Тогтмол хувь биш, бодит дүнгээр.
+  const paid = (typeof nomaadPaid === 'function') ? nomaadPaid(o) : (Number(o.income_amount) || 0);
+  const deposit = paid > 0 ? paid : Math.round(total * 0.3);
+  const balance = Math.max(0, total - deposit);
+  const depPct = total > 0 ? Math.round(deposit / total * 100) : 30;
+  const balPct = Math.max(0, 100 - depPct);
   const ds = _ctDT(o.date_start), de = _ctDT(o.date_end), now = new Date();
   const camp = escapeHtml(o.camp || '………'), tier = escapeHtml(o.tier || '………');
   const campPhrase = /кемп/i.test(o.camp || '') ? camp : camp + ' кемп';
@@ -8521,8 +8539,8 @@ function nomaadContractHtml(o) {
   <h2>ХОЁР. ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭХ ХУГАЦАА, ҮНЭ, ТӨЛБӨР ТООЦОО</h2>
   <p><b>2.1</b> Гүйцэтгэгч нь үйлчилгээг ${ds.y} оны ${ds.mo}-р сарын ${ds.d}-ний өдрийн ${ds.time} цагаас эхэлж, ${de.y} оны ${de.mo}-р сарын ${de.d}-ны өдрийн ${de.time} цаг хүртэлх хугацаанд үзүүлнэ.</p>
   <p><b>2.2</b> Захиалагч нь гэрээний Хавсралт №1-д заасан үйлчилгээний дагуу <b>${guests}</b> хүнээр тооцож захиалга өгөх бөгөөд ${campPhrase}ийн ${tier} багцын дагуу нэг хүнд тооцох үнэ ${_amt(perPerson)} төгрөг, нэмэлт үйлчилгээний нийт төлбөр ${_amt(addonTotal)} төгрөг ба гэрээний нийт үнийн дүн <b>${_amt(total)}</b> төгрөг болно. Бүх үнэ НӨАТ багтсан болно.</p>
-  <p><b>2.3</b> Захиалагч нь гэрээний нийт төлбөрийн 30 хувь буюу ${_amt(deposit)} төгрөгийг ажлын 2 хоногийн дотор Гүйцэтгэгчийн ${C.bank} дахь ${C.name}-ийн ${C.account} тоот дансанд урьдчилгаа болгон шилжүүлснээр захиалга баталгаажна.</p>
-  <p><b>2.4</b> Захиалагч нь гэрээний үлдэгдэл төлбөр болох 70 хувь буюу ${_amt(balance)} төгрөгийг арга хэмжээ эхлэхээс 7 хоногийн өмнө 2.3-т заасан Гүйцэтгэгчийн дансанд шилжүүлнэ.</p>
+  <p><b>2.3</b> Захиалагч нь урьдчилгаа төлбөр болох <b>${_amt(deposit)}</b> төгрөг (нийт төлбөрийн ${depPct}%)-ийг ажлын 2 хоногийн дотор Гүйцэтгэгчийн ${C.bank} дахь ${C.name}-ийн ${C.account} тоот дансанд шилжүүлснээр захиалга баталгаажна.</p>
+  <p><b>2.4</b> Захиалагч нь гэрээний үлдэгдэл төлбөр болох <b>${_amt(balance)}</b> төгрөг (нийт төлбөрийн ${balPct}%)-ийг арга хэмжээ эхлэхээс 7 хоногийн өмнө 2.3-т заасан Гүйцэтгэгчийн дансанд шилжүүлнэ.</p>
   <p><b>2.5</b> Хүний тоо өөрчлөх хүсэлт нь 5 хүнээс хэтрэхгүй байна.</p>
   <p><b>2.6</b> Арга хэмжээ эхлэхээс 7 хоногийн өмнө хүний тоонд өөрчлөлт оруулах хүсэлтийг бичгээр мэдэгдэх бөгөөд мэдэгдээгүй бол 2.2-т заасан хүний тоогоор захиалгыг баталгаажуулна.</p>
   <p><b>2.7</b> Энэ гэрээний 2.2-т заасан нэг хүний төлбөрийн үнэ өөрчлөгдөхгүй бөгөөд тогтвортой байна.</p>

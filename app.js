@@ -8456,8 +8456,9 @@ function nomaadContractHtml(o) {
   const paid = (typeof nomaadPaid === 'function') ? nomaadPaid(o) : (Number(o.income_amount) || 0);
   const deposit = paid > 0 ? paid : Math.round(total * 0.3);
   const balance = Math.max(0, total - deposit);
-  const depPct = total > 0 ? Math.round(deposit / total * 100) : 30;
-  const balPct = Math.max(0, 100 - depPct);
+  // NOMAAD кемпийн данс/утас (M-Event-ийн 3635161180-аас өөр)
+  const nomaadAcct = '3635185058';
+  const nomaadPhone = '7700-1500';
   const ds = _ctDT(o.date_start), de = _ctDT(o.date_end), now = new Date();
   const camp = escapeHtml(o.camp || '………'), tier = escapeHtml(o.tier || '………');
   const campPhrase = /кемп/i.test(o.camp || '') ? camp : camp + ' кемп';
@@ -8483,7 +8484,7 @@ function nomaadContractHtml(o) {
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
   const seal = ' &nbsp;&nbsp; <span class="seal">( Тамга )</span>';
   const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}<br>Хаяг: …………………………<br>Утас: ……………………`;
-  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}<br>Хаяг: ${C.address}<br>Утас: ${C.phones}`;
+  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}<br>Хаяг: ${C.address}<br>Утас: ${nomaadPhone}<br>Данс: ${C.bank} — ${nomaadAcct}`;
   const sigTable = `<table class="sigt"><tr><td>${sigCust}</td><td class="r">${sigChi}</td></tr></table>`;
   const topSig = `<table class="sigt"><tr><td><div class="sg-role">БАТЛАВ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}</td><td class="r"><div class="sg-role">БАТЛАВ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}</td></tr></table>`;
 
@@ -8539,8 +8540,8 @@ function nomaadContractHtml(o) {
   <h2>ХОЁР. ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭХ ХУГАЦАА, ҮНЭ, ТӨЛБӨР ТООЦОО</h2>
   <p><b>2.1</b> Гүйцэтгэгч нь үйлчилгээг ${ds.y} оны ${ds.mo}-р сарын ${ds.d}-ний өдрийн ${ds.time} цагаас эхэлж, ${de.y} оны ${de.mo}-р сарын ${de.d}-ны өдрийн ${de.time} цаг хүртэлх хугацаанд үзүүлнэ.</p>
   <p><b>2.2</b> Захиалагч нь гэрээний Хавсралт №1-д заасан үйлчилгээний дагуу <b>${guests}</b> хүнээр тооцож захиалга өгөх бөгөөд ${campPhrase}ийн ${tier} багцын дагуу нэг хүнд тооцох үнэ ${_amt(perPerson)} төгрөг, нэмэлт үйлчилгээний нийт төлбөр ${_amt(addonTotal)} төгрөг ба гэрээний нийт үнийн дүн <b>${_amt(total)}</b> төгрөг болно. Бүх үнэ НӨАТ багтсан болно.</p>
-  <p><b>2.3</b> Захиалагч нь урьдчилгаа төлбөр болох <b>${_amt(deposit)}</b> төгрөг (нийт төлбөрийн ${depPct}%)-ийг ажлын 2 хоногийн дотор Гүйцэтгэгчийн ${C.bank} дахь ${C.name}-ийн ${C.account} тоот дансанд шилжүүлснээр захиалга баталгаажна.</p>
-  <p><b>2.4</b> Захиалагч нь гэрээний үлдэгдэл төлбөр болох <b>${_amt(balance)}</b> төгрөг (нийт төлбөрийн ${balPct}%)-ийг арга хэмжээ эхлэхээс 7 хоногийн өмнө 2.3-т заасан Гүйцэтгэгчийн дансанд шилжүүлнэ.</p>
+  <p><b>2.3</b> Захиалагч нь урьдчилгаа төлбөр болох <b>${_amt(deposit)}</b> төгрөгийг ажлын 2 хоногийн дотор Гүйцэтгэгчийн ${C.bank} дахь ${C.name}-ийн ${nomaadAcct} тоот дансанд шилжүүлснээр захиалга баталгаажна.</p>
+  <p><b>2.4</b> Захиалагч нь гэрээний үлдэгдэл төлбөр болох <b>${_amt(balance)}</b> төгрөгийг арга хэмжээ эхлэхээс 7 хоногийн өмнө 2.3-т заасан Гүйцэтгэгчийн дансанд шилжүүлнэ.</p>
   <p><b>2.5</b> Хүний тоо өөрчлөх хүсэлт нь 5 хүнээс хэтрэхгүй байна.</p>
   <p><b>2.6</b> Арга хэмжээ эхлэхээс 7 хоногийн өмнө хүний тоонд өөрчлөлт оруулах хүсэлтийг бичгээр мэдэгдэх бөгөөд мэдэгдээгүй бол 2.2-т заасан хүний тоогоор захиалгыг баталгаажуулна.</p>
   <p><b>2.7</b> Энэ гэрээний 2.2-т заасан нэг хүний төлбөрийн үнэ өөрчлөгдөхгүй бөгөөд тогтвортой байна.</p>

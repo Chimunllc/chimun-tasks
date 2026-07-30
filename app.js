@@ -8458,7 +8458,7 @@ function nomaadContractHtml(o) {
   const balance = Math.max(0, total - deposit);
   // NOMAAD кемпийн данс/утас (M-Event-ийн 3635161180-аас өөр)
   const nomaadAcct = '3635185058';
-  const nomaadPhone = '7700-1500';
+  const nomaadPhone = '7700-6790';
   const ds = _ctDT(o.date_start), de = _ctDT(o.date_end), now = new Date();
   const camp = escapeHtml(o.camp || '………'), tier = escapeHtml(o.tier || '………');
   const campPhrase = /кемп/i.test(o.camp || '') ? camp : camp + ' кемп';
@@ -8484,7 +8484,7 @@ function nomaadContractHtml(o) {
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
   const seal = ' &nbsp;&nbsp; <span class="seal">( Тамга )</span>';
   const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}<br>Хаяг: …………………………<br>Утас: ……………………`;
-  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}<br>Хаяг: ${C.address}<br>Утас: ${nomaadPhone}<br>Данс: ${C.bank} — ${nomaadAcct}`;
+  const sigChi = `<div class="sg-role">ГҮЙЦЭТГЭГЧ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}<br>Хаяг: ${C.address}<br>Утас: ${nomaadPhone}`;
   const sigTable = `<table class="sigt"><tr><td>${sigCust}</td><td class="r">${sigChi}</td></tr></table>`;
   const topSig = `<table class="sigt"><tr><td><div class="sg-role">БАТЛАВ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}</td><td class="r"><div class="sg-role">БАТЛАВ</div><b>${C.name}</b><br>${C.directorTitle}: ${C.director}<br>Гарын үсэг: ________________${seal}</td></tr></table>`;
 

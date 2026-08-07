@@ -7386,7 +7386,7 @@ function nomaadCardHtml(o) {
     : (income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй');
   const logHistoryHtml = plog.length ? `<div class="order-meta" style="margin-top:6px;background:var(--panel-hover);border-radius:8px;padding:8px 10px;">
     <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:4px;">📝 Бүртгэлийн түүх (${plog.length})</div>
-    ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;"><span>${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;">${fmtMoney(p.total)}</span></div>`).join('')}
+    ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;align-items:center;"><span style="flex:1;min-width:0;">${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;">${fmtMoney(p.total)}</span>${(state.isCEO && p.id) ? `<button data-nomaad-reverse="${escapeHtml(o.quote_no)}" data-pay-id="${escapeHtml(p.id)}" title="Буруу бол буцаах (зөвхөн захирал)" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 4px;">↩</button>` : ''}</div>`).join('')}
   </div>` : '';
   // Серверт хадгалагдаагүй төлбөр (upload үед интернэт/сервер унасан) — улаан анхааруулга + дахин оролдох
   const pend = nomaadPendingFor(o.quote_no);
@@ -7801,6 +7801,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-income-manual]').forEach(b => {
     b.addEventListener('click', (e) => { e.stopPropagation(); recordNomaadIncomeManual(b.dataset.nomaadIncomeManual); });
+  });
+  document.querySelectorAll('button[data-nomaad-reverse]').forEach(b => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); reverseNomaadPayment(b.dataset.nomaadReverse, b.dataset.payId); });
   });
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
@@ -9012,6 +9015,42 @@ function openNomaadManualIncomeModal(o) {
     };
     setTimeout(() => modal.querySelector('#nim-amount')?.focus(), 50);
   });
+}
+
+// Захирал буруу оруулсан төлбөрийг БУЦААХ — сервер талд (n8n reverse_payment) баримт+лог
+// устгана, орлогоос хасна, баримт чөлөөлөгдөж дараа зөв PDF-ээр дахин бүртгэж болно. ЗӨВХӨН CEO.
+async function reverseNomaadPayment(quoteNo, paymentId) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал төлбөр буцаана', 'warn', 3500); return; }
+  const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
+  const list = (state.nomaadPayments && state.nomaadPayments[quoteNo]) || [];
+  const p = list.find(x => String(x.id) === String(paymentId));
+  if (!o || !p) { showToast('Төлбөр олдсонгүй', 'error'); return; }
+  const ok = await showConfirm(
+    `${o.company || quoteNo}\n${fmtMoney(p.total)}${p.note ? ' · ' + p.note : ''}\n\nЭнэ төлбөрийг буцаах уу? Орлогоос хасаж, баримтыг чөлөөлнө (дараа зөв PDF-ээр дахин бүртгэж болно). Буцаах боломжгүй.`,
+    { title: '↩ Төлбөр буцаах', okText: 'Буцаах' });
+  if (!ok) return;
+  const receiptKey = receiptIdFromRef(p.note || '');
+  let delOk = false;
+  try {
+    const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reverse_payment', quote_no: quoteNo, payment_id: p.id, receipt_key: receiptKey }),
+    }, 15000);
+    delOk = r.ok;
+  } catch (e) {}
+  if (!delOk) { showToast('Сервер алдаа — буцаагдсангүй, дахин оролдоно уу', 'error', 5000); return; }
+  // Локал: лог мөр хасах, орлого дахин тооцох
+  const paidBefore = nomaadPaid(o);
+  state.nomaadPayments[quoteNo] = list.filter(x => String(x.id) !== String(paymentId));
+  const newTotal = Math.max(0, paidBefore - (Number(p.total) || 0));
+  Object.assign(o, { income_amount: newTotal });
+  if (newTotal <= 0) { o.income_date = ''; o.income_by = ''; }
+  render();
+  // Орлогын running total-ыг серверт бууруулж бичих + баримтын жагсаалт шинэчлэх
+  await postNomaadIncome(quoteNo, newTotal, o.income_date || todayStr(), state.me);
+  await loadUsedReceipts();
+  showToast(`↩ ${fmtMoney(p.total)} буцаагдлаа · нийт ${fmtMoney(newTotal)}`, 'success', 3200);
+  render();
 }
 
 // Ажилтны бүлэг — Master Sheet-ийн "Бүлэг" багана (m.group). Цагийн ажилтныг

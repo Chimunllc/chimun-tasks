@@ -9786,9 +9786,14 @@ function renderProducts() {
     <select id="prod-sort" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${sortOpts}</select>
   </div>`;
   const costs = state.productCosts || {};
-  const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * (Number(p.stock) || 0), 0);
-  const costedN = all.filter(p => (costs[p.sku] || 0) > 0).length;
-  const assetLine = (assetValue > 0 && !_lockedBranch) ? `<div class="prod-assetval">🏛 Нийт хөрөнгийн үнэ цэнэ: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${all.length} барааны өртөг оруулсан)</span></div>` : '';
+  // Хөрөнгийн үнэ цэнэ — салбар сонгосон бол тухайн салбарын тоогоор (qty_<салбар>), эс бөгөөс нийт нөөцөөр.
+  const _valBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
+  const _qtyVal = (p) => _valBranch ? branchQty(p, _valBranch) : (Number(p.stock) || 0);
+  const assetValue = all.reduce((s, p) => s + (costs[p.sku] || 0) * _qtyVal(p), 0);
+  const _inScope = all.filter(p => _qtyVal(p) > 0);
+  const costedN = _inScope.filter(p => (costs[p.sku] || 0) > 0).length;
+  const _valLabel = _valBranch ? `${branchInfo(_valBranch).icon} ${branchInfo(_valBranch).label} салбарын хөрөнгө` : 'Нийт хөрөнгийн үнэ цэнэ';
+  const assetLine = (assetValue > 0 && !_lockedBranch) ? `<div class="prod-assetval">🏛 ${_valLabel}: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${_inScope.length} барааны өртөг оруулсан)</span></div>` : '';
   return `
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">

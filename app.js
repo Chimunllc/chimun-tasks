@@ -7530,15 +7530,16 @@ function nomaadCardHtml(o) {
             : ` · <b style="color:var(--ok)">Акт: ${fmtMoney(fa)} (нэмэгдэл +${fmtMoney(fa - gt)})</b>`;
         })()}</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-          ${isDoneQuote
-            ? `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;" title="Гүйцэтгэсэн захиалга — мэдээллийг буруутгахаас сэргийлж бүх товч түгжсэн.">
+          ${(isDoneQuote && !state.isCEO)
+            ? `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;" title="Гүйцэтгэсэн захиалга — мэдээллийг буруутгахаас сэргийлж бүх товч түгжсэн. Засварыг зөвхөн захирал хийнэ.">
                  <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Засах</button>
                  <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Харах</button>
                  <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Илгээх</button>
                  <button class="btn" disabled style="padding:5px 14px;font-size:12px;opacity:.45;cursor:not-allowed;">🔒 Бэлтгэл</button>
                  <span style="font-size:11px;color:var(--ok);font-weight:700;">✓ Гүйцэтгэсэн · хаалттай</span>
                </span>`
-            : `<button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
+            : `${isDoneQuote ? `<span style="font-size:11px;color:var(--warn);font-weight:700;border:1px solid var(--warn);border-radius:6px;padding:2px 8px;" title="Гүйцэтгэсэн захиалга — зөвхөн захирал засах эрхтэй.">🔓 Захирлын засвар</span>` : ''}
+               <button class="btn" data-nomaad-edit="${q}" style="padding:5px 14px;font-size:12px;">✏️ Засах</button>
                <button class="btn" data-nomaad-view="${q}" style="padding:5px 14px;font-size:12px;">📄 Үнийн санал харах</button>
                <button class="btn" data-nomaad-send="${q}" style="padding:5px 14px;font-size:12px;">📧 Үнийн санал илгээх</button>
                <button class="btn" data-nomaad-prep="${q}" style="padding:5px 14px;font-size:12px;">📋 Бэлтгэл</button>
@@ -8218,7 +8219,8 @@ function openNomaadEditModal(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
   // Гүйцэтгэсэн захиалгыг засахыг хориглоно — дараа засвал түүх/орлогын мэдээлэл буруу болно.
-  if (nomaadStage(o) === 'done') {
+  // Зөвхөн захирал (CEO) алдаа гарсан үед засах эрхтэй.
+  if (nomaadStage(o) === 'done' && !state.isCEO) {
     showToast('Гүйцэтгэсэн захиалгыг засах боломжгүй (мэдээлэл хадгалагдана). Дэлгэрэнгүйг "📄 Үнийн санал харах"-аар үзнэ үү.', 'warn', 5000);
     return;
   }

@@ -7740,7 +7740,7 @@ function renderNomaadAnalytics() {
   const base = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
   const gHi = Math.max(10, ...base.map(o => Number(o.guests) || 0));
   const iHi = Math.max(1000000, ...base.map(o => nomaadEffTotal(o)));
-  if (!state.naF) state.naF = { gMin: 0, gMax: gHi, incMin: 0, incMax: iHi, camp: 'all', tier: 'all', confirmedOnly: false, _gHi: gHi, _iHi: iHi };
+  if (!state.naF) state.naF = { gMin: 0, gMax: gHi, incMin: 0, incMax: iHi, camp: 'all', tier: 'all', confirmedOnly: true, _gHi: gHi, _iHi: iHi };
   const f = state.naF;
   if (f._gHi !== gHi && f.gMax === f._gHi) f.gMax = gHi;   // дата өссөн бол дээд хязгаарыг дагана
   if (f._iHi !== iHi && f.incMax === f._iHi) f.incMax = iHi;

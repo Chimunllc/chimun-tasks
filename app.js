@@ -11526,7 +11526,8 @@ function receivablesData() {
   (state.appOrders || []).forEach(o => {
     if (!branchInLens('m-event')) return;   // салбарын ленз: M-Event салбар биш бол хасна
     const st = String(o.status || '');
-    if (st === 'draft' || st === 'canceled') return;
+    // Авлага = ЗӨВХӨН баталгаажсан захиалга. Ноорог(санал)/цуцалсан/архивласан(хаагдсан) = авлага БИШ.
+    if (!['reserved', 'started', 'rented', 'stopped', 'returned'].includes(st)) return;
     const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
     const bal = total - paid;
     if (bal <= 0) return;
@@ -11543,6 +11544,9 @@ function receivablesData() {
   (state.nomaadOrders || []).forEach(o => {
     if (!branchInLens('camp')) return;   // салбарын ленз: NOMAAD салбар биш бол хасна
     if (nomaadIsCancelled(o)) return;
+    // Авлага = ЗӨВХӨН баталгаажсан захиалга (урьдчилгаа төлсөн/гэрээ хийгдсэн/гүйцэтгэсэн).
+    // Үнийн санал илгээсэн / баталгаажуулалт хүлээж буй = авлага БИШ (амлалт болоогүй).
+    if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return;
     noTotal++;
     if (nomaadPaid(o) > 0) noRecorded++;
     const contract = nomaadEffTotal(o);

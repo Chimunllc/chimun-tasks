@@ -5998,6 +5998,10 @@ function renderHourly() {
       <div class="sub">Цагийн ажилтан "+ Шинэ ажилтан"-аар бүртгэгдэхэд энд харагдана.</div></div>`;
   }
   const sortMode = state.hourlySort || 'recent';
+  if (!state.hourlyActivity) state.hourlyActivity = 'active';   // анхдагч: идэвхтэй л харагдана
+  const nowTs = Date.now();
+  const INACTIVE_MS = 30 * 86400000;   // 30 хоног цалин аваагүй = идэвхгүй (устгахгүй, зөвхөн нуух)
+  const isInactive = (st) => !st.lastTs || (nowTs - st.lastTs) > INACTIVE_MS;
   // Ажилтан бүрийн цалингийн статистик — цалин авсан огноо = "хэзээ ажилласны" прокси
   // (тусгай ажилласан огноо хадгалагддаггүй тул шилжүүлгийн огноог ашиглана).
   const payDate = (p) => p.executed_at || p.requested_at || '';
@@ -6045,11 +6049,13 @@ function renderHourly() {
       : `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">🕒 Цалин аваагүй</div>`;
     const nameKey = escapeHtml(String(m.name || '').toLowerCase());
     const phoneKey = escapeHtml(String(m.phone || '').replace(/\D/g, ''));
-    return `<div data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);">
+    const inact = isInactive(st);
+    const inactBadge = inact ? ` <span style="font-size:10px;color:var(--muted);background:var(--panel-hover);border-radius:6px;padding:1px 6px;white-space:nowrap;">💤 идэвхгүй</span>` : '';
+    return `<div data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" data-hourly-active="${inact ? 0 : 1}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);${inact ? 'opacity:.72;' : ''}">
       <div style="display:flex;align-items:center;gap:12px;min-width:0;">
         ${avatar}
         <div style="min-width:0;">
-          <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span></div>
+          <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${inactBadge}</div>
           <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
           ${spanLine}
           ${ratingLine}
@@ -6083,29 +6089,42 @@ function renderHourly() {
     <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан</div>
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>. Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.</div>
   </div>`;
+  // Идэвхийн таб — идэвхтэй (сүүлийн 30 хоногт цалин авсан) / идэвхгүй / бүгд
+  let activeN = 0; workers.forEach(m => { if (!isInactive(stats.get(personKey(m)))) activeN++; });
+  const inactiveN = workers.length - activeN;
+  const act = state.hourlyActivity || 'active';
+  const tab = (val, label, n) => `<button data-hourly-tab="${val}" style="padding:6px 12px;font-size:12.5px;border:1px solid var(--border);border-radius:8px;cursor:pointer;white-space:nowrap;${act === val ? 'background:var(--primary);color:#fff;border-color:var(--primary);font-weight:700;' : 'background:var(--panel);color:var(--text);'}">${label} <span style="opacity:.8;">${n}</span></button>`;
+  const tabs = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+    ${tab('active', 'Идэвхтэй', activeN)}${tab('inactive', '💤 Идэвхгүй', inactiveN)}${tab('all', 'Бүгд', workers.length)}
+  </div>`;
   // Хайлт + эрэмбийн хяналт
   const controls = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-    <input id="hourly-search" type="text" placeholder="🔍 Нэрээр хайх..." value="${escapeHtml(state.hourlySearch || '')}" style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;" />
+    <input id="hourly-search" type="text" placeholder="🔍 Нэрээр хайх (бүх ажилтнаас)..." value="${escapeHtml(state.hourlySearch || '')}" style="flex:1;min-width:160px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;" />
     <select id="hourly-sort" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;cursor:pointer;">
       <option value="recent">🕒 Сүүлд ажилласан</option>
       <option value="name">🔤 Нэрээр</option>
       <option value="paid">💰 Их цалинтай</option>
     </select>
   </div>`;
-  const emptyMsg = `<div id="hourly-empty-search" style="display:none;text-align:center;color:var(--muted);padding:24px;">Хайлтад тохирох ажилтан алга.</div>`;
-  return header + controls + emptyMsg + sections;
+  const emptyMsg = `<div id="hourly-empty-search" style="display:none;text-align:center;color:var(--muted);padding:24px;">Тохирох ажилтан алга.</div>`;
+  return header + tabs + controls + emptyMsg + sections;
 }
 
 // Хайлтын текстээр цагийн ажилтны мөрүүдийг шүүх (re-render хийхгүй — фокус хадгалагдана).
 function applyHourlySearch() {
   const q = (state.hourlySearch || '').trim().toLowerCase();
   const qDigits = q.replace(/\D/g, '');
+  const act = state.hourlyActivity || 'active';
   const rows = document.querySelectorAll('[data-hourly-name]');
   let anyVisible = false;
   rows.forEach(r => {
     const nm = r.getAttribute('data-hourly-name') || '';
     const ph = r.getAttribute('data-hourly-phone') || '';
-    const match = !q || nm.includes(q) || (!!qDigits && ph.includes(qDigits));
+    const isAct = r.getAttribute('data-hourly-active') === '1';
+    // Хайлт бичсэн үед таб үл хамааран БҮХ ажилтнаас хайна; хоосон үед л таб шүүнэ.
+    const actMatch = !!q || act === 'all' || (act === 'active' && isAct) || (act === 'inactive' && !isAct);
+    const searchMatch = !q || nm.includes(q) || (!!qDigits && ph.includes(qDigits));
+    const match = actMatch && searchMatch;
     r.style.display = match ? '' : 'none';
     if (match) anyVisible = true;
   });
@@ -6138,6 +6157,9 @@ function attachHourlyHandlers() {
   if (searchEl) {
     searchEl.oninput = () => { state.hourlySearch = searchEl.value; applyHourlySearch(); };
   }
+  document.querySelectorAll('button[data-hourly-tab]').forEach(b => {
+    b.addEventListener('click', () => { state.hourlyActivity = b.dataset.hourlyTab; render(); });
+  });
   applyHourlySearch();
 }
 

@@ -3510,7 +3510,7 @@ function renderTaskList() {
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : renderNomaadPipeline());
+    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : renderNomaadPipeline());
     attachNomaadHandlers();
     return;
   } else if (state.view === 'finance') {
@@ -7586,8 +7586,9 @@ function nomaadIsCancelled(o) {
 function renderNomaadToggle() {
   return `<div class="na-topbar">
     <div class="na-viewtoggle">
-      <button class="na-vt${nomaadViewMode !== 'calendar' ? ' active' : ''}" data-na-view="pipeline">📊 Захиалга</button>
+      <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Захиалга</button>
       <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
+      <button class="na-vt${nomaadViewMode === 'analytics' ? ' active' : ''}" data-na-view="analytics">📈 Аналитик</button>
     </div>
     <button class="btn btn-primary na-newbtn" data-na-new>+ Шинэ үнийн санал</button>
   </div>`;
@@ -7725,6 +7726,189 @@ function nomaadCalCellHtml(dateObj, list, today, conflicts) {
   }
   return `<div class="na-cal-cell${isToday ? ' na-cal-today' : ''}${list.length ? ' na-cal-has' : ''}"><div class="na-cal-daynum">${dateObj.getDate()}</div>${lanesHtml}</div>`;
 }
+/* ─── NOMAAD аналитик — шүүлт (min-max гулсагч) + дүгнэлт + задаргаа + Excel ─── */
+// Нэмэлт үйлчилгээний орлого = үндсэн багц БИШ, багцад ороогүй мөрүүдийн дүн.
+function nomaadAddonRevenue(o) {
+  return (o.items || []).reduce((s, it) => (it.included || /үндсэн багц/i.test(it.category || '')) ? s : s + (Number(it.total) || 0), 0);
+}
+const NA_BUCKETS = ['<30', '30–50', '50–100', '100–200', '200–500', '500+'];
+function nomaadGuestBucket(g) {
+  g = Number(g) || 0;
+  return g < 30 ? '<30' : g < 50 ? '30–50' : g < 100 ? '50–100' : g < 200 ? '100–200' : g < 500 ? '200–500' : '500+';
+}
+function renderNomaadAnalytics() {
+  const base = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
+  const gHi = Math.max(10, ...base.map(o => Number(o.guests) || 0));
+  const iHi = Math.max(1000000, ...base.map(o => nomaadEffTotal(o)));
+  if (!state.naF) state.naF = { gMin: 0, gMax: gHi, incMin: 0, incMax: iHi, camp: 'all', tier: 'all', confirmedOnly: false, _gHi: gHi, _iHi: iHi };
+  const f = state.naF;
+  if (f._gHi !== gHi && f.gMax === f._gHi) f.gMax = gHi;   // дата өссөн бол дээд хязгаарыг дагана
+  if (f._iHi !== iHi && f.incMax === f._iHi) f.incMax = iHi;
+  f._gHi = gHi; f._iHi = iHi;
+  f.gMax = Math.min(f.gMax, gHi); f.incMax = Math.min(f.incMax, iHi);
+  const camps = [...new Set(base.map(o => (o.camp || '').trim()).filter(Boolean))].sort();
+  const tiers = [...new Set(base.map(o => (o.tier || '').trim()).filter(Boolean))].sort();
+  const filtered = base.filter(o => {
+    const g = Number(o.guests) || 0, inc = nomaadEffTotal(o);
+    if (g < f.gMin || g > f.gMax) return false;
+    if (inc < f.incMin || inc > f.incMax) return false;
+    if (f.camp !== 'all' && (o.camp || '').trim() !== f.camp) return false;
+    if (f.tier !== 'all' && (o.tier || '').trim() !== f.tier) return false;
+    if (f.confirmedOnly && !['deposit', 'contract', 'done'].includes(nomaadStage(o))) return false;
+    return true;
+  });
+  state._naFiltered = filtered;   // Excel татахад хэрэглэнэ
+  const n = filtered.length;
+  const contractSum = filtered.reduce((s, o) => s + nomaadEffTotal(o), 0);
+  const paidSum = filtered.reduce((s, o) => s + nomaadPaid(o), 0);
+  const guestSum = filtered.reduce((s, o) => s + (Number(o.guests) || 0), 0);
+  const addonSum = filtered.reduce((s, o) => s + nomaadAddonRevenue(o), 0);
+  const avgOrder = n ? Math.round(contractSum / n) : 0;
+  const perGuest = guestSum ? Math.round(contractSum / guestSum) : 0;
+  // ── Задаргаа helper (bar) ──
+  const barBlock = (title, rows, note) => {
+    const tot = rows.reduce((s, r) => s + r.sum, 0) || 1;
+    const mx = rows.length ? Math.max(...rows.map(r => r.sum)) : 1;
+    const PAL = ['#0d9488', '#6366f1', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6', '#ef4444', '#14b8a6', '#a855f7'];
+    const body = rows.length ? rows.map((r, i) => `<div style="margin-bottom:9px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:3px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.k)} <span style="color:var(--muted);">(${r.count})</span></span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(r.sum)}</b> · ${Math.round(r.sum / tot * 100)}%</span></div>
+      <div style="height:8px;border-radius:4px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${Math.max(2, Math.round(r.sum / mx * 100))}%;background:${PAL[i % PAL.length]};border-radius:4px;"></div></div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:12px;padding:6px 0;">Дата алга.</div>';
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px;background:var(--panel);">
+      <div style="font-weight:800;font-size:13px;margin-bottom:12px;">${title}${note ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">${note}</span>` : ''}</div>${body}</div>`;
+  };
+  const groupBy = (keyFn) => {
+    const m = {};
+    filtered.forEach(o => { const k = keyFn(o); if (k == null) return; (m[k] = m[k] || { k, count: 0, sum: 0 }).count++; m[k].sum += nomaadEffTotal(o); });
+    return Object.values(m).sort((a, b) => b.sum - a.sum);
+  };
+  const byCamp = groupBy(o => (o.camp || 'Тодорхойгүй').trim());
+  const byTier = groupBy(o => (o.tier || 'Тодорхойгүй').trim());
+  const byMonth = groupBy(o => String(o.date_start || '').slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k));
+  const byBucket = NA_BUCKETS.map(b => {
+    const os = filtered.filter(o => nomaadGuestBucket(o.guests) === b);
+    return { k: b + ' хүн', count: os.length, sum: os.reduce((s, o) => s + nomaadEffTotal(o), 0) };
+  }).filter(r => r.count);
+  // Нэмэлт үйлчилгээ — нэрээр
+  const addonMap = {};
+  filtered.forEach(o => (o.items || []).forEach(it => {
+    if (it.included || /үндсэн багц/i.test(it.category || '')) return;
+    const v = Number(it.total) || 0; if (v <= 0) return;
+    const k = (it.name || 'Бусад').trim();
+    (addonMap[k] = addonMap[k] || { k, count: 0, sum: 0 }).count++; addonMap[k].sum += v;
+  }));
+  const byAddon = Object.values(addonMap).sort((a, b) => b.sum - a.sum).slice(0, 15);
+  // ── Гулсагч (min-max) ──
+  const dual = (id, lo, hi, vLo, vHi, step, fmt) => `<div class="na-dual" data-nadual="${id}" data-lo="${lo}" data-hi="${hi}" style="position:relative;height:30px;margin-top:2px;">
+    <div style="position:absolute;top:13px;left:0;right:0;height:4px;border-radius:2px;background:var(--panel-hover);"></div>
+    <div class="na-dual-fill" style="position:absolute;top:13px;height:4px;border-radius:2px;background:var(--primary);left:${(vLo - lo) / (hi - lo || 1) * 100}%;right:${100 - (vHi - lo) / (hi - lo || 1) * 100}%;"></div>
+    <input type="range" class="na-dmin" min="${lo}" max="${hi}" step="${step}" value="${vLo}">
+    <input type="range" class="na-dmax" min="${lo}" max="${hi}" step="${step}" value="${vHi}">
+  </div>`;
+  const chip = (active, val, label, attr) => `<button ${attr}="${escapeHtml(val)}" style="padding:5px 11px;font-size:12px;border:1px solid var(--border);border-radius:20px;cursor:pointer;white-space:nowrap;${active ? 'background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;' : 'background:var(--panel);color:var(--text);'}">${escapeHtml(label)}</button>`;
+  const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:1px;">${sub}</div>` : ''}</div>`;
+  return `<style>
+    .na-dual input[type=range]{position:absolute;top:9px;left:0;width:100%;height:12px;margin:0;background:none;pointer-events:none;-webkit-appearance:none;appearance:none;}
+    .na-dual input[type=range]::-webkit-slider-thumb{pointer-events:auto;-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--primary);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);cursor:pointer;}
+    .na-dual input[type=range]::-moz-range-thumb{pointer-events:auto;width:16px;height:16px;border-radius:50%;background:var(--primary);border:2px solid #fff;cursor:pointer;}
+    .na-dual input[type=range]::-webkit-slider-runnable-track{background:none;}
+  </style>
+  <div style="padding:2px 0;">
+    <div style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--bg-soft,var(--card));margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div style="font-weight:800;font-size:14px;">🔎 Шүүлт</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button data-na-reset style="padding:5px 11px;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel);cursor:pointer;">↺ Цэвэрлэх</button>
+          <button data-na-xls class="btn btn-primary" style="padding:5px 12px;font-size:12px;">📥 Excel татах</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:2px;">👥 Хүний тоо: <span data-nalabel="g">${f.gMin}–${f.gMax}</span></div>
+          ${dual('g', 0, gHi, f.gMin, f.gMax, 5)}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:2px;">💰 Гэрээний дүн: <span data-nalabel="inc">${fmtMoneyShort(f.incMin)}–${fmtMoneyShort(f.incMax)}</span></div>
+          ${dual('inc', 0, iHi, f.incMin, f.incMax, 500000)}
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">Кемп:</span>
+        ${chip(f.camp === 'all', 'all', 'Бүгд', 'data-nacamp')}${camps.map(c => chip(f.camp === c, c, c, 'data-nacamp')).join('')}
+      </div>
+      ${tiers.length ? `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <span style="font-size:11px;color:var(--muted);">Багц:</span>
+        ${chip(f.tier === 'all', 'all', 'Бүгд', 'data-natier')}${tiers.map(tr => chip(f.tier === tr, tr, tr, 'data-natier')).join('')}
+      </div>` : ''}
+      <label style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;"><input type="checkbox" data-na-confirmed ${f.confirmedOnly ? 'checked' : ''}> Зөвхөн баталгаажсан (урьдчилгаа/гэрээ/гүйцэтгэсэн)</label>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:4px;">
+      ${kpi('Захиалга', n + '', 'var(--text)', '')}
+      ${kpi('Гэрээний дүн', fmtMoney(contractSum), 'var(--ok)', 'нийт')}
+      ${kpi('Төлсөн', fmtMoney(paidSum), 'var(--primary)', 'орлого')}
+      ${kpi('Дундаж захиалга', fmtMoney(avgOrder), 'var(--text)', '')}
+      ${kpi('1 хүнд ногдох', fmtMoney(perGuest), 'var(--text)', guestSum + ' хүн')}
+      ${kpi('Нэмэлт үйлчилгээ', fmtMoney(addonSum), 'var(--warn)', 'багцаас гадуур')}
+    </div>
+    ${barBlock('🏔 Кемп бүрээр', byCamp)}
+    ${barBlock('👥 Хүний тооны бүлгээр', byBucket)}
+    ${tiers.length ? barBlock('🎁 Багц бүрээр', byTier) : ''}
+    ${barBlock('✨ Нэмэлт үйлчилгээ (топ 15)', byAddon, 'багцаас гадуур')}
+    ${barBlock('📅 Сар бүрээр', byMonth)}
+  </div>`;
+}
+function attachNomaadAnalytics() {
+  const f = state.naF; if (!f) return;
+  document.querySelectorAll('[data-nadual]').forEach(box => {
+    const id = box.dataset.nadual, lo = Number(box.dataset.lo), hi = Number(box.dataset.hi);
+    const mn = box.querySelector('.na-dmin'), mx = box.querySelector('.na-dmax'), fill = box.querySelector('.na-dual-fill');
+    const label = document.querySelector(`[data-nalabel="${id}"]`);
+    const keyMin = id === 'g' ? 'gMin' : 'incMin', keyMax = id === 'g' ? 'gMax' : 'incMax';
+    const fmt = id === 'g' ? (v => v) : (v => fmtMoneyShort(v));
+    const live = () => {
+      let a = Number(mn.value), b = Number(mx.value);
+      if (a > b) { if (document.activeElement === mn) b = a, mx.value = b; else a = b, mn.value = a; }
+      fill.style.left = ((a - lo) / (hi - lo || 1) * 100) + '%';
+      fill.style.right = (100 - (b - lo) / (hi - lo || 1) * 100) + '%';
+      if (label) label.textContent = `${fmt(a)}–${fmt(b)}`;
+      return [a, b];
+    };
+    [mn, mx].forEach(el => {
+      el.addEventListener('input', live);
+      el.addEventListener('change', () => { const [a, b] = live(); f[keyMin] = a; f[keyMax] = b; render(); });
+    });
+  });
+  document.querySelectorAll('[data-nacamp]').forEach(b => b.onclick = () => { f.camp = b.dataset.nacamp; render(); });
+  document.querySelectorAll('[data-natier]').forEach(b => b.onclick = () => { f.tier = b.dataset.natier; render(); });
+  const cb = document.querySelector('[data-na-confirmed]'); if (cb) cb.onchange = () => { f.confirmedOnly = cb.checked; render(); };
+  const rs = document.querySelector('[data-na-reset]'); if (rs) rs.onclick = () => { state.naF = null; render(); };
+  const xl = document.querySelector('[data-na-xls]'); if (xl) xl.onclick = exportNomaadAnalyticsExcel;
+}
+function exportNomaadAnalyticsExcel() {
+  const list = state._naFiltered || [];
+  if (!list.length) { showToast('Шүүлтэд тохирох захиалга алга', 'warn'); return; }
+  const orders = { name: 'Захиалгууд', columns: [90, 150, 120, 70, 60, 130, 130, 130, 110],
+    head: ['Дугаар', 'Компани', 'Кемп', 'Багц', 'Хүн', 'Гэрээ', 'Төлсөн', 'Нэмэлт үйлч.', 'Огноо'],
+    rows: list.map(o => [
+      { v: o.quote_no || '', t: 'String' }, { v: o.company || '', t: 'String' }, { v: o.camp || '', t: 'String' },
+      { v: o.tier || '', t: 'String' }, { v: Number(o.guests) || 0, t: 'Number' },
+      { v: nomaadEffTotal(o), t: 'Number', s: 'money' }, { v: nomaadPaid(o), t: 'Number', s: 'money' },
+      { v: nomaadAddonRevenue(o), t: 'Number', s: 'money' }, { v: String(o.date_start || '').slice(0, 10), t: 'String' },
+    ]) };
+  const grp = (title, keyFn) => {
+    const m = {}; list.forEach(o => { const k = keyFn(o) || 'Тодорхойгүй'; (m[k] = m[k] || { c: 0, s: 0 }).c++; m[k].s += nomaadEffTotal(o); });
+    return { name: title, columns: [180, 90, 140], head: [title, 'Тоо', 'Дүн'],
+      rows: Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([k, v]) => [{ v: k, t: 'String' }, { v: v.c, t: 'Number' }, { v: v.s, t: 'Number', s: 'money' }]) };
+  };
+  exportXlsSheets([
+    orders,
+    grp('Кемпээр', o => (o.camp || '').trim()),
+    grp('Хүний бүлгээр', o => nomaadGuestBucket(o.guests) + ' хүн'),
+    grp('Багцаар', o => (o.tier || '').trim()),
+    grp('Сараар', o => String(o.date_start || '').slice(0, 7)),
+  ], `NOMAAD-аналитик-${new Date().toISOString().slice(0, 10)}.xls`);
+  showToast(`${list.length} захиалга Excel-д татагдлаа`, 'success');
+}
 function renderNomaadCalendar() {
   // Зөвхөн урьдчилгаа төлсөн / гэрээ хийгдсэн / гүйцэтгэсэн захиалга харуулна
   // (Шинэ/Үнийн санал/Баталгаажуулалт хүлээж буй/Больсон — календарьт ОРОХГҮЙ)
@@ -7823,6 +8007,7 @@ function renderNomaadCalendar() {
 }
 
 function attachNomaadHandlers() {
+  if (nomaadViewMode === 'analytics') attachNomaadAnalytics();
   document.querySelectorAll('[data-nomaad-toggle]').forEach(h => {
     h.addEventListener('click', (e) => {
       if (e.target.closest('button, a')) return;

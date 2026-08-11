@@ -5991,12 +5991,16 @@ function hourlyBranchLabel(m) {
 }
 
 function renderHourly() {
-  const workers = hourlyWorkers();
-  if (!workers.length) {
+  const allWorkers = hourlyWorkers();
+  if (!allWorkers.length) {
     return `<div class="orders-empty"><div class="icon">👷</div>
       <div>Цагийн ажилтан алга.</div>
       <div class="sub">Цагийн ажилтан "+ Шинэ ажилтан"-аар бүртгэгдэхэд энд харагдана.</div></div>`;
   }
+  // Толгойн салбар лензээр шүүнэ: NOMAAD Camp → зөвхөн NOMAAD, M-Event → зөвхөн M Event, Бүгд → бүгд.
+  const lens = effectiveBranchLens();
+  const lensLabel = lens === 'm-event' ? 'M Event' : lens === 'camp' ? 'NOMAAD' : null;
+  const workers = lensLabel ? allWorkers.filter(m => hourlyBranchLabel(m) === lensLabel) : allWorkers;
   const sortMode = state.hourlySort || 'recent';
   if (!state.hourlyActivity) state.hourlyActivity = 'active';   // анхдагч: идэвхтэй л харагдана
   const nowTs = Date.now();
@@ -6086,8 +6090,8 @@ function renderHourly() {
     })
     .join('');
   const header = `<div style="margin-bottom:8px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
-    <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>. Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.</div>
+    <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан${lensLabel ? ` <span style="font-size:11px;color:var(--primary);font-weight:600;">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>.${lensLabel ? ' Толгойн салбар сонгогчоор өөрчилнө (🏢 Бүгд = бүх салбар).' : ' Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.'}</div>
   </div>`;
   // Идэвхийн таб — идэвхтэй (сүүлийн 30 хоногт цалин авсан) / идэвхгүй / бүгд
   let activeN = 0; workers.forEach(m => { if (!isInactive(stats.get(personKey(m)))) activeN++; });

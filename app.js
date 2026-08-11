@@ -5922,32 +5922,42 @@ function productRowHtml(p) {
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
   const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
-  const stats = [];
-  if (pkg) stats.push(`<span class="prod-pkg">📦 ${packageComponents(p).length} бараа</span>`);
-  if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
-  if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
+  // ── Мета мөр (саарал): ангилал · SKU · нас · эх сурвалж ──
+  const metaParts = [escapeHtml(p.category || '—'), `SKU ${escapeHtml(p.sku || '—')}`];
+  if (pkg) metaParts.push(`📦 ${packageComponents(p).length} бараа`);
+  if (p.purchase_date) { const _age = productAge(p.purchase_date); if (_age) metaParts.push(`${_age} ашигласан`); }
+  { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); metaParts.push(_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 20 ? _org.slice(0, 20) + '…' : _org)); } }
+  const metaLine = `<div class="prod-sub" style="color:var(--muted);">${metaParts.join(' · ')}</div>`;
+  // ── Мөнгө/гүйцэтгэл мөр: нийт өртөг + ROI (өнгөтэй) + ашиглалт + эвдрэл ──
+  const money = [];
   if (cost > 0) {
-    // Олон ширхэгтэй бол НИЙТ өртөг (нэгж × тоо) гол болгож, нэгжийг хажууд нь. Салбар идэвхтэй бол тэр салбарын тоогоор.
-    const _costQty = _actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0);
-    const _costTxt = _costQty > 1
-      ? `Нийт өртөг ${fmtMoneyShort(cost * _costQty)} <span style="opacity:.65;">(${fmtMoneyShort(cost)}×${_costQty})</span>`
-      : `Өртөг ${fmtMoneyShort(cost)}`;
-    stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">${_costTxt}${roi != null ? ` · ROI ${roi}%` : ''}</span>`);
+    const _cq = _actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0);
+    money.push(_cq > 1
+      ? `<span style="color:var(--text-soft);">Нийт өртөг <b style="font-weight:600;color:var(--text);">${fmtMoneyShort(cost * _cq)}</b> <span style="opacity:.6;">(${fmtMoneyShort(cost)}×${_cq})</span></span>`
+      : `<span style="color:var(--text-soft);">Өртөг <b style="font-weight:600;color:var(--text);">${fmtMoneyShort(cost)}</b></span>`);
   }
-  if (p.purchase_date) { const _age = productAge(p.purchase_date); stats.push(`<span class="prod-age" title="Худалдан авсан огноо">📅 ${escapeHtml(String(p.purchase_date).slice(0, 10))}${_age ? ` · ${_age} ашигласан` : ''}</span>`); }
-  { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); stats.push(`<span class="prod-origin" title="Гарал үүсэл: ${escapeHtml(_org)}">🏬 ${_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 22 ? _org.slice(0, 22) + '…' : _org)}</span>`); } }
-  if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана
-  const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';   // Түрээсийн/Хөрөнгө таг устгав — салбар (ленз) нь түрээслэх боломжийг тодорхойлно
-  // Авсаархан, дартал нээгддэг мөр (засвар нь модалд).
+  if (roi != null) {
+    const _c = roi >= 100 ? 'var(--ok)' : roi >= 50 ? 'var(--warn)' : 'var(--danger)';
+    const _bg = roi >= 100 ? 'rgba(22,163,74,.12)' : roi >= 50 ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)';
+    money.push(`<span style="font-size:11px;font-weight:600;color:${_c};background:${_bg};padding:1px 7px;border-radius:20px;white-space:nowrap;">${roi >= 100 ? '↑' : '↓'} ROI ${roi}%</span>`);
+  }
+  if (u.orders) money.push(`<span style="color:var(--muted);">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
+  if (!pkg && (broken || maint)) money.push(`<span style="color:var(--danger);">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
+  if (!pkg && !_actBranch) money.push(`<span style="color:var(--muted);">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед салбарын задаргаа
+  const moneyLine = money.length ? `<div style="font-size:12px;margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">${money.join('')}</div>` : '';
+  const partial = !pkg && !_actBranch && totalStock !== stock;
+  const typeBadge = pkg ? '<span class="prod-type-b pk">📦 Багц</span>' : '';
+  // Авсаархан, дартал нээгддэг мөр (засвар нь модалд). 3 давхарга: нэр · мета · мөнгө; баруун талд түрээс/нөөц.
   return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id || p.sku)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
     <div class="prod-img">${img}</div>
     <div class="prod-main">
       <div class="prod-name-d">${escapeHtml(p.name || '(нэргүй)')}</div>
-      <div class="prod-sub">${escapeHtml(p.category || '—')} · SKU ${escapeHtml(p.sku || '—')}${stats.length ? ' · ' + stats.join(' · ') : ''}</div>
+      ${metaLine}
+      ${moneyLine}
     </div>
-    <div class="prod-badges">
-      <span class="prod-price-b">${fmtMoney(Number(p.price) || 0)}</span>
-      <span class="prod-stock-b${(!pkg && !_actBranch && totalStock !== stock) ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}Нөөц ${stock}${(!pkg && !_actBranch && totalStock !== stock) ? `/${totalStock}` : ''}</span>
+    <div class="prod-badges" style="align-items:flex-end;text-align:right;">
+      <div style="line-height:1.2;"><div style="font-size:15px;font-weight:700;color:var(--text);">${fmtMoney(Number(p.price) || 0)}</div><div style="font-size:10px;color:var(--muted);">түрээс/өдөр</div></div>
+      <span class="prod-stock-b${partial ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${stock}${partial ? `/${totalStock}` : ''} ширхэг</span>
       ${typeBadge}
       ${(!pkg && can('products.edit')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id || p.sku)}" title="Салбар хооронд шилжүүлэх" style="padding:2px 9px;font-size:13px;line-height:1.4;">⇄</button>` : ''}
     </div>

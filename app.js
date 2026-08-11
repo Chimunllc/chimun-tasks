@@ -16,11 +16,13 @@ const ICONS = {
   sun:       '<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
   check:     '<svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>',
   target:    '<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+  utensils:  '<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h0c1.1 0 2-.9 2-2V2M5 2v20M11 2v20M11 8c0-2 1-4 3-4s3 2 3 4-1 3-3 3v11"/></svg>',
 };
 
 const BRANCHES = [
   { id: 'm-event',    name: 'M Event',     icon: ICONS.tent },
   { id: 'camp',       name: 'NOMAAD Camp', icon: ICONS.mountain },
+  { id: 'catering',   name: 'Катеринг',    icon: ICONS.utensils },
   { id: 'shared',     name: 'Удирдлага',   icon: ICONS.building },
   // 'production' салбар хасагдсан 2026-05-25 — M Event-д нэгтгэгдсэн.
 ];
@@ -1460,11 +1462,12 @@ let FINANCE_SUB_CATEGORIES = {
 
 /* Салбарын жагсаалт — хүсэлт ХААНА харъялагдсаныг заана */
 const FINANCE_BRANCHES = [
-  { code: 'ИВЕНТ', name: 'Эм Ивент' },
-  { code: 'КЕМП',  name: 'Номаад кемп' },
-  { code: 'ЗАХ',   name: 'Захиргаа' },
-  { code: 'ХАМТ',  name: 'Хамтын зардал' },
-  { code: 'ХХК',   name: 'Чимун ХХК (хөрөнгө)' },
+  { code: 'ИВЕНТ',    name: 'Эм Ивент' },
+  { code: 'КЕМП',     name: 'Номаад кемп' },
+  { code: 'КАТЕРИНГ', name: 'Катеринг' },
+  { code: 'ЗАХ',      name: 'Захиргаа' },
+  { code: 'ХАМТ',     name: 'Хамтын зардал' },
+  { code: 'ХХК',      name: 'Чимун ХХК (хөрөнгө)' },
 ];
 
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
@@ -1777,7 +1780,7 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
       const byLink = { nomaad: 'КЕМП', order: 'ИВЕНТ', car: 'ХХК', product: 'ХХК', general: 'ЗАХ' }[linkType];
       if (byLink) return byLink;
       const me = (TEAM || []).find(m => personKey(m) === owner || (m.email && m.email === owner));
-      const auto = (bs) => (bs || []).includes('m-event') ? 'ИВЕНТ' : (bs || []).includes('camp') ? 'КЕМП' : 'ЗАХ';
+      const auto = (bs) => (bs || []).includes('m-event') ? 'ИВЕНТ' : (bs || []).includes('camp') ? 'КЕМП' : (bs || []).includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
       const isAcct = me && (/нягтлан/i.test(me.role || '') || (Number(me.level) || 0) >= 100);
       if (me && !isAcct) return auto(me.branches);   // ажилтан → өөрийн салбар (автомат)
       return deptBranch || auto(me && me.branches);  // нягтлан/CEO → сонгосон, эс бөгөөс default
@@ -1983,6 +1986,7 @@ function restoreFinanceDraft() {
 // Салбарын нэрийг 3 цэвэр ангилалд хөрвүүлнэ (хуучин дата: m-event/CAMP/ХАМТ/SHARED г.м зөрүүтэй).
 function finBranchLabel(b) {
   const s = String(b || '').toLowerCase();
+  if (/catering|катеринг|кейтеринг/.test(s)) return 'КАТЕРИНГ';
   if (/event|ивент/.test(s)) return 'ИВЕНТ';
   if (/camp|кемп|номаад|nomaad/.test(s)) return 'КЕМП';
   if (/ххк|хөрөнг|chimun|компани/.test(s)) return 'Чимун ХХК'; // компанийн хөрөнгө (CAPEX)
@@ -1991,7 +1995,7 @@ function finBranchLabel(b) {
 // Гүйлгээний утгад зориулсан салбарын нэр (банкны утганд бичих хэлбэр)
 function finMemoBranch(deptBranch) {
   const b = finBranchLabel(deptBranch);
-  return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : b === 'Чимун ХХК' ? 'Чимун' : 'Захиргаа';
+  return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : b === 'КАТЕРИНГ' ? 'Катеринг' : b === 'Чимун ХХК' ? 'Чимун' : 'Захиргаа';
 }
 // Үр дүнгийн салбар: хөрөнгийн зардал (6000) ҮРГЭЛЖ "Чимун ХХК"-д (салбарын OPEX-ээс хасна).
 function finEffBranch(t) {
@@ -2000,7 +2004,7 @@ function finEffBranch(t) {
 }
 // Салбар ленз → санхүүгийн finEffBranch шүүлтийн утга (null = бүгд)
 function finLensBranch(lens) {
-  return lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : lens === 'capital' ? 'Чимун ХХК' : null;
+  return lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : lens === 'catering' ? 'КАТЕРИНГ' : lens === 'capital' ? 'Чимун ХХК' : null;
 }
 // Тайлан/жагсаалтад салбарын бүлгийн харагдах нэр (хөрөнгийг тодотгоно)
 function finBranchDisplay(b) {
@@ -2904,10 +2908,10 @@ function memberInLens(m) {
    - Нэг салбартай → зөвхөн өөрийн салбар (түгжээтэй — бусад салбар харахгүй)
    - Салбаргүй → ['all'] */
 function allowedLenses() {
-  if (state.isCEO) return ['all', 'm-event', 'camp', 'capital'];
+  if (state.isCEO) return ['all', 'm-event', 'camp', 'catering', 'capital'];
   const m = findMember(state.me);
-  const bs = memberBranchesOf(m).filter(b => b === 'm-event' || b === 'camp');
-  if (bs.length >= 2) return ['all', 'm-event', 'camp'];
+  const bs = memberBranchesOf(m).filter(b => b === 'm-event' || b === 'camp' || b === 'catering');
+  if (bs.length >= 2) return ['all', ...bs];
   if (bs.length === 1) return [bs[0]];   // нэг салбартай хүн → тухайн салбартаа ТҮГЖИГДЭНЭ
   return ['all'];
 }
@@ -3227,7 +3231,7 @@ function render() {
   const blSel = document.getElementById('branch-lens');
   if (blSel) {
     const allowed = allowedLenses();
-    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp', capital: '🏗 Хөрөнгө' };
+    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp', catering: '🍽 Катеринг', capital: '🏗 Хөрөнгө' };
     const key = allowed.join(',');
     if (blSel._builtFor !== key) {
       blSel.innerHTML = allowed.map(v => `<option value="${v}">${labels[v] || v}</option>`).join('');
@@ -3347,7 +3351,7 @@ function renderSidebar() {
   if (slens) {
     const allowed = allowedLenses();
     if (allowed.length > 1) {
-      const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD', capital: '🏗 Хөрөнгө' };
+      const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD', catering: '🍽 Катеринг', capital: '🏗 Хөрөнгө' };
       const cur = effectiveBranchLens();
       slens.style.display = '';
       slens.innerHTML = allowed.map(v => `<button class="slens-chip${v === cur ? ' on' : ''}" data-slens="${v}">${labels[v] || v}</button>`).join('');
@@ -5762,18 +5766,19 @@ async function saveProduct(product) {
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
   // Эс бол хуучин дедукц (asset→Чимун, бусад→M-Event; засварт зөрүүг M-Event-д).
   const _cur = state.products.find(x => x.sku === product.sku) || {};
-  let _qc, _qm, _qn;
-  if (product.qty_mevent != null || product.qty_chimun != null || product.qty_nomaad != null) {
-    _qc = Number(product.qty_chimun) || 0; _qm = Number(product.qty_mevent) || 0; _qn = Number(product.qty_nomaad) || 0;
+  let _qc, _qm, _qn, _qk;
+  if (product.qty_mevent != null || product.qty_chimun != null || product.qty_nomaad != null || product.qty_catering != null) {
+    _qc = Number(product.qty_chimun) || 0; _qm = Number(product.qty_mevent) || 0; _qn = Number(product.qty_nomaad) || 0; _qk = Number(product.qty_catering) || 0;
   } else {
     _qc = idx < 0 ? 0 : (Number(_cur.qty_chimun) || 0);
     _qm = idx < 0 ? 0 : (Number(_cur.qty_mevent) || 0);
     _qn = idx < 0 ? 0 : (Number(_cur.qty_nomaad) || 0);
+    _qk = idx < 0 ? 0 : (Number(_cur.qty_catering) || 0);
     if (idx < 0) { if (row.type === 'asset') _qc = row.stock; else _qm = row.stock; }
-    else { const _diff = row.stock - (_qc + _qm + _qn); if (_diff !== 0) _qm = Math.max(0, _qm + _diff); }
+    else { const _diff = row.stock - (_qc + _qm + _qn + _qk); if (_diff !== 0) _qm = Math.max(0, _qm + _diff); }
   }
-  row.qty_chimun = _qc; row.qty_mevent = _qm; row.qty_nomaad = _qn;
-  _cur.qty_chimun = _qc; _cur.qty_mevent = _qm; _cur.qty_nomaad = _qn;
+  row.qty_chimun = _qc; row.qty_mevent = _qm; row.qty_nomaad = _qn; row.qty_catering = _qk;
+  _cur.qty_chimun = _qc; _cur.qty_mevent = _qm; _cur.qty_nomaad = _qn; _cur.qty_catering = _qk;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
@@ -5820,9 +5825,10 @@ function fmtMoneyShort(n) {
 
 // ── Салбарын нөөц хуваарилалт (Чимун ХХК / M-Event / NOMAAD) — нэг барааны нөөцийг тоогоор хуваана ──
 const PROD_BRANCHES = [
-  { k: 'chimun', label: 'Чимун ХХК', icon: '🏢', color: 'var(--muted)' },
-  { k: 'mevent', label: 'M-Event',   icon: '🎪', color: 'var(--accent,#7c3aed)' },
-  { k: 'nomaad', label: 'NOMAAD',     icon: '⛺', color: '#0d9488' },
+  { k: 'chimun',   label: 'Чимун ХХК', icon: '🏢', color: 'var(--muted)' },
+  { k: 'mevent',   label: 'M-Event',   icon: '🎪', color: 'var(--accent,#7c3aed)' },
+  { k: 'nomaad',   label: 'NOMAAD',     icon: '⛺', color: '#0d9488' },
+  { k: 'catering', label: 'Катеринг',   icon: '🍽', color: '#d97706' },
 ];
 function branchInfo(k) { return PROD_BRANCHES.find(b => b.k === k) || { k, label: k, icon: '', color: 'var(--text)' }; }
 function branchQty(p, k) { return Number(p && p['qty_' + k]) || 0; }
@@ -6002,6 +6008,7 @@ function hourlyPayoutDays(p) {
 // Цагийн ажилтны салбар (M Event / NOMAAD / Бусад) — group/branches талбараас.
 function hourlyBranchLabel(m) {
   const g = String((m.branches && m.branches[0]) || m.group || m.branch || '').toLowerCase().trim();
+  if (g.includes('catering') || g.includes('катеринг') || g.includes('кейтеринг')) return 'Катеринг';
   if (g === 'm-event' || g === 'mevent' || g.includes('event') || g.includes('ивент') || g.includes('эвент')) return 'M Event';
   if (g === 'camp' || g.includes('camp') || g.includes('кемп') || g.includes('номаад') || g.includes('nomaad')) return 'NOMAAD';
   return 'Бусад';
@@ -6016,7 +6023,7 @@ function renderHourly() {
   }
   // Толгойн салбар лензээр шүүнэ: NOMAAD Camp → зөвхөн NOMAAD, M-Event → зөвхөн M Event, Бүгд → бүгд.
   const lens = effectiveBranchLens();
-  const lensLabel = lens === 'm-event' ? 'M Event' : lens === 'camp' ? 'NOMAAD' : null;
+  const lensLabel = lens === 'm-event' ? 'M Event' : lens === 'camp' ? 'NOMAAD' : lens === 'catering' ? 'Катеринг' : null;
   const workers = lensLabel ? allWorkers.filter(m => hourlyBranchLabel(m) === lensLabel) : allWorkers;
   const sortMode = state.hourlySort || 'recent';
   if (!state.hourlyActivity) state.hourlyActivity = 'active';   // анхдагч: идэвхтэй л харагдана
@@ -6097,9 +6104,9 @@ function renderHourly() {
     paid:   (a, b) => (stats.get(personKey(b)).sum - stats.get(personKey(a)).sum) || String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
   }[sortMode] || ((a, b) => 0);
   // Салбараар бүлэглэх — M Event / NOMAAD / Бусад (бүлэг бүрийг сонгосон эрэмбээр)
-  const groups = { 'M Event': [], 'NOMAAD': [], 'Бусад': [] };
+  const groups = { 'M Event': [], 'NOMAAD': [], 'Катеринг': [], 'Бусад': [] };
   workers.forEach(m => { (groups[hourlyBranchLabel(m)] || groups['Бусад']).push(m); });
-  const sections = ['M Event', 'NOMAAD', 'Бусад']
+  const sections = ['M Event', 'NOMAAD', 'Катеринг', 'Бусад']
     .filter(k => groups[k].length)
     .map(k => {
       groups[k].sort(cmp);
@@ -9769,7 +9776,7 @@ function renderProducts() {
       nophoto: p => !String(p.photo || '').trim(),
       nocost: p => costOf(p) <= 0,
       noprice: p => (Number(p.price) || 0) <= 0,
-      noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0,
+      noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad') + branchQty(p, 'catering')) <= 0,
       nodate: p => !p.purchase_date,
     }[state.prodMissing];
     if (f) list = list.filter(f);
@@ -9790,12 +9797,12 @@ function renderProducts() {
   const brTab = (k, label) => `<button class="prod-tab${state.prodBranch === k ? ' on' : ''}" data-prodbranch="${k}">${label}${k !== 'all' ? ` <span class="prod-tab-n">${brQtySum(k)}ш</span>` : ''}</button>`;
   const branchBar = _lockedBranch
     ? `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${branchInfo(_lockedBranch).icon} ${branchInfo(_lockedBranch).label} салбар <span class="prod-tab-n">${brQtySum(_lockedBranch)}ш</span></span></div>`
-    : `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
+    : `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('catering', '🍽 Катеринг')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
   const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓'], ['purchase_asc', '📅 Хамгийн удаан эзэмшсэн']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
-  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad')) <= 0, nodate: p => !p.purchase_date }[key]).length;
+  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad') + branchQty(p, 'catering')) <= 0, nodate: p => !p.purchase_date }[key]).length;
   const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй'], ['nodate', '📅 Огноогүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
   const filterBar = `<div style="display:flex;gap:8px;margin:6px 0 2px;flex-wrap:wrap;">
     <select id="prod-cat" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${catOpts}</select>
@@ -9835,15 +9842,15 @@ function openProductModal(p) {
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;
   // Салбарын нөөцийн анхны утга — шинэ/түрээсийн бол бүгд M-Event, asset бол Чимун
   const _st0 = isEdit ? (Number(p.stock) || 0) : 1;
-  let _qm0, _qc0, _qn0;
-  if (isEdit && (p.qty_mevent != null || p.qty_chimun != null || p.qty_nomaad != null)) {
-    _qm0 = Number(p.qty_mevent) || 0; _qc0 = Number(p.qty_chimun) || 0; _qn0 = Number(p.qty_nomaad) || 0;
+  let _qm0, _qc0, _qn0, _qk0;
+  if (isEdit && (p.qty_mevent != null || p.qty_chimun != null || p.qty_nomaad != null || p.qty_catering != null)) {
+    _qm0 = Number(p.qty_mevent) || 0; _qc0 = Number(p.qty_chimun) || 0; _qn0 = Number(p.qty_nomaad) || 0; _qk0 = Number(p.qty_catering) || 0;
   } else if (isEdit && String(p.type || 'rental') === 'asset') {
-    _qc0 = _st0; _qm0 = 0; _qn0 = 0;
+    _qc0 = _st0; _qm0 = 0; _qn0 = 0; _qk0 = 0;
   } else if (isEdit) {
-    _qm0 = _st0; _qc0 = 0; _qn0 = 0;
+    _qm0 = _st0; _qc0 = 0; _qn0 = 0; _qk0 = 0;
   } else {
-    _qm0 = 0; _qc0 = 0; _qn0 = 0;   // шинэ бараа — салбараа ИЛЭЭР сонгоно (чимээгүй default байхгүй)
+    _qm0 = 0; _qc0 = 0; _qn0 = 0; _qk0 = 0;   // шинэ бараа — салбараа ИЛЭЭР сонгоно (чимээгүй default байхгүй)
   }
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
@@ -9885,6 +9892,7 @@ function openProductModal(p) {
           <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"></label>
           <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"></label>
           <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"></label>
+          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"></label>
         </div>
         <div class="pm-branch-status" id="pm-branch-status"></div>
       </div>
@@ -10002,13 +10010,14 @@ function openProductModal(p) {
   updateWorking();
   // Салбарын хуваарилалт — M-Event>0 бол сайтад түрээслэгдэнэ. M-Event = Нийт − Чимун − NOMAAD (авто).
   // Шинэ бараанд салбараа ИЛЭЭР сонготол (чип эсвэл гараар тоо) авто-бөглөхгүй, хадгалахыг блоклоно.
-  const qmEl = modal.querySelector('#pm-qm'), qcEl = modal.querySelector('#pm-qc'), qnEl = modal.querySelector('#pm-qn');
+  const qmEl = modal.querySelector('#pm-qm'), qcEl = modal.querySelector('#pm-qc'), qnEl = modal.querySelector('#pm-qn'), qkEl = modal.querySelector('#pm-qk');
   const stockEl = modal.querySelector('#pm-stock'), branchStatus = modal.querySelector('#pm-branch-status');
+  const _qkv = () => Number(qkEl && qkEl.value) || 0;   // катеринг (шинэ багана)
   let branchTouched = isEdit;
   modal._branchTouched = () => branchTouched;
   function updateBranch() {
     const qm = Number(qmEl.value) || 0;
-    const sum = qm + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0);
+    const sum = qm + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0) + _qkv();
     if (!branchTouched && !sum) {
       branchStatus.innerHTML = `<span style="color:var(--warn);font-weight:600;">⚠ Аль салбарт байхыг сонгоно уу</span>`;
       return;
@@ -10016,22 +10025,22 @@ function openProductModal(p) {
     branchStatus.innerHTML = `<span style="color:${qm > 0 ? 'var(--ok)' : 'var(--muted)'};font-weight:600;">${qm > 0 ? '✅ Сайтад түрээслэгдэнэ' : '🔒 Зөвхөн дотоод хөрөнгө — сайтад харагдахгүй'}</span>`;
   }
   function syncPickChips() {   // гараар тоо өөрчилбөл чипийн тодруулгыг таарууна
-    const qm = Number(qmEl.value) || 0, qc = Number(qcEl.value) || 0, qn = Number(qnEl.value) || 0;
+    const qm = Number(qmEl.value) || 0, qc = Number(qcEl.value) || 0, qn = Number(qnEl.value) || 0, qk = _qkv();
     modal.querySelectorAll('[data-brpick]').forEach(b => {
-      const only = { m: qm > 0 && !qc && !qn, c: qc > 0 && !qm && !qn, n: qn > 0 && !qm && !qc }[b.dataset.brpick];
+      const only = { m: qm > 0 && !qc && !qn && !qk, c: qc > 0 && !qm && !qn && !qk, n: qn > 0 && !qm && !qc && !qk }[b.dataset.brpick];
       b.classList.toggle('on', !!only);
     });
   }
-  function fillMevent() {   // Нийт эсвэл Чимун/NOMAAD өөрчлөгдвөл M-Event = үлдэгдэл (салбар сонгосны дараа л)
+  function fillMevent() {   // Нийт эсвэл Чимун/NOMAAD/Катеринг өөрчлөгдвөл M-Event = үлдэгдэл (салбар сонгосны дараа л)
     if (!branchTouched) { updateBranch(); return; }
     const st = Number(stockEl.value) || 0, qc = Number(qcEl.value) || 0, qn = Number(qnEl.value) || 0;
-    qmEl.value = Math.max(0, st - qc - qn); updateBranch(); syncPickChips();
+    qmEl.value = Math.max(0, st - qc - qn - _qkv()); updateBranch(); syncPickChips();
   }
   stockEl.addEventListener('input', fillMevent);
-  [qcEl, qnEl].forEach(el => el.addEventListener('input', () => { branchTouched = true; fillMevent(); }));
+  [qcEl, qnEl, qkEl].filter(Boolean).forEach(el => el.addEventListener('input', () => { branchTouched = true; fillMevent(); }));
   qmEl.addEventListener('input', () => {   // M-Event гараар өөрчилвөл Нийт нөөцийг нийлбэрт тэнцүүлнэ
     branchTouched = true;
-    stockEl.value = (Number(qmEl.value) || 0) + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0);
+    stockEl.value = (Number(qmEl.value) || 0) + (Number(qcEl.value) || 0) + (Number(qnEl.value) || 0) + _qkv();
     updateWorking(); updateBranch(); syncPickChips();
   });
   modal.querySelectorAll('[data-brpick]').forEach(b => b.addEventListener('click', () => {
@@ -10041,12 +10050,13 @@ function openProductModal(p) {
     qmEl.value = b.dataset.brpick === 'm' ? st : 0;
     qcEl.value = b.dataset.brpick === 'c' ? st : 0;
     qnEl.value = b.dataset.brpick === 'n' ? st : 0;
+    if (qkEl) qkEl.value = 0;
     updateWorking(); updateBranch(); syncPickChips();
   }));
   if (!isEdit) {   // Шинэ бараа — default салбар = 🏢 Чимун дотоод (шаардлагатай бол дараа сольж болно)
     branchTouched = true;
     const st = Math.max(1, Number(stockEl.value) || 0);
-    qcEl.value = st; qmEl.value = 0; qnEl.value = 0;
+    qcEl.value = st; qmEl.value = 0; qnEl.value = 0; if (qkEl) qkEl.value = 0;
   }
   updateBranch(); syncPickChips();
   const close = () => modal.remove();
@@ -10075,7 +10085,7 @@ async function submitProductModal(modal, orig, btn) {
   }
   // Шинэ бараанд салбарын хуваарилалт ЗААВАЛ — аль салбарт хэдэн ширхэг байхыг сонгоно
   if (!orig && !isPkg && !isSvc) {
-    const _qsum = (Number(modal.querySelector('#pm-qm')?.value) || 0) + (Number(modal.querySelector('#pm-qc')?.value) || 0) + (Number(modal.querySelector('#pm-qn')?.value) || 0);
+    const _qsum = (Number(modal.querySelector('#pm-qm')?.value) || 0) + (Number(modal.querySelector('#pm-qc')?.value) || 0) + (Number(modal.querySelector('#pm-qn')?.value) || 0) + (Number(modal.querySelector('#pm-qk')?.value) || 0);
     if (!_qsum) {
       showToast('Салбарын хуваарилалт: аль салбарт байхыг сонгоно уу', 'warn', 3500);
       modal.querySelector('#pm-branch-pick')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -10085,16 +10095,17 @@ async function submitProductModal(modal, orig, btn) {
   const _qm = Number(modal.querySelector('#pm-qm')?.value) || 0;
   const _qc = Number(modal.querySelector('#pm-qc')?.value) || 0;
   const _qn = Number(modal.querySelector('#pm-qn')?.value) || 0;
+  const _qk = Number(modal.querySelector('#pm-qk')?.value) || 0;
   const base = {
     name, category: cat, sku,
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
-    stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn),
+    stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
     maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
     photos: images, photo: images[0] || '',   // эхний зураг = нүүр
     description: modal.querySelector('#pm-desc').value,
     type: isPkg ? 'package' : (isSvc ? 'service' : (_qm > 0 ? 'rental' : 'asset')),   // Багц / Үйлчилгээ / M-Event>0=түрээс / асет
-    qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn,
+    qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn, qty_catering: isPkg ? 0 : _qk,
     bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
     variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,

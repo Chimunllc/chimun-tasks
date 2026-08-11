@@ -5926,7 +5926,14 @@ function productRowHtml(p) {
   if (pkg) stats.push(`<span class="prod-pkg">📦 ${packageComponents(p).length} бараа</span>`);
   if (!pkg && (broken || maint)) stats.push(`<span class="prod-cond">${broken ? '⚠ ' + broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? '🔧 ' + maint + ' засварт' : ''}</span>`);
   if (u.orders) stats.push(`<span class="prod-util">🔄 ${u.orders} удаа · ${fmtMoneyShort(u.revenue)}</span>`);
-  if (cost > 0) stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">Өртөг ${fmtMoneyShort(cost)}${roi != null ? ` · ROI ${roi}%` : ''}</span>`);
+  if (cost > 0) {
+    // Олон ширхэгтэй бол НИЙТ өртөг (нэгж × тоо) гол болгож, нэгжийг хажууд нь. Салбар идэвхтэй бол тэр салбарын тоогоор.
+    const _costQty = _actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0);
+    const _costTxt = _costQty > 1
+      ? `Нийт өртөг ${fmtMoneyShort(cost * _costQty)} <span style="opacity:.65;">(${fmtMoneyShort(cost)}×${_costQty})</span>`
+      : `Өртөг ${fmtMoneyShort(cost)}`;
+    stats.push(`<span class="prod-roi${roi != null && roi >= 100 ? ' paid' : ''}">${_costTxt}${roi != null ? ` · ROI ${roi}%` : ''}</span>`);
+  }
   if (p.purchase_date) { const _age = productAge(p.purchase_date); stats.push(`<span class="prod-age" title="Худалдан авсан огноо">📅 ${escapeHtml(String(p.purchase_date).slice(0, 10))}${_age ? ` · ${_age} ашигласан` : ''}</span>`); }
   { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); stats.push(`<span class="prod-origin" title="Гарал үүсэл: ${escapeHtml(_org)}">🏬 ${_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 22 ? _org.slice(0, 22) + '…' : _org)}</span>`); } }
   if (!pkg && !_actBranch) stats.push(`<span class="prod-branch">${branchStockHtml(p)}</span>`);   // "Бүх салбар" үед задаргаа; салбар сонгосон бол гол Нөөц badge-д харагдана

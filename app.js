@@ -6801,6 +6801,41 @@ function salaryLastAdvance(personKey) {
   const ps = (state.salaryPayments || []).filter(p => p.person_key === personKey && String(p.note || '').includes(SAL_ADV_TAG)).sort((a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')));
   return ps.length ? (Number(ps[0].amount) || 0) : 0;
 }
+// ── Суутгал → цэвэр цалин (НДШ + ХХОАТ, хялбар хувилбар, хувь нь тохируулгатай) ──
+function salaryRates() {
+  if (!state.salaryRates) {
+    try { state.salaryRates = JSON.parse(localStorage.getItem('salaryRates') || 'null'); } catch (_) {}
+    if (!state.salaryRates) state.salaryRates = { ndsh: 11.5, pit: 10 };   // НДШ 11.5%, ХХОАТ 10% (default)
+  }
+  return state.salaryRates;
+}
+function salaryNet(gross) {
+  gross = Number(gross) || 0;
+  const r = salaryRates();
+  const ndsh = Math.round(gross * (Number(r.ndsh) || 0) / 100);
+  const pit = Math.round(Math.max(0, gross - ndsh) * (Number(r.pit) || 0) / 100);
+  return { ndsh, pit, net: Math.max(0, gross - ndsh - pit) };
+}
+// Цалин олгомогц санхүүгийн зардал АВТОМАТ үүсгэнэ (Төлбөр ба зардал / тайланд орно). Давхардлаас хамгаална.
+async function createSalaryExpense(m, ym, amount, cycName) {
+  const tag = `⟦SAL|${personKey(m)}|${ym}|${cycName}⟧`;
+  if ((state.financeRequests || []).some(x => x.status !== 'deleted' && String(x.justification || '').includes(tag))) return;
+  const bs = (typeof memberBranchesOf === 'function' ? memberBranchesOf(m) : (m.branches || [])) || [];
+  const brCode = bs.includes('m-event') ? 'ИВЕНТ' : bs.includes('camp') ? 'КЕМП' : bs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
+  state._finBackfill = { date: `${ym}-${/рьдчил/.test(cycName) ? '20' : '05'}` };
+  const fr = await createFinanceRequest({
+    amount, beneficiary: m.name || '', bank: m.bank || '', accountNumber: m.bank_account || '',
+    purpose: `${ym} ${cycName} цалин · ${m.name || ''}`, justification: tag,
+    category: '7100', deptBranch: brCode, linkType: 'salary', priority: 'med',
+  });
+  state._finBackfill = null;   // аюулгүй: дараагийн хүсэлтэд санамсаргүй үлдэхээс сэргийлнэ
+  if (fr && fr.status !== 'done') {   // payer нь CEO/executor биш байлаа ч цалин = шийдэгдсэн зардал
+    const now = new Date().toISOString();
+    fr.decision = 'approved'; fr.decision_at = now; fr.decision_by = state.me;
+    fr.executed_at = now; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'цалин';
+    fr.close_note = 'Цалингийн олголтоос автоматаар'; await saveFinanceRequest(fr);
+  }
+}
 // Сарын цалин авах ажилтнууд (өдрийн/цагийн ажилтнаас бусад идэвхтэй)
 function salaryStaff() {
   return (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && String(m.worker_type || '') !== 'daily');
@@ -6819,31 +6854,45 @@ function renderSalary() {
   const paidThis = allStaff.reduce((s, m) => s + salaryPaidFor(personKey(m), ym), 0);
   const unpaidCnt = allStaff.filter(m => { const base = Number((state.salaries || {})[personKey(m)]) || 0; return base > 0 && salaryPaidFor(personKey(m), ym) <= 0; }).length;
   const editable = can('salary.edit'), payable = can('salary.pay');
+  const rt = salaryRates();
+  const totalNet = allStaff.reduce((s, m) => s + salaryNet(Number((state.salaries || {})[personKey(m)]) || 0).net, 0);
 
   const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">💵 Сарын цалин</div><div style="font-size:11px;color:var(--muted);">Ажилтан бүрийн суурь цалин + сар бүрийн олголт</div></div>
+      <div><div style="font-weight:800;font-size:16px;">💵 Сарын цалин</div><div style="font-size:11px;color:var(--muted);">Суурь → суутгал → цэвэр гарт өгөх + хагас сарын олголт</div></div>
       <div style="display:flex;gap:8px;align-items:center;"><input type="month" id="sal-ym" value="${ym}" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;"><button class="btn" data-sal-refresh style="padding:6px 12px;font-size:12px;">↻</button></div>
     </div>`;
-  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
-    ${kpi('Нийт сарын цалин', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
+  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
+    ${kpi('Нийт суурь (нийт)', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
+    ${kpi('Цэвэр олгох', fmtMoney(totalNet), 'var(--primary)', 'суутгалын дараа')}
     ${kpi('Энэ сар олгосон', fmtMoney(paidThis), 'var(--ok)', ym)}
-    ${kpi('Олгоогүй', fmtMoney(Math.max(0, totalBase - paidThis)), unpaidCnt ? 'var(--warn)' : 'var(--muted)', `${unpaidCnt} хүн`)}
+    ${kpi('Олгоогүй', fmtMoney(Math.max(0, totalNet - paidThis)), unpaidCnt ? 'var(--warn)' : 'var(--muted)', `${unpaidCnt} хүн`)}
   </div>`;
+  const ratesBar = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:10px;">
+      ✂️ Суутгал:
+      <label style="display:inline-flex;align-items:center;gap:4px;">НДШ <input type="number" step="0.1" id="sal-ndsh" value="${rt.ndsh}" ${editable ? '' : 'disabled'} style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px;text-align:right;">%</label>
+      <label style="display:inline-flex;align-items:center;gap:4px;">ХХОАТ <input type="number" step="0.1" id="sal-pit" value="${rt.pit}" ${editable ? '' : 'disabled'} style="width:56px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text);font-size:12px;text-align:right;">%</label>
+      <span style="opacity:.8;">${editable ? 'хувийг өөрчилж болно' : ''}</span>
+    </div>`;
   const schedule = `<div style="font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:12px;">📅 Хуваарь: <b style="color:var(--text);">Урьдчилгаа 20-нд</b> (1–15) · <b style="color:var(--text);">Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс) · 5 хоногийн зайтай</div>`;
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
   const today = new Date().toISOString().slice(0, 10);
   const advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
   const rows = staff.map(m => {
     const key = personKey(m);
-    const base = Number((state.salaries || {})[key]) || 0;
+    const base = Number((state.salaries || {})[key]) || 0;   // суурь = нийт (gross)
+    const ded = salaryNet(base);                             // { ndsh, pit, net }
+    const net = ded.net;                                     // цэвэр гарт өгөх — цикл үүн дээр суурилна
     const advPaid = salaryCyclePaid(key, ym, SAL_ADV_TAG);
     const remPaid = salaryCyclePaid(key, ym, SAL_REM_TAG);
-    const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(key) || Math.round(base / 2));
-    const remAmt = Math.max(0, base - advPaid);
+    const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(key) || Math.round(net / 2));
+    const remAmt = Math.max(0, net - advPaid);
     const baseCell = editable
       ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(key)}" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:120px;box-sizing:border-box;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;text-align:right;">`
       : `<b style="font-size:13px;">${fmtMoney(base)}</b>`;
+    const dedLine = base > 0
+      ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Цэвэр: <b style="color:var(--primary);">${fmtMoney(net)}</b> <span style="opacity:.8;">(НДШ −${fmtMoney(ded.ndsh)} · ХХОАТ −${fmtMoney(ded.pit)})</span></div>`
+      : '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     const bankLine = (m.bank || m.bank_account)
       ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b style="font-weight:600;color:var(--text);">' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn" data-sal-copy="${escapeHtml(acct)}" style="padding:1px 7px;font-size:10px;">Хуулах</button>` : ''}</div>`
@@ -6862,7 +6911,7 @@ function renderSalary() {
     return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;display:flex;flex-direction:column;gap:9px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${bankLine}</div>
-        <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:10.5px;color:var(--muted);">Сарын суурь</span>${baseCell}</div>
+        <div style="text-align:right;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><span style="font-size:10.5px;color:var(--muted);">Сарын суурь</span>${baseCell}</div>${dedLine}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px;">
         ${slot('Урьдчилгаа', '20-нд', advDue, advAmt, advPaid, SAL_ADV_TAG)}
@@ -6870,7 +6919,7 @@ function renderSalary() {
       </div>
     </div>`;
   }).join('');
-  return `<div style="padding:4px;">${head}${kpis}${schedule}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
+  return `<div style="padding:4px;">${head}${kpis}${ratesBar}${schedule}${searchBar}<div class="sal-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div></div>`;
 }
 
 function attachSalaryHandlers() {
@@ -6889,6 +6938,15 @@ function attachSalaryHandlers() {
   }));
   document.querySelectorAll('[data-sal-pay]').forEach(b => b.addEventListener('click', () => openSalaryPayModal(b.dataset.salPay, b.dataset.salCyc)));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
+  const saveRate = () => {
+    if (!can('salary.edit')) return;
+    const nd = parseFloat(document.getElementById('sal-ndsh')?.value), pt = parseFloat(document.getElementById('sal-pit')?.value);
+    state.salaryRates = { ndsh: isNaN(nd) ? 0 : nd, pit: isNaN(pt) ? 0 : pt };
+    try { localStorage.setItem('salaryRates', JSON.stringify(state.salaryRates)); } catch (_) {}
+    render();
+  };
+  document.getElementById('sal-ndsh')?.addEventListener('change', saveRate);
+  document.getElementById('sal-pit')?.addEventListener('change', saveRate);
 }
 
 async function openSalaryPayModal(personKey, cycleTag) {
@@ -6936,7 +6994,8 @@ async function openSalaryPayModal(personKey, cycleTag) {
     if (cycTag && !note.includes(cycTag)) note = (note ? note + ' ' : '') + cycTag;   // цикл таг залгах
     close();
     await paySalary(personKey, ym, amount, note);
-    showToast(`${m.name}: ${fmtMoney(amount)} олголоо`, 'success', 2500);
+    await createSalaryExpense(m, ym, amount, isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '');   // санхүүд автомат зардал
+    showToast(`${m.name}: ${fmtMoney(amount)} олгож, санхүүд бүртгэлээ`, 'success', 2800);
     render();
   };
   modal.classList.add('open');

@@ -7741,17 +7741,16 @@ function renderNomaadAnalytics() {
   const base = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
   const gHi = Math.max(10, ...base.map(o => Number(o.guests) || 0));
   const iHi = Math.max(1000000, ...base.map(o => nomaadEffTotal(o)));
-  // Он-сарын тасралтгүй жагсаалт (хамгийн эртнээс сүүлчийн хүртэл)
-  const _ymList = base.map(o => String(o.date_start || '').slice(0, 7)).filter(s => /^\d{4}-\d{2}$/.test(s)).sort();
-  let months = [];
-  if (_ymList.length) {
-    let [y, m] = _ymList[0].split('-').map(Number);
-    const [y1, m1] = _ymList[_ymList.length - 1].split('-').map(Number);
-    while (y < y1 || (y === y1 && m <= m1)) { months.push(y + '-' + String(m).padStart(2, '0')); if (++m > 12) { m = 1; y++; } }
+  // Огнооны тасралтгүй жагсаалт (өдрөөр — хамгийн эртнээс сүүлч хүртэл)
+  const _dList = base.map(o => String(o.date_start || '').slice(0, 10)).filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s)).sort();
+  let months = [];   // (нэр хэвээр — одоо ӨДРИЙН жагсаалт)
+  if (_dList.length) {
+    let d = new Date(_dList[0] + 'T00:00:00'), end = new Date(_dList[_dList.length - 1] + 'T00:00:00');
+    while (d <= end) { months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')); d.setDate(d.getDate() + 1); }
   }
   state._naMonths = months;
   const mHi = Math.max(0, months.length - 1);
-  const moLbl = i => { const s = months[Math.max(0, Math.min(mHi, Math.round(i)))] || ''; const p = s.split('-'); return p[1] ? (p[0] + '/' + p[1]) : s; };
+  const moLbl = i => { const s = months[Math.max(0, Math.min(mHi, Math.round(i)))] || ''; const p = s.split('-'); return p[2] ? ((+p[1]) + '/' + (+p[2])) : s; };
   if (!state.naF) state.naF = { gMin: 0, gMax: gHi, incMin: 0, incMax: iHi, mMin: 0, mMax: mHi, camp: 'all', tier: 'all', confirmedOnly: true, _gHi: gHi, _iHi: iHi, _mHi: mHi };
   const f = state.naF;
   if (f.mMin == null) { f.mMin = 0; f.mMax = mHi; f._mHi = mHi; }   // хуучин naF (энэ багана байхгүй) — нөхнө
@@ -7767,7 +7766,7 @@ function renderNomaadAnalytics() {
     const g = Number(o.guests) || 0, inc = nomaadEffTotal(o);
     if (g < f.gMin || g > f.gMax) return false;
     if (inc < f.incMin || inc > f.incMax) return false;
-    const mi = months.indexOf(String(o.date_start || '').slice(0, 7));
+    const mi = months.indexOf(String(o.date_start || '').slice(0, 10));
     if (mi < 0) { if (!mFull) return false; }                          // огноогүй — зөвхөн бүтэн хүрээнд харагдана
     else if (mi < f.mMin || mi > f.mMax) return false;
     if (f.camp !== 'all' && (o.camp || '').trim() !== f.camp) return false;
@@ -7850,7 +7849,7 @@ function renderNomaadAnalytics() {
           ${dual('inc', 0, iHi, f.incMin, f.incMax, 500000)}
         </div>
         ${mHi > 0 ? `<div>
-          <div style="font-size:12px;font-weight:600;margin-bottom:2px;">📅 Он-сар: <span data-nalabel="mo">${moLbl(f.mMin)}–${moLbl(f.mMax)}</span></div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:2px;">📅 Огноо (сар/өдөр): <span data-nalabel="mo">${moLbl(f.mMin)}–${moLbl(f.mMax)}</span></div>
           ${dual('mo', 0, mHi, f.mMin, f.mMax, 1)}
         </div>` : ''}
       </div>
@@ -7882,7 +7881,7 @@ function renderNomaadAnalytics() {
 function attachNomaadAnalytics() {
   const f = state.naF; if (!f) return;
   const _months = state._naMonths || [];
-  const moLabel = i => { const s = _months[Math.max(0, Math.min(_months.length - 1, Math.round(i)))] || ''; const p = s.split('-'); return p[1] ? (p[0] + '/' + p[1]) : s; };
+  const moLabel = i => { const s = _months[Math.max(0, Math.min(_months.length - 1, Math.round(i)))] || ''; const p = s.split('-'); return p[2] ? ((+p[1]) + '/' + (+p[2])) : s; };
   document.querySelectorAll('[data-nadual]').forEach(box => {
     const id = box.dataset.nadual, lo = Number(box.dataset.lo), hi = Number(box.dataset.hi);
     const mn = box.querySelector('.na-dmin'), mx = box.querySelector('.na-dmax'), fill = box.querySelector('.na-dual-fill');

@@ -6744,12 +6744,30 @@ async function loadSalaries() {
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary?select=*`, { headers: _SAL_H() }, 15000);
     if (!r.ok) return;
-    const rows = await r.json(); const map = {};
-    rows.forEach(p => { if (p && p.person_key) map[p.person_key] = Number(p.amount) || 0; });
-    state.salaries = map;
-    try { localStorage.setItem('salaries', JSON.stringify(map)); } catch (e) {}
+    const rows = await r.json(); const map = {}, ded = {};
+    rows.forEach(p => { if (p && p.person_key) { map[p.person_key] = Number(p.amount) || 0; ded[p.person_key] = p.deduct !== false; } });
+    state.salaries = map; state.salaryDeduct = ded;
+    try { localStorage.setItem('salaries', JSON.stringify(map)); localStorage.setItem('salaryDeduct', JSON.stringify(ded)); } catch (e) {}
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadSalaries', e); }
+}
+// Тухайн ажилтан суутгалтай эсэх (default тийм). Зарим ажилтан суутгал төлдөггүй → чагт авна.
+function salaryDeductOn(personKey) {
+  if (!state.salaryDeduct) { try { state.salaryDeduct = JSON.parse(localStorage.getItem('salaryDeduct') || '{}'); } catch (_) { state.salaryDeduct = {}; } }
+  return state.salaryDeduct[personKey] !== false;
+}
+async function saveSalaryDeduct(personKey, on) {
+  if (!personKey) return;
+  state.salaryDeduct = state.salaryDeduct || {}; state.salaryDeduct[personKey] = !!on;
+  try { localStorage.setItem('salaryDeduct', JSON.stringify(state.salaryDeduct)); } catch (e) {}
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary`, {
+      method: 'POST', headers: { ..._SAL_H(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ person_key: personKey, deduct: !!on, updated_by: state.me, updated_at: new Date().toISOString() }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { showToast('Суутгал хадгалах алдаа: ' + e.message, 'error', 4000); }
 }
 async function loadSalaryPayments() {
   if (!SUPABASE_ANON_KEY) return;
@@ -6809,8 +6827,9 @@ function salaryRates() {
   }
   return state.salaryRates;
 }
-function salaryNet(gross) {
+function salaryNet(gross, deduct) {
   gross = Number(gross) || 0;
+  if (deduct === false) return { ndsh: 0, pit: 0, net: gross };   // суутгалгүй ажилтан → цэвэр = нийт
   const r = salaryRates();
   const ndsh = Math.round(gross * (Number(r.ndsh) || 0) / 100);
   const pit = Math.round(Math.max(0, gross - ndsh) * (Number(r.pit) || 0) / 100);
@@ -6866,7 +6885,7 @@ function renderSalary() {
   const unpaidCnt = allStaff.filter(m => { const base = Number((state.salaries || {})[personKey(m)]) || 0; return base > 0 && salaryPaidFor(personKey(m), ym) <= 0; }).length;
   const editable = can('salary.edit'), payable = can('salary.pay');
   const rt = salaryRates();
-  const totalNet = allStaff.reduce((s, m) => s + salaryNet(Number((state.salaries || {})[personKey(m)]) || 0).net, 0);
+  const totalNet = allStaff.reduce((s, m) => s + salaryNet(Number((state.salaries || {})[personKey(m)]) || 0, salaryDeductOn(personKey(m))).net, 0);
 
   const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;flex-wrap:wrap;">
@@ -6892,7 +6911,8 @@ function renderSalary() {
   const rows = staff.map(m => {
     const key = personKey(m);
     const base = Number((state.salaries || {})[key]) || 0;   // суурь = нийт (gross)
-    const ded = salaryNet(base);                             // { ndsh, pit, net }
+    const dOn = salaryDeductOn(key);                         // суутгалтай эсэх (default тийм)
+    const ded = salaryNet(base, dOn);                        // { ndsh, pit, net }
     const net = ded.net;                                     // цэвэр гарт өгөх — цикл үүн дээр суурилна
     const advPaid = salaryCyclePaid(key, ym, SAL_ADV_TAG);
     const remPaid = salaryCyclePaid(key, ym, SAL_REM_TAG);
@@ -6901,9 +6921,12 @@ function renderSalary() {
     const baseCell = editable
       ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(key)}" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:120px;box-sizing:border-box;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;text-align:right;">`
       : `<b style="font-size:13px;">${fmtMoney(base)}</b>`;
-    const dedLine = base > 0
-      ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Цэвэр: <b style="color:var(--primary);">${fmtMoney(net)}</b> <span style="opacity:.8;">(НДШ −${fmtMoney(ded.ndsh)} · ХХОАТ −${fmtMoney(ded.pit)})</span></div>`
+    const dedChk = editable
+      ? `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--muted);"><input type="checkbox" class="sal-deduct" data-sal-person="${escapeHtml(key)}" ${dOn ? 'checked' : ''} style="cursor:pointer;">Суутгалтай</label>`
       : '';
+    const dedLine = base > 0
+      ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap;">Цэвэр: <b style="color:var(--primary);">${fmtMoney(net)}</b>${dOn ? ` <span style="opacity:.8;">(НДШ −${fmtMoney(ded.ndsh)} · ХХОАТ −${fmtMoney(ded.pit)})</span>` : ` <span style="opacity:.8;">(суутгалгүй)</span>`}${dedChk}</div>`
+      : (dedChk ? `<div style="margin-top:3px;text-align:right;">${dedChk}</div>` : '');
     const histN = (state.salaryPayments || []).filter(p => p.person_key === key).length;
     const histBtn = histN ? `<button class="btn" data-sal-hist="${escapeHtml(key)}" style="padding:1px 8px;font-size:10.5px;margin-left:6px;">📜 Түүх (${histN})</button>` : '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
@@ -6952,6 +6975,12 @@ function attachSalaryHandlers() {
   document.querySelectorAll('[data-sal-pay]').forEach(b => b.addEventListener('click', () => openSalaryPayModal(b.dataset.salPay, b.dataset.salCyc)));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
   document.querySelectorAll('[data-sal-hist]').forEach(b => b.addEventListener('click', () => openSalaryHistory(b.dataset.salHist)));
+  document.querySelectorAll('.sal-deduct').forEach(cb => cb.addEventListener('change', () => {
+    if (!can('salary.edit')) { showToast('Танд цалин тохируулах эрх алга', 'warn', 3000); render(); return; }
+    saveSalaryDeduct(cb.dataset.salPerson, cb.checked);
+    showToast(cb.checked ? 'Суутгалтай болголоо' : 'Суутгалгүй болголоо', 'success', 1200);
+    render();
+  }));
   const saveRate = () => {
     if (!can('salary.edit')) return;
     const nd = parseFloat(document.getElementById('sal-ndsh')?.value), pt = parseFloat(document.getElementById('sal-pit')?.value);
@@ -6997,7 +7026,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
   const cycTag = isAdv ? SAL_ADV_TAG : isRem ? SAL_REM_TAG : '';
   const cycName = isAdv ? 'Урьдчилгаа цалин' : isRem ? 'Үлдэгдэл цалин' : 'Цалин';
   const cycShort = isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '';
-  const net = salaryNet(base).net;   // цэвэр (суутгалын дараа)
+  const net = salaryNet(base, salaryDeductOn(personKey)).net;   // цэвэр (суутгалтай эсэхээс хамаарна)
   const defAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2))
     : isRem ? Math.max(0, net - advPaid) : net;
   const today = new Date().toISOString().slice(0, 10);

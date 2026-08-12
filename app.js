@@ -6995,55 +6995,63 @@ async function openSalaryPayModal(personKey, cycleTag) {
   const isAdv = cycleTag === SAL_ADV_TAG, isRem = cycleTag === SAL_REM_TAG;
   const advPaid = salaryCyclePaid(personKey, ym, SAL_ADV_TAG);
   const cycTag = isAdv ? SAL_ADV_TAG : isRem ? SAL_REM_TAG : '';
-  const cycName = isAdv ? 'Урьдчилгаа (1–15, 20-нд)' : isRem ? 'Үлдэгдэл (16–эцэс, дараа сарын 5-нд)' : 'Цалин';
+  const cycName = isAdv ? 'Урьдчилгаа цалин' : isRem ? 'Үлдэгдэл цалин' : 'Цалин';
+  const cycShort = isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '';
   const net = salaryNet(base).net;   // цэвэр (суутгалын дараа)
   const defAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2))
     : isRem ? Math.max(0, net - advPaid) : net;
-  const payMemo = `Цалин ${ym}${isAdv ? ' урьдчилгаа' : isRem ? ' үлдэгдэл' : ''} ${m.name || ''}`.replace(/\s+/g, ' ').trim();
+  const today = new Date().toISOString().slice(0, 10);
   const modal = document.createElement('div');
   modal.className = 'modal';
   const _acct = String(m.bank_account || '').replace(/\s/g, '');
   const bankBox = (m.bank || m.bank_account)
-    ? `<div style="background:var(--panel-hover);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-         <span>🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b>' + escapeHtml(m.bank_account) + '</b>' : ''}${m.bank_holder ? ' · ' + escapeHtml(m.bank_holder) : ''}</span>
-         ${_acct ? `<button class="btn" id="sal-copy-acct" style="padding:3px 10px;font-size:11px;">Хуулах</button>` : ''}
+    ? `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+         <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Хүлээн авах данс</div><b style="font-size:13px;">${escapeHtml(m.bank || '—')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}</b>${m.bank_holder ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(m.bank_holder)}</div>` : ''}</div>
+         ${_acct ? `<button class="btn" id="sal-copy-acct" style="padding:4px 11px;font-size:11.5px;white-space:nowrap;">⧉ Данс</button>` : ''}
        </div>`
-    : `<div style="color:var(--danger);font-size:12px;margin-bottom:12px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
+    : `<div style="color:var(--danger);font-size:12px;margin-bottom:14px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
+  const _inp = 'width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--panel);color:var(--text);';
   modal.innerHTML = `<div class="modal-content" style="max-width:380px;">
-    <div style="font-weight:800;font-size:15px;margin-bottom:2px;">💵 ${escapeHtml(cycName)}</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${escapeHtml(m.name || '')} · ${escapeHtml(ym)}${base ? ` · суурь ${fmtMoney(base)}` : ''}</div>
+    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">Цалин шилжүүлэх</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">${escapeHtml(m.name || '')} · ${escapeHtml(m.role || 'ажилтан')} · ${escapeHtml(ym)}</div>
     ${bankBox}
-    <div style="background:var(--panel-hover);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📝 Утга: <b id="sal-memo">${escapeHtml(payMemo)}</b></span>
-      <button class="btn" id="sal-copy-memo" style="padding:3px 10px;font-size:11px;">Хуулах</button>
+    <label style="display:block;margin-bottom:10px;font-size:13px;color:var(--muted);">${escapeHtml(cycName)} (₮)
+      <input id="sal-amt" type="text" inputmode="numeric" class="money-input" value="${defAmt ? moneyFmtInput(defAmt) : ''}" placeholder="0" style="${_inp}font-size:15px;"></label>
+    <label style="display:block;margin-bottom:10px;font-size:13px;color:var(--muted);">Олгосон өдөр
+      <input id="sal-date" type="date" value="${today}" style="${_inp}font-size:14px;"></label>
+    <div id="sal-total" style="font-weight:800;font-size:15px;color:var(--ok);margin:4px 0 14px;">Дүн: ${fmtMoney(defAmt)}</div>
+    <div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Гүйлгээний утга</div><b id="sal-memo" style="display:block;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;"></b></div>
+      <button class="btn" id="sal-copy-memo" style="padding:4px 11px;font-size:11.5px;white-space:nowrap;">⧉ Утга</button>
     </div>
-    <label style="display:block;margin-bottom:10px;font-size:13px;">Дүн (₮)
-      <input id="sal-amt" type="text" inputmode="numeric" class="money-input" value="${defAmt ? moneyFmtInput(defAmt) : ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
-    <label style="display:block;margin-bottom:16px;font-size:13px;">Тайлбар
-      <input id="sal-note" type="text" placeholder="Ж: ${escapeHtml(ym)} ${isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : 'цалин'}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:13px;background:var(--panel);color:var(--text);"></label>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="sal-cancel">Болих</button>
-      <button class="btn btn-primary" id="sal-save">Олгох</button>
+      <button class="btn btn-primary" id="sal-save">Шилжүүлсэн</button>
     </div></div>`;
   document.body.appendChild(modal);
+  const amtEl = modal.querySelector('#sal-amt'), dateEl = modal.querySelector('#sal-date'), totalEl = modal.querySelector('#sal-total'), memoEl = modal.querySelector('#sal-memo');
+  // Гүйлгээний утга: "Зарлага: Цалин урьдчилгаа П.Мөнхзаяа 08.12"
+  const memoText = () => `Зарлага: Цалин ${cycShort} ${m.name || ''} ${(dateEl.value || today).slice(5).replace('-', '.')}`.replace(/\s+/g, ' ').trim();
+  const upd = () => { totalEl.textContent = 'Дүн: ' + fmtMoney(moneyVal(amtEl) || 0); memoEl.textContent = memoText(); };
+  amtEl.addEventListener('input', upd); dateEl.addEventListener('change', upd); upd();
   const close = () => modal.remove();
   modal.querySelector('#sal-cancel').onclick = close;
   modal.querySelector('#sal-copy-acct')?.addEventListener('click', () => copyText(_acct, 'Данс хууллаа'));
-  modal.querySelector('#sal-copy-memo')?.addEventListener('click', () => copyText(payMemo, 'Гүйлгээний утга хууллаа'));
+  modal.querySelector('#sal-copy-memo')?.addEventListener('click', () => copyText(memoText(), 'Гүйлгээний утга хууллаа'));
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#sal-save').onclick = async () => {
-    const amount = moneyVal(modal.querySelector('#sal-amt'));
+    const amount = moneyVal(amtEl);
     if (!amount) { showToast('Дүн оруулна уу', 'warn', 2000); return; }
-    let note = modal.querySelector('#sal-note').value.trim();
-    if (cycTag && !note.includes(cycTag)) note = (note ? note + ' ' : '') + cycTag;   // цикл таг залгах
+    let note = memoText();
+    if (cycTag) note += ' ' + cycTag;   // цикл таг залгах (урьдчилгаа/үлдэгдэл ялгах)
     close();
     await paySalary(personKey, ym, amount, note);
-    await createSalaryExpense(m, ym, amount, isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '');   // санхүүд автомат зардал
-    showToast(`${m.name}: ${fmtMoney(amount)} олгож, санхүүд бүртгэлээ`, 'success', 2800);
+    await createSalaryExpense(m, ym, amount, cycShort);   // санхүүд автомат зардал
+    showToast(`${m.name}: ${fmtMoney(amount)} шилжүүлж, санхүүд бүртгэлээ`, 'success', 2800);
     render();
   };
   modal.classList.add('open');
-  setTimeout(() => modal.querySelector('#sal-amt')?.focus(), 50);
+  setTimeout(() => amtEl.focus(), 50);
 }
 
 // ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──

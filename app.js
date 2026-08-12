@@ -6974,8 +6974,8 @@ function openSalaryHistory(personKey) {
       <div style="min-width:0;"><b style="font-variant-numeric:tabular-nums;">${fmtMoney(p.amount)}</b> <span style="color:var(--muted);">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(clean(p.note))}</div>` : ''}</div>
       <div style="text-align:right;color:var(--muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>
     </div>`).join('') || '<div style="color:var(--muted);text-align:center;padding:16px;">Түүх алга</div>';
-  const modal = document.createElement('div'); modal.className = 'modal';
-  modal.innerHTML = `<div class="modal-content" style="max-width:420px;max-height:80vh;overflow:auto;">
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;max-height:85vh;overflow-y:auto;">
       <div style="font-weight:800;font-size:15px;margin-bottom:2px;">📜 Цалингийн түүх</div>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">${escapeHtml(m ? (m.name || '') : '')} · ${ps.length} олголт · нийт <b style="color:var(--text);">${fmtMoney(total)}</b></div>
       ${rows}
@@ -7002,7 +7002,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     : isRem ? Math.max(0, net - advPaid) : net;
   const today = new Date().toISOString().slice(0, 10);
   const modal = document.createElement('div');
-  modal.className = 'modal';
+  modal.className = 'modal-bg';   // backdrop (утсан дээр bottom-sheet-ийг зөв гаргана)
   const _acct = String(m.bank_account || '').replace(/\s/g, '');
   const bankBox = (m.bank || m.bank_account)
     ? `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -7011,7 +7011,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
        </div>`
     : `<div style="color:var(--danger);font-size:12px;margin-bottom:14px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
   const _inp = 'width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--panel);color:var(--text);';
-  modal.innerHTML = `<div class="modal-content" style="max-width:380px;">
+  modal.innerHTML = `<div class="modal" style="max-width:380px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">Цалин шилжүүлэх</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">${escapeHtml(m.name || '')} · ${escapeHtml(m.role || 'ажилтан')} · ${escapeHtml(ym)}</div>
     ${bankBox}

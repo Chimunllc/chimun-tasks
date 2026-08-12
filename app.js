@@ -6831,8 +6831,12 @@ function renderSalary() {
     const payCell = isPaid
       ? `<span style="color:var(--ok);font-size:12px;font-weight:600;">✓ ${fmtMoney(paid)}</span>`
       : (payable && base > 0 ? `<button class="btn btn-primary" data-sal-pay="${escapeHtml(key)}" style="padding:5px 12px;font-size:12px;">💵 Олгох</button>` : `<span style="color:var(--muted);font-size:11px;">${base > 0 ? 'олгоогүй' : 'цалин тохируулаагүй'}</span>`);
+    const acct = String(m.bank_account || '').replace(/\s/g, '');
+    const bankLine = (m.bank || m.bank_account)
+      ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b style="font-weight:600;color:var(--text);">' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn" data-sal-copy="${escapeHtml(acct)}" style="padding:1px 7px;font-size:10px;">Хуулах</button>` : ''}</div>`
+      : `<div style="font-size:11px;color:var(--danger);margin-top:2px;">🏦 данс бүртгэгдээгүй</div>`;
     return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:10px 13px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-      <div style="min-width:140px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span></div>
+      <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${bankLine}</div>
       <div style="display:flex;align-items:center;gap:10px;"><span style="font-size:10.5px;color:var(--muted);">Суурь</span>${baseCell}<div style="min-width:90px;text-align:right;">${payCell}</div></div>
     </div>`;
   }).join('');
@@ -6854,6 +6858,7 @@ function attachSalaryHandlers() {
     showToast('Цалин хадгаллаа', 'success', 1200);
   }));
   document.querySelectorAll('[data-sal-pay]').forEach(b => b.addEventListener('click', () => openSalaryPayModal(b.dataset.salPay)));
+  document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
 }
 
 async function openSalaryPayModal(personKey) {
@@ -6863,9 +6868,17 @@ async function openSalaryPayModal(personKey) {
   const base = Number((state.salaries || {})[personKey]) || 0;
   const modal = document.createElement('div');
   modal.className = 'modal';
+  const _acct = String(m.bank_account || '').replace(/\s/g, '');
+  const bankBox = (m.bank || m.bank_account)
+    ? `<div style="background:var(--panel-hover);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+         <span>🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b>' + escapeHtml(m.bank_account) + '</b>' : ''}${m.bank_holder ? ' · ' + escapeHtml(m.bank_holder) : ''}</span>
+         ${_acct ? `<button class="btn" id="sal-copy-acct" style="padding:3px 10px;font-size:11px;">Хуулах</button>` : ''}
+       </div>`
+    : `<div style="color:var(--danger);font-size:12px;margin-bottom:12px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
   modal.innerHTML = `<div class="modal-content" style="max-width:380px;">
     <div style="font-weight:800;font-size:15px;margin-bottom:2px;">💵 Цалин олгох</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${escapeHtml(m.name || '')} · ${escapeHtml(ym)}</div>
+    ${bankBox}
     <label style="display:block;margin-bottom:10px;font-size:13px;">Дүн (₮)
       <input id="sal-amt" type="text" inputmode="numeric" class="money-input" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
     <label style="display:block;margin-bottom:16px;font-size:13px;">Тайлбар
@@ -6877,6 +6890,7 @@ async function openSalaryPayModal(personKey) {
   document.body.appendChild(modal);
   const close = () => modal.remove();
   modal.querySelector('#sal-cancel').onclick = close;
+  modal.querySelector('#sal-copy-acct')?.addEventListener('click', () => copyText(_acct, 'Данс хууллаа'));
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#sal-save').onclick = async () => {
     const amount = moneyVal(modal.querySelector('#sal-amt'));

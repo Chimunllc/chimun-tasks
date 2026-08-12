@@ -12515,7 +12515,7 @@ function renderFinanceReport(wrap) {
   bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
   const canRecon = state.isCEO || canSeeAllFinance();
   bar.innerHTML = (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
-    + `<button id="fin-export-xls" class="btn" style="padding:6px 12px;font-size:12.5px;">📥 Excel татах</button>`;
+    + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
@@ -12864,6 +12864,7 @@ function renderFinanceReport(wrap) {
 
 /* Санхүүгийн тайланг бодит Excel (SpreadsheetML .xls) болгож татна — гадны сангүй.
    Одоогийн сар + салбар ленз + төлөвийн шүүлтийг дагана. */
+// Санхүүгийн ЗАРДЛЫН ТАЙЛАН — олон sheet: Хураангуй + Ангиллаар + Салбараар + Дэлгэрэнгүй
 function exportFinanceReportExcel() {
   const month = state.finReportMonth || new Date().toISOString().slice(0, 7);
   const lens = effectiveBranchLens();
@@ -12875,7 +12876,10 @@ function exportFinanceReportExcel() {
   const stPred = stKey === 'all' ? () => true : (t => finStage(t).key === stKey);
   let rows = base.filter(t => (t.requested_at || '').slice(0, 7) === month && stPred(t));
   if (!rows.length) { showToast('Татах гүйлгээ алга', 'warn'); return; }
-  const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'ЗАХ', 'Чимун ХХК'];
+  const amt = t => Number(t.amount) || 0;
+  const sumOf = arr => arr.reduce((s, t) => s + amt(t), 0);
+  const noRcpt = t => { const m = finStage(t).mark; return m === '📝' || m === '⚠'; };
+  const BR_ORDER = ['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ', 'ЗАХ', 'Чимун ХХК', 'ХАМТ'];
   const brIdx = b => { const i = BR_ORDER.indexOf(b); return i < 0 ? 99 : i; };
   rows.sort((a, b) => {
     const ba = finEffBranch(a), bb = finEffBranch(b);
@@ -12884,46 +12888,65 @@ function exportFinanceReportExcel() {
     if (ca !== cb) return ca.localeCompare(cb);
     return (a.requested_at || '').localeCompare(b.requested_at || '');
   });
-  const stMn = t => finStage(t).label;
-  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const C = (v, type, style) => `<Cell${style ? ` ss:StyleID="${style}"` : ''}><Data ss:Type="${type}">${esc(v)}</Data></Cell>`;
-  const headers = ['Огноо', 'Салбар', 'Үндсэн ангилал', 'Дэд ангилал', 'Хүлээн авагч', 'Гүйлгээний утга', 'Дүн', 'Төлөв'];
-  let bodyXml = '';
-  rows.forEach(t => {
-    bodyXml += '<Row>'
-      + C((t.requested_at || '').slice(0, 10), 'String')
-      + C(finBranchDisplay(finEffBranch(t)), 'String')
-      + C(finMainName(t.category), 'String')
-      + C(finSubName(t.category), 'String')
-      + C(t.beneficiary || memberName(t.createdBy) || '', 'String')
-      + C(t.purpose || '', 'String')
-      + C(Number(t.amount) || 0, 'Number', 'money')
-      + C(stMn(t), 'String')
-      + '</Row>';
-  });
-  const total = rows.reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  const totalRow = '<Row>' + C('', 'String').repeat(5) + C('НИЙТ', 'String', 'grp') + C(total, 'Number', 'grpMoney') + C('', 'String') + '</Row>';
-  const headRow = '<Row>' + headers.map(h => C(h, 'String', 'hdr')).join('') + '</Row>';
-  const cols = [80, 110, 180, 190, 130, 280, 100, 110].map(w => `<Column ss:Width="${w}"/>`).join('');
-  const sheetName = `Тайлан ${month}`.replace(/[\\\/\?\*\[\]:]/g, '-').slice(0, 31);
-  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'
-    + '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'
-    + '<Styles>'
-    + '<Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4338CA" ss:Pattern="Solid"/></Style>'
-    + '<Style ss:ID="money"><NumberFormat ss:Format="#,##0&quot;₮&quot;"/></Style>'
-    + '<Style ss:ID="grp"><Font ss:Bold="1"/></Style>'
-    + '<Style ss:ID="grpMoney"><Font ss:Bold="1"/><NumberFormat ss:Format="#,##0&quot;₮&quot;"/></Style>'
-    + '</Styles>\n'
-    + `<Worksheet ss:Name="${esc(sheetName)}"><Table>${cols}${headRow}${bodyXml}${totalRow}</Table></Worksheet>\n`
-    + '</Workbook>';
-  const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const lensLabel = lens === 'm-event' ? 'M-Event' : lens === 'camp' ? 'Camp' : lens === 'capital' ? 'Хөрөнгө' : 'Бүгд';
-  const a = document.createElement('a');
-  a.href = url; a.download = `Чимун-санхүү-${lensLabel}-${month}.xls`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast(`${rows.length} гүйлгээ Excel-д татагдлаа`, 'success');
+  const total = sumOf(rows);
+  const pctOf = v => total ? Math.round(v / total * 100) + '%' : '0%';
+  const M = (v, s) => ({ v, t: 'Number', s: s || 'money' });
+  const N = (v, s) => ({ v, t: 'Number', s });
+  const S = (v, s) => ({ v: v == null ? '' : v, t: 'String', s });
+
+  // ── Групп helper ──
+  const groupSheet = (title, keyFn, colW) => {
+    const m = {};
+    rows.forEach(t => { const k = keyFn(t) || 'Тодорхойгүй'; (m[k] = m[k] || { c: 0, s: 0 }); m[k].c++; m[k].s += amt(t); });
+    const list = Object.entries(m).sort((a, b) => b[1].s - a[1].s);
+    return {
+      name: title, columns: colW || [200, 70, 130, 70],
+      head: [title, 'Тоо', 'Дүн', 'Хувь'],
+      rows: list.map(([k, v]) => [S(k), N(v.c), M(v.s), S(pctOf(v.s))])
+        .concat([[S('НИЙТ', 'grp'), N(rows.length, 'grp'), M(total, 'grpMoney'), S('100%', 'grp')]]),
+    };
+  };
+
+  // ── 1) Хураангуй ──
+  const byStatus = {};
+  rows.forEach(t => { const k = finStage(t).label || '—'; (byStatus[k] = byStatus[k] || { c: 0, s: 0 }); byStatus[k].c++; byStatus[k].s += amt(t); });
+  const doneRows = rows.filter(t => t.status === 'done');
+  const noR = doneRows.filter(noRcpt), noRSum = sumOf(noR), doneSum = sumOf(doneRows);
+  const noCat = rows.filter(t => !String(t.category || '').trim());
+  const lensLabel = lens === 'm-event' ? 'M-Event' : lens === 'camp' ? 'NOMAAD Camp' : lens === 'catering' ? 'Катеринг' : lens === 'capital' ? 'Хөрөнгө' : 'Бүх салбар';
+  const sumRows = [
+    [S('Тайлант сар', 'grp'), S(month), S(''), S('')],
+    [S('Салбар'), S(lensLabel), S(''), S('')],
+    [S('Нийт гүйлгээ', 'grp'), N(rows.length, 'grp'), M(total, 'grpMoney'), S('100%', 'grp')],
+    [S(''), S(''), S(''), S('')],
+    [S('— Төлвөөр —', 'grp'), S(''), S(''), S('')],
+    ...Object.entries(byStatus).sort((a, b) => b[1].s - a[1].s).map(([k, v]) => [S(k), N(v.c), M(v.s), S(pctOf(v.s))]),
+    [S(''), S(''), S(''), S('')],
+    [S('— Хяналт —', 'grp'), S(''), S(''), S('')],
+    [S('Баримтгүй (дууссанаас)'), N(noR.length), M(noRSum), S(doneSum ? Math.round(noRSum / doneSum * 100) + '%' : '0%')],
+    [S('Ангилалгүй'), N(noCat.length), M(sumOf(noCat)), S(pctOf(sumOf(noCat)))],
+  ];
+  const summary = { name: 'Хураангуй', columns: [190, 90, 140, 80], head: ['Үзүүлэлт', 'Тоо', 'Дүн', 'Хувь'], rows: sumRows };
+
+  // ── 4) Дэлгэрэнгүй ──
+  const detail = {
+    name: 'Дэлгэрэнгүй', columns: [80, 110, 170, 180, 130, 260, 100, 100, 70],
+    head: ['Огноо', 'Салбар', 'Үндсэн ангилал', 'Дэд ангилал', 'Хүлээн авагч', 'Гүйлгээний утга', 'Дүн', 'Төлөв', 'Баримт'],
+    rows: rows.map(t => [
+      S((t.requested_at || '').slice(0, 10)), S(finBranchDisplay(finEffBranch(t))),
+      S(finMainName(t.category)), S(finSubName(t.category)),
+      S(t.beneficiary || memberName(t.createdBy) || ''), S(t.purpose || ''),
+      M(amt(t)), S(finStage(t).label), S(noRcpt(t) ? 'Үгүй' : 'Тийм'),
+    ]).concat([[S(''), S(''), S(''), S(''), S(''), S('НИЙТ', 'grp'), M(total, 'grpMoney'), S(''), S('')]]),
+  };
+
+  exportXlsSheets([
+    summary,
+    groupSheet('Ангиллаар', t => finMainName(t.category), [220, 70, 130, 70]),
+    groupSheet('Салбараар', t => finBranchDisplay(finEffBranch(t)), [160, 70, 130, 70]),
+    detail,
+  ], `Чимун-зардлын-тайлан-${lensLabel}-${month}.xls`);
+  showToast(`Зардлын тайлан татагдлаа (${rows.length} гүйлгээ)`, 'success');
 }
 
 /* ═══ Ерөнхий олон-sheet Excel экспорт (SpreadsheetML .xls, гадны сангүй) ═══

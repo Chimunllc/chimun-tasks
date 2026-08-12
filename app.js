@@ -7741,18 +7741,35 @@ function renderNomaadAnalytics() {
   const base = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
   const gHi = Math.max(10, ...base.map(o => Number(o.guests) || 0));
   const iHi = Math.max(1000000, ...base.map(o => nomaadEffTotal(o)));
-  if (!state.naF) state.naF = { gMin: 0, gMax: gHi, incMin: 0, incMax: iHi, camp: 'all', tier: 'all', confirmedOnly: true, _gHi: gHi, _iHi: iHi };
+  // Он-сарын тасралтгүй жагсаалт (хамгийн эртнээс сүүлчийн хүртэл)
+  const _ymList = base.map(o => String(o.date_start || '').slice(0, 7)).filter(s => /^\d{4}-\d{2}$/.test(s)).sort();
+  let months = [];
+  if (_ymList.length) {
+    let [y, m] = _ymList[0].split('-').map(Number);
+    const [y1, m1] = _ymList[_ymList.length - 1].split('-').map(Number);
+    while (y < y1 || (y === y1 && m <= m1)) { months.push(y + '-' + String(m).padStart(2, '0')); if (++m > 12) { m = 1; y++; } }
+  }
+  state._naMonths = months;
+  const mHi = Math.max(0, months.length - 1);
+  const moLbl = i => { const s = months[Math.max(0, Math.min(mHi, Math.round(i)))] || ''; const p = s.split('-'); return p[1] ? (p[0] + '/' + p[1]) : s; };
+  if (!state.naF) state.naF = { gMin: 0, gMax: gHi, incMin: 0, incMax: iHi, mMin: 0, mMax: mHi, camp: 'all', tier: 'all', confirmedOnly: true, _gHi: gHi, _iHi: iHi, _mHi: mHi };
   const f = state.naF;
+  if (f.mMin == null) { f.mMin = 0; f.mMax = mHi; f._mHi = mHi; }   // хуучин naF (энэ багана байхгүй) — нөхнө
   if (f._gHi !== gHi && f.gMax === f._gHi) f.gMax = gHi;   // дата өссөн бол дээд хязгаарыг дагана
   if (f._iHi !== iHi && f.incMax === f._iHi) f.incMax = iHi;
-  f._gHi = gHi; f._iHi = iHi;
-  f.gMax = Math.min(f.gMax, gHi); f.incMax = Math.min(f.incMax, iHi);
+  if (f._mHi !== mHi && f.mMax === f._mHi) f.mMax = mHi;
+  f._gHi = gHi; f._iHi = iHi; f._mHi = mHi;
+  f.gMax = Math.min(f.gMax, gHi); f.incMax = Math.min(f.incMax, iHi); f.mMax = Math.min(f.mMax, mHi); f.mMin = Math.min(f.mMin, f.mMax);
   const camps = [...new Set(base.map(o => (o.camp || '').trim()).filter(Boolean))].sort();
   const tiers = [...new Set(base.map(o => (o.tier || '').trim()).filter(Boolean))].sort();
+  const mFull = (f.mMin === 0 && f.mMax === mHi);
   const filtered = base.filter(o => {
     const g = Number(o.guests) || 0, inc = nomaadEffTotal(o);
     if (g < f.gMin || g > f.gMax) return false;
     if (inc < f.incMin || inc > f.incMax) return false;
+    const mi = months.indexOf(String(o.date_start || '').slice(0, 7));
+    if (mi < 0) { if (!mFull) return false; }                          // огноогүй — зөвхөн бүтэн хүрээнд харагдана
+    else if (mi < f.mMin || mi > f.mMax) return false;
     if (f.camp !== 'all' && (o.camp || '').trim() !== f.camp) return false;
     if (f.tier !== 'all' && (o.tier || '').trim() !== f.tier) return false;
     if (f.confirmedOnly && !['deposit', 'contract', 'done'].includes(nomaadStage(o))) return false;
@@ -7832,6 +7849,10 @@ function renderNomaadAnalytics() {
           <div style="font-size:12px;font-weight:600;margin-bottom:2px;">💰 Гэрээний дүн: <span data-nalabel="inc">${fmtMoneyShort(f.incMin)}–${fmtMoneyShort(f.incMax)}</span></div>
           ${dual('inc', 0, iHi, f.incMin, f.incMax, 500000)}
         </div>
+        ${mHi > 0 ? `<div>
+          <div style="font-size:12px;font-weight:600;margin-bottom:2px;">📅 Он-сар: <span data-nalabel="mo">${moLbl(f.mMin)}–${moLbl(f.mMax)}</span></div>
+          ${dual('mo', 0, mHi, f.mMin, f.mMax, 1)}
+        </div>` : ''}
       </div>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         <span style="font-size:11px;color:var(--muted);">Кемп:</span>
@@ -7860,12 +7881,15 @@ function renderNomaadAnalytics() {
 }
 function attachNomaadAnalytics() {
   const f = state.naF; if (!f) return;
+  const _months = state._naMonths || [];
+  const moLabel = i => { const s = _months[Math.max(0, Math.min(_months.length - 1, Math.round(i)))] || ''; const p = s.split('-'); return p[1] ? (p[0] + '/' + p[1]) : s; };
   document.querySelectorAll('[data-nadual]').forEach(box => {
     const id = box.dataset.nadual, lo = Number(box.dataset.lo), hi = Number(box.dataset.hi);
     const mn = box.querySelector('.na-dmin'), mx = box.querySelector('.na-dmax'), fill = box.querySelector('.na-dual-fill');
     const label = document.querySelector(`[data-nalabel="${id}"]`);
-    const keyMin = id === 'g' ? 'gMin' : 'incMin', keyMax = id === 'g' ? 'gMax' : 'incMax';
-    const fmt = id === 'g' ? (v => v) : (v => fmtMoneyShort(v));
+    const keyMin = id === 'g' ? 'gMin' : id === 'inc' ? 'incMin' : 'mMin';
+    const keyMax = id === 'g' ? 'gMax' : id === 'inc' ? 'incMax' : 'mMax';
+    const fmt = id === 'g' ? (v => v) : id === 'inc' ? (v => fmtMoneyShort(v)) : (v => moLabel(v));
     const live = () => {
       let a = Number(mn.value), b = Number(mx.value);
       if (a > b) { if (document.activeElement === mn) b = a, mx.value = b; else a = b, mn.value = a; }

@@ -3319,9 +3319,11 @@ function renderSidebar() {
   // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
   const acNav = document.getElementById('nav-access');
   if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
-  // Сарын цалин — нягтлан/эрхтэй (CEO биш) тусдаа цэсээр. CEO нь "Ажилтан удирдах" төвөөс хардаг.
+  // Нэгдсэн "Цалин" цэс — сарын ЭСВЭЛ цагийн цалин харах эрхтэй хэн бүхэнд (CEO ч мөн).
   const salNav = document.getElementById('nav-salary');
-  if (salNav) salNav.style.display = (canSeeSalary() && !state.isCEO) ? '' : 'none';
+  if (salNav) salNav.style.display = (canSeeSalary() || canSeeHourlyPayroll()) ? '' : 'none';
+  const _hrCnt2 = document.getElementById('cnt-hourly');
+  if (_hrCnt2) { const _hw = hourlyWorkers().length; _hrCnt2.textContent = String(_hw); _hrCnt2.style.display = _hw ? '' : 'none'; }
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
   const arNav = document.getElementById('nav-receivables');
   if (arNav) {
@@ -3331,13 +3333,9 @@ function renderSidebar() {
       try { const od = receivablesData().items.filter(i => i.overdue).length; arCnt.textContent = String(od); arCnt.style.display = od ? '' : 'none'; } catch (e) {}
     }
   }
-  // Цагийн цалин — CEO/нягтлан/менежер. Badge нь төлбөргүй цагийн ажилтны тоо.
+  // Цагийн цалин нь нэгдсэн "Цалин" цэс рүү орсон — тусдаа nav нуугдмал.
   const hrNav = document.getElementById('nav-hourly');
-  if (hrNav) {
-    hrNav.style.display = canSeeHourlyPayroll() ? '' : 'none';
-    const hrCnt = document.getElementById('cnt-hourly');
-    if (hrCnt) hrCnt.textContent = String(hourlyWorkers().length);
-  }
+  if (hrNav) hrNav.style.display = 'none';
   // NOMAAD захиалга — CEO/нягтлан. Badge нь орлого бүртгээгүй гэрээний тоо.
   const noNav = document.getElementById('nav-nomaad');
   if (noNav) {
@@ -3477,11 +3475,19 @@ function renderTaskList() {
     wrap.innerHTML = renderAccess();
     attachAccessHandlers();
     return;
-  } else if (state.view === 'salary') {
+  } else if (state.view === 'salary' || state.view === 'hourly') {
+    // Нэгдсэн "Цалин" цэс — 2 таб: Сарын (үндсэн) + Цагийн/өдрийн
+    if (state.view === 'hourly') { state.payrollTab = 'hourly'; state.view = 'salary'; }
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderSalary();
-    attachSalaryHandlers();
+    const _canSal = canSeeSalary(), _canHr = canSeeHourlyPayroll();
+    if (!state.payrollTab) state.payrollTab = _canSal ? 'salary' : 'hourly';
+    if (state.payrollTab === 'salary' && !_canSal) state.payrollTab = 'hourly';
+    if (state.payrollTab === 'hourly' && !_canHr) state.payrollTab = 'salary';
+    const _pt = state.payrollTab;
+    wrap.innerHTML = payrollTabBar(_canSal, _canHr) + (_pt === 'hourly' ? renderHourly() : renderSalary());
+    if (_pt === 'hourly') attachHourlyHandlers(); else attachSalaryHandlers();
+    attachPayrollTabs();
     return;
   } else if (state.view === 'workload') {
     if (tableHead) tableHead.style.display = 'none';
@@ -3500,12 +3506,6 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderPerformance();
     attachPerformanceHandlers();
-    return;
-  } else if (state.view === 'hourly') {
-    if (tableHead) tableHead.style.display = 'none';
-    if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderHourly();
-    attachHourlyHandlers();
     return;
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
@@ -6841,6 +6841,17 @@ function salaryStaff() {
   return (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && String(m.worker_type || '') !== 'daily');
 }
 
+// Нэгдсэн "Цалин" цэсийн таб толгой (Сарын + Цагийн)
+function payrollTabBar(canSal, canHr) {
+  const tab = (key, label) => `<button data-payroll-tab="${key}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${state.payrollTab === key ? 'var(--primary)' : 'transparent'};background:none;color:${state.payrollTab === key ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${label}</button>`;
+  return `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:10px;">
+    ${canSal ? tab('salary', '💵 Сарын цалин') : ''}
+    ${canHr ? tab('hourly', '⏱ Цагийн / өдрийн') : ''}
+  </div>`;
+}
+function attachPayrollTabs() {
+  document.querySelectorAll('[data-payroll-tab]').forEach(b => b.addEventListener('click', () => { state.payrollTab = b.dataset.payrollTab; render(); }));
+}
 function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
   const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
@@ -6893,6 +6904,8 @@ function renderSalary() {
     const dedLine = base > 0
       ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">Цэвэр: <b style="color:var(--primary);">${fmtMoney(net)}</b> <span style="opacity:.8;">(НДШ −${fmtMoney(ded.ndsh)} · ХХОАТ −${fmtMoney(ded.pit)})</span></div>`
       : '';
+    const histN = (state.salaryPayments || []).filter(p => p.person_key === key).length;
+    const histBtn = histN ? `<button class="btn" data-sal-hist="${escapeHtml(key)}" style="padding:1px 8px;font-size:10.5px;margin-left:6px;">📜 Түүх (${histN})</button>` : '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     const bankLine = (m.bank || m.bank_account)
       ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b style="font-weight:600;color:var(--text);">' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn" data-sal-copy="${escapeHtml(acct)}" style="padding:1px 7px;font-size:10px;">Хуулах</button>` : ''}</div>`
@@ -6910,7 +6923,7 @@ function renderSalary() {
     };
     return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;display:flex;flex-direction:column;gap:9px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${bankLine}</div>
+        <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${histBtn}${bankLine}</div>
         <div style="text-align:right;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><span style="font-size:10.5px;color:var(--muted);">Сарын суурь</span>${baseCell}</div>${dedLine}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px;">
@@ -6938,6 +6951,7 @@ function attachSalaryHandlers() {
   }));
   document.querySelectorAll('[data-sal-pay]').forEach(b => b.addEventListener('click', () => openSalaryPayModal(b.dataset.salPay, b.dataset.salCyc)));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
+  document.querySelectorAll('[data-sal-hist]').forEach(b => b.addEventListener('click', () => openSalaryHistory(b.dataset.salHist)));
   const saveRate = () => {
     if (!can('salary.edit')) return;
     const nd = parseFloat(document.getElementById('sal-ndsh')?.value), pt = parseFloat(document.getElementById('sal-pit')?.value);
@@ -6949,6 +6963,29 @@ function attachSalaryHandlers() {
   document.getElementById('sal-pit')?.addEventListener('change', saveRate);
 }
 
+// Цалин олгосон түүх — тухайн ажилтны бүх олголт (огноо, сар, цикл, дүн, олгосон хүн)
+function openSalaryHistory(personKey) {
+  const m = findMember(personKey);
+  const ps = (state.salaryPayments || []).filter(p => p.person_key === personKey).sort((a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')));
+  const total = ps.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const cyc = note => String(note || '').includes(SAL_ADV_TAG) ? '· урьдчилгаа' : String(note || '').includes(SAL_REM_TAG) ? '· үлдэгдэл' : '';
+  const clean = note => String(note || '').replace(SAL_ADV_TAG, '').replace(SAL_REM_TAG, '').trim();
+  const rows = ps.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+      <div style="min-width:0;"><b style="font-variant-numeric:tabular-nums;">${fmtMoney(p.amount)}</b> <span style="color:var(--muted);">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(clean(p.note))}</div>` : ''}</div>
+      <div style="text-align:right;color:var(--muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>
+    </div>`).join('') || '<div style="color:var(--muted);text-align:center;padding:16px;">Түүх алга</div>';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  modal.innerHTML = `<div class="modal-content" style="max-width:420px;max-height:80vh;overflow:auto;">
+      <div style="font-weight:800;font-size:15px;margin-bottom:2px;">📜 Цалингийн түүх</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">${escapeHtml(m ? (m.name || '') : '')} · ${ps.length} олголт · нийт <b style="color:var(--text);">${fmtMoney(total)}</b></div>
+      ${rows}
+      <div class="modal-actions" style="display:flex;justify-content:flex-end;margin-top:14px;"><button class="btn" id="sh-close">Хаах</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#sh-close').onclick = () => modal.remove();
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.classList.add('open');
+}
 async function openSalaryPayModal(personKey, cycleTag) {
   if (!can('salary.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const m = findMember(personKey); if (!m) return;
@@ -6959,8 +6996,10 @@ async function openSalaryPayModal(personKey, cycleTag) {
   const advPaid = salaryCyclePaid(personKey, ym, SAL_ADV_TAG);
   const cycTag = isAdv ? SAL_ADV_TAG : isRem ? SAL_REM_TAG : '';
   const cycName = isAdv ? 'Урьдчилгаа (1–15, 20-нд)' : isRem ? 'Үлдэгдэл (16–эцэс, дараа сарын 5-нд)' : 'Цалин';
-  const defAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(base / 2))
-    : isRem ? Math.max(0, base - advPaid) : base;
+  const net = salaryNet(base).net;   // цэвэр (суутгалын дараа)
+  const defAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2))
+    : isRem ? Math.max(0, net - advPaid) : net;
+  const payMemo = `Цалин ${ym}${isAdv ? ' урьдчилгаа' : isRem ? ' үлдэгдэл' : ''} ${m.name || ''}`.replace(/\s+/g, ' ').trim();
   const modal = document.createElement('div');
   modal.className = 'modal';
   const _acct = String(m.bank_account || '').replace(/\s/g, '');
@@ -6974,6 +7013,10 @@ async function openSalaryPayModal(personKey, cycleTag) {
     <div style="font-weight:800;font-size:15px;margin-bottom:2px;">💵 ${escapeHtml(cycName)}</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">${escapeHtml(m.name || '')} · ${escapeHtml(ym)}${base ? ` · суурь ${fmtMoney(base)}` : ''}</div>
     ${bankBox}
+    <div style="background:var(--panel-hover);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📝 Утга: <b id="sal-memo">${escapeHtml(payMemo)}</b></span>
+      <button class="btn" id="sal-copy-memo" style="padding:3px 10px;font-size:11px;">Хуулах</button>
+    </div>
     <label style="display:block;margin-bottom:10px;font-size:13px;">Дүн (₮)
       <input id="sal-amt" type="text" inputmode="numeric" class="money-input" value="${defAmt ? moneyFmtInput(defAmt) : ''}" placeholder="0" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;font-size:15px;background:var(--panel);color:var(--text);"></label>
     <label style="display:block;margin-bottom:16px;font-size:13px;">Тайлбар
@@ -6986,6 +7029,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
   const close = () => modal.remove();
   modal.querySelector('#sal-cancel').onclick = close;
   modal.querySelector('#sal-copy-acct')?.addEventListener('click', () => copyText(_acct, 'Данс хууллаа'));
+  modal.querySelector('#sal-copy-memo')?.addEventListener('click', () => copyText(payMemo, 'Гүйлгээний утга хууллаа'));
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#sal-save').onclick = async () => {
     const amount = moneyVal(modal.querySelector('#sal-amt'));

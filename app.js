@@ -6998,7 +6998,7 @@ function openSalaryHistory(personKey) {
   const ps = (state.salaryPayments || []).filter(p => p.person_key === personKey).sort((a, b) => String(b.paid_at || '').localeCompare(String(a.paid_at || '')));
   const total = ps.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const cyc = note => String(note || '').includes(SAL_ADV_TAG) ? '· урьдчилгаа' : String(note || '').includes(SAL_REM_TAG) ? '· үлдэгдэл' : '';
-  const clean = note => String(note || '').replace(SAL_ADV_TAG, '').replace(SAL_REM_TAG, '').trim();
+  const clean = note => String(note || '').replace(SAL_ADV_TAG, '').replace(SAL_REM_TAG, '').replace(/\[#[^\]]+\]/g, '').replace(/\s+/g, ' ').trim();
   const rows = ps.map(p => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
       <div style="min-width:0;"><b style="font-variant-numeric:tabular-nums;">${fmtMoney(p.amount)}</b> <span style="color:var(--muted);">${escapeHtml(p.ym || '')} ${cyc(p.note)}</span>${clean(p.note) ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(clean(p.note))}</div>` : ''}</div>
       <div style="text-align:right;color:var(--muted);font-size:11px;white-space:nowrap;">${escapeHtml(String(p.paid_at || '').slice(0, 10))}<br>${escapeHtml(memberName(p.paid_by) || '')}</div>
@@ -7018,70 +7018,103 @@ function openSalaryHistory(personKey) {
 async function openSalaryPayModal(personKey, cycleTag) {
   if (!can('salary.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const m = findMember(personKey); if (!m) return;
+  loadUsedReceipts();   // баримтын давхцлыг шуурхай шалгах
   const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
   const base = Number((state.salaries || {})[personKey]) || 0;
-  // Цикл: урьдчилгаа / үлдэгдэл / (хоосон бол нийт)
   const isAdv = cycleTag === SAL_ADV_TAG, isRem = cycleTag === SAL_REM_TAG;
   const advPaid = salaryCyclePaid(personKey, ym, SAL_ADV_TAG);
   const cycTag = isAdv ? SAL_ADV_TAG : isRem ? SAL_REM_TAG : '';
   const cycName = isAdv ? 'Урьдчилгаа цалин' : isRem ? 'Үлдэгдэл цалин' : 'Цалин';
   const cycShort = isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '';
-  const net = salaryNet(base, salaryDeductOn(personKey)).net;   // цэвэр (суутгалтай эсэхээс хамаарна)
+  const net = salaryNet(base, salaryDeductOn(personKey)).net;
   const _advForRem = advPaid > 0 ? advPaid : (salaryLastAdvance(personKey) || Math.round(net / 2));
-  const defAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2))
-    : isRem ? Math.max(0, net - _advForRem) : net;   // үлдэгдэл = цэвэр − урьдчилгаа
-  const today = new Date().toISOString().slice(0, 10);
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg';   // backdrop (утсан дээр bottom-sheet-ийг зөв гаргана)
+  const expAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2)) : isRem ? Math.max(0, net - _advForRem) : net;
   const _acct = String(m.bank_account || '').replace(/\s/g, '');
+  const memoText = `Цалин ${cycShort} ${m.name || ''}`.replace(/\s+/g, ' ').trim();
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
   const bankBox = (m.bank || m.bank_account)
-    ? `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    ? `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
          <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Хүлээн авах данс</div><b style="font-size:13px;">${escapeHtml(m.bank || '—')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}</b>${m.bank_holder ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(m.bank_holder)}</div>` : ''}</div>
          ${_acct ? `<button class="btn" id="sal-copy-acct" style="padding:4px 11px;font-size:11.5px;white-space:nowrap;">⧉ Данс</button>` : ''}
        </div>`
-    : `<div style="color:var(--danger);font-size:12px;margin-bottom:14px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
-  const _inp = 'width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--panel);color:var(--text);';
-  modal.innerHTML = `<div class="modal" style="max-width:380px;max-height:90vh;overflow-y:auto;">
+    : `<div style="color:var(--danger);font-size:12px;margin-bottom:12px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
+  const rowCss = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border);';
+  modal.innerHTML = `<div class="modal" style="max-width:400px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">Цалин шилжүүлэх</div>
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">${escapeHtml(m.name || '')} · ${escapeHtml(m.role || 'ажилтан')} · ${escapeHtml(ym)}</div>
     ${bankBox}
-    <label style="display:block;margin-bottom:10px;font-size:13px;color:var(--muted);">${escapeHtml(cycName)} (₮)
-      <input id="sal-amt" type="text" inputmode="numeric" class="money-input" value="${defAmt ? moneyFmtInput(defAmt) : ''}" placeholder="0" style="${_inp}font-size:15px;"></label>
-    <label style="display:block;margin-bottom:10px;font-size:13px;color:var(--muted);">Олгосон өдөр
-      <input id="sal-date" type="date" value="${today}" style="${_inp}font-size:14px;"></label>
-    <div id="sal-total" style="font-weight:800;font-size:15px;color:var(--ok);margin:4px 0 14px;">Дүн: ${fmtMoney(defAmt)}</div>
-    <div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Гүйлгээний утга</div><b id="sal-memo" style="display:block;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;"></b></div>
+    <div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Гүйлгээний утга</div><b style="font-size:12.5px;">${escapeHtml(memoText)}</b></div>
       <button class="btn" id="sal-copy-memo" style="padding:4px 11px;font-size:11.5px;white-space:nowrap;">⧉ Утга</button>
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Шилжүүлэх ${escapeHtml(cycName.toLowerCase())}: <b style="color:var(--text);">${fmtMoney(expAmt)}</b></div>
+    <label for="sal-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+      📄 <b>Шилжүүлгийн баримт (PDF) оруулах</b>
+      <input id="sal-pdf" type="file" accept="application/pdf,.pdf" hidden>
+      <div id="sal-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Голомт/Хаан шилжүүлгийн баримт · дүн·огноо автоматаар. <b>Баримт заавал.</b></div>
+    </label>
+    <div id="sal-fields" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:14px;">
+      <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний дүн</span><b id="sal-amt-disp" style="font-size:15px;color:var(--ok);"></b></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Огноо</span><span id="sal-date-disp"></span></div>
+      <div style="${rowCss}"><span style="color:var(--muted);">Хүлээн авагч</span><b id="sal-recv-disp" style="text-align:right;"></b></div>
+      <div style="${rowCss}border-bottom:none;"><span style="color:var(--muted);">Төлөв</span><span id="sal-status-disp"></span></div>
     </div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="sal-cancel">Болих</button>
-      <button class="btn btn-primary" id="sal-save">Шилжүүлсэн</button>
+      <button class="btn btn-primary" id="sal-save" disabled style="opacity:.45;cursor:not-allowed;">Бүртгэх</button>
     </div></div>`;
   document.body.appendChild(modal);
-  const amtEl = modal.querySelector('#sal-amt'), dateEl = modal.querySelector('#sal-date'), totalEl = modal.querySelector('#sal-total'), memoEl = modal.querySelector('#sal-memo');
-  // Гүйлгээний утга: "Зарлага: Цалин урьдчилгаа П.Мөнхзаяа 08.12"
-  const memoText = () => `Зарлага: Цалин ${cycShort} ${m.name || ''} ${(dateEl.value || today).slice(5).replace('-', '.')}`.replace(/\s+/g, ' ').trim();
-  const upd = () => { totalEl.textContent = 'Дүн: ' + fmtMoney(moneyVal(amtEl) || 0); memoEl.textContent = memoText(); };
-  amtEl.addEventListener('input', upd); dateEl.addEventListener('change', upd); upd();
+  let parsed = null;
   const close = () => modal.remove();
   modal.querySelector('#sal-cancel').onclick = close;
   modal.querySelector('#sal-copy-acct')?.addEventListener('click', () => copyText(_acct, 'Данс хууллаа'));
-  modal.querySelector('#sal-copy-memo')?.addEventListener('click', () => copyText(memoText(), 'Гүйлгээний утга хууллаа'));
+  modal.querySelector('#sal-copy-memo')?.addEventListener('click', () => copyText(memoText, 'Гүйлгээний утга хууллаа'));
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('#sal-save').onclick = async () => {
-    const amount = moneyVal(amtEl);
-    if (!amount) { showToast('Дүн оруулна уу', 'warn', 2000); return; }
-    let note = memoText();
-    if (cycTag) note += ' ' + cycTag;   // цикл таг залгах (урьдчилгаа/үлдэгдэл ялгах)
+  const saveBtn = modal.querySelector('#sal-save');
+  const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  // Шилжүүлгийн баримт PDF → автомат задалж, зөвхөн үүгээр бүртгэнэ (гараар оруулах боломжгүй)
+  modal.querySelector('#sal-pdf').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const status = modal.querySelector('#sal-pdf-status');
+    status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)'; enableSave(false); parsed = null;
+    try {
+      const d = parseBankReceipt(await extractPdfText(file));
+      if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан шилжүүлгийн баримт мөн эсэхийг шалгана уу');
+      modal.querySelector('#sal-amt-disp').textContent = fmtMoney(d.amount);
+      modal.querySelector('#sal-date-disp').textContent = d.date || '—';
+      modal.querySelector('#sal-recv-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
+      modal.querySelector('#sal-status-disp').textContent = d.status || '—';
+      modal.querySelector('#sal-fields').style.display = '';
+      const fpKey = receiptFingerprint(d), refKey = d.bankRef || '';
+      d.receiptId = refKey || fpKey;
+      const reason = receiptDupReason(refKey, fpKey);
+      if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
+      parsed = { amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), canonKey: d.receiptId, fpKey,
+        receiptNote: '[#' + d.receiptId + '] ' + [d.receiverName, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ') };
+      const warns = [];
+      if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
+      const empTokens = String(m.name || '').split(/\s+/).map(t => t.replace(/[.\-]/g, '')).filter(t => t.length > 2);
+      if (d.receiverName && empTokens.length && !empTokens.some(t => d.receiverName.includes(t))) warns.push('хүлээн авагч ажилтны нэртэй таарахгүй байж болзошгүй');
+      if (Math.abs(d.amount - expAmt) > 1) warns.push(`хүлээгдэж буй ${fmtMoney(expAmt)}-аас зөрүүтэй`);
+      status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
+      status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';
+      enableSave(true);
+    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; parsed = null; enableSave(false); }
+  });
+  saveBtn.addEventListener('click', async () => {
+    if (!parsed) return;
+    enableSave(false);
+    const rr = await reserveReceipt(parsed.canonKey, { fp: parsed.fpKey, amount: parsed.amount, date: parsed.date, ref: parsed.receiptNote, usedIn: 'salary:' + personKey + ':' + ym + ':' + (cycShort || 'full') });
+    if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); enableSave(true); return; }
+    let note = `Зарлага: Цалин ${cycShort} ${m.name || ''} ${String(parsed.date).slice(5).replace('-', '.')} ${parsed.receiptNote}`.replace(/\s+/g, ' ').trim();
+    if (cycTag) note += ' ' + cycTag;
     close();
-    await paySalary(personKey, ym, amount, note);
-    await createSalaryExpense(m, ym, amount, cycShort);   // санхүүд автомат зардал
-    showToast(`${m.name}: ${fmtMoney(amount)} шилжүүлж, санхүүд бүртгэлээ`, 'success', 2800);
+    await paySalary(personKey, ym, parsed.amount, note);
+    await createSalaryExpense(m, ym, parsed.amount, cycShort);   // санхүүд автомат зардал
+    showToast(`${m.name}: ${fmtMoney(parsed.amount)} — баримтаар бүртгэлээ`, 'success', 2800);
     render();
-  };
+  });
   modal.classList.add('open');
-  setTimeout(() => amtEl.focus(), 50);
 }
 
 // ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──

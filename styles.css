@@ -223,6 +223,7 @@
   .btn-primary:hover { background: #4338ca; }
   .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); font-weight: 600; }
   .btn-danger:hover { background: #b91c1c; }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
   .toolbar {
     display: flex; align-items: center; gap: 10px;
     padding: 12px 28px; background: var(--panel); border-bottom: 1px solid var(--border);

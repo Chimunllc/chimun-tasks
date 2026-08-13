@@ -3216,6 +3216,7 @@ function render() {
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
   if (state.view === 'booqable' && !canSeeBooqable()) state.view = 'mine';
+  if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
   if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
   if (state.view === 'workload' && !canSeeWorkload()) state.view = 'mine';
@@ -3316,6 +3317,9 @@ function renderSidebar() {
   // Түрээсийн түүх (Booqable аналитик) — зөвхөн CEO.
   const bqNav = document.getElementById('nav-booqable');
   if (bqNav) bqNav.style.display = canSeeBooqable() ? '' : 'none';
+  // Данс & Карт — зөвхөн CEO.
+  const baNav = document.getElementById('nav-accounts');
+  if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
   // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
   const acNav = document.getElementById('nav-access');
   if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
@@ -3361,7 +3365,7 @@ function renderSidebar() {
   const gBr = document.getElementById('nav-group-branch');
   if (gBr) gBr.style.display = _grpVisible(['nav-orders', 'nav-nomaad', 'nav-products', 'nav-receivables']) ? '' : 'none';
   const gMg = document.getElementById('nav-group-mgmt');
-  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-workload', 'nav-performance', 'nav-hourly', 'nav-salary', 'nav-booqable', 'nav-access']) ? '' : 'none';
+  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-workload', 'nav-performance', 'nav-hourly', 'nav-salary', 'nav-booqable', 'nav-accounts', 'nav-access']) ? '' : 'none';
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
@@ -3462,6 +3466,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderBooqable();
     attachBooqableHandlers();
+    return;
+  } else if (state.view === 'accounts') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderBankAccounts();
+    attachBankAccountsHandlers();
     return;
   } else if (state.view === 'receivables') {
     if (tableHead) tableHead.style.display = 'none';
@@ -6871,6 +6881,209 @@ async function clearMemberPerms(personKey) {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' },
     }, 15000);
   } catch (e) { console.warn('clearMemberPerms', e); }
+}
+
+// ─── ДАНС & КАРТ БҮРТГЭЛ (bank_accounts / bank_cards, PostgREST anon) ──────────────
+// Компанийн банкны данс/картуудыг нэг бүртгэлд: банк, зорилго, салбар, эзэн.
+// Хуулгаар ангилах модал эндээс данс→салбарыг автоматаар таьнна.
+const BANK_LIST = ['Голомт', 'Хаан', 'Худалдаа хөгжил', 'Төрийн', 'Хас', 'Капитрон', 'Ариг', 'Богд'];
+const ACCT_PURPOSES = ['орлого', 'зарлага', 'валют', 'цалин', 'татвар', 'бусад'];
+const BANK_BRANCHES = ['M-Event', 'NOMAAD', 'Катеринг', 'Чимун ХХК', 'Захиргаа'];
+const _BRANCH_NAME2CODE = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Катеринг': 'КАТЕРИНГ', 'Чимун ХХК': 'ХХК', 'Захиргаа': 'ЗАХ' };
+function _acctDigits(s) { return String(s || '').replace(/\D/g, ''); }
+// Бүртгэлээс хуулгаар-ангилах хэрэгслийн data→салбар/эзэн map-уудыг дүүргэнэ (fill-if-empty).
+function syncCardMapsFromRegistry() {
+  const br = _cardBranch(), ow = _cardOwners();
+  // Данс→салбар: бүртгэл ЭРХ МЭДЭЛТЭЙ (хуучин localStorage-г дарж бичнэ — төвлөрсөн удирдлага).
+  (state.bankAccounts || []).forEach(a => {
+    if (a.active === false) return;
+    const d = _acctDigits(a.account_no || a.id);
+    const keys = [d, d.slice(-10)].filter(Boolean);
+    const code = a.branch && _BRANCH_NAME2CODE[a.branch];
+    if (code) keys.forEach(k => { br[k] = code; });
+  });
+  (state.bankCards || []).forEach(c => {
+    if (c.active === false || !c.owner_key) return;
+    const d = _acctDigits(c.account_id);
+    [d, d.slice(-10)].filter(Boolean).forEach(k => { if (!ow[k]) ow[k] = c.owner_key; });
+  });
+  try { localStorage.setItem('cardBranch', JSON.stringify(br)); localStorage.setItem('cardOwners', JSON.stringify(ow)); } catch (_) {}
+}
+async function loadBankAccounts(force) {
+  if (!SUPABASE_ANON_KEY) return;
+  if (state.bankAccounts && !force) return;
+  try {
+    const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } };
+    const [ra, rc] = await Promise.all([
+      fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_accounts?select=*&order=sort.asc`, H, 15000),
+      fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_cards?select=*&order=sort.asc`, H, 15000),
+    ]);
+    state.bankAccounts = ra.ok ? await ra.json() : [];
+    state.bankCards = rc.ok ? await rc.json() : [];
+    syncCardMapsFromRegistry();
+    if (typeof render === 'function' && state.view === 'accounts') render();
+  } catch (e) { console.warn('loadBankAccounts', e); }
+}
+async function saveBankAccount(a) {
+  if (!SUPABASE_ANON_KEY || !a || !a.id) return false;
+  a.updated_by = state.me; a.updated_at = new Date().toISOString();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_accounts?on_conflict=id`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(a),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    return true;
+  } catch (e) { showToast('Данс хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
+}
+async function saveBankCard(c) {
+  if (!SUPABASE_ANON_KEY || !c || !c.id) return false;
+  c.updated_by = state.me; c.updated_at = new Date().toISOString();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_cards?on_conflict=id`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(c),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    return true;
+  } catch (e) { showToast('Карт хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
+}
+const _PURPOSE_BADGE = { 'орлого': ['#0f7a3d', 'rgba(16,163,74,.12)'], 'зарлага': ['#b45309', 'rgba(217,119,6,.12)'], 'валют': ['#4338ca', 'rgba(79,70,229,.12)'], 'цалин': ['#9333ea', 'rgba(147,51,234,.12)'], 'татвар': ['#be123c', 'rgba(225,29,72,.12)'] };
+function _acctByNo(no) { const d = _acctDigits(no); return (state.bankAccounts || []).find(a => _acctDigits(a.account_no || a.id) === d); }
+function renderBankAccounts() {
+  const accts = (state.bankAccounts || []).filter(a => a.active !== false);
+  const cards = (state.bankCards || []).filter(c => c.active !== false);
+  const purpBadge = (p) => { const c = _PURPOSE_BADGE[p]; return p ? `<span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:20px;${c ? `color:${c[0]};background:${c[1]};` : 'color:var(--muted);background:var(--panel-hover);'}">${escapeHtml(p)}</span>` : ''; };
+  const acctRow = (a) => `<div class="acct-card" data-acct="${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
+      <div style="width:38px;height:38px;border-radius:9px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏦</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;">${escapeHtml(a.name || 'Нэргүй данс')}</b>${purpBadge(a.purpose)}${a.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(a.branch)}</span>` : ''}</div>
+        <div style="font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;">${escapeHtml(a.bank || '')} · ${escapeHtml(a.iban || a.account_no || '')}${a.currency && a.currency !== 'MNT' ? ' · ' + escapeHtml(a.currency) : ''}</div>
+      </div>
+      <span style="font-size:16px;color:var(--muted);">›</span>
+    </div>`;
+  const cardRow = (c) => { const linked = _acctByNo(c.account_id); const own = c.owner_key ? memberName(c.owner_key) : (c.owner_name || ''); return `<div class="acct-card" data-card="${escapeHtml(c.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
+      <div style="width:46px;height:30px;border-radius:6px;background:linear-gradient(135deg,#1f2430,#3a3f4b);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="width:9px;height:7px;border-radius:2px;background:#e6b800;"></span></div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;font-variant-numeric:tabular-nums;">•••• ${escapeHtml(c.last4 || '????')}</b>${own ? `<span style="font-size:11px;color:var(--text);">${escapeHtml(own)}</span>` : `<span style="font-size:10.5px;color:var(--warn);">эзэн ?</span>`}${c.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(c.branch)}</span>` : ''}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${escapeHtml(c.bank || '')}${linked ? ' · ' + escapeHtml(linked.name) : (c.account_id ? ' · данс ' + escapeHtml(c.account_id) : '')}</div>
+      </div>
+      <span style="font-size:16px;color:var(--muted);">›</span>
+    </div>`; };
+  return `<div style="max-width:720px;margin:0 auto;padding:4px 2px 40px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0 14px;">
+      <div><div style="font-size:20px;font-weight:800;">🏦 Данс & Карт</div><div style="font-size:12px;color:var(--muted);">Компанийн банкны данс, картын бүртгэл. Хуулгаар ангилах нь эндээс данс→салбарыг таьнна.</div></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px;">
+      <div style="font-size:14px;font-weight:800;">Данснууд <span style="color:var(--muted);font-weight:600;">(${accts.length})</span></div>
+      <button class="btn btn-sm" id="ba-add-acct">+ Данс нэмэх</button>
+    </div>
+    ${accts.length ? accts.map(acctRow).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Данс бүртгээгүй байна.</div>'}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 8px;">
+      <div style="font-size:14px;font-weight:800;">Картууд <span style="color:var(--muted);font-weight:600;">(${cards.length})</span></div>
+      <button class="btn btn-sm" id="ba-add-card">+ Карт нэмэх</button>
+    </div>
+    ${cards.length ? cards.map(cardRow).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Карт бүртгээгүй байна.</div>'}
+  </div>`;
+}
+function attachBankAccountsHandlers() {
+  document.getElementById('ba-add-acct')?.addEventListener('click', () => openBankAccountModal(null));
+  document.getElementById('ba-add-card')?.addEventListener('click', () => openBankCardModal(null));
+  document.querySelectorAll('[data-acct]').forEach(el => el.addEventListener('click', () => {
+    const a = (state.bankAccounts || []).find(x => x.id === el.dataset.acct); if (a) openBankAccountModal(a);
+  }));
+  document.querySelectorAll('[data-card]').forEach(el => el.addEventListener('click', () => {
+    const c = (state.bankCards || []).find(x => x.id === el.dataset.card); if (c) openBankCardModal(c);
+  }));
+}
+function openBankAccountModal(a) {
+  const isNew = !a; a = a || {};
+  const sel = (opts, cur, ph) => `<option value="">${ph}</option>` + opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
+    <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</div>
+    <label class="fld">Нэр<input id="ba-name" value="${escapeHtml(a.name || '')}" placeholder="жишээ: Орлого Nomaad"></label>
+    <label class="fld">Банк<select id="ba-bank">${sel(BANK_LIST, a.bank, '— банк —')}</select></label>
+    <label class="fld">Дансны дугаар<input id="ba-no" value="${escapeHtml(a.account_no || '')}" placeholder="3635185058" inputmode="numeric"></label>
+    <label class="fld">IBAN<input id="ba-iban" value="${escapeHtml(a.iban || '')}" placeholder="MN77 0015 00 3635185058"></label>
+    <div style="display:flex;gap:8px;">
+      <label class="fld" style="flex:1;">Валют<select id="ba-cur"><option value="MNT"${(a.currency || 'MNT') === 'MNT' ? ' selected' : ''}>MNT</option><option value="USD"${a.currency === 'USD' ? ' selected' : ''}>USD</option><option value="CNY"${a.currency === 'CNY' ? ' selected' : ''}>CNY</option><option value="EUR"${a.currency === 'EUR' ? ' selected' : ''}>EUR</option></select></label>
+      <label class="fld" style="flex:1;">Зорилго<select id="ba-purpose">${sel(ACCT_PURPOSES, a.purpose, '— зорилго —')}</select></label>
+    </div>
+    <label class="fld">Салбар<select id="ba-branch">${sel(BANK_BRANCHES, a.branch, '— салбар —')}</select></label>
+    <label class="fld">Тэмдэглэл<input id="ba-note" value="${escapeHtml(a.note || '')}" placeholder="сонголт"></label>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
+      <button class="btn" id="ba-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
+      <div style="display:flex;gap:8px;"><button class="btn" id="ba-cancel">Болих</button><button class="btn btn-primary" id="ba-save">Хадгалах</button></div>
+    </div></div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#ba-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#ba-save').onclick = async () => {
+    const g = id => modal.querySelector(id).value.trim();
+    const no = _acctDigits(g('#ba-no'));
+    const name = g('#ba-name');
+    if (!name) { showToast('Нэр оруулна уу', 'warn', 2500); return; }
+    if (!no && !g('#ba-iban')) { showToast('Дансны дугаар эсвэл IBAN оруулна уу', 'warn', 3000); return; }
+    const id = isNew ? (no || ('acct-' + Date.now())) : a.id;
+    const rec = { id, bank: g('#ba-bank'), name, account_no: no, iban: g('#ba-iban'), currency: modal.querySelector('#ba-cur').value, purpose: g('#ba-purpose'), branch: g('#ba-branch'), note: g('#ba-note'), active: true, sort: a.sort || (state.bankAccounts || []).length + 1 };
+    modal.querySelector('#ba-save').disabled = true;
+    if (await saveBankAccount(rec)) { close(); await loadBankAccounts(true); showToast('Данс хадгаллаа', 'success', 2000); }
+    else modal.querySelector('#ba-save').disabled = false;
+  };
+  modal.querySelector('#ba-del').onclick = async () => {
+    if (isNew) return;
+    if (!(await showConfirm(`«${a.name}» дансыг бүртгэлээс хасах уу?`, { okText: 'Хасах', danger: true }))) return;
+    if (await saveBankAccount({ ...a, active: false })) { close(); await loadBankAccounts(true); showToast('Дансыг хаслаа', 'success', 2000); }
+  };
+  modal.classList.add('open');
+}
+function openBankCardModal(c) {
+  const isNew = !c; c = c || {};
+  const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const ownerOpts = `<option value="">— эзэн —</option>` + staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === c.owner_key ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
+  const acctOpts = `<option value="">— холбоотой данс —</option>` + (state.bankAccounts || []).filter(a => a.active !== false).map(a => `<option value="${escapeHtml(a.account_no || a.id)}"${_acctDigits(a.account_no || a.id) === _acctDigits(c.account_id) ? ' selected' : ''}>${escapeHtml(a.name)} (${escapeHtml(a.account_no || a.id)})</option>`).join('');
+  const sel = (opts, cur, ph) => `<option value="">${ph}</option>` + opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
+    <div style="font-weight:800;font-size:16px;margin-bottom:4px;">${isNew ? '💳 Карт нэмэх' : '💳 Карт засах'}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Аюулгүйн үүднээс зөвхөн сүүлийн 4 оронг хадгална.</div>
+    <label class="fld">Сүүлийн 4 орон<input id="bc-last4" value="${escapeHtml(c.last4 || '')}" placeholder="5189" inputmode="numeric" maxlength="4"></label>
+    <label class="fld">Банк<select id="bc-bank">${sel(BANK_LIST, c.bank, '— банк —')}</select></label>
+    <label class="fld">Эзэн<select id="bc-owner">${ownerOpts}</select></label>
+    <label class="fld">Холбоотой данс<select id="bc-acct">${acctOpts}</select></label>
+    <div style="display:flex;gap:8px;">
+      <label class="fld" style="flex:1;">Салбар<select id="bc-branch">${sel(BANK_BRANCHES, c.branch, '— салбар —')}</select></label>
+      <label class="fld" style="flex:1;">Төрөл<input id="bc-type" value="${escapeHtml(c.card_type || '')}" placeholder="Business debit"></label>
+    </div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
+      <button class="btn" id="bc-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
+      <div style="display:flex;gap:8px;"><button class="btn" id="bc-cancel">Болих</button><button class="btn btn-primary" id="bc-save">Хадгалах</button></div>
+    </div></div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#bc-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#bc-save').onclick = async () => {
+    const last4 = modal.querySelector('#bc-last4').value.replace(/\D/g, '').slice(-4);
+    if (last4.length !== 4) { showToast('Сүүлийн 4 оронг оруулна уу', 'warn', 2500); return; }
+    const bank = modal.querySelector('#bc-bank').value;
+    const id = isNew ? ((bank ? bank.toLowerCase().slice(0, 6) : 'card') + '-' + last4) : c.id;
+    const ownerKey = modal.querySelector('#bc-owner').value;
+    const rec = { id, last4, bank, owner_key: ownerKey, owner_name: memberName(ownerKey) || '', account_id: _acctDigits(modal.querySelector('#bc-acct').value), branch: modal.querySelector('#bc-branch').value, card_type: modal.querySelector('#bc-type').value.trim(), active: true, sort: c.sort || (state.bankCards || []).length + 1 };
+    modal.querySelector('#bc-save').disabled = true;
+    if (await saveBankCard(rec)) { close(); await loadBankAccounts(true); showToast('Карт хадгаллаа', 'success', 2000); }
+    else modal.querySelector('#bc-save').disabled = false;
+  };
+  modal.querySelector('#bc-del').onclick = async () => {
+    if (isNew) return;
+    if (!(await showConfirm(`•••• ${c.last4} картыг бүртгэлээс хасах уу?`, { okText: 'Хасах', danger: true }))) return;
+    if (await saveBankCard({ ...c, active: false })) { close(); await loadBankAccounts(true); showToast('Картыг хаслаа', 'success', 2000); }
+  };
+  modal.classList.add('open');
 }
 
 // ── Албан тушаалын эрх загвар (role_perms, PostgREST anon) ──
@@ -17372,6 +17585,7 @@ async function bootApp() {
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)
+  loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
   if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
@@ -17485,6 +17699,7 @@ function refreshViewData() {
   else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   else if (v === 'booqable' && canSeeBooqable()) loadBooqable(true);
+  else if (v === 'accounts' && state.isCEO) loadBankAccounts(true);
 }
 
 async function refreshFromServer() {

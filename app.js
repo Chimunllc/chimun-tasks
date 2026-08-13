@@ -312,8 +312,7 @@ function renderCommandResults(query) {
   // 1. Үйлдэл (actions)
   const actions = [
     { icon: '➕', label: 'Шинэ даалгавар', hint: 'N',  run: () => { closeCommandPalette(); openTaskModal(); } },
-    { icon: '💸', label: 'Шинэ төлбөрийн хүсэлт', hint: 'F', run: () => { closeCommandPalette(); openFinanceModal(); } },
-    { icon: '💳', label: 'Картын зарлага бүртгэх', hint: '', run: () => { closeCommandPalette(); openFinanceModal(null, true); } },
+    { icon: '🧾', label: 'Хуулга оруулах', hint: '', run: () => { closeCommandPalette(); if (typeof openStatementClassifyModal === 'function') openStatementClassifyModal(); } },
     { icon: '📥', label: 'Ирсэн ажил',  hint: '', run: () => { closeCommandPalette(); state.view='mine'; render(); } },
     { icon: '📤', label: 'Илгээсэн ажил', hint: '', run: () => { closeCommandPalette(); state.view='delegated'; render(); } },
     { icon: '💸', label: 'Санхүү',      hint: '', run: () => { closeCommandPalette(); state.view='finance'; render(); } },
@@ -538,22 +537,16 @@ function generateNotifications() {
   });
   localStorage.setItem(lastSeenKey, JSON.stringify(nowSeen));
 
-  // 5. FINANCE — миний илгээсэн хүсэлтийн төлөв өөрчлөгдсөн (approved/rejected/deferred/executed)
-  state.financeRequests.filter(t => t.requested_by === state.me && t.status !== 'deleted').forEach(t => {
-    const stages = [
-      { key: 'approved', cond: t.decision === 'approved' && t.status !== 'done', msg: `✓ Зөвшөөрөгдсөн: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
-      { key: 'rejected', cond: t.decision === 'rejected', msg: `✗ Татгалзсан: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
-      { key: 'deferred', cond: t.decision === 'deferred', msg: `🕐 Хойшлогдсон: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
-      { key: 'executed', cond: t.status === 'done' && t.decision === 'approved' && t.executed_at, msg: `💵 Гүйлгээ хийгдсэн: ${t.beneficiary} — ${Number(t.amount).toLocaleString('mn-MN')}₮` },
-    ];
-    stages.forEach(s => {
-      if (!s.cond) return;
-      const nid = `finance-${s.key}-${t.id}`;
+  // 5. МИНИЙ ЗАРДАЛ — картын зардал ангилахыг хүлээж буй (хуулга суурьтай санхүү)
+  if (typeof myPendingCardExpenses === 'function') {
+    const pend = myPendingCardExpenses(state.me);
+    if (pend.length) {
+      const nid = `myexp-pending-${pend.length}`;
       if (!seen.has(nid)) {
-        newOnes.push({ id: nid, type: 'stage_unlock', taskId: t.id, msg: s.msg, ts: Date.now(), read: false });
+        newOnes.push({ id: nid, type: 'assigned', msg: `🧾 Ангилах зардал: ${pend.length} гүйлгээ — «Миний зардал» дээр ангилна уу`, ts: Date.now(), read: false });
       }
-    });
-  });
+    }
+  }
 
   // 5r. ҮНЭЛГЭЭ ХҮЛЭЭЖ БУЙ — миний үүсгэсэн ажил дуусаад оноо өгөөгүй (хаагдаагүй)
   state.tasks.filter(t => needsRating(t) && t.createdBy === state.me).forEach(t => {
@@ -563,30 +556,7 @@ function generateNotifications() {
     }
   });
 
-  // 5b. FINANCE — батлах хүлээгдэж буй pending хүсэлт (өөрийн батлах ёстойг л харуулна)
-  //   CEO → >5сая / менежергүй салбарынх (өөрийн хүсэлт ч багтана — дээш ахиулах хүн алга)
-  //   Менежер → салбарынхаа ≤5сая (өөрийн хүсэлт авто CEO руу ахисан тул энд орохгүй)
-  {
-    const finApproverMatch = r => state.isCEO ? getFinanceApprover(r) === getCEOEmail() : getFinanceApprover(r) === state.me;
-    state.financeRequests.filter(r => (r.decision || 'pending') === 'pending' && r.status !== 'done' && r.status !== 'deleted' && finApproverMatch(r)).forEach(r => {
-      const nid = `finance-pending-${r.id}`;
-      if (!seen.has(nid)) {
-        newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
-          msg: `💸 Батлах хүсэлт: ${memberName(r.requested_by)} — ${Number(r.amount).toLocaleString('mn-MN')}₮ (${r.beneficiary})`,
-          ts: Date.now(), read: false });
-      }
-    });
-  }
-  if (state.me === getFinanceExecutorEmail()) {
-    state.financeRequests.filter(r => r.decision === 'approved' && r.status !== 'done' && r.status !== 'deleted').forEach(r => {
-      const nid = `finance-execute-${r.id}`;
-      if (!seen.has(nid)) {
-        newOnes.push({ id: nid, type: 'assigned', taskId: r.id,
-          msg: `💸 Гүйлгээ хийх: ${r.beneficiary} — ${Number(r.amount).toLocaleString('mn-MN')}₮`,
-          ts: Date.now(), read: false });
-      }
-    });
-  }
+  // (Санхүүгийн батлах/гүйлгээ хийх мэдэгдэл хасагдсан — хуулга суурьтай, хүсэлт/батлах урсгал байхгүй.)
 
   // 6. STAGE UNLOCK — миний sub-task lock-оос гарсан
   myTasks.filter(t => t.kind === 'act_stage' && t.parent_id && Number(t.stage) > 1).forEach(t => {
@@ -2497,26 +2467,10 @@ function openFinanceModal(id = null, cardMode = false) {
         fSave.style.display = '';
         fSave.textContent = '✎ Засах';
       }
-      // Стадийн action товчнууд:
-      //  - CEO pending хүсэлт → Decision (хүсэлт гаргагч өөрөө шийдэх боломжгүй)
-      //  - Туслах нягтлан approved + !executed_at → Шилжүүлсэн (өөрийн хүсэлт ч гүйлгэх ёстой)
-      //  - Туслах нягтлан executed_at + !done → Бараа хүлээн авч хаах
-      const approverEmail = getFinanceApprover(t);
-      const isApprover = (state.me === approverEmail);
-      // Зөвхөн томилогдсон approver товч хардаг. Менежер/CEO бол өөрийн хүсэлтийг ч
-      // өөрөө батална (getFinanceApprover нь өөрийг нь батлагч болгож тооцно).
-      if (dec === 'pending' && isApprover) {
-        decisionActions.style.setProperty('display', 'flex', 'important');
-      } else if (dec === 'approved' && !t.executed_at && isExecutor) {
-        executeActions.style.setProperty('display', 'flex', 'important');
-      } else if (dec === 'approved' && t.executed_at && t.status !== 'done' && (isExecutor || state.me === t.requested_by)) {
-        receiptActions.style.setProperty('display', 'flex', 'important');
-        // Дахин баталгаажуулалт: гүйцэтгэгч/CEO банкны PDF хавсаргаад «Шилжүүлсэн»-ээр хааж болно
-        if (isExecutor) executeActions.style.setProperty('display', 'flex', 'important');
-      }
-      // Захирлын хаалт — CEO баримт/хуулга шаардалгүйгээр хүлээн зөвшөөрч хаана (эзний авалт г.м.)
+      // Батлах/гүйлгээ хийх/хүлээн авах стадийн товчнууд ХАСАГДСАН — санхүү хуулга суурьтай.
+      // (decisionActions/executeActions/receiptActions default нуугдмал хэвээр үлдэнэ.)
       const ceoCloseBtn = document.getElementById('f-ceo-close');
-      if (ceoCloseBtn) ceoCloseBtn.style.display = (state.isCEO && dec === 'approved' && t.status !== 'done') ? '' : 'none';
+      if (ceoCloseBtn) ceoCloseBtn.style.display = 'none';
       // Устгах — зөвхөн өөрийн илгээсэн хүсэлт, гүйлгээ хийгдэхээс ӨМНӨ (CEO ч устгаж болно)
       const fDelete = document.getElementById('f-delete');
       if (fDelete) {
@@ -2541,8 +2495,6 @@ function openFinanceModal(id = null, cardMode = false) {
       submitActions.style.setProperty('display', '', 'important');
       fSave.style.display = '';
       fSave.textContent = '💾 Хадгалах';
-      // CEO өөрийн биш хүсэлт засаж байгаа бол шийдвэрийн товч хэвээр (нэг дор засаад зөвшөөрөх)
-      if (state.isCEO && state.me !== t.requested_by) decisionActions.style.setProperty('display', 'flex', 'important');
     }
   }
   modal.classList.add('open');
@@ -6796,10 +6748,7 @@ const PERM_MENUS = [
   { key: 'delegated',   label: 'Илгээсэн ажил',   core: true, actions: [
       { key: 'tasks.create', label: 'Ажил үүсгэх' },
       { key: 'tasks.delete', label: 'Ажил устгах' } ] },
-  { key: 'finance',     label: 'Санхүү',          core: true, actions: [
-      { key: 'finance.create',  label: 'Хүсэлт илгээх' },
-      { key: 'finance.approve', label: 'Батлах' },
-      { key: 'finance.execute', label: 'Гүйлгээ хийх' } ] },
+  { key: 'finance',     label: 'Санхүү',          core: true, actions: [] },
   { key: 'performance', label: 'Гүйцэтгэл',       core: true, actions: [] },
   { key: 'workload',    label: 'Багийн ачаалал',  actions: [] },
   { key: 'reports',     label: 'Тайлан',          actions: [] },
@@ -13289,80 +13238,7 @@ function renderFinanceReport(wrap) {
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
 
-  // ── БАТЛАХ САМБАР — хүлээгдэж буй хүсэлт бүр карт: хавсралт ил, автомат анхааруулга,
-  //    картан дээрээ ✓ Батлах / ✗ Татгалзах. Нэг нэгээр нээж ухах шаардлагагүй. ──
-  (function renderApprovalQueue() {
-    const pend = (state.financeRequests || [])
-      .filter(r => r.status !== 'deleted' && (r.decision || 'pending') === 'pending')
-      .filter(r => state.isCEO || state.me === getFinanceApprover(r))
-      .sort((a, b) => String(a.requested_at || '').localeCompare(String(b.requested_at || '')));
-    if (!pend.length) return;
-    const all = (state.financeRequests || []).filter(r => r.status !== 'deleted');
-    const nowMonth = new Date().toISOString().slice(0, 7);
-    const digitsOk = a => /^\d{8,20}$/.test(String(a || '').replace(/[\s-]/g, ''));
-    const normBen = s => String(s || '').trim().toLowerCase();
-    const cardHtml = (r) => {
-      const warns = [];
-      const dups = all.filter(x => x.id !== r.id && x.decision !== 'rejected'
-        && Number(x.amount) === Number(r.amount) && normBen(x.beneficiary) === normBen(r.beneficiary)
-        && Math.abs(new Date(x.requested_at || 0) - new Date(r.requested_at || 0)) < 30 * 86400000);
-      if (dups.length) warns.push(`⚠ 30 хоногт ижил дүн+хүлээн авагчтай ${dups.length} хүсэлт — давхардал эсэхийг шалга`);
-      const proofs = Array.isArray(r.purchase_proof_urls) ? r.purchase_proof_urls.filter(Boolean) : [];
-      if (!proofs.length) warns.push('⚠ Нэхэмжлэх/баримт хавсаргаагүй');
-      if (!digitsOk(r.account_number)) warns.push('⚠ Данс хоосон эсвэл буруу');
-      // Данс СОЛИГДСОН — түүхэн баталгаажсан данснаас өөр данс заасан бол (залилангийн хамгаалалт)
-      const _dirE = finBenDirectory().get(normBen(r.beneficiary));
-      const _reqAcct = String(r.account_number || '').replace(/[\s-]/g, '');
-      if (_dirE && _dirE.acct && _reqAcct && _reqAcct !== _dirE.acct) {
-        warns.push(`🔴 ДАНС ӨӨРЧЛӨГДСӨН — өмнөх баталгаажсан данс: ${_dirE.acct} (${_dirE.n} гүйлгээ). Утсаар баталгаажуулаарай`);
-      }
-      if (!all.some(x => x.id !== r.id && normBen(x.beneficiary) === normBen(r.beneficiary) && String(x.requested_at || '') < String(r.requested_at || ''))) warns.push('🆕 Анх удаагийн хүлээн авагч');
-      const hist = all.filter(x => x.requested_by === r.requested_by && String(x.requested_at || '').slice(0, 7) === nowMonth);
-      const histSum = hist.reduce((s, x) => s + (Number(x.amount) || 0), 0);
-      return `<div style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin-bottom:9px;background:var(--panel);">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-          <b style="font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.beneficiary || '—')}</b>
-          <b style="font-size:15px;white-space:nowrap;">${fmtMoney(Number(r.amount) || 0)}</b>
-        </div>
-        <div style="font-size:11.5px;color:var(--muted);margin:2px 0 4px;">${escapeHtml(memberName(r.requested_by))} · энэ сард ${hist.length} хүсэлт · ${fmtMoney(histSum)}${r.requested_at ? ' · 🕐 ' + escapeHtml(fmtDateTimeUB(r.requested_at)) : ''}${r.category ? ' · ' + escapeHtml(String(r.category).slice(0, 26)) : ''}</div>
-        <div style="font-size:12.5px;margin-bottom:5px;">${escapeHtml(r.purpose || '')}${finLinkChip(r)}</div>
-        ${warns.length ? `<div style="font-size:11.5px;color:var(--warn);font-weight:600;line-height:1.7;margin-bottom:5px;">${warns.map(escapeHtml).join('<br>')}</div>` : ''}
-        ${proofs.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px;">${imageThumbsHtml(proofs, { size: 64, label: 'Баримт' })}</div>` : ''}
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button type="button" class="btn" data-apq-open="${escapeHtml(r.id)}" style="padding:5px 12px;font-size:12px;">Нээх</button>
-          <button type="button" class="btn" data-apq-reject="${escapeHtml(r.id)}" style="padding:5px 12px;font-size:12px;color:var(--danger);">✗ Татгалзах</button>
-          <button type="button" class="btn btn-primary" data-apq-approve="${escapeHtml(r.id)}" style="padding:5px 14px;font-size:12px;">✓ Батлах</button>
-        </div>
-      </div>`;
-    };
-    const box = document.createElement('div');
-    box.style.cssText = 'margin-bottom:16px;';
-    box.innerHTML = `<div style="font-weight:800;font-size:13.5px;margin-bottom:8px;">🕐 Батлахыг хүлээж буй · ${pend.length}</div>` + pend.map(cardHtml).join('');
-    wrap.appendChild(box);
-    box.addEventListener('click', async (e) => {
-      if (e.target.closest('[data-lightbox]')) return;   // баримтын зураг → lightbox
-      const op = e.target.closest('[data-apq-open]');
-      if (op) { openFinanceModal(op.dataset.apqOpen); return; }
-      const ap = e.target.closest('[data-apq-approve]');
-      if (ap) {
-        const r = state.financeRequests.find(x => x.id === ap.dataset.apqApprove);
-        if (!r) return;
-        if (!(await showConfirm(`${r.beneficiary || ''} — ${fmtMoney(Number(r.amount) || 0)}\nЗөвшөөрөх үү?`, { okText: 'Зөвшөөрөх' }))) return;
-        await decideFinanceRequest(r.id, 'approved');
-        render();
-        return;
-      }
-      const rj = e.target.closest('[data-apq-reject]');
-      if (rj) {
-        const r = state.financeRequests.find(x => x.id === rj.dataset.apqReject);
-        if (!r) return;
-        const reason = await showPrompt(`${r.beneficiary || ''} — ${fmtMoney(Number(r.amount) || 0)}\nТатгалзах шалтгаан (заавал):`, { okText: 'Татгалзах' });
-        if (!reason || !reason.trim()) return;
-        await decideFinanceRequest(r.id, 'rejected', reason.trim());
-        render();
-      }
-    });
-  })();
+  // (Батлах самбар хасагдсан — санхүү нь хуулга суурьтай: зардал хуулгаас шууд орно, хүсэлт/батлах урсгал байхгүй.)
 
   // ── Толгой: сар сонгох + нийт дүн ──
   const head = document.createElement('div');
@@ -13380,20 +13256,15 @@ function renderFinanceReport(wrap) {
     state.finReportMonth = nm; render();
   }));
 
-  if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард санхүүгийн хүсэлт алга.'; wrap.appendChild(e); return; }
+  if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард зардал алга.'; wrap.appendChild(e); return; }
 
-  // ── Төлөвийн шүүлтийн чип (дарж шүүнэ) ──
-  // Үе шатууд = төлбөрийн амьдралын мөчлөг (батлагдсаныг шилжүүлсэн/шилжүүлээгүй/дууссанаар задлав).
-  // Дарвал тухайн үе шатны хүсэлтүүд тусдаа харагдана. finStage()-тэй НЭГ эх сурвалж.
+  // ── Ангилсан / Ангилаагүй (хуулга суурьтай) — хуучин хүсэлт/батлах/шилжүүлэх төлвүүд хасагдсан. ──
+  const isUnclassified = (t) => { const tok = parseCardToken(t.justification || ''); return (tok && tok.pend) || String(t.category || '') === CARD_PEND_CAT || !String(t.category || '').trim(); };
   const stDefs = [
-    ['all',           'Бүгд',             () => true,                               'var(--text)'],
-    ['pending',       '⏳ Хүлээгдэж буй',  t => finStage(t).key === 'pending',       'var(--warn)'],
-    ['untransferred', '💸 Шилжүүлээгүй',   t => finStage(t).key === 'untransferred', 'var(--warn)'],
-    ['transferred',   '💵 Шилжүүлсэн',     t => finStage(t).key === 'transferred',   'var(--primary)'],
-    ['fdone',         '✓ Дууссан',         t => finStage(t).key === 'fdone',         'var(--ok)'],
-    ['rejected',      '✗ Татгалзсан',      t => finStage(t).key === 'rejected',      'var(--danger)'],
+    ['all',    'Бүгд',        () => true,                     'var(--text)'],
+    ['unclas', 'Ангилаагүй',  t => isUnclassified(t),         'var(--warn)'],
   ];
-  const stFilter = state.finReportStatus || 'all';
+  const stFilter = (state.finReportStatus === 'unclas') ? 'unclas' : 'all';
   const chips = document.createElement('div');
   chips.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;';
   chips.innerHTML = stDefs.map(([k, l, pred, c]) => {
@@ -13913,15 +13784,11 @@ function renderDashboard() {
     return Number.isFinite(t) ? t : 0;
   };
   const recentFinance = fr.filter(r => financeTs(r) > cutoff);
-  const totalApproved = recentFinance
-    .filter(r => r.decision === 'approved' || r.status === 'done')
-    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const totalPending = recentFinance
-    .filter(r => (r.decision || 'pending') === 'pending')
-    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const totalRejected = recentFinance
-    .filter(r => r.decision === 'rejected')
-    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  // Хуулга суурьтай: нийт зардал + ангилаагүй (эзэн ангилахыг хүлээж буй).
+  const totalSpent = recentFinance.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const _finUnclas = (r) => { const tok = (typeof parseCardToken === 'function') ? parseCardToken(r.justification || '') : null; return (tok && tok.pend) || String(r.category || '') === (typeof CARD_PEND_CAT !== 'undefined' ? CARD_PEND_CAT : '9500') || !String(r.category || '').trim(); };
+  const unclasList = recentFinance.filter(_finUnclas);
+  const totalUnclassified = unclasList.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   // 4) Хоцорсон
   const overdueCount = tasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
@@ -14110,22 +13977,18 @@ function renderDashboard() {
         <!-- Finance summary (CEO only — sensitive amounts) -->
         ${isCEO ? `
         <div class="dash-card dash-finance">
-          <div class="dash-card-title">Сүүлийн 30 хоног — Санхүү</div>
+          <div class="dash-card-title">Сүүлийн 30 хоног — Зардал</div>
           <div class="dash-finance-row">
-            <div class="dash-finance-label">Зөвшөөрсөн</div>
-            <div class="dash-finance-value ok">${totalApproved.toLocaleString('mn-MN')}₮</div>
+            <div class="dash-finance-label">Нийт зардал</div>
+            <div class="dash-finance-value">${totalSpent.toLocaleString('mn-MN')}₮</div>
           </div>
+          ${totalUnclassified > 0 ? `
           <div class="dash-finance-row">
-            <div class="dash-finance-label">Хүлээгдэж буй</div>
-            <div class="dash-finance-value warn">${totalPending.toLocaleString('mn-MN')}₮</div>
-          </div>
-          ${totalRejected > 0 ? `
-          <div class="dash-finance-row">
-            <div class="dash-finance-label">Татгалзсан</div>
-            <div class="dash-finance-value" style="color:var(--danger)">${totalRejected.toLocaleString('mn-MN')}₮</div>
+            <div class="dash-finance-label">Ангилаагүй</div>
+            <div class="dash-finance-value warn">${totalUnclassified.toLocaleString('mn-MN')}₮ <span style="color:var(--muted);font-weight:400;font-size:11px;">(${unclasList.length})</span></div>
           </div>` : ''}
           <div class="dash-finance-row">
-            <div class="dash-finance-label">Нийт хүсэлт</div>
+            <div class="dash-finance-label">Гүйлгээ</div>
             <div class="dash-finance-value">${recentFinance.length}${fr.length > recentFinance.length ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">(нийт ${fr.length})</span>` : ''}</div>
           </div>
         </div>` : ''}
@@ -14679,7 +14542,7 @@ function emptyStateHtml() {
   if (v === 'mine' || v === 'delegated') {
     actionBtn = `<button class="empty-action btn-primary" onclick="openTaskModal()">+ Шинэ ажил үүсгэх</button>`;
   } else if (v === 'finance') {
-    actionBtn = `<button class="empty-action btn-primary" onclick="openFinanceModal()">+ Шинэ хүсэлт илгээх</button>`;
+    actionBtn = (state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())) ? `<button class="empty-action btn-primary" onclick="if(typeof openStatementClassifyModal==='function')openStatementClassifyModal()">🧾 Хуулга оруулах</button>` : '';
   }
   return `<div class="empty">${icon}<div class="title">${escapeHtml(title)}</div><div class="sub">${escapeHtml(sub)}</div>${actionBtn}</div>`;
 }
@@ -17072,7 +16935,7 @@ function initEvents() {
       openTaskModal();
     } else if (mod && e.key.toLowerCase() === 'f') {
       e.preventDefault();
-      openFinanceModal();
+      if ((state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())) && typeof openStatementClassifyModal === 'function') openStatementClassifyModal();
     } else if (e.key === '?' && !mod) {
       e.preventDefault();
       document.getElementById('shortcuts-modal')?.classList.add('open');

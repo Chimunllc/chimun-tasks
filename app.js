@@ -4283,42 +4283,67 @@ function _catOptions(sel) {
   }));
   return opts;
 }
+function detectStatementAccount(matrix) {
+  for (let i = 0; i < Math.min(4, matrix.length); i++) {
+    const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
+    for (let j = 0; j < cells.length; j++) {
+      const c = cells[j];
+      const ib = c.match(/iban[:\s]*mn\d{2}(\d{4})(\d{6,})/i);
+      if (ib) { const a = ib[2]; return a.length > 10 ? a.slice(-10) : a; }
+      if (/дансны дугаар|данс\s*:/i.test(c)) { const m = c.match(/\d{6,}/) || String(cells[j + 1] || '').match(/\d{6,}/); if (m) return m[0]; }
+    }
+  }
+  return '';
+}
+function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.parse(localStorage.getItem('cardOwners') || '{}'); } catch (_) { state.cardOwners = {}; } } return state.cardOwners; }
+function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
 async function openStatementClassifyModal() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
   const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const ownerOpts = (sel) => `<option value="">— эзэн —</option>` + staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
+  // Сарын цалин авагчийн данс → ажилтан (хуулгаас цалин баталгаажуулахад)
+  const empByAcct = {}; (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = personKey(mm); });
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  const _inp = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--panel);color:var(--text);font-size:13px;';
-  modal.innerHTML = `<div class="modal" style="max-width:660px;max-height:90vh;overflow-y:auto;">
+  modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулгаар зардал ангилах</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал автоматаар ангилагдана. Танихгүйг гараар сонгож бүртгэнэ (дараа нь санана).</div>
-    <label style="display:block;margin-bottom:10px;font-size:12px;color:var(--muted);">Картын эзэн (энэ хуулга хэний карт вэ?)
-      <select id="sc-owner" style="${_inp}">${staff.map(m => `<option value="${escapeHtml(personKey(m))}">${escapeHtml(m.name || '')}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`).join('')}</select></label>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Бүх дансны Голомт/Хаан хуулга оруул (олон файл) → зарлага авто ангилагдана. <b>Зөвхөн хуулгаар л баталгаажна.</b></div>
     <label for="sc-file" style="display:block;margin-bottom:12px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Хуулга оруулах (xlsx / csv)</b>
-      <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden>
-      <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Голомт/Хаан дансны хуулга — зарлагыг ангилна</div>
+      📄 <b>Хуулга(ууд) оруулах (xlsx / csv)</b>
+      <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden multiple>
+      <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
+    <div id="sc-accts"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
       <button class="btn btn-primary" id="sc-save" style="display:none;">Ангилагдсаныг бүртгэх</button>
     </div></div>`;
   document.body.appendChild(modal);
-  let rows = [];
+  let rows = [], accounts = [];
   const close = () => modal.remove();
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
+  const acctsEl = modal.querySelector('#sc-accts'), listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
+  const ownerOf = (acct) => _cardOwners()[acct] || '';
+  const renderAccts = () => {
+    if (!accounts.length) { acctsEl.innerHTML = ''; return; }
+    acctsEl.innerHTML = `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:10px;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Данс бүрийн картын эзэн (танихгүй зардлыг эзэн ангилна):</div>
+      ${accounts.map(a => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;"><b style="font-size:12px;min-width:110px;">${escapeHtml(a || 'тодорхойгүй')}</b><select data-sc-owner="${escapeHtml(a)}" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(a))}</select></div>`).join('')}
+    </div>`;
+    acctsEl.querySelectorAll('[data-sc-owner]').forEach(sel => sel.onchange = () => { setCardOwner(sel.dataset.scOwner, sel.value); render(); });
+  };
   const render = () => {
     const nCls = rows.filter(r => r.cat && !r.done).length, nUnk = rows.filter(r => !r.cat && !r.done).length, nDone = rows.filter(r => r.done).length;
-    const ownerName = memberName(modal.querySelector('#sc-owner').value) || 'картын эзэн';
-    const head = `<div style="font-size:12px;color:var(--muted);margin:8px 0;">Ангилагдсан <b style="color:var(--ok)">${nCls}</b> · Танихгүй <b style="color:var(--warn)">${nUnk}</b>${nDone ? ` · ✓ бүртгэсэн ${nDone}` : ''}${nUnk ? ` — танихгүйг <b>${escapeHtml(ownerName)}</b> ангилна` : ''}</div>`;
+    const nSal = rows.filter(r => r.salaryEmp && !r.done).length;
+    const head = `<div style="font-size:12px;color:var(--muted);margin:8px 0;">Ангилагдсан <b style="color:var(--ok)">${nCls}</b> · Танихгүй <b style="color:var(--warn)">${nUnk}</b>${nSal ? ` · 👤 цалин таарсан ${nSal}` : ''}${nDone ? ` · ✓ бүртгэсэн ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || ((a.cat ? 1 : 0) - (b.cat ? 1 : 0)) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
       const idx = rows.indexOf(r);
+      const own = memberName(ownerOf(r.src)) || '';
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · данс ${escapeHtml(r.account || '—')}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}${r.salaryEmp ? ` <span style="color:var(--ok);font-size:10px;">👤 ${escapeHtml(memberName(r.salaryEmp))}</span>` : ''}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · данс ${escapeHtml(r.account || '—')}${own ? ' · карт: ' + escapeHtml(own) : ''}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ бүртгэсэн</span>' : `<select data-sc-cat="${idx}" style="max-width:160px;padding:4px 6px;border:1px solid ${r.cat ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${_catOptions(r.cat)}</select>`}
       </div>`;
@@ -4326,40 +4351,56 @@ async function openStatementClassifyModal() {
     listEl.innerHTML = head + body;
     listEl.querySelectorAll('[data-sc-cat]').forEach(sel => sel.onchange = () => { rows[+sel.dataset.scCat].cat = sel.value; render(); });
   };
-  modal.querySelector('#sc-owner').onchange = () => render();
   modal.querySelector('#sc-file').addEventListener('change', async e => {
-    const f = e.target.files[0]; if (!f) return;
+    const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
-      const matrix = await statementFileToMatrix(f);
-      const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''));
-      if (!parsed.length) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
-      rows = parsed.map(r => { const fp = expenseFp(r); return { ...r, cat: classifyExpense(r.memo, r.account), fp, done: (state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) }; });
-      status.innerHTML = `✓ ${rows.length} зарлага уншсан`; status.style.color = 'var(--ok)';
-      render(); saveBtn.style.display = '';
+      rows = []; const acctSet = new Set();
+      for (const f of files) {
+        const matrix = await statementFileToMatrix(f);
+        const src = detectStatementAccount(matrix); acctSet.add(src);
+        const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''));
+        parsed.forEach(r => {
+          const fp = expenseFp(r);
+          const cat = classifyExpense(r.memo, r.account);
+          const cAcct = String(r.account || '').replace(/\D/g, '');
+          const salaryEmp = (cat === '7100' && empByAcct[cAcct]) ? empByAcct[cAcct] : '';
+          rows.push({ ...r, src, cat, fp, salaryEmp, done: (state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) });
+        });
+      }
+      accounts = [...acctSet];
+      if (!rows.length) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
+      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага уншсан`; status.style.color = 'var(--ok)';
+      renderAccts(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });
   saveBtn.onclick = async () => {
-    const owner = modal.querySelector('#sc-owner').value;
     const todo = rows.filter(r => !r.done && r.cat);
     if (!todo.length) { showToast('Ангилагдсан, бүртгэх зардал алга', 'warn', 2500); return; }
-    saveBtn.disabled = true; let n = 0;
-    const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
-    const brCode = obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
+    saveBtn.disabled = true; let n = 0, sal = 0;
     for (const r of todo) {
       const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' });
       if (rr === 'dup') { r.done = true; continue; }
+      const owner = ownerOf(r.src); const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
+      const brCode = obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
       state._finBackfill = { date: r.date };
-      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || r.account || ''), purpose: r.memo,
-        justification: `Хуулгаар автомат · данс ${r.account || '-'} · карт: ${memberName(owner)} [#${r.fp}]`,
+      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.salaryEmp ? memberName(r.salaryEmp) : (r.name || r.account || '')), purpose: r.memo,
+        justification: `Хуулгаар баталгаажсан · данс ${r.account || '-'}${owner ? ' · карт: ' + memberName(owner) : ''} [#${r.fp}]`,
         category: r.cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
       state._finBackfill = null;
       if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
+      // Цалин баталгаажуулалт — хуулгаас (сарын цалин авагч таарвал)
+      if (r.salaryEmp) {
+        const rym = String(r.date).slice(0, 7);
+        const ctag = /урьдчил/i.test(r.memo) ? SAL_ADV_TAG : /үлдэгд/i.test(r.memo) ? SAL_REM_TAG : '';
+        await paySalary(r.salaryEmp, rym, r.debit, `Хуулгаар баталгаажсан · ${r.memo} [#${r.fp}]${ctag ? ' ' + ctag : ''}`);
+        sal++;
+      }
       learnAcctCat(r.account, r.cat);
       r.done = true; n++;
       if (n % 5 === 0) { showToast(`${n}/${todo.length} бүртгэж байна…`, 'info', 700); render(); }
     }
-    showToast(`${n} зардал санхүүд бүртгэлээ`, 'success', 3000);
+    showToast(`${n} зардал бүртгэлээ${sal ? ` · ${sal} цалин баталгаажлаа` : ''}`, 'success', 3200);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');

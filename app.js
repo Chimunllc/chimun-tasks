@@ -4337,6 +4337,7 @@ async function clearMonthExpenses(month) {
 async function openStatementClassifyModal() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
+  await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
   const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
   const ownerOpts = (sel) => `<option value="">— эзэн —</option>` + staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
   // Сарын цалин авагчийн данс → ажилтан (хуулгаас цалин баталгаажуулахад)
@@ -7108,7 +7109,8 @@ function openBankCardModal(c) {
     const last4 = modal.querySelector('#bc-last4').value.replace(/\D/g, '').slice(-4);
     if (last4.length !== 4) { showToast('Сүүлийн 4 оронг оруулна уу', 'warn', 2500); return; }
     const bank = modal.querySelector('#bc-bank').value;
-    const id = isNew ? ((bank ? bank.toLowerCase().slice(0, 6) : 'card') + '-' + last4) : c.id;
+    const slug = String(bank || '').normalize('NFKD').replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 6) || 'card';
+    const id = isNew ? (slug + '-' + last4) : c.id;
     const ownerKey = modal.querySelector('#bc-owner').value;
     const rec = { id, last4, bank, owner_key: ownerKey, owner_name: memberName(ownerKey) || '', account_id: _acctDigits(modal.querySelector('#bc-acct').value), branch: modal.querySelector('#bc-branch').value, card_type: modal.querySelector('#bc-type').value.trim(), active: true, sort: c.sort || (state.bankCards || []).length + 1 };
     modal.querySelector('#bc-save').disabled = true;

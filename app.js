@@ -4300,6 +4300,20 @@ function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
 function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
 const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК'], ['ЗАХ', 'Захиргаа']];
+// Сарын бүх зардлыг цэвэрлэх (аппын өөрийн устгах замаар — хуулгаар дахин оруулахын өмнө)
+async function clearMonthExpenses(month) {
+  if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
+  month = month || state.finReportMonth || new Date().toISOString().slice(0, 7);
+  const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted' && String(r.requested_at || '').slice(0, 7) === month);
+  if (!rows.length) { showToast(`${month} сард зардал алга`, 'warn', 2500); return; }
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  if (!(await showConfirm(`${month} сарын БҮХ зардлыг (${rows.length} гүйлгээ · ${fmtMoney(total)}) устгах уу?\n\nЭнэ нь буцаагдахгүй. Дараа нь бүх хуулгаа "🔁 Дахин ачаалах"-аар оруулж дахин бүртгэнэ.`, { okText: 'Тийм, устга', danger: true }))) return;
+  showToast('Устгаж байна…', 'info', 1500);
+  let n = 0;
+  for (const r of rows) { try { await saveFinanceRequest(r, true); r.status = 'deleted'; n++; } catch (e) {} if (n % 15 === 0) showToast(`${n}/${rows.length} устгаж байна…`, 'info', 700); }
+  showToast(`${n} зардал устгалаа. Одоо хуулгаа "🔁 Дахин ачаалах"-аар оруулна уу.`, 'success', 4500);
+  if (typeof render === 'function') render();
+}
 async function openStatementClassifyModal() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
@@ -4316,6 +4330,7 @@ async function openStatementClassifyModal() {
       <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden multiple>
       <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer;"><input type="checkbox" id="sc-force"> 🔁 Дахин ачаалах (өмнө бүртгэснийг үл тоож дахин бүртгэх)</label>
     <div id="sc-accts"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
@@ -4359,6 +4374,9 @@ async function openStatementClassifyModal() {
     listEl.innerHTML = head + body;
     listEl.querySelectorAll('[data-sc-cat]').forEach(sel => sel.onchange = () => { rows[+sel.dataset.scCat].cat = sel.value; render(); });
   };
+  const isForce = () => modal.querySelector('#sc-force').checked;
+  const recomputeDone = () => { rows.forEach(r => { r.done = (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(r.fp)); }); };
+  modal.querySelector('#sc-force').onchange = () => { recomputeDone(); render(); };
   modal.querySelector('#sc-file').addEventListener('change', async e => {
     const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
@@ -4373,7 +4391,7 @@ async function openStatementClassifyModal() {
           const cat = classifyExpense(r.memo, r.account);
           const cAcct = String(r.account || '').replace(/\D/g, '');
           const salaryEmp = (cat === '7100' && empByAcct[cAcct]) ? empByAcct[cAcct] : '';
-          rows.push({ ...r, src, cat, fp, salaryEmp, done: (state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) });
+          rows.push({ ...r, src, cat, fp, salaryEmp, done: (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) });
         });
       }
       accounts = [...acctSet];
@@ -4388,9 +4406,9 @@ async function openStatementClassifyModal() {
     const noBr = accounts.filter(a => !branchOf(a));
     if (noBr.length) { showToast('Данс бүрд салбарыг сонгоно уу', 'warn', 3000); return; }
     saveBtn.disabled = true; let n = 0, sal = 0;
+    const force = isForce();
     for (const r of todo) {
-      const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' });
-      if (rr === 'dup') { r.done = true; continue; }
+      if (!force) { const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); if (rr === 'dup') { r.done = true; continue; } }
       const owner = ownerOf(r.src); const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
       const brCode = branchOf(r.src) || (obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
       state._finBackfill = { date: r.date };
@@ -12905,12 +12923,14 @@ function renderFinanceReport(wrap) {
   bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
   const canRecon = state.isCEO || canSeeAllFinance();
   bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
+    + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
+  bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
 
   // ── БАТЛАХ САМБАР — хүлээгдэж буй хүсэлт бүр карт: хавсралт ил, автомат анхааруулга,
   //    картан дээрээ ✓ Батлах / ✗ Татгалзах. Нэг нэгээр нээж ухах шаардлагагүй. ──

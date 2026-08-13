@@ -6893,7 +6893,7 @@ function renderSalary() {
       <div style="display:flex;gap:8px;align-items:center;"><input type="month" id="sal-ym" value="${ym}" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;"><button class="btn" data-sal-refresh style="padding:6px 12px;font-size:12px;">↻</button></div>
     </div>`;
   const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px;">
-    ${kpi('Нийт суурь (нийт)', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
+    ${kpi('Нийт цалин (нийт)', fmtMoney(totalBase), 'var(--text)', `${allStaff.length} ажилтан`)}
     ${kpi('Цэвэр олгох', fmtMoney(totalNet), 'var(--primary)', 'суутгалын дараа')}
     ${kpi('Энэ сар олгосон', fmtMoney(paidThis), 'var(--ok)', ym)}
     ${kpi('Олгоогүй', fmtMoney(Math.max(0, totalNet - paidThis)), unpaidCnt ? 'var(--warn)' : 'var(--muted)', `${unpaidCnt} хүн`)}
@@ -6917,7 +6917,7 @@ function renderSalary() {
     const advPaid = salaryCyclePaid(key, ym, SAL_ADV_TAG);
     const remPaid = salaryCyclePaid(key, ym, SAL_REM_TAG);
     const advAmt = advPaid > 0 ? advPaid : (salaryLastAdvance(key) || Math.round(net / 2));
-    const remAmt = Math.max(0, net - advPaid);
+    const remAmt = Math.max(0, net - advAmt);   // үлдэгдэл = цэвэр − урьдчилгаа (нийлбэр нь цэвэртэй тэнцэнэ)
     const baseCell = editable
       ? `<input type="text" inputmode="numeric" class="money-input sal-base" data-sal-person="${escapeHtml(key)}" value="${base ? moneyFmtInput(base) : ''}" placeholder="0" style="width:120px;box-sizing:border-box;padding:6px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;text-align:right;">`
       : `<b style="font-size:13px;">${fmtMoney(base)}</b>`;
@@ -6947,7 +6947,7 @@ function renderSalary() {
     return `<div class="ac-row" data-sal-haystack="${escapeHtml((m.name + ' ' + (m.role || '')).toLowerCase())}" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;display:flex;flex-direction:column;gap:9px;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
         <div style="min-width:160px;flex:1;"><b style="font-size:13.5px;">${escapeHtml(m.name || '?')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || '')}</span>${histBtn}${bankLine}</div>
-        <div style="text-align:right;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><span style="font-size:10.5px;color:var(--muted);">Сарын суурь</span>${baseCell}</div>${dedLine}</div>
+        <div style="text-align:right;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><span style="font-size:10.5px;color:var(--muted);">Нийт цалин</span>${baseCell}</div>${dedLine}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;border-top:1px dashed var(--border);padding-top:8px;">
         ${slot('Урьдчилгаа', '20-нд', advDue, advAmt, advPaid, SAL_ADV_TAG)}
@@ -7027,8 +7027,9 @@ async function openSalaryPayModal(personKey, cycleTag) {
   const cycName = isAdv ? 'Урьдчилгаа цалин' : isRem ? 'Үлдэгдэл цалин' : 'Цалин';
   const cycShort = isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '';
   const net = salaryNet(base, salaryDeductOn(personKey)).net;   // цэвэр (суутгалтай эсэхээс хамаарна)
+  const _advForRem = advPaid > 0 ? advPaid : (salaryLastAdvance(personKey) || Math.round(net / 2));
   const defAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2))
-    : isRem ? Math.max(0, net - advPaid) : net;
+    : isRem ? Math.max(0, net - _advForRem) : net;   // үлдэгдэл = цэвэр − урьдчилгаа
   const today = new Date().toISOString().slice(0, 10);
   const modal = document.createElement('div');
   modal.className = 'modal-bg';   // backdrop (утсан дээр bottom-sheet-ийг зөв гаргана)

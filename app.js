@@ -4297,6 +4297,9 @@ function detectStatementAccount(matrix) {
 }
 function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.parse(localStorage.getItem('cardOwners') || '{}'); } catch (_) { state.cardOwners = {}; } } return state.cardOwners; }
 function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
+function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
+function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
+const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК'], ['ЗАХ', 'Захиргаа']];
 async function openStatementClassifyModal() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
@@ -4326,13 +4329,18 @@ async function openStatementClassifyModal() {
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const acctsEl = modal.querySelector('#sc-accts'), listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
   const ownerOf = (acct) => _cardOwners()[acct] || '';
+  const branchOf = (acct) => _cardBranch()[acct] || '';
+  const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
   const renderAccts = () => {
     if (!accounts.length) { acctsEl.innerHTML = ''; return; }
     acctsEl.innerHTML = `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Данс бүрийн картын эзэн (танихгүй зардлыг эзэн ангилна):</div>
-      ${accounts.map(a => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;"><b style="font-size:12px;min-width:110px;">${escapeHtml(a || 'тодорхойгүй')}</b><select data-sc-owner="${escapeHtml(a)}" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(a))}</select></div>`).join('')}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Данс бүрийн <b>салбар</b> ба картын <b>эзэн</b> (эхний удаа гараар — дараа санана):</div>
+      ${accounts.map(a => `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;"><b style="font-size:12px;min-width:100px;">${escapeHtml(a || 'тодорхойгүй')}</b>
+        <select data-sc-br="${escapeHtml(a)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid ${branchOf(a) ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${brOpts(branchOf(a))}</select>
+        <select data-sc-owner="${escapeHtml(a)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(a))}</select></div>`).join('')}
     </div>`;
     acctsEl.querySelectorAll('[data-sc-owner]').forEach(sel => sel.onchange = () => { setCardOwner(sel.dataset.scOwner, sel.value); render(); });
+    acctsEl.querySelectorAll('[data-sc-br]').forEach(sel => sel.onchange = () => { setCardBranch(sel.dataset.scBr, sel.value); render(); });
   };
   const render = () => {
     const nCls = rows.filter(r => r.cat && !r.done).length, nUnk = rows.filter(r => !r.cat && !r.done).length, nDone = rows.filter(r => r.done).length;
@@ -4377,12 +4385,14 @@ async function openStatementClassifyModal() {
   saveBtn.onclick = async () => {
     const todo = rows.filter(r => !r.done && r.cat);
     if (!todo.length) { showToast('Ангилагдсан, бүртгэх зардал алга', 'warn', 2500); return; }
+    const noBr = accounts.filter(a => !branchOf(a));
+    if (noBr.length) { showToast('Данс бүрд салбарыг сонгоно уу', 'warn', 3000); return; }
     saveBtn.disabled = true; let n = 0, sal = 0;
     for (const r of todo) {
       const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' });
       if (rr === 'dup') { r.done = true; continue; }
       const owner = ownerOf(r.src); const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
-      const brCode = obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
+      const brCode = branchOf(r.src) || (obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
       state._finBackfill = { date: r.date };
       const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.salaryEmp ? memberName(r.salaryEmp) : (r.name || r.account || '')), purpose: r.memo,
         justification: `Хуулгаар баталгаажсан · данс ${r.account || '-'}${owner ? ' · карт: ' + memberName(owner) : ''} [#${r.fp}]`,

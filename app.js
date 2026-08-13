@@ -1776,6 +1776,8 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     // dept_branch: АЖИЛТАН өөрөө илгээвэл АВТО өөрийн салбар (форм сонголтыг үл хэрэгсэнэ).
     // Нягтлан/CEO өмнөөс оруулбал формоор сонгосон салбар (эс бөгөөс өөрийн default).
     dept_branch: (function(){
+      // Хуулгын импорт (backfill) — картын/дансны бүртгэлээс тодорхойлсон салбарыг ХҮНДЭТГЭ.
+      if (state._finBackfill && deptBranch) return deptBranch;
       // ОБЪЕКТ сонгосон бол салбар түүнээс АВТОМАТ гарна — хэн илгээснээс үл хамааран (давхар асуухгүй).
       const byLink = { nomaad: 'КЕМП', order: 'ИВЕНТ', car: 'ХХК', product: 'ХХК', general: 'ЗАХ' }[linkType];
       if (byLink) return byLink;

@@ -4433,13 +4433,18 @@ async function openStatementClassifyModal() {
     const nCardOwn = live.filter(r => r.cardL4 && ownerOf(srcKeyOf(r))).length;
     const nMine = live.filter(r => !r.salaryEmp && routeOwnerOf(r) === state.me).length;
     const nSal = live.filter(r => r.salaryEmp).length, nDone = rows.filter(r => r.done).length;
-    const head = `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 цалин ${nSal}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
+    // Эзэнгүй картууд — эдгээрийн зардал танд ирнэ (эзэн рүү очихгүй). Тод анхааруулна.
+    const orphanCards = [...new Set(live.filter(r => r.cardL4 && !ownerOf(srcKeyOf(r))).map(r => r.cardL4))];
+    const warnBanner = orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '';
+    const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 цалин ${nSal}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
       const srcTag = r.cardL4 ? ('карт ••' + r.cardL4) : ('данс ' + (r.account || '—'));
       const ro = routeOwnerOf(r); const roName = ro === state.me ? 'та' : memberName(ro);
+      const orphan = r.cardL4 && !ownerOf(srcKeyOf(r));
       const ctrl = r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ орсон</span>'
         : (r.salaryEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">цалин · ${escapeHtml(memberName(r.salaryEmp))}</span>`
+          : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
           : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
         <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}</div></div>

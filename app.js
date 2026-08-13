@@ -4310,6 +4310,16 @@ function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
 function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
 const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК'], ['ЗАХ', 'Захиргаа']];
+const _BRANCH_CODE2NAME = { 'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг', 'ХХК': 'Чимун ХХК', 'ЗАХ': 'Захиргаа' };
+// Гүйлгээний утгаас картын сүүлийн 4 оронг салгах (POS/онлайн: "420733******2819:..." → 2819)
+function detectCardLast4(memo) {
+  const m = String(memo || '').match(/(\d{6})\*{2,}(\d{4})/) || String(memo || '').match(/(\d{4})\*{2,}(\d{4})/);
+  return m ? m[2] : '';
+}
+function cardByLast4(l4) { return l4 ? (state.bankCards || []).find(c => c.active !== false && String(c.last4) === String(l4)) : null; }
+// Картын default зарцуулалтын зорилго (ангилал) — тухайн картын бүх мөрд өгөгдмөл болгоно.
+function _cardDefCat() { if (!state.cardDefCat) { try { state.cardDefCat = JSON.parse(localStorage.getItem('cardDefCat') || '{}'); } catch (_) { state.cardDefCat = {}; } } return state.cardDefCat; }
+function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[key] = cat; try { localStorage.setItem('cardDefCat', JSON.stringify(o)); } catch (_) {} }
 // Сарын бүх зардлыг цэвэрлэх (аппын өөрийн устгах замаар — хуулгаар дахин оруулахын өмнө)
 async function clearMonthExpenses(month) {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
@@ -4348,24 +4358,42 @@ async function openStatementClassifyModal() {
       <button class="btn btn-primary" id="sc-save" style="display:none;">Ангилагдсаныг бүртгэх</button>
     </div></div>`;
   document.body.appendChild(modal);
-  let rows = [], accounts = [];
+  let rows = [], sources = [];
   const close = () => modal.remove();
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const acctsEl = modal.querySelector('#sc-accts'), listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
-  const ownerOf = (acct) => _cardOwners()[acct] || '';
-  const branchOf = (acct) => _cardBranch()[acct] || '';
+  const ownerOf = (k) => _cardOwners()[k] || '';
+  const branchOf = (k) => _cardBranch()[k] || '';
+  const catOf = (k) => _cardDefCat()[k] || '';
   const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  // Эх сурвалж = карт (утгад картын сүүлийн 4 байвал) ЭСВЭЛ данс (шилжүүлэг). Бүр өөрийн эзэн/салбар/зорилготой.
+  const srcKeyOf = (r) => r.cardL4 ? ('c:' + r.cardL4) : ('a:' + r.src);
+  const srcLabel = (s) => s.type === 'card' ? ('💳 ••' + s.l4) : ('🏦 ' + (s.acct || 'данс'));
+  // Картын эзэн/салбар/зорилгыг Данс & Карт бүртгэлд хадгална (дараа автомат)
+  const persistCard = (l4) => {
+    const c = cardByLast4(l4); if (!c) return;
+    const k = 'c:' + l4;
+    saveBankCard({ ...c, owner_key: ownerOf(k), owner_name: memberName(ownerOf(k)) || '', branch: _BRANCH_CODE2NAME[branchOf(k)] || '', default_cat: catOf(k) });
+  };
+  const applyDefCat = () => { rows.forEach(r => { if (!r.catManual && !r.done) { const dc = catOf(srcKeyOf(r)); if (dc) r.cat = dc; } }); };
   const renderAccts = () => {
-    if (!accounts.length) { acctsEl.innerHTML = ''; return; }
+    if (!sources.length) { acctsEl.innerHTML = ''; return; }
     acctsEl.innerHTML = `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Данс бүрийн <b>салбар</b> ба картын <b>эзэн</b> (эхний удаа гараар — дараа санана):</div>
-      ${accounts.map(a => `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap;"><b style="font-size:12px;min-width:100px;">${escapeHtml(a || 'тодорхойгүй')}</b>
-        <select data-sc-br="${escapeHtml(a)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid ${branchOf(a) ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${brOpts(branchOf(a))}</select>
-        <select data-sc-owner="${escapeHtml(a)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(a))}</select></div>`).join('')}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Карт/данс бүрийн <b>эзэн</b> · <b>салбар</b> · <b>зарцуулалтын зорилго</b> (эхний удаа гараар — дараа санана):</div>
+      ${sources.map(s => { const k = s.key; return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;"><b style="font-size:12px;min-width:58px;">${srcLabel(s)}</b>
+        <select data-sc-owner="${escapeHtml(k)}" style="flex:1;min-width:92px;padding:5px 8px;border:1px solid ${ownerOf(k) ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(k))}</select>
+        <select data-sc-br="${escapeHtml(k)}" style="flex:1;min-width:92px;padding:5px 8px;border:1px solid ${branchOf(k) ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${brOpts(branchOf(k))}</select>
+        <select data-sc-defcat="${escapeHtml(k)}" style="flex:1;min-width:92px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${_catOptions(catOf(k))}</select></div>`; }).join('')}
     </div>`;
-    acctsEl.querySelectorAll('[data-sc-owner]').forEach(sel => sel.onchange = () => { setCardOwner(sel.dataset.scOwner, sel.value); render(); });
-    acctsEl.querySelectorAll('[data-sc-br]').forEach(sel => sel.onchange = () => { setCardBranch(sel.dataset.scBr, sel.value); render(); });
+    acctsEl.querySelectorAll('[data-sc-owner]').forEach(sel => sel.onchange = () => {
+      const k = sel.dataset.scOwner; setCardOwner(k, sel.value);
+      if (!branchOf(k)) { const om = findMember(sel.value); const obs = om ? (memberBranchesOf(om) || []) : []; const gc = obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : ''; if (gc) setCardBranch(k, gc); }
+      if (k.startsWith('c:')) persistCard(k.slice(2));
+      renderAccts(); render();
+    });
+    acctsEl.querySelectorAll('[data-sc-br]').forEach(sel => sel.onchange = () => { const k = sel.dataset.scBr; setCardBranch(k, sel.value); if (k.startsWith('c:')) persistCard(k.slice(2)); render(); });
+    acctsEl.querySelectorAll('[data-sc-defcat]').forEach(sel => sel.onchange = () => { const k = sel.dataset.scDefcat; setCardDefCat(k, sel.value); if (k.startsWith('c:')) persistCard(k.slice(2)); applyDefCat(); render(); });
   };
   const render = () => {
     const nCls = rows.filter(r => r.cat && !r.done).length, nUnk = rows.filter(r => !r.cat && !r.done).length, nDone = rows.filter(r => r.done).length;
@@ -4374,15 +4402,17 @@ async function openStatementClassifyModal() {
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || ((a.cat ? 1 : 0) - (b.cat ? 1 : 0)) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
       const idx = rows.indexOf(r);
-      const own = memberName(ownerOf(r.src)) || '';
+      const ok = ownerOf(srcKeyOf(r));
+      const own = ok ? (memberName(ok) || '') : '';
+      const srcTag = r.cardL4 ? ('карт ••' + r.cardL4) : ('данс ' + (r.account || '—'));
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}${r.salaryEmp ? ` <span style="color:var(--ok);font-size:10px;">👤 ${escapeHtml(memberName(r.salaryEmp))}</span>` : ''}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · данс ${escapeHtml(r.account || '—')}${own ? ' · карт: ' + escapeHtml(own) : ''}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}${r.salaryEmp ? ` <span style="color:var(--ok);font-size:10px;">👤 ${escapeHtml(memberName(r.salaryEmp))}</span>` : ''}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${own ? ' · ' + escapeHtml(own) : ''}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ бүртгэсэн</span>' : `<select data-sc-cat="${idx}" style="max-width:160px;padding:4px 6px;border:1px solid ${r.cat ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${_catOptions(r.cat)}</select>`}
       </div>`;
     }).join('');
     listEl.innerHTML = head + body;
-    listEl.querySelectorAll('[data-sc-cat]').forEach(sel => sel.onchange = () => { rows[+sel.dataset.scCat].cat = sel.value; render(); });
+    listEl.querySelectorAll('[data-sc-cat]').forEach(sel => sel.onchange = () => { const r = rows[+sel.dataset.scCat]; r.cat = sel.value; r.catManual = true; render(); });
   };
   const isForce = () => modal.querySelector('#sc-force').checked;
   const recomputeDone = () => { rows.forEach(r => { r.done = (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(r.fp)); }); };
@@ -4391,39 +4421,44 @@ async function openStatementClassifyModal() {
     const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
-      rows = []; const acctSet = new Set();
+      rows = [];
       for (const f of files) {
         const matrix = await statementFileToMatrix(f);
-        const src = detectStatementAccount(matrix); acctSet.add(src);
+        const src = detectStatementAccount(matrix);
         const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''));
         parsed.forEach(r => {
           const fp = expenseFp(r);
           const cat = classifyExpense(r.memo, r.account);
           const cAcct = String(r.account || '').replace(/\D/g, '');
           const salaryEmp = (cat === '7100' && empByAcct[cAcct]) ? empByAcct[cAcct] : '';
-          rows.push({ ...r, src, cat, fp, salaryEmp, done: (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) });
+          const cardL4 = detectCardLast4(r.memo);
+          rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, done: (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) });
         });
       }
-      accounts = [...acctSet];
+      // Эх сурвалжуудыг (карт/данс) цуглуулна
+      const seen = new Set(); sources = [];
+      rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
+      applyDefCat();
       if (!rows.length) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
-      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага уншсан`; status.style.color = 'var(--ok)';
+      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс`; status.style.color = 'var(--ok)';
       renderAccts(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });
   saveBtn.onclick = async () => {
     const todo = rows.filter(r => !r.done && r.cat);
     if (!todo.length) { showToast('Ангилагдсан, бүртгэх зардал алга', 'warn', 2500); return; }
-    const noBr = accounts.filter(a => !branchOf(a));
-    if (noBr.length) { showToast('Данс бүрд салбарыг сонгоно уу', 'warn', 3000); return; }
+    const noBr = sources.filter(s => todo.some(r => srcKeyOf(r) === s.key) && !branchOf(s.key));
+    if (noBr.length) { showToast('Карт/данс бүрд салбарыг сонгоно уу', 'warn', 3000); return; }
     saveBtn.disabled = true; let n = 0, sal = 0;
     const force = isForce();
     for (const r of todo) {
       if (!force) { const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); if (rr === 'dup') { r.done = true; continue; } }
-      const owner = ownerOf(r.src); const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
-      const brCode = branchOf(r.src) || (obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
+      const sk = srcKeyOf(r);
+      const owner = ownerOf(sk); const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
+      const brCode = branchOf(sk) || (obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
       state._finBackfill = { date: r.date };
-      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.salaryEmp ? memberName(r.salaryEmp) : (r.name || r.account || '')), purpose: r.memo,
-        justification: `Хуулгаар баталгаажсан · данс ${r.account || '-'}${owner ? ' · карт: ' + memberName(owner) : ''} [#${r.fp}]`,
+      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.salaryEmp ? memberName(r.salaryEmp) : (r.name || (owner ? memberName(owner) : '') || r.account || '')), purpose: r.memo,
+        justification: `Хуулгаар баталгаажсан · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')}${owner ? ' · эзэн: ' + memberName(owner) : ''} [#${r.fp}]`,
         category: r.cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
       state._finBackfill = null;
       if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
@@ -6893,21 +6928,23 @@ const _BRANCH_NAME2CODE = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Ка
 function _acctDigits(s) { return String(s || '').replace(/\D/g, ''); }
 // Бүртгэлээс хуулгаар-ангилах хэрэгслийн data→салбар/эзэн map-уудыг дүүргэнэ (fill-if-empty).
 function syncCardMapsFromRegistry() {
-  const br = _cardBranch(), ow = _cardOwners();
-  // Данс→салбар: бүртгэл ЭРХ МЭДЭЛТЭЙ (хуучин localStorage-г дарж бичнэ — төвлөрсөн удирдлага).
+  const br = _cardBranch(), ow = _cardOwners(), dc = _cardDefCat();
+  // Данс→салбар: бүртгэл ЭРХ МЭДЭЛТЭЙ (хуучин localStorage-г дарж бичнэ). Түлхүүр = 'a:'+дугаар.
   (state.bankAccounts || []).forEach(a => {
     if (a.active === false) return;
     const d = _acctDigits(a.account_no || a.id);
-    const keys = [d, d.slice(-10)].filter(Boolean);
     const code = a.branch && _BRANCH_NAME2CODE[a.branch];
-    if (code) keys.forEach(k => { br[k] = code; });
+    if (code) [d, d.slice(-10)].filter(Boolean).forEach(k => { br['a:' + k] = code; });
   });
+  // Карт→эзэн/салбар/зорилго: бүртгэл ЭРХ МЭДЭЛТЭЙ (хоосон бол цэвэрлэнэ — stale онооллоос сэргийлнэ).
   (state.bankCards || []).forEach(c => {
-    if (c.active === false || !c.owner_key) return;
-    const d = _acctDigits(c.account_id);
-    [d, d.slice(-10)].filter(Boolean).forEach(k => { if (!ow[k]) ow[k] = c.owner_key; });
+    if (c.active === false || !c.last4) return;
+    const k = 'c:' + c.last4;
+    ow[k] = c.owner_key || '';
+    br[k] = (c.branch && _BRANCH_NAME2CODE[c.branch]) || '';
+    dc[k] = c.default_cat || '';
   });
-  try { localStorage.setItem('cardBranch', JSON.stringify(br)); localStorage.setItem('cardOwners', JSON.stringify(ow)); } catch (_) {}
+  try { localStorage.setItem('cardBranch', JSON.stringify(br)); localStorage.setItem('cardOwners', JSON.stringify(ow)); localStorage.setItem('cardDefCat', JSON.stringify(dc)); } catch (_) {}
 }
 async function loadBankAccounts(force) {
   if (!SUPABASE_ANON_KEY) return;

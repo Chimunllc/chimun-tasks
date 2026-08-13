@@ -4409,13 +4409,17 @@ async function openStatementClassifyModal() {
     listEl.innerHTML = head + body;
   };
   const isForce = () => modal.querySelector('#sc-force').checked;
-  const recomputeDone = () => { rows.forEach(r => { r.done = (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(r.fp)); }); };
+  // "Орсон" = ИДЭВХТЭЙ санхүүгийн бүртгэл байгаа эсэх (justification-д [#fp]). Баримтын ledger биш —
+  // цэвэрлэсэн (устгасан) бол дахин оруулахад force хэрэггүй болно.
+  const importedFpSet = () => { const s = new Set(); (state.financeRequests || []).forEach(r => { if (r.status === 'deleted') return; const m = String(r.justification || '').match(/\[#([^\]]+)\]/); if (m) s.add(m[1]); }); return s; };
+  const recomputeDone = () => { const imp = importedFpSet(); rows.forEach(r => { r.done = (!isForce() && imp.has(r.fp)); }); };
   modal.querySelector('#sc-force').onchange = () => { recomputeDone(); render(); };
   modal.querySelector('#sc-file').addEventListener('change', async e => {
     const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
       rows = [];
+      const imp = importedFpSet();
       for (const f of files) {
         const matrix = await statementFileToMatrix(f);
         const src = detectStatementAccount(matrix);
@@ -4426,7 +4430,7 @@ async function openStatementClassifyModal() {
           const cAcct = String(r.account || '').replace(/\D/g, '');
           const salaryEmp = (cat === '7100' && empByAcct[cAcct]) ? empByAcct[cAcct] : '';
           const cardL4 = detectCardLast4(r.memo);
-          rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, done: (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) });
+          rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, done: (!isForce() && imp.has(fp)) });
         });
       }
       // Эх сурвалжуудыг (карт/данс) цуглуулна
@@ -4444,8 +4448,12 @@ async function openStatementClassifyModal() {
     if (!todo.length) { showToast('Оруулах зардал алга', 'warn', 2500); return; }
     saveBtn.disabled = true; let n = 0, sal = 0, toOwner = 0, toMe = 0;
     const force = isForce();
+    const imp = importedFpSet();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
     for (const r of todo) {
-      if (!force) { const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); if (rr === 'dup') { r.done = true; continue; } }
+      // Идэвхтэй санхүүгийн бүртгэл аль хэдийн байвал алгасна (устгасныг дахин оруулж болно).
+      if (!force && imp.has(r.fp)) { r.done = true; continue; }
+      // Баримтын ledger-т тэмдэглэнэ (best-effort, cross-device) — 'dup' буцаавч алгасахгүй.
+      if (!force) { try { await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); } catch (e) {} }
       // Цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
       if (r.salaryEmp) {
         state._finBackfill = { date: r.date };

@@ -4378,19 +4378,19 @@ async function openStatementClassifyModal() {
   const empByAcct = {}; (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = personKey(mm); });
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулгаар зардал ангилах</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Бүх дансны Голомт/Хаан хуулга оруул (олон файл) → зарлага авто ангилагдана. <b>Зөвхөн хуулгаар л баталгаажна.</b></div>
+    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал <b>шууд орно</b>, дараа нь <b>эзэн бүр өөрийн зардлаа ангилж баталгаажуулна</b>. Зөвхөн хуулгаар л орно.</div>
     <label for="sc-file" style="display:block;margin-bottom:12px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
       📄 <b>Хуулга(ууд) оруулах (xlsx / csv)</b>
       <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden multiple>
       <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
-    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer;"><input type="checkbox" id="sc-force"> 🔁 Дахин ачаалах (өмнө бүртгэснийг үл тоож дахин бүртгэх)</label>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer;"><input type="checkbox" id="sc-force"> 🔁 Дахин ачаалах (өмнө орсныг үл тоож дахин оруулах)</label>
     <div id="sc-accts"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
-      <button class="btn btn-primary" id="sc-save" style="display:none;">Ангилагдсаныг бүртгэх</button>
+      <button class="btn btn-primary" id="sc-save" style="display:none;">Зардлыг оруулах</button>
     </div></div>`;
   document.body.appendChild(modal);
   let rows = [], sources = [];
@@ -4413,7 +4413,7 @@ async function openStatementClassifyModal() {
   const renderAccts = () => {
     if (!sources.length) { acctsEl.innerHTML = ''; return; }
     acctsEl.innerHTML = `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;"><b>Карт бүрийн эзэн</b> · салбар (эзэн сонгоход авто) — картын зардлыг тухайн <b>эзэн өөрөө ангилна</b>:</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;"><b>Карт/дансны эзэн</b> · салбар — зардал тухайн <b>эзэн рүү ангилуулахаар</b> очно (эзэнгүй бол танд). Эзэн сонгоход салбар авто:</div>
       ${sources.map(s => { const k = s.key; return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;"><b style="font-size:12px;min-width:58px;">${srcLabel(s)}</b>
         <select data-sc-owner="${escapeHtml(k)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid ${ownerOf(k) || s.type !== 'card' ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(k))}</select>
         <select data-sc-br="${escapeHtml(k)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid ${branchOf(k) ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${brOpts(branchOf(k))}</select></div>`; }).join('')}
@@ -4426,29 +4426,28 @@ async function openStatementClassifyModal() {
     });
     acctsEl.querySelectorAll('[data-sc-br]').forEach(sel => sel.onchange = () => { const k = sel.dataset.scBr; setCardBranch(k, sel.value); if (k.startsWith('c:')) persistCard(k.slice(2)); render(); });
   };
+  // Мөр бүрийн ангилах эзэн: цалин→ажилтан, эс бол эх сурвалжийн эзэн (карт/данс), эс бол CEO
+  const routeOwnerOf = (r) => r.salaryEmp ? r.salaryEmp : (ownerOf(srcKeyOf(r)) || state.me);
   const render = () => {
-    const nCard = rows.filter(r => r.cardL4 && ownerOf(srcKeyOf(r)) && !r.done).length;
-    const nCls = rows.filter(r => !r.cardL4 && r.cat && !r.done).length, nUnk = rows.filter(r => !r.cardL4 && !r.cat && !r.done).length, nDone = rows.filter(r => r.done).length;
-    const nSal = rows.filter(r => r.salaryEmp && !r.done).length;
-    const head = `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Карт→эзэн <b style="color:var(--accent,#7c3aed)">${nCard}</b> · Данс ангилсан <b style="color:var(--ok)">${nCls}</b> · Данс танихгүй <b style="color:var(--warn)">${nUnk}</b>${nSal ? ` · 👤 цалин ${nSal}` : ''}${nDone ? ` · ✓ ${nDone}` : ''}</div>`;
-    const ordered = [...rows].sort((a, b) => (a.done - b.done) || ((a.cat ? 1 : 0) - (b.cat ? 1 : 0)) || String(a.date).localeCompare(String(b.date)));
+    const live = rows.filter(r => !r.done);
+    const nCardOwn = live.filter(r => r.cardL4 && ownerOf(srcKeyOf(r))).length;
+    const nMine = live.filter(r => !r.salaryEmp && routeOwnerOf(r) === state.me).length;
+    const nSal = live.filter(r => r.salaryEmp).length, nDone = rows.filter(r => r.done).length;
+    const head = `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 цалин ${nSal}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
+    const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
-      const idx = rows.indexOf(r);
-      const ok = ownerOf(srcKeyOf(r));
-      const own = ok ? (memberName(ok) || '') : '';
       const srcTag = r.cardL4 ? ('карт ••' + r.cardL4) : ('данс ' + (r.account || '—'));
-      // Карт: эзэн ангилна → зөвхөн "→ эзэн" таг (CEO ангилахгүй). Данс: CEO ангилах select.
-      const ctrl = r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ бүртгэсэн</span>'
-        : (r.cardL4 ? (ok ? `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(own)} ангилна</span>` : '<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэн сонго ↑</span>')
-          : `<select data-sc-cat="${idx}" style="max-width:160px;padding:4px 6px;border:1px solid ${r.cat ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${_catOptions(r.cat)}</select>`);
+      const ro = routeOwnerOf(r); const roName = ro === state.me ? 'та' : memberName(ro);
+      const ctrl = r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ орсон</span>'
+        : (r.salaryEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">цалин · ${escapeHtml(memberName(r.salaryEmp))}</span>`
+          : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}${r.salaryEmp ? ` <span style="color:var(--ok);font-size:10px;">👤 ${escapeHtml(memberName(r.salaryEmp))}</span>` : ''}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${own ? ' · ' + escapeHtml(own) : ''}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${ctrl}
       </div>`;
     }).join('');
     listEl.innerHTML = head + body;
-    listEl.querySelectorAll('[data-sc-cat]').forEach(sel => sel.onchange = () => { const r = rows[+sel.dataset.scCat]; r.cat = sel.value; r.catManual = true; render(); });
   };
   const isForce = () => modal.querySelector('#sc-force').checked;
   const recomputeDone = () => { rows.forEach(r => { r.done = (!isForce() && state.usedReceipts instanceof Set && state.usedReceipts.has(r.fp)); }); };
@@ -4480,41 +4479,42 @@ async function openStatementClassifyModal() {
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });
   saveBtn.onclick = async () => {
-    // Картын мөр → эзэнд оноох (эзэн шаардлагатай, ангилал эзэн өөрөө хийнэ). Дансны шилжүүлэг → CEO ангилна (category).
-    const todo = rows.filter(r => !r.done && (r.cardL4 ? ownerOf(srcKeyOf(r)) : r.cat));
-    if (!todo.length) { showToast('Бүртгэх зардал алга (картад эзэн, дансны шилжүүлэгт ангилал сонгоно уу)', 'warn', 3500); return; }
-    const noOwner = sources.filter(s => s.type === 'card' && rows.some(r => srcKeyOf(r) === s.key && !r.done) && !ownerOf(s.key));
-    if (noOwner.length) { showToast('Карт бүрд эзнийг сонгоно уу — зардал эзэн рүү очиж ангилагдана', 'warn', 3500); return; }
-    saveBtn.disabled = true; let n = 0, sal = 0, pend = 0;
+    // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
+    // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
+    const todo = rows.filter(r => !r.done);
+    if (!todo.length) { showToast('Оруулах зардал алга', 'warn', 2500); return; }
+    saveBtn.disabled = true; let n = 0, sal = 0, toOwner = 0, toMe = 0;
     const force = isForce();
     for (const r of todo) {
       if (!force) { const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); if (rr === 'dup') { r.done = true; continue; } }
-      const sk = srcKeyOf(r);
-      const owner = ownerOf(sk); const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
-      const brCode = branchOf(sk) || (obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
-      // Карт: ангилал эзэн хийнэ (CEO гараар өгсөн бол хэрэглэнэ) → PEND токен. Данс: CEO-гийн ангилал.
-      const isCardPend = !!(r.cardL4 && owner && !r.cat);
-      const cat = r.cardL4 ? (r.cat || CARD_PEND_CAT) : r.cat;
-      const cardTok = r.cardL4 && owner ? ' ' + encodeCardToken(r.cardL4, owner, isCardPend) : '';
-      state._finBackfill = { date: r.date };
-      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.salaryEmp ? memberName(r.salaryEmp) : (r.name || (owner ? memberName(owner) : '') || r.account || '')), purpose: r.memo,
-        justification: `Хуулгаар баталгаажсан · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')}${owner ? ' · эзэн: ' + memberName(owner) : ''} [#${r.fp}]${cardTok}`,
-        category: cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
-      state._finBackfill = null;
-      if (isCardPend) pend++;
-      if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
-      // Цалин баталгаажуулалт — хуулгаас (сарын цалин авагч таарвал)
+      // Цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
       if (r.salaryEmp) {
+        state._finBackfill = { date: r.date };
+        const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
+          justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}]`, category: '7100', deptBranch: branchOf(srcKeyOf(r)) || 'ЗАХ', linkType: 'general', priority: 'low' });
+        state._finBackfill = null;
+        if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
         const rym = String(r.date).slice(0, 7);
         const ctag = /урьдчил/i.test(r.memo) ? SAL_ADV_TAG : /үлдэгд/i.test(r.memo) ? SAL_REM_TAG : '';
         await paySalary(r.salaryEmp, rym, r.debit, `Хуулгаар баталгаажсан · ${r.memo} [#${r.fp}]${ctag ? ' ' + ctag : ''}`);
-        sal++;
+        sal++; r.done = true; n++; continue;
       }
-      learnAcctCat(r.account, r.cat);
+      // Бусад бүх зардал → ангилах эзэн рүү "ангилаагүй" (PEND) болж орно.
+      const routeOwner = routeOwnerOf(r);
+      const rom = findMember(routeOwner); const robs = rom ? (memberBranchesOf(rom) || []) : [];
+      const brCode = branchOf(srcKeyOf(r)) || (robs.includes('m-event') ? 'ИВЕНТ' : robs.includes('camp') ? 'КЕМП' : robs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
+      const cat = r.cat || CARD_PEND_CAT;   // авто таамаг байвал урьдчилан сонгогдоно, гэхдээ эзэн баталгаажуулна
+      state._finBackfill = { date: r.date };
+      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
+        justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)}`,
+        category: cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
+      state._finBackfill = null;
+      if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
+      if (routeOwner === state.me) toMe++; else toOwner++;
       r.done = true; n++;
-      if (n % 5 === 0) { showToast(`${n}/${todo.length} бүртгэж байна…`, 'info', 700); render(); }
+      if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
     }
-    showToast(`${n} зардал бүртгэлээ${pend ? ` · ${pend} карт эзэн рүү ангилуулахаар илгээгдлээ` : ''}${sal ? ` · ${sal} цалин` : ''}`, 'success', 3600);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} цалин` : ''}`, 'success', 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');
@@ -4547,7 +4547,7 @@ function renderMyExpenses() {
     </div>`; };
   return `<div style="max-width:640px;margin:0 auto;padding:4px 2px 40px;">
     <div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🧾 Миний зардал</div>
-      <div style="font-size:12px;color:var(--muted);">Таны картаар гарсан зардлыг ангил — үндсэн ангилал → дэд ангилал, салбар, зарцуулалт.</div></div>
+      <div style="font-size:12px;color:var(--muted);">Танд ирсэн зардлыг ангилж баталгаажуул — үндсэн ангилал → дэд ангилал, салбар, зарцуулалт.</div></div>
     <div style="font-size:14px;font-weight:800;margin:10px 0 8px;">Ангилах <span style="color:var(--warn)">(${pend.length})</span></div>
     ${pend.length ? pend.map(card).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Ангилах зардал алга. 👍</div>'}
     ${doneRecent.length ? `<div style="font-size:13px;font-weight:700;margin:20px 0 8px;color:var(--muted);">Сүүлд ангилсан</div>${doneRecent.map(r => { const t = parseCardToken(r.justification); return `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px;"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || '—')} <span style="color:var(--muted);">· ${escapeHtml(catLabel(r.category))}</span></div><b style="white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</b></div>`; }).join('')}` : ''}

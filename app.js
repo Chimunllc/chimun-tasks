@@ -4251,6 +4251,119 @@ async function runFinRecon(files) {
     unrec: leftovers.filter(st => !isOwn(st) && !isKhan(st)),
   };
 }
+// ── ХУУЛГААР ЗАРДАЛ АНГИЛАХ (долоо хоног бүр) — авто ангилал + гараар + сурах ──
+const EXPENSE_RULES = [
+  [/(\d+\s*сар[^а-я]*цали|үндсэн[^а-я]*цали)/i, '7100'],   // сарын цалин
+  [/цалин|цалингийн/i, '7200'],                            // өдрийн/цагийн цалин
+  [/бонус|урамшуул/i, '7400'],
+  [/бензин|түлш|шатах|каран|канестер|ванет|дизел|газ[^а-я]*цэнэг/i, '1800'],
+  [/хүнс|хоол/i, '1300'],
+  [/цахилгаан|дулаан|усны/i, '2200'],
+  [/утас|интернэт|дата|нэгж/i, '2300'],
+  [/түрээс/i, '2100'],
+  [/засвар|тосол|масло|масал|сэлбэг|дугуй|клапен|тормос|оншилго|халаагч|мотор/i, '1700'],
+  [/барьцаа|буцаалт|буцаа/i, '5800'],
+  [/хүргэлт|тээвэр|такси|нүүлгэ/i, '1100'],
+  [/шимтгэл|charges/i, '5700'],
+  [/сурталчил|контент|маркетинг|reels|бүүст/i, '4900'],
+];
+function _acctCatLearn() { if (!state.acctCatLearn) { try { state.acctCatLearn = JSON.parse(localStorage.getItem('acctCatLearn') || '{}'); } catch (_) { state.acctCatLearn = {}; } } return state.acctCatLearn; }
+function classifyExpense(memo, account) {
+  const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
+  if (rule) return rule[1];
+  const learn = _acctCatLearn(); if (account && learn[account]) return learn[account];
+  return '';
+}
+function learnAcctCat(account, cat) { if (!account || !cat) return; const l = _acctCatLearn(); l[account] = cat; try { localStorage.setItem('acctCatLearn', JSON.stringify(l)); } catch (_) {} }
+function expenseFp(r) { return 'EXP-' + Math.round(r.debit) + '-' + String(r.date).replace(/-/g, '') + '-' + _normFp(r.account || r.memo).slice(0, 22); }
+function _catOptions(sel) {
+  let opts = '<option value="">— сонгох —</option>';
+  Object.keys(FINANCE_SUB_CATEGORIES).forEach(main => (FINANCE_SUB_CATEGORIES[main] || []).forEach(s => {
+    opts += `<option value="${s.code}"${s.code === sel ? ' selected' : ''}>${s.code} ${escapeHtml(s.name)}</option>`;
+  }));
+  return opts;
+}
+async function openStatementClassifyModal() {
+  if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
+  loadUsedReceipts();
+  const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  const _inp = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-top:4px;background:var(--panel);color:var(--text);font-size:13px;';
+  modal.innerHTML = `<div class="modal" style="max-width:660px;max-height:90vh;overflow-y:auto;">
+    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулгаар зардал ангилах</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал автоматаар ангилагдана. Танихгүйг гараар сонгож бүртгэнэ (дараа нь санана).</div>
+    <label style="display:block;margin-bottom:10px;font-size:12px;color:var(--muted);">Картын эзэн (энэ хуулга хэний карт вэ?)
+      <select id="sc-owner" style="${_inp}">${staff.map(m => `<option value="${escapeHtml(personKey(m))}">${escapeHtml(m.name || '')}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`).join('')}</select></label>
+    <label for="sc-file" style="display:block;margin-bottom:12px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
+      📄 <b>Хуулга оруулах (xlsx / csv)</b>
+      <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden>
+      <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Голомт/Хаан дансны хуулга — зарлагыг ангилна</div>
+    </label>
+    <div id="sc-list"></div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+      <button class="btn" id="sc-cancel">Хаах</button>
+      <button class="btn btn-primary" id="sc-save" style="display:none;">Ангилагдсаныг бүртгэх</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  let rows = [];
+  const close = () => modal.remove();
+  modal.querySelector('#sc-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
+  const render = () => {
+    const nCls = rows.filter(r => r.cat && !r.done).length, nUnk = rows.filter(r => !r.cat && !r.done).length, nDone = rows.filter(r => r.done).length;
+    const ownerName = memberName(modal.querySelector('#sc-owner').value) || 'картын эзэн';
+    const head = `<div style="font-size:12px;color:var(--muted);margin:8px 0;">Ангилагдсан <b style="color:var(--ok)">${nCls}</b> · Танихгүй <b style="color:var(--warn)">${nUnk}</b>${nDone ? ` · ✓ бүртгэсэн ${nDone}` : ''}${nUnk ? ` — танихгүйг <b>${escapeHtml(ownerName)}</b> ангилна` : ''}</div>`;
+    const ordered = [...rows].sort((a, b) => (a.done - b.done) || ((a.cat ? 1 : 0) - (b.cat ? 1 : 0)) || String(a.date).localeCompare(String(b.date)));
+    const body = ordered.map(r => {
+      const idx = rows.indexOf(r);
+      return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · данс ${escapeHtml(r.account || '—')}</div></div>
+        <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
+        ${r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ бүртгэсэн</span>' : `<select data-sc-cat="${idx}" style="max-width:160px;padding:4px 6px;border:1px solid ${r.cat ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${_catOptions(r.cat)}</select>`}
+      </div>`;
+    }).join('');
+    listEl.innerHTML = head + body;
+    listEl.querySelectorAll('[data-sc-cat]').forEach(sel => sel.onchange = () => { rows[+sel.dataset.scCat].cat = sel.value; render(); });
+  };
+  modal.querySelector('#sc-owner').onchange = () => render();
+  modal.querySelector('#sc-file').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
+    try {
+      const matrix = await statementFileToMatrix(f);
+      const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''));
+      if (!parsed.length) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
+      rows = parsed.map(r => { const fp = expenseFp(r); return { ...r, cat: classifyExpense(r.memo, r.account), fp, done: (state.usedReceipts instanceof Set && state.usedReceipts.has(fp)) }; });
+      status.innerHTML = `✓ ${rows.length} зарлага уншсан`; status.style.color = 'var(--ok)';
+      render(); saveBtn.style.display = '';
+    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
+  });
+  saveBtn.onclick = async () => {
+    const owner = modal.querySelector('#sc-owner').value;
+    const todo = rows.filter(r => !r.done && r.cat);
+    if (!todo.length) { showToast('Ангилагдсан, бүртгэх зардал алга', 'warn', 2500); return; }
+    saveBtn.disabled = true; let n = 0;
+    const om = findMember(owner); const obs = om ? (memberBranchesOf(om) || []) : [];
+    const brCode = obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
+    for (const r of todo) {
+      const rr = await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' });
+      if (rr === 'dup') { r.done = true; continue; }
+      state._finBackfill = { date: r.date };
+      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || r.account || ''), purpose: r.memo,
+        justification: `Хуулгаар автомат · данс ${r.account || '-'} · карт: ${memberName(owner)} [#${r.fp}]`,
+        category: r.cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
+      state._finBackfill = null;
+      if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
+      learnAcctCat(r.account, r.cat);
+      r.done = true; n++;
+      if (n % 5 === 0) { showToast(`${n}/${todo.length} бүртгэж байна…`, 'info', 700); render(); }
+    }
+    showToast(`${n} зардал санхүүд бүртгэлээ`, 'success', 3000);
+    render(); saveBtn.disabled = false;
+  };
+  modal.classList.add('open');
+}
 function openFinReconModal() {
   document.getElementById('finrecon-modal')?.remove();
   const modal = document.createElement('div');
@@ -12740,11 +12853,13 @@ function renderFinanceReport(wrap) {
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
   const canRecon = state.isCEO || canSeeAllFinance();
-  bar.innerHTML = (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
+  bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
+    + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
+  bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
 
   // ── БАТЛАХ САМБАР — хүлээгдэж буй хүсэлт бүр карт: хавсралт ил, автомат анхааруулга,
   //    картан дээрээ ✓ Батлах / ✗ Татгалзах. Нэг нэгээр нээж ухах шаардлагагүй. ──

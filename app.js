@@ -13261,8 +13261,8 @@ function renderFinanceReport(wrap) {
   // ── Ангилсан / Ангилаагүй (хуулга суурьтай) — хуучин хүсэлт/батлах/шилжүүлэх төлвүүд хасагдсан. ──
   const isUnclassified = (t) => { const tok = parseCardToken(t.justification || ''); return (tok && tok.pend) || String(t.category || '') === CARD_PEND_CAT || !String(t.category || '').trim(); };
   const stDefs = [
-    ['all',    'Бүгд',        () => true,                     'var(--text)'],
-    ['unclas', 'Ангилаагүй',  t => isUnclassified(t),         'var(--warn)'],
+    ['all',    'Бүгд',                     () => true,             'var(--text)'],
+    ['unclas', '⏳ Ангилах хүлээж буй',     t => isUnclassified(t), 'var(--warn)'],
   ];
   const stFilter = (state.finReportStatus === 'unclas') ? 'unclas' : 'all';
   const chips = document.createElement('div');
@@ -13423,6 +13423,10 @@ function renderFinanceReport(wrap) {
     d.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)} <span style="color:var(--muted);font-weight:400;">(${count})</span></span><span style="color:var(--muted);font-weight:600;white-space:nowrap;">${fmtMoney(sum)}</span>`;
     return d;
   };
+  // Ангиллын төлөвийн шошго — ангилаагүй бол «Ангилах хүлээж буй», ангилсан бол «Бүртгэсэн»
+  const classBadge = (t) => isUnclassified(t)
+    ? `<span style="white-space:nowrap;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;color:var(--warn);background:var(--warn-soft,rgba(217,119,6,.13));">⏳ Ангилах хүлээж буй</span>`
+    : `<span style="white-space:nowrap;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;color:var(--ok);background:var(--ok-soft,rgba(16,163,74,.12));">✓ Бүртгэсэн</span>`;
   const line = (t) => {
     const d = document.createElement('div');
     d.style.cssText = 'display:flex;justify-content:space-between;gap:10px;align-items:center;padding:7px 12px 7px 30px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;';
@@ -13440,7 +13444,7 @@ function renderFinanceReport(wrap) {
       ? `<button type="button" class="fin-proof-thumb" data-lightbox="${escapeHtml(driveThumbUrl(t.payment_proof_url, 1600))}" data-fallback="${escapeHtml(t.payment_proof_url)}" title="Шилжүүлгийн баримт — томруулж харах"><img src="${escapeHtml(driveThumbUrl(t.payment_proof_url, 200))}" alt="баримт" loading="lazy"></button>` : '';
     d.innerHTML = `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"${titleAttr}>`
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
-      + `${timeHtml}${proofHtml}`
+      + `${classBadge(t)}${timeHtml}${proofHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
     d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openFinanceModal(t.id); });
     return d;

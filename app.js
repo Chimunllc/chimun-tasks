@@ -1430,14 +1430,11 @@ let FINANCE_SUB_CATEGORIES = {
   ],
 };
 
-/* Салбарын жагсаалт — хүсэлт ХААНА харъялагдсаныг заана */
+/* Зардлын салбар = ЗӨВХӨН 3 үйл ажиллагааны салбар. Хөрөнгө нь ангилал 6000-аар компанид авто орно. */
 const FINANCE_BRANCHES = [
-  { code: 'ИВЕНТ',    name: 'Эм Ивент' },
-  { code: 'КЕМП',     name: 'Номаад кемп' },
+  { code: 'ИВЕНТ',    name: 'M-Event' },
+  { code: 'КЕМП',     name: 'NOMAAD' },
   { code: 'КАТЕРИНГ', name: 'Катеринг' },
-  { code: 'ЗАХ',      name: 'Захиргаа' },
-  { code: 'ХАМТ',     name: 'Хамтын зардал' },
-  { code: 'ХХК',      name: 'Чимун ХХК (хөрөнгө)' },
 ];
 
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
@@ -1746,8 +1743,8 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
     // dept_branch: АЖИЛТАН өөрөө илгээвэл АВТО өөрийн салбар (форм сонголтыг үл хэрэгсэнэ).
     // Нягтлан/CEO өмнөөс оруулбал формоор сонгосон салбар (эс бөгөөс өөрийн default).
     dept_branch: (function(){
-      // Хуулгын импорт (backfill) — картын/дансны бүртгэлээс тодорхойлсон салбарыг ХҮНДЭТГЭ.
-      if (state._finBackfill && deptBranch) return deptBranch;
+      // Хуулгын импорт (backfill) — дамжуулсан салбарыг ЯГ хүндэтгэ (хоосон бол хоосон, ЗАХ болгохгүй; эзэн ангилахад тодрено).
+      if (state._finBackfill) return deptBranch || '';
       // ОБЪЕКТ сонгосон бол салбар түүнээс АВТОМАТ гарна — хэн илгээснээс үл хамааран (давхар асуухгүй).
       const byLink = { nomaad: 'КЕМП', order: 'ИВЕНТ', car: 'ХХК', product: 'ХХК', general: 'ЗАХ' }[linkType];
       if (byLink) return byLink;
@@ -4258,6 +4255,21 @@ function merchantKey(memo) {
 }
 function _memoCatLearn() { if (!state.memoCatLearn) { try { state.memoCatLearn = JSON.parse(localStorage.getItem('memoCatLearn') || '{}'); } catch (_) { state.memoCatLearn = {}; } } return state.memoCatLearn; }
 function learnMemoCat(memo, cat) { const k = merchantKey(memo); if (!k || k.length < 3 || !cat) return; const o = _memoCatLearn(); o[k] = cat; try { localStorage.setItem('memoCatLearn', JSON.stringify(o)); } catch (_) {} }
+// ── Салбар таамаглах (ЗӨВХӨН 3: ИВЕНТ/КЕМП/КАТЕРИНГ) — утга + сурсан худалдагч + эзний салбараар ──
+const BRANCH_KEYWORDS = [
+  ['КЕМП', /кемп|kemp|nomaad|номаад|\bcamp\b|глэмп|глампинг|майхан|\bгэр\b|юрт/i],
+  ['КАТЕРИНГ', /катеринг|catering|кейтеринг|цайл|цайллага|ресто|\bменю\b|\bцэс\b|тогооч|хүнс.*нийл/i],
+  ['ИВЕНТ', /ивент|event|эвент|m.?event|м.?ивент|тайз|\bасар\b|стейж|стейдж|тоглолт|хурим|төрсөн\s*өдөр/i],
+];
+function _memoBranchLearn() { if (!state.memoBranchLearn) { try { state.memoBranchLearn = JSON.parse(localStorage.getItem('memoBranchLearn') || '{}'); } catch (_) { state.memoBranchLearn = {}; } } return state.memoBranchLearn; }
+function learnMemoBranch(memo, brCode) { const k = merchantKey(memo); if (!k || k.length < 3 || !brCode || !STMT_BRANCHES.some(([c]) => c === brCode)) return; const o = _memoBranchLearn(); o[k] = brCode; try { localStorage.setItem('memoBranchLearn', JSON.stringify(o)); } catch (_) {} }
+function guessBranch(memo, ownerKey) {
+  const mk = merchantKey(memo); const bl = _memoBranchLearn(); if (mk && mk.length >= 3 && bl[mk]) return bl[mk];   // сурсан худалдагч
+  for (const [code, re] of BRANCH_KEYWORDS) if (re.test(memo || '')) return code;                                  // утгын түлхүүр
+  const m = ownerKey ? findMember(ownerKey) : null; const obs = m ? (memberBranchesOf(m) || []) : [];              // эзний салбар
+  if (obs.includes('m-event')) return 'ИВЕНТ'; if (obs.includes('camp')) return 'КЕМП'; if (obs.includes('catering')) return 'КАТЕРИНГ';
+  return '';
+}
 function classifyExpense(memo, account) {
   const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
   if (rule) return rule[1];
@@ -4309,7 +4321,10 @@ function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.
 function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
 function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
-const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК'], ['ЗАХ', 'Захиргаа']];
+// Зардлын салбар = ЗӨВХӨН 3 үйл ажиллагааны салбар. Чимун ХХК (толгой) зардлын салбар БИШ —
+// хөрөнгө (ангилал 6000) л компанид бүртгэгдэнэ. Захиргаа катч-олл хасагдсан.
+const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг']];
+// Хуучин дата дахь ХХК/ЗАХ-г нэр рүү буулгах mapping (сонгогчид харагдахгүй ч хөрвүүлэлтэд хэрэгтэй).
 const _BRANCH_CODE2NAME = { 'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг', 'ХХК': 'Чимун ХХК', 'ЗАХ': 'Захиргаа' };
 // Гүйлгээний утгаас картын сүүлийн 4 оронг салгах (POS/онлайн: "420733******2819:..." → 2819)
 function detectCardLast4(memo) {
@@ -4493,7 +4508,7 @@ async function openStatementClassifyModal() {
       // ЦАГИЙН ажилтны цалин — "Цагийн цалин" хэсэгт ордог форматаар бүртгэнэ (эзэн ангилалд явуулахгүй).
       if (r.hourlyEmp) {
         const nm = r.hourlyEmp.name || memberName(r.hourlyEmp.key);
-        const hbr = (r.hourlyEmp.m && r.hourlyEmp.m.branches && r.hourlyEmp.m.branches[0]) || branchOf(srcKeyOf(r)) || 'ЗАХ';
+        const hbr = guessBranch(r.memo, r.hourlyEmp.key) || 'КЕМП';   // цагийн ажилтны салбар (эзний member_branches-ээс)
         state._finBackfill = { date: r.date };
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
           justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}]`, category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
@@ -4505,7 +4520,7 @@ async function openStatementClassifyModal() {
       if (r.salaryEmp) {
         state._finBackfill = { date: r.date };
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
-          justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}]`, category: '7100', deptBranch: branchOf(srcKeyOf(r)) || 'ЗАХ', linkType: 'general', priority: 'low' });
+          justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}]`, category: '7100', deptBranch: guessBranch(r.memo, r.salaryEmp) || branchOf(srcKeyOf(r)) || 'КЕМП', linkType: 'general', priority: 'low' });
         state._finBackfill = null;
         if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
         const rym = String(r.date).slice(0, 7);
@@ -4515,8 +4530,9 @@ async function openStatementClassifyModal() {
       }
       // Бусад бүх зардал → ангилах эзэн рүү "ангилаагүй" (PEND) болж орно.
       const routeOwner = routeOwnerOf(r);
-      const rom = findMember(routeOwner); const robs = rom ? (memberBranchesOf(rom) || []) : [];
-      const brCode = branchOf(srcKeyOf(r)) || (robs.includes('m-event') ? 'ИВЕНТ' : robs.includes('camp') ? 'КЕМП' : robs.includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ');
+      // Салбарын таамаг: картын салбар → эзний салбар/утгын таамаг (ЗӨВХӨН 3 салбар). Эзэн Миний зардалд баталгаажуулна.
+      const brOwn = branchOf(srcKeyOf(r)); const brValid = STMT_BRANCHES.some(([c]) => c === brOwn);
+      const brCode = (brValid ? brOwn : '') || guessBranch(r.memo, routeOwner) || '';
       const cat = r.cat || CARD_PEND_CAT;   // авто таамаг байвал урьдчилан сонгогдоно, гэхдээ эзэн баталгаажуулна
       state._finBackfill = { date: r.date };
       const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
@@ -4540,13 +4556,14 @@ function renderMyExpenses() {
   // Сүүлд ангилсан (лавлагаа) — миний картын OK токентой, 10 хүртэл
   const doneRecent = (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && !t.pend && t.ownerKey === me; })
     .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || ''))).slice(0, 10);
-  const brName = { 'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг', 'ХХК': 'Чимун ХХК', 'ЗАХ': 'Захиргаа' };
-  const brOpts = (sel) => STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  const brOpts = (sel) => `<option value="">— салбар сонго —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
   // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
   const guessOf = (r) => (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', '');
-  const nGuess = pend.filter(r => guessOf(r)).length;
+  // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/эзнээс таамаг.
+  const brGuessOf = (r) => STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', me);
+  const nGuess = pend.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); }).length;
   const card = (r) => { const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
-    const gSub = guessOf(r); const mainCur = mainOfSub(gSub); const isGuess = !!gSub;
+    const gSub = guessOf(r); const mainCur = mainOfSub(gSub); const brGuess = brGuessOf(r); const isGuess = !!(gSub && (brGuess || isAssetCat(gSub)));
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
         <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
@@ -4558,7 +4575,7 @@ function renderMyExpenses() {
         <select data-mx-sub style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${subCatOptions(mainCur, gSub)}</select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;">
-        <select data-mx-branch style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${brOpts(r.dept_branch)}</select>
+        <select data-mx-branch style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${brOpts(brGuess)}</select>
         <input data-mx-note placeholder="Зарцуулалт (юунд? — сонголт)" style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">${isGuess ? '<span style="font-size:11px;color:var(--accent,#7c3aed);font-weight:600;">🔮 Таамаг — зөв бол «Батлах»</span>' : '<span></span>'}<button class="btn btn-primary btn-sm" data-mx-save>${isGuess ? 'Батлах' : 'Ангилах'}</button></div>
@@ -4572,13 +4589,19 @@ function renderMyExpenses() {
     ${doneRecent.length ? `<div style="font-size:13px;font-weight:700;margin:20px 0 8px;color:var(--muted);">Сүүлд ангилсан</div>${doneRecent.map(r => { const t = parseCardToken(r.justification); return `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px;"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || '—')} <span style="color:var(--muted);">· ${escapeHtml(catLabel(r.category))}</span></div><b style="white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</b></div>`; }).join('')}` : ''}
   </div>`;
 }
+// Ангилал хөрөнгийнх (6000) уу — тийм бол компанийн хөрөнгө, салбар шаардлагагүй (finEffBranch → Хөрөнгө).
+function isAssetCat(subCode) { return mainOfSub(subCode) === '6000'; }
 function attachMyExpensesHandlers() {
   document.querySelectorAll('.my-exp-card').forEach(cardEl => {
     const mainSel = cardEl.querySelector('[data-mx-main]'), subSel = cardEl.querySelector('[data-mx-sub]');
-    mainSel.onchange = () => { subSel.innerHTML = subCatOptions(mainSel.value, ''); };
+    const brSel = cardEl.querySelector('[data-mx-branch]');
+    const syncAsset = () => { const asset = mainSel.value === '6000'; brSel.disabled = asset; brSel.style.opacity = asset ? '.45' : ''; if (asset) brSel.title = 'Хөрөнгө → компанийн хөрөнгө (салбаргүй)'; };
+    mainSel.onchange = () => { subSel.innerHTML = subCatOptions(mainSel.value, ''); syncAsset(); };
+    syncAsset();
     cardEl.querySelector('[data-mx-save]').onclick = async () => {
       const sub = subSel.value; if (!sub) { showToast('Дэд ангиллаа сонгоно уу', 'warn', 2500); return; }
-      const br = cardEl.querySelector('[data-mx-branch]').value;
+      const br = brSel.value;
+      if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу (M-Event / NOMAAD / Катеринг)', 'warn', 3000); return; }
       const note = cardEl.querySelector('[data-mx-note]').value.trim();
       const btn = cardEl.querySelector('[data-mx-save]'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
       await classifyMyCardExpense(cardEl.dataset.fr, sub, br, note);
@@ -4586,17 +4609,19 @@ function attachMyExpensesHandlers() {
   });
   document.getElementById('mx-confirm-all')?.addEventListener('click', confirmAllGuessedExpenses);
 }
-// Таамгаар бүгдийг батлах — таамаглаж чадсан бүх зардлыг нэг дор баталгаажуулна.
+// Таамгаар бүгдийг батлах — ангилал БА салбарыг таамаглаж чадсан (эсвэл хөрөнгө) бүгдийг нэг дор.
 async function confirmAllGuessedExpenses() {
   const me = state.me;
-  const items = myPendingCardExpenses(me)
-    .map(r => { const g = (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', ''); return { r, sub: g }; })
-    .filter(x => x.sub);
-  if (!items.length) { showToast('Таамаглаж чадсан зардал алга', 'warn', 2500); return; }
+  const items = myPendingCardExpenses(me).map(r => {
+    const sub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', '');
+    const br = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', me);
+    return { r, sub, br };
+  }).filter(x => x.sub && (x.br || isAssetCat(x.sub)));   // ангилал + (салбар эсвэл хөрөнгө)
+  if (!items.length) { showToast('Бүрэн таамаглаж чадсан зардал алга', 'warn', 2500); return; }
   if (!(await showConfirm(`${items.length} зардлыг таамгаар нь батлах уу?\nБуруу ангилагдсаныг дараа засаж болно.`, { okText: 'Бүгдийг батлах' }))) return;
   showToast('Батлаж байна…', 'info', 1500);
   let n = 0;
-  for (const { r, sub } of items) { try { await classifyMyCardExpense(r.id, sub, r.dept_branch, '', { silent: true }); n++; } catch (e) {} if (n % 10 === 0) showToast(`${n}/${items.length}…`, 'info', 700); }
+  for (const { r, sub, br } of items) { try { await classifyMyCardExpense(r.id, sub, br, '', { silent: true }); n++; } catch (e) {} if (n % 10 === 0) showToast(`${n}/${items.length}…`, 'info', 700); }
   showToast(`${n} зардал батлагдлаа ✓`, 'success', 2800);
   render();
 }
@@ -4604,8 +4629,10 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   const r = (state.financeRequests || []).find(x => x.id === id); if (!r) return;
   const tok = parseCardToken(r.justification);
   r.category = subCode;
-  if (brCode) r.dept_branch = brCode;
-  learnMemoCat(r.purpose || r.beneficiary || '', subCode);   // худалдагч→ангилал сурах (дараа автомат)
+  if (isAssetCat(subCode)) r.dept_branch = 'ХХК';        // хөрөнгө → компани (finEffBranch мөн 6000-г Хөрөнгө болгоно)
+  else if (brCode) r.dept_branch = brCode;
+  learnMemoCat(r.purpose || r.beneficiary || '', subCode);          // худалдагч→ангилал сурах
+  if (brCode && !isAssetCat(subCode)) learnMemoBranch(r.purpose || r.beneficiary || '', brCode);   // худалдагч→салбар сурах
   const base = stripCardToken(r.justification);
   const noteTag = note ? ` · зарцуулалт: ${note}` : '';
   r.justification = `${base}${noteTag} ${encodeCardToken(tok ? tok.last4 : '', state.me, false)}`.trim();
@@ -7054,7 +7081,7 @@ async function clearMemberPerms(personKey) {
 // Хуулгаар ангилах модал эндээс данс→салбарыг автоматаар таьнна.
 const BANK_LIST = ['Голомт', 'Хаан', 'Худалдаа хөгжил', 'Төрийн', 'Хас', 'Капитрон', 'Ариг', 'Богд'];
 const ACCT_PURPOSES = ['орлого', 'зарлага', 'валют', 'цалин', 'татвар', 'бусад'];
-const BANK_BRANCHES = ['M-Event', 'NOMAAD', 'Катеринг', 'Чимун ХХК', 'Захиргаа'];
+const BANK_BRANCHES = ['M-Event', 'NOMAAD', 'Катеринг'];
 const _BRANCH_NAME2CODE = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Катеринг': 'КАТЕРИНГ', 'Чимун ХХК': 'ХХК', 'Захиргаа': 'ЗАХ' };
 function _acctDigits(s) { return String(s || '').replace(/\D/g, ''); }
 // Бүртгэлээс хуулгаар-ангилах хэрэгслийн data→салбар/эзэн map-уудыг дүүргэнэ (fill-if-empty).

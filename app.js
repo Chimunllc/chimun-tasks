@@ -4355,8 +4355,10 @@ async function openStatementClassifyModal() {
   await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
   const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
   const ownerOpts = (sel) => `<option value="">— эзэн —</option>` + staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
-  // Сарын цалин авагчийн данс → ажилтан (хуулгаас цалин баталгаажуулахад)
-  const empByAcct = {}; (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = personKey(mm); });
+  // Ажилтны данс → {key, name, type}. Сарын цалин авагч + ЦАГИЙН ажилтан (тус тусдаа хэсэгт бүртгэнэ).
+  const empByAcct = {};
+  (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'monthly', m: mm }; });
+  (typeof hourlyWorkers === 'function' ? hourlyWorkers() : []).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a && !empByAcct[a]) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'hourly', m: mm }; });
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах</div>
@@ -4412,19 +4414,20 @@ async function openStatementClassifyModal() {
   const render = () => {
     const live = rows.filter(r => !r.done);
     const nCardOwn = live.filter(r => r.cardL4 && ownerOf(srcKeyOf(r))).length;
-    const nMine = live.filter(r => !r.salaryEmp && routeOwnerOf(r) === state.me).length;
-    const nSal = live.filter(r => r.salaryEmp).length, nDone = rows.filter(r => r.done).length;
+    const nMine = live.filter(r => !r.salaryEmp && !r.hourlyEmp && routeOwnerOf(r) === state.me).length;
+    const nSal = live.filter(r => r.salaryEmp).length, nHrl = live.filter(r => r.hourlyEmp).length, nDone = rows.filter(r => r.done).length;
     // Эзэнгүй картууд — эдгээрийн зардал танд ирнэ (эзэн рүү очихгүй). Тод анхааруулна.
     const orphanCards = [...new Set(live.filter(r => r.cardL4 && !ownerOf(srcKeyOf(r))).map(r => r.cardL4))];
     const warnBanner = orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '';
-    const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 цалин ${nSal}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
+    const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
       const srcTag = r.cardL4 ? ('карт ••' + r.cardL4) : ('данс ' + (r.account || '—'));
       const ro = routeOwnerOf(r); const roName = ro === state.me ? 'та' : memberName(ro);
       const orphan = r.cardL4 && !ownerOf(srcKeyOf(r));
       const ctrl = r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ орсон</span>'
-        : (r.salaryEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">цалин · ${escapeHtml(memberName(r.salaryEmp))}</span>`
+        : (r.hourlyEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">цагийн цалин · ${escapeHtml(r.hourlyEmp.name)}</span>`
+          : r.salaryEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">сарын цалин · ${escapeHtml(memberName(r.salaryEmp))}</span>`
           : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
           : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
@@ -4458,9 +4461,12 @@ async function openStatementClassifyModal() {
           const fp = expenseFp(r);
           const cat = classifyExpense(r.memo, r.account);
           const cAcct = String(r.account || '').replace(/\D/g, '');
-          const salaryEmp = (cat === '7100' && empByAcct[cAcct]) ? empByAcct[cAcct] : '';
+          const emp = empByAcct[cAcct];
+          // Сарын цалин: данс таарч утга цалин гэсэн (7100 эсвэл 'цалин'). Цагийн ажилтан: данс таарвал шууд (шилжүүлэг=хөлс).
+          const salaryEmp = (emp && emp.type === 'monthly' && (cat === '7100' || /цалин|цали/i.test(r.memo || ''))) ? emp.key : '';
+          const hourlyEmp = (emp && emp.type === 'hourly') ? emp : null;
           const cardL4 = detectCardLast4(r.memo);
-          rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, done: (!isForce() && imp.has(fp)) });
+          rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, hourlyEmp, done: (!isForce() && imp.has(fp)) });
         });
       }
       // Эх сурвалжуудыг (карт/данс) цуглуулна
@@ -4476,7 +4482,7 @@ async function openStatementClassifyModal() {
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
     const todo = rows.filter(r => !r.done);
     if (!todo.length) { showToast('Оруулах зардал алга', 'warn', 2500); return; }
-    saveBtn.disabled = true; let n = 0, sal = 0, toOwner = 0, toMe = 0;
+    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0;
     const force = isForce();
     const imp = importedFpSet();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
     for (const r of todo) {
@@ -4484,7 +4490,18 @@ async function openStatementClassifyModal() {
       if (!force && imp.has(r.fp)) { r.done = true; continue; }
       // Баримтын ledger-т тэмдэглэнэ (best-effort, cross-device) — 'dup' буцаавч алгасахгүй.
       if (!force) { try { await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); } catch (e) {} }
-      // Цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
+      // ЦАГИЙН ажилтны цалин — "Цагийн цалин" хэсэгт ордог форматаар бүртгэнэ (эзэн ангилалд явуулахгүй).
+      if (r.hourlyEmp) {
+        const nm = r.hourlyEmp.name || memberName(r.hourlyEmp.key);
+        const hbr = (r.hourlyEmp.m && r.hourlyEmp.m.branches && r.hourlyEmp.m.branches[0]) || branchOf(srcKeyOf(r)) || 'ЗАХ';
+        state._finBackfill = { date: r.date };
+        const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
+          justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}]`, category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
+        state._finBackfill = null;
+        if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.received_by = r.hourlyEmp.key; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
+        hrl++; r.done = true; n++; continue;
+      }
+      // Сарын цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
       if (r.salaryEmp) {
         state._finBackfill = { date: r.date };
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
@@ -4511,7 +4528,7 @@ async function openStatementClassifyModal() {
       r.done = true; n++;
       if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} цалин` : ''}`, 'success', 4000);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}`, 'success', 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');

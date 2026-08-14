@@ -9296,8 +9296,9 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
     camp: modal.querySelector('#ne-camp').value,
     tier: modal.querySelector('#ne-tier').value.trim(),
     note: modal.querySelector('#ne-note').value.trim(),
-    // Эцсийн гэрээний дүн (акт) — хоосон бол хуучин утгыг хадгална (санамсаргүй устгахаас сэргийлнэ)
-    final_amount: finalVal !== '' ? moneyVal(modal.querySelector('#ne-final')) : (o.final_amount || ''),
+    // Эцсийн гэрээний дүн (акт) — талбар хоосон бол ЦЭВЭРЛЭНЭ (placeholder "хоосон = гэрээтэй ижил"):
+    //   акт → гэрээний дүнтэй ижил болж, хуурамч "гүйцэтгэлийн хасалт/илүү төлсөн" арилна.
+    final_amount: finalVal !== '' ? moneyVal(modal.querySelector('#ne-final')) : '',
     // Хоосон бол хуучин утгыг хадгална (parse хийгдэхгүй чөлөөт текст огноог хамгаална)
     date_start: startVal ? fmtDT(startVal) : (o.date_start || ''),
     date_end: endVal ? fmtDT(endVal) : (o.date_end || ''),

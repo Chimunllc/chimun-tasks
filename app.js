@@ -4305,6 +4305,21 @@ function detectCardLast4(memo) {
   return m ? m[2] : '';
 }
 function cardByLast4(l4) { return l4 ? (state.bankCards || []).find(c => c.active !== false && String(c.last4) === String(l4)) : null; }
+// Компанийн ӨӨРИЙН бүх дансны дугаарын багц (Данс & Карт бүртгэлээс). Дотоод шилжүүлэг таних.
+function ownAcctSet() {
+  const s = new Set();
+  (state.bankAccounts || []).forEach(a => {
+    if (a.active === false) return;
+    [a.account_no, a.id, a.iban].forEach(v => { const d = String(v || '').replace(/\D/g, ''); if (d.length >= 8) { s.add(d); s.add(d.slice(-10)); } });
+  });
+  return s;
+}
+// Харьцсан данс нь өөрийн данс уу — тийм бол дотоод шилжүүлэг (зарлага БИШ).
+function isInternalTransfer(r, own) {
+  const d = String(r.account || '').replace(/\D/g, '');
+  if (d.length < 8) return false;
+  return own.has(d) || own.has(d.slice(-10));
+}
 // Картын default зарцуулалтын зорилго (ангилал) — тухайн картын бүх мөрд өгөгдмөл болгоно.
 function _cardDefCat() { if (!state.cardDefCat) { try { state.cardDefCat = JSON.parse(localStorage.getItem('cardDefCat') || '{}'); } catch (_) { state.cardDefCat = {}; } } return state.cardDefCat; }
 function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[key] = cat; try { localStorage.setItem('cardDefCat', JSON.stringify(o)); } catch (_) {} }
@@ -4420,10 +4435,13 @@ async function openStatementClassifyModal() {
     try {
       rows = [];
       const imp = importedFpSet();
+      const own = ownAcctSet(); let skippedInternal = 0;
       for (const f of files) {
         const matrix = await statementFileToMatrix(f);
         const src = detectStatementAccount(matrix);
-        const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''));
+        const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''))
+          // Өөрийн данс хооронд шилжүүлсэн нь зарлага БИШ — оруулахгүй.
+          .filter(r => { if (isInternalTransfer(r, own)) { skippedInternal++; return false; } return true; });
         parsed.forEach(r => {
           const fp = expenseFp(r);
           const cat = classifyExpense(r.memo, r.account);
@@ -4436,8 +4454,8 @@ async function openStatementClassifyModal() {
       // Эх сурвалжуудыг (карт/данс) цуглуулна
       const seen = new Set(); sources = [];
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
-      if (!rows.length) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
-      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс`; status.style.color = 'var(--ok)';
+      if (!rows.length && !skippedInternal) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
+      status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
       renderAccts(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });

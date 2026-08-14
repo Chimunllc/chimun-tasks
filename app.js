@@ -4266,17 +4266,55 @@ const BRANCH_KEYWORDS = [
 function _memoBranchLearn() { if (!state.memoBranchLearn) { try { state.memoBranchLearn = JSON.parse(localStorage.getItem('memoBranchLearn') || '{}'); } catch (_) { state.memoBranchLearn = {}; } } return state.memoBranchLearn; }
 function learnMemoBranch(memo, brCode) { const k = merchantKey(memo); if (!k || k.length < 3 || !brCode || !STMT_BRANCHES.some(([c]) => c === brCode)) return; const o = _memoBranchLearn(); o[k] = brCode; try { localStorage.setItem('memoBranchLearn', JSON.stringify(o)); } catch (_) {} }
 function guessBranch(memo, ownerKey) {
-  const mk = merchantKey(memo); const bl = _memoBranchLearn(); if (mk && mk.length >= 3 && bl[mk]) return bl[mk];   // сурсан худалдагч
-  for (const [code, re] of BRANCH_KEYWORDS) if (re.test(memo || '')) return code;                                  // утгын түлхүүр
-  const m = ownerKey ? findMember(ownerKey) : null; const obs = m ? (memberBranchesOf(m) || []) : [];              // эзний салбар
-  if (obs.includes('m-event')) return 'ИВЕНТ'; if (obs.includes('camp')) return 'КЕМП'; if (obs.includes('catering')) return 'КАТЕРИНГ';
+  const mk = merchantKey(memo);
+  if (mk && mk.length >= 3) {
+    const sh = _expLearn()[mk]; if (sh && sh.branch) return sh.branch;      // ХУВААЛЦСАН суралцлага (бүх компани)
+    const bl = _memoBranchLearn(); if (bl[mk]) return bl[mk];               // локал суралцлага
+  }
+  for (const [code, re] of BRANCH_KEYWORDS) if (re.test(memo || '')) return code;   // утгын түлхүүр
+  // Эзний салбар — ЗӨВХӨН нэг салбартай бол таамаглана. Олон салбартай (жиш m-event+camp) бол
+  // таамаглахгүй → эзэн өөрөө сонгож, тэр сонголтоор апп СУРНА (M-Event руу буудахаас сэргийлнэ).
+  const m = ownerKey ? findMember(ownerKey) : null; const obs = m ? (memberBranchesOf(m) || []) : [];
+  const single = [...new Set(obs.filter(b => ['m-event', 'camp', 'catering'].includes(b)))];
+  if (single.length === 1) return single[0] === 'm-event' ? 'ИВЕНТ' : single[0] === 'camp' ? 'КЕМП' : 'КАТЕРИНГ';
   return '';
+}
+// ── ХУВААЛЦСАН СУРАЛЦЛАГА (expense_learn, PostgREST anon) — худалдагч→салбар+ангилал, бүх компанид ──
+function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
+async function loadExpenseLearn() {
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) return;
+    const map = {}; (await r.json()).forEach(x => { if (x && x.key) map[x.key] = { branch: x.branch || '', cat: x.cat || '' }; });
+    state.expenseLearn = map;
+  } catch (e) { console.warn('loadExpenseLearn', e); }
+}
+async function saveExpenseLearn(memo, val) {
+  const key = merchantKey(memo); if (!key || key.length < 3) return;
+  const cur = _expLearn()[key] || {};
+  const branch = (val && val.branch && STMT_BRANCHES.some(([c]) => c === val.branch)) ? val.branch : (cur.branch || '');
+  const cat = (val && val.cat) || cur.cat || '';
+  if (branch === (cur.branch || '') && cat === (cur.cat || '')) return;   // өөрчлөлтгүй бол алгасна
+  _expLearn()[key] = { branch, cat };
+  if (!SUPABASE_ANON_KEY) return;
+  try {
+    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/expense_learn?on_conflict=key`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ key, branch, cat, updated_by: state.me, updated_at: new Date().toISOString() }),
+    }, 15000);
+  } catch (e) { console.warn('saveExpenseLearn', e); }
 }
 function classifyExpense(memo, account) {
   const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
   if (rule) return rule[1];
   const learn = _acctCatLearn(); if (account && learn[account]) return learn[account];
-  const mk = merchantKey(memo); const ml = _memoCatLearn(); if (mk && mk.length >= 3 && ml[mk]) return ml[mk];   // сурсан худалдагч
+  const mk = merchantKey(memo);
+  if (mk && mk.length >= 3) {
+    const sh = _expLearn()[mk]; if (sh && sh.cat) return sh.cat;          // ХУВААЛЦСАН суралцлага
+    const ml = _memoCatLearn(); if (ml[mk]) return ml[mk];               // локал
+  }
   return '';
 }
 function learnAcctCat(account, cat) { if (!account || !cat) return; const l = _acctCatLearn(); l[account] = cat; try { localStorage.setItem('acctCatLearn', JSON.stringify(l)); } catch (_) {} }
@@ -4370,6 +4408,7 @@ async function openStatementClassifyModal() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
   await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
+  await loadExpenseLearn();       // хуваалцсан суралцлагаар салбар/ангилал таамаглана
   const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
   const ownerOpts = (sel) => `<option value="">— эзэн —</option>` + staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
   // Ажилтны данс → {key, name, type}. Сарын цалин авагч + ЦАГИЙН ажилтан (тус тусдаа хэсэгт бүртгэнэ).
@@ -4633,8 +4672,10 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   r.category = subCode;
   if (isAssetCat(subCode)) r.dept_branch = 'ХХК';        // хөрөнгө → компани (finEffBranch мөн 6000-г Хөрөнгө болгоно)
   else if (brCode) r.dept_branch = brCode;
-  learnMemoCat(r.purpose || r.beneficiary || '', subCode);          // худалдагч→ангилал сурах
-  if (brCode && !isAssetCat(subCode)) learnMemoBranch(r.purpose || r.beneficiary || '', brCode);   // худалдагч→салбар сурах
+  const _memo = r.purpose || r.beneficiary || '';
+  learnMemoCat(_memo, subCode);                                     // локал: худалдагч→ангилал
+  if (brCode && !isAssetCat(subCode)) learnMemoBranch(_memo, brCode);   // локал: худалдагч→салбар
+  saveExpenseLearn(_memo, { cat: subCode, branch: isAssetCat(subCode) ? '' : brCode });   // ХУВААЛЦСАН (бүх компанид)
   const base = stripCardToken(r.justification);
   const noteTag = note ? ` · зарцуулалт: ${note}` : '';
   r.justification = `${base}${noteTag} ${encodeCardToken(tok ? tok.last4 : '', state.me, false)}`.trim();
@@ -17702,6 +17743,7 @@ async function bootApp() {
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)
   loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
+  loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
   if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();
@@ -17816,6 +17858,7 @@ function refreshViewData() {
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   else if (v === 'booqable' && canSeeBooqable()) loadBooqable(true);
   else if (v === 'accounts' && state.isCEO) loadBankAccounts(true);
+  else if (v === 'myexpenses') loadExpenseLearn();   // шинэ хуваалцсан суралцлага авч таамаглана
 }
 
 async function refreshFromServer() {

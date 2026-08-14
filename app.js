@@ -4647,6 +4647,43 @@ function renderMyExpenses() {
   // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/эзнээс таамаг.
   const brGuessOf = (r) => STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', me);
   const nGuess = pend.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); }).length;
+  // ── Гүйлгээ бүрийн метадата (шүүлт + дэлгэрэнгүйд) ──
+  const mxMeta = (r) => {
+    const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
+    const am = String(r.justification || '').match(/данс\s+([0-9A-Za-zМмNn]{4,})/); const acct = am ? am[1] : (r.account_number || '');
+    const fd = String(r.justification || '').match(/#EXP-\d+-(\d{4})(\d{2})(\d{2})/);
+    const txDate = (r.executed_at || '').slice(0, 10) || (fd ? `${fd[1]}-${fd[2]}-${fd[3]}` : '') || String(r.requested_at || '').slice(0, 10);
+    const src = l4 ? ('карт ••' + l4) : (acct ? ('данс ' + acct) : '');
+    return { l4, acct, txDate, src };
+  };
+  // ── 5 ШҮҮЛТҮҮР: хайлт · огноо · дүн · эх сурвалж (данс/карт) · эрэмбэ ──
+  const F = state.mxF = state.mxF || { q: '', date: '', min: 0, src: '', sort: '' };
+  const _dates = [...new Set(pend.map(r => mxMeta(r).txDate).filter(Boolean))].sort().reverse();
+  const _srcs = [...new Set(pend.map(r => mxMeta(r).src).filter(Boolean))].sort();
+  const MINS = [[0, 'Бүх дүн'], [50000, '50 мянга+'], [100000, '100 мянга+'], [300000, '300 мянга+'], [1000000, '1 сая+']];
+  let list = pend.filter(r => {
+    const m = mxMeta(r);
+    if (F.q) { const hay = ((r.purpose || '') + ' ' + (r.beneficiary || '') + ' ' + m.acct).toLowerCase(); if (!hay.includes(F.q.toLowerCase())) return false; }
+    if (F.date && m.txDate !== F.date) return false;
+    if (F.min && (Number(r.amount) || 0) < F.min) return false;
+    if (F.src && m.src !== F.src) return false;
+    return true;
+  });
+  const _byDate = (a, b) => mxMeta(a).txDate.localeCompare(mxMeta(b).txDate);
+  if (F.sort === 'amt_desc') list.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
+  else if (F.sort === 'amt_asc') list.sort((a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0));
+  else if (F.sort === 'date_desc') list.sort((a, b) => _byDate(b, a));
+  else if (F.sort === 'date_asc') list.sort(_byDate);
+  const fActive = !!(F.q || F.date || F.min || F.src || F.sort);
+  const _selCss = 'padding:6px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--text);max-width:44vw;';
+  const filterBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 12px;">
+    <input id="mx-q" value="${escapeHtml(F.q)}" placeholder="🔍 Хайх (утга/нэр/данс)" style="${_selCss}flex:1;min-width:140px;max-width:none;">
+    <select id="mx-date" style="${_selCss}"><option value="">🗓 Бүх огноо</option>${_dates.map(d => `<option value="${d}"${F.date === d ? ' selected' : ''}>${d}</option>`).join('')}</select>
+    <select id="mx-min" style="${_selCss}">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>💰 ${l}</option>`).join('')}</select>
+    ${_srcs.length > 1 ? `<select id="mx-src" style="${_selCss}"><option value="">🏦 Бүх данс/карт</option>${_srcs.map(s => `<option value="${escapeHtml(s)}"${F.src === s ? ' selected' : ''}>${escapeHtml(s)}</option>`).join('')}</select>` : ''}
+    <select id="mx-sort" style="${_selCss}"><option value="">↕ Эрэмбэ</option><option value="amt_desc"${F.sort === 'amt_desc' ? ' selected' : ''}>💰 Их дүн</option><option value="amt_asc"${F.sort === 'amt_asc' ? ' selected' : ''}>💰 Бага дүн</option><option value="date_desc"${F.sort === 'date_desc' ? ' selected' : ''}>🗓 Шинэ</option><option value="date_asc"${F.sort === 'date_asc' ? ' selected' : ''}>🗓 Хуучин</option></select>
+    ${fActive ? `<button id="mx-clear" style="padding:5px 10px;font-size:11.5px;border-radius:8px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;">✕ Цэвэрлэх</button>` : ''}
+  </div>`;
   const card = (r) => { const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
     const gSub = guessOf(r); const mainCur = mainOfSub(gSub); const brGuess = brGuessOf(r); const isGuess = !!(gSub && (brGuess || isAssetCat(gSub)));
     // Дэлгэрэнгүй: ШИЛЖҮҮЛСЭН ОГНОО (гол) + данс + хүлээн авагч (бодит нэр байвал) — ангилахад тусална.
@@ -4680,8 +4717,9 @@ function renderMyExpenses() {
     <div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🧾 Миний зардал</div>
       <div style="font-size:12px;color:var(--muted);">Танд ирсэн зардлыг ангилж баталгаажуул. Гүйлгээний утгаас <b>автоматаар таамаглана</b> — зөв бол «Батлах».</div></div>
     ${nGuess > 1 ? `<div style="margin:10px 0 8px;"><button class="btn btn-primary btn-sm" id="mx-confirm-all" style="width:100%;padding:9px;">🔮 Таамгаар бүгдийг батлах (${nGuess})</button></div>` : ''}
-    <div style="font-size:14px;font-weight:800;margin:10px 0 8px;">Ангилах <span style="color:var(--warn)">(${pend.length})</span></div>
-    ${pend.length ? pend.map(card).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Ангилах зардал алга. 👍</div>'}
+    ${pend.length ? filterBar : ''}
+    <div style="font-size:14px;font-weight:800;margin:10px 0 8px;">Ангилах <span style="color:var(--warn)">(${fActive ? list.length + ' / ' + pend.length : pend.length})</span></div>
+    ${!pend.length ? '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Ангилах зардал алга. 👍</div>' : (list.length ? list.map(card).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Шүүлтэд тохирох зардал алга.</div>')}
     ${doneRecent.length ? `<div style="font-size:13px;font-weight:700;margin:20px 0 8px;color:var(--muted);">Сүүлд ангилсан</div>${doneRecent.map(r => { const t = parseCardToken(r.justification); return `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px;"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || '—')} <span style="color:var(--muted);">· ${escapeHtml(catLabel(r.category))}</span></div><b style="white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</b></div>`; }).join('')}` : ''}
   </div>`;
 }
@@ -4704,6 +4742,16 @@ function attachMyExpensesHandlers() {
     };
   });
   document.getElementById('mx-confirm-all')?.addEventListener('click', confirmAllGuessedExpenses);
+  // ── 5 шүүлтүүрийн handler ──
+  const F = state.mxF = state.mxF || { q: '', date: '', min: 0, src: '', sort: '' };
+  const qEl = document.getElementById('mx-q');
+  if (qEl) {
+    qEl.oninput = () => { F.q = qEl.value; state._mxRefocus = true; render(); };
+    if (state._mxRefocus) { state._mxRefocus = false; qEl.focus(); const v = qEl.value; qEl.value = ''; qEl.value = v; }
+  }
+  const bind = (id, key, num) => { const el = document.getElementById(id); if (el) el.onchange = () => { F[key] = num ? (Number(el.value) || 0) : el.value; render(); }; };
+  bind('mx-date', 'date'); bind('mx-min', 'min', true); bind('mx-src', 'src'); bind('mx-sort', 'sort');
+  document.getElementById('mx-clear')?.addEventListener('click', () => { state.mxF = { q: '', date: '', min: 0, src: '', sort: '' }; render(); });
 }
 // Таамгаар бүгдийг батлах — ангилал БА салбарыг таамаглаж чадсан (эсвэл хөрөнгө) бүгдийг нэг дор.
 async function confirmAllGuessedExpenses() {

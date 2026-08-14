@@ -1431,11 +1431,12 @@ let FINANCE_SUB_CATEGORIES = {
   ],
 };
 
-/* Зардлын салбар = ЗӨВХӨН 3 үйл ажиллагааны салбар. Хөрөнгө нь ангилал 6000-аар компанид авто орно. */
+/* Зардлын салбар = 3 үйл ажиллагааны салбар + Чимун ХХК (хөрөнгө оруулалт/удирдлага). Хөрөнгө (6000) авто. */
 const FINANCE_BRANCHES = [
   { code: 'ИВЕНТ',    name: 'M-Event' },
   { code: 'КЕМП',     name: 'NOMAAD' },
   { code: 'КАТЕРИНГ', name: 'Катеринг' },
+  { code: 'ХХК',      name: 'Чимун ХХК' },
 ];
 
 const FINANCE_FREQUENCIES = ['Нэг удаагийн', 'Тогтмол сар бүр', 'Урт хугацаат гэрээ'];
@@ -1979,7 +1980,7 @@ function finLensBranch(lens) {
 // Салбарын дотоод код → ХАРАГДАХ нэр (M-Event/NOMAAD). Хаана ч гарсан ойлгомжтой нэрээр.
 const BRANCH_DISPLAY = {
   'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг',
-  'Чимун ХХК': '🏗 Хөрөнгө', 'ХХК': '🏗 Хөрөнгө', 'ЗАХ': 'Захиргаа', 'ХАМТ': 'Хамтын',
+  'Чимун ХХК': '🏢 Чимун ХХК', 'ХХК': '🏢 Чимун ХХК', 'ЗАХ': 'Захиргаа', 'ХАМТ': 'Хамтын',
   'm-event': 'M-Event', 'camp': 'NOMAAD', 'catering': 'Катеринг',
 };
 function finBranchDisplay(b) { return BRANCH_DISPLAY[b] || b || '(салбаргүй)'; }
@@ -3187,7 +3188,7 @@ function render() {
   const blSel = document.getElementById('branch-lens');
   if (blSel) {
     const allowed = allowedLenses();
-    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp', catering: '🍽 Катеринг', capital: '🏗 Хөрөнгө' };
+    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
     const key = allowed.join(',');
     if (blSel._builtFor !== key) {
       blSel.innerHTML = allowed.map(v => `<option value="${v}">${labels[v] || v}</option>`).join('');
@@ -3317,7 +3318,7 @@ function renderSidebar() {
   if (slens) {
     const allowed = allowedLenses();
     if (allowed.length > 1) {
-      const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD', catering: '🍽 Катеринг', capital: '🏗 Хөрөнгө' };
+      const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
       const cur = effectiveBranchLens();
       slens.style.display = '';
       slens.innerHTML = allowed.map(v => `<button class="slens-chip${v === cur ? ' on' : ''}" data-slens="${v}">${labels[v] || v}</button>`).join('');
@@ -4401,9 +4402,9 @@ function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.
 function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
 function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
-// Зардлын салбар = ЗӨВХӨН 3 үйл ажиллагааны салбар. Чимун ХХК (толгой) зардлын салбар БИШ —
-// хөрөнгө (ангилал 6000) л компанид бүртгэгдэнэ. Захиргаа катч-олл хасагдсан.
-const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг']];
+// Зардлын салбар = 3 үйл ажиллагааны салбар + Чимун ХХК (толгой — хөрөнгө оруулалт, удирдлагын
+// түвшний зардал). Захиргаа катч-олл хасагдсан. Хөрөнгө (6000) авто Чимун ХХК-д орно.
+const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']];
 // Хуучин дата дахь ХХК/ЗАХ-г нэр рүү буулгах mapping (сонгогчид харагдахгүй ч хөрвүүлэлтэд хэрэгтэй).
 const _BRANCH_CODE2NAME = { 'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг', 'ХХК': 'Чимун ХХК', 'ЗАХ': 'Захиргаа' };
 // Гүйлгээний утгаас картын сүүлийн 4 оронг салгах (POS/онлайн: "420733******2819:..." → 2819)
@@ -7165,7 +7166,7 @@ async function clearMemberPerms(personKey) {
 // Хуулгаар ангилах модал эндээс данс→салбарыг автоматаар таьнна.
 const BANK_LIST = ['Голомт', 'Хаан', 'Худалдаа хөгжил', 'Төрийн', 'Хас', 'Капитрон', 'Ариг', 'Богд'];
 const ACCT_PURPOSES = ['орлого', 'зарлага', 'валют', 'цалин', 'татвар', 'бусад'];
-const BANK_BRANCHES = ['M-Event', 'NOMAAD', 'Катеринг'];
+const BANK_BRANCHES = ['M-Event', 'NOMAAD', 'Катеринг', 'Чимун ХХК'];
 const _BRANCH_NAME2CODE = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Катеринг': 'КАТЕРИНГ', 'Чимун ХХК': 'ХХК', 'Захиргаа': 'ЗАХ' };
 function _acctDigits(s) { return String(s || '').replace(/\D/g, ''); }
 // Бүртгэлээс хуулгаар-ангилах хэрэгслийн data→салбар/эзэн map-уудыг дүүргэнэ (fill-if-empty).
@@ -13747,7 +13748,7 @@ function exportFinanceReportExcel() {
   const doneRows = rows.filter(t => t.status === 'done');
   const noR = doneRows.filter(noRcpt), noRSum = sumOf(noR), doneSum = sumOf(doneRows);
   const noCat = rows.filter(t => !String(t.category || '').trim());
-  const lensLabel = lens === 'm-event' ? 'M-Event' : lens === 'camp' ? 'NOMAAD Camp' : lens === 'catering' ? 'Катеринг' : lens === 'capital' ? 'Хөрөнгө' : 'Бүх салбар';
+  const lensLabel = lens === 'm-event' ? 'M-Event' : lens === 'camp' ? 'NOMAAD Camp' : lens === 'catering' ? 'Катеринг' : lens === 'capital' ? 'Чимун ХХК' : 'Бүх салбар';
   const sumRows = [
     [S('Тайлант сар', 'grp'), S(month), S(''), S('')],
     [S('Салбар'), S(lensLabel), S(''), S('')],

@@ -4247,10 +4247,22 @@ const EXPENSE_RULES = [
   [/сурталчил|контент|маркетинг|reels|бүүст/i, '4900'],
 ];
 function _acctCatLearn() { if (!state.acctCatLearn) { try { state.acctCatLearn = JSON.parse(localStorage.getItem('acctCatLearn') || '{}'); } catch (_) { state.acctCatLearn = {}; } } return state.acctCatLearn; }
+// Гүйлгээний утгаас худалдагчийн товч нэр (POS/онлайн: "…:BOM:AMGALAN Z 16:46" → "AMGALAN")
+function merchantKey(memo) {
+  let s = String(memo || '');
+  const m = s.match(/(?:BOM|POS|QPAY|QR|ECOM|E-COM|IPAY)[:\s]+(.+)$/i);
+  if (m) s = m[1]; else if (s.includes(':')) { const p = s.split(':'); s = p[p.length - 1]; }
+  s = s.replace(/\d{1,2}[-.:]\d{1,2}([-.:]\d{2,4})?.*$/, '');   // сүүлийн огноо/цаг таслах
+  s = s.toUpperCase().replace(/[^A-ZА-ЯӨҮЁ0-9 ]/gi, ' ').replace(/\s+/g, ' ').trim();
+  return s.split(' ').slice(0, 2).join(' ').slice(0, 24);
+}
+function _memoCatLearn() { if (!state.memoCatLearn) { try { state.memoCatLearn = JSON.parse(localStorage.getItem('memoCatLearn') || '{}'); } catch (_) { state.memoCatLearn = {}; } } return state.memoCatLearn; }
+function learnMemoCat(memo, cat) { const k = merchantKey(memo); if (!k || k.length < 3 || !cat) return; const o = _memoCatLearn(); o[k] = cat; try { localStorage.setItem('memoCatLearn', JSON.stringify(o)); } catch (_) {} }
 function classifyExpense(memo, account) {
   const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
   if (rule) return rule[1];
   const learn = _acctCatLearn(); if (account && learn[account]) return learn[account];
+  const mk = merchantKey(memo); const ml = _memoCatLearn(); if (mk && mk.length >= 3 && ml[mk]) return ml[mk];   // сурсан худалдагч
   return '';
 }
 function learnAcctCat(account, cat) { if (!account || !cat) return; const l = _acctCatLearn(); l[account] = cat; try { localStorage.setItem('acctCatLearn', JSON.stringify(l)); } catch (_) {} }
@@ -4513,7 +4525,11 @@ function renderMyExpenses() {
     .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || ''))).slice(0, 10);
   const brName = { 'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг', 'ХХК': 'Чимун ХХК', 'ЗАХ': 'Захиргаа' };
   const brOpts = (sel) => STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
-  const card = (r) => { const t = parseCardToken(r.justification); const l4 = t ? t.last4 : ''; const mainCur = mainOfSub(r.category === CARD_PEND_CAT ? '' : r.category);
+  // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
+  const guessOf = (r) => (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', '');
+  const nGuess = pend.filter(r => guessOf(r)).length;
+  const card = (r) => { const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
+    const gSub = guessOf(r); const mainCur = mainOfSub(gSub); const isGuess = !!gSub;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
         <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
@@ -4522,17 +4538,18 @@ function renderMyExpenses() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;">
         <select data-mx-main style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${mainCatOptions(mainCur)}</select>
-        <select data-mx-sub style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${subCatOptions(mainCur, r.category === CARD_PEND_CAT ? '' : r.category)}</select>
+        <select data-mx-sub style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${subCatOptions(mainCur, gSub)}</select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px;">
         <select data-mx-branch style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${brOpts(r.dept_branch)}</select>
         <input data-mx-note placeholder="Зарцуулалт (юунд? — сонголт)" style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">
       </div>
-      <div style="display:flex;justify-content:flex-end;"><button class="btn btn-primary btn-sm" data-mx-save>Ангилах</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">${isGuess ? '<span style="font-size:11px;color:var(--accent,#7c3aed);font-weight:600;">🔮 Таамаг — зөв бол «Батлах»</span>' : '<span></span>'}<button class="btn btn-primary btn-sm" data-mx-save>${isGuess ? 'Батлах' : 'Ангилах'}</button></div>
     </div>`; };
   return `<div style="max-width:640px;margin:0 auto;padding:4px 2px 40px;">
     <div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🧾 Миний зардал</div>
-      <div style="font-size:12px;color:var(--muted);">Танд ирсэн зардлыг ангилж баталгаажуул — үндсэн ангилал → дэд ангилал, салбар, зарцуулалт.</div></div>
+      <div style="font-size:12px;color:var(--muted);">Танд ирсэн зардлыг ангилж баталгаажуул. Гүйлгээний утгаас <b>автоматаар таамаглана</b> — зөв бол «Батлах».</div></div>
+    ${nGuess > 1 ? `<div style="margin:10px 0 8px;"><button class="btn btn-primary btn-sm" id="mx-confirm-all" style="width:100%;padding:9px;">🔮 Таамгаар бүгдийг батлах (${nGuess})</button></div>` : ''}
     <div style="font-size:14px;font-weight:800;margin:10px 0 8px;">Ангилах <span style="color:var(--warn)">(${pend.length})</span></div>
     ${pend.length ? pend.map(card).join('') : '<div style="font-size:12.5px;color:var(--muted);padding:10px 2px;">Ангилах зардал алга. 👍</div>'}
     ${doneRecent.length ? `<div style="font-size:13px;font-weight:700;margin:20px 0 8px;color:var(--muted);">Сүүлд ангилсан</div>${doneRecent.map(r => { const t = parseCardToken(r.justification); return `<div style="display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12px;"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || '—')} <span style="color:var(--muted);">· ${escapeHtml(catLabel(r.category))}</span></div><b style="white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</b></div>`; }).join('')}` : ''}
@@ -4550,17 +4567,33 @@ function attachMyExpensesHandlers() {
       await classifyMyCardExpense(cardEl.dataset.fr, sub, br, note);
     };
   });
+  document.getElementById('mx-confirm-all')?.addEventListener('click', confirmAllGuessedExpenses);
 }
-async function classifyMyCardExpense(id, subCode, brCode, note) {
+// Таамгаар бүгдийг батлах — таамаглаж чадсан бүх зардлыг нэг дор баталгаажуулна.
+async function confirmAllGuessedExpenses() {
+  const me = state.me;
+  const items = myPendingCardExpenses(me)
+    .map(r => { const g = (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', ''); return { r, sub: g }; })
+    .filter(x => x.sub);
+  if (!items.length) { showToast('Таамаглаж чадсан зардал алга', 'warn', 2500); return; }
+  if (!(await showConfirm(`${items.length} зардлыг таамгаар нь батлах уу?\nБуруу ангилагдсаныг дараа засаж болно.`, { okText: 'Бүгдийг батлах' }))) return;
+  showToast('Батлаж байна…', 'info', 1500);
+  let n = 0;
+  for (const { r, sub } of items) { try { await classifyMyCardExpense(r.id, sub, r.dept_branch, '', { silent: true }); n++; } catch (e) {} if (n % 10 === 0) showToast(`${n}/${items.length}…`, 'info', 700); }
+  showToast(`${n} зардал батлагдлаа ✓`, 'success', 2800);
+  render();
+}
+async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   const r = (state.financeRequests || []).find(x => x.id === id); if (!r) return;
   const tok = parseCardToken(r.justification);
   r.category = subCode;
   if (brCode) r.dept_branch = brCode;
+  learnMemoCat(r.purpose || r.beneficiary || '', subCode);   // худалдагч→ангилал сурах (дараа автомат)
   const base = stripCardToken(r.justification);
   const noteTag = note ? ` · зарцуулалт: ${note}` : '';
   r.justification = `${base}${noteTag} ${encodeCardToken(tok ? tok.last4 : '', state.me, false)}`.trim();
-  try { await saveFinanceRequest(r); showToast('Ангиллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
-  render();
+  try { await saveFinanceRequest(r); if (!opts.silent) showToast('Батлагдлаа ✓', 'success', 1600); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
+  if (!opts.silent) render();
 }
 function openFinReconModal() {
   document.getElementById('finrecon-modal')?.remove();

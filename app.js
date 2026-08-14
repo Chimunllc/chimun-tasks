@@ -4649,12 +4649,17 @@ function renderMyExpenses() {
   const nGuess = pend.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); }).length;
   const card = (r) => { const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
     const gSub = guessOf(r); const mainCur = mainOfSub(gSub); const brGuess = brGuessOf(r); const isGuess = !!(gSub && (brGuess || isAssetCat(gSub)));
-    // Дэлгэрэнгүй: шилжүүлсэн данс (justification-аас), хүлээн авагч, карт — ангилахад тусална.
+    // Дэлгэрэнгүй: ШИЛЖҮҮЛСЭН ОГНОО (гол) + данс + хүлээн авагч (бодит нэр байвал) — ангилахад тусална.
     const _acctM = String(r.justification || '').match(/данс\s+([0-9A-Za-zМмNn]{4,})/);
     const cpAcct = _acctM ? _acctM[1] : (r.account_number || '');
-    const ben = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? r.beneficiary : '';
+    // Шилжүүлсэн бодит огноо = executed_at (хуулгын огноо), эс бол justification-ий #EXP-...-ГГГГММДД, эс бол requested_at.
+    const _fpD = String(r.justification || '').match(/#EXP-\d+-(\d{4})(\d{2})(\d{2})/);
+    const txDate = (r.executed_at || '').slice(0, 10) || (_fpD ? `${_fpD[1]}-${_fpD[2]}-${_fpD[3]}` : '') || String(r.requested_at || '').slice(0, 10);
+    // Хүлээн авагч — зөвхөн бодит НЭР (данс/тоо биш, дансны давхардал болохгүй).
+    const _benRaw = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? String(r.beneficiary).trim() : '';
+    const benName = (_benRaw && !/^[\d\s\-]+$/.test(_benRaw) && _benRaw.replace(/\D/g, '') !== String(cpAcct).replace(/\D/g, '')) ? _benRaw : '';
     const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (cpAcct ? `🏦 данс ${escapeHtml(cpAcct)}` : '🏦 шилжүүлэг');
-    const detail = `${escapeHtml(String(r.requested_at || '').slice(0, 10))} · ${srcTag}${ben ? ' · ' + escapeHtml(ben) : ''}`;
+    const detail = `<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${benName ? ' · ' + escapeHtml(benName) : ''}`;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
         <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.purpose || '')}">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>

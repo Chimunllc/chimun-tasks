@@ -1965,7 +1965,7 @@ function finBranchLabel(b) {
 // Гүйлгээний утгад зориулсан салбарын нэр (банкны утганд бичих хэлбэр)
 function finMemoBranch(deptBranch) {
   const b = finBranchLabel(deptBranch);
-  return b === 'ИВЕНТ' ? 'Mevent' : b === 'КЕМП' ? 'Camp' : b === 'КАТЕРИНГ' ? 'Катеринг' : b === 'Чимун ХХК' ? 'Чимун' : 'Захиргаа';
+  return b === 'ИВЕНТ' ? 'M-Event' : b === 'КЕМП' ? 'NOMAAD' : b === 'КАТЕРИНГ' ? 'Катеринг' : b === 'Чимун ХХК' ? 'Хөрөнгө' : 'Захиргаа';
 }
 // Үр дүнгийн салбар: хөрөнгийн зардал (6000) ҮРГЭЛЖ "Чимун ХХК"-д (салбарын OPEX-ээс хасна).
 function finEffBranch(t) {
@@ -1976,10 +1976,13 @@ function finEffBranch(t) {
 function finLensBranch(lens) {
   return lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : lens === 'catering' ? 'КАТЕРИНГ' : lens === 'capital' ? 'Чимун ХХК' : null;
 }
-// Тайлан/жагсаалтад салбарын бүлгийн харагдах нэр (хөрөнгийг тодотгоно)
-function finBranchDisplay(b) {
-  return b === 'Чимун ХХК' ? '🏗 Хөрөнгө (CAPEX)' : b;
-}
+// Салбарын дотоод код → ХАРАГДАХ нэр (M-Event/NOMAAD). Хаана ч гарсан ойлгомжтой нэрээр.
+const BRANCH_DISPLAY = {
+  'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг',
+  'Чимун ХХК': '🏗 Хөрөнгө', 'ХХК': '🏗 Хөрөнгө', 'ЗАХ': 'Захиргаа', 'ХАМТ': 'Хамтын',
+  'm-event': 'M-Event', 'camp': 'NOMAAD', 'catering': 'Катеринг',
+};
+function finBranchDisplay(b) { return BRANCH_DISPLAY[b] || b || '(салбаргүй)'; }
 // Текст хуулах helper (clipboard API + fallback).
 async function copyText(text, okMsg = 'Хуулагдлаа') {
   text = String(text || '');
@@ -13487,11 +13490,11 @@ function renderFinanceReport(wrap) {
     panel.style.cssText = 'border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;background:var(--panel);';
     const row = (l, v, c) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;padding:3px 0;"><span style="color:var(--muted);">${l}</span><b style="color:${c || 'var(--text)'};white-space:nowrap;">${fmtMoney(v)}</b></div>`;
     panel.innerHTML = `<div style="font-weight:800;font-size:13px;margin-bottom:6px;">💹 Мөнгөн урсгал · ${month} <span style="font-weight:400;color:var(--muted);font-size:11px;">(орлого = эвентийн огноогоор, accrual)</span></div>`
-      + row(`Орлого — Эвент · ${evOrders.length} захиалга`, evInc, 'var(--ok)')
-      + row(`Орлого — Кемп · ${noOrders.length} захиалга`, noInc, 'var(--ok)')
-      + row('Зарлага — Ивент', -expEv)
-      + row('Зарлага — Кемп', -expNo)
-      + row('Зарлага — Захиргаа / Хөрөнгө / бусад', -expOther)
+      + row(`Орлого — M-Event · ${evOrders.length} захиалга`, evInc, 'var(--ok)')
+      + row(`Орлого — NOMAAD · ${noOrders.length} захиалга`, noInc, 'var(--ok)')
+      + row('Зарлага — M-Event', -expEv)
+      + row('Зарлага — NOMAAD', -expNo)
+      + row('Зарлага — Хөрөнгө / бусад', -expOther)
       + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0 1px;border-top:1px solid var(--border);margin-top:4px;"><b>Цэвэр зардал</b><b>${fmtMoney(-exp)}</b></div>`
       + (ownerLoan ? row('↩ Эзний зээл эргэн төлөлт (зардал БИШ)', -ownerLoan, 'var(--muted)') : '')
       + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үйл ажиллагааны үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`

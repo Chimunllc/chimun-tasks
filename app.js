@@ -4290,12 +4290,8 @@ async function loadExpenseLearn() {
     state.expenseLearn = map;
   } catch (e) { console.warn('loadExpenseLearn', e); }
 }
-async function saveExpenseLearn(memo, val) {
-  const key = merchantKey(memo); if (!key || key.length < 3) return;
-  const cur = _expLearn()[key] || {};
-  const branch = (val && val.branch && STMT_BRANCHES.some(([c]) => c === val.branch)) ? val.branch : (cur.branch || '');
-  const cat = (val && val.cat) || cur.cat || '';
-  if (branch === (cur.branch || '') && cat === (cur.cat || '')) return;   // өөрчлөлтгүй бол алгасна
+async function _postExpenseLearn(key, branch, cat) {
+  if (!key) return;
   _expLearn()[key] = { branch, cat };
   if (!SUPABASE_ANON_KEY) return;
   try {
@@ -4304,7 +4300,42 @@ async function saveExpenseLearn(memo, val) {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ key, branch, cat, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
-  } catch (e) { console.warn('saveExpenseLearn', e); }
+  } catch (e) { console.warn('_postExpenseLearn', e); }
+}
+async function saveExpenseLearn(memo, val) {
+  const key = merchantKey(memo); if (!key || key.length < 3) return;
+  const cur = _expLearn()[key] || {};
+  const branch = (val && val.branch && STMT_BRANCHES.some(([c]) => c === val.branch)) ? val.branch : (cur.branch || '');
+  const cat = (val && val.cat) || cur.cat || '';
+  if (branch === (cur.branch || '') && cat === (cur.cat || '')) return;   // өөрчлөлтгүй бол алгасна
+  await _postExpenseLearn(key, branch, cat);
+}
+// Түүхээс суралцах — ангилсан бүртгэлүүдээс худалдагч→ангилал+салбар (олонхийн санал, ≥2 давтагдсан) → expense_learn.
+async function seedLearnFromHistory() {
+  if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
+  const VALID = new Set(['ИВЕНТ', 'КЕМП', 'КАТЕРИНГ']);
+  const recs = (state.financeRequests || []).filter(r => r.status !== 'deleted' && r.category && r.category !== CARD_PEND_CAT && !String(r.category).startsWith('6'));
+  if (!recs.length) { showToast('Ангилсан бүртгэл алга', 'warn', 2500); return; }
+  const tally = {};
+  recs.forEach(r => {
+    const k = merchantKey(r.purpose || r.beneficiary || ''); if (!k || k.length < 3) return;
+    const cat = (String(r.category).match(/\d{4}/) || [''])[0];
+    const br = VALID.has(r.dept_branch) ? r.dept_branch : '';
+    tally[k] = tally[k] || { cat: {}, br: {}, n: 0 }; tally[k].n++;
+    if (cat) tally[k].cat[cat] = (tally[k].cat[cat] || 0) + 1;
+    if (br) tally[k].br[br] = (tally[k].br[br] || 0) + 1;
+  });
+  const top = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1]); return e[0] || null; };
+  showToast('Түүхээс суралцаж байна…', 'info', 1500);
+  let n = 0;
+  for (const [k, t] of Object.entries(tally)) {
+    if (t.n < 2) continue;
+    const c = top(t.cat), b = top(t.br);
+    const cat = (c && c[1] / t.n >= 0.5) ? c[0] : ((_expLearn()[k] || {}).cat || '');
+    const br = (b && b[1] / t.n >= 0.6) ? b[0] : ((_expLearn()[k] || {}).branch || '');
+    if (cat || br) { await _postExpenseLearn(k, br, cat); n++; }
+  }
+  showToast(`${n} худалдагчаас суралцлаа ✓ — дараа автомат таамаглана`, 'success', 3600);
 }
 function classifyExpense(memo, account) {
   const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
@@ -13375,6 +13406,7 @@ function renderFinanceReport(wrap) {
   bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
   const canRecon = state.isCEO || canSeeAllFinance();
   bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
+    + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
@@ -13382,6 +13414,7 @@ function renderFinanceReport(wrap) {
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
+  bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
 
   // (Батлах самбар хасагдсан — санхүү нь хуулга суурьтай: зардал хуулгаас шууд орно, хүсэлт/батлах урсгал байхгүй.)

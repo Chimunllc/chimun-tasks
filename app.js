@@ -3244,8 +3244,11 @@ function renderSidebar() {
   // Миний зардал — картын эзэн эсвэл ангилах хүлээж буй зардалтай хэн бүхэнд.
   const mxNav = document.getElementById('nav-myexpenses');
   if (mxNav) {
-    const mxPend = (typeof myPendingCardExpenses === 'function') ? myPendingCardExpenses(state.me).length : 0;
-    const mxShow = mxPend > 0 || (typeof iOwnACard === 'function' && iOwnACard(state.me));
+    // CEO/нягтлан → бүх ажилтны ангилах зардал; бусад → зөвхөн өөрийнх.
+    const mxSeeAll = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance());
+    const mxPend = (mxSeeAll && typeof allPendingCardExpenses === 'function') ? allPendingCardExpenses().length
+      : (typeof myPendingCardExpenses === 'function' ? myPendingCardExpenses(state.me).length : 0);
+    const mxShow = mxPend > 0 || mxSeeAll || (typeof iOwnACard === 'function' && iOwnACard(state.me));
     mxNav.style.display = mxShow ? '' : 'none';
     const mxCnt = document.getElementById('cnt-myexpenses');
     if (mxCnt) { mxCnt.textContent = String(mxPend); mxCnt.style.display = mxPend ? '' : 'none'; }
@@ -4386,6 +4389,12 @@ function myPendingCardExpenses(meKey) {
   return (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && t.pend && t.ownerKey === meKey; })
     .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || '')));
 }
+// БҮХ ажилтны ангилах хүлээж буй зардал (CEO/нягтлан — эзнээр шүүж баталж болно).
+function allPendingCardExpenses() {
+  return (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && t.pend; })
+    .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || '')));
+}
+function pendCardOwner(r) { const t = parseCardToken(r && r.justification); return t ? t.ownerKey : ''; }
 function iOwnACard(meKey) { return (state.bankCards || []).some(c => c.active !== false && c.owner_key === meKey); }
 function detectStatementAccount(matrix) {
   for (let i = 0; i < Math.min(4, matrix.length); i++) {
@@ -4636,9 +4645,11 @@ async function openStatementClassifyModal() {
 // ═══════════ МИНИЙ ЗАРДАЛ — картын эзэн өөрийн зардлаа ангилна (2-түвшин) ═══════════
 function renderMyExpenses() {
   const me = state.me;
-  const pend = myPendingCardExpenses(me);
-  // Сүүлд ангилсан (лавлагаа) — миний картын OK токентой, 10 хүртэл
-  const doneRecent = (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && !t.pend && t.ownerKey === me; })
+  // CEO/нягтлан → БҮХ ажилтны ангилах зардал (эзнээр шүүж баталж болно). Бусад → зөвхөн өөрийнх.
+  const seeAll = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance());
+  const pend = seeAll ? allPendingCardExpenses() : myPendingCardExpenses(me);
+  // Сүүлд ангилсан (лавлагаа) — OK токентой (CEO бол бүгд, бусад өөрийнх), 10 хүртэл
+  const doneRecent = (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && !t.pend && (seeAll || t.ownerKey === me); })
     .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || ''))).slice(0, 10);
   const brOpts = (sel) => `<option value="">— салбар сонго —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
   // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
@@ -4656,13 +4667,15 @@ function renderMyExpenses() {
     const src = l4 ? ('карт ••' + l4) : (acct ? ('данс ' + acct) : '');
     return { l4, acct, txDate, src };
   };
-  // ── 5 ШҮҮЛТҮҮР: хайлт · огноо · дүн · эх сурвалж (данс/карт) · эрэмбэ ──
-  const F = state.mxF = state.mxF || { q: '', date: '', min: 0, src: '', sort: '' };
+  // ── ШҮҮЛТҮҮР: (эзэн CEO-д) · хайлт · огноо · дүн · эх сурвалж · эрэмбэ ──
+  const F = state.mxF = state.mxF || { q: '', date: '', min: 0, src: '', sort: '', owner: '' };
   const _dates = [...new Set(pend.map(r => mxMeta(r).txDate).filter(Boolean))].sort().reverse();
   const _srcs = [...new Set(pend.map(r => mxMeta(r).src).filter(Boolean))].sort();
+  const _owners = seeAll ? [...new Set(pend.map(pendCardOwner).filter(Boolean))].sort((a, b) => memberName(a).localeCompare(memberName(b))) : [];
   const MINS = [[0, 'Бүх дүн'], [50000, '50 мянга+'], [100000, '100 мянга+'], [300000, '300 мянга+'], [1000000, '1 сая+']];
   let list = pend.filter(r => {
     const m = mxMeta(r);
+    if (F.owner && pendCardOwner(r) !== F.owner) return false;
     if (F.q) { const hay = ((r.purpose || '') + ' ' + (r.beneficiary || '') + ' ' + m.acct).toLowerCase(); if (!hay.includes(F.q.toLowerCase())) return false; }
     if (F.date && m.txDate !== F.date) return false;
     if (F.min && (Number(r.amount) || 0) < F.min) return false;
@@ -4674,9 +4687,10 @@ function renderMyExpenses() {
   else if (F.sort === 'amt_asc') list.sort((a, b) => (Number(a.amount) || 0) - (Number(b.amount) || 0));
   else if (F.sort === 'date_desc') list.sort((a, b) => _byDate(b, a));
   else if (F.sort === 'date_asc') list.sort(_byDate);
-  const fActive = !!(F.q || F.date || F.min || F.src || F.sort);
+  const fActive = !!(F.q || F.date || F.min || F.src || F.sort || F.owner);
   const _selCss = 'padding:6px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--text);max-width:44vw;';
   const filterBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 12px;">
+    ${_owners.length > 1 ? `<select id="mx-owner" style="${_selCss}"><option value="">👤 Бүх ажилтан</option>${_owners.map(o => `<option value="${escapeHtml(o)}"${F.owner === o ? ' selected' : ''}>${escapeHtml(memberName(o))}</option>`).join('')}</select>` : ''}
     <input id="mx-q" value="${escapeHtml(F.q)}" placeholder="🔍 Хайх (утга/нэр/данс)" style="${_selCss}flex:1;min-width:140px;max-width:none;">
     <select id="mx-date" style="${_selCss}"><option value="">🗓 Бүх огноо</option>${_dates.map(d => `<option value="${d}"${F.date === d ? ' selected' : ''}>${d}</option>`).join('')}</select>
     <select id="mx-min" style="${_selCss}">${MINS.map(([v, l]) => `<option value="${v}"${Number(F.min) === v ? ' selected' : ''}>💰 ${l}</option>`).join('')}</select>
@@ -4696,7 +4710,9 @@ function renderMyExpenses() {
     const _benRaw = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? String(r.beneficiary).trim() : '';
     const benName = (_benRaw && !/^[\d\s\-]+$/.test(_benRaw) && _benRaw.replace(/\D/g, '') !== String(cpAcct).replace(/\D/g, '')) ? _benRaw : '';
     const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (cpAcct ? `🏦 данс ${escapeHtml(cpAcct)}` : '🏦 шилжүүлэг');
-    const detail = `<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${benName ? ' · ' + escapeHtml(benName) : ''}`;
+    // CEO бол хэн хэний зардал болохыг харуулна (badge).
+    const ownerBadge = (seeAll && t && t.ownerKey) ? `<span style="display:inline-block;font-size:10.5px;font-weight:700;color:var(--accent,#7c3aed);background:var(--accent-soft,rgba(124,58,237,.12));border-radius:20px;padding:1px 8px;margin-bottom:4px;">👤 ${escapeHtml(memberName(t.ownerKey))}</span><br>` : '';
+    const detail = `${ownerBadge}<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${benName ? ' · ' + escapeHtml(benName) : ''}`;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
         <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.purpose || '')}">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
@@ -4714,8 +4730,8 @@ function renderMyExpenses() {
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">${isGuess ? '<span style="font-size:11px;color:var(--accent,#7c3aed);font-weight:600;">🔮 Таамаг — зөв бол «Батлах»</span>' : '<span></span>'}<button class="btn btn-primary btn-sm" data-mx-save>${isGuess ? 'Батлах' : 'Ангилах'}</button></div>
     </div>`; };
   return `<div style="max-width:640px;margin:0 auto;padding:4px 2px 40px;">
-    <div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🧾 Миний зардал</div>
-      <div style="font-size:12px;color:var(--muted);">Танд ирсэн зардлыг ангилж баталгаажуул. Гүйлгээний утгаас <b>автоматаар таамаглана</b> — зөв бол «Батлах».</div></div>
+    <div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🧾 ${seeAll ? 'Ангилах зардал' : 'Миний зардал'}</div>
+      <div style="font-size:12px;color:var(--muted);">${seeAll ? 'Бүх ажилтны ангилах зардал — эзнээр шүүж <b>шууд ангилж баталж</b> болно.' : 'Танд ирсэн зардлыг ангилж баталгаажуул.'} Гүйлгээний утгаас <b>автоматаар таамаглана</b> — зөв бол «Батлах».</div></div>
     ${nGuess > 1 ? `<div style="margin:10px 0 8px;"><button class="btn btn-primary btn-sm" id="mx-confirm-all" style="width:100%;padding:9px;">🔮 Таамгаар бүгдийг батлах (${nGuess})</button></div>` : ''}
     ${pend.length ? filterBar : ''}
     <div style="font-size:14px;font-weight:800;margin:10px 0 8px;">Ангилах <span style="color:var(--warn)">(${fActive ? list.length + ' / ' + pend.length : pend.length})</span></div>
@@ -4750,15 +4766,20 @@ function attachMyExpensesHandlers() {
     if (state._mxRefocus) { state._mxRefocus = false; qEl.focus(); const v = qEl.value; qEl.value = ''; qEl.value = v; }
   }
   const bind = (id, key, num) => { const el = document.getElementById(id); if (el) el.onchange = () => { F[key] = num ? (Number(el.value) || 0) : el.value; render(); }; };
-  bind('mx-date', 'date'); bind('mx-min', 'min', true); bind('mx-src', 'src'); bind('mx-sort', 'sort');
-  document.getElementById('mx-clear')?.addEventListener('click', () => { state.mxF = { q: '', date: '', min: 0, src: '', sort: '' }; render(); });
+  bind('mx-owner', 'owner'); bind('mx-date', 'date'); bind('mx-min', 'min', true); bind('mx-src', 'src'); bind('mx-sort', 'sort');
+  document.getElementById('mx-clear')?.addEventListener('click', () => { state.mxF = { q: '', date: '', min: 0, src: '', sort: '', owner: '' }; render(); });
 }
 // Таамгаар бүгдийг батлах — ангилал БА салбарыг таамаглаж чадсан (эсвэл хөрөнгө) бүгдийг нэг дор.
 async function confirmAllGuessedExpenses() {
   const me = state.me;
-  const items = myPendingCardExpenses(me).map(r => {
+  const seeAll = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance());
+  const F = state.mxF || {};
+  let base = seeAll ? allPendingCardExpenses() : myPendingCardExpenses(me);
+  if (F.owner) base = base.filter(r => pendCardOwner(r) === F.owner);   // эзний шүүлт идэвхтэй бол зөвхөн тэр
+  const items = base.map(r => {
+    const own = pendCardOwner(r) || me;
     const sub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', '');
-    const br = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', me);
+    const br = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', own);
     return { r, sub, br };
   }).filter(x => x.sub && (x.br || isAssetCat(x.sub)));   // ангилал + (салбар эсвэл хөрөнгө)
   if (!items.length) { showToast('Бүрэн таамаглаж чадсан зардал алга', 'warn', 2500); return; }
@@ -4781,7 +4802,8 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   saveExpenseLearn(_memo, { cat: subCode, branch: isAssetCat(subCode) ? '' : brCode });   // ХУВААЛЦСАН (бүх компанид)
   const base = stripCardToken(r.justification);
   const noteTag = note ? ` · зарцуулалт: ${note}` : '';
-  r.justification = `${base}${noteTag} ${encodeCardToken(tok ? tok.last4 : '', state.me, false)}`.trim();
+  // ЭЗЭН хадгалагдана — CEO бусдын зардлыг батлахад эзэн нь өөрчлөгдөхгүй (эх токены ownerKey).
+  r.justification = `${base}${noteTag} ${encodeCardToken(tok ? tok.last4 : '', (tok && tok.ownerKey) || state.me, false)}`.trim();
   try { await saveFinanceRequest(r); if (!opts.silent) showToast('Батлагдлаа ✓', 'success', 1600); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
   if (!opts.silent) render();
 }

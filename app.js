@@ -4618,6 +4618,7 @@ async function openStatementClassifyModal() {
       const cat = r.cat || CARD_PEND_CAT;   // авто таамаг байвал урьдчилан сонгогдоно, гэхдээ эзэн баталгаажуулна
       state._finBackfill = { date: r.date };
       const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
+        accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
         justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)}`,
         category: cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
       state._finBackfill = null;
@@ -4647,10 +4648,16 @@ function renderMyExpenses() {
   const nGuess = pend.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); }).length;
   const card = (r) => { const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
     const gSub = guessOf(r); const mainCur = mainOfSub(gSub); const brGuess = brGuessOf(r); const isGuess = !!(gSub && (brGuess || isAssetCat(gSub)));
+    // Дэлгэрэнгүй: шилжүүлсэн данс (justification-аас), хүлээн авагч, карт — ангилахад тусална.
+    const _acctM = String(r.justification || '').match(/данс\s+([0-9A-Za-zМмNn]{4,})/);
+    const cpAcct = _acctM ? _acctM[1] : (r.account_number || '');
+    const ben = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? r.beneficiary : '';
+    const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (cpAcct ? `🏦 данс ${escapeHtml(cpAcct)}` : '🏦 шилжүүлэг');
+    const detail = `${escapeHtml(String(r.requested_at || '').slice(0, 10))} · ${srcTag}${ben ? ' · ' + escapeHtml(ben) : ''}`;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
-        <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(String(r.requested_at || '').slice(0, 10))}${l4 ? ' · карт ••' + escapeHtml(l4) : ''}</div></div>
+        <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.purpose || '')}">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;">${detail}</div></div>
         <b style="white-space:nowrap;font-size:14px;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</b>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px;">

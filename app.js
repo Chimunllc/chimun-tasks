@@ -4785,6 +4785,72 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   try { await saveFinanceRequest(r); if (!opts.silent) showToast('Батлагдлаа ✓', 'success', 1600); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
   if (!opts.silent) render();
 }
+// ── МИНИМАЛ зардлын модал — хуулга суурьтай (утга/огноо/данс + ангилал/салбар засах). Хүсэлт/урсгал байхгүй. ──
+function openExpenseModal(id) {
+  const r = (state.financeRequests || []).find(x => x.id === id);
+  if (!r) return;
+  const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
+  const am = String(r.justification || '').match(/данс\s+([0-9A-Za-zМмNn]{4,})/); const acct = am ? am[1] : (r.account_number || '');
+  const fd = String(r.justification || '').match(/#EXP-\d+-(\d{4})(\d{2})(\d{2})/);
+  const txDate = (r.executed_at || '').slice(0, 10) || (fd ? `${fd[1]}-${fd[2]}-${fd[3]}` : '') || String(r.requested_at || '').slice(0, 10);
+  const benRaw = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? String(r.beneficiary).trim() : '';
+  const benName = (benRaw && !/^[\d\s\-]+$/.test(benRaw) && benRaw.replace(/\D/g, '') !== String(acct).replace(/\D/g, '')) ? benRaw : '';
+  const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (acct ? `🏦 данс ${escapeHtml(acct)}` : '🏦 шилжүүлэг');
+  const curSub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : '';
+  const curMain = mainOfSub(curSub);
+  const curBr = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : '';
+  const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  const canEdit = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()) || (t && t.ownerKey === state.me);
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <div style="font-size:15px;font-weight:800;min-width:0;line-height:1.3;">${escapeHtml(r.purpose || benName || '—')}</div>
+      <button id="ex-close" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;flex-shrink:0;">×</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">🗓 ${escapeHtml(txDate)} · ${srcTag}${benName ? ' · ' + escapeHtml(benName) : ''}</div>
+    <div style="font-size:24px;font-weight:800;margin:8px 0 16px;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</div>
+    ${canEdit ? `
+    <label class="fld" style="margin-top:0;">Ангилал</label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <select id="ex-main">${mainCatOptions(curMain)}</select>
+      <select id="ex-sub">${subCatOptions(curMain, curSub)}</select>
+    </div>
+    <label class="fld">Салбар</label>
+    <select id="ex-branch">${brOpts(curBr)}</select>
+    <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:18px;">
+      ${state.isCEO ? '<button id="ex-del" class="btn" style="color:var(--danger);">Устгах</button>' : '<span></span>'}
+      <button id="ex-save" class="btn btn-primary">💾 Хадгалах</button>
+    </div>` : `
+    <div style="font-size:13px;padding:2px 0;">Ангилал: <b>${escapeHtml(catLabel(r.category) || '—')}</b></div>
+    <div style="font-size:13px;padding:2px 0;">Салбар: <b>${escapeHtml(finBranchDisplay(finEffBranch(r)))}</b></div>`}
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#ex-close').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  if (canEdit) {
+    const mainSel = modal.querySelector('#ex-main'), subSel = modal.querySelector('#ex-sub'), brSel = modal.querySelector('#ex-branch');
+    const syncAsset = () => { const asset = mainSel.value === '6000'; brSel.disabled = asset; brSel.style.opacity = asset ? '.45' : ''; };
+    mainSel.onchange = () => { subSel.innerHTML = subCatOptions(mainSel.value, ''); syncAsset(); };
+    syncAsset();
+    modal.querySelector('#ex-save').onclick = async () => {
+      const sub = subSel.value; if (!sub) { showToast('Дэд ангиллаа сонгоно уу', 'warn', 2500); return; }
+      const br = brSel.value; if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу', 'warn', 3000); return; }
+      const btn = modal.querySelector('#ex-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
+      r.category = sub; r.dept_branch = isAssetCat(sub) ? 'ХХК' : br;
+      if (t) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(t.last4, t.ownerKey || state.me, false)}`.trim(); }
+      saveExpenseLearn(r.purpose || r.beneficiary || '', { cat: sub, branch: isAssetCat(sub) ? '' : br });
+      try { await saveFinanceRequest(r); showToast('Хадгаллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
+      close(); render();
+    };
+    modal.querySelector('#ex-del')?.addEventListener('click', async () => {
+      if (!(await showConfirm(`${fmtMoney(r.amount)} — энэ зардлыг устгах уу?`, { okText: 'Устгах', danger: true }))) return;
+      try { await saveFinanceRequest(r, true); r.status = 'deleted'; } catch (e) {}
+      close(); render();
+    });
+  }
+  modal.classList.add('open');
+}
 function openFinReconModal() {
   document.getElementById('finrecon-modal')?.remove();
   const modal = document.createElement('div');
@@ -13449,7 +13515,7 @@ function attachReportsHandlers() {
         return `<div data-fin-open="${escapeHtml(t.id)}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;">
           <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><b style="color:${col};">${mark}</b> ${who}${purp}</span>${dt}<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b></div>`;
       }).join('');
-      detail.querySelectorAll('[data-fin-open]').forEach(r => r.addEventListener('click', () => openFinanceModal(r.dataset.finOpen)));
+      detail.querySelectorAll('[data-fin-open]').forEach(r => r.addEventListener('click', () => openExpenseModal(r.dataset.finOpen)));
       detail.dataset.built = '1';
     }
     detail.style.display = '';
@@ -13698,7 +13764,7 @@ function renderFinanceReport(wrap) {
       + `<span style="color:${stCol(t)};font-weight:700;">${stMark(t)}</span> ${who}${purp}${noteHtml}</span>`
       + `${classBadge(t)}${timeHtml}${proofHtml}`
       + `<b style="white-space:nowrap;">${fmtMoney(Number(t.amount) || 0)}</b>`;
-    d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openFinanceModal(t.id); });
+    d.addEventListener('click', (e) => { if (e.target.closest('[data-lightbox]')) return; openExpenseModal(t.id); });
     return d;
   };
   // 👤 Топ хүлээн авагч — нэрээр нэгтгэж, их дүнгээс нь эрэмбэлнэ (дарвал тухайн хүнээр шүүнэ)

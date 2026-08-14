@@ -4247,13 +4247,17 @@ const EXPENSE_RULES = [
 ];
 function _acctCatLearn() { if (!state.acctCatLearn) { try { state.acctCatLearn = JSON.parse(localStorage.getItem('acctCatLearn') || '{}'); } catch (_) { state.acctCatLearn = {}; } } return state.acctCatLearn; }
 // Гүйлгээний утгаас худалдагчийн товч нэр (POS/онлайн: "…:BOM:AMGALAN Z 16:46" → "AMGALAN")
+const _MK_STOP = new Set(['EB', 'ЕВ', 'ЗАРЛАГА', 'ЗАХИАЛГА', 'ГҮЙЛГЭЭ', 'ТӨЛБӨР', 'ORDER']);
 function merchantKey(memo) {
   let s = String(memo || '');
-  const m = s.match(/(?:BOM|POS|QPAY|QR|ECOM|E-COM|IPAY)[:\s]+(.+)$/i);
-  if (m) s = m[1]; else if (s.includes(':')) { const p = s.split(':'); s = p[p.length - 1]; }
-  s = s.replace(/\d{1,2}[-.:]\d{1,2}([-.:]\d{2,4})?.*$/, '');   // сүүлийн огноо/цаг таслах
+  // POS/онлайн худалдагч — тэмдэглэгээний ДАРААХ нэр (тоогоор эхлээгүй).
+  const m = s.match(/(?:BOM|POS|QPAY|QR|ECOM|E-COM|IPAY)[:\s]+([^\d].*)$/i);
+  if (m) s = m[1];
+  else { s = s.replace(/[:\s]*\d[\d\s:.\-]*(?:сар|цаг)?[\d\s]*$/i, ''); }   // сүүлийн огноо/дугаар/сар хэсгийг таслах
   s = s.toUpperCase().replace(/[^A-ZА-ЯӨҮЁ0-9 ]/gi, ' ').replace(/\s+/g, ' ').trim();
-  return s.split(' ').slice(0, 2).join(' ').slice(0, 24);
+  // Утгагүй угтвар (EB-1412, ЗАРЛАГА) болон цэвэр тоог хая; утгатай эхний 2 үг.
+  const words = s.split(' ').filter(w => w && w.length >= 2 && !/^\d+$/.test(w) && !_MK_STOP.has(w));
+  return words.slice(0, 2).join(' ').slice(0, 24);
 }
 function _memoCatLearn() { if (!state.memoCatLearn) { try { state.memoCatLearn = JSON.parse(localStorage.getItem('memoCatLearn') || '{}'); } catch (_) { state.memoCatLearn = {}; } } return state.memoCatLearn; }
 function learnMemoCat(memo, cat) { const k = merchantKey(memo); if (!k || k.length < 3 || !cat) return; const o = _memoCatLearn(); o[k] = cat; try { localStorage.setItem('memoCatLearn', JSON.stringify(o)); } catch (_) {} }
@@ -4335,7 +4339,9 @@ async function seedLearnFromHistory() {
     const br = (b && b[1] / t.n >= 0.6) ? b[0] : ((_expLearn()[k] || {}).branch || '');
     if (cat || br) { await _postExpenseLearn(k, br, cat); n++; }
   }
-  showToast(`${n} худалдагчаас суралцлаа ✓ — дараа автомат таамаглана`, 'success', 3600);
+  await loadExpenseLearn();   // шинэ суралцлагыг буцааж ачаалж таамаглалд тусгана
+  showToast(n ? `${n} худалдагчаас суралцлаа ✓ — дараа автомат таамаглана` : 'Шинээр суралцах давтагдсан худалдагч алга', n ? 'success' : 'warn', 3600);
+  if (typeof render === 'function') render();
 }
 function classifyExpense(memo, account) {
   const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
@@ -4630,7 +4636,8 @@ function renderMyExpenses() {
     .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || ''))).slice(0, 10);
   const brOpts = (sel) => `<option value="">— салбар сонго —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
   // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
-  const guessOf = (r) => (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', '');
+  // Шинэ дүрэм/сурлагаар ДАХИН таамаглана (хуучин хадгалсан ангилалыг шинэчилнэ — жиш барьцаа 5800→5810).
+  const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
   // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/эзнээс таамаг.
   const brGuessOf = (r) => STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', me);
   const nGuess = pend.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); }).length;

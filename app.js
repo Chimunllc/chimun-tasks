@@ -4273,7 +4273,8 @@ function learnMemoCat(memo, cat) { const k = merchantKey(memo); if (!k || k.leng
 const BRANCH_KEYWORDS = [
   ['КЕМП', /кемп|kemp|nomaad|номаад|\bcamp\b|глэмп|глампинг|майхан|\bгэр\b|юрт/i],
   ['КАТЕРИНГ', /катеринг|catering|кейтеринг|цайл|цайллага|ресто|\bменю\b|\bцэс\b|тогооч|хүнс.*нийл/i],
-  ['ИВЕНТ', /ивент|event|эвент|m.?event|м.?ивент|тайз|\bасар\b|стейж|стейдж|тоглолт|хурим|төрсөн\s*өдөр/i],
+  // Барьцаа/гэрээний буцаалт = ЗӨВХӨН M-Event (түрээсийн барьцаа буцаадаг) — хэрэглэгч баталсан.
+  ['ИВЕНТ', /ивент|event|эвент|m.?event|м.?ивент|тайз|\bасар\b|стейж|стейдж|тоглолт|хурим|төрсөн\s*өдөр|барьцаа|гэрээ[а-яёөүА-ЯЁӨҮ\s]*буцаа/i],
 ];
 function _memoBranchLearn() { if (!state.memoBranchLearn) { try { state.memoBranchLearn = JSON.parse(localStorage.getItem('memoBranchLearn') || '{}'); } catch (_) { state.memoBranchLearn = {}; } } return state.memoBranchLearn; }
 function learnMemoBranch(memo, brCode) { const k = merchantKey(memo); if (!k || k.length < 3 || !brCode || !STMT_BRANCHES.some(([c]) => c === brCode)) return; const o = _memoBranchLearn(); o[k] = brCode; try { localStorage.setItem('memoBranchLearn', JSON.stringify(o)); } catch (_) {} }
@@ -4290,6 +4291,15 @@ function guessBranch(memo, ownerKey) {
   const single = [...new Set(obs.filter(b => ['m-event', 'camp', 'catering'].includes(b)))];
   if (single.length === 1) return single[0] === 'm-event' ? 'ИВЕНТ' : single[0] === 'camp' ? 'КЕМП' : 'КАТЕРИНГ';
   return '';
+}
+// Бүртгэлийн салбар таамаг: эзэн ГАРААР сонгосон (ХХК-аас бусад) салбар байвал түүнийг хүндэлнэ;
+// эс бол утгаас таамаглана. Авто хадгалагдсан 'ХХК' (импортын үлдэц — ХХК зөвхөн хөрөнгө 6000-д
+// хүчинтэй) нь салбар таамгийг ДАРАХГҮЙ: барьцаа/түрээс гэх мэт ИВЕНТ таамгийг гаргуулна.
+function guessBranchForRecord(r, ownerKey) {
+  const stored = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : '';
+  if (stored && stored !== 'ХХК') return stored;
+  const kw = guessBranch(r.purpose || r.beneficiary || '', ownerKey);
+  return kw || stored;
 }
 // ── ХУВААЛЦСАН СУРАЛЦЛАГА (expense_learn, PostgREST anon) — худалдагч→салбар+ангилал, бүх компанид ──
 function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
@@ -4656,7 +4666,7 @@ function renderMyExpenses() {
   // Шинэ дүрэм/сурлагаар ДАХИН таамаглана (хуучин хадгалсан ангилалыг шинэчилнэ — жиш барьцаа 5800→5810).
   const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
   // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/ТУХАЙН ЭЗНИЙ салбараас таамаг (CEO-гийн биш).
-  const brGuessOf = (r) => STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', pendCardOwner(r) || me);
+  const brGuessOf = (r) => guessBranchForRecord(r, pendCardOwner(r) || me);
   // ── Гүйлгээ бүрийн метадата (шүүлт + дэлгэрэнгүйд) ──
   const mxMeta = (r) => {
     const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
@@ -4783,7 +4793,7 @@ async function confirmAllGuessedExpenses() {
     const own = pendCardOwner(r) || me;
     // guessOf-той адил: эхлээд утгаас ДАХИН таамаг (барьцаа 5800→5810 гэх мэт шинэчилнэ), эс бол хадгалсан.
     const sub = classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
-    const br = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', own);
+    const br = guessBranchForRecord(r, own);
     return { r, sub, br };
   }).filter(x => x.sub && (x.br || isAssetCat(x.sub)));   // ангилал + (салбар эсвэл хөрөнгө)
   if (!items.length) { showToast('Бүрэн таамаглаж чадсан зардал алга', 'warn', 2500); return; }

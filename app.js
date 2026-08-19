@@ -4655,9 +4655,8 @@ function renderMyExpenses() {
   // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
   // Шинэ дүрэм/сурлагаар ДАХИН таамаглана (хуучин хадгалсан ангилалыг шинэчилнэ — жиш барьцаа 5800→5810).
   const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
-  // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/эзнээс таамаг.
-  const brGuessOf = (r) => STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', me);
-  const nGuess = pend.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); }).length;
+  // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/ТУХАЙН ЭЗНИЙ салбараас таамаг (CEO-гийн биш).
+  const brGuessOf = (r) => STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', pendCardOwner(r) || me);
   // ── Гүйлгээ бүрийн метадата (шүүлт + дэлгэрэнгүйд) ──
   const mxMeta = (r) => {
     const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
@@ -4688,6 +4687,10 @@ function renderMyExpenses() {
   else if (F.sort === 'date_desc') list.sort((a, b) => _byDate(b, a));
   else if (F.sort === 'date_asc') list.sort(_byDate);
   const fActive = !!(F.q || F.date || F.min || F.src || F.sort || F.owner);
+  // "Таамгаар бүгдийг батлах" тоо/багц = ЯГ шүүсэн жагсаалтаас (эзэн/огноо/дүн… филтерийг дагана).
+  const _guessable = list.filter(r => { const s = guessOf(r); return s && (brGuessOf(r) || isAssetCat(s)); });
+  const nGuess = _guessable.length;
+  state._mxGuessIds = _guessable.map(r => r.id);
   const _selCss = 'padding:6px 8px;font-size:12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--text);max-width:44vw;';
   const filterBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 12px;">
     ${_owners.length > 1 ? `<select id="mx-owner" style="${_selCss}"><option value="">👤 Бүх ажилтан</option>${_owners.map(o => `<option value="${escapeHtml(o)}"${F.owner === o ? ' selected' : ''}>${escapeHtml(memberName(o))}</option>`).join('')}</select>` : ''}
@@ -4773,12 +4776,13 @@ function attachMyExpensesHandlers() {
 async function confirmAllGuessedExpenses() {
   const me = state.me;
   const seeAll = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance());
-  const F = state.mxF || {};
-  let base = seeAll ? allPendingCardExpenses() : myPendingCardExpenses(me);
-  if (F.owner) base = base.filter(r => pendCardOwner(r) === F.owner);   // эзний шүүлт идэвхтэй бол зөвхөн тэр
-  const items = base.map(r => {
+  // Багц = renderMyExpenses-д харагдаж буй ЯГ ТЭР шүүсэн жагсаалтын таамаглагдсан зардлууд (эзэн + бүх филтер).
+  const base = seeAll ? allPendingCardExpenses() : myPendingCardExpenses(me);
+  const ids = new Set(state._mxGuessIds || []);
+  const items = base.filter(r => ids.has(r.id)).map(r => {
     const own = pendCardOwner(r) || me;
-    const sub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : classifyExpense(r.purpose || r.beneficiary || '', '');
+    // guessOf-той адил: эхлээд утгаас ДАХИН таамаг (барьцаа 5800→5810 гэх мэт шинэчилнэ), эс бол хадгалсан.
+    const sub = classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
     const br = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : guessBranch(r.purpose || r.beneficiary || '', own);
     return { r, sub, br };
   }).filter(x => x.sub && (x.br || isAssetCat(x.sub)));   // ангилал + (салбар эсвэл хөрөнгө)

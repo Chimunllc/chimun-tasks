@@ -7597,7 +7597,14 @@ function _renderCateringServings(modal) {
 function openCateringJobModal(job) {
   const isNew = !job; job = job || {};
   state._ktServings = _ktMenuJson(job).map(sv => ({ slot: sv.slot || '', time: sv.time || '', portions: sv.portions || 0, dishes: Array.isArray(sv.dishes) ? sv.dishes.slice() : [] }));
-  const noOrders = (state.nomaadOrders || []).filter(o => !(typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)));
+  // Зөвхөн БАТАЛГААЖСАН арга хэмжээ — урьдчилгаа төлсөн (deposit) / гэрээтэй (contract) / гүйцэтгэсэн (done).
+  // Ердийн үнийн санал/илгээсэн/баталгаажуулалт хүлээж буй нь катерингт татагдахгүй.
+  const _ktOkStages = ['deposit', 'contract', 'done'];
+  const noOrders = (state.nomaadOrders || []).filter(o => {
+    if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return false;
+    if (o.quote_no && o.quote_no === job.quote_no) return true;   // засаж буй бол одоо холбоотойг үлдээнэ
+    return typeof nomaadStage === 'function' && _ktOkStages.includes(nomaadStage(o));
+  });
   const noOpts = noOrders.map(o => `<option value="${escapeHtml(o.quote_no || '')}"${o.quote_no === job.quote_no ? ' selected' : ''}>${escapeHtml((o.company || 'Нэргүй') + ' · ' + String(o.date_start || '').slice(0, 10))}</option>`).join('');
   const stOpts = Object.keys(CATERING_STATUS).map(k => `<option value="${k}"${(job.status || 'planned') === k ? ' selected' : ''}>${CATERING_STATUS[k][0]}</option>`).join('');
   const modal = document.createElement('div'); modal.className = 'modal-bg';

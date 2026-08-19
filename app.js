@@ -6679,7 +6679,7 @@ function renderHourly() {
     const payouts = st.ps;
     const sum = st.sum;
     // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
-    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}<img src="${escapeHtml(staffPhotoUrl(key))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></span>`;
+    const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>`;
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
@@ -15232,6 +15232,21 @@ function staffPhotoUrl(personKey) {
   const k = String(personKey || '').trim();
   return k ? `https://n8n.nomaadcamp.com/img/staff/${encodeURIComponent(k)}.jpg` : '';
 }
+// Ажилтны аватар <img> — эхлээд бүртгэлийн зураг (employees.photo, Google Drive — БҮХ ажилтанд
+// байдаг), алдвал VPS /img/staff/<утас>.jpg (2026-06-29 багц, зөвхөн ~100), тэр ч алдвал initials.
+// (Цагийн ажилчдын ихэнх нь VPS багцад байхгүй тул Drive зургийг нэгдүгээрт тавьж бүгдийг харуулна.)
+function staffAvatarImg(m) {
+  const key = personKey(m);
+  const drive = (m && m.photo) ? driveThumbUrl(m.photo, 128) : '';
+  const vps = staffPhotoUrl(key);
+  const primary = drive || vps;
+  if (!primary) return '';
+  const fb = (drive && vps) ? vps : '';   // Drive амжилтгүй бол VPS файл руу нэг удаа шилжинэ
+  const onerr = fb
+    ? `if(this.dataset.f){this.style.display='none'}else{this.dataset.f=1;this.src='${fb}'}`
+    : `this.style.display='none'`;
+  return `<img src="${escapeHtml(primary)}" referrerpolicy="no-referrer" alt="" loading="lazy" decoding="async" onerror="${onerr}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">`;
+}
 // Монгол РД-аас нас тооцох. Формат: 2 үсэг + YYMMDD + 2 серал. Сар 21-32 = 2000-аад (сар−20).
 function ageFromRD(rd) {
   const d = String(rd || '').replace(/\D/g, '');
@@ -15288,7 +15303,7 @@ function renderStaffList() {
     const key = personKey(m);
     return `
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
-        <span class="staff-avatar">${escapeHtml(memberInitials(key))}<img src="${escapeHtml(staffPhotoUrl(key))}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;" /></span>
+        <span class="staff-avatar">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${m.gender ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм'}</span>` : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>

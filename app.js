@@ -7528,13 +7528,17 @@ function renderCatering() {
       const multiDay = dateOrder.filter(Boolean).length > 1;
       const dayLabel = (d) => { if (!d) return ''; const dd = d.slice(5); const isNext = evDate && d > evDate; return `${isNext ? 'Маргааш ' : ''}${dd}`; };
       const servBlock = (d) => byDate[d].map(sv => {
-        const grouped = _ktGroupDishesByCat(sv.dishes);
-        const dishHtml = grouped.length
-          ? grouped.map(g => `<span style="color:var(--muted);">${escapeHtml(g.cat)}:</span> ${escapeHtml(g.items.join(', '))}`).join(' <span style="color:var(--border-strong);">·</span> ')
-          : '<span style="color:var(--muted);">хоол сонгоогүй</span>';
-        return `<div style="display:flex;gap:9px;font-size:12px;margin-top:5px;line-height:1.5;">
-            <b style="color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;">${escapeHtml(sv.time || '--:--')}</b>
-            <div style="min-width:0;"><span style="font-weight:600;">${escapeHtml(sv.slot || '')}</span>${sv.portions ? ` <span style="color:var(--muted);font-size:11px;">${sv.portions} порц</span>` : ''}<div style="color:var(--text-soft);margin-top:1px;">${dishHtml}</div></div>
+        const all = sv.dishes || [];
+        const menuD = all.filter(x => _ktMenuCatOf(x));      // цэсний хоол — ангиллаар бүлэглэнэ
+        const customD = all.filter(x => !_ktMenuCatOf(x));   // гараар бичсэн — тусад нь (үйлчилгээ гэх мэт)
+        const grouped = _ktGroupDishesByCat(menuD);
+        const groupedHtml = grouped.length ? `<div style="color:var(--text-soft);margin-top:2px;">${grouped.map(g => `<span style="color:var(--muted);">${escapeHtml(g.cat)}:</span> ${escapeHtml(g.items.join(', '))}`).join(' <span style="color:var(--border-strong);">·</span> ')}</div>` : '';
+        const customHtml = customD.length ? `<div style="color:var(--primary);margin-top:2px;">${customD.map(x => `🔹 ${escapeHtml(x)}`).join(' · ')}</div>` : '';
+        const dishHtml = (groupedHtml + customHtml) || '<div style="color:var(--muted);margin-top:2px;">—</div>';
+        const cnt = sv.portions ? (sv.slot === 'Буфет' ? `${sv.portions} хүн` : `${sv.portions} порц`) : '';
+        return `<div style="display:flex;gap:10px;font-size:12px;margin-top:7px;line-height:1.45;">
+            <span style="flex-shrink:0;font-weight:800;font-size:11.5px;font-variant-numeric:tabular-nums;background:var(--panel-hover);border-radius:6px;padding:2px 8px;height:fit-content;white-space:nowrap;">${escapeHtml(sv.time || '--:--')}</span>
+            <div style="min-width:0;"><span style="font-weight:700;">${escapeHtml(sv.slot || '')}</span>${cnt ? ` <span style="color:var(--muted);font-size:11px;">· ${cnt}</span>` : ''}${dishHtml}</div>
           </div>`;
       }).join('');
       const servHtml = servings.length
@@ -7619,7 +7623,8 @@ function _renderCateringServings(modal) {
         <button type="button" data-kt-rmserv="${i}" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;flex-shrink:0;">×</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${(sv.dishes || []).map((d, di) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:2px 8px;">${escapeHtml(d)}<button type="button" data-kt-rmdish="${i}:${di}" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:13px;line-height:1;padding:0;">×</button></span>`).join('') || '<span style="font-size:11px;color:var(--muted);">Хоол сонгоогүй</span>'}</div>
-      <select data-kt-adddish="${i}" style="width:100%;padding:6px 8px;border:1px dashed var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--muted);"><option value="">+ Хоол нэмэх (drop)…</option>${menuOpts}</select>
+      <select data-kt-adddish="${i}" style="width:100%;padding:6px 8px;border:1px dashed var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--muted);margin-bottom:5px;"><option value="">+ Цэснээс хоол нэмэх…</option>${menuOpts}</select>
+      <div style="display:flex;gap:5px;"><input data-kt-custom="${i}" placeholder="✍️ Гараар бичих (жиш: Хорхог хийх үйлчилгээ)…" style="${_inp}flex:1;"><button type="button" data-kt-customadd="${i}" class="btn" style="padding:5px 12px;font-size:12px;flex-shrink:0;">Нэмэх</button></div>
     </div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:6px 0;">Хоол/цаг нэмээгүй байна.</div>';
   wrap.querySelectorAll('[data-kt-slot]').forEach(el => el.onchange = () => { rows[+el.dataset.ktSlot].slot = el.value; });
   wrap.querySelectorAll('[data-kt-date]').forEach(el => el.onchange = () => { rows[+el.dataset.ktDate].date = el.value; });
@@ -7628,6 +7633,9 @@ function _renderCateringServings(modal) {
   wrap.querySelectorAll('[data-kt-rmserv]').forEach(el => el.onclick = () => { rows.splice(+el.dataset.ktRmserv, 1); _renderCateringServings(modal); });
   wrap.querySelectorAll('[data-kt-rmdish]').forEach(el => el.onclick = () => { const [i, di] = el.dataset.ktRmdish.split(':').map(Number); rows[i].dishes.splice(di, 1); _renderCateringServings(modal); });
   wrap.querySelectorAll('[data-kt-adddish]').forEach(el => el.onchange = () => { const i = +el.dataset.ktAdddish; if (el.value) { rows[i].dishes = rows[i].dishes || []; if (!rows[i].dishes.includes(el.value)) rows[i].dishes.push(el.value); _renderCateringServings(modal); } });
+  const addCustom = (i, inp) => { const v = (inp.value || '').trim(); if (!v) return; rows[i].dishes = rows[i].dishes || []; if (!rows[i].dishes.includes(v)) rows[i].dishes.push(v); _renderCateringServings(modal); };
+  wrap.querySelectorAll('[data-kt-customadd]').forEach(el => el.onclick = () => addCustom(+el.dataset.ktCustomadd, wrap.querySelector(`[data-kt-custom="${el.dataset.ktCustomadd}"]`)));
+  wrap.querySelectorAll('[data-kt-custom]').forEach(el => el.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(+el.dataset.ktCustom, el); } });
 }
 function openCateringJobModal(job) {
   const isNew = !job; job = job || {};

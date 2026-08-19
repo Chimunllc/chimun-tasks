@@ -7547,6 +7547,7 @@ function renderCatering() {
           ${_ktStatusBadge(j.status)}
         </div>
         <div style="border-top:1px solid var(--border);padding-top:6px;">${servHtml}</div>
+        ${j.note ? `<div style="margin-top:8px;font-size:12px;color:var(--text-soft);background:var(--panel-hover);border-radius:8px;padding:7px 10px;">📝 ${escapeHtml(j.note)}</div>` : ''}
       </div>`;
     }).join('');
   }

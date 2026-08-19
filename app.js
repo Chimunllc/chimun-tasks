@@ -7128,6 +7128,8 @@ const PERM_MENUS = [
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
+  { key: 'catering',    label: 'Катеринг',        actions: [
+      { key: 'catering.edit', label: 'Цэс / ажил засах' } ] },
   { key: 'orders',      label: 'Захиалга',        actions: [
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
       { key: 'orders.prepare',  label: 'Бэлтгэх (нярав)' },
@@ -7414,7 +7416,10 @@ async function saveBankCard(c) {
    Катеринг = хоол хүнсний үйлчилгээ. Ажлын карт = арга хэмжээ (NOMAAD-аас татах эсвэл
    гараар) + цэс (drop-оор сонгосон хоол) + үйлчлэх цаг + зочны тоо. Цэс нь аппд засагддаг
    жагсаалт (catering_menu), ажлууд catering_jobs (VPS Postgres, PostgREST anon). */
-const CATERING_MEALS = ['Өглөөний цай', 'Өдрийн хоол', 'Оройн хоол', 'Зууш', 'Ундаа'];
+// Цэсний ангилал (хоолны төрөл) — жинхэнэ меню (Catering shine.pdf). Цэс энэ дарааллаар бүлэглэнэ.
+const CATERING_MENU_CATS = ['Махны сонголт', 'Салад', 'Хачир', 'Шөл', 'Өглөөний цай', 'Порц хоол', 'Нэмэлт / Snack', 'Free / Үнэгүй'];
+// Үйлчлэх цагийн сонголт (арга хэмжээн дэх хоолны цаг) — servings-ийн slot.
+const CATERING_SLOTS = ['Өглөөний цай', 'Өдрийн хоол', 'Оройн хоол', 'Буфет', 'Нэмэлт зууш'];
 const CATERING_STATUS = { planned: ['📋 Төлөвлөсөн', '#b45309', 'rgba(217,119,6,.12)'], confirmed: ['✓ Баталгаажсан', '#0f7a3d', 'rgba(16,163,74,.12)'], done: ['🏁 Дууссан', '#4338ca', 'rgba(79,70,229,.12)'], cancelled: ['✕ Цуцалсан', '#b91c1c', 'rgba(220,38,38,.12)'] };
 function canSeeCatering() {
   if (state.isCEO) return true;
@@ -7485,7 +7490,7 @@ function renderCatering() {
     if (!state.cateringMenu) body = '<div style="color:var(--muted);padding:20px;text-align:center;">Ачаалж байна…</div>';
     else {
       const active = menu.filter(m => m.active !== false);
-      body = CATERING_MEALS.map(meal => {
+      body = CATERING_MENU_CATS.map(meal => {
         const items = active.filter(m => m.meal === meal);
         if (!items.length) return '';
         return `<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;">${escapeHtml(meal)} · ${items.length}</div>` +
@@ -7493,7 +7498,7 @@ function renderCatering() {
             <div><b style="font-size:13px;">${escapeHtml(m.name)}</b>${m.note ? `<span style="font-size:11px;color:var(--muted);"> · ${escapeHtml(m.note)}</span>` : ''}</div>
             <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.unit || 'порц')}</span></div>`).join('');
       }).join('');
-      const other = active.filter(m => !CATERING_MEALS.includes(m.meal));
+      const other = active.filter(m => !CATERING_MENU_CATS.includes(m.meal));
       if (other.length) body += `<div style="font-size:12px;font-weight:700;color:var(--text-soft);margin:14px 0 6px;">БУСАД</div>` + other.map(m => `<div class="kt-dish" data-kt-dish="${escapeHtml(m.id)}" style="display:flex;justify-content:space-between;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px;background:var(--panel);cursor:pointer;"><b style="font-size:13px;">${escapeHtml(m.name)}</b><span style="font-size:11px;color:var(--muted);">${escapeHtml(m.meal || '')}</span></div>`).join('');
       if (!active.length) body = '<div style="color:var(--muted);padding:20px;text-align:center;">Цэс хоосон. «+ Хоол нэмэх»-ээр эхлүүлнэ үү.</div>';
     }
@@ -7531,7 +7536,7 @@ function attachCateringHandlers() {
 }
 function openCateringMenuModal(it) {
   const isNew = !it; it = it || {};
-  const mealOpts = CATERING_MEALS.map(m => `<option value="${escapeHtml(m)}"${m === it.meal ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('');
+  const mealOpts = CATERING_MENU_CATS.map(m => `<option value="${escapeHtml(m)}"${m === it.meal ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('');
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:420px;">
     <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🍲 Хоол нэмэх' : '🍲 Хоол засах'}</div>
@@ -7570,8 +7575,8 @@ function _renderCateringServings(modal) {
   const wrap = modal.querySelector('#kt-servings'); if (!wrap) return;
   const rows = state._ktServings || [];
   const menu = (state.cateringMenu || []).filter(m => m.active !== false);
-  const menuOpts = CATERING_MEALS.map(meal => { const items = menu.filter(m => m.meal === meal); return items.length ? `<optgroup label="${escapeHtml(meal)}">${items.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</optgroup>` : ''; }).join('') + (() => { const o = menu.filter(m => !CATERING_MEALS.includes(m.meal)); return o.length ? `<optgroup label="Бусад">${o.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</optgroup>` : ''; })();
-  const slotOpts = CATERING_MEALS.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  const menuOpts = CATERING_MENU_CATS.map(meal => { const items = menu.filter(m => m.meal === meal); return items.length ? `<optgroup label="${escapeHtml(meal)}">${items.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</optgroup>` : ''; }).join('') + (() => { const o = menu.filter(m => !CATERING_MENU_CATS.includes(m.meal)); return o.length ? `<optgroup label="Бусад">${o.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</optgroup>` : ''; })();
+  const slotOpts = CATERING_SLOTS.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
   wrap.innerHTML = rows.map((sv, i) => `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--panel-hover);">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
         <select data-kt-slot="${i}" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);"><option value="">— цаг —</option>${slotOpts.replace(`value="${escapeHtml(sv.slot)}"`, `value="${escapeHtml(sv.slot)}" selected`)}</select>

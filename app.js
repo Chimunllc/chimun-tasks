@@ -7425,10 +7425,13 @@ const CATERING_TIMES = (() => { const a = []; for (let h = 0; h < 24; h++) for (
 // Цэсний ангиллын богино нэр (картад буфетийг бүлэглэхэд).
 const _KT_CAT_SHORT = { 'Махны сонголт': 'Мах', 'Порц хоол': 'Порц', 'Нэмэлт / Snack': 'Нэмэлт', 'Free / Үнэгүй': 'Free' };
 function _ktMenuCatOf(name) { const m = (state.cateringMenu || []).find(x => x.name === name); return m ? (m.meal || '') : ''; }
-// Тухайн serving-ийн хоолнуудыг цэсний ангиллаар бүлэглэнэ (Мах / Салад / Хачир…).
+// Хоол = {n:нэр, q:тоо}. Хуучин дата (string) ч дэмжинэ.
+function _ktDishNorm(d) { return (typeof d === 'string') ? { n: d, q: 0 } : { n: (d && d.n) || '', q: Number(d && d.q) || 0 }; }
+function _ktDishLabel(nd) { return escapeHtml(nd.n) + (nd.q ? ` <span style="color:var(--muted);">×${nd.q}</span>` : ''); }
+// Тухайн serving-ийн хоолнуудыг цэсний ангиллаар бүлэглэнэ (Мах / Салад / Хачир…). dishes = {n,q}[].
 function _ktGroupDishesByCat(dishes) {
   const by = {}, order = [];
-  (dishes || []).forEach(d => { const c = _ktMenuCatOf(d) || 'Бусад'; if (!by[c]) { by[c] = []; order.push(c); } by[c].push(d); });
+  (dishes || []).forEach(d => { const nd = _ktDishNorm(d); const c = _ktMenuCatOf(nd.n) || 'Бусад'; if (!by[c]) { by[c] = []; order.push(c); } by[c].push(nd); });
   order.sort((a, b) => { const ia = CATERING_MENU_CATS.indexOf(a), ib = CATERING_MENU_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
   return order.map(c => ({ cat: _KT_CAT_SHORT[c] || c, items: by[c] }));
 }
@@ -7528,12 +7531,12 @@ function renderCatering() {
       const multiDay = dateOrder.filter(Boolean).length > 1;
       const dayLabel = (d) => { if (!d) return ''; const dd = d.slice(5); const isNext = evDate && d > evDate; return `${isNext ? 'Маргааш ' : ''}${dd}`; };
       const servBlock = (d) => byDate[d].map(sv => {
-        const all = sv.dishes || [];
-        const menuD = all.filter(x => _ktMenuCatOf(x));      // цэсний хоол — ангиллаар бүлэглэнэ
-        const customD = all.filter(x => !_ktMenuCatOf(x));   // гараар бичсэн — тусад нь (үйлчилгээ гэх мэт)
+        const all = (sv.dishes || []).map(_ktDishNorm);
+        const menuD = all.filter(x => _ktMenuCatOf(x.n));      // цэсний хоол — ангиллаар бүлэглэнэ
+        const customD = all.filter(x => !_ktMenuCatOf(x.n));   // гараар бичсэн — тусад нь (үйлчилгээ гэх мэт)
         const grouped = _ktGroupDishesByCat(menuD);
-        const groupedHtml = grouped.length ? `<div style="color:var(--text-soft);margin-top:2px;">${grouped.map(g => `<span style="color:var(--muted);">${escapeHtml(g.cat)}:</span> ${escapeHtml(g.items.join(', '))}`).join(' <span style="color:var(--border-strong);">·</span> ')}</div>` : '';
-        const customHtml = customD.length ? `<div style="color:var(--primary);margin-top:2px;">${customD.map(x => `🔹 ${escapeHtml(x)}`).join(' · ')}</div>` : '';
+        const groupedHtml = grouped.length ? `<div style="color:var(--text-soft);margin-top:2px;">${grouped.map(g => `<span style="color:var(--muted);">${escapeHtml(g.cat)}:</span> ${g.items.map(_ktDishLabel).join(', ')}`).join(' <span style="color:var(--border-strong);">·</span> ')}</div>` : '';
+        const customHtml = customD.length ? `<div style="color:var(--primary);margin-top:2px;">${customD.map(x => `🔹 ${_ktDishLabel(x)}`).join(' · ')}</div>` : '';
         const dishHtml = (groupedHtml + customHtml) || '<div style="color:var(--muted);margin-top:2px;">—</div>';
         const cnt = sv.portions ? (sv.slot === 'Буфет' ? `${sv.portions} хүн` : `${sv.portions} порц`) : '';
         return `<div style="display:flex;gap:10px;font-size:12px;margin-top:7px;line-height:1.45;">
@@ -7622,7 +7625,7 @@ function _renderCateringServings(modal) {
         <input type="number" data-kt-portions="${i}" value="${sv.portions || ''}" placeholder="порц" style="${_inp}width:70px;">
         <button type="button" data-kt-rmserv="${i}" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;flex-shrink:0;">×</button>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${(sv.dishes || []).map((d, di) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:2px 8px;">${escapeHtml(d)}<button type="button" data-kt-rmdish="${i}:${di}" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:13px;line-height:1;padding:0;">×</button></span>`).join('') || '<span style="font-size:11px;color:var(--muted);">Хоол сонгоогүй</span>'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${(sv.dishes || []).map((d, di) => { const nd = _ktDishNorm(d); return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:2px 6px 2px 10px;">${escapeHtml(nd.n)}<input type="number" min="0" data-kt-qty="${i}:${di}" value="${nd.q || ''}" placeholder="#" title="тоо/порц" style="width:44px;padding:2px 4px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--panel-hover);color:var(--text);text-align:center;"><button type="button" data-kt-rmdish="${i}:${di}" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:13px;line-height:1;padding:0;">×</button></span>`; }).join('') || '<span style="font-size:11px;color:var(--muted);">Хоол сонгоогүй</span>'}</div>
       <select data-kt-adddish="${i}" style="width:100%;padding:6px 8px;border:1px dashed var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--muted);margin-bottom:5px;"><option value="">+ Цэснээс хоол нэмэх…</option>${menuOpts}</select>
       <div style="display:flex;gap:5px;"><input data-kt-custom="${i}" placeholder="✍️ Гараар бичих (жиш: Хорхог хийх үйлчилгээ)…" style="${_inp}flex:1;"><button type="button" data-kt-customadd="${i}" class="btn" style="padding:5px 12px;font-size:12px;flex-shrink:0;">Нэмэх</button></div>
     </div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:6px 0;">Хоол/цаг нэмээгүй байна.</div>';
@@ -7631,15 +7634,17 @@ function _renderCateringServings(modal) {
   wrap.querySelectorAll('[data-kt-time]').forEach(el => el.onchange = () => { rows[+el.dataset.ktTime].time = el.value; });
   wrap.querySelectorAll('[data-kt-portions]').forEach(el => el.onchange = () => { rows[+el.dataset.ktPortions].portions = Number(el.value) || 0; });
   wrap.querySelectorAll('[data-kt-rmserv]').forEach(el => el.onclick = () => { rows.splice(+el.dataset.ktRmserv, 1); _renderCateringServings(modal); });
+  wrap.querySelectorAll('[data-kt-qty]').forEach(el => el.onchange = () => { const [i, di] = el.dataset.ktQty.split(':').map(Number); rows[i].dishes[di] = _ktDishNorm(rows[i].dishes[di]); rows[i].dishes[di].q = Number(el.value) || 0; });
   wrap.querySelectorAll('[data-kt-rmdish]').forEach(el => el.onclick = () => { const [i, di] = el.dataset.ktRmdish.split(':').map(Number); rows[i].dishes.splice(di, 1); _renderCateringServings(modal); });
-  wrap.querySelectorAll('[data-kt-adddish]').forEach(el => el.onchange = () => { const i = +el.dataset.ktAdddish; if (el.value) { rows[i].dishes = rows[i].dishes || []; if (!rows[i].dishes.includes(el.value)) rows[i].dishes.push(el.value); _renderCateringServings(modal); } });
-  const addCustom = (i, inp) => { const v = (inp.value || '').trim(); if (!v) return; rows[i].dishes = rows[i].dishes || []; if (!rows[i].dishes.includes(v)) rows[i].dishes.push(v); _renderCateringServings(modal); };
+  const _addDish = (i, name) => { const n = String(name || '').trim(); if (!n) return; rows[i].dishes = rows[i].dishes || []; if (!rows[i].dishes.some(x => _ktDishNorm(x).n === n)) rows[i].dishes.push({ n, q: 0 }); _renderCateringServings(modal); };
+  wrap.querySelectorAll('[data-kt-adddish]').forEach(el => el.onchange = () => { if (el.value) _addDish(+el.dataset.ktAdddish, el.value); });
+  const addCustom = (i, inp) => _addDish(i, inp.value);
   wrap.querySelectorAll('[data-kt-customadd]').forEach(el => el.onclick = () => addCustom(+el.dataset.ktCustomadd, wrap.querySelector(`[data-kt-custom="${el.dataset.ktCustomadd}"]`)));
   wrap.querySelectorAll('[data-kt-custom]').forEach(el => el.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustom(+el.dataset.ktCustom, el); } });
 }
 function openCateringJobModal(job) {
   const isNew = !job; job = job || {};
-  state._ktServings = _ktMenuJson(job).map(sv => ({ slot: sv.slot || '', date: sv.date || '', time: sv.time || '', portions: sv.portions || 0, dishes: Array.isArray(sv.dishes) ? sv.dishes.slice() : [] }));
+  state._ktServings = _ktMenuJson(job).map(sv => ({ slot: sv.slot || '', date: sv.date || '', time: sv.time || '', portions: sv.portions || 0, dishes: Array.isArray(sv.dishes) ? sv.dishes.map(_ktDishNorm) : [] }));
   // Зөвхөн БАТАЛГААЖСАН арга хэмжээ — урьдчилгаа төлсөн (deposit) / гэрээтэй (contract) / гүйцэтгэсэн (done).
   // Ердийн үнийн санал/илгээсэн/баталгаажуулалт хүлээж буй нь катерингт татагдахгүй.
   const _ktOkStages = ['deposit', 'contract', 'done'];

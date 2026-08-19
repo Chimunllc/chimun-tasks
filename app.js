@@ -7420,6 +7420,18 @@ async function saveBankCard(c) {
 const CATERING_MENU_CATS = ['Махны сонголт', 'Салад', 'Хачир', 'Шөл', 'Өглөөний цай', 'Порц хоол', 'Нэмэлт / Snack', 'Free / Үнэгүй'];
 // Үйлчлэх цагийн сонголт (арга хэмжээн дэх хоолны цаг) — servings-ийн slot.
 const CATERING_SLOTS = ['Өглөөний цай', 'Өдрийн хоол', 'Оройн хоол', 'Буфет', 'Нэмэлт зууш'];
+// Цаг 30 минутын алхмаар (00:00 … 23:30).
+const CATERING_TIMES = (() => { const a = []; for (let h = 0; h < 24; h++) for (const m of ['00', '30']) a.push(String(h).padStart(2, '0') + ':' + m); return a; })();
+// Цэсний ангиллын богино нэр (картад буфетийг бүлэглэхэд).
+const _KT_CAT_SHORT = { 'Махны сонголт': 'Мах', 'Порц хоол': 'Порц', 'Нэмэлт / Snack': 'Нэмэлт', 'Free / Үнэгүй': 'Free' };
+function _ktMenuCatOf(name) { const m = (state.cateringMenu || []).find(x => x.name === name); return m ? (m.meal || '') : ''; }
+// Тухайн serving-ийн хоолнуудыг цэсний ангиллаар бүлэглэнэ (Мах / Салад / Хачир…).
+function _ktGroupDishesByCat(dishes) {
+  const by = {}, order = [];
+  (dishes || []).forEach(d => { const c = _ktMenuCatOf(d) || 'Бусад'; if (!by[c]) { by[c] = []; order.push(c); } by[c].push(d); });
+  order.sort((a, b) => { const ia = CATERING_MENU_CATS.indexOf(a), ib = CATERING_MENU_CATS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+  return order.map(c => ({ cat: _KT_CAT_SHORT[c] || c, items: by[c] }));
+}
 const CATERING_STATUS = { planned: ['📋 Төлөвлөсөн', '#b45309', 'rgba(217,119,6,.12)'], confirmed: ['✓ Баталгаажсан', '#0f7a3d', 'rgba(16,163,74,.12)'], done: ['🏁 Дууссан', '#4338ca', 'rgba(79,70,229,.12)'], cancelled: ['✕ Цуцалсан', '#b91c1c', 'rgba(220,38,38,.12)'] };
 function canSeeCatering() {
   if (state.isCEO) return true;
@@ -7507,17 +7519,34 @@ function renderCatering() {
     else if (!jobs.length) body = '<div style="color:var(--muted);padding:20px;text-align:center;">Катеринг ажил алга. «+ Шинэ катеринг»-ээр үүсгэнэ үү.</div>';
     else body = jobs.map(j => {
       const servings = _ktMenuJson(j);
-      const dishCount = servings.reduce((s, r) => s + (Array.isArray(r.dishes) ? r.dishes.length : 0), 0);
-      const dateStr = j.event_date ? String(j.event_date).slice(0, 10) : '';
-      const servHtml = servings.length ? servings.map(sv => `<div style="font-size:11.5px;color:var(--text-soft);margin-top:3px;"><b style="color:var(--text);">${escapeHtml(sv.time || '--:--')}</b> · ${escapeHtml(sv.slot || '')}${sv.dishes && sv.dishes.length ? ' — ' + escapeHtml(sv.dishes.join(', ')) : ''}${sv.portions ? ` <span style="color:var(--muted);">(${sv.portions} порц)</span>` : ''}</div>`).join('') : '<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">Цэс оруулаагүй</div>';
-      return `<div class="kt-job" data-kt-job="${escapeHtml(j.id)}" style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--panel);cursor:pointer;">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-          <div style="min-width:0;"><div style="font-size:14px;font-weight:700;">${escapeHtml(j.title || j.company || 'Катеринг')}</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:2px;">${j.company && j.title ? escapeHtml(j.company) + ' · ' : ''}${dateStr ? '🗓 ' + escapeHtml(dateStr) : ''}${j.guests ? ' · 👥 ' + j.guests : ''}${j.source === 'nomaad' ? ' · <span style="color:var(--primary);">NOMAAD</span>' : ''}</div></div>
+      const evDate = j.event_date ? String(j.event_date).slice(0, 10) : '';
+      // Serving-үүдийг огноо → цагаар эрэмбэлж, огноогоор бүлэглэнэ (маргаашийн хоол зөв огноогоор гарна).
+      const withDate = servings.map((sv, i) => ({ sv, i, d: (sv.date || evDate || ''), t: sv.time || '' }));
+      withDate.sort((a, b) => (a.d + a.t).localeCompare(b.d + b.t));
+      const byDate = {}; const dateOrder = [];
+      withDate.forEach(x => { if (!byDate[x.d]) { byDate[x.d] = []; dateOrder.push(x.d); } byDate[x.d].push(x.sv); });
+      const multiDay = dateOrder.filter(Boolean).length > 1;
+      const dayLabel = (d) => { if (!d) return ''; const dd = d.slice(5); const isNext = evDate && d > evDate; return `${isNext ? 'Маргааш ' : ''}${dd}`; };
+      const servBlock = (d) => byDate[d].map(sv => {
+        const grouped = _ktGroupDishesByCat(sv.dishes);
+        const dishHtml = grouped.length
+          ? grouped.map(g => `<span style="color:var(--muted);">${escapeHtml(g.cat)}:</span> ${escapeHtml(g.items.join(', '))}`).join(' <span style="color:var(--border-strong);">·</span> ')
+          : '<span style="color:var(--muted);">хоол сонгоогүй</span>';
+        return `<div style="display:flex;gap:9px;font-size:12px;margin-top:5px;line-height:1.5;">
+            <b style="color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0;">${escapeHtml(sv.time || '--:--')}</b>
+            <div style="min-width:0;"><span style="font-weight:600;">${escapeHtml(sv.slot || '')}</span>${sv.portions ? ` <span style="color:var(--muted);font-size:11px;">${sv.portions} порц</span>` : ''}<div style="color:var(--text-soft);margin-top:1px;">${dishHtml}</div></div>
+          </div>`;
+      }).join('');
+      const servHtml = servings.length
+        ? dateOrder.map(d => `${multiDay && d ? `<div style="font-size:11px;font-weight:700;color:var(--primary);margin-top:9px;">🗓 ${escapeHtml(dayLabel(d))}</div>` : ''}${servBlock(d)}`).join('')
+        : '<div style="font-size:12px;color:var(--muted);margin-top:6px;">Цэс оруулаагүй</div>';
+      return `<div class="kt-job" data-kt-job="${escapeHtml(j.id)}" style="border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:11px;background:var(--panel);cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.03);">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px;">
+          <div style="min-width:0;"><div style="font-size:15px;font-weight:800;">${escapeHtml(j.title || j.company || 'Катеринг')}</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:3px;display:flex;flex-wrap:wrap;gap:7px;align-items:center;">${j.company && j.title ? `<span>${escapeHtml(j.company)}</span>` : ''}${evDate ? `<span>🗓 ${escapeHtml(evDate)}${multiDay ? '…' : ''}</span>` : ''}${j.guests ? `<span>👥 ${j.guests}</span>` : ''}${j.location ? `<span>📍 ${escapeHtml(j.location)}</span>` : ''}${j.source === 'nomaad' ? `<span style="color:var(--primary);font-weight:700;">NOMAAD</span>` : ''}</div></div>
           ${_ktStatusBadge(j.status)}
         </div>
-        <div style="margin-top:6px;">${servHtml}</div>
-        ${j.location ? `<div style="font-size:11px;color:var(--muted);margin-top:5px;">📍 ${escapeHtml(j.location)}</div>` : ''}
+        <div style="border-top:1px solid var(--border);padding-top:6px;">${servHtml}</div>
       </div>`;
     }).join('');
   }
@@ -7576,18 +7605,23 @@ function _renderCateringServings(modal) {
   const rows = state._ktServings || [];
   const menu = (state.cateringMenu || []).filter(m => m.active !== false);
   const menuOpts = CATERING_MENU_CATS.map(meal => { const items = menu.filter(m => m.meal === meal); return items.length ? `<optgroup label="${escapeHtml(meal)}">${items.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</optgroup>` : ''; }).join('') + (() => { const o = menu.filter(m => !CATERING_MENU_CATS.includes(m.meal)); return o.length ? `<optgroup label="Бусад">${o.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')}</optgroup>` : ''; })();
-  const slotOpts = CATERING_SLOTS.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  const evDate = (modal.querySelector('#kt-date') && modal.querySelector('#kt-date').value) || '';
+  const _inp = 'padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);';
+  const slotSel = (s) => `<option value="">— цаг —</option>` + CATERING_SLOTS.map(m => `<option value="${escapeHtml(m)}"${m === s ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('');
+  const timeSel = (t) => { const list = (t && !CATERING_TIMES.includes(t)) ? [t, ...CATERING_TIMES] : CATERING_TIMES; return `<option value="">--:--</option>` + list.map(x => `<option value="${escapeHtml(x)}"${x === t ? ' selected' : ''}>${escapeHtml(x)}</option>`).join(''); };
   wrap.innerHTML = rows.map((sv, i) => `<div style="border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--panel-hover);">
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-        <select data-kt-slot="${i}" style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);"><option value="">— цаг —</option>${slotOpts.replace(`value="${escapeHtml(sv.slot)}"`, `value="${escapeHtml(sv.slot)}" selected`)}</select>
-        <input type="time" data-kt-time="${i}" value="${escapeHtml(sv.time || '')}" style="width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">
-        <input type="number" data-kt-portions="${i}" value="${sv.portions || ''}" placeholder="порц" style="width:74px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+        <select data-kt-slot="${i}" style="${_inp}flex:1;min-width:120px;">${slotSel(sv.slot || '')}</select>
+        <input type="date" data-kt-date="${i}" value="${escapeHtml(sv.date || evDate || '')}" title="Огноо (маргаашийн хоол бол дараагийн өдөр)" style="${_inp}width:140px;">
+        <select data-kt-time="${i}" style="${_inp}width:92px;">${timeSel(sv.time || '')}</select>
+        <input type="number" data-kt-portions="${i}" value="${sv.portions || ''}" placeholder="порц" style="${_inp}width:70px;">
         <button type="button" data-kt-rmserv="${i}" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;flex-shrink:0;">×</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;">${(sv.dishes || []).map((d, di) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--panel);border:1px solid var(--border);border-radius:20px;padding:2px 8px;">${escapeHtml(d)}<button type="button" data-kt-rmdish="${i}:${di}" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:13px;line-height:1;padding:0;">×</button></span>`).join('') || '<span style="font-size:11px;color:var(--muted);">Хоол сонгоогүй</span>'}</div>
       <select data-kt-adddish="${i}" style="width:100%;padding:6px 8px;border:1px dashed var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--muted);"><option value="">+ Хоол нэмэх (drop)…</option>${menuOpts}</select>
     </div>`).join('') || '<div style="font-size:12px;color:var(--muted);padding:6px 0;">Хоол/цаг нэмээгүй байна.</div>';
   wrap.querySelectorAll('[data-kt-slot]').forEach(el => el.onchange = () => { rows[+el.dataset.ktSlot].slot = el.value; });
+  wrap.querySelectorAll('[data-kt-date]').forEach(el => el.onchange = () => { rows[+el.dataset.ktDate].date = el.value; });
   wrap.querySelectorAll('[data-kt-time]').forEach(el => el.onchange = () => { rows[+el.dataset.ktTime].time = el.value; });
   wrap.querySelectorAll('[data-kt-portions]').forEach(el => el.onchange = () => { rows[+el.dataset.ktPortions].portions = Number(el.value) || 0; });
   wrap.querySelectorAll('[data-kt-rmserv]').forEach(el => el.onclick = () => { rows.splice(+el.dataset.ktRmserv, 1); _renderCateringServings(modal); });
@@ -7596,7 +7630,7 @@ function _renderCateringServings(modal) {
 }
 function openCateringJobModal(job) {
   const isNew = !job; job = job || {};
-  state._ktServings = _ktMenuJson(job).map(sv => ({ slot: sv.slot || '', time: sv.time || '', portions: sv.portions || 0, dishes: Array.isArray(sv.dishes) ? sv.dishes.slice() : [] }));
+  state._ktServings = _ktMenuJson(job).map(sv => ({ slot: sv.slot || '', date: sv.date || '', time: sv.time || '', portions: sv.portions || 0, dishes: Array.isArray(sv.dishes) ? sv.dishes.slice() : [] }));
   // Зөвхөн БАТАЛГААЖСАН арга хэмжээ — урьдчилгаа төлсөн (deposit) / гэрээтэй (contract) / гүйцэтгэсэн (done).
   // Ердийн үнийн санал/илгээсэн/баталгаажуулалт хүлээж буй нь катерингт татагдахгүй.
   const _ktOkStages = ['deposit', 'contract', 'done'];
@@ -7634,7 +7668,7 @@ function openCateringJobModal(job) {
   modal.querySelector('#kt-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   _renderCateringServings(modal);
-  modal.querySelector('#kt-add-serving').onclick = () => { state._ktServings.push({ slot: '', time: '', portions: Number(modal.querySelector('#kt-guests').value) || 0, dishes: [] }); _renderCateringServings(modal); };
+  modal.querySelector('#kt-add-serving').onclick = () => { state._ktServings.push({ slot: '', date: modal.querySelector('#kt-date').value || '', time: '', portions: Number(modal.querySelector('#kt-guests').value) || 0, dishes: [] }); _renderCateringServings(modal); };
   // NOMAAD-аас татах — компани/огноо/зочны тоо/гарчиг автоматаар нөхнө.
   modal.querySelector('#kt-nomaad').onchange = (e) => {
     const o = noOrders.find(x => x.quote_no === e.target.value); if (!o) return;

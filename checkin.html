@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#2F3E2F">
+<title>Цаг бүртгэл · Чимун ХХК</title>
+<style>
+  :root{
+    --bg:#F4EFE4; --card:#FFFFFF; --ink:#26301F; --muted:#7C7A6E;
+    --line:#E5DECB; --accent:#B14F1F; --green:#2F3E2F; --ok:#2e7d32; --out:#B14F1F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.4;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding:16px 14px 30px}
+  header{text-align:center;padding:6px 0 14px}
+  .brand{font-size:13px;letter-spacing:.16em;font-weight:800;color:var(--green)}
+  h1{font-size:20px;margin-top:3px;color:var(--green)}
+  .date{font-size:13px;color:var(--muted);margin-top:2px}
+
+  .search{position:sticky;top:8px;z-index:5;margin:6px 0 10px}
+  .search input{width:100%;padding:13px 15px;font-size:16px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);outline:none}
+  .search input:focus{border-color:var(--accent)}
+
+  .list{display:flex;flex-direction:column;gap:8px;flex:1}
+  .person{display:flex;align-items:center;gap:12px;padding:11px 13px;background:var(--card);border:1px solid var(--line);border-radius:13px;cursor:pointer;transition:transform .05s}
+  .person:active{transform:scale(.985)}
+  .ava{width:42px;height:42px;border-radius:50%;background:#EDE7D6;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--muted);overflow:hidden;background-size:cover;background-position:center}
+  .pmain{flex:1;min-width:0}
+  .pname{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prole{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pstate{font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap}
+  .pstate.in{background:#E6F0E6;color:var(--ok)}
+  .pstate.none{background:#F0EAD9;color:var(--muted)}
+
+  .msg{text-align:center;color:var(--muted);padding:40px 10px;font-size:14px}
+  .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 12px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* Confirm / success overlay */
+  .sheet{position:fixed;inset:0;background:rgba(38,48,31,.55);display:none;align-items:flex-end;justify-content:center;z-index:20}
+  .sheet.on{display:flex}
+  .sheet-card{background:var(--card);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));text-align:center;animation:up .22s ease}
+  @keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:translateY(0);opacity:1}}
+  .c-ava{width:64px;height:64px;border-radius:50%;background:#EDE7D6;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--muted);overflow:hidden;background-size:cover;background-position:center}
+  .c-name{font-size:19px;font-weight:700}
+  .c-role{font-size:13px;color:var(--muted);margin-top:2px}
+  .c-kind{margin:16px 0 4px;font-size:15px}
+  .c-kind b{font-size:26px;display:block;margin-top:2px}
+  .c-kind.in b{color:var(--ok)} .c-kind.out b{color:var(--out)}
+  .c-time{font-size:14px;color:var(--muted)}
+  .btns{display:flex;gap:10px;margin-top:20px}
+  .btn{flex:1;padding:15px;border:none;border-radius:13px;font-size:16px;font-weight:700;cursor:pointer}
+  .btn-cancel{background:#EFEADD;color:var(--muted)}
+  .btn-go{background:var(--green);color:#fff}
+  .btn-go.out{background:var(--out)}
+  .ok-tick{width:76px;height:76px;border-radius:50%;background:var(--ok);margin:6px auto 14px;display:flex;align-items:center;justify-content:center}
+  .ok-tick.out{background:var(--out)}
+  .ok-tick svg{width:40px;height:40px;stroke:#fff;stroke-width:3.5;fill:none}
+  .done-sub{color:var(--muted);font-size:14px;margin-top:6px}
+  .foot{text-align:center;font-size:11px;color:var(--muted);margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">ЧИМУН ХХК</div>
+    <h1>Цаг бүртгэл</h1>
+    <div class="date" id="today">—</div>
+  </header>
+
+  <div class="search"><input id="q" type="text" inputmode="search" placeholder="Нэрээ бичиж хайх..." autocomplete="off"></div>
+  <div class="list" id="list"><div class="msg"><div class="spin"></div>Ажилтнуудыг ачаалж байна...</div></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<div class="sheet" id="sheet"><div class="sheet-card" id="sheetCard"></div></div>
+
+<script>
+(function(){
+  'use strict';
+  var CFG = {
+    STAFF: 'https://n8n.nomaadcamp.com/webhook/staff?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+    DB:    'https://n8n.nomaadcamp.com/db/rest/v1/attendance',
+    KEY:   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s',
+    IMG:   'https://n8n.nomaadcamp.com/img/'
+  };
+  var params = new URLSearchParams(location.search);
+  var TOKEN = params.get('t') || '';
+  var MN = ['Ням','Даваа','Мягмар','Лхагва','Пүрэв','Баасан','Бямба'];
+  function ubNow(){ return new Date(Date.now() + (new Date().getTimezoneOffset()+480)*60000); }
+  function ubDate(){ var d=ubNow(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function hhmm(d){ d=d||ubNow(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  var DAY = params.get('d') || ubDate();
+  (function(){ var d=ubNow(); document.getElementById('today').textContent = DAY + ' · ' + MN[d.getDay()]; })();
+
+  function initials(name){ var p=String(name||'').trim().split(/\s+/); var s=(p[0]||'').slice(0,1)+((p[1]||p[0]||'').slice(0,1)); return s.toUpperCase()||'?'; }
+  // personKey (апптай ижил): утас → email → нэр
+  function key(m){ return String(m.phone||'').replace(/\D/g,'') || String(m.email||'').toLowerCase() || m.name || ''; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function avaStyle(m){ if(m.photo){ var u=/^https?:/.test(m.photo)?m.photo:CFG.IMG+m.photo; return 'background-image:url('+u+')'; } return ''; }
+
+  var MEMBERS=[], STATE={}, filtered=[];
+
+  function isActive(m){
+    var st=String(m.status||'').toLowerCase();
+    if(st.indexOf('гарс')>=0 || st.indexOf('идэвхг')>=0) return false;
+    if(m.left_at) return false;
+    return true;
+  }
+
+  Promise.all([
+    fetch(CFG.STAFF+'&t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json();}).catch(function(){return null;}),
+    fetch(CFG.DB+'?day=eq.'+DAY+'&select=member_key,kind,ts&order=ts.asc',{headers:{apikey:CFG.KEY}}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];})
+  ]).then(function(res){
+    var team = (res[0] && res[0].team) || (Array.isArray(res[0])?res[0]:[]);
+    MEMBERS = team.filter(isActive).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'mn');});
+    (res[1]||[]).forEach(function(r){ (STATE[r.member_key]=STATE[r.member_key]||[]).push(r); });
+    if(!MEMBERS.length){ document.getElementById('list').innerHTML='<div class="msg">Ажилтны жагсаалт ачаалж чадсангүй.<br>Сүлжээгээ шалгаад дахин уншуулна уу.</div>'; return; }
+    document.getElementById('foot').textContent = MEMBERS.length + ' ажилтан';
+    render('');
+  });
+
+  function lastKind(k){ var a=STATE[k]||[]; return a.length?a[a.length-1].kind:null; }
+  function nextKind(k){ return lastKind(k)==='in' ? 'out' : 'in'; }
+
+  function render(qv){
+    qv=(qv||'').toLowerCase().trim();
+    filtered = qv ? MEMBERS.filter(function(m){return String(m.name||'').toLowerCase().indexOf(qv)>=0 || String(m.role||'').toLowerCase().indexOf(qv)>=0;}) : MEMBERS;
+    var html = filtered.map(function(m){
+      var k=key(m), lk=lastKind(k);
+      var badge = lk==='in' ? '<span class="pstate in">Ирсэн</span>' : (lk==='out' ? '<span class="pstate none">Явсан</span>' : '');
+      return '<div class="person" data-k="'+esc(k)+'"><div class="ava" style="'+avaStyle(m)+'">'+(avaStyle(m)?'':esc(initials(m.name)))+'</div>'+
+        '<div class="pmain"><div class="pname">'+esc(m.name)+'</div><div class="prole">'+esc(m.role||'')+'</div></div>'+badge+'</div>';
+    }).join('');
+    document.getElementById('list').innerHTML = html || '<div class="msg">Олдсонгүй</div>';
+  }
+  function memByKey(k){ for(var i=0;i<MEMBERS.length;i++) if(key(MEMBERS[i])===k) return MEMBERS[i]; return null; }
+
+  document.getElementById('q').addEventListener('input', function(e){ render(e.target.value); });
+  document.getElementById('list').addEventListener('click', function(e){
+    var el=e.target.closest('.person'); if(!el) return; openConfirm(memByKey(el.getAttribute('data-k')));
+  });
+
+  var sheet=document.getElementById('sheet'), card=document.getElementById('sheetCard');
+  function closeSheet(){ sheet.classList.remove('on'); }
+  sheet.addEventListener('click', function(e){ if(e.target===sheet) closeSheet(); });
+
+  function openConfirm(m){
+    if(!m) return;
+    var k=key(m), kind=nextKind(k), t=hhmm();
+    var kindLabel = kind==='in' ? 'Ирлээ' : 'Явлаа';
+    card.innerHTML =
+      '<div class="c-ava" style="'+avaStyle(m)+'">'+(avaStyle(m)?'':esc(initials(m.name)))+'</div>'+
+      '<div class="c-name">'+esc(m.name)+'</div><div class="c-role">'+esc(m.role||'')+'</div>'+
+      '<div class="c-kind '+kind+'">'+(kind==='in'?'Ирсэн цаг':'Явсан цаг')+'<b>'+t+'</b></div>'+
+      '<div class="c-time">'+kindLabel+' гэж бүртгэх үү?</div>'+
+      '<div class="btns"><button class="btn btn-cancel" id="cCancel">Болих</button>'+
+      '<button class="btn btn-go '+kind+'" id="cGo">'+kindLabel+'</button></div>';
+    sheet.classList.add('on');
+    document.getElementById('cCancel').onclick = closeSheet;
+    document.getElementById('cGo').onclick = function(){ submit(m, kind); };
+  }
+
+  function submit(m, kind){
+    var go=document.getElementById('cGo'); if(go){ go.textContent='...'; go.disabled=true; }
+    var k=key(m);
+    var body={ member_key:k, member_name:m.name||'', member_phone:String(m.phone||''),
+      kind:kind, token:TOKEN, source:'qr',
+      branch:(Array.isArray(m.branches)?m.branches[0]:(m.branches||m.branch||null)) };
+    fetch(CFG.DB, { method:'POST', headers:{ apikey:CFG.KEY, 'Content-Type':'application/json', Prefer:'return=minimal' }, body:JSON.stringify(body) })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); success(m, kind); (STATE[k]=STATE[k]||[]).push({member_key:k,kind:kind}); })
+      .catch(function(){ if(go){ go.textContent='Дахин оролдох'; go.disabled=false; } alert('Хадгалж чадсангүй. Сүлжээгээ шалгана уу.'); });
+  }
+
+  function success(m, kind){
+    var kindLabel = kind==='in' ? 'Ирлээ' : 'Явлаа';
+    card.innerHTML =
+      '<div class="ok-tick '+kind+'"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div>'+
+      '<div class="c-name">'+esc(m.name)+'</div>'+
+      '<div class="c-kind '+kind+'" style="margin:12px 0 2px;">'+kindLabel+'<b>'+hhmm()+'</b></div>'+
+      '<div class="done-sub">Амжилттай бүртгэгдлээ. Баярлалаа!</div>'+
+      '<div class="btns"><button class="btn btn-go" id="cDone" style="flex:1;background:var(--green)">Хаах</button></div>';
+    document.getElementById('cDone').onclick = closeSheet;
+    render(document.getElementById('q').value);
+  }
+})();
+</script>
+</body>
+</html>

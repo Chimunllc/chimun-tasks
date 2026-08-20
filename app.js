@@ -3178,6 +3178,7 @@ function render() {
   if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
   if (state.view === 'workload' && !canSeeWorkload()) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
+  if (state.view === 'attendance' && !canSeeAttendance()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'catering' && !canSeeCatering()) state.view = 'mine';
   if (state.view === 'access' && !state.isCEO) state.view = 'mine';
@@ -3298,6 +3299,9 @@ function renderSidebar() {
   if (salNav) salNav.style.display = (canSeeSalary() || canSeeHourlyPayroll()) ? '' : 'none';
   const _hrCnt2 = document.getElementById('cnt-hourly');
   if (_hrCnt2) { const _hw = hourlyWorkers().length; _hrCnt2.textContent = String(_hw); _hrCnt2.style.display = _hw ? '' : 'none'; }
+  // Цаг бүртгэл — менежер/CEO.
+  const atNav = document.getElementById('nav-attendance');
+  if (atNav) atNav.style.display = canSeeAttendance() ? '' : 'none';
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
   const arNav = document.getElementById('nav-receivables');
   if (arNav) {
@@ -3345,7 +3349,7 @@ function renderSidebar() {
   const gBr = document.getElementById('nav-group-branch');
   if (gBr) gBr.style.display = _grpVisible(['nav-orders', 'nav-nomaad', 'nav-catering', 'nav-products', 'nav-receivables']) ? '' : 'none';
   const gMg = document.getElementById('nav-group-mgmt');
-  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-workload', 'nav-performance', 'nav-hourly', 'nav-salary', 'nav-booqable', 'nav-accounts', 'nav-access']) ? '' : 'none';
+  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-workload', 'nav-performance', 'nav-hourly', 'nav-salary', 'nav-attendance', 'nav-booqable', 'nav-accounts', 'nav-access']) ? '' : 'none';
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
@@ -3369,6 +3373,7 @@ function renderTitle() {
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
     access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Ажилтан удирдах', 'Ажилтан, албан тушаал & эрх, цалин'],
     salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
+    attendance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>', 'Цаг бүртгэл', 'QR-аар ирц бүртгэх — ажилчид утсаараа уншуулна'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -3484,6 +3489,12 @@ function renderTaskList() {
     wrap.innerHTML = payrollTabBar(_canSal, _canHr) + (_pt === 'hourly' ? renderHourly() : renderSalary());
     if (_pt === 'hourly') attachHourlyHandlers(); else attachSalaryHandlers();
     attachPayrollTabs();
+    return;
+  } else if (state.view === 'attendance') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderAttendance();
+    attachAttendanceHandlers();
     return;
   } else if (state.view === 'workload') {
     if (tableHead) tableHead.style.display = 'none';
@@ -6667,6 +6678,121 @@ function hourlyBranchLabel(m) {
   return 'Бусад';
 }
 
+/* ─── ЦАГ БҮРТГЭЛ (attendance) ─────────────────────────────────────────
+   Менежерийн аппад QR гарч, ажилчид утсаараа уншуулж (checkin.html) ирсэн/
+   явсанаа бүртгэнэ. Дата = chimun DB `attendance` (PostgREST). */
+function canSeeAttendance() { return canAccessView('attendance', () => state.isCEO || canSeeWorkload()); }
+const _MN_WD = ['Ням','Даваа','Мягмар','Лхагва','Пүрэв','Баасан','Бямба'];
+function attCheckinUrl(token) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, '') + 'checkin.html';
+  return base + '?d=' + todayStr() + '&t=' + encodeURIComponent(token || todayStr());
+}
+function loadQRLib() {
+  if (window.QRCode) return Promise.resolve();
+  if (window.__qrLoading) return window.__qrLoading;
+  window.__qrLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js';
+    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+  return window.__qrLoading;
+}
+function attTimeUB(ts) {
+  if (!ts) return '';
+  const d = new Date(ts); if (isNaN(d)) return '';
+  const u = new Date(d.getTime() + (d.getTimezoneOffset() + 480) * 60000);
+  return String(u.getHours()).padStart(2, '0') + ':' + String(u.getMinutes()).padStart(2, '0');
+}
+function attHM(mins) {
+  mins = Math.max(0, Math.round(mins || 0));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return (h ? h + 'ц ' : '') + m + 'м';
+}
+// Нэг ажилтны өдрийн in/out бичлэгээс ажилласан минут, одоо ажиллаж буй эсэхийг тооцно.
+function attMemberSummary(recs) {
+  let mins = 0, openIn = null, lastEvent = null;
+  recs.forEach(r => {
+    if (r.kind === 'in') { if (!openIn) openIn = r.ts; }
+    else { if (openIn) { mins += (new Date(r.ts) - new Date(openIn)) / 60000; openIn = null; } }
+    lastEvent = r.ts;
+  });
+  // Одоо ажиллаж байгаа бол сесс үргэлжилж буй — минутыг одоогоор тооцно.
+  if (openIn) mins += (Date.now() - new Date(openIn)) / 60000;
+  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn, lastEvent };
+}
+async function loadAttendanceToday() {
+  try {
+    const d = todayStr();
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, cache: 'no-store' }, 15000);
+    if (r.ok) state.attendanceToday = await r.json();
+  } catch (e) { /* хуучныг үлдээнэ */ }
+}
+function renderAttendanceRows() {
+  const recs = state.attendanceToday || [];
+  const by = {};
+  recs.forEach(r => { (by[r.member_key] = by[r.member_key] || []).push(r); });
+  const keys = Object.keys(by);
+  if (!keys.length) return '<div style="text-align:center;color:var(--muted);padding:34px 10px;">Өнөөдөр хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">Ажилчид QR уншуулмагц энд харагдана.</div></div>';
+  const rows = keys.map(k => {
+    const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+    const s = attMemberSummary(arr);
+    const m = findMember(k) || { name: arr[0].member_name || k, role: '' };
+    return { k, m, s, name: m.name || arr[0].member_name || k, role: m.role || '' };
+  }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
+  const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
+  const nOpen = rows.filter(r => r.s.open).length;
+  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">Өнөөдөр <b style="color:var(--text)">${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b style="color:var(--ok)">${nOpen}</b> ажиллаж байна` : ''} · нийт <b style="color:var(--primary)">${attHM(totalMins)}</b></div>`;
+  const list = rows.map(r => {
+    const av = `<span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
+    const status = r.s.open
+      ? '<span style="color:var(--ok);font-weight:700;font-size:12px;">● Ажиллаж байна</span>'
+      : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}</span>`;
+    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div></div></div>`;
+  }).join('');
+  return head + `<div>${list}</div>`;
+}
+function renderAttendance() {
+  const d = new Date(todayStr() + 'T00:00:00');
+  const dateLabel = `${todayStr()} · ${_MN_WD[d.getDay()]}`;
+  return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 18px;text-align:center;margin-bottom:16px;">
+      <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
+      <div id="attend-qr" style="width:236px;height:236px;margin:14px auto 4px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:12px;padding:8px;box-shadow:0 2px 10px rgba(0,0,0,.06);">
+        <span style="color:#999;font-size:13px;">QR ачаалж байна…</span></div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-top:10px;">Ажилчид энэ QR-ийг утсаараа уншуулж<br>ирсэн / явсанаа бүртгэнэ</div>
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button id="attend-refresh" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">🔄 QR шинэчлэх</button>
+        <a id="attend-open" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);text-decoration:none;">↗ Хуудас нээх</a>
+      </div>
+    </div>
+    <div id="attend-list">${renderAttendanceRows()}</div>
+  </div>`;
+}
+function attachAttendanceHandlers() {
+  if (!state._attToken) state._attToken = todayStr() + '-' + Math.random().toString(36).slice(2, 8);
+  const url = attCheckinUrl(state._attToken);
+  const openA = document.getElementById('attend-open'); if (openA) openA.href = url;
+  loadQRLib().then(() => {
+    const box = document.getElementById('attend-qr'); if (!box) return;
+    box.innerHTML = '';
+    try { new QRCode(box, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); }
+    catch (e) { box.innerHTML = `<a href="${url}" target="_blank" style="font-size:12px;">Линк нээх</a>`; }
+  }).catch(() => {
+    const box = document.getElementById('attend-qr');
+    if (box) box.innerHTML = `<a href="${url}" target="_blank" style="font-size:12px;color:var(--accent);">QR ачаалж чадсангүй — линкээр нээх</a>`;
+  });
+  const rb = document.getElementById('attend-refresh');
+  if (rb) rb.onclick = () => { state._attToken = todayStr() + '-' + Math.random().toString(36).slice(2, 8); attachAttendanceHandlers(); };
+  loadAttendanceToday().then(() => { const el = document.getElementById('attend-list'); if (el && state.view === 'attendance') el.innerHTML = renderAttendanceRows(); });
+  if (state._attPoll) clearInterval(state._attPoll);
+  state._attPoll = setInterval(() => {
+    if (state.view !== 'attendance') { clearInterval(state._attPoll); state._attPoll = null; return; }
+    loadAttendanceToday().then(() => { const el = document.getElementById('attend-list'); if (el) el.innerHTML = renderAttendanceRows(); });
+  }, 20000);
+}
 function renderHourly() {
   const allWorkers = hourlyWorkers();
   if (!allWorkers.length) {
@@ -7125,6 +7251,7 @@ const PERM_MENUS = [
   { key: 'salary',      label: 'Цалин (сарын)',   actions: [
       { key: 'salary.edit', label: 'Суурь цалин тохируулах' },
       { key: 'salary.pay',  label: 'Цалин олгох' } ] },
+  { key: 'attendance',  label: 'Цаг бүртгэл',     actions: [] },
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },

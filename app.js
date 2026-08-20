@@ -6728,6 +6728,28 @@ async function loadAttendanceToday() {
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
+// Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
+function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
+async function loadAttendanceMonth() {
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, cache: 'no-store' }, 15000);
+    if (r.ok) {
+      const rows = await r.json(), map = {};
+      rows.forEach(x => { (map[x.member_key] = map[x.member_key] || new Set()).add(x.day); });
+      const out = {}; Object.keys(map).forEach(k => { out[k] = { days: map[k].size, lastDay: [...map[k]].sort().pop() }; });
+      state.attWorkedDays = out;
+    }
+  } catch (e) { /* хуучныг үлдээнэ */ }
+}
+// Цагийн ажилтны мөрд — энэ сар ирцээр ажилласан өдөр + хүлээгдэх цалин (өдрийн тарифаар).
+function attWorkedLine(m) {
+  const wd = state.attWorkedDays && state.attWorkedDays[personKey(m)];
+  if (!wd || !wd.days) return '';
+  const rate = Number(m.daily_rate) || 0;
+  const expected = rate > 0 ? ` · ≈ ${fmtMoney(rate * wd.days)}` : '';
+  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>`;
+}
 function renderAttendanceRows() {
   const recs = state.attendanceToday || [];
   const by = {};
@@ -6865,6 +6887,7 @@ function renderHourly() {
           <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${inactBadge}</div>
           <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
           ${spanLine}
+          ${attWorkedLine(m)}
           ${ratingLine}
           ${noteLine}
           ${paidLine}
@@ -6949,6 +6972,10 @@ function applyHourlySearch() {
 }
 
 function attachHourlyHandlers() {
+  // Ирцээс энэ сарын ажилласан өдрийг татаж, бэлэн болмогц дахин зурна (нэг удаа).
+  if (!state.attWorkedDays) {
+    loadAttendanceMonth().then(() => { if (state.view === 'salary' && state.payrollTab === 'hourly') render(); });
+  }
   document.querySelectorAll('button[data-hourly-pay]').forEach(b => {
     b.addEventListener('click', () => markHourlyPaid(b.dataset.hourlyPay));
   });

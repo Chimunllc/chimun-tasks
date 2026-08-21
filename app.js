@@ -7147,7 +7147,7 @@ function parseLavlagaa(raw) {
   m = flat.match(/Төрс[^0-9]{0,40}(\d{4})[-/.](\d{2})[-/.](\d{2})/);
   if (m) out.dob = `${m[1]}-${m[2]}-${m[3]}`;
   // Хэвлэгдсэн хаяг (үнэмлэх дээрх хаяг)
-  m = flat.match(/хэвлэгдсэн хаяг[:\s]*(?:Хаяг[:\s]*)?([^]+?)\s+(?=БАЙНГА|Огноо|Хүсэлт|Мэдээлэл|$)/i);
+  m = flat.match(/хэвлэгдсэн хаяг[:\s]*(?:Хаяг[:\s]*)?([^]+?)\s+(?=Иргэн|Бүртгэл|Олгос|Хүчинт|Гадаад|БАЙНГА|Огноо|Хүсэлт|Мэдээлэл|$)/i);
   if (m) out.address = m[1].replace(/\s+/g, ' ').trim();
   return out;
 }
@@ -7160,13 +7160,16 @@ async function autofillFromIdPdf(file, statusEl) {
   if ((text || '').replace(/\s/g, '').length < 40) { setSt('PDF-д текст алга (зураг PDF) — гараар бөглөнө үү', false); return; }
   const p = parseLavlagaa(text);
   const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } };
+  // Лавлагаанаас орсон талбар = засах боломжгүй (баримттай таарах ёстой)
+  const lock = (id) => { const el = document.getElementById(id); if (el) { el.readOnly = true; el.setAttribute('data-locked', '1'); el.style.background = 'var(--panel-hover, #f0ede4)'; el.style.color = 'var(--muted)'; el.style.cursor = 'not-allowed'; el.title = '🔒 Лавлагаанаас автоматаар — засах боломжгүй'; } };
   const filled = [];
-  if (p.surname) { setVal('reg-surname', p.surname); filled.push('Овог'); }
-  if (p.given) { setVal('reg-givenname', p.given); filled.push('Нэр'); }
-  if (p.rd) { setVal('reg-rd', p.rd); filled.push('РД'); }
-  if (p.address) { setVal('reg-address', p.address); filled.push('Хаяг'); }
-  if (p.gender) { const gb = document.querySelector(`#reg-gender-row [data-gender="${p.gender}"]`) || document.querySelector(`[data-reg-gender="${p.gender}"]`); if (gb) { gb.click(); filled.push('Хүйс'); } }
-  setSt(filled.length ? `✓ Лавлагаанаас автоматаар бөгллөө: ${filled.join(', ')} · шалгаад засаарай` : 'Талбар танигдсангүй — гараар бөглөнө үү', filled.length > 0);
+  if (p.surname) { setVal('reg-surname', p.surname); lock('reg-surname'); filled.push('Овог'); }
+  if (p.given) { setVal('reg-givenname', p.given); lock('reg-givenname'); filled.push('Нэр'); }
+  if (p.rd) { setVal('reg-rd', p.rd); lock('reg-rd'); filled.push('РД'); }
+  if (p.address) { setVal('reg-address', p.address); lock('reg-address'); filled.push('Хаяг'); }
+  // Дансны эзэмшигч = ажилтны нэр (өөр хүний данс руу цалин шилжихээс сэргийлнэ)
+  if (p.surname && p.given) { setVal('reg-bank-holder', `${p.surname} ${p.given}`); lock('reg-bank-holder'); filled.push('Дансны эзэмшигч'); }
+  setSt(filled.length ? `✓ Лавлагаанаас баталгаажлаа (🔒 засах боломжгүй): ${filled.join(', ')}. Утас, данс дугаар, яаралтай холбоог өөрөө бөглөнө үү.` : 'Талбар танигдсангүй — гараар бөглөнө үү', filled.length > 0);
 }
 function renderHourly() {
   const allWorkers = hourlyWorkers();

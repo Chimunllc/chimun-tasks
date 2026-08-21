@@ -14264,6 +14264,8 @@ function renderIncomeSections(month, mi) {
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */
 /* ─── ТАЙЛАН (Reports hub) — удирдлагын тайлангуудын төв цэг ───
    P&L (ашиг) шууд энд + бусад тайлан руу очих картууд. Зөвхөн бүх санхүү хардаг. */
+// Том тоог сая₮-оор товчлох (89,662,026₮ → 89.7 сая₮)
+function fmtSaya(v) { const a = Math.abs(v); return a >= 1e5 ? (v / 1e6).toFixed(a >= 1e8 ? 0 : 1).replace(/\.0$/, '') + ' сая₮' : fmtMoney(v); }
 // Олон сарын орлого/зардал/ашгийн цуврал (тухайн салбар лензээр) — тренд графикт
 function financeTrend(wantBr, isKemp) {
   const inc = {}, exp = {};
@@ -14336,9 +14338,9 @@ function financeTrendChart(series, selMonth) {
     <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-top:14px;flex-wrap:wrap;gap:8px;">
       <span style="color:var(--muted);font-weight:600;">Бүх хугацаа · ${series.length} сар</span>
       <span style="display:flex;gap:14px;flex-wrap:wrap;">
-        <span>Орлого <b style="color:var(--ok);">${fmtMoney(tot.i)}</b></span>
-        <span>Зардал <b style="color:var(--danger);">${fmtMoney(tot.e)}</b></span>
-        <span>Ашиг <b style="color:${tn >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(tn)}</b></span>
+        <span>Орлого <b style="color:var(--ok);">${fmtSaya(tot.i)}</b></span>
+        <span>Зардал <b style="color:var(--danger);">${fmtSaya(tot.e)}</b></span>
+        <span>Ашиг <b style="color:${tn >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtSaya(tn)}</b></span>
       </span>
     </div>
   </div>`;
@@ -14374,6 +14376,7 @@ function renderReports() {
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
   const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
+  const fmtBig = fmtSaya;   // нэг харцаар уншихад — сая₮
   // ── Олон сарын цуврал: гулсдаг сар сонголт (slider) + харьцуулалт ──
   const series = financeTrend(wantBr, isKemp);
   state._reportMonths = series.map(s => s.month);
@@ -14387,26 +14390,41 @@ function renderReports() {
     const d = net - base.net;
     if (Math.abs(d) < 1000) return `<span style="color:var(--muted);white-space:nowrap;">${label}: ≈</span>`;
     const up = d > 0;
-    return `<span style="color:${up ? 'var(--ok)' : 'var(--danger)'};white-space:nowrap;">${label} ${up ? '▲' : '▼'}${fmtMoney(Math.abs(d))}</span>`;
+    return `<span style="color:${up ? 'var(--ok)' : 'var(--danger)'};white-space:nowrap;">${label} ${up ? '▲' : '▼'}${fmtBig(Math.abs(d))}</span>`;
   };
-  const netCompare = [cmp('өмнөх сар', prevM), cmp('өнгөрсөн он', yoyM)].filter(Boolean).join('<br>');
-  const kpi = (label, val, col, sub) => `<div style="padding:18px 20px;border:1px solid var(--border);border-radius:16px;background:var(--panel);min-width:0;">
-      <div style="font-size:12.5px;color:var(--muted);margin-bottom:7px;">${label}</div>
-      <div style="font-weight:800;font-size:26px;color:${col};letter-spacing:-.5px;line-height:1.05;overflow:hidden;text-overflow:ellipsis;">${val}</div>
-      ${sub ? `<div style="font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.55;">${sub}</div>` : ''}</div>`;
+  const netCompare = [cmp('өмнөх сар', prevM), cmp('өнгөрсөн он', yoyM)].filter(Boolean).join(' · ');
+  const kpi = (label, val, col, sub) => `<div style="padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:var(--panel);min-width:0;">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">${label}</div>
+      <div style="font-weight:800;font-size:23px;color:${col};letter-spacing:-.5px;line-height:1.05;overflow:hidden;text-overflow:ellipsis;">${val}</div>
+      ${sub ? `<div style="font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5;">${sub}</div>` : ''}</div>`;
   const monthNav = `<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin:2px 0 16px;">
       <button class="btn" data-report-month="-1" style="padding:6px 14px;font-size:17px;line-height:1;border-radius:10px;"${selIdx <= 0 ? ' disabled' : ''}>‹</button>
       <div style="text-align:center;"><div style="font-weight:800;font-size:19px;">💰 Ашиг — ${month}</div><div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${escapeHtml(brLabel)} · салбар лензээр</div></div>
       <button class="btn" data-report-month="1" style="padding:6px 14px;font-size:17px;line-height:1;border-radius:10px;"${month >= curMonth ? ' disabled' : ''}>›</button>
     </div>`;
+  // Цэвэр ашиг = ГОЛ БААТАР (нэг харцаар "мөнгө олж байна уу?"), орлого/зардал доор туслах
+  const heroBg = net >= 0 ? 'rgba(22,163,74,.09)' : 'rgba(220,38,38,.09)';
+  const hero = `<div style="border:1.5px solid ${net >= 0 ? 'rgba(22,163,74,.35)' : 'rgba(220,38,38,.35)'};background:${heroBg};border-radius:18px;padding:20px 22px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+        <div style="min-width:0;">
+          <div style="font-size:13px;color:var(--muted);">Цэвэр ашиг · ${month}</div>
+          <div style="font-weight:800;font-size:38px;color:${netCol};letter-spacing:-1px;line-height:1.05;margin-top:3px;">${fmtBig(net)}</div>
+          ${netCompare ? `<div style="font-size:12px;margin-top:9px;line-height:1.6;">${netCompare}</div>` : ''}
+        </div>
+        <div style="text-align:center;flex:0 0 auto;">
+          <div style="display:inline-block;padding:7px 16px;border-radius:999px;background:var(--panel);border:1px solid var(--border);color:${netCol};font-weight:800;font-size:20px;">${margin === null ? '—' : margin + '%'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:5px;">ашгийн марж</div>
+        </div>
+      </div>
+    </div>`;
+  const inputs = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+      ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
+      ${kpi('Зарлага (батлагдсан)', fmtBig(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
+    </div>`;
   const pnl = `
     ${monthNav}
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
-      ${kpi(incomeLabel, fmtMoney(income), 'var(--ok)', incomeSub)}
-      ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
-      ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, netCompare)}
-      ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, net >= 0 ? 'ашигтай' : 'алдагдалтай')}
-    </div>
+    ${hero}
+    ${inputs}
     <div style="display:flex;justify-content:center;margin-top:14px;">
       <button class="btn btn-primary" data-report-all-xls style="padding:8px 18px;font-size:12.5px;">📥 Бүгдийг татах (Excel — ${month})</button>
     </div>`;
@@ -14439,7 +14457,7 @@ function renderReports() {
   const expChart = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);">
     <div style="font-weight:800;font-size:13px;margin-bottom:12px;">📊 Зардлын задаргаа — ${month} <span style="color:var(--muted);font-weight:400;font-size:11px;">${escapeHtml(brLabel)} · батлагдсан</span></div>
     ${bars}
-    ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт зардал</span><span>${fmtMoney(expTotal)}</span></div>` : ''}
+    ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт зардал</span><span>${fmtSaya(expTotal)}</span></div>` : ''}
   </div>`;
   const card = (icon, title, desc, view) => `<button class="report-card" data-go-view="${view}" style="text-align:left;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--panel);display:flex;flex-direction:column;gap:4px;">
       <div style="font-size:15px;font-weight:700;">${icon} ${escapeHtml(title)}</div>
@@ -14452,7 +14470,33 @@ function renderReports() {
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
   const trendChart = financeTrendChart(financeTrend(wantBr, isKemp), month);
+  // ── 📌 Гол дүгнэлт: тоо ширтэхгүй, шууд ойлгох ──
+  const ins = [];
+  if (prevM && prevM.income > 0) {
+    const p = Math.round((income - prevM.income) / prevM.income * 100);
+    if (Math.abs(p) >= 3) ins.push(`Орлого өмнөх сараас <b style="color:${p > 0 ? 'var(--ok)' : 'var(--danger)'};">${p > 0 ? '▲' : '▼'} ${Math.abs(p)}%</b> (${fmtBig(prevM.income)} → ${fmtBig(income)})`);
+  }
+  if (yoyM && yoyM.income > 0) {
+    const p = Math.round((income - yoyM.income) / yoyM.income * 100);
+    if (Math.abs(p) >= 5) ins.push(`Өнгөрсөн оны мөн сараас <b style="color:${p > 0 ? 'var(--ok)' : 'var(--danger)'};">${p > 0 ? '▲' : '▼'} ${Math.abs(p)}%</b> (улирлын харьцуулалт)`);
+  }
+  if (catRows.length && expTotal > 0) {
+    const [tnm, tv] = catRows[0];
+    ins.push(`<b>${escapeHtml(tnm)}</b> — нийт зардлын <b>${Math.round(tv / expTotal * 100)}%</b>, хамгийн том зардал (${fmtBig(tv)})`);
+  }
+  { // дараалсан ашигтай/алдагдалтай сар
+    let streak = 0, sign = null;
+    for (let i = selIdx; i >= 0; i--) { const sg = series[i].net >= 0; if (sign === null) sign = sg; if (sg === sign) streak++; else break; }
+    if (streak >= 2) ins.push(`<b>${streak} сар дараалан</b> ${sign ? '<span style="color:var(--ok);">ашигтай</span>' : '<span style="color:var(--danger);">алдагдалтай</span>'}`);
+  }
+  if (margin !== null && margin < 0) ins.push(`<b style="color:var(--danger);">Энэ сар алдагдалтай</b> — зардал орлогоос их`);
+  else if (margin !== null && margin >= 35) ins.push(`Ашгийн марж <b style="color:var(--ok);">${margin}%</b> — өндөр`);
+  const insightsBanner = ins.length ? `<div style="border:1px solid var(--primary);background:var(--primary-soft);border-radius:14px;padding:14px 16px;margin-bottom:16px;">
+      <div style="font-weight:800;font-size:12.5px;margin-bottom:8px;color:var(--primary-hover, var(--primary));">📌 Гол дүгнэлт</div>
+      ${ins.map(t => `<div style="font-size:13px;line-height:1.55;margin-bottom:5px;display:flex;gap:7px;"><span style="color:var(--primary);">•</span><span>${t}</span></div>`).join('')}
+    </div>` : '';
   return pnl
+    + insightsBanner
     + trendChart
     + incomeSections
     + expChart

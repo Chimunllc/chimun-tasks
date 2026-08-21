@@ -6687,15 +6687,96 @@ function attCheckinUrl(token) {
   const base = location.origin + location.pathname.replace(/[^/]*$/, '') + 'checkin.html';
   return base + '?d=' + todayStr() + '&t=' + encodeURIComponent(token || todayStr());
 }
-function loadQRLib() {
-  if (window.QRCode) return Promise.resolve();
-  if (window.__qrLoading) return window.__qrLoading;
-  window.__qrLoading = new Promise((res, rej) => {
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve();
+  if (window.__jsqrLoading) return window.__jsqrLoading;
+  window.__jsqrLoading = new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js';
+    s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
     s.onload = res; s.onerror = rej; document.head.appendChild(s);
   });
-  return window.__qrLoading;
+  return window.__jsqrLoading;
+}
+function attIdCardsUrl() { return location.origin + location.pathname.replace(/[^/]*$/, '') + 'id-cards.html'; }
+function attBeep() {
+  try {
+    const a = state._attAudio || (state._attAudio = new (window.AudioContext || window.webkitAudioContext)());
+    const o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 880; o.type = 'sine'; o.connect(g); g.connect(a.destination);
+    g.gain.setValueAtTime(0.12, a.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + 0.15);
+    o.start(); o.stop(a.currentTime + 0.15);
+  } catch (e) {}
+}
+function attToast(msg, kind) {
+  const el = document.getElementById('att-scan-toast'); if (!el) return;
+  el.textContent = msg;
+  el.style.background = kind === 'ok' ? '#2e7d32' : (kind === 'out' ? '#B14F1F' : '#444');
+  el.style.opacity = '1';
+  clearTimeout(state._attToastT); state._attToastT = setTimeout(() => { el.style.opacity = '0'; }, 1700);
+}
+// Камерын скан — менежер ажилтны QR картыг уншина.
+async function attStartScan() {
+  try { await loadJsQR(); } catch (e) { alert('QR уншигч ачаалж чадсангүй (интернэт шалгана уу).'); return; }
+  if (document.getElementById('att-scan-overlay')) return;
+  const ov = document.createElement('div');
+  ov.id = 'att-scan-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000;overflow:hidden;';
+  ov.innerHTML = `
+    <video id="att-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+    <canvas id="att-canvas" style="display:none;"></canvas>
+    <div style="position:absolute;top:0;left:0;right:0;padding:18px 16px;text-align:center;color:#fff;font-size:15px;font-weight:600;background:linear-gradient(rgba(0,0,0,.55),transparent);">Ажилтны QR картыг хүрээнд барь</div>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-56%);width:236px;height:236px;border:3px solid #fff;border-radius:22px;box-shadow:0 0 0 9999px rgba(0,0,0,.4);"></div>
+    <div id="att-scan-toast" style="position:absolute;left:50%;bottom:106px;transform:translateX(-50%);max-width:88%;padding:11px 18px;border-radius:24px;color:#fff;font-size:15px;font-weight:700;opacity:0;transition:opacity .2s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
+    <button id="att-scan-stop" style="position:absolute;left:50%;bottom:30px;transform:translateX(-50%);padding:13px 30px;border:none;border-radius:14px;background:#fff;color:#111;font-size:16px;font-weight:700;">⏹ Зогсоох</button>`;
+  document.body.appendChild(ov);
+  document.getElementById('att-scan-stop').onclick = attStopScan;
+  state._attLastScan = {};
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    state._attStream = stream;
+    const v = document.getElementById('att-video'); v.srcObject = stream; await v.play().catch(() => {});
+    state._attScan = true; attDecodeLoop();
+  } catch (e) { attStopScan(); alert('Камер нээж чадсангүй. Камерын зөвшөөрөл шаардлагатай.'); }
+}
+function attStopScan() {
+  state._attScan = false;
+  if (state._attRaf) cancelAnimationFrame(state._attRaf);
+  if (state._attStream) { state._attStream.getTracks().forEach(t => t.stop()); state._attStream = null; }
+  const ov = document.getElementById('att-scan-overlay'); if (ov) ov.remove();
+  loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance') el.innerHTML = renderAttendanceRows(); });
+}
+function attDecodeLoop() {
+  if (!state._attScan) return;
+  const v = document.getElementById('att-video'), c = document.getElementById('att-canvas');
+  if (v && c && v.readyState >= 2 && v.videoWidth) {
+    const ctx = c.getContext('2d'); c.width = v.videoWidth; c.height = v.videoHeight;
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    try {
+      const img = ctx.getImageData(0, 0, c.width, c.height);
+      const code = window.jsQR ? jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' }) : null;
+      if (code && code.data) attHandleScan(code.data);
+    } catch (e) {}
+  }
+  state._attRaf = requestAnimationFrame(attDecodeLoop);
+}
+function attHandleScan(data) {
+  const m = /^chimun-att:(\d{6,})$/.exec(String(data).trim());
+  if (!m) return;
+  const phone = m[1], now = Date.now();
+  state._attLastScan = state._attLastScan || {};
+  if (state._attLastScan[phone] && now - state._attLastScan[phone] < 8000) return;   // 8 сек давхардлаас хамгаалах
+  state._attLastScan[phone] = now;
+  const mem = findMember(phone);
+  if (!mem) { attToast('❓ Бүртгэлгүй QR', 'warn'); attBeep(); return; }
+  const recs = (state.attendanceToday || []).filter(r => r.member_key === phone).sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  const last = recs.length ? recs[recs.length - 1].kind : null;
+  const kind = last === 'in' ? 'out' : 'in';
+  const nowIso = new Date().toISOString();
+  (state.attendanceToday = state.attendanceToday || []).push({ member_key: phone, member_name: mem.name || phone, kind, ts: nowIso });
+  attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
+  attBeep();
+  const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
+  fetch(`${SUPABASE_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
 }
 function attTimeUB(ts) {
   if (!ts) return '';
@@ -6780,39 +6861,30 @@ function renderAttendance() {
   const d = new Date(todayStr() + 'T00:00:00');
   const dateLabel = `${todayStr()} · ${_MN_WD[d.getDay()]}`;
   return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
-    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 18px;text-align:center;margin-bottom:16px;">
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
-      <div id="attend-qr" style="width:236px;height:236px;margin:14px auto 4px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:12px;padding:8px;box-shadow:0 2px 10px rgba(0,0,0,.06);">
-        <span style="color:#999;font-size:13px;">QR ачаалж байна…</span></div>
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-top:10px;">Ажилчид энэ QR-ийг утсаараа уншуулж<br>ирсэн / явсанаа бүртгэнэ</div>
+      <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
+        Ажилтан скан хийх</button>
+      <div style="font-size:13.5px;color:var(--text-soft);margin-top:8px;">Ажилтны QR картыг камераар уншуулж<br>ирсэн / явсаныг бүртгэнэ</div>
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-        <button id="attend-refresh" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">🔄 QR шинэчлэх</button>
-        <a id="attend-open" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);text-decoration:none;">↗ Хуудас нээх</a>
+        <a id="att-print" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">🖨 ID QR карт хэвлэх</a>
+        <a id="att-self" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">📱 Утсаар өөрөө</a>
       </div>
     </div>
-    <div id="attend-list">${renderAttendanceRows()}</div>
+    <div id="att-list">${renderAttendanceRows()}</div>
   </div>`;
 }
 function attachAttendanceHandlers() {
-  if (!state._attToken) state._attToken = todayStr() + '-' + Math.random().toString(36).slice(2, 8);
-  const url = attCheckinUrl(state._attToken);
-  const openA = document.getElementById('attend-open'); if (openA) openA.href = url;
-  loadQRLib().then(() => {
-    const box = document.getElementById('attend-qr'); if (!box) return;
-    box.innerHTML = '';
-    try { new QRCode(box, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M }); }
-    catch (e) { box.innerHTML = `<a href="${url}" target="_blank" style="font-size:12px;">Линк нээх</a>`; }
-  }).catch(() => {
-    const box = document.getElementById('attend-qr');
-    if (box) box.innerHTML = `<a href="${url}" target="_blank" style="font-size:12px;color:var(--accent);">QR ачаалж чадсангүй — линкээр нээх</a>`;
-  });
-  const rb = document.getElementById('attend-refresh');
-  if (rb) rb.onclick = () => { state._attToken = todayStr() + '-' + Math.random().toString(36).slice(2, 8); attachAttendanceHandlers(); };
-  loadAttendanceToday().then(() => { const el = document.getElementById('attend-list'); if (el && state.view === 'attendance') el.innerHTML = renderAttendanceRows(); });
+  const sb = document.getElementById('att-scan-start'); if (sb) sb.onclick = attStartScan;
+  const pf = document.getElementById('att-print'); if (pf) pf.href = attIdCardsUrl();
+  const sf = document.getElementById('att-self'); if (sf) sf.href = attCheckinUrl(todayStr());
+  loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance') el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);
   state._attPoll = setInterval(() => {
     if (state.view !== 'attendance') { clearInterval(state._attPoll); state._attPoll = null; return; }
-    loadAttendanceToday().then(() => { const el = document.getElementById('attend-list'); if (el) el.innerHTML = renderAttendanceRows(); });
+    if (state._attScan) return;   // скан хийж байх зуур бүү дарж бич
+    loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el) el.innerHTML = renderAttendanceRows(); });
   }, 20000);
 }
 function renderHourly() {

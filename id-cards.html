@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Ажилтны ID QR карт · Чимун ХХК</title>
+<style>
+  :root{ --ink:#26301F; --muted:#7C7A6E; --line:#E0D9C6; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#F4EFE4;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;padding:16px}
+  .bar{max-width:1000px;margin:0 auto 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .bar h1{font-size:18px}
+  .bar .sub{font-size:12px;color:var(--muted)}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .controls input{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;min-width:160px}
+  .btn{padding:9px 16px;border:none;border-radius:9px;background:#2f3e2f;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
+  .grid{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center;break-inside:avoid;page-break-inside:avoid}
+  .card .qr{width:150px;height:150px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center}
+  .card .qr img,.card .qr canvas{width:150px !important;height:150px !important}
+  .card .nm{font-size:15px;font-weight:700;line-height:1.2}
+  .card .rl{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .card .ph{font-size:11px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+  .card .brand{font-size:9px;letter-spacing:.14em;color:#B14F1F;font-weight:800;margin-top:6px}
+  .msg{max-width:1000px;margin:40px auto;text-align:center;color:var(--muted)}
+  @media print{
+    body{background:#fff;padding:0}
+    .bar{display:none}
+    .grid{gap:8px;grid-template-columns:repeat(4,1fr)}
+    .card{border:1px solid #ccc;border-radius:8px;padding:10px}
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div><h1>Ажилтны ID QR карт</h1><div class="sub" id="sub">Ачаалж байна…</div></div>
+    <div class="controls">
+      <input id="q" type="text" placeholder="Нэрээр шүүх (хэвлэх өмнө)…" autocomplete="off">
+      <button class="btn" onclick="window.print()">🖨 Хэвлэх</button>
+    </div>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="msg" id="msg" style="display:none"></div>
+
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js"></script>
+<script>
+(function(){
+  'use strict';
+  var STAFF='https://n8n.nomaadcamp.com/webhook/staff?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
+  var IMG='https://n8n.nomaadcamp.com/img/';
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function phoneKey(m){return String(m.phone||'').replace(/\D/g,'');}
+  function isActive(m){var st=String(m.status||'').toLowerCase();if(st.indexOf('гарс')>=0||st.indexOf('идэвхг')>=0)return false;if(m.left_at)return false;return true;}
+  var ALL=[];
+  fetch(STAFF+'&t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    var team=(d&&d.team)||(Array.isArray(d)?d:[]);
+    ALL=team.filter(function(m){return isActive(m)&&phoneKey(m);}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'mn');});
+    if(!ALL.length){document.getElementById('grid').style.display='none';var mg=document.getElementById('msg');mg.style.display='';mg.textContent='Ажилтны жагсаалт ачаалж чадсангүй.';return;}
+    document.getElementById('sub').textContent=ALL.length+' идэвхтэй ажилтан · картыг таслаад тарааж, ажилтан утсандаа хадгална';
+    render('');
+  }).catch(function(){var mg=document.getElementById('msg');mg.style.display='';mg.textContent='Алдаа гарлаа.';});
+
+  function render(qv){
+    qv=(qv||'').toLowerCase().trim();
+    var list=qv?ALL.filter(function(m){return String(m.name||'').toLowerCase().indexOf(qv)>=0;}):ALL;
+    var grid=document.getElementById('grid'); grid.innerHTML='';
+    list.forEach(function(m){
+      var ph=phoneKey(m);
+      var card=document.createElement('div'); card.className='card';
+      var qr=document.createElement('div'); qr.className='qr';
+      card.appendChild(qr);
+      var info=document.createElement('div');
+      info.innerHTML='<div class="nm">'+esc(m.name)+'</div><div class="rl">'+esc(m.role||'')+'</div><div class="ph">'+esc(m.phone||'')+'</div><div class="brand">ЧИМУН ХХК</div>';
+      card.appendChild(info);
+      grid.appendChild(card);
+      try{ new QRCode(qr,{text:'chimun-att:'+ph,width:150,height:150,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ qr.textContent='QR?'; }
+    });
+  }
+  document.getElementById('q').addEventListener('input',function(e){render(e.target.value);});
+})();
+</script>
+</body>
+</html>

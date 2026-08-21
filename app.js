@@ -6923,7 +6923,6 @@ function renderMyAttend() {
   const todaySum = byDay[today] ? sumFor(today) : null;
   let monthMins = 0; dayKeys.forEach(d => { monthMins += sumFor(d).mins; });
   const avatar = `<span style="position:relative;width:56px;height:56px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:var(--muted);overflow:hidden;flex-shrink:0;">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;
-  const bankLine = (me.bank || me.bank_account) ? `${escapeHtml(me.bank || '')}${me.bank_account ? ' · ' + escapeHtml(me.bank_account) : ''}` : '';
   const dayList = dayKeys.map(d => {
     const s = sumFor(d);
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
@@ -6931,11 +6930,20 @@ function renderMyAttend() {
       <span style="color:var(--text-soft);">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b></span></div>`;
   }).join('');
   return `<div style="max-width:520px;margin:0 auto;padding-bottom:26px;">
-    <div style="display:flex;align-items:center;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;">
-      ${avatar}
-      <div style="min-width:0;"><div style="font-size:18px;font-weight:700;">${escapeHtml(me.name || state.me)}</div>
-        <div style="font-size:13px;color:var(--muted);">${escapeHtml(me.role || 'Цагийн ажилтан')}</div>
-        <div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;">📞 ${escapeHtml(me.phone || '-')}${bankLine ? ' · ' + bankLine : ''}</div></div>
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        ${avatar}
+        <div style="flex:1;min-width:0;"><div style="font-size:18px;font-weight:700;">${escapeHtml(me.name || state.me)}</div>
+          <div style="font-size:13px;color:var(--muted);">${escapeHtml(me.role || 'Цагийн ажилтан')}</div>
+          <div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;">📞 ${escapeHtml(me.phone || '-')}</div></div>
+        <button id="my-profile-edit" style="flex-shrink:0;padding:8px 14px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">✎ Засах</button>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+        <div style="font-size:12px;color:var(--muted);">🏦 Цалингийн данс</div>
+        ${me.bank_account
+          ? `<div style="font-weight:600;font-size:14px;margin-top:3px;">${escapeHtml(me.bank || '')} · ${escapeHtml(me.bank_account)}${me.bank_holder ? ' · ' + escapeHtml(me.bank_holder) : ''}</div>`
+          : `<div style="color:var(--danger);font-weight:700;font-size:13.5px;margin-top:3px;">⚠ Данс бүртгэгдээгүй — цалингаа авахын тулд бүртгэнэ үү</div>`}
+      </div>
     </div>
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 16px;text-align:center;margin-bottom:14px;">
       <div style="font-size:13.5px;font-weight:600;color:var(--text);">Ирц бүртгүүлэхдээ энэ QR-аа менежерт харуул</div>
@@ -6957,6 +6965,7 @@ function renderMyAttend() {
 }
 function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
+  const eb = document.getElementById('my-profile-edit'); if (eb) eb.onclick = openMyProfileModal;
   loadQRGen().then(() => {
     const box = document.getElementById('my-qr'); if (!box || !phone) return;
     box.innerHTML = '';
@@ -6966,6 +6975,57 @@ function attachMyAttendHandlers() {
   if (state.myAttendance === undefined) {
     state.myAttendance = null;
     loadMyAttendance().then(() => { if (state.view === 'myattend') { const w = document.getElementById('task-list'); if (w) { w.innerHTML = renderMyAttend(); attachMyAttendHandlers(); } } });
+  }
+}
+function openMyProfileModal() {
+  const me = findMember(state.me) || {};
+  const banks = (typeof MONGOLIAN_BANKS !== 'undefined' ? MONGOLIAN_BANKS : ['Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк', 'Хас банк', 'Төрийн банк']);
+  const opts = banks.map(b => `<option value="${escapeHtml(b)}"${me.bank === b ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('');
+  const fld = (lbl, id, val, extra) => `<label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">${lbl}</label><input id="${id}" ${extra || ''} value="${escapeHtml(val || '')}" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:15px;margin-bottom:12px;">`;
+  const ov = document.createElement('div');
+  ov.id = 'my-profile-modal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;';
+  ov.innerHTML = `<div style="background:var(--panel);width:100%;max-width:480px;border-radius:18px 18px 0 0;max-height:92vh;overflow:auto;padding:20px 18px calc(20px + env(safe-area-inset-bottom));">
+    <div style="font-size:17px;font-weight:700;">Мэдээллээ засах</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Цалингаа авах дансаа зөв бүртгэнэ үү.</div>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">Банк</label>
+    <select id="mp-bank" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:15px;margin-bottom:12px;"><option value="">— банк сонгох —</option>${opts}</select>
+    ${fld('Дансны дугаар', 'mp-account', me.bank_account, 'type="text" inputmode="numeric"')}
+    ${fld('Данс эзэмшигчийн нэр', 'mp-holder', me.bank_holder || me.name, 'type="text"')}
+    ${fld('Яаралтай үед холбоо барих (нэр)', 'mp-emg-name', me.emergency_name, 'type="text"')}
+    ${fld('Яаралтай холбоо барих (утас)', 'mp-emg-phone', me.emergency_phone, 'type="tel" inputmode="tel"')}
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button id="mp-cancel" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--panel-hover);color:var(--muted);font-size:15px;font-weight:700;cursor:pointer;">Болих</button>
+      <button id="mp-save" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--primary,#2f3e2f);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Хадгалах</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  document.getElementById('mp-cancel').onclick = () => ov.remove();
+  document.getElementById('mp-save').onclick = saveMyProfile;
+}
+async function saveMyProfile() {
+  const val = id => ((document.getElementById(id) || {}).value || '').trim();
+  const bank = val('mp-bank'), acct = val('mp-account');
+  if (bank && !acct) { showToast('Дансны дугаар оруулна уу', 'warn', 2500); return; }
+  if (acct && !bank) { showToast('Банкаа сонгоно уу', 'warn', 2500); return; }
+  const btn = document.getElementById('mp-save'); if (btn) { btn.textContent = 'Хадгалж байна…'; btn.disabled = true; }
+  const me = findMember(state.me) || {};
+  const phone = String(me.phone || state.me).replace(/\D/g, '');
+  const body = { p_phone: phone, p_bank: bank, p_bank_account: acct, p_bank_holder: val('mp-holder'), p_emergency_name: val('mp-emg-name'), p_emergency_phone: val('mp-emg-phone') };
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/update_my_profile`, {
+      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    Object.assign(me, { bank: bank || me.bank, bank_account: acct || me.bank_account, bank_holder: body.p_bank_holder || me.bank_holder, emergency_name: body.p_emergency_name || me.emergency_name, emergency_phone: body.p_emergency_phone || me.emergency_phone });
+    const ov = document.getElementById('my-profile-modal'); if (ov) ov.remove();
+    showToast('Мэдээлэл хадгаллаа', 'success', 2500);
+    if (state.view === 'myattend') render();
+    loadTeamFromAPI().then(() => { if (state.view === 'myattend') render(); }).catch(() => {});
+  } catch (e) {
+    if (btn) { btn.textContent = 'Дахин оролдох'; btn.disabled = false; }
+    showToast('Хадгалж чадсангүй. Дахин оролдоно уу.', 'error', 3000);
   }
 }
 function renderHourly() {

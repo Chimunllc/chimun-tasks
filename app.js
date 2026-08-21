@@ -7031,12 +7031,15 @@ async function saveMyProfile() {
       body: JSON.stringify(body)
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    if (state._pendingDoc) { if (btn) btn.textContent = 'Үнэмлэх хадгалж байна…'; await setEmployeeDoc(phone, state._pendingDoc); state._pendingDoc = null; }
+    // Данс/профайл хадгалагдлаа — ШУУД амжилт харуулна (үнэмлэх байршуулалтаас хамааралгүй)
     Object.assign(me, { bank: bank || me.bank, bank_account: acct || me.bank_account, bank_holder: body.p_bank_holder || me.bank_holder, emergency_name: body.p_emergency_name || me.emergency_name, emergency_phone: body.p_emergency_phone || me.emergency_phone });
+    const doc = state._pendingDoc; state._pendingDoc = null;
     const ov = document.getElementById('my-profile-modal'); if (ov) ov.remove();
     showToast('Мэдээлэл хадгаллаа', 'success', 2500);
     if (state.view === 'myattend') render();
     loadTeamFromAPI().then(() => { if (state.view === 'myattend') render(); }).catch(() => {});
+    // Үнэмлэх = арын дэвсгэрт, best-effort (данс хадгалалтыг унагахгүй)
+    if (doc) { setEmployeeDoc(phone, doc).then(ok => { if (!ok) showToast('Данс хадгалагдсан. Үнэмлэх дахин оруулна уу.', 'warn', 3500); }).catch(() => showToast('Данс хадгалагдсан. Үнэмлэх дахин оруулна уу.', 'warn', 3500)); }
   } catch (e) {
     if (btn) { btn.textContent = 'Дахин оролдох'; btn.disabled = false; }
     showToast('Хадгалж чадсангүй. Дахин оролдоно уу.', 'error', 3000);

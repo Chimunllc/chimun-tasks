@@ -6994,14 +6994,27 @@ function openMyProfileModal() {
     ${fld('Данс эзэмшигчийн нэр', 'mp-holder', me.bank_holder || me.name, 'type="text"')}
     ${fld('Яаралтай үед холбоо барих (нэр)', 'mp-emg-name', me.emergency_name, 'type="text"')}
     ${fld('Яаралтай холбоо барих (утас)', 'mp-emg-phone', me.emergency_phone, 'type="tel" inputmode="tel"')}
-    <div style="display:flex;gap:10px;margin-top:4px;">
+    <label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">Иргэний үнэмлэх (зураг эсвэл PDF)</label>
+    <input id="mp-doc" type="file" accept="image/*,application/pdf" style="width:100%;font-size:13px;margin-bottom:2px;">
+    <div id="mp-doc-status" style="font-size:12px;color:var(--muted);margin-bottom:14px;">Шалгаж байна…</div>
+    <div style="display:flex;gap:10px;margin-top:2px;">
       <button id="mp-cancel" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--panel-hover);color:var(--muted);font-size:15px;font-weight:700;cursor:pointer;">Болих</button>
       <button id="mp-save" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--primary,#2f3e2f);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Хадгалах</button>
     </div></div>`;
+  state._pendingDoc = null;
   document.body.appendChild(ov);
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
   document.getElementById('mp-cancel').onclick = () => ov.remove();
   document.getElementById('mp-save').onclick = saveMyProfile;
+  const phoneD = String(me.phone || state.me).replace(/\D/g, '');
+  const st = document.getElementById('mp-doc-status');
+  myDocExists(phoneD).then(has => { if (st && !state._pendingDoc) st.innerHTML = has ? '✓ Үнэмлэх оруулсан (солих бол шинээр сонго)' : 'Оруулаагүй — нэр/хаягаа баталгаажуулна'; });
+  document.getElementById('mp-doc').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (st) st.textContent = 'Уншиж байна…';
+    try { state._pendingDoc = await fileToDoc(f); if (st) st.innerHTML = '✓ Бэлэн (' + (state._pendingDoc.type === 'pdf' ? 'PDF' : 'зураг') + ') — "Хадгалах" дарна уу'; }
+    catch (err) { state._pendingDoc = null; if (st) st.textContent = '⚠ ' + (err.message || 'Алдаа'); }
+  });
 }
 async function saveMyProfile() {
   const val = id => ((document.getElementById(id) || {}).value || '').trim();
@@ -7018,6 +7031,7 @@ async function saveMyProfile() {
       body: JSON.stringify(body)
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (state._pendingDoc) { if (btn) btn.textContent = 'Үнэмлэх хадгалж байна…'; await setEmployeeDoc(phone, state._pendingDoc); state._pendingDoc = null; }
     Object.assign(me, { bank: bank || me.bank, bank_account: acct || me.bank_account, bank_holder: body.p_bank_holder || me.bank_holder, emergency_name: body.p_emergency_name || me.emergency_name, emergency_phone: body.p_emergency_phone || me.emergency_phone });
     const ov = document.getElementById('my-profile-modal'); if (ov) ov.remove();
     showToast('Мэдээлэл хадгаллаа', 'success', 2500);
@@ -7026,6 +7040,65 @@ async function saveMyProfile() {
   } catch (e) {
     if (btn) { btn.textContent = 'Дахин оролдох'; btn.disabled = false; }
     showToast('Хадгалж чадсангүй. Дахин оролдоно уу.', 'error', 3000);
+  }
+}
+/* ─── Иргэний үнэмлэх баримт (employee_docs, RPC) ─────────────────────── */
+async function fileToDoc(file) {
+  if (!file) return null;
+  if (/^image\//.test(file.type)) { return { data: await resizeImageToBase64(file, 1500, 0.72), type: 'image' }; }
+  if (file.type === 'application/pdf') {
+    if (file.size > 3.5 * 1024 * 1024) throw new Error('PDF хэт том — 3.5MB-аас бага байх ёстой');
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    return { data, type: 'pdf' };
+  }
+  throw new Error('Зөвхөн зураг эсвэл PDF');
+}
+async function setEmployeeDoc(phone, doc) {
+  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/set_my_doc`, {
+    method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, ''), p_doc: doc.data, p_type: doc.type })
+  }, 30000);
+  return r.ok;
+}
+async function myDocExists(phone) {
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/my_doc_exists`, {
+      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, '') })
+    }, 15000);
+    return r.ok ? (await r.json()) === true : false;
+  } catch (e) { return false; }
+}
+async function fetchEmployeeDoc(phone) {
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/get_employee_doc`, {
+      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, '') })
+    }, 30000);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows && rows[0] ? rows[0] : null;
+  } catch (e) { return null; }
+}
+// CEO: ажилтны үнэмлэхийг харах модал (зөвхөн CEO/эрхтэнд UI-д гарна)
+async function openEmployeeDocModal(phone, name) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99992;background:rgba(0,0,0,.8);display:flex;flex-direction:column;';
+  ov.innerHTML = `<div style="padding:14px 16px;color:#fff;display:flex;justify-content:space-between;align-items:center;">
+    <div style="font-weight:700;">${escapeHtml(name || '')} · Иргэний үнэмлэх</div>
+    <button id="edoc-close" style="background:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;">Хаах</button></div>
+    <div id="edoc-body" style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:0 10px 16px;color:#fff;">Ачаалж байна…</div>`;
+  document.body.appendChild(ov);
+  document.getElementById('edoc-close').onclick = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  const doc = await fetchEmployeeDoc(phone);
+  const body = document.getElementById('edoc-body'); if (!body) return;
+  if (!doc || !doc.id_doc) { body.textContent = 'Үнэмлэх оруулаагүй байна.'; return; }
+  if (doc.doc_type === 'pdf') {
+    body.innerHTML = `<iframe src="${doc.id_doc}" style="width:100%;height:100%;border:none;background:#fff;border-radius:8px;"></iframe>
+      <a href="${doc.id_doc}" download="unemlekh.pdf" style="position:absolute;bottom:20px;background:#fff;padding:8px 16px;border-radius:8px;font-weight:700;">⬇ Татах</a>`;
+  } else {
+    body.innerHTML = `<img src="${doc.id_doc}" style="max-width:100%;max-height:100%;border-radius:8px;object-fit:contain;">`;
   }
 }
 function renderHourly() {
@@ -16010,6 +16083,7 @@ function renderStaffList() {
           ${state.isCEO ? `<div class="staff-cred" style="margin-top:4px;font-size:12px;color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
             <span>📞 <b>${escapeHtml(m.phone || key || '—')}</b></span>
             <span>🔑 PIN: <b class="staff-pin" data-pin-for="${escapeHtml(key)}" style="letter-spacing:2px;">${m.pin ? '••••' : '<span style=\'color:var(--muted);font-weight:400;letter-spacing:0;\'>тохируулаагүй</span>'}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}" style="padding:1px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">харах</button>` : ''}</span>
+            <button class="staff-doc-btn" data-staff-doc="${escapeHtml(key)}" data-staff-name="${escapeHtml(m.name || '')}" style="padding:2px 10px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">📄 Үнэмлэх харах</button>
           </div>` : ''}
           ${state.isCEO ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;">Хүйс: <button data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эрэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эр</button><button data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эмэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эм</button></div>` : ''}
           ${state.isCEO && isActive ? `<label class="staff-finperm" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} style="margin:0;width:auto;" />🏦 Санхүү: салбар засах эрх</label>` : ''}
@@ -16034,6 +16108,9 @@ function renderStaffList() {
   ).join('');
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
+  });
+  listEl.querySelectorAll('[data-staff-doc]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openEmployeeDocModal(btn.dataset.staffDoc, btn.dataset.staffName); });
   });
   // PIN «харах/нуух» — зөвхөн CEO. PIN-ийг TEAM-аас (санах ой) авна, HTML-д урьдчилан бичихгүй.
   listEl.querySelectorAll('[data-pin-show]').forEach(btn => {
@@ -19319,6 +19396,12 @@ async function handleRegister() {
 
     errEl.style.color = 'var(--ok)';
     errEl.textContent = '✓ Амжилттай бүртгэгдлээ! Шинэ TEAM ачаалж байна...';
+
+    // Иргэний үнэмлэхийн баримт (сонгосон бол) — employee_docs руу хавсаргана (утсаар түлхүүрлэнэ)
+    const _idf = document.getElementById('reg-iddoc');
+    if (_idf && _idf.files && _idf.files[0]) {
+      fileToDoc(_idf.files[0]).then(doc => doc && setEmployeeDoc(phone, doc)).catch(() => {});
+    }
 
     // Master Sheet-аас шинэ TEAM татаж шинэ хүнийг dropdown-д оруулах
     await loadTeamFromAPI();

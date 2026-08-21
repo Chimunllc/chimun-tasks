@@ -7101,6 +7101,73 @@ async function openEmployeeDocModal(phone, name) {
     body.innerHTML = `<img src="${doc.id_doc}" style="max-width:100%;max-height:100%;border-radius:8px;object-fit:contain;">`;
   }
 }
+/* ─── Лавлагаа PDF-ээс автомат бөглөх (PDF.js, AI-гүй) ─────────────────── */
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  if (window.__pdfjsLoading) return window.__pdfjsLoading;
+  window.__pdfjsLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js';
+    s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js'; } catch (e) {} res(); };
+    s.onerror = rej; document.head.appendChild(s);
+  });
+  return window.__pdfjsLoading;
+}
+async function pdfToText(file) {
+  await loadPdfJs();
+  const buf = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join(' ') + '\n';
+  }
+  return text;
+}
+// e-Mongolia "Иргэний үнэмлэхийн лавлагаа" текстээс талбар задлах.
+function parseLavlagaa(raw) {
+  const t = String(raw || '').replace(/ /g, ' ').replace(/[ \t]+/g, ' ');
+  const flat = t.replace(/\s+/g, ' ');
+  const out = {};
+  let m;
+  // Регистрийн дугаар: 2 кирилл үсэг + 8 орон (Гадаад паспорт "E 3261034"-с ялгаатай)
+  m = flat.match(/([А-ЯӨҮЁ]{2}\s?\d{8})/);
+  if (m) out.rd = m[1].replace(/\s/g, '').toUpperCase();
+  // Хүйс
+  m = flat.match(/Хүйс[:\s]*?(Эрэгтэй|Эмэгтэй)/);
+  if (m) out.gender = m[1];
+  // Эцэг/эх-ийн нэр → формын "Овог" (эхний үсэг нь initial болно)
+  m = flat.match(/Эцэг[^:]*?нэр[:\s]+([А-ЯӨҮЁ][а-яөүёА-ЯӨҮЁ\-]{1,})/);
+  if (m) out.surname = m[1];
+  // Өөрийн нэр → формын "Нэр"
+  m = flat.match(/Өөрийн\s*нэр[:\s]+([А-ЯӨҮЁ][А-ЯӨҮЁа-яөүё\- ]{1,}?)\s+(?=Яс|Хүйс|Төрсөн|Иргэн|Регистр|Бүртгэл|Гадаад|Огноо|$)/);
+  if (m) out.given = m[1].trim();
+  // Төрсөн огноо
+  m = flat.match(/Төрс[^0-9]{0,40}(\d{4})[-/.](\d{2})[-/.](\d{2})/);
+  if (m) out.dob = `${m[1]}-${m[2]}-${m[3]}`;
+  // Хэвлэгдсэн хаяг (үнэмлэх дээрх хаяг)
+  m = flat.match(/хэвлэгдсэн хаяг[:\s]*(?:Хаяг[:\s]*)?([^]+?)\s+(?=БАЙНГА|Огноо|Хүсэлт|Мэдээлэл|$)/i);
+  if (m) out.address = m[1].replace(/\s+/g, ' ').trim();
+  return out;
+}
+async function autofillFromIdPdf(file, statusEl) {
+  const setSt = (msg, ok) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.color = ok ? 'var(--ok)' : 'var(--muted)'; } };
+  if (!file || file.type !== 'application/pdf') return;
+  setSt('PDF уншиж байна…', false);
+  let text = '';
+  try { text = await pdfToText(file); } catch (e) { setSt('PDF уншиж чадсангүй — гараар бөглөнө үү', false); return; }
+  if ((text || '').replace(/\s/g, '').length < 40) { setSt('PDF-д текст алга (зураг PDF) — гараар бөглөнө үү', false); return; }
+  const p = parseLavlagaa(text);
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } };
+  const filled = [];
+  if (p.surname) { setVal('reg-surname', p.surname); filled.push('Овог'); }
+  if (p.given) { setVal('reg-givenname', p.given); filled.push('Нэр'); }
+  if (p.rd) { setVal('reg-rd', p.rd); filled.push('РД'); }
+  if (p.address) { setVal('reg-address', p.address); filled.push('Хаяг'); }
+  if (p.gender) { const gb = document.querySelector(`#reg-gender-row [data-gender="${p.gender}"]`) || document.querySelector(`[data-reg-gender="${p.gender}"]`); if (gb) { gb.click(); filled.push('Хүйс'); } }
+  setSt(filled.length ? `✓ Лавлагаанаас автоматаар бөгллөө: ${filled.join(', ')} · шалгаад засаарай` : 'Талбар танигдсангүй — гараар бөглөнө үү', filled.length > 0);
+}
 function renderHourly() {
   const allWorkers = hourlyWorkers();
   if (!allWorkers.length) {
@@ -19245,6 +19312,11 @@ function initPinLogin() {
   };
   surnameEl?.addEventListener('input', updatePreview);
   givenEl?.addEventListener('input', updatePreview);
+  // Лавлагаа PDF сонгоход → нэр/РД/хаяг автомат бөглөх (AI-гүй, текст задлах)
+  document.getElementById('reg-iddoc')?.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) autofillFromIdPdf(f, document.getElementById('reg-iddoc-status'));
+  });
 
   // Бүртгэлийн төрөл (Үндсэн / Өдрийн) — toggle
   state._regWorkerType = 'permanent';

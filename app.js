@@ -14264,6 +14264,75 @@ function renderIncomeSections(month, mi) {
 /* ─── Санхүүгийн тайлан — сараар, Салбар → Үндсэн → Дэд ангилал, дэлгэрэнгүй ─── */
 /* ─── ТАЙЛАН (Reports hub) — удирдлагын тайлангуудын төв цэг ───
    P&L (ашиг) шууд энд + бусад тайлан руу очих картууд. Зөвхөн бүх санхүү хардаг. */
+// Олон сарын орлого/зардал/ашгийн цуврал (тухайн салбар лензээр) — тренд графикт
+function financeTrend(wantBr, isKemp) {
+  const inc = {}, exp = {};
+  (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
+    if (t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) {
+      const mo = String(t.requested_at || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
+    }
+  });
+  if (isKemp) {
+    (state.nomaadOrders || []).forEach(o => {
+      if (nomaadIsCancelled(o)) return;
+      const mo = String(o.income_date || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mo)) inc[mo] = (inc[mo] || 0) + nomaadPaid(o);
+    });
+  } else {
+    (state.appOrders || []).filter(o => _orderActive(o)).forEach(o => {
+      const mo = String(o.starts_at || o.created_at || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mo)) inc[mo] = (inc[mo] || 0) + (Number(o.paid_mnt) || 0);
+    });
+  }
+  const keys = [...Object.keys(inc), ...Object.keys(exp)].sort();
+  if (!keys.length) return [];
+  const cur = new Date().toISOString().slice(0, 7);
+  const last = cur > keys[keys.length - 1] ? cur : keys[keys.length - 1];
+  const [y0, m0] = keys[0].split('-').map(Number);
+  const [y1, m1] = last.split('-').map(Number);
+  const out = [];
+  let y = y0, mm = m0, guard = 0;
+  while ((y < y1 || (y === y1 && mm <= m1)) && guard++ < 240) {
+    const mo = `${y}-${String(mm).padStart(2, '0')}`;
+    out.push({ month: mo, income: inc[mo] || 0, expense: exp[mo] || 0, net: (inc[mo] || 0) - (exp[mo] || 0) });
+    mm++; if (mm > 12) { mm = 1; y++; }
+  }
+  return out;
+}
+function financeTrendChart(series, selMonth) {
+  if (!series.length) return '';
+  const max = Math.max(1, ...series.reduce((a, s) => (a.push(s.income, s.expense), a), []));
+  const sm = v => { const a = Math.abs(v); return a >= 1e7 ? (v / 1e6).toFixed(0) : a >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') : v === 0 ? '' : (v / 1e6).toFixed(1).replace(/\.0$/, ''); };
+  const bars = series.map(s => {
+    const hi = s.income > 0 ? Math.max(3, Math.round(s.income / max * 120)) : 0;
+    const he = s.expense > 0 ? Math.max(3, Math.round(s.expense / max * 120)) : 0;
+    const sel = s.month === selMonth;
+    const nc = s.net >= 0 ? 'var(--ok)' : 'var(--danger)';
+    return `<div data-trend-month="${s.month}" title="${s.month} · Орлого ${fmtMoney(s.income)} · Зардал ${fmtMoney(s.expense)} · Ашиг ${fmtMoney(s.net)}" style="flex:0 0 auto;width:48px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 1px;border-radius:9px;${sel ? 'background:var(--panel-hover);outline:1.5px solid var(--primary);' : ''}">
+      <div style="font-size:8.5px;font-weight:700;color:${nc};white-space:nowrap;">${s.net >= 0 ? '+' : ''}${sm(s.net)}</div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:122px;">
+        <div style="width:15px;height:${hi}px;background:var(--ok);border-radius:3px 3px 0 0;"></div>
+        <div style="width:15px;height:${he}px;background:var(--danger);border-radius:3px 3px 0 0;"></div>
+      </div>
+      <div style="font-size:9px;color:${sel ? 'var(--text)' : 'var(--muted)'};font-weight:${sel ? 700 : 400};white-space:nowrap;margin-top:2px;">${s.month.slice(2)}</div>
+    </div>`;
+  }).join('');
+  const tot = series.reduce((a, s) => ({ i: a.i + s.income, e: a.e + s.expense }), { i: 0, e: 0 });
+  const tn = tot.i - tot.e;
+  return `<div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:14px;margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
+      <div style="font-weight:800;font-size:13px;">📈 Сар бүрийн урсгал</div>
+      <div style="font-size:11px;color:var(--muted);"><span style="color:var(--ok);">■</span> Орлого <span style="color:var(--danger);margin-left:6px;">■</span> Зардал</div>
+    </div>
+    <div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">Багана = сарын орлого/зардал (сая₮), дээрх тоо = цэвэр ашиг. Сар дарж дэлгэрэнгүйг доор нээнэ.</div>
+    <div style="display:flex;align-items:flex-end;gap:5px;height:165px;overflow-x:auto;padding:4px 2px;">${bars}</div>
+    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);flex-wrap:wrap;gap:6px;">
+      <span style="color:var(--muted);">Бүх хугацаа (${series.length} сар):</span>
+      <span>Орлого <b style="color:var(--ok);">${fmtMoney(tot.i)}</b> · Зардал <b style="color:var(--danger);">${fmtMoney(tot.e)}</b> · Ашиг <b style="color:${tn >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(tn)}</b></span>
+    </div>
+  </div>`;
+}
 function renderReports() {
   const curMonth = new Date().toISOString().slice(0, 7);
   if (!state.reportMonth) state.reportMonth = curMonth;
@@ -14352,7 +14421,9 @@ function renderReports() {
     isDailyWorker() ? '' : card('🏅', 'Гүйцэтгэлийн үнэлгээ', 'Ажилтны объектив + ажлын чанар + 360° оноо, бонус', 'performance'),
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
+  const trendChart = financeTrendChart(financeTrend(wantBr, isKemp), month);
   return pnl
+    + trendChart
     + incomeSections
     + expChart
     + `<div style="font-weight:800;font-size:13px;margin:20px 0 8px;">📁 Дэлгэрэнгүй тайлангууд</div>`
@@ -14365,6 +14436,10 @@ function attachReportsHandlers() {
     const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     if (nm > new Date().toISOString().slice(0, 7)) return;
     state.reportMonth = nm; render();
+  });
+  document.querySelectorAll('[data-trend-month]').forEach(b => b.onclick = () => {
+    const nm = b.dataset.trendMonth;
+    if (nm && nm <= new Date().toISOString().slice(0, 7)) { state.reportMonth = nm; render(); }
   });
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;

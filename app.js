@@ -14364,17 +14364,40 @@ function renderReports() {
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
   const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
-  const kpi = (label, val, col, sub) => `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:18px;color:${col};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
+  // ── Олон сарын цуврал: гулсдаг сар сонголт (slider) + харьцуулалт ──
+  const series = financeTrend(wantBr, isKemp);
+  state._reportMonths = series.map(s => s.month);
+  let selIdx = series.findIndex(s => s.month === month);
+  if (selIdx < 0) selIdx = series.length - 1;
+  const prevM = selIdx > 0 ? series[selIdx - 1] : null;
+  const [_yy, _mm] = month.split('-').map(Number);
+  const yoyM = series.find(s => s.month === `${_yy - 1}-${String(_mm).padStart(2, '0')}`) || null;
+  const cmp = (label, base) => {
+    if (!base) return '';
+    const d = net - base.net;
+    if (Math.abs(d) < 1000) return `<span style="color:var(--muted);white-space:nowrap;">${label}: ≈</span>`;
+    const up = d > 0;
+    return `<span style="color:${up ? 'var(--ok)' : 'var(--danger)'};white-space:nowrap;">${label} ${up ? '▲' : '▼'}${fmtMoney(Math.abs(d))}</span>`;
+  };
+  const netCompare = [cmp('өмнөх сар', prevM), cmp('өнгөрсөн он', yoyM)].filter(Boolean).join(' · ');
+  const kpi = (label, val, col, sub) => `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:18px;color:${col};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.5;">${sub}</div>` : ''}</div>`;
+  const monthNav = series.length > 1
+    ? `<div style="margin:2px 0 14px;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:9px;">
+          <button class="btn" data-report-month="-1" style="padding:4px 12px;font-size:15px;line-height:1;"${selIdx <= 0 ? ' disabled' : ''}>‹</button>
+          <div style="text-align:center;min-width:130px;"><div id="report-slider-label" style="font-weight:800;font-size:16px;">💰 ${month}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(brLabel)}</div></div>
+          <button class="btn" data-report-month="1" style="padding:4px 12px;font-size:15px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>
+        </div>
+        <input type="range" min="0" max="${series.length - 1}" value="${selIdx}" data-report-slider style="width:100%;accent-color:var(--primary);cursor:pointer;height:22px;">
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:1px;"><span>${series[0].month}</span><span>${series[series.length - 1].month}</span></div>
+      </div>`
+    : `<div style="text-align:center;margin:2px 0 14px;"><div style="font-weight:800;font-size:16px;">💰 Ашиг — ${month}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(brLabel)}</div></div>`;
   const pnl = `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px;">
-      <button class="btn" data-report-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>
-      <div style="text-align:center;flex:1;min-width:0;"><div style="font-weight:800;font-size:15px;">💰 Ашиг — ${month}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(brLabel)} · толгойн салбар лензээр</div></div>
-      <button class="btn" data-report-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>
-    </div>
+    ${monthNav}
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
       ${kpi(incomeLabel, fmtMoney(income), 'var(--ok)', incomeSub)}
       ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
-      ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, '')}
+      ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, netCompare)}
       ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, '')}
     </div>
     <div style="display:flex;justify-content:center;margin-top:12px;">
@@ -14441,6 +14464,13 @@ function attachReportsHandlers() {
     const nm = b.dataset.trendMonth;
     if (nm && nm <= new Date().toISOString().slice(0, 7)) { state.reportMonth = nm; render(); }
   });
+  // Гулсдаг сар slider — чирэхэд лэйбл шинэчилж, тавихад тухайн сарын дэлгэрэнгүйг нээнэ
+  const rs = document.querySelector('[data-report-slider]');
+  if (rs) {
+    const monthsArr = state._reportMonths || [];
+    rs.addEventListener('input', () => { const nm = monthsArr[Number(rs.value)]; const lbl = document.getElementById('report-slider-label'); if (lbl && nm) lbl.textContent = '💰 ' + nm; });
+    rs.addEventListener('change', () => { const nm = monthsArr[Number(rs.value)]; if (nm) { state.reportMonth = nm; render(); } });
+  }
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
   const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;

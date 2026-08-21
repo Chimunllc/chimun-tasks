@@ -88,7 +88,7 @@
       <label class="login-label">Бүртгэлийн төрөл <span style="color:var(--danger)">*</span></label>
       <div id="reg-worker-type" style="display:flex; gap:8px; margin-bottom:14px;">
         <button type="button" class="reg-type-btn active" data-type="permanent" style="flex:1; padding:10px; border:2px solid var(--primary); background:var(--primary); color:#fff; border-radius:var(--r-md); font-size:13px; font-weight:600; cursor:pointer;">Үндсэн ажилтан</button>
-        <button type="button" class="reg-type-btn" data-type="daily" style="flex:1; padding:10px; border:2px solid var(--border); background:var(--panel); color:var(--text); border-radius:var(--r-md); font-size:13px; font-weight:600; cursor:pointer;">Өдрийн ажилтан</button>
+        <button type="button" class="reg-type-btn" data-type="daily" style="flex:1; padding:10px; border:2px solid var(--border); background:var(--panel); color:var(--text); border-radius:var(--r-md); font-size:13px; font-weight:600; cursor:pointer;">Цагийн ажилтан</button>
       </div>
 
       <label class="login-label">Овог <span style="color:var(--danger)">*</span></label>
@@ -286,6 +286,9 @@
     </div>
     <div class="nav-item active" data-view="mine">
       <span><svg class="lcd-icon" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Ирсэн ажил</span><span class="count-badge" id="cnt-mine">0</span>
+    </div>
+    <div class="nav-item" data-view="myattend" id="nav-myattend">
+      <span><svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg>Миний QR / Ирц</span><span class="count-badge"></span>
     </div>
     <div class="nav-item" data-view="delegated">
       <span><svg class="lcd-icon" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Илгээсэн ажил</span><span class="count-badge" id="cnt-delegated">0</span>
@@ -844,6 +847,9 @@
   <div class="mobile-bottom-nav-inner">
     <button class="mobile-nav-item active" data-view="mine">
       <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span>Ирсэн</span>
+    </button>
+    <button class="mobile-nav-item" data-view="myattend">
+      <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg><span>Миний QR</span>
     </button>
     <button class="mobile-nav-item" data-view="delegated">
       <svg class="lcd-icon nav-svg" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg><span>Илгээсэн</span>

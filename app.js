@@ -14301,35 +14301,45 @@ function financeTrend(wantBr, isKemp) {
   return out;
 }
 function financeTrendChart(series, selMonth) {
-  if (!series.length) return '';
-  const max = Math.max(1, ...series.reduce((a, s) => (a.push(s.income, s.expense), a), []));
-  const sm = v => { const a = Math.abs(v); return a >= 1e7 ? (v / 1e6).toFixed(0) : a >= 1e6 ? (v / 1e6).toFixed(1).replace(/\.0$/, '') : v === 0 ? '' : (v / 1e6).toFixed(1).replace(/\.0$/, ''); };
+  if (series.length < 2) return '';
+  const max = Math.max(1, ...series.map(s => Math.max(s.income, s.expense)));
+  const H = 168;
+  const mn = String(new Date().getMonth() + 1);
+  const sm = v => { const a = Math.abs(v); if (a < 5e5) return v === 0 ? '0' : (v > 0 ? '<1' : '-<1'); const s = (v / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, ''); return s; };
   const bars = series.map(s => {
-    const hi = s.income > 0 ? Math.max(3, Math.round(s.income / max * 120)) : 0;
-    const he = s.expense > 0 ? Math.max(3, Math.round(s.expense / max * 120)) : 0;
+    const hi = s.income > 0 ? Math.max(4, Math.round(s.income / max * H)) : 0;
+    const he = s.expense > 0 ? Math.max(4, Math.round(s.expense / max * H)) : 0;
     const sel = s.month === selMonth;
     const nc = s.net >= 0 ? 'var(--ok)' : 'var(--danger)';
-    return `<div data-trend-month="${s.month}" title="${s.month} · Орлого ${fmtMoney(s.income)} · Зардал ${fmtMoney(s.expense)} · Ашиг ${fmtMoney(s.net)}" style="flex:0 0 auto;width:48px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 1px;border-radius:9px;${sel ? 'background:var(--panel-hover);outline:1.5px solid var(--primary);' : ''}">
-      <div style="font-size:8.5px;font-weight:700;color:${nc};white-space:nowrap;">${s.net >= 0 ? '+' : ''}${sm(s.net)}</div>
-      <div style="display:flex;align-items:flex-end;gap:2px;height:122px;">
-        <div style="width:15px;height:${hi}px;background:var(--ok);border-radius:3px 3px 0 0;"></div>
-        <div style="width:15px;height:${he}px;background:var(--danger);border-radius:3px 3px 0 0;"></div>
+    const ml = s.month.slice(2).replace('-', '/');
+    return `<div data-trend-month="${s.month}" title="${s.month} · Орлого ${fmtMoney(s.income)} · Зардал ${fmtMoney(s.expense)} · Ашиг ${fmtMoney(s.net)}" style="flex:0 0 auto;width:66px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;padding:8px 2px 6px;border-radius:12px;transition:background .12s;${sel ? 'background:var(--primary-soft);' : ''}">
+      <div style="font-size:11px;font-weight:800;color:${nc};white-space:nowrap;">${s.net >= 0 ? '+' : '−'}${sm(Math.abs(s.net))}</div>
+      <div style="display:flex;align-items:flex-end;gap:5px;height:${H}px;">
+        <div style="width:20px;height:${hi}px;background:var(--ok);border-radius:5px 5px 0 0;" ></div>
+        <div style="width:20px;height:${he}px;background:var(--danger);border-radius:5px 5px 0 0;"></div>
       </div>
-      <div style="font-size:9px;color:${sel ? 'var(--text)' : 'var(--muted)'};font-weight:${sel ? 700 : 400};white-space:nowrap;margin-top:2px;">${s.month.slice(2)}</div>
+      <div style="font-size:11.5px;color:${sel ? 'var(--primary-hover, var(--primary))' : 'var(--muted)'};font-weight:${sel ? 800 : 500};white-space:nowrap;">${ml}</div>
     </div>`;
   }).join('');
   const tot = series.reduce((a, s) => ({ i: a.i + s.income, e: a.e + s.expense }), { i: 0, e: 0 });
   const tn = tot.i - tot.e;
-  return `<div style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:14px;margin-bottom:14px;">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
-      <div style="font-weight:800;font-size:13px;">📈 Сар бүрийн урсгал</div>
-      <div style="font-size:11px;color:var(--muted);"><span style="color:var(--ok);">■</span> Орлого <span style="color:var(--danger);margin-left:6px;">■</span> Зардал</div>
+  return `<div style="border:1px solid var(--border);border-radius:16px;background:var(--panel);padding:18px 18px 16px;margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:3px;">
+      <div style="font-weight:800;font-size:15px;">📈 Сар бүрийн урсгал</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:12px;">
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:3px;background:var(--ok);display:inline-block;"></span>Орлого</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:11px;height:11px;border-radius:3px;background:var(--danger);display:inline-block;"></span>Зардал</span>
+      </div>
     </div>
-    <div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">Багана = сарын орлого/зардал (сая₮), дээрх тоо = цэвэр ашиг. Сар дарж дэлгэрэнгүйг доор нээнэ.</div>
-    <div style="display:flex;align-items:flex-end;gap:5px;height:165px;overflow-x:auto;padding:4px 2px;">${bars}</div>
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);flex-wrap:wrap;gap:6px;">
-      <span style="color:var(--muted);">Бүх хугацаа (${series.length} сар):</span>
-      <span>Орлого <b style="color:var(--ok);">${fmtMoney(tot.i)}</b> · Зардал <b style="color:var(--danger);">${fmtMoney(tot.e)}</b> · Ашиг <b style="color:${tn >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(tn)}</b></span>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">Дээрх тоо = цэвэр ашиг (сая₮). Сар дээр дарж дэлгэрэнгүйг доор нээнэ.</div>
+    <div style="display:flex;align-items:flex-end;gap:6px;height:${H + 46}px;overflow-x:auto;padding:2px 2px 0;border-bottom:2px solid var(--border);">${bars}</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-top:14px;flex-wrap:wrap;gap:8px;">
+      <span style="color:var(--muted);font-weight:600;">Бүх хугацаа · ${series.length} сар</span>
+      <span style="display:flex;gap:14px;flex-wrap:wrap;">
+        <span>Орлого <b style="color:var(--ok);">${fmtMoney(tot.i)}</b></span>
+        <span>Зардал <b style="color:var(--danger);">${fmtMoney(tot.e)}</b></span>
+        <span>Ашиг <b style="color:${tn >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(tn)}</b></span>
+      </span>
     </div>
   </div>`;
 }
@@ -14379,29 +14389,26 @@ function renderReports() {
     const up = d > 0;
     return `<span style="color:${up ? 'var(--ok)' : 'var(--danger)'};white-space:nowrap;">${label} ${up ? '▲' : '▼'}${fmtMoney(Math.abs(d))}</span>`;
   };
-  const netCompare = [cmp('өмнөх сар', prevM), cmp('өнгөрсөн он', yoyM)].filter(Boolean).join(' · ');
-  const kpi = (label, val, col, sub) => `<div style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:18px;color:${col};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.5;">${sub}</div>` : ''}</div>`;
-  const monthNav = series.length > 1
-    ? `<div style="margin:2px 0 14px;">
-        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:9px;">
-          <button class="btn" data-report-month="-1" style="padding:4px 12px;font-size:15px;line-height:1;"${selIdx <= 0 ? ' disabled' : ''}>‹</button>
-          <div style="text-align:center;min-width:130px;"><div id="report-slider-label" style="font-weight:800;font-size:16px;">💰 ${month}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(brLabel)}</div></div>
-          <button class="btn" data-report-month="1" style="padding:4px 12px;font-size:15px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>
-        </div>
-        <input type="range" min="0" max="${series.length - 1}" value="${selIdx}" data-report-slider style="width:100%;accent-color:var(--primary);cursor:pointer;height:22px;">
-        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);margin-top:1px;"><span>${series[0].month}</span><span>${series[series.length - 1].month}</span></div>
-      </div>`
-    : `<div style="text-align:center;margin:2px 0 14px;"><div style="font-weight:800;font-size:16px;">💰 Ашиг — ${month}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(brLabel)}</div></div>`;
+  const netCompare = [cmp('өмнөх сар', prevM), cmp('өнгөрсөн он', yoyM)].filter(Boolean).join('<br>');
+  const kpi = (label, val, col, sub) => `<div style="padding:18px 20px;border:1px solid var(--border);border-radius:16px;background:var(--panel);min-width:0;">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:7px;">${label}</div>
+      <div style="font-weight:800;font-size:26px;color:${col};letter-spacing:-.5px;line-height:1.05;overflow:hidden;text-overflow:ellipsis;">${val}</div>
+      ${sub ? `<div style="font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.55;">${sub}</div>` : ''}</div>`;
+  const monthNav = `<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin:2px 0 16px;">
+      <button class="btn" data-report-month="-1" style="padding:6px 14px;font-size:17px;line-height:1;border-radius:10px;"${selIdx <= 0 ? ' disabled' : ''}>‹</button>
+      <div style="text-align:center;"><div style="font-weight:800;font-size:19px;">💰 Ашиг — ${month}</div><div style="font-size:11.5px;color:var(--muted);margin-top:1px;">${escapeHtml(brLabel)} · салбар лензээр</div></div>
+      <button class="btn" data-report-month="1" style="padding:6px 14px;font-size:17px;line-height:1;border-radius:10px;"${month >= curMonth ? ' disabled' : ''}>›</button>
+    </div>`;
   const pnl = `
     ${monthNav}
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;">
       ${kpi(incomeLabel, fmtMoney(income), 'var(--ok)', incomeSub)}
       ${kpi('Зарлага (батлагдсан)', fmtMoney(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
       ${kpi('Цэвэр ашиг', fmtMoney(net), netCol, netCompare)}
-      ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, '')}
+      ${kpi('Ашгийн марж', margin === null ? '—' : margin + '%', netCol, net >= 0 ? 'ашигтай' : 'алдагдалтай')}
     </div>
-    <div style="display:flex;justify-content:center;margin-top:12px;">
-      <button class="btn btn-primary" data-report-all-xls style="padding:7px 16px;font-size:12.5px;">📥 Бүгдийг татах (Excel — ${month})</button>
+    <div style="display:flex;justify-content:center;margin-top:14px;">
+      <button class="btn btn-primary" data-report-all-xls style="padding:8px 18px;font-size:12.5px;">📥 Бүгдийг татах (Excel — ${month})</button>
     </div>`;
   // Орлогын задаргаа (ангилал/захиалга/бараа) — зөвхөн Mevent лензэд (КЕМП биш)
   const incomeSections = (!isKemp && mi) ? renderIncomeSections(month, mi) : '';
@@ -14464,13 +14471,6 @@ function attachReportsHandlers() {
     const nm = b.dataset.trendMonth;
     if (nm && nm <= new Date().toISOString().slice(0, 7)) { state.reportMonth = nm; render(); }
   });
-  // Гулсдаг сар slider — чирэхэд лэйбл шинэчилж, тавихад тухайн сарын дэлгэрэнгүйг нээнэ
-  const rs = document.querySelector('[data-report-slider]');
-  if (rs) {
-    const monthsArr = state._reportMonths || [];
-    rs.addEventListener('input', () => { const nm = monthsArr[Number(rs.value)]; const lbl = document.getElementById('report-slider-label'); if (lbl && nm) lbl.textContent = '💰 ' + nm; });
-    rs.addEventListener('change', () => { const nm = monthsArr[Number(rs.value)]; if (nm) { state.reportMonth = nm; render(); } });
-  }
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
   const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;

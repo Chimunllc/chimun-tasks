@@ -4401,8 +4401,9 @@ async function saveExpenseLearn(memo, val) {
 // ── ДАНС-суурьтай суралцлага (шилжүүлэг: утга эмх замбараагүй ч ДАНС тогтвортой) ──
 // Ижил данс руу шилжүүлсэн гүйлгээг өмнө хэрхэн ангилсныг (ангилал+салбар) санаж автомат таамаглана.
 // expense_learn хүснэгтийг 'данс:<цифр>' түлхүүрээр дахин ашиглана — шинэ backend/хүснэгт хэрэггүй.
-function _acctDigits(a) { const d = String(a || '').replace(/\D/g, ''); return d.length >= 4 ? d : ''; }
-function expRecAcct(r) { const m = String((r && r.justification) || '').match(/данс\s+([0-9A-Za-zМмNn]{3,})/); return _acctDigits(m ? m[1] : (r && r.account_number) || ''); }
+// _acctDigits — доор (bank_accounts хэсэгт) тодорхойлсон нэгийг ашиглана (raw цифр). Энд давхардуулахгүй.
+function _acctDigits4(a) { const d = _acctDigits(a); return d.length >= 4 ? d : ''; }
+function expRecAcct(r) { const m = String((r && r.justification) || '').match(/данс\s+([0-9A-Za-zМмNn]{3,})/); return _acctDigits4(m ? m[1] : (r && r.account_number) || ''); }
 function acctLearnKey(digits) { return digits ? ('данс:' + digits) : ''; }
 // Данс → эзэмшигчийн нэр: ижил дансаар бусад гүйлгээнд бүртгэгдсэн ЦЭВЭР нэрийг олж харуулна
 // (хуулгаас орсон зардлын beneficiary=дугаар болсон тул нэрийг хөндлөн лавлана).
@@ -8023,7 +8024,8 @@ function syncCardMapsFromRegistry() {
     if (a.active === false) return;
     const d = _acctDigits(a.account_no || a.id);
     const code = a.branch && _BRANCH_NAME2CODE[a.branch];
-    if (code) [d, d.slice(-10)].filter(Boolean).forEach(k => { br['a:' + k] = code; });
+    // Данс→салбар ба данс→ХАРИУЦСАН ЭЗЭМШИГЧ: бүртгэл ЭРХ МЭДЭЛТЭЙ. Түлхүүр = 'a:'+дугаар (бүтэн + сүүл 10).
+    [d, d.slice(-10)].filter(Boolean).forEach(k => { if (code) br['a:' + k] = code; if (a.owner_key) ow['a:' + k] = a.owner_key; });
   });
   // Карт→эзэн/салбар/зорилго: бүртгэл ЭРХ МЭДЭЛТЭЙ (хоосон бол цэвэрлэнэ — stale онооллоос сэргийлнэ).
   (state.bankCards || []).forEach(c => {
@@ -8386,14 +8388,14 @@ function renderBankAccounts() {
   const accts = (state.bankAccounts || []).filter(a => a.active !== false);
   const cards = (state.bankCards || []).filter(c => c.active !== false);
   const purpBadge = (p) => { const c = _PURPOSE_BADGE[p]; return p ? `<span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:20px;${c ? `color:${c[0]};background:${c[1]};` : 'color:var(--muted);background:var(--panel-hover);'}">${escapeHtml(p)}</span>` : ''; };
-  const acctRow = (a) => `<div class="acct-card" data-acct="${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
+  const acctRow = (a) => { const aown = a.owner_key ? memberName(a.owner_key) : (a.owner_name || ''); return `<div class="acct-card" data-acct="${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
       <div style="width:38px;height:38px;border-radius:9px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏦</div>
       <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;">${escapeHtml(a.name || 'Нэргүй данс')}</b>${purpBadge(a.purpose)}${a.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(a.branch)}</span>` : ''}</div>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;">${escapeHtml(a.name || 'Нэргүй данс')}</b>${purpBadge(a.purpose)}${aown ? `<span style="font-size:10.5px;color:var(--text);">· 👤 ${escapeHtml(aown)}</span>` : ''}${a.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(a.branch)}</span>` : ''}</div>
         <div style="font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;">${escapeHtml(a.bank || '')} · ${escapeHtml(a.iban || a.account_no || '')}${a.currency && a.currency !== 'MNT' ? ' · ' + escapeHtml(a.currency) : ''}</div>
       </div>
       <span style="font-size:16px;color:var(--muted);">›</span>
-    </div>`;
+    </div>`; };
   const cardRow = (c) => { const linked = _acctByNo(c.account_id); const own = c.owner_key ? memberName(c.owner_key) : (c.owner_name || ''); return `<div class="acct-card" data-card="${escapeHtml(c.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
       <div style="width:46px;height:30px;border-radius:6px;background:linear-gradient(135deg,#1f2430,#3a3f4b);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="width:9px;height:7px;border-radius:2px;background:#e6b800;"></span></div>
       <div style="flex:1;min-width:0;">
@@ -8431,6 +8433,8 @@ function attachBankAccountsHandlers() {
 function openBankAccountModal(a) {
   const isNew = !a; a = a || {};
   const sel = (opts, cur, ph) => `<option value="">${ph}</option>` + opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
+  const _staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((x, y) => (y.level || 0) - (x.level || 0) || String(x.name || '').localeCompare(String(y.name || '')));
+  const ownerOpts = `<option value="">— эзэнгүй —</option>` + _staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === a.owner_key ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</div>
@@ -8443,6 +8447,7 @@ function openBankAccountModal(a) {
       <label class="fld" style="flex:1;">Зорилго<select id="ba-purpose">${sel(ACCT_PURPOSES, a.purpose, '— зорилго —')}</select></label>
     </div>
     <label class="fld">Салбар<select id="ba-branch">${sel(BANK_BRANCHES, a.branch, '— салбар —')}</select></label>
+    <label class="fld">👤 Хариуцсан эзэмшигч <span style="font-weight:400;color:var(--muted);font-size:11px;">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
     <label class="fld">Тэмдэглэл<input id="ba-note" value="${escapeHtml(a.note || '')}" placeholder="сонголт"></label>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
       <button class="btn" id="ba-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
@@ -8459,7 +8464,8 @@ function openBankAccountModal(a) {
     if (!name) { showToast('Нэр оруулна уу', 'warn', 2500); return; }
     if (!no && !g('#ba-iban')) { showToast('Дансны дугаар эсвэл IBAN оруулна уу', 'warn', 3000); return; }
     const id = isNew ? (no || ('acct-' + Date.now())) : a.id;
-    const rec = { id, bank: g('#ba-bank'), name, account_no: no, iban: g('#ba-iban'), currency: modal.querySelector('#ba-cur').value, purpose: g('#ba-purpose'), branch: g('#ba-branch'), note: g('#ba-note'), active: true, sort: a.sort || (state.bankAccounts || []).length + 1 };
+    const ownerKey = modal.querySelector('#ba-owner').value;
+    const rec = { id, bank: g('#ba-bank'), name, account_no: no, iban: g('#ba-iban'), currency: modal.querySelector('#ba-cur').value, purpose: g('#ba-purpose'), branch: g('#ba-branch'), owner_key: ownerKey, owner_name: memberName(ownerKey) || '', note: g('#ba-note'), active: true, sort: a.sort || (state.bankAccounts || []).length + 1 };
     modal.querySelector('#ba-save').disabled = true;
     if (await saveBankAccount(rec)) { close(); await loadBankAccounts(true); showToast('Данс хадгаллаа', 'success', 2000); }
     else modal.querySelector('#ba-save').disabled = false;

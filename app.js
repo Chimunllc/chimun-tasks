@@ -15293,7 +15293,9 @@ function renderFinanceReport(wrap) {
         <div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-bottom:2px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(val)}</b> · ${pct}%</span></div>
         <div style="height:6px;border-radius:3px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${col};"></div></div></div>`;
     };
-    const byBr = groupBy(exp, t => finBranchDisplay(finEffBranch(t)));
+    // Зөвхөн 3 ҮЙЛ АЖИЛЛАГААНЫ салбар нэртэй; хөрөнгө(Чимун ХХК)/захиргаа/хуваарилаагүй → "Бусад" (салбар биш)
+    const _dashBr = (t) => { const e = finEffBranch(t); return (e === 'ИВЕНТ' || e === 'КЕМП' || e === 'КАТЕРИНГ') ? finBranchDisplay(e) : '🏢 Бусад (салбар бус)'; };
+    const byBr = groupBy(exp, _dashBr);
     const brRows = Object.entries(byBr).map(([k, arr]) => [k, sumOf(arr)]).sort((a, b) => b[1] - a[1]);
     const byCat = groupBy(exp, t => { const mc = mainOfSub(t.category); return mc ? (mainCatName(mc) || mc) : '(ангилаагүй)'; });
     const catRows = Object.entries(byCat).map(([k, arr]) => [k, sumOf(arr)]).sort((a, b) => b[1] - a[1]);

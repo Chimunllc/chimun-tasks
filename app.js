@@ -4758,6 +4758,20 @@ async function openStatementClassifyModal() {
       // ЦАГИЙН ажилтны цалин — "Цагийн цалин" хэсэгт ордог форматаар бүртгэнэ (эзэн ангилалд явуулахгүй).
       if (r.hourlyEmp) {
         const nm = r.hourlyEmp.name || memberName(r.hourlyEmp.key);
+        // ДАВХЦАЛ СЭРГИЙЛЭХ: Цагийн цалин модулаас гараар бүртгэсэн HRLY_ бичлэг байвал ДАХИН үүсгэхгүй —
+        // түүнийг хуулгаар баталгаажуулна (нэг олголт = нэг бичлэг). Ижил нэр+дүн+сар.
+        const _nn = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+        const _rm = String(r.date).slice(0, 7);
+        const manual = (state.financeRequests || []).find(x => x.status !== 'deleted' && String(x.id || '').startsWith('HRLY_') && x.close_type !== 'хуулгаар'
+          && Math.round(Number(x.amount) || 0) === Math.round(r.debit) && _nn(x.beneficiary) === _nn(nm)
+          && (String(x.due_date || x.requested_at || '').slice(0, 7) === _rm || ((String(x.purpose || '').match(/(\d{4}-\d{2})/) || [])[1]) === _rm));
+        if (manual) {
+          manual.close_type = 'хуулгаар'; manual.received_by = manual.received_by || r.hourlyEmp.key;
+          manual.executed_at = manual.executed_at || new Date().toISOString();
+          if (!/\[#/.test(manual.justification || '')) manual.justification = `${manual.justification || ''} · хуулгаар баталгаажсан [#${r.fp}] ${encodeSrcToken(r.src)}`.trim();
+          try { await saveFinanceRequest(manual); } catch (e) {}
+          hrl++; r.done = true; n++; continue;
+        }
         const hbr = guessBranch(r.memo, r.hourlyEmp.key) || 'КЕМП';   // цагийн ажилтны салбар (эзний member_branches-ээс)
         state._finBackfill = { date: r.date };
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
@@ -14785,6 +14799,51 @@ function finSalaryMonth(month) {
   });
   return { sum, n: who.size };
 }
+// Давхцсан авто (Цагийн цалин модул, HRLY_) бичлэг — хуулгаар баталгаажсантай ижил (нэр+дүн+огноо)
+function finDuplicateEntries() {
+  const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted');
+  const nn = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const wdate = r => (String(r.purpose || '').match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || String(r.due_date || '').slice(0, 10) || String(r.executed_at || '').slice(0, 10);
+  const isStmt = r => r.close_type === 'хуулгаар' || /хуулгаар/i.test(String(r.justification || ''));
+  const isAuto = r => String(r.id || '').startsWith('HRLY_') || /эх үүсвэр: цагийн|өдрийн ажилтан/i.test(String(r.justification || ''));
+  const g = {};
+  rows.forEach(r => { const w = wdate(r); if (!w) return; (g[nn(r.beneficiary) + '|' + Math.round(Number(r.amount) || 0) + '|' + w] ||= []).push(r); });
+  const del = [];
+  Object.values(g).forEach(v => {
+    if (v.length < 2) return;
+    const stmts = v.filter(isStmt), autos = v.filter(r => isAuto(r) && !isStmt(r));
+    if (stmts.length && autos.length) del.push(...autos);              // хуулгатай давхцсан авто
+    else if (!stmts.length && autos.length > 1) del.push(...autos.slice(1)); // зөвхөн авто олон давхар
+  });
+  return del;
+}
+async function openFinDupAudit() {
+  const dups = finDuplicateEntries();
+  document.getElementById('fin-dup-modal')?.remove();
+  const m = document.createElement('div'); m.className = 'modal-bg'; m.id = 'fin-dup-modal';
+  const tot = dups.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const list = dups.slice().sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0)).map(r =>
+    `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.beneficiary || '')} <span style="color:var(--muted);">· ${escapeHtml(String(r.purpose || '').replace(/^Цагийн цалин · /, ''))}</span></span><b style="white-space:nowrap;">${fmtMoney(r.amount)}</b></div>`).join('');
+  m.innerHTML = `<div class="modal" style="max-width:460px;">
+    <h2 style="font-size:16px;">🔁 Давхцал аудит</h2>
+    <div style="font-size:12.5px;color:var(--muted);margin:6px 0 12px;">Хуулгаар баталгаажсантай давхцсан <b>авто (Цагийн цалин модул) бичлэгүүд</b>. Хуулгынх нь үлдэж, эдгээр давхардал устгагдана.</div>
+    ${dups.length ? `<div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:10px;">${list}</div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:10px;"><span>${dups.length} давхардал</span><span style="color:var(--danger);">${fmtMoney(tot)}</span></div>
+      <div style="display:flex;gap:10px;margin-top:16px;"><button id="fd-cancel" class="btn" style="flex:1;padding:11px;">Болих</button><button id="fd-del" class="btn" style="flex:1;padding:11px;background:var(--danger);color:#fff;border:none;font-weight:700;">Устгах</button></div>`
+      : `<div style="text-align:center;padding:24px;color:var(--muted);">✅ Давхцал алга — цэвэрхэн.</div><div style="text-align:center;margin-top:12px;"><button id="fd-cancel" class="btn">Хаах</button></div>`}
+  </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  m.querySelector('#fd-cancel').onclick = () => m.remove();
+  const del = m.querySelector('#fd-del');
+  if (del) del.onclick = async () => {
+    if (!await showConfirm(`${dups.length} давхардсан бичлэг устгах уу? (хуулгаар баталгаажсан нь үлдэнэ)`, { okText: 'Тийм, устгах' })) return;
+    del.disabled = true;
+    let done = 0;
+    for (const r of dups) { r.status = 'deleted'; try { await saveFinanceRequest(r, true); done++; del.textContent = `${done}/${dups.length}…`; } catch (e) {} }
+    m.remove(); showToast(`${done} давхардал устгалаа`, 'success', 3000); render();
+  };
+}
 function financeTrend(wantBr) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
@@ -15128,10 +15187,12 @@ function renderFinanceReport(wrap) {
     + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
+    + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
+  bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));

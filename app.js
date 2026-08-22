@@ -9695,6 +9695,20 @@ function renderNomaadAnalytics() {
     return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px;background:var(--panel);">
       <div style="font-weight:800;font-size:13px;margin-bottom:12px;">${title}${note ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">${note}</span>` : ''}</div>${body}</div>`;
   };
+  // Задалж болдог bar (мөр дээр дарахад доторх үйлчилгээнүүд гарна) — dkey='type'|'src'
+  const addonBarBlock = (title, rows, note, dkey) => {
+    const tot = rows.reduce((s, r) => s + r.sum, 0) || 1;
+    const mx = rows.length ? Math.max(...rows.map(r => r.sum)) : 1;
+    const PAL = ['#0d9488', '#6366f1', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6', '#ef4444', '#14b8a6', '#a855f7'];
+    const body = rows.length ? rows.map((r, i) => { const kk = `${dkey}::${String(r.k).replace(/"/g, '')}`; return `<div style="margin-bottom:9px;">
+      <div data-addon-toggle="${escapeHtml(kk)}" style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:3px;cursor:pointer;user-select:none;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><span data-addon-caret style="display:inline-block;width:12px;color:var(--muted);transition:transform .12s;">▸</span> ${escapeHtml(r.k)} <span style="color:var(--muted);">(${r.count})</span></span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(r.sum)}</b> · ${Math.round(r.sum / tot * 100)}%</span></div>
+      <div style="height:8px;border-radius:4px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${Math.max(2, Math.round(r.sum / mx * 100))}%;background:${PAL[i % PAL.length]};border-radius:4px;"></div></div>
+      <div class="addon-detail" data-addon-detail="${escapeHtml(kk)}" style="display:none;margin:6px 0 4px 14px;"></div>
+    </div>`; }).join('') : '<div style="color:var(--muted);font-size:12px;padding:6px 0;">Дата алга.</div>';
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:12px;background:var(--panel);">
+      <div style="font-weight:800;font-size:13px;margin-bottom:4px;">${title}${note ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">${note}</span>` : ''}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">Мөр дээр дарж доторх үйлчилгээг харна</div>${body}</div>`;
+  };
   const groupBy = (keyFn) => {
     const m = {};
     filtered.forEach(o => { const k = keyFn(o); if (k == null) return; (m[k] = m[k] || { k, count: 0, sum: 0 }).count++; m[k].sum += nomaadEffTotal(o); });
@@ -9707,25 +9721,27 @@ function renderNomaadAnalytics() {
     const os = filtered.filter(o => nomaadGuestBucket(o.guests) === b);
     return { k: b + ' хүн', count: os.length, sum: os.reduce((s, o) => s + nomaadEffTotal(o), 0) };
   }).filter(r => r.count);
-  // Нэмэлт үйлчилгээ — СТАНДАРТ ТӨРЛӨӨР (чөлөөт нэрээр биш — тайлан зөв бүлэглэгдэнэ)
-  const addonMap = {};
+  // Нэмэлт үйлчилгээ — төрлөөр + эх үүсвэрээр + доторх үйлчилгээний ЗАДАРГАА (дарж харна)
+  const addonMap = {}, srcMap = {}, addonTypeDetail = {}, addonSrcDetail = {};
   filtered.forEach(o => (o.items || []).forEach(it => {
     if (it.included || /үндсэн багц/i.test(it.category || '')) return;
     const v = Number(it.total) || 0; if (v <= 0) return;
-    const k = (it.category || '').trim() || 'Бусад нэмэлт';
+    const k = (it.category || '').trim() || 'Тодорхойгүй';
     (addonMap[k] = addonMap[k] || { k, count: 0, sum: 0 }).count++; addonMap[k].sum += v;
-  }));
-  const byAddon = Object.values(addonMap).sort((a, b) => b.sum - a.sum).slice(0, 15);
-  // Нэмэлт үйлчилгээ — ЭХ ҮҮСВЭРЭЭР (Гаднаас авсан vs Дотоодоос) → марж/хараат байдал харах
-  const srcMap = {};
-  filtered.forEach(o => (o.items || []).forEach(it => {
-    if (it.included || /үндсэн багц/i.test(it.category || '')) return;
-    const v = Number(it.total) || 0; if (v <= 0) return;
     const sk = nomaadAddonSource(it.category);
     (srcMap[sk] = srcMap[sk] || { k: sk, count: 0, sum: 0 }).count++; srcMap[sk].sum += v;
+    const nm = (it.name || '').trim() || '(нэргүй)';
+    const dt = (addonTypeDetail[k] = addonTypeDetail[k] || {});
+    (dt[nm] = dt[nm] || { name: nm, count: 0, sum: 0 }).count++; dt[nm].sum += v;
+    const ds = (addonSrcDetail[sk] = addonSrcDetail[sk] || {});
+    (ds[nm] = ds[nm] || { name: nm, count: 0, sum: 0 }).count++; ds[nm].sum += v;
   }));
+  const byAddon = Object.values(addonMap).sort((a, b) => b.sum - a.sum).slice(0, 15);
   const SRC_ORDER = { 'Гаднаас авсан': 0, 'Дотоодоос': 1, 'Тодорхойгүй': 2 };
   const bySource = Object.values(srcMap).sort((a, b) => (SRC_ORDER[a.k] ?? 9) - (SRC_ORDER[b.k] ?? 9));
+  // Задаргааг state-д (attachNomaadAnalytics уншиж, дарахад задална)
+  const _det = obj => Object.fromEntries(Object.entries(obj).map(([k, m]) => [k, Object.values(m).sort((a, b) => b.sum - a.sum)]));
+  state._naAddonDetail = { type: _det(addonTypeDetail), src: _det(addonSrcDetail) };
   // ── Гулсагч (min-max) ──
   const dual = (id, lo, hi, vLo, vHi, step, fmt) => `<div class="na-dual" data-nadual="${id}" data-lo="${lo}" data-hi="${hi}" style="position:relative;height:30px;margin-top:2px;">
     <div style="position:absolute;top:13px;left:0;right:0;height:4px;border-radius:2px;background:var(--panel-hover);"></div>
@@ -9785,8 +9801,8 @@ function renderNomaadAnalytics() {
     ${barBlock('🏔 Кемп бүрээр', byCamp)}
     ${barBlock('👥 Хүний тооны бүлгээр', byBucket)}
     ${tiers.length ? barBlock('🎁 Багц бүрээр', byTier) : ''}
-    ${barBlock('🔀 Нэмэлт үйлчилгээ — Гаднаас vs Дотоодоос', bySource, 'мөнгө гадагш урсдаг vs өөрсдөө хийдэг')}
-    ${barBlock('✨ Нэмэлт үйлчилгээ (төрлөөр)', byAddon, 'багцаас гадуур')}
+    ${addonBarBlock('🔀 Нэмэлт үйлчилгээ — Гаднаас vs Дотоодоос', bySource, 'мөнгө гадагш урсдаг vs өөрсдөө хийдэг', 'src')}
+    ${addonBarBlock('✨ Нэмэлт үйлчилгээ (төрлөөр)', byAddon, 'багцаас гадуур', 'type')}
     ${barBlock('📅 Сар бүрээр', byMonth)}
   </div>`;
 }
@@ -9819,6 +9835,24 @@ function attachNomaadAnalytics() {
   const cb = document.querySelector('[data-na-confirmed]'); if (cb) cb.onchange = () => { f.confirmedOnly = cb.checked; render(); };
   const rs = document.querySelector('[data-na-reset]'); if (rs) rs.onclick = () => { state.naF = null; render(); };
   const xl = document.querySelector('[data-na-xls]'); if (xl) xl.onclick = exportNomaadAnalyticsExcel;
+  // Нэмэлт үйлчилгээний мөр дээр дарахад доторх үйлчилгээнүүд задарна
+  document.querySelectorAll('[data-addon-toggle]').forEach(row => row.addEventListener('click', () => {
+    const key = row.dataset.addonToggle;
+    const detail = document.querySelector(`[data-addon-detail="${key.replace(/"/g, '')}"]`);
+    const caret = row.querySelector('[data-addon-caret]');
+    if (!detail) return;
+    if (detail.style.display !== 'none') { detail.style.display = 'none'; if (caret) caret.style.transform = ''; return; }
+    if (!detail.dataset.built) {
+      const [dk, k] = key.split('::');
+      const rows = (state._naAddonDetail && state._naAddonDetail[dk] && state._naAddonDetail[dk][k]) || [];
+      detail.innerHTML = rows.length
+        ? rows.map(d => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 8px;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.name)} <span style="color:var(--muted);">×${d.count}</span></span><b style="white-space:nowrap;">${fmtMoney(d.sum)}</b></div>`).join('')
+        : '<div style="color:var(--muted);font-size:11.5px;padding:5px 8px;">Задаргаа алга.</div>';
+      detail.dataset.built = '1';
+    }
+    detail.style.display = '';
+    if (caret) caret.style.transform = 'rotate(90deg)';
+  }));
 }
 function exportNomaadAnalyticsExcel() {
   const list = state._naFiltered || [];

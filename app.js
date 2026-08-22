@@ -9328,6 +9328,17 @@ function nomaadChildCount(o) {
   return ((o && o.items) || []).reduce((s, it) => nomaadIsPersonLine(it) ? s + (Number(it.qty) || 0) : s, 0);
 }
 function nomaadHeadcount(o) { return (Number(o && o.guests) || 0) + nomaadChildCount(o); }
+// Кемп + Багц стандарт жагсаалт (dropdown). Гараар бичсэн хуучин утгыг хадгалж харуулна.
+const NOMAAD_CAMPS = ['NOMAAD Grove', 'NOMAAD Meadow', 'NOMAAD Summit', 'Нүүдлийн кемп'];
+const NOMAAD_TIERS = ['Стандарт', 'Үндсэн', 'Премиум', 'Бүтэн өдрийн', 'Хагас өдрийн'];
+function nomaadSelectOpts(list, cur) {
+  cur = String(cur || '').trim();
+  const known = list.includes(cur);
+  let html = list.map(x => `<option${x === cur ? ' selected' : ''}>${escapeHtml(x)}</option>`).join('');
+  if (cur && !known) html = `<option selected>${escapeHtml(cur)}</option>` + html;   // хуучин/гараар бичсэн — хадгална
+  else if (!cur) html = `<option value="" selected>— сонгох —</option>` + html;
+  return html;
+}
 // Захиалгад холбогдсон ЗАРДЛЫН нийлбэр (⟦LNK⟧ объект холбоос, Дууссан хүсэлтүүд).
 // type='nomaad' бол id=quote_no, type='order' бол id=app_orders.id.
 function linkedExpenseSum(type, id) {
@@ -10228,9 +10239,8 @@ function openNomaadEditModal(quoteNo) {
   }));
   items.forEach(it => { it.total = it.included ? 0 : it.unit_price * it.qty; });
   let guests = Number(o.guests) || 0;
-  const baseCamps = ['NOMAAD Summit', 'NOMAAD Meadow', 'NOMAAD Grove', 'Нүүдлийн кемп'];
-  const campList = (o.camp && !baseCamps.includes(o.camp)) ? [o.camp, ...baseCamps] : baseCamps;
-  const campOpts = campList.map(c => `<option${c === (o.camp || '') ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  const campOpts = nomaadSelectOpts(NOMAAD_CAMPS, o.camp);
+  const tierOpts = nomaadSelectOpts(NOMAAD_TIERS, o.tier);
   const curStatus = String(o.status || '').trim();
   const knownStatus = NOMAAD_STATUSES.some(s => s.value === curStatus);
   const statusOpts = (knownStatus || !curStatus ? '' : `<option value="${escapeHtml(curStatus)}" selected>${escapeHtml(curStatus)} (одоогийн)</option>`)
@@ -10263,7 +10273,7 @@ function openNomaadEditModal(quoteNo) {
           <label>Утас<input id="ne-phone" value="${escapeHtml(o.phone || '')}" /></label>
           <label>И-мэйл<input id="ne-email" value="${escapeHtml(o.email || '')}" /></label>
           <label>Кемп<select id="ne-camp">${campOpts}</select></label>
-          <label>Багц<input id="ne-tier" value="${escapeHtml(o.tier || '')}" placeholder="Стандарт..." /></label>
+          <label>Багц<select id="ne-tier">${tierOpts}</select></label>
           <label>Хүний тоо<input id="ne-guests" type="number" min="0" inputmode="numeric" value="${guests}" /></label>
           <label>Эхлэх<input id="ne-start" type="datetime-local" value="${toLocalInput(o.date_start)}" /></label>
           <label>Дуусах<input id="ne-end" type="datetime-local" value="${toLocalInput(o.date_end)}" /></label>
@@ -10633,8 +10643,8 @@ function openNomaadCreateModal() {
           <label>Утас<input id="nc-phone" /></label>
           <label>Холбоо барих<input id="nc-contact" /></label>
           <label>И-мэйл<input id="nc-email" /></label>
-          <label>Кемп<select id="nc-camp">${camps.map(c => `<option>${c}</option>`).join('')}</select></label>
-          <label>Багц<input id="nc-tier" placeholder="Стандарт..." /></label>
+          <label>Кемп<select id="nc-camp">${nomaadSelectOpts(NOMAAD_CAMPS, '')}</select></label>
+          <label>Багц<select id="nc-tier">${nomaadSelectOpts(NOMAAD_TIERS, '')}</select></label>
           <label>Хүний тоо<input id="nc-guests" type="number" min="0" inputmode="numeric" value="0" /></label>
           <label>Эхлэх<input id="nc-start" type="datetime-local" /></label>
           <label>Дуусах<input id="nc-end" type="datetime-local" /></label>

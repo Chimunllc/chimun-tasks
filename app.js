@@ -1,3 +1,4 @@
+/* global jsQR, QRCode, XLSX, pdfjsLib */
 /* -------------------- CONSTANTS -------------------- */
 // Branches — 3 ажлын чиглэл: M Event, NOMAAD Camp, Удирдлага.
 //   Production салбар 2026-05-25-нд M Event-д нэгтгэгдсэн.

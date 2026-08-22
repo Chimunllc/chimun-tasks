@@ -9315,13 +9315,17 @@ async function assignNomaadItemInline(quoteNo, itemName) {
 // Бодит/хүлээн зөвшөөрөгдөх дүн = Эцсийн гэрээний дүн (акт) байвал тэр, эс бөгөөс Нийт дүн (санал).
 // Орлого/тайланд grand_total биш ҮҮНИЙГ ашиглана — муу гүйцэтгэлийн хасалт орлогыг хөөрөгдөхгүй.
 const nomaadEffTotal = o => Number(o.final_amount) || Number(o.grand_total) || 0;
-// Хүний тоо = үндсэн guests + хүүхэд/нэмэлт хүний мөрүүдийн тоо (qty). Хүүхэд бол хүн, үйлчилгээ биш.
-const NOMAAD_PERSON_LINE = /хүүхэд|хүүхд|нэмэлт хүн/i;
+// Хүний тоо = үндсэн guests + хүүхэд/нэмэлт хүний мөрийн qty. Хүүхэд бол хүн, үйлчилгээ биш.
+const NOMAAD_PERSON_CAT = 'Хүүхэд / нэмэлт хүн';                 // стандарт ангилал (dropdown)
+const NOMAAD_PERSON_LINE = /хүүхэд|хүүхд|нэмэлт хүн/i;           // хуучин дата — нэрээр таних (fallback)
+function nomaadIsPersonLine(it) {
+  if (!it) return false;
+  if (String(it.category || '').trim() === NOMAAD_PERSON_CAT) return true;
+  const nm = String(it.name || '');
+  return NOMAAD_PERSON_LINE.test(nm) && !/тоглоом|бэлэг|булан|хөтөлбөр/i.test(nm);
+}
 function nomaadChildCount(o) {
-  return ((o && o.items) || []).reduce((s, it) => {
-    const nm = String(it.name || '');
-    return (NOMAAD_PERSON_LINE.test(nm) && !/тоглоом|бэлэг|булан|хөтөлбөр/i.test(nm)) ? s + (Number(it.qty) || 0) : s;
-  }, 0);
+  return ((o && o.items) || []).reduce((s, it) => nomaadIsPersonLine(it) ? s + (Number(it.qty) || 0) : s, 0);
 }
 function nomaadHeadcount(o) { return (Number(o && o.guests) || 0) + nomaadChildCount(o); }
 // Захиалгад холбогдсон ЗАРДЛЫН нийлбэр (⟦LNK⟧ объект холбоос, Дууссан хүсэлтүүд).
@@ -9643,7 +9647,7 @@ function nomaadCalCellHtml(dateObj, list, today, conflicts) {
 /* ─── NOMAAD аналитик — шүүлт (min-max гулсагч) + дүгнэлт + задаргаа + Excel ─── */
 // Нэмэлт үйлчилгээний орлого = үндсэн багц БИШ, багцад ороогүй мөрүүдийн дүн.
 function nomaadAddonRevenue(o) {
-  return (o.items || []).reduce((s, it) => (it.included || /үндсэн багц/i.test(it.category || '')) ? s : s + (Number(it.total) || 0), 0);
+  return (o.items || []).reduce((s, it) => (it.included || /үндсэн багц/i.test(it.category || '') || nomaadIsPersonLine(it)) ? s : s + (Number(it.total) || 0), 0);
 }
 const NA_BUCKETS = ['<30', '30–50', '50–100', '100–200', '200–500', '500+'];
 function nomaadGuestBucket(g) {
@@ -9736,7 +9740,7 @@ function renderNomaadAnalytics() {
   // Нэмэлт үйлчилгээ — төрлөөр + эх үүсвэрээр + доторх үйлчилгээний ЗАДАРГАА (дарж харна)
   const addonMap = {}, srcMap = {}, addonTypeDetail = {}, addonSrcDetail = {};
   filtered.forEach(o => (o.items || []).forEach(it => {
-    if (it.included || /үндсэн багц/i.test(it.category || '')) return;
+    if (it.included || /үндсэн багц/i.test(it.category || '') || nomaadIsPersonLine(it)) return;
     const v = Number(it.total) || 0; if (v <= 0) return;
     const k = (it.category || '').trim() || 'Тодорхойгүй';
     (addonMap[k] = addonMap[k] || { k, count: 0, sum: 0 }).count++; addonMap[k].sum += v;
@@ -10427,6 +10431,9 @@ function nomaadTypeOptions(cur) {
   // Буруу орсон багцыг "нэмэлт биш" болгож цэгцлэх (нэмэлт үйлчилгээний тооноос хасна)
   const isBaseCur = /үндсэн багц/i.test(cur); if (isBaseCur) known = true;
   html += `<option value="Үндсэн багц"${isBaseCur ? ' selected' : ''}>📦 Үндсэн багц / хоног (нэмэлт БИШ)</option>`;
+  // Хүүхэд / нэмэлт хүн — тоо (qty) нь хүний тоонд орно, нэмэлт үйлчилгээнд ОРОХГҮЙ
+  const isPersonCur = cur === NOMAAD_PERSON_CAT; if (isPersonCur) known = true;
+  html += `<option value="${escapeHtml(NOMAAD_PERSON_CAT)}"${isPersonCur ? ' selected' : ''}>👶 Хүүхэд / нэмэлт хүн (тоо = хүн)</option>`;
   html += nomaadAddonGroups().map(g => `<optgroup label="${escapeHtml(g.src)}">` +
     g.items.map(t => { const s = t === cur; if (s) known = true; return `<option${s ? ' selected' : ''}>${escapeHtml(t)}</option>`; }).join('') + `</optgroup>`).join('');
   if (cur && !known) html = `<option selected>${escapeHtml(cur)}</option>` + html;   // хуучин/өөр утга — хадгална

@@ -9530,9 +9530,21 @@ function nomaadCampKey(o) {
 }
 const NOMAAD_CAMP_LANES = [['summit', 'S'], ['meadow', 'M'], ['grove', 'G'], ['nomad', 'Н']];
 const NOMAAD_LANE_TAG = { summit: 'S', meadow: 'M', grove: 'G', nomad: 'Н', other: 'Б' };
+// Үхсэн санал: үнийн санал илгээсэн/шинэ/баталгаажуулалт хүлээж буй боловч эвентийн
+// огноо өнгөрсөн БА урьдчилгаа/гэрээ/орлого байхгүй → автоматаар "Больсон" гэж үзнэ.
+function nomaadExpiredLead(o) {
+  const su = String(o && o.status || '').toUpperCase();
+  if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return false;
+  if (su.includes('ДУУССАН') || su.includes('ГҮЙЦЭТГЭСЭН')) return false;
+  if (su.includes('ГЭРЭЭ') || String(o && o.contract_date || '').trim()) return false;
+  if ((Number(o && o.income_amount) || 0) > 0 || (Number(o && o.income_advance) || 0) > 0) return false;
+  const dl = nomaadDaysLeft(o && o.date_start);
+  return dl != null && dl < 0;
+}
 function nomaadIsCancelled(o) {
   const s = String(o.status || '').toLowerCase();
-  return s.includes('больсон') || s.includes('цуцл');
+  if (s.includes('больсон') || s.includes('цуцл')) return true;
+  return nomaadExpiredLead(o);   // хугацаа хэтэрсэн, төлбөргүй үнийн санал = автомат больсон
 }
 // 🧹 Цэгцлэх — засах шаардлагатай захиалгыг нэг дороос (CEO)
 function nomaadCleanupRows() {
@@ -9613,6 +9625,7 @@ function nomaadStage(o) {
   const su = String(o.status || '').toUpperCase();
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
   if (su.includes('ДУУССАН') || su.includes('ГҮЙЦЭТГЭСЭН')) return 'done';
+  if (nomaadExpiredLead(o)) return 'cancelled';   // хугацаа хэтэрсэн, төлбөргүй санал → автомат больсон
   const income = nomaadPaid(o);
   const contractTotal = nomaadEffTotal(o);
   const fullyPaid = income > 0 && (contractTotal - income) <= 0;

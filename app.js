@@ -14585,6 +14585,30 @@ function renderIncomeSections(month, mi) {
 // Том тоог сая₮-оор товчлох (89,662,026₮ → 89.7 сая₮)
 function fmtSaya(v) { const a = Math.abs(v); return a >= 1e5 ? (v / 1e6).toFixed(a >= 1e8 ? 0 : 1).replace(/\.0$/, '') + ' сая₮' : fmtMoney(v); }
 // Олон сарын орлого/зардал/ашгийн цуврал (тухайн салбар лензээр) — тренд графикт
+// Орлогын суурь: 'accrual' (гүйцэтгэл, эвентийн сар, гэрээний дүн) | 'cash' (мөнгө орсон өдөр)
+function finBasis() {
+  if (state.finBasis === undefined) { try { state.finBasis = localStorage.getItem('finBasis') || 'accrual'; } catch (e) { state.finBasis = 'accrual'; } }
+  return state.finBasis === 'cash' ? 'cash' : 'accrual';
+}
+// Сар M-ийн орлого нэг захиалгыг аль сард, ямар дүнгээр тоолохыг суурийн дагуу нэмнэ
+function finAddOrderIncome(inc, isKemp, basis) {
+  if (isKemp) {
+    (state.nomaadOrders || []).forEach(o => {
+      if (nomaadIsCancelled(o)) return;
+      let mo, v;
+      if (basis === 'cash') { mo = String(o.income_date || '').slice(0, 7); v = nomaadPaid(o); }
+      else { if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return; mo = String(o.date_start || '').slice(0, 7); v = nomaadEffTotal(o); }
+      if (/^\d{4}-\d{2}$/.test(mo) && v) inc[mo] = (inc[mo] || 0) + v;
+    });
+  } else {
+    (state.appOrders || []).filter(o => _orderActive(o)).forEach(o => {
+      const mo = String(o.starts_at || o.created_at || '').slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(mo)) return;
+      const v = basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0);
+      if (v) inc[mo] = (inc[mo] || 0) + v;
+    });
+  }
+}
 function financeTrend(wantBr, isKemp) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
@@ -14593,18 +14617,7 @@ function financeTrend(wantBr, isKemp) {
       if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
     }
   });
-  if (isKemp) {
-    (state.nomaadOrders || []).forEach(o => {
-      if (nomaadIsCancelled(o)) return;
-      const mo = String(o.income_date || '').slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(mo)) inc[mo] = (inc[mo] || 0) + nomaadPaid(o);
-    });
-  } else {
-    (state.appOrders || []).filter(o => _orderActive(o)).forEach(o => {
-      const mo = String(o.starts_at || o.created_at || '').slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(mo)) inc[mo] = (inc[mo] || 0) + (Number(o.paid_mnt) || 0);
-    });
-  }
+  finAddOrderIncome(inc, isKemp, finBasis());
   const keys = [...Object.keys(inc), ...Object.keys(exp)].sort();
   if (!keys.length) return [];
   const cur = new Date().toISOString().slice(0, 7);
@@ -14675,17 +14688,24 @@ function renderReports() {
   const wantBr = finLensBranch(lens);          // null=бүгд, 'КЕМП', 'ИВЕНТ', 'ХХК'
   // Орлого: КЕМП лензэд NOMAAD; бусад (Бүгд/Ивент) лензэд Захиалга модул (Mevent, app_orders төлсөн дүн).
   const isKemp = wantBr === 'КЕМП';
+  const basis = finBasis();   // 'accrual' (гүйцэтгэл, эвентийн сар) | 'cash' (мөнгө орсон өдөр)
   let income = 0, incomeN = 0, incomeLabel, incomeSub, mi = null;
   if (isKemp) {
     (state.nomaadOrders || []).forEach(o => {
       if (nomaadIsCancelled(o)) return;
-      if (String(o.income_date || '').slice(0, 7) === month) { income += nomaadPaid(o); incomeN++; }
+      if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) { income += nomaadPaid(o); incomeN++; } }
+      else { if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { income += nomaadEffTotal(o); incomeN++; } }
     });
-    incomeLabel = 'Орлого (NOMAAD)'; incomeSub = incomeN + ' орлоготой захиалга';
+    incomeLabel = basis === 'accrual' ? 'Орлого (NOMAAD · гүйцэтгэл)' : 'Орлого (NOMAAD · мөнгө)';
+    incomeSub = basis === 'accrual' ? incomeN + ' эвент · энэ сард болсон' : incomeN + ' орлоготой захиалга';
   } else {
     mi = meventIncome(month);
-    income = mi.paidSum; incomeN = mi.count;
-    incomeLabel = 'Орлого (Mevent)'; incomeSub = incomeN + ' захиалга · төлсөн дүн';
+    if (basis === 'accrual') {
+      income = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month).reduce((s, o) => s + (Number(o.total_mnt) || 0), 0);
+      incomeN = mi.count; incomeLabel = 'Орлого (Mevent · гүйцэтгэл)'; incomeSub = incomeN + ' захиалга · гэрээний дүн';
+    } else {
+      income = mi.paidSum; incomeN = mi.count; incomeLabel = 'Орлого (Mevent · мөнгө)'; incomeSub = incomeN + ' захиалга · төлсөн дүн';
+    }
   }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
@@ -14739,8 +14759,15 @@ function renderReports() {
       ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
       ${kpi('Зарлага (батлагдсан)', fmtBig(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
     </div>`;
+  // Орлогын суурь солих товч
+  const bt = (v, lbl) => `<button data-fin-basis="${v}" style="padding:6px 14px;font-size:12px;border:1px solid var(--border);cursor:pointer;font-weight:600;${basis === v ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--panel);color:var(--muted);'}">${lbl}</button>`;
+  const basisToggle = `<div style="display:flex;justify-content:center;margin:0 0 6px;">
+      <div style="display:inline-flex;border-radius:10px;overflow:hidden;">${bt('accrual', 'Гүйцэтгэл')}${bt('cash', 'Мөнгөн гүйлгээ')}</div>
+    </div>
+    <div style="text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:12px;">${basis === 'accrual' ? 'Эвент болсон сараар · бүтэн гэрээний дүн' : 'Мөнгө орсон өдрөөр · төлсөн дүн'}</div>`;
   const pnl = `
     ${monthNav}
+    ${basisToggle}
     ${hero}
     ${inputs}
     <div style="display:flex;justify-content:center;margin-top:14px;">
@@ -14828,6 +14855,11 @@ function attachReportsHandlers() {
     const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     if (nm > new Date().toISOString().slice(0, 7)) return;
     state.reportMonth = nm; render();
+  });
+  document.querySelectorAll('[data-fin-basis]').forEach(b => b.onclick = () => {
+    state.finBasis = b.dataset.finBasis;
+    try { localStorage.setItem('finBasis', state.finBasis); } catch (e) {}
+    render();
   });
   document.querySelectorAll('[data-trend-month]').forEach(b => b.onclick = () => {
     const nm = b.dataset.trendMonth;

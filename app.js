@@ -4611,6 +4611,7 @@ async function openStatementClassifyModal() {
     </label>
     <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer;"><input type="checkbox" id="sc-force"> 🔁 Дахин ачаалах (өмнө орсныг үл тоож дахин оруулах)</label>
     <div id="sc-accts"></div>
+    <div id="sc-srcaccts"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
@@ -4622,6 +4623,16 @@ async function openStatementClassifyModal() {
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const acctsEl = modal.querySelector('#sc-accts'), listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
+  const srcAcctsEl = modal.querySelector('#sc-srcaccts');
+  // Бүртгэлгүй эх данс (манай хуулгын данс) — нэг товчоор Данс&Карт-д бүртгэнэ → зардал дээр банкны нэр гарна.
+  const renderSrcAccts = () => {
+    const srcs = [...new Set(rows.map(r => _acctDigits(r.src)).filter(Boolean))].filter(d => !_acctBySuffix(d));
+    if (!srcs.length) { srcAcctsEl.innerHTML = ''; return; }
+    srcAcctsEl.innerHTML = `<div style="background:var(--warn-soft,rgba(217,119,6,.1));border:1px solid var(--warn);border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;">
+      <div style="color:var(--warn);margin-bottom:6px;">🏦 <b>Бүртгэлгүй эх данс</b> — бүртгэвэл зардал дээр «Голомт/Хаан ••XXXX» гэж эмх цэгцтэй харагдана:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${srcs.map(d => `<button data-reg-src="${escapeHtml(d)}" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px solid var(--warn);background:var(--panel);color:var(--text);cursor:pointer;">➕ ••${escapeHtml(d.length > 4 ? d.slice(-4) : d)} бүртгэх</button>`).join('')}</div></div>`;
+    srcAcctsEl.querySelectorAll('[data-reg-src]').forEach(b => b.onclick = () => openBankAccountModal({ account_no: b.dataset.regSrc }));
+  };
   const ownerOf = (k) => _cardOwners()[k] || '';
   const branchOf = (k) => _cardBranch()[k] || '';
   const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
@@ -4715,7 +4726,7 @@ async function openStatementClassifyModal() {
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
       if (!rows.length && !skippedInternal) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
       status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
-      renderAccts(); render(); saveBtn.style.display = '';
+      renderAccts(); renderSrcAccts(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });
   saveBtn.onclick = async () => {
@@ -15144,6 +15155,34 @@ function renderFinanceReport(wrap) {
   }));
 
   if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард зардал алга.'; wrap.appendChild(e); return; }
+
+  // ── 📊 Дүр зураг: энэ сарын зардал салбар × ангилалаар (эзний зээл 6900 хасна) ──
+  (() => {
+    const exp = monthList.filter(t => !String(t.category || '').startsWith('6900'));
+    const total = sumOf(exp);
+    if (!total) return;
+    const PAL = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#6366f1', '#64748b'];
+    const barRow = (label, val, i, denom) => {
+      const pct = denom ? Math.round(val / denom * 100) : 0; const col = PAL[i % PAL.length];
+      return `<div style="margin-bottom:7px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-bottom:2px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)}</span><span style="white-space:nowrap;color:var(--muted);"><b style="color:var(--text);">${fmtMoney(val)}</b> · ${pct}%</span></div>
+        <div style="height:6px;border-radius:3px;background:var(--panel-hover);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${col};"></div></div></div>`;
+    };
+    const byBr = groupBy(exp, t => finBranchDisplay(finEffBranch(t)));
+    const brRows = Object.entries(byBr).map(([k, arr]) => [k, sumOf(arr)]).sort((a, b) => b[1] - a[1]);
+    const byCat = groupBy(exp, t => { const mc = mainOfSub(t.category); return mc ? (mainCatName(mc) || mc) : '(ангилаагүй)'; });
+    const catRows = Object.entries(byCat).map(([k, arr]) => [k, sumOf(arr)]).sort((a, b) => b[1] - a[1]);
+    const TOPN = 6; const catTop = catRows.slice(0, TOPN); const catRest = catRows.slice(TOPN).reduce((s, x) => s + x[1], 0);
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:16px;';
+    panel.innerHTML = `<div style="font-size:13px;font-weight:800;margin-bottom:10px;">📊 Энэ сарын зардал — ${fmtMoney(total)}</div>
+      <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px;">🏢 Салбараар</div>
+      ${brRows.map(([k, v], i) => barRow(k, v, i, total)).join('')}
+      <div style="font-size:11px;color:var(--muted);font-weight:700;margin:12px 0 6px;">🏷 Ангилалаар</div>
+      ${catTop.map(([k, v], i) => barRow(k, v, i, total)).join('')}
+      ${catRest ? barRow('Бусад', catRest, TOPN, total) : ''}`;
+    wrap.appendChild(panel);
+  })();
 
   // ── Ангилсан / Ангилаагүй (хуулга суурьтай) — хуучин хүсэлт/батлах/шилжүүлэх төлвүүд хасагдсан. ──
   const isUnclassified = (t) => { const tok = parseCardToken(t.justification || ''); return (tok && tok.pend) || String(t.category || '') === CARD_PEND_CAT || !String(t.category || '').trim(); };

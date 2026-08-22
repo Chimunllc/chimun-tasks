@@ -4602,8 +4602,6 @@ async function openStatementClassifyModal() {
   loadUsedReceipts();
   await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
   await loadExpenseLearn();       // хуваалцсан суралцлагаар салбар/ангилал таамаглана
-  const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
-  const ownerOpts = (sel) => `<option value="">— эзэн —</option>` + staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
   // Ажилтны данс → {key, name, type}. Сарын цалин авагч + ЦАГИЙН ажилтан (тус тусдаа хэсэгт бүртгэнэ).
   const empByAcct = {};
   (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'monthly', m: mm }; });
@@ -4617,8 +4615,6 @@ async function openStatementClassifyModal() {
       <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden multiple>
       <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
-    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px;cursor:pointer;"><input type="checkbox" id="sc-force"> 🔁 Дахин ачаалах (өмнө орсныг үл тоож дахин оруулах)</label>
-    <div id="sc-accts"></div>
     <div id="sc-srcaccts"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
@@ -4630,7 +4626,7 @@ async function openStatementClassifyModal() {
   const close = () => modal.remove();
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const acctsEl = modal.querySelector('#sc-accts'), listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
+  const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
   const srcAcctsEl = modal.querySelector('#sc-srcaccts');
   // Бүртгэлгүй эх данс (манай хуулгын данс) — нэг товчоор Данс&Карт-д бүртгэнэ → зардал дээр банкны нэр гарна.
   const renderSrcAccts = () => {
@@ -4641,34 +4637,11 @@ async function openStatementClassifyModal() {
       <div style="display:flex;flex-wrap:wrap;gap:6px;">${srcs.map(d => `<button data-reg-src="${escapeHtml(d)}" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px solid var(--warn);background:var(--panel);color:var(--text);cursor:pointer;">➕ ••${escapeHtml(d.length > 4 ? d.slice(-4) : d)} бүртгэх</button>`).join('')}</div></div>`;
     srcAcctsEl.querySelectorAll('[data-reg-src]').forEach(b => b.onclick = () => openBankAccountModal({ account_no: b.dataset.regSrc }));
   };
+  // Эзэн/салбар нь Данс & Карт БҮРТГЭЛЭЭС автоматаар ирнэ (syncCardMapsFromRegistry). Модал доторх
+  // гар оноох панел ХАСАГДСАН — будилаанаас сэргийлж, бүртгэл нэг эх сурвалж болгов.
   const ownerOf = (k) => _cardOwners()[k] || '';
   const branchOf = (k) => _cardBranch()[k] || '';
-  const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
-  // Эх сурвалж = карт (утгад картын сүүлийн 4 байвал) ЭСВЭЛ данс (шилжүүлэг). Карт → эзэн, эзэн ангилна.
-  const srcKeyOf = (r) => r.cardL4 ? ('c:' + r.cardL4) : ('a:' + r.src);
-  const srcLabel = (s) => s.type === 'card' ? ('💳 ••' + s.l4) : ('🏦 ' + (s.acct || 'данс'));
-  // Картын эзэн/салбарыг Данс & Карт бүртгэлд хадгална (дараа автомат)
-  const persistCard = (l4) => {
-    const c = cardByLast4(l4); if (!c) return;
-    const k = 'c:' + l4;
-    saveBankCard({ ...c, owner_key: ownerOf(k), owner_name: memberName(ownerOf(k)) || '', branch: _BRANCH_CODE2NAME[branchOf(k)] || '' });
-  };
-  const renderAccts = () => {
-    if (!sources.length) { acctsEl.innerHTML = ''; return; }
-    acctsEl.innerHTML = `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;"><b>Карт/дансны эзэн</b> · салбар — зардал тухайн <b>эзэн рүү ангилуулахаар</b> очно (эзэнгүй бол танд). Эзэн сонгоход салбар авто:</div>
-      ${sources.map(s => { const k = s.key; return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;"><b style="font-size:12px;min-width:58px;">${srcLabel(s)}</b>
-        <select data-sc-owner="${escapeHtml(k)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid ${ownerOf(k) || s.type !== 'card' ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${ownerOpts(ownerOf(k))}</select>
-        <select data-sc-br="${escapeHtml(k)}" style="flex:1;min-width:110px;padding:5px 8px;border:1px solid ${branchOf(k) ? 'var(--border)' : 'var(--warn)'};border-radius:6px;font-size:11px;background:var(--panel);color:var(--text);">${brOpts(branchOf(k))}</select></div>`; }).join('')}
-    </div>`;
-    acctsEl.querySelectorAll('[data-sc-owner]').forEach(sel => sel.onchange = () => {
-      const k = sel.dataset.scOwner; setCardOwner(k, sel.value);
-      if (!branchOf(k)) { const om = findMember(sel.value); const obs = om ? (memberBranchesOf(om) || []) : []; const gc = obs.includes('m-event') ? 'ИВЕНТ' : obs.includes('camp') ? 'КЕМП' : obs.includes('catering') ? 'КАТЕРИНГ' : ''; if (gc) setCardBranch(k, gc); }
-      if (k.startsWith('c:')) persistCard(k.slice(2));
-      renderAccts(); render();
-    });
-    acctsEl.querySelectorAll('[data-sc-br]').forEach(sel => sel.onchange = () => { const k = sel.dataset.scBr; setCardBranch(k, sel.value); if (k.startsWith('c:')) persistCard(k.slice(2)); render(); });
-  };
+  const srcKeyOf = (r) => r.cardL4 ? ('c:' + r.cardL4) : ('a:' + r.src);   // эх сурвалж: карт (сүүл4) эсвэл данс (шилжүүлэг)
   // Мөр бүрийн ангилах эзэн: цалин→ажилтан, эс бол эх сурвалжийн эзэн (карт/данс), эс бол CEO
   const routeOwnerOf = (r) => r.salaryEmp ? r.salaryEmp : (ownerOf(srcKeyOf(r)) || state.me);
   const render = () => {
@@ -4698,12 +4671,10 @@ async function openStatementClassifyModal() {
     }).join('');
     listEl.innerHTML = head + body;
   };
-  const isForce = () => modal.querySelector('#sc-force').checked;
+  const isForce = () => false;   // 🔁 force ХАСАГДСАН — дахин оруулахад давхардуулахгүй, нөхөх pass автоматаар ажиллана
   // "Орсон" = ИДЭВХТЭЙ санхүүгийн бүртгэл байгаа эсэх (justification-д [#fp]). Баримтын ledger биш —
   // цэвэрлэсэн (устгасан) бол дахин оруулахад force хэрэггүй болно.
   const importedFpSet = () => { const s = new Set(); (state.financeRequests || []).forEach(r => { if (r.status === 'deleted') return; const m = String(r.justification || '').match(/\[#([^\]]+)\]/); if (m) s.add(m[1]); }); return s; };
-  const recomputeDone = () => { const imp = importedFpSet(); rows.forEach(r => { r.done = (!isForce() && imp.has(r.fp)); }); };
-  modal.querySelector('#sc-force').onchange = () => { recomputeDone(); render(); };
   modal.querySelector('#sc-file').addEventListener('change', async e => {
     const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
@@ -4737,7 +4708,7 @@ async function openStatementClassifyModal() {
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
       if (!rows.length && !skippedInternal) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
       status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
-      renderAccts(); renderSrcAccts(); render(); saveBtn.style.display = '';
+      renderSrcAccts(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });
   saveBtn.onclick = async () => {

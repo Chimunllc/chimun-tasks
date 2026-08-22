@@ -4510,6 +4510,14 @@ const CARD_TOKEN_RE = /⟦CARD\|([^|⟧]*)\|([^|⟧]*)\|(PEND|OK)⟧/;
 function encodeCardToken(last4, ownerKey, pend) { return `⟦CARD|${last4 || ''}|${ownerKey || ''}|${pend ? 'PEND' : 'OK'}⟧`; }
 function parseCardToken(str) { const m = String(str || '').match(CARD_TOKEN_RE); return m ? { last4: m[1], ownerKey: m[2], pend: m[3] === 'PEND' } : null; }
 function stripCardToken(str) { return String(str || '').replace(CARD_TOKEN_RE, '').replace(/\s{2,}/g, ' ').trim(); }
+// ── ЭХ ДАНС токен: ⟦SRC|<манай дансны дугаар>⟧ (justification-д) — гүйлгээ манай аль данснаас гарсныг санана ──
+const SRC_TOKEN_RE = /⟦SRC\|([^⟧]*)⟧/;
+function encodeSrcToken(acct) { const a = String(acct || '').replace(/[⟦⟧|]/g, ''); return a ? `⟦SRC|${a}⟧` : ''; }
+function parseSrcToken(str) { const m = String(str || '').match(SRC_TOKEN_RE); return m ? m[1] : ''; }
+function stripSrcToken(str) { return String(str || '').replace(SRC_TOKEN_RE, '').replace(/\s{2,}/g, ' ').trim(); }
+// Эх дансны дугаар → бүртгэлийн товч нэр (жиш "Голомт ••7218"). Суффиксээр тэвчинэ (хуулга сүүл 10 орон авдаг).
+function _acctBySuffix(no) { const d = _acctDigits(no); if (d.length < 4) return null; return (state.bankAccounts || []).find(a => { const ad = _acctDigits(a.account_no || a.id); return ad && (ad === d || ad.endsWith(d) || d.endsWith(ad)); }) || null; }
+function srcAcctLabel(no) { const d = _acctDigits(no); if (!d) return ''; const a = _acctBySuffix(d); const tail = d.length > 4 ? d.slice(-4) : d; return a ? `${a.bank || a.name || 'данс'} ••${tail}` : `данс ••${tail}`; }
 // Тухайн хүний ангилах хүлээж буй картын зардлууд (PEND токентой, ownerKey нь тухайн хүн)
 function myPendingCardExpenses(meKey) {
   return (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && t.pend && t.ownerKey === meKey; })
@@ -4739,7 +4747,7 @@ async function openStatementClassifyModal() {
         const hbr = guessBranch(r.memo, r.hourlyEmp.key) || 'КЕМП';   // цагийн ажилтны салбар (эзний member_branches-ээс)
         state._finBackfill = { date: r.date };
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
-          justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}]`, category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
+          justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
         state._finBackfill = null;
         if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.received_by = r.hourlyEmp.key; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
         hrl++; r.done = true; n++; continue;
@@ -4748,7 +4756,7 @@ async function openStatementClassifyModal() {
       if (r.salaryEmp) {
         state._finBackfill = { date: r.date };
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
-          justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}]`, category: '7100', deptBranch: guessBranch(r.memo, r.salaryEmp) || branchOf(srcKeyOf(r)) || 'КЕМП', linkType: 'general', priority: 'low' });
+          justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7100', deptBranch: guessBranch(r.memo, r.salaryEmp) || branchOf(srcKeyOf(r)) || 'КЕМП', linkType: 'general', priority: 'low' });
         state._finBackfill = null;
         if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
         const rym = String(r.date).slice(0, 7);
@@ -4766,7 +4774,7 @@ async function openStatementClassifyModal() {
       state._finBackfill = { date: r.date };
       const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
         accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
-        justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)}`,
+        justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}`.trim(),
         category: cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
       state._finBackfill = null;
       if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
@@ -14707,6 +14715,46 @@ function finAddOrderIncome(inc, isKemp, basis) {
     });
   }
 }
+// Салбар бүрийн орлого/зардал/ашиг (тухайн сар, суурьаар) — CEO төвлөрсөн харагдац
+function finBranchPnl(month, basis) {
+  const evInc = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month)
+    .reduce((s, o) => s + (basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0)), 0);
+  let noInc = 0;
+  (state.nomaadOrders || []).forEach(o => {
+    if (nomaadIsCancelled(o)) return;
+    if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) noInc += nomaadPaid(o); }
+    else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) noInc += nomaadEffTotal(o);
+  });
+  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0;
+  (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
+    if (t.decision !== 'approved' || finAccrualMonth(t) !== month) return;
+    if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
+    const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
+  });
+  return {
+    rows: [
+      { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
+      { k: 'NOMAAD', inc: noInc, exp: exp['КЕМП'] },
+      { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
+    ], ownerLoan,
+  };
+}
+// Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
+function finReceivables() {
+  let r = 0;
+  (state.nomaadOrders || []).forEach(o => { if (nomaadIsCancelled(o) || !['deposit', 'contract', 'done'].includes(nomaadStage(o))) return; r += Math.max(0, nomaadEffTotal(o) - nomaadPaid(o)); });
+  (state.appOrders || []).forEach(o => { if (!_orderActive(o)) return; r += Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0)); });
+  return r;
+}
+// Тухайн сарын цалингийн нийт зардал (гүйцэтгэлийн сар) + хүний тоо
+function finSalaryMonth(month) {
+  let sum = 0; const who = new Set();
+  (state.financeRequests || []).filter(x => x.status !== 'deleted').map(financeAsTask).forEach(t => {
+    if (t.decision !== 'approved' || finAccrualMonth(t) !== month) return;
+    if (/^7[1236]00$/.test(String(t.category || '')) || /цалин/i.test(finSubName(t.category) || '')) { sum += Number(t.amount) || 0; who.add(t.beneficiary || t.id); }
+  });
+  return { sum, n: who.size };
+}
 function financeTrend(wantBr, isKemp) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
@@ -14780,6 +14828,7 @@ function renderReports() {
   const month = state.reportMonth;
   // Тайланд шаардлагатай дата (захиалга/бараа/өртөг) — байхгүй бол анх удаа татна
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
+  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; setTimeout(loadNomaadOrders, 0); }
   if (!state.products || !state.products.length) loadProductsCatalog();
   // P&L: салбар лензээр (Бүгд / Кемп / M-Event). Зардал = тухайн салбарын батлагдсан хүсэлт.
   const lens = effectiveBranchLens();
@@ -14913,6 +14962,37 @@ function renderReports() {
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
   const trendChart = financeTrendChart(financeTrend(wantBr, isKemp), month);
+  // ── CEO төвлөрсөн хэсгүүд (зөвхөн бүх салбар харагдацад, лензгүй үед) ──
+  let ceoSections = '';
+  if (!wantBr) {
+    const bp = finBranchPnl(month, basis);
+    const rcv = finReceivables();
+    const salM = finSalaryMonth(month);
+    const bpTotInc = bp.rows.reduce((s, r) => s + r.inc, 0), bpTotExp = bp.rows.reduce((s, r) => s + r.exp, 0);
+    const brRow = r => { const net = r.inc - r.exp; const nc = net >= 0 ? 'var(--ok)' : 'var(--danger)'; return `<tr style="border-top:1px solid var(--border);">
+        <td style="padding:7px 4px;font-weight:600;">${escapeHtml(r.k)}</td>
+        <td style="padding:7px 4px;text-align:right;color:var(--ok);white-space:nowrap;">${fmtSaya(r.inc)}</td>
+        <td style="padding:7px 4px;text-align:right;color:var(--danger);white-space:nowrap;">${fmtSaya(r.exp)}</td>
+        <td style="padding:7px 4px;text-align:right;font-weight:700;color:${nc};white-space:nowrap;">${net >= 0 ? '+' : ''}${fmtSaya(net)}</td></tr>`; };
+    const branchSection = `<div style="border:1px solid var(--border);border-radius:16px;background:var(--panel);padding:16px 18px;margin-bottom:16px;">
+      <div style="font-weight:800;font-size:14px;margin-bottom:10px;">🏢 Салбар задаргаа — ${month}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead><tr style="color:var(--muted);font-size:11px;"><th style="text-align:left;padding:0 4px 4px;">Салбар</th><th style="text-align:right;padding:0 4px 4px;">Орлого</th><th style="text-align:right;padding:0 4px 4px;">Зардал</th><th style="text-align:right;padding:0 4px 4px;">Ашиг</th></tr></thead>
+        <tbody>${bp.rows.map(brRow).join('')}
+          <tr style="border-top:2px solid var(--border);font-weight:800;"><td style="padding:8px 4px;">Нийт</td><td style="padding:8px 4px;text-align:right;color:var(--ok);">${fmtSaya(bpTotInc)}</td><td style="padding:8px 4px;text-align:right;color:var(--danger);">${fmtSaya(bpTotExp)}</td><td style="padding:8px 4px;text-align:right;color:${bpTotInc - bpTotExp >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtSaya(bpTotInc - bpTotExp)}</td></tr>
+        </tbody>
+      </table>
+      ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Эзний зээл эргэн төлөлт (зардал БИШ): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
+    const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">
+        <div style="font-size:12px;color:var(--muted);">${icon} ${label}</div>
+        <div style="font-weight:800;font-size:20px;color:${col};margin-top:4px;letter-spacing:-.5px;">${val}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${sub}</div>` : ''}</button>`;
+    const statCards = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;">
+        ${stat('🧾', 'Авлага (авах үлдэгдэл)', fmtSaya(rcv), 'var(--warn)', 'баталгаажсан гэрээ − цуглуулсан', 'nomaad')}
+        ${stat('💵', 'Цалин — ' + month, fmtSaya(salM.sum), 'var(--text)', salM.n + ' хүн · энэ сард', 'salary')}
+      </div>`;
+    ceoSections = statCards + branchSection;
+  }
   // ── 📌 Гол дүгнэлт: тоо ширтэхгүй, шууд ойлгох ──
   const ins = [];
   if (prevM && prevM.income > 0) {
@@ -14940,6 +15020,7 @@ function renderReports() {
     </div>` : '';
   return pnl
     + insightsBanner
+    + ceoSections
     + trendChart
     + incomeSections
     + expChart
@@ -15066,6 +15147,8 @@ function renderFinanceReport(wrap) {
 
   // ── Мөнгөн урсгал — орлого (захиалга, accrual) vs зарлага (дууссан хүсэлт), CEO харагдац ──
   (function renderCashflow() {
+    return;   // Мөнгөн урсгал/салбар задаргаа нь Тайлан хэсэгт төвлөрсөн (давхардал хасав). Санхүү = ажлын нүүр.
+    // eslint-disable-next-line no-unreachable
     if (!canSeeAllFinance() || wantBr) return;
     // M-Event орлого = app_orders (идэвхтэй захиалга), эвентийн огноогоор (accrual). bqOrders БИШ (хуучин Booqable түүх).
     if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }

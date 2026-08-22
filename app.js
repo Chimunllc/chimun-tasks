@@ -4404,6 +4404,26 @@ async function saveExpenseLearn(memo, val) {
 function _acctDigits(a) { const d = String(a || '').replace(/\D/g, ''); return d.length >= 4 ? d : ''; }
 function expRecAcct(r) { const m = String((r && r.justification) || '').match(/данс\s+([0-9A-Za-zМмNn]{3,})/); return _acctDigits(m ? m[1] : (r && r.account_number) || ''); }
 function acctLearnKey(digits) { return digits ? ('данс:' + digits) : ''; }
+// Данс → эзэмшигчийн нэр: ижил дансаар бусад гүйлгээнд бүртгэгдсэн ЦЭВЭР нэрийг олж харуулна
+// (хуулгаас орсон зардлын beneficiary=дугаар болсон тул нэрийг хөндлөн лавлана).
+let _acctHolderCache = { n: -1, map: {} };
+function finAcctHolder(acct) {
+  acct = _acctDigits(acct); if (!acct) return '';
+  const list = state.financeRequests || [];
+  if (_acctHolderCache.n !== list.length) {
+    const map = {};
+    list.forEach(r => {
+      const a = _acctDigits(expRecAcct(r));
+      if (!a) return;
+      const b = String(r.beneficiary || '').trim();
+      if (!b || /^Карт/i.test(b) || /^[\d\s\-]+$/.test(b)) return;      // хоосон/карт/зөвхөн тоо
+      if (b.replace(/\D/g, '') === a || b.indexOf(',') >= 0 || b.length > 26) return;  // данстай ижил / memo
+      if (!map[a]) map[a] = b;
+    });
+    _acctHolderCache = { n: list.length, map };
+  }
+  return _acctHolderCache.map[acct] || '';
+}
 function acctLearnOf(digits) { const k = acctLearnKey(digits); return k ? (_expLearn()[k] || null) : null; }
 async function saveAcctLearn(digits, val) {
   const k = acctLearnKey(digits); if (!k) return;
@@ -4807,7 +4827,8 @@ function renderMyExpenses() {
     const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (cpAcct ? `🏦 данс ${escapeHtml(cpAcct)}` : '🏦 шилжүүлэг');
     // CEO бол хэн хэний зардал болохыг харуулна (badge).
     const ownerBadge = (seeAll && t && t.ownerKey) ? `<span style="display:inline-block;font-size:10.5px;font-weight:700;color:var(--accent,#7c3aed);background:var(--accent-soft,rgba(124,58,237,.12));border-radius:20px;padding:1px 8px;margin-bottom:4px;">👤 ${escapeHtml(memberName(t.ownerKey))}</span><br>` : '';
-    const detail = `${ownerBadge}<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${benName ? ' · ' + escapeHtml(benName) : ''}`;
+    const holder = benName || finAcctHolder(cpAcct);
+    const detail = `${ownerBadge}<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}`;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
         <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.purpose || '')}">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
@@ -4914,6 +4935,7 @@ function openExpenseModal(id) {
   const txDate = (r.executed_at || '').slice(0, 10) || (fd ? `${fd[1]}-${fd[2]}-${fd[3]}` : '') || String(r.requested_at || '').slice(0, 10);
   const benRaw = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? String(r.beneficiary).trim() : '';
   const benName = (benRaw && !/^[\d\s\-]+$/.test(benRaw) && benRaw.replace(/\D/g, '') !== String(acct).replace(/\D/g, '')) ? benRaw : '';
+  const holder = benName || finAcctHolder(acct);
   const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (acct ? `🏦 данс ${escapeHtml(acct)}` : '🏦 шилжүүлэг');
   const curSub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : '';
   const curMain = mainOfSub(curSub);
@@ -4926,7 +4948,7 @@ function openExpenseModal(id) {
       <div style="font-size:15px;font-weight:800;min-width:0;line-height:1.3;">${escapeHtml(r.purpose || benName || '—')}</div>
       <button id="ex-close" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;flex-shrink:0;">×</button>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">🗓 ${escapeHtml(txDate)} · ${srcTag}${benName ? ' · ' + escapeHtml(benName) : ''}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">🗓 ${escapeHtml(txDate)} · ${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}</div>
     <div style="font-size:24px;font-weight:800;margin:8px 0 16px;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</div>
     ${canEdit ? `
     <label class="fld" style="margin-top:0;">Ангилал</label>

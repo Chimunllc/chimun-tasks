@@ -4241,66 +4241,6 @@ function parseStatement(matrix) {
   return { rows, headerRow: hr, cols };
 }
 
-// ─── САНХҮҮГИЙН ТУЛГАЛТ — банкны хуулга (xlsx/csv) × аппын Дууссан хүсэлтүүд ───────
-// Голомтын хуулга upload → дүн яг ижил ±14 хоногоор тулгаж 5 ангилалд хуваана.
-// (Оффлайн Python тулгалттай ижил логик — 2026-07-03-ны 6-р сарын тулгалтаар батлагдсан.)
-async function runFinRecon(files) {
-  const allRows = []; const ownAccts = new Set();
-  for (const f of files) {
-    const matrix = await statementFileToMatrix(f);
-    // Өөрийн дансны дугаар — хуулгын толгойн "Дансны дугаар" нүдний хажуугаас
-    for (let i = 0; i < Math.min(3, matrix.length); i++) {
-      const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
-      cells.forEach((c, j) => {
-        // Хаан: "IBAN: MN670005005222003015" — сүүлийн 10 орон = дансны дугаар
-        const ib = String(c).match(/iban[:\s]*mn\d{2}(\d{4})(\d{6,})/i);
-        if (ib) { ownAccts.add(ib[2]); if (ib[2].length > 10) ownAccts.add(ib[2].slice(-10)); return; }
-        if (!/дансны дугаар|данс\s*:/i.test(c)) return;
-        // Дугаар нь дараагийн нүдэнд (Голомт) ЭСВЭЛ мөн нүдэндээ "Данс: 5001..." (Хаан) байж болно
-        const m = String(c).match(/\d{6,}/) || String(cells[j + 1] || '').match(/\d{6,}/);
-        if (m) ownAccts.add(m[0]);
-      });
-    }
-    const { rows } = parseStatement(matrix);
-    rows.forEach(r => allRows.push(r));
-  }
-  if (!allRows.length) throw new Error('Хуулгаас гүйлгээ уншигдсангүй — банкны (Голомт/Хаан) xlsx хуулга мөн эсэхийг шалгана уу');
-  const isFee = r => /charges for pord/i.test(r.memo) || (/шимтгэл/i.test(r.memo) && r.debit <= 500);
-  const debits = allRows.filter(r => r.debit > 0 && !isFee(r)).map(r => ({ ...r, used: false }));
-  const dates = allRows.map(r => r.date).filter(Boolean).sort();
-  const d0 = dates[0], d1 = dates[dates.length - 1];
-  const addD = (ds, n) => { const d = new Date(ds); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
-  // Дууссан + ШИЛЖҮҮЛСЭН/ТӨЛӨГДСӨН-хүлээгдэж буй (карт г.м.) хоёуланг тулгана —
-  // хүлээгдэж буй нь банкинд таарвал 'хуулгаар' хаах боломж гарна
-  const reqs = (state.financeRequests || [])
-    .filter(x => Number(x.amount) > 0 && (x.status === 'done' || (x.executed_at && x.status !== 'deleted')))
-    .map(x => ({ id: x.id, amt: Number(x.amount), ts: String(x.executed_at || x.requested_at || '').slice(0, 10),
-      ben: x.beneficiary || '', purpose: x.purpose || '', bank: x.bank || '', matched: null, open: x.status !== 'done' }))
-    .filter(x => x.ts >= addD(d0, -14) && x.ts <= addD(d1, 14));
-  const dayDiff = (a, b) => Math.abs((new Date(a) - new Date(b)) / 86400000);
-  for (const q of reqs) {
-    let best = null, bs = 1e9;
-    for (const st of debits) {
-      if (st.used || st.debit !== q.amt) continue;
-      const dd = dayDiff(st.date, q.ts);
-      if (dd > 14 || dd >= bs) continue;
-      bs = dd; best = st;
-    }
-    if (best) { best.used = true; q.matched = best; }
-  }
-  const isOwn = st => [...ownAccts].some(a => String(st.account || '').includes(a)) || /чимун/i.test(st.memo);   // өөрийн данс/нэр рүү = зарлага биш
-  const isKhan = st => /хаан|данс хооронд/i.test(st.memo);
-  const leftovers = debits.filter(st => !st.used);
-  return {
-    period: [d0, d1], nStmt: allRows.length, nAcct: ownAccts.size,
-    matched: reqs.filter(q => q.matched && !q.open),
-    openMatched: reqs.filter(q => q.matched && q.open),   // хүлээгдэж буй ч банкинд таарсан → хааж болно
-    notFound: reqs.filter(q => !q.matched),
-    inter: leftovers.filter(isOwn),
-    khan: leftovers.filter(st => !isOwn(st) && isKhan(st)),
-    unrec: leftovers.filter(st => !isOwn(st) && !isKhan(st)),
-  };
-}
 // ── ХУУЛГААР ЗАРДАЛ АНГИЛАХ (долоо хоног бүр) — авто ангилал + гараар + сурах ──
 const EXPENSE_RULES = [
   [/барьцаа/i, '5810'],                                    // барьцаа буцаалт (түрээсээс өмнө — "түрээсийн барьцаа" энд таарна)
@@ -5060,108 +5000,6 @@ function openExpenseModal(id) {
       close(); render();
     });
   }
-  modal.classList.add('open');
-}
-function openFinReconModal() {
-  document.getElementById('finrecon-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg'; modal.id = 'finrecon-modal';
-  modal.innerHTML = `<div class="modal" style="max-width:760px;max-height:88vh;overflow-y:auto;">
-    <h2>📊 Санхүүгийн тулгалт</h2>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:12px;">Банкны дансны хуулга (Голомт, Хаан г.м. — xlsx/csv) оруулна. Хэд хэдэн данс/банкны хуулгыг ЗЭРЭГ сонгож болно — аппын «Дууссан» хүсэлтүүдтэй дүн+огноогоор автоматаар тулгана.</div>
-    <label for="finrecon-file" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:16px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Хуулга сонгох</b> (xlsx / csv — олон файл зэрэг болно)
-      <input id="finrecon-file" type="file" accept=".xlsx,.xls,.csv" multiple hidden>
-      <div id="finrecon-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Файл сонгомогц шууд тулгана.</div>
-    </label>
-    <div id="finrecon-out"></div>
-    <div class="modal-actions" style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn" id="finrecon-close">Хаах</button></div>
-  </div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#finrecon-close').addEventListener('click', () => modal.remove());
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-  // ➕ Бүртгэх — хуулгын мөрөөс зардлын хүсэлт нөхөж үүсгэх (CEO/нягтлан)
-  modal.querySelector('#finrecon-out').addEventListener('click', (e) => {
-    const bf = e.target.closest('[data-backfill]');
-    if (!bf) return;
-    let x; try { x = JSON.parse(bf.dataset.backfill); } catch (_) { return; }
-    modal.remove();
-    openFinanceModal(null);
-    setTimeout(() => {
-      const set = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } };
-      set('f-amount', x.a);
-      // 'EB-Зарлага:' маягийн угтварыг хүлээн авагчийн саналаас цэвэрлэнэ
-      const _memoClean = String(x.m || '').replace(/^eb[-\s]*(зарлага|орлого)?\s*:?\s*/i, '').trim();
-      set('f-beneficiary', x.n || _memoClean.split(/\s+/).slice(0, 3).join(' '));
-      set('f-purpose', x.m);
-      set('f-justification', `Дансны хуулгаас нөхөж бүртгэв — ${x.d} · ${x.m}`);
-      // Харьцсан данс → хүлээн авагчийн данс; нүдэнд банкны нэр (3+ үсэг) байвал банкыг ч тааруулна
-      const _digits = String(x.acct || '').replace(/\D/g, '');
-      if (_digits.length >= 8) set('f-account', _digits);
-      const _bankSel = document.getElementById('f-bank');
-      if (_bankSel) {
-        const _hay = (String(x.acct || '') + ' ' + String(x.m || '')).toLowerCase();
-        const _hit = [...(_bankSel.options || [])].find(o => {
-          if (!o.value) return false;
-          const _w = String(o.value).toLowerCase().replace('банк', ' ').trim().split(/\s+/)[0];
-          return _w && _w.length >= 3 && _hay.includes(_w);
-        });
-        if (_hit) set('f-bank', _hit.value);
-      }
-      state._finBackfill = { date: x.d };
-      showToast('Хуулгын мөрөөс бөглөгдлөө — объект + ангилал сонгоод хадгалахад ШУУД Дууссан болно', 'info', 6000);
-    }, 150);
-  });
-  modal.querySelector('#finrecon-file').addEventListener('change', async (e) => {
-    const files = [...e.target.files]; if (!files.length) return;
-    const st = modal.querySelector('#finrecon-status');
-    st.textContent = '⏳ Уншиж, тулгаж байна…';
-    try {
-      const R = await runFinRecon(files);
-      st.textContent = `✓ ${files.map(f => f.name).join(', ')} — ${R.nStmt} гүйлгээ (${R.period[0]} → ${R.period[1]}, ${R.nAcct} данс)`;
-      const money = n => fmtMoney(n);
-      const sum = a => a.reduce((s, x) => s + (x.amt != null ? x.amt : x.debit), 0);
-      const catRow = (icon, label, arr, col, note, bodyHtml) => `<details style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--panel);">
-        <summary style="display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;list-style:none;">
-          <span style="font-size:15px;">${icon}</span><b style="flex:1;">${label}</b>
-          <span style="font-weight:700;">${arr.length}</span><span style="color:${col};font-weight:700;min-width:120px;text-align:right;">${money(sum(arr))}</span>
-        </summary>
-        <div style="padding:4px 13px 10px;font-size:11.5px;color:var(--muted);">${note}</div>
-        <div style="max-height:260px;overflow-y:auto;padding:0 13px 10px;">${bodyHtml || '<div style="color:var(--muted);font-size:12px;">Хоосон</div>'}</div>
-      </details>`;
-      const reqRow = q => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(q.ts.slice(5))} · <b>${escapeHtml(q.ben)}</b> · ${escapeHtml(q.purpose.slice(0, 36))}${q.bank ? ` · <span style="color:var(--muted);">${escapeHtml(q.bank)}</span>` : ''}</span><b style="white-space:nowrap;">${money(q.amt)}</b></div>`;
-      const stRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span>${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 48))}</span><b style="white-space:nowrap;">${money(x.debit)}</b></div>`;
-      // Бүртгэлгүй зарлага — ➕ нэг даралтаар зардлын бүртгэл үүсгэнэ (нөхөж бүртгэх)
-      const bfRow = x => `<div style="display:flex;gap:8px;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(String(x.date).slice(5))} · ${escapeHtml(x.memo.slice(0, 44))}</span><b style="white-space:nowrap;">${money(x.debit)}</b><button type="button" class="btn" data-backfill="${escapeHtml(JSON.stringify({ d: x.date, m: String(x.memo).slice(0, 90), a: x.debit, n: String(x.name || '').slice(0, 60), acct: String(x.account || '').slice(0, 24) }))}" style="padding:2px 9px;font-size:11px;white-space:nowrap;">➕ Бүртгэх</button></div>`;
-      modal.querySelector('#finrecon-out').innerHTML =
-        (R.openMatched.length ? catRow('🕐', 'Хүлээгдэж буй бичлэг банкинд таарсан', R.openMatched, 'var(--primary)',
-          `Карт/шилжүүлсэн бичлэгүүд банкинд баталгаажлаа. <button type="button" class="btn btn-primary" data-recon-closeall style="padding:4px 12px;font-size:12px;margin-left:6px;">✓ Бүгдийг «хуулгаар» хаах</button>`,
-          R.openMatched.map(reqRow).join('')) : '') +
-        catRow('✅', 'Банкинд таарсан', R.matched, 'var(--ok)', 'Дүн яг ижил, огноо ±14 хоногт. Асуудалгүй.', R.matched.map(reqRow).join('')) +
-        catRow('❓', 'Банкинд олдоогүй хүсэлт', R.notFound, 'var(--danger)', 'Аппд Дууссан гэсэн ч энэ хуулгад алга. Өөр банкны данснаас (ж: Хаан) төлөгдсөн бол тэр хуулгыг нэмж оруулна уу.', R.notFound.map(reqRow).join('')) +
-        catRow('💰', 'Аппд бүртгэлгүй зарлага', R.unrec, 'var(--warn)', 'Банкнаас гарсан ч аппд хүсэлтгүй — зардлын тайланд ороогүй. ➕ дарж нөхөж бүртгэнэ (объект + ангилал сонгоод хадгалахад шууд Дууссан болно).', R.unrec.map(bfRow).join('')) +
-        catRow('🏦', 'Хаан банк / данс хооронд', R.khan, 'var(--muted)', 'Мөнгө өөр данс руу шилжсэн — зарлага биш.', R.khan.map(stRow).join('')) +
-        catRow('💸', 'Өөрийн данс хоорондын', R.inter, 'var(--muted)', 'Оруулсан хуулгуудын данс хоорондын шилжүүлэг — зарлага биш.', R.inter.map(stRow).join(''));
-      // Хүлээгдэж буй таарсныг нэг товчоор «хуулгаар» хааж баталгаажуулна (карт/шилжүүлсэн бичлэгийн мөчлөг хаагдана)
-      modal.querySelector('[data-recon-closeall]')?.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        if (!(await showConfirm(`${R.openMatched.length} бичлэгийг «хуулгаар» хааж баталгаажуулах уу?`, { okText: 'Хаах' }))) return;
-        ev.target.disabled = true;
-        let n = 0;
-        for (const q of R.openMatched) {
-          const r = state.financeRequests.find(x => x.id === q.id);
-          if (!r || r.status === 'done') continue;
-          r.status = 'done';
-          if (!r.close_type) r.close_type = 'хуулгаар';
-          r.close_note = ((r.close_note ? r.close_note + ' · ' : '') + 'Хуулгын тулгалтаар баталгаажив (' + new Date().toISOString().slice(0, 10) + ')');
-          await saveFinanceRequest(r);
-          n++;
-        }
-        showToast(`✓ ${n} бичлэг хуулгаар хаагдлаа`, 'success', 3500);
-        render();
-      });
-    } catch (err) { st.textContent = '⚠ ' + err.message; }
-  });
   modal.classList.add('open');
 }
 // Ирсэн (Орлого) мөрүүдийг бүртгэсэн төлбөртэй тулгана → 4 хуваарь.
@@ -15217,12 +15055,10 @@ function renderFinanceReport(wrap) {
   bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
     + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
-    + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Тулгалт</button>` : '')
     + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
-  bar.querySelector('#fin-recon-open')?.addEventListener('click', openFinReconModal);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);

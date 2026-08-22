@@ -1272,7 +1272,7 @@ function financeAsTask(r) {
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
-    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripAccrualToken(r.justification || ''),
+    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripSrcToken(stripCardToken(stripAccrualToken(r.justification || ''))),
     branch: 'shared',
     project: 'finance',
     assignee,
@@ -4858,10 +4858,12 @@ function renderMyExpenses() {
     const _benRaw = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? String(r.beneficiary).trim() : '';
     const benName = (_benRaw && !/^[\d\s\-]+$/.test(_benRaw) && _benRaw.replace(/\D/g, '') !== String(cpAcct).replace(/\D/g, '')) ? _benRaw : '';
     const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (cpAcct ? `🏦 данс ${escapeHtml(cpAcct)}` : '🏦 шилжүүлэг');
+    const _srcLbl = srcAcctLabel(parseSrcToken(r.justification));   // манай аль данснаас гарсан
+    const outTag = _srcLbl ? `💼 ${escapeHtml(_srcLbl)} → ` : '';
     // CEO бол хэн хэний зардал болохыг харуулна (badge).
     const ownerBadge = (seeAll && t && t.ownerKey) ? `<span style="display:inline-block;font-size:10.5px;font-weight:700;color:var(--accent,#7c3aed);background:var(--accent-soft,rgba(124,58,237,.12));border-radius:20px;padding:1px 8px;margin-bottom:4px;">👤 ${escapeHtml(memberName(t.ownerKey))}</span><br>` : '';
     const holder = benName || finAcctHolder(cpAcct) || extractHolderFromMemo(r.purpose) || extractHolderFromMemo(r.beneficiary);
-    const detail = `${ownerBadge}<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}`;
+    const detail = `${ownerBadge}<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${outTag}${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}`;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
         <div style="min-width:0;"><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.purpose || '')}">${escapeHtml(r.purpose || r.beneficiary || '—')}</div>
@@ -4970,6 +4972,8 @@ function openExpenseModal(id) {
   const benName = (benRaw && !/^[\d\s\-]+$/.test(benRaw) && benRaw.replace(/\D/g, '') !== String(acct).replace(/\D/g, '')) ? benRaw : '';
   const holder = benName || finAcctHolder(acct) || extractHolderFromMemo(r.purpose) || extractHolderFromMemo(r.beneficiary);
   const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (acct ? `🏦 данс ${escapeHtml(acct)}` : '🏦 шилжүүлэг');
+  const _srcLbl = srcAcctLabel(parseSrcToken(r.justification));   // манай аль данснаас гарсан
+  const outTag = _srcLbl ? `💼 ${escapeHtml(_srcLbl)} → ` : '';
   const curSub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : '';
   const curMain = mainOfSub(curSub);
   const curBr = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : '';
@@ -4981,7 +4985,7 @@ function openExpenseModal(id) {
       <div style="font-size:15px;font-weight:800;min-width:0;line-height:1.3;">${escapeHtml(r.purpose || benName || '—')}</div>
       <button id="ex-close" style="border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;flex-shrink:0;">×</button>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">🗓 ${escapeHtml(txDate)} · ${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">🗓 ${escapeHtml(txDate)} · ${outTag}${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}</div>
     <div style="font-size:24px;font-weight:800;margin:8px 0 16px;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)}</div>
     ${canEdit ? `
     <label class="fld" style="margin-top:0;">Ангилал</label>

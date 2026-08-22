@@ -4721,22 +4721,25 @@ async function openStatementClassifyModal() {
   saveBtn.onclick = async () => {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
-    const todo = rows.filter(r => !r.done);
-    if (!todo.length) { showToast('Оруулах зардал алга', 'warn', 2500); return; }
     saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0;
     const force = isForce();
     const imp = importedFpSet();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
     // fp → байгаа бүртгэл (дутуу нэр нөхөхөд)
     const byFp = {}; (state.financeRequests || []).forEach(rq => { if (rq.status === 'deleted') return; const m = String(rq.justification || '').match(/\[#([^\]]+)\]/); if (m) byFp[m[1]] = rq; });
+    // ── НӨХӨХ PASS: аль хэдийн орсон бүртгэлд дутуу нэр/эх данс нөхнө (шинээр оруулахгүй ч) ──
+    for (const r of rows) {
+      if (force || !imp.has(r.fp)) continue;   // энэ мөр шинээр орно — доор боловсруулна
+      const ex = byFp[r.fp]; if (!ex) continue;
+      let dirty = false;
+      if (r.name && !/^[\d\s\-]+$/.test(r.name)) { const b = String(ex.beneficiary || '').trim(); if (!b || /^[\d\s\-]+$/.test(b)) { ex.beneficiary = r.name; dirty = true; } }
+      if (r.src && !parseSrcToken(ex.justification)) { ex.justification = `${ex.justification || ''} ${encodeSrcToken(r.src)}`.trim(); dirty = true; }   // өмнө орсонд эх данс нөхөх
+      if (dirty) { try { await saveFinanceRequest(ex); filled++; } catch (e) {} }
+    }
+    const todo = rows.filter(r => !r.done);
+    if (!todo.length) { showToast(filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө` : 'Оруулах зардал алга', filled ? 'success' : 'warn', 3000); render(); saveBtn.disabled = false; return; }
     for (const r of todo) {
       // Идэвхтэй санхүүгийн бүртгэл аль хэдийн байвал алгасна (устгасныг дахин оруулж болно).
       if (!force && imp.has(r.fp)) {
-        // Зөв хуулгад нэр байвал дутуу эзэмшигчийн нэрийг нөхнө (beneficiary=дугаар байсныг)
-        const ex = byFp[r.fp];
-        if (ex && r.name && !/^[\d\s\-]+$/.test(r.name)) {
-          const b = String(ex.beneficiary || '').trim();
-          if (!b || /^[\d\s\-]+$/.test(b)) { ex.beneficiary = r.name; try { await saveFinanceRequest(ex); filled++; } catch (e) {} }
-        }
         r.done = true; continue;
       }
       // Баримтын ledger-т тэмдэглэнэ (best-effort, cross-device) — 'dup' буцаавч алгасахгүй.
@@ -4782,7 +4785,7 @@ async function openStatementClassifyModal() {
       r.done = true; n++;
       if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · 👤 ${filled} нэр нөхлөө` : ''}`, 'success', 4000);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв (нэр/эх данс)` : ''}`, 'success', 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');
@@ -4797,6 +4800,15 @@ function renderMyExpenses() {
   const doneRecent = (state.financeRequests || []).filter(r => { if (r.status === 'deleted') return false; const t = parseCardToken(r.justification); return t && !t.pend && (seeAll || t.ownerKey === me); })
     .sort((a, b) => String(b.requested_at || '').localeCompare(String(a.requested_at || ''))).slice(0, 10);
   const brOpts = (sel) => `<option value="">— салбар сонго —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  // ── Итгэлцэл: ангилсан (OK) бүртгэлээс данс/худалдагч→ангилал давтамж (нэг render-д нэг удаа тоолно) ──
+  const _clf = (state.financeRequests || []).filter(x => { if (x.status === 'deleted') return false; if (!x.category || x.category === CARD_PEND_CAT) return false; const tk = parseCardToken(x.justification); return !(tk && tk.pend); });
+  const _acctTally = {}, _mkTally = {};
+  _clf.forEach(x => {
+    const cat = x.category;
+    const dg = expRecAcct(x); if (dg) { const o = _acctTally[dg] || (_acctTally[dg] = {}); o[cat] = (o[cat] || 0) + 1; }
+    const mk = merchantKey(x.purpose || x.beneficiary || ''); if (mk && mk.length >= 3) { const o = _mkTally[mk] || (_mkTally[mk] = {}); o[cat] = (o[cat] || 0) + 1; }
+  });
+  const clfCount = (r, sub) => { if (!sub) return 0; const dg = expRecAcct(r); if (dg && _acctTally[dg]) return _acctTally[dg][sub] || 0; const mk = merchantKey(r.purpose || r.beneficiary || ''); return (mk && _mkTally[mk]) ? (_mkTally[mk][sub] || 0) : 0; };
   // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
   // Шинэ дүрэм/сурлагаар ДАХИН таамаглана (хуучин хадгалсан ангилалыг шинэчилнэ — жиш барьцаа 5800→5810).
   const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', expRecAcct(r)) || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
@@ -4878,7 +4890,7 @@ function renderMyExpenses() {
         <select data-mx-branch style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${brOpts(brGuess)}</select>
         <input data-mx-note placeholder="Зарцуулалт (юунд? — сонголт)" style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">${isGuess ? '<span style="font-size:11px;color:var(--accent,#7c3aed);font-weight:600;">🔮 Таамаг — зөв бол «Батлах»</span>' : '<span></span>'}<button class="btn btn-primary btn-sm" data-mx-save>${isGuess ? 'Батлах' : 'Ангилах'}</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">${isGuess ? `<span style="font-size:11px;color:var(--accent,#7c3aed);font-weight:600;">🔮 Таамаг${(() => { const n = clfCount(r, gSub); return n ? ` · ${n} удаа ийм ангилсан` : ''; })()} — зөв бол «Батлах»</span>` : '<span></span>'}<button class="btn btn-primary btn-sm" data-mx-save>${isGuess ? 'Батлах' : 'Ангилах'}</button></div>
     </div>`; };
   return `<div style="max-width:640px;margin:0 auto;padding:4px 2px 40px;">
     <div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🧾 ${seeAll ? 'Ангилах зардал' : 'Миний зардал'}</div>

@@ -1272,7 +1272,7 @@ function financeAsTask(r) {
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
-    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripSrcToken(stripCardToken(stripAccrualToken(r.justification || ''))),
+    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripSrcToken(stripCardToken(stripAccrualToken((r.justification || '').replace(/\s*⟦PENDST⟧/g, '')))),
     branch: 'shared',
     project: 'finance',
     assignee,
@@ -4772,6 +4772,7 @@ async function openStatementClassifyModal() {
         if (manual) {
           manual.close_type = 'хуулгаар'; manual.received_by = manual.received_by || r.hourlyEmp.key;
           manual.executed_at = manual.executed_at || new Date().toISOString();
+          manual.justification = String(manual.justification || '').replace(/\s*⟦PENDST⟧/g, '');   // хуулгаар батлагдсан тул "хүлээгдэж буй" токен арилгана → зардалд тоологдоно
           if (!/\[#/.test(manual.justification || '')) manual.justification = `${manual.justification || ''} · хуулгаар баталгаажсан [#${r.fp}] ${encodeSrcToken(r.src)}`.trim();
           try { await saveFinanceRequest(manual); } catch (e) {}
           hrl++; r.done = true; n++; continue;
@@ -7713,7 +7714,9 @@ async function markHourlyPaid(workerKey) {
     account_number: m.bank_account || '',
     purpose: `Цагийн цалин · ${m.name} · ${start || today}`,
     // ⟦LNK⟧ — автомат үүсдэг хүсэлт ч объект-холбоостой байх ёстой (аудит: холбоосгүй гэж тоологдохгүй)
-    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(amount)} · ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'} ⟦LNK|general||Цагийн цалин⟧`,
+    // ⟦PENDST⟧ = хуулга батлаагүй → тайлангийн зардлын ДҮНД ОРОХГҮЙ (банкны хуулга орж баталгаажмагц тоологдоно).
+    // Зардал зөвхөн банкны хуулгаар орох тул авто цалин 2 дахин тоологдохгүй (finPendingStmt).
+    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(amount)} · ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'} ⟦PENDST⟧ ⟦LNK|general||Цагийн цалин⟧`,
     due_date: start || today,
     category: 'Цалин',
     dept_branch: (m.branches && m.branches[0]) || 'shared',
@@ -14830,7 +14833,8 @@ function finDuplicateEntries(monthPrefix) {
   const stmtNames = new Set();
   rows.forEach(r => { if (isStmt(r) && !String(r.id || '').startsWith('HRLY_') && wmon(r) === month) { const n = norm(nmeOf(r)); if (n) stmtNames.add(n); } });
   const inStmt = n => { if (!n) return false; if (stmtNames.has(n)) return true; for (const s of stmtNames) { if (n.length >= 5 && (n.includes(s) || s.includes(n))) return true; } return false; };
-  return rows.filter(r => isAuto(r) && !isStmt(r) && wmon(r) === month)
+  // ⟦PENDST⟧ = хуулга батлаагүй тул зардалд тоологдоогүй → давхцал биш, аудитаас хасна.
+  return rows.filter(r => isAuto(r) && !isStmt(r) && !/⟦PENDST⟧/.test(String(r.justification || '')) && wmon(r) === month)
     .map(r => ({ r, dup: inStmt(norm(nmeOf(r))) }))
     .sort((a, b) => (Number(b.r.amount) || 0) - (Number(a.r.amount) || 0));
 }
@@ -14894,7 +14898,7 @@ async function openFinDupAudit() {
 function financeTrend(wantBr) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) {
+    if (t.decision === 'approved' && !finPendingStmt(t) && (!wantBr || finEffBranch(t) === wantBr)) {
       const mo = finAccrualMonth(t);
       if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
     }
@@ -14992,7 +14996,7 @@ function renderReports() {
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
+    if (finAccrualMonth(t) === month && t.decision === 'approved' && !finPendingStmt(t) && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
   });
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;

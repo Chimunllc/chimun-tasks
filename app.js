@@ -7677,53 +7677,14 @@ function openHourlyPayModal(m) {
   });
 }
 
+// Зөвхөн ТУСЛАХ: данс + гүйлгээний утгыг хуулж авахад л. Ямар ч бичлэг/зардал/мэдэгдэл ҮҮСГЭХГҮЙ.
+// Цалин банкны хуулга орж ирэхэд автоматаар бүртгэгдэж, цагийн цалингийн жагсаалтад "Сүүлд төлсөн" болж харагдана.
+// (Хэрэглэгчийн шийдвэр 2026-08-22: гараар "шилжүүлсэн" тэмдэглэхийг болиулж, зардал зөвхөн хуулгаас.)
 async function markHourlyPaid(workerKey) {
   const m = findMember(workerKey);
   if (!m) return;
   if (!can('hourly.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
-  const res = await openHourlyPayModal(m);
-  if (!res) return;
-  const { rate, days, start } = res;
-  const amount = Math.round(rate);   // оруулсан дүн = нийт олгох цалин (өдрөөр үржихгүй)
-  if (!(await showConfirm(`${m.name}: ${fmtMoney(amount)} · ${days} өдрийн цалин\nЭхэлсэн: ${start || '-'}\n\nТэмдэглэл үлдээх үү? (зардал банкны хуулга ормогц бүртгэгдэнэ — энэ нь тоологдохгүй тэмдэглэл)`, { okText: '✓ Тэмдэглэх' }))) return;
-  const today = new Date().toISOString().slice(0, 10);
-  const now = new Date().toISOString();
-  const r = {
-    id: 'HRLY_' + personKey(m) + '_' + today + '_' + Math.random().toString(36).slice(2, 6),
-    requested_by: state.me,
-    requested_at: now,
-    amount,
-    beneficiary: m.name || '',
-    bank: m.bank || '',
-    account_number: m.bank_account || '',
-    purpose: `Цагийн цалин · ${m.name} · ${start || today}`,
-    // ⟦LNK⟧ — автомат үүсдэг хүсэлт ч объект-холбоостой байх ёстой (аудит: холбоосгүй гэж тоологдохгүй)
-    // ⟦PENDST⟧ = хуулга батлаагүй → тайлангийн зардлын ДҮНД ОРОХГҮЙ (банкны хуулга орж баталгаажмагц тоологдоно).
-    // Зардал зөвхөн банкны хуулгаар орох тул авто цалин 2 дахин тоологдохгүй (finPendingStmt).
-    justification: `${m.role || 'цагийн ажилтан'} · ${fmtMoney(amount)} · ${days} өдөр · Эхэлсэн: ${start || '-'} · Эх үүсвэр: ${HOURLY_FUND_LABEL} · 📞 ${m.phone || '-'} ⟦PENDST⟧ ⟦LNK|general||Цагийн цалин⟧`,
-    due_date: start || today,
-    category: 'Цалин',
-    dept_branch: (m.branches && m.branches[0]) || 'shared',
-    frequency: 'Нэг удаагийн',
-    priority: 'med',
-    status: 'done',
-    decision: 'approved',
-    decision_at: now,
-    decision_by: state.me,
-    decision_reason: 'Цагийн ажилтны цалин — менежер шилжүүлэв (' + HOURLY_FUND_LABEL + ')',
-    executor: state.me,
-    executed_at: now,
-    executed_by: state.me,
-    received_at: now,
-    received_by: personKey(m),
-    purchase_proof_url: '', payment_proof_url: '', purchase_receipt_url: '',
-    purchase_proof_urls: [], purchase_receipt_urls: [],
-  };
-  state.financeRequests.unshift(r);
-  await saveFinanceRequest(r);
-  pushBroadcast(personKey(m), { type: 'salary_paid', title: 'Цалин шилжүүлэв', body: `${fmtMoney(amount)} таны дансанд шилжүүлэв.` });
-  showToast(`${m.name} — ${fmtMoney(amount)} тэмдэглэлээ (зардал хуулгаас орно)`, 'success', 2400);
-  render();
+  await openHourlyPayModal(m);   // данс/утга хуулах туслах — бичлэг үүсгэхгүй
 }
 
 /* ===================== NOMAAD ЗАХИАЛГА (батлагдсан гэрээ + орлого) =====================
@@ -8787,7 +8748,7 @@ function renderSalary() {
       const over = !paid && base > 0 && today > due;
       const right = paid > 0
         ? `<span style="color:var(--ok);font-size:12px;font-weight:600;">✓ ${fmtMoney(paid)}</span>`
-        : (payable && amt > 0 ? `<button class="btn btn-primary" data-sal-pay="${escapeHtml(key)}" data-sal-cyc="${tag}" style="padding:4px 11px;font-size:11.5px;">💵 Олгох</button>` : `<span style="color:var(--muted);font-size:11px;">${base > 0 ? 'олгоогүй' : '—'}</span>`);
+        : (payable && amt > 0 ? `<button class="btn" data-sal-memo="${escapeHtml(key)}" data-sal-cyc="${tag}" title="Гүйлгээний утга хуулах — банкаараа шилжүүл" style="padding:4px 11px;font-size:11.5px;">⧉ Утга</button>` : `<span style="color:var(--muted);font-size:11px;">${base > 0 ? 'олгоогүй' : '—'}</span>`);
       return `<div style="display:flex;align-items:center;gap:8px;">
         <span style="min-width:118px;font-size:11.5px;color:var(--muted);">${label} <span style="opacity:.75;">· ${sub}</span>${over ? ' <b style="color:var(--danger);">🔴 хоцорсон</b>' : ''}</span>
         <b style="flex:1;text-align:right;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(amt)}</b>
@@ -8822,7 +8783,14 @@ function attachSalaryHandlers() {
     saveSalary(inp.dataset.salPerson, moneyVal(inp));
     showToast('Цалин хадгаллаа', 'success', 1200);
   }));
-  document.querySelectorAll('[data-sal-pay]').forEach(b => b.addEventListener('click', () => openSalaryPayModal(b.dataset.salPay, b.dataset.salCyc)));
+  // Гараар "олгох" (бичих) БОЛИУЛСАН — зөвхөн гүйлгээний утга хуулах туслах. Цалин хуулгаас автоматаар бүртгэгдэнэ.
+  document.querySelectorAll('[data-sal-memo]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const mm = findMember(b.dataset.salMemo);
+    const cyc = b.dataset.salCyc === SAL_ADV_TAG ? 'урьдчилгаа' : b.dataset.salCyc === SAL_REM_TAG ? 'үлдэгдэл' : '';
+    const memo = `Зарлага: Цалин ${cyc} ${(mm && mm.name) || ''}`.replace(/\s+/g, ' ').trim();
+    copyText(memo, 'Утга хууллаа');
+  }));
   document.querySelectorAll('[data-sal-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.salCopy, 'Данс хууллаа'); }));
   document.querySelectorAll('[data-sal-hist]').forEach(b => b.addEventListener('click', () => openSalaryHistory(b.dataset.salHist)));
   document.querySelectorAll('.sal-deduct').forEach(cb => cb.addEventListener('change', () => {

@@ -4715,9 +4715,12 @@ async function openStatementClassifyModal() {
           const cat = classifyExpense(r.memo, r.account);
           const cAcct = String(r.account || '').replace(/\D/g, '');
           const emp = empByAcct[cAcct];
-          // Сарын цалин: данс таарч утга цалин гэсэн (7100 эсвэл 'цалин'). Цагийн ажилтан: данс таарвал шууд (шилжүүлэг=хөлс).
-          const salaryEmp = (emp && emp.type === 'monthly' && (cat === '7100' || /цалин|цали/i.test(r.memo || ''))) ? emp.key : '';
-          const hourlyEmp = (emp && emp.type === 'hourly') ? emp : null;
+          // ЦАЛИН таних = УТГА-СУУРЬТАЙ (данс таарсан нь дангаараа ХАНГАЛТГҮЙ). Ажилтны данс руу
+          // шатхуун/түлш/бараа зөөлт шилжүүлбэл цалин БИШ → утгаараа ангилж эзэн баталгаажуулна
+          // (авто баталахгүй). Зөвхөн гүйлгээний утга цалин гэж заасан үед данс→аль ажилтан гэдгийг таьна.
+          const _salaryMemo = /цалин|цали|хөлс|урамшуул/i.test(r.memo || '') || cat === '7100' || cat === '7200' || cat === '7400';
+          const salaryEmp = (emp && emp.type === 'monthly' && _salaryMemo) ? emp.key : '';
+          const hourlyEmp = (emp && emp.type === 'hourly' && _salaryMemo) ? emp : null;
           const cardL4 = detectCardLast4(r.memo);
           rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, hourlyEmp, done: (!isForce() && imp.has(fp)) });
         });
@@ -14767,6 +14770,10 @@ function finAddOrderIncome(inc, wantBr, basis) {
   }
 }
 // Салбар бүрийн орлого/зардал/ашиг (тухайн сар, суурьаар) — CEO төвлөрсөн харагдац
+// "Хуулга батлаагүй" авто цалин (⟦PENDST⟧) — зардлын ДҮНД оруулахгүй. Банкны хуулга орж
+// close_type='хуулгаар' болмогц л тоологдоно. Ингэснээр цагийн цалин 2 дахин тоологдохгүй.
+// (Хэрэглэгчийн шийдвэр 2026-08-22: зардал зөвхөн банкны хуулгаар. Хуучин бичлэгт токен алга → хэвээр тоологдоно.)
+function finPendingStmt(t) { return /⟦PENDST⟧/.test(String(t.justification || '')) && t.close_type !== 'хуулгаар'; }
 function finBranchPnl(month, basis) {
   const evInc = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month)
     .reduce((s, o) => s + (basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0)), 0);
@@ -14778,7 +14785,7 @@ function finBranchPnl(month, basis) {
   });
   const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (t.decision !== 'approved' || finAccrualMonth(t) !== month) return;
+    if (t.decision !== 'approved' || finAccrualMonth(t) !== month || finPendingStmt(t)) return;
     if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
     const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
   });
@@ -14801,7 +14808,7 @@ function finReceivables() {
 function finSalaryMonth(month) {
   let sum = 0; const who = new Set();
   (state.financeRequests || []).filter(x => x.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (t.decision !== 'approved' || finAccrualMonth(t) !== month) return;
+    if (t.decision !== 'approved' || finAccrualMonth(t) !== month || finPendingStmt(t)) return;
     if (/^7[1236]00$/.test(String(t.category || '')) || /цалин/i.test(finSubName(t.category) || '')) { sum += Number(t.amount) || 0; who.add(t.beneficiary || t.id); }
   });
   return { sum, n: who.size };

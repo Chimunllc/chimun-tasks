@@ -4743,7 +4743,7 @@ async function openStatementClassifyModal() {
   saveBtn.onclick = async () => {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
-    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0;
+    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0, rerouted = 0;
     const force = isForce();
     const imp = importedFpSet();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
     // fp → байгаа бүртгэл (дутуу нэр нөхөхөд)
@@ -4755,10 +4755,16 @@ async function openStatementClassifyModal() {
       let dirty = false;
       if (r.name && !/^[\d\s\-]+$/.test(r.name)) { const b = String(ex.beneficiary || '').trim(); if (!b || /^[\d\s\-]+$/.test(b)) { ex.beneficiary = r.name; dirty = true; } }
       if (r.src && !parseSrcToken(ex.justification)) { ex.justification = `${ex.justification || ''} ${encodeSrcToken(r.src)}`.trim(); dirty = true; }   // өмнө орсонд эх данс нөхөх
+      // ЭЗЭН РЕ-РОУТ: ангилж амжаагүй (PEND) шилжүүлгийг эх дансны эзэнд буцаан хуваарилна (өмнө CEO дээр гацсаныг)
+      const _tok = parseCardToken(ex.justification);
+      if (_tok && _tok.pend && !_tok.last4 && r.src) {
+        const _no = ownerOf('a:' + r.src) || ownerOf('a:' + String(r.src).replace(/\D/g, '').slice(-10));
+        if (_no && _no !== _tok.ownerKey) { ex.justification = `${stripCardToken(ex.justification)} ${encodeCardToken('', _no, true)}`.trim(); dirty = true; rerouted++; }
+      }
       if (dirty) { try { await saveFinanceRequest(ex); filled++; } catch (e) {} }
     }
     const todo = rows.filter(r => !r.done);
-    if (!todo.length) { showToast(filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө` : 'Оруулах зардал алга', filled ? 'success' : 'warn', 3000); render(); saveBtn.disabled = false; return; }
+    if (!todo.length) { showToast(filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}` : 'Оруулах зардал алга', filled ? 'success' : 'warn', 3500); render(); saveBtn.disabled = false; return; }
     for (const r of todo) {
       // Идэвхтэй санхүүгийн бүртгэл аль хэдийн байвал алгасна (устгасныг дахин оруулж болно).
       if (!force && imp.has(r.fp)) {
@@ -4822,7 +4828,7 @@ async function openStatementClassifyModal() {
       r.done = true; n++;
       if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв (нэр/эх данс)` : ''}`, 'success', 4000);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}`, 'success', 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');

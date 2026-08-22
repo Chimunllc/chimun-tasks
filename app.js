@@ -8713,7 +8713,8 @@ function salaryNet(gross, deduct) {
   const pit = Math.round(Math.max(0, gross - ndsh) * (Number(r.pit) || 0) / 100);
   return { ndsh, pit, net: Math.max(0, gross - ndsh - pit) };
 }
-// Цалин олгомогц санхүүгийн зардал АВТОМАТ үүсгэнэ (Төлбөр ба зардал / тайланд орно). Давхардлаас хамгаална.
+// Цалин олгомогц ТООЛОГДОХГҮЙ тэмдэглэл (⟦PENDST⟧) үүсгэнэ — цагийн цалинтай адил зардал зөвхөн
+// банкны хуулгаас орно (давхар тоологдохгүй). Хуулга орж баталгаажмагц тоологдоно. Давхардлаас ⟦SAL⟧-аар хамгаална.
 async function createSalaryExpense(m, ym, amount, cycName) {
   const tag = `⟦SAL|${personKey(m)}|${ym}|${cycName}⟧`;
   if ((state.financeRequests || []).some(x => x.status !== 'deleted' && String(x.justification || '').includes(tag))) return;
@@ -8722,7 +8723,7 @@ async function createSalaryExpense(m, ym, amount, cycName) {
   state._finBackfill = { date: `${ym}-${/рьдчил/.test(cycName) ? '20' : '05'}` };
   const fr = await createFinanceRequest({
     amount, beneficiary: m.name || '', bank: m.bank || '', accountNumber: m.bank_account || '',
-    purpose: `${ym} ${cycName} цалин · ${m.name || ''}`, justification: tag,
+    purpose: `${ym} ${cycName} цалин · ${m.name || ''}`, justification: `${tag} ⟦PENDST⟧`,
     category: '7100', deptBranch: brCode, linkType: 'salary', priority: 'med',
   });
   state._finBackfill = null;   // аюулгүй: дараагийн хүсэлтэд санамсаргүй үлдэхээс сэргийлнэ

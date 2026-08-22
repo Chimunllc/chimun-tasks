@@ -4406,6 +4406,21 @@ function expRecAcct(r) { const m = String((r && r.justification) || '').match(/�
 function acctLearnKey(digits) { return digits ? ('данс:' + digits) : ''; }
 // Данс → эзэмшигчийн нэр: ижил дансаар бусад гүйлгээнд бүртгэгдсэн ЦЭВЭР нэрийг олж харуулна
 // (хуулгаас орсон зардлын beneficiary=дугаар болсон тул нэрийг хөндлөн лавлана).
+// Гүйлгээний утганд шигтгэсэн эзэмшигчийн нэрийг задлах (Голомт Raw: "утга,НЭР,БАНК")
+const _FIN_BANK_RE = /банк|хаан|голомт|хас\b|төрийн|тдб|худалдаа|khan|tdb|капитрон|ариг|богд|үндэсн|хөгжлийн|төв банк/i;
+function extractHolderFromMemo(s) {
+  s = String(s || '').trim(); if (!s) return '';
+  const card = s.match(/:(?:BOM|POS|ECOM|IB)[: ]+([^:]+?)\s*$/i);   // картын худалдагч
+  if (card) return card[1].trim().slice(0, 30);
+  if (/^\d{6}\*/.test(s)) return '';                                 // картын дугаар, нэргүй
+  const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+  if (parts.length < 2) return '';
+  for (let i = 1; i < parts.length; i++) {                           // банкны сегментийн өмнөх = нэр
+    if (_FIN_BANK_RE.test(parts[i]) && !_FIN_BANK_RE.test(parts[i - 1]) && !/^[\d\s.\-]+$/.test(parts[i - 1])) return parts[i - 1].slice(0, 30);
+  }
+  const cand = parts[1];
+  return (cand && !/^[\d\s.\-]+$/.test(cand) && !_FIN_BANK_RE.test(cand)) ? cand.slice(0, 30) : '';
+}
 let _acctHolderCache = { n: -1, map: {} };
 function finAcctHolder(acct) {
   acct = _acctDigits(acct); if (!acct) return '';
@@ -4837,7 +4852,7 @@ function renderMyExpenses() {
     const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (cpAcct ? `🏦 данс ${escapeHtml(cpAcct)}` : '🏦 шилжүүлэг');
     // CEO бол хэн хэний зардал болохыг харуулна (badge).
     const ownerBadge = (seeAll && t && t.ownerKey) ? `<span style="display:inline-block;font-size:10.5px;font-weight:700;color:var(--accent,#7c3aed);background:var(--accent-soft,rgba(124,58,237,.12));border-radius:20px;padding:1px 8px;margin-bottom:4px;">👤 ${escapeHtml(memberName(t.ownerKey))}</span><br>` : '';
-    const holder = benName || finAcctHolder(cpAcct);
+    const holder = benName || finAcctHolder(cpAcct) || extractHolderFromMemo(r.purpose) || extractHolderFromMemo(r.beneficiary);
     const detail = `${ownerBadge}<b style="color:var(--text);">🗓 ${escapeHtml(txDate)}</b> · ${srcTag}${holder ? ' · 👤 ' + escapeHtml(holder) : ''}`;
     return `<div class="my-exp-card" data-fr="${escapeHtml(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--panel);">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:9px;">
@@ -4945,7 +4960,7 @@ function openExpenseModal(id) {
   const txDate = (r.executed_at || '').slice(0, 10) || (fd ? `${fd[1]}-${fd[2]}-${fd[3]}` : '') || String(r.requested_at || '').slice(0, 10);
   const benRaw = (r.beneficiary && !/^Карт ••/.test(r.beneficiary)) ? String(r.beneficiary).trim() : '';
   const benName = (benRaw && !/^[\d\s\-]+$/.test(benRaw) && benRaw.replace(/\D/g, '') !== String(acct).replace(/\D/g, '')) ? benRaw : '';
-  const holder = benName || finAcctHolder(acct);
+  const holder = benName || finAcctHolder(acct) || extractHolderFromMemo(r.purpose) || extractHolderFromMemo(r.beneficiary);
   const srcTag = l4 ? `💳 карт ••${escapeHtml(l4)}` : (acct ? `🏦 данс ${escapeHtml(acct)}` : '🏦 шилжүүлэг');
   const curSub = (r.category && r.category !== CARD_PEND_CAT) ? r.category : '';
   const curMain = mainOfSub(curSub);

@@ -10763,6 +10763,7 @@ function openNomaadAddonCategoryModal(onAdded, onCancel) {
       <button id="na-cat-save" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;">Хадгалах</button>
     </div></div>`;
   document.body.appendChild(m);
+  requestAnimationFrame(() => m.classList.add('open'));   // .modal-bg нээх class
   let src = 'Дотоодоос';
   const paint = () => m.querySelectorAll('.na-src-opt').forEach(b => { const on = b.dataset.src === src; b.style.background = on ? 'var(--primary)' : 'var(--panel)'; b.style.color = on ? '#fff' : 'var(--text)'; b.style.borderColor = on ? 'var(--primary)' : 'var(--border)'; });
   paint();
@@ -14854,6 +14855,7 @@ async function openFinDupAudit() {
       : `<div style="text-align:center;padding:24px;color:var(--muted);">✅ Давхцал алга — цэвэрхэн.</div><div style="text-align:center;margin-top:12px;"><button id="fd-cancel" class="btn">Хаах</button></div>`}
   </div>`;
   document.body.appendChild(m);
+  requestAnimationFrame(() => m.classList.add('open'));   // .modal-bg нээх class — эс бол үл үзэгдэнэ
   m.addEventListener('click', e => { if (e.target === m) m.remove(); });
   m.querySelector('#fd-cancel').onclick = () => m.remove();
   const del = m.querySelector('#fd-del');

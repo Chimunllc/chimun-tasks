@@ -1235,6 +1235,30 @@ function getFinanceApprover(r) {
   return getCEOEmail();
 }
 
+// Зардлын гүйцэтгэлийн сар (accrual) — ⟦ACCR|YYYY-MM⟧ токен justification-д хадгална
+function parseAccrualToken(s) { const m = String(s || '').match(/⟦ACCR\|(\d{4}-\d{2})⟧/); return m ? m[1] : ''; }
+function stripAccrualToken(s) { return String(s || '').replace(/\s*⟦ACCR\|[^⟧]*⟧/g, '').trim(); }
+// Токенгүй үеийн ухаалаг default: цалин сарын эхэнд (≤10) төлсөн бол өмнөх сар, эс бол төлсөн сар
+function finAccrualAuto(category, requested_at) {
+  const pay = String(requested_at || '').slice(0, 10), ym = pay.slice(0, 7), day = Number(pay.slice(8, 10)) || 0;
+  const isSalary = /^7[1236]00$/.test(String(category || '')) || /цалин/i.test(finSubName(category) || '');
+  if (isSalary && day > 0 && day <= 10 && /^\d{4}-\d{2}$/.test(ym)) {
+    const [y, mo] = ym.split('-').map(Number); const d = new Date(y, mo - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  return ym;
+}
+// Зардал аль сард хамаарах вэ: токен байвал түүгээр, эс бол ухаалаг default
+function finAccrualMonth(t) {
+  const tok = t.accrual_month || parseAccrualToken(t.justification);
+  return /^\d{4}-\d{2}$/.test(tok || '') ? tok : finAccrualAuto(t.category, t.requested_at);
+}
+function accrualMonthOptions(sel) {
+  const now = new Date(), opts = [];
+  for (let i = -1; i < 13; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); opts.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`); }
+  if (sel && !opts.includes(sel)) opts.push(sel);
+  return opts.map(v => `<option value="${v}"${v === sel ? ' selected' : ''}>${v}</option>`).join('');
+}
 function financeAsTask(r) {
   const executorId = r.executor || getFinanceExecutorEmail();
   // Assignee logic:
@@ -1248,7 +1272,7 @@ function financeAsTask(r) {
   return {
     id: r.id,
     title: `💸 ${r.beneficiary || 'Хүсэлт'} — ${Number(r.amount || 0).toLocaleString('mn-MN')}₮`,
-    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + (r.justification || ''),
+    desc: (r.purpose ? `Зорилго: ${r.purpose}\n` : '') + stripAccrualToken(r.justification || ''),
     branch: 'shared',
     project: 'finance',
     assignee,
@@ -1269,6 +1293,8 @@ function financeAsTask(r) {
     link_type: r.link_type || '', link_label: r.link_label || '', link_id: r.link_id || '',   // бодит объект холбоос
     close_type: r.close_type || '',    // хаасан хэлбэр (баримттай/дутуу/баримтгүй) — аудитад
     close_note: r.close_note || '',    // баримтгүй/дутуу хаасан шалтгаан
+    justification: r.justification || '',            // accrual токен парсид
+    accrual_month: parseAccrualToken(r.justification),  // гүйцэтгэлийн сар (токен байвал)
     payment_proof_url: r.payment_proof_url || '',   // шилжүүлгийн баримт — мөрөнд thumbnail
     has_receipt: Array.isArray(r.purchase_receipt_urls)  // хүлээн авалтын баримт хавсаргасан эсэх
       ? r.purchase_receipt_urls.length > 0 : !!r.purchase_receipt_url,
@@ -4892,6 +4918,8 @@ function openExpenseModal(id) {
     </div>
     <label class="fld">Салбар</label>
     <select id="ex-branch">${brOpts(curBr)}</select>
+    <label class="fld">Аль сарын зардал <span style="font-weight:400;color:var(--muted);font-size:11px;">(гүйцэтгэлийн сар)</span></label>
+    <select id="ex-accr">${accrualMonthOptions(parseAccrualToken(r.justification) || finAccrualAuto(r.category, r.requested_at))}</select>
     <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:18px;">
       ${state.isCEO ? '<button id="ex-del" class="btn" style="color:var(--danger);">Устгах</button>' : '<span></span>'}
       <button id="ex-save" class="btn btn-primary">💾 Хадгалах</button>
@@ -4914,6 +4942,10 @@ function openExpenseModal(id) {
       const btn = modal.querySelector('#ex-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
       r.category = sub; r.dept_branch = isAssetCat(sub) ? 'ХХК' : br;
       if (t) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(t.last4, t.ownerKey || state.me, false)}`.trim(); }
+      // Гүйцэтгэлийн сар: сонгосон нь ухаалаг default-аас өөр бол л токен хадгална (цэвэр байлгах)
+      const accChosen = modal.querySelector('#ex-accr').value;
+      r.justification = stripAccrualToken(r.justification);
+      if (accChosen && accChosen !== finAccrualAuto(r.category, r.requested_at)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
       saveExpenseLearn(r.purpose || r.beneficiary || '', { cat: sub, branch: isAssetCat(sub) ? '' : br });
       try { await saveFinanceRequest(r); showToast('Хадгаллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
       close(); render();
@@ -14613,7 +14645,7 @@ function financeTrend(wantBr, isKemp) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) {
-      const mo = String(t.requested_at || '').slice(0, 7);
+      const mo = finAccrualMonth(t);
       if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
     }
   });
@@ -14709,7 +14741,7 @@ function renderReports() {
   }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
+    if (finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
   });
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
@@ -14777,7 +14809,7 @@ function renderReports() {
   const incomeSections = (!isKemp && mi) ? renderIncomeSections(month, mi) : '';
   // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
   const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
-    .filter(t => String(t.requested_at || '').slice(0, 7) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
+    .filter(t => finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
   const byCat = {}; const txByCat = {};
   expItems.forEach(t => { const c = finSubName(t.category) || 'Ангилалгүй'; byCat[c] = (byCat[c] || 0) + (Number(t.amount) || 0); (txByCat[c] = txByCat[c] || []).push(t); });
   const catRows = Object.entries(byCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);

@@ -9838,7 +9838,7 @@ function attachNomaadAnalytics() {
   const cb = document.querySelector('[data-na-confirmed]'); if (cb) cb.onchange = () => { f.confirmedOnly = cb.checked; render(); };
   const rs = document.querySelector('[data-na-reset]'); if (rs) rs.onclick = () => { state.naF = null; render(); };
   const xl = document.querySelector('[data-na-xls]'); if (xl) xl.onclick = exportNomaadAnalyticsExcel;
-  const ac = document.querySelector('[data-na-addcat]'); if (ac) ac.onclick = openNomaadAddonCategoryModal;
+  const ac = document.querySelector('[data-na-addcat]'); if (ac) ac.onclick = () => openNomaadAddonCategoryModal();
   // Нэмэлт үйлчилгээний мөр дээр дарахад доторх үйлчилгээнүүд задарна
   document.querySelectorAll('[data-addon-toggle]').forEach(row => row.addEventListener('click', () => {
     const key = row.dataset.addonToggle;

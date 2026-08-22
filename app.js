@@ -8403,15 +8403,29 @@ function openCateringJobModal(job) {
 /* ========================== КАТЕРИНГ модуль төгсгөл ========================== */
 const _PURPOSE_BADGE = { 'орлого': ['#0f7a3d', 'rgba(16,163,74,.12)'], 'зарлага': ['#b45309', 'rgba(217,119,6,.12)'], 'валют': ['#4338ca', 'rgba(79,70,229,.12)'], 'цалин': ['#9333ea', 'rgba(147,51,234,.12)'], 'татвар': ['#be123c', 'rgba(225,29,72,.12)'] };
 function _acctByNo(no) { const d = _acctDigits(no); return (state.bankAccounts || []).find(a => _acctDigits(a.account_no || a.id) === d); }
+// Данснаас гарсан зардлын задаргаа (SRC токеноор): шилжүүлэг vs картын зарлага, тоо+дүн.
+function acctSpendStats(a) {
+  const d = _acctDigits((a && (a.account_no || a.id)) || ''); if (d.length < 4) return null;
+  const match = (r) => { const s = _acctDigits(parseSrcToken(r.justification)); return s.length >= 4 && (s === d || d.endsWith(s) || s.endsWith(d)); };
+  const recs = (state.financeRequests || []).filter(r => r.status !== 'deleted' && match(r));
+  const isCard = (r) => { const t = parseCardToken(r.justification); return !!(t && t.last4); };
+  const isPend = (r) => { const t = parseCardToken(r.justification); return (t && t.pend) || String(r.category || '') === CARD_PEND_CAT; };
+  const sum = arr => arr.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const tr = recs.filter(r => !isCard(r)), cd = recs.filter(isCard);
+  return { trN: tr.length, trSum: sum(tr), cdN: cd.length, cdSum: sum(cd), n: recs.length, total: sum(recs), pendN: recs.filter(isPend).length, recs };
+}
 function renderBankAccounts() {
   const accts = (state.bankAccounts || []).filter(a => a.active !== false);
   const cards = (state.bankCards || []).filter(c => c.active !== false);
   const purpBadge = (p) => { const c = _PURPOSE_BADGE[p]; return p ? `<span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:20px;${c ? `color:${c[0]};background:${c[1]};` : 'color:var(--muted);background:var(--panel-hover);'}">${escapeHtml(p)}</span>` : ''; };
-  const acctRow = (a) => { const aown = a.owner_key ? memberName(a.owner_key) : (a.owner_name || ''); return `<div class="acct-card" data-acct="${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
+  const acctRow = (a) => { const aown = a.owner_key ? memberName(a.owner_key) : (a.owner_name || ''); const st = acctSpendStats(a);
+    const stLine = st && st.n ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">🏦 <b style="color:var(--text);">${st.trN}</b> шилжүүлэг${st.trSum ? ' ' + fmtMoney(st.trSum) : ''}${st.cdN ? ` · 💳 <b style="color:var(--text);">${st.cdN}</b> карт ${fmtMoney(st.cdSum)}` : ''}${st.pendN ? ` · <span style="color:var(--warn);">${st.pendN} ангилаагүй</span>` : ''}</div>` : '';
+    return `<div class="acct-card" data-acct="${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--panel);">
       <div style="width:38px;height:38px;border-radius:9px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;">🏦</div>
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;"><b style="font-size:14px;">${escapeHtml(a.name || 'Нэргүй данс')}</b>${purpBadge(a.purpose)}${aown ? `<span style="font-size:10.5px;color:var(--text);">· 👤 ${escapeHtml(aown)}</span>` : ''}${a.branch ? `<span style="font-size:10.5px;color:var(--muted);">· ${escapeHtml(a.branch)}</span>` : ''}</div>
         <div style="font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px;">${escapeHtml(a.bank || '')} · ${escapeHtml(a.iban || a.account_no || '')}${a.currency && a.currency !== 'MNT' ? ' · ' + escapeHtml(a.currency) : ''}</div>
+        ${stLine}
       </div>
       <span style="font-size:16px;color:var(--muted);">›</span>
     </div>`; };
@@ -8454,6 +8468,18 @@ function openBankAccountModal(a) {
   const sel = (opts, cur, ph) => `<option value="">${ph}</option>` + opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
   const _staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((x, y) => (y.level || 0) - (x.level || 0) || String(x.name || '').localeCompare(String(y.name || '')));
   const ownerOpts = `<option value="">— эзэнгүй —</option>` + _staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === a.owner_key ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
+  // Энэ данснаас гарсан зардлын задаргаа (шилжүүлэг/карт + сүүлийн гүйлгээ)
+  const _st = isNew ? null : acctSpendStats(a);
+  const _recent = (_st && _st.recs) ? _st.recs.slice().sort((x, y) => String(y.executed_at || y.requested_at || '').localeCompare(String(x.executed_at || x.requested_at || ''))).slice(0, 6) : [];
+  const _spendBlock = isNew ? '' : ((_st && _st.n) ? `
+    <div style="background:var(--panel-hover);border-radius:9px;padding:11px 13px;margin-top:12px;">
+      <div style="font-weight:700;font-size:12.5px;margin-bottom:7px;">📊 Энэ данснаас гарсан зардал</div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span>🏦 Шилжүүлэг</span><span><b>${_st.trN}</b> ширхэг · ${fmtMoney(_st.trSum)}</span></div>
+      ${_st.cdN ? `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0;"><span>💳 Картын зарлага</span><span><b>${_st.cdN}</b> ширхэг · ${fmtMoney(_st.cdSum)}</span></div>` : ''}
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0 2px;border-top:1px solid var(--border);margin-top:5px;"><b>Нийт (${_st.n})</b><b>${fmtMoney(_st.total)}</b></div>
+      ${_st.pendN ? `<div style="font-size:11px;color:var(--warn);margin-top:4px;">⏳ ${_st.pendN} ангилаагүй хүлээж буй</div>` : ''}
+      ${_recent.length ? `<div style="margin-top:9px;"><div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-bottom:3px;">Сүүлийн гүйлгээ</div>${_recent.map(r => { const t = parseCardToken(r.justification); const pend = (t && t.pend) || String(r.category || '') === CARD_PEND_CAT; return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid var(--border);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t && t.last4 ? '💳' : '🏦'} ${escapeHtml((r.executed_at || r.requested_at || '').slice(5, 10))} ${escapeHtml(r.purpose || r.beneficiary || '—')}</span><span style="white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)} ${pend ? '<span style="color:var(--warn);">⏳</span>' : '<span style="color:var(--ok);">✓</span>'}</span></div>`; }).join('')}</div>` : ''}
+    </div>` : `<div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Энэ данснаас гарсан зардал бүртгэгдээгүй (хуулга оруулбал энд харагдана).</div>`);
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</div>
@@ -8468,6 +8494,7 @@ function openBankAccountModal(a) {
     <label class="fld">Салбар<select id="ba-branch">${sel(BANK_BRANCHES, a.branch, '— салбар —')}</select></label>
     <label class="fld">👤 Хариуцсан эзэмшигч <span style="font-weight:400;color:var(--muted);font-size:11px;">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
     <label class="fld">Тэмдэглэл<input id="ba-note" value="${escapeHtml(a.note || '')}" placeholder="сонголт"></label>
+    ${_spendBlock}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
       <button class="btn" id="ba-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>
       <div style="display:flex;gap:8px;"><button class="btn" id="ba-cancel">Болих</button><button class="btn btn-primary" id="ba-save">Хадгалах</button></div>

@@ -10421,10 +10421,11 @@ function nomaadTypeOptions(cur) {
   html += nomaadAddonGroups().map(g => `<optgroup label="${escapeHtml(g.src)}">` +
     g.items.map(t => { const s = t === cur; if (s) known = true; return `<option${s ? ' selected' : ''}>${escapeHtml(t)}</option>`; }).join('') + `</optgroup>`).join('');
   if (cur && !known) html = `<option selected>${escapeHtml(cur)}</option>` + html;   // хуучин/өөр утга — хадгална
+  if (state.isCEO) html += `<option value="__add__">＋ Шинэ ангилал нэмэх…</option>`;   // энд шууд нэмнэ
   return html;
 }
 // CEO: нэмэлт үйлчилгээний шинэ ангилал нэмэх (fin-categories-д type='nomaad_addon' болж хадгална)
-function openNomaadAddonCategoryModal() {
+function openNomaadAddonCategoryModal(onAdded, onCancel) {
   document.getElementById('na-addcat-modal')?.remove();
   const m = document.createElement('div');
   m.className = 'modal-bg'; m.id = 'na-addcat-modal';
@@ -10446,11 +10447,13 @@ function openNomaadAddonCategoryModal() {
   const paint = () => m.querySelectorAll('.na-src-opt').forEach(b => { const on = b.dataset.src === src; b.style.background = on ? 'var(--primary)' : 'var(--panel)'; b.style.color = on ? '#fff' : 'var(--text)'; b.style.borderColor = on ? 'var(--primary)' : 'var(--border)'; });
   paint();
   m.querySelectorAll('.na-src-opt').forEach(b => b.onclick = () => { src = b.dataset.src; paint(); });
-  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
-  m.querySelector('#na-cat-cancel').onclick = () => m.remove();
-  m.querySelector('#na-cat-save').onclick = () => saveNomaadAddonCategory((m.querySelector('#na-cat-name').value || '').trim(), src, m);
+  const cancel = () => { m.remove(); if (onCancel) onCancel(); };
+  m.addEventListener('click', e => { if (e.target === m) cancel(); });
+  m.querySelector('#na-cat-cancel').onclick = cancel;
+  m.querySelector('#na-cat-save').onclick = () => saveNomaadAddonCategory((m.querySelector('#na-cat-name').value || '').trim(), src, m, onAdded);
+  setTimeout(() => m.querySelector('#na-cat-name').focus(), 50);
 }
-async function saveNomaadAddonCategory(name, src, modal) {
+async function saveNomaadAddonCategory(name, src, modal, onAdded) {
   if (!name) { showToast('Ангиллын нэр оруулна уу', 'warn'); return; }
   const url = state.config.finCategoriesUrl;
   if (!url) { showToast('Endpoint тохируулагдаагүй', 'error'); return; }
@@ -10465,7 +10468,7 @@ async function saveNomaadAddonCategory(name, src, modal) {
     state.nomaadCustomAddon.push({ code, name, src });
     if (modal) modal.remove();
     showToast(`"${name}" ангилал нэмэгдлээ`, 'success', 2500);
-    render();
+    if (onAdded) onAdded(name); else render();   // захиалгаас нэмсэн бол тухайн мөрд шингээнэ
     loadFinanceCategories();
   } catch (e) { showToast('Хадгалахад алдаа: ' + e.message, 'error', 4000); }
 }
@@ -10572,7 +10575,13 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
   });
   itemsEl.addEventListener('change', (e) => {
     if (e.target.classList.contains('ne-cat')) {
-      items[+e.target.closest('.ne-row').dataset.idx].category = e.target.value;
+      const sel = e.target; const it = items[+sel.closest('.ne-row').dataset.idx];
+      if (sel.value === '__add__') {   // dropdown-оос шууд шинэ ангилал нэмэх
+        const prev = it.category || '';
+        openNomaadAddonCategoryModal((newName) => { it.category = newName; renderItems(); }, () => { sel.value = prev; });
+        return;
+      }
+      it.category = sel.value;
       return;
     }
     if (!e.target.classList.contains('ne-incl')) return;

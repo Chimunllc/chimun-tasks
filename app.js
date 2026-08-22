@@ -7708,7 +7708,7 @@ async function markHourlyPaid(workerKey) {
   if (!res) return;
   const { rate, days, start } = res;
   const amount = Math.round(rate);   // оруулсан дүн = нийт олгох цалин (өдрөөр үржихгүй)
-  if (!(await showConfirm(`${m.name}: ${fmtMoney(amount)} · ${days} өдрийн цалин\nЭхэлсэн: ${start || '-'}\n${HOURLY_FUND_LABEL}-наас шилжүүлснийг бүртгэх үү?`, { okText: 'Тийм, шилжүүлсэн' }))) return;
+  if (!(await showConfirm(`${m.name}: ${fmtMoney(amount)} · ${days} өдрийн цалин\nЭхэлсэн: ${start || '-'}\n\nТэмдэглэл үлдээх үү? (зардал банкны хуулга ормогц бүртгэгдэнэ — энэ нь тоологдохгүй тэмдэглэл)`, { okText: '✓ Тэмдэглэх' }))) return;
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date().toISOString();
   const r = {
@@ -7745,7 +7745,7 @@ async function markHourlyPaid(workerKey) {
   state.financeRequests.unshift(r);
   await saveFinanceRequest(r);
   pushBroadcast(personKey(m), { type: 'salary_paid', title: 'Цалин шилжүүлэв', body: `${fmtMoney(amount)} таны дансанд шилжүүлэв.` });
-  showToast(`${m.name} — ${fmtMoney(amount)} бүртгэлээ`, 'success', 2000);
+  showToast(`${m.name} — ${fmtMoney(amount)} тэмдэглэлээ (зардал хуулгаас орно)`, 'success', 2400);
   render();
 }
 

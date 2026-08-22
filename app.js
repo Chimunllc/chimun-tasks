@@ -17957,10 +17957,107 @@ function openTaskModal(id) {
 
   document.getElementById('task-modal').classList.add('open');
   if (canEdit.all && !t) setTimeout(()=>document.getElementById('t-title').focus(), 50);
+  // ─── Дуут заавар: товч холбож, аудио татаж, харагдац тохируулна ───
+  setupVoiceRecorder();
+  loadTaskVoice(id).then(() => applyVoiceUI(canEdit.all));
 }
 
 /* ─── Шинэ даалгаврын ноорог — localStorage-д түр хадгалж, хальт хаагдвал сэргээнэ.
    Зөвхөн ШИНЭ үүсгэх үед. Амжилттай хадгалмагц цэвэрлэгдэнэ. */
+/* ─── Дуут заавар (voice memo) — task_audio хүснэгтэд (PostgREST), даалгавартай ТУСАД нь ───
+   Жагсаалттай хамт ачаалагдахгүй; зөвхөн даалгавар нээхэд тухайн аудиог татна. 2 сарын дараа
+   SQL-ээр автомат арилна. Зөвхөн ганц даалгаврын хувьд (олон-хүнд оноох үед алгасна). */
+let _voiceRec = null, _voiceChunks = [], _voiceTimer = null, _voiceStart = 0;
+const VOICE_MAX_SEC = 60;
+function _voiceEls() { const g = id => document.getElementById(id); return {
+  label: g('t-voice-label'), row: g('t-voice-row'), rec: g('t-voice-rec'), stop: g('t-voice-stop'),
+  timer: g('t-voice-timer'), status: g('t-voice-status'), preview: g('t-voice-preview'), audio: g('t-voice-audio'), del: g('t-voice-del') }; }
+function renderVoicePreview() {
+  const e = _voiceEls(); if (!e.preview) return;
+  if (state._taskVoice) { e.audio.src = state._taskVoice; e.preview.style.display = 'flex'; if (e.rec) e.rec.textContent = '🎙 Дахин бичих'; }
+  else { e.preview.style.display = 'none'; e.audio.removeAttribute('src'); if (e.rec) e.rec.textContent = '🎙 Бичих'; }
+}
+async function startVoiceRec() {
+  const e = _voiceEls();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (err) { showToast('Микрофон нээж чадсангүй: ' + err.message, 'error', 4000); return; }
+  let mime = ''; ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].forEach(m => { if (!mime && window.MediaRecorder && MediaRecorder.isTypeSupported(m)) mime = m; });
+  try { _voiceRec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined); }
+  catch (err) { _voiceRec = new MediaRecorder(stream); }
+  _voiceChunks = [];
+  _voiceRec.ondataavailable = ev => { if (ev.data && ev.data.size) _voiceChunks.push(ev.data); };
+  _voiceRec.onstop = async () => {
+    stream.getTracks().forEach(tr => tr.stop());
+    clearInterval(_voiceTimer); _voiceTimer = null;
+    const blob = new Blob(_voiceChunks, { type: (_voiceChunks[0] && _voiceChunks[0].type) || 'audio/webm' });
+    const dur = Math.round((Date.now() - _voiceStart) / 1000);
+    const b64 = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
+    state._taskVoice = b64; state._taskVoiceDur = dur; state._taskVoiceDirty = true;
+    if (e.rec) e.rec.style.display = 'inline-flex'; if (e.stop) e.stop.style.display = 'none'; if (e.status) e.status.textContent = '';
+    renderVoicePreview();
+  };
+  _voiceStart = Date.now(); _voiceRec.start();
+  if (e.rec) e.rec.style.display = 'none'; if (e.stop) e.stop.style.display = 'inline-flex'; if (e.status) e.status.textContent = 'Бичиж байна…';
+  _voiceTimer = setInterval(() => {
+    const s = Math.round((Date.now() - _voiceStart) / 1000);
+    if (e.timer) e.timer.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    if (s >= VOICE_MAX_SEC) stopVoiceRec();
+  }, 250);
+}
+function stopVoiceRec() { if (_voiceRec && _voiceRec.state !== 'inactive') { try { _voiceRec.stop(); } catch (e) {} } }
+function setupVoiceRecorder() {
+  const e = _voiceEls(); if (!e.rec || e.rec._wired) return; e.rec._wired = true;
+  e.rec.onclick = startVoiceRec;
+  if (e.stop) e.stop.onclick = stopVoiceRec;
+  if (e.del) e.del.onclick = () => { state._taskVoice = null; state._taskVoiceDur = 0; state._taskVoiceDirty = true; renderVoicePreview(); };
+}
+async function loadTaskVoice(taskId) {
+  state._taskVoice = null; state._taskVoiceDur = 0; state._taskVoiceDirty = false;
+  if (taskId) {
+    try {
+      const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+      if (r.ok) { const rows = await r.json(); if (rows[0]) { state._taskVoice = rows[0].audio; state._taskVoiceDur = rows[0].duration || 0; } }
+    } catch (e) {}
+  }
+  renderVoicePreview();
+}
+async function saveTaskVoice(taskId, isNew) {
+  if (!taskId) return;
+  if (!isNew && !state._taskVoiceDirty) return;
+  try {
+    if (state._taskVoice) {
+      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/task_audio`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ task_id: taskId, audio: state._taskVoice, duration: state._taskVoiceDur || null })
+      }, 60000);
+    } else if (!isNew) {
+      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
+        { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 20000);
+    }
+  } catch (e) { console.warn('voice save failed', e); }
+}
+// Модал дахь voice UI-ийн харагдац: засах эрхтэй → бичих товч+player; гүйцэтгэгч (read-only) → карт дор player
+function applyVoiceUI(canEditAll) {
+  const e = _voiceEls(); if (!e.rec) return;
+  const has = !!state._taskVoice;
+  if (e.label) e.label.style.display = canEditAll ? '' : 'none';
+  if (e.row) e.row.style.display = canEditAll ? 'flex' : 'none';
+  if (e.del) e.del.style.display = canEditAll ? '' : 'none';
+  renderVoicePreview();
+  if (e.preview) e.preview.style.display = (has && canEditAll) ? 'flex' : 'none';
+  const old = document.getElementById('t-voice-assignee'); if (old) old.remove();
+  const card = document.getElementById('t-readonly-card');
+  if (!canEditAll && has && card && card.style.display !== 'none') {
+    const box = document.createElement('div'); box.id = 't-voice-assignee';
+    box.style.cssText = 'background:linear-gradient(135deg,#eef2ff,#faf5ff);border:1px solid #c7d2fe;border-radius:10px;padding:12px 14px;margin-bottom:14px;';
+    box.innerHTML = '<div style="font-size:12px;color:#4338ca;font-weight:700;margin-bottom:8px;">🎙 Дуут заавар — сонсоод хийнэ үү</div>';
+    const au = document.createElement('audio'); au.controls = true; au.preload = 'metadata'; au.src = state._taskVoice; au.style.cssText = 'width:100%;height:44px;';
+    box.appendChild(au); card.parentNode.insertBefore(box, card.nextSibling);
+  }
+}
 function saveTaskDraft() {
   if (state.editingId) return; // зөвхөн шинэ
   const modal = document.getElementById('task-modal');
@@ -18285,8 +18382,10 @@ async function saveTaskFromModal() {
     saveTask(t);
     if (t.assignee) pushBroadcast(t.assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
   }
+  await saveTaskVoice(t.id, !state.editingId);   // дуут заавар (task_audio-д)
   state._multiAssignees = null;
   state._taskImages = null;
+  state._taskVoice = null; state._taskVoiceDur = 0; state._taskVoiceDirty = false;
   clearTaskDraft();
   closeTaskModal();
   render();

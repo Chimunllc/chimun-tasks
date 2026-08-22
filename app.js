@@ -9716,6 +9716,16 @@ function renderNomaadAnalytics() {
     (addonMap[k] = addonMap[k] || { k, count: 0, sum: 0 }).count++; addonMap[k].sum += v;
   }));
   const byAddon = Object.values(addonMap).sort((a, b) => b.sum - a.sum).slice(0, 15);
+  // Нэмэлт үйлчилгээ — ЭХ ҮҮСВЭРЭЭР (Гаднаас авсан vs Дотоодоос) → марж/хараат байдал харах
+  const srcMap = {};
+  filtered.forEach(o => (o.items || []).forEach(it => {
+    if (it.included || /үндсэн багц/i.test(it.category || '')) return;
+    const v = Number(it.total) || 0; if (v <= 0) return;
+    const sk = nomaadAddonSource(it.category);
+    (srcMap[sk] = srcMap[sk] || { k: sk, count: 0, sum: 0 }).count++; srcMap[sk].sum += v;
+  }));
+  const SRC_ORDER = { 'Гаднаас авсан': 0, 'Дотоодоос': 1, 'Тодорхойгүй': 2 };
+  const bySource = Object.values(srcMap).sort((a, b) => (SRC_ORDER[a.k] ?? 9) - (SRC_ORDER[b.k] ?? 9));
   // ── Гулсагч (min-max) ──
   const dual = (id, lo, hi, vLo, vHi, step, fmt) => `<div class="na-dual" data-nadual="${id}" data-lo="${lo}" data-hi="${hi}" style="position:relative;height:30px;margin-top:2px;">
     <div style="position:absolute;top:13px;left:0;right:0;height:4px;border-radius:2px;background:var(--panel-hover);"></div>
@@ -9775,6 +9785,7 @@ function renderNomaadAnalytics() {
     ${barBlock('🏔 Кемп бүрээр', byCamp)}
     ${barBlock('👥 Хүний тооны бүлгээр', byBucket)}
     ${tiers.length ? barBlock('🎁 Багц бүрээр', byTier) : ''}
+    ${barBlock('🔀 Нэмэлт үйлчилгээ — Гаднаас vs Дотоодоос', bySource, 'мөнгө гадагш урсдаг vs өөрсдөө хийдэг')}
     ${barBlock('✨ Нэмэлт үйлчилгээ (төрлөөр)', byAddon, 'багцаас гадуур')}
     ${barBlock('📅 Сар бүрээр', byMonth)}
   </div>`;
@@ -10333,13 +10344,25 @@ function nextNomaadQuoteNo() {
   return 'NC-' + yr + '-' + String(max + 1).padStart(4, '0');
 }
 /* Нэг item-ийн карт (засварлах) — Үүсгэх ба Засах модалд хуваалцана */
-// Нэмэлт үйлчилгээний СТАНДАРТ төрлүүд (тайлан эдгээрээр бүлэглэнэ — чөлөөт нэрээр биш)
-const NOMAAD_ADDON_TYPES = ['Урлагийн нэмэлт', 'Тээвэр', 'Хөтөлбөр', 'Нэмэлт хоол', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад'];
+// Нэмэлт үйлчилгээ — ЭХ ҮҮСВЭР (Гаднаас/Дотоод) + төрөл. Тайлан эдгээрээр бүлэглэнэ.
+// Гаднаас = мөнгө нь гадагш урсдаг (дуучин, морь, автобус). Дотоод = өөрсдөө хийдэг (өндөр марж).
+const NOMAAD_ADDON_GROUPS = [
+  { src: 'Гаднаас авсан', items: ['Дуучин / уран бүтээлч', 'Морь / тэмээ', 'Автобус / тээвэр', 'Бусад (гаднаас)'] },
+  { src: 'Дотоодоос', items: ['Хөтөлбөр', 'Нэмэлт хоол', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад (дотоод)'] },
+];
+const NOMAAD_ADDON_SRC = {};
+NOMAAD_ADDON_GROUPS.forEach(g => g.items.forEach(t => { NOMAAD_ADDON_SRC[t] = g.src; }));
+// Хуучин ангиллыг эх үүсвэрт буулгах (аль болох)
+Object.assign(NOMAAD_ADDON_SRC, { 'Тээвэр': 'Гаднаас авсан', 'Хоол, ресторан': 'Дотоодоос', 'Хөтөлбөр': 'Дотоодоос' });
+function nomaadAddonSource(cat) { return NOMAAD_ADDON_SRC[(cat || '').trim()] || 'Тодорхойгүй'; }
 function nomaadTypeOptions(cur) {
   cur = (cur || '').trim();
-  const list = NOMAAD_ADDON_TYPES.slice();
-  if (cur && !list.includes(cur)) list.unshift(cur);   // хуучин/өөр утга байвал хадгалж харуулна
-  return list.map(t => `<option${t === cur ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('');
+  let known = false;
+  let html = cur ? '' : '<option value="" selected>— үйлчилгээний төрөл —</option>';
+  html += NOMAAD_ADDON_GROUPS.map(g => `<optgroup label="${escapeHtml(g.src)}">` +
+    g.items.map(t => { const s = t === cur; if (s) known = true; return `<option${s ? ' selected' : ''}>${escapeHtml(t)}</option>`; }).join('') + `</optgroup>`).join('');
+  if (cur && !known) html = `<option selected>${escapeHtml(cur)}</option>` + html;   // хуучин/өөр утга — хадгална
+  return html;
 }
 function nomaadItemCardHtml(it, i) {
   const amt = it.included ? 0 : (Number(it.total) || 0);
@@ -10456,7 +10479,7 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
     items.splice(+e.target.closest('.ne-row').dataset.idx, 1); renderItems();
   });
   modal.querySelector(addSel).addEventListener('click', () => {
-    items.push({ row_num: items.length + 1, category: 'Бусад', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
+    items.push({ row_num: items.length + 1, category: '', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
     renderItems();
   });
   return { renderItems, recalc };
@@ -10647,7 +10670,7 @@ function nomaadContractHtml(o) {
   // Хавсралт №1 — "Үнийн санал харах"-тай ИЖИЛ бүрэн хүснэгт (ангилалаар, тоо/нэгж/үнэ/багцад)
   const grouped = {}, catSeq = [];
   items.forEach(it => { const c = it.category || 'Бусад'; if (!grouped[c]) { grouped[c] = []; catSeq.push(c); } grouped[c].push(it); });
-  const CAT_ORD = ['Үндсэн багц', 'Хөтөлбөр', 'Урлагийн нэмэлт', 'Нэмэлт хоол', 'Тээвэр', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад', 'Хоол, ресторан', 'Энтертайнмент', 'Нэмэлт үйлчилгээ'];
+  const CAT_ORD = ['Үндсэн багц', 'Хөтөлбөр', 'Нэмэлт хоол', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад (дотоод)', 'Дуучин / уран бүтээлч', 'Морь / тэмээ', 'Автобус / тээвэр', 'Бусад (гаднаас)', 'Хоол, ресторан', 'Тээвэр', 'Нэмэлт үйлчилгээ'];
   const catRank = c => { const i = CAT_ORD.indexOf(c); return i < 0 ? 50 : i; };
   const svcRows = catSeq.sort((a, b) => catRank(a) - catRank(b)).map(c => {
     const head = `<tr><td colspan="3" class="cat">${escapeHtml((c || '').toUpperCase())}</td></tr>`;

@@ -1545,7 +1545,7 @@ async function loadFinanceCategories() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const rows = Array.isArray(data) ? data : (data.categories || []);
-    const mains = [], subs = {}, perms = new Set();
+    const mains = [], subs = {}, perms = new Set(), naAddon = [];
     rows.forEach(rw => {
       const active = String(rw.active == null ? '1' : rw.active).trim().toLowerCase();
       if (active === '0' || active === 'false' || active === 'үгүй') return;
@@ -1555,10 +1555,13 @@ async function loadFinanceCategories() {
       if (rw.type === 'fin_branch_perm') { perms.add(code); return; }
       const name = String(rw.name || '').trim();
       if (!name) return;
+      // NOMAAD нэмэлт үйлчилгээний CEO-гийн нэмсэн ангилал (parent=эх үүсвэр)
+      if (rw.type === 'nomaad_addon') { naAddon.push({ code, name, src: String(rw.parent || '').trim() || 'Бусад' }); return; }
       if (rw.type === 'main') mains.push({ code, name });
       else { const p = String(rw.parent || '').trim(); (subs[p] = subs[p] || []).push({ code, name }); }
     });
     state.finBranchPerms = perms;
+    state.nomaadCustomAddon = naAddon;
     if (!mains.length) return; // хоосон ирвэл default-аа хадгална
     mains.sort((a, b) => a.code.localeCompare(b.code));
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
@@ -9731,16 +9734,15 @@ function renderNomaadAnalytics() {
     const sk = nomaadAddonSource(it.category);
     (srcMap[sk] = srcMap[sk] || { k: sk, count: 0, sum: 0 }).count++; srcMap[sk].sum += v;
     const nm = (it.name || '').trim() || '(нэргүй)';
-    const dt = (addonTypeDetail[k] = addonTypeDetail[k] || {});
-    (dt[nm] = dt[nm] || { name: nm, count: 0, sum: 0 }).count++; dt[nm].sum += v;
-    const ds = (addonSrcDetail[sk] = addonSrcDetail[sk] || {});
-    (ds[nm] = ds[nm] || { name: nm, count: 0, sum: 0 }).count++; ds[nm].sum += v;
+    const rec = { name: nm, sum: v, quote: o.quote_no || '', company: o.company || o.company_name || '' };
+    (addonTypeDetail[k] = addonTypeDetail[k] || []).push(rec);
+    (addonSrcDetail[sk] = addonSrcDetail[sk] || []).push(rec);
   }));
   const byAddon = Object.values(addonMap).sort((a, b) => b.sum - a.sum).slice(0, 15);
   const SRC_ORDER = { 'Гаднаас авсан': 0, 'Дотоодоос': 1, 'Тодорхойгүй': 2 };
   const bySource = Object.values(srcMap).sort((a, b) => (SRC_ORDER[a.k] ?? 9) - (SRC_ORDER[b.k] ?? 9));
-  // Задаргааг state-д (attachNomaadAnalytics уншиж, дарахад задална)
-  const _det = obj => Object.fromEntries(Object.entries(obj).map(([k, m]) => [k, Object.values(m).sort((a, b) => b.sum - a.sum)]));
+  // Задаргаа (захиалга бүрээр, их дүнгээр) — attachNomaadAnalytics уншиж дарахад задална
+  const _det = obj => Object.fromEntries(Object.entries(obj).map(([k, arr]) => [k, arr.sort((a, b) => b.sum - a.sum)]));
   state._naAddonDetail = { type: _det(addonTypeDetail), src: _det(addonSrcDetail) };
   // ── Гулсагч (min-max) ──
   const dual = (id, lo, hi, vLo, vHi, step, fmt) => `<div class="na-dual" data-nadual="${id}" data-lo="${lo}" data-hi="${hi}" style="position:relative;height:30px;margin-top:2px;">
@@ -9803,6 +9805,7 @@ function renderNomaadAnalytics() {
     ${tiers.length ? barBlock('🎁 Багц бүрээр', byTier) : ''}
     ${addonBarBlock('🔀 Нэмэлт үйлчилгээ — Гаднаас vs Дотоодоос', bySource, 'мөнгө гадагш урсдаг vs өөрсдөө хийдэг', 'src')}
     ${addonBarBlock('✨ Нэмэлт үйлчилгээ (төрлөөр)', byAddon, 'багцаас гадуур', 'type')}
+    ${state.isCEO ? `<div style="margin-top:8px;text-align:right;"><button data-na-addcat style="padding:7px 14px;font-size:12px;border:1px dashed var(--border);border-radius:9px;background:var(--panel);color:var(--primary);font-weight:600;cursor:pointer;">＋ Ангилал нэмэх</button></div>` : ''}
     ${barBlock('📅 Сар бүрээр', byMonth)}
   </div>`;
 }
@@ -9835,6 +9838,7 @@ function attachNomaadAnalytics() {
   const cb = document.querySelector('[data-na-confirmed]'); if (cb) cb.onchange = () => { f.confirmedOnly = cb.checked; render(); };
   const rs = document.querySelector('[data-na-reset]'); if (rs) rs.onclick = () => { state.naF = null; render(); };
   const xl = document.querySelector('[data-na-xls]'); if (xl) xl.onclick = exportNomaadAnalyticsExcel;
+  const ac = document.querySelector('[data-na-addcat]'); if (ac) ac.onclick = openNomaadAddonCategoryModal;
   // Нэмэлт үйлчилгээний мөр дээр дарахад доторх үйлчилгээнүүд задарна
   document.querySelectorAll('[data-addon-toggle]').forEach(row => row.addEventListener('click', () => {
     const key = row.dataset.addonToggle;
@@ -9846,8 +9850,13 @@ function attachNomaadAnalytics() {
       const [dk, k] = key.split('::');
       const rows = (state._naAddonDetail && state._naAddonDetail[dk] && state._naAddonDetail[dk][k]) || [];
       detail.innerHTML = rows.length
-        ? rows.map(d => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 8px;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.name)} <span style="color:var(--muted);">×${d.count}</span></span><b style="white-space:nowrap;">${fmtMoney(d.sum)}</b></div>`).join('')
+        ? rows.map(d => `<div data-open-quote="${escapeHtml(d.quote || '')}" title="Дарж захиалгыг нээж ангилна" style="display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;">
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.name)}${d.company ? ` <span style="color:var(--muted);">· ${escapeHtml(d.company)}</span>` : ''}${d.quote ? ` <span style="color:var(--primary);">#${escapeHtml(d.quote)}</span>` : ''}</span>
+            <b style="white-space:nowrap;">${fmtMoney(d.sum)}</b></div>`).join('')
         : '<div style="color:var(--muted);font-size:11.5px;padding:5px 8px;">Задаргаа алга.</div>';
+      detail.querySelectorAll('[data-open-quote]').forEach(r => r.addEventListener('click', ev => {
+        ev.stopPropagation(); const q = r.dataset.openQuote; if (q) openNomaadEditModal(q);
+      }));
       detail.dataset.built = '1';
     }
     detail.style.display = '';
@@ -10380,23 +10389,82 @@ function nextNomaadQuoteNo() {
 /* Нэг item-ийн карт (засварлах) — Үүсгэх ба Засах модалд хуваалцана */
 // Нэмэлт үйлчилгээ — ЭХ ҮҮСВЭР (Гаднаас/Дотоод) + төрөл. Тайлан эдгээрээр бүлэглэнэ.
 // Гаднаас = мөнгө нь гадагш урсдаг (дуучин, морь, автобус). Дотоод = өөрсдөө хийдэг (өндөр марж).
-const NOMAAD_ADDON_GROUPS = [
+const NOMAAD_ADDON_GROUPS_BASE = [
   { src: 'Гаднаас авсан', items: ['Дуучин / уран бүтээлч', 'Морь / тэмээ', 'Автобус / тээвэр', 'Бусад (гаднаас)'] },
   { src: 'Дотоодоос', items: ['Хөтөлбөр', 'Нэмэлт хоол', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад (дотоод)'] },
 ];
-const NOMAAD_ADDON_SRC = {};
-NOMAAD_ADDON_GROUPS.forEach(g => g.items.forEach(t => { NOMAAD_ADDON_SRC[t] = g.src; }));
 // Хуучин ангиллыг эх үүсвэрт буулгах (аль болох)
-Object.assign(NOMAAD_ADDON_SRC, { 'Тээвэр': 'Гаднаас авсан', 'Хоол, ресторан': 'Дотоодоос', 'Хөтөлбөр': 'Дотоодоос' });
-function nomaadAddonSource(cat) { return NOMAAD_ADDON_SRC[(cat || '').trim()] || 'Тодорхойгүй'; }
+const NOMAAD_ADDON_SRC_LEGACY = { 'Тээвэр': 'Гаднаас авсан', 'Хоол, ресторан': 'Дотоодоос', 'Хөтөлбөр': 'Дотоодоос' };
+// Суурь + CEO-гийн нэмсэн ангилал (state.nomaadCustomAddon, fin-categories-с ачаалагдана)
+function nomaadAddonGroups() {
+  const groups = NOMAAD_ADDON_GROUPS_BASE.map(g => ({ src: g.src, items: g.items.slice() }));
+  (state.nomaadCustomAddon || []).forEach(c => {
+    if (!c || !c.name) return;
+    let g = groups.find(x => x.src === c.src);
+    if (!g) { g = { src: c.src || 'Бусад', items: [] }; groups.push(g); }
+    if (!g.items.includes(c.name)) g.items.push(c.name);
+  });
+  return groups;
+}
+function nomaadAddonSource(cat) {
+  cat = (cat || '').trim();
+  for (const g of nomaadAddonGroups()) if (g.items.includes(cat)) return g.src;
+  return NOMAAD_ADDON_SRC_LEGACY[cat] || 'Тодорхойгүй';
+}
 function nomaadTypeOptions(cur) {
   cur = (cur || '').trim();
   let known = false;
   let html = cur ? '' : '<option value="" selected>— үйлчилгээний төрөл —</option>';
-  html += NOMAAD_ADDON_GROUPS.map(g => `<optgroup label="${escapeHtml(g.src)}">` +
+  html += nomaadAddonGroups().map(g => `<optgroup label="${escapeHtml(g.src)}">` +
     g.items.map(t => { const s = t === cur; if (s) known = true; return `<option${s ? ' selected' : ''}>${escapeHtml(t)}</option>`; }).join('') + `</optgroup>`).join('');
   if (cur && !known) html = `<option selected>${escapeHtml(cur)}</option>` + html;   // хуучин/өөр утга — хадгална
   return html;
+}
+// CEO: нэмэлт үйлчилгээний шинэ ангилал нэмэх (fin-categories-д type='nomaad_addon' болж хадгална)
+function openNomaadAddonCategoryModal() {
+  document.getElementById('na-addcat-modal')?.remove();
+  const m = document.createElement('div');
+  m.className = 'modal-bg'; m.id = 'na-addcat-modal';
+  m.innerHTML = `<div class="modal" style="max-width:380px;">
+    <h2 style="font-size:16px;">Нэмэлт үйлчилгээний ангилал нэмэх</h2>
+    <label style="display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;">Ангиллын нэр</label>
+    <input id="na-cat-name" placeholder="ж: Гэрэл чимэглэл" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text);font-size:14px;">
+    <label style="display:block;font-size:12px;color:var(--muted);margin:14px 0 4px;">Эх үүсвэр</label>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="na-src-opt" data-src="Гаднаас авсан" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:12.5px;background:var(--panel);color:var(--text);">🔻 Гаднаас авсан</button>
+      <button type="button" class="na-src-opt" data-src="Дотоодоос" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:12.5px;background:var(--panel);color:var(--text);">🔺 Дотоодоос</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button id="na-cat-cancel" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--panel-hover);color:var(--muted);font-weight:700;cursor:pointer;">Болих</button>
+      <button id="na-cat-save" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;">Хадгалах</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  let src = 'Дотоодоос';
+  const paint = () => m.querySelectorAll('.na-src-opt').forEach(b => { const on = b.dataset.src === src; b.style.background = on ? 'var(--primary)' : 'var(--panel)'; b.style.color = on ? '#fff' : 'var(--text)'; b.style.borderColor = on ? 'var(--primary)' : 'var(--border)'; });
+  paint();
+  m.querySelectorAll('.na-src-opt').forEach(b => b.onclick = () => { src = b.dataset.src; paint(); });
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  m.querySelector('#na-cat-cancel').onclick = () => m.remove();
+  m.querySelector('#na-cat-save').onclick = () => saveNomaadAddonCategory((m.querySelector('#na-cat-name').value || '').trim(), src, m);
+}
+async function saveNomaadAddonCategory(name, src, modal) {
+  if (!name) { showToast('Ангиллын нэр оруулна уу', 'warn'); return; }
+  const url = state.config.finCategoriesUrl;
+  if (!url) { showToast('Endpoint тохируулагдаагүй', 'error'); return; }
+  const code = 'na_' + Date.now();
+  try {
+    const r = await fetchWithTimeout(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: N8N_API_KEY, rows: [{ type: 'nomaad_addon', code, name, parent: src, active: '1' }] }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!state.nomaadCustomAddon) state.nomaadCustomAddon = [];
+    state.nomaadCustomAddon.push({ code, name, src });
+    if (modal) modal.remove();
+    showToast(`"${name}" ангилал нэмэгдлээ`, 'success', 2500);
+    render();
+    loadFinanceCategories();
+  } catch (e) { showToast('Хадгалахад алдаа: ' + e.message, 'error', 4000); }
 }
 function nomaadItemCardHtml(it, i) {
   const amt = it.included ? 0 : (Number(it.total) || 0);

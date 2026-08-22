@@ -15067,9 +15067,9 @@ function renderFinanceReport(wrap) {
   // ── Мөнгөн урсгал — орлого (захиалга, accrual) vs зарлага (дууссан хүсэлт), CEO харагдац ──
   (function renderCashflow() {
     if (!canSeeAllFinance() || wantBr) return;
-    // Эвентийн орлогод захиалгын дата хэрэгтэй — байхгүй бол ачаална (ирмэгц дахин зурагдана)
-    if (!(state.bqOrders || []).length && typeof loadAppOrders === 'function') loadAppOrders();
-    const evOrders = (state.bqOrders || []).filter(o => String(o.starts_at || '').slice(0, 7) === month && !/cancel|цуцал|archiv/i.test(String(o.status || '')));
+    // M-Event орлого = app_orders (идэвхтэй захиалга), эвентийн огноогоор (accrual). bqOrders БИШ (хуучин Booqable түүх).
+    if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }
+    const evOrders = (state.appOrders || []).filter(o => (typeof _orderActive === 'function' ? _orderActive(o) : true) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
     const evInc = evOrders.reduce((s, o) => s + (Number(o.total_mnt) || 0), 0);
     const noOrders = (state.nomaadOrders || []).filter(o => String(o.date_start || '').slice(0, 7) === month && !nomaadIsCancelled(o));
     const noInc = noOrders.reduce((s, o) => s + nomaadEffTotal(o), 0);

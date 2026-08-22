@@ -10289,6 +10289,52 @@ function nomaadScaleItem(it, newG, prevG) {
   if (prevG > 0 && Number(it.qty) === prevG) { it.qty = newG; return true; }
   return false;
 }
+// Багцад дагалддаг зүйлс (бодит захиалгуудаас гаргасан загвар). qt: 'guest'=хүн бүрд,
+// 'tent6'=6 хүнд 1 майхан, 'per50'=50 хүнд 1, эсвэл тогтмол q.
+const NOMAAD_PKG_BASE = [
+  { n: 'Ширээ сандал', c: 'Хоол, ресторан', u: 'хүн', qt: 'guest' },
+  { n: 'Өглөөний цай', c: 'Хоол, ресторан', u: 'порц', qt: 'guest' },
+  { n: 'Өдрийн хоол', c: 'Хоол, ресторан', u: 'порц', qt: 'guest' },
+  { n: 'Оройн хоол', c: 'Хоол, ресторан', u: 'порц', qt: 'guest' },
+  { n: 'Welcome drink', c: 'Хоол, ресторан', u: 'хүн', qt: 'guest' },
+  { n: 'Sleeping bag', c: 'Кемп', u: 'хүн', qt: 'guest' },
+  { n: 'Майхан 6 хүний', c: 'Кемп', u: 'ширхэг', qt: 'tent6' },
+  { n: 'Ариун цэврийн өрөө', c: 'Ариун цэвэр', u: 'ширхэг', qt: 'per50' },
+  { n: 'Тамхины цэг', c: 'Ариун цэвэр', u: 'байршил', qt: 'fixed', q: 1 },
+  { n: 'Асарын энгийн тохижилт', c: 'Хоол, ресторан', u: 'багц', qt: 'fixed', q: 1 },
+  { n: '3×6 м асар', c: 'Амралт', u: 'ширхэг', qt: 'fixed', q: 1 },
+  { n: 'Түүдэг галын хэсэг', c: 'Амралт', u: 'ширхэг', qt: 'fixed', q: 1 },
+  { n: 'Дүүжин ор', c: 'Амралт', u: 'ширхэг', qt: 'fixed', q: 2 },
+  { n: 'Микрофон', c: 'Энтертайнмент', u: 'ширхэг', qt: 'fixed', q: 1 },
+  { n: 'Сүүдрэвч', c: 'Энтертайнмент', u: 'ширхэг', qt: 'fixed', q: 4 },
+  { n: 'Гар бөмбөг, хөлбөмбөг, cornhole, олс таталт', c: 'Спорт', u: 'багц', qt: 'fixed', q: 1 },
+  { n: 'Bartender үйлчилгээ', c: 'Хоол, ресторан', u: 'ажилтан', qt: 'fixed', q: 1 },
+];
+const NOMAAD_PACKAGE_TEMPLATES = {
+  'Стандарт': NOMAAD_PKG_BASE,
+  'Үндсэн': NOMAAD_PKG_BASE,
+  'Премиум': NOMAAD_PKG_BASE.concat([{ n: 'Хөгжмийн систем 5,000W', c: 'Энтертайнмент', u: 'багц', qt: 'fixed', q: 1 }]),
+  'Бүтэн өдрийн': NOMAAD_PKG_BASE,
+};
+function nomaadPkgQty(t, guests) {
+  guests = Math.max(0, Number(guests) || 0);
+  if (t.qt === 'guest') return guests;
+  if (t.qt === 'tent6') return Math.max(1, Math.ceil(guests / 6));
+  if (t.qt === 'per50') return Math.max(1, Math.ceil(guests / 50));
+  return t.q || 1;
+}
+// Багц + хүний тоогоор дагалдах зүйлсийг мөрөнд нэмнэ (давхардвал алгасна). Нэмсэн тоог буцаана.
+function nomaadApplyPackageTemplate(items, tier, guests) {
+  const tpl = NOMAAD_PACKAGE_TEMPLATES[String(tier || '').trim()];
+  if (!tpl) return 0;
+  let added = 0;
+  tpl.forEach(t => {
+    if (items.some(it => String(it.name || '').trim().toLowerCase() === t.n.toLowerCase())) return;
+    items.push({ row_num: items.length + 1, category: t.c, name: t.n, qty: nomaadPkgQty(t, guests), unit: t.u, unit_price: 0, included: true, total: 0, note: '' });
+    added++;
+  });
+  return added;
+}
 function openNomaadEditModal(quoteNo) {
   const o = (state.nomaadOrders || []).find(x => x.quote_no === quoteNo);
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
@@ -10762,6 +10808,15 @@ function openNomaadCreateModal() {
     const tb = items.find(it => it.category === 'Үндсэн багц');
     if (tb) { tb.qty = g; ib.recalc(tb); ib.renderItems(); }
   });
+  // Багц + хүний тоогоор дагалдах зүйлсийг автоматаар гаргах
+  const ncApplyTemplate = () => {
+    const tier = modal.querySelector('#nc-tier').value.trim();
+    const g = Math.max(0, Number(modal.querySelector('#nc-guests').value) || 0);
+    if (!tier || !NOMAAD_PACKAGE_TEMPLATES[tier] || g <= 0) return;
+    const added = nomaadApplyPackageTemplate(items, tier, g);
+    if (added) { ib.renderItems(); showToast(`📦 Багцад дагалдах ${added} зүйл нэмэгдлээ`, 'success', 2600); }
+  };
+  modal.querySelector('#nc-tier').addEventListener('change', ncApplyTemplate);
   modal.querySelector('#nc-guests').addEventListener('change', (e) => {
     const ng = Math.max(0, Number(e.target.value) || 0);
     if (ng !== ncPrevGuests) {
@@ -10770,6 +10825,7 @@ function openNomaadCreateModal() {
       if (changed) { ib.renderItems(); showToast(`${changed} барааны тоо шинэчлэгдлээ`, 'info', 2500); }
     }
     ncPrevGuests = ng;
+    ncApplyTemplate();   // багц сонгосон, хүн оруулсан бол дагалдах зүйлс гарна
   });
   modal.querySelector('#nc-cancel').addEventListener('click', () => modal.remove());
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });

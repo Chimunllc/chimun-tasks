@@ -14700,9 +14700,11 @@ function finBasis() {
   if (state.finBasis === undefined) { try { state.finBasis = localStorage.getItem('finBasis') || 'accrual'; } catch (e) { state.finBasis = 'accrual'; } }
   return state.finBasis === 'cash' ? 'cash' : 'accrual';
 }
-// Сар M-ийн орлого нэг захиалгыг аль сард, ямар дүнгээр тоолохыг суурийн дагуу нэмнэ
-function finAddOrderIncome(inc, isKemp, basis) {
-  if (isKemp) {
+// Сар бүрийн орлогыг САЛБАРААР нэмнэ. wantBr: 'ИВЕНТ'→M-Event, 'КЕМП'→NOMAAD, null→хоёул, бусад→байхгүй.
+function finAddOrderIncome(inc, wantBr, basis) {
+  const inclEv = !wantBr || wantBr === 'ИВЕНТ';
+  const inclNo = !wantBr || wantBr === 'КЕМП';
+  if (inclNo) {
     (state.nomaadOrders || []).forEach(o => {
       if (nomaadIsCancelled(o)) return;
       let mo, v;
@@ -14710,7 +14712,8 @@ function finAddOrderIncome(inc, isKemp, basis) {
       else { if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return; mo = String(o.date_start || '').slice(0, 7); v = nomaadEffTotal(o); }
       if (/^\d{4}-\d{2}$/.test(mo) && v) inc[mo] = (inc[mo] || 0) + v;
     });
-  } else {
+  }
+  if (inclEv) {
     (state.appOrders || []).filter(o => _orderActive(o)).forEach(o => {
       const mo = String(o.starts_at || o.created_at || '').slice(0, 7);
       if (!/^\d{4}-\d{2}$/.test(mo)) return;
@@ -14759,7 +14762,7 @@ function finSalaryMonth(month) {
   });
   return { sum, n: who.size };
 }
-function financeTrend(wantBr, isKemp) {
+function financeTrend(wantBr) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) {
@@ -14767,7 +14770,7 @@ function financeTrend(wantBr, isKemp) {
       if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
     }
   });
-  finAddOrderIncome(inc, isKemp, finBasis());
+  finAddOrderIncome(inc, wantBr, finBasis());
   const keys = [...Object.keys(inc), ...Object.keys(exp)].sort();
   if (!keys.length) return [];
   const cur = new Date().toISOString().slice(0, 7);
@@ -14838,26 +14841,26 @@ function renderReports() {
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);          // null=бүгд, 'КЕМП', 'ИВЕНТ', 'ХХК'
   // Орлого: КЕМП лензэд NOMAAD; бусад (Бүгд/Ивент) лензэд Захиалга модул (Mevent, app_orders төлсөн дүн).
-  const isKemp = wantBr === 'КЕМП';
   const basis = finBasis();   // 'accrual' (гүйцэтгэл, эвентийн сар) | 'cash' (мөнгө орсон өдөр)
-  let income = 0, incomeN = 0, incomeLabel, incomeSub, mi = null;
-  if (isKemp) {
-    (state.nomaadOrders || []).forEach(o => {
-      if (nomaadIsCancelled(o)) return;
-      if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) { income += nomaadPaid(o); incomeN++; } }
-      else { if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { income += nomaadEffTotal(o); incomeN++; } }
-    });
-    incomeLabel = basis === 'accrual' ? 'Орлого (NOMAAD · гүйцэтгэл)' : 'Орлого (NOMAAD · мөнгө)';
-    incomeSub = basis === 'accrual' ? incomeN + ' эвент · энэ сард болсон' : incomeN + ' орлоготой захиалга';
-  } else {
-    mi = meventIncome(month);
-    if (basis === 'accrual') {
-      income = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month).reduce((s, o) => s + (Number(o.total_mnt) || 0), 0);
-      incomeN = mi.count; incomeLabel = 'Орлого (Mevent · гүйцэтгэл)'; incomeSub = incomeN + ' захиалга · гэрээний дүн';
-    } else {
-      income = mi.paidSum; incomeN = mi.count; incomeLabel = 'Орлого (Mevent · мөнгө)'; incomeSub = incomeN + ' захиалга · төлсөн дүн';
-    }
-  }
+  // Орлого = ЗӨВХӨН тухайн салбарынх. КЕМП→NOMAAD, ИВЕНТ→M-Event, Бүгд→хоёул, бусад(Катеринг/ХХК)→захиалгын орлого БАЙХГҮЙ.
+  const inclEv = !wantBr || wantBr === 'ИВЕНТ';   // M-Event
+  const inclNo = !wantBr || wantBr === 'КЕМП';    // NOMAAD
+  const evList = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
+  const evInc = evList.reduce((s, o) => s + (basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0)), 0);
+  let noInc = 0, noN = 0;
+  (state.nomaadOrders || []).forEach(o => {
+    if (nomaadIsCancelled(o)) return;
+    if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) { noInc += nomaadPaid(o); noN++; } }
+    else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { noInc += nomaadEffTotal(o); noN++; }
+  });
+  let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0);
+  let incomeN = (inclEv ? evList.length : 0) + (inclNo ? noN : 0);
+  const bl = basis === 'accrual' ? 'гүйцэтгэл' : 'мөнгө';
+  let incomeLabel, incomeSub, mi = null;
+  if (wantBr === 'КЕМП') { incomeLabel = `Орлого (NOMAAD · ${bl})`; incomeSub = noN + ' эвент'; }
+  else if (wantBr === 'ИВЕНТ') { mi = meventIncome(month); incomeLabel = `Орлого (M-Event · ${bl})`; incomeSub = evList.length + ' захиалга'; }
+  else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = 'M-Event + NOMAAD'; }
+  else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
@@ -14867,7 +14870,7 @@ function renderReports() {
   const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
   const fmtBig = fmtSaya;   // нэг харцаар уншихад — сая₮
   // ── Олон сарын цуврал: гулсдаг сар сонголт (slider) + харьцуулалт ──
-  const series = financeTrend(wantBr, isKemp);
+  const series = financeTrend(wantBr);
   state._reportMonths = series.map(s => s.month);
   let selIdx = series.findIndex(s => s.month === month);
   if (selIdx < 0) selIdx = series.length - 1;
@@ -14925,7 +14928,7 @@ function renderReports() {
       <button class="btn btn-primary" data-report-all-xls style="padding:8px 18px;font-size:12.5px;">📥 Бүгдийг татах (Excel — ${month})</button>
     </div>`;
   // Орлогын задаргаа (ангилал/захиалга/бараа) — зөвхөн Mevent лензэд (КЕМП биш)
-  const incomeSections = (!isKemp && mi) ? renderIncomeSections(month, mi) : '';
+  const incomeSections = mi ? renderIncomeSections(month, mi) : '';
   // ── 📊 Зардлын задаргаа (график) — ангилалаар (түлш, шууд зардал, цалин г.м.) ──
   const expItems = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
     .filter(t => finAccrualMonth(t) === month && t.decision === 'approved' && (!wantBr || finEffBranch(t) === wantBr));
@@ -14965,7 +14968,7 @@ function renderReports() {
     isDailyWorker() ? '' : card('🏅', 'Гүйцэтгэлийн үнэлгээ', 'Ажилтны объектив + ажлын чанар + 360° оноо, бонус', 'performance'),
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
-  const trendChart = financeTrendChart(financeTrend(wantBr, isKemp), month);
+  const trendChart = financeTrendChart(financeTrend(wantBr), month);
   // ── CEO төвлөрсөн хэсгүүд (зөвхөн бүх салбар харагдацад, лензгүй үед) ──
   let ceoSections = '';
   if (!wantBr) {

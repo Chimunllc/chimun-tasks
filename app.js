@@ -10334,7 +10334,7 @@ function nextNomaadQuoteNo() {
 }
 /* Нэг item-ийн карт (засварлах) — Үүсгэх ба Засах модалд хуваалцана */
 // Нэмэлт үйлчилгээний СТАНДАРТ төрлүүд (тайлан эдгээрээр бүлэглэнэ — чөлөөт нэрээр биш)
-const NOMAAD_ADDON_TYPES = ['Энтертайнмент', 'Гэрэл · дуу · тайз', 'Хоол, ресторан', 'Тээвэр', 'Спорт · тоглоом', 'Асар · майхан', 'Амралт', 'Бусад нэмэлт'];
+const NOMAAD_ADDON_TYPES = ['Урлагийн нэмэлт', 'Тээвэр', 'Хөтөлбөр', 'Нэмэлт хоол', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад'];
 function nomaadTypeOptions(cur) {
   cur = (cur || '').trim();
   const list = NOMAAD_ADDON_TYPES.slice();
@@ -10456,7 +10456,7 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
     items.splice(+e.target.closest('.ne-row').dataset.idx, 1); renderItems();
   });
   modal.querySelector(addSel).addEventListener('click', () => {
-    items.push({ row_num: items.length + 1, category: 'Бусад нэмэлт', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
+    items.push({ row_num: items.length + 1, category: 'Бусад', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
     renderItems();
   });
   return { renderItems, recalc };
@@ -10647,7 +10647,7 @@ function nomaadContractHtml(o) {
   // Хавсралт №1 — "Үнийн санал харах"-тай ИЖИЛ бүрэн хүснэгт (ангилалаар, тоо/нэгж/үнэ/багцад)
   const grouped = {}, catSeq = [];
   items.forEach(it => { const c = it.category || 'Бусад'; if (!grouped[c]) { grouped[c] = []; catSeq.push(c); } grouped[c].push(it); });
-  const CAT_ORD = ['Үндсэн багц', 'Хоол, ресторан', 'Энтертайнмент', 'Гэрэл · дуу · тайз', 'Спорт · тоглоом', 'Асар · майхан', 'Амралт', 'Тээвэр', 'Ариун цэвэр', 'Кемп', 'Бусад нэмэлт', 'Нэмэлт үйлчилгээ', 'Спорт'];
+  const CAT_ORD = ['Үндсэн багц', 'Хөтөлбөр', 'Урлагийн нэмэлт', 'Нэмэлт хоол', 'Тээвэр', 'Mevent түрээсийн бүтээгдэхүүн', 'Бусад', 'Хоол, ресторан', 'Энтертайнмент', 'Нэмэлт үйлчилгээ'];
   const catRank = c => { const i = CAT_ORD.indexOf(c); return i < 0 ? 50 : i; };
   const svcRows = catSeq.sort((a, b) => catRank(a) - catRank(b)).map(c => {
     const head = `<tr><td colspan="3" class="cat">${escapeHtml((c || '').toUpperCase())}</td></tr>`;

@@ -3527,7 +3527,7 @@ function renderTaskList() {
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : renderNomaadPipeline());
+    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline());
     attachNomaadHandlers();
     return;
   } else if (state.view === 'catering') {
@@ -9339,6 +9339,28 @@ function nomaadSelectOpts(list, cur) {
   else if (!cur) html = `<option value="" selected>— сонгох —</option>` + html;
   return html;
 }
+// Үндсэн багцын том хүний тоо (adults) — guests-ийн үнэн эх (хүүхэд тусад нь)
+function nomaadAdultQty(items) {
+  return (items || []).reduce((s, it) => {
+    if (/үндсэн багц/i.test(it.category || '') && /хүн/i.test(String(it.unit || '')) && !nomaadIsPersonLine(it)) return s + (Number(it.qty) || 0);
+    return s;
+  }, 0);
+}
+// Хадгалахын өмнөх хяналт — сануулгын жагсаалт (хатуу блок биш)
+function nomaadQuoteWarnings(fields, items, headGuests) {
+  const w = [];
+  if (!String(fields.camp || '').trim()) w.push('Кемп сонгоогүй');
+  if (!String(fields.tier || '').trim()) w.push('Багц сонгоогүй');
+  if (!(headGuests > 0)) w.push('Хүний тоо 0');
+  if (!(items || []).some(it => /үндсэн багц/i.test(it.category || ''))) w.push('Үндсэн багцын мөр алга — бүх дүн нэмэлт болж тайланд буруу орно');
+  const grand = (items || []).reduce((s, it) => s + (it.included ? 0 : (Number(it.total) || 0)), 0);
+  if (grand > 0 && headGuests > 0) {
+    const per = grand / headGuests;
+    if (per < 50000) w.push(`1 хүнд ${Math.round(per).toLocaleString('en-US')}₮ — хэт бага (үнэ/хүн дутуу байж магадгүй)`);
+    else if (per > 900000) w.push(`1 хүнд ${Math.round(per).toLocaleString('en-US')}₮ — хэт өндөр (илүү мөр орсон байж магадгүй)`);
+  }
+  return w;
+}
 // Захиалгад холбогдсон ЗАРДЛЫН нийлбэр (⟦LNK⟧ объект холбоос, Дууссан хүсэлтүүд).
 // type='nomaad' бол id=quote_no, type='order' бол id=app_orders.id.
 function linkedExpenseSum(type, id) {
@@ -9512,12 +9534,48 @@ function nomaadIsCancelled(o) {
   const s = String(o.status || '').toLowerCase();
   return s.includes('больсон') || s.includes('цуцл');
 }
+// 🧹 Цэгцлэх — засах шаардлагатай захиалгыг нэг дороос (CEO)
+function nomaadCleanupRows() {
+  const VAGUE = new Set(['', 'тодорхойгүй', 'нэмэлт', 'нэмэлт үйлчилгээ']);
+  const rows = [];
+  (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o)).forEach(o => {
+    const issues = [];
+    const camp = String(o.camp || '').trim(), tier = String(o.tier || '').trim();
+    if (!NOMAAD_CAMPS.includes(camp)) issues.push(camp ? `Кемп «${camp}»` : 'Кемп хоосон');
+    if (!NOMAAD_TIERS.includes(tier)) issues.push(tier ? `Багц «${tier}»` : 'Багц хоосон');
+    if (nomaadHeadcount(o) <= 0) issues.push('Хүн 0');
+    if (!(o.items || []).some(it => /үндсэн багц/i.test(it.category || ''))) issues.push('Үндсэн багц алга');
+    const vague = (o.items || []).filter(it => !it.included && !/үндсэн багц/i.test(it.category || '') && !nomaadIsPersonLine(it) && VAGUE.has(String(it.category || '').trim().toLowerCase()) && (Number(it.total) || 0) > 0).length;
+    if (vague) issues.push(`Ангилаагүй нэмэлт: ${vague}`);
+    if (issues.length) rows.push({ o, issues });
+  });
+  return rows.sort((a, b) => b.issues.length - a.issues.length);
+}
+function renderNomaadCleanup() {
+  if (!state.nomaadOrders) { setTimeout(loadNomaadOrders, 0); return '<div style="padding:40px;text-align:center;color:var(--muted);">Ачаалж байна…</div>'; }
+  const rows = nomaadCleanupRows();
+  const total = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o)).length;
+  if (!rows.length) return `<div style="padding:36px 16px;text-align:center;"><div style="font-size:34px;">✅</div><div style="font-weight:700;margin-top:8px;">Бүх захиалга цэгцтэй</div><div style="font-size:12px;color:var(--muted);margin-top:4px;">${total} идэвхтэй захиалга — засах зүйл алга</div></div>`;
+  const body = rows.map(({ o, issues }) => `<div data-cleanup-open="${escapeHtml(o.quote_no || '')}" style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:9px;cursor:pointer;background:var(--panel);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+        <div style="font-weight:700;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.company || o.quote_no || '—')}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;">#${escapeHtml(o.quote_no || '')} · ${escapeHtml(String(o.date_start || '').slice(0, 10))}</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;">${issues.map(i => `<span style="font-size:11px;background:var(--warn-soft,#fef3e2);color:var(--warn,#b45309);border-radius:6px;padding:2px 8px;">⚠ ${escapeHtml(i)}</span>`).join('')}</div>
+    </div>`).join('');
+  return `<div style="padding:2px;">
+    <div style="font-weight:800;font-size:15px;">🧹 Цэгцлэх — ${rows.length} захиалга</div>
+    <div style="font-size:11.5px;color:var(--muted);margin:2px 0 14px;">Кемп/Багц стандарт бус, хүн 0, үндсэн багц алга, ангилаагүй нэмэлттэй. Дарж нээгээд зас.</div>
+    ${body}</div>`;
+}
 function renderNomaadToggle() {
+  const clN = state.nomaadOrders ? nomaadCleanupRows().length : 0;
   return `<div class="na-topbar">
     <div class="na-viewtoggle">
       <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Захиалга</button>
       <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
       <button class="na-vt${nomaadViewMode === 'analytics' ? ' active' : ''}" data-na-view="analytics">📈 Аналитик</button>
+      ${state.isCEO ? `<button class="na-vt${nomaadViewMode === 'cleanup' ? ' active' : ''}" data-na-view="cleanup">🧹 Цэгцлэх${clN ? ` <span style="background:var(--warn,#d97706);color:#fff;border-radius:9px;padding:0 6px;font-size:10px;">${clN}</span>` : ''}</button>` : ''}
     </div>
     <button class="btn btn-primary na-newbtn" data-na-new>+ Шинэ үнийн санал</button>
   </div>`;
@@ -10011,6 +10069,7 @@ function renderNomaadCalendar() {
 
 function attachNomaadHandlers() {
   if (nomaadViewMode === 'analytics') attachNomaadAnalytics();
+  if (nomaadViewMode === 'cleanup') document.querySelectorAll('[data-cleanup-open]').forEach(r => r.onclick = () => openNomaadEditModal(r.dataset.cleanupOpen));
   document.querySelectorAll('[data-nomaad-toggle]').forEach(h => {
     h.addEventListener('click', (e) => {
       if (e.target.closest('button, a')) return;
@@ -10380,6 +10439,13 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
     date_start: startVal ? fmtDT(startVal) : (o.date_start || ''),
     date_end: endVal ? fmtDT(endVal) : (o.date_end || ''),
   };
+  // #1 Хүн ↔ багц тэнцүүлэх: үндсэн багцын том хүний мөр байвал guests-ийг түүгээр
+  const adultQty = nomaadAdultQty(items);
+  if (adultQty > 0) guests = adultQty;
+  const headGuests = guests + nomaadChildCount({ items });
+  // #2 Хадгалахын өмнөх хяналт (сануулга — блок биш)
+  const warns = nomaadQuoteWarnings(fields, items, headGuests);
+  if (warns.length && !(await showConfirm('⚠ Анхаарах:\n\n• ' + warns.join('\n• ') + '\n\nИйм байдлаар хадгалах уу?'))) { btn.disabled = false; return; }
   const body = {
     action: 'update_quote', quote_no: o.quote_no,
     ...fields, guests, grand_total: grand, deposit,
@@ -10703,15 +10769,20 @@ async function saveNomaadCreate(quoteNo, items, modal, btn) {
   items.forEach((it, idx) => { it.row_num = idx + 1; it.total = it.included ? 0 : (Number(it.unit_price) || 0) * (Number(it.qty) || 0); });
   const grand = items.reduce((s, it) => s + (it.included ? 0 : it.total), 0);
   const fmtDT = v => v ? String(v).replace('T', ' ') : '';
+  const camp = modal.querySelector('#nc-camp').value;
+  const tier = modal.querySelector('#nc-tier').value.trim();
+  let guests = Number(modal.querySelector('#nc-guests').value) || 0;
+  const adultQty = nomaadAdultQty(items); if (adultQty > 0) guests = adultQty;   // #1 хүн ↔ багц
+  const headGuests = guests + nomaadChildCount({ items });
+  const warns = nomaadQuoteWarnings({ camp, tier }, items, headGuests);          // #2 хяналт
+  if (warns.length && !(await showConfirm('⚠ Анхаарах:\n\n• ' + warns.join('\n• ') + '\n\nИйм байдлаар хадгалах уу?'))) { btn.disabled = false; return; }
   const body = {
     action: 'create_quote', quote_no: quoteNo, company,
     reg_no: modal.querySelector('#nc-reg').value.trim(),
     contact: modal.querySelector('#nc-contact').value.trim(),
     phone: modal.querySelector('#nc-phone').value.trim(),
     email: modal.querySelector('#nc-email').value.trim(),
-    camp: modal.querySelector('#nc-camp').value,
-    tier: modal.querySelector('#nc-tier').value.trim(),
-    guests: Number(modal.querySelector('#nc-guests').value) || 0,
+    camp, tier, guests,
     date_start: fmtDT(modal.querySelector('#nc-start').value),
     date_end: fmtDT(modal.querySelector('#nc-end').value),
     grand_total: grand, deposit: Math.round(grand * 0.3), status: 'ШИНЭ',

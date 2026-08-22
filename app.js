@@ -4546,6 +4546,10 @@ function _cardOwners() { if (!state.cardOwners) { try { state.cardOwners = JSON.
 function setCardOwner(acct, ownerKey) { if (!acct) return; const o = _cardOwners(); o[acct] = ownerKey; try { localStorage.setItem('cardOwners', JSON.stringify(o)); } catch (_) {} }
 function _cardBranch() { if (!state.cardBranch) { try { state.cardBranch = JSON.parse(localStorage.getItem('cardBranch') || '{}'); } catch (_) { state.cardBranch = {}; } } return state.cardBranch; }
 function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o[acct] = br; try { localStorage.setItem('cardBranch', JSON.stringify(o)); } catch (_) {} }
+// Хүлээн авагч ДАНС → эзэн (шилжүүлгийг эзэнд хуваарилах суралцлага, локал) — картын эзэнтэй адил, дараагийн импортод авто
+function _acctOwnerLearn() { if (!state.acctOwnerLearn) { try { state.acctOwnerLearn = JSON.parse(localStorage.getItem('acctOwnerLearn') || '{}'); } catch (_) { state.acctOwnerLearn = {}; } } return state.acctOwnerLearn; }
+function acctOwnerOf(digits) { return digits ? (_acctOwnerLearn()[digits] || '') : ''; }
+function learnAcctOwner(digits, ownerKey) { if (!digits || !ownerKey) return; const o = _acctOwnerLearn(); o[digits] = ownerKey; try { localStorage.setItem('acctOwnerLearn', JSON.stringify(o)); } catch (_) {} }
 // Зардлын салбар = 3 үйл ажиллагааны салбар + Чимун ХХК (толгой — хөрөнгө оруулалт, удирдлагын
 // түвшний зардал). Захиргаа катч-олл хасагдсан. Хөрөнгө (6000) авто Чимун ХХК-д орно.
 const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']];
@@ -4662,7 +4666,7 @@ async function openStatementClassifyModal() {
     acctsEl.querySelectorAll('[data-sc-br]').forEach(sel => sel.onchange = () => { const k = sel.dataset.scBr; setCardBranch(k, sel.value); if (k.startsWith('c:')) persistCard(k.slice(2)); render(); });
   };
   // Мөр бүрийн ангилах эзэн: цалин→ажилтан, эс бол эх сурвалжийн эзэн (карт/данс), эс бол CEO
-  const routeOwnerOf = (r) => r.salaryEmp ? r.salaryEmp : (ownerOf(srcKeyOf(r)) || state.me);
+  const routeOwnerOf = (r) => r.salaryEmp ? r.salaryEmp : (ownerOf(srcKeyOf(r)) || (!r.cardL4 && acctOwnerOf(_acctDigits(r.account))) || state.me);
   const render = () => {
     const live = rows.filter(r => !r.done);
     const nCardOwn = live.filter(r => r.cardL4 && ownerOf(srcKeyOf(r))).length;
@@ -4839,6 +4843,9 @@ function renderMyExpenses() {
   const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', expRecAcct(r)) || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
   // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/ТУХАЙН ЭЗНИЙ салбараас таамаг (CEO-гийн биш).
   const brGuessOf = (r) => guessBranchForRecord(r, pendCardOwner(r) || me);
+  // Эзэн сонгогч (CEO шилжүүлгийг жинхэнэ эзэнд хуваарилахад)
+  const _mxStaff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const ownerOpts = (sel) => `<option value="">— эзэнгүй (та) —</option>` + _mxStaff.map(m => { const k = personKey(m); return `<option value="${escapeHtml(k)}"${k === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`; }).join('');
   // ── Гүйлгээ бүрийн метадата (шүүлт + дэлгэрэнгүйд) ──
   const mxMeta = (r) => {
     const t = parseCardToken(r.justification); const l4 = t ? t.last4 : '';
@@ -4915,6 +4922,7 @@ function renderMyExpenses() {
         <select data-mx-branch style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${brOpts(brGuess)}</select>
         <input data-mx-note placeholder="Зарцуулалт (юунд? — сонголт)" style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">
       </div>
+      ${seeAll && !l4 ? `<div style="margin-bottom:9px;"><div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">👤 Хэний зарцуулалт (шилжүүлгийн эзэн)</div><select data-mx-owner style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;background:var(--panel);color:var(--text);">${ownerOpts((t && t.ownerKey && t.ownerKey !== me) ? t.ownerKey : acctOwnerOf(_acctDigits(cpAcct)))}</select></div>` : ''}
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">${isGuess ? `<span style="font-size:11px;color:var(--accent,#7c3aed);font-weight:600;">🔮 Таамаг${(() => { const n = clfCount(r, gSub); return n ? ` · ${n} удаа ийм ангилсан` : ''; })()} — зөв бол «Батлах»</span>` : '<span></span>'}<button class="btn btn-primary btn-sm" data-mx-save>${isGuess ? 'Батлах' : 'Ангилах'}</button></div>
     </div>`; };
   return `<div style="max-width:640px;margin:0 auto;padding:4px 2px 40px;">
@@ -4941,8 +4949,9 @@ function attachMyExpensesHandlers() {
       const br = brSel.value;
       if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу (M-Event / NOMAAD / Катеринг)', 'warn', 3000); return; }
       const note = cardEl.querySelector('[data-mx-note]').value.trim();
+      const ownerSel = cardEl.querySelector('[data-mx-owner]');   // шилжүүлгийн эзэн (CEO хуваарилна)
       const btn = cardEl.querySelector('[data-mx-save]'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
-      await classifyMyCardExpense(cardEl.dataset.fr, sub, br, note);
+      await classifyMyCardExpense(cardEl.dataset.fr, sub, br, note, ownerSel ? { owner: ownerSel.value } : {});
     };
   });
   document.getElementById('mx-confirm-all')?.addEventListener('click', confirmAllGuessedExpenses);
@@ -4975,7 +4984,7 @@ async function confirmAllGuessedExpenses() {
   if (!(await showConfirm(`${items.length} зардлыг таамгаар нь батлах уу?\nБуруу ангилагдсаныг дараа засаж болно.`, { okText: 'Бүгдийг батлах' }))) return;
   showToast('Батлаж байна…', 'info', 1500);
   let n = 0;
-  for (const { r, sub, br } of items) { try { await classifyMyCardExpense(r.id, sub, br, '', { silent: true }); n++; } catch (e) {} if (n % 10 === 0) showToast(`${n}/${items.length}…`, 'info', 700); }
+  for (const { r, sub, br } of items) { const _tk = parseCardToken(r.justification); const _lo = (!_tk || !_tk.last4) ? acctOwnerOf(expRecAcct(r)) : ''; try { await classifyMyCardExpense(r.id, sub, br, '', _lo ? { silent: true, owner: _lo } : { silent: true }); n++; } catch (e) {} if (n % 10 === 0) showToast(`${n}/${items.length}…`, 'info', 700); }
   showToast(`${n} зардал батлагдлаа ✓`, 'success', 2800);
   render();
 }
@@ -4992,8 +5001,11 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   saveAcctLearn(expRecAcct(r), { cat: subCode, branch: isAssetCat(subCode) ? '' : brCode });   // ДАНС-суурьтай (ижил данс руу шилжүүлэхэд)
   const base = stripCardToken(r.justification);
   const noteTag = note ? ` · зарцуулалт: ${note}` : '';
-  // ЭЗЭН хадгалагдана — CEO бусдын зардлыг батлахад эзэн нь өөрчлөгдөхгүй (эх токены ownerKey).
-  r.justification = `${base}${noteTag} ${encodeCardToken(tok ? tok.last4 : '', (tok && tok.ownerKey) || state.me, false)}`.trim();
+  // ЭЗЭН: CEO гараар өөрчилбол (opts.owner) түүнийг, эс бол эх токены эзнийг хадгална.
+  const _l4 = tok ? tok.last4 : '';
+  const ownerKey = (opts.owner !== undefined && opts.owner !== '') ? opts.owner : ((tok && tok.ownerKey) || state.me);
+  if (opts.owner !== undefined && !_l4) learnAcctOwner(expRecAcct(r), opts.owner);   // шилжүүлэг: хүлээн авагч данс→эзэн сурч дараагийн импортод авто
+  r.justification = `${base}${noteTag} ${encodeCardToken(_l4, ownerKey, false)}`.trim();
   try { await saveFinanceRequest(r); if (!opts.silent) showToast('Батлагдлаа ✓', 'success', 1600); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
   if (!opts.silent) render();
 }
@@ -5015,7 +5027,11 @@ function openExpenseModal(id) {
   const curMain = mainOfSub(curSub);
   const curBr = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : '';
   const brOpts = (sel) => `<option value="">— салбар —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
-  const canEdit = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()) || (t && t.ownerKey === state.me);
+  const seeAllFin = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance());
+  const canEdit = seeAllFin || (t && t.ownerKey === state.me);
+  const _exStaff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((a, b) => (b.level || 0) - (a.level || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+  const exOwnerOpts = (sel) => `<option value="">— эзэнгүй (та) —</option>` + _exStaff.map(m => { const k = personKey(m); return `<option value="${escapeHtml(k)}"${k === sel ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`; }).join('');
+  const curOwner = (t && t.ownerKey && t.ownerKey !== state.me) ? t.ownerKey : acctOwnerOf(_acctDigits(acct));
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:420px;">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
@@ -5032,6 +5048,7 @@ function openExpenseModal(id) {
     </div>
     <label class="fld">Салбар</label>
     <select id="ex-branch">${brOpts(curBr)}</select>
+    ${seeAllFin && !l4 ? `<label class="fld">👤 Эзэн <span style="font-weight:400;color:var(--muted);font-size:11px;">(хэний зарцуулалт — шилжүүлэг)</span></label><select id="ex-owner">${exOwnerOpts(curOwner)}</select>` : ''}
     <label class="fld">Аль сарын зардал <span style="font-weight:400;color:var(--muted);font-size:11px;">(гүйцэтгэлийн сар)</span></label>
     <select id="ex-accr">${accrualMonthOptions(parseAccrualToken(r.justification) || finAccrualAuto(r.category, r.requested_at))}</select>
     <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:18px;">
@@ -5055,7 +5072,11 @@ function openExpenseModal(id) {
       const br = brSel.value; if (!br && !isAssetCat(sub)) { showToast('Салбар сонгоно уу', 'warn', 3000); return; }
       const btn = modal.querySelector('#ex-save'); btn.disabled = true; btn.textContent = 'Хадгалж байна…';
       r.category = sub; r.dept_branch = isAssetCat(sub) ? 'ХХК' : br;
-      if (t) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(t.last4, t.ownerKey || state.me, false)}`.trim(); }
+      const ownerEl = modal.querySelector('#ex-owner');   // шилжүүлгийн эзэн (CEO хуваарилна)
+      const _l4t = t ? t.last4 : '';
+      const newOwner = ownerEl ? (ownerEl.value || state.me) : ((t && t.ownerKey) || state.me);
+      if (t || ownerEl) { const base = stripCardToken(r.justification); r.justification = `${base} ${encodeCardToken(_l4t, newOwner, false)}`.trim(); }
+      if (ownerEl && ownerEl.value) learnAcctOwner(expRecAcct(r), ownerEl.value);   // хүлээн авагч данс→эзэн сурч дараагийн импортод авто
       // Гүйцэтгэлийн сар: сонгосон нь ухаалаг default-аас өөр бол л токен хадгална (цэвэр байлгах)
       const accChosen = modal.querySelector('#ex-accr').value;
       r.justification = stripAccrualToken(r.justification);

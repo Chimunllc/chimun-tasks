@@ -10415,6 +10415,9 @@ function nomaadTypeOptions(cur) {
   cur = (cur || '').trim();
   let known = false;
   let html = cur ? '' : '<option value="" selected>— үйлчилгээний төрөл —</option>';
+  // Буруу орсон багцыг "нэмэлт биш" болгож цэгцлэх (нэмэлт үйлчилгээний тооноос хасна)
+  const isBaseCur = /үндсэн багц/i.test(cur); if (isBaseCur) known = true;
+  html += `<option value="Үндсэн багц"${isBaseCur ? ' selected' : ''}>📦 Үндсэн багц / хоног (нэмэлт БИШ)</option>`;
   html += nomaadAddonGroups().map(g => `<optgroup label="${escapeHtml(g.src)}">` +
     g.items.map(t => { const s = t === cur; if (s) known = true; return `<option${s ? ' selected' : ''}>${escapeHtml(t)}</option>`; }).join('') + `</optgroup>`).join('');
   if (cur && !known) html = `<option selected>${escapeHtml(cur)}</option>` + html;   // хуучин/өөр утга — хадгална

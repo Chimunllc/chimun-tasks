@@ -4363,6 +4363,7 @@ function guessBranch(memo, ownerKey) {
 function guessBranchForRecord(r, ownerKey) {
   const stored = STMT_BRANCHES.some(([c]) => c === r.dept_branch) ? r.dept_branch : '';
   if (stored && stored !== 'ХХК') return stored;
+  const al = acctLearnOf(expRecAcct(r)); if (al && al.branch) return al.branch;   // ДАНС-суурьтай суралцлага
   const kw = guessBranch(r.purpose || r.beneficiary || '', ownerKey);
   return kw || stored;
 }
@@ -4397,6 +4398,21 @@ async function saveExpenseLearn(memo, val) {
   if (branch === (cur.branch || '') && cat === (cur.cat || '')) return;   // өөрчлөлтгүй бол алгасна
   await _postExpenseLearn(key, branch, cat);
 }
+// ── ДАНС-суурьтай суралцлага (шилжүүлэг: утга эмх замбараагүй ч ДАНС тогтвортой) ──
+// Ижил данс руу шилжүүлсэн гүйлгээг өмнө хэрхэн ангилсныг (ангилал+салбар) санаж автомат таамаглана.
+// expense_learn хүснэгтийг 'данс:<цифр>' түлхүүрээр дахин ашиглана — шинэ backend/хүснэгт хэрэггүй.
+function _acctDigits(a) { const d = String(a || '').replace(/\D/g, ''); return d.length >= 4 ? d : ''; }
+function expRecAcct(r) { const m = String((r && r.justification) || '').match(/данс\s+([0-9A-Za-zМмNn]{3,})/); return _acctDigits(m ? m[1] : (r && r.account_number) || ''); }
+function acctLearnKey(digits) { return digits ? ('данс:' + digits) : ''; }
+function acctLearnOf(digits) { const k = acctLearnKey(digits); return k ? (_expLearn()[k] || null) : null; }
+async function saveAcctLearn(digits, val) {
+  const k = acctLearnKey(digits); if (!k) return;
+  const cur = _expLearn()[k] || {};
+  const branch = (val && val.branch && STMT_BRANCHES.some(([c]) => c === val.branch)) ? val.branch : (cur.branch || '');
+  const cat = (val && val.cat) || cur.cat || '';
+  if (branch === (cur.branch || '') && cat === (cur.cat || '')) return;
+  await _postExpenseLearn(k, branch, cat);
+}
 // Түүхээс суралцах — ангилсан бүртгэлүүдээс худалдагч→ангилал+салбар (олонхийн санал, ≥2 давтагдсан) → expense_learn.
 async function seedLearnFromHistory() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
@@ -4404,13 +4420,12 @@ async function seedLearnFromHistory() {
   const recs = (state.financeRequests || []).filter(r => r.status !== 'deleted' && r.category && r.category !== CARD_PEND_CAT && !String(r.category).startsWith('6'));
   if (!recs.length) { showToast('Ангилсан бүртгэл алга', 'warn', 2500); return; }
   const tally = {};
+  const bump = (k, cat, br) => { tally[k] = tally[k] || { cat: {}, br: {}, n: 0 }; tally[k].n++; if (cat) tally[k].cat[cat] = (tally[k].cat[cat] || 0) + 1; if (br) tally[k].br[br] = (tally[k].br[br] || 0) + 1; };
   recs.forEach(r => {
-    const k = merchantKey(r.purpose || r.beneficiary || ''); if (!k || k.length < 3) return;
     const cat = (String(r.category).match(/\d{4}/) || [''])[0];
     const br = VALID.has(r.dept_branch) ? r.dept_branch : '';
-    tally[k] = tally[k] || { cat: {}, br: {}, n: 0 }; tally[k].n++;
-    if (cat) tally[k].cat[cat] = (tally[k].cat[cat] || 0) + 1;
-    if (br) tally[k].br[br] = (tally[k].br[br] || 0) + 1;
+    const k = merchantKey(r.purpose || r.beneficiary || ''); if (k && k.length >= 3) bump(k, cat, br);   // худалдагч (утга)
+    const ad = expRecAcct(r); if (ad) bump('данс:' + ad, cat, br);                                        // ДАНС (шилжүүлэг)
   });
   const top = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1]); return e[0] || null; };
   showToast('Түүхээс суралцаж байна…', 'info', 1500);
@@ -4423,12 +4438,13 @@ async function seedLearnFromHistory() {
     if (cat || br) { await _postExpenseLearn(k, br, cat); n++; }
   }
   await loadExpenseLearn();   // шинэ суралцлагыг буцааж ачаалж таамаглалд тусгана
-  showToast(n ? `${n} худалдагчаас суралцлаа ✓ — дараа автомат таамаглана` : 'Шинээр суралцах давтагдсан худалдагч алга', n ? 'success' : 'warn', 3600);
+  showToast(n ? `${n} хэвшмэл (данс/худалдагч) суралцлаа ✓ — дараа автомат таамаглана` : 'Шинээр суралцах давтагдсан данс/худалдагч алга', n ? 'success' : 'warn', 3600);
   if (typeof render === 'function') render();
 }
 function classifyExpense(memo, account) {
   const rule = EXPENSE_RULES.find(([re]) => re.test(memo || ''));
   if (rule) return rule[1];
+  const al = acctLearnOf(_acctDigits(account)); if (al && al.cat) return al.cat;   // ДАНС-суурьтай суралцлага (шилжүүлэгт хүчтэй)
   const learn = _acctCatLearn(); if (account && learn[account]) return learn[account];
   const mk = merchantKey(memo);
   if (mk && mk.length >= 3) {
@@ -4699,7 +4715,8 @@ async function openStatementClassifyModal() {
       const routeOwner = routeOwnerOf(r);
       // Салбарын таамаг: картын салбар → эзний салбар/утгын таамаг (ЗӨВХӨН 3 салбар). Эзэн Миний зардалд баталгаажуулна.
       const brOwn = branchOf(srcKeyOf(r)); const brValid = STMT_BRANCHES.some(([c]) => c === brOwn);
-      const brCode = (brValid ? brOwn : '') || guessBranch(r.memo, routeOwner) || '';
+      const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
+      const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
       const cat = r.cat || CARD_PEND_CAT;   // авто таамаг байвал урьдчилан сонгогдоно, гэхдээ эзэн баталгаажуулна
       state._finBackfill = { date: r.date };
       const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
@@ -4729,7 +4746,7 @@ function renderMyExpenses() {
   const brOpts = (sel) => `<option value="">— салбар сонго —</option>` + STMT_BRANCHES.map(([c, n]) => `<option value="${c}"${c === sel ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
   // Гүйлгээний утгаас таамаглах: аль хэдийн ангилал байвал түүнийг, эс бол утгаас таамаглана.
   // Шинэ дүрэм/сурлагаар ДАХИН таамаглана (хуучин хадгалсан ангилалыг шинэчилнэ — жиш барьцаа 5800→5810).
-  const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
+  const guessOf = (r) => classifyExpense(r.purpose || r.beneficiary || '', expRecAcct(r)) || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
   // Салбар таамаглах: хадгалсан салбар (3-ын нэг) эсвэл утга/ТУХАЙН ЭЗНИЙ салбараас таамаг (CEO-гийн биш).
   const brGuessOf = (r) => guessBranchForRecord(r, pendCardOwner(r) || me);
   // ── Гүйлгээ бүрийн метадата (шүүлт + дэлгэрэнгүйд) ──
@@ -4857,7 +4874,7 @@ async function confirmAllGuessedExpenses() {
   const items = base.filter(r => ids.has(r.id)).map(r => {
     const own = pendCardOwner(r) || me;
     // guessOf-той адил: эхлээд утгаас ДАХИН таамаг (барьцаа 5800→5810 гэх мэт шинэчилнэ), эс бол хадгалсан.
-    const sub = classifyExpense(r.purpose || r.beneficiary || '', '') || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
+    const sub = classifyExpense(r.purpose || r.beneficiary || '', expRecAcct(r)) || ((r.category && r.category !== CARD_PEND_CAT) ? r.category : '');
     const br = guessBranchForRecord(r, own);
     return { r, sub, br };
   }).filter(x => x.sub && (x.br || isAssetCat(x.sub)));   // ангилал + (салбар эсвэл хөрөнгө)
@@ -4879,6 +4896,7 @@ async function classifyMyCardExpense(id, subCode, brCode, note, opts = {}) {
   learnMemoCat(_memo, subCode);                                     // локал: худалдагч→ангилал
   if (brCode && !isAssetCat(subCode)) learnMemoBranch(_memo, brCode);   // локал: худалдагч→салбар
   saveExpenseLearn(_memo, { cat: subCode, branch: isAssetCat(subCode) ? '' : brCode });   // ХУВААЛЦСАН (бүх компанид)
+  saveAcctLearn(expRecAcct(r), { cat: subCode, branch: isAssetCat(subCode) ? '' : brCode });   // ДАНС-суурьтай (ижил данс руу шилжүүлэхэд)
   const base = stripCardToken(r.justification);
   const noteTag = note ? ` · зарцуулалт: ${note}` : '';
   // ЭЗЭН хадгалагдана — CEO бусдын зардлыг батлахад эзэн нь өөрчлөгдөхгүй (эх токены ownerKey).
@@ -4947,6 +4965,7 @@ function openExpenseModal(id) {
       r.justification = stripAccrualToken(r.justification);
       if (accChosen && accChosen !== finAccrualAuto(r.category, r.requested_at)) r.justification = `${r.justification} ⟦ACCR|${accChosen}⟧`.trim();
       saveExpenseLearn(r.purpose || r.beneficiary || '', { cat: sub, branch: isAssetCat(sub) ? '' : br });
+      saveAcctLearn(expRecAcct(r), { cat: sub, branch: isAssetCat(sub) ? '' : br });   // ДАНС-суурьтай суралцлага
       try { await saveFinanceRequest(r); showToast('Хадгаллаа ✓', 'success', 1800); } catch (e) { showToast('Хадгалах алдаа', 'error', 3000); }
       close(); render();
     };

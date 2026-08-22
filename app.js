@@ -15184,6 +15184,29 @@ function renderFinanceReport(wrap) {
     wrap.appendChild(panel);
   })();
 
+  // ── 👤 Карт/шилжүүлгийн зарцуулалт ЭЗЭМШИГЧЭЭР (карт токентой зардал; эзний зээл 6900 хасна) ──
+  (() => {
+    const byOwner = {}; let totCard = 0, totTr = 0;
+    monthList.forEach(t => {
+      const tok = parseCardToken(t.justification); if (!tok) return;
+      if (String(t.category || '').startsWith('6900')) return;
+      const amt = Number(t.amount) || 0; const k = tok.ownerKey || '';
+      const o = byOwner[k] || (byOwner[k] = { card: 0, tr: 0 });
+      if (tok.last4) { o.card += amt; totCard += amt; } else { o.tr += amt; totTr += amt; }
+    });
+    const rows = Object.entries(byOwner).map(([k, v]) => [k, v.card, v.tr, v.card + v.tr]).sort((a, b) => b[3] - a[3]);
+    if (!rows.length) return;
+    const nmeK = state.me; const nm = (k) => k ? (k === nmeK ? 'Та' : (memberName(k) || 'Тодорхойгүй')) : 'Тодорхойгүй';
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:16px;';
+    const cell = (v) => v ? fmtMoney(v) : '<span style="color:var(--muted);">—</span>';
+    panel.innerHTML = `<div style="font-size:13px;font-weight:800;margin-bottom:3px;">👤 Карт/шилжүүлгийн зарцуулалт — эзэмшигчээр</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">Нийт: 💳 карт <b style="color:var(--text);">${fmtMoney(totCard)}</b> · 🏦 шилжүүлэг <b style="color:var(--text);">${fmtMoney(totTr)}</b></div>
+      <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:4px 10px;font-size:11px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding-bottom:4px;margin-bottom:4px;"><span>Эзэмшигч</span><span style="text-align:right;">💳 Карт</span><span style="text-align:right;">🏦 Шилж.</span><span style="text-align:right;">Нийт</span></div>
+      ${rows.map(([k, c, tr, tot]) => `<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:4px 10px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(nm(k))}</span><span style="text-align:right;">${cell(c)}</span><span style="text-align:right;">${cell(tr)}</span><span style="text-align:right;font-weight:700;">${fmtMoney(tot)}</span></div>`).join('')}`;
+    wrap.appendChild(panel);
+  })();
+
   // ── Ангилсан / Ангилаагүй (хуулга суурьтай) — хуучин хүсэлт/батлах/шилжүүлэх төлвүүд хасагдсан. ──
   const isUnclassified = (t) => { const tok = parseCardToken(t.justification || ''); return (tok && tok.pend) || String(t.category || '') === CARD_PEND_CAT || !String(t.category || '').trim(); };
   const stDefs = [

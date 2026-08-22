@@ -9707,12 +9707,12 @@ function renderNomaadAnalytics() {
     const os = filtered.filter(o => nomaadGuestBucket(o.guests) === b);
     return { k: b + ' хүн', count: os.length, sum: os.reduce((s, o) => s + nomaadEffTotal(o), 0) };
   }).filter(r => r.count);
-  // Нэмэлт үйлчилгээ — нэрээр
+  // Нэмэлт үйлчилгээ — СТАНДАРТ ТӨРЛӨӨР (чөлөөт нэрээр биш — тайлан зөв бүлэглэгдэнэ)
   const addonMap = {};
   filtered.forEach(o => (o.items || []).forEach(it => {
     if (it.included || /үндсэн багц/i.test(it.category || '')) return;
     const v = Number(it.total) || 0; if (v <= 0) return;
-    const k = (it.name || 'Бусад').trim();
+    const k = (it.category || '').trim() || 'Бусад нэмэлт';
     (addonMap[k] = addonMap[k] || { k, count: 0, sum: 0 }).count++; addonMap[k].sum += v;
   }));
   const byAddon = Object.values(addonMap).sort((a, b) => b.sum - a.sum).slice(0, 15);
@@ -9775,7 +9775,7 @@ function renderNomaadAnalytics() {
     ${barBlock('🏔 Кемп бүрээр', byCamp)}
     ${barBlock('👥 Хүний тооны бүлгээр', byBucket)}
     ${tiers.length ? barBlock('🎁 Багц бүрээр', byTier) : ''}
-    ${barBlock('✨ Нэмэлт үйлчилгээ (топ 15)', byAddon, 'багцаас гадуур')}
+    ${barBlock('✨ Нэмэлт үйлчилгээ (төрлөөр)', byAddon, 'багцаас гадуур')}
     ${barBlock('📅 Сар бүрээр', byMonth)}
   </div>`;
 }
@@ -10333,12 +10333,22 @@ function nextNomaadQuoteNo() {
   return 'NC-' + yr + '-' + String(max + 1).padStart(4, '0');
 }
 /* Нэг item-ийн карт (засварлах) — Үүсгэх ба Засах модалд хуваалцана */
+// Нэмэлт үйлчилгээний СТАНДАРТ төрлүүд (тайлан эдгээрээр бүлэглэнэ — чөлөөт нэрээр биш)
+const NOMAAD_ADDON_TYPES = ['Энтертайнмент', 'Гэрэл · дуу · тайз', 'Хоол, ресторан', 'Тээвэр', 'Спорт · тоглоом', 'Асар · майхан', 'Амралт', 'Бусад нэмэлт'];
+function nomaadTypeOptions(cur) {
+  cur = (cur || '').trim();
+  const list = NOMAAD_ADDON_TYPES.slice();
+  if (cur && !list.includes(cur)) list.unshift(cur);   // хуучин/өөр утга байвал хадгалж харуулна
+  return list.map(t => `<option${t === cur ? ' selected' : ''}>${escapeHtml(t)}</option>`).join('');
+}
 function nomaadItemCardHtml(it, i) {
   const amt = it.included ? 0 : (Number(it.total) || 0);
+  const isBase = /үндсэн багц/i.test(it.category || '');
   return `
     <div class="ne-row naq-item${it.included ? ' incl' : ''}" data-idx="${i}">
+      ${isBase ? '' : `<select class="ne-cat" title="Үйлчилгээний төрөл (тайлан үүгээр бүлэглэнэ)" style="width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text);font-size:13px;margin-bottom:7px;">${nomaadTypeOptions(it.category)}</select>`}
       <div class="naq-item-top">
-        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="Бараа / үйлчилгээний нэр" />
+        <input class="ne-name" value="${escapeHtml(it.name || '')}" placeholder="${isBase ? 'Багцын нэр' : 'Тайлбар (ж: DJ үйлчилгээ, LED дэлгэц)'}" />
         <button class="ne-rm naq-rm" title="Мөр устгах" aria-label="Мөр устгах">×</button>
       </div>
       <div class="naq-item-mid">
@@ -10433,6 +10443,10 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
     else if (e.target.classList.contains('ne-price')) { it.unit_price = moneyVal(e.target); recalc(it); row.querySelector('.ne-amt').textContent = fmtMoney(it.total); renderTotal(); }
   });
   itemsEl.addEventListener('change', (e) => {
+    if (e.target.classList.contains('ne-cat')) {
+      items[+e.target.closest('.ne-row').dataset.idx].category = e.target.value;
+      return;
+    }
     if (!e.target.classList.contains('ne-incl')) return;
     const it = items[+e.target.closest('.ne-row').dataset.idx];
     it.included = e.target.checked; recalc(it); renderItems();
@@ -10442,7 +10456,7 @@ function nomaadItemsBindings(modal, items, itemsSel, totalSel, addSel) {
     items.splice(+e.target.closest('.ne-row').dataset.idx, 1); renderItems();
   });
   modal.querySelector(addSel).addEventListener('click', () => {
-    items.push({ row_num: items.length + 1, category: 'Нэмэлт үйлчилгээ', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
+    items.push({ row_num: items.length + 1, category: 'Бусад нэмэлт', name: '', qty: 1, unit: 'ш', unit_price: 0, included: false, total: 0, note: '' });
     renderItems();
   });
   return { renderItems, recalc };
@@ -10633,7 +10647,7 @@ function nomaadContractHtml(o) {
   // Хавсралт №1 — "Үнийн санал харах"-тай ИЖИЛ бүрэн хүснэгт (ангилалаар, тоо/нэгж/үнэ/багцад)
   const grouped = {}, catSeq = [];
   items.forEach(it => { const c = it.category || 'Бусад'; if (!grouped[c]) { grouped[c] = []; catSeq.push(c); } grouped[c].push(it); });
-  const CAT_ORD = ['Үндсэн багц', 'Хоол, ресторан', 'Энтертайнмент', 'Амралт', 'Спорт', 'Ариун цэвэр', 'Кемп', 'Нэмэлт үйлчилгээ', 'Тээвэр'];
+  const CAT_ORD = ['Үндсэн багц', 'Хоол, ресторан', 'Энтертайнмент', 'Гэрэл · дуу · тайз', 'Спорт · тоглоом', 'Асар · майхан', 'Амралт', 'Тээвэр', 'Ариун цэвэр', 'Кемп', 'Бусад нэмэлт', 'Нэмэлт үйлчилгээ', 'Спорт'];
   const catRank = c => { const i = CAT_ORD.indexOf(c); return i < 0 ? 50 : i; };
   const svcRows = catSeq.sort((a, b) => catRank(a) - catRank(b)).map(c => {
     const head = `<tr><td colspan="3" class="cat">${escapeHtml((c || '').toUpperCase())}</td></tr>`;

@@ -14807,49 +14807,81 @@ function finSalaryMonth(month) {
   return { sum, n: who.size };
 }
 // Давхцсан авто (Цагийн цалин модул, HRLY_) бичлэг — хуулгаар баталгаажсантай ижил (нэр+дүн+огноо)
-function finDuplicateEntries() {
+// Тухайн сарын АВТО үүссэн цалин (Цагийн цалин модул, HRLY_), хуулгаар баталгаажаагүй.
+// Зардал зөвхөн банкны хуулгаар орох тул эдгээр авто бичлэг давхцал болно. Өмнөх сар хөндөхгүй
+// (хэрэглэгчийн шийдвэр 2026-08-22: зөвхөн идэвхтэй сар цэгцэлнэ, түүх хэвээр).
+function finDuplicateEntries(monthPrefix) {
+  const month = monthPrefix || new Date().toISOString().slice(0, 7);
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted');
-  const nn = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+  const norm = s => String(s || '').toUpperCase().replace(/[^А-ЯӨҮЁA-Z]/g, '');
   const wdate = r => (String(r.purpose || '').match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || String(r.due_date || '').slice(0, 10) || String(r.executed_at || '').slice(0, 10);
+  const wmon = r => { const w = wdate(r); return w ? w.slice(0, 7) : String(r.requested_at || '').slice(0, 7); };
   const isStmt = r => r.close_type === 'хуулгаар' || /хуулгаар/i.test(String(r.justification || ''));
   const isAuto = r => String(r.id || '').startsWith('HRLY_') || /эх үүсвэр: цагийн|өдрийн ажилтан/i.test(String(r.justification || ''));
-  const g = {};
-  rows.forEach(r => { const w = wdate(r); if (!w) return; (g[nn(r.beneficiary) + '|' + Math.round(Number(r.amount) || 0) + '|' + w] ||= []).push(r); });
-  const del = [];
-  Object.values(g).forEach(v => {
-    if (v.length < 2) return;
-    const stmts = v.filter(isStmt), autos = v.filter(r => isAuto(r) && !isStmt(r));
-    if (stmts.length && autos.length) del.push(...autos);              // хуулгатай давхцсан авто
-    else if (!stmts.length && autos.length > 1) del.push(...autos.slice(1)); // зөвхөн авто олон давхар
-  });
-  return del;
+  const nmeOf = r => { const p = String(r.purpose || '').split('·'); return (p[1] || '').trim() || r.beneficiary || ''; };
+  // Энэ сард хуулгаар орсон цалингийн нэрс (давхцлыг тэмдэглэхэд)
+  const stmtNames = new Set();
+  rows.forEach(r => { if (isStmt(r) && !String(r.id || '').startsWith('HRLY_') && wmon(r) === month) { const n = norm(nmeOf(r)); if (n) stmtNames.add(n); } });
+  const inStmt = n => { if (!n) return false; if (stmtNames.has(n)) return true; for (const s of stmtNames) { if (n.length >= 5 && (n.includes(s) || s.includes(n))) return true; } return false; };
+  return rows.filter(r => isAuto(r) && !isStmt(r) && wmon(r) === month)
+    .map(r => ({ r, dup: inStmt(norm(nmeOf(r))) }))
+    .sort((a, b) => (Number(b.r.amount) || 0) - (Number(a.r.amount) || 0));
 }
 async function openFinDupAudit() {
-  const dups = finDuplicateEntries();
+  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const items = finDuplicateEntries(month);   // [{r, dup}]
   document.getElementById('fin-dup-modal')?.remove();
   const m = document.createElement('div'); m.className = 'modal-bg'; m.id = 'fin-dup-modal';
-  const tot = dups.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const list = dups.slice().sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0)).map(r =>
-    `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:6px 8px;border-bottom:1px solid var(--border);"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.beneficiary || '')} <span style="color:var(--muted);">· ${escapeHtml(String(r.purpose || '').replace(/^Цагийн цалин · /, ''))}</span></span><b style="white-space:nowrap;">${fmtMoney(r.amount)}</b></div>`).join('');
-  m.innerHTML = `<div class="modal" style="max-width:460px;">
-    <h2 style="font-size:16px;">🔁 Давхцал аудит</h2>
-    <div style="font-size:12.5px;color:var(--muted);margin:6px 0 12px;">Хуулгаар баталгаажсантай давхцсан <b>авто (Цагийн цалин модул) бичлэгүүд</b>. Хуулгынх нь үлдэж, эдгээр давхардал устгагдана.</div>
-    ${dups.length ? `<div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:10px;">${list}</div>
-      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:10px;"><span>${dups.length} давхардал</span><span style="color:var(--danger);">${fmtMoney(tot)}</span></div>
-      <div style="display:flex;gap:10px;margin-top:16px;"><button id="fd-cancel" class="btn" style="flex:1;padding:11px;">Болих</button><button id="fd-del" class="btn" style="flex:1;padding:11px;background:var(--danger);color:#fff;border:none;font-weight:700;">Устгах</button></div>`
-      : `<div style="text-align:center;padding:24px;color:var(--muted);">✅ Давхцал алга — цэвэрхэн.</div><div style="text-align:center;margin-top:12px;"><button id="fd-cancel" class="btn">Хаах</button></div>`}
+  const row = (it, i) => {
+    const r = it.r;
+    const tag = it.dup
+      ? '<span style="font-size:10px;font-weight:700;color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent);padding:1px 6px;border-radius:6px;white-space:nowrap;">🟢 хуулгад бий</span>'
+      : '<span style="font-size:10px;font-weight:700;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);padding:1px 6px;border-radius:6px;white-space:nowrap;">🟡 хуулгад алга</span>';
+    return `<label style="display:flex;align-items:center;gap:9px;font-size:12px;padding:7px 9px;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" class="fd-chk" data-i="${i}" data-amt="${Number(r.amount) || 0}" checked style="width:16px;height:16px;flex:0 0 auto;">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(nmeShort(r))} <span style="color:var(--muted);">· ${escapeHtml(String(r.purpose || '').replace(/^Цагийн цалин · /, ''))}</span></span>
+      ${tag}<b style="white-space:nowrap;">${fmtMoney(r.amount)}</b></label>`;
+  };
+  function nmeShort(r) { const p = String(r.purpose || '').split('·'); return (p[1] || '').trim() || r.beneficiary || ''; }
+  const list = items.map(row).join('');
+  const nDup = items.filter(i => i.dup).length, nUn = items.length - nDup;
+  m.innerHTML = `<div class="modal" style="max-width:480px;">
+    <h2 style="font-size:16px;">🔁 Цалингийн давхцал аудит — ${month}</h2>
+    <div style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5;">Энэ сард <b>автоматаар үүссэн цалин</b> (Цагийн цалин модул), хуулгаар баталгаажаагүй. Зардлыг зөвхөн банкны хуулгаар бүртгэдэг тул эдгээр давхцана. Устгахыг сонго — <b>өмнөх сарууд хөндөгдөхгүй</b>.<br><span style="color:var(--ok);">🟢</span> = тухайн хүн энэ сард хуулгаар ч цалин авсан (баталгаатай давхцал). <span style="color:var(--warn);">🟡</span> = хуулгад алга — бэлнээр өгсөн бол шалгаад чагтыг ав.</div>
+    ${items.length ? `<div style="display:flex;gap:8px;margin-bottom:8px;"><button id="fd-all" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Бүгдийг сонгох</button><button id="fd-none" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Цэвэрлэх</button><button id="fd-dup" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Зөвхөн 🟢</button></div>
+      <div style="max-height:44vh;overflow:auto;border:1px solid var(--border);border-radius:10px;">${list}</div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:10px;"><span id="fd-cnt">${items.length} сонгосон (🟢${nDup} · 🟡${nUn})</span><span id="fd-sum" style="color:var(--danger);"></span></div>
+      <div style="display:flex;gap:10px;margin-top:16px;"><button id="fd-cancel" class="btn" style="flex:1;padding:11px;">Болих</button><button id="fd-del" class="btn" style="flex:1;padding:11px;background:var(--danger);color:#fff;border:none;font-weight:700;">Сонгосныг устгах</button></div>`
+      : `<div style="text-align:center;padding:24px;color:var(--muted);">✅ ${month}-д хуулгаар баталгаажаагүй авто цалин алга — цэвэрхэн.</div><div style="text-align:center;margin-top:12px;"><button id="fd-cancel" class="btn">Хаах</button></div>`}
   </div>`;
   document.body.appendChild(m);
   requestAnimationFrame(() => m.classList.add('open'));   // .modal-bg нээх class — эс бол үл үзэгдэнэ
   m.addEventListener('click', e => { if (e.target === m) m.remove(); });
   m.querySelector('#fd-cancel').onclick = () => m.remove();
+  const chks = () => [...m.querySelectorAll('.fd-chk')];
+  const refresh = () => {
+    const sel = chks().filter(c => c.checked);
+    const sum = sel.reduce((s, c) => s + (Number(c.dataset.amt) || 0), 0);
+    const nd = sel.filter(c => items[+c.dataset.i].dup).length;
+    const cnt = m.querySelector('#fd-cnt'), sm = m.querySelector('#fd-sum');
+    if (cnt) cnt.textContent = `${sel.length} сонгосон (🟢${nd} · 🟡${sel.length - nd})`;
+    if (sm) sm.textContent = fmtMoney(sum);
+  };
+  chks().forEach(c => c.addEventListener('change', refresh));
+  m.querySelector('#fd-all') && (m.querySelector('#fd-all').onclick = () => { chks().forEach(c => c.checked = true); refresh(); });
+  m.querySelector('#fd-none') && (m.querySelector('#fd-none').onclick = () => { chks().forEach(c => c.checked = false); refresh(); });
+  m.querySelector('#fd-dup') && (m.querySelector('#fd-dup').onclick = () => { chks().forEach(c => c.checked = items[+c.dataset.i].dup); refresh(); });
+  refresh();
   const del = m.querySelector('#fd-del');
   if (del) del.onclick = async () => {
-    if (!await showConfirm(`${dups.length} давхардсан бичлэг устгах уу? (хуулгаар баталгаажсан нь үлдэнэ)`, { okText: 'Тийм, устгах' })) return;
+    const sel = chks().filter(c => c.checked).map(c => items[+c.dataset.i].r);
+    if (!sel.length) { showToast('Бичлэг сонгоогүй байна', 'info', 1800); return; }
+    const sum = sel.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    if (!await showConfirm(`${sel.length} авто цалин бичлэг устгах уу? (${fmtMoney(sum)}) · ${month} · хуулгаар баталгаажсан бусад зардал үлдэнэ`, { okText: 'Тийм, устгах' })) return;
     del.disabled = true;
     let done = 0;
-    for (const r of dups) { r.status = 'deleted'; try { await saveFinanceRequest(r, true); done++; del.textContent = `${done}/${dups.length}…`; } catch (e) {} }
-    m.remove(); showToast(`${done} давхардал устгалаа`, 'success', 3000); render();
+    for (const r of sel) { r.status = 'deleted'; try { await saveFinanceRequest(r, true); done++; del.textContent = `${done}/${sel.length}…`; } catch (e) {} }
+    m.remove(); showToast(`${done} авто цалин давхцал устгалаа`, 'success', 3000); render();
   };
 }
 function financeTrend(wantBr) {

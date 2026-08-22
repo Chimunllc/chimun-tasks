@@ -4700,12 +4700,22 @@ async function openStatementClassifyModal() {
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
     const todo = rows.filter(r => !r.done);
     if (!todo.length) { showToast('Оруулах зардал алга', 'warn', 2500); return; }
-    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0;
+    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0;
     const force = isForce();
     const imp = importedFpSet();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
+    // fp → байгаа бүртгэл (дутуу нэр нөхөхөд)
+    const byFp = {}; (state.financeRequests || []).forEach(rq => { if (rq.status === 'deleted') return; const m = String(rq.justification || '').match(/\[#([^\]]+)\]/); if (m) byFp[m[1]] = rq; });
     for (const r of todo) {
       // Идэвхтэй санхүүгийн бүртгэл аль хэдийн байвал алгасна (устгасныг дахин оруулж болно).
-      if (!force && imp.has(r.fp)) { r.done = true; continue; }
+      if (!force && imp.has(r.fp)) {
+        // Зөв хуулгад нэр байвал дутуу эзэмшигчийн нэрийг нөхнө (beneficiary=дугаар байсныг)
+        const ex = byFp[r.fp];
+        if (ex && r.name && !/^[\d\s\-]+$/.test(r.name)) {
+          const b = String(ex.beneficiary || '').trim();
+          if (!b || /^[\d\s\-]+$/.test(b)) { ex.beneficiary = r.name; try { await saveFinanceRequest(ex); filled++; } catch (e) {} }
+        }
+        r.done = true; continue;
+      }
       // Баримтын ledger-т тэмдэглэнэ (best-effort, cross-device) — 'dup' буцаавч алгасахгүй.
       if (!force) { try { await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); } catch (e) {} }
       // ЦАГИЙН ажилтны цалин — "Цагийн цалин" хэсэгт ордог форматаар бүртгэнэ (эзэн ангилалд явуулахгүй).
@@ -4749,7 +4759,7 @@ async function openStatementClassifyModal() {
       r.done = true; n++;
       if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}`, 'success', 4000);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · 👤 ${filled} нэр нөхлөө` : ''}`, 'success', 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');

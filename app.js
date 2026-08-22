@@ -4532,13 +4532,20 @@ function allPendingCardExpenses() {
 function pendCardOwner(r) { const t = parseCardToken(r && r.justification); return t ? t.ownerKey : ''; }
 function iOwnACard(meKey) { return (state.bankCards || []).some(c => c.active !== false && c.owner_key === meKey); }
 function detectStatementAccount(matrix) {
-  for (let i = 0; i < Math.min(4, matrix.length); i++) {
+  // IBAN (MN+2+4банк+данс) → дансны дугаар (сүүл 10 орон). Хаан/Голомт хоёр форматыг тэвчинэ.
+  const acctFromIban = (s) => { const m = String(s).replace(/\s+/g, '').match(/mn\d{2}(\d{4})(\d{6,})/i); if (!m) return ''; const a = m[2]; return a.length > 10 ? a.slice(-10) : a; };
+  for (let i = 0; i < Math.min(6, matrix.length); i++) {
     const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
     for (let j = 0; j < cells.length; j++) {
       const c = cells[j];
-      const ib = c.match(/iban[:\s]*mn\d{2}(\d{4})(\d{6,})/i);
-      if (ib) { const a = ib[2]; return a.length > 10 ? a.slice(-10) : a; }
-      if (/дансны дугаар|данс\s*:/i.test(c)) { const m = c.match(/\d{6,}/) || String(cells[j + 1] || '').match(/\d{6,}/); if (m) return m[0]; }
+      // ① Бүтэн IBAN аль ч нүдэнд (сул зайтай ч болно) — 'IBAN:' шошго ТУСДАА нүдэнд байсан ч (Хаан формат)
+      if (/mn\s*\d[\d\s]{15,}/i.test(c)) { const a = acctFromIban(c); if (a) return a; }
+      // ② 'IBAN:'/'данс' шошго → тухайн + дараагийн нүднүүдээс уншина
+      if (/iban|дансны дугаар|данс\s*:/i.test(c)) {
+        const near = (c + ' ' + String(cells[j + 1] || '') + ' ' + String(cells[j + 2] || ''));
+        const a = acctFromIban(near); if (a) return a;
+        const m = near.replace(/\s+/g, '').match(/\d{8,}/); if (m) return m[0].length > 10 ? m[0].slice(-10) : m[0];
+      }
     }
   }
   return '';

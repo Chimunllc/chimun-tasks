@@ -9315,6 +9315,15 @@ async function assignNomaadItemInline(quoteNo, itemName) {
 // Бодит/хүлээн зөвшөөрөгдөх дүн = Эцсийн гэрээний дүн (акт) байвал тэр, эс бөгөөс Нийт дүн (санал).
 // Орлого/тайланд grand_total биш ҮҮНИЙГ ашиглана — муу гүйцэтгэлийн хасалт орлогыг хөөрөгдөхгүй.
 const nomaadEffTotal = o => Number(o.final_amount) || Number(o.grand_total) || 0;
+// Хүний тоо = үндсэн guests + хүүхэд/нэмэлт хүний мөрүүдийн тоо (qty). Хүүхэд бол хүн, үйлчилгээ биш.
+const NOMAAD_PERSON_LINE = /хүүхэд|хүүхд|нэмэлт хүн/i;
+function nomaadChildCount(o) {
+  return ((o && o.items) || []).reduce((s, it) => {
+    const nm = String(it.name || '');
+    return (NOMAAD_PERSON_LINE.test(nm) && !/тоглоом|бэлэг|булан|хөтөлбөр/i.test(nm)) ? s + (Number(it.qty) || 0) : s;
+  }, 0);
+}
+function nomaadHeadcount(o) { return (Number(o && o.guests) || 0) + nomaadChildCount(o); }
 // Захиалгад холбогдсон ЗАРДЛЫН нийлбэр (⟦LNK⟧ объект холбоос, Дууссан хүсэлтүүд).
 // type='nomaad' бол id=quote_no, type='order' бол id=app_orders.id.
 function linkedExpenseSum(type, id) {
@@ -9643,7 +9652,7 @@ function nomaadGuestBucket(g) {
 }
 function renderNomaadAnalytics() {
   const base = (state.nomaadOrders || []).filter(o => !nomaadIsCancelled(o));
-  const gHi = Math.max(10, ...base.map(o => Number(o.guests) || 0));
+  const gHi = Math.max(10, ...base.map(o => nomaadHeadcount(o)));
   const iHi = Math.max(1000000, ...base.map(o => nomaadEffTotal(o)));
   // Огнооны тасралтгүй жагсаалт (өдрөөр — хамгийн эртнээс сүүлч хүртэл)
   const _dList = base.map(o => String(o.date_start || '').slice(0, 10)).filter(s => /^\d{4}-\d{2}-\d{2}$/.test(s)).sort();
@@ -9667,7 +9676,7 @@ function renderNomaadAnalytics() {
   const tiers = [...new Set(base.map(o => (o.tier || '').trim()).filter(Boolean))].sort();
   const mFull = (f.mMin === 0 && f.mMax === mHi);
   const filtered = base.filter(o => {
-    const g = Number(o.guests) || 0, inc = nomaadEffTotal(o);
+    const g = nomaadHeadcount(o), inc = nomaadEffTotal(o);
     if (g < f.gMin || g > f.gMax) return false;
     if (inc < f.incMin || inc > f.incMax) return false;
     const mi = months.indexOf(String(o.date_start || '').slice(0, 10));
@@ -9682,7 +9691,7 @@ function renderNomaadAnalytics() {
   const n = filtered.length;
   const contractSum = filtered.reduce((s, o) => s + nomaadEffTotal(o), 0);
   const paidSum = filtered.reduce((s, o) => s + nomaadPaid(o), 0);
-  const guestSum = filtered.reduce((s, o) => s + (Number(o.guests) || 0), 0);
+  const guestSum = filtered.reduce((s, o) => s + nomaadHeadcount(o), 0);
   const addonSum = filtered.reduce((s, o) => s + nomaadAddonRevenue(o), 0);
   const avgOrder = n ? Math.round(contractSum / n) : 0;
   const perGuest = guestSum ? Math.round(contractSum / guestSum) : 0;
@@ -9721,7 +9730,7 @@ function renderNomaadAnalytics() {
   const byTier = groupBy(o => (o.tier || 'Тодорхойгүй').trim());
   const byMonth = groupBy(o => String(o.date_start || '').slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k));
   const byBucket = NA_BUCKETS.map(b => {
-    const os = filtered.filter(o => nomaadGuestBucket(o.guests) === b);
+    const os = filtered.filter(o => nomaadGuestBucket(nomaadHeadcount(o)) === b);
     return { k: b + ' хүн', count: os.length, sum: os.reduce((s, o) => s + nomaadEffTotal(o), 0) };
   }).filter(r => r.count);
   // Нэмэлт үйлчилгээ — төрлөөр + эх үүсвэрээр + доторх үйлчилгээний ЗАДАРГАА (дарж харна)
@@ -9870,7 +9879,7 @@ function exportNomaadAnalyticsExcel() {
     head: ['Дугаар', 'Компани', 'Кемп', 'Багц', 'Хүн', 'Гэрээ', 'Төлсөн', 'Нэмэлт үйлч.', 'Огноо'],
     rows: list.map(o => [
       { v: o.quote_no || '', t: 'String' }, { v: o.company || '', t: 'String' }, { v: o.camp || '', t: 'String' },
-      { v: o.tier || '', t: 'String' }, { v: Number(o.guests) || 0, t: 'Number' },
+      { v: o.tier || '', t: 'String' }, { v: nomaadHeadcount(o), t: 'Number' },
       { v: nomaadEffTotal(o), t: 'Number', s: 'money' }, { v: nomaadPaid(o), t: 'Number', s: 'money' },
       { v: nomaadAddonRevenue(o), t: 'Number', s: 'money' }, { v: String(o.date_start || '').slice(0, 10), t: 'String' },
     ]) };
@@ -9882,7 +9891,7 @@ function exportNomaadAnalyticsExcel() {
   exportXlsSheets([
     orders,
     grp('Кемпээр', o => (o.camp || '').trim()),
-    grp('Хүний бүлгээр', o => nomaadGuestBucket(o.guests) + ' хүн'),
+    grp('Хүний бүлгээр', o => nomaadGuestBucket(nomaadHeadcount(o)) + ' хүн'),
     grp('Багцаар', o => (o.tier || '').trim()),
     grp('Сараар', o => String(o.date_start || '').slice(0, 7)),
   ], `NOMAAD-аналитик-${new Date().toISOString().slice(0, 10)}.xls`);

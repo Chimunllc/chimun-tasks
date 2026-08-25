@@ -8334,7 +8334,7 @@ function drawPoster(canvas, opts) {
     const ruleY = hTop + markH + Math.round(H * 0.026);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Зураг: цагаан хавтан дээр contain (төрөл бүрийн зургийг цэгцлэнэ) ──
-    const panTop = ruleY + Math.round(H * 0.036), panH = Math.round(H * (story ? 0.46 : 0.37)), panW = W - M * 2, prad = Math.round(W * 0.02);
+    const panTop = ruleY + Math.round(H * 0.03), panH = Math.round(H * (story ? 0.50 : 0.41)), panW = W - M * 2, prad = Math.round(W * 0.02);
     ctx.save(); ctx.shadowColor = 'rgba(11,31,58,0.10)'; ctx.shadowBlur = Math.round(W * 0.02); ctx.shadowOffsetY = Math.round(H * 0.008);
     roundRect(M, panTop, panW, panH, prad); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
     if (opts.img) {
@@ -8345,15 +8345,17 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр + тайлбар (үнэ БИШ — сайт руу татна) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    let y = panTop + panH + Math.round(H * 0.055);
+    let y = panTop + panH + Math.round(H * 0.045);
     const tSize = Math.round(W * 0.056); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`; y += tSize * 0.5;
     _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2).forEach(l => { ctx.fillText(l, M, y); y += tSize * 1.06; });
     const ctaY = H - M - Math.round(H * 0.048);   // footer шугамын байрлал
     if (opts.subtitle) {
       const ds = Math.round(W * 0.031); ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';
-      y += Math.round(H * 0.02) + ds;
+      y += Math.round(H * 0.015) + ds;
       const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2); const lh = ds * 1.42; const maxY = ctaY - Math.round(H * 0.03);
-      for (const l of lines) { if (y > maxY) break; ctx.fillText(l, M, y); y += lh; }
+      const fit = Math.max(1, Math.floor((maxY - y) / lh) + 1); const shown = lines.slice(0, fit);
+      if (lines.length > fit && shown.length) shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s,.:;]+\S*$/, '').trim() + '…';
+      shown.forEach(l => { ctx.fillText(l, M, y); y += lh; });
     }
     // ── Footer: шугам + утас (зүүн) · вэб CTA (баруун, orange) ──
     const fy = H - M;

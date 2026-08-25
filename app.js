@@ -8316,15 +8316,15 @@ function drawPoster(canvas, opts) {
 
   // ═══ PRODUCT: зураг дээд, доор navy самбар (нэр + үнэ) ═══
   if (tpl === 'product') {
-    const imgH = Math.round(H * 0.60);
+    const imgH = Math.round(H * 0.56);
     coverInto(0, 0, W, imgH);
     ctx.fillStyle = c1; ctx.fillRect(0, imgH, W, H - imgH);
-    let y = imgH + Math.round(pad * 0.9);
-    accentRule(pad, y, false); y += Math.round(H * 0.03);
+    let y = imgH + Math.round(pad * 0.85);
+    accentRule(pad, y, false); y += Math.round(H * 0.028);
     ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-    const tSize = Math.round(W * 0.066); ctx.font = `800 ${tSize}px ${FONT}`; y += tSize;
+    const tSize = Math.round(W * 0.058); ctx.font = `800 ${tSize}px ${FONT}`; y += tSize;
     _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.08; });
-    if (opts.subtitle) { const pSize = Math.round(W * 0.085); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y + pSize * 0.55); }
+    if (opts.subtitle) { const pSize = Math.round(W * 0.072); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y + pSize * 0.42); }
     drawFooter(); return;
   }
 
@@ -8363,21 +8363,21 @@ function drawPoster(canvas, opts) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.font = `800 ${tSize}px ${FONT}`;
   const tLines = _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 4);
-  const subSize = Math.round(tSize * 0.42);
-  ctx.font = `500 ${subSize}px ${FONT}`;
+  const subSize = Math.round(tSize * 0.46);
+  ctx.font = `600 ${subSize}px ${FONT}`;
   const subLines = opts.subtitle ? _mkWrapText(ctx, opts.subtitle, W - pad * 2).slice(0, 2) : [];
-  // Гарчгийн блок footer-ээс дээш тодорхой зайтай суух
-  const lineH = tSize * 1.08, subLineH = subSize * 1.4, ruleGap = Math.round(H * 0.036);
-  const titleH = tLines.length * lineH, subBlockH = subLines.length ? Math.round(H * 0.016) + subLines.length * subLineH : 0;
+  // Гарчгийн блок footer-т ойр, нягт суух (accent-title-subtitle нэг бүлэг)
+  const lineH = tSize * 1.06, subLineH = subSize * 1.32, ruleGap = Math.round(H * 0.026), subGap = Math.round(H * 0.011);
+  const titleH = tLines.length * lineH, subBlockH = subLines.length ? subGap + subLines.length * subLineH : 0;
   const totalH = ruleGap + titleH + subBlockH;
-  const contentBottom = H - pad - footerH - Math.round(H * 0.06);
+  const contentBottom = H - pad - footerH - Math.round(H * 0.042);
   const top = contentBottom - totalH;
   accentRule(pad, top, false);
   let y = top + ruleGap + tSize * 0.82;
   shadow(true); ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`; setLS(-tSize * 0.01);
   tLines.forEach(l => { ctx.fillText(l, pad, y); y += lineH; });
   clrLS();
-  if (subLines.length) { y += Math.round(H * 0.014); ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.88)'; subLines.forEach(l => { ctx.fillText(l, pad, y); y += subLineH; }); }
+  if (subLines.length) { y += subGap; ctx.font = `600 ${subSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.9)'; subLines.forEach(l => { ctx.fillText(l, pad, y); y += subLineH; }); }
   shadow(false); drawFooter();
 }
 function renderMarketing() {

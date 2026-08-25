@@ -8326,14 +8326,14 @@ function drawPoster(canvas, opts) {
       if (ir > br) { dw = bw; dh = bw / ir; dx = bx; dy = by + (bh - dh) / 2; } else { dh = bh; dw = bh * ir; dx = bx + (bw - dw) / 2; dy = by; }
       ctx.save(); roundRect(m, winTop, winW, winH, rad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
-    const fHair = H - pad - footerH - Math.round(H * 0.026);
-    let y = winTop + winH + Math.round(H * 0.042);
-    accentRule(pad, y, false); y += Math.round(H * 0.028);
-    ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-    const tSize = Math.round(W * 0.052); ctx.font = `800 ${tSize}px ${FONT}`; y += tSize;
-    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.05; });
-    if (opts.subtitle) { const pSize = Math.round(W * 0.068); y += Math.round(H * 0.004) + Math.round(pSize * 0.8); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y); }
-    if (opts.terms) { const s = Math.round(W * 0.025); ctx.font = `500 ${s}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.7)'; y += Math.round(H * 0.016) + s; _mkWrapText(ctx, opts.terms, W - pad * 2).slice(0, 2).forEach(l => { if (y <= fHair - Math.round(s * 0.3)) { ctx.fillText(l, pad, y); y += s * 1.38; } }); }
+    let y = winTop + winH + Math.round(H * 0.055);
+    // "ТҮРЭЭС" шошго (FB/IG-д түрээсийн санал гэдгийг илэрхийлнэ)
+    const es = Math.round(W * 0.026); ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; ctx.textAlign = 'left'; setLS(es * 0.18); ctx.fillText('ТҮРЭЭС', pad, y); clrLS();
+    // Барааны нэр
+    const tSize = Math.round(W * 0.05); ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`; y += Math.round(H * 0.012) + tSize;
+    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.06; });
+    // Үнэ (том, orange)
+    if (opts.subtitle) { const pSize = Math.round(W * 0.078); y += Math.round(H * 0.006) + Math.round(pSize * 0.8); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; setLS(-pSize * 0.01); ctx.fillText(opts.subtitle, pad, y); clrLS(); }
     drawFooter(); return;
   }
 
@@ -8455,11 +8455,8 @@ function attachMarketingHandlers() {
     if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
     P.template = 'product';
     P.title = p.name || '';
-    const price = Number(p.price) || 0; P.subtitle = price ? fmtMoney(price) + '/өдөр' : '';
-    const dep = Number(p.deposit) || 0;
-    let desc = String(p.description || '').replace(/\s+/g, ' ').trim();
-    if (desc.length > 58) desc = desc.slice(0, 58).replace(/[\s,.:;]+\S*$/, '').trim() + '…';   // зөвхөн богино хэсэг
-    P.terms = [dep ? 'Барьцаа ' + fmtMoney(dep) : '', desc].filter(Boolean).join('  ·  ');
+    const price = Number(p.price) || 0; P.subtitle = price ? fmtMoney(price) + ' / өдөр' : '';
+    P.terms = '';
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
     else { P.img = null; render(); }
     showToast('Бараа орлоо ✓', 'success', 1500); render();

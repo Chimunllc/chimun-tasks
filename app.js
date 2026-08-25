@@ -8313,31 +8313,47 @@ function drawPoster(canvas, opts) {
   const eyebrow = (txt, cx, y, center) => { if (!txt) return; const es = Math.round(W * 0.028); ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; ctx.textAlign = center ? 'center' : 'left'; setLS(es * 0.16); ctx.fillText(String(txt).toUpperCase(), cx, y); clrLS(); ctx.textAlign = 'left'; };
   const accentRule = (x, y, center) => { const w = Math.round(W * 0.11), h = Math.max(4, Math.round(H * 0.007)); ctx.fillStyle = c2; ctx.fillRect(center ? x - w / 2 : x, y, w, h); };
 
-  // ═══ PRODUCT (Түрээсийн бараа): navy суурь + ЦАГААН зургийн цонх (contain) + текст ═══
-  // Цагаан цонх нь төрөл бүрийн зургийг (цагаан дэвсгэртэй бүтээгдэхүүн ч, фото ч) ижил цэгцтэй харуулна.
+  // ═══ PRODUCT (Түрээсийн бараа) — ЦАЙВАР EDITORIAL КАТАЛОГ (premium B2B) ═══
+  // Дулаан цагаан суурь + толгой (wordmark/ТҮРЭЭС) + цагаан хавтант зураг + нэр/үнэ + нарийн footer.
   if (tpl === 'product') {
     const roundRect = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
-    ctx.fillStyle = c1; ctx.fillRect(0, 0, W, H);
-    const m = pad, winTop = m, winH = Math.round(H * 0.50), winW = W - m * 2, rad = Math.round(W * 0.026);
-    roundRect(m, winTop, winW, winH, rad); ctx.fillStyle = '#fff'; ctx.fill();
+    const paper = '#F4F1EA', ink = c1, muted = 'rgba(11,31,58,.5)', hair = 'rgba(11,31,58,.13)';
+    ctx.fillStyle = paper; ctx.fillRect(0, 0, W, H);
+    const M = Math.round(W * 0.08);
+    // ── Толгой: брэнд тэмдэг+нэр (зүүн) · ТҮРЭЭС (баруун) · шугам ──
+    const hTop = Math.round(M * 0.9), sq = Math.round(W * 0.03);
+    ctx.fillStyle = c2; roundRect(M, hTop, sq, sq, Math.round(sq * 0.24)); ctx.fill();
+    ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink;
+    const wm = Math.round(W * 0.031); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02);
+    ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + sq + Math.round(W * 0.02), hTop + sq / 2 + 1); clrLS();
+    ctx.textAlign = 'right'; ctx.fillStyle = muted; const lb = Math.round(W * 0.022); ctx.font = `600 ${lb}px ${FONT}`; setLS(lb * 0.24);
+    ctx.fillText('ТҮРЭЭС', W - M, hTop + sq / 2 + 1); clrLS();
+    const ruleY = hTop + sq + Math.round(H * 0.028);
+    ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
+    // ── Зураг: цагаан хавтан дээр contain (төрөл бүрийн зургийг цэгцлэнэ) ──
+    const panTop = ruleY + Math.round(H * 0.038), panH = Math.round(H * (story ? 0.50 : 0.40)), panW = W - M * 2, prad = Math.round(W * 0.02);
+    ctx.save(); ctx.shadowColor = 'rgba(11,31,58,0.10)'; ctx.shadowBlur = Math.round(W * 0.02); ctx.shadowOffsetY = Math.round(H * 0.008);
+    roundRect(M, panTop, panW, panH, prad); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
     if (opts.img) {
-      const ip = Math.round(W * 0.014), bx = m + ip, by = winTop + ip, bw = winW - ip * 2, bh = winH - ip * 2;
+      const ip = Math.round(W * 0.02), bx = M + ip, by = panTop + ip, bw = panW - ip * 2, bh = panH - ip * 2;
       const ir = opts.img.width / opts.img.height, br = bw / bh; let dw, dh, dx, dy;
       if (ir > br) { dw = bw; dh = bw / ir; dx = bx; dy = by + (bh - dh) / 2; } else { dh = bh; dw = bh * ir; dx = bx + (bw - dw) / 2; dy = by; }
-      ctx.save(); roundRect(m, winTop, winW, winH, rad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
+      ctx.save(); roundRect(M, panTop, panW, panH, prad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
-    // Текст блокийг зургийн цонх ба footer-ийн голд төвлүүлж байрлуулна (хоосон зайг тэнцүүлнэ)
-    const zoneTop = winTop + winH, zoneBot = H - pad - footerH - Math.round(H * 0.03);
-    const es = Math.round(W * 0.027), tSize = Math.round(W * 0.052), pSize = Math.round(W * 0.082);
-    const nLines = _mkWrapText((() => { ctx.font = `800 ${tSize}px ${FONT}`; return ctx; })(), opts.title || '', W - pad * 2).slice(0, 2);
-    const blockH = es + Math.round(H * 0.016) + nLines.length * tSize * 1.06 + Math.round(H * 0.014) + pSize;
-    let y = zoneTop + Math.max(Math.round(H * 0.03), Math.round((zoneBot - zoneTop - blockH) / 2)) + es;
-    ctx.textAlign = 'left';
-    ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; setLS(es * 0.2); ctx.fillText('ТҮРЭЭС', pad, y); clrLS();
-    y += Math.round(H * 0.016) + tSize; ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`;
-    nLines.forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.06; });
-    if (opts.subtitle) { y += Math.round(H * 0.014) + Math.round(pSize * 0.78); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y); }
-    drawFooter(); return;
+    // ── Нэр + үнэ ──
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    let y = panTop + panH + Math.round(H * 0.06);
+    const tSize = Math.round(W * 0.058); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`; y += tSize * 0.5;
+    _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2).forEach(l => { ctx.fillText(l, M, y); y += tSize * 1.08; });
+    if (opts.subtitle) { const pSize = Math.round(W * 0.05); y += Math.round(H * 0.012) + pSize; ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, M, y); }
+    // ── Footer: шугам + утас (зүүн) · вэб (баруун) ──
+    const fy = H - M;
+    ctx.strokeStyle = hair; ctx.beginPath(); ctx.moveTo(M, fy - Math.round(H * 0.048)); ctx.lineTo(W - M, fy - Math.round(H * 0.048)); ctx.stroke();
+    ctx.textBaseline = 'middle'; const cs = Math.round(W * 0.026);
+    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `700 ${cs}px ${FONT}`; ctx.fillText(kit.phone || '', M, fy);
+    ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(kit.website || '', W - M, fy);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    return;
   }
 
   // Дэвсгэр зураг (эсвэл брэнд градиент)

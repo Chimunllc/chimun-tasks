@@ -8334,7 +8334,7 @@ function drawPoster(canvas, opts) {
     const ruleY = hTop + markH + Math.round(H * 0.026);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Зураг: цагаан хавтан дээр contain (төрөл бүрийн зургийг цэгцлэнэ) ──
-    const panTop = ruleY + Math.round(H * 0.03), panH = Math.round(H * (story ? 0.50 : 0.41)), panW = W - M * 2, prad = Math.round(W * 0.02);
+    const panTop = ruleY + Math.round(H * 0.03), panH = Math.round(H * (story ? 0.53 : 0.44)), panW = W - M * 2, prad = Math.round(W * 0.02);
     ctx.save(); ctx.shadowColor = 'rgba(11,31,58,0.10)'; ctx.shadowBlur = Math.round(W * 0.02); ctx.shadowOffsetY = Math.round(H * 0.008);
     roundRect(M, panTop, panW, panH, prad); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
     if (opts.img) {
@@ -8345,16 +8345,20 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр + тайлбар (үнэ БИШ — сайт руу татна) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    let y = panTop + panH + Math.round(H * 0.045);
-    const tSize = Math.round(W * 0.056); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`; y += tSize * 0.5;
-    _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2).forEach(l => { ctx.fillText(l, M, y); y += tSize * 1.06; });
+    const tSize = Math.round(W * 0.056); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`;
+    let y = panTop + panH + Math.round(H * 0.038) + tSize;   // 1-р гарчгийн baseline
+    const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
+    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.12; });
     const ctaY = H - M - Math.round(H * 0.048);   // footer шугамын байрлал
     if (opts.subtitle) {
-      const ds = Math.round(W * 0.031); ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';
-      y += Math.round(H * 0.015) + ds;
-      const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2); const lh = ds * 1.42; const maxY = ctaY - Math.round(H * 0.03);
-      const fit = Math.max(1, Math.floor((maxY - y) / lh) + 1); const shown = lines.slice(0, fit);
-      if (lines.length > fit && shown.length) shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s,.:;]+\S*$/, '').trim() + '…';
+      const ds = Math.round(W * 0.030); const lh = ds * 1.42;
+      y += Math.round(H * 0.028) + ds;   // гарчиг↔тайлбар зай (хяналттай, ойрхон)
+      const maxY = ctaY - Math.round(H * 0.03);
+      const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2);
+      const cap = Math.min(3, Math.max(1, Math.floor((maxY - y) / lh) + 1));   // ХАМГИЙН ИХ 3 мөр
+      const shown = lines.slice(0, cap);
+      if (lines.length > cap && shown.length) shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s,.:;]+\S*$/, '').trim() + '…';
+      ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';
       shown.forEach(l => { ctx.fillText(l, M, y); y += lh; });
     }
     // ── Footer: шугам + утас (зүүн) · вэб CTA (баруун, orange) ──
@@ -8487,8 +8491,11 @@ function attachMarketingHandlers() {
     P.template = 'product';
     P.title = p.name || '';
     // Үнийн оронд ТАЙЛБАР — сайт руу татах (FB/IG). Тайлбаргүй бол ангилал.
-    let desc = String(p.description || '').replace(/\s+/g, ' ').trim();
-    if (desc.length > 180) desc = desc.slice(0, 180).replace(/[\s,.:;]+\S*$/, '').trim() + '…';
+    let desc = String(p.description || '').replace(/\s+/g, ' ')
+      .replace(/[А-ЯӨҮЁ][а-яөүёА-ЯӨҮЁ ]*:\s*(?=,|$)/g, '')   // хоосон "Хэмжээ: ," шошго хая
+      .replace(/\s*,\s*,+/g, ', ').replace(/\s+([,.:;])/g, '$1')  // давхар таслал/зай цэвэрлэ
+      .replace(/\s{2,}/g, ' ').replace(/^[\s,.:;]+/, '').trim();
+    if (desc.length > 150) desc = desc.slice(0, 150).replace(/[\s,.:;]+\S*$/, '').trim() + '…';
     P.subtitle = desc || (p.category ? p.category + ' · түрээсийн бараа' : '');
     P.terms = '';
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }

@@ -8357,13 +8357,13 @@ function drawPoster(canvas, opts) {
     const ctaY = H - M - Math.round(H * 0.048);   // footer шугамын байрлал
     if (opts.subtitle) {
       const ds = Math.round(W * 0.0275); const lh = ds * 1.4;
+      ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';   // ⚠ хэмжихээс ӨМНӨ фонт тохируул (эс бол гарчгийн фонтоор хэмжинэ)
       y += Math.round(H * 0.012) + ds;   // гарчиг↔тайлбар зай (хяналттай, ойрхон)
       const maxY = ctaY - Math.round(H * 0.03);
       const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2);
       const cap = Math.min(3, Math.max(1, Math.floor((maxY - y) / lh) + 1));   // ХАМГИЙН ИХ 3 мөр
       const shown = lines.slice(0, cap);
       if (lines.length > cap && shown.length) shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s,.:;]+\S*$/, '').trim() + '…';
-      ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';
       shown.forEach(l => { ctx.fillText(l, M, y); y += lh; });
     }
     // ── Footer: шугам + утас (зүүн) · вэб CTA (баруун, orange) ──

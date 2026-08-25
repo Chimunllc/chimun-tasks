@@ -8334,7 +8334,7 @@ function drawPoster(canvas, opts) {
     const ruleY = hTop + markH + Math.round(H * 0.026);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Зураг: цагаан хавтан дээр contain (төрөл бүрийн зургийг цэгцлэнэ) ──
-    const panTop = ruleY + Math.round(H * 0.038), panH = Math.round(H * (story ? 0.50 : 0.40)), panW = W - M * 2, prad = Math.round(W * 0.02);
+    const panTop = ruleY + Math.round(H * 0.036), panH = Math.round(H * (story ? 0.46 : 0.37)), panW = W - M * 2, prad = Math.round(W * 0.02);
     ctx.save(); ctx.shadowColor = 'rgba(11,31,58,0.10)'; ctx.shadowBlur = Math.round(W * 0.02); ctx.shadowOffsetY = Math.round(H * 0.008);
     roundRect(M, panTop, panW, panH, prad); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
     if (opts.img) {
@@ -8343,18 +8343,24 @@ function drawPoster(canvas, opts) {
       if (ir > br) { dw = bw; dh = bw / ir; dx = bx; dy = by + (bh - dh) / 2; } else { dh = bh; dw = bh * ir; dx = bx + (bw - dw) / 2; dy = by; }
       ctx.save(); roundRect(M, panTop, panW, panH, prad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
-    // ── Нэр + үнэ ──
+    // ── Нэр + тайлбар (үнэ БИШ — сайт руу татна) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    let y = panTop + panH + Math.round(H * 0.06);
-    const tSize = Math.round(W * 0.058); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`; y += tSize * 0.5;
-    _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2).forEach(l => { ctx.fillText(l, M, y); y += tSize * 1.08; });
-    if (opts.subtitle) { const pSize = Math.round(W * 0.05); y += Math.round(H * 0.012) + pSize; ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, M, y); }
-    // ── Footer: шугам + утас (зүүн) · вэб (баруун) ──
+    let y = panTop + panH + Math.round(H * 0.055);
+    const tSize = Math.round(W * 0.056); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`; y += tSize * 0.5;
+    _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2).forEach(l => { ctx.fillText(l, M, y); y += tSize * 1.06; });
+    const ctaY = H - M - Math.round(H * 0.048);   // footer шугамын байрлал
+    if (opts.subtitle) {
+      const ds = Math.round(W * 0.031); ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';
+      y += Math.round(H * 0.02) + ds;
+      const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2); const lh = ds * 1.42; const maxY = ctaY - Math.round(H * 0.03);
+      for (const l of lines) { if (y > maxY) break; ctx.fillText(l, M, y); y += lh; }
+    }
+    // ── Footer: шугам + утас (зүүн) · вэб CTA (баруун, orange) ──
     const fy = H - M;
-    ctx.strokeStyle = hair; ctx.beginPath(); ctx.moveTo(M, fy - Math.round(H * 0.048)); ctx.lineTo(W - M, fy - Math.round(H * 0.048)); ctx.stroke();
+    ctx.strokeStyle = hair; ctx.beginPath(); ctx.moveTo(M, ctaY); ctx.lineTo(W - M, ctaY); ctx.stroke();
     ctx.textBaseline = 'middle'; const cs = Math.round(W * 0.026);
-    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `700 ${cs}px ${FONT}`; ctx.fillText(kit.phone || '', M, fy);
-    ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(kit.website || '', W - M, fy);
+    ctx.textAlign = 'left'; ctx.fillStyle = muted; ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(kit.phone || '', M, fy);
+    if (kit.website) { ctx.textAlign = 'right'; ctx.fillStyle = c2; ctx.font = `800 ${cs}px ${FONT}`; ctx.fillText('Дэлгэрэнгүй → ' + kit.website, W - M, fy); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }
@@ -8425,7 +8431,7 @@ function renderMarketing() {
         <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
-        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Үнэ' : 'Дэд гарчиг / огноо'} (сонголт)</label><input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="${P.template === 'product' ? '150,000₮ / өдөр' : '2026.08.25'}" style="${fld}">
+        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Тайлбар (үнэ БИШ — сайт руу татна)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<textarea id="mk-sub" rows="3" placeholder="Богино тайлбар / давуу тал…" style="${fld}resize:vertical;">${escapeHtml(P.subtitle || '')}</textarea>` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
       </div>
     </div>
     <div style="margin-top:18px;text-align:center;">
@@ -8478,7 +8484,10 @@ function attachMarketingHandlers() {
     if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
     P.template = 'product';
     P.title = p.name || '';
-    const price = Number(p.price) || 0; P.subtitle = price ? fmtMoney(price).replace('₮', ' ₮') + ' / өдөр' : '';
+    // Үнийн оронд ТАЙЛБАР — сайт руу татах (FB/IG). Тайлбаргүй бол ангилал.
+    let desc = String(p.description || '').replace(/\s+/g, ' ').trim();
+    if (desc.length > 180) desc = desc.slice(0, 180).replace(/[\s,.:;]+\S*$/, '').trim() + '…';
+    P.subtitle = desc || (p.category ? p.category + ' · түрээсийн бараа' : '');
     P.terms = '';
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
     else { P.img = null; render(); }

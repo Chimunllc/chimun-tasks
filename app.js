@@ -8284,79 +8284,101 @@ function _mkWrapText(ctx, text, maxW) {
 }
 // Постерыг canvas дээр зурна. opts={img, title, subtitle, size}
 const POSTER_TEMPLATES = { classic: 'Сонгодог', promo: 'Хямдрал', product: 'Бараа + үнэ', event: 'Эвент' };
+function _hexRgb(h) { const m = String(h || '').replace('#', ''); const n = m.length === 3 ? m.split('').map(x => x + x).join('') : m; const i = parseInt(n, 16); return [(i >> 16) & 255, (i >> 8) & 255, i & 255]; }
 function drawPoster(canvas, opts) {
   const kit = _brandKit(); const S = POSTER_SIZES[opts.size] || POSTER_SIZES.post;
   const W = S.w, H = S.h; canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   const c1 = kit.color1 || '#0B1F3A', c2 = kit.color2 || '#FF6A00';
+  const [nr, ng, nb] = _hexRgb(c1);
   const FONT = `"${kit.font || 'Montserrat'}","Segoe UI",system-ui,Arial,sans-serif`;
-  const tpl = opts.template || 'classic';
-  const pad = Math.round(W * 0.06);
-  const barH = Math.round(H * 0.10);
-  const coverImg = () => { if (!opts.img) return false; const ir = opts.img.width / opts.img.height, cr = W / H; let dw, dh, dx, dy; if (ir > cr) { dh = H; dw = H * ir; dx = (W - dw) / 2; dy = 0; } else { dw = W; dh = W / ir; dx = 0; dy = (H - dh) / 2; } ctx.drawImage(opts.img, dx, dy, dw, dh); return true; };
-  const brandGrad = () => { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); };
-  // ── Доод брэнд зурвас (бүх загварт) ──
-  const drawBar = () => {
-    ctx.fillStyle = c1; ctx.fillRect(0, H - barH, W, barH);
-    const cy = H - barH / 2; let lx = pad;
-    if (kit._logoImg) { const ls = Math.round(barH * 0.64); ctx.drawImage(kit._logoImg, lx, cy - ls / 2, ls * (kit._logoImg.width / kit._logoImg.height), ls); lx += ls * (kit._logoImg.width / kit._logoImg.height) + Math.round(pad * 0.5); }
-    ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-    const nSize = Math.round(barH * 0.30);
-    ctx.font = `700 ${nSize}px ${FONT}`; ctx.fillText(kit.name || 'Чимун ХХК', lx, cy - (kit.tagline ? nSize * 0.42 : 0));
-    if (kit.tagline) { ctx.font = `400 ${Math.round(nSize * 0.66)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillText(kit.tagline, lx, cy + nSize * 0.6); }
-    ctx.textAlign = 'right'; ctx.fillStyle = '#fff';
-    const contact = [kit.phone ? '☎ ' + kit.phone : '', kit.website || ''].filter(Boolean);
-    const rSize = Math.round(barH * 0.25); ctx.font = `600 ${rSize}px ${FONT}`;
-    contact.forEach((t, i) => ctx.fillText(t, W - pad, cy + (contact.length === 2 ? (i === 0 ? -rSize * 0.8 : rSize * 0.8) : 0)));
+  const tpl = opts.template || 'classic'; const story = opts.size === 'story';
+  const pad = Math.round(W * 0.075);
+  const setLS = px => { try { ctx.letterSpacing = Math.round(px) + 'px'; } catch (_) {} };
+  const clrLS = () => { try { ctx.letterSpacing = '0px'; } catch (_) {} };
+  const shadow = on => { ctx.shadowColor = on ? 'rgba(0,0,0,0.38)' : 'transparent'; ctx.shadowBlur = on ? Math.round(W * 0.012) : 0; ctx.shadowOffsetY = on ? Math.round(W * 0.003) : 0; };
+  const coverInto = (x0, y0, w0, h0) => { ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w0, h0); ctx.clip(); if (opts.img) { const ir = opts.img.width / opts.img.height, cr = w0 / h0; let dw, dh, dx, dy; if (ir > cr) { dh = h0; dw = h0 * ir; dx = x0 + (w0 - dw) / 2; dy = y0; } else { dw = w0; dh = w0 / ir; dx = x0; dy = y0 + (h0 - dh) / 2; } ctx.drawImage(opts.img, dx, dy, dw, dh); } else { const g = ctx.createLinearGradient(x0, y0, x0 + w0, y0 + h0); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(x0, y0, w0, h0); } ctx.restore(); };
+  const footerH = Math.round(H * 0.056);
+  // Нарийн footer: хайрцаг шугам + лого зүүн + холбоо баруун (бараан хэсэгт цагаанаар)
+  const drawFooter = () => {
+    const lh = footerH; const rowY = H - pad; const midY = rowY - lh / 2;
+    ctx.strokeStyle = 'rgba(255,255,255,.32)'; ctx.lineWidth = Math.max(1, Math.round(H * 0.0013));
+    ctx.beginPath(); const hy = rowY - lh - Math.round(H * 0.026); ctx.moveTo(pad, hy); ctx.lineTo(W - pad, hy); ctx.stroke();
+    if (kit._logoImg) { const lw = lh * (kit._logoImg.width / kit._logoImg.height); ctx.drawImage(kit._logoImg, pad, rowY - lh, lw, lh); }
+    else { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(lh * 0.6)}px ${FONT}`; ctx.fillText(kit.name || 'Чимун ХХК', pad, midY); }
+    const parts = [kit.phone, kit.website].filter(Boolean).join('   ·   ');
+    if (parts) { ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,.92)'; const cs = Math.round(W * 0.027); ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(parts, W - pad, midY); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   };
-  const topBar = () => { ctx.fillStyle = c2; ctx.fillRect(0, 0, W, Math.max(6, Math.round(H * 0.012))); };
-  const shadow = on => { ctx.shadowColor = on ? 'rgba(0,0,0,0.45)' : 'transparent'; ctx.shadowBlur = on ? 10 : 0; ctx.shadowOffsetY = on ? 2 : 0; };
+  const fitFont = (txt, weight, startPx, maxW) => { let s = startPx; ctx.font = `${weight} ${s}px ${FONT}`; while (ctx.measureText(txt).width > maxW && s > 16) { s = Math.round(s * 0.94); ctx.font = `${weight} ${s}px ${FONT}`; } return s; };
+  const eyebrow = (txt, cx, y, center) => { if (!txt) return; const es = Math.round(W * 0.028); ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; ctx.textAlign = center ? 'center' : 'left'; setLS(es * 0.16); ctx.fillText(String(txt).toUpperCase(), cx, y); clrLS(); ctx.textAlign = 'left'; };
+  const accentRule = (x, y, center) => { const w = Math.round(W * 0.11), h = Math.max(4, Math.round(H * 0.007)); ctx.fillStyle = c2; ctx.fillRect(center ? x - w / 2 : x, y, w, h); };
 
+  // ═══ PRODUCT: зураг дээд, доор navy самбар (нэр + үнэ) ═══
   if (tpl === 'product') {
-    // Зураг дээд ~60%, доод navy самбар (нэр + үнэ)
     const imgH = Math.round(H * 0.60);
-    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, imgH); ctx.clip();
-    if (opts.img) { const ir = opts.img.width / opts.img.height, cr = W / imgH; let dw, dh, dx, dy; if (ir > cr) { dh = imgH; dw = imgH * ir; dx = (W - dw) / 2; dy = 0; } else { dw = W; dh = W / ir; dx = 0; dy = (imgH - dh) / 2; } ctx.drawImage(opts.img, dx, dy, dw, dh); } else brandGrad();
-    ctx.restore();
-    ctx.fillStyle = c1; ctx.fillRect(0, imgH, W, H - imgH); topBar();
+    coverInto(0, 0, W, imgH);
+    ctx.fillStyle = c1; ctx.fillRect(0, imgH, W, H - imgH);
+    let y = imgH + Math.round(pad * 0.9);
+    accentRule(pad, y, false); y += Math.round(H * 0.03);
     ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-    const tSize = Math.round(W * 0.072); ctx.font = `800 ${tSize}px ${FONT}`;
-    let y = imgH + pad + tSize; _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.1; });
-    if (opts.subtitle) { const pSize = Math.round(W * 0.09); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y + pSize * 0.5); }
-    drawBar(); return;
+    const tSize = Math.round(W * 0.066); ctx.font = `800 ${tSize}px ${FONT}`; y += tSize;
+    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.08; });
+    if (opts.subtitle) { const pSize = Math.round(W * 0.085); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y + pSize * 0.55); }
+    drawFooter(); return;
   }
 
-  // Бусад загвар: зураг cover эсвэл градиент
-  if (!coverImg()) brandGrad();
+  // Дэвсгэр зураг (эсвэл брэнд градиент)
+  coverInto(0, 0, W, H);
+
+  // ═══ PROMO: том хямдрал төвд ═══
   if (tpl === 'promo') {
-    ctx.fillStyle = 'rgba(11,31,58,0.62)'; ctx.fillRect(0, 0, W, H); topBar();
-    ctx.textAlign = 'center'; shadow(true);
-    const big = (opts.title || '-20%'); const bSize = Math.round(W * 0.24); ctx.font = `800 ${bSize}px ${FONT}`; ctx.fillStyle = c2;
-    ctx.fillText(big, W / 2, H * 0.46);
-    if (opts.subtitle) { const sSize = Math.round(W * 0.055); ctx.font = `600 ${sSize}px ${FONT}`; ctx.fillStyle = '#fff'; _mkWrapText(ctx, opts.subtitle, W - pad * 2).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, H * 0.46 + bSize * 0.55 + i * sSize * 1.3)); }
-    shadow(false); ctx.textAlign = 'left'; drawBar(); return;
+    const ov = ctx.createLinearGradient(0, 0, 0, H); ov.addColorStop(0, `rgba(${nr},${ng},${nb},.72)`); ov.addColorStop(1, `rgba(${nr},${ng},${nb},.86)`); ctx.fillStyle = ov; ctx.fillRect(0, 0, W, H);
+    eyebrow(opts.subtitle && opts.title ? 'Онцгой санал' : '', W / 2, H * 0.27, true);
+    ctx.textAlign = 'center';
+    shadow(true); const big = opts.title || '-20%'; const bSize = fitFont(big, 800, Math.round(W * 0.23), W - pad * 2); ctx.fillStyle = c2;
+    ctx.fillText(big, W / 2, H * 0.49); shadow(false);
+    if (opts.subtitle) { const sSize = Math.round(W * 0.048); ctx.font = `500 ${sSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.94)'; _mkWrapText(ctx, opts.subtitle, W - pad * 2).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, H * 0.49 + bSize * 0.42 + i * sSize * 1.35)); }
+    ctx.textAlign = 'left'; drawFooter(); return;
   }
+
+  // ═══ EVENT: төвлөрсөн, зөөлөн navy халхавч ═══
   if (tpl === 'event') {
-    const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, 'rgba(11,31,58,.35)'); bg.addColorStop(1, 'rgba(7,21,39,.9)'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); topBar();
-    ctx.textAlign = 'center'; shadow(true);
-    if (opts.subtitle) { const eSize = Math.round(W * 0.035); ctx.font = `600 ${eSize}px ${FONT}`; ctx.fillStyle = c2; ctx.fillText((opts.subtitle || '').toUpperCase(), W / 2, H * 0.58); }
-    const tSize = Math.round(W * (opts.size === 'story' ? 0.088 : 0.10)); ctx.font = `800 ${tSize}px ${FONT}`; ctx.fillStyle = '#fff';
-    let y = H * 0.58 + tSize; _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 3).forEach(l => { ctx.fillText(l, W / 2, y); y += tSize * 1.05; });
-    shadow(false); ctx.textAlign = 'left'; drawBar(); return;
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, `rgba(${nr},${ng},${nb},.28)`); g.addColorStop(0.55, `rgba(${nr},${ng},${nb},.5)`); g.addColorStop(1, `rgba(${nr},${ng},${nb},.9)`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    const midStart = H * (story ? 0.52 : 0.50);
+    eyebrow(opts.subtitle, W / 2, midStart, true);
+    accentRule(W / 2, midStart + Math.round(H * 0.018), true);
+    ctx.textAlign = 'center';
+    shadow(true); const tSize = Math.round(W * (story ? 0.082 : 0.094)); ctx.font = `800 ${tSize}px ${FONT}`; ctx.fillStyle = '#fff';
+    let y = midStart + Math.round(H * 0.05) + tSize; setLS(-tSize * 0.01);
+    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 3).forEach(l => { ctx.fillText(l, W / 2, y); y += tSize * 1.06; });
+    clrLS(); shadow(false); ctx.textAlign = 'left'; drawFooter(); return;
   }
-  // classic
-  const gh = Math.round(H * 0.55); const grad = ctx.createLinearGradient(0, H - gh, 0, H); grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,0.85)'); ctx.fillStyle = grad; ctx.fillRect(0, H - gh, W, gh); topBar();
-  const tSize = Math.round(W * (opts.size === 'story' ? 0.078 : 0.088));
-  ctx.font = `800 ${tSize}px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+
+  // ═══ CLASSIC: зураг + доод халхавч, зүүн доор гарчиг ═══
+  const gh = Math.round(H * 0.64); const grad = ctx.createLinearGradient(0, H - gh, 0, H);
+  grad.addColorStop(0, `rgba(${nr},${ng},${nb},0)`); grad.addColorStop(0.55, `rgba(${nr},${ng},${nb},.58)`); grad.addColorStop(1, `rgba(${nr},${ng},${nb},.95)`); ctx.fillStyle = grad; ctx.fillRect(0, H - gh, W, gh);
+  const tSize = Math.round(W * (story ? 0.076 : 0.086));
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.font = `800 ${tSize}px ${FONT}`;
   const tLines = _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 4);
-  const subSize = Math.round(tSize * 0.5);
+  const subSize = Math.round(tSize * 0.42);
+  ctx.font = `500 ${subSize}px ${FONT}`;
   const subLines = opts.subtitle ? _mkWrapText(ctx, opts.subtitle, W - pad * 2).slice(0, 2) : [];
-  const blockH = tLines.length * tSize * 1.12 + (subLines.length ? subLines.length * subSize * 1.3 + tSize * 0.3 : 0);
-  let y = H - barH - pad - blockH + tSize; shadow(true); ctx.fillStyle = '#fff';
-  tLines.forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.12; });
-  if (subLines.length) { y += tSize * 0.1; ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.9)'; subLines.forEach(l => { ctx.fillText(l, pad, y); y += subSize * 1.3; }); }
-  shadow(false); drawBar();
+  // Гарчгийн блок footer-ээс дээш тодорхой зайтай суух
+  const lineH = tSize * 1.08, subLineH = subSize * 1.4, ruleGap = Math.round(H * 0.036);
+  const titleH = tLines.length * lineH, subBlockH = subLines.length ? Math.round(H * 0.016) + subLines.length * subLineH : 0;
+  const totalH = ruleGap + titleH + subBlockH;
+  const contentBottom = H - pad - footerH - Math.round(H * 0.06);
+  const top = contentBottom - totalH;
+  accentRule(pad, top, false);
+  let y = top + ruleGap + tSize * 0.82;
+  shadow(true); ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`; setLS(-tSize * 0.01);
+  tLines.forEach(l => { ctx.fillText(l, pad, y); y += lineH; });
+  clrLS();
+  if (subLines.length) { y += Math.round(H * 0.014); ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.88)'; subLines.forEach(l => { ctx.fillText(l, pad, y); y += subLineH; }); }
+  shadow(false); drawFooter();
 }
 function renderMarketing() {
   const k = _brandKit();

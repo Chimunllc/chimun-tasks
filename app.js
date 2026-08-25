@@ -8352,7 +8352,7 @@ function drawPoster(canvas, opts) {
     const ctaY = H - M - Math.round(H * 0.048);   // footer шугамын байрлал
     if (opts.subtitle) {
       const ds = Math.round(W * 0.030); const lh = ds * 1.42;
-      y += Math.round(H * 0.028) + ds;   // гарчиг↔тайлбар зай (хяналттай, ойрхон)
+      y += Math.round(H * 0.012) + ds;   // гарчиг↔тайлбар зай (хяналттай, ойрхон)
       const maxY = ctaY - Math.round(H * 0.03);
       const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2);
       const cap = Math.min(3, Math.max(1, Math.floor((maxY - y) / lh) + 1));   // ХАМГИЙН ИХ 3 мөр

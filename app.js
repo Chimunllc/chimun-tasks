@@ -8318,22 +8318,25 @@ function drawPoster(canvas, opts) {
   if (tpl === 'product') {
     const roundRect = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
     ctx.fillStyle = c1; ctx.fillRect(0, 0, W, H);
-    const m = pad, winTop = m, winH = Math.round(H * 0.46), winW = W - m * 2, rad = Math.round(W * 0.026);
+    const m = pad, winTop = m, winH = Math.round(H * 0.50), winW = W - m * 2, rad = Math.round(W * 0.026);
     roundRect(m, winTop, winW, winH, rad); ctx.fillStyle = '#fff'; ctx.fill();
     if (opts.img) {
-      const ip = Math.round(W * 0.03), bx = m + ip, by = winTop + ip, bw = winW - ip * 2, bh = winH - ip * 2;
+      const ip = Math.round(W * 0.014), bx = m + ip, by = winTop + ip, bw = winW - ip * 2, bh = winH - ip * 2;
       const ir = opts.img.width / opts.img.height, br = bw / bh; let dw, dh, dx, dy;
       if (ir > br) { dw = bw; dh = bw / ir; dx = bx; dy = by + (bh - dh) / 2; } else { dh = bh; dw = bh * ir; dx = bx + (bw - dw) / 2; dy = by; }
       ctx.save(); roundRect(m, winTop, winW, winH, rad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
-    let y = winTop + winH + Math.round(H * 0.055);
-    // "ТҮРЭЭС" шошго (FB/IG-д түрээсийн санал гэдгийг илэрхийлнэ)
-    const es = Math.round(W * 0.026); ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; ctx.textAlign = 'left'; setLS(es * 0.18); ctx.fillText('ТҮРЭЭС', pad, y); clrLS();
-    // Барааны нэр
-    const tSize = Math.round(W * 0.05); ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`; y += Math.round(H * 0.012) + tSize;
-    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.06; });
-    // Үнэ (том, orange)
-    if (opts.subtitle) { const pSize = Math.round(W * 0.078); y += Math.round(H * 0.006) + Math.round(pSize * 0.8); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; setLS(-pSize * 0.01); ctx.fillText(opts.subtitle, pad, y); clrLS(); }
+    // Текст блокийг зургийн цонх ба footer-ийн голд төвлүүлж байрлуулна (хоосон зайг тэнцүүлнэ)
+    const zoneTop = winTop + winH, zoneBot = H - pad - footerH - Math.round(H * 0.03);
+    const es = Math.round(W * 0.027), tSize = Math.round(W * 0.052), pSize = Math.round(W * 0.082);
+    const nLines = _mkWrapText((() => { ctx.font = `800 ${tSize}px ${FONT}`; return ctx; })(), opts.title || '', W - pad * 2).slice(0, 2);
+    const blockH = es + Math.round(H * 0.016) + nLines.length * tSize * 1.06 + Math.round(H * 0.014) + pSize;
+    let y = zoneTop + Math.max(Math.round(H * 0.03), Math.round((zoneBot - zoneTop - blockH) / 2)) + es;
+    ctx.textAlign = 'left';
+    ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; setLS(es * 0.2); ctx.fillText('ТҮРЭЭС', pad, y); clrLS();
+    y += Math.round(H * 0.016) + tSize; ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`;
+    nLines.forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.06; });
+    if (opts.subtitle) { y += Math.round(H * 0.014) + Math.round(pSize * 0.78); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y); }
     drawFooter(); return;
   }
 
@@ -8455,7 +8458,7 @@ function attachMarketingHandlers() {
     if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
     P.template = 'product';
     P.title = p.name || '';
-    const price = Number(p.price) || 0; P.subtitle = price ? fmtMoney(price) + ' / өдөр' : '';
+    const price = Number(p.price) || 0; P.subtitle = price ? fmtMoney(price).replace('₮', ' ₮') + ' / өдөр' : '';
     P.terms = '';
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
     else { P.img = null; render(); }

@@ -8315,15 +8315,17 @@ function drawPoster(canvas, opts) {
 
   // ═══ PRODUCT: зураг дээд, доор navy самбар (нэр + үнэ) ═══
   if (tpl === 'product') {
-    const imgH = Math.round(H * 0.56);
+    const imgH = Math.round(H * (opts.terms ? 0.50 : 0.55));
     coverInto(0, 0, W, imgH);
     ctx.fillStyle = c1; ctx.fillRect(0, imgH, W, H - imgH);
-    let y = imgH + Math.round(pad * 0.85);
-    accentRule(pad, y, false); y += Math.round(H * 0.028);
+    const fHair = H - pad - footerH - Math.round(H * 0.026);
+    let y = imgH + Math.round(pad * 0.72);
+    accentRule(pad, y, false); y += Math.round(H * 0.022);
     ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-    const tSize = Math.round(W * 0.058); ctx.font = `800 ${tSize}px ${FONT}`; y += tSize;
-    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.08; });
-    if (opts.subtitle) { const pSize = Math.round(W * 0.072); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y + pSize * 0.42); }
+    const tSize = Math.round(W * 0.055); ctx.font = `800 ${tSize}px ${FONT}`; y += tSize;
+    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 2).forEach(l => { ctx.fillText(l, pad, y); y += tSize * 1.05; });
+    if (opts.subtitle) { const pSize = Math.round(W * 0.068); y += Math.round(H * 0.002) + Math.round(pSize * 0.82); ctx.fillStyle = c2; ctx.font = `800 ${pSize}px ${FONT}`; ctx.fillText(opts.subtitle, pad, y); }
+    if (opts.terms) { const s = Math.round(W * 0.026); ctx.font = `500 ${s}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.72)'; y += Math.round(H * 0.016) + s; _mkWrapText(ctx, opts.terms, W - pad * 2).slice(0, 2).forEach(l => { if (y <= fHair - Math.round(s * 0.3)) { ctx.fillText(l, pad, y); y += s * 1.4; } }); }
     drawFooter(); return;
   }
 
@@ -8385,7 +8387,11 @@ function renderMarketing() {
       </div>
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:10px;">🖼 Постер</div>
-        <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
+        <label style="font-size:11.5px;color:var(--muted);">🛒 Бараанаас сонгох <span style="font-weight:400;">(зураг+үнэ+нөхцөл авто)</span></label>
+        <input id="mk-prod" list="mk-prod-list" placeholder="Бараа хайх (нэр / SKU)…" style="${fld}">
+        <datalist id="mk-prod-list">${(state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p))).slice(0, 400).map(p => `<option value="${escapeHtml(p.name)}${p.sku ? ' — ' + escapeHtml(p.sku) : ''}">${p.price ? fmtMoney(Number(p.price)) : ''}</option>`).join('')}</datalist>
+        <div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">— эсвэл —</div>
+        <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Өөрийн зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
         <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
@@ -8399,7 +8405,7 @@ function renderMarketing() {
     </div>
   </div>`;
 }
-function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, size: P.size, template: P.template }); }
+function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, terms: P.terms, size: P.size, template: P.template }); }
 function attachMarketingHandlers() {
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
@@ -8433,9 +8439,24 @@ function attachMarketingHandlers() {
   ['mk-c1', 'mk-c2'].forEach(id => document.getElementById(id)?.addEventListener('input', () => { const kk = _brandKit(); kk.color1 = document.getElementById('mk-c1').value; kk.color2 = document.getElementById('mk-c2').value; _mkRedraw(); }));
   ['mk-name', 'mk-tagline', 'mk-phone', 'mk-web'].forEach(id => document.getElementById(id)?.addEventListener('input', () => { const kk = _brandKit(); kk.name = document.getElementById('mk-name').value; kk.tagline = document.getElementById('mk-tagline').value; kk.phone = document.getElementById('mk-phone').value; kk.website = document.getElementById('mk-web').value; _mkRedraw(); }));
   // ── Постер ──
+  // Бараанаас сонгох → зураг + үнэ + түрээсийн нөхцөл автоматаар
+  document.getElementById('mk-prod')?.addEventListener('change', e => {
+    const val = e.target.value.trim(); if (!val) return;
+    const norm = s => String(s || '').toLowerCase().trim();
+    const p = (state.products || []).find(x => x && (norm(x.name + ' — ' + x.sku) === norm(val) || norm(x.name) === norm(val) || norm(x.sku) === norm(val) || norm(val).startsWith(norm(x.name))));
+    if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
+    P.template = 'product';
+    P.title = p.name || '';
+    const price = Number(p.price) || 0; P.subtitle = price ? fmtMoney(price) + '/өдөр' : '';
+    const dep = Number(p.deposit) || 0;
+    P.terms = [dep ? 'Барьцаа ' + fmtMoney(dep) : '', String(p.description || '').replace(/\s+/g, ' ').trim()].filter(Boolean).join(' · ');
+    if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
+    else { P.img = null; render(); }
+    showToast('Бараа орлоо ✓', 'success', 1500); render();
+  });
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
-    r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; _mkRedraw(); }; im.src = r.result; }; r.readAsDataURL(f);
+    r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; _mkRedraw(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
   document.getElementById('mk-title')?.addEventListener('input', e => { P.title = e.target.value; _mkRedraw(); });
@@ -19923,7 +19944,7 @@ function refreshViewData() {
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
   else if (v === 'booqable' && canSeeBooqable()) loadBooqable(true);
   else if (v === 'accounts' && state.isCEO) loadBankAccounts(true);
-  else if (v === 'marketing') loadBrandKit();
+  else if (v === 'marketing') { loadBrandKit(); if (!state.products || !state.products.length) { if (typeof loadProductsCatalog === 'function') loadProductsCatalog().then(() => { if (state.view === 'marketing') render(); }); } }
   else if (v === 'myexpenses') loadExpenseLearn();   // шинэ хуваалцсан суралцлага авч таамаглана
 }
 

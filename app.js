@@ -8283,7 +8283,7 @@ function _mkWrapText(ctx, text, maxW) {
   if (cur) lines.push(cur); return lines.length ? lines : [''];
 }
 // Постерыг canvas дээр зурна. opts={img, title, subtitle, size}
-const POSTER_TEMPLATES = { classic: 'Сонгодог', promo: 'Хямдрал', product: 'Бараа + үнэ', event: 'Эвент' };
+const POSTER_TEMPLATES = { work: 'Ажил гүйцэтгэл', product: 'Түрээсийн бараа' };
 function _hexRgb(h) { const m = String(h || '').replace('#', ''); const n = m.length === 3 ? m.split('').map(x => x + x).join('') : m; const i = parseInt(n, 16); return [(i >> 16) & 255, (i >> 8) & 255, i & 255]; }
 function drawPoster(canvas, opts) {
   const kit = _brandKit(); const S = POSTER_SIZES[opts.size] || POSTER_SIZES.post;
@@ -8310,7 +8310,6 @@ function drawPoster(canvas, opts) {
     if (parts) { ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,.92)'; const cs = Math.round(W * 0.027); ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(parts, W - pad, midY); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   };
-  const fitFont = (txt, weight, startPx, maxW) => { let s = startPx; ctx.font = `${weight} ${s}px ${FONT}`; while (ctx.measureText(txt).width > maxW && s > 16) { s = Math.round(s * 0.94); ctx.font = `${weight} ${s}px ${FONT}`; } return s; };
   const eyebrow = (txt, cx, y, center) => { if (!txt) return; const es = Math.round(W * 0.028); ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; ctx.textAlign = center ? 'center' : 'left'; setLS(es * 0.16); ctx.fillText(String(txt).toUpperCase(), cx, y); clrLS(); ctx.textAlign = 'left'; };
   const accentRule = (x, y, center) => { const w = Math.round(W * 0.11), h = Math.max(4, Math.round(H * 0.007)); ctx.fillStyle = c2; ctx.fillRect(center ? x - w / 2 : x, y, w, h); };
 
@@ -8331,32 +8330,7 @@ function drawPoster(canvas, opts) {
   // Дэвсгэр зураг (эсвэл брэнд градиент)
   coverInto(0, 0, W, H);
 
-  // ═══ PROMO: том хямдрал төвд ═══
-  if (tpl === 'promo') {
-    const ov = ctx.createLinearGradient(0, 0, 0, H); ov.addColorStop(0, `rgba(${nr},${ng},${nb},.72)`); ov.addColorStop(1, `rgba(${nr},${ng},${nb},.86)`); ctx.fillStyle = ov; ctx.fillRect(0, 0, W, H);
-    eyebrow(opts.subtitle && opts.title ? 'Онцгой санал' : '', W / 2, H * 0.27, true);
-    ctx.textAlign = 'center';
-    shadow(true); const big = opts.title || '-20%'; const bSize = fitFont(big, 800, Math.round(W * 0.23), W - pad * 2); ctx.fillStyle = c2;
-    ctx.fillText(big, W / 2, H * 0.49); shadow(false);
-    if (opts.subtitle) { const sSize = Math.round(W * 0.048); ctx.font = `500 ${sSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.94)'; _mkWrapText(ctx, opts.subtitle, W - pad * 2).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, H * 0.49 + bSize * 0.42 + i * sSize * 1.35)); }
-    ctx.textAlign = 'left'; drawFooter(); return;
-  }
-
-  // ═══ EVENT: төвлөрсөн, зөөлөн navy халхавч ═══
-  if (tpl === 'event') {
-    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, `rgba(${nr},${ng},${nb},.28)`); g.addColorStop(0.55, `rgba(${nr},${ng},${nb},.5)`); g.addColorStop(1, `rgba(${nr},${ng},${nb},.9)`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    ctx.textAlign = 'center';
-    const midStart = H * (story ? 0.52 : 0.50);
-    eyebrow(opts.subtitle, W / 2, midStart, true);
-    accentRule(W / 2, midStart + Math.round(H * 0.018), true);
-    ctx.textAlign = 'center';
-    shadow(true); const tSize = Math.round(W * (story ? 0.082 : 0.094)); ctx.font = `800 ${tSize}px ${FONT}`; ctx.fillStyle = '#fff';
-    let y = midStart + Math.round(H * 0.05) + tSize; setLS(-tSize * 0.01);
-    _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 3).forEach(l => { ctx.fillText(l, W / 2, y); y += tSize * 1.06; });
-    clrLS(); shadow(false); ctx.textAlign = 'left'; drawFooter(); return;
-  }
-
-  // ═══ CLASSIC: зураг + доод халхавч, зүүн доор гарчиг ═══
+  // ═══ WORK (Ажил гүйцэтгэл) / default: зураг + доод халхавч, зүүн доор гарчиг ═══
   const gh = Math.round(H * 0.64); const grad = ctx.createLinearGradient(0, H - gh, 0, H);
   grad.addColorStop(0, `rgba(${nr},${ng},${nb},0)`); grad.addColorStop(0.55, `rgba(${nr},${ng},${nb},.58)`); grad.addColorStop(1, `rgba(${nr},${ng},${nb},.95)`); ctx.fillStyle = grad; ctx.fillRect(0, H - gh, W, gh);
   const tSize = Math.round(W * (story ? 0.076 : 0.086));
@@ -8382,8 +8356,8 @@ function drawPoster(canvas, opts) {
 }
 function renderMarketing() {
   const k = _brandKit();
-  const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'classic' };
-  if (!P.template) P.template = 'classic';
+  const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
+  if (!P.template) P.template = 'work';
   const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm" data-mk-size="${key}" style="${P.size === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(s.label)}</button>`).join(' ');
   const tplBtns = Object.entries(POSTER_TEMPLATES).map(([key, l]) => `<button class="btn btn-sm" data-mk-tpl="${key}" style="${P.template === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(l)}</button>`).join(' ');
   const fld = 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);margin-bottom:10px;';
@@ -8414,8 +8388,8 @@ function renderMarketing() {
         <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
         <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
-        <label style="font-size:11.5px;color:var(--muted);">Гарчиг ${P.template === 'promo' ? '(жиш "-20%")' : ''}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'promo' ? '-20%' : 'Онцгой санал'}" style="${fld}">
-        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Үнэ' : 'Дэд гарчиг'} (сонголт)</label><input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="${P.template === 'product' ? '150,000₮ / өдөр' : '8-р сарын турш'}" style="${fld}">
+        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
+        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Үнэ' : 'Дэд гарчиг / огноо'} (сонголт)</label><input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="${P.template === 'product' ? '150,000₮ / өдөр' : '2026.08.25'}" style="${fld}">
       </div>
     </div>
     <div style="margin-top:18px;text-align:center;">
@@ -8427,7 +8401,7 @@ function renderMarketing() {
 }
 function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, size: P.size, template: P.template }); }
 function attachMarketingHandlers() {
-  const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'classic' };
+  const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
   const k = _brandKit();
   if (k.logo && !k._logoImg) { const li = new Image(); li.onload = () => { k._logoImg = li; _mkRedraw(); }; li.src = k.logo; }

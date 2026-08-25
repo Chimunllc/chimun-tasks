@@ -3204,6 +3204,7 @@ function render() {
   if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
   if (state.view === 'booqable' && !canSeeBooqable()) state.view = 'mine';
   if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'marketing' && !(state.isCEO || (state.myLevel || 0) >= 80)) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
   if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
   if (state.view === 'workload' && !canSeeWorkload()) state.view = 'mine';
@@ -3321,6 +3322,9 @@ function renderSidebar() {
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
+  // Маркетинг (постер үүсгэгч) — CEO/менежер.
+  const mkNav = document.getElementById('nav-marketing');
+  if (mkNav) mkNav.style.display = (state.isCEO || (state.myLevel || 0) >= 80) ? '' : 'none';
   // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
   const acNav = document.getElementById('nav-access');
   if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
@@ -3488,6 +3492,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderBankAccounts();
     attachBankAccountsHandlers();
+    return;
+  } else if (state.view === 'marketing') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderMarketing();
+    attachMarketingHandlers();
     return;
   } else if (state.view === 'myexpenses') {
     if (tableHead) tableHead.style.display = 'none';
@@ -8232,6 +8242,142 @@ function attachBankAccountsHandlers() {
   document.querySelectorAll('[data-card]').forEach(el => el.addEventListener('click', () => {
     const c = (state.bankCards || []).find(x => x.id === el.dataset.card); if (c) openBankCardModal(c);
   }));
+}
+
+/* ═══════════ МАРКЕТИНГ — Брэнд иж бүрдэл + Постер үүсгэгч (Canvas, frontend дангаар) ═══════════ */
+function _brandKit() { if (!state.brandKit) { try { state.brandKit = JSON.parse(localStorage.getItem('brandKit') || '{}'); } catch (_) { state.brandKit = {}; } } return state.brandKit; }
+function saveBrandKitLocal(k) { state.brandKit = k; try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) {} }
+const POSTER_SIZES = { post: { w: 1080, h: 1080, label: 'Пост 1:1' }, story: { w: 1080, h: 1920, label: 'Story 9:16' }, wide: { w: 1200, h: 628, label: 'Өргөн' } };
+function _mkWrapText(ctx, text, maxW) {
+  const words = String(text || '').split(/\s+/).filter(Boolean); const lines = []; let cur = '';
+  for (const w of words) { const test = cur ? cur + ' ' + w : w; if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test; }
+  if (cur) lines.push(cur); return lines.length ? lines : [''];
+}
+// Постерыг canvas дээр зурна. opts={img, title, subtitle, size}
+function drawPoster(canvas, opts) {
+  const kit = _brandKit(); const S = POSTER_SIZES[opts.size] || POSTER_SIZES.post;
+  const W = S.w, H = S.h; canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const c1 = kit.color1 || '#7c3aed', c2 = kit.color2 || '#0ea5e9';
+  const FONT = '"Inter","Segoe UI",system-ui,Arial,sans-serif';
+  // Дэвсгэр: зураг (cover-fit) эсвэл брэнд өнгөний градиент
+  if (opts.img) {
+    const ir = opts.img.width / opts.img.height, cr = W / H; let dw, dh, dx, dy;
+    if (ir > cr) { dh = H; dw = H * ir; dx = (W - dw) / 2; dy = 0; } else { dw = W; dh = W / ir; dx = 0; dy = (H - dh) / 2; }
+    ctx.drawImage(opts.img, dx, dy, dw, dh);
+  } else { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
+  // Доод бараан градиент (текст уншигдахуйц)
+  const gh = Math.round(H * 0.55); const bg = ctx.createLinearGradient(0, H - gh, 0, H);
+  bg.addColorStop(0, 'rgba(0,0,0,0)'); bg.addColorStop(1, 'rgba(0,0,0,0.85)'); ctx.fillStyle = bg; ctx.fillRect(0, H - gh, W, gh);
+  // Дээд өнгөт зурвас
+  ctx.fillStyle = c1; ctx.fillRect(0, 0, W, Math.max(6, Math.round(H * 0.012)));
+  const pad = Math.round(W * 0.06);
+  const barH = Math.round(H * 0.10);
+  // Гарчиг
+  const tSize = Math.round(W * (opts.size === 'story' ? 0.078 : 0.088));
+  ctx.font = `800 ${tSize}px ${FONT}`; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  const tLines = _mkWrapText(ctx, opts.title || '', W - pad * 2).slice(0, 4);
+  const subSize = Math.round(tSize * 0.5);
+  const subLines = opts.subtitle ? _mkWrapText(ctx, opts.subtitle, W - pad * 2).slice(0, 2) : [];
+  const blockH = tLines.length * tSize * 1.12 + (subLines.length ? subLines.length * subSize * 1.3 + tSize * 0.3 : 0);
+  let y = H - barH - pad - blockH + tSize;
+  ctx.fillStyle = '#fff'; ctx.font = `800 ${tSize}px ${FONT}`;
+  ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+  tLines.forEach(line => { ctx.fillText(line, pad, y); y += tSize * 1.12; });
+  if (subLines.length) { y += tSize * 0.1; ctx.font = `500 ${subSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.9)'; subLines.forEach(line => { ctx.fillText(line, pad, y); y += subSize * 1.3; }); }
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  // Брэнд зурвас (доод) — лого + нэр + утас/вэб
+  ctx.fillStyle = c1; ctx.fillRect(0, H - barH, W, barH);
+  const cy = H - barH / 2; let lx = pad;
+  if (kit._logoImg) { const ls = Math.round(barH * 0.62); ctx.drawImage(kit._logoImg, lx, cy - ls / 2, ls, ls); lx += ls + Math.round(pad * 0.5); }
+  ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  const nSize = Math.round(barH * 0.32);
+  ctx.font = `800 ${nSize}px ${FONT}`; ctx.fillText(kit.name || 'Чимун ХХК', lx, cy - (kit.tagline ? nSize * 0.4 : 0));
+  if (kit.tagline) { ctx.font = `400 ${Math.round(nSize * 0.7)}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillText(kit.tagline, lx, cy + nSize * 0.55); }
+  // Баруун тал: утас + вэб
+  ctx.textAlign = 'right'; ctx.fillStyle = '#fff';
+  const contact = [kit.phone ? '📞 ' + kit.phone : '', kit.website || ''].filter(Boolean);
+  const rSize = Math.round(barH * 0.26); ctx.font = `600 ${rSize}px ${FONT}`;
+  contact.forEach((t, i) => ctx.fillText(t, W - pad, cy + (contact.length === 2 ? (i === 0 ? -rSize * 0.75 : rSize * 0.75) : 0)));
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+function renderMarketing() {
+  const k = _brandKit();
+  const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null };
+  const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm" data-mk-size="${key}" style="${P.size === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(s.label)}</button>`).join(' ');
+  const fld = 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);margin-bottom:10px;';
+  return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">
+    <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
+      <div style="font-size:12px;color:var(--muted);">Зураг оруулаад брэнд хүрээ, гарчиг тавьж PNG татна. Instagram пост/story, Facebook.</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
+      <div>
+        <div style="font-size:14px;font-weight:800;margin-bottom:10px;">🎯 Брэнд иж бүрдэл <span style="font-weight:400;color:var(--muted);font-size:11px;">(нэг удаа — бүх постерт автомат)</span></div>
+        <label style="font-size:11.5px;color:var(--muted);">Брэнд нэр</label><input id="mk-name" value="${escapeHtml(k.name || '')}" placeholder="Чимун ХХК / NOMAAD / M-Event" style="${fld}">
+        <label style="font-size:11.5px;color:var(--muted);">Уриа (сонголт)</label><input id="mk-tagline" value="${escapeHtml(k.tagline || '')}" placeholder="Мартагдашгүй эвент" style="${fld}">
+        <div style="display:flex;gap:10px;">
+          <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);">Утас</label><input id="mk-phone" value="${escapeHtml(k.phone || '')}" placeholder="9911 2233" style="${fld}"></div>
+          <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);">Вэб/хаяг</label><input id="mk-web" value="${escapeHtml(k.website || '')}" placeholder="nomaadcamp.com" style="${fld}"></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+          <div><label style="font-size:11.5px;color:var(--muted);display:block;">Үндсэн өнгө</label><input id="mk-c1" type="color" value="${escapeHtml(k.color1 || '#7c3aed')}" style="width:52px;height:38px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;"></div>
+          <div><label style="font-size:11.5px;color:var(--muted);display:block;">Хоёрдогч</label><input id="mk-c2" type="color" value="${escapeHtml(k.color2 || '#0ea5e9')}" style="width:52px;height:38px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;"></div>
+          <div style="flex:1;"><label style="font-size:11.5px;color:var(--muted);display:block;">Лого</label>
+            <label for="mk-logo" style="display:inline-block;padding:8px 12px;border:1px dashed var(--accent,#7c3aed);border-radius:8px;font-size:12px;cursor:pointer;background:var(--panel-hover);">📷 ${k.logo ? 'Лого солих' : 'Лого оруулах'}<input id="mk-logo" type="file" accept="image/*" hidden></label>
+            ${k.logo ? `<img src="${k.logo}" style="height:34px;vertical-align:middle;margin-left:8px;border-radius:5px;">` : ''}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="mk-save-brand" style="width:100%;">💾 Брэнд хадгалах</button>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:800;margin-bottom:10px;">🖼 Постер</div>
+        <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
+        <div style="margin-bottom:10px;">${sizeBtns}</div>
+        <label style="font-size:11.5px;color:var(--muted);">Гарчиг</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="Онцгой санал / 20% хямдрал" style="${fld}">
+        <label style="font-size:11.5px;color:var(--muted);">Дэд гарчиг (сонголт)</label><input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="8-р сарын турш · захиалгаа өгөөрэй" style="${fld}">
+      </div>
+    </div>
+    <div style="margin-top:18px;text-align:center;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Урьдчилан харах</div>
+      <canvas id="mk-canvas" style="max-width:100%;width:${P.size === 'story' ? '300' : (P.size === 'wide' ? '460' : '380')}px;height:auto;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18);background:#111;"></canvas>
+      <div style="margin-top:12px;"><button class="btn btn-primary" id="mk-download" style="padding:9px 22px;">⬇ PNG татах</button></div>
+    </div>
+  </div>`;
+}
+function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, size: P.size }); }
+function attachMarketingHandlers() {
+  const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null };
+  // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
+  const k = _brandKit();
+  if (k.logo && !k._logoImg) { const li = new Image(); li.onload = () => { k._logoImg = li; _mkRedraw(); }; li.src = k.logo; }
+  _mkRedraw();
+  // ── Брэнд иж бүрдэл ──
+  document.getElementById('mk-logo')?.addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const b64 = (typeof resizeImageToBase64 === 'function') ? await resizeImageToBase64(f, 400) : await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+      const kk = _brandKit(); kk.logo = b64; kk._logoImg = null; saveBrandKitLocal(kk);
+      const li = new Image(); li.onload = () => { kk._logoImg = li; _mkRedraw(); }; li.src = b64; showToast('Лого нэмэгдлээ — хадгалахаа мартуузай', 'info', 2500); render();
+    } catch (err) { showToast('Лого ачаалах алдаа', 'error', 3000); }
+  });
+  document.getElementById('mk-save-brand')?.addEventListener('click', () => {
+    const g = id => (document.getElementById(id)?.value || '').trim();
+    const kk = _brandKit();
+    kk.name = g('mk-name'); kk.tagline = g('mk-tagline'); kk.phone = g('mk-phone'); kk.website = g('mk-web');
+    kk.color1 = g('mk-c1') || '#7c3aed'; kk.color2 = g('mk-c2') || '#0ea5e9';
+    saveBrandKitLocal(kk); showToast('Брэнд хадгаллаа ✓', 'success', 2000); _mkRedraw();
+  });
+  ['mk-c1', 'mk-c2'].forEach(id => document.getElementById(id)?.addEventListener('input', () => { const kk = _brandKit(); kk.color1 = document.getElementById('mk-c1').value; kk.color2 = document.getElementById('mk-c2').value; _mkRedraw(); }));
+  ['mk-name', 'mk-tagline', 'mk-phone', 'mk-web'].forEach(id => document.getElementById(id)?.addEventListener('input', () => { const kk = _brandKit(); kk.name = document.getElementById('mk-name').value; kk.tagline = document.getElementById('mk-tagline').value; kk.phone = document.getElementById('mk-phone').value; kk.website = document.getElementById('mk-web').value; _mkRedraw(); }));
+  // ── Постер ──
+  document.getElementById('mk-img')?.addEventListener('change', e => {
+    const f = e.target.files[0]; if (!f) return; const r = new FileReader();
+    r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; _mkRedraw(); }; im.src = r.result; }; r.readAsDataURL(f);
+  });
+  document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
+  document.getElementById('mk-title')?.addEventListener('input', e => { P.title = e.target.value; _mkRedraw(); });
+  document.getElementById('mk-sub')?.addEventListener('input', e => { P.subtitle = e.target.value; _mkRedraw(); });
+  document.getElementById('mk-download')?.addEventListener('click', () => {
+    const cv = document.getElementById('mk-canvas'); if (!cv) return;
+    cv.toBlob(blob => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `poster-${P.size}-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showToast('PNG татагдлаа ✓', 'success', 2000); }, 'image/png');
+  });
 }
 function openBankAccountModal(a) {
   const isNew = !a; a = a || {};

@@ -8298,7 +8298,7 @@ function drawPoster(canvas, opts) {
   const setLS = px => { try { ctx.letterSpacing = Math.round(px) + 'px'; } catch (_) {} };
   const clrLS = () => { try { ctx.letterSpacing = '0px'; } catch (_) {} };
   const shadow = on => { ctx.shadowColor = on ? 'rgba(0,0,0,0.38)' : 'transparent'; ctx.shadowBlur = on ? Math.round(W * 0.012) : 0; ctx.shadowOffsetY = on ? Math.round(W * 0.003) : 0; };
-  const coverInto = (x0, y0, w0, h0) => { ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w0, h0); ctx.clip(); if (opts.img) { const ir = opts.img.width / opts.img.height, cr = w0 / h0; let dw, dh, dx, dy; if (ir > cr) { dh = h0; dw = h0 * ir; dx = x0 + (w0 - dw) / 2; dy = y0; } else { dw = w0; dh = w0 / ir; dx = x0; dy = y0 + (h0 - dh) / 2; } ctx.drawImage(opts.img, dx, dy, dw, dh); } else { const g = ctx.createLinearGradient(x0, y0, x0 + w0, y0 + h0); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(x0, y0, w0, h0); } ctx.restore(); };
+  const coverInto = (x0, y0, w0, h0) => { ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w0, h0); ctx.clip(); if (opts.img) { const ir = opts.img.width / opts.img.height, cr = w0 / h0; const zoom = Math.max(1, opts.imgZoom || 1), posY = (opts.imgY == null ? 0.5 : opts.imgY); let dw, dh; if (ir > cr) { dh = h0; dw = h0 * ir; } else { dw = w0; dh = w0 / ir; } dw *= zoom; dh *= zoom; const dx = x0 + (w0 - dw) / 2, dy = y0 + (h0 - dh) * posY; ctx.drawImage(opts.img, dx, dy, dw, dh); } else { const g = ctx.createLinearGradient(x0, y0, x0 + w0, y0 + h0); g.addColorStop(0, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(x0, y0, w0, h0); } ctx.restore(); };
   const footerH = Math.round(H * 0.056);
   // Нарийн footer: хайрцаг шугам + лого зүүн + холбоо баруун (бараан хэсэгт цагаанаар)
   const drawFooter = () => {
@@ -8339,8 +8339,13 @@ function drawPoster(canvas, opts) {
     roundRect(M, panTop, panW, panH, prad); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
     if (opts.img) {
       const ip = Math.round(W * 0.02), bx = M + ip, by = panTop + ip, bw = panW - ip * 2, bh = panH - ip * 2;
-      const ir = opts.img.width / opts.img.height, br = bw / bh; let dw, dh, dx, dy;
-      if (ir > br) { dw = bw; dh = bw / ir; dx = bx; dy = by + (bh - dh) / 2; } else { dh = bh; dw = bh * ir; dx = bx + (bw - dw) / 2; dy = by; }
+      const ir = opts.img.width / opts.img.height, br = bw / bh;
+      const cover = opts.imgFit === 'cover', zoom = Math.max(1, opts.imgZoom || 1), posY = (opts.imgY == null ? 0.5 : opts.imgY);
+      let dw, dh;
+      if (cover) { if (ir > br) { dh = bh; dw = bh * ir; } else { dw = bw; dh = bw / ir; } }
+      else { if (ir > br) { dw = bw; dh = bw / ir; } else { dh = bh; dw = bh * ir; } }
+      dw *= zoom; dh *= zoom;
+      const dx = bx + (bw - dw) / 2, dy = by + (bh - dh) * posY;
       ctx.save(); roundRect(M, panTop, panW, panH, prad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
     // ── Нэр + тайлбар (үнэ БИШ — сайт руу татна) ──
@@ -8436,6 +8441,13 @@ function renderMarketing() {
         <label for="mk-img" style="display:block;margin-bottom:10px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);font-size:13px;">📷 <b>Өөрийн зураг оруулах</b><input id="mk-img" type="file" accept="image/*" hidden></label>
         <label style="font-size:11.5px;color:var(--muted);">Загвар</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${tplBtns}</div>
         <label style="font-size:11.5px;color:var(--muted);">Хэмжээ</label><div style="margin:4px 0 10px;display:flex;flex-wrap:wrap;gap:6px;">${sizeBtns}</div>
+        <label style="font-size:11.5px;color:var(--muted);">🔍 Зураг тохируулах</label>
+        <div style="margin:4px 0 6px;display:flex;gap:6px;">
+          <button class="btn btn-sm" data-mk-fit="contain" style="flex:1;${(P.imgFit || 'contain') === 'contain' ? 'background:var(--primary);color:#fff;' : ''}">Багтаах</button>
+          <button class="btn btn-sm" data-mk-fit="cover" style="flex:1;${P.imgFit === 'cover' ? 'background:var(--primary);color:#fff;' : ''}">Дүүргэх (тайрна)</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:11px;color:var(--muted);width:64px;">Томруулах</span><input id="mk-zoom" type="range" min="100" max="260" value="${Math.round((P.imgZoom || 1) * 100)}" style="flex:1;"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↕</span><input id="mk-posy" type="range" min="0" max="100" value="${Math.round((P.imgY == null ? 0.5 : P.imgY) * 100)}" style="flex:1;"></div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Тайлбар (үнэ БИШ — сайт руу татна)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<textarea id="mk-sub" rows="3" placeholder="Богино тайлбар / давуу тал…" style="${fld}resize:vertical;">${escapeHtml(P.subtitle || '')}</textarea>` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
       </div>
@@ -8447,7 +8459,7 @@ function renderMarketing() {
     </div>
   </div>`;
 }
-function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, terms: P.terms, size: P.size, template: P.template }); }
+function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, terms: P.terms, size: P.size, template: P.template, imgFit: P.imgFit, imgZoom: P.imgZoom, imgY: P.imgY }); }
 function attachMarketingHandlers() {
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
@@ -8490,11 +8502,13 @@ function attachMarketingHandlers() {
     if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
     P.template = 'product';
     P.title = p.name || '';
+    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5;   // шинэ зурагт тохиргоо reset
     // Үнийн оронд ТАЙЛБАР — сайт руу татах (FB/IG). Тайлбаргүй бол ангилал.
     let desc = String(p.description || '').replace(/\s+/g, ' ')
+      .replace(/[#*_`>~]+/g, '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')   // markdown (#, **, [x](y)) хая
       .replace(/[А-ЯӨҮЁ][а-яөүёА-ЯӨҮЁ ]*:\s*(?=,|$)/g, '')   // хоосон "Хэмжээ: ," шошго хая
       .replace(/\s*,\s*,+/g, ', ').replace(/\s+([,.:;])/g, '$1')  // давхар таслал/зай цэвэрлэ
-      .replace(/\s{2,}/g, ' ').replace(/^[\s,.:;]+/, '').trim();
+      .replace(/\s{2,}/g, ' ').replace(/^[\s,.:;-]+/, '').trim();
     if (desc.length > 150) desc = desc.slice(0, 150).replace(/[\s,.:;]+\S*$/, '').trim() + '…';
     P.subtitle = desc || (p.category ? p.category + ' · түрээсийн бараа' : '');
     P.terms = '';
@@ -8504,9 +8518,13 @@ function attachMarketingHandlers() {
   });
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
-    r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; _mkRedraw(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
+    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5;
+    r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
+  document.querySelectorAll('[data-mk-fit]').forEach(b => b.addEventListener('click', () => { P.imgFit = b.dataset.mkFit; render(); }));
+  document.getElementById('mk-zoom')?.addEventListener('input', e => { P.imgZoom = (+e.target.value) / 100; _mkRedraw(); });
+  document.getElementById('mk-posy')?.addEventListener('input', e => { P.imgY = (+e.target.value) / 100; _mkRedraw(); });
   document.getElementById('mk-title')?.addEventListener('input', e => { P.title = e.target.value; _mkRedraw(); });
   document.getElementById('mk-sub')?.addEventListener('input', e => { P.subtitle = e.target.value; _mkRedraw(); });
   document.getElementById('mk-download')?.addEventListener('click', () => {

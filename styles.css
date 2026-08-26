@@ -4566,34 +4566,6 @@ body.role-daily #add-project { display: none !important; }
   color: var(--accent-blue);
 }
 
-/* ═══ High contrast mode ═══ */
-:root.high-contrast {
-  --border: rgba(15, 15, 15, 0.25) !important;
-  --border-strong: rgba(15, 15, 15, 0.40) !important;
-  --text: #000000 !important;
-  --muted: #444444 !important;
-  --muted-soft: #666666 !important;
-  --bg: #ffffff !important;
-  --panel: #ffffff !important;
-  --panel-hover: #f0f0f0 !important;
-}
-:root.high-contrast .filter-pill,
-:root.high-contrast .nav-item,
-:root.high-contrast .task-row {
-  border: 1px solid var(--border) !important;
-}
-:root.high-contrast .filter-pill.active {
-  outline: 2px solid #000000;
-}
-:root.high-contrast.dark,
-:root.high-contrast[data-theme="dark"] {
-  --text: #ffffff !important;
-  --bg: #000000 !important;
-  --panel: #1a1a1a !important;
-  --panel-hover: #2a2a2a !important;
-  --border: rgba(255, 255, 255, 0.30) !important;
-}
-
 /* ═══ Drag-drop reorder visual ═══ */
 .task-row[draggable="true"] { cursor: grab; }
 .task-row.dragging {

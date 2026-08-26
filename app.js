@@ -11254,7 +11254,7 @@ const CHIMUN_LEGAL = {
   name: '"ЧИМУН" ХХК', reg: '6614337',
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
-  bank: 'Голомт банк', account: '3635161180',
+  bank: 'Голомт банк', account: '3635161180', iban: '',  // IBAN — Голомт онлайн банкнаас авч энд тавина (буруу IBAN эрсдэлтэй тул таамаглахгүй). Хоосон бол харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
@@ -14195,10 +14195,12 @@ ${_erow('Түрээсийн хугацаа', days + ' хоног')}
 <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#44444a;">Төлбөр төлөгдсөнөөр захиалга баталгаажна.</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border:1px solid #ECE9E2;border-radius:11px;border-collapse:separate;">
 <tr><td style="padding:14px 16px;">
-<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">Төлбөрийн данс</div>
-<div style="font-size:15px;font-weight:600;color:#17171B;padding-top:3px;">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
-<div style="font-size:13px;color:#44444a;padding-top:1px;">Хүлээн авагч: ${escapeHtml(C.name)}</div>
-<div style="font-size:13px;color:#44444a;padding-top:4px;">Гүйлгээний утга: <b style="color:#E95400;">Захиалга ${o.number ?? ''}</b></div>
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">Төлбөрийн мэдээлэл</div>
+<div style="font-size:12.5px;color:#44444a;padding-top:6px;">Банк: <b style="color:#17171B;">${escapeHtml(C.bank)}</b> · ${escapeHtml(C.name)}</div>
+<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">Дансны дугаар</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.account)}</span></div>
+${C.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.iban)}</span></div>` : ''}
+<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">Гүйлгээний утга</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:16px;font-weight:700;color:#E95400;">Захиалга ${o.number ?? ''}</span></div>
+<div style="font-size:10.5px;color:#9aa0a6;padding-top:8px;">📱 Утсан дээр тоо дээр удаан дараад хуулна уу.</div>
 </td></tr>
 </table>
 </td></tr>
@@ -14289,6 +14291,7 @@ ${_sigBlock}
       <div class="pay-box">
         <div class="pay-lbl">Төлбөрийн данс</div>
         <div class="pay-v">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
+        ${C.iban ? `<div class="pay-r">IBAN: ${escapeHtml(C.iban)}</div>` : ''}
         <div class="pay-r">Хүлээн авагч: ${escapeHtml(C.name)}</div>
         <div class="pay-r pay-ref">Гүйлгээний утга: <b>Захиалга ${o.number ?? ''}</b></div>
       </div>

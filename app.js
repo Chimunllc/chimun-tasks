@@ -14009,6 +14009,8 @@ function openOrderQuote(oid) {
     `Үнэ ${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'}.`, 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
     `Данс: ${C.bank} — ${C.account} (${C.name}).`, '', 'Холбоо барих: 7755-1010 · mevent.mn');
   const mailBody = _mlLines.join('\n'), mailSubject = `M-Event Үнийн санал #${o.number ?? ''}`, mailTo = o.email || '';
+  // Бодит <a href="mailto:…"> линк — document.write цонхонд JS location.href найдваргүй (браузер/OS блоклодог), хэрэглэгчийн дарсан anchor найдвартай.
+  const mailHref = `mailto:${mailTo}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
   const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
 <style>
   *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.5;max-width:760px;margin:0 auto;padding:26px 32px 50px;font-size:13.5px}
@@ -14019,14 +14021,14 @@ function openOrderQuote(oid) {
   .ctr{text-align:center;white-space:nowrap} .rt{text-align:right;white-space:nowrap}
   .totals{margin:8px 0 0 auto;width:290px} .totals td{border:0;padding:3px 6px} .totals .g td{font-size:15px;font-weight:700;border-top:2px solid #1f2937}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
-  .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
+  .toolbar button,.toolbar a{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;color:#111;text-decoration:none;display:inline-block;line-height:1.2}
   .brandbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0B1F3A;color:#fff;padding:13px 20px;border-radius:8px;margin:0 0 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .brandbar img{height:32px;width:auto;display:block}
   .brandbar .bc{text-align:right;font-size:11px;line-height:1.5;opacity:.92}
   .brandbar .bc b{font-size:12.5px}
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="qPdf()">📄 PDF татах</button> &nbsp;<button onclick="qMail()">✉ Имэйлээр илгээх</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
+<div class="toolbar"><button onclick="qPdf()">📄 PDF татах</button> &nbsp;<a href="${mailHref.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">✉ Имэйлээр илгээх</a> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
 <div id="q">
   <div class="brandbar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="bc"><b>M-Event — Түрээсийн үйлчилгээ</b><br>mevent.mn · 7755-1010</div></div>
   <div class="rule"></div>
@@ -14060,11 +14062,6 @@ function qPdf(){
   s.onload=go;
   s.onerror=function(){ alert('PDF үүсгэгч татаж чадсангүй (интернэт шалгана уу). Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.'); window.print(); };
   document.head.appendChild(s);
-}
-function qMail(){
-  var to=${JSON.stringify(mailTo)};
-  var href='mailto:'+to+'?subject='+encodeURIComponent(${JSON.stringify(mailSubject)})+'&body='+encodeURIComponent(${JSON.stringify(mailBody)});
-  window.location.href=href;
 }
 </script>
 </body></html>`;

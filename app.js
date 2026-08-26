@@ -6985,13 +6985,12 @@ function renderMyAttend() {
         <div style="flex:1;min-width:0;"><div style="font-size:18px;font-weight:700;">${escapeHtml(me.name || state.me)}</div>
           <div style="font-size:13px;color:var(--muted);">${escapeHtml(me.role || 'Цагийн ажилтан')}</div>
           <div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;">📞 ${escapeHtml(me.phone || '-')}</div></div>
-        <button id="my-profile-edit" style="flex-shrink:0;padding:8px 14px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">✎ Засах</button>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
         <div style="font-size:12px;color:var(--muted);">🏦 Цалингийн данс</div>
         ${me.bank_account
           ? `<div style="font-weight:600;font-size:14px;margin-top:3px;">${escapeHtml(me.bank || '')} · ${escapeHtml(me.bank_account)}${me.bank_holder ? ' · ' + escapeHtml(me.bank_holder) : ''}</div>`
-          : `<div style="color:var(--danger);font-weight:700;font-size:13.5px;margin-top:3px;">⚠ Данс бүртгэгдээгүй — цалингаа авахын тулд бүртгэнэ үү</div>`}
+          : `<button id="my-open-profile" style="margin-top:6px;padding:9px 13px;border:1px solid var(--danger);background:transparent;color:var(--danger);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;text-align:left;width:100%;">⚠ Данс бүртгэгдээгүй — энд дарж Миний профайл дээр бүртгэнэ үү</button>`}
       </div>
     </div>
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px 16px;text-align:center;margin-bottom:14px;">
@@ -7014,7 +7013,7 @@ function renderMyAttend() {
 }
 function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
-  const eb = document.getElementById('my-profile-edit'); if (eb) eb.onclick = openMyProfileModal;
+  const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
   loadQRGen().then(() => {
     const box = document.getElementById('my-qr'); if (!box || !phone) return;
     box.innerHTML = '';
@@ -7024,74 +7023,6 @@ function attachMyAttendHandlers() {
   if (state.myAttendance === undefined) {
     state.myAttendance = null;
     loadMyAttendance().then(() => { if (state.view === 'myattend') { const w = document.getElementById('task-list'); if (w) { w.innerHTML = renderMyAttend(); attachMyAttendHandlers(); } } });
-  }
-}
-function openMyProfileModal() {
-  const me = findMember(state.me) || {};
-  const banks = (typeof MONGOLIAN_BANKS !== 'undefined' ? MONGOLIAN_BANKS : ['Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк', 'Хас банк', 'Төрийн банк']);
-  const opts = banks.map(b => `<option value="${escapeHtml(b)}"${me.bank === b ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('');
-  const fld = (lbl, id, val, extra) => `<label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">${lbl}</label><input id="${id}" ${extra || ''} value="${escapeHtml(val || '')}" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:15px;margin-bottom:12px;">`;
-  const ov = document.createElement('div');
-  ov.id = 'my-profile-modal';
-  ov.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;';
-  ov.innerHTML = `<div style="background:var(--panel);width:100%;max-width:480px;border-radius:18px 18px 0 0;max-height:92vh;overflow:auto;padding:20px 18px calc(20px + env(safe-area-inset-bottom));">
-    <div style="font-size:17px;font-weight:700;">Мэдээллээ засах</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Цалингаа авах дансаа зөв бүртгэнэ үү.</div>
-    <label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">Банк</label>
-    <select id="mp-bank" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:15px;margin-bottom:12px;"><option value="">— банк сонгох —</option>${opts}</select>
-    ${fld('Дансны дугаар', 'mp-account', me.bank_account, 'type="text" inputmode="numeric"')}
-    ${fld('Данс эзэмшигчийн нэр', 'mp-holder', me.bank_holder || me.name, 'type="text"')}
-    ${fld('Яаралтай үед холбоо барих (нэр)', 'mp-emg-name', me.emergency_name, 'type="text"')}
-    ${fld('Яаралтай холбоо барих (утас)', 'mp-emg-phone', me.emergency_phone, 'type="tel" inputmode="tel"')}
-    <label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">Иргэний үнэмлэх (зураг эсвэл PDF)</label>
-    <input id="mp-doc" type="file" accept="image/*,application/pdf" style="width:100%;font-size:13px;margin-bottom:2px;">
-    <div id="mp-doc-status" style="font-size:12px;color:var(--muted);margin-bottom:14px;">Шалгаж байна…</div>
-    <div style="display:flex;gap:10px;margin-top:2px;">
-      <button id="mp-cancel" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--panel-hover);color:var(--muted);font-size:15px;font-weight:700;cursor:pointer;">Болих</button>
-      <button id="mp-save" style="flex:1;padding:13px;border:none;border-radius:12px;background:var(--primary,#2f3e2f);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Хадгалах</button>
-    </div></div>`;
-  state._pendingDoc = null;
-  document.body.appendChild(ov);
-  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
-  document.getElementById('mp-cancel').onclick = () => ov.remove();
-  document.getElementById('mp-save').onclick = saveMyProfile;
-  const phoneD = String(me.phone || state.me).replace(/\D/g, '');
-  const st = document.getElementById('mp-doc-status');
-  myDocExists(phoneD).then(has => { if (st && !state._pendingDoc) st.innerHTML = has ? '✓ Үнэмлэх оруулсан (солих бол шинээр сонго)' : 'Оруулаагүй — нэр/хаягаа баталгаажуулна'; });
-  document.getElementById('mp-doc').addEventListener('change', async (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    if (st) st.textContent = 'Уншиж байна…';
-    try { state._pendingDoc = await fileToDoc(f); if (st) st.innerHTML = '✓ Бэлэн (' + (state._pendingDoc.type === 'pdf' ? 'PDF' : 'зураг') + ') — "Хадгалах" дарна уу'; }
-    catch (err) { state._pendingDoc = null; if (st) st.textContent = '⚠ ' + (err.message || 'Алдаа'); }
-  });
-}
-async function saveMyProfile() {
-  const val = id => ((document.getElementById(id) || {}).value || '').trim();
-  const bank = val('mp-bank'), acct = val('mp-account');
-  if (bank && !acct) { showToast('Дансны дугаар оруулна уу', 'warn', 2500); return; }
-  if (acct && !bank) { showToast('Банкаа сонгоно уу', 'warn', 2500); return; }
-  const btn = document.getElementById('mp-save'); if (btn) { btn.textContent = 'Хадгалж байна…'; btn.disabled = true; }
-  const me = findMember(state.me) || {};
-  const phone = String(me.phone || state.me).replace(/\D/g, '');
-  const body = { p_phone: phone, p_bank: bank, p_bank_account: acct, p_bank_holder: val('mp-holder'), p_emergency_name: val('mp-emg-name'), p_emergency_phone: val('mp-emg-phone') };
-  try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/update_my_profile`, {
-      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    // Данс/профайл хадгалагдлаа — ШУУД амжилт харуулна (үнэмлэх байршуулалтаас хамааралгүй)
-    Object.assign(me, { bank: bank || me.bank, bank_account: acct || me.bank_account, bank_holder: body.p_bank_holder || me.bank_holder, emergency_name: body.p_emergency_name || me.emergency_name, emergency_phone: body.p_emergency_phone || me.emergency_phone });
-    const doc = state._pendingDoc; state._pendingDoc = null;
-    const ov = document.getElementById('my-profile-modal'); if (ov) ov.remove();
-    showToast('Мэдээлэл хадгаллаа', 'success', 2500);
-    if (state.view === 'myattend') render();
-    loadTeamFromAPI().then(() => { if (state.view === 'myattend') render(); }).catch(() => {});
-    // Үнэмлэх = арын дэвсгэрт, best-effort (данс хадгалалтыг унагахгүй)
-    if (doc) { setEmployeeDoc(phone, doc).then(ok => { if (!ok) showToast('Данс хадгалагдсан. Үнэмлэх дахин оруулна уу.', 'warn', 3500); }).catch(() => showToast('Данс хадгалагдсан. Үнэмлэх дахин оруулна уу.', 'warn', 3500)); }
-  } catch (e) {
-    if (btn) { btn.textContent = 'Дахин оролдох'; btn.disabled = false; }
-    showToast('Хадгалж чадсангүй. Дахин оролдоно уу.', 'error', 3000);
   }
 }
 /* ─── Иргэний үнэмлэх баримт (employee_docs, RPC) ─────────────────────── */
@@ -20478,6 +20409,20 @@ function openProfileModal() {
     initialsEl.textContent = state.user.name.replace(/\./g,'').slice(0,2);
     clearBtn.style.display = 'none';
   }
+  // Цалин/данс + яаралтай холбоо + үнэмлэх (TEAM member-ээс)
+  const meM = findMember(state.me) || {};
+  const banks = (typeof MONGOLIAN_BANKS !== 'undefined' ? MONGOLIAN_BANKS : ['Хаан банк', 'Голомт банк', 'Худалдаа хөгжлийн банк', 'Хас банк', 'Төрийн банк']);
+  const bankSel = document.getElementById('profile-bank');
+  if (bankSel) bankSel.innerHTML = '<option value="">— банк сонгох —</option>' + banks.map(b => `<option value="${escapeHtml(b)}"${meM.bank === b ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('');
+  const setv = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setv('profile-account', meM.bank_account);
+  setv('profile-holder', meM.bank_holder || meM.name);
+  setv('profile-emg-name', meM.emergency_name);
+  setv('profile-emg-phone', meM.emergency_phone);
+  const docInput = document.getElementById('profile-doc'); if (docInput) docInput.value = '';
+  state._pendingDoc = null;
+  const dst = document.getElementById('profile-doc-status');
+  if (dst) { dst.textContent = 'Шалгаж байна…'; myDocExists(String(meM.phone || state.me).replace(/\D/g, '')).then(has => { if (dst && !state._pendingDoc) dst.innerHTML = has ? '✓ Үнэмлэх оруулсан (солих бол шинээр сонго)' : 'Оруулаагүй — нэр/хаягаа баталгаажуулна'; }).catch(() => { if (dst && !state._pendingDoc) dst.textContent = '—'; }); }
   // Default PIN-ийг солих заавал шаардлагатай үед "Болих" товчийг нуух (хэрэглэгч хаах боломжгүй)
   const cancelBtn = document.getElementById('profile-cancel');
   if (cancelBtn) cancelBtn.style.display = state._forcePinChange ? 'none' : '';
@@ -20551,6 +20496,15 @@ function setupProfileModal() {
     state._tmpAvatarDataUrl = '__CLEAR__';
   });
 
+  // Иргэний үнэмлэх сонгох (зураг/PDF) → state._pendingDoc, Хадгалахад setEmployeeDoc
+  document.getElementById('profile-doc')?.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const dst = document.getElementById('profile-doc-status');
+    if (dst) dst.textContent = 'Уншиж байна…';
+    try { state._pendingDoc = await fileToDoc(f); if (dst) dst.innerHTML = '✓ Бэлэн (' + (state._pendingDoc.type === 'pdf' ? 'PDF' : 'зураг') + ') — "Хадгалах" дарна уу'; }
+    catch (err) { state._pendingDoc = null; if (dst) dst.textContent = '⚠ ' + (err.message || 'Алдаа'); }
+  });
+
   document.getElementById('profile-save')?.addEventListener('click', async () => {
     const name = document.getElementById('profile-name').value.trim();
     const phone = document.getElementById('profile-phone').value.trim();
@@ -20600,6 +20554,20 @@ function setupProfileModal() {
       member.name = name;
       member.email = email;
       member.phone = phone;
+    }
+    // Цалин/данс + яаралтай холбоо → update_my_profile RPC (хуучин утсаар олно — утас солихоос ӨМНӨ ажиллана).
+    if (oldPhoneD) {
+      const gv = id => ((document.getElementById(id) || {}).value || '').trim();
+      const _bank = gv('profile-bank'), _acct = gv('profile-account');
+      try {
+        await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/update_my_profile`, {
+          method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_phone: oldPhoneD, p_bank: _bank, p_bank_account: _acct, p_bank_holder: gv('profile-holder'), p_emergency_name: gv('profile-emg-name'), p_emergency_phone: gv('profile-emg-phone') })
+        }, 15000);
+        if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone') });
+      } catch (e) { /* best-effort */ }
+      const _doc = state._pendingDoc; state._pendingDoc = null;
+      if (_doc) setEmployeeDoc(oldPhoneD, _doc).catch(() => {});
     }
     // Backend руу зураг + утас хадгалах (employees) — имэйлийн гарын үсэг + бусад төхөөрөмжид хүрнэ.
     // Зөвхөн hosted URL (http) зургийг серверт хадгална (base64 fallback = зөвхөн локал).

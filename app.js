@@ -14228,37 +14228,37 @@ ${_sigBlock}
   .qh-bar .qh-c{text-align:right;font-size:11px;line-height:1.65;color:#c3cedd}
   .qh-bar .qh-c b{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:12px}
   .qh-accent{height:4px;background:#E95400;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qbody{padding:28px 34px 0}
-  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:22px}
+  .qbody{padding:22px 34px 0}
+  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:16px}
   .qtitle .t-eyebrow{font-family:'Manrope',Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;color:#E95400;text-transform:uppercase}
-  .qtitle h1{font-family:'Manrope',Arial,sans-serif;font-size:30px;font-weight:800;color:#0B1F3A;letter-spacing:-.01em;margin-top:3px;line-height:1}
-  .qtitle .t-meta{text-align:right;font-size:12px;line-height:1.95;color:#4b5563;white-space:nowrap}
+  .qtitle h1{font-family:'Manrope',Arial,sans-serif;font-size:27px;font-weight:800;color:#0B1F3A;letter-spacing:-.01em;margin-top:3px;line-height:1}
+  .qtitle .t-meta{text-align:right;font-size:12px;line-height:1.85;color:#4b5563;white-space:nowrap}
   .qtitle .t-meta b{color:#0B1F3A;font-family:'Manrope',Arial,sans-serif;font-weight:700}
-  .parties{display:flex;gap:16px;margin-bottom:22px}
-  .party{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:14px 16px}
-  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:6px}
+  .parties{display:flex;gap:14px;margin-bottom:16px}
+  .party{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:12px 14px}
+  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:5px}
   .party .p-name{font-family:'Manrope',Arial,sans-serif;font-size:15px;font-weight:700;color:#0B1F3A;margin-bottom:3px}
-  .party .p-row{font-size:12px;color:#4b5563;line-height:1.75}
+  .party .p-row{font-size:12px;color:#4b5563;line-height:1.6}
   table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12.5px}
-  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:10px 12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  table.items tbody td{padding:9px 12px;border-bottom:1px solid #E9ECF1;vertical-align:top}
+  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.items tbody td{padding:7px 12px;border-bottom:1px solid #E9ECF1;vertical-align:top}
   table.items tbody tr:nth-child(even){background:#FAFBFC}
-  .tot-wrap{display:flex;justify-content:flex-end;margin-top:12px}
-  .tot{width:330px}
-  .tot .tr{display:flex;justify-content:space-between;padding:5px 2px;font-size:12.5px;color:#4b5563}
+  .settle{display:flex;gap:20px;margin-top:16px;align-items:flex-start}
+  .settle-info{flex:1.1}
+  .settle-tot{flex:1;max-width:330px}
+  .pay-box{background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:12px 14px}
+  .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
+  .pay-v{font-size:14px;font-weight:700;color:#0B1F3A}
+  .pay-r{font-size:12px;color:#4b5563;margin-top:3px;line-height:1.55}
+  .pay-ref b{color:#E95400}
+  .tot .tr{display:flex;justify-content:space-between;padding:4px 2px;font-size:12.5px;color:#4b5563}
   .tot .tr .v{font-variant-numeric:tabular-nums;color:#1a1a1a}
-  .tot .grand{margin-top:8px;padding:13px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .tot .grand .g-l{color:#c3cedd;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif}
   .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-  .pay{display:flex;gap:16px;margin-top:24px}
-  .pay .pay-box{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:14px 16px}
-  .pay .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
-  .pay .pay-v{font-size:14px;font-weight:700;color:#0B1F3A}
-  .pay .pay-r{font-size:12px;color:#4b5563;margin-top:3px;line-height:1.6}
-  .pay .pay-ref b{color:#E95400}
-  .terms{margin-top:20px;font-size:11.5px;color:#6b7280;line-height:1.75;border-top:1px solid #E4E8EE;padding-top:14px}
-  .terms b{color:#0B1F3A}
-  .qfoot{margin-top:26px;background:#0B1F3A;color:#c3cedd;padding:13px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .cond{margin-top:14px;border-top:1px solid #E4E8EE;padding-top:11px;font-size:11.5px;color:#6b7280;line-height:1.65}
+  .cond b{color:#0B1F3A}
+  .qfoot{margin-top:16px;background:#0B1F3A;color:#c3cedd;padding:11px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .qfoot b{color:#fff;font-family:'Manrope',Arial,sans-serif}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;border-bottom:1px solid #ccc;z-index:9}
   .toolbar button,.toolbar a{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;color:#111;text-decoration:none;display:inline-block;line-height:1.2}
@@ -14278,37 +14278,31 @@ ${_sigBlock}
       <div class="party"><div class="p-lbl">Хэрэглэгч</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? 'Хаяг: ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? 'Хугацаа: <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
     </div>
     <table class="items"><thead><tr><th class="ctr" style="width:36px">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="ctr">Хоног</th><th class="rt">Нэгж/хоног</th><th class="rt">Дүн</th></tr></thead><tbody>${itemRows || '<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">Бараа оруулаагүй</td></tr>'}</tbody></table>
-    <div class="tot-wrap"><div class="tot">
-      <div class="tr"><span>Түрээсийн дүн (${days} хоног)</span><span class="v">${fmtMoney(subtotal)}</span></div>
-      ${discount ? `<div class="tr"><span>Хөнгөлөлт</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
-      ${hasVat ? `<div class="tr"><span>НӨАТ хасалт (−5%)</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
-      ${delivFee ? `<div class="tr"><span>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
-      ${deposit ? `<div class="tr"><span>Барьцаа (буцаах)</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
-      <div class="grand"><span class="g-l">Нийт дүн</span><span class="g-v">${fmtMoney(total)}</span></div>
-    </div></div>
-    <div class="pay">
-      <div class="pay-box">
-        <div class="pay-lbl">Төлбөрийн данс</div>
+    <div class="settle">
+      <div class="settle-info"><div class="pay-box">
+        <div class="pay-lbl">Төлбөрийн мэдээлэл</div>
         <div class="pay-v">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
         ${C.iban ? `<div class="pay-r">IBAN: ${escapeHtml(C.iban)}</div>` : ''}
         <div class="pay-r">Хүлээн авагч: ${escapeHtml(C.name)}</div>
         <div class="pay-r pay-ref">Гүйлгээний утга: <b>Захиалга ${o.number ?? ''}</b></div>
-      </div>
-      <div class="pay-box">
-        <div class="pay-lbl">Нөхцөл</div>
-        <div class="pay-r">Үнэ ${hasVat ? '<b style="color:#0B1F3A">НӨАТ багтаагүй</b>' : 'НӨАТ багтсан'}.</div>
-        <div class="pay-r">Төлбөр төлөгдсөнөөр захиалга баталгаажна.</div>
-        ${deposit ? '<div class="pay-r">Барьцаа буцаан олгогдоно.</div>' : ''}
-      </div>
+      </div></div>
+      <div class="settle-tot"><div class="tot">
+        <div class="tr"><span>Түрээсийн дүн (${days} хоног)</span><span class="v">${fmtMoney(subtotal)}</span></div>
+        ${discount ? `<div class="tr"><span>Хөнгөлөлт</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
+        ${hasVat ? `<div class="tr"><span>НӨАТ хасалт (−5%)</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
+        ${delivFee ? `<div class="tr"><span>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
+        ${deposit ? `<div class="tr"><span>Барьцаа (буцаах)</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
+        <div class="grand"><span class="g-l">Нийт дүн</span><span class="g-v">${fmtMoney(total)}</span></div>
+      </div></div>
     </div>
-    <div class="terms"><b>Тэмдэглэл:</b> Энэхүү үнийн санал ${fd(valid)} хүртэл хүчинтэй. Барааны нөөц захиалга баталгаажих үед эцэслэн тодорхойлогдоно. Дэлгэрэнгүй нөхцөлийг талуудын хооронд байгуулах гэрээгээр зохицуулна.</div>
+    <div class="cond"><b>Нөхцөл:</b> Үнэ ${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'} · Төлбөр төлөгдсөнөөр захиалга баталгаажна.${deposit ? ' · Барьцаа буцаан олгогдоно.' : ''} &nbsp;&nbsp; <b>Хүчинтэй:</b> ${fd(valid)} хүртэл.</div>
   </div>
   <div class="qfoot"><b>M-Event</b> · Арга хэмжээний түрээс &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>
 </div>
 <script>
 var H2P_SRC='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
 function ensureH2P(){return new Promise(function(res,rej){if(window.html2pdf)return res();var s=document.createElement('script');s.src=H2P_SRC;s.onload=function(){res();};s.onerror=function(){rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));};document.head.appendChild(s);});}
-function pdfOpt(){return {margin:[8,8,10,8],image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};}
+function pdfOpt(){return {margin:[6,6,6,6],image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};}
 function fontsReady(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):Promise.resolve();}
 function qPdf(){var el=document.getElementById('q');ensureH2P().then(fontsReady).then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:${JSON.stringify(fname)}+'.pdf'})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
 async function qSend(){

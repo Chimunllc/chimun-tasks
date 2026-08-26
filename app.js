@@ -14135,7 +14135,7 @@ function openOrderQuote(oid) {
   const fname = ('Үнийн санал ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
   // НӨАТ хассан эсэх — захиалгын ⟦VAT|дүн⟧ token-оос. Хассан бол дүн аль хэдийн total_mnt-д тусгагдсан.
   const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
-  // Имэйлийн их бие — M-Event брэнд HTML (pine green #1E4032 + дулаан цагаан + Manrope/Inter).
+  // Имэйлийн их бие — M-Event брэнд HTML (логоны navy #0B1F3A + orange accent #E95400 + Manrope/Inter).
   // ⚠ Gmail node дээр Email Type = HTML байх ёстой. Дэлгэрэнгүй задаргаа хавсралт PDF-д.
   const mailSubject = `M-Event · Үнийн санал №${o.number ?? ''}`, mailTo = o.email || '';
   const _cust = escapeHtml(o.customer || 'харилцагч');
@@ -14151,7 +14151,7 @@ function openOrderQuote(oid) {
   const _sPhoto = _snd.photo ? driveThumbUrl(_snd.photo, 200) : '';
   const _sAvatar = _sPhoto
     ? `<img src="${escapeHtml(_sPhoto)}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;">`
-    : `<div style="width:46px;height:46px;border-radius:50%;background:#1E4032;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;
+    : `<div style="width:46px;height:46px;border-radius:50%;background:#0B1F3A;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;
   const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
 <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#17171B;">Хүндэтгэсэн,</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
@@ -14160,7 +14160,7 @@ function openOrderQuote(oid) {
 <td valign="middle">
 <div style="font-size:15px;font-weight:700;color:#17171B;">${_sName}</div>
 <div style="font-size:12px;color:#78787F;padding-top:1px;">${_sTitle ? _sTitle + ' · ' : ''}M-Event</div>
-${_sPhone ? `<div style="font-size:14px;color:#1E4032;font-weight:700;padding-top:3px;">Утас: ${_sPhone}</div>` : ''}
+${_sPhone ? `<div style="font-size:14px;color:#0B1F3A;font-weight:700;padding-top:3px;">Утас: ${_sPhone}</div>` : ''}
 </td>
 </tr>
 </table>
@@ -14169,7 +14169,7 @@ ${_sPhone ? `<div style="font-size:14px;color:#1E4032;font-weight:700;padding-to
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border-collapse:collapse;">
 <tr><td align="center" style="padding:28px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #ECE9E2;border-radius:16px;border-collapse:separate;overflow:hidden;font-family:Inter,Helvetica,Arial,sans-serif;">
-<tr><td style="background:#1E4032;height:6px;line-height:6px;font-size:6px;">&nbsp;</td></tr>
+<tr><td style="background:#0B1F3A;height:6px;line-height:6px;font-size:6px;">&nbsp;</td></tr>
 <tr><td style="background:#ffffff;padding:26px 32px 20px;border-bottom:1px solid #ECE9E2;">
 <img src="https://chimunllc.github.io/chimun-tasks/mevent-logo.png" alt="M-Event" height="34" style="height:34px;width:auto;display:block;">
 <div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#78787F;padding-top:10px;">Арга хэмжээний түрээс</div>
@@ -14179,17 +14179,17 @@ ${_sPhone ? `<div style="font-size:14px;color:#1E4032;font-weight:700;padding-to
 <p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:#44444a;">M-Event түрээсийн үйлчилгээг сонирхож байгаад баярлалаа. Таны хүсэлтийн дагуу үнийн саналыг илгээж байна. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.</p>
 </td></tr>
 <tr><td style="padding:0 32px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EDF1EE;border-radius:12px;border-collapse:separate;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF1F6;border-radius:12px;border-collapse:separate;">
 <tr><td style="padding:20px 22px;">
-<div style="font-family:Manrope,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#1E4032;padding-bottom:12px;">Үнийн санал №${o.number ?? ''}</div>
+<div style="font-family:Manrope,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;padding-bottom:12px;">Үнийн санал №${o.number ?? ''}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
 ${_erow('Огноо', fd(now))}
 ${_erow('Хүчинтэй хугацаа', fd(valid) + ' хүртэл')}
 ${_erow('Түрээсийн хугацаа', days + ' хоног')}
 </table>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-top:1px solid #D5E0D9;margin-top:12px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-top:1px solid #D5DEEA;margin-top:12px;">
 <tr><td style="padding-top:12px;font-size:14px;font-weight:600;color:#17171B;">Нийт дүн</td>
-<td align="right" style="padding-top:12px;font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:800;color:#1E4032;">${fmtMoney(total)}</td></tr>
+<td align="right" style="padding-top:12px;font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:800;color:#0B1F3A;">${fmtMoney(total)}</td></tr>
 </table>
 <div style="font-size:12px;color:#4a5a50;padding-top:6px;">${_vatNote}${deposit ? ' · Барьцаа ' + fmtMoney(deposit) + ' (буцаан олгогдоно)' : ''}</div>
 </td></tr>
@@ -14203,7 +14203,7 @@ ${_erow('Түрээсийн хугацаа', days + ' хоног')}
 <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">Төлбөрийн данс</div>
 <div style="font-size:15px;font-weight:600;color:#17171B;padding-top:3px;">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
 <div style="font-size:13px;color:#44444a;padding-top:1px;">Хүлээн авагч: ${escapeHtml(C.name)}</div>
-<div style="font-size:13px;color:#44444a;padding-top:4px;">Гүйлгээний утга: <b style="color:#1E4032;">Захиалга ${o.number ?? ''}</b></div>
+<div style="font-size:13px;color:#44444a;padding-top:4px;">Гүйлгээний утга: <b style="color:#E95400;">Захиалга ${o.number ?? ''}</b></div>
 </td></tr>
 </table>
 </td></tr>
@@ -14211,7 +14211,7 @@ ${_sigBlock}
 <tr><td style="padding:26px 32px 30px;">
 <div style="border-top:1px solid #ECE9E2;padding-top:18px;font-size:12px;line-height:1.7;color:#78787F;">
 <strong style="color:#17171B;">M-Event</strong> · Арга хэмжээний түрээс<br>
-Утас: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#1E4032;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#1E4032;text-decoration:none;">hello@mevent.mn</a>
+Утас: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0B1F3A;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#0B1F3A;text-decoration:none;">hello@mevent.mn</a>
 </div>
 </td></tr>
 </table>

@@ -13545,6 +13545,10 @@ function calcDeliveryFee(zone, km) {
 const _DLV_RE = /⟦DLV\|([a-z]+)\|(\d+)\|(\d+)⟧/;
 function parseDelivery(note) { const m = String(note || '').match(_DLV_RE); return m ? { zone: m[1], km: +m[2], fee: +m[3] } : null; }
 function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Math.round(km) || 0}|${Math.round(fee) || 0}⟧`; }
+// ⟦VAT|amount⟧ note token — НӨАТ хассан гэдэг + хассан дүн (түрээсээс −5%). app_orders-д багана нэмэхгүйгээр (RT/DLV/SL-тэй ижил).
+const _VAT_RE = /⟦VAT\|(\d+)⟧/;
+function parseVat(note) { const m = String(note || '').match(_VAT_RE); return m ? +m[1] : null; }
+function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
 function deliveryLabel(d) {
   if (!d || d.zone === 'pickup') return '';
   if (d.zone === 'city') return 'Хот дотор';
@@ -13633,11 +13637,15 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
       ${isEdit ? `<label class="no-lbl">Төлсөн<input id="no-paid" class="money-input" type="text" inputmode="numeric" value="${moneyFmtInput(editOrder.paid_mnt || 0)}"></label>` : ''}
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:12.5px;cursor:pointer;">
+      <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
+    </label>
     <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
       <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
+      <div style="display:none;justify-content:space-between;color:var(--danger);" id="no-vatrow"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
       <div style="display:flex;justify-content:space-between;font-size:15px;border-top:1px solid var(--border);padding-top:5px;margin-top:2px;"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
@@ -13725,15 +13733,19 @@ function openNewOrder(editOrder) {
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
     const rentalNet = Math.max(0, subtotal - discount);
+    const vatOff = !!$('#no-vat')?.checked;
+    const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // НӨАТ хасалт — хямдарсан түрээсээс 5% (барьцаа/хүргэлтээс хасагдахгүй)
     const autoDep = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.deposit) || 0), 0);   // барьцаа = нэг удаагийн (хоногоор үржихгүй)
     if (!depositManual) depEl.value = moneyFmtInput(autoDep);
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
-    const total = rentalNet + deposit + dlv.fee;   // Нийт = түрээс − хөнгөлөлт + БАРЬЦАА + ХҮРГЭЛТ
+    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ
     $('#no-perday').textContent = fmtMoney(perDay);
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
+    $('#no-vatrow').style.display = vatOff ? 'flex' : 'none';
+    $('#no-vat-amt').textContent = '−' + fmtMoney(vatDisc);
     $('#no-dep').textContent = fmtMoney(deposit);
     $('#no-deliv').textContent = fmtMoney(dlv.fee);
     $('#no-delivrow').style.display = dlv.zone === 'pickup' ? 'none' : 'flex';
@@ -13752,6 +13764,8 @@ function openNewOrder(editOrder) {
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
   $('#no-disctype').addEventListener('change', recalc);
+  if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
+  $('#no-vat').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
   if (isEdit) $('#no-paid').addEventListener('input', recalc);
   recalc();
@@ -13764,7 +13778,9 @@ function openNewOrder(editOrder) {
     const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
     const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
-    const total = Math.max(0, subtotal - discount);
+    const vatOff = !!$('#no-vat')?.checked;
+    const vatDisc = vatOff ? Math.round(Math.max(0, subtotal - discount) * 0.05) : 0;
+    const total = Math.max(0, subtotal - discount - vatDisc);
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
     const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
@@ -13783,7 +13799,7 @@ function openNewOrder(editOrder) {
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
-      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(),
+      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -13978,6 +13994,21 @@ function openOrderQuote(oid) {
   const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
   const fname = ('Үнийн санал ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
+  // НӨАТ хассан эсэх — захиалгын ⟦VAT|дүн⟧ token-оос. Хассан бол дүн аль хэдийн total_mnt-д тусгагдсан.
+  const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
+  // Имэйлээр илгээх — mailto (үйлчлүүлэгчийн и-мэйл рүү, текст хураангуйтай). Автоматаар илгээхгүй — хэрэглэгч өөрөө шалгаж илгээнэ.
+  const _mlLines = ['Сайн байна уу' + (o.customer ? ' ' + o.customer : '') + '.', '',
+    `M-Event түрээсийн үнийн санал #${o.number ?? ''} (${fd(now)}, хүчинтэй ${fd(valid)} хүртэл):`, ''];
+  items.forEach((it, i) => { const qty = Number(it.qty) || 1, price = Number(it.price) || 0; _mlLines.push(`${i + 1}. ${it.name || ''} — ${qty}ш × ${days} хоног = ${fmtMoney(qty * price * days)}`); });
+  _mlLines.push('', `Түрээсийн дүн (${days} хоног): ${fmtMoney(subtotal)}`);
+  if (discount) _mlLines.push(`Хөнгөлөлт: −${fmtMoney(discount)}`);
+  if (hasVat) _mlLines.push(`НӨАТ хасалт (−5%): −${fmtMoney(vatDiscount)}`);
+  if (delivFee) _mlLines.push(`Хүргэлт${delivLbl ? ' (' + delivLbl + ')' : ''}: ${fmtMoney(delivFee)}`);
+  if (deposit) _mlLines.push(`Барьцаа (буцаах): ${fmtMoney(deposit)}`);
+  _mlLines.push(`НИЙТ ДҮН: ${fmtMoney(total)}`, '',
+    `Үнэ ${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'}.`, 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
+    `Данс: ${C.bank} — ${C.account} (${C.name}).`, '', 'Холбоо барих: 7755-1010 · mevent.mn');
+  const mailBody = _mlLines.join('\n'), mailSubject = `M-Event Үнийн санал #${o.number ?? ''}`, mailTo = o.email || '';
   const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
 <style>
   *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.5;max-width:760px;margin:0 auto;padding:26px 32px 50px;font-size:13.5px}
@@ -13989,31 +14020,52 @@ function openOrderQuote(oid) {
   .totals{margin:8px 0 0 auto;width:290px} .totals td{border:0;padding:3px 6px} .totals .g td{font-size:15px;font-weight:700;border-top:2px solid #1f2937}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
   .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
+  .brandbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0B1F3A;color:#fff;padding:13px 20px;border-radius:8px;margin:0 0 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .brandbar img{height:32px;width:auto;display:block}
+  .brandbar .bc{text-align:right;font-size:11px;line-height:1.5;opacity:.92}
+  .brandbar .bc b{font-size:12.5px}
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="qWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button></div>
+<div class="toolbar"><button onclick="qPdf()">📄 PDF татах</button> &nbsp;<button onclick="qMail()">✉ Имэйлээр илгээх</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
 <div id="q">
+  <div class="brandbar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="bc"><b>M-Event — Түрээсийн үйлчилгээ</b><br>mevent.mn · 7755-1010</div></div>
   <div class="rule"></div>
   <h1>ҮНИЙН САНАЛ</h1>
   <div class="meta-line">Дугаар: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; ${fd(now)} &nbsp;·&nbsp; Хүчинтэй: ${fd(valid)} хүртэл</div>
   <div class="rule" style="border-top-width:1px"></div>
   <div class="cols">
-    <div class="col"><div class="lbl">ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭГЧ</div><b>${C.name}</b><br>РД: ${C.reg}<br>${C.address}<br>Утас: 7700-6790<br>Данс: ${C.bank} — ${C.account}</div>
+    <div class="col"><div class="lbl">ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭГЧ</div><b>${C.name}</b><br>РД: ${C.reg}<br>${C.address}<br>Утас: 7755-1010<br>Данс: ${C.bank} — ${C.account}</div>
     <div class="col"><div class="lbl">ҮЙЛЧЛҮҮЛЭГЧ</div><b>${escapeHtml(o.customer || '—')}</b><br>${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? 'Хаяг: ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? '<b>Хугацаа:</b> ' + period : ''}</div>
   </div>
   <table><tr><th class="ctr">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="ctr">Хоног</th><th class="rt">Нэгж үнэ / хоног</th><th class="rt">Дүн</th></tr>${itemRows || '<tr><td colspan="6" style="text-align:center;color:#888">Бараа оруулаагүй</td></tr>'}</table>
   <table class="totals">
     <tr><td>Түрээсийн дүн (${days} хоног):</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
     ${discount ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
+    ${hasVat ? `<tr><td>НӨАТ хасалт (−5%):</td><td class="rt">−${fmtMoney(vatDiscount)}</td></tr>` : ''}
     ${delivFee ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
     ${deposit ? `<tr><td>Барьцаа (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
     <tr class="g"><td>НИЙТ ДҮН:</td><td class="rt">${fmtMoney(total)}</td></tr>
   </table>
   <div style="clear:both"></div>
-  <p style="margin-top:22px;font-size:12px;color:#555;line-height:1.7;">• Үнэ НӨАТ багтсан. &nbsp; • Захиалга баталгаажуулахад нийт дүнгийн 30% урьдчилгаа. &nbsp; • Төлбөрийн данс: <b>${C.bank} — ${C.account}</b> (${C.name}).</p>
+  <p style="margin-top:22px;font-size:12px;color:#555;line-height:1.7;">• Үнэ ${hasVat ? '<b>НӨАТ багтаагүй</b>' : 'НӨАТ багтсан'}. &nbsp; • Төлбөр төлөгдсөнөөр захиалга баталгаажна. &nbsp; • Төлбөрийн данс: <b>${C.bank} — ${C.account}</b> (${C.name}).</p>
 </div>
 <script>
-function qWord(){var css=document.querySelector('style').innerHTML;var body=document.getElementById('q').innerHTML;var doc='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><style>'+css+' @page{size:A4;margin:1.6cm} body{padding:0;max-width:none}</style></head><body>'+body+'</body></html>';var blob=new Blob([String.fromCharCode(0xFEFF)+doc],{type:'application/msword'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=${JSON.stringify(fname)}+'.doc';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1500);}
+function qPdf(){
+  var el=document.getElementById('q');
+  var opt={margin:[8,8,10,8],filename:${JSON.stringify(fname)}+'.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
+  function go(){ try{ window.html2pdf().set(opt).from(el).save(); }catch(e){ alert('PDF үүсгэхэд алдаа: '+e.message); window.print(); } }
+  if(window.html2pdf){go();return;}
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  s.onload=go;
+  s.onerror=function(){ alert('PDF үүсгэгч татаж чадсангүй (интернэт шалгана уу). Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.'); window.print(); };
+  document.head.appendChild(s);
+}
+function qMail(){
+  var to=${JSON.stringify(mailTo)};
+  var href='mailto:'+to+'?subject='+encodeURIComponent(${JSON.stringify(mailSubject)})+'&body='+encodeURIComponent(${JSON.stringify(mailBody)});
+  window.location.href=href;
+}
 </script>
 </body></html>`;
   const w = window.open('', '_blank');

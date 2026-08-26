@@ -14200,7 +14200,6 @@ ${_erow('Түрээсийн хугацаа', days + ' хоног')}
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">Дансны дугаар</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.account)}</span></div>
 ${C.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.iban)}</span></div>` : ''}
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">Гүйлгээний утга</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:16px;font-weight:700;color:#E95400;">Захиалга ${o.number ?? ''}</span></div>
-<div style="font-size:10.5px;color:#9aa0a6;padding-top:8px;">📱 Утсан дээр тоо дээр удаан дараад хуулна уу.</div>
 </td></tr>
 </table>
 </td></tr>

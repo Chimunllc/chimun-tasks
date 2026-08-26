@@ -8446,6 +8446,10 @@ function renderMarketing() {
             <button class="btn btn-sm" data-mk-logo="${o.k}" style="width:100%;border:0;border-top:1px solid var(--border);border-radius:0;font-size:11px;">⬇ ${o.label}</button>
           </div>`).join('')}
         </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Хэвлэлд (вектор):
+          <a href="https://n8n.nomaadcamp.com/img/brand/mevent-logo-horizontal.pdf" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Хэвтээ PDF ↗</a> ·
+          <a href="https://n8n.nomaadcamp.com/img/brand/mevent-logo-vertical.pdf" target="_blank" rel="noopener" style="color:var(--primary);font-weight:600;">Босоо PDF ↗</a>
+        </div>
       </div>
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:10px;">🖼 Постер</div>

@@ -14111,18 +14111,24 @@ function openOrderQuote(oid) {
   // НӨАТ хассан эсэх — захиалгын ⟦VAT|дүн⟧ token-оос. Хассан бол дүн аль хэдийн total_mnt-д тусгагдсан.
   const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
   // Имэйлээр илгээх — mailto (үйлчлүүлэгчийн и-мэйл рүү, текст хураангуйтай). Автоматаар илгээхгүй — хэрэглэгч өөрөө шалгаж илгээнэ.
-  const _mlLines = ['Сайн байна уу' + (o.customer ? ' ' + o.customer : '') + '.', '',
-    `M-Event түрээсийн үнийн санал #${o.number ?? ''} (${fd(now)}, хүчинтэй ${fd(valid)} хүртэл):`, ''];
-  items.forEach((it, i) => { const qty = Number(it.qty) || 1, price = Number(it.price) || 0; _mlLines.push(`${i + 1}. ${it.name || ''} — ${qty}ш × ${days} хоног = ${fmtMoney(qty * price * days)}`); });
-  _mlLines.push('', `Түрээсийн дүн (${days} хоног): ${fmtMoney(subtotal)}`);
-  if (discount) _mlLines.push(`Хөнгөлөлт: −${fmtMoney(discount)}`);
-  if (hasVat) _mlLines.push(`НӨАТ хасалт (−5%): −${fmtMoney(vatDiscount)}`);
-  if (delivFee) _mlLines.push(`Хүргэлт${delivLbl ? ' (' + delivLbl + ')' : ''}: ${fmtMoney(delivFee)}`);
-  if (deposit) _mlLines.push(`Барьцаа (буцаах): ${fmtMoney(deposit)}`);
-  _mlLines.push(`НИЙТ ДҮН: ${fmtMoney(total)}`, '',
-    `Үнэ ${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'}.`, 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
-    `Данс: ${C.bank} — ${C.account} (${C.name}).`, '', 'Холбоо барих: 7755-1010 · mevent.mn');
-  const mailBody = _mlLines.join('\n'), mailSubject = `M-Event Үнийн санал #${o.number ?? ''}`, mailTo = o.email || '';
+  const _mlLines = [
+    `Эрхэм ${o.customer || 'харилцагч'} танаа,`, '',
+    'M-Event түрээсийн үйлчилгээг сонирхсон танд баярлалаа. Таны хүсэлтийн дагуу бэлтгэсэн үнийн саналыг хавсаргав — дэлгэрэнгүйг хавсралт PDF файлаас үзнэ үү.', '',
+    `Үнийн санал №${o.number ?? ''}`,
+    `Огноо: ${fd(now)}`,
+    `Хүчинтэй хугацаа: ${fd(valid)} хүртэл`,
+    `Түрээсийн хугацаа: ${days} хоног`,
+    `Нийт дүн: ${fmtMoney(total)} (${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'})`];
+  if (deposit) _mlLines.push(`Барьцаа: ${fmtMoney(deposit)} (буцаан олгогдоно)`);
+  _mlLines.push('',
+    'Захиалга баталгаажуулах: төлбөр төлөгдсөнөөр захиалга баталгаажна.', '',
+    'Төлбөрийн данс:',
+    `${C.bank} — ${C.account}`,
+    `Хүлээн авагч: ${C.name}`, '',
+    'Лавлагаа: 7755-1010 · mevent.mn', '',
+    'Хүндэтгэсэн,',
+    'M-Event баг');
+  const mailBody = _mlLines.join('\n'), mailSubject = `M-Event · Үнийн санал №${o.number ?? ''}`, mailTo = o.email || '';
   // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
   const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
   const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>

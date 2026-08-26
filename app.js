@@ -7036,7 +7036,16 @@ function openMyProfileModal() {
   ov.style.cssText = 'position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;';
   ov.innerHTML = `<div style="background:var(--panel);width:100%;max-width:480px;border-radius:18px 18px 0 0;max-height:92vh;overflow:auto;padding:20px 18px calc(20px + env(safe-area-inset-bottom));">
     <div style="font-size:17px;font-weight:700;">Мэдээллээ засах</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Цалингаа авах дансаа зөв бүртгэнэ үү.</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:16px;">Профайл зураг, утас, цалингийн данс.</div>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+      <span id="mp-avatar" style="width:64px;height:64px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:var(--muted);overflow:hidden;position:relative;flex-shrink:0;">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>
+      <div style="flex:1;min-width:0;">
+        <label for="mp-photo" style="display:inline-block;padding:8px 14px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text);">📷 Зураг солих</label>
+        <input id="mp-photo" type="file" accept="image/*" style="display:none;">
+        <div id="mp-photo-status" style="font-size:11px;color:var(--muted);margin-top:5px;">JPG/PNG зураг — үнийн санал, профайлд харагдана</div>
+      </div>
+    </div>
+    ${fld('Утасны дугаар', 'mp-phone', me.phone, 'type="tel" inputmode="tel"')}
     <label style="display:block;font-size:12px;color:var(--muted);margin:0 0 3px;">Банк</label>
     <select id="mp-bank" style="width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);font-size:15px;margin-bottom:12px;"><option value="">— банк сонгох —</option>${opts}</select>
     ${fld('Дансны дугаар', 'mp-account', me.bank_account, 'type="text" inputmode="numeric"')}
@@ -7064,6 +7073,20 @@ function openMyProfileModal() {
     try { state._pendingDoc = await fileToDoc(f); if (st) st.innerHTML = '✓ Бэлэн (' + (state._pendingDoc.type === 'pdf' ? 'PDF' : 'зураг') + ') — "Хадгалах" дарна уу'; }
     catch (err) { state._pendingDoc = null; if (st) st.textContent = '⚠ ' + (err.message || 'Алдаа'); }
   });
+  // Профайл зураг — сонгонгуут VPS webhook руу байршуулж hosted URL авна (имэйлд ч ажиллана).
+  state._pendingPhoto = null;
+  document.getElementById('mp-photo').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const ps = document.getElementById('mp-photo-status');
+    if (ps) ps.textContent = 'Байршуулж байна…';
+    try {
+      const url = await uploadProductImage(f);
+      state._pendingPhoto = url;
+      const av = document.getElementById('mp-avatar');
+      if (av) av.innerHTML = `<img src="${escapeHtml(url)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">`;
+      if (ps) ps.innerHTML = '✓ Зураг бэлэн — "Хадгалах" дарна уу';
+    } catch (err) { if (ps) ps.textContent = '⚠ ' + (err.message || 'Зураг байршуулж чадсангүй'); }
+  });
 }
 async function saveMyProfile() {
   const val = id => ((document.getElementById(id) || {}).value || '').trim();
@@ -7082,6 +7105,21 @@ async function saveMyProfile() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     // Данс/профайл хадгалагдлаа — ШУУД амжилт харуулна (үнэмлэх байршуулалтаас хамааралгүй)
     Object.assign(me, { bank: bank || me.bank, bank_account: acct || me.bank_account, bank_holder: body.p_bank_holder || me.bank_holder, emergency_name: body.p_emergency_name || me.emergency_name, emergency_phone: body.p_emergency_phone || me.emergency_phone });
+    // Профайл зураг + утас — update_my_contact RPC (photo=hosted URL, phone=шинэ дугаар).
+    const _newPhoneRaw = val('mp-phone'), _newPhoneD = _newPhoneRaw.replace(/\D/g, '');
+    const _photoUrl = state._pendingPhoto; state._pendingPhoto = null;
+    const _phoneChanged = _newPhoneD && _newPhoneD !== phone;
+    if (_photoUrl || _phoneChanged) {
+      try {
+        const rc = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/update_my_contact`, {
+          method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_phone: phone, p_photo: _photoUrl || null, p_new_phone: _phoneChanged ? _newPhoneRaw : null })
+        }, 15000);
+        if (rc.ok) { if (_photoUrl) me.photo = _photoUrl; if (_phoneChanged) me.phone = _newPhoneRaw; }
+        else if (rc.status === 404) showToast('Зураг/утас хадгалах сервер тохиргоо дутуу байна', 'warn', 4000);
+        else showToast('Зураг/утас хадгалж чадсангүй (HTTP ' + rc.status + ')', 'warn', 3500);
+      } catch (e) { showToast('Зураг/утас хадгалж чадсангүй', 'warn', 3000); }
+    }
     const doc = state._pendingDoc; state._pendingDoc = null;
     const ov = document.getElementById('my-profile-modal'); if (ov) ov.remove();
     showToast('Мэдээлэл хадгаллаа', 'success', 2500);
@@ -14148,7 +14186,7 @@ function openOrderQuote(oid) {
   const _sDigits = String(_snd.phone || '').replace(/\D/g, '');
   const _sPhone = _sDigits.length === 8 ? _sDigits.slice(0, 4) + '-' + _sDigits.slice(4) : _sDigits;
   const _sInit = escapeHtml(memberInitials(state.me) || '');
-  const _sPhoto = _snd.photo ? driveThumbUrl(_snd.photo, 200) : '';
+  const _sPhoto = (_snd.photo && !/^data:/.test(String(_snd.photo))) ? driveThumbUrl(_snd.photo, 200) : '';   // имэйлд зөвхөн hosted URL (data: base64 Gmail-д ачаалагдахгүй)
   const _sAvatar = _sPhoto
     ? `<img src="${escapeHtml(_sPhoto)}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;">`
     : `<div style="width:46px;height:46px;border-radius:50%;background:#0B1F3A;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;

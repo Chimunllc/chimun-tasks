@@ -3207,7 +3207,7 @@ function render() {
   if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
   if (state.view === 'booqable' && !canSeeBooqable()) state.view = 'mine';
   if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
-  if (state.view === 'marketing' && !(state.isCEO || (state.myLevel || 0) >= 80)) state.view = 'mine';
+  if (state.view === 'marketing' && !canSeeMarketing()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
   if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
   if (state.view === 'workload' && !canSeeWorkload()) state.view = 'mine';
@@ -3327,7 +3327,7 @@ function renderSidebar() {
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
   // Маркетинг (постер үүсгэгч) — CEO/менежер.
   const mkNav = document.getElementById('nav-marketing');
-  if (mkNav) mkNav.style.display = (state.isCEO || (state.myLevel || 0) >= 80) ? '' : 'none';
+  if (mkNav) mkNav.style.display = canSeeMarketing() ? '' : 'none';
   // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
   const acNav = document.getElementById('nav-access');
   if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
@@ -7599,6 +7599,7 @@ const PERM_MENUS = [
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'booqable',    label: 'Түрээсийн түүх',  actions: [] },
+  { key: 'marketing',   label: 'Маркетинг',       actions: [] },
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 function normRole(role) { return String(role || '').trim().toLowerCase(); }
@@ -7640,6 +7641,8 @@ function canSeeProducts() { return canAccessView('products', false); }       // 
 function canSeeBooqable() { return canAccessView('booqable', false); }
 function canSeeReceivables() { return canAccessView('receivables', false); }
 function canSeeReports() { return canAccessView('reports', () => canSeeAllFinance()); }
+// Маркетинг — эрхийн системээр (role_perms/member_perms). Тохируулаагүй бол CEO/менежер (level≥80) — хатуу код БИШ, зөвхөн fallback.
+function canSeeMarketing() { return canAccessView('marketing', () => state.isCEO || (state.myLevel || 0) >= 80); }
 
 /* ═══════════ БАГИЙН АЧААЛАЛ — удирдлага хүн бүрийн идэвхтэй ажлыг нэг дэлгэцээс ═══════════
    Хэн юу хийж байгаа, ажил давхцаж буй эсэхийг харна. Идэвхтэй ажлыг хариуцагчаар бүлэглэж,

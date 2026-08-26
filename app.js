@@ -87,6 +87,8 @@ const DEFAULT_NOMAAD_ORDERS_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-ord
 const DEFAULT_NOMAAD_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-quote-send';
 // Илгээсэн үнийн саналыг дахин үзэх — HTML болгож буцаана (имэйл явуулахгүй). Менежер аппаас харна.
 const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-quote-view';
+// M-Event үнийн санал илгээх — апп PDF (html2pdf) үүсгэж base64-оор POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
+const DEFAULT_MEVENT_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-quote-send';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
 const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rating';
 
@@ -187,6 +189,7 @@ const state = {
       nomaadOrdersUrl:  localStorage.getItem('nomaadOrdersUrl')  || DEFAULT_NOMAAD_ORDERS_URL || '',
       nomaadQuoteSendUrl: localStorage.getItem('nomaadQuoteSendUrl') || DEFAULT_NOMAAD_QUOTE_SEND_URL || '',
       nomaadQuoteViewUrl: localStorage.getItem('nomaadQuoteViewUrl') || DEFAULT_NOMAAD_QUOTE_VIEW_URL || '',
+      meventQuoteSendUrl: localStorage.getItem('meventQuoteSendUrl') || DEFAULT_MEVENT_QUOTE_SEND_URL || '',
       hourlyRatingUrl:  localStorage.getItem('hourlyRatingUrl')  || DEFAULT_HOURLY_RATING_URL || '',
       evalUrl:          localStorage.getItem('evalUrl')          || DEFAULT_EVAL_URL          || '',
       finCategoriesUrl: localStorage.getItem('finCategoriesUrl') || DEFAULT_FIN_CATEGORIES_URL || '',
@@ -14009,8 +14012,8 @@ function openOrderQuote(oid) {
     `Үнэ ${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'}.`, 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
     `Данс: ${C.bank} — ${C.account} (${C.name}).`, '', 'Холбоо барих: 7755-1010 · mevent.mn');
   const mailBody = _mlLines.join('\n'), mailSubject = `M-Event Үнийн санал #${o.number ?? ''}`, mailTo = o.email || '';
-  // Бодит <a href="mailto:…"> линк — document.write цонхонд JS location.href найдваргүй (браузер/OS блоклодог), хэрэглэгчийн дарсан anchor найдвартай.
-  const mailHref = `mailto:${mailTo}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+  // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
+  const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
   const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
 <style>
   *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.5;max-width:760px;margin:0 auto;padding:26px 32px 50px;font-size:13.5px}
@@ -14028,7 +14031,7 @@ function openOrderQuote(oid) {
   .brandbar .bc b{font-size:12.5px}
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head><body>
-<div class="toolbar"><button onclick="qPdf()">📄 PDF татах</button> &nbsp;<a href="${mailHref.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">✉ Имэйлээр илгээх</a> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
+<div class="toolbar"><button onclick="qPdf()">📄 PDF татах</button> &nbsp;<button id="qsendbtn" onclick="qSend()">📧 Илгээх (hello@mevent.mn)</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
 <div id="q">
   <div class="brandbar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="bc"><b>M-Event — Түрээсийн үйлчилгээ</b><br>mevent.mn · 7755-1010</div></div>
   <div class="rule"></div>
@@ -14052,16 +14055,29 @@ function openOrderQuote(oid) {
   <p style="margin-top:22px;font-size:12px;color:#555;line-height:1.7;">• Үнэ ${hasVat ? '<b>НӨАТ багтаагүй</b>' : 'НӨАТ багтсан'}. &nbsp; • Төлбөр төлөгдсөнөөр захиалга баталгаажна. &nbsp; • Төлбөрийн данс: <b>${C.bank} — ${C.account}</b> (${C.name}).</p>
 </div>
 <script>
-function qPdf(){
-  var el=document.getElementById('q');
-  var opt={margin:[8,8,10,8],filename:${JSON.stringify(fname)}+'.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
-  function go(){ try{ window.html2pdf().set(opt).from(el).save(); }catch(e){ alert('PDF үүсгэхэд алдаа: '+e.message); window.print(); } }
-  if(window.html2pdf){go();return;}
-  var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-  s.onload=go;
-  s.onerror=function(){ alert('PDF үүсгэгч татаж чадсангүй (интернэт шалгана уу). Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.'); window.print(); };
-  document.head.appendChild(s);
+var H2P_SRC='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+function ensureH2P(){return new Promise(function(res,rej){if(window.html2pdf)return res();var s=document.createElement('script');s.src=H2P_SRC;s.onload=function(){res();};s.onerror=function(){rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));};document.head.appendChild(s);});}
+function pdfOpt(){return {margin:[8,8,10,8],image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};}
+function qPdf(){var el=document.getElementById('q');ensureH2P().then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:${JSON.stringify(fname)}+'.pdf'})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
+async function qSend(){
+  var to=${JSON.stringify(mailTo)};
+  if(!to){alert('Үйлчлүүлэгчийн имэйл алга — эхлээд захиалга дээр имэйл нэмнэ үү.');return;}
+  if(!confirm('Үнийн саналыг '+to+' рүү hello@mevent.mn-ээс шууд илгээх үү?'))return;
+  var btn=document.getElementById('qsendbtn');var old=btn?btn.textContent:'';
+  if(btn){btn.textContent='Илгээж байна…';btn.style.pointerEvents='none';}
+  try{
+    await ensureH2P();
+    var el=document.getElementById('q');
+    var datauri=await window.html2pdf().set(pdfOpt()).from(el).outputPdf('datauristring');
+    var b64=String(datauri).split(',')[1]||'';
+    var res=await fetch(${JSON.stringify(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:${JSON.stringify(mailSubject)},body:${JSON.stringify(mailBody)},filename:${JSON.stringify(fname)}+'.pdf',pdf_base64:b64,source:'app'})});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    alert('✓ Үнийн санал '+to+' рүү илгээгдлээ.');
+    if(btn){btn.textContent='✓ Илгээгдсэн';}
+  }catch(e){
+    alert('Илгээхэд алдаа: '+e.message+String.fromCharCode(10)+String.fromCharCode(10)+'(hello@mevent.mn-ий n8n тохиргоо бүрэн бус бол эхлээд түүнийг дуусгана уу.)');
+    if(btn){btn.textContent=old||'📧 Илгээх (hello@mevent.mn)';btn.style.pointerEvents='';}
+  }
 }
 </script>
 </body></html>`;

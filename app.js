@@ -6219,6 +6219,7 @@ async function loadProductsCatalog() {
       state.products = rows;
       // source_url багана DB-д нэмэгдсэн эсэх (нэмэгдээгүй бол бичихгүй — INSERT 400 болохоос сэргийлнэ)
       state._prodHasSource = rows.length ? ('source_url' in rows[0]) : true;
+      state._prodHasMedia = rows.length ? ('media_url' in rows[0]) : true;
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -6418,6 +6419,7 @@ async function saveProduct(product) {
   if (Array.isArray(product.bundle_items)) row.bundle_items = product.bundle_items;
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
+  if (product.media_url !== undefined && state._prodHasMedia !== false) row.media_url = product.media_url || null;
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
@@ -6592,6 +6594,7 @@ function productRowHtml(p) {
   if (pkg) metaParts.push(`📦 ${packageComponents(p).length} бараа`);
   if (p.purchase_date) { const _age = productAge(p.purchase_date); if (_age) metaParts.push(`${_age} ашигласан`); }
   { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); metaParts.push(_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 20 ? _org.slice(0, 20) + '…' : _org)); } }
+  { const _m = (p.media_url || '').trim(); if (/^https?:\/\//.test(_m)) metaParts.push(`<a href="${escapeHtml(_m)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:600;">🎬 Бичлэг үзэх</a>`); }
   const metaLine = `<div class="prod-sub" style="color:var(--muted);">${metaParts.join(' · ')}</div>`;
   // ── Мөнгө/гүйцэтгэл мөр: нийт өртөг + ROI (өнгөтэй) + ашиглалт + эвдрэл ──
   const money = [];
@@ -12646,6 +12649,7 @@ function openProductModal(p) {
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
         <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
+        <label class="pm-wide">🎬 Бичлэг/зураг үзэх холбоос${/^https?:\/\//.test((p && p.media_url) || '') ? ` <a href="${escapeHtml(p.media_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-media" value="${escapeHtml((p && p.media_url) || '')}" placeholder="ж: YouTube линк, Google Photos/Drive г.м. (заавал манайх биш)"></label>
       </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
@@ -12878,6 +12882,7 @@ async function submitProductModal(modal, orig, btn) {
     variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
     variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
     source_url: g('pm-source') || null,
+    media_url: g('pm-media') || null,
     supplier: g('pm-source') || null,
     purchase_date: g('pm-purchase') || null,
   };

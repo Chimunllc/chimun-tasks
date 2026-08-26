@@ -8451,6 +8451,7 @@ function renderMarketing() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↔</span><input id="mk-posx" type="range" min="0" max="100" value="${Math.round((P.imgX == null ? 0.5 : P.imgX) * 100)}" style="flex:1;"></div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Тайлбар (үнэ БИШ — сайт руу татна)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<textarea id="mk-sub" rows="3" placeholder="Богино тайлбар / давуу тал…" style="${fld}resize:vertical;">${escapeHtml(P.subtitle || '')}</textarea>` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
+        ${P.template === 'product' && P.productSku ? `<button class="btn btn-sm" id="mk-save-prod" style="width:100%;border-color:#16a34a;color:#16a34a;margin-top:2px;">💾 Нэр/тайлбарыг бараанд хадгалах (агуулах + сайт)</button><div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Дээрх нэр, тайлбар барааны бүртгэлд бичигдэж, агуулах болон mevent.mn сайтад шинэчлэгдэнэ.</div>` : ''}
       </div>
     </div>
     <div style="margin-top:18px;text-align:center;">
@@ -8503,14 +8504,15 @@ function attachMarketingHandlers() {
     if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
     P.template = 'product';
     P.title = p.name || '';
+    P.productSku = p.sku || '';   // энэ барааг дараа шинэчлэхэд
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5;   // шинэ зурагт тохиргоо reset
     // Үнийн оронд ТАЙЛБАР — сайт руу татах (FB/IG). Тайлбаргүй бол ангилал.
+    // Тайлбарыг БҮТНЭЭР авна (markdown цэвэрлэнэ, тайрахгүй) — постер дээр canvas өөрөө 3 мөрт багтаана.
     let desc = String(p.description || '').replace(/\s+/g, ' ')
       .replace(/[#*_`>~]+/g, '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')   // markdown (#, **, [x](y)) хая
       .replace(/[А-ЯӨҮЁ][а-яөүёА-ЯӨҮЁ ]*:\s*(?=,|$)/g, '')   // хоосон "Хэмжээ: ," шошго хая
       .replace(/\s*,\s*,+/g, ', ').replace(/\s+([,.:;])/g, '$1')  // давхар таслал/зай цэвэрлэ
       .replace(/\s{2,}/g, ' ').replace(/^[\s,.:;-]+/, '').trim();
-    if (desc.length > 150) desc = desc.slice(0, 150).replace(/[\s,.:;]+\S*$/, '').trim() + '…';
     P.subtitle = desc || (p.category ? p.category + ' · түрээсийн бараа' : '');
     P.terms = '';
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
@@ -8519,7 +8521,7 @@ function attachMarketingHandlers() {
   });
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
-    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5;
+    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = '';   // custom зураг = каталогийн бараа биш
     r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
@@ -8529,6 +8531,19 @@ function attachMarketingHandlers() {
   document.getElementById('mk-posx')?.addEventListener('input', e => { P.imgX = (+e.target.value) / 100; _mkRedraw(); });
   document.getElementById('mk-title')?.addEventListener('input', e => { P.title = e.target.value; _mkRedraw(); });
   document.getElementById('mk-sub')?.addEventListener('input', e => { P.subtitle = e.target.value; _mkRedraw(); });
+  document.getElementById('mk-save-prod')?.addEventListener('click', async () => {
+    if (!P.productSku) return;
+    const prod = (state.products || []).find(x => x && x.sku === P.productSku);
+    if (!prod) { showToast('Бараа олдсонгүй', 'warn', 2500); return; }
+    const name = (P.title || '').trim(), desc = (P.subtitle || '').trim();
+    if (!name) { showToast('Барааны нэр хоосон байна', 'warn', 2500); return; }
+    const ok = await showConfirm(`"${name}" барааны нэр/тайлбарыг шинэчилж, агуулах болон mevent.mn сайтад бичих үү?`, { title: 'Бараа шинэчлэх', okText: 'Шинэчлэх', cancelText: 'Болих' });
+    if (!ok) return;
+    const btn = document.getElementById('mk-save-prod'); if (btn) { btn.disabled = true; btn.textContent = 'Хадгалж байна…'; }
+    // Бүтэн барааны бичлэгийг дамжуулна (saveProduct merge-safe, дутуу талбар 0 болгодог тул)
+    await saveProduct({ ...prod, name, description: desc });
+    showToast('Бараа шинэчлэгдлээ — агуулах + сайтад орлоо ✓', 'success', 2800);
+  });
   document.getElementById('mk-download')?.addEventListener('click', () => {
     const cv = document.getElementById('mk-canvas'); if (!cv) return;
     cv.toBlob(blob => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `poster-${P.size}-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showToast('PNG татагдлаа ✓', 'success', 2000); }, 'image/png');

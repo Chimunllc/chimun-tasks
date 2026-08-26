@@ -6576,6 +6576,52 @@ async function saveBranchTransfer(p, modal) {
   }
 }
 
+// Улирал хаалт — салбарын БҮХ нөөцийг өөр салбар руу НЭГ товчоор буцаана (бүх барааг лог-той).
+// Жишээ: NOMAAD кемпийн улирал дуусахад бүх qty_nomaad → qty_mevent (эвент түрээсийн улирал).
+async function bulkReturnBranch(from, to) {
+  if (!can('products.edit')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
+  const fI = branchInfo(from), tI = branchInfo(to);
+  const movers = (state.products || []).filter(p => branchQty(p, from) > 0);
+  if (!movers.length) { showToast(`${fI.label}-д нөөцтэй бараа алга`, 'info', 2600); return; }
+  const totalQty = movers.reduce((s, p) => s + branchQty(p, from), 0);
+  const ok = await showConfirm(
+    `${movers.length} барааны нийт ${totalQty}ш нөөцийг ${fI.label} → ${tI.label} руу шилжүүлэх үү?\n\nЭнэ нь ${fI.label}-ийн бүх хуваарилалтыг ${tI.label} руу буцаана. Дараа гараар буцааж болно.`,
+    { title: `${fI.icon} → ${tI.icon} Улирал хаалт`, okText: 'Тийм, бүгдийг шилжүүл' }
+  );
+  if (!ok) return;
+  const stamp = new Date().toISOString();
+  const snap = movers.map(p => ({ p, qf: branchQty(p, from), qt: branchQty(p, to) }));
+  const rows = snap.map(s => ({ sku: s.p.sku, ['qty_' + from]: 0, ['qty_' + to]: s.qt + s.qf, updated_at: stamp }));
+  const logs = snap.map(s => ({
+    id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'tr-' + Date.now() + '-' + s.p.sku,
+    product_id: s.p.id, sku: s.p.sku, from_branch: from, to_branch: to, qty: s.qf,
+    note: 'Улирал хаалт — бүх нөөц', moved_by: state.me || '', created_at: stamp,
+  }));
+  snap.forEach(s => { s.p['qty_' + from] = 0; s.p['qty_' + to] = s.qt + s.qf; });   // optimistic
+  render();
+  showToast(`${movers.length} бараа шилжүүлж байна…`, 'info', 2000);
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows),
+    }, 25000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    try {
+      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/product_transfers`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify(logs),
+      }, 20000);
+    } catch (e2) { console.warn('bulk transfer log', e2); }
+    showToast(`✓ ${movers.length} бараа · ${totalQty}ш → ${tI.icon} ${tI.label}`, 'success', 4000);
+    loadProductsCatalog();
+  } catch (e) {
+    snap.forEach(s => { s.p['qty_' + from] = s.qf; s.p['qty_' + to] = s.qt; }); render();   // буцаах
+    showToast('Шилжүүлэх алдаа: ' + e.message, 'error', 6000);
+  }
+}
+
 // Худалдан авсан огнооноос эзэмшсэн/ашигласан хугацаа: "2 жил 4 сар" / "5 сар" / "12 хоног"
 function productAge(dateStr) {
   const d = String(dateStr || '').slice(0, 10);
@@ -12643,6 +12689,14 @@ function renderProducts() {
   const branchBar = _lockedBranch
     ? `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${branchInfo(_lockedBranch).icon} ${branchInfo(_lockedBranch).label} салбар <span class="prod-tab-n">${brQtySum(_lockedBranch)}ш</span></span></div>`
     : `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('catering', '🍽 Катеринг')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
+  // Улирал хаалт — NOMAAD таб идэвхтэй + нөөцтэй + удирдах эрхтэй үед "бүгдийг M-Event руу буцаах" тууз
+  const _nomaadSum = brQtySum('nomaad');
+  const seasonCloseBar = (_prodMgmt && !_lockedBranch && state.prodBranch === 'nomaad' && _nomaadSum > 0)
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
+        <button class="btn btn-primary" id="prod-return-nomaad" style="white-space:nowrap;">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>
+      </div>`
+    : '';
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
@@ -12671,6 +12725,7 @@ function renderProducts() {
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
     ${branchBar}
+    ${seasonCloseBar}
     ${filterBar}
     ${assetLine}
     <div class="prod-count" id="prod-count">${list.length} бараа</div>
@@ -12988,6 +13043,8 @@ function attachProductsHandlers() {
   document.querySelectorAll('[data-transfer]').forEach(b => {
     b.addEventListener('click', (e) => { e.stopPropagation(); openTransferModal(b.dataset.transfer); });
   });
+  // Улирал хаалт — NOMAAD-ийн бүх нөөцийг M-Event руу
+  document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');
   if (s) s.oninput = (e) => {

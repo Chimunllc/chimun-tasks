@@ -14153,7 +14153,7 @@ function openOrderQuote(oid) {
     ? `<img src="${escapeHtml(_sPhoto)}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;">`
     : `<div style="width:46px;height:46px;border-radius:50%;background:#1E4032;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;
   const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
-<p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#44444a;">Асуулт, тодруулга байвал доорх ажилтантай шууд холбогдоно уу:</p>
+<p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#17171B;">Хүндэтгэсэн,</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
 <tr>
 <td valign="top" style="padding-right:14px;">${_sAvatar}</td>
@@ -14203,6 +14203,7 @@ ${_erow('Түрээсийн хугацаа', days + ' хоног')}
 <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">Төлбөрийн данс</div>
 <div style="font-size:15px;font-weight:600;color:#17171B;padding-top:3px;">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
 <div style="font-size:13px;color:#44444a;padding-top:1px;">Хүлээн авагч: ${escapeHtml(C.name)}</div>
+<div style="font-size:13px;color:#44444a;padding-top:4px;">Гүйлгээний утга: <b style="color:#1E4032;">Захиалга ${o.number ?? ''}</b></div>
 </td></tr>
 </table>
 </td></tr>

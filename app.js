@@ -6247,10 +6247,22 @@ async function loadProductsCatalog() {
 // Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
 // Зургийг эхлээд клиент талд шахна (resizeImageToBase64), дараа нь bucket-д тавина.
 async function uploadProductImage(file) {
-  // Supabase Storage-аас салав. Шинэ зургийг клиент талд 1200px/0.78 чанартай шахаж
-  // base64 data URL-ээр буцаана → products.photo-д шууд хадгалагдана (тусдаа файл хостлох
-  // шаардлагагүй). Хуучин 228 зураг VPS Caddy-аас (n8n.nomaadcamp.com/img/) үйлчилгээтэй.
-  return await resizeImageToBase64(file, 1200, 0.78);
+  // Зургийг клиент талд 1200px/0.78 шахаад, VPS upload webhook руу илгээж hosted файлын
+  // URL (n8n.nomaadcamp.com/img/...) авна → base64 биш URL хадгалагдана (хариулт хөнгөн).
+  // Webhook унавал base64 руу fallback (апп эвдрэхгүй, харин хуучинчлан base64 хадгална).
+  const b64 = await resizeImageToBase64(file, 1200, 0.78);
+  try {
+    const r = await fetchWithTimeout(
+      'https://n8n.nomaadcamp.com/webhook/mevent-upload-image?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) },
+      30000);
+    if (r.ok) {
+      const j = await r.json();
+      const url = j && (j.url || (Array.isArray(j) && j[0] && j[0].url));
+      if (url && /^https?:\/\//.test(url)) return url;
+    }
+  } catch (e) { console.warn('Зураг upload webhook амжилтгүй — base64 руу fallback:', e.message); }
+  return b64;
 }
 
 /* ─── QR/баркод — агуулахын скан ───────────────────────────

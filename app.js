@@ -14216,50 +14216,99 @@ ${_sigBlock}
   // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
   const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
   const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
 <style>
-  *{box-sizing:border-box} body{font-family:'Segoe UI',Arial,sans-serif;color:#111;line-height:1.5;max-width:760px;margin:0 auto;padding:26px 32px 50px;font-size:13.5px}
-  h1{text-align:center;font-size:20px;letter-spacing:.5px;margin:8px 0 4px} .rule{border-top:2.5px solid #1f2937;margin:12px 0}
-  .meta-line{text-align:center;color:#444;font-size:12px;margin:2px 0 12px}
-  .cols{display:flex;gap:24px;margin:10px 0 16px;font-size:12.5px} .col{flex:1} .lbl{color:#666;font-size:11px;font-weight:700}
-  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px} th,td{border:1px solid #ccc;padding:5px 9px} th{background:#eee;text-align:left}
-  .ctr{text-align:center;white-space:nowrap} .rt{text-align:right;white-space:nowrap}
-  .totals{margin:8px 0 0 auto;width:290px} .totals td{border:0;padding:3px 6px} .totals .g td{font-size:15px;font-weight:700;border-top:2px solid #1f2937}
-  .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter','Segoe UI',Arial,sans-serif;color:#1a1a1a;line-height:1.55;max-width:790px;margin:0 auto;padding:0 0 36px;font-size:13px;background:#fff}
+  .ctr{text-align:center;white-space:nowrap} .rt{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .qh-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0B1F3A;color:#fff;padding:18px 34px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qh-bar img{height:30px;width:auto;display:block}
+  .qh-bar .qh-c{text-align:right;font-size:11px;line-height:1.65;color:#c3cedd}
+  .qh-bar .qh-c b{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:12px}
+  .qh-accent{height:4px;background:#E95400;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qbody{padding:28px 34px 0}
+  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:22px}
+  .qtitle .t-eyebrow{font-family:'Manrope',Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;color:#E95400;text-transform:uppercase}
+  .qtitle h1{font-family:'Manrope',Arial,sans-serif;font-size:30px;font-weight:800;color:#0B1F3A;letter-spacing:-.01em;margin-top:3px;line-height:1}
+  .qtitle .t-meta{text-align:right;font-size:12px;line-height:1.95;color:#4b5563;white-space:nowrap}
+  .qtitle .t-meta b{color:#0B1F3A;font-family:'Manrope',Arial,sans-serif;font-weight:700}
+  .parties{display:flex;gap:16px;margin-bottom:22px}
+  .party{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:14px 16px}
+  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:6px}
+  .party .p-name{font-family:'Manrope',Arial,sans-serif;font-size:15px;font-weight:700;color:#0B1F3A;margin-bottom:3px}
+  .party .p-row{font-size:12px;color:#4b5563;line-height:1.75}
+  table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12.5px}
+  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:10px 12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.items tbody td{padding:9px 12px;border-bottom:1px solid #E9ECF1;vertical-align:top}
+  table.items tbody tr:nth-child(even){background:#FAFBFC}
+  .tot-wrap{display:flex;justify-content:flex-end;margin-top:12px}
+  .tot{width:330px}
+  .tot .tr{display:flex;justify-content:space-between;padding:5px 2px;font-size:12.5px;color:#4b5563}
+  .tot .tr .v{font-variant-numeric:tabular-nums;color:#1a1a1a}
+  .tot .grand{margin-top:8px;padding:13px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tot .grand .g-l{color:#c3cedd;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif}
+  .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .pay{display:flex;gap:16px;margin-top:24px}
+  .pay .pay-box{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:14px 16px}
+  .pay .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
+  .pay .pay-v{font-size:14px;font-weight:700;color:#0B1F3A}
+  .pay .pay-r{font-size:12px;color:#4b5563;margin-top:3px;line-height:1.6}
+  .pay .pay-ref b{color:#E95400}
+  .terms{margin-top:20px;font-size:11.5px;color:#6b7280;line-height:1.75;border-top:1px solid #E4E8EE;padding-top:14px}
+  .terms b{color:#0B1F3A}
+  .qfoot{margin-top:26px;background:#0B1F3A;color:#c3cedd;padding:13px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qfoot b{color:#fff;font-family:'Manrope',Arial,sans-serif}
+  .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;border-bottom:1px solid #ccc;z-index:9}
   .toolbar button,.toolbar a{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;color:#111;text-decoration:none;display:inline-block;line-height:1.2}
-  .brandbar{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0B1F3A;color:#fff;padding:13px 20px;border-radius:8px;margin:0 0 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .brandbar img{height:32px;width:auto;display:block}
-  .brandbar .bc{text-align:right;font-size:11px;line-height:1.5;opacity:.92}
-  .brandbar .bc b{font-size:12.5px}
-  @media print{.toolbar{display:none}body{padding:0}}
+  @media print{.toolbar{display:none}}
 </style></head><body>
 <div class="toolbar"><button onclick="qPdf()">📄 PDF татах</button> &nbsp;<button id="qsendbtn" onclick="qSend()">📧 Илгээх (hello@mevent.mn)</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
 <div id="q">
-  <div class="brandbar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="bc"><b>M-Event — Түрээсийн үйлчилгээ</b><br>mevent.mn · 7755-1010</div></div>
-  <div class="rule"></div>
-  <h1>ҮНИЙН САНАЛ</h1>
-  <div class="meta-line">Дугаар: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; ${fd(now)} &nbsp;·&nbsp; Хүчинтэй: ${fd(valid)} хүртэл</div>
-  <div class="rule" style="border-top-width:1px"></div>
-  <div class="cols">
-    <div class="col"><div class="lbl">ҮЙЛЧИЛГЭЭ ҮЗҮҮЛЭГЧ</div><b>${C.name}</b><br>РД: ${C.reg}<br>${C.address}<br>Утас: 7755-1010<br>Данс: ${C.bank} — ${C.account}</div>
-    <div class="col"><div class="lbl">ҮЙЛЧЛҮҮЛЭГЧ</div><b>${escapeHtml(o.customer || '—')}</b><br>${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? 'Хаяг: ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? '<b>Хугацаа:</b> ' + period : ''}</div>
+  <div class="qh-bar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="qh-c"><b>Арга хэмжээний түрээс</b><br>mevent.mn · 7755-1010</div></div>
+  <div class="qh-accent"></div>
+  <div class="qbody">
+    <div class="qtitle">
+      <div><div class="t-eyebrow">Quotation</div><h1>ҮНИЙН САНАЛ</h1></div>
+      <div class="t-meta">Дугаар: <b>№${o.number ?? ''}</b><br>Огноо: ${fd(now)}<br>Хүчинтэй: <b>${fd(valid)}</b> хүртэл</div>
+    </div>
+    <div class="parties">
+      <div class="party"><div class="p-lbl">Түрээслүүлэгч</div><div class="p-name">${escapeHtml(C.name)}</div><div class="p-row">РД: ${escapeHtml(C.reg)}<br>${escapeHtml(C.address)}<br>Утас: 7755-1010<br>Данс: ${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div></div>
+      <div class="party"><div class="p-lbl">Хэрэглэгч</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? 'Утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? 'Хаяг: ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? 'Хугацаа: <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
+    </div>
+    <table class="items"><thead><tr><th class="ctr" style="width:36px">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="ctr">Хоног</th><th class="rt">Нэгж/хоног</th><th class="rt">Дүн</th></tr></thead><tbody>${itemRows || '<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">Бараа оруулаагүй</td></tr>'}</tbody></table>
+    <div class="tot-wrap"><div class="tot">
+      <div class="tr"><span>Түрээсийн дүн (${days} хоног)</span><span class="v">${fmtMoney(subtotal)}</span></div>
+      ${discount ? `<div class="tr"><span>Хөнгөлөлт</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
+      ${hasVat ? `<div class="tr"><span>НӨАТ хасалт (−5%)</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
+      ${delivFee ? `<div class="tr"><span>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
+      ${deposit ? `<div class="tr"><span>Барьцаа (буцаах)</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
+      <div class="grand"><span class="g-l">Нийт дүн</span><span class="g-v">${fmtMoney(total)}</span></div>
+    </div></div>
+    <div class="pay">
+      <div class="pay-box">
+        <div class="pay-lbl">Төлбөрийн данс</div>
+        <div class="pay-v">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
+        <div class="pay-r">Хүлээн авагч: ${escapeHtml(C.name)}</div>
+        <div class="pay-r pay-ref">Гүйлгээний утга: <b>Захиалга ${o.number ?? ''}</b></div>
+      </div>
+      <div class="pay-box">
+        <div class="pay-lbl">Нөхцөл</div>
+        <div class="pay-r">Үнэ ${hasVat ? '<b style="color:#0B1F3A">НӨАТ багтаагүй</b>' : 'НӨАТ багтсан'}.</div>
+        <div class="pay-r">Төлбөр төлөгдсөнөөр захиалга баталгаажна.</div>
+        ${deposit ? '<div class="pay-r">Барьцаа буцаан олгогдоно.</div>' : ''}
+      </div>
+    </div>
+    <div class="terms"><b>Тэмдэглэл:</b> Энэхүү үнийн санал ${fd(valid)} хүртэл хүчинтэй. Барааны нөөц захиалга баталгаажих үед эцэслэн тодорхойлогдоно. Дэлгэрэнгүй нөхцөлийг талуудын хооронд байгуулах гэрээгээр зохицуулна.</div>
   </div>
-  <table><tr><th class="ctr">№</th><th>Бараа / үйлчилгээ</th><th class="ctr">Тоо</th><th class="ctr">Хоног</th><th class="rt">Нэгж үнэ / хоног</th><th class="rt">Дүн</th></tr>${itemRows || '<tr><td colspan="6" style="text-align:center;color:#888">Бараа оруулаагүй</td></tr>'}</table>
-  <table class="totals">
-    <tr><td>Түрээсийн дүн (${days} хоног):</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
-    ${discount ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
-    ${hasVat ? `<tr><td>НӨАТ хасалт (−5%):</td><td class="rt">−${fmtMoney(vatDiscount)}</td></tr>` : ''}
-    ${delivFee ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
-    ${deposit ? `<tr><td>Барьцаа (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
-    <tr class="g"><td>НИЙТ ДҮН:</td><td class="rt">${fmtMoney(total)}</td></tr>
-  </table>
-  <div style="clear:both"></div>
-  <p style="margin-top:22px;font-size:12px;color:#555;line-height:1.7;">• Үнэ ${hasVat ? '<b>НӨАТ багтаагүй</b>' : 'НӨАТ багтсан'}. &nbsp; • Төлбөр төлөгдсөнөөр захиалга баталгаажна. &nbsp; • Төлбөрийн данс: <b>${C.bank} — ${C.account}</b> (${C.name}).</p>
+  <div class="qfoot"><b>M-Event</b> · Арга хэмжээний түрээс &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>
 </div>
 <script>
 var H2P_SRC='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
 function ensureH2P(){return new Promise(function(res,rej){if(window.html2pdf)return res();var s=document.createElement('script');s.src=H2P_SRC;s.onload=function(){res();};s.onerror=function(){rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));};document.head.appendChild(s);});}
 function pdfOpt(){return {margin:[8,8,10,8],image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};}
-function qPdf(){var el=document.getElementById('q');ensureH2P().then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:${JSON.stringify(fname)}+'.pdf'})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
+function fontsReady(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):Promise.resolve();}
+function qPdf(){var el=document.getElementById('q');ensureH2P().then(fontsReady).then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:${JSON.stringify(fname)}+'.pdf'})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
 async function qSend(){
   var to=${JSON.stringify(mailTo)};
   if(!to){alert('Үйлчлүүлэгчийн имэйл алга — эхлээд захиалга дээр имэйл нэмнэ үү.');return;}
@@ -14268,6 +14317,7 @@ async function qSend(){
   if(btn){btn.textContent='Илгээж байна…';btn.style.pointerEvents='none';}
   try{
     await ensureH2P();
+    await fontsReady();
     var el=document.getElementById('q');
     var datauri=await window.html2pdf().set(pdfOpt()).from(el).outputPdf('datauristring');
     var b64=String(datauri).split(',')[1]||'';
@@ -20454,7 +20504,6 @@ function openProfileModal() {
   // Accessibility prefs
   const fs = localStorage.getItem('fontSize') || 'md';
   document.querySelectorAll('.fs-btn').forEach(b => b.classList.toggle('active', b.dataset.fs === fs));
-  document.getElementById('profile-high-contrast').checked = localStorage.getItem('highContrast') === '1';
   // Avatar preview
   const picture = state.user.picture || localStorage.getItem('userPicture');
   const display = document.getElementById('profile-avatar-display');
@@ -20493,19 +20542,14 @@ function openProfileModal() {
   document.getElementById('profile-modal').classList.add('open');
 }
 
-/* ─── Accessibility — үсгийн хэмжээ + high contrast ─── */
+/* ─── Accessibility — үсгийн хэмжээ ─── */
 function applyFontSize(size) {
   document.documentElement.setAttribute('data-fs', size);
   localStorage.setItem('fontSize', size);
 }
-function applyHighContrast(on) {
-  document.documentElement.classList.toggle('high-contrast', !!on);
-  localStorage.setItem('highContrast', on ? '1' : '0');
-}
 function loadAccessibilityPrefs() {
   const fs = localStorage.getItem('fontSize') || 'md';
   applyFontSize(fs);
-  if (localStorage.getItem('highContrast') === '1') applyHighContrast(true);
 }
 // Аппын анх ачаалах үед хэрэглэх
 loadAccessibilityPrefs();
@@ -20518,10 +20562,6 @@ function setupProfileModal() {
       btn.classList.add('active');
       applyFontSize(btn.dataset.fs);
     });
-  });
-  // High contrast toggle
-  document.getElementById('profile-high-contrast')?.addEventListener('change', (e) => {
-    applyHighContrast(e.target.checked);
   });
   document.getElementById('profile-cancel')?.addEventListener('click', () =>
     document.getElementById('profile-modal').classList.remove('open'));

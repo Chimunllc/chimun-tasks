@@ -6630,6 +6630,49 @@ function productRowHtml(p) {
   </div>`;
 }
 
+// ── Хэмжээ/өнгө вариант бүлэглэлт: variant_group-аар нэгтгэж, эвхэгддэг толгой мөр харуулна ──
+function variantGroupHead(grp, members) {
+  const _actBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
+  const totStock = members.reduce((s, p) => s + (_actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0)), 0);
+  const prices = members.map(p => Number(p.price) || 0).filter(x => x > 0);
+  const priceLbl = prices.length ? (Math.min(...prices) === Math.max(...prices) ? fmtMoney(Math.min(...prices)) : `${fmtMoney(Math.min(...prices))}–${fmtMoney(Math.max(...prices))}`) : '—';
+  const cat = members[0].category || '—';
+  const photo = (members.find(p => p.photo) || {}).photo;
+  const img = photo ? `<img src="${escapeHtml(photo)}" loading="lazy" onerror="this.style.visibility='hidden'">` : '<div class="ph">📦</div>';
+  const labels = members.map(p => (p.variant_label || '').trim()).filter(Boolean).slice(0, 8).join(' · ');
+  // Бүлгийн толгой хайлтад олдохын тулд бүх гишүүний нэр/ангилал/sku-г data-search-д нэгтгэнэ
+  const search = members.map(p => `${p.name || ''} ${p.category || ''} ${p.sku || ''}`).join(' ').toLowerCase();
+  return `<div class="prod-row prod-vg-head" data-vgroup="${escapeHtml(grp)}" data-search="${escapeHtml(search)}">
+    <div class="prod-img">${img}</div>
+    <div class="prod-main">
+      <div class="prod-name-d">${escapeHtml(grp)} <span style="font-size:11px;font-weight:700;color:var(--primary);background:var(--panel-hover);border-radius:20px;padding:1px 8px;white-space:nowrap;">${members.length} хувилбар</span></div>
+      <div class="prod-sub" style="color:var(--muted);">${escapeHtml(cat)}${labels ? ' · ' + escapeHtml(labels) : ''}</div>
+    </div>
+    <div class="prod-badges" style="align-items:flex-end;text-align:right;">
+      <div style="line-height:1.2;"><div style="font-size:14px;font-weight:700;color:var(--text);">${priceLbl}</div><div style="font-size:10px;color:var(--muted);">түрээс/өдөр</div></div>
+      <span class="prod-stock-b">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${totStock} ширхэг</span>
+    </div>
+    <span class="prod-chev prod-vg-chev" style="transition:transform .15s;">›</span>
+  </div>`;
+}
+// Жагсаалтыг вариант бүлгээр (≥2 гишүүн) нэгтгэж, бусдыг энгийн мөрөөр буулгана
+function productListHtml(list) {
+  const inList = {};
+  list.forEach(p => { const g = (p.variant_group || '').trim(); if (g) (inList[g] = inList[g] || []).push(p); });
+  const done = {}; const out = [];
+  for (const p of list) {
+    const g = (p.variant_group || '').trim();
+    if (g && inList[g] && inList[g].length >= 2) {
+      if (done[g]) continue;
+      done[g] = 1;
+      out.push(`<div class="prod-vg">${variantGroupHead(g, inList[g])}<div class="prod-vg-body" style="display:none;margin:2px 0 2px 12px;padding-left:10px;border-left:2px solid var(--border);">${inList[g].map(productRowHtml).join('')}</div></div>`);
+    } else {
+      out.push(productRowHtml(p));
+    }
+  }
+  return out.join('');
+}
+
 /* ===================== ЦАГИЙН ЦАЛИН (hourly payroll) =====================
    Цагийн ажилчдын цалинг менежер ажил дуусахад өдрийн хөлс × хоногоор ГАРААР
    оруулж, компанийн Хаан банкны тусдаа "цагийн ажилтны данс"-наас шилжүүлнэ.
@@ -12514,7 +12557,7 @@ function renderProducts() {
     purchase_asc: (a, b) => String(a.purchase_date || '9999-99-99').localeCompare(String(b.purchase_date || '9999-99-99')),
   };
   list = list.slice().sort(_prodSorters[state.prodSort] || _prodSorters.name);
-  const rows = list.map(productRowHtml).join('');
+  const rows = productListHtml(list);   // хэмжээ/өнгө вариантыг бүлэглэж харуулна
   // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
@@ -12870,7 +12913,22 @@ function attachProductsHandlers() {
     const q = e.target.value.toLowerCase().trim();
     state.productSearch = e.target.value;
     let n = 0;
+    // Вариант бүлгүүд — хайлтад гишүүн таарвал бүлгийг задалж харуулна
+    document.querySelectorAll('.prod-vg').forEach(vg => {
+      let any = false;
+      vg.querySelectorAll('.prod-vg-body .prod-row').forEach(row => {
+        const show = !q || (row.dataset.search || '').includes(q);
+        row.style.display = show ? '' : 'none';
+        if (show && q) { any = true; n++; }
+      });
+      vg.querySelector('.prod-vg-head').style.display = (!q || any) ? '' : 'none';
+      vg.querySelector('.prod-vg-body').style.display = (q && any) ? '' : 'none';
+      const chev = vg.querySelector('.prod-vg-chev'); if (chev) chev.style.transform = (q && any) ? 'rotate(90deg)' : '';
+      if (!q) n++;   // задлаагүй үед бүлгийг 1 гэж тоолно
+    });
+    // Бүлэггүй энгийн мөрүүд
     document.querySelectorAll('.prod-row').forEach(row => {
+      if (row.closest('.prod-vg')) return;
       const show = !q || (row.dataset.search || '').includes(q);
       row.style.display = show ? '' : 'none';
       if (show) n++;
@@ -12878,6 +12936,14 @@ function attachProductsHandlers() {
     const c = document.getElementById('prod-count');
     if (c) c.textContent = `${n} бараа${q ? ' (шүүсэн)' : ''}`;
   };
+  // Вариант бүлгийн толгойг дарж задлах/хаах
+  document.querySelectorAll('.prod-vg-head').forEach(h => h.addEventListener('click', () => {
+    const body = h.parentElement.querySelector('.prod-vg-body');
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    const chev = h.querySelector('.prod-vg-chev'); if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
+  }));
   // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх
   document.querySelectorAll('[data-product-open]').forEach(row => {
     row.addEventListener('click', () => {

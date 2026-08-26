@@ -14148,11 +14148,15 @@ function openOrderQuote(oid) {
   const _sDigits = String(_snd.phone || '').replace(/\D/g, '');
   const _sPhone = _sDigits.length === 8 ? _sDigits.slice(0, 4) + '-' + _sDigits.slice(4) : _sDigits;
   const _sInit = escapeHtml(memberInitials(state.me) || '');
+  const _sPhoto = _snd.photo ? driveThumbUrl(_snd.photo, 200) : '';
+  const _sAvatar = _sPhoto
+    ? `<img src="${escapeHtml(_sPhoto)}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;">`
+    : `<div style="width:46px;height:46px;border-radius:50%;background:#1E4032;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;
   const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
-<p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#44444a;">Үнийн санал, нөхцөлтэй холбоотой асуултаа хариуцсан ажилтантай доор шууд ярилцаж болно:</p>
+<p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#44444a;">Асуулт, тодруулга байвал доорх ажилтантай шууд холбогдоно уу:</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
 <tr>
-<td valign="top" style="padding-right:14px;"><div style="width:46px;height:46px;border-radius:50%;background:#1E4032;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div></td>
+<td valign="top" style="padding-right:14px;">${_sAvatar}</td>
 <td valign="middle">
 <div style="font-size:15px;font-weight:700;color:#17171B;">${_sName}</div>
 <div style="font-size:12px;color:#78787F;padding-top:1px;">${_sTitle ? _sTitle + ' · ' : ''}M-Event</div>
@@ -14165,13 +14169,14 @@ ${_sPhone ? `<div style="font-size:14px;color:#1E4032;font-weight:700;padding-to
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border-collapse:collapse;">
 <tr><td align="center" style="padding:28px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #ECE9E2;border-radius:16px;border-collapse:separate;overflow:hidden;font-family:Inter,Helvetica,Arial,sans-serif;">
-<tr><td style="background:#1E4032;padding:26px 32px;">
-<div style="font-family:Manrope,Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:.16em;color:#ffffff;">M&nbsp;EVENT</div>
-<div style="font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#A9C6B6;padding-top:5px;">Арга хэмжээний түрээс</div>
+<tr><td style="background:#1E4032;height:6px;line-height:6px;font-size:6px;">&nbsp;</td></tr>
+<tr><td style="background:#ffffff;padding:26px 32px 20px;border-bottom:1px solid #ECE9E2;">
+<img src="https://chimunllc.github.io/chimun-tasks/mevent-logo.png" alt="M-Event" height="34" style="height:34px;width:auto;display:block;">
+<div style="font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#78787F;padding-top:10px;">Арга хэмжээний түрээс</div>
 </td></tr>
 <tr><td style="padding:30px 32px 6px;">
 <p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#17171B;">Эрхэм ${_cust} танаа,</p>
-<p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:#44444a;">M-Event түрээсийн үйлчилгээг сонирхсон танд баярлалаа. Таны хүсэлтийн дагуу бэлтгэсэн үнийн саналыг доор хураангуйлав. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.</p>
+<p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:#44444a;">M-Event түрээсийн үйлчилгээг сонирхож байгаад баярлалаа. Таны хүсэлтийн дагуу үнийн саналыг илгээж байна. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.</p>
 </td></tr>
 <tr><td style="padding:0 32px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EDF1EE;border-radius:12px;border-collapse:separate;">

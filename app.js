@@ -12556,40 +12556,82 @@ async function saveAppConfig(key, value) {
   }, 20000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
-// Сайтын (mevent.mn) ангиллын том бүлгийн нэрийг засах модал.
+// Сайтын (mevent.mn) ангиллын бүлэг + дэд ангилал оноолтыг засах модал.
+let _cgSeq = 0;
 async function openCategoryGroupsModal() {
-  const groups = await loadAppConfig('mevent_category_groups');
-  if (!Array.isArray(groups) || !groups.length) { showToast('Бүлгийн тохиргоо олдсонгүй', 'error'); return; }
+  const groups0 = await loadAppConfig('mevent_category_groups');
+  if (!Array.isArray(groups0)) { showToast('Бүлгийн тохиргоо олдсонгүй', 'error'); return; }
+  // Дэд ангилал = барааны бодит category + тохиргоон дахь subs (нэгдэл)
+  const leafSet = new Set((state.products || []).map(p => p.category).filter(Boolean));
+  groups0.forEach(g => (g.subs || []).forEach(s => leafSet.add(s)));
+  const leafCats = [...leafSet].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
+  // Дотоод засварын төлөв: групп бүрд тогтвортой id
+  const groups = groups0.map(g => ({ id: 'g' + (++_cgSeq), name: g.name }));
+  const assign = {};  // leafCat → groupId ('' = бүлэггүй)
+  leafCats.forEach(c => { const g = groups0.find(x => Array.isArray(x.subs) && x.subs.includes(c)); assign[c] = g ? groups[groups0.indexOf(g)].id : ''; });
+
   document.getElementById('catgrp-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'catgrp-modal';
-  modal.innerHTML = `<div class="modal" style="max-width:520px;">
-    <h2>🗂 Ангиллын бүлгүүд</h2>
-    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Сайтын (mevent.mn) цэсний <b>том бүлгийн нэр</b>-ийг өөрчилнө. Доор нь бүлэг бүрийн дэд ангилал.</p>
-    <div id="cg-list">${groups.map((g, i) => `
-      <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
-        <input class="cg-name" data-i="${i}" value="${escapeHtml(g.name)}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;background:var(--panel);color:var(--text);">
-        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">${(g.subs || []).map(escapeHtml).join(' · ') || 'дэд ангилалгүй'}</div>
-      </div>`).join('')}</div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-      <button class="btn" id="cg-cancel">Болих</button>
-      <button class="btn btn-primary" id="cg-save">💾 Хадгалах</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal); modal.classList.add('open');
-  modal.querySelector('#cg-cancel').onclick = () => modal.remove();
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
-  modal.querySelector('#cg-save').onclick = async (e) => {
-    const names = [...modal.querySelectorAll('.cg-name')].map(i => i.value.trim());
-    if (names.some(n => !n)) { showToast('Бүлгийн нэр хоосон байж болохгүй', 'warn'); return; }
-    const newGroups = groups.map((g, i) => ({ name: names[i], subs: g.subs || [] }));
-    e.target.disabled = true;
-    try {
-      await saveAppConfig('mevent_category_groups', newGroups);
-      showToast('Бүлгийн нэр шинэчлэгдлээ — сайтад тусна', 'success', 2500);
-      modal.remove();
-    } catch (err) { showToast('Алдаа: ' + err.message, 'error'); e.target.disabled = false; }
+  document.body.appendChild(modal);
+
+  const syncFromDom = () => {
+    modal.querySelectorAll('.cg-name').forEach(inp => { const g = groups.find(x => x.id === inp.dataset.id); if (g) g.name = inp.value; });
+    modal.querySelectorAll('.cg-assign').forEach(sel => { assign[sel.dataset.cat] = sel.value; });
   };
+  const optsFor = (cur) => `<option value="">— Бүлэггүй —</option>` + groups.map(g => `<option value="${g.id}"${cur === g.id ? ' selected' : ''}>${escapeHtml(g.name || '(нэргүй)')}</option>`).join('');
+  const render = () => {
+    modal.innerHTML = `<div class="modal" style="max-width:560px;">
+      <h2>🗂 Ангиллын бүлгүүд</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Сайтын (mevent.mn) цэсний том бүлэг + дэд ангилал аль бүлэгт харагдахыг тохируулна.</p>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ТОМ БҮЛГҮҮД</div>
+      <div id="cg-groups">${groups.map(g => `
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+          <input class="cg-name" data-id="${g.id}" value="${escapeHtml(g.name)}" placeholder="Бүлгийн нэр" style="flex:1;min-width:0;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-size:13.5px;font-weight:600;background:var(--panel);color:var(--text);">
+          <button class="cg-del" data-id="${g.id}" title="Бүлэг устгах" style="flex:0 0 auto;width:34px;height:34px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel);color:var(--danger);font-size:18px;cursor:pointer;">×</button>
+        </div>`).join('')}</div>
+      <button class="btn" id="cg-add" style="width:100%;margin-bottom:14px;">+ Шинэ бүлэг</button>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ДЭД АНГИЛАЛ → БҮЛЭГ</div>
+      <div id="cg-cats" style="max-height:38vh;overflow-y:auto;">${leafCats.map(c => `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;">
+          <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c)}</span>
+          <select class="cg-assign" data-cat="${escapeHtml(c)}" style="flex:0 0 200px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);">${optsFor(assign[c])}</select>
+        </div>`).join('')}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+        <button class="btn" id="cg-cancel">Болих</button>
+        <button class="btn btn-primary" id="cg-save">💾 Хадгалах</button>
+      </div>
+    </div>`;
+    // нэр өөрчлөх → сонголтын шошгыг шууд шинэчилнэ (id тогтвортой тул оноолт эвдрэхгүй)
+    modal.querySelectorAll('.cg-name').forEach(inp => inp.oninput = () => {
+      const g = groups.find(x => x.id === inp.dataset.id); if (g) g.name = inp.value;
+      modal.querySelectorAll(`.cg-assign option[value="${inp.dataset.id}"]`).forEach(o => o.textContent = inp.value || '(нэргүй)');
+    });
+    modal.querySelectorAll('.cg-assign').forEach(sel => sel.onchange = () => { assign[sel.dataset.cat] = sel.value; });
+    modal.querySelectorAll('.cg-del').forEach(btn => btn.onclick = () => {
+      syncFromDom();
+      const id = btn.dataset.id;
+      const idx = groups.findIndex(g => g.id === id); if (idx >= 0) groups.splice(idx, 1);
+      Object.keys(assign).forEach(c => { if (assign[c] === id) assign[c] = ''; });
+      render();
+    });
+    modal.querySelector('#cg-add').onclick = () => { syncFromDom(); groups.push({ id: 'g' + (++_cgSeq), name: 'Шинэ бүлэг' }); render(); };
+    modal.querySelector('#cg-cancel').onclick = () => modal.remove();
+    modal.querySelector('#cg-save').onclick = async (e) => {
+      syncFromDom();
+      if (groups.some(g => !g.name.trim())) { showToast('Бүлгийн нэр хоосон байж болохгүй', 'warn'); return; }
+      const newGroups = groups.map(g => ({ name: g.name.trim(), subs: leafCats.filter(c => assign[c] === g.id) }));
+      e.target.disabled = true;
+      try {
+        await saveAppConfig('mevent_category_groups', newGroups);
+        showToast('Ангиллын бүлэг шинэчлэгдлээ — сайтад тусна', 'success', 2500);
+        modal.remove();
+      } catch (err) { showToast('Алдаа: ' + err.message, 'error'); e.target.disabled = false; }
+    };
+  };
+  render();
+  modal.classList.add('open');
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
 function renderProducts() {

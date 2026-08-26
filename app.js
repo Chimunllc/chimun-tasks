@@ -12537,6 +12537,61 @@ function attachPerformanceHandlers() {
   });
 }
 
+// ── app_config (VPS Postgres, PostgREST anon) key-value тохиргоо — сайттай хуваалцана ──
+async function loadAppConfig(key) {
+  if (!SUPABASE_ANON_KEY) return null;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    return rows[0] ? rows[0].value : null;
+  } catch (e) { console.warn('loadAppConfig fail', key, e.message); return null; }
+}
+async function saveAppConfig(key, value) {
+  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_config?on_conflict=key`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+  }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+// Сайтын (mevent.mn) ангиллын том бүлгийн нэрийг засах модал.
+async function openCategoryGroupsModal() {
+  const groups = await loadAppConfig('mevent_category_groups');
+  if (!Array.isArray(groups) || !groups.length) { showToast('Бүлгийн тохиргоо олдсонгүй', 'error'); return; }
+  document.getElementById('catgrp-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'catgrp-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:520px;">
+    <h2>🗂 Ангиллын бүлгүүд</h2>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Сайтын (mevent.mn) цэсний <b>том бүлгийн нэр</b>-ийг өөрчилнө. Доор нь бүлэг бүрийн дэд ангилал.</p>
+    <div id="cg-list">${groups.map((g, i) => `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+        <input class="cg-name" data-i="${i}" value="${escapeHtml(g.name)}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-strong);border-radius:8px;font-size:14px;font-weight:600;background:var(--panel);color:var(--text);">
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">${(g.subs || []).map(escapeHtml).join(' · ') || 'дэд ангилалгүй'}</div>
+      </div>`).join('')}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn" id="cg-cancel">Болих</button>
+      <button class="btn btn-primary" id="cg-save">💾 Хадгалах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal); modal.classList.add('open');
+  modal.querySelector('#cg-cancel').onclick = () => modal.remove();
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#cg-save').onclick = async (e) => {
+    const names = [...modal.querySelectorAll('.cg-name')].map(i => i.value.trim());
+    if (names.some(n => !n)) { showToast('Бүлгийн нэр хоосон байж болохгүй', 'warn'); return; }
+    const newGroups = groups.map((g, i) => ({ name: names[i], subs: g.subs || [] }));
+    e.target.disabled = true;
+    try {
+      await saveAppConfig('mevent_category_groups', newGroups);
+      showToast('Бүлгийн нэр шинэчлэгдлээ — сайтад тусна', 'success', 2500);
+      modal.remove();
+    } catch (err) { showToast('Алдаа: ' + err.message, 'error'); e.target.disabled = false; }
+  };
+}
+
 function renderProducts() {
   const all = state.products || [];
   state.prodFilter = state.prodFilter || 'all';
@@ -12607,6 +12662,7 @@ function renderProducts() {
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
+      ${_prodMgmt ? '<button class="btn" id="prod-groups" title="Сайтын ангиллын бүлгүүд">🗂 Бүлгүүд</button>' : ''}
       <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
     </div>
     ${branchBar}
@@ -12974,6 +13030,7 @@ function attachProductsHandlers() {
   });
   // Шинэ бараа → хоосон модал
   document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
+  document.getElementById('prod-groups')?.addEventListener('click', () => openCategoryGroupsModal());
   // QR скан → бараа таних
   document.getElementById('prod-scan')?.addEventListener('click', () => openScanner());
 }

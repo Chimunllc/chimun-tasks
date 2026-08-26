@@ -14135,25 +14135,65 @@ function openOrderQuote(oid) {
   const fname = ('Үнийн санал ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
   // НӨАТ хассан эсэх — захиалгын ⟦VAT|дүн⟧ token-оос. Хассан бол дүн аль хэдийн total_mnt-д тусгагдсан.
   const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
-  // Имэйлээр илгээх — mailto (үйлчлүүлэгчийн и-мэйл рүү, текст хураангуйтай). Автоматаар илгээхгүй — хэрэглэгч өөрөө шалгаж илгээнэ.
-  const _mlLines = [
-    `Эрхэм ${o.customer || 'харилцагч'} танаа,`, '',
-    'M-Event түрээсийн үйлчилгээг сонирхсон танд баярлалаа. Таны хүсэлтийн дагуу бэлтгэсэн үнийн саналыг хавсаргав — дэлгэрэнгүйг хавсралт PDF файлаас үзнэ үү.', '',
-    `Үнийн санал №${o.number ?? ''}`,
-    `Огноо: ${fd(now)}`,
-    `Хүчинтэй хугацаа: ${fd(valid)} хүртэл`,
-    `Түрээсийн хугацаа: ${days} хоног`,
-    `Нийт дүн: ${fmtMoney(total)} (${hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан'})`];
-  if (deposit) _mlLines.push(`Барьцаа: ${fmtMoney(deposit)} (буцаан олгогдоно)`);
-  _mlLines.push('',
-    'Захиалга баталгаажуулах: төлбөр төлөгдсөнөөр захиалга баталгаажна.', '',
-    'Төлбөрийн данс:',
-    `${C.bank} — ${C.account}`,
-    `Хүлээн авагч: ${C.name}`, '',
-    'Лавлагаа: 7755-1010 · mevent.mn', '',
-    'Хүндэтгэсэн,',
-    'M-Event баг');
-  const mailBody = _mlLines.join('\n'), mailSubject = `M-Event · Үнийн санал №${o.number ?? ''}`, mailTo = o.email || '';
+  // Имэйлийн их бие — M-Event брэнд HTML (pine green #1E4032 + дулаан цагаан + Manrope/Inter).
+  // ⚠ Gmail node дээр Email Type = HTML байх ёстой. Дэлгэрэнгүй задаргаа хавсралт PDF-д.
+  const mailSubject = `M-Event · Үнийн санал №${o.number ?? ''}`, mailTo = o.email || '';
+  const _cust = escapeHtml(o.customer || 'харилцагч');
+  const _vatNote = hasVat ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан';
+  const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;
+  const mailHtml = `<div style="margin:0;padding:0;background:#FBFAF7;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border-collapse:collapse;">
+<tr><td align="center" style="padding:28px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #ECE9E2;border-radius:16px;border-collapse:separate;overflow:hidden;font-family:Inter,Helvetica,Arial,sans-serif;">
+<tr><td style="background:#1E4032;padding:26px 32px;">
+<div style="font-family:Manrope,Arial,sans-serif;font-size:20px;font-weight:800;letter-spacing:.16em;color:#ffffff;">M&nbsp;EVENT</div>
+<div style="font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#A9C6B6;padding-top:5px;">Арга хэмжээний түрээс</div>
+</td></tr>
+<tr><td style="padding:30px 32px 6px;">
+<p style="margin:0 0 12px;font-size:16px;font-weight:600;color:#17171B;">Эрхэм ${_cust} танаа,</p>
+<p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:#44444a;">M-Event түрээсийн үйлчилгээг сонирхсон танд баярлалаа. Таны хүсэлтийн дагуу бэлтгэсэн үнийн саналыг доор хураангуйлав. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.</p>
+</td></tr>
+<tr><td style="padding:0 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EDF1EE;border-radius:12px;border-collapse:separate;">
+<tr><td style="padding:20px 22px;">
+<div style="font-family:Manrope,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#1E4032;padding-bottom:12px;">Үнийн санал №${o.number ?? ''}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+${_erow('Огноо', fd(now))}
+${_erow('Хүчинтэй хугацаа', fd(valid) + ' хүртэл')}
+${_erow('Түрээсийн хугацаа', days + ' хоног')}
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-top:1px solid #D5E0D9;margin-top:12px;">
+<tr><td style="padding-top:12px;font-size:14px;font-weight:600;color:#17171B;">Нийт дүн</td>
+<td align="right" style="padding-top:12px;font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:800;color:#1E4032;">${fmtMoney(total)}</td></tr>
+</table>
+<div style="font-size:12px;color:#4a5a50;padding-top:6px;">${_vatNote}${deposit ? ' · Барьцаа ' + fmtMoney(deposit) + ' (буцаан олгогдоно)' : ''}</div>
+</td></tr>
+</table>
+</td></tr>
+<tr><td style="padding:22px 32px 0;">
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#17171B;">Захиалга баталгаажуулах</p>
+<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#44444a;">Төлбөр төлөгдсөнөөр захиалга баталгаажна.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border:1px solid #ECE9E2;border-radius:11px;border-collapse:separate;">
+<tr><td style="padding:14px 16px;">
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">Төлбөрийн данс</div>
+<div style="font-size:15px;font-weight:600;color:#17171B;padding-top:3px;">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
+<div style="font-size:13px;color:#44444a;padding-top:1px;">Хүлээн авагч: ${escapeHtml(C.name)}</div>
+</td></tr>
+</table>
+</td></tr>
+<tr><td align="center" style="padding:24px 32px 4px;">
+<a href="https://mevent.mn" style="display:inline-block;background:#17171B;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;padding:13px 28px;border-radius:11px;">mevent.mn</a>
+</td></tr>
+<tr><td style="padding:24px 32px 30px;">
+<div style="border-top:1px solid #ECE9E2;padding-top:18px;font-size:12px;line-height:1.7;color:#78787F;">
+<strong style="color:#17171B;">M-Event</strong> · Арга хэмжээний түрээс<br>
+Утас: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#1E4032;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#1E4032;text-decoration:none;">hello@mevent.mn</a>
+</div>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</div>`;
   // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
   const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
   const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
@@ -14212,7 +14252,7 @@ async function qSend(){
     var el=document.getElementById('q');
     var datauri=await window.html2pdf().set(pdfOpt()).from(el).outputPdf('datauristring');
     var b64=String(datauri).split(',')[1]||'';
-    var res=await fetch(${JSON.stringify(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:${JSON.stringify(mailSubject)},body:${JSON.stringify(mailBody)},filename:${JSON.stringify(fname)}+'.pdf',pdf_base64:b64,source:'app'})});
+    var res=await fetch(${JSON.stringify(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:${JSON.stringify(mailSubject)},body:${JSON.stringify(mailHtml)},filename:${JSON.stringify(fname)}+'.pdf',pdf_base64:b64,source:'app'})});
     if(!res.ok)throw new Error('HTTP '+res.status);
     alert('✓ Үнийн санал '+to+' рүү илгээгдлээ.');
     if(btn){btn.textContent='✓ Илгээгдсэн';}

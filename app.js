@@ -15956,18 +15956,22 @@ async function vatSetMatch(id, match) {
 }
 
 // Тулгах захиалгууд: NOMAAD + Эвент(түүхэн) — нэгдсэн хэлбэрт
+function vatRegNorm(v) { return String(v || '').replace(/\D/g, ''); }   // зөвхөн цифр (РД)
 function vatCandidateOrders() {
   const out = [];
   (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
     out.push({ type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '',
-      amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start || o.created_at || '' }); });
+      reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start || o.created_at || '' }); });
   (state.bqOrders || []).forEach(o => {
     out.push({ type: 'event', no: o.number, name: o.company || o.customer || o.customer_name || '',
-      amount: vatNum(o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
+      reg: vatRegNorm(o.register || o.reg_no), amount: vatNum(o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
   return out.filter(c => c.no);
 }
 function vatAutoScore(rec, c) {
   let s = 0;
+  // РД (регистр) яг таарвал хамгийн хүчтэй дохио — эхлээд үүгээр тулгана
+  const rReg = vatRegNorm(rec.reg || rec.buyer_reg);
+  if (rReg && c.reg && rReg === c.reg) s += 10;
   const rn = vatNorm(rec.name), cn = vatNorm(c.name);
   if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
   const amt = c.amount || 0;
@@ -16027,8 +16031,9 @@ async function openVatReportModal() {
         const tops = cands.map(c => ({ c, s: vatAutoScore(r, c) })).filter(x => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 3);
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
+          const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const lbl = (c.name || c.no) + ' · ' + fmtMoney(c.amount);
-          return `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}" style="text-align:left;border:1px solid ${i === 0 ? '#1e7a55' : 'var(--border,#ddd)'};background:${i === 0 ? '#e8f2ec' : '#fff'};color:${i === 0 ? '#1e7a55' : 'var(--text,#333)'};border-radius:8px;padding:4px 9px;font-size:11.5px;font-weight:${i === 0 ? '700' : '500'};cursor:pointer;white-space:nowrap;">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${amtOk ? ' <b style="color:#1e7a55;">✓дүн</b>' : ''} <span style="color:var(--muted);">${escapeHtml(String(c.date || '').slice(5, 10))}</span></button>`;
+          return `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}" style="text-align:left;border:1px solid ${i === 0 ? '#1e7a55' : 'var(--border,#ddd)'};background:${i === 0 ? '#e8f2ec' : '#fff'};color:${i === 0 ? '#1e7a55' : 'var(--text,#333)'};border-radius:8px;padding:4px 9px;font-size:11.5px;font-weight:${i === 0 ? '700' : '500'};cursor:pointer;white-space:nowrap;">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b style="color:#0d7a3f;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;">✓дүн</b>' : ''} <span style="color:var(--muted);">${escapeHtml(String(c.date || '').slice(5, 10))}</span></button>`;
         }).join('');
         matchCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">${chips || '<span style="color:var(--muted);font-size:11.5px;">таарах санал алга</span>'}<button data-vpicker="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--accent,#2563EB);font-size:11px;cursor:pointer;padding:2px 0;">🔍 Бусад захиалга хайх</button></div>`;
       }
@@ -16125,9 +16130,10 @@ async function openVatReportModal() {
         </div>
         <div style="overflow:auto;padding:6px;">${rows.map(x => {
           const c = x.c; const amtOk = near(rec.total, c.amount) || near(rec.net, c.amount);
+          const regOk = rec.buyer_reg && c.reg && vatRegNorm(rec.buyer_reg) === c.reg;
           return `<button class="pk-row" data-type="${c.type}" data-no="${escapeHtml(String(c.no))}" data-label="${escapeHtml((c.name || c.no) + ' · ' + fmtMoney(c.amount))}" style="display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;border-bottom:1px solid #f2f2f2;background:${x.s >= 6 ? '#f4faf6' : '#fff'};padding:9px 10px;cursor:pointer;">
             <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name || 'Нэргүй')} <span style="color:#999;font-weight:400;">${c.type === 'nomaad' ? '⛺' : '🎪'}#${escapeHtml(String(c.no))}</span></div><div style="font-size:11px;color:#888;">${escapeHtml(String(c.date || '').slice(0, 10))}</div></span>
-            <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}</span>
+            <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${regOk ? '<div style="font-size:10.5px;color:#0d7a3f;font-weight:700;">✓ РД таарна</div>' : ''}${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}</span>
           </button>`;
         }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Олдсонгүй</div>'}</div>`;
       pc.querySelector('#pk-x').onclick = () => pov.remove();

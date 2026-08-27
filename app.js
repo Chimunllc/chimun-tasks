@@ -16158,7 +16158,13 @@ async function openVatReportModal() {
         matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:inline-flex;align-items:center;gap:4px;color:#1e7a55;font-weight:700;font-size:12px;background:#e8f2ec;border-radius:6px;padding:2px 8px;">🔒 ${escapeHtml(r.matched_label || r.matched_id)}</span><button data-vunmatch="${escapeHtml(r.id)}" title="Түгжээ гаргаж тулгалтыг болиулах" style="border:1px solid var(--border,#ddd);background:#fff;color:var(--muted,#888);cursor:pointer;font-size:11px;border-radius:6px;padding:2px 8px;">🔓 гаргах</button></div>`;
       } else {
         const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
-        const tops = cands.map(c => ({ c, s: vatAutoScore(r, c) })).filter(x => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 3);
+        // Зөвхөн бодит таарсан (дүн ЯГ таарсан / РД / нэр) саналыг л харуулна — өөр дүнтэйг үзүүлэхгүй
+        const tops = cands.map(c => {
+          const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
+          const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
+          const nameOk = vatNameMatch(r.buyer_name, c.name);
+          return { c, ok: amtOk || regOk || nameOk, s: vatAutoScore(r, c) };
+        }).filter(x => x.ok).sort((a, b) => b.s - a.s).slice(0, 3);
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;

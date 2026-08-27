@@ -6433,6 +6433,12 @@ function nextProductSKU() {
   return 'CH_' + String(max + 1).padStart(3, '0');
 }
 
+// Шинэ бараанд дараагийн M-код (M-<max+1>) — үйлчлүүлэгчийн нүүр код (утсаар захиалах)
+function nextProductCode() {
+  let max = 0;
+  (state.products || []).forEach(p => { const m = /^M-(\d+)$/.exec(String(p.code || '')); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } });
+  return 'M-' + String(max + 1).padStart(3, '0');
+}
 async function saveProduct(product) {
   if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (!product.id) product.id = product.sku;
@@ -6458,6 +6464,7 @@ async function saveProduct(product) {
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
   if (product.media_url !== undefined && state._prodHasMedia !== false) row.media_url = product.media_url || null;
+  if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
@@ -13085,6 +13092,7 @@ async function submitProductModal(modal, orig, btn) {
   const _qk = Number(modal.querySelector('#pm-qk')?.value) || 0;
   const base = {
     name, category: cat, sku,
+    code: (orig && orig.code) ? orig.code : nextProductCode(),   // шинэ бараанд M-код авто, засварт хэвээр
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),

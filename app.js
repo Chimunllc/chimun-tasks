@@ -15579,14 +15579,14 @@ function renderReports() {
     </div>`;
   const inputs = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
       ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
-      ${kpi('Зарлага (батлагдсан)', fmtBig(expense), 'var(--danger)', expN + ' хүсэлт · ' + escapeHtml(brLabel))}
+      ${kpi(basis === 'cash' ? 'Зарлага (гүйлгээгээр)' : 'Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (basis === 'cash' ? ' · Санхүүтэй таарна' : ''))}
     </div>`;
   // Орлогын суурь солих товч
   const bt = (v, lbl) => `<button data-fin-basis="${v}" style="padding:6px 14px;font-size:12px;border:1px solid var(--border);cursor:pointer;font-weight:600;${basis === v ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--panel);color:var(--muted);'}">${lbl}</button>`;
   const basisToggle = `<div style="display:flex;justify-content:center;margin:0 0 6px;">
       <div style="display:inline-flex;border-radius:10px;overflow:hidden;">${bt('accrual', 'Гүйцэтгэл')}${bt('cash', 'Мөнгөн гүйлгээ')}</div>
     </div>
-    <div style="text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:12px;">${basis === 'accrual' ? 'Эвент болсон сараар · бүтэн гэрээний дүн' : 'Мөнгө орсон өдрөөр · төлсөн дүн'}</div>`;
+    <div style="text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:12px;">${basis === 'accrual' ? 'Орлого: эвент болсон сараар · Зардал: ноогдох сараар (цалин ажилласан сард) — Санхүүгээс зөрж болзошгүй' : 'Орлого: мөнгө орсон өдрөөр · Зардал: гүйлгээ гарсан огноогоор — Санхүү хэсэгтэй таарна'}</div>`;
   const pnl = `
     ${monthNav}
     ${basisToggle}
@@ -15808,9 +15808,9 @@ function renderFinanceReport(wrap) {
 
   if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард зардал алга.'; wrap.appendChild(e); return; }
 
-  // ── 📊 Дүр зураг: энэ сарын зардал салбар × ангилалаар (эзний зээл 6900 хасна) ──
+  // ── 📊 Дүр зураг: энэ сарын зардал салбар × ангилалаар (эзний зээл 6900 + PENDST хасна — толгойн дүнтэй ижил) ──
   (() => {
-    const exp = monthList.filter(t => !String(t.category || '').startsWith('6900'));
+    const exp = monthList.filter(finIsRealExpense);
     const total = sumOf(exp);
     if (!total) return;
     const PAL = ['#7c3aed', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#6366f1', '#64748b'];

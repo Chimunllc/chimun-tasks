@@ -8385,7 +8385,7 @@ function drawPoster(canvas, opts) {
     const ruleY = hTop + markH + Math.round(H * 0.024);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Бараа: ТОМ, дэвсгэрт хөвж (цагаан карт БАЙХГҮЙ) + доор зөөлөн эллипс сүүдэр ──
-    const imgTop = ruleY + Math.round(H * 0.02), imgH = Math.round(H * (story ? 0.62 : 0.55)), imgAreaW = W - M * 2, iRad = Math.round(W * 0.028);
+    const imgTop = ruleY + Math.round(H * 0.008), imgH = Math.round(H * (story ? 0.63 : 0.575)), imgAreaW = W - M * 2, iRad = Math.round(W * 0.028);
     if (opts.img) {
       const ir = opts.img.width / opts.img.height, brr = imgAreaW / imgH;
       const cover = opts.imgFit === 'cover', zoom = Math.max(1, opts.imgZoom || 1), posY = (opts.imgY == null ? 0.5 : opts.imgY), posX = (opts.imgX == null ? 0.5 : opts.imgX);
@@ -8434,10 +8434,10 @@ function drawPoster(canvas, opts) {
     ctx.fillText(pillTxt, M + padX, midY);
     // Холбоо: mevent.mn (тод, дээр) + утас (нам, доор) — товчны голд төвлөрч баруун зэрэгцэнэ
     ctx.textAlign = 'right';
-    const phSize = Math.round(W * 0.026);
-    ctx.fillStyle = ink; ctx.font = `700 ${ps}px ${FONT}`;
-    ctx.fillText(kit.website || 'mevent.mn', W - M, midY - Math.round(ps * 0.62));
-    if (kit.phone) { ctx.fillStyle = muted; ctx.font = `600 ${phSize}px ${FONT}`; ctx.fillText(kit.phone, W - M, midY + Math.round(phSize * 0.64)); }
+    ctx.fillStyle = 'rgba(11,31,58,.62)'; ctx.font = `600 ${Math.round(W * 0.027)}px ${FONT}`;
+    ctx.fillText(kit.website || 'mevent.mn', W - M, midY - Math.round(ps * 0.60));
+    // Утас = хамгийн чухал холбоо → бараан + BOLD + том (бүдэг саарал БИШ)
+    if (kit.phone) { ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillText(kit.phone, W - M, midY + Math.round(ps * 0.62)); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }

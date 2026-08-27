@@ -3303,13 +3303,7 @@ function renderSidebar() {
   // Тайлан = аналитик төв (Тайлан / Багийн ачаалал / Түрээсийн түүх табтай) — аль нэг эрхтэй бол харагдана.
   const repNav = document.getElementById('nav-reports');
   if (repNav) repNav.style.display = (canSeeReports() || canSeeWorkload() || canSeeBooqable()) ? '' : 'none';
-  // Багийн ачаалал — удирдлага/CEO. Badge = нийт идэвхтэй ажлын тоо.
-  const wlNav = document.getElementById('nav-workload');
-  if (wlNav) {
-    wlNav.style.display = canSeeWorkload() ? '' : 'none';
-    const wlCnt = document.getElementById('cnt-workload');
-    if (wlCnt) wlCnt.textContent = String(state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined').length);
-  }
+  // (Багийн ачаалал ба Түрээсийн түүх нь Тайлан доторх таб — тусдаа nav байхгүй.)
   // Гүйцэтгэл — зөвхөн үндсэн ажилтанд (өдрийн ажилтанд хамаарахгүй).
   const perfNav = document.getElementById('nav-performance');
   if (perfNav) perfNav.style.display = isDailyWorker() ? 'none' : '';
@@ -3320,9 +3314,6 @@ function renderSidebar() {
     const pCnt = document.getElementById('cnt-products');
     if (pCnt) pCnt.textContent = String((state.products || []).length);
   }
-  // Түрээсийн түүх (Booqable аналитик) — зөвхөн CEO.
-  const bqNav = document.getElementById('nav-booqable');
-  if (bqNav) bqNav.style.display = canSeeBooqable() ? '' : 'none';
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
@@ -3487,12 +3478,6 @@ function renderTaskList() {
     wrap.innerHTML = renderProducts();
     attachProductsHandlers();
     return;
-  } else if (state.view === 'booqable') {
-    if (tableHead) tableHead.style.display = 'none';
-    if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderBooqable();
-    attachBooqableHandlers();
-    return;
   } else if (state.view === 'accounts') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
@@ -3548,12 +3533,6 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderMyAttend();
     attachMyAttendHandlers();
-    return;
-  } else if (state.view === 'workload') {
-    if (tableHead) tableHead.style.display = 'none';
-    if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderWorkload();
-    attachWorkloadHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';

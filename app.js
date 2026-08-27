@@ -12629,9 +12629,11 @@ function renderProducts() {
   state.prodBranch = state.prodBranch || 'all';
   // Ажилтан өөрийн салбарт ТҮГЖИГДЭНЭ (удирдлага/CEO/олон салбар бүгдийг харна)
   const _me = findMember(state.me) || {};
-  const _myBr = Array.isArray(_me.branches) ? _me.branches : [];
+  const _myBr = memberBranchesOf(_me);   // override-aware (Sheet биш) — бусад view-тэй нэг эх сурвалж
   const _prodMgmt = state.isCEO || (Number(_me.level) || 0) >= 80 || _myBr.includes('shared') || _myBr.length !== 1;
-  const _lockedBranch = !_prodMgmt ? ({ 'm-event': 'mevent', 'camp': 'nomaad' })[_myBr[0]] : null;
+  // Нэг салбартай ажилтан тухайн салбартаа ТҮГЖИГДЭНЭ. catering нэмэв — өмнө катерингийн ажилтан
+  // түгжигдэхгүй БҮХ салбарын нөөц хардаг эрхийн цоорхой байсан.
+  const _lockedBranch = !_prodMgmt ? ({ 'm-event': 'mevent', 'camp': 'nomaad', 'catering': 'catering' })[_myBr[0]] : null;
   if (_lockedBranch) state.prodBranch = _lockedBranch;
   let list = all.slice();
   if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
@@ -14634,12 +14636,14 @@ async function submitBqPayment(oid, modal, btn) {
 // АВЛАГА (Receivables) — Эвент түрээс (Booqable) + NOMAAD-ийн төлөгдөөгүй үлдэгдэл.
 // Booqable дата бүрэн/үнэн. NOMAAD орлого дахин бүртгэгдэж байгаа тул урьдчилсан.
 // ─────────────────────────────────────────────────────────────
+// ⚠ ҮРГЭЛЖ БҮХ салбарын авлагыг тооцно (лензээр НУУХГҮЙ) — нэгдсэн "Нийт авлага" тоо
+// (CEO тууз + sidebar badge) салбар лензээс хамаарч бууж, мөнгө нүднээс далдлагдахаас сэргийлнэ.
+// Салбар фокус нь renderReceivables-ийн ӨӨРИЙН таб (Бүгд/Эвент/NOMAAD)-аар хийгдэнэ.
 function receivablesData() {
   const today = new Date().toISOString().slice(0, 10);
   const items = [];
   // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
   (state.appOrders || []).forEach(o => {
-    if (!branchInLens('m-event')) return;   // салбарын ленз: M-Event салбар биш бол хасна
     const st = String(o.status || '');
     // Авлага = ЗӨВХӨН баталгаажсан захиалга. Ноорог(санал)/цуцалсан/архивласан(хаагдсан) = авлага БИШ.
     if (!['reserved', 'started', 'rented', 'stopped', 'returned'].includes(st)) return;
@@ -14657,7 +14661,6 @@ function receivablesData() {
   // NOMAAD: үлдэгдэл = гэрээний дүн − хүлээн авсан орлого; цуцлахыг хасна
   let noTotal = 0, noRecorded = 0;
   (state.nomaadOrders || []).forEach(o => {
-    if (!branchInLens('camp')) return;   // салбарын ленз: NOMAAD салбар биш бол хасна
     if (nomaadIsCancelled(o)) return;
     // Авлага = ЗӨВХӨН баталгаажсан захиалга (урьдчилгаа төлсөн/гэрээ хийгдсэн/гүйцэтгэсэн).
     // Үнийн санал илгээсэн / баталгаажуулалт хүлээж буй = авлага БИШ (амлалт болоогүй).
@@ -14708,7 +14711,9 @@ function renderReceivables() {
   if (!state._arLoadedNomaad && (!state.nomaadOrders || !state.nomaadOrders.length)) { state._arLoadedNomaad = true; if (typeof loadNomaadOrders === 'function') loadNomaadOrders(); }
 
   const d = receivablesData();
-  const filter = state.arFilter || 'all';
+  // Идэвхтэй ленз → тухайн салбарын таб руу default фокус (гэхдээ бүх таб + нийт дүн ил, нуулт биш).
+  const _lensAr = { 'm-event': 'bq', 'camp': 'nomaad' }[effectiveBranchLens()];
+  const filter = state.arFilter || _lensAr || 'all';
   let list = d.items;
   if (filter !== 'all') list = list.filter(i => i.branch === filter);
   const shownTotal = list.reduce((s, i) => s + i.balance, 0);

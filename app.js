@@ -12863,8 +12863,8 @@ function openProductModal(p) {
       <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
-        <label>Код${isEdit ? '' : ' <span style="color:var(--muted);font-weight:400;">(автомат)</span>'}<input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="${isEdit ? 'M-xxx' : 'хадгалахад авто'}"></label>
-        <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : escapeHtml(nextProductSKU())}">
+        <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
+        <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
         <div class="pm-wide" style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--panel-hover);">
           <div style="font-size:12.5px;font-weight:700;">🎨 Хэмжээ / өнгө — сонголтоор</div>
           <div style="font-size:11px;color:var(--muted);margin:2px 0 9px;line-height:1.45;">Ижил барааны хэмжээ/өнгийг НЭР дотор биш эндээс оруул — сайтад нэг картад нэгтгэж сонголт болгоно. Ганц бараа бол хоосон орхи.</div>
@@ -13103,7 +13103,10 @@ async function submitProductModal(modal, orig, btn) {
   const g = (id) => (modal.querySelector('#' + id)?.value || '').trim();
   const name = g('pm-name');
   if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
-  const cat = g('pm-cat'), sku = g('pm-sku');
+  const cat = g('pm-cat');
+  const code = (orig && orig.code) || nextProductCode();   // засварт хэвээр, шинэд авто M-код
+  let sku = g('pm-sku');
+  if (!orig) sku = code;   // шинэ бараа: дотоод sku = код (M-xxx нэг ижил)
   const images = (modal._images || []).filter(Boolean);
   const isPkg = !!modal.querySelector('#pm-ispackage')?.checked;
   const isSvc = !isPkg && !!modal.querySelector('#pm-isservice')?.checked;
@@ -13129,8 +13132,7 @@ async function submitProductModal(modal, orig, btn) {
   const _qn = Number(modal.querySelector('#pm-qn')?.value) || 0;
   const _qk = Number(modal.querySelector('#pm-qk')?.value) || 0;
   const base = {
-    name, category: cat, sku,
-    code: g('pm-code') || (orig && orig.code) || nextProductCode(),   // формоос (засварт), эсвэл хуучин, эсвэл шинэ бараанд авто
+    name, category: cat, sku, code,   // sku === code === M-xxx
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),

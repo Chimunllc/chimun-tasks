@@ -16099,6 +16099,7 @@ async function openVatReportModal() {
   ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
   let month = 'all';
+  let vfilter = 'todo';   // 'todo'=тулгаагүй | 'done'=тулгагдсан | 'all'
   function receiptsForMonth() {
     const list = (state.vatReceipts || []).slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
     return month === 'all' ? list : list.filter(r => String(r.dt || '').slice(0, 7) === month);
@@ -16106,11 +16107,16 @@ async function openVatReportModal() {
   function months() { const s = new Set((state.vatReceipts || []).map(r => String(r.dt || '').slice(0, 7)).filter(Boolean)); return [...s].sort().reverse(); }
 
   function render() {
-    const list = receiptsForMonth();
+    const listAll = receiptsForMonth();
     const cands = vatCandidateOrders();
-    const totSales = list.reduce((s, r) => s + (Number(r.total) || 0), 0);
-    const totVat = list.reduce((s, r) => s + (Number(r.vat) || 0), 0);
-    const matched = list.filter(r => r.matched_id).length;
+    const totSales = listAll.reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const totVat = listAll.reduce((s, r) => s + (Number(r.vat) || 0), 0);
+    const nDone = listAll.filter(r => r.matched_id).length, nTodo = listAll.length - nDone;
+    const matched = nDone;
+    // Тулгагдсаныг тусад нь — тулгаагүй нь ажлын жагсаалтад үлдэнэ
+    const list = vfilter === 'done' ? listAll.filter(r => r.matched_id) : vfilter === 'all' ? listAll : listAll.filter(r => !r.matched_id);
+    const tabBtn = (k, lbl, n) => `<button data-vfilter="${k}" style="border:none;background:${vfilter === k ? '#0B1F3A' : '#f0f0f0'};color:${vfilter === k ? '#fff' : '#555'};border-radius:100px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;">${lbl} ${n}</button>`;
+    const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}</div>`;
     const monthOpts = ['<option value="all">Бүх сар</option>'].concat(months().map(m => `<option value="${m}"${m === month ? ' selected' : ''}>${m}</option>`)).join('');
 
     let rowsHtml = list.map(r => {
@@ -16135,7 +16141,11 @@ async function openVatReportModal() {
         <td style="padding:7px 8px;font-size:12px;text-align:right;white-space:nowrap;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(r.vat)}</td>
         <td style="padding:7px 8px;">${matchCell}</td></tr>`;
     }).join('');
-    if (!list.length) rowsHtml = `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--muted);">Баримт алга. Дээрээс ebarimt (.xlsx) файл оруулна уу.</td></tr>`;
+    if (!list.length) {
+      const emptyMsg = !listAll.length ? 'Баримт алга. Дээрээс ebarimt (.xlsx) файл оруулна уу.'
+        : vfilter === 'todo' ? '🎉 Бүх баримт тулгагдсан!' : vfilter === 'done' ? 'Тулгагдсан баримт алга.' : 'Баримт алга.';
+      rowsHtml = `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--muted);">${emptyMsg}</td></tr>`;
+    }
 
 
     card.innerHTML = `
@@ -16155,8 +16165,9 @@ async function openVatReportModal() {
         <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Баримт</div><div style="font-size:17px;font-weight:800;">${list.length}</div></div>
         <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Нийт борлуулалт</div><div style="font-size:17px;font-weight:800;">${fmtMoney(totSales)}</div></div>
         <div style="background:#e8f2ec;border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:#1e7a55;">Төлөх НӨАТ</div><div style="font-size:17px;font-weight:800;color:#1e7a55;">${fmtMoney(totVat)}</div></div>
-        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан</div><div style="font-size:17px;font-weight:800;">${matched}/${list.length}</div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан</div><div style="font-size:17px;font-weight:800;">${matched}/${listAll.length}</div></div>
       </div>
+      ${filterTabs}
       <div style="max-height:52vh;overflow:auto;padding:0 18px 18px;">
         <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;position:sticky;top:0;background:#fff;">
           <th style="padding:6px 8px;font-size:11px;color:var(--muted);">Огноо</th><th style="padding:6px 8px;font-size:11px;color:var(--muted);">Худалдан авагч</th>
@@ -16167,6 +16178,7 @@ async function openVatReportModal() {
 
     card.querySelector('#vat-close').onclick = close;
     card.querySelector('#vat-month').onchange = e => { month = e.target.value; render(); };
+    card.querySelectorAll('[data-vfilter]').forEach(b => b.onclick = () => { vfilter = b.dataset.vfilter; render(); });
     card.querySelector('#vat-upload-btn').onclick = () => card.querySelector('#vat-file').click();
     card.querySelector('#vat-file').onchange = async (e) => {
       const files = [...(e.target.files || [])]; if (!files.length) return;

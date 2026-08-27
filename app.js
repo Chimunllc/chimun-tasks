@@ -16119,31 +16119,35 @@ async function openVatReportModal() {
     pc.style.cssText = 'background:#fff;border-radius:14px;max-width:560px;width:100%;margin:auto;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 30px 70px -20px rgba(0,0,0,.45);';
     pov.appendChild(pc); pov.addEventListener('click', e => { if (e.target === pov) pov.remove(); });
     const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(1000, b * 0.02);
-    function draw(q) {
-      const ql = vatNorm(q || '');
-      const rows = scored.filter(x => !ql || vatNorm(x.c.name).includes(ql) || String(x.c.no).includes(q)).slice(0, 60);
-      pc.innerHTML = `
-        <div style="padding:14px 16px;border-bottom:1px solid #eee;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:15px;">Захиалга сонгож тулгах</b><button id="pk-x" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button></div>
-          <div style="font-size:12px;color:#666;">🧾 ${escapeHtml(rec.buyer_name || '')} · <b>${fmtMoney(rec.total)}</b> · ${escapeHtml(String(rec.dt || '').slice(0, 10))}</div>
-          <input id="pk-q" placeholder="нэр эсвэл захиалгын дугаараар хайх…" value="${escapeHtml(q || '')}" style="margin-top:8px;width:100%;padding:8px 11px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
-        </div>
-        <div style="overflow:auto;padding:6px;">${rows.map(x => {
-          const c = x.c; const amtOk = near(rec.total, c.amount) || near(rec.net, c.amount);
-          const regOk = rec.buyer_reg && c.reg && vatRegNorm(rec.buyer_reg) === c.reg;
-          return `<button class="pk-row" data-type="${c.type}" data-no="${escapeHtml(String(c.no))}" data-label="${escapeHtml((c.name || c.no) + ' · ' + fmtMoney(c.amount))}" style="display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;border-bottom:1px solid #f2f2f2;background:${x.s >= 6 ? '#f4faf6' : '#fff'};padding:9px 10px;cursor:pointer;">
-            <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name || 'Нэргүй')} <span style="color:#999;font-weight:400;">${c.type === 'nomaad' ? '⛺' : '🎪'}#${escapeHtml(String(c.no))}</span></div><div style="font-size:11px;color:#888;">${escapeHtml(String(c.date || '').slice(0, 10))}</div></span>
-            <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${regOk ? '<div style="font-size:10.5px;color:#0d7a3f;font-weight:700;">✓ РД таарна</div>' : ''}${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}</span>
-          </button>`;
-        }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Олдсонгүй</div>'}</div>`;
-      pc.querySelector('#pk-x').onclick = () => pov.remove();
-      const qi = pc.querySelector('#pk-q'); qi.oninput = () => draw(qi.value); qi.focus();
-      pc.querySelectorAll('.pk-row').forEach(b => b.onclick = async () => {
+    // Бүрхүүлийг НЭГ УДАА зурна (input устахгүй → бичиж болно), зөвхөн жагсаалтыг шинэчилнэ
+    pc.innerHTML = `
+      <div style="padding:14px 16px;border-bottom:1px solid #eee;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><b style="font-size:15px;">Захиалга сонгож тулгах</b><button id="pk-x" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button></div>
+        <div style="font-size:12px;color:#666;">🧾 ${escapeHtml(rec.buyer_name || '')} · <b>${fmtMoney(rec.total)}</b> · ${escapeHtml(String(rec.dt || '').slice(0, 10))}</div>
+        <input id="pk-q" placeholder="нэр эсвэл захиалгын дугаараар хайх…" style="margin-top:8px;width:100%;padding:8px 11px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
+      </div>
+      <div id="pk-list" style="overflow:auto;padding:6px;"></div>`;
+    const listEl = pc.querySelector('#pk-list');
+    function renderList(q) {
+      const ql = vatNorm(q || ''); const qd = String(q || '').trim();
+      const rows = scored.filter(x => !qd || vatNorm(x.c.name).includes(ql) || String(x.c.no).includes(qd)).slice(0, 60);
+      listEl.innerHTML = rows.map(x => {
+        const c = x.c; const amtOk = near(rec.total, c.amount) || near(rec.net, c.amount);
+        const regOk = rec.buyer_reg && c.reg && vatRegNorm(rec.buyer_reg) === c.reg;
+        return `<button class="pk-row" data-type="${c.type}" data-no="${escapeHtml(String(c.no))}" data-label="${escapeHtml((c.name || c.no) + ' · ' + fmtMoney(c.amount))}" style="display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;border-bottom:1px solid #f2f2f2;background:${x.s >= 6 ? '#f4faf6' : '#fff'};padding:9px 10px;cursor:pointer;">
+          <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name || 'Нэргүй')} <span style="color:#999;font-weight:400;">${c.type === 'nomaad' ? '⛺' : '🎪'}#${escapeHtml(String(c.no))}</span></div><div style="font-size:11px;color:#888;">${escapeHtml(String(c.date || '').slice(0, 10))}</div></span>
+          <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${regOk ? '<div style="font-size:10.5px;color:#0d7a3f;font-weight:700;">✓ РД таарна</div>' : ''}${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}</span>
+        </button>`;
+      }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Олдсонгүй</div>';
+      listEl.querySelectorAll('.pk-row').forEach(b => b.onclick = async () => {
         try { await vatSetMatch(recId, { type: b.dataset.type, no: b.dataset.no, label: b.dataset.label, by: 'manual' }); pov.remove(); render(); } catch (e) { showToast(e.message, 'error'); }
       });
     }
-    draw('');
+    pc.querySelector('#pk-x').onclick = () => pov.remove();
+    const qi = pc.querySelector('#pk-q'); qi.oninput = () => renderList(qi.value);
+    renderList('');
     document.body.appendChild(pov);
+    setTimeout(() => qi.focus(), 30);
   }
 
   render();

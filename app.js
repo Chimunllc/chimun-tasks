@@ -15965,9 +15965,15 @@ function vatCandidateOrders() {
     out.push({ type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '',
       reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start || o.created_at || '' }); });
   // M-Event захиалга = app_orders (bqOrders хоосон болсон — миграц). НӨАТ голдуу эндээс.
-  // РД тусдаа багана байхгүй — customer мөрөнд компанийн нэр+РД (7 орон) шигтгэсэн байдаг
-  // (ж: "Нутгийн буян групп 5467446") → эндээс салгана.
+  // Зөвхөн бодит захиалга: түрээслэгдэж буй/дууссан/захиалсан/архивд. Устгасан(canceled)+ноорог(draft) АВАХГҮЙ.
+  // Мөн зөвхөн энэ оны 4-р сараас хойшхыг (хуучин хуучин захиалгуудыг шуугиан болгохгүй).
+  // РД тусдаа багана байхгүй — customer мөрөнд компанийн нэр+РД (7 орон) шигтгэсэн байдаг → салгана.
+  const _skip = new Set(['draft', 'canceled', 'cancelled', 'deleted']);
+  const _ny = new Date(); const _cut = ((_ny.getMonth() + 1 >= 4 ? _ny.getFullYear() : _ny.getFullYear() - 1)) + '-04-01';
   (state.appOrders || []).forEach(o => {
+    if (_skip.has(String(o.status || '').toLowerCase())) return;
+    const d = String(o.starts_at || o.created_at || '').slice(0, 10);
+    if (d && d < _cut) return;   // 4-р сараас өмнөхийг хасна
     const cust = String(o.customer || o.company || o.company_name || '');
     const regM = cust.match(/\b(\d{7})\b/);
     out.push({ type: 'event', no: o.number, name: cust, reg: regM ? regM[1] : vatRegNorm(o.register || o.reg_no),

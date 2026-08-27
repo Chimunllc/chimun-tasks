@@ -8408,40 +8408,36 @@ function drawPoster(canvas, opts) {
         ctx.fillStyle = vig; ctx.fillRect(M, imgTop, imgAreaW, imgH); }
       ctx.restore();
     }
-    // ── Нэр (том, тод, зүүн) + утас (баруун, нэг эгнээнд — тэнцвэр) ──
-    ctx.textBaseline = 'alphabetic';
-    const phTxt = kit.phone || '';
-    const phSize = Math.round(W * 0.028);
-    ctx.font = `700 ${phSize}px ${FONT}`; const phW = phTxt ? ctx.measureText(phTxt).width : 0;
-    const nameMaxW = (W - M * 2) - (phW ? phW + Math.round(W * 0.05) : 0);
-    ctx.textAlign = 'left';
-    const tSize = Math.round(W * 0.062); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
-    let y = imgTop + imgH + Math.round(H * 0.04) + tSize;
-    const firstLineY = y;
-    const titleLines = _mkWrapText(ctx, opts.title || '', nameMaxW).slice(0, 2);
-    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.08; });
-    // Утас — баруун дээд, нэрийн эхний мөртэй нэг шугамд (нам зэрэглэлтэй)
-    if (phTxt) { ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `700 ${phSize}px ${FONT}`; ctx.fillText(phTxt, W - M, firstLineY); }
-    // Богино уриа/hook (сонголт) — ТОД, ганц мөр (тайлбар БИШ)
+    // ── Нэр (HERO) — том, тод, зүүн; 2 мөр хүртэл ──
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    const tSize = Math.round(W * 0.058); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
+    let y = imgTop + imgH + Math.round(H * 0.045) + tSize;
+    const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
+    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.06; });
+    // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
     if (opts.subtitle) {
-      const ds = Math.round(W * 0.032); ctx.font = `600 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.62)';
-      y += Math.round(H * 0.016) + ds;
+      const ds = Math.round(W * 0.030); ctx.font = `600 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.55)';
+      y += Math.round(H * 0.020) + ds;
       const first = _mkWrapText(ctx, opts.subtitle, W - M * 2)[0] || '';
       ctx.fillText(first, M, y);
     }
-    // ── CTA: цэвэр ПРЕМИУМ товч (glow-гүй, зөөлөн булан) · утас баруунд ──
-    const pillTxt = 'Түрээсийн үнэ';
-    const ps = Math.round(W * 0.031); ctx.font = `800 ${ps}px ${FONT}`;
-    const arrow = '  →  ' + (kit.website || 'mevent.mn');
-    const padX = Math.round(W * 0.05), padY = Math.round(H * 0.022);
-    ctx.font = `800 ${ps}px ${FONT}`; const tw1 = ctx.measureText(pillTxt).width;
-    ctx.font = `600 ${ps}px ${FONT}`; const tw2 = ctx.measureText(arrow).width;
-    const pillW = Math.round(tw1 + tw2) + padX * 2, pillH = ps + padY * 2;
-    const pillY = H - M - pillH;
-    roundRect(M, pillY, pillW, pillH, Math.round(W * 0.016)); ctx.fillStyle = c2; ctx.fill();
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff'; ctx.font = `800 ${ps}px ${FONT}`; ctx.fillText(pillTxt, M + padX, pillY + pillH / 2 + 1);
-    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = `600 ${ps}px ${FONT}`; ctx.fillText(arrow, M + padX + tw1, pillY + pillH / 2 + 1);
+    // ── Footer нэг эгнээ: CTA товч (зүүн) + холбоо багц (баруун), нэг тэнхлэгт төвлөрсөн ──
+    // Фонт зөвхөн 2 хэмжээ (ps / phSize) — жижиг-том зөрүү, тарамдсан байрлал арилгав.
+    const ps = Math.round(W * 0.030);
+    const padX = Math.round(W * 0.048), padY = Math.round(H * 0.021);
+    const pillTxt = 'Түрээсийн үнэ →';
+    ctx.font = `800 ${ps}px ${FONT}`; const twP = ctx.measureText(pillTxt).width;
+    const pillW = Math.round(twP) + padX * 2, pillH = ps + padY * 2;
+    const pillY = H - M - pillH, midY = pillY + pillH / 2 + 1;
+    roundRect(M, pillY, pillW, pillH, Math.round(W * 0.014)); ctx.fillStyle = c2; ctx.fill();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = `800 ${ps}px ${FONT}`;
+    ctx.fillText(pillTxt, M + padX, midY);
+    // Холбоо: mevent.mn (тод, дээр) + утас (нам, доор) — товчны голд төвлөрч баруун зэрэгцэнэ
+    ctx.textAlign = 'right';
+    const phSize = Math.round(W * 0.026);
+    ctx.fillStyle = ink; ctx.font = `700 ${ps}px ${FONT}`;
+    ctx.fillText(kit.website || 'mevent.mn', W - M, midY - Math.round(ps * 0.62));
+    if (kit.phone) { ctx.fillStyle = muted; ctx.font = `600 ${phSize}px ${FONT}`; ctx.fillText(kit.phone, W - M, midY + Math.round(phSize * 0.64)); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }

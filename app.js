@@ -8379,17 +8379,17 @@ function drawPoster(canvas, opts) {
       sg.addColorStop(0, 'rgba(255,255,255,1)'); sg.addColorStop(0.6, 'rgba(255,255,255,.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H); }
     // ── Толгой: БҮТЭН ХЭВТЭЭ M-EVENT лого (зүүн) · шугам ──
-    const markH = Math.round(W * 0.06), hTop = Math.round(M * 0.8);
+    const markH = Math.round(W * 0.057), hTop = Math.round(M * 0.8);
     if (state._mkLogoH) { const lw = Math.round(markH * (state._mkLogoH.width / state._mkLogoH.height)); ctx.drawImage(state._mkLogoH, M, hTop, lw, markH); }
     else if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink; const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02); ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + mw + Math.round(W * 0.02), hTop + markH / 2 + 1); clrLS(); }
     // Trust badge (баруун дээд) — B2B нөөцийн хэмжээ + брэнд өнгө pop (түрээс мессежийг дээд талд авчирна)
     { const bt = kit.posterStat || '250+ түрээсийн бараа';
-      const bs = Math.round(W * 0.021); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
+      const bs = Math.round(W * 0.019); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
       const bgap = Math.round(W * 0.006);   // "250+" ↔ текст завсар (premium)
       const sp = bt.indexOf(' ');
       const p1 = sp > 0 ? bt.slice(0, sp) : bt, p2 = sp > 0 ? bt.slice(sp + 1) : '';
       const w1 = ctx.measureText(p1).width, w2 = p2 ? ctx.measureText(p2).width : 0;
-      const bpx = Math.round(W * 0.026), bpy = Math.round(W * 0.010);   // капсул намхан
+      const bpx = Math.round(W * 0.024), bpy = Math.round(W * 0.009);   // капсул нарийн + намхан (зураг/нэр гол болгов)
       const inner = Math.round(w1 + (p2 ? bgap + w2 : 0));
       const bw = inner + bpx * 2, bh = bs + bpy * 2;
       const bx = W - M - bw, by = hTop + markH / 2 - bh / 2;   // badge төв = логоны төв (нэг тэнхлэг)
@@ -8401,7 +8401,7 @@ function drawPoster(canvas, opts) {
     const ruleY = hTop + markH + Math.round(H * 0.024);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Бараа: ТОМ, дэвсгэрт хөвж (цагаан карт БАЙХГҮЙ) + доор зөөлөн эллипс сүүдэр ──
-    const imgTop = ruleY + Math.round(H * 0.008), imgH = Math.round(H * (story ? 0.63 : 0.575)), imgAreaW = W - M * 2, iRad = Math.round(W * 0.028);
+    const imgTop = ruleY + Math.round(H * 0.008), imgH = Math.round(H * (story ? 0.64 : 0.59)), imgAreaW = W - M * 2, iRad = Math.round(W * 0.028);
     if (opts.img) {
       const ir = opts.img.width / opts.img.height, brr = imgAreaW / imgH;
       const cover = opts.imgFit === 'cover', zoom = Math.max(1, opts.imgZoom || 1), posY = (opts.imgY == null ? 0.5 : opts.imgY), posX = (opts.imgX == null ? 0.5 : opts.imgX);
@@ -8426,11 +8426,11 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр (HERO) — том, тод, зүүн; 2 мөр бол автоматаар багасна (footer-т мөргөхгүй) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
-    let tSize = Math.round(W * 0.048); ctx.font = `700 ${tSize}px ${FONT}`;
+    let tSize = Math.round(W * 0.045); ctx.font = `700 ${tSize}px ${FONT}`;
     let titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
-    if (titleLines.length > 1) { tSize = Math.round(W * 0.039); ctx.font = `700 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
+    if (titleLines.length > 1) { tSize = Math.round(W * 0.037); ctx.font = `700 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
     setLS(-tSize * 0.015);   // сөрөг tracking (-1.5%) — цэвэр, premium
-    let y = imgTop + imgH + Math.round(H * 0.036) + tSize;   // зураг↔гарчиг зай багасгав (дээш татав)
+    let y = imgTop + imgH + Math.round(H * 0.033) + tSize;   // зураг↔гарчиг зай багасгав (нэг блок болгов)
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.05; });
     clrLS();
     // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
@@ -8449,7 +8449,7 @@ function drawPoster(canvas, opts) {
     // Утас — зүүн, bold бараан (гол холбоо); website — баруун, muted; хэмжээ ойролцоо → тэнцвэр
     ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `700 ${Math.round(W * 0.032)}px ${FONT}`;
     ctx.fillText(kit.phone || '', M, footY);
-    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.6)'; ctx.font = `600 ${Math.round(W * 0.030)}px ${FONT}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.6)'; ctx.font = `600 ${Math.round(W * 0.028)}px ${FONT}`;
     ctx.fillText(kit.website || 'mevent.mn', W - M, footY);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;

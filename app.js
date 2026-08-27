@@ -2060,7 +2060,7 @@ function _finLinkPopulate(type) {
     const src = (state.products || []).filter(p => p && p.name && (type === 'product' || String(p.type) === 'asset'));
     dl.innerHTML = src.map(p => `<option value="${escapeHtml(p.name + (p.sku ? ' — ' + p.sku : ''))}"></option>`).join('');
   } else if (type === 'order') {
-    if (state.bqOrders === undefined && !state._bqOrdersLoading) loadBooqableOrders();
+    if (state.bqOrders === undefined && !state._bqOrdersLoading) loadOrdersData();
     if (state.appOrders === undefined) loadAppOrders();
     const list = (typeof unifiedOrders === 'function' ? unifiedOrders() : []);
     dl.innerHTML = list.slice(0, 300).map(e => { const o = e.o || {}; return `<option value="${escapeHtml('#' + (o.number ?? '') + ' · ' + (o.customer || ''))}"></option>`; }).join('');
@@ -3222,9 +3222,9 @@ function render() {
   if (state.view === 'marketing' && !canSeeMarketing()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
   // Тайлан = аналитик төв: Багийн ачаалал ба Түрээсийн түүх нь Тайлан доторх таб болов
-  if (state.view === 'booqable') { if (canSeeBooqable()) { state.reportsTab = 'booqable'; state.view = 'reports'; } else state.view = 'mine'; }
+  if (state.view === 'history') { if (canSeeHistory()) { state.reportsTab = 'history'; state.view = 'reports'; } else state.view = 'mine'; }
   if (state.view === 'workload') { if (canSeeWorkload()) { state.reportsTab = 'workload'; state.view = 'reports'; } else state.view = 'mine'; }
-  if (state.view === 'reports' && !(canSeeReports() || canSeeWorkload() || canSeeBooqable())) state.view = 'mine';
+  if (state.view === 'reports' && !(canSeeReports() || canSeeWorkload() || canSeeHistory())) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'attendance' && !canSeeAttendance()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
@@ -3315,7 +3315,7 @@ function renderSidebar() {
   }
   // Тайлан = аналитик төв (Тайлан / Багийн ачаалал / Түрээсийн түүх табтай) — аль нэг эрхтэй бол харагдана.
   const repNav = document.getElementById('nav-reports');
-  if (repNav) repNav.style.display = (canSeeReports() || canSeeWorkload() || canSeeBooqable()) ? '' : 'none';
+  if (repNav) repNav.style.display = (canSeeReports() || canSeeWorkload() || canSeeHistory()) ? '' : 'none';
   // (Багийн ачаалал ба Түрээсийн түүх нь Тайлан доторх таб — тусдаа nav байхгүй.)
   // Гүйцэтгэл — зөвхөн үндсэн ажилтанд (өдрийн ажилтанд хамаарахгүй).
   const perfNav = document.getElementById('nav-performance');
@@ -3552,12 +3552,12 @@ function renderTaskList() {
     const _rTabs = [];
     if (canSeeReports()) _rTabs.push({ k: 'reports', label: '📊 Тайлан' });
     if (canSeeWorkload()) _rTabs.push({ k: 'workload', label: '👥 Багийн ачаалал' });
-    if (canSeeBooqable()) _rTabs.push({ k: 'booqable', label: '📈 Түрээсийн түүх' });
+    if (canSeeHistory()) _rTabs.push({ k: 'history', label: '📈 Түрээсийн түүх' });
     if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
     const _rt = state.reportsTab;
     const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
-    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'booqable' ? renderBooqable() : renderReports());
-    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'booqable') attachBooqableHandlers(); else attachReportsHandlers();
+    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'history' ? renderHistory() : renderReports());
+    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'history') attachHistoryHandlers(); else attachReportsHandlers();
     document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
@@ -3730,7 +3730,7 @@ function encodeDamageNote(note, dmg) {
 }
 
 async function loadOrders() {
-  // M-Event захиалгын давхарга цуцлагдсан (2026-06-28) — Booqable нь захиалгын ЦОРЫН ГАНЦ эх.
+  // M-Event захиалгын давхарга цуцлагдсан (2026-06-28) — захиалга нь ЦОРЫН ГАНЦ эх.
   // Хуучин MEVENT_Orders_DB Sheet-ийг апп уншихаа больсон. state.orders үргэлж хоосон.
   state.orders = [];
   try { localStorage.removeItem('orders'); } catch (e) {}
@@ -5318,16 +5318,16 @@ function downloadCompletedCsv(list) {
   showToast(`${list.length} захиалга татагдлаа`, 'success');
 }
 function renderOrders() {
-  // Захиалга = Booqable (M-Event үхсэн). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
+  // Захиалга = нэгдсэн (app_orders). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
   // байсан тул ҮАХ захирал зэрэг хүн хоосон харж байв.)
   const canManage = canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
   const all = state.orders || [];
 
-  // ── Захиалга харах эрхтэй (менежер биш) ажилтан — Booqable жагсаалтыг харна (энгийн, read) ──
-  // M-Event давхарга үхсэн тул хуучин state.orders биш unifiedOrders (Booqable) ашиглана.
+  // ── Захиалга харах эрхтэй (менежер биш) ажилтан — түүхэн жагсаалтыг харна (энгийн, read) ──
+  // M-Event давхарга үхсэн тул хуучин state.orders биш unifiedOrders ашиглана.
   if (!canManage) {
-    if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
+    if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadOrdersData, 0);
     const combined = unifiedOrders();
     if (!combined.length) {
       if (state._initialLoading || state._bqOrdersLoading) return `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
@@ -5352,8 +5352,8 @@ function renderOrders() {
     <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
   </div>`;
 
-  // Booqable + app захиалгыг lazy татна.
-  if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
+  // Захиалгыг lazy татна.
+  if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadOrdersData, 0);
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   const combined = unifiedOrders();
 
@@ -5362,7 +5362,7 @@ function renderOrders() {
     return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div></div>`;
   }
 
-  // Booqable төлөв шүүлт (e.skey). today = өнөөдөр эхлэх/дуусах захиалга.
+  // Захиалгын төлөв шүүлт (e.skey). today = өнөөдөр эхлэх/дуусах захиалга.
   const _t = new Date();
   const todayStr = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
   const isToday = (e) => {
@@ -5375,7 +5375,7 @@ function renderOrders() {
     return e.skey === f;
   };
 
-  // Анхаарлын чипүүд — Booqable операцийн дохио
+  // Анхаарлын чипүүд — Захиалгын операцийн дохио
   const todayN = combined.filter(isToday).length;
   const reservedN = combined.filter(e => e.skey === 'reserved').length;
   const chips = `<div class="orders-chips">
@@ -5501,7 +5501,7 @@ function attachOrdersHandlers() {
   document.getElementById('orders-sort')?.addEventListener('change', (e) => { state.ordersSort = e.target.value; render(); });
   document.getElementById('orders-pay')?.addEventListener('change', (e) => { state.ordersPay = e.target.value; render(); });
 
-  // Booqable захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
+  // Захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
@@ -5530,7 +5530,7 @@ function attachOrdersHandlers() {
       if (!box.dataset.loaded) {
         box.dataset.loaded = '1';
         box.innerHTML = '<div class="order-meta">Татаж байна…</div>';
-        const items = await loadBooqableOrderItems(row.dataset.oid);
+        const items = await loadOrderItems(row.dataset.oid);
         box.innerHTML = items.length
           ? `<table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th></tr></thead><tbody>${items.map(it => `<tr><td>${escapeHtml(it.title || '—')}</td><td class="num">${Number(it.quantity) || 0}</td><td class="num">${fmtMoney(Number(it.price_mnt) || 0)}</td></tr>`).join('')}</tbody></table>`
           : '<div class="order-meta">бараа алга</div>';
@@ -5553,7 +5553,7 @@ function attachOrdersHandlers() {
       if (!box.dataset.loaded) {
         box.dataset.loaded = '1';
         box.innerHTML = '<div class="order-meta">Татаж байна…</div>';
-        const docs = await loadBooqableDocuments(row.dataset.oid);
+        const docs = await loadOrderDocs(row.dataset.oid);
         box.innerHTML = bqDocsHtml(docs);
       }
     } else {
@@ -7633,7 +7633,7 @@ function isFullAccessMember(m) {
 const PERM_VIEWS = [
   { key: 'orders',      label: 'M event захиалга' },
   { key: 'receivables', label: 'Авлага' },
-  { key: 'booqable',    label: 'Түрээсийн түүх' },
+  { key: 'history',    label: 'Түрээсийн түүх' },
   { key: 'products',    label: 'Бараа & хөрөнгө' },
   { key: 'reports',     label: 'Дүн шинжилгээ' },
   { key: 'nomaad',      label: 'NOMAAD' },
@@ -7676,7 +7676,7 @@ const PERM_MENUS = [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
-  { key: 'booqable',    label: 'Түрээсийн түүх',  actions: [] },
+  { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
@@ -7716,7 +7716,7 @@ function can(key) {
   return v === undefined ? true : v;
 }
 function canSeeProducts() { return canAccessView('products', false); }       // default: зөвхөн CEO
-function canSeeBooqable() { return canAccessView('booqable', false); }
+function canSeeHistory() { return canAccessView('history', false); }
 function canSeeReceivables() { return canAccessView('receivables', false); }
 function canSeeReports() { return canAccessView('reports', () => canSeeAllFinance()); }
 // Маркетинг — эрхийн системээр (role_perms/member_perms). Тохируулаагүй бол CEO/менежер (level≥80) — хатуу код БИШ, зөвхөн fallback.
@@ -9269,7 +9269,7 @@ function _ordersDefaultFor(m) {
 // Тухайн албан тушаалын нэг view-ийн DEFAULT (загваргүй үед) — гишүүдийнх нь одоогийн хандалтаар.
 // Матрицыг нээхэд "одоо юу хардаг" нь урьдчилан чагтлагдсан байхын тулд.
 function defaultViewForRole(roleKey, viewKey) {
-  if (viewKey === 'products' || viewKey === 'booqable' || viewKey === 'receivables') return false; // default зөвхөн CEO
+  if (viewKey === 'products' || viewKey === 'history' || viewKey === 'receivables') return false; // default зөвхөн CEO
   const members = (TEAM || []).filter(m => normRole(m.role) === roleKey && (m.status || 'идэвхтэй') !== 'гарсан');
   return members.some(m => {
     if (viewKey === 'reports') return canSeeAllFinance(personKey(m));
@@ -9287,7 +9287,7 @@ function memberAccessState(m) {
   const base = {
     orders: isCeo || _ordersDefaultFor(m),
     receivables: isCeo,
-    booqable: isCeo,
+    түүх: isCeo,
     products: isCeo,
     reports: isCeo || canSeeAllFinance(key),
     nomaad: isCeo || _nomaadDefaultFor(m),
@@ -13258,17 +13258,17 @@ function finStage(t) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   ТҮРЭЭСИЙН ТҮҮХ (Booqable аналитик) — зөвхөн CEO
-   2024–2026 Booqable түрээсийн бүрэн түүхийг Supabase Postgres-ийн bq_v_*
+   ТҮРЭЭСИЙН ТҮҮХ (түүхэн аналитик) — зөвхөн CEO
+   2024–2026 түүхэн түрээсийн бүрэн түүхийг Supabase Postgres-ийн rh_v_*
    аналитик view-уудаас (PostgREST, anon SELECT) уншиж шийдвэр гаргалтад
    зориулсан самбараар харуулна. Дата статик (түүх) тул view нээх үед НЭГ
    удаа lazy-load хийнэ (polling-д ороогүй).
    Schema+backfill: postgres-migration/bq_01_schema.sql .. bq_07_*.sql
 ═══════════════════════════════════════════════════════════════════════ */
-async function loadBooqable(force) {
+async function loadHistory(force) {
   if (state._bqLoading) return;
-  if (state.booqable && !state.booqable.error && !force) return;
-  if (!SUPABASE_ANON_KEY) { state.booqable = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
+  if (state.history && !state.history.error && !force) return;
+  if (!SUPABASE_ANON_KEY) { state.history = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
   state._bqLoading = true;
   const H = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
   const get = async (view, qs) => {
@@ -13278,15 +13278,15 @@ async function loadBooqable(force) {
   };
   try {
     const [summary, monthly, methods, products, customers, usage, roi] = await Promise.all([
-      get('bq_v_summary'),
-      get('bq_v_monthly_revenue', '&order=month.asc'),
-      get('bq_v_payment_method'),
-      get('bq_v_revenue_by_product', '&order=revenue_mnt.desc.nullslast&limit=40'),
-      get('bq_v_revenue_by_customer', '&order=revenue_mnt.desc.nullslast&limit=40'),
-      get('bq_v_product_utilization', '&order=item_days_out.desc.nullslast&limit=40'),
-      get('bq_v_product_roi', '&order=revenue_mnt.desc.nullslast&limit=80').catch(() => []),  // view байхгүй бол хоосон (бусдыг эвдэхгүй)
+      get('rh_v_summary'),
+      get('rh_v_monthly_revenue', '&order=month.asc'),
+      get('rh_v_payment_method'),
+      get('rh_v_revenue_by_product', '&order=revenue_mnt.desc.nullslast&limit=40'),
+      get('rh_v_revenue_by_customer', '&order=revenue_mnt.desc.nullslast&limit=40'),
+      get('rh_v_product_utilization', '&order=item_days_out.desc.nullslast&limit=40'),
+      get('rh_v_product_roi', '&order=revenue_mnt.desc.nullslast&limit=80').catch(() => []),  // view байхгүй бол хоосон (бусдыг эвдэхгүй)
     ]);
-    state.booqable = {
+    state.history = {
       summary: summary[0] || null,
       monthly: monthly || [],
       methods: methods || [],
@@ -13297,46 +13297,46 @@ async function loadBooqable(force) {
       loadedAt: Date.now(),
     };
   } catch (e) {
-    console.warn('loadBooqable', e);
+    console.warn('loadHistory', e);
     // Хүснэгт/view үүсээгүй (SQL ачаалаагүй) бол энд унана.
-    state.booqable = { error: 'load', msg: String(e.message || e) };
+    state.history = { error: 'load', msg: String(e.message || e) };
   } finally {
     state._bqLoading = false;
     if (typeof render === 'function') render();
   }
 }
 
-// Booqable түүх захиалгуудыг lazy татна (үндсэн Захиалга самбарын архив). bq_v_orders view.
+// түүхэн түүх захиалгуудыг lazy татна (үндсэн Захиалга самбарын архив). rh_v_orders view.
 // state.bqOrders — top-level (Түрээсийн түүх самбар нээгээгүй ч ажиллана).
-async function loadBooqableOrders() {
-  // Захиалга бүр одоо app_orders-т НЭГДСЭН (Booqable архивыг app_orders руу migrate хийсэн).
+async function loadOrdersData() {
+  // Захиалга бүр одоо app_orders-т НЭГДСЭН (түүхэн архивыг app_orders руу migrate хийсэн).
   // bqOrders-ийг хоосон байлгана → төлбөр/статусын routing бүгд app_orders руу орно.
-  // Жагсаалт/авлага/дашборд/badge бүгд state.appOrders уншина. Аналитик (bq_v_* view) тусдаа.
+  // Жагсаалт/авлага/дашборд/badge бүгд state.appOrders уншина. Аналитик (rh_v_* view) тусдаа.
   state.bqOrders = [];
   return loadAppOrders();
 }
 
-// Нэг захиалгын бараа (мөр)-ийг шаардахад татна, кэшилнэ. bq_v_order_items view.
-async function loadBooqableOrderItems(orderId) {
+// Нэг захиалгын бараа (мөр)-ийг шаардахад татна, кэшилнэ. rh_v_order_items view.
+async function loadOrderItems(orderId) {
   state.bqOrderItems = state.bqOrderItems || {};
   if (state.bqOrderItems[orderId]) return state.bqOrderItems[orderId];
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rh_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
     state.bqOrderItems[orderId] = r.ok ? await r.json() : [];
-  } catch (e) { console.warn('loadBooqableOrderItems', e); state.bqOrderItems[orderId] = []; }
+  } catch (e) { console.warn('loadOrderItems', e); state.bqOrderItems[orderId] = []; }
   return state.bqOrderItems[orderId];
 }
 
-// Захиалгын баримт (нэхэмжлэх/үнийн санал/гэрээ) — lazy, bq_v_documents (PII-гүй).
-async function loadBooqableDocuments(orderId) {
+// Захиалгын баримт (нэхэмжлэх/үнийн санал/гэрээ) — lazy, rh_v_documents (PII-гүй).
+async function loadOrderDocs(orderId) {
   state.bqDocuments = state.bqDocuments || {};
   if (state.bqDocuments[orderId]) return state.bqDocuments[orderId];
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rh_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
       { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
     state.bqDocuments[orderId] = r.ok ? await r.json() : [];
-  } catch (e) { console.warn('loadBooqableDocuments', e); state.bqDocuments[orderId] = []; }
+  } catch (e) { console.warn('loadOrderDocs', e); state.bqDocuments[orderId] = []; }
   return state.bqDocuments[orderId];
 }
 
@@ -13377,7 +13377,7 @@ function bqDocsHtml(docs) {
   return `<div class="bq-docs">${rows}</div>`;
 }
 
-// Booqable түрээсийн 6 төлөв — нэр/өнгө/icon. Дараалал: Ноорог→Захиалсан→Эхэлсэн→Дууссан→Архивласан→Цуцалсан.
+// түүхэн түрээсийн 6 төлөв — нэр/өнгө/icon. Дараалал: Ноорог→Захиалсан→Эхэлсэн→Дууссан→Архивласан→Цуцалсан.
 // Дэвсгэр (light) + бараан текст (WCAG AA контраст) + зүүн талын тод цэг.
 const BQ_STATUS = {
   draft:       { label: 'Ноорог',        dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
@@ -13608,8 +13608,8 @@ function meStatusKey(st) {
   return 'started';   // Төлбөр авсан/Цэвэрлэгээ/Түрээс бэлдсэн/Гаргасан/Хүргэсэн/Буцаан ирсэн
 }
 
-// Захиалгын жагсаалт — Booqable нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
-// ── App-д үүсгэсэн захиалга (app_orders — Booqable түүхээс ТУСДАА, refresh устгахгүй) ──
+// Захиалгын жагсаалт — түүхэн нь цорын ганц эх (M-Event давхарга 2026-06-28-нд цуцлагдсан).
+// ── App-д үүсгэсэн захиалга (app_orders — түүхэн түүхээс ТУСДАА, refresh устгахгүй) ──
 // 2 шаттай ачаалалт: ИДЭВХТЭЙ (~50 мөр) түрүүлж → шууд харагдана; АРХИВ/ЦУЦАЛСАН
 // түүх (~1300 мөр, датаны 95%) арын фонд НЭГ л удаа. Poll бүрд зөвхөн идэвхтэйг
 // шинэчилнэ — өмнө нь 1.7MB-ийг бүтнээр нь татдаг байсан (утсанд хэдэн секунд).
@@ -13662,7 +13662,7 @@ async function _loadAppOrdersImpl() {
     state._archiveLoading = false;
   }
 }
-// Дараагийн захиалгын дугаар (Booqable + app дотроос хамгийн их + 1)
+// Дараагийн захиалгын дугаар (түүхэн + app дотроос хамгийн их + 1)
 function nextOrderNumber() {
   let mx = 0;
   (state.bqOrders || []).forEach(o => { const n = Number(o.number) || 0; if (n > mx) mx = n; });
@@ -13764,8 +13764,8 @@ async function deleteAppOrder(id) {
   try { await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
 }
 function unifiedOrders() {
-  // Захиалга бүр app_orders-т нэгдсэн (Booqable архив + шинэ захиалга). Нэг эх сурвалж.
-  // source='booqable' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
+  // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
+  // source='history' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
   return (state.appOrders || []).map(ao => {
     const raw = String(ao.status || 'reserved');
     const o = { ...ao, item_count: (ao.items || []).length, _app: true };
@@ -13848,7 +13848,7 @@ function orderRentalDays(o) {
   return rentalDays(sMs, eMs);
 }
 
-// ── Шинэ захиалга үүсгэх / засах модал (Booqable шиг — зурагтай picker, барьцаа+лог, хөнгөлөлт) ──
+// ── Шинэ захиалга үүсгэх / засах модал (түүхэн шиг — зурагтай picker, барьцаа+лог, хөнгөлөлт) ──
 function openNewOrder(editOrder) {
   if (!(canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true)) {
     showToast('Танд захиалга үүсгэх эрх алга', 'warn', 3000); return;
@@ -14073,7 +14073,7 @@ function openNewOrder(editOrder) {
   };
 }
 
-// Booqable түүх захиалгын ТӨРӨЛХ карт — байрандаа засагдана (төлөв workflow + төлбөр бүртгэх + үлдэгдэл).
+// түүхэн түүх захиалгын ТӨРӨЛХ карт — байрандаа засагдана (төлөв workflow + төлбөр бүртгэх + үлдэгдэл).
 function bqOrderCard(o) {
   const N = x => Number(x) || 0;
   const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || '');
@@ -14134,7 +14134,7 @@ function bqOrderCard(o) {
     ${canScan ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}
     ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${st === 'draft' ? '🗑 Устгах' : '✕ Цуцлах'}</button>` : ''}
   </div>` : '');
-  // Бараа: app бол inline (o.items), Booqable бол lazy toggle + баримт
+  // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
     ? ((o.items && o.items.length) ? `<details class="order-items-det" data-items-oid="${id}"${(state.ordersItemsOpen instanceof Set && state.ordersItemsOpen.has(String(o.id))) ? ' open' : ''} style="margin-top:6px;"><summary class="order-items-toggle" style="cursor:pointer;">▸ ${o.items.length} бараа</summary><div style="padding:4px 0;">${o.items.map(it => `<div class="order-meta" style="display:flex;justify-content:space-between;gap:8px;"><span>${escapeHtml(it.name || '')} × ${Number(it.qty) || 1}</span><span style="color:var(--muted);">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</span></div>`).join('')}${Number(o.deposit_mnt) ? `<div class="order-meta" style="margin-top:4px;color:var(--muted);">Барьцаа: ${fmtMoney(o.deposit_mnt)}</div>` : ''}</div></details>` : '')
     : `<button class="order-items-toggle bqa-items-toggle" data-oid="${id}"><span class="oit-caret">▸</span> ${N(o.item_count)} бараа</button>
@@ -14159,7 +14159,7 @@ function bqOrderCard(o) {
   </div>`;
 }
 
-// Booqable захиалгын төлвийг БАЙРАНДАА засах (Supabase anon PATCH, зөвхөн status багана).
+// Захиалгын төлвийг БАЙРАНДАА засах (Supabase anon PATCH, зөвхөн status багана).
 // Optimistic: эхлээд UI шинэчилж, амжилтгүй бол буцаана.
 // Захиалга/ноорог цуцлах — ШАЛТГААН заавал асууж, ⟦CX⟧-ээр хадгална. Ноорог "устгах" ч мөн энэ
 // (hard delete биш — цуцалсан болж "Бүгд"-ээс алга, шалтгаан + түүх үлдэнэ).
@@ -14759,7 +14759,7 @@ async function submitBqPayment(oid, modal, btn) {
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
-    // Аудит — зөвхөн Booqable захиалгад bq_payments (баримт БҮРД нэг мөр)
+    // Аудит — зөвхөн түүхэн захиалгад bq_payments (баримт БҮРД нэг мөр)
     if (!isApp) for (const rc of okR) try {
       const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now() + '-' + Math.round(rc.amount);
       await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_payments`, {
@@ -14781,8 +14781,8 @@ async function submitBqPayment(oid, modal, btn) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// АВЛАГА (Receivables) — Эвент түрээс (Booqable) + NOMAAD-ийн төлөгдөөгүй үлдэгдэл.
-// Booqable дата бүрэн/үнэн. NOMAAD орлого дахин бүртгэгдэж байгаа тул урьдчилсан.
+// АВЛАГА (Receivables) — Эвент түрээс (түүхэн) + NOMAAD-ийн төлөгдөөгүй үлдэгдэл.
+// түүхэн дата бүрэн/үнэн. NOMAAD орлого дахин бүртгэгдэж байгаа тул урьдчилсан.
 // ─────────────────────────────────────────────────────────────
 // ⚠ ҮРГЭЛЖ БҮХ салбарын авлагыг тооцно (лензээр НУУХГҮЙ) — нэгдсэн "Нийт авлага" тоо
 // (CEO тууз + sidebar badge) салбар лензээс хамаарч бууж, мөнгө нүднээс далдлагдахаас сэргийлнэ.
@@ -14855,7 +14855,7 @@ function arRow(i) {
 
 function renderReceivables() {
   // Lazy ачаалал — захиалгын дата байхгүй бол татна (татаж дуусахад render дахин дуудагдана)
-  if (!state.bqOrders) loadBooqableOrders();
+  if (!state.bqOrders) loadOrdersData();
   if (!state._arLoadedNomaad && (!state.nomaadOrders || !state.nomaadOrders.length)) { state._arLoadedNomaad = true; if (typeof loadNomaadOrders === 'function') loadNomaadOrders(); }
 
   const d = receivablesData();   // БҮХ салбарын авлага (Тойм-ийн бүтэн дүн эндээс — лензээс хамаарахгүй)
@@ -14880,7 +14880,7 @@ function renderReceivables() {
   const kpis = _lens === 'all'
     ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
         ${kpi('Нийт авлага', fmtMoney(companyTotal), 'var(--warn)', `${d.items.length} захиалга`)}
-        ${kpi('🎪 Эвент түрээс', fmtMoney(d.bqTotal), 'var(--text)', 'Booqable')}
+        ${kpi('🎪 Эвент түрээс', fmtMoney(d.bqTotal), 'var(--text)', 'түүхэн')}
         ${kpi('⛺ NOMAAD', fmtMoney(d.nomaadTotal), 'var(--text)', 'урьдчилсан')}
         ${kpi('⚠ Хугацаа хэтэрсэн', fmtMoney(overdueAmt), overdue.length ? 'var(--danger)' : 'var(--muted)', `${overdue.length} захиалга`)}
       </div>`
@@ -14911,7 +14911,7 @@ function renderReceivables() {
 
 function attachReceivablesHandlers() {
   document.querySelector('[data-ar-refresh]')?.addEventListener('click', () => {
-    state.bqOrders = null; loadBooqableOrders();
+    state.bqOrders = null; loadOrdersData();
     if (typeof loadNomaadOrders === 'function') loadNomaadOrders();
     showToast('Шинэчилж байна…', 'info', 1500);
   });
@@ -14931,15 +14931,15 @@ function attachReceivablesHandlers() {
 
 // CEO "Яг одоо" тууз (Тойм дээд талд) — энэ сарын орлого · нийт авлага · ойртож буй хүргэлт/буцаалт.
 function ceoNowStrip() {
-  if (!state.booqable && !state._bqLoading) loadBooqable();          // аналитик (сар бүрийн орлого) — lazy
-  if (!state.bqOrders && !state._bqOrdersLoading) loadBooqableOrders(); // захиалгууд (авлага/ойртож буй) — lazy
-  const loadingBq = !state.bqOrders || !state.booqable;
+  if (!state.history && !state._bqLoading) loadHistory();          // аналитик (сар бүрийн орлого) — lazy
+  if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
+  const loadingBq = !state.bqOrders || !state.history;
   const ym = new Date().toISOString().slice(0, 7);
 
-  // Энэ сарын орлого: Booqable (bq_v_monthly_revenue) + NOMAAD (төлбөрийн лог pay_date)
+  // Энэ сарын орлого: түүхэн (rh_v_monthly_revenue) + NOMAAD (төлбөрийн лог pay_date)
   let bqMonth = 0;
-  if (state.booqable && Array.isArray(state.booqable.monthly)) {
-    const m = state.booqable.monthly.find(x => String(x.month || '').slice(0, 7) === ym);
+  if (state.history && Array.isArray(state.history.monthly)) {
+    const m = state.history.monthly.find(x => String(x.month || '').slice(0, 7) === ym);
     bqMonth = m ? (Number(m.net_mnt) || 0) : 0;
   }
   let noMonth = 0;
@@ -14989,8 +14989,8 @@ function bqBar(label, value, max, color, sub) {
 }
 
 // Автомат дүгнэлт — CEO "нэг хараад ойлгох" мөрүүд (тоо биш, шийдвэр)
-// Booqable түүхэн зүйлийг үйлчилгээ (хүргэлт/суурилуулалт г.м.) эсэхийг НЭРЭЭР таних.
-// Booqable-д хүргэлт нь "бараа" мөр болж бүртгэгдсэн тул ROI/бараа аналитикаас салгана
+// түүхэн түүхэн зүйлийг үйлчилгээ (хүргэлт/суурилуулалт г.м.) эсэхийг НЭРЭЭР таних.
+// түүхэн-д хүргэлт нь "бараа" мөр болж бүртгэгдсэн тул ROI/бараа аналитикаас салгана
 // (орлого хэвээр — зөвхөн ангилал). Амьд каталогийн type='service'-тэй ижил санаа.
 const _BQ_SERVICE_RE = /хүргэл|тээвэр|достав|deliver|суурилуул|угсрал|буулгал|оператор|унаа|такси/i;
 function bqIsService(name) { return _BQ_SERVICE_RE.test(String(name || '')); }
@@ -15060,8 +15060,8 @@ function bqSeasonChart(bq) {
   </div>`;
 }
 
-function renderBooqable() {
-  const bq = state.booqable;
+function renderHistory() {
+  const bq = state.history;
   const head = (extra) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
       <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх</div><div style="font-size:11px;color:var(--muted);">2024–2026 · бүрэн түрээсийн дата · шийдвэр гаргалтад</div></div>
       <button class="btn" data-bq-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
@@ -15070,7 +15070,7 @@ function renderBooqable() {
   if (state._bqLoading && !bq) {
     return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`;
   }
-  if (!bq) { setTimeout(() => loadBooqable(), 0); return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`; }
+  if (!bq) { setTimeout(() => loadHistory(), 0); return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`; }
 
   if (bq.error) {
     const isLoad = bq.error === 'load';
@@ -15188,7 +15188,7 @@ function renderBooqable() {
       body = kpis + card('Орлого төрүүлсэн топ бараа',
         (p.length ? p.map(x => bqBar(x.product || '—', N(x.revenue_mnt), maxRev, 'var(--ok)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('')
           : '<span style="color:var(--muted);">дата алга</span>'),
-        'ROI/өртөг харахын тулд bq_v_product_roi view-г Supabase-д нэмнэ үү (доорх SQL).')
+        'ROI/өртөг харахын тулд rh_v_product_roi view-г Supabase-д нэмнэ үү (доорх SQL).')
         + svcCard(pSvc);
     }
 
@@ -15199,7 +15199,7 @@ function renderBooqable() {
       (c.length ? c.map(x => bqBar(x.customer || '—', N(x.revenue_mnt), maxRev, 'var(--primary)',
         `${N(x.order_count)} захиалга · дунд. ${fmtMoneyShort(N(x.avg_order_mnt))}`)).join('')
         : '<span style="color:var(--muted);">дата алга</span>'),
-      'Booqable-ийн бүртгэсэн нийт орлого тус бүрийн харилцагчаар');
+      'түүхэн-ийн бүртгэсэн нийт орлого тус бүрийн харилцагчаар');
 
   } else if (tab === 'usage') {
     const u = bq.usage || [];
@@ -15217,8 +15217,8 @@ function renderBooqable() {
       'Бараа-өдөр = хуваарийн (planning) хугацаа × тоо ширхэг. Хамгийн их эргэлттэй хөрөнгийг харуулна.');
 
   } else if (tab === 'branch') {
-    // Компанийн орлого 2 салбараар (ТУСДАА — давхар тоолохгүй): Эвент(Booqable) + Кемп(NOMAAD)
-    const ev = {};                                   // Эвент сараар (Booqable цэвэр орлого)
+    // Компанийн орлого 2 салбараар (ТУСДАА — давхар тоолохгүй): Эвент(түүхэн) + Кемп(NOMAAD)
+    const ev = {};                                   // Эвент сараар (түүхэн цэвэр орлого)
     (bq.monthly || []).forEach(x => { ev[x.month] = N(x.net_mnt); });
     const cm = {};                                   // Кемп сараар (NOMAAD бүртгэсэн орлого)
     const cancelled = (typeof nomaadIsCancelled === 'function') ? nomaadIsCancelled : () => false;
@@ -15231,7 +15231,7 @@ function renderBooqable() {
     const cmTot = Object.values(cm).reduce((a, b) => a + b, 0);
     const campHas = Object.keys(cm).length > 0;
     const branchKpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;">
-      ${kpi('🎪 Эвент салбар (Booqable)', fmtMoney(evTot), 'var(--ok)', 'цэвэр орлого · 2024–2026')}
+      ${kpi('🎪 Эвент салбар (түүхэн)', fmtMoney(evTot), 'var(--ok)', 'цэвэр орлого · 2024–2026')}
       ${kpi('🏕 Кемп салбар (NOMAAD)', campHas ? fmtMoney(cmTot) : '—', 'var(--primary)', campHas ? 'бүртгэсэн орлого' : 'дата ачаалаагүй')}
     </div>`;
     // Сүүлийн 12 сар — хоёр салбарын багана зэрэгцүүлэв
@@ -15252,22 +15252,22 @@ function renderBooqable() {
     body = branchKpis + card('Орлого — салбараар (сүүлийн 12 сар, сая₮)',
       `<div style="display:flex;gap:16px;font-size:11px;margin-bottom:8px;"><span style="color:var(--ok);font-weight:600;">■ Эвент</span><span style="color:var(--primary);font-weight:600;">■ Кемп</span></div>
        <div style="display:flex;align-items:flex-end;gap:6px;height:148px;overflow-x:auto;padding:2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
-      'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй (M-Event/Booqable нэг эвентийн салбар, NOMAAD кемп тусдаа). Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
+      'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй (M-Event/түүхэн нэг эвентийн салбар, NOMAAD кемп тусдаа). Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
 
   }
 
   return `<div style="padding:4px;">${head(tabBar)}${body}</div>`;
 }
 
-function attachBooqableHandlers() {
-  document.querySelector('[data-bq-refresh]')?.addEventListener('click', () => loadBooqable(true));
+function attachHistoryHandlers() {
+  document.querySelector('[data-bq-refresh]')?.addEventListener('click', () => loadHistory(true));
   document.querySelectorAll('[data-bq-tab]').forEach(b => b.addEventListener('click', () => {
     state.bqTab = b.dataset.bqTab;
     render();
   }));
 
   // view нээгдэхэд анх удаа татна
-  if (!state.booqable && !state._bqLoading) loadBooqable();
+  if (!state.history && !state._bqLoading) loadHistory();
 }
 
 /* ═══ Mevent (эвент түрээс) орлогын аналитик — Захиалга модулиас (app_orders) ═══
@@ -15883,7 +15883,7 @@ function attachReportsHandlers() {
 }
 /* ==================== НӨАТ (ebarimt) тайлан + захиалгатай тулгалт ====================
    Борлуулалтын НӨАТ баримтын задаргаа (ebarimt xlsx) → vat_receipts (Postgres, anon,
-   products-тэй ижил posture) → NOMAAD + Эвент(Booqable) захиалгатай авто/гараар тулгана →
+   products-тэй ижил posture) → NOMAAD + Эвент(түүхэн) захиалгатай авто/гараар тулгана →
    захиалгад "🧾 НӨАТ" badge + Санхүүд тусдаа НӨАТ тайлан. */
 const VAT_URL = `${SUPABASE_URL}/rest/v1/vat_receipts`;
 const VAT_HDR = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
@@ -15955,7 +15955,7 @@ async function vatSetMatch(id, match) {
   const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
 }
 
-// Тулгах захиалгууд: NOMAAD + Эвент(Booqable) — нэгдсэн хэлбэрт
+// Тулгах захиалгууд: NOMAAD + Эвент(түүхэн) — нэгдсэн хэлбэрт
 function vatCandidateOrders() {
   const out = [];
   (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
@@ -15992,7 +15992,7 @@ function vatBadge(orderNo) {
 async function openVatReportModal() {
   // Захиалгын нэр татах (тулгахад)
   if (!state.nomaadOrders && typeof loadNomaadOrders === 'function') { try { await loadNomaadOrders(); } catch (e) {} }
-  if (state.bqOrders === undefined && typeof loadBooqableOrders === 'function') { try { await loadBooqableOrders(); } catch (e) {} }
+  if (state.bqOrders === undefined && typeof loadOrdersData === 'function') { try { await loadOrdersData(); } catch (e) {} }
   await loadVatReceipts();
 
   const ov = document.createElement('div');
@@ -16255,7 +16255,7 @@ function renderFinanceReport(wrap) {
     return;   // Мөнгөн урсгал/салбар задаргаа нь Тайлан хэсэгт төвлөрсөн (давхардал хасав). Санхүү = ажлын нүүр.
     // eslint-disable-next-line no-unreachable
     if (!canSeeAllFinance() || wantBr) return;
-    // M-Event орлого = app_orders (идэвхтэй захиалга), эвентийн огноогоор (accrual). bqOrders БИШ (хуучин Booqable түүх).
+    // M-Event орлого = app_orders (идэвхтэй захиалга), эвентийн огноогоор (accrual). bqOrders БИШ (хуучин түүхэн түүх).
     if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }
     const evOrders = (state.appOrders || []).filter(o => (typeof _orderActive === 'function' ? _orderActive(o) : true) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
     const evInc = evOrders.reduce((s, o) => s + (Number(o.total_mnt) || 0), 0);
@@ -17302,7 +17302,7 @@ function renderCalendar() {
   const today = todayStr();
 
   // НЭГДСЭН эвент — даалгавар + захиалга + NOMAAD-ыг огноогоор бүлэглэх
-  if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
+  if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadOrdersData, 0);
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   // Салбарын ленз түгжээтэй (нэг салбартай хүн) бол календарь мөн тухайн салбарт хязгаарлагдана
   // Календарь толгойн салбар ЛЕНЗИЙГ ДАГАНА. Ленз идэвхтэй (≠Бүгд) бол cb=ленз; Бүгд лензэд доод товч.
@@ -19805,7 +19805,7 @@ function initEvents() {
 
   const fabSheetBg = document.getElementById('fab-sheet-bg');
   function openFabSheet() {
-    // Захиалга Booqable-аас ирдэг болсон тул FAB-д зөвхөн Даалгавар/Санхүү (захиалга үүсгэхгүй).
+    // Захиалга түүхэн-аас ирдэг болсон тул FAB-д зөвхөн Даалгавар/Санхүү (захиалга үүсгэхгүй).
     fabSheetBg?.classList.add('open');
   }
   function closeFabSheet() { fabSheetBg?.classList.remove('open'); }
@@ -20709,9 +20709,9 @@ async function bootApp() {
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'SELECT' || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
     if (state.view === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
-    else if (state.view === 'orders' && canSeeOrders()) loadBooqableOrders();   // дотроо loadAppOrders дуудна (давхар татахгүй)
+    else if (state.view === 'orders' && canSeeOrders()) loadOrdersData();   // дотроо loadAppOrders дуудна (давхар татахгүй)
     else if (state.view === 'products' && canSeeProducts()) loadProductsCatalog();
-    else if (state.view === 'receivables' && state.isCEO) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
+    else if (state.view === 'receivables' && state.isCEO) { state.bqOrders = null; loadOrdersData(); loadNomaadOrders(); }
   }, 45_000);
   // Таб/апп нуугдсан үед polling зогсоож батерей хэмнэнэ. Эргэж нээхэд нэн даруй шинэчилнэ —
   // гэхдээ tab switch ихтэй хэрэглэгчид мангаа дуудахаас сэргийлж 90 сек throttle.
@@ -20796,10 +20796,10 @@ async function ensurePushSubscription() {
 function refreshViewData() {
   const v = state.view;
   if (v === 'products' && canSeeProducts()) loadProductsCatalog();
-  else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadBooqableOrders(); }
+  else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadOrdersData(); }
   else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
-  else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadBooqableOrders(); loadNomaadOrders(); }
-  else if (v === 'booqable' && canSeeBooqable()) loadBooqable(true);
+  else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadOrdersData(); loadNomaadOrders(); }
+  else if (v === 'history' && canSeeHistory()) loadHistory(true);
   else if (v === 'accounts' && state.isCEO) loadBankAccounts(true);
   else if (v === 'marketing') { loadBrandKit(); if (!state.products || !state.products.length) { if (typeof loadProductsCatalog === 'function') loadProductsCatalog().then(() => { if (state.view === 'marketing') render(); }); } }
   else if (v === 'myexpenses') loadExpenseLearn();   // шинэ хуваалцсан суралцлага авч таамаглана

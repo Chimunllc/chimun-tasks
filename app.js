@@ -8526,6 +8526,12 @@ function renderMarketing() {
   const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm" data-mk-size="${key}" style="${P.size === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(s.label)}</button>`).join(' ');
   const tplBtns = Object.entries(POSTER_TEMPLATES).map(([key, l]) => `<button class="btn btn-sm" data-mk-tpl="${key}" style="${P.template === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(l)}</button>`).join(' ');
   const fld = 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);margin-bottom:10px;';
+  // 🛒 Бараа сонголт — КАТЕГОРИОР бүлэглэсэн dropdown (optgroup). Вариант бараа "Бүлэг — хэмжээ" гэж харагдана.
+  const _mkRent = (state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p)));
+  const _mkByCat = {};
+  _mkRent.forEach(p => { (_mkByCat[p.category || 'Бусад'] = _mkByCat[p.category || 'Бусад'] || []).push(p); });
+  const _mkOptLbl = p => { const g = (p.variant_group || '').trim(); return g ? `${g} — ${p.variant_label || p.name}` : (p.name || ''); };
+  const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
       <div style="font-size:12px;color:var(--muted);">Зураг оруулаад брэнд хүрээ, гарчиг тавьж PNG татна. Instagram пост/story, Facebook.</div></div>
@@ -8569,6 +8575,8 @@ function renderMarketing() {
       <div>
         <div style="font-size:14px;font-weight:800;margin-bottom:10px;">🖼 Постер</div>
         <label style="font-size:11.5px;color:var(--muted);">🛒 Бараанаас сонгох <span style="font-weight:400;">(зураг+үнэ+нөхцөл авто)</span></label>
+        ${mkProdSelect}
+        <div style="text-align:center;font-size:11px;color:var(--muted);margin:-4px 0 6px;">— эсвэл нэрээр хайх —</div>
         <input id="mk-prod" list="mk-prod-list" placeholder="Бараа хайх (нэр / SKU)…" style="${fld}">
         <datalist id="mk-prod-list">${(state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p))).slice(0, 400).map(p => `<option value="${escapeHtml(p.name)}${p.sku ? ' — ' + escapeHtml(p.sku) : ''}">${p.price ? fmtMoney(Number(p.price)) : ''}</option>`).join('')}</datalist>
         <div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">— эсвэл —</div>
@@ -12798,6 +12806,17 @@ function renderProducts() {
   `;
 }
 
+// Хувилбарын (variant_group/label) амьд урьдчилан харах — форм дээр сайтад хэрхэн харагдахыг харуулна.
+function pmVarPreview() {
+  const g = (document.getElementById('pm-vgroup')?.value || '').trim();
+  const l = (document.getElementById('pm-vlabel')?.value || '').trim();
+  const n = (document.getElementById('pm-name')?.value || '').trim();
+  const el = document.getElementById('pm-vpreview');
+  if (!el) return;
+  if (g) el.innerHTML = `Сайтад: <b style="color:var(--text)">${escapeHtml(g)}</b> карт${l ? ` → сонголт <b style="color:var(--text)">${escapeHtml(l)}</b>` : ' <span style="color:var(--warn)">(сонголт хоосон)</span>'}`;
+  else if (l) el.innerHTML = `<span style="color:var(--warn)">⚠ Сонголт бичсэн ч бүлэг хоосон — нэгтгэхийн тулд «Үндсэн нэр» бичнэ үү</span>`;
+  else el.innerHTML = `Ганц бараа — <b style="color:var(--text)">${escapeHtml(n) || 'нэрээрээ'}</b> тусдаа карт`;
+}
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
 function openProductModal(p) {
   if (!can('products.edit')) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
@@ -12822,6 +12841,10 @@ function openProductModal(p) {
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
   const vgroups = [...new Set((state.products || []).map(x => x.variant_group).filter(Boolean))].sort();
   const vgroupOpts = vgroups.map(gr => `<option value="${escapeHtml(gr)}">`).join('');
+  // Сонголтын (variant_label) санал — түгээмэл + одоо ашиглагдаж буй
+  const _vlCommon = ['Том', 'Дунд', 'Жижиг', 'Цагаан', 'Хар', 'Цэнхэр', 'Ногоон', 'Улаан', 'Шаргал', 'Хүрэн', '6 хүний', '8 хүний', '10 хүний'];
+  const _vlUsed = [...new Set((state.products || []).map(x => (x.variant_label || '').trim()).filter(Boolean))];
+  const vlabelOpts = [...new Set([..._vlCommon, ..._vlUsed])].map(l => `<option value="${escapeHtml(l)}">`).join('');
   const v = (x) => escapeHtml((p && p[x]) || '');
   document.getElementById('prod-modal')?.remove();
   const modal = document.createElement('div');
@@ -12835,8 +12858,15 @@ function openProductModal(p) {
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>SKU${isEdit ? '' : ' <span style="color:var(--muted);font-weight:400;">(автомат)</span>'}<input id="pm-sku" value="${isEdit ? v('sku') : escapeHtml(nextProductSKU())}" placeholder="SKU код"></label>
-        <label>🎨 Хувилбарын бүлэг<input id="pm-vgroup" list="pm-vgroups" value="${v('variant_group')}" placeholder="ижил зүйлд адил (ж: Эвхдэг сандал)"><datalist id="pm-vgroups">${vgroupOpts}</datalist></label>
-        <label>Өнгө / хэмжээ<input id="pm-vlabel" value="${v('variant_label')}" placeholder="ж: Цагаан"></label>
+        <div class="pm-wide" style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--panel-hover);">
+          <div style="font-size:12.5px;font-weight:700;">🎨 Хэмжээ / өнгө — сонголтоор</div>
+          <div style="font-size:11px;color:var(--muted);margin:2px 0 9px;line-height:1.45;">Ижил барааны хэмжээ/өнгийг НЭР дотор биш эндээс оруул — сайтад нэг картад нэгтгэж сонголт болгоно. Ганц бараа бол хоосон орхи.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
+            <label style="font-size:11.5px;">Үндсэн нэр (бүлэг)<input id="pm-vgroup" list="pm-vgroups" value="${v('variant_group')}" placeholder="ж: Ширээ" oninput="pmVarPreview()"><datalist id="pm-vgroups">${vgroupOpts}</datalist></label>
+            <label style="font-size:11.5px;">Сонголт (хэмжээ/өнгө)<input id="pm-vlabel" list="pm-vlabels" value="${v('variant_label')}" placeholder="ж: 8 хүний · Том · Цагаан" oninput="pmVarPreview()"><datalist id="pm-vlabels">${vlabelOpts}</datalist></label>
+          </div>
+          <div id="pm-vpreview" style="font-size:11.5px;margin-top:8px;color:var(--muted);"></div>
+        </div>
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
@@ -12901,6 +12931,7 @@ function openProductModal(p) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  if (typeof pmVarPreview === 'function') pmVarPreview();   // хувилбарын урьдчилан харах эхлүүлэх
   if (isEdit && p.sku) renderProductQR(modal.querySelector('#pm-qr'), p.sku);
   // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
   let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);

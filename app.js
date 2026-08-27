@@ -2011,6 +2011,10 @@ function finEffBranch(t) {
 function finLensBranch(lens) {
   return lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : lens === 'catering' ? 'КАТЕРИНГ' : lens === 'capital' ? 'Чимун ХХК' : null;
 }
+// Салбар ленз → барааны салбар код (prodBranch/qty_* багана). null = Бүгд (Агуулахын өөрийн таб хүчинтэй).
+function lensToProd(lens) {
+  return lens === 'm-event' ? 'mevent' : lens === 'camp' ? 'nomaad' : lens === 'catering' ? 'catering' : lens === 'capital' ? 'chimun' : null;
+}
 // Салбарын дотоод код → ХАРАГДАХ нэр (M-Event/NOMAAD). Хаана ч гарсан ойлгомжтой нэрээр.
 const BRANCH_DISPLAY = {
   'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг',
@@ -12631,10 +12635,11 @@ function renderProducts() {
   const _me = findMember(state.me) || {};
   const _myBr = memberBranchesOf(_me);   // override-aware (Sheet биш) — бусад view-тэй нэг эх сурвалж
   const _prodMgmt = state.isCEO || (Number(_me.level) || 0) >= 80 || _myBr.includes('shared') || _myBr.length !== 1;
-  // Нэг салбартай ажилтан тухайн салбартаа ТҮГЖИГДЭНЭ. catering нэмэв — өмнө катерингийн ажилтан
-  // түгжигдэхгүй БҮХ салбарын нөөц хардаг эрхийн цоорхой байсан.
-  const _lockedBranch = !_prodMgmt ? ({ 'm-event': 'mevent', 'camp': 'nomaad', 'catering': 'catering' })[_myBr[0]] : null;
-  if (_lockedBranch) state.prodBranch = _lockedBranch;
+  // Агуулах толгойн салбар ЛЕНЗИЙГ ДАГАНА. Ленз идэвхтэй (≠Бүгд) бол prodBranch = лензийн салбар
+  // (нэг салбарт түгжигдсэн ажилтан ч лензээрээ автоматаар түгжигдэнэ — тусдаа map хэрэггүй).
+  // Бүгд лензэд Агуулахын өөрийн доод таб (all/mevent/nomaad/catering/chimun) хүчинтэй.
+  const _lensProd = lensToProd(effectiveBranchLens());   // null when 'all'
+  if (_lensProd) state.prodBranch = _lensProd;
   let list = all.slice();
   if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
   // Ангилал шүүлтүүр + эрэмбэлэлт (өртөг/үнэ/нөөц)
@@ -12668,12 +12673,12 @@ function renderProducts() {
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
   const brTab = (k, label) => `<button class="prod-tab${state.prodBranch === k ? ' on' : ''}" data-prodbranch="${k}">${label}${k !== 'all' ? ` <span class="prod-tab-n">${brQtySum(k)}ш</span>` : ''}</button>`;
-  const branchBar = _lockedBranch
-    ? `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${branchInfo(_lockedBranch).icon} ${branchInfo(_lockedBranch).label} салбар <span class="prod-tab-n">${brQtySum(_lockedBranch)}ш</span></span></div>`
+  const branchBar = _lensProd
+    ? `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${branchInfo(_lensProd).icon} ${branchInfo(_lensProd).label} салбар <span class="prod-tab-n">${brQtySum(_lensProd)}ш</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">· толгойн лензээр</span></span></div>`
     : `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('catering', '🍽 Катеринг')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
-  // Улирал хаалт — NOMAAD таб идэвхтэй + нөөцтэй + удирдах эрхтэй үед "бүгдийг M-Event руу буцаах" тууз
+  // Улирал хаалт — NOMAAD салбар идэвхтэй (лензээр эсвэл табаар) + нөөцтэй + удирдах эрхтэй үед
   const _nomaadSum = brQtySum('nomaad');
-  const seasonCloseBar = (_prodMgmt && !_lockedBranch && state.prodBranch === 'nomaad' && _nomaadSum > 0)
+  const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
         <button class="btn btn-primary" id="prod-return-nomaad" style="white-space:nowrap;">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>
@@ -12698,7 +12703,7 @@ function renderProducts() {
   const _inScope = all.filter(p => _qtyVal(p) > 0);
   const costedN = _inScope.filter(p => (costs[p.sku] || 0) > 0).length;
   const _valLabel = _valBranch ? `${branchInfo(_valBranch).icon} ${branchInfo(_valBranch).label} салбарын хөрөнгө` : 'Нийт хөрөнгийн үнэ цэнэ';
-  const assetLine = (assetValue > 0 && !_lockedBranch) ? `<div class="prod-assetval">🏛 ${_valLabel}: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${_inScope.length} барааны өртөг оруулсан)</span></div>` : '';
+  const assetLine = (assetValue > 0 && _prodMgmt) ? `<div class="prod-assetval">🏛 ${_valLabel}: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${_inScope.length} барааны өртөг оруулсан)</span></div>` : '';
   return `
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
@@ -16913,18 +16918,19 @@ function renderCalendar() {
   if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadBooqableOrders, 0);
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   // Салбарын ленз түгжээтэй (нэг салбартай хүн) бол календарь мөн тухайн салбарт хязгаарлагдана
+  // Календарь толгойн салбар ЛЕНЗИЙГ ДАГАНА. Ленз идэвхтэй (≠Бүгд) бол cb=ленз; Бүгд лензэд доод товч.
   const _calLens = effectiveBranchLens();
-  const cb = (_calLens === 'm-event' || _calLens === 'camp') ? _calLens : (state.calBranch || 'all');
-  const isCampTask = (t) => /camp|кемп|nomaad|номаад/i.test(t.branch || '');
-  const isMEvTask = (t) => /m-event|event|ивент/i.test(t.branch || '');
-  const taskOk = (t) => cb === 'all' || (cb === 'm-event' ? !isCampTask(t) : !isMEvTask(t));
+  const cb = _calLens === 'all' ? (state.calBranch || 'all') : _calLens;
+  // capital (Хөрөнгө) = компани даяар → бүгдийг харуул (task/order-той жигд).
+  const _calAll = (cb === 'all' || cb === 'capital');
+  const taskOk = (t) => { if (_calAll) return true; const b = taskBranch(t); return b === cb || b === 'shared'; };
   const byDate = {};
   const addEv = (date, ev) => { const d = String(date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; (byDate[d] = byDate[d] || []).push(ev); };
   state.tasks.forEach(t => { if (t.due && t.status !== 'deleted' && taskOk(t)) addEv(t.due, { type: 'task', title: t.title, sub: memberName(t.assignee), done: t.status === 'done', priority: t.priority, id: t.id }); });
-  // Захиалга = M-Event салбар. Зөвхөн БАТАЛГААЖСАН (ноорог/цуцлагдсан/архив хасна).
-  if (cb !== 'camp') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0), oid: o.id }); });
-  // NOMAAD эвент = camp салбар.
-  if (cb !== 'm-event') (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}`, nq: o.quote_no }); });
+  // Захиалга = M-Event салбар. Бүгд/M-Event/Хөрөнгө лензэд харагдана (camp/catering үед хасна).
+  if (_calAll || cb === 'm-event') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0), oid: o.id }); });
+  // NOMAAD эвент = camp салбар. Бүгд/NOMAAD/Хөрөнгө лензэд харагдана.
+  if (_calAll || cb === 'camp') (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}`, nq: o.quote_no }); });
 
   // Сонгосон өдөр
   const selected = state.calendarSelected || today;
@@ -16959,9 +16965,11 @@ function renderCalendar() {
         <button class="cal-nav" id="cal-next" aria-label="Дараагийн сар">›</button>
         <button class="cal-today-btn" id="cal-today">Өнөөдөр</button>
       </div>
-      <div class="cal-branch" style="display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap;">
-        ${[['all', '🏢 Бүгд'], ['m-event', '⛺ M-Event'], ['camp', '🏔 NOMAAD']].map(([v, l]) => `<button data-calbranch="${v}" style="padding:3px 13px;font-size:12px;border:1px solid ${cb === v ? 'var(--accent)' : 'var(--border)'};border-radius:14px;background:${cb === v ? 'var(--accent)' : 'transparent'};color:${cb === v ? '#fff' : 'var(--text)'};cursor:pointer;">${l}</button>`).join('')}
-      </div>
+      ${_calLens === 'all'
+        ? `<div class="cal-branch" style="display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap;">
+        ${[['all', '🏢 Бүгд'], ['m-event', '🎪 M-Event'], ['camp', '⛺ NOMAAD']].map(([v, l]) => `<button data-calbranch="${v}" style="padding:3px 13px;font-size:12px;border:1px solid ${cb === v ? 'var(--accent)' : 'var(--border)'};border-radius:14px;background:${cb === v ? 'var(--accent)' : 'transparent'};color:${cb === v ? '#fff' : 'var(--text)'};cursor:pointer;">${l}</button>`).join('')}
+      </div>`
+        : `<div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">${({ 'm-event': '🎪 M-Event', 'camp': '⛺ NOMAAD', 'catering': '🍽 Катеринг', 'capital': '🏢 Чимун ХХК' }[cb] || cb)} · толгойн лензээр</div>`}
       <div class="cal-weekdays">
         ${dayNames.map(d => `<div>${d}</div>`).join('')}
       </div>

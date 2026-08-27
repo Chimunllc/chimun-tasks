@@ -15986,6 +15986,14 @@ function vatAutoScore(rec, c) {
   if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
   return s;
 }
+// Нэр таарч байгаа эсэх (яг эсвэл гол үг давхцах)
+function vatNameMatch(a, b) {
+  const rn = vatNorm(a), cn = vatNorm(b);
+  if (!rn || !cn) return false;
+  if (rn === cn) return true;
+  const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' '));
+  return rt.filter(t => ct.has(t)).length >= 1;
+}
 function vatBestMatch(rec, cands) {
   let best = null, bs = 0, second = 0;
   cands.forEach(c => { const s = vatAutoScore(rec, c); if (s > bs) { second = bs; bs = s; best = c; } else if (s > second) second = s; });
@@ -16072,9 +16080,9 @@ async function openVatAttachModal(order) {
       .sort((a, b) => (b.mine - a.mine) || (b.s - a.s) || String(b.r.dt || '').localeCompare(String(a.r.dt || '')))
       .slice(0, 80);
     listEl.innerHTML = rows.map(x => {
-      const r = x.r; const regOk = r.buyer_reg && order.reg && vatRegNorm(r.buyer_reg) === order.reg; const amtOk = near(r.total, order.amount) || near(r.net, order.amount);
+      const r = x.r; const regOk = r.buyer_reg && order.reg && vatRegNorm(r.buyer_reg) === order.reg; const amtOk = near(r.total, order.amount) || near(r.net, order.amount); const nameOk = vatNameMatch(r.buyer_name, order.name);
       return `<div class="va-row" data-id="${escapeHtml(r.id)}" data-mine="${x.mine ? 1 : 0}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:1px solid #f2f2f2;background:${x.mine ? '#e8f2ec' : (x.other ? '#faf7f2' : '#fff')};padding:9px 10px;cursor:pointer;">
-        <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.buyer_name || '?')} ${regOk ? '<b style="color:#0d7a3f;font-size:10.5px;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;font-size:10.5px;">✓дүн</b>' : ''}</div><div style="font-size:11px;color:#888;">${escapeHtml(String(r.dt || '').slice(0, 10))} · НӨАТ ${fmtMoney(r.vat)}${x.other ? ' · <span style="color:#b5651d;">⚠ өөр захиалгад: ' + escapeHtml(r.matched_label || r.matched_id) + '</span>' : ''}</div></span>
+        <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.buyer_name || '?')} ${regOk ? '<b style="color:#0d7a3f;font-size:10.5px;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;font-size:10.5px;">✓дүн</b>' : ''}${nameOk ? ' <b style="color:#2563EB;font-size:10.5px;">✓нэр</b>' : ''}</div><div style="font-size:11px;color:#888;">${escapeHtml(String(r.dt || '').slice(0, 10))} · НӨАТ ${fmtMoney(r.vat)}${x.other ? ' · <span style="color:#b5651d;">⚠ өөр захиалгад: ' + escapeHtml(r.matched_label || r.matched_id) + '</span>' : ''}</div></span>
         <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(r.total)}</div><div style="font-size:11px;font-weight:700;color:${x.mine ? '#1e7a55' : (x.other ? '#b5651d' : '#2563EB')};">${x.mine ? '🔒 холбоотой · 🔓 гаргах' : '+ холбох'}</div></span>
       </div>`;
     }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Баримт алга</div>';
@@ -16139,8 +16147,9 @@ async function openVatReportModal() {
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
+          const nameOk = vatNameMatch(r.buyer_name, c.name);
           const lbl = (c.name || c.no) + ' · ' + fmtMoney(c.amount);
-          return `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}" style="text-align:left;border:1px solid ${i === 0 ? '#1e7a55' : 'var(--border,#ddd)'};background:${i === 0 ? '#e8f2ec' : '#fff'};color:${i === 0 ? '#1e7a55' : 'var(--text,#333)'};border-radius:8px;padding:4px 9px;font-size:11.5px;font-weight:${i === 0 ? '700' : '500'};cursor:pointer;white-space:nowrap;">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b style="color:#0d7a3f;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;">✓дүн</b>' : ''} <span style="color:var(--muted);">${escapeHtml(String(c.date || '').slice(5, 10))}</span></button>`;
+          return `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${c.type}" data-vno="${escapeHtml(String(c.no))}" data-vlabel="${escapeHtml(lbl)}" style="text-align:left;border:1px solid ${i === 0 ? '#1e7a55' : 'var(--border,#ddd)'};background:${i === 0 ? '#e8f2ec' : '#fff'};color:${i === 0 ? '#1e7a55' : 'var(--text,#333)'};border-radius:8px;padding:4px 9px;font-size:11.5px;font-weight:${i === 0 ? '700' : '500'};cursor:pointer;white-space:nowrap;">${escapeHtml(c.name || String(c.no))} · ${fmtMoney(c.amount)}${regOk ? ' <b style="color:#0d7a3f;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;">✓дүн</b>' : ''}${nameOk ? ' <b style="color:#2563EB;">✓нэр</b>' : ''} <span style="color:var(--muted);">${escapeHtml(String(c.date || '').slice(5, 10))}</span></button>`;
         }).join('');
         matchCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">${chips || '<span style="color:var(--muted);font-size:11.5px;">таарах санал алга</span>'}<button data-vpicker="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--accent,#2563EB);font-size:11px;cursor:pointer;padding:2px 0;">🔍 Бусад захиалга хайх</button></div>`;
       }
@@ -16247,9 +16256,10 @@ async function openVatReportModal() {
       listEl.innerHTML = rows.map(x => {
         const c = x.c; const amtOk = near(rec.total, c.amount) || near(rec.net, c.amount);
         const regOk = rec.buyer_reg && c.reg && vatRegNorm(rec.buyer_reg) === c.reg;
+        const nameOk = vatNameMatch(rec.buyer_name, c.name);
         return `<button class="pk-row" data-type="${c.type}" data-no="${escapeHtml(String(c.no))}" data-label="${escapeHtml((c.name || c.no) + ' · ' + fmtMoney(c.amount))}" style="display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:none;border-bottom:1px solid #f2f2f2;background:${x.s >= 6 ? '#f4faf6' : '#fff'};padding:9px 10px;cursor:pointer;">
           <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.name || 'Нэргүй')} <span style="color:#999;font-weight:400;">${c.type === 'nomaad' ? '⛺' : '🎪'}#${escapeHtml(String(c.no))}</span></div><div style="font-size:11px;color:#888;">${escapeHtml(String(c.date || '').slice(0, 10))}</div></span>
-          <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${regOk ? '<div style="font-size:10.5px;color:#0d7a3f;font-weight:700;">✓ РД таарна</div>' : ''}${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}</span>
+          <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(c.amount)}</div>${regOk ? '<div style="font-size:10.5px;color:#0d7a3f;font-weight:700;">✓ РД таарна</div>' : ''}${amtOk ? '<div style="font-size:10.5px;color:#1e7a55;font-weight:700;">✓ дүн таарна</div>' : ''}${nameOk ? '<div style="font-size:10.5px;color:#2563EB;font-weight:700;">✓ нэр таарна</div>' : ''}</span>
         </button>`;
       }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Олдсонгүй</div>';
       listEl.querySelectorAll('.pk-row').forEach(b => b.onclick = async () => {

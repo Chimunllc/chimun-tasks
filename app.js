@@ -3205,12 +3205,13 @@ function render() {
   // Захиалга / Бараа view — зөвхөн CEO. Бусдыг "Ирсэн ажил" руу буцаана.
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
-  if (state.view === 'booqable' && !canSeeBooqable()) state.view = 'mine';
   if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
   if (state.view === 'marketing' && !canSeeMarketing()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
-  if (state.view === 'reports' && !canSeeReports()) state.view = 'mine';
-  if (state.view === 'workload' && !canSeeWorkload()) state.view = 'mine';
+  // Тайлан = аналитик төв: Багийн ачаалал ба Түрээсийн түүх нь Тайлан доторх таб болов
+  if (state.view === 'booqable') { if (canSeeBooqable()) { state.reportsTab = 'booqable'; state.view = 'reports'; } else state.view = 'mine'; }
+  if (state.view === 'workload') { if (canSeeWorkload()) { state.reportsTab = 'workload'; state.view = 'reports'; } else state.view = 'mine'; }
+  if (state.view === 'reports' && !(canSeeReports() || canSeeWorkload() || canSeeBooqable())) state.view = 'mine';
   if (state.view === 'hourly' && !canSeeHourlyPayroll()) state.view = 'mine';
   if (state.view === 'attendance' && !canSeeAttendance()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
@@ -3299,9 +3300,9 @@ function renderSidebar() {
       oCnt.textContent = String((state.appOrders || []).filter(o => o.status === 'reserved').length);
     }
   }
-  // Тайлан — зөвхөн бүх санхүү хардаг (CEO/нягтлан/салбар-засагч) — удирдлагын тайлан.
+  // Тайлан = аналитик төв (Тайлан / Багийн ачаалал / Түрээсийн түүх табтай) — аль нэг эрхтэй бол харагдана.
   const repNav = document.getElementById('nav-reports');
-  if (repNav) repNav.style.display = canSeeReports() ? '' : 'none';
+  if (repNav) repNav.style.display = (canSeeReports() || canSeeWorkload() || canSeeBooqable()) ? '' : 'none';
   // Багийн ачаалал — удирдлага/CEO. Badge = нийт идэвхтэй ажлын тоо.
   const wlNav = document.getElementById('nav-workload');
   if (wlNav) {
@@ -3348,9 +3349,7 @@ function renderSidebar() {
       try { const od = receivablesData().items.filter(i => i.overdue).length; arCnt.textContent = String(od); arCnt.style.display = od ? '' : 'none'; } catch (e) {}
     }
   }
-  // Цагийн цалин нь нэгдсэн "Цалин" цэс рүү орсон — тусдаа nav нуугдмал.
-  const hrNav = document.getElementById('nav-hourly');
-  if (hrNav) hrNav.style.display = 'none';
+  // Цагийн цалин нь нэгдсэн "Цалин" цэс доторх таб болсон — тусдаа nav байхгүй.
   // NOMAAD захиалга — CEO/нягтлан. Badge нь орлого бүртгээгүй гэрээний тоо.
   const noNav = document.getElementById('nav-nomaad');
   if (noNav) {
@@ -3386,7 +3385,7 @@ function renderSidebar() {
   const gBr = document.getElementById('nav-group-branch');
   if (gBr) gBr.style.display = _grpVisible(['nav-orders', 'nav-nomaad', 'nav-catering', 'nav-products', 'nav-receivables']) ? '' : 'none';
   const gMg = document.getElementById('nav-group-mgmt');
-  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-workload', 'nav-performance', 'nav-hourly', 'nav-salary', 'nav-attendance', 'nav-booqable', 'nav-accounts', 'nav-access']) ? '' : 'none';
+  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-performance', 'nav-salary', 'nav-attendance', 'nav-accounts', 'nav-access']) ? '' : 'none';
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
@@ -3555,8 +3554,16 @@ function renderTaskList() {
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderReports();
-    attachReportsHandlers();
+    const _rTabs = [];
+    if (canSeeReports()) _rTabs.push({ k: 'reports', label: '📊 Тайлан' });
+    if (canSeeWorkload()) _rTabs.push({ k: 'workload', label: '👥 Багийн ачаалал' });
+    if (canSeeBooqable()) _rTabs.push({ k: 'booqable', label: '📈 Түрээсийн түүх' });
+    if (!_rTabs.some(t => t.k === state.reportsTab)) state.reportsTab = (_rTabs[0] || {}).k || 'reports';
+    const _rt = state.reportsTab;
+    const _rbar = _rTabs.length > 1 ? `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">${_rTabs.map(t => `<button data-reports-tab="${t.k}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${t.k === _rt ? 'var(--primary)' : 'transparent'};background:none;color:${t.k === _rt ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${t.label}</button>`).join('')}</div>` : '';
+    wrap.innerHTML = _rbar + (_rt === 'workload' ? renderWorkload() : _rt === 'booqable' ? renderBooqable() : renderReports());
+    if (_rt === 'workload') attachWorkloadHandlers(); else if (_rt === 'booqable') attachBooqableHandlers(); else attachReportsHandlers();
+    document.querySelectorAll('[data-reports-tab]').forEach(b => b.addEventListener('click', () => { state.reportsTab = b.dataset.reportsTab; render(); }));
     return;
   } else if (state.view === 'performance') {
     if (tableHead) tableHead.style.display = 'none';
@@ -15294,6 +15301,15 @@ function finAddOrderIncome(inc, wantBr, basis) {
 // close_type='хуулгаар' болмогц л тоологдоно. Ингэснээр цагийн цалин 2 дахин тоологдохгүй.
 // (Хэрэглэгчийн шийдвэр 2026-08-22: зардал зөвхөн банкны хуулгаар. Хуучин бичлэгт токен алга → хэвээр тоологдоно.)
 function finPendingStmt(t) { return /⟦PENDST⟧/.test(String(t.justification || '')) && t.close_type !== 'хуулгаар'; }
+// ── Зардлын НЭГДСЭН дүрэм — Тайлан ба Санхүү ижилхэн тоолохын тулд ──
+// Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(6900) БИШ.
+function finIsRealExpense(t) {
+  return !!t && t.decision === 'approved' && !finPendingStmt(t) && !String(t.category || '').startsWith('6900');
+}
+// Зардал аль сард тоологдох вэ — basis-аар: 'cash'=гүйлгээ гарсан огноо(requested_at), 'accrual'=ноогдох сар.
+function finExpMonth(t, basis) {
+  return basis === 'cash' ? String((t && t.requested_at) || '').slice(0, 7) : finAccrualMonth(t);
+}
 function finBranchPnl(month, basis) {
   const evInc = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month)
     .reduce((s, o) => s + (basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0)), 0);
@@ -15305,7 +15321,7 @@ function finBranchPnl(month, basis) {
   });
   const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (t.decision !== 'approved' || finAccrualMonth(t) !== month || finPendingStmt(t)) return;
+    if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
     if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
     const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
   });
@@ -15325,10 +15341,10 @@ function finReceivables() {
   return r;
 }
 // Тухайн сарын цалингийн нийт зардал (гүйцэтгэлийн сар) + хүний тоо
-function finSalaryMonth(month) {
+function finSalaryMonth(month, basis) {
   let sum = 0; const who = new Set();
   (state.financeRequests || []).filter(x => x.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (t.decision !== 'approved' || finAccrualMonth(t) !== month || finPendingStmt(t)) return;
+    if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
     if (/^7[1236]00$/.test(String(t.category || '')) || /цалин/i.test(finSubName(t.category) || '')) { sum += Number(t.amount) || 0; who.add(t.beneficiary || t.id); }
   });
   return { sum, n: who.size };
@@ -15415,8 +15431,8 @@ async function openFinDupAudit() {
 function financeTrend(wantBr) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (t.decision === 'approved' && !finPendingStmt(t) && (!wantBr || finEffBranch(t) === wantBr)) {
-      const mo = finAccrualMonth(t);
+    if (finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr)) {
+      const mo = finExpMonth(t, finBasis());   // basis-аар: cash=гарсан огноо, accrual=ноогдох сар
       if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
     }
   });
@@ -15513,7 +15529,9 @@ function renderReports() {
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   let expense = 0, expN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (finAccrualMonth(t) === month && t.decision === 'approved' && !finPendingStmt(t) && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
+    // P1: basis-аар — "Мөнгөн гүйлгээ"=гарсан огноо (Санхүүтэй таарна), "Гүйцэтгэл"=ноогдох сар.
+    // P2: finIsRealExpense — эзний зээл(6900)+PENDST хасна (Санхүүтэй ижил дүрэм).
+    if (finExpMonth(t, basis) === month && finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
   });
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
@@ -15624,7 +15642,7 @@ function renderReports() {
   if (!wantBr) {
     const bp = finBranchPnl(month, basis);
     const rcv = finReceivables();
-    const salM = finSalaryMonth(month);
+    const salM = finSalaryMonth(month, basis);
     const bpTotInc = bp.rows.reduce((s, r) => s + r.inc, 0), bpTotExp = bp.rows.reduce((s, r) => s + r.exp, 0);
     const brRow = r => { const net = r.inc - r.exp; const nc = net >= 0 ? 'var(--ok)' : 'var(--danger)'; return `<tr style="border-top:1px solid var(--border);">
         <td style="padding:7px 4px;font-weight:600;">${escapeHtml(r.k)}</td>
@@ -15770,7 +15788,14 @@ function renderFinanceReport(wrap) {
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month}</div>`
-    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList))}</b>${(() => { const ol = sumOf(monthList.filter(t => String(t.category || '').startsWith('6900'))); return ol ? ` <span style="font-size:11px;">(үүнээс эзний зээл ${fmtMoney(ol)} — зардал биш)</span>` : ''; })()}</div></div>`
+    + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал${(() => {
+        const ol = sumOf(monthList.filter(t => String(t.category || '').startsWith('6900')));
+        const pd = sumOf(monthList.filter(t => finPendingStmt(t)));
+        const bits = [];
+        if (ol) bits.push(`эзний зээл ${fmtMoney(ol)}`);
+        if (pd) bits.push(`хүлээгдэж буй ${fmtMoney(pd)}`);
+        return bits.length ? ` <span style="font-size:11px;">(${bits.join(' · ')} — зардлаас гадуур)</span>` : '';
+      })()}</div></div>`
     + `<button class="btn" data-fin-month="1" style="padding:6px 13px;font-size:16px;line-height:1;"${month >= curMonth ? ' disabled' : ''}>›</button>`;
   wrap.appendChild(head);
   head.querySelectorAll('[data-fin-month]').forEach(b => b.addEventListener('click', () => {

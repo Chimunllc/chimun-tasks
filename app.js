@@ -2881,6 +2881,9 @@ function taskBranch(t) {
   // as M Event so existing data stays visible.
   return t.branch || 'm-event';
 }
+// Салбар ленз ЮУ Ч ХИЙХГҮЙ view-үүд — угаас нэг салбарынх (Захиалга/NOMAAD/Катеринг)
+// эсвэл компани даяар (Ирц). Эдгээр дээр толгойн ленз сонгогчийг НУУНА (инерт байхаас сэргийлж).
+const LENS_INERT_VIEWS = ['orders', 'nomaad', 'catering', 'attendance'];
 // Салбарын ленз шүүлт — удирдлагын view-үүдэд (Календарь/Ачаалал/Гүйцэтгэл/Авлага).
 // lens='all'/'capital' бол бүгд; эс бөгөөс тухайн салбар + shared/хоосон.
 function branchInLens(b) {
@@ -3225,14 +3228,15 @@ function render() {
   const blSel = document.getElementById('branch-lens');
   if (blSel) {
     const allowed = allowedLenses();
-    const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD Camp', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
+    const labels = { all: '🏢 Бүгд', 'm-event': '🎪 M-Event', camp: '⛺ NOMAAD Camp', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
     const key = allowed.join(',');
     if (blSel._builtFor !== key) {
       blSel.innerHTML = allowed.map(v => `<option value="${v}">${labels[v] || v}</option>`).join('');
       blSel._builtFor = key;
     }
     blSel.value = effectiveBranchLens();
-    blSel.style.display = allowed.length <= 1 ? 'none' : '';  // нэг л салбартай хүнд сонгогч хэрэггүй
+    // Нэг л салбартай хүнд, эсвэл ленз юу ч хийхгүй view (Захиалга/NOMAAD/Катеринг/Ирц) дээр нууна.
+    blSel.style.display = (allowed.length <= 1 || LENS_INERT_VIEWS.includes(state.view)) ? 'none' : '';
   }
   renderSidebar();
   renderTitle();
@@ -3362,8 +3366,8 @@ function renderSidebar() {
   const slens = document.getElementById('sidebar-lens');
   if (slens) {
     const allowed = allowedLenses();
-    if (allowed.length > 1) {
-      const labels = { all: '🏢 Бүгд', 'm-event': '⛺ M-Event', camp: '🏔 NOMAAD', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
+    if (allowed.length > 1 && !LENS_INERT_VIEWS.includes(state.view)) {   // ленз юу ч хийхгүй view дээр нууна
+      const labels = { all: '🏢 Бүгд', 'm-event': '🎪 M-Event', camp: '⛺ NOMAAD', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
       const cur = effectiveBranchLens();
       slens.style.display = '';
       slens.innerHTML = allowed.map(v => `<button class="slens-chip${v === cur ? ' on' : ''}" data-slens="${v}">${labels[v] || v}</button>`).join('');
@@ -7199,7 +7203,8 @@ function renderHourly() {
   // Толгойн салбар лензээр шүүнэ: NOMAAD Camp → зөвхөн NOMAAD, M-Event → зөвхөн M Event, Бүгд → бүгд.
   const lens = effectiveBranchLens();
   const lensLabel = lens === 'm-event' ? 'M Event' : lens === 'camp' ? 'NOMAAD' : lens === 'catering' ? 'Катеринг' : null;
-  const workers = lensLabel ? allWorkers.filter(m => hourlyBranchLabel(m) === lensLabel) : allWorkers;
+  // Салбаргүй/танигдахгүй ('Бусад') ажилтныг специфик лензэд ч нуухгүй — Сарын цалингийн зантай нийцүүлж, ажилтан алдагдахаас сэргийлнэ.
+  const workers = lensLabel ? allWorkers.filter(m => { const bl = hourlyBranchLabel(m); return bl === lensLabel || bl === 'Бусад'; }) : allWorkers;
   const sortMode = state.hourlySort || 'recent';
   if (!state.hourlyActivity) state.hourlyActivity = 'active';   // анхдагч: идэвхтэй л харагдана
   const nowTs = Date.now();
@@ -12469,7 +12474,10 @@ function renderPerfRate() {
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m));
   const targets = active.filter(m => {
     const k = personKey(m);
+    if (!memberInLens(m)) return false;                 // толгойн лензээр (Бүх ажилтан таб-тай нийцүүлэв)
     if (k === state.me) return true;
+    if (state.isCEO || myLevel >= 80) return true;      // CEO/менежер бүгдийг үнэлнэ (салбаргүй үнэлэгч гацахгүй)
+    if (!myBranches.length) return false;
     return memberBranchesOf(m).some(b => myBranches.includes(b));
   });
   const cards = targets.map(m => {
@@ -15770,7 +15778,7 @@ function renderFinanceReport(wrap) {
   const head = document.createElement('div');
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;';
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
-    + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month}</div>`
+    + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
     + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал${(() => {
         const ol = sumOf(monthList.filter(t => String(t.category || '').startsWith('6900')));
         const pd = sumOf(monthList.filter(t => finPendingStmt(t)));

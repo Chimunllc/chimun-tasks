@@ -5130,12 +5130,20 @@ function boardOrderRow(e, k, todayStr) {
   }
   const selBox = state.ordersSelect ? `<input type="checkbox" class="board-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
   const _rowOpen = state.ordersRowOpen instanceof Set && state.ordersRowOpen.has(String(o.id));
+  // НӨАТ статус чип (мөрөн дээр ил): шивсэн бол ✓ ногоон / дутуу шар / илүү улаан
+  let vatChip = '';
+  if (typeof vatForOrder === 'function') {
+    const vi = vatForOrder(o.number); const vt = Number(o.total_mnt) || 0;
+    if (vi.count) { const tl = Math.max(1000, vt * 0.005); const ov = vt > 0 && vi.invoiced > vt + tl; const fl = vt > 0 && !ov && vi.invoiced + tl >= vt;
+      const cc = ov ? '#c0392b' : fl ? '#1e7a55' : '#9a6a00';
+      vatChip = `<span class="br-vat" title="НӨАТ шивсэн: ${escapeHtml(fmtMoney(vi.invoiced))} / ${escapeHtml(fmtMoney(vt))} · НӨАТ ${escapeHtml(fmtMoney(vi.vat))}" style="color:${cc};font-size:11.5px;font-weight:700;" onclick="event.stopPropagation()">🧾${ov ? '!' : fl ? '✓' : '½'}</span>`; }
+  }
   return `<details class="board-order ${urgCls}" data-row-oid="${id}"${_rowOpen ? ' open' : ''}><summary class="board-row">
     ${selBox}<span class="br-num">#${o.number ?? ''}</span>
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
     <span class="br-badge">${deliv}</span>
     <span class="br-date">${dstr || '—'}</span>
-    ${payWarn}
+    ${payWarn}${vatChip}
     <span class="br-amt">${fmtMoney(o.total_mnt || 0)}</span>
     ${actBtn}
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;

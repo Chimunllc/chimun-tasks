@@ -8425,7 +8425,7 @@ function drawPoster(canvas, opts) {
     // Фонт зөвхөн 2 хэмжээ (ps / phSize) — жижиг-том зөрүү, тарамдсан байрлал арилгав.
     const ps = Math.round(W * 0.030);
     const padX = Math.round(W * 0.048), padY = Math.round(H * 0.021);
-    const pillTxt = 'Түрээсийн үнэ →';
+    const pillTxt = 'Түрээсийн үнэ';
     ctx.font = `800 ${ps}px ${FONT}`; const twP = ctx.measureText(pillTxt).width;
     const pillW = Math.round(twP) + padX * 2, pillH = ps + padY * 2;
     const pillY = H - M - pillH, midY = pillY + pillH / 2 + 1;
@@ -8433,11 +8433,11 @@ function drawPoster(canvas, opts) {
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = `800 ${ps}px ${FONT}`;
     ctx.fillText(pillTxt, M + padX, midY);
     // Холбоо: mevent.mn (тод, дээр) + утас (нам, доор) — товчны голд төвлөрч баруун зэрэгцэнэ
+    // Чухлын дараалал: утас (2-р) ДЭЭР — том BOLD бараан; website (3-р) ДООР — жижиг бүдэг
     ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(11,31,58,.62)'; ctx.font = `600 ${Math.round(W * 0.027)}px ${FONT}`;
-    ctx.fillText(kit.website || 'mevent.mn', W - M, midY - Math.round(ps * 0.60));
-    // Утас = хамгийн чухал холбоо → бараан + BOLD + том (бүдэг саарал БИШ)
-    if (kit.phone) { ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillText(kit.phone, W - M, midY + Math.round(ps * 0.62)); }
+    if (kit.phone) { ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillText(kit.phone, W - M, midY - Math.round(ps * 0.52)); }
+    ctx.fillStyle = 'rgba(11,31,58,.5)'; ctx.font = `600 ${Math.round(W * 0.024)}px ${FONT}`;
+    ctx.fillText(kit.website || 'mevent.mn', W - M, midY + Math.round(ps * 0.68));
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }

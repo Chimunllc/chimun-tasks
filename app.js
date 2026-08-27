@@ -8447,9 +8447,10 @@ function drawPoster(canvas, opts) {
     ctx.beginPath(); ctx.moveTo(M, fRuleY); ctx.lineTo(W - M, fRuleY); ctx.stroke();
     ctx.textBaseline = 'alphabetic';
     // Утас — зүүн, bold бараан (гол холбоо); website — баруун, muted; хэмжээ ойролцоо → тэнцвэр
-    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `600 ${Math.round(W * 0.032)}px ${FONT}`;
+    // Утас ба website ИЖИЛ хэмжээ — hierarchy зөвхөн өнгөөр (утас тод=primary, website бүдэг=secondary)
+    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `600 ${Math.round(W * 0.031)}px ${FONT}`;
     ctx.fillText(kit.phone || '', M, footY);
-    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.6)'; ctx.font = `600 ${Math.round(W * 0.028)}px ${FONT}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.55)'; ctx.font = `600 ${Math.round(W * 0.031)}px ${FONT}`;
     ctx.fillText(kit.website || 'mevent.mn', W - M, footY);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;

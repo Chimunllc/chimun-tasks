@@ -2007,14 +2007,25 @@ function finEffBranch(t) {
   if (finCatCodes(t && t.category).main === '6000') return 'Чимун ХХК';
   return finBranchLabel(t && t.dept_branch);
 }
-// Салбар ленз → санхүүгийн finEffBranch шүүлтийн утга (null = бүгд)
-function finLensBranch(lens) {
-  return lens === 'm-event' ? 'ИВЕНТ' : lens === 'camp' ? 'КЕМП' : lens === 'catering' ? 'КАТЕРИНГ' : lens === 'capital' ? 'Чимун ХХК' : null;
-}
-// Салбар ленз → барааны салбар код (prodBranch/qty_* багана). null = Бүгд (Агуулахын өөрийн таб хүчинтэй).
-function lensToProd(lens) {
-  return lens === 'm-event' ? 'mevent' : lens === 'camp' ? 'nomaad' : lens === 'catering' ? 'catering' : lens === 'capital' ? 'chimun' : null;
-}
+// ── САЛБАРЫН НЭГДСЭН МОДЕЛ — лензийн бүх төлөөллийн ГАНЦ эх сурвалж ──
+// Нэг салбарыг ленз/санхүү код/барааны код/сонгогчийн шошго/цагийн-шошгоор энд НЭГ мөрөнд холбоно.
+// Доорх хөрвүүлэгчид эндээс уншина — өмнө тархсан гар map/ternary (finLensBranch/lensToProd/
+// сонгогчийн label ×2/цагийн label) нэг эх сурвалж болов. Шинэ салбар нэмэхэд ЭНД нэг мөр нэмнэ.
+const BRANCH_MODEL = [
+  { lens: 'm-event',  prod: 'mevent',   fin: 'ИВЕНТ',     label: '🎪 M-Event',    hourly: 'M Event' },
+  { lens: 'camp',     prod: 'nomaad',   fin: 'КЕМП',      label: '⛺ NOMAAD Camp', hourly: 'NOMAAD' },
+  { lens: 'catering', prod: 'catering', fin: 'КАТЕРИНГ',  label: '🍽 Катеринг',    hourly: 'Катеринг' },
+  { lens: 'capital',  prod: 'chimun',   fin: 'Чимун ХХК', label: '🏢 Чимун ХХК',   hourly: null },
+];
+const _brByLens = (lens) => BRANCH_MODEL.find(b => b.lens === lens);
+// Ленз → санхүүгийн finEffBranch шүүлтийн утга (null = Бүгд)
+function finLensBranch(lens) { return (_brByLens(lens) || {}).fin || null; }
+// Ленз → барааны салбар код (prodBranch/qty_* багана). null = Бүгд (Агуулахын өөрийн таб хүчинтэй).
+function lensToProd(lens) { return (_brByLens(lens) || {}).prod || null; }
+// Ленз сонгогчийн шошго (толгой + sidebar НЭГ эх — өмнө 2 газарт давхардаж зөрдөг байсан).
+function lensSelLabel(lens) { return lens === 'all' ? '🏢 Бүгд' : ((_brByLens(lens) || {}).label || lens); }
+// Ленз → цагийн ажилтны салбар шошго (шүүлтийн түлхүүр). all/capital → null (бүгд).
+function lensHourly(lens) { return (_brByLens(lens) || {}).hourly || null; }
 // Салбарын дотоод код → ХАРАГДАХ нэр (M-Event/NOMAAD). Хаана ч гарсан ойлгомжтой нэрээр.
 const BRANCH_DISPLAY = {
   'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг',
@@ -3228,10 +3239,9 @@ function render() {
   const blSel = document.getElementById('branch-lens');
   if (blSel) {
     const allowed = allowedLenses();
-    const labels = { all: '🏢 Бүгд', 'm-event': '🎪 M-Event', camp: '⛺ NOMAAD Camp', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
     const key = allowed.join(',');
     if (blSel._builtFor !== key) {
-      blSel.innerHTML = allowed.map(v => `<option value="${v}">${labels[v] || v}</option>`).join('');
+      blSel.innerHTML = allowed.map(v => `<option value="${v}">${lensSelLabel(v)}</option>`).join('');
       blSel._builtFor = key;
     }
     blSel.value = effectiveBranchLens();
@@ -3367,10 +3377,9 @@ function renderSidebar() {
   if (slens) {
     const allowed = allowedLenses();
     if (allowed.length > 1 && !LENS_INERT_VIEWS.includes(state.view)) {   // ленз юу ч хийхгүй view дээр нууна
-      const labels = { all: '🏢 Бүгд', 'm-event': '🎪 M-Event', camp: '⛺ NOMAAD', catering: '🍽 Катеринг', capital: '🏢 Чимун ХХК' };
       const cur = effectiveBranchLens();
       slens.style.display = '';
-      slens.innerHTML = allowed.map(v => `<button class="slens-chip${v === cur ? ' on' : ''}" data-slens="${v}">${labels[v] || v}</button>`).join('');
+      slens.innerHTML = allowed.map(v => `<button class="slens-chip${v === cur ? ' on' : ''}" data-slens="${v}">${lensSelLabel(v)}</button>`).join('');
       slens.querySelectorAll('[data-slens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.slens)));
     } else slens.style.display = 'none';
   }
@@ -7202,7 +7211,7 @@ function renderHourly() {
   }
   // Толгойн салбар лензээр шүүнэ: NOMAAD Camp → зөвхөн NOMAAD, M-Event → зөвхөн M Event, Бүгд → бүгд.
   const lens = effectiveBranchLens();
-  const lensLabel = lens === 'm-event' ? 'M Event' : lens === 'camp' ? 'NOMAAD' : lens === 'catering' ? 'Катеринг' : null;
+  const lensLabel = lensHourly(lens);   // ленз→цагийн салбар шошго (НЭГ эх — BRANCH_MODEL)
   // Салбаргүй/танигдахгүй ('Бусад') ажилтныг специфик лензэд ч нуухгүй — Сарын цалингийн зантай нийцүүлж, ажилтан алдагдахаас сэргийлнэ.
   const workers = lensLabel ? allWorkers.filter(m => { const bl = hourlyBranchLabel(m); return bl === lensLabel || bl === 'Бусад'; }) : allWorkers;
   const sortMode = state.hourlySort || 'recent';

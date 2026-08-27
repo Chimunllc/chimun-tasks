@@ -8378,15 +8378,10 @@ function drawPoster(canvas, opts) {
     { const sy = H * 0.40, sr = W * 0.7; const sg = ctx.createRadialGradient(W / 2, sy, W * 0.04, W / 2, sy, sr);
       sg.addColorStop(0, 'rgba(255,255,255,1)'); sg.addColorStop(0.6, 'rgba(255,255,255,.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H); }
-    // ── Толгой: лого тэмдэг + M-EVENT (зүүн) · ТҮРЭЭС (баруун) · шугам ──
-    const markH = Math.round(W * 0.052), hTop = Math.round(M * 0.85);
-    let lx = M;
-    if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); lx = M + mw + Math.round(W * 0.02); }
-    else { const sq = Math.round(W * 0.03); ctx.fillStyle = c2; roundRect(M, hTop + (markH - sq) / 2, sq, sq, Math.round(sq * 0.24)); ctx.fill(); lx = M + sq + Math.round(W * 0.02); }
-    ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink;
-    const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02);
-    ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), lx, hTop + markH / 2 + 1); clrLS();
-    // (Баруун дээд 'ТҮРЭЭС' eyebrow хасав — цэвэр минимал толгой = премиум)
+    // ── Толгой: БҮТЭН ХЭВТЭЭ M-EVENT лого (зүүн) · шугам ──
+    const markH = Math.round(W * 0.06), hTop = Math.round(M * 0.8);
+    if (state._mkLogoH) { const lw = Math.round(markH * (state._mkLogoH.width / state._mkLogoH.height)); ctx.drawImage(state._mkLogoH, M, hTop, lw, markH); }
+    else if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink; const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02); ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + mw + Math.round(W * 0.02), hTop + markH / 2 + 1); clrLS(); }
     const ruleY = hTop + markH + Math.round(H * 0.024);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Бараа: ТОМ, дэвсгэрт хөвж (цагаан карт БАЙХГҮЙ) + доор зөөлөн эллипс сүүдэр ──
@@ -8420,15 +8415,19 @@ function drawPoster(canvas, opts) {
       const first = _mkWrapText(ctx, opts.subtitle, W - M * 2)[0] || '';
       ctx.fillText(first, M, y);
     }
-    // ── CTA HOOK: тод улбар шар товч (pill) — клик татна · утас баруунд ──
-    const pillTxt = 'Үнэ & захиалга → ' + (kit.website || 'mevent.mn');
+    // ── CTA: цэвэр ПРЕМИУМ товч (glow-гүй, зөөлөн булан) · утас баруунд ──
+    const pillTxt = 'Үнэ & захиалга';
     const ps = Math.round(W * 0.031); ctx.font = `800 ${ps}px ${FONT}`;
-    const padX = Math.round(W * 0.045), padY = Math.round(H * 0.019);
-    const pillW = Math.round(ctx.measureText(pillTxt).width) + padX * 2, pillH = ps + padY * 2;
+    const arrow = '  →  ' + (kit.website || 'mevent.mn');
+    const padX = Math.round(W * 0.05), padY = Math.round(H * 0.022);
+    ctx.font = `800 ${ps}px ${FONT}`; const tw1 = ctx.measureText(pillTxt).width;
+    ctx.font = `600 ${ps}px ${FONT}`; const tw2 = ctx.measureText(arrow).width;
+    const pillW = Math.round(tw1 + tw2) + padX * 2, pillH = ps + padY * 2;
     const pillY = H - M - pillH;
-    ctx.save(); ctx.shadowColor = 'rgba(255,106,0,.32)'; ctx.shadowBlur = Math.round(W * 0.03); ctx.shadowOffsetY = Math.round(H * 0.006);
-    roundRect(M, pillY, pillW, pillH, pillH / 2); ctx.fillStyle = c2; ctx.fill(); ctx.restore();
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(pillTxt, M + padX, pillY + pillH / 2 + 1);
+    roundRect(M, pillY, pillW, pillH, Math.round(W * 0.016)); ctx.fillStyle = c2; ctx.fill();
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.font = `800 ${ps}px ${FONT}`; ctx.fillText(pillTxt, M + padX, pillY + pillH / 2 + 1);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = `600 ${ps}px ${FONT}`; ctx.fillText(arrow, M + padX + tw1, pillY + pillH / 2 + 1);
     ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `600 ${Math.round(W * 0.026)}px ${FONT}`; ctx.fillText(kit.phone || '', W - M, pillY + pillH / 2 + 1);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
@@ -8544,6 +8543,7 @@ function attachMarketingHandlers() {
   const k = _brandKit();
   if (k.logo && !k._logoImg) { const li = new Image(); li.onload = () => { k._logoImg = li; _mkRedraw(); }; li.src = k.logo; }
   if (!state._mkMark && typeof MEVENT_MARK !== 'undefined') { const mi = new Image(); mi.onload = () => { state._mkMark = mi; _mkRedraw(); }; mi.src = MEVENT_MARK; }
+  if (!state._mkLogoH && typeof MEVENT_LOGO_DL !== 'undefined' && MEVENT_LOGO_DL.horizontal) { const li = new Image(); li.onload = () => { state._mkLogoH = li; _mkRedraw(); }; li.src = MEVENT_LOGO_DL.horizontal; }
   // Брэнд фонт (Montserrat) ачаалагдсаны дараа canvas дахин зурна
   try { if (document.fonts && document.fonts.load) { Promise.all([document.fonts.load('800 40px Montserrat'), document.fonts.load('400 20px Montserrat')]).then(() => _mkRedraw()).catch(() => {}); } } catch (_) {}
   _mkRedraw();

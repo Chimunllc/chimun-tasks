@@ -15986,13 +15986,18 @@ function vatAutoScore(rec, c) {
   if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
   return s;
 }
-// Нэр таарч байгаа эсэх (яг эсвэл гол үг давхцах)
+// Нэр таарч байгаа эсэх — ХАТУУ (нэг ерөнхий үг давхацсанаар таарсан гэхгүй):
+//  яг тэнцүү | нэг нь нөгөөгөө бүтэн агуулах | 2+ гол үг (≥4 үсэг, ерөнхий үг биш) давхцах
+const VAT_NAME_STOP = new Set(['групп', 'партнерс', 'партнёрс', 'төв', 'компани', 'интернэшнл', 'интернейшнл', 'холдинг', 'сервис', 'трейд', 'консалтинг', 'банк', 'ххк', 'групп', 'корпораци', 'юнайтед']);
 function vatNameMatch(a, b) {
   const rn = vatNorm(a), cn = vatNorm(b);
-  if (!rn || !cn) return false;
+  if (!rn || !cn || rn.length < 4 || cn.length < 4) return false;
   if (rn === cn) return true;
-  const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' '));
-  return rt.filter(t => ct.has(t)).length >= 1;
+  const A = rn.replace(/\s+/g, ''), B = cn.replace(/\s+/g, '');
+  if (A.length >= 6 && B.length >= 6 && (A.includes(B) || B.includes(A))) return true;
+  const toks = s => s.split(' ').filter(t => t.length >= 4 && !VAT_NAME_STOP.has(t));
+  const rt = toks(rn), ct = new Set(toks(cn));
+  return rt.filter(t => ct.has(t)).length >= 2;
 }
 function vatBestMatch(rec, cands) {
   let best = null, bs = 0, second = 0;

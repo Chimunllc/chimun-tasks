@@ -15982,7 +15982,7 @@ function vatAutoScore(rec, c) {
   const rn = vatNorm(rec.name), cn = vatNorm(c.name);
   if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
   const amt = c.amount || 0;
-  if (amt > 0) { const near = (a, b) => Math.abs(a - b) <= Math.max(500, b * 0.005); if (near(rec.total, amt) || near(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
+  if (amt > 0) { const near = (a, b) => Math.round(a) === Math.round(b); if (near(rec.total, amt) || near(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
   if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
   return s;
 }
@@ -16061,7 +16061,7 @@ async function openVatAttachModal(order) {
   const pc = document.createElement('div');
   pc.style.cssText = 'background:#fff;border-radius:14px;max-width:600px;width:100%;margin:auto;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 30px 70px -20px rgba(0,0,0,.45);';
   ov.appendChild(pc); ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); render(); } });
-  const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(500, b * 0.005);
+  const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
   pc.innerHTML = `
     <div style="padding:14px 16px;border-bottom:1px solid #eee;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b style="font-size:15px;">🧾 НӨАТ баримт холбох</b><button id="va-x" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button></div>
@@ -16142,7 +16142,7 @@ async function openVatReportModal() {
     const tabBtn = (k, lbl, n) => `<button data-vfilter="${k}" style="border:none;background:${vfilter === k ? '#0B1F3A' : '#f0f0f0'};color:${vfilter === k ? '#fff' : '#555'};border-radius:100px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;">${lbl} ${n}</button>`;
     const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}</div>`;
     // Санал төрлөөр шүүх (РД/дүн/нэр таарсан захиалга байгаа эсэх)
-    const near2 = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(500, b * 0.005);
+    const near2 = (a, b) => b > 0 && Math.round(a) === Math.round(b);
     const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
     const flagged = list.map(r => ({ r, f: flagsFor(r) }));
     const cReg = flagged.filter(x => x.f.reg).length, cAmt = flagged.filter(x => x.f.amt).length, cName = flagged.filter(x => x.f.name).length, cNone = flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name).length;
@@ -16157,7 +16157,7 @@ async function openVatReportModal() {
       if (r.matched_id) {
         matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:inline-flex;align-items:center;gap:4px;color:#1e7a55;font-weight:700;font-size:12px;background:#e8f2ec;border-radius:6px;padding:2px 8px;">🔒 ${escapeHtml(r.matched_label || r.matched_id)}</span><button data-vunmatch="${escapeHtml(r.id)}" title="Түгжээ гаргаж тулгалтыг болиулах" style="border:1px solid var(--border,#ddd);background:#fff;color:var(--muted,#888);cursor:pointer;font-size:11px;border-radius:6px;padding:2px 8px;">🔓 гаргах</button></div>`;
       } else {
-        const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(500, b * 0.005);
+        const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
         const tops = cands.map(c => ({ c, s: vatAutoScore(r, c) })).filter(x => x.s >= 2).sort((a, b) => b.s - a.s).slice(0, 3);
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
@@ -16258,7 +16258,7 @@ async function openVatReportModal() {
     const pc = document.createElement('div');
     pc.style.cssText = 'background:#fff;border-radius:14px;max-width:560px;width:100%;margin:auto;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 30px 70px -20px rgba(0,0,0,.45);';
     pov.appendChild(pc); pov.addEventListener('click', e => { if (e.target === pov) pov.remove(); });
-    const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(500, b * 0.005);
+    const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
     // Бүрхүүлийг НЭГ УДАА зурна (input устахгүй → бичиж болно), зөвхөн жагсаалтыг шинэчилнэ
     pc.innerHTML = `
       <div style="padding:14px 16px;border-bottom:1px solid #eee;">

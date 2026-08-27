@@ -8386,12 +8386,11 @@ function drawPoster(canvas, opts) {
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink;
     const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02);
     ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), lx, hTop + markH / 2 + 1); clrLS();
-    ctx.textAlign = 'right'; ctx.fillStyle = muted; const lb = Math.round(W * 0.022); ctx.font = `600 ${lb}px ${FONT}`; setLS(lb * 0.24);
-    ctx.fillText('ТҮРЭЭС', W - M, hTop + markH / 2 + 1); clrLS();
-    const ruleY = hTop + markH + Math.round(H * 0.026);
+    // (Баруун дээд 'ТҮРЭЭС' eyebrow хасав — цэвэр минимал толгой = премиум)
+    const ruleY = hTop + markH + Math.round(H * 0.024);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Бараа: ТОМ, дэвсгэрт хөвж (цагаан карт БАЙХГҮЙ) + доор зөөлөн эллипс сүүдэр ──
-    const imgTop = ruleY + Math.round(H * 0.025), imgH = Math.round(H * (story ? 0.56 : 0.48)), imgAreaW = W - M * 2;
+    const imgTop = ruleY + Math.round(H * 0.02), imgH = Math.round(H * (story ? 0.62 : 0.55)), imgAreaW = W - M * 2, iRad = Math.round(W * 0.028);
     if (opts.img) {
       const ir = opts.img.width / opts.img.height, brr = imgAreaW / imgH;
       const cover = opts.imgFit === 'cover', zoom = Math.max(1, opts.imgZoom || 1), posY = (opts.imgY == null ? 0.5 : opts.imgY), posX = (opts.imgX == null ? 0.5 : opts.imgX);
@@ -8406,12 +8405,12 @@ function drawPoster(canvas, opts) {
       const shg = ctx.createRadialGradient(0, 0, 0, 0, 0, shW);
       shg.addColorStop(0, 'rgba(11,31,58,.20)'); shg.addColorStop(1, 'rgba(11,31,58,0)');
       ctx.fillStyle = shg; ctx.beginPath(); ctx.arc(0, 0, shW, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-      ctx.save(); ctx.beginPath(); ctx.rect(M, imgTop, imgAreaW, imgH); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
+      ctx.save(); roundRect(M, imgTop, imgAreaW, imgH, iRad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
     // ── Нэр (том, тод) + 1 мөр дэгээ ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    const tSize = Math.round(W * 0.066); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
-    let y = imgTop + imgH + Math.round(H * 0.055) + tSize;
+    const tSize = Math.round(W * 0.062); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
+    let y = imgTop + imgH + Math.round(H * 0.04) + tSize;
     const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.08; });
     // Богино уриа/hook (сонголт) — ТОД, ганц мөр (тайлбар БИШ)

@@ -8364,14 +8364,21 @@ function drawPoster(canvas, opts) {
   const eyebrow = (txt, cx, y, center) => { if (!txt) return; const es = Math.round(W * 0.028); ctx.font = `700 ${es}px ${FONT}`; ctx.fillStyle = c2; ctx.textAlign = center ? 'center' : 'left'; setLS(es * 0.16); ctx.fillText(String(txt).toUpperCase(), cx, y); clrLS(); ctx.textAlign = 'left'; };
   const accentRule = (x, y, center) => { const w = Math.round(W * 0.11), h = Math.max(4, Math.round(H * 0.007)); ctx.fillStyle = c2; ctx.fillRect(center ? x - w / 2 : x, y, w, h); };
 
-  // ═══ PRODUCT (Түрээсийн бараа) — ЦАЙВАР EDITORIAL КАТАЛОГ (premium B2B) ═══
-  // Дулаан цагаан суурь + толгой (wordmark/ТҮРЭЭС) + цагаан хавтант зураг + нэр/үнэ + нарийн footer.
+  // ═══ PRODUCT (Түрээсийн бараа) — КАМПАНИТ HERO (FB → сайт руу клик татах) ═══
+  // Дулаан цайвар дэвсгэр + барааны ард гэрлийн голомт (spotlight), цагаан картгүй "хөвсөн" бараа,
+  // том нэр, 1 мөр дэгээ, "Үнэ & захиалга → сайт" CTA — каталог биш, кампанит харагдалт.
   if (tpl === 'product') {
     const roundRect = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
-    const paper = '#F4F1EA', ink = c1, muted = 'rgba(11,31,58,.5)', hair = 'rgba(11,31,58,.13)';
-    ctx.fillStyle = paper; ctx.fillRect(0, 0, W, H);
+    const ink = c1, muted = 'rgba(11,31,58,.5)', hair = 'rgba(11,31,58,.12)';
     const M = Math.round(W * 0.08);
-    // ── Толгой: брэнд лого/нэр (зүүн) · ТҮРЭЭС (баруун) · шугам ──
+    // ── Дэвсгэр: БАРАГ ЦАГААН (барааны цагаан дэвсгэртэй нийлж хөвнө) + доор зөөлөн дулаан вигнет ──
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#FEFDFB'); bg.addColorStop(0.62, '#FBF9F5'); bg.addColorStop(1, '#F1ECE3');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    { const sy = H * 0.40, sr = W * 0.7; const sg = ctx.createRadialGradient(W / 2, sy, W * 0.04, W / 2, sy, sr);
+      sg.addColorStop(0, 'rgba(255,255,255,1)'); sg.addColorStop(0.6, 'rgba(255,255,255,.55)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H); }
+    // ── Толгой: лого тэмдэг + M-EVENT (зүүн) · ТҮРЭЭС (баруун) · шугам ──
     const markH = Math.round(W * 0.052), hTop = Math.round(M * 0.85);
     let lx = M;
     if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); lx = M + mw + Math.round(W * 0.02); }
@@ -8383,45 +8390,43 @@ function drawPoster(canvas, opts) {
     ctx.fillText('ТҮРЭЭС', W - M, hTop + markH / 2 + 1); clrLS();
     const ruleY = hTop + markH + Math.round(H * 0.026);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
-    // ── Зураг: цагаан хавтан дээр contain (төрөл бүрийн зургийг цэгцлэнэ) ──
-    const panTop = ruleY + Math.round(H * 0.03), panH = Math.round(H * (story ? 0.53 : 0.44)), panW = W - M * 2, prad = Math.round(W * 0.02);
-    ctx.save(); ctx.shadowColor = 'rgba(11,31,58,0.10)'; ctx.shadowBlur = Math.round(W * 0.02); ctx.shadowOffsetY = Math.round(H * 0.008);
-    roundRect(M, panTop, panW, panH, prad); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+    // ── Бараа: ТОМ, дэвсгэрт хөвж (цагаан карт БАЙХГҮЙ) + доор зөөлөн эллипс сүүдэр ──
+    const imgTop = ruleY + Math.round(H * 0.025), imgH = Math.round(H * (story ? 0.56 : 0.48)), imgAreaW = W - M * 2;
     if (opts.img) {
-      const ip = Math.round(W * 0.02), bx = M + ip, by = panTop + ip, bw = panW - ip * 2, bh = panH - ip * 2;
-      const ir = opts.img.width / opts.img.height, br = bw / bh;
+      const ir = opts.img.width / opts.img.height, brr = imgAreaW / imgH;
       const cover = opts.imgFit === 'cover', zoom = Math.max(1, opts.imgZoom || 1), posY = (opts.imgY == null ? 0.5 : opts.imgY), posX = (opts.imgX == null ? 0.5 : opts.imgX);
       let dw, dh;
-      if (cover) { if (ir > br) { dh = bh; dw = bh * ir; } else { dw = bw; dh = bw / ir; } }
-      else { if (ir > br) { dw = bw; dh = bw / ir; } else { dh = bh; dw = bh * ir; } }
+      if (cover) { if (ir > brr) { dh = imgH; dw = imgH * ir; } else { dw = imgAreaW; dh = imgAreaW / ir; } }
+      else { if (ir > brr) { dw = imgAreaW; dh = imgAreaW / ir; } else { dh = imgH; dw = imgH * ir; } }
       dw *= zoom; dh *= zoom;
-      const dx = bx + (bw - dw) * posX, dy = by + (bh - dh) * posY;
-      ctx.save(); roundRect(M, panTop, panW, panH, prad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
+      const dx = M + (imgAreaW - dw) * posX, dy = imgTop + (imgH - dh) * posY;
+      const shCy = Math.min(imgTop + imgH, dy + dh) - Math.round(H * 0.004);
+      const shW = Math.min(dw, imgAreaW) * 0.34;
+      ctx.save(); ctx.translate(W / 2, shCy); ctx.scale(1, Math.round(H * 0.016) / shW);
+      const shg = ctx.createRadialGradient(0, 0, 0, 0, 0, shW);
+      shg.addColorStop(0, 'rgba(11,31,58,.20)'); shg.addColorStop(1, 'rgba(11,31,58,0)');
+      ctx.fillStyle = shg; ctx.beginPath(); ctx.arc(0, 0, shW, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.beginPath(); ctx.rect(M, imgTop, imgAreaW, imgH); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
     }
-    // ── Нэр + тайлбар (үнэ БИШ — сайт руу татна) ──
+    // ── Нэр (том, тод) + 1 мөр дэгээ ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    const tSize = Math.round(W * 0.056); ctx.fillStyle = ink; ctx.font = `700 ${tSize}px ${FONT}`;
-    let y = panTop + panH + Math.round(H * 0.038) + tSize;   // 1-р гарчгийн baseline
+    const tSize = Math.round(W * 0.06); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
+    let y = imgTop + imgH + Math.round(H * 0.05) + tSize;
     const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
-    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.12; });
-    const ctaY = H - M - Math.round(H * 0.048);   // footer шугамын байрлал
+    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.1; });
     if (opts.subtitle) {
-      const ds = Math.round(W * 0.0275); const lh = ds * 1.4;
-      ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.72)';   // ⚠ хэмжихээс ӨМНӨ фонт тохируул (эс бол гарчгийн фонтоор хэмжинэ)
-      y += Math.round(H * 0.012) + ds;   // гарчиг↔тайлбар зай (хяналттай, ойрхон)
-      const maxY = ctaY - Math.round(H * 0.03);
-      const lines = _mkWrapText(ctx, opts.subtitle, W - M * 2);
-      const cap = Math.min(3, Math.max(1, Math.floor((maxY - y) / lh) + 1));   // ХАМГИЙН ИХ 3 мөр
-      const shown = lines.slice(0, cap);
-      if (lines.length > cap && shown.length) shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s,.:;]+\S*$/, '').trim() + '…';
-      shown.forEach(l => { ctx.fillText(l, M, y); y += lh; });
+      const ds = Math.round(W * 0.028); ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.66)';
+      y += Math.round(H * 0.014) + ds;
+      const full = _mkWrapText(ctx, opts.subtitle, W - M * 2);
+      const txt = full.length > 1 ? ((full[0] || '').replace(/[\s,.:;]+\S*$/, '').trim() + '…') : (full[0] || '');
+      ctx.fillText(txt, M, y);   // ЗӨВХӨН 1 мөр дэгээ — үлдсэнийг сайтаас
     }
-    // ── Footer: шугам + утас (зүүн) · вэб CTA (баруун, orange) ──
-    const fy = H - M;
+    // ── Footer: шугам + утас (зүүн) · CTA "Үнэ & захиалга → сайт" (баруун, orange) ──
+    const ctaY = H - M - Math.round(H * 0.048), fy = H - M;
     ctx.strokeStyle = hair; ctx.beginPath(); ctx.moveTo(M, ctaY); ctx.lineTo(W - M, ctaY); ctx.stroke();
     ctx.textBaseline = 'middle'; const cs = Math.round(W * 0.026);
     ctx.textAlign = 'left'; ctx.fillStyle = muted; ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(kit.phone || '', M, fy);
-    if (kit.website) { ctx.textAlign = 'right'; ctx.fillStyle = c2; ctx.font = `800 ${cs}px ${FONT}`; ctx.fillText('Дэлгэрэнгүй → ' + kit.website, W - M, fy); }
+    if (kit.website) { ctx.textAlign = 'right'; ctx.fillStyle = c2; ctx.font = `800 ${cs}px ${FONT}`; ctx.fillText('Үнэ & захиалга → ' + kit.website, W - M, fy); }
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }
@@ -12655,8 +12660,9 @@ function renderProducts() {
   // Агуулах толгойн салбар ЛЕНЗИЙГ ДАГАНА. Ленз идэвхтэй (≠Бүгд) бол prodBranch = лензийн салбар
   // (нэг салбарт түгжигдсэн ажилтан ч лензээрээ автоматаар түгжигдэнэ — тусдаа map хэрэггүй).
   // Бүгд лензэд Агуулахын өөрийн доод таб (all/mevent/nomaad/catering/chimun) хүчинтэй.
+  // Агуулах ГАНЦ толгойн лензээр — доод таб байхгүй. Бугд лензэд бүх салбар (мөр бүр 🎪2 ⛺3 задаргаатай).
   const _lensProd = lensToProd(effectiveBranchLens());   // null when 'all'
-  if (_lensProd) state.prodBranch = _lensProd;
+  state.prodBranch = _lensProd || 'all';
   let list = all.slice();
   if (state.prodBranch !== 'all') list = list.filter(p => branchQty(p, state.prodBranch) > 0);
   // Ангилал шүүлтүүр + эрэмбэлэлт (өртөг/үнэ/нөөц)
@@ -12689,10 +12695,8 @@ function renderProducts() {
   // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
-  const brTab = (k, label) => `<button class="prod-tab${state.prodBranch === k ? ' on' : ''}" data-prodbranch="${k}">${label}${k !== 'all' ? ` <span class="prod-tab-n">${brQtySum(k)}ш</span>` : ''}</button>`;
-  const branchBar = _lensProd
-    ? `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${branchInfo(_lensProd).icon} ${branchInfo(_lensProd).label} салбар <span class="prod-tab-n">${brQtySum(_lensProd)}ш</span> <span style="font-size:10px;color:var(--muted);font-weight:400;">· толгойн лензээр</span></span></div>`
-    : `<div class="prod-tabs" style="margin-top:2px;">${brTab('all', '🌐 Бүх салбар')}${brTab('mevent', '🎪 M-Event')}${brTab('nomaad', '⛺ NOMAAD')}${brTab('catering', '🍽 Катеринг')}${brTab('chimun', '🏢 Чимун ХХК')}</div>`;
+  const _pb = state.prodBranch;   // = лензийн салбар эсвэл 'all'
+  const branchBar = `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${_pb === 'all' ? '🌐 Бүх салбар' : `${branchInfo(_pb).icon} ${branchInfo(_pb).label} салбар <span class="prod-tab-n">${brQtySum(_pb)}ш</span>`} <span style="font-size:10px;color:var(--muted);font-weight:400;">· толгойн лензээр</span></span></div>`;
   // Улирал хаалт — NOMAAD салбар идэвхтэй (лензээр эсвэл табаар) + нөөцтэй + удирдах эрхтэй үед
   const _nomaadSum = brQtySum('nomaad');
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
@@ -13035,10 +13039,7 @@ function attachProductsHandlers() {
   document.querySelectorAll('[data-prodfilter]').forEach(b => {
     b.onclick = () => { state.prodFilter = b.dataset.prodfilter; render(); };
   });
-  // Салбарын ленз — Бүх салбар / M-Event / NOMAAD / Чимун
-  document.querySelectorAll('[data-prodbranch]').forEach(b => {
-    b.onclick = () => { state.prodBranch = b.dataset.prodbranch; render(); };
-  });
+  // (Агуулахын доод салбар таб хасагдсан — толгойн ленз ГАНЦ удирдлага.)
   // Ангилал шүүлт + эрэмбэ
   document.getElementById('prod-cat')?.addEventListener('change', (e) => { state.prodCategory = e.target.value; render(); });
   document.getElementById('prod-missing')?.addEventListener('change', (e) => { state.prodMissing = e.target.value; render(); });
@@ -14732,12 +14733,13 @@ function renderReceivables() {
   if (!state.bqOrders) loadBooqableOrders();
   if (!state._arLoadedNomaad && (!state.nomaadOrders || !state.nomaadOrders.length)) { state._arLoadedNomaad = true; if (typeof loadNomaadOrders === 'function') loadNomaadOrders(); }
 
-  const d = receivablesData();
-  // Идэвхтэй ленз → тухайн салбарын таб руу default фокус (гэхдээ бүх таб + нийт дүн ил, нуулт биш).
-  const _lensAr = { 'm-event': 'bq', 'camp': 'nomaad' }[effectiveBranchLens()];
-  const filter = state.arFilter || _lensAr || 'all';
-  let list = d.items;
-  if (filter !== 'all') list = list.filter(i => i.branch === filter);
+  const d = receivablesData();   // БҮХ салбарын авлага (Тойм-ийн бүтэн дүн эндээс — лензээс хамаарахгүй)
+  // Толгойн ленз энэ view-г БҮРЭН захирна — view доторх салбар таб БАЙХГҮЙ (аппд нэг л ленз).
+  const _lens = effectiveBranchLens();
+  const _lensBr = _lens === 'm-event' ? 'bq' : _lens === 'camp' ? 'nomaad' : null;
+  const noRcvLens = (_lens === 'catering' || _lens === 'capital');   // эдгээр салбарт түрээсийн авлага байхгүй
+  const list = noRcvLens ? [] : (_lensBr ? d.items.filter(i => i.branch === _lensBr) : d.items);
+  const companyTotal = d.bqTotal + d.nomaadTotal;
   const shownTotal = list.reduce((s, i) => s + i.balance, 0);
   const overdue = list.filter(i => i.overdue);
   const overdueAmt = overdue.reduce((s, i) => s + i.balance, 0);
@@ -14749,29 +14751,37 @@ function renderReceivables() {
       <button class="btn" data-ar-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
     </div>`;
 
-  const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
-    ${kpi('Нийт авлага', fmtMoney(d.bqTotal + d.nomaadTotal), 'var(--warn)', `${d.items.length} захиалга`)}
-    ${kpi('🎪 Эвент түрээс', fmtMoney(d.bqTotal), 'var(--text)', 'Booqable')}
-    ${kpi('⛺ NOMAAD', fmtMoney(d.nomaadTotal), 'var(--text)', 'урьдчилсан')}
-    ${kpi('⚠ Хугацаа хэтэрсэн', fmtMoney(overdueAmt), overdue.length ? 'var(--danger)' : 'var(--muted)', `${overdue.length} захиалга`)}
-  </div>`;
+  // KPI — Бүгд лензэд бүрэн задаргаа; тодорхой лензэд тухайн салбарын Нийт + хэтэрсэн (view=ленз).
+  const kpis = _lens === 'all'
+    ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+        ${kpi('Нийт авлага', fmtMoney(companyTotal), 'var(--warn)', `${d.items.length} захиалга`)}
+        ${kpi('🎪 Эвент түрээс', fmtMoney(d.bqTotal), 'var(--text)', 'Booqable')}
+        ${kpi('⛺ NOMAAD', fmtMoney(d.nomaadTotal), 'var(--text)', 'урьдчилсан')}
+        ${kpi('⚠ Хугацаа хэтэрсэн', fmtMoney(overdueAmt), overdue.length ? 'var(--danger)' : 'var(--muted)', `${overdue.length} захиалга`)}
+      </div>`
+    : `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+        ${kpi(lensSelLabel(_lens) + ' авлага', fmtMoney(shownTotal), 'var(--warn)', `${list.length} захиалга`)}
+        ${kpi('⚠ Хугацаа хэтэрсэн', fmtMoney(overdueAmt), overdue.length ? 'var(--danger)' : 'var(--muted)', `${overdue.length} захиалга`)}
+      </div>`;
+
+  // Лензээр нуугдсан бусад салбарын дүнг ИЛ хэлнэ — мөнгө нүднээс далдлагдахгүй.
+  const otherTotal = companyTotal - shownTotal;
+  const otherHint = (_lens !== 'all' && otherTotal > 0)
+    ? `<div style="border:1px solid var(--border);background:var(--panel);border-radius:10px;padding:9px 12px;font-size:12px;line-height:1.5;margin-bottom:12px;color:var(--muted);">💡 Бусад салбарт нийт <b style="color:var(--text);">${fmtMoney(otherTotal)}</b> авлага бий — лензээ <b>🏢 Бүгд</b> болговол бүгдийг харна.</div>`
+    : '';
 
   const cov = d.nomaadCoverage;
-  const noWarn = (cov.total && cov.recorded < cov.total && (filter === 'all' || filter === 'nomaad'))
+  const noWarn = (cov.total && cov.recorded < cov.total && (_lens === 'all' || _lens === 'camp'))
     ? `<div style="border:1px solid var(--warn);background:var(--warn-soft);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.5;margin-bottom:12px;">
         ⚠ <b>NOMAAD авлага урьдчилсан.</b> Орлого ${cov.recorded}/${cov.total} захиалгад л бүртгэгдсэн — бүртгэгдээгүй захиалгууд "бүтэн өртэй" мэт харагдаж магадгүй. Орлого бүрэн бүртгэгдсэний дараа таарна.
       </div>` : '';
 
-  const tabs = [['all', 'Бүгд'], ['bq', '🎪 Эвент түрээс'], ['nomaad', '⛺ NOMAAD']];
-  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
-    `<button class="btn${k === filter ? ' btn-primary' : ''}" data-ar-tab="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}</div>`;
-
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="ar-search" placeholder="Харилцагч, дугаар, утас" value="${escapeHtml(state.arSearch || '')}" /></div>`;
   const sumLine = `<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Харагдаж буй дүн: <b style="color:var(--warn);">${fmtMoney(shownTotal)}</b> · ${list.length} захиалга</div>`;
   const rows = list.length ? list.map(arRow).join('')
-    : `<div style="text-align:center;color:var(--muted);padding:36px 0;font-size:13px;">✓ Авлага алга</div>`;
+    : `<div style="text-align:center;color:var(--muted);padding:36px 0;font-size:13px;">${noRcvLens ? lensSelLabel(_lens) + ' салбарт түрээсийн авлага бүртгэгддэггүй' : '✓ Авлага алга'}</div>`;
 
-  return `<div style="padding:4px;">${head}${kpis}${noWarn}${tabBar}${searchBar}${sumLine}<div class="ar-wrap">${rows}</div></div>`;
+  return `<div style="padding:4px;">${head}${kpis}${otherHint}${noWarn}${searchBar}${sumLine}<div class="ar-wrap">${rows}</div></div>`;
 }
 
 function attachReceivablesHandlers() {
@@ -14780,7 +14790,6 @@ function attachReceivablesHandlers() {
     if (typeof loadNomaadOrders === 'function') loadNomaadOrders();
     showToast('Шинэчилж байна…', 'info', 1500);
   });
-  document.querySelectorAll('[data-ar-tab]').forEach(b => b.addEventListener('click', () => { state.arFilter = b.dataset.arTab; render(); }));
   // Хайлт — захиалгын жагсаалттай ижил: дахин render-гүй, зөвхөн display нуух
   const se = document.getElementById('ar-search');
   if (se) se.addEventListener('input', () => {
@@ -16937,7 +16946,7 @@ function renderCalendar() {
   // Салбарын ленз түгжээтэй (нэг салбартай хүн) бол календарь мөн тухайн салбарт хязгаарлагдана
   // Календарь толгойн салбар ЛЕНЗИЙГ ДАГАНА. Ленз идэвхтэй (≠Бүгд) бол cb=ленз; Бүгд лензэд доод товч.
   const _calLens = effectiveBranchLens();
-  const cb = _calLens === 'all' ? (state.calBranch || 'all') : _calLens;
+  const cb = _calLens === 'all' ? 'all' : _calLens;   // Календарь ГАНЦ толгойн лензээр (доод товч байхгүй)
   // capital (Хөрөнгө) = компани даяар → бүгдийг харуул (task/order-той жигд).
   const _calAll = (cb === 'all' || cb === 'capital');
   const taskOk = (t) => { if (_calAll) return true; const b = taskBranch(t); return b === cb || b === 'shared'; };
@@ -16982,11 +16991,7 @@ function renderCalendar() {
         <button class="cal-nav" id="cal-next" aria-label="Дараагийн сар">›</button>
         <button class="cal-today-btn" id="cal-today">Өнөөдөр</button>
       </div>
-      ${_calLens === 'all'
-        ? `<div class="cal-branch" style="display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap;">
-        ${[['all', '🏢 Бүгд'], ['m-event', '🎪 M-Event'], ['camp', '⛺ NOMAAD']].map(([v, l]) => `<button data-calbranch="${v}" style="padding:3px 13px;font-size:12px;border:1px solid ${cb === v ? 'var(--accent)' : 'var(--border)'};border-radius:14px;background:${cb === v ? 'var(--accent)' : 'transparent'};color:${cb === v ? '#fff' : 'var(--text)'};cursor:pointer;">${l}</button>`).join('')}
-      </div>`
-        : `<div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">${({ 'm-event': '🎪 M-Event', 'camp': '⛺ NOMAAD', 'catering': '🍽 Катеринг', 'capital': '🏢 Чимун ХХК' }[cb] || cb)} · толгойн лензээр</div>`}
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin:2px 0 10px;">${lensSelLabel(_calLens)} · толгойн лензээр</div>
       <div class="cal-weekdays">
         ${dayNames.map(d => `<div>${d}</div>`).join('')}
       </div>
@@ -17036,9 +17041,7 @@ function attachCalendarHandlers() {
     state.calendarSelected = todayStr();
     render();
   });
-  document.querySelectorAll('[data-calbranch]').forEach(b => {
-    b.addEventListener('click', () => { state.calBranch = b.dataset.calbranch; render(); });
-  });
+  // (Календарийн доод салбар товч хасагдсан — толгойн ленз ГАНЦ удирдлага.)
   document.querySelectorAll('.cal-cell[data-date]').forEach(el => {
     el.addEventListener('click', (e) => {
       const chip = e.target.closest('[data-cal-task],[data-cal-order],[data-cal-nomaad]');

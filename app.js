@@ -317,8 +317,8 @@ function renderCommandResults(query) {
   const actions = [
     { icon: '➕', label: 'Шинэ даалгавар', hint: 'N',  run: () => { closeCommandPalette(); openTaskModal(); } },
     { icon: '🧾', label: 'Хуулга оруулах', hint: '', run: () => { closeCommandPalette(); if (typeof openStatementClassifyModal === 'function') openStatementClassifyModal(); } },
-    { icon: '📥', label: 'Ирсэн ажил',  hint: '', run: () => { closeCommandPalette(); state.view='mine'; render(); } },
-    { icon: '📤', label: 'Илгээсэн ажил', hint: '', run: () => { closeCommandPalette(); state.view='delegated'; render(); } },
+    { icon: '📥', label: 'Миний ажил',  hint: '', run: () => { closeCommandPalette(); state.view='mine'; render(); } },
+    { icon: '📤', label: 'Хуваарилсан ажил', hint: '', run: () => { closeCommandPalette(); state.view='delegated'; render(); } },
     { icon: '💸', label: 'Санхүү',      hint: '', run: () => { closeCommandPalette(); state.view='finance'; render(); } },
     { icon: '🌓', label: 'Theme солих (Light/Dark)', hint: '', run: () => { closeCommandPalette(); toggleTheme(); } },
     { icon: '⚙️', label: 'Тохиргоо',    hint: '', run: () => { closeCommandPalette(); document.getElementById('settings-modal')?.classList.add('open'); } },
@@ -3401,20 +3401,20 @@ function renderTitle() {
   const titles = {
     dashboard: [ICONS.layers, 'Тойм', 'Гүйцэтгэлийн тойм болон график'],
     calendar:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', 'Календарь', 'Эцсийн хугацаагаар task-уудыг харах'],
-    mine:      [ICONS.inbox, 'Ирсэн ажил', 'Танд оноосон ажлууд'],
-    delegated: [ICONS.send, 'Илгээсэн ажил', 'Та өөр хүнд оноосон ажлууд'],
-    finance:   [ICONS.wallet, 'Төлбөр ба зардал', 'Хүсэлт, картын зарлага, тулгалт — бүх мөнгөн хөдөлгөөн'],
-    reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Тайлан', 'Удирдлагад зориулсан тайлангууд'],
+    mine:      [ICONS.inbox, 'Миний ажил', 'Танд оноосон ажлууд'],
+    delegated: [ICONS.send, 'Хуваарилсан ажил', 'Та өөр хүнд оноосон ажлууд'],
+    finance:   [ICONS.wallet, 'Гүйлгээ', 'Хүсэлт, картын зарлага, тулгалт — бүх мөнгөн хөдөлгөөн'],
+    reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Дүн шинжилгээ', 'Удирдлагад зориулсан тайлангууд'],
     performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Сарын объектив гүйцэтгэлийн үнэлгээ'],
-    orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
-    products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Агуулах', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
+    orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'M event захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
+    products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа & хөрөнгө', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
-    access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Ажилтан удирдах', 'Ажилтан, албан тушаал & эрх, цалин'],
+    access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Ажилчид', 'Ажилтан, албан тушаал & эрх, цалин'],
     salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
-    attendance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>', 'Цаг бүртгэл', 'QR-аар ирц бүртгэх — ажилчид утсаараа уншуулна'],
-    myattend: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>', 'Миний QR / Ирц', 'QR-аа менежерт харуулж ирцээ бүртгүүл · ажилласан цаг'],
+    attendance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>', 'Ирц', 'QR-аар ирц бүртгэх — ажилчид утсаараа уншуулна'],
+    myattend: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>', 'Миний ирц', 'QR-аа менежерт харуулж ирцээ бүртгүүл · ажилласан цаг'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -7610,11 +7610,11 @@ function isFullAccessMember(m) {
 // override байвал тухайн хүний default role-эрхийг ДАРНА (нээх ч, хаах ч).
 // ─────────────────────────────────────────────────────────────
 const PERM_VIEWS = [
-  { key: 'orders',      label: 'Захиалга' },
+  { key: 'orders',      label: 'M event захиалга' },
   { key: 'receivables', label: 'Авлага' },
   { key: 'booqable',    label: 'Түрээсийн түүх' },
-  { key: 'products',    label: 'Агуулах' },
-  { key: 'reports',     label: 'Тайлан' },
+  { key: 'products',    label: 'Бараа & хөрөнгө' },
+  { key: 'reports',     label: 'Дүн шинжилгээ' },
   { key: 'nomaad',      label: 'NOMAAD' },
   { key: 'hourly',      label: 'Цагийн цалин' },
 ];
@@ -7624,11 +7624,11 @@ const PERM_VIEWS = [
 const PERM_MENUS = [
   { key: 'dashboard',   label: 'Тойм',            core: true, actions: [] },
   { key: 'calendar',    label: 'Календарь',       core: true, actions: [] },
-  { key: 'mine',        label: 'Ирсэн ажил',      core: true, actions: [] },
-  { key: 'delegated',   label: 'Илгээсэн ажил',   core: true, actions: [
+  { key: 'mine',        label: 'Миний ажил',      core: true, actions: [] },
+  { key: 'delegated',   label: 'Хуваарилсан ажил',   core: true, actions: [
       { key: 'tasks.create', label: 'Ажил үүсгэх' },
       { key: 'tasks.delete', label: 'Ажил устгах' } ] },
-  { key: 'finance',     label: 'Санхүү',          core: true, actions: [] },
+  { key: 'finance',     label: 'Гүйлгээ',          core: true, actions: [] },
   { key: 'performance', label: 'Гүйцэтгэл',       core: true, actions: [] },
   { key: 'workload',    label: 'Багийн ачаалал',  actions: [] },
   { key: 'reports',     label: 'Тайлан',          actions: [] },
@@ -7637,7 +7637,7 @@ const PERM_MENUS = [
   { key: 'salary',      label: 'Цалин (сарын)',   actions: [
       { key: 'salary.edit', label: 'Суурь цалин тохируулах' },
       { key: 'salary.pay',  label: 'Цалин олгох' } ] },
-  { key: 'attendance',  label: 'Цаг бүртгэл',     actions: [] },
+  { key: 'attendance',  label: 'Ирц',     actions: [] },
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -7656,7 +7656,7 @@ const PERM_MENUS = [
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'booqable',    label: 'Түрээсийн түүх',  actions: [] },
-  { key: 'marketing',   label: 'Маркетинг',       actions: [] },
+  { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 function normRole(role) { return String(role || '').trim().toLowerCase(); }

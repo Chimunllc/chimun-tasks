@@ -1787,8 +1787,8 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
       const me = (TEAM || []).find(m => personKey(m) === owner || (m.email && m.email === owner));
       const auto = (bs) => (bs || []).includes('m-event') ? 'ИВЕНТ' : (bs || []).includes('camp') ? 'КЕМП' : (bs || []).includes('catering') ? 'КАТЕРИНГ' : 'ЗАХ';
       const isAcct = me && (/нягтлан/i.test(me.role || '') || (Number(me.level) || 0) >= 100);
-      if (me && !isAcct) return auto(me.branches);   // ажилтан → өөрийн салбар (автомат)
-      return deptBranch || auto(me && me.branches);  // нягтлан/CEO → сонгосон, эс бөгөөс default
+      if (me && !isAcct) return auto(memberBranchesOf(me));   // ажилтан → өөрийн салбар (override-aware)
+      return deptBranch || auto(me && memberBranchesOf(me));  // нягтлан/CEO → сонгосон, эс бөгөөс default
     })(),
     frequency: frequency || 'Нэг удаагийн',
     priority: priority || 'med',
@@ -6775,7 +6775,7 @@ function hourlyPayoutDays(p) {
 }
 // Цагийн ажилтны салбар (M Event / NOMAAD / Бусад) — group/branches талбараас.
 function hourlyBranchLabel(m) {
-  const g = String((m.branches && m.branches[0]) || m.group || m.branch || '').toLowerCase().trim();
+  const g = String((memberBranchesOf(m)[0]) || m.group || m.branch || '').toLowerCase().trim();   // override-aware (Sheet биш)
   if (g.includes('catering') || g.includes('катеринг') || g.includes('кейтеринг')) return 'Катеринг';
   if (g === 'm-event' || g === 'mevent' || g.includes('event') || g.includes('ивент') || g.includes('эвент')) return 'M Event';
   if (g === 'camp' || g.includes('camp') || g.includes('кемп') || g.includes('номаад') || g.includes('nomaad')) return 'NOMAAD';

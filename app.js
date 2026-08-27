@@ -8384,13 +8384,19 @@ function drawPoster(canvas, opts) {
     else if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink; const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02); ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + mw + Math.round(W * 0.02), hTop + markH / 2 + 1); clrLS(); }
     // Trust badge (баруун дээд) — B2B нөөцийн хэмжээ + брэнд өнгө pop (түрээс мессежийг дээд талд авчирна)
     { const bt = kit.posterStat || '250+ түрээсийн бараа';
-      const bs = Math.round(W * 0.023); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
-      const bpx = Math.round(W * 0.026), bpy = Math.round(W * 0.013);
-      const bw = Math.round(ctx.measureText(bt).width) + bpx * 2, bh = bs + bpy * 2;
-      const bx = W - M - bw, by = hTop + markH / 2 - bh / 2;
+      const bs = Math.round(W * 0.021); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
+      const bgap = Math.round(W * 0.006);   // "250+" ↔ текст завсар (premium)
+      const sp = bt.indexOf(' ');
+      const p1 = sp > 0 ? bt.slice(0, sp) : bt, p2 = sp > 0 ? bt.slice(sp + 1) : '';
+      const w1 = ctx.measureText(p1).width, w2 = p2 ? ctx.measureText(p2).width : 0;
+      const bpx = Math.round(W * 0.026), bpy = Math.round(W * 0.010);   // капсул намхан
+      const inner = Math.round(w1 + (p2 ? bgap + w2 : 0));
+      const bw = inner + bpx * 2, bh = bs + bpy * 2;
+      const bx = W - M - bw, by = hTop + markH / 2 - bh / 2;   // badge төв = логоны төв (нэг тэнхлэг)
       roundRect(bx, by, bw, bh, bh / 2); ctx.fillStyle = c2; ctx.fill();
       ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = `700 ${bs}px ${FONT}`;
-      ctx.fillText(bt, bx + bpx, by + bh / 2 + 1);
+      ctx.fillText(p1, bx + bpx, by + bh / 2 + 1);
+      if (p2) ctx.fillText(p2, bx + bpx + w1 + bgap, by + bh / 2 + 1);
     }
     const ruleY = hTop + markH + Math.round(H * 0.024);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
@@ -8420,11 +8426,13 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр (HERO) — том, тод, зүүн; 2 мөр бол автоматаар багасна (footer-т мөргөхгүй) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
-    let tSize = Math.round(W * 0.050); ctx.font = `800 ${tSize}px ${FONT}`;
+    let tSize = Math.round(W * 0.048); ctx.font = `700 ${tSize}px ${FONT}`;
     let titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
-    if (titleLines.length > 1) { tSize = Math.round(W * 0.040); ctx.font = `800 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
-    let y = imgTop + imgH + Math.round(H * 0.042) + tSize;
-    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.06; });
+    if (titleLines.length > 1) { tSize = Math.round(W * 0.039); ctx.font = `700 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
+    setLS(-tSize * 0.015);   // сөрөг tracking (-1.5%) — цэвэр, premium
+    let y = imgTop + imgH + Math.round(H * 0.036) + tSize;   // зураг↔гарчиг зай багасгав (дээш татав)
+    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.05; });
+    clrLS();
     // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
     if (opts.subtitle) {
       const ds = Math.round(W * 0.030); ctx.font = `600 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.55)';
@@ -8439,9 +8447,9 @@ function drawPoster(canvas, opts) {
     ctx.beginPath(); ctx.moveTo(M, fRuleY); ctx.lineTo(W - M, fRuleY); ctx.stroke();
     ctx.textBaseline = 'alphabetic';
     // Утас — зүүн, bold бараан (гол холбоо); website — баруун, muted; хэмжээ ойролцоо → тэнцвэр
-    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.034)}px ${FONT}`;
+    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `700 ${Math.round(W * 0.032)}px ${FONT}`;
     ctx.fillText(kit.phone || '', M, footY);
-    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.72)'; ctx.font = `700 ${Math.round(W * 0.032)}px ${FONT}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.6)'; ctx.font = `600 ${Math.round(W * 0.030)}px ${FONT}`;
     ctx.fillText(kit.website || 'mevent.mn', W - M, footY);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;

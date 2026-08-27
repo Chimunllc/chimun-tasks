@@ -2885,14 +2885,9 @@ function branchInLens(b) {
   const bb = String(b || '').toLowerCase();
   return bb === lens || bb === 'shared';
 }
-// Хүн лензийн салбарт хамаарах эсэх (гүйцэтгэл/ачаалалд). Салбаргүй хүн бүгдэд харагдана.
-function memberInLens(m) {
-  const lens = effectiveBranchLens();
-  if (lens === 'all' || lens === 'capital') return true;
-  const bs = memberBranchesOf(m);
-  if (!bs.length) return true;
-  return bs.includes(lens);
-}
+// Хүн идэвхтэй лензийн салбарт хамаарах эсэх — НЭГДСЭН _inHubBranch дүрмийг ашиглана
+// (Гүйцэтгэл/Тойм/Цалин/Эрх/Ажилтан бүгд ижил үр дүн; 'shared' гишүүн аль ч салбарт орно).
+function memberInLens(m) { return _inHubBranch(m, effectiveBranchLens()); }
 /* Хэрэглэгч ямар салбарын лензийг ХАРЖ болох вэ:
    - CEO эсвэл хоёр салбартай → ['all','m-event','camp'] (бүгдийг, солих эрхтэй)
    - Нэг салбартай → зөвхөн өөрийн салбар (түгжээтэй — бусад салбар харахгүй)
@@ -2999,7 +2994,7 @@ function filteredTasks() {
   // (Санхүү нь dept_branch-аар тусдаа бүлэглэгддэг тул энд хасахгүй.)
   const lens = effectiveBranchLens();
   if (lens !== 'all' && state.view !== 'finance') {
-    list = list.filter(t => { const b = taskBranch(t); return b === lens || b === 'shared'; });
+    list = list.filter(t => branchInLens(taskBranch(t)));   // НЭГДСЭН дүрэм: capital=бүгд, эс бол салбар+shared
   }
   // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
   if (state.view === 'finance') {
@@ -9226,9 +9221,12 @@ function renderAccess() {
   return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
 }
 // Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
+// Ажилтан тухайн салбарын хамрах хүрээнд орох эсэх — НЭГДСЭН дүрэм (бүх view энэ логикийг хуваалцана).
+// Дата эх = memberBranchesOf (member_branches override-aware, Sheet биш). capital/all → бүгд.
+// Салбаргүй ажилтан бүх лензэд харагдана; 'shared' гишүүн аль ч салбарт орно.
 function _inHubBranch(m, br) {
-  if (!br || br === 'all') return true;
-  const bs = Array.isArray(m.branches) ? m.branches : [];
+  if (!br || br === 'all' || br === 'capital') return true;
+  const bs = memberBranchesOf(m);
   if (!bs.length) return true;
   return bs.includes(br) || bs.includes('shared');
 }
@@ -16308,10 +16306,8 @@ function renderDashboard() {
   // ─── Глобал салбар ленз (толгойн сонгогч) — доорх БҮХ тоо үүгээр шүүгдэнэ. Нэгдсэн (shared) хоёуланд. ───
   const dashBranch = effectiveBranchLens();
   const wantFinBr = finLensBranch(dashBranch);
-  const memberInDashBranch = (m) => dashBranch === 'all'
-    || (Array.isArray(m.branches) && (m.branches.includes(dashBranch) || m.branches.includes('shared')))
-    || !(m.branches && m.branches.length);
-  const tasks = (state.tasks || []).filter(t => dashBranch === 'all' || taskBranch(t) === dashBranch || taskBranch(t) === 'shared');
+  const memberInDashBranch = (m) => memberInLens(m);   // НЭГДСЭН дүрэм (override-aware, 'shared'-ыг зөв авна)
+  const tasks = (state.tasks || []).filter(t => branchInLens(taskBranch(t)));   // capital=бүгд жигдэлнэ
   const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
     && (dashBranch === 'all' || finEffBranch(r) === wantFinBr));
   const today = todayStr();

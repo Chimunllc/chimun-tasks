@@ -8418,11 +8418,12 @@ function drawPoster(canvas, opts) {
         ctx.fillStyle = vig; ctx.fillRect(M, imgTop, imgAreaW, imgH); }
       ctx.restore();
     }
-    // ── Нэр (HERO) — том, тод, зүүн; 2 мөр хүртэл ──
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    const tSize = Math.round(W * 0.058); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
+    // ── Нэр (HERO) — том, тод, зүүн; 2 мөр бол автоматаар багасна (footer-т мөргөхгүй) ──
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
+    let tSize = Math.round(W * 0.058); ctx.font = `800 ${tSize}px ${FONT}`;
+    let titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
+    if (titleLines.length > 1) { tSize = Math.round(W * 0.044); ctx.font = `800 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
     let y = imgTop + imgH + Math.round(H * 0.032) + tSize;
-    const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.06; });
     // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
     if (opts.subtitle) {
@@ -8431,12 +8432,16 @@ function drawPoster(canvas, opts) {
       const first = _mkWrapText(ctx, opts.subtitle, W - M * 2)[0] || '';
       ctx.fillText(first, M, y);
     }
-    // ── Footer: цэвэр холбооны зурвас (товчгүй) — утас ТОМ зүүн (FB постын жинхэнэ CTA) + website жижиг баруун ──
+    // ── Footer: нэр ↔ холбоог нарийн зураасаар тусгаарлаж, тэнцвэртэй 2-багана (утас зүүн · website баруун) ──
     const footY = H - M;
+    const fRuleY = footY - Math.round(H * 0.052);
+    ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012));
+    ctx.beginPath(); ctx.moveTo(M, fRuleY); ctx.lineTo(W - M, fRuleY); ctx.stroke();
     ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.044)}px ${FONT}`;
+    // Утас — зүүн, bold бараан (гол холбоо); website — баруун, muted; хэмжээ ойролцоо → тэнцвэр
+    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.034)}px ${FONT}`;
     ctx.fillText(kit.phone || '', M, footY);
-    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.5)'; ctx.font = `600 ${Math.round(W * 0.028)}px ${FONT}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.58)'; ctx.font = `600 ${Math.round(W * 0.032)}px ${FONT}`;
     ctx.fillText(kit.website || 'mevent.mn', W - M, footY);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;

@@ -8400,14 +8400,28 @@ function drawPoster(canvas, opts) {
       const shg = ctx.createRadialGradient(0, 0, 0, 0, 0, shW);
       shg.addColorStop(0, 'rgba(11,31,58,.20)'); shg.addColorStop(1, 'rgba(11,31,58,0)');
       ctx.fillStyle = shg; ctx.beginPath(); ctx.arc(0, 0, shW, 0, Math.PI * 2); ctx.fill(); ctx.restore();
-      ctx.save(); roundRect(M, imgTop, imgAreaW, imgH, iRad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh); ctx.restore();
+      ctx.save(); roundRect(M, imgTop, imgAreaW, imgH, iRad); ctx.clip(); ctx.drawImage(opts.img, dx, dy, dw, dh);
+      // Зөөлөн вигнет — гүн + фокус (цагаан дэвсгэртэй зурагт ч эвгүй биш байхаар маш нам)
+      { const vcx = M + imgAreaW / 2, vcy = imgTop + imgH / 2, vinR = Math.sqrt((imgAreaW / 2) ** 2 + (imgH / 2) ** 2);
+        const vig = ctx.createRadialGradient(vcx, vcy, vinR * 0.58, vcx, vcy, vinR);
+        vig.addColorStop(0, 'rgba(11,31,58,0)'); vig.addColorStop(1, 'rgba(11,31,58,.10)');
+        ctx.fillStyle = vig; ctx.fillRect(M, imgTop, imgAreaW, imgH); }
+      ctx.restore();
     }
-    // ── Нэр (том, тод) + 1 мөр дэгээ ──
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    // ── Нэр (том, тод, зүүн) + утас (баруун, нэг эгнээнд — тэнцвэр) ──
+    ctx.textBaseline = 'alphabetic';
+    const phTxt = kit.phone || '';
+    const phSize = Math.round(W * 0.028);
+    ctx.font = `700 ${phSize}px ${FONT}`; const phW = phTxt ? ctx.measureText(phTxt).width : 0;
+    const nameMaxW = (W - M * 2) - (phW ? phW + Math.round(W * 0.05) : 0);
+    ctx.textAlign = 'left';
     const tSize = Math.round(W * 0.062); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
     let y = imgTop + imgH + Math.round(H * 0.04) + tSize;
-    const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
+    const firstLineY = y;
+    const titleLines = _mkWrapText(ctx, opts.title || '', nameMaxW).slice(0, 2);
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.08; });
+    // Утас — баруун дээд, нэрийн эхний мөртэй нэг шугамд (нам зэрэглэлтэй)
+    if (phTxt) { ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `700 ${phSize}px ${FONT}`; ctx.fillText(phTxt, W - M, firstLineY); }
     // Богино уриа/hook (сонголт) — ТОД, ганц мөр (тайлбар БИШ)
     if (opts.subtitle) {
       const ds = Math.round(W * 0.032); ctx.font = `600 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.62)';
@@ -8428,7 +8442,6 @@ function drawPoster(canvas, opts) {
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff'; ctx.font = `800 ${ps}px ${FONT}`; ctx.fillText(pillTxt, M + padX, pillY + pillH / 2 + 1);
     ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.font = `600 ${ps}px ${FONT}`; ctx.fillText(arrow, M + padX + tw1, pillY + pillH / 2 + 1);
-    ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `600 ${Math.round(W * 0.026)}px ${FONT}`; ctx.fillText(kit.phone || '', W - M, pillY + pillH / 2 + 1);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }

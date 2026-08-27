@@ -9907,7 +9907,7 @@ function nomaadCardHtml(o) {
       ${pendingBanner}
       ${profitHtml}
       ${logHistoryHtml}
-      ${vatOrderRow(o.quote_no, contractTotal)}
+      ${vatOrderRow(o.quote_no, contractTotal, 'nomaad')}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
@@ -14151,7 +14151,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
-    ${vatOrderRow(o.number, total)}
+    ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${slogHtml}
@@ -16000,16 +16000,77 @@ function vatBadge(orderNo) {
   if (!info.count) return '';
   return `<span class="chip" title="Шивсэн: ${fmtMoney(info.invoiced)} · НӨАТ ${fmtMoney(info.vat)} (${info.count} баримт)" style="background:#e8f2ec;color:#1e7a55;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;">🧾 НӨАТ ✓</span>`;
 }
-// Төлбөр шиг мөр — нийт дүнгээс хэдийг НӨАТ-аар шивсэн, хэд дутуу
-function vatOrderRow(orderNo, orderTotal) {
+// Төлбөр шиг мөр — нийт дүнгээс хэдийг НӨАТ-аар шивсэн, хэд дутуу + баримт холбох товч
+function vatCanManage() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
+function vatOrderRow(orderNo, orderTotal, type) {
+  if (!vatCanManage()) return '';
   const info = vatForOrder(orderNo);
-  if (!info.count) return '';
   const tot = Number(orderTotal) || 0;
+  const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" style="border:1px dashed #1e7a55;background:#f4faf6;color:#1e7a55;border-radius:7px;padding:2px 9px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
+  if (!info.count) return `<div class="order-meta" style="margin-top:4px;">${attachBtn}</div>`;
   const rem = Math.max(0, tot - info.invoiced);
   const full = tot > 0 && info.invoiced + 1 >= tot;
-  return `<div class="order-meta">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>`
-    + (tot > 0 ? (full ? ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>` : ` · <b style="color:var(--danger);">Дутуу ${fmtMoney(rem)}</b>`) : '')
-    + `</div>`;
+  return `<div class="order-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>${tot > 0 ? (full ? ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>` : ` · <b style="color:var(--danger);">Дутуу ${fmtMoney(rem)}</b>`) : ''} ${attachBtn}</div>`;
+}
+
+// Захиалгаас шууд НӨАТ баримт холбох (реверс тулгалт)
+function openVatAttachFor(type, no) {
+  let order = null;
+  if (type === 'nomaad') { const o = (state.nomaadOrders || []).find(x => String(x.quote_no) === String(no)); if (o) order = { type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '', reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start }; }
+  else { const o = (state.bqOrders || []).find(x => String(x.number) === String(no)); if (o) order = { type: 'event', no: o.number, name: o.company || o.customer || o.customer_name || '', reg: vatRegNorm(o.register || o.reg_no), amount: vatNum(o.grand_total || o.total), date: o.starts_at }; }
+  if (order) openVatAttachModal(order); else showToast('Захиалга олдсонгүй', 'error');
+}
+async function openVatAttachModal(order) {
+  await loadVatReceipts();
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;';
+  const pc = document.createElement('div');
+  pc.style.cssText = 'background:#fff;border-radius:14px;max-width:600px;width:100%;margin:auto;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 30px 70px -20px rgba(0,0,0,.45);';
+  ov.appendChild(pc); ov.addEventListener('click', e => { if (e.target === ov) { ov.remove(); render(); } });
+  const near = (a, b) => b > 0 && Math.abs(a - b) <= Math.max(1000, b * 0.02);
+  pc.innerHTML = `
+    <div style="padding:14px 16px;border-bottom:1px solid #eee;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><b style="font-size:15px;">🧾 НӨАТ баримт холбох</b><button id="va-x" style="border:none;background:none;font-size:20px;color:#999;cursor:pointer;">×</button></div>
+      <div style="font-size:12.5px;color:#444;">${escapeHtml(order.name || '')} · <b>${fmtMoney(order.amount)}</b>${order.reg ? ' · РД ' + escapeHtml(order.reg) : ''}</div>
+      <div id="va-sum" style="font-size:12px;color:#1e7a55;margin-top:3px;"></div>
+      <input id="va-q" placeholder="худалдан авагч эсвэл дүнгээр хайх…" style="margin-top:8px;width:100%;padding:8px 11px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
+    </div>
+    <div id="va-list" style="overflow:auto;padding:6px;"></div>`;
+  const listEl = pc.querySelector('#va-list'), sumEl = pc.querySelector('#va-sum');
+  function scoreRec(r) { return vatAutoScore(r, order); }
+  function renderList(q) {
+    const all = (state.vatReceipts || []).slice();
+    const mineIds = all.filter(r => String(r.matched_id) === String(order.no)).map(r => r.id);
+    const inv = all.filter(r => mineIds.includes(r.id)).reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const rem = Math.max(0, (Number(order.amount) || 0) - inv);
+    sumEl.innerHTML = `Холбосон: <b>${fmtMoney(inv)}</b> / ${fmtMoney(order.amount)}${rem > 0 ? ` · <span style="color:#c0392b;">дутуу ${fmtMoney(rem)}</span>` : ' · <b>бүрэн</b>'}`;
+    const ql = vatNorm(q || ''), qd = String(q || '').trim();
+    const rows = all
+      .filter(r => !qd || vatNorm(r.buyer_name).includes(ql) || String(Math.round(r.total)).includes(qd.replace(/\D/g, '')))
+      .map(r => ({ r, mine: String(r.matched_id) === String(order.no), other: r.matched_id && String(r.matched_id) !== String(order.no), s: scoreRec(r) }))
+      .sort((a, b) => (b.mine - a.mine) || (b.s - a.s) || String(b.r.dt || '').localeCompare(String(a.r.dt || '')))
+      .slice(0, 80);
+    listEl.innerHTML = rows.map(x => {
+      const r = x.r; const regOk = r.buyer_reg && order.reg && vatRegNorm(r.buyer_reg) === order.reg; const amtOk = near(r.total, order.amount) || near(r.net, order.amount);
+      return `<div class="va-row" data-id="${escapeHtml(r.id)}" data-mine="${x.mine ? 1 : 0}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:1px solid #f2f2f2;background:${x.mine ? '#e8f2ec' : (x.other ? '#faf7f2' : '#fff')};padding:9px 10px;cursor:pointer;">
+        <span style="min-width:0;"><div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.buyer_name || '?')} ${regOk ? '<b style="color:#0d7a3f;font-size:10.5px;">✓РД</b>' : ''}${amtOk ? ' <b style="color:#1e7a55;font-size:10.5px;">✓дүн</b>' : ''}</div><div style="font-size:11px;color:#888;">${escapeHtml(String(r.dt || '').slice(0, 10))} · НӨАТ ${fmtMoney(r.vat)}${x.other ? ' · <span style="color:#b5651d;">⚠ өөр захиалгад: ' + escapeHtml(r.matched_label || r.matched_id) + '</span>' : ''}</div></span>
+        <span style="text-align:right;white-space:nowrap;"><div style="font-size:13px;font-weight:700;">${fmtMoney(r.total)}</div><div style="font-size:11px;font-weight:700;color:${x.mine ? '#c0392b' : '#1e7a55'};">${x.mine ? '✕ салгах' : '+ холбох'}</div></span>
+      </div>`;
+    }).join('') || '<div style="padding:24px;text-align:center;color:#999;">Баримт алга</div>';
+    listEl.querySelectorAll('.va-row').forEach(el => el.onclick = async () => {
+      const id = el.dataset.id, mine = el.dataset.mine === '1';
+      try {
+        if (mine) await vatSetMatch(id, null);
+        else await vatSetMatch(id, { type: order.type, no: order.no, label: (order.name || order.no) + ' · ' + fmtMoney(order.amount), by: 'manual' });
+        renderList(pc.querySelector('#va-q').value);
+      } catch (e) { showToast(e.message, 'error'); }
+    });
+  }
+  pc.querySelector('#va-x').onclick = () => { ov.remove(); render(); };
+  const qi = pc.querySelector('#va-q'); qi.oninput = () => renderList(qi.value);
+  renderList('');
+  document.body.appendChild(ov);
+  setTimeout(() => qi.focus(), 30);
 }
 
 async function openVatReportModal() {

@@ -16141,7 +16141,10 @@ async function openVatReportModal() {
     const cands = vatCandidateOrders();
     const totSales = listAll.reduce((s, r) => s + (Number(r.total) || 0), 0);
     const totVat = listAll.reduce((s, r) => s + (Number(r.vat) || 0), 0);
-    const nDone = listAll.filter(r => r.matched_id).length, nTodo = listAll.length - nDone;
+    const mDone = listAll.filter(r => r.matched_id), mTodo = listAll.filter(r => !r.matched_id);
+    const mSales = mDone.reduce((s, r) => s + (Number(r.total) || 0), 0), uSales = totSales - mSales;
+    const mVat = mDone.reduce((s, r) => s + (Number(r.vat) || 0), 0), uVat = totVat - mVat;
+    const nDone = mDone.length, nTodo = mTodo.length;
     const matched = nDone;
     // Тулгагдсаныг тусад нь — тулгаагүй нь ажлын жагсаалтад үлдэнэ
     const list = vfilter === 'done' ? listAll.filter(r => r.matched_id) : vfilter === 'all' ? listAll : listAll.filter(r => !r.matched_id);
@@ -16209,10 +16212,10 @@ async function openVatReportModal() {
         <span id="vat-status" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px 18px;">
-        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Баримт</div><div style="font-size:17px;font-weight:800;">${list.length}</div></div>
-        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Нийт борлуулалт</div><div style="font-size:17px;font-weight:800;">${fmtMoney(totSales)}</div></div>
-        <div style="background:#e8f2ec;border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:#1e7a55;">Төлөх НӨАТ</div><div style="font-size:17px;font-weight:800;color:#1e7a55;">${fmtMoney(totVat)}</div></div>
-        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан</div><div style="font-size:17px;font-weight:800;">${matched}/${listAll.length}</div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Баримт</div><div style="font-size:17px;font-weight:800;">${listAll.length}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${nDone} тулгасан</span> · <span style="color:#9a6a00;">${nTodo} үлдсэн</span></div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Нийт борлуулалт</div><div style="font-size:17px;font-weight:800;">${fmtMoney(totSales)}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${fmtMoney(mSales)}</span> · <span style="color:#9a6a00;">${fmtMoney(uSales)}</span></div></div>
+        <div style="background:#e8f2ec;border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:#1e7a55;">Төлөх НӨАТ</div><div style="font-size:17px;font-weight:800;color:#1e7a55;">${fmtMoney(totVat)}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span></div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан НӨАТ</div><div style="font-size:17px;font-weight:800;">${totVat > 0 ? Math.round(mVat / totVat * 100) : 0}%</div><div style="font-size:10.5px;margin-top:2px;color:var(--muted);">${fmtMoney(mVat)} / ${fmtMoney(totVat)}</div></div>
       </div>
       ${filterTabs}
       ${matchFilters}

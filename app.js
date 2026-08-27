@@ -8644,11 +8644,8 @@ function attachMarketingHandlers() {
   ['mk-c1', 'mk-c2'].forEach(id => document.getElementById(id)?.addEventListener('input', () => { const kk = _brandKit(); kk.color1 = document.getElementById('mk-c1').value; kk.color2 = document.getElementById('mk-c2').value; _mkRedraw(); }));
   ['mk-name', 'mk-tagline', 'mk-phone', 'mk-web'].forEach(id => document.getElementById(id)?.addEventListener('input', () => { const kk = _brandKit(); kk.name = document.getElementById('mk-name').value; kk.tagline = document.getElementById('mk-tagline').value; kk.phone = document.getElementById('mk-phone').value; kk.website = document.getElementById('mk-web').value; _mkRedraw(); }));
   // ── Постер ──
-  // Бараанаас сонгох → зураг + үнэ + түрээсийн нөхцөл автоматаар
-  document.getElementById('mk-prod')?.addEventListener('change', e => {
-    const val = e.target.value.trim(); if (!val) return;
-    const norm = s => String(s || '').toLowerCase().trim();
-    const p = (state.products || []).find(x => x && (norm(x.name + ' — ' + x.sku) === norm(val) || norm(x.name) === norm(val) || norm(x.sku) === norm(val) || norm(val).startsWith(norm(x.name))));
+  // Бараанаас сонгох → зураг + үнэ + түрээсийн нөхцөл автоматаар (dropdown ба хайлт хоёул үүнийг дуудна)
+  const _mkLoadProduct = (p) => {
     if (!p) { showToast('Бараа олдсонгүй', 'warn', 2000); return; }
     P.template = 'product';
     P.title = p.name || '';
@@ -8661,6 +8658,15 @@ function attachMarketingHandlers() {
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
     else { P.img = null; render(); }
     showToast('Бараа орлоо ✓', 'success', 1500); render();
+  };
+  document.getElementById('mk-prod-sel')?.addEventListener('change', e => {
+    const sku = e.target.value; if (!sku) return;
+    _mkLoadProduct((state.products || []).find(x => x && x.sku === sku));
+  });
+  document.getElementById('mk-prod')?.addEventListener('change', e => {
+    const val = e.target.value.trim(); if (!val) return;
+    const norm = s => String(s || '').toLowerCase().trim();
+    _mkLoadProduct((state.products || []).find(x => x && (norm(x.name + ' — ' + x.sku) === norm(val) || norm(x.name) === norm(val) || norm(x.sku) === norm(val) || norm(val).startsWith(norm(x.name)))));
   });
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();

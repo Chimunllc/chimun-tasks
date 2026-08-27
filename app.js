@@ -15964,10 +15964,15 @@ function vatCandidateOrders() {
   (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
     out.push({ type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '',
       reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start || o.created_at || '' }); });
-  (state.bqOrders || []).forEach(o => {
-    out.push({ type: 'event', no: o.number, name: o.company || o.customer || o.customer_name || '',
-      reg: vatRegNorm(o.register || o.reg_no), amount: vatNum(o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
-  return out.filter(c => c.no);
+  // M-Event захиалга = app_orders (bqOrders хоосон болсон — миграц). НӨАТ голдуу эндээс.
+  // РД тусдаа багана байхгүй — customer мөрөнд компанийн нэр+РД (7 орон) шигтгэсэн байдаг
+  // (ж: "Нутгийн буян групп 5467446") → эндээс салгана.
+  (state.appOrders || []).forEach(o => {
+    const cust = String(o.customer || o.company || o.company_name || '');
+    const regM = cust.match(/\b(\d{7})\b/);
+    out.push({ type: 'event', no: o.number, name: cust, reg: regM ? regM[1] : vatRegNorm(o.register || o.reg_no),
+      amount: vatNum(o.total_mnt || o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
+  return out.filter(c => c.no != null && c.no !== '');
 }
 function vatAutoScore(rec, c) {
   let s = 0;
@@ -15977,7 +15982,7 @@ function vatAutoScore(rec, c) {
   const rn = vatNorm(rec.name), cn = vatNorm(c.name);
   if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
   const amt = c.amount || 0;
-  if (amt > 0) { const near = (a, b) => Math.abs(a - b) <= Math.max(1000, b * 0.02); if (near(rec.total, amt) || near(rec.net, amt)) s += 4; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
+  if (amt > 0) { const near = (a, b) => Math.abs(a - b) <= Math.max(1000, b * 0.02); if (near(rec.total, amt) || near(rec.net, amt)) s += 5; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
   if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
   return s;
 }
@@ -16017,7 +16022,7 @@ function vatOrderRow(orderNo, orderTotal, type) {
 function openVatAttachFor(type, no) {
   let order = null;
   if (type === 'nomaad') { const o = (state.nomaadOrders || []).find(x => String(x.quote_no) === String(no)); if (o) order = { type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '', reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start }; }
-  else { const o = (state.bqOrders || []).find(x => String(x.number) === String(no)); if (o) order = { type: 'event', no: o.number, name: o.company || o.customer || o.customer_name || '', reg: vatRegNorm(o.register || o.reg_no), amount: vatNum(o.grand_total || o.total), date: o.starts_at }; }
+  else { const o = (state.appOrders || []).find(x => String(x.number) === String(no)); if (o) { const cust = String(o.customer || o.company || ''); const rm = cust.match(/\b(\d{7})\b/); order = { type: 'event', no: o.number, name: cust, reg: rm ? rm[1] : vatRegNorm(o.register || o.reg_no), amount: vatNum(o.total_mnt || o.grand_total || o.total), date: o.starts_at || o.created_at }; } }
   if (order) openVatAttachModal(order); else showToast('Захиалга олдсонгүй', 'error');
 }
 async function openVatAttachModal(order) {
@@ -16076,7 +16081,7 @@ async function openVatAttachModal(order) {
 async function openVatReportModal() {
   // Захиалгын нэр татах (тулгахад)
   if (!state.nomaadOrders && typeof loadNomaadOrders === 'function') { try { await loadNomaadOrders(); } catch (e) {} }
-  if (state.bqOrders === undefined && typeof loadOrdersData === 'function') { try { await loadOrdersData(); } catch (e) {} }
+  if (state.appOrders === undefined && typeof loadAppOrders === 'function') { try { await loadAppOrders(); } catch (e) {} }
   await loadVatReceipts();
 
   const ov = document.createElement('div');

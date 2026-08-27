@@ -9907,6 +9907,7 @@ function nomaadCardHtml(o) {
       ${pendingBanner}
       ${profitHtml}
       ${logHistoryHtml}
+      ${vatOrderRow(o.quote_no, contractTotal)}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
       ${nomaadAssignedTasksHtml(o.quote_no)}
       <div class="order-foot">
@@ -14150,6 +14151,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
+    ${vatOrderRow(o.number, total)}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${slogHtml}
@@ -15986,11 +15988,28 @@ function vatBestMatch(rec, cands) {
 }
 
 // Захиалгын карт дээрх badge (тулгагдсан НӨАТ баримт байвал)
+// Захиалгад тохирсон НӨАТ баримтуудын нийлбэр (шивэгдсэн дүн + НӨАТ татвар)
+function vatForOrder(orderNo) {
+  const recs = Array.isArray(state.vatReceipts) ? state.vatReceipts.filter(v => v.matched_id && String(v.matched_id) === String(orderNo)) : [];
+  const invoiced = recs.reduce((s, v) => s + (Number(v.total) || 0), 0);
+  const vat = recs.reduce((s, v) => s + (Number(v.vat) || 0), 0);
+  return { count: recs.length, invoiced, vat, recs };
+}
 function vatBadge(orderNo) {
-  if (!orderNo || !Array.isArray(state.vatReceipts)) return '';
-  const hit = state.vatReceipts.find(v => v.matched_id && String(v.matched_id) === String(orderNo));
-  if (!hit) return '';
-  return `<span class="chip" title="НӨАТ баримт шивсэн: ${fmtMoney(hit.total)} (НӨАТ ${fmtMoney(hit.vat)})" style="background:#e8f2ec;color:#1e7a55;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;">🧾 НӨАТ ✓</span>`;
+  const info = vatForOrder(orderNo);
+  if (!info.count) return '';
+  return `<span class="chip" title="Шивсэн: ${fmtMoney(info.invoiced)} · НӨАТ ${fmtMoney(info.vat)} (${info.count} баримт)" style="background:#e8f2ec;color:#1e7a55;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;">🧾 НӨАТ ✓</span>`;
+}
+// Төлбөр шиг мөр — нийт дүнгээс хэдийг НӨАТ-аар шивсэн, хэд дутуу
+function vatOrderRow(orderNo, orderTotal) {
+  const info = vatForOrder(orderNo);
+  if (!info.count) return '';
+  const tot = Number(orderTotal) || 0;
+  const rem = Math.max(0, tot - info.invoiced);
+  const full = tot > 0 && info.invoiced + 1 >= tot;
+  return `<div class="order-meta">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>`
+    + (tot > 0 ? (full ? ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>` : ` · <b style="color:var(--danger);">Дутуу ${fmtMoney(rem)}</b>`) : '')
+    + `</div>`;
 }
 
 async function openVatReportModal() {

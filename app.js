@@ -8382,6 +8382,16 @@ function drawPoster(canvas, opts) {
     const markH = Math.round(W * 0.06), hTop = Math.round(M * 0.8);
     if (state._mkLogoH) { const lw = Math.round(markH * (state._mkLogoH.width / state._mkLogoH.height)); ctx.drawImage(state._mkLogoH, M, hTop, lw, markH); }
     else if (state._mkMark) { const mw = Math.round(markH * (state._mkMark.width / state._mkMark.height)); ctx.drawImage(state._mkMark, M, hTop, mw, markH); ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = ink; const wm = Math.round(W * 0.03); ctx.font = `800 ${wm}px ${FONT}`; setLS(wm * 0.02); ctx.fillText((kit.name || 'M-EVENT').toUpperCase(), M + mw + Math.round(W * 0.02), hTop + markH / 2 + 1); clrLS(); }
+    // Trust badge (баруун дээд) — B2B нөөцийн хэмжээ + брэнд өнгө pop (түрээс мессежийг дээд талд авчирна)
+    { const bt = kit.posterStat || '250+ түрээсийн бараа';
+      const bs = Math.round(W * 0.023); ctx.textBaseline = 'middle'; ctx.font = `700 ${bs}px ${FONT}`;
+      const bpx = Math.round(W * 0.026), bpy = Math.round(W * 0.013);
+      const bw = Math.round(ctx.measureText(bt).width) + bpx * 2, bh = bs + bpy * 2;
+      const bx = W - M - bw, by = hTop + markH / 2 - bh / 2;
+      roundRect(bx, by, bw, bh, bh / 2); ctx.fillStyle = c2; ctx.fill();
+      ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = `700 ${bs}px ${FONT}`;
+      ctx.fillText(bt, bx + bpx, by + bh / 2 + 1);
+    }
     const ruleY = hTop + markH + Math.round(H * 0.024);
     ctx.strokeStyle = hair; ctx.lineWidth = Math.max(1, Math.round(H * 0.0012)); ctx.beginPath(); ctx.moveTo(M, ruleY); ctx.lineTo(W - M, ruleY); ctx.stroke();
     // ── Бараа: ТОМ, дэвсгэрт хөвж (цагаан карт БАЙХГҮЙ) + доор зөөлөн эллипс сүүдэр ──
@@ -8411,7 +8421,7 @@ function drawPoster(canvas, opts) {
     // ── Нэр (HERO) — том, тод, зүүн; 2 мөр хүртэл ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     const tSize = Math.round(W * 0.058); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
-    let y = imgTop + imgH + Math.round(H * 0.045) + tSize;
+    let y = imgTop + imgH + Math.round(H * 0.032) + tSize;
     const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.06; });
     // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
@@ -8421,23 +8431,13 @@ function drawPoster(canvas, opts) {
       const first = _mkWrapText(ctx, opts.subtitle, W - M * 2)[0] || '';
       ctx.fillText(first, M, y);
     }
-    // ── Footer нэг эгнээ: CTA товч (зүүн) + холбоо багц (баруун), нэг тэнхлэгт төвлөрсөн ──
-    // Фонт зөвхөн 2 хэмжээ (ps / phSize) — жижиг-том зөрүү, тарамдсан байрлал арилгав.
-    const ps = Math.round(W * 0.030);
-    const padX = Math.round(W * 0.048), padY = Math.round(H * 0.021);
-    const pillTxt = 'Түрээсийн үнэ';
-    ctx.font = `800 ${ps}px ${FONT}`; const twP = ctx.measureText(pillTxt).width;
-    const pillW = Math.round(twP) + padX * 2, pillH = ps + padY * 2;
-    const pillY = H - M - pillH, midY = pillY + pillH / 2 + 1;
-    roundRect(M, pillY, pillW, pillH, Math.round(W * 0.014)); ctx.fillStyle = c2; ctx.fill();
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.font = `800 ${ps}px ${FONT}`;
-    ctx.fillText(pillTxt, M + padX, midY);
-    // Холбоо: mevent.mn (тод, дээр) + утас (нам, доор) — товчны голд төвлөрч баруун зэрэгцэнэ
-    // Чухлын дараалал: утас (2-р) ДЭЭР — том BOLD бараан; website (3-р) ДООР — жижиг бүдэг
-    ctx.textAlign = 'right';
-    if (kit.phone) { ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.032)}px ${FONT}`; ctx.fillText(kit.phone, W - M, midY - Math.round(ps * 0.52)); }
-    ctx.fillStyle = 'rgba(11,31,58,.5)'; ctx.font = `600 ${Math.round(W * 0.024)}px ${FONT}`;
-    ctx.fillText(kit.website || 'mevent.mn', W - M, midY + Math.round(ps * 0.68));
+    // ── Footer: цэвэр холбооны зурвас (товчгүй) — утас ТОМ зүүн (FB постын жинхэнэ CTA) + website жижиг баруун ──
+    const footY = H - M;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.044)}px ${FONT}`;
+    ctx.fillText(kit.phone || '', M, footY);
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.5)'; ctx.font = `600 ${Math.round(W * 0.028)}px ${FONT}`;
+    ctx.fillText(kit.website || 'mevent.mn', W - M, footY);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }

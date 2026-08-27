@@ -8416,7 +8416,7 @@ function drawPoster(canvas, opts) {
       ctx.fillText(first, M, y);
     }
     // ── CTA: цэвэр ПРЕМИУМ товч (glow-гүй, зөөлөн булан) · утас баруунд ──
-    const pillTxt = 'Үнэ & захиалга';
+    const pillTxt = 'Түрээсийн үнэ';
     const ps = Math.round(W * 0.031); ctx.font = `800 ${ps}px ${FONT}`;
     const arrow = '  →  ' + (kit.website || 'mevent.mn');
     const padX = Math.round(W * 0.05), padY = Math.round(H * 0.022);

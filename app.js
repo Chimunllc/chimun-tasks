@@ -6267,6 +6267,27 @@ async function uploadProductImage(file) {
   return b64;
 }
 
+// Видеог VPS-д (n8n.nomaadcamp.com/video/) байршуулж hosted URL авна. base64-ээр илгээнэ.
+// Зурагнаас ялгаатай: шахахгүй (native тоглуулагч), хэмжээ хязгаартай, base64 fallback БАЙХГҮЙ (DB-д том видео хадгалахгүй).
+function fileToDataUrl(file) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('Файл уншиж чадсангүй')); fr.readAsDataURL(file); });
+}
+async function uploadProductVideo(file) {
+  const MAX = 80 * 1024 * 1024;   // 80MB (сервер RAM-д аюулгүй)
+  if (!/^video\//.test(file.type || '')) throw new Error('Видео файл сонгоно уу (mp4, mov, webm).');
+  if (file.size > MAX) throw new Error('Видео хэт том (' + Math.round(file.size / 1048576) + 'MB). 80MB-аас бага, богино клип (15-30 сек) байлгана уу.');
+  const b64 = await fileToDataUrl(file);
+  const r = await fetchWithTimeout(
+    'https://n8n.nomaadcamp.com/webhook/mevent-upload-video?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: b64 }) },
+    180000);
+  if (!r.ok) throw new Error('Upload амжилтгүй (HTTP ' + r.status + ')');
+  const j = await r.json().catch(() => ({}));
+  const url = j && (j.url || (Array.isArray(j) && j[0] && j[0].url));
+  if (!url || !/^https?:\/\//.test(url)) throw new Error('Серверээс URL буцсангүй');
+  return url;
+}
+
 /* ─── QR/баркод — агуулахын скан ───────────────────────────
    Бараа бүрт SKU кодлосон QR (модалд харагдана, хэвлэх боломжтой). Камераар сканнердаж
    барааг шууд таниж модалаа нээнэ. BarcodeDetector (native) эсвэл jsQR (fallback). */
@@ -6651,9 +6672,10 @@ function productRowHtml(p) {
   const broken = Number(p.broken) || 0, maint = Number(p.maintenance) || 0;
   const invested = cost * (Number(p.stock) || 0);   // нэгж өртөг × нөөц
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;   // өртгөө хэдэн % нөхсөн
-  const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''}`.toLowerCase();
-  // ── Мета мөр (саарал): ангилал · SKU · нас · эх сурвалж ──
-  const metaParts = [escapeHtml(p.category || '—'), `SKU ${escapeHtml(p.sku || '—')}`];
+  const search = `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''} ${(p.code || '').replace(/-/g, '')}`.toLowerCase();
+  // ── Мета мөр (саарал): ангилал · Код (M-xxx) · нас · эх сурвалж ──
+  const codeStr = p.code ? `<b style="color:var(--text);font-weight:600;">${escapeHtml(p.code)}</b>` : `SKU ${escapeHtml(p.sku || '—')}`;
+  const metaParts = [escapeHtml(p.category || '—'), codeStr];
   if (pkg) metaParts.push(`📦 ${packageComponents(p).length} бараа`);
   if (p.purchase_date) { const _age = productAge(p.purchase_date); if (_age) metaParts.push(`${_age} ашигласан`); }
   { const _org = (p.source_url || p.supplier || '').trim(); if (_org) { const _u = /^https?:\/\//.test(_org); metaParts.push(_u ? 'Онлайн эх сурвалж' : escapeHtml(_org.length > 20 ? _org.slice(0, 20) + '…' : _org)); } }
@@ -8426,13 +8448,20 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр (HERO) — том, тод, зүүн; 2 мөр бол автоматаар багасна (footer-т мөргөхгүй) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
+    // Барааны код (сонголт) — гарчгийн баруунд, жижиг бүдэг (утсаар код хэлж хурдан захиалах)
+    const codeTxt = opts.code ? String(opts.code) : '';
+    const cSz = Math.round(W * 0.026);
+    ctx.font = `600 ${cSz}px ${FONT}`; const codeW = codeTxt ? ctx.measureText(codeTxt).width : 0;
+    const titleMaxW = (W - M * 2) - (codeTxt ? codeW + Math.round(W * 0.05) : 0);
     let tSize = Math.round(W * 0.045); ctx.font = `700 ${tSize}px ${FONT}`;
-    let titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
-    if (titleLines.length > 1) { tSize = Math.round(W * 0.037); ctx.font = `700 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
+    let titleLines = _mkWrapText(ctx, opts.title || '', titleMaxW).slice(0, 2);
+    if (titleLines.length > 1) { tSize = Math.round(W * 0.037); ctx.font = `700 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', titleMaxW).slice(0, 2); }
     setLS(-tSize * 0.015);   // сөрөг tracking (-1.5%) — цэвэр, premium
     let y = imgTop + imgH + Math.round(H * 0.033) + tSize;   // зураг↔гарчиг зай багасгав (нэг блок болгов)
+    const titleFirstY = y;
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.05; });
     clrLS();
+    if (codeTxt) { ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.5)'; ctx.font = `600 ${cSz}px ${FONT}`; ctx.fillText(codeTxt, W - M, titleFirstY); }
     // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
     if (opts.subtitle) {
       const ds = Math.round(W * 0.030); ctx.font = `600 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.55)';
@@ -8559,7 +8588,7 @@ function renderMarketing() {
     </div>
   </div>`;
 }
-function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, terms: P.terms, size: P.size, template: P.template, imgFit: P.imgFit, imgZoom: P.imgZoom, imgY: P.imgY, imgX: P.imgX }); }
+function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, terms: P.terms, code: P.code, size: P.size, template: P.template, imgFit: P.imgFit, imgZoom: P.imgZoom, imgY: P.imgY, imgX: P.imgX }); }
 function attachMarketingHandlers() {
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
@@ -8609,6 +8638,7 @@ function attachMarketingHandlers() {
     P.template = 'product';
     P.title = p.name || '';
     P.productSku = p.sku || '';   // энэ барааг дараа шинэчлэхэд
+    P.code = p.code || '';   // барааны код (M-xxx) — постерт харуулна
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5;   // шинэ зурагт тохиргоо reset
     // ТАЙЛБАР АВТО ДҮҮРГЭХГҮЙ — постер цэвэр (зураг+нэр+CTA). Хүсвэл богино уриа/hook гараар нэмнэ.
     P.subtitle = '';
@@ -8619,7 +8649,7 @@ function attachMarketingHandlers() {
   });
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
-    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = '';   // custom зураг = каталогийн бараа биш
+    P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = ''; P.code = '';   // custom зураг = каталогийн бараа биш
     r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
@@ -12808,7 +12838,14 @@ function openProductModal(p) {
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
         <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
-        <label class="pm-wide">🎬 Бичлэг/зураг үзэх холбоос${/^https?:\/\//.test((p && p.media_url) || '') ? ` <a href="${escapeHtml(p.media_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-media" value="${escapeHtml((p && p.media_url) || '')}" placeholder="ж: YouTube линк, Google Photos/Drive г.м. (заавал манайх биш)"></label>
+        <label class="pm-wide">🎬 Бичлэг/зураг үзэх холбоос${/^https?:\/\//.test((p && p.media_url) || '') ? ` <a href="${escapeHtml(p.media_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-media" value="${escapeHtml((p && p.media_url) || '')}" placeholder="ж: YouTube линк, эсвэл доор видео файл оруулна">
+          <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+            <button type="button" id="pm-media-upload" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;padding:7px 13px;border:1px solid var(--border-strong,#ccc);border-radius:8px;background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;">📤 Видео файл оруулах</button>
+            <input type="file" id="pm-media-file" accept="video/*" style="display:none;">
+            <span id="pm-media-status" style="font-size:12px;color:var(--muted,#888);"></span>
+          </div>
+          <div style="font-size:11px;color:var(--muted,#888);margin-top:3px;">Өөрсдийн бичлэг оруулбал сайтад цэвэрхэн (YouTube-гүй) тоглоно. Богино клип (15-30 сек), 80MB-аас бага.</div>
+        </label>
       </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
@@ -12885,6 +12922,26 @@ function openProductModal(p) {
     }
     fileInput.value = '';
   };
+  // Видео файл оруулах → VPS-д байршуулж #pm-media-д URL тавина (сайт native тоглуулагчаар харуулна)
+  const vBtn = modal.querySelector('#pm-media-upload');
+  const vFile = modal.querySelector('#pm-media-file');
+  const vStatus = modal.querySelector('#pm-media-status');
+  const vMedia = modal.querySelector('#pm-media');
+  if (vBtn && vFile) {
+    vBtn.onclick = () => vFile.click();
+    vFile.onchange = async () => {
+      const f = (vFile.files || [])[0]; if (!f) return;
+      vBtn.disabled = true; if (vStatus) vStatus.textContent = 'Байршуулж байна… (' + Math.round(f.size / 1048576) + 'MB, түр хүлээнэ үү)';
+      try {
+        const url = await uploadProductVideo(f);
+        if (vMedia) vMedia.value = url;
+        if (vStatus) { vStatus.textContent = '✓ Орлоо'; vStatus.style.color = 'var(--success,#2f7d5b)'; }
+      } catch (e) {
+        if (vStatus) { vStatus.textContent = '✗ ' + e.message; vStatus.style.color = 'var(--danger,#c2453b)'; }
+        showToast('Видео алдаа: ' + e.message, 'error', 5000);
+      } finally { vBtn.disabled = false; vFile.value = ''; }
+    };
+  }
   // Багц бараа — бүрэлдэхүүний жагсаалт ({sku,qty}). modal._bundle-д хадгална.
   let bundle = (p && Array.isArray(p.bundle_items)) ? p.bundle_items.filter(c => c && c.sku).map(c => ({ sku: c.sku, qty: Number(c.qty) || 1 })) : [];
   modal._bundle = bundle;

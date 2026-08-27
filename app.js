@@ -8420,10 +8420,10 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр (HERO) — том, тод, зүүн; 2 мөр бол автоматаар багасна (footer-т мөргөхгүй) ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
-    let tSize = Math.round(W * 0.058); ctx.font = `800 ${tSize}px ${FONT}`;
+    let tSize = Math.round(W * 0.050); ctx.font = `800 ${tSize}px ${FONT}`;
     let titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
-    if (titleLines.length > 1) { tSize = Math.round(W * 0.044); ctx.font = `800 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
-    let y = imgTop + imgH + Math.round(H * 0.032) + tSize;
+    if (titleLines.length > 1) { tSize = Math.round(W * 0.040); ctx.font = `800 ${tSize}px ${FONT}`; titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2); }
+    let y = imgTop + imgH + Math.round(H * 0.042) + tSize;
     titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.06; });
     // Богино уриа / hook (сонголт) — ганц мөр, нам зэрэглэл
     if (opts.subtitle) {
@@ -8441,7 +8441,7 @@ function drawPoster(canvas, opts) {
     // Утас — зүүн, bold бараан (гол холбоо); website — баруун, muted; хэмжээ ойролцоо → тэнцвэр
     ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = `800 ${Math.round(W * 0.034)}px ${FONT}`;
     ctx.fillText(kit.phone || '', M, footY);
-    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.58)'; ctx.font = `600 ${Math.round(W * 0.032)}px ${FONT}`;
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(11,31,58,.72)'; ctx.font = `700 ${Math.round(W * 0.032)}px ${FONT}`;
     ctx.fillText(kit.website || 'mevent.mn', W - M, footY);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;

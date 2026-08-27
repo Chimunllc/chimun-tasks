@@ -16005,9 +16005,12 @@ function vatBadge(orderNo, orderTotal) {
   const info = vatForOrder(orderNo);
   if (!info.count) return '';
   const tot = Number(orderTotal) || 0;
-  const full = tot > 0 && info.invoiced + 1 >= tot;
-  const bg = full ? '#e8f2ec' : '#fbf1d9', col = full ? '#1e7a55' : '#9a6a00';
-  const label = full ? 'НӨАТ ✓' : 'НӨАТ дутуу';
+  const tol = Math.max(1000, tot * 0.005);
+  const over = tot > 0 && info.invoiced > tot + tol;
+  const full = tot > 0 && !over && info.invoiced + tol >= tot;
+  const bg = over ? '#fbe4e2' : full ? '#e8f2ec' : '#fbf1d9';
+  const col = over ? '#c0392b' : full ? '#1e7a55' : '#9a6a00';
+  const label = over ? 'НӨАТ илүү' : full ? 'НӨАТ ✓' : 'НӨАТ дутуу';
   const title = `Шивсэн: ${fmtMoney(info.invoiced)}${tot > 0 ? ' / ' + fmtMoney(tot) : ''} · НӨАТ ${fmtMoney(info.vat)} (${info.count} баримт)`;
   return `<span class="chip" title="${title}" style="background:${bg};color:${col};font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;">🧾 ${label}</span>`;
 }
@@ -16019,9 +16022,16 @@ function vatOrderRow(orderNo, orderTotal, type) {
   const tot = Number(orderTotal) || 0;
   const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" style="border:1px dashed #1e7a55;background:#f4faf6;color:#1e7a55;border-radius:7px;padding:2px 9px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
   if (!info.count) return `<div class="order-meta" style="margin-top:4px;">${attachBtn}</div>`;
-  const rem = Math.max(0, tot - info.invoiced);
-  const full = tot > 0 && info.invoiced + 1 >= tot;
-  return `<div class="order-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>${tot > 0 ? (full ? ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>` : ` · <b style="color:#9a6a00;">⚠ Дутуу ${fmtMoney(rem)}</b>`) : ''} ${attachBtn}</div>`;
+  const tol = Math.max(1000, tot * 0.005);
+  const over = tot > 0 && info.invoiced > tot + tol;
+  const full = tot > 0 && !over && info.invoiced + tol >= tot;
+  let statusHtml = '';
+  if (tot > 0) {
+    if (over) statusHtml = ` · <b style="color:var(--danger);">⚠ Илүү ${fmtMoney(info.invoiced - tot)}</b>`;
+    else if (full) statusHtml = ` · <b style="color:var(--ok);">Бүрэн шивсэн</b>`;
+    else statusHtml = ` · <b style="color:#9a6a00;">⚠ Дутуу ${fmtMoney(tot - info.invoiced)}</b>`;
+  }
+  return `<div class="order-meta" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px;">🧾 НӨАТ шивсэн: <b>${fmtMoney(info.invoiced)}</b>${tot > 0 ? ` / ${fmtMoney(tot)}` : ''} · НӨАТ <b style="color:#1e7a55;">${fmtMoney(info.vat)}</b>${statusHtml} ${attachBtn}</div>`;
 }
 
 // Захиалгаас шууд НӨАТ баримт холбох (реверс тулгалт)

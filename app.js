@@ -8900,7 +8900,7 @@ function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
   const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
   const q = (state.salarySearch || '').toLowerCase().trim();
-  const brAll = salaryStaff().filter(m => _inHubBranch(m, state.hubBranch || 'all'));   // салбараар (тусдаа P&L)
+  const brAll = salaryStaff().filter(m => _inHubBranch(m, effectiveBranchLens() || 'all'));   // толгойн глобал салбар-сонгогчоор
   const staff = brAll
     .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
     .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
@@ -9217,18 +9217,13 @@ function renderAccess() {
   const tab = state.hubTab || 'people';
   const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан · албан тушаал & эрх — нэг дороос</div></div>`;
   const tabs = [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх (хүнээр)']];
-  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>`;
-  // Салбар шүүлтүүр — тусдаа компани тул салбар бүрээр харна
-  const br = state.hubBranch || 'all';
-  const brList = [['all', '🏢 Бүгд'], ['m-event', '⛺ M-Event'], ['camp', '🏔 NOMAAD']];
-  const brBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;border-top:1px dashed var(--border);padding-top:10px;">
-    <span style="font-size:11px;color:var(--muted);align-self:center;margin-right:2px;">Салбар:</span>
-    ${brList.map(([k, l]) => `<button class="btn${k === br ? ' btn-primary' : ''}" data-hub-branch="${k}" style="padding:4px 10px;font-size:11.5px;">${l}</button>`).join('')}</div>`;
+  // Салбараар шүүх нь толгойн глобал салбар-сонгогчоор (давхар товч хассан).
   let body;
   if (tab === 'roles') body = renderAccessRoles();
   else body = renderStaffPeople();
-  return `<div style="padding:4px;">${head}${tabBar}${brBar}${body}</div>`;
+  return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
 }
 // Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
 function _inHubBranch(m, br) {
@@ -9276,7 +9271,7 @@ function capMatrixHtml(dataAttr, holderKey, getVal) {
 function renderAccessRoles() {
   // ХҮН ТУС БҮРЭЭР — эрхийг албан тушаалаар биш, хүн бүрд шууд тохируулна.
   // (role_perms ард нь fallback — тохируулаагүй хүн албан тушаалынхаа default эрхтэй хэвээр.)
-  const br = state.hubBranch || 'all';
+  const br = effectiveBranchLens() || 'all';
   const q = (state.accessSearch || '').toLowerCase().trim();
   const people = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, br))
     .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
@@ -9333,8 +9328,6 @@ function renderAccessRoles() {
 function attachAccessHandlers() {
   // Таб солих
   document.querySelectorAll('[data-hub-tab]').forEach(b => b.addEventListener('click', () => { state.hubTab = b.dataset.hubTab; render(); }));
-  // Салбар солих
-  document.querySelectorAll('[data-hub-branch]').forEach(b => b.addEventListener('click', () => { state.hubBranch = b.dataset.hubBranch; render(); }));
   const tab = state.hubTab || 'people';
   if (tab === 'people') { attachHubPeople(); return; }
   // ── Албан тушаал & Эрх таб ──
@@ -17526,7 +17519,7 @@ function renderStaffList() {
     if (aActive !== bActive) return aActive ? -1 : 1;
     return (b.level || 0) - (a.level || 0);
   });
-  const lensBr = (state._staffListId === 'hub-staff-list') ? (state.hubBranch || 'all') : 'all';   // салбар шүүлт зөвхөн хабд
+  const lensBr = (state._staffListId === 'hub-staff-list') ? (effectiveBranchLens() || 'all') : 'all';   // салбар шүүлт = толгойн глобал сонгогч
   const filtered = all.filter(m =>
     _inHubBranch(m, lensBr) &&
     (!q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))

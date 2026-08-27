@@ -8410,23 +8410,27 @@ function drawPoster(canvas, opts) {
     }
     // ── Нэр (том, тод) + 1 мөр дэгээ ──
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    const tSize = Math.round(W * 0.06); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
-    let y = imgTop + imgH + Math.round(H * 0.05) + tSize;
+    const tSize = Math.round(W * 0.066); ctx.fillStyle = ink; ctx.font = `800 ${tSize}px ${FONT}`;
+    let y = imgTop + imgH + Math.round(H * 0.055) + tSize;
     const titleLines = _mkWrapText(ctx, opts.title || '', W - M * 2).slice(0, 2);
-    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.1; });
+    titleLines.forEach((l, i) => { ctx.fillText(l, M, y); if (i < titleLines.length - 1) y += tSize * 1.08; });
+    // Богино уриа/hook (сонголт) — ТОД, ганц мөр (тайлбар БИШ)
     if (opts.subtitle) {
-      const ds = Math.round(W * 0.028); ctx.font = `500 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.66)';
-      y += Math.round(H * 0.014) + ds;
-      const full = _mkWrapText(ctx, opts.subtitle, W - M * 2);
-      const txt = full.length > 1 ? ((full[0] || '').replace(/[\s,.:;]+\S*$/, '').trim() + '…') : (full[0] || '');
-      ctx.fillText(txt, M, y);   // ЗӨВХӨН 1 мөр дэгээ — үлдсэнийг сайтаас
+      const ds = Math.round(W * 0.032); ctx.font = `600 ${ds}px ${FONT}`; ctx.fillStyle = 'rgba(11,31,58,.62)';
+      y += Math.round(H * 0.016) + ds;
+      const first = _mkWrapText(ctx, opts.subtitle, W - M * 2)[0] || '';
+      ctx.fillText(first, M, y);
     }
-    // ── Footer: шугам + утас (зүүн) · CTA "Үнэ & захиалга → сайт" (баруун, orange) ──
-    const ctaY = H - M - Math.round(H * 0.048), fy = H - M;
-    ctx.strokeStyle = hair; ctx.beginPath(); ctx.moveTo(M, ctaY); ctx.lineTo(W - M, ctaY); ctx.stroke();
-    ctx.textBaseline = 'middle'; const cs = Math.round(W * 0.026);
-    ctx.textAlign = 'left'; ctx.fillStyle = muted; ctx.font = `600 ${cs}px ${FONT}`; ctx.fillText(kit.phone || '', M, fy);
-    if (kit.website) { ctx.textAlign = 'right'; ctx.fillStyle = c2; ctx.font = `800 ${cs}px ${FONT}`; ctx.fillText('Үнэ & захиалга → ' + kit.website, W - M, fy); }
+    // ── CTA HOOK: тод улбар шар товч (pill) — клик татна · утас баруунд ──
+    const pillTxt = 'Үнэ & захиалга → ' + (kit.website || 'mevent.mn');
+    const ps = Math.round(W * 0.031); ctx.font = `800 ${ps}px ${FONT}`;
+    const padX = Math.round(W * 0.045), padY = Math.round(H * 0.019);
+    const pillW = Math.round(ctx.measureText(pillTxt).width) + padX * 2, pillH = ps + padY * 2;
+    const pillY = H - M - pillH;
+    ctx.save(); ctx.shadowColor = 'rgba(255,106,0,.32)'; ctx.shadowBlur = Math.round(W * 0.03); ctx.shadowOffsetY = Math.round(H * 0.006);
+    roundRect(M, pillY, pillW, pillH, pillH / 2); ctx.fillStyle = c2; ctx.fill(); ctx.restore();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(pillTxt, M + padX, pillY + pillH / 2 + 1);
+    ctx.textAlign = 'right'; ctx.fillStyle = muted; ctx.font = `600 ${Math.round(W * 0.026)}px ${FONT}`; ctx.fillText(kit.phone || '', W - M, pillY + pillH / 2 + 1);
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     return;
   }
@@ -8523,7 +8527,7 @@ function renderMarketing() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↕</span><input id="mk-posy" type="range" min="0" max="100" value="${Math.round((P.imgY == null ? 0.5 : P.imgY) * 100)}" style="flex:1;"></div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↔</span><input id="mk-posx" type="range" min="0" max="100" value="${Math.round((P.imgX == null ? 0.5 : P.imgX) * 100)}" style="flex:1;"></div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
-        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Тайлбар (үнэ БИШ — сайт руу татна)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<textarea id="mk-sub" rows="3" placeholder="Богино тайлбар / давуу тал…" style="${fld}resize:vertical;">${escapeHtml(P.subtitle || '')}</textarea>` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
+        <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Богино уриа / hook (сонголт — хоосон бол зөвхөн нэр)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="ж: Тайзны шоуг мэргэжлийн түвшинд" style="${fld}">` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
         ${P.template === 'product' && P.productSku ? `<button class="btn btn-sm" id="mk-save-prod" style="width:100%;border-color:#16a34a;color:#16a34a;margin-top:2px;">💾 Нэр/тайлбарыг бараанд хадгалах (агуулах + сайт)</button><div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Дээрх нэр, тайлбар барааны бүртгэлд бичигдэж, агуулах болон mevent.mn сайтад шинэчлэгдэнэ.</div>` : ''}
       </div>
     </div>
@@ -8584,14 +8588,8 @@ function attachMarketingHandlers() {
     P.title = p.name || '';
     P.productSku = p.sku || '';   // энэ барааг дараа шинэчлэхэд
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5;   // шинэ зурагт тохиргоо reset
-    // Үнийн оронд ТАЙЛБАР — сайт руу татах (FB/IG). Тайлбаргүй бол ангилал.
-    // Тайлбарыг БҮТНЭЭР авна (markdown цэвэрлэнэ, тайрахгүй) — постер дээр canvas өөрөө 3 мөрт багтаана.
-    let desc = String(p.description || '').replace(/\s+/g, ' ')
-      .replace(/[#*_`>~]+/g, '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')   // markdown (#, **, [x](y)) хая
-      .replace(/[А-ЯӨҮЁ][а-яөүёА-ЯӨҮЁ ]*:\s*(?=,|$)/g, '')   // хоосон "Хэмжээ: ," шошго хая
-      .replace(/\s*,\s*,+/g, ', ').replace(/\s+([,.:;])/g, '$1')  // давхар таслал/зай цэвэрлэ
-      .replace(/\s{2,}/g, ' ').replace(/^[\s,.:;-]+/, '').trim();
-    P.subtitle = desc || (p.category ? p.category + ' · түрээсийн бараа' : '');
+    // ТАЙЛБАР АВТО ДҮҮРГЭХГҮЙ — постер цэвэр (зураг+нэр+CTA). Хүсвэл богино уриа/hook гараар нэмнэ.
+    P.subtitle = '';
     P.terms = '';
     if (p.photo) { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { P.img = im; _mkRedraw(); render(); }; im.onerror = () => { P.img = null; _mkRedraw(); render(); showToast('Зураг ачаалж чадсангүй', 'warn', 2500); }; im.src = p.photo; }
     else { P.img = null; render(); }

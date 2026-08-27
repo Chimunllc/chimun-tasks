@@ -3382,10 +3382,13 @@ function renderSidebar() {
   }
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
-  const gBr = document.getElementById('nav-group-branch');
-  if (gBr) gBr.style.display = _grpVisible(['nav-orders', 'nav-nomaad', 'nav-catering', 'nav-products', 'nav-receivables']) ? '' : 'none';
-  const gMg = document.getElementById('nav-group-mgmt');
-  if (gMg) gMg.style.display = _grpVisible(['nav-reports', 'nav-performance', 'nav-salary', 'nav-attendance', 'nav-accounts', 'nav-access']) ? '' : 'none';
+  const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
+  _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering', 'nav-products']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts']);
+  _setGrp('nav-group-marketing', ['nav-marketing']);
+  _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
+  _setGrp('nav-group-analytics', ['nav-reports']);
+  _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.

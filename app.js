@@ -9888,7 +9888,7 @@ function nomaadCardHtml(o) {
     <div class="nomaad-card-head" data-nomaad-toggle="${q}">
       <div class="nomaad-card-main">
         ${nomaadCountdownBadge(days)}
-        <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>
+        <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>${vatBadge(o.quote_no)}
         <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
         <span class="nomaad-card-reg" style="font-size:10.5px;color:var(--muted);flex-basis:100%;width:100%;margin-top:2px;">${regLine}</span>
       </div>
@@ -14142,7 +14142,7 @@ function bqOrderCard(o) {
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
     <div class="order-items-box bq-order-docs" hidden></div>`;
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${vatBadge(o.number)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
@@ -15881,6 +15881,240 @@ function attachReportsHandlers() {
     if (caret) caret.style.transform = 'rotate(90deg)';
   }));
 }
+/* ==================== НӨАТ (ebarimt) тайлан + захиалгатай тулгалт ====================
+   Борлуулалтын НӨАТ баримтын задаргаа (ebarimt xlsx) → vat_receipts (Postgres, anon,
+   products-тэй ижил posture) → NOMAAD + Эвент(Booqable) захиалгатай авто/гараар тулгана →
+   захиалгад "🧾 НӨАТ" badge + Санхүүд тусдаа НӨАТ тайлан. */
+const VAT_URL = `${SUPABASE_URL}/rest/v1/vat_receipts`;
+const VAT_HDR = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
+function vatNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; }
+function vatNorm(s) { return String(s || '').toLowerCase().replace(/ххк|ххн|\bхк\b|llc|ltd|co\b|group|групп/g, '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
+function vatDateIso(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') { const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000); return isNaN(d) ? '' : d.toISOString(); }
+  const m = String(v).match(/(\d{4})-(\d{2})-(\d{2})[ T]?(\d{2})?:?(\d{2})?/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T${m[4] || '00'}:${m[5] || '00'}:00`;
+  const d = new Date(v); return isNaN(d) ? '' : d.toISOString();
+}
+function vatRowId(r) { return [r.ddtd, (r.dt || '').slice(0, 10), r.reg, Math.round(r.total)].join('-').replace(/\s+/g, ''); }
+
+// ebarimt xlsx 2D массиваас баримтын мөр гаргана (толгойг нэрээр ононо)
+function parseVatMatrix(matrix) {
+  if (!Array.isArray(matrix) || !matrix.length) return [];
+  let hr = -1, C = {};
+  for (let i = 0; i < Math.min(matrix.length, 10); i++) {
+    const cells = (matrix[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
+    const find = (re) => cells.findIndex(c => re.test(c));
+    if (find(/ддтд/) >= 0 && find(/огноо/) >= 0) {
+      C = { pos: find(/пос дугаар/), ddtd: find(/ддтд/), dt: find(/огноо/), total: find(/нийт дүн/),
+        vat: cells.findIndex(c => c === 'нөат'), net: find(/цэвэр дүн/), reg: find(/регистр/),
+        name: find(/х\/а нэр|худалдан авагч|нэр/), office: find(/байршл/) };
+      hr = i; break;
+    }
+  }
+  if (hr < 0) return [];
+  const out = [];
+  for (let i = hr + 1; i < matrix.length; i++) {
+    const r = matrix[i] || []; const cell = (idx) => idx >= 0 ? r[idx] : '';
+    const ddtd = String(cell(C.ddtd) || '').trim(); const total = vatNum(cell(C.total));
+    if (!ddtd || !total) continue;
+    const rec = { pos: String(cell(C.pos) || '').trim(), ddtd, dt: vatDateIso(cell(C.dt)),
+      total, vat: vatNum(cell(C.vat)), net: vatNum(cell(C.net)), reg: String(cell(C.reg) || '').trim(),
+      name: String(cell(C.name) || '').trim(), office: String(cell(C.office) || '').trim() };
+    rec.id = vatRowId(rec);
+    out.push(rec);
+  }
+  return out;
+}
+
+async function loadVatReceipts() {
+  try {
+    const r = await fetchWithTimeout(`${VAT_URL}?select=*&order=dt.desc`, { headers: VAT_HDR }, 15000);
+    if (r.ok) { state.vatReceipts = await r.json(); return state.vatReceipts; }
+  } catch (e) { console.warn('loadVatReceipts fail', e.message); }
+  state.vatReceipts = state.vatReceipts || [];
+  return state.vatReceipts;
+}
+async function vatUpsert(list) {
+  if (!list.length) return 0;
+  const body = list.map(r => ({ id: r.id, pos: r.pos, ddtd: r.ddtd, dt: r.dt || null, total: r.total,
+    vat: r.vat, net: r.net, buyer_reg: r.reg, buyer_name: r.name, office: r.office }));
+  const r = await fetchWithTimeout(`${VAT_URL}?on_conflict=id`, { method: 'POST',
+    headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(body) }, 30000);
+  if (!r.ok) throw new Error('Хадгалах алдаа (HTTP ' + r.status + ')');
+  return body.length;
+}
+async function vatSetMatch(id, match) {
+  const patch = match
+    ? { matched_type: match.type, matched_id: match.no, matched_label: match.label, matched_by: match.by || 'manual' }
+    : { matched_type: null, matched_id: null, matched_label: null, matched_by: null };
+  const r = await fetchWithTimeout(`${VAT_URL}?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH',
+    headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) }, 15000);
+  if (!r.ok) throw new Error('Тулгалт хадгалах алдаа (' + r.status + ')');
+  const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
+}
+
+// Тулгах захиалгууд: NOMAAD + Эвент(Booqable) — нэгдсэн хэлбэрт
+function vatCandidateOrders() {
+  const out = [];
+  (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
+    out.push({ type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '',
+      amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start || o.created_at || '' }); });
+  (state.bqOrders || []).forEach(o => {
+    out.push({ type: 'event', no: o.number, name: o.company || o.customer || o.customer_name || '',
+      amount: vatNum(o.grand_total || o.total), date: o.starts_at || o.created_at || '' }); });
+  return out.filter(c => c.no);
+}
+function vatAutoScore(rec, c) {
+  let s = 0;
+  const rn = vatNorm(rec.name), cn = vatNorm(c.name);
+  if (rn && cn) { if (rn === cn) s += 5; else { const rt = rn.split(' ').filter(t => t.length > 2), ct = new Set(cn.split(' ')); const ov = rt.filter(t => ct.has(t)).length; if (ov) s += 2 + Math.min(ov, 3); } }
+  const amt = c.amount || 0;
+  if (amt > 0) { const near = (a, b) => Math.abs(a - b) <= Math.max(1000, b * 0.02); if (near(rec.total, amt) || near(rec.net, amt)) s += 4; else if (Math.abs(rec.total - amt) <= amt * 0.1) s += 1; }
+  if (rec.dt && c.date) { const dd = Math.abs(new Date(rec.dt) - new Date(c.date)) / 86400000; if (isFinite(dd)) { if (dd <= 7) s += 2; else if (dd <= 45) s += 1; } }
+  return s;
+}
+function vatBestMatch(rec, cands) {
+  let best = null, bs = 0, second = 0;
+  cands.forEach(c => { const s = vatAutoScore(rec, c); if (s > bs) { second = bs; bs = s; best = c; } else if (s > second) second = s; });
+  return { best, score: bs, gap: bs - second };
+}
+
+// Захиалгын карт дээрх badge (тулгагдсан НӨАТ баримт байвал)
+function vatBadge(orderNo) {
+  if (!orderNo || !Array.isArray(state.vatReceipts)) return '';
+  const hit = state.vatReceipts.find(v => v.matched_id && String(v.matched_id) === String(orderNo));
+  if (!hit) return '';
+  return `<span class="chip" title="НӨАТ баримт шивсэн: ${fmtMoney(hit.total)} (НӨАТ ${fmtMoney(hit.vat)})" style="background:#e8f2ec;color:#1e7a55;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;">🧾 НӨАТ ✓</span>`;
+}
+
+async function openVatReportModal() {
+  // Захиалгын нэр татах (тулгахад)
+  if (!state.nomaadOrders && typeof loadNomaadOrders === 'function') { try { await loadNomaadOrders(); } catch (e) {} }
+  if (state.bqOrders === undefined && typeof loadBooqableOrders === 'function') { try { await loadBooqableOrders(); } catch (e) {} }
+  await loadVatReceipts();
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto;';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:16px;max-width:960px;width:100%;margin:auto;box-shadow:0 30px 70px -20px rgba(0,0,0,.4);';
+  ov.appendChild(card);
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+
+  let month = 'all';
+  function receiptsForMonth() {
+    const list = (state.vatReceipts || []).slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
+    return month === 'all' ? list : list.filter(r => String(r.dt || '').slice(0, 7) === month);
+  }
+  function months() { const s = new Set((state.vatReceipts || []).map(r => String(r.dt || '').slice(0, 7)).filter(Boolean)); return [...s].sort().reverse(); }
+
+  function render() {
+    const list = receiptsForMonth();
+    const cands = vatCandidateOrders();
+    const totSales = list.reduce((s, r) => s + (Number(r.total) || 0), 0);
+    const totVat = list.reduce((s, r) => s + (Number(r.vat) || 0), 0);
+    const matched = list.filter(r => r.matched_id).length;
+    const monthOpts = ['<option value="all">Бүх сар</option>'].concat(months().map(m => `<option value="${m}"${m === month ? ' selected' : ''}>${m}</option>`)).join('');
+
+    let rowsHtml = list.map(r => {
+      const bm = r.matched_id ? null : vatBestMatch(r, cands);
+      const sugg = (bm && bm.best && bm.score >= 4) ? bm.best : null;
+      let matchCell;
+      if (r.matched_id) {
+        matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="color:#1e7a55;font-weight:700;font-size:12px;">✓ ${escapeHtml(r.matched_label || r.matched_id)}</span><button data-vunmatch="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:13px;">✕</button></div>`;
+      } else {
+        const suggBtn = sugg ? `<button data-vmatch="${escapeHtml(r.id)}" data-vtype="${sugg.type}" data-vno="${escapeHtml(String(sugg.no))}" data-vlabel="${escapeHtml((sugg.name || sugg.no) + ' · ' + fmtMoney(sugg.amount))}" style="border:1px solid #1e7a55;background:#e8f2ec;color:#1e7a55;border-radius:100px;padding:3px 9px;font-size:11.5px;font-weight:600;cursor:pointer;">✓ ${escapeHtml(sugg.name || sugg.no)} (${fmtMoney(sugg.amount)})</button>` : '<span style="color:var(--muted);font-size:11.5px;">санал алга</span>';
+        matchCell = `<div style="display:flex;flex-direction:column;gap:4px;">${suggBtn}<input list="vat-cands" data-vpick="${escapeHtml(r.id)}" placeholder="гараар хайх…" style="font-size:11.5px;padding:4px 7px;border:1px solid var(--border,#ddd);border-radius:6px;width:180px;"></div>`;
+      }
+      return `<tr style="border-bottom:1px solid var(--border,#eee);">
+        <td style="padding:7px 8px;font-size:12px;white-space:nowrap;">${escapeHtml(String(r.dt || '').slice(0, 10))}</td>
+        <td style="padding:7px 8px;font-size:12.5px;">${escapeHtml(r.buyer_name || '')}<div style="color:var(--muted);font-size:10.5px;">${escapeHtml(r.buyer_reg || '')}</div></td>
+        <td style="padding:7px 8px;font-size:12.5px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.total)}</td>
+        <td style="padding:7px 8px;font-size:12px;text-align:right;white-space:nowrap;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(r.vat)}</td>
+        <td style="padding:7px 8px;">${matchCell}</td></tr>`;
+    }).join('');
+    if (!list.length) rowsHtml = `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--muted);">Баримт алга. Дээрээс ebarimt (.xlsx) файл оруулна уу.</td></tr>`;
+
+    const candOpts = cands.slice(0, 400).map(c => `<option value="${escapeHtml(String(c.no))} — ${escapeHtml((c.name || '').slice(0, 28))}">`).join('');
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border,#eee);">
+        <div style="font-family:var(--font-display,inherit);font-size:17px;font-weight:800;">🧾 НӨАТ тайлан</div>
+        <button id="vat-close" style="border:none;background:none;font-size:22px;color:var(--muted);cursor:pointer;">×</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border,#eee);">
+        <button id="vat-upload-btn" class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;">📥 ebarimt файл оруулах</button>
+        <input type="file" id="vat-file" accept=".xlsx,.xls,.csv" multiple style="display:none;">
+        <button id="vat-auto" class="btn" style="padding:7px 12px;font-size:12.5px;">⚡ Авто-тулгах</button>
+        <select id="vat-month" class="btn" style="padding:7px 12px;font-size:12.5px;">${monthOpts}</select>
+        <button id="vat-export" class="btn" style="padding:7px 12px;font-size:12.5px;">📊 Excel татах</button>
+        <span id="vat-status" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:12px 18px;">
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Баримт</div><div style="font-size:17px;font-weight:800;">${list.length}</div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Нийт борлуулалт</div><div style="font-size:17px;font-weight:800;">${fmtMoney(totSales)}</div></div>
+        <div style="background:#e8f2ec;border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:#1e7a55;">Төлөх НӨАТ</div><div style="font-size:17px;font-weight:800;color:#1e7a55;">${fmtMoney(totVat)}</div></div>
+        <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан</div><div style="font-size:17px;font-weight:800;">${matched}/${list.length}</div></div>
+      </div>
+      <div style="max-height:52vh;overflow:auto;padding:0 18px 18px;">
+        <table style="width:100%;border-collapse:collapse;"><thead><tr style="text-align:left;position:sticky;top:0;background:#fff;">
+          <th style="padding:6px 8px;font-size:11px;color:var(--muted);">Огноо</th><th style="padding:6px 8px;font-size:11px;color:var(--muted);">Худалдан авагч</th>
+          <th style="padding:6px 8px;font-size:11px;color:var(--muted);text-align:right;">Нийт дүн</th><th style="padding:6px 8px;font-size:11px;color:var(--muted);text-align:right;">НӨАТ</th>
+          <th style="padding:6px 8px;font-size:11px;color:var(--muted);">Захиалга</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      </div>
+      <datalist id="vat-cands">${candOpts}</datalist>`;
+
+    card.querySelector('#vat-close').onclick = close;
+    card.querySelector('#vat-month').onchange = e => { month = e.target.value; render(); };
+    card.querySelector('#vat-upload-btn').onclick = () => card.querySelector('#vat-file').click();
+    card.querySelector('#vat-file').onchange = async (e) => {
+      const files = [...(e.target.files || [])]; if (!files.length) return;
+      const st = card.querySelector('#vat-status'); st.textContent = 'Уншиж байна…';
+      try {
+        let all = [];
+        for (const f of files) { const mx = await statementFileToMatrix(f); all = all.concat(parseVatMatrix(mx)); }
+        // давхардсан id-г нэгтгэ
+        const uniq = {}; all.forEach(r => uniq[r.id] = r); all = Object.values(uniq);
+        if (!all.length) { st.textContent = '⚠ Баримт олдсонгүй (багана таарсангүй)'; return; }
+        await vatUpsert(all);
+        await loadVatReceipts();
+        st.textContent = `✓ ${all.length} баримт орлоо`;
+        render();
+      } catch (err) { st.textContent = '✗ ' + err.message; showToast('НӨАТ оруулах алдаа: ' + err.message, 'error', 5000); }
+    };
+    card.querySelector('#vat-auto').onclick = async () => {
+      const st = card.querySelector('#vat-status'); st.textContent = 'Тулгаж байна…';
+      const cs = vatCandidateOrders(); const todo = (state.vatReceipts || []).filter(r => !r.matched_id);
+      let n = 0;
+      for (const r of todo) { const bm = vatBestMatch(r, cs); if (bm.best && bm.score >= 7 && bm.gap >= 2) { try { await vatSetMatch(r.id, { type: bm.best.type, no: bm.best.no, label: (bm.best.name || bm.best.no) + ' · ' + fmtMoney(bm.best.amount), by: 'auto' }); n++; } catch (e) {} } }
+      st.textContent = `✓ ${n} баримт авто-тулгав`;
+      render();
+    };
+    card.querySelector('#vat-export').onclick = () => vatExportExcel(receiptsForMonth());
+    card.querySelectorAll('[data-vmatch]').forEach(b => b.onclick = async () => {
+      try { await vatSetMatch(b.dataset.vmatch, { type: b.dataset.vtype, no: b.dataset.vno, label: b.dataset.vlabel, by: 'manual' }); render(); } catch (e) { showToast(e.message, 'error'); }
+    });
+    card.querySelectorAll('[data-vunmatch]').forEach(b => b.onclick = async () => { try { await vatSetMatch(b.dataset.vunmatch, null); render(); } catch (e) { showToast(e.message, 'error'); } });
+    card.querySelectorAll('[data-vpick]').forEach(inp => inp.onchange = async () => {
+      const no = String(inp.value).split(' — ')[0].trim(); const c = vatCandidateOrders().find(x => String(x.no) === no);
+      if (!c) return; try { await vatSetMatch(inp.dataset.vpick, { type: c.type, no: c.no, label: (c.name || c.no) + ' · ' + fmtMoney(c.amount), by: 'manual' }); render(); } catch (e) { showToast(e.message, 'error'); }
+    });
+  }
+  render();
+  document.body.appendChild(ov);
+}
+
+function vatExportExcel(list) {
+  loadSheetJS().then(XLSX => {
+    const rows = list.map(r => ({ 'Огноо': String(r.dt || '').slice(0, 10), 'ДДТД': r.ddtd, 'Худалдан авагч': r.buyer_name, 'Регистр': r.buyer_reg,
+      'Нийт дүн': r.total, 'НӨАТ': r.vat, 'Цэвэр дүн': r.net, 'Тулгасан захиалга': r.matched_label || '', 'Тулгалт': r.matched_by || '' }));
+    const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'НӨАТ');
+    XLSX.writeFile(wb, 'НӨАТ-тайлан-' + todayStr() + '.xlsx');
+  }).catch(() => showToast('Excel сан ачаалж чадсангүй', 'error'));
+}
+
 function renderFinanceReport(wrap) {
   const curMonth = new Date().toISOString().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
@@ -15907,10 +16141,12 @@ function renderFinanceReport(wrap) {
     + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
+    + (canRecon ? `<button id="fin-vat" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 НӨАТ тайлан</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
+  bar.querySelector('#fin-vat')?.addEventListener('click', openVatReportModal);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
@@ -20444,6 +20680,7 @@ async function bootApp() {
   loadEvaluations();   // 360° гүйцэтгэлийн үнэлгээ (бүх ажилтан)
   loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
+  loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)

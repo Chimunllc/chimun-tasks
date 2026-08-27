@@ -9234,9 +9234,10 @@ function memberAccessState(m) {
 // ════════════ АЖИЛТАН УДИРДАХ ТӨВ (Ажилтан / Албан тушаал & Эрх / Цалин) ════════════
 function renderAccess() {
   if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }
+  if (state.hubTab === 'salary') state.hubTab = 'people';   // Цалин тусдаа "Цалин" менюд шилжсэн — давхцал арилгав
   const tab = state.hubTab || 'people';
-  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилтан удирдах</div><div style="font-size:11px;color:var(--muted);">Ажилтан · албан тушаал & эрх · цалин — нэг дороос</div></div>`;
-  const tabs = [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх (хүнээр)'], ['salary', '💵 Цалин']];
+  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан · албан тушаал & эрх — нэг дороос</div></div>`;
+  const tabs = [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх (хүнээр)']];
   const tabBar = `<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>`;
   // Салбар шүүлтүүр — тусдаа компани тул салбар бүрээр харна
@@ -9247,7 +9248,6 @@ function renderAccess() {
     ${brList.map(([k, l]) => `<button class="btn${k === br ? ' btn-primary' : ''}" data-hub-branch="${k}" style="padding:4px 10px;font-size:11.5px;">${l}</button>`).join('')}</div>`;
   let body;
   if (tab === 'roles') body = renderAccessRoles();
-  else if (tab === 'salary') body = renderSalary();
   else body = renderStaffPeople();
   return `<div style="padding:4px;">${head}${tabBar}${brBar}${body}</div>`;
 }
@@ -9358,7 +9358,6 @@ function attachAccessHandlers() {
   document.querySelectorAll('[data-hub-branch]').forEach(b => b.addEventListener('click', () => { state.hubBranch = b.dataset.hubBranch; render(); }));
   const tab = state.hubTab || 'people';
   if (tab === 'people') { attachHubPeople(); return; }
-  if (tab === 'salary') { attachSalaryHandlers(); return; }
   // ── Албан тушаал & Эрх таб ──
   document.querySelector('[data-access-refresh]')?.addEventListener('click', () => { state._permsLoaded = false; loadMemberPerms(); loadRolePerms(); showToast('Шинэчилж байна…', 'info', 1200); });
   const se = document.getElementById('access-search');

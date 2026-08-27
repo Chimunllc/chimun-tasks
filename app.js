@@ -12863,7 +12863,8 @@ function openProductModal(p) {
       <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
-        <label>SKU${isEdit ? '' : ' <span style="color:var(--muted);font-weight:400;">(автомат)</span>'}<input id="pm-sku" value="${isEdit ? v('sku') : escapeHtml(nextProductSKU())}" placeholder="SKU код"></label>
+        <label>Код${isEdit ? '' : ' <span style="color:var(--muted);font-weight:400;">(автомат)</span>'}<input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="${isEdit ? 'M-xxx' : 'хадгалахад авто'}"></label>
+        <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : escapeHtml(nextProductSKU())}">
         <div class="pm-wide" style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--panel-hover);">
           <div style="font-size:12.5px;font-weight:700;">🎨 Хэмжээ / өнгө — сонголтоор</div>
           <div style="font-size:11px;color:var(--muted);margin:2px 0 9px;line-height:1.45;">Ижил барааны хэмжээ/өнгийг НЭР дотор биш эндээс оруул — сайтад нэг картад нэгтгэж сонголт болгоно. Ганц бараа бол хоосон орхи.</div>
@@ -13129,7 +13130,7 @@ async function submitProductModal(modal, orig, btn) {
   const _qk = Number(modal.querySelector('#pm-qk')?.value) || 0;
   const base = {
     name, category: cat, sku,
-    code: (orig && orig.code) ? orig.code : nextProductCode(),   // шинэ бараанд M-код авто, засварт хэвээр
+    code: g('pm-code') || (orig && orig.code) || nextProductCode(),   // формоос (засварт), эсвэл хуучин, эсвэл шинэ бараанд авто
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),

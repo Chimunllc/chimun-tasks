@@ -82,7 +82,8 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 // функцуудыг контекстээс авах
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
-need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes']);
+need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -187,6 +188,64 @@ ok(/google\.com\/maps\/search/.test(F.mapsHref('47.9,106.9')), 'mapsHref: коо
 {
   const r = F.parseBankReceipt('ямар нэг текст дүнгүй');
   ok(r.amount === undefined, 'parseBankReceipt: дүнгүй бол amount undefined (буруу баримт барих)');
+}
+
+// 10) rentalDiscount — түрээсийн хугацааны хямдрал (2+ хоног 20%, 7+ 40%, 30+ 55%)
+eq(F.rentalDiscount(1).pct, 0, 'Хямдрал: 1 хоног = 0%');
+eq(F.rentalDiscount(2).pct, 0.20, 'Хямдрал: 2 хоног = 20%');
+eq(F.rentalDiscount(6).pct, 0.20, 'Хямдрал: 6 хоног = 20%');
+eq(F.rentalDiscount(7).pct, 0.40, 'Хямдрал: 7 хоног = 40%');
+eq(F.rentalDiscount(29).pct, 0.40, 'Хямдрал: 29 хоног = 40%');
+eq(F.rentalDiscount(30).pct, 0.55, 'Хямдрал: 30 хоног = 55%');
+
+// 11) rentalDays / orderRentalDays — түрээсийн хоног тооцоо
+eq(F.rentalDays(0, 24 * 3600000), 1, 'Хоног: 24 цаг = 1 хоног');
+eq(F.rentalDays(0, 25 * 3600000), 2, 'Хоног: 25 цаг = 2 хоног (дээш бөөрөнхийлнө)');
+eq(F.rentalDays(0, 0), 1, 'Хоног: 0 = хамгийн багадаа 1');
+eq(F.orderRentalDays({ starts_at: '2026-08-28', stops_at: '2026-08-30' }), 2, 'orderRentalDays: 28→30 = 2 хоног');
+eq(F.orderRentalDays({ starts_at: '', stops_at: '' }), 1, 'orderRentalDays: огноогүй = 1');
+
+// 12) salaryNet — цэвэр цалин (НДШ 11.5% + ХХОАТ 10%)
+{
+  const r = F.salaryNet(1000000, true);
+  eq(r.ndsh, 115000, 'Цалин: НДШ 11.5% (1сая → 115,000)');
+  eq(r.pit, 88500, 'Цалин: ХХОАТ 10% үлдэгдлээс (88,500)');
+  eq(r.net, 796500, 'Цалин: цэвэр дүн (796,500)');
+}
+eq(F.salaryNet(1000000, false).net, 1000000, 'Цалин: суутгалгүй ажилтан → цэвэр = нийт');
+
+// 13) salaryNextYm — дараагийн сар (жил дамжина)
+eq(F.salaryNextYm('2026-06'), '2026-07', 'Дараа сар: 2026-06 → 2026-07');
+eq(F.salaryNextYm('2026-12'), '2027-01', 'Дараа сар: 12 сар → дараа жилийн 1 сар');
+
+// 14) Огноо давхцал — давхар захиалгын гол логик (_rangesOverlap)
+ok(F._rangesOverlap('2026-08-28', '2026-08-30', '2026-08-29', '2026-08-31') === true, 'Давхцал: 28-30 ба 29-31 → давхцана');
+ok(F._rangesOverlap('2026-08-01', '2026-08-05', '2026-08-10', '2026-08-15') === false, 'Давхцал: 1-5 ба 10-15 → давхцахгүй');
+ok(F._rangesOverlap('2026-08-01', '2026-08-10', '2026-08-10', '2026-08-15') === true, 'Давхцал: нэг өдөр шүргэлцэх = давхцана (инклюзив)');
+
+// 15) НӨАТ туслах логик (тулгалт)
+eq(F.vatNum('1,234.5'), 1234.5, 'vatNum: таслалтай тоо');
+eq(F.vatNum('₮5,000'), 5000, 'vatNum: тэмдэгттэй');
+eq(F.vatNum('abc'), 0, 'vatNum: тоо биш → 0');
+eq(F.vatNorm('Түшиг ХХК'), 'түшиг', 'vatNorm: ХХК-г хасна');
+eq(F.vatNorm('ABC Group LLC'), 'abc', 'vatNorm: group/llc хасна');
+eq(F.vatRegNorm('РД: 1234567'), '1234567', 'vatRegNorm: зөвхөн цифр');
+ok(F.vatDateIso('2026-08-28').indexOf('2026-08-28T') === 0, 'vatDateIso: огноо ISO болгоно');
+eq(F.vatDateIso(''), '', 'vatDateIso: хоосон → хоосон');
+
+// 16) НӨАТ нэр таарах — ХАТУУ (нэг ерөнхий үг хангалтгүй)
+ok(F.vatNameMatch('Түшиг ХХК', 'Түшиг ХХК') === true, 'vatNameMatch: яг таарна');
+ok(F.vatNameMatch('Ирээдүйн Хөгжил', 'Хөгжил Ирээдүйн') === true, 'vatNameMatch: 2 гол үг таарвал (эрэмбэ хамаагүй)');
+ok(F.vatNameMatch('Гэрэл групп', 'Гэрэл төв') === false, 'vatNameMatch: 1 л гол үг таарвал ХАРГАЛЗАХГҮЙ (хатуу)');
+ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatch: огт өөр нэр');
+
+// 17) НӨАТ авто оноо — РД+нэр+дүн+огноо таарвал өндөр
+{
+  const rec = { reg: '1234567', name: 'Түшиг ХХК', total: 500000, net: 450000, dt: '2026-08-28' };
+  const strong = F.vatAutoScore(rec, { reg: '1234567', name: 'Түшиг', amount: 500000, date: '2026-08-28' });
+  const weak = F.vatAutoScore(rec, { reg: '9999999', name: 'Огт өөр', amount: 12345, date: '2020-01-01' });
+  ok(strong >= 20, 'vatAutoScore: РД+нэр+дүн+огноо таарвал өндөр оноо (≥20)');
+  ok(weak < strong, 'vatAutoScore: таарахгүй бол бага оноо');
 }
 
 // ═══════════════════ ДҮН ═══════════════════

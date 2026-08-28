@@ -5719,6 +5719,8 @@ function productStockByName(name) {
 }
 // Нөөц ЭЗЛЭХ статус: төлбөр төлөгдсөнөөс (reserved) гаргах хүртэл. Буцаж ирвэл (stopped/archived) чөлөөлнө.
 const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'];
+// Хоёр огнооны муж давхцаж байгаа эсэх (a=[s..e], b=[os..oe], инклюзив). Давхар захиалгын гол логик.
+function _rangesOverlap(s, e, os, oe) { return s <= oe && os <= e; }
 function bookedQtyForRange(name, start, end, excludeOrderNo) {
   const n = _normProdName(name);
   const s = String(start || '').slice(0, 10), e = String(end || '').slice(0, 10);
@@ -5729,7 +5731,7 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
     if (!_ORDER_OCCUPYING.includes(String(o.status))) continue;
     const os = String(o.starts_at || '').slice(0, 10), oe = String(o.stops_at || '').slice(0, 10);
     if (!os || !oe) continue;
-    if (!(s <= oe && os <= e)) continue;   // огнооны давхцал
+    if (!_rangesOverlap(s, e, os, oe)) continue;   // огнооны давхцал
     for (const it of (o.items || [])) {
       const q = Number(it.qty) || 0;
       if (_normProdName(it.name) === n) { total += q; continue; }   // шууд таарах

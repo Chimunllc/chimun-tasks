@@ -803,8 +803,10 @@
     padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
     box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
   }
+  /* Товчны ТОО хэдэн ч байсан НЭГ мөрөнд тэнцүү хуваагдана. Хатуу 4 багана байсан үед
+     5 дахь товч ("Цэс") доош унаж, тууз 2 мөр болж FAB-тай давхцдаг байсан. */
   .mobile-bottom-nav-inner {
-    display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px;
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
   }
   .mobile-nav-item {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -813,6 +815,13 @@
     border: none; background: transparent;
   }
   .mobile-nav-item .icon { font-size: 20px; line-height: 1; }
+  /* Нэр мөр таслахгүй — багана нарийссан ч 1 мөрөнд багтана */
+  .mobile-nav-item span { white-space: nowrap; }
+  /* Нарийн утас (iPhone SE/mini) — 5 товч багтахын тулд бага зэрэг жижигрүүлнэ */
+  @media (max-width: 380px) {
+    .mobile-nav-item { font-size: 9.5px; padding: 8px 1px; }
+    .mobile-bottom-nav .nav-svg { width: 21px; height: 21px; }
+  }
   .mobile-nav-item.active { color: var(--primary); }
   .mobile-nav-item .badge {
     position: absolute; margin-top: -28px; margin-left: 14px;

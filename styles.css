@@ -4961,19 +4961,34 @@ body.role-daily #add-project { display: none !important; }
 
 /* ─── M-Event Захиалга view ─────────────────────────────── */
 .orders-wrap { display: grid; gap: 14px; padding: 4px 2px 24px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
-.order-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); }
-.order-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-.order-no { font-weight: 700; font-size: 14px; color: var(--text); }
-.order-total { font-weight: 700; font-size: 16px; color: var(--primary); white-space: nowrap; }
+.order-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); }
+.order-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 9px; }
+.order-no { font-weight: 600; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.order-total { font-weight: 800; font-size: 18px; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .order-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
 .order-badge.os-new { background: var(--info-soft); color: var(--info); }
 .order-badge.os-ok { background: var(--primary-soft); color: var(--primary-hover); }
 .order-badge.os-prep { background: var(--warn-soft); color: var(--warn); }
 .order-badge.os-done { background: var(--ok-soft); color: var(--ok); }
 .order-badge.os-cancel { background: var(--danger-soft); color: var(--danger); }
-.order-cust { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-.order-cust a { color: var(--primary); text-decoration: none; font-weight: 600; }
-.order-meta { font-size: 12px; color: var(--muted); margin: 1px 0; line-height: 1.5; }
+.order-cust { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -.01em; }
+.order-cust b { font-weight: 700; }
+.order-cust a { color: var(--primary); text-decoration: none; font-weight: 500; font-size: 13px; }
+.order-meta { font-size: 12.5px; color: var(--muted); margin: 2px 0; line-height: 1.55; }
+.order-meta b { color: var(--text-soft); font-weight: 600; }
+.order-period { color: var(--text-soft); font-weight: 500; }
+.order-period b { color: var(--text); }
+/* Төлбөрийн самбар — захиалгын гол мэдээлэл, тод хайрцгаар */
+.order-pay { margin: 10px 0 4px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; background: var(--panel-hover); }
+.order-pay.owe { background: color-mix(in srgb, var(--danger) 6%, var(--panel)); border-color: color-mix(in srgb, var(--danger) 20%, var(--border)); }
+.order-pay.paid { background: color-mix(in srgb, var(--ok, #16a34a) 7%, var(--panel)); border-color: color-mix(in srgb, var(--ok, #16a34a) 20%, var(--border)); }
+.op-grid { display: flex; gap: 26px; }
+.op-cell { display: flex; flex-direction: column; gap: 2px; }
+.op-lbl { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.op-val { font-size: 14.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.order-pay.owe .op-bal { color: var(--danger); }
+.order-pay.paid .op-bal { color: var(--ok, #16a34a); }
+.op-receipt { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .order-items { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
 .order-items th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); padding: 4px 6px; }
 .order-items td { padding: 4px 6px; border-bottom: 1px solid var(--border); color: var(--text-soft); }

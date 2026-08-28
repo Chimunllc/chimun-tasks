@@ -14333,13 +14333,18 @@ function bqOrderCard(o) {
   const profitRow = _oExp.n
     ? `<div class="order-meta">Зардал (${_oExp.n}): <b>${fmtMoney(_oExp.sum)}</b> · Ашиг: <b style="color:${(total - _oExp.sum) >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtMoney(total - _oExp.sum)}</b></div>`
     : '';
-  // Төлбөрийн мөр — Нийт · Төлсөн · Үлдэгдэл (цуцлахаас бусдад)
-  const payRow = (total > 0 && st !== 'canceled')
-    ? `<div class="order-meta">Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
+  // Төлбөрийн самбар — Төлсөн · Үлдэгдэл тод хайрцгаар (нийт нь толгойд бий). Цуцлахад нуух.
+  // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо (самбар дотор дэд мөр).
+  const _payReceipt = (paid > 0 && o.paid_ref && st !== 'canceled')
+    ? (() => { const _rc = (typeof parsePaidRef === 'function') ? parsePaidRef(o.paid_ref) : []; const _snd = _rc.map(r => r.sender).filter(Boolean).join(', ') || String(o.paid_ref).replace(/\s+/g, ' ').slice(0, 44); return `<div class="op-receipt" title="${escapeHtml(String(o.paid_ref))}">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}${_snd ? ' · ' + escapeHtml(_snd) : ''}${_rc.length > 1 ? ` (${_rc.length})` : ''}</div>`; })()
     : '';
-  // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо харагдана (NOMAAD шиг)
-  const payMeta = (paid > 0 && o.paid_ref && st !== 'canceled')
-    ? (() => { const _rc = (typeof parsePaidRef === 'function') ? parsePaidRef(o.paid_ref) : []; const _snd = _rc.map(r => r.sender).filter(Boolean).join(', ') || String(o.paid_ref).replace(/\s+/g, ' ').slice(0, 44); return `<div class="order-meta" style="color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(String(o.paid_ref))}">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}${_snd ? ' · ' + escapeHtml(_snd) : ''}${_rc.length > 1 ? ` (${_rc.length})` : ''}</div>`; })()
+  const payPanel = (total > 0 && st !== 'canceled')
+    ? `<div class="order-pay ${bal > 0 ? 'owe' : 'paid'}">
+        <div class="op-grid">
+          <div class="op-cell"><span class="op-lbl">Төлсөн</span><span class="op-val">${fmtMoney(paid)}</span></div>
+          <div class="op-cell"><span class="op-lbl">Үлдэгдэл</span><span class="op-val op-bal">${bal > 0 ? fmtMoney(bal) : 'Бүрэн ✓'}</span></div>
+        </div>${_payReceipt}
+      </div>`
     : '';
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
   const _ci = isApp ? custInfoOf(o.note) : {};
@@ -14396,9 +14401,8 @@ function bqOrderCard(o) {
     ${ciHtml}
     ${delivMeta}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
-    <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
-    ${payRow}
-    ${payMeta}
+    <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
+    ${payPanel}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}

@@ -13949,6 +13949,9 @@ function openNewOrder(editOrder) {
   const _custNm = String((editOrder && editOrder.customer) || '').trim();
   const _autoCompany = _ci0.company || (_vr0 && _vr0.buyer_name ? String(_vr0.buyer_name).trim() : '') || ((_payerNm && _payerNm.toLowerCase() !== _custNm.toLowerCase()) ? _payerNm : '');
   const _autoReg = _ci0.reg || (_vr0 && _vr0.buyer_reg ? String(_vr0.buyer_reg).trim() : '');
+  // Түрээслэгдсэн/гарсан захиалга → бараа + эхлэх огноо ТҮГЖИНЭ (гарсан барааны бүртгэл хамгаалагдана).
+  // Бусад (холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл) засагдана.
+  const _locked = isEdit && ['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || ''));
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
@@ -13983,9 +13986,9 @@ function openNewOrder(editOrder) {
       <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
       <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
-    <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
+    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf1d9;border-radius:8px;padding:8px 11px;margin:10px 0 8px;">🔒 Түрээслэгдсэн тул <b>бараа + эхлэх огноо</b> түгжсэн (гарсан бүртгэл хамгаалагдана). Холбоо / РД / төлбөр / дуусах огноо / тэмдэглэл засаж болно.</div>` : `<div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
     <div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
-    <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>
+    <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>`}
     <div style="font-size:12px;font-weight:700;margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:12px;"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
@@ -14031,9 +14034,9 @@ function openNewOrder(editOrder) {
       return `<button type="button" data-add="${escapeHtml(p.sku || p.name)}" style="border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:4px;cursor:pointer;text-align:left;font-size:10px;color:var(--text);">${ph}<div style="font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div><div style="color:var(--muted);">${fmtMoney(Number(p.price) || 0)}</div></button>`;
     }).join('') || `<div style="grid-column:1/-1;color:var(--muted);font-size:12px;text-align:center;padding:12px;">Бараа олдсонгүй</div>`;
   }
-  renderCatalog();
-  $('#no-prodsearch').addEventListener('input', renderCatalog);
-  catalog.addEventListener('click', e => {
+  if (catalog) renderCatalog();
+  $('#no-prodsearch')?.addEventListener('input', renderCatalog);
+  catalog?.addEventListener('click', e => {
     const b = e.target.closest('[data-add]'); if (!b) return;
     const p = (state.products || []).find(x => (x.sku || x.name) === b.dataset.add); if (!p) return;
     // Нэгтгэх түлхүүр ЗААВАЛ утгатай байх — эс бөгөөс sku-гүй хоёр өөр бараа
@@ -14051,9 +14054,9 @@ function openNewOrder(editOrder) {
     itemsBox.innerHTML = items.length ? items.map((it, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
       ${it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<span style="width:34px;height:34px;border-radius:6px;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">📦</span>`}
       <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.name || '')}</div>
-        <div style="display:flex;align-items:center;gap:4px;margin-top:2px;color:var(--muted);font-size:11px;"><input type="number" min="1" value="${Number(it.qty) || 1}" data-iq="${i}" style="width:46px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"> × <input type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}" style="width:92px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"></div></div>
+        <div style="display:flex;align-items:center;gap:4px;margin-top:2px;color:var(--muted);font-size:11px;"><input type="number" min="1" value="${Number(it.qty) || 1}" data-iq="${i}"${_locked ? ' disabled' : ''} style="width:46px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"> × <input type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} style="width:92px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"></div></div>
       <b style="font-size:12px;font-variant-numeric:tabular-nums;" data-iamt="${i}">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
-      <button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:13px;color:var(--danger);">✕</button>
+      ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:13px;color:var(--danger);">✕</button>`}
     </div>`).join('') : `<div style="color:var(--muted);font-size:12px;padding:6px 0;">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
   }
   renderItems();
@@ -14133,6 +14136,7 @@ function openNewOrder(editOrder) {
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   });
   recalc();
+  if (_locked) { ['#no-start', '#no-start-h'].forEach(s => { const el = $(s); if (el) { el.disabled = true; el.style.opacity = '.55'; el.style.cursor = 'not-allowed'; el.title = 'Түрээслэгдсэн — өөрчлөгдөхгүй'; } }); }
 
   $('#no-save').onclick = async (e) => {
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }

@@ -3221,6 +3221,7 @@ function render() {
   if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
   if (state.view === 'marketing' && !canSeeMarketing()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
+  if (state.view === 'vat' && !canSeeVat()) state.view = 'mine';
   // Тайлан = аналитик төв: Багийн ачаалал ба Түрээсийн түүх нь Тайлан доторх таб болов
   if (state.view === 'history') { if (canSeeHistory()) { state.reportsTab = 'history'; state.view = 'reports'; } else state.view = 'mine'; }
   if (state.view === 'workload') { if (canSeeWorkload()) { state.reportsTab = 'workload'; state.view = 'reports'; } else state.view = 'mine'; }
@@ -3383,12 +3384,15 @@ function renderSidebar() {
       slens.querySelectorAll('[data-slens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.slens)));
     } else slens.style.display = 'none';
   }
+  // НӨАТ тайлан — CEO / бүх санхүү хардаг хүн (эсвэл эрх олгогдсон).
+  const vatNav = document.getElementById('nav-vat');
+  if (vatNav) vatNav.style.display = canSeeVat() ? '' : 'none';
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-products']);
-  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
   _setGrp('nav-group-analytics', ['nav-reports']);
@@ -3414,6 +3418,7 @@ function renderTitle() {
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
+    vat:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 14l6-6"/><circle cx="9.5" cy="8.5" r="1.5"/><circle cx="14.5" cy="13.5" r="1.5"/></svg>', 'НӨАТ тайлан', 'Борлуулалтын НӨАТ баримт — захиалгатай тулгах, дэлгэрэнгүй анализ'],
     access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Ажилчид', 'Ажилтан, албан тушаал & эрх, цалин'],
     salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
     attendance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>', 'Ирц', 'QR-аар ирц бүртгэх — ажилчид утсаараа уншуулна'],
@@ -3513,6 +3518,11 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderReceivables();
     attachReceivablesHandlers();
+    return;
+  } else if (state.view === 'vat') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    renderVatView(wrap);
     return;
   } else if (state.view === 'access') {
     if (tableHead) tableHead.style.display = 'none';
@@ -7680,6 +7690,7 @@ const PERM_MENUS = [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
+  { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 function normRole(role) { return String(role || '').trim().toLowerCase(); }
@@ -7723,6 +7734,7 @@ function canSeeReceivables() { return canAccessView('receivables', false); }
 function canSeeReports() { return canAccessView('reports', () => canSeeAllFinance()); }
 // Маркетинг — эрхийн системээр (role_perms/member_perms). Тохируулаагүй бол CEO/менежер (level≥80) — хатуу код БИШ, зөвхөн fallback.
 function canSeeMarketing() { return canAccessView('marketing', () => state.isCEO || (state.myLevel || 0) >= 80); }
+function canSeeVat() { return canAccessView('vat', () => state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())); }
 
 /* ═══════════ БАГИЙН АЧААЛАЛ — удирдлага хүн бүрийн идэвхтэй ажлыг нэг дэлгэцээс ═══════════
    Хэн юу хийж байгаа, ажил давхцаж буй эсэхийг харна. Идэвхтэй ажлыг хариуцагчаар бүлэглэж,
@@ -16319,6 +16331,94 @@ function vatExportExcel(list) {
     const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'НӨАТ');
     XLSX.writeFile(wb, 'НӨАТ-тайлан-' + todayStr() + '.xlsx');
   }).catch(() => showToast('Excel сан ачаалж чадсангүй', 'error'));
+}
+
+// НӨАТ тайлан — санхүүгийн меню доторх дэлгэрэнгүй анализ view
+function renderVatView(wrap) {
+  if (state.appOrders === undefined && typeof loadAppOrders === 'function') { loadAppOrders(); }
+  if (!Array.isArray(state.vatReceipts)) {
+    wrap.innerHTML = '<div style="padding:50px;text-align:center;color:var(--muted);">Ачаалж байна…</div>';
+    loadVatReceipts().then(() => { if (state.view === 'vat') render(); });
+    return;
+  }
+  const R = state.vatReceipts;
+  const N = v => Number(v) || 0;
+  const totSales = R.reduce((s, r) => s + N(r.total), 0);
+  const totVat = R.reduce((s, r) => s + N(r.vat), 0);
+  const mR = R.filter(r => r.matched_id), uR = R.filter(r => !r.matched_id);
+  const mSales = mR.reduce((s, r) => s + N(r.total), 0), uSales = totSales - mSales;
+  const mVat = mR.reduce((s, r) => s + N(r.vat), 0), uVat = totVat - mVat;
+  const pct = totVat > 0 ? Math.round(mVat / totVat * 100) : 0;
+
+  // Сар бүрээр
+  const byM = {};
+  R.forEach(r => { const m = String(r.dt || '').slice(0, 7) || '—'; (byM[m] = byM[m] || { n: 0, sales: 0, vat: 0, mvat: 0 }); byM[m].n++; byM[m].sales += N(r.total); byM[m].vat += N(r.vat); if (r.matched_id) byM[m].mvat += N(r.vat); });
+  const months = Object.keys(byM).filter(m => m !== '—').sort().reverse();
+  const maxMVat = Math.max(1, ...months.map(m => byM[m].vat));
+
+  // Топ худалдан авагч (НӨАТ-аар)
+  const byB = {};
+  R.forEach(r => { const k = (r.buyer_name || '?') + '|' + (r.buyer_reg || ''); (byB[k] = byB[k] || { name: r.buyer_name || '?', reg: r.buyer_reg || '', n: 0, sales: 0, vat: 0 }); byB[k].n++; byB[k].sales += N(r.total); byB[k].vat += N(r.vat); });
+  const topB = Object.values(byB).sort((a, b) => b.vat - a.vat).slice(0, 12);
+
+  const kpi = (label, val, sub, accent) => `<div style="background:${accent ? '#e8f2ec' : 'var(--panel)'};border:1px solid var(--border);border-radius:14px;padding:14px 16px;">
+    <div style="font-size:12px;color:${accent ? '#1e7a55' : 'var(--muted)'};">${label}</div>
+    <div style="font-size:22px;font-weight:800;margin-top:3px;color:${accent ? '#1e7a55' : 'var(--text)'};">${val}</div>
+    ${sub ? `<div style="font-size:11.5px;margin-top:3px;">${sub}</div>` : ''}</div>`;
+
+  wrap.innerHTML = `
+    <div style="max-width:1100px;margin:0 auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="font-size:13px;color:var(--muted);">Борлуулалтын НӨАТ баримт (ebarimt) — захиалгатай тулгах, дэлгэрэнгүй анализ</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="vat-open-recon" class="btn btn-primary" style="padding:8px 15px;font-size:13px;">🧾 Баримт оруулах / тулгах</button>
+          <button id="vat-view-export" class="btn" style="padding:8px 13px;font-size:13px;">📊 Excel татах</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+        ${kpi('Нийт баримт', R.length, `<span style="color:#1e7a55;">✓${mR.length} тулгасан</span> · <span style="color:#9a6a00;">${uR.length} үлдсэн</span>`)}
+        ${kpi('Нийт борлуулалт', fmtMoney(totSales), `<span style="color:#1e7a55;">✓${fmtMoney(mSales)}</span> · <span style="color:#9a6a00;">${fmtMoney(uSales)}</span>`)}
+        ${kpi('Төлөх НӨАТ', fmtMoney(totVat), `<span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span>`, true)}
+        ${kpi('Тулгасан НӨАТ', pct + '%', `${fmtMoney(mVat)} / ${fmtMoney(totVat)}`)}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;">
+          <div style="font-weight:800;font-size:14px;margin-bottom:12px;">📅 Сар бүрийн НӨАТ</div>
+          ${months.length ? months.map(m => {
+            const d = byM[m]; const mp = d.vat > 0 ? Math.round(d.mvat / d.vat * 100) : 0;
+            return `<div style="margin-bottom:11px;">
+              <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;"><b>${m}</b><span>${fmtMoney(d.vat)} <span style="color:var(--muted);">· ${d.n} баримт</span></span></div>
+              <div style="height:8px;background:var(--bg,#eee);border-radius:5px;overflow:hidden;"><div style="height:100%;width:${Math.round(d.vat / maxMVat * 100)}%;background:linear-gradient(90deg,#1e7a55 ${mp}%, #d9b64a ${mp}%);border-radius:5px;"></div></div>
+              <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">Тулгасан ${mp}% (${fmtMoney(d.mvat)})</div>
+            </div>`;
+          }).join('') : '<div style="color:var(--muted);font-size:13px;">Баримт алга.</div>'}
+        </div>
+
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;">
+          <div style="font-weight:800;font-size:14px;margin-bottom:12px;">🏢 Топ худалдан авагч (НӨАТ-аар)</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+            <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Худалдан авагч</th><th style="padding:4px 6px;text-align:right;">Баримт</th><th style="padding:4px 6px;text-align:right;">НӨАТ</th></tr></thead>
+            <tbody>${topB.map(b => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(b.name)}<div style="font-size:10px;color:var(--muted);">${escapeHtml(b.reg)}</div></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${b.n}</td><td style="padding:6px;text-align:right;font-weight:700;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(b.vat)}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--muted);">Алга</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div style="font-weight:800;font-size:14px;">⚠ Тулгаагүй баримт (${uR.length}) · ${fmtMoney(uVat)} НӨАТ</div>
+          <button id="vat-open-recon2" class="btn" style="padding:5px 12px;font-size:12px;">Тулгах →</button>
+        </div>
+        ${uR.length ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+          <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Огноо</th><th style="padding:4px 6px;">Худалдан авагч</th><th style="padding:4px 6px;text-align:right;">Нийт дүн</th><th style="padding:4px 6px;text-align:right;">НӨАТ</th></tr></thead>
+          <tbody>${uR.slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || ''))).slice(0, 30).map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;white-space:nowrap;">${escapeHtml(String(r.dt || '').slice(0, 10))}</td><td style="padding:6px;">${escapeHtml(r.buyer_name || '')}</td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(r.total)}</td><td style="padding:6px;text-align:right;color:#9a6a00;font-variant-numeric:tabular-nums;">${fmtMoney(r.vat)}</td></tr>`).join('')}</tbody>
+        </table>${uR.length > 30 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">…бас ${uR.length - 30} баримт. «Тулгах» дараад бүгдийг харна.</div>` : ''}` : '<div style="color:#1e7a55;font-size:13px;">🎉 Бүх баримт тулгагдсан!</div>'}
+      </div>
+    </div>`;
+
+  wrap.querySelector('#vat-open-recon')?.addEventListener('click', openVatReportModal);
+  wrap.querySelector('#vat-open-recon2')?.addEventListener('click', openVatReportModal);
+  wrap.querySelector('#vat-view-export')?.addEventListener('click', () => vatExportExcel(R));
 }
 
 function renderFinanceReport(wrap) {

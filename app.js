@@ -14023,7 +14023,7 @@ function openNewOrder(editOrder) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
       <label class="no-lbl">Хөнгөлөлт<div style="display:flex;gap:4px;margin-top:3px;"><select id="no-disctype" style="flex:0 0 56px;margin-top:0;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0" style="flex:1;margin-top:0;"></div></label>
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
-      ${isEdit ? `<label class="no-lbl">Төлсөн<input id="no-paid" class="money-input" type="text" inputmode="numeric" value="${moneyFmtInput(editOrder.paid_mnt || 0)}"></label>` : ''}
+      ${isEdit ? `<label class="no-lbl">Төлсөн (банкны баримтаар)<div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;">${fmtMoney(editOrder.paid_mnt || 0)}</div><span style="font-size:10.5px;color:var(--muted);">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ</span></label>` : ''}
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
@@ -14139,7 +14139,7 @@ function openNewOrder(editOrder) {
     $('#no-delivrow').style.display = dlv.zone === 'pickup' ? 'none' : 'flex';
     $('#no-delivfee').textContent = fmtMoney(dlv.fee);
     $('#no-total').textContent = fmtMoney(total);
-    if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - moneyVal($('#no-paid'))));
+    if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - (Number(editOrder.paid_mnt) || 0)));
   }
   // Хүргэлтийн бүс солих — км/хаяг талбар харуулах/нуух + дахин тооцоо
   $('#no-delivzone').addEventListener('change', () => {
@@ -14156,7 +14156,6 @@ function openNewOrder(editOrder) {
   if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
   $('#no-vat').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
-  if (isEdit) $('#no-paid').addEventListener('input', recalc);
   recalc();
 
   $('#no-save').onclick = async (e) => {
@@ -14189,10 +14188,10 @@ function openNewOrder(editOrder) {
       number: isEdit ? editOrder.number : nextOrderNumber(),
       contract_no: isEdit ? editOrder.contract_no : nextContractNo(),
       customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: isDeliv ? addr : '',
-      status: isEdit ? ((moneyVal($('#no-paid')) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft',
+      status: isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft',
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
       note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),

@@ -5142,12 +5142,14 @@ function boardOrderRow(e, k, todayStr) {
   const _rowOpen = state.ordersRowOpen instanceof Set && state.ordersRowOpen.has(String(o.id));
   // НӨАТ статус — НОМААД шиг тод шошго (🧾 НӨАТ ✓/дутуу/илүү, өнгөт дэвсгэр)
   const vatChip = (typeof vatBadge === 'function') ? vatBadge(o.number, o.total_mnt) : '';
-  return `<details class="board-order ${urgCls}" data-row-oid="${id}"${_rowOpen ? ' open' : ''}><summary class="board-row">
+  const _cxReq = (typeof cancelReqOf === 'function') ? cancelReqOf(o.note) : null;
+  const cxChip = _cxReq ? `<span title="Цуцлах хүсэлт${_cxReq.reason ? ': ' + escapeHtml(_cxReq.reason) : ''}${state.isCEO ? ' — дэлгээд батал/татгалз' : ''}" style="background:#fde8cf;color:#9a6a00;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;" onclick="event.stopPropagation()">⏳ Цуцлах хүсэлт</span>` : '';
+  return `<details class="board-order ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     ${selBox}<span class="br-num">#${o.number ?? ''}</span>
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
     <span class="br-badge">${deliv}</span>
     <span class="br-date">${dstr || '—'}</span>
-    ${payWarn}${vatChip}
+    ${payWarn}${vatChip}${cxChip}
     <span class="br-amt">${fmtMoney(o.total_mnt || 0)}</span>
     ${actBtn}
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
@@ -5530,6 +5532,9 @@ function attachOrdersHandlers() {
     bqUpdateStatus(oid, to, { confirm: `#${o ? (o.number ?? '') : ''} — «${actLabel}» гэж тэмдэглэх үү?`, okText: actLabel, toast: `${actLabel} ✓` });
   }));
   document.querySelectorAll('[data-bq-cancel]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.bqCancel)));
+  document.querySelectorAll('[data-cx-request]').forEach(b => b.addEventListener('click', () => requestOrderCancel(b.dataset.cxRequest)));
+  document.querySelectorAll('[data-cx-approve]').forEach(b => b.addEventListener('click', () => approveOrderCancel(b.dataset.cxApprove)));
+  document.querySelectorAll('[data-cx-reject]').forEach(b => b.addEventListener('click', () => rejectOrderCancel(b.dataset.cxReject)));
 
   // Түүх захиалгын бараа задлах (read-only карт)
   document.querySelectorAll('.bqa-items-toggle').forEach(btn => btn.addEventListener('click', async () => {
@@ -13833,9 +13838,54 @@ function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|
 const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
 function cancelReasonOf(note) { const m = String(note || '').match(_CX_RE); return m ? m[1].trim() : ''; }
 function setCancelReason(note, reason) {
-  const base = String(note || '').replace(_CX_RE, '').trim();
+  const base = String(note || '').replace(_CX_RE, '').replace(_CXRQ_RE, '').trim();
   const r = String(reason || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
   return (base ? base + ' ' : '') + `⟦CX|${r}⟧`;
+}
+// Цуцлах ХҮСЭЛТ (менежер илгээнэ, CEO батална) — ⟦CXRQ|хэн|огноо|шалтгаан⟧ (4 үсэг тул cleanAppNote нуудаг)
+const _CXRQ_RE = /⟦CXRQ\|([^|⟧]*)\|([^|⟧]*)\|([^⟧]*)⟧/;
+function cancelReqOf(note) { const m = String(note || '').match(_CXRQ_RE); return m ? { by: m[1], date: m[2], reason: m[3].trim() } : null; }
+function setCancelReq(note, by, date, reason) {
+  const base = String(note || '').replace(_CXRQ_RE, '').trim();
+  const r = String(reason || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (base ? base + ' ' : '') + `⟦CXRQ|${by}|${date}|${r}⟧`;
+}
+function clearCancelReq(note) { return String(note || '').replace(_CXRQ_RE, '').replace(/\s{2,}/g, ' ').trim(); }
+// Захиалгын note-г шинэчлэх (статус хөндөхгүй) — app_orders/bq_orders routing
+async function patchOrderNote(oid, note) {
+  let o = (state.bqOrders || []).find(x => String(x.id) === String(oid)); const table = o ? 'bq_orders' : 'app_orders';
+  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, { method: 'PATCH', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ note, updated_at: new Date().toISOString() }) }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+}
+// Менежер — цуцлах хүсэлт илгээх (заавал шалтгаантай, CEO батална)
+async function requestOrderCancel(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)) || (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const reason = await showPrompt(`#${o.number ?? ''} захиалгыг цуцлах шалтгаанаа бичнэ үү. Хүсэлт CEO-д батлуулахаар илгээгдэнэ:`, { title: '✕ Цуцлах хүсэлт', okText: 'Хүсэлт илгээх', placeholder: 'Ж: харилцагч больсон, давхардсан…' });
+  if (reason == null) return;
+  if (!reason.trim()) { showToast('Шалтгаанаа бичнэ үү', 'warn', 2500); return; }
+  const note = setCancelReq(o.note, state.me, new Date().toISOString().slice(0, 10), reason.trim());
+  const prev = o.note; o.note = note; render();
+  try { await patchOrderNote(oid, note); showToast('Цуцлах хүсэлт CEO-д илгээгдлээ', 'success', 2500); }
+  catch (e) { o.note = prev; render(); showToast('Хүсэлт илгээх алдаа: ' + e.message, 'error', 4000); }
+}
+// CEO — цуцлах хүсэлтийг батлах (→ цуцлагдана) эсвэл татгалзах
+async function approveOrderCancel(oid) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал батална', 'warn', 3000); return; }
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)) || (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return; const req = cancelReqOf(o.note);
+  if (!(await showConfirm(`#${o.number ?? ''} цуцлахыг батлах уу?\n\nШалтгаан: ${req ? req.reason : '—'}`, { okText: 'Батлах', danger: true }))) return;
+  o.note = clearCancelReq(o.note);   // хүсэлтийн token-г арилгаад
+  bqUpdateStatus(oid, 'canceled', { reason: (req && req.reason) || 'CEO баталсан', toast: 'Цуцлахыг баталлаа' });
+}
+async function rejectOrderCancel(oid) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал шийднэ', 'warn', 3000); return; }
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)) || (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  if (!(await showConfirm(`#${o.number ?? ''} цуцлах хүсэлтийг татгалзах уу? Захиалга хэвээр үлдэнэ.`, { okText: 'Татгалзах' }))) return;
+  const prev = o.note; o.note = clearCancelReq(o.note); render();
+  try { await patchOrderNote(oid, o.note); showToast('Цуцлах хүсэлтийг татгалзлаа', 'success', 2500); }
+  catch (e) { o.note = prev; render(); showToast('Алдаа: ' + e.message, 'error', 4000); }
 }
 
 // ── Хүргэлтийн төлбөр — байршлаар автомат (сайт+апп нэг томьёо) ──
@@ -14161,6 +14211,18 @@ function bqOrderCard(o) {
   // Захиалга ХААГДТАЛ засагдана (бараа нэмэх/хасах, тоо/үнэ өөрчлөх) — эвентийн үеэр бараа
   // нэмэгддэг тул гарсан/түрээслэгдсэн үед ч засах шаардлагатай. Дууссан/Архив/Цуцалсан л хаалттай.
   const appEditable = !['stopped', 'archived', 'canceled', 'done'].includes(st);
+  // Цуцлах урсгал: ноорог→шууд устгах; идэвхтэй→CEO шууд цуцлах / менежер хүсэлт→CEO батлах (заавал шалтгаантай)
+  let cxHtml = '';
+  { const req = cancelReqOf(o.note);
+    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : ''; }
+    else if (st !== 'canceled' && appActive) {
+      if (req) {
+        cxHtml = `<span style="font-size:11.5px;color:#9a6a00;font-weight:700;">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;
+        if (state.isCEO) cxHtml += `<button class="btn" data-cx-approve="${id}" style="padding:5px 11px;font-size:12px;color:#fff;background:var(--danger);border-color:var(--danger);">✓ Цуцлахыг батлах</button><button class="btn" data-cx-reject="${id}" style="padding:5px 11px;font-size:12px;">✕ Татгалзах</button>`;
+      } else if (state.isCEO) { cxHtml = `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>`; }
+      else if (can('orders.cancel')) { cxHtml = `<button class="btn" data-cx-request="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах хүсэлт</button>`; }
+    }
+  }
   const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
   const advCap = next ? (next.cap || 'orders.advance') : null;
@@ -14169,7 +14231,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st === 'draft' ? (can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : '') : (appActive && can('orders.cancel') ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>` : '')}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}

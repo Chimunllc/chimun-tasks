@@ -7852,7 +7852,7 @@ async function saveBankAccount(a) {
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_accounts?on_conflict=id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(a),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -7865,7 +7865,7 @@ async function saveBankCard(c) {
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_cards?on_conflict=id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(c),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));

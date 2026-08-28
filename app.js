@@ -5036,8 +5036,14 @@ function boardOrderRow(e, k, todayStr) {
   const dstr = String(dt || '').slice(5, 10).replace('-', '/');
   const bal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const payWarn = bal > 0 ? `<span class="br-paywarn" title="Үлдэгдэл ${escapeHtml(fmtMoney(bal))}">💵</span>` : '';
-  // Барьцаатай ба буцаагаагүй бол 🔒 — зөвхөн апп/M-Event (Booqable түүхийн барьцаа гадна эргэсэн)
-  const depWarn = (!!o._app && (Number(o.deposit_mnt) || 0) > 0 && !depositReturnFor(o.id)) ? `<span class="br-dep" title="Барьцаа ${escapeHtml(fmtMoney(o.deposit_mnt))} — буцаагаагүй">🔒</span>` : '';
+  // Барьцаа — жагсаалтад шууд текстээр (нээхгүйгээр): буцаасан бол ✓ Буцаасан, буцаагаагүй бол 🔒 Барьцаатай.
+  // Held зөвхөн апп/M-Event (Booqable түүхийн барьцаа гадна эргэсэн); буцаасан badge бүх эх сурвалжид.
+  const _depAmt = Number(o.deposit_mnt) || 0;
+  const _depRet = _depAmt > 0 ? depositReturnFor(o.id) : null;
+  const depWarn = _depAmt > 0
+    ? (_depRet ? `<span class="br-depchip dep-ret" title="Барьцаа буцаагдсан — хуулгаар баталгаажсан">✓ Буцаасан</span>`
+      : (!!o._app ? `<span class="br-depchip dep-hold" title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй">🔒 Барьцаатай</span>` : ''))
+    : '';
   const next = orderNextStep(o);
   const id = escapeHtml(String(o.id));
   let actBtn = '';
@@ -9744,17 +9750,25 @@ function linkedExpenseSum(type, id) {
 // Барьцаа буцаалт — «5810 Барьцаа буцаалт» ангилалтай, ЭНЭ захиалгад холбогдсон, хаагдсан (хуулгаар
 // баталгаажсан) санхүүгийн зарлага байвал = барьцаа буцаагдсан. Нягтлан хуулга тулгаж 5810-аар
 // ангилаад захиалгад холбоход л энэ илэрнэ (гар товшилтгүй, баримт-суурьтай).
-function depositReturnFor(orderId) {
-  if (!orderId) return null;
-  // Барьцаа буцаалт гэж таних: ангилал 5810, ЭСВЭЛ ангилал/зорилго/тайлбарт "барьцаа...буцаа" бий
-  // (хуучин бичлэгүүд 5800 эсвэл ангилалгүй ч зорилгод "1428 барьцаа буцаалт" гэж бичсэн байдаг)
-  const isDepRet = (r) => { const s = (String(r.category || '') + ' ' + String(r.purpose || '') + ' ' + String(r.justification || '')).toLowerCase(); return s.includes('5810') || (s.includes('барьцаа') && s.includes('буцаа')); };
-  const rec = (state.financeRequests || []).find(r =>
-    r.status === 'done' && r.link_type === 'order' && String(r.link_id) === String(orderId) && isDepRet(r));
-  if (!rec) return null;
-  const d = rec.executed_at || rec.due || rec.requested_at || '';
-  return { amount: Number(rec.amount) || 0, date: String(d).slice(0, 10), by: rec.createdBy || '' };
+// Барьцаа буцаалт гэж таних: ангилал 5810, ЭСВЭЛ ангилал/зорилго/тайлбарт "барьцаа...буцаа" бий
+// (хуучин бичлэгүүд 5800 эсвэл ангилалгүй ч зорилгод "1428 барьцаа буцаалт" гэж бичсэн байдаг)
+let _depRetIdx = null, _depRetIdxSrc = null, _depRetIdxLen = -1;
+function _buildDepRetIdx() {
+  const fr = state.financeRequests || [];
+  if (_depRetIdx && _depRetIdxSrc === fr && _depRetIdxLen === fr.length) return _depRetIdx;
+  const idx = new Map();
+  for (const r of fr) {
+    if (r.status !== 'done' || r.link_type !== 'order' || !r.link_id) continue;
+    const s = (String(r.category || '') + ' ' + String(r.purpose || '') + ' ' + String(r.justification || '')).toLowerCase();
+    if (!(s.includes('5810') || (s.includes('барьцаа') && s.includes('буцаа')))) continue;
+    const key = String(r.link_id);
+    if (!idx.has(key)) { const d = r.executed_at || r.due || r.requested_at || ''; idx.set(key, { amount: Number(r.amount) || 0, date: String(d).slice(0, 10), by: r.createdBy || '' }); }
+  }
+  _depRetIdx = idx; _depRetIdxSrc = fr; _depRetIdxLen = fr.length;
+  return idx;
 }
+// Захиалгад барьцаа буцаалт бүртгэгдсэн эсэх (кэшлэсэн индекс — мөр бүрд .find давтахгүй)
+function depositReturnFor(orderId) { if (!orderId) return null; return _buildDepRetIdx().get(String(orderId)) || null; }
 // Хуулгын гарах гүйлгээ БАРЬЦАА БУЦААЛТ мөн үү — утгад "барьцаа" + захиалгын дугаар байж,
 // тэр захиалга барьцаатай, дүн барьцаанаас хэтрээгүй бол таарна. Автомат ангилах/холбоход.
 function depositMatchForStmt(memo, amount) {

@@ -1,0 +1,9 @@
+{
+  "name": "chimun-app",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Чимун ХХК дотоод даалгавар — тестийн скрипт",
+  "scripts": {
+    "test": "node test/run.js"
+  }
+}

@@ -13983,6 +13983,7 @@ function openNewOrder(editOrder) {
   const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
   const _locked = isEdit && (['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || '')) || _paidFull);
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
+  const _sec = (t) => `<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:15px 2px 7px;">${t}</div>`;
 
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
@@ -13991,17 +13992,22 @@ function openNewOrder(editOrder) {
       <h2 style="margin:0;font-size:17px;">${isEdit ? '✎ Захиалга засах · #' + (editOrder.number ?? '') : '+ Шинэ захиалга'}</h2>
       <button class="btn" id="no-close" style="padding:5px 10px;">✕</button>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+    <div style="font-size:11.5px;color:var(--muted);margin:-2px 0 4px;">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
+    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf4e2;border:1px solid #f0e0b8;border-radius:9px;padding:8px 11px;margin:8px 0 4px;">🔒 Гарсан/төлөгдсөн — <b>мөнгөний нөхцөл түгжсэн</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо). Холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл засагдана.</div>` : ''}
+    ${_sec('Харилцагч')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
       <label class="no-lbl" style="grid-column:1/-1;">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
+    </div>
+    ${_sec('Хугацаа' + (isEdit ? ' · төлөв' : ''))}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
       <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
-      ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
+      ${isEdit ? `<label class="no-lbl" style="grid-column:1/-1;">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
     </div>
     <div style="background:var(--panel-hover);border-radius:10px;padding:8px 10px;margin-bottom:10px;">
       <div style="display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:end;">
@@ -14016,11 +14022,12 @@ function openNewOrder(editOrder) {
       <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
       <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
-    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf1d9;border-radius:8px;padding:8px 11px;margin:10px 0 8px;">🔒 Гарсан/төлөгдсөн тул <b>мөнгөний нөхцөл</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо) түгжсэн — төлсөн дүнтэй зөрөхгүй. Холбоо / РД / төлбөр / дуусах огноо / тэмдэглэл засаж болно.</div>` : `<div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
-    <div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
+    ${_sec('Бараа')}
+    ${_locked ? '' : `<div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
     <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>`}
-    <div style="font-size:12px;font-weight:700;margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
-    <div id="no-items" style="margin-bottom:12px;"></div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
+    <div id="no-items" style="margin-bottom:8px;"></div>
+    ${_sec('Төлбөр')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
       <label class="no-lbl">Хөнгөлөлт<div style="display:flex;gap:4px;margin-top:3px;"><select id="no-disctype" style="flex:0 0 56px;margin-top:0;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0" style="flex:1;margin-top:0;"></div></label>
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>

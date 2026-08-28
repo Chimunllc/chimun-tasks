@@ -13460,7 +13460,7 @@ async function advanceOrderFromTask(task) {
   const act = stageActionFor(String(o.status || ''), p.toStatus);
   const sm = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
   const photos = (task.completion_photos || []).filter(Boolean);
-  if (photos.length) sm[act.key] = Object.assign({}, sm[act.key], { photos, by: task.assignee || state.me, at: new Date().toISOString().slice(0, 10) });
+  if (photos.length) sm[act.key] = Object.assign({}, sm[act.key], { photos, by: task.assignee || state.me, at: new Date().toISOString() });
   await bqUpdateStatus(o.id, p.toStatus, { stageMeta: photos.length ? sm : undefined, toast: `Захиалга #${o.number ?? ''}: ${(BQ_STATUS[p.toStatus] || {}).label || ''} ✓`, byTask: true });
 }
 
@@ -13484,6 +13484,26 @@ const STAGE_ACTION = {
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
 const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив' };
+// Шатны цаг форматлах — бүтэн цагтай бол огноо+цаг (орон нутгийн), эс бол зөвхөн огноо
+function _stageTimeFmt(atISO) {
+  const s = String(atISO || ''); if (!s) return '';
+  if (!/T\d/.test(s)) return s.slice(0, 10).replace(/-/g, '.');
+  const d = new Date(s); if (isNaN(d)) return s.slice(0, 10).replace(/-/g, '.');
+  return `${d.getFullYear()}.${_pad2(d.getMonth() + 1)}.${_pad2(d.getDate())} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}`;
+}
+// Товлосон хугацаанд өгсөн/авсан уу — өгөх шат→starts_at, авах шат→stops_at (огноо+цаг note-оос)
+function _stageTiming(k, atISO, o) {
+  if (!/T\d/.test(String(atISO || ''))) return '';
+  const at = Date.parse(atISO); if (isNaN(at)) return '';
+  const isOut = ['dispatch', 'deliver', 'handover'].includes(k), isBack = ['retstart', 'received'].includes(k);
+  if (!isOut && !isBack) return '';
+  const t = (typeof parseOrderTimes === 'function' ? parseOrderTimes(o.note) : null) || { sh: 9, eh: 9 };
+  const dateStr = String((isOut ? o.starts_at : o.stops_at) || '').slice(0, 10); if (!dateStr) return '';
+  const sched = Date.parse(`${dateStr}T${_pad2(isOut ? t.sh : t.eh)}:00:00`); if (isNaN(sched)) return '';
+  const diffH = Math.round((at - sched) / 3600000), verb = isOut ? 'өгсөн' : 'авсан';
+  if (diffH <= 0) return ` · <span style="color:var(--ok);font-weight:600;">✓ хугацаандаа ${verb}${diffH <= -2 ? ` (${-diffH}ц эрт)` : ''}</span>`;
+  return ` · <span style="color:var(--danger);font-weight:600;">⚠ ${diffH}ц хоцорч ${verb}</span>`;
+}
 // Дамжлагын зураг + үнэлгээ — БҮХ ажилтанд харагдана (картын доор)
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
@@ -13493,7 +13513,7 @@ function stageMetaHtml(o) {
   return `<div class="order-stagemeta">${keys.map(k => {
     const e = sm[k]; const photos = (e.photos || []).filter(Boolean);
     const stars = e.rating ? `<span class="sm-stars" title="${e.ratedBy ? escapeHtml((memberName(e.ratedBy) || e.ratedBy) + ' үнэлэв') : ''}">${'★'.repeat(e.rating)}<span style="color:var(--border-strong);">${'★'.repeat(5 - e.rating)}</span></span>` : '';
-    return `<div class="sm-row"><div class="sm-head">${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${stars ? ' · ' + stars : ''}</div>${e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>` : ''}${photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : ''}</div>`;
+    return `<div class="sm-row"><div class="sm-head">${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>${e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>` : ''}${photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : ''}</div>`;
   }).join('')}</div>`;
 }
 function openStagePhoto(url) {
@@ -13549,7 +13569,7 @@ function openStageAdvanceModal(oid, to) {
   $('#sa-submit').onclick = async () => {
     $('#sa-submit').disabled = true;
     const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
-    const nowD = new Date().toISOString().slice(0, 10);
+    const nowD = new Date().toISOString();
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
     if (needPhoto) entry.photos = photos.slice();
     if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; }

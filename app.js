@@ -16066,13 +16066,13 @@ function vatCandFull(c) {
   const amt = Number(c.amount) || 0;
   if (amt <= 0) return false;   // дүнгүй бол хасахгүй
   const inv = vatForOrder(c.no).invoiced;
-  return inv + Math.max(1000, amt * 0.005) >= amt;   // бүрэн (эсвэл илүү) шивэгдсэн
+  return inv + 0.5 >= amt;   // бүрэн (эсвэл илүү) шивэгдсэн — 1₮ ч дутуу бол дүүрээгүй гэж үзнэ
 }
 function vatBadge(orderNo, orderTotal) {
   const info = vatForOrder(orderNo);
   if (!info.count) return '';
   const tot = Number(orderTotal) || 0;
-  const tol = Math.max(1000, tot * 0.005);
+  const tol = 0.5;
   const over = tot > 0 && info.invoiced > tot + tol;
   const full = tot > 0 && !over && info.invoiced + tol >= tot;
   const bg = over ? '#fbe4e2' : full ? '#e8f2ec' : '#fbf1d9';
@@ -16089,7 +16089,7 @@ function vatOrderRow(orderNo, orderTotal, type) {
   const tot = Number(orderTotal) || 0;
   const attachBtn = `<button onclick="openVatAttachFor('${type || 'nomaad'}','${escapeHtml(String(orderNo))}')" style="border:1px dashed #1e7a55;background:#f4faf6;color:#1e7a55;border-radius:7px;padding:2px 9px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">🧾 НӨАТ баримт ${info.count ? 'засах' : 'холбох'}</button>`;
   if (!info.count) return `<div class="order-meta" style="margin-top:4px;">${attachBtn}</div>`;
-  const tol = Math.max(1000, tot * 0.005);
+  const tol = 0.5;
   const over = tot > 0 && info.invoiced > tot + tol;
   const full = tot > 0 && !over && info.invoiced + tol >= tot;
   let statusHtml = '';
@@ -16408,7 +16408,7 @@ function renderVatView(wrap) {
     (ordInv[no] = ordInv[no] || { no, name: (c && c.name) || r.matched_label || no, amount: c ? N(c.amount) : 0, inv: 0, vat: 0, n: 0 });
     ordInv[no].inv += N(r.total); ordInv[no].vat += N(r.vat); ordInv[no].n++; });
   const overList = [], underList = [];
-  Object.values(ordInv).forEach(o => { if (o.amount <= 0) return; const tol = Math.max(1000, o.amount * 0.005);
+  Object.values(ordInv).forEach(o => { if (o.amount <= 0) return; const tol = 0.5;
     if (o.inv > o.amount + tol) overList.push({ ...o, diff: o.inv - o.amount });
     else if (o.inv < o.amount - tol) underList.push({ ...o, diff: o.amount - o.inv }); });
   overList.sort((a, b) => b.diff - a.diff); underList.sort((a, b) => b.diff - a.diff);

@@ -91,6 +91,10 @@ const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad
 const DEFAULT_MEVENT_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-quote-send';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
 const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rating';
+// Серверийн нэвтрэлт — PIN-г сервер талд шалгаж HMAC токен буцаана (браузерт PIN ирэхгүй);
+// session нь токеныг сервер талд баталгаажуулна (localStorage хуурамчлал таслах).
+const DEFAULT_LOGIN_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-login';
+const DEFAULT_SESSION_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-session';
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -791,6 +795,31 @@ async function loadTeamFromAPI() {
     console.warn('Staff sync failed, using cached/hardcoded TEAM:', e);
     return false;
   }
+}
+// Серверийн нэвтрэлт: утас+PIN → {ok:true, token, phone, level, name} эсвэл {ok:false, reason}.
+// Сүлжээ/endpoint алга бол null (→ дуудагч клиент fallback руу шилжинэ). PIN сервер талд шалгагдана.
+async function serverLogin(phone, pin) {
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_LOGIN_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: String(phone || '').replace(/\D/g, ''), pin: String(pin || '') }),
+    }, 12000);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return (d && typeof d.ok === 'boolean') ? d : null;
+  } catch (e) { return null; }   // endpoint байхгүй/сүлжээ → fallback
+}
+// Токеныг сервер талд баталгаажуулах: {valid:true, phone, level, name} эсвэл {valid:false}; сүлжээ алга бол null.
+async function serverVerifyToken(token) {
+  if (!token) return null;
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_SESSION_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }, 12000);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
 }
 function currentProjects() {
   // Бүх салбарын төслийг нэг жагсаалт болгож нэгтгэнэ — салбарын систем дотоод л үлдсэн.
@@ -21230,7 +21259,10 @@ function closeMobileSidebar() {
    3. Match success → setUser() + showApp() + bootApp().
    Note: Google OAuth removed 2026-05-17 — PIN auth is the only login flow. */
 
-function setUser(member, profile) {
+// auth (сонголт): { token, level } — серверийн нэвтрэлтээс. Байвал level СЕРВЕРЭЭС авна
+// (клиент TEAM-ийн level-д БИШ) — энэ нь эрхийн эх сурвалжийг серверт шилжүүлж, localStorage/TEAM
+// хуурамчлалаар CEO болохоос сэргийлнэ. Токен localStorage-д хадгалагдаж, restore-д баталгаажна.
+function setUser(member, profile, auth) {
   state.user = {
     ...member,
     email: profile.email || member.email || '',
@@ -21239,10 +21271,12 @@ function setUser(member, profile) {
   // Identity = утасны дугаар (давтагдашгүй, бүгдэд бий). Утасгүй бол email/нэр рүү уналт.
   // Өмнө нь email байсан тул и-мэйлгүй ажилтан хоосон болж, хүсэлт буруугаар CEO-д онооддог байсан.
   state.me = personKey(member);
-  // CEO эрх — level === 100-аар тогтооно. + FULL_ACCESS allowlist (CEO баталсан нэмэлт хүмүүс).
+  // CEO эрх — серверийн токен байвал СЕРВЕРИЙН level, эс бол клиент member.level (fallback).
   const _fullAccess = isFullAccessMember(member);
-  state.isCEO = ((member.level || 0) >= 100) || _fullAccess;
-  state.myLevel = _fullAccess ? 100 : (member.level || 0);
+  const _srvLevel = (auth && Number.isFinite(Number(auth.level))) ? Number(auth.level) : null;
+  const _lvl = _srvLevel != null ? _srvLevel : (member.level || 0);
+  state.isCEO = (_lvl >= 100) || _fullAccess;
+  state.myLevel = _fullAccess ? 100 : _lvl;
   // Constrain branch to one the user actually belongs to
   if (member.branches && member.branches.length && !member.branches.includes(state.branch)) {
     state.branch = member.branches[0];
@@ -21250,6 +21284,9 @@ function setUser(member, profile) {
   // Persist a lightweight session — утас/email/нэрийн түлхүүрээр
   localStorage.setItem('userEmail', personKey(member));
   localStorage.setItem('userLoginAt', String(Date.now()));
+  // Серверийн токен — байвал хадгална (restore-д баталгаажина). Клиент fallback нэвтрэлт токенгүй.
+  if (auth && auth.token) localStorage.setItem('sessionToken', auth.token);
+  else localStorage.removeItem('sessionToken');
 }
 
 // Single entry point for fully booting the app once the user is authenticated.
@@ -21744,6 +21781,7 @@ async function logout() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   localStorage.removeItem('userEmail');
   localStorage.removeItem('userLoginAt');
+  localStorage.removeItem('sessionToken');   // серверийн нэвтрэлтийн токен
   // Notification "seen" state is per-user — clear so next user doesn't see this user's history
   localStorage.removeItem('notifications');
   state.notifications = [];
@@ -21773,6 +21811,30 @@ function tryRestoreSession() {
     state.branch = member.branches[0];
   }
   return true;
+}
+
+// Серверийн токентой session сэргээх — токеныг СЕРВЕР талд баталгаажуулна.
+//  • valid  → серверийн level-ээр сэргээнэ (localStorage хуурамчлал утгагүй болно)
+//  • invalid → session цэвэрлэж, нэвтрэх дэлгэц (хуурамч токеныг таслана)
+//  • сүлжээ алга (null) → offline тэвчээр: хуучин localStorage-based сэргээлт рүү уналт
+//  • токенгүй (шилжилтийн үеийн хуучин session) → хуучин сэргээлт
+async function restoreSession() {
+  const token = localStorage.getItem('sessionToken');
+  if (token) {
+    const v = await serverVerifyToken(token);
+    if (v && v.valid) {
+      const phone = String(v.phone || '');
+      const member = findMember(phone) || { phone, name: v.name || phone, level: v.level, email: '' };
+      setUser(member, { email: member.email || '', name: v.name || member.name, picture: '' }, { token, level: v.level });
+      return true;
+    }
+    if (v && v.valid === false) {   // хуурамч/хугацаа дууссан токен — session цэвэрлэнэ
+      localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt');
+      return false;
+    }
+    // v === null → сервер холбогдсонгүй (offline) → хуучин сэргээлтээр (тэвчээр)
+  }
+  return tryRestoreSession();
 }
 
 /* PIN-based authentication — works in iOS PWA standalone (no Google webview restrictions).
@@ -22046,6 +22108,22 @@ async function handlePinLogin(userIdentifier, pin) {
   const lowered = raw.toLowerCase();
   const phoneNorm = raw.replace(/\D/g, '');
 
+  // ── Серверийн нэвтрэлт (утсаар) — PIN-г СЕРВЕР талд шалгаж, HMAC токен авна ──
+  // Алхам 2 (шилжилт): ЗӨВХӨН ok:true үед серверийн замаар (токен авна). Бусад бүх тохиолдолд
+  // (сервер татгалзсан ч, endpoint алга ч) доорх КЛИЕНТ fallback руу — нэвтрэлт эвдрэхээс сэргийлнэ.
+  // Алхам 3-т сервер authoritative болж, fallback хасагдана.
+  if (phoneNorm.length >= 8) {
+    const srv = await serverLogin(phoneNorm, pin);
+    if (srv && srv.ok && srv.token) {
+      const member = findMember(phoneNorm) || { phone: phoneNorm, name: srv.name || phoneNorm, level: srv.level, email: '' };
+      setUser(member, { email: member.email || '', name: srv.name || member.name, picture: '' }, { token: srv.token, level: srv.level });
+      showApp(); bootApp();
+      const _m = findMember(phoneNorm);
+      if (_m && isDefaultPin(_m.pin)) { state._forcePinChange = true; setTimeout(() => promptDefaultPinChange(), 600); }
+      return;
+    }
+  }
+
   const tryAuth = () => {
     // Эхлээд утсаар хайх (8+ оронтой бол утас гэж үзнэ)
     let member = null;
@@ -22138,7 +22216,9 @@ function promptDefaultPinChange() {
   });
 
   // Restore a recent session if we have one; otherwise show PIN login.
-  if (tryRestoreSession()) {
+  // Серверийн токен байвал ЭХЛЭЭД сервер талд баталгаажина (localStorage хуурамчлал таслах);
+  // токенгүй/offline бол хуучин localStorage-based сэргээлт рүү уналт (тэвчээртэй).
+  if (await restoreSession()) {
     showApp();
     bootApp();
     // Session-аар нэвтэрсэн ч default PIN хэвээр байгаа бол шууд солихыг шаардана.

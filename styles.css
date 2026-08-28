@@ -1,27 +1,60 @@
+  /* ═══════════════════════════════════════════════════════════
+     ТОКЕН — ЦОРЫН ГАНЦ ЭХ СУРВАЛЖ (2026-08-28 нэгтгэв)
+     Өмнө нь өнгөний токен 5 давхаргад тархаж, 4 нь !important-аар
+     бие биенээ дарж байсан (үүнээс 2 нь бүрэн үхсэн код байв).
+     ДҮРЭМ: өнгө/зай/хэмжээг ЗӨВХӨН эндээс. Дүрэмд хатуу #hex, хатуу px
+     бичихгүй — токен нэмнэ. Дэлгэрэнгүй: CLAUDE.md → «Дизайны гэрээ».
+     ═══════════════════════════════════════════════════════════ */
   :root {
-    /* Палитр */
-    --bg: #fafafa;
+    /* ── Гадаргуу ── */
+    --bg: #fbfbfa;
     --panel: #ffffff;
-    --panel-hover: #f5f5f7;
-    --border: #ebebed;
-    --border-strong: #d1d5db;
-    --text: #18181b;
-    --text-soft: #3f3f46;
-    --muted: #71717a;
-    --muted-soft: #a1a1aa;
-    --primary: #6366f1;
-    --primary-hover: #4f46e5;
-    --primary-soft: #f0f0ff;
-    --danger: #ef4444;
-    --danger-soft: #fef2f2;
-    --warn: #f59e0b;
-    --warn-soft: #fffbeb;
-    --ok: #10b981;
-    --ok-soft: #ecfdf5;
-    --info: #3b82f6;
-    --info-soft: #eff6ff;
+    --panel-hover: #f7f7f5;
+    --border: rgba(15, 15, 15, 0.08);
+    --border-strong: rgba(15, 15, 15, 0.12);
 
-    /* Spacing scale */
+    /* ── Текст ── */
+    --text: #37352f;
+    --text-soft: #3f3f46;
+    --muted: #787774;
+    --muted-soft: #9b9a97;
+
+    /* ── Брэнд ── */
+    --primary: #5e6ad2;
+    --primary-hover: #4b56b8;
+    --primary-soft: rgba(94, 106, 210, 0.10);
+
+    /* ── Семантик (төлөв илэрхийлэх — брэндийн өнгөнөөс ТУСДАА) ── */
+    --danger: #ef4444;  --danger-soft: #fef2f2;
+    --warn:   #f59e0b;  --warn-soft:   #fffbeb;
+    --ok:     #10b981;  --ok-soft:     #ecfdf5;
+    --info:   #3b82f6;  --info-soft:   #eff6ff;
+
+    /* ── Accent (модуль ялгах) ── */
+    --accent-blue:   #5e6ad2;
+    --accent-purple: #8b5cf6;
+    --accent-green:  #10b981;
+    --accent-amber:  #f59e0b;
+    --accent-red:    #ef4444;
+    --accent-rose:   #f43f5e;
+    --accent-cyan:   #06b6d4;
+    --finance-bg: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    --order-bg:   linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    --task-bg:    linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+
+    /* ── ФОНТЫН МАСШТАБ (шинэ) ──
+       Кодод 28 өөр хэмжээ (9…56px, дунд нь 9.5/10.5/11.5/12.5/13.5) тархсан
+       байсныг 7 шатанд оруулна. Шинэ дүрэм ЗӨВХӨН эдгээрийг ашиглана;
+       хуучин хатуу px-үүд хүрэх бүрд аажмаар хөрвөнө. */
+    --fs-xs:   11px;   /* мета, шошго, тайлбар */
+    --fs-sm:   12px;   /* хоёрдогч текст */
+    --fs-md:   13px;   /* жагсаалтын мөр — хамгийн түгээмэл */
+    --fs-base: 15px;   /* үндсэн бие */
+    --fs-lg:   17px;   /* дэд гарчиг */
+    --fs-xl:   22px;   /* хэсгийн гарчиг */
+    --fs-2xl:  30px;   /* дэлгэцийн гарчиг */
+
+    /* ── ЗАЙН МАСШТАБ ── */
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
@@ -30,14 +63,14 @@
     --space-6: 32px;
     --space-8: 48px;
 
-    /* Radius scale */
+    /* ── РАДИУС ── */
     --r-sm: 6px;
     --r-md: 8px;
     --r-lg: 12px;
     --r-xl: 16px;
     --r-full: 9999px;
 
-    /* Shadow scale */
+    /* ── СҮҮДЭР ── */
     --shadow-xs: 0 1px 2px rgba(0,0,0,.04);
     --shadow-sm: 0 1px 3px rgba(0,0,0,.05), 0 1px 2px rgba(0,0,0,.04);
     --shadow-md: 0 4px 6px -1px rgba(0,0,0,.08), 0 2px 4px -2px rgba(0,0,0,.04);
@@ -45,43 +78,41 @@
     --shadow-xl: 0 25px 50px -12px rgba(0,0,0,.25);
     --shadow: var(--shadow-sm);
 
-    /* Easing */
+    /* ── Хөдөлгөөн ── */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
     --duration: 200ms;
 
-    /* Дата-виз категори палитр (гэрэл) — валидлагдсан 8 hue, дараалал тогтмол */
+    /* ── Дата-виз категори палитр (гэрэл) — валидлагдсан 8 hue ── */
     --dv-1: #2a78d6; --dv-2: #eb6834; --dv-3: #1baf7a; --dv-4: #eda100;
     --dv-5: #e87ba4; --dv-6: #008300; --dv-7: #4a3aa7; --dv-8: #e34948;
   }
 
-  /* Dark mode */
-  html[data-theme="dark"] {
-    /* Дата-виз палитр (харанхуй гадаргууд алхамласан) */
-    --dv-1: #3987e5; --dv-2: #d95926; --dv-3: #199e70; --dv-4: #c98500;
-    --dv-5: #d55181; --dv-6: #008300; --dv-7: #9085e9; --dv-8: #e66767;
-    --bg: #0a0a0a;
-    --panel: #18181b;
-    --panel-hover: #27272a;
-    --border: #27272a;
-    --border-strong: #3f3f46;
-    --text: #fafafa;
+  /* ═══ ХАРАНХУЙ — зөвхөн энд. Аппын сонголт (data-theme) шийднэ. ═══ */
+  :root[data-theme="dark"] {
+    --bg: #191919;
+    --panel: #2f2f2f;
+    --panel-hover: #373737;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --text: #ffffff;
     --text-soft: #d4d4d8;
-    --muted: #a1a1aa;
-    --muted-soft: #71717a;
-    --primary: #818cf8;
+    --muted: #9b9a97;
+    --muted-soft: #6f6e69;
+    --primary: #7d87de;
     --primary-hover: #a5b4fc;
-    --primary-soft: rgba(99,102,241,.15);
-    --danger: #f87171;
-    --danger-soft: rgba(239,68,68,.15);
-    --warn: #fbbf24;
-    --warn-soft: rgba(245,158,11,.15);
-    --ok: #34d399;
-    --ok-soft: rgba(16,185,129,.15);
-    --info: #60a5fa;
-    --info-soft: rgba(59,130,246,.15);
+    --primary-soft: rgba(125, 135, 222, 0.15);
+    --danger: #f87171;  --danger-soft: rgba(239,68,68,.15);
+    --warn:   #fbbf24;  --warn-soft:   rgba(245,158,11,.15);
+    --ok:     #34d399;  --ok-soft:     rgba(16,185,129,.15);
+    --info:   #60a5fa;  --info-soft:   rgba(59,130,246,.15);
+    --finance-bg: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
+    --order-bg:   linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
+    --task-bg:    linear-gradient(135deg, rgba(94,106,210,0.12), rgba(94,106,210,0.04));
     --shadow-sm: 0 1px 3px rgba(0,0,0,.3);
     --shadow-md: 0 4px 6px rgba(0,0,0,.4);
     --shadow-lg: 0 10px 25px rgba(0,0,0,.5);
+    --dv-1: #3987e5; --dv-2: #d95926; --dv-3: #199e70; --dv-4: #c98500;
+    --dv-5: #d55181; --dv-6: #008300; --dv-7: #9085e9; --dv-8: #e66767;
   }
 
   * { box-sizing: border-box; }
@@ -1581,39 +1612,15 @@ body, input, textarea, select, button {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Notion/Linear-ийн өнгөний систем — өөрчлөлт зөвхөн мобайлд */
+/* Утсан дээрх сүүдрийг зөөлрүүлэх (Notion маяг — тэгш, хавтгай).
+   Энэ блокт өмнө нь 10 өнгөний токен байсан ч бүгд үхсэн код байв:
+   доорх :root[data-theme] давхарга тэднийг бүрэн дардаг. Сүүдэр л жинхэнэ. */
 @media (max-width: 720px) {
-  :root {
-    --bg: #fbfbfa !important;              /* Notion light bg */
-    --panel: #ffffff !important;
-    --panel-hover: #f7f7f5 !important;
-    --border: rgba(15, 15, 15, 0.06) !important;  /* Бараг үл харагдах */
-    --border-strong: rgba(15, 15, 15, 0.10) !important;
-    --text: #37352f !important;            /* Notion-ы үсгийн өнгө */
-    --muted: #787774 !important;
-    --muted-soft: #9b9a97 !important;
-    --primary: #5e6ad2 !important;         /* Linear blue */
-    --primary-hover: #4b56b8 !important;
-    --primary-soft: rgba(94, 106, 210, 0.08) !important;
-    --shadow-sm: none !important;          /* Сүүдрийг бүгдийг арилгах */
-    --shadow-md: 0 1px 2px rgba(15, 15, 15, 0.04) !important;
-    --shadow-lg: 0 4px 12px rgba(15, 15, 15, 0.06) !important;
-    --shadow-xl: 0 8px 24px rgba(15, 15, 15, 0.08) !important;
-  }
-
-  /* Dark mode override */
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #191919 !important;            /* Notion dark */
-      --panel: #2f2f2f !important;
-      --panel-hover: #373737 !important;
-      --border: rgba(255, 255, 255, 0.06) !important;
-      --border-strong: rgba(255, 255, 255, 0.10) !important;
-      --text: #ffffff !important;
-      --muted: #9b9a97 !important;
-      --muted-soft: #6f6e69 !important;
-      --primary: #7d87de !important;
-    }
+  :root, :root[data-theme="dark"] {
+    --shadow-sm: none;
+    --shadow-md: 0 1px 2px rgba(15, 15, 15, 0.04);
+    --shadow-lg: 0 4px 12px rgba(15, 15, 15, 0.06);
+    --shadow-xl: 0 8px 24px rgba(15, 15, 15, 0.08);
   }
 
   /* ── HEADER — туйлын цэвэрхэн ── */
@@ -2034,36 +2041,6 @@ body, input, textarea, select, button {
    DESKTOP REFINEMENT (v5 — 2026-05-24)
    Утсан дээрх Notion/Linear загварыг desktop руу шилжүүлсэн.
    ═══════════════════════════════════════════════════════════ */
-
-/* Notion/Linear өнгөний систем — БҮХ ДЭЛГЭЦЭД (зөвхөн мобайл биш) */
-:root {
-  --bg: #fbfbfa !important;
-  --panel: #ffffff !important;
-  --panel-hover: #f7f7f5 !important;
-  --border: rgba(15, 15, 15, 0.08) !important;
-  --border-strong: rgba(15, 15, 15, 0.12) !important;
-  --text: #37352f !important;
-  --muted: #787774 !important;
-  --muted-soft: #9b9a97 !important;
-  --primary: #5e6ad2 !important;
-  --primary-hover: #4b56b8 !important;
-  --primary-soft: rgba(94, 106, 210, 0.10) !important;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #191919 !important;
-    --panel: #2f2f2f !important;
-    --panel-hover: #373737 !important;
-    --border: rgba(255, 255, 255, 0.08) !important;
-    --border-strong: rgba(255, 255, 255, 0.12) !important;
-    --text: #ffffff !important;
-    --muted: #9b9a97 !important;
-    --muted-soft: #6f6e69 !important;
-    --primary: #7d87de !important;
-    --primary-soft: rgba(125, 135, 222, 0.15) !important;
-  }
-}
 
 /* ── HEADER (desktop) — flat, цэвэрхэн ── */
 .header {
@@ -2732,35 +2709,6 @@ body {
    REBRAND — амьд өнгө, тод hierarchy (v7 — 2026-05-24)
    ═══════════════════════════════════════════════════════════ */
 
-/* ── Semantic өнгөнүүд ── */
-:root {
-  --accent-blue:   #5e6ad2;
-  --accent-purple: #8b5cf6;
-  --accent-green:  #10b981;
-  --accent-amber:  #f59e0b;
-  --accent-red:    #ef4444;
-  --accent-rose:   #f43f5e;
-  --accent-cyan:   #06b6d4;
-
-  --finance-bg: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  --order-bg:   linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  --task-bg:    linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-  --danger-soft: #fef2f2;
-  --warn-soft:   #fffbeb;
-  --ok-soft:     #ecfdf5;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --finance-bg: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(16,185,129,0.04));
-    --order-bg:   linear-gradient(135deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04));
-    --task-bg:    linear-gradient(135deg, rgba(94,106,210,0.12), rgba(94,106,210,0.04));
-    --danger-soft: rgba(239,68,68,0.10);
-    --warn-soft:   rgba(245,158,11,0.10);
-    --ok-soft:     rgba(16,185,129,0.10);
-  }
-}
-
 /* ── X close товч — solid улаан, цэвэрхэн, sticky ──
    Gradient/border/glow байхгүй. Зөвхөн solid улаан bg + цагаан icon.
    `.modal button { background ... !important }`-ийг давах ёстой тул
@@ -3346,34 +3294,6 @@ body {
   }
 }
 
-/* ═══ Гарын авлагын dark mode (data-theme="dark") ═══
-   prefers-color-scheme-аас гадуур хэрэглэгчийн сонгосон theme-ийг хадгална.
-   Хэрэв системийн theme dark гэхдээ хэрэглэгч "light" сонговол light хэвээр.
-   data-theme="light" → албадан light, data-theme="dark" → албадан dark. */
-:root[data-theme="dark"] {
-  --bg: #191919 !important;
-  --panel: #2f2f2f !important;
-  --panel-hover: #373737 !important;
-  --border: rgba(255, 255, 255, 0.08) !important;
-  --border-strong: rgba(255, 255, 255, 0.12) !important;
-  --text: #ffffff !important;
-  --muted: #9b9a97 !important;
-  --muted-soft: #6f6e69 !important;
-  --primary: #7d87de !important;
-  --primary-soft: rgba(125, 135, 222, 0.15) !important;
-}
-:root[data-theme="light"] {
-  --bg: #fbfbfa !important;
-  --panel: #ffffff !important;
-  --panel-hover: #f7f7f5 !important;
-  --border: rgba(15, 15, 15, 0.08) !important;
-  --border-strong: rgba(15, 15, 15, 0.12) !important;
-  --text: #37352f !important;
-  --muted: #787774 !important;
-  --muted-soft: #9b9a97 !important;
-  --primary: #5e6ad2 !important;
-  --primary-soft: rgba(94, 106, 210, 0.10) !important;
-}
 /* Notif panel-ийн solid background — data-theme харгалзах */
 :root[data-theme="dark"] .modal .modal-close-x { background: var(--accent-red) !important; }
 :root[data-theme="dark"] .notif-panel,

@@ -798,11 +798,12 @@ async function loadTeamFromAPI() {
 }
 // Серверийн нэвтрэлт: утас+PIN → {ok:true, token, phone, level, name} эсвэл {ok:false, reason}.
 // Сүлжээ/endpoint алга бол null (→ дуудагч клиент fallback руу шилжинэ). PIN сервер талд шалгагдана.
-async function serverLogin(phone, pin) {
+async function serverLogin(identifier, pin) {
+  const id = String(identifier || '').trim();
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_LOGIN_URL), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: String(phone || '').replace(/\D/g, ''), pin: String(pin || '') }),
+      body: JSON.stringify({ id, phone: id.replace(/\D/g, ''), pin: String(pin || '') }),
     }, 12000);
     if (!r.ok) return null;
     const d = await r.json();
@@ -22209,17 +22210,18 @@ async function handlePinLogin(userIdentifier, pin) {
   const lowered = raw.toLowerCase();
   const phoneNorm = raw.replace(/\D/g, '');
 
-  // ── Серверийн нэвтрэлт (утсаар) — PIN-г СЕРВЕР талд шалгаж, HMAC токен авна ──
-  // Алхам 2 (шилжилт): ЗӨВХӨН ok:true үед серверийн замаар (токен авна). Бусад бүх тохиолдолд
-  // (сервер татгалзсан ч, endpoint алга ч) доорх КЛИЕНТ fallback руу — нэвтрэлт эвдрэхээс сэргийлнэ.
-  // Алхам 3-т сервер authoritative болж, fallback хасагдана.
-  if (phoneNorm.length >= 8) {
-    const srv = await serverLogin(phoneNorm, pin);
+  // ── Серверийн нэвтрэлт (утас ЭСВЭЛ имэйл) — PIN-г СЕРВЕР талд шалгаж, HMAC токен авна ──
+  // ok:true бол серверийн замаар (токен авна). Бусад тохиолдолд (сервер унасан ч) доорх КЛИЕНТ
+  // fallback руу — нэвтрэлт эвдрэхгүй. B3-д /staff-аас PIN хасагдмагц клиент fallback автоматаар
+  // зогсож (PIN алга), нэвтрэлт бүрэн серверийн болно.
+  {
+    const srv = await serverLogin(raw, pin);
     if (srv && srv.ok && srv.token) {
-      const member = findMember(phoneNorm) || { phone: phoneNorm, name: srv.name || phoneNorm, level: srv.level, email: '' };
+      const key = srv.phone || phoneNorm || lowered;
+      const member = findMember(key) || { phone: srv.phone || phoneNorm, name: srv.name || key, level: srv.level, email: lowered.includes('@') ? lowered : '' };
       setUser(member, { email: member.email || '', name: srv.name || member.name, picture: '' }, { token: srv.token, level: srv.level });
       showApp(); bootApp();
-      const _m = findMember(phoneNorm);
+      const _m = findMember(key);
       if (_m && isDefaultPin(_m.pin)) { state._forcePinChange = true; setTimeout(() => promptDefaultPinChange(), 600); }
       return;
     }

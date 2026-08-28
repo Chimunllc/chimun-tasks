@@ -5031,8 +5031,8 @@ function boardOrderRow(e, k, todayStr) {
   const dstr = String(dt || '').slice(5, 10).replace('-', '/');
   const bal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const payWarn = bal > 0 ? `<span class="br-paywarn" title="Үлдэгдэл ${escapeHtml(fmtMoney(bal))}">💵</span>` : '';
-  // Барьцаатай ба хараахан буцаагаагүй бол 🔒 — буцаах ёстой захиалгыг мөрөнд шууд ялгана
-  const depWarn = ((Number(o.deposit_mnt) || 0) > 0 && !depositReturnFor(o.id)) ? `<span class="br-dep" title="Барьцаа ${escapeHtml(fmtMoney(o.deposit_mnt))} — буцаагаагүй">🔒</span>` : '';
+  // Барьцаатай ба буцаагаагүй бол 🔒 — зөвхөн апп/M-Event (Booqable түүхийн барьцаа гадна эргэсэн)
+  const depWarn = (!!o._app && (Number(o.deposit_mnt) || 0) > 0 && !depositReturnFor(o.id)) ? `<span class="br-dep" title="Барьцаа ${escapeHtml(fmtMoney(o.deposit_mnt))} — буцаагаагүй">🔒</span>` : '';
   const next = orderNextStep(o);
   const id = escapeHtml(String(o.id));
   let actBtn = '';
@@ -9739,9 +9739,11 @@ function linkedExpenseSum(type, id) {
 // ангилаад захиалгад холбоход л энэ илэрнэ (гар товшилтгүй, баримт-суурьтай).
 function depositReturnFor(orderId) {
   if (!orderId) return null;
-  const isDepCat = (c) => { const s = String(c || '').toLowerCase(); return s.includes('5810') || (s.includes('барьцаа') && s.includes('буцаа')); };
+  // Барьцаа буцаалт гэж таних: ангилал 5810, ЭСВЭЛ ангилал/зорилго/тайлбарт "барьцаа...буцаа" бий
+  // (хуучин бичлэгүүд 5800 эсвэл ангилалгүй ч зорилгод "1428 барьцаа буцаалт" гэж бичсэн байдаг)
+  const isDepRet = (r) => { const s = (String(r.category || '') + ' ' + String(r.purpose || '') + ' ' + String(r.justification || '')).toLowerCase(); return s.includes('5810') || (s.includes('барьцаа') && s.includes('буцаа')); };
   const rec = (state.financeRequests || []).find(r =>
-    r.status === 'done' && r.link_type === 'order' && String(r.link_id) === String(orderId) && isDepCat(r.category));
+    r.status === 'done' && r.link_type === 'order' && String(r.link_id) === String(orderId) && isDepRet(r));
   if (!rec) return null;
   const d = rec.executed_at || rec.due || rec.requested_at || '';
   return { amount: Number(rec.amount) || 0, date: String(d).slice(0, 10), by: rec.createdBy || '' };
@@ -14409,10 +14411,11 @@ function bqOrderCard(o) {
   // Барьцаа — байвал ТОД харуулна; хуулга тулгаснаар 5810-д холбогдвол «буцаасан»
   const _dep = Number(o.deposit_mnt) || 0;
   const _depRet = _dep > 0 ? depositReturnFor(o.id) : null;
+  // held зөвхөн апп/M-Event захиалгад — Booqable түүхийн барьцаа гадна (Booqable-д) эргэсэн, энд мөрдөхгүй
   const depBadge = _dep > 0
     ? (_depRet
       ? `<span class="dep-badge dep-returned" title="Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
-      : `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>`)
+      : (isApp ? `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>` : ''))
     : '';
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   return `<div class="order-card bq-order" data-oid="${id}">

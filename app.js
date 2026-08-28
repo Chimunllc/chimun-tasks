@@ -16447,12 +16447,10 @@ function renderFinanceReport(wrap) {
     + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
-    + (canRecon ? `<button id="fin-vat" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 НӨАТ тайлан</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
-  bar.querySelector('#fin-vat')?.addEventListener('click', openVatReportModal);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));

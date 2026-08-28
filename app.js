@@ -13982,6 +13982,8 @@ function openNewOrder(editOrder) {
   // хөнгөлөлт/НӨАТ/барьцаа) — төлсөн дүнтэй зөрөхөөс сэргийлнэ. Засагдах: холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл.
   const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
   const _locked = isEdit && (['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || '')) || _paidFull);
+  const _quotes0 = (isEdit && editOrder.stage_meta && Array.isArray(editOrder.stage_meta.quotes)) ? editOrder.stage_meta.quotes : [];   // илгээсэн үнийн саналуудын түүх
+  const _saleTot = isEdit ? (Number(editOrder.total_mnt) || 0) : 0;
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
   const _sec = (t) => `<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:15px 2px 7px;">${t}</div>`;
 
@@ -14039,6 +14041,8 @@ function openNewOrder(editOrder) {
     <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
     </label>
+    ${_quotes0.length ? `${_sec('📤 Илгээсэн үнийн саналууд · ' + _quotes0.length)}
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${_quotes0.slice().reverse().map(q => { const isSale = _saleTot > 0 && Math.abs((Number(q.amount) || 0) - _saleTot) < 1; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid ${isSale ? '#16a34a' : 'var(--border)'};border-radius:8px;background:${isSale ? '#e8f2ec' : 'var(--panel)'};font-size:12px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(q.by || '?')} · ${escapeHtml(String(q.at || '').slice(0, 10))}${q.to ? ' · ' + escapeHtml(q.to) : ''}</span><span style="font-weight:700;flex-shrink:0;white-space:nowrap;">${fmtMoney(Number(q.amount) || 0)}${isSale ? ' <span style="color:#16a34a;">✓ борлуулалт</span>' : ''}</span></div>`; }).join('')}</div>` : ''}
     <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
       <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
@@ -14406,6 +14410,19 @@ async function bqUpdateStatus(oid, to, opts = {}) {
 
 // Төлбөр бүртгэх модал нээх (түүх захиалга)
 // ── Захиалгын ҮНИЙН САНАЛ — захиалгын датагаар хэвлэх/Word баримт (NOMAAD-тай ижил маягаар) ──
+// Үнийн санал илгээгдэхэд (popup→main) захиалгын stage_meta.quotes-д лог нэмнэ (хэн·хэзээ·дүн·хэнд).
+if (!window._mevQuoteLogInit) {
+  window._mevQuoteLogInit = true;
+  window.addEventListener('message', async (ev) => {
+    const d = ev.data; if (!d || d.type !== 'mev-quote-sent') return;
+    const o = (state.appOrders || []).find(x => String(x.id) === String(d.oid)); if (!o) return;
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    sm.quotes = Array.isArray(sm.quotes) ? sm.quotes : [];
+    sm.quotes.push({ at: new Date().toISOString(), by: d.by || state.me || '', amount: Number(d.amount) || 0, to: d.to || '' });
+    o.stage_meta = sm;
+    try { await saveAppOrder(o); if (typeof showToast === 'function') showToast('📤 Үнийн санал түүхэд бүртгэгдлээ', 'info', 2500); } catch (e) { console.warn('quote log', e); }
+  });
+}
 function openOrderQuote(oid) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
@@ -14621,6 +14638,7 @@ async function qSend(){
     var res=await fetch(${JSON.stringify(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:${JSON.stringify(mailSubject)},body:${JSON.stringify(mailHtml)},filename:${JSON.stringify(fname)}+'.pdf',pdf_base64:b64,source:'app'})});
     if(!res.ok)throw new Error('HTTP '+res.status);
     alert('✓ Үнийн санал '+to+' рүү илгээгдлээ.');
+    try{if(window.opener)window.opener.postMessage({type:'mev-quote-sent',oid:${JSON.stringify(String(o.id))},amount:${Number(total) || 0},to:to,by:${JSON.stringify((_snd && _snd.name) || state.me || '')}},'*');}catch(_e){}
     if(btn){btn.textContent='✓ Илгээгдсэн';}
   }catch(e){
     alert('Илгээхэд алдаа: '+e.message+String.fromCharCode(10)+String.fromCharCode(10)+'(hello@mevent.mn-ий n8n тохиргоо бүрэн бус бол эхлээд түүнийг дуусгана уу.)');

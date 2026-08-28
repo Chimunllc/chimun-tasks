@@ -13244,15 +13244,20 @@ async function loadHistory(force) {
     const rawOrders = fetchWithTimeout(
       `${SUPABASE_URL}/rest/v1/app_orders?select=id,customer,status,starts_at,stops_at,total_mnt,paid_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
-    const [summary, monthly, methods, orders, roiFix] = await Promise.all([
+    // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
+    const rawProducts = fetchWithTimeout(
+      `${SUPABASE_URL}/rest/v1/products?select=sku,name,category&limit=2000`,
+      { headers: H }, 20000).then(r => r.ok ? r.json() : []).catch(() => []);
+    const [summary, monthly, methods, orders, roiFix, prods] = await Promise.all([
       get('rh_v_summary'),
       get('rh_v_monthly_revenue', '&order=month.asc'),
       get('rh_v_payment_method'),
       rawOrders,
       // Эзэмшсэн тоо (Booqable stock_counts) + нэгж өртөг: {bySku,byName → {o,c}}. ROI-д ашиглана.
       get('app_config', '&key=eq.rh_roi_fix&select=value').then(r => r[0] && r[0].value).catch(() => null),
+      rawProducts,
     ]);
-    const comp = _histCompute(orders || [], roiFix);
+    const comp = _histCompute(orders || [], roiFix, _histCatResolver(prods || []));
     state.history = {
       summary: summary[0] || null,
       monthly: monthly || [],
@@ -15295,12 +15300,48 @@ function bqBar(label, value, max, color, sub) {
 const _BQ_SERVICE_RE = /хүргэл|тээвэр|достав|deliver|суурилуул|угсрал|буулгал|оператор|унаа|такси/i;
 function bqIsService(name) { return _BQ_SERVICE_RE.test(String(name || '')); }
 
+// Барааны нэрийг амьд каталогийн ангилалд хөрвүүлэгч (Booqable хуучин нэрсийг ч танина):
+// SKU → яг нэр → чөлөөт нэр (тэмдэг/хаалтгүй) → түлхүүр үг → 'Бусад'.
+const _HIST_CAT_KW = [
+  [/сандал|ширээ|бүтээлэг|тууз|углаа|runner|банкет/, 'Ширээ, сандал, бүтээлэг'],
+  [/таваг|аяга|халбага|сэрээ|хутга|чанагч|зуух|тэвш|домбо|данх|савх|глас|төмпөн|баллон|хайруул|сэнж|шанага|хундаг/, 'Ресторан хэрэгсэл'],
+  [/гэрэл|\bled\b|лед|гирлянд|прожектор|strobe|лазер|гэрэлт|дэлгэц/, 'Гэрэлтүүлэг'],
+  [/майхан|асар|tent|зонт|сүүдрэвч|павильон/, 'Майхан'],
+  [/хөгжим|чанга|микрофон|спикер|array|sound|колонк/, 'Хөгжим'],
+  [/утаа|манан|эффект|конфетти|bubble|хөөс|party|мананцар/, 'Эффект'],
+  [/тоглоом|батут|шаржигнуур|гулгуур|зүлэг|бөмбөлөг/, 'Хөгжөөнт тоглоом'],
+  [/тайз|подиум|шал/, 'Тайз'],
+  [/халаагуур|дулаан|агааржуул|сэнс|кондиц|газан/, 'Халаалт, агааржуулалт'],
+  [/генератор|цахилгаан|залгуур|кабель|сунгагч|розетк|эрчим/, 'Эрчим хүч, цахилгаан'],
+  [/\bор\b|гудас|аяны|кемп|зайдан/, 'Аяны хэрэгсэл'],
+];
+function _histNormAgg(s) {
+  s = String(s || '').toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9а-яёүө ]/g, ' ');
+  return s.split(/\s+/).filter(Boolean).join(' ');
+}
+function _histCatResolver(prods) {
+  const bySku = {}, byName = {}, byAgg = {};
+  (prods || []).forEach(p => {
+    const c = String(p.category || '').trim() || 'Бусад';
+    if (p.sku) bySku[String(p.sku).toLowerCase()] = c;
+    if (p.name) { byName[_normProdName(p.name)] = c; const a = _histNormAgg(p.name); if (!byAgg[a]) byAgg[a] = c; }
+  });
+  return (sku, name) => {
+    const c = bySku[String(sku || '').toLowerCase()] || byName[_normProdName(name)] || byAgg[_histNormAgg(name)];
+    if (c) return c;
+    const a = _histNormAgg(name);
+    for (const kv of _HIST_CAT_KW) if (kv[0].test(a)) return kv[1];
+    return 'Бусад';
+  };
+}
+
 // ── Түүхэн аналитик цөм: app_orders (нэгдсэн эх сурвалж)-оос шууд тооцоолно ──
 // Захиалга бүрийн total_mnt-ыг мөрүүдэд (qty×price жингээр) пропорциональ хуваарилж бараа/
 // үйлчилгээний орлого гаргана → нийлбэр нь захиалгын нийт дүн (= дээд KPI)-тэй тулгарна.
 // Эзэмшсэн тоо/нэгж өртөг = rh_roi_fix (Booqable stock_counts). НӨАТ/барьцаа = бараа биш (хасна).
-function _histCompute(orders, roiFix) {
+function _histCompute(orders, roiFix, catOf) {
   const N = x => Number(x) || 0;
+  const cat = (typeof catOf === 'function') ? catOf : () => 'Бусад';
   const normP = (s) => (typeof _normProdName === 'function') ? _normProdName(s) : String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const rfix = roiFix || {};
   const rlook = (sku, name) => (sku && rfix.bySku && rfix.bySku[String(sku).trim()]) || (rfix.byName && rfix.byName[normP(name)]) || null;
@@ -15354,7 +15395,7 @@ function _histCompute(orders, roiFix) {
     const tot = (unit > 0 && owned > 0) ? unit * owned : 0;
     const rx = tot > 0 ? Math.round(p.revenue_mnt / tot * 10) / 10 : null;
     const sku = Object.keys(p.skus)[0] || null;
-    return { product: p.product, sku, photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
+    return { product: p.product, sku, category: cat(sku, p.product), photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
   });
 
   const products = finalize(prods).sort((a, b) => b.revenue_mnt - a.revenue_mnt);
@@ -15578,9 +15619,21 @@ function renderHistory() {
         </div>`;
       };
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
+      // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлогоороо эрэмбэлэгдэнэ ──
+      const byCat = {};
+      roi.forEach(x => { const c = x.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(x); });
+      const cats = Object.keys(byCat).map(c => ({ c, rows: byCat[c], rev: byCat[c].reduce((s, x) => s + N(x.revenue_mnt), 0) }))
+        .sort((a, b) => (a.c === 'Бусад') - (b.c === 'Бусад') || b.rev - a.rev);
+      const catSection = (g) => `<details open style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+        <summary style="cursor:pointer;padding:9px 12px;background:var(--panel-hover);font-weight:700;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span>${escapeHtml(g.c)} <span style="color:var(--muted);font-weight:400;">· ${g.rows.length}</span></span>
+          <span style="font-variant-numeric:tabular-nums;color:var(--ok);">${fmtMoneyShort(g.rev)}</span>
+        </summary>
+        <div style="padding:4px 12px 8px;">${g.rows.map(roiRow).join('')}</div>
+      </details>`;
       body = kpis
-        + card(`Орлого × ROI — бараа бүр (${roi.length})`, roi.map(roiRow).join(''),
-            'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
+        + card(`Орлого × ROI — ангиллаар (${roi.length} бараа)`, cats.map(catSection).join(''),
+            'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй. Бүлгийн толгойг дарж хумина.')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
             stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '')
         + svcCard(svc);

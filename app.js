@@ -21832,9 +21832,17 @@ async function restoreSession() {
       localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt');
       return false;
     }
-    // v === null → сервер холбогдсонгүй (offline) → хуучин сэргээлтээр (тэвчээр)
+    // v === null → сервер холбогдсонгүй (offline) → хуучин сэргээлтээр (доор, эрх хязгаартай)
   }
-  return tryRestoreSession();
+  // Токенгүй / баталгаажаагүй сэргээлт — ХЭЗЭЭ Ч CEO/бүрэн эрх өгөхгүй (localStorage хуурамчлалыг таслах).
+  // Энгийн хэрэглэгч хэвийн сэргэнэ; CEO/ахлах зөвхөн баталгаажсан СЕРВЕРИЙН ТОКЕНООР л сэргэнэ.
+  const ok = tryRestoreSession();
+  if (ok && state.isCEO) {
+    localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt');
+    state.user = null; state.me = null; state.isCEO = false; state.myLevel = 0;
+    return false;   // дахин нэвтэрч (утсаар) сервер токен авах ёстой
+  }
+  return ok;
 }
 
 /* PIN-based authentication — works in iOS PWA standalone (no Google webview restrictions).

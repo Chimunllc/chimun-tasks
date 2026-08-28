@@ -13916,7 +13916,7 @@ function mapsHref(v) { const s = String(v || '').trim(); if (/^https?:\/\//i.tes
 function setCustInfo(note, ci) {
   const base = String(note || '').replace(_CI_RE, '').trim();
   const clean = {};
-  ['company', 'reg', 'fb', 'viber', 'maps'].forEach(k => { const v = ci && ci[k] ? String(ci[k]).replace(/[⟦⟧]/g, '').trim().slice(0, 400) : ''; if (v) clean[k] = v; });
+  ['company', 'reg', 'contact', 'maps'].forEach(k => { const v = ci && ci[k] ? String(ci[k]).replace(/[⟦⟧]/g, '').trim().slice(0, 400) : ''; if (v) clean[k] = v; });
   if (!Object.keys(clean).length) return base;   // юу ч байхгүй бол token нэмэхгүй
   return (base ? base + ' ' : '') + `⟦CI|${JSON.stringify(clean)}⟧`;
 }
@@ -13985,8 +13985,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_ci0.company || '')}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_ci0.reg || '')}" placeholder="Байгууллага/хувь хүн"></label>
-      <label class="no-lbl">Facebook<input id="no-fb" value="${escapeHtml(_ci0.fb || '')}" placeholder="FB хаяг эсвэл линк"></label>
-      <label class="no-lbl">Viber<input id="no-viber" value="${escapeHtml(_ci0.viber || '')}" placeholder="Viber дугаар/линк"></label>
+      <label class="no-lbl" style="grid-column:1/-1;">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
       <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
       ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
@@ -14170,7 +14169,7 @@ function openNewOrder(editOrder) {
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
     const _ci = {
       company: ($('#no-company')?.value || '').trim(), reg: ($('#no-reg')?.value || '').trim(),
-      fb: ($('#no-fb')?.value || '').trim(), viber: ($('#no-viber')?.value || '').trim(),
+      contact: ($('#no-contact')?.value || '').trim(),
       maps: isDeliv ? ($('#no-maps')?.value || '').trim() : '',
     };
     const ord = {
@@ -14238,8 +14237,9 @@ function bqOrderCard(o) {
     : '';
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
   const _ci = isApp ? custInfoOf(o.note) : {};
-  const ciHtml = (isApp && (_ci.company || _ci.reg || _ci.fb || _ci.viber || _ci.maps))
-    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ci.company ? `🏢 ${escapeHtml(_ci.company)}` : ''}${_ci.reg ? `${_ci.company ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ci.fb ? `<br>📘 ${escapeHtml(_ci.fb)}` : ''}${_ci.viber ? `<br>💜 Viber: ${escapeHtml(_ci.viber)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
+  const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
+  const ciHtml = (isApp && (_ci.company || _ci.reg || _ciContact || _ci.maps))
+    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ci.company ? `🏢 ${escapeHtml(_ci.company)}` : ''}${_ci.reg ? `${_ci.company ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));

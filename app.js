@@ -15578,9 +15578,8 @@ function renderHistory() {
         </div>`;
       };
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
-      const shown = roi.slice(0, 60);
       body = kpis
-        + card(`Орлого × ROI — бараа бүр${roi.length > 60 ? ` (топ 60 / ${roi.length})` : ''}`, shown.map(roiRow).join(''),
+        + card(`Орлого × ROI — бараа бүр (${roi.length})`, roi.map(roiRow).join(''),
             'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
             stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '')
@@ -15591,12 +15590,12 @@ function renderHistory() {
 
   } else if (tab === 'customers') {
     const cAll = bq.customers || [];
-    const c = cAll.slice(0, 40);
+    const c = cAll;
     const maxRev = Math.max(1, ...c.map(x => N(x.revenue_mnt)));
     const unknownNote = bq.unknownCnt
       ? `<div style="border:1px dashed var(--border);border-radius:10px;padding:9px 12px;margin-top:6px;font-size:11.5px;color:var(--muted);">ℹ️ Нэмээд <b>${N(bq.unknownCnt).toLocaleString('mn-MN')}</b> захиалга (${fmtMoneyShort(N(bq.unknownRev))}) харилцагчийн нэргүй бүртгэгдсэн — түүхэн Booqable дата. Цаашид захиалга бүрт нэр бүртгэвэл энд гарна.</div>`
       : '';
-    body = kpis + card(`Орлогоор топ харилцагч${cAll.length > 40 ? ` (топ 40 / ${cAll.length})` : ''}`,
+    body = kpis + card(`Орлогоор топ харилцагч (${cAll.length})`,
       (c.length ? c.map(x => bqBar(x.customer || '—', N(x.revenue_mnt), maxRev, 'var(--primary)',
         `${N(x.order_count)} захиалга${N(x.order_count) > 1 ? ` · дунд ${fmtMoneyShort(N(x.avg_order_mnt))}` : ''}`)).join('') + unknownNote
         : '<span style="color:var(--muted);">дата алга</span>'),
@@ -15604,9 +15603,9 @@ function renderHistory() {
 
   } else if (tab === 'usage') {
     const uAll = bq.usage || [];
-    const u = uAll.slice(0, 50);
+    const u = uAll;
     const maxDays = Math.max(1, ...u.map(x => N(x.item_days_out)));
-    body = kpis + card(`Барааны ашиглалт (бараа-өдөр гадаа)${uAll.length > 50 ? ` (топ 50 / ${uAll.length})` : ''}`,
+    body = kpis + card(`Барааны ашиглалт (бараа-өдөр гадаа) (${uAll.length})`,
       (u.length ? u.map(x => {
         const days = N(x.item_days_out);
         const pct = maxDays > 0 ? Math.max(2, Math.round(days / maxDays * 100)) : 0;

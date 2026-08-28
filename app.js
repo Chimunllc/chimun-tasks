@@ -16394,6 +16394,22 @@ function renderVatView(wrap) {
   R.forEach(r => { const k = (r.buyer_name || '?') + '|' + (r.buyer_reg || ''); (byB[k] = byB[k] || { name: r.buyer_name || '?', reg: r.buyer_reg || '', n: 0, sales: 0, vat: 0 }); byB[k].n++; byB[k].sales += N(r.total); byB[k].vat += N(r.vat); });
   const topB = Object.values(byB).sort((a, b) => b.vat - a.vat).slice(0, 12);
 
+  // Захиалга бүрийн шивэгдсэн НӨАТ (илүү / дутуу шинжилгээ)
+  const cands = (typeof vatCandidateOrders === 'function') ? vatCandidateOrders() : [];
+  const candByNo = {}; cands.forEach(c => { candByNo[String(c.no)] = c; });
+  const ordInv = {};
+  mR.forEach(r => { const no = String(r.matched_id); const c = candByNo[no];
+    (ordInv[no] = ordInv[no] || { no, name: (c && c.name) || r.matched_label || no, amount: c ? N(c.amount) : 0, inv: 0, vat: 0, n: 0 });
+    ordInv[no].inv += N(r.total); ordInv[no].vat += N(r.vat); ordInv[no].n++; });
+  const overList = [], underList = [];
+  Object.values(ordInv).forEach(o => { if (o.amount <= 0) return; const tol = Math.max(1000, o.amount * 0.005);
+    if (o.inv > o.amount + tol) overList.push({ ...o, diff: o.inv - o.amount });
+    else if (o.inv < o.amount - tol) underList.push({ ...o, diff: o.amount - o.inv }); });
+  overList.sort((a, b) => b.diff - a.diff); underList.sort((a, b) => b.diff - a.diff);
+  const anomTable = (list, color, diffLabel) => `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+    <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Захиалга</th><th style="padding:4px 6px;text-align:right;">Захиалгын дүн</th><th style="padding:4px 6px;text-align:right;">Шивсэн</th><th style="padding:4px 6px;text-align:right;">${diffLabel}</th></tr></thead>
+    <tbody>${list.map(o => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(o.name)}<span style="color:var(--muted);"> · ${o.n} баримт</span></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(o.amount)}</td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(o.inv)}</td><td style="padding:6px;text-align:right;font-weight:700;color:${color};font-variant-numeric:tabular-nums;">${fmtMoney(o.diff)}</td></tr>`).join('')}</tbody></table>`;
+
   const kpi = (label, val, sub, accent) => `<div style="background:${accent ? '#e8f2ec' : 'var(--panel)'};border:1px solid var(--border);border-radius:14px;padding:14px 16px;">
     <div style="font-size:12px;color:${accent ? '#1e7a55' : 'var(--muted)'};">${label}</div>
     <div style="font-size:22px;font-weight:800;margin-top:3px;color:${accent ? '#1e7a55' : 'var(--text)'};">${val}</div>
@@ -16434,6 +16450,17 @@ function renderVatView(wrap) {
             <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Худалдан авагч</th><th style="padding:4px 6px;text-align:right;">Баримт</th><th style="padding:4px 6px;text-align:right;">НӨАТ</th></tr></thead>
             <tbody>${topB.map(b => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(b.name)}<div style="font-size:10px;color:var(--muted);">${escapeHtml(b.reg)}</div></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${b.n}</td><td style="padding:6px;text-align:right;font-weight:700;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(b.vat)}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--muted);">Алга</td></tr>'}</tbody>
           </table>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-top:16px;">
+        <div style="background:var(--panel);border:1px solid ${overList.length ? '#e6b3ad' : 'var(--border)'};border-radius:14px;padding:16px;">
+          <div style="font-weight:800;font-size:14px;margin-bottom:10px;color:${overList.length ? '#c0392b' : 'var(--text)'};">🔴 Илүү НӨАТ шивсэн (${overList.length})</div>
+          ${overList.length ? anomTable(overList, '#c0392b', 'Илүү') + `<div style="font-size:11px;color:var(--muted);margin-top:6px;">Захиалгаа дэлгээд «НӨАТ баримт засах»-аар илүү баримтыг салгана уу.</div>` : '<div style="color:#1e7a55;font-size:13px;">✓ Илүү шивсэн захиалга алга.</div>'}
+        </div>
+        <div style="background:var(--panel);border:1px solid ${underList.length ? '#e6cf9a' : 'var(--border)'};border-radius:14px;padding:16px;">
+          <div style="font-weight:800;font-size:14px;margin-bottom:10px;color:${underList.length ? '#9a6a00' : 'var(--text)'};">🟡 Дутуу НӨАТ шивсэн (${underList.length})</div>
+          ${underList.length ? anomTable(underList, '#9a6a00', 'Дутуу') + `<div style="font-size:11px;color:var(--muted);margin-top:6px;">Хэсэгчилсэн шивэгдсэн — үлдэгдэл баримтыг холбоно уу.</div>` : '<div style="color:#1e7a55;font-size:13px;">✓ Дутуу шивсэн захиалга алга.</div>'}
         </div>
       </div>
 

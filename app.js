@@ -5105,7 +5105,7 @@ function timeGroupKey(o, todayStr) {
   return 'later';
 }
 // Дамжлагын самбар — шат бүрээр эвхэгддэг, идэвхтэй шат дотор хүргэлт/очиж авах дэд бүлэг + яаралтай эрэмбэ
-const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕' };
+const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕', deleted: '🗑' };
 // Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
 // Мөрөн дээрх дараагийн үйлдлийн товчны БОГИНО шошго
 // Үндсэн 6 төлөв (dropdown/самбарын бүлэг). Дэд шатууд эдгээрт багтана.
@@ -5116,6 +5116,7 @@ const ORDER_BUCKETS = [
   { key: 'done',     label: 'Дууссан',          icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
   { key: 'archived', label: 'Архив',            icon: '🗄', dot: '#475569', st: ['archived'] },
   { key: 'canceled', label: 'Цуцалсан',         icon: '✕', dot: '#DC2626', st: ['canceled'] },
+  { key: 'deleted',  label: 'Устгасан',         icon: '🗑', dot: '#9CA3AF', st: ['deleted'] },
 ];
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
@@ -5453,7 +5454,7 @@ function renderOrders() {
   };
   shown.sort(_sortFns[state.ordersSort] || _sortFns.number);
   // Борлуулалт = ноорог + цуцалсныг ТООЛОХГҮЙ (бодит захиалга л)
-  const _saleE = shown.filter(e => !['draft', 'canceled'].includes(String(e.o.status)));
+  const _saleE = shown.filter(e => !['draft', 'canceled', 'deleted'].includes(String(e.o.status)));
   const sumTotal = _saleE.reduce((s, e) => s + e.total, 0);
   const saleN = _saleE.length;
   const CAP = 200;
@@ -13443,6 +13444,7 @@ const BQ_STATUS = {
   returned:    { label: 'Буцаан авсан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
+  deleted:     { label: 'Устгасан',      dot: '#9CA3AF', bg: '#F3F4F6', tx: '#6B7280' },
   // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
   preparation: { label: 'Бэлтгэл',       dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   cleaning:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
@@ -13717,8 +13719,9 @@ async function _loadAppOrdersImpl() {
     state._archiveLoading = false;
   }
 }
-// Хугацаа хэтэрсэн захиалгыг АВТО устгах: эвентийн огноо ӨНГӨРСӨН + биелээгүй (draft/reserved) + ТӨЛБӨРГҮЙ.
-// Төлбөр төлсөн = жинхэнэ захиалга → ХӨНДӨХГҮЙ. Дууссан/буцаасан/архив/цуцалсан ч хамаагүй. Сессэд нэг л удаа ажиллана.
+// Хугацаа хэтэрсэн захиалгыг "Устгасан" төлөв рүү АВТО зөөх (устгахгүй — "Устгасан" хэсэгт харагдана).
+// Нөхцөл: эвентийн огноо ӨНГӨРСӨН + биелээгүй (draft/reserved) + ТӨЛБӨРГҮЙ.
+// Төлбөр төлсөн = жинхэнэ захиалга → ХӨНДӨХГҮЙ (зөвхөн гараар цуцлана). Сессэд нэг л удаа.
 async function autoCleanExpiredOrders() {
   if (state._expiredCleaned) return;
   state._expiredCleaned = true;
@@ -13732,8 +13735,10 @@ async function autoCleanExpiredOrders() {
     return (Number(o.paid_mnt) || 0) <= 0;                    // төлбөртэй бол ХӨНДӨХГҮЙ
   });
   if (!dead.length) return;
-  await bulkDeleteOrders(dead.map(o => String(o.id)));
-  if (typeof showToast === 'function') showToast(`🗑 Хугацаа хэтэрсэн ${dead.length} биелээгүй захиалга автоматаар устгав`, 'info', 4500);
+  dead.forEach(o => { o.status = 'deleted'; });               // optimistic — "Устгасан" төлөв
+  if (typeof render === 'function') render();
+  for (const o of dead) { try { await saveAppOrder(o); } catch (e) { console.warn('autoClean move', e); } }
+  if (typeof showToast === 'function') showToast(`🗑 Хугацаа хэтэрсэн ${dead.length} төлбөргүй захиалгыг "Устгасан" руу шилжүүлэв`, 'info', 4500);
 }
 // Дараагийн захиалгын дугаар (түүхэн + app дотроос хамгийн их + 1)
 function nextOrderNumber() {

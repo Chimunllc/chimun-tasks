@@ -4467,6 +4467,7 @@ async function openStatementClassifyModal() {
   loadUsedReceipts();
   await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
   await loadExpenseLearn();       // хуваалцсан суралцлагаар салбар/ангилал таамаглана
+  if (state.appOrders === undefined) { try { await loadAppOrders(); } catch (e) {} }   // барьцаа буцаалтыг захиалгаар авто таьних
   // Ажилтны данс → {key, name, type}. Сарын цалин авагч + ЦАГИЙН ажилтан (тус тусдаа хэсэгт бүртгэнэ).
   const empByAcct = {};
   (typeof salaryStaff === 'function' ? salaryStaff() : (TEAM || [])).forEach(mm => { const a = String(mm.bank_account || '').replace(/\D/g, ''); if (a) empByAcct[a] = { key: personKey(mm), name: mm.name || '', type: 'monthly', m: mm }; });
@@ -4529,7 +4530,7 @@ async function openStatementClassifyModal() {
           : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
           : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${ctrl}
       </div>`;
@@ -4565,7 +4566,8 @@ async function openStatementClassifyModal() {
           const salaryEmp = (emp && emp.type === 'monthly' && _salaryMemo) ? emp.key : '';
           const hourlyEmp = (emp && emp.type === 'hourly' && _salaryMemo) ? emp : null;
           const cardL4 = detectCardLast4(r.memo);
-          rows.push({ ...r, src, cardL4, cat, catManual: !!cat, fp, salaryEmp, hourlyEmp, done: (!isForce() && imp.has(fp)) });
+          const depMatch = depositMatchForStmt(r.memo, r.debit);   // барьцаа буцаалт бол → захиалгад авто холбоно
+          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : cat, catManual: !!(depMatch || cat), depMatch, fp, salaryEmp, hourlyEmp, done: (!isForce() && imp.has(fp)) });
         });
       }
       // Эх сурвалжуудыг (карт/данс) цуглуулна
@@ -4652,12 +4654,15 @@ async function openStatementClassifyModal() {
       const brOwn = branchOf(srcKeyOf(r)); const brValid = STMT_BRANCHES.some(([c]) => c === brOwn);
       const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
       const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
-      const cat = r.cat || CARD_PEND_CAT;   // авто таамаг байвал урьдчилан сонгогдоно, гэхдээ эзэн баталгаажуулна
+      const cat = (r.depMatch ? '5810' : r.cat) || CARD_PEND_CAT;   // барьцаа буцаалт → 5810; эс бол авто таамаг (эзэн баталгаажуулна)
       state._finBackfill = { date: r.date };
+      // Барьцаа буцаалт таарсан бол захиалгад ШУУД холбоно (⟦LNK|order⟧) → захиалга «✓ Барьцаа буцаасан» болно
+      const _dm = r.depMatch;
       const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
         accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
         justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}`.trim(),
-        category: cat, deptBranch: brCode, linkType: 'general', priority: 'low' });
+        category: cat, deptBranch: brCode, priority: 'low',
+        linkType: _dm ? 'order' : 'general', linkId: _dm ? _dm.id : '', linkLabel: _dm ? ('#' + _dm.number) : '' });
       state._finBackfill = null;
       if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
       if (routeOwner === state.me) toMe++; else toOwner++;
@@ -9747,6 +9752,19 @@ function depositReturnFor(orderId) {
   if (!rec) return null;
   const d = rec.executed_at || rec.due || rec.requested_at || '';
   return { amount: Number(rec.amount) || 0, date: String(d).slice(0, 10), by: rec.createdBy || '' };
+}
+// Хуулгын гарах гүйлгээ БАРЬЦАА БУЦААЛТ мөн үү — утгад "барьцаа" + захиалгын дугаар байж,
+// тэр захиалга барьцаатай, дүн барьцаанаас хэтрээгүй бол таарна. Автомат ангилах/холбоход.
+function depositMatchForStmt(memo, amount) {
+  const m = String(memo || '');
+  if (!/барьцаа/i.test(m)) return null;                 // "барьцаа" гэсэн үг заавал байх (санамсаргүй тоо биш)
+  const nums = m.match(/\d{3,4}/g); if (!nums) return null;
+  const orders = state.appOrders || [];
+  for (const ns of nums) {
+    const o = orders.find(x => String(x.number) === String(parseInt(ns, 10)) && (Number(x.deposit_mnt) || 0) > 0);
+    if (o) { const dep = Number(o.deposit_mnt) || 0; if (!amount || Number(amount) <= dep * 1.02 + 100) return { id: o.id, number: o.number, deposit: dep }; }
+  }
+  return null;
 }
 // Ашгийн мөр зөвхөн бүх санхүүг хардаг хүнд (ажилтанд зөвхөн өөрийн хүсэлт ирдэг тул дутуу дүн харагдана)
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }

@@ -3779,142 +3779,7 @@ async function updateOrderStatus(order_no, fields) {
   } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
 }
 
-// Нягтлан "Төлбөр авах" дарахад: төлбөрийн дэлгэрэнгүй (дүн/төрөл/хэлбэр/огноо) бүртгэх модал нээнэ.
-// Баталгаажуулмагц захиалга «Төлбөр авсан» болж, 3 даалгавар (Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт)
-// автоматаар үүснэ — Эвент менежерт оноогдож, тэр ажилтан хуваарилна.
-function openOrderPaymentModal(order_no, editMode) {
-  const o = state.orders.find(x => x.order_no === order_no);
-  if (!o) return;
-  if (state.me !== getFinanceExecutorEmail() && !state.isCEO) {
-    showToast('Зөвхөн нягтлан/CEO төлбөр баталгаажуулна', 'error'); return;
-  }
-  if (!editMode && (o.status || 'Шинэ') !== 'Шинэ') { showToast('Аль хэдийн төлбөр авсан', 'warn'); return; }
-  const pr = computeOrderPricing(o);
-  const rentalNet = pr.rental - pr.multiDayDiscount - pr.vatDiscount - pr.manualDiscount;
-  const d0 = new Date();
-  const todayIso = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
-  const curType = o.paid_type || 'full';
-  const curMethod = o.paid_method || 'data';
-  const curAmount = o.paid_amount || pr.total;
-  const curDate = o.paid_date || todayIso;
-  // Давхар захиалга — энэ захиалгын бараа өөрийн огноонд хүрэлцэхгүй бол анхааруулна.
-  const _short = orderShortages(o.items, o.date_start, o.date_end, o.order_no);
-  const shortageHtml = _short.length
-    ? `<div class="pay-shortage">⚠ Бараа хүрэлцэхгүй байж магадгүй: ${_short.map(s => `${escapeHtml(s.name)} (${s.avail}/${s.need} сул)`).join(', ')}. Давхар захиалга шалгана уу.</div>`
-    : '';
-
-  document.getElementById('mev-pay-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg';
-  modal.id = 'mev-pay-modal';
-  modal.innerHTML = `
-    <div class="modal" style="max-width:440px;">
-      <h2>${editMode ? 'Төлбөр засах' : 'Төлбөр авах'} · ${escapeHtml(o.order_no)}</h2>
-      <div class="pay-summary">
-        <div><b>${escapeHtml(o.customer_name || '')}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}</div>
-        <div class="pay-breakdown">Түрээс ${fmtMoney(rentalNet)} · Барьцаа ${fmtMoney(pr.deposit)} · <b>Нийт ${fmtMoney(pr.total)}</b></div>
-      </div>
-      ${shortageHtml}
-      <label>Төлбөрийн төрөл</label>
-      <div class="pay-seg" id="pay-type">
-        <button type="button" data-v="full"${curType === 'full' ? ' class="on"' : ''}>Бүтэн төлбөр</button>
-        <button type="button" data-v="advance"${curType === 'advance' ? ' class="on"' : ''}>Урьдчилгаа</button>
-      </div>
-      <label style="margin-top:10px;">Төлсөн дүн (₮)</label>
-      <input id="pay-amount" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(curAmount)}" />
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <div style="flex:1;">
-          <label>Хэлбэр</label>
-          <select id="pay-method">
-            <option value="data"${curMethod === 'data' ? ' selected' : ''}>Данс</option>
-            <option value="cash"${curMethod === 'cash' ? ' selected' : ''}>Бэлэн</option>
-            <option value="card"${curMethod === 'card' ? ' selected' : ''}>Карт</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <label>Огноо</label>
-          <div class="mcal" style="position:relative;">
-            <input type="text" class="mcal-display" id="pay-date-disp" readonly placeholder="Огноо" style="width:100%;cursor:pointer;" />
-            <input type="hidden" id="pay-date" />
-            <div class="mc-pop" id="pay-date-pop" style="display:none;"></div>
-          </div>
-        </div>
-      </div>
-      <label style="margin-top:10px;">Гүйлгээний утга <span style="color:var(--muted);font-weight:400;">(банкнаас яг хуулна)</span></label>
-      <textarea id="pay-ref" rows="2" placeholder="Жишээ: ITZONE -SHIREE SANDAL-ЛХАМЦЭДЭН ХАЖИДСҮРЭН">${escapeHtml(o.paid_ref || '')}</textarea>
-      <p class="pay-hint">Сар бүрийн дансны тулгалт энэ утгаар таарна — банкны бичсэнээр яг хуулж тавь.</p>
-      ${editMode ? '' : '<p class="pay-hint">Баталгаажуулмагц захиалга «Төлбөр авсан» болж, Түрээс бэлдэх · Цэвэрлэгээ · Хүргэлт даалгавар үүснэ.</p>'}
-      <div class="modal-actions" style="margin-top:16px;">
-        <button class="btn" id="pay-cancel">Болих</button>
-        <button class="btn btn-primary" id="pay-save">${editMode ? '💾 Хадгалах' : '✓ Төлбөр баталгаажуулах'}</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#pay-type').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-v]'); if (!b) return;
-    modal.querySelectorAll('#pay-type button').forEach(x => x.classList.remove('on'));
-    b.classList.add('on');
-  });
-  mountCalendar(modal.querySelector('#pay-date-disp'), modal.querySelector('#pay-date'), modal.querySelector('#pay-date-pop'), null, curDate);
-  const close = () => modal.remove();
-  modal.querySelector('#pay-cancel').addEventListener('click', close);
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('#pay-save').addEventListener('click', (e) => submitOrderPayment(modal, o, !!editMode, e.currentTarget));
-  modal.classList.add('open');
-  setTimeout(() => modal.querySelector('#pay-amount')?.focus(), 50);
-}
-
-async function submitOrderPayment(modal, o, editMode, btn) {
-  const amount = moneyVal(modal.querySelector('#pay-amount'));
-  if (!amount) { showToast('Төлсөн дүнг оруулна уу', 'warn'); return; }
-  const type = modal.querySelector('#pay-type button.on')?.dataset.v || 'full';
-  const method = modal.querySelector('#pay-method').value || 'data';
-  const date = modal.querySelector('#pay-date').value || '';
-  const ref = (modal.querySelector('#pay-ref')?.value || '').trim();
-  btn.disabled = true;
-  o.paid_amount = amount; o.paid_type = type; o.paid_method = method; o.paid_date = date; o.paid_ref = ref;
-  o.note = encodePaymentNote(o.note, { amount, type, method, date, ref });
-
-  if (!editMode) {
-    // Эвент менежер даалгаврын эзэн (creator) → тэр тус бүрд ажилтан хуваарилна.
-    const owner = findMemberEmailByRole('эвент', '') || state.me;
-    const cust = o.customer_name || o.order_no;
-    const due = o.date_start ? String(o.date_start).slice(0, 10) : '';
-    const baseDesc = `Захиалга ${o.order_no} · ${cust}`
-      + (o.date_start ? `\n📅 ${o.date_start} → ${o.date_end}` : '')
-      + `\n📍 ${o.address || '—'} · ☎ ${o.phone || '—'}`;
-    const defs = [
-      { title: `Түрээс бэлдэх — ${cust}`, priority: 'high' },
-      { title: `Цэвэрлэгээ — ${cust}`, priority: 'med' },
-      { title: `Хүргэлт — ${cust}`, priority: 'high' },
-    ];
-    const ids = [];
-    for (let i = 0; i < defs.length; i++) {
-      const t = {
-        id: uid(), title: defs[i].title, desc: baseDesc, branch: 'm-event', project: 'event',
-        assignee: owner, due, priority: defs[i].priority, status: 'open',
-        order_no: o.order_no, createdBy: owner, created: Date.now() + i, comments: [], activity: [],
-      };
-      state.tasks.unshift(t);
-      ids.push(t.id);
-      await saveTask(t);
-    }
-    o.status = 'Төлбөр авсан';
-    o.task_id = ids.join(',');
-  }
-
-  const idx = state.orders.findIndex(x => x.order_no === o.order_no);
-  if (idx >= 0) state.orders[idx] = o;
-  modal.remove();
-  render();
-  try {
-    const r = await fetchWithTimeout(withKey(state.config.ordersUrl || DEFAULT_ORDERS_URL), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderToWire(o)),
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) { showToast('Sheet-д хадгалагдсангүй: ' + e.message, 'warn', 4000); }
-  showToast(editMode ? 'Төлбөр шинэчлэгдлээ' : `Төлбөр авсан · ${fmtMoney(amount)} · 3 даалгавар үүслээ`, 'success', 4000);
-}
+// [Устгасан] openOrderPaymentModal/submitOrderPayment — гараар төлбөр бичдэг үхсэн legacy код (PDF-only submitBqPayment-ээр орлуулагдсан).
 
 // Буцаалт ба барьцаа — захиалга дуусгахад (Буцаан ирсэн → Дууссан) эвдрэл/гээгдлийн дүн авч
 // барьцаанаас хасна. Дүн note-д ⟦DMG⟧-ээр хадгалагдаж картад харагдана.
@@ -5688,12 +5553,6 @@ function attachOrdersHandlers() {
       const o = state.orders.find(x => x.order_no === btn.dataset.orderEdit);
       if (o) openNewMeventOrder(o);
     });
-  });
-  document.querySelectorAll('button[data-order-confirm]').forEach(btn => {
-    btn.addEventListener('click', () => openOrderPaymentModal(btn.dataset.orderConfirm));
-  });
-  document.querySelectorAll('button[data-order-paymentedit]').forEach(btn => {
-    btn.addEventListener('click', () => openOrderPaymentModal(btn.dataset.orderPaymentedit, true));
   });
 
   // Урагшлуулах (нэг алхам урагш)
@@ -9846,6 +9705,11 @@ function nomaadCardHtml(o) {
   const regLine = plog.length
     ? `📝 ${plog.length} удаа бүртгэсэн · сүүлд <b style="font-weight:600;">${escapeHtml(memberName(_lastLog.recorded_by))}</b> · ${escapeHtml(String(_lastLog.recorded_at || '').slice(0, 10))}`
     : (income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй');
+  // Баримтгүй (гар) орлого = банкны баримтын [#id]-гүй бүртгэл (захирлын хувийн данс г.м.) — тод ялгаж харуулна.
+  const _manualSum = plog.filter(p => !receiptIdFromRef(p.note || '')).reduce((s, p) => s + (Number(p.total) || 0), 0);
+  const manualBadge = _manualSum > 0
+    ? `<div class="order-meta" style="margin-top:4px;color:var(--warn);font-size:11.5px;font-weight:600;">🔒 Баримтгүй (гар бүртгэл): ${fmtMoney(_manualSum)}</div>`
+    : '';
   const logHistoryHtml = plog.length ? `<div class="order-meta" style="margin-top:6px;background:var(--panel-hover);border-radius:8px;padding:8px 10px;">
     <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:4px;">📝 Бүртгэлийн түүх (${plog.length})</div>
     ${plog.slice().reverse().map(p => { const _rid = receiptIdFromRef(p.note || ''); return `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;align-items:center;"><span style="flex:1;min-width:0;">${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;">${fmtMoney(p.total)}</span>${_rid ? `<button data-nomaad-receipt="${escapeHtml(_rid)}" data-amt="${Number(p.total) || 0}" title="Эх банкны баримт (PDF) харах" style="border:none;background:none;color:var(--accent,#7c3aed);cursor:pointer;font-size:13px;line-height:1;padding:0 0 0 4px;">📄</button>` : ''}${(state.isCEO && p.id) ? `<button data-nomaad-reverse="${escapeHtml(o.quote_no)}" data-pay-id="${escapeHtml(p.id)}" title="Буруу бол буцаах (зөвхөн захирал)" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 4px;">↩</button>` : ''}</div>`; }).join('')}
@@ -9930,6 +9794,7 @@ function nomaadCardHtml(o) {
       ${nomaadIsCancelled(o) && o.note ? `<div class="order-meta" style="color:var(--danger);font-weight:600;">❌ ${escapeHtml(o.note)}</div>` : ''}
       ${pendingBanner}
       ${profitHtml}
+      ${manualBadge}
       ${logHistoryHtml}
       ${vatOrderRow(o.quote_no, contractTotal, 'nomaad')}
       <table class="order-items"><thead><tr><th>Зүйл</th><th class="num">Тоо</th><th>Хариуцагч</th><th class="num">Дүн</th></tr></thead><tbody>${itemRows}</tbody></table>
@@ -10810,6 +10675,8 @@ function openNomaadEditModal(quoteNo) {
     showToast('Гүйцэтгэсэн захиалгыг засах боломжгүй (мэдээлэл хадгалагдана). Дэлгэрэнгүйг "📄 Үнийн санал харах"-аар үзнэ үү.', 'warn', 5000);
     return;
   }
+  // Эцсийн гэрээний дүн (акт) = эффектив орлого/авлагад ордог → зөвхөн санхүүгийн эрхтэй (CEO эсвэл орлого бүртгэгч) засна.
+  const canEditFinal = state.isCEO || can('nomaad.income');
   // Мөрүүдийн локал хуулбар (хадгалах хүртэл эх өгөгдөл хөндөхгүй)
   const items = (Array.isArray(o.items) ? o.items : []).map(it => ({
     row_num: Number(it.row_num) || 0,
@@ -10867,7 +10734,7 @@ function openNomaadEditModal(quoteNo) {
         <button class="naq-addbtn" id="ne-add">+ Мөр нэмэх</button>
         <span class="naq-sectitle">Гэрээний гүйцэтгэл (акт) <small>(төлбөр гүйцэтгэлийн дараа — муу гүйцэтгэлийн хасалт энд)</small></span>
         <div class="naq-grid">
-          <label>Эцсийн гэрээний дүн (акт) ₮<input id="ne-final" type="text" inputmode="numeric" class="money-input" value="${Number(o.final_amount) > 0 ? moneyFmtInput(o.final_amount) : ''}" placeholder="хоосон = гэрээтэй ижил" /></label>
+          <label>Эцсийн гэрээний дүн (акт) ₮<input id="ne-final" type="text" inputmode="numeric" class="money-input" value="${Number(o.final_amount) > 0 ? moneyFmtInput(o.final_amount) : ''}" placeholder="хоосон = гэрээтэй ижил"${canEditFinal ? '' : ' disabled title="Зөвхөн санхүү/захирал актын дүн засна"'} />${canEditFinal ? '' : '<span style="font-size:10.5px;color:var(--muted);">🔒 Актын дүнг зөвхөн санхүү/захирал засна</span>'}</label>
           <label>Хасалтын шалтгаан / тэмдэглэл<input id="ne-note" value="${escapeHtml(o.note || '')}" placeholder="жишээ: гүйцэтгэл актаар буурсан" /></label>
         </div>
         <div id="ne-deduct" class="naq-deduct"></div>
@@ -10946,7 +10813,9 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
   const fmtDT = v => v ? String(v).replace('T', ' ') : '';
   const startVal = modal.querySelector('#ne-start').value;
   const endVal = modal.querySelector('#ne-end').value;
-  const finalVal = modal.querySelector('#ne-final').value;
+  // Актын дүнг зөвхөн санхүүгийн эрхтэй засна — эс бөгөөс хуучин утгыг хадгална (UI disabled-ийг тойрсон ч).
+  const canEditFinal = state.isCEO || can('nomaad.income');
+  const finalVal = canEditFinal ? modal.querySelector('#ne-final').value : (Number(o.final_amount) > 0 ? String(o.final_amount) : '');
   const fields = {
     company: modal.querySelector('#ne-company').value.trim(),
     status: modal.querySelector('#ne-status').value,
@@ -10959,7 +10828,7 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
     note: modal.querySelector('#ne-note').value.trim(),
     // Эцсийн гэрээний дүн (акт) — талбар хоосон бол ЦЭВЭРЛЭНЭ (placeholder "хоосон = гэрээтэй ижил"):
     //   акт → гэрээний дүнтэй ижил болж, хуурамч "гүйцэтгэлийн хасалт/илүү төлсөн" арилна.
-    final_amount: finalVal !== '' ? moneyVal(modal.querySelector('#ne-final')) : '',
+    final_amount: !canEditFinal ? (Number(o.final_amount) > 0 ? Number(o.final_amount) : '') : (finalVal !== '' ? moneyVal(modal.querySelector('#ne-final')) : ''),
     // Хоосон бол хуучин утгыг хадгална (parse хийгдэхгүй чөлөөт текст огноог хамгаална)
     date_start: startVal ? fmtDT(startVal) : (o.date_start || ''),
     date_end: endVal ? fmtDT(endVal) : (o.date_end || ''),

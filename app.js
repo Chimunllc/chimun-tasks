@@ -5388,11 +5388,6 @@ function renderOrders() {
     if (f === 'today') return isToday(e);
     return e.skey === f;
   };
-  // Хугацаа хэтэрсэн (биелээгүй) — эвентийн огноо ӨНГӨРСӨН + эрт төлөв (draft/reserved) = хэзээ ч биелээгүй "үхсэн" захиалга.
-  // Дууссан/буцаасан/цуцалсан түүхийг ХӨНДӨХГҮЙ.
-  const isExpired = (e) => { const end = String(e.o.stops_at || e.o.starts_at || '').slice(0, 10); return !!end && end < todayStr && (e.skey === 'draft' || e.skey === 'reserved'); };
-  const expiredN = combined.filter(isExpired).length;
-  if (!expiredN && state.ordersExpiredOnly) { state.ordersExpiredOnly = false; state.ordersSelect = false; }   // бүгд устсан бол горим авто-унтраа
 
   // Анхаарлын чипүүд — Захиалгын операцийн дохио
   const todayN = combined.filter(isToday).length;
@@ -5432,10 +5427,9 @@ function renderOrders() {
     <button class="oview-btn${_ov === 'list' ? ' on' : ''}" data-oview="list">☰ Жагсаалт</button>
     <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
   </div>`;
-  const expiredBtn = expiredN ? `<button class="btn" id="orders-expired-btn" style="padding:6px 10px;font-size:12px;${state.ordersExpiredOnly ? 'background:var(--danger);color:#fff;border-color:var(--danger);' : 'color:var(--danger);border-color:var(--danger);'}" title="Эвентийн огноо өнгөрсөн, биелээгүй захиалга — цэвэрлэх">⏰ Хугацаа хэтэрсэн ${expiredN}</button>` : '';
   const controls = `<div class="orders-controls">
     <div class="orders-controls-r" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${expiredBtn}${ymSelect}${paySelect}${sortSelect}
+      ${ymSelect}${paySelect}${sortSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;
@@ -5443,7 +5437,7 @@ function renderOrders() {
   state.ordersSort = state.ordersSort || 'number';
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
   const payF = state.ordersPay || '';
-  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!state.ordersExpiredOnly || isExpired(e)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
+  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
   const _sortFns = {
     number: (a, b) => (Number(b.o.number) || 0) - (Number(a.o.number) || 0),
     number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
@@ -5471,8 +5465,7 @@ function renderOrders() {
       ? sumLine + `<div class="orders-wrap">${cards}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  const expiredHint = state.ordersExpiredOnly ? `<div style="background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);border-radius:10px;padding:9px 12px;margin:2px 2px 10px;font-size:12.5px;color:var(--text);">⏰ <b>Хугацаа хэтэрсэн ${expiredN}</b> захиалга (эвент өнгөрсөн, биелээгүй). <b>☑ Удирдах</b> → сонгоод <b>🗑 Устгах</b>. <span style="color:var(--muted);">Дахин дарж бүх захиалга руу буцна.</span></div>` : '';
-  return head + (isBoard ? '' : chips) + controls + expiredHint + body;
+  return head + (isBoard ? '' : chips) + controls + body;
 }
 
 function _closeOrderKebabs(e) {
@@ -5486,7 +5479,6 @@ function attachOrdersHandlers() {
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
   document.getElementById('orders-report-btn')?.addEventListener('click', openCompletedReport);
   document.getElementById('orders-manage-btn')?.addEventListener('click', () => { state.ordersSelect = !state.ordersSelect; if (!state.ordersSelect) state.ordersSelected = new Set(); render(); });
-  document.getElementById('orders-expired-btn')?.addEventListener('click', () => { state.ordersExpiredOnly = !state.ordersExpiredOnly; if (state.ordersExpiredOnly) { state.ordersSelect = true; } else { state.ordersSelect = false; state.ordersSelected = new Set(); } render(); });
   document.querySelectorAll('[data-sel-id]').forEach(cb => cb.addEventListener('change', () => {
     state.ordersSelected = state.ordersSelected || new Set();
     if (cb.checked) state.ordersSelected.add(cb.dataset.selId); else state.ordersSelected.delete(cb.dataset.selId);
@@ -13707,6 +13699,7 @@ async function _loadAppOrdersImpl() {
     }
   } catch (e) { console.warn('loadAppOrders active', e); }
   state.appOrders = state.appOrders || [];
+  autoCleanExpiredOrders();   // хугацаа хэтэрсэн биелээгүй захиалгыг авто устгах (сессэд нэг удаа)
   loadUsedReceipts();   // нэгдсэн баримтын ledger (давхцал шалгах)
   // 2-р шат: архив/цуцалсан түүх — сессэд нэг л удаа (ховор өөрчлөгдөнө; аппын үйлдэл optimistic)
   if (!state._archiveLoaded && !state._archiveLoading) {
@@ -13723,6 +13716,24 @@ async function _loadAppOrdersImpl() {
     } catch (e) { console.warn('loadAppOrders archive', e); }
     state._archiveLoading = false;
   }
+}
+// Хугацаа хэтэрсэн захиалгыг АВТО устгах: эвентийн огноо ӨНГӨРСӨН + биелээгүй (draft/reserved) + ТӨЛБӨРГҮЙ.
+// Төлбөр төлсөн = жинхэнэ захиалга → ХӨНДӨХГҮЙ. Дууссан/буцаасан/архив/цуцалсан ч хамаагүй. Сессэд нэг л удаа ажиллана.
+async function autoCleanExpiredOrders() {
+  if (state._expiredCleaned) return;
+  state._expiredCleaned = true;
+  const t = new Date();
+  const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  const dead = (state.appOrders || []).filter(o => {
+    const st = String(o.status || 'reserved');
+    if (st !== 'draft' && st !== 'reserved') return false;   // зөвхөн биелээгүй эрт төлөв
+    const end = String(o.stops_at || o.starts_at || '').slice(0, 10);
+    if (!end || end >= today) return false;                  // огноогүй / ирээдүй / өнөөдөр → үлдээ
+    return (Number(o.paid_mnt) || 0) <= 0;                    // төлбөртэй бол ХӨНДӨХГҮЙ
+  });
+  if (!dead.length) return;
+  await bulkDeleteOrders(dead.map(o => String(o.id)));
+  if (typeof showToast === 'function') showToast(`🗑 Хугацаа хэтэрсэн ${dead.length} биелээгүй захиалга автоматаар устгав`, 'info', 4500);
 }
 // Дараагийн захиалгын дугаар (түүхэн + app дотроос хамгийн их + 1)
 function nextOrderNumber() {
@@ -13925,6 +13936,47 @@ function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
 const _CI_RE = /⟦CI\|([^⟧]*)⟧/;
 function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) return {}; try { return JSON.parse(m[1]) || {}; } catch (e) { return {}; } }
 function mapsHref(v) { const s = String(v || '').trim(); if (/^https?:\/\//i.test(s)) return s; return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s); }
+// Төлбөрийн paid_ref-ийг задлах — "[#id] илгээгч · данс · утга  |  ..." → баримт бүрийн бүтэц.
+// (Эх PDF хадгалагддаггүй — банкнаас автомат задлан авсан мэдээлэл.)
+function parsePaidRef(paid_ref) {
+  const raw = String(paid_ref || '').trim();
+  if (!raw) return [];
+  return raw.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean).map(s => {
+    const m = s.match(/^\[#([^\]]+)\]\s*(.*)$/);
+    const id = m ? m[1] : '';
+    const body = (m ? m[2] : s).trim();
+    const parts = body.split('·').map(x => x.trim()).filter(Boolean);
+    return { id, sender: parts[0] || '', acct: parts[1] || '', memo: parts.slice(2).join(' · '), raw: s };
+  });
+}
+// Бүртгэсэн банкны баримтын дэлгэрэнгүйг харах (задлан авсан гүйлгээний мэдээлэл).
+function openPaidReceiptDetail(oid, idx) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)) || (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const list = parsePaidRef(o.paid_ref);
+  const r = list[idx]; if (!r) return;
+  const row = (lbl, val) => val ? `<div style="display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--border);"><span style="color:var(--muted);flex:none;">${lbl}</span><b style="text-align:right;word-break:break-word;">${escapeHtml(String(val))}</b></div>` : '';
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.innerHTML = `<div class="modal" style="max-width:400px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны гүйлгээ</h2><button class="btn" id="prc-x" style="padding:5px 10px;">✕</button></div>
+    <div style="font-size:13px;line-height:1.5;">
+      ${list.length === 1 ? row('Дүн', fmtMoney(o.paid_mnt || 0)) : ''}
+      ${row('Огноо', o.paid_date ? String(o.paid_date).slice(0, 10) : '')}
+      ${row('Илгээгч', r.sender)}
+      ${row('Данс', r.acct)}
+      ${row('Гүйлгээний утга', r.memo)}
+      ${row('Баримтын дугаар', r.id)}
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:12px;">Эх PDF файл хадгалагддаггүй — банкны баримтаас автоматаар задлан авсан мэдээлэл. Давхардлаас баримтын дугаараар хамгаалагдсан.</p>
+    <div class="modal-actions" style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" id="prc-close">Хаах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#prc-x').addEventListener('click', close);
+  modal.querySelector('#prc-close').addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+}
 function setCustInfo(note, ci) {
   const base = String(note || '').replace(_CI_RE, '').trim();
   const clean = {};
@@ -13981,6 +14033,7 @@ function openNewOrder(editOrder) {
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
   const _ci0 = isEdit ? custInfoOf(editOrder.note) : {};   // байгууллага/РД/FB/Viber/газрын зураг
+  const _rcpts0 = isEdit ? parsePaidRef(editOrder.paid_ref) : [];   // бүртгэсэн банкны баримтууд
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
@@ -14023,7 +14076,10 @@ function openNewOrder(editOrder) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
       <label class="no-lbl">Хөнгөлөлт<div style="display:flex;gap:4px;margin-top:3px;"><select id="no-disctype" style="flex:0 0 56px;margin-top:0;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0" style="flex:1;margin-top:0;"></div></label>
       <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
-      ${isEdit ? `<label class="no-lbl">Төлсөн (банкны баримтаар)<div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;">${fmtMoney(editOrder.paid_mnt || 0)}</div><span style="font-size:10.5px;color:var(--muted);">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ</span></label>` : ''}
+      ${isEdit ? `<label class="no-lbl" style="grid-column:1/-1;">Төлсөн (банкны баримт)
+        <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:15px;">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:11.5px;color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
+        ${_rcpts0.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;">${_rcpts0.map((r, i) => `<div class="paid-rcpt-row" data-paid-rcpt="${i}" role="button" tabindex="0" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:12px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || 'Банкны баримт')}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>` : '<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Төлбөр бүртгээгүй.</div>'}
+        <span style="font-size:10.5px;color:var(--muted);display:block;margin-top:5px;">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ. Баримт дээр дарж дэлгэрэнгүйг харна.</span></label>` : ''}
     </div>
     <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:12.5px;cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
@@ -14156,6 +14212,11 @@ function openNewOrder(editOrder) {
   if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
   $('#no-vat').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
+  if (isEdit) modal.querySelectorAll('[data-paid-rcpt]').forEach(el => {
+    const open = () => openPaidReceiptDetail(editOrder.id, +el.dataset.paidRcpt);
+    el.addEventListener('click', open);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  });
   recalc();
 
   $('#no-save').onclick = async (e) => {

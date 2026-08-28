@@ -5388,6 +5388,11 @@ function renderOrders() {
     if (f === 'today') return isToday(e);
     return e.skey === f;
   };
+  // Хугацаа хэтэрсэн (биелээгүй) — эвентийн огноо ӨНГӨРСӨН + эрт төлөв (draft/reserved) = хэзээ ч биелээгүй "үхсэн" захиалга.
+  // Дууссан/буцаасан/цуцалсан түүхийг ХӨНДӨХГҮЙ.
+  const isExpired = (e) => { const end = String(e.o.stops_at || e.o.starts_at || '').slice(0, 10); return !!end && end < todayStr && (e.skey === 'draft' || e.skey === 'reserved'); };
+  const expiredN = combined.filter(isExpired).length;
+  if (!expiredN && state.ordersExpiredOnly) { state.ordersExpiredOnly = false; state.ordersSelect = false; }   // бүгд устсан бол горим авто-унтраа
 
   // Анхаарлын чипүүд — Захиалгын операцийн дохио
   const todayN = combined.filter(isToday).length;
@@ -5427,9 +5432,10 @@ function renderOrders() {
     <button class="oview-btn${_ov === 'list' ? ' on' : ''}" data-oview="list">☰ Жагсаалт</button>
     <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
   </div>`;
+  const expiredBtn = expiredN ? `<button class="btn" id="orders-expired-btn" style="padding:6px 10px;font-size:12px;${state.ordersExpiredOnly ? 'background:var(--danger);color:#fff;border-color:var(--danger);' : 'color:var(--danger);border-color:var(--danger);'}" title="Эвентийн огноо өнгөрсөн, биелээгүй захиалга — цэвэрлэх">⏰ Хугацаа хэтэрсэн ${expiredN}</button>` : '';
   const controls = `<div class="orders-controls">
     <div class="orders-controls-r" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${ymSelect}${paySelect}${sortSelect}
+      ${expiredBtn}${ymSelect}${paySelect}${sortSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;
@@ -5437,7 +5443,7 @@ function renderOrders() {
   state.ordersSort = state.ordersSort || 'number';
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
   const payF = state.ordersPay || '';
-  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
+  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!state.ordersExpiredOnly || isExpired(e)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
   const _sortFns = {
     number: (a, b) => (Number(b.o.number) || 0) - (Number(a.o.number) || 0),
     number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
@@ -5465,7 +5471,8 @@ function renderOrders() {
       ? sumLine + `<div class="orders-wrap">${cards}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  return head + (isBoard ? '' : chips) + controls + body;
+  const expiredHint = state.ordersExpiredOnly ? `<div style="background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);border-radius:10px;padding:9px 12px;margin:2px 2px 10px;font-size:12.5px;color:var(--text);">⏰ <b>Хугацаа хэтэрсэн ${expiredN}</b> захиалга (эвент өнгөрсөн, биелээгүй). <b>☑ Удирдах</b> → сонгоод <b>🗑 Устгах</b>. <span style="color:var(--muted);">Дахин дарж бүх захиалга руу буцна.</span></div>` : '';
+  return head + (isBoard ? '' : chips) + controls + expiredHint + body;
 }
 
 function _closeOrderKebabs(e) {
@@ -5479,6 +5486,7 @@ function attachOrdersHandlers() {
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
   document.getElementById('orders-report-btn')?.addEventListener('click', openCompletedReport);
   document.getElementById('orders-manage-btn')?.addEventListener('click', () => { state.ordersSelect = !state.ordersSelect; if (!state.ordersSelect) state.ordersSelected = new Set(); render(); });
+  document.getElementById('orders-expired-btn')?.addEventListener('click', () => { state.ordersExpiredOnly = !state.ordersExpiredOnly; if (state.ordersExpiredOnly) { state.ordersSelect = true; } else { state.ordersSelect = false; state.ordersSelected = new Set(); } render(); });
   document.querySelectorAll('[data-sel-id]').forEach(cb => cb.addEventListener('change', () => {
     state.ordersSelected = state.ordersSelected || new Set();
     if (cb.checked) state.ordersSelected.add(cb.dataset.selId); else state.ordersSelected.delete(cb.dataset.selId);

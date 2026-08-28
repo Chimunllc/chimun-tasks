@@ -13949,9 +13949,10 @@ function openNewOrder(editOrder) {
   const _custNm = String((editOrder && editOrder.customer) || '').trim();
   const _autoCompany = _ci0.company || (_vr0 && _vr0.buyer_name ? String(_vr0.buyer_name).trim() : '') || ((_payerNm && _payerNm.toLowerCase() !== _custNm.toLowerCase()) ? _payerNm : '');
   const _autoReg = _ci0.reg || (_vr0 && _vr0.buyer_reg ? String(_vr0.buyer_reg).trim() : '');
-  // Түрээслэгдсэн/гарсан захиалга → бараа + эхлэх огноо ТҮГЖИНЭ (гарсан барааны бүртгэл хамгаалагдана).
-  // Бусад (холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл) засагдана.
-  const _locked = isEdit && ['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || ''));
+  // Гарсан (rented+) ЭСВЭЛ бүрэн төлөгдсөн захиалга → мөнгөний БҮХ нөхцөл ТҮГЖИНЭ (бараа/үнэ/эхлэх огноо/
+  // хөнгөлөлт/НӨАТ/барьцаа) — төлсөн дүнтэй зөрөхөөс сэргийлнэ. Засагдах: холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл.
+  const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
+  const _locked = isEdit && (['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || '')) || _paidFull);
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
@@ -13986,7 +13987,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
       <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
-    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf1d9;border-radius:8px;padding:8px 11px;margin:10px 0 8px;">🔒 Түрээслэгдсэн тул <b>бараа + эхлэх огноо</b> түгжсэн (гарсан бүртгэл хамгаалагдана). Холбоо / РД / төлбөр / дуусах огноо / тэмдэглэл засаж болно.</div>` : `<div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
+    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf1d9;border-radius:8px;padding:8px 11px;margin:10px 0 8px;">🔒 Гарсан/төлөгдсөн тул <b>мөнгөний нөхцөл</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо) түгжсэн — төлсөн дүнтэй зөрөхгүй. Холбоо / РД / төлбөр / дуусах огноо / тэмдэглэл засаж болно.</div>` : `<div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
     <div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
     <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>`}
     <div style="font-size:12px;font-weight:700;margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
@@ -14136,7 +14137,7 @@ function openNewOrder(editOrder) {
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
   });
   recalc();
-  if (_locked) { ['#no-start', '#no-start-h'].forEach(s => { const el = $(s); if (el) { el.disabled = true; el.style.opacity = '.55'; el.style.cursor = 'not-allowed'; el.title = 'Түрээслэгдсэн — өөрчлөгдөхгүй'; } }); }
+  if (_locked) { ['#no-start', '#no-start-h', '#no-disctype', '#no-discval', '#no-vat', '#no-deposit'].forEach(s => { const el = $(s); if (el) { el.disabled = true; el.style.opacity = '.55'; el.style.cursor = 'not-allowed'; el.title = 'Гарсан/төлөгдсөн — өөрчлөгдөхгүй'; } }); }
 
   $('#no-save').onclick = async (e) => {
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }

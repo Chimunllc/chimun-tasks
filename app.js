@@ -11584,6 +11584,10 @@ function meventContractHtml(o) {
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);
+  // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
+  const _ci = custInfoOf(o.note);
+  const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
+  const _addr = (o.delivery_address || o.customer_address || '').trim();
   const deposit = Number(o.deposit_mnt) || 0;
   const rentalNet = Math.max(0, subtotal - discount + delivFee);   // НӨАТ багтсан түрээс+үйлчилгээ (барьцаа ОРООГҮЙ)
   const total = Number(o.total_mnt) || (rentalNet + deposit);      // нийт төлбөр
@@ -11656,7 +11660,7 @@ function meventContractHtml(o) {
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
-    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b><br>${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}Байгууллагын РД: …………………</td>
+    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b>${_ci.company ? '<br>Байгууллага: ' + escapeHtml(_ci.company) : ''}<br>${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}${_ciContact ? 'Холбоо барих: ' + escapeHtml(_ciContact) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}Байгууллагын РД: ${_ci.reg ? escapeHtml(_ci.reg) : '…………………'}${_addr ? '<br>Хүргэх хаяг: ' + escapeHtml(_addr) : ''}${_ci.maps ? ' (<a href="' + escapeHtml(mapsHref(_ci.maps)) + '">байршил</a>)' : ''}</td>
     <td class="r"><div class="ch-role">ТҮРЭЭСЛҮҮЛЭГЧ</div><b>${C.name}</b><br>${C.address}<br>Улаанбаатар, 11000<br>Утас: 7755-1010<br>Hello@Mevent.mn</td>
   </tr></table>
   <div class="meta-line">Он сар: <b>${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}</b> &nbsp;·&nbsp; Захиалга: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; Гэрээний дугаар: <b>${contractNo || '……'}</b></div>

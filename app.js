@@ -13908,6 +13908,18 @@ function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Ma
 const _VAT_RE = /⟦VAT\|(\d+)⟧/;
 function parseVat(note) { const m = String(note || '').match(_VAT_RE); return m ? +m[1] : null; }
 function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
+// Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/хаяг/газрын зураг) — ⟦CI|{json}⟧ note token.
+// app_orders-д багана нэмэхгүйгээр. Зөвхөн захиалгын менежерт харагдана.
+const _CI_RE = /⟦CI\|([^⟧]*)⟧/;
+function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) return {}; try { return JSON.parse(m[1]) || {}; } catch (e) { return {}; } }
+function mapsHref(v) { const s = String(v || '').trim(); if (/^https?:\/\//i.test(s)) return s; return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s); }
+function setCustInfo(note, ci) {
+  const base = String(note || '').replace(_CI_RE, '').trim();
+  const clean = {};
+  ['company', 'reg', 'fb', 'viber', 'maps'].forEach(k => { const v = ci && ci[k] ? String(ci[k]).replace(/[⟦⟧]/g, '').trim().slice(0, 400) : ''; if (v) clean[k] = v; });
+  if (!Object.keys(clean).length) return base;   // юу ч байхгүй бол token нэмэхгүй
+  return (base ? base + ' ' : '') + `⟦CI|${JSON.stringify(clean)}⟧`;
+}
 function deliveryLabel(d) {
   if (!d || d.zone === 'pickup') return '';
   if (d.zone === 'city') return 'Хот дотор';
@@ -13956,6 +13968,7 @@ function openNewOrder(editOrder) {
   const today = new Date().toISOString().slice(0, 10);
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
+  const _ci0 = isEdit ? custInfoOf(editOrder.note) : {};   // байгууллага/РД/FB/Viber/газрын зураг
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
@@ -13970,6 +13983,10 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
+      <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_ci0.company || '')}" placeholder="ХХК нэр"></label>
+      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_ci0.reg || '')}" placeholder="Байгууллага/хувь хүн"></label>
+      <label class="no-lbl">Facebook<input id="no-fb" value="${escapeHtml(_ci0.fb || '')}" placeholder="FB хаяг эсвэл линк"></label>
+      <label class="no-lbl">Viber<input id="no-viber" value="${escapeHtml(_ci0.viber || '')}" placeholder="Viber дугаар/линк"></label>
       <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
       ${isEdit ? `<label class="no-lbl">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
@@ -13983,7 +14000,8 @@ function openNewOrder(editOrder) {
         </select></label>
         <label class="no-lbl" id="no-delivkm-wrap" style="${_dlv0.zone === 'out' ? '' : 'display:none;'}">Нэг тал (км)<input id="no-delivkm" type="number" min="0" value="${_dlv0.km || ''}" placeholder="0" style="margin-top:3px;"></label>
       </div>
-      <label class="no-lbl" id="no-addr-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Хаяг"></label>
+      <label class="no-lbl" id="no-addr-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Дүүрэг, хороо, байр, орц"></label>
+      <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
       <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
     <div style="font-size:12px;font-weight:700;margin:10px 0 6px;">Бараа нэмэх</div>
@@ -14117,6 +14135,7 @@ function openNewOrder(editOrder) {
     const z = $('#no-delivzone').value;
     $('#no-delivkm-wrap').style.display = z === 'out' ? '' : 'none';
     $('#no-addr-wrap').style.display = z === 'pickup' ? 'none' : '';
+    const _mw = $('#no-maps-wrap'); if (_mw) _mw.style.display = z === 'pickup' ? 'none' : '';
     $('#no-delivfee-row').style.display = z === 'pickup' ? 'none' : 'flex';
     recalc();
   });
@@ -14149,6 +14168,11 @@ function openNewOrder(editOrder) {
     const prevDep = isEdit ? Number(editOrder.deposit_mnt) || 0 : 0;
     if (deposit !== prevDep) depLog.push({ by: state.me, at: new Date().toISOString(), from: prevDep, to: deposit });
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
+    const _ci = {
+      company: ($('#no-company')?.value || '').trim(), reg: ($('#no-reg')?.value || '').trim(),
+      fb: ($('#no-fb')?.value || '').trim(), viber: ($('#no-viber')?.value || '').trim(),
+      maps: isDeliv ? ($('#no-maps')?.value || '').trim() : '',
+    };
     const ord = {
       id: isEdit ? editOrder.id : uid,
       number: isEdit ? editOrder.number : nextOrderNumber(),
@@ -14158,7 +14182,7 @@ function openNewOrder(editOrder) {
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee, paid_mnt: isEdit ? moneyVal($('#no-paid')) : 0,
-      note: ((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(),
+      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -14212,6 +14236,11 @@ function bqOrderCard(o) {
   const payMeta = (paid > 0 && o.paid_ref && st !== 'canceled')
     ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.5;">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}<div style="margin-top:2px;">${String(o.paid_ref).split('|').map(s => escapeHtml(s.trim())).filter(Boolean).map(s => `• ${s}`).join('<br>')}</div></div>`
     : '';
+  // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
+  const _ci = isApp ? custInfoOf(o.note) : {};
+  const ciHtml = (isApp && (_ci.company || _ci.reg || _ci.fb || _ci.viber || _ci.maps))
+    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ci.company ? `🏢 ${escapeHtml(_ci.company)}` : ''}${_ci.reg ? `${_ci.company ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ci.fb ? `<br>📘 ${escapeHtml(_ci.fb)}` : ''}${_ci.viber ? `<br>💜 Viber: ${escapeHtml(_ci.viber)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
+    : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
@@ -14257,6 +14286,7 @@ function bqOrderCard(o) {
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
+    ${ciHtml}
     ${delivMeta}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>

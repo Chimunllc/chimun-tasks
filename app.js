@@ -16003,7 +16003,7 @@ function vatCandidateOrders() {
   const out = [];
   (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return;
     out.push({ type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '',
-      reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start || o.created_at || '' }); });
+      reg: vatRegNorm(o.reg_no || o.register), amount: (typeof nomaadEffTotal === 'function' ? nomaadEffTotal(o) : 0) || vatNum(o.grand_total || o.final_amount || o.total_mnt || o.total), date: o.date_start || o.created_at || '' }); });
   // M-Event захиалга = app_orders (bqOrders хоосон болсон — миграц). НӨАТ голдуу эндээс.
   // Зөвхөн бодит захиалга: түрээслэгдэж буй/дууссан/захиалсан/архивд. Устгасан(canceled)+ноорог(draft) АВАХГҮЙ.
   // Мөн зөвхөн энэ оны 4-р сараас хойшхыг (хуучин хуучин захиалгуудыг шуугиан болгохгүй).
@@ -16103,7 +16103,7 @@ function vatOrderRow(orderNo, orderTotal, type) {
 // Захиалгаас шууд НӨАТ баримт холбох (реверс тулгалт)
 function openVatAttachFor(type, no) {
   let order = null;
-  if (type === 'nomaad') { const o = (state.nomaadOrders || []).find(x => String(x.quote_no) === String(no)); if (o) order = { type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '', reg: vatRegNorm(o.reg_no || o.register), amount: vatNum(o.total_mnt || o.total || o.income_amount), date: o.date_start }; }
+  if (type === 'nomaad') { const o = (state.nomaadOrders || []).find(x => String(x.quote_no) === String(no)); if (o) order = { type: 'nomaad', no: o.quote_no, name: o.company || o.customer || o.customer_name || '', reg: vatRegNorm(o.reg_no || o.register), amount: (typeof nomaadEffTotal === 'function' ? nomaadEffTotal(o) : 0) || vatNum(o.grand_total || o.final_amount || o.total_mnt || o.total), date: o.date_start }; }
   else { const o = (state.appOrders || []).find(x => String(x.number) === String(no)); if (o) { const cust = String(o.customer || o.company || ''); const rm = cust.match(/\b(\d{7})\b/); order = { type: 'event', no: o.number, name: cust, reg: rm ? rm[1] : vatRegNorm(o.register || o.reg_no), amount: vatNum(o.total_mnt || o.grand_total || o.total), date: o.starts_at || o.created_at }; } }
   if (order) openVatAttachModal(order); else showToast('Захиалга олдсонгүй', 'error');
 }

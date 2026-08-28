@@ -13236,27 +13236,36 @@ async function loadHistory(force) {
     return r.json();
   };
   try {
-    const [summary, monthly, methods, products, customers, usage, roi, roiFix] = await Promise.all([
+    // ⭐ НЭГ ЭХ СУРВАЛЖ: KPI/орлого/сар + бараа/ROI/ашиглалт/харилцагч бүгд app_orders-оос
+    // (нэгдсэн амьд захиалга). Бараа/харилцагчийг захиалгаас шууд тооцоолно → KPI-тай тулгарна,
+    // nomaad camp/давхардал/хуучирсан snapshot асуудал арилна. Төлбөрийн хэлбэр л bq_payments-аас
+    // (app_orders-д migrate үед method ороогүй) — Booqable түүхэн гэж шошголно.
+    const rawOrders = fetchWithTimeout(
+      `${SUPABASE_URL}/rest/v1/app_orders?select=id,customer,status,starts_at,stops_at,total_mnt,paid_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
+      { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
+    const [summary, monthly, methods, orders, roiFix] = await Promise.all([
       get('rh_v_summary'),
       get('rh_v_monthly_revenue', '&order=month.asc'),
       get('rh_v_payment_method'),
-      get('rh_v_revenue_by_product', '&order=revenue_mnt.desc.nullslast&limit=40'),
-      get('rh_v_revenue_by_customer', '&order=revenue_mnt.desc.nullslast&limit=40'),
-      get('rh_v_product_utilization', '&order=item_days_out.desc.nullslast&limit=40'),
-      get('rh_v_product_roi', '&order=revenue_mnt.desc.nullslast&limit=80').catch(() => []),  // view байхгүй бол хоосон (бусдыг эвдэхгүй)
-      // ROI залруулга: эзэмшсэн тоо (Booqable stock_counts) + бараа тус бүрийн зураг.
-      // view нь эзэмшлийг нэрээр холбодог байсан нь нэр өөрчлөгдсөнөөр эвдэрсэн тул энд залруулна.
+      rawOrders,
+      // Эзэмшсэн тоо (Booqable stock_counts) + нэгж өртөг: {bySku,byName → {o,c}}. ROI-д ашиглана.
       get('app_config', '&key=eq.rh_roi_fix&select=value').then(r => r[0] && r[0].value).catch(() => null),
     ]);
+    const comp = _histCompute(orders || [], roiFix);
     state.history = {
       summary: summary[0] || null,
       monthly: monthly || [],
       methods: methods || [],
-      products: products || [],
-      customers: customers || [],
-      usage: usage || [],
-      roi: roi || [],
+      products: comp.products,
+      customers: comp.customers,
+      usage: comp.usage,
+      services: comp.services,
+      roi: comp.roi,
       roiFix: roiFix || null,
+      unknownRev: comp.unknownRev,
+      unknownCnt: comp.unknownCnt,
+      namedCustomers: comp.customers.length,
+      ordersCount: (orders || []).length,
       loadedAt: Date.now(),
     };
   } catch (e) {
@@ -15280,6 +15289,78 @@ function bqBar(label, value, max, color, sub) {
 // (орлого хэвээр — зөвхөн ангилал). Амьд каталогийн type='service'-тэй ижил санаа.
 const _BQ_SERVICE_RE = /хүргэл|тээвэр|достав|deliver|суурилуул|угсрал|буулгал|оператор|унаа|такси/i;
 function bqIsService(name) { return _BQ_SERVICE_RE.test(String(name || '')); }
+
+// ── Түүхэн аналитик цөм: app_orders (нэгдсэн эх сурвалж)-оос шууд тооцоолно ──
+// Захиалга бүрийн total_mnt-ыг мөрүүдэд (qty×price жингээр) пропорциональ хуваарилж бараа/
+// үйлчилгээний орлого гаргана → нийлбэр нь захиалгын нийт дүн (= дээд KPI)-тэй тулгарна.
+// Эзэмшсэн тоо/нэгж өртөг = rh_roi_fix (Booqable stock_counts). НӨАТ/барьцаа = бараа биш (хасна).
+function _histCompute(orders, roiFix) {
+  const N = x => Number(x) || 0;
+  const normP = (s) => (typeof _normProdName === 'function') ? _normProdName(s) : String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const rfix = roiFix || {};
+  const rlook = (sku, name) => (sku && rfix.bySku && rfix.bySku[String(sku).trim()]) || (rfix.byName && rfix.byName[normP(name)]) || null;
+  const TAX = /нөат|vat|барьцаа|deposit/i;
+  const SELF = /nomaad|кемп|\bcamp\b|чимун/i;   // компанийн ӨӨРИЙН салбар — харилцагч БИШ, хасна
+  const custs = {}, prods = {}, svcs = {};
+  let unknownRev = 0, unknownCnt = 0;
+
+  (orders || []).forEach(o => {
+    const total = N(o.total_mnt), paid = N(o.paid_mnt);
+    // ── харилцагч (нэрээр нэгтгэнэ — зай/үсгийн давхардал арилна) ──
+    const craw = String(o.customer || '').trim().replace(/\s+/g, ' ');
+    if (!craw || craw === '?' || craw === '-') { unknownRev += total; unknownCnt++; }
+    else if (SELF.test(craw)) { /* өөрийн салбар — алгасна */ }
+    else {
+      const ck = craw.toLowerCase();
+      const c = custs[ck] || (custs[ck] = { customer: craw, order_count: 0, revenue_mnt: 0, paid_mnt: 0, latest_order_at: null });
+      c.order_count++; c.revenue_mnt += total; c.paid_mnt += paid;
+      const d = String(o.starts_at || '').slice(0, 10);
+      if (d && (!c.latest_order_at || d > c.latest_order_at)) c.latest_order_at = d;
+    }
+    // ── мөрүүд (бараа/үйлчилгээ) ──
+    const items = Array.isArray(o.items) ? o.items : [];
+    const grossAll = items.reduce((s, i) => s + N(i.qty) * N(i.price), 0);
+    const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
+    items.forEach(i => {
+      const nm = String(i.name || '').trim();
+      if (!nm || TAX.test(nm)) return;                    // татвар/барьцаа — бараа биш
+      const gross = N(i.qty) * N(i.price);
+      const rev = grossAll > 0 ? total * gross / grossAll : 0;   // захиалгын дүнд тулгарна
+      const bucket = bqIsService(nm) ? svcs : prods;
+      const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';
+      const key = skuT ? ('s:' + skuT) : ('n:' + normP(nm));
+      const p = bucket[key] || (bucket[key] = { product: nm, sku: skuT || null, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+      p.revenue_mnt += rev; p.total_qty += N(i.qty); p.item_days_out += days * N(i.qty);
+      p._orders[o.id] = 1;
+      if (!p.photo && i.photo) p.photo = i.photo;
+    });
+  });
+
+  const finalize = (obj) => Object.values(obj).map(p => {
+    const fx = rlook(p.sku, p.product);
+    let owned = fx ? N(fx.o) : 0;
+    const unit = fx ? N(fx.c) : 0;
+    if (unit > 10000000 && owned > 10) owned = 1;        // үнэтэй хөрөнгийн сэжигтэй эзэмшил → 1-д бари
+    const times = Object.keys(p._orders).length;
+    const tot = (unit > 0 && owned > 0) ? unit * owned : 0;
+    const rx = tot > 0 ? Math.round(p.revenue_mnt / tot * 10) / 10 : null;
+    return { product: p.product, sku: p.sku, photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
+  });
+
+  const products = finalize(prods).sort((a, b) => b.revenue_mnt - a.revenue_mnt);
+  const services = finalize(svcs).sort((a, b) => b.revenue_mnt - a.revenue_mnt);
+  const customers = Object.values(custs).map(c => ({
+    customer: c.customer, order_count: c.order_count, revenue_mnt: Math.round(c.revenue_mnt),
+    paid_mnt: Math.round(c.paid_mnt), avg_order_mnt: c.order_count ? Math.round(c.revenue_mnt / c.order_count) : 0,
+    latest_order_at: c.latest_order_at,
+  })).sort((a, b) => b.revenue_mnt - a.revenue_mnt);
+  const usage = products.filter(x => x.item_days_out > 0).slice()
+    .sort((a, b) => b.item_days_out - a.item_days_out)
+    .map(x => ({ product: x.product, sku: x.sku, photo: x.photo, bookings: x.times_rented, total_qty_out: x.total_qty, item_days_out: x.item_days_out }));
+
+  return { customers, products, roi: products, usage, services, unknownRev: Math.round(unknownRev), unknownCnt };
+}
+
 function bqInsights(bq) {
   const N = x => Number(x) || 0;
   const out = [];
@@ -15314,9 +15395,9 @@ function bqInsights(bq) {
   const roi = bq.roi || [];
   const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1);
   if (stuck.length) out.push(`⚠️ <b>${stuck.length}</b> бараа түрээсийн орлогоороо өртгөө нөхөөгүй (ROI&lt;1) — хасах/зарах боломжтой`);
-  // Оргил улирал
+  // Оргил улирал (зөвхөн дууссан сар)
   const seas = {};
-  m.forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
+  base.forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
   let bestMo = null, bestAvg = -1;
   Object.entries(seas).forEach(([mo, arr]) => { const avg = arr.reduce((p, q) => p + q, 0) / arr.length; if (avg > bestAvg) { bestAvg = avg; bestMo = mo; } });
   if (bestMo) out.push(`📅 Дунджаар <b>${Number(bestMo)}-р сар</b> хамгийн өндөр орлоготой — урьдчилан бэлдэх`);
@@ -15327,7 +15408,8 @@ function bqInsights(bq) {
 function bqSeasonChart(bq) {
   const N = x => Number(x) || 0;
   const seas = {};
-  (bq.monthly || []).forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
+  const _cur = (new Date()).toISOString().slice(0, 7);
+  (bq.monthly || []).filter(x => String(x.month) < _cur).forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
   const arr = Array.from({ length: 12 }, (_, i) => { const mo = String(i + 1).padStart(2, '0'); const a = seas[mo] || []; return { n: i + 1, avg: a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0, yrs: a.length }; });
   const max = Math.max(1, ...arr.map(x => x.avg));
   const bars = arr.map(x => {
@@ -15349,7 +15431,7 @@ function bqSeasonChart(bq) {
 function renderHistory() {
   const bq = state.history;
   const head = (extra) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
-      <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх</div><div style="font-size:11px;color:var(--muted);">2024–2026 · бүрэн түрээсийн дата · шийдвэр гаргалтад</div></div>
+      <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх</div><div style="font-size:11px;color:var(--muted);">2024–2026 · нэгдсэн захиалгын дата (эвент/түрээс) · шийдвэр гаргалтад</div></div>
       <button class="btn" data-bq-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
     </div>${extra || ''}`;
 
@@ -15376,15 +15458,14 @@ function renderHistory() {
   const tab = state.bqTab || 'revenue';
   const kpi = (label, val, col, sub) => `<div style="padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--panel);"><div style="font-size:11px;color:var(--muted);">${label}</div><div style="font-weight:800;font-size:17px;color:${col || 'var(--text)'};margin-top:2px;">${val}</div>${sub ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">${sub}</div>` : ''}</div>`;
 
-  // KPI толгой (бүх таб дээр)
-  const range = (s.first_payment_at && s.last_payment_at)
-    ? `${String(s.first_payment_at).slice(0, 10)} → ${String(s.last_payment_at).slice(0, 10)}` : '';
+  // KPI толгой (бүх таб дээр). Бүгд app_orders (эвент/түрээс салбар) — NOMAAD кемп тусад нь.
+  const nameCust = N(bq.namedCustomers || s.active_customers);
   const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
-    ${kpi('Нийт орлого', fmtMoney(N(s.net_revenue_mnt)), 'var(--ok)', 'эвентийн огноогоор (accrual)')}
-    ${kpi('Цуглуулсан', fmtMoney(N(s.collected_mnt)), 'var(--text)', 'бэлэн мөнгө')}
-    ${kpi('Авлага', fmtMoney(N(s.net_revenue_mnt) - N(s.collected_mnt)), 'var(--warn)', 'төлөгдөөгүй үлдэгдэл')}
+    ${kpi('Нийт орлого', fmtMoney(N(s.net_revenue_mnt)), 'var(--ok)', 'эвент/түрээс · эвентийн огноогоор')}
+    ${kpi('Цуглуулсан', fmtMoney(N(s.collected_mnt)), 'var(--text)', 'бүх хэлбэрээр')}
+    ${kpi('Авлага', fmtMoney(N(s.net_revenue_mnt) - N(s.collected_mnt)), 'var(--warn)', 'нэхэмжилсэн − цуглуулсан')}
     ${kpi('Бодит захиалга', `${N(s.real_orders).toLocaleString('mn-MN')}`, 'var(--text)', `нийт ${N(s.total_orders).toLocaleString('mn-MN')} (draft/цуцлахыг хассан)`)}
-    ${kpi('Идэвхтэй харилцагч', `${N(s.active_customers).toLocaleString('mn-MN')}`, 'var(--text)', '')}
+    ${kpi('Нэртэй харилцагч', `${nameCust.toLocaleString('mn-MN')}`, 'var(--text)', bq.unknownCnt ? `+ ${N(bq.unknownCnt).toLocaleString('mn-MN')} нэргүй захиалга` : 'давхардал арилгасан')}
   </div>`;
 
   // Таб сонгогч
@@ -15397,28 +15478,34 @@ function renderHistory() {
     <div style="font-weight:700;font-size:13px;margin-bottom:${note ? 2 : 10}px;">${title}</div>${note ? `<div style="font-size:10.5px;color:var(--muted);margin-bottom:10px;">${note}</div>` : ''}${inner}</div>`;
 
   if (tab === 'revenue') {
-    // Сар бүрийн орлого — босоо bar (бүх сар, хэвтээ scroll, шинэ нь баруунд)
+    // Сар бүрийн орлого — босоо bar (бүх сар, хэвтээ scroll, шинэ нь баруунд).
+    // Одоогийн/ирээдүйн сар (эвентийн огноогоор) дутуу тул бүдэг өнгө + тэмдэглэнэ.
     const m = bq.monthly || [];
+    const curMonth = (new Date()).toISOString().slice(0, 7);
     const maxNet = Math.max(1, ...m.map(x => N(x.net_mnt)));
     const bars = m.map(x => {
       const net = N(x.net_mnt);
       const h = Math.max(3, Math.round(net / maxNet * 130));
-      return `<div style="flex:0 0 auto;width:38px;display:flex;flex-direction:column;align-items:center;gap:3px;" title="${x.month}: орлого ${fmtMoney(net)} · ${N(x.charge_count)} эвент (эвентийн огноогоор)">
+      const inc = String(x.month) >= curMonth;   // дутуу сар (одоо/ирээдүй)
+      return `<div style="flex:0 0 auto;width:38px;display:flex;flex-direction:column;align-items:center;gap:3px;" title="${x.month}: орлого ${fmtMoney(net)} · ${N(x.charge_count)} эвент (эвентийн огноогоор)${inc ? ' — дутуу сар' : ''}">
         <div style="font-size:8.5px;color:var(--muted);white-space:nowrap;">${(net / 1e6).toFixed(net >= 1e7 ? 0 : 1).replace(/\.0$/, '')}</div>
-        <div style="width:24px;height:${h}px;background:var(--ok);border-radius:4px 4px 0 0;"></div>
+        <div style="width:24px;height:${h}px;background:${inc ? 'var(--muted-soft)' : 'var(--ok)'};border-radius:4px 4px 0 0;"></div>
         <div style="font-size:8.5px;color:var(--muted);transform:rotate(-50deg);transform-origin:center;white-space:nowrap;margin-top:4px;">${String(x.month).slice(2)}</div>
       </div>`;
     }).join('');
-    const monthChart = card('Сар бүрийн цэвэр орлого (сая₮)',
+    const monthChart = card('Сар бүрийн орлого (сая₮)',
       `<div style="display:flex;align-items:flex-end;gap:5px;height:180px;overflow-x:auto;padding:6px 2px 2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
-      'Багана = тухайн сард бодитоор орсон цэвэр орлого (орлого − буцаалт), төлбөрийн огноогоор');
+      'Багана = тухайн сард болсон эвентийн нэхэмжилсэн дүн, эвентийн огноогоор. Бүдэг багана = дутуу (одоо/ирээдүйн) сар.');
 
-    // Төлбөрийн хэлбэр (зөвхөн орлоготой — refund-only/0₮ мөрийг нууна)
+    // Төлбөрийн хэлбэр — Booqable түүхэн төлбөрийн лог (bq_payments). Шинэ app/M-Event төлбөр
+    // энд ороогүй тул дээрх "Цуглуулсан" KPI-тай яг таарахгүй байж болно.
     const pm = (bq.methods || []).filter(x => N(x.charges_mnt) > 0);
+    const pmTot = pm.reduce((s, x) => s + N(x.charges_mnt), 0);
     const maxPm = Math.max(1, ...pm.map(x => N(x.charges_mnt)));
     const mLabel = { bank: 'Банк', cash: 'Бэлэн', card: 'Карт', other: 'Бусад' };
-    const methodCard = card('Төлбөрийн хэлбэрээр',
-      pm.map(x => bqBar(mLabel[x.method] || x.method, N(x.charges_mnt), maxPm, 'var(--primary)', `${N(x.charge_count)} гүйлгээ`)).join(''));
+    const methodCard = card(`Төлбөрийн хэлбэрээр — ${fmtMoneyShort(pmTot)} (Booqable түүх)`,
+      pm.map(x => bqBar(mLabel[x.method] || x.method, N(x.charges_mnt), maxPm, 'var(--primary)', `${N(x.charge_count)} гүйлгээ`)).join(''),
+      'Booqable-ийн бүртгэсэн төлбөрийн лог. Шинэ захиалгын төлбөр (app/M-Event) энд ороогүй.');
     // Автомат дүгнэлт (CEO нэг хараад ойлгох)
     const ins = bqInsights(bq);
     const insightsBanner = ins.length ? `<div style="border:1px solid var(--primary);background:var(--primary-soft);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
@@ -15430,8 +15517,10 @@ function renderHistory() {
     const _pv = state.histPeriod || 'all';
     const _n = _pv === 'all' ? null : Number(_pv);
     const _stat = (arr) => { const months = arr.length || 1; const net = arr.reduce((a, x) => a + N(x.net_mnt), 0); const ord = arr.reduce((a, x) => a + N(x.charge_count), 0); return { months, net, ord, avgNet: net / months, avgOrd: ord / months, aov: ord ? net / ord : 0 }; };
-    const _cur = _stat(_n == null ? m : m.slice(-_n));
-    const _prev = (_n != null && m.length >= _n * 2) ? _stat(m.slice(-_n * 2, -_n)) : null;
+    // Дундаж/тренд — зөвхөн ДУУССАН сар (одоогийн дутуу сар дунджийг гажуудуулахгүй)
+    const mC = m.filter(x => String(x.month) < curMonth);
+    const _cur = _stat(_n == null ? mC : mC.slice(-_n));
+    const _prev = (_n != null && mC.length >= _n * 2) ? _stat(mC.slice(-_n * 2, -_n)) : null;
     const _cmp = (cur, prev) => { if (!prev) return ''; const d = prev > 0 ? Math.round((cur - prev) / prev * 100) : 0; return `<span style="font-size:11px;color:${d >= 0 ? 'var(--ok)' : 'var(--danger)'};font-weight:600;"> ${d >= 0 ? '▲' : '▼'}${Math.abs(d)}%</span>`; };
     const _pbtns = _periods.map(([k, l]) => `<button class="btn${k === _pv ? ' btn-primary' : ''}" data-histperiod="${k}" style="padding:5px 12px;font-size:12px;">${l}</button>`).join('');
     const avgPanel = card(`📊 Дундаж — ${_periods.find(p => p[0] === _pv)[1]} (${_cur.months} сар)`,
@@ -15444,11 +15533,10 @@ function renderHistory() {
     body = kpis + insightsBanner + avgPanel + monthChart + bqSeasonChart(bq) + methodCard;
 
   } else if (tab === 'products') {
-    const roiAll = bq.roi || [];
-    // Хүргэлт/үйлчилгээг барааны ROI-аас САЛГАНА (орлого хэвээр, зөвхөн ангилал)
-    const roi = roiAll.filter(x => !bqIsService(x.product));
-    const svc = roiAll.filter(x => bqIsService(x.product));
-    // Тусдаа "Үйлчилгээ" карт — орлого харагдана, ROI/өртөг тооцохгүй
+    // Бараа/ROI бүгд app_orders-оос урьдчилж тооцоологдсон (_histCompute): revenue/owned/cost/roi.
+    // Үйлчилгээ (хүргэлт) тусдаа bq.services-д, НӨАТ/барьцаа аль хэдийн хасагдсан.
+    const roi = (bq.roi || []).slice();
+    const svc = bq.services || [];
     const svcCard = (list) => {
       if (!list.length) return '';
       const mx = Math.max(1, ...list.map(x => N(x.revenue_mnt)));
@@ -15459,28 +15547,15 @@ function renderHistory() {
         'Хүргэлт/тээвэр — бараа биш үйлчилгээ. Орлогод багтсан ч ROI/нөөцөд тооцохгүй.');
     };
     if (roi.length) {
-      // ROI залруулга: эзэмшсэн тоог Booqable stock_counts-аас (app_config rh_roi_fix), ROI-г дахин бодно.
-      // view нь эзэмшлийг амьд барааны нэрээр холбодог байсан нь нэр цэвэрлэсний дараа эвдэрсэн (олон бараа 1 болж ROI хөөрөгдсөн).
-      const rfix = bq.roiFix || {};
-      const fixOf = (x) => (x.sku && rfix.bySku && rfix.bySku[x.sku])
-        || (rfix.byName && rfix.byName[String(x.product || '').trim().toLowerCase()]) || null;
-      const roiC = roi.map(x => {
-        const fx = fixOf(x);
-        const rev = N(x.revenue_mnt), unit = N(x.unit_cost_mnt);
-        const owned = (fx && N(fx[0])) || N(x.owned_qty) || 1;
-        const tot = unit > 0 ? unit * owned : (N(x.total_cost_mnt) || 0);
-        const rx = (unit > 0 && tot > 0) ? Math.round(rev / tot * 10) / 10 : null;
-        return { ...x, _rev: rev, _unit: unit, _owned: owned, _tot: tot, _rx: rx, _photo: (fx && fx[1]) || '' };
-      });
-      const maxRev = Math.max(1, ...roiC.map(x => x._rev));
+      const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
       const roiRow = (x) => {
-        const rev = x._rev, owned = x._owned, tot = x._tot, rx = x._rx, days = N(x.item_days_out);
+        const rev = N(x.revenue_mnt), owned = N(x.owned_qty), tot = N(x.total_cost_mnt), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
         const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
         const badge = (tot <= 0 || rx == null) ? `<span style="color:var(--muted);">өртөг ?</span>`
           : `<span style="color:${rx >= 3 ? 'var(--ok)' : rx >= 1 ? 'var(--warn)' : 'var(--danger)'};font-weight:700;">ROI ${rx}×</span>`;
         const costStr = tot > 0 ? `хөрөнгө ${fmtMoneyShort(tot)}${owned > 1 ? ` (${owned.toLocaleString('mn-MN')}ш)` : ''}` : 'өртөг ?';
-        const thumb = x._photo
-          ? `<img src="${escapeHtml(x._photo)}" loading="lazy" alt="" style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;object-fit:cover;background:var(--panel-hover);" onerror="this.style.visibility='hidden';">`
+        const thumb = x.photo
+          ? `<img src="${escapeHtml(x.photo)}" loading="lazy" alt="" style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;object-fit:cover;background:var(--panel-hover);" onerror="this.style.visibility='hidden';">`
           : `<div style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;background:var(--panel-hover);"></div>`;
         return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;">
           ${thumb}
@@ -15492,38 +15567,36 @@ function renderHistory() {
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>
         </div>`;
       };
-      const stuck = roiC.filter(x => x._unit > 0 && x._rx != null && x._rx < 1).sort((a, b) => a._rx - b._rx);
+      const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
+      const shown = roi.slice(0, 60);
       body = kpis
-        + card('Орлого × ROI — бараа бүр', roiC.map(roiRow).join(''),
-            'ROI× = бодит цуглуулсан орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
+        + card(`Орлого × ROI — бараа бүр${roi.length > 60 ? ` (топ 60 / ${roi.length})` : ''}`, shown.map(roiRow).join(''),
+            'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
             stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '')
         + svcCard(svc);
     } else {
-      const pAll = bq.products || [];
-      const p = pAll.filter(x => !bqIsService(x.product));
-      const pSvc = pAll.filter(x => bqIsService(x.product));
-      const maxRev = Math.max(1, ...p.map(x => N(x.revenue_mnt)));
-      body = kpis + card('Орлого төрүүлсэн топ бараа',
-        (p.length ? p.map(x => bqBar(x.product || '—', N(x.revenue_mnt), maxRev, 'var(--ok)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('')
-          : '<span style="color:var(--muted);">дата алга</span>'),
-        'ROI/өртөг харахын тулд rh_v_product_roi view-г Supabase-д нэмнэ үү (доорх SQL).')
-        + svcCard(pSvc);
+      body = kpis + card('Бараа', '<span style="color:var(--muted);">дата алга</span>');
     }
 
   } else if (tab === 'customers') {
-    const c = bq.customers || [];
+    const cAll = bq.customers || [];
+    const c = cAll.slice(0, 40);
     const maxRev = Math.max(1, ...c.map(x => N(x.revenue_mnt)));
-    body = kpis + card('Орлогоор топ харилцагч',
+    const unknownNote = bq.unknownCnt
+      ? `<div style="border:1px dashed var(--border);border-radius:10px;padding:9px 12px;margin-top:6px;font-size:11.5px;color:var(--muted);">ℹ️ Нэмээд <b>${N(bq.unknownCnt).toLocaleString('mn-MN')}</b> захиалга (${fmtMoneyShort(N(bq.unknownRev))}) харилцагчийн нэргүй бүртгэгдсэн — түүхэн Booqable дата. Цаашид захиалга бүрт нэр бүртгэвэл энд гарна.</div>`
+      : '';
+    body = kpis + card(`Орлогоор топ харилцагч${cAll.length > 40 ? ` (топ 40 / ${cAll.length})` : ''}`,
       (c.length ? c.map(x => bqBar(x.customer || '—', N(x.revenue_mnt), maxRev, 'var(--primary)',
-        `${N(x.order_count)} захиалга · дунд. ${fmtMoneyShort(N(x.avg_order_mnt))}`)).join('')
+        `${N(x.order_count)} захиалга${N(x.order_count) > 1 ? ` · дунд ${fmtMoneyShort(N(x.avg_order_mnt))}` : ''}`)).join('') + unknownNote
         : '<span style="color:var(--muted);">дата алга</span>'),
-      'түүхэн-ийн бүртгэсэн нийт орлого тус бүрийн харилцагчаар');
+      'Захиалгын нэхэмжилсэн дүнгээр (нэрээр нэгтгэсэн, давхардал арилгасан). Дээд KPI-тай нэг эх сурвалж.');
 
   } else if (tab === 'usage') {
-    const u = bq.usage || [];
+    const uAll = bq.usage || [];
+    const u = uAll.slice(0, 50);
     const maxDays = Math.max(1, ...u.map(x => N(x.item_days_out)));
-    body = kpis + card('Барааны ашиглалт (бараа-өдөр гадаа)',
+    body = kpis + card(`Барааны ашиглалт (бараа-өдөр гадаа)${uAll.length > 50 ? ` (топ 50 / ${uAll.length})` : ''}`,
       (u.length ? u.map(x => {
         const days = N(x.item_days_out);
         const pct = maxDays > 0 ? Math.max(2, Math.round(days / maxDays * 100)) : 0;
@@ -15533,7 +15606,7 @@ function renderHistory() {
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${days.toLocaleString('mn-MN')} ө</div>
         </div>`;
       }).join('') : '<span style="color:var(--muted);">дата алга</span>'),
-      'Бараа-өдөр = хуваарийн (planning) хугацаа × тоо ширхэг. Хамгийн их эргэлттэй хөрөнгийг харуулна.');
+      'Бараа-өдөр = захиалгын түрээсийн хоног × тоо ширхэг. Хамгийн их эргэлттэй хөрөнгийг харуулна.');
 
   } else if (tab === 'branch') {
     // Компанийн орлого 2 салбараар (ТУСДАА — давхар тоолохгүй): Эвент(түүхэн) + Кемп(NOMAAD)
@@ -15550,8 +15623,8 @@ function renderHistory() {
     const cmTot = Object.values(cm).reduce((a, b) => a + b, 0);
     const campHas = Object.keys(cm).length > 0;
     const branchKpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px;">
-      ${kpi('🎪 Эвент салбар (түүхэн)', fmtMoney(evTot), 'var(--ok)', 'цэвэр орлого · 2024–2026')}
-      ${kpi('🏕 Кемп салбар (NOMAAD)', campHas ? fmtMoney(cmTot) : '—', 'var(--primary)', campHas ? 'бүртгэсэн орлого' : 'дата ачаалаагүй')}
+      ${kpi('🎪 Эвент салбар', fmtMoney(evTot), 'var(--ok)', 'нэхэмжилсэн · эвентийн огноогоор')}
+      ${kpi('🏕 Кемп салбар (NOMAAD)', campHas ? fmtMoney(cmTot) : '—', 'var(--primary)', campHas ? 'цуглуулсан · төлбөрийн огноогоор' : 'дата ачаалаагүй')}
     </div>`;
     // Сүүлийн 12 сар — хоёр салбарын багана зэрэгцүүлэв
     const allMonths = Array.from(new Set([...Object.keys(ev), ...Object.keys(cm)])).sort();
@@ -15571,7 +15644,7 @@ function renderHistory() {
     body = branchKpis + card('Орлого — салбараар (сүүлийн 12 сар, сая₮)',
       `<div style="display:flex;gap:16px;font-size:11px;margin-bottom:8px;"><span style="color:var(--ok);font-weight:600;">■ Эвент</span><span style="color:var(--primary);font-weight:600;">■ Кемп</span></div>
        <div style="display:flex;align-items:flex-end;gap:6px;height:148px;overflow-x:auto;padding:2px;">${bars || '<span style="color:var(--muted);">дата алга</span>'}</div>`,
-      'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй (M-Event/түүхэн нэг эвентийн салбар, NOMAAD кемп тусдаа). Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
+      'Хоёр салбар ТУСДАА орлого — давхар тоолоогүй. ⚠ Хэмжүүр өөр: Эвент = нэхэмжилсэн (эвентийн огноо), Кемп = цуглуулсан (төлбөрийн огноо) — шууд харьцуулахдаа болгоомжтой. Нэг агуулахын барааг хоёр салбар хуваан ашигладаг.');
 
   }
 

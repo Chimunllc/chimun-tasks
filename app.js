@@ -115,6 +115,11 @@ function withKey(url) {
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}key=${encodeURIComponent(N8N_API_KEY)}`;
 }
+// Нэвтэрсэн хэрэглэгчийн PostgREST JWT (role=authenticated, эрх/түвшин шингэсэн) — эмзэг хүснэгтийн
+// бичилтэд anon-ы оронд ашиглана. DB талд RLS шалгана. Байхгүй бол anon руу уналт (RLS унтраалттай
+// хүснэгтэд ажиллах — пилот шилжилтийн үед эвдрэлгүй байлгах).
+function pgrstToken() { try { return localStorage.getItem('pgrstToken') || ''; } catch (e) { return ''; } }
+function pgrstBearer() { return pgrstToken() || SUPABASE_ANON_KEY; }
 
 // fetch timeout wrapper — кемп/3G гэх мэт сул сүлжээ үед fetch 60-120 сек ширж байж
 // аппыг "гацсан" гэж мэдрүүлдэг. AbortController-аар хугацаа тавьж хурдан буцах.
@@ -5040,10 +5045,12 @@ function boardOrderRow(e, k, todayStr) {
   const vatChip = (typeof vatBadge === 'function') ? vatBadge(o.number, o.total_mnt) : '';
   const _cxReq = (typeof cancelReqOf === 'function') ? cancelReqOf(o.note) : null;
   const cxChip = _cxReq ? `<span title="Цуцлах хүсэлт${_cxReq.reason ? ': ' + escapeHtml(_cxReq.reason) : ''}${state.isCEO ? ' — дэлгээд батал/татгалз' : ''}" style="background:#fde8cf;color:#9a6a00;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;" onclick="event.stopPropagation()">⏳ Цуцлах хүсэлт</span>` : '';
+  const urgDot = rank === 0 || rank === 1 ? '#DC2626' : rank === 2 ? '#D97706' : '';
+  const dotEl = urgDot ? `<span class="br-dot" style="--d:${urgDot}" title="${rank <= 1 ? 'Хугацаа хэтэрсэн/өнөөдөр' : 'Ойрхон'}"></span>` : '';
   return `<details class="board-order ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
-    ${selBox}<span class="br-num">#${o.number ?? ''}</span>
+    ${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span>
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
-    <span class="br-badge">${deliv}</span>
+    <span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>
     <span class="br-date">${dstr || '—'}</span>
     ${payWarn}${vatChip}${cxChip}
     <span class="br-amt">${fmtMoney(o.total_mnt || 0)}</span>
@@ -7736,7 +7743,7 @@ async function saveMemberPerms(personKey, perms) {
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, perms, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -7790,7 +7797,7 @@ async function clearMemberPerms(personKey) {
   try {
     await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms?person_key=eq.${encodeURIComponent(personKey)}`, {
       method: 'DELETE',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
     }, 15000);
   } catch (e) { console.warn('clearMemberPerms', e); }
 }
@@ -8744,7 +8751,7 @@ async function saveRolePerms(role, perms) {
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ role: rn, perms, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -8759,7 +8766,7 @@ async function clearRolePerms(role) {
   try {
     await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms?role=eq.${encodeURIComponent(rn)}`, {
       method: 'DELETE',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
     }, 15000);
   } catch (e) { console.warn('clearRolePerms', e); }
 }
@@ -21442,6 +21449,9 @@ function setUser(member, profile, auth) {
   // Серверийн токен — байвал хадгална (restore-д баталгаажина). Клиент fallback нэвтрэлт токенгүй.
   if (auth && auth.token) localStorage.setItem('sessionToken', auth.token);
   else localStorage.removeItem('sessionToken');
+  // PostgREST JWT (эмзэг бичилтэд) — байвал хадгална, эс бол хуучныг цэвэрлэнэ.
+  if (auth && auth.pgrst) localStorage.setItem('pgrstToken', auth.pgrst);
+  else localStorage.removeItem('pgrstToken');
 }
 
 // Single entry point for fully booting the app once the user is authenticated.
@@ -21937,6 +21947,7 @@ async function logout() {
   localStorage.removeItem('userEmail');
   localStorage.removeItem('userLoginAt');
   localStorage.removeItem('sessionToken');   // серверийн нэвтрэлтийн токен
+  localStorage.removeItem('pgrstToken');   // PostgREST JWT
   // Notification "seen" state is per-user — clear so next user doesn't see this user's history
   localStorage.removeItem('notifications');
   state.notifications = [];
@@ -21980,11 +21991,11 @@ async function restoreSession() {
     if (v && v.valid) {
       const phone = String(v.phone || '');
       const member = findMember(phone) || { phone, name: v.name || phone, level: v.level, email: '' };
-      setUser(member, { email: member.email || '', name: v.name || member.name, picture: '' }, { token, level: v.level });
+      setUser(member, { email: member.email || '', name: v.name || member.name, picture: '' }, { token, level: v.level, pgrst: v.pgrst });
       return true;
     }
     if (v && v.valid === false) {   // хуурамч/хугацаа дууссан токен — session цэвэрлэнэ
-      localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt');
+      localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt'); localStorage.removeItem('pgrstToken');
       return false;
     }
     // v === null → сервер холбогдсонгүй (offline) → хуучин сэргээлтээр (доор, эрх хязгаартай)
@@ -21993,7 +22004,7 @@ async function restoreSession() {
   // Энгийн хэрэглэгч хэвийн сэргэнэ; CEO/ахлах зөвхөн баталгаажсан СЕРВЕРИЙН ТОКЕНООР л сэргэнэ.
   const ok = tryRestoreSession();
   if (ok && state.isCEO) {
-    localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt');
+    localStorage.removeItem('sessionToken'); localStorage.removeItem('userEmail'); localStorage.removeItem('userLoginAt'); localStorage.removeItem('pgrstToken');
     state.user = null; state.me = null; state.isCEO = false; state.myLevel = 0;
     return false;   // дахин нэвтэрч (утсаар) сервер токен авах ёстой
   }
@@ -22280,7 +22291,7 @@ async function handlePinLogin(userIdentifier, pin) {
     if (srv && srv.ok && srv.token) {
       const key = srv.phone || phoneNorm || lowered;
       const member = findMember(key) || { phone: srv.phone || phoneNorm, name: srv.name || key, level: srv.level, email: lowered.includes('@') ? lowered : '' };
-      setUser(member, { email: member.email || '', name: srv.name || member.name, picture: '' }, { token: srv.token, level: srv.level });
+      setUser(member, { email: member.email || '', name: srv.name || member.name, picture: '' }, { token: srv.token, level: srv.level, pgrst: srv.pgrst });
       showApp(); bootApp();
       const _m = findMember(key);
       if (_m && isDefaultPin(_m.pin)) { state._forcePinChange = true; setTimeout(() => promptDefaultPinChange(), 600); }

@@ -15662,7 +15662,30 @@ function renderHistory() {
         </summary>
         <div style="padding:4px 12px 8px;">${g.rows.map(roiRow).join('')}</div>
       </details>`;
-      body = kpis + portfolio
+      // ── 🍩 Ямар ангилал хамгийн эрэлттэй (орлогын хувиар) — donut ──
+      const pieAll = Object.keys(byCat).map(c => ({ c, val: byCat[c].reduce((s, x) => s + N(x.revenue_mnt), 0) }))
+        .filter(x => x.val > 0).sort((a, b) => b.val - a.val);
+      let pie = pieAll.slice(0, 7);
+      const restV = pieAll.slice(7).reduce((s, x) => s + x.val, 0);
+      if (restV > 0) { const ex = pie.find(p => p.c === 'Бусад'); if (ex) ex.val += restV; else pie.push({ c: 'Бусад', val: restV }); }
+      pie.sort((a, b) => b.val - a.val);
+      const pieTot = pie.reduce((s, x) => s + x.val, 0) || 1;
+      const dvColor = (p, i) => p.c === 'Бусад' ? 'var(--muted-soft)' : `var(--dv-${(i % 8) + 1})`;
+      const CIRC = 2 * Math.PI * 52; let acc = 0;
+      const segs = pie.map((p, i) => {
+        const f = p.val / pieTot, dash = Math.max(0, f * CIRC - 2);
+        const seg = `<circle cx="66" cy="66" r="52" fill="none" stroke="${dvColor(p, i)}" stroke-width="20" stroke-dasharray="${dash.toFixed(2)} ${(CIRC - dash).toFixed(2)}" stroke-dashoffset="${(-acc * CIRC).toFixed(2)}" transform="rotate(-90 66 66)"><title>${escapeHtml(p.c)}: ${fmtMoneyShort(p.val)} (${Math.round(f * 100)}%)</title></circle>`;
+        acc += f; return seg;
+      }).join('');
+      const donutSvg = `<svg viewBox="0 0 132 132" width="132" height="132" style="flex:0 0 auto;">${segs}<text x="66" y="62" text-anchor="middle" font-size="9" fill="var(--muted)">Нийт</text><text x="66" y="78" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--text)">${fmtMoneyShort(pieTot)}</text></svg>`;
+      const legend = pie.map((p, i) => `<div style="display:flex;align-items:center;gap:7px;font-size:12px;margin:3px 0;">
+        <span style="flex:0 0 auto;width:11px;height:11px;border-radius:3px;background:${dvColor(p, i)};"></span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.c)}</span>
+        <span style="flex:0 0 auto;color:var(--muted);font-variant-numeric:tabular-nums;">${Math.round(p.val / pieTot * 100)}% · ${fmtMoneyShort(p.val)}</span>
+      </div>`).join('');
+      const histDonut = card('🍩 Ямар ангилал хамгийн эрэлттэй (орлогын хувиар)',
+        `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;"><div style="flex:0 0 auto;">${donutSvg}</div><div style="flex:1;min-width:180px;">${legend}</div></div>`);
+      body = kpis + portfolio + histDonut
         + card(`Орлого × ROI — ангиллаар (${roi.length} бараа)`, cats.map(catSection).join(''),
             'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй. Бүлгийн толгойг дарж хумина.')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,

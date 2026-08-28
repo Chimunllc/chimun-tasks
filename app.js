@@ -14327,7 +14327,7 @@ function bqOrderCard(o) {
     : '';
   // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо харагдана (NOMAAD шиг)
   const payMeta = (paid > 0 && o.paid_ref && st !== 'canceled')
-    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.5;">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}<div style="margin-top:2px;">${String(o.paid_ref).split('|').map(s => escapeHtml(s.trim())).filter(Boolean).map(s => `• ${s}`).join('<br>')}</div></div>`
+    ? (() => { const _rc = (typeof parsePaidRef === 'function') ? parsePaidRef(o.paid_ref) : []; const _snd = _rc.map(r => r.sender).filter(Boolean).join(', ') || String(o.paid_ref).replace(/\s+/g, ' ').slice(0, 44); return `<div class="order-meta" style="color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(String(o.paid_ref))}">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}${_snd ? ' · ' + escapeHtml(_snd) : ''}${_rc.length > 1 ? ` (${_rc.length})` : ''}</div>`; })()
     : '';
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/FB/Viber/газрын зураг) — зөвхөн менежерт харагдана
   const _ci = isApp ? custInfoOf(o.note) : {};
@@ -14375,6 +14375,7 @@ function bqOrderCard(o) {
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
     <div class="order-items-box bq-order-docs" hidden></div>`;
+  const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
@@ -14389,8 +14390,8 @@ function bqOrderCard(o) {
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
-    ${slogHtml}
-    ${stageMetaHtml(o)}
+    ${_smHtml ? '' : slogHtml}
+    ${_smHtml}
     ${itemsSection}
     ${foot}
   </div>`;

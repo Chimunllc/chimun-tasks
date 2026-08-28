@@ -13523,7 +13523,10 @@ function stageMetaHtml(o) {
   return `<div class="order-stagemeta">${keys.map(k => {
     const e = sm[k]; const photos = (e.photos || []).filter(Boolean);
     const stars = e.rating ? `<span class="sm-stars" title="${e.ratedBy ? escapeHtml((memberName(e.ratedBy) || e.ratedBy) + ' үнэлэв') : ''}">${'★'.repeat(e.rating)}<span style="color:var(--border-strong);">${'★'.repeat(5 - e.rating)}</span></span>` : '';
-    return `<div class="sm-row"><div class="sm-head">${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>${e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>` : ''}${photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : ''}</div>`;
+    const _ph = photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : '';
+    const _head = `<div class="sm-head">${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
+    const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>` : '';
+    return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}</div></div>`;
   }).join('')}</div>`;
 }
 function openStagePhoto(url) {

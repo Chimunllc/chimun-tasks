@@ -15440,7 +15440,23 @@ function renderHistory() {
       <div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--primary-hover);">📌 Гол дүгнэлт</div>
       ${ins.map(t => `<div style="font-size:12.5px;line-height:1.75;">${t}</div>`).join('')}
     </div>` : '';
-    body = kpis + insightsBanner + monthChart + bqSeasonChart(bq) + methodCard;
+    // ── 📊 Дундаж ба тренд — сонгож болох хугацаа (Бүх цаг / 12 / 6 / 3 сар) ──
+    const _periods = [['all', 'Бүх цаг'], ['12', '12 сар'], ['6', '6 сар'], ['3', '3 сар']];
+    const _pv = state.histPeriod || 'all';
+    const _n = _pv === 'all' ? null : Number(_pv);
+    const _stat = (arr) => { const months = arr.length || 1; const net = arr.reduce((a, x) => a + N(x.net_mnt), 0); const ord = arr.reduce((a, x) => a + N(x.charge_count), 0); return { months, net, ord, avgNet: net / months, avgOrd: ord / months, aov: ord ? net / ord : 0 }; };
+    const _cur = _stat(_n == null ? m : m.slice(-_n));
+    const _prev = (_n != null && m.length >= _n * 2) ? _stat(m.slice(-_n * 2, -_n)) : null;
+    const _cmp = (cur, prev) => { if (!prev) return ''; const d = prev > 0 ? Math.round((cur - prev) / prev * 100) : 0; return `<span style="font-size:11px;color:${d >= 0 ? 'var(--ok)' : 'var(--danger)'};font-weight:600;"> ${d >= 0 ? '▲' : '▼'}${Math.abs(d)}%</span>`; };
+    const _pbtns = _periods.map(([k, l]) => `<button class="btn${k === _pv ? ' btn-primary' : ''}" data-histperiod="${k}" style="padding:5px 12px;font-size:12px;">${l}</button>`).join('');
+    const avgPanel = card(`📊 Дундаж — ${_periods.find(p => p[0] === _pv)[1]} (${_cur.months} сар)`,
+      `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${_pbtns}</div>
+       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+         ${kpi('Сарын дундаж орлого', fmtMoney(Math.round(_cur.avgNet)) + (_prev ? _cmp(_cur.avgNet, _prev.avgNet) : ''), 'var(--ok)', `нийт ${fmtMoney(_cur.net)}`)}
+         ${kpi('Сарын дундаж захиалга', `${Math.round(_cur.avgOrd)}ш` + (_prev ? _cmp(_cur.avgOrd, _prev.avgOrd) : ''), 'var(--text)', `нийт ${_cur.ord.toLocaleString('mn-MN')}ш`)}
+         ${kpi('Дундаж захиалгын дүн', fmtMoney(Math.round(_cur.aov)), 'var(--text)', 'орлого ÷ захиалга')}
+       </div>${_prev ? '<div style="font-size:10.5px;color:var(--muted);margin-top:9px;">▲▼ = өмнөх ижил урттай хугацаатай харьцуулсан</div>' : ''}`);
+    body = kpis + insightsBanner + avgPanel + monthChart + bqSeasonChart(bq) + methodCard;
 
   } else if (tab === 'products') {
     const roiAll = bq.roi || [];
@@ -15565,6 +15581,9 @@ function attachHistoryHandlers() {
   document.querySelectorAll('[data-bq-tab]').forEach(b => b.addEventListener('click', () => {
     state.bqTab = b.dataset.bqTab;
     render();
+  }));
+  document.querySelectorAll('[data-histperiod]').forEach(b => b.addEventListener('click', () => {
+    state.histPeriod = b.dataset.histperiod; render();
   }));
 
   // view нээгдэхэд анх удаа татна

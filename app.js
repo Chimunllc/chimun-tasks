@@ -15883,6 +15883,14 @@ function _orderDays(o) {
   return Math.max(1, Math.round((em - sm) / 86400000));
 }
 function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'canceled' && st !== 'cancelled'; }
+// Захиалгын ЖИНХЭНЭ орлого — барьцаа (буцаадаг өр) ХАСНА. App/M-Event-д total_mnt-д барьцаа орсон
+// тул хасна; Booqable-д total_mnt = түрээс (барьцаа тусдаа) тул хасахгүй. Түрээс + хүргэлт + НӨАТ.
+function orderRevenue(o, basis) {
+  const depIncluded = String(o.source || '').toLowerCase() !== 'booqable';
+  const dep = depIncluded ? (Number(o.deposit_mnt) || 0) : 0;
+  const rental = Math.max(0, (Number(o.total_mnt) || 0) - dep);
+  return basis === 'cash' ? Math.min(Number(o.paid_mnt) || 0, rental) : rental;
+}
 // Тухайн сарын Mevent орлого — задаргаатай (захиалга/ангилал/бараа)
 function meventIncome(month) {
   const catOf = _prodCatOf();
@@ -15891,7 +15899,8 @@ function meventIncome(month) {
   const byOrder = [], byCat = {}, byProd = {};
   let paidSum = 0, rentalSum = 0;
   orders.forEach(o => {
-    const paid = Number(o.paid_mnt) || 0, total = Number(o.total_mnt) || 0, days = _orderDays(o);
+    // Барьцаа хассан орлого (буцаадаг өр = орлого биш)
+    const paid = orderRevenue(o, 'cash'), total = orderRevenue(o, 'accrual'), days = _orderDays(o);
     let rental = 0;
     (o.items || []).forEach(it => {
       const line = (Number(it.price) || 0) * (Number(it.qty) || 0) * days;
@@ -16038,7 +16047,7 @@ function finExpMonth(t, basis) {
 }
 function finBranchPnl(month, basis) {
   const evInc = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month)
-    .reduce((s, o) => s + (basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0)), 0);
+    .reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
   let noInc = 0;
   (state.nomaadOrders || []).forEach(o => {
     if (nomaadIsCancelled(o)) return;
@@ -16238,7 +16247,7 @@ function renderReports() {
   const inclEv = !wantBr || wantBr === 'ИВЕНТ';   // M-Event
   const inclNo = !wantBr || wantBr === 'КЕМП';    // NOMAAD
   const evList = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
-  const evInc = evList.reduce((s, o) => s + (basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0)), 0);
+  const evInc = evList.reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
   let noInc = 0, noN = 0;
   (state.nomaadOrders || []).forEach(o => {
     if (nomaadIsCancelled(o)) return;

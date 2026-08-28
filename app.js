@@ -9848,7 +9848,7 @@ function nomaadCardHtml(o) {
     : (income > 0 && o.income_by ? `📝 Бүртгэсэн: <b style="font-weight:600;">${escapeHtml(memberName(o.income_by))}</b> · ${escapeHtml(o.income_date || '')}` : '📝 Орлого бүртгээгүй');
   const logHistoryHtml = plog.length ? `<div class="order-meta" style="margin-top:6px;background:var(--panel-hover);border-radius:8px;padding:8px 10px;">
     <div style="font-weight:600;font-size:11px;color:var(--muted);margin-bottom:4px;">📝 Бүртгэлийн түүх (${plog.length})</div>
-    ${plog.slice().reverse().map(p => `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;align-items:center;"><span style="flex:1;min-width:0;">${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;">${fmtMoney(p.total)}</span>${(state.isCEO && p.id) ? `<button data-nomaad-reverse="${escapeHtml(o.quote_no)}" data-pay-id="${escapeHtml(p.id)}" title="Буруу бол буцаах (зөвхөн захирал)" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 4px;">↩</button>` : ''}</div>`).join('')}
+    ${plog.slice().reverse().map(p => { const _rid = receiptIdFromRef(p.note || ''); return `<div style="font-size:11.5px;display:flex;justify-content:space-between;gap:8px;padding:2px 0;align-items:center;"><span style="flex:1;min-width:0;">${escapeHtml(fmtDateTimeUB(p.recorded_at))} · <b style="font-weight:600;">${escapeHtml(memberName(p.recorded_by))}</b>${p.note ? ` · <span style="color:var(--muted);">${escapeHtml(p.note)}</span>` : ''}</span><span style="font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap;">${fmtMoney(p.total)}</span>${_rid ? `<button data-nomaad-receipt="${escapeHtml(_rid)}" data-amt="${Number(p.total) || 0}" title="Эх банкны баримт (PDF) харах" style="border:none;background:none;color:var(--accent,#7c3aed);cursor:pointer;font-size:13px;line-height:1;padding:0 0 0 4px;">📄</button>` : ''}${(state.isCEO && p.id) ? `<button data-nomaad-reverse="${escapeHtml(o.quote_no)}" data-pay-id="${escapeHtml(p.id)}" title="Буруу бол буцаах (зөвхөн захирал)" style="border:none;background:none;color:var(--danger);cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 4px;">↩</button>` : ''}</div>`; }).join('')}
   </div>` : '';
   // Серверт хадгалагдаагүй төлбөр (upload үед интернэт/сервер унасан) — улаан анхааруулга + дахин оролдох
   const pend = nomaadPendingFor(o.quote_no);
@@ -10577,6 +10577,9 @@ function attachNomaadHandlers() {
   });
   document.querySelectorAll('button[data-nomaad-reverse]').forEach(b => {
     b.addEventListener('click', (e) => { e.stopPropagation(); reverseNomaadPayment(b.dataset.nomaadReverse, b.dataset.payId); });
+  });
+  document.querySelectorAll('button[data-nomaad-receipt]').forEach(b => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); openStoredReceipt(b.dataset.nomaadReceipt, { amount: Number(b.dataset.amt) || 0 }); });
   });
   document.querySelectorAll('button[data-nomaad-prep]').forEach(b => {
     b.addEventListener('click', () => openNomaadPrepChecklist(b.dataset.nomaadPrep));
@@ -11860,7 +11863,7 @@ function openNomaadIncomeModal(o) {
         parsed = {
           amount: d.amount,
           date: d.date || new Date().toISOString().slice(0, 10),
-          canonKey: d.receiptId, fpKey,
+          canonKey: d.receiptId, fpKey, file,
           note: '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
         };
         const warns = [];
@@ -11884,6 +11887,7 @@ async function recordNomaadIncome(quoteNo) {
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
+  if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
   const newTotal = prevPaid + res.amount;
   const today = res.date || new Date().toISOString().slice(0, 10);
@@ -13973,13 +13977,14 @@ function openPaidReceiptDetail(oid, idx) {
       ${row('Гүйлгээний утга', r.memo)}
       ${row('Баримтын дугаар', r.id)}
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-top:12px;">Эх PDF файл хадгалагддаггүй — банкны баримтаас автоматаар задлан авсан мэдээлэл. Давхардлаас баримтын дугаараар хамгаалагдсан.</p>
-    <div class="modal-actions" style="display:flex;justify-content:flex-end;"><button class="btn btn-primary" id="prc-close">Хаах</button></div>
+    <p style="font-size:11px;color:var(--muted);margin-top:12px;">Задлан авсан мэдээлэл. Эх PDF хадгалагдсан бол доор дарж үзнэ.</p>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">${r.id ? `<button class="btn" id="prc-pdf" style="color:var(--accent,#7c3aed);">📄 Эх баримт харах</button>` : ''}<button class="btn btn-primary" id="prc-close">Хаах</button></div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
   modal.querySelector('#prc-x').addEventListener('click', close);
   modal.querySelector('#prc-close').addEventListener('click', close);
+  modal.querySelector('#prc-pdf')?.addEventListener('click', () => openStoredReceipt(r.id, { amount: list.length === 1 ? (o.paid_mnt || 0) : r.amount }));
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
 }
 function setCustInfo(note, ci) {
@@ -14861,6 +14866,44 @@ async function reserveReceipt(receiptId, meta) {
     return 'ok';
   } catch (e) { console.warn('reserveReceipt', e); return 'err'; }
 }
+// ── Банкны баримт PDF-ийг хадгалах (нээлттэй статик URL БИШ — Postgres receipt_files, anon key) ──
+// Эх файлыг base64-ээр хадгалж, дараа аппаас татаж үзнэ. receiptId = баримтын канон түлхүүр (bank_receipts-тэй ижил).
+async function uploadReceiptFile(receiptId, file, meta = {}) {
+  if (!receiptId || !file || !SUPABASE_ANON_KEY) return false;
+  try {
+    const durl = await fileToDataUrl(file);
+    const b64 = String(durl).slice(String(durl).indexOf(',') + 1);   // "data:...;base64," префиксгүй
+    const body = { receipt_id: receiptId, mime: file.type || 'application/pdf', data: b64, amount: meta.amount || null, pay_date: meta.date || null, used_in: meta.usedIn || '', uploaded_by: state.me };
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/receipt_files?on_conflict=receipt_id`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify(body),
+    }, 30000);
+    return r.ok;
+  } catch (e) { console.warn('uploadReceiptFile', e); return false; }
+}
+async function fetchReceiptBlob(receiptId) {
+  if (!receiptId || !SUPABASE_ANON_KEY) return null;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/receipt_files?receipt_id=eq.${encodeURIComponent(receiptId)}&select=data,mime`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 20000);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!rows[0] || !rows[0].data) return null;
+    const bin = atob(rows[0].data);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: rows[0].mime || 'application/pdf' });
+  } catch (e) { console.warn('fetchReceiptBlob', e); return null; }
+}
+// Хадгалсан баримтыг receiptId-аар нээх — байвал PDF viewer, эс бол мэдэгдэнэ.
+async function openStoredReceipt(receiptId, meta) {
+  if (!receiptId) { showToast('Баримтын дугаар алга', 'warn'); return; }
+  showToast('📄 Баримт татаж байна…', 'info', 1500);
+  const blob = await fetchReceiptBlob(receiptId);
+  if (!blob) { showToast('Эх PDF хадгалагдаагүй (хуучин төлбөр эсвэл олдсонгүй)', 'warn', 3500); return; }
+  openReceiptPdfViewer(blob, meta || {});
+}
 function openBqPaymentModal(oid) {
   // Нэгдсэн төлбөрийн модал — bq_orders эсвэл app_orders хоёуланд ажиллана.
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
@@ -14964,6 +15007,8 @@ async function submitBqPayment(oid, modal, btn) {
   const amount = okR.reduce((s, r) => s + r.amount, 0);
   const date = okR.map(r => r.date).sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
   const ref = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
+  // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
+  okR.forEach(r => { if (r._file) uploadReceiptFile(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }); });
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;
   const prevPaid = o.paid_mnt, prevStatus = o.status;

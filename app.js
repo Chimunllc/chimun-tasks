@@ -5115,7 +5115,7 @@ const ORDER_BUCKETS = [
   { key: 'rented',   label: 'Түрээслэгдэж буй',  icon: '📦', dot: '#2563EB', st: ['rented', 'returning', 'started'] },
   { key: 'done',     label: 'Дууссан',          icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
   { key: 'archived', label: 'Архив',            icon: '🗄', dot: '#475569', st: ['archived'] },
-  { key: 'canceled', label: 'Устгасан',         icon: '✕', dot: '#DC2626', st: ['canceled'] },
+  { key: 'canceled', label: 'Цуцалсан',         icon: '✕', dot: '#DC2626', st: ['canceled'] },
 ];
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));

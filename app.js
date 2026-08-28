@@ -13745,25 +13745,34 @@ async function autoCleanExpiredOrders() {
   for (const o of dead) { try { await saveAppOrder(o); } catch (e) { console.warn('autoClean move', e); } }
   if (typeof showToast === 'function') showToast(`🗑 Хугацаа хэтэрсэн ${dead.length} төлбөргүй захиалгыг "Устгасан" руу шилжүүлэв`, 'info', 4500);
 }
-// Банкны баримтын төлөгч нэрээс БАЙГУУЛЛАГЫН нэрийг авто бүртгэх (⟦CI⟧ note token-д). Зөвхөн company хоосон +
-// төлөгч нэр харилцагчаас ӨӨР (= байгууллага төлсөн) үед. Аль хэдийн бий бол хөндөхгүй. Сессэд нэг л удаа.
+// Байгууллагын нэр + РД-г захиалгад авто бүртгэх (⟦CI⟧ note token). Эх сурвалж:
+//   1) НӨАТ (ebarimt) баримт — buyer_name + buyer_reg (ХАМГИЙН ЗӨВ: нэр БА регистр).
+//   2) банкны баримтын төлөгч — зөвхөн нэр (харилцагчаас ӨӨР бол = байгууллага төлсөн).
+// Зөвхөн ХООСОН талбарыг бөглөнө (байгааг хөндөхгүй). Сессэд нэг л удаа.
 async function autoFillOrderCompany() {
   if (state._companyFilled) return;
   state._companyFilled = true;
-  const targets = (state.appOrders || []).filter(o => {
-    if (custInfoOf(o.note).company) return false;
-    const rc = parsePaidRef(o.paid_ref)[0];
-    const payer = rc && rc.sender ? String(rc.sender).trim() : '';
-    return payer && payer.toLowerCase() !== String(o.customer || '').trim().toLowerCase();
-  });
-  if (!targets.length) return;
-  for (const o of targets) {
+  if (typeof loadVatReceipts === 'function' && !Array.isArray(state.vatReceipts)) { try { await loadVatReceipts(); } catch (e) {} }
+  const vatByOrder = {};
+  (state.vatReceipts || []).forEach(v => { if (v.matched_id && (v.buyer_name || v.buyer_reg)) { const k = String(v.matched_id); if (!vatByOrder[k]) vatByOrder[k] = v; } });
+  let n = 0;
+  for (const o of (state.appOrders || [])) {
     const ci = custInfoOf(o.note);
-    ci.company = String(parsePaidRef(o.paid_ref)[0].sender).trim();
-    o.note = setCustInfo(o.note, ci);
-    try { await saveAppOrder(o); } catch (e) { console.warn('company fill', e); }
+    if (ci.company && ci.reg) continue;                       // хоёулаа бий → алгас
+    let company = ci.company || '', reg = ci.reg || '';
+    const vr = vatByOrder[String(o.number)];                  // 1) НӨАТ баримт (нэр+РД)
+    if (vr) { if (!company && vr.buyer_name) company = String(vr.buyer_name).trim(); if (!reg && vr.buyer_reg) reg = String(vr.buyer_reg).trim(); }
+    if (!company) {                                            // 2) банкны төлөгч (зөвхөн нэр)
+      const rc = parsePaidRef(o.paid_ref)[0]; const payer = rc && rc.sender ? String(rc.sender).trim() : '';
+      if (payer && payer.toLowerCase() !== String(o.customer || '').trim().toLowerCase()) company = payer;
+    }
+    if ((company && company !== (ci.company || '')) || (reg && reg !== (ci.reg || ''))) {
+      ci.company = company || ci.company; ci.reg = reg || ci.reg;
+      o.note = setCustInfo(o.note, ci);
+      try { await saveAppOrder(o); n++; } catch (e) { console.warn('company fill', e); }
+    }
   }
-  if (typeof showToast === 'function') showToast(`🏢 ${targets.length} захиалгад байгууллагын нэр автоматаар бүртгэв`, 'info', 4000);
+  if (n && typeof showToast === 'function') showToast(`🏢 ${n} захиалгад байгууллага/РД автоматаар бүртгэв`, 'info', 4000);
 }
 // Дараагийн захиалгын дугаар (түүхэн + app дотроос хамгийн их + 1)
 function nextOrderNumber() {
@@ -14065,10 +14074,12 @@ function openNewOrder(editOrder) {
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
   const _ci0 = isEdit ? custInfoOf(editOrder.note) : {};   // байгууллага/РД/FB/Viber/газрын зураг
   const _rcpts0 = isEdit ? parsePaidRef(editOrder.paid_ref) : [];   // бүртгэсэн банкны баримтууд
-  // Байгууллага хоосон бол банкны баримтын төлөгчөөс авто санал (харилцагчаас ӨӨР нэр = байгууллага төлсөн)
+  // Байгууллага/РД хоосон бол авто санал: 1) НӨАТ баримт (нэр+РД), 2) банкны төлөгч (нэр, харилцагчаас ӨӨР бол)
+  const _vr0 = (isEdit && typeof vatForOrder === 'function') ? ((vatForOrder(editOrder.number).recs || [])[0] || null) : null;
   const _payerNm = (_rcpts0[0] && _rcpts0[0].sender) ? String(_rcpts0[0].sender).trim() : '';
   const _custNm = String((editOrder && editOrder.customer) || '').trim();
-  const _autoCompany = _ci0.company || ((_payerNm && _payerNm.toLowerCase() !== _custNm.toLowerCase()) ? _payerNm : '');
+  const _autoCompany = _ci0.company || (_vr0 && _vr0.buyer_name ? String(_vr0.buyer_name).trim() : '') || ((_payerNm && _payerNm.toLowerCase() !== _custNm.toLowerCase()) ? _payerNm : '');
+  const _autoReg = _ci0.reg || (_vr0 && _vr0.buyer_reg ? String(_vr0.buyer_reg).trim() : '');
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
 
   const modal = document.createElement('div');
@@ -14084,7 +14095,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
-      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_ci0.reg || '')}" placeholder="Байгууллага/хувь хүн"></label>
+      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
       <label class="no-lbl" style="grid-column:1/-1;">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
       <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>

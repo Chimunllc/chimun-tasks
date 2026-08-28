@@ -12735,8 +12735,34 @@ async function openCategoryGroupsModal() {
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
+// Сайтын ангиллын бүлгүүд (default) — сайттай ижил бүтэц. app_config-оос override.
+const _CAT_GROUPS_FALLBACK = [
+  { name: 'Тайз, хөгжим, гэрэлтүүлэг', subs: ['Тайз', 'Хөгжим', 'Гэрэлтүүлэг', 'Эффект'] },
+  { name: 'Ширээ, тавилга', subs: ['Ширээ, сандал, бүтээлэг', 'Засал, тохижилт'] },
+  { name: 'Асар, майхан', subs: ['Асар', 'Майхан', 'Татдаг асар'] },
+  { name: 'Хоол, гал тогоо', subs: ['Ресторан хэрэгсэл', 'Гал тогоо'] },
+  { name: 'Техник, тоног төхөөрөмж', subs: ['Эрчим хүч, цахилгаан', 'Багаж, тоног төхөөрөмж', 'Халаалт, агааржуулалт', 'Цэвэрлэгээ', 'Тээврийн хэрэгсэл'] },
+];
+// Ангиллын filter dropdown-ыг сайтын бүлгээр (optgroup) — group→дэд ангилал, бусад нь тусад нь.
+function _prodCatOptsGrouped(cats, sel) {
+  const groups = Array.isArray(state.catGroups) && state.catGroups.length ? state.catGroups : _CAT_GROUPS_FALLBACK;
+  const opt = (c) => `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''}>${escapeHtml(c)}</option>`;
+  const inGroup = new Set();
+  let html = '<option value="all">📂 Бүх ангилал</option>';
+  groups.forEach(g => {
+    const subs = (g.subs || []).filter(s => cats.includes(s));
+    if (!subs.length) return;
+    subs.forEach(s => inGroup.add(s));
+    html += `<optgroup label="${escapeHtml(g.name)}">${subs.map(opt).join('')}</optgroup>`;
+  });
+  const rest = cats.filter(c => !inGroup.has(c));
+  if (rest.length) html += `<optgroup label="Бусад">${rest.map(opt).join('')}</optgroup>`;
+  return html;
+}
 function renderProducts() {
   const all = state.products || [];
+  // Сайтын ангиллын бүлгүүдийг нэг удаа lazy татна (dropdown-ыг сайтын бүлгээр харуулах)
+  if (state.catGroups === undefined) { state.catGroups = null; loadAppConfig('mevent_category_groups').then(v => { if (Array.isArray(v) && v.length) { state.catGroups = v; render(); } }); }
   state.prodFilter = state.prodFilter || 'all';
   state.prodBranch = state.prodBranch || 'all';
   // Ажилтан өөрийн салбарт ТҮГЖИГДЭНЭ (удирдлага/CEO/олон салбар бүгдийг харна)
@@ -12793,7 +12819,7 @@ function renderProducts() {
     : '';
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
-  const catOpts = ['<option value="all">📂 Бүх ангилал</option>'].concat(cats.map(c => `<option value="${escapeHtml(c)}"${state.prodCategory === c ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
+  const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)
   const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓'], ['purchase_asc', '📅 Хамгийн удаан эзэмшсэн']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
   const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad') + branchQty(p, 'catering')) <= 0, nodate: p => !p.purchase_date }[key]).length;
   const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй'], ['nodate', '📅 Огноогүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');

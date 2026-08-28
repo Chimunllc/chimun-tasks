@@ -153,6 +153,42 @@ ok(/google\.com\/maps\/search/.test(F.mapsHref('47.9,106.9')), 'mapsHref: коо
   ok(a !== c, 'receiptFingerprint: өөр дүн = өөр хээ');
 }
 
+// 9) parseBankReceipt — банкны баримтаас мөнгө/огноо/илгээгч гаргах (ХАМГИЙН ЧУХАЛ)
+{
+  const golomt = [
+    'Хүлээн авагчийн банк', 'Голомт банк',
+    'Хүлээн авагчийн данс', '3635185058',
+    'Хүлээн авагчийн нэр', 'Чимун ХХК',
+    'Гүйлгээний дүн', '500,000.00 MNT',
+    'Гүйлгээний огноо', '2026-08-28',
+    'Гүйлгээний утга', 'Түрээсийн төлбөр',
+    'Гүйлгээний төлөв', 'Амжилттай',
+    'Шилжүүлэгчийн нэр', 'Батбаяр',
+    'Шилжүүлэгчийн дансны дугаар', '5555000123',
+    'Хүсэлтийн лавлах дугаар: ABC123',
+  ].join('\n');
+  const r = F.parseBankReceipt(golomt);
+  eq(r.amount, 500000, 'parseBankReceipt: ДҮН зөв (500,000.00 MNT → 500000)');
+  eq(r.date, '2026-08-28', 'parseBankReceipt: огноо');
+  eq(r.senderName, 'Батбаяр', 'parseBankReceipt: илгээгчийн нэр');
+  eq(r.receiverName, 'Чимун ХХК', 'parseBankReceipt: хүлээн авагч');
+  eq(r.senderAcct, '5555000123', 'parseBankReceipt: илгээгчийн данс');
+  eq(r.ref, 'Түрээсийн төлбөр', 'parseBankReceipt: гүйлгээний утга');
+  eq(r.status, 'Амжилттай', 'parseBankReceipt: төлөв');
+  eq(r.bankRef, 'GLABC123', 'parseBankReceipt: лавлах дугаар (GL префикс)');
+  ok(/чимун/i.test(r.receiverName), 'parseBankReceipt: Чимун хүлээн авагч шалгалт (орлого мөн)');
+}
+// Таслалтай том дүн + бутархай
+{
+  const r = F.parseBankReceipt('Гүйлгээний дүн\n1,234,567.89 MNT\n2026-01-15');
+  eq(r.amount, 1234568, 'parseBankReceipt: том дүн таслалтай (1,234,567.89 → 1234568)');
+}
+// Дүнгүй баримт → amount undefined (буруу файлыг таних)
+{
+  const r = F.parseBankReceipt('ямар нэг текст дүнгүй');
+  ok(r.amount === undefined, 'parseBankReceipt: дүнгүй бол amount undefined (буруу баримт барих)');
+}
+
 // ═══════════════════ ДҮН ═══════════════════
 console.log('');
 if (fails.length) { console.log(fails.join('\n')); console.log(''); }

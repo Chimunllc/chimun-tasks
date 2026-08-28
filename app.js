@@ -8798,7 +8798,7 @@ async function saveSalaryDeduct(personKey, on) {
   if (!SUPABASE_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary`, {
-      method: 'POST', headers: { ..._SAL_H(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      method: 'POST', headers: { ..._SAL_H(), Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, deduct: !!on, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -8820,7 +8820,7 @@ async function saveSalary(personKey, amount) {
   if (!SUPABASE_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary`, {
-      method: 'POST', headers: { ..._SAL_H(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      method: 'POST', headers: { ..._SAL_H(), Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, amount: Number(amount) || 0, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -8833,7 +8833,7 @@ async function paySalary(personKey, ym, amount, note) {
   if (!SUPABASE_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/salary_payments`, {
-      method: 'POST', headers: { ..._SAL_H(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      method: 'POST', headers: { ..._SAL_H(), Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(row),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -14919,7 +14919,7 @@ async function uploadReceiptFile(receiptId, file, meta = {}) {
     const body = { receipt_id: receiptId, mime: file.type || 'application/pdf', data: b64, amount: meta.amount || null, pay_date: meta.date || null, used_in: meta.usedIn || '', uploaded_by: state.me };
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/receipt_files?on_conflict=receipt_id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
       body: JSON.stringify(body),
     }, 30000);
     return r.ok;

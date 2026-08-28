@@ -7835,7 +7835,7 @@ async function loadBankAccounts(force) {
   if (!SUPABASE_ANON_KEY) return;
   if (state.bankAccounts && !force) return;
   try {
-    const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } };
+    const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };   // данс/карт унших — нэвтэрсэн ажилтан
     const [ra, rc] = await Promise.all([
       fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_accounts?select=*&order=sort.asc`, H, 15000),
       fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_cards?select=*&order=sort.asc`, H, 15000),
@@ -8773,7 +8773,7 @@ async function clearRolePerms(role) {
 
 // ════════════ САРЫН ЦАЛИН (хүн бүрт суурь цалин + сар бүрийн олголт) ════════════
 function canSeeSalary() { return canAccessView('salary', () => state.isCEO || (typeof isFinanceAccountant === 'function' && isFinanceAccountant())); }
-const _SAL_H = () => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY });
+const _SAL_H = () => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() });   // цалин унших/бичих — нэвтэрсэн ажилтан (anon уншиж чадахгүй)
 async function loadSalaries() {
   if (!SUPABASE_ANON_KEY) return;
   try {
@@ -14929,7 +14929,7 @@ async function fetchReceiptBlob(receiptId) {
   if (!receiptId || !SUPABASE_ANON_KEY) return null;
   try {
     const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/receipt_files?receipt_id=eq.${encodeURIComponent(receiptId)}&select=data,mime`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 20000);
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // баримт унших — нэвтэрсэн ажилтан
     if (!r.ok) return null;
     const rows = await r.json();
     if (!rows[0] || !rows[0].data) return null;

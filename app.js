@@ -13483,12 +13483,12 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Хүлээн авсан', archive: '🗄 Архив' };
+const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив' };
 // Дамжлагын зураг + үнэлгээ — БҮХ ажилтанд харагдана (картын доор)
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
-  const keys = ['prepare', 'clean', 'dispatch', 'handover', 'deliver'].filter(k => sm[k] && ((sm[k].photos && sm[k].photos.length) || sm[k].rating || sm[k].by));
+  const keys = ['prepare', 'clean', 'dispatch', 'handover', 'deliver', 'retstart', 'received'].filter(k => sm[k] && ((sm[k].photos && sm[k].photos.length) || sm[k].rating || sm[k].by));
   if (!keys.length) return '';
   return `<div class="order-stagemeta">${keys.map(k => {
     const e = sm[k]; const photos = (e.photos || []).filter(Boolean);

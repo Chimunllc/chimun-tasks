@@ -5031,6 +5031,8 @@ function boardOrderRow(e, k, todayStr) {
   const dstr = String(dt || '').slice(5, 10).replace('-', '/');
   const bal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const payWarn = bal > 0 ? `<span class="br-paywarn" title="Үлдэгдэл ${escapeHtml(fmtMoney(bal))}">💵</span>` : '';
+  // Барьцаатай ба хараахан буцаагаагүй бол 🔒 — буцаах ёстой захиалгыг мөрөнд шууд ялгана
+  const depWarn = ((Number(o.deposit_mnt) || 0) > 0 && !depositReturnFor(o.id)) ? `<span class="br-dep" title="Барьцаа ${escapeHtml(fmtMoney(o.deposit_mnt))} — буцаагаагүй">🔒</span>` : '';
   const next = orderNextStep(o);
   const id = escapeHtml(String(o.id));
   let actBtn = '';
@@ -5052,7 +5054,7 @@ function boardOrderRow(e, k, todayStr) {
     <span class="br-cust">${escapeHtml(o.customer || '?')}</span>
     <span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>
     <span class="br-date">${dstr || '—'}</span>
-    ${payWarn}${vatChip}${cxChip}
+    ${depWarn}${payWarn}${vatChip}${cxChip}
     <span class="br-amt">${fmtMoney(o.total_mnt || 0)}</span>
     ${actBtn}
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
@@ -9732,6 +9734,18 @@ function linkedExpenseSum(type, id) {
   });
   return { n, sum };
 }
+// Барьцаа буцаалт — «5810 Барьцаа буцаалт» ангилалтай, ЭНЭ захиалгад холбогдсон, хаагдсан (хуулгаар
+// баталгаажсан) санхүүгийн зарлага байвал = барьцаа буцаагдсан. Нягтлан хуулга тулгаж 5810-аар
+// ангилаад захиалгад холбоход л энэ илэрнэ (гар товшилтгүй, баримт-суурьтай).
+function depositReturnFor(orderId) {
+  if (!orderId) return null;
+  const isDepCat = (c) => { const s = String(c || '').toLowerCase(); return s.includes('5810') || (s.includes('барьцаа') && s.includes('буцаа')); };
+  const rec = (state.financeRequests || []).find(r =>
+    r.status === 'done' && r.link_type === 'order' && String(r.link_id) === String(orderId) && isDepCat(r.category));
+  if (!rec) return null;
+  const d = rec.executed_at || rec.due || rec.requested_at || '';
+  return { amount: Number(rec.amount) || 0, date: String(d).slice(0, 10), by: rec.createdBy || '' };
+}
 // Ашгийн мөр зөвхөн бүх санхүүг хардаг хүнд (ажилтанд зөвхөн өөрийн хүсэлт ирдэг тул дутуу дүн харагдана)
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
@@ -14392,6 +14406,14 @@ function bqOrderCard(o) {
     <div class="order-items-box bq-order-items" hidden></div>
     <button class="order-items-toggle bqa-docs-toggle" data-oid="${id}"><span class="oit-caret">▸</span> 📄 Баримт</button>
     <div class="order-items-box bq-order-docs" hidden></div>`;
+  // Барьцаа — байвал ТОД харуулна; хуулга тулгаснаар 5810-д холбогдвол «буцаасан»
+  const _dep = Number(o.deposit_mnt) || 0;
+  const _depRet = _dep > 0 ? depositReturnFor(o.id) : null;
+  const depBadge = _dep > 0
+    ? (_depRet
+      ? `<span class="dep-badge dep-returned" title="Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
+      : `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>`)
+    : '';
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
@@ -14403,6 +14425,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
     ${payPanel}
+    ${depBadge ? `<div class="dep-row">${depBadge}</div>` : ''}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}

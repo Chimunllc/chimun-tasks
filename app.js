@@ -15329,8 +15329,9 @@ function _histCompute(orders, roiFix) {
       const rev = grossAll > 0 ? total * gross / grossAll : 0;   // захиалгын дүнд тулгарна
       const bucket = bqIsService(nm) ? svcs : prods;
       const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';
-      const key = skuT ? ('s:' + skuT) : ('n:' + normP(nm));
-      const p = bucket[key] || (bucket[key] = { product: nm, sku: skuT || null, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+      const key = 'n:' + normP(nm);   // нэрээр бүлэглэнэ — ижил нэртэй (өөр SKU-тай) бараа нэгдэнэ
+      const p = bucket[key] || (bucket[key] = { product: nm, skus: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+      if (skuT) p.skus[skuT] = 1;
       p.revenue_mnt += rev; p.total_qty += N(i.qty); p.item_days_out += days * N(i.qty);
       p._orders[o.id] = 1;
       if (!p.photo && i.photo) p.photo = i.photo;
@@ -15338,14 +15339,18 @@ function _histCompute(orders, roiFix) {
   });
 
   const finalize = (obj) => Object.values(obj).map(p => {
-    const fx = rlook(p.sku, p.product);
+    // эзэмшил/өртөг: бүлгийн аль нэг SKU rh_roi_fix-д таарвал түүгээр, эс бол нэрээр
+    let fx = null;
+    for (const sk of Object.keys(p.skus)) { if (rfix.bySku && rfix.bySku[sk]) { fx = rfix.bySku[sk]; break; } }
+    if (!fx && rfix.byName) fx = rfix.byName[normP(p.product)];
     let owned = fx ? N(fx.o) : 0;
     const unit = fx ? N(fx.c) : 0;
     if (unit > 10000000 && owned > 10) owned = 1;        // үнэтэй хөрөнгийн сэжигтэй эзэмшил → 1-д бари
     const times = Object.keys(p._orders).length;
     const tot = (unit > 0 && owned > 0) ? unit * owned : 0;
     const rx = tot > 0 ? Math.round(p.revenue_mnt / tot * 10) / 10 : null;
-    return { product: p.product, sku: p.sku, photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
+    const sku = Object.keys(p.skus)[0] || null;
+    return { product: p.product, sku, photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
   });
 
   const products = finalize(prods).sort((a, b) => b.revenue_mnt - a.revenue_mnt);

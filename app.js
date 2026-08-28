@@ -5426,7 +5426,8 @@ function renderOrders() {
     <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
   </div>`;
   const controls = `<div class="orders-controls">
-    <div class="orders-controls-r">
+    <div class="orders-controls-r" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      ${ymSelect}${paySelect}${sortSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;
@@ -5452,7 +5453,7 @@ function renderOrders() {
   const sumTotal = shown.reduce((s, e) => s + e.total, 0);
   const CAP = 200;
   const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:12.5px;margin:2px 2px 8px;">${shown.length.toLocaleString('mn-MN')} захиалга · нийт ${fmtMoney(sumTotal)}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${shown.length.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length

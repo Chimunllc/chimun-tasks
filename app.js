@@ -16379,6 +16379,11 @@ function renderVatView(wrap) {
   const totSales = R.reduce((s, r) => s + N(r.total), 0);
   const totVat = R.reduce((s, r) => s + N(r.vat), 0);
   const mR = R.filter(r => r.matched_id), uR = R.filter(r => !r.matched_id);
+  // Салбараар (тулгасан НӨАТ) — matched_type: event=M-Event, nomaad=NOMAAD
+  const brOf = t => { const e = t.filter(r => r.matched_type === 'event'), n = t.filter(r => r.matched_type === 'nomaad');
+    const sm = a => a.reduce((s, r) => s + (Number(r.total) || 0), 0), sv = a => a.reduce((s, r) => s + (Number(r.vat) || 0), 0);
+    return { evtN: e.length, evtSales: sm(e), evtVat: sv(e), nomN: n.length, nomSales: sm(n), nomVat: sv(n) }; };
+  const BR = brOf(mR);
   const mSales = mR.reduce((s, r) => s + N(r.total), 0), uSales = totSales - mSales;
   const mVat = mR.reduce((s, r) => s + N(r.vat), 0), uVat = totVat - mVat;
   const pct = totVat > 0 ? Math.round(mVat / totVat * 100) : 0;
@@ -16429,6 +16434,18 @@ function renderVatView(wrap) {
         ${kpi('Нийт борлуулалт', fmtMoney(totSales), `<span style="color:#1e7a55;">✓${fmtMoney(mSales)}</span> · <span style="color:#9a6a00;">${fmtMoney(uSales)}</span>`)}
         ${kpi('Төлөх НӨАТ', fmtMoney(totVat), `<span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span>`, true)}
         ${kpi('Тулгасан НӨАТ', pct + '%', `${fmtMoney(mVat)} / ${fmtMoney(totVat)}`)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;border-left:4px solid #E95400;">
+          <div style="font-size:12.5px;font-weight:700;color:#E95400;">🎪 M-Event НӨАТ борлуулалт</div>
+          <div style="font-size:20px;font-weight:800;margin-top:4px;">${fmtMoney(BR.evtSales)}</div>
+          <div style="font-size:12px;margin-top:3px;color:var(--muted);">НӨАТ <b style="color:#1e7a55;">${fmtMoney(BR.evtVat)}</b> · ${BR.evtN} баримт</div>
+        </div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;border-left:4px solid #0B7A3F;">
+          <div style="font-size:12.5px;font-weight:700;color:#0B7A3F;">⛺ NOMAAD НӨАТ борлуулалт</div>
+          <div style="font-size:20px;font-weight:800;margin-top:4px;">${fmtMoney(BR.nomSales)}</div>
+          <div style="font-size:12px;margin-top:3px;color:var(--muted);">НӨАТ <b style="color:#1e7a55;">${fmtMoney(BR.nomVat)}</b> · ${BR.nomN} баримт</div>
+        </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">

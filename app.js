@@ -16060,6 +16060,13 @@ function vatForOrder(orderNo) {
   return { count: recs.length, invoiced, vat, recs };
 }
 // Дүүрэн шивсэн бол ногоон, дутуу бол шар badge
+// Захиалга бүрэн НӨАТ шивэгдсэн үү (нэмэлт баримт орох зайгүй) — тийм бол саналаас хасна
+function vatCandFull(c) {
+  const amt = Number(c.amount) || 0;
+  if (amt <= 0) return false;   // дүнгүй бол хасахгүй
+  const inv = vatForOrder(c.no).invoiced;
+  return inv + Math.max(1000, amt * 0.005) >= amt;   // бүрэн (эсвэл илүү) шивэгдсэн
+}
 function vatBadge(orderNo, orderTotal) {
   const info = vatForOrder(orderNo);
   if (!info.count) return '';
@@ -16213,7 +16220,7 @@ async function openVatReportModal() {
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
           const nameOk = vatNameMatch(r.buyer_name, c.name);
           return { c, ok: amtOk || regOk || nameOk, s: vatAutoScore(r, c) };
-        }).filter(x => x.ok).sort((a, b) => b.s - a.s).slice(0, 3);
+        }).filter(x => x.ok && !vatCandFull(x.c)).sort((a, b) => b.s - a.s).slice(0, 3);
         const chips = tops.map((t, i) => {
           const c = t.c; const amtOk = near(r.total, c.amount) || near(r.net, c.amount);
           const regOk = r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg;
@@ -16291,7 +16298,7 @@ async function openVatReportModal() {
       const st = card.querySelector('#vat-status'); st.textContent = 'Тулгаж байна…';
       const cs = vatCandidateOrders(); const todo = (state.vatReceipts || []).filter(r => !r.matched_id);
       let n = 0;
-      for (const r of todo) { const bm = vatBestMatch(r, cs); if (bm.best && bm.score >= 7 && bm.gap >= 2) { try { await vatSetMatch(r.id, { type: bm.best.type, no: bm.best.no, label: (bm.best.name || bm.best.no) + ' · ' + fmtMoney(bm.best.amount), by: 'auto' }); n++; } catch (e) {} } }
+      for (const r of todo) { const avail = cs.filter(c => !vatCandFull(c)); const bm = vatBestMatch(r, avail); if (bm.best && bm.score >= 7 && bm.gap >= 2) { try { await vatSetMatch(r.id, { type: bm.best.type, no: bm.best.no, label: (bm.best.name || bm.best.no) + ' · ' + fmtMoney(bm.best.amount), by: 'auto' }); n++; } catch (e) {} } }
       st.textContent = `✓ ${n} баримт авто-тулгав`;
       render();
     };
@@ -16307,7 +16314,7 @@ async function openVatReportModal() {
   function openPicker(recId) {
     const rec = (state.vatReceipts || []).find(x => x.id === recId); if (!rec) return;
     const cands = vatCandidateOrders();
-    const scored = cands.map(c => ({ c, s: vatAutoScore(rec, c) })).sort((a, b) => b.s - a.s);
+    const scored = cands.map(c => ({ c, s: vatAutoScore(rec, c) })).filter(x => !vatCandFull(x.c)).sort((a, b) => b.s - a.s);
     const pov = document.createElement('div');
     pov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow:auto;';
     const pc = document.createElement('div');

@@ -15626,19 +15626,39 @@ function renderHistory() {
         </div>`;
       };
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
-      // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлогоороо эрэмбэлэгдэнэ ──
+      // ── 💰 Хөрөнгийн нөхөлт (нийт) — өртөгтэй барааны хөрөнгө оруулалт vs олсон орлого ──
+      const costed = roi.filter(x => N(x.total_cost_mnt) > 0);
+      const invest = costed.reduce((s, x) => s + N(x.total_cost_mnt), 0);
+      const recov = costed.reduce((s, x) => s + N(x.revenue_mnt), 0);
+      const recPct = invest > 0 ? Math.round(recov / invest * 100) : 0;
+      const noCostN = roi.length - costed.length;
+      const portfolio = card('💰 Хөрөнгийн нөхөлт (нийт)',
+        `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">
+           ${kpi('Нийт хөрөнгө оруулалт', fmtMoney(invest), 'var(--text)', `${costed.length} барааны нэгж өртөг × эзэмшил`)}
+           ${kpi('Нөхсөн (түрээсийн орлого)', fmtMoney(recov), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', `нөхөлт ${recPct}%`)}
+           ${kpi(recPct >= 100 ? 'Ашиг (өртгөө давсан)' : 'Нөхөх үлдэгдэл', fmtMoney(Math.abs(recov - invest)), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', recPct >= 100 ? 'орлого > хөрөнгө' : 'дутуу')}
+         </div>
+         <div style="background:var(--panel-hover);border-radius:6px;height:16px;overflow:hidden;"><div style="width:${Math.min(100, recPct)}%;height:100%;background:${recPct >= 100 ? 'var(--ok)' : 'var(--warn)'};border-radius:6px;"></div></div>`,
+        `Нийт түрээсийн орлого нь хөрөнгө оруулалтынхаа <b>${recPct}%</b>-г нөхсөн.${noCostN ? ` ${noCostN} барааны нэгж өртөг оруулаагүй тул тооцоонд ороогүй.` : ''}`);
+      // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлого + хөрөнгө + ROI ──
       const byCat = {};
       roi.forEach(x => { const c = x.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(x); });
-      const cats = Object.keys(byCat).map(c => ({ c, rows: byCat[c], rev: byCat[c].reduce((s, x) => s + N(x.revenue_mnt), 0) }))
-        .sort((a, b) => (a.c === 'Бусад') - (b.c === 'Бусад') || b.rev - a.rev);
+      const cats = Object.keys(byCat).map(c => {
+        const rows = byCat[c];
+        const rev = rows.reduce((s, x) => s + N(x.revenue_mnt), 0);
+        const inv = rows.reduce((s, x) => s + N(x.total_cost_mnt), 0);
+        return { c, rows, rev, inv, roi: inv > 0 ? Math.round(rev / inv * 10) / 10 : null };
+      }).sort((a, b) => (a.c === 'Бусад') - (b.c === 'Бусад') || b.rev - a.rev);
       const catSection = (g) => `<details open style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
         <summary style="cursor:pointer;padding:9px 12px;background:var(--panel-hover);font-weight:700;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <span>${escapeHtml(g.c)} <span style="color:var(--muted);font-weight:400;">· ${g.rows.length}</span></span>
-          <span style="font-variant-numeric:tabular-nums;color:var(--ok);">${fmtMoneyShort(g.rev)}</span>
+          <span style="text-align:right;font-variant-numeric:tabular-nums;">
+            <span style="color:var(--ok);">${fmtMoneyShort(g.rev)}</span>${g.inv > 0 ? `<span style="color:var(--muted);font-weight:400;font-size:10px;"> · хөрөнгө ${fmtMoneyShort(g.inv)} · ROI ${g.roi}×</span>` : ''}
+          </span>
         </summary>
         <div style="padding:4px 12px 8px;">${g.rows.map(roiRow).join('')}</div>
       </details>`;
-      body = kpis
+      body = kpis + portfolio
         + card(`Орлого × ROI — ангиллаар (${roi.length} бараа)`, cats.map(catSection).join(''),
             'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй. Бүлгийн толгойг дарж хумина.')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,

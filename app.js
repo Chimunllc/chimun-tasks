@@ -5452,10 +5452,13 @@ function renderOrders() {
     },
   };
   shown.sort(_sortFns[state.ordersSort] || _sortFns.number);
-  const sumTotal = shown.reduce((s, e) => s + e.total, 0);
+  // Борлуулалт = ноорог + цуцалсныг ТООЛОХГҮЙ (бодит захиалга л)
+  const _saleE = shown.filter(e => !['draft', 'canceled'].includes(String(e.o.status)));
+  const sumTotal = _saleE.reduce((s, e) => s + e.total, 0);
+  const saleN = _saleE.length;
   const CAP = 200;
   const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${shown.length.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length
@@ -14205,6 +14208,10 @@ function bqOrderCard(o) {
   const payRow = (total > 0 && st !== 'canceled')
     ? `<div class="order-meta">Төлсөн ${fmtMoney(paid)} / ${fmtMoney(total)}${bal > 0 ? ` · <b style="color:var(--danger);">Үлдэгдэл ${fmtMoney(bal)}</b>` : ` · <b style="color:var(--ok);">Бүрэн төлсөн</b>`}</div>`
     : '';
+  // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо харагдана (NOMAAD шиг)
+  const payMeta = (paid > 0 && o.paid_ref && st !== 'canceled')
+    ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.5;">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}<div style="margin-top:2px;">${String(o.paid_ref).split('|').map(s => escapeHtml(s.trim())).filter(Boolean).map(s => `• ${s}`).join('<br>')}</div></div>`
+    : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
   const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
   const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
@@ -14254,6 +14261,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta">${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ' · ' + _days + ' хоног' : ''}</div>
     ${payRow}
+    ${payMeta}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}

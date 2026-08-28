@@ -5042,17 +5042,18 @@ body.role-daily #add-project { display: none !important; }
 .due-chip { font-family: inherit; border: 1px solid var(--warn, #D97706); background: var(--warn-soft, #FEF3C7); color: var(--warn, #92400E); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
 .due-chip b { margin-left: 2px; }
 /* Авсаархан мөр (details) */
-.board-order { margin-bottom: 6px; }
-.board-order > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); cursor: pointer; font-size: 12.5px; }
+.board-order { margin-bottom: 5px; }
+.board-order > summary { list-style: none; display: flex; align-items: center; gap: 11px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); cursor: pointer; font-size: 13px; transition: border-color .12s ease, box-shadow .12s ease, background .12s ease; }
 .board-order > summary::-webkit-details-marker { display: none; }
-.board-order[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-.board-order.urg-over > summary, .board-order.urg-today > summary { border-left: 3px solid var(--danger); }
-.board-order.urg-soon > summary { border-left: 3px solid var(--warn); }
-.br-num { font-weight: 700; }
-.br-cust { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.br-badge { flex-shrink: 0; }
-.br-date { color: var(--muted); flex-shrink: 0; }
-.br-amt { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.board-order > summary:hover { border-color: var(--border-strong, #cbd5e1); box-shadow: 0 1px 4px rgba(15, 23, 42, .06); }
+.board-order[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; background: var(--panel-hover); box-shadow: none; }
+/* Яаралтай — зузаан зураас БИШ, жижиг статус цэг (.br-dot) */
+.br-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--d, var(--muted)); flex-shrink: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--d, #999) 18%, transparent); }
+.br-num { font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.br-cust { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text); }
+.br-badge { flex-shrink: 0; font-size: 12.5px; opacity: .7; }
+.br-date { color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.br-amt { font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; color: var(--text); letter-spacing: -.01em; }
 .board-detail { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 8px; background: var(--panel-hover); }
 .board-detail .order-card { margin: 0; }
 .board-more { font-size: 12px; color: var(--muted); text-align: center; padding: 8px; }

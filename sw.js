@@ -10,7 +10,7 @@
  * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
  */
 
-const CACHE_VERSION = 'chimun-tasks-v603-roi-owned-photo-2026-08-28';
+const CACHE_VERSION = 'chimun-tasks-v604-auth-reload-2026-08-28';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -101,7 +101,9 @@ self.addEventListener('fetch', (event) => {
     && (url.pathname.endsWith('/styles.css') || url.pathname.endsWith('/app.js'));
   if (isHTML || isAppShell) {
     event.respondWith(
-      fetch(req)
+      // cache:'reload' — браузерын HTTP кэшийг ТОЙРЧ сүлжээнээс шинэ код авна (GitHub Pages
+      // ~10мин кэшээс болж хуучин app.js хүрэхээс сэргийлнэ). Офлайн бол catch → cache.
+      fetch(req, { cache: 'reload' })
         .then((res) => {
           // Шинэ HTML-г cache-д хадгалж офлайн fallback болгоно
           if (res.ok && url.origin === self.location.origin) {

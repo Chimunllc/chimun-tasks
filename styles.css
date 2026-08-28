@@ -5103,6 +5103,51 @@ body.role-daily #add-project { display: none !important; }
 .br-act { flex-shrink: 0; font-family: inherit; font-size: 11.5px; font-weight: 600; white-space: nowrap; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--accent, #7c3aed); background: var(--accent, #7c3aed); color: #fff; cursor: pointer; }
 .br-act:hover { filter: brightness(1.08); }
 .br-act-off { border-color: var(--border); background: transparent; color: var(--muted); opacity: .55; cursor: not-allowed; }
+
+/* ═══ Захиалгын мөр — УТСАНД (≤720px) ═══
+   Асуудал байсан: summary нь flex-nowrap байсан тул нарийн дэлгэцэд дүн (.br-amt)
+   баруун талаараа тасарч, доторх шошгууд (.chip — НӨАТ г.м.) шахагдаж текст нь
+   босоо мөр болон урсаж, border-radius:100px-тэй хослоод АВАРГА ДУГУЙ болдог байв. */
+@media (max-width: 720px) {
+  .board-order > summary {
+    flex-wrap: wrap;
+    gap: 5px 8px;
+    padding: 10px 12px;
+  }
+  /* 1-р мөр: дугаар · харилцагч · дүн (баруун талд). Бусад нь доош дамжина. */
+  .br-num  { order: 1; }
+  .br-cust { order: 2; flex: 1 1 40%; }
+  .br-amt  { order: 3; margin-left: auto; }
+  /* 1-р мөрийг ЗААВАЛ таслах — эс бөгөөс зай үлдвэл 2-р мөрийн зүйл (🚚 г.м.)
+     дүнгийн ард наалдаж, эмх замбараагүй харагдана. */
+  .board-order > summary::after { content: ''; width: 100%; height: 0; order: 4; }
+  .board-order > summary > .br-badge,
+  .board-order > summary > .br-date,
+  .board-order > summary > .chip,
+  .board-order > summary > span:not([class]),
+  .board-order > summary > .br-act { order: 5; }
+  /* Мөрөн дэх ШОШГО — mobile .chip override (padding 8px 14px / 36px өндөр)-ийг
+     буцааж авсаархан болгоно. Шахагдаж босоо болохоос сэргийлж shrink хаана. */
+  .board-order > summary .chip,
+  .board-order > summary > span[style*="border-radius:100px"] {
+    padding: 2px 8px !important;
+    font-size: 10.5px !important;
+    min-height: 0 !important;
+    line-height: 1.5 !important;
+    flex-shrink: 0;
+    white-space: nowrap;
+    border-radius: 999px !important;
+  }
+  /* Төлвийн тууз — хэвтээ гүйдгийг баруун захын бүдгэрлээр мэдэгдүүлнэ */
+  .board-stepper {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+  }
+  .bstep { padding: 4px 10px; font-size: 11.5px; }
+  .bstep-n { font-size: 10.5px; padding: 0 6px; }
+  /* Дүнгийн мөр хажуу тийш гарахгүй */
+  .orders-sumline { white-space: normal; padding-right: 4px; }
+}
 /* CEO сонгох горим + бөөн үйлдэл */
 .board-sel, .board-selall { width: 17px; height: 17px; flex-shrink: 0; margin: 0 2px 0 0; cursor: pointer; accent-color: var(--accent, #7c3aed); }
 .board-bulk { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border-strong, var(--border)); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; position: sticky; top: 4px; z-index: 5; }
@@ -5857,4 +5902,12 @@ body.role-daily #add-project { display: none !important; }
 /* Десктопод sidebar чипс хэрэггүй (header-ийн select ажиллана) */
 @media (min-width: 721px) {
   #sidebar-lens { display: none !important; }
+}
+
+
+/* Захиалгын модал — «Эхлэх / Дуусах» огноо+цаг хос нарийн дэлгэцэд хажуу тийш
+   давж, цагийн сонгогч тасардаг байв. ≤560px-д доош нь давхарлана. */
+@media (max-width: 560px) {
+  .mo-daterow { flex-direction: column; gap: 10px !important; }
+  .mo-daterow > div { width: 100%; }
 }

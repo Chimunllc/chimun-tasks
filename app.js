@@ -18846,9 +18846,16 @@ function renderStaffList() {
   // Тиймээс CEO жагсаалт нээхэд нэг ч pin байхгүй бол сервэрээс шууд дахин татна.
   if (state.isCEO && !state._pinRefetched && TEAM.length && !TEAM.some(m => m.pin)) {
     state._pinRefetched = true;
-    loadTeamFromAPI().then(ok => { if (ok) renderStaffList(); });
+    loadTeamFromAPI().then(ok => { state._pinRefetchOk = !!ok; renderStaffList(); });
   }
   const _pinLoaded = TEAM.some(m => m.pin);   // false = сервэрээс ирээгүй (кэш/алдаа), тохируулаагүй ГЭСЭН ҮГ БИШ
+  // Дахин татаж дууссан ч нэг ч pin ирээгүй бол шалтгааныг ЯЛГАЖ хэлнэ:
+  // татаж чадсан мөртлөө pin алга = /staff endpoint PIN буцаахаа больсон (backend засвар),
+  // татаж чадаагүй = сүлжээ/endpoint алдаа.
+  const _pinMsg = _pinLoaded ? 'тохируулаагүй'
+    : state._pinRefetched === undefined || state._pinRefetchOk === undefined ? 'ачаалж байна…'
+    : state._pinRefetchOk ? '⚠ сервер PIN буцаахгүй байна'
+    : '⚠ сервертэй холбогдож чадсангүй';
   const q = (document.getElementById(state._staffSearchId || 'staff-search')?.value || '').toLowerCase().trim();
   const all = [...TEAM].sort((a, b) => {
     // Active first, then by level
@@ -18883,7 +18890,7 @@ function renderStaffList() {
           <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
           ${state.isCEO ? `<div class="staff-cred" style="margin-top:4px;font-size:12px;color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
             <span>📞 <b>${escapeHtml(m.phone || key || '—')}</b></span>
-            <span>🔑 PIN: <b class="staff-pin" data-pin-for="${escapeHtml(key)}" style="letter-spacing:2px;">${m.pin ? '••••' : `<span style='color:var(--muted);font-weight:400;letter-spacing:0;'>${_pinLoaded ? 'тохируулаагүй' : 'ачаалж байна…'}</span>`}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}" style="padding:1px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">харах</button>` : ''}</span>
+            <span>🔑 PIN: <b class="staff-pin" data-pin-for="${escapeHtml(key)}" style="letter-spacing:2px;">${m.pin ? '••••' : `<span style='color:var(--muted);font-weight:400;letter-spacing:0;'>${_pinMsg}</span>`}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}" style="padding:1px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">харах</button>` : ''}</span>
             <button class="staff-doc-btn" data-staff-doc="${escapeHtml(key)}" data-staff-name="${escapeHtml(m.name || '')}" style="padding:2px 10px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">📄 Үнэмлэх харах</button>
           </div>` : ''}
           ${state.isCEO ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;">Хүйс: <button data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эрэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эр</button><button data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эмэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эм</button></div>` : ''}

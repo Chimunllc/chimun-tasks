@@ -5832,7 +5832,7 @@ function openNewMeventOrder(editOrder) {
       </div>
       <label>Хаяг / газар</label>
       <input id="mo-address" placeholder="Хан-Уул, Restaurant XYZ" />
-      <div style="display:flex;gap:8px;">
+      <div class="mo-daterow" style="display:flex;gap:8px;">
         <div style="flex:1;min-width:0;"><label>Эхлэх</label>
           <div style="display:flex;gap:4px;align-items:flex-start;">
             <div class="mcal" style="flex:1;min-width:0;position:relative;">

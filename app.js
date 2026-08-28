@@ -5338,6 +5338,11 @@ function renderOrders() {
   const paySelect = `<select id="orders-pay" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
     ${payOpts.map(([v, l]) => `<option value="${v}"${payFC === v ? ' selected' : ''}>${l}</option>`).join('')}
   </select>`;
+  // Фасет филтер — Барьцаа / Харилцагчийн төрөл / НӨАТ
+  const _facetSel = (id, cur, opts) => `<select id="${id}" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">${opts.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  const depSelect = _facetSel('orders-dep', state.ordersDep || '', [['', '🔒 Барьцаа: бүгд'], ['held', '🔒 Барьцаатай'], ['returned', '✓ Буцаасан'], ['none', '— Барьцаагүй']]);
+  const custSelect = _facetSel('orders-cust', state.ordersCust || '', [['', '👥 Харилцагч: бүгд'], ['person', '🧍 Хувь хүн'], ['org', '🏢 Байгууллага']]);
+  const vatSelect = _facetSel('orders-vat', state.ordersVat || '', [['', '🧾 НӨАТ: бүгд'], ['vat', '🧾 НӨАТ-тэй'], ['novat', '— НӨАТ-гүй']]);
   const _ov = state.ordersView || 'list';
   const viewToggle = `<div class="oview-toggle">
     <button class="oview-btn${_ov === 'list' ? ' on' : ''}" data-oview="list">☰ Жагсаалт</button>
@@ -5345,7 +5350,7 @@ function renderOrders() {
   </div>`;
   const controls = `<div class="orders-controls">
     <div class="orders-controls-r" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${ymSelect}${paySelect}${sortSelect}
+      ${ymSelect}${paySelect}${depSelect}${custSelect}${vatSelect}${sortSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;
@@ -5353,7 +5358,12 @@ function renderOrders() {
   state.ordersSort = state.ordersSort || 'number';
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
   const payF = state.ordersPay || '';
-  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF));
+  // Фасет предикатууд — Барьцаа / Харилцагч / НӨАТ
+  const depF = state.ordersDep || '', custF = state.ordersCust || '', vatF = state.ordersVat || '';
+  const depMatch = (e) => { if (!depF) return true; const amt = Number(e.o.deposit_mnt) || 0; if (depF === 'none') return amt <= 0; if (amt <= 0) return false; const ret = !!depositReturnFor(e.o.id); return depF === 'returned' ? ret : depF === 'held' ? !ret : true; };
+  const custMatch = (e) => !custF || orderCustType(e.o) === custF;
+  const vatMatch = (e) => { if (!vatF) return true; const has = (typeof vatForOrder === 'function') && vatForOrder(e.o.number).count > 0; return vatF === 'vat' ? has : !has; };
+  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF) && depMatch(e) && custMatch(e) && vatMatch(e));
   const _sortFns = {
     number: (a, b) => (Number(b.o.number) || 0) - (Number(a.o.number) || 0),
     number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
@@ -5434,6 +5444,9 @@ function attachOrdersHandlers() {
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
   document.getElementById('orders-sort')?.addEventListener('change', (e) => { state.ordersSort = e.target.value; render(); });
   document.getElementById('orders-pay')?.addEventListener('change', (e) => { state.ordersPay = e.target.value; render(); });
+  document.getElementById('orders-dep')?.addEventListener('change', (e) => { state.ordersDep = e.target.value; render(); });
+  document.getElementById('orders-cust')?.addEventListener('change', (e) => { state.ordersCust = e.target.value; render(); });
+  document.getElementById('orders-vat')?.addEventListener('change', (e) => { state.ordersVat = e.target.value; render(); });
 
   // Захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
   document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
@@ -13996,6 +14009,14 @@ function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
 // app_orders-д багана нэмэхгүйгээр. Зөвхөн захиалгын менежерт харагдана.
 const _CI_RE = /⟦CI\|([^⟧]*)⟧/;
 function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) return {}; try { return JSON.parse(m[1]) || {}; } catch (e) { return {}; } }
+// Харилцагчийн төрөл — байгууллага (компанийн нэр эсвэл 7 оронтой РД) эсвэл хувь хүн. Филтерт.
+function orderCustType(o) {
+  const ci = custInfoOf(o && o.note);
+  if (ci.company && String(ci.company).trim()) return 'org';
+  const reg = String(ci.reg || '').replace(/\s/g, '');
+  if (/^\d{7}$/.test(reg)) return 'org';                 // компанийн регистр = 7 орон
+  return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
+}
 function mapsHref(v) { const s = String(v || '').trim(); if (/^https?:\/\//i.test(s)) return s; return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s); }
 // Төлбөрийн paid_ref-ийг задлах — "[#id] илгээгч · данс · утга  |  ..." → баримт бүрийн бүтэц.
 // (Эх PDF хадгалагддаггүй — банкнаас автомат задлан авсан мэдээлэл.)

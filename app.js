@@ -5361,7 +5361,7 @@ function attachOrdersHandlers() {
     const ids = [...(state.ordersSelected || [])];
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
     if (!(await showConfirm(`${ids.length} захиалгыг БҮРМӨСӨН устгах уу? (буцаах боломжгүй)`, { okText: 'Устгах', danger: true }))) return;
-    await bulkDeleteOrders(ids);
+    try { await bulkDeleteOrders(ids); } catch (e) { return; }   // амжилтгүйд bulkDeleteOrders өөрөө сэргээж toast гаргана
     state.ordersSelected = new Set();
     showToast(`${ids.length} захиалга устгалаа`, 'success', 2800); render();
   });
@@ -5391,6 +5391,8 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); e.preventDefault();
+    if (b.dataset.busy === '1') return;                                  // давхар дарахаас хамгаалах
+    b.dataset.busy = '1'; setTimeout(() => { b.dataset.busy = ''; }, 1000);
     if (!can(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
     const to = b.dataset.to;
     const oid = b.dataset.bqAdvance;
@@ -13205,7 +13207,7 @@ async function loadHistory(force) {
     return r.json();
   };
   try {
-    const [summary, monthly, methods, products, customers, usage, roi] = await Promise.all([
+    const [summary, monthly, methods, products, customers, usage, roi, roiFix] = await Promise.all([
       get('rh_v_summary'),
       get('rh_v_monthly_revenue', '&order=month.asc'),
       get('rh_v_payment_method'),
@@ -13213,6 +13215,9 @@ async function loadHistory(force) {
       get('rh_v_revenue_by_customer', '&order=revenue_mnt.desc.nullslast&limit=40'),
       get('rh_v_product_utilization', '&order=item_days_out.desc.nullslast&limit=40'),
       get('rh_v_product_roi', '&order=revenue_mnt.desc.nullslast&limit=80').catch(() => []),  // view байхгүй бол хоосон (бусдыг эвдэхгүй)
+      // ROI залруулга: эзэмшсэн тоо (Booqable stock_counts) + бараа тус бүрийн зураг.
+      // view нь эзэмшлийг нэрээр холбодог байсан нь нэр өөрчлөгдсөнөөр эвдэрсэн тул энд залруулна.
+      get('app_config', '&key=eq.rh_roi_fix&select=value').then(r => r[0] && r[0].value).catch(() => null),
     ]);
     state.history = {
       summary: summary[0] || null,
@@ -13222,6 +13227,7 @@ async function loadHistory(force) {
       customers: customers || [],
       usage: usage || [],
       roi: roi || [],
+      roiFix: roiFix || null,
       loadedAt: Date.now(),
     };
   } catch (e) {
@@ -13660,15 +13666,27 @@ function nextContractNo() {
 async function saveAppOrder(ord) {
   state.appOrders = state.appOrders || [];
   const idx = state.appOrders.findIndex(o => o.id === ord.id);
+  const prev = idx >= 0 ? state.appOrders[idx] : null;   // буцаахад хэрэгтэй хуучин утга
   if (idx >= 0) state.appOrders[idx] = ord; else state.appOrders.unshift(ord);
   if (typeof render === 'function') render();
   if (!SUPABASE_ANON_KEY) return;
-  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders`, {
-    method: 'POST',
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(ord),
-  }, 20000);
-  if (!r.ok) { showToast('Хадгалах алдаа: ' + (await r.text()).slice(0, 80), 'error', 5000); throw new Error('save fail'); }
+  let r;
+  try {
+    r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(ord),
+    }, 20000);
+  } catch (e) { r = null; }
+  if (!r || !r.ok) {
+    // Серверт хадгалагдсангүй — локал optimistic өөрчлөлтийг БУЦААНА (хуулбар "хадгалагдсан" мэт харагдахаас сэргийлнэ)
+    const i2 = state.appOrders.findIndex(o => o.id === ord.id);
+    if (prev) { if (i2 >= 0) state.appOrders[i2] = prev; } else { if (i2 >= 0) state.appOrders.splice(i2, 1); }
+    if (typeof render === 'function') render();
+    const msg = r ? ('Хадгалах алдаа: ' + (await r.text()).slice(0, 80)) : 'Сүлжээ/сервер алдаа — хадгалагдсангүй';
+    showToast(msg, 'error', 5000);
+    throw new Error('save fail');
+  }
 }
 // Тест захиалга цэвэрлэх (ЗӨВХӨН CEO) — нэрэнд test/тест/demo орсныг сонгож бүрмөсөн устгана
 const _TEST_ORDER_RE = /\btest\b|тест|demo|туршил|жишээ|sample/i;
@@ -13714,15 +13732,26 @@ function openTestCleanupModal() {
 // CEO бөөн үйлдэл — сонгосон захиалгыг устгах/сэргээх (PostgREST id=in.() багцаар)
 async function bulkDeleteOrders(ids) {
   const idSet = new Set(ids.map(String));
+  const removed = (state.appOrders || []).filter(o => idSet.has(String(o.id)));   // сэргээхэд хэрэгтэй
   state.appOrders = (state.appOrders || []).filter(o => !idSet.has(String(o.id)));
   if (typeof render === 'function') render();
   if (!SUPABASE_ANON_KEY) return;
+  let failed = false;
   for (let i = 0; i < ids.length; i += 80) {
     const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
     try {
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+      const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
         { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 30000);
-    } catch (e) { console.warn('bulkDelete', e); }
+      if (!r.ok) failed = true;
+    } catch (e) { console.warn('bulkDelete', e); failed = true; }
+  }
+  if (failed) {
+    // Сервер талд устгагдсангүй — UI-аас алга болсон захиалгуудыг БУЦААНА (жинхэнэ дата хэвээр байгааг зөв харуулна)
+    const have = new Set((state.appOrders || []).map(o => String(o.id)));
+    removed.forEach(o => { if (!have.has(String(o.id))) state.appOrders.push(o); });
+    if (typeof render === 'function') render();
+    showToast('⚠ Устгал серверт бүрэн хийгдсэнгүй — захиалгыг сэргээлээ, дахин оролдоно уу', 'error', 6000);
+    throw new Error('bulkDelete fail');
   }
 }
 async function bulkRestoreOrders(ids) {
@@ -14921,7 +14950,7 @@ async function submitBqPayment(oid, modal, btn) {
   okR.forEach(r => { if (r._file) uploadReceiptFile(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }); });
   const newPaid = (Number(o.paid_mnt) || 0) + amount;
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;
-  const prevPaid = o.paid_mnt, prevStatus = o.status;
+  const prevPaid = o.paid_mnt, prevStatus = o.status, prevRef = o.paid_ref, prevMethod = o.paid_method, prevDate = o.paid_date;
   o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic
   try {
     const table = isApp ? 'app_orders' : 'bq_orders';
@@ -14949,8 +14978,16 @@ async function submitBqPayment(oid, modal, btn) {
     if (isApp && newStatus === 'reserved') { try { ensureStageTask(o); } catch (e4) { console.warn('ensureStageTask pay', e4); } }
     render();
   } catch (e) {
-    o.paid_mnt = prevPaid; o.status = prevStatus;   // буцаах
-    showToast('Засах эрх алга эсвэл алдаа: ' + e.message, 'error', 5000);
+    o.paid_mnt = prevPaid; o.status = prevStatus; o.paid_ref = prevRef; o.paid_method = prevMethod; o.paid_date = prevDate;   // бүрэн буцаах
+    // Баримтын локал түгжээг сулла — дахин оролдоход "бүх баримт давхцсан" гэж хаагдахгүй
+    // (сервер талд ижил usedIn-ээр 409→'ok' болж дахин бүртгэгдэнэ).
+    okR.forEach(rc => {
+      if (state.usedReceipts instanceof Set) state.usedReceipts.delete(rc.receiptId);
+      if (state.usedFps instanceof Set) state.usedFps.delete(rc.fpKey);
+      if (state.refLessFps instanceof Set) state.refLessFps.delete(rc.fpKey);
+    });
+    render();
+    showToast('Засах эрх алга эсвэл алдаа: ' + e.message + ' — дахин оролдоно уу', 'error', 5000);
     btn.disabled = false;
   }
 }
@@ -15348,15 +15385,32 @@ function renderHistory() {
         'Хүргэлт/тээвэр — бараа биш үйлчилгээ. Орлогод багтсан ч ROI/нөөцөд тооцохгүй.');
     };
     if (roi.length) {
-      const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
+      // ROI залруулга: эзэмшсэн тоог Booqable stock_counts-аас (app_config rh_roi_fix), ROI-г дахин бодно.
+      // view нь эзэмшлийг амьд барааны нэрээр холбодог байсан нь нэр цэвэрлэсний дараа эвдэрсэн (олон бараа 1 болж ROI хөөрөгдсөн).
+      const rfix = bq.roiFix || {};
+      const fixOf = (x) => (x.sku && rfix.bySku && rfix.bySku[x.sku])
+        || (rfix.byName && rfix.byName[String(x.product || '').trim().toLowerCase()]) || null;
+      const roiC = roi.map(x => {
+        const fx = fixOf(x);
+        const rev = N(x.revenue_mnt), unit = N(x.unit_cost_mnt);
+        const owned = (fx && N(fx[0])) || N(x.owned_qty) || 1;
+        const tot = unit > 0 ? unit * owned : (N(x.total_cost_mnt) || 0);
+        const rx = (unit > 0 && tot > 0) ? Math.round(rev / tot * 10) / 10 : null;
+        return { ...x, _rev: rev, _unit: unit, _owned: owned, _tot: tot, _rx: rx, _photo: (fx && fx[1]) || '' };
+      });
+      const maxRev = Math.max(1, ...roiC.map(x => x._rev));
       const roiRow = (x) => {
-        const rev = N(x.revenue_mnt), owned = N(x.owned_qty) || 1, tot = N(x.total_cost_mnt) || (N(x.unit_cost_mnt) * owned), rx = (x.roi_x == null ? null : N(x.roi_x)), days = N(x.item_days_out);
+        const rev = x._rev, owned = x._owned, tot = x._tot, rx = x._rx, days = N(x.item_days_out);
         const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
         const badge = (tot <= 0 || rx == null) ? `<span style="color:var(--muted);">өртөг ?</span>`
           : `<span style="color:${rx >= 3 ? 'var(--ok)' : rx >= 1 ? 'var(--warn)' : 'var(--danger)'};font-weight:700;">ROI ${rx}×</span>`;
         const costStr = tot > 0 ? `хөрөнгө ${fmtMoneyShort(tot)}${owned > 1 ? ` (${owned.toLocaleString('mn-MN')}ш)` : ''}` : 'өртөг ?';
+        const thumb = x._photo
+          ? `<img src="${escapeHtml(x._photo)}" loading="lazy" alt="" style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;object-fit:cover;background:var(--panel-hover);" onerror="this.style.visibility='hidden';">`
+          : `<div style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;background:var(--panel-hover);"></div>`;
         return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;">
-          <div style="flex:0 0 40%;min-width:0;">
+          ${thumb}
+          <div style="flex:0 0 38%;min-width:0;">
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}</div>
             <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
           </div>
@@ -15364,9 +15418,9 @@ function renderHistory() {
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>
         </div>`;
       };
-      const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
+      const stuck = roiC.filter(x => x._unit > 0 && x._rx != null && x._rx < 1).sort((a, b) => a._rx - b._rx);
       body = kpis
-        + card('Орлого × ROI — бараа бүр', roi.map(roiRow).join(''),
+        + card('Орлого × ROI — бараа бүр', roiC.map(roiRow).join(''),
             'ROI× = бодит цуглуулсан орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 алтан · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,
             stuck.slice(0, 15).map(roiRow).join(''), 'Эдгээрийг хасах/зарах, эсвэл түрээсийн үнэ/маркетингаа дахин харах') : '')

@@ -5401,10 +5401,9 @@ function renderOrders() {
   }
 
   // ── Менежер / CEO ──
+  // Default = Жагсаалт (зүүн статус sidebar + хавтгай хүснэгт, Booqable шиг). ▤ Самбар руу сэлгэж болно.
   state.ordersFilter = state.ordersFilter || 'all';
-  state.ordersView = 'board';   // зөвхөн Самбар (Жагсаалт хассан)
-  const isBoard = true;
-  state.ordersFilter = 'all';
+  const isBoard = (state.ordersView || 'list') === 'board';
   if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'rented']);
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
@@ -5455,6 +5454,14 @@ function renderOrders() {
   const tabsHtml = tabs.map(t => {
     const n = combined.filter(e => matchFilter(e, t.key)).length;   // 'all' нь matchFilter-ээр цуцалсныг хасна
     return (n || t.key === 'all' || _PIPE_TABS.has(t.key)) ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
+  }).join('');
+  // ── Зүүн статус sidebar (Booqable шиг) — статус бүр тоотой; дарахад тухайн статусын хүснэгт харагдана ──
+  const sideHtml = tabs.map(t => {
+    const n = combined.filter(e => matchFilter(e, t.key)).length;
+    if (!(n || t.key === 'all' || _PIPE_TABS.has(t.key))) return '';
+    const b = ORDER_BUCKETS.find(x => x.key === t.key);
+    const dot = (t.key === 'all') ? '' : `<span class="ordv-st-dot" style="--d:${(b && b.dot) || '#888'}"></span>`;
+    return `<button class="ordv-st${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${dot}<span class="ordv-st-l">${escapeHtml(t.label)}</span><span class="ordv-st-n">${n || 0}</span></button>`;
   }).join('');
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
   const ymF = state.ordersYM || '';
@@ -5527,7 +5534,10 @@ function renderOrders() {
       ? sumLine + `<div class="otable">${otableHead}${flatRows}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  return head + (isBoard ? '' : chips) + controls + (isBoard ? '' : `<div class="otabs">${tabsHtml}</div>`) + body;
+  const viewbar = `<div class="orders-viewbar">${viewToggle}</div>`;
+  if (isBoard) return head + viewbar + controls + body;
+  // Жагсаалт: зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + хавтгай хүснэгт)
+  return head + viewbar + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
 }
 
 function _closeOrderKebabs(e) {

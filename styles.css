@@ -5680,6 +5680,7 @@ body.role-daily #add-project { display: none !important; }
 
 /* Хайлт — байгаа бүх өргөнөө эзэлнэ (150px хайрцагт шахагдахгүй) */
 .no-search { display: flex; align-items: center; gap: var(--space-2); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 2px var(--space-3); margin-bottom: var(--space-2); }
+.no-addbtn { width: 100%; justify-content: center; gap: var(--space-2); padding: var(--space-3); font-size: var(--fs-md); margin-bottom: var(--space-3); }
 .no-search input { flex: 1; width: 100%; min-width: 0; border: none; background: none; outline: none; font-family: inherit; font-size: var(--fs-base); color: var(--text); padding: 8px 0; }
 
 /* Барааны каталог — том дүрс, олон багана */

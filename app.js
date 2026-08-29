@@ -14281,8 +14281,7 @@ function openNewOrder(editOrder) {
     </div>
     <div class="no-col no-col-b">
     ${_sec('Бараа')}
-    ${_locked ? '' : `<div class="no-search">🔍<input type="search" class="ui-raw" id="no-prodsearch" placeholder="Бараа хайх (нэр / SKU / ангилал)"><button type="button" class="btn" id="no-pickopen" style="padding:4px 10px;font-size:var(--fs-sm);">⤢ Бүгд</button></div>
-    <div id="no-catalog" class="no-catalog"></div>`}
+    ${_locked ? '' : `<button type="button" class="btn btn-primary no-addbtn" id="no-pickopen">＋ Бараа сонгох</button>`}
     <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:8px;"></div>
     </div>

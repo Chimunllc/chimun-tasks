@@ -912,7 +912,20 @@ function openPinResetModal(prefillId) {
     if (!/^\d{4}$/.test(pin)) { err('Шинэ PIN 4 оронтой байх ёстой'); return; }
     e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Шинэчилж байна…';
     const ok = await serverResetVerify(modal._id, code, pin);
-    if (ok) { close(); showToast('✅ PIN шинэчлэгдлээ. Шинэ PIN-ээрээ нэвтэрнэ үү.', 'success', 4500); }
+    if (ok) {
+      close();
+      // Сесс дотор PIN-ээ сольсон бол локал хуулбарыг мөн шинэчилнэ (offline fallback
+      // нэвтрэлт шинэ PIN-ийг таних ёстой) + албадсан солилтын хориг тайлагдана.
+      if (state.user) state.user.pin = pin;
+      const _m = TEAM.find(m => String(m.phone || '').replace(/\D/g, '') === String(state.user && state.user.phone || '').replace(/\D/g, ''));
+      if (_m) _m.pin = pin;
+      if (state._forcePinChange) {
+        state._forcePinChange = false;
+        const cb = document.getElementById('profile-cancel');
+        if (cb) cb.style.display = '';
+      }
+      showToast('✅ PIN шинэчлэгдлээ. Шинэ PIN-ээрээ нэвтэрнэ үү.', 'success', 4500);
+    }
     else { e.currentTarget.disabled = false; e.currentTarget.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
   };
 }
@@ -22526,10 +22539,6 @@ function openProfileModal() {
   document.getElementById('profile-role').value = state.user.role || '';
   document.getElementById('profile-phone').value = state.user.phone || localStorage.getItem('userPhone') || '';
   document.getElementById('profile-email').value = state.user.email || '';
-  // Clear PIN inputs
-  document.getElementById('profile-pin-current').value = '';
-  document.getElementById('profile-pin-new').value = '';
-  document.getElementById('profile-pin-confirm').value = '';
   // Accessibility prefs
   const fs = localStorage.getItem('fontSize') || 'md';
   document.querySelectorAll('.fs-btn').forEach(b => b.classList.toggle('active', b.dataset.fs === fs));
@@ -22595,6 +22604,14 @@ function setupProfileModal() {
   document.getElementById('profile-cancel')?.addEventListener('click', () =>
     document.getElementById('profile-modal').classList.remove('open'));
 
+  // PIN солих — серверийн урсгал руу (и-мэйл код → chimun-reset-verify → employees.pin).
+  // Локал талд PIN бичих боломжгүй: sanitizeTeamForCache нь PIN-г кэшээс хасдаг тул
+  // хадгалах цорын ганц найдвартай газар нь сервер.
+  document.getElementById('profile-pin-change')?.addEventListener('click', () => {
+    const id = (state.user && (state.user.email || state.user.phone)) || localStorage.getItem('userPhone') || '';
+    openPinResetModal(String(id).trim());
+  });
+
   // Avatar upload — file → base64 (resize-сэн 256x256)
   document.getElementById('profile-avatar-input')?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
@@ -22642,9 +22659,6 @@ function setupProfileModal() {
     const name = document.getElementById('profile-name').value.trim();
     const phone = document.getElementById('profile-phone').value.trim();
     const email = document.getElementById('profile-email').value.trim();
-    const pinCur = document.getElementById('profile-pin-current').value.trim();
-    const pinNew = document.getElementById('profile-pin-new').value.trim();
-    const pinConfirm = document.getElementById('profile-pin-confirm').value.trim();
     const oldPhoneD = String(state.user.phone || localStorage.getItem('userPhone') || '').replace(/\D/g, '');
     if (!name) { showToast('Нэрээ оруулна уу', 'warn'); return; }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -22653,20 +22667,10 @@ function setupProfileModal() {
     if (phone && phone.replace(/\D/g,'').length < 8) {
       showToast('Утас наад зах нь 8 орон', 'warn'); return;
     }
-    // PIN солих логик
-    if (pinNew || pinConfirm || pinCur) {
-      if (!pinCur || String(pinCur) !== String(state.user.pin)) {
-        showToast('Одоогийн PIN буруу байна', 'error'); return;
-      }
-      if (!/^\d{4}$/.test(pinNew)) { showToast('Шинэ PIN 4 оронтой тоо', 'warn'); return; }
-      if (pinNew !== pinConfirm) { showToast('Шинэ PIN таарахгүй байна', 'warn'); return; }
-      state.user.pin = pinNew;
-      // TEAM array дотор мөн шинэчлэх
-      const member = TEAM.find(m => m.email === state.user.email);
-      if (member) member.pin = pinNew;
-      localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-      state._forcePinChange = false; // PIN солисон → enforcement off
-    }
+    // PIN солилт энд хийгдэхээ БОЛЬСОН — "PIN солих" товч серверийн урсгал (#profile-pin-change)
+    // нээнэ. Урьд нь энд локал state.user.pin-г л сольдог байсан бөгөөд сервер рүү хүрдэггүй,
+    // мөн sanitizeTeamForCache нь PIN-г кэшээс хасдаг тул refresh хийхэд шинэ PIN алга болж,
+    // хуучин PIN-ээрээ л нэвтэрдэг байв — өөрөөр хэлбэл "Хадгаллаа" гэдэг нь худал байсан.
     // Profile талбарууд хадгалах
     state.user.name = name;
     state.user.phone = phone;
@@ -22721,8 +22725,7 @@ function setupProfileModal() {
     // эсэхийг шалгана. Хоосон үлдээж "хадгалах" дарвал модал хаагдахгүй.
     if (state._forcePinChange) {
       showToast('PIN-ээ заавал өөрчилнө үү', 'warn');
-      const newPin = document.getElementById('profile-pin-new');
-      if (newPin) newPin.focus();
+      document.getElementById('profile-pin-change')?.focus();
       return;
     }
     document.getElementById('profile-modal').classList.remove('open');
@@ -23199,10 +23202,10 @@ function promptDefaultPinChange() {
   showToast('Аюулгүй байдлын үүднээс PIN-ээ өөрчилнө үү', 'warn', 5000);
   openProfileModal();
   // PIN секц рүү fokус
-  const newPin = document.getElementById('profile-pin-new');
-  if (newPin) {
-    newPin.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => newPin.focus(), 400);
+  const pinBtn = document.getElementById('profile-pin-change');
+  if (pinBtn) {
+    pinBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => pinBtn.focus(), 400);
   }
   // Cancel товч + background click нь модалыг хаахаар хийсэн — тэдгээрийг blok
   const cancelBtn = document.getElementById('profile-cancel');

@@ -6000,6 +6000,15 @@ function openNewMeventOrder(editOrder) {
   const totalsEl = modal.querySelector('#mo-totals');
   const depositEl = modal.querySelector('#mo-deposit');
   const findProd = (name) => products.find(p => (p.name || '') === name);
+  // Барааг нэр / SKU / M-код / нийлмэл датлист утгаар олно (сайтын хайлттай адил SKU-гаар хайх боломж).
+  const _prodTags = (p) => [...new Set([p.code, p.sku].map(x => String(x || '').trim()).filter(Boolean))];
+  const _prodListVal = (p) => { const t = _prodTags(p); return (p.name || '') + (t.length ? ` · ${t.join(' · ')}` : ''); };
+  const resolveProd = (v) => {
+    const s = String(v || '').trim(); if (!s) return null;
+    const sl = s.toLowerCase();
+    return products.find(p => _prodListVal(p) === s || (p.name || '') === s
+      || String(p.sku || '').toLowerCase() === sl || String(p.code || '').toLowerCase() === sl) || null;
+  };
 
   const autoDeposit = () => items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
   function syncAutoDeposit() { if (!manualDeposit) depositEl.value = autoDeposit() || ''; }
@@ -6083,7 +6092,7 @@ function openNewMeventOrder(editOrder) {
     const dl = modal.querySelector('#mo-prod-list');
     if (!dl) return;
     dl.innerHTML = (products || []).map(p =>
-      `<option value="${escapeHtml(p.name || '')}" label="${fmtMoney(Number(p.price) || 0)}"></option>`
+      `<option value="${escapeHtml(_prodListVal(p))}" label="${fmtMoney(Number(p.price) || 0)}"></option>`
     ).join('');
   }
   fillProdList();
@@ -6093,8 +6102,8 @@ function openNewMeventOrder(editOrder) {
     const row = e.target.closest('.mo-item-row'); if (!row) return;
     const i = +row.dataset.idx;
     if (e.target.classList.contains('mo-it-name')) {
-      items[i].name = e.target.value;
-      const p = findProd(e.target.value);
+      const p = resolveProd(e.target.value);
+      items[i].name = p ? p.name : e.target.value;
       if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
         row.querySelector('.mo-it-price').value = items[i].price; }
     } else if (e.target.classList.contains('mo-it-qty')) {
@@ -6117,9 +6126,9 @@ function openNewMeventOrder(editOrder) {
     if (!e.target.classList.contains('mo-it-name')) return;
     const row = e.target.closest('.mo-item-row'); if (!row) return;
     const i = +row.dataset.idx;
-    items[i].name = e.target.value;
-    const p = findProd(e.target.value);
-    if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
+    const p = resolveProd(e.target.value);
+    items[i].name = p ? p.name : e.target.value;
+    if (p) { e.target.value = p.name; items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
       row.querySelector('.mo-it-price').value = items[i].price; }
     syncAutoDeposit();
     renderTotals();

@@ -15381,6 +15381,10 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   .toolbar button,.toolbar a{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;color:#111;text-decoration:none;display:inline-block;line-height:1.2}
   .toolbar #qlangbtn{border-color:#0B1F3A;color:#0B1F3A;font-weight:600}
   @media print{.toolbar{display:none}}
+  /* Хуудас цэвэр таслах — мөр/блок дундуур тасрахгүй (html2pdf хоосон хуудас/эвдрэлээс сэргийлнэ) */
+  tr,thead,.party,.parties,.pay-box,.tot,.tot .grand,.contact,.cond,.qfoot{page-break-inside:avoid;break-inside:avoid;}
+  table.items{page-break-inside:auto;}
+  thead{display:table-header-group;}
 </style></head><body>
 <div class="toolbar"><button id="qlangbtn" onclick="qToggleLang()"></button> &nbsp;<button onclick="qPdf()">📄 PDF татах</button> &nbsp;<button id="qsendbtn" onclick="qSend()">📧 Илгээх (hello@mevent.mn)</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх</button></div>
 <div id="q-mn">${QMN.doc}</div>

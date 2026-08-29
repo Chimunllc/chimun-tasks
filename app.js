@@ -11442,7 +11442,8 @@ const CHIMUN_LEGAL = {
   name: '"ЧИМУН" ХХК', reg: '6614337',
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
-  bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
+  addressEn: 'Nogoon Zoory 1-13, Khoroo 11, Bayanzurkh District, Ulaanbaatar, Mongolia',
+  bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180', swift: 'GLMTMNUB',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
@@ -14686,71 +14687,120 @@ if (!window._mevQuoteLogInit) {
 // зориулагдсан тул монголоороо хэвээр.
 const MEV_QUOTE_T = {
   mn: {
-    htmlLang: 'mn', tagline: 'Арга хэмжээний түрээс', eyebrow: 'Quotation',
+    htmlLang: 'mn', tagline: 'Арга хэмжээний тоног төхөөрөмжийн түрээс', eyebrow: 'QUOTATION',
     docTitle: 'Үнийн санал', h1: 'ҮНИЙН САНАЛ',
     no: 'Дугаар', date: 'Огноо', valid: 'Хүчинтэй', until: ' хүртэл',
-    lessor: 'Түрээслүүлэгч', customer: 'Хэрэглэгч',
-    reg: 'РД', address: 'Хаяг', phone: 'Утас', account: 'Данс', period: 'Хугацаа',
-    thItem: 'Бараа / үйлчилгээ', thQty: 'Тоо', thDays: 'Хоног', thUnit: 'Нэгж/хоног', thSum: 'Дүн',
+    supplier: 'НИЙЛҮҮЛЭГЧ', client: 'ЗАХИАЛАГЧ', coName: '"ЧИМУН" ХХК — M Event',
+    reg: 'РД', address: 'Хаяг', tel: 'Утас', email: 'И-мэйл', web: 'Веб',
+    venue: 'Байршил', rentalPeriod: 'Түрээсийн хугацаа',
+    logistics: 'Хүргэлт, угсралт, буулгалт', included: 'багтсан',
+    dlvZone: (d) => deliveryLabel(d),
+    thItem: 'БАРАА / ТАЙЛБАР', thQty: 'ТОО', thDays: 'ХОНОГ', thUnit: 'НЭГЖ / ХОНОГ', thSum: 'ДҮН',
     noItems: 'Бараа оруулаагүй',
-    payInfo: 'Төлбөрийн мэдээлэл', payee: 'Хүлээн авагч', payRef: 'Гүйлгээний утга',
+    payHead: 'ТӨЛБӨР — ДАНСААР', bank: 'Банк', acctNo: 'Дансны дугаар',
+    payee: 'Хүлээн авагч', payRef: 'Гүйлгээний утга',
     ref: (n) => `Захиалга ${n}`, days: (d) => `${d} хоног`,
     subtotal: (d) => `Түрээсийн дүн (${d} хоног)`,
-    discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт',
-    depositRow: 'Барьцаа (буцаах)', grand: 'Нийт дүн',
-    terms: 'Нөхцөл', vatIn: 'НӨАТ багтсан', vatOut: 'НӨАТ багтаагүй',
+    discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт, угсралт, буулгалт',
+    depositRow: 'Барьцаа (буцаах)', grand: 'НИЙТ ДҮН',
+    contactHead: 'ТАНЫ ХОЛБОО БАРИХ ХҮН', showroom: 'Үзэсгэлэнгийн танхим',
+    termsHead: 'Нөхцөл',
+    terms: (o) => `Бүх үнэ Монгол төгрөгөөр (₮), ${o.vatNote}. Төлбөр төлөгдсөнөөр захиалга баталгаажна. Үнэ нь ${o.days} хоногийн түрээсийн бүрэн хугацааг хамарна — Улаанбаатар хот дотор хүргэлт, угсралт, буулгалт багтсан. Түрээсийн хугацаанд эвдэрсэн, үрэгдсэн эд зүйлийг нөхөн төлүүлнэ.${o.deposit ? ' Барьцаа нь бараа бүрэн буцаж ирсний дараа олгогдоно.' : ''} Хүргэлтээс 48 цагийн дотор цуцалсан тохиолдолд 30% төлбөр авна. <b>Энэхүү үнийн санал ${o.valid} хүртэл хүчинтэй.</b>`,
+    vatIn: 'НӨАТ багтсан', vatOut: 'НӨАТ багтаагүй',
+    vatPhrase: (has) => has ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан',
     payConfirm: 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
-    depositBack: 'Барьцаа буцаан олгогдоно.',
     subject: (n) => `M-Event · Үнийн санал №${n}`,
     greet: (c) => `Эрхэм ${c} танаа,`,
     intro: 'M-Event түрээсийн үйлчилгээг сонирхож байгаад баярлалаа. Таны хүсэлтийн дагуу үнийн саналыг илгээж байна. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.',
     quoteNo: (n) => `Үнийн санал №${n}`,
-    validPeriod: 'Хүчинтэй хугацаа', rentalPeriod: 'Түрээсийн хугацаа',
+    validPeriod: 'Хүчинтэй хугацаа',
     depositMail: (m) => ` · Барьцаа ${m} (буцаан олгогдоно)`,
     confirmHead: 'Захиалга баталгаажуулах',
-    bank: 'Банк', acctNo: 'Дансны дугаар',
     regards: 'Хүндэтгэсэн,', fileBase: 'Үнийн санал',
     fallbackCust: 'харилцагч', langBtn: '🇬🇧 English',
   },
   en: {
-    htmlLang: 'en', tagline: 'Event Rental', eyebrow: 'M-Event',
-    docTitle: 'Quotation', h1: 'QUOTATION',
+    htmlLang: 'en', tagline: 'Event Equipment Rental', eyebrow: 'QUOTATION',
+    docTitle: 'Quotation', h1: 'PRICE OFFER',
     no: 'No.', date: 'Date', valid: 'Valid until', until: '',
-    lessor: 'Lessor', customer: 'Customer',
-    reg: 'Reg. No.', address: 'Address', phone: 'Phone', account: 'Account', period: 'Period',
-    thItem: 'Item / service', thQty: 'Qty', thDays: 'Days', thUnit: 'Unit / day', thSum: 'Amount',
+    supplier: 'SUPPLIER', client: 'CLIENT', coName: '"CHIMUN" LLC — M Event',
+    reg: 'Reg. No', address: 'Address', tel: 'Tel', email: 'E-mail', web: 'Web',
+    venue: 'Venue', rentalPeriod: 'Rental period',
+    logistics: 'Delivery, set-up & collection', included: 'included',
+    dlvZone: (d) => d.zone === 'city' ? 'within Ulaanbaatar' : (d.zone === 'out' ? `outside Ulaanbaatar ${d.km}km (round trip ${d.km * 2}km)` : ''),
+    thItem: 'ITEM / DESCRIPTION', thQty: 'QTY', thDays: 'DAYS', thUnit: 'UNIT / DAY', thSum: 'AMOUNT',
     noItems: 'No items',
-    payInfo: 'Payment details', payee: 'Beneficiary', payRef: 'Payment reference',
+    payHead: 'PAYMENT — BANK TRANSFER', bank: 'Bank', acctNo: 'Account number',
+    payee: 'Beneficiary', payRef: 'Reference',
     ref: (n) => `Order ${n}`, days: (d) => `${d} day${d === 1 ? '' : 's'}`,
     subtotal: (d) => `Rental subtotal (${d} day${d === 1 ? '' : 's'})`,
-    discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery',
-    depositRow: 'Deposit (refundable)', grand: 'Total',
-    terms: 'Terms', vatIn: 'VAT included', vatOut: 'VAT not included',
+    discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery, set-up & collection',
+    depositRow: 'Deposit (refundable)', grand: 'TOTAL AMOUNT',
+    contactHead: 'YOUR CONTACT', showroom: 'Showroom',
+    termsHead: 'Terms & conditions',
+    terms: (o) => `All prices are in Mongolian Tugrik (MNT) and ${o.vatPhrase}. The order is confirmed once payment is received. Prices cover the full ${o.days}-day rental period, including delivery, set-up and collection within Ulaanbaatar. Any items damaged or lost during the rental period are charged at replacement value.${o.deposit ? ' The deposit is refunded after all items are returned in good condition.' : ''} Cancellation less than 48 hours before delivery is subject to a 30% fee. <b>This quotation is valid until ${o.valid}.</b>`,
+    vatIn: 'VAT included', vatOut: 'VAT not included',
+    vatPhrase: (has) => has ? 'do not include VAT' : 'include VAT',
     payConfirm: 'The order is confirmed once payment is received.',
-    depositBack: 'The deposit is refunded after return.',
     subject: (n) => `M-Event · Quotation #${n}`,
     greet: (c) => `Dear ${c},`,
     intro: 'Thank you for your interest in M-Event rental services. Please find our quotation below. A full breakdown and the terms are in the attached PDF.',
     quoteNo: (n) => `Quotation #${n}`,
-    validPeriod: 'Valid until', rentalPeriod: 'Rental period',
+    validPeriod: 'Valid until',
     depositMail: (m) => ` · Deposit ${m} (refundable)`,
     confirmHead: 'Confirming your order',
-    bank: 'Bank', acctNo: 'Account number',
     regards: 'Best regards,', fileBase: 'Quotation',
     fallbackCust: 'Customer', langBtn: '🇲🇳 Монгол',
   },
 };
+// Барааны зургийг PDF-д найдвартай буулгах — html2canvas нь cross-origin зурагт CORS
+// шаарддаг тул зургийг урьдчилан татаж жижигрүүлээд data URL болгоно. Татаж чадвал
+// PDF-д ҮРГЭЛЖ гарна; чадахгүй бол (CORS/офлайн) URL хэвээр үлдэж useCORS-д найдна.
+const _quoteThumbCache = new Map();
+async function quoteThumbUrl(url) {
+  const u = String(url || '');
+  if (!u || /^data:/.test(u)) return u;
+  if (_quoteThumbCache.has(u)) return _quoteThumbCache.get(u);
+  let out = u;
+  try {
+    const r = await fetchWithTimeout(u, { cache: 'force-cache' }, 12000);
+    if (r.ok) out = await resizeImageToBase64(await r.blob(), 200, 0.86);
+  } catch (e) { /* чимээгүй — URL хэвээр */ }
+  _quoteThumbCache.set(u, out);
+  return out;
+}
 function openOrderQuote(oid, lang) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  // Цонхыг ЭХЛЭЭД нээнэ (хэрэглэгчийн даралтын дотор) — зургийг татсаны дараа нээвэл
+  // popup blocker хаана. Дараа нь бэлэн болмогц агуулгыг нь дахин бичнэ.
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Үнийн санал…</title></head><body style="font:14px system-ui,sans-serif;color:#4b5563;padding:28px;">Үнийн санал бэлдэж байна…</body></html>');
+  w.document.close();
+  buildOrderQuote(o, lang).then(html => { w.document.open(); w.document.write(html); w.document.close(); })
+    .catch(e => { console.warn('quote', e); showToast('Үнийн санал үүсгэхэд алдаа: ' + e.message, 'error', 5000); });
+}
+async function buildOrderQuote(o, lang) {
   const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
-  const itemRows = items.map((it, i) => {
-    const qty = Number(it.qty) || 1, price = Number(it.price) || 0;
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}</td><td class="ctr">${qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price * days)}</td></tr>`;
-  }).join('');
+  // Мөр бүрийг каталогийн бараатай тааруулж зураг/код/тайлбарыг авна (нэрээр).
+  const rows = await Promise.all(items.map(async (it) => {
+    const p = productByName(it.name) || {};
+    return {
+      name: it.name || '', qty: Number(it.qty) || 1, price: Number(it.price) || 0,
+      code: p.code || '', desc: String(p.description || '').replace(/\s+/g, ' ').trim().slice(0, 90),
+      photo: p.photo ? await quoteThumbUrl(p.photo) : '',
+    };
+  }));
+  const itemRows = rows.map((r, i) => `<tr>
+      <td class="ctr">${i + 1}</td>
+      <td><div class="it-wrap">${r.photo ? `<img class="it-th" src="${escapeHtml(r.photo)}" alt="">` : '<div class="it-th it-th-x"></div>'}<div class="it-tx"><div class="it-nm">${escapeHtml(r.name)}</div>${r.code ? `<div class="it-code">${escapeHtml(r.code)}</div>` : ''}${r.desc ? `<div class="it-desc">${escapeHtml(r.desc)}</div>` : ''}</div></div></td>
+      <td class="ctr">${r.qty}</td><td class="ctr">${days}</td>
+      <td class="rt">${fmtMoney(r.price)}</td><td class="rt"><b>${fmtMoney(r.qty * r.price * days)}</b></td>
+    </tr>`).join('');
   const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
   // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс ЯГ тооцно.
   // (Өмнө нь subtotal−total гэж боддог байсан нь хүргэлт/барьцааг хөнгөлөлтөөс хасаж буруу дүн гаргадаг байв.)
@@ -14758,7 +14808,6 @@ function openOrderQuote(oid, lang) {
   const discount = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
-  const delivLbl = deliveryLabel(_dlv);
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
   const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
@@ -14766,7 +14815,7 @@ function openOrderQuote(oid, lang) {
   const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
   const mailTo = o.email || '';
   const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;
-  // Илгээж буй хүний гарын үсэг — нэвтэрсэн ажилтнаас автоматаар (нэр/албан тушаал/шууд утас).
+  // Илгээж буй хүний холбоо барих мэдээлэл — нэвтэрсэн ажилтнаас автоматаар.
   const _snd = findMember(state.me) || {};
   const _sName = escapeHtml(_snd.name || '');
   const _sTitle = escapeHtml(_snd.role || '');
@@ -14774,6 +14823,7 @@ function openOrderQuote(oid, lang) {
   const _sPhone = _sDigits.length === 8 ? _sDigits.slice(0, 4) + '-' + _sDigits.slice(4) : _sDigits;
   const _sInit = escapeHtml(memberInitials(state.me) || '');
   const _sPhoto = (_snd.photo && !/^data:/.test(String(_snd.photo))) ? driveThumbUrl(_snd.photo, 200) : '';   // имэйлд зөвхөн hosted URL (data: base64 Gmail-д ачаалагдахгүй)
+  const _sDoc = _snd.photo ? await quoteThumbUrl(_sPhoto || _snd.photo) : '';                                  // баримтад data URL (PDF-д гарна)
   const _sAvatar = _sPhoto
     ? `<img src="${escapeHtml(_sPhoto)}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;">`
     : `<div style="width:46px;height:46px;border-radius:50%;background:#0B1F3A;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;
@@ -14783,6 +14833,7 @@ function openOrderQuote(oid, lang) {
     const _cust = escapeHtml(o.customer || T.fallbackCust);
     const _vatNote = hasVat ? T.vatOut : T.vatIn;
     const fname = (T.fileBase + ' ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
+    const addr = T.htmlLang === 'en' ? (C.addressEn || C.address) : C.address;
     const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
 <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#17171B;">${T.regards}</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
@@ -14791,7 +14842,7 @@ function openOrderQuote(oid, lang) {
 <td valign="middle">
 <div style="font-size:15px;font-weight:700;color:#17171B;">${_sName}</div>
 <div style="font-size:12px;color:#78787F;padding-top:1px;">${_sTitle ? _sTitle + ' · ' : ''}M-Event</div>
-${_sPhone ? `<div style="font-size:14px;color:#0B1F3A;font-weight:700;padding-top:3px;">${T.phone}: ${_sPhone}</div>` : ''}
+${_sPhone ? `<div style="font-size:14px;color:#0B1F3A;font-weight:700;padding-top:3px;">${T.tel}: ${_sPhone}</div>` : ''}
 </td>
 </tr>
 </table>
@@ -14833,10 +14884,11 @@ ${_erow(T.rentalPeriod, T.days(days))}
 <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#44444a;">${T.payConfirm}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border:1px solid #ECE9E2;border-radius:11px;border-collapse:separate;">
 <tr><td style="padding:14px 16px;">
-<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">${T.payInfo}</div>
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">${T.payHead}</div>
 <div style="font-size:12.5px;color:#44444a;padding-top:6px;">${T.bank}: <b style="color:#17171B;">${escapeHtml(C.bank)}</b> · ${escapeHtml(C.name)}</div>
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.acctNo}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.account)}</span></div>
 ${C.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.iban)}</span></div>` : ''}
+${C.swift ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">SWIFT</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.swift)}</span></div>` : ''}
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.payRef}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:16px;font-weight:700;color:#E95400;">${T.ref(o.number ?? '')}</span></div>
 </td></tr>
 </table>
@@ -14845,7 +14897,7 @@ ${_sigBlock}
 <tr><td style="padding:26px 32px 30px;">
 <div style="border-top:1px solid #ECE9E2;padding-top:18px;font-size:12px;line-height:1.7;color:#78787F;">
 <strong style="color:#17171B;">M-Event</strong> · ${T.tagline}<br>
-${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0B1F3A;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#0B1F3A;text-decoration:none;">hello@mevent.mn</a>
+${T.tel}: +976 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0B1F3A;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#0B1F3A;text-decoration:none;">hello@mevent.mn</a>
 </div>
 </td></tr>
 </table>
@@ -14854,7 +14906,7 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
 </div>`;
     // Хэвлэх/PDF-ийн баримт (нэг хэл)
     const doc = `
-  <div class="qh-bar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="qh-c"><b>${T.tagline}</b><br>mevent.mn · 7755-1010</div></div>
+  <div class="qh-bar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="qh-c"><b>${T.tagline}</b><br>mevent.mn · +976 7755-1010</div></div>
   <div class="qh-accent"></div>
   <div class="qbody">
     <div class="qtitle">
@@ -14862,15 +14914,16 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
       <div class="t-meta">${T.no}: <b>№${o.number ?? ''}</b><br>${T.date}: ${fd(now)}<br>${T.valid}: <b>${fd(valid)}</b>${T.until}</div>
     </div>
     <div class="parties">
-      <div class="party"><div class="p-lbl">${T.lessor}</div><div class="p-name">${escapeHtml(C.name)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(C.address)}<br>${T.phone}: 7755-1010<br>${T.account}: ${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div></div>
-      <div class="party"><div class="p-lbl">${T.customer}</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? T.phone + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? T.address + ': ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? T.period + ': <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
+      <div class="party"><div class="p-lbl">${T.supplier}</div><div class="p-name">${escapeHtml(T.coName)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(addr)}<br>${T.tel}: +976 7755-1010 &nbsp;·&nbsp; hello@mevent.mn</div></div>
+      <div class="party"><div class="p-lbl">${T.client}</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? T.tel + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? T.venue + ': ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? T.rentalPeriod + ': <b style="color:#0B1F3A">' + period + '</b> (' + T.days(days) + ')<br>' : ''}${(_dlv && _dlv.zone !== 'pickup') ? T.logistics + ': <b style="color:#0B1F3A">' + T.included + '</b>' : ''}</div></div>
     </div>
-    <table class="items"><thead><tr><th class="ctr" style="width:36px">№</th><th>${T.thItem}</th><th class="ctr">${T.thQty}</th><th class="ctr">${T.thDays}</th><th class="rt">${T.thUnit}</th><th class="rt">${T.thSum}</th></tr></thead><tbody>${itemRows || `<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">${T.noItems}</td></tr>`}</tbody></table>
+    <table class="items"><thead><tr><th class="ctr" style="width:32px">#</th><th>${T.thItem}</th><th class="ctr" style="width:52px">${T.thQty}</th><th class="ctr" style="width:56px">${T.thDays}</th><th class="rt" style="width:96px">${T.thUnit}</th><th class="rt" style="width:110px">${T.thSum}</th></tr></thead><tbody>${itemRows || `<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">${T.noItems}</td></tr>`}</tbody></table>
     <div class="settle">
       <div class="settle-info"><div class="pay-box">
-        <div class="pay-lbl">${T.payInfo}</div>
+        <div class="pay-lbl">${T.payHead}</div>
         <div class="pay-v">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
         ${C.iban ? `<div class="pay-r">IBAN: ${escapeHtml(C.iban)}</div>` : ''}
+        ${C.swift ? `<div class="pay-r">SWIFT: ${escapeHtml(C.swift)}</div>` : ''}
         <div class="pay-r">${T.payee}: ${escapeHtml(C.name)}</div>
         <div class="pay-r pay-ref">${T.payRef}: <b>${T.ref(o.number ?? '')}</b></div>
       </div></div>
@@ -14878,14 +14931,23 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
         <div class="tr"><span>${T.subtotal(days)}</span><span class="v">${fmtMoney(subtotal)}</span></div>
         ${discount ? `<div class="tr"><span>${T.discount}</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
         ${hasVat ? `<div class="tr"><span>${T.vatCut}</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
-        ${delivFee ? `<div class="tr"><span>${T.delivery}${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
+        ${delivFee ? `<div class="tr"><span>${T.delivery}${T.dlvZone(_dlv) ? ' (' + escapeHtml(T.dlvZone(_dlv)) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
         ${deposit ? `<div class="tr"><span>${T.depositRow}</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>
     </div>
-    <div class="cond"><b>${T.terms}:</b> ${_vatNote} · ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
+    ${_sName ? `<div class="contact">
+      ${_sDoc ? `<img class="c-av" src="${escapeHtml(_sDoc)}" alt="">` : `<div class="c-av c-ini">${_sInit}</div>`}
+      <div class="c-tx">
+        <div class="c-lbl">${T.contactHead}</div>
+        <div class="c-nm">${_sName}${_sTitle ? ' — ' + _sTitle : ''}</div>
+        <div class="c-row">${_sPhone ? T.tel + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
+        <div class="c-row">${T.showroom}: ${escapeHtml(addr)}</div>
+      </div>
+    </div>` : ''}
+    <div class="terms"><b>${T.termsHead}:</b> ${T.terms({ vatNote: _vatNote, vatPhrase: T.vatPhrase(hasVat), days, deposit, valid: fd(valid) })}</div>
   </div>
-  <div class="qfoot"><b>M-Event</b> · ${T.tagline} &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
+  <div class="qfoot"><b>M-EVENT</b> · ${T.tagline} &nbsp;|&nbsp; +976 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
     return { doc, mailHtml, subject: T.subject(o.number ?? ''), fname: fname + '.pdf' };
   };
   const QMN = build(MEV_QUOTE_T.mn), QEN = build(MEV_QUOTE_T.en);
@@ -14894,50 +14956,65 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   const js = (v) => JSON.stringify(v).replace(/<\//g, '<\\/');
   // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
   const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
-  const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал / Quotation — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
+  return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал / Quotation — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Inter','Segoe UI',Arial,sans-serif;color:#1a1a1a;line-height:1.55;max-width:790px;margin:0 auto;padding:0 0 36px;font-size:13px;background:#fff}
   .ctr{text-align:center;white-space:nowrap} .rt{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-  .qh-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0B1F3A;color:#fff;padding:18px 34px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qh-bar img{height:30px;width:auto;display:block}
-  .qh-bar .qh-c{text-align:right;font-size:11px;line-height:1.65;color:#c3cedd}
-  .qh-bar .qh-c b{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:12px}
+  .qh-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0B1F3A;color:#fff;padding:16px 30px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qh-bar img{height:28px;width:auto;display:block}
+  .qh-bar .qh-c{text-align:right;font-size:10.5px;line-height:1.6;color:#c3cedd}
+  .qh-bar .qh-c b{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase}
   .qh-accent{height:4px;background:#E95400;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qbody{padding:22px 34px 0}
-  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:16px}
-  .qtitle .t-eyebrow{font-family:'Manrope',Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;color:#E95400;text-transform:uppercase}
+  .qbody{padding:20px 30px 0}
+  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:14px}
+  .qtitle .t-eyebrow{font-family:'Manrope',Arial,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.22em;color:#E95400;text-transform:uppercase}
   .qtitle h1{font-family:'Manrope',Arial,sans-serif;font-size:27px;font-weight:800;color:#0B1F3A;letter-spacing:-.01em;margin-top:3px;line-height:1}
-  .qtitle .t-meta{text-align:right;font-size:12px;line-height:1.85;color:#4b5563;white-space:nowrap}
+  .qtitle .t-meta{text-align:right;font-size:11.5px;line-height:1.8;color:#4b5563;white-space:nowrap}
   .qtitle .t-meta b{color:#0B1F3A;font-family:'Manrope',Arial,sans-serif;font-weight:700}
-  .parties{display:flex;gap:14px;margin-bottom:16px}
-  .party{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:12px 14px}
-  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:5px}
-  .party .p-name{font-family:'Manrope',Arial,sans-serif;font-size:15px;font-weight:700;color:#0B1F3A;margin-bottom:3px}
-  .party .p-row{font-size:12px;color:#4b5563;line-height:1.6}
-  table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12.5px}
-  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  table.items tbody td{padding:7px 12px;border-bottom:1px solid #E9ECF1;vertical-align:top}
+  .parties{display:flex;gap:12px;margin-bottom:14px}
+  .party{flex:1;min-width:0;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:9px;padding:11px 13px}
+  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:4px}
+  .party .p-name{font-family:'Manrope',Arial,sans-serif;font-size:14px;font-weight:700;color:#0B1F3A;margin-bottom:3px}
+  .party .p-row{font-size:11px;color:#4b5563;line-height:1.6}
+  table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12px}
+  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:7px 10px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.items tbody td{padding:7px 10px;border-bottom:1px solid #E9ECF1;vertical-align:middle}
   table.items tbody tr:nth-child(even){background:#FAFBFC}
-  .settle{display:flex;gap:20px;margin-top:16px;align-items:flex-start}
-  .settle-info{flex:1.1}
-  .settle-tot{flex:1;max-width:330px}
-  .pay-box{background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:12px 14px}
-  .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
-  .pay-v{font-size:14px;font-weight:700;color:#0B1F3A}
-  .pay-r{font-size:12px;color:#4b5563;margin-top:3px;line-height:1.55}
+  .it-wrap{display:flex;gap:10px;align-items:center}
+  .it-th{width:40px;height:40px;flex:0 0 40px;object-fit:contain;background:#FAF9F5;border:1px solid #E9ECF1;border-radius:6px;padding:2px}
+  .it-th-x{background:#F1F3F6}
+  .it-tx{min-width:0}
+  .it-nm{font-weight:700;color:#0B1F3A;font-size:12px;line-height:1.3}
+  .it-code{color:#E95400;font-weight:700;font-size:10px;letter-spacing:.04em;margin-top:1px}
+  .it-desc{color:#8a93a0;font-size:10px;line-height:1.4;margin-top:2px}
+  .settle{display:flex;gap:16px;margin-top:14px;align-items:flex-start}
+  .settle-info{flex:1.05;min-width:0}
+  .settle-tot{flex:1;max-width:340px}
+  .pay-box{background:#F5F7FA;border:1px solid #E4E8EE;border-radius:9px;padding:11px 13px}
+  .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
+  .pay-v{font-size:13.5px;font-weight:700;color:#0B1F3A}
+  .pay-r{font-size:11px;color:#4b5563;margin-top:3px;line-height:1.5}
   .pay-ref b{color:#E95400}
-  .tot .tr{display:flex;justify-content:space-between;padding:4px 2px;font-size:12.5px;color:#4b5563}
-  .tot .tr .v{font-variant-numeric:tabular-nums;color:#1a1a1a}
-  .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .tot .grand .g-l{color:#c3cedd;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif}
-  .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-  .cond{margin-top:14px;border-top:1px solid #E4E8EE;padding-top:11px;font-size:11.5px;color:#6b7280;line-height:1.65}
-  .cond b{color:#0B1F3A}
-  .qfoot{margin-top:16px;background:#0B1F3A;color:#c3cedd;padding:11px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qfoot b{color:#fff;font-family:'Manrope',Arial,sans-serif}
+  .tot .tr{display:flex;justify-content:space-between;gap:12px;padding:4px 2px;font-size:12px;color:#4b5563}
+  .tot .tr .v{font-variant-numeric:tabular-nums;color:#1a1a1a;white-space:nowrap}
+  .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;gap:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tot .grand .g-l{color:#c3cedd;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif;line-height:1.3}
+  .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .contact{margin-top:14px;border:1px solid #E4E8EE;border-radius:9px;padding:11px 13px;display:flex;gap:13px;align-items:center}
+  .contact .c-av{width:52px;height:52px;flex:0 0 52px;border-radius:8px;object-fit:cover;background:#F1F3F6}
+  .contact .c-ini{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .contact .c-tx{min-width:0}
+  .contact .c-lbl{font-family:'Manrope',Arial,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:3px}
+  .contact .c-nm{font-family:'Manrope',Arial,sans-serif;font-size:13.5px;font-weight:700;color:#0B1F3A}
+  .contact .c-row{font-size:11px;color:#4b5563;line-height:1.6}
+  .contact .c-row b{color:#0B1F3A}
+  .terms{margin-top:12px;border-top:1px solid #E4E8EE;padding-top:10px;font-size:10px;color:#8a93a0;line-height:1.65}
+  .terms b{color:#0B1F3A}
+  .qfoot{margin-top:14px;background:#0B1F3A;color:#c3cedd;padding:10px 30px;font-size:10.5px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qfoot b{color:#fff;font-family:'Manrope',Arial,sans-serif;letter-spacing:.06em}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;border-bottom:1px solid #ccc;z-index:9}
   .toolbar button,.toolbar a{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;color:#111;text-decoration:none;display:inline-block;line-height:1.2}
   .toolbar #qlangbtn{border-color:#0B1F3A;color:#0B1F3A;font-weight:600}
@@ -14988,9 +15065,6 @@ async function qSend(){
 }
 </script>
 </body></html>`;
-  const w = window.open('', '_blank');
-  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
-  w.document.write(html); w.document.close();
 }
 
 // ── Банкны баримт PDF → автомат бөглөх (pdf.js CDN-ээс lazy) ──

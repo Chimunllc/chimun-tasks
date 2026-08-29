@@ -11452,7 +11452,8 @@ const CHIMUN_LEGAL = {
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
   addressEn: 'Nogoon Zoory 1-13, Khoroo 11, Bayanzurkh District, Ulaanbaatar, Mongolia',
-  bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
+  nameEn: '"CHIMUN" LLC', addressEn: 'Nogoon Zoory 1-13, Khoroo 11, Bayanzurkh District, Ulaanbaatar, Mongolia',
+  bank: 'Голомт банк', bankEn: 'Golomt Bank', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
@@ -14827,6 +14828,166 @@ if (!window._mevQuoteLogInit) {
     try { await saveAppOrder(o); if (typeof showToast === 'function') showToast('📤 Үнийн санал түүхэд бүртгэгдлээ', 'info', 2500); } catch (e) { console.warn('quote log', e); }
   });
 }
+// ── Монгол → англи (үнийн саналын АНГЛИ хувилбарт) ──────────────────────────
+// Толинд байвал ОРЧУУЛНА, байхгүй бол ЛАТИНААР галиглана — англи баримтад кирилл
+// үсэг үлдэхгүй. Энэ нь бүрэн орчуулга биш, түрээсийн каталогийн үг сангаар хийсэн
+// ойролцоо хувилбар. Барааны ЖИНХЭНЭ англи нэр хэрэгтэй бол products хүснэгтэд
+// `name_en` багана нэмэхэд `enProdName()` түүнийг эхэлж ашиглана (кодыг засахгүй).
+const MEV_EN_UNITS = { 'м²': 'm²', 'м2': 'm²', 'см': 'cm', 'мм': 'mm', 'мл': 'ml', 'квт': 'kW', 'вт': 'W', 'кг': 'kg', 'гр': 'g', 'инч': 'in', 'тонн': 't', 'л': 'L', 'ш': 'pcs', 'м': 'm' };
+// Хэллэг (үгээр биш, бүтнээр орчуулагдах) — ҮГИЙН толиос ӨМНӨ ажиллана
+const MEV_EN_PHRASES = [
+  // албан тушаал
+  [/гүйцэтгэх\s+захирал/gi, 'CEO'], [/үйл\s+ажиллагааны\s+захирал/gi, 'Operations Director'],
+  [/санхүүгийн\s+захирал/gi, 'CFO'], [/ерөнхий\s+нягтлан(\s+бодогч)?/gi, 'Chief Accountant'],
+  [/нягтлан(\s+бодогч)?/gi, 'Accountant'], [/эвент\s+менежер/gi, 'Event Manager'],
+  [/кемп\s+менежер/gi, 'Camp Manager'], [/катеринг\s+менежер/gi, 'Catering Manager'],
+  [/агуулахын\s+менежер/gi, 'Warehouse Manager'], [/борлуулалтын\s+менежер/gi, 'Sales Manager'],
+  [/маркетинг(ийн)?\s+менежер/gi, 'Marketing Manager'], [/хүний\s+нөөцийн\s+менежер/gi, 'HR Manager'],
+  [/төслийн\s+менежер/gi, 'Project Manager'], [/зохион\s+байгуулагч/gi, 'Coordinator'],
+  [/цагийн\s+ажилтан/gi, 'Part-time staff'],
+  // хүргэлт
+  [/хот\s+дотор/gi, 'within Ulaanbaatar'], [/хотоос\s+гадна/gi, 'outside Ulaanbaatar'],
+  [/очих\s*\+\s*буцах/gi, 'round trip'],
+  // хаяг
+  [/(\d+)-р\s+хороо/gi, 'Khoroo $1'], [/дүүрэг/gi, 'District'], [/талбай/gi, 'Square'],
+  [/улаанбаатар\s+хот/gi, 'Ulaanbaatar'], [/монгол\s+улс/gi, 'Mongolia'],
+  // бараа — хэллэг
+  [/ширээний\s+бүтээлэг/gi, 'tablecloth'], [/орны\s+бүтээлэг/gi, 'bed linen'],
+  [/ширээний\s+тууз/gi, 'table runner'], [/сандлын\s+гоёлын\s+тууз/gi, 'chair sash'],
+  [/сандлын\s+углаа/gi, 'chair cover'], [/ширээ\s+углаа/gi, 'table cover'],
+  [/иж\s+бүрдэл/gi, 'set'], [/иж\s+бүрэн/gi, 'complete'],
+  [/(\d+)\s*-\s*(\d+)\s+хүний/gi, 'for $1-$2'], [/(\d+)\s+хүний/gi, 'for $1'],
+  [/цэвэрлэгч\s+бодис/gi, 'cleaning agent'],
+  [/хайруулын\s+таваг/gi, 'frying pan'], [/цэнэг\s+хураагуур/gi, 'power station'],
+  [/нарны\s+хавтан/gi, 'solar panel'], [/гар\s+тэрэг/gi, 'hand cart'],
+  [/ширээний\s+хөл\s+бөмбөг/gi, 'table football'], [/хөл\s+бөмбөг/gi, 'football'],
+  [/чанга\s+яригч/gi, 'speaker'], [/тоос\s*\/\s*ус\s+сорогч/gi, 'vacuum cleaner'],
+  [/ус\s+буцалгагч/gi, 'water boiler'], [/будаа\s+агшаагч/gi, 'rice cooker'],
+  [/жүүс\s+тараагч/gi, 'juice dispenser'], [/галын\s+тулга/gi, 'fire trivet'],
+  [/аяны\s+ор/gi, 'camping bed'], [/угаалгын\s+буу/gi, 'pressure washer'],
+  [/хулдаас\s+наадаг\s+буу/gi, 'tarpaulin heat gun'], [/утааны\s+буу/gi, 'smoke gun'],
+  [/оч\s+шүршигч/gi, 'spark machine'],
+  [/зүүд\s+хамгаалагч/gi, 'dreamcatcher'], [/усны\s+хамгаалалттай/gi, 'waterproof'],
+  [/тос\s+уусгагч/gi, 'degreaser'], [/өндөр\s+хөөс/gi, 'high foam'],
+  [/олон\s+зор\./gi, 'multi-purpose'], [/сансарын\s+нисгэгч/gi, 'astronaut'],
+  [/баатрын\s+хувцас/gi, 'hero costume'], [/модон\s+блокон\s+тоглоом/gi, 'wooden block game'],
+  [/элсэн\s+уут/gi, 'bean bag'], [/тусгаарлах\s+шон/gi, 'barrier post'],
+  [/тугны\s+суурь/gi, 'flag base'], [/хоол\s+жигнэгч\s+шкаф/gi, 'food steamer cabinet'],
+  [/хурдан\s+хөлдөөгч/gi, 'blast freezer'], [/хэвтээ\s+хөлдөөгч/gi, 'chest freezer'],
+  [/шал\s+өнгөлгөөний\s+машин/gi, 'floor polisher'], [/уураар\s+цэвэрлэгч\s+машин/gi, 'steam cleaner'],
+  [/хивс\s+цэвэрлэгч/gi, 'carpet cleaner'], [/хиймэл\s+цасны\s+машин/gi, 'snow machine'],
+  [/мананцарын\s+машин/gi, 'fog machine'], [/хөөсний\s+машин/gi, 'foam machine'],
+  [/утааны\s+машин/gi, 'smoke machine'], [/шалны\s+утаа/gi, 'low fog machine'],
+  [/гэрлийн\s+удирдлага/gi, 'lighting controller'], [/зураг\s+авалтын/gi, 'photography'],
+  [/хүлээн\s+авалтын/gi, 'reception'], [/мэргэжлийн\s+хөгжим/gi, 'professional sound system'],
+  [/рац\s+холбооны\s+станц/gi, 'two-way radio'], [/хиймэл\s+зүлэг/gi, 'artificial grass'],
+  [/улаан\s+хивс/gi, 'red carpet'], [/зөөврийн\s+угаалтуур/gi, 'portable washbasin'],
+  [/цахилгаан\s+шат/gi, 'electric lift'], [/барилгын\s+шат/gi, 'construction ladder'],
+  [/тайзны\s+шат/gi, 'stage stairs'], [/гэрэлт\s+хөшиг/gi, 'light curtain'],
+  [/ханын\s+эффект/gi, 'wall effect'], [/өнгө\s+солигддог/gi, 'colour changing'],
+  [/олон\s+талт/gi, 'multi-beam'], [/(\d+)\s+талт/gi, '$1-sided'],
+  [/дөрвөн\s+нүдтэй/gi, 'four-lens'], [/гар\s+барилдааны/gi, 'arm wrestling'],
+  [/цахилгаан\s+татдаг/gi, 'zip'], [/bell\s+tent\s+майхан/gi, 'Bell tent'],
+  [/лампан\s+цуваа\s+гэрэл/gi, 'string lights'], [/маш\s+том/gi, 'extra large'],
+  [/хоол\s+халуун\s+баригч/gi, 'food warmer'], [/шөл\s+халуун\s+баригч/gi, 'soup warmer'],
+  [/ус,\s*цай\s+халуун\s+баригч/gi, 'water & tea warmer'], [/хогны\s+сав/gi, 'waste bin'],
+  // ерөнхий хэллэг — тусгайнуудын ДАРАА (эс бөгөөс тэдгээрийг таслана)
+  [/халуун\s+баригч/gi, 'food warmer'], [/лампан\s+цуваа/gi, 'string lights'],
+];
+// Ганц үгийн толь (жижиг үсгээр). Байхгүй үг ЛАТИНААР галиглагдана.
+const MEV_EN_WORDS = {
+  // тавилга
+  'ширээ': 'table', 'ширээний': 'table', 'сандал': 'chair', 'сандлын': 'chair', 'углаа': 'cover',
+  'бүтээлэг': 'cover', 'тууз': 'ribbon', 'хөл': 'stand', 'хөлтэй': 'legged', 'суурь': 'base',
+  'тавиур': 'rack', 'шкаф': 'cabinet', 'ор': 'bed', 'орны': 'bed', 'гудас': 'mattress',
+  'матрасс': 'mattress', 'хивс': 'carpet', 'дэвсгэр': 'mat', 'зүлэг': 'grass', 'шал': 'floor',
+  'шалны': 'floor', 'тайз': 'stage', 'тайзны': 'stage', 'индер': 'podium', 'багана': 'pole',
+  'шат': 'ladder', 'хөшиг': 'curtain', 'асар': 'marquee', 'майхан': 'tent', 'майхны': 'tent',
+  'сүүдрэвч': 'canopy', 'карказ': 'frame', 'каркас': 'frame', 'хулдаас': 'tarpaulin',
+  'даавуу': 'fabric', 'товч': 'clip', 'замок': 'zipper', 'холбогч': 'connector', 'цамхаг': 'tower',
+  // шинж чанар
+  'том': 'large', 'жижиг': 'small', 'дунд': 'medium', 'урт': 'long', 'намхан': 'low',
+  'өргөн': 'wide', 'зузаан': 'thick', 'нимгэн': 'thin', 'гүехэн': 'shallow', 'битүү': 'sealed',
+  'дугуй': 'round', 'бөөрөнхий': 'round', 'дөрвөлжин': 'square', 'босоо': 'standing',
+  'хэвтээ': 'horizontal', 'шовгор': 'conical', 'эвхэгддэг': 'folding', 'эвхдэг': 'folding',
+  'эвхэгдэг': 'folding', 'хийлдэг': 'inflatable', 'хийлэлдэг': 'inflatable', 'хиймэл': 'artificial',
+  'дүүжин': 'hanging', 'бариултай': 'handled', 'сэнжтэй': 'handled', 'зөөлөвчтэй': 'padded',
+  'гялгар': 'glossy', 'модон': 'wooden', 'төмөр': 'steel', 'шилэн': 'glass', 'энгийн': 'standard',
+  'бусад': 'other', 'угсардаг': 'assemblable', 'гэрэлтдэг': 'illuminated', 'гэрэлтэй': 'illuminated',
+  'зөөврийн': 'portable', 'мэргэжлийн': 'professional', 'үйлдвэрийн': 'industrial',
+  'хамгаалалттай': 'protected', 'хамгаалагч': 'protector', 'цэнэглэдэг': 'rechargeable',
+  'батерейтай': 'battery-powered', 'нараар': 'solar', 'нарны': 'solar', 'тавцантай': 'with platform',
+  'ачааны': 'cargo', 'наадаг': 'adhesive', 'саармаг': 'neutral', 'гоёлын': 'decorative',
+  // өнгө
+  'цагаан': 'white', 'хар': 'black', 'улаан': 'red', 'цэнхэр': 'blue', 'ногоон': 'green',
+  'саарал': 'grey', 'бор': 'brown', 'хүрэн': 'maroon', 'шаргал': 'beige', 'алаг': 'patterned',
+  'салбагар': 'ruffled', 'саглгар': 'ruffled', 'унжсан': 'draped',
+  // гал тогоо / катеринг
+  'таваг': 'plate', 'аяга': 'cup', 'стакан': 'glass', 'халбага': 'spoon', 'сэрээ': 'fork',
+  'хутга': 'knife', 'сав': 'container', 'төмпөн': 'basin', 'поднус': 'tray', 'жигнүүр': 'steamer',
+  'жигнэгч': 'steamer', 'зуух': 'stove', 'чанагч': 'cooker', 'халаагуур': 'heater',
+  'мармет': 'bain-marie', 'катеринг': 'catering', 'хоол': 'food', 'хоолны': 'food',
+  'шөл': 'soup', 'шөлний': 'soup', 'цай': 'tea', 'ус': 'water', 'усны': 'water',
+  'термометр': 'thermometer', 'тулга': 'trivet', 'хорголжин': 'pellet', 'лонх': 'bottle',
+  'эргүүлдэг': 'spinning', 'уут': 'bag', 'мишок': 'mishok', 'хэрэглэл': 'supplies',
+  // гэрэл / дуу / цахилгаан
+  'гэрэл': 'light', 'гэрлийн': 'light', 'гэрэлтүүлэг': 'lighting', 'чимэглэл': 'decoration',
+  'чимэглэлийн': 'decorative', 'лазер': 'laser', 'удирдлага': 'controller', 'пүльт': 'console',
+  'сабвүфер': 'subwoofer', 'микрофон': 'microphone', 'миксер': 'mixer', 'хөгжим': 'sound system',
+  'дэлгэц': 'screen', 'проектор': 'projector', 'генератор': 'generator', 'кабель': 'cable',
+  'цахилгаан': 'electrical', 'цахилгааны': 'electrical', 'баллон': 'gas cylinder', 'дизель': 'diesel',
+  'хийн': 'gas', 'газ': 'gas', 'газан': 'gas', 'герман': 'German', 'утаа': 'smoke', 'утааны': 'smoke',
+  'мананцарын': 'fog', 'хөөсний': 'foam', 'цасны': 'snow', 'буу': 'gun', 'цуваа': 'string',
+  'бамбар': 'torch', 'бөмбөлөг': 'ball', 'цацраг': 'beam', 'матриц': 'matrix', 'сегмент': 'segment',
+  'уураар': 'steam', 'сорогч': 'vacuum', 'өнгөлгөөний': 'polishing', 'хөлдөөгч': 'freezer',
+  'цэвэрлэгч': 'cleaner', 'бодис': 'agent', 'уусгагч': 'solvent', 'угаалтуур': 'washbasin',
+  'аппарат': 'machine', 'гагнуурын': 'welding', 'барилгын': 'construction', 'машин': 'machine',
+  'станц': 'station', 'камер': 'camera', 'дрон': 'drone', 'соронз': 'magnet', 'шон': 'post',
+  'тугны': 'flag', 'хавтан': 'panel',
+  // бусад
+  'аяны': 'camping', 'зуслангийн': 'camping', 'өвлийн': 'winter', 'зуны': 'summer',
+  'хүүхдийн': "children's", 'хувцас': 'costume', 'тоглоом': 'game', 'тоглоомын': 'game',
+  'самбар': 'board', 'блокон': 'block', 'хос': 'pair', 'ширхэг': 'pcs', 'метр': 'm',
+  'түрээс': 'rental', 'агуулах': 'warehouse', 'агуулахын': 'warehouse', 'ерөнхий': 'general',
+  'олон': 'multi', 'талт': 'sided', 'хайрцаг': 'box', 'чарга': 'sled', 'хүрд': 'wheel',
+  'сэгсэр': 'shuttlecock', 'холбоочин': 'connector', 'пикник': 'picnic', 'коктель': 'cocktail',
+  'шиша': 'shisha', 'волейбол': 'volleyball', 'тек': 'tek', 'хамгаалалт': 'protection',
+  'багна': 'pole', 'ган': 'steel', 'крантай': 'with crane', 'хүрээтэй': 'rimmed',
+  'кофе': 'coffee', 'электрон': 'electronic', 'нам': 'low', 'лист': 'sheet',
+  'халуун': 'hot', 'хулдаасан': 'tarpaulin', 'нүдтэй': 'lens', 'ххк': 'LLC',
+  'захирал': 'Director', 'менежер': 'Manager', 'ажилтан': 'staff', 'жолооч': 'Driver',
+  'техникч': 'Technician', 'инженер': 'Engineer', 'туслах': 'Assistant', 'ахлах': 'Senior',
+  'дизайнер': 'Designer', 'хороо': 'Khoroo', 'хот': 'city', 'гудамж': 'street', 'байр': 'building',
+};
+// Кирилл → латин галиглал (MNS 5217-ийн хялбаршуулсан хувилбар)
+const MN2LAT = { 'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'ye', 'ё': 'yo', 'ж': 'j', 'з': 'z', 'и': 'i', 'й': 'i', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o', 'ө': 'u', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ү': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sh', 'ъ': '', 'ы': 'y', 'ь': 'i', 'э': 'e', 'ю': 'yu', 'я': 'ya' };
+function translitMn(s) {
+  return String(s || '').replace(/[Ѐ-ӿ]/g, (ch) => {
+    const low = ch.toLowerCase(), lat = MN2LAT[low];
+    if (lat == null) return ch;
+    return ch === low ? lat : (lat.charAt(0).toUpperCase() + lat.slice(1));
+  });
+}
+function _enWord(w) {
+  const hit = MEV_EN_WORDS[w.toLowerCase()];
+  const out = hit != null ? hit : translitMn(w.toLowerCase());
+  return /^[А-ЯӨҮЁ]/.test(w) ? out.charAt(0).toUpperCase() + out.slice(1) : out;
+}
+// Бүтэн текстийг англи болгох: хэллэг → нэгж → үг → (үлдсэнийг) галиглал
+function enText(s) {
+  let t = String(s == null ? '' : s);
+  if (!/[Ѐ-ӿ]/.test(t)) return t;
+  MEV_EN_PHRASES.forEach(([re, to]) => { t = t.replace(re, to); });
+  t = t.replace(/(\d)\s*[Вв]т·ц/g, '$1Wh');
+  t = t.replace(/(\d)\s*(м²|м2|см|мм|мл|квт|кВт|Вт|вт|кг|гр|инч|тонн|л|ш|м)(?![Ѐ-ӿ])/g,
+    (m, d, u) => d + (MEV_EN_UNITS[u.toLowerCase()] || u));
+  t = t.replace(/[Ѐ-ӿ]+/g, _enWord).replace(/\s{2,}/g, ' ').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+// Хүн/байгууллагын нэр — орчуулахгүй, зөвхөн галиглана (үг тааруулбал утга гуйвна)
+function enProper(s) { return /[Ѐ-ӿ]/.test(String(s || '')) ? translitMn(s) : String(s || ''); }
+// Барааны англи нэр — products.name_en байвал ТҮҮНИЙГ, эс бөгөөс толь+галиглал
+function enProdName(prod, name) { return (prod && prod.name_en) ? String(prod.name_en) : enText(name); }
 // ── Үнийн саналын ХЭЛ (монгол / англи) ──────────────────────────────────────
 // Гадаад харилцагчид англиар илгээх шаардлага гардаг тул баримт + имэйлийн бүх
 // шошгыг энд толь болгож гаргав. Дата (барааны нэр, ажилтны албан тушаал, хүргэлтийн
@@ -14924,13 +15085,19 @@ async function buildOrderQuote(o, lang) {
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
   // Мөр бүрийн зургийг каталогоос (нэрээр) олж, PDF-д гарахаар data URL болгоно.
-  const itemRows = (await Promise.all(items.map(async (it, i) => {
-    const qty = Number(it.qty) || 1, price = Number(it.price) || 0;
+  // Нэрийг хэл бүрд тусад нь бэлдэнэ (EN — `name_en` эсвэл толь+галиглал).
+  const itemRows0 = await Promise.all(items.map(async (it) => {
     const prod = productByName(it.name) || {};
-    const th = prod.photo ? await quoteThumbUrl(prod.photo) : '';
-    const pic = th ? `<img class="it-th" src="${escapeHtml(th)}" alt="">` : '<span class="it-th it-th-x"></span>';
-    return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(it.name || '')}</span></div></td><td class="ctr">${qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price * days)}</td></tr>`;
-  }))).join('');
+    return {
+      qty: Number(it.qty) || 1, price: Number(it.price) || 0,
+      name: it.name || '', nameEn: enProdName(prod, it.name || ''),
+      th: prod.photo ? await quoteThumbUrl(prod.photo) : '',
+    };
+  }));
+  const itemRowsFor = (en) => itemRows0.map((r, i) => {
+    const pic = r.th ? `<img class="it-th" src="${escapeHtml(r.th)}" alt="">` : '<span class="it-th it-th-x"></span>';
+    return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(en ? r.nameEn : r.name)}</span></div></td><td class="ctr">${r.qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(r.price)}</td><td class="rt">${fmtMoney(r.qty * r.price * days)}</td></tr>`;
+  }).join('');
   const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
   // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс ЯГ тооцно.
   // (Өмнө нь subtotal−total гэж боддог байсан нь хүргэлт/барьцааг хөнгөлөлтөөс хасаж буруу дүн гаргадаг байв.)
@@ -14960,7 +15127,19 @@ async function buildOrderQuote(o, lang) {
 
   // ── Нэг хэлний баримт + имэйл (T = MEV_QUOTE_T.mn эсвэл .en) ──
   const build = (T) => {
-    const _cust = escapeHtml(o.customer || T.fallbackCust);
+    // Англи баримтад монгол дата үлдэхгүй: компани/банк/хаяг = англи талбар,
+    // нэр = галиглал, албан тушаал/бараа/хүргэлтийн бүс = толь+галиглал.
+    const EN = T.htmlLang === 'en';
+    const coName = EN ? (C.nameEn || C.name) : C.name;
+    const coAddr = EN ? (C.addressEn || C.address) : C.address;
+    const coBank = EN ? (C.bankEn || C.bank) : C.bank;
+    const custName = EN ? enProper(o.customer || '') : (o.customer || '');
+    const custAddr = EN ? enText(o.delivery_address || '') : (o.delivery_address || '');
+    const sName = EN ? enProper(_sName) : _sName;
+    const sTitle = EN ? enText(_sTitle) : _sTitle;
+    const dlvLbl = EN ? enText(delivLbl) : delivLbl;
+    const itemRows = itemRowsFor(EN);
+    const _cust = escapeHtml(custName || T.fallbackCust);
     const _vatNote = hasVat ? T.vatOut : T.vatIn;
     const fname = (T.fileBase + ' ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
     const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
@@ -14969,8 +15148,8 @@ async function buildOrderQuote(o, lang) {
 <tr>
 <td valign="top" style="padding-right:14px;">${_sAvatar}</td>
 <td valign="middle">
-<div style="font-size:15px;font-weight:700;color:#17171B;">${_sName}</div>
-<div style="font-size:12px;color:#78787F;padding-top:1px;">${_sTitle ? _sTitle + ' · ' : ''}M-Event</div>
+<div style="font-size:15px;font-weight:700;color:#17171B;">${sName}</div>
+<div style="font-size:12px;color:#78787F;padding-top:1px;">${sTitle ? sTitle + ' · ' : ''}M-Event</div>
 ${_sPhone ? `<div style="font-size:14px;color:#0B1F3A;font-weight:700;padding-top:3px;">${T.phone}: ${_sPhone}</div>` : ''}
 </td>
 </tr>
@@ -15014,7 +15193,7 @@ ${_erow(T.rentalPeriod, T.days(days))}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border:1px solid #ECE9E2;border-radius:11px;border-collapse:separate;">
 <tr><td style="padding:14px 16px;">
 <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">${T.payInfo}</div>
-<div style="font-size:12.5px;color:#44444a;padding-top:6px;">${T.bank}: <b style="color:#17171B;">${escapeHtml(C.bank)}</b> · ${escapeHtml(C.name)}</div>
+<div style="font-size:12.5px;color:#44444a;padding-top:6px;">${T.bank}: <b style="color:#17171B;">${escapeHtml(coBank)}</b> · ${escapeHtml(coName)}</div>
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.acctNo}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.account)}</span></div>
 ${C.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.iban)}</span></div>` : ''}
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.payRef}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:16px;font-weight:700;color:#E95400;">${T.ref(o.number ?? '')}</span></div>
@@ -15042,32 +15221,32 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
       <div class="t-meta">${T.no}: <b>№${o.number ?? ''}</b><br>${T.date}: ${fd(now)}<br>${T.valid}: <b>${fd(valid)}</b>${T.until}</div>
     </div>
     <div class="parties">
-      <div class="party"><div class="p-lbl">${T.lessor}</div><div class="p-name">${escapeHtml(C.name)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(C.address)}<br>${T.phone}: 7755-1010<br>${T.account}: ${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div></div>
-      <div class="party"><div class="p-lbl">${T.customer}</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? T.phone + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? T.address + ': ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? T.period + ': <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
+      <div class="party"><div class="p-lbl">${T.lessor}</div><div class="p-name">${escapeHtml(coName)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(coAddr)}<br>${T.phone}: 7755-1010<br>${T.account}: ${escapeHtml(coBank)} — ${escapeHtml(C.account)}</div></div>
+      <div class="party"><div class="p-lbl">${T.customer}</div><div class="p-name">${escapeHtml(custName || '—')}</div><div class="p-row">${o.phone ? T.phone + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${custAddr ? T.address + ': ' + escapeHtml(custAddr) + '<br>' : ''}${period ? T.period + ': <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
     </div>
     <table class="items"><thead><tr><th class="ctr" style="width:36px">№</th><th>${T.thItem}</th><th class="ctr">${T.thQty}</th><th class="ctr">${T.thDays}</th><th class="rt">${T.thUnit}</th><th class="rt">${T.thSum}</th></tr></thead><tbody>${itemRows || `<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">${T.noItems}</td></tr>`}</tbody></table>
     <div class="settle">
       <div class="settle-info"><div class="pay-box">
         <div class="pay-lbl">${T.payInfo}</div>
-        <div class="pay-v">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
+        <div class="pay-v">${escapeHtml(coBank)} — ${escapeHtml(C.account)}</div>
         ${C.iban ? `<div class="pay-r">IBAN: ${escapeHtml(C.iban)}</div>` : ''}
-        <div class="pay-r">${T.payee}: ${escapeHtml(C.name)}</div>
+        <div class="pay-r">${T.payee}: ${escapeHtml(coName)}</div>
         <div class="pay-r pay-ref">${T.payRef}: <b>${T.ref(o.number ?? '')}</b></div>
       </div></div>
       <div class="settle-tot"><div class="tot">
         <div class="tr"><span>${T.subtotal(days)}</span><span class="v">${fmtMoney(subtotal)}</span></div>
         ${discount ? `<div class="tr"><span>${T.discount}</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
         ${hasVat ? `<div class="tr"><span>${T.vatCut}</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
-        ${delivFee ? `<div class="tr"><span>${T.delivery}${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
+        ${delivFee ? `<div class="tr"><span>${T.delivery}${dlvLbl ? ' (' + escapeHtml(dlvLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
         ${deposit ? `<div class="tr"><span>${T.depositRow}</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>
     </div>
     ${_sName ? `<div class="contact">
       <div class="c-lbl">${T.contactHead}</div>
-      <div class="c-nm">${_sName}${_sTitle ? ' — ' + _sTitle : ''}</div>
+      <div class="c-nm">${sName}${sTitle ? ' — ' + sTitle : ''}</div>
       <div class="c-row">${_sPhone ? T.phone + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
-      <div class="c-row">${T.warehouse}: ${escapeHtml(T.htmlLang === 'en' ? (C.addressEn || C.address) : C.address)}</div>
+      <div class="c-row">${T.warehouse}: ${escapeHtml(coAddr)}</div>
     </div>` : ''}
     <div class="cond"><b>${T.terms}:</b> ${_vatNote} · ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
   </div>

@@ -15402,7 +15402,8 @@ var H2P_SRC='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.
 function ensureH2P(){return new Promise(function(res,rej){if(window.html2pdf)return res();var s=document.createElement('script');s.src=H2P_SRC;s.onload=function(){res();};s.onerror=function(){rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));};document.head.appendChild(s);});}
 function pdfOpt(){return {margin:[6,6,6,6],image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};}
 function fontsReady(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):Promise.resolve();}
-function qPdf(){var el=qEl();ensureH2P().then(fontsReady).then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:QD[CUR].fname})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
+function imagesReady(el){try{var a=[].slice.call(el.querySelectorAll('img'));return Promise.all(a.map(function(im){return (im.complete&&im.naturalWidth>0)?0:new Promise(function(r){var t=setTimeout(r,4000);im.addEventListener('load',function(){clearTimeout(t);r();});im.addEventListener('error',function(){clearTimeout(t);r();});});}));}catch(e){return Promise.resolve();}}
+function qPdf(){var el=qEl();ensureH2P().then(fontsReady).then(function(){return imagesReady(el);}).then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:QD[CUR].fname})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
 async function qSend(){
   var to=${js(mailTo)};
   if(!to){alert('Үйлчлүүлэгчийн имэйл алга — эхлээд захиалга дээр имэйл нэмнэ үү.');return;}
@@ -15413,6 +15414,7 @@ async function qSend(){
   try{
     await ensureH2P();
     await fontsReady();
+    await imagesReady(qEl());
     var datauri=await window.html2pdf().set(pdfOpt()).from(qEl()).outputPdf('datauristring');
     var b64=String(datauri).split(',')[1]||'';
     var res=await fetch(${js(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:QD[CUR].subject,body:QD[CUR].body,filename:QD[CUR].fname,pdf_base64:b64,source:'app',lang:CUR})});

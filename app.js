@@ -14273,34 +14273,37 @@ function openNewOrder(editOrder) {
   const _quotes0 = (isEdit && editOrder.stage_meta && Array.isArray(editOrder.stage_meta.quotes)) ? editOrder.stage_meta.quotes : [];   // илгээсэн үнийн саналуудын түүх
   const _saleTot = isEdit ? (Number(editOrder.total_mnt) || 0) : 0;
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
-  const _sec = (t) => `<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:15px 2px 7px;">${t}</div>`;
+  const _sec = (t) => `<div class="no-sec">${t}</div>`;
 
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
-  modal.innerHTML = `<div class="modal" style="max-width:640px;width:96%;max-height:92vh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:17px;">${isEdit ? '✎ Захиалга засах · #' + (editOrder.number ?? '') : '+ Шинэ захиалга'}</h2>
+  modal.innerHTML = `<div class="modal no-modal">
+    <div class="no-head">
+      <h2>${isEdit ? '✎ Захиалга засах · #' + (editOrder.number ?? '') : '+ Шинэ захиалга'}</h2>
       <button class="btn" id="no-close" style="padding:5px 10px;">✕</button>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin:-2px 0 4px;">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
-    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf4e2;border:1px solid #f0e0b8;border-radius:9px;padding:8px 11px;margin:8px 0 4px;">🔒 Гарсан/төлөгдсөн — <b>мөнгөний нөхцөл түгжсэн</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо). Холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл засагдана.</div>` : ''}
+    <div class="no-hint">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
+    ${_locked ? `<div class="no-lock">🔒 Гарсан/төлөгдсөн — <b>мөнгөний нөхцөл түгжсэн</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо). Холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл засагдана.</div>` : ''}
+    <div class="no-grid">
+    <div class="no-col no-col-a">
     ${_sec('Харилцагч')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <div class="no-fields">
       <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
-      <label class="no-lbl" style="grid-column:1/-1;">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
+      <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
     </div>
     ${_sec('Хугацаа' + (isEdit ? ' · төлөв' : ''))}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
-      <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
-      ${isEdit ? `<label class="no-lbl" style="grid-column:1/-1;">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
+    <div class="no-fields">
+      <label class="no-lbl">Эхлэх (огноо · цаг)<div class="no-inline"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}"><select id="no-start-h" class="no-h">${hourOpts(_t0.sh)}</select></div></label>
+      <label class="no-lbl">Дуусах (огноо · цаг)<div class="no-inline"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}"><select id="no-stop-h" class="no-h">${hourOpts(_t0.eh)}</select></div></label>
+      ${isEdit ? `<label class="no-lbl no-wide">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
     </div>
-    <div style="background:var(--panel-hover);border-radius:10px;padding:8px 10px;margin-bottom:10px;">
-      <div style="display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:end;">
+    ${_sec('Хүргэлт')}
+    <div class="no-box">
+      <div style="display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:end;">
         <label class="no-lbl">🚚 Хүргэлт<select id="no-delivzone" style="margin-top:3px;">
           <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Өөрөө авах (хүргэлтгүй)</option>
           <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор — 150,000₮</option>
@@ -14310,37 +14313,43 @@ function openNewOrder(editOrder) {
       </div>
       <label class="no-lbl" id="no-addr-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Дүүрэг, хороо, байр, орц"></label>
       <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
-      <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
+      <div id="no-delivfee-row" class="no-sum-row muted" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};margin-top:6px;"><span>Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
+    </div>
+    <div class="no-col no-col-b">
     ${_sec('Бараа')}
-    ${_locked ? '' : `<div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
-    <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>`}
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
+    ${_locked ? '' : `<div class="no-search">🔍<input type="search" class="ui-raw" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"><button type="button" class="btn" id="no-pickopen" style="padding:4px 10px;font-size:var(--fs-sm);">⤢ Бүгд</button></div>
+    <div id="no-catalog" class="no-catalog"></div>`}
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:8px;"></div>
-    ${_sec('Төлбөр')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-      <label class="no-lbl">Хөнгөлөлт<div style="display:flex;gap:4px;margin-top:3px;"><select id="no-disctype" style="flex:0 0 56px;margin-top:0;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0" style="flex:1;margin-top:0;"></div></label>
-      <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
-      ${isEdit ? `<label class="no-lbl" style="grid-column:1/-1;">Төлсөн (банкны баримт)
-        <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:15px;">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:11.5px;color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
-        ${_rcpts0.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;">${_rcpts0.map((r, i) => `<div class="paid-rcpt-row" data-paid-rcpt="${i}" role="button" tabindex="0" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:12px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || 'Банкны баримт')}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>` : '<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Төлбөр бүртгээгүй.</div>'}
-        <span style="font-size:10.5px;color:var(--muted);display:block;margin-top:5px;">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ. Баримт дээр дарж дэлгэрэнгүйг харна.</span></label>` : ''}
     </div>
-    <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:12.5px;cursor:pointer;">
+    <div class="no-col no-col-c">
+    ${_sec('Төлбөр')}
+    <div class="no-fields" style="margin-bottom:10px;">
+      <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 58px;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div></label>
+      <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
+      ${isEdit ? `<label class="no-lbl no-wide">Төлсөн (банкны баримт)
+        <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:var(--fs-base);">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
+        ${_rcpts0.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;">${_rcpts0.map((r, i) => `<div class="paid-rcpt-row" data-paid-rcpt="${i}" role="button" tabindex="0" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || 'Банкны баримт')}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>` : '<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;">Төлбөр бүртгээгүй.</div>'}
+        <span style="font-size:var(--fs-xs);color:var(--muted);display:block;margin-top:5px;">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ. Баримт дээр дарж дэлгэрэнгүйг харна.</span></label>` : ''}
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
     </label>
     ${_quotes0.length ? `${_sec('📤 Илгээсэн үнийн саналууд · ' + _quotes0.length)}
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${_quotes0.slice().reverse().map(q => { const isSale = _saleTot > 0 && Math.abs((Number(q.amount) || 0) - _saleTot) < 1; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid ${isSale ? '#16a34a' : 'var(--border)'};border-radius:8px;background:${isSale ? '#e8f2ec' : 'var(--panel)'};font-size:12px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(q.by || '?')} · ${escapeHtml(String(q.at || '').slice(0, 10))}${q.to ? ' · ' + escapeHtml(q.to) : ''}</span><span style="font-weight:700;flex-shrink:0;white-space:nowrap;">${fmtMoney(Number(q.amount) || 0)}${isSale ? ' <span style="color:#16a34a;">✓ борлуулалт</span>' : ''}</span></div>`; }).join('')}</div>` : ''}
-    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
-      <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
-      <div style="display:none;justify-content:space-between;color:var(--danger);" id="no-vatrow"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:15px;border-top:1px solid var(--border);padding-top:5px;margin-top:2px;"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
-      ${isEdit ? `<div style="display:flex;justify-content:space-between;"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${_quotes0.slice().reverse().map(q => { const isSale = _saleTot > 0 && Math.abs((Number(q.amount) || 0) - _saleTot) < 1; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid ${isSale ? 'var(--ok)' : 'var(--border)'};border-radius:8px;background:${isSale ? 'var(--ok-soft)' : 'var(--panel)'};font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(q.by || '?')} · ${escapeHtml(String(q.at || '').slice(0, 10))}${q.to ? ' · ' + escapeHtml(q.to) : ''}</span><span style="font-weight:700;flex-shrink:0;white-space:nowrap;">${fmtMoney(Number(q.amount) || 0)}${isSale ? ' <span style="color:var(--ok);">✓ борлуулалт</span>' : ''}</span></div>`; }).join('')}</div>` : ''}
+    <div class="no-sum">
+      <div class="no-sum-row muted"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
+      <div class="no-sum-row muted"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
+      <div class="no-sum-row"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
+      <div class="no-sum-row muted"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
+      <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
+      <div class="no-sum-row muted"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
+      <div class="no-sum-row muted" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
+      <div class="no-sum-row total"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
+      ${isEdit ? `<div class="no-sum-row"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
+    </div>
+    </div>
     </div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="no-cancel">Болих</button>
@@ -14355,16 +14364,29 @@ function openNewOrder(editOrder) {
   if (isEdit && editOrder.discount_type === 'pct') $('#no-disctype').value = 'pct';
 
   const catalog = $('#no-catalog');
+  // Сонгосон огнооны мужид сул үлдэгдэл — каталог/сонгосон мөр дээр шууд харагдана
+  const availOf = (name) => { try { return availabilityFor(name, $('#no-start').value, $('#no-stop').value, isEdit ? editOrder.number : null); } catch (e) { return null; } };
+  const availHtml = (a) => a ? `<div class="no-tile-av${a.avail <= 0 ? ' none' : (a.avail <= 2 ? ' low' : '')}">${a.avail <= 0 ? 'сул алга' : a.avail + ' сул'}</div>` : '';
   function renderCatalog() {
+    if (!catalog) return;
     const q = ($('#no-prodsearch').value || '').toLowerCase().trim();
-    const prods = (state.products || []).filter(p => isRentable(p) && (!q || (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))).slice(0, 60);
+    const hit = (state.products || []).filter(p => isRentable(p) && (!q || (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)));
+    const prods = hit.slice(0, 60);
     catalog.innerHTML = prods.map(p => {
-      const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:52px;object-fit:cover;border-radius:6px;">` : `<div style="height:52px;border-radius:6px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:18px;">📦</div>`;
-      return `<button type="button" data-add="${escapeHtml(p.sku || p.name)}" style="border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:4px;cursor:pointer;text-align:left;font-size:10px;color:var(--text);">${ph}<div style="font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div><div style="color:var(--muted);">${fmtMoney(Number(p.price) || 0)}</div></button>`;
-    }).join('') || `<div style="grid-column:1/-1;color:var(--muted);font-size:12px;text-align:center;padding:12px;">Бараа олдсонгүй</div>`;
+      const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-tile-ph">📦</div>`;
+      const key = p.sku || p.name;
+      const inCart = items.some(it => (it.sku || it.name) === key);
+      return `<button type="button" class="no-tile ui-raw${inCart ? ' in-cart' : ''}" data-add="${escapeHtml(key)}" title="${escapeHtml(p.name || '')}">${ph}<div class="no-tile-nm">${escapeHtml(p.name || '')}</div><div class="no-tile-pr">${fmtMoney(Number(p.price) || 0)}</div>${availHtml(availOf(p.name))}</button>`;
+    }).join('') || `<div class="no-catalog-empty">Бараа олдсонгүй</div>`;
+    if (hit.length > prods.length) catalog.insertAdjacentHTML('beforeend', `<div class="no-catalog-empty">+${hit.length - prods.length} бараа — «⤢ Бүгд»-ээр үзнэ</div>`);
   }
-  if (catalog) renderCatalog();
+  renderCatalog();
   $('#no-prodsearch')?.addEventListener('input', renderCatalog);
+  // Popup-аар бүх барааг том дүрстэй, тоо ширхэгтэй нь сонгоно
+  $('#no-pickopen')?.addEventListener('click', () => openOrderProductPicker({
+    items, start: $('#no-start').value, stop: $('#no-stop').value, excludeNo: isEdit ? editOrder.number : null,
+    onApply: next => { items.length = 0; next.forEach(x => items.push(x)); renderItems(); renderCatalog(); recalc(); },
+  }));
   catalog?.addEventListener('click', e => {
     const b = e.target.closest('[data-add]'); if (!b) return;
     const p = (state.products || []).find(x => (x.sku || x.name) === b.dataset.add); if (!p) return;
@@ -14380,13 +14402,20 @@ function openNewOrder(editOrder) {
   const itemsBox = $('#no-items');
   function renderItems() {
     $('#no-itemn').textContent = items.length;
-    itemsBox.innerHTML = items.length ? items.map((it, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-      ${it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<span style="width:34px;height:34px;border-radius:6px;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">📦</span>`}
-      <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.name || '')}</div>
-        <div style="display:flex;align-items:center;gap:4px;margin-top:2px;color:var(--muted);font-size:11px;"><input type="number" min="1" value="${Number(it.qty) || 1}" data-iq="${i}"${_locked ? ' disabled' : ''} style="width:46px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"> × <input type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} style="width:92px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"></div></div>
-      <b style="font-size:12px;font-variant-numeric:tabular-nums;" data-iamt="${i}">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
-      ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:13px;color:var(--danger);">✕</button>`}
-    </div>`).join('') : `<div style="color:var(--muted);font-size:12px;padding:6px 0;">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
+    itemsBox.innerHTML = items.length ? items.map((it, i) => {
+      const qty = Number(it.qty) || 1;
+      const a = availOf(it.name);
+      const warn = a ? (qty > a.avail ? `<span class="no-item-warn">⚠ ${a.avail} сул</span>` : `<span>✓ ${a.avail} сул</span>`) : '';
+      const ph = it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'">` : `<span class="no-item-ph">📦</span>`;
+      const qtyCtl = _locked ? `<b>${qty} ш</b>`
+        : `<span class="no-qty"><button type="button" class="ui-raw" data-iqd="${i}" aria-label="Хасах">−</button><input type="number" class="ui-raw" min="1" value="${qty}" data-iq="${i}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw" data-iqi="${i}" aria-label="Нэмэх">+</button></span>`;
+      return `<div class="no-item">${ph}
+      <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}</div>
+        <div class="no-item-ctl">${qtyCtl}<span>×</span><input type="text" inputmode="numeric" class="money-input no-price ui-raw" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} aria-label="Нэгж үнэ">${warn}</div></div>
+      <b class="no-item-amt" data-iamt="${i}">${fmtMoney(qty * (Number(it.price) || 0))}</b>
+      ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:var(--fs-lg);color:var(--danger);" aria-label="Хасах">✕</button>`}
+    </div>`;
+    }).join('') : `<div class="no-empty">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
   }
   renderItems();
   itemsBox.addEventListener('input', e => {
@@ -14397,7 +14426,16 @@ function openNewOrder(editOrder) {
     const amtEl = itemsBox.querySelector(`[data-iamt="${i}"]`); if (amtEl) amtEl.textContent = fmtMoney((Number(items[i].qty) || 0) * (Number(items[i].price) || 0));
     recalc();
   });
-  itemsBox.addEventListener('click', e => { const b = e.target.closest('[data-irm]'); if (!b) return; items.splice(+b.dataset.irm, 1); renderItems(); recalc(); });
+  itemsBox.addEventListener('change', e => { if (e.target.dataset.iq != null) { renderItems(); recalc(); } });
+  itemsBox.addEventListener('click', e => {
+    const rm = e.target.closest('[data-irm]');
+    if (rm) { items.splice(+rm.dataset.irm, 1); renderItems(); renderCatalog(); recalc(); return; }
+    const dec = e.target.closest('[data-iqd]'), inc = e.target.closest('[data-iqi]');
+    if (!dec && !inc) return;
+    const i = +(dec ? dec.dataset.iqd : inc.dataset.iqi);
+    items[i].qty = Math.max(1, (Number(items[i].qty) || 1) + (dec ? -1 : 1));
+    renderItems(); recalc();
+  });
 
   const depEl = $('#no-deposit');
   if (isEdit && editOrder.deposit_mnt != null) depEl.value = moneyFmtInput(editOrder.deposit_mnt);
@@ -14459,6 +14497,8 @@ function openNewOrder(editOrder) {
   if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
   $('#no-vat').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
+  // Огноо солигдвол сул үлдэгдэл өөрчлөгдөнө — каталог/сонгосон мөрийг дахин зурна
+  ['#no-start', '#no-stop'].forEach(s => $(s).addEventListener('change', () => { renderCatalog(); renderItems(); }));
   if (isEdit) modal.querySelectorAll('[data-paid-rcpt]').forEach(el => {
     const open = () => openPaidReceiptDetail(editOrder.id, +el.dataset.paidRcpt);
     el.addEventListener('click', open);
@@ -14508,6 +14548,100 @@ function openNewOrder(editOrder) {
     e.currentTarget.disabled = true;
     try { await saveAppOrder(ord); close(); showToast(isEdit ? 'Захиалга шинэчлэгдлээ' : `Захиалга #${ord.number} үүслээ`, 'success', 2800); }
     catch (err) { e.currentTarget.disabled = false; }
+  };
+}
+
+
+// ── Бараа сонгох popup (захиалгын модалаас) — бүх дэлгэцийг ашиглаж, том дүрс + ангиллын шүүлт +
+// тоо ширхэгийг картан дээр нь шууд оруулна. Жижиг inline каталогоос олон бараа сонгоход хурдан. ──
+function openOrderProductPicker(opt) {
+  const all = (state.products || []).filter(p => isRentable(p));
+  const keyOf = p => p.sku || p.name;
+  const cart = new Map();   // түлхүүр → тоо ширхэг (эхлэхдээ одоогийн сагснаас)
+  (opt.items || []).forEach(it => { const k = it.sku || it.name; if (k) cart.set(k, Number(it.qty) || 0); });
+  const cats = Array.from(new Set(all.map(p => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'mn'));
+  let cat = '', q = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'no-pick';
+  wrap.innerHTML = `<div class="no-pick-box">
+    <div class="no-pick-head"><h3>📦 Бараа сонгох</h3><button class="btn" id="np-x" style="padding:5px 10px;">✕</button></div>
+    <div class="no-pick-tools">
+      <div class="no-search">🔍<input type="search" id="np-q" placeholder="Бараа хайх — нэр / ангилал / SKU" autocomplete="off"></div>
+      <div class="no-chips" id="np-cats"><button type="button" class="no-chip on" data-cat="">Бүгд (${all.length})</button>${cats.map(c => `<button type="button" class="no-chip" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
+    </div>
+    <div class="no-pick-body"><div class="no-pick-grid" id="np-grid"></div></div>
+    <div class="no-pick-foot"><span class="no-pick-count" id="np-count"></span><button class="btn" id="np-cancel">Болих</button><button class="btn btn-primary" id="np-ok">✓ Оруулах</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s => wrap.querySelector(s);
+  const close = () => wrap.remove();
+  const avail = name => { try { return availabilityFor(name, opt.start, opt.stop, opt.excludeNo); } catch (e) { return null; } };
+
+  const grid = $('#np-grid');
+  function shown() {
+    const t = q.toLowerCase();
+    return all.filter(p => (!cat || String(p.category || '').trim() === cat)
+      && (!t || (p.name || '').toLowerCase().includes(t) || (p.category || '').toLowerCase().includes(t) || (p.sku || '').toLowerCase().includes(t)));
+  }
+  function cardHtml(p) {
+    const k = keyOf(p), n = Number(cart.get(k)) || 0, a = avail(p.name);
+    const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 200))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-tile-ph">📦</div>`;
+    const av = a ? `<span class="no-tile-av${a.avail <= 0 ? ' none' : (a.avail <= 2 ? ' low' : '')}">${a.avail <= 0 ? 'сул алга' : a.avail + ' сул'}</span>` : '<span></span>';
+    return `<div class="no-pick-card${n > 0 ? ' on' : ''}" data-k="${escapeHtml(k)}">${ph}
+      <div class="no-pick-nm">${escapeHtml(p.name || '')}</div>
+      <div class="no-pick-meta"><span>${fmtMoney(Number(p.price) || 0)}</span>${av}</div>
+      <span class="no-qty"><button type="button" data-d="${escapeHtml(k)}" aria-label="Хасах">−</button><input type="number" min="0" value="${n}" data-n="${escapeHtml(k)}" aria-label="Тоо ширхэг"><button type="button" data-i="${escapeHtml(k)}" aria-label="Нэмэх">+</button></span>
+    </div>`;
+  }
+  function renderCount() {
+    let n = 0, sum = 0;
+    cart.forEach((v, k) => { if (v > 0) { n++; const p = all.find(x => keyOf(x) === k); sum += v * (p ? Number(p.price) || 0 : 0); } });
+    $('#np-count').textContent = n ? `${n} бараа сонгосон · ${fmtMoney(sum)} / хоног` : 'Бараа сонгоогүй';
+  }
+  function render() {
+    const list = shown();
+    grid.innerHTML = list.length ? list.map(cardHtml).join('') : `<div class="no-catalog-empty">Бараа олдсонгүй</div>`;
+    renderCount();
+  }
+  function setQty(k, n) {
+    n = Math.max(0, Math.floor(Number(n) || 0));
+    cart.set(k, n);
+    const card = grid.querySelector(`.no-pick-card[data-k="${CSS.escape(k)}"]`);
+    if (card) { card.classList.toggle('on', n > 0); const inp = card.querySelector('[data-n]'); if (inp && +inp.value !== n) inp.value = n; }
+    renderCount();
+  }
+  render();
+
+  $('#np-q').addEventListener('input', e => { q = e.target.value.trim(); render(); });
+  $('#np-cats').addEventListener('click', e => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    cat = b.dataset.cat;
+    wrap.querySelectorAll('#np-cats .no-chip').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  });
+  grid.addEventListener('click', e => {
+    const d = e.target.closest('[data-d]'), i = e.target.closest('[data-i]');
+    if (d) setQty(d.dataset.d, (Number(cart.get(d.dataset.d)) || 0) - 1);
+    else if (i) setQty(i.dataset.i, (Number(cart.get(i.dataset.i)) || 0) + 1);
+  });
+  grid.addEventListener('input', e => { if (e.target.dataset.n != null) setQty(e.target.dataset.n, e.target.value); });
+
+  $('#np-x').onclick = close; $('#np-cancel').onclick = close;
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  $('#np-ok').onclick = () => {
+    const out = [];
+    (opt.items || []).forEach(it => {   // байгаа мөрүүд дараалал/үнээ хадгална
+      const k = it.sku || it.name, n = Number(cart.get(k)) || 0;
+      if (n > 0) { out.push({ ...it, qty: n }); cart.delete(k); }
+    });
+    cart.forEach((n, k) => {
+      if (n <= 0) return;
+      const p = all.find(x => keyOf(x) === k); if (!p) return;
+      out.push({ sku: p.sku || p.name, name: p.name, qty: n, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, photo: p.photo || '' });
+    });
+    opt.onApply(out);
+    close();
   };
 }
 

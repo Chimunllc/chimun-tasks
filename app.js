@@ -5510,7 +5510,7 @@ function renderOrders() {
       ? sumLine + `<div class="otable">${otableHead}${flatRows}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  return head + (isBoard ? '' : chips) + controls + body;
+  return head + (isBoard ? '' : chips) + controls + (isBoard ? '' : `<div class="otabs">${tabsHtml}</div>`) + body;
 }
 
 function _closeOrderKebabs(e) {

@@ -16,6 +16,10 @@
   .controls input{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px;min-width:160px}
   .btn{padding:9px 16px;border:none;border-radius:9px;background:#2f3e2f;color:#fff;font-size:14px;font-weight:700;cursor:pointer}
   .grid{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .group-title{max-width:1000px;margin:26px auto 12px;font-size:15px;font-weight:800;color:var(--ink);border-bottom:2px solid var(--line);padding-bottom:6px}
+  .group-title:first-child{margin-top:0}
+  .group-title .gt-n{font-size:12px;font-weight:600;color:var(--muted)}
+  @media print{ .group-title{break-after:avoid;page-break-after:avoid} }
   .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center;break-inside:avoid;page-break-inside:avoid}
   .card .qr{width:150px;height:150px;margin:0 auto 8px;display:flex;align-items:center;justify-content:center}
   .card .qr img,.card .qr canvas{width:150px !important;height:150px !important}
@@ -40,7 +44,7 @@
       <button class="btn" onclick="window.print()">🖨 Хэвлэх</button>
     </div>
   </div>
-  <div class="grid" id="grid"></div>
+  <div id="grid"></div>
   <div class="msg" id="msg" style="display:none"></div>
 
 <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@04f46c6a/qrcode.min.js"></script>
@@ -57,24 +61,40 @@
     var team=(d&&d.team)||(Array.isArray(d)?d:[]);
     ALL=team.filter(function(m){return isActive(m)&&phoneKey(m);}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'mn');});
     if(!ALL.length){document.getElementById('grid').style.display='none';var mg=document.getElementById('msg');mg.style.display='';mg.textContent='Ажилтны жагсаалт ачаалж чадсангүй.';return;}
-    document.getElementById('sub').textContent=ALL.length+' идэвхтэй ажилтан · картыг таслаад тарааж, ажилтан утсандаа хадгална';
+    var nH=ALL.filter(function(m){return String(m.worker_type||'')==='daily';}).length;
+    document.getElementById('sub').textContent=(ALL.length-nH)+' үндсэн · '+nH+' цагийн ажилтан · картыг таслаад тарааж, ажилтан утсандаа хадгална';
     render('');
   }).catch(function(){var mg=document.getElementById('msg');mg.style.display='';mg.textContent='Алдаа гарлаа.';});
 
+  function isHourly(m){return String(m.worker_type||'')==='daily';}
+  function addCard(grid,m){
+    var ph=phoneKey(m);
+    var card=document.createElement('div'); card.className='card';
+    var qr=document.createElement('div'); qr.className='qr';
+    card.appendChild(qr);
+    var info=document.createElement('div');
+    info.innerHTML='<div class="nm">'+esc(m.name)+'</div><div class="rl">'+esc(m.role||'')+'</div><div class="ph">'+esc(m.phone||'')+'</div><div class="brand">ЧИМУН ХХК</div>';
+    card.appendChild(info);
+    grid.appendChild(card);
+    try{ new QRCode(qr,{text:'chimun-att:'+ph,width:150,height:150,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ qr.textContent='QR?'; }
+  }
   function render(qv){
     qv=(qv||'').toLowerCase().trim();
     var list=qv?ALL.filter(function(m){return String(m.name||'').toLowerCase().indexOf(qv)>=0;}):ALL;
-    var grid=document.getElementById('grid'); grid.innerHTML='';
-    list.forEach(function(m){
-      var ph=phoneKey(m);
-      var card=document.createElement('div'); card.className='card';
-      var qr=document.createElement('div'); qr.className='qr';
-      card.appendChild(qr);
-      var info=document.createElement('div');
-      info.innerHTML='<div class="nm">'+esc(m.name)+'</div><div class="rl">'+esc(m.role||'')+'</div><div class="ph">'+esc(m.phone||'')+'</div><div class="brand">ЧИМУН ХХК</div>';
-      card.appendChild(info);
-      grid.appendChild(card);
-      try{ new QRCode(qr,{text:'chimun-att:'+ph,width:150,height:150,correctLevel:QRCode.CorrectLevel.M}); }catch(e){ qr.textContent='QR?'; }
+    var root=document.getElementById('grid'); root.innerHTML='';
+    // Үндсэн ажилтан / Цагийн ажилтан — тус тусдаа хэсэг болгож харуулна
+    var groups=[
+      {title:'Үндсэн ажилтан', items:list.filter(function(m){return !isHourly(m);})},
+      {title:'Цагийн ажилтан', items:list.filter(isHourly)}
+    ];
+    groups.forEach(function(g){
+      if(!g.items.length) return;
+      var h=document.createElement('div'); h.className='group-title';
+      h.innerHTML=esc(g.title)+' <span class="gt-n">· '+g.items.length+'</span>';
+      root.appendChild(h);
+      var grid=document.createElement('div'); grid.className='grid';
+      root.appendChild(grid);
+      g.items.forEach(function(m){ addCard(grid,m); });
     });
   }
   document.getElementById('q').addEventListener('input',function(e){render(e.target.value);});

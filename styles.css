@@ -5014,6 +5014,24 @@ body.role-daily #add-project { display: none !important; }
 .br-pay.none { background: var(--panel-hover); color: var(--muted); }
 .br-amt { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: -.01em; text-align: right; white-space: nowrap; }
 .br-pay-cell, .br-act-cell { display: flex; align-items: center; }
+/* ═══ Захиалгын харагдац — зүүн статус sidebar + баруун хүснэгт (Booqable шиг) ═══ */
+.orders-viewbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.ordv { display: grid; grid-template-columns: 188px minmax(0, 1fr); gap: 18px; align-items: start; }
+.ordv-side { display: flex; flex-direction: column; gap: 2px; }
+.ordv-st { display: flex; align-items: center; gap: 8px; border: none; background: none; color: var(--text-soft); font-size: 13px; font-weight: 500; padding: 8px 11px; border-radius: 8px; cursor: pointer; text-align: left; font-family: inherit; width: 100%; }
+.ordv-st:hover { background: var(--panel-hover); }
+.ordv-st.on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.ordv-st-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--d, #888); flex: 0 0 auto; }
+.ordv-st-l { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ordv-st-n { font-size: 11px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ordv-st.on .ordv-st-n { color: var(--primary); }
+.ordv-main { min-width: 0; }
+@media (max-width: 720px) {
+  .ordv { grid-template-columns: 1fr; gap: 10px; }
+  .ordv-side { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+  .ordv-st { width: auto; flex: 0 0 auto; }
+  .ordv-st-l { overflow: visible; }
+}
 /* ═══ Захиалгын ХАВТГАЙ ХҮСНЭГТ (Жагсаалт) — Booqable шиг картан хүснэгт ═══ */
 .otable { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--panel); }
 .otable-head { display: grid; grid-template-columns: 48px minmax(110px, 1fr) 130px 78px 78px 118px 118px auto; gap: 12px; padding: 11px 16px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--border); }

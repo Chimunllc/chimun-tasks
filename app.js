@@ -12829,7 +12829,7 @@ function renderProducts() {
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
   const _pb = state.prodBranch;   // = лензийн салбар эсвэл 'all'
-  const branchBar = `<div class="prod-tabs" style="margin-top:2px;"><span class="prod-tab on" style="cursor:default;">${_pb === 'all' ? '🌐 Бүх салбар' : `${branchInfo(_pb).icon} ${branchInfo(_pb).label} салбар <span class="prod-tab-n">${brQtySum(_pb)}ш</span>`} <span style="font-size:10px;color:var(--muted);font-weight:400;">· толгойн лензээр</span></span></div>`;
+  // (branchBar устсан — салбарын мэдээлэл prod-metabar дотор шингэсэн)
   // Улирал хаалт — NOMAAD салбар идэвхтэй (лензээр эсвэл табаар) + нөөцтэй + удирдах эрхтэй үед
   const _nomaadSum = brQtySum('nomaad');
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
@@ -12844,11 +12844,21 @@ function renderProducts() {
   const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓'], ['purchase_asc', '📅 Хамгийн удаан эзэмшсэн']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
   const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad') + branchQty(p, 'catering')) <= 0, nodate: p => !p.purchase_date }[key]).length;
   const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй'], ['nodate', '📅 Огноогүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
-  const filterBar = `<div style="display:flex;gap:8px;margin:6px 0 2px;flex-wrap:wrap;">
-    <select id="prod-cat" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${catOpts}</select>
-    <select id="prod-missing" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${missOpts}</select>
-    <select id="prod-sort" style="flex:1;min-width:120px;padding:7px 9px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font-size:12.5px;">${sortOpts}</select>
-  </div>`;
+  // ── ШҮҮЛТҮҮР — эвхэгддэг самбарт. Урьд нь 3 сонгогч ҮРГЭЛЖ нэг мөрөнд зэрэгцэж,
+  // 390px дэлгэцэд шошго нь дунднаас тасарч («Гэрэлтүүлэ⌷», «Бүх мэ⌷») юугаар шүүж
+  // байгаагаа ойлгох боломжгүй байв. Одоо нээхэд БҮТЭН нэртэй, доошоо давхарлана. ──
+  const _fActive = (state.prodCategory !== 'all' ? 1 : 0) + (state.prodMissing !== 'all' ? 1 : 0) + (state.prodSort !== 'name' ? 1 : 0);
+  const _fOpen = !!state.prodFiltersOpen;
+  const filterBar = `<details class="prod-filters"${_fOpen ? ' open' : ''} id="prod-filters">
+    <summary class="prod-filters-sum">Шүүлтүүр${_fActive ? `<span class="prod-filters-n">${_fActive}</span>` : ''}</summary>
+    <div class="prod-filters-body">
+      <label>Ангилал<select id="prod-cat">${catOpts}</select></label>
+      <label>Мэдээллийн бүрдэл<select id="prod-missing">${missOpts}</select></label>
+      <label>Эрэмбэ<select id="prod-sort">${sortOpts}</select></label>
+      ${_prodMgmt ? '<button class="btn" id="prod-groups">Сайтын ангиллын бүлгүүд</button>' : ''}
+      ${_fActive ? '<button class="btn prod-filters-clear" id="prod-filters-clear">Шүүлтүүр цэвэрлэх</button>' : ''}
+    </div>
+  </details>`;
   const costs = state.productCosts || {};
   // Хөрөнгийн үнэ цэнэ — салбар сонгосон бол тухайн салбарын тоогоор (qty_<салбар>), эс бөгөөс нийт нөөцөөр.
   const _valBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
@@ -12857,20 +12867,27 @@ function renderProducts() {
   const _inScope = all.filter(p => _qtyVal(p) > 0);
   const costedN = _inScope.filter(p => (costs[p.sku] || 0) > 0).length;
   const _valLabel = _valBranch ? `${branchInfo(_valBranch).icon} ${branchInfo(_valBranch).label} салбарын хөрөнгө` : 'Нийт хөрөнгийн үнэ цэнэ';
-  const assetLine = (assetValue > 0 && _prodMgmt) ? `<div class="prod-assetval">🏛 ${_valLabel}: <b>${fmtMoney(assetValue)}</b> <span>(${costedN}/${_inScope.length} барааны өртөг оруулсан)</span></div>` : '';
+  // Хөрөнгийн үнэ цэнэ — өдөр бүр хэрэггүй тул тусдаа тууз эзлэхээ болиод мета мөрөнд шингэнэ
+  const assetChip = (assetValue > 0 && _prodMgmt)
+    ? `<span class="prod-meta-i" title="${escapeHtml(_valLabel)} · ${costedN}/${_inScope.length} барааны өртөг оруулсан">Хөрөнгө <b>${fmtMoneyShort(assetValue)}</b> <span class="prod-meta-dim">(${costedN}/${_inScope.length})</span></span>`
+    : '';
+  // ── 2 ТУУЗ (урьд нь 6) ──
+  // 1: хайлт · скан · шинэ бараа   2: шүүлтүүр · тоо · хөрөнгө · салбар
+  // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
   return `
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
-      ${_prodMgmt ? '<button class="btn" id="prod-groups" title="Сайтын ангиллын бүлгүүд">🗂 Бүлгүүд</button>' : ''}
-      <button class="btn btn-primary" id="prod-new">+ Шинэ бараа</button>
+      <button class="btn btn-primary" id="prod-new">+ Шинэ</button>
     </div>
-    ${branchBar}
+    <div class="prod-metabar">
+      ${filterBar}
+      <span class="prod-meta-i" id="prod-count"><b>${list.length}</b> бараа</span>
+      ${assetChip}
+      <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
+    </div>
     ${seasonCloseBar}
-    ${filterBar}
-    ${assetLine}
-    <div class="prod-count" id="prod-count">${list.length} бараа</div>
-    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ бараа" дарж нэмнэ үү.</div>'}</div>
+    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
   `;
 }
 
@@ -13228,6 +13245,10 @@ function attachProductsHandlers() {
   });
   // (Агуулахын доод салбар таб хасагдсан — толгойн ленз ГАНЦ удирдлага.)
   // Ангилал шүүлт + эрэмбэ
+  document.getElementById('prod-filters')?.addEventListener('toggle', (e) => { state.prodFiltersOpen = e.target.open; });
+  document.getElementById('prod-filters-clear')?.addEventListener('click', () => {
+    state.prodCategory = 'all'; state.prodMissing = 'all'; state.prodSort = 'name'; render();
+  });
   document.getElementById('prod-cat')?.addEventListener('change', (e) => { state.prodCategory = e.target.value; render(); });
   document.getElementById('prod-missing')?.addEventListener('change', (e) => { state.prodMissing = e.target.value; render(); });
   document.getElementById('prod-sort')?.addEventListener('change', (e) => { state.prodSort = e.target.value; render(); });
@@ -13264,7 +13285,8 @@ function attachProductsHandlers() {
       if (show) n++;
     });
     const c = document.getElementById('prod-count');
-    if (c) c.textContent = `${n} бараа${q ? ' (шүүсэн)' : ''}`;
+    // <b>-г хадгална (мета мөр тоог тодоор харуулдаг) — textContent бол устгана
+    if (c) c.innerHTML = `<b>${n}</b> бараа${q ? ' <span class="prod-meta-dim">(шүүсэн)</span>' : ''}`;
   };
   // Вариант бүлгийн толгойг дарж задлах/хаах
   document.querySelectorAll('.prod-vg-head').forEach(h => h.addEventListener('click', () => {

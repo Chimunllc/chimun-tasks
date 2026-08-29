@@ -4953,7 +4953,8 @@ body.role-daily #add-project { display: none !important; }
 
 /* Шүүлтүүр таб + хайлт + харагдац */
 .orders-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-.otabs { display: flex; gap: 2px; flex-wrap: nowrap; overflow-x: auto; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.otabs { display: flex; gap: 2px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.otabs::-webkit-scrollbar { display: none; }
 /* Захиалга: Жагсаалт ⇄ Самбар toggle */
 .oview-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .oview-btn { font-family: inherit; font-size: 12px; color: var(--text-soft); background: var(--panel); border: none; padding: 6px 11px; cursor: pointer; }
@@ -5090,7 +5091,7 @@ body.role-daily #add-project { display: none !important; }
 .board-sel, .board-selall { width: 17px; height: 17px; flex-shrink: 0; margin: 0 2px 0 0; cursor: pointer; accent-color: var(--accent, #7c3aed); }
 .board-bulk { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--border-strong, var(--border)); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; font-size: 12.5px; position: sticky; top: 4px; z-index: 5; }
 .board-bulk b { font-size: 14px; }
-.otab { font-family: inherit; font-size: 13px; font-weight: 500; color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-bottom: -1px; white-space: nowrap; transition: color .12s; }
+.otab { font-family: inherit; font-size: 13px; font-weight: 500; color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: color .12s; }
 .otab:hover { color: var(--text); }
 .otab.on { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
 .otab-n { font-size: 11px; color: var(--muted); font-weight: 600; }

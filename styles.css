@@ -244,6 +244,56 @@
   }
 }
 
+
+/* ═══ .task-row — НЭГТГЭСЭН (2026-08-29) ═══
+   8 дүрэм · 202 тунхаглал · 144 !important байв. grid-template-columns нь
+   computed утга дээр ПИКСЭЛ болж бодогддог тул зөвхөн үүнийг эх кодоос авав
+   (бусад нь хэмжилтээс). */
+.task-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 0;
+  border: 0 none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.08s ease;
+  min-height: 0;
+}
+@media (min-width: 721px) and (max-width: 1000px) {
+  .task-row { padding: 8px 14px; }
+}
+@media (max-width: 720px) {
+  .task-row {
+    /* Утсанд: чагт · агуулга · chevron. Ажилтан/огноо/зэрэглэл нь мета мөрөнд ордог. */
+    grid-template-columns: 24px 1fr 16px;
+    gap: 0 12px;
+    min-height: 44px;
+  }
+}
+
+
+/* ═══ .tasks — НЭГТГЭСЭН (2026-08-29) ═══  7 дүрэм · 40 !important байв. */
+.tasks {
+  flex: 1;
+  overflow-y: auto;
+  /* ⚠ overflow-y: auto тавихад CSS нь overflow-x-ийг ч АВТОМАТААР auto болгодог.
+     Хатуу хаахгүй бол доторх өргөн элемент бүхэл контентыг хажуу тийш гүйлгэнэ. */
+  overflow-x: hidden;
+  padding: 0 28px 80px;
+  background: var(--bg);
+}
+/* .tasks-ийн X тэнхлэг хаагдсан тул ӨРГӨН зүйл өөрийн хайрцагтаа гүйнэ */
+.tasks table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 720px) {
+  .tasks { padding: 4px 8px 160px; }
+}
+
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   /* color-scheme: аппын идэвхтэй theme-ийг браузерт мэдэгдэнэ — Samsung force-dark давхар
@@ -394,22 +444,6 @@
     background: var(--panel); color: var(--text);
   }
   /* TASKS */
-  .tasks {
-    flex: 1;
-    overflow-y: auto;
-    /* ⚠ overflow-y: auto тавихад CSS нь overflow-x-ийг ч АВТОМАТААР auto болгодог
-       (visible + auto хослол зөвшөөрөгддөггүй). Тиймээс доторх ямар нэг элемент
-       өргөнөөс давмагц ЗӨВХӨН контент хэсэг хажуу тийш гүйж, толгой хөдөлдөггүй —
-       яг тэр «нааш цааш хөдлөх» мэдрэмж үүсдэг. Хатуу хаана: өргөн зүйл өөрийн
-       гэсэн overflow-x: auto хайрцагтай байх ёстой (жишээ: .board-stepper). */
-    overflow-x: hidden;
-    padding: 0 28px 80px;
-  }
-  /* .tasks-ийн X тэнхлэг хаагдсан тул ӨРГӨН зүйл өөрийн хайрцагтаа гүйх ёстой.
-     Аппд 27 хүснэгт байгаа бөгөөд аль нь ч боодолгүй — эс бөгөөс баруун талаараа
-     тасарна. display:block нь хүснэгтийг гүйдэг хайрцаг болгоно (баганын
-     эгнэлт хэвээр, width:100% хүснэгт мөн сунасан хэвээр). */
-  .tasks table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .table-head {
     display: grid;
     grid-template-columns: 26px 1fr 160px 130px 110px 36px;
@@ -420,19 +454,6 @@
     letter-spacing: .6px;
     border-bottom: 1px solid var(--border);
     position: sticky; top: 0; background: var(--bg); z-index: 1;
-  }
-  .task-row {
-    display: grid;
-    grid-template-columns: 24px 1fr auto auto auto;
-    align-items: center;
-    gap: var(--space-3);
-    padding: 12px 14px;
-    background: var(--panel);
-    border: 1px solid transparent;
-    border-radius: var(--r-md);
-    margin: 4px 0;
-    transition: all var(--duration) var(--ease);
-    cursor: pointer;
   }
   .task-row:hover {
     background: var(--panel-hover);
@@ -1024,7 +1045,6 @@
     .mobile-bottom-nav { display: block; }
     .fab { display: block; }
     /* FAB + доод nav контентын сүүлийн картыг дарахгүй — жагсаалтын доод зай */
-    .tasks { padding-bottom: 140px !important; }
 
     /* Header — мобайлд хэт олон товч хасах. Зөвхөн menu + theme + bell + + */
     .header-actions .btn { padding: 6px 10px; font-size: 12px; }
@@ -1038,20 +1058,12 @@
     /* Toolbar: search голчилбол өөрөө мөр болж буурна */
     .search { flex: 1 1 100%; max-width: 100%; }
 
-    .tasks { padding: 8px 12px 140px; }
     .table-head { display: none; }
 
     /* ─── Мобайл task row — Цэвэрхэн, давхардалгүй ───
        checkbox │ title (+ meta нэг мөр доор) │ chevron ▸
        Avatar+нэр, хугацаа, зэрэглэл бүгд meta мөрөнд орно
        Илүүдэл "delegated-from" пилл арилна — avatar нэр хариулна */
-    .task-row {
-      grid-template-columns: 24px 1fr 16px;
-      column-gap: 12px;
-      row-gap: 0;
-      padding: 14px 14px;
-      align-items: center;
-    }
     .task-row:hover { transform: none; }
     .task-row::after {
       content: '›';
@@ -1169,10 +1181,6 @@
   .user-chip .avatar { width: 42px; height: 42px; font-size: 16px; }
 
   /* ── Task row — илүү уужим, илүү уншигдахуйц ── */
-  .task-row {
-    padding: 16px 14px !important;
-    min-height: 64px;
-  }
   .task-row .task-title-wrap { gap: 6px; }
   .task-row .title { font-size: 15px !important; line-height: 1.35; }
   .task-row .meta-row,
@@ -1207,13 +1215,13 @@
     font-size: 13px !important;
     margin-bottom: 6px;
   }
-  .modal input, .modal select, .modal textarea,
-  .sheet input, .sheet select, .sheet textarea {
+  .modal input:not(.ui-raw), .modal select:not(.ui-raw), .modal textarea,
+  .sheet input:not(.ui-raw), .sheet select:not(.ui-raw), .sheet textarea {
     padding: 14px !important;
     margin-bottom: 14px;
   }
-  .modal .btn, .sheet .btn,
-  .modal button, .sheet button {
+  .modal .btn:not(.ui-raw), .sheet .btn:not(.ui-raw),
+  .modal button:not(.ui-raw), .sheet button:not(.ui-raw) {
     min-height: 48px;
     padding: 14px 18px !important;
     font-size: 16px !important;
@@ -1307,7 +1315,6 @@
   }
 
   /* ── Илүү тав тухтай spacing ── */
-  .tasks { padding: 12px 12px 160px !important; }
 
   /* Дарах боломжтой бүх товч default-аар 44px */
   button, [role="button"], .clickable {
@@ -1444,18 +1451,6 @@ html, body {
   /* ── Header — iOS/Android large title маяг ── */
 
   /* ── Task мөр — карт маяг, тус тусдаа, shadow-той ── */
-  .tasks {
-    background: var(--bg) !important;
-    padding: 12px 12px 160px !important;
-  }
-  .task-row {
-    background: var(--panel) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 14px !important;
-    margin-bottom: 10px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.03) !important;
-    transition: transform 120ms ease, box-shadow 120ms ease !important;
-  }
   .task-row:active {
     transform: scale(.98) !important;
     box-shadow: 0 0 0 rgba(0,0,0,0) !important;
@@ -1643,10 +1638,6 @@ html, body {
   }
 
   /* ── Task мөр илүү тав тухтай ── */
-  .task-row {
-    padding: 14px 16px !important;
-    background: var(--panel) !important;
-  }
 
   /* ── Empty state-ийг сайхан болгох (хэрэв байгаа бол) ── */
   #task-list:empty::after {
@@ -1738,17 +1729,6 @@ body, input, textarea, select, button {
   }
 
   /* ── TASK МӨР — Notion маяг, хүрээгүй жагсаалт ── */
-  .tasks { background: var(--bg) !important; padding: 4px 8px 160px !important; }
-  .task-row {
-    background: transparent !important;
-    border: none !important;
-    border-radius: 6px !important;
-    box-shadow: none !important;
-    margin-bottom: 1px !important;
-    padding: 10px 12px !important;
-    transition: background 100ms ease !important;
-    min-height: 44px !important;
-  }
   .task-row:hover { background: var(--panel-hover) !important; }
   .task-row:active { background: var(--border) !important; transform: none !important; }
   .task-row .title {
@@ -1903,8 +1883,8 @@ body, input, textarea, select, button {
     letter-spacing: -0.01em !important;
     text-transform: none !important;
   }
-  .modal input,
-  .modal select,
+  .modal input:not(.ui-raw),
+  .modal select:not(.ui-raw),
   .modal textarea {
     background: var(--panel-hover) !important;
     border: 1px solid transparent !important;
@@ -1922,8 +1902,8 @@ body, input, textarea, select, button {
     outline: none !important;
     box-shadow: 0 0 0 3px var(--primary-soft) !important;
   }
-  .modal .btn,
-  .modal button {
+  .modal .btn:not(.ui-raw),
+  .modal button:not(.ui-raw) {
     background: var(--panel-hover) !important;
     border: none !important;
     border-radius: 8px !important;
@@ -2159,17 +2139,6 @@ body, input, textarea, select, button {
 }
 
 /* ── TASK ROWS (desktop) — Linear маяг, шугам бүрэн арилгасан ── */
-.tasks { background: var(--bg) !important; }
-.task-row {
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1px solid var(--border) !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  padding: 10px 16px !important;
-  margin: 0 !important;
-  transition: background 80ms ease !important;
-}
 .task-row:hover {
   background: var(--panel-hover) !important;
   transform: none !important;
@@ -2328,7 +2297,7 @@ body, input, textarea, select, button {
     color: var(--text) !important;
     text-transform: none !important;
   }
-  .modal input, .modal select, .modal textarea {
+  .modal input:not(.ui-raw), .modal select:not(.ui-raw), .modal textarea {
     background: var(--panel-hover) !important;
     border: 1px solid transparent !important;
     border-radius: 6px !important;
@@ -2341,7 +2310,7 @@ body, input, textarea, select, button {
     box-shadow: 0 0 0 3px var(--primary-soft) !important;
     outline: none !important;
   }
-  .modal .btn, .modal button {
+  .modal .btn:not(.ui-raw), .modal button:not(.ui-raw) {
     border-radius: 6px !important;
     font-weight: 500 !important;
     padding: 8px 14px !important;
@@ -2443,9 +2412,6 @@ body {
   .table-head {
     padding: 8px 14px !important;
     font-size: 10px !important;
-  }
-  .task-row {
-    padding: 8px 14px !important;
   }
 }
 
@@ -5695,8 +5661,109 @@ body.role-daily #add-project { display: none !important; }
 .perf-kpi { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 6px; font-family: inherit; }
 
 /* ── Шинэ захиалга модал ── */
-.no-lbl { display: block; font-size: 11px; color: var(--muted); }
-.no-lbl input, .no-lbl select { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 13px; margin-top: 3px; }
+.no-lbl { display: block; font-size: var(--fs-xs); color: var(--muted); }
+.no-lbl input, .no-lbl select { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-md); margin-top: 3px; }
+.no-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: 6px; }
+.no-head h2 { margin: 0; font-size: var(--fs-lg); }
+.no-hint { font-size: var(--fs-xs); color: var(--muted); margin: -2px 0 4px; }
+.no-lock { font-size: var(--fs-sm); color: var(--warn); background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-2) 11px; margin: var(--space-2) 0 var(--space-1); }
+.no-sec { font-size: var(--fs-xs); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: var(--space-4) 2px 7px; }
+.no-col > .no-sec:first-child { margin-top: var(--space-2); }
+.no-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.no-fields .no-wide { grid-column: 1 / -1; }
+.no-col { min-width: 0; }
+.no-box { background: var(--panel-hover); border-radius: var(--r-lg); padding: var(--space-2) 10px; margin-bottom: 10px; }
+.no-inline { display: flex; gap: var(--space-1); margin-top: 3px; }
+.no-inline > input { flex: 1; margin-top: 0; }
+.no-inline > select { flex: 0 0 auto; margin-top: 0; }
+.no-inline > select.no-h { flex: 0 0 94px; }
+
+/* Хайлт — байгаа бүх өргөнөө эзэлнэ (150px хайрцагт шахагдахгүй) */
+.no-search { display: flex; align-items: center; gap: var(--space-2); background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 2px var(--space-3); margin-bottom: var(--space-2); }
+.no-search input { flex: 1; width: 100%; min-width: 0; border: none; background: none; outline: none; font-family: inherit; font-size: var(--fs-base); color: var(--text); padding: 8px 0; }
+
+/* Барааны каталог — том дүрс, олон багана */
+.no-catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: var(--space-2); max-height: 210px; overflow-y: auto; margin-bottom: var(--space-3); }
+.no-catalog-empty { grid-column: 1 / -1; color: var(--muted); font-size: var(--fs-sm); text-align: center; padding: var(--space-3); }
+.no-tile { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); padding: var(--space-1); cursor: pointer; text-align: left; font-size: var(--fs-xs); color: var(--text); font-family: inherit; }
+.no-tile:hover { border-color: var(--border-strong); }
+.no-tile:active { transform: scale(.97); }
+.no-tile img, .no-tile .no-tile-ph { display: block; width: 100%; height: 64px; object-fit: cover; border-radius: var(--r-sm); }
+.no-tile .no-tile-ph { background: var(--panel-hover); display: flex; align-items: center; justify-content: center; font-size: var(--fs-lg); }
+.no-tile-nm { font-weight: 600; margin-top: 3px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.no-tile-pr { color: var(--muted); margin-top: 2px; }
+.no-tile-av { color: var(--ok); font-weight: 600; }
+.no-tile-av.low { color: var(--warn); }
+.no-tile-av.none { color: var(--danger); }
+.no-tile.in-cart { border-color: var(--ok); background: var(--ok-soft); }
+
+/* Сонгосон барааны мөр — тоо ширхэг бүтэн харагдана */
+.no-item { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); }
+.no-item img, .no-item .no-item-ph { width: 38px; height: 38px; object-fit: cover; border-radius: var(--r-sm); flex-shrink: 0; }
+.no-item .no-item-ph { background: var(--panel-hover); display: inline-flex; align-items: center; justify-content: center; }
+.no-item-mid { flex: 1; min-width: 0; }
+.no-item-nm { font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.no-item-ctl { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); color: var(--muted); font-size: var(--fs-xs); }
+.no-item-amt { flex: none; font-size: var(--fs-md); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.no-qty { flex: none; display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); overflow: hidden; }
+.no-qty > button { width: 28px; height: 30px; border: none; background: none; color: var(--text); font-size: var(--fs-base); line-height: 1; cursor: pointer; padding: 0; font-family: inherit; }
+.no-qty > button:hover { background: var(--panel-hover); }
+.no-qty > input { flex: none; width: 54px; height: 30px; box-sizing: border-box; border: none; border-left: 1px solid var(--border); border-right: 1px solid var(--border); border-radius: 0; background: none; color: var(--text); text-align: center; font-size: var(--fs-md); font-family: inherit; font-variant-numeric: tabular-nums; padding: 0; margin: 0; -moz-appearance: textfield; }
+.no-qty > input::-webkit-outer-spin-button, .no-qty > input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.no-item .no-price { flex: none; width: 108px; height: 30px; box-sizing: border-box; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--panel); color: var(--text); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.no-item-warn { color: var(--danger); font-weight: 600; }
+.no-empty { color: var(--muted); font-size: var(--fs-sm); padding: var(--space-2) 0; }
+
+/* Дүнгийн хураангуй */
+.no-sum { background: var(--panel-hover); border-radius: var(--r-lg); padding: 10px var(--space-3); font-size: var(--fs-md); line-height: 1.9; margin-bottom: var(--space-4); }
+.no-sum-row { display: flex; justify-content: space-between; gap: var(--space-2); }
+.no-sum-row.muted { color: var(--muted); }
+.no-sum-row.total { font-size: var(--fs-base); border-top: 1px solid var(--border); padding-top: 5px; margin-top: 2px; }
+
+/* Бараа сонгох popup — том дэлгэц дүүрэн */
+.no-pick { position: fixed; inset: 0; z-index: 140; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+.no-pick-box { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-xl); box-shadow: var(--shadow-xl); width: min(1000px, 100%); max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+.no-pick-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-2); }
+.no-pick-head h3 { margin: 0; font-size: var(--fs-lg); flex: 1; }
+.no-pick-tools { padding: 0 var(--space-4) var(--space-2); }
+.no-pick-body { flex: 1; overflow-y: auto; padding: 0 var(--space-4) var(--space-3); }
+.no-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); }
+.no-pick-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); padding: var(--space-2); display: flex; flex-direction: column; gap: 5px; }
+.no-pick-card.on { border-color: var(--ok); background: var(--ok-soft); }
+.no-pick-card img, .no-pick-card .no-tile-ph { display: block; width: 100%; height: 96px; object-fit: cover; border-radius: var(--r-md); }
+.no-pick-card .no-qty { display: flex; }
+.no-pick-card .no-qty > button { flex: 1; }
+.no-pick-nm { font-size: var(--fs-md); font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.no-pick-meta { font-size: var(--fs-xs); color: var(--muted); display: flex; justify-content: space-between; gap: var(--space-1); }
+.no-pick-foot { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); }
+.no-pick-foot .no-pick-count { flex: 1; font-size: var(--fs-md); color: var(--muted); }
+.no-chips { display: flex; gap: 5px; overflow-x: auto; padding-bottom: var(--space-1); }
+.no-chip { flex-shrink: 0; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--panel); color: var(--muted); font-size: var(--fs-sm); font-family: inherit; padding: 4px 11px; cursor: pointer; white-space: nowrap; }
+.no-chip.on { border-color: var(--accent-blue); color: var(--text); font-weight: 600; }
+
+/* Өргөн дэлгэц — модалыг өргөсгөж хоосон зайг ашиглана (2 багана) */
+@media (min-width: 1001px) {
+  .modal.no-modal { width: min(1060px, 100%); max-width: min(1060px, 100%); }
+  .no-modal .no-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 var(--space-5); align-items: start; }
+  /* Зүүн багана: харилцагч → төлбөр, баруун багана: бараа (бүтэн өндөр) */
+  .no-modal .no-col-a { grid-column: 1; grid-row: 1; }
+  .no-modal .no-col-c { grid-column: 1; grid-row: 2; }
+  .no-modal .no-col-b { grid-column: 2; grid-row: 1 / span 2; }
+  .no-modal .no-catalog { max-height: 320px; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); }
+}
+/* Нарийн дэлгэц — сонгосон барааны мөр нэг эгнээнд багтана (тоо/үнэ бүтэн харагдана) */
+@media (max-width: 430px) {
+  .no-item img, .no-item .no-item-ph { display: none; }
+  .no-item .no-price { width: 92px; }
+  .no-qty > input { width: 46px; }
+}
+@media (max-width: 400px) {
+  .no-fields { grid-template-columns: 1fr; }
+  .no-catalog { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+  .no-pick-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
+  .no-pick { padding: 0; }
+  .no-pick-box { max-height: 100vh; height: 100%; border-radius: 0; }
+}
 
 /* ── Эрх удирдах — capability chip ── */
 .ac-chip { display: inline-flex; align-items: center; padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 999px; font-size: 12px; cursor: pointer; user-select: none; background: var(--panel); color: var(--muted); transition: background .12s, border-color .12s, color .12s; }

@@ -11452,7 +11452,7 @@ const CHIMUN_LEGAL = {
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
   addressEn: 'Nogoon Zoory 1-13, Khoroo 11, Bayanzurkh District, Ulaanbaatar, Mongolia',
-  bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180', swift: 'GLMTMNUB',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
+  bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
 // 0-999 → Монгол үг (атрибутив): 750 → "долоон зуун тавин", 125 → "нэг зуун хорин таван"
@@ -14236,34 +14236,37 @@ function openNewOrder(editOrder) {
   const _quotes0 = (isEdit && editOrder.stage_meta && Array.isArray(editOrder.stage_meta.quotes)) ? editOrder.stage_meta.quotes : [];   // илгээсэн үнийн саналуудын түүх
   const _saleTot = isEdit ? (Number(editOrder.total_mnt) || 0) : 0;
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
-  const _sec = (t) => `<div style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:15px 2px 7px;">${t}</div>`;
+  const _sec = (t) => `<div class="no-sec">${t}</div>`;
 
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
-  modal.innerHTML = `<div class="modal" style="max-width:640px;width:96%;max-height:92vh;overflow-y:auto;">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
-      <h2 style="margin:0;font-size:17px;">${isEdit ? '✎ Захиалга засах · #' + (editOrder.number ?? '') : '+ Шинэ захиалга'}</h2>
+  modal.innerHTML = `<div class="modal no-modal">
+    <div class="no-head">
+      <h2>${isEdit ? '✎ Захиалга засах · #' + (editOrder.number ?? '') : '+ Шинэ захиалга'}</h2>
       <button class="btn" id="no-close" style="padding:5px 10px;">✕</button>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin:-2px 0 4px;">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
-    ${_locked ? `<div style="font-size:11.5px;color:#9a6a00;background:#fbf4e2;border:1px solid #f0e0b8;border-radius:9px;padding:8px 11px;margin:8px 0 4px;">🔒 Гарсан/төлөгдсөн — <b>мөнгөний нөхцөл түгжсэн</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо). Холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл засагдана.</div>` : ''}
+    <div class="no-hint">${isEdit ? escapeHtml(editOrder.contract_no || '') : 'Дугаар + гэрээний дугаар хадгалахад автоматаар олгогдоно'}</div>
+    ${_locked ? `<div class="no-lock">🔒 Гарсан/төлөгдсөн — <b>мөнгөний нөхцөл түгжсэн</b> (бараа·үнэ·хөнгөлөлт·НӨАТ·барьцаа·эхлэх огноо). Холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл засагдана.</div>` : ''}
+    <div class="no-grid">
+    <div class="no-col no-col-a">
     ${_sec('Харилцагч')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <div class="no-fields">
       <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
       <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
       <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
-      <label class="no-lbl" style="grid-column:1/-1;">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
+      <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
     </div>
     ${_sec('Хугацаа' + (isEdit ? ' · төлөв' : ''))}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      <label class="no-lbl">Эхлэх (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-start-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.sh)}</select></div></label>
-      <label class="no-lbl">Дуусах (огноо · цаг)<div style="display:flex;gap:4px;margin-top:3px;"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}" style="flex:1;margin-top:0;"><select id="no-stop-h" style="flex:0 0 72px;margin-top:0;">${hourOpts(_t0.eh)}</select></div></label>
-      ${isEdit ? `<label class="no-lbl" style="grid-column:1/-1;">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
+    <div class="no-fields">
+      <label class="no-lbl">Эхлэх (огноо · цаг)<div class="no-inline"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}"><select id="no-start-h" class="no-h">${hourOpts(_t0.sh)}</select></div></label>
+      <label class="no-lbl">Дуусах (огноо · цаг)<div class="no-inline"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}"><select id="no-stop-h" class="no-h">${hourOpts(_t0.eh)}</select></div></label>
+      ${isEdit ? `<label class="no-lbl no-wide">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
     </div>
-    <div style="background:var(--panel-hover);border-radius:10px;padding:8px 10px;margin-bottom:10px;">
-      <div style="display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:end;">
+    ${_sec('Хүргэлт')}
+    <div class="no-box">
+      <div style="display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:end;">
         <label class="no-lbl">🚚 Хүргэлт<select id="no-delivzone" style="margin-top:3px;">
           <option value="pickup"${_dlv0.zone === 'pickup' ? ' selected' : ''}>🏬 Өөрөө авах (хүргэлтгүй)</option>
           <option value="city"${_dlv0.zone === 'city' ? ' selected' : ''}>🚚 Хот дотор — 150,000₮</option>
@@ -14273,37 +14276,43 @@ function openNewOrder(editOrder) {
       </div>
       <label class="no-lbl" id="no-addr-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Дүүрэг, хороо, байр, орц"></label>
       <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
-      <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
+      <div id="no-delivfee-row" class="no-sum-row muted" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};margin-top:6px;"><span>Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
+    </div>
+    <div class="no-col no-col-b">
     ${_sec('Бараа')}
-    ${_locked ? '' : `<div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / SKU / ангилал)"></div>
-    <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>`}
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
+    ${_locked ? '' : `<div class="no-search">🔍<input type="search" class="ui-raw" id="no-prodsearch" placeholder="Бараа хайх (нэр / SKU / ангилал)"><button type="button" class="btn" id="no-pickopen" style="padding:4px 10px;font-size:var(--fs-sm);">⤢ Бүгд</button></div>
+    <div id="no-catalog" class="no-catalog"></div>`}
+    <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:8px;"></div>
-    ${_sec('Төлбөр')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-      <label class="no-lbl">Хөнгөлөлт<div style="display:flex;gap:4px;margin-top:3px;"><select id="no-disctype" style="flex:0 0 56px;margin-top:0;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0" style="flex:1;margin-top:0;"></div></label>
-      <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
-      ${isEdit ? `<label class="no-lbl" style="grid-column:1/-1;">Төлсөн (банкны баримт)
-        <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:15px;">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:11.5px;color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
-        ${_rcpts0.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;">${_rcpts0.map((r, i) => `<div class="paid-rcpt-row" data-paid-rcpt="${i}" role="button" tabindex="0" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:12px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || 'Банкны баримт')}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>` : '<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">Төлбөр бүртгээгүй.</div>'}
-        <span style="font-size:10.5px;color:var(--muted);display:block;margin-top:5px;">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ. Баримт дээр дарж дэлгэрэнгүйг харна.</span></label>` : ''}
     </div>
-    <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:12.5px;cursor:pointer;">
+    <div class="no-col no-col-c">
+    ${_sec('Төлбөр')}
+    <div class="no-fields" style="margin-bottom:10px;">
+      <label class="no-lbl">Хөнгөлөлт<div class="no-inline"><select id="no-disctype" style="flex:0 0 58px;"><option value="amount">₮</option><option value="pct">%</option></select><input id="no-discval" class="money-input" type="text" inputmode="numeric" value="${isEdit && editOrder.discount_value ? moneyFmtInput(editOrder.discount_value) : ''}" placeholder="0"></div></label>
+      <label class="no-lbl">Барьцаа (засаж болно)<input id="no-deposit" class="money-input" type="text" inputmode="numeric" placeholder="0"></label>
+      ${isEdit ? `<label class="no-lbl no-wide">Төлсөн (банкны баримт)
+        <div id="no-paid-disp" style="margin-top:3px;padding:9px 11px;background:var(--panel-hover);border-radius:8px;font-weight:700;font-size:var(--fs-base);">${fmtMoney(editOrder.paid_mnt || 0)}${editOrder.paid_date ? ` <span style="font-weight:400;font-size:var(--fs-xs);color:var(--muted);">· ${escapeHtml(String(editOrder.paid_date).slice(0, 10))}</span>` : ''}</div>
+        ${_rcpts0.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;">${_rcpts0.map((r, i) => `<div class="paid-rcpt-row" data-paid-rcpt="${i}" role="button" tabindex="0" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || 'Банкны баримт')}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>` : '<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;">Төлбөр бүртгээгүй.</div>'}
+        <span style="font-size:var(--fs-xs);color:var(--muted);display:block;margin-top:5px;">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ. Баримт дээр дарж дэлгэрэнгүйг харна.</span></label>` : ''}
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
     </label>
     ${_quotes0.length ? `${_sec('📤 Илгээсэн үнийн саналууд · ' + _quotes0.length)}
-    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${_quotes0.slice().reverse().map(q => { const isSale = _saleTot > 0 && Math.abs((Number(q.amount) || 0) - _saleTot) < 1; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid ${isSale ? '#16a34a' : 'var(--border)'};border-radius:8px;background:${isSale ? '#e8f2ec' : 'var(--panel)'};font-size:12px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(q.by || '?')} · ${escapeHtml(String(q.at || '').slice(0, 10))}${q.to ? ' · ' + escapeHtml(q.to) : ''}</span><span style="font-weight:700;flex-shrink:0;white-space:nowrap;">${fmtMoney(Number(q.amount) || 0)}${isSale ? ' <span style="color:#16a34a;">✓ борлуулалт</span>' : ''}</span></div>`; }).join('')}</div>` : ''}
-    <div style="background:var(--panel-hover);border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9;margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
-      <div style="display:flex;justify-content:space-between;"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
-      <div style="display:none;justify-content:space-between;color:var(--danger);" id="no-vatrow"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;color:var(--muted);" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:15px;border-top:1px solid var(--border);padding-top:5px;margin-top:2px;"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
-      ${isEdit ? `<div style="display:flex;justify-content:space-between;"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${_quotes0.slice().reverse().map(q => { const isSale = _saleTot > 0 && Math.abs((Number(q.amount) || 0) - _saleTot) < 1; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid ${isSale ? 'var(--ok)' : 'var(--border)'};border-radius:8px;background:${isSale ? 'var(--ok-soft)' : 'var(--panel)'};font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(q.by || '?')} · ${escapeHtml(String(q.at || '').slice(0, 10))}${q.to ? ' · ' + escapeHtml(q.to) : ''}</span><span style="font-weight:700;flex-shrink:0;white-space:nowrap;">${fmtMoney(Number(q.amount) || 0)}${isSale ? ' <span style="color:var(--ok);">✓ борлуулалт</span>' : ''}</span></div>`; }).join('')}</div>` : ''}
+    <div class="no-sum">
+      <div class="no-sum-row muted"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
+      <div class="no-sum-row muted"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
+      <div class="no-sum-row"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
+      <div class="no-sum-row muted"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
+      <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
+      <div class="no-sum-row muted"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
+      <div class="no-sum-row muted" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
+      <div class="no-sum-row total"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
+      ${isEdit ? `<div class="no-sum-row"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
+    </div>
+    </div>
     </div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" id="no-cancel">Болих</button>
@@ -14318,20 +14327,33 @@ function openNewOrder(editOrder) {
   if (isEdit && editOrder.discount_type === 'pct') $('#no-disctype').value = 'pct';
 
   const catalog = $('#no-catalog');
+  // Сонгосон огнооны мужид сул үлдэгдэл — каталог/сонгосон мөр дээр шууд харагдана
+  const availOf = (name) => { try { return availabilityFor(name, $('#no-start').value, $('#no-stop').value, isEdit ? editOrder.number : null); } catch (e) { return null; } };
+  const availHtml = (a) => a ? `<div class="no-tile-av${a.avail <= 0 ? ' none' : (a.avail <= 2 ? ' low' : '')}">${a.avail <= 0 ? 'сул алга' : a.avail + ' сул'}</div>` : '';
   function renderCatalog() {
+    if (!catalog) return;
     const q = ($('#no-prodsearch').value || '').toLowerCase().trim();
-    const prods = (state.products || []).filter(p => isRentable(p) && (!q
+    const hit = (state.products || []).filter(p => isRentable(p) && (!q
       || (p.name || '').toLowerCase().includes(q)
       || (p.category || '').toLowerCase().includes(q)
       || (p.sku || '').toLowerCase().includes(q)
-      || (p.code || '').toLowerCase().includes(q))).slice(0, 60);
+      || (p.code || '').toLowerCase().includes(q)));
+    const prods = hit.slice(0, 60);
     catalog.innerHTML = prods.map(p => {
-      const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:52px;object-fit:cover;border-radius:6px;">` : `<div style="height:52px;border-radius:6px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:18px;">📦</div>`;
-      return `<button type="button" data-add="${escapeHtml(p.sku || p.name)}" style="border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:4px;cursor:pointer;text-align:left;font-size:10px;color:var(--text);">${ph}<div style="font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div><div style="color:var(--muted);">${fmtMoney(Number(p.price) || 0)}</div></button>`;
-    }).join('') || `<div style="grid-column:1/-1;color:var(--muted);font-size:12px;text-align:center;padding:12px;">Бараа олдсонгүй</div>`;
+      const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-tile-ph">📦</div>`;
+      const key = p.sku || p.name;
+      const inCart = items.some(it => (it.sku || it.name) === key);
+      return `<button type="button" class="no-tile ui-raw${inCart ? ' in-cart' : ''}" data-add="${escapeHtml(key)}" title="${escapeHtml(p.name || '')}">${ph}<div class="no-tile-nm">${escapeHtml(p.name || '')}</div><div class="no-tile-pr">${fmtMoney(Number(p.price) || 0)}</div>${availHtml(availOf(p.name))}</button>`;
+    }).join('') || `<div class="no-catalog-empty">Бараа олдсонгүй</div>`;
+    if (hit.length > prods.length) catalog.insertAdjacentHTML('beforeend', `<div class="no-catalog-empty">+${hit.length - prods.length} бараа — «⤢ Бүгд»-ээр үзнэ</div>`);
   }
-  if (catalog) renderCatalog();
+  renderCatalog();
   $('#no-prodsearch')?.addEventListener('input', renderCatalog);
+  // Popup-аар бүх барааг том дүрстэй, тоо ширхэгтэй нь сонгоно
+  $('#no-pickopen')?.addEventListener('click', () => openOrderProductPicker({
+    items, start: $('#no-start').value, stop: $('#no-stop').value, excludeNo: isEdit ? editOrder.number : null,
+    onApply: next => { items.length = 0; next.forEach(x => items.push(x)); renderItems(); renderCatalog(); recalc(); },
+  }));
   catalog?.addEventListener('click', e => {
     const b = e.target.closest('[data-add]'); if (!b) return;
     const p = (state.products || []).find(x => (x.sku || x.name) === b.dataset.add); if (!p) return;
@@ -14347,13 +14369,20 @@ function openNewOrder(editOrder) {
   const itemsBox = $('#no-items');
   function renderItems() {
     $('#no-itemn').textContent = items.length;
-    itemsBox.innerHTML = items.length ? items.map((it, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-      ${it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'" style="width:34px;height:34px;object-fit:cover;border-radius:6px;flex-shrink:0;">` : `<span style="width:34px;height:34px;border-radius:6px;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">📦</span>`}
-      <div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(it.name || '')}</div>
-        <div style="display:flex;align-items:center;gap:4px;margin-top:2px;color:var(--muted);font-size:11px;"><input type="number" min="1" value="${Number(it.qty) || 1}" data-iq="${i}"${_locked ? ' disabled' : ''} style="width:46px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"> × <input type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} style="width:92px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);"></div></div>
-      <b style="font-size:12px;font-variant-numeric:tabular-nums;" data-iamt="${i}">${fmtMoney((Number(it.qty) || 0) * (Number(it.price) || 0))}</b>
-      ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:13px;color:var(--danger);">✕</button>`}
-    </div>`).join('') : `<div style="color:var(--muted);font-size:12px;padding:6px 0;">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
+    itemsBox.innerHTML = items.length ? items.map((it, i) => {
+      const qty = Number(it.qty) || 1;
+      const a = availOf(it.name);
+      const warn = a ? (qty > a.avail ? `<span class="no-item-warn">⚠ ${a.avail} сул</span>` : `<span>✓ ${a.avail} сул</span>`) : '';
+      const ph = it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'">` : `<span class="no-item-ph">📦</span>`;
+      const qtyCtl = _locked ? `<b>${qty} ш</b>`
+        : `<span class="no-qty"><button type="button" class="ui-raw" data-iqd="${i}" aria-label="Хасах">−</button><input type="number" class="ui-raw" min="1" value="${qty}" data-iq="${i}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw" data-iqi="${i}" aria-label="Нэмэх">+</button></span>`;
+      return `<div class="no-item">${ph}
+      <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}</div>
+        <div class="no-item-ctl">${qtyCtl}<span>×</span><input type="text" inputmode="numeric" class="money-input no-price ui-raw" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} aria-label="Нэгж үнэ">${warn}</div></div>
+      <b class="no-item-amt" data-iamt="${i}">${fmtMoney(qty * (Number(it.price) || 0))}</b>
+      ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:var(--fs-lg);color:var(--danger);" aria-label="Хасах">✕</button>`}
+    </div>`;
+    }).join('') : `<div class="no-empty">Бараа сонгоогүй — дээрх каталогоос нэм.</div>`;
   }
   renderItems();
   itemsBox.addEventListener('input', e => {
@@ -14364,7 +14393,16 @@ function openNewOrder(editOrder) {
     const amtEl = itemsBox.querySelector(`[data-iamt="${i}"]`); if (amtEl) amtEl.textContent = fmtMoney((Number(items[i].qty) || 0) * (Number(items[i].price) || 0));
     recalc();
   });
-  itemsBox.addEventListener('click', e => { const b = e.target.closest('[data-irm]'); if (!b) return; items.splice(+b.dataset.irm, 1); renderItems(); recalc(); });
+  itemsBox.addEventListener('change', e => { if (e.target.dataset.iq != null) { renderItems(); recalc(); } });
+  itemsBox.addEventListener('click', e => {
+    const rm = e.target.closest('[data-irm]');
+    if (rm) { items.splice(+rm.dataset.irm, 1); renderItems(); renderCatalog(); recalc(); return; }
+    const dec = e.target.closest('[data-iqd]'), inc = e.target.closest('[data-iqi]');
+    if (!dec && !inc) return;
+    const i = +(dec ? dec.dataset.iqd : inc.dataset.iqi);
+    items[i].qty = Math.max(1, (Number(items[i].qty) || 1) + (dec ? -1 : 1));
+    renderItems(); recalc();
+  });
 
   const depEl = $('#no-deposit');
   if (isEdit && editOrder.deposit_mnt != null) depEl.value = moneyFmtInput(editOrder.deposit_mnt);
@@ -14426,6 +14464,8 @@ function openNewOrder(editOrder) {
   if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
   $('#no-vat').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));
+  // Огноо солигдвол сул үлдэгдэл өөрчлөгдөнө — каталог/сонгосон мөрийг дахин зурна
+  ['#no-start', '#no-stop'].forEach(s => $(s).addEventListener('change', () => { renderCatalog(); renderItems(); }));
   if (isEdit) modal.querySelectorAll('[data-paid-rcpt]').forEach(el => {
     const open = () => openPaidReceiptDetail(editOrder.id, +el.dataset.paidRcpt);
     el.addEventListener('click', open);
@@ -14475,6 +14515,101 @@ function openNewOrder(editOrder) {
     e.currentTarget.disabled = true;
     try { await saveAppOrder(ord); close(); showToast(isEdit ? 'Захиалга шинэчлэгдлээ' : `Захиалга #${ord.number} үүслээ`, 'success', 2800); }
     catch (err) { e.currentTarget.disabled = false; }
+  };
+}
+
+
+// ── Бараа сонгох popup (захиалгын модалаас) — бүх дэлгэцийг ашиглаж, том дүрс + ангиллын шүүлт +
+// тоо ширхэгийг картан дээр нь шууд оруулна. Жижиг inline каталогоос олон бараа сонгоход хурдан. ──
+function openOrderProductPicker(opt) {
+  const all = (state.products || []).filter(p => isRentable(p));
+  const keyOf = p => p.sku || p.name;
+  const cart = new Map();   // түлхүүр → тоо ширхэг (эхлэхдээ одоогийн сагснаас)
+  (opt.items || []).forEach(it => { const k = it.sku || it.name; if (k) cart.set(k, Number(it.qty) || 0); });
+  const cats = Array.from(new Set(all.map(p => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'mn'));
+  let cat = '', q = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'no-pick';
+  wrap.innerHTML = `<div class="no-pick-box">
+    <div class="no-pick-head"><h3>📦 Бараа сонгох</h3><button class="btn" id="np-x" style="padding:5px 10px;">✕</button></div>
+    <div class="no-pick-tools">
+      <div class="no-search">🔍<input type="search" id="np-q" placeholder="Бараа хайх — нэр / ангилал / SKU" autocomplete="off"></div>
+      <div class="no-chips" id="np-cats"><button type="button" class="no-chip on" data-cat="">Бүгд (${all.length})</button>${cats.map(c => `<button type="button" class="no-chip" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}</div>
+    </div>
+    <div class="no-pick-body"><div class="no-pick-grid" id="np-grid"></div></div>
+    <div class="no-pick-foot"><span class="no-pick-count" id="np-count"></span><button class="btn" id="np-cancel">Болих</button><button class="btn btn-primary" id="np-ok">✓ Оруулах</button></div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const $ = s => wrap.querySelector(s);
+  const close = () => wrap.remove();
+  const avail = name => { try { return availabilityFor(name, opt.start, opt.stop, opt.excludeNo); } catch (e) { return null; } };
+
+  const grid = $('#np-grid');
+  function shown() {
+    const t = q.toLowerCase();
+    return all.filter(p => (!cat || String(p.category || '').trim() === cat)
+      && (!t || (p.name || '').toLowerCase().includes(t) || (p.category || '').toLowerCase().includes(t)
+        || (p.sku || '').toLowerCase().includes(t) || (p.code || '').toLowerCase().includes(t)));
+  }
+  function cardHtml(p) {
+    const k = keyOf(p), n = Number(cart.get(k)) || 0, a = avail(p.name);
+    const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 200))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-tile-ph">📦</div>`;
+    const av = a ? `<span class="no-tile-av${a.avail <= 0 ? ' none' : (a.avail <= 2 ? ' low' : '')}">${a.avail <= 0 ? 'сул алга' : a.avail + ' сул'}</span>` : '<span></span>';
+    return `<div class="no-pick-card${n > 0 ? ' on' : ''}" data-k="${escapeHtml(k)}">${ph}
+      <div class="no-pick-nm">${escapeHtml(p.name || '')}</div>
+      <div class="no-pick-meta"><span>${fmtMoney(Number(p.price) || 0)}</span>${av}</div>
+      <span class="no-qty"><button type="button" data-d="${escapeHtml(k)}" aria-label="Хасах">−</button><input type="number" min="0" value="${n}" data-n="${escapeHtml(k)}" aria-label="Тоо ширхэг"><button type="button" data-i="${escapeHtml(k)}" aria-label="Нэмэх">+</button></span>
+    </div>`;
+  }
+  function renderCount() {
+    let n = 0, sum = 0;
+    cart.forEach((v, k) => { if (v > 0) { n++; const p = all.find(x => keyOf(x) === k); sum += v * (p ? Number(p.price) || 0 : 0); } });
+    $('#np-count').textContent = n ? `${n} бараа сонгосон · ${fmtMoney(sum)} / хоног` : 'Бараа сонгоогүй';
+  }
+  function render() {
+    const list = shown();
+    grid.innerHTML = list.length ? list.map(cardHtml).join('') : `<div class="no-catalog-empty">Бараа олдсонгүй</div>`;
+    renderCount();
+  }
+  function setQty(k, n) {
+    n = Math.max(0, Math.floor(Number(n) || 0));
+    cart.set(k, n);
+    const card = grid.querySelector(`.no-pick-card[data-k="${CSS.escape(k)}"]`);
+    if (card) { card.classList.toggle('on', n > 0); const inp = card.querySelector('[data-n]'); if (inp && +inp.value !== n) inp.value = n; }
+    renderCount();
+  }
+  render();
+
+  $('#np-q').addEventListener('input', e => { q = e.target.value.trim(); render(); });
+  $('#np-cats').addEventListener('click', e => {
+    const b = e.target.closest('[data-cat]'); if (!b) return;
+    cat = b.dataset.cat;
+    wrap.querySelectorAll('#np-cats .no-chip').forEach(x => x.classList.toggle('on', x === b));
+    render();
+  });
+  grid.addEventListener('click', e => {
+    const d = e.target.closest('[data-d]'), i = e.target.closest('[data-i]');
+    if (d) setQty(d.dataset.d, (Number(cart.get(d.dataset.d)) || 0) - 1);
+    else if (i) setQty(i.dataset.i, (Number(cart.get(i.dataset.i)) || 0) + 1);
+  });
+  grid.addEventListener('input', e => { if (e.target.dataset.n != null) setQty(e.target.dataset.n, e.target.value); });
+
+  $('#np-x').onclick = close; $('#np-cancel').onclick = close;
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  $('#np-ok').onclick = () => {
+    const out = [];
+    (opt.items || []).forEach(it => {   // байгаа мөрүүд дараалал/үнээ хадгална
+      const k = it.sku || it.name, n = Number(cart.get(k)) || 0;
+      if (n > 0) { out.push({ ...it, qty: n }); cart.delete(k); }
+    });
+    cart.forEach((n, k) => {
+      if (n <= 0) return;
+      const p = all.find(x => keyOf(x) === k); if (!p) return;
+      out.push({ sku: p.sku || p.name, name: p.name, qty: n, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, photo: p.photo || '' });
+    });
+    opt.onApply(out);
+    close();
   };
 }
 
@@ -14700,75 +14835,65 @@ if (!window._mevQuoteLogInit) {
 // зориулагдсан тул монголоороо хэвээр.
 const MEV_QUOTE_T = {
   mn: {
-    htmlLang: 'mn', tagline: 'Арга хэмжээний тоног төхөөрөмжийн түрээс', eyebrow: 'QUOTATION',
+    htmlLang: 'mn', tagline: 'Арга хэмжээний түрээс', eyebrow: 'Quotation',
     docTitle: 'Үнийн санал', h1: 'ҮНИЙН САНАЛ',
     no: 'Дугаар', date: 'Огноо', valid: 'Хүчинтэй', until: ' хүртэл',
-    supplier: 'НИЙЛҮҮЛЭГЧ', client: 'ЗАХИАЛАГЧ', coName: '"ЧИМУН" ХХК — M Event',
-    reg: 'РД', address: 'Хаяг', tel: 'Утас', email: 'И-мэйл', web: 'Веб',
-    venue: 'Байршил', rentalPeriod: 'Түрээсийн хугацаа',
-    logistics: 'Хүргэлт, угсралт, буулгалт', included: 'багтсан',
-    dlvZone: (d) => deliveryLabel(d),
-    thItem: 'БАРАА / ТАЙЛБАР', thQty: 'ТОО', thDays: 'ХОНОГ', thUnit: 'НЭГЖ / ХОНОГ', thSum: 'ДҮН',
+    lessor: 'Түрээслүүлэгч', customer: 'Хэрэглэгч',
+    reg: 'РД', address: 'Хаяг', phone: 'Утас', account: 'Данс', period: 'Хугацаа',
+    thItem: 'Бараа / үйлчилгээ', thQty: 'Тоо', thDays: 'Хоног', thUnit: 'Нэгж/хоног', thSum: 'Дүн',
     noItems: 'Бараа оруулаагүй',
-    payHead: 'ТӨЛБӨР — ДАНСААР', bank: 'Банк', acctNo: 'Дансны дугаар',
-    payee: 'Хүлээн авагч', payRef: 'Гүйлгээний утга',
+    payInfo: 'Төлбөрийн мэдээлэл', payee: 'Хүлээн авагч', payRef: 'Гүйлгээний утга',
+    contactHead: 'Таны захиалга хариуцсан ажилтан', email: 'И-мэйл', web: 'Веб', warehouse: 'Агуулах хаяг',
     ref: (n) => `Захиалга ${n}`, days: (d) => `${d} хоног`,
     subtotal: (d) => `Түрээсийн дүн (${d} хоног)`,
-    discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт, угсралт, буулгалт',
-    depositRow: 'Барьцаа (буцаах)', grand: 'НИЙТ ДҮН',
-    contactHead: 'ТАНЫ ХОЛБОО БАРИХ ХҮН', showroom: 'Үзэсгэлэнгийн танхим',
-    termsHead: 'Нөхцөл',
-    terms: (o) => `Бүх үнэ Монгол төгрөгөөр (₮), ${o.vatNote}. Төлбөр төлөгдсөнөөр захиалга баталгаажна. Үнэ нь ${o.days} хоногийн түрээсийн бүрэн хугацааг хамарна — Улаанбаатар хот дотор хүргэлт, угсралт, буулгалт багтсан. Түрээсийн хугацаанд эвдэрсэн, үрэгдсэн эд зүйлийг нөхөн төлүүлнэ.${o.deposit ? ' Барьцаа нь бараа бүрэн буцаж ирсний дараа олгогдоно.' : ''} Хүргэлтээс 48 цагийн дотор цуцалсан тохиолдолд 30% төлбөр авна. <b>Энэхүү үнийн санал ${o.valid} хүртэл хүчинтэй.</b>`,
-    vatIn: 'НӨАТ багтсан', vatOut: 'НӨАТ багтаагүй',
-    vatPhrase: (has) => has ? 'НӨАТ багтаагүй' : 'НӨАТ багтсан',
+    discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт',
+    depositRow: 'Барьцаа (буцаах)', grand: 'Нийт дүн',
+    terms: 'Нөхцөл', vatIn: 'НӨАТ багтсан', vatOut: 'НӨАТ багтаагүй',
     payConfirm: 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
+    depositBack: 'Барьцаа буцаан олгогдоно.',
     subject: (n) => `M-Event · Үнийн санал №${n}`,
     greet: (c) => `Эрхэм ${c} танаа,`,
     intro: 'M-Event түрээсийн үйлчилгээг сонирхож байгаад баярлалаа. Таны хүсэлтийн дагуу үнийн саналыг илгээж байна. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.',
     quoteNo: (n) => `Үнийн санал №${n}`,
-    validPeriod: 'Хүчинтэй хугацаа',
+    validPeriod: 'Хүчинтэй хугацаа', rentalPeriod: 'Түрээсийн хугацаа',
     depositMail: (m) => ` · Барьцаа ${m} (буцаан олгогдоно)`,
     confirmHead: 'Захиалга баталгаажуулах',
+    bank: 'Банк', acctNo: 'Дансны дугаар',
     regards: 'Хүндэтгэсэн,', fileBase: 'Үнийн санал',
     fallbackCust: 'харилцагч', langBtn: '🇬🇧 English',
   },
   en: {
-    htmlLang: 'en', tagline: 'Event Equipment Rental', eyebrow: 'QUOTATION',
-    docTitle: 'Quotation', h1: 'PRICE OFFER',
+    htmlLang: 'en', tagline: 'Event Rental', eyebrow: 'M-Event',
+    docTitle: 'Quotation', h1: 'QUOTATION',
     no: 'No.', date: 'Date', valid: 'Valid until', until: '',
-    supplier: 'SUPPLIER', client: 'CLIENT', coName: '"CHIMUN" LLC — M Event',
-    reg: 'Reg. No', address: 'Address', tel: 'Tel', email: 'E-mail', web: 'Web',
-    venue: 'Venue', rentalPeriod: 'Rental period',
-    logistics: 'Delivery, set-up & collection', included: 'included',
-    dlvZone: (d) => d.zone === 'city' ? 'within Ulaanbaatar' : (d.zone === 'out' ? `outside Ulaanbaatar ${d.km}km (round trip ${d.km * 2}km)` : ''),
-    thItem: 'ITEM / DESCRIPTION', thQty: 'QTY', thDays: 'DAYS', thUnit: 'UNIT / DAY', thSum: 'AMOUNT',
+    lessor: 'Lessor', customer: 'Customer',
+    reg: 'Reg. No.', address: 'Address', phone: 'Phone', account: 'Account', period: 'Period',
+    thItem: 'Item / service', thQty: 'Qty', thDays: 'Days', thUnit: 'Unit / day', thSum: 'Amount',
     noItems: 'No items',
-    payHead: 'PAYMENT — BANK TRANSFER', bank: 'Bank', acctNo: 'Account number',
-    payee: 'Beneficiary', payRef: 'Reference',
+    payInfo: 'Payment details', payee: 'Beneficiary', payRef: 'Payment reference',
+    contactHead: 'Your order contact', email: 'E-mail', web: 'Web', warehouse: 'Warehouse address',
     ref: (n) => `Order ${n}`, days: (d) => `${d} day${d === 1 ? '' : 's'}`,
     subtotal: (d) => `Rental subtotal (${d} day${d === 1 ? '' : 's'})`,
-    discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery, set-up & collection',
-    depositRow: 'Deposit (refundable)', grand: 'TOTAL AMOUNT',
-    contactHead: 'YOUR CONTACT', showroom: 'Showroom',
-    termsHead: 'Terms & conditions',
-    terms: (o) => `All prices are in Mongolian Tugrik (MNT) and ${o.vatPhrase}. The order is confirmed once payment is received. Prices cover the full ${o.days}-day rental period, including delivery, set-up and collection within Ulaanbaatar. Any items damaged or lost during the rental period are charged at replacement value.${o.deposit ? ' The deposit is refunded after all items are returned in good condition.' : ''} Cancellation less than 48 hours before delivery is subject to a 30% fee. <b>This quotation is valid until ${o.valid}.</b>`,
-    vatIn: 'VAT included', vatOut: 'VAT not included',
-    vatPhrase: (has) => has ? 'do not include VAT' : 'include VAT',
+    discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery',
+    depositRow: 'Deposit (refundable)', grand: 'Total',
+    terms: 'Terms', vatIn: 'VAT included', vatOut: 'VAT not included',
     payConfirm: 'The order is confirmed once payment is received.',
+    depositBack: 'The deposit is refunded after return.',
     subject: (n) => `M-Event · Quotation #${n}`,
     greet: (c) => `Dear ${c},`,
     intro: 'Thank you for your interest in M-Event rental services. Please find our quotation below. A full breakdown and the terms are in the attached PDF.',
     quoteNo: (n) => `Quotation #${n}`,
-    validPeriod: 'Valid until',
+    validPeriod: 'Valid until', rentalPeriod: 'Rental period',
     depositMail: (m) => ` · Deposit ${m} (refundable)`,
     confirmHead: 'Confirming your order',
+    bank: 'Bank', acctNo: 'Account number',
     regards: 'Best regards,', fileBase: 'Quotation',
     fallbackCust: 'Customer', langBtn: '🇲🇳 Монгол',
   },
 };
-// Барааны зургийг PDF-д найдвартай буулгах — html2canvas нь cross-origin зурагт CORS
-// шаарддаг тул зургийг урьдчилан татаж жижигрүүлээд data URL болгоно. Татаж чадвал
-// PDF-д ҮРГЭЛЖ гарна; чадахгүй бол (CORS/офлайн) URL хэвээр үлдэж useCORS-д найдна.
+// Барааны зургийг PDF-д найдвартай буулгах — html2canvas cross-origin зурагт CORS шаарддаг тул
+// зургийг урьдчилан татаж жижигрүүлээд data URL болгоно. Татаж чадахгүй бол (CORS/офлайн)
+// URL хэвээр үлдэж useCORS-д найдна.
 const _quoteThumbCache = new Map();
 async function quoteThumbUrl(url) {
   const u = String(url || '');
@@ -14785,8 +14910,8 @@ async function quoteThumbUrl(url) {
 function openOrderQuote(oid, lang) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
-  // Цонхыг ЭХЛЭЭД нээнэ (хэрэглэгчийн даралтын дотор) — зургийг татсаны дараа нээвэл
-  // popup blocker хаана. Дараа нь бэлэн болмогц агуулгыг нь дахин бичнэ.
+  // Цонхыг ЭХЛЭЭД нээнэ (хэрэглэгчийн даралтын дотор) — зургийг татсаны ДАРАА нээвэл
+  // popup blocker хаана. Бэлэн болмогц агуулгыг нь дахин бичнэ.
   const w = window.open('', '_blank');
   if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
   w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Үнийн санал…</title></head><body style="font:14px system-ui,sans-serif;color:#4b5563;padding:28px;">Үнийн санал бэлдэж байна…</body></html>');
@@ -14799,21 +14924,14 @@ async function buildOrderQuote(o, lang) {
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
-  // Мөр бүрийг каталогийн бараатай тааруулж зураг/код/тайлбарыг авна (нэрээр).
-  const rows = await Promise.all(items.map(async (it) => {
-    const p = productByName(it.name) || {};
-    return {
-      name: it.name || '', qty: Number(it.qty) || 1, price: Number(it.price) || 0,
-      code: p.code || '', desc: String(p.description || '').replace(/\s+/g, ' ').trim().slice(0, 90),
-      photo: p.photo ? await quoteThumbUrl(p.photo) : '',
-    };
-  }));
-  const itemRows = rows.map((r, i) => `<tr>
-      <td class="ctr">${i + 1}</td>
-      <td><div class="it-wrap">${r.photo ? `<img class="it-th" src="${escapeHtml(r.photo)}" alt="">` : '<div class="it-th it-th-x"></div>'}<div class="it-tx"><div class="it-nm">${escapeHtml(r.name)}</div>${r.code ? `<div class="it-code">${escapeHtml(r.code)}</div>` : ''}${r.desc ? `<div class="it-desc">${escapeHtml(r.desc)}</div>` : ''}</div></div></td>
-      <td class="ctr">${r.qty}</td><td class="ctr">${days}</td>
-      <td class="rt">${fmtMoney(r.price)}</td><td class="rt"><b>${fmtMoney(r.qty * r.price * days)}</b></td>
-    </tr>`).join('');
+  // Мөр бүрийн зургийг каталогоос (нэрээр) олж, PDF-д гарахаар data URL болгоно.
+  const itemRows = (await Promise.all(items.map(async (it, i) => {
+    const qty = Number(it.qty) || 1, price = Number(it.price) || 0;
+    const prod = productByName(it.name) || {};
+    const th = prod.photo ? await quoteThumbUrl(prod.photo) : '';
+    const pic = th ? `<img class="it-th" src="${escapeHtml(th)}" alt="">` : '<span class="it-th it-th-x"></span>';
+    return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(it.name || '')}</span></div></td><td class="ctr">${qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price * days)}</td></tr>`;
+  }))).join('');
   const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
   // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс ЯГ тооцно.
   // (Өмнө нь subtotal−total гэж боддог байсан нь хүргэлт/барьцааг хөнгөлөлтөөс хасаж буруу дүн гаргадаг байв.)
@@ -14821,6 +14939,7 @@ async function buildOrderQuote(o, lang) {
   const discount = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
+  const delivLbl = deliveryLabel(_dlv);
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
   const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
@@ -14828,7 +14947,7 @@ async function buildOrderQuote(o, lang) {
   const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
   const mailTo = o.email || '';
   const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;
-  // Илгээж буй хүний холбоо барих мэдээлэл — нэвтэрсэн ажилтнаас автоматаар.
+  // Илгээж буй хүний гарын үсэг — нэвтэрсэн ажилтнаас автоматаар (нэр/албан тушаал/шууд утас).
   const _snd = findMember(state.me) || {};
   const _sName = escapeHtml(_snd.name || '');
   const _sTitle = escapeHtml(_snd.role || '');
@@ -14836,7 +14955,6 @@ async function buildOrderQuote(o, lang) {
   const _sPhone = _sDigits.length === 8 ? _sDigits.slice(0, 4) + '-' + _sDigits.slice(4) : _sDigits;
   const _sInit = escapeHtml(memberInitials(state.me) || '');
   const _sPhoto = (_snd.photo && !/^data:/.test(String(_snd.photo))) ? driveThumbUrl(_snd.photo, 200) : '';   // имэйлд зөвхөн hosted URL (data: base64 Gmail-д ачаалагдахгүй)
-  const _sDoc = _snd.photo ? await quoteThumbUrl(_sPhoto || _snd.photo) : '';                                  // баримтад data URL (PDF-д гарна)
   const _sAvatar = _sPhoto
     ? `<img src="${escapeHtml(_sPhoto)}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:50%;object-fit:cover;display:block;">`
     : `<div style="width:46px;height:46px;border-radius:50%;background:#0B1F3A;color:#ffffff;font-family:Manrope,Arial,sans-serif;font-size:15px;font-weight:700;text-align:center;line-height:46px;">${_sInit}</div>`;
@@ -14846,7 +14964,6 @@ async function buildOrderQuote(o, lang) {
     const _cust = escapeHtml(o.customer || T.fallbackCust);
     const _vatNote = hasVat ? T.vatOut : T.vatIn;
     const fname = (T.fileBase + ' ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
-    const addr = T.htmlLang === 'en' ? (C.addressEn || C.address) : C.address;
     const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">
 <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#17171B;">${T.regards}</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
@@ -14855,7 +14972,7 @@ async function buildOrderQuote(o, lang) {
 <td valign="middle">
 <div style="font-size:15px;font-weight:700;color:#17171B;">${_sName}</div>
 <div style="font-size:12px;color:#78787F;padding-top:1px;">${_sTitle ? _sTitle + ' · ' : ''}M-Event</div>
-${_sPhone ? `<div style="font-size:14px;color:#0B1F3A;font-weight:700;padding-top:3px;">${T.tel}: ${_sPhone}</div>` : ''}
+${_sPhone ? `<div style="font-size:14px;color:#0B1F3A;font-weight:700;padding-top:3px;">${T.phone}: ${_sPhone}</div>` : ''}
 </td>
 </tr>
 </table>
@@ -14897,11 +15014,10 @@ ${_erow(T.rentalPeriod, T.days(days))}
 <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#44444a;">${T.payConfirm}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#FBFAF7;border:1px solid #ECE9E2;border-radius:11px;border-collapse:separate;">
 <tr><td style="padding:14px 16px;">
-<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">${T.payHead}</div>
+<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#78787F;">${T.payInfo}</div>
 <div style="font-size:12.5px;color:#44444a;padding-top:6px;">${T.bank}: <b style="color:#17171B;">${escapeHtml(C.bank)}</b> · ${escapeHtml(C.name)}</div>
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.acctNo}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:18px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.account)}</span></div>
 ${C.iban ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">IBAN</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.iban)}</span></div>` : ''}
-${C.swift ? `<div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">SWIFT</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:14px;font-weight:700;color:#0B1F3A;letter-spacing:.5px;">${escapeHtml(C.swift)}</span></div>` : ''}
 <div style="padding-top:7px;"><span style="font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:#9aa0a6;">${T.payRef}</span><br><span style="font-family:'Courier New',Consolas,monospace;font-size:16px;font-weight:700;color:#E95400;">${T.ref(o.number ?? '')}</span></div>
 </td></tr>
 </table>
@@ -14910,7 +15026,7 @@ ${_sigBlock}
 <tr><td style="padding:26px 32px 30px;">
 <div style="border-top:1px solid #ECE9E2;padding-top:18px;font-size:12px;line-height:1.7;color:#78787F;">
 <strong style="color:#17171B;">M-Event</strong> · ${T.tagline}<br>
-${T.tel}: +976 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0B1F3A;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#0B1F3A;text-decoration:none;">hello@mevent.mn</a>
+${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0B1F3A;text-decoration:none;">mevent.mn</a> &nbsp;·&nbsp; <a href="mailto:hello@mevent.mn" style="color:#0B1F3A;text-decoration:none;">hello@mevent.mn</a>
 </div>
 </td></tr>
 </table>
@@ -14919,7 +15035,7 @@ ${T.tel}: +976 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color
 </div>`;
     // Хэвлэх/PDF-ийн баримт (нэг хэл)
     const doc = `
-  <div class="qh-bar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="qh-c"><b>${T.tagline}</b><br>mevent.mn · +976 7755-1010</div></div>
+  <div class="qh-bar"><img src="${MEVENT_LOGO_WHITE}" alt="M-Event"><div class="qh-c"><b>${T.tagline}</b><br>mevent.mn · 7755-1010</div></div>
   <div class="qh-accent"></div>
   <div class="qbody">
     <div class="qtitle">
@@ -14927,16 +15043,15 @@ ${T.tel}: +976 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color
       <div class="t-meta">${T.no}: <b>№${o.number ?? ''}</b><br>${T.date}: ${fd(now)}<br>${T.valid}: <b>${fd(valid)}</b>${T.until}</div>
     </div>
     <div class="parties">
-      <div class="party"><div class="p-lbl">${T.supplier}</div><div class="p-name">${escapeHtml(T.coName)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(addr)}<br>${T.tel}: +976 7755-1010 &nbsp;·&nbsp; hello@mevent.mn</div></div>
-      <div class="party"><div class="p-lbl">${T.client}</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? T.tel + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? T.venue + ': ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? T.rentalPeriod + ': <b style="color:#0B1F3A">' + period + '</b> (' + T.days(days) + ')<br>' : ''}${(_dlv && _dlv.zone !== 'pickup') ? T.logistics + ': <b style="color:#0B1F3A">' + T.included + '</b>' : ''}</div></div>
+      <div class="party"><div class="p-lbl">${T.lessor}</div><div class="p-name">${escapeHtml(C.name)}</div><div class="p-row">${T.reg}: ${escapeHtml(C.reg)}<br>${escapeHtml(C.address)}<br>${T.phone}: 7755-1010<br>${T.account}: ${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div></div>
+      <div class="party"><div class="p-lbl">${T.customer}</div><div class="p-name">${escapeHtml(o.customer || '—')}</div><div class="p-row">${o.phone ? T.phone + ': ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${o.delivery_address ? T.address + ': ' + escapeHtml(o.delivery_address) + '<br>' : ''}${period ? T.period + ': <b style="color:#0B1F3A">' + period + '</b>' : ''}</div></div>
     </div>
-    <table class="items"><thead><tr><th class="ctr" style="width:32px">#</th><th>${T.thItem}</th><th class="ctr" style="width:52px">${T.thQty}</th><th class="ctr" style="width:56px">${T.thDays}</th><th class="rt" style="width:96px">${T.thUnit}</th><th class="rt" style="width:110px">${T.thSum}</th></tr></thead><tbody>${itemRows || `<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">${T.noItems}</td></tr>`}</tbody></table>
+    <table class="items"><thead><tr><th class="ctr" style="width:36px">№</th><th>${T.thItem}</th><th class="ctr">${T.thQty}</th><th class="ctr">${T.thDays}</th><th class="rt">${T.thUnit}</th><th class="rt">${T.thSum}</th></tr></thead><tbody>${itemRows || `<tr><td colspan="6" style="text-align:center;color:#9aa4b2;padding:16px">${T.noItems}</td></tr>`}</tbody></table>
     <div class="settle">
       <div class="settle-info"><div class="pay-box">
-        <div class="pay-lbl">${T.payHead}</div>
+        <div class="pay-lbl">${T.payInfo}</div>
         <div class="pay-v">${escapeHtml(C.bank)} — ${escapeHtml(C.account)}</div>
         ${C.iban ? `<div class="pay-r">IBAN: ${escapeHtml(C.iban)}</div>` : ''}
-        ${C.swift ? `<div class="pay-r">SWIFT: ${escapeHtml(C.swift)}</div>` : ''}
         <div class="pay-r">${T.payee}: ${escapeHtml(C.name)}</div>
         <div class="pay-r pay-ref">${T.payRef}: <b>${T.ref(o.number ?? '')}</b></div>
       </div></div>
@@ -14944,23 +15059,20 @@ ${T.tel}: +976 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color
         <div class="tr"><span>${T.subtotal(days)}</span><span class="v">${fmtMoney(subtotal)}</span></div>
         ${discount ? `<div class="tr"><span>${T.discount}</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
         ${hasVat ? `<div class="tr"><span>${T.vatCut}</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
-        ${delivFee ? `<div class="tr"><span>${T.delivery}${T.dlvZone(_dlv) ? ' (' + escapeHtml(T.dlvZone(_dlv)) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
+        ${delivFee ? `<div class="tr"><span>${T.delivery}${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
         ${deposit ? `<div class="tr"><span>${T.depositRow}</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>
     </div>
     ${_sName ? `<div class="contact">
-      ${_sDoc ? `<img class="c-av" src="${escapeHtml(_sDoc)}" alt="">` : `<div class="c-av c-ini">${_sInit}</div>`}
-      <div class="c-tx">
-        <div class="c-lbl">${T.contactHead}</div>
-        <div class="c-nm">${_sName}${_sTitle ? ' — ' + _sTitle : ''}</div>
-        <div class="c-row">${_sPhone ? T.tel + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
-        <div class="c-row">${T.showroom}: ${escapeHtml(addr)}</div>
-      </div>
+      <div class="c-lbl">${T.contactHead}</div>
+      <div class="c-nm">${_sName}${_sTitle ? ' — ' + _sTitle : ''}</div>
+      <div class="c-row">${_sPhone ? T.phone + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
+      <div class="c-row">${T.warehouse}: ${escapeHtml(T.htmlLang === 'en' ? (C.addressEn || C.address) : C.address)}</div>
     </div>` : ''}
-    <div class="terms"><b>${T.termsHead}:</b> ${T.terms({ vatNote: _vatNote, vatPhrase: T.vatPhrase(hasVat), days, deposit, valid: fd(valid) })}</div>
+    <div class="cond"><b>${T.terms}:</b> ${_vatNote} · ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
   </div>
-  <div class="qfoot"><b>M-EVENT</b> · ${T.tagline} &nbsp;|&nbsp; +976 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
+  <div class="qfoot"><b>M-Event</b> · ${T.tagline} &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
     return { doc, mailHtml, subject: T.subject(o.number ?? ''), fname: fname + '.pdf' };
   };
   const QMN = build(MEV_QUOTE_T.mn), QEN = build(MEV_QUOTE_T.en);
@@ -14976,58 +15088,51 @@ ${T.tel}: +976 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Inter','Segoe UI',Arial,sans-serif;color:#1a1a1a;line-height:1.55;max-width:790px;margin:0 auto;padding:0 0 36px;font-size:13px;background:#fff}
   .ctr{text-align:center;white-space:nowrap} .rt{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-  .qh-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0B1F3A;color:#fff;padding:16px 30px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qh-bar img{height:28px;width:auto;display:block}
-  .qh-bar .qh-c{text-align:right;font-size:10.5px;line-height:1.6;color:#c3cedd}
-  .qh-bar .qh-c b{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase}
+  .qh-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0B1F3A;color:#fff;padding:18px 34px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qh-bar img{height:30px;width:auto;display:block}
+  .qh-bar .qh-c{text-align:right;font-size:11px;line-height:1.65;color:#c3cedd}
+  .qh-bar .qh-c b{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:12px}
   .qh-accent{height:4px;background:#E95400;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qbody{padding:20px 30px 0}
-  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:14px}
-  .qtitle .t-eyebrow{font-family:'Manrope',Arial,sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.22em;color:#E95400;text-transform:uppercase}
+  .qbody{padding:22px 34px 0}
+  .qtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:16px}
+  .qtitle .t-eyebrow{font-family:'Manrope',Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;color:#E95400;text-transform:uppercase}
   .qtitle h1{font-family:'Manrope',Arial,sans-serif;font-size:27px;font-weight:800;color:#0B1F3A;letter-spacing:-.01em;margin-top:3px;line-height:1}
-  .qtitle .t-meta{text-align:right;font-size:11.5px;line-height:1.8;color:#4b5563;white-space:nowrap}
+  .qtitle .t-meta{text-align:right;font-size:12px;line-height:1.85;color:#4b5563;white-space:nowrap}
   .qtitle .t-meta b{color:#0B1F3A;font-family:'Manrope',Arial,sans-serif;font-weight:700}
-  .parties{display:flex;gap:12px;margin-bottom:14px}
-  .party{flex:1;min-width:0;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:9px;padding:11px 13px}
-  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:4px}
-  .party .p-name{font-family:'Manrope',Arial,sans-serif;font-size:14px;font-weight:700;color:#0B1F3A;margin-bottom:3px}
-  .party .p-row{font-size:11px;color:#4b5563;line-height:1.6}
-  table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12px}
-  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:7px 10px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  table.items tbody td{padding:7px 10px;border-bottom:1px solid #E9ECF1;vertical-align:middle}
-  table.items tbody tr:nth-child(even){background:#FAFBFC}
+  .parties{display:flex;gap:14px;margin-bottom:16px}
+  .party{flex:1;background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:12px 14px}
+  .party .p-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:5px}
+  .party .p-name{font-family:'Manrope',Arial,sans-serif;font-size:15px;font-weight:700;color:#0B1F3A;margin-bottom:3px}
+  .party .p-row{font-size:12px;color:#4b5563;line-height:1.6}
+  table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12.5px}
+  table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.items tbody td{padding:7px 12px;border-bottom:1px solid #E9ECF1;vertical-align:middle}
   .it-wrap{display:flex;gap:10px;align-items:center}
-  .it-th{width:40px;height:40px;flex:0 0 40px;object-fit:contain;background:#FAF9F5;border:1px solid #E9ECF1;border-radius:6px;padding:2px}
+  .it-th{width:38px;height:38px;flex:0 0 38px;object-fit:contain;background:#FAF9F5;border:1px solid #E9ECF1;border-radius:6px;padding:2px;display:block}
   .it-th-x{background:#F1F3F6}
-  .it-tx{min-width:0}
-  .it-nm{font-weight:700;color:#0B1F3A;font-size:12px;line-height:1.3}
-  .it-code{color:#E95400;font-weight:700;font-size:10px;letter-spacing:.04em;margin-top:1px}
-  .it-desc{color:#8a93a0;font-size:10px;line-height:1.4;margin-top:2px}
-  .settle{display:flex;gap:16px;margin-top:14px;align-items:flex-start}
-  .settle-info{flex:1.05;min-width:0}
-  .settle-tot{flex:1;max-width:340px}
-  .pay-box{background:#F5F7FA;border:1px solid #E4E8EE;border-radius:9px;padding:11px 13px}
-  .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
-  .pay-v{font-size:13.5px;font-weight:700;color:#0B1F3A}
-  .pay-r{font-size:11px;color:#4b5563;margin-top:3px;line-height:1.5}
+  table.items tbody tr:nth-child(even){background:#FAFBFC}
+  .settle{display:flex;gap:20px;margin-top:16px;align-items:flex-start}
+  .settle-info{flex:1.1}
+  .settle-tot{flex:1;max-width:330px}
+  .pay-box{background:#F5F7FA;border:1px solid #E4E8EE;border-radius:10px;padding:12px 14px}
+  .pay-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6b7280;margin-bottom:5px}
+  .pay-v{font-size:14px;font-weight:700;color:#0B1F3A}
+  .pay-r{font-size:12px;color:#4b5563;margin-top:3px;line-height:1.55}
   .pay-ref b{color:#E95400}
-  .tot .tr{display:flex;justify-content:space-between;gap:12px;padding:4px 2px;font-size:12px;color:#4b5563}
-  .tot .tr .v{font-variant-numeric:tabular-nums;color:#1a1a1a;white-space:nowrap}
-  .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;gap:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .tot .grand .g-l{color:#c3cedd;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif;line-height:1.3}
-  .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
-  .contact{margin-top:14px;border:1px solid #E4E8EE;border-radius:9px;padding:11px 13px;display:flex;gap:13px;align-items:center}
-  .contact .c-av{width:52px;height:52px;flex:0 0 52px;border-radius:8px;object-fit:cover;background:#F1F3F6}
-  .contact .c-ini{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .contact .c-tx{min-width:0}
-  .contact .c-lbl{font-family:'Manrope',Arial,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:3px}
-  .contact .c-nm{font-family:'Manrope',Arial,sans-serif;font-size:13.5px;font-weight:700;color:#0B1F3A}
-  .contact .c-row{font-size:11px;color:#4b5563;line-height:1.6}
+  .tot .tr{display:flex;justify-content:space-between;padding:4px 2px;font-size:12.5px;color:#4b5563}
+  .tot .tr .v{font-variant-numeric:tabular-nums;color:#1a1a1a}
+  .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tot .grand .g-l{color:#c3cedd;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif}
+  .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .contact{margin-top:14px;border:1px solid #E4E8EE;border-radius:10px;padding:11px 14px}
+  .contact .c-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:3px}
+  .contact .c-nm{font-family:'Manrope',Arial,sans-serif;font-size:13.5px;font-weight:700;color:#0B1F3A;margin-bottom:2px}
+  .contact .c-row{font-size:11.5px;color:#4b5563;line-height:1.6}
   .contact .c-row b{color:#0B1F3A}
-  .terms{margin-top:12px;border-top:1px solid #E4E8EE;padding-top:10px;font-size:10px;color:#8a93a0;line-height:1.65}
-  .terms b{color:#0B1F3A}
-  .qfoot{margin-top:14px;background:#0B1F3A;color:#c3cedd;padding:10px 30px;font-size:10.5px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .qfoot b{color:#fff;font-family:'Manrope',Arial,sans-serif;letter-spacing:.06em}
+  .cond{margin-top:14px;border-top:1px solid #E4E8EE;padding-top:11px;font-size:11.5px;color:#6b7280;line-height:1.65}
+  .cond b{color:#0B1F3A}
+  .qfoot{margin-top:16px;background:#0B1F3A;color:#c3cedd;padding:11px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qfoot b{color:#fff;font-family:'Manrope',Arial,sans-serif}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;border-bottom:1px solid #ccc;z-index:9}
   .toolbar button,.toolbar a{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;color:#111;text-decoration:none;display:inline-block;line-height:1.2}
   .toolbar #qlangbtn{border-color:#0B1F3A;color:#0B1F3A;font-weight:600}

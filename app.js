@@ -5171,7 +5171,9 @@ function boardOrderRow(e, k, todayStr, flat) {
   const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
   const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
-    : `<span class="br-pay ${_paid > 0 ? 'part' : 'due'}">${_paid > 0 ? '◐ Дутуу' : '+ Төлбөр'}</span>`;
+    : `<span class="br-pay ${_paid > 0 ? 'part' : 'due'}">${_paid > 0 ? '◐ Дутуу' : 'Төлбөр авах'}</span>`;
+  const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
+  const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
   // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА болно (бүлэглэлгүй)
   const statusCell = flat ? (() => {
     const b = ORDER_BUCKETS.find(x => x.key === bucketOf(o.status)) || {};
@@ -5181,7 +5183,9 @@ function boardOrderRow(e, k, todayStr, flat) {
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
     <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span></span>
     ${statusCell}
-    <span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${flat ? '' : `${depWarn}${vatChip}${cxChip}`}</span>
+    ${flat
+      ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
+      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt">${fmtMoney(_tot)}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -5502,7 +5506,7 @@ function renderOrders() {
   const CAP = 200;
   // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
   const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, bucketOf(e.o.status), todayStr, true)).join('');
-  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Огноо</span><span class="r">Дүн</span><span>Төлбөр</span><span></span></div>`;
+  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span><span class="r">Дүн</span><span>Төлбөр</span><span></span></div>`;
   const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)

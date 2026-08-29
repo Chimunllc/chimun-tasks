@@ -6000,6 +6000,15 @@ function openNewMeventOrder(editOrder) {
   const totalsEl = modal.querySelector('#mo-totals');
   const depositEl = modal.querySelector('#mo-deposit');
   const findProd = (name) => products.find(p => (p.name || '') === name);
+  // Барааг нэр / SKU / M-код / нийлмэл датлист утгаар олно (сайтын хайлттай адил SKU-гаар хайх боломж).
+  const _prodTags = (p) => [...new Set([p.code, p.sku].map(x => String(x || '').trim()).filter(Boolean))];
+  const _prodListVal = (p) => { const t = _prodTags(p); return (p.name || '') + (t.length ? ` · ${t.join(' · ')}` : ''); };
+  const resolveProd = (v) => {
+    const s = String(v || '').trim(); if (!s) return null;
+    const sl = s.toLowerCase();
+    return products.find(p => _prodListVal(p) === s || (p.name || '') === s
+      || String(p.sku || '').toLowerCase() === sl || String(p.code || '').toLowerCase() === sl) || null;
+  };
 
   const autoDeposit = () => items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
   function syncAutoDeposit() { if (!manualDeposit) depositEl.value = autoDeposit() || ''; }
@@ -6083,7 +6092,7 @@ function openNewMeventOrder(editOrder) {
     const dl = modal.querySelector('#mo-prod-list');
     if (!dl) return;
     dl.innerHTML = (products || []).map(p =>
-      `<option value="${escapeHtml(p.name || '')}" label="${fmtMoney(Number(p.price) || 0)}"></option>`
+      `<option value="${escapeHtml(_prodListVal(p))}" label="${fmtMoney(Number(p.price) || 0)}"></option>`
     ).join('');
   }
   fillProdList();
@@ -6093,8 +6102,8 @@ function openNewMeventOrder(editOrder) {
     const row = e.target.closest('.mo-item-row'); if (!row) return;
     const i = +row.dataset.idx;
     if (e.target.classList.contains('mo-it-name')) {
-      items[i].name = e.target.value;
-      const p = findProd(e.target.value);
+      const p = resolveProd(e.target.value);
+      items[i].name = p ? p.name : e.target.value;
       if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
         row.querySelector('.mo-it-price').value = items[i].price; }
     } else if (e.target.classList.contains('mo-it-qty')) {
@@ -6117,9 +6126,9 @@ function openNewMeventOrder(editOrder) {
     if (!e.target.classList.contains('mo-it-name')) return;
     const row = e.target.closest('.mo-item-row'); if (!row) return;
     const i = +row.dataset.idx;
-    items[i].name = e.target.value;
-    const p = findProd(e.target.value);
-    if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
+    const p = resolveProd(e.target.value);
+    items[i].name = p ? p.name : e.target.value;
+    if (p) { e.target.value = p.name; items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
       row.querySelector('.mo-it-price').value = items[i].price; }
     syncAutoDeposit();
     renderTotals();
@@ -6794,47 +6803,41 @@ function productRowHtml(p) {
   </div>`;
 }
 
-// ── Хэмжээ/өнгө вариант бүлэглэлт: variant_group-аар нэгтгэж, эвхэгддэг толгой мөр харуулна ──
-function variantGroupHead(grp, members) {
-  const _actBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
-  const totStock = members.reduce((s, p) => s + (_actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0)), 0);
-  const prices = members.map(p => Number(p.price) || 0).filter(x => x > 0);
-  const priceLbl = prices.length ? (Math.min(...prices) === Math.max(...prices) ? fmtMoney(Math.min(...prices)) : `${fmtMoney(Math.min(...prices))}–${fmtMoney(Math.max(...prices))}`) : '—';
-  const cat = members[0].category || '—';
-  const photo = (members.find(p => p.photo) || {}).photo;
-  const img = photo ? `<img src="${escapeHtml(photo)}" loading="lazy" onerror="this.style.visibility='hidden'">` : '<div class="ph">📦</div>';
-  const labels = members.map(p => (p.variant_label || '').trim()).filter(Boolean).slice(0, 8).join(' · ');
-  // Бүлгийн толгой хайлтад олдохын тулд бүх гишүүний нэр/ангилал/sku-г data-search-д нэгтгэнэ
-  const search = members.map(p => `${p.name || ''} ${p.category || ''} ${p.sku || ''}`).join(' ').toLowerCase();
-  return `<div class="prod-row prod-vg-head" data-vgroup="${escapeHtml(grp)}" data-search="${escapeHtml(search)}">
-    <div class="prod-img">${img}</div>
-    <div class="prod-main">
-      <div class="prod-name-d">${escapeHtml(grp)} <span style="font-size:11px;font-weight:700;color:var(--primary);background:var(--panel-hover);border-radius:20px;padding:1px 8px;white-space:nowrap;">${members.length} хувилбар</span></div>
-      <div class="prod-sub" style="color:var(--muted);">${escapeHtml(cat)}${labels ? ' · ' + escapeHtml(labels) : ''}</div>
-    </div>
-    <div class="prod-badges" style="align-items:flex-end;text-align:right;">
-      <div style="line-height:1.2;"><div style="font-size:14px;font-weight:700;color:var(--text);">${priceLbl}</div><div style="font-size:10px;color:var(--muted);">түрээс/өдөр</div></div>
-      <span class="prod-stock-b">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${totStock} ширхэг</span>
-    </div>
-    <span class="prod-chev prod-vg-chev" style="transition:transform .15s;">›</span>
-  </div>`;
-}
-// Жагсаалтыг вариант бүлгээр (≥2 гишүүн) нэгтгэж, бусдыг энгийн мөрөөр буулгана
+// Бараа бүр ТУСДАА мөр — хувилбар (variant_group) бүлэглэлт 2026-08-29-нд халагдсан:
+// сайтад нэг картад нэгтгэснээр каталог хэт цөөн бараатай харагдаж байв.
 function productListHtml(list) {
-  const inList = {};
-  list.forEach(p => { const g = (p.variant_group || '').trim(); if (g) (inList[g] = inList[g] || []).push(p); });
-  const done = {}; const out = [];
-  for (const p of list) {
-    const g = (p.variant_group || '').trim();
-    if (g && inList[g] && inList[g].length >= 2) {
-      if (done[g]) continue;
-      done[g] = 1;
-      out.push(`<div class="prod-vg">${variantGroupHead(g, inList[g])}<div class="prod-vg-body" style="display:none;margin:2px 0 2px 12px;padding-left:10px;border-left:2px solid var(--border);">${inList[g].map(productRowHtml).join('')}</div></div>`);
-    } else {
-      out.push(productRowHtml(p));
-    }
+  return list.map(productRowHtml).join('');
+}
+
+// Хувилбар бүлгийг бөөнөөр цуцлах — variant_group/variant_label-ийг null болгож,
+// сайт болон аппад бараа бүрийг тусдаа карт болгоно. Дата цэвэрлэгдмэгц тууз алга болно.
+async function bulkClearVariants() {
+  if (!can('products.edit')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
+  const grouped = (state.products || []).filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim());
+  if (!grouped.length) { showToast('Хувилбар бүлэгт бараа алга', 'info', 2600); return; }
+  const ok = await showConfirm(
+    `${grouped.length} барааны хувилбар бүлгийг цуцлах уу?\n\nСайтад тус бүр өөрийн картаар харагдана. Бараа, үнэ, нөөц өөрчлөгдөхгүй.`,
+    { title: '🎨 Хувилбар цуцлах', okText: 'Тийм, цуцал' }
+  );
+  if (!ok) return;
+  const stamp = new Date().toISOString();
+  const snap = grouped.map(p => ({ p, g: p.variant_group, l: p.variant_label }));
+  const rows = grouped.map(p => ({ sku: p.sku, variant_group: null, variant_label: null, updated_at: stamp }));
+  snap.forEach(s => { s.p.variant_group = null; s.p.variant_label = null; });   // optimistic
+  render();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows),
+    }, 25000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    showToast(`✓ ${grouped.length} бараа хувилбаргүй боллоо`, 'success', 4000);
+    loadProductsCatalog();
+  } catch (e) {
+    snap.forEach(s => { s.p.variant_group = s.g; s.p.variant_label = s.l; }); render();   // буцаах
+    showToast('Алдаа: ' + e.message, 'error', 6000);
   }
-  return out.join('');
 }
 
 /* ===================== ЦАГИЙН ЦАЛИН (hourly payroll) =====================
@@ -8597,11 +8600,11 @@ function renderMarketing() {
   const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm" data-mk-size="${key}" style="${P.size === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(s.label)}</button>`).join(' ');
   const tplBtns = Object.entries(POSTER_TEMPLATES).map(([key, l]) => `<button class="btn btn-sm" data-mk-tpl="${key}" style="${P.template === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(l)}</button>`).join(' ');
   const fld = 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);margin-bottom:10px;';
-  // 🛒 Бараа сонголт — КАТЕГОРИОР бүлэглэсэн dropdown (optgroup). Вариант бараа "Бүлэг — хэмжээ" гэж харагдана.
+  // 🛒 Бараа сонголт — КАТЕГОРИОР бүлэглэсэн dropdown (optgroup). Бараа бүр өөрийн нэрээр.
   const _mkRent = (state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p)));
   const _mkByCat = {};
   _mkRent.forEach(p => { (_mkByCat[p.category || 'Бусад'] = _mkByCat[p.category || 'Бусад'] || []).push(p); });
-  const _mkOptLbl = p => { const g = (p.variant_group || '').trim(); return g ? `${g} — ${p.variant_label || p.name}` : (p.name || ''); };
+  const _mkOptLbl = p => p.name || '';
   const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
@@ -11448,6 +11451,7 @@ const CHIMUN_LEGAL = {
   name: '"ЧИМУН" ХХК', reg: '6614337',
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
+  addressEn: 'Nogoon Zoory 1-13, Khoroo 11, Bayanzurkh District, Ulaanbaatar, Mongolia',
   bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
@@ -12913,7 +12917,7 @@ function renderProducts() {
     purchase_asc: (a, b) => String(a.purchase_date || '9999-99-99').localeCompare(String(b.purchase_date || '9999-99-99')),
   };
   list = list.slice().sort(_prodSorters[state.prodSort] || _prodSorters.name);
-  const rows = productListHtml(list);   // хэмжээ/өнгө вариантыг бүлэглэж харуулна
+  const rows = productListHtml(list);   // бараа бүр тусдаа мөр (хувилбар бүлэглэлт байхгүй)
   // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
@@ -12921,6 +12925,14 @@ function renderProducts() {
   // (branchBar устсан — салбарын мэдээлэл prod-metabar дотор шингэсэн)
   // Улирал хаалт — NOMAAD салбар идэвхтэй (лензээр эсвэл табаар) + нөөцтэй + удирдах эрхтэй үед
   const _nomaadSum = brQtySum('nomaad');
+  // Хувилбар цэвэрлэх тууз — хуучин дата дээр л гарна, цуцалмагц өөрөө алга болно
+  const _vgLeft = all.filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim()).length;
+  const variantClearBar = (_prodMgmt && _vgLeft > 0)
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.28);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.</span>
+        <button class="btn btn-primary" id="prod-clear-variants" style="white-space:nowrap;">Хувилбар цуцлах (${_vgLeft})</button>
+      </div>`
+    : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
@@ -12975,22 +12987,12 @@ function renderProducts() {
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
+    ${variantClearBar}
     ${seasonCloseBar}
-    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
+    <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
   `;
 }
 
-// Хувилбарын (variant_group/label) амьд урьдчилан харах — форм дээр сайтад хэрхэн харагдахыг харуулна.
-function pmVarPreview() {
-  const g = (document.getElementById('pm-vgroup')?.value || '').trim();
-  const l = (document.getElementById('pm-vlabel')?.value || '').trim();
-  const n = (document.getElementById('pm-name')?.value || '').trim();
-  const el = document.getElementById('pm-vpreview');
-  if (!el) return;
-  if (g) el.innerHTML = `Сайтад: <b style="color:var(--text)">${escapeHtml(g)}</b> карт${l ? ` → сонголт <b style="color:var(--text)">${escapeHtml(l)}</b>` : ' <span style="color:var(--warn)">(сонголт хоосон)</span>'}`;
-  else if (l) el.innerHTML = `<span style="color:var(--warn)">⚠ Сонголт бичсэн ч бүлэг хоосон — нэгтгэхийн тулд «Үндсэн нэр» бичнэ үү</span>`;
-  else el.innerHTML = `Ганц бараа — <b style="color:var(--text)">${escapeHtml(n) || 'нэрээрээ'}</b> тусдаа карт`;
-}
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
 function openProductModal(p) {
   if (!can('products.edit')) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
@@ -13013,12 +13015,6 @@ function openProductModal(p) {
   }
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
-  const vgroups = [...new Set((state.products || []).map(x => x.variant_group).filter(Boolean))].sort();
-  const vgroupOpts = vgroups.map(gr => `<option value="${escapeHtml(gr)}">`).join('');
-  // Сонголтын (variant_label) санал — түгээмэл + одоо ашиглагдаж буй
-  const _vlCommon = ['Том', 'Дунд', 'Жижиг', 'Цагаан', 'Хар', 'Цэнхэр', 'Ногоон', 'Улаан', 'Шаргал', 'Хүрэн', '6 хүний', '8 хүний', '10 хүний'];
-  const _vlUsed = [...new Set((state.products || []).map(x => (x.variant_label || '').trim()).filter(Boolean))];
-  const vlabelOpts = [...new Set([..._vlCommon, ..._vlUsed])].map(l => `<option value="${escapeHtml(l)}">`).join('');
   const v = (x) => escapeHtml((p && p[x]) || '');
   document.getElementById('prod-modal')?.remove();
   const modal = document.createElement('div');
@@ -13033,15 +13029,6 @@ function openProductModal(p) {
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
-        <div class="pm-wide" style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--panel-hover);">
-          <div style="font-size:12.5px;font-weight:700;">🎨 Хэмжээ / өнгө — сонголтоор</div>
-          <div style="font-size:11px;color:var(--muted);margin:2px 0 9px;line-height:1.45;">Ижил барааны хэмжээ/өнгийг НЭР дотор биш эндээс оруул — сайтад нэг картад нэгтгэж сонголт болгоно. Ганц бараа бол хоосон орхи.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
-            <label style="font-size:11.5px;">Үндсэн нэр (бүлэг)<input id="pm-vgroup" list="pm-vgroups" value="${v('variant_group')}" placeholder="ж: Ширээ" oninput="pmVarPreview()"><datalist id="pm-vgroups">${vgroupOpts}</datalist></label>
-            <label style="font-size:11.5px;">Сонголт (хэмжээ/өнгө)<input id="pm-vlabel" list="pm-vlabels" value="${v('variant_label')}" placeholder="ж: 8 хүний · Том · Цагаан" oninput="pmVarPreview()"><datalist id="pm-vlabels">${vlabelOpts}</datalist></label>
-          </div>
-          <div id="pm-vpreview" style="font-size:11.5px;margin-top:8px;color:var(--muted);"></div>
-        </div>
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
@@ -13106,7 +13093,6 @@ function openProductModal(p) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  if (typeof pmVarPreview === 'function') pmVarPreview();   // хувилбарын урьдчилан харах эхлүүлэх
   if (isEdit && p.sku) renderProductQR(modal.querySelector('#pm-qr'), p.sku);
   // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
   let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);
@@ -13311,8 +13297,7 @@ async function submitProductModal(modal, orig, btn) {
     qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn, qty_catering: isPkg ? 0 : _qk,
     bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
-    variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
-    variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
+    variant_group: null, variant_label: null,   // хувилбар халагдсан — хадгалах бүрд цэвэрлэнэ
     source_url: g('pm-source') || null,
     media_url: g('pm-media') || null,
     supplier: g('pm-source') || null,
@@ -13347,28 +13332,14 @@ function attachProductsHandlers() {
   });
   // Улирал хаалт — NOMAAD-ийн бүх нөөцийг M-Event руу
   document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
+  document.getElementById('prod-clear-variants')?.addEventListener('click', () => bulkClearVariants());
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');
   if (s) s.oninput = (e) => {
     const q = e.target.value.toLowerCase().trim();
     state.productSearch = e.target.value;
     let n = 0;
-    // Вариант бүлгүүд — хайлтад гишүүн таарвал бүлгийг задалж харуулна
-    document.querySelectorAll('.prod-vg').forEach(vg => {
-      let any = false;
-      vg.querySelectorAll('.prod-vg-body .prod-row').forEach(row => {
-        const show = !q || (row.dataset.search || '').includes(q);
-        row.style.display = show ? '' : 'none';
-        if (show && q) { any = true; n++; }
-      });
-      vg.querySelector('.prod-vg-head').style.display = (!q || any) ? '' : 'none';
-      vg.querySelector('.prod-vg-body').style.display = (q && any) ? '' : 'none';
-      const chev = vg.querySelector('.prod-vg-chev'); if (chev) chev.style.transform = (q && any) ? 'rotate(90deg)' : '';
-      if (!q) n++;   // задлаагүй үед бүлгийг 1 гэж тоолно
-    });
-    // Бүлэггүй энгийн мөрүүд
     document.querySelectorAll('.prod-row').forEach(row => {
-      if (row.closest('.prod-vg')) return;
       const show = !q || (row.dataset.search || '').includes(q);
       row.style.display = show ? '' : 'none';
       if (show) n++;
@@ -13377,14 +13348,6 @@ function attachProductsHandlers() {
     // <b>-г хадгална (мета мөр тоог тодоор харуулдаг) — textContent бол устгана
     if (c) c.innerHTML = `<b>${n}</b> бараа${q ? ' <span class="prod-meta-dim">(шүүсэн)</span>' : ''}`;
   };
-  // Вариант бүлгийн толгойг дарж задлах/хаах
-  document.querySelectorAll('.prod-vg-head').forEach(h => h.addEventListener('click', () => {
-    const body = h.parentElement.querySelector('.prod-vg-body');
-    if (!body) return;
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    const chev = h.querySelector('.prod-vg-chev'); if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
-  }));
   // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх
   document.querySelectorAll('[data-product-open]').forEach(row => {
     row.addEventListener('click', () => {
@@ -14318,7 +14281,7 @@ function openNewOrder(editOrder) {
     </div>
     <div class="no-col no-col-b">
     ${_sec('Бараа')}
-    ${_locked ? '' : `<div class="no-search">🔍<input type="search" class="ui-raw" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"><button type="button" class="btn" id="no-pickopen" style="padding:4px 10px;font-size:var(--fs-sm);">⤢ Бүгд</button></div>
+    ${_locked ? '' : `<div class="no-search">🔍<input type="search" class="ui-raw" id="no-prodsearch" placeholder="Бараа хайх (нэр / SKU / ангилал)"><button type="button" class="btn" id="no-pickopen" style="padding:4px 10px;font-size:var(--fs-sm);">⤢ Бүгд</button></div>
     <div id="no-catalog" class="no-catalog"></div>`}
     <div style="font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:8px;"></div>
@@ -14370,7 +14333,11 @@ function openNewOrder(editOrder) {
   function renderCatalog() {
     if (!catalog) return;
     const q = ($('#no-prodsearch').value || '').toLowerCase().trim();
-    const hit = (state.products || []).filter(p => isRentable(p) && (!q || (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)));
+    const hit = (state.products || []).filter(p => isRentable(p) && (!q
+      || (p.name || '').toLowerCase().includes(q)
+      || (p.category || '').toLowerCase().includes(q)
+      || (p.sku || '').toLowerCase().includes(q)
+      || (p.code || '').toLowerCase().includes(q)));
     const prods = hit.slice(0, 60);
     catalog.innerHTML = prods.map(p => {
       const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'">` : `<div class="no-tile-ph">📦</div>`;
@@ -14582,7 +14549,8 @@ function openOrderProductPicker(opt) {
   function shown() {
     const t = q.toLowerCase();
     return all.filter(p => (!cat || String(p.category || '').trim() === cat)
-      && (!t || (p.name || '').toLowerCase().includes(t) || (p.category || '').toLowerCase().includes(t) || (p.sku || '').toLowerCase().includes(t)));
+      && (!t || (p.name || '').toLowerCase().includes(t) || (p.category || '').toLowerCase().includes(t)
+        || (p.sku || '').toLowerCase().includes(t) || (p.code || '').toLowerCase().includes(t)));
   }
   function cardHtml(p) {
     const k = keyOf(p), n = Number(cart.get(k)) || 0, a = avail(p.name);
@@ -14875,6 +14843,7 @@ const MEV_QUOTE_T = {
     thItem: 'Бараа / үйлчилгээ', thQty: 'Тоо', thDays: 'Хоног', thUnit: 'Нэгж/хоног', thSum: 'Дүн',
     noItems: 'Бараа оруулаагүй',
     payInfo: 'Төлбөрийн мэдээлэл', payee: 'Хүлээн авагч', payRef: 'Гүйлгээний утга',
+    contactHead: 'Таны захиалга хариуцсан ажилтан', email: 'И-мэйл', web: 'Веб', warehouse: 'Агуулах хаяг',
     ref: (n) => `Захиалга ${n}`, days: (d) => `${d} хоног`,
     subtotal: (d) => `Түрээсийн дүн (${d} хоног)`,
     discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт',
@@ -14902,6 +14871,7 @@ const MEV_QUOTE_T = {
     thItem: 'Item / service', thQty: 'Qty', thDays: 'Days', thUnit: 'Unit / day', thSum: 'Amount',
     noItems: 'No items',
     payInfo: 'Payment details', payee: 'Beneficiary', payRef: 'Payment reference',
+    contactHead: 'Your order contact', email: 'E-mail', web: 'Web', warehouse: 'Warehouse address',
     ref: (n) => `Order ${n}`, days: (d) => `${d} day${d === 1 ? '' : 's'}`,
     subtotal: (d) => `Rental subtotal (${d} day${d === 1 ? '' : 's'})`,
     discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery',
@@ -14921,17 +14891,47 @@ const MEV_QUOTE_T = {
     fallbackCust: 'Customer', langBtn: '🇲🇳 Монгол',
   },
 };
+// Барааны зургийг PDF-д найдвартай буулгах — html2canvas cross-origin зурагт CORS шаарддаг тул
+// зургийг урьдчилан татаж жижигрүүлээд data URL болгоно. Татаж чадахгүй бол (CORS/офлайн)
+// URL хэвээр үлдэж useCORS-д найдна.
+const _quoteThumbCache = new Map();
+async function quoteThumbUrl(url) {
+  const u = String(url || '');
+  if (!u || /^data:/.test(u)) return u;
+  if (_quoteThumbCache.has(u)) return _quoteThumbCache.get(u);
+  let out = u;
+  try {
+    const r = await fetchWithTimeout(u, { cache: 'force-cache' }, 12000);
+    if (r.ok) out = await resizeImageToBase64(await r.blob(), 200, 0.86);
+  } catch (e) { /* чимээгүй — URL хэвээр */ }
+  _quoteThumbCache.set(u, out);
+  return out;
+}
 function openOrderQuote(oid, lang) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  // Цонхыг ЭХЛЭЭД нээнэ (хэрэглэгчийн даралтын дотор) — зургийг татсаны ДАРАА нээвэл
+  // popup blocker хаана. Бэлэн болмогц агуулгыг нь дахин бичнэ.
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Үнийн санал…</title></head><body style="font:14px system-ui,sans-serif;color:#4b5563;padding:28px;">Үнийн санал бэлдэж байна…</body></html>');
+  w.document.close();
+  buildOrderQuote(o, lang).then(html => { w.document.open(); w.document.write(html); w.document.close(); })
+    .catch(e => { console.warn('quote', e); showToast('Үнийн санал үүсгэхэд алдаа: ' + e.message, 'error', 5000); });
+}
+async function buildOrderQuote(o, lang) {
   const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
   // Хоног — захиалгын форм subtotal-ыг өдрийн дүн × хоногоор боддог тул мөр бүрд ч хоногийг харуулна
   const days = orderRentalDays(o);
-  const itemRows = items.map((it, i) => {
+  // Мөр бүрийн зургийг каталогоос (нэрээр) олж, PDF-д гарахаар data URL болгоно.
+  const itemRows = (await Promise.all(items.map(async (it, i) => {
     const qty = Number(it.qty) || 1, price = Number(it.price) || 0;
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}</td><td class="ctr">${qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price * days)}</td></tr>`;
-  }).join('');
+    const prod = productByName(it.name) || {};
+    const th = prod.photo ? await quoteThumbUrl(prod.photo) : '';
+    const pic = th ? `<img class="it-th" src="${escapeHtml(th)}" alt="">` : '<span class="it-th it-th-x"></span>';
+    return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(it.name || '')}</span></div></td><td class="ctr">${qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(price)}</td><td class="rt">${fmtMoney(qty * price * days)}</td></tr>`;
+  }))).join('');
   const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
   // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс ЯГ тооцно.
   // (Өмнө нь subtotal−total гэж боддог байсан нь хүргэлт/барьцааг хөнгөлөлтөөс хасаж буруу дүн гаргадаг байв.)
@@ -15064,6 +15064,12 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>
     </div>
+    ${_sName ? `<div class="contact">
+      <div class="c-lbl">${T.contactHead}</div>
+      <div class="c-nm">${_sName}${_sTitle ? ' — ' + _sTitle : ''}</div>
+      <div class="c-row">${_sPhone ? T.phone + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
+      <div class="c-row">${T.warehouse}: ${escapeHtml(T.htmlLang === 'en' ? (C.addressEn || C.address) : C.address)}</div>
+    </div>` : ''}
     <div class="cond"><b>${T.terms}:</b> ${_vatNote} · ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
   </div>
   <div class="qfoot"><b>M-Event</b> · ${T.tagline} &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
@@ -15075,7 +15081,7 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   const js = (v) => JSON.stringify(v).replace(/<\//g, '<\\/');
   // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
   const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
-  const html = `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал / Quotation — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
+  return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал / Quotation — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
 <style>
@@ -15100,7 +15106,10 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   .party .p-row{font-size:12px;color:#4b5563;line-height:1.6}
   table.items{width:100%;border-collapse:collapse;margin-bottom:2px;font-size:12.5px}
   table.items thead th{background:#0B1F3A;color:#fff;font-family:'Manrope',Arial,sans-serif;font-weight:600;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  table.items tbody td{padding:7px 12px;border-bottom:1px solid #E9ECF1;vertical-align:top}
+  table.items tbody td{padding:7px 12px;border-bottom:1px solid #E9ECF1;vertical-align:middle}
+  .it-wrap{display:flex;gap:10px;align-items:center}
+  .it-th{width:38px;height:38px;flex:0 0 38px;object-fit:contain;background:#FAF9F5;border:1px solid #E9ECF1;border-radius:6px;padding:2px;display:block}
+  .it-th-x{background:#F1F3F6}
   table.items tbody tr:nth-child(even){background:#FAFBFC}
   .settle{display:flex;gap:20px;margin-top:16px;align-items:flex-start}
   .settle-info{flex:1.1}
@@ -15115,6 +15124,11 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .tot .grand .g-l{color:#c3cedd;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif}
   .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .contact{margin-top:14px;border:1px solid #E4E8EE;border-radius:10px;padding:11px 14px}
+  .contact .c-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:3px}
+  .contact .c-nm{font-family:'Manrope',Arial,sans-serif;font-size:13.5px;font-weight:700;color:#0B1F3A;margin-bottom:2px}
+  .contact .c-row{font-size:11.5px;color:#4b5563;line-height:1.6}
+  .contact .c-row b{color:#0B1F3A}
   .cond{margin-top:14px;border-top:1px solid #E4E8EE;padding-top:11px;font-size:11.5px;color:#6b7280;line-height:1.65}
   .cond b{color:#0B1F3A}
   .qfoot{margin-top:16px;background:#0B1F3A;color:#c3cedd;padding:11px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -15169,9 +15183,6 @@ async function qSend(){
 }
 </script>
 </body></html>`;
-  const w = window.open('', '_blank');
-  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
-  w.document.write(html); w.document.close();
 }
 
 // ── Банкны баримт PDF → автомат бөглөх (pdf.js CDN-ээс lazy) ──

@@ -95,6 +95,7 @@ const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rat
 // session нь токеныг сервер талд баталгаажуулна (localStorage хуурамчлал таслах).
 const DEFAULT_LOGIN_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-login';
 const DEFAULT_SESSION_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-session';
+const DEFAULT_STAFF_PINS_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-staff-pins';   // ЗӨВХӨН CEO — ажилтны PIN татах
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -814,6 +815,27 @@ async function serverLogin(identifier, pin) {
     const d = await r.json();
     return (d && typeof d.ok === 'boolean') ? d : null;
   } catch (e) { return null; }   // endpoint байхгүй/сүлжээ → fallback
+}
+// ЗӨВХӨН CEO — ажилтнуудын PIN-г серверээс татаж TEAM-д нэгтгэнэ (/staff-д PIN байхгүй, аюулгүйн үүднээс).
+// Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
+async function loadStaffPins() {
+  if (state._staffPinsLoaded || !state.isCEO) return;
+  state._staffPinsLoaded = true;
+  const token = localStorage.getItem('sessionToken');
+  if (!token) { state._staffPinsLoaded = false; return; }   // токенгүй бол дараа дахин оролдоно
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_STAFF_PINS_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }, 12000);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d || !d.ok || !Array.isArray(d.team)) return;
+    const byPhone = {};
+    d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
+    (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && byPhone[p]) m.pin = byPhone[p]; });
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadStaffPins', e); }
 }
 // Токеныг сервер талд баталгаажуулах: {valid:true, phone, level, name} эсвэл {valid:false}; сүлжээ алга бол null.
 async function serverVerifyToken(token) {
@@ -18895,21 +18917,11 @@ function staffBranchLabel(m) {
 function renderStaffList() {
   const listEl = document.getElementById(state._staffListId || 'staff-list');
   if (!listEl) return;
-  // PIN нь localStorage кэшээс ХАСАГДДАГ (SENSITIVE_TEAM_FIELDS). Апп кэшээр ачаалагдвал
-  // TEAM-д pin байхгүй → CEO-д «харах» товч гарахгүй, «тохируулаагүй» гэж худал харагдана.
-  // Тиймээс CEO жагсаалт нээхэд нэг ч pin байхгүй бол сервэрээс шууд дахин татна.
-  if (state.isCEO && !state._pinRefetched && TEAM.length && !TEAM.some(m => m.pin)) {
-    state._pinRefetched = true;
-    loadTeamFromAPI().then(ok => { state._pinRefetchOk = !!ok; renderStaffList(); });
-  }
-  const _pinLoaded = TEAM.some(m => m.pin);   // false = сервэрээс ирээгүй (кэш/алдаа), тохируулаагүй ГЭСЭН ҮГ БИШ
-  // Дахин татаж дууссан ч нэг ч pin ирээгүй бол шалтгааныг ЯЛГАЖ хэлнэ:
-  // татаж чадсан мөртлөө pin алга = /staff endpoint PIN буцаахаа больсон (backend засвар),
-  // татаж чадаагүй = сүлжээ/endpoint алдаа.
-  const _pinMsg = _pinLoaded ? 'тохируулаагүй'
-    : state._pinRefetched === undefined || state._pinRefetchOk === undefined ? 'ачаалж байна…'
-    : state._pinRefetchOk ? '⚠ сервер PIN буцаахгүй байна'
-    : '⚠ сервертэй холбогдож чадсангүй';
+  // PIN нь /staff-аас ХАСАГДСАН (аюулгүй байдал). CEO зөвхөн session токеноороо chimun-staff-pins
+  // endpoint-оос PIN татаж TEAM-д нэгтгэнэ (loadStaffPins). Нэг удаа, кэшлэхгүй.
+  if (state.isCEO && !state._staffPinsLoaded) loadStaffPins();
+  const _pinLoaded = TEAM.some(m => m.pin);   // true = серверээс PIN ирсэн
+  const _pinMsg = _pinLoaded ? 'тохируулаагүй' : (state.isCEO ? 'ачаалж байна…' : 'тохируулаагүй');
   const q = (document.getElementById(state._staffSearchId || 'staff-search')?.value || '').toLowerCase().trim();
   const all = [...TEAM].sort((a, b) => {
     // Active first, then by level

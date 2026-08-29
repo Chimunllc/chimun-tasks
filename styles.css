@@ -244,6 +244,56 @@
   }
 }
 
+
+/* ═══ .task-row — НЭГТГЭСЭН (2026-08-29) ═══
+   8 дүрэм · 202 тунхаглал · 144 !important байв. grid-template-columns нь
+   computed утга дээр ПИКСЭЛ болж бодогддог тул зөвхөн үүнийг эх кодоос авав
+   (бусад нь хэмжилтээс). */
+.task-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 0;
+  border: 0 none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.08s ease;
+  min-height: 0;
+}
+@media (min-width: 721px) and (max-width: 1000px) {
+  .task-row { padding: 8px 14px; }
+}
+@media (max-width: 720px) {
+  .task-row {
+    /* Утсанд: чагт · агуулга · chevron. Ажилтан/огноо/зэрэглэл нь мета мөрөнд ордог. */
+    grid-template-columns: 24px 1fr 16px;
+    gap: 0 12px;
+    min-height: 44px;
+  }
+}
+
+
+/* ═══ .tasks — НЭГТГЭСЭН (2026-08-29) ═══  7 дүрэм · 40 !important байв. */
+.tasks {
+  flex: 1;
+  overflow-y: auto;
+  /* ⚠ overflow-y: auto тавихад CSS нь overflow-x-ийг ч АВТОМАТААР auto болгодог.
+     Хатуу хаахгүй бол доторх өргөн элемент бүхэл контентыг хажуу тийш гүйлгэнэ. */
+  overflow-x: hidden;
+  padding: 0 28px 80px;
+  background: var(--bg);
+}
+/* .tasks-ийн X тэнхлэг хаагдсан тул ӨРГӨН зүйл өөрийн хайрцагтаа гүйнэ */
+.tasks table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 720px) {
+  .tasks { padding: 4px 8px 160px; }
+}
+
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; }
   /* color-scheme: аппын идэвхтэй theme-ийг браузерт мэдэгдэнэ — Samsung force-dark давхар
@@ -394,22 +444,6 @@
     background: var(--panel); color: var(--text);
   }
   /* TASKS */
-  .tasks {
-    flex: 1;
-    overflow-y: auto;
-    /* ⚠ overflow-y: auto тавихад CSS нь overflow-x-ийг ч АВТОМАТААР auto болгодог
-       (visible + auto хослол зөвшөөрөгддөггүй). Тиймээс доторх ямар нэг элемент
-       өргөнөөс давмагц ЗӨВХӨН контент хэсэг хажуу тийш гүйж, толгой хөдөлдөггүй —
-       яг тэр «нааш цааш хөдлөх» мэдрэмж үүсдэг. Хатуу хаана: өргөн зүйл өөрийн
-       гэсэн overflow-x: auto хайрцагтай байх ёстой (жишээ: .board-stepper). */
-    overflow-x: hidden;
-    padding: 0 28px 80px;
-  }
-  /* .tasks-ийн X тэнхлэг хаагдсан тул ӨРГӨН зүйл өөрийн хайрцагтаа гүйх ёстой.
-     Аппд 27 хүснэгт байгаа бөгөөд аль нь ч боодолгүй — эс бөгөөс баруун талаараа
-     тасарна. display:block нь хүснэгтийг гүйдэг хайрцаг болгоно (баганын
-     эгнэлт хэвээр, width:100% хүснэгт мөн сунасан хэвээр). */
-  .tasks table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .table-head {
     display: grid;
     grid-template-columns: 26px 1fr 160px 130px 110px 36px;
@@ -420,19 +454,6 @@
     letter-spacing: .6px;
     border-bottom: 1px solid var(--border);
     position: sticky; top: 0; background: var(--bg); z-index: 1;
-  }
-  .task-row {
-    display: grid;
-    grid-template-columns: 24px 1fr auto auto auto;
-    align-items: center;
-    gap: var(--space-3);
-    padding: 12px 14px;
-    background: var(--panel);
-    border: 1px solid transparent;
-    border-radius: var(--r-md);
-    margin: 4px 0;
-    transition: all var(--duration) var(--ease);
-    cursor: pointer;
   }
   .task-row:hover {
     background: var(--panel-hover);
@@ -1016,7 +1037,6 @@
     .mobile-bottom-nav { display: block; }
     .fab { display: block; }
     /* FAB + доод nav контентын сүүлийн картыг дарахгүй — жагсаалтын доод зай */
-    .tasks { padding-bottom: 140px !important; }
 
     /* Header — мобайлд хэт олон товч хасах. Зөвхөн menu + theme + bell + + */
     .header-actions .btn { padding: 6px 10px; font-size: 12px; }
@@ -1030,20 +1050,12 @@
     /* Toolbar: search голчилбол өөрөө мөр болж буурна */
     .search { flex: 1 1 100%; max-width: 100%; }
 
-    .tasks { padding: 8px 12px 140px; }
     .table-head { display: none; }
 
     /* ─── Мобайл task row — Цэвэрхэн, давхардалгүй ───
        checkbox │ title (+ meta нэг мөр доор) │ chevron ▸
        Avatar+нэр, хугацаа, зэрэглэл бүгд meta мөрөнд орно
        Илүүдэл "delegated-from" пилл арилна — avatar нэр хариулна */
-    .task-row {
-      grid-template-columns: 24px 1fr 16px;
-      column-gap: 12px;
-      row-gap: 0;
-      padding: 14px 14px;
-      align-items: center;
-    }
     .task-row:hover { transform: none; }
     .task-row::after {
       content: '›';
@@ -1161,10 +1173,6 @@
   .user-chip .avatar { width: 42px; height: 42px; font-size: 16px; }
 
   /* ── Task row — илүү уужим, илүү уншигдахуйц ── */
-  .task-row {
-    padding: 16px 14px !important;
-    min-height: 64px;
-  }
   .task-row .task-title-wrap { gap: 6px; }
   .task-row .title { font-size: 15px !important; line-height: 1.35; }
   .task-row .meta-row,
@@ -1299,7 +1307,6 @@
   }
 
   /* ── Илүү тав тухтай spacing ── */
-  .tasks { padding: 12px 12px 160px !important; }
 
   /* Дарах боломжтой бүх товч default-аар 44px */
   button, [role="button"], .clickable {
@@ -1436,18 +1443,6 @@ html, body {
   /* ── Header — iOS/Android large title маяг ── */
 
   /* ── Task мөр — карт маяг, тус тусдаа, shadow-той ── */
-  .tasks {
-    background: var(--bg) !important;
-    padding: 12px 12px 160px !important;
-  }
-  .task-row {
-    background: var(--panel) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 14px !important;
-    margin-bottom: 10px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.03) !important;
-    transition: transform 120ms ease, box-shadow 120ms ease !important;
-  }
   .task-row:active {
     transform: scale(.98) !important;
     box-shadow: 0 0 0 rgba(0,0,0,0) !important;
@@ -1635,10 +1630,6 @@ html, body {
   }
 
   /* ── Task мөр илүү тав тухтай ── */
-  .task-row {
-    padding: 14px 16px !important;
-    background: var(--panel) !important;
-  }
 
   /* ── Empty state-ийг сайхан болгох (хэрэв байгаа бол) ── */
   #task-list:empty::after {
@@ -1730,17 +1721,6 @@ body, input, textarea, select, button {
   }
 
   /* ── TASK МӨР — Notion маяг, хүрээгүй жагсаалт ── */
-  .tasks { background: var(--bg) !important; padding: 4px 8px 160px !important; }
-  .task-row {
-    background: transparent !important;
-    border: none !important;
-    border-radius: 6px !important;
-    box-shadow: none !important;
-    margin-bottom: 1px !important;
-    padding: 10px 12px !important;
-    transition: background 100ms ease !important;
-    min-height: 44px !important;
-  }
   .task-row:hover { background: var(--panel-hover) !important; }
   .task-row:active { background: var(--border) !important; transform: none !important; }
   .task-row .title {
@@ -2151,17 +2131,6 @@ body, input, textarea, select, button {
 }
 
 /* ── TASK ROWS (desktop) — Linear маяг, шугам бүрэн арилгасан ── */
-.tasks { background: var(--bg) !important; }
-.task-row {
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1px solid var(--border) !important;
-  box-shadow: none !important;
-  border-radius: 0 !important;
-  padding: 10px 16px !important;
-  margin: 0 !important;
-  transition: background 80ms ease !important;
-}
 .task-row:hover {
   background: var(--panel-hover) !important;
   transform: none !important;
@@ -2435,9 +2404,6 @@ body {
   .table-head {
     padding: 8px 14px !important;
     font-size: 10px !important;
-  }
-  .task-row {
-    padding: 8px 14px !important;
   }
 }
 

@@ -17092,35 +17092,42 @@ async function loadVatReceipts() {
 }
 // ── Системийн автомат шалгалт (GitHub Actions CI) — sidebar-т 🟢 OK / 🔴 алдаа (зөвхөн CEO) ──
 // Public repo тул auth шаардлагагүй (api.github.com CORS зөвшөөрдөг). Push бүрийн дараах syntax/eslint/тест үр дүн.
-const CI_RUNS_URL = 'https://api.github.com/repos/Chimunllc/chimun-tasks/actions/runs?branch=main&per_page=1';
-async function loadCiStatus() {
-  if (!state.isCEO) return;
+// Апп (chimun-tasks lint+тест) БА mevent.mn сайт (smoke) хоёуланг шалгаж, аль нэг унавал 🔴
+const CI_APP_URL = 'https://api.github.com/repos/Chimunllc/chimun-tasks/actions/runs?branch=main&per_page=1';
+const CI_SITE_URL = 'https://api.github.com/repos/Chimunllc/m-event-website-ready/actions/workflows/smoke.yml/runs?branch=main&per_page=1';
+async function _ciFetchRun(url) {
   try {
-    const r = await fetch(CI_RUNS_URL, { headers: { Accept: 'application/vnd.github+json' } });
-    if (!r.ok) return;
+    const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return null;
     const d = await r.json();
     const run = d.workflow_runs && d.workflow_runs[0];
-    if (!run) return;
-    state.ciStatus = { conclusion: run.conclusion, status: run.status, url: run.html_url, msg: String((run.head_commit && run.head_commit.message) || '').split('\n')[0], at: run.created_at };
-    renderCiStatus();
-  } catch (e) { /* сүлжээ/rate-limit — чимээгүй өнгөрнө */ }
+    if (!run) return null;
+    return { conclusion: run.conclusion, status: run.status, url: run.html_url, msg: String((run.head_commit && run.head_commit.message) || '').split('\n')[0], at: run.created_at };
+  } catch (e) { return null; }
+}
+async function loadCiStatus() {
+  if (!state.isCEO) return;
+  const [app, site] = await Promise.all([_ciFetchRun(CI_APP_URL), _ciFetchRun(CI_SITE_URL)]);
+  if (app || site) { state.ciStatus = { app, site }; renderCiStatus(); }
   if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) loadCiStatus(); }, 300000);   // 5 мин тутам сэргээнэ
 }
+function _ciState(c) { if (!c) return 'none'; if (c.status && c.status !== 'completed') return 'run'; return c.conclusion === 'success' ? 'ok' : 'fail'; }
 function renderCiStatus() {
   const el = document.getElementById('ci-status'); if (!el) return;
-  const c = state.ciStatus;
-  if (!state.isCEO || !c) { el.hidden = true; return; }
-  const inProg = c.status && c.status !== 'completed';
-  const ok = c.conclusion === 'success';
-  const cls = inProg ? 'ci-run' : ok ? 'ci-ok' : 'ci-fail';
-  const dot = inProg ? '🟡' : ok ? '🟢' : '🔴';
-  const label = inProg ? 'Шалгаж байна…' : ok ? 'Систем шалгалт: OK' : 'Систем: алдаа гарлаа';
+  const s = state.ciStatus;
+  if (!state.isCEO || !s) { el.hidden = true; return; }
+  const a = _ciState(s.app), b = _ciState(s.site);
+  const fails = []; if (a === 'fail') fails.push('Апп'); if (b === 'fail') fails.push('Сайт');
+  let cls, dot, label, target;
+  if (fails.length) { cls = 'ci-fail'; dot = '🔴'; label = fails.join('+') + ': алдаа гарлаа'; target = a === 'fail' ? s.app : s.site; }
+  else if (a === 'run' || b === 'run') { cls = 'ci-run'; dot = '🟡'; label = 'Шалгаж байна…'; target = s.app || s.site; }
+  else { cls = 'ci-ok'; dot = '🟢'; label = 'Систем шалгалт: OK'; target = s.app || s.site; }
   el.hidden = false;
   el.className = 'ci-status ' + cls;
   el.innerHTML = `<span class="ci-dot">${dot}</span><span class="ci-label">${escapeHtml(label)}</span>`;
-  el.title = `${c.msg || ''}${c.at ? ' · ' + String(c.at).slice(0, 10) : ''} — дэлгэрэнгүй харах`;
-  el.onclick = () => window.open(c.url, '_blank', 'noopener');
-  el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); window.open(c.url, '_blank', 'noopener'); } };
+  el.title = `Апп: ${a === 'ok' ? 'OK' : a} · Сайт: ${b === 'ok' ? 'OK' : b}${target && target.at ? ' · ' + String(target.at).slice(0, 10) : ''} — дэлгэрэнгүй харах`;
+  el.onclick = () => target && window.open(target.url, '_blank', 'noopener');
+  el.onkeydown = (ev) => { if ((ev.key === 'Enter' || ev.key === ' ') && target) { ev.preventDefault(); window.open(target.url, '_blank', 'noopener'); } };
 }
 async function vatUpsert(list) {
   if (!list.length) return 0;

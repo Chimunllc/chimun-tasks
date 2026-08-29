@@ -96,6 +96,8 @@ const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rat
 const DEFAULT_LOGIN_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-login';
 const DEFAULT_SESSION_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-session';
 const DEFAULT_STAFF_PINS_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-staff-pins';   // ЗӨВХӨН CEO — ажилтны PIN татах
+const DEFAULT_RESET_REQUEST_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-reset-request';   // PIN сэргээх код имэйлдэх
+const DEFAULT_RESET_VERIFY_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-reset-verify';   // код шалгаж PIN шинэчлэх
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -848,6 +850,71 @@ async function serverVerifyToken(token) {
     if (!r.ok) return null;
     return await r.json();
   } catch (e) { return null; }
+}
+// ── PIN сэргээх (имэйлээр) — сервер код имэйлдэж, шалгаж employees.pin шинэчилнэ ──
+async function serverResetRequest(id) {
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_RESET_REQUEST_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: String(id || '').trim() }),
+    }, 15000);
+    return r.ok;   // 200=илгээгдсэн, 500=олдсонгүй/имэйлгүй — аль ч тохиолдолд ижил мессеж (аюулгүй)
+  } catch (e) { return false; }
+}
+async function serverResetVerify(id, code, newPin) {
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_RESET_VERIFY_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: String(id || '').trim(), code: String(code || '').trim(), newPin: String(newPin || '').trim() }),
+    }, 15000);
+    return r.ok;
+  } catch (e) { return false; }
+}
+function openPinResetModal(prefillId) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '10001';
+  modal.innerHTML = `<div class="modal" style="max-width:380px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;"><h2 style="margin:0;font-size:17px;">🔑 PIN сэргээх</h2><button class="btn" id="pr-x" style="padding:5px 10px;">✕</button></div>
+    <div id="pr-step1">
+      <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;">Бүртгэлтэй <b>и-мэйл</b>дээ 6 оронтой код авна. Имэйлгүй бол менежер/CEO-д хандаж PIN сэргээлгэнэ үү.</p>
+      <label class="login-label">Утас эсвэл и-мэйл</label>
+      <input id="pr-id" type="text" value="${escapeHtml(prefillId || '')}" placeholder="99112233 эсвэл name@example.com" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin:4px 0 12px;box-sizing:border-box;">
+      <button class="btn btn-primary" id="pr-send" style="width:100%;">Код авах</button>
+    </div>
+    <div id="pr-step2" style="display:none;">
+      <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;" id="pr-sent-msg"></p>
+      <label class="login-label">Имэйлээр ирсэн 6 оронтой код</label>
+      <input id="pr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
+      <label class="login-label">Шинэ PIN (4 орон)</label>
+      <input id="pr-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
+      <button class="btn btn-primary" id="pr-verify" style="width:100%;">PIN шинэчлэх</button>
+    </div>
+    <div id="pr-err" style="color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px;"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $$ = s => modal.querySelector(s);
+  const close = () => modal.remove();
+  $$('#pr-x').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const err = m => { $$('#pr-err').textContent = m || ''; };
+  $$('#pr-send').onclick = async (e) => {
+    const id = $$('#pr-id').value.trim();
+    if (!id) { err('Утас эсвэл и-мэйл оруулна уу'); return; }
+    e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Илгээж байна…';
+    await serverResetRequest(id);   // үр дүнгээс үл хамааран ижил мессеж (аюулгүй)
+    modal._id = id;
+    $$('#pr-step1').style.display = 'none'; $$('#pr-step2').style.display = '';
+    $$('#pr-sent-msg').innerHTML = 'Хэрэв <b>' + escapeHtml(id) + '</b> бүртгэлтэй, имэйлтэй бол код илгээгдлээ. Имэйлээ (спам хавтас ч) шалгаад доор оруулна уу. Код 15 минут хүчинтэй.';
+  };
+  $$('#pr-verify').onclick = async (e) => {
+    const code = $$('#pr-code').value.replace(/\D/g, ''); const pin = $$('#pr-pin').value.replace(/\D/g, '');
+    if (!/^\d{6}$/.test(code)) { err('6 оронтой код оруулна уу'); return; }
+    if (!/^\d{4}$/.test(pin)) { err('Шинэ PIN 4 оронтой байх ёстой'); return; }
+    e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Шинэчилж байна…';
+    const ok = await serverResetVerify(modal._id, code, pin);
+    if (ok) { close(); showToast('✅ PIN шинэчлэгдлээ. Шинэ PIN-ээрээ нэвтэрнэ үү.', 'success', 4500); }
+    else { e.currentTarget.disabled = false; e.currentTarget.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
+  };
 }
 function currentProjects() {
   // Бүх салбарын төслийг нэг жагсаалт болгож нэгтгэнэ — салбарын систем дотоод л үлдсэн.
@@ -22314,6 +22381,9 @@ async function restoreSession() {
 function initPinLogin() {
   // Утас эсвэл и-мэйл + PIN-ээр нэвтрэх. Нэрийн жагсаалт харуулахгүй (нууцлал).
   const idInput = document.getElementById('login-id-input');
+  // "PIN мартсан уу?" — имэйлээр сэргээх модал
+  const forgot = document.getElementById('forgot-pin-link');
+  if (forgot && !forgot._bound) { forgot._bound = true; forgot.addEventListener('click', () => openPinResetModal((document.getElementById('login-id-input') || {}).value || '')); }
 
   const form = document.getElementById('pin-login-form');
   const pinInput = document.getElementById('login-pin-input');

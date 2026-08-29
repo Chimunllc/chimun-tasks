@@ -11451,6 +11451,7 @@ const CHIMUN_LEGAL = {
   name: '"ЧИМУН" ХХК', reg: '6614337',
   director: 'Г.МӨНХ-УЧРАЛ', directorTitle: 'Гүйцэтгэх захирал',
   address: 'Монгол улс, Улаанбаатар хот, Баянзүрх дүүрэг, 11-р хороо, Ногоон зоорь 1-13',
+  addressEn: 'Nogoon Zoory 1-13, Khoroo 11, Bayanzurkh District, Ulaanbaatar, Mongolia',
   bank: 'Голомт банк', account: '3635161180', iban: 'MN24 0015 00 3635161180',  // Голомт IBAN (MOD-97 баталсан 2026-08-26). Хоосон бол имэйл/PDF-д харагдахгүй.
   phones: '7700-6790 (Захиалга)<br>9917-9417 (Кемп менежер)<br>8802-8216 (Катеринг менежер)',
 };
@@ -14707,6 +14708,7 @@ const MEV_QUOTE_T = {
     thItem: 'Бараа / үйлчилгээ', thQty: 'Тоо', thDays: 'Хоног', thUnit: 'Нэгж/хоног', thSum: 'Дүн',
     noItems: 'Бараа оруулаагүй',
     payInfo: 'Төлбөрийн мэдээлэл', payee: 'Хүлээн авагч', payRef: 'Гүйлгээний утга',
+    contactHead: 'Таны захиалга хариуцсан ажилтан', email: 'И-мэйл', web: 'Веб', warehouse: 'Агуулах хаяг',
     ref: (n) => `Захиалга ${n}`, days: (d) => `${d} хоног`,
     subtotal: (d) => `Түрээсийн дүн (${d} хоног)`,
     discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт',
@@ -14734,6 +14736,7 @@ const MEV_QUOTE_T = {
     thItem: 'Item / service', thQty: 'Qty', thDays: 'Days', thUnit: 'Unit / day', thSum: 'Amount',
     noItems: 'No items',
     payInfo: 'Payment details', payee: 'Beneficiary', payRef: 'Payment reference',
+    contactHead: 'Your order contact', email: 'E-mail', web: 'Web', warehouse: 'Warehouse address',
     ref: (n) => `Order ${n}`, days: (d) => `${d} day${d === 1 ? '' : 's'}`,
     subtotal: (d) => `Rental subtotal (${d} day${d === 1 ? '' : 's'})`,
     discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery',
@@ -14926,6 +14929,12 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>
     </div>
+    ${_sName ? `<div class="contact">
+      <div class="c-lbl">${T.contactHead}</div>
+      <div class="c-nm">${_sName}${_sTitle ? ' — ' + _sTitle : ''}</div>
+      <div class="c-row">${_sPhone ? T.phone + ': <b>+976 ' + _sPhone + '</b> &nbsp;·&nbsp; ' : ''}${T.email}: hello@mevent.mn &nbsp;·&nbsp; ${T.web}: mevent.mn</div>
+      <div class="c-row">${T.warehouse}: ${escapeHtml(T.htmlLang === 'en' ? (C.addressEn || C.address) : C.address)}</div>
+    </div>` : ''}
     <div class="cond"><b>${T.terms}:</b> ${_vatNote} · ${T.payConfirm}${deposit ? ' · ' + T.depositBack : ''} &nbsp;&nbsp; <b>${T.valid}:</b> ${fd(valid)}${T.until}</div>
   </div>
   <div class="qfoot"><b>M-Event</b> · ${T.tagline} &nbsp;|&nbsp; 7755-1010 &nbsp;|&nbsp; mevent.mn &nbsp;|&nbsp; hello@mevent.mn</div>`;
@@ -14980,6 +14989,11 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   .tot .grand{margin-top:7px;padding:12px 16px;background:#0B1F3A;border-radius:9px;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .tot .grand .g-l{color:#c3cedd;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-family:'Manrope',Arial,sans-serif}
   .tot .grand .g-v{color:#fff;font-family:'Manrope',Arial,sans-serif;font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+  .contact{margin-top:14px;border:1px solid #E4E8EE;border-radius:10px;padding:11px 14px}
+  .contact .c-lbl{font-family:'Manrope',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#E95400;margin-bottom:3px}
+  .contact .c-nm{font-family:'Manrope',Arial,sans-serif;font-size:13.5px;font-weight:700;color:#0B1F3A;margin-bottom:2px}
+  .contact .c-row{font-size:11.5px;color:#4b5563;line-height:1.6}
+  .contact .c-row b{color:#0B1F3A}
   .cond{margin-top:14px;border-top:1px solid #E4E8EE;padding-top:11px;font-size:11.5px;color:#6b7280;line-height:1.65}
   .cond b{color:#0B1F3A}
   .qfoot{margin-top:16px;background:#0B1F3A;color:#c3cedd;padding:11px 34px;font-size:11px;line-height:1.7;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact}

@@ -3242,6 +3242,20 @@ function isPermanentStaff(m) {
 }
 
 /* -------------------- RENDER -------------------- */
+// Навигацийн идэвхтэй төлөв = state.view. Урьд нь зөвхөн доод цэс ДАРАХАД тавигддаг
+// байсан тул хажуугийн цэсээр шилжихэд хуучин таб тодорхой үлдэж, апп хаана байгааг
+// ХУДАЛ заадаг байв. Одоогийн дэлгэц доод цэсэнд байхгүй бол АЛЬ Ч таб тодрохгүй —
+// буруу табыг тодруулснаас дээр.
+function syncNavActive() {
+  const v = state.view;
+  document.querySelectorAll('.mobile-nav-item[data-view]').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === v);
+  });
+  document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === v);
+  });
+}
+
 function render() {
   // Цагийн ажилтныг зөвшөөрөлгүй view-аас "Ирсэн ажил" руу буцаана (UI нууснаас гадна бат)
   if (isDailyWorker()) {
@@ -3286,6 +3300,7 @@ function render() {
   }
   renderSidebar();
   renderTitle();
+  syncNavActive();
   syncFilterPills();
   renderTaskList();
   renderCounts();
@@ -6470,11 +6485,18 @@ function productUtilization(name) {
   return { orders, qty, revenue };
 }
 // Богино мөнгөн формат (сая/мянга) — жижиг стат мөрд.
+// Мөнгөний НЭГ дүрэм (2026-08-29). Өмнө нь нэг дэлгэцэд 3 өөр формат зэрэг гарч байв:
+// «1,153,639,389₮» (бүтэн 10 орон), «176,000₮» (бүтэн), «33мянга₮» (товчилсон).
+//   · сая-аас ДЭЭШ → товчилно (1.15 тэрбум₮ · 9.7 сая₮) — тэрбумыг бүтэн бичих нь
+//     хуурамч нарийвчлал, сүүлийн 3 орон хэнд ч хэрэггүй
+//   · сая-аас ДООШ → бүтэн, орон таслалтай (176,000₮ · 33,000₮) — мянгыг товчлохгүй
 function fmtMoneyShort(n) {
   n = Math.round(Number(n) || 0);
-  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'сая₮';
-  if (n >= 1e3) return Math.round(n / 1e3) + 'мянга₮';
-  return n + '₮';
+  const a = Math.abs(n);
+  const trim = (x) => x.indexOf('.') < 0 ? x : x.replace(/0+$/, '').replace(/\.$/, '');
+  if (a >= 1e9) return trim((n / 1e9).toFixed(a >= 1e10 ? 1 : 2)) + ' тэрбум₮';
+  if (a >= 1e6) return trim((n / 1e6).toFixed(a >= 1e7 ? 0 : 1)) + ' сая₮';
+  return fmtMoney(n);
 }
 
 // ── Салбарын нөөц хуваарилалт (Чимун ХХК / M-Event / NOMAAD) — нэг барааны нөөцийг тоогоор хуваана ──
@@ -20715,13 +20737,7 @@ function initEvents() {
     btn.onclick = (e) => {
       const view = e.currentTarget.dataset.view;
       state.view = view;
-      // Visible state
-      document.querySelectorAll('.mobile-nav-item').forEach(x => x.classList.remove('active'));
-      e.currentTarget.classList.add('active');
-      // Sidebar dropdown синхрон болгох
-      document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
-      document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add('active');
-      render();
+      render();   // идэвхтэй төлөвийг syncNavActive() дотроос state.view-оос гаргана
     };
   });
   // Mobile "Цэс" товч — сайдбарыг нээх

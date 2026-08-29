@@ -95,6 +95,9 @@ const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rat
 // session нь токеныг сервер талд баталгаажуулна (localStorage хуурамчлал таслах).
 const DEFAULT_LOGIN_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-login';
 const DEFAULT_SESSION_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-session';
+const DEFAULT_STAFF_PINS_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-staff-pins';   // ЗӨВХӨН CEO — ажилтны PIN татах
+const DEFAULT_RESET_REQUEST_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-reset-request';   // PIN сэргээх код имэйлдэх
+const DEFAULT_RESET_VERIFY_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-reset-verify';   // код шалгаж PIN шинэчлэх
 
 // n8n webhook API key — front-end-д ил үлдэх тул "real" auth биш, гэхдээ random curl/bot
 // дайралтаас хамгаална. Бодит security шаардлагатай бол сервер тал PIN/session token check
@@ -815,6 +818,27 @@ async function serverLogin(identifier, pin) {
     return (d && typeof d.ok === 'boolean') ? d : null;
   } catch (e) { return null; }   // endpoint байхгүй/сүлжээ → fallback
 }
+// ЗӨВХӨН CEO — ажилтнуудын PIN-г серверээс татаж TEAM-д нэгтгэнэ (/staff-д PIN байхгүй, аюулгүйн үүднээс).
+// Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
+async function loadStaffPins() {
+  if (state._staffPinsLoaded || !state.isCEO) return;
+  state._staffPinsLoaded = true;
+  const token = localStorage.getItem('sessionToken');
+  if (!token) { state._staffPinsLoaded = false; return; }   // токенгүй бол дараа дахин оролдоно
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_STAFF_PINS_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    }, 12000);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d || !d.ok || !Array.isArray(d.team)) return;
+    const byPhone = {};
+    d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
+    (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && byPhone[p]) m.pin = byPhone[p]; });
+    if (typeof render === 'function') render();
+  } catch (e) { console.warn('loadStaffPins', e); }
+}
 // Токеныг сервер талд баталгаажуулах: {valid:true, phone, level, name} эсвэл {valid:false}; сүлжээ алга бол null.
 async function serverVerifyToken(token) {
   if (!token) return null;
@@ -826,6 +850,71 @@ async function serverVerifyToken(token) {
     if (!r.ok) return null;
     return await r.json();
   } catch (e) { return null; }
+}
+// ── PIN сэргээх (имэйлээр) — сервер код имэйлдэж, шалгаж employees.pin шинэчилнэ ──
+async function serverResetRequest(id) {
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_RESET_REQUEST_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: String(id || '').trim() }),
+    }, 15000);
+    return r.ok;   // 200=илгээгдсэн, 500=олдсонгүй/имэйлгүй — аль ч тохиолдолд ижил мессеж (аюулгүй)
+  } catch (e) { return false; }
+}
+async function serverResetVerify(id, code, newPin) {
+  try {
+    const r = await fetchWithTimeout(withKey(DEFAULT_RESET_VERIFY_URL), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: String(id || '').trim(), code: String(code || '').trim(), newPin: String(newPin || '').trim() }),
+    }, 15000);
+    return r.ok;
+  } catch (e) { return false; }
+}
+function openPinResetModal(prefillId) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.style.zIndex = '10001';
+  modal.innerHTML = `<div class="modal" style="max-width:380px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;"><h2 style="margin:0;font-size:17px;">🔑 PIN сэргээх</h2><button class="btn" id="pr-x" style="padding:5px 10px;">✕</button></div>
+    <div id="pr-step1">
+      <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;">Бүртгэлтэй <b>и-мэйл</b>дээ 6 оронтой код авна. Имэйлгүй бол менежер/CEO-д хандаж PIN сэргээлгэнэ үү.</p>
+      <label class="login-label">Утас эсвэл и-мэйл</label>
+      <input id="pr-id" type="text" value="${escapeHtml(prefillId || '')}" placeholder="99112233 эсвэл name@example.com" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;margin:4px 0 12px;box-sizing:border-box;">
+      <button class="btn btn-primary" id="pr-send" style="width:100%;">Код авах</button>
+    </div>
+    <div id="pr-step2" style="display:none;">
+      <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;" id="pr-sent-msg"></p>
+      <label class="login-label">Имэйлээр ирсэн 6 оронтой код</label>
+      <input id="pr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
+      <label class="login-label">Шинэ PIN (4 орон)</label>
+      <input id="pr-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
+      <button class="btn btn-primary" id="pr-verify" style="width:100%;">PIN шинэчлэх</button>
+    </div>
+    <div id="pr-err" style="color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px;"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $$ = s => modal.querySelector(s);
+  const close = () => modal.remove();
+  $$('#pr-x').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const err = m => { $$('#pr-err').textContent = m || ''; };
+  $$('#pr-send').onclick = async (e) => {
+    const id = $$('#pr-id').value.trim();
+    if (!id) { err('Утас эсвэл и-мэйл оруулна уу'); return; }
+    e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Илгээж байна…';
+    await serverResetRequest(id);   // үр дүнгээс үл хамааран ижил мессеж (аюулгүй)
+    modal._id = id;
+    $$('#pr-step1').style.display = 'none'; $$('#pr-step2').style.display = '';
+    $$('#pr-sent-msg').innerHTML = 'Хэрэв <b>' + escapeHtml(id) + '</b> бүртгэлтэй, имэйлтэй бол код илгээгдлээ. Имэйлээ (спам хавтас ч) шалгаад доор оруулна уу. Код 15 минут хүчинтэй.';
+  };
+  $$('#pr-verify').onclick = async (e) => {
+    const code = $$('#pr-code').value.replace(/\D/g, ''); const pin = $$('#pr-pin').value.replace(/\D/g, '');
+    if (!/^\d{6}$/.test(code)) { err('6 оронтой код оруулна уу'); return; }
+    if (!/^\d{4}$/.test(pin)) { err('Шинэ PIN 4 оронтой байх ёстой'); return; }
+    e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Шинэчилж байна…';
+    const ok = await serverResetVerify(modal._id, code, pin);
+    if (ok) { close(); showToast('✅ PIN шинэчлэгдлээ. Шинэ PIN-ээрээ нэвтэрнэ үү.', 'success', 4500); }
+    else { e.currentTarget.disabled = false; e.currentTarget.textContent = 'PIN шинэчлэх'; err('Код буруу эсвэл хугацаа дуссан. Дахин "Код авах"-аас эхэлнэ үү.'); }
+  };
 }
 function currentProjects() {
   // Бүх салбарын төслийг нэг жагсаалт болгож нэгтгэнэ — салбарын систем дотоод л үлдсэн.
@@ -6705,47 +6794,41 @@ function productRowHtml(p) {
   </div>`;
 }
 
-// ── Хэмжээ/өнгө вариант бүлэглэлт: variant_group-аар нэгтгэж, эвхэгддэг толгой мөр харуулна ──
-function variantGroupHead(grp, members) {
-  const _actBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
-  const totStock = members.reduce((s, p) => s + (_actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0)), 0);
-  const prices = members.map(p => Number(p.price) || 0).filter(x => x > 0);
-  const priceLbl = prices.length ? (Math.min(...prices) === Math.max(...prices) ? fmtMoney(Math.min(...prices)) : `${fmtMoney(Math.min(...prices))}–${fmtMoney(Math.max(...prices))}`) : '—';
-  const cat = members[0].category || '—';
-  const photo = (members.find(p => p.photo) || {}).photo;
-  const img = photo ? `<img src="${escapeHtml(photo)}" loading="lazy" onerror="this.style.visibility='hidden'">` : '<div class="ph">📦</div>';
-  const labels = members.map(p => (p.variant_label || '').trim()).filter(Boolean).slice(0, 8).join(' · ');
-  // Бүлгийн толгой хайлтад олдохын тулд бүх гишүүний нэр/ангилал/sku-г data-search-д нэгтгэнэ
-  const search = members.map(p => `${p.name || ''} ${p.category || ''} ${p.sku || ''}`).join(' ').toLowerCase();
-  return `<div class="prod-row prod-vg-head" data-vgroup="${escapeHtml(grp)}" data-search="${escapeHtml(search)}">
-    <div class="prod-img">${img}</div>
-    <div class="prod-main">
-      <div class="prod-name-d">${escapeHtml(grp)} <span style="font-size:11px;font-weight:700;color:var(--primary);background:var(--panel-hover);border-radius:20px;padding:1px 8px;white-space:nowrap;">${members.length} хувилбар</span></div>
-      <div class="prod-sub" style="color:var(--muted);">${escapeHtml(cat)}${labels ? ' · ' + escapeHtml(labels) : ''}</div>
-    </div>
-    <div class="prod-badges" style="align-items:flex-end;text-align:right;">
-      <div style="line-height:1.2;"><div style="font-size:14px;font-weight:700;color:var(--text);">${priceLbl}</div><div style="font-size:10px;color:var(--muted);">түрээс/өдөр</div></div>
-      <span class="prod-stock-b">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${totStock} ширхэг</span>
-    </div>
-    <span class="prod-chev prod-vg-chev" style="transition:transform .15s;">›</span>
-  </div>`;
-}
-// Жагсаалтыг вариант бүлгээр (≥2 гишүүн) нэгтгэж, бусдыг энгийн мөрөөр буулгана
+// Бараа бүр ТУСДАА мөр — хувилбар (variant_group) бүлэглэлт 2026-08-29-нд халагдсан:
+// сайтад нэг картад нэгтгэснээр каталог хэт цөөн бараатай харагдаж байв.
 function productListHtml(list) {
-  const inList = {};
-  list.forEach(p => { const g = (p.variant_group || '').trim(); if (g) (inList[g] = inList[g] || []).push(p); });
-  const done = {}; const out = [];
-  for (const p of list) {
-    const g = (p.variant_group || '').trim();
-    if (g && inList[g] && inList[g].length >= 2) {
-      if (done[g]) continue;
-      done[g] = 1;
-      out.push(`<div class="prod-vg">${variantGroupHead(g, inList[g])}<div class="prod-vg-body" style="display:none;margin:2px 0 2px 12px;padding-left:10px;border-left:2px solid var(--border);">${inList[g].map(productRowHtml).join('')}</div></div>`);
-    } else {
-      out.push(productRowHtml(p));
-    }
+  return list.map(productRowHtml).join('');
+}
+
+// Хувилбар бүлгийг бөөнөөр цуцлах — variant_group/variant_label-ийг null болгож,
+// сайт болон аппад бараа бүрийг тусдаа карт болгоно. Дата цэвэрлэгдмэгц тууз алга болно.
+async function bulkClearVariants() {
+  if (!can('products.edit')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
+  const grouped = (state.products || []).filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim());
+  if (!grouped.length) { showToast('Хувилбар бүлэгт бараа алга', 'info', 2600); return; }
+  const ok = await showConfirm(
+    `${grouped.length} барааны хувилбар бүлгийг цуцлах уу?\n\nСайтад тус бүр өөрийн картаар харагдана. Бараа, үнэ, нөөц өөрчлөгдөхгүй.`,
+    { title: '🎨 Хувилбар цуцлах', okText: 'Тийм, цуцал' }
+  );
+  if (!ok) return;
+  const stamp = new Date().toISOString();
+  const snap = grouped.map(p => ({ p, g: p.variant_group, l: p.variant_label }));
+  const rows = grouped.map(p => ({ sku: p.sku, variant_group: null, variant_label: null, updated_at: stamp }));
+  snap.forEach(s => { s.p.variant_group = null; s.p.variant_label = null; });   // optimistic
+  render();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows),
+    }, 25000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    showToast(`✓ ${grouped.length} бараа хувилбаргүй боллоо`, 'success', 4000);
+    loadProductsCatalog();
+  } catch (e) {
+    snap.forEach(s => { s.p.variant_group = s.g; s.p.variant_label = s.l; }); render();   // буцаах
+    showToast('Алдаа: ' + e.message, 'error', 6000);
   }
-  return out.join('');
 }
 
 /* ===================== ЦАГИЙН ЦАЛИН (hourly payroll) =====================
@@ -8508,11 +8591,11 @@ function renderMarketing() {
   const sizeBtns = Object.entries(POSTER_SIZES).map(([key, s]) => `<button class="btn btn-sm" data-mk-size="${key}" style="${P.size === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(s.label)}</button>`).join(' ');
   const tplBtns = Object.entries(POSTER_TEMPLATES).map(([key, l]) => `<button class="btn btn-sm" data-mk-tpl="${key}" style="${P.template === key ? 'background:var(--primary);color:#fff;' : ''}">${escapeHtml(l)}</button>`).join(' ');
   const fld = 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);margin-bottom:10px;';
-  // 🛒 Бараа сонголт — КАТЕГОРИОР бүлэглэсэн dropdown (optgroup). Вариант бараа "Бүлэг — хэмжээ" гэж харагдана.
+  // 🛒 Бараа сонголт — КАТЕГОРИОР бүлэглэсэн dropdown (optgroup). Бараа бүр өөрийн нэрээр.
   const _mkRent = (state.products || []).filter(p => p && p.name && (typeof isRentable !== 'function' || isRentable(p)));
   const _mkByCat = {};
   _mkRent.forEach(p => { (_mkByCat[p.category || 'Бусад'] = _mkByCat[p.category || 'Бусад'] || []).push(p); });
-  const _mkOptLbl = p => { const g = (p.variant_group || '').trim(); return g ? `${g} — ${p.variant_label || p.name}` : (p.name || ''); };
+  const _mkOptLbl = p => p.name || '';
   const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
@@ -12825,7 +12908,7 @@ function renderProducts() {
     purchase_asc: (a, b) => String(a.purchase_date || '9999-99-99').localeCompare(String(b.purchase_date || '9999-99-99')),
   };
   list = list.slice().sort(_prodSorters[state.prodSort] || _prodSorters.name);
-  const rows = productListHtml(list);   // хэмжээ/өнгө вариантыг бүлэглэж харуулна
+  const rows = productListHtml(list);   // бараа бүр тусдаа мөр (хувилбар бүлэглэлт байхгүй)
   // Салбарын ленз — тухайн салбарт нөөцтэй барааг л харуулна (нэг барааг олон салбарт хувааж болно)
   const brQtySum = (k) => all.reduce((s, p) => s + branchQty(p, k), 0);
   const brCount = (k) => all.filter(p => branchQty(p, k) > 0).length;
@@ -12833,6 +12916,14 @@ function renderProducts() {
   // (branchBar устсан — салбарын мэдээлэл prod-metabar дотор шингэсэн)
   // Улирал хаалт — NOMAAD салбар идэвхтэй (лензээр эсвэл табаар) + нөөцтэй + удирдах эрхтэй үед
   const _nomaadSum = brQtySum('nomaad');
+  // Хувилбар цэвэрлэх тууз — хуучин дата дээр л гарна, цуцалмагц өөрөө алга болно
+  const _vgLeft = all.filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim()).length;
+  const variantClearBar = (_prodMgmt && _vgLeft > 0)
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.28);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🎨 ${_vgLeft} бараа хувилбар бүлэгт байна — сайтад нэг картад нэгтгэгдэж каталог цөөн харагдана.</span>
+        <button class="btn btn-primary" id="prod-clear-variants" style="white-space:nowrap;">Хувилбар цуцлах (${_vgLeft})</button>
+      </div>`
+    : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
@@ -12887,22 +12978,12 @@ function renderProducts() {
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
+    ${variantClearBar}
     ${seasonCloseBar}
-    <div class="prod-list">${rows || '<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
+    <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
   `;
 }
 
-// Хувилбарын (variant_group/label) амьд урьдчилан харах — форм дээр сайтад хэрхэн харагдахыг харуулна.
-function pmVarPreview() {
-  const g = (document.getElementById('pm-vgroup')?.value || '').trim();
-  const l = (document.getElementById('pm-vlabel')?.value || '').trim();
-  const n = (document.getElementById('pm-name')?.value || '').trim();
-  const el = document.getElementById('pm-vpreview');
-  if (!el) return;
-  if (g) el.innerHTML = `Сайтад: <b style="color:var(--text)">${escapeHtml(g)}</b> карт${l ? ` → сонголт <b style="color:var(--text)">${escapeHtml(l)}</b>` : ' <span style="color:var(--warn)">(сонголт хоосон)</span>'}`;
-  else if (l) el.innerHTML = `<span style="color:var(--warn)">⚠ Сонголт бичсэн ч бүлэг хоосон — нэгтгэхийн тулд «Үндсэн нэр» бичнэ үү</span>`;
-  else el.innerHTML = `Ганц бараа — <b style="color:var(--text)">${escapeHtml(n) || 'нэрээрээ'}</b> тусдаа карт`;
-}
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
 function openProductModal(p) {
   if (!can('products.edit')) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
@@ -12925,12 +13006,6 @@ function openProductModal(p) {
   }
   const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
   const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
-  const vgroups = [...new Set((state.products || []).map(x => x.variant_group).filter(Boolean))].sort();
-  const vgroupOpts = vgroups.map(gr => `<option value="${escapeHtml(gr)}">`).join('');
-  // Сонголтын (variant_label) санал — түгээмэл + одоо ашиглагдаж буй
-  const _vlCommon = ['Том', 'Дунд', 'Жижиг', 'Цагаан', 'Хар', 'Цэнхэр', 'Ногоон', 'Улаан', 'Шаргал', 'Хүрэн', '6 хүний', '8 хүний', '10 хүний'];
-  const _vlUsed = [...new Set((state.products || []).map(x => (x.variant_label || '').trim()).filter(Boolean))];
-  const vlabelOpts = [...new Set([..._vlCommon, ..._vlUsed])].map(l => `<option value="${escapeHtml(l)}">`).join('');
   const v = (x) => escapeHtml((p && p[x]) || '');
   document.getElementById('prod-modal')?.remove();
   const modal = document.createElement('div');
@@ -12945,15 +13020,6 @@ function openProductModal(p) {
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
-        <div class="pm-wide" style="border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:var(--panel-hover);">
-          <div style="font-size:12.5px;font-weight:700;">🎨 Хэмжээ / өнгө — сонголтоор</div>
-          <div style="font-size:11px;color:var(--muted);margin:2px 0 9px;line-height:1.45;">Ижил барааны хэмжээ/өнгийг НЭР дотор биш эндээс оруул — сайтад нэг картад нэгтгэж сонголт болгоно. Ганц бараа бол хоосон орхи.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;">
-            <label style="font-size:11.5px;">Үндсэн нэр (бүлэг)<input id="pm-vgroup" list="pm-vgroups" value="${v('variant_group')}" placeholder="ж: Ширээ" oninput="pmVarPreview()"><datalist id="pm-vgroups">${vgroupOpts}</datalist></label>
-            <label style="font-size:11.5px;">Сонголт (хэмжээ/өнгө)<input id="pm-vlabel" list="pm-vlabels" value="${v('variant_label')}" placeholder="ж: 8 хүний · Том · Цагаан" oninput="pmVarPreview()"><datalist id="pm-vlabels">${vlabelOpts}</datalist></label>
-          </div>
-          <div id="pm-vpreview" style="font-size:11.5px;margin-top:8px;color:var(--muted);"></div>
-        </div>
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
@@ -13018,7 +13084,6 @@ function openProductModal(p) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  if (typeof pmVarPreview === 'function') pmVarPreview();   // хувилбарын урьдчилан харах эхлүүлэх
   if (isEdit && p.sku) renderProductQR(modal.querySelector('#pm-qr'), p.sku);
   // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
   let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);
@@ -13223,8 +13288,7 @@ async function submitProductModal(modal, orig, btn) {
     qty_mevent: isPkg ? 0 : _qm, qty_chimun: isPkg ? 0 : _qc, qty_nomaad: isPkg ? 0 : _qn, qty_catering: isPkg ? 0 : _qk,
     bundle_items: bundle,
     all_categories: cat ? [cat] : ((orig && orig.all_categories) || []),
-    variant_group: (modal.querySelector('#pm-vgroup').value || '').trim() || null,
-    variant_label: (modal.querySelector('#pm-vlabel').value || '').trim() || null,
+    variant_group: null, variant_label: null,   // хувилбар халагдсан — хадгалах бүрд цэвэрлэнэ
     source_url: g('pm-source') || null,
     media_url: g('pm-media') || null,
     supplier: g('pm-source') || null,
@@ -13259,28 +13323,14 @@ function attachProductsHandlers() {
   });
   // Улирал хаалт — NOMAAD-ийн бүх нөөцийг M-Event руу
   document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
+  document.getElementById('prod-clear-variants')?.addEventListener('click', () => bulkClearVariants());
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');
   if (s) s.oninput = (e) => {
     const q = e.target.value.toLowerCase().trim();
     state.productSearch = e.target.value;
     let n = 0;
-    // Вариант бүлгүүд — хайлтад гишүүн таарвал бүлгийг задалж харуулна
-    document.querySelectorAll('.prod-vg').forEach(vg => {
-      let any = false;
-      vg.querySelectorAll('.prod-vg-body .prod-row').forEach(row => {
-        const show = !q || (row.dataset.search || '').includes(q);
-        row.style.display = show ? '' : 'none';
-        if (show && q) { any = true; n++; }
-      });
-      vg.querySelector('.prod-vg-head').style.display = (!q || any) ? '' : 'none';
-      vg.querySelector('.prod-vg-body').style.display = (q && any) ? '' : 'none';
-      const chev = vg.querySelector('.prod-vg-chev'); if (chev) chev.style.transform = (q && any) ? 'rotate(90deg)' : '';
-      if (!q) n++;   // задлаагүй үед бүлгийг 1 гэж тоолно
-    });
-    // Бүлэггүй энгийн мөрүүд
     document.querySelectorAll('.prod-row').forEach(row => {
-      if (row.closest('.prod-vg')) return;
       const show = !q || (row.dataset.search || '').includes(q);
       row.style.display = show ? '' : 'none';
       if (show) n++;
@@ -13289,14 +13339,6 @@ function attachProductsHandlers() {
     // <b>-г хадгална (мета мөр тоог тодоор харуулдаг) — textContent бол устгана
     if (c) c.innerHTML = `<b>${n}</b> бараа${q ? ' <span class="prod-meta-dim">(шүүсэн)</span>' : ''}`;
   };
-  // Вариант бүлгийн толгойг дарж задлах/хаах
-  document.querySelectorAll('.prod-vg-head').forEach(h => h.addEventListener('click', () => {
-    const body = h.parentElement.querySelector('.prod-vg-body');
-    if (!body) return;
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    const chev = h.querySelector('.prod-vg-chev'); if (chev) chev.style.transform = open ? '' : 'rotate(90deg)';
-  }));
   // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх
   document.querySelectorAll('[data-product-open]').forEach(row => {
     row.addEventListener('click', () => {
@@ -19054,21 +19096,11 @@ function staffBranchLabel(m) {
 function renderStaffList() {
   const listEl = document.getElementById(state._staffListId || 'staff-list');
   if (!listEl) return;
-  // PIN нь localStorage кэшээс ХАСАГДДАГ (SENSITIVE_TEAM_FIELDS). Апп кэшээр ачаалагдвал
-  // TEAM-д pin байхгүй → CEO-д «харах» товч гарахгүй, «тохируулаагүй» гэж худал харагдана.
-  // Тиймээс CEO жагсаалт нээхэд нэг ч pin байхгүй бол сервэрээс шууд дахин татна.
-  if (state.isCEO && !state._pinRefetched && TEAM.length && !TEAM.some(m => m.pin)) {
-    state._pinRefetched = true;
-    loadTeamFromAPI().then(ok => { state._pinRefetchOk = !!ok; renderStaffList(); });
-  }
-  const _pinLoaded = TEAM.some(m => m.pin);   // false = сервэрээс ирээгүй (кэш/алдаа), тохируулаагүй ГЭСЭН ҮГ БИШ
-  // Дахин татаж дууссан ч нэг ч pin ирээгүй бол шалтгааныг ЯЛГАЖ хэлнэ:
-  // татаж чадсан мөртлөө pin алга = /staff endpoint PIN буцаахаа больсон (backend засвар),
-  // татаж чадаагүй = сүлжээ/endpoint алдаа.
-  const _pinMsg = _pinLoaded ? 'тохируулаагүй'
-    : state._pinRefetched === undefined || state._pinRefetchOk === undefined ? 'ачаалж байна…'
-    : state._pinRefetchOk ? '⚠ сервер PIN буцаахгүй байна'
-    : '⚠ сервертэй холбогдож чадсангүй';
+  // PIN нь /staff-аас ХАСАГДСАН (аюулгүй байдал). CEO зөвхөн session токеноороо chimun-staff-pins
+  // endpoint-оос PIN татаж TEAM-д нэгтгэнэ (loadStaffPins). Нэг удаа, кэшлэхгүй.
+  if (state.isCEO && !state._staffPinsLoaded) loadStaffPins();
+  const _pinLoaded = TEAM.some(m => m.pin);   // true = серверээс PIN ирсэн
+  const _pinMsg = _pinLoaded ? 'тохируулаагүй' : (state.isCEO ? 'ачаалж байна…' : 'тохируулаагүй');
   const q = (document.getElementById(state._staffSearchId || 'staff-search')?.value || '').toLowerCase().trim();
   const all = [...TEAM].sort((a, b) => {
     // Active first, then by level
@@ -22376,6 +22408,9 @@ async function restoreSession() {
 function initPinLogin() {
   // Утас эсвэл и-мэйл + PIN-ээр нэвтрэх. Нэрийн жагсаалт харуулахгүй (нууцлал).
   const idInput = document.getElementById('login-id-input');
+  // "PIN мартсан уу?" — имэйлээр сэргээх модал
+  const forgot = document.getElementById('forgot-pin-link');
+  if (forgot && !forgot._bound) { forgot._bound = true; forgot.addEventListener('click', () => openPinResetModal((document.getElementById('login-id-input') || {}).value || '')); }
 
   const form = document.getElementById('pin-login-form');
   const pinInput = document.getElementById('login-pin-input');

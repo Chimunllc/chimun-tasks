@@ -5700,7 +5700,9 @@ body.role-daily #add-project { display: none !important; }
 
 /* ── Шинэ захиалга модал ── */
 .no-lbl { display: block; font-size: var(--fs-xs); color: var(--muted); }
-.no-lbl input, .no-lbl select { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-md); margin-top: 3px; }
+.no-lbl input, .no-lbl select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--r-md); background: var(--panel-hover); color: var(--text); font-size: var(--fs-md); margin-top: 4px; transition: border-color .12s, background .12s; }
+.no-lbl input::placeholder { color: var(--muted); }
+.no-lbl input:focus, .no-lbl select:focus { outline: none; border-color: var(--primary); background: var(--panel); }
 .no-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: 6px; }
 .no-head h2 { margin: 0; font-size: var(--fs-lg); }
 .no-hint { font-size: var(--fs-xs); color: var(--muted); margin: -2px 0 4px; }
@@ -5710,7 +5712,7 @@ body.role-daily #add-project { display: none !important; }
 .no-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .no-fields .no-wide { grid-column: 1 / -1; }
 .no-col { min-width: 0; }
-.no-box { background: var(--panel-hover); border-radius: var(--r-lg); padding: var(--space-2) 10px; margin-bottom: 10px; }
+.no-box { background: transparent; padding: 0; margin-bottom: 10px; }
 .no-inline { display: flex; gap: var(--space-1); margin-top: 3px; }
 .no-inline > input { flex: 1; margin-top: 0; }
 .no-inline > select { flex: 0 0 auto; margin-top: 0; }

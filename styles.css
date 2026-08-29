@@ -5010,6 +5010,22 @@ body.role-daily #add-project { display: none !important; }
 .br-pay.none { background: var(--panel-hover); color: var(--muted); }
 .br-amt { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: -.01em; text-align: right; white-space: nowrap; }
 .br-pay-cell, .br-act-cell { display: flex; align-items: center; }
+/* ═══ Захиалгын ХАВТГАЙ ХҮСНЭГТ (Жагсаалт) — төлөв багана, таб-аар шүүнэ ═══ */
+.otable { display: flex; flex-direction: column; gap: 5px; }
+.otable-head { display: grid; grid-template-columns: 52px minmax(120px, 1fr) 132px 96px 116px 106px auto; gap: 12px; padding: 2px 14px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.otable-head .r { text-align: right; }
+.board-order.flat > summary { grid-template-columns: 52px minmax(120px, 1fr) 132px 96px 116px 106px auto; }
+.board-order.flat > summary > * { grid-row: 1; }
+.board-order.flat .br-id { grid-column: 1; }
+.board-order.flat .br-cust-cell { grid-column: 2; }
+.board-order.flat .br-status-cell { grid-column: 3; }
+.board-order.flat .br-meta { grid-column: 4; }
+.board-order.flat .br-amt { grid-column: 5; }
+.board-order.flat .br-pay-cell { grid-column: 6; }
+.board-order.flat .br-act-cell { grid-column: 7; }
+.br-status-cell { display: flex; align-items: center; min-width: 0; }
+.br-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: color-mix(in srgb, var(--sd, #888) 13%, var(--panel)); color: var(--sd, #888); }
+.br-sdot { width: 6px; height: 6px; border-radius: 50%; background: var(--sd, #888); flex: 0 0 auto; }
 .board-detail { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 8px; background: var(--panel-hover); }
 .board-detail .order-card { margin: 0; }
 .board-more { font-size: 12px; color: var(--muted); text-align: center; padding: 8px; }
@@ -5037,6 +5053,16 @@ body.role-daily #add-project { display: none !important; }
   .br-pay-cell { grid-column: 3; grid-row: 2; justify-self: end; align-self: center; }
   .br-act-cell { grid-column: 1 / -1; grid-row: 3; display: flex; }
   .br-act { width: 100%; justify-content: center; }
+  /* Хавтгай хүснэгт — утсанд: толгой нуух, төлөв багана мөрд эвхэгдэнэ */
+  .otable-head { display: none; }
+  .board-order.flat > summary { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .board-order.flat .br-id { grid-column: 1; grid-row: 1; }
+  .board-order.flat .br-cust-cell { grid-column: 2; grid-row: 1; }
+  .board-order.flat .br-amt { grid-column: 3; grid-row: 1; }
+  .board-order.flat .br-status-cell { grid-column: 1 / -1; grid-row: 2; }
+  .board-order.flat .br-meta { grid-column: 1 / 3; grid-row: 3; }
+  .board-order.flat .br-pay-cell { grid-column: 3; grid-row: 3; justify-self: end; }
+  .board-order.flat .br-act-cell { grid-column: 1 / -1; grid-row: 4; }
   /* Мөрөн дэх ШОШГО — авсаархан */
   .board-order > summary .chip,
   .board-order > summary span[style*="border-radius:100px"] {

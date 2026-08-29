@@ -19276,26 +19276,50 @@ function renderStaffList() {
     if (status === 'гарсан') { statusLabel = 'Гарсан'; statusCls = 'left'; }
     else if (isPending)      { statusLabel = '⏳ Хүлээж буй'; statusCls = 'pending'; }
     const key = personKey(m);
+    const _age = ageFromRD(m.rd);
+    // Мета мөр: албан тушаал · хүйс · нас · имэйл. Нэр цэвэр үлдэнэ (хамгийн том элемент).
+    const meta = [
+      `<span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>`,
+      m.gender ? (m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм') : '',
+      _age != null ? `${_age} нас` : '',
+      m.email ? escapeHtml(m.email) : '',
+    ].filter(Boolean).join(' · ');
+    // CEO-гийн ӨДӨР ТУТМЫН мэдээлэл — үргэлж нэг байранд (утас, PIN).
+    const cred = state.isCEO ? `<div class="staff-sig">
+      <span class="sig">📞 <b>${escapeHtml(m.phone || key || '—')}</b></span>
+      <span class="sig">🔑 <b class="staff-pin" data-pin-for="${escapeHtml(key)}">${m.pin ? '••••' : `<span class="sig-empty">${_pinMsg}</span>`}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}">харах</button>` : ''}</span>
+    </div>` : '';
+    // Удирдах хэрэгслүүд — ЭВХЭГДСЭН. Урьд нь эдгээр 3 мөр ҮРГЭЛЖ задгай байсан тул
+    // CEO-гийн жагсаалт мөр бүрд 6 давхар болж, огт уншигдахгүй байв.
+    const adm = state.isCEO ? `<details class="staff-adm">
+      <summary>Удирдах</summary>
+      <div class="staff-adm-body">
+        <div class="staff-adm-row">Хүйс:
+          <button class="staff-gbtn${m.gender === 'Эрэгтэй' ? ' on' : ''}" data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй">Эр</button>
+          <button class="staff-gbtn${m.gender === 'Эмэгтэй' ? ' on' : ''}" data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй">Эм</button>
+        </div>
+        ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} />🏦 Санхүү: салбар засах эрх</label>` : ''}
+        <button class="staff-doc-btn" data-staff-doc="${escapeHtml(key)}" data-staff-name="${escapeHtml(m.name || '')}">📄 Үнэмлэх харах</button>
+      </div>
+    </details>` : '';
+    // Тогтмол араг яс: [avatar] [нэр · мета · дохио · удирдах] [төлөв · үйлдэл]
     return `
       <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
         <span class="staff-avatar">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
         <div class="staff-info">
-          <div class="staff-name">${escapeHtml(m.name)} ${isSelf ? '<span class="staff-you">(Та)</span>' : ''}${m.gender ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм'}</span>` : ''}${(() => { const a = ageFromRD(m.rd); return a != null ? ` <span style="font-size:11px;color:var(--muted);font-weight:400;">· ${a} нас</span>` : ''; })()}</div>
-          <div class="staff-role"><span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>${m.email ? ' · ' + escapeHtml(m.email) : ''}</div>
-          ${state.isCEO ? `<div class="staff-cred" style="margin-top:4px;font-size:12px;color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:12px;">
-            <span>📞 <b>${escapeHtml(m.phone || key || '—')}</b></span>
-            <span>🔑 PIN: <b class="staff-pin" data-pin-for="${escapeHtml(key)}" style="letter-spacing:2px;">${m.pin ? '••••' : `<span style='color:var(--muted);font-weight:400;letter-spacing:0;'>${_pinMsg}</span>`}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}" style="padding:1px 8px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">харах</button>` : ''}</span>
-            <button class="staff-doc-btn" data-staff-doc="${escapeHtml(key)}" data-staff-name="${escapeHtml(m.name || '')}" style="padding:2px 10px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;font-size:11px;">📄 Үнэмлэх харах</button>
-          </div>` : ''}
-          ${state.isCEO ? `<div style="margin-top:4px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;">Хүйс: <button data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эрэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эрэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эр</button><button data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй" style="padding:1px 9px;border:1px solid ${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'var(--border)'};border-radius:6px;background:${m.gender === 'Эмэгтэй' ? 'var(--accent)' : 'transparent'};color:${m.gender === 'Эмэгтэй' ? '#fff' : 'var(--muted)'};cursor:pointer;font-size:11px;">Эм</button></div>` : ''}
-          ${state.isCEO && isActive ? `<label class="staff-finperm" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-top:4px;cursor:pointer;"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} style="margin:0;width:auto;" />🏦 Санхүү: салбар засах эрх</label>` : ''}
+          <div class="staff-name">${escapeHtml(m.name)}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
+          <div class="staff-role">${meta}</div>
+          ${cred}
+          ${adm}
         </div>
-        <span class="staff-status status-${statusCls}">${statusLabel}</span>
-        ${isSelf ? '' : (
-          isPending
-            ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
-            : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">${isActive ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх'}</button>`
-        )}
+        <div class="staff-right">
+          <span class="staff-status status-${statusCls}">${statusLabel}</span>
+          ${isSelf ? '' : (
+            isPending
+              ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
+              : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">${isActive ? 'Гарсан' : 'Сэргээх'}</button>`
+          )}
+        </div>
       </div>
     `;
   };
@@ -19305,7 +19329,7 @@ function renderStaffList() {
   const order = ['M-Event', 'NOMAAD Camp', 'Нэгдсэн', 'Цагийн ажилтан'];
   const gkeys = [...order.filter(g => groups[g]), ...Object.keys(groups).filter(g => !order.includes(g)).sort()];
   listEl.innerHTML = gkeys.map(g =>
-    `<div class="staff-group-head" style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:14px 4px 4px;">${escapeHtml(g)} <span style="color:var(--text-soft);">(${groups[g].length})</span></div>`
+    `<div class="staff-group-head">${escapeHtml(g)} <span>(${groups[g].length})</span></div>`
     + groups[g].map(rowHtml).join('')
   ).join('');
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {

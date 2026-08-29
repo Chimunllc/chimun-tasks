@@ -4684,15 +4684,46 @@ body.role-daily #add-project { display: none !important; }
 }
 
 /* ═══ Staff management list ═══ */
+/* Тогтмол араг яс: [avatar] [нэр·мета·дохио·удирдах] [төлөв·үйлдэл].
+   align-items: flex-start — мөрүүдийн ДЭЭД зах эгнэж, нүд багана уншина. */
 .staff-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: var(--space-3);
   padding: 10px 12px;
   background: var(--panel-hover);
   border-radius: 8px;
   transition: background 100ms ease;
 }
+.staff-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+/* CEO-гийн өдөр тутмын мэдээлэл — үргэлж нэг байранд */
+.staff-sig { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--space-3); margin-top: 5px; font-size: var(--fs-sm); }
+.staff-sig .sig { color: var(--text-soft); }
+.staff-sig .sig b { font-weight: 600; color: var(--text); }
+.staff-pin { letter-spacing: 2px; }
+.staff-pin .sig-empty { letter-spacing: 0; font-weight: 400; }
+.staff-pin-show { padding: 1px 8px; min-height: 22px; line-height: 1.5; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--accent-blue); cursor: pointer; font-size: var(--fs-xs); font-family: inherit; }
+.staff-pin-show:hover { border-color: var(--accent-blue); }
+/* Удирдах хэрэгслүүд — эвхэгддэг. Задгай байхад мөр 6 давхар болж жагсаалт уншигдахгүй болдог. */
+.staff-adm { margin-top: 6px; }
+.staff-adm > summary {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--fs-xs); color: var(--muted); user-select: none;
+}
+.staff-adm > summary::-webkit-details-marker { display: none; }
+.staff-adm > summary::before { content: '▸'; font-size: 9px; }
+.staff-adm[open] > summary::before { content: '▾'; }
+.staff-adm > summary:hover { color: var(--primary); }
+.staff-adm-body { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: 6px; }
+.staff-adm-row { display: flex; align-items: center; gap: 5px; font-size: var(--fs-xs); color: var(--muted); }
+.staff-gbtn { padding: 1px 9px; min-height: 22px; line-height: 1.5; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: var(--fs-xs); font-family: inherit; }
+.staff-gbtn.on { border-color: var(--accent-blue); background: var(--accent-blue); color: #fff; }
+.staff-finperm { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); color: var(--muted); cursor: pointer; }
+.staff-finperm input { margin: 0; width: auto; }
+.staff-doc-btn { padding: 2px 10px; min-height: 24px; line-height: 1.5; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--accent-blue); cursor: pointer; font-size: var(--fs-xs); font-family: inherit; }
+.staff-doc-btn:hover { border-color: var(--accent-blue); }
+.staff-group-head { font-size: var(--fs-sm); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; padding: 14px 4px 4px; }
+.staff-group-head span { color: var(--text-soft); }
 .staff-row.staff-left {
   opacity: 0.65;
 }
@@ -4719,9 +4750,10 @@ body.role-daily #add-project { display: none !important; }
   min-width: 0;
 }
 .staff-name {
-  font-size: 14px;
+  font-size: var(--fs-lg);
   font-weight: 600;
   color: var(--text);
+  line-height: 1.3;
 }
 .staff-you {
   font-size: 11px;
@@ -4729,8 +4761,9 @@ body.role-daily #add-project { display: none !important; }
   font-weight: 500;
 }
 .staff-role {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--muted);
+  margin-top: 2px;
 }
 .staff-status {
   padding: 3px 10px;
@@ -4747,19 +4780,27 @@ body.role-daily #add-project { display: none !important; }
   background: rgba(239, 68, 68, 0.10);
   color: var(--accent-red);
 }
+/* Дэд зэрэглэлийн үйлдэл — мөрийн гол мэдээллээс визуал жин БАГА байх ёстой.
+   Мобайлын ерөнхий товчны 44px өндөр энд хэт их байсан: улаан блок нэрнээс ч
+   илүү анхаарал татаж байв. */
 .staff-action {
-  padding: 6px 12px;
+  padding: 5px 12px;
   border-radius: 6px;
   border: none;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+  min-height: 30px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 .staff-action.leave {
-  background: rgba(239, 68, 68, 0.10);
-  color: var(--accent-red);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
 }
+.staff-action.leave:hover { border-color: var(--accent-red); }
 .staff-action.leave:hover {
   background: var(--accent-red);
   color: #fff;
@@ -4776,12 +4817,9 @@ body.role-daily #add-project { display: none !important; }
   .staff-row {
     flex-wrap: wrap;
   }
-  .staff-action {
-    width: 100%;
-    margin-top: 4px;
-    padding: 10px;
-    min-height: 40px;
-  }
+  /* width:100% ХАСАГДСАН — хуучин layout-ын үлдэгдэл байв (товч мөрийн доор бүтэн
+     өргөнөөр сунаж, улаан блок нэрнээс илүү анхаарал татдаг). Одоо баруун баганад. */
+  .staff-action { padding: 8px 12px; min-height: 40px; }
 }
 
 /* ═══ Pending registration row ═══ */

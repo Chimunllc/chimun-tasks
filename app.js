@@ -19584,6 +19584,15 @@ function renderStaffList() {
           <button class="staff-gbtn${m.gender === 'Эрэгтэй' ? ' on' : ''}" data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй">Эр</button>
           <button class="staff-gbtn${m.gender === 'Эмэгтэй' ? ' on' : ''}" data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй">Эм</button>
         </div>
+        <div class="staff-adm-row">🏢 Салбар:
+          <button class="staff-gbtn${memberBranchesOf(m).includes('m-event') ? ' on' : ''}" data-staff-br="${escapeHtml(key)}" data-br="m-event">M-Event</button>
+          <button class="staff-gbtn${memberBranchesOf(m).includes('camp') ? ' on' : ''}" data-staff-br="${escapeHtml(key)}" data-br="camp">NOMAAD</button>
+          <button class="staff-gbtn${memberBranchesOf(m).includes('catering') ? ' on' : ''}" data-staff-br="${escapeHtml(key)}" data-br="catering">Катеринг</button>
+        </div>
+        <div class="staff-adm-row">👤 Төрөл:
+          <button class="staff-gbtn${String(m.worker_type || '') !== 'daily' ? ' on' : ''}" data-staff-wt="${escapeHtml(key)}" data-wt="permanent">Үндсэн</button>
+          <button class="staff-gbtn${String(m.worker_type || '') === 'daily' ? ' on' : ''}" data-staff-wt="${escapeHtml(key)}" data-wt="daily">Цагийн</button>
+        </div>
         ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} />🏦 Санхүү: салбар засах эрх</label>` : ''}
         <button class="staff-doc-btn" data-staff-doc="${escapeHtml(key)}" data-staff-name="${escapeHtml(m.name || '')}">📄 Үнэмлэх харах</button>
       </div>
@@ -19640,6 +19649,24 @@ function renderStaffList() {
   });
   listEl.querySelectorAll('[data-staff-gender]').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); const m = findMember(btn.dataset.staffGender); if (m) saveStaffGender(m, btn.dataset.gender); });
+  });
+  // 🏢 Салбар шилжүүлэх — товч дарж тухайн салбарыг асаах/унтраах (member_branches). Олон салбар зэрэг байж болно.
+  listEl.querySelectorAll('[data-staff-br]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.staffBr, br = btn.dataset.br;
+      const m = findMember(key); if (!m) return;
+      const cur = (memberBranchesOf(m) || []).filter(b => ['m-event', 'camp', 'catering'].includes(b));
+      const next = cur.includes(br) ? cur.filter(b => b !== br) : [...cur, br];
+      await saveMemberBranches(key, next);
+      const _brName = { 'm-event': 'M-Event', 'camp': 'NOMAAD', 'catering': 'Катеринг' };
+      showToast(next.length ? 'Салбар: ' + next.map(b => _brName[b] || b).join(', ') : 'Салбаргүй (нэгдсэн — бүгдийг харна)', 'success', 1800);
+      renderStaffList();
+    });
+  });
+  // 👤 Цагийн ⇄ Үндсэн ажилтан (worker_type). Backend: /staff-update {action:'update_worker_type'}.
+  listEl.querySelectorAll('[data-staff-wt]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); const m = findMember(btn.dataset.staffWt); if (m) saveWorkerType(m, btn.dataset.wt); });
   });
   // Санхүү салбар-засах эрх — CEO тус бүр дээр асаах/унтраах.
   listEl.querySelectorAll('[data-finperm]').forEach(cb => {
@@ -19774,6 +19801,33 @@ async function saveStaffRole(member, role) {
   }
 }
 
+// Ажилтны төрөл: Цагийн (daily) ⇄ Үндсэн (permanent) — staff-update {action:'update_worker_type'} → employees.worker_type
+async function saveWorkerType(member, wt) {
+  wt = wt === 'daily' ? 'daily' : 'permanent';
+  if ((member.worker_type || 'permanent') === wt) { renderStaffList(); return; }
+  const label = wt === 'daily' ? 'Цагийн' : 'Үндсэн';
+  if (!await showConfirm(`${member.name}-г «${label} ажилтан» болгох уу?`, { okText: 'Тийм', cancelText: 'Болих' })) { renderStaffList(); return; }
+  const prev = member.worker_type || '';
+  member.worker_type = wt;
+  try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch (e) {}
+  renderStaffList();
+  const base = state.config.staffUrl;
+  if (!base) { showToast('Локалд хадгаллаа (sync алга)', 'warn'); return; }
+  const url = base.replace(/\/[^\/]+$/, '/staff-update');
+  try {
+    const r = await fetchWithTimeout(withKey(url), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_worker_type', phone: member.phone, worker_type: wt }),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast(`${member.name}: ${label} ажилтан боллоо`, 'success', 2500);
+  } catch (e) {
+    member.worker_type = prev;
+    try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch (_) {}
+    renderStaffList();
+    showToast('Хадгалж чадсангүй: ' + e.message, 'error', 4500);
+  }
+}
 // Хүйс тохируулах (CEO) — staff-update {action:'update_gender'} → employees.gender
 async function saveStaffGender(member, gender) {
   gender = String(gender || '').trim();

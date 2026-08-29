@@ -6286,6 +6286,7 @@ async function loadProductsCatalog() {
       // source_url багана DB-д нэмэгдсэн эсэх (нэмэгдээгүй бол бичихгүй — INSERT 400 болохоос сэргийлнэ)
       state._prodHasSource = rows.length ? ('source_url' in rows[0]) : true;
       state._prodHasMedia = rows.length ? ('media_url' in rows[0]) : true;
+      state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -6525,6 +6526,7 @@ async function saveProduct(product) {
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
   if (product.media_url !== undefined && state._prodHasMedia !== false) row.media_url = product.media_url || null;
+  if (product.name_en !== undefined && state._prodHasNameEn !== false) row.name_en = product.name_en || null;
   if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
@@ -6836,6 +6838,40 @@ async function bulkClearVariants() {
     loadProductsCatalog();
   } catch (e) {
     snap.forEach(s => { s.p.variant_group = s.g; s.p.variant_label = s.l; }); render();   // буцаах
+    showToast('Алдаа: ' + e.message, 'error', 6000);
+  }
+}
+
+// Англи нэр хоосон барааг толь+галиглалаар (`enText`) бөглөнө. Дараа нь бараа бүрийн
+// модалаас гараар засаж болно. products-д `name_en` багана байхыг шаардана
+// (postgres-migration/products_name_en.sql).
+async function bulkFillNameEn() {
+  if (!can('products.edit')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
+  if (state._prodHasNameEn === false) { showToast('products хүснэгтэд name_en багана алга — эхлээд SQL-ээ ажиллуулна уу', 'error', 6000); return; }
+  const empty = (state.products || []).filter(p => p.sku && String(p.name || '').trim() && !String(p.name_en || '').trim());
+  if (!empty.length) { showToast('Бүх барааны англи нэр бөглөгдсөн', 'info', 2600); return; }
+  const sample = empty.slice(0, 3).map(p => `• ${p.name} → ${enText(p.name)}`).join('\n');
+  const ok = await showConfirm(
+    `${empty.length} барааны англи нэрийг автоматаар бөглөх үү?\n\n${sample}${empty.length > 3 ? '\n…' : ''}\n\nДараа нь бараа бүрийн модалаас гараар засаж болно.`,
+    { title: '🇬🇧 Англи нэр бөглөх', okText: 'Тийм, бөгл' }
+  );
+  if (!ok) return;
+  const stamp = new Date().toISOString();
+  const snap = empty.map(p => ({ p, prev: p.name_en }));
+  const rows = empty.map(p => ({ sku: p.sku, name_en: enText(p.name), updated_at: stamp }));
+  empty.forEach((p, i) => { p.name_en = rows[i].name_en; });   // optimistic
+  render();
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows),
+    }, 30000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+    showToast(`✓ ${rows.length} барааны англи нэр бөглөгдлөө`, 'success', 4000);
+    loadProductsCatalog();
+  } catch (e) {
+    snap.forEach(x => { x.p.name_en = x.prev; }); render();   // буцаах
     showToast('Алдаа: ' + e.message, 'error', 6000);
   }
 }
@@ -12934,6 +12970,15 @@ function renderProducts() {
         <button class="btn btn-primary" id="prod-clear-variants" style="white-space:nowrap;">Хувилбар цуцлах (${_vgLeft})</button>
       </div>`
     : '';
+  // Англи нэр — үнийн саналын EN хувилбарт хэрэглэнэ. Хоосон нь толиор автоматаар
+  // бөглөгдөж болно (дараа нь гараар засаж болно). Багана байхгүй бол тууз гарахгүй.
+  const _noEnN = state._prodHasNameEn === false ? 0 : all.filter(p => !String(p.name_en || '').trim()).length;
+  const nameEnBar = (_prodMgmt && _noEnN > 0)
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.28);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🇬🇧 ${_noEnN} барааны англи нэр хоосон — англи үнийн саналд автомат орчуулга гарна.</span>
+        <button class="btn btn-primary" id="prod-fill-nameen" style="white-space:nowrap;">Англи нэр бөглөх (${_noEnN})</button>
+      </div>`
+    : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
@@ -12944,8 +12989,8 @@ function renderProducts() {
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)
   const sortOpts = [['name', 'Нэр (А-Я)'], ['value_desc', '💰 Хөрөнгийн үнэ цэнэ ↓'], ['cost_desc', 'Нэгж өртөг ↓'], ['price_desc', 'Түрээсийн үнэ ↓'], ['stock_desc', 'Нөөц ↓'], ['purchase_asc', '📅 Хамгийн удаан эзэмшсэн']].map(([k, l]) => `<option value="${k}"${state.prodSort === k ? ' selected' : ''}>${l}</option>`).join('');
-  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad') + branchQty(p, 'catering')) <= 0, nodate: p => !p.purchase_date }[key]).length;
-  const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй'], ['nodate', '📅 Огноогүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
+  const missCount = (key) => all.filter({ nophoto: p => !String(p.photo || '').trim(), nocost: p => costOf(p) <= 0, noprice: p => (Number(p.price) || 0) <= 0, noalloc: p => (branchQty(p, 'chimun') + branchQty(p, 'mevent') + branchQty(p, 'nomaad') + branchQty(p, 'catering')) <= 0, nodate: p => !p.purchase_date, noen: p => !String(p.name_en || '').trim() }[key]).length;
+  const missOpts = [['all', '✅ Бүх мэдээлэл'], ['nophoto', '🖼 Зураггүй'], ['nocost', '💰 Өртөггүй'], ['noprice', '🏷 Түрээсийн үнэгүй'], ['noalloc', '📍 Хуваарилаагүй'], ['nodate', '📅 Огноогүй'], ['noen', '🇬🇧 Англи нэргүй']].map(([k, l]) => `<option value="${k}"${state.prodMissing === k ? ' selected' : ''}>${l}${k !== 'all' ? ` (${missCount(k)})` : ''}</option>`).join('');
   // ── ШҮҮЛТҮҮР — эвхэгддэг самбарт. Урьд нь 3 сонгогч ҮРГЭЛЖ нэг мөрөнд зэрэгцэж,
   // 390px дэлгэцэд шошго нь дунднаас тасарч («Гэрэлтүүлэ⌷», «Бүх мэ⌷») юугаар шүүж
   // байгаагаа ойлгох боломжгүй байв. Одоо нээхэд БҮТЭН нэртэй, доошоо давхарлана. ──
@@ -12988,6 +13033,7 @@ function renderProducts() {
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
+    ${nameEnBar}
     ${variantClearBar}
     ${seasonCloseBar}
     <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
@@ -13027,6 +13073,7 @@ function openProductModal(p) {
       ${isEdit && (u.orders || cost) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
       <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
+        <label class="pm-wide">Англи нэр <span style="color:var(--muted);font-weight:400;">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
@@ -13287,7 +13334,7 @@ async function submitProductModal(modal, orig, btn) {
   const _qn = Number(modal.querySelector('#pm-qn')?.value) || 0;
   const _qk = Number(modal.querySelector('#pm-qk')?.value) || 0;
   const base = {
-    name, category: cat, sku, code,   // sku === code === M-xxx
+    name, name_en: g('pm-nameen') || null, category: cat, sku, code,   // sku === code === M-xxx
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
@@ -13334,6 +13381,7 @@ function attachProductsHandlers() {
   // Улирал хаалт — NOMAAD-ийн бүх нөөцийг M-Event руу
   document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
   document.getElementById('prod-clear-variants')?.addEventListener('click', () => bulkClearVariants());
+  document.getElementById('prod-fill-nameen')?.addEventListener('click', () => bulkFillNameEn());
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');
   if (s) s.oninput = (e) => {

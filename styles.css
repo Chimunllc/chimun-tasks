@@ -5185,16 +5185,27 @@ body.role-daily #add-project { display: none !important; }
 .nomaad-pkg-label { font-size: 12px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: .5px; margin: 10px 2px 5px; }
 .nomaad-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 7px; overflow: hidden; transition: border-color .15s; }
 .nomaad-card.expanded { border-color: var(--border-strong); box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); }
-.nomaad-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; cursor: pointer; user-select: none; }
+.nomaad-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: 11px 13px; cursor: pointer; user-select: none; }
 .nomaad-card-head:hover { background: var(--panel-hover, rgba(0,0,0,.02)); }
-.nomaad-card-main { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-width: 0; }
-.nomaad-card-co { font-weight: 700; font-size: 14px; color: var(--text); }
-.nomaad-card-date { font-size: 12px; color: var(--muted); }
+/* Тогтмол араг яс: [нэр] [мета] [бүртгэл] | [дүн · үлдэгдэл · сум].
+   Урьд нь баруун талд 5 зүйл нэг эгнээнд nowrap-аар шахагдаж, компанийн нэрийг
+   мөрөөс шахаж гаргадаг байв. Компанийн нэр 14px = дүнтэй ижил байсан нь шатлалгүй. */
+.nomaad-card-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.nomaad-card-title { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
+.nomaad-card-co { font-weight: 600; font-size: var(--fs-lg); color: var(--text); line-height: 1.3; }
+.nomaad-card-meta { display: flex; align-items: center; gap: 4px var(--space-2); flex-wrap: wrap; }
+.nomaad-card-date { font-size: var(--fs-xs); color: var(--muted); }
+.nomaad-card-reg { font-size: var(--fs-xs); color: var(--muted-soft); }
+.nomaad-warn { color: var(--danger); font-weight: 600; font-size: var(--fs-xs); }
 .nomaad-dow { font-weight: 700; color: var(--text-soft); }
-.nomaad-card-right { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
-.nomaad-card-total { font-weight: 700; font-size: 14px; color: var(--text); white-space: nowrap; }
-.nomaad-card-quote { font-weight: 500; font-size: 11.5px; color: var(--muted); text-decoration: line-through; margin-left: 3px; }
-.nomaad-paid { color: var(--ok); font-weight: 800; font-size: 14px; }
+/* Баруун багана — босоо: дүн дээр, үлдэгдэл доор, сум хамгийн доор */
+.nomaad-card-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.nomaad-card-total { font-weight: 600; font-size: var(--fs-md); color: var(--text); white-space: nowrap; }
+.nomaad-card-quote { font-weight: 500; font-size: var(--fs-xs); color: var(--muted); text-decoration: line-through; margin-left: 3px; }
+.nomaad-bal { font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
+.nomaad-bal.warn { color: var(--warn); }
+.nomaad-bal.bad  { color: var(--danger); }
+.nomaad-paid { color: var(--ok); font-weight: 600; font-size: var(--fs-xs); white-space: nowrap; }
 .nomaad-chev { color: var(--muted); transition: transform .18s; flex-shrink: 0; }
 .nomaad-card.expanded .nomaad-chev { transform: rotate(180deg); }
 .nomaad-card-body { padding: 2px 14px 13px; border-top: 1px solid var(--border); }
@@ -5204,7 +5215,18 @@ body.role-daily #add-project { display: none !important; }
 .nomaad-cd-ok     { background: var(--ok-soft); color: var(--ok); }
 .nomaad-cd-past   { background: var(--border); color: var(--muted); }
 .nomaad-cd-none   { background: var(--border); color: var(--muted); }
-.nomaad-asg { font-size: 12px; font-weight: 700; color: var(--text-soft); background: var(--border); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+/* Нягт статус badge — жагсаалтын мөрөнд. «.chip»-ээс ТУСДАА: .chip бол хүрэх
+   талбарын класс (утсанд 36px өндөр), badge нь зөвхөн мэдээлэл дамжуулна.
+   Өнгө семантик токеноор — хатуу hex бичвэл харанхуй горимд цайвар үлдэнэ. */
+.badge-dense {
+  display: inline-flex; align-items: center;
+  font-size: var(--fs-xs); font-weight: 700; line-height: 1.5;
+  padding: 2px 8px; border-radius: var(--r-full); white-space: nowrap;
+}
+.badge-dense.ok   { background: var(--ok-soft);     color: var(--ok); }
+.badge-dense.warn { background: var(--warn-soft);   color: var(--warn); }
+.badge-dense.bad  { background: var(--danger-soft); color: var(--danger); }
+.nomaad-asg { font-size: var(--fs-xs); line-height: 1.5; font-weight: 700; color: var(--text-soft); background: var(--border); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .nomaad-tasks { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-soft, var(--card)); }
 .nomaad-tasks-head { font-size: 12px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 7px; }
 .nomaad-task-row { padding: 6px 0; font-size: 13px; border-top: 1px solid var(--border); }

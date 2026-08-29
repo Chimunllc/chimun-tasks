@@ -5135,7 +5135,7 @@ const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх
 const _AV_COLORS = ['#6d4aff', '#0ea5e9', '#16a34a', '#f59e0b', '#e11d48', '#8b5cf6', '#0891b2', '#db2777'];
 function _avColor(s) { let h = 0; const t = String(s || '?'); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0; return _AV_COLORS[h % _AV_COLORS.length]; }
 function _avInitials(s) { const p = String(s || '?').replace(/[^0-9A-Za-zА-Яа-яЁёҮүӨө .]/g, '').split(/[ .]+/).filter(Boolean); return (((p[0] || '?')[0] || '?') + ((p[1] || '')[0] || '')).toUpperCase(); }
-function boardOrderRow(e, k, todayStr) {
+function boardOrderRow(e, k, todayStr, flat) {
   const o = e.o;
   const rank = orderUrgRank(o, k, todayStr);
   const urgCls = rank === 0 ? 'urg-over' : rank === 1 ? 'urg-today' : rank === 2 ? 'urg-soon' : '';
@@ -5172,10 +5172,16 @@ function boardOrderRow(e, k, todayStr) {
   const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
     : `<span class="br-pay ${_paid > 0 ? 'part' : 'due'}">${_paid > 0 ? '◐ Дутуу' : '+ Төлбөр'}</span>`;
-  return `<details class="board-order ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
+  // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА болно (бүлэглэлгүй)
+  const statusCell = flat ? (() => {
+    const b = ORDER_BUCKETS.find(x => x.key === bucketOf(o.status)) || {};
+    return `<span class="br-status-cell"><span class="br-status" style="--sd:${b.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(b.label || o.status || '')}</span></span>`;
+  })() : '';
+  return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
     <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span></span>
-    <span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${cxChip}</span>
+    ${statusCell}
+    <span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${flat ? '' : `${depWarn}${vatChip}${cxChip}`}</span>
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt">${fmtMoney(_tot)}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -5494,12 +5500,14 @@ function renderOrders() {
   const sumTotal = _saleE.reduce((s, e) => s + e.total, 0);
   const saleN = _saleE.length;
   const CAP = 200;
-  const cards = shown.slice(0, CAP).map(e => bqOrderCard(e.o)).join('');
+  // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
+  const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, bucketOf(e.o.status), todayStr, true)).join('');
+  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Огноо</span><span class="r">Дүн</span><span>Төлбөр</span><span></span></div>`;
   const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length
-      ? sumLine + `<div class="orders-wrap">${cards}</div>`
+      ? sumLine + `<div class="otable">${otableHead}${flatRows}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
   return head + (isBoard ? '' : chips) + controls + body;

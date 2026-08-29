@@ -14276,7 +14276,7 @@ function openNewOrder(editOrder) {
       <div id="no-delivfee-row" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};justify-content:space-between;font-size:12.5px;margin-top:6px;"><span style="color:var(--muted);">Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
     </div>
     ${_sec('Бараа')}
-    ${_locked ? '' : `<div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / ангилал)"></div>
+    ${_locked ? '' : `<div class="orders-search" style="margin-bottom:8px;">🔍<input type="search" id="no-prodsearch" placeholder="Бараа хайх (нэр / SKU / ангилал)"></div>
     <div id="no-catalog" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:6px;max-height:190px;overflow-y:auto;margin-bottom:12px;"></div>`}
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:4px;">Сонгосон бараа (<span id="no-itemn">0</span>)</div>
     <div id="no-items" style="margin-bottom:8px;"></div>
@@ -14320,7 +14320,11 @@ function openNewOrder(editOrder) {
   const catalog = $('#no-catalog');
   function renderCatalog() {
     const q = ($('#no-prodsearch').value || '').toLowerCase().trim();
-    const prods = (state.products || []).filter(p => isRentable(p) && (!q || (p.name || '').toLowerCase().includes(q) || (p.category || '').toLowerCase().includes(q))).slice(0, 60);
+    const prods = (state.products || []).filter(p => isRentable(p) && (!q
+      || (p.name || '').toLowerCase().includes(q)
+      || (p.category || '').toLowerCase().includes(q)
+      || (p.sku || '').toLowerCase().includes(q)
+      || (p.code || '').toLowerCase().includes(q))).slice(0, 60);
     catalog.innerHTML = prods.map(p => {
       const ph = p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 120))}" referrerpolicy="no-referrer" loading="lazy" onerror="this.style.display='none'" style="width:100%;height:52px;object-fit:cover;border-radius:6px;">` : `<div style="height:52px;border-radius:6px;background:var(--panel-hover);display:flex;align-items:center;justify-content:center;font-size:18px;">📦</div>`;
       return `<button type="button" data-add="${escapeHtml(p.sku || p.name)}" style="border:1px solid var(--border);border-radius:8px;background:var(--panel);padding:4px;cursor:pointer;text-align:left;font-size:10px;color:var(--text);">${ph}<div style="font-weight:600;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div><div style="color:var(--muted);">${fmtMoney(Number(p.price) || 0)}</div></button>`;

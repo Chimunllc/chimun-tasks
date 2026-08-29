@@ -19429,18 +19429,18 @@ function renderRow(t) {
       <div class="task-title" data-act="open">${titleHtml}${extraHtml}</div>
       <div class="task-meta" data-act="open">
         <span class="status-dot ${statusClass}" title="${statusClass === 'in_progress' ? 'Хийгдэж байна' : statusClass === 'declined' ? 'Татгалзсан' : statusClass === 'done' ? 'Дууссан' : 'Шинэ'}"></span>
-        <span class="meta-mobile-only avatar-circle sm" style="display:none;background:linear-gradient(135deg,var(--primary),var(--primary-hover));">${escapeHtml(memberInitials(t.assignee))}</span>
-        <span class="meta-mobile-only" style="display:none;color:var(--text-soft);font-weight:500;">${escapeHtml(memberName(t.assignee))}</span>
-        ${t.due ? `<span class="meta-mobile-only meta-dot" style="display:none;"></span><span class="meta-mobile-only meta-due ${dc}" style="display:none;color:${dc==='overdue' ? 'var(--danger)' : dc==='soon' ? 'var(--warn)' : 'var(--muted)'};font-weight:${dc ? '600' : '400'};">${fmtDate(t.due)}</span>` : ''}
-        ${t.priority && t.priority !== 'none' ? `<span class="meta-mobile-only" style="display:none;color:${t.priority==='high'?'var(--danger)':t.priority==='med'?'var(--warn)':'var(--ok)'};">●</span>` : ''}
+        <span class="meta-mobile-only avatar-circle sm meta-avatar">${escapeHtml(memberInitials(t.assignee))}</span>
+        <span class="meta-mobile-only meta-name">${escapeHtml(memberName(t.assignee))}</span>
+        ${t.due ? `<span class="meta-mobile-only meta-dot"></span><span class="meta-mobile-only meta-due ${dc || 'none'}">${fmtDate(t.due)}</span>` : ''}
+        ${t.priority && t.priority !== 'none' ? `<span class="meta-mobile-only meta-prio ${t.priority}">●</span>` : ''}
         ${t.createdBy && t.createdBy !== t.assignee
           ? `<span class="meta-desktop-only meta-dot"></span><span class="meta-desktop-only delegated-from">${escapeHtml(memberName(t.createdBy))}</span>`
           : ''}
         ${t._isFinance && t.purpose
-          ? `<span class="meta-dot"></span><span class="fin-purpose" style="color:var(--text-soft);" title="${escapeHtml(t.purpose)}">${escapeHtml(t.purpose.length > 70 ? t.purpose.slice(0, 70) + '…' : t.purpose)}</span>`
+          ? `<span class="meta-dot"></span><span class="fin-purpose" title="${escapeHtml(t.purpose)}">${escapeHtml(t.purpose.length > 70 ? t.purpose.slice(0, 70) + '…' : t.purpose)}</span>`
           : ''}
         ${t._isFinance && t.requested_at
-          ? `<span class="meta-dot"></span><span class="fin-time" style="color:var(--muted);">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>`
+          ? `<span class="meta-dot"></span><span class="fin-time">🕐 ${escapeHtml(fmtDateTimeUB(t.requested_at))}</span>`
           : ''}
       </div>
     </div>

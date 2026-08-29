@@ -521,7 +521,7 @@
   .checkbox.checked { background: var(--ok); border-color: var(--ok); }
   .checkbox.checked::after { content: "✓"; color: #fff; font-size: 12px; font-weight: bold; }
   .task-title-wrap { display: flex; flex-direction: column; min-width: 0; }
-  .task-title { font-weight: 500; font-size: 14px; color: var(--text); outline: none; word-break: break-word; line-height: 1.4; }
+  .task-title { font-weight: 600; font-size: 14px; color: var(--text); outline: none; word-break: break-word; line-height: 1.4; }
   .task-meta { font-size: 12px; color: var(--muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .task-meta .meta-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--muted-soft); }
   .delegated-from {
@@ -1065,7 +1065,7 @@
       text-align: right;
     }
     /* Title жижигхэн боловч ихэхэн уншигдахуйц */
-    .task-title { font-size: 14px; font-weight: 500; }
+    .task-title { font-size: 14px; font-weight: 600; }
     /* Meta — нэг мөр доор: avatar + нэр + хугацаа + priority */
     .task-meta {
       display: flex; align-items: center; gap: 8px;
@@ -1088,8 +1088,8 @@
     }
 
     /* Mobile-only meta элементүүдийг ил гаргаж, desktop-only-уудыг нуух */
-    .task-meta .meta-mobile-only { display: inline-flex !important; align-items: center; }
-    .task-meta .meta-desktop-only { display: none !important; }
+    .task-meta .meta-mobile-only { display: inline-flex; align-items: center; }
+    .task-meta .meta-desktop-only { display: none; }
 
     /* Connection chip stays visible but smaller */
     .conn-status { bottom: 80px; right: 10px; font-size: 10px; padding: 4px 8px; }
@@ -2954,10 +2954,13 @@ button#f-defer:hover,
   background: var(--task-bg) !important;
 }
 
-/* ── Priority dot — илүү тод ── */
+/* ── Priority dot — илүү тод ──
+   ⚠ Хуучин сонгогч `.meta-mobile-only[style*="●"]` нь ХЭЗЭЭ Ч таарч байгаагүй:
+   «●» нь элементийн ТЕКСТ байсан болохоос style атрибутад байгаагүй. Үхсэн дүрэм
+   байв. Одоо жинхэнэ класст (.meta-prio) холбов — !important шаардлагагүй. */
 .task-row .priority-dot,
-.meta-mobile-only[style*="●"] {
-  font-size: 14px !important;
+.meta-prio {
+  font-size: var(--fs-base);
 }
 
 /* ── Search input focus — gradient ring ── */
@@ -5531,6 +5534,21 @@ body.role-daily #add-project { display: none !important; }
   border-color: var(--accent-blue) !important;
   color: #fff !important;
 }
+/* Мөрийн мета — inline style-аас класс руу (дизайны гэрээний 3-р дүрэм).
+   Урьд нь app.js-д `style="display:none"` бичээд CSS-ээс !important-аар
+   буцааж нээдэг байсан. Одоо харагдах эсэхийг ЗӨВХӨН CSS шийднэ. */
+.meta-mobile-only { display: none; }
+.meta-desktop-only { display: inline-flex; align-items: center; }
+.meta-avatar { background: linear-gradient(135deg, var(--primary), var(--primary-hover)); }
+.meta-name { color: var(--text-soft); font-weight: 500; }
+.meta-due { color: var(--muted); font-weight: 400; }
+.meta-due.overdue { color: var(--danger); font-weight: 600; }
+.meta-due.soon    { color: var(--warn);   font-weight: 600; }
+.meta-prio.high { color: var(--danger); }
+.meta-prio.med  { color: var(--warn); }
+.meta-prio.low  { color: var(--ok); }
+.fin-purpose { color: var(--text-soft); }
+.fin-time { color: var(--muted); }
 .fin-link-chip { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-left: 6px; background: #eef2ff; color: #3730a3; }
 /* Санхүүгийн мөрөнд баримтын thumbnail — дарвал lightbox-оор томорно */
 .fin-proof-thumb { display: inline-flex; width: 28px !important; height: 28px !important; min-width: 0 !important; min-height: 0 !important; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-strong); padding: 0 !important; margin-left: 6px; vertical-align: middle; cursor: zoom-in; background: var(--panel-hover); flex: none; }

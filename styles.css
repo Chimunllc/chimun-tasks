@@ -712,6 +712,14 @@
     font-size: 12px; margin-bottom: 16px; text-align: left; line-height: 1.5;
   }
 
+  /* Системийн автомат шалгалт (GitHub Actions) — sidebar footer 🟢/🔴 */
+  .ci-status { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-sm); cursor: pointer; background: var(--panel-hover); transition: border-color .12s ease; }
+  .ci-status[hidden] { display: none; }
+  .ci-status .ci-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ci-status:hover { border-color: var(--border-strong, #cbd5e1); }
+  .ci-status.ci-ok { color: var(--muted); }
+  .ci-status.ci-run { color: var(--warn); }
+  .ci-status.ci-fail { color: var(--danger); font-weight: 700; border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--panel)); }
   /* User chip in sidebar (replaces "Би хэн бэ?" dropdown) */
   .user-chip {
     margin-top: 12px; padding: 10px; background: var(--panel-hover); border: 1px solid var(--border);

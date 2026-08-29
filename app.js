@@ -16804,6 +16804,38 @@ async function loadVatReceipts() {
   state.vatReceipts = state.vatReceipts || [];
   return state.vatReceipts;
 }
+// ── Системийн автомат шалгалт (GitHub Actions CI) — sidebar-т 🟢 OK / 🔴 алдаа (зөвхөн CEO) ──
+// Public repo тул auth шаардлагагүй (api.github.com CORS зөвшөөрдөг). Push бүрийн дараах syntax/eslint/тест үр дүн.
+const CI_RUNS_URL = 'https://api.github.com/repos/Chimunllc/chimun-tasks/actions/runs?branch=main&per_page=1';
+async function loadCiStatus() {
+  if (!state.isCEO) return;
+  try {
+    const r = await fetch(CI_RUNS_URL, { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const run = d.workflow_runs && d.workflow_runs[0];
+    if (!run) return;
+    state.ciStatus = { conclusion: run.conclusion, status: run.status, url: run.html_url, msg: String((run.head_commit && run.head_commit.message) || '').split('\n')[0], at: run.created_at };
+    renderCiStatus();
+  } catch (e) { /* сүлжээ/rate-limit — чимээгүй өнгөрнө */ }
+  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) loadCiStatus(); }, 300000);   // 5 мин тутам сэргээнэ
+}
+function renderCiStatus() {
+  const el = document.getElementById('ci-status'); if (!el) return;
+  const c = state.ciStatus;
+  if (!state.isCEO || !c) { el.hidden = true; return; }
+  const inProg = c.status && c.status !== 'completed';
+  const ok = c.conclusion === 'success';
+  const cls = inProg ? 'ci-run' : ok ? 'ci-ok' : 'ci-fail';
+  const dot = inProg ? '🟡' : ok ? '🟢' : '🔴';
+  const label = inProg ? 'Шалгаж байна…' : ok ? 'Систем шалгалт: OK' : 'Систем: алдаа гарлаа';
+  el.hidden = false;
+  el.className = 'ci-status ' + cls;
+  el.innerHTML = `<span class="ci-dot">${dot}</span><span class="ci-label">${escapeHtml(label)}</span>`;
+  el.title = `${c.msg || ''}${c.at ? ' · ' + String(c.at).slice(0, 10) : ''} — дэлгэрэнгүй харах`;
+  el.onclick = () => window.open(c.url, '_blank', 'noopener');
+  el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); window.open(c.url, '_blank', 'noopener'); } };
+}
 async function vatUpsert(list) {
   if (!list.length) return 0;
   const body = list.map(r => ({ id: r.id, pos: r.pos, ddtd: r.ddtd, dt: r.dt || null, total: r.total,
@@ -21899,6 +21931,7 @@ async function bootApp() {
   loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
+  loadCiStatus();       // Системийн автомат шалгалт (GitHub Actions) — sidebar-т 🟢/🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)

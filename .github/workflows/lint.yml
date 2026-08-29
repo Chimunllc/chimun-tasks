@@ -10,6 +10,7 @@ on:
     paths:
       - 'app.js'
       - 'sw.js'
+      - 'test/**'
       - '.github/workflows/lint.yml'
 
 jobs:
@@ -52,3 +53,6 @@ jobs:
             --env es2022 \
             --parser-options=ecmaVersion:latest,sourceType:script \
             sw.js
+
+      - name: Unit tests (66 цэвэр логик тест)
+        run: node test/run.js

@@ -10001,18 +10001,21 @@ function nomaadCardHtml(o) {
   return `<div class="nomaad-card${open ? ' expanded' : ''}" data-nomaad="${q}">
     <div class="nomaad-card-head" data-nomaad-toggle="${q}">
       <div class="nomaad-card-main">
-        ${nomaadCountdownBadge(days)}
-        <span class="nomaad-card-co">${escapeHtml(o.company || '')}</span>${vatBadge(o.quote_no, contractTotal)}
-        <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
-        <span class="nomaad-card-reg" style="font-size:10.5px;color:var(--muted);flex-basis:100%;width:100%;margin-top:2px;">${regLine}</span>
+        <div class="nomaad-card-title">${nomaadCountdownBadge(days)}<span class="nomaad-card-co">${escapeHtml(o.company || '')}</span></div>
+        <div class="nomaad-card-meta">
+          <span class="nomaad-card-date">${nomaadDateWithDow(o.date_start)} → ${nomaadDateWithDow(o.date_end)} · ${o.guests || 0} хүн</span>
+          ${vatBadge(o.quote_no, contractTotal)}
+          ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
+          ${pend.length ? `<span class="nomaad-warn" title="Серверт хадгалагдаагүй төлбөр байна — картыг нээж «Дахин оролдох»">⚠ хадгалаагүй</span>` : ''}
+        </div>
+        <span class="nomaad-card-reg">${regLine}</span>
       </div>
       <div class="nomaad-card-right">
-        ${pend.length ? `<span title="Серверт хадгалагдаагүй төлбөр байна — картыг нээж «Дахин оролдох»" style="color:var(--danger);font-weight:700;font-size:12px;">⚠ хадгалаагүй</span>` : ''}
-        ${asgTasks.length ? `<span class="nomaad-asg" title="Хувиарласан ажил">👷 ${asgDone}/${asgTasks.length}</span>` : ''}
-        ${balance > 0 ? `<span title="Үлдэгдэл" style="color:var(--warn);font-weight:700;font-size:12px;">Үлд ${fmtMoney(balance)}</span>` : balance < 0 ? `<span title="Илүү төлсөн — гэрээний дүнг шинэчлэх шаардлагатай" style="color:var(--danger);font-weight:700;font-size:12px;">⚠ Илүү ${fmtMoney(-balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓</span>'}
-        <span class="nomaad-card-total"${hasDed ? ` title="Акт дүн · гэрээний санал ${fmtMoney(gtRaw)}"` : ''}>${fmtMoney(contractTotal)}${hasDed ? ` <span class="nomaad-card-quote">${fmtMoney(gtRaw)}</span>` : ''}</span>
+        <span class="nomaad-card-total"${hasDed ? ` title="Акт дүн · гэрээний санал ${fmtMoney(gtRaw)}"` : ''}>${fmtMoneyShort(contractTotal)}${hasDed ? ` <span class="nomaad-card-quote">${fmtMoneyShort(gtRaw)}</span>` : ''}</span>
+        ${balance > 0 ? `<span class="nomaad-bal warn" title="Үлдэгдэл">Үлд ${fmtMoneyShort(balance)}</span>` : balance < 0 ? `<span class="nomaad-bal bad" title="Илүү төлсөн — гэрээний дүнг шинэчлэх шаардлагатай">⚠ Илүү ${fmtMoneyShort(-balance)}</span>` : '<span class="nomaad-paid" title="Бүрэн төлөгдсөн">✓ Төлөгдсөн</span>'}
         <svg class="nomaad-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
+    </div>
     </div>
     <div class="nomaad-card-body" style="display:${open ? 'block' : 'none'};">
       <div class="order-cust" style="margin-top:4px;"><span class="order-no">${q}</span> · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone || '')}</a>${o.contact ? ' · ' + escapeHtml(o.contact) : ''}</div>
@@ -17216,11 +17219,12 @@ function vatBadge(orderNo, orderTotal) {
   const tol = 0.5;
   const over = tot > 0 && info.invoiced > tot + tol;
   const full = tot > 0 && !over && info.invoiced + tol >= tot;
-  const bg = over ? '#fbe4e2' : full ? '#e8f2ec' : '#fbf1d9';
-  const col = over ? '#c0392b' : full ? '#1e7a55' : '#9a6a00';
   const label = over ? 'НӨАТ илүү' : full ? 'НӨАТ ✓' : 'НӨАТ дутуу';
   const title = `Шивсэн: ${fmtMoney(info.invoiced)}${tot > 0 ? ' / ' + fmtMoney(tot) : ''} · НӨАТ ${fmtMoney(info.vat)} (${info.count} баримт)`;
-  return `<span class="chip" title="${title}" style="background:${bg};color:${col};font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;">🧾 ${label}</span>`;
+  // «.chip» бол ХҮРЭХ ТАЛБАРЫН класс (утсанд 36px өндөр, 14px фонт) — нягт badge-д
+  // тохирохгүй. Тусдаа .badge-dense ашиглана; өнгө нь семантик токеноор (харанхуй горим).
+  const cls = over ? 'bad' : full ? 'ok' : 'warn';
+  return `<span class="badge-dense ${cls}" title="${title}">🧾 ${label}</span>`;
 }
 // Төлбөр шиг мөр — нийт дүнгээс хэдийг НӨАТ-аар шивсэн, хэд дутуу + баримт холбох товч
 function vatCanManage() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }

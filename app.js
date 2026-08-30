@@ -8827,15 +8827,26 @@ function openEmployeeContract(personKey) {
       const signedAt = new Date().toISOString();
       const hash = await _ecSha256(JSON.stringify({ d: ecData, sigOrg, sigEmp, signedAt, by: state.me }));
       const full = { ...ecData, sigOrg, sigEmp, signedAt: fmtDateTimeUB ? fmtDateTimeUB(signedAt) : signedAt, hash: hash.slice(0, 32), docDate: ecData.docNo ? undefined : new Date().toLocaleDateString('mn-MN') };
-      // PDF үүсгэх
+      // PDF үүсгэх. ⚠ html2canvas нь ДЭЛГЭЦНЭЭС ГАДУУР (left:-9999px) элементийг хоосон буулгадаг —
+      // тиймээс holder-ийг дэлгэц дээр харагдуулж (left:0/top:0), урд нь цагаан бүрхүүл тавьж зурна.
+      if (!window.html2pdf) { await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; s.onload = res; s.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу')); document.head.appendChild(s); }); }
+      const cover = document.createElement('div');
+      cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--bg,#0b0b0f);display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;';
+      cover.textContent = '📄 Гэрээ бэлдэж байна…';
       const holder = document.createElement('div');
-      holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;color:#111;padding:32px;font-size:13px;line-height:1.55;';
+      holder.style.cssText = 'position:fixed;left:0;top:0;width:794px;z-index:2147483000;background:#fff;color:#111;padding:32px;font-size:13px;line-height:1.55;';
       holder.innerHTML = EMP_CONTRACT_HTML(full);
       document.body.appendChild(holder);
-      if (!window.html2pdf) { await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; s.onload = res; s.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу')); document.head.appendChild(s); }); }
-      const opt = { margin: [10, 10, 10, 10], image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
-      const datauri = await window.html2pdf().set(opt).from(holder).outputPdf('datauristring');
-      holder.remove();
+      document.body.appendChild(cover);
+      // Фонт + гарын үсгийн зураг (data URL) бүрэн decode болтол хүлээнэ.
+      // ⚠ requestAnimationFrame нь таб нуугдсан үед ажиллахгүй тул setTimeout-той уралдуулж гацахаас хамгаална.
+      try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+      await new Promise(r => { let done = false; const fin = () => { if (!done) { done = true; r(); } }; try { requestAnimationFrame(() => requestAnimationFrame(fin)); } catch (e) {} setTimeout(fin, 400); });
+      try { const imgs = [].slice.call(holder.querySelectorAll('img')); await Promise.all(imgs.map(im => (im.complete && im.naturalWidth > 0) ? 0 : new Promise(r => { const t = setTimeout(r, 2500); im.addEventListener('load', () => { clearTimeout(t); r(); }); im.addEventListener('error', () => { clearTimeout(t); r(); }); }))); } catch (e) {}
+      const opt = { margin: [10, 10, 10, 10], image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 900 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
+      let datauri;
+      try { datauri = await window.html2pdf().set(opt).from(holder).outputPdf('datauristring'); }
+      finally { holder.remove(); cover.remove(); }
       const b64 = String(datauri).split(',')[1] || '';
       const id = 'doc-hg-' + personKey + '-' + hash.slice(0, 8);
       const audit = JSON.stringify({ signed_by: state.me, signed_by_name: memberName(state.me), signed_at: signedAt, employee: personKey, ua: navigator.userAgent.slice(0, 120), hash });

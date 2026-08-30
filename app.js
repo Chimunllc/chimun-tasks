@@ -20033,7 +20033,7 @@ function renderStaffList() {
     const _age = ageFromRD(m.rd);
     // Мета мөр: албан тушаал · хүйс · нас · имэйл. Нэр цэвэр үлдэнэ (хамгийн том элемент).
     const meta = [
-      `<span class="staff-role-text">${escapeHtml(m.role || '—')}</span><button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>`,
+      `<span class="staff-role-text">${escapeHtml(m.role || '—')}</span>${(state.isCEO || (Number(m.level) || 0) < 100) ? `<button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>` : ''}`,
       m.gender ? (m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм') : '',
       _age != null ? `${_age} нас` : '',
       m.email ? escapeHtml(m.email) : '',
@@ -20077,7 +20077,7 @@ function renderStaffList() {
         </div>
         <div class="staff-right">
           <span class="staff-status status-${statusCls}">${statusLabel}</span>
-          ${isSelf ? '' : (
+          ${(isSelf || (!state.isCEO && (Number(m.level) || 0) >= 100)) ? '' : (
             isPending
               ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
               : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">${isActive ? 'Гарсан' : 'Сэргээх'}</button>`
@@ -20218,10 +20218,13 @@ function getRoleOptions() {
 function editStaffRole(key) {
   const member = findMember(key);
   if (!member) return;
+  // CEO биш хүн CEO-түвшний (level≥100) хүний албан тушаалыг засаж чадахгүй (демоци сэргийлэх).
+  if (!state.isCEO && (Number(member.level) || 0) >= 100) { showToast('CEO-гийн албан тушаалыг зөвхөн CEO засна', 'warn', 3000); return; }
   const row = [...document.querySelectorAll('.staff-row')].find(r => r.dataset.staffEmail === key);
   const roleDiv = row?.querySelector('.staff-role');
   if (!roleDiv) return;
-  const roles = getRoleOptions();
+  // CEO биш бол CEO-түвшний албан тушаал (levelForRole≥100) сонгуулахгүй — өөрийгөө/бусдыг CEO болгохоос сэргийлнэ.
+  const roles = state.isCEO ? getRoleOptions() : getRoleOptions().filter(r => levelForRole(r) < 100);
   const cur = member.role || '';
   if (cur && !roles.includes(cur)) roles.unshift(cur);   // одоогийн role жагсаалтад байхгүй бол нэмнэ
   const sel = document.createElement('select');
@@ -20247,6 +20250,10 @@ function editStaffRole(key) {
 async function saveStaffRole(member, role) {
   role = String(role || '').trim();
   if (!role || role === member.role) { renderStaffList(); return; }
+  // Хамгаалалт: CEO биш хүн CEO-түвшинд хүрэх/хүргэх албан тушаал өгч чадахгүй (демоци/эскалаци хаах).
+  if (!state.isCEO && ((Number(member.level) || 0) >= 100 || levelForRole(role) >= 100)) {
+    showToast('CEO-түвшний албан тушаал зөвхөн CEO-д боломжтой', 'warn', 3500); renderStaffList(); return;
+  }
   const prev = member.role;
   member.role = role;
   try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch(e) {}

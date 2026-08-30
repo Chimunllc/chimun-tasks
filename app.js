@@ -5714,9 +5714,10 @@ function renderOrders() {
     },
   };
   shown.sort(_sortFns[state.ordersSort] || _sortFns.number);
-  // Борлуулалт = ноорог + цуцалсныг ТООЛОХГҮЙ (бодит захиалга л)
+  // Борлуулалт = ноорог + цуцалсныг ТООЛОХГҮЙ (бодит захиалга л). Барьцаа = буцаадаг өр тул
+  // орлогоос ХАСна (orderRevenue, Санхүү тайлантай нийцүүлэв — app/M-Event total_mnt-д барьцаа орсон).
   const _saleE = shown.filter(e => !['draft', 'canceled', 'deleted'].includes(String(e.o.status)));
-  const sumTotal = _saleE.reduce((s, e) => s + e.total, 0);
+  const sumTotal = _saleE.reduce((s, e) => s + (typeof orderRevenue === 'function' ? orderRevenue(e.o, 'accrual') : e.total), 0);
   const saleN = _saleE.length;
   const CAP = 200;
   // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ

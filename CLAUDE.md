@@ -99,6 +99,11 @@
 - **Засах:** CEO Sheet-д шууд мөр нэмж/нэр засаж/`active`=0 болгоно → апп дараагийн ачаалалд авна. (n8n GET унших + POST seed/append; CORS=*.)
 - Кодын `const FINANCE_*_CATEGORIES` нь зөвхөн default/fallback.
 
+### Хөдөлмөрийн гэрээ — цахим гарын үсэг (2026-08-30)
+- CEO ажилтны карт (staff card) → «⚙️ Ажилтан удирдах» → **«📝 Хөдөлмөрийн гэрээ (гарын үсэг)»** (`data-sc-contract`, зөвхөн идэвхтэй ажилтан) → `openEmployeeContract(personKey)`.
+- Урсгал: форм (цалин `state.salaries`-аас авто) → `EMP_CONTRACT_HTML(d)` preview (12 хэсэг, `CHIMUN_LEGAL`) → 2 canvas гарын үсэг (`_ecSigPad`, pointer-draw) → SHA-256 лац (`_ecSha256`, crypto.subtle) + PDF (html2pdf, **модуль дотроо CDN lazy-load** — `ensureH2P` global scope-д найдваргүй байсан) → `saveCompanyDoc` (category='contract', note-д audit JSON: signed_by/at/ua/hash) → Баримт бичигт.
+- Хууль: зурсан гарын үсэг + audit = практикт хүчинтэй (хэрэглэгч сонгосон); бүрэн хүчин чадал = Дан/E-Mongolia (дараагийн шат).
+
 ## Урт хугацааны зорилго
 
 Энэ аппыг **компанийн бүрэн ERP** болгон ургуулах. Одоо ERP-ийн ~30% хэмжээнд (цөм

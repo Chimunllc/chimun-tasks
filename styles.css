@@ -4936,7 +4936,7 @@ body.role-daily #add-project { display: none !important; }
 .orders-empty .sub { font-size: 13px; color: var(--muted-soft); margin-top: 6px; }
 
 /* Толгой + анхаарлын чипүүд */
-.orders-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+.orders-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .orders-title { font-size: 18px; font-weight: 700; color: var(--text); }
 .orders-chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .ochip { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); cursor: pointer; font-family: inherit; transition: border-color .12s, background .12s; }

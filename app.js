@@ -3388,7 +3388,7 @@ function render() {
   if (state.view === 'attendance' && !canSeeAttendance()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'catering' && !canSeeCatering()) state.view = 'mine';
-  if (state.view === 'access' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'access' && !canAccessView('access', () => state.isCEO)) state.view = 'mine';
   if (state.view === 'salary' && !canSeeSalary()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
@@ -3493,9 +3493,9 @@ function renderSidebar() {
   // Маркетинг (постер үүсгэгч) — CEO/менежер.
   const mkNav = document.getElementById('nav-marketing');
   if (mkNav) mkNav.style.display = canSeeMarketing() ? '' : 'none';
-  // Эрх удирдах — зөвхөн CEO/бүрэн эрх.
+  // Ажилчид (staff удирдах) — CEO эсвэл 'access' эрх олгогдсон захирал. (Эрх засах таб дотроо CEO-only.)
   const acNav = document.getElementById('nav-access');
-  if (acNav) acNav.style.display = state.isCEO ? '' : 'none';
+  if (acNav) acNav.style.display = canAccessView('access', () => state.isCEO) ? '' : 'none';
   // Нэгдсэн "Цалин" цэс — сарын ЭСВЭЛ цагийн цалин харах эрхтэй хэн бүхэнд (CEO ч мөн).
   const salNav = document.getElementById('nav-salary');
   if (salNav) salNav.style.display = (canSeeSalary() || canSeeHourlyPayroll()) ? '' : 'none';
@@ -3624,7 +3624,7 @@ function renderTaskList() {
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
     document.getElementById('dash-print')?.addEventListener('click', () => window.print());
     document.getElementById('dash-email-digest')?.addEventListener('click', sendWeeklyDigest);
-    document.getElementById('dash-staff')?.addEventListener('click', () => { if (!state.isCEO) return; state.view = 'access'; state.hubTab = 'people'; render(); });
+    document.getElementById('dash-staff')?.addEventListener('click', () => { if (!canAccessView('access', () => state.isCEO)) return; state.view = 'access'; state.hubTab = 'people'; render(); });
     document.getElementById('dash-pending-reg-card')?.addEventListener('click', openStaffManagement);
     // Ажилтны ачаалал — мөр дээр дарж тухайн хүний ажлуудыг жагсаалтаар харах
     wrap.querySelectorAll('.dash-staff-clickable').forEach(row => {
@@ -7834,6 +7834,7 @@ const PERM_MENUS = [
       { key: 'salary.edit', label: 'Суурь цалин тохируулах' },
       { key: 'salary.pay',  label: 'Цалин олгох' } ] },
   { key: 'attendance',  label: 'Ирц',     actions: [] },
+  { key: 'access',      label: 'Ажилчид (удирдах)', actions: [] },   // ажилтан нэмэх/засах; эрх засах таб дотроо CEO-only хэвээр
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -9905,14 +9906,17 @@ function memberAccessState(m) {
 function renderAccess() {
   if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }
   if (state.hubTab === 'salary') state.hubTab = 'people';   // Цалин тусдаа "Цалин" менюд шилжсэн — давхцал арилгав
-  const tab = state.hubTab || 'people';
-  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан · албан тушаал & эрх — нэг дороос</div></div>`;
-  const tabs = [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх (хүнээр)']];
-  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
-    `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>`;
+  // Эрх засах (roles) = ЗӨВХӨН CEO (DB талд ч member_perms/role_perms бичих RLS lvl>=100).
+  // Ажилтан удирдах (people)-ыг эрх олгогдсон захиралд өгч болно.
+  const canPerms = state.isCEO;
+  const tab = (state.hubTab === 'roles' && !canPerms) ? 'people' : (state.hubTab || 'people');
+  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан${canPerms ? ' · албан тушаал & эрх' : ' · албан тушаал'} — нэг дороос</div></div>`;
+  const tabs = canPerms ? [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх (хүнээр)']] : [['people', '👤 Ажилтан']];
+  const tabBar = tabs.length > 1 ? `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
+    `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>` : '';
   // Салбараар шүүх нь толгойн глобал салбар-сонгогчоор (давхар товч хассан).
   let body;
-  if (tab === 'roles') body = renderAccessRoles();
+  if (tab === 'roles' && canPerms) body = renderAccessRoles();
   else body = renderStaffPeople();
   return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
 }

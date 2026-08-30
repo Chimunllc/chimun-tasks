@@ -5220,6 +5220,15 @@ body.role-daily #add-project { display: none !important; }
 .pay-shortage { font-size: 12px; color: var(--danger); font-weight: 500; background: var(--danger-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.4; }
 .order-dmg { color: var(--danger); }
 .rt-return { font-size: 13px; color: var(--text-soft); background: var(--panel-hover); border-radius: 8px; padding: 9px 12px; margin-top: 12px; }
+/* Буцаалт · эвдрэл модал */
+.dmg-hint { font-size: var(--fs-sm); color: var(--muted); margin: var(--space-1) 0 var(--space-3); line-height: 1.4; }
+.dmg-list { display: flex; flex-direction: column; }
+.dmg-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
+.dmg-item-name { flex: 1; min-width: 0; font-size: var(--fs-md); }
+.dmg-item-q { color: var(--muted); font-weight: 400; }
+.dmg-brk { width: 64px; }
+.dmg-amt-l { display: block; margin-top: var(--space-3); font-size: var(--fs-sm); }
+.dmg-ret { margin-top: var(--space-2); font-size: var(--fs-sm); color: var(--muted); }
 
 /* Банкны тулгалт */
 .recon-wrap { padding: 2px 2px 24px; }

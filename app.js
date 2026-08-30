@@ -124,6 +124,9 @@ function withKey(url) {
 // хүснэгтэд ажиллах — пилот шилжилтийн үед эвдрэлгүй байлгах).
 function pgrstToken() { try { return localStorage.getItem('pgrstToken') || ''; } catch (e) { return ''; } }
 function pgrstBearer() { return pgrstToken() || DB_ANON_KEY; }
+// PostgREST БИЧИХ (POST/PATCH/DELETE) header — нэвтэрсэн ажилтны токенээр (RLS түгжсэн хүснэгтэд).
+// Токенгүй бол anon руу fallback (хуучин session → 403, дахин нэвтрэхэд засагдана).
+function pgWrite(extra) { return Object.assign({ apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' }, extra || {}); }
 
 // fetch timeout wrapper — кемп/3G гэх мэт сул сүлжээ үед fetch 60-120 сек ширж байж
 // аппыг "гацсан" гэж мэдрүүлдэг. AbortController-аар хугацаа тавьж хурдан буцах.
@@ -3930,6 +3933,112 @@ function encodeDamageNote(note, dmg) {
   return base ? base + ' ' + tok : tok;
 }
 
+// ── ЭВДЭРСЭН барааг тухайн захиалгаас note-д ⟦BRK|sku:qty,…⟧-ээр хадгална (idempotent) ──
+// Барааны broken тоог ДЕЛЬТА-гаар шинэчилдэг тул дахин бүртгэвэл давхардахгүй, 0 болговол сэргэнэ.
+function parseBrokenRec(note) {
+  const m = String(note || '').match(/⟦BRK\|([^⟧]*)⟧/);
+  const out = {};
+  if (m && m[1]) m[1].split(',').forEach(pair => { const i = pair.lastIndexOf(':'); if (i > 0) { const sku = pair.slice(0, i); const q = Number(pair.slice(i + 1)) || 0; if (sku && q > 0) out[sku] = q; } });
+  return out;
+}
+function encodeBrokenRec(note, recMap) {
+  const base = String(note || '').replace(/⟦BRK\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').trim();
+  const entries = Object.entries(recMap || {}).filter(([, q]) => (Number(q) || 0) > 0);
+  if (!entries.length) return base;
+  const tok = `⟦BRK|${entries.map(([s, q]) => `${s}:${Math.round(q)}`).join(',')}⟧`;
+  return base ? `${base} ${tok}` : tok;
+}
+
+// Идэвхтэй захиалгын БУЦААЛТ дээр эвдрэл бүртгэх — эвдэрсэн барааг нөөцөөс хасна (broken++) + барьцаанаас ₮ хасна.
+// Эвдэрсэн тоо note-д ⟦BRK⟧-ээр хадгалагдаж, барааны broken ДЕЛЬТА-гаар шинэчлэгдэнэ (дахин бүртгэвэл давхардахгүй).
+function openOrderDamageModal(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
+  const items = (o.items || []).filter(it => it && it.name);
+  const deposit = Number(o.deposit_mnt) || 0;
+  const existingDmg = parseDamage(o.note);
+  const prevBrk = parseBrokenRec(o.note);
+  const rowsHtml = items.map(it => {
+    const p = it.sku ? productBySku(it.sku) : productByName(it.name);
+    const sku = p ? p.sku : '';
+    const maxq = Number(it.qty) || 0;
+    const cur = sku ? (prevBrk[sku] || 0) : 0;
+    return `<div class="dmg-item"><span class="dmg-item-name">${escapeHtml(it.name)} <span class="dmg-item-q">(${maxq}ш)</span></span>` +
+      `<input type="number" min="0" max="${maxq}" value="${cur}" class="ui-raw dmg-brk" data-brk-sku="${escapeHtml(sku)}" data-brk-max="${maxq}"${sku ? '' : ' disabled title="Каталогт алга — нөөц хасахгүй"'}></div>`;
+  }).join('');
+  document.getElementById('mev-damage-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'mev-damage-modal';
+  const cleanUserNote = existingDmg ? String(existingDmg.note || '').replace(/·?\s*Эвдэрсэн:.*$/, '').trim() : '';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <h2>Буцаалт · эвдрэл — #${o.number ?? ''}</h2>
+      <p class="dmg-hint">Эвдэрсэн/дутсан барааны тоог оруулна — тэр тоо нөөцөөс (боломжит хэмжээ) хасагдана. Засварласны дараа барааны хэсгээс «⚠ Эвдэрсэн» тоог буулгаж сэргээнэ.</p>
+      <div class="dmg-list">${rowsHtml || '<div class="dmg-hint">Бараа алга</div>'}</div>
+      <label class="dmg-amt-l">Эвдрэл/гээгдлийн дүн (₮)${deposit > 0 ? ` <span class="dmg-item-q">— барьцаа ${fmtMoney(deposit)}-аас хасна</span>` : ''}</label>
+      <input id="dmg-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="${existingDmg ? moneyFmtInput(existingDmg.amount) : '0'}">
+      <label class="dmg-amt-l">Тэмдэглэл</label>
+      <textarea id="dmg-note" class="ui-raw" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 таваг цуурсан">${escapeHtml(cleanUserNote)}</textarea>
+      <div id="dmg-ret" class="dmg-ret"></div>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn" id="dmg-cancel">Болих</button>
+        <button class="btn btn-primary" id="dmg-save">✓ Хадгалах</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const amtEl = modal.querySelector('#dmg-amount');
+  const retEl = modal.querySelector('#dmg-ret');
+  const upd = () => { const d = Math.min(deposit, moneyVal(amtEl)); retEl.innerHTML = deposit > 0 ? `Үйлчлүүлэгчид буцаах барьцаа: <b>${fmtMoney(deposit - d)}</b>${d ? ` · эвдрэл −${fmtMoney(d)}` : ''}` : ''; };
+  amtEl.addEventListener('input', upd); upd();
+  const close = () => modal.remove();
+  modal.querySelector('#dmg-cancel').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#dmg-save').onclick = async (e) => {
+    const btn = e.currentTarget;
+    const amount = Math.min(deposit, moneyVal(amtEl));
+    const userNote = modal.querySelector('#dmg-note').value.trim();
+    const newBrk = {}; const brokenLines = [];
+    modal.querySelectorAll('.dmg-brk').forEach(inp => {
+      const sku = inp.dataset.brkSku; if (!sku) return;
+      const q = Math.max(0, Math.min(Number(inp.dataset.brkMax) || 0, Number(inp.value) || 0));
+      if (q > 0) newBrk[sku] = q;
+    });
+    btn.disabled = true;
+    // Барааны broken тоог ДЕЛЬТА-гаар шинэчилнэ (өмнө бүртгэсэнтэй харьцуулж; дахин бүртгэвэл давхардахгүй, 0 болговол сэргэнэ)
+    const prev = parseBrokenRec(o.note);
+    for (const sku of new Set([...Object.keys(prev), ...Object.keys(newBrk)])) {
+      const delta = (newBrk[sku] || 0) - (prev[sku] || 0);
+      if (!delta) continue;
+      const p = productBySku(sku); if (!p) continue;
+      try { await saveProduct({ ...p, broken: Math.max(0, (Number(p.broken) || 0) + delta) }); } catch (_) {}
+      if ((newBrk[sku] || 0) > 0) brokenLines.push(`${p.name}×${newBrk[sku]}`);
+    }
+    // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
+    let baseNote = o.note;
+    try {
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].note != null) baseNote = String(rr[0].note); }
+    } catch (_) {}
+    let newNote = encodeBrokenRec(baseNote, newBrk);
+    const dmgNote = [userNote, brokenLines.length ? 'Эвдэрсэн: ' + brokenLines.join(', ') : ''].filter(Boolean).join(' · ');
+    newNote = encodeDamageNote(newNote, { amount, note: dmgNote });
+    o.note = newNote;
+    try {
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
+        method: 'PATCH',
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ note: newNote, updated_at: new Date().toISOString() }),
+      }, 15000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      close();
+      const brokenTotal = Object.values(newBrk).reduce((s, q) => s + q, 0);
+      showToast(`Эвдрэл бүртгэлээ${brokenTotal ? ` · ${brokenTotal}ш нөөцөөс хасав` : ''}${amount ? ` · барьцаанаас −${fmtMoney(amount)}` : ''}`, 'success', 3500);
+      render();
+    } catch (err) { o.note = baseNote; btn.disabled = false; showToast('Note хадгалах алдаа: ' + err.message, 'error', 4500); }
+  };
+  modal.classList.add('open');
+}
+
 async function loadOrders() {
   // M-Event захиалгын давхарга цуцлагдсан (2026-06-28) — захиалга нь ЦОРЫН ГАНЦ эх.
   // Хуучин MEVENT_Orders_DB Sheet-ийг апп уншихаа больсон. state.orders үргэлж хоосон.
@@ -5658,6 +5767,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-del]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.appDel)));
   document.querySelectorAll('[data-app-contract]').forEach(b => b.addEventListener('click', () => openMeventContract(b.dataset.appContract)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
+  document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -8582,6 +8692,150 @@ async function saveCompanyDoc(doc) {
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
     return true;
   } catch (e) { showToast('Баримт хадгалах алдаа: ' + e.message, 'error', 5000); return false; }
+}
+
+/* ═══════════ ХӨДӨЛМӨРИЙН ГЭРЭЭ — автомат үүсгэх + апп-аар гарын үсэг + audit ═══════════
+   CEO ажилтан сонгож гэрээ бэлдэнэ → ажил олгогч + ажилтан апп дээр гарын үсэг зурна →
+   PDF (html2pdf) + SHA-256 лац + audit (хэн/хэзээ/төхөөрөмж) → company_docs-д хадгална.
+   Хууль: зурсан гарын үсэг + баримтжуулалт — практикт хүчинтэй; бүрэн баталгаа=Дан систем (дараагийн шат). */
+function _ecEsc(s) { return escapeHtml(String(s == null ? '' : s)); }
+// Гэрээний HTML — d талбаруудаар бөглөнө. Хэвлэлд цэвэр (A4).
+function EMP_CONTRACT_HTML(d) {
+  const org = (typeof CHIMUN_LEGAL !== 'undefined') ? CHIMUN_LEGAL : { name: '"ЧИМУН" ХХК', reg: '6614337', address: '', director: '', directorTitle: 'Гүйцэтгэх захирал', phones: '' };
+  const sig = (img, cap) => img
+    ? `<img src="${img}" style="height:54px;object-fit:contain;display:block;margin:2px 0;">${cap}`
+    : `<div style="height:54px;border-bottom:1px solid #999;"></div>${cap}`;
+  return `<div class="ec-doc">
+    <h2 style="text-align:center;margin:0 0 2px;">ХӨДӨЛМӨРИЙН ГЭРЭЭ</h2>
+    <div style="text-align:center;font-size:12px;color:#555;margin-bottom:12px;">${_ecEsc(d.docDate || '2026 оны … сарын …-ны өдөр')} · № ${_ecEsc(d.docNo || '………')} · Улаанбаатар хот</div>
+    <p>Энэхүү Хөдөлмөрийн гэрээ (цаашид Гэрээ гэх)-г нэг талаас “${_ecEsc(org.address)}” хаягт байрлах, ${_ecEsc(org.reg)} улсын бүртгэлийн дугаартай ${_ecEsc(org.name)} /цаашид Ажил олгогч гэх/, нөгөө талаас <b>${_ecEsc(d.empAddress || '…')}</b> хаягт оршин суух, <b>${_ecEsc(d.empRegister || '…')}</b> регистрийн дугаартай <b>${_ecEsc(d.empName || '…')}</b> /цаашид Ажилтан гэх/ нар (хамтад нь Талууд гэх) Монгол Улсын Хөдөлмөрийн тухай хууль /2021 оны шинэчилсэн найруулга/, холбогдох хууль тогтоомжийг үндэслэн харилцан тохиролцож, дараах нөхцөлөөр байгуулав.</p>
+    <p><b>1. Нийтлэг үндэслэл</b><br>1.1. Энэхүү гэрээгээр Ажил олгогч болон Ажилтны хооронд үүсэх хөдөлмөрийн харилцааг зохицуулна.<br>1.2. Ажлын байрны тодорхойлолт, Нууцын баталгаа, цаашид байгуулагдах нэмэлт/сунгалтын гэрээ нь гэрээний салшгүй хэсэг болно.</p>
+    <p><b>2. Гэрээний хугацаа ба туршилт</b><br>2.1. Ажил эхлэх огноо: <b>${_ecEsc(d.startDate || '…')}</b>.<br>2.2. Гэрээний хүчинтэй хугацаа: Хугацаагүй (ХтХ 50 дугаар зүйл).<br>2.3. Туршилтын хугацаа: эхний 1 (нэг) сар. Энэ хугацаанд үндсэн цалинг бүтнээр олгоно; ажилд тэнцэхгүй нь тогтоогдвол хуульд заасны дагуу гэрээг цуцалж болно.</p>
+    <p><b>3. Үндсэн нөхцөл</b><br>3.1.1. Ажлын байр: M-Event (${_ecEsc(org.name)}).<br>3.1.2. Ажилтны албан тушаал: <b>${_ecEsc(d.position || 'Захиалгын ажилтан')}</b>.<br>3.1.3. Ажилтан ажлын байрны тодорхойлолт болон удирдлагаас өгсөн үүргийг гүйцэтгэнэ.<br>3.1.5. Ажлын цаг: 5 өдөр / 40 цаг (ХтХ 84), 09:00–18:00, үдийн завсарлага 13:00–14:00. Бямба, ням амарна.<br>3.2.1. Ажилтны нэг сарын үндсэн цалин: <b>${d.salary ? _ecEsc(fmtMoney(d.salary)) : '…………'}</b>.<br>3.2.3. Цалинг сар бүрийн 5 ба 20-нд 2 хуваан олгоно.<br>3.2.2. Ажил олгогч нийгмийн/эрүүл мэндийн даатгалд хамруулж, шимтгэлийг хуулийн дагуу суутгана.<br>3.3.3. Жил бүр ажлын 15 өдрийн ээлжийн амралт (ХтХ 99); 6 сар ажилласны дараа эрх үүснэ.</p>
+    <p><b>4. Ажилтны эрх, үүрэг</b><br>4.1. Эрүүл аюулгүй нөхцөл, шаардлагатай хэрэгслээр хангуулах; цалин хөлсийг цаг тухайд авах; амралт эдлэх, нийгмийн баталгаа.<br>4.2. Дотоод журам сахих, үүргээ өндөр бүтээмжээр гүйцэтгэх, нууц хадгалах, эд хөрөнгийг зохистой ашиглах.</p>
+    <p><b>5. Ажил олгогчийн эрх, үүрэг</b><br>5.1. Дотоод журам батлах, гүйцэтгэлд хяналт тавих, хариуцлага хүлээлгэх.<br>5.2. Ажлын нөхцөлөөр хангах, цалинг цаг хугацаанд олгох, даатгалд хамруулах, ур чадвар дээшлүүлэх боломж бүрдүүлэх.</p>
+    <p><b>6. Талуудын хариуцлага</b><br>6.1. Сахилгын зөрчилд ХтХ 123-т заасан шийтгэл оногдуулна.<br>6.2. Буруутай үйлдлээр учруулсан хохирлыг Хөдөлмөрийн тухай хуульд заасан журмын дагуу нөхөн төлнө. Мөнгө/эд хөрөнгө хариуцсан ажилтантай Бүрэн эд хөрөнгийн хариуцлагын гэрээ байгуулж болно.<br>6.4. Гүйцэтгэлийг KPI-аар сар бүр үнэлнэ; сайжраагүй нь баримтаар тогтоогдвол ХтХ 80.1.2-оор гэрээг цуцалж болно.</p>
+    <p><b>7. Гэрээ дуусгавар болох, цуцлах</b><br>7.2.1. Ажилтан өөрийн санаачилгаар цуцлах бол 30 хоногийн өмнө бичгээр мэдэгдэнэ.<br>7.2.2. Ажил олгогч ХтХ 80.1-д заасан үндэслэлээр цуцална.</p>
+    <p><b>8–11.</b> Нэмэлт/өөрчлөлт бичгээр; давагдашгүй хүчин зүйл; маргааныг эв зүйгээр, эс бол шүүхээр; гэрээ 2 хувь, тал бүр 1 хувь хадгална; тусгаагүйг ХтХ болон дотоод журмаар зохицуулна.</p>
+    <p style="font-size:11px;color:#666;border-top:1px solid #ddd;padding-top:6px;margin-top:10px;">🔒 Цахим баталгаа (audit): Энэхүү гэрээг талууд Чимун ХХК-ийн дотоод системд нэвтэрч, цахим гарын үсгээр баталгаажуулав. Лац (SHA-256): <b style="font-family:monospace;">${_ecEsc(d.hash || '—')}</b> · Баталгаажсан: ${_ecEsc(d.signedAt || '—')}</p>
+    <table style="width:100%;margin-top:14px;border-collapse:collapse;"><tr>
+      <td style="width:50%;vertical-align:top;padding:8px;border:1px solid #bbb;">
+        <b>АЖИЛ ОЛГОГЧИЙГ ТӨЛӨӨЛЖ:</b><br>${sig(d.sigOrg, `<div>Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div><div>Албан тушаал: ${_ecEsc(d.employerTitle || org.directorTitle)}</div>`)}
+      </td>
+      <td style="width:50%;vertical-align:top;padding:8px;border:1px solid #bbb;">
+        <b>АЖИЛТАН:</b><br>${sig(d.sigEmp, `<div>Нэр: <b>${_ecEsc(d.empName || '…')}</b></div><div>Утас: ${_ecEsc(d.empPhone || '…')}</div>`)}
+      </td>
+    </tr></table>
+  </div>`;
+}
+// Гарын үсэг зурах canvas — pointer/touch. { clear, isEmpty, dataURL } буцаана.
+function _ecSigPad(cv) {
+  const ctx = cv.getContext('2d'); let drawing = false, dirty = false;
+  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+  const pos = e => { const r = cv.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * (cv.width / r.width), (t.clientY - r.top) * (cv.height / r.height)]; };
+  const start = e => { e.preventDefault(); drawing = true; const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); };
+  const move = e => { if (!drawing) return; e.preventDefault(); const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); dirty = true; };
+  const end = () => { drawing = false; };
+  cv.addEventListener('pointerdown', start); cv.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end);
+  return { clear: () => { ctx.clearRect(0, 0, cv.width, cv.height); dirty = false; }, isEmpty: () => !dirty, dataURL: () => cv.toDataURL('image/png') };
+}
+async function _ecSha256(str) {
+  try { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
+  catch (e) { return 'nohash-' + Date.now(); }
+}
+function openEmployeeContract(personKey) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал', 'warn', 2500); return; }
+  const m = findMember(personKey); if (!m) return;
+  const sal = (state.salaries || {})[personKey] || 0;
+  const org = CHIMUN_LEGAL;
+  document.getElementById('ec-modal')?.remove();
+  const wrap = document.createElement('div'); wrap.className = 'modal-bg'; wrap.id = 'ec-modal';
+  const fld = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:var(--fs-md);background:var(--panel);color:var(--text);margin-bottom:8px;';
+  wrap.innerHTML = `<div class="modal ui-raw" style="max-width:820px;max-height:92vh;overflow:auto;">
+    <h2 style="font-size:16px;margin:0 0 4px;">📄 Хөдөлмөрийн гэрээ — ${_ecEsc(m.name)}</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Мэдээллийг бөглөж «Бэлдэх» → 2 тал гарын үсэг зурж «Баталгаажуулж хадгалах». Гэрээ Баримт бичигт лацтай хадгална.</div>
+    <div id="ec-form">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+        <label style="font-size:12px;color:var(--muted);">Албан тушаал<input id="ec-pos" value="${_ecEsc(m.role || 'Захиалгын ажилтан')}" style="${fld}"></label>
+        <label style="font-size:12px;color:var(--muted);">Сарын үндсэн цалин (₮)<input id="ec-sal" type="text" inputmode="numeric" value="${sal ? sal.toLocaleString('en-US') : ''}" placeholder="жишээ 1,500,000" style="${fld}"></label>
+        <label style="font-size:12px;color:var(--muted);">Регистрийн дугаар<input id="ec-reg" placeholder="АА00000000" style="${fld}"></label>
+        <label style="font-size:12px;color:var(--muted);">Ажилтны утас<input id="ec-phone" value="${_ecEsc(m.phone || '')}" style="${fld}"></label>
+        <label style="font-size:12px;color:var(--muted);grid-column:1/3;">Оршин суух хаяг<input id="ec-addr" placeholder="Дүүрэг, хороо, байр/тоот" style="${fld}"></label>
+        <label style="font-size:12px;color:var(--muted);">Ажил эхлэх огноо<input id="ec-start" type="date" style="${fld}"></label>
+        <label style="font-size:12px;color:var(--muted);">Гэрээний дугаар<input id="ec-no" placeholder="ХГ-2026-001" style="${fld}"></label>
+      </div>
+      <button class="btn btn-primary" id="ec-prep" style="width:100%;margin-top:6px;">Гэрээ бэлдэх →</button>
+    </div>
+    <div id="ec-sign" style="display:none;">
+      <div id="ec-preview" style="background:#fff;color:#111;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:12.5px;line-height:1.5;max-height:44vh;overflow:auto;margin-bottom:12px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><div style="font-size:12px;font-weight:600;margin-bottom:4px;">✍️ Ажил олгогч (${_ecEsc(org.director)})</div>
+          <canvas id="ec-sig-org" width="360" height="120" style="width:100%;height:110px;border:1.5px dashed var(--border);border-radius:8px;background:#fff;touch-action:none;"></canvas>
+          <button class="btn" id="ec-clr-org" style="width:100%;margin-top:4px;padding:4px;font-size:11px;">Арилгах</button></div>
+        <div><div style="font-size:12px;font-weight:600;margin-bottom:4px;">✍️ Ажилтан (${_ecEsc(m.name)})</div>
+          <canvas id="ec-sig-emp" width="360" height="120" style="width:100%;height:110px;border:1.5px dashed var(--border);border-radius:8px;background:#fff;touch-action:none;"></canvas>
+          <button class="btn" id="ec-clr-emp" style="width:100%;margin-top:4px;padding:4px;font-size:11px;">Арилгах</button></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn" id="ec-back" style="flex:1;padding:10px;">← Буцах</button>
+        <button class="btn btn-primary" id="ec-save" style="flex:2;padding:10px;">🔒 Баталгаажуулж хадгалах</button>
+      </div>
+    </div>
+    <button class="btn" id="ec-cancel" style="width:100%;margin-top:10px;padding:9px;">Хаах</button>
+  </div>`;
+  document.body.appendChild(wrap);
+  requestAnimationFrame(() => wrap.classList.add('open'));
+  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
+  wrap.querySelector('#ec-cancel').onclick = () => wrap.remove();
+  let padOrg = null, padEmp = null, ecData = null;
+  wrap.querySelector('#ec-prep').onclick = () => {
+    const g = id => wrap.querySelector(id).value.trim();
+    ecData = {
+      empName: m.name, position: g('#ec-pos'), salary: Number(g('#ec-sal').replace(/[^\d]/g, '')) || 0,
+      empRegister: g('#ec-reg'), empPhone: g('#ec-phone'), empAddress: g('#ec-addr'),
+      startDate: g('#ec-start'), docNo: g('#ec-no'), employerName: org.director, employerTitle: org.directorTitle,
+    };
+    wrap.querySelector('#ec-preview').innerHTML = EMP_CONTRACT_HTML(ecData);
+    wrap.querySelector('#ec-form').style.display = 'none';
+    wrap.querySelector('#ec-sign').style.display = '';
+    padOrg = _ecSigPad(wrap.querySelector('#ec-sig-org'));
+    padEmp = _ecSigPad(wrap.querySelector('#ec-sig-emp'));
+    wrap.querySelector('#ec-clr-org').onclick = () => padOrg.clear();
+    wrap.querySelector('#ec-clr-emp').onclick = () => padEmp.clear();
+  };
+  wrap.querySelector('#ec-back').onclick = () => { wrap.querySelector('#ec-sign').style.display = 'none'; wrap.querySelector('#ec-form').style.display = ''; };
+  wrap.querySelector('#ec-save').onclick = async () => {
+    if (padOrg.isEmpty() || padEmp.isEmpty()) { showToast('Хоёр тал гарын үсэг зурна уу', 'warn', 3000); return; }
+    const btn = wrap.querySelector('#ec-save'); btn.disabled = true; btn.textContent = 'Бэлдэж байна…';
+    try {
+      const sigOrg = padOrg.dataURL(), sigEmp = padEmp.dataURL();
+      const signedAt = new Date().toISOString();
+      const hash = await _ecSha256(JSON.stringify({ d: ecData, sigOrg, sigEmp, signedAt, by: state.me }));
+      const full = { ...ecData, sigOrg, sigEmp, signedAt: fmtDateTimeUB ? fmtDateTimeUB(signedAt) : signedAt, hash: hash.slice(0, 32), docDate: ecData.docNo ? undefined : new Date().toLocaleDateString('mn-MN') };
+      // PDF үүсгэх
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;color:#111;padding:32px;font-size:13px;line-height:1.55;';
+      holder.innerHTML = EMP_CONTRACT_HTML(full);
+      document.body.appendChild(holder);
+      if (!window.html2pdf) { await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; s.onload = res; s.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу')); document.head.appendChild(s); }); }
+      const opt = { margin: [10, 10, 10, 10], image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
+      const datauri = await window.html2pdf().set(opt).from(holder).outputPdf('datauristring');
+      holder.remove();
+      const b64 = String(datauri).split(',')[1] || '';
+      const id = 'doc-hg-' + personKey + '-' + hash.slice(0, 8);
+      const audit = JSON.stringify({ signed_by: state.me, signed_by_name: memberName(state.me), signed_at: signedAt, employee: personKey, ua: navigator.userAgent.slice(0, 120), hash });
+      const ok = await saveCompanyDoc({
+        id, title: 'Хөдөлмөрийн гэрээ — ' + m.name, category: 'contract',
+        doc_no: ecData.docNo || '', doc_date: ecData.startDate || signedAt.slice(0, 10),
+        counterparty: m.name, note: '🔒 Цахим гарын үсэг · ' + audit,
+        mime: 'application/pdf', file_name: 'Hodolmoriin_geree_' + (m.name || '').replace(/\s+/g, '_') + '.pdf',
+        size_bytes: Math.round(b64.length * 0.75), uploaded_by: memberName(state.me), data: b64,
+      });
+      if (ok) { showToast('Гэрээ баталгаажиж, Баримт бичигт хадгалагдлаа ✓', 'success', 3500); state.companyDocs = null; wrap.remove(); if (state.view === 'documents') { loadCompanyDocs(true); } }
+      else { btn.disabled = false; btn.textContent = '🔒 Баталгаажуулж хадгалах'; }
+    } catch (e) { showToast('Алдаа: ' + e.message, 'error', 5000); const b = wrap.querySelector('#ec-save'); if (b) { b.disabled = false; b.textContent = '🔒 Баталгаажуулж хадгалах'; } }
+  };
 }
 
 async function deleteCompanyDoc(id) {
@@ -15606,7 +15860,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -15641,6 +15895,7 @@ function bqOrderCard(o) {
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
     ${payPanel}
     ${depBadge ? `<div class="dep-row">${depBadge}</div>` : ''}
+    ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
@@ -20572,7 +20827,8 @@ function openStaffCardModal(key) {
         <div class="sc-row"><span class="sc-lbl">👤 Төрөл</span><span class="sc-btns">${wtBtn('permanent', 'Үндсэн', String(m.worker_type || '') !== 'daily')}${wtBtn('daily', 'Цагийн', String(m.worker_type || '') === 'daily')}</span></div>
         ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-sc-finperm ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''}/>🏦 Санхүү: салбар засах эрх</label>` : ''}
         <div class="sc-row2"><button class="btn" data-sc-doc>📄 Үнэмлэх харах</button>
-          <span class="sc-pin">🔑 <b data-sc-pinval>${m.pin ? '••••' : '—'}</b>${m.pin ? ' <button class="staff-pin-show" data-sc-pinshow>харах</button>' : ''}</span></div>` : ''}
+          <span class="sc-pin">🔑 <b data-sc-pinval>${m.pin ? '••••' : '—'}</b>${m.pin ? ' <button class="staff-pin-show" data-sc-pinshow>харах</button>' : ''}</span></div>
+        ${isActive ? `<div class="sc-row2"><button class="btn" data-sc-contract style="border-color:var(--primary);color:var(--primary);">📝 Хөдөлмөрийн гэрээ (гарын үсэг)</button></div>` : ''}` : ''}
         ${canStatus ? `<div class="sc-row2">${isActive ? `<button class="btn btn-danger" data-sc-status="leave">🚪 Гарсан гэж тэмдэглэх</button>` : `<button class="btn" data-sc-status="restore">↩ Сэргээх</button>`}</div>` : ''}
       </div>` : '';
     // ── Эрх хэсэг ──
@@ -20617,6 +20873,7 @@ function openStaffCardModal(key) {
     ov.querySelectorAll('[data-sc-wt]').forEach(b => b.addEventListener('click', async () => { const m = findMember(key); if (m) { await saveWorkerType(m, b.dataset.scWt); rerender(); } }));
     ov.querySelector('[data-sc-finperm]')?.addEventListener('change', (e) => { saveFinanceBranchPerm(key, (findMember(key) || {}).name || '', e.target.checked); });
     ov.querySelector('[data-sc-doc]')?.addEventListener('click', () => { const m = findMember(key); openEmployeeDocModal(key, (m && m.name) || ''); });
+    ov.querySelector('[data-sc-contract]')?.addEventListener('click', () => { close(); openEmployeeContract(key); });
     ov.querySelector('[data-sc-pinshow]')?.addEventListener('click', () => { const m = findMember(key); const el = ov.querySelector('[data-sc-pinval]'); const btn = ov.querySelector('[data-sc-pinshow]'); if (!m || !el) return; if (btn.textContent === 'нуух') { el.textContent = '••••'; btn.textContent = 'харах'; } else { el.textContent = String(m.pin || '—'); btn.textContent = 'нуух'; } });
     ov.querySelectorAll('[data-sc-status]').forEach(b => b.addEventListener('click', async () => { const m = findMember(key); if (m && await setStaffStatus(m, b.dataset.scStatus)) { renderStaffList(); rerender(); } }));
     ov.querySelector('[data-sc-permreset]')?.addEventListener('click', async () => { await clearMemberPerms(key); showToast('Анхны байдал руу буцаалаа', 'success', 1500); rerender(); });

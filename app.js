@@ -14094,10 +14094,10 @@ const BQ_STATUS = {
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
-// Хуучин (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
-// ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана (жишээ ready/cleaning='Цэвэрлэсэн/Бэлдсэн').
-const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', ready: 'prepared', started: 'rented' };
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'rented', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+// Хуучин/хассан (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
+// ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана. delivering/returning-г хассан (зам-дундын микро-төлөв).
+const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', ready: 'prepared', started: 'rented', delivering: 'rented', returning: 'returned' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
@@ -14115,23 +14115,20 @@ function isDeliveryOrder(o) {
   if (String((o && (o.delivery_address || o.customer_address)) || '').trim()) return true;   // хаягтай
   return orderHasDeliveryItem(o);   // хуучин захиалга — хүргэлт нь бараа мөр
 }
+// Хялбаршуулсан урсгал: Захиалсан → Бэлдсэн → Түрээсэнд(гарсан) → Буцаан авсан → Архив.
+// (delivering/returning зам-дундын микро-төлөвүүдийг хассан; хуучин төлөв legacy map-аар буулгагдана.)
 function orderNextStep(o) {
   const st = String((o && o.status) || '');
-  const deliv = isDeliveryOrder(o);
   switch (st) {
     case 'reserved':
-    case 'preparation': return { to: 'cleaning', label: '🧰 Бэлдэх', cap: 'orders.prepare' };
-    case 'cleaning':    return { to: 'ready',    label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
+    case 'preparation':
+    case 'cleaning':
+    case 'ready':       return { to: 'prepared', label: '🧰 Бэлдэх',   cap: 'orders.prepare' };
     case 'prepared':
-    case 'ready':       return deliv
-                          ? { to: 'delivering', label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' }
-                          : { to: 'rented',     label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' };
-    case 'delivering':  return { to: 'rented',    label: '🚚 Хүргэж өгөх', cap: 'orders.deliver' };
+    case 'delivering':  return { to: 'rented',   label: '📦 Гаргах / Хүргэх', cap: 'orders.dispatch' };
     case 'rented':
-    case 'started':     return deliv
-                          ? { to: 'returning', label: '↩ Буцааж авахаар гарах', cap: 'orders.deliver' }
-                          : { to: 'returned',  label: '📥 Буцаан хүлээж авах', cap: 'orders.dispatch' };
-    case 'returning':   return { to: 'returned', label: '📦 Агуулахад хүлээн авах', cap: 'orders.dispatch' };
+    case 'started':
+    case 'returning':   return { to: 'returned', label: '📥 Буцаан авах', cap: 'orders.dispatch' };
     case 'returned':
     case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
     default: return null;

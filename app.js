@@ -3388,7 +3388,9 @@ function render() {
   if (state.view === 'attendance' && !canSeeAttendance()) state.view = 'mine';
   if (state.view === 'nomaad' && !canSeeNomaadOrders()) state.view = 'mine';
   if (state.view === 'catering' && !canSeeCatering()) state.view = 'mine';
-  if (state.view === 'access' && !canAccessView('access', () => state.isCEO)) state.view = 'mine';
+  if (state.view === 'orgchart') { state.view = 'access'; state.hubTab = 'org'; }   // Бүтэц → Ажилчид доторх таб болов
+  // Ажилчид view бүгдэд нээлттэй (Бүтэц таб универсал). Эрхгүй бол зөвхөн Бүтэц таб харагдана.
+  if (state.view === 'access' && !canAccessView('access', () => state.isCEO) && !canDelegatePerms()) state.hubTab = 'org';
   if (state.view === 'salary' && !canSeeSalary()) state.view = 'mine';
   if (state.view === 'archive') state.view = 'mine';  // Архив view устгагдсан
   if (state.view.startsWith('project:')) state.view = 'mine';  // Төсөл view устгагдсан (2026-06-06)
@@ -3493,9 +3495,9 @@ function renderSidebar() {
   // Маркетинг (постер үүсгэгч) — CEO/менежер.
   const mkNav = document.getElementById('nav-marketing');
   if (mkNav) mkNav.style.display = canSeeMarketing() ? '' : 'none';
-  // Ажилчид (staff удирдах) — CEO эсвэл 'access' эрх олгогдсон захирал. (Эрх засах таб дотроо CEO-only.)
+  // Ажилчид — БҮГДЭД ил (Бүтэц таб универсал). Удирдах/Эрх табууд дотроо эрхээр гарна.
   const acNav = document.getElementById('nav-access');
-  if (acNav) acNav.style.display = canAccessView('access', () => state.isCEO) ? '' : 'none';
+  if (acNav) acNav.style.display = '';
   // Нэгдсэн "Цалин" цэс — сарын ЭСВЭЛ цагийн цалин харах эрхтэй хэн бүхэнд (CEO ч мөн).
   const salNav = document.getElementById('nav-salary');
   if (salNav) salNav.style.display = (canSeeSalary() || canSeeHourlyPayroll()) ? '' : 'none';
@@ -3561,7 +3563,7 @@ function renderSidebar() {
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
-  _setGrp('nav-group-hr', ['nav-access', 'nav-orgchart', 'nav-attendance', 'nav-salary', 'nav-performance']);
+  _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
   _setGrp('nav-group-analytics', ['nav-reports']);
   _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
@@ -3697,12 +3699,6 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     renderVatView(wrap);
-    return;
-  } else if (state.view === 'orgchart') {
-    if (tableHead) tableHead.style.display = 'none';
-    if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderOrgChart();
-    attachOrgHandlers();
     return;
   } else if (state.view === 'access') {
     if (tableHead) tableHead.style.display = 'none';
@@ -5159,18 +5155,20 @@ const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', deliver
 // Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
 // Мөрөн дээрх дараагийн үйлдлийн товчны БОГИНО шошго
 // Үндсэн 6 төлөв (dropdown/самбарын бүлэг). Дэд шатууд эдгээрт багтана.
+// ⭐ 6 ҮНДСЭН бакет (2026-08-30 цэвэрлэв). Sidebar + Самбар хоёулаа ҮҮГЭЭР бүлэглэнэ (нэг эх).
+// "Захиалсан" = идэвхтэй бүх шат (reserved..returning). Дэлгэрэнгүй статус нь мөрд/баганад харагдана.
+// bucketOf энд харагдах статусууд нь нормчилсон (BQ_LEGACY_MAP) канон, гэхдээ хуучнаа ч багтаав.
 const ORDER_BUCKETS = [
-  { key: 'draft',    label: 'Ноорог',           icon: '📝', dot: '#6B7280', st: ['draft'] },
-  { key: 'reserved', label: 'Захиалсан',        icon: '📋', dot: '#D97706', st: ['reserved', 'cleaning', 'ready', 'preparation', 'prepared', 'delivering'] },
-  { key: 'rented',   label: 'Түрээслэгдэж буй',  icon: '📦', dot: '#2563EB', st: ['rented', 'returning', 'started'] },
-  { key: 'done',     label: 'Дууссан',          icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
-  { key: 'archived', label: 'Архив',            icon: '🗄', dot: '#475569', st: ['archived'] },
-  { key: 'canceled', label: 'Цуцалсан',         icon: '✕', dot: '#DC2626', st: ['canceled'] },
-  { key: 'deleted',  label: 'Устгасан',         icon: '🗑', dot: '#9CA3AF', st: ['deleted'] },
+  { key: 'draft',    label: 'Ноорог',      icon: '📝', dot: '#6B7280', st: ['draft'] },
+  { key: 'active',   label: 'Захиалсан',   icon: '📋', dot: '#D97706', st: ['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'started', 'rented', 'returning'] },
+  { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
+  { key: 'archived', label: 'Архивласан',  icon: '🗄', dot: '#475569', st: ['archived'] },
+  { key: 'canceled', label: 'Цуцалсан',    icon: '✕', dot: '#DC2626', st: ['canceled'] },
+  { key: 'deleted',  label: 'Устгасан',    icon: '🗑', dot: '#9CA3AF', st: ['deleted'] },
 ];
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
-function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'reserved'; }
+function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'active'; }
 const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
 // Харилцагчийн аватар — нэрнээс тогтмол өнгө + эхний үсэг(үүд)
 const _AV_COLORS = ['#6d4aff', '#0ea5e9', '#16a34a', '#f59e0b', '#e11d48', '#8b5cf6', '#0891b2', '#db2777'];
@@ -5266,7 +5264,7 @@ function sortOrders(arr, mode) {
 function renderOrderPipelineBoard(shown, todayStr) {
   const byB = {};
   shown.forEach(e => { const bk = bucketOf(e.o.status); (byB[bk] = byB[bk] || []).push(e); });
-  const ALWAYS = new Set(['reserved', 'rented']);
+  const ALWAYS = new Set(['active']);
   const open = state.ordersBoardOpen || new Set();
   const searching = !!(state.ordersSearch || '').trim();
   const buckets = ORDER_BUCKETS.filter(b => (byB[b.key] || []).length || ALWAYS.has(b.key));
@@ -5281,7 +5279,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
   const dueByAction = {};
   shown.forEach(e => {
     const stt = e.o.status, bk = bucketOf(stt);
-    if (bk !== 'reserved' && bk !== 'rented') return;
+    if (bk !== 'active') return;
     if (orderUrgRank(e.o, stt, todayStr) > 1) return;
     const nx = orderNextStep(e.o); if (!nx) return;
     (dueByAction[nx.label] = dueByAction[nx.label] || { n: 0, bucket: bk }).n++;
@@ -5435,7 +5433,7 @@ function renderOrders() {
   // Default = Жагсаалт (зүүн статус sidebar + хавтгай хүснэгт, Booqable шиг). ▤ Самбар руу сэлгэж болно.
   state.ordersFilter = state.ordersFilter || 'all';
   const isBoard = (state.ordersView || 'list') === 'board';
-  if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['reserved', 'rented']);
+  if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['active']);
   const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
@@ -5463,14 +5461,11 @@ function renderOrders() {
     const s = String(e.o.starts_at || '').slice(0, 10), st = String(e.o.stops_at || '').slice(0, 10);
     return s === todayStr || st === todayStr;
   };
-  // Зүүн sidebar = 6 үндсэн бүлэг. "Захиалсан" = идэвхтэй бүх шат (reserved+rented бакет:
-  // Бэлдсэн/Хүргэгдэж/Түрээсэнд/Буцаалт замд...) — нарийн статус нь хүснэгтийн Төлөв баганад харагдана.
-  const _SIDE_GRP = { draft: ['draft'], active: ['reserved', 'rented'], done: ['done'], archived: ['archived'], canceled: ['canceled'], deleted: ['deleted'] };
+  // Sidebar түлхүүр = бакетын түлхүүр (draft/active/done/archived/canceled/deleted) — bucketOf-оор шүүнэ.
   const matchFilter = (e, f) => {
-    if (f === 'all') return e.skey !== 'canceled' && e.skey !== 'deleted';   // Бүгд — цуцалсан/устгасныг хасна
+    if (f === 'all') return !['canceled', 'deleted'].includes(bucketOf(e.o.status));   // Бүгд — цуцалсан/устгасныг хасна
     if (f === 'today') return isToday(e);
-    if (_SIDE_GRP[f]) return _SIDE_GRP[f].includes(bucketOf(e.o.status));
-    return e.skey === f;   // нарийн статус (fallback)
+    return bucketOf(e.o.status) === f;
   };
 
   // Анхаарлын чипүүд — Захиалгын операцийн дохио
@@ -5568,7 +5563,7 @@ function renderOrders() {
   const saleN = _saleE.length;
   const CAP = 200;
   // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
-  const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, bucketOf(e.o.status), todayStr, true)).join('');
+  const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span><span class="r">Дүн</span><span>Төлбөр</span><span></span></div>`;
   const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
@@ -10139,14 +10134,21 @@ function renderAccess() {
   // Эрх засах (roles): CEO бүгдийг; 'access.delegate' эрхтэй захирал ЗӨВХӨН org-tree доорхи хүмүүсийг
   // (renderAccessByPerson шүүнэ, escalation түгжигдэнэ). Албан тушаалын загвар (role_perms) хэвээр CEO-only.
   const canPerms = state.isCEO || canDelegatePerms();
-  const tab = (state.hubTab === 'roles' && !canPerms) ? 'people' : (state.hubTab || 'people');
-  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан${canPerms ? ' · албан тушаал & эрх' : ' · албан тушаал'} — нэг дороос</div></div>`;
-  const tabs = canPerms ? [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх']] : [['people', '👤 Ажилтан']];
+  const canManage = canAccessView('access', () => state.isCEO);   // Ажилтан удирдах таб
+  // Табууд: Бүтэц (бүгдэд) · Ажилтан (удирдах эрхтэйд) · Эрх (CEO/delegate)
+  const tabs = [['org', '🏢 Бүтэц']];
+  if (canManage) tabs.push(['people', '👤 Ажилтан']);
+  if (canPerms) tabs.push(['roles', '🔑 Эрх']);
+  const tabKeys = tabs.map(t => t[0]);
+  let tab = state.hubTab || (canManage ? 'people' : 'org');
+  if (!tabKeys.includes(tab)) tab = canManage ? 'people' : 'org';
+  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">${canManage ? 'Бүтэц · ажилтан' + (canPerms ? ' · эрх' : '') : 'Байгууллагын бүтэц'} — нэг дороос</div></div>`;
   const tabBar = tabs.length > 1 ? `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>` : '';
   // Салбараар шүүх нь толгойн глобал салбар-сонгогчоор (давхар товч хассан).
   let body;
-  if (tab === 'roles' && canPerms) body = renderAccessRoles();
+  if (tab === 'org') body = renderOrgChart();
+  else if (tab === 'roles' && canPerms) body = renderAccessRoles();
   else body = renderStaffPeople();
   return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
 }
@@ -10316,7 +10318,10 @@ function renderAccessByPerson() {
 function attachAccessHandlers() {
   // Таб солих
   document.querySelectorAll('[data-hub-tab]').forEach(b => b.addEventListener('click', () => { state.hubTab = b.dataset.hubTab; render(); }));
-  const tab = state.hubTab || 'people';
+  const canManage = canAccessView('access', () => state.isCEO);
+  let tab = state.hubTab || (canManage ? 'people' : 'org');
+  if (tab === 'people' && !canManage) tab = 'org';
+  if (tab === 'org') { attachOrgHandlers(); return; }   // Бүтэц таб
   if (tab === 'people') { attachHubPeople(); return; }
   // ── Албан тушаал & Эрх таб ──
   document.querySelector('[data-access-refresh]')?.addEventListener('click', () => { state._permsLoaded = false; loadMemberPerms(); loadRolePerms(); showToast('Шинэчилж байна…', 'info', 1200); });

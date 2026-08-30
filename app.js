@@ -16596,10 +16596,21 @@ async function submitBqPayment(oid, modal, btn) {
   if (!okR.length) { showToast('Бүх баримт давхцсан — бүртгэсэнгүй', 'error', 4000); btn.disabled = false; return; }
   const amount = okR.reduce((s, r) => s + r.amount, 0);
   const date = okR.map(r => r.date).sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
-  const ref = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
+  const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
   // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
   okR.forEach(r => { if (r._file) uploadReceiptFile(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }); });
-  const newPaid = (Number(o.paid_mnt) || 0) + amount;
+  // Зэрэгцээ төлбөр эсвэл хуучирсан snapshot-оос болж дүн/баримт АЛДАГДАХААС сэргийлэх: серверийн хамгийн
+  // сүүлийн paid_mnt + paid_ref-ийг уншиж, ТҮҮН дээр нэмнэ. Баримтыг ДАРЖ БИЧИХГҮЙ — append (parsePaidRef | -ээр
+  // задална) тул хэсэгчилсэн олон төлбөрийн бүх баримт хадгалагдана.
+  let basePaid = Number(o.paid_mnt) || 0, baseRef = String(o.paid_ref || '');
+  if (isApp) {
+    try {
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      if (gr.ok) { const rows = await gr.json(); if (rows && rows[0]) { if (rows[0].paid_mnt != null) basePaid = Number(rows[0].paid_mnt) || 0; if (rows[0].paid_ref != null) baseRef = String(rows[0].paid_ref); } }
+    } catch (_) { /* сүлжээ унавал санах ойн утга дээр тооцно */ }
+  }
+  const newPaid = basePaid + amount;
+  const ref = [baseRef.trim(), newRef].filter(Boolean).join('  |  ');
   const newStatus = o.status === 'draft' ? 'reserved' : o.status;
   const prevPaid = o.paid_mnt, prevStatus = o.status, prevRef = o.paid_ref, prevMethod = o.paid_method, prevDate = o.paid_date;
   o.paid_mnt = newPaid; o.status = newStatus; o.paid_ref = ref; o.paid_method = method; o.paid_date = date;   // optimistic

@@ -6196,3 +6196,24 @@ body.role-daily #add-project { display: none !important; }
 .org-perm:hover { transform:scale(1.12); }
 /* Escalation-түгжигдсэн эрхийн чагт (delegate өөрт байхгүйг олгож чадахгүй) */
 .ac-chip.cap-locked { opacity:.6; cursor:not-allowed; }
+
+/* ── Ажилтны карт POPUP (удирдах + эрх) ── */
+.staff-row.staff-clickable { cursor:pointer; }
+.staff-row.staff-clickable:hover { background:var(--panel-hover); }
+.staff-open-hint { color:var(--muted); font-size:20px; line-height:1; padding-left:2px; }
+.sc-modal { max-width:480px; }
+.sc-head { display:flex; align-items:center; gap:10px; padding:14px 14px 12px; border-bottom:1px solid var(--border); }
+.sc-ava { position:relative; width:46px; height:46px; border-radius:50%; overflow:hidden; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-weight:800; color:#64748b; background:linear-gradient(135deg,#e2e8f0,#cbd5e1); }
+.sc-name { font-size:15px; font-weight:700; line-height:1.2; }
+.sc-meta { font-size:11.5px; color:var(--muted); margin-top:2px; }
+.sc-x { background:none; border:0; font-size:18px; color:var(--muted); cursor:pointer; padding:2px 6px; align-self:flex-start; }
+.sc-sec { padding:12px 14px; border-bottom:1px solid var(--border); }
+.sc-sec:last-child { border-bottom:0; }
+.sc-sec-t { font-weight:700; font-size:13px; margin-bottom:10px; }
+.sc-row { display:flex; align-items:center; gap:8px; margin-bottom:9px; flex-wrap:wrap; }
+.sc-lbl { font-size:12px; color:var(--muted); min-width:78px; }
+.sc-btns { display:flex; gap:6px; flex-wrap:wrap; }
+.sc-row2 { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; }
+.sc-role { font-family:inherit; font-size:13px; padding:6px 9px; border:1px solid var(--border); border-radius:8px; background:var(--panel); color:var(--text); flex:1; min-width:140px; }
+.sc-pin { font-size:12.5px; color:var(--muted); }
+.sc-pin .staff-pin-show { font-size:11px; padding:2px 7px; margin-left:2px; }

@@ -10114,8 +10114,7 @@ function attachOrgHandlers() {
     e.stopPropagation();
     const pk = b.dataset.orgPerm;
     if (!canManagePermsOf(pk)) { showToast('Эрх удирдах боломжгүй', 'error', 2500); return; }
-    state.view = 'access'; state.hubTab = 'roles'; state.accessRoleMode = 'person'; state.accessExpandedPerson = pk;
-    render();
+    openStaffCardModal(pk);   // нэгдсэн popup (удирдах + эрх)
   }));
   document.querySelectorAll('[data-org-zoom]').forEach(b => b.addEventListener('click', () => {
     const d = b.dataset.orgZoom; let z = state.orgZoom || 1;
@@ -20338,7 +20337,7 @@ function renderStaffList() {
     const _age = ageFromRD(m.rd);
     // Мета мөр: албан тушаал · хүйс · нас · имэйл. Нэр цэвэр үлдэнэ (хамгийн том элемент).
     const meta = [
-      `<span class="staff-role-text">${escapeHtml(m.role || '—')}</span>${(state.isCEO || (Number(m.level) || 0) < 100) ? `<button class="staff-role-edit" data-staff-roleedit="${escapeHtml(key)}" title="Албан тушаал засах">✎</button>` : ''}`,
+      `<span class="staff-role-text">${escapeHtml(m.role || '—')}</span>`,
       m.gender ? (m.gender === 'Эрэгтэй' ? 'Эр' : 'Эм') : '',
       _age != null ? `${_age} нас` : '',
       m.email ? escapeHtml(m.email) : '',
@@ -20348,45 +20347,24 @@ function renderStaffList() {
       <span class="sig">📞 <b>${escapeHtml(m.phone || key || '—')}</b></span>
       <span class="sig">🔑 <b class="staff-pin" data-pin-for="${escapeHtml(key)}">${m.pin ? '••••' : `<span class="sig-empty">${_pinMsg}</span>`}</b>${m.pin ? ` <button class="staff-pin-show" data-pin-show="${escapeHtml(key)}">харах</button>` : ''}</span>
     </div>` : '';
-    // Удирдах хэрэгслүүд — ЭВХЭГДСЭН. Урьд нь эдгээр 3 мөр ҮРГЭЛЖ задгай байсан тул
-    // CEO-гийн жагсаалт мөр бүрд 6 давхар болж, огт уншигдахгүй байв.
-    const adm = state.isCEO ? `<details class="staff-adm">
-      <summary>Удирдах</summary>
-      <div class="staff-adm-body">
-        <div class="staff-adm-row">Хүйс:
-          <button class="staff-gbtn${m.gender === 'Эрэгтэй' ? ' on' : ''}" data-staff-gender="${escapeHtml(key)}" data-gender="Эрэгтэй">Эр</button>
-          <button class="staff-gbtn${m.gender === 'Эмэгтэй' ? ' on' : ''}" data-staff-gender="${escapeHtml(key)}" data-gender="Эмэгтэй">Эм</button>
-        </div>
-        <div class="staff-adm-row">🏢 Салбар:
-          <button class="staff-gbtn${memberBranchesOf(m).includes('m-event') ? ' on' : ''}" data-staff-br="${escapeHtml(key)}" data-br="m-event">M-Event</button>
-          <button class="staff-gbtn${memberBranchesOf(m).includes('camp') ? ' on' : ''}" data-staff-br="${escapeHtml(key)}" data-br="camp">NOMAAD</button>
-          <button class="staff-gbtn${memberBranchesOf(m).includes('catering') ? ' on' : ''}" data-staff-br="${escapeHtml(key)}" data-br="catering">Катеринг</button>
-        </div>
-        <div class="staff-adm-row">👤 Төрөл:
-          <button class="staff-gbtn${String(m.worker_type || '') !== 'daily' ? ' on' : ''}" data-staff-wt="${escapeHtml(key)}" data-wt="permanent">Үндсэн</button>
-          <button class="staff-gbtn${String(m.worker_type || '') === 'daily' ? ' on' : ''}" data-staff-wt="${escapeHtml(key)}" data-wt="daily">Цагийн</button>
-        </div>
-        ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-finperm="${escapeHtml(key)}" data-finperm-name="${escapeHtml(m.name)}" ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''} />🏦 Санхүү: салбар засах эрх</label>` : ''}
-        <button class="staff-doc-btn" data-staff-doc="${escapeHtml(key)}" data-staff-name="${escapeHtml(m.name || '')}">📄 Үнэмлэх харах</button>
-      </div>
-    </details>` : '';
-    // Тогтмол араг яс: [avatar] [нэр · мета · дохио · удирдах] [төлөв · үйлдэл]
+    // Ажилтан удирдах + эрх → мөр дээр дарахад POPUP-д (openStaffCardModal). Мөр = цэвэр товч.
+    const canOpen = state.isCEO || canAccessView('access', () => false) || canManagePermsOf(key);
     return `
-      <div class="staff-row ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}">
+      <div class="staff-row ${canOpen ? 'staff-clickable' : ''} ${isActive ? '' : (isPending ? 'staff-pending' : 'staff-left')}" data-staff-email="${escapeHtml(key)}"${canOpen ? ` data-staff-open="${escapeHtml(key)}"` : ''}>
         <span class="staff-avatar">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
         <div class="staff-info">
           <div class="staff-name">${escapeHtml(m.name)}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
           <div class="staff-role">${meta}</div>
           ${cred}
-          ${adm}
         </div>
         <div class="staff-right">
           <span class="staff-status status-${statusCls}">${statusLabel}</span>
           ${(isSelf || (!state.isCEO && (Number(m.level) || 0) >= 100)) ? '' : (
             isPending
               ? `<button class="staff-action approve" data-staff-act="review" data-staff-email="${escapeHtml(key)}">Хянах</button>`
-              : `<button class="staff-action ${isActive ? 'leave' : 'restore'}" data-staff-act="${isActive ? 'leave' : 'restore'}" data-staff-email="${escapeHtml(key)}">${isActive ? 'Гарсан' : 'Сэргээх'}</button>`
+              : ''
           )}
+          ${canOpen ? '<span class="staff-open-hint">›</span>' : ''}
         </div>
       </div>
     `;
@@ -20450,63 +20428,149 @@ function renderStaffList() {
   });
   listEl.querySelectorAll('.staff-action').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const email = btn.dataset.staffEmail;
-      const act = btn.dataset.staffAct;
-      const member = findMember(email);
+      const member = findMember(btn.dataset.staffEmail);
       if (!member) return;
-      if (act === 'review') { openPendingRegistration(member); return; }
-      const newStatus = act === 'leave' ? 'гарсан' : 'идэвхтэй';
-      const verb = act === 'leave' ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх';
-      const confirmMsg = act === 'leave'
-        ? `${member.name}-ийг "Гарсан" гэж тэмдэглэх үү? Тэр аппд нэвтэрч чадахгүй болно.`
-        : `${member.name}-ийг буцааж "Идэвхтэй" болгох уу?`;
-      if (!(await showConfirm(confirmMsg, { okText: verb, danger: act === 'leave' }))) return;
-
-      // 1. Локал TEAM шинэчлэх
-      member.status = newStatus;
-      localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-      // 2. Master Sheet руу webhook илгээх (n8n /staff-update endpoint)
-      const webhook = state.config.staffUrl;
-      if (webhook) {
-        try {
-          // Огноо талбарууд — статусаас хамаарч 'Гарсан огноо' эсвэл 'Орсон огноо' бичигдэнэ.
-          // Sheet дотор хоёр баганатай байх ёстой: 'Гарсан огноо', 'Орсон огноо'.
-          const today = todayStr(); // YYYY-MM-DD local format
-          const leftDate = newStatus === 'гарсан' ? today : '';
-          const joinedDate = newStatus === 'идэвхтэй' ? today : '';
-          // Locally also persist
-          if (newStatus === 'гарсан') member.left_at = today;
-          if (newStatus === 'идэвхтэй') member.joined_at = today;
-          localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
-
-          const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'update_status',
-              phone: member.phone,      // утсаар тааруулна (ID хэрэглэхээ больсон)
-              email: member.email,
-              status: newStatus,
-              left_date: leftDate,      // 'Гарсан огноо' багана
-              joined_date: joinedDate,  // 'Орсон огноо' багана
-              requested_by: state.me,
-              timestamp: new Date().toISOString(),
-            }),
-          });
-          if (r.ok) {
-            showToast(`${member.name} — ${newStatus} болсон. Master Sheet-д хадгалагдсан.`, 'success', 3000);
-          } else {
-            showToast(`${member.name} — локалд хадгалагдсан. Master Sheet-д sync хийгдээгүй.`, 'warn', 4000);
-          }
-        } catch (e) {
-          showToast(`${member.name} — локалд хадгалагдсан. Sheet sync алдаатай.`, 'warn', 4000);
-        }
-      } else {
-        showToast(`${member.name} — локалд хадгалагдсан. Sheet тохируулагдаагүй.`, 'info', 3000);
-      }
-      renderStaffList();
+      if (btn.dataset.staffAct === 'review') { openPendingRegistration(member); return; }
+      if (await setStaffStatus(member, btn.dataset.staffAct)) renderStaffList();
     });
   });
+  // 👤 Мөр дээр дарахад ажилтны POPUP (удирдах + эрх). Дотор товч/оролт дарвал алгасна.
+  listEl.querySelectorAll('[data-staff-open]').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('button, a, input, select, label, .staff-action')) return;
+      openStaffCardModal(row.dataset.staffOpen);
+    });
+  });
+}
+// Ажилтны төлөв солих (гарсан ↔ идэвхтэй) — жагсаалт ба попап хоёулаа ашиглана. true=солигдсон.
+async function setStaffStatus(member, act) {
+  const newStatus = act === 'leave' ? 'гарсан' : 'идэвхтэй';
+  const verb = act === 'leave' ? 'Гарсан гэж тэмдэглэх' : 'Сэргээх';
+  const confirmMsg = act === 'leave'
+    ? `${member.name}-ийг "Гарсан" гэж тэмдэглэх үү? Тэр аппд нэвтэрч чадахгүй болно.`
+    : `${member.name}-ийг буцааж "Идэвхтэй" болгох уу?`;
+  if (!(await showConfirm(confirmMsg, { okText: verb, danger: act === 'leave' }))) return false;
+  member.status = newStatus;
+  localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
+  const webhook = state.config.staffUrl;
+  if (webhook) {
+    try {
+      const today = todayStr();
+      if (newStatus === 'гарсан') member.left_at = today;
+      if (newStatus === 'идэвхтэй') member.joined_at = today;
+      localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
+      const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_status', phone: member.phone, email: member.email, status: newStatus,
+          left_date: newStatus === 'гарсан' ? today : '', joined_date: newStatus === 'идэвхтэй' ? today : '',
+          requested_by: state.me, timestamp: new Date().toISOString(),
+        }),
+      });
+      showToast(r.ok ? `${member.name} — ${newStatus} болсон.` : `${member.name} — локалд хадгалагдсан (sync ✗).`, r.ok ? 'success' : 'warn', 3000);
+    } catch (e) { showToast(`${member.name} — локалд хадгалагдсан (sync ✗).`, 'warn', 4000); }
+  } else { showToast(`${member.name} — локалд хадгалагдсан.`, 'info', 3000); }
+  return true;
+}
+// ══════ Ажилтны карт POPUP — удирдах (албан тушаал/хүйс/салбар/төрөл/санхүү/үнэмлэх/төлөв) + эрх ══════
+function openStaffCardModal(key) {
+  const m0 = findMember(key); if (!m0) return;
+  const canManage = state.isCEO || canAccessView('access', () => false);
+  document.getElementById('staff-card-modal')?.remove();   // хуучныг цэвэрлэж, шинийг үүсгэнэ
+  const ov = document.createElement('div'); ov.id = 'staff-card-modal'; ov.className = 'org-modal-bd'; document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  const rerender = () => { renderBody(); };
+  function renderBody() {
+    const m = findMember(key) || m0;
+    const status = m.status || 'идэвхтэй';
+    const isActive = status === 'идэвхтэй';
+    const isSelf = key === state.me;
+    const _age = ageFromRD(m.rd);
+    const canPerm = canManagePermsOf(key);
+    const amCeo = state.isCEO;
+    const bs = memberBranchesOf(m) || [];
+    const lvl = Number(m.level) || 0;
+    // Дэд эрхүүд: CEO бүгдийг; 'access'-тэй менежер зөвхөн албан тушаал (lvl<100) + гарсан/сэргээх.
+    const canRole = amCeo || (lvl < 100 && canManage);
+    const canStatus = canManage && !isSelf && !(!amCeo && lvl >= 100);
+    // ── Удирдах хэсэг ──
+    const gBtn = (val, label) => `<button class="staff-gbtn${m.gender === val ? ' on' : ''}" data-sc-gender="${val}">${label}</button>`;
+    const brBtn = (val, label) => `<button class="staff-gbtn${bs.includes(val) ? ' on' : ''}" data-sc-br="${val}">${label}</button>`;
+    const wtBtn = (val, label, on) => `<button class="staff-gbtn${on ? ' on' : ''}" data-sc-wt="${val}">${label}</button>`;
+    const roleOpts = (amCeo ? getRoleOptions() : getRoleOptions().filter(r => levelForRole(r) < 100));
+    if (m.role && !roleOpts.includes(m.role)) roleOpts.unshift(m.role);
+    const admin = (canRole || amCeo || canStatus) ? `
+      <div class="sc-sec"><div class="sc-sec-t">⚙️ Ажилтан удирдах</div>
+        ${canRole ? `<div class="sc-row"><span class="sc-lbl">Албан тушаал</span>
+          <select class="sc-role" data-sc-role>${roleOpts.map(r => `<option value="${escapeHtml(r)}"${r === (m.role || '') ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('')}<option value="__new__">+ Шинэ…</option></select></div>` : ''}
+        ${amCeo ? `<div class="sc-row"><span class="sc-lbl">Хүйс</span><span class="sc-btns">${gBtn('Эрэгтэй', 'Эр')}${gBtn('Эмэгтэй', 'Эм')}</span></div>
+        <div class="sc-row"><span class="sc-lbl">🏢 Салбар</span><span class="sc-btns">${brBtn('m-event', 'M-Event')}${brBtn('camp', 'NOMAAD')}${brBtn('catering', 'Катеринг')}</span></div>
+        <div class="sc-row"><span class="sc-lbl">👤 Төрөл</span><span class="sc-btns">${wtBtn('permanent', 'Үндсэн', String(m.worker_type || '') !== 'daily')}${wtBtn('daily', 'Цагийн', String(m.worker_type || '') === 'daily')}</span></div>
+        ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-sc-finperm ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''}/>🏦 Санхүү: салбар засах эрх</label>` : ''}
+        <div class="sc-row2"><button class="btn" data-sc-doc>📄 Үнэмлэх харах</button>
+          <span class="sc-pin">🔑 <b data-sc-pinval>${m.pin ? '••••' : '—'}</b>${m.pin ? ' <button class="staff-pin-show" data-sc-pinshow>харах</button>' : ''}</span></div>` : ''}
+        ${canStatus ? `<div class="sc-row2">${isActive ? `<button class="btn btn-danger" data-sc-status="leave">🚪 Гарсан гэж тэмдэглэх</button>` : `<button class="btn" data-sc-status="restore">↩ Сэргээх</button>`}</div>` : ''}
+      </div>` : '';
+    // ── Эрх хэсэг ──
+    let perms = '';
+    if (canPerm) {
+      const grantFn = amCeo ? null : editorCanGrant;
+      const pov = state.memberPerms && state.memberPerms[key];
+      const hasOv = pov && Object.keys(pov).length > 0;
+      const isFull = (m.level || 0) >= 100 || isFullAccessMember(m);
+      perms = `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх${amCeo ? '' : ' (доорхи хүн)'}</div>
+        ${isFull ? '<div style="font-size:12px;color:var(--muted);">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>'
+          : capMatrixHtml('sc-cap', key, (k, kind) => effectiveCapForMember(m, k, kind), grantFn)
+            + (hasOv ? `<div style="margin-top:8px;"><button class="btn" data-sc-permreset style="padding:4px 11px;font-size:11px;">↺ Анхны байдал руу</button></div>` : '')}
+      </div>`;
+    }
+    ov.innerHTML = `<div class="org-modal sc-modal">
+      <div class="sc-head">
+        <span class="staff-avatar sc-ava">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>
+        <div style="min-width:0;flex:1;"><div class="sc-name">${escapeHtml(m.name || '?')}${isSelf ? ' <span class="staff-you">(Та)</span>' : ''}</div>
+          <div class="sc-meta">${escapeHtml(m.role || '—')}${_age != null ? ' · ' + _age + ' нас' : ''}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div></div>
+        <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
+        <button class="sc-x" data-sc-close>✕</button>
+      </div>
+      ${admin}${perms}
+      ${(!admin && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}
+    </div>`;
+    attachHandlers();
+  }
+  function attachHandlers() {
+    ov.querySelector('[data-sc-close]')?.addEventListener('click', close);
+    ov.querySelector('[data-sc-role]')?.addEventListener('change', async (e) => {
+      const m = findMember(key); if (!m) return;
+      if (e.target.value === '__new__') { const nv = await showPrompt('Шинэ албан тушаалын нэр:', { placeholder: 'Ж: Эвент менежер', okText: 'Хадгалах' }); if (nv && nv.trim()) { await saveStaffRole(m, nv.trim()); } rerender(); return; }
+      await saveStaffRole(m, e.target.value); rerender();
+    });
+    ov.querySelectorAll('[data-sc-gender]').forEach(b => b.addEventListener('click', async () => { const m = findMember(key); if (m) { await saveStaffGender(m, b.dataset.scGender); rerender(); } }));
+    ov.querySelectorAll('[data-sc-br]').forEach(b => b.addEventListener('click', async () => {
+      const m = findMember(key); if (!m) return;
+      const cur = (memberBranchesOf(m) || []).filter(x => ['m-event', 'camp', 'catering'].includes(x));
+      const br = b.dataset.scBr; const next = cur.includes(br) ? cur.filter(x => x !== br) : [...cur, br];
+      await saveMemberBranches(key, next); rerender();
+    }));
+    ov.querySelectorAll('[data-sc-wt]').forEach(b => b.addEventListener('click', async () => { const m = findMember(key); if (m) { await saveWorkerType(m, b.dataset.scWt); rerender(); } }));
+    ov.querySelector('[data-sc-finperm]')?.addEventListener('change', (e) => { saveFinanceBranchPerm(key, (findMember(key) || {}).name || '', e.target.checked); });
+    ov.querySelector('[data-sc-doc]')?.addEventListener('click', () => { const m = findMember(key); openEmployeeDocModal(key, (m && m.name) || ''); });
+    ov.querySelector('[data-sc-pinshow]')?.addEventListener('click', () => { const m = findMember(key); const el = ov.querySelector('[data-sc-pinval]'); const btn = ov.querySelector('[data-sc-pinshow]'); if (!m || !el) return; if (btn.textContent === 'нуух') { el.textContent = '••••'; btn.textContent = 'харах'; } else { el.textContent = String(m.pin || '—'); btn.textContent = 'нуух'; } });
+    ov.querySelectorAll('[data-sc-status]').forEach(b => b.addEventListener('click', async () => { const m = findMember(key); if (m && await setStaffStatus(m, b.dataset.scStatus)) { renderStaffList(); rerender(); } }));
+    ov.querySelector('[data-sc-permreset]')?.addEventListener('click', async () => { await clearMemberPerms(key); showToast('Анхны байдал руу буцаалаа', 'success', 1500); rerender(); });
+    // Эрхийн чагт (escalation guard + delegate merge)
+    ov.querySelectorAll('input[data-sc-cap]').forEach(cb => cb.addEventListener('change', () => {
+      if (!state.isCEO) {
+        if (!canManagePermsOf(key)) { cb.checked = !cb.checked; showToast('Энэ хүний эрхийг та удирдах эрхгүй', 'error', 3000); return; }
+        if (cb.checked && !editorCanGrant(cb.dataset.capKey, cb.dataset.capKind)) { cb.checked = false; showToast('Танд энэ эрх байхгүй тул олгож чадахгүй', 'warn', 2500); return; }
+      }
+      ov.querySelectorAll(`input[data-sc-cap][data-cap-key="${CSS.escape(cb.dataset.capKey)}"]`).forEach(x => { x.checked = cb.checked; const c = x.closest('.ac-chip'); if (c) { c.classList.toggle('on', cb.checked); c.classList.toggle('act-off', !cb.checked); } });
+      let perms = {}; ov.querySelectorAll('input[data-sc-cap]').forEach(x => { perms[x.dataset.capKey] = x.checked; });
+      if (!state.isCEO) perms = Object.assign({}, (state.memberPerms && state.memberPerms[key]) || {}, perms);
+      saveMemberPerms(key, perms); showToast('Эрх хадгаллаа', 'success', 1200);
+    }));
+  }
+  renderBody();
 }
 
 // Бүртгэлийн формын role сонголтуудыг runtime-д уншина (давхардуулахгүй).

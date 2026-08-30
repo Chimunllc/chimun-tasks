@@ -20533,8 +20533,7 @@ function openStaffCardModal(key) {
         <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
-      ${admin}${perms}
-      ${(!admin && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}
+      <div class="sc-body">${admin}${perms}${(!admin && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
     </div>`;
     attachHandlers();
   }

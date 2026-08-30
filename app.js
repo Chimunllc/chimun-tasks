@@ -10187,7 +10187,7 @@ function effectiveCapForMember(m, key, kind) {
 function capMatrixHtml(dataAttr, holderKey, getVal, canGrant) {
   const chip = (key, kind, label, on) => {
     const lock = canGrant && !canGrant(key, kind);
-    if (lock) return `<span class="ac-chip${on ? ' on' : ' act-off'} locked" title="Танд энэ эрх байхгүй тул олгож чадахгүй">${label}</span>`;
+    if (lock) return `<span class="ac-chip${on ? ' on' : ' act-off'} cap-locked" title="Танд энэ эрх байхгүй тул олгож чадахгүй">🔒 ${label}</span>`;
     return `<label class="ac-chip${on ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${escapeHtml(key)}" data-cap-kind="${kind}" ${on ? 'checked' : ''}>${label}</label>`;
   };
   return `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {

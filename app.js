@@ -5184,6 +5184,26 @@ const ORDER_BUCKETS = [
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
 function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'active'; }
+// Захиалгын CANON (харагдах) төлөв — unifiedOrders-ийн normalize дүрэмтэй ИЖИЛ, НЭГ эх сурвалж.
+// state.appOrders-ийн ТҮҮХИЙ статусыг шууд ашигладаг логик (нөөц тооцоо, багц сонголт) заавал энэ
+// helper-ээр дамжуулж, харагдац ↔ логик зөрөхөөс сэргийлнэ: жиш. төлбөргүй reserved нь харагдацаар
+// 'Ноорог' атлаа нөөц эзэлж / буруу сонгогдож байсныг арилгана.
+const _seenBadStatus = new Set();
+function orderCanonStatus(ao) {
+  let raw = String((ao && ao.status) || 'reserved');
+  if (BQ_LEGACY_MAP[raw]) raw = BQ_LEGACY_MAP[raw];
+  const unpaid = (Number(ao && ao.paid_mnt) || 0) <= 0;
+  if (raw === 'reserved' && unpaid) raw = 'draft';
+  if (raw === 'draft' && unpaid) {
+    const end = String((ao && (ao.stops_at || ao.starts_at)) || '').slice(0, 10);
+    const t = new Date(); const today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+    if (end && end < today) raw = 'deleted';
+  }
+  // Танигдахгүй статус (эвдэрсэн дата / backend-ийн шинэ статус) — идэвхтэй бус бүлэгт нам гүм
+  // нуугдахаас өмнө нэг удаа сэрэмжлүүлж ул мөр үлдээнэ (bucketOf default 'active' тул хольцолдож болзошгүй).
+  if (!BQ_STATUS[raw] && !_seenBadStatus.has(raw)) { _seenBadStatus.add(raw); try { console.warn('[orders] танигдахгүй захиалгын төлөв:', raw); } catch (_) {} }
+  return raw;
+}
 const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
 // Харилцагчийн аватар — нэрнээс тогтмол өнгө + эхний үсэг(үүд)
 const _AV_COLORS = ['#6d4aff', '#0ea5e9', '#16a34a', '#f59e0b', '#e11d48', '#8b5cf6', '#0891b2', '#db2777'];
@@ -5612,7 +5632,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-sel-bucket]').forEach(cb => cb.addEventListener('change', () => {
     state.ordersSelected = state.ordersSelected || new Set();
     const bk = cb.dataset.selBucket;
-    (state.appOrders || []).forEach(o => { if (bucketOf(o.status) === bk) { if (cb.checked) state.ordersSelected.add(String(o.id)); else state.ordersSelected.delete(String(o.id)); } });
+    (state.appOrders || []).forEach(o => { if (bucketOf(orderCanonStatus(o)) === bk) { if (cb.checked) state.ordersSelected.add(String(o.id)); else state.ordersSelected.delete(String(o.id)); } });
     render();
   }));
   document.getElementById('bulk-clear')?.addEventListener('click', () => { state.ordersSelected = new Set(); render(); });
@@ -5951,7 +5971,7 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
   let total = 0;
   for (const o of (state.appOrders || [])) {
     if (excludeOrderNo && o.number === excludeOrderNo) continue;
-    if (!_ORDER_OCCUPYING.includes(String(o.status))) continue;
+    if (!_ORDER_OCCUPYING.includes(orderCanonStatus(o))) continue;   // canon — харагдацтай ижил (төлбөргүй reserved нөөц эзлэхгүй)
     const os = String(o.starts_at || '').slice(0, 10), oe = String(o.stops_at || '').slice(0, 10);
     if (!os || !oe) continue;
     if (!_rangesOverlap(s, e, os, oe)) continue;   // огнооны давхцал
@@ -14899,22 +14919,10 @@ async function deleteAppOrder(id) {
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
   // source='history' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
-  const _t = new Date();
-  const _today = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
   return (state.appOrders || []).map(ao => {
-    let raw = String(ao.status || 'reserved');
-    if (BQ_LEGACY_MAP[raw]) raw = BQ_LEGACY_MAP[raw];   // хуучин төлөв → одоогийн (таб дор харагдана)
-    const _unpaid = (Number(ao.paid_mnt) || 0) <= 0;
-    // Төлбөр бүртгэгдээгүй захиалга = Ноорог. "Захиалсан" (reserved) руу зөвхөн төлбөр
-    // бүртгэгдэхэд шилжинэ. (Зөвхөн харагдац/бүлэглэл — агуулахын нөөц state.appOrders-ийн
-    // бодит статусаар тоологдох тул энэ өөрчлөлт нөлөөлөхгүй.)
-    if (raw === 'reserved' && _unpaid) raw = 'draft';
-    // Эвентийн огноо өнгөрсөн + төлбөргүй ноорог = "Устгасан" бүлэгт автоматаар харуулна
-    // (DB-д УСТГАХГҮЙ — бодит статус хэвээр; төлбөр бүртгэвэл эргэж гарч ирнэ).
-    if (raw === 'draft' && _unpaid) {
-      const _end = String(ao.stops_at || ao.starts_at || '').slice(0, 10);
-      if (_end && _end < _today) raw = 'deleted';
-    }
+    // Canon төлөв — нэг helper (orderCanonStatus). Нөөц тооцоо (bookedQtyForRange) болон багц сонголт
+    // мөн ижил helper ашигладаг тул харагдац ↔ логик зөрөхгүй (төлбөргүй reserved→'draft' г.м.).
+    const raw = orderCanonStatus(ao);
     const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',

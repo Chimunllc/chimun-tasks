@@ -8716,9 +8716,6 @@ function _ecEsc(s) { return escapeHtml(String(s == null ? '' : s)); }
 // Гэрээний HTML — d талбаруудаар бөглөнө. Хэвлэлд цэвэр (A4).
 function EMP_CONTRACT_HTML(d) {
   const org = (typeof CHIMUN_LEGAL !== 'undefined') ? CHIMUN_LEGAL : { name: '"ЧИМУН" ХХК', reg: '6614337', address: '', director: '', directorTitle: 'Гүйцэтгэх захирал', phones: '' };
-  const sig = (img, cap) => img
-    ? `<img src="${img}" style="height:54px;object-fit:contain;display:block;margin:2px 0;">${cap}`
-    : `<div style="height:54px;border-bottom:1px solid #999;"></div>${cap}`;
   return `<div class="ec-doc">
     <h2 style="text-align:center;margin:0 0 2px;">ХӨДӨЛМӨРИЙН ГЭРЭЭ</h2>
     <div style="text-align:center;font-size:12px;color:#555;margin-bottom:12px;">${_ecEsc(d.docDate || '2026 оны … сарын …-ны өдөр')} · № ${_ecEsc(d.docNo || '………')} · Улаанбаатар хот</div>
@@ -8731,137 +8728,125 @@ function EMP_CONTRACT_HTML(d) {
     <p><b>6. Талуудын хариуцлага</b><br>6.1. Сахилгын зөрчилд ХтХ 123-т заасан шийтгэл оногдуулна.<br>6.2. Буруутай үйлдлээр учруулсан хохирлыг Хөдөлмөрийн тухай хуульд заасан журмын дагуу нөхөн төлнө. Мөнгө/эд хөрөнгө хариуцсан ажилтантай Бүрэн эд хөрөнгийн хариуцлагын гэрээ байгуулж болно.<br>6.4. Гүйцэтгэлийг KPI-аар сар бүр үнэлнэ; сайжраагүй нь баримтаар тогтоогдвол ХтХ 80.1.2-оор гэрээг цуцалж болно.</p>
     <p><b>7. Гэрээ дуусгавар болох, цуцлах</b><br>7.2.1. Ажилтан өөрийн санаачилгаар цуцлах бол 30 хоногийн өмнө бичгээр мэдэгдэнэ.<br>7.2.2. Ажил олгогч ХтХ 80.1-д заасан үндэслэлээр цуцална.</p>
     <p><b>8–11.</b> Нэмэлт/өөрчлөлт бичгээр; давагдашгүй хүчин зүйл; маргааныг эв зүйгээр, эс бол шүүхээр; гэрээ 2 хувь, тал бүр 1 хувь хадгална; тусгаагүйг ХтХ болон дотоод журмаар зохицуулна.</p>
-    <p style="font-size:11px;color:#666;border-top:1px solid #ddd;padding-top:6px;margin-top:10px;">🔒 Цахим баталгаа (audit): Энэхүү гэрээг талууд Чимун ХХК-ийн дотоод системд нэвтэрч, цахим гарын үсгээр баталгаажуулав. Лац (SHA-256): <b style="font-family:monospace;">${_ecEsc(d.hash || '—')}</b> · Баталгаажсан: ${_ecEsc(d.signedAt || '—')}</p>
-    <table style="width:100%;margin-top:14px;border-collapse:collapse;"><tr>
-      <td style="width:50%;vertical-align:top;padding:8px;border:1px solid #bbb;">
-        <b>АЖИЛ ОЛГОГЧИЙГ ТӨЛӨӨЛЖ:</b><br>${sig(d.sigOrg, `<div>Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div><div>Албан тушаал: ${_ecEsc(d.employerTitle || org.directorTitle)}</div>`)}
+    <table style="width:100%;margin-top:20px;border-collapse:collapse;"><tr>
+      <td style="width:50%;vertical-align:top;padding:10px;border:1px solid #bbb;">
+        <b>АЖИЛ ОЛГОГЧИЙГ ТӨЛӨӨЛЖ:</b>
+        <div style="height:52px;border-bottom:1px solid #999;margin:6px 0 4px;"></div>
+        <div style="font-size:12px;color:#777;">Гарын үсэг</div>
+        <div style="margin-top:6px;">Нэр: <b>${_ecEsc(d.employerName || org.director)}</b></div>
+        <div>Албан тушаал: ${_ecEsc(d.employerTitle || org.directorTitle)}</div>
+        <div style="color:#777;font-size:12px;margin-top:4px;">Огноо: …… / …… / 2026</div>
       </td>
-      <td style="width:50%;vertical-align:top;padding:8px;border:1px solid #bbb;">
-        <b>АЖИЛТАН:</b><br>${sig(d.sigEmp, `<div>Нэр: <b>${_ecEsc(d.empName || '…')}</b></div><div>Утас: ${_ecEsc(d.empPhone || '…')}</div>`)}
+      <td style="width:50%;vertical-align:top;padding:10px;border:1px solid #bbb;">
+        <b>АЖИЛТАН:</b>
+        <div style="height:52px;border-bottom:1px solid #999;margin:6px 0 4px;"></div>
+        <div style="font-size:12px;color:#777;">Гарын үсэг</div>
+        <div style="margin-top:6px;">Нэр: <b>${_ecEsc(d.empName || '…')}</b></div>
+        <div>Утас: ${_ecEsc(d.empPhone || '…')}</div>
+        <div style="color:#777;font-size:12px;margin-top:4px;">Огноо: …… / …… / 2026</div>
       </td>
     </tr></table>
+    ${d.idRefHtml || ''}
   </div>`;
 }
-// Гарын үсэг зурах canvas — pointer/touch. { clear, isEmpty, dataURL } буцаана.
-function _ecSigPad(cv) {
-  const ctx = cv.getContext('2d'); let drawing = false, dirty = false;
-  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
-  const pos = e => { const r = cv.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return [(t.clientX - r.left) * (cv.width / r.width), (t.clientY - r.top) * (cv.height / r.height)]; };
-  const start = e => { e.preventDefault(); drawing = true; const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); };
-  const move = e => { if (!drawing) return; e.preventDefault(); const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); dirty = true; };
-  const end = () => { drawing = false; };
-  cv.addEventListener('pointerdown', start); cv.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', end);
-  return { clear: () => { ctx.clearRect(0, 0, cv.width, cv.height); dirty = false; }, isEmpty: () => !dirty, dataURL: () => cv.toDataURL('image/png') };
+// Ажилтны оруулсан иргэний үнэмлэхийн лавлагаа → зургийн массив (image=шууд, pdf=pdf.js-ээр растер)
+async function _ecIdImages(phone) {
+  try {
+    const doc = await fetchEmployeeDoc(phone);
+    if (!doc || !doc.id_doc) return [];
+    if (doc.doc_type === 'pdf') {
+      await loadPdfJs();
+      const pdf = await window.pdfjsLib.getDocument({ data: atob(String(doc.id_doc).split(',')[1]) }).promise;
+      const out = []; const n = Math.min(pdf.numPages, 3);
+      for (let i = 1; i <= n; i++) {
+        const page = await pdf.getPage(i); const vp = page.getViewport({ scale: 1.6 });
+        const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        out.push(c.toDataURL('image/jpeg', 0.85));
+      }
+      return out;
+    }
+    return [doc.id_doc]; // зураг data URL
+  } catch (e) { return []; }
 }
-async function _ecSha256(str) {
-  try { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
-  catch (e) { return 'nohash-' + Date.now(); }
+// Арын хуудас: иргэний үнэмлэхийн лавлагаа (зураг тус бүр шинэ хуудсанд)
+function _ecIdRefHtml(imgs) {
+  if (!imgs || !imgs.length) return '';
+  return imgs.map((src, i) => `<div style="page-break-before:always;padding-top:8px;">
+    <div style="text-align:center;font-weight:700;margin-bottom:10px;font-size:14px;">ХАВСРАЛТ · Иргэний үнэмлэхийн лавлагаа${imgs.length > 1 ? ' (' + (i + 1) + '/' + imgs.length + ')' : ''}</div>
+    <img src="${src}" style="display:block;max-width:100%;margin:0 auto;border:1px solid #ccc;">
+  </div>`).join('');
 }
 function openEmployeeContract(personKey) {
   if (!state.isCEO) { showToast('Зөвхөн захирал', 'warn', 2500); return; }
   const m = findMember(personKey); if (!m) return;
   const sal = (state.salaries || {})[personKey] || 0;
   const org = CHIMUN_LEGAL;
+  const phone = String(m.phone || personKey).replace(/\D/g, '');
   document.getElementById('ec-modal')?.remove();
   const wrap = document.createElement('div'); wrap.className = 'modal-bg'; wrap.id = 'ec-modal';
   const fld = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:var(--fs-md);background:var(--panel);color:var(--text);margin-bottom:8px;';
-  wrap.innerHTML = `<div class="modal ui-raw" style="max-width:820px;max-height:92vh;overflow:auto;">
-    <h2 style="font-size:16px;margin:0 0 4px;">📄 Хөдөлмөрийн гэрээ — ${_ecEsc(m.name)}</h2>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Мэдээллийг бөглөж «Бэлдэх» → 2 тал гарын үсэг зурж «Баталгаажуулж хадгалах». Гэрээ Баримт бичигт лацтай хадгална.</div>
-    <div id="ec-form">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
-        <label style="font-size:12px;color:var(--muted);">Албан тушаал<input id="ec-pos" value="${_ecEsc(m.role || 'Захиалгын ажилтан')}" style="${fld}"></label>
-        <label style="font-size:12px;color:var(--muted);">Сарын үндсэн цалин (₮)<input id="ec-sal" type="text" inputmode="numeric" value="${sal ? sal.toLocaleString('en-US') : ''}" placeholder="жишээ 1,500,000" style="${fld}"></label>
-        <label style="font-size:12px;color:var(--muted);">Регистрийн дугаар<input id="ec-reg" placeholder="АА00000000" style="${fld}"></label>
-        <label style="font-size:12px;color:var(--muted);">Ажилтны утас<input id="ec-phone" value="${_ecEsc(m.phone || '')}" style="${fld}"></label>
-        <label style="font-size:12px;color:var(--muted);grid-column:1/3;">Оршин суух хаяг<input id="ec-addr" placeholder="Дүүрэг, хороо, байр/тоот" style="${fld}"></label>
-        <label style="font-size:12px;color:var(--muted);">Ажил эхлэх огноо<input id="ec-start" type="date" style="${fld}"></label>
-        <label style="font-size:12px;color:var(--muted);">Гэрээний дугаар<input id="ec-no" placeholder="ХГ-2026-001" style="${fld}"></label>
-      </div>
-      <button class="btn btn-primary" id="ec-prep" style="width:100%;margin-top:6px;">Гэрээ бэлдэх →</button>
+  wrap.innerHTML = `<div class="modal ui-raw" style="max-width:640px;max-height:92vh;overflow:auto;">
+    <h2 style="font-size:16px;margin:0 0 4px;">📄 Хөдөлмөрийн гэрээ бэлдэх — ${_ecEsc(m.name)}</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Мэдээллийг бөглөж PDF татна. Гэрээний арын хуудсанд тухайн ажилтны оруулсан <b>иргэний үнэмлэхийн лавлагаа</b> хавсрагдана. Хэвлээд гараар эсвэл eMongolia-д гарын үсэг зурна.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px;">
+      <label style="font-size:12px;color:var(--muted);">Албан тушаал<input id="ec-pos" value="${_ecEsc(m.role || 'Захиалгын ажилтан')}" style="${fld}"></label>
+      <label style="font-size:12px;color:var(--muted);">Сарын үндсэн цалин (₮)<input id="ec-sal" type="text" inputmode="numeric" value="${sal ? sal.toLocaleString('en-US') : ''}" placeholder="жишээ 1,500,000" style="${fld}"></label>
+      <label style="font-size:12px;color:var(--muted);">Регистрийн дугаар<input id="ec-reg" placeholder="АА00000000" style="${fld}"></label>
+      <label style="font-size:12px;color:var(--muted);">Ажилтны утас<input id="ec-phone" value="${_ecEsc(m.phone || '')}" style="${fld}"></label>
+      <label style="font-size:12px;color:var(--muted);grid-column:1/3;">Оршин суух хаяг<input id="ec-addr" placeholder="Дүүрэг, хороо, байр/тоот" style="${fld}"></label>
+      <label style="font-size:12px;color:var(--muted);">Ажил эхлэх огноо<input id="ec-start" type="date" style="${fld}"></label>
+      <label style="font-size:12px;color:var(--muted);">Гэрээний дугаар<input id="ec-no" placeholder="ХГ-2026-001" style="${fld}"></label>
     </div>
-    <div id="ec-sign" style="display:none;">
-      <div id="ec-preview" style="background:#fff;color:#111;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:12.5px;line-height:1.5;max-height:44vh;overflow:auto;margin-bottom:12px;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div><div style="font-size:12px;font-weight:600;margin-bottom:4px;">✍️ Ажил олгогч (${_ecEsc(org.director)})</div>
-          <canvas id="ec-sig-org" width="360" height="120" style="width:100%;height:110px;border:1.5px dashed var(--border);border-radius:8px;background:#fff;touch-action:none;"></canvas>
-          <button class="btn" id="ec-clr-org" style="width:100%;margin-top:4px;padding:4px;font-size:11px;">Арилгах</button></div>
-        <div><div style="font-size:12px;font-weight:600;margin-bottom:4px;">✍️ Ажилтан (${_ecEsc(m.name)})</div>
-          <canvas id="ec-sig-emp" width="360" height="120" style="width:100%;height:110px;border:1.5px dashed var(--border);border-radius:8px;background:#fff;touch-action:none;"></canvas>
-          <button class="btn" id="ec-clr-emp" style="width:100%;margin-top:4px;padding:4px;font-size:11px;">Арилгах</button></div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:14px;">
-        <button class="btn" id="ec-back" style="flex:1;padding:10px;">← Буцах</button>
-        <button class="btn btn-primary" id="ec-save" style="flex:2;padding:10px;">🔒 Баталгаажуулж хадгалах</button>
-      </div>
-    </div>
+    <div id="ec-idnote" style="font-size:11px;color:var(--muted);margin:2px 0 10px;">🪪 Лавлагаа шалгаж байна…</div>
+    <button class="btn btn-primary" id="ec-make" style="width:100%;padding:11px;">📄 Гэрээ бэлдэж татах (PDF)</button>
     <button class="btn" id="ec-cancel" style="width:100%;margin-top:10px;padding:9px;">Хаах</button>
   </div>`;
   document.body.appendChild(wrap);
   requestAnimationFrame(() => wrap.classList.add('open'));
   wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
   wrap.querySelector('#ec-cancel').onclick = () => wrap.remove();
-  let padOrg = null, padEmp = null, ecData = null;
-  wrap.querySelector('#ec-prep').onclick = () => {
-    const g = id => wrap.querySelector(id).value.trim();
-    ecData = {
-      empName: m.name, position: g('#ec-pos'), salary: Number(g('#ec-sal').replace(/[^\d]/g, '')) || 0,
-      empRegister: g('#ec-reg'), empPhone: g('#ec-phone'), empAddress: g('#ec-addr'),
-      startDate: g('#ec-start'), docNo: g('#ec-no'), employerName: org.director, employerTitle: org.directorTitle,
-    };
-    wrap.querySelector('#ec-preview').innerHTML = EMP_CONTRACT_HTML(ecData);
-    wrap.querySelector('#ec-form').style.display = 'none';
-    wrap.querySelector('#ec-sign').style.display = '';
-    padOrg = _ecSigPad(wrap.querySelector('#ec-sig-org'));
-    padEmp = _ecSigPad(wrap.querySelector('#ec-sig-emp'));
-    wrap.querySelector('#ec-clr-org').onclick = () => padOrg.clear();
-    wrap.querySelector('#ec-clr-emp').onclick = () => padEmp.clear();
-  };
-  wrap.querySelector('#ec-back').onclick = () => { wrap.querySelector('#ec-sign').style.display = 'none'; wrap.querySelector('#ec-form').style.display = ''; };
-  wrap.querySelector('#ec-save').onclick = async () => {
-    if (padOrg.isEmpty() || padEmp.isEmpty()) { showToast('Хоёр тал гарын үсэг зурна уу', 'warn', 3000); return; }
-    const btn = wrap.querySelector('#ec-save'); btn.disabled = true; btn.textContent = 'Бэлдэж байна…';
+  // Лавлагааг урьдчилан татаж кэшлэнэ (татахад дахин хүлээхгүй)
+  let idImages = null;
+  _ecIdImages(phone).then(imgs => {
+    idImages = imgs || [];
+    const note = wrap.querySelector('#ec-idnote');
+    if (note) note.innerHTML = idImages.length ? `🪪 Иргэний үнэмлэхийн лавлагаа олдлоо (${idImages.length} хуудас) — арын хуудсанд хавсрагдана.` : '⚠ Ажилтан иргэний үнэмлэхийн лавлагаа оруулаагүй — лавлагаагүй гэрээ татагдана.';
+  });
+  wrap.querySelector('#ec-make').onclick = async () => {
+    const btn = wrap.querySelector('#ec-make'); btn.disabled = true; btn.textContent = 'Бэлдэж байна…';
     try {
-      const sigOrg = padOrg.dataURL(), sigEmp = padEmp.dataURL();
-      const signedAt = new Date().toISOString();
-      const hash = await _ecSha256(JSON.stringify({ d: ecData, sigOrg, sigEmp, signedAt, by: state.me }));
-      const full = { ...ecData, sigOrg, sigEmp, signedAt: fmtDateTimeUB ? fmtDateTimeUB(signedAt) : signedAt, hash: hash.slice(0, 32), docDate: ecData.docNo ? undefined : new Date().toLocaleDateString('mn-MN') };
-      // PDF үүсгэх. ⚠⚠ КРИТИК: html2canvas нь position:fixed элементийг ХООСОН (цагаан хуудас) буулгадаг —
-      // тиймээс holder-ийг ЭНГИЙН УРСГАЛД (position:static) байрлуулна; дэлгэцийг тусдаа fixed цагаан
-      // бүрхүүлээр нууж, html2canvas-д windowWidth/Height өгснөөр виепортоос үл хамааран зурна
-      // (нуугдсан таб/жижиг дэлгэцэнд ч). Браузераар батлагдсан: fixed=хоосон, static+window*=740KB агуулгатай.
+      const g = id => wrap.querySelector(id).value.trim();
+      const ecData = {
+        empName: m.name, position: g('#ec-pos'), salary: Number(g('#ec-sal').replace(/[^\d]/g, '')) || 0,
+        empRegister: g('#ec-reg'), empPhone: g('#ec-phone'), empAddress: g('#ec-addr'),
+        startDate: g('#ec-start'), docNo: g('#ec-no'), employerName: org.director, employerTitle: org.directorTitle,
+        docDate: g('#ec-no') ? undefined : new Date().toLocaleDateString('mn-MN'),
+      };
+      if (idImages === null) idImages = await _ecIdImages(phone); // хараахан ирээгүй бол хүлээнэ
+      ecData.idRefHtml = _ecIdRefHtml(idImages);
       if (!window.html2pdf) { await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; s.onload = res; s.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу')); document.head.appendChild(s); }); }
+      // ⚠⚠ КРИТИК: html2canvas нь position:fixed элементийг ХООСОН буулгадаг → holder-ийг ЭНГИЙН
+      // УРСГАЛД (position:static). windowWidth-ийг элементийн өргөнтэй (794) ТААРУУЛНА — 900≠794 бол
+      // зүүн тал тасардаг. box-sizing:border-box тул нийт өргөн=794. Дэлгэцийг цагаан cover-оор нуумна.
       const cover = document.createElement('div');
       cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center;color:#111;font-size:15px;';
       cover.textContent = '📄 Гэрээ бэлдэж байна…';
       const holder = document.createElement('div');
-      holder.style.cssText = 'width:794px;background:#fff;color:#111;padding:32px;font-size:13px;line-height:1.55;';
-      holder.innerHTML = EMP_CONTRACT_HTML(full);
-      document.body.appendChild(holder); // position:static (урсгалд) — cover-оор нуугдана
+      holder.style.cssText = 'box-sizing:border-box;width:794px;margin:0;background:#fff;color:#111;padding:36px 40px;font-size:13px;line-height:1.55;';
+      holder.innerHTML = EMP_CONTRACT_HTML(ecData);
+      document.body.appendChild(holder);
       document.body.appendChild(cover);
-      // Фонт + гарын үсгийн зураг (data URL) бүрэн decode болтол хүлээнэ.
-      // ⚠ requestAnimationFrame нь таб нуугдсан үед ажиллахгүй тул setTimeout-той уралдуулж гацахаас хамгаална.
       try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
       await new Promise(r => { let done = false; const fin = () => { if (!done) { done = true; r(); } }; try { requestAnimationFrame(() => requestAnimationFrame(fin)); } catch (e) {} setTimeout(fin, 300); });
-      try { const imgs = [].slice.call(holder.querySelectorAll('img')); await Promise.all(imgs.map(im => (im.complete && im.naturalWidth > 0) ? 0 : new Promise(r => { const t = setTimeout(r, 2500); im.addEventListener('load', () => { clearTimeout(t); r(); }); im.addEventListener('error', () => { clearTimeout(t); r(); }); }))); } catch (e) {}
-      const opt = { margin: [10, 10, 10, 10], image: { type: 'jpeg', quality: 0.96 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 900, windowHeight: 1400 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
-      let datauri;
-      try { datauri = await window.html2pdf().set(opt).from(holder).outputPdf('datauristring'); }
+      try { const imgs = [].slice.call(holder.querySelectorAll('img')); await Promise.all(imgs.map(im => (im.complete && im.naturalWidth > 0) ? 0 : new Promise(r => { const t = setTimeout(r, 3000); im.addEventListener('load', () => { clearTimeout(t); r(); }); im.addEventListener('error', () => { clearTimeout(t); r(); }); }))); } catch (e) {}
+      const fname = 'Hodolmoriin_geree_' + (m.name || '').replace(/\s+/g, '_') + '.pdf';
+      const opt = { filename: fname, margin: [10, 10, 12, 10], image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 794 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
+      try { await window.html2pdf().set(opt).from(holder).save(); }
       finally { holder.remove(); cover.remove(); }
-      const b64 = String(datauri).split(',')[1] || '';
-      const id = 'doc-hg-' + personKey + '-' + hash.slice(0, 8);
-      const audit = JSON.stringify({ signed_by: state.me, signed_by_name: memberName(state.me), signed_at: signedAt, employee: personKey, ua: navigator.userAgent.slice(0, 120), hash });
-      const ok = await saveCompanyDoc({
-        id, title: 'Хөдөлмөрийн гэрээ — ' + m.name, category: 'contract',
-        doc_no: ecData.docNo || '', doc_date: ecData.startDate || signedAt.slice(0, 10),
-        counterparty: m.name, note: '🔒 Цахим гарын үсэг · ' + audit,
-        mime: 'application/pdf', file_name: 'Hodolmoriin_geree_' + (m.name || '').replace(/\s+/g, '_') + '.pdf',
-        size_bytes: Math.round(b64.length * 0.75), uploaded_by: memberName(state.me), data: b64,
-      });
-      if (ok) { showToast('Гэрээ баталгаажиж, Баримт бичигт хадгалагдлаа ✓', 'success', 3500); state.companyDocs = null; wrap.remove(); if (state.view === 'documents') { loadCompanyDocs(true); } }
-      else { btn.disabled = false; btn.textContent = '🔒 Баталгаажуулж хадгалах'; }
-    } catch (e) { showToast('Алдаа: ' + e.message, 'error', 5000); const b = wrap.querySelector('#ec-save'); if (b) { b.disabled = false; b.textContent = '🔒 Баталгаажуулж хадгалах'; } }
+      showToast('Гэрээ татагдлаа ✓ Хэвлээд гарын үсэг зурна уу.', 'success', 3500);
+      btn.disabled = false; btn.textContent = '📄 Гэрээ бэлдэж татах (PDF)';
+    } catch (e) { showToast('Алдаа: ' + e.message, 'error', 5000); const b = wrap.querySelector('#ec-make'); if (b) { b.disabled = false; b.textContent = '📄 Гэрээ бэлдэж татах (PDF)'; } }
   };
 }
 
@@ -20938,7 +20923,7 @@ function openStaffCardModal(key) {
         ${isActive ? `<label class="staff-finperm"><input type="checkbox" data-sc-finperm ${state.finBranchPerms && state.finBranchPerms.has(key) ? 'checked' : ''}/>🏦 Санхүү: салбар засах эрх</label>` : ''}
         <div class="sc-row2"><button class="btn" data-sc-doc>📄 Үнэмлэх харах</button>
           <span class="sc-pin">🔑 <b data-sc-pinval>${m.pin ? '••••' : '—'}</b>${m.pin ? ' <button class="staff-pin-show" data-sc-pinshow>харах</button>' : ''}</span></div>
-        ${isActive ? `<div class="sc-row2"><button class="btn" data-sc-contract style="border-color:var(--primary);color:var(--primary);">📝 Хөдөлмөрийн гэрээ (гарын үсэг)</button></div>` : ''}` : ''}
+        ${isActive ? `<div class="sc-row2"><button class="btn" data-sc-contract style="border-color:var(--primary);color:var(--primary);">📄 Хөдөлмөрийн гэрээ бэлдэх</button></div>` : ''}` : ''}
         ${canStatus ? `<div class="sc-row2">${isActive ? `<button class="btn btn-danger" data-sc-status="leave">🚪 Гарсан гэж тэмдэглэх</button>` : `<button class="btn" data-sc-status="restore">↩ Сэргээх</button>`}</div>` : ''}
       </div>` : '';
     // ── Эрх хэсэг ──

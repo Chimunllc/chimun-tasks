@@ -5167,13 +5167,15 @@ function boardOrderRow(e, k, todayStr, flat) {
     ? (_depRet ? `<span class="br-depchip dep-ret" title="Барьцаа буцаагдсан — хуулгаар баталгаажсан">✓ Буцаасан</span>`
       : (!!o._app ? `<span class="br-depchip dep-hold" title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй">🔒 Барьцаатай</span>` : ''))
     : '';
-  const next = orderNextStep(o);
   const id = escapeHtml(String(o.id));
+  // Мөрийн үйлдэл товч = ТӨЛБӨР АВАХ (үлдэгдэлтэй үед шууд төлбөрийн модал нээнэ).
+  // Дамжлагын алхмууд (Бэлдэх/Цэвэрлэх/Гаргах…) захиалгыг нээгээд дотор нь хийнэ — мөрөн дээр гаргахгүй.
   let actBtn = '';
-  if (next && next.cap !== 'orders.advance') {   // архивлахаас бусад дараагийн үйлдэл — мөрөн дээр шууд
-    const short = _ACT_SHORT[stageActionFor(String(o.status || ''), next.to).key] || next.label;
-    const ok = can(next.cap || 'orders.advance');
-    actBtn = `<button type="button" class="br-act${ok ? '' : ' br-act-off'}" ${ok ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${next.cap}"` : `disabled title="Эрх алга"`}>${escapeHtml(short)}</button>`;
+  {
+    const _t = Number(o.total_mnt) || 0, _p = Number(o.paid_mnt) || 0;
+    if ((_t - _p) > 0 && String(o.status) !== 'canceled' && can('orders.pay')) {
+      actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр авах</button>`;
+    }
   }
   const selBox = state.ordersSelect ? `<input type="checkbox" class="board-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
   const _rowOpen = state.ordersRowOpen instanceof Set && state.ordersRowOpen.has(String(o.id));
@@ -5186,7 +5188,7 @@ function boardOrderRow(e, k, todayStr, flat) {
   const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
   const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
-    : `<span class="br-pay ${_paid > 0 ? 'part' : 'due'}">${_paid > 0 ? '◐ Дутуу' : 'Төлбөр авах'}</span>`;
+    : `<span class="br-pay ${_paid > 0 ? 'part' : 'due'}">${_paid > 0 ? '◐ Дутуу' : '○ Төлбөрлөөгүй'}</span>`;
   const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
   const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
   // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА болно (бүлэглэлгүй)
@@ -5196,7 +5198,7 @@ function boardOrderRow(e, k, todayStr, flat) {
   })() : '';
   return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span></span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat && vatChip ? ' ' + vatChip : ''}</span>
     ${statusCell}
     ${flat
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
@@ -5597,7 +5599,7 @@ function attachOrdersHandlers() {
   document.getElementById('orders-vat')?.addEventListener('change', (e) => { state.ordersVat = e.target.value; render(); });
 
   // Захиалгын төлбөр бүртгэх / төлөв урагшлуулах / цуцлах (байрандаа засах)
-  document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', () => openBqPaymentModal(b.dataset.bqPay)));
+  document.querySelectorAll('[data-bq-pay]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openBqPaymentModal(b.dataset.bqPay); }));
   document.querySelectorAll('[data-bq-scan]').forEach(b => b.addEventListener('click', () => openOrderScanModal(b.dataset.bqScan)));
   document.querySelectorAll('[data-stagephoto]').forEach(img => img.addEventListener('click', () => openStagePhoto(img.dataset.stagephoto)));
   document.querySelectorAll('[data-bq-advance]').forEach(b => b.addEventListener('click', (e) => {
@@ -21526,13 +21528,18 @@ function initEvents() {
   });
 
   const fabSheetBg = document.getElementById('fab-sheet-bg');
-  function openFabSheet() {
-    // Захиалга түүхэн-аас ирдэг болсон тул FAB-д зөвхөн Даалгавар/Санхүү (захиалга үүсгэхгүй).
-    fabSheetBg?.classList.add('open');
-  }
+  function openFabSheet() { fabSheetBg?.classList.add('open'); }
   function closeFabSheet() { fabSheetBg?.classList.remove('open'); }
 
-  document.getElementById('fab-new')?.addEventListener('click', openFabSheet);
+  // FAB нь ТУХАЙН ЦЭСТЭЙ холбоотой — Захиалгын view-д шууд «Шинэ захиалга» нээнэ
+  // (утсанд толгойн товч багтахгүй тул энэ л гол «нэмэх» товч болно), бусад view-д Даалгавар sheet.
+  document.getElementById('fab-new')?.addEventListener('click', () => {
+    if (state.view === 'orders' && typeof openNewOrder === 'function'
+      && (typeof canManageOrders !== 'function' || canManageOrders() || state.isCEO)) {
+      openNewOrder(); return;
+    }
+    openFabSheet();
+  });
   document.getElementById('fab-sheet-cancel')?.addEventListener('click', closeFabSheet);
   fabSheetBg?.addEventListener('click', (e) => {
     if (e.target === fabSheetBg) closeFabSheet();

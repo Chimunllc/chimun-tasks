@@ -9933,8 +9933,9 @@ function buildOrgTree() {
   const emps  = active.filter(m => !isDailyMember(m) && _orgLevel(m) > 0 && _orgLevel(m) < 55);
   const daily = active.filter(m => isDailyMember(m));
   const assigned = new Set();
-  const node = m => ({ m, children: [] });
+  const idx = {};   // personKey → node (гараар шилжүүлэхэд ашиглана)
   const key = m => personKey(m);
+  const node = m => { const n = { m, key: key(m), children: [] }; idx[n.key] = n; return n; };
   const mkMgr = (mgr) => {
     const n = node(mgr);
     emps.forEach(e => { const k = key(e); if (assigned.has(k)) return; if (_orgShareBranch(mgr, e)) { assigned.add(k); n.children.push(node(e)); } });
@@ -9952,9 +9953,33 @@ function buildOrgTree() {
   const dailyNode = daily.length ? { group: true, label: 'Цагийн ажилчид', count: daily.length, names: daily.map(d => d.name || '?'), children: [] } : null;
   const topKids = [...dirNodes, ...orphanMgr, ...stillEmp];
   if (dailyNode) topKids.push(dailyNode);
-  if (ceo.length === 1) { const root = node(ceo[0]); root.children = topKids; return root; }
-  const root = { virtual: true, label: 'Чимун ХХК', sub: 'Байгууллагын бүтэц', children: [...ceo.map(node), ...topKids] };
+  let root;
+  if (ceo.length === 1) { root = node(ceo[0]); root.children = topKids; }
+  else { root = { virtual: true, label: 'Чимун ХХК', sub: 'Байгууллагын бүтэц', children: [...ceo.map(node), ...topKids] }; }
+  // ── Гараар шилжүүлсэн override (app_config['org_overrides']: childKey→parentKey) ──
+  applyOrgOverrides(root, idx);
   return root;
+}
+// Гараар оноосон удирдагчийн дор хүнийг (болон түүний доорхыг) зөөнө. Мөчлөг үүсгэхээс сэргийлнэ.
+function applyOrgOverrides(root, idx) {
+  const ov = state.orgOverrides || {};
+  const detach = (n) => { // node-ийг эцгээс нь салгах
+    const walk = (parent) => {
+      const i = parent.children.indexOf(n);
+      if (i >= 0) { parent.children.splice(i, 1); return true; }
+      return parent.children.some(walk);
+    };
+    walk(root);
+  };
+  const isDescendant = (anc, target) => anc === target || (anc.children || []).some(c => isDescendant(c, target));
+  Object.keys(ov).forEach(childKey => {
+    const parentKey = ov[childKey];
+    const child = idx[childKey], parent = idx[parentKey];
+    if (!child || !parent || child === parent) return;
+    if (isDescendant(child, parent)) return;   // мөчлөг болно — алгасна
+    detach(child);
+    parent.children.push(child);
+  });
 }
 function orgCardHtml(n) {
   if (n.virtual) return `<div class="org-card org-root"><div class="org-name">${escapeHtml(n.label)}</div><div class="org-role">${escapeHtml(n.sub || '')}</div></div>`;
@@ -9962,7 +9987,10 @@ function orgCardHtml(n) {
   const m = n.m, br = _orgPrimaryBranch(m);
   const ava = (typeof staffAvatarImg === 'function' ? staffAvatarImg(m) : '');
   const init = escapeHtml(memberInitials(personKey(m)));
-  return `<div class="org-card org-b-${br}">
+  const moveBtn = state.orgEdit ? `<button class="org-move" data-org-move="${escapeHtml(n.key)}" title="Өөр удирдагчийн дор шилжүүлэх">⇄</button>` : '';
+  const hasOv = state.orgOverrides && state.orgOverrides[n.key];
+  const ovBadge = hasOv ? `<span class="org-ovbadge" title="Гараар шилжүүлсэн">✋</span>` : '';
+  return `<div class="org-card org-b-${br}">${moveBtn}${ovBadge}
     <div class="org-ava"><span class="org-init">${init}</span>${ava}</div>
     <div class="org-name">${escapeHtml(m.name || '?')}</div>
     <div class="org-role">${escapeHtml(m.role || '')}</div>
@@ -9973,6 +10001,9 @@ function orgNodeHtml(n) {
   return `<li>${orgCardHtml(n)}${kids}</li>`;
 }
 function renderOrgChart() {
+  if (state.orgOverrides === undefined) { state.orgOverrides = null; loadAppConfig('org_overrides').then(v => { state.orgOverrides = (v && typeof v === 'object') ? v : {}; render(); }); }
+  const canEdit = canAccessView('access', () => state.isCEO);
+  if (state.orgEdit && !canEdit) state.orgEdit = false;
   const root = buildOrgTree();
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
   const cnt = f => active.filter(f).length;
@@ -9986,15 +10017,56 @@ function renderOrgChart() {
     ${stat('🍽 Катеринг', cnt(m => _orgBranches(m).includes('catering')), 'org-b-catering')}
   </div>`;
   const legend = `<div class="org-legend">${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
+  const editBtn = canEdit ? `<button class="btn${state.orgEdit ? ' btn-primary' : ''}" data-org-edit title="Хүн шилжүүлэх" style="padding:5px 12px;font-size:12.5px;">${state.orgEdit ? '✓ Дууссан' : '✏️ Засах'}</button>` : '';
   const head = `<div class="org-head">
     <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан</div></div>
-    <div class="org-zoom"><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
+    <div class="org-zoom">${editBtn}<button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
   </div>`;
-  return `<div class="org-wrap">${head}${stats}${legend}
+  const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';
+  return `<div class="org-wrap">${head}${stats}${legend}${editNote}
     <div class="org-scroll"><div class="org-tree" id="org-tree" style="transform:scale(${state.orgZoom || 1});"><ul>${orgNodeHtml(root)}</ul></div></div>
   </div>`;
 }
+// Хүнийг өөр удирдагчийн дор шилжүүлэх picker (гар аргаар — app_config['org_overrides'])
+function openOrgMoveModal(childKey) {
+  const child = findMember(childKey); if (!child) return;
+  const root = buildOrgTree();
+  let cnode = null; (function find(n) { if (n && n.key === childKey) { cnode = n; return; } (n.children || []).forEach(find); })(root);
+  const banned = new Set([childKey]);
+  if (cnode) (function coll(n) { (n.children || []).forEach(c => { if (c.key) banned.add(c.key); coll(c); }); })(cnode);
+  const cands = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && !isDailyMember(m) && !banned.has(personKey(m)));
+  cands.sort((a, b) => (_orgLevel(b) - _orgLevel(a)) || String(a.name || '').localeCompare(String(b.name || '')));
+  const cur = state.orgOverrides && state.orgOverrides[childKey];
+  const ov = document.createElement('div'); ov.className = 'org-modal-bd';
+  ov.innerHTML = `<div class="org-modal">
+    <div class="org-modal-h"><b>${escapeHtml(child.name || '?')}</b>-г хэний дор шилжүүлэх вэ?</div>
+    <input class="org-modal-s" id="org-move-search" placeholder="🔍 Нэр / албан тушаал хайх" autocomplete="off">
+    <div class="org-modal-list" id="org-move-list">
+      ${cur ? `<button class="org-move-item org-move-auto" data-move-to="__auto__">🔄 Автомат руу буцаах (default)</button>` : ''}
+      ${cands.map(m => `<button class="org-move-item" data-move-to="${escapeHtml(personKey(m))}"><span class="org-mi-n">${escapeHtml(m.name || '?')}</span><span class="org-mi-r">${escapeHtml(m.role || '')}</span></button>`).join('') || '<div style="padding:16px;text-align:center;color:var(--muted);">Боломжит удирдагч алга</div>'}
+    </div>
+    <div class="org-modal-f"><button class="btn" id="org-move-cancel">Болих</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelector('#org-move-cancel').onclick = close;
+  const se = ov.querySelector('#org-move-search');
+  se.oninput = () => { const q = se.value.toLowerCase().trim(); ov.querySelectorAll('.org-move-item').forEach(b => { if (b.dataset.moveTo === '__auto__') return; b.style.display = (!q || b.textContent.toLowerCase().includes(q)) ? '' : 'none'; }); };
+  ov.querySelectorAll('[data-move-to]').forEach(b => b.addEventListener('click', () => { orgSetParent(childKey, b.dataset.moveTo); close(); }));
+  setTimeout(() => se.focus(), 60);
+}
+async function orgSetParent(childKey, parentKey) {
+  state.orgOverrides = state.orgOverrides || {};
+  if (parentKey === '__auto__') delete state.orgOverrides[childKey];
+  else state.orgOverrides[childKey] = parentKey;
+  render();
+  try { await saveAppConfig('org_overrides', state.orgOverrides); showToast(parentKey === '__auto__' ? 'Автомат руу буцаалаа' : 'Шилжүүллээ', 'success', 1500); }
+  catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
+}
 function attachOrgHandlers() {
+  document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
+  document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));
   document.querySelectorAll('[data-org-zoom]').forEach(b => b.addEventListener('click', () => {
     const d = b.dataset.orgZoom; let z = state.orgZoom || 1;
     if (d === '+') z = Math.min(1.8, +(z + 0.15).toFixed(2));

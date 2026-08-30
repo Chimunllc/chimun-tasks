@@ -3566,7 +3566,7 @@ function renderTitle() {
     delegated: [ICONS.send, 'Хуваарилсан ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Гүйлгээ', 'Хүсэлт, картын зарлага, тулгалт — бүх мөнгөн хөдөлгөөн'],
     reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Дүн шинжилгээ', 'Удирдлагад зориулсан тайлангууд'],
-    performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Сарын объектив гүйцэтгэлийн үнэлгээ'],
+    performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'KPI', 'Ажилтны KPI — объектив гүйцэтгэл, ажлын чанар, 360° оноо'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'M event захиалга', 'M Event сайтаас ирсэн түрээсийн захиалгууд'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа & хөрөнгө', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
@@ -7804,7 +7804,7 @@ const PERM_MENUS = [
       { key: 'tasks.create', label: 'Ажил үүсгэх' },
       { key: 'tasks.delete', label: 'Ажил устгах' } ] },
   { key: 'finance',     label: 'Гүйлгээ',          core: true, actions: [] },
-  { key: 'performance', label: 'Гүйцэтгэл',       core: true, actions: [] },
+  { key: 'performance', label: 'KPI',             core: true, actions: [] },
   { key: 'workload',    label: 'Багийн ачаалал',  actions: [] },
   { key: 'reports',     label: 'Тайлан',          actions: [] },
   { key: 'hourly',      label: 'Цагийн цалин',    actions: [
@@ -17022,7 +17022,7 @@ function renderReports() {
     card('💸', 'Зардлын тайлан', 'Санхүүгийн хүсэлт — салбар/ангилалаар задаргаа, баримтын хяналт (% баримтгүй), Excel татах', 'finance'),
     canSeeNomaadOrders() ? card('🏕', 'NOMAAD борлуулалт', 'Үнийн саналын юүлүүр (шат бүрээр), орлого, больсон шалтгаан, календарь', 'nomaad') : '',
     card('📊', 'Тойм самбар', 'Ажлын гүйцэтгэлийн тойм, ажилтны ачаалал, графикууд', 'dashboard'),
-    isDailyWorker() ? '' : card('🏅', 'Гүйцэтгэлийн үнэлгээ', 'Ажилтны объектив + ажлын чанар + 360° оноо, бонус', 'performance'),
+    isDailyWorker() ? '' : card('🏅', 'KPI', 'Ажилтны объектив + ажлын чанар + 360° оноо, бонус', 'performance'),
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
   ].filter(Boolean).join('');
   const trendChart = financeTrendChart(financeTrend(wantBr), month);

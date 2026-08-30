@@ -8616,6 +8616,88 @@ async function openDocTemplate(key) {
     try { w.close(); } catch (_) {}
   }
 }
+/* ─── Олноор оруулах — файлын НЭРЭЭР ангилалыг таамаглана ───
+   Drive/компьютерээс олон файлыг нэг дор чирч оруулахад ангилал бүрийг гараар
+   сонгох шаардлагагүй болгоно. Дараалал ЧУХАЛ: "…гэрээ загвар.docx" гэх мэт нэр
+   хоёуланд таарах тул ЗАГВАР эхэлж шалгагдана (энэ нь гэрээний загвар, гэрээ биш). */
+function guessDocCategory(name) {
+  const n = String(name || '').toLowerCase();
+  if (/загвар|template|маягт|жишиг/.test(n)) return 'template';
+  if (/гэрчилгээ|дүрэм|улсын\s*бүртгэл|тусгай\s*зөвшөөрөл|лиценз/.test(n)) return 'certificate';
+  if (/гэрээ|contract|\bабт\b/.test(n)) return 'contract';
+  if (/үнийн\s*санал|quote|quotation|нэхэмжлэх|invoice/.test(n)) return 'outgoing';
+  if (/ирсэн|хүсэлт|албан\s*бичиг|letter/.test(n)) return 'incoming';
+  return 'other';
+}
+// Файлын нэрээс өргөтгөлийг хасаж гарчиг болгоно ("01. Гэрээ загвар.docx" → "01. Гэрээ загвар")
+function docTitleFromFile(name) { return String(name || '').replace(/\.[^.]+$/, '').trim() || 'Нэргүй'; }
+
+function openDocBulkModal() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.style.zIndex = '10001';
+  modal.innerHTML = `<div class="modal doc-bulk-modal">
+    <h2>⇪ Олноор оруулах</h2>
+    <p class="doc-bulk-hint">Google Drive-аас хавтсаа компьютер дээрээ татаад бүх файлыг нэг дор сонгоно уу.
+      Ангилалыг файлын нэрээр таамаглана — мөр бүрд засаж болно.
+      ${Math.round(DOC_MAX_BYTES / 1048576)}MB-аас том файл алгасагдана.</p>
+    <input id="db-files" type="file" multiple accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" />
+    <div id="db-list" class="doc-bulk-list"></div>
+    <div id="db-prog" class="doc-bulk-prog"></div>
+    <div class="modal-actions">
+      <button class="btn" id="db-cancel">Болих</button>
+      <button class="btn btn-primary" id="db-go" disabled>Оруулах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = s => modal.querySelector(s);
+  const close = () => modal.remove();
+  $('#db-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+  let picked = [];   // [{file, cat, title, tooBig}]
+  $('#db-files').addEventListener('change', (e) => {
+    picked = Array.from(e.target.files || []).map(f => ({
+      file: f, cat: guessDocCategory(f.name), title: docTitleFromFile(f.name), tooBig: f.size > DOC_MAX_BYTES,
+    }));
+    const okN = picked.filter(p => !p.tooBig).length;
+    $('#db-list').innerHTML = picked.map((p, i) => `<div class="doc-bulk-row${p.tooBig ? ' too-big' : ''}">
+      <span class="db-nm" title="${escapeHtml(p.file.name)}">${escapeHtml(p.title)}</span>
+      <span class="db-sz">${fmtBytes(p.file.size)}</span>
+      ${p.tooBig ? '<span class="db-skip">хэт том — алгасна</span>'
+        : `<select class="db-cat" data-i="${i}">${DOC_CATS.map(c => `<option value="${c.key}"${c.key === p.cat ? ' selected' : ''}>${c.icon} ${escapeHtml(c.label)}</option>`).join('')}</select>`}
+    </div>`).join('');
+    $('#db-list').querySelectorAll('.db-cat').forEach(sel => sel.addEventListener('change', () => { picked[Number(sel.dataset.i)].cat = sel.value; }));
+    $('#db-go').disabled = !okN;
+    $('#db-go').textContent = okN ? `Оруулах (${okN})` : 'Оруулах';
+  });
+
+  $('#db-go').onclick = async (e) => {
+    const list = picked.filter(p => !p.tooBig);
+    if (!list.length) return;
+    e.currentTarget.disabled = true;
+    $('#db-cancel').disabled = true;
+    let done = 0, failed = 0;
+    for (const p of list) {
+      $('#db-prog').textContent = `${done + failed + 1} / ${list.length} — ${p.title}`;
+      try {
+        const durl = await fileToDataUrl(p.file);
+        const ok = await saveCompanyDoc({
+          id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now() + '-' + done,
+          title: p.title, category: p.cat, uploaded_by: state.me,
+          data: String(durl).slice(String(durl).indexOf(',') + 1),
+          mime: p.file.type || 'application/octet-stream', file_name: p.file.name, size_bytes: p.file.size,
+        });
+        if (ok) done++; else failed++;
+      } catch (_) { failed++; }
+    }
+    $('#db-prog').textContent = `✅ ${done} оруулав${failed ? ` · ❌ ${failed} амжилтгүй` : ''}`;
+    await loadCompanyDocs(true);
+    render();
+    if (!failed) { setTimeout(close, 900); }
+    else { $('#db-cancel').disabled = false; $('#db-cancel').textContent = 'Хаах'; }
+  };
+}
 function renderDocuments() {
   if (!state.companyDocs) { loadCompanyDocs(); }
   const docs = state.companyDocs || [];
@@ -8671,7 +8753,7 @@ function renderDocuments() {
         <div class="doc-h1">🗂 Баримт бичиг</div>
         <div class="doc-sub">Компанийн гэрчилгээ, гэрээ, үнийн саналын загвар, ирсэн/явсан албан бичиг.</div>
       </div>
-      ${editable ? '<button class="btn btn-primary" id="doc-add">+ Баримт нэмэх</button>' : ''}
+      ${editable ? '<span class="doc-head-btns"><button class="btn" id="doc-bulk">⇪ Олноор</button><button class="btn btn-primary" id="doc-add">+ Баримт нэмэх</button></span>' : ''}
     </div>
     <div class="otabs">${tabs}</div>
     <div class="doc-search">🔍<input type="search" id="doc-search" placeholder="Нэр, дугаар, байгууллага" value="${escapeHtml(state.docsSearch || '')}" /></div>
@@ -8692,6 +8774,7 @@ function attachDocumentsHandlers() {
     state._docsSearchT = setTimeout(() => { const p = s.selectionStart; render(); const n = document.getElementById('doc-search'); if (n) { n.focus(); try { n.setSelectionRange(p, p); } catch (_) {} } }, 250);
   });
   document.getElementById('doc-add')?.addEventListener('click', () => openDocEditModal(null));
+  document.getElementById('doc-bulk')?.addEventListener('click', () => openDocBulkModal());
   document.querySelectorAll('[data-doc-edit]').forEach(b => b.addEventListener('click', (e) => {
     e.stopPropagation(); openDocEditModal(b.dataset.docEdit);
   }));

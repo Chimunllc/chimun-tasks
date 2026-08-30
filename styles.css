@@ -6096,3 +6096,12 @@ body.role-daily #add-project { display: none !important; }
   .doc-cat { grid-column: 2 / -1; justify-self: start; }
   .doc-2col { grid-template-columns: 1fr; }
 }
+
+/* Системийн загвар — байршуулсан баримтаас ялгарах толгой + мөр */
+.doc-tpl-head { font-size: 12px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: .04em; margin: 16px 0 7px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.doc-tpl-head:first-of-type { margin-top: 4px; }
+.doc-tpl-hint { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.doc-tpl-list { margin-bottom: 4px; }
+.doc-row.doc-tpl { border-style: dashed; background: var(--panel-hover); }
+.doc-row.doc-tpl:hover { background: var(--panel); }
+.doc-open { font-size: 12px; font-weight: 600; color: var(--primary); white-space: nowrap; }

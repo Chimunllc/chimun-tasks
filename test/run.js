@@ -294,8 +294,43 @@ eq(F.fmtBytes(3670016),  '3.5 MB',  'хэмжээ: мегабайт нэг ор�
   runIn("state.docsSearch = ''");
 }
 
+// 20) Системийн загвар — ХООСОН датагаар унахгүй эсэх (гол эрсдэл: талбар дутуу үед крэш)
+need(['docBlankMeventOrder', 'docBlankNomaadQuote', 'meventContractHtml', 'nomaadContractHtml', 'buildOrderQuote']);
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  eq(runIn('DOC_TEMPLATES.length'), 4, 'загвар: бүртгэлд 4 загвар');
+  const mev = runIn('meventContractHtml(docBlankMeventOrder())');
+  ok(typeof mev === 'string' && mev.length > 500, 'загвар: M-Event гэрээ хоосон датагаар үүснэ');
+  ok(mev.indexOf('ТҮРЭЭСИЙН ГЭРЭЭ') > -1,        'загвар: M-Event гэрээний гарчиг');
+  ok(mev.indexOf('……') > -1,                     'загвар: M-Event гэрээнд бөглөх талбар үлдэнэ');
+  const nom = runIn('nomaadContractHtml(docBlankNomaadQuote())');
+  ok(typeof nom === 'string' && nom.length > 500, 'загвар: NOMAAD гэрээ хоосон датагаар үүснэ');
+  ok(nom.indexOf('КОРПОРАТ') > -1,               'загвар: NOMAAD гэрээний гарчиг');
+  ok(nom.indexOf('…………') > -1,                   'загвар: NOMAAD гэрээнд бөглөх талбар үлдэнэ');
+}
+
 // ═══════════════════ ДҮН ═══════════════════
-console.log('');
-if (fails.length) { console.log(fails.join('\n')); console.log(''); }
-console.log(`${failed === 0 ? '✅' : '❌'}  Тест: ${passed} амжилттай, ${failed} унасан (нийт ${passed + failed})`);
-process.exit(failed === 0 ? 0 : 1);
+function finish() {
+  console.log('');
+  if (fails.length) { console.log(fails.join('\n')); console.log(''); }
+  console.log(`${failed === 0 ? '✅' : '❌'}  Тест: ${passed} амжилттай, ${failed} унасан (нийт ${passed + failed})`);
+  process.exit(failed === 0 ? 0 : 1);
+}
+
+// 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
+(async () => {
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  // buildOrderQuote нь popup-ийн БҮРЭН HTML мөр буцаана (объект биш).
+  for (const [lang, name] of [['mn', 'Монгол'], ['en', 'English']]) {
+    try {
+      const html = await runIn(`buildOrderQuote(docBlankMeventOrder(), '${lang}')`);
+      ok(typeof html === 'string' && html.length > 2000, `загвар: Үнийн санал (${name}) хоосон датагаар үүснэ`);
+      ok(String(html).indexOf('<!DOCTYPE html') === 0,        `загвар: Үнийн санал (${name}) бүтэн HTML баримт`);
+      ok(String(html).indexOf('Үнийн санал') > -1,            `загвар: Үнийн санал (${name}) гарчиг`);
+      ok(String(html).indexOf('ЧИМУН') > -1,                  `загвар: Үнийн санал (${name}) компанийн мэдээлэл`);
+    } catch (e) {
+      ok(false, `загвар: Үнийн санал (${name}) — алдаа гарлаа: ${e.message}`);
+    }
+  }
+  finish();
+})();

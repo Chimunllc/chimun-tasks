@@ -9911,7 +9911,7 @@ function renderAccess() {
   const canPerms = state.isCEO;
   const tab = (state.hubTab === 'roles' && !canPerms) ? 'people' : (state.hubTab || 'people');
   const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан${canPerms ? ' · албан тушаал & эрх' : ' · албан тушаал'} — нэг дороос</div></div>`;
-  const tabs = canPerms ? [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх (хүнээр)']] : [['people', '👤 Ажилтан']];
+  const tabs = canPerms ? [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх']] : [['people', '👤 Ажилтан']];
   const tabBar = tabs.length > 1 ? `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
     `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>` : '';
   // Салбараар шүүх нь толгойн глобал салбар-сонгогчоор (давхар товч хассан).
@@ -9967,8 +9967,56 @@ function capMatrixHtml(dataAttr, holderKey, getVal) {
   }).join('') + `</div>`;
 }
 function renderAccessRoles() {
-  // ХҮН ТУС БҮРЭЭР — эрхийг албан тушаалаар биш, хүн бүрд шууд тохируулна.
-  // (role_perms ард нь fallback — тохируулаагүй хүн албан тушаалынхаа default эрхтэй хэвээр.)
+  // Хоёр горим: (1) Албан тушаалаар (role_perms — бүлгээр) (2) Хүнээр (member_perms — онцгой override).
+  const mode = state.accessRoleMode || 'role';
+  const modeBar = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+    ${[['role', '🏷 Албан тушаалаар'], ['person', '👤 Хүнээр (онцгой)']].map(([k, l]) =>
+      `<button class="btn${k === mode ? ' btn-primary' : ''}" data-role-mode="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}
+  </div>`;
+  if (mode === 'role') return modeBar + renderRoleTemplates();
+  return modeBar + renderAccessByPerson();
+}
+// ── Албан тушаалаар (role_perms) — нэг тохируулбал тухайн албан тушаалын бүх хүнд хэрэгжинэ ──
+function renderRoleTemplates() {
+  const br = effectiveBranchLens() || 'all';
+  const q = (state.accessSearch || '').toLowerCase().trim();
+  const people = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, br) && !isDailyMember(m));
+  // Албан тушаал бүрээр бүлэглэнэ (normRole)
+  const byRole = {};
+  people.forEach(m => { const rk = normRole(m.role); if (!rk) return; (byRole[rk] = byRole[rk] || []).push(m); });
+  let roleKeys = Object.keys(byRole).sort((a, b) => byRole[b].length - byRole[a].length || a.localeCompare(b));
+  if (q) roleKeys = roleKeys.filter(rk => rk.includes(q) || byRole[rk].some(m => (m.name || '').toLowerCase().includes(q)));
+  const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+    <b>Албан тушаал</b> дээр дарж задлаад эрхийг тохируул. Энэ тохиргоо тухайн албан тушаалын <b>бүх хүнд</b> хэрэгжинэ (жишээ: Менежер, Нярав, Маркетинг). Ганц хүнд онцгой эрх өгөх бол «👤 Хүнээр» рүү ор. CEO хязгаарлагдахгүй.
+  </div>`;
+  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Албан тушаал / нэр хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
+  const expRole = state.accessExpandedRole || '';
+  const wrap = (inner) => `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${inner}</div>`;
+  const roleGetVal = (rk) => (key, kind) => {
+    const rt = state.rolePerms && state.rolePerms[rk];
+    if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
+    if (kind === 'view') return defaultViewForRole(rk, key);
+    return true;
+  };
+  const rows = roleKeys.map(rk => {
+    const members = byRole[rk];
+    const label = members[0] && members[0].role ? members[0].role : rk;   // жинхэнэ бичиглэлээр харуулна
+    const rExp = expRole === rk;
+    const rt = state.rolePerms && state.rolePerms[rk];
+    const hasTpl = rt && Object.keys(rt).length > 0;
+    const summary = `<div class="ac-role-head" data-role-toggle="${escapeHtml(rk)}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
+      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${rExp ? '▾' : '▸'}</span> <b style="font-size:13px;">${escapeHtml(label)}</b> <span style="font-size:11px;color:var(--muted);">· ${members.length} хүн</span></div>
+      ${hasTpl ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">тохируулсан</span>` : `<span style="font-size:10px;color:var(--muted);">default</span>`}
+    </div>`;
+    if (!rExp) return wrap(summary);
+    const names = `<div style="font-size:11px;color:var(--muted);margin:6px 0 2px;line-height:1.6;">Хамрах хүн: ${members.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
+    const reset = hasTpl ? `<div style="margin-top:8px;"><button class="btn" data-role-reset="${escapeHtml(rk)}" style="padding:4px 11px;font-size:11px;">↺ Default руу буцаах</button></div>` : '';
+    return wrap(summary + names + capMatrixHtml('role-cap', rk, roleGetVal(rk)) + reset);
+  }).join('');
+  return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Албан тушаал алга</div>'}</div>`;
+}
+function renderAccessByPerson() {
+  // ХҮН ТУС БҮРЭЭР — онцгой эрх (member_perms), албан тушаалын загварыг дарна.
   const br = effectiveBranchLens() || 'all';
   const q = (state.accessSearch || '').toLowerCase().trim();
   const people = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, br))
@@ -10036,6 +10084,9 @@ function attachAccessHandlers() {
     const qq = se.value.trim().toLowerCase();
     document.querySelectorAll('.ac-wrap .ac-row').forEach(r => { r.style.display = (!qq || (r.dataset.acHaystack || '').includes(qq)) ? '' : 'none'; });
   });
+  document.querySelectorAll('[data-role-mode]').forEach(b => b.addEventListener('click', () => {
+    state.accessRoleMode = b.dataset.roleMode; state.accessExpandedRole = ''; state.accessExpandedPerson = ''; render();
+  }));
   document.querySelectorAll('[data-role-toggle]').forEach(h => h.addEventListener('click', () => {
     const k = h.dataset.roleToggle;
     state.accessExpandedRole = (state.accessExpandedRole === k) ? '' : k;

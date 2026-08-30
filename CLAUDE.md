@@ -99,10 +99,11 @@
 - **Засах:** CEO Sheet-д шууд мөр нэмж/нэр засаж/`active`=0 болгоно → апп дараагийн ачаалалд авна. (n8n GET унших + POST seed/append; CORS=*.)
 - Кодын `const FINANCE_*_CATEGORIES` нь зөвхөн default/fallback.
 
-### Хөдөлмөрийн гэрээ — цахим гарын үсэг (2026-08-30)
-- CEO ажилтны карт (staff card) → «⚙️ Ажилтан удирдах» → **«📝 Хөдөлмөрийн гэрээ (гарын үсэг)»** (`data-sc-contract`, зөвхөн идэвхтэй ажилтан) → `openEmployeeContract(personKey)`.
-- Урсгал: форм (цалин `state.salaries`-аас авто) → `EMP_CONTRACT_HTML(d)` preview (12 хэсэг, `CHIMUN_LEGAL`) → 2 canvas гарын үсэг (`_ecSigPad`, pointer-draw) → SHA-256 лац (`_ecSha256`, crypto.subtle) + PDF (html2pdf, **модуль дотроо CDN lazy-load** — `ensureH2P` global scope-д найдваргүй байсан) → `saveCompanyDoc` (category='contract', note-д audit JSON: signed_by/at/ua/hash) → Баримт бичигт.
-- Хууль: зурсан гарын үсэг + audit = практикт хүчинтэй (хэрэглэгч сонгосон); бүрэн хүчин чадал = Дан/E-Mongolia (дараагийн шат).
+### Хөдөлмөрийн гэрээ — бэлдэж татах (2026-08-30, v643)
+- CEO ажилтны карт (staff card) → «⚙️ Ажилтан удирдах» → **«📄 Хөдөлмөрийн гэрээ бэлдэх»** (`data-sc-contract`, идэвхтэй ажилтан) → `openEmployeeContract(personKey)`.
+- Урсгал: форм (цалин `state.salaries`-аас авто) → **«Гэрээ бэлдэж татах»** → PDF ТАТНА (html2pdf `.save()`). `EMP_CONTRACT_HTML(d)` = 12 хэсэг + `CHIMUN_LEGAL`. Гэрээний **арын хуудсанд** ажилтны оруулсан **иргэний үнэмлэхийн лавлагаа** (`_ecIdImages`: `fetchEmployeeDoc`→employee_docs, зураг=шууд/PDF=pdf.js растер). Гарын үсэг = гараар зурах хоосон мөр (хэвлээд гараар эсвэл eMongolia; апп eMongolia-г автоматаар хийхгүй). Зөвхөн ТАТАЛТ (company_docs-д хадгалахгүй).
+- ⚠ Анх in-app 2 талын зурсан гарын үсэг (canvas+SHA-256) байсныг хэрэглэгч ХАСуулав.
+- **PDF gotcha (батлагдсан):** html2canvas `position:fixed`=хоосон → `position:static`; `windowWidth`=элементийн өргөн (`box-sizing:border-box;width:794px`→`windowWidth:794`), 900≠794 бол зүүн тал тасарна. Тест: `html2pdf().from(el).toCanvas()`→`worker.prop.canvas` пиксэл (pdf.js render нуугдсан pane-д гацдаг). Ажилладаг quote PDF (`qPdf`) = харагдах popup, static.
 
 ## Урт хугацааны зорилго
 

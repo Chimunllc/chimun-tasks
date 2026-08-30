@@ -7873,6 +7873,8 @@ const PERM_MENUS = [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
+// Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
+const DENY_DEFAULT_ACTIONS = new Set(['access.delegate']);
 function normRole(role) { return String(role || '').trim().toLowerCase(); }
 // Тухайн хүний албан тушаалын эрх загвар (байвал)
 function roleTemplateFor(meKey) {
@@ -10181,6 +10183,7 @@ function effectiveCapForMember(m, key, kind) {
   const rt = state.rolePerms && state.rolePerms[normRole(m && m.role)];
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
   if (kind === 'view') return defaultViewForRole(normRole(m && m.role), key);
+  if (DENY_DEFAULT_ACTIONS.has(key)) return false; // эмзэг үйлдэл — тусгайлан олгоогүй бол ХОРИГЛОНО
   return true; // үйлдэл default = зөвшөөрнө
 }
 // Эрхийн чагтны матриц (цэс бүр: 👁 Харах + үйлдлүүд). getVal(key,kind)->bool.
@@ -10231,6 +10234,7 @@ function renderRoleTemplates() {
     const rt = state.rolePerms && state.rolePerms[rk];
     if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
     if (kind === 'view') return defaultViewForRole(rk, key);
+    if (DENY_DEFAULT_ACTIONS.has(key)) return false;
     return true;
   };
   const rows = roleKeys.map(rk => {
@@ -10338,7 +10342,7 @@ function attachAccessHandlers() {
     state.accessExpandedRole = (state.accessExpandedRole === k) ? '' : k;
     render();
   }));
-  const gather = (inputs) => { const perms = {}; inputs.forEach(x => { const kind = x.dataset.capKind; if (kind === 'view') perms[x.dataset.capKey] = x.checked; else if (!x.checked) perms[x.dataset.capKey] = false; }); return perms; };
+  const gather = (inputs) => { const perms = {}; inputs.forEach(x => { const kind = x.dataset.capKind, k = x.dataset.capKey; if (kind === 'view') perms[k] = x.checked; else if (!x.checked) perms[k] = false; else if (DENY_DEFAULT_ACTIONS.has(k)) perms[k] = true; }); return perms; };
   // Хувь хүнд БҮРЭН хадгална (view+action бүгд true/false) → хүний тохиргоо албан тушаалыг бүрэн дарна (ногоон үйлдэл = зөвшөөрөл)
   const gatherFull = (inputs) => { const perms = {}; inputs.forEach(x => { perms[x.dataset.capKey] = x.checked; }); return perms; };
   // Албан тушаалын эрх (зөвхөн data-role-cap, хүний чагтыг хамруулахгүй)

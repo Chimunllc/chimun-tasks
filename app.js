@@ -8572,6 +8572,50 @@ async function openCompanyDoc(id) {
   }
 }
 
+/* ─── Системийн загвар — аппд шингэсэн, ҮРГЭЛЖ ОДООГИЙН баримтын загварууд ───
+   Файл болгож хадгалдаггүй: дарах бүрд одоогийн кодоор шинээр үүснэ. Тиймээс гэрээний
+   заалт/лого/дансны мэдээлэл өөрчлөгдөхөд загвар өөрөө дагаж шинэчлэгдэнэ — DB дэх
+   хуучирсан хуулбартай зөрөх асуудал үүсэхгүй. Хоосон захиалгаар үүсгэдэг тул
+   "……………" талбарууд гараар (contenteditable) бөглөгдөнө. */
+function docBlankMeventOrder() {
+  return {
+    id: '_tpl', number: '', customer: '', phone: '', email: '', note: '',
+    starts_at: '', stops_at: '', status: 'draft',
+    total_mnt: 0, paid_mnt: 0, deposit_mnt: 0, discount_mnt: 0,
+    items: [{ name: '', qty: 1, price: 0, unit_price: 0, total: 0 }],
+  };
+}
+function docBlankNomaadQuote() {
+  return { quote_no: '', company: '', reg_no: '', email: '', phone: '', guests: 0, grand_total: 0, items: [] };
+}
+const DOC_TEMPLATES = [
+  { key: 'mev-quote-mn', icon: '📄', system: 'M-Event', label: 'Үнийн санал (Монгол)',
+    html: () => buildOrderQuote(docBlankMeventOrder(), 'mn') },
+  { key: 'mev-quote-en', icon: '📄', system: 'M-Event', label: 'Үнийн санал (English)',
+    html: () => buildOrderQuote(docBlankMeventOrder(), 'en') },
+  { key: 'mev-contract', icon: '📜', system: 'M-Event', label: 'Түрээсийн гэрээ',
+    html: () => meventContractHtml(docBlankMeventOrder()) },
+  { key: 'nom-contract', icon: '📜', system: 'NOMAAD', label: 'Корпорат арга хэмжээ зохион байгуулах гэрээ',
+    html: () => nomaadContractHtml(docBlankNomaadQuote()) },
+];
+// Загварыг шинэ цонхонд нээх. Popup blocker-оос сэргийлж цонхыг ЭХЛЭЭД нээгээд
+// (хэрэглэгчийн даралтын дотор) агуулгыг бэлэн болмогц бичнэ — openOrderQuote-тай ижил.
+async function openDocTemplate(key) {
+  const t = DOC_TEMPLATES.find(x => x.key === key);
+  if (!t) return;
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Загвар…</title></head><body style="font:14px system-ui,sans-serif;color:#4b5563;padding:28px;">Загвар бэлдэж байна…</body></html>');
+  w.document.close();
+  try {
+    const html = await t.html();
+    w.document.open(); w.document.write(html); w.document.close();
+  } catch (e) {
+    console.warn('openDocTemplate', e);
+    showToast('Загвар үүсгэхэд алдаа: ' + e.message, 'error', 5000);
+    try { w.close(); } catch (_) {}
+  }
+}
 function renderDocuments() {
   if (!state.companyDocs) { loadCompanyDocs(); }
   const docs = state.companyDocs || [];
@@ -8602,10 +8646,25 @@ function renderDocuments() {
       </span>
     </div>`;
   };
+  // Системийн загвар — "Бүгд" ба "Загвар" табад л харагдана (файл биш тул хайлтаар ч шүүнэ).
+  const tplShown = (!cat || cat === 'template')
+    ? DOC_TEMPLATES.filter(t => !q || (t.label + ' ' + t.system).toLowerCase().includes(q))
+    : [];
+  const tplBlock = tplShown.length ? `<div class="doc-tpl-head">⚙️ Системийн загвар
+      <span class="doc-tpl-hint">аппаас шинээр үүснэ — үргэлж шинэ хувилбар</span></div>
+    <div class="doc-list doc-tpl-list">${tplShown.map(t => `<div class="doc-row doc-tpl" data-doc-tpl="${t.key}">
+      <span class="doc-ico">${t.icon}</span>
+      <span class="doc-main">
+        <span class="doc-title">${escapeHtml(t.label)}</span>
+        <span class="doc-meta">${escapeHtml(t.system)} · хоосон загвар · хэвлэх / PDF / Word</span>
+      </span>
+      <span class="doc-cat">Загвар</span>
+      <span class="doc-act"><span class="doc-open">Нээх ›</span></span>
+    </div>`).join('')}</div>` : '';
   const body = !state.companyDocs
     ? '<div class="doc-empty">Ачаалж байна…</div>'
     : (shown.length ? shown.map(row).join('')
-      : `<div class="doc-empty"><div class="icon">🗂</div><div>${docs.length ? 'Энэ шүүлтэд баримт алга.' : 'Баримт бичиг хараахан хадгалаагүй байна.'}</div></div>`);
+      : `<div class="doc-empty">${tplBlock ? '' : '<div class="icon">🗂</div>'}<div>${docs.length ? 'Энэ шүүлтэд баримт алга.' : 'Байршуулсан баримт хараахан алга.'}</div></div>`);
   return `<div class="doc-wrap">
     <div class="doc-head">
       <div>
@@ -8616,6 +8675,8 @@ function renderDocuments() {
     </div>
     <div class="otabs">${tabs}</div>
     <div class="doc-search">🔍<input type="search" id="doc-search" placeholder="Нэр, дугаар, байгууллага" value="${escapeHtml(state.docsSearch || '')}" /></div>
+    ${tplBlock}
+    ${tplBlock ? '<div class="doc-tpl-head">📁 Байршуулсан баримт</div>' : ''}
     <div class="doc-list">${body}</div>
   </div>`;
 }
@@ -8641,7 +8702,8 @@ function attachDocumentsHandlers() {
     if (!confirm(`«${d.title || d.file_name}» баримтыг устгах уу? Файл бүрмөсөн устана.`)) return;
     if (await deleteCompanyDoc(d.id)) { showToast('Устгагдлаа', 'success'); await loadCompanyDocs(true); render(); }
   }));
-  document.querySelectorAll('.doc-row').forEach(r => r.addEventListener('click', () => openCompanyDoc(r.dataset.doc)));
+  document.querySelectorAll('[data-doc-tpl]').forEach(r => r.addEventListener('click', () => openDocTemplate(r.dataset.docTpl)));
+  document.querySelectorAll('.doc-row[data-doc]').forEach(r => r.addEventListener('click', () => openCompanyDoc(r.dataset.doc)));
 }
 
 // Баримт нэмэх/засах модал. id=null бол шинэ (файл ЗААВАЛ), эс бол зөвхөн мэдээллийг засна.
@@ -14417,12 +14479,21 @@ async function deleteAppOrder(id) {
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
   // source='history' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
+  const _t = new Date();
+  const _today = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
   return (state.appOrders || []).map(ao => {
     let raw = String(ao.status || 'reserved');
+    const _unpaid = (Number(ao.paid_mnt) || 0) <= 0;
     // Төлбөр бүртгэгдээгүй захиалга = Ноорог. "Захиалсан" (reserved) руу зөвхөн төлбөр
     // бүртгэгдэхэд шилжинэ. (Зөвхөн харагдац/бүлэглэл — агуулахын нөөц state.appOrders-ийн
     // бодит статусаар тоологдох тул энэ өөрчлөлт нөлөөлөхгүй.)
-    if (raw === 'reserved' && (Number(ao.paid_mnt) || 0) <= 0) raw = 'draft';
+    if (raw === 'reserved' && _unpaid) raw = 'draft';
+    // Эвентийн огноо өнгөрсөн + төлбөргүй ноорог = "Устгасан" бүлэгт автоматаар харуулна
+    // (DB-д УСТГАХГҮЙ — бодит статус хэвээр; төлбөр бүртгэвэл эргэж гарч ирнэ).
+    if (raw === 'draft' && _unpaid) {
+      const _end = String(ao.stops_at || ao.starts_at || '').slice(0, 10);
+      if (_end && _end < _today) raw = 'deleted';
+    }
     const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',

@@ -772,6 +772,7 @@ function loadTeamFromCache() {
     if (!Array.isArray(parsed) || !parsed.length) return false;
     TEAM.length = 0;
     parsed.forEach(m => TEAM.push(m));
+    applyWorkerTypeOverrides();   // Цагийн⇄Үндсэн override (app_config)
     return true;
   } catch(e) { return false; }
 }
@@ -793,6 +794,7 @@ async function loadTeamFromAPI() {
     if (!fresh || !fresh.length) throw new Error('empty team response');
     TEAM.length = 0;
     fresh.forEach(m => TEAM.push(m));
+    applyWorkerTypeOverrides();   // Цагийн⇄Үндсэн override (app_config) — серверийн worker_type-г дарна
     localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
     localStorage.setItem('teamCacheAt', String(Date.now()));
     console.log(`Staff sync OK: ${fresh.length} members from Master Sheet`);
@@ -19801,28 +19803,41 @@ async function saveStaffRole(member, role) {
   }
 }
 
-// Ажилтны төрөл: Цагийн (daily) ⇄ Үндсэн (permanent) — staff-update {action:'update_worker_type'} → employees.worker_type
+// Ажилтны төрөл: Цагийн (daily) ⇄ Үндсэн (permanent).
+// Хадгалалт = app_config['worker_type_overrides'] (person_key→төрөл), PostgREST anon —
+// employees хүснэгт/n8n staff-update workflow ХӨНДӨХГҮЙ (backend action шаардахгүй, тестгүй HR бичилтгүй).
+// TEAM ачаалах бүрд applyWorkerTypeOverrides() эдгээрийг member.worker_type-д буулгана.
+function applyWorkerTypeOverrides() {
+  const ov = state._wtOverrides;
+  if (!ov || typeof ov !== 'object') return;
+  (TEAM || []).forEach(m => { const k = personKey(m); if (ov[k]) m.worker_type = ov[k]; });
+}
+async function loadWorkerTypeOverrides() {
+  try {
+    const v = await loadAppConfig('worker_type_overrides');
+    state._wtOverrides = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  } catch (e) { state._wtOverrides = state._wtOverrides || {}; }
+  applyWorkerTypeOverrides();
+  if (typeof render === 'function') render();
+}
 async function saveWorkerType(member, wt) {
   wt = wt === 'daily' ? 'daily' : 'permanent';
   if ((member.worker_type || 'permanent') === wt) { renderStaffList(); return; }
   const label = wt === 'daily' ? 'Цагийн' : 'Үндсэн';
   if (!await showConfirm(`${member.name}-г «${label} ажилтан» болгох уу?`, { okText: 'Тийм', cancelText: 'Болих' })) { renderStaffList(); return; }
+  const key = personKey(member);
   const prev = member.worker_type || '';
+  const prevOv = state._wtOverrides ? { ...state._wtOverrides } : {};
+  state._wtOverrides = state._wtOverrides || {};
+  state._wtOverrides[key] = wt;
   member.worker_type = wt;
   try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch (e) {}
   renderStaffList();
-  const base = state.config.staffUrl;
-  if (!base) { showToast('Локалд хадгаллаа (sync алга)', 'warn'); return; }
-  const url = base.replace(/\/[^\/]+$/, '/staff-update');
   try {
-    const r = await fetchWithTimeout(withKey(url), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update_worker_type', phone: member.phone, worker_type: wt }),
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    await saveAppConfig('worker_type_overrides', state._wtOverrides);
     showToast(`${member.name}: ${label} ажилтан боллоо`, 'success', 2500);
   } catch (e) {
-    member.worker_type = prev;
+    state._wtOverrides = prevOv; member.worker_type = prev;
     try { localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache))); } catch (_) {}
     renderStaffList();
     showToast('Хадгалж чадсангүй: ' + e.message, 'error', 4500);
@@ -22404,6 +22419,7 @@ async function bootApp() {
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)
+  loadWorkerTypeOverrides(); // Цагийн⇄Үндсэн ажилтны төрөл (app_config override)
   loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
   loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
   if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)

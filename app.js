@@ -10086,10 +10086,9 @@ function renderOrgChart() {
   </div>`;
   const legend = `<div class="org-legend">${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
   const editBtn = canEdit ? `<button class="btn${state.orgEdit ? ' btn-primary' : ''}" data-org-edit title="Хүн шилжүүлэх" style="padding:5px 12px;font-size:12.5px;">${state.orgEdit ? '✓ Дууссан' : '✏️ Засах'}</button>` : '';
-  const _dbg = (!state.isCEO && (state._orgManage.staff || state._orgManage.delegCan))
-    ? ` · <b style="color:${state._orgManage.delegCan ? 'var(--ok)' : 'var(--danger,#dc2626)'}">эрх удирдах: ${state._orgManage.delegCan ? 'тийм' : 'үгүй'}${state._orgManage.deleg ? ' · доорх ' + state._orgManage.deleg.size : ''}</b>` : '';
+  const _hint = (!state.isCEO && state._orgManage.deleg && state._orgManage.deleg.size) ? ` · доорхийнхоо эрхийг удирдах бол картыг дар` : '';
   const head = `<div class="org-head">
-    <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_dbg}</div></div>
+    <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_hint}</div></div>
     <div class="org-zoom">${editBtn}<button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
   </div>`;
   const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';

@@ -15129,7 +15129,7 @@ function openTestCleanupModal() {
   modal.querySelector('#tc-del')?.addEventListener('click', async (e) => {
     const ids = [...modal.querySelectorAll('.tc-cb:checked')].map(cb => cb.dataset.id);
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} тест захиалгыг БҮРМӨСӨН устгах уу?`, { okText: 'Устгах', danger: true }))) return;
+    if (!(await showConfirm(`${ids.length} тест захиалгыг устгах уу? («Устгасан» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Устгах', danger: true }))) return;
     e.currentTarget.disabled = true;
     let ok = 0;
     for (const id of ids) { try { await deleteAppOrder(id); ok++; } catch (err) { console.warn('test del', err); } }
@@ -15140,9 +15140,11 @@ function openTestCleanupModal() {
 }
 // CEO бөөн үйлдэл — сонгосон захиалгыг устгах/сэргээх (PostgREST id=in.() багцаар)
 async function bulkDeleteOrders(ids) {
+  // ЗӨӨЛӨН устгал — мөрийг DB-ээс устгахгүй, зөвхөн status='deleted' болгоно ⟹ "Устгасан" бүлэгт үлдэж,
+  // «Сэргээх»-ээр буцаана. Дата хэзээ ч эргэлт буцалтгүй алдагдахгүй.
   const idSet = new Set(ids.map(String));
-  const removed = (state.appOrders || []).filter(o => idSet.has(String(o.id)));   // сэргээхэд хэрэгтэй
-  state.appOrders = (state.appOrders || []).filter(o => !idSet.has(String(o.id)));
+  const prev = new Map();   // амжилтгүйд төлөвийг буцаах
+  (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) { prev.set(String(o.id), o.status); o.status = 'deleted'; } });   // optimistic
   if (typeof render === 'function') render();
   if (!DB_ANON_KEY) return;
   let failed = false;
@@ -15150,16 +15152,14 @@ async function bulkDeleteOrders(ids) {
     const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' } }, 30000);
+        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'deleted', updated_at: new Date().toISOString() }) }, 30000);
       if (!r.ok) failed = true;
-    } catch (e) { console.warn('bulkDelete', e); failed = true; }
+    } catch (e) { console.warn('bulkDelete(soft)', e); failed = true; }
   }
   if (failed) {
-    // Сервер талд устгагдсангүй — UI-аас алга болсон захиалгуудыг БУЦААНА (жинхэнэ дата хэвээр байгааг зөв харуулна)
-    const have = new Set((state.appOrders || []).map(o => String(o.id)));
-    removed.forEach(o => { if (!have.has(String(o.id))) state.appOrders.push(o); });
+    (state.appOrders || []).forEach(o => { if (prev.has(String(o.id))) o.status = prev.get(String(o.id)); });   // төлөв буцаана
     if (typeof render === 'function') render();
-    showToast('⚠ Устгал серверт бүрэн хийгдсэнгүй — захиалгыг сэргээлээ, дахин оролдоно уу', 'error', 6000);
+    showToast('⚠ Серверт бүрэн хийгдсэнгүй — төлөвийг буцаалаа, дахин оролдоно уу', 'error', 6000);
     throw new Error('bulkDelete fail');
   }
 }
@@ -15177,10 +15177,16 @@ async function bulkRestoreOrders(ids) {
   }
 }
 async function deleteAppOrder(id) {
-  state.appOrders = (state.appOrders || []).filter(o => o.id !== id);
+  // ЗӨӨЛӨН устгал — мөр устгахгүй, status='deleted' (сэргээж болно). Хатуу устгал = буцалтгүй алдагдал тул хийхгүй.
+  const o = (state.appOrders || []).find(x => x.id === id);
+  const prevStatus = o ? o.status : null;
+  if (o) o.status = 'deleted';
   if (typeof render === 'function') render();
   if (!DB_ANON_KEY) return;
-  try { await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'deleted', updated_at: new Date().toISOString() }) }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { console.warn('deleteAppOrder(soft)', e); if (o && prevStatus != null) { o.status = prevStatus; if (typeof render === 'function') render(); } }
 }
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.

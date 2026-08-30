@@ -5343,9 +5343,9 @@ function boardOrderRow(e, k, todayStr, flat) {
   // Барьцаа — жагсаалтад шууд текстээр (нээхгүйгээр): буцаасан бол ✓ Буцаасан, буцаагаагүй бол 🔒 Барьцаатай.
   // Held зөвхөн апп/M-Event (Booqable түүхийн барьцаа гадна эргэсэн); буцаасан badge бүх эх сурвалжид.
   const _depAmt = Number(o.deposit_mnt) || 0;
-  const _depRet = _depAmt > 0 ? depositReturnFor(o.id) : null;
+  const _depRet = _depAmt > 0 ? depositReturnState(o) : null;
   const depWarn = _depAmt > 0
-    ? (_depRet ? `<span class="br-depchip dep-ret" title="Барьцаа буцаагдсан — хуулгаар баталгаажсан">✓ Буцаасан</span>`
+    ? (_depRet ? `<span class="br-depchip dep-ret" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан'}">✓ Буцаасан</span>`
       : (!!o._app ? `<span class="br-depchip dep-hold" title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй">🔒 Барьцаатай</span>` : ''))
     : '';
   const id = escapeHtml(String(o.id));
@@ -5696,7 +5696,7 @@ function renderOrders() {
   const payF = state.ordersPay || '';
   // Фасет предикатууд — Барьцаа / Харилцагч / НӨАТ
   const depF = state.ordersDep || '', custF = state.ordersCust || '', vatF = state.ordersVat || '';
-  const depMatch = (e) => { if (!depF) return true; const amt = Number(e.o.deposit_mnt) || 0; if (depF === 'none') return amt <= 0; if (amt <= 0) return false; const ret = !!depositReturnFor(e.o.id); return depF === 'returned' ? ret : depF === 'held' ? !ret : true; };
+  const depMatch = (e) => { if (!depF) return true; const amt = Number(e.o.deposit_mnt) || 0; if (depF === 'none') return amt <= 0; if (amt <= 0) return false; const ret = !!depositReturnState(e.o); return depF === 'returned' ? ret : depF === 'held' ? !ret : true; };
   const custMatch = (e) => !custF || orderCustType(e.o) === custF;
   const vatMatch = (e) => { if (!vatF) return true; const has = (typeof vatForOrder === 'function') && vatForOrder(e.o.number).count > 0; return vatF === 'vat' ? has : !has; };
   const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF) && depMatch(e) && custMatch(e) && vatMatch(e));
@@ -11057,6 +11057,20 @@ function _buildDepRetIdx() {
 }
 // Захиалгад барьцаа буцаалт бүртгэгдсэн эсэх (кэшлэсэн индекс — мөр бүрд .find давтахгүй)
 function depositReturnFor(orderId) { if (!orderId) return null; return _buildDepRetIdx().get(String(orderId)) || null; }
+// Барьцаа буцаалтыг 2026-08-01-нээс мөрдөж эхэлсэн. Түүнээс ӨМНӨХ захиалгын барьцаа нь тухайн үедээ
+// (аппаас гадуур) буцаагдсан тул «буцаасан» гэж үзнэ — хуучин архивыг 🔒-өөр дүүжлэхгүй.
+const DEP_TRACK_START = '2026-08-01';
+function _depOrderDate(o) { return String((o && (o.stops_at || o.starts_at || o.created_at)) || '').slice(0, 10); }
+// Захиалгын барьцаа буцаагдсан эсэх → { amount, date, kind:'stmt'|'pre' } эсвэл null.
+// 'stmt' = хуулгаар баталгаажсан 5810; 'pre' = 2026-08-01-ээс өмнөх (өмнө буцаагдсан гэж үзсэн).
+function depositReturnState(o) {
+  if (!o) return null;
+  const fin = depositReturnFor(o.id);
+  if (fin) return { ...fin, kind: 'stmt' };
+  const d = _depOrderDate(o);
+  if (d && d < DEP_TRACK_START) return { amount: Number(o.deposit_mnt) || 0, date: d, kind: 'pre' };
+  return null;
+}
 // Хуулгын гарах гүйлгээ БАРЬЦАА БУЦААЛТ мөн үү — утгад "барьцаа" + захиалгын дугаар байж,
 // тэр захиалга барьцаатай, дүн барьцаанаас хэтрээгүй бол таарна. Автомат ангилах/холбоход.
 function depositMatchForStmt(memo, amount) {
@@ -15894,11 +15908,11 @@ function bqOrderCard(o) {
     <div class="order-items-box bq-order-docs" hidden></div>`;
   // Барьцаа — байвал ТОД харуулна; хуулга тулгаснаар 5810-д холбогдвол «буцаасан»
   const _dep = Number(o.deposit_mnt) || 0;
-  const _depRet = _dep > 0 ? depositReturnFor(o.id) : null;
+  const _depRet = _dep > 0 ? depositReturnState(o) : null;
   // held зөвхөн апп/M-Event захиалгад — Booqable түүхийн барьцаа гадна (Booqable-д) эргэсэн, энд мөрдөхгүй
   const depBadge = _dep > 0
     ? (_depRet
-      ? `<span class="dep-badge dep-returned" title="Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
+      ? `<span class="dep-badge dep-returned" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)'}${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
       : (isApp ? `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>` : ''))
     : '';
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)

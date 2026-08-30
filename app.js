@@ -3949,6 +3949,19 @@ function encodeBrokenRec(note, recMap) {
   return base ? `${base} ${tok}` : tok;
 }
 
+// ── БУЦААН ОЛГОЛТ (refund) — note-д ⟦RF|нийт_дүн|шалтгаан⟧. Нийт буцаасан дүнг хадгална (paid_mnt-аас хасагдсан). ──
+function parseRefund(note) {
+  const m = String(note || '').match(/⟦RF\|(\d+)(?:\|([^⟧]*))?⟧/);
+  return m ? { amount: Number(m[1]) || 0, note: m[2] || '' } : null;
+}
+function encodeRefundNote(note, totalAmount, rf) {
+  const base = String(note || '').replace(/⟦RF\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').trim();
+  if (!totalAmount) return base;
+  const dn = String(rf || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tok = `⟦RF|${Math.round(totalAmount)}${dn ? '|' + dn : ''}⟧`;
+  return base ? base + ' ' + tok : tok;
+}
+
 // Идэвхтэй захиалгын БУЦААЛТ дээр эвдрэл бүртгэх — эвдэрсэн барааг нөөцөөс хасна (broken++) + барьцаанаас ₮ хасна.
 // Эвдэрсэн тоо note-д ⟦BRK⟧-ээр хадгалагдаж, барааны broken ДЕЛЬТА-гаар шинэчлэгдэнэ (дахин бүртгэвэл давхардахгүй).
 function openOrderDamageModal(oid) {
@@ -4026,7 +4039,7 @@ function openOrderDamageModal(oid) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ note: newNote, updated_at: new Date().toISOString() }),
       }, 15000);
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -4515,7 +4528,7 @@ async function _postExpenseLearn(key, branch, cat) {
   try {
     await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?on_conflict=key`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ key, branch, cat, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
   } catch (e) { console.warn('_postExpenseLearn', e); }
@@ -5768,6 +5781,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-contract]').forEach(b => b.addEventListener('click', () => openMeventContract(b.dataset.appContract)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
+  document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -6781,7 +6795,7 @@ async function saveProduct(product) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(row),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -6890,7 +6904,7 @@ async function saveBranchTransfer(p, modal) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?id=eq.${encodeURIComponent(p.id)}`, {
       method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ ['qty_' + from]: p['qty_' + from], ['qty_' + to]: p['qty_' + to], updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -6898,7 +6912,7 @@ async function saveBranchTransfer(p, modal) {
       const tid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'tr-' + Date.now();
       await fetchWithTimeout(`${DB_URL}/rest/v1/product_transfers`, {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: tid, product_id: p.id, sku: p.sku, from_branch: from, to_branch: to, qty, note, moved_by: state.me || '', created_at: new Date().toISOString() }),
       }, 12000);
     } catch (e2) { console.warn('transfer log', e2); }
@@ -6936,14 +6950,14 @@ async function bulkReturnBranch(from, to) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows),
     }, 25000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
     try {
       await fetchWithTimeout(`${DB_URL}/rest/v1/product_transfers`, {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify(logs),
       }, 20000);
     } catch (e2) { console.warn('bulk transfer log', e2); }
@@ -7060,7 +7074,7 @@ async function bulkClearVariants() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows),
     }, 25000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -7094,7 +7108,7 @@ async function bulkFillNameEn() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows),
     }, 30000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
@@ -7453,7 +7467,7 @@ async function fileToDoc(file) {
 }
 async function setEmployeeDoc(phone, doc) {
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/set_my_doc`, {
-    method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
+    method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, ''), p_doc: doc.data, p_type: doc.type })
   }, 30000);
   return r.ok;
@@ -7461,7 +7475,7 @@ async function setEmployeeDoc(phone, doc) {
 async function myDocExists(phone) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/my_doc_exists`, {
-      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, '') })
     }, 15000);
     return r.ok ? (await r.json()) === true : false;
@@ -7470,7 +7484,7 @@ async function myDocExists(phone) {
 async function fetchEmployeeDoc(phone) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/get_employee_doc`, {
-      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, '') })
     }, 30000);
     if (!r.ok) return null;
@@ -8230,7 +8244,7 @@ async function saveMemberBranches(personKey, branches) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_branches`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, branches, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -8380,7 +8394,7 @@ async function saveCateringMenuItem(it) {
   if (!DB_ANON_KEY || !it || !it.id) return false;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?on_conflict=id`, {
-      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(it),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -8392,7 +8406,7 @@ async function saveCateringJob(j) {
   j.updated_at = new Date().toISOString();
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?on_conflict=id`, {
-      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(j),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -9273,7 +9287,7 @@ async function _postBrandKit(k) {
   BRAND_FIELDS.forEach(f => body[f] = k[f] || '');
   try {
     await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?on_conflict=id`, {
-      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(body),
     }, 20000);
   } catch (e) { console.warn('brandKit save', e); }
@@ -10748,7 +10762,7 @@ async function postNomaadPaymentRow(row) {
   if (!DB_ANON_KEY) return false;
   const post = (body) => fetchWithTimeout(`${DB_URL}/rest/v1/nomaad_payments`, {
     method: 'POST',
-    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=merge-duplicates' },
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=merge-duplicates' },
     body: JSON.stringify(body),
   }, 15000);
   try {
@@ -13908,7 +13922,7 @@ async function loadAppConfig(key) {
 async function saveAppConfig(key, value) {
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?on_conflict=key`, {
     method: 'POST',
-    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
   }, 20000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -15071,7 +15085,7 @@ async function saveAppOrder(ord) {
   try {
     r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(ord),
     }, 20000);
   } catch (e) { r = null; }
@@ -15138,7 +15152,7 @@ async function bulkDeleteOrders(ids) {
     const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, Prefer: 'return=minimal' } }, 30000);
+        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' } }, 30000);
       if (!r.ok) failed = true;
     } catch (e) { console.warn('bulkDelete', e); failed = true; }
   }
@@ -15160,7 +15174,7 @@ async function bulkRestoreOrders(ids) {
     const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
     try {
       await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
+        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
     } catch (e) { console.warn('bulkRestore', e); }
   }
 }
@@ -15168,7 +15182,7 @@ async function deleteAppOrder(id) {
   state.appOrders = (state.appOrders || []).filter(o => o.id !== id);
   if (typeof render === 'function') render();
   if (!DB_ANON_KEY) return;
-  try { await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
+  try { await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
 }
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
@@ -15216,7 +15230,7 @@ function clearCancelReq(note) { return String(note || '').replace(_CXRQ_RE, '').
 // Захиалгын note-г шинэчлэх (статус хөндөхгүй) — app_orders/bq_orders routing
 async function patchOrderNote(oid, note) {
   let o = (state.bqOrders || []).find(x => String(x.id) === String(oid)); const table = o ? 'bq_orders' : 'app_orders';
-  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ note, updated_at: new Date().toISOString() }) }, 15000);
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ note, updated_at: new Date().toISOString() }) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 // Менежер — цуцлах хүсэлт илгээх (заавал шалтгаантай, CEO батална)
@@ -15860,7 +15874,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -15896,6 +15910,7 @@ function bqOrderCard(o) {
     ${payPanel}
     ${depBadge ? `<div class="dep-row">${depBadge}</div>` : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
+    ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
@@ -15961,7 +15976,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     if (opts.stageMeta && table === 'app_orders') body.stage_meta = opts.stageMeta;
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
@@ -16699,7 +16714,7 @@ async function reserveReceipt(receiptId, meta) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts`, {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ receipt_id: receiptId, fp: fpKey, amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', used_in: meta.usedIn || '', recorded_by: state.me }),
     }, 15000);
     if (r.status === 409) {
@@ -16839,6 +16854,88 @@ function openBqPaymentModal(oid) {
   modal.classList.add('open');
 }
 
+// ── БУЦААН ОЛГОХ (refund) — гараар дүн + гарах гүйлгээний PDF баримт. paid_mnt-аас хасна (орлого автоматаар буурна). ──
+function openRefundModal(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) { showToast('Зөвхөн шинэ (app) захиалгад буцаан олголт бүртгэнэ', 'warn', 3000); return; }
+  if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буцаан олгох эрх олгогдоогүй', 'warn', 3000); return; }
+  const paid = Number(o.paid_mnt) || 0;
+  const prevRf = parseRefund(o.note);
+  document.getElementById('bq-refund-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'bq-refund-modal';
+  modal._file = null;
+  modal.innerHTML = `<div class="modal" style="max-width:430px;">
+    <h2>↩ Буцаан олгох — #${o.number ?? ''}</h2>
+    <div class="rf-sum"><div>Төлсөн дүн: <b>${fmtMoney(paid)}</b></div>${prevRf ? `<div>Өмнө буцаасан: ${fmtMoney(prevRf.amount)}</div>` : ''}</div>
+    <label class="dmg-amt-l">Буцаах дүн (₮)</label>
+    <input id="rf-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
+    <label for="rf-pdf" class="rf-drop">📄 <b>Гарах гүйлгээний баримт (PDF)</b>
+      <input id="rf-pdf" type="file" accept="application/pdf,.pdf" hidden>
+      <div id="rf-pdf-status" class="rf-drop-status">Чимунээс үйлчлүүлэгч рүү шилжүүлсэн баримт хавсаргана (нотолгоо)</div>
+    </label>
+    <label class="dmg-amt-l">Тэмдэглэл (шалтгаан)</label>
+    <textarea id="rf-note" class="ui-raw" rows="2" placeholder="ж: захиалга цуцлагдсан, илүү төлөлт буцаав"></textarea>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn" id="rf-cancel">Болих</button>
+      <button class="btn btn-primary" id="rf-save">↩ Буцаан олгосныг бүртгэх</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const amtEl = modal.querySelector('#rf-amount');
+  const statusEl = modal.querySelector('#rf-pdf-status');
+  modal.querySelector('#rf-pdf').addEventListener('change', async (e) => {
+    const f = (e.target.files || [])[0]; e.target.value = ''; if (!f) return;
+    modal._file = f;
+    statusEl.textContent = `📄 ${f.name} уншиж байна…`; statusEl.style.color = 'var(--muted)';
+    try {
+      const d = parseBankReceipt(await extractPdfText(f));
+      if (d.amount && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(d.amount);   // авто-бөглөх (гараар засаж болно)
+      const okSender = /чимун/i.test(d.senderName || '');
+      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}`;
+      statusEl.style.color = okSender ? 'var(--ok)' : 'var(--warn)';
+    } catch (err) { statusEl.textContent = `✓ ${f.name} (хавсаргав)`; statusEl.style.color = 'var(--ok)'; }
+  });
+  const close = () => modal.remove();
+  modal.querySelector('#rf-cancel').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  modal.querySelector('#rf-save').onclick = async (e) => {
+    const btn = e.currentTarget;
+    const amount = moneyVal(amtEl);
+    if (amount <= 0) { showToast('Буцаах дүн оруулна уу', 'warn'); return; }
+    if (!modal._file) { showToast('Гарах гүйлгээний PDF баримт хавсаргана уу', 'warn'); return; }
+    const userNote = modal.querySelector('#rf-note').value.trim();
+    btn.disabled = true;
+    // Серверийн ХАМГИЙН СҮҮЛИЙН paid_mnt + note уншиж (зэрэгцээ/стейл snapshot-оос) refund-ыг хасна
+    let basePaid = Number(o.paid_mnt) || 0, baseNote = o.note;
+    try {
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { if (rr[0].paid_mnt != null) basePaid = Number(rr[0].paid_mnt) || 0; if (rr[0].note != null) baseNote = String(rr[0].note); } }
+    } catch (_) {}
+    const refundAmt = Math.min(basePaid, amount);   // төлсөнөөс илүү буцаахгүй
+    const newPaid = Math.max(0, basePaid - refundAmt);
+    const prevRfTot = (parseRefund(baseNote) || {}).amount || 0;
+    const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote);
+    // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
+    try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: new Date().toISOString().slice(0, 10), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
+    const prevPaid = o.paid_mnt, prevNote = o.note;
+    o.paid_mnt = newPaid; o.note = newNote;
+    try {
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
+        method: 'PATCH',
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ paid_mnt: newPaid, note: newNote, updated_at: new Date().toISOString() }),
+      }, 15000);
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
+      close();
+      showToast(`Буцаан олголт бүртгэлээ: ${fmtMoney(refundAmt)}`, 'success', 3000);
+      render();
+    } catch (err) { o.paid_mnt = prevPaid; o.note = prevNote; btn.disabled = false; showToast('Алдаа: ' + err.message, 'error', 4500); }
+  };
+  modal.classList.add('open');
+}
+
 // Төлбөр бүртгэх — bq_orders.total_paid шинэчлэх + bq_payments-д бичих (audit). Ноорог→Захиалсан.
 async function submitBqPayment(oid, modal, btn) {
   const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -16884,7 +16981,7 @@ async function submitBqPayment(oid, modal, btn) {
     if (newStatus !== prevStatus) body.status = newStatus;
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
@@ -16893,7 +16990,7 @@ async function submitBqPayment(oid, modal, btn) {
       const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now() + '-' + Math.round(rc.amount);
       await fetchWithTimeout(`${DB_URL}/rest/v1/bq_payments`, {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: pid, order_id: oid, ptype: 'payment_charges', provider_method: method, status: 'succeeded', mode: 'manual', amount_in_cents: Math.round(rc.amount * 100), currency: 'mnt', succeeded_at: rc.date + 'T00:00:00+00:00', created_at: new Date().toISOString() }),
       }, 15000);
     } catch (e2) { console.warn('bq payment record', e2); }
@@ -22168,7 +22265,7 @@ async function saveTaskVoice(taskId, isNew) {
     if (state._taskVoice) {
       await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio`, {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ task_id: taskId, audio: state._taskVoice, duration: state._taskVoiceDur || null })
       }, 60000);
     } else if (!isNew) {
@@ -23945,7 +24042,7 @@ function setupProfileModal() {
       const _bank = gv('profile-bank'), _acct = gv('profile-account');
       try {
         await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_profile`, {
-          method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
+          method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_phone: oldPhoneD, p_bank: _bank, p_bank_account: _acct, p_bank_holder: gv('profile-holder'), p_emergency_name: gv('profile-emg-name'), p_emergency_phone: gv('profile-emg-phone') })
         }, 15000);
         if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone') });
@@ -23961,7 +24058,7 @@ function setupProfileModal() {
     if ((_photoUrl || _phoneChanged) && oldPhoneD) {
       try {
         const rc = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_contact`, {
-          method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
+          method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_phone: oldPhoneD, p_photo: _photoUrl, p_new_phone: _phoneChanged ? phone : null })
         }, 15000);
         if (rc.ok) { if (member) { if (_photoUrl) member.photo = _photoUrl; } }

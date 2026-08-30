@@ -15670,18 +15670,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
   if (!o) return;
   if (opts.confirm && !(await showConfirm(opts.confirm, { okText: opts.okText || 'Тийм', danger: opts.danger }))) return;
   const prev = o.status, prevNote = o.note;
-  o.status = to;          // optimistic
-  // app_orders note-д тэмдэглэл: цуцлах бол ШАЛТГААН (⟦CX⟧), бусад алхамд ХЭН дарсныг (⟦SL⟧)
-  let notePatch = null;
-  if (table === 'app_orders' && state.me) {
-    if (to === 'canceled' && opts.reason) {
-      notePatch = setCancelReason(o.note, opts.reason);
-      o.note = notePatch;
-    } else if (to !== 'canceled') {
-      notePatch = stageLogSet(o.note, to, state.me, new Date().toISOString().slice(0, 10));
-      o.note = notePatch;
-    }
-  }
+  o.status = to;          // optimistic (төлөв шууд харагдана)
   // Дамжлагын зураг + үнэлгээ (stage_meta jsonb) — товчны модалаас ирнэ
   let prevStageMeta = null;
   if (table === 'app_orders' && opts.stageMeta) {
@@ -15690,6 +15679,21 @@ async function bqUpdateStatus(oid, to, opts = {}) {
   }
   render();
   try {
+    // NOTE доторх токен (⟦PAY⟧ төлбөр, барьцаа, ⟦CI⟧ байгууллага г.м.) зэрэгцээ бичилтэд ДАРАГДАХААС сэргийлэх:
+    // PATCH хийхийн ЯГ ӨМНӨ серверийн note-ийн хамгийн сүүлийн утгыг уншиж, ТҮҮН дээр ⟦SL⟧/⟦CX⟧-г нэмнэ.
+    // Ингэснээр read-modify-write цонх (хуудас ачаалснаас статус солих хүртэлх урт зай) хэдхэн зуун мс болж багасна.
+    let notePatch = null;
+    if (table === 'app_orders' && state.me && (to === 'canceled' ? !!opts.reason : true)) {
+      let baseNote = o.note;
+      try {
+        const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, {
+          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+        }, 8000);
+        if (gr.ok) { const rows = await gr.json(); if (rows && rows[0] && rows[0].note != null) baseNote = String(rows[0].note); }
+      } catch (_) { /* сүлжээ унавал санах ойн note дээр буцаж тооцно */ }
+      notePatch = (to === 'canceled') ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, new Date().toISOString().slice(0, 10));
+      o.note = notePatch;
+    }
     const body = { status: to, updated_at: new Date().toISOString() };
     if (notePatch !== null) body.note = notePatch;
     if (opts.stageMeta && table === 'app_orders') body.stage_meta = opts.stageMeta;
@@ -15710,6 +15714,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
         ensureStageTask(o);
       } catch (e3) { console.warn('stage autotask', e3); }
     }
+    render();   // note токен (⟦SL⟧/⟦CX⟧) + шинэ дамжлагын ажлыг дэлгэцэд тусгана
   } catch (e) {
     o.status = prev; o.note = prevNote;     // буцаах
     if (prevStageMeta !== null) o.stage_meta = prevStageMeta;

@@ -3561,7 +3561,7 @@ function renderSidebar() {
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
-  _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
+  _setGrp('nav-group-hr', ['nav-access', 'nav-orgchart', 'nav-attendance', 'nav-salary', 'nav-performance']);
   _setGrp('nav-group-analytics', ['nav-reports']);
   _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
@@ -3697,6 +3697,12 @@ function renderTaskList() {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
     renderVatView(wrap);
+    return;
+  } else if (state.view === 'orgchart') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderOrgChart();
+    attachOrgHandlers();
     return;
   } else if (state.view === 'access') {
     if (tableHead) tableHead.style.display = 'none';
@@ -9900,6 +9906,103 @@ function memberAccessState(m) {
   if (rt) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(rt, v.key)) base[v.key] = !!rt[v.key]; });  // албан тушаалын давхарга
   if (ov) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(ov, v.key)) base[v.key] = !!ov[v.key]; });  // хувь хүний override
   return { access: base, hasOverride: !!ov, isCeo };
+}
+
+// ════════════ БАЙГУУЛЛАГЫН БҮТЭЦ (Org chart) ════════════
+// Иерархийг ажилтны зэрэглэл (level) + салбараар АВТОМАТААР үүсгэнэ (reports_to талбар байхгүй).
+//   level>=100 → Удирдлага (CEO) · 80-99 → Захирал · 55-79 → Менежер · <55 → Ажилтан · Цагийн=бүлэг.
+const ORG_BRANCH_META = {
+  'm-event': { label: '⛺ M-Event', color: '#2563EB' },
+  'camp':    { label: '🏔 NOMAAD', color: '#16A34A' },
+  'catering':{ label: '🍽 Катеринг', color: '#EA580C' },
+  'shared':  { label: '🏢 Нэгдсэн', color: '#64748B' },
+};
+function _orgBranches(m) {
+  let bs = [];
+  try { bs = (typeof memberBranchesOf === 'function' ? memberBranchesOf(m) : (m && m.branches) || []) || []; } catch (e) { bs = []; }
+  return bs.filter(b => ORG_BRANCH_META[b]);   // 'm-event'|'camp'|'catering'
+}
+function _orgPrimaryBranch(m) { const b = _orgBranches(m); return b[0] || 'shared'; }
+function _orgShareBranch(a, b) { const A = _orgBranches(a), B = _orgBranches(b); if (!A.length || !B.length) return true; return A.some(x => B.includes(x)); }
+function _orgLevel(m) { const l = Number(m && m.level) || 0; return l || (typeof levelForRole === 'function' ? levelForRole(m && m.role) : 40); }
+function buildOrgTree() {
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+  const ceo   = active.filter(m => _orgLevel(m) >= 100).sort((a, b) => _orgLevel(b) - _orgLevel(a));
+  const dirs  = active.filter(m => _orgLevel(m) >= 80 && _orgLevel(m) < 100);
+  const mgrs  = active.filter(m => _orgLevel(m) >= 55 && _orgLevel(m) < 80 && !isDailyMember(m));
+  const emps  = active.filter(m => !isDailyMember(m) && _orgLevel(m) > 0 && _orgLevel(m) < 55);
+  const daily = active.filter(m => isDailyMember(m));
+  const assigned = new Set();
+  const node = m => ({ m, children: [] });
+  const key = m => personKey(m);
+  const mkMgr = (mgr) => {
+    const n = node(mgr);
+    emps.forEach(e => { const k = key(e); if (assigned.has(k)) return; if (_orgShareBranch(mgr, e)) { assigned.add(k); n.children.push(node(e)); } });
+    return n;
+  };
+  const dirNodes = dirs.map(d => {
+    const n = node(d);
+    mgrs.forEach(mg => { const k = key(mg); if (assigned.has(k)) return; if (_orgShareBranch(d, mg)) { assigned.add(k); n.children.push(mkMgr(mg)); } });
+    return n;
+  });
+  const orphanMgr = mgrs.filter(mg => !assigned.has(key(mg))).map(mg => { assigned.add(key(mg)); return mkMgr(mg); });
+  // Менежергүй үлдсэн ажилтныг салбарынх нь захирал руу, эс бол дээд түвшинд
+  emps.filter(e => !assigned.has(key(e))).forEach(e => { const d = dirNodes.find(dn => _orgShareBranch(dn.m, e)); if (d) { assigned.add(key(e)); d.children.push(node(e)); } });
+  const stillEmp = emps.filter(e => !assigned.has(key(e))).map(e => node(e));
+  const dailyNode = daily.length ? { group: true, label: 'Цагийн ажилчид', count: daily.length, names: daily.map(d => d.name || '?'), children: [] } : null;
+  const topKids = [...dirNodes, ...orphanMgr, ...stillEmp];
+  if (dailyNode) topKids.push(dailyNode);
+  if (ceo.length === 1) { const root = node(ceo[0]); root.children = topKids; return root; }
+  const root = { virtual: true, label: 'Чимун ХХК', sub: 'Байгууллагын бүтэц', children: [...ceo.map(node), ...topKids] };
+  return root;
+}
+function orgCardHtml(n) {
+  if (n.virtual) return `<div class="org-card org-root"><div class="org-name">${escapeHtml(n.label)}</div><div class="org-role">${escapeHtml(n.sub || '')}</div></div>`;
+  if (n.group) return `<div class="org-card org-b-daily" title="${escapeHtml((n.names || []).join(', '))}"><div class="org-ava org-ava-daily">⏱</div><div class="org-name">${escapeHtml(n.label)}</div><div class="org-role">${n.count} хүн</div></div>`;
+  const m = n.m, br = _orgPrimaryBranch(m);
+  const ava = (typeof staffAvatarImg === 'function' ? staffAvatarImg(m) : '');
+  const init = escapeHtml(memberInitials(personKey(m)));
+  return `<div class="org-card org-b-${br}">
+    <div class="org-ava"><span class="org-init">${init}</span>${ava}</div>
+    <div class="org-name">${escapeHtml(m.name || '?')}</div>
+    <div class="org-role">${escapeHtml(m.role || '')}</div>
+  </div>`;
+}
+function orgNodeHtml(n) {
+  const kids = (n.children && n.children.length) ? `<ul>${n.children.map(orgNodeHtml).join('')}</ul>` : '';
+  return `<li>${orgCardHtml(n)}${kids}</li>`;
+}
+function renderOrgChart() {
+  const root = buildOrgTree();
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+  const cnt = f => active.filter(f).length;
+  const stat = (label, val, cls) => `<div class="org-stat ${cls || ''}"><b>${val}</b><span>${label}</span></div>`;
+  const stats = `<div class="org-stats">
+    ${stat('Нийт ажилтан', active.length)}
+    ${stat('Захирал', cnt(m => _orgLevel(m) >= 80 && _orgLevel(m) < 100))}
+    ${stat('Менежер', cnt(m => _orgLevel(m) >= 55 && _orgLevel(m) < 80 && !isDailyMember(m)))}
+    ${stat('⛺ M-Event', cnt(m => _orgBranches(m).includes('m-event')), 'org-b-m-event')}
+    ${stat('🏔 NOMAAD', cnt(m => _orgBranches(m).includes('camp')), 'org-b-camp')}
+    ${stat('🍽 Катеринг', cnt(m => _orgBranches(m).includes('catering')), 'org-b-catering')}
+  </div>`;
+  const legend = `<div class="org-legend">${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
+  const head = `<div class="org-head">
+    <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан</div></div>
+    <div class="org-zoom"><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
+  </div>`;
+  return `<div class="org-wrap">${head}${stats}${legend}
+    <div class="org-scroll"><div class="org-tree" id="org-tree" style="transform:scale(${state.orgZoom || 1});"><ul>${orgNodeHtml(root)}</ul></div></div>
+  </div>`;
+}
+function attachOrgHandlers() {
+  document.querySelectorAll('[data-org-zoom]').forEach(b => b.addEventListener('click', () => {
+    const d = b.dataset.orgZoom; let z = state.orgZoom || 1;
+    if (d === '+') z = Math.min(1.8, +(z + 0.15).toFixed(2));
+    else if (d === '-') z = Math.max(0.4, +(z - 0.15).toFixed(2));
+    else z = 1;
+    state.orgZoom = z;
+    const t = document.getElementById('org-tree'); if (t) t.style.transform = 'scale(' + z + ')';
+  }));
 }
 
 // ════════════ АЖИЛТАН УДИРДАХ ТӨВ (Ажилтан / Албан тушаал & Эрх / Цалин) ════════════

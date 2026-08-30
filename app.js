@@ -7852,7 +7852,8 @@ const PERM_MENUS = [
       { key: 'salary.edit', label: 'Суурь цалин тохируулах' },
       { key: 'salary.pay',  label: 'Цалин олгох' } ] },
   { key: 'attendance',  label: 'Ирц',     actions: [] },
-  { key: 'access',      label: 'Ажилчид (удирдах)', actions: [] },   // ажилтан нэмэх/засах; эрх засах таб дотроо CEO-only хэвээр
+  { key: 'access',      label: 'Ажилчид (удирдах)', actions: [
+      { key: 'access.delegate', label: 'Доорхийн эрх удирдах' } ] },   // ажилтан нэмэх/засах; эрх засах: CEO бүгдийг, delegate=доорхио
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -7911,6 +7912,38 @@ function canAccessView(key, fallback) {
 function can(key) {
   const v = capValue(key);
   return v === undefined ? true : v;
+}
+// ── Доорхийн эрх удирдах делегаци (org tree доорхи хүмүүсийн эрхийг удирдах) ──
+// CEO бүгдийг; 'access.delegate' эрхтэй захирал (COO г.м.) ЗӨВХӨН өөрийн org-tree доорхыг.
+function canDelegatePerms() { return state.isCEO || capValue('access.delegate') === true; }
+// Тухайн хүн (state.me)-ийн org-tree доорхи бүх хүний түлхүүр (шууд + шууд бус)
+function orgDescendantKeys(meKey) {
+  const set = new Set();
+  try {
+    const root = buildOrgTree();
+    let mine = null;
+    (function find(n) { if (n && n.key === meKey) { mine = n; return; } (n.children || []).forEach(find); })(root);
+    if (mine) (function coll(n) { (n.children || []).forEach(c => { if (c.key) set.add(c.key); coll(c); }); })(mine);
+  } catch (e) {}
+  return set;
+}
+// state.me тухайн хүний эрхийг УДИРДАЖ болох эсэх (CEO бүгдийг; delegate=зөвхөн доорхио; өөрийгөө үгүй)
+function canManagePermsOf(targetKey) {
+  if (!targetKey || targetKey === state.me) return false;
+  if (state.isCEO) return true;
+  if (!canDelegatePerms()) return false;
+  return orgDescendantKeys(state.me).has(targetKey);
+}
+// state.me тухайн эрхийг БУСДАД олгож чадах эсэх (escalation хаана — өөрт байхгүйг өгөхгүй)
+function editorCanGrant(key, kind) {
+  if (state.isCEO) return true;
+  if (key === 'access' || key === 'access.delegate') return false;   // делегацийг тараахыг хориглоно
+  if (kind === 'view') {
+    const menu = PERM_MENUS.find(m => m.key === key);
+    if (menu && menu.core) return true;   // үндсэн цэс бүгдэд нээлттэй
+    return !!canAccessView(key, () => false);   // захирал өөрөө тэр view-г хардаг байх ёстой
+  }
+  return can(key);   // үйлдэл: захирал өөрөө тэр үйлдэлтэй байх ёстой
 }
 function canSeeProducts() { return canAccessView('products', false); }       // default: зөвхөн CEO
 function canSeeHistory() { return canAccessView('history', false); }
@@ -9999,10 +10032,12 @@ function orgCardHtml(n) {
   const m = n.m, br = _orgPrimaryBranch(m);
   const ava = (typeof staffAvatarImg === 'function' ? staffAvatarImg(m) : '');
   const init = escapeHtml(memberInitials(personKey(m)));
-  const moveBtn = state.orgEdit ? `<button class="org-move" data-org-move="${escapeHtml(n.key)}" title="Өөр удирдагчийн дор шилжүүлэх">⇄</button>` : '';
+  const moveBtn = (state.orgEdit && canAccessView('access', () => state.isCEO)) ? `<button class="org-move" data-org-move="${escapeHtml(n.key)}" title="Өөр удирдагчийн дор шилжүүлэх">⇄</button>` : '';
+  // 🔑 Эрх удирдах — CEO бүгдэд, delegate захирал зөвхөн доорхи хүнд
+  const permBtn = (canManagePermsOf(n.key)) ? `<button class="org-perm" data-org-perm="${escapeHtml(n.key)}" title="Энэ хүний эрхийг удирдах">🔑</button>` : '';
   const hasOv = state.orgOverrides && state.orgOverrides[n.key];
   const ovBadge = hasOv ? `<span class="org-ovbadge" title="Гараар шилжүүлсэн">✋</span>` : '';
-  return `<div class="org-card org-b-${br}">${moveBtn}${ovBadge}
+  return `<div class="org-card org-b-${br}">${moveBtn}${permBtn}${ovBadge}
     <div class="org-ava"><span class="org-init">${init}</span>${ava}</div>
     <div class="org-name">${escapeHtml(m.name || '?')}</div>
     <div class="org-role">${escapeHtml(m.role || '')}</div>
@@ -10014,7 +10049,7 @@ function orgNodeHtml(n) {
 }
 function renderOrgChart() {
   if (state.orgOverrides === undefined) { state.orgOverrides = null; loadAppConfig('org_overrides').then(v => { state.orgOverrides = (v && typeof v === 'object') ? v : {}; render(); }); }
-  const canEdit = canAccessView('access', () => state.isCEO);
+  const canEdit = canAccessView('access', () => state.isCEO) || canDelegatePerms();
   if (state.orgEdit && !canEdit) state.orgEdit = false;
   const root = buildOrgTree();
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
@@ -10079,6 +10114,14 @@ async function orgSetParent(childKey, parentKey) {
 function attachOrgHandlers() {
   document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
   document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));
+  // 🔑 → тухайн хүний эрх засах хэсэг рүү шууд шилжинэ (Ажилчид → Эрх → Хүнээр)
+  document.querySelectorAll('[data-org-perm]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const pk = b.dataset.orgPerm;
+    if (!canManagePermsOf(pk)) { showToast('Эрх удирдах боломжгүй', 'error', 2500); return; }
+    state.view = 'access'; state.hubTab = 'roles'; state.accessRoleMode = 'person'; state.accessExpandedPerson = pk;
+    render();
+  }));
   document.querySelectorAll('[data-org-zoom]').forEach(b => b.addEventListener('click', () => {
     const d = b.dataset.orgZoom; let z = state.orgZoom || 1;
     if (d === '+') z = Math.min(1.8, +(z + 0.15).toFixed(2));
@@ -10093,9 +10136,9 @@ function attachOrgHandlers() {
 function renderAccess() {
   if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }
   if (state.hubTab === 'salary') state.hubTab = 'people';   // Цалин тусдаа "Цалин" менюд шилжсэн — давхцал арилгав
-  // Эрх засах (roles) = ЗӨВХӨН CEO (DB талд ч member_perms/role_perms бичих RLS lvl>=100).
-  // Ажилтан удирдах (people)-ыг эрх олгогдсон захиралд өгч болно.
-  const canPerms = state.isCEO;
+  // Эрх засах (roles): CEO бүгдийг; 'access.delegate' эрхтэй захирал ЗӨВХӨН org-tree доорхи хүмүүсийг
+  // (renderAccessByPerson шүүнэ, escalation түгжигдэнэ). Албан тушаалын загвар (role_perms) хэвээр CEO-only.
+  const canPerms = state.isCEO || canDelegatePerms();
   const tab = (state.hubTab === 'roles' && !canPerms) ? 'people' : (state.hubTab || 'people');
   const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Ажилтан${canPerms ? ' · албан тушаал & эрх' : ' · албан тушаал'} — нэг дороос</div></div>`;
   const tabs = canPerms ? [['people', '👤 Ажилтан'], ['roles', '🔑 Эрх']] : [['people', '👤 Ажилтан']];
@@ -10140,20 +10183,24 @@ function effectiveCapForMember(m, key, kind) {
   return true; // үйлдэл default = зөвшөөрнө
 }
 // Эрхийн чагтны матриц (цэс бүр: 👁 Харах + үйлдлүүд). getVal(key,kind)->bool.
-function capMatrixHtml(dataAttr, holderKey, getVal) {
+// canGrant(key,kind) — сонголтоор: false буцаавал тухайн чагтыг ТҮГЖИНЭ (escalation хаах). null=бүгд нээлттэй.
+function capMatrixHtml(dataAttr, holderKey, getVal, canGrant) {
+  const chip = (key, kind, label, on) => {
+    const lock = canGrant && !canGrant(key, kind);
+    if (lock) return `<span class="ac-chip${on ? ' on' : ' act-off'} locked" title="Танд энэ эрх байхгүй тул олгож чадахгүй">${label}</span>`;
+    return `<label class="ac-chip${on ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${escapeHtml(key)}" data-cap-kind="${kind}" ${on ? 'checked' : ''}>${label}</label>`;
+  };
   return `<div style="margin-top:8px;">` + PERM_MENUS.map(menu => {
     const viewChip = menu.core
       ? `<span class="ac-chip on locked" title="Үндсэн цэс — бүгдэд нээлттэй">✓ Харах</span>`
-      : (() => { const vc = getVal(menu.key, 'view');
-          return `<label class="ac-chip${vc ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${menu.key}" data-cap-kind="view" ${vc ? 'checked' : ''}>👁 Харах</label>`; })();
-    const actChips = menu.actions.map(a => {
-      const allowed = getVal(a.key, 'action');
-      return `<label class="ac-chip${allowed ? ' on' : ' act-off'}"><input type="checkbox" data-${dataAttr}="${escapeHtml(holderKey)}" data-cap-key="${a.key}" data-cap-kind="action" ${allowed ? 'checked' : ''}>${escapeHtml(a.label)}</label>`;
-    }).join('');
+      : chip(menu.key, 'view', '👁 Харах', getVal(menu.key, 'view'));
+    const actChips = menu.actions.map(a => chip(a.key, 'action', escapeHtml(a.label), getVal(a.key, 'action'))).join('');
     return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
   }).join('') + `</div>`;
 }
 function renderAccessRoles() {
+  // Албан тушаалын загвар (role_perms) = ЗӨВХӨН CEO. Delegate захирал зөвхөн "Хүнээр" (доорхио) засна.
+  if (!state.isCEO) return renderAccessByPerson();
   // Хоёр горим: (1) Албан тушаалаар (role_perms — бүлгээр) (2) Хүнээр (member_perms — онцгой override).
   const mode = state.accessRoleMode || 'role';
   const modeBar = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
@@ -10204,13 +10251,19 @@ function renderRoleTemplates() {
 }
 function renderAccessByPerson() {
   // ХҮН ТУС БҮРЭЭР — онцгой эрх (member_perms), албан тушаалын загварыг дарна.
+  // Delegate захирал (non-CEO): ЗӨВХӨН өөрийн org-tree доорхи хүмүүс, escalation түгжигдэнэ.
+  const amCeo = state.isCEO;
+  const manageable = amCeo ? null : orgDescendantKeys(state.me);
   const br = effectiveBranchLens() || 'all';
   const q = (state.accessSearch || '').toLowerCase().trim();
   const people = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, br))
+    .filter(m => amCeo || manageable.has(personKey(m)))
     .filter(m => !q || (m.name || '').toLowerCase().includes(q) || (m.role || '').toLowerCase().includes(q))
     .sort((a, b) => ((b.level || 0) - (a.level || 0)) || String(a.name || '').localeCompare(String(b.name || '')));
   const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
-    <b>Хүн</b> дээр дарж задлаад эрхийг нь тохируул. Ногоон чагт = зөвшөөрнө, авбал = хориглоно. Өөрчлөлт тухайн хүн апп нээх/refresh хийхэд хүчинтэй. CEO хязгаарлагдахгүй.
+    ${amCeo
+      ? '<b>Хүн</b> дээр дарж задлаад эрхийг нь тохируул. Ногоон чагт = зөвшөөрнө, авбал = хориглоно. Өөрчлөлт тухайн хүн апп нээх/refresh хийхэд хүчинтэй. CEO хязгаарлагдахгүй.'
+      : '✋ <b>Доорхийн эрх удирдах:</b> зөвхөн танай <b>бүтцийн доор</b> байгаа хүмүүс харагдана. <b>Танд байхгүй</b> эрхийг олгож чадахгүй (түгжээтэй чагт). Албан тушаал/CEO зэрэглэлийг өөрчлөхгүй.'}
   </div>`;
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Нэр / албан тушаал хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
   const expPerson = state.accessExpandedPerson || '';
@@ -10218,8 +10271,9 @@ function renderAccessByPerson() {
   // Цагийн/өдрийн ажилчид → НЭГ бүлэг карт (нэг бүрчлэн биш). Бусад ажилтан → хувь хүнээр.
   const dailyPeople = people.filter(m => isDailyMember(m));
   const nonDaily = people.filter(m => !isDailyMember(m));
-  // ── Цагийн ажилтны бүлгийн карт ──
+  // ── Цагийн ажилтны бүлгийн карт ── (бүлгийн загвар = role_perms → ЗӨВХӨН CEO)
   const dailyCard = (() => {
+    if (!amCeo) return '';
     if (!dailyPeople.length) return '';
     const gExp = expPerson === '__daily__';
     const head = `<div class="ac-person-head" data-person-toggle="__daily__" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
@@ -10251,8 +10305,9 @@ function renderAccessByPerson() {
     // 🏢 Салбар — дата ХАМРАХ ХҮРЭЭ. Нэг салбар сонговол тухайн хүн зөвхөн түүнийг л хардаг (захиалга/санхүү/ажилтан…). Хоосон=бүгд.
     const bs = memberBranchesOf(m);
     const brChip = (val, label) => `<label class="ac-chip${bs.includes(val) ? ' on' : ' act-off'}"><input type="checkbox" data-branch-cap="${escapeHtml(pk)}" data-branch-val="${val}" ${bs.includes(val) ? 'checked' : ''}>${label}</label>`;
-    const branchPick = `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>`;
-    return wrap(summary + branchPick + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind)) + reset);
+    const branchPick = amCeo ? `<div class="ac-menu"><div class="ac-menu-name">🏢 Салбар <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(харах дата — нэг салбар сонговол зөвхөн түүнийг л хардаг; хоосон=бүгд)</span></div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${brChip('m-event', '⛺ M-Event')}${brChip('camp', '🏔 NOMAAD')}</div></div>` : '';
+    const grantFn = amCeo ? null : editorCanGrant;
+    return wrap(summary + branchPick + capMatrixHtml('person-cap', pk, (key, kind) => effectiveCapForMember(m, key, kind), grantFn) + reset);
   }).join('');
   const body = dailyCard + rows;
   return `${note}${searchBar}<div class="ac-wrap">${body || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
@@ -10302,6 +10357,11 @@ function attachAccessHandlers() {
   }));
   document.querySelectorAll('input[data-person-cap]').forEach(cb => cb.addEventListener('change', () => {
     const pk = cb.dataset.personCap;
+    // Escalation хамгаалалт (delegate): CEO биш бол өөрт байхгүй эрхийг олгож чадахгүй + доорхи хүн л
+    if (!state.isCEO) {
+      if (!canManagePermsOf(pk)) { cb.checked = !cb.checked; showToast('Энэ хүний эрхийг та удирдах эрхгүй', 'error', 3000); return; }
+      if (cb.checked && !editorCanGrant(cb.dataset.capKey, cb.dataset.capKind)) { cb.checked = false; showToast('Танд энэ эрх байхгүй тул олгож чадахгүй', 'warn', 2500); return; }
+    }
     // Ижил эрх (capKey) олон цэсэнд байвал (ж orders.pay = Захиалга + Авлага) БҮГДИЙГ синк хийнэ,
     // эс бөгөөс gatherFull-д сүүлийнх нь ялж, зөрчилдөнө.
     document.querySelectorAll(`input[data-person-cap="${CSS.escape(pk)}"][data-cap-key="${CSS.escape(cb.dataset.capKey)}"]`).forEach(x => {
@@ -10309,7 +10369,10 @@ function attachAccessHandlers() {
       const c = x.closest('.ac-chip'); if (c) { c.classList.toggle('on', cb.checked); c.classList.toggle('act-off', !cb.checked); }
     });
     const inputs = [...document.querySelectorAll(`input[data-person-cap="${CSS.escape(pk)}"]`)];
-    saveMemberPerms(pk, gatherFull(inputs));   // БҮРЭН — хүний эрх албан тушаалыг дарна
+    let perms = gatherFull(inputs);   // БҮРЭН — хүний эрх албан тушаалыг дарна
+    // Delegate: түгжигдсэн (input биш) эрхүүдийг хэвээр хадгалж, доорхийн одоо байгаа эрхийг санамсаргүй хумихаас сэргийлнэ
+    if (!state.isCEO) perms = Object.assign({}, (state.memberPerms && state.memberPerms[pk]) || {}, perms);
+    saveMemberPerms(pk, perms);
     showToast('Эрх хадгаллаа', 'success', 1500);
   }));
   document.querySelectorAll('[data-person-reset]').forEach(b => b.addEventListener('click', (e) => {
@@ -14325,7 +14388,7 @@ const BQ_STATUS = {
   delivering:  { label: 'Хүргэгдэж байна', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   returning:   { label: 'Буцаалт замд', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
-  returned:    { label: 'Буцаан авсан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
+  returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
   deleted:     { label: 'Устгасан',      dot: '#9CA3AF', bg: '#F3F4F6', tx: '#6B7280' },

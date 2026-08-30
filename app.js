@@ -14094,7 +14094,10 @@ const BQ_STATUS = {
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned', 'stopped', 'archived', 'canceled'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+// Хуучин (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
+// ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана (жишээ ready/cleaning='Цэвэрлэсэн/Бэлдсэн').
+const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', ready: 'prepared', started: 'rented' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
@@ -14566,6 +14569,7 @@ function unifiedOrders() {
   const _today = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
   return (state.appOrders || []).map(ao => {
     let raw = String(ao.status || 'reserved');
+    if (BQ_LEGACY_MAP[raw]) raw = BQ_LEGACY_MAP[raw];   // хуучин төлөв → одоогийн (таб дор харагдана)
     const _unpaid = (Number(ao.paid_mnt) || 0) <= 0;
     // Төлбөр бүртгэгдээгүй захиалга = Ноорог. "Захиалсан" (reserved) руу зөвхөн төлбөр
     // бүртгэгдэхэд шилжинэ. (Зөвхөн харагдац/бүлэглэл — агуулахын нөөц state.appOrders-ийн

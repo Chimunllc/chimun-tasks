@@ -6222,3 +6222,7 @@ body.role-daily #add-project { display: none !important; }
 .sc-modal { display:flex; flex-direction:column; max-height:85vh; }
 .sc-head { flex:0 0 auto; }
 .sc-body { flex:1 1 auto; overflow-y:auto; min-height:0; -webkit-overflow-scrolling:touch; }
+
+/* Org chart — удирдах боломжтой карт дарагдана */
+.org-card.org-clickable { cursor:pointer; }
+.org-card.org-clickable:hover { box-shadow:0 6px 18px rgba(0,0,0,.14); border-color:var(--accent,#2563EB); }

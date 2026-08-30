@@ -5776,15 +5776,20 @@ function attachOrdersHandlers() {
     el.addEventListener('click', () => { state.ordersView = 'list'; state.ordersSearch = el.dataset.orderOpen; render(); });
   });
 
-  // Хайлт — DOM шүүлт (re-render-гүй, бичих фокус хадгална)
+  // Хайлт — state.ordersSearch-д хадгалж дахин рендэрлэнэ. Рендэрийн үеийн `q` (мөр ~5453) нь e.hay-г
+  // жагсаалт+самбар хоёуланд шүүдэг тул энэ л зөв. (Өмнө нь .orders-wrap .order-card-ыг нуудаг байсан —
+  // энэ нь read-only ажилтны харагдац бөгөөд менежерийн .board-order мөрд огт нөлөөлдөггүй байв.)
+  // Түлхэц бүрд биш debounce-оор рендэрлэж, фокус/курсорыг сэргээж бичилтийг тасалдуулахгүй.
   const search = document.getElementById('orders-search');
   if (search) {
     search.addEventListener('input', () => {
       state.ordersSearch = search.value;
-      const q = search.value.trim().toLowerCase();
-      document.querySelectorAll('.orders-wrap .order-card').forEach(card => {
-        card.style.display = (!q || (card.dataset.haystack || '').includes(q)) ? '' : 'none';
-      });
+      clearTimeout(state._ordersSearchT);
+      state._ordersSearchT = setTimeout(() => {
+        render();
+        const el = document.getElementById('orders-search');
+        if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
+      }, 180);
     });
   }
 
@@ -10045,11 +10050,13 @@ function orgCardHtml(n) {
   const ava = (typeof staffAvatarImg === 'function' ? staffAvatarImg(m) : '');
   const init = escapeHtml(memberInitials(personKey(m)));
   const moveBtn = (state.orgEdit && canAccessView('access', () => state.isCEO)) ? `<button class="org-move" data-org-move="${escapeHtml(n.key)}" title="Өөр удирдагчийн дор шилжүүлэх">⇄</button>` : '';
-  // 🔑 Эрх удирдах — CEO бүгдэд, delegate захирал зөвхөн доорхи хүнд
-  const permBtn = (canManagePermsOf(n.key)) ? `<button class="org-perm" data-org-perm="${escapeHtml(n.key)}" title="Энэ хүний эрхийг удирдах">🔑</button>` : '';
+  // Картыг дархад удирдах popup нээгдэнэ — CEO/ажилтан удирдах эрхтэй/доорхийн эрх удирдах захирал
+  const _m = state._orgManage || {};
+  const canOpen = _m.ceo || _m.staff || (_m.deleg && _m.deleg.has(n.key));
+  const permBtn = canOpen ? `<button class="org-perm" data-org-perm="${escapeHtml(n.key)}" title="Энэ хүнийг удирдах">⚙️</button>` : '';
   const hasOv = state.orgOverrides && state.orgOverrides[n.key];
   const ovBadge = hasOv ? `<span class="org-ovbadge" title="Гараар шилжүүлсэн">✋</span>` : '';
-  return `<div class="org-card org-b-${br}">${moveBtn}${permBtn}${ovBadge}
+  return `<div class="org-card org-b-${br}${canOpen ? ' org-clickable' : ''}"${canOpen ? ` data-org-card="${escapeHtml(n.key)}"` : ''}>${moveBtn}${permBtn}${ovBadge}
     <div class="org-ava"><span class="org-init">${init}</span>${ava}</div>
     <div class="org-name">${escapeHtml(m.name || '?')}</div>
     <div class="org-role">${escapeHtml(m.role || '')}</div>
@@ -10063,6 +10070,8 @@ function renderOrgChart() {
   if (state.orgOverrides === undefined) { state.orgOverrides = null; loadAppConfig('org_overrides').then(v => { state.orgOverrides = (v && typeof v === 'object') ? v : {}; render(); }); }
   const canEdit = canAccessView('access', () => state.isCEO) || canDelegatePerms();
   if (state.orgEdit && !canEdit) state.orgEdit = false;
+  // Удирдах эрхийг УРЬДЧИЛАН тооцно (карт бүрд дахин buildTree дуудахгүй)
+  state._orgManage = { ceo: state.isCEO, staff: canAccessView('access', () => state.isCEO), delegCan: canDelegatePerms(), deleg: (!state.isCEO && canDelegatePerms()) ? orgDescendantKeys(state.me) : null };
   const root = buildOrgTree();
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
   const cnt = f => active.filter(f).length;
@@ -10077,8 +10086,10 @@ function renderOrgChart() {
   </div>`;
   const legend = `<div class="org-legend">${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
   const editBtn = canEdit ? `<button class="btn${state.orgEdit ? ' btn-primary' : ''}" data-org-edit title="Хүн шилжүүлэх" style="padding:5px 12px;font-size:12.5px;">${state.orgEdit ? '✓ Дууссан' : '✏️ Засах'}</button>` : '';
+  const _dbg = (!state.isCEO && (state._orgManage.staff || state._orgManage.delegCan))
+    ? ` · <b style="color:${state._orgManage.delegCan ? 'var(--ok)' : 'var(--danger,#dc2626)'}">эрх удирдах: ${state._orgManage.delegCan ? 'тийм' : 'үгүй'}${state._orgManage.deleg ? ' · доорх ' + state._orgManage.deleg.size : ''}</b>` : '';
   const head = `<div class="org-head">
-    <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан</div></div>
+    <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_dbg}</div></div>
     <div class="org-zoom">${editBtn}<button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
   </div>`;
   const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';
@@ -10126,12 +10137,11 @@ async function orgSetParent(childKey, parentKey) {
 function attachOrgHandlers() {
   document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
   document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));
-  // 🔑 → тухайн хүний эрх засах хэсэг рүү шууд шилжинэ (Ажилчид → Эрх → Хүнээр)
-  document.querySelectorAll('[data-org-perm]').forEach(b => b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const pk = b.dataset.orgPerm;
-    if (!canManagePermsOf(pk)) { showToast('Эрх удирдах боломжгүй', 'error', 2500); return; }
-    openStaffCardModal(pk);   // нэгдсэн popup (удирдах + эрх)
+  // ⚙️ товч эсвэл карт дарах → нэгдсэн popup (удирдах + эрх). Модал дотроо эрхээ шалгана.
+  document.querySelectorAll('[data-org-perm]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openStaffCardModal(b.dataset.orgPerm); }));
+  document.querySelectorAll('[data-org-card]').forEach(c => c.addEventListener('click', (e) => {
+    if (e.target.closest('button, a, input, select, label')) return;   // ⇄/⚙️ товч дарвал алгасна
+    openStaffCardModal(c.dataset.orgCard);
   }));
   document.querySelectorAll('[data-org-zoom]').forEach(b => b.addEventListener('click', () => {
     const d = b.dataset.orgZoom; let z = state.orgZoom || 1;

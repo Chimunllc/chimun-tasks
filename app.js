@@ -181,6 +181,9 @@ const state = {
   view: 'mine',          // mine | delegated | finance | all | overdue | today | done | project:<id>
   statusFilter: 'all',   // all | open | done
   financeSort: 'smart',  // smart | date | amount | requester (зөвхөн Санхүү view)
+  companyDocs: null,     // Баримт бичиг — null=татаагүй, [] = хоосон (data баганагүй жагсаалт)
+  docsCat: '',           // '' = бүх ангилал
+  docsSearch: '',
   search: '',
   // Auth state — PIN нэвтрэлтээр populate хийгдэнэ (Google OAuth 2026-05-17-нд хасагдсан).
   user: null,            // { name, role, email, picture, branches }
@@ -3372,6 +3375,7 @@ function render() {
   if (state.view === 'orders' && !canSeeOrders()) state.view = 'mine';
   if (state.view === 'products' && !canSeeProducts()) state.view = 'mine';
   if (state.view === 'accounts' && !state.isCEO) state.view = 'mine';
+  if (state.view === 'documents' && !canSeeDocuments()) state.view = 'mine';
   if (state.view === 'marketing' && !canSeeMarketing()) state.view = 'mine';
   if (state.view === 'receivables' && !canSeeReceivables()) state.view = 'mine';
   if (state.view === 'vat' && !canSeeVat()) state.view = 'mine';
@@ -3541,6 +3545,13 @@ function renderSidebar() {
   // НӨАТ тайлан — CEO / бүх санхүү хардаг хүн (эсвэл эрх олгогдсон).
   const vatNav = document.getElementById('nav-vat');
   if (vatNav) vatNav.style.display = canSeeVat() ? '' : 'none';
+  // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
+  const docNav = document.getElementById('nav-documents');
+  if (docNav) {
+    docNav.style.display = canSeeDocuments() ? '' : 'none';
+    const dCnt = document.getElementById('cnt-documents');
+    if (dCnt) { const n = (state.companyDocs || []).length; dCnt.textContent = n ? String(n) : ''; }
+  }
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
@@ -3548,6 +3559,7 @@ function renderSidebar() {
   _setGrp('nav-group-inventory', ['nav-products']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
+  _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
   _setGrp('nav-group-analytics', ['nav-reports']);
   _setGrp('nav-group-my', ['nav-myattend', 'nav-myexpenses']);
@@ -3573,6 +3585,7 @@ function renderTitle() {
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
     vat:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 14l6-6"/><circle cx="9.5" cy="8.5" r="1.5"/><circle cx="14.5" cy="13.5" r="1.5"/></svg>', 'НӨАТ тайлан', 'Борлуулалтын НӨАТ баримт — захиалгатай тулгах, дэлгэрэнгүй анализ'],
+    documents: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M4 4a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>', 'Баримт бичиг', 'Компанийн гэрчилгээ, гэрээ, загвар, ирсэн/явсан албан бичиг'],
     access: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>', 'Ажилчид', 'Ажилтан, албан тушаал & эрх, цалин'],
     salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
     attendance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>', 'Ирц', 'QR-аар ирц бүртгэх — ажилчид утсаараа уншуулна'],
@@ -3660,6 +3673,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = renderMarketing();
     attachMarketingHandlers();
+    return;
+  } else if (state.view === 'documents') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderDocuments();
+    attachDocumentsHandlers();
     return;
   } else if (state.view === 'myexpenses') {
     if (tableHead) tableHead.style.display = 'none';
@@ -5188,7 +5207,8 @@ function boardOrderRow(e, k, todayStr, flat) {
   const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
   const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
-    : `<span class="br-pay ${_paid > 0 ? 'part' : 'due'}">${_paid > 0 ? '◐ Дутуу' : '○ Төлбөрлөөгүй'}</span>`;
+    : _paid > 0 ? '<span class="br-pay part">◐ Дутуу</span>'
+    : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр авах" товч өөрөө илэрхийлнэ)
   const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
   const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
   // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА болно (бүлэглэлгүй)
@@ -7833,6 +7853,8 @@ const PERM_MENUS = [
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
+  { key: 'documents',   label: 'Баримт бичиг',         actions: [
+      { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 function normRole(role) { return String(role || '').trim().toLowerCase(); }
@@ -8423,6 +8445,284 @@ function acctSpendStats(a) {
   const tr = recs.filter(r => !isCard(r)), cd = recs.filter(isCard);
   return { trN: tr.length, trSum: sum(tr), cdN: cd.length, cdSum: sum(cd), n: recs.length, total: sum(recs), pendN: recs.filter(isPend).length, recs };
 }
+/* ═══════════ БАРИМТ БИЧИГ — компанийн албан бичгийн сан ═══════════
+   Компанийн гэрчилгээ/дүрэм, гэрээ, үнийн саналын загвар, ирсэн/явсан албан бичгийг
+   нэг дор хадгална. Файл нь Postgres `company_docs`-д base64-ээр — receipt_files-тэй
+   ИЖИЛ загвар (нээлттэй статик URL БИШ; зөвхөн нэвтэрсэн ажилтан pgrstBearer()-ээр).
+   ⚠ Жагсаалт татахдаа `data` баганыг СОНГОХГҮЙ — эс бөгөөс бүх файлын биет татагдана. */
+const DOC_CATS = [
+  { key: 'certificate', label: 'Гэрчилгээ & дүрэм', icon: '📜' },
+  { key: 'contract',    label: 'Гэрээ',             icon: '📝' },
+  { key: 'template',    label: 'Загвар',            icon: '🧾' },
+  { key: 'incoming',    label: 'Ирсэн бичиг',       icon: '📥' },
+  { key: 'outgoing',    label: 'Явсан бичиг',       icon: '📤' },
+  { key: 'other',       label: 'Бусад',             icon: '📎' },
+];
+const DOC_MAX_BYTES = 8 * 1024 * 1024;   // base64 нь ~33% томордог тул серверт ~11MB
+function docCat(k) { return DOC_CATS.find(c => c.key === k) || DOC_CATS[DOC_CATS.length - 1]; }
+function canSeeDocuments() { return canAccessView('documents', () => state.isCEO); }
+function fmtBytes(n) {
+  const b = Number(n) || 0;
+  if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
+  if (b >= 1024) return Math.round(b / 1024) + ' KB';
+  return b ? b + ' B' : '';
+}
+
+async function loadCompanyDocs(force) {
+  if (!SUPABASE_ANON_KEY) return;
+  if (state.companyDocs && !force) return;
+  try {
+    // data (base64 биет) СОНГОХГҮЙ — зөвхөн нээх үедээ ганцаарчлан татна.
+    const sel = 'id,title,category,doc_no,doc_date,counterparty,note,mime,file_name,size_bytes,uploaded_by,created_at';
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?select=${sel}&order=created_at.desc`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    state.companyDocs = r.ok ? await r.json() : [];
+    if (typeof render === 'function' && state.view === 'documents') render();
+  } catch (e) { console.warn('loadCompanyDocs', e); state.companyDocs = state.companyDocs || []; }
+}
+
+async function saveCompanyDoc(doc) {
+  if (!SUPABASE_ANON_KEY || !doc || !doc.id) return false;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?on_conflict=id`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(doc),
+    }, 60000);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+    return true;
+  } catch (e) { showToast('Баримт хадгалах алдаа: ' + e.message, 'error', 5000); return false; }
+}
+
+async function deleteCompanyDoc(id) {
+  if (!SUPABASE_ANON_KEY || !id) return false;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
+    }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) { showToast('Устгах алдаа: ' + e.message, 'error', 4000); return false; }
+}
+
+async function fetchDocBlob(id) {
+  if (!SUPABASE_ANON_KEY || !id) return null;
+  try {
+    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}&select=data,mime`,
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 60000);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!rows[0] || !rows[0].data) return null;
+    const bin = atob(rows[0].data);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: rows[0].mime || 'application/octet-stream' });
+  } catch (e) { console.warn('fetchDocBlob', e); return null; }
+}
+
+// Баримтыг нээх — PDF бол pdf.js-ээр, зураг бол шууд, бусад бол татаж авах.
+async function openCompanyDoc(id) {
+  const d = (state.companyDocs || []).find(x => String(x.id) === String(id));
+  if (!d) return;
+  showToast('📄 Татаж байна…', 'info', 1500);
+  const blob = await fetchDocBlob(id);
+  if (!blob) { showToast('Файл олдсонгүй эсвэл татаж чадсангүй', 'warn', 3500); return; }
+  const url = URL.createObjectURL(blob);
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open';
+  ov.style.zIndex = '10000';
+  ov.innerHTML = `<div class="modal doc-view">
+    <div class="doc-view-bar">
+      <h2>${docCat(d.category).icon} ${escapeHtml(d.title || d.file_name || 'Баримт')}</h2>
+      <span class="doc-view-btns">
+        <a class="btn btn-sm" id="docv-dl" download="${escapeHtml(d.file_name || d.title || 'document')}" href="${url}">⬇ Татах</a>
+        <button class="btn btn-sm" id="docv-x">✕ Хаах</button>
+      </span>
+    </div>
+    <div id="docv-body" class="doc-view-body">Уншиж байна…</div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => { URL.revokeObjectURL(url); ov.remove(); };
+  ov.querySelector('#docv-x').onclick = close;
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  const box = ov.querySelector('#docv-body');
+  const mime = String(d.mime || '');
+  try {
+    if (/^image\//.test(mime)) {
+      box.innerHTML = `<img src="${url}" alt="" class="doc-view-img" />`;
+    } else if (mime === 'application/pdf') {
+      const pdfjsLib = await loadPdfJs();
+      const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+      box.innerHTML = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const vp = page.getViewport({ scale: 1.5 });
+        const cv = document.createElement('canvas');
+        cv.width = vp.width; cv.height = vp.height;
+        cv.className = 'doc-view-page';
+        box.appendChild(cv);
+        await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      }
+    } else {
+      box.innerHTML = `<div class="doc-view-note">Энэ төрлийг апп дотор харуулах боломжгүй (${escapeHtml(mime || 'тодорхойгүй')}).<br>«⬇ Татах» дарж компьютер дээрээ нээнэ үү.</div>`;
+    }
+  } catch (e) {
+    box.innerHTML = `<div class="doc-view-note err">Харуулж чадсангүй: ${escapeHtml(e.message || '')}<br>«⬇ Татах» дарж үзнэ үү.</div>`;
+  }
+}
+
+function renderDocuments() {
+  if (!state.companyDocs) { loadCompanyDocs(); }
+  const docs = state.companyDocs || [];
+  const q = String(state.docsSearch || '').trim().toLowerCase();
+  const cat = state.docsCat || '';
+  const editable = can('documents.edit');
+  const match = (d) => (!cat || d.category === cat)
+    && (!q || [d.title, d.doc_no, d.counterparty, d.note, d.file_name].some(v => String(v || '').toLowerCase().includes(q)));
+  const shown = docs.filter(match);
+  const tabs = [{ key: '', label: 'Бүгд', icon: '🗂' }].concat(DOC_CATS).map(c => {
+    const n = c.key ? docs.filter(d => d.category === c.key).length : docs.length;
+    return `<button class="otab${cat === c.key ? ' on' : ''}" data-dcat="${c.key}">${c.icon} ${escapeHtml(c.label)}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>`;
+  }).join('');
+  const row = (d) => {
+    const c = docCat(d.category);
+    const meta = [d.doc_no ? '№ ' + d.doc_no : '', d.doc_date ? fmtDate(d.doc_date) : '', d.counterparty || '', fmtBytes(d.size_bytes)]
+      .filter(Boolean).map(escapeHtml).join(' · ');
+    return `<div class="doc-row" data-doc="${escapeHtml(d.id)}">
+      <span class="doc-ico">${c.icon}</span>
+      <span class="doc-main">
+        <span class="doc-title">${escapeHtml(d.title || d.file_name || 'Нэргүй')}</span>
+        <span class="doc-meta">${meta || '—'}</span>
+      </span>
+      <span class="doc-cat">${escapeHtml(c.label)}</span>
+      <span class="doc-act">
+        ${editable ? `<button class="btn btn-sm doc-edit" data-doc-edit="${escapeHtml(d.id)}" title="Засах">✎</button>
+        <button class="btn btn-sm doc-del" data-doc-del="${escapeHtml(d.id)}" title="Устгах">🗑</button>` : ''}
+      </span>
+    </div>`;
+  };
+  const body = !state.companyDocs
+    ? '<div class="doc-empty">Ачаалж байна…</div>'
+    : (shown.length ? shown.map(row).join('')
+      : `<div class="doc-empty"><div class="icon">🗂</div><div>${docs.length ? 'Энэ шүүлтэд баримт алга.' : 'Баримт бичиг хараахан хадгалаагүй байна.'}</div></div>`);
+  return `<div class="doc-wrap">
+    <div class="doc-head">
+      <div>
+        <div class="doc-h1">🗂 Баримт бичиг</div>
+        <div class="doc-sub">Компанийн гэрчилгээ, гэрээ, үнийн саналын загвар, ирсэн/явсан албан бичиг.</div>
+      </div>
+      ${editable ? '<button class="btn btn-primary" id="doc-add">+ Баримт нэмэх</button>' : ''}
+    </div>
+    <div class="otabs">${tabs}</div>
+    <div class="doc-search">🔍<input type="search" id="doc-search" placeholder="Нэр, дугаар, байгууллага" value="${escapeHtml(state.docsSearch || '')}" /></div>
+    <div class="doc-list">${body}</div>
+  </div>`;
+}
+
+function attachDocumentsHandlers() {
+  document.querySelectorAll('[data-dcat]').forEach(b => b.addEventListener('click', () => {
+    state.docsCat = b.dataset.dcat; render();
+  }));
+  const s = document.getElementById('doc-search');
+  if (s) s.addEventListener('input', () => {
+    state.docsSearch = s.value;
+    clearTimeout(state._docsSearchT);
+    state._docsSearchT = setTimeout(() => { const p = s.selectionStart; render(); const n = document.getElementById('doc-search'); if (n) { n.focus(); try { n.setSelectionRange(p, p); } catch (_) {} } }, 250);
+  });
+  document.getElementById('doc-add')?.addEventListener('click', () => openDocEditModal(null));
+  document.querySelectorAll('[data-doc-edit]').forEach(b => b.addEventListener('click', (e) => {
+    e.stopPropagation(); openDocEditModal(b.dataset.docEdit);
+  }));
+  document.querySelectorAll('[data-doc-del]').forEach(b => b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const d = (state.companyDocs || []).find(x => String(x.id) === String(b.dataset.docDel));
+    if (!d) return;
+    if (!confirm(`«${d.title || d.file_name}» баримтыг устгах уу? Файл бүрмөсөн устана.`)) return;
+    if (await deleteCompanyDoc(d.id)) { showToast('Устгагдлаа', 'success'); await loadCompanyDocs(true); render(); }
+  }));
+  document.querySelectorAll('.doc-row').forEach(r => r.addEventListener('click', () => openCompanyDoc(r.dataset.doc)));
+}
+
+// Баримт нэмэх/засах модал. id=null бол шинэ (файл ЗААВАЛ), эс бол зөвхөн мэдээллийг засна.
+function openDocEditModal(id) {
+  const d = id ? (state.companyDocs || []).find(x => String(x.id) === String(id)) : null;
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.style.zIndex = '10001';
+  modal.innerHTML = `<div class="modal doc-edit-modal">
+    <h2>${d ? '✎ Баримт засах' : '+ Баримт нэмэх'}</h2>
+    <label class="doc-lbl">Нэр *</label>
+    <input id="dc-title" type="text" value="${escapeHtml(d ? (d.title || '') : '')}" placeholder="Улсын бүртгэлийн гэрчилгээ" />
+    <label class="doc-lbl">Ангилал</label>
+    <select id="dc-cat">${DOC_CATS.map(c => `<option value="${c.key}"${d && d.category === c.key ? ' selected' : ''}>${c.icon} ${escapeHtml(c.label)}</option>`).join('')}</select>
+    <div class="doc-2col">
+      <div><label class="doc-lbl">Бичгийн дугаар</label><input id="dc-no" type="text" value="${escapeHtml(d ? (d.doc_no || '') : '')}" placeholder="1/234" /></div>
+      <div><label class="doc-lbl">Огноо</label><input id="dc-date" type="date" value="${escapeHtml(d ? (d.doc_date || '') : '')}" /></div>
+    </div>
+    <label class="doc-lbl">Хэнээс / хэнд</label>
+    <input id="dc-cp" type="text" value="${escapeHtml(d ? (d.counterparty || '') : '')}" placeholder="Байгууллагын нэр" />
+    <label class="doc-lbl">Тэмдэглэл</label>
+    <textarea id="dc-note" rows="2" placeholder="Нэмэлт тайлбар">${escapeHtml(d ? (d.note || '') : '')}</textarea>
+    <label class="doc-lbl">Файл ${d ? '(солих бол шинээр сонго)' : '*'}</label>
+    <input id="dc-file" type="file" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" />
+    <div class="doc-filenote" id="dc-fname">${d && d.file_name ? '📎 ' + escapeHtml(d.file_name) + ' · ' + fmtBytes(d.size_bytes) : `Хамгийн ихдээ ${Math.round(DOC_MAX_BYTES / 1048576)}MB`}</div>
+    <div class="modal-actions">
+      <button class="btn" id="dc-cancel">Болих</button>
+      <button class="btn btn-primary" id="dc-save">Хадгалах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const $ = s => modal.querySelector(s);
+  const close = () => modal.remove();
+  $('#dc-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const fileEl = $('#dc-file');
+  fileEl.addEventListener('change', () => {
+    const f = fileEl.files && fileEl.files[0];
+    const note = $('#dc-fname');
+    if (!f) return;
+    note.textContent = '📎 ' + f.name + ' · ' + fmtBytes(f.size);
+    if (!$('#dc-title').value.trim()) $('#dc-title').value = f.name.replace(/\.[^.]+$/, '');
+  });
+  $('#dc-save').onclick = async (e) => {
+    const title = $('#dc-title').value.trim();
+    if (!title) { showToast('Нэрээ оруулна уу', 'warn'); return; }
+    const f = fileEl.files && fileEl.files[0];
+    if (!d && !f) { showToast('Файл сонгоно уу', 'warn'); return; }
+    if (f && f.size > DOC_MAX_BYTES) { showToast(`Файл хэт том — ${Math.round(DOC_MAX_BYTES / 1048576)}MB-аас бага байх ёстой`, 'error', 4500); return; }
+    e.currentTarget.disabled = true; e.currentTarget.textContent = 'Хадгалж байна…';
+    const doc = {
+      id: d ? d.id : ((typeof crypto !== 'undefined' && crypto.randomUUID) ? 'doc-' + crypto.randomUUID() : 'doc-' + Date.now()),
+      title,
+      category: $('#dc-cat').value,
+      doc_no: $('#dc-no').value.trim() || null,
+      doc_date: $('#dc-date').value || null,
+      counterparty: $('#dc-cp').value.trim() || null,
+      note: $('#dc-note').value.trim() || null,
+      uploaded_by: state.me,
+    };
+    if (f) {
+      try {
+        const durl = await fileToDataUrl(f);
+        doc.data = String(durl).slice(String(durl).indexOf(',') + 1);
+        doc.mime = f.type || 'application/octet-stream';
+        doc.file_name = f.name;
+        doc.size_bytes = f.size;
+      } catch (_) {
+        showToast('Файл уншиж чадсангүй', 'error'); e.currentTarget.disabled = false; e.currentTarget.textContent = 'Хадгалах'; return;
+      }
+    }
+    const ok = await saveCompanyDoc(doc);
+    if (!ok) { e.currentTarget.disabled = false; e.currentTarget.textContent = 'Хадгалах'; return; }
+    close();
+    showToast('✅ Хадгалагдлаа', 'success');
+    await loadCompanyDocs(true);
+    render();
+  };
+  setTimeout(() => $('#dc-title').focus(), 60);
+}
+
 function renderBankAccounts() {
   const accts = (state.bankAccounts || []).filter(a => a.active !== false);
   const cards = (state.bankCards || []).filter(c => c.active !== false);
@@ -22543,6 +22843,7 @@ function refreshViewData() {
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadOrdersData(); loadNomaadOrders(); }
   else if (v === 'history' && canSeeHistory()) loadHistory(true);
   else if (v === 'accounts' && state.isCEO) loadBankAccounts(true);
+  else if (v === 'documents') loadCompanyDocs(true);
   else if (v === 'marketing') { loadBrandKit(); if (!state.products || !state.products.length) { if (typeof loadProductsCatalog === 'function') loadProductsCatalog().then(() => { if (state.view === 'marketing') render(); }); } }
   else if (v === 'myexpenses') loadExpenseLearn();   // шинэ хуваалцсан суралцлага авч таамаглана
 }

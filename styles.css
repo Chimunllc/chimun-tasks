@@ -6050,3 +6050,49 @@ body.role-daily #add-project { display: none !important; }
   .mo-daterow { flex-direction: column; gap: 10px !important; }
   .mo-daterow > div { width: 100%; }
 }
+
+/* ═══ БАРИМТ БИЧИГ (Бичиг хэрэг) ═══
+   Мөрийн загвар нь бараа/захиалга/ажилтны жагсаалттай ижил араг ястай: icon · үндсэн
+   багана · ангилал · үйлдэл. Inline style БИШ — харагдах байдлыг зөвхөн CSS шийднэ. */
+.doc-wrap { max-width: 860px; margin: 0 auto; padding: 4px 2px 40px; }
+.doc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 6px 0 14px; }
+.doc-h1 { font-size: 20px; font-weight: 800; }
+.doc-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.doc-search { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; font-size: 13px; margin-bottom: 12px; }
+.doc-search input { border: none; background: none; outline: none; font-family: inherit; font-size: 13px; color: var(--text); width: 210px; max-width: 46vw; }
+.doc-list { display: flex; flex-direction: column; gap: 6px; }
+.doc-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 132px auto; gap: 12px; align-items: center; padding: 10px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); cursor: pointer; transition: background .12s; }
+.doc-row:hover { background: var(--panel-hover); }
+.doc-ico { font-size: 19px; text-align: center; }
+.doc-main { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.doc-title { font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-meta { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-cat { font-size: 11px; font-weight: 600; color: var(--text-soft); background: var(--panel-hover); border-radius: 999px; padding: 3px 10px; text-align: center; white-space: nowrap; }
+.doc-act { display: flex; gap: 5px; }
+.doc-act .btn { padding: 4px 9px; }
+.doc-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 34px 12px; }
+.doc-empty .icon { font-size: 30px; margin-bottom: 8px; }
+
+/* Баримт нэмэх/засах модал */
+.doc-edit-modal { max-width: 440px; }
+.doc-lbl { display: block; font-size: 12px; font-weight: 600; color: var(--text-soft); margin: 12px 0 4px; }
+.doc-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.doc-filenote { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+/* Баримт харах цонх */
+.doc-view { max-width: 760px; width: 97%; max-height: 94vh; overflow: auto; }
+.doc-view-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; position: sticky; top: 0; background: var(--panel); padding-bottom: 6px; z-index: 1; }
+.doc-view-bar h2 { margin: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-view-btns { display: flex; gap: 6px; flex: 0 0 auto; }
+.doc-view-body { text-align: center; color: var(--muted); padding: 16px 0; }
+.doc-view-img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); }
+.doc-view-page { width: 100%; max-width: 700px; height: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; }
+.doc-view-note { font-size: 13px; line-height: 1.7; padding: 20px 10px; }
+.doc-view-note.err { color: var(--danger); }
+
+@media (max-width: 768px) {
+  /* Утсан дээр ангилал багана мөрд эвхэгдэнэ — нэр таслагдахаас сэргийлнэ */
+  .doc-row { grid-template-columns: 30px minmax(0, 1fr) auto; row-gap: 6px; }
+  .doc-cat { grid-column: 2 / -1; justify-self: start; }
+  .doc-2col { grid-template-columns: 1fr; }
+}

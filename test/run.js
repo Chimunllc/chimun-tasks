@@ -260,6 +260,40 @@ eq(F.fmtMoneyShort(0), F.fmtMoney(0),           'мөнгө: тэг');
 eq(F.fmtMoneyShort(-2500000), '-2.5 сая₮',      'мөнгө: сөрөг дүн');
 ok(!/\.0 |\.00 /.test(F.fmtMoneyShort(2000000000)), 'мөнгө: илүүдэл тэг үлдэхгүй');
 
+// 19) Баримт бичиг — ангилал, хэмжээ, жагсаалтын шүүлт
+need(['docCat', 'fmtBytes', 'renderDocuments']);
+eq(F.docCat('template').label, 'Загвар',   'баримт: мэдэгдэж буй ангилал');
+eq(F.docCat('чгүй').key,       'other',    'баримт: танихгүй ангилал → Бусад');
+eq(F.docCat(undefined).key,    'other',    'баримт: ангилалгүй → Бусад');
+eq(F.fmtBytes(0),        '',        'хэмжээ: тэг бол хоосон');
+eq(F.fmtBytes(900),      '900 B',   'хэмжээ: байт');
+eq(F.fmtBytes(2048),     '2 KB',    'хэмжээ: килобайт');
+eq(F.fmtBytes(3670016),  '3.5 MB',  'хэмжээ: мегабайт нэг оронтой');
+{
+  // renderDocuments нь state-ээс уншиж HTML буцаана — загвар эвдэрсэн эсэхийг барина.
+  // state нь app.js дотор `const` тул sandbox глобалд гарахгүй — контекст ДОТОР нь ажиллуулна.
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  runIn(`state.companyDocs = [
+    { id: 'd1', title: 'Улсын бүртгэлийн гэрчилгээ', category: 'certificate', doc_no: '9/12', doc_date: '2024-03-01', size_bytes: 2048 },
+    { id: 'd2', title: 'Үнийн саналын загвар',        category: 'template',    file_name: 'quote.docx' },
+    { id: 'd3', title: '<scr'+'ipt>муу</scr'+'ipt>',  category: 'incoming',    counterparty: 'Түшиг ХХК' },
+  ]; state.docsCat = ''; state.docsSearch = '';`);
+  const all = runIn('renderDocuments()');
+  ok(all.indexOf('Улсын бүртгэлийн гэрчилгээ') > -1, 'баримт: бүх ангилалд жагсана');
+  ok(all.indexOf('<scr' + 'ipt>муу') === -1,          'баримт: HTML тайлбарлагдахгүй (escape)');
+  runIn("state.docsCat = 'template'");
+  const tpl = runIn('renderDocuments()');
+  ok(tpl.indexOf('Үнийн саналын загвар') > -1,       'баримт: ангилалаар шүүнэ');
+  ok(tpl.indexOf('Улсын бүртгэлийн гэрчилгээ') === -1, 'баримт: бусад ангилал хасагдана');
+  runIn("state.docsCat = ''; state.docsSearch = 'Түшиг';");
+  const q = runIn('renderDocuments()');
+  ok(q.indexOf('Түшиг ХХК') > -1,                     'баримт: хайлт байгууллагаар олно');
+  ok(q.indexOf('Үнийн саналын загвар') === -1,        'баримт: хайлтад таарахгүй нь хасагдана');
+  runIn("state.docsSearch = 'огт байхгүй утга'");
+  ok(runIn('renderDocuments()').indexOf('баримт алга') > -1, 'баримт: хоосон үр дүнгийн мессеж');
+  runIn("state.docsSearch = ''");
+}
+
 // ═══════════════════ ДҮН ═══════════════════
 console.log('');
 if (fails.length) { console.log(fails.join('\n')); console.log(''); }

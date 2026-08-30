@@ -599,6 +599,21 @@ function generateNotifications() {
     }
   });
 
+  // 7. ЗАХИАЛГА БУЦААХ ХУГАЦАА ХЭТЭРСЭН — түрээслэгдсэн атлаа буцаах огноо өнгөрсөн (бараа буцаж ирээгүй = нөөц алдагдал).
+  //    Зөвхөн захиалга удирдагчид (CEO / эвент-захиалгын менежер) идэвхтэй сануулна — самбар нээхийг хүлээхгүй.
+  if (typeof canManageOrders === 'function' && canManageOrders()) {
+    const _retPending = ['delivering', 'started', 'rented', 'returning'];
+    (state.appOrders || []).forEach(o => {
+      if (!_retPending.includes(String(o.status || ''))) return;
+      const stop = String(o.stops_at || '').slice(0, 10);
+      if (!stop || stop >= today) return;
+      const nid = `ord-overdue-return-${o.id}-${today}`;
+      if (!seen.has(nid)) {
+        newOnes.push({ id: nid, type: 'overdue', msg: `⏰ Буцаах хугацаа хэтэрсэн: захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''} (${stop})`, ts: Date.now(), read: false });
+      }
+    });
+  }
+
   if (newOnes.length) {
     state.notifications = [...newOnes, ...state.notifications];
     saveNotifications();
@@ -14463,8 +14478,8 @@ const STAGE_AUTOTASK = {
   reserved:   { cap: 'orders.clean',    role: /цэвэрл/i,              verb: '🧹 Захиалга цэвэрлэх' },
   prepared:   { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Хүлээлгэн өгөх' },
   delivering: { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '🚚 Хүргэж өгөх' },
-  rented:     { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '↩ Түрээс дуусахад буцаан авах' },
-  returning:  { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Агуулахад хүлээн авах' },
+  rented:     { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '↩ Түрээс дуусахад буцаан авах', due: 'stops_at' },
+  returning:  { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Агуулахад хүлээн авах',          due: 'stops_at' },
 };
 // Эрх (cap)-ыг ТОДОРХОЙ эзэмшигчид (role_perms/member_perms) — CEO-ийн бүх эрхийг ОРУУЛАХГҮЙ (эс бол бүх ажил CEO-д очно)
 function membersWithCap(cap) {
@@ -14491,7 +14506,7 @@ function ensureStageTask(o) {
   let assignee = membersWithCap(cfg.cap)[0] || findMemberEmailByRole(cfg.role, '');
   const t = {
     id, title: `${cfg.verb} · захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''}`,
-    branch: 'm-event', project: '', assignee: assignee || '', due: o.starts_at || '',
+    branch: 'm-event', project: '', assignee: assignee || '', due: (cfg.due === 'stops_at' ? (o.stops_at || o.starts_at) : o.starts_at) || '',
     priority: 'high', status: 'open', requires_photo: true,
     createdBy: state.me || getCEOEmail(), created: Date.now(), comments: [], activity: [],
   };
@@ -15344,6 +15359,7 @@ function openNewOrder(editOrder) {
   if (_locked) { ['#no-start', '#no-start-h', '#no-disctype', '#no-discval', '#no-vat', '#no-deposit'].forEach(s => { const el = $(s); if (el) { el.disabled = true; el.style.opacity = '.55'; el.style.cursor = 'not-allowed'; el.title = 'Гарсан/төлөгдсөн — өөрчлөгдөхгүй'; } }); }
 
   $('#no-save').onclick = async (e) => {
+    const btn = e.currentTarget;   // await-аас өмнө барьж авна (currentTarget нь async дараа null болно)
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }
     const customer = $('#no-customer').value.trim();
     if (!customer) { showToast('Харилцагчийн нэр оруулна уу', 'warn'); return; }
@@ -15360,6 +15376,16 @@ function openNewOrder(editOrder) {
     const addr = $('#no-addr').value.trim();
     if (isDeliv && !addr) { showToast('Хүргэх хаяг оруулна уу', 'warn'); return; }
     if (dlv.zone === 'out' && !dlv.km) { showToast('Хотоос гадна: км оруулна уу', 'warn'); return; }
+    // Давхар захиалга шалгах — сонгосон огноонд бараа хүрэлцэхгүй бол баталгаажуулна (зогсоохгүй, анхааруулна).
+    const _os = $('#no-start').value || '', _oe = $('#no-stop').value || '';
+    if (_os && _oe && typeof orderShortages === 'function') {
+      const short = orderShortages(items, _os, _oe, isEdit ? editOrder.number : null);
+      if (short.length) {
+        const lines = short.map(s => `• ${s.name}: ${s.need} захиалж буй ч ${s.avail} л сул (${s.stock} нөөц − ${s.booked} өөр захиалга)`).join('\n');
+        const ok = await showConfirm(`⚠ Зарим бараа энэ өдрүүдэд хүрэлцэхгүй байна:\n\n${lines}\n\nДавхар захиалга үүсч болзошгүй. Үргэлжлүүлэх үү?`, { title: 'Бараа хүрэлцэхгүй', okText: 'Тийм, үргэлжлүүлэх', danger: true });
+        if (!ok) return;
+      }
+    }
     const prevDep = isEdit ? Number(editOrder.deposit_mnt) || 0 : 0;
     if (deposit !== prevDep) depLog.push({ by: state.me, at: new Date().toISOString(), from: prevDep, to: deposit });
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
@@ -15381,9 +15407,9 @@ function openNewOrder(editOrder) {
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
-    e.currentTarget.disabled = true;
+    btn.disabled = true;
     try { await saveAppOrder(ord); close(); showToast(isEdit ? 'Захиалга шинэчлэгдлээ' : `Захиалга #${ord.number} үүслээ`, 'success', 2800); }
-    catch (err) { e.currentTarget.disabled = false; }
+    catch (err) { btn.disabled = false; }
   };
 }
 

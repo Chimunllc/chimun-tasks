@@ -14418,8 +14418,12 @@ function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
   // source='history' → түүхэн, source='app' → шинэ; аль аль нь адилхан app_orders мөр.
   return (state.appOrders || []).map(ao => {
-    const raw = String(ao.status || 'reserved');
-    const o = { ...ao, item_count: (ao.items || []).length, _app: true };
+    let raw = String(ao.status || 'reserved');
+    // Төлбөр бүртгэгдээгүй захиалга = Ноорог. "Захиалсан" (reserved) руу зөвхөн төлбөр
+    // бүртгэгдэхэд шилжинэ. (Зөвхөн харагдац/бүлэглэл — агуулахын нөөц state.appOrders-ийн
+    // бодит статусаар тоологдох тул энэ өөрчлөлт нөлөөлөхгүй.)
+    if (raw === 'reserved' && (Number(ao.paid_mnt) || 0) <= 0) raw = 'draft';
+    const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',
       total: Number(ao.total_mnt) || 0,

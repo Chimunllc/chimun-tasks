@@ -5218,10 +5218,10 @@ function boardOrderRow(e, k, todayStr, flat) {
     : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр авах" товч өөрөө илэрхийлнэ)
   const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
   const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
-  // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА болно (бүлэглэлгүй)
+  // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА — НАРИЙН статус (Бэлдсэн/Хүргэгдэж/Түрээсэнд...)
   const statusCell = flat ? (() => {
-    const b = ORDER_BUCKETS.find(x => x.key === bucketOf(o.status)) || {};
-    return `<span class="br-status-cell"><span class="br-status" style="--sd:${b.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(b.label || o.status || '')}</span></span>`;
+    const s = (typeof BQ_STATUS === 'object' && BQ_STATUS[o.status]) || {};
+    return `<span class="br-status-cell"><span class="br-status" style="--sd:${s.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(s.label || o.status || '')}</span></span>`;
   })() : '';
   return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
@@ -5463,10 +5463,14 @@ function renderOrders() {
     const s = String(e.o.starts_at || '').slice(0, 10), st = String(e.o.stops_at || '').slice(0, 10);
     return s === todayStr || st === todayStr;
   };
+  // Зүүн sidebar = 6 үндсэн бүлэг. "Захиалсан" = идэвхтэй бүх шат (reserved+rented бакет:
+  // Бэлдсэн/Хүргэгдэж/Түрээсэнд/Буцаалт замд...) — нарийн статус нь хүснэгтийн Төлөв баганад харагдана.
+  const _SIDE_GRP = { draft: ['draft'], active: ['reserved', 'rented'], done: ['done'], archived: ['archived'], canceled: ['canceled'], deleted: ['deleted'] };
   const matchFilter = (e, f) => {
-    if (f === 'all') return e.skey !== 'canceled';   // "Бүгд" — цуцалсан захиалгыг харуулахгүй (зөвхөн "Цуцалсан" табд)
+    if (f === 'all') return e.skey !== 'canceled' && e.skey !== 'deleted';   // Бүгд — цуцалсан/устгасныг хасна
     if (f === 'today') return isToday(e);
-    return e.skey === f;
+    if (_SIDE_GRP[f]) return _SIDE_GRP[f].includes(bucketOf(e.o.status));
+    return e.skey === f;   // нарийн статус (fallback)
   };
 
   // Анхаарлын чипүүд — Захиалгын операцийн дохио
@@ -5486,13 +5490,21 @@ function renderOrders() {
     const n = combined.filter(e => matchFilter(e, t.key)).length;   // 'all' нь matchFilter-ээр цуцалсныг хасна
     return (n || t.key === 'all' || _PIPE_TABS.has(t.key)) ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
   }).join('');
-  // ── Зүүн статус sidebar (Booqable шиг) — статус бүр тоотой; дарахад тухайн статусын хүснэгт харагдана ──
-  const sideHtml = tabs.map(t => {
-    const n = combined.filter(e => matchFilter(e, t.key)).length;
-    if (!(n || t.key === 'all' || _PIPE_TABS.has(t.key))) return '';
-    const b = ORDER_BUCKETS.find(x => x.key === t.key);
-    const dot = (t.key === 'all') ? '' : `<span class="ordv-st-dot" style="--d:${(b && b.dot) || '#888'}"></span>`;
-    return `<button class="ordv-st${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${dot}<span class="ordv-st-l">${escapeHtml(t.label)}</span><span class="ordv-st-n">${n || 0}</span></button>`;
+  // ── Зүүн статус sidebar (Booqable шиг) — 6 ҮНДСЭН бүлэг. "Захиалсан" = идэвхтэй бүх шат
+  // (Бэлдсэн/Хүргэгдэж/Түрээсэнд/Буцаалт замд...) — нарийн статус нь хүснэгтийн Төлөв баганад л харагдана.
+  const _SIDE = [
+    { key: 'all', label: 'Бүгд' },
+    { key: 'draft', label: 'Ноорог', dot: '#6B7280' },
+    { key: 'active', label: 'Захиалсан', dot: '#D97706' },
+    { key: 'done', label: 'Дууссан', dot: '#16A34A' },
+    { key: 'archived', label: 'Архивласан', dot: '#475569' },
+    { key: 'canceled', label: 'Цуцалсан', dot: '#DC2626' },
+    { key: 'deleted', label: 'Устгасан', dot: '#9CA3AF' },
+  ];
+  const sideHtml = _SIDE.map(g => {
+    const n = combined.filter(e => matchFilter(e, g.key)).length;
+    const dot = g.dot ? `<span class="ordv-st-dot" style="--d:${g.dot}"></span>` : '';
+    return `<button class="ordv-st${state.ordersFilter === g.key ? ' on' : ''}" data-ofilter="${g.key}">${dot}<span class="ordv-st-l">${g.label}</span><span class="ordv-st-n">${n || 0}</span></button>`;
   }).join('');
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
   const ymF = state.ordersYM || '';

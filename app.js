@@ -15927,7 +15927,7 @@ function bqOrderCard(o) {
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
     ${payPanel}
-    ${depBadge ? `<div class="dep-row">${depBadge}</div>` : ''}
+    ${_dep > 0 ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>` : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}

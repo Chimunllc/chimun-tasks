@@ -104,14 +104,15 @@ const DEFAULT_RESET_VERIFY_URL = 'https://n8n.nomaadcamp.com/webhook/chimun-rese
 // хийх ёстой (одоохондоо төлөвлөгөөнд байгаа).
 const N8N_API_KEY = '1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
 
-// Supabase Storage — барааны зураг (product-images bucket). anon key нь PUBLIC, frontend-д
-// ил байх нь зөв (RLS/storage policy-оор хамгаална). Зөвхөн зураг bucket-д upload зөвшөөрнө.
-// DB → өөрийн VPS Postgres (PostgREST дамжуулан, n8n.nomaadcamp.com/db). Supabase cloud-аас
-// гарсан (2026-06-28 нэгтгэл). Бусад апп шиг бүх дата одоо VPS дээр.
-const SUPABASE_URL = 'https://n8n.nomaadcamp.com/db';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s';   // VPS PostgREST anon JWT (role=anon, PUBLIC/frontend-safe)
-// Хуучин барааны зураг VPS дээр (n8n.nomaadcamp.com/img/<file>). Шинэ upload = base64 data URL
-// (uploadProductImage). Supabase Storage-аас бүрэн салав — тусдаа storage тогтмол хэрэггүй.
+// Өгөгдлийн сан → ӨӨРИЙН VPS Postgres, PostgREST дамжуулан (Caddy /db → PostgREST).
+// ⚠ Нэршил: эдгээр тогтмол урьд нь SUPABASE_URL/SUPABASE_ANON_KEY нэртэй байсан ч Supabase
+// cloud-той ямар ч хамааралгүй (2026-06-28-нд VPS рүү бүрэн шилжсэн). Нэр нь төөрөгдүүлж
+// байсан тул DB_URL/DB_ANON_KEY болгов (2026-08-30). anon JWT нь PUBLIC — frontend-д ил
+// байх нь зөв, эмзэг хүснэгтийг RLS-ээр хамгаална.
+const DB_URL = 'https://n8n.nomaadcamp.com/db';
+const DB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s';   // VPS PostgREST anon JWT (role=anon, PUBLIC/frontend-safe)
+// Барааны зураг VPS дээр (n8n.nomaadcamp.com/img/<file>) — mevent-upload-image webhook-оор
+// байршуулна (uploadProductImage). Гуравдагч талын storage ашиглахаа больсон.
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
 function withKey(url) {
   if (!url) return url;
@@ -122,7 +123,7 @@ function withKey(url) {
 // бичилтэд anon-ы оронд ашиглана. DB талд RLS шалгана. Байхгүй бол anon руу уналт (RLS унтраалттай
 // хүснэгтэд ажиллах — пилот шилжилтийн үед эвдрэлгүй байлгах).
 function pgrstToken() { try { return localStorage.getItem('pgrstToken') || ''; } catch (e) { return ''; } }
-function pgrstBearer() { return pgrstToken() || SUPABASE_ANON_KEY; }
+function pgrstBearer() { return pgrstToken() || DB_ANON_KEY; }
 
 // fetch timeout wrapper — кемп/3G гэх мэт сул сүлжээ үед fetch 60-120 сек ширж байж
 // аппыг "гацсан" гэж мэдрүүлдэг. AbortController-аар хугацаа тавьж хурдан буцах.
@@ -4373,9 +4374,9 @@ function guessBranchForRecord(r, ownerKey) {
 // ── ХУВААЛЦСАН СУРАЛЦЛАГА (expense_learn, PostgREST anon) — худалдагч→салбар+ангилал, бүх компанид ──
 function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
 async function loadExpenseLearn() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return;
     const map = {}; (await r.json()).forEach(x => { if (x && x.key) map[x.key] = { branch: x.branch || '', cat: x.cat || '' }; });
     state.expenseLearn = map;
@@ -4384,11 +4385,11 @@ async function loadExpenseLearn() {
 async function _postExpenseLearn(key, branch, cat) {
   if (!key) return;
   _expLearn()[key] = { branch, cat };
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/expense_learn?on_conflict=key`, {
+    await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?on_conflict=key`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ key, branch, cat, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
   } catch (e) { console.warn('_postExpenseLearn', e); }
@@ -6338,13 +6339,13 @@ if (typeof document !== 'undefined' && !window.__moneyInputBound) {
    Барааны үнэ/нөөц/нэр засах + шинэ бараа нэмэх. Эх сурвалж: MEVENT_Orders_DB `products` tab.
    Засвар нь n8n-ээр Sheet-д хадгалагдаж, сайт (m-event-website) шууд тэр өгөгдлийг уншина.
    Зөвхөн CEO. */
-// Бараа — ҮНДСЭН эх сурвалж Supabase Postgres (нэг эх сурвалж). Унавал n8n Sheet webhook (нөөц).
+// Бараа — ҮНДСЭН эх сурвалж VPS Postgres (нэг эх сурвалж). Унавал n8n Sheet webhook (нөөц).
 async function loadProductsCatalog() {
   if (!canManageOrders() && !canSeeProducts()) return;   // order manager (захиалгын форм) ЭСВЭЛ Бараа view эрхтэй ажилтан
-  if (SUPABASE_ANON_KEY) {
+  if (DB_ANON_KEY) {
     try {
-      const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
       }, 15000);
       if (!r.ok) throw new Error('PG HTTP ' + r.status);
       const rows = await r.json();
@@ -6374,8 +6375,8 @@ async function loadProductsCatalog() {
   } catch(e) { console.warn('loadProductsCatalog fallback fail', e); }
 }
 
-// Барааны зургийг Supabase Storage-д шууд upload хийж public URL буцаана.
-// Зургийг эхлээд клиент талд шахна (resizeImageToBase64), дараа нь bucket-д тавина.
+// Барааны зургийг VPS upload webhook руу илгээж hosted public URL буцаана.
+// Зургийг эхлээд клиент талд шахна (resizeImageToBase64).
 async function uploadProductImage(file) {
   // Зургийг клиент талд 1200px/0.78 шахаад, VPS upload webhook руу илгээж hosted файлын
   // URL (n8n.nomaadcamp.com/img/...) авна → base64 биш URL хадгалагдана (хариулт хөнгөн).
@@ -6550,7 +6551,7 @@ async function openOrderScanModal(oid) {
   startQRScan(modal.querySelector('#oscan-video'), modal.querySelector('#oscan-status'), onCode).then(s => { stop = s; });
 }
 
-// Бараа хадгалах → Supabase Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
+// Бараа хадгалах → VPS Postgres upsert (sku=PK). Шинэ барааны sku/id хоосон бол үүсгэнэ.
 // Дараагийн чөлөөт SKU — одоо байгаа CH_NNN дугааруудын max+1 (ж: CH_250)
 function nextProductSKU() {
   let max = 0;
@@ -6579,7 +6580,7 @@ async function saveProduct(product) {
     else delete state.productCosts[product.sku];
   }
   render();
-  if (!SUPABASE_ANON_KEY) { showToast('Supabase тохируулаагүй', 'error'); return; }
+  if (!DB_ANON_KEY) { showToast('Өгөгдлийн сан тохируулаагүй', 'error'); return; }
   const row = {
     sku: product.sku, id: product.id, name: product.name || '', category: product.category || '',
     all_categories: Array.isArray(product.all_categories) ? product.all_categories : (product.category ? [product.category] : []),
@@ -6615,9 +6616,9 @@ async function saveProduct(product) {
   row.qty_chimun = _qc; row.qty_mevent = _qm; row.qty_nomaad = _qn; row.qty_catering = _qk;
   _cur.qty_chimun = _qc; _cur.qty_mevent = _qm; _cur.qty_nomaad = _qn; _cur.qty_catering = _qk;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(row),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -6724,17 +6725,17 @@ async function saveBranchTransfer(p, modal) {
   p['qty_' + from] = prevFrom - qty; p['qty_' + to] = prevTo + qty;   // optimistic
   render(); modal.remove();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?id=eq.${encodeURIComponent(p.id)}`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?id=eq.${encodeURIComponent(p.id)}`, {
       method: 'PATCH',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ ['qty_' + from]: p['qty_' + from], ['qty_' + to]: p['qty_' + to], updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
     try {
       const tid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'tr-' + Date.now();
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/product_transfers`, {
+      await fetchWithTimeout(`${DB_URL}/rest/v1/product_transfers`, {
         method: 'POST',
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: tid, product_id: p.id, sku: p.sku, from_branch: from, to_branch: to, qty, note, moved_by: state.me || '', created_at: new Date().toISOString() }),
       }, 12000);
     } catch (e2) { console.warn('transfer log', e2); }
@@ -6770,16 +6771,16 @@ async function bulkReturnBranch(from, to) {
   render();
   showToast(`${movers.length} бараа шилжүүлж байна…`, 'info', 2000);
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows),
     }, 25000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
     try {
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/product_transfers`, {
+      await fetchWithTimeout(`${DB_URL}/rest/v1/product_transfers`, {
         method: 'POST',
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify(logs),
       }, 20000);
     } catch (e2) { console.warn('bulk transfer log', e2); }
@@ -6894,9 +6895,9 @@ async function bulkClearVariants() {
   snap.forEach(s => { s.p.variant_group = null; s.p.variant_label = null; });   // optimistic
   render();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows),
     }, 25000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -6928,9 +6929,9 @@ async function bulkFillNameEn() {
   empty.forEach((p, i) => { p.name_en = rows[i].name_en; });   // optimistic
   render();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/products?on_conflict=sku`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?on_conflict=sku`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(rows),
     }, 30000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
@@ -7083,7 +7084,7 @@ function attHandleScan(data) {
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
-  fetch(`${SUPABASE_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
+  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
 }
 function attTimeUB(ts) {
   if (!ts) return '';
@@ -7111,8 +7112,8 @@ function attMemberSummary(recs) {
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, cache: 'no-store' }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -7120,8 +7121,8 @@ async function loadAttendanceToday() {
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
 async function loadAttendanceMonth() {
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, cache: 'no-store' }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
     if (r.ok) {
       const rows = await r.json(), map = {};
       rows.forEach(x => { (map[x.member_key] = map[x.member_key] || new Set()).add(x.day); });
@@ -7207,8 +7208,8 @@ function loadQRGen() {
 }
 async function loadMyAttendance() {
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/attendance?member_key=eq.${encodeURIComponent(state.me)}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY }, cache: 'no-store' }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=eq.${encodeURIComponent(state.me)}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -7288,16 +7289,16 @@ async function fileToDoc(file) {
   throw new Error('Зөвхөн зураг эсвэл PDF');
 }
 async function setEmployeeDoc(phone, doc) {
-  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/set_my_doc`, {
-    method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/set_my_doc`, {
+    method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, ''), p_doc: doc.data, p_type: doc.type })
   }, 30000);
   return r.ok;
 }
 async function myDocExists(phone) {
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/my_doc_exists`, {
-      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/my_doc_exists`, {
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, '') })
     }, 15000);
     return r.ok ? (await r.json()) === true : false;
@@ -7305,8 +7306,8 @@ async function myDocExists(phone) {
 }
 async function fetchEmployeeDoc(phone) {
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/get_employee_doc`, {
-      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/get_employee_doc`, {
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_phone: String(phone).replace(/\D/g, '') })
     }, 30000);
     if (!r.ok) return null;
@@ -7976,10 +7977,10 @@ function attachWorkloadHandlers() {
 
 // member_perms татах (PostgREST anon SELECT). Хүснэгт байхгүй бол чимээгүй.
 async function loadMemberPerms() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms?select=*`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_perms?select=*`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -7995,11 +7996,11 @@ async function saveMemberPerms(personKey, perms) {
   state.memberPerms = state.memberPerms || {};
   state.memberPerms[personKey] = perms;   // optimistic
   try { localStorage.setItem('memberPerms', JSON.stringify(state.memberPerms)); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_perms`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, perms, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -8009,10 +8010,10 @@ async function saveMemberPerms(personKey, perms) {
 // ─── САЛБАР ОНООЛТ (member_branches, PostgREST anon) — хүн аль салбар(ууд)-ынх ──────────
 // Дата ХАМРАХ ХҮРЭЭ = хүний салбар. Sheet-ийн branches-ийг ДАРНА (тохируулсан бол). CEO оноодог.
 async function loadMemberBranches() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_branches?select=person_key,branches`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_branches?select=person_key,branches`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return;
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
@@ -8026,11 +8027,11 @@ async function saveMemberBranches(personKey, branches) {
   state.memberBranches = state.memberBranches || {};
   state.memberBranches[personKey] = branches;   // optimistic
   try { localStorage.setItem('memberBranches', JSON.stringify(state.memberBranches)); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_branches`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_branches`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, branches, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -8049,11 +8050,11 @@ async function clearMemberPerms(personKey) {
   if (!personKey) return;
   if (state.memberPerms) delete state.memberPerms[personKey];
   try { localStorage.setItem('memberPerms', JSON.stringify(state.memberPerms || {})); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/member_perms?person_key=eq.${encodeURIComponent(personKey)}`, {
+    await fetchWithTimeout(`${DB_URL}/rest/v1/member_perms?person_key=eq.${encodeURIComponent(personKey)}`, {
       method: 'DELETE',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
     }, 15000);
   } catch (e) { console.warn('clearMemberPerms', e); }
 }
@@ -8088,13 +8089,13 @@ function syncCardMapsFromRegistry() {
   try { localStorage.setItem('cardBranch', JSON.stringify(br)); localStorage.setItem('cardOwners', JSON.stringify(ow)); localStorage.setItem('cardDefCat', JSON.stringify(dc)); } catch (_) {}
 }
 async function loadBankAccounts(force) {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   if (state.bankAccounts && !force) return;
   try {
-    const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };   // данс/карт унших — нэвтэрсэн ажилтан
+    const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };   // данс/карт унших — нэвтэрсэн ажилтан
     const [ra, rc] = await Promise.all([
-      fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_accounts?select=*&order=sort.asc`, H, 15000),
-      fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_cards?select=*&order=sort.asc`, H, 15000),
+      fetchWithTimeout(`${DB_URL}/rest/v1/bank_accounts?select=*&order=sort.asc`, H, 15000),
+      fetchWithTimeout(`${DB_URL}/rest/v1/bank_cards?select=*&order=sort.asc`, H, 15000),
     ]);
     state.bankAccounts = ra.ok ? await ra.json() : [];
     state.bankCards = rc.ok ? await rc.json() : [];
@@ -8103,12 +8104,12 @@ async function loadBankAccounts(force) {
   } catch (e) { console.warn('loadBankAccounts', e); }
 }
 async function saveBankAccount(a) {
-  if (!SUPABASE_ANON_KEY || !a || !a.id) return false;
+  if (!DB_ANON_KEY || !a || !a.id) return false;
   a.updated_by = state.me; a.updated_at = new Date().toISOString();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_accounts?on_conflict=id`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_accounts?on_conflict=id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(a),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -8116,12 +8117,12 @@ async function saveBankAccount(a) {
   } catch (e) { showToast('Данс хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
 }
 async function saveBankCard(c) {
-  if (!SUPABASE_ANON_KEY || !c || !c.id) return false;
+  if (!DB_ANON_KEY || !c || !c.id) return false;
   c.updated_by = state.me; c.updated_at = new Date().toISOString();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_cards?on_conflict=id`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_cards?on_conflict=id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(c),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -8159,28 +8160,28 @@ function canSeeCatering() {
   return canAccessView('catering', false);
 }
 async function loadCateringMenu(force) {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   if (state.cateringMenu && !force) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     state.cateringMenu = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringMenu', e); state.cateringMenu = state.cateringMenu || []; }
 }
 async function loadCateringJobs(force) {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   if (state.cateringJobs && !force) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     state.cateringJobs = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringJobs', e); state.cateringJobs = state.cateringJobs || []; }
 }
 async function saveCateringMenuItem(it) {
-  if (!SUPABASE_ANON_KEY || !it || !it.id) return false;
+  if (!DB_ANON_KEY || !it || !it.id) return false;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/catering_menu?on_conflict=id`, {
-      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?on_conflict=id`, {
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(it),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -8188,11 +8189,11 @@ async function saveCateringMenuItem(it) {
   } catch (e) { showToast('Хоол хадгалах алдаа: ' + e.message, 'error', 4500); return false; }
 }
 async function saveCateringJob(j) {
-  if (!SUPABASE_ANON_KEY || !j || !j.id) return false;
+  if (!DB_ANON_KEY || !j || !j.id) return false;
   j.updated_at = new Date().toISOString();
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/catering_jobs?on_conflict=id`, {
-      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?on_conflict=id`, {
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(j),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
@@ -8469,24 +8470,24 @@ function fmtBytes(n) {
 }
 
 async function loadCompanyDocs(force) {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   if (state.companyDocs && !force) return;
   try {
     // data (base64 биет) СОНГОХГҮЙ — зөвхөн нээх үедээ ганцаарчлан татна.
     const sel = 'id,title,category,doc_no,doc_date,counterparty,note,mime,file_name,size_bytes,uploaded_by,created_at';
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?select=${sel}&order=created_at.desc`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?select=${sel}&order=created_at.desc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     state.companyDocs = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'documents') render();
   } catch (e) { console.warn('loadCompanyDocs', e); state.companyDocs = state.companyDocs || []; }
 }
 
 async function saveCompanyDoc(doc) {
-  if (!SUPABASE_ANON_KEY || !doc || !doc.id) return false;
+  if (!DB_ANON_KEY || !doc || !doc.id) return false;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?on_conflict=id`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?on_conflict=id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(doc),
     }, 60000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
@@ -8495,11 +8496,11 @@ async function saveCompanyDoc(doc) {
 }
 
 async function deleteCompanyDoc(id) {
-  if (!SUPABASE_ANON_KEY || !id) return false;
+  if (!DB_ANON_KEY || !id) return false;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return true;
@@ -8507,10 +8508,10 @@ async function deleteCompanyDoc(id) {
 }
 
 async function fetchDocBlob(id) {
-  if (!SUPABASE_ANON_KEY || !id) return null;
+  if (!DB_ANON_KEY || !id) return null;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}&select=data,mime`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 60000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/company_docs?id=eq.${encodeURIComponent(id)}&select=data,mime`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 60000);
     if (!r.ok) return null;
     const rows = await r.json();
     if (!rows[0] || !rows[0].data) return null;
@@ -8924,20 +8925,20 @@ function saveBrandKitLocal(k) { state.brandKit = k; try { localStorage.setItem('
 // Брэнд иж бүрдэл — DB-д дундлах (brand_kit хүснэгт, PostgREST anon). Бүх ажилтанд ижил брэнд.
 const BRAND_FIELDS = ['name', 'tagline', 'phone', 'website', 'color1', 'color2', 'font', 'logo'];
 async function _postBrandKit(k) {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   const body = { id: 'default', updated_by: state.me, updated_at: new Date().toISOString() };
   BRAND_FIELDS.forEach(f => body[f] = k[f] || '');
   try {
-    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/brand_kit?on_conflict=id`, {
-      method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?on_conflict=id`, {
+      method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(body),
     }, 20000);
   } catch (e) { console.warn('brandKit save', e); }
 }
 async function loadBrandKit() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
     try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) {}
@@ -9407,10 +9408,10 @@ function openBankCardModal(c) {
 
 // ── Албан тушаалын эрх загвар (role_perms, PostgREST anon) ──
 async function loadRolePerms() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms?select=*`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/role_perms?select=*`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -9426,11 +9427,11 @@ async function saveRolePerms(role, perms) {
   state.rolePerms = state.rolePerms || {};
   state.rolePerms[rn] = perms;   // optimistic
   try { localStorage.setItem('rolePerms', JSON.stringify(state.rolePerms)); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/role_perms`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ role: rn, perms, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
@@ -9441,22 +9442,22 @@ async function clearRolePerms(role) {
   if (!rn) return;
   if (state.rolePerms) delete state.rolePerms[rn];
   try { localStorage.setItem('rolePerms', JSON.stringify(state.rolePerms || {})); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/role_perms?role=eq.${encodeURIComponent(rn)}`, {
+    await fetchWithTimeout(`${DB_URL}/rest/v1/role_perms?role=eq.${encodeURIComponent(rn)}`, {
       method: 'DELETE',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), Prefer: 'return=minimal' },
     }, 15000);
   } catch (e) { console.warn('clearRolePerms', e); }
 }
 
 // ════════════ САРЫН ЦАЛИН (хүн бүрт суурь цалин + сар бүрийн олголт) ════════════
 function canSeeSalary() { return canAccessView('salary', () => state.isCEO || (typeof isFinanceAccountant === 'function' && isFinanceAccountant())); }
-const _SAL_H = () => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() });   // цалин унших/бичих — нэвтэрсэн ажилтан (anon уншиж чадахгүй)
+const _SAL_H = () => ({ apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() });   // цалин унших/бичих — нэвтэрсэн ажилтан (anon уншиж чадахгүй)
 async function loadSalaries() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary?select=*`, { headers: _SAL_H() }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_salary?select=*`, { headers: _SAL_H() }, 15000);
     if (!r.ok) return;
     const rows = await r.json(); const map = {}, ded = {};
     rows.forEach(p => { if (p && p.person_key) { map[p.person_key] = Number(p.amount) || 0; ded[p.person_key] = p.deduct !== false; } });
@@ -9474,9 +9475,9 @@ async function saveSalaryDeduct(personKey, on) {
   if (!personKey) return;
   state.salaryDeduct = state.salaryDeduct || {}; state.salaryDeduct[personKey] = !!on;
   try { localStorage.setItem('salaryDeduct', JSON.stringify(state.salaryDeduct)); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_salary`, {
       method: 'POST', headers: { ..._SAL_H(), Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, deduct: !!on, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
@@ -9484,9 +9485,9 @@ async function saveSalaryDeduct(personKey, on) {
   } catch (e) { showToast('Суутгал хадгалах алдаа: ' + e.message, 'error', 4000); }
 }
 async function loadSalaryPayments() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/salary_payments?select=*&order=paid_at.desc`, { headers: _SAL_H() }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/salary_payments?select=*&order=paid_at.desc`, { headers: _SAL_H() }, 15000);
     if (!r.ok) return;
     state.salaryPayments = await r.json();
     if (typeof render === 'function') render();
@@ -9496,9 +9497,9 @@ async function saveSalary(personKey, amount) {
   if (!personKey) return;
   state.salaries = state.salaries || {}; state.salaries[personKey] = Number(amount) || 0;
   try { localStorage.setItem('salaries', JSON.stringify(state.salaries)); } catch (e) {}
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/staff_salary`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_salary`, {
       method: 'POST', headers: { ..._SAL_H(), Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ person_key: personKey, amount: Number(amount) || 0, updated_by: state.me, updated_at: new Date().toISOString() }),
     }, 15000);
@@ -9509,9 +9510,9 @@ async function paySalary(personKey, ym, amount, note) {
   const id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'sal-' + Date.now();
   const row = { id, person_key: personKey, ym, amount: Number(amount) || 0, note: note || '', paid_by: state.me, paid_at: new Date().toISOString() };
   state.salaryPayments = state.salaryPayments || []; state.salaryPayments.unshift(row);
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/salary_payments`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/salary_payments`, {
       method: 'POST', headers: { ..._SAL_H(), Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(row),
     }, 15000);
@@ -10113,12 +10114,12 @@ async function loadNomaadOrders() {
   } catch(e) { console.warn('loadNomaadOrders fail', e); }
 }
 
-// NOMAAD төлбөрийн лог татна (quote_no-гоор бүлэглэнэ). Supabase anon SELECT.
+// NOMAAD төлбөрийн лог татна (quote_no-гоор бүлэглэнэ). PostgREST anon SELECT.
 async function loadNomaadPayments() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments?select=*&order=recorded_at.asc`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/nomaad_payments?select=*&order=recorded_at.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return;   // хүснэгт үүсээгүй бол чимээгүй
     const rows = await r.json();
     const byQ = {};
@@ -10133,10 +10134,10 @@ async function loadNomaadPayments() {
 // NOMAAD орлого бүртгэх бүрт логт нэг мөр нэмнэ (хэн/хэзээ/хэдэн — дарж бичихгүй).
 // nomaad_payments мөрийг серверт бичнэ (upsert — дахин оролдоход давхардуулахгүй). ok/false буцаана.
 async function postNomaadPaymentRow(row) {
-  if (!SUPABASE_ANON_KEY) return false;
-  const post = (body) => fetchWithTimeout(`${SUPABASE_URL}/rest/v1/nomaad_payments`, {
+  if (!DB_ANON_KEY) return false;
+  const post = (body) => fetchWithTimeout(`${DB_URL}/rest/v1/nomaad_payments`, {
     method: 'POST',
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=merge-duplicates' },
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal,resolution=merge-duplicates' },
     body: JSON.stringify(body),
   }, 15000);
   try {
@@ -13285,19 +13286,19 @@ function attachPerformanceHandlers() {
 
 // ── app_config (VPS Postgres, PostgREST anon) key-value тохиргоо — сайттай хуваалцана ──
 async function loadAppConfig(key) {
-  if (!SUPABASE_ANON_KEY) return null;
+  if (!DB_ANON_KEY) return null;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     return rows[0] ? rows[0].value : null;
   } catch (e) { console.warn('loadAppConfig fail', key, e.message); return null; }
 }
 async function saveAppConfig(key, value) {
-  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_config?on_conflict=key`, {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?on_conflict=key`, {
     method: 'POST',
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
   }, 20000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -13849,7 +13850,7 @@ async function submitProductModal(modal, orig, btn) {
   product.cost = moneyVal(modal.querySelector('#pm-cost'));
   btn.disabled = true;
   try {
-    await saveProduct(product);   // каталог + өртөг → Supabase Postgres (upsert)
+    await saveProduct(product);   // каталог + өртөг → VPS Postgres (upsert)
     modal.remove();
   } catch (e) { showToast('Алдаа: ' + e.message, 'error'); btn.disabled = false; }
 }
@@ -13938,7 +13939,7 @@ function finStage(t) {
 
 /* ═══════════════════════════════════════════════════════════════════════
    ТҮРЭЭСИЙН ТҮҮХ (түүхэн аналитик) — зөвхөн CEO
-   2024–2026 түүхэн түрээсийн бүрэн түүхийг Supabase Postgres-ийн rh_v_*
+   2024–2026 түүхэн түрээсийн бүрэн түүхийг VPS Postgres-ийн rh_v_*
    аналитик view-уудаас (PostgREST, anon SELECT) уншиж шийдвэр гаргалтад
    зориулсан самбараар харуулна. Дата статик (түүх) тул view нээх үед НЭГ
    удаа lazy-load хийнэ (polling-д ороогүй).
@@ -13947,11 +13948,11 @@ function finStage(t) {
 async function loadHistory(force) {
   if (state._bqLoading) return;
   if (state.history && !state.history.error && !force) return;
-  if (!SUPABASE_ANON_KEY) { state.history = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
+  if (!DB_ANON_KEY) { state.history = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
   state._bqLoading = true;
-  const H = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
+  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
   const get = async (view, qs) => {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${view}?select=*${qs || ''}`, { headers: H }, 20000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${view}?select=*${qs || ''}`, { headers: H }, 20000);
     if (!r.ok) throw new Error(view + ' HTTP ' + r.status);
     return r.json();
   };
@@ -13961,11 +13962,11 @@ async function loadHistory(force) {
     // nomaad camp/давхардал/хуучирсан snapshot асуудал арилна. Төлбөрийн хэлбэр л bq_payments-аас
     // (app_orders-д migrate үед method ороогүй) — Booqable түүхэн гэж шошголно.
     const rawOrders = fetchWithTimeout(
-      `${SUPABASE_URL}/rest/v1/app_orders?select=id,customer,status,starts_at,stops_at,total_mnt,paid_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
+      `${DB_URL}/rest/v1/app_orders?select=id,customer,status,starts_at,stops_at,total_mnt,paid_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
     const rawProducts = fetchWithTimeout(
-      `${SUPABASE_URL}/rest/v1/products?select=sku,name,category&limit=2000`,
+      `${DB_URL}/rest/v1/products?select=sku,name,category&limit=2000`,
       { headers: H }, 20000).then(r => r.ok ? r.json() : []).catch(() => []);
     const [summary, monthly, methods, orders, roiFix, prods] = await Promise.all([
       get('rh_v_summary'),
@@ -14018,8 +14019,8 @@ async function loadOrderItems(orderId) {
   state.bqOrderItems = state.bqOrderItems || {};
   if (state.bqOrderItems[orderId]) return state.bqOrderItems[orderId];
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rh_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     state.bqOrderItems[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderItems', e); state.bqOrderItems[orderId] = []; }
   return state.bqOrderItems[orderId];
@@ -14030,8 +14031,8 @@ async function loadOrderDocs(orderId) {
   state.bqDocuments = state.bqDocuments || {};
   if (state.bqDocuments[orderId]) return state.bqDocuments[orderId];
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rh_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     state.bqDocuments[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderDocs', e); state.bqDocuments[orderId] = []; }
   return state.bqDocuments[orderId];
@@ -14342,7 +14343,7 @@ async function loadAppOrders() {
   try { return await state._ordersInflight; } finally { state._ordersInflight = null; }
 }
 async function _loadAppOrdersImpl() {
-  if (!SUPABASE_ANON_KEY) { state.appOrders = state.appOrders || []; return; }
+  if (!DB_ANON_KEY) { state.appOrders = state.appOrders || []; return; }
   // КЭШ-ТҮРҮҮЛЖ ЗУРАХ: өмнөх сессийн идэвхтэй захиалгыг localStorage-оос шууд гаргана
   // (даалгаврын cache-first загвартай ижил) — сүлжээ иртэл хоосон "Ачаалж байна" харагдахгүй.
   if (!(state.appOrders || []).length && !state._ordersCacheSeeded) {
@@ -14352,11 +14353,11 @@ async function _loadAppOrdersImpl() {
       if (c) { state.appOrders = JSON.parse(c); if (typeof render === 'function') render(); }
     } catch (e) {}
   }
-  const H = { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } };
+  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } };
   const isArch = (o) => _ARCHIVE_STATUSES.includes(String(o.status));
   try {
     // 1-р шат: идэвхтэй захиалгууд — жижиг, хурдан
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?select=*&status=not.in.(archived,canceled)&order=number.desc.nullslast`, H, 20000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?select=*&status=not.in.(archived,canceled)&order=number.desc.nullslast`, H, 20000);
     if (r.ok) {
       const active = await r.json();
       const archive = (state.appOrders || []).filter(isArch);   // санах ойд буй архивыг хадгална
@@ -14373,7 +14374,7 @@ async function _loadAppOrdersImpl() {
   if (!state._archiveLoaded && !state._archiveLoading) {
     state._archiveLoading = true;
     try {
-      const r2 = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?select=*&status=in.(archived,canceled)&order=number.desc.nullslast`, H, 30000);
+      const r2 = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?select=*&status=in.(archived,canceled)&order=number.desc.nullslast`, H, 30000);
       if (r2.ok) {
         const archive = await r2.json();
         const active = (state.appOrders || []).filter(o => !isArch(o));
@@ -14455,12 +14456,12 @@ async function saveAppOrder(ord) {
   const prev = idx >= 0 ? state.appOrders[idx] : null;   // буцаахад хэрэгтэй хуучин утга
   if (idx >= 0) state.appOrders[idx] = ord; else state.appOrders.unshift(ord);
   if (typeof render === 'function') render();
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   let r;
   try {
-    r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders`, {
+    r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify(ord),
     }, 20000);
   } catch (e) { r = null; }
@@ -14521,13 +14522,13 @@ async function bulkDeleteOrders(ids) {
   const removed = (state.appOrders || []).filter(o => idSet.has(String(o.id)));   // сэргээхэд хэрэгтэй
   state.appOrders = (state.appOrders || []).filter(o => !idSet.has(String(o.id)));
   if (typeof render === 'function') render();
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   let failed = false;
   for (let i = 0; i < ids.length; i += 80) {
     const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
     try {
-      const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 30000);
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, Prefer: 'return=minimal' } }, 30000);
       if (!r.ok) failed = true;
     } catch (e) { console.warn('bulkDelete', e); failed = true; }
   }
@@ -14544,20 +14545,20 @@ async function bulkRestoreOrders(ids) {
   const idSet = new Set(ids.map(String));
   (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) o.status = 'reserved'; });
   if (typeof render === 'function') render();
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   for (let i = 0; i < ids.length; i += 80) {
     const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
     try {
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
-        { method: 'PATCH', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
+      await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
     } catch (e) { console.warn('bulkRestore', e); }
   }
 }
 async function deleteAppOrder(id) {
   state.appOrders = (state.appOrders || []).filter(o => o.id !== id);
   if (typeof render === 'function') render();
-  if (!SUPABASE_ANON_KEY) return;
-  try { await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
+  if (!DB_ANON_KEY) return;
+  try { await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, Prefer: 'return=minimal' } }, 15000); } catch (e) { console.warn('deleteAppOrder', e); }
 }
 function unifiedOrders() {
   // Захиалга бүр app_orders-т нэгдсэн (түүхэн архив + шинэ захиалга). Нэг эх сурвалж.
@@ -14617,7 +14618,7 @@ function clearCancelReq(note) { return String(note || '').replace(_CXRQ_RE, '').
 // Захиалгын note-г шинэчлэх (статус хөндөхгүй) — app_orders/bq_orders routing
 async function patchOrderNote(oid, note) {
   let o = (state.bqOrders || []).find(x => String(x.id) === String(oid)); const table = o ? 'bq_orders' : 'app_orders';
-  const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, { method: 'PATCH', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ note, updated_at: new Date().toISOString() }) }, 15000);
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ note, updated_at: new Date().toISOString() }) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 // Менежер — цуцлах хүсэлт илгээх (заавал шалтгаантай, CEO батална)
@@ -15295,7 +15296,7 @@ function bqOrderCard(o) {
   </div>`;
 }
 
-// Захиалгын төлвийг БАЙРАНДАА засах (Supabase anon PATCH, зөвхөн status багана).
+// Захиалгын төлвийг БАЙРАНДАА засах (PostgREST anon PATCH, зөвхөн status багана).
 // Optimistic: эхлээд UI шинэчилж, амжилтгүй бол буцаана.
 // Захиалга/ноорог цуцлах — ШАЛТГААН заавал асууж, ⟦CX⟧-ээр хадгална. Ноорог "устгах" ч мөн энэ
 // (hard delete биш — цуцалсан болж "Бүгд"-ээс алга, шалтгаан + түүх үлдэнэ).
@@ -15344,9 +15345,9 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     const body = { status: to, updated_at: new Date().toISOString() };
     if (notePatch !== null) body.note = notePatch;
     if (opts.stageMeta && table === 'app_orders') body.stage_meta = opts.stageMeta;
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
@@ -16031,10 +16032,10 @@ function parseBankReceipt(text) {
 // ӨӨР лавлах дугаартай = ӨӨР гүйлгээ (зөвшөөрнө) — ижил дүнгээр 2 удаа төлөхийг блоклохгүй.
 // M-Event төлбөр + NOMAAD орлого хоёул энд шалгаж/эзэмшинэ (салбар хооронд ч давхцахгүй).
 async function loadUsedReceipts() {
-  if (!SUPABASE_ANON_KEY) return;
+  if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
@@ -16072,7 +16073,7 @@ function receiptFingerprint(d) {
 // Баримтыг эзэмших (ledger-т бичих). receiptId=канон түлхүүр (лавлах дугаар эсвэл fp), meta.fp=хурууны хээ.
 // 'ok' = эзэмшсэн, 'dup' = аль хэдийн бүртгэгдсэн (409 PK эсвэл хээ таарсан), 'err' = алдаа.
 async function reserveReceipt(receiptId, meta) {
-  if (!receiptId || !SUPABASE_ANON_KEY) return 'ok';   // түлхүүр алга бол хаалт тавихгүй
+  if (!receiptId || !DB_ANON_KEY) return 'ok';   // түлхүүр алга бол хаалт тавихгүй
   const fpKey = meta.fp || receiptId;
   // client-талын дүрэм: лавлах-дугааргүй хуучин бичлэг эсвэл лавлах дугааргүй давхцал (DB PK хамрахгүй хэсэг)
   if (receiptDupReason(receiptId === fpKey ? '' : receiptId, fpKey, meta.usedIn)) {
@@ -16081,16 +16082,16 @@ async function reserveReceipt(receiptId, meta) {
   // Өөрийн хүсэлтэд аль хэдийн эзэмшсэн баримт — дахин бичилт хэрэггүй, шууд ok
   if (state.receiptOwners instanceof Map && state.receiptOwners.get(receiptId) === meta.usedIn) return 'ok';
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ receipt_id: receiptId, fp: fpKey, amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', used_in: meta.usedIn || '', recorded_by: state.me }),
     }, 15000);
     if (r.status === 409) {
       // PK мөргөлдөөн — эзэмшигч нь мөн энэ хүсэлт бол ok (кэш хуучирсан байж болно)
       try {
-        const q = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=used_in`,
-          { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 10000);
+        const q = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=used_in`,
+          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 10000);
         const ex = await q.json();
         if (ex[0] && ex[0].used_in === meta.usedIn) return 'ok';
       } catch (e) {}
@@ -16106,24 +16107,24 @@ async function reserveReceipt(receiptId, meta) {
 // ── Банкны баримт PDF-ийг хадгалах (нээлттэй статик URL БИШ — Postgres receipt_files, anon key) ──
 // Эх файлыг base64-ээр хадгалж, дараа аппаас татаж үзнэ. receiptId = баримтын канон түлхүүр (bank_receipts-тэй ижил).
 async function uploadReceiptFile(receiptId, file, meta = {}) {
-  if (!receiptId || !file || !SUPABASE_ANON_KEY) return false;
+  if (!receiptId || !file || !DB_ANON_KEY) return false;
   try {
     const durl = await fileToDataUrl(file);
     const b64 = String(durl).slice(String(durl).indexOf(',') + 1);   // "data:...;base64," префиксгүй
     const body = { receipt_id: receiptId, mime: file.type || 'application/pdf', data: b64, amount: meta.amount || null, pay_date: meta.date || null, used_in: meta.usedIn || '', uploaded_by: state.me };
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/receipt_files?on_conflict=receipt_id`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/receipt_files?on_conflict=receipt_id`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=ignore-duplicates,return=minimal' },
       body: JSON.stringify(body),
     }, 30000);
     return r.ok;
   } catch (e) { console.warn('uploadReceiptFile', e); return false; }
 }
 async function fetchReceiptBlob(receiptId) {
-  if (!receiptId || !SUPABASE_ANON_KEY) return null;
+  if (!receiptId || !DB_ANON_KEY) return null;
   try {
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/receipt_files?receipt_id=eq.${encodeURIComponent(receiptId)}&select=data,mime`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // баримт унших — нэвтэрсэн ажилтан
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/receipt_files?receipt_id=eq.${encodeURIComponent(receiptId)}&select=data,mime`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // баримт унших — нэвтэрсэн ажилтан
     if (!r.ok) return null;
     const rows = await r.json();
     if (!rows[0] || !rows[0].data) return null;
@@ -16255,18 +16256,18 @@ async function submitBqPayment(oid, modal, btn) {
     const body = { updated_at: new Date().toISOString(), paid_ref: ref, paid_method: method, paid_date: date };
     if (isApp) body.paid_mnt = newPaid; else body.total_paid_in_cents = Math.round(newPaid * 100);
     if (newStatus !== prevStatus) body.status = newStatus;
-    const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
       method: 'PATCH',
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(body),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
     // Аудит — зөвхөн түүхэн захиалгад bq_payments (баримт БҮРД нэг мөр)
     if (!isApp) for (const rc of okR) try {
       const pid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'bqp-' + Date.now() + '-' + Math.round(rc.amount);
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/bq_payments`, {
+      await fetchWithTimeout(`${DB_URL}/rest/v1/bq_payments`, {
         method: 'POST',
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: pid, order_id: oid, ptype: 'payment_charges', provider_method: method, status: 'succeeded', mode: 'manual', amount_in_cents: Math.round(rc.amount * 100), currency: 'mnt', succeeded_at: rc.date + 'T00:00:00+00:00', created_at: new Date().toISOString() }),
       }, 15000);
     } catch (e2) { console.warn('bq payment record', e2); }
@@ -16702,10 +16703,10 @@ function renderHistory() {
       <div style="border:1px solid var(--warn);background:var(--warn-soft);border-radius:12px;padding:16px;font-size:13px;line-height:1.6;">
         <div style="font-weight:700;margin-bottom:6px;">⚠ Дата ачаалагдсангүй</div>
         ${isLoad
-          ? `Supabase-д <b>bq_*</b> хүснэгт/view хараахан үүсээгүй байж магадгүй. Эхлээд <b>postgres-migration/</b> доторх SQL-уудыг Supabase SQL Editor-т дарааллаар нь RUN хийнэ:<br>
+          ? `Өгөгдлийн санд <b>bq_*</b> хүснэгт/view хараахан үүсээгүй байж магадгүй. Эхлээд <b>postgres-migration/</b> доторх SQL-уудыг дарааллаар нь ажиллуулна:<br>
              <code style="font-size:11.5px;">bq_01_schema → bq_02_products → bq_03_customers → bq_04_orders → bq_05_payments → bq_06_order_lines → bq_07_plannings</code><br>
              <div style="color:var(--muted);font-size:11px;margin-top:8px;">Алдаа: ${escapeHtml(bq.msg || '')}</div>`
-          : `Supabase anon key тохируулагдаагүй байна.`}
+          : `Өгөгдлийн сангийн anon key тохируулагдаагүй байна.`}
       </div></div>`;
   }
 
@@ -17599,8 +17600,8 @@ function attachReportsHandlers() {
    Борлуулалтын НӨАТ баримтын задаргаа (ebarimt xlsx) → vat_receipts (Postgres, anon,
    products-тэй ижил posture) → NOMAAD + Эвент(түүхэн) захиалгатай авто/гараар тулгана →
    захиалгад "🧾 НӨАТ" badge + Санхүүд тусдаа НӨАТ тайлан. */
-const VAT_URL = `${SUPABASE_URL}/rest/v1/vat_receipts`;
-const VAT_HDR = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
+const VAT_URL = `${DB_URL}/rest/v1/vat_receipts`;
+const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
 function vatNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; }
 function vatNorm(s) { return String(s || '').toLowerCase().replace(/ххк|ххн|\bхк\b|llc|ltd|co\b|group|групп/g, '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
 function vatDateIso(v) {
@@ -21454,8 +21455,8 @@ async function loadTaskVoice(taskId) {
   state._taskVoice = null; state._taskVoiceDur = 0; state._taskVoiceDirty = false;
   if (taskId) {
     try {
-      const r = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 15000);
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
       if (r.ok) { const rows = await r.json(); if (rows[0]) { state._taskVoice = rows[0].audio; state._taskVoiceDur = rows[0].duration || 0; } }
     } catch (e) {}
   }
@@ -21466,14 +21467,14 @@ async function saveTaskVoice(taskId, isNew) {
   if (!isNew && !state._taskVoiceDirty) return;
   try {
     if (state._taskVoice) {
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/task_audio`, {
+      await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio`, {
         method: 'POST',
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ task_id: taskId, audio: state._taskVoice, duration: state._taskVoiceDur || null })
       }, 60000);
     } else if (!isNew) {
-      await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
-        { method: 'DELETE', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }, 20000);
+      await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
+        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 20000);
     }
   } catch (e) { console.warn('voice save failed', e); }
 }
@@ -23244,8 +23245,8 @@ function setupProfileModal() {
       const gv = id => ((document.getElementById(id) || {}).value || '').trim();
       const _bank = gv('profile-bank'), _acct = gv('profile-account');
       try {
-        await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/update_my_profile`, {
-          method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_profile`, {
+          method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_phone: oldPhoneD, p_bank: _bank, p_bank_account: _acct, p_bank_holder: gv('profile-holder'), p_emergency_name: gv('profile-emg-name'), p_emergency_phone: gv('profile-emg-phone') })
         }, 15000);
         if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone') });
@@ -23260,8 +23261,8 @@ function setupProfileModal() {
     const _phoneChanged = _newPhoneD.length >= 8 && _newPhoneD !== oldPhoneD;
     if ((_photoUrl || _phoneChanged) && oldPhoneD) {
       try {
-        const rc = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/update_my_contact`, {
-          method: 'POST', headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        const rc = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_contact`, {
+          method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_phone: oldPhoneD, p_photo: _photoUrl, p_new_phone: _phoneChanged ? phone : null })
         }, 15000);
         if (rc.ok) { if (member) { if (_photoUrl) member.photo = _photoUrl; } }

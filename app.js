@@ -7428,11 +7428,15 @@ function renderAttendance() {
     <div id="att-list">${body}</div>
   </div>`;
 }
-// Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг
+// Сарын ажлын норм: өдрийн тоо (app_config['work_norm_days'], default 23) × 8 цаг.
+function workNormDays() { const v = Number(state.appConfig && state.appConfig.work_norm_days); return (v >= 1 && v <= 31) ? v : 23; }
+function workNormMins() { return workNormDays() * 8 * 60; }
+// Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
   if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div style="text-align:center;color:var(--muted);padding:30px;">Ачаалж байна…</div>';
   const recs = state.attMonthRecs;
   if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
+  const normDays = workNormDays(), normMins = workNormMins();
   const byM = {};
   recs.forEach(r => { const m = (byM[r.member_key] = byM[r.member_key] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
@@ -7441,11 +7445,15 @@ function renderAttendanceMonth(month) {
     const mem = findMember(k) || { name: m.name, role: '' };
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins };
   }).sort((a, b) => b.mins - a.mins);
-  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
-  const list = rows.map(r => `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">
+  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
+  const list = rows.map(r => {
+    const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
+    const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр ирсэн</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)}</div></div></div>`).join('');
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div></div>`;
+  }).join('');
   return head + `<div>${list}</div>`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
@@ -13862,7 +13870,10 @@ function objectiveMetrics(key, month) {
 }
 const MIN_OBJ_TASKS = 3;
 /* ─── Нэгдсэн оноо (Объектив 40% + Ажлын чанар 40% + 360° 20%) + бонус ─── */
-const PERF_WEIGHTS = { objective: 0.40, quality: 0.40, eval360: 0.20 };
+const PERF_WEIGHTS = { objective: 0.20, quality: 0.20, eval360: 0.20, handoff: 0.20, throughput: 0.20 };
+const HANDOFF_MIN = 3;        // ≥3 хүлээлцэх үнэлгээ байж оноонд тооцно (нимгэн датаны хамгаалалт)
+const THROUGHPUT_MIN = 5;     // ≥5 дамжлагын ажил байж оноонд тооцно
+const THROUGHPUT_TARGET = 30; // энэ хэмжээ = 100 оноо (тохируулж болно; гарц/target×100, дээд тал 100)
 const EVAL_COMPETENCIES = [
   { id: 'responsibility', label: 'Хариуцлага' },
   { id: 'quality', label: 'Чанар' },
@@ -14046,17 +14057,26 @@ function unifiedScore(key, period) {
   const quality = q.score;
   const e360 = eval360Score(key, period);
   const penalty = penaltyTotal(key, period);
+  // ШИНЭ: Хүлээлцэх чанар + Гарц. Гүйцэтгэгчид (нярав/цэвэрлэгч г.м.) даалгавар (об/чан) авдаггүй тул
+  // ЭДГЭЭР жинхэнэ ажлаараа оноологдоно. Нимгэн датаны хамгаалалттай (HANDOFF_MIN/THROUGHPUT_MIN).
+  const hq = handoffQualityScore(key, period);
+  const handoff = (hq.count >= HANDOFF_MIN && hq.avg != null) ? Math.round(hq.avg * 20) : null;
+  const gc = pipelineThroughput(key, period);
+  const throughput = (gc >= THROUGHPUT_MIN) ? Math.min(100, Math.round(gc / THROUGHPUT_TARGET * 100)) : null;
   const parts = [];
   // Цөөн ажилтай объективийг (lowData) нэгдсэн онооноос хасна — хиймэл өндөр оноо/бонусаас сэргийлнэ.
   if (obj != null && !objLowData) parts.push([obj, PERF_WEIGHTS.objective]);
   if (quality != null) parts.push([quality, PERF_WEIGHTS.quality]);
   if (e360.score != null) parts.push([e360.score, PERF_WEIGHTS.eval360]);
-  if (!parts.length) return { total: null, obj, objLowData, quality, qualityInfo: q, e360, partsUsed: 0, penalty, rawTotal: null };
+  if (handoff != null) parts.push([handoff, PERF_WEIGHTS.handoff]);
+  if (throughput != null) parts.push([throughput, PERF_WEIGHTS.throughput]);
+  // Дата байгаа хэсгийн жинг л ашиглаж дахин норм болгоно — хүн бүр ӨӨРИЙН хийдэг ажлаар оноологдоно.
+  if (!parts.length) return { total: null, obj, objLowData, quality, qualityInfo: q, e360, handoff, throughput, hqInfo: hq, gc, partsUsed: 0, penalty, rawTotal: null };
   const wsum = parts.reduce((s, [, w]) => s + w, 0);
   const rawTotal = Math.round(parts.reduce((s, [v, w]) => s + v * w, 0) / wsum);
   // Суутгалыг нэгдсэн онооноос хасч 0-ээс доош болгохгүй.
   const total = Math.max(0, rawTotal - penalty);
-  return { total, rawTotal, penalty, obj, objLowData, quality, qualityInfo: q, e360, partsUsed: parts.length };
+  return { total, rawTotal, penalty, obj, objLowData, quality, qualityInfo: q, e360, handoff, throughput, hqInfo: hq, gc, partsUsed: parts.length };
 }
 function bonusPctForScore(s) {
   if (s == null) return 0;
@@ -14173,8 +14193,8 @@ function renderPerfMe() {
         ${bar('Объектив (цагтаа)', u.obj, PERF_WEIGHTS.objective)}
         ${bar('Ажлын чанар', u.quality, PERF_WEIGHTS.quality)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
-        ${(() => { const g = pipelineThroughput(state.me, month); return g ? `<div class="perf-bar-row"><span>Гарц <small>(дамжлагын ажил)</small></span><b>${g} ажил</b></div>` : ''; })()}
-        ${(() => { const h = handoffQualityScore(state.me, month); return h.count ? `<div class="perf-bar-row"><span>Хүлээлцэх чанар <small>(шинэ)</small></span><b>${h.avg}★ <small>${h.count} үнэлгээ</small></b></div>` : ''; })()}
+        ${u.handoff != null ? `<div class="perf-bar-row"><span>Хүлээлцэх чанар <small>(20%, ${u.hqInfo.avg}★)</small></span><b>${u.handoff}</b></div>` : (u.hqInfo && u.hqInfo.count ? `<div class="perf-bar-row"><span>Хүлээлцэх чанар <small>(${u.hqInfo.count}/${HANDOFF_MIN} үнэлгээ хүрэхэд)</small></span><b>${u.hqInfo.avg}★</b></div>` : '')}
+        ${u.throughput != null ? `<div class="perf-bar-row"><span>Гарц <small>(20%, ${u.gc} ажил)</small></span><b>${u.throughput}</b></div>` : (u.gc ? `<div class="perf-bar-row"><span>Гарц <small>(${u.gc}/${THROUGHPUT_MIN} ажил хүрэхэд)</small></span><b>${u.gc}</b></div>` : '')}
         ${(() => { const p = punctualityScore(state.me, month); return (p.measured && p.days) ? `<div class="perf-bar-row"><span>Цаг баримталт <small>(${escapeHtml(p.start)}-аас)</small></span><b>${p.onTimePct}% <small>${p.late ? p.late + ' хоцорсон' : 'цагтаа'}</small></b></div>` : ''; })()}
         ${u.penalty ? `<div class="perf-bar-row perf-penalty-row"><span>Суутгал ${u.rawTotal != null ? `<small>(${u.rawTotal} → ${u.total})</small>` : ''}</span><b>−${u.penalty}</b></div>` : ''}
       </div>

@@ -5812,6 +5812,9 @@ body.role-daily #add-project { display: none !important; }
 .no-lbl { display: block; font-size: var(--fs-xs); color: var(--muted); }
 .no-lbl input, .no-lbl select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid transparent; border-radius: var(--r-md); background: var(--panel-hover); color: var(--text); font-size: var(--fs-md); margin-top: 4px; transition: border-color .12s, background .12s; }
 .no-lbl input::placeholder { color: var(--muted); }
+.no-req { color: var(--danger, #e5484d); font-weight: 700; }
+.no-noemail { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: var(--fs-xs); color: var(--muted); cursor: pointer; }
+.no-noemail input { width: auto !important; margin: 0 !important; padding: 0 !important; }
 .no-lbl input:focus, .no-lbl select:focus { outline: none; border-color: var(--primary); background: var(--panel); }
 .no-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: 6px; }
 .no-head h2 { margin: 0; font-size: var(--fs-lg); }

@@ -15398,6 +15398,19 @@ function orderRentalDays(o) {
 }
 
 // ── Шинэ захиалга үүсгэх / засах модал (түүхэн шиг — зурагтай picker, барьцаа+лог, хөнгөлөлт) ──
+// Захиалгын харилцагчийн мэдээлэл шалгах — үйлчлүүлэгчийн бааз бүрдүүлэхэд утас/имэйл заавал.
+// Алдаа байвал { field, msg } буцаана, зөв бол null.
+function validateOrderContact({ customer, phone, email, noEmail }) {
+  if (!String(customer || '').trim()) return { field: 'customer', msg: 'Харилцагчийн нэр оруулна уу' };
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return { field: 'phone', msg: 'Утасны дугаар оруулна уу' };
+  if (digits.length < 8) return { field: 'phone', msg: 'Утасны дугаар дутуу байна (8 орон)' };
+  const mail = String(email || '').trim();
+  if (!mail && !noEmail) return { field: 'email', msg: 'Имэйл оруулах эсвэл «Имэйлгүй» гэж тэмдэглэнэ үү' };
+  if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return { field: 'email', msg: 'Имэйл буруу байна' };
+  return null;
+}
+
 function openNewOrder(editOrder) {
   if (!(canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true)) {
     showToast('Танд захиалга үүсгэх эрх алга', 'warn', 3000); return;
@@ -15440,9 +15453,9 @@ function openNewOrder(editOrder) {
     <div class="no-col no-col-a">
     ${_sec('Харилцагч')}
     <div class="no-fields">
-      <label class="no-lbl">Харилцагч<input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
-      <label class="no-lbl">Утас<input id="no-phone" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="Утас"></label>
-      <label class="no-lbl">Имэйл<input id="no-email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"></label>
+      <label class="no-lbl">Харилцагч <span class="no-req">*</span><input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
+      <label class="no-lbl">Утас <span class="no-req">*</span><input id="no-phone" type="tel" inputmode="numeric" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="8 оронтой дугаар"></label>
+      <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
@@ -15666,7 +15679,11 @@ function openNewOrder(editOrder) {
     const btn = e.currentTarget;   // await-аас өмнө барьж авна (currentTarget нь async дараа null болно)
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }
     const customer = $('#no-customer').value.trim();
-    if (!customer) { showToast('Харилцагчийн нэр оруулна уу', 'warn'); return; }
+    // Харилцагчийн бааз бүрдүүлэх — нэр·утас заавал, имэйл заавал (эсвэл «Имэйлгүй» тэмдэглэнэ).
+    const _bad = validateOrderContact({
+      customer, phone: $('#no-phone').value, email: $('#no-email').value, noEmail: !!$('#no-email-none')?.checked,
+    });
+    if (_bad) { showToast(_bad.msg, 'warn'); $('#no-' + _bad.field)?.focus(); return; }
     const days = currentDays();
     const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;

@@ -4186,6 +4186,25 @@ function rentalDiscount(days) {
   for (const t of RENTAL_TIERS) if (days >= t.min) return t;
   return { min: 1, pct: 0, label: '' };
 }
+// Байнгын үйлчлүүлэгчийн хөнгөлөлт (%). app_config['loyalty_pct'] байвал түүгээр, эс бол 10.
+function loyaltyPct() { const v = Number(state.appConfig && state.appConfig.loyalty_pct); return (v > 0 && v <= 50) ? v : 10; }
+// Тухайн имэйл/утас ӨМНӨ захиалга хийж байсан эсэх (M-Event app_orders + Booqable түүх). draft/цуцлалт тооцохгүй.
+function isReturningCustomer(email, phone, excludeNumber) {
+  const e = String(email || '').trim().toLowerCase();
+  const p = String(phone || '').replace(/\D/g, '');
+  if (!e && p.length < 8) return false;
+  const match = (o) => {
+    if (excludeNumber != null && String(o.number) === String(excludeNumber)) return false;
+    const oe = String(o.email || '').trim().toLowerCase();
+    const op = String(o.phone || '').replace(/\D/g, '');
+    if (e && oe && oe === e) return true;
+    if (p.length >= 8 && op.length >= 8 && op === p) return true;
+    return false;
+  };
+  const skip = new Set(['canceled', 'cancelled', 'deleted', 'draft']);
+  if ((state.appOrders || []).some(o => !skip.has(String(o.status || '').toLowerCase()) && match(o))) return true;
+  return (state.bqOrders || []).some(match);   // Booqable түүх = бүх өнгөрсөн захиалга
+}
 
 // Захиалгын үнийг items + хоногоор ДАХИН тооцоолно (хадгалагдсан дүн хуучин/буруу байж болзошгүй тул).
 // Түрээс = (үнэ×тоо)×хоног, дараа нь хугацааны шатлалын хямдрал, НӨАТ (note-д байвал) −5%, дээр нь барьцаа.
@@ -15754,6 +15773,10 @@ function openNewOrder(editOrder) {
         ${_rcpts0.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:5px;">${_rcpts0.map((r, i) => `<div class="paid-rcpt-row" data-paid-rcpt="${i}" role="button" tabindex="0" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || 'Банкны баримт')}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>` : '<div style="font-size:var(--fs-xs);color:var(--muted);margin-top:4px;">Төлбөр бүртгээгүй.</div>'}
         <span style="font-size:var(--fs-xs);color:var(--muted);display:block;margin-top:5px;">Гараар засагдахгүй — "💵 Төлбөр бүртгэх"-ээр л нэмнэ. Баримт дээр дарж дэлгэрэнгүйг харна.</span></label>` : ''}
     </div>
+    <div id="no-loyalty-row" style="display:none;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);padding:8px 11px;background:var(--ok-soft);border:1px solid var(--ok);border-radius:8px;">
+      <input type="checkbox" id="no-loyalty" checked style="width:17px;height:17px;flex:none;">
+      <label for="no-loyalty" style="cursor:pointer;margin:0;">🎁 <b>Байнгын үйлчлүүлэгч</b> — <span id="no-loyalty-pct">10</span>% хөнгөлөлт автоматаар</label>
+    </div>
     <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
     </label>
@@ -15919,6 +15942,27 @@ function openNewOrder(editOrder) {
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
   $('#no-disctype').addEventListener('change', recalc);
+  // 🎁 Байнгын үйлчлүүлэгчийн хөнгөлөлт — имэйл/утсаар өмнөх захиалга илэрвэл авто (шинэ захиалгад)
+  const _lp = loyaltyPct();
+  { const _e = $('#no-loyalty-pct'); if (_e) _e.textContent = String(_lp); }
+  let _loyaltyActive = false;   // энэ формоор loyalty тавьсан эсэх
+  function applyLoyalty(on) {
+    if (on) { $('#no-disctype').value = 'pct'; $('#no-discval').value = String(_lp); _loyaltyActive = true; }
+    else if (_loyaltyActive) { $('#no-discval').value = ''; _loyaltyActive = false; }
+    recalc();
+  }
+  function checkLoyalty(auto) {
+    const row = $('#no-loyalty-row'), cb = $('#no-loyalty'); if (!row || !cb) return;
+    const ret = isReturningCustomer($('#no-email').value, $('#no-phone').value, isEdit ? editOrder.number : null);
+    if (!ret) { row.style.display = 'none'; if (_loyaltyActive) applyLoyalty(false); cb.checked = false; return; }
+    row.style.display = 'flex';
+    // Авто = зөвхөн ШИНЭ захиалгад, хөнгөлөлт хоосон үед (засаж буй захиалгын дүнг санамсаргүй өөрчлөхгүй)
+    if (auto && !isEdit && !_loyaltyActive && !moneyVal($('#no-discval'))) applyLoyalty(true);
+    cb.checked = _loyaltyActive;
+  }
+  $('#no-loyalty')?.addEventListener('change', e => applyLoyalty(e.target.checked));
+  let _loyT; ['#no-email', '#no-phone', '#no-customer'].forEach(s => $(s)?.addEventListener('input', () => { clearTimeout(_loyT); _loyT = setTimeout(() => checkLoyalty(true), 400); }));
+  checkLoyalty(true);
   if (isEdit && parseVat(editOrder.note) != null) $('#no-vat').checked = true;
   $('#no-vat').addEventListener('change', recalc);
   ['#no-start', '#no-stop', '#no-start-h', '#no-stop-h'].forEach(s => $(s).addEventListener('change', recalc));

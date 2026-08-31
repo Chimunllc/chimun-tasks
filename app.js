@@ -16048,7 +16048,13 @@ if (!window._mevQuoteLogInit) {
     sm.quotes = Array.isArray(sm.quotes) ? sm.quotes : [];
     sm.quotes.push({ at: new Date().toISOString(), by: d.by || state.me || '', amount: Number(d.amount) || 0, to: d.to || '' });
     o.stage_meta = sm;
-    try { await saveAppOrder(o); if (typeof showToast === 'function') showToast('📤 Үнийн санал түүхэд бүртгэгдлээ', 'info', 2500); } catch (e) { console.warn('quote log', e); }
+    // Popup дээр шинээр оруулсан имэйлийг захиалгад буцааж хадгална — үйлчлүүлэгчийн бааз бүрдэнэ.
+    const _gotMail = d.newMail && d.to && !String(o.email || '').trim();
+    if (_gotMail) o.email = String(d.to).trim();
+    try {
+      await saveAppOrder(o);
+      if (typeof showToast === 'function') showToast(_gotMail ? '📤 Үнийн санал бүртгэгдэж, имэйл захиалгад хадгалагдлаа' : '📤 Үнийн санал түүхэд бүртгэгдлээ', 'info', 2500);
+    } catch (e) { console.warn('quote log', e); }
   });
 }
 // ── Монгол → англи (үнийн саналын АНГЛИ хувилбарт) ──────────────────────────
@@ -16567,7 +16573,16 @@ function imagesReady(el){try{var a=[].slice.call(el.querySelectorAll('img'));ret
 function qPdf(){var el=qEl();ensureH2P().then(fontsReady).then(function(){return imagesReady(el);}).then(function(){window.html2pdf().set(Object.assign(pdfOpt(),{filename:QD[CUR].fname})).from(el).save();}).catch(function(){alert('PDF үүсгэгч татаж чадсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});}
 async function qSend(){
   var to=${js(mailTo)};
-  if(!to){alert('Үйлчлүүлэгчийн имэйл алга — эхлээд захиалга дээр имэйл нэмнэ үү.');return;}
+  var newMail=false;
+  // Имэйл байхгүй бол энд шууд асууна — буцаагаад захиалга засах шаардлагагүй.
+  // Оруулсан имэйлийг илгээсний дараа захиалгад буцааж хадгална.
+  if(!to){
+    var v=prompt('Үнийн саналыг ямар имэйл рүү илгээх вэ?','');
+    if(v===null)return;
+    v=String(v).trim();
+    if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(v)){alert('Имэйл буруу байна.');return;}
+    to=v;newMail=true;
+  }
   var langName=(CUR==='en')?'АНГЛИ':'МОНГОЛ';
   if(!confirm('Үнийн саналыг '+langName+' хэлээр '+to+' рүү hello@mevent.mn-ээс шууд илгээх үү?'))return;
   var btn=document.getElementById('qsendbtn');var old=btn?btn.textContent:'';
@@ -16581,7 +16596,7 @@ async function qSend(){
     var res=await fetch(${js(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:QD[CUR].subject,body:QD[CUR].body,filename:QD[CUR].fname,pdf_base64:b64,source:'app',lang:CUR})});
     if(!res.ok)throw new Error('HTTP '+res.status);
     alert('✓ Үнийн санал ('+langName+') '+to+' рүү илгээгдлээ.');
-    try{if(window.opener)window.opener.postMessage({type:'mev-quote-sent',oid:${js(String(o.id))},amount:${Number(total) || 0},to:to,lang:CUR,by:${js((_snd && _snd.name) || state.me || '')}},'*');}catch(_e){}
+    try{if(window.opener)window.opener.postMessage({type:'mev-quote-sent',oid:${js(String(o.id))},amount:${Number(total) || 0},to:to,newMail:newMail,lang:CUR,by:${js((_snd && _snd.name) || state.me || '')}},'*');}catch(_e){}
     if(btn){btn.textContent='✓ Илгээгдсэн';}
   }catch(e){
     alert('Илгээхэд алдаа: '+e.message+String.fromCharCode(10)+String.fromCharCode(10)+'(hello@mevent.mn-ий n8n тохиргоо бүрэн бус бол эхлээд түүнийг дуусгана уу.)');

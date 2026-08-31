@@ -18708,7 +18708,7 @@ async function openVatReportModal() {
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border,#eee);">
         <button id="vat-upload-btn" class="btn btn-primary" style="padding:7px 14px;font-size:12.5px;">📥 ebarimt файл оруулах</button>
         <input type="file" id="vat-file" accept=".xlsx,.xls,.csv" multiple style="display:none;">
-        <button id="vat-auto" class="btn" style="padding:7px 12px;font-size:12.5px;">⚡ Авто-тулгах</button>
+        <button id="vat-auto" class="btn" style="padding:7px 12px;font-size:12.5px;" title="Зөвхөн РД (регистр) яг таарсан баримтыг автоматаар тулгана. Нэр/дүнгээр таарсан ч РД баталгаагүй бол гараар шалгана.">⚡ Авто-тулгах (РД-гээр)</button>
         <select id="vat-month" class="btn" style="padding:7px 12px;font-size:12.5px;">${monthOpts}</select>
         <button id="vat-export" class="btn" style="padding:7px 12px;font-size:12.5px;">📊 Excel татах</button>
         <span id="vat-status" style="font-size:12px;color:var(--muted);margin-left:auto;"></span>
@@ -18752,9 +18752,19 @@ async function openVatReportModal() {
     card.querySelector('#vat-auto').onclick = async () => {
       const st = card.querySelector('#vat-status'); st.textContent = 'Тулгаж байна…';
       const cs = vatCandidateOrders(); const todo = (state.vatReceipts || []).filter(r => !r.matched_id);
-      let n = 0;
-      for (const r of todo) { const avail = cs.filter(c => !vatCandFull(c)); const bm = vatBestMatch(r, avail); if (bm.best && bm.score >= 7 && bm.gap >= 2) { try { await vatSetMatch(r.id, { type: bm.best.type, no: bm.best.no, label: (bm.best.name || bm.best.no) + ' · ' + fmtMoney(bm.best.amount), by: 'auto' }); n++; } catch (e) {} } }
-      st.textContent = `✓ ${n} баримт авто-тулгав`;
+      let n = 0, skip = 0;
+      for (const r of todo) {
+        const rReg = vatRegNorm(r.reg || r.buyer_reg);
+        const avail = cs.filter(c => !vatCandFull(c));
+        const bm = vatBestMatch(r, avail);
+        // Авто-тулгалт = ЗӨВХӨН РД яг таарсан үед (найдвартай). РД байхгүй/зөрвөл нэр+дүн таарсан ч
+        // авто батлахгүй — гараар («Гараар тулгах»-аас) баталгаажуулна.
+        const regOk = bm.best && rReg && bm.best.reg && rReg === bm.best.reg;
+        if (regOk && bm.gap >= 2) {
+          try { await vatSetMatch(r.id, { type: bm.best.type, no: bm.best.no, label: (bm.best.name || bm.best.no) + ' · ' + fmtMoney(bm.best.amount), by: 'auto' }); n++; } catch (e) {}
+        } else if (bm.best && bm.score >= 7) { skip++; }   // нэр/дүнгээр таарч болох ч РД баталгаагүй → гараар
+      }
+      st.textContent = `✓ ${n} баримт авто-тулгав (РД-гээр)${skip ? ` · ${skip} нэр/дүнгээр таарч магадгүй — гараар шалга` : ''}`;
       render();
     };
     card.querySelector('#vat-export').onclick = () => vatExportExcel(receiptsForMonth());

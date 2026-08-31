@@ -5234,6 +5234,10 @@ body.role-daily #add-project { display: none !important; }
 .rf-drop { display: block; margin-top: var(--space-3); border: 2px dashed var(--accent, var(--border)); border-radius: 10px; padding: var(--space-3); text-align: center; cursor: pointer; background: var(--panel-hover); font-size: var(--fs-md); }
 .rf-drop-status { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-1); }
 .order-refund { color: var(--warn); }
+/* Ажлын чанар — мөрөн дээр шууд ★ үнэлгээ (нэг товшилт) */
+.rate-inline { font-size: var(--fs-sm); font-weight: 700; color: var(--warn); margin-left: 6px; display: inline-flex; align-items: center; gap: 1px; white-space: nowrap; }
+.ri-star { cursor: pointer; color: var(--border-strong); font-size: var(--fs-lg); padding: 1px 2px; line-height: 1; }
+.ri-star:hover { color: var(--warn); }
 
 /* Банкны тулгалт */
 .recon-wrap { padding: 2px 2px 24px; }

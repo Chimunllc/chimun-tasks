@@ -7299,16 +7299,18 @@ function attHM(mins) {
   return (h ? h + 'ц ' : '') + m + 'м';
 }
 // Нэг ажилтны өдрийн in/out бичлэгээс ажилласан минут, одоо ажиллаж буй эсэхийг тооцно.
-function attMemberSummary(recs) {
+// live=true (өнөөдөр): нээлттэй сессийг одоо хүртэл тоолно. live=false (өнгөрсөн өдөр):
+// «явсан» бүртгүүлээгүй нээлттэй сессийг ТООЛОХГҮЙ (эс бол 172ц гэх мэт хэт их болно).
+function attMemberSummary(recs, live) {
+  live = live !== false;
   let mins = 0, openIn = null, lastEvent = null;
   recs.forEach(r => {
     if (r.kind === 'in') { if (!openIn) openIn = r.ts; }
     else { if (openIn) { mins += (new Date(r.ts) - new Date(openIn)) / 60000; openIn = null; } }
     lastEvent = r.ts;
   });
-  // Одоо ажиллаж байгаа бол сесс үргэлжилж буй — минутыг одоогоор тооцно.
-  if (openIn) mins += (Date.now() - new Date(openIn)) / 60000;
-  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn, lastEvent };
+  if (openIn && live) mins += (Date.now() - new Date(openIn)) / 60000;   // зөвхөн өнөөдрийн үргэлжилж буй сесс
+  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn && live, noOut: !!openIn && !live, lastEvent };
 }
 async function loadAttendanceToday() {
   try {
@@ -7372,7 +7374,7 @@ function renderAttendanceRows() {
   if (!keys.length) return `<div style="text-align:center;color:var(--muted);padding:34px 10px;">${word} хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
   const rows = keys.map(k => {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
-    const s = attMemberSummary(arr);
+    const s = attMemberSummary(arr, isToday);
     const m = findMember(k) || { name: arr[0].member_name || k, role: '' };
     return { k, m, s, name: m.name || arr[0].member_name || k, role: m.role || '' };
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
@@ -7383,7 +7385,9 @@ function renderAttendanceRows() {
     const av = `<span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
     const status = r.s.open
       ? '<span style="color:var(--ok);font-weight:700;font-size:12px;">● Ажиллаж байна</span>'
-      : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}</span>`;
+      : r.s.noOut
+        ? '<span style="color:var(--warn);font-size:12px;">⚠ Гарахаа бүртгүүлээгүй</span>'
+        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}</span>`;
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div></div></div>`;
@@ -7433,7 +7437,7 @@ function renderAttendanceMonth(month) {
   recs.forEach(r => { const m = (byM[r.member_key] = byM[r.member_key] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
     const m = byM[k]; const days = Object.keys(m.days);
-    let mins = 0; days.forEach(d => { mins += attMemberSummary(m.days[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)))).mins; });
+    let mins = 0; days.forEach(d => { mins += attMemberSummary(m.days[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr()).mins; });
     const mem = findMember(k) || { name: m.name, role: '' };
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins };
   }).sort((a, b) => b.mins - a.mins);
@@ -7518,7 +7522,7 @@ function renderMyAttend() {
   const byDay = {};
   recs.forEach(r => { (byDay[r.day] = byDay[r.day] || []).push(r); });
   const dayKeys = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
-  const sumFor = (d) => attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))));
+  const sumFor = (d) => attMemberSummary(byDay[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === today);
   const todaySum = byDay[today] ? sumFor(today) : null;
   let monthMins = 0; dayKeys.forEach(d => { monthMins += sumFor(d).mins; });
   const avatar = `<span style="position:relative;width:56px;height:56px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:var(--muted);overflow:hidden;flex-shrink:0;">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;

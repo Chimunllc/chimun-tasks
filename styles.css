@@ -5784,7 +5784,7 @@ body.role-daily #add-project { display: none !important; }
 .perf-metrics .ok { color: var(--ok); } .perf-metrics .warn { color: var(--warn); } .perf-metrics .danger { color: var(--danger); }
 .perf-score { width: 52px; text-align: right; font-size: 20px; font-weight: 800; flex-shrink: 0; }
 .perf-row-head .perf-score { font-size: 11px; font-weight: 700; }
-@media (max-width: 640px) { .perf-metrics { width: 100%; order: 3; } }
+@media (max-width: 640px) { .perf-row { flex-wrap: wrap; } .perf-metrics { width: 100%; order: 3; } }
 
 /* ─── Гүйцэтгэл: tabs, нэгдсэн оноо, 360° ─────────────────── */
 .perf-tabs { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }

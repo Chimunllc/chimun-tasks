@@ -89,6 +89,10 @@ const DEFAULT_NOMAAD_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad
 const DEFAULT_NOMAAD_QUOTE_VIEW_URL = 'https://n8n.nomaadcamp.com/webhook/nomaad-quote-view';
 // M-Event үнийн санал илгээх — апп PDF (html2pdf) үүсгэж base64-оор POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
 const DEFAULT_MEVENT_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-quote-send';
+// Имэйл маркетинг — олон хүнд нэр хувьчилж илгээх (салбараар илгээгч). recipients:[{email,name}].
+const DEFAULT_MARKETING_EMAIL_URL = 'https://n8n.nomaadcamp.com/webhook/marketing-email';
+// Имэйл жагсаалтаас хасах (unsubscribe) — имэйл дэх холбоос энэ рүү орж email_optout-д бүртгэнэ.
+const DEFAULT_EMAIL_OPTOUT_URL = 'https://n8n.nomaadcamp.com/webhook/email-optout';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
 const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rating';
 // Серверийн нэвтрэлт — PIN-г сервер талд шалгаж HMAC токен буцаана (браузерт PIN ирэхгүй);
@@ -9477,7 +9481,143 @@ function drawPoster(canvas, opts) {
   if (subLines.length) { y += subGap; ctx.font = `600 ${subSize}px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,.9)'; subLines.forEach(l => { ctx.fillText(l, pad, y); y += subLineH; }); }
   shadow(false); drawFooter();
 }
+// ═══════════ ИМЭЙЛ МАРКЕТИНГ — бүртгэгдсэн харилцагчид руу нэр хувьчилж илгээх ═══════════
+function _validEmail(e) { return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(String(e || '').trim()); }
+const MK_SENDERS = { 'm-event': { from: 'coo@mevent.mn', label: '⛺ M-Event', color: '#2563EB' }, 'camp': { from: 'ceo@nomaadcamp.com', label: '🏔 NOMAAD', color: '#16A34A' } };
+// Тухайн салбарын бүртгэгдсэн харилцагчдын хүчинтэй имэйл (давхардалгүй, opt-out хассан). [{email,name}]
+function marketingRecipients(branch) {
+  const map = new Map();
+  const optout = (state._emailOptout instanceof Set) ? state._emailOptout : new Set();
+  const add = (email, name) => { const e = String(email || '').trim().toLowerCase(); if (!_validEmail(e) || optout.has(e)) return; if (!map.has(e)) map.set(e, String(name || '').trim()); };
+  if (branch === 'm-event') {
+    (state.appOrders || []).forEach(o => add(o.email, o.customer || o.company || o.company_name));
+    (state.bqOrders || []).forEach(o => add(o.email, o.customer || o.name || o.company));
+  } else if (branch === 'camp') {
+    (state.nomaadOrders || []).forEach(o => add(o.email, o.company || o.customer || o.customer_name));
+  }
+  return [...map.entries()].map(([email, name]) => ({ email, name }));
+}
+// Илгээх HTML — брэндтэй хүрээ. {{NAME}} ба {{UNSUB}}-ийг n8n хүн бүрд орлуулна.
+function marketingEmailHtml(branch, bodyText) {
+  const s = MK_SENDERS[branch] || MK_SENDERS['m-event'];
+  const body = String(bodyText || '').trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  const sig = branch === 'camp' ? 'NOMAAD Camp · nomaadcamp.com' : 'M-Event · mevent.mn';
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;">
+    <div style="height:5px;background:${s.color};border-radius:6px 6px 0 0;"></div>
+    <div style="padding:22px 20px;font-size:15px;line-height:1.65;">
+      <p style="margin:0 0 14px;">Сайн байна уу{{NAME}},</p>
+      <div>${body}</div>
+    </div>
+    <div style="border-top:1px solid #eee;padding:14px 20px;font-size:12px;color:#888;">
+      ${sig}<br>
+      <a href="{{UNSUB}}" style="color:#888;">Имэйл жагсаалтаас хасах</a>
+    </div>
+  </div>`;
+}
+function renderEmailMarketing() {
+  const S = state._mkEmail = state._mkEmail || { branch: 'm-event', body: '', subject: '' };
+  if (state._emailOptout === undefined) { state._emailOptout = new Set(); loadEmailOptout(); }
+  // Дата бэлэн эсэх (имэйл эх сурвалж) — байхгүй бол ачаална
+  if (S.branch === 'm-event') { if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadOrdersData, 0); }
+  if (S.branch === 'camp' && state.nomaadOrders === undefined) setTimeout(loadNomaadOrders, 0);
+  const recs = marketingRecipients(S.branch);
+  const s = MK_SENDERS[S.branch];
+  const fld = 'width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--panel);color:var(--text);margin-bottom:12px;font-family:inherit;';
+  const brBtn = (k) => `<button class="btn${S.branch === k ? ' btn-primary' : ''}" data-mkm-branch="${k}" style="padding:7px 14px;">${MK_SENDERS[k].label}</button>`;
+  return `
+    <div style="font-size:20px;font-weight:800;">📧 Имэйл маркетинг</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Бүртгэгдсэн харилцагчид руу нэр хувьчилж илгээнэ. Илгээгч салбараар автоматаар сонгогдоно.</div>
+    <label style="font-size:12px;color:var(--muted);">Хэнд илгээх (салбар)</label>
+    <div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${brBtn('m-event')}${brBtn('camp')}</div>
+    <div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+      📨 Илгээгч: <b>${escapeHtml(s.from)}</b><br>
+      👥 Хүлээн авагч: <b style="font-size:16px;">${recs.length}</b> имэйл ${recs.length ? `<button class="btn btn-sm" id="mkm-list" style="margin-left:6px;">жагсаалт харах</button>` : '<span style="color:var(--muted);">(дата ачааллаж байна эсвэл имэйл алга)</span>'}
+    </div>
+    <label style="font-size:12px;color:var(--muted);">Гарчиг (subject)</label>
+    <input id="mkm-subject" value="${escapeHtml(S.subject || '')}" placeholder="Ж: Онцгой хямдрал — энэ 7 хоногт" style="${fld}">
+    <label style="font-size:12px;color:var(--muted);">Мессеж</label>
+    <textarea id="mkm-body" rows="9" placeholder="Сайн байна уу — гэсэн мэндчилгээ автоматаар орно. Энд гол мессежээ бич. Мөр таслал хадгалагдана." style="${fld}resize:vertical;">${escapeHtml(S.body || '')}</textarea>
+    <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 14px;">Хүн бүрийн нэр «Сайн байна уу [нэр]» гэж автоматаар орно. Доор нь «Жагсаалтаас хасах» холбоос автоматаар нэмэгдэнэ.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn" id="mkm-test" style="padding:9px 16px;">✉️ Туршилт (өөр рүү)</button>
+      <button class="btn btn-primary" id="mkm-send" style="padding:9px 20px;"${recs.length ? '' : ' disabled'}>📤 Илгээх (${recs.length} хүнд)</button>
+    </div>
+    <div id="mkm-status" style="margin-top:12px;font-size:13px;color:var(--muted);"></div>`;
+}
+async function loadEmailOptout() {
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    if (!r.ok) return;
+    const rows = await r.json();
+    state._emailOptout = new Set((rows || []).map(x => String(x.email || '').trim().toLowerCase()).filter(Boolean));
+    if (typeof render === 'function') render();
+  } catch (e) { /* email_optout хүснэгт байхгүй бол алгасна */ }
+}
+async function sendMarketingEmail(test) {
+  const S = state._mkEmail || {};
+  const s = MK_SENDERS[S.branch]; if (!s) return;
+  const subject = (document.getElementById('mkm-subject')?.value || '').trim();
+  const body = (document.getElementById('mkm-body')?.value || '').trim();
+  S.subject = subject; S.body = body;
+  if (!subject) { showToast('Гарчиг бичнэ үү', 'warn', 2500); return; }
+  if (!body) { showToast('Мессеж бичнэ үү', 'warn', 2500); return; }
+  const st = document.getElementById('mkm-status');
+  let recipients;
+  if (test) {
+    const me = findMember(state.me);
+    const to = (me && me.email) || state.me;
+    if (!_validEmail(to)) { showToast('Таны имэйл олдсонгүй — туршилт илгээх боломжгүй', 'warn', 3500); return; }
+    recipients = [{ email: to, name: (me && me.name) || '' }];
+  } else {
+    recipients = marketingRecipients(S.branch);
+    if (!recipients.length) { showToast('Хүлээн авагч алга', 'warn', 2500); return; }
+    const ok = await showConfirm(`${s.label} — <b>${recipients.length}</b> харилцагч руу «${escapeHtml(subject)}» имэйлийг ${escapeHtml(s.from)}-ээс илгээх үү?\n\nЭнэ нь бодит имэйл — буцаах боломжгүй.`, { title: '📤 Имэйл илгээх', okText: `Тийм, ${recipients.length} хүнд илгээ` });
+    if (!ok) return;
+  }
+  const payload = { key: N8N_API_KEY, branch: S.branch, sender: s.from, subject, html: marketingEmailHtml(S.branch, body), recipients, optout_url: DEFAULT_EMAIL_OPTOUT_URL, sent_by: state.me };
+  if (st) st.textContent = test ? 'Туршилт илгээж байна…' : `${recipients.length} имэйл илгээж байна… (хэдэн минут болж магадгүй)`;
+  try {
+    const r = await fetchWithTimeout(DEFAULT_MARKETING_EMAIL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 180000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    let res = {}; try { res = await r.json(); } catch (e) {}
+    const sent = res.sent != null ? res.sent : recipients.length;
+    if (st) st.innerHTML = `<b style="color:var(--ok);">✓ ${sent} имэйл илгээгдлээ${res.failed ? ` · ${res.failed} амжилтгүй` : ''}</b>`;
+    showToast(test ? '✓ Туршилт илгээгдлээ' : `✓ ${sent} имэйл илгээгдлээ`, 'success', 4000);
+  } catch (e) {
+    if (st) st.innerHTML = `<b style="color:var(--danger,#dc2626);">✗ Алдаа: ${escapeHtml(e.message)}</b>`;
+    showToast('Илгээх алдаа: ' + e.message, 'error', 5000);
+  }
+}
+function openMarketingRecipientList() {
+  const S = state._mkEmail || {}; const recs = marketingRecipients(S.branch);
+  const ov = document.createElement('div'); ov.className = 'org-modal-bd';
+  ov.innerHTML = `<div class="org-modal"><div class="org-modal-h"><b>${recs.length}</b> хүлээн авагч (${MK_SENDERS[S.branch].label})</div>
+    <div class="org-modal-list">${recs.map(r => `<div style="padding:7px 12px;border-bottom:1px solid var(--border);font-size:13px;">${escapeHtml(r.name || '—')} · <span style="color:var(--muted);">${escapeHtml(r.email)}</span></div>`).join('') || '<div style="padding:16px;text-align:center;color:var(--muted);">Имэйл алга</div>'}</div>
+    <div class="org-modal-f"><button class="btn" id="mkm-list-close">Хаах</button></div></div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.querySelector('#mkm-list-close').onclick = () => ov.remove();
+}
+function attachEmailMarketingHandlers() {
+  const S = state._mkEmail = state._mkEmail || { branch: 'm-event', body: '', subject: '' };
+  document.querySelectorAll('[data-mkm-branch]').forEach(b => b.addEventListener('click', () => {
+    S.subject = document.getElementById('mkm-subject')?.value || S.subject;
+    S.body = document.getElementById('mkm-body')?.value || S.body;
+    S.branch = b.dataset.mkmBranch; render();
+  }));
+  document.getElementById('mkm-list')?.addEventListener('click', openMarketingRecipientList);
+  document.getElementById('mkm-test')?.addEventListener('click', () => sendMarketingEmail(true));
+  document.getElementById('mkm-send')?.addEventListener('click', () => sendMarketingEmail(false));
+  document.getElementById('mkm-subject')?.addEventListener('input', e => { S.subject = e.target.value; });
+  document.getElementById('mkm-body')?.addEventListener('input', e => { S.body = e.target.value; });
+}
 function renderMarketing() {
+  const mkTab = state.mkTab || 'poster';
+  const _mkTabBar = `<div style="display:flex;gap:6px;margin:6px 0 16px;flex-wrap:wrap;">
+    <button class="btn${mkTab === 'poster' ? ' btn-primary' : ''}" data-mk-tab="poster" style="padding:7px 14px;">🎨 Постер</button>
+    <button class="btn${mkTab === 'email' ? ' btn-primary' : ''}" data-mk-tab="email" style="padding:7px 14px;">📧 Имэйл маркетинг</button>
+  </div>`;
+  if (mkTab === 'email') return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}${renderEmailMarketing()}</div>`;
   const k = _brandKit();
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   if (!P.template) P.template = 'work';
@@ -9490,7 +9630,7 @@ function renderMarketing() {
   _mkRent.forEach(p => { (_mkByCat[p.category || 'Бусад'] = _mkByCat[p.category || 'Бусад'] || []).push(p); });
   const _mkOptLbl = p => p.name || '';
   const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
-  return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">
+  return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
       <div style="font-size:12px;color:var(--muted);">Зураг оруулаад брэнд хүрээ, гарчиг тавьж PNG татна. Instagram пост/story, Facebook.</div></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;">
@@ -9563,6 +9703,9 @@ function renderMarketing() {
 }
 function _mkRedraw() { const cv = document.getElementById('mk-canvas'); if (!cv) return; const P = state._mkPoster; drawPoster(cv, { img: P.img, title: P.title, subtitle: P.subtitle, terms: P.terms, code: P.code, size: P.size, template: P.template, imgFit: P.imgFit, imgZoom: P.imgZoom, imgY: P.imgY, imgX: P.imgX }); }
 function attachMarketingHandlers() {
+  // Таб солих (Постер / Имэйл)
+  document.querySelectorAll('[data-mk-tab]').forEach(b => b.addEventListener('click', () => { state.mkTab = b.dataset.mkTab; render(); }));
+  if ((state.mkTab || 'poster') === 'email') { attachEmailMarketingHandlers(); return; }
   const P = state._mkPoster = state._mkPoster || { size: 'post', title: 'Онцгой санал', subtitle: '', img: null, template: 'work' };
   // Лого урьдчилан ачаалах (брэнд зурвас дээр зурахад)
   const k = _brandKit();

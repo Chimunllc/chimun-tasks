@@ -13894,6 +13894,7 @@ function objectiveMetrics(key, month) {
   const today = todayStr();
   const mine = (state.tasks || []).filter(t =>
     t.assignee === key && t.status !== 'deleted' && t.kind !== 'act_parent'
+    && !parseStageTaskId(t.id)   // автомат дамжлага-даалгавар (ordstage__) ХАСНА — тэр ажил Гарц/Хүлээлцэхэд тоологдсон, давхар болно
     // Зөвхөн удирдлагаас өгсөн ажил — өөртөө оноосон ажлаар оноо нэмэхээс сэргийлнэ.
     && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
@@ -14053,6 +14054,7 @@ function encodeQuality(rating, note) { note = String(note || '').trim(); return 
 function taskQualityScore(key, month) {
   const done = (state.tasks || []).filter(t =>
     t.assignee === key && t.status === 'done' && t.kind !== 'act_parent'
+    && !parseStageTaskId(t.id)   // автомат дамжлага-даалгавар ХАСНА (давхар тооллого сэргийлнэ)
     && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
   const rated = done.map(t => taskQualityRating(t)).filter(v => v >= 1 && v <= 5);
@@ -14065,6 +14067,7 @@ function taskQualityScore(key, month) {
 function needsRating(t) {
   if (!t || t.status !== 'done') return false;
   if (t.kind === 'finance_request' || t.kind === 'act_parent' || t._isFinance) return false;
+  if (parseStageTaskId(t.id)) return false;   // автомат дамжлага-даалгавар — дамжлагад аль хэдийн ★ өгсөн, дахин үнэлэхгүй
   if (!t.createdBy || t.createdBy === t.assignee) return false;
   const q = taskQualityRating(t);
   return !(q >= 1 && q <= 5);
@@ -14341,7 +14344,7 @@ function openPerfDetail(key, name) {
     }
   });
   stages.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const tasks = (state.tasks || []).filter(t => t.assignee === key && t.status === 'done' && t.kind !== 'act_parent' && t.createdBy && t.createdBy !== key && (t.due || '').slice(0, 7) === month);
+  const tasks = (state.tasks || []).filter(t => t.assignee === key && t.status === 'done' && t.kind !== 'act_parent' && !parseStageTaskId(t.id) && t.createdBy && t.createdBy !== key && (t.due || '').slice(0, 7) === month);
   document.getElementById('perf-detail-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'perf-detail-modal';

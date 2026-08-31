@@ -9483,7 +9483,7 @@ function drawPoster(canvas, opts) {
 }
 // ═══════════ ИМЭЙЛ МАРКЕТИНГ — бүртгэгдсэн харилцагчид руу нэр хувьчилж илгээх ═══════════
 function _validEmail(e) { return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(String(e || '').trim()); }
-const MK_SENDERS = { 'm-event': { from: 'hello@mevent.mn', label: '⛺ M-Event', color: '#2563EB' }, 'camp': { from: 'hello@nomaadcamp.com', label: '🏔 NOMAAD', color: '#16A34A' } };
+const MK_SENDERS = { 'm-event': { from: 'coo@mevent.mn', label: '⛺ M-Event', color: '#2563EB' }, 'camp': { from: 'ceo@nomaadcamp.com', label: '🏔 NOMAAD', color: '#16A34A' } };
 // Тухайн салбарын бүртгэгдсэн харилцагчдын хүчинтэй имэйл (давхардалгүй, opt-out хассан). [{email,name}]
 function marketingRecipients(branch) {
   const map = new Map();
@@ -21595,7 +21595,7 @@ function renderRow(t) {
   // Үнэлгээ хүлээж буй — дуусаад үүсгэгч оноо өгөөгүй (хаагдаагүй) тэмдэг
   if (needsRating(t)) {
     extraHtml += t.createdBy === state.me
-      ? '<span class="rate-pending own">★ Үнэлгээ өгнө үү</span>'
+      ? `<span class="rate-inline" title="Ажлын чанарыг үнэлнэ үү — нэг товшилт">★ Үнэлэх:${[1, 2, 3, 4, 5].map(i => `<span class="ri-star" data-act="rate" data-rate-val="${i}" title="${i}★">★</span>`).join('')}</span>`
       : '<span class="rate-pending">★ Үнэлгээ хүлээж буй</span>';
   }
 
@@ -21660,6 +21660,7 @@ function renderRow(t) {
     const act = actEl?.dataset.act;
     // Delete + locked + menu үлдсэн — бусад бүх click модал нээнэ.
     if (act === 'proof') return;   // баримтын thumb — document-ийн lightbox handler нээнэ, модал нээхгүй
+    if (act === 'rate') { e.stopPropagation(); saveTaskQuality(t.id, +actEl.dataset.rateVal); return; }   // мөрөн дээр шууд ★ чанарын үнэлгээ (модал нээхгүй)
     if (act === 'menu') { e.stopPropagation(); openRowMenu(t, actEl); return; }
     if (act === 'delete') { deleteTask(t.id); return; }
     if (act === 'locked') {

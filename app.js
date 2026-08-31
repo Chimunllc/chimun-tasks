@@ -7318,6 +7318,23 @@ async function loadAttendanceToday() {
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
+// Сонгосон ӨДРИЙН ирц (өнгөрсөн өдөр харах) → state.attViewRecs
+async function loadAttendanceView() {
+  const d = state.attViewDay || todayStr();
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+    if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
+  } catch (e) {}
+}
+// Сонгосон САРЫН бүх ирц (тойм) → state.attMonthRecs
+async function loadAttendanceMonthFull(month) {
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lte.${month}-31&select=member_key,member_name,kind,ts,day&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 20000);
+    if (r.ok) { state.attMonthRecs = await r.json(); state.attMonthKey = month; if (typeof render === 'function' && state.view === 'attendance') render(); }
+  } catch (e) {}
+}
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
 async function loadAttendanceMonth() {
@@ -7346,11 +7363,13 @@ function attWorkedLine(m) {
   return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>`;
 }
 function renderAttendanceRows() {
-  const recs = state.attendanceToday || [];
+  const isToday = (state.attViewDay || todayStr()) === todayStr();
+  const recs = isToday ? (state.attendanceToday || []) : (state.attViewRecs || []);
+  const word = isToday ? 'Өнөөдөр' : 'Энэ өдөр';
   const by = {};
   recs.forEach(r => { (by[r.member_key] = by[r.member_key] || []).push(r); });
   const keys = Object.keys(by);
-  if (!keys.length) return '<div style="text-align:center;color:var(--muted);padding:34px 10px;">Өнөөдөр хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">Ажилчид QR уншуулмагц энд харагдана.</div></div>';
+  if (!keys.length) return `<div style="text-align:center;color:var(--muted);padding:34px 10px;">${word} хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
   const rows = keys.map(k => {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr);
@@ -7359,7 +7378,7 @@ function renderAttendanceRows() {
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
-  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">Өнөөдөр <b style="color:var(--text)">${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b style="color:var(--ok)">${nOpen}</b> ажиллаж байна` : ''} · нийт <b style="color:var(--primary)">${attHM(totalMins)}</b></div>`;
+  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${word} <b style="color:var(--text)">${rows.length}</b> ажилтан ирсэн${nOpen ? ` · <b style="color:var(--ok)">${nOpen}</b> ажиллаж байна` : ''} · нийт <b style="color:var(--primary)">${attHM(totalMins)}</b></div>`;
   const list = rows.map(r => {
     const av = `<span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.m)}</span>`;
     const status = r.s.open
@@ -7372,10 +7391,15 @@ function renderAttendanceRows() {
   return head + `<div>${list}</div>`;
 }
 function renderAttendance() {
-  const d = new Date(todayStr() + 'T00:00:00');
-  const dateLabel = `${todayStr()} · ${_MN_WD[d.getDay()]}`;
-  return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
-    <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
+  const day = state.attViewDay || todayStr();
+  const isToday = day === todayStr();
+  const monthMode = !!state.attMonthMode;
+  const dObj = new Date(day + 'T00:00:00');
+  const dateLabel = `${day} · ${_MN_WD[dObj.getDay()]}`;
+  // Өнгөрсөн өдрийн дата шаардвал ачаална (өнөөдөр = poll-оос)
+  if (!monthMode && !isToday && state._attLoadedDay !== day) { state._attLoadedDay = day; state.attViewRecs = null; loadAttendanceView(); }
+  if (monthMode && state.attMonthKey !== day.slice(0, 7)) loadAttendanceMonthFull(day.slice(0, 7));
+  const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>
@@ -7386,9 +7410,39 @@ function renderAttendance() {
         <a id="att-self" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">📱 Утсаар өөрөө</a>
         ${state.isCEO ? `<button id="att-workstart" class="ui-raw" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;">⏰ Ажил эхлэх цаг</button>` : ''}
       </div>
-    </div>
-    <div id="att-list">${renderAttendanceRows()}</div>
+    </div>` : '';
+  const dateBar = `<div style="display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="btn btn-sm ui-raw" data-att-nav="-1" title="Өмнөх өдөр">◀</button>
+      <input type="date" id="att-date" value="${day}" max="${todayStr()}" class="ui-raw" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;">
+      <button class="btn btn-sm ui-raw" data-att-nav="1"${isToday ? ' disabled' : ''} title="Дараах өдөр">▶</button>
+      ${!isToday ? `<button class="btn btn-sm" data-att-today>Өнөөдөр</button>` : ''}
+      <button class="btn btn-sm${monthMode ? ' btn-primary' : ''}" data-att-month>📅 Сарын тойм</button>
+    </div>`;
+  const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
+  return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
+    ${scanCard}${dateBar}
+    <div id="att-list">${body}</div>
   </div>`;
+}
+// Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг
+function renderAttendanceMonth(month) {
+  if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div style="text-align:center;color:var(--muted);padding:30px;">Ачаалж байна…</div>';
+  const recs = state.attMonthRecs;
+  if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
+  const byM = {};
+  recs.forEach(r => { const m = (byM[r.member_key] = byM[r.member_key] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
+  const rows = Object.keys(byM).map(k => {
+    const m = byM[k]; const days = Object.keys(m.days);
+    let mins = 0; days.forEach(d => { mins += attMemberSummary(m.days[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)))).mins; });
+    const mem = findMember(k) || { name: m.name, role: '' };
+    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins };
+  }).sort((a, b) => b.mins - a.mins);
+  const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
+  const list = rows.map(r => `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">
+      <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр ирсэн</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)}</div></div></div>`).join('');
+  return head + `<div>${list}</div>`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
 function openWorkStartModal() {
@@ -7425,12 +7479,18 @@ function attachAttendanceHandlers() {
   const pf = document.getElementById('att-print'); if (pf) pf.href = attIdCardsUrl();
   const sf = document.getElementById('att-self'); if (sf) sf.href = attCheckinUrl(todayStr());
   document.getElementById('att-workstart')?.addEventListener('click', openWorkStartModal);
-  loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance') el.innerHTML = renderAttendanceRows(); });
+  // Огноо навигаци (өнгөрсөн өдөр / сарын тойм)
+  document.getElementById('att-date')?.addEventListener('change', e => { const v = e.target.value; if (v && v <= todayStr()) { state.attViewDay = v; state.attMonthMode = false; render(); } });
+  document.querySelectorAll('[data-att-nav]').forEach(b => b.addEventListener('click', () => { const cur = state.attViewDay || todayStr(); const nd = addDays(cur, Number(b.dataset.attNav)); if (nd > todayStr()) return; state.attViewDay = nd; state.attMonthMode = false; render(); }));
+  document.querySelector('[data-att-today]')?.addEventListener('click', () => { state.attViewDay = todayStr(); state.attMonthMode = false; render(); });
+  document.querySelector('[data-att-month]')?.addEventListener('click', () => { state.attMonthMode = !state.attMonthMode; render(); });
+  const _isTodayView = () => (state.attViewDay || todayStr()) === todayStr() && !state.attMonthMode;
+  if (_isTodayView()) loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance' && _isTodayView()) el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);
   state._attPoll = setInterval(() => {
     if (state.view !== 'attendance') { clearInterval(state._attPoll); state._attPoll = null; return; }
-    if (state._attScan) return;   // скан хийж байх зуур бүү дарж бич
-    loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el) el.innerHTML = renderAttendanceRows(); });
+    if (state._attScan || !_isTodayView()) return;   // скан хийх зуур / өнгөрсөн өдөр харж байхад бүү дарж бич
+    loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && _isTodayView()) el.innerHTML = renderAttendanceRows(); });
   }, 20000);
 }
 /* ─── МИНИЙ ИРЦ / QR (цагийн ажилтны self-service) ───────────────────── */

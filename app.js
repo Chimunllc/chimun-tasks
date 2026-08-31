@@ -9497,21 +9497,38 @@ function marketingRecipients(branch) {
   }
   return [...map.entries()].map(([email, name]) => ({ email, name }));
 }
-// Илгээх HTML — брэндтэй хүрээ. {{NAME}} ба {{UNSUB}}-ийг n8n хүн бүрд орлуулна.
+// Илгээх HTML — брэндтэй, имэйл-клиент-найдвартай (table) дизайн. {{NAME}}/{{UNSUB}}-ийг n8n орлуулна.
+// bodyText дотор **тод** ба мөр таслал дэмжинэ.
+const MK_EMAIL_CFG = {
+  'm-event': { navy: '#0B1F3A', accent: '#FF6A00', site: 'https://mevent.mn', siteLabel: 'mevent.mn', cta: 'Захиалга өгөх', logo: 'https://chimunllc.github.io/chimun-tasks/mevent-logo.png', name: 'M-Event' },
+  'camp':    { navy: '#0B3B2E', accent: '#16A34A', site: 'https://nomaadcamp.com', siteLabel: 'nomaadcamp.com', cta: 'Дэлгэрэнгүй үзэх', logo: '', name: 'NOMAAD Camp' },
+};
 function marketingEmailHtml(branch, bodyText) {
-  const s = MK_SENDERS[branch] || MK_SENDERS['m-event'];
-  const body = String(bodyText || '').trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-  const sig = branch === 'camp' ? 'NOMAAD Camp · nomaadcamp.com' : 'M-Event · mevent.mn';
-  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a;">
-    <div style="height:5px;background:${s.color};border-radius:6px 6px 0 0;"></div>
-    <div style="padding:22px 20px;font-size:15px;line-height:1.65;">
-      <p style="margin:0 0 14px;">Сайн байна уу{{NAME}},</p>
+  const c = MK_EMAIL_CFG[branch] || MK_EMAIL_CFG['m-event'];
+  const body = String(bodyText || '').trim()
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+  const header = c.logo
+    ? `<img src="${c.logo}" alt="${escapeHtml(c.name)}" height="34" style="height:34px;width:auto;display:block;">`
+    : `<span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:800;color:#ffffff;letter-spacing:1.5px;">${escapeHtml(c.name.toUpperCase())}</span>`;
+  return `<div style="background:#f4f5f7;margin:0;padding:24px 12px;font-family:'Manrope',Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px;max-width:100%;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;">
+    <tr><td style="background:${c.navy};padding:20px 28px;">${header}</td></tr>
+    <tr><td style="height:4px;background:${c.accent};line-height:4px;font-size:4px;">&nbsp;</td></tr>
+    <tr><td style="padding:30px 28px 6px;font-size:15.5px;line-height:1.7;color:#1a1a1a;">
+      <p style="margin:0 0 16px;">Сайн байна уу{{NAME}},</p>
       <div>${body}</div>
-    </div>
-    <div style="border-top:1px solid #eee;padding:14px 20px;font-size:12px;color:#888;">
-      ${sig}<br>
-      <a href="{{UNSUB}}" style="color:#888;">Имэйл жагсаалтаас хасах</a>
-    </div>
+    </td></tr>
+    <tr><td align="center" style="padding:20px 28px 30px;">
+      <a href="${c.site}" style="display:inline-block;background:${c.accent};color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:13px 34px;border-radius:8px;">${escapeHtml(c.cta)} &rarr;</a>
+      <div style="font-size:12.5px;color:#9aa;margin-top:10px;">${c.siteLabel}</div>
+    </td></tr>
+    <tr><td style="border-top:1px solid #eeeeee;padding:16px 28px;font-size:12px;color:#999999;line-height:1.6;">
+      ${escapeHtml(c.name)} · <a href="${c.site}" style="color:#999999;">${c.siteLabel}</a><br>
+      Энэ имэйлийг та ${escapeHtml(c.name)}-ийн үйлчлүүлэгч учир хүлээн авч байна. <a href="{{UNSUB}}" style="color:#999999;">Жагсаалтаас хасах</a>
+    </td></tr>
+  </table>
   </div>`;
 }
 function renderEmailMarketing() {

@@ -14281,7 +14281,7 @@ function renderPerfAll() {
       ? _chips.map(c => `<span class="perf-chip${c[2] ? ' warn' : ''}"><span class="perf-chip-l">${c[0]}</span>${escapeHtml(String(c[1]))}</span>`).join('')
       : '<span class="perf-chip-empty">Дата хүлээгдэж буй</span>';
     const _partial = u.total != null && u.partsUsed < 3;
-    return `<div class="perf-row">
+    return `<div class="perf-row perf-row-click" data-perf-key="${escapeHtml(r.key)}" data-perf-name="${escapeHtml(r.m.name)}">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')}${u.penalty ? ` · <span class="perf-pen-tag">−${u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">− Суутгал</button></div>
       <div class="perf-metrics">${_metrics}</div>
@@ -14325,7 +14325,46 @@ function renderPerfRate() {
   return `<div class="perf-note">${month} сард үнэлэх хүмүүс (таны салбар). 1-5★. Хамт олны оноо нэргүй нэгтгэгдэнэ.</div><div class="perf-rate-list">${cards}</div>`;
 }
 
+// Гүйцэтгэлийн ДЭЛГЭРЭНГҮЙ — тухайн хүн ЯМАР ажил хийснийг задалж харуулна (оноо ил тод болгоно).
+const _STAGE_LABELS = { prepare: 'Бэлдэх', clean: 'Цэвэрлэх', dispatch: 'Агуулахаас гаргах', handover: 'Хүлээлгэн өгөх', deliver: 'Хүргэх', retstart: 'Буцааж авахаар гарах', received: 'Буцаан хүлээж авах' };
+function openPerfDetail(key, name) {
+  const month = state.perfMonth;
+  const u = unifiedScore(key, month);
+  const stages = [], handoffs = [];
+  (state.appOrders || []).forEach(o => {
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    for (const k of Object.keys(sm)) {
+      const e = sm[k]; if (!e) continue;
+      const ym = String(e.at || '').slice(0, 7);
+      if (String(e.by) === String(key) && ym === month) stages.push({ order: o.number, cust: o.customer, label: _STAGE_LABELS[k] || ((typeof BQ_STATUS === 'object' && BQ_STATUS[k]) ? BQ_STATUS[k].label : k), at: String(e.at || '').slice(0, 10) });
+      if (e.handoffRating && String(e.handoffRatee) === String(key) && ym === month) handoffs.push({ order: o.number, rating: e.handoffRating, by: e.by, at: String(e.at || '').slice(0, 10) });
+    }
+  });
+  stages.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const tasks = (state.tasks || []).filter(t => t.assignee === key && t.status === 'done' && t.kind !== 'act_parent' && t.createdBy && t.createdBy !== key && (t.due || '').slice(0, 7) === month);
+  document.getElementById('perf-detail-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'perf-detail-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:520px;max-height:90vh;overflow:auto;">
+    <div class="pd-head"><h2>${escapeHtml(name)}</h2><button class="btn" id="pd-close">✕</button></div>
+    <div class="perf-detail-sub">${month} · Нийт оноо: <b style="color:${perfScoreColor(u.total)}">${u.total ?? '—'}</b></div>
+    <div class="pd-sec"><div class="pd-h">🔧 Гарц — дамжлагын ажил (${stages.length})</div>
+      ${stages.length ? stages.map(s => `<div class="pd-row"><span>#${s.order ?? ''} ${escapeHtml(s.cust || '')} · ${escapeHtml(s.label)}</span><span class="pd-meta">${s.at}</span></div>`).join('') : '<div class="pd-empty">Дамжлагын ажил алга</div>'}</div>
+    <div class="pd-sec"><div class="pd-h">📋 Удирдлагаас өгсөн даалгавар (${tasks.length})</div>
+      ${tasks.length ? tasks.map(t => { const r = taskQualityRating(t); const cd = taskCompletedDate(t); const late = cd && t.due && cd > t.due; return `<div class="pd-row"><span>${escapeHtml(t.title || '')}</span><span class="pd-meta">${r ? r + '★' : 'үнэлгээгүй'} · ${late ? '<span class="pd-late">хоцорсон</span>' : 'цагтаа'}</span></div>`; }).join('') : '<div class="pd-empty">Даалгавар алга</div>'}</div>
+    <div class="pd-sec"><div class="pd-h">↔ Хүлээлцэх үнэлгээ — дараагийн хүн өгсөн (${handoffs.length})</div>
+      ${handoffs.length ? handoffs.map(h => `<div class="pd-row"><span>#${h.order ?? ''} · ${escapeHtml(memberName(h.by) || h.by || '')} үнэлэв</span><span class="pd-meta">${h.rating}★ · ${h.at}</span></div>`).join('') : '<div class="pd-empty">Үнэлгээ хараахан алга</div>'}</div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#pd-close').onclick = () => modal.remove();
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.classList.add('open');
+}
 function attachPerformanceHandlers() {
+  document.querySelectorAll('.perf-row[data-perf-key]').forEach(row => row.addEventListener('click', (e) => {
+    if (e.target.closest('[data-penalty-key]')) return;   // суутгал товч дарвал дэлгэрэнгүй нээхгүй
+    openPerfDetail(row.dataset.perfKey, row.dataset.perfName);
+  }));
   document.querySelectorAll('[data-perf-tab]').forEach(b => b.onclick = () => { state.perfTab = b.dataset.perfTab; render(); });
   document.querySelectorAll('[data-penalty-key]').forEach(b => b.onclick = () => {
     if (!(canManageOrders() || state.isCEO)) { showToast('Зөвхөн удирдлага суутгал хийнэ', 'warn'); return; }

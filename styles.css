@@ -5781,6 +5781,18 @@ body.role-daily #add-project { display: none !important; }
 .perf-chip-empty { font-size: var(--fs-sm); color: var(--muted); font-style: italic; }
 .perf-warn { color: var(--warn); font-size: var(--fs-xs); }
 .perf-pen-tag { color: var(--danger); }
+.perf-row-click { cursor: pointer; }
+.perf-row-click:hover { border-color: var(--accent, var(--text-soft)); }
+/* Гүйцэтгэлийн дэлгэрэнгүй модал */
+.pd-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1); }
+.pd-head h2 { margin: 0; }
+.perf-detail-sub { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-4); }
+.pd-sec { margin-bottom: var(--space-4); }
+.pd-h { font-size: var(--fs-md); font-weight: 700; margin-bottom: var(--space-1); padding-bottom: var(--space-1); border-bottom: 1px solid var(--border); }
+.pd-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: 4px 0; font-size: var(--fs-sm); }
+.pd-meta { color: var(--muted); flex-shrink: 0; }
+.pd-empty { font-size: var(--fs-sm); color: var(--muted); font-style: italic; padding: 4px 0; }
+.pd-late { color: var(--warn); }
 .perf-metrics .ok { color: var(--ok); } .perf-metrics .warn { color: var(--warn); } .perf-metrics .danger { color: var(--danger); }
 .perf-score { width: 52px; text-align: right; font-size: 20px; font-weight: 800; flex-shrink: 0; }
 .perf-row-head .perf-score { font-size: 11px; font-weight: 700; }

@@ -9483,7 +9483,7 @@ function drawPoster(canvas, opts) {
 }
 // ═══════════ ИМЭЙЛ МАРКЕТИНГ — бүртгэгдсэн харилцагчид руу нэр хувьчилж илгээх ═══════════
 function _validEmail(e) { return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(String(e || '').trim()); }
-const MK_SENDERS = { 'm-event': { from: 'coo@mevent.mn', label: '⛺ M-Event', color: '#2563EB' }, 'camp': { from: 'ceo@nomaadcamp.com', label: '🏔 NOMAAD', color: '#16A34A' } };
+const MK_SENDERS = { 'm-event': { from: 'hello@mevent.mn', label: '⛺ M-Event', color: '#2563EB' }, 'camp': { from: 'hello@nomaadcamp.com', label: '🏔 NOMAAD', color: '#16A34A' } };
 // Тухайн салбарын бүртгэгдсэн харилцагчдын хүчинтэй имэйл (давхардалгүй, opt-out хассан). [{email,name}]
 function marketingRecipients(branch) {
   const map = new Map();

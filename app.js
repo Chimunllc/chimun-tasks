@@ -14269,12 +14269,23 @@ function renderPerfAll() {
   const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0, hq: handoffQualityScore(personKey(m), month), pu: punctualityScore(personKey(m), month), gc: pipelineThroughput(personKey(m), month) }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
-    const bp = eligibleBonus(r.u);
+    const bp = eligibleBonus(r.u); const u = r.u;
+    const _chips = [];
+    if (u.obj != null) _chips.push(['Цагтаа', u.obj, u.objLowData]);
+    if (u.quality != null) _chips.push(['Чанар', u.quality]);
+    if (u.e360.score != null) _chips.push(['360°', u.e360.score]);
+    if (u.throughput != null) _chips.push(['Гарц', r.gc + ' ажил']);
+    if (u.handoff != null) _chips.push(['Хүлээлцэх', r.hq.avg + '★']);
+    if (r.pu.measured && r.pu.days) _chips.push(['Ирц', r.pu.onTimePct + '%']);
+    const _metrics = _chips.length
+      ? _chips.map(c => `<span class="perf-chip${c[2] ? ' warn' : ''}"><span class="perf-chip-l">${c[0]}</span>${escapeHtml(String(c[1]))}</span>`).join('')
+      : '<span class="perf-chip-empty">Дата хүлээгдэж буй</span>';
+    const _partial = u.total != null && u.partsUsed < 3;
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
-      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч${r.u.penalty ? ` · <span style="color:var(--danger)">−${r.u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">➖ Суутгал</button></div>
-      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span><span title="Гарц — дамжлагад гүйцэтгэсэн ажлын тоо">гарц ${r.gc || '—'}</span><span title="Хүлээлцэх чанар — дараагийн хүн үнэлсэн ★ дундаж">хүл ${r.hq.count ? r.hq.avg + '★' : '—'}</span><span title="Цаг баримталт — цагтаа ирсэн %${r.pu.measured ? '' : ' (эхлэх цаг тохируулаагүй)'}">цаг ${r.pu.measured && r.pu.days ? r.pu.onTimePct + '%' : '—'}</span></div>
-      <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
+      <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')}${u.penalty ? ` · <span class="perf-pen-tag">−${u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">− Суутгал</button></div>
+      <div class="perf-metrics">${_metrics}</div>
+      <div class="perf-score" style="color:${perfScoreColor(u.total)}" title="${_partial ? `Хэсэгчилсэн дата — ${u.partsUsed} бүрэлдэхүүн` : ''}">${u.total ?? '—'}${_partial ? '<sup class="perf-warn">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;
   }).join('');

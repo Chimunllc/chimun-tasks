@@ -5774,7 +5774,13 @@ body.role-daily #add-project { display: none !important; }
 .perf-rank { width: 28px; text-align: center; font-weight: 700; color: var(--muted); flex-shrink: 0; }
 .perf-name { flex: 1; min-width: 120px; font-size: 14px; }
 .perf-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
-.perf-metrics { display: flex; gap: 12px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.perf-metrics { display: flex; gap: var(--space-1); flex-wrap: wrap; align-items: center; }
+.perf-chip { display: inline-flex; align-items: baseline; gap: 4px; font-size: var(--fs-sm); font-weight: 700; color: var(--text); background: var(--panel-hover); border-radius: 6px; padding: 3px 8px; }
+.perf-chip-l { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); }
+.perf-chip.warn { color: var(--warn); }
+.perf-chip-empty { font-size: var(--fs-sm); color: var(--muted); font-style: italic; }
+.perf-warn { color: var(--warn); font-size: var(--fs-xs); }
+.perf-pen-tag { color: var(--danger); }
 .perf-metrics .ok { color: var(--ok); } .perf-metrics .warn { color: var(--warn); } .perf-metrics .danger { color: var(--danger); }
 .perf-score { width: 52px; text-align: right; font-size: 20px; font-weight: 800; flex-shrink: 0; }
 .perf-row-head .perf-score { font-size: 11px; font-weight: 700; }
@@ -5808,7 +5814,7 @@ body.role-daily #add-project { display: none !important; }
 .perf-penalty-list { margin: 6px 0 2px; display: flex; flex-direction: column; gap: 5px; }
 .perf-penalty-item { font-size: 12.5px; color: var(--text-soft); background: var(--danger-soft); border-radius: 7px; padding: 6px 10px; }
 .perf-penalty-item span { font-weight: 800; color: var(--danger); margin-right: 6px; }
-.perf-penalty-btn { margin-top: 6px; font-size: 11.5px; font-weight: 600; color: var(--danger); background: var(--danger-soft); border: 1px solid transparent; border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+.perf-penalty-btn { margin-top: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--muted); background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
 .perf-penalty-btn:hover { border-color: var(--danger); }
 .pen-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; margin-bottom: 7px; }
 .pen-pts { font-weight: 800; color: var(--danger); flex-shrink: 0; }

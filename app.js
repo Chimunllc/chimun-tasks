@@ -14122,6 +14122,22 @@ function punctualityScore(key, month) {
   return { measured: true, days, late, onTimePct: days ? Math.round(100 * (days - late) / days) : null, start };
 }
 
+// ── ГАРЦ — тухайн хүн дамжлагад хэдэн ажил (бэлдэх/цэвэрлэх/гаргах/буцаах шат) гүйцэтгэсэн (сараар). ──
+// stage_meta-гийн by=тухайн хүн, at=тухайн сар. Автомат — олон ажил хийхийг харуулна (гүйцэтгэгчид).
+function pipelineThroughput(key, month) {
+  let n = 0;
+  for (const o of (state.appOrders || [])) {
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    for (const k of Object.keys(sm)) {
+      const e = sm[k];
+      if (!e || String(e.by) !== String(key)) continue;
+      if (month && String(e.at || '').slice(0, 7) !== month) continue;
+      n++;
+    }
+  }
+  return n;
+}
+
 function renderPerformance() {
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.attMonthTimes === undefined) { state.attMonthTimes = null; loadAttendanceMonth().then(() => render()); }
@@ -14153,6 +14169,7 @@ function renderPerfMe() {
         ${bar('Объектив (цагтаа)', u.obj, PERF_WEIGHTS.objective)}
         ${bar('Ажлын чанар', u.quality, PERF_WEIGHTS.quality)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
+        ${(() => { const g = pipelineThroughput(state.me, month); return g ? `<div class="perf-bar-row"><span>Гарц <small>(дамжлагын ажил)</small></span><b>${g} ажил</b></div>` : ''; })()}
         ${(() => { const h = handoffQualityScore(state.me, month); return h.count ? `<div class="perf-bar-row"><span>Хүлээлцэх чанар <small>(шинэ)</small></span><b>${h.avg}★ <small>${h.count} үнэлгээ</small></b></div>` : ''; })()}
         ${(() => { const p = punctualityScore(state.me, month); return (p.measured && p.days) ? `<div class="perf-bar-row"><span>Цаг баримталт <small>(${escapeHtml(p.start)}-аас)</small></span><b>${p.onTimePct}% <small>${p.late ? p.late + ' хоцорсон' : 'цагтаа'}</small></b></div>` : ''; })()}
         ${u.penalty ? `<div class="perf-bar-row perf-penalty-row"><span>Суутгал ${u.rawTotal != null ? `<small>(${u.rawTotal} → ${u.total})</small>` : ''}</span><b>−${u.penalty}</b></div>` : ''}
@@ -14166,14 +14183,14 @@ function renderPerfMe() {
 function renderPerfAll() {
   const month = state.perfMonth;
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m) && memberInLens(m));
-  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0, hq: handoffQualityScore(personKey(m), month), pu: punctualityScore(personKey(m), month) }))
+  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0, hq: handoffQualityScore(personKey(m), month), pu: punctualityScore(personKey(m), month), gc: pipelineThroughput(personKey(m), month) }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
     const bp = eligibleBonus(r.u);
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч${r.u.penalty ? ` · <span style="color:var(--danger)">−${r.u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">➖ Суутгал</button></div>
-      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span><span title="Хүлээлцэх чанар — дараагийн хүн үнэлсэн ★ дундаж">хүл ${r.hq.count ? r.hq.avg + '★' : '—'}</span><span title="Цаг баримталт — цагтаа ирсэн %${r.pu.measured ? '' : ' (эхлэх цаг тохируулаагүй)'}">цаг ${r.pu.measured && r.pu.days ? r.pu.onTimePct + '%' : '—'}</span></div>
+      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span><span title="Гарц — дамжлагад гүйцэтгэсэн ажлын тоо">гарц ${r.gc || '—'}</span><span title="Хүлээлцэх чанар — дараагийн хүн үнэлсэн ★ дундаж">хүл ${r.hq.count ? r.hq.avg + '★' : '—'}</span><span title="Цаг баримталт — цагтаа ирсэн %${r.pu.measured ? '' : ' (эхлэх цаг тохируулаагүй)'}">цаг ${r.pu.measured && r.pu.days ? r.pu.onTimePct + '%' : '—'}</span></div>
       <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;

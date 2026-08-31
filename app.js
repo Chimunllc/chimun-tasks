@@ -7272,6 +7272,7 @@ function attHandleScan(data) {
   const m = /^chimun-att:(\d{6,})$/.exec(String(data).trim());
   if (!m) return;
   const phone = m[1], now = Date.now();
+  if (state._attPickerOpen) return;   // «маргааш ирэх цаг» сонгож байх зуур бүү бүртгэ
   state._attLastScan = state._attLastScan || {};
   if (state._attLastScan[phone] && now - state._attLastScan[phone] < 8000) return;   // 8 сек давхардлаас хамгаалах
   state._attLastScan[phone] = now;
@@ -7286,6 +7287,40 @@ function attHandleScan(data) {
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
   fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
+  if (kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);   // явахдаа: маргааш хэдэн цагт ирэх вэ?
+}
+// «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
+function openNextArrivalPicker(phone, name) {
+  const tomorrow = addDays(todayStr(), 1);
+  const cur = nextArrivalFor(phone, tomorrow) || workStartFor(phone) || '09:00';
+  state._attPickerOpen = true;
+  document.getElementById('next-arr-modal')?.remove();
+  const ov = document.createElement('div'); ov.id = 'next-arr-modal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;';
+  const chips = ['08:00', '08:30', '09:00', '09:30', '10:00', '11:00'];
+  ov.innerHTML = `<div style="background:var(--panel,#fff);color:var(--text,#111);border-radius:16px;max-width:400px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+    <div style="font-size:16px;font-weight:800;">🕐 ${escapeHtml(name)}</div>
+    <div style="font-size:13px;color:var(--muted);margin:4px 0 14px;">Маргааш (${tomorrow}) хэдэн цагт ирэх вэ?</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">${chips.map(c => `<button class="ui-raw na-chip" data-na-time="${c}" style="padding:10px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:${c === cur ? 'var(--primary,#2f3e2f)' : 'var(--panel-hover,#f4f4f4)'};color:${c === cur ? '#fff' : 'var(--text,#111)'};font-size:15px;font-weight:700;cursor:pointer;">${c}</button>`).join('')}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;"><span style="font-size:13px;color:var(--muted);">Бусад:</span><input type="time" id="na-custom" value="${cur}" class="ui-raw" style="flex:1;padding:9px 11px;border:1px solid var(--line,#ddd);border-radius:8px;background:var(--panel,#fff);color:var(--text,#111);font-size:15px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="ui-raw" id="na-skip" style="flex:0 0 auto;padding:11px 14px;border:1px solid var(--line,#ddd);border-radius:10px;background:var(--panel-hover,#f4f4f4);color:var(--muted);font-size:14px;cursor:pointer;">Тодорхойгүй</button>
+      <button class="ui-raw" id="na-save" style="flex:1;padding:11px;border:none;border-radius:10px;background:var(--primary,#2f3e2f);color:#fff;font-size:15px;font-weight:700;cursor:pointer;">Хадгалах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => { state._attPickerOpen = false; ov.remove(); };
+  const saveTime = async (time) => {
+    state.nextArrival = (state.nextArrival && typeof state.nextArrival === 'object') ? state.nextArrival : {};
+    if (time) state.nextArrival[phone] = { day: tomorrow, time }; else delete state.nextArrival[phone];
+    close();
+    try { await saveAppConfig('next_arrival', state.nextArrival); showToast(time ? `${name} → маргааш ${time}` : `${name} — цаг тодорхойгүй`, 'success', 1800); }
+    catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
+  };
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelectorAll('[data-na-time]').forEach(b => b.addEventListener('click', () => saveTime(b.dataset.naTime)));
+  ov.querySelector('#na-save').onclick = () => saveTime((ov.querySelector('#na-custom').value || '').trim());
+  ov.querySelector('#na-skip').onclick = () => saveTime('');
 }
 function attTimeUB(ts) {
   if (!ts) return '';
@@ -7368,6 +7403,7 @@ function renderAttendanceRows() {
   const isToday = (state.attViewDay || todayStr()) === todayStr();
   const recs = isToday ? (state.attendanceToday || []) : (state.attViewRecs || []);
   const word = isToday ? 'Өнөөдөр' : 'Энэ өдөр';
+  const day = state.attViewDay || todayStr();
   const by = {};
   recs.forEach(r => { (by[r.member_key] = by[r.member_key] || []).push(r); });
   const keys = Object.keys(by);
@@ -7388,9 +7424,13 @@ function renderAttendanceRows() {
       : r.s.noOut
         ? '<span style="color:var(--warn);font-size:12px;">⚠ Гарахаа бүртгүүлээгүй</span>'
         : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}</span>`;
+    const late = attLateMinutes(r.k, day, r.s.firstIn);
+    const lateBadge = late > 0 ? ` <span style="color:var(--danger);font-weight:700;font-size:11.5px;">🔴 ${late}м хоцорсон</span>` : '';
+    const tmr = nextArrivalFor(r.k, addDays(day, 1));
+    const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div></div></div>`;
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
 }
@@ -7403,6 +7443,9 @@ function renderAttendance() {
   // Өнгөрсөн өдрийн дата шаардвал ачаална (өнөөдөр = poll-оос)
   if (!monthMode && !isToday && state._attLoadedDay !== day) { state._attLoadedDay = day; state.attViewRecs = null; loadAttendanceView(); }
   if (monthMode && state.attMonthKey !== day.slice(0, 7)) loadAttendanceMonthFull(day.slice(0, 7));
+  // Хоцролт тооцоолол: ажил эхлэх цаг + явахдаа сонгосон «маргааш ирэх цаг»
+  if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
   const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
@@ -14130,6 +14173,17 @@ function hhmmUB(ts) {
 }
 function workStartFor(key) { const w = state.workStart; return (w && typeof w === 'object' && w[key]) ? w[key] : null; }
 const _LATE_GRACE_MIN = 5;   // 5 минут хүртэлх зөрүү = цагтаа (хатуу биш)
+// Явахдаа сонгосон «маргааш ирэх цаг» (app_config['next_arrival'] = {phone:{day,time}}). Тухайн өдрийнх л хүчинтэй.
+function nextArrivalFor(key, day) { const n = state.nextArrival; const e = n && n[key]; return (e && e.day === day) ? e.time : null; }
+// Тухайн өдрийн хүлээгдэх ирэх цаг: явахдаа сонгосон динамик цаг → эс бол тогтмол ажил эхлэх цаг.
+function expectedArrivalFor(key, day) { return nextArrivalFor(key, day) || workStartFor(key); }
+// Тухайн өдрийн эхний ирсэн цаг хоцорсон эсэх — хоцорсон минут (0 = цагтаа/хэмжигдэхгүй).
+function attLateMinutes(key, day, firstInTs) {
+  const exp = expectedArrivalFor(key, day); if (!exp || !firstInTs) return 0;
+  const sp = String(exp).split(':'); const expMin = (Number(sp[0]) || 0) * 60 + (Number(sp[1]) || 0);
+  const hm = hhmmUB(firstInTs).split(':'); const inMin = (Number(hm[0]) || 0) * 60 + (Number(hm[1]) || 0);
+  return inMin > expMin + _LATE_GRACE_MIN ? (inMin - expMin) : 0;
+}
 // Тухайн хүний сарын цаг баримталт: тохируулсан эхлэх цаг+чөлөөнөөс хойш check-in = хоцорсон.
 function punctualityScore(key, month) {
   const start = workStartFor(key);

@@ -14163,6 +14163,11 @@ function pipelineThroughput(key, month) {
 }
 
 function renderPerformance() {
+  // Гарц/хүлээлцэх чанар нь захиалгын stage_meta-гаас тооцогддог тул appOrders ачаалагдсан байх ёстой
+  // (Гүйцэтгэл view захиалгыг өөрөө ачаалдаггүй — шууд орвол хоосон болохоос сэргийлнэ).
+  if (!state._perfOrdersLoaded && !(state.appOrders && state.appOrders.length) && typeof loadAppOrders === 'function') {
+    state._perfOrdersLoaded = true; loadAppOrders().then(() => render());
+  }
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.attMonthTimes === undefined) { state.attMonthTimes = null; loadAttendanceMonth().then(() => render()); }
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна

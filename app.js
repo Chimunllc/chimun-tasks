@@ -13936,6 +13936,33 @@ function eligibleBonus(u) {
 }
 const perfScoreColor = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' : s >= 60 ? 'var(--warn)' : 'var(--danger)';
 
+// ── ХҮЛЭЭЛЦЭХ ЧАНАР KPI — дамжлагад ДАРААГИЙН хүн ӨМНӨХИЙН хүлээлгэж өгсөн ажлыг ★-аар үнэлнэ. ──
+// Өмнөх шатыг гүйцэтгэсэн (надад хүлээлгэж өгсөн) хүн = stage_meta-гийн by ≠ би, at хамгийн сүүлийн.
+function prevStageOwner(o, meKey) {
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  let best = null;
+  for (const k of Object.keys(sm)) {
+    const e = sm[k];
+    if (!e || !e.by || String(e.by) === String(meKey)) continue;
+    if (!best || String(e.at || '') > String(best.at || '')) best = e;
+  }
+  return best ? best.by : null;
+}
+// Хүн бүрийн хүлээлцэх чанар — дараагийн хүн түүнд өгсөн ★ дундаж (сараар). stage_meta-гаас автомат, backend-гүй.
+function handoffQualityScore(key, month) {
+  let sum = 0, n = 0;
+  for (const o of (state.appOrders || [])) {
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    for (const k of Object.keys(sm)) {
+      const e = sm[k];
+      if (!e || !e.handoffRating || String(e.handoffRatee) !== String(key)) continue;
+      if (month && String(e.at || '').slice(0, 7) !== month) continue;
+      sum += Number(e.handoffRating) || 0; n++;
+    }
+  }
+  return { avg: n ? Math.round(sum / n * 10) / 10 : null, count: n };
+}
+
 function renderPerformance() {
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
@@ -13965,6 +13992,7 @@ function renderPerfMe() {
         ${bar('Объектив (цагтаа)', u.obj, PERF_WEIGHTS.objective)}
         ${bar('Ажлын чанар', u.quality, PERF_WEIGHTS.quality)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
+        ${(() => { const h = handoffQualityScore(state.me, month); return h.count ? `<div class="perf-bar-row"><span>Хүлээлцэх чанар <small>(шинэ)</small></span><b>${h.avg}★ <small>${h.count} үнэлгээ</small></b></div>` : ''; })()}
         ${u.penalty ? `<div class="perf-bar-row perf-penalty-row"><span>Суутгал ${u.rawTotal != null ? `<small>(${u.rawTotal} → ${u.total})</small>` : ''}</span><b>−${u.penalty}</b></div>` : ''}
       </div>
       ${u.penalty ? `<div class="perf-penalty-list">${monthPenalties(state.me, month).map(p => `<div class="perf-penalty-item"><span>−${Number(p.kpi_pct) || 0}</span> ${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</div>`).join('')}</div>` : ''}
@@ -13976,14 +14004,14 @@ function renderPerfMe() {
 function renderPerfAll() {
   const month = state.perfMonth;
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m) && memberInLens(m));
-  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0 }))
+  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0, hq: handoffQualityScore(personKey(m), month) }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
     const bp = eligibleBonus(r.u);
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч${r.u.penalty ? ` · <span style="color:var(--danger)">−${r.u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">➖ Суутгал</button></div>
-      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span></div>
+      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span><span title="Хүлээлцэх чанар — дараагийн хүн үнэлсэн ★ дундаж">хүл ${r.hq.count ? r.hq.avg + '★' : '—'}</span></div>
       <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;
@@ -15046,7 +15074,10 @@ function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
   const needPhoto = act.key !== 'archive';
-  const q = act.q;
+  const prevOwner = prevStageOwner(o, state.me);   // хэн надад хүлээлгэж өгсөн бэ
+  // Өмнөх хүн байвал ★ = ТҮҮНИЙ хүлээлгэж өгсөн ажлыг үнэлнэ (Хүлээлцэх чанар KPI, бодит/шударга);
+  // эс бол (эхний шат) өөрийн гүйцэтгэлийг (act.q).
+  const q = prevOwner ? `«${memberName(prevOwner)}»-ийн хүлээлгэж өгсөн ажлыг үнэлнэ үү` : act.q;
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
@@ -15090,7 +15121,7 @@ function openStageAdvanceModal(oid, to) {
     const nowD = new Date().toISOString();
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
     if (needPhoto) entry.photos = photos.slice();
-    if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; }
+    if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; if (prevOwner) { entry.handoffRating = rating; entry.handoffRatee = prevOwner; } }
     sm2[act.key] = entry;
     close();
     await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${(BQ_STATUS[to] || {}).label || act.label} ✓` });

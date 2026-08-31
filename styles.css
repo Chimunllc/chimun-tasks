@@ -5238,6 +5238,12 @@ body.role-daily #add-project { display: none !important; }
 .rate-inline { font-size: var(--fs-sm); font-weight: 700; color: var(--warn); margin-left: 6px; display: inline-flex; align-items: center; gap: 1px; white-space: nowrap; }
 .ri-star { cursor: pointer; color: var(--border-strong); font-size: var(--fs-lg); padding: 1px 2px; line-height: 1; }
 .ri-star:hover { color: var(--warn); }
+/* Ажил эхлэх цаг тохируулах модал */
+.ws-list { display: flex; flex-direction: column; margin: var(--space-2) 0; }
+.ws-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
+.ws-name { display: flex; flex-direction: column; font-size: var(--fs-md); min-width: 0; }
+.ws-name small { color: var(--muted); font-weight: 400; }
+.ws-inp { width: 110px; }
 
 /* Банкны тулгалт */
 .recon-wrap { padding: 2px 2px 24px; }

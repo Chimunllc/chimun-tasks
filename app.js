@@ -7303,13 +7303,18 @@ async function loadAttendanceToday() {
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
 async function loadAttendanceMonth() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
     if (r.ok) {
-      const rows = await r.json(), map = {};
-      rows.forEach(x => { (map[x.member_key] = map[x.member_key] || new Set()).add(x.day); });
+      const rows = await r.json(), map = {}, times = {};
+      rows.forEach(x => {
+        (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
+        const tk = times[x.member_key] = times[x.member_key] || {};
+        if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
+      });
       const out = {}; Object.keys(map).forEach(k => { out[k] = { days: map[k].size, lastDay: [...map[k]].sort().pop() }; });
       state.attWorkedDays = out;
+      state.attMonthTimes = times;
     }
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -7360,15 +7365,47 @@ function renderAttendance() {
       <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <a id="att-print" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">🖨 ID QR карт хэвлэх</a>
         <a id="att-self" href="#" target="_blank" rel="noopener" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none;">📱 Утсаар өөрөө</a>
+        ${state.isCEO ? `<button id="att-workstart" class="ui-raw" style="padding:9px 16px;border:1px solid var(--line);background:var(--panel-hover);border-radius:10px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;">⏰ Ажил эхлэх цаг</button>` : ''}
       </div>
     </div>
     <div id="att-list">${renderAttendanceRows()}</div>
   </div>`;
 }
+// CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
+function openWorkStartModal() {
+  const ws = (state.workStart && typeof state.workStart === 'object') ? state.workStart : {};
+  const staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m)).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+  document.getElementById('workstart-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'workstart-modal';
+  modal.innerHTML = `<div class="modal" style="max-width:440px;max-height:88vh;overflow:auto;">
+    <h2>⏰ Ажил эхлэх цаг</h2>
+    <p class="dmg-hint">Тухайн цагаас (${_LATE_GRACE_MIN} мин чөлөөтэй) хойш QR уншуулбал «хоцорсон» гэж тоологдоно. Талбар/уян цагийн ажилтныг ХООСОН орхи — хэмжигдэхгүй.</p>
+    <div class="ws-list">${staff.map(m => { const k = personKey(m); return `<div class="ws-row"><span class="ws-name">${escapeHtml(m.name || k)}<small>${escapeHtml(m.role || '')}</small></span><input type="time" class="ui-raw ws-inp" data-ws-key="${escapeHtml(k)}" value="${escapeHtml(ws[k] || '')}"></div>`; }).join('')}</div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn" id="ws-cancel">Болих</button>
+      <button class="btn btn-primary" id="ws-save">Хадгалах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#ws-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#ws-save').onclick = async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    const out = {};
+    modal.querySelectorAll('.ws-inp').forEach(inp => { const v = (inp.value || '').trim(); if (/^\d{2}:\d{2}$/.test(v)) out[inp.dataset.wsKey] = v; });
+    state.workStart = out;
+    try { await saveAppConfig('work_start', out); showToast('Ажил эхлэх цаг хадгалагдлаа', 'success', 1800); close(); render(); }
+    catch (err) { btn.disabled = false; showToast('Алдаа: ' + err.message, 'error', 4000); }
+  };
+  modal.classList.add('open');
+}
 function attachAttendanceHandlers() {
   const sb = document.getElementById('att-scan-start'); if (sb) sb.onclick = attStartScan;
   const pf = document.getElementById('att-print'); if (pf) pf.href = attIdCardsUrl();
   const sf = document.getElementById('att-self'); if (sf) sf.href = attCheckinUrl(todayStr());
+  document.getElementById('att-workstart')?.addEventListener('click', openWorkStartModal);
   loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance') el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);
   state._attPoll = setInterval(() => {
@@ -13980,7 +14017,35 @@ function handoffQualityScore(key, month) {
   return { avg: n ? Math.round(sum / n * 10) / 10 : null, count: n };
 }
 
+// ── ЦАГ БАРИМТАЛТ (ирцийн сахилга) — хүн бүрийн ажил эхлэх цаг (app_config['work_start']) vs QR check-in. ──
+// Эхлэх цаг ТОХИРУУЛААГҮЙ хүн (талбар/уян цагийн ажилтан) хэмжигдэхгүй — шударга.
+function hhmmUB(ts) {
+  const d = new Date(ts);
+  if (isNaN(+d)) return '';
+  const h = (d.getUTCHours() + 8) % 24, m = d.getUTCMinutes();   // УБ = UTC+8 (DST-гүй)
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+function workStartFor(key) { const w = state.workStart; return (w && typeof w === 'object' && w[key]) ? w[key] : null; }
+const _LATE_GRACE_MIN = 5;   // 5 минут хүртэлх зөрүү = цагтаа (хатуу биш)
+// Тухайн хүний сарын цаг баримталт: тохируулсан эхлэх цаг+чөлөөнөөс хойш check-in = хоцорсон.
+function punctualityScore(key, month) {
+  const start = workStartFor(key);
+  if (!start) return { measured: false };
+  const times = (state.attMonthTimes && state.attMonthTimes[key]) || null;
+  const sp = String(start).split(':'); const startMin = (Number(sp[0]) || 0) * 60 + (Number(sp[1]) || 0) + _LATE_GRACE_MIN;
+  let days = 0, late = 0;
+  for (const day of Object.keys(times || {})) {
+    if (month && String(day).slice(0, 7) !== month) continue;
+    const t = times[day]; if (!t) continue;
+    const tp = t.split(':'); days++;
+    if ((Number(tp[0]) || 0) * 60 + (Number(tp[1]) || 0) > startMin) late++;
+  }
+  return { measured: true, days, late, onTimePct: days ? Math.round(100 * (days - late) / days) : null, start };
+}
+
 function renderPerformance() {
+  if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.attMonthTimes === undefined) { state.attMonthTimes = null; loadAttendanceMonth().then(() => render()); }
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
   const cur = new Date().toISOString().slice(0, 7);
@@ -14010,6 +14075,7 @@ function renderPerfMe() {
         ${bar('Ажлын чанар', u.quality, PERF_WEIGHTS.quality)}
         ${bar('360° үнэлгээ', u.e360.score, PERF_WEIGHTS.eval360)}
         ${(() => { const h = handoffQualityScore(state.me, month); return h.count ? `<div class="perf-bar-row"><span>Хүлээлцэх чанар <small>(шинэ)</small></span><b>${h.avg}★ <small>${h.count} үнэлгээ</small></b></div>` : ''; })()}
+        ${(() => { const p = punctualityScore(state.me, month); return (p.measured && p.days) ? `<div class="perf-bar-row"><span>Цаг баримталт <small>(${escapeHtml(p.start)}-аас)</small></span><b>${p.onTimePct}% <small>${p.late ? p.late + ' хоцорсон' : 'цагтаа'}</small></b></div>` : ''; })()}
         ${u.penalty ? `<div class="perf-bar-row perf-penalty-row"><span>Суутгал ${u.rawTotal != null ? `<small>(${u.rawTotal} → ${u.total})</small>` : ''}</span><b>−${u.penalty}</b></div>` : ''}
       </div>
       ${u.penalty ? `<div class="perf-penalty-list">${monthPenalties(state.me, month).map(p => `<div class="perf-penalty-item"><span>−${Number(p.kpi_pct) || 0}</span> ${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</div>`).join('')}</div>` : ''}
@@ -14021,14 +14087,14 @@ function renderPerfMe() {
 function renderPerfAll() {
   const month = state.perfMonth;
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && isPermanentStaff(m) && memberInLens(m));
-  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0, hq: handoffQualityScore(personKey(m), month) }))
+  const rows = active.map(m => ({ m, key: personKey(m), u: unifiedScore(personKey(m), month), base: Number(m.base_salary) || 0, hq: handoffQualityScore(personKey(m), month), pu: punctualityScore(personKey(m), month) }))
     .sort((a, b) => (b.u.total ?? -1) - (a.u.total ?? -1));
   const list = rows.map((r, i) => {
     const bp = eligibleBonus(r.u);
     return `<div class="perf-row">
       <div class="perf-rank">${i + 1}</div>
       <div class="perf-name"><b>${escapeHtml(r.m.name)}</b><div class="perf-sub">${escapeHtml(r.m.role || '')} · 360°: ${r.u.e360.raterCount} үнэлэгч${r.u.penalty ? ` · <span style="color:var(--danger)">−${r.u.penalty} суутгал</span>` : ''}</div><button class="perf-penalty-btn" data-penalty-key="${escapeHtml(r.key)}" data-penalty-name="${escapeHtml(r.m.name)}">➖ Суутгал</button></div>
-      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span><span title="Хүлээлцэх чанар — дараагийн хүн үнэлсэн ★ дундаж">хүл ${r.hq.count ? r.hq.avg + '★' : '—'}</span></div>
+      <div class="perf-metrics"><span title="${r.u.objLowData ? 'Объектив — хангалтгүй дата, онооноос хасагдсан' : 'Объектив (цагтаа)'}">об ${r.u.obj ?? '—'}${r.u.objLowData ? '⚠' : ''}</span><span title="Ажлын чанар${r.u.qualityInfo && r.u.qualityInfo.rated ? ` — ${r.u.qualityInfo.avg}★ (${r.u.qualityInfo.rated}/${r.u.qualityInfo.doneTotal})` : ' — үнэлгээгүй'}">чан ${r.u.quality ?? '—'}</span><span title="360°">360 ${r.u.e360.score ?? '—'}</span><span title="Хүлээлцэх чанар — дараагийн хүн үнэлсэн ★ дундаж">хүл ${r.hq.count ? r.hq.avg + '★' : '—'}</span><span title="Цаг баримталт — цагтаа ирсэн %${r.pu.measured ? '' : ' (эхлэх цаг тохируулаагүй)'}">цаг ${r.pu.measured && r.pu.days ? r.pu.onTimePct + '%' : '—'}</span></div>
       <div class="perf-score" style="color:${perfScoreColor(r.u.total)}" title="${r.u.total != null && r.u.partsUsed < 3 ? `Хэсэгчилсэн дата — ${r.u.partsUsed}/3 бүрэлдэхүүн` : ''}">${r.u.total ?? '—'}${r.u.total != null && r.u.partsUsed < 3 ? '<sup style="color:var(--warn);font-size:11px;">⚠</sup>' : ''}</div>
       <div class="perf-bonus-cell">${bp ? `+${bp}%${r.base ? `<br><small>${fmtMoney(Math.round(r.base * bp / 100))}</small>` : ''}` : '—'}</div>
     </div>`;

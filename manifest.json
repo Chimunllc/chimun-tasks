@@ -1,7 +1,7 @@
 {
-  "name": "Чимун ХХК · Дотоод даалгавар",
-  "short_name": "Чимун Tasks",
-  "description": "Чимун ХХК-ийн дотоод даалгавар, KPI, актын урсгалын систем. M Event, NOMAAD Camp, Store, Нэгдсэн алба бүлэгт зориулсан.",
+  "name": "Chimun ERP",
+  "short_name": "Chimun ERP",
+  "description": "Чимун ХХК-ийн компанийн удирдлагын систем (ERP) — захиалга, санхүү, ажилтан, агуулах, KPI. M-Event, NOMAAD Camp, Катеринг салбаруудад зориулсан.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

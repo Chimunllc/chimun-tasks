@@ -3593,7 +3593,7 @@ function renderSidebar() {
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
-  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Чимун ХХК';
+  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Chimun ERP';
   // Төслийн жагсаалт UI-аас бүрэн хасагдсан (2026-06-06). project-list element байхгүй.
 }
 function renderTitle() {
@@ -10872,6 +10872,14 @@ async function orgSetParent(childKey, parentKey) {
 function attachOrgHandlers() {
   document.querySelector('[data-org-print]')?.addEventListener('click', printOrgChart);
   document.querySelector('[data-org-left]')?.addEventListener('click', openLeftStaffModal);
+  document.querySelector('[data-clear-overrides]')?.addEventListener('click', async () => {
+    const keys = Object.keys(state.memberPerms || {});
+    if (!keys.length) { showToast('Онцгой эрх алга', 'info', 1500); return; }
+    if (!(await showConfirm(`${keys.length} хүний онцгой эрхийг цэвэрлэх үү?\n\nБүгд албан тушаалынхаа бэлэн эрхэд (preset) буцна. Онцгой шаардлагатай хүнд дараа нь картаас дахин өгч болно.`, { okText: 'Цэвэрлэх', danger: true }))) return;
+    showToast('Цэвэрлэж байна…', 'info', 1500);
+    for (const k of keys) { try { await clearMemberPerms(k); } catch (e) { console.warn('clearMemberPerms', k, e); } }
+    showToast('Цэвэрлэлээ — бүгд роль эрхэд буцлаа', 'success', 2500); render();
+  });
   document.querySelectorAll('[data-org-lens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.orgLens)));
   document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
   document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));

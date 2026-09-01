@@ -21855,7 +21855,7 @@ function openStaffCardModal(key) {
                     ..._cs.actions.map(l => `<span class="sc-cap-tag sc-cap-act">✎ ${escapeHtml(l)}</span>`)].join('');
       capBox = `<div class="sc-sec"><div class="sc-sec-t">🔓 Юу хийж чадах</div>
         ${isFullS ? '<div style="font-size:12.5px;">Бүх эрх — хязгааргүй (удирдлага).</div>'
-          : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Албан тушаал <b style="color:var(--text);">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Онцгой тохиолдолд доорх «🔑 Эрх»-ээс өөрчилнө.</div>
+          : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Албан тушаал <b style="color:var(--text);">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Өөрчлөх бол «⚙️ Ажилтан удирдах»-аас албан тушаалыг нь солино; онцгой тохиолдолд доорх «🔑 Нарийвчилсан эрх».</div>
             ${tags ? `<div class="sc-caps">${tags}</div>` : '<div style="font-size:12px;color:var(--muted);">Үндсэн ажил — Тойм · Миний ажил · Ирц. Захиалга/бусад цэс нээхгүй (ажлаа даалгавраар авна).</div>'}`}
       </div>`;
     }
@@ -21866,11 +21866,16 @@ function openStaffCardModal(key) {
       const pov = state.memberPerms && state.memberPerms[key];
       const hasOv = pov && Object.keys(pov).length > 0;
       const isFull = (m.level || 0) >= 100 || isFullAccessMember(m);
-      perms = `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх${amCeo ? '' : ' (доорхи хүн)'}</div>
-        ${isFull ? '<div style="font-size:12px;color:var(--muted);">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div>'
-          : capMatrixHtml('sc-cap', key, (k, kind) => effectiveCapForMember(m, k, kind), grantFn)
-            + (hasOv ? `<div style="margin-top:8px;"><button class="btn" data-sc-permreset style="padding:4px 11px;font-size:11px;">↺ Анхны байдал руу</button></div>` : '')}
-      </div>`;
+      perms = isFull
+        ? `<div class="sc-sec"><div class="sc-sec-t">🔑 Эрх</div><div style="font-size:12px;color:var(--muted);">Бүрэн эрхтэй (CEO) — хязгаарлахгүй.</div></div>`
+        : `<div class="sc-sec"><details class="sc-adv"${hasOv ? ' open' : ''}>
+            <summary class="sc-sec-t sc-adv-sum">🔑 Нарийвчилсан эрх засах <span style="font-weight:400;color:var(--muted);font-size:11px;">— онцгой тохиолдол${amCeo ? '' : ' (доорхи хүн)'}</span></summary>
+            <div style="margin-top:10px;">
+              <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5;">Ихэвчлэн хэрэггүй — <b style="color:var(--text);">албан тушаал</b> өөрчилвөл эрхийн багц бүхэлдээ солигдоно. Энэ нь зөвхөн нэг хүнд багцаас гадуур эрх нэмэх/хасах онцгой тохиолдолд.</div>
+              ${capMatrixHtml('sc-cap', key, (k, kind) => effectiveCapForMember(m, k, kind), grantFn)}
+              ${hasOv ? `<div style="margin-top:8px;"><button class="btn" data-sc-permreset style="padding:4px 11px;font-size:11px;">↺ Албан тушаалын эрхэд буцаах</button></div>` : ''}
+            </div>
+          </details></div>`;
     }
     ov.innerHTML = `<div class="org-modal sc-modal">
       <div class="sc-head">

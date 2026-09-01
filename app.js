@@ -18291,7 +18291,9 @@ function _orderDays(o) {
   if (!s || isNaN(sm) || !(em > sm)) return 1;
   return Math.max(1, Math.round((em - sm) / 86400000));
 }
-function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'canceled' && st !== 'cancelled'; }
+// Орлого/авлагад тооцох захиалга — ноорог(баталгаажаагүй), устгасан, цуцалсныг ХАСНА.
+// (Өмнө зөвхөн canceled хасдаг байсан тул НООРОГ захиалгын орлого тайланд орж, эрс хөөрөгддөг байв.)
+function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'draft' && st !== 'deleted' && st !== 'canceled' && st !== 'cancelled'; }
 // Захиалгын ЖИНХЭНЭ орлого — барьцаа (буцаадаг өр) ХАСНА. App/M-Event-д total_mnt-д барьцаа орсон
 // тул хасна; Booqable-д total_mnt = түрээс (барьцаа тусдаа) тул хасахгүй. Түрээс + хүргэлт + НӨАТ.
 function orderRevenue(o, basis) {

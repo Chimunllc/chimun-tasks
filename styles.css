@@ -475,6 +475,11 @@
     border: 1px solid #c7d2fe;
     margin-left: 8px; white-space: nowrap;
   }
+  .auto-chip {
+    font-size: 11px; color: var(--primary); font-weight: 600;
+    background: var(--primary-soft); padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--primary); margin-left: 8px; white-space: nowrap;
+  }
   /* sub-task — indented under its parent */
   .task-row.subtask { margin-left: 28px; background: var(--panel-hover); }
   .stage-badge {

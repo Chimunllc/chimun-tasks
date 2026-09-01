@@ -1133,6 +1133,8 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   if (!task) return;
   const oldStatus = task.status || 'open';
   if (oldStatus === newStatus) return;
+  // Захиалгын авто-ажлыг ТАТГАЛЗАХ нь дамжлагыг царцаадаг тул хориглов (сүүлчийн хамгаалалт).
+  if (newStatus === 'declined' && parseStageTaskId(task.id)) { showToast('Захиалгын ажлыг татгалзах боломжгүй — «Асуудал мэдээлэх» ашиглана уу', 'warn', 3000); return; }
   // Дуусгахдаа биелэлтийн зураг modal — үргэлж нээгдэнэ.
   // requires_photo=true үед заавал, эс бөгөөс заавал биш.
   if (newStatus === 'done' && !(task.completion_photos || []).length) {
@@ -1313,7 +1315,7 @@ function updatePendingConn() {
 function applyPendingTaskWrites() {
   for (const w of loadPendingWrites()) {
     if (w.kind !== 'task' || !w.payload) continue;
-    if (w.action === 'delete') {
+    if (w.action === 'delete' || w.action === 'hard_delete') {   // офлайн устгал pending — upsert руу бүү унага (эргэж ирдэг алдаа)
       state.tasks = state.tasks.filter(t => t.id !== w.payload.id);
     } else {
       const idx = state.tasks.findIndex(t => t.id === w.payload.id);
@@ -14161,7 +14163,7 @@ async function sendNomaadPrepTasks(quoteNo) {
       id: uid(), title: prepTaskTitle(c),
       desc: `NOMAAD ${o.quote_no} · ${o.company || ''} · ${o.camp || ''} ${o.tier || ''} · ${o.guests || 0} хүн\nАрга хэмжээ: ${nomaadDatePlain(o.date_start)}${c.deadline ? '\nЭцсийн хугацаа: ' + c.deadline : ''}${c.detail ? '\n\n' + c.detail : ''}`,
       branch: 'camp', project: '', assignee: ass, due, priority: 'high', status: 'open',
-      requires_photo: !!c.photo, createdBy: state.me, created: Date.now() + n, comments: [], activity: [],
+      requires_photo: !!c.photo, createdBy: state.me, created: Date.now() + n, comments: [], activity: [], auto_source: 'nomaad_prep',
     };
     state.tasks.unshift(t); created.push(t);
     if (p.owner) { pushBroadcast(ass, { type: 'task_assigned', task_id: t.id, title: 'Шинэ бэлтгэл ажил', body: t.title }); assigned++; }
@@ -14235,8 +14237,9 @@ function taskLatenessLabel(t) {
 function objectiveMetrics(key, month) {
   const today = todayStr();
   const mine = (state.tasks || []).filter(t =>
-    isTaskParticipant(t, key) && t.status !== 'deleted' && t.kind !== 'act_parent'
+    isTaskParticipant(t, key) && t.status !== 'deleted' && t.status !== 'declined' && t.kind !== 'act_parent'
     && !parseStageTaskId(t.id)   // автомат дамжлага-даалгавар (ordstage__) ХАСНА — тэр ажил Гарц/Хүлээлцэхэд тоологдсон, давхар болно
+    // Татгалзсан (declined) ажил хуваарьт тоологдож 0 оноогоор чирэхээс сэргийлж ХАСна (шударга)
     // Зөвхөн удирдлагаас өгсөн ажил — өөртөө оноосон ажлаар оноо нэмэхээс сэргийлнэ.
     && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
@@ -15652,6 +15655,9 @@ function membersWithCap(cap) {
 // Ажлын id-д захиалга+шат кодлоно (reload-д хадгалагдана, тусдаа багана хэрэггүй)
 function stageTaskId(orderId, toStatus) { return 'ordstage__' + orderId + '__' + toStatus; }
 function parseStageTaskId(id) { const p = String(id || '').split('__'); return (p[0] === 'ordstage' && p.length === 3) ? { orderId: p[1], toStatus: p[2] } : null; }
+// Захиалга/NOMAAD-аас АВТОМАТ үүссэн ажил уу — татгалзах/устгах хаах, 🤖 badge, KPI-д ашиглана.
+// (ordstage__ id + auto_source талбар хоёулаа — хуучин ажилд id fallback үлдэнэ.)
+function isAutoTask(t) { return !!(t && (parseStageTaskId(t.id) || t.auto_source === 'order' || t.auto_source === 'nomaad_prep')); }
 // Захиалга тухайн шатанд орох үед хариуцагчид ажил үүсгэнэ (давхардахгүй)
 // Дамжлагын ажлын дэлгэрэнгүй — захиалгын самбаргүй ажилтан (жолооч/нярав/цэвэрлэгч) ажлаасаа
 // л хаана/юуг хийхээ мэдэхийн тулд захиалгын гол мэдээллийг ажлын desc-д шингээнэ.
@@ -15696,7 +15702,7 @@ function ensureStageTask(o) {
     id, title: `${cfg.verb} · захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''}`,
     desc: _orderStageDesc(o),   // хаяг/утас/бараа/цаг — самбаргүй ажилтанд
     branch: 'm-event', project: '', assignee: assignee || '', due: (cfg.due === 'stops_at' ? (o.stops_at || o.starts_at) : o.starts_at) || '',
-    priority: 'high', status: 'open', requires_photo: true,
+    priority: 'high', status: 'open', requires_photo: true, auto_source: 'order',
     createdBy: state.me || getCEOEmail(), created: Date.now(), comments: [], activity: [],
   };
   if (Array.isArray(state.tasks)) state.tasks.push(t);   // optimistic — sweep давхардуулахгүй + шууд харагдана
@@ -15718,8 +15724,9 @@ async function advanceOrderFromTask(task) {
   const act = stageActionFor(String(o.status || ''), p.toStatus);
   const sm = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
   const photos = (task.completion_photos || []).filter(Boolean);
-  if (photos.length) sm[act.key] = Object.assign({}, sm[act.key], { photos, by: task.assignee || state.me, at: new Date().toISOString() });
-  await bqUpdateStatus(o.id, p.toStatus, { stageMeta: photos.length ? sm : undefined, toast: `Захиалга #${o.number ?? ''}: ${(BQ_STATUS[p.toStatus] || {}).label || ''} ✓`, byTask: true });
+  // by/at-г ҮРГЭЛЖ бичнэ (Гарц KPI нь by-гээр тоолдог) — зураг байвал нэмнэ.
+  sm[act.key] = Object.assign({}, sm[act.key], { by: task.assignee || state.me, at: new Date().toISOString() }, photos.length ? { photos } : {});
+  await bqUpdateStatus(o.id, p.toStatus, { stageMeta: sm, toast: `Захиалга #${o.number ?? ''}: ${(BQ_STATUS[p.toStatus] || {}).label || ''} ✓`, byTask: true });
 }
 
 // Дамжлагын шат: (from>to) → үйлдэл + өмнөх шат (үнэлэх). Товч бүрд зураг + өмнөхийн үнэлгээ
@@ -22401,16 +22408,12 @@ function attachSwipeActions(row, t) {
       // Баруун шудалсан → Дуусгасан
       row.style.transform = 'translateX(100%)';
       row.style.background = 'rgba(16,185,129,0.30)';
-      setTimeout(() => {
-        const idx = state.tasks.findIndex(x => x.id === t.id);
-        if (idx >= 0) {
-          state.tasks[idx].status = 'done';
-          state.tasks[idx].executed_at = new Date().toISOString();
-          state.tasks[idx].executed_by = state.me;
-          saveData();
-          render();
-          showToast('Дуусгасан', 'success', 1200);
-        }
+      setTimeout(async () => {
+        // ЗӨВ урсгалаар дуусгана: зураг шалгах (requires_photo), захиалга шат урагшлуулах,
+        // backend руу хадгалах — өмнө шууд status='done'+saveLocal хийж эдгээрийг алгасдаг байв.
+        row.style.transform = ''; row.style.background = '';
+        try { await changeTaskStatus(t.id, 'done'); } catch (e) {}
+        render();
       }, 180);
     } else if (currentX < -THRESHOLD) {
       // Зүүн шудалсан → Устгах. canDeleteTask check-ээр permission шалгана.
@@ -22475,9 +22478,14 @@ function renderRow(t) {
     titleHtml = escapeHtml(t.title);
   }
   let extraHtml = '';
+  // Захиалга/NOMAAD-аас АВТОМАТ үүссэн ажил — ажилтан ялгаж харахаар 🤖 chip (гараар өгсөнтэй хольж устгах/татгалзахаас сэргийлнэ)
+  if (isAutoTask(t)) {
+    const src = parseStageTaskId(t.id) ? 'Захиалга' : (t.auto_source === 'nomaad_prep' ? 'Бэлтгэл' : 'Авто');
+    extraHtml += `<span class="auto-chip" title="Системээс автоматаар үүссэн ажил">🤖 ${src}</span>`;
+  }
   if (isParent) {
     const p = actProgress(t.id);
-    if (p.total) extraHtml = `<span class="act-progress">${p.done}/${p.total} дуусгасан</span>`;
+    if (p.total) extraHtml += `<span class="act-progress">${p.done}/${p.total} дуусгасан</span>`;
   }
   if (isSub && !lockCheck.ok && t.status !== 'done') {
     const prevName = lockCheck.prev ? `D${lockCheck.prev.stage}` : 'өмнөх';
@@ -22853,6 +22861,9 @@ function canEditTask(t) {
 //   Бусад → ok=false
 const MISTAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
 function canDeleteTask(t) {
+  // Захиалгын авто-ажил (ordstage__) — устгах боломжгүй: sweep дараагийн ачаалалд дахин үүсгэдэг тул
+  // дэмий; жинхэнэ эх сурвалж нь захиалгын статус. CEO ч мөн адил (захиалгыг л өөрчилнө).
+  if (parseStageTaskId(t.id)) return { ok: false, reason: 'auto', creator: null };
   // Финансын хүсэлт нь нягтлан гүйцэтгэсэн (executed_at тогтоосон) бол хэн ч устгаж болохгүй —
   // CEO ч мөн адил. Дансны бүртгэлийн уялдааг хадгална.
   if ((t.kind === 'finance_request' || t._isFinance) && t.executed_at) {
@@ -22881,7 +22892,9 @@ async function deleteTask(id) {
   if (!can('tasks.delete')) { showToast('Танд ажил устгах эрх олгогдоогүй', 'warn', 3000); return; }
   const check = canDeleteTask(t);
   if (!check.ok) {
-    if (check.reason === 'executed') {
+    if (check.reason === 'auto') {
+      showToast('Захиалгын ажлыг устгах боломжгүй — захиалгыг цуцлах/шат солиход л арилна.', 'warn', 4500);
+    } else if (check.reason === 'executed') {
       showToast('Гүйлгээ хийгдсэн санхүүгийн хүсэлтийг устгах боломжгүй (аудит хадгална).', 'warn', 5000);
     } else {
       const who = check.creator ? `${check.creator.name} (${check.creator.role})` : 'дээд албан тушаалтан';
@@ -22889,28 +22902,31 @@ async function deleteTask(id) {
     }
     return;
   }
-  const hardDelete = true;  // Архив хэрэггүй — даалгаврыг шууд бүрмөсөн устгана (дуусгаагүй ч).
+  // SOFT delete = архивт орж сэргээж болно (status='deleted', аудит үлдэнэ). permanent=true үед л hard.
+  const hardDelete = !!check.permanent;
   const label = 'Устгах';
-  const explainer = 'Энэ даалгавар бүрмөсөн устгагдана. Сэргээх боломжгүй.';
+  const explainer = hardDelete
+    ? 'Энэ даалгавар бүрмөсөн устгагдана. Сэргээх боломжгүй.'
+    : 'Энэ даалгавар архивт орж, дараа сэргээж болно.';
+  const _softMark = (x) => { x.status = 'deleted'; try { logTaskActivity(x, 'deleted', {}); } catch (e) {} };
   // 5-дамжлагат акт parent — sub-task-уудтай хамт устгана
   if (t.kind === 'act_parent') {
     const subs = state.tasks.filter(x => x.parent_id === t.id);
     if (!(await showConfirm(`"${t.title}" + ${subs.length} sub-task бүгдийг хамт устгана.\n\n${explainer}`, { okText: label, danger: true }))) return;
-    const idsToRemove = new Set([t.id, ...subs.map(s => s.id)]);
-    idsToRemove.forEach(markDeleted);
-    state.tasks = state.tasks.filter(x => !idsToRemove.has(x.id));
+    if (hardDelete) { const idsToRemove = new Set([t.id, ...subs.map(s => s.id)]); idsToRemove.forEach(markDeleted); state.tasks = state.tasks.filter(x => !idsToRemove.has(x.id)); }
+    else { _softMark(t); subs.forEach(_softMark); }
     saveTask(t, true, hardDelete);
     subs.forEach(s => saveTask(s, true, hardDelete));
     render();
-    showToast('Устгалаа', 'success', 1800);
+    showToast(hardDelete ? 'Устгалаа' : 'Архивт орлоо', 'success', 1800);
     return;
   }
   if (!(await showConfirm(`${explainer}\n\nҮргэлжлүүлэх үү?`, { okText: label, danger: true }))) return;
-  markDeleted(id);
-  state.tasks = state.tasks.filter(x=>x.id!==id);
+  if (hardDelete) { markDeleted(id); state.tasks = state.tasks.filter(x => x.id !== id); }
+  else { _softMark(t); }
   saveTask(t, true, hardDelete);
   render();
-  showToast('Устгалаа', 'success', 1800);
+  showToast(hardDelete ? 'Устгалаа' : 'Архивт орлоо (сэргээж болно)', 'success', 2200);
 }
 
 /* ─── Bulk action — олон task сонгож нэг дороос үйлдэл хийх ─── */
@@ -23581,9 +23597,15 @@ function renderTaskActionButtons(t) {
   if (canAct && status === 'done') {
     btns.push(`<button class="btn btn-action" data-action="reopen">Дахин нээх</button>`);
   }
-  // Татгалзах
+  // Татгалзах / Асуудал мэдээлэх (эскалаци)
   if (canAct && (status === 'open' || status === 'in_progress')) {
-    btns.push(`<button class="btn btn-action" data-action="decline">Татгалзах</button>`);
+    if (parseStageTaskId(t.id)) {
+      // Захиалгын авто-ажлыг ТАТГАЛЗвал дамжлага чимээгүй царцдаг тул хориглов —
+      // оронд нь менежерт эскалаци (ажил open хэвээр, захиалга зогсохгүй).
+      btns.push(`<button class="btn btn-action" data-action="escalate">⚠ Асуудал мэдээлэх</button>`);
+    } else {
+      btns.push(`<button class="btn btn-action" data-action="decline">Татгалзах</button>`);
+    }
   }
   // (Зураг хавсаргах тусдаа товч хасагдсан — "Дуусгасан" дарахад promptCompletionPhoto
   //  автомат гарч ирнэ.)
@@ -23628,10 +23650,23 @@ async function handleTaskAction(taskId, action) {
     await changeTaskStatus(taskId, 'open');
     showToast('Дахин нээгдсэн', 'warn');
   } else if (action === 'decline') {
+    if (parseStageTaskId(t.id)) { showToast('Захиалгын ажлыг татгалзах боломжгүй — «⚠ Асуудал мэдээлэх»-ээр менежерт хэлнэ үү', 'warn', 3500); return; }
     const reason = await showPrompt('Яагаад татгалзаж байна вэ? (заавал)', { placeholder: 'Шалтгаан...', okText: 'Татгалзах' });
     if (!reason || !reason.trim()) { showToast('Шалтгаан шаардлагатай', 'warn'); return; }
     await changeTaskStatus(taskId, 'declined', reason.trim());
     showToast('Татгалзсан. Үүсгэгчид мэдэгдэв.', 'warn');
+  } else if (action === 'escalate') {
+    // Захиалгын авто-ажилд асуудал гарвал — ТАТГАЛЗАХ биш, менежерт эскалаци (ажил OPEN хэвээр, захиалга царцахгүй).
+    const reason = await showPrompt('Ямар асуудал гарч байна вэ? (менежерт мэдэгдэнэ)', { placeholder: 'Ж: буруу хаяг / бараа дутуу / боломжгүй...', okText: 'Мэдээлэх' });
+    if (!reason || !reason.trim()) { showToast('Тайлбар шаардлагатай', 'warn'); return; }
+    logTaskActivity(t, 'escalated', { reason: reason.trim() });
+    t.updated = new Date().toISOString();
+    await saveTask(t);   // статус OPEN хэвээр — дамжлага зогсохгүй
+    try { const mgr = t.createdBy || getCEOEmail(); pushBroadcast(mgr, { type: 'task_escalated', task_id: t.id, title: '⚠ Ажлын асуудал', body: `${memberName(t.assignee)}: ${t.title} — ${reason.trim()}` }); } catch (e) {}
+    showToast('Менежерт мэдэгдэв. Ажил хэвээр — менежер шийднэ.', 'warn', 3500);
+    closeTaskModal();
+    render();
+    return;
   } else if (action === 'delegate') {
     const picked = await openMultiAssigneePicker([t.assignee]);
     if (!picked || !picked.length) return;

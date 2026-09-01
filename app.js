@@ -5839,11 +5839,8 @@ function renderOrders() {
       ? sumLine + `<div class="otable">${otableHead}${flatRows}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  // 📊 Тулгалт — банкны хуулгыг төлсөн захиалгатай тулгах (нягтлан/CEO). AI туслах эндээс.
-  const canRecon = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()) || (typeof isFinanceAccountant === 'function' && isFinanceAccountant());
-  const reconBtn = canRecon ? `<button class="oview-btn${state.ordersRecon ? ' on' : ''}" id="orders-recon-toggle" title="Банкны хуулга тулгах">📊 Тулгалт</button>` : '';
-  const viewbar = `<div class="orders-viewbar">${viewToggle}${reconBtn ? `<div class="oview-toggle">${reconBtn}</div>` : ''}</div>`;
-  if (canRecon && state.ordersRecon) return head + viewbar + `<div class="ordv-main">${renderReconcilePanel()}</div>`;
+  // (Банкны тулгалт нь Санхүүгийн хяналт тул захиалгаас хассан — Санхүү хуулгыг тусдаа уншина.)
+  const viewbar = `<div class="orders-viewbar">${viewToggle}</div>`;
   if (isBoard) return head + viewbar + controls + body;
   // Жагсаалт: зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + хавтгай хүснэгт)
   return head + viewbar + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;

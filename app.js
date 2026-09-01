@@ -15580,10 +15580,22 @@ function ensureStageTask(o) {
   const cfg = STAGE_AUTOTASK[String(o.status || '')]; if (!cfg) return;
   const next = orderNextStep(o); if (!next) return;
   const id = stageTaskId(o.id, next.to);
-  if ((state.tasks || []).some(t => t.id === id)) return;   // аль хэдийн үүссэн
   // Операцийн ажил → операцийн АЛБАН ТУШААЛД (цэвэрлэгч/нярав/жолооч) эхэлж оногдоно.
   // (cap-аар олбол хуучин override-той менежерт очдог тул албан тушаалыг эхэлж үзнэ.)
-  let assignee = findMemberEmailByRole(cfg.role, '') || membersWithCap(cfg.cap)[0];
+  // Зөвхөн ИДЭВХТЭЙ ажилтан (гарсан хүнд оногдуулахгүй), эс бол cap-аар fallback.
+  const _opRe = new RegExp(cfg.role, 'i');
+  const _op = (TEAM || []).find(m => (m.status || 'идэвхтэй') !== 'гарсан' && _opRe.test(m.role || ''));
+  let assignee = (_op ? personKey(_op) : '') || membersWithCap(cfg.cap)[0] || '';
+  const existing = (state.tasks || []).find(t => t.id === id);
+  if (existing) {
+    // Хуучин БУРУУ (операцийн бус, ж менежер) оногдсон нээлттэй ажлыг зөв ажилтанд шилжүүлнэ.
+    if (existing.status !== 'done' && assignee && existing.assignee !== assignee) {
+      const cur = findMember(existing.assignee);
+      const curOk = cur && new RegExp(cfg.role, 'i').test(cur.role || '');   // одоогийн эзэн операцийн албан тушаалтай юу
+      if (!curOk) { existing.assignee = assignee; if (!existing.desc) existing.desc = _orderStageDesc(o); try { saveTask(existing); } catch (e) {} }
+    }
+    return;
+  }
   const t = {
     id, title: `${cfg.verb} · захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''}`,
     desc: _orderStageDesc(o),   // хаяг/утас/бараа/цаг — самбаргүй ажилтанд
@@ -19901,6 +19913,7 @@ function renderFinanceReport(wrap) {
   bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
   const canRecon = state.isCEO || canSeeAllFinance();
   bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
+    + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Орлого тулгах</button>` : '')
     + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
@@ -19909,6 +19922,7 @@ function renderFinanceReport(wrap) {
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
+  bar.querySelector('#fin-recon-open')?.addEventListener('click', openReconcileModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
 

@@ -10,7 +10,7 @@
  * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
  */
 
-const CACHE_VERSION = 'chimun-tasks-v667-role-presets-2026-09-01';
+const CACHE_VERSION = 'chimun-tasks-v668-offhours-fee-2026-09-01';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -56,9 +56,17 @@ self.addEventListener('push', (event) => {
     // 2) Хэрэв ямар ч таб идэвхтэй биш бол notification харуулна (push зөвшөөрөл өгсөн бол)
     const anyVisible = clients.some(c => c.visibilityState === 'visible');
     if (!anyVisible) {
+      // tag — мэдэгдэл бүрд ӨӨР байх ёстой. Өмнө нь бүгд tag:'tasks' байсан тул
+      // шинэ ажлын мэдэгдэл хуучныг ЧИМЭЭГҮЙ орлож, дуу/чичиргээ гардаггүй байв.
+      // renotify:true нь ижил tag дахин ашиглагдсан ч дахин сануулна.
+      const tag = data.tag || (kind + ':' + (data.id || Date.now()));
       await self.registration.showNotification(title, {
         body, icon: './icon-192.png', badge: './icon-192.png',
-        tag: kind, data: { url },
+        tag,
+        renotify: true,
+        requireInteraction: kind === 'tasks',   // ажлын мэдэгдэл дарах хүртэл дэлгэцэнд үлдэнэ
+        vibrate: [200, 100, 200],
+        data: { url },
       });
     }
   })());

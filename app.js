@@ -16511,6 +16511,8 @@ function bqOrderCard(o) {
   const delivMeta = (isApp && _dlv && _dlv.fee > 0)
     ? `<div class="order-meta">Хүргэлт: <b>${fmtMoney(_dlv.fee)}</b>${deliveryLabel(_dlv) ? ` · ${escapeHtml(deliveryLabel(_dlv))}` : ''}</div>`
     : '';
+  const _offFee = isApp ? orderOffHoursFee(o) : 0;
+  const offMeta = _offFee > 0 ? `<div class="order-meta">🌙 Ажлын бус цаг: <b>${fmtMoney(_offFee)}</b></div>` : '';
   // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
   const slog = isApp ? parseStageLog(o.note) : {};
   const slogKeys = ['prepared', 'delivering', 'rented', 'returning', 'returned', 'archived'].filter(k => slog[k] && slog[k].by);
@@ -16601,6 +16603,7 @@ function bqOrderCard(o) {
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
     ${ciHtml}
     ${delivMeta}
+    ${offMeta}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
     ${payPanel}

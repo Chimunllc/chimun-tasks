@@ -5253,10 +5253,15 @@ function openExpenseModal(id) {
   modal.classList.add('open');
 }
 // Ирсэн (Орлого) мөрүүдийг бүртгэсэн төлбөртэй тулгана → 4 хуваарь.
+// Дотоод шилжүүлэг / өөрийн данс хооронд / хадгаламж — үйлчлүүлэгчийн төлбөр БИШ, тулгалтаас хасна.
+function _isInternalCredit(r) {
+  const t = (String(r.memo || '') + ' ' + String(r.name || '')).toLowerCase();
+  return /данс\s*хоор|өөрийн\s*данс|хадгаламж|дотоод\s*шилж|валют\s*арилжаа|карт\s*цэнэглэ/.test(t);
+}
 function reconcileOrders(stmtRows, orders, opts) {
   const tol = (opts && opts.amountTol) || 0;
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  const credits = stmtRows.filter(r => r.credit > 0).map(r => ({ ...r, used: false }));
+  const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r)).map(r => ({ ...r, used: false }));
   const paidOrders = (orders || []).filter(o => Number(o.paid_amount) > 0);
   const matched = [], mismatch = [], missing = [];
   for (const o of paidOrders) {
@@ -8478,10 +8483,25 @@ function wlListHtml() {
     const created = createdCount[k] || 0;
     const rows = tasks.map(t => {
       const od = t.due && t.due < today;
-      const creator = (t.createdBy && t.createdBy !== k) ? memberName(t.createdBy) : '';
-      return `<div class="wl-task"><span class="wl-dot" style="background:${prioColor[t.priority] || 'var(--muted)'}"></span><span class="wl-title">${escapeHtml(t.title || '(гарчиггүй)')}</span><span class="wl-status">${statusMn[t.status] || t.status || ''}</span>${t.due ? `<span class="wl-due"${od ? ' style="color:var(--danger);font-weight:700"' : ''}>${od ? '⚠ ' : ''}${escapeHtml(t.due)}</span>` : ''}${creator ? `<span class="wl-by">← ${escapeHtml(creator)}</span>` : ''}</div>`;
+      // Захиалгаас автоматаар үүссэн ажил (ordstage__) = «🤖 авто», гараар өгсөн бол «← өгсөн хүн»
+      const isStage = !!parseStageTaskId(t.id);
+      const by = isStage ? '🤖 авто' : ((t.createdBy && t.createdBy !== k) ? '← ' + memberName(t.createdBy) : '');
+      const stCls = t.status === 'in_progress' ? ' wl-st-prog' : '';
+      return `<div class="wl-task">
+        <span class="wl-dot" style="background:${prioColor[t.priority] || 'var(--muted)'}"></span>
+        <span class="wl-title">${escapeHtml(t.title || '(гарчиггүй)')}</span>
+        <span class="wl-chip${stCls}">${statusMn[t.status] || t.status || ''}</span>
+        ${t.due ? `<span class="wl-chip${od ? ' wl-od' : ''}">${od ? '⚠ ' : '📅 '}${escapeHtml(t.due)}</span>` : ''}
+        ${by ? `<span class="wl-by${isStage ? ' wl-auto' : ''}">${escapeHtml(by)}</span>` : ''}
+      </div>`;
     }).join('');
-    return `<div class="wl-person"><div class="wl-phead"><div><b>${escapeHtml(name)}</b>${role ? ` <span class="wl-role">${escapeHtml(role)}</span>` : ''}</div><div class="wl-badges"><span>${all.length} ажил</span>${inProg ? `<span style="color:var(--accent)">${inProg} хийж буй</span>` : ''}${overdue ? `<span style="color:var(--danger);font-weight:700">${overdue} хоцорсон</span>` : ''}${created ? `<span class="wl-role">${created} үүсгэсэн</span>` : ''}</div></div>${rows}</div>`;
+    const ava = m ? (typeof staffAvatarImg === 'function' ? staffAvatarImg(m) : '') : '';
+    const init = isNone ? '⚠' : escapeHtml(memberInitials(k));
+    return `<div class="wl-person">
+      <div class="wl-phead">
+        <div class="wl-pwho"><span class="wl-ava">${init}${ava}</span><span class="wl-pname"><b>${escapeHtml(name)}</b>${role ? `<span class="wl-role">${escapeHtml(role)}</span>` : ''}</span></div>
+        <div class="wl-badges"><span class="wl-badge">${all.length} ажил</span>${inProg ? `<span class="wl-badge wl-b-prog">${inProg} хийж буй</span>` : ''}${overdue ? `<span class="wl-badge wl-b-od">⚠ ${overdue} хоцорсон</span>` : ''}${created ? `<span class="wl-badge">${created} үүсгэсэн</span>` : ''}</div>
+      </div>${rows}</div>`;
   }).filter(Boolean).join('');
   return cards || '<div style="color:var(--muted);padding:20px;text-align:center;">Идэвхтэй ажил алга.</div>';
 }

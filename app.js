@@ -15584,7 +15584,9 @@ function ensureStageTask(o) {
   const next = orderNextStep(o); if (!next) return;
   const id = stageTaskId(o.id, next.to);
   if ((state.tasks || []).some(t => t.id === id)) return;   // аль хэдийн үүссэн
-  let assignee = membersWithCap(cfg.cap)[0] || findMemberEmailByRole(cfg.role, '');
+  // Операцийн ажил → операцийн АЛБАН ТУШААЛД (цэвэрлэгч/нярав/жолооч) эхэлж оногдоно.
+  // (cap-аар олбол хуучин override-той менежерт очдог тул албан тушаалыг эхэлж үзнэ.)
+  let assignee = findMemberEmailByRole(cfg.role, '') || membersWithCap(cfg.cap)[0];
   const t = {
     id, title: `${cfg.verb} · захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''}`,
     desc: _orderStageDesc(o),   // хаяг/утас/бараа/цаг — самбаргүй ажилтанд
@@ -15592,7 +15594,14 @@ function ensureStageTask(o) {
     priority: 'high', status: 'open', requires_photo: true,
     createdBy: state.me || getCEOEmail(), created: Date.now(), comments: [], activity: [],
   };
+  if (Array.isArray(state.tasks)) state.tasks.push(t);   // optimistic — sweep давхардуулахгүй + шууд харагдана
   try { saveTask(t); } catch (e) { console.warn('ensureStageTask', e); }
+}
+// Идэвхтэй бүх app захиалгад дараагийн шатны ажлыг баталгаажуулна (ensureStageTask idempotent).
+// Хуучин/шилжсэн захиалга ажилгүй үлдэхээс сэргийлнэ — ачаалахад catch-up хийнэ.
+function sweepStageTasks() {
+  if (!Array.isArray(state.tasks) || !state.tasks.length) return;   // tasks ачаалагдаагүй бол дараа
+  (state.appOrders || []).forEach(o => { if (o && STAGE_AUTOTASK[String(o.status || '')]) { try { ensureStageTask(o); } catch (e) {} } });
 }
 // Ажил (зурагтай) дуусахад холбоотой захиалгыг дараагийн шатанд шилжүүлнэ
 async function advanceOrderFromTask(task) {
@@ -15779,6 +15788,7 @@ async function _loadAppOrdersImpl() {
     }
   } catch (e) { console.warn('loadAppOrders active', e); }
   state.appOrders = state.appOrders || [];
+  sweepStageTasks();          // идэвхтэй захиалга бүрд дамжлагын ажлыг баталгаажуулах (хуучин захиалга ажилтай болно)
   autoCleanExpiredOrders();   // хугацаа хэтэрсэн биелээгүй захиалгыг авто устгах (сессэд нэг удаа)
   autoFillOrderCompany();     // банкны баримтын төлөгчөөс байгууллагын нэрийг авто бүртгэх (хоосон бол)
   loadUsedReceipts();   // нэгдсэн баримтын ledger (давхцал шалгах)

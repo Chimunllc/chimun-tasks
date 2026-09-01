@@ -21726,10 +21726,19 @@ function renderStaffList() {
   filtered.forEach(m => { const g = staffBranchLabel(m); (groups[g] = groups[g] || []).push(m); });
   const order = ['M-Event', 'NOMAAD Camp', 'Нэгдсэн', 'Цагийн ажилтан'];
   const gkeys = [...order.filter(g => groups[g]), ...Object.keys(groups).filter(g => !order.includes(g)).sort()];
-  listEl.innerHTML = gkeys.map(g =>
+  // PIN ачаалагдаагүй бол CEO-д тодорхой банер + шийдэх товч (үл үзэгдэх бүтэлгүйтэлээс сэргийлнэ)
+  let _pinBanner = '';
+  if (state.isCEO && !_pinLoaded) {
+    if (state._staffPinsErr === 'need_login') _pinBanner = `<div class="staff-pin-banner">🔒 Ажилтны PIN харахын тулд <b>дахин нэвтрэх</b> шаардлагатай — нэвтрэлтийн хугацаа дууссан байна. <button class="btn btn-primary ui-raw" id="staff-pin-relogin">Дахин нэвтрэх</button></div>`;
+    else if (state._staffPinsErr === 'retry') _pinBanner = `<div class="staff-pin-banner">⚠ Ажилтны PIN ачаалж чадсангүй (сүлжээ). <button class="btn ui-raw" id="staff-pin-retry">🔄 Дахин оролдох</button></div>`;
+    else _pinBanner = `<div class="staff-pin-banner">⏳ Ажилтны PIN ачаалж байна… <button class="btn ui-raw" id="staff-pin-retry">🔄 Дахин оролдох</button></div>`;
+  }
+  listEl.innerHTML = _pinBanner + gkeys.map(g =>
     `<div class="staff-group-head">${escapeHtml(g)} <span>(${groups[g].length})</span></div>`
     + groups[g].map(rowHtml).join('')
   ).join('');
+  listEl.querySelector('#staff-pin-relogin')?.addEventListener('click', () => { logout(); });
+  listEl.querySelector('#staff-pin-retry')?.addEventListener('click', () => { state._staffPinsLoaded = false; state._staffPinsErr = ''; if (typeof showToast === 'function') showToast('Ажилтны PIN дахин ачаалж байна…', 'info', 1800); loadStaffPins(); });
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
   });

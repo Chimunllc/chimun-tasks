@@ -5367,6 +5367,53 @@ function renderReconcilePanel() {
     ${resultHtml}
   </div>`;
 }
+// Орлого тулгалт — Санхүү цэснээс нээгддэг МОДАЛ (банкны орлого ↔ төлсөн захиалга + AI санал).
+function openReconcileModal() {
+  document.getElementById('recon-modal')?.remove();
+  const ov = document.createElement('div'); ov.id = 'recon-modal'; ov.className = 'modal-bg';
+  document.body.appendChild(ov);
+  const draw = () => {
+    ov.innerHTML = `<div class="modal recon-modal" style="max-width:640px;max-height:88vh;overflow:auto;">
+      <button class="modal-x ui-raw" data-recon-close style="position:absolute;top:10px;right:12px;background:none;border:0;font-size:20px;color:var(--muted);cursor:pointer;">✕</button>
+      <h2 style="margin:0 0 4px;">📊 Орлого тулгалт</h2>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Банкны орлогыг төлсөн захиалгатай тулгана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
+      ${renderReconcilePanel()}</div>`;
+    // Модал доторх handler-ууд (render() дуудвал модал хаагдана тул зөвхөн draw()-оор шинэчилнэ)
+    ov.querySelector('[data-recon-close]')?.addEventListener('click', () => ov.remove());
+    const reconFile = ov.querySelector('#recon-file');
+    if (reconFile) reconFile.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0]; if (!file) return;
+      const st = ov.querySelector('#recon-status'); if (st) st.textContent = 'Уншиж байна…';
+      try {
+        const matrix = await statementFileToMatrix(file);
+        const parsed = parseStatement(matrix);
+        if (parsed.headerRow < 0) { if (st) st.textContent = 'Хуулгын багана танигдсангүй — Голомтын Excel мөн эсэхийг шалгана уу.'; return; }
+        state._reconResult = reconcileOrders(parsed.rows, reconOrdersList());
+        state._reconResult._fileName = file.name; draw();
+      } catch (err) { if (st) st.textContent = 'Алдаа: ' + err.message; }
+    });
+    ov.querySelector('#recon-ai-btn')?.addEventListener('click', async () => {
+      const res = state._reconResult; const payload = buildReconAiPayload(res);
+      if (!payload) { showToast('AI шаардлагагүй — таараагүй үлдэгдэлгүй', 'info', 2500); return; }
+      state._reconAiLoading = true; draw();
+      try {
+        const r = await fetchWithTimeout(DEFAULT_RECON_AI_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: N8N_API_KEY, ...payload }) }, 60000);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        let data = null; try { data = await r.json(); } catch (e) { data = null; }
+        const arr = Array.isArray(data) ? data : (data && Array.isArray(data.suggestions) ? data.suggestions : []);
+        const n = applyReconAiSuggestions(res, arr).length;
+        showToast(n ? `🤖 ${n} санал олдлоо` : 'AI тохирол олсонгүй', n ? 'success' : 'info', 3000);
+      } catch (e) { showToast('AI алдаа: ' + e.message, 'error', 4500); }
+      finally { state._reconAiLoading = false; draw(); }
+    });
+    ov.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
+      ov.remove(); state.view = 'orders'; state.ordersRecon = false; state.ordersView = 'list'; state.ordersSearch = el.dataset.reconOpen; render();
+    }));
+  };
+  draw();
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  ov.classList.add('open');
+}
 
 // Захиалгын яаралтай зэрэглэл (эрэмбэ + тэмдэг). Гарах шатанд starts_at, түрээсэнд stops_at-аар.
 function orderUrgRank(o, stage, todayStr) {

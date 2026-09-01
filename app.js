@@ -1391,12 +1391,14 @@ function todayStr() {
 }
 
 // Add `days` (can be negative) to a YYYY-MM-DD string. Returns YYYY-MM-DD.
+// ⚠ toISOString нь UTC — Монгол (UTC+8)-д local шөнө дундыг UTC руу хөрвүүлж НЭГ ӨДРӨӨР
+//   буруу болгодог (addDays(өнөөдөр,1)=өнөөдөр). Тиймээс todayStr шиг local-аар форматлана.
 function addDays(yyyymmdd, days) {
   if (!yyyymmdd) return '';
   const d = new Date(yyyymmdd + 'T00:00:00');
   if (isNaN(d)) return '';
   d.setDate(d.getDate() + Number(days || 0));
-  return d.toISOString().slice(0,10);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
 /* Create a 5-stage act for an M Event order. Returns the parent task.

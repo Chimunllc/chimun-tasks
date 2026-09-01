@@ -10755,10 +10755,13 @@ function renderOrgChart() {
   // Гарсан ажилтан — бүтэцэд харагдахгүй тул тусдаа жагсаалтаар хандаж сэргээх боломж (таб хассны нөхөл)
   const leftStaff = canEdit ? (TEAM || []).filter(m => (m.status || '') === 'гарсан') : [];
   const leftBtn = leftStaff.length ? `<button class="btn" data-org-left title="Гарсан ажилтныг харах / сэргээх">🚪 Гарсан (${leftStaff.length})</button>` : '';
+  // Онцгой эрх (member_perms override) — preset-ийг дарж эмх замбараагүй болгодог. CEO бүгдийг роль руу буцааж цэвэрлэнэ.
+  const ovCount = state.isCEO ? Object.keys(state.memberPerms || {}).length : 0;
+  const ovBtn = ovCount ? `<button class="btn" data-clear-overrides title="Бүх онцгой эрхийг цэвэрлэж, хүн бүрийг албан тушаалынхаа бэлэн эрхэд буцаана">🧹 Онцгой эрх (${ovCount})</button>` : '';
   const _hint = (!state.isCEO && state._orgManage.deleg && state._orgManage.deleg.size) ? ` · доорхийнхоо эрхийг удирдах бол картыг дар` : '';
   const head = `<div class="org-head">
     <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_hint}</div></div>
-    <div class="org-zoom">${editBtn}${leftBtn}<button class="btn" data-org-print title="Бүтцийг A4-д хэвлэх">🖨 Хэвлэх</button><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
+    <div class="org-zoom">${editBtn}${ovBtn}${leftBtn}<button class="btn" data-org-print title="Бүтцийг A4-д хэвлэх">🖨 Хэвлэх</button><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
   </div>`;
   const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';
   return `<div class="org-wrap">${head}${stats}${legend}${editNote}
@@ -13311,12 +13314,13 @@ function meventContractHtml(o) {
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);
+  const offFee = orderOffHoursFee(o);   // ажлын бус цагийн нэмэгдэл (⟦RT⟧ цагаас)
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
   const _ci = custInfoOf(o.note);
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
   const deposit = Number(o.deposit_mnt) || 0;
-  const rentalNet = Math.max(0, subtotal - discount + delivFee);   // НӨАТ багтсан түрээс+үйлчилгээ (барьцаа ОРООГҮЙ)
+  const rentalNet = Math.max(0, subtotal - discount + delivFee + offFee);   // НӨАТ багтсан түрээс+үйлчилгээ+ажлын бус цаг (барьцаа ОРООГҮЙ)
   const total = Number(o.total_mnt) || (rentalNet + deposit);      // нийт төлбөр
   const preVat = Math.round(rentalNet / 1.1);                      // НӨАТ ороогүй дүн
   const vat = rentalNet - preVat;                                  // НӨАТ (10%, түрээст багтсан)
@@ -13333,6 +13337,7 @@ function meventContractHtml(o) {
       <tr><td>Түрээсийн дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
       ${discount > 0 ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
       ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
+      ${offFee > 0 ? `<tr><td>🌙 Ажлын бус цаг:</td><td class="rt">${fmtMoney(offFee)}</td></tr>` : ''}
       <tr><td>Үүнээс НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
@@ -16899,6 +16904,7 @@ const MEV_QUOTE_T = {
     ref: (n) => `Захиалга ${n}`, days: (d) => `${d} хоног`,
     subtotal: (d) => `Түрээсийн дүн (${d} хоног)`,
     discount: 'Хөнгөлөлт', vatCut: 'НӨАТ хасалт (−5%)', delivery: 'Хүргэлт',
+    offHours: '🌙 Ажлын бус цаг', offHoursMail: (m) => ` · Ажлын бус цаг ${m}`,
     depositRow: 'Барьцаа (буцаах)', grand: 'Нийт дүн',
     terms: 'Нөхцөл', vatIn: 'НӨАТ багтсан', vatOut: 'НӨАТ багтаагүй',
     payConfirm: 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
@@ -16927,6 +16933,7 @@ const MEV_QUOTE_T = {
     ref: (n) => `Order ${n}`, days: (d) => `${d} day${d === 1 ? '' : 's'}`,
     subtotal: (d) => `Rental subtotal (${d} day${d === 1 ? '' : 's'})`,
     discount: 'Discount', vatCut: 'VAT deduction (−5%)', delivery: 'Delivery',
+    offHours: '🌙 After-hours fee', offHoursMail: (m) => ` · After-hours ${m}`,
     depositRow: 'Deposit (refundable)', grand: 'Total',
     terms: 'Terms', vatIn: 'VAT included', vatOut: 'VAT not included',
     payConfirm: 'The order is confirmed once payment is received.',
@@ -16998,6 +17005,7 @@ async function buildOrderQuote(o, lang) {
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);
+  const offFee = orderOffHoursFee(o);   // ажлын бус цагийн нэмэгдэл (⟦RT⟧ цагаас, сайттай ижил)
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
   const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
@@ -17075,7 +17083,7 @@ ${_erow(T.rentalPeriod, T.days(days))}
 <tr><td style="padding-top:12px;font-size:14px;font-weight:600;color:#17171B;">${T.grand}</td>
 <td align="right" style="padding-top:12px;font-family:Manrope,Arial,sans-serif;font-size:22px;font-weight:800;color:#0B1F3A;">${fmtMoney(total)}</td></tr>
 </table>
-<div style="font-size:12px;color:#4a5a50;padding-top:6px;">${_vatNote}${deposit ? T.depositMail(fmtMoney(deposit)) : ''}</div>
+<div style="font-size:12px;color:#4a5a50;padding-top:6px;">${_vatNote}${offFee ? T.offHoursMail(fmtMoney(offFee)) : ''}${deposit ? T.depositMail(fmtMoney(deposit)) : ''}</div>
 </td></tr>
 </table>
 </td></tr>
@@ -17130,6 +17138,7 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
         ${discount ? `<div class="tr"><span>${T.discount}</span><span class="v">−${fmtMoney(discount)}</span></div>` : ''}
         ${hasVat ? `<div class="tr"><span>${T.vatCut}</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
         ${delivFee ? `<div class="tr"><span>${T.delivery}${dlvLbl ? ' (' + escapeHtml(dlvLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
+        ${offFee ? `<div class="tr"><span>${T.offHours}</span><span class="v">${fmtMoney(offFee)}</span></div>` : ''}
         ${deposit ? `<div class="tr"><span>${T.depositRow}</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>

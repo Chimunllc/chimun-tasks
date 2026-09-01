@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -504,12 +504,12 @@ function finish() {
 
   // ── reconcileOrders: хуваасан төлбөр + огноо scope ──
   {
-    // Хуваасан төлбөр: 1 захиалга 2 гүйлгээгээр (500к + 682к = 1,182к) → нийлбэрээр таарна
+    // Хуваасан төлбөр (баримт задаргаагүй, paid_ref хоосон): нэрээр 2 гүйлгээг нийлбэрлэж таарна (fallback)
     const stmt = [
-      { date: '2026-09-01', credit: 500000, memo: 'REF9 темуулэн', name: 'Н.Тэмүүлэн' },
-      { date: '2026-09-03', credit: 682000, memo: 'REF9 темуулэн', name: 'Н.Тэмүүлэн' },
+      { date: '2026-09-01', credit: 500000, memo: 'темуулэн', name: 'Н.Тэмүүлэн' },
+      { date: '2026-09-03', credit: 682000, memo: 'темуулэн', name: 'Н.Тэмүүлэн' },
     ];
-    const orders = [{ order_no: '1450', customer_name: 'Н.Тэмүүлэн', paid_amount: 1182000, paid_ref: 'REF9', paid_date: '2026-09-01' }];
+    const orders = [{ order_no: '1450', customer_name: 'Н.Тэмүүлэн', paid_amount: 1182000, paid_ref: '', paid_date: '2026-09-01' }];
     const r = F.reconcileOrders(stmt, orders);
     ok(r.matched.length === 1, 'split: 2 гүйлгээ нийлбэрээр таарна');
     ok(r.matched[0] && r.matched[0].rows && r.matched[0].rows.length === 2, 'split: 2 мөр хэрэглэсэн');
@@ -526,6 +526,27 @@ function finish() {
     const r = F.reconcileOrders(stmt, orders);
     ok(r.matched.length === 1 && r.matched[0].order.order_no === '1000', 'scope: 09-р сарынх таарна');
     ok(r.missing.length === 0, 'scope: өөр сарын захиалга «алга» болохгүй');
+  }
+  {
+    // Баримт-суурьтай тулгалт: 2 баримт (paid_ref-д 2 сегмент) → банкны 2 мөр дансны дугаараар таарна
+    const stmt = [
+      { date: '2026-09-01', credit: 500000, memo: 'гүйлгээ', name: 'ТЭМҮҮЛЭН НАРАН', account: '5301234567' },
+      { date: '2026-09-04', credit: 682000, memo: 'гүйлгээ', name: 'ТЭМҮҮЛЭН НАРАН', account: '5301234567' },
+    ];
+    const orders = [{ order_no: '1450', customer_name: 'Н.Тэмүүлэн', paid_amount: 1182000,
+      paid_ref: '[#A1] Н.Тэмүүлэн · 5301234567 · deposit  |  [#A2] Н.Тэмүүлэн · 5301234567 · balance', paid_date: '2026-09-01' }];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.matched.length === 1, 'receipt: 2 баримт дансны дугаараар таарна');
+    ok(r.matched[0] && r.matched[0].rows.length === 2, 'receipt: 2 гүйлгээ хэрэглэсэн');
+    ok(r.untracked.length === 0, 'receipt: захиалгагүй орлого үлдэхгүй');
+  }
+  {
+    // 2 баримт бүртгэсэн ч банкны хуулгад зөвхөн 1 нь → «дутуу» (mismatch, receipts=2, rows=1)
+    const stmt = [{ date: '2026-09-01', credit: 500000, memo: 'г', name: 'БАТ', account: '5309999999' }];
+    const orders = [{ order_no: '1500', customer_name: 'Бат', paid_amount: 1000000,
+      paid_ref: '[#B1] Бат · 5309999999 · a  |  [#B2] Бат · 5309999999 · b', paid_date: '2026-09-01' }];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.mismatch.length === 1 && r.mismatch[0].rows.length === 1 && r.mismatch[0].receipts === 2, 'receipt: дутуу баримт → mismatch 1/2');
   }
   {
     // Бэлнээр төлсөн захиалга банкны хуулгад орохгүй → missing болгож шуугихгүй

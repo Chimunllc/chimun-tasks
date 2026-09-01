@@ -852,22 +852,30 @@ async function serverLogin(identifier, pin) {
 // Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !state.isCEO) return;
-  state._staffPinsLoaded = true;
   const token = localStorage.getItem('sessionToken');
-  if (!token) { state._staffPinsLoaded = false; return; }   // токенгүй бол дараа дахин оролдоно
+  // Токенгүй = серверийн нэвтрэлт байхгүй → PIN татах боломжгүй. Гацаахгүй, "дахин нэвтэрнэ үү" гэж хэлнэ.
+  if (!token) { state._staffPinsLoaded = true; state._staffPinsErr = 'need_login'; if (typeof render === 'function') render(); return; }
+  state._staffPinsLoaded = true;
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_STAFF_PINS_URL), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
     }, 12000);
-    if (!r.ok) return;
-    const d = await r.json();
-    if (!d || !d.ok || !Array.isArray(d.team)) return;
+    const d = r.ok ? await r.json() : null;
+    if (!d || !d.ok || !Array.isArray(d.team)) {
+      // bad_token = токен хүчингүй/хугацаа дууссан → дахин нэвтрэх хэрэгтэй. Бусад = түр алдаа, дахин оролдож болно.
+      const badTok = d && d.reason === 'bad_token';
+      state._staffPinsErr = badTok ? 'need_login' : 'retry';
+      if (!badTok) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
+      else if (typeof render === 'function') render();
+      return;
+    }
+    state._staffPinsErr = '';
     const byPhone = {};
     d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
     (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && byPhone[p]) m.pin = byPhone[p]; });
     if (typeof render === 'function') render();
-  } catch (e) { console.warn('loadStaffPins', e); }
+  } catch (e) { state._staffPinsLoaded = false; state._staffPinsErr = 'retry'; console.warn('loadStaffPins', e); }
 }
 // Токеныг сервер талд баталгаажуулах: {valid:true, phone, level, name} эсвэл {valid:false}; сүлжээ алга бол null.
 async function serverVerifyToken(token) {
@@ -3593,7 +3601,7 @@ function renderSidebar() {
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
-  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Чимун ХХК';
+  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Chimun ERP';
   // Төслийн жагсаалт UI-аас бүрэн хасагдсан (2026-06-06). project-list element байхгүй.
 }
 function renderTitle() {
@@ -21632,7 +21640,7 @@ function renderStaffList() {
   // endpoint-оос PIN татаж TEAM-д нэгтгэнэ (loadStaffPins). Нэг удаа, кэшлэхгүй.
   if (state.isCEO && !state._staffPinsLoaded) loadStaffPins();
   const _pinLoaded = TEAM.some(m => m.pin);   // true = серверээс PIN ирсэн
-  const _pinMsg = _pinLoaded ? 'тохируулаагүй' : (state.isCEO ? 'ачаалж байна…' : 'тохируулаагүй');
+  const _pinMsg = _pinLoaded ? 'тохируулаагүй' : (state.isCEO ? (state._staffPinsErr === 'need_login' ? '🔒 дахин нэвтэрнэ үү' : state._staffPinsErr === 'retry' ? 'ачаалж чадсангүй' : 'ачаалж байна…') : 'тохируулаагүй');
   const q = (document.getElementById(state._staffSearchId || 'staff-search')?.value || '').toLowerCase().trim();
   const all = [...TEAM].sort((a, b) => {
     // Active first, then by level

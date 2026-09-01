@@ -8375,8 +8375,8 @@ const ROLE_PRESETS = [
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
   [/нярав|агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.dispatch', 'products.edit'] }],
-  [/цэвэрл/, { views: [], actions: [] }],
-  [/жолооч|хүргэ|түгээ/, { views: [], actions: [] }],
+  [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)
+  [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.deliver'] }], // захиалга ХАРНА + өөрийн шат (хүргэх)
   [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering'], actions: [] }],
   [/маркетинг|market|дизайн|контент/, { views: ['marketing'], actions: [] }],
 ];

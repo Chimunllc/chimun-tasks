@@ -24603,6 +24603,8 @@ function setUser(member, profile, auth) {
   // Серверийн токен — байвал хадгална (restore-д баталгаажина). Клиент fallback нэвтрэлт токенгүй.
   if (auth && auth.token) localStorage.setItem('sessionToken', auth.token);
   else localStorage.removeItem('sessionToken');
+  // Шинэ токен ирмэгц ажилтны PIN-г дахин татна (өмнөх session-д токенгүй/алдаатай гацсан бол сэргэнэ)
+  if (auth && auth.token) { state._staffPinsLoaded = false; state._staffPinsErr = ''; }
   // PostgREST JWT (эмзэг бичилтэд) — байвал хадгална, эс бол хуучныг цэвэрлэнэ.
   if (auth && auth.pgrst) localStorage.setItem('pgrstToken', auth.pgrst);
   else localStorage.removeItem('pgrstToken');

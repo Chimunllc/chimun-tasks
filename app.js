@@ -3593,7 +3593,7 @@ function renderSidebar() {
   // Brand нэг ширхэг "Чимун ХХК" — салбарын систем дотроос л үлдсэн
   const brandEl = document.getElementById('brand-text');
   // Sidebar brand: компанийн лого (icon.svg) + нэр. Орчин үеийн корпорат харагдалт.
-  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Chimun ERP';
+  if (brandEl) brandEl.innerHTML = '<img src="icon.svg" alt="" style="width:22px;height:22px;border-radius:5px;vertical-align:-5px;margin-right:8px;" /> Чимун ХХК';
   // Төслийн жагсаалт UI-аас бүрэн хасагдсан (2026-06-06). project-list element байхгүй.
 }
 function renderTitle() {
@@ -24710,16 +24710,21 @@ async function ensurePushSubscription() {
     // Subscription-ийг сервер рүү илгээх — нэг и-мэйлд олон төхөөрөмж байж болно
     const url = state.config.pushSubscribeUrl;
     if (!url) return !!sub;
+    // Өдөрт нэг удаа дахин илгээнэ. Өмнө нь subscription өөрчлөгдөөгүй бол ДАХИН
+    // ХЭЗЭЭ Ч илгээдэггүй байсан тул серверээс мөр алга болсон (хугацаа дуусч
+    // цэвэрлэгдсэн, DB сэргээгдсэн г.м.) тохиолдолд тухайн төхөөрөмж мэдэгдэл
+    // хүлээн авахаа бүрмөсөн больдог байв.
     const lastSent = localStorage.getItem('pushSubLastSent');
     const subStr = JSON.stringify(sub);
-    if (lastSent === subStr + '::' + state.me) return true; // өөрчлөгдөөгүй, дахин илгээхгүй
+    const today = new Date().toISOString().slice(0, 10);
+    if (lastSent === subStr + '::' + state.me + '::' + today) return true;
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: state.me, subscription: sub }),
     });
     if (r.ok) {
-      localStorage.setItem('pushSubLastSent', subStr + '::' + state.me);
+      localStorage.setItem('pushSubLastSent', subStr + '::' + state.me + '::' + today);
       return true;
     }
     return false;

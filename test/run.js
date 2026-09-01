@@ -444,6 +444,35 @@ function finish() {
   sandbox.pushBroadcast = savedPB; st.me = savedMe;
 }
 
+// 26) Дамжлагын зураг харагдах эсэх (Бэлдсэн захиалгын зураг алга болж байсан)
+{
+  const SMH = vm.runInContext('stageMetaHtml', sandbox);
+  const SAF = vm.runInContext('stageActionFor', sandbox);
+
+  // Урсгал prepared руу шилждэг — зөв түлхүүр 'prepare' байх ёстой
+  eq(SAF('reserved', 'prepared').key, 'prepare', 'дамжлага: reserved→prepared нь prepare түлхүүртэй');
+  eq(SAF('cleaning', 'prepared').key, 'prepare', 'дамжлага: cleaning→prepared нь prepare түлхүүртэй');
+  eq(SAF('ready', 'prepared').key, 'prepare', 'дамжлага: ready→prepared нь prepare түлхүүртэй');
+  eq(SAF('prepared', 'rented').key, 'dispatch', 'дамжлага: prepared→rented хэвээр dispatch');
+
+  // ХУУЧИН датанд 'prepared' түлхүүрээр хадгалагдсан зураг ч харагдана
+  const oldData = { stage_meta: { prepared: { by: '86855866', at: '2026-09-01T10:40:33.939Z',
+    photos: ['https://drive.google.com/file/d/AAA/view'] } } };
+  const h1 = SMH(oldData);
+  ok(h1.indexOf('sm-photos') > -1, 'зураг: хуучин prepared түлхүүрийн зураг харагдана');
+  ok(h1.indexOf('Бэлдсэн') > -1, 'зураг: prepared түлхүүрт ойлгомжтой нэр гарна');
+
+  // Шинэ түлхүүр мөн ажиллана
+  const newData = { stage_meta: { prepare: { by: 'X', photos: ['https://drive.google.com/file/d/B/view'] } } };
+  ok(SMH(newData).indexOf('sm-photos') > -1, 'зураг: шинэ prepare түлхүүр харагдана');
+
+  // stage_meta.quotes (массив) нь шат биш — эвдрэл үүсгэхгүй
+  const withQuotes = { stage_meta: { quotes: [{ at: '2026-01-01', to: 'a@b.mn' }] } };
+  eq(SMH(withQuotes), '', 'зураг: quotes массив шат гэж тооцогдохгүй');
+  eq(SMH({}), '', 'зураг: stage_meta байхгүй бол хоосон');
+  eq(SMH({ stage_meta: null }), '', 'зураг: null stage_meta аюулгүй');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);
@@ -547,6 +576,29 @@ function finish() {
       paid_ref: '[#B1] Бат · 5309999999 · a  |  [#B2] Бат · 5309999999 · b', paid_date: '2026-09-01' }];
     const r = F.reconcileOrders(stmt, orders);
     ok(r.mismatch.length === 1 && r.mismatch[0].rows.length === 1 && r.mismatch[0].receipts === 2, 'receipt: дутуу баримт → mismatch 1/2');
+  }
+  {
+    // Захиалгын дугаар банкны утганд → 2 хэсэг нийлбэрлэж таарна (жинхэнэ 1458 кейс: 70к+62к=132к)
+    const stmt = [
+      { date: '2026-08-15', credit: 70000, memo: 'дөлгөөн энэрэл', name: 'ДӨЛГӨӨН ЭНЭРЭЛ', account: '5401111111' },
+      { date: '2026-08-26', credit: 62000, memo: '1458-ДӨЛГӨӨН ЭНЭРЭЛ', name: 'ДӨЛГӨӨН ЭНЭРЭЛ', account: '5401111111' },
+    ];
+    const orders = [{ order_no: '1458', customer_name: 'Дөлгөөн Энэрэл', paid_amount: 132000, paid_ref: '', paid_date: '2026-08-15' }];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.matched.length === 1 && r.matched[0].rows.length === 2, 'ono: захиалгын дугаар+нэрээр 2 хэсэг нийлбэрлэнэ');
+    ok(r.untracked.length === 0, 'ono: захиалгагүй орлого үлдэхгүй');
+  }
+  {
+    // 3 хэсэгтэй төлбөр нэг захиалгад нийлнэ (1445 Б.Солонго: 40к+92к+55к=187к)
+    const stmt = [
+      { date: '2026-08-14', credit: 40000, memo: 'солонго', name: 'БОЛД СОЛОНГО', account: '5402222222' },
+      { date: '2026-08-15', credit: 92000, memo: '99006908-БОЛД СОЛОНГО', name: 'БОЛД СОЛОНГО', account: '5402222222' },
+      { date: '2026-08-16', credit: 55000, memo: '99006908-БОЛД СОЛОНГО', name: 'БОЛД СОЛОНГО', account: '5402222222' },
+    ];
+    const orders = [{ order_no: '1445', customer_name: 'Б.Солонго', paid_amount: 187000, paid_ref: '', paid_date: '2026-08-14' }];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.matched.length === 1 && r.matched[0].rows.length === 3, '3 installment: 3 гүйлгээ нийлбэрлэж таарна');
+    ok(r.untracked.length === 0, '3 installment: үлдэгдэлгүй');
   }
   {
     // Бэлнээр төлсөн захиалга банкны хуулгад орохгүй → missing болгож шуугихгүй

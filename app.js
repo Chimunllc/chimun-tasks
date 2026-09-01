@@ -5280,46 +5280,47 @@ function reconcileOrders(stmtRows, orders, opts) {
   const matched = [], mismatch = [], missing = [];
   const parseRc = (typeof parsePaidRef === 'function') ? parsePaidRef
     : (s) => String(s || '').split(/\s*\|\s*/).map(x => x.trim()).filter(Boolean).map(x => ({ id: '', sender: x, acct: '', memo: x }));
-  // Нэг бүртгэсэн баримт (receipt) → хамгийн таарах банкны гүйлгээг ол. Дансны дугаар = хамгийн найдвартай түлхүүр.
-  const bestCreditFor = (rc, o) => {
-    const snd = norm(rc.sender), acct = digits(rc.acct), id = norm(rc.id), cust = norm(o.customer_name);
-    let best = null, bs = -1;
-    for (const c of credits) {
-      if (c.used) continue;
-      const cn = norm(c.name), cacct = digits(c.account), cm = norm(c.memo);
-      let s = 0;
-      if (acct && acct.length >= 5 && cacct && (cacct.includes(acct) || acct.includes(cacct))) s += 4;   // дансны дугаар таарвал бараг гарцаагүй
-      if (snd && snd.length >= 3 && (cn.includes(snd) || snd.includes(cn) || cm.includes(snd))) s += 2;   // илгээгчийн нэр
-      if (id && id.length >= 4 && cm.includes(id)) s += 2;                                                 // банкны лавлах дугаар утганд
-      if (cust && cust.length >= 4 && (cn.includes(cust) || cust.includes(cn))) s += 1;                    // захиалагчийн нэр
-      if (s > bs) { bs = s; best = c; }
-    }
-    return bs >= 2 ? best : null;
-  };
-  // Нэг захиалгыг тулгах — олдвол matched/mismatch, олдохгүй бол false буцаана.
+  // Нэг захиалгыг тулгах — гүйлгээг ЗАХИАЛГЫН ДУГААР (утганд) → данс → баримт → нэрээр таньж,
+  // нийлбэр нь бүртгэсэн дүнд хүртэл ОЛОН гүйлгээ цуглуулна (хуваасан төлбөр). Олдвол matched/mismatch.
   const tryMatch = (o) => {
     const rcs = parseRc(o.paid_ref);
+    const paid = Number(o.paid_amount) || 0;
+    const ono = digits(o.order_no);
+    const onoRe = (ono && ono.length >= 3) ? new RegExp('(^|[^0-9])' + ono + '([^0-9]|$)') : null;
+    const accts = rcs.map(r => digits(r.acct)).filter(a => a.length >= 5);
+    const senders = rcs.map(r => norm(r.sender)).filter(s => s.length >= 3);
+    const ids = rcs.map(r => norm(r.id)).filter(x => x.length >= 4);
+    const cust = norm(o.customer_name);
+    // Нэрийн хамгийн урт хэсэг («Б.Солонго» → «солонго») — банкны бүтэн нэртэй («БОЛД СОЛОНГО») тааруулахад.
+    const custMain = cust.split(/[^0-9a-zа-яёөү]+/i).filter(w => w.length >= 4).sort((a, b) => b.length - a.length)[0] || '';
+    const scoreC = (c) => {
+      const cn = norm(c.name), cacct = digits(c.account), cm = norm(c.memo);
+      let s = 0;
+      if (onoRe && onoRe.test(String(c.memo || ''))) s += 5;                                      // захиалгын дугаар утганд — хамгийн хүчтэй
+      if (accts.some(a => cacct && (cacct.includes(a) || a.includes(cacct)))) s += 4;              // бүртгэсэн баримтын данс
+      if (ids.some(id => cm.includes(id))) s += 3;                                                 // банкны лавлах дугаар
+      if (senders.some(sn => cn.includes(sn) || sn.includes(cn) || cm.includes(sn))) s += 2;       // баримтын илгээгч
+      if (custMain && (cn.includes(custMain) || cm.includes(custMain))) s += 2;                    // захиалагчийн нэр (урт хэсэг)
+      else if (cust.length >= 4 && (cn.includes(cust) || cust.includes(cn) || cm.includes(cust))) s += 2;
+      return s;
+    };
+    const cands = credits.filter(c => !c.used).map(c => ({ c, s: scoreC(c) })).filter(x => x.s >= 2)
+      .sort((a, b) => b.s - a.s || Math.abs(a.c.credit - paid) - Math.abs(b.c.credit - paid));
+    if (!cands.length) return false;
     let picked = [];
-    // 1) БҮРТГЭСЭН БАРИМТ бүрд нэг банкны гүйлгээ (хуваасан төлбөр = олон баримт → олон гүйлгээ)
-    if (rcs.length) for (const rc of rcs) { const c = bestCreditFor(rc, o); if (c) { c.used = true; picked.push(c); } }
-    // 2) Задаргаагүй/олдоогүй бол захиалагчийн нэр·утгаар эргэж хай (нийлбэрээр)
-    if (!picked.length) {
-      const ref = norm(o.paid_ref), cust = norm(o.customer_name);
-      const cands = credits.filter(c => !c.used).map(c => {
-        const m = norm(c.memo), nm = norm(c.name);
-        let s = 0;
-        if (ref && ref.length >= 3 && (m === ref || m.includes(ref) || ref.includes(m))) s += 3;
-        if (cust && cust.length >= 4 && (nm.includes(cust) || cust.includes(nm) || m.includes(cust))) s += 2;
-        return { c, s };
-      }).filter(x => x.s >= 2).sort((a, b) => b.s - a.s || Math.abs(a.c.credit - o.paid_amount) - Math.abs(b.c.credit - o.paid_amount));
-      const exact = cands.find(x => Math.abs(x.c.credit - o.paid_amount) <= tol);
-      if (exact) picked = [exact.c];
-      else { let sum = 0; for (const x of cands) { if (sum >= o.paid_amount - tol) break; picked.push(x.c); sum += x.c.credit; } }
-      picked.forEach(c => c.used = true);
+    const exact = cands.find(x => Math.abs(x.c.credit - paid) <= tol);
+    if (exact) picked = [exact.c];                                    // яг таарах ганц гүйлгээ
+    else {                                                            // нийлбэрт хүрэх хүртэл цуглуул (хэтрүүлэхгүй)
+      let sum = 0;
+      for (const x of cands) {
+        if (sum + x.c.credit <= paid + tol) { picked.push(x.c); sum += x.c.credit; }
+        if (Math.abs(sum - paid) <= tol) break;
+      }
+      if (!picked.length) picked = [cands[0].c];                      // бүгд хэтэрсэн бол хамгийн өндөр оноот
     }
-    if (!picked.length) return false;
+    picked.forEach(c => c.used = true);
     const sum = picked.reduce((s, c) => s + c.credit, 0);
-    (Math.abs(sum - o.paid_amount) <= tol ? matched : mismatch).push({ order: o, rows: picked, credit: sum, row: picked[0], receipts: rcs.length });
+    (Math.abs(sum - paid) <= tol ? matched : mismatch).push({ order: o, rows: picked, credit: sum, row: picked[0], receipts: rcs.length });
     return true;
   };
   // 1-р үе: огноо хүрээнд байгаа захиалга (гүйлгээг эхэлж эзэмшинэ); олдохгүй бол «алга»
@@ -15750,6 +15751,13 @@ async function advanceOrderFromTask(task) {
 
 // Дамжлагын шат: (from>to) → үйлдэл + өмнөх шат (үнэлэх). Товч бүрд зураг + өмнөхийн үнэлгээ
 const STAGE_ACTION = {
+  // orderNextStep нь reserved/preparation/cleaning/ready → 'prepared' руу шилжүүлдэг.
+  // Эдгээр зураглал байхгүй байсан тул stageActionFor нь key='prepared' гэж унаж,
+  // зураг stage_meta.prepared-д хадгалагдаад stageMetaHtml-д харагддаггүй байв.
+  'reserved>prepared':    { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
+  'preparation>prepared': { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
+  'cleaning>prepared':    { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
+  'ready>prepared':       { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
   'reserved>cleaning':    { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
   'preparation>cleaning': { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
   'cleaning>ready':       { key: 'clean',    label: 'Цэвэрлэх',              q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
@@ -15767,7 +15775,7 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
-const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив' };
+const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧰 Бэлтгэсэн', rented: '🤝 Хүлээлгэн өгсөн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив' };
 // Шатны цаг форматлах — бүтэн цагтай бол огноо+цаг (орон нутгийн), эс бол зөвхөн огноо
 function _stageTimeFmt(atISO) {
   const s = String(atISO || ''); if (!s) return '';
@@ -15792,7 +15800,17 @@ function _stageTiming(k, atISO, o) {
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
-  const keys = ['prepare', 'clean', 'dispatch', 'handover', 'deliver', 'retstart', 'received'].filter(k => sm[k] && ((sm[k].photos && sm[k].photos.length) || sm[k].rating || sm[k].by));
+  // Дэс дараалал нь мэдэгдэж буй шатуудаар, гэхдээ ТАНИГДААГҮЙ түлхүүрийг ч
+  // харуулна — эс бөгөөс шатны нэр өөрчлөгдөхөд зураг чимээгүй нуугдана
+  // (2026-09-01: 'prepared' түлхүүрт хадгалагдсан зураг ингэж алдагдаж байсан).
+  const ORDER = ['prepare', 'clean', 'dispatch', 'handover', 'deliver', 'retstart', 'received', 'archive'];
+  const has = k => {
+    const e = sm[k];
+    if (!e || typeof e !== 'object' || Array.isArray(e)) return false;   // stage_meta.quotes гэх мэт массивыг хасна
+    return (e.photos && e.photos.length) || e.rating || e.by;
+  };
+  const found = Object.keys(sm).filter(has);
+  const keys = [...ORDER.filter(k => found.includes(k)), ...found.filter(k => !ORDER.includes(k))];
   if (!keys.length) return '';
   return `<div class="order-stagemeta">${keys.map(k => {
     const e = sm[k]; const photos = (e.photos || []).filter(Boolean);

@@ -5993,6 +5993,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
+  document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -8425,12 +8426,12 @@ const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
   [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
-  [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.advance'] }],
+  [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
-  [/нярав|агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.dispatch', 'products.edit'] }],
+  [/нярав|агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
   [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)
-  [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.deliver'] }], // захиалга ХАРНА + өөрийн шат (хүргэх)
-  [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering'], actions: [] }],
+  [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.clean', 'orders.deliver'] }], // захиалга ХАРНА + өөрийн шат (хүргэх)
+  [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering', 'orders'], actions: ['orders.clean'] }],
   [/маркетинг|market|дизайн|контент/, { views: ['marketing'], actions: [] }],
 ];
 function rolePresetFor(role) {
@@ -15587,6 +15588,7 @@ const BQ_STATUS = {
   draft:       { label: 'Ноорог',        dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
   reserved:    { label: 'Захиалсан',     dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
   prepared:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  ready:       { label: 'Цэвэрлэсэн',    dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
   delivering:  { label: 'Хүргэгдэж байна', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   returning:   { label: 'Буцаалт замд', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
@@ -15597,14 +15599,13 @@ const BQ_STATUS = {
   // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
   preparation: { label: 'Бэлтгэл',       dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   cleaning:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
-  ready:       { label: 'Цэвэрлэсэн',  dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'rented', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'rented', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
 // Хуучин/хассан (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
 // ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана. delivering/returning-г хассан (зам-дундын микро-төлөв).
-const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', ready: 'prepared', started: 'rented', delivering: 'rented', returning: 'returned' };
+const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented', delivering: 'rented', returning: 'returned' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
@@ -15629,9 +15630,11 @@ function orderNextStep(o) {
   switch (st) {
     case 'reserved':
     case 'preparation':
-    case 'cleaning':
-    case 'ready':       return { to: 'prepared', label: '🧰 Бэлдэх',   cap: 'orders.prepare' };
-    case 'prepared':
+    case 'cleaning':    return { to: 'prepared', label: '🧰 Бэлдэх',   cap: 'orders.prepare' };
+    // Бэлдэх ба цэвэрлэх нь ТУСДАА алхам (2026-09-01) — өмнө нь нэг алхам болж
+    // нийлсэн байсан тул цэвэрлэгээ тусад нь тэмдэглэгдэж, зурагтай баталгаажихгүй байв.
+    case 'prepared':    return { to: 'ready',    label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
+    case 'ready':
     case 'delivering':  return { to: 'rented',   label: '📦 Гаргах / Хүргэх', cap: 'orders.dispatch' };
     case 'rented':
     case 'started':
@@ -15654,8 +15657,9 @@ const BQ_NEXT = {
 // ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──
 // Шат бүрд ажил хийх эрх (cap) + fallback роль + үйлдлийн нэр. Захиалга шат руу орох бүрд ажил үүснэ.
 const STAGE_AUTOTASK = {
-  reserved:   { cap: 'orders.clean',    role: /цэвэрл/i,              verb: '🧹 Захиалга цэвэрлэх' },
-  prepared:   { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Хүлээлгэн өгөх' },
+  reserved:   { cap: 'orders.prepare',  role: /нярав|агуулах/i,       verb: '🧰 Захиалга бэлдэх' },
+  prepared:   { cap: 'orders.clean',    role: /цэвэрл/i,              verb: '🧹 Захиалга цэвэрлэх' },
+  ready:      { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Хүлээлгэн өгөх' },
   delivering: { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '🚚 Хүргэж өгөх' },
   rented:     { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '↩ Түрээс дуусахад буцаан авах', due: 'stops_at' },
   returning:  { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Агуулахад хүлээн авах',          due: 'stops_at' },
@@ -15761,6 +15765,7 @@ const STAGE_ACTION = {
   'reserved>cleaning':    { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
   'preparation>cleaning': { key: 'prepare',  label: 'Бэлдэх',                q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
   'cleaning>ready':       { key: 'clean',    label: 'Цэвэрлэх',              q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
+  'prepared>ready':       { key: 'clean',    label: 'Цэвэрлэх',              q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
   'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'ready>rented':         { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
@@ -16270,6 +16275,26 @@ function parsePaidRef(paid_ref) {
   });
 }
 // Бүртгэсэн банкны баримтын дэлгэрэнгүйг харах (задлан авсан гүйлгээний мэдээлэл).
+// Захиалгын банкны баримт(ууд)-ыг харах — 1 бол шууд дэлгэрэнгүй, олон бол сонгуулна.
+function openOrderReceipts(oid) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(oid)) || (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  if (!o) return;
+  const list = parsePaidRef(o.paid_ref);
+  if (!list.length) { showToast('Бүртгэсэн банкны баримт алга', 'info', 2500); return; }
+  if (list.length === 1) { openPaidReceiptDetail(oid, 0); return; }
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны баримтууд (${list.length})</h2><button class="btn" id="orc-x" style="padding:5px 10px;">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Нийт төлсөн ${fmtMoney(o.paid_mnt || 0)} — ${list.length} гүйлгээгээр. Аль нэгийг дарж эх PDF-ийг харна.</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">${list.map((r, i) => `<div class="paid-rcpt-row clickable" data-orc-open="${i}" role="button" tabindex="0" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel);font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🧾 ${escapeHtml(r.sender || ('Баримт ' + (i + 1)))}${r.memo ? ` · <span style="color:var(--muted);">${escapeHtml(r.memo)}</span>` : ''}</span><span style="color:var(--accent,#7c3aed);flex-shrink:0;">Харах ›</span></div>`).join('')}</div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#orc-x').addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelectorAll('[data-orc-open]').forEach(el => el.addEventListener('click', () => { close(); openPaidReceiptDetail(oid, +el.dataset.orcOpen); }));
+}
 function openPaidReceiptDetail(oid, idx) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)) || (state.bqOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
@@ -16855,7 +16880,7 @@ function bqOrderCard(o) {
   // Төлбөрийн самбар — Төлсөн · Үлдэгдэл тод хайрцгаар (нийт нь толгойд бий). Цуцлахад нуух.
   // PDF банкны баримтаар бүртгэсэн орлого — шилжүүлэгч/баримт/огноо (самбар дотор дэд мөр).
   const _payReceipt = (paid > 0 && o.paid_ref && st !== 'canceled')
-    ? (() => { const _rc = (typeof parsePaidRef === 'function') ? parsePaidRef(o.paid_ref) : []; const _snd = _rc.map(r => r.sender).filter(Boolean).join(', ') || String(o.paid_ref).replace(/\s+/g, ' ').slice(0, 44); return `<div class="op-receipt" title="${escapeHtml(String(o.paid_ref))}">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}${_snd ? ' · ' + escapeHtml(_snd) : ''}${_rc.length > 1 ? ` (${_rc.length})` : ''}</div>`; })()
+    ? (() => { const _rc = (typeof parsePaidRef === 'function') ? parsePaidRef(o.paid_ref) : []; const _snd = _rc.map(r => r.sender).filter(Boolean).join(', ') || String(o.paid_ref).replace(/\s+/g, ' ').slice(0, 44); return `<div class="op-receipt clickable" role="button" tabindex="0" data-order-receipt="${id}" title="Дарж эх PDF баримт харах">🧾 Банкны баримт${o.paid_date ? ' · ' + escapeHtml(String(o.paid_date).slice(0, 10)) : ''}${_snd ? ' · ' + escapeHtml(_snd) : ''}${_rc.length > 1 ? ` (${_rc.length})` : ''} <span class="op-receipt-view">Харах ›</span></div>`; })()
     : '';
   const payPanel = (total > 0 && st !== 'canceled')
     ? `<div class="order-pay ${bal > 0 ? 'owe' : 'paid'}">

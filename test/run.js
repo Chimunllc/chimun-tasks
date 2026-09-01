@@ -484,6 +484,36 @@ function finish() {
   ok(SLL.prepared.indexOf('Цэвэрлэсэн') === -1, 'шошго: prepared нь Цэвэрлэсэн ГЭЖ нэрлэгдэхээ болив');
 }
 
+// 28) Бэлдэх ба Цэвэрлэх нь ТУСДАА алхам болсон эсэх
+{
+  const NS  = vm.runInContext('orderNextStep', sandbox);
+  const SAF = vm.runInContext('stageActionFor', sandbox);
+  const BQS = vm.runInContext('BQ_STATUS', sandbox);
+  const LEG = vm.runInContext('BQ_LEGACY_MAP', sandbox);
+  const ORD = vm.runInContext('BQ_STATUS_ORDER', sandbox);
+  const AT  = vm.runInContext('STAGE_AUTOTASK', sandbox);
+
+  eq(NS({ status: 'reserved' }).to, 'prepared', 'урсгал: Захиалсан → Бэлдсэн');
+  eq(NS({ status: 'prepared' }).to, 'ready',    'урсгал: Бэлдсэн → Цэвэрлэсэн (ШИНЭ тусдаа алхам)');
+  eq(NS({ status: 'ready' }).to,    'rented',   'урсгал: Цэвэрлэсэн → Гаргах');
+  eq(NS({ status: 'rented' }).to,   'returned', 'урсгал: Гарсан → Буцаан авах');
+
+  eq(NS({ status: 'prepared' }).cap, 'orders.clean',    'эрх: цэвэрлэх алхам orders.clean');
+  eq(NS({ status: 'reserved' }).cap, 'orders.prepare',  'эрх: бэлдэх алхам orders.prepare');
+  eq(NS({ status: 'ready' }).cap,    'orders.dispatch', 'эрх: гаргах алхам orders.dispatch');
+
+  eq(SAF('prepared', 'ready').key, 'clean',   'дамжлага: prepared→ready нь clean түлхүүртэй');
+  eq(SAF('ready', 'rented').key,   'dispatch','дамжлага: ready→rented нь dispatch');
+
+  eq(BQS.ready.label, 'Цэвэрлэсэн', 'төлөв: ready = Цэвэрлэсэн');
+  ok(!LEG.ready, 'төлөв: ready legacy зураглалаас гарсан (жинхэнэ төлөв боллоо)');
+  ok(ORD.indexOf('ready') > ORD.indexOf('prepared'), 'төлөв: ready нь prepared-ийн ДАРАА эрэмбэлэгдэнэ');
+  ok(ORD.indexOf('ready') < ORD.indexOf('rented'),   'төлөв: ready нь rented-ээс ӨМНӨ');
+
+  eq(AT.prepared.cap, 'orders.clean', 'авто ажил: бэлдсэний дараа ЦЭВЭРЛЭХ ажил үүснэ');
+  eq(AT.ready.cap, 'orders.dispatch', 'авто ажил: цэвэрлэсний дараа ГАРГАХ ажил үүснэ');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

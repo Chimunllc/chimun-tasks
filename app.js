@@ -10757,6 +10757,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     try {
       const d = parseBankReceipt(await extractPdfText(file));
       if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан шилжүүлгийн баримт мөн эсэхийг шалгана уу');
+      if (receiptTooOld(d.date)) throw new Error(`${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
       modal.querySelector('#sal-amt-disp').textContent = fmtMoney(d.amount);
       modal.querySelector('#sal-date-disp').textContent = d.date || '—';
       modal.querySelector('#sal-recv-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
@@ -13813,6 +13814,7 @@ function openNomaadIncomeModal(o) {
       try {
         const d = parseBankReceipt(await extractPdfText(file));
         if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан гүйлгээний баримт мөн эсэхийг шалгана уу');
+        if (receiptTooOld(d.date)) throw new Error(`${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
         modal.querySelector('#ni-amount-disp').textContent = fmtMoney(d.amount);
         modal.querySelector('#ni-date-disp').textContent = d.date || '—';
         modal.querySelector('#ni-sender-disp').textContent = d.senderName || '—';
@@ -17971,6 +17973,7 @@ function openBqPaymentModal(oid) {
       try {
         const d = parseBankReceipt(await extractPdfText(file));
         if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
+        if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
         // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
         if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
         const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;

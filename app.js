@@ -10605,6 +10605,9 @@ function _orgBranches(m) {
 function _orgPrimaryBranch(m) { const b = _orgBranches(m); return b[0] || 'shared'; }
 function _orgShareBranch(a, b) { const A = _orgBranches(a), B = _orgBranches(b); if (!A.length || !B.length) return true; return A.some(x => B.includes(x)); }
 function _orgLevel(m) { const l = Number(m && m.level) || 0; return l || (typeof levelForRole === 'function' ? levelForRole(m && m.role) : 40); }
+// Түвшин (3 ангилал): Удирдлага (≥80, CEO+захирал) · Менежер (55-79) · Ажилтан (<55)
+const ORG_TIER_META = { lead: { label: 'Удирдлага' }, mgr: { label: 'Менежер' }, emp: { label: 'Ажилтан' } };
+function _orgTier(m) { const l = _orgLevel(m); return l >= 80 ? 'lead' : l >= 55 ? 'mgr' : 'emp'; }
 function buildOrgTree() {
   // Салбар ленз — сонгосон салбарынхныг л харуулна (салбаргүй/CEO/захирал бүх лензэд гарна).
   const lens = (typeof effectiveBranchLens === 'function' ? effectiveBranchLens() : 'all');
@@ -10674,7 +10677,9 @@ function orgCardHtml(n) {
   const permBtn = canOpen ? `<button class="org-perm" data-org-perm="${escapeHtml(n.key)}" title="Энэ хүнийг удирдах">⚙️</button>` : '';
   const hasOv = state.orgOverrides && state.orgOverrides[n.key];
   const ovBadge = hasOv ? `<span class="org-ovbadge" title="Гараар шилжүүлсэн">✋</span>` : '';
-  return `<div class="org-card org-b-${br}${canOpen ? ' org-clickable' : ''}"${canOpen ? ` data-org-card="${escapeHtml(n.key)}"` : ''}>${moveBtn}${permBtn}${ovBadge}
+  const tier = _orgTier(m);
+  return `<div class="org-card org-b-${br} org-t-${tier}${canOpen ? ' org-clickable' : ''}"${canOpen ? ` data-org-card="${escapeHtml(n.key)}"` : ''}>${moveBtn}${permBtn}${ovBadge}
+    <span class="org-tier org-tier-${tier}">${ORG_TIER_META[tier].label}</span>
     <div class="org-ava"><span class="org-init">${init}</span>${ava}</div>
     <div class="org-name">${escapeHtml(m.name || '?')}</div>
     <div class="org-role">${escapeHtml(m.role || '')}</div>
@@ -10708,7 +10713,10 @@ function renderOrgChart() {
     ${lensStat('🏔 NOMAAD', cnt(m => _orgBranches(m).includes('camp')), 'camp', 'org-b-camp')}
     ${lensStat('🍽 Катеринг', cnt(m => _orgBranches(m).includes('catering')), 'catering', 'org-b-catering')}
   </div>`;
-  const legend = `<div class="org-legend">${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
+  const legend = `<div class="org-legend">
+    ${Object.keys(ORG_TIER_META).map(k => `<span class="org-lg org-tier-${k}">${ORG_TIER_META[k].label}</span>`).join('')}
+    <span class="org-lg-sep"></span>
+    ${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
   const editBtn = canEdit ? `<button class="btn${state.orgEdit ? ' btn-primary' : ''}" data-org-edit title="Хүн шилжүүлэх" style="padding:5px 12px;font-size:12.5px;">${state.orgEdit ? '✓ Дууссан' : '✏️ Засах'}</button>` : '';
   // Гарсан ажилтан — бүтэцэд харагдахгүй тул тусдаа жагсаалтаар хандаж сэргээх боломж (таб хассны нөхөл)
   const leftStaff = canEdit ? (TEAM || []).filter(m => (m.status || '') === 'гарсан') : [];

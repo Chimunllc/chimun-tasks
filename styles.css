@@ -6219,6 +6219,15 @@ body.role-daily #add-project { display: none !important; }
 .org-card.org-b-catering { border-top-color:#EA580C; } .org-card.org-b-catering .org-ava { box-shadow:inset 0 0 0 3px #EA580C; }
 .org-card.org-b-shared { border-top-color:#64748B; }
 .org-card.org-b-daily { border-top-color:#F59E0B; }
+/* Түвшний шошго (3 ангилал: Удирдлага / Менежер / Ажилтан) — карт бүрийн дээр */
+.org-tier { font-size:9px; font-weight:800; letter-spacing:.4px; padding:1px 8px; border-radius:20px; text-transform:uppercase; margin-bottom:2px; }
+.org-tier-lead { background:rgba(124,58,237,.12); color:#7c3aed; }
+.org-tier-mgr  { background:rgba(2,132,199,.12); color:#0284c7; }
+.org-tier-emp  { background:rgba(100,116,139,.14); color:#64748b; }
+.org-lg.org-tier-lead { background:rgba(124,58,237,.10); color:#7c3aed; }
+.org-lg.org-tier-mgr  { background:rgba(2,132,199,.10); color:#0284c7; }
+.org-lg.org-tier-emp  { background:rgba(100,116,139,.10); color:#64748b; }
+.org-lg-sep { width:1px; align-self:stretch; background:var(--border); margin:0 4px; }
 
 /* Org chart — засах горим (хүн шилжүүлэх) */
 .org-editnote { font-size:11.5px; color:var(--text-soft,var(--muted)); line-height:1.55; background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.3); border-radius:10px; padding:9px 12px; margin-bottom:12px; }

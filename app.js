@@ -801,6 +801,7 @@ function loadTeamFromCache() {
     TEAM.length = 0;
     parsed.forEach(m => TEAM.push(m));
     applyWorkerTypeOverrides();   // Цагийн⇄Үндсэн override (app_config)
+    applyStaffPins();             // өмнө татсан PIN-г сэргээнэ (TEAM дахин байгуулагдсан)
     return true;
   } catch(e) { return false; }
 }
@@ -823,6 +824,7 @@ async function loadTeamFromAPI() {
     TEAM.length = 0;
     fresh.forEach(m => TEAM.push(m));
     applyWorkerTypeOverrides();   // Цагийн⇄Үндсэн override (app_config) — серверийн worker_type-г дарна
+    applyStaffPins();             // өмнө татсан PIN-г шинэ TEAM-д сэргээнэ (эс бол PIN "—" болно)
     localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
     localStorage.setItem('teamCacheAt', String(Date.now()));
     console.log(`Staff sync OK: ${fresh.length} members from Master Sheet`);
@@ -850,6 +852,12 @@ async function serverLogin(identifier, pin) {
 }
 // ЗӨВХӨН CEO — ажилтнуудын PIN-г серверээс татаж TEAM-д нэгтгэнэ (/staff-д PIN байхгүй, аюулгүйн үүднээс).
 // Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
+// Татаж авсан PIN (state.staffPins: phone→PIN)-ыг TEAM-д наана. TEAM дахин ачаалагдах бүрд дуудна —
+// эс бөгөөс loadTeamFromAPI (TEAM.length=0) PIN-г арилгаад, loadStaffPins нэг л удаа ажилладаг тул сэргэдэггүй.
+function applyStaffPins() {
+  if (!state.staffPins) return;
+  (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && state.staffPins[p]) m.pin = state.staffPins[p]; });
+}
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !state.isCEO) return;
   const token = localStorage.getItem('sessionToken');
@@ -873,7 +881,8 @@ async function loadStaffPins() {
     state._staffPinsErr = '';
     const byPhone = {};
     d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
-    (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && byPhone[p]) m.pin = byPhone[p]; });
+    state.staffPins = byPhone;   // TEAM дахин ачаалагдсан ч (loadTeamFromAPI = TEAM.length=0) арилахгүйгээр тусад нь хадгална
+    applyStaffPins();
     if (typeof render === 'function') render();
   } catch (e) { state._staffPinsLoaded = false; state._staffPinsErr = 'retry'; console.warn('loadStaffPins', e); }
 }
@@ -5448,6 +5457,10 @@ function boardOrderRow(e, k, todayStr, flat) {
   const urgDot = rank === 0 || rank === 1 ? '#DC2626' : rank === 2 ? '#D97706' : '';
   const dotEl = urgDot ? `<span class="br-dot" style="--d:${urgDot}" title="${rank <= 1 ? 'Хугацаа хэтэрсэн/өнөөдөр' : 'Ойрхон'}"></span>` : '';
   const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
+  // Жагсаалтын том тоо = БОРЛУУЛАЛТ (барьцаа хассан) — орлого/тайлан ҮҮГЭЭР бодогддог тул нүдээр
+  // харах тоо тайлантай таарна. Нийт авах төлбөр (барьцаа багтсан) нь доор жижгээр + захиалга дотор
+  // бүтнээр харагдана — «✓ Төлсөн / ◐ Дутуу» статус ХЭВЭЭР нийт дүнгээр бодогдоно (хуулга тулгалт).
+  const _rev = (e && e.rev != null) ? e.rev : (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : _tot);
   const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
     : _paid > 0 ? '<span class="br-pay part">◐ Дутуу</span>'
@@ -5467,7 +5480,7 @@ function boardOrderRow(e, k, todayStr, flat) {
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
       : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
-    <span class="br-amt">${fmtMoney(_tot)}</span>
+    <span class="br-amt">${fmtMoney(_rev)}${_rev !== _tot ? `<small class="br-amt-sub" title="Нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан) — барьцаа нь буцаадаг тул борлуулалтад ороогүй">нийт ${fmtMoney(_tot)} · 🔒${fmtMoney(_depAmt)}</small>` : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
 }
@@ -5494,7 +5507,7 @@ function sortOrders(arr, mode) {
     case 'num_asc': return a.sort((x, y) => num(x) - num(y));
     case 'date_desc': return a.sort((x, y) => dt(y).localeCompare(dt(x)) || num(y) - num(x));
     case 'date_asc': return a.sort((x, y) => dt(x).localeCompare(dt(y)) || num(x) - num(y));
-    case 'amount_desc': return a.sort((x, y) => (y.total - x.total) || num(y) - num(x));
+    case 'amount_desc': return a.sort((x, y) => ((y.rev != null ? y.rev : y.total) - (x.rev != null ? x.rev : x.total)) || num(y) - num(x));
     case 'unpaid': return a.sort((x, y) => bal(y) - bal(x) || num(y) - num(x));
     default: return a;
   }
@@ -5534,7 +5547,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
 
   const secs = buckets.map(b => {
     const list = byB[b.key] || [];
-    const total = list.reduce((sm, e) => sm + e.total, 0);
+    const total = list.reduce((sm, e) => sm + (e.rev != null ? e.rev : e.total), 0);   // борлуулалт (барьцаа хасагдсан)
     const isOpen = (open.has(b.key) || searching) && list.length;
     let bodyHtml = '';
     if (isOpen) {
@@ -5786,7 +5799,7 @@ function renderOrders() {
     number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
     new: (a, b) => String(b.date).localeCompare(String(a.date)),
     old: (a, b) => String(a.date).localeCompare(String(b.date)),
-    amount: (a, b) => b.total - a.total,
+    amount: (a, b) => (b.rev != null ? b.rev : b.total) - (a.rev != null ? a.rev : a.total),
     event: (a, b) => {
       const as = String(a.o.starts_at || '').slice(0, 10), bs = String(b.o.starts_at || '').slice(0, 10);
       const af = as && as >= todayStr, bf = bs && bs >= todayStr;
@@ -5803,7 +5816,7 @@ function renderOrders() {
   const CAP = 200;
   // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
   const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
-  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span><span class="r">Дүн</span><span>Төлбөр</span><span></span></div>`;
+  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span><span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span><span></span></div>`;
   const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
@@ -15941,6 +15954,9 @@ function unifiedOrders() {
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',
       total: Number(ao.total_mnt) || 0,
+      // Борлуулалт = нийт − барьцаа (буцаадаг өр). Жагсаалт/бүлгийн нийлбэр/эрэмбэ бүгд ҮҮГЭЭР
+      // явна — тайлан (accrual орлого) -той нэг тоо харагдана. Нийт төлбөр = e.total (захиалга дотор).
+      rev: (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(ao.total_mnt) || 0)),
       hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${ao.contract_no || ''}`.toLowerCase() };
   });
 }

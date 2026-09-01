@@ -6268,6 +6268,10 @@ body.role-daily #add-project { display: none !important; }
 .sc-sec { padding:12px 14px; border-bottom:1px solid var(--border); }
 .sc-sec:last-child { border-bottom:0; }
 .sc-sec-t { font-weight:700; font-size:13px; margin-bottom:10px; }
+.sc-adv-sum { cursor:pointer; list-style:none; user-select:none; }
+.sc-adv-sum::-webkit-details-marker { display:none; }
+.sc-adv-sum::before { content:'▸ '; color:var(--muted); }
+details[open] .sc-adv-sum::before { content:'▾ '; }
 .sc-caps { display:flex; flex-wrap:wrap; gap:6px; }
 .sc-cap-tag { font-size:11.5px; font-weight:600; padding:3px 10px; border-radius:20px; background:var(--panel-hover); border:1px solid var(--border); color:var(--text); }
 .sc-cap-tag.sc-cap-act { background:var(--primary-soft); border-color:var(--primary); color:var(--primary); }

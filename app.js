@@ -25179,6 +25179,23 @@ async function handlePinLogin(userIdentifier, pin) {
       if (_m && isDefaultPin(_m.pin)) { state._forcePinChange = true; setTimeout(() => promptDefaultPinChange(), 600); }
       return;
     }
+    // Сервер ТОДОРХОЙ татгалзсан бол клиент fallback руу ОРОХГҮЙ — эс бөгөөс серверийн
+    // оролдлогын хязгаар (brute-force хамгаалалт) тойрогдоно. Зөвхөн сервер хүрэхгүй
+    // үед (srv === null) доорх fallback ажиллана.
+    if (srv && srv.ok === false && ['locked', 'wrong_pin', 'not_found'].includes(srv.reason)) {
+      const inp = document.getElementById('login-pin-input'); if (inp) inp.value = '';
+      let msg;
+      if (srv.reason === 'locked') {
+        const mins = Math.max(1, Math.ceil((Number(srv.retry_after) || 900) / 60));
+        msg = `Хэт олон удаа буруу оруулсан тул нэвтрэлт түр хаагдлаа. ${mins} минутын дараа дахин оролдоно уу.`;
+      } else if (srv.reason === 'not_found') {
+        msg = 'Хэрэглэгч олдсонгүй. CEO-той холбогдоорой.';
+      } else {
+        const left = Number(srv.attempts_left);
+        msg = 'PIN буруу байна.' + (Number.isFinite(left) && left > 0 ? ` Үлдсэн ${left} оролдлого.` : '');
+      }
+      return showLoginError(msg);
+    }
   }
 
   const tryAuth = () => {

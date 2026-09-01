@@ -10809,6 +10809,7 @@ function orgNodeHtml(n) {
   return `<li>${orgCardHtml(n)}${kids}</li>`;
 }
 function renderOrgChart() {
+  if (state.isCEO && !state._staffPinsLoaded) loadStaffPins();   // орг чарт табаас карт нээхэд PIN бэлэн байхын тулд (жагсаалт биш табд ч татна)
   if (state.orgOverrides === undefined) { state.orgOverrides = null; loadAppConfig('org_overrides').then(v => { state.orgOverrides = (v && typeof v === 'object') ? v : {}; render(); }); }
   const canEdit = canAccessView('access', () => state.isCEO) || canDelegatePerms();
   if (state.orgEdit && !canEdit) state.orgEdit = false;
@@ -21953,6 +21954,17 @@ function openStaffCardModal(key) {
     ov.querySelector('[data-sc-doc]')?.addEventListener('click', () => { const m = findMember(key); openEmployeeDocModal(key, (m && m.name) || ''); });
     ov.querySelector('[data-sc-contract]')?.addEventListener('click', () => { close(); openEmployeeContract(key); });
     ov.querySelector('[data-sc-pinshow]')?.addEventListener('click', () => { const m = findMember(key); const el = ov.querySelector('[data-sc-pinval]'); const btn = ov.querySelector('[data-sc-pinshow]'); if (!m || !el) return; if (btn.textContent === 'нуух') { el.textContent = '••••'; btn.textContent = 'харах'; } else { el.textContent = String(m.pin || '—'); btn.textContent = 'нуух'; } });
+    // PIN хараахан ачаалагдаагүй үед карт нээгдвэл — татаж дуусмагц «••••» + «харах» товчийг картад нэмнэ
+    if (state.isCEO && !(findMember(key) || {}).pin) {
+      loadStaffPins().then(() => {
+        const mm = findMember(key); const el = ov.querySelector('[data-sc-pinval]');
+        if (!el || !mm || !mm.pin || ov.querySelector('[data-sc-pinshow]')) return;
+        el.textContent = '••••';
+        const b = document.createElement('button'); b.className = 'staff-pin-show'; b.setAttribute('data-sc-pinshow', ''); b.textContent = 'харах';
+        b.addEventListener('click', () => { const m2 = findMember(key); if (b.textContent === 'нуух') { el.textContent = '••••'; b.textContent = 'харах'; } else { el.textContent = String((m2 && m2.pin) || '—'); b.textContent = 'нуух'; } });
+        el.insertAdjacentText('afterend', ' '); el.parentNode.appendChild(b);
+      });
+    }
     ov.querySelectorAll('[data-sc-status]').forEach(b => b.addEventListener('click', async () => { const m = findMember(key); if (m && await setStaffStatus(m, b.dataset.scStatus)) { renderStaffList(); rerender(); } }));
     ov.querySelector('[data-sc-permreset]')?.addEventListener('click', async () => { await clearMemberPerms(key); showToast('Анхны байдал руу буцаалаа', 'success', 1500); rerender(); });
     // Эрхийн чагт (escalation guard + delegate merge)

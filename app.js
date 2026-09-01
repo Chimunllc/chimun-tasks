@@ -8531,7 +8531,7 @@ function wlListHtml() {
       const isStage = !!parseStageTaskId(t.id);
       const by = isStage ? '🤖 авто' : ((t.createdBy && t.createdBy !== k) ? '← ' + memberName(t.createdBy) : '');
       const stCls = t.status === 'in_progress' ? ' wl-st-prog' : '';
-      return `<div class="wl-task">
+      return `<div class="wl-task wl-clickable" data-wl-task="${escapeHtml(t.id)}" title="Дэлгэрэнгүй харах">
         <span class="wl-dot" style="background:${prioColor[t.priority] || 'var(--muted)'}"></span>
         <span class="wl-title">${escapeHtml(t.title || '(гарчиггүй)')}</span>
         <span class="wl-chip${stCls}">${statusMn[t.status] || t.status || ''}</span>
@@ -8558,6 +8558,12 @@ function attachWorkloadHandlers() {
     _workloadSearch = e.target.value;
     const list = document.getElementById('wl-list');
     if (list) list.innerHTML = wlListHtml();
+  });
+  // Ажлын мөр дээр дарж дэлгэрэнгүй нээх (delegation — хайлтаар дахин зурагдсан ч ажиллана)
+  const list = document.getElementById('wl-list');
+  if (list) list.addEventListener('click', e => {
+    const row = e.target.closest('[data-wl-task]');
+    if (row && row.dataset.wlTask) openTaskModal(row.dataset.wlTask);
   });
 }
 
@@ -23037,8 +23043,21 @@ function openTaskModal(id) {
     const creator = memberName(t.createdBy);
     const assignee = memberName(t.assignee);
     const createdAt = t.created ? new Date(t.created).toLocaleString('mn-MN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-    let info = `📋 <strong>${escapeHtml(creator)}</strong> → <strong>${escapeHtml(assignee)}</strong>` +
-      (createdAt ? ` · ${escapeHtml(createdAt)}` : '');
+    // Захиалгаас автоматаар үүссэн ажил (ordstage__) — ЯАЖ оногдсоныг тодорхой харуулна
+    const _st = parseStageTaskId(t.id);
+    let info;
+    if (_st) {
+      const o = (state.appOrders || []).find(x => String(x.id) === String(_st.orderId));
+      const aRole = (findMember(t.assignee) || {}).role || '';
+      info = `🤖 <strong>Автомат үүссэн ажил</strong><div style="margin-top:6px;font-size:12.5px;line-height:1.6;color:var(--text);">`
+        + `📦 Захиалга <strong>#${o ? (o.number ?? '—') : '—'}</strong>${o && o.customer ? ' — ' + escapeHtml(o.customer) : ''}-ийн явцаас автоматаар үүсч, `
+        + `<strong>${escapeHtml(assignee)}</strong>${aRole ? ` (${escapeHtml(aRole)})` : ''}-д оногдов.`
+        + `<br><span style="color:var(--muted);">Зурагтай дуусгахад захиалга дараагийн шат руу автоматаар шилжинэ.</span></div>`
+        + (createdAt ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">${escapeHtml(createdAt)}</div>` : '');
+    } else {
+      info = `📋 <strong>${escapeHtml(creator)}</strong> → <strong>${escapeHtml(assignee)}</strong>`
+        + (createdAt ? ` · ${escapeHtml(createdAt)}` : '');
+    }
     if (!canEdit.all && canEdit.status) {
       info += `<br><span style="color:var(--warn);font-weight:600;">⚠ Та зөвхөн ✓ тэмдэглэх эрхтэй. Гарчиг, тайлбар засах боломжгүй.</span>`;
     } else if (canEdit.none) {

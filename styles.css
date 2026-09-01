@@ -4890,7 +4890,9 @@ body.role-daily #add-project { display: none !important; }
 .order-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.04)); }
 .order-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 9px; }
 .order-no { font-weight: 600; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.order-total { font-weight: 800; font-size: 18px; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.order-total { font-weight: 800; font-size: 18px; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: -.02em; text-align: right; }
+/* Захиалга дотор том тоо = НИЙТ авах төлбөр (барьцаатай). Борлуулалт нь доорх мөрөнд. */
+.ord-total-sub { display: block; font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0; margin-top: 1px; }
 .order-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
 .order-badge.os-new { background: var(--info-soft); color: var(--info); }
 .order-badge.os-ok { background: var(--primary-soft); color: var(--primary-hover); }
@@ -5015,6 +5017,9 @@ body.role-daily #add-project { display: none !important; }
 .br-pay.paid { background: var(--ok, #16a34a); color: #fff; }
 .br-pay.none { background: var(--panel-hover); color: var(--muted); }
 .br-amt { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: -.01em; text-align: right; white-space: nowrap; }
+/* Мөрийн том тоо = борлуулалт; барьцаатай захиалгад доор нь НИЙТ авах төлбөр жижгээр
+   (барьцаа буцаадаг тул борлуулалтад ороогүй — тайлантай таарах тоо дээр гарна) */
+.br-amt-sub { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-top: 1px; }
 .br-pay-cell, .br-act-cell { display: flex; align-items: center; }
 /* ═══ Захиалгын харагдац — зүүн статус sidebar + баруун хүснэгт (Booqable шиг) ═══ */
 .orders-viewbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }

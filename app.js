@@ -5582,7 +5582,7 @@ function renderOrderPipelineBoard(shown, todayStr) {
         <span class="board-icon">${b.icon}</span>
         <span class="board-name">${escapeHtml(b.label)}</span>
         <span class="board-count">${list.length}</span>
-        ${total ? `<span class="board-total">${fmtMoney(total)}</span>` : ''}
+        ${total ? `<span class="board-total" title="Борлуулалт (барьцаа хасагдсан)">${fmtMoney(total)}</span>` : ''}
         <span class="board-caret">${isOpen ? '▾' : '▸'}</span>
       </div>${bodyHtml}
     </div>`;
@@ -16715,9 +16715,10 @@ function bqOrderCard(o) {
       ? `<span class="dep-badge dep-returned" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)'}${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
       : (isApp ? `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>` : ''))
     : '';
+  const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total">${fmtMoney(total)}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(total)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}

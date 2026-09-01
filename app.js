@@ -10713,7 +10713,7 @@ function renderOrgChart() {
   const _hint = (!state.isCEO && state._orgManage.deleg && state._orgManage.deleg.size) ? ` · доорхийнхоо эрхийг удирдах бол картыг дар` : '';
   const head = `<div class="org-head">
     <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_hint}</div></div>
-    <div class="org-zoom">${editBtn}<button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
+    <div class="org-zoom">${editBtn}<button class="btn" data-org-print title="Бүтцийг A4-д хэвлэх">🖨 Хэвлэх</button><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
   </div>`;
   const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';
   return `<div class="org-wrap">${head}${stats}${legend}${editNote}
@@ -10758,6 +10758,7 @@ async function orgSetParent(childKey, parentKey) {
   catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
 }
 function attachOrgHandlers() {
+  document.querySelector('[data-org-print]')?.addEventListener('click', printOrgChart);
   document.querySelectorAll('[data-org-lens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.orgLens)));
   document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
   document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));
@@ -10777,6 +10778,54 @@ function attachOrgHandlers() {
   }));
 }
 
+// Байгууллагын бүтцийг НЭГ A4-д (хэвтээ) багтаан хэвлэх — popup + styles.css + авто scale.
+function printOrgChart() {
+  const tree = document.getElementById('org-tree');
+  if (!tree) { showToast('Бүтэц олдсонгүй', 'error'); return; }
+  const w = window.open('', '_blank', 'width=1150,height=820');
+  if (!w) { showToast('Popup хаагдсан байна — зөвшөөрөөд дахин оролдоно уу', 'error'); return; }
+  const cssUrl = new URL('styles.css', location.href).href;
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && !isDailyMember(m));
+  const lens = (typeof effectiveBranchLens === 'function' ? effectiveBranchLens() : 'all');
+  const lensLbl = (lens && lens !== 'all' && ORG_BRANCH_META[lens]) ? ' · ' + ORG_BRANCH_META[lens].label : '';
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+  w.document.write(`<!doctype html><html data-theme="light"><head><meta charset="utf-8">
+    <title>Байгууллагын бүтэц — Чимун ХХК</title>
+    <link rel="stylesheet" href="${cssUrl}">
+    <style>
+      @page { size: A4 landscape; margin: 8mm; }
+      html, body { background:#fff; margin:0; padding:0; }
+      .p-wrap { text-align:center; padding:6px 4px; }
+      .p-head { font:800 17px system-ui,sans-serif; margin:0; color:#0f172a; }
+      .p-sub { font:12px system-ui,sans-serif; color:#64748b; margin:3px 0 12px; }
+      .p-holder { display:flex; justify-content:center; }
+      .org-tree { transition:none; display:inline-block; }
+      .org-card { box-shadow:none; break-inside:avoid; }
+      .org-card:hover { transform:none; box-shadow:none; }
+      .org-move, .org-perm, .org-ovbadge { display:none; }
+    </style></head>
+    <body><div class="p-wrap">
+      <div class="p-head">🏢 Чимун ХХК — Байгууллагын бүтэц</div>
+      <div class="p-sub">Нийт ${active.length} үндсэн ажилтан${lensLbl} · ${today}</div>
+      <div class="p-holder"><div class="org-tree" id="pt">${tree.innerHTML}</div></div>
+    </div></body></html>`);
+  w.document.close();
+  const fitAndPrint = () => {
+    try {
+      const pt = w.document.getElementById('pt');
+      const mm = 3.7795275591;
+      const maxW = 281 * mm, maxH = 172 * mm;   // A4 хэвтээ хэвлэх талбай − толгой
+      const bw = pt.scrollWidth, bh = pt.scrollHeight;
+      const s = Math.min(maxW / bw, maxH / bh, 1);
+      pt.style.transformOrigin = 'top center';
+      pt.style.transform = 'scale(' + s.toFixed(3) + ')';
+      pt.parentElement.style.height = Math.ceil(bh * s) + 'px';
+    } catch (e) { console.warn('printOrgChart fit', e); }
+    w.focus(); w.print();
+  };
+  if (w.document.readyState === 'complete') setTimeout(fitAndPrint, 450);
+  else w.onload = () => setTimeout(fitAndPrint, 350);
+}
 // ════════════ АЖИЛТАН УДИРДАХ ТӨВ (Ажилтан / Албан тушаал & Эрх / Цалин) ════════════
 function renderAccess() {
   if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }

@@ -5325,6 +5325,16 @@ function applyReconAiSuggestions(res, aiResp) {
   res._aiSuggestions = out;
   return out;
 }
+// Тулгалтад орох ОДООГИЙН төлсөн захиалгууд (app_orders) — reconcileOrders-ийн хүлээж буй хэлбэрт.
+function reconOrdersList() {
+  return (state.appOrders || []).filter(o => (Number(o.paid_mnt) || 0) > 0).map(o => ({
+    order_no: String(o.number || ''),
+    customer_name: o.customer || o.company || '',
+    paid_amount: Number(o.paid_mnt) || 0,
+    paid_ref: o.paid_ref || '',
+    paid_date: o.paid_date ? String(o.paid_date).slice(0, 10) : '',
+  }));
+}
 
 function renderReconcilePanel() {
   const res = state._reconResult;
@@ -5824,7 +5834,11 @@ function renderOrders() {
       ? sumLine + `<div class="otable">${otableHead}${flatRows}</div>`
       : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
 
-  const viewbar = `<div class="orders-viewbar">${viewToggle}</div>`;
+  // 📊 Тулгалт — банкны хуулгыг төлсөн захиалгатай тулгах (нягтлан/CEO). AI туслах эндээс.
+  const canRecon = state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()) || (typeof isFinanceAccountant === 'function' && isFinanceAccountant());
+  const reconBtn = canRecon ? `<button class="oview-btn${state.ordersRecon ? ' on' : ''}" id="orders-recon-toggle" title="Банкны хуулга тулгах">📊 Тулгалт</button>` : '';
+  const viewbar = `<div class="orders-viewbar">${viewToggle}${reconBtn ? `<div class="oview-toggle">${reconBtn}</div>` : ''}</div>`;
+  if (canRecon && state.ordersRecon) return head + viewbar + `<div class="ordv-main">${renderReconcilePanel()}</div>`;
   if (isBoard) return head + viewbar + controls + body;
   // Жагсаалт: зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + хавтгай хүснэгт)
   return head + viewbar + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
@@ -5963,7 +5977,7 @@ function attachOrdersHandlers() {
       const matrix = await statementFileToMatrix(file);
       const parsed = parseStatement(matrix);
       if (parsed.headerRow < 0) { if (status) status.textContent = 'Хуулгын багана танигдсангүй — Голомтын Excel мөн эсэхийг шалгана уу.'; return; }
-      state._reconResult = reconcileOrders(parsed.rows, state.orders || []);
+      state._reconResult = reconcileOrders(parsed.rows, reconOrdersList());
       state._reconResult._fileName = file.name;
       render();
     } catch (err) { if (status) status.textContent = 'Алдаа: ' + err.message; }

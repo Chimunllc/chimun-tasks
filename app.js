@@ -21219,6 +21219,17 @@ function taskParticipants(t) {
   taskCoKeys(t).forEach(k => { if (k && !out.includes(k)) out.push(k); });
   return out;
 }
+// Ажил оноогдсон мэдэгдлийг ОРОЛЦОГЧ БҮРД илгээнэ (хариуцагч + хамтран гүйцэтгэгчид).
+// Үүсгэгч өөртөө мэдэгдэл авах шаардлагагүй тул хасна.
+function notifyTaskAssigned(t, title) {
+  if (!t) return;
+  const seen = new Set();
+  taskParticipants(t).forEach(k => {
+    if (!k || k === state.me || seen.has(k)) return;
+    seen.add(k);
+    pushBroadcast(k, { kind: 'tasks', title: title || 'Шинэ даалгавар', body: t.title, url: './' });
+  });
+}
 function isTaskParticipant(t, key) {
   if (!t || !key) return false;
   return t.assignee === key || taskCoKeys(t).includes(key);
@@ -22378,7 +22389,7 @@ async function reassignTaskQuick(t) {
   t.updated = new Date().toISOString();
   logTaskActivity(t, 'reassigned', { from: prev, to: newAssignee });
   await saveTask(t);
-  pushBroadcast(newAssignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
+  notifyTaskAssigned(t);
   showToast(`Дахин оноосон: ${memberName(newAssignee)}`, 'success', 2500);
   render();
 }
@@ -23317,7 +23328,7 @@ async function handleTaskAction(taskId, action) {
     t.updated = new Date().toISOString();
     logTaskActivity(t, 'reassigned', { from: prev, to: newAssignee });
     await saveTask(t);
-    pushBroadcast(newAssignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
+    notifyTaskAssigned(t);
     showToast(`Дамжуулсан: ${memberName(newAssignee)}`, 'success', 2500);
     closeTaskModal();
     render();
@@ -23462,7 +23473,7 @@ async function saveTaskFromModal() {
     logTaskActivity(t, 'created', { title: t.title });
     state.tasks.unshift(t);
     saveTask(t);
-    if (t.assignee) pushBroadcast(t.assignee, { kind: 'tasks', title: 'Шинэ даалгавар', body: t.title, url: './' });
+    notifyTaskAssigned(t);
   }
   await saveTaskVoice(t.id, !state.editingId);   // дуут заавар (task_audio-д)
   state._multiAssignees = null;

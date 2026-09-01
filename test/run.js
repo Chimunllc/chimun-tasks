@@ -414,6 +414,36 @@ function finish() {
   st.tasks = saved;
 }
 
+// 25) Мэдэгдэл оролцогч бүрд очих эсэх (хамтран гүйцэтгэгч мартагдахгүй)
+{
+  const st = vm.runInContext('state', sandbox);
+  const NF = vm.runInContext('notifyTaskAssigned', sandbox);
+  const sent = [];
+  const savedPB = vm.runInContext('pushBroadcast', sandbox);
+  const savedMe = st.me;
+  sandbox.pushBroadcast = (who, payload) => { sent.push(who); };
+  st.me = 'Z';                                     // үүсгэгч = Z
+
+  NF({ title: 'Цэвэрлэгээ', assignee: 'A', co_assignees: ['B', 'C'] });
+  eq(sent.slice().sort(), ['A', 'B', 'C'], 'мэдэгдэл: хариуцагч + хамтрагч бүгдэд очно');
+
+  sent.length = 0;
+  st.me = 'A';                                     // хариуцагч өөрөө үүсгэсэн
+  NF({ title: 'x', assignee: 'A', co_assignees: ['B'] });
+  eq(sent, ['B'], 'мэдэгдэл: үүсгэгч өөртөө мэдэгдэл авахгүй');
+
+  sent.length = 0;
+  st.me = 'Z';
+  NF({ title: 'x', assignee: 'A', co_assignees: ['A', 'B'] });
+  eq(sent.slice().sort(), ['A', 'B'], 'мэдэгдэл: давхардсан хүнд нэг л удаа');
+
+  sent.length = 0;
+  NF(null);
+  eq(sent, [], 'мэдэгдэл: ажил байхгүй бол юу ч илгээхгүй');
+
+  sandbox.pushBroadcast = savedPB; st.me = savedMe;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

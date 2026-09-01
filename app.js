@@ -5265,12 +5265,18 @@ function reconcileOrders(stmtRows, orders, opts) {
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const digits = (s) => String(s || '').replace(/\D/g, '');
   const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r)).map(r => ({ ...r, used: false }));
-  // Хуулгын огнооны хүрээ — зөвхөн ЭНЭ хугацаанд төлөгдсөн захиалгыг тулгана (бүх түүхийг «алга» болгохгүй).
+  // Хуулгын огнооны хүрээ.
   const cdates = credits.map(c => String(c.date || '').slice(0, 10)).filter(Boolean).sort();
   const dMin = cdates[0] || '', dMax = cdates[cdates.length - 1] || '';
-  const inRange = (o) => { const d = String(o.paid_date || '').slice(0, 10); if (!d) return false; return (!dMin || d >= dMin) && (!dMax || d <= dMax); };
-  // Зөвхөн банкаар (шилжүүлэг) төлсөн, огноо нь хуулгын хүрээнд байгаа захиалга. Бэлэн/картыг хасна.
-  const paidOrders = (orders || []).filter(o => Number(o.paid_amount) > 0 && inRange(o) && !/бэлэн|бэлэн мөнгө|касс/i.test(String(o.paid_method || '')));
+  const isCash = (o) => /бэлэн|бэлэн мөнгө|касс/i.test(String(o.paid_method || ''));
+  const orderDate = (o) => String(o.paid_date || '').slice(0, 10);
+  const inRange = (o) => { const d = orderDate(o); return !!d && (!dMin || d >= dMin) && (!dMax || d <= dMax); };
+  // Огноотой боловч хүрээнээс ГАДНА (өөр сарын) захиалгыг бүрмөсөн алгасна — «948 дансанд алга» шуугиан эндээс гардаг байсан.
+  // Огноо нь хүрээнд ✓ = үндсэн (тааруулалт + «алга» нэр дэвшигч). Огноогүй = тааруулна, гэхдээ «алга» болгож ТООЛОХГҮЙ.
+  const cand = (orders || []).filter(o => Number(o.paid_amount) > 0 && !isCash(o))
+    .filter(o => { const d = orderDate(o); return !d || inRange(o); });   // хүрээнээс гадна огноотойг хая
+  const primary = cand.filter(inRange);        // огноо хүрээнд — «алга» нэр дэвшигч
+  const secondary = cand.filter(o => !orderDate(o));   // огноогүй — зөвхөн тааруулна
   const matched = [], mismatch = [], missing = [];
   const parseRc = (typeof parsePaidRef === 'function') ? parsePaidRef
     : (s) => String(s || '').split(/\s*\|\s*/).map(x => x.trim()).filter(Boolean).map(x => ({ id: '', sender: x, acct: '', memo: x }));
@@ -5290,7 +5296,8 @@ function reconcileOrders(stmtRows, orders, opts) {
     }
     return bs >= 2 ? best : null;
   };
-  for (const o of paidOrders) {
+  // Нэг захиалгыг тулгах — олдвол matched/mismatch, олдохгүй бол false буцаана.
+  const tryMatch = (o) => {
     const rcs = parseRc(o.paid_ref);
     let picked = [];
     // 1) БҮРТГЭСЭН БАРИМТ бүрд нэг банкны гүйлгээ (хуваасан төлбөр = олон баримт → олон гүйлгээ)
@@ -5310,10 +5317,15 @@ function reconcileOrders(stmtRows, orders, opts) {
       else { let sum = 0; for (const x of cands) { if (sum >= o.paid_amount - tol) break; picked.push(x.c); sum += x.c.credit; } }
       picked.forEach(c => c.used = true);
     }
-    if (!picked.length) { missing.push({ order: o }); continue; }
+    if (!picked.length) return false;
     const sum = picked.reduce((s, c) => s + c.credit, 0);
     (Math.abs(sum - o.paid_amount) <= tol ? matched : mismatch).push({ order: o, rows: picked, credit: sum, row: picked[0], receipts: rcs.length });
-  }
+    return true;
+  };
+  // 1-р үе: огноо хүрээнд байгаа захиалга (гүйлгээг эхэлж эзэмшинэ); олдохгүй бол «алга»
+  for (const o of primary) { if (!tryMatch(o)) missing.push({ order: o }); }
+  // 2-р үе: огноогүй захиалга үлдсэн гүйлгээнд таарвал matched; таарахгүй бол ЧИМЭЭГҮЙ орхино (алга биш)
+  for (const o of secondary) tryMatch(o);
   return { matched, mismatch, missing, untracked: credits.filter(c => !c.used), incomeCount: credits.length };
 }
 // ── AI ТУЛГАЛТ (зөвхөн дүрмээр таараагүй үлдэгдэлд: «дансанд алга» захиалга × «захиалгагүй орлого») ──
@@ -5382,7 +5394,7 @@ function renderReconcilePanel() {
       <div class="recon-sec-h">${title} <span class="recon-n">${items.length}</span></div>
       ${items.length ? `<div class="recon-rows">${items.map(fn).join('')}</div>` : '<div class="recon-empty">—</div>'}
     </div>`;
-    resultHtml = `<div class="recon-summary">${escapeHtml(res._fileName || '')} · Хуулгын ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ</div>
+    resultHtml = `<div class="recon-summary">${escapeHtml(res._fileName || '')} · Хуулгын ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ · Төлсөн захиалга: <b>${res._orderCount != null ? res._orderCount : '?'}</b></div>
       ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${m.rows && m.rows.length > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${m.rows.length} гүйлгээ)</span>` : ''}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
       ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => { const found = (m.rows || []).length, rec = m.receipts || 0; const note = rec > found ? ` <span style="color:var(--muted);font-size:11px;">(${found}/${rec} баримт — дутуу)</span>` : (found > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${found} гүйлгээ)</span>` : ''); return `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${note}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.credit != null ? m.credit : (m.row ? m.row.credit : 0))}</span></div>`; })}
       ${sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
@@ -5421,8 +5433,15 @@ function openReconcileModal() {
         const matrix = await statementFileToMatrix(file);
         const parsed = parseStatement(matrix);
         if (parsed.headerRow < 0) { if (st) st.textContent = 'Хуулгын багана танигдсангүй — Голомтын Excel мөн эсэхийг шалгана уу.'; return; }
-        state._reconResult = reconcileOrders(parsed.rows, reconOrdersList());
-        state._reconResult._fileName = file.name; draw();
+        // Захиалга ачаалагдаагүй бол эхлээд татна (эс бол бүх орлого «захиалгагүй» болж харагдана)
+        if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
+          if (st) st.textContent = 'Захиалга татаж байна…';
+          try { await loadAppOrders(); } catch (_) {}
+        }
+        const olist = reconOrdersList();
+        state._reconResult = reconcileOrders(parsed.rows, olist);
+        state._reconResult._fileName = file.name;
+        state._reconResult._orderCount = olist.length; draw();
       } catch (err) { if (st) st.textContent = 'Алдаа: ' + err.message; }
     });
     ov.querySelector('#recon-ai-btn')?.addEventListener('click', async () => {

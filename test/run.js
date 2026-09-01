@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -501,6 +501,42 @@ function finish() {
   ok(F._isInternalCredit({ memo: 'хадгаламж шилжүүлэг', name: '' }) === true, 'internal: хадгаламж');
   ok(F._isInternalCredit({ memo: 'REF1 ширээ сандал', name: 'Бат' }) === false, 'internal: жинхэнэ төлбөр → false');
   ok(F._isInternalCredit({ memo: '', name: 'Болд' }) === false, 'internal: энгийн нэр → false');
+
+  // ── reconcileOrders: хуваасан төлбөр + огноо scope ──
+  {
+    // Хуваасан төлбөр: 1 захиалга 2 гүйлгээгээр (500к + 682к = 1,182к) → нийлбэрээр таарна
+    const stmt = [
+      { date: '2026-09-01', credit: 500000, memo: 'REF9 темуулэн', name: 'Н.Тэмүүлэн' },
+      { date: '2026-09-03', credit: 682000, memo: 'REF9 темуулэн', name: 'Н.Тэмүүлэн' },
+    ];
+    const orders = [{ order_no: '1450', customer_name: 'Н.Тэмүүлэн', paid_amount: 1182000, paid_ref: 'REF9', paid_date: '2026-09-01' }];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.matched.length === 1, 'split: 2 гүйлгээ нийлбэрээр таарна');
+    ok(r.matched[0] && r.matched[0].rows && r.matched[0].rows.length === 2, 'split: 2 мөр хэрэглэсэн');
+    ok(r.untracked.length === 0, 'split: захиалгагүй орлого үлдэхгүй');
+    ok(r.mismatch.length === 0, 'split: зөрүү гарахгүй');
+  }
+  {
+    // Огноо scope: хуулга 09 сар, захиалга 07 сард төлөгдсөн → «дансанд алга» болгож ШУУГИХГҮЙ
+    const stmt = [{ date: '2026-09-05', credit: 100000, memo: 'REF-A', name: 'Бат' }];
+    const orders = [
+      { order_no: '1000', customer_name: 'Бат', paid_amount: 100000, paid_ref: 'REF-A', paid_date: '2026-09-05' },
+      { order_no: '900', customer_name: 'Дорж', paid_amount: 300000, paid_ref: 'OLD', paid_date: '2026-07-10' },
+    ];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.matched.length === 1 && r.matched[0].order.order_no === '1000', 'scope: 09-р сарынх таарна');
+    ok(r.missing.length === 0, 'scope: өөр сарын захиалга «алга» болохгүй');
+  }
+  {
+    // Бэлнээр төлсөн захиалга банкны хуулгад орохгүй → missing болгож шуугихгүй
+    const stmt = [{ date: '2026-09-05', credit: 100000, memo: 'REF-A', name: 'Бат' }];
+    const orders = [
+      { order_no: '1000', customer_name: 'Бат', paid_amount: 100000, paid_ref: 'REF-A', paid_date: '2026-09-05' },
+      { order_no: '1001', customer_name: 'Сүх', paid_amount: 50000, paid_ref: '', paid_date: '2026-09-06', paid_method: 'бэлэн' },
+    ];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(r.missing.length === 0, 'cash: бэлэн захиалга тулгалтаас хасагдана');
+  }
 
   finish();
 })();

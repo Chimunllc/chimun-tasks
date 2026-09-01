@@ -5259,28 +5259,36 @@ function _isInternalCredit(r) {
   return /данс\s*хоор|өөрийн\s*данс|хадгаламж|дотоод\s*шилж|валют\s*арилжаа|карт\s*цэнэглэ/.test(t);
 }
 function reconcileOrders(stmtRows, orders, opts) {
-  const tol = (opts && opts.amountTol) || 0;
+  const tol = (opts && opts.amountTol) || 500;   // ±500₮ (шимтгэл/тоймлолт)
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r)).map(r => ({ ...r, used: false }));
-  const paidOrders = (orders || []).filter(o => Number(o.paid_amount) > 0);
+  // Хуулгын огнооны хүрээ — зөвхөн ЭНЭ хугацаанд төлөгдсөн захиалгыг тулгана (бүх түүхийг «алга» болгохгүй).
+  const cdates = credits.map(c => String(c.date || '').slice(0, 10)).filter(Boolean).sort();
+  const dMin = cdates[0] || '', dMax = cdates[cdates.length - 1] || '';
+  const inRange = (o) => { const d = String(o.paid_date || '').slice(0, 10); if (!d) return false; return (!dMin || d >= dMin) && (!dMax || d <= dMax); };
+  // Зөвхөн банкаар (шилжүүлэг) төлсөн, огноо нь хуулгын хүрээнд байгаа захиалга. Бэлэн/картыг хасна.
+  const paidOrders = (orders || []).filter(o => Number(o.paid_amount) > 0 && inRange(o) && !/бэлэн|бэлэн мөнгө|касс/i.test(String(o.paid_method || '')));
   const matched = [], mismatch = [], missing = [];
   for (const o of paidOrders) {
     const ref = norm(o.paid_ref), cust = norm(o.customer_name);
-    let best = null, bestScore = -1;
-    for (const c of credits) {
-      if (c.used) continue;
+    // Тухайн захиалгад хамааралтай гүйлгээнүүд (утга/нэрээр таних) — олон гүйлгээ (хуваасан төлбөр) байж болно.
+    const cands = credits.filter(c => !c.used).map(c => {
       const m = norm(c.memo), nm = norm(c.name);
       let s = 0;
-      if (ref && (m === ref || m.includes(ref) || ref.includes(m))) s += 3;
-      if (cust && (nm.includes(cust) || cust.includes(nm) || m.includes(cust))) s += 2;
-      if (Math.abs(c.credit - o.paid_amount) <= tol) s += 2;
-      if (o.paid_date && c.date === String(o.paid_date).slice(0, 10)) s += 1;
-      if (s > bestScore) { bestScore = s; best = c; }
-    }
-    if (best && bestScore >= 3) {
-      best.used = true;
-      (Math.abs(best.credit - o.paid_amount) <= tol ? matched : mismatch).push({ order: o, row: best });
-    } else missing.push({ order: o });
+      if (ref && ref.length >= 3 && (m === ref || m.includes(ref) || ref.includes(m))) s += 3;
+      if (cust && cust.length >= 4 && (nm.includes(cust) || cust.includes(nm) || m.includes(cust))) s += 2;
+      return { c, s };
+    }).filter(x => x.s >= 2).sort((a, b) => b.s - a.s || Math.abs(a.c.credit - o.paid_amount) - Math.abs(b.c.credit - o.paid_amount));
+    if (!cands.length) { missing.push({ order: o }); continue; }
+    // 1) яг таарах ганц гүйлгээ; 2) эс бол нийлбэр нь дүнд хүрэх хүртэл олон гүйлгээ (хуваасан төлбөр)
+    let picked = [];
+    const exact = cands.find(x => Math.abs(x.c.credit - o.paid_amount) <= tol);
+    if (exact) picked = [exact];
+    else { let sum = 0; for (const x of cands) { if (sum >= o.paid_amount - tol) break; picked.push(x); sum += x.c.credit; } }
+    const sum = picked.reduce((s, x) => s + x.c.credit, 0);
+    picked.forEach(x => x.c.used = true);
+    const rows = picked.map(x => x.c);
+    (Math.abs(sum - o.paid_amount) <= tol ? matched : mismatch).push({ order: o, rows, credit: sum, row: rows[0] });
   }
   return { matched, mismatch, missing, untracked: credits.filter(c => !c.used), incomeCount: credits.length };
 }
@@ -5338,6 +5346,7 @@ function reconOrdersList() {
     paid_amount: Number(o.paid_mnt) || 0,
     paid_ref: o.paid_ref || '',
     paid_date: o.paid_date ? String(o.paid_date).slice(0, 10) : '',
+    paid_method: o.paid_method || '',
   }));
 }
 
@@ -5350,8 +5359,8 @@ function renderReconcilePanel() {
       ${items.length ? `<div class="recon-rows">${items.map(fn).join('')}</div>` : '<div class="recon-empty">—</div>'}
     </div>`;
     resultHtml = `<div class="recon-summary">${escapeHtml(res._fileName || '')} · Хуулгын ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ</div>
-      ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
-      ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.row.credit)}</span></div>`)}
+      ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${m.rows && m.rows.length > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${m.rows.length} гүйлгээ)</span>` : ''}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
+      ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${m.rows && m.rows.length > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${m.rows.length} гүйлгээ)</span>` : ''}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.credit != null ? m.credit : (m.row ? m.row.credit : 0))}</span></div>`)}
       ${sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
       ${sec('💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}
       ${(res.missing.length && res.untracked.length) ? `<div class="recon-ai-bar"><button class="btn" id="recon-ai-btn"${state._reconAiLoading ? ' disabled' : ''}>${state._reconAiLoading ? '🤖 Бодож байна…' : '🤖 AI-аар санал авах'}</button><span class="recon-ai-hint">Зөвхөн таараагүй ${res.missing.length}×${res.untracked.length}-д. AI санал болгоно — та шалгаж баталгаажуулна.</span></div>` : ''}

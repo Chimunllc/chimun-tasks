@@ -14550,11 +14550,11 @@ function workStartFor(key) { const w = state.workStart; return (w && typeof w ==
 const _LATE_GRACE_MIN = 5;   // 5 минут хүртэлх зөрүү = цагтаа (хатуу биш)
 // Явахдаа сонгосон «маргааш ирэх цаг» (app_config['next_arrival'] = {phone:{day,time}}). Тухайн өдрийнх л хүчинтэй.
 function nextArrivalFor(key, day) { const n = state.nextArrival; const e = n && n[key]; return (e && e.day === day) ? e.time : null; }
-// Тухайн өдрийн хүлээгдэх ирэх цаг: явахдаа сонгосон динамик цаг → эс бол тогтмол ажил эхлэх цаг.
-function expectedArrivalFor(key, day) { return nextArrivalFor(key, day) || workStartFor(key); }
 // Тухайн өдрийн эхний ирсэн цаг хоцорсон эсэх — хоцорсон минут (0 = цагтаа/хэмжигдэхгүй).
+// ЗӨВХӨН урьдчилан зарласан «маргааш ирэх цаг» (next_arrival, тухайн өдрийнх)-аар хэмжинэ —
+// тогтмол work_start-ыг тухайн ӨДӨР РЕТРОАКТИВ хэрэглэж «хоцорсон» болгохгүй (цаг сонголт = ирээдүйн ирэх цаг).
 function attLateMinutes(key, day, firstInTs) {
-  const exp = expectedArrivalFor(key, day); if (!exp || !firstInTs) return 0;
+  const exp = nextArrivalFor(key, day); if (!exp || !firstInTs) return 0;
   const sp = String(exp).split(':'); const expMin = (Number(sp[0]) || 0) * 60 + (Number(sp[1]) || 0);
   const hm = hhmmUB(firstInTs).split(':'); const inMin = (Number(hm[0]) || 0) * 60 + (Number(hm[1]) || 0);
   return inMin > expMin + _LATE_GRACE_MIN ? (inMin - expMin) : 0;

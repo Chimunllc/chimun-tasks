@@ -16313,7 +16313,11 @@ function openPaidReceiptDetail(oid, idx) {
   const fpAmt = (() => { const m = String(r.id || '').match(/^FP-(\d+)-/); return m ? Number(m[1]) : 0; })();
   const rcAmt = fpAmt || Number(r.amount) || (list.length === 1 ? (Number(o.paid_mnt) || 0) : 0);
   const totalPaid = Number(o.paid_mnt) || 0;
-  const gap = (rcAmt && totalPaid && Math.abs(totalPaid - rcAmt) > 1) ? (totalPaid - rcAmt) : 0;
+  // Зөрүүний сануулга — ЗӨВХӨН нэг л баримттай үед (олон баримт бол тус бүр нь хэсэгчилсэн нь хэвийн).
+  const gap = (list.length === 1 && rcAmt && totalPaid && Math.abs(totalPaid - rcAmt) > 1) ? (totalPaid - rcAmt) : 0;
+  // Олон баримтын нийлбэр — нийт төлсөнтэй тулгах (fingerprint дүнгээр).
+  const sumRc = list.reduce((s, x) => { const m = String(x.id || '').match(/^FP-(\d+)-/); return s + (m ? Number(m[1]) : 0); }, 0);
+  const multiGap = (list.length > 1 && sumRc && totalPaid && Math.abs(totalPaid - sumRc) > 1) ? (totalPaid - sumRc) : 0;
   // «Данс» талбарт кирилл/олон үсэг байвал энэ нь дансны дугаар БИШ, гүйлгээний утга (хуучин бичлэгт acct/утга байр солигдсон).
   const acctVal = String(r.acct || '');
   const acctIsMemo = /[а-яөүёА-ЯӨҮЁ]/.test(acctVal) || acctVal.replace(/[0-9 .\-]/g, '').length > 2;
@@ -16323,6 +16327,8 @@ function openPaidReceiptDetail(oid, idx) {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны гүйлгээ</h2><button class="btn" id="prc-x" style="padding:5px 10px;">✕</button></div>
     <div style="font-size:13px;line-height:1.5;">
       ${rcAmt ? row('Дүн (энэ баримт)', fmtMoney(rcAmt)) : ''}
+      ${list.length > 1 ? row(`Нийт төлсөн (${list.length} баримт)`, fmtMoney(totalPaid)) : ''}
+      ${multiGap ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45;">⚠ ${list.length} баримтын нийлбэр <b>${fmtMoney(sumRc)}</b> нь захиалгад бүртгэсэн <b>${fmtMoney(totalPaid)}</b>-тэй тохирохгүй (зөрүү ${fmtMoney(Math.abs(multiGap))}).</div>` : ''}
       ${gap > 0 ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45;">⚠ Захиалгад <b>${fmtMoney(totalPaid)}</b> бүрэн төлсөн гэж бүртгэсэн ч банкны энэ баримт <b>${fmtMoney(rcAmt)}</b> — зөрүү <b>${fmtMoney(gap)}</b> банкны хуулгаар баталгаажаагүй (өөр гүйлгээ/бэлэн/дутуу).</div>` : ''}
       ${gap < 0 ? `<div style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12px;line-height:1.45;">⚠ Энэ баримтын дүн захиалгад бүртгэснээс их байна (${fmtMoney(-gap)} илүү).</div>` : ''}
       ${row('Огноо', o.paid_date ? String(o.paid_date).slice(0, 10) : '')}

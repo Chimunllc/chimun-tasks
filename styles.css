@@ -5978,6 +5978,8 @@ body.role-daily #add-project { display: none !important; }
 .wl-badge.wl-b-od { color: var(--danger); background: rgba(220,38,38,.08); border-color: rgba(220,38,38,.25); }
 .wl-task { display: flex; align-items: center; gap: 9px; padding: 7px 2px; font-size: 13px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
 .wl-task:last-child { border-bottom: 0; }
+.wl-task.wl-clickable { cursor: pointer; }
+.wl-task.wl-clickable:hover { background: var(--panel-hover); }
 .wl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .wl-title { flex: 1; min-width: 130px; }
 .wl-chip { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--panel-hover); border: 1px solid var(--border); padding: 1px 8px; border-radius: 20px; white-space: nowrap; }

@@ -4922,6 +4922,9 @@ body.role-daily #add-project { display: none !important; }
 .order-pay.owe .op-bal { color: var(--danger); }
 .order-pay.paid .op-bal { color: var(--ok, #16a34a); }
 .op-receipt { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-receipt.clickable { cursor: pointer; }
+.op-receipt.clickable:hover { color: var(--text); }
+.op-receipt-view { color: var(--primary); font-weight: 600; }
 /* Барьцаа — байвал тод; буцаагдвал ногоон ✓ */
 .dep-row { margin: 6px 0 2px; }
 .dep-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }

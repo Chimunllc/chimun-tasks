@@ -6292,3 +6292,11 @@ body.role-daily #add-project { display: none !important; }
 /* Хамтран гүйцэтгэгч (co_assignees) — нэг ажлыг хамтран хийсэн хүмүүс */
 .t-co-row { display: flex; align-items: center; gap: var(--space-2, 8px); flex-wrap: wrap; margin-top: 6px; }
 .t-co-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
+
+/* Банкны тулгалт — AI санал (зөвхөн үлдэгдэлд; AI санал болгоно, нягтлан баталгаажуулна) */
+.recon-ai-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px; margin-top: 6px; }
+.recon-ai-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }
+.recon-sec.recon-ai .recon-sec-h { background: var(--accent-soft, var(--info-soft)); color: var(--accent, var(--info)); }
+.recon-ai-reason { display: block; font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.recon-ai-conf { color: var(--accent, var(--info)); }
+.recon-ai-diff { color: var(--warn); font-size: var(--fs-xs); }

@@ -93,6 +93,8 @@ const DEFAULT_MEVENT_QUOTE_SEND_URL = 'https://n8n.nomaadcamp.com/webhook/mevent
 const DEFAULT_MARKETING_EMAIL_URL = 'https://n8n.nomaadcamp.com/webhook/marketing-email';
 // Имэйл жагсаалтаас хасах (unsubscribe) — имэйл дэх холбоос энэ рүү орж email_optout-д бүртгэнэ.
 const DEFAULT_EMAIL_OPTOUT_URL = 'https://n8n.nomaadcamp.com/webhook/email-optout';
+// Банкны тулгалт — AI туслах (зөвхөн дүрмээр таараагүй үлдэгдэлд). n8n → Claude API. Backend тусад нь.
+const DEFAULT_RECON_AI_URL = 'https://n8n.nomaadcamp.com/webhook/recon-ai';
 // Цагийн ажилтны үнэлгээ (од + тэмдэглэл) — GET жагсаалт, POST нэмэх
 const DEFAULT_HOURLY_RATING_URL = 'https://n8n.nomaadcamp.com/webhook/hourly-rating';
 // Серверийн нэвтрэлт — PIN-г сервер талд шалгаж HMAC токен буцаана (браузерт PIN ирэхгүй);
@@ -5260,6 +5262,52 @@ function reconcileOrders(stmtRows, orders, opts) {
   }
   return { matched, mismatch, missing, untracked: credits.filter(c => !c.used), incomeCount: credits.length };
 }
+// ── AI ТУЛГАЛТ (зөвхөн дүрмээр таараагүй үлдэгдэлд: «дансанд алга» захиалга × «захиалгагүй орлого») ──
+// AI юу ч БИЧИХГҮЙ — зөвхөн санал болгоно. Нягтлан өөрөө шалгаж баталгаажуулна.
+// Ачаалал: {orders:[{order_no,customer,amount,ref,date}], incomes:[{i,date,name,memo,amount}]}. Аль нэг тал хоосон бол null.
+function buildReconAiPayload(res) {
+  if (!res) return null;
+  const orders = (res.missing || []).map(m => ({
+    order_no: String(m.order.order_no || ''), customer: m.order.customer_name || '',
+    amount: Number(m.order.paid_amount) || 0, ref: m.order.paid_ref || '',
+    date: m.order.paid_date ? String(m.order.paid_date).slice(0, 10) : '',
+  })).filter(o => o.order_no);
+  const incomes = (res.untracked || []).map((c, i) => ({
+    i, date: c.date || '', name: c.name || '', memo: String(c.memo || '').slice(0, 120), amount: Number(c.credit) || 0,
+  }));
+  if (!orders.length || !incomes.length) return null;   // үлдэгдэлгүй → дэмий API дуудлага хийхгүй
+  return { orders, incomes };
+}
+// AI хариуг ШАЛГАНА: зохиомол түлхүүр хая, нэг мөрийг 2 удаа хосолуулахгүй, итгэл 0..1, <0.5 нуух,
+// массив биш хариу ирэхэд унахгүй. Итгэлээр эрэмбэлж, захиалга/орлого бүрийг НЭГ л удаа хослуулна.
+function applyReconAiSuggestions(res, aiResp) {
+  const out = [];
+  if (!res || !Array.isArray(aiResp)) { if (res) res._aiSuggestions = out; return out; }
+  const orderByNo = {}; (res.missing || []).forEach(m => { orderByNo[String(m.order.order_no)] = m.order; });
+  const incomes = res.untracked || [];
+  const cand = [];
+  aiResp.forEach(s => {
+    if (!s || typeof s !== 'object') return;
+    const no = String(s.order_no == null ? '' : s.order_no);
+    const idx = Number(s.income_i);
+    if (!orderByNo[no]) return;                                                   // зохиомол захиалга
+    if (!Number.isInteger(idx) || idx < 0 || idx >= incomes.length) return;       // зохиомол орлого
+    let conf = Number(s.confidence); if (!isFinite(conf)) conf = 0;
+    conf = Math.max(0, Math.min(1, conf));                                         // 0..1 таслах
+    if (conf < 0.5) return;                                                        // бага итгэл нуух
+    cand.push({ no, idx, conf, reason: String(s.reason || '').slice(0, 200) });
+  });
+  cand.sort((a, b) => b.conf - a.conf);
+  const usedO = new Set(), usedI = new Set();
+  for (const c of cand) {
+    if (usedO.has(c.no) || usedI.has(c.idx)) continue;                             // 2 удаа хосолуулахгүй
+    usedO.add(c.no); usedI.add(c.idx);
+    const order = orderByNo[c.no], income = incomes[c.idx];
+    out.push({ order, income, confidence: c.conf, reason: c.reason, amountDiff: (Number(order.paid_amount) || 0) - (Number(income.credit) || 0) });
+  }
+  res._aiSuggestions = out;
+  return out;
+}
 
 function renderReconcilePanel() {
   const res = state._reconResult;
@@ -5273,7 +5321,9 @@ function renderReconcilePanel() {
       ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
       ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.row.credit)}</span></div>`)}
       ${sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
-      ${sec('💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}`;
+      ${sec('💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}
+      ${(res.missing.length && res.untracked.length) ? `<div class="recon-ai-bar"><button class="btn" id="recon-ai-btn"${state._reconAiLoading ? ' disabled' : ''}>${state._reconAiLoading ? '🤖 Бодож байна…' : '🤖 AI-аар санал авах'}</button><span class="recon-ai-hint">Зөвхөн таараагүй ${res.missing.length}×${res.untracked.length}-д. AI санал болгоно — та шалгаж баталгаажуулна.</span></div>` : ''}
+      ${(res._aiSuggestions && res._aiSuggestions.length) ? `<div class="recon-sec recon-ai"><div class="recon-sec-h">🤖 AI санал <span class="recon-n">${res._aiSuggestions.length}</span></div><div class="recon-rows">${res._aiSuggestions.map(s => `<div class="recon-row clickable" data-recon-open="${escapeHtml(s.order.order_no)}"><span class="recon-l">${escapeHtml(s.order.order_no)} · ${escapeHtml(s.order.customer_name || '')} ← ${escapeHtml(s.income.name || (s.income.memo || '').slice(0, 30) || 'орлого')}${s.reason ? `<span class="recon-ai-reason">${escapeHtml(s.reason)}</span>` : ''}</span><span class="recon-amt"><b class="recon-ai-conf">${Math.round(s.confidence * 100)}%</b> · ${fmtMoney(s.income.credit)}${s.amountDiff ? ` <span class="recon-ai-diff">зөрүү ${fmtMoney(s.amountDiff)}</span>` : ''}</span></div>`).join('')}</div></div>` : ''}`;
   }
   return `<div class="recon-wrap">
     <div class="recon-intro">Голомтын дансны хуулгыг (.xlsx) оруулбал бүртгэсэн төлбөртэй автоматаар тулгана. Утга банкнаас яг хуулагдсан тул шууд таарна.</div>
@@ -5896,6 +5946,20 @@ function attachOrdersHandlers() {
       state._reconResult._fileName = file.name;
       render();
     } catch (err) { if (status) status.textContent = 'Алдаа: ' + err.message; }
+  });
+  document.getElementById('recon-ai-btn')?.addEventListener('click', async () => {
+    const res = state._reconResult; const payload = buildReconAiPayload(res);
+    if (!payload) { showToast('AI шаардлагагүй — таараагүй үлдэгдэлгүй', 'info', 2500); return; }
+    state._reconAiLoading = true; render();
+    try {
+      const r = await fetchWithTimeout(DEFAULT_RECON_AI_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: N8N_API_KEY, ...payload }) }, 60000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      let data = null; try { data = await r.json(); } catch (e) { data = null; }
+      const arr = Array.isArray(data) ? data : (data && Array.isArray(data.suggestions) ? data.suggestions : []);
+      const n = applyReconAiSuggestions(res, arr).length;
+      showToast(n ? `🤖 ${n} санал олдлоо` : 'AI тохирол олсонгүй', n ? 'success' : 'info', 3000);
+    } catch (e) { showToast('AI алдаа: ' + e.message, 'error', 4500); }
+    finally { state._reconAiLoading = false; render(); }
   });
   document.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
     state.ordersRecon = false; state.ordersView = 'list'; state.ordersSearch = el.dataset.reconOpen; render();

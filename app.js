@@ -7540,6 +7540,12 @@ function attHM(mins) {
 // Нэг ажилтны өдрийн in/out бичлэгээс ажилласан минут, одоо ажиллаж буй эсэхийг тооцно.
 // live=true (өнөөдөр): нээлттэй сессийг одоо хүртэл тоолно. live=false (өнгөрсөн өдөр):
 // «явсан» бүртгүүлээгүй нээлттэй сессийг ТООЛОХГҮЙ (эс бол 172ц гэх мэт хэт их болно).
+// Ирцийн бүртгэлийг ХҮНЭЭР канон болгоно — нэг хүн өөр утас/QR-аар (жишээ хуучин+шинэ карт)
+// бүртгүүлбэл ижил хүн болгож нэгтгэнэ (эс бол check-in/out хос салж «ажиллаж байна» гацдаг).
+function attCanonKey(r) {
+  const m = findMember(r.member_key) || findMember(r.member_name);
+  return m ? personKey(m) : (r.member_key || r.member_name || '?');
+}
 function attMemberSummary(recs, live) {
   live = live !== false;
   let mins = 0, openIn = null, lastEvent = null;
@@ -7609,7 +7615,7 @@ function renderAttendanceRows() {
   const word = isToday ? 'Өнөөдөр' : 'Энэ өдөр';
   const day = state.attViewDay || todayStr();
   const by = {};
-  recs.forEach(r => { (by[r.member_key] = by[r.member_key] || []).push(r); });
+  recs.forEach(r => { const ck = attCanonKey(r); (by[ck] = by[ck] || []).push(r); });
   const keys = Object.keys(by);
   if (!keys.length) return `<div style="text-align:center;color:var(--muted);padding:34px 10px;">${word} хэн ч бүртгүүлээгүй байна.<div style="font-size:12px;margin-top:4px;">${isToday ? 'Ажилчид QR уншуулмагц энд харагдана.' : 'Тухайн өдөр ирц бүртгэгдээгүй.'}</div></div>`;
   const rows = keys.map(k => {
@@ -7685,7 +7691,7 @@ function renderAttendanceMonth(month) {
   if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(), normMins = workNormMins();
   const byM = {};
-  recs.forEach(r => { const m = (byM[r.member_key] = byM[r.member_key] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
+  recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
     const m = byM[k]; const days = Object.keys(m.days);
     let mins = 0; days.forEach(d => { mins += attMemberSummary(m.days[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr()).mins; });

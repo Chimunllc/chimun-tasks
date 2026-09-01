@@ -10613,16 +10613,14 @@ function buildOrgTree() {
   const dirs  = active.filter(m => _orgLevel(m) >= 80 && _orgLevel(m) < 100);
   const mgrs  = active.filter(m => _orgLevel(m) >= 55 && _orgLevel(m) < 80 && !isDailyMember(m));
   const emps  = active.filter(m => !isDailyMember(m) && _orgLevel(m) > 0 && _orgLevel(m) < 55);
-  const daily = active.filter(m => isDailyMember(m));
+  // Цагийн ажилчид бүтэцэд ОРОХГҮЙ (хэрэглэгчийн хүсэлт) — зөвхөн үндсэн ажилтан.
   const assigned = new Set();
   const idx = {};   // personKey → node (гараар шилжүүлэхэд ашиглана)
   const key = m => personKey(m);
   const node = m => { const n = { m, key: key(m), children: [] }; idx[n.key] = n; return n; };
-  const mgrNodes = [];   // менежер node-ууд (цагийн ажилчдыг доор нь байрлуулахад)
   const mkMgr = (mgr) => {
     const n = node(mgr);
     emps.forEach(e => { const k = key(e); if (assigned.has(k)) return; if (_orgShareBranch(mgr, e)) { assigned.add(k); n.children.push(node(e)); } });
-    mgrNodes.push(n);
     return n;
   };
   const dirNodes = dirs.map(d => {
@@ -10635,18 +10633,6 @@ function buildOrgTree() {
   emps.filter(e => !assigned.has(key(e))).forEach(e => { const d = dirNodes.find(dn => _orgShareBranch(dn.m, e)); if (d) { assigned.add(key(e)); d.children.push(node(e)); } });
   const stillEmp = emps.filter(e => !assigned.has(key(e))).map(e => node(e));
   const topKids = [...dirNodes, ...orphanMgr, ...stillEmp];
-  // ── Цагийн ажилчид: САЛБАР бүрээр бүлэглэж, тухайн салбарын менежер (эс бол захирал)-ын
-  //    доор ХАМГИЙН ДООР (үндсэн ажилчдын дараа) байрлуулна. Эзэнгүй бол дээд түвшинд. ──
-  const dailyByBranch = {};
-  daily.forEach(d => { const b = _orgPrimaryBranch(d); (dailyByBranch[b] = dailyByBranch[b] || []).push(d); });
-  Object.keys(dailyByBranch).forEach(br => {
-    const members = dailyByBranch[br], meta = br !== 'shared' ? ORG_BRANCH_META[br] : null;
-    const grp = { group: true, branch: br, label: 'Цагийн ажилчид' + (meta ? ' · ' + meta.label : ''), count: members.length, names: members.map(d => d.name || '?'), children: [] };
-    let host = null;
-    if (br !== 'shared') host = mgrNodes.find(n => _orgBranches(n.m).includes(br)) || dirNodes.find(n => _orgBranches(n.m).includes(br)) || null;
-    if (!host && mgrNodes.length === 1) host = mgrNodes[0];   // ганц менежер бол түүний доор
-    if (host) host.children.push(grp); else topKids.push(grp);
-  });
   let root;
   if (ceo.length === 1) { root = node(ceo[0]); root.children = topKids; }
   else { root = { virtual: true, label: 'Чимун ХХК', sub: 'Байгууллагын бүтэц', children: [...ceo.map(node), ...topKids] }; }
@@ -10705,7 +10691,7 @@ function renderOrgChart() {
   // Удирдах эрхийг УРЬДЧИЛАН тооцно (карт бүрд дахин buildTree дуудахгүй)
   state._orgManage = { ceo: state.isCEO, staff: canAccessView('access', () => state.isCEO), delegCan: canDelegatePerms(), deleg: (!state.isCEO && canDelegatePerms()) ? orgDescendantKeys(state.me) : null };
   const root = buildOrgTree();
-  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан');
+  const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && !isDailyMember(m));   // бүтэц = зөвхөн үндсэн ажилтан
   const cnt = f => active.filter(f).length;
   const lens = (typeof effectiveBranchLens === 'function' ? effectiveBranchLens() : 'all');
   const canFilter = (typeof allowedLenses === 'function' ? allowedLenses() : ['all']).length > 1;

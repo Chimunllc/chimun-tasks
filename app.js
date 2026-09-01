@@ -14580,6 +14580,18 @@ function renderPerfMe() {
       ${u.penalty ? `<div class="perf-penalty-list">${monthPenalties(state.me, month).map(p => `<div class="perf-penalty-item"><span>−${Number(p.kpi_pct) || 0}</span> ${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</div>`).join('')}</div>` : ''}
       ${u.total != null && u.partsUsed < 3 ? `<div class="perf-partial" style="color:var(--warn);font-size:12px;margin:4px 0;">⚠ Хэсэгчилсэн дата — оноо ${u.partsUsed}/3 бүрэлдэхүүнээс гарсан</div>` : ''}
       <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''} Чанар: ${u.qualityInfo && u.qualityInfo.rated ? `${u.qualityInfo.avg}★ (${u.qualityInfo.rated}/${u.qualityInfo.doneTotal} ажил үнэлэгдсэн)` : 'үнэлгээ хийгдээгүй'}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
+      <details class="perf-help"><summary>ℹ️ KPI яаж бодогддог вэ?</summary>
+        <div class="perf-help-body">
+          <div>KPI = 5 хэсгийн дундаж, зөвхөн <b>дата байгаа</b> хэсгээр (дутуу хэсэг онооноос хасагдана).</div>
+          <div class="perf-help-h">🟢 Автомат — өөрөө бодогдоно:</div>
+          <div>⏱ <b>Объектив (цагтаа)</b> — ажлаа хугацаандаа дуусгасан хувь.</div>
+          <div>⭐ <b>Хүлээлцэх чанар</b> — дамжлага урагшлуулахад дараагийн хүн таны ажлыг 1-5★ үнэлнэ. <b>Энэ л «ажил дуусахад гарах үнэлгээ».</b></div>
+          <div>📦 <b>Гарц</b> — хэдэн дамжлагын ажил дуусгасан.</div>
+          <div class="perf-help-h">🟡 Гараар — хийхгүй бол дата дутна:</div>
+          <div>🔸 <b>Ажлын чанар</b> — менежер таны ажлыг 1-5★ үнэлнэ (ажлын дэлгэрэнгүйд).</div>
+          <div>🔸 <b>360°</b> — үе үе хамт олон/менежер үнэлнэ.</div>
+          <div class="perf-help-foot">Гараар үнэлэхгүй бол зөвхөн автомат 3-аар бодогдож «хэсэгчилсэн дата» гэж тэмдэглэнэ — энэ нь буруу биш, автомат хэмжүүр л ажиллаж байгаа гэсэн үг.</div>
+        </div></details>
     </div>`;
 }
 

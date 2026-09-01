@@ -16471,7 +16471,17 @@ function openNewOrder(editOrder) {
     <div class="no-fields">
       <label class="no-lbl">Эхлэх (огноо · цаг)<div class="no-inline"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}"><select id="no-start-h" class="no-h">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div class="no-inline"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}"><select id="no-stop-h" class="no-h">${hourOpts(_t0.eh)}</select></div></label>
-      ${isEdit ? `<label class="no-lbl no-wide">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
+      ${isEdit ? (() => {
+        // Дамжлагагүй захиалгыг «дууссан» төлөв рүү шууд шилжүүлэхийг хориглоно —
+        // эс бөгөөс гүйцэтгэлийн зураг, үнэлгээгүйгээр захиалга хаагдана.
+        const _staged = hasStageRecord(editOrder);
+        const _lock = (k) => !_staged && ORDER_DONE_STATUSES.includes(k) && editOrder.status !== k;
+        return `<label class="no-lbl no-wide">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => {
+          const dis = (k === 'draft' && editOrder.status !== 'draft') || _lock(k);
+          const suffix = (k === 'draft' && editOrder.status !== 'draft') ? ' (буцахгүй)' : (_lock(k) ? ' — дамжлага дуусгана уу' : '');
+          return `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${dis ? ' disabled' : ''}>${BQ_STATUS[k].label}${suffix}</option>`;
+        }).join('')}</select>${!_staged ? '<small class="no-hint">Захиалгыг дуусгахын тулд эхлээд 🧰 Бэлдэх → 🧹 Цэвэрлэх → 📦 Гаргах дамжлагыг зурагтай гүйцэтгэнэ.</small>' : ''}</label>`;
+      })() : ''}
     </div>
     ${_sec('Хүргэлт')}
     <div class="no-box">
@@ -16717,6 +16727,13 @@ function openNewOrder(editOrder) {
     if (!items.length) { showToast('Бараа сонгоно уу', 'warn'); return; }
     const customer = $('#no-customer').value.trim();
     // Харилцагчийн бааз бүрдүүлэх — нэр·утас заавал, имэйл заавал (эсвэл «Имэйлгүй» тэмдэглэнэ).
+    if (isEdit) {
+      const _newSt = $('#no-status') ? $('#no-status').value : editOrder.status;
+      if (_newSt !== editOrder.status && ORDER_DONE_STATUSES.includes(_newSt) && !hasStageRecord(editOrder)) {
+        showToast('Дамжлага дуусаагүй захиалгыг энэ төлөвт шилжүүлэх боломжгүй', 'warn', 4000);
+        return;
+      }
+    }
     const _bad = validateOrderContact({
       customer, phone: $('#no-phone').value, email: $('#no-email').value, noEmail: !!$('#no-email-none')?.checked,
     });
@@ -17735,6 +17752,11 @@ async function openReceiptPdfViewer(file, meta) {
 }
 // Банкны гүйлгээний баримтаас БҮХ талбар — Голомт (label-based) БА Хаан (Дт/Кт) хоёуланг дэмжинэ.
 const _RECEIPT_LABELS = ['Хүлээн авагчийн банк', 'Хүлээн авагчийн данс', 'Хүлээн авагчийн нэр', 'Гүйлгээний дүн', 'Гүйлгээний огноо', 'Гүйлгээний утга', 'Гүйлгээний төлөв', 'Шилжүүлэгчийн нэр', 'Шилжүүлэгчийн дансны дугаар', 'Хүсэлтийн лавлах дугаар', 'Татсан огноо'];
+// PDF баримтаар төлбөр бүртгэх нь 2026-07-01-нээс эхэлсэн. Түүнээс ЭРТ огноотой банкны баримт =
+// систем эхлэхээс өмнөх (эсвэл буруу) баримт → ХҮЛЭЭЖ АВАХГҮЙ (жишээ: 9-р сард ирсэн захиалгад
+// 5-р сарын PDF оруулах). Хуучин төлбөрийг backfill хийх шаардлагатай бол энэ огноог түр буулгана.
+const RECEIPT_MIN_DATE = '2026-07-01';
+function receiptTooOld(dateStr) { const d = String(dateStr || '').slice(0, 10); return !!d && d < RECEIPT_MIN_DATE; }
 function parseBankReceipt(text) {
   const flat = text.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
   const isKhan = /ХААН\s*БАНК|Journal\s*No|Transaction information/i.test(flat);

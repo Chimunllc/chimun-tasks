@@ -514,6 +514,25 @@ function finish() {
   eq(AT.ready.cap, 'orders.dispatch', 'авто ажил: цэвэрлэсний дараа ГАРГАХ ажил үүснэ');
 }
 
+// 29) Дамжлагагүй захиалгыг дуусгахыг хориглох
+{
+  const HS = vm.runInContext('hasStageRecord', sandbox);
+  const DS = vm.runInContext('ORDER_DONE_STATUSES', sandbox);
+
+  ok(!HS({}), 'дамжлага: stage_meta байхгүй бол яваагүй');
+  ok(!HS({ stage_meta: {} }), 'дамжлага: хоосон объект бол яваагүй');
+  ok(!HS({ stage_meta: null }), 'дамжлага: null бол яваагүй');
+  ok(!HS({ stage_meta: { quotes: [{ to: 'a@b.mn' }] } }), 'дамжлага: зөвхөн үнийн саналын түүх бол яваагүй');
+  ok(HS({ stage_meta: { prepare: { by: '99112233' } } }), 'дамжлага: by бүхий шат бол явсан');
+  ok(HS({ stage_meta: { clean: { photos: ['u'] } } }), 'дамжлага: зурагтай шат бол явсан');
+  ok(!HS({ stage_meta: { clean: { rating: 5 } } }), 'дамжлага: зөвхөн үнэлгээ бол хангалтгүй');
+
+  eq(DS.sort(), ['archived', 'rented', 'returned', 'stopped'], 'хориг: дууссанд тооцох 4 төлөв');
+  ok(!DS.includes('prepared'), 'хориг: Бэлдсэн нь дууссан төлөв БИШ');
+  ok(!DS.includes('ready'), 'хориг: Цэвэрлэсэн нь дууссан төлөв БИШ');
+  ok(!DS.includes('reserved'), 'хориг: Захиалсан нь дууссан төлөв БИШ');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

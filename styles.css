@@ -6337,3 +6337,7 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .recon-ai-reason { display: block; font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
 .recon-ai-conf { color: var(--accent, var(--info)); }
 .recon-ai-diff { color: var(--warn); font-size: var(--fs-xs); }
+
+/* Дамжлага тойрсон захиалга — гүйцэтгэлийн зураг/үнэлгээгүй */
+.dep-badge.no-stage { background: #FBF0DC; border-color: #E6C878; color: #7A560F; }
+.no-hint { display: block; margin-top: 5px; font-size: var(--fs-xs); color: var(--muted); line-height: 1.45; }

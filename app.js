@@ -16328,7 +16328,7 @@ function stageLogSet(note, stage, email, date) {
 }
 // Дамжлагын алхам бүрийн харагдах шошго — товч дарсан ажилтныг картад ангилж харуулна.
 // stage = ямар төлөв рүү шилжсэн (bqUpdateStatus `to`-гоор stamp хийдэг).
-const STAGE_LOG_LABEL = { prepared: '🧹 Цэвэрлэсэн', delivering: '🚚 Жолоочид өгсөн', rented: '🤝 Хүлээлгэн өгсөн', returning: '↩ Буцаалт эхэлсэн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Гаргасан', stopped: '🚚 Хүргэсэн' };
+const STAGE_LOG_LABEL = { prepared: '🧰 Бэлдсэн', delivering: '🚚 Жолоочид өгсөн', rented: '🤝 Хүлээлгэн өгсөн', returning: '↩ Буцаалт эхэлсэн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', cleaning: '🧰 Бэлтгэсэн', ready: '🧹 Цэвэрлсэн', started: '📦 Гаргасан', stopped: '🚚 Хүргэсэн' };
 function stageLogLabel(stage, log) { return STAGE_LOG_LABEL[stage] || stage; }
 // Захиалгын огноо+цаг → түрээсийн хоног (карт + модал хуваалцана). Цаг note token-д байхгүй бол 09:00 default.
 function orderRentalDays(o) {
@@ -16829,7 +16829,18 @@ function bqOrderCard(o) {
   const offMeta = _offFee > 0 ? `<div class="order-meta">🌙 Ажлын бус цаг: <b>${fmtMoney(_offFee)}</b></div>` : '';
   // Дамжлагын явц — товч дарсан ажилтныг доор нь ангилж харуулна (картыг таб хооронд зөөхгүй)
   const slog = isApp ? parseStageLog(o.note) : {};
-  const slogKeys = ['prepared', 'delivering', 'rented', 'returning', 'returned', 'archived'].filter(k => slog[k] && slog[k].by);
+  // SL лог (note token) ба stage_meta нь НЭГ үйлдлийг хоёуланг нь тэмдэглэдэг.
+  // stage_meta нь зураг/үнэлгээтэй тул баян — тэнд бичлэг байвал SL мөрийг давхардуулж
+  // харуулахгүй (өмнө нь нэг ажил хоёр өөр нэрээр харагдаж төөрөгдөл үүсгэж байсан).
+  const _SL2SM = { prepared: 'prepare', delivering: 'dispatch', rented: 'dispatch',
+                   returning: 'retstart', returned: 'received', archived: 'archive' };
+  const _sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  const _smHas = (k) => {
+    const e = _sm[_SL2SM[k]] || _sm[k];
+    return !!(e && typeof e === 'object' && !Array.isArray(e) && (e.by || (e.photos && e.photos.length)));
+  };
+  const slogKeys = ['prepared', 'delivering', 'rented', 'returning', 'returned', 'archived']
+    .filter(k => slog[k] && slog[k].by && !_smHas(k));
   const slogHtml = slogKeys.length
     ? `<div class="order-stagelog">${slogKeys.map(k => `<div class="order-meta stagelog-row">${stageLogLabel(k, slog)}: <b>${escapeHtml(memberName(slog[k].by) || slog[k].by || '—')}</b>${slog[k].at ? ` · ${escapeHtml(String(slog[k].at).slice(5))}` : ''}</div>`).join('')}</div>`
     : '';

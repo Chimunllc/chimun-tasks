@@ -473,6 +473,17 @@ function finish() {
   eq(SMH({ stage_meta: null }), '', 'зураг: null stage_meta аюулгүй');
 }
 
+// 27) Шошгийн нийцэл — нэг үйлдэл нэг л нэртэй байх
+{
+  const SLL = vm.runInContext('STAGE_LOG_LABEL', sandbox);
+  const SML = vm.runInContext('STAGE_META_LABEL', sandbox);
+  const BQS = vm.runInContext('BQ_STATUS', sandbox);
+  ok(SLL.prepared.indexOf('Бэлдсэн') > -1, 'шошго: SL лог prepared = Бэлдсэн (төлвийн нэртэй нийцнэ)');
+  eq(BQS.prepared.label, 'Бэлдсэн', 'шошго: prepared төлвийн нэр Бэлдсэн');
+  ok(SML.prepare.indexOf('Бэлдсэн') > -1, 'шошго: stage_meta prepare = Бэлдсэн');
+  ok(SLL.prepared.indexOf('Цэвэрлэсэн') === -1, 'шошго: prepared нь Цэвэрлэсэн ГЭЖ нэрлэгдэхээ болив');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

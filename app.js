@@ -18772,6 +18772,46 @@ function renderReports() {
     ${bars}
     ${catRows.length ? `<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);"><span>Нийт зардал</span><span>${fmtSaya(expTotal)}</span></div>` : ''}
   </div>`;
+  // ── 🔁 Сар хооронд шилжсэн зардал (accrual reclass) — ил тод байдал ──
+  // «Гүйцэтгэл» горимд зардал ноогдох сараар тоологддог тул төлсөн сараас зөрдөг.
+  // Энэ панел тухайн сартай холбоотой шилжилтийг ил гаргана (жишээ: 8-д төлсөн цалин 7-р сард).
+  const _shRows = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask)
+    .filter(t => finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr));
+  const shiftOut = [], shiftIn = [];
+  if (basis === 'accrual') _shRows.forEach(t => {
+    const pay = String(t.requested_at || '').slice(0, 7), acc = finAccrualMonth(t);
+    if (!pay || !acc || pay === acc) return;
+    if (pay === month) shiftOut.push({ t, other: acc });   // энэ сард төлсөн → өөр сард ноогдсон (эндээс хасагдсан)
+    if (acc === month) shiftIn.push({ t, other: pay });    // өөр сард төлсөн → энэ сард ноогдсон (энд нэмэгдсэн)
+  });
+  const _shSum = a => a.reduce((s, x) => s + (Number(x.t.amount) || 0), 0);
+  const _shRow = (x, dir) => {
+    const who = escapeHtml((x.t.title || '').replace(/^💸 /, ''));
+    const cat = escapeHtml(finSubName(x.t.category) || '');
+    return `<div data-fin-open="${escapeHtml(x.t.id)}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${who}${cat ? `<span style="color:var(--muted);"> · ${cat}</span>` : ''}</span>
+        <span style="color:var(--muted);white-space:nowrap;">${dir} ${escapeHtml(x.other)}</span>
+        <b style="white-space:nowrap;">${fmtMoney(Number(x.t.amount) || 0)}</b></div>`;
+  };
+  let shiftPanel = '';
+  if (shiftOut.length || shiftIn.length) {
+    const sec = (title, arr, dir, hint) => arr.length ? `<div style="margin-top:10px;">
+        <div style="font-size:12px;font-weight:700;margin-bottom:3px;">${title} <span style="color:var(--muted);font-weight:400;">(${arr.length}) · ${fmtMoney(_shSum(arr))}</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:5px;line-height:1.5;">${hint}</div>
+        ${arr.slice().sort((a, b) => (Number(b.t.amount) || 0) - (Number(a.t.amount) || 0)).map(x => _shRow(x, dir)).join('')}
+      </div>` : '';
+    shiftPanel = `<div style="border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px;background:var(--panel);">
+        <div data-shift-toggle style="display:flex;justify-content:space-between;gap:8px;align-items:center;cursor:pointer;user-select:none;">
+          <div style="font-weight:800;font-size:13px;"><span data-shift-caret style="display:inline-block;width:12px;color:var(--muted);transition:transform .12s;">▸</span> 🔁 Сар хооронд шилжсэн зардал</div>
+          <span style="font-size:11px;color:var(--muted);white-space:nowrap;">${shiftOut.length + shiftIn.length} гүйлгээ</span>
+        </div>
+        <div data-shift-detail style="display:none;margin-top:6px;">
+          <div style="font-size:11px;color:var(--muted);line-height:1.55;">«Гүйцэтгэл» горимд зардал <b style="color:var(--text);">ноогдох сараар</b> тоологддог (цалин ажилласан сард) тул мөнгө гарсан сараас зөрж болно. ${month} сартай холбоотой шилжилтүүд:</div>
+          ${sec('➡️ Энэ сард төлсөн → өөр сард ноогдсон', shiftOut, '→', month + '-д мөнгө гарсан ч энэ сарын зардалд ОРООГҮЙ — доорх сард шилжсэн.')}
+          ${sec('⬅️ Өөр сард төлсөн → энэ сард ноогдсон', shiftIn, '←', 'Мөнгө өөр сард гарсан ч ' + month + '-ын зардалд НЭМЭГДСЭН.')}
+        </div>
+      </div>`;
+  }
   const card = (icon, title, desc, view) => `<button class="report-card" data-go-view="${view}" style="text-align:left;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--panel);display:flex;flex-direction:column;gap:4px;">
       <div style="font-size:15px;font-weight:700;">${icon} ${escapeHtml(title)}</div>
       <div style="font-size:12px;color:var(--muted);line-height:1.4;">${escapeHtml(desc)}</div></button>`;
@@ -18845,6 +18885,7 @@ function renderReports() {
     + trendChart
     + incomeSections
     + expChart
+    + shiftPanel
     + `<div style="font-weight:800;font-size:13px;margin:20px 0 8px;">📁 Дэлгэрэнгүй тайлангууд</div>`
     + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;">${cards}</div>`;
 }
@@ -18892,6 +18933,16 @@ function attachReportsHandlers() {
     detail.style.display = '';
     if (caret) caret.style.transform = 'rotate(90deg)';
   }));
+  // 🔁 Сар хооронд шилжсэн зардал — эвх/задал + мөр дээр дарж дэлгэрэнгүй
+  const shToggle = document.querySelector('[data-shift-toggle]');
+  if (shToggle) shToggle.addEventListener('click', () => {
+    const d = document.querySelector('[data-shift-detail]'), c = document.querySelector('[data-shift-caret]');
+    if (!d) return;
+    const open = d.style.display !== 'none';
+    d.style.display = open ? 'none' : '';
+    if (c) c.style.transform = open ? '' : 'rotate(90deg)';
+  });
+  document.querySelectorAll('[data-shift-detail] [data-fin-open]').forEach(r => r.addEventListener('click', () => openExpenseModal(r.dataset.finOpen)));
 }
 /* ==================== НӨАТ (ebarimt) тайлан + захиалгатай тулгалт ====================
    Борлуулалтын НӨАТ баримтын задаргаа (ebarimt xlsx) → vat_receipts (Postgres, anon,

@@ -10710,14 +10710,22 @@ function renderOrgChart() {
   </div>`;
   const legend = `<div class="org-legend">${Object.keys(ORG_BRANCH_META).map(k => `<span class="org-lg org-b-${k}">${ORG_BRANCH_META[k].label}</span>`).join('')}</div>`;
   const editBtn = canEdit ? `<button class="btn${state.orgEdit ? ' btn-primary' : ''}" data-org-edit title="Хүн шилжүүлэх" style="padding:5px 12px;font-size:12.5px;">${state.orgEdit ? '✓ Дууссан' : '✏️ Засах'}</button>` : '';
+  // Гарсан ажилтан — бүтэцэд харагдахгүй тул тусдаа жагсаалтаар хандаж сэргээх боломж (таб хассны нөхөл)
+  const leftStaff = canEdit ? (TEAM || []).filter(m => (m.status || '') === 'гарсан') : [];
+  const leftBtn = leftStaff.length ? `<button class="btn" data-org-left title="Гарсан ажилтныг харах / сэргээх">🚪 Гарсан (${leftStaff.length})</button>` : '';
+  const leftSec = leftStaff.length ? `<div id="org-left-sec" style="display:${state.orgShowLeft ? 'block' : 'none'};margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--panel);">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;">🚪 Гарсан ажилтан — дарж дэлгэрэнгүй / сэргээх</div>
+      ${leftStaff.map(m => `<div class="org-left-row" data-org-card2="${escapeHtml(personKey(m))}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12.5px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.name || '?')}</span><span style="color:var(--muted);white-space:nowrap;">${escapeHtml(m.role || '')}</span></div>`).join('')}
+    </div>` : '';
   const _hint = (!state.isCEO && state._orgManage.deleg && state._orgManage.deleg.size) ? ` · доорхийнхоо эрхийг удирдах бол картыг дар` : '';
   const head = `<div class="org-head">
     <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_hint}</div></div>
-    <div class="org-zoom">${editBtn}<button class="btn" data-org-print title="Бүтцийг A4-д хэвлэх">🖨 Хэвлэх</button><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
+    <div class="org-zoom">${editBtn}${leftBtn}<button class="btn" data-org-print title="Бүтцийг A4-д хэвлэх">🖨 Хэвлэх</button><button class="btn" data-org-zoom="-" title="Багасгах">−</button><button class="btn" data-org-zoom="0" title="Анхны">↺</button><button class="btn" data-org-zoom="+" title="Томсгох">+</button></div>
   </div>`;
   const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';
   return `<div class="org-wrap">${head}${stats}${legend}${editNote}
     <div class="org-scroll"><div class="org-tree" id="org-tree" style="transform:scale(${state.orgZoom || 1});"><ul>${orgNodeHtml(root)}</ul></div></div>
+    ${leftSec}
   </div>`;
 }
 // Хүнийг өөр удирдагчийн дор шилжүүлэх picker (гар аргаар — app_config['org_overrides'])
@@ -10759,6 +10767,8 @@ async function orgSetParent(childKey, parentKey) {
 }
 function attachOrgHandlers() {
   document.querySelector('[data-org-print]')?.addEventListener('click', printOrgChart);
+  document.querySelector('[data-org-left]')?.addEventListener('click', () => { state.orgShowLeft = !state.orgShowLeft; const s = document.getElementById('org-left-sec'); if (s) s.style.display = state.orgShowLeft ? 'block' : 'none'; });
+  document.querySelectorAll('[data-org-card2]').forEach(r => r.addEventListener('click', () => openStaffCardModal(r.dataset.orgCard2)));
   document.querySelectorAll('[data-org-lens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.orgLens)));
   document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
   document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));
@@ -10829,27 +10839,13 @@ function printOrgChart() {
 // ════════════ АЖИЛТАН УДИРДАХ ТӨВ (Ажилтан / Албан тушаал & Эрх / Цалин) ════════════
 function renderAccess() {
   if (!state._permsLoaded) { state._permsLoaded = true; loadMemberPerms(); loadRolePerms(); }
-  if (state.hubTab === 'salary') state.hubTab = 'people';   // Цалин тусдаа "Цалин" менюд шилжсэн — давхцал арилгав
+  state.hubTab = 'org';   // НЭГ харагдац — Бүтэц (Ажилтан/Эрх таб хассан; handler зөв замд орно)
   // Эрх засах (roles): CEO бүгдийг; 'access.delegate' эрхтэй захирал ЗӨВХӨН org-tree доорхи хүмүүсийг
   // (renderAccessByPerson шүүнэ, escalation түгжигдэнэ). Албан тушаалын загвар (role_perms) хэвээр CEO-only.
-  const canPerms = state.isCEO || canDelegatePerms();
-  const canManage = canAccessView('access', () => state.isCEO);   // Ажилтан удирдах таб
-  // Табууд: Бүтэц (бүгдэд) · Ажилтан (удирдах эрхтэйд) · Эрх (CEO/delegate)
-  const tabs = [['org', '🏢 Бүтэц']];
-  if (canManage) tabs.push(['people', '👤 Ажилтан']);
-  if (canPerms) tabs.push(['roles', '🔑 Эрх']);
-  const tabKeys = tabs.map(t => t[0]);
-  let tab = state.hubTab || (canManage ? 'people' : 'org');
-  if (!tabKeys.includes(tab)) tab = canManage ? 'people' : 'org';
-  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">${canManage ? 'Бүтэц · ажилтан' + (canPerms ? ' · эрх' : '') : 'Байгууллагын бүтэц'} — нэг дороос</div></div>`;
-  const tabBar = tabs.length > 1 ? `<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">${tabs.map(([k, l]) =>
-    `<button class="btn${k === tab ? ' btn-primary' : ''}" data-hub-tab="${k}" style="padding:7px 13px;font-size:12.5px;">${l}</button>`).join('')}</div>` : '';
-  // Салбараар шүүх нь толгойн глобал салбар-сонгогчоор (давхар товч хассан).
-  let body;
-  if (tab === 'org') body = renderOrgChart();
-  else if (tab === 'roles' && canPerms) body = renderAccessRoles();
-  else body = renderStaffPeople();
-  return `<div style="padding:4px;">${head}${tabBar}${body}</div>`;
+  // НЭГ харагдац = Бүтэц. Ажилтан/Эрх табыг хассан (давхардсан) — хүн бүрийг картаас удирдана
+  // (openStaffCardModal: албан тушаал/салбар/төрөл/PIN/гэрээ + эрхийн матриц бүгд нэг модалд).
+  const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Байгууллагын бүтэц — хүн дээр дарж удирдана</div></div>`;
+  return `<div style="padding:4px;">${head}${renderOrgChart()}</div>`;
 }
 // Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
 // Ажилтан тухайн салбарын хамрах хүрээнд орох эсэх — НЭГДСЭН дүрэм (бүх view энэ логикийг хуваалцана).

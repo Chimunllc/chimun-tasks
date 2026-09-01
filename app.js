@@ -8215,6 +8215,37 @@ const PERM_MENUS = [
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 // Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
 const DENY_DEFAULT_ACTIONS = new Set(['access.delegate']);
+// ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
+// Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
+// views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
+// Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
+const ROLE_PRESETS = [
+  // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
+  [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.advance'] }],
+  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
+  [/нярав|агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.dispatch', 'products.edit'] }],
+  [/цэвэрл/, { views: [], actions: [] }],
+  [/жолооч|хүргэ|түгээ/, { views: [], actions: [] }],
+  [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering'], actions: [] }],
+  [/маркетинг|market|дизайн|контент/, { views: ['marketing'], actions: [] }],
+];
+function rolePresetFor(role) {
+  const r = String(role || '').trim().toLowerCase(); if (!r) return null;
+  const hit = ROLE_PRESETS.find(([re]) => re.test(r));
+  return hit ? hit[1] : null;
+}
+// Албан тушаалын багцаас нэг эрхийн утга: view=жагсаалтад байвал true, эс бол false; удирдагдах
+// үйлдэл=жагсаалтад байвал true, эс бол false; удирдагдаагүй үйлдэл=undefined (хуучин default руу).
+function presetCap(role, key, kind) {
+  const p = rolePresetFor(role);
+  if (!p) return undefined;   // тодорхойлоогүй албан тушаал → өөрчлөлтгүй (хуучин fallback)
+  if (kind === 'view' || VIEW_CAP_KEYS.includes(key)) return p.views.includes(key);
+  if (MANAGED_ACTIONS.has(key)) return p.actions.includes(key);
+  return undefined;
+}
 function normRole(role) { return String(role || '').trim().toLowerCase(); }
 // Тухайн хүний албан тушаалын эрх загвар (байвал)
 function roleTemplateFor(meKey) {
@@ -8237,6 +8268,9 @@ function capValue(key) {
   }
   const rt = roleTemplateFor(state.me);
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
+  const me = (typeof findMember === 'function') ? findMember(state.me) : null;   // албан тушаалын багц
+  const pv = presetCap(me && me.role, key, VIEW_CAP_KEYS.includes(key) ? 'view' : 'action');
+  if (pv !== undefined) return pv;
   return undefined;
 }
 // Меню хандалт: тохируулаагүй бол одоогийн default (fallback).
@@ -10900,9 +10934,26 @@ function effectiveCapForMember(m, key, kind) {
   }
   const rt = state.rolePerms && state.rolePerms[normRole(m && m.role)];
   if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
+  const pv = presetCap(m && m.role, key, kind);   // албан тушаалын багц
+  if (pv !== undefined) return pv;
   if (kind === 'view') return defaultViewForRole(normRole(m && m.role), key);
   if (DENY_DEFAULT_ACTIONS.has(key)) return false; // эмзэг үйлдэл — тусгайлан олгоогүй бол ХОРИГЛОНО
   return true; // үйлдэл default = зөвшөөрнө
+}
+// Хүн юу хийж чадахыг ЭНГИЙН үгээр (карт дээр харуулна) — үр дүнтэй эрхээс тооцно.
+function capSummary(m) {
+  const out = { views: [], actions: [] };
+  if (!m) return out;
+  PERM_MENUS.filter(mm => !mm.core).forEach(mm => { if (effectiveCapForMember(m, mm.key, 'view')) out.views.push(mm.label); });
+  const A = k => effectiveCapForMember(m, k, 'action');
+  if (A('orders.pay')) out.actions.push('Төлбөр бүртгэх');
+  if (A('orders.prepare') || A('orders.dispatch')) out.actions.push('Агуулах бэлдэх/гаргах');
+  if (A('orders.clean')) out.actions.push('Цэвэрлэх');
+  if (A('orders.deliver')) out.actions.push('Хүргэх');
+  if (A('tasks.create')) out.actions.push('Ажил үүсгэх/хуваарилах');
+  if (A('products.edit')) out.actions.push('Бараа засах');
+  if (A('salary.pay')) out.actions.push('Цалин олгох');
+  return out;
 }
 // Эрхийн чагтны матриц (цэс бүр: 👁 Харах + үйлдлүүд). getVal(key,kind)->bool.
 // canGrant(key,kind) — сонголтоор: false буцаавал тухайн чагтыг ТҮГЖИНЭ (escalation хаах). null=бүгд нээлттэй.
@@ -15800,6 +15851,12 @@ function rentalDays(startMs, stopMs) {
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
+// Ажлын бус цаг — 09:00–18:00-аас ГАДУУР авах/өгөх бүрт нэмэлт төлбөр (сайттай ижил: WORK 9–18, +20,000₮/бүр)
+const ORDER_OFFHOURS_FEE = 20000;
+function _isOffHour(h) { h = +h; return !isNaN(h) && (h < 9 || h > 18); }
+function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffHour(eh) ? 1 : 0); }
+// Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
+function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * ORDER_OFFHOURS_FEE : 0; }
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
 // Цуцлах/устгах шалтгаан — note-д ⟦CX|шалтгаан⟧ token-оор (app_orders-д багана нэмэхгүйгээр). cleanAppNote нуудаг.
 const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
@@ -16086,6 +16143,7 @@ function openNewOrder(editOrder) {
       <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
       <div class="no-sum-row muted"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
       <div class="no-sum-row muted" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
+      <div class="no-sum-row muted" id="no-offhrow" style="display:none;"><span>🌙 + Ажлын бус цаг</span><span id="no-offh">0₮</span></div>
       <div class="no-sum-row total"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
       ${isEdit ? `<div class="no-sum-row"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
     </div>
@@ -16212,7 +16270,9 @@ function openNewOrder(editOrder) {
     if (!depositManual) depEl.value = moneyFmtInput(autoDep);
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
-    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ
+    const offN = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value);
+    const offFee = offN * ORDER_OFFHOURS_FEE;   // ажлын бус цаг (09:00–18:00-аас гадуур) авах/өгөх бүрт (сайттай ижил)
+    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ
     $('#no-perday').textContent = fmtMoney(perDay);
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
@@ -16222,6 +16282,8 @@ function openNewOrder(editOrder) {
     $('#no-dep').textContent = fmtMoney(deposit);
     $('#no-deliv').textContent = fmtMoney(dlv.fee);
     $('#no-delivrow').style.display = dlv.zone === 'pickup' ? 'none' : 'flex';
+    $('#no-offh').textContent = '+' + fmtMoney(offFee);
+    $('#no-offhrow').style.display = offN > 0 ? 'flex' : 'none';
     $('#no-delivfee').textContent = fmtMoney(dlv.fee);
     $('#no-total').textContent = fmtMoney(total);
     if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - (Number(editOrder.paid_mnt) || 0)));
@@ -16290,6 +16352,7 @@ function openNewOrder(editOrder) {
     const total = Math.max(0, subtotal - discount - vatDisc);
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
+    const offFee = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value) * ORDER_OFFHOURS_FEE;   // ажлын бус цаг (сайттай ижил)
     const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
     const addr = $('#no-addr').value.trim();
     if (isDeliv && !addr) { showToast('Хүргэх хаяг оруулна уу', 'warn'); return; }
@@ -16320,7 +16383,7 @@ function openNewOrder(editOrder) {
       status: isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft',
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
       note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -21680,6 +21743,19 @@ function openStaffCardModal(key) {
         ${isActive ? `<div class="sc-row2"><button class="btn" data-sc-contract style="border-color:var(--primary);color:var(--primary);">📄 Хөдөлмөрийн гэрээ бэлдэх</button></div>` : ''}` : ''}
         ${canStatus ? `<div class="sc-row2">${isActive ? `<button class="btn btn-danger" data-sc-status="leave">🚪 Гарсан гэж тэмдэглэх</button>` : `<button class="btn" data-sc-status="restore">↩ Сэргээх</button>`}</div>` : ''}
       </div>` : '';
+    // ── Юу хийж чадах (энгийн үгээр — албан тушаалын багцаас) ──
+    let capBox = '';
+    if (canPerm || canManage) {
+      const isFullS = (m.level || 0) >= 100 || isFullAccessMember(m);
+      const _cs = capSummary(m);
+      const tags = [..._cs.views.map(l => `<span class="sc-cap-tag">${escapeHtml(l)}</span>`),
+                    ..._cs.actions.map(l => `<span class="sc-cap-tag sc-cap-act">✎ ${escapeHtml(l)}</span>`)].join('');
+      capBox = `<div class="sc-sec"><div class="sc-sec-t">🔓 Юу хийж чадах</div>
+        ${isFullS ? '<div style="font-size:12.5px;">Бүх эрх — хязгааргүй (удирдлага).</div>'
+          : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Албан тушаал <b style="color:var(--text);">${escapeHtml(m.role || '—')}</b>-д ногдох бэлэн эрх. Онцгой тохиолдолд доорх «🔑 Эрх»-ээс өөрчилнө.</div>
+            ${tags ? `<div class="sc-caps">${tags}</div>` : '<div style="font-size:12px;color:var(--muted);">Үндсэн ажил — Тойм · Миний ажил · Ирц. Захиалга/бусад цэс нээхгүй (ажлаа даалгавраар авна).</div>'}`}
+      </div>`;
+    }
     // ── Эрх хэсэг ──
     let perms = '';
     if (canPerm) {
@@ -21701,7 +21777,7 @@ function openStaffCardModal(key) {
         <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
-      <div class="sc-body">${admin}${perms}${(!admin && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
+      <div class="sc-body">${admin}${capBox}${perms}${(!admin && !capBox && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
     </div>`;
     attachHandlers();
   }

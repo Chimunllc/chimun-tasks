@@ -15512,6 +15512,24 @@ function membersWithCap(cap) {
 function stageTaskId(orderId, toStatus) { return 'ordstage__' + orderId + '__' + toStatus; }
 function parseStageTaskId(id) { const p = String(id || '').split('__'); return (p[0] === 'ordstage' && p.length === 3) ? { orderId: p[1], toStatus: p[2] } : null; }
 // Захиалга тухайн шатанд орох үед хариуцагчид ажил үүсгэнэ (давхардахгүй)
+// Дамжлагын ажлын дэлгэрэнгүй — захиалгын самбаргүй ажилтан (жолооч/нярав/цэвэрлэгч) ажлаасаа
+// л хаана/юуг хийхээ мэдэхийн тулд захиалгын гол мэдээллийг ажлын desc-д шингээнэ.
+function _orderStageDesc(o) {
+  const L = [];
+  if (o.customer) L.push('👤 ' + o.customer);
+  if (o.phone) L.push('📞 ' + o.phone);
+  const addr = String(o.delivery_address || o.customer_address || o.address || '').trim();
+  if (addr) L.push('📍 ' + addr);
+  const items = (o.items || []).filter(it => it && it.name);
+  if (items.length) L.push('📦 ' + items.map(it => `${it.name}${(Number(it.qty) || 1) > 1 ? '×' + it.qty : ''}`).join(', '));
+  const startS = String(o.starts_at || '').slice(0, 16).replace('T', ' ');
+  const stopS = String(o.stops_at || '').slice(0, 16).replace('T', ' ');
+  if (startS) L.push('🚚 Өгөх: ' + startS);
+  if (stopS) L.push('↩ Авах: ' + stopS);
+  const tot = Number(o.total_mnt) || 0;
+  if (tot) L.push('💰 ' + fmtMoney(tot));
+  return L.join('\n');
+}
 function ensureStageTask(o) {
   if (!o || !o.id) return;
   const cfg = STAGE_AUTOTASK[String(o.status || '')]; if (!cfg) return;
@@ -15521,6 +15539,7 @@ function ensureStageTask(o) {
   let assignee = membersWithCap(cfg.cap)[0] || findMemberEmailByRole(cfg.role, '');
   const t = {
     id, title: `${cfg.verb} · захиалга #${o.number ?? ''}${o.customer ? ' — ' + o.customer : ''}`,
+    desc: _orderStageDesc(o),   // хаяг/утас/бараа/цаг — самбаргүй ажилтанд
     branch: 'm-event', project: '', assignee: assignee || '', due: (cfg.due === 'stops_at' ? (o.stops_at || o.starts_at) : o.starts_at) || '',
     priority: 'high', status: 'open', requires_photo: true,
     createdBy: state.me || getCEOEmail(), created: Date.now(), comments: [], activity: [],

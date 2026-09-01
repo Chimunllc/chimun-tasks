@@ -3120,7 +3120,7 @@ function filteredTasks() {
   if (!state.isCEO && state.me) {
     const allowed = new Set();
     state.tasks.forEach(t => {
-      if (t.assignee === state.me || t.createdBy === state.me) allowed.add(t.id);
+      if (isTaskParticipant(t, state.me) || t.createdBy === state.me) allowed.add(t.id);
     });
     // Include parent of any allowed sub-task
     state.tasks.forEach(t => {
@@ -3132,8 +3132,8 @@ function filteredTasks() {
   // (Branch талбар datastructure-д үлдсэн — ирээдүйд буцаахаар үлдээсэн.)
   // view
   const today = todayStr();
-  if (state.view === 'mine') list = list.filter(t => t.assignee === state.me);
-  else if (state.view === 'delegated') list = list.filter(t => t.createdBy === state.me && t.assignee !== state.me);
+  if (state.view === 'mine') list = list.filter(t => isTaskParticipant(t, state.me));
+  else if (state.view === 'delegated') list = list.filter(t => t.createdBy === state.me && !isTaskParticipant(t, state.me));
   else if (state.view === 'finance') {
     // Финансын хүсэлтийг task-loga adapter-аар render хийнэ (устгасныг хасна)
     list = state.financeRequests.filter(r => r.status !== 'deleted').map(financeAsTask);
@@ -13970,7 +13970,7 @@ function taskLatenessLabel(t) {
 function objectiveMetrics(key, month) {
   const today = todayStr();
   const mine = (state.tasks || []).filter(t =>
-    t.assignee === key && t.status !== 'deleted' && t.kind !== 'act_parent'
+    isTaskParticipant(t, key) && t.status !== 'deleted' && t.kind !== 'act_parent'
     && !parseStageTaskId(t.id)   // автомат дамжлага-даалгавар (ordstage__) ХАСНА — тэр ажил Гарц/Хүлээлцэхэд тоологдсон, давхар болно
     // Зөвхөн удирдлагаас өгсөн ажил — өөртөө оноосон ажлаар оноо нэмэхээс сэргийлнэ.
     && t.createdBy && t.createdBy !== key
@@ -14136,7 +14136,7 @@ function taskQualityNote(t) { const p = _stripCD((t && t.kpi_code) || '').split(
 function encodeQuality(rating, note) { note = String(note || '').trim(); return note ? (rating + _QNOTE_SEP + note) : String(rating); }
 function taskQualityScore(key, month) {
   const done = (state.tasks || []).filter(t =>
-    t.assignee === key && t.status === 'done' && t.kind !== 'act_parent'
+    isTaskParticipant(t, key) && t.status === 'done' && t.kind !== 'act_parent'
     && !parseStageTaskId(t.id)   // автомат дамжлага-даалгавар ХАСНА (давхар тооллого сэргийлнэ)
     && t.createdBy && t.createdBy !== key
     && (t.due || '').slice(0, 7) === month);
@@ -20745,7 +20745,7 @@ function exportTasksAsICS(tasks) {
 /* ─── Personal KPI (ажилтны хувийн тойм) ───────────────── */
 function renderPersonalKPI() {
   const me = state.me;
-  const mine = (state.tasks || []).filter(t => t.assignee === me);
+  const mine = (state.tasks || []).filter(t => isTaskParticipant(t, me));
   const today = todayStr();
   const total = mine.length;
   const done = mine.filter(t => t.status === 'done').length;
@@ -21134,6 +21134,47 @@ function openMultiAssigneePicker(currentAssignees = []) {
       modal.classList.remove('open');
       resolve([...selected]);
     };
+  });
+}
+
+/* ─── Хамтран гүйцэтгэгч (co_assignees) ────────────────────────────────────
+   Нэг ажлыг хэд хэдэн хүн ХАМТРАН хийсэн тохиолдол. «Олон хүнд оноох»-оос
+   ялгаатай: тэр нь хүн тус бүрд ТУСДАА ажил үүсгэдэг, энэ нь НЭГ ажил дээр
+   бүгдийг оролцогч болгож, гүйцэтгэлийн оноо/чанарын үнэлгээг бүгдэд тооцно. */
+function taskCoKeys(t) {
+  const raw = t && t.co_assignees;
+  const arr = Array.isArray(raw) ? raw : (typeof raw === 'string' && raw ? raw.split(',') : []);
+  return arr.map(x => String(x || '').trim()).filter(Boolean);
+}
+// Ажилд оролцсон бүх хүн — хариуцагч + хамтран гүйцэтгэгчид (давхардалгүй).
+function taskParticipants(t) {
+  const out = [];
+  if (t && t.assignee) out.push(t.assignee);
+  taskCoKeys(t).forEach(k => { if (k && !out.includes(k)) out.push(k); });
+  return out;
+}
+function isTaskParticipant(t, key) {
+  if (!t || !key) return false;
+  return t.assignee === key || taskCoKeys(t).includes(key);
+}
+function refreshCoAssigneeChips(ids) {
+  const wrap = document.getElementById('t-co-chips');
+  if (!wrap) return;
+  const list = (ids || []).slice();
+  if (!list.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'flex';
+  wrap.innerHTML = list.slice(0, 8).map(id => `
+    <span class="t-multi-chip">
+      <span class="mp-avatar">${escapeHtml(memberInitials(id))}</span>
+      ${escapeHtml(memberName(id))}
+      <button type="button" data-co-remove="${escapeHtml(id)}" aria-label="Хасах">×</button>
+    </span>
+  `).join('') + (list.length > 8 ? `<span class="t-multi-more">+${list.length - 8}</span>` : '');
+  wrap.querySelectorAll('button[data-co-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state._coAssignees = (state._coAssignees || []).filter(x => x !== btn.dataset.coRemove);
+      refreshCoAssigneeChips(state._coAssignees);
+    });
   });
 }
 
@@ -22090,7 +22131,7 @@ function renderRow(t) {
       <div class="task-meta" data-act="open">
         <span class="status-dot ${statusClass}" title="${statusClass === 'in_progress' ? 'Хийгдэж байна' : statusClass === 'declined' ? 'Татгалзсан' : statusClass === 'done' ? 'Дууссан' : 'Шинэ'}"></span>
         <span class="meta-mobile-only avatar-circle sm meta-avatar">${escapeHtml(memberInitials(t.assignee))}</span>
-        <span class="meta-mobile-only meta-name">${escapeHtml(memberName(t.assignee))}</span>
+        <span class="meta-mobile-only meta-name">${escapeHtml(memberName(t.assignee))}${taskCoKeys(t).length ? ' +' + taskCoKeys(t).length : ''}</span>
         ${t.due ? `<span class="meta-mobile-only meta-dot"></span><span class="meta-mobile-only meta-due ${dc || 'none'}">${fmtDate(t.due)}</span>` : ''}
         ${t.priority && t.priority !== 'none' ? `<span class="meta-mobile-only meta-prio ${t.priority}">●</span>` : ''}
         ${t.createdBy && t.createdBy !== t.assignee
@@ -22750,6 +22791,20 @@ function openTaskModal(id) {
       }
     };
   }
+  // Хамтран гүйцэтгэгч — шинэ ба засах хоёуланд ажиллана
+  state._coAssignees = taskCoKeys(t);
+  refreshCoAssigneeChips(state._coAssignees);
+  const coBtn = document.getElementById('t-co-pick');
+  if (coBtn) {
+    coBtn.onclick = async () => {
+      const picked = await openMultiAssigneePicker(state._coAssignees || []);
+      if (!picked) return;
+      // Хариуцагч өөрөө хамтрагчид давхар орохгүй
+      const asgn = document.getElementById('t-assignee').value;
+      state._coAssignees = picked.filter(x => x && x !== asgn);
+      refreshCoAssigneeChips(state._coAssignees);
+    };
+  }
   document.getElementById('t-due').value = t?.due || '';
   document.getElementById('t-priority').value = t?.priority || 'none';
   const recEl = document.getElementById('t-recurrence');
@@ -23272,6 +23327,7 @@ async function saveTaskFromModal() {
     recurrence: document.getElementById('t-recurrence')?.value || '',
     requires_photo: !!document.getElementById('t-requires-photo')?.checked,
     task_images: (state._taskImages || []).slice(),
+    co_assignees: (state._coAssignees || []).slice(),
   };
   // Multi-assignee — олон хүнд тус тусын task үүсгэх. saveTask-уудыг ДАРААЛУУЛНА.
   // Параллел fire хийвэл Google Sheets concurrent appendOrUpdate race condition үүсч
@@ -23331,6 +23387,7 @@ async function saveTaskFromModal() {
   }
   await saveTaskVoice(t.id, !state.editingId);   // дуут заавар (task_audio-д)
   state._multiAssignees = null;
+  state._coAssignees = null;
   state._taskImages = null;
   state._taskVoice = null; state._taskVoiceDur = 0; state._taskVoiceDirty = false;
   clearTaskDraft();

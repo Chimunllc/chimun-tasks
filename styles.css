@@ -6284,3 +6284,8 @@ body.role-daily #add-project { display: none !important; }
 /* Org chart — удирдах боломжтой карт дарагдана */
 .org-card.org-clickable { cursor:pointer; }
 .org-card.org-clickable:hover { box-shadow:0 6px 18px rgba(0,0,0,.14); border-color:var(--accent,#2563EB); }
+
+
+/* Хамтран гүйцэтгэгч (co_assignees) — нэг ажлыг хамтран хийсэн хүмүүс */
+.t-co-row { display: flex; align-items: center; gap: var(--space-2, 8px); flex-wrap: wrap; margin-top: 6px; }
+.t-co-hint { font-size: var(--fs-xs); color: var(--muted); line-height: 1.4; }

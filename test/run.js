@@ -364,6 +364,56 @@ function finish() {
   ok(V({ customer: 'A', phone: '99112233', email: null, noEmail: true }) === null, 'холбоо: имэйл null байхад унахгүй');
 }
 
+// 23) Хамтран гүйцэтгэгч — оролцогчийг зөв таних
+{
+  const CO = vm.runInContext('taskCoKeys', sandbox);
+  const PA = vm.runInContext('taskParticipants', sandbox);
+  const IS = vm.runInContext('isTaskParticipant', sandbox);
+  eq(CO({ co_assignees: ['99112233', '88112233'] }), ['99112233', '88112233'], 'хамтрагч: массив уншина');
+  eq(CO({ co_assignees: '99112233, 88112233' }), ['99112233', '88112233'], 'хамтрагч: таслалтай мөр уншина');
+  eq(CO({ co_assignees: null }), [], 'хамтрагч: null → []');
+  eq(CO({}), [], 'хамтрагч: талбар байхгүй → []');
+  eq(CO({ co_assignees: ['', '  ', '99112233'] }), ['99112233'], 'хамтрагч: хоосон утга шүүгдэнэ');
+
+  const t = { assignee: '99112233', co_assignees: ['88112233', '77112233'] };
+  eq(PA(t), ['99112233', '88112233', '77112233'], 'оролцогч: хариуцагч эхэнд, дараа нь хамтрагчид');
+  eq(PA({ assignee: '99112233', co_assignees: ['99112233'] }), ['99112233'], 'оролцогч: давхардал арилна');
+  ok(IS(t, '99112233'), 'оролцогч: хариуцагч мөн');
+  ok(IS(t, '77112233'), 'оролцогч: хамтрагч мөн');
+  ok(!IS(t, '11111111'), 'оролцогч: гуравдагч хүн биш');
+  ok(!IS(t, ''), 'оролцогч: хоосон түлхүүр биш');
+  ok(!IS(null, '99112233'), 'оролцогч: ажил байхгүй бол биш');
+}
+
+// 24) Гүйцэтгэлийн оноо хамтран гүйцэтгэгчид ЧУ тооцогдож байгаа эсэх (гомдлын гол цэг)
+{
+  const st = vm.runInContext('state', sandbox);
+  const OM = vm.runInContext('objectiveMetrics', sandbox);
+  const QS = vm.runInContext('taskQualityScore', sandbox);
+  const saved = st.tasks;
+  const M = '2026-07';
+  st.tasks = [
+    // Хариуцагч=A, хамтрагч=B ба C. Удирдлага (Z) өгсөн, хугацаандаа дууссан, 5★
+    { id: 't1', assignee: 'A', co_assignees: ['B', 'C'], createdBy: 'Z', status: 'done',
+      due: '2026-07-10', updated: '2026-07-09', kpi_code: '5' },
+    // Зөвхөн A-гийн ажил
+    { id: 't2', assignee: 'A', createdBy: 'Z', status: 'done', due: '2026-07-11', updated: '2026-07-11', kpi_code: '4' },
+    { id: 't3', assignee: 'A', createdBy: 'Z', status: 'done', due: '2026-07-12', updated: '2026-07-12', kpi_code: '4' },
+  ];
+  const a = OM('A', M), b = OM('B', M), c = OM('C', M), d = OM('D', M);
+  eq(a.total, 3, 'оноо: хариуцагч A-д 3 ажил');
+  eq(b.total, 1, 'оноо: хамтрагч B-д хамтарсан 1 ажил тооцогдоно');
+  eq(c.total, 1, 'оноо: хамтрагч C-д мөн тооцогдоно');
+  eq(d.total, 0, 'оноо: оролцоогүй D-д тооцогдохгүй');
+  ok(b.done === 1 && b.onTime === 1, 'оноо: хамтрагчид хугацаандаа гүйцэтгэсэн гэж тооцогдоно');
+
+  const qb = QS('B', M);
+  eq(qb.rated, 1, 'чанар: хамтрагчид ★ үнэлгээ тооцогдоно');
+  eq(qb.score, 100, 'чанар: 5★ → 100 оноо');
+  eq(QS('D', M).rated, 0, 'чанар: оролцоогүй хүнд тооцогдохгүй');
+  st.tasks = saved;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

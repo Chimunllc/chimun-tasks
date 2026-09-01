@@ -10757,6 +10757,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     try {
       const d = parseBankReceipt(await extractPdfText(file));
       if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан шилжүүлгийн баримт мөн эсэхийг шалгана уу');
+      if (receiptTooOld(d.date)) throw new Error(`${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
       modal.querySelector('#sal-amt-disp').textContent = fmtMoney(d.amount);
       modal.querySelector('#sal-date-disp').textContent = d.date || '—';
       modal.querySelector('#sal-recv-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
@@ -13813,6 +13814,7 @@ function openNomaadIncomeModal(o) {
       try {
         const d = parseBankReceipt(await extractPdfText(file));
         if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан гүйлгээний баримт мөн эсэхийг шалгана уу');
+        if (receiptTooOld(d.date)) throw new Error(`${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
         modal.querySelector('#ni-amount-disp').textContent = fmtMoney(d.amount);
         modal.querySelector('#ni-date-disp').textContent = d.date || '—';
         modal.querySelector('#ni-sender-disp').textContent = d.senderName || '—';
@@ -17735,6 +17737,11 @@ async function openReceiptPdfViewer(file, meta) {
 }
 // Банкны гүйлгээний баримтаас БҮХ талбар — Голомт (label-based) БА Хаан (Дт/Кт) хоёуланг дэмжинэ.
 const _RECEIPT_LABELS = ['Хүлээн авагчийн банк', 'Хүлээн авагчийн данс', 'Хүлээн авагчийн нэр', 'Гүйлгээний дүн', 'Гүйлгээний огноо', 'Гүйлгээний утга', 'Гүйлгээний төлөв', 'Шилжүүлэгчийн нэр', 'Шилжүүлэгчийн дансны дугаар', 'Хүсэлтийн лавлах дугаар', 'Татсан огноо'];
+// PDF баримтаар төлбөр бүртгэх нь 2026-07-01-нээс эхэлсэн. Түүнээс ЭРТ огноотой банкны баримт =
+// систем эхлэхээс өмнөх (эсвэл буруу) баримт → ХҮЛЭЭЖ АВАХГҮЙ (жишээ: 9-р сард ирсэн захиалгад
+// 5-р сарын PDF оруулах). Хуучин төлбөрийг backfill хийх шаардлагатай бол энэ огноог түр буулгана.
+const RECEIPT_MIN_DATE = '2026-07-01';
+function receiptTooOld(dateStr) { const d = String(dateStr || '').slice(0, 10); return !!d && d < RECEIPT_MIN_DATE; }
 function parseBankReceipt(text) {
   const flat = text.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
   const isKhan = /ХААН\s*БАНК|Journal\s*No|Transaction information/i.test(flat);
@@ -17949,6 +17956,7 @@ function openBqPaymentModal(oid) {
       try {
         const d = parseBankReceipt(await extractPdfText(file));
         if (!d.amount) throw new Error(`${file.name}: дүн олдсонгүй`);
+        if (receiptTooOld(d.date)) throw new Error(`${file.name}: ${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
         // ЧИМУН ХХК ЗААВАЛ ХҮЛЭЭН АВАГЧ (орлого = Чимунд ИРСЭН гүйлгээ)
         if (!/чимун/i.test(d.receiverName || '')) throw new Error(`${file.name}: Чимунд ирээгүй гүйлгээ (${d.receiverName || '?'})`);
         const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;

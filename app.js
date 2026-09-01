@@ -1128,7 +1128,7 @@ async function changeTaskStatus(taskId, newStatus, reason = '') {
   }
   task.status = newStatus;
   if (newStatus === 'in_progress') task.started_at = Date.now();
-  if (newStatus === 'done') task.completed_at = Date.now();
+  if (newStatus === 'done') { task.completed_at = Date.now(); task.kpi_code = setCompletionCode(task.kpi_code, todayStr()); }   // дуусгасан огноог ЛАВ хадгална (kpi_code персист)
   if (newStatus === 'declined') task.decline_reason = reason || '';
   logTaskActivity(task, 'status_changed', { from: oldStatus, to: newStatus, reason });
   await saveTask(task);
@@ -13869,6 +13869,7 @@ async function sendNomaadPrepTasks(quoteNo) {
    On-time = дуусгасан огноо <= эцсийн хугацаа. Оноо = (хугацаандаа + 0.5×хоцорч дуусгасан) / нийт.
    Энэ нь нэгдсэн оноонд 55% жинтэй орно (Phase 3-д 360° + KPI нэмэгдэнэ). */
 function taskCompletedDate(t) {
+  const cd = taskCompletionCode(t); if (cd) return cd;   // ЛАВ дуусгасан огноо (kpi_code-д хадгалагдсан)
   const ms = typeof t.completed_at === 'number' ? t.completed_at
     : (t.completed_at ? new Date(t.completed_at).getTime()
       : (t.executed_at ? new Date(t.executed_at).getTime()
@@ -14048,8 +14049,14 @@ function eval360Score(key, period) {
    Сарын дундаж ×20 → 0-100. Объектив (цагтаа)-оос ӨӨР хэмжүүр: чанар. */
 // kpi_code = "<оноо>" эсвэл "<оноо>⟦N⟧<тайлбар>" — үнэлгээний тайлбарыг backend багана нэмэхгүйгээр хадгална.
 const _QNOTE_SEP = '⟦N⟧';
-function taskQualityRating(t) { return Number(String((t && t.kpi_code) || '').split(_QNOTE_SEP)[0]) || 0; }
-function taskQualityNote(t) { const p = String((t && t.kpi_code) || '').split(_QNOTE_SEP); return p.length > 1 ? p.slice(1).join(_QNOTE_SEP).trim() : ''; }
+// Дуусгасан огноог kpi_code-д ⟦CD|огноо⟧ токеноор ЛАВ хадгална — completed_at backend-д хадгалагддаггүй,
+// reload дараа `updated`(сүүлд зассан) руу уначихдаг тул «цагтаа/хоцорсон» буруу гардаг байв.
+const _CD_RE = /⟦CD\|(\d{4}-\d{2}-\d{2})⟧/;
+function _stripCD(s) { return String(s || '').replace(/⟦CD\|[^⟧]*⟧/g, ''); }
+function taskCompletionCode(t) { const m = String((t && t.kpi_code) || '').match(_CD_RE); return m ? m[1] : ''; }
+function setCompletionCode(kpi_code, date) { const base = _stripCD(kpi_code); return date ? base + '⟦CD|' + date + '⟧' : base; }
+function taskQualityRating(t) { return Number(_stripCD((t && t.kpi_code) || '').split(_QNOTE_SEP)[0]) || 0; }
+function taskQualityNote(t) { const p = _stripCD((t && t.kpi_code) || '').split(_QNOTE_SEP); return p.length > 1 ? p.slice(1).join(_QNOTE_SEP).trim() : ''; }
 function encodeQuality(rating, note) { note = String(note || '').trim(); return note ? (rating + _QNOTE_SEP + note) : String(rating); }
 function taskQualityScore(key, month) {
   const done = (state.tasks || []).filter(t =>
@@ -14075,7 +14082,7 @@ function needsRating(t) {
 async function saveTaskQuality(id, rating, note) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
-  t.kpi_code = encodeQuality(rating, note);
+  t.kpi_code = setCompletionCode(encodeQuality(rating, note), taskCompletionCode(t));   // дуусгасан огнооны токен хадгална
   try {
     await saveTask(t);
     showToast(`Ажлын чанар: ${rating}★ хадгалагдлаа`, 'success', 1800);

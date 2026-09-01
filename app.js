@@ -10713,10 +10713,6 @@ function renderOrgChart() {
   // Гарсан ажилтан — бүтэцэд харагдахгүй тул тусдаа жагсаалтаар хандаж сэргээх боломж (таб хассны нөхөл)
   const leftStaff = canEdit ? (TEAM || []).filter(m => (m.status || '') === 'гарсан') : [];
   const leftBtn = leftStaff.length ? `<button class="btn" data-org-left title="Гарсан ажилтныг харах / сэргээх">🚪 Гарсан (${leftStaff.length})</button>` : '';
-  const leftSec = leftStaff.length ? `<div id="org-left-sec" style="display:${state.orgShowLeft ? 'block' : 'none'};margin-top:12px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--panel);">
-      <div style="font-weight:700;font-size:13px;margin-bottom:8px;">🚪 Гарсан ажилтан — дарж дэлгэрэнгүй / сэргээх</div>
-      ${leftStaff.map(m => `<div class="org-left-row" data-org-card2="${escapeHtml(personKey(m))}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer;font-size:12.5px;"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(m.name || '?')}</span><span style="color:var(--muted);white-space:nowrap;">${escapeHtml(m.role || '')}</span></div>`).join('')}
-    </div>` : '';
   const _hint = (!state.isCEO && state._orgManage.deleg && state._orgManage.deleg.size) ? ` · доорхийнхоо эрхийг удирдах бол картыг дар` : '';
   const head = `<div class="org-head">
     <div><div class="org-title">🏢 Байгууллагын бүтэц</div><div class="org-sub">Зэрэглэл ба салбараар автоматаар үүсгэв · нийт ${active.length} ажилтан${_hint}</div></div>
@@ -10725,7 +10721,6 @@ function renderOrgChart() {
   const editNote = state.orgEdit ? `<div class="org-editnote">✋ <b>Засах горим:</b> карт бүрийн буланд байгаа <b>⇄</b> товчоор тухайн хүнийг (болон түүний доорхи багийг) өөр удирдагчийн дор шилжүүлнэ. Гараар шилжүүлсэн хүнд ✋ тэмдэг гарна. «Автомат руу буцаах»-аар анхны байдалд орно.</div>` : '';
   return `<div class="org-wrap">${head}${stats}${legend}${editNote}
     <div class="org-scroll"><div class="org-tree" id="org-tree" style="transform:scale(${state.orgZoom || 1});"><ul>${orgNodeHtml(root)}</ul></div></div>
-    ${leftSec}
   </div>`;
 }
 // Хүнийг өөр удирдагчийн дор шилжүүлэх picker (гар аргаар — app_config['org_overrides'])
@@ -10767,8 +10762,7 @@ async function orgSetParent(childKey, parentKey) {
 }
 function attachOrgHandlers() {
   document.querySelector('[data-org-print]')?.addEventListener('click', printOrgChart);
-  document.querySelector('[data-org-left]')?.addEventListener('click', () => { state.orgShowLeft = !state.orgShowLeft; const s = document.getElementById('org-left-sec'); if (s) s.style.display = state.orgShowLeft ? 'block' : 'none'; });
-  document.querySelectorAll('[data-org-card2]').forEach(r => r.addEventListener('click', () => openStaffCardModal(r.dataset.orgCard2)));
+  document.querySelector('[data-org-left]')?.addEventListener('click', openLeftStaffModal);
   document.querySelectorAll('[data-org-lens]').forEach(b => b.addEventListener('click', () => setBranchLens(b.dataset.orgLens)));
   document.querySelector('[data-org-edit]')?.addEventListener('click', () => { state.orgEdit = !state.orgEdit; render(); });
   document.querySelectorAll('[data-org-move]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrgMoveModal(b.dataset.orgMove); }));
@@ -10788,6 +10782,28 @@ function attachOrgHandlers() {
   }));
 }
 
+// Гарсан ажилтны жагсаалт — модалаар (бүтэц дээр харагдахгүй тул) → карт нээж сэргээх.
+function openLeftStaffModal() {
+  const leftStaff = (TEAM || []).filter(m => (m.status || '') === 'гарсан')
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  document.getElementById('org-left-modal')?.remove();
+  const ov = document.createElement('div'); ov.id = 'org-left-modal'; ov.className = 'org-modal-bd'; document.body.appendChild(ov);
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  const rows = leftStaff.length
+    ? leftStaff.map(m => `<div data-lk="${escapeHtml(personKey(m))}" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 10px;border-bottom:1px solid var(--border);cursor:pointer;">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">${escapeHtml(m.name || '?')}</span>
+        <span style="color:var(--muted);white-space:nowrap;font-size:12px;">${escapeHtml(m.role || '')}</span></div>`).join('')
+    : '<div style="color:var(--muted);padding:18px;text-align:center;">Гарсан ажилтан алга.</div>';
+  ov.innerHTML = `<div class="org-modal" style="max-width:440px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">
+      <div style="font-weight:800;font-size:15px;">🚪 Гарсан ажилтан (${leftStaff.length})</div>
+      <button class="sc-x" data-lx>✕</button></div>
+    <div style="padding:4px 12px 14px;max-height:62vh;overflow:auto;">
+      <div style="font-size:11.5px;color:var(--muted);padding:8px 2px 6px;">Хүн дээр дарж дэлгэрэнгүй нээгээд «↩ Сэргээх» товчоор буцаана.</div>
+      ${rows}</div></div>`;
+  ov.querySelector('[data-lx]')?.addEventListener('click', () => ov.remove());
+  ov.querySelectorAll('[data-lk]').forEach(r => r.addEventListener('click', () => { ov.remove(); openStaffCardModal(r.dataset.lk); }));
+}
 // Байгууллагын бүтцийг НЭГ A4-д (хэвтээ) багтаан хэвлэх — popup + styles.css + авто scale.
 function printOrgChart() {
   const tree = document.getElementById('org-tree');

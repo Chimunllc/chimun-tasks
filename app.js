@@ -5458,8 +5458,8 @@ function boardOrderRow(e, k, todayStr, flat) {
   const dotEl = urgDot ? `<span class="br-dot" style="--d:${urgDot}" title="${rank <= 1 ? 'Хугацаа хэтэрсэн/өнөөдөр' : 'Ойрхон'}"></span>` : '';
   const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
   // Жагсаалтын том тоо = БОРЛУУЛАЛТ (барьцаа хассан) — орлого/тайлан ҮҮГЭЭР бодогддог тул нүдээр
-  // харах тоо тайлантай таарна. Нийт авах төлбөр (барьцаа багтсан) нь доор жижгээр + захиалга дотор
-  // бүтнээр харагдана — «✓ Төлсөн / ◐ Дутуу» статус ХЭВЭЭР нийт дүнгээр бодогдоно (хуулга тулгалт).
+  // харах тоо тайлантай таарна. Мөрөнд задаргаа БИЧИХГҮЙ — зөвхөн 🔒 Барьцаатай тэмдэглэгээ; нийт
+  // авах төлбөр захиалгыг дэлгэхэд харагдана. «✓ Төлсөн / ◐ Дутуу» ХЭВЭЭР нийт дүнгээр (хуулга тулгалт).
   const _rev = (e && e.rev != null) ? e.rev : (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : _tot);
   const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
@@ -5474,13 +5474,13 @@ function boardOrderRow(e, k, todayStr, flat) {
   })() : '';
   return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat && vatChip ? ' ' + vatChip : ''}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') : ''}</span>
     ${statusCell}
     ${flat
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
       : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
-    <span class="br-amt">${fmtMoney(_rev)}${_rev !== _tot ? `<small class="br-amt-sub" title="Нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан) — барьцаа нь буцаадаг тул борлуулалтад ороогүй">нийт ${fmtMoney(_tot)} · 🔒${fmtMoney(_depAmt)}</small>` : ''}</span>
+    <span class="br-amt"${_rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${fmtMoney(_rev)}</span>
     <span class="br-act-cell">${actBtn}</span>
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
 }

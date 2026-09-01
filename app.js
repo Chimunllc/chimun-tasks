@@ -7634,7 +7634,9 @@ function renderAttendanceRows() {
       : r.s.noOut
         ? '<span style="color:var(--warn);font-size:12px;">⚠ Гарахаа бүртгүүлээгүй</span>'
         : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}</span>`;
-    const late = attLateMinutes(r.k, day, r.s.firstIn);
+    // «Хоцорсон» = ЗӨВХӨН одоо ажиллаж байгаа (нээлттэй сесс) хүнд — явсан хүнд retroactive
+    // хоцролт гаргахгүй (хуучин buggy next_arrival дата departed хүмүүст л үлдсэн; шинэ дата зөв).
+    const late = r.s.open ? attLateMinutes(r.k, day, r.s.firstIn) : 0;
     const lateBadge = late > 0 ? ` <span style="color:var(--danger);font-weight:700;font-size:11.5px;">🔴 ${late}м хоцорсон</span>` : '';
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
@@ -15810,6 +15812,19 @@ function _stageTiming(k, atISO, o) {
   return ` · <span style="color:var(--danger);font-weight:600;">⚠ ${diffH}ц хоцорч ${verb}</span>`;
 }
 // Дамжлагын зураг + үнэлгээ — БҮХ ажилтанд харагдана (картын доор)
+// Захиалга дамжлагаар явсан уу — шат бүрд ажилтан товч дарж, зураг оруулсан эсэх.
+// stage_meta.quotes гэх мэт массивыг шат гэж тооцохгүй.
+function hasStageRecord(o) {
+  const sm = o && o.stage_meta;
+  if (!sm || typeof sm !== 'object') return false;
+  return Object.keys(sm).some(k => {
+    const e = sm[k];
+    return e && typeof e === 'object' && !Array.isArray(e) && (e.by || (e.photos && e.photos.length));
+  });
+}
+// Дууссанд тооцогдох төлвүүд — эдгээрт дамжлагагүйгээр шилжихийг хориглоно.
+const ORDER_DONE_STATUSES = ['rented', 'returned', 'stopped', 'archived'];
+
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
@@ -16971,8 +16986,11 @@ function bqOrderCard(o) {
     : '';
   const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
+  // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
+  const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
+    ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(total)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(total)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div></div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}

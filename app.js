@@ -8180,7 +8180,7 @@ const PERM_MENUS = [
   { key: 'finance',     label: 'Гүйлгээ',          core: true, actions: [] },
   { key: 'performance', label: 'KPI',             core: true, actions: [] },
   { key: 'workload',    label: 'Багийн ачаалал',  actions: [] },
-  { key: 'reports',     label: 'Тайлан',          actions: [] },
+  { key: 'reports',     label: 'Дүн шинжилгээ (тайлан)', actions: [] },
   { key: 'hourly',      label: 'Цагийн цалин',    actions: [
       { key: 'hourly.pay', label: 'Цалин/урьдчилгаа олгох' } ] },
   { key: 'salary',      label: 'Цалин (сарын)',   actions: [

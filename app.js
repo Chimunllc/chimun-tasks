@@ -4936,6 +4936,17 @@ function rentalDiscount(days) {
   for (const t of RENTAL_TIERS) if (days >= t.min) return t;
   return { min: 1, pct: 0, label: '' };
 }
+// Захиалгын хямдралын дүн (C3) — авто-хоногийн шатлал (rentalDiscount) БА гар хямдралын ИХ нь.
+// Сайт олон хоногийн авто-хямдрал өгдөг тул аппаас захиалсан ижил бараа·хугацаа мөн адил үнэтэй
+// байх ёстой (сувгаар парити). Авто-tier = хамгийн бага хамгаалалт; менежер илүү өгвөл гар нь давна.
+// Давхар тооцохгүй (max, нэмэл БИШ). recalc ба save хоёул үүнийг дуудаж ижил дүн гаргана.
+function orderDiscountAmount(subtotal, days, dtype, dval) {
+  subtotal = Math.max(0, Number(subtotal) || 0);
+  const autoPct = (typeof rentalDiscount === 'function' ? (rentalDiscount(days).pct || 0) : 0);
+  const autoDisc = Math.round(subtotal * autoPct);
+  const manualDisc = dtype === 'pct' ? Math.round(subtotal * Math.min(100, Number(dval) || 0) / 100) : Math.min(subtotal, Number(dval) || 0);
+  return Math.min(subtotal, Math.max(autoDisc, manualDisc));
+}
 // Байнгын үйлчлүүлэгчийн хөнгөлөлт (%). app_config['loyalty_pct'] байвал түүгээр, эс бол 10.
 function loyaltyPct() { const v = Number(state.appConfig && state.appConfig.loyalty_pct); return (v > 0 && v <= 50) ? v : 10; }
 // Тухайн имэйл/утас ӨМНӨ захиалга хийж байсан эсэх (M-Event app_orders + Booqable түүх). draft/цуцлалт тооцохгүй.
@@ -18169,7 +18180,7 @@ function openNewOrder(editOrder) {
       <div class="no-sum-row muted"><span>Барааны дүн / хоног</span><span id="no-perday">0₮</span></div>
       <div class="no-sum-row muted"><span>Түрээсийн хугацаа</span><span id="no-days">1 хоног</span></div>
       <div class="no-sum-row"><span>Барааны дүн</span><b id="no-subtotal">0₮</b></div>
-      <div class="no-sum-row muted"><span>Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
+      <div class="no-sum-row muted"><span id="no-disc-lbl">Хөнгөлөлт</span><span id="no-disc">0₮</span></div>
       <div class="no-sum-row" id="no-vatrow" style="display:none;color:var(--danger);"><span>− НӨАТ хасалт (5%)</span><span id="no-vat-amt">0₮</span></div>
       <div class="no-sum-row muted"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
       <div class="no-sum-row muted" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
@@ -18294,7 +18305,7 @@ function openNewOrder(editOrder) {
     const days = currentDays();
     const subtotal = perDay * days;   // түрээс = өдрийн дүн × хоног
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
-    const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
+    const discount = orderDiscountAmount(subtotal, days, dtype, dval);   // C3: авто-хоног ба гар хямдралын их нь (сувгаар парити)
     const rentalNet = Math.max(0, subtotal - discount);
     const vatOff = !!$('#no-vat')?.checked;
     const vatDisc = vatOff ? Math.round(rentalNet * 0.05) : 0;   // НӨАТ хасалт — хямдарсан түрээсээс 5% (барьцаа/хүргэлтээс хасагдахгүй)
@@ -18311,6 +18322,7 @@ function openNewOrder(editOrder) {
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
     $('#no-disc').textContent = '−' + fmtMoney(discount);
+    { const _t = rentalDiscount(days); const _dl = $('#no-disc-lbl'); if (_dl) _dl.textContent = _t.pct > 0 ? `Хөнгөлөлт · ${days} хоног авто −${Math.round(_t.pct * 100)}%` : 'Хөнгөлөлт'; }   // C3: авто-хоногийн хямдрал ил
     $('#no-vatrow').style.display = vatOff ? 'flex' : 'none';
     $('#no-vat-amt').textContent = '−' + fmtMoney(vatDisc);
     $('#no-dep').textContent = fmtMoney(deposit);
@@ -18384,7 +18396,7 @@ function openNewOrder(editOrder) {
     const days = currentDays();
     const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
-    const discount = dtype === 'pct' ? Math.round(subtotal * Math.min(100, dval) / 100) : Math.min(subtotal, dval);
+    const discount = orderDiscountAmount(subtotal, days, dtype, dval);   // C3: авто-хоног ба гар хямдралын их нь (сувгаар парити)
     const vatOff = !!$('#no-vat')?.checked;
     const vatDisc = vatOff ? Math.round(Math.max(0, subtotal - discount) * 0.05) : 0;
     const total = Math.max(0, subtotal - discount - vatDisc);

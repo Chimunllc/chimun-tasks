@@ -16220,13 +16220,13 @@ function orderNextStep(o) {
     case 'cleaning':    return { to: 'prepared', label: '🧰 Бэлдэх',   cap: 'orders.prepare' };
     case 'prepared':    return { to: 'ready',    label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
     case 'ready':       return dlv
-      ? { to: 'delivering', label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' }
-      : { to: 'rented',     label: '📦 Олгох',             cap: 'orders.dispatch' };
-    case 'delivering':  return { to: 'rented',   label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+      ? { to: 'delivering', label: '📦 Агуулахаас гаргах',   cap: 'orders.dispatch' }
+      : { to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгөх',  cap: 'orders.dispatch' };
+    case 'delivering':  return { to: 'rented',   label: '🚚 Хүргэж өгөх', cap: 'orders.deliver' };
     case 'rented':
     case 'started':     return dlv
-      ? { to: 'returning', label: '🚚 Хүргэлтээр авсан',   cap: 'orders.deliver' }
-      : { to: 'returned',  label: '📥 Агуулахад хүлээн авах', cap: 'orders.dispatch' };
+      ? { to: 'returning', label: '↩️ Хүргэлтээс буцаан авах', cap: 'orders.deliver' }
+      : { to: 'returned',  label: '📥 Агуулахад хүлээн авах',  cap: 'orders.dispatch' };
     case 'returning':   return { to: 'returned', label: '📥 Агуулахад хүлээн авах', cap: 'orders.dispatch' };
     case 'returned':
     case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
@@ -16363,14 +16363,14 @@ const STAGE_ACTION = {
   'cleaning>ready':       { key: 'clean',    label: 'Цэвэрлэх',              q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
   'prepared>ready':       { key: 'clean',    label: 'Цэвэрлэх',              q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
   'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
-  'ready>rented':         { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
+  'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгөх',    q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
-  'prepared>rented':      { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
-  'rented>returning':     { key: 'retstart', label: 'Хүргэлтээр авсан',      q: 'Хүргэлтээр авсан бараа бүрэн бүтэн байна уу?' },
-  'rented>returned':      { key: 'received', label: 'Буцаан хүлээж авах',     q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
-  'started>returning':    { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
-  'started>returned':     { key: 'received', label: 'Буцаан хүлээж авах',     q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгөх',    q: 'Захиалга бүрэн, зөв өгсөн үү?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгөх',           q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Хүргэлтээс буцаан авах', q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
+  'rented>returned':      { key: 'received', label: 'Агуулахад хүлээн авах',  q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
+  'started>returning':    { key: 'retstart', label: 'Хүргэлтээс буцаан авах', q: 'Бараа бүрэн бүтэн байна уу?' },
+  'started>returned':     { key: 'received', label: 'Агуулахад хүлээн авах',  q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'returning>returned':   { key: 'received', label: 'Агуулахад хүлээн авах',  q: 'Бараа гэмтэлгүй, бүрэн ирсэн үү?' },
   'returned>archived':    { key: 'archive',  label: 'Архивлах',              q: null },
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },

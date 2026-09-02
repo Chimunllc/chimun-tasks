@@ -449,10 +449,10 @@ function finish() {
   const SMH = vm.runInContext('stageMetaHtml', sandbox);
   const SAF = vm.runInContext('stageActionFor', sandbox);
 
-  // Урсгал prepared руу шилждэг — зөв түлхүүр 'prepare' байх ёстой
-  eq(SAF('reserved', 'prepared').key, 'prepare', 'дамжлага: reserved→prepared нь prepare түлхүүртэй');
-  eq(SAF('cleaning', 'prepared').key, 'prepare', 'дамжлага: cleaning→prepared нь prepare түлхүүртэй');
-  eq(SAF('ready', 'prepared').key, 'prepare', 'дамжлага: ready→prepared нь prepare түлхүүртэй');
+  // Шинэ дараалал: ЦЭВЭРЛЭХ нь эхэлнэ (reserved→prepared = clean), дараа нь БЭЛДЭХ (prepared→ready = prepare)
+  eq(SAF('reserved', 'prepared').key, 'clean', 'дамжлага: reserved→prepared нь clean түлхүүртэй (цэвэрлэх эхэлнэ)');
+  eq(SAF('cleaning', 'prepared').key, 'clean', 'дамжлага: cleaning→prepared нь clean түлхүүртэй');
+  eq(SAF('ready', 'prepared').key, 'clean', 'дамжлага: ready→prepared нь clean түлхүүртэй');
   eq(SAF('prepared', 'rented').key, 'dispatch', 'дамжлага: prepared→rented хэвээр dispatch');
 
   // ХУУЧИН датанд 'prepared' түлхүүрээр хадгалагдсан зураг ч харагдана
@@ -479,7 +479,7 @@ function finish() {
   const SML = vm.runInContext('STAGE_META_LABEL', sandbox);
   const BQS = vm.runInContext('BQ_STATUS', sandbox);
   ok(SLL.prepared.indexOf('Бэлдсэн') > -1, 'шошго: SL лог prepared = Бэлдсэн (төлвийн нэртэй нийцнэ)');
-  eq(BQS.prepared.label, 'Бэлдсэн', 'шошго: prepared төлвийн нэр Бэлдсэн');
+  eq(BQS.prepared.label, 'Цэвэрлэсэн', 'шошго: prepared төлвийн нэр Цэвэрлэсэн (шинэ дараалал)');
   ok(SML.prepare.indexOf('Бэлдсэн') > -1, 'шошго: stage_meta prepare = Бэлдсэн');
   ok(SLL.prepared.indexOf('Цэвэрлэсэн') === -1, 'шошго: prepared нь Цэвэрлэсэн ГЭЖ нэрлэгдэхээ болив');
 }
@@ -493,25 +493,26 @@ function finish() {
   const ORD = vm.runInContext('BQ_STATUS_ORDER', sandbox);
   const AT  = vm.runInContext('STAGE_AUTOTASK', sandbox);
 
-  eq(NS({ status: 'reserved' }).to, 'prepared', 'урсгал: Захиалсан → Бэлдсэн');
-  eq(NS({ status: 'prepared' }).to, 'ready',    'урсгал: Бэлдсэн → Цэвэрлэсэн (ШИНЭ тусдаа алхам)');
-  eq(NS({ status: 'ready' }).to,    'rented',   'урсгал: Цэвэрлэсэн → Гаргах');
+  eq(NS({ status: 'reserved' }).to, 'prepared', 'урсгал: Захиалсан → Цэвэрлэсэн');
+  eq(NS({ status: 'prepared' }).to, 'ready',    'урсгал: Цэвэрлэсэн → Бэлдсэн (ШИНЭ дараалал)');
+  eq(NS({ status: 'ready' }).to,    'rented',   'урсгал: Бэлдсэн → Гаргах');
   eq(NS({ status: 'rented' }).to,   'returned', 'урсгал: Гарсан → Буцаан авах');
 
-  eq(NS({ status: 'prepared' }).cap, 'orders.clean',    'эрх: цэвэрлэх алхам orders.clean');
-  eq(NS({ status: 'reserved' }).cap, 'orders.prepare',  'эрх: бэлдэх алхам orders.prepare');
+  eq(NS({ status: 'reserved' }).cap, 'orders.clean',    'эрх: эхний алхам (цэвэрлэх) orders.clean');
+  eq(NS({ status: 'prepared' }).cap, 'orders.prepare',  'эрх: 2 дахь алхам (бэлдэх) orders.prepare');
   eq(NS({ status: 'ready' }).cap,    'orders.dispatch', 'эрх: гаргах алхам orders.dispatch');
 
-  eq(SAF('prepared', 'ready').key, 'clean',   'дамжлага: prepared→ready нь clean түлхүүртэй');
+  eq(SAF('prepared', 'ready').key, 'prepare', 'дамжлага: prepared→ready нь prepare түлхүүртэй');
   eq(SAF('ready', 'rented').key,   'dispatch','дамжлага: ready→rented нь dispatch');
 
-  eq(BQS.ready.label, 'Цэвэрлэсэн', 'төлөв: ready = Цэвэрлэсэн');
+  eq(BQS.ready.label, 'Бэлдсэн', 'төлөв: ready = Бэлдсэн');
   ok(!LEG.ready, 'төлөв: ready legacy зураглалаас гарсан (жинхэнэ төлөв боллоо)');
   ok(ORD.indexOf('ready') > ORD.indexOf('prepared'), 'төлөв: ready нь prepared-ийн ДАРАА эрэмбэлэгдэнэ');
   ok(ORD.indexOf('ready') < ORD.indexOf('rented'),   'төлөв: ready нь rented-ээс ӨМНӨ');
 
-  eq(AT.prepared.cap, 'orders.clean', 'авто ажил: бэлдсэний дараа ЦЭВЭРЛЭХ ажил үүснэ');
-  eq(AT.ready.cap, 'orders.dispatch', 'авто ажил: цэвэрлэсний дараа ГАРГАХ ажил үүснэ');
+  eq(AT.reserved.cap, 'orders.clean', 'авто ажил: захиалсны дараа ЦЭВЭРЛЭХ ажил үүснэ');
+  eq(AT.prepared.cap, 'orders.prepare', 'авто ажил: цэвэрлэсний дараа БЭЛДЭХ ажил үүснэ');
+  eq(AT.ready.cap, 'orders.dispatch', 'авто ажил: бэлдсэний дараа ГАРГАХ ажил үүснэ');
 }
 
 // 30) worker_type override нь ӨӨРИЙН сесст мөн үйлчлэх эсэх

@@ -16193,8 +16193,8 @@ function bqDocsHtml(docs) {
 const BQ_STATUS = {
   draft:       { label: 'Ноорог',        dot: '#6B7280', bg: '#F3F4F6', tx: '#374151' },
   reserved:    { label: 'Захиалсан',     dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
-  prepared:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
-  ready:       { label: 'Цэвэрлэсэн',    dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
+  prepared:    { label: 'Цэвэрлэсэн',    dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
+  ready:       { label: 'Бэлдсэн',       dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
   delivering:  { label: 'Агуулахаас гарсан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   returning:   { label: 'Хүргэлтээр авсан', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
@@ -16244,8 +16244,8 @@ function orderNextStep(o) {
   switch (st) {
     case 'reserved':
     case 'preparation':
-    case 'cleaning':    return { to: 'prepared', label: '🧰 Бэлдсэн',   cap: 'orders.prepare' };
-    case 'prepared':    return { to: 'ready',    label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
+    case 'cleaning':    return { to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
+    case 'prepared':    return { to: 'ready',    label: '🧰 Бэлдсэн',    cap: 'orders.prepare' };
     case 'ready':       return dlv
       ? { to: 'delivering', label: '📦 Агуулахаас гарсан',  cap: 'orders.dispatch' }
       : { to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
@@ -16273,8 +16273,8 @@ const BQ_NEXT = {
 // ── Дамжлагын АВТОМАТ ажил — эрх эзэмшигчид даалгавар үүсгэж, зургаар баталгаажуулна ──
 // Шат бүрд ажил хийх эрх (cap) + fallback роль + үйлдлийн нэр. Захиалга шат руу орох бүрд ажил үүснэ.
 const STAGE_AUTOTASK = {
-  reserved:   { cap: 'orders.prepare',  role: /нярав|агуулах/i,       verb: '🧰 Захиалга бэлдэх' },
-  prepared:   { cap: 'orders.clean',    role: /цэвэрл/i,              verb: '🧹 Захиалга цэвэрлэх' },
+  reserved:   { cap: 'orders.clean',    role: /цэвэрл/i,              verb: '🧹 Захиалга цэвэрлэх' },
+  prepared:   { cap: 'orders.prepare',  role: /нярав|агуулах/i,       verb: '🧰 Захиалга бэлдэх' },
   ready:      { cap: 'orders.dispatch', role: /нярав|агуулах/i,       verb: '📦 Хүлээлгэн өгөх' },
   delivering: { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '🚚 Хүргэж өгөх' },
   rented:     { cap: 'orders.deliver',  role: /хүргэ|жолооч|түгээ/i,  verb: '↩ Түрээс дуусахад буцаан авах', due: 'stops_at' },
@@ -16381,14 +16381,14 @@ const STAGE_ACTION = {
   // orderNextStep нь reserved/preparation/cleaning/ready → 'prepared' руу шилжүүлдэг.
   // Эдгээр зураглал байхгүй байсан тул stageActionFor нь key='prepared' гэж унаж,
   // зураг stage_meta.prepared-д хадгалагдаад stageMetaHtml-д харагддаггүй байв.
-  'reserved>prepared':    { key: 'prepare',  label: 'Бэлдсэн',               q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
-  'preparation>prepared': { key: 'prepare',  label: 'Бэлдсэн',               q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
-  'cleaning>prepared':    { key: 'prepare',  label: 'Бэлдсэн',               q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
-  'ready>prepared':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
-  'reserved>cleaning':    { key: 'prepare',  label: 'Бэлдсэн',               q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
-  'preparation>cleaning': { key: 'prepare',  label: 'Бэлдсэн',               q: 'Захиалга зөв, бүрэн бэлдэгдсэн үү?' },
-  'cleaning>ready':       { key: 'clean',    label: 'Цэвэрлэсэн',            q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
-  'prepared>ready':       { key: 'clean',    label: 'Цэвэрлэсэн',            q: 'Цэвэрлэгээ хэр чанартай хийгдсэн бэ?' },
+  'reserved>prepared':    { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
+  'preparation>prepared': { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
+  'cleaning>prepared':    { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
+  'ready>prepared':       { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
+  'reserved>cleaning':    { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
+  'preparation>cleaning': { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
+  'cleaning>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
+  'prepared>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
   'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гарсан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гарсан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },

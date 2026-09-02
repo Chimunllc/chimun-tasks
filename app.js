@@ -7337,12 +7337,21 @@ function productOf(it) {
   return productBySku(it.sku) || productById(it.sku) || productByName(it.name);
 }
 // Каталогт ОГТ олдохгүй мөрүүд — сайт байхгүй бараа зарж байгааг илрүүлнэ.
+// Анхааруулга гаргах утгатай төлвүүд: гүйцэтгэгдэж БОЛОХ захиалга (дамжлага + ноорог).
+// Хаагдсан/архивласан түүхэнд хуучин барааны нэр үлдэх нь ХЭВИЙН — тэнд анхааруулах
+// нь утгагүй бөгөөс хортой: 2026-09-02-нд хэмжихэд 875 анхааруулгын 870 нь хаагдсан
+// захиалгынх байсан. 99% чимээ дунд жинхэнэ 5 тохиолдол булагдана.
+// (_ORDER_OCCUPYING нь доор тодорхойлогддог тул Set-ийг урьдчилж барихгүй — TDZ.)
+function _orderCanStillBeFilled(o) {
+  const st = String((o && o.status) || '');
+  return st === 'draft' || _ORDER_OCCUPYING.includes(st);
+}
 function unmatchedItems(o) {
-  // ⚠ Каталог ачаалагдаагүй байхад дүгнэлт гаргаж БОЛОХГҮЙ — тэр үед бүх хайлт
-  // бүтэлгүйтэж, захиалга бүр дээр худал улаан анхааруулга гарна. Захиалгын хэсэг
-  // нээгдэхэд бараа хойно ачаалагддаг тул энэ нөхцөл бодитоор тохиолддог.
+  // Каталог ачаалагдаагүй байхад дүгнэлт гаргаж БОЛОХГҮЙ — бүх хайлт бүтэлгүйтэж,
+  // захиалга бүр дээр худал анхааруулга гарна (бараа хойно ачаалагддаг).
   if (!state.products || !state.products.length) return [];
-  return ((o && o.items) || []).filter(it => it && it.name && !productOf(it));
+  if (!_orderCanStillBeFilled(o)) return [];
+  return ((o.items) || []).filter(it => it && it.name && !productOf(it));
 }
 function productByName(name) { const n = _normProdName(name); return (state.products || []).find(p => _normProdName(p.name) === n); }
 function isPackage(p) { return !!(p && p.type === 'package'); }

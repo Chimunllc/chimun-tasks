@@ -8128,9 +8128,27 @@ function renderAttendance() {
 // Сарын ажлын норм: өдрийн тоо (app_config['work_norm_days'], default 23) × 8 цаг.
 function workNormDays() { const v = Number(state.appConfig && state.appConfig.work_norm_days); return (v >= 1 && v <= 31) ? v : 23; }
 function workNormMins() { return workNormDays() * 8 * 60; }
+// ── Жолооны нэмэгдэл — хүргэлттэй захиалгад ХҮРГЭЖ ӨГСӨН (delivering→rented) + ХҮРГЭЛТЭЭР
+// БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
+const DRIVER_BONUS_EACH = 10000;
+function driverBonus(key, month, orders) {
+  let deliveries = 0, pickups = 0;
+  for (const o of (orders || state.appOrders || [])) {
+    if (typeof isDeliveryOrder === 'function' && !isDeliveryOrder(o)) continue;   // зөвхөн хүргэлттэй захиалга
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+    const mine = (e) => e && String(e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
+    if (mine(sm.rented)) deliveries++;      // жолооч хүргэж өгсөн
+    if (mine(sm.returning)) pickups++;      // жолооч хүргэлтээр буцаан авсан
+  }
+  const count = deliveries + pickups;
+  return { deliveries, pickups, count, amount: count * DRIVER_BONUS_EACH };
+}
+// Жолоочийн хариуцлагын сануулга (улаан) — ирц/жолооны нэмэгдэл дээр харуулна.
+const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
 // Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
   if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div style="text-align:center;color:var(--muted);padding:30px;">Ачаалж байна…</div>';
+  if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = state.attMonthRecs;
   if (!recs.length) return `<div style="text-align:center;color:var(--muted);padding:30px;">${month} сард ирц бүртгэгдээгүй.</div>`;
   const normDays = workNormDays(), normMins = workNormMins();
@@ -8143,15 +8161,22 @@ function renderAttendanceMonth(month) {
     return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins };
   }).sort((a, b) => b.mins - a.mins);
   const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
+  let anyDriver = false;
   const list = rows.map(r => {
     const pct = normMins ? Math.round(r.mins / normMins * 100) : 0;
     const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
-    return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">
+    const db = driverBonus(r.k, month);
+    if (db.count) anyDriver = true;
+    const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
+    return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
+      <div style="display:flex;align-items:center;gap:12px;">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div></div>`;
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div>
+      </div>${driverLine}</div>`;
   }).join('');
-  return head + `<div>${list}</div>`;
+  const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
+  return head + `<div>${list}</div>${liabilityNote}`;
 }
 // CEO — ажилтан бүрийн ажил эхлэх цаг тохируулах (цаг баримталт хэмжихэд). Хоосон = хэмжигдэхгүй (уян/талбар).
 function openWorkStartModal() {

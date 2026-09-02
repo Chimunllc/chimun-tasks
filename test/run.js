@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -1125,5 +1125,23 @@ function finish() {
     try { const h = RO(); ok(String(h).length > 0, 'захиалгын хэсэг ' + who + '-д рендерлэгдэнэ'); }
     catch (e) { ok(false, 'захиалгын хэсэг ' + who + '-д УНАЛАА: ' + e.message); }
   }
+  // ── driverBonus: хүргэсэн (rented) + авсан (returning) бүрд 10,000₮ (зөвхөн хүргэлттэй захиалга) ──
+  {
+    const orders = [
+      // Хүргэлттэй (DLV token хот): жолооч Бат хүргэж өгсөн + буцаан авсан
+      { note: '⟦DLV|city|0|150000⟧', stage_meta: { rented: { by: 'bat', at: '2026-08-10' }, returning: { by: 'bat', at: '2026-08-12' } } },
+      // Хүргэлттэй: Бат хүргэсэн, өөр хүн авсан
+      { note: '⟦DLV|out|5|50000⟧', stage_meta: { rented: { by: 'bat', at: '2026-08-15' }, returning: { by: 'dorj', at: '2026-08-17' } } },
+      // Хүргэлтгүй (очиж авах): нэмэгдэл тооцохгүй
+      { note: '', stage_meta: { rented: { by: 'bat', at: '2026-08-20' } } },
+    ];
+    const b = F.driverBonus('bat', '2026-08', orders);
+    ok(b.deliveries === 2 && b.pickups === 1, 'driverBonus: 2 хүргэсэн + 1 авсан');
+    ok(b.count === 3 && b.amount === 30000, 'driverBonus: 3 × 10,000 = 30,000');
+    const d = F.driverBonus('dorj', '2026-08', orders);
+    ok(d.count === 1 && d.amount === 10000, 'driverBonus: Дорж 1 авсан = 10,000');
+    ok(F.driverBonus('bat', '2026-07', orders).count === 0, 'driverBonus: өөр сар → 0');
+  }
+
   finish();
 })();

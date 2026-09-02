@@ -6448,3 +6448,13 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .pv-none { background:transparent; color:var(--muted); }
 .pr-note { font-size:11px; color:var(--muted); padding-top:9px; line-height:1.5; }
 .pr-pkg { font-size:10px; font-weight:700; color:#7C3AED; background:#EDE9FE; padding:1px 6px; border-radius:999px; }
+
+/* ── Барааны задаргаа (Түрээсийн түүх) ───────────────────────────────────── */
+.hist-roi-row:hover { background:var(--panel-hover); }
+.hp-modal { max-width:1000px; width:97%; max-height:92vh; overflow:auto; }
+.hp-sum { display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; padding:8px 11px; margin-bottom:7px;
+  background:var(--panel-2,rgba(127,127,127,.07)); border:1px solid var(--border); border-radius:9px; }
+.hp-hint { font-size:11.5px; color:var(--muted); line-height:1.5; margin-bottom:9px; }
+.hp-table td.hp-no { font-weight:700; }
+.hp-table td.hp-cust { max-width:230px; overflow:hidden; text-overflow:ellipsis; }
+.hp-table td.hp-n { text-align:right; }

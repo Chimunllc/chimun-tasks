@@ -16742,7 +16742,7 @@ async function loadHistory(force) {
     // nomaad camp/давхардал/хуучирсан snapshot асуудал арилна. Төлбөрийн хэлбэр л bq_payments-аас
     // (app_orders-д migrate үед method ороогүй) — Booqable түүхэн гэж шошголно.
     const rawOrders = fetchWithTimeout(
-      `${DB_URL}/rest/v1/app_orders?select=id,customer,status,starts_at,stops_at,total_mnt,paid_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
+      `${DB_URL}/rest/v1/app_orders?select=id,number,customer,status,starts_at,stops_at,total_mnt,paid_mnt,deposit_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
     const rawProducts = fetchWithTimeout(
@@ -16767,6 +16767,7 @@ async function loadHistory(force) {
       usage: comp.usage,
       services: comp.services,
       roi: comp.roi,
+      orders: orders || [],   // барааны задаргаанд (histProductOrders) хэрэгтэй
       roiFix: roiFix || null,
       unknownRev: comp.unknownRev,
       unknownCnt: comp.unknownCnt,
@@ -20112,6 +20113,105 @@ function _histCatResolver(prods) {
 // Захиалга бүрийн total_mnt-ыг мөрүүдэд (qty×price жингээр) пропорциональ хуваарилж бараа/
 // үйлчилгээний орлого гаргана → нийлбэр нь захиалгын нийт дүн (= дээд KPI)-тэй тулгарна.
 // Эзэмшсэн тоо/нэгж өртөг = rh_roi_fix (Booqable stock_counts). НӨАТ/барьцаа = бараа биш (хасна).
+// Тухайн барааны БҮХ захиалгыг мөр мөрөөр нь задална — тайлангийн тоо хаанаас
+// гарсныг эргэлзээгүй шалгах боломж («ор үнэхээр ийм их түрээслэгдсэн үү?»).
+// ⚠ Тооцоо нь _histCompute-тэй ЯГ ИЖИЛ байх ЁСТОЙ (нэрээр бүлэглэх, орлогыг
+// захиалгын бодит дүнд тулгах), эс бөгөөс задаргаа нийлбэртэйгээ таарахгүй.
+function histProductOrders(orders, productName) {
+  const N = x => Number(x) || 0;
+  const normP = (s2) => (typeof _normProdName === 'function') ? _normProdName(s2) : String(s2 || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const want = normP(productName);
+  const rows = [];
+  (orders || []).forEach(o => {
+    const items = Array.isArray(o.items) ? o.items : [];
+    const grossAll = items.reduce((s2, i) => s2 + N(i.qty) * N(i.price), 0);
+    const total = N(o.total_mnt);
+    const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
+    items.forEach(i => {
+      if (normP(i.name) !== want) return;
+      const gross = N(i.qty) * N(i.price);
+      rows.push({
+        id: o.id, number: o.number, customer: String(o.customer || '').trim() || '—',
+        starts_at: String(o.starts_at || '').slice(0, 10), status: o.status,
+        qty: N(i.qty), price: N(i.price), gross, days,
+        rev: histLineRevenue(gross, grossAll, total, N(o.deposit_mnt)),
+        orderTotal: total, deposit: N(o.deposit_mnt), grossAll,
+      });
+    });
+  });
+  rows.sort((a, b) => b.rev - a.rev);
+  return {
+    rows,
+    totals: {
+      orders: new Set(rows.map(r => r.id)).size,
+      qty: rows.reduce((s2, r) => s2 + r.qty, 0),
+      gross: rows.reduce((s2, r) => s2 + r.gross, 0),
+      rev: rows.reduce((s2, r) => s2 + r.rev, 0),
+      itemDays: rows.reduce((s2, r) => s2 + r.qty * r.days, 0),
+    },
+  };
+}// Барааны задаргааны цонх — Түрээсийн түүхээс ГАРАЛГҮЙ нээгдэнэ.
+function openHistProductOrders(name) {
+  const src = (state.history && state.history.orders) || state.appOrders || [];
+  const { rows, totals } = histProductOrders(src, name);
+  const money = n => fmtMoney(Math.round(n));
+  document.getElementById('hist-prod-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
+  const body = rows.map(r => `<tr>
+      <td class="hp-no">#${r.number ?? '—'}</td>
+      <td>${escapeHtml(r.starts_at || '—')}</td>
+      <td class="hp-cust">${escapeHtml(r.customer)}</td>
+      <td class="hp-n"><b>${r.qty}</b></td>
+      <td class="hp-n">${money(r.price)}</td>
+      <td class="hp-n">${r.days}</td>
+      <td class="hp-n">${money(r.gross)}</td>
+      <td class="hp-n"><b>${money(r.rev)}</b></td>
+    </tr>`).join('');
+  modal.innerHTML = `<div class="modal hp-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:16px;">📦 ${escapeHtml(name)}</h2>
+      <div style="display:flex;gap:6px;"><button class="btn" id="hp-csv">⬇ Excel</button><button class="btn" id="hp-close" style="padding:5px 10px;">✕</button></div>
+    </div>
+    <div class="hp-sum">
+      <span>Захиалга <b>${totals.orders}</b></span>
+      <span>Ширхэг <b>${totals.qty.toLocaleString('mn-MN')}</b></span>
+      <span>Бараа-өдөр <b>${Math.round(totals.itemDays).toLocaleString('mn-MN')}</b></span>
+      <span>Мөрийн дүн <b>${money(totals.gross)}</b></span>
+      <span>Тайлангийн орлого <b style="color:var(--ok);">${money(totals.rev)}</b></span>
+    </div>
+    <div class="hp-hint">«Тайлангийн орлого» = мөрийн дүн, харин захиалгад <b>хөнгөлөлт</b> байвал хувь тэнцүүлэн буурна. Барьцаа, хүргэлт, нэмэлт төлбөрийг бараанд <b>хуваарилахгүй</b> — тэдгээр нь барааны орлого биш.</div>
+    <div class="pr-wrap"><table class="pr-table hp-table">
+      <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Тоо</th><th>Нэгж үнэ</th><th>Хоног</th><th>Мөрийн дүн</th><th>Тайлангийн орлого</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);">Захиалга олдсонгүй</td></tr>'}</tbody>
+    </table></div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#hp-close').onclick = () => modal.remove();
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('#hp-csv').onclick = () => {
+    const head = ['Захиалга', 'Огноо', 'Харилцагч', 'Төлөв', 'Тоо', 'Нэгж үнэ', 'Хоног', 'Мөрийн дүн', 'Тайлангийн орлого', 'Захиалгын нийт дүн'];
+    const lines = rows.map(r => [r.number, r.starts_at, r.customer, r.status, r.qty, r.price, r.days,
+      Math.round(r.gross), Math.round(r.rev), r.orderTotal].map(csvCell).join(','));
+    const csv = '﻿' + [head.join(','), ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `${String(name).replace(/[^\wа-яА-ЯёЁ\- ]/g, '')}-захиалгууд.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+}
+
+// Захиалгын дүнг мөрүүдэд хуваарилах ЦОРЫН ГАНЦ дүрэм.
+//   • total_mnt дотор БАРЬЦАА, хүргэлт, нэмэлт төлбөр багтдаг — эдгээр нь барааны
+//     орлого БИШ. Тэднийг мөрүүд рүү тараавал бараа хиймлээр өндөр харагдана
+//     (2026-09-02: «Аяны ор» 58.5сая → 69.7сая болж хэтэрч байв; нийтдээ 152сая).
+//   • Иймд: хөнгөлөлт байвал (мөрийн нийлбэр > цэвэр дүн) ХАРЬЦААГААР БУУРУУЛНА;
+//     эсрэг тохиолдолд мөрийн ӨӨРИЙН дүнг авна — өсгөхгүй.
+function histLineRevenue(gross, grossAll, totalMnt, depositMnt) {
+  const g = Number(gross) || 0, ga = Number(grossAll) || 0;
+  const net = Math.max(0, (Number(totalMnt) || 0) - (Number(depositMnt) || 0));
+  if (ga <= 0) return 0;
+  return net < ga ? net * g / ga : g;
+}
 function _histCompute(orders, roiFix, catOf) {
   const N = x => Number(x) || 0;
   const cat = (typeof catOf === 'function') ? catOf : () => 'Бусад';
@@ -20144,7 +20244,7 @@ function _histCompute(orders, roiFix, catOf) {
       const nm = String(i.name || '').trim();
       if (!nm || TAX.test(nm)) return;                    // татвар/барьцаа — бараа биш
       const gross = N(i.qty) * N(i.price);
-      const rev = grossAll > 0 ? total * gross / grossAll : 0;   // захиалгын дүнд тулгарна
+      const rev = histLineRevenue(gross, grossAll, total, N(o.deposit_mnt));   // барьцаа/хүргэлт хасагдана
       const bucket = bqIsService(nm) ? svcs : prods;
       const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';
       const key = 'n:' + normP(nm);   // нэрээр бүлэглэнэ — ижил нэртэй (өөр SKU-тай) бараа нэгдэнэ
@@ -20381,10 +20481,11 @@ function renderHistory() {
         const thumb = x.photo
           ? `<img src="${escapeHtml(x.photo)}" loading="lazy" alt="" style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;object-fit:cover;background:var(--panel-hover);" onerror="this.style.visibility='hidden';">`
           : `<div style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;background:var(--panel-hover);"></div>`;
-        return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;">
+        // Мөр дарахад тухайн барааны БҮХ захиалга задарна (тайлангаас гаралгүй)
+        return `<div class="hist-roi-row" data-hist-prod="${escapeHtml(x.product || '')}" style="display:flex;align-items:center;gap:8px;margin:6px 0;font-size:12px;cursor:pointer;border-radius:7px;padding:2px 4px;" title="Дарж захиалгуудыг харах">
           ${thumb}
           <div style="flex:0 0 38%;min-width:0;">
-            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(x.product || '')}">${escapeHtml(x.product || '—')}</div>
+            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(x.product || '—')} <span style="color:var(--muted);font-size:10px;">🔍</span></div>
             <div style="font-size:10px;color:var(--muted);">${badge} · ${costStr} · ${days.toLocaleString('mn-MN')}ө гадаа</div>
           </div>
           <div style="flex:1;background:var(--panel-hover);border-radius:5px;height:14px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--ok);border-radius:5px;"></div></div>
@@ -20537,6 +20638,9 @@ function attachHistoryHandlers() {
   }));
   document.querySelectorAll('[data-histperiod]').forEach(b => b.addEventListener('click', () => {
     state.histPeriod = b.dataset.histperiod; render();
+  }));
+  document.querySelectorAll('[data-hist-prod]').forEach(b => b.addEventListener('click', () => {
+    openHistProductOrders(b.dataset.histProd);
   }));
 
   // view нээгдэхэд анх удаа татна

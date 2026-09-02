@@ -16411,7 +16411,9 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
-const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧰 Бэлтгэсэн', rented: '🤝 Хүлээлгэн өгсөн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив', revert: '↩ Шат буцаасан' };
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гарсан', deliver: '🚚 Хүргэж өгсөн', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+  // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
+  prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Шатны цаг форматлах — бүтэн цагтай бол огноо+цаг (орон нутгийн), эс бол зөвхөн огноо
 function _stageTimeFmt(atISO) {
   const s = String(atISO || ''); if (!s) return '';

@@ -976,6 +976,41 @@ function finish() {
   eq(SS([{ source: 'booqable' }]).pct, 0, 'хувь: зөвхөн түүх бол 0');
 }
 
+// 40f) Борлуулалтын суваг тайлан — сайт vs ажилтан, 2026-09-аас
+{
+  const AV = vm.runInContext('srcStatsAvailable', sandbox);
+  const CS = vm.runInContext('channelStats', sandbox);
+
+  ok(!AV('2026-08'), 'суваг: 8-р сар харагдахгүй (дата найдваргүй)');
+  ok(!AV('2026-07'), 'суваг: 7-р сар харагдахгүй (CORS-оос захиалга тасарсан)');
+  ok(AV('2026-09'), 'суваг: 9-р сараас эхэлнэ');
+  ok(AV('2026-12'), 'суваг: дараагийн саруудад харагдана');
+  ok(AV('2027-01'), 'суваг: дараа жилд ч харагдана');
+  ok(!AV(''), 'суваг: сар хоосон бол харуулахгүй');
+
+  const rows = [
+    { source: 'm-event-website', total_mnt: 1000, deposit_mnt: 0 },
+    { source: 'm-event-website', total_mnt: 3000, deposit_mnt: 0 },
+    { source: 'app', total_mnt: 2000, deposit_mnt: 0 },
+    { source: '', total_mnt: 4000, deposit_mnt: 0 },
+    { source: 'booqable', total_mnt: 9999, deposit_mnt: 0 },   // түүх — орохгүй
+  ];
+  const cs = CS(rows, 'accrual');
+  eq(cs.site.n, 2, 'суваг: сайтын тоо');
+  eq(cs.staff.n, 2, 'суваг: ажилтны тоо (source хоосон = ажилтных)');
+  eq(cs.n, 4, 'суваг: Booqable нийлбэрт ОРОХГҮЙ');
+  eq(cs.site.inc, 4000, 'суваг: сайтын орлого');
+  eq(cs.site.avg, 2000, 'суваг: сайтын дундаж дүн');
+  eq(cs.staff.avg, 3000, 'суваг: ажилтны дундаж дүн');
+
+  // Барьцаа орлогоос хасагдана (orderRevenue-тэй нийцнэ)
+  const dep = CS([{ source: 'm-event-website', total_mnt: 1000, deposit_mnt: 400 }], 'accrual');
+  eq(dep.site.inc, 600, 'суваг: барьцаа хасагдана');
+
+  eq(CS([], 'accrual').n, 0, 'суваг: хоосонд 0');
+  eq(CS([{ source: 'app', total_mnt: 0 }], 'accrual').staff.avg, 0, 'суваг: 0 дүнд дундаж 0 (тэгд хуваахгүй)');
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

@@ -18325,10 +18325,14 @@ async function buildOrderQuote(o, lang) {
     return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(en ? r.nameEn : r.name)}</span></div></td><td class="ctr">${r.qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(r.price)}</td><td class="rt">${fmtMoney(r.qty * r.price * days)}</td></tr>`;
   }).join('');
   const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
-  // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс ЯГ тооцно.
-  // (Өмнө нь subtotal−total гэж боддог байсан нь хүргэлт/барьцааг хөнгөлөлтөөс хасаж буруу дүн гаргадаг байв.)
+  // Хөнгөлөлт — картын/формтой ИЖИЛ дүрэм: (1) хугацааны шатлалын АВТОМАТ хямдрал (rentalDiscount:
+  // 2+ хоног 20%, 7+ 40%, 30+ 55%) + (2) гар (discount_value) хямдрал. Өмнө зөвхөн discount_value-ийг
+  // авдаг байсан тул автомат хоногийн хямдрал үнийн саналд ОРОХГҮЙ, картын дүнтэй зөрдөг байв.
+  const _tier = (typeof rentalDiscount === 'function') ? rentalDiscount(days) : { pct: 0, label: '' };
+  const _autoDisc = Math.round(subtotal * (_tier.pct || 0));
   const _dval = Number(o.discount_value) || 0;
-  const discount = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
+  const _manualDisc = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
+  const discount = _autoDisc + _manualDisc;
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);

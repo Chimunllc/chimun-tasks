@@ -4141,7 +4141,7 @@ function openOrderDamageModal(oid) {
   const existingDmg = parseDamage(o.note);
   const prevBrk = parseBrokenRec(o.note);
   const rowsHtml = items.map(it => {
-    const p = it.sku ? productBySku(it.sku) : productByName(it.name);
+    const p = productOf(it);   // sku → id → нэр (сайт id-г sku болгож илгээдэг)
     const sku = p ? p.sku : '';
     const maxq = Number(it.qty) || 0;
     const cur = sku ? (prevBrk[sku] || 0) : 0;
@@ -5971,6 +5971,12 @@ function boardOrderRow(e, k, todayStr, flat) {
   // Лог нь stage_meta.quotes: {at, by, amount, to}. Олон удаа илгээж болно.
   // Сайтаас ирсэн захиалгыг ялгана. Ажилтны үүсгэсэн нь ЭНГИЙН тохиолдол тул тэмдэггүй —
   // мөр бүрд тэмдэг тавибал жагсаалт бүрхэг болно.
+  // ⚠ Каталогт олдохгүй бараа — сайт хуучирсан жагсаалтаас зарсан гэсэн үг.
+  // Ийм мөр нөөцөд тооцогдохгүй тул ДАВХАР ЗАХИАЛГЫН эрсдэлтэй. Шууд харагдана.
+  const _bad = unmatchedItems(o);
+  const badChip = _bad.length
+    ? `<span class="br-badchip" title="${escapeHtml(_bad.length + ' бараа каталогт олдсонгүй: ' + _bad.map(x => x.name).join(', ') + ' — нөөцөд тооцогдохгүй, шалгана уу')}">⚠ ${_bad.length}</span>`
+    : '';
   const srcChip = orderSourceKey(o) === 'site'
     ? `<span class="br-srcchip" title="mevent.mn сайтаас ирсэн захиалга">🌐 Сайт</span>` : '';
   const _qs = quotesOf(o);
@@ -6016,11 +6022,11 @@ function boardOrderRow(e, k, todayStr, flat) {
   })() : '';
   return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') + (quoteChip ? ' ' + quoteChip : '') + (srcChip ? ' ' + srcChip : '') : ''}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') + (quoteChip ? ' ' + quoteChip : '') + (srcChip ? ' ' + srcChip : '') + (badChip ? ' ' + badChip : '') : ''}</span>
     ${statusCell}
     ${flat
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
-      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${quoteChip}${srcChip}${cxChip}</span>`}
+      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${quoteChip}${srcChip}${badChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -6741,6 +6747,20 @@ function mountCalendar(displayEl, hiddenEl, popEl, onChange, initial) {
    Дууссан/Цуцалсан = чөлөөтэй (бараа агуулахад буцсан). */
 function _normProdName(s) { return String(s || '').trim().toLowerCase().replace(/\s+/g, ' '); }
 function productBySku(sku) { return (state.products || []).find(p => p.sku === sku); }
+function productById(id) { const k = String(id || ''); return k ? (state.products || []).find(p => String(p.id) === k) : undefined; }
+// ⚠ Захиалгын мөрөөс барааг олох ЦОРЫН ГАНЦ зам. sku → id → нэр гэсэн дарааллаар оролдоно.
+// Яагаад id-г ч шалгадаг вэ: mevent.mn сайт `sku` талбарт барааны `id`-г бичиж илгээдэг
+// (2026-09-02-нд илрүүлэв — сайтын 13 мөрийн 7 нь зөвхөн id-гээр таарсан). Каталогт
+// бүх 308 бараанд id ≠ sku тул зөвхөн sku-гээр хайвал ихэнх нь олдохгүй.
+// Гаднаас ирсэн датанд бүрэн итгэж болохгүй — сайт зөв болсон ч энэ хамгаалалт үлдэнэ.
+function productOf(it) {
+  if (!it) return undefined;
+  return productBySku(it.sku) || productById(it.sku) || productByName(it.name);
+}
+// Каталогт ОГТ олдохгүй мөрүүд — сайт байхгүй бараа зарж байгааг илрүүлнэ.
+function unmatchedItems(o) {
+  return ((o && o.items) || []).filter(it => it && it.name && !productOf(it));
+}
 function productByName(name) { const n = _normProdName(name); return (state.products || []).find(p => _normProdName(p.name) === n); }
 function isPackage(p) { return !!(p && p.type === 'package'); }
 function isService(p) { return !!(p && p.type === 'service'); }   // үйлчилгээ — нөөц/ROI-д ОРОХГҮЙ (хүргэлт, суурилуулалт, оператор г.м.)
@@ -6780,8 +6800,12 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
     if (!_rangesOverlap(s, e, os, oe)) continue;   // огнооны давхцал
     for (const it of (o.items || [])) {
       const q = Number(it.qty) || 0;
-      if (_normProdName(it.name) === n) { total += q; continue; }   // шууд таарах
-      const prod = productByName(it.name);   // багц байвал бүрэлдэхүүн рүү задлана
+      // Каноник нэрээр тааруулна: сайт хуучирсан нэр илгээсэн ч sku/id-гээр таарвал
+      // нөөц ЭЗЭЛНЭ. Өмнө нь зөвхөн түүхий нэрээр таардаг байсан тул сайтын захиалга
+      // сул үлдэгдэлд ороогүй → давхар захиалга үүсэх нүх байв (2026-09-02).
+      const rp = productOf(it);
+      if (_normProdName(rp ? rp.name : it.name) === n) { total += q; continue; }   // шууд таарах
+      const prod = rp;   // багц байвал бүрэлдэхүүн рүү задлана
       if (prod && isPackage(prod)) {
         for (const c of packageComponents(prod)) {
           const cp = productBySku(c.sku);
@@ -16617,7 +16641,7 @@ function openStageAdvanceModal(oid, to) {
   // received дээр «хүлээгдэх тоо» = жолоочийн ХЭРЭГЛЭГЧЭЭС АВСАН тоо (retstart.got); эс бол захиалгын тоо.
   const _prevPick = (act.key === 'received' && _smNow.retstart && Array.isArray(_smNow.retstart.items)) ? _smNow.retstart.items : null;
   const _rcItems = _isReceive ? (o.items || []).filter(it => it && it.name).map(it => {
-    const p = it.sku ? productBySku(it.sku) : productByName(it.name);
+    const p = productOf(it);   // sku → id → нэр (сайт id-г sku болгож илгээдэг)
     const sku = p ? p.sku : (it.sku || '');
     let qty = Math.max(0, Number(it.qty) || 0);
     if (_prevPick) { const pj = _prevPick.find(x => (x.sku && x.sku === sku) || x.name === it.name); if (pj) qty = Math.max(0, Number(pj.got != null ? pj.got : pj.qty) || 0); }
@@ -17508,7 +17532,8 @@ function openNewOrder(editOrder) {
       const qty = Number(it.qty) || 1;
       const a = availOf(it.name);
       const warn = a ? (qty > a.avail ? `<span class="no-item-warn">⚠ ${a.avail} сул</span>` : `<span>✓ ${a.avail} сул</span>`) : '';
-      const ph = it.photo ? `<img src="${escapeHtml(driveThumbUrl(it.photo, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'">` : `<span class="no-item-ph">📦</span>`;
+      const _php = it.photo || (productOf(it) || {}).photo;   // сайт зураг илгээдэггүй — каталогоос нөхнө
+      const ph = _php ? `<img src="${escapeHtml(driveThumbUrl(_php, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'">` : `<span class="no-item-ph">📦</span>`;
       const qtyCtl = _locked ? `<b>${qty} ш</b>`
         : `<span class="no-qty"><button type="button" class="ui-raw" data-iqd="${i}" aria-label="Хасах">−</button><input type="number" class="ui-raw" min="1" value="${qty}" data-iq="${i}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw" data-iqi="${i}" aria-label="Нэмэх">+</button></span>`;
       return `<div class="no-item">${ph}
@@ -18313,7 +18338,7 @@ async function buildOrderQuote(o, lang) {
   // Мөр бүрийн зургийг каталогоос (нэрээр) олж, PDF-д гарахаар data URL болгоно.
   // Нэрийг хэл бүрд тусад нь бэлдэнэ (EN — `name_en` эсвэл толь+галиглал).
   const itemRows0 = await Promise.all(items.map(async (it) => {
-    const prod = productByName(it.name) || {};
+    const prod = productOf(it) || {};
     return {
       qty: Number(it.qty) || 1, price: Number(it.price) || 0,
       name: it.name || '', nameEn: enProdName(prod, it.name || ''),

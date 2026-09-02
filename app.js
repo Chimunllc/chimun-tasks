@@ -12054,7 +12054,7 @@ function canSeeOrderMoney() {
     || can('orders.pay');
 }
 // Гүйцэтгэгч ажилтанд харуулах захиалгын төлвүүд — ноорог/архив/цуцалсан/устгасан хэрэггүй.
-const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'rented', 'returned'];
+const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'rented', 'returning', 'returned'];
 
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
@@ -15896,9 +15896,9 @@ const BQ_STATUS = {
   reserved:    { label: 'Захиалсан',     dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
   prepared:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
   ready:       { label: 'Цэвэрлэсэн',    dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
-  delivering:  { label: 'Хүргэгдэж байна', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
+  delivering:  { label: 'Агуулахаас гарсан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
-  returning:   { label: 'Буцаалт замд', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
+  returning:   { label: 'Хүргэлтээр авсан', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
   returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
@@ -15909,10 +15909,10 @@ const BQ_STATUS = {
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'rented', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'rented', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
 // Хуучин/хассан (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
 // ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана. delivering/returning-г хассан (зам-дундын микро-төлөв).
-const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented', delivering: 'rented', returning: 'returned' };
+const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
 // Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
@@ -15932,20 +15932,30 @@ function isDeliveryOrder(o) {
 }
 // Хялбаршуулсан урсгал: Захиалсан → Бэлдсэн → Түрээсэнд(гарсан) → Буцаан авсан → Архив.
 // (delivering/returning зам-дундын микро-төлөвүүдийг хассан; хуучин төлөв legacy map-аар буулгагдана.)
+// ── ЗАХИАЛГЫН ДАМЖЛАГА (6 шат, 2026-09-02) ────────────────────────────────
+// Өмнө «Гаргах / Хүргэх» нэг товч байсан тул бараа буцаж ирсэн эсэх мөрдөгддөггүй,
+// эргэж ирээгүй бараа алдагдаж байв. Одоо гарах ба буцах тал тус тусдаа шаттай.
+//   Хүргэлттэй:  Бэлдсэн → Цэвэрлэсэн → Агуулахаас гарсан → Хүргэж өгсөн
+//                → Хүргэлтээр авсан → Агуулахад хүлээн авсан
+//   Очиж авах:   Бэлдсэн → Цэвэрлэсэн → Олгосон → Агуулахад хүлээн авсан
+// (4, 5-р шат зөвхөн хүргэлттэй захиалгад гарна.)
 function orderNextStep(o) {
   const st = String((o && o.status) || '');
+  const dlv = (typeof isDeliveryOrder === 'function') ? isDeliveryOrder(o) : false;
   switch (st) {
     case 'reserved':
     case 'preparation':
     case 'cleaning':    return { to: 'prepared', label: '🧰 Бэлдэх',   cap: 'orders.prepare' };
-    // Бэлдэх ба цэвэрлэх нь ТУСДАА алхам (2026-09-01) — өмнө нь нэг алхам болж
-    // нийлсэн байсан тул цэвэрлэгээ тусад нь тэмдэглэгдэж, зурагтай баталгаажихгүй байв.
     case 'prepared':    return { to: 'ready',    label: '🧹 Цэвэрлэх', cap: 'orders.clean' };
-    case 'ready':
-    case 'delivering':  return { to: 'rented',   label: '📦 Гаргах / Хүргэх', cap: 'orders.dispatch' };
+    case 'ready':       return dlv
+      ? { to: 'delivering', label: '📦 Агуулахаас гаргах', cap: 'orders.dispatch' }
+      : { to: 'rented',     label: '📦 Олгох',             cap: 'orders.dispatch' };
+    case 'delivering':  return { to: 'rented',   label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
     case 'rented':
-    case 'started':
-    case 'returning':   return { to: 'returned', label: '📥 Буцаан авах', cap: 'orders.dispatch' };
+    case 'started':     return dlv
+      ? { to: 'returning', label: '🚚 Хүргэлтээр авсан',   cap: 'orders.deliver' }
+      : { to: 'returned',  label: '📥 Агуулахад хүлээн авах', cap: 'orders.dispatch' };
+    case 'returning':   return { to: 'returned', label: '📥 Агуулахад хүлээн авах', cap: 'orders.dispatch' };
     case 'returned':
     case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
     default: return null;
@@ -16084,8 +16094,8 @@ const STAGE_ACTION = {
   'ready>rented':         { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Агуулахаас гаргах',     q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгөх',           q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
-  'rented>returning':     { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
+  'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'rented>returning':     { key: 'retstart', label: 'Хүргэлтээр авсан',      q: 'Хүргэлтээр авсан бараа бүрэн бүтэн байна уу?' },
   'rented>returned':      { key: 'received', label: 'Буцаан хүлээж авах',     q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'started>returning':    { key: 'retstart', label: 'Буцааж авахаар гарах',  q: 'Бараа бүрэн бүтэн байна уу?' },
   'started>returned':     { key: 'received', label: 'Буцаан хүлээж авах',     q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },

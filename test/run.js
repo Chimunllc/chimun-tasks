@@ -686,6 +686,51 @@ function finish() {
   ok(PSQ({ by: 'A', key: 'танихгүй_шат' }).length > 0, 'асуулт: танигдаагүй шатад ерөнхий асуулт');
 }
 
+// 36) 6 шаттай дамжлага — хүргэлттэй ба очиж авах салаа
+{
+  const NS  = vm.runInContext('orderNextStep', sandbox);
+  const SAF = vm.runInContext('stageActionFor', sandbox);
+  const BQS = vm.runInContext('BQ_STATUS', sandbox);
+  const LEG = vm.runInContext('BQ_LEGACY_MAP', sandbox);
+  const STF = vm.runInContext('ORDER_STAFF_STATUSES', sandbox);
+
+  // Хүргэлттэй захиалга — DLV токеноор танина
+  const DLV = (st) => ({ status: st, note: '⟦DLV|city|0|150000⟧' });
+  const PICK = (st) => ({ status: st, note: '⟦DLV|pickup|0|0⟧' });
+
+  // Хүргэлттэй: 6 шат
+  eq(NS(DLV('reserved')).to,   'prepared',   'хүргэлт 1: Захиалсан → Бэлдсэн');
+  eq(NS(DLV('prepared')).to,   'ready',      'хүргэлт 2: Бэлдсэн → Цэвэрлэсэн');
+  eq(NS(DLV('ready')).to,      'delivering', 'хүргэлт 3: Цэвэрлэсэн → Агуулахаас гарсан');
+  eq(NS(DLV('delivering')).to, 'rented',     'хүргэлт 4: Агуулахаас гарсан → Хүргэж өгсөн');
+  eq(NS(DLV('rented')).to,     'returning',  'хүргэлт 5: Хүргэж өгсөн → Хүргэлтээр авсан');
+  eq(NS(DLV('returning')).to,  'returned',   'хүргэлт 6: Хүргэлтээр авсан → Агуулахад хүлээн авсан');
+  eq(NS(DLV('returned')).to,   'archived',   'хүргэлт: дараа нь архив');
+
+  // Очиж авах: 4, 5-р шат ГАРАХГҮЙ
+  eq(NS(PICK('ready')).to,  'rented',   'очиж авах: Цэвэрлэсэн → шууд Олгосон');
+  eq(NS(PICK('rented')).to, 'returned', 'очиж авах: Олгосон → шууд Агуулахад хүлээн авсан');
+
+  // Эрх — шат бүр зөв хүнд
+  eq(NS(DLV('ready')).cap,      'orders.dispatch', 'эрх: агуулахаас гаргах нь нярав');
+  eq(NS(DLV('delivering')).cap, 'orders.deliver',  'эрх: хүргэж өгөх нь жолооч');
+  eq(NS(DLV('rented')).cap,     'orders.deliver',  'эрх: хүргэлтээр авах нь жолооч');
+  eq(NS(DLV('returning')).cap,  'orders.dispatch', 'эрх: агуулахад хүлээн авах нь нярав');
+
+  // Шатны түлхүүр — зураг/үнэлгээ тус тусдаа хадгалагдана
+  eq(SAF('ready', 'delivering').key,   'dispatch', 'түлхүүр: агуулахаас гаргах');
+  eq(SAF('delivering', 'rented').key,  'deliver',  'түлхүүр: хүргэж өгсөн');
+  eq(SAF('rented', 'returning').key,   'retstart', 'түлхүүр: хүргэлтээр авсан');
+  eq(SAF('returning', 'returned').key, 'received', 'түлхүүр: агуулахад хүлээн авсан');
+
+  // Төлөв жинхэнэ болсон эсэх
+  ok(!LEG.delivering, 'төлөв: delivering legacy зураглалаас гарсан');
+  ok(!LEG.returning,  'төлөв: returning legacy зураглалаас гарсан');
+  eq(BQS.delivering.label, 'Агуулахаас гарсан', 'нэр: delivering');
+  eq(BQS.returning.label,  'Хүргэлтээр авсан',  'нэр: returning');
+  ok(STF.includes('delivering') && STF.includes('returning'), 'ажилтан: шинэ шатууд харагдана');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

@@ -1869,5 +1869,33 @@ function finish() {
     need.forEach(f => ok(m && m[1].split(',').includes(f), `түүх: select-д «${f}» талбар байна`));
   }
 
+  // ── nomaadExpiredLead: төлбөрийг nomaadPaid()-ээр шалгана ──
+  // (Хугацаа хэтэрсэн ТӨЛСӨН захиалга "автомат больсон" болж жагсаалт/календарь/badge-аас
+  //  алга болдог байв — running total (income_amount) хадгалагдалгүй, төлбөр зөвхөн логт байхад.)
+  {
+    const st = vm.runInContext('state', sandbox);
+    const expired = vm.runInContext('nomaadExpiredLead', sandbox);
+    const cancelled = vm.runInContext('nomaadIsCancelled', sandbox);
+    const savedPays = st.nomaadPayments;
+    const past = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const future = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+
+    st.nomaadPayments = { Q1: [{ total: 900000, pay_date: past }] };
+    const paidViaLog = { quote_no: 'Q1', status: 'ИЛГЭЭСЭН', date_start: past, income_amount: 0, income_advance: 0 };
+    ok(!expired(paidViaLog), 'NOMAAD үхсэн санал: логоор төлсөн захиалга больсон болохгүй');
+    ok(!cancelled(paidViaLog), 'NOMAAD: логоор төлсөн захиалга жагсаалтаас алга болохгүй');
+
+    const paidViaField = { quote_no: 'Q2', status: 'ИЛГЭЭСЭН', date_start: past, income_amount: 500000 };
+    ok(!expired(paidViaField), 'NOMAAD үхсэн санал: income_amount-тай нь мөн больсон болохгүй');
+
+    const unpaidPast = { quote_no: 'Q3', status: 'ИЛГЭЭСЭН', date_start: past, income_amount: 0, income_advance: 0 };
+    ok(expired(unpaidPast), 'NOMAAD үхсэн санал: хугацаа хэтэрсэн, төлбөргүй = больсон');
+
+    const unpaidFuture = { quote_no: 'Q4', status: 'ИЛГЭЭСЭН', date_start: future, income_amount: 0 };
+    ok(!expired(unpaidFuture), 'NOMAAD үхсэн санал: ирээдүйн огноо больсон биш');
+
+    st.nomaadPayments = savedPays;
+  }
+
   finish();
 })();

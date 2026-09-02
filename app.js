@@ -13139,7 +13139,11 @@ function nomaadExpiredLead(o) {
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return false;
   if (su.includes('ДУУССАН') || su.includes('ГҮЙЦЭТГЭСЭН')) return false;
   if (su.includes('ГЭРЭЭ') || String(o && o.contract_date || '').trim()) return false;
-  if ((Number(o && o.income_amount) || 0) > 0 || (Number(o && o.income_advance) || 0) > 0) return false;
+  // Төлбөрийг nomaadPaid()-ээр шалгана: зарим захиалгад running total (income_amount)
+  // хадгалагдалгүй гацдаг ба төлбөр зөвхөн nomaadPayments логт байдаг. Түүхий талбар
+  // уншвал ТӨЛСӨН захиалга "хугацаа хэтэрсэн, төлбөргүй" гэж автоматаар больсонд тооцогдож
+  // жагсаалт/календарь/badge-аас алга болно.
+  if (nomaadPaid(o) > 0 || (Number(o && o.income_advance) || 0) > 0) return false;
   const dl = nomaadDaysLeft(o && o.date_start);
   return dl != null && dl < 0;
 }

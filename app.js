@@ -5916,7 +5916,7 @@ const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', deliver
 // bucketOf энд харагдах статусууд нь нормчилсон (BQ_LEGACY_MAP) канон, гэхдээ хуучнаа ч багтаав.
 const ORDER_BUCKETS = [
   { key: 'draft',    label: 'Ноорог',      icon: '📝', dot: '#6B7280', st: ['draft'] },
-  { key: 'active',   label: 'Захиалсан',   icon: '📋', dot: '#D97706', st: ['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'started', 'rented', 'returning'] },
+  { key: 'active',   label: 'Захиалсан',   icon: '📋', dot: '#D97706', st: ['reserved', 'preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'installing', 'started', 'rented', 'teardown', 'returning'] },
   { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
   { key: 'archived', label: 'Архивласан',  icon: '🗄', dot: '#475569', st: ['archived'] },
   { key: 'canceled', label: 'Цуцалсан',    icon: '✕', dot: '#DC2626', st: ['canceled'] },
@@ -5945,7 +5945,7 @@ function orderCanonStatus(ao) {
   if (!BQ_STATUS[raw] && !_seenBadStatus.has(raw)) { _seenBadStatus.add(raw); try { console.warn('[orders] танигдахгүй захиалгын төлөв:', raw); } catch (_) {} }
   return raw;
 }
-const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
+const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', setup: '🔧 Суурилуулах', teardown: '🧱 Буулгах', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
 // Харилцагчийн аватар — нэрнээс тогтмол өнгө + эхний үсэг(үүд)
 const _AV_COLORS = ['#6d4aff', '#0ea5e9', '#16a34a', '#f59e0b', '#e11d48', '#8b5cf6', '#0891b2', '#db2777'];
 function _avColor(s) { let h = 0; const t = String(s || '?'); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0; return _AV_COLORS[h % _AV_COLORS.length]; }
@@ -8908,6 +8908,7 @@ const PERM_MENUS = [
       { key: 'orders.clean',    label: 'Цэвэрлэх (цэвэрлэгч)' },
       { key: 'orders.dispatch', label: 'Гаргах / Олгох (нярав)' },
       { key: 'orders.deliver',  label: 'Хүргэж өгөх (хүргэгч)' },
+      { key: 'orders.setup',    label: 'Суурилуулах / буулгах (угсрагч)' },
       { key: 'orders.advance',  label: 'Архивлах / бусад шилжүүлэх' },
       { key: 'orders.skip',     label: 'Шат алгасах (шалтгаантай)' },
       { key: 'orders.revert',   label: 'Шат буцаах' },
@@ -8931,19 +8932,19 @@ const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
-const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
-  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
+  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
   // Агуулахын АХЛАХ / нярав — бараа засах эрхтэй (үнэ, өртөг, нөөц)
   [/нярав|агуулахын\s*ахлах|агуулахын\s*менежер/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
   // Энгийн агуулахын ажилтан — бараагаа ХАРНА, засахгүй (үнэ/өртөг санхүүгийн мэдээлэл)
   [/агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch'] }],
   [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)
-  [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.clean', 'orders.deliver'] }], // захиалга ХАРНА + өөрийн шат (хүргэх)
+  [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.clean', 'orders.deliver', 'orders.setup'] }], // захиалга ХАРНА + өөрийн шат (хүргэх/угсрах)
   [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering', 'orders'], actions: ['orders.clean'] }],
   [/маркетинг|market|дизайн|контент/, { views: ['marketing'], actions: [] }],
 ];
@@ -12306,7 +12307,7 @@ function canSeeOrderMoney() {
     || can('orders.pay');
 }
 // Гүйцэтгэгч ажилтанд харуулах захиалгын төлвүүд — ноорог/архив/цуцалсан/устгасан хэрэггүй.
-const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'rented', 'returning', 'returned'];
+const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned'];
 
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
@@ -15086,6 +15087,8 @@ const STAGE_PREV_Q = {
   dispatch: 'Агуулахаас гаргасан ачаа бүрэн, эвдрэлгүй байсан уу?',
   handover: 'Хүлээлгэж өгсөн бараа бүрэн байсан уу?',
   deliver:  'Хүргэлт цаг хугацаандаа, бүрэн хийгдсэн үү?',
+  setup:    'Суурилуулалт/угсралт бүрэн, аюулгүй хийгдсэн үү?',
+  teardown: 'Буулгалт эмх цэгцтэй, бараа гэмтээгүй хийгдсэн үү?',
   retstart: 'Хүргэлтээс буцаан авсан бараа бүрэн бүтэн байсан уу?',
   received: 'Хүлээн авсан бараа бүрэн, эвдрэлгүй байсан уу?',
 };
@@ -16223,6 +16226,8 @@ const BQ_STATUS = {
   ready:       { label: 'Бэлдсэн',       dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
   delivering:  { label: 'Агуулахаас гаргасан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
+  installing:  { label: 'Хүргэсэн',       dot: '#EA580C', bg: '#FFEDD5', tx: '#9A3412' },
+  teardown:    { label: 'Буулгасан',      dot: '#A16207', bg: '#FEF9C3', tx: '#854D0E' },
   returning:   { label: 'Хүргэлтээр авсан', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
   returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
@@ -16234,7 +16239,7 @@ const BQ_STATUS = {
   started:     { label: 'Гарсан',        dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   stopped:     { label: 'Дууссан',       dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
 };
-const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'rented', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
+const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering', 'installing', 'rented', 'teardown', 'returning', 'returned', 'stopped', 'archived', 'canceled', 'deleted'];
 // Хуучин/хассан (legacy) төлөвийг одоогийн урсгалын төлөв рүү буулгана — эс бол тэдгээр захиалга
 // ямар ч табд таарахгүй зөвхөн "Бүгд"-д харагдана. delivering/returning-г хассан (зам-дундын микро-төлөв).
 const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented' };
@@ -16255,6 +16260,26 @@ function isDeliveryOrder(o) {
   if (String((o && (o.delivery_address || o.customer_address)) || '').trim()) return true;   // хаягтай
   return orderHasDeliveryItem(o);   // хуучин захиалга — хүргэлт нь бараа мөр
 }
+// ── Суурилуулалт / угсралт (⟦SET|0|1⟧ note token) ──────────────────────────
+// Тайз, майхан, гэрэлтүүлэг г.м. газар дээр угсардаг захиалгад дамжлагад ХОЁР
+// нэмэлт шат нээгдэнэ: 🔧 Суурилуулсан (эвентийн өмнө) ба 🧱 Буулгасан (дараа).
+// Сандал-ширээ зөөх энгийн захиалгад ЭНЭ ШАТ ГАРАХГҮЙ — дамжлага уртсаад ажилчид
+// алгасаж эхлэхээс сэргийлнэ. Захиалгын формын шалгах нүд нь token-ыг бичнэ;
+// token байхгүй бол үнийн мөрөөс («суурилуулалт», «угсралт») автоматаар танина.
+const _SET_RE = /⟦SET\|([01])⟧/;
+const _SETUP_ITEM_RE = /суурилуул|угсрал|угсра[хл]|монтаж/i;
+function setupFlagOf(note) { const m = String(note || '').match(_SET_RE); return m ? m[1] === '1' : null; }
+function encodeSetup(on) { return `⟦SET|${on ? 1 : 0}⟧`; }
+function orderHasSetupItem(o) {
+  return (o && Array.isArray(o.items) ? o.items : []).some(it => _SETUP_ITEM_RE.test(String((it && it.name) || '')));
+}
+// Захиалгад суурилуулалтын шат гарах уу — гараар тэмдэглэсэн нь давуу, эс бол бараа мөрөөр.
+function orderNeedsSetup(o) {
+  if (!o) return false;
+  const f = setupFlagOf(o.note);
+  if (f !== null) return f;
+  return orderHasSetupItem(o);
+}
 // Хялбаршуулсан урсгал: Захиалсан → Бэлдсэн → Түрээсэнд(гарсан) → Буцаан авсан → Архив.
 // (delivering/returning зам-дундын микро-төлөвүүдийг хассан; хуучин төлөв legacy map-аар буулгагдана.)
 // ── ЗАХИАЛГЫН ДАМЖЛАГА (6 шат, 2026-09-02) ────────────────────────────────
@@ -16267,6 +16292,8 @@ function isDeliveryOrder(o) {
 function orderNextStep(o) {
   const st = String((o && o.status) || '');
   const dlv = (typeof isDeliveryOrder === 'function') ? isDeliveryOrder(o) : false;
+  // Суурилуулалт зөвхөн ХҮРГЭЛТТЭЙ захиалгад — очиж авсан бараанд бид угсрахгүй.
+  const setup = dlv && (typeof orderNeedsSetup === 'function') && orderNeedsSetup(o);
   switch (st) {
     case 'reserved':
     case 'preparation':
@@ -16275,11 +16302,18 @@ function orderNextStep(o) {
     case 'ready':       return dlv
       ? { to: 'delivering', label: '📦 Агуулахаас гаргасан',  cap: 'orders.dispatch' }
       : { to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
-    case 'delivering':  return { to: 'rented',   label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+    case 'delivering':  return setup
+      ? { to: 'installing', label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' }
+      : { to: 'rented',     label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
+    // Газар дээр угсрах — эвент эхлэхийн ӨМНӨХ эцсийн байдал (зураг = үйлчлүүлэгчид харагдах нотолгоо)
+    case 'installing':  return { to: 'rented', label: '🔧 Суурилуулсан', cap: 'orders.setup' };
     case 'rented':
-    case 'started':     return dlv
+    case 'started':     return setup
+      ? { to: 'teardown',  label: '🧱 Буулгасан',          cap: 'orders.setup' }
+      : dlv
       ? { to: 'returning', label: '↩️ Хүргэлтээс авсан',   cap: 'orders.deliver' }
       : { to: 'returned',  label: '📥 Агуулахад авсан',    cap: 'orders.dispatch' };
+    case 'teardown':    return { to: 'returning', label: '↩️ Хүргэлтээс авсан', cap: 'orders.deliver' };
     case 'returning':   return { to: 'returned', label: '📥 Агуулахад авсан', cap: 'orders.dispatch' };
     case 'returned':
     case 'stopped':     return { to: 'archived', label: '🗄 Архивлах', cap: 'orders.advance' };
@@ -16420,6 +16454,10 @@ const STAGE_ACTION = {
   'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'delivering>installing':{ key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
+  'installing>rented':    { key: 'setup',    label: 'Суурилуулсан',          q: 'Ачаа бүрэн, эвдрэлгүй ирсэн үү?' },
+  'rented>teardown':      { key: 'teardown', label: 'Буулгасан',             q: null },
+  'teardown>returning':   { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Буулгалт эмх цэгцтэй хийгдсэн үү?' },
   'rented>returning':     { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
   'rented>returned':      { key: 'received', label: 'Агуулахад авсан',       q: 'Бараа гэмтэлгүй, бүрэн буцаж ирсэн үү?' },
   'started>returning':    { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Бараа бүрэн бүтэн байна уу?' },
@@ -16429,7 +16467,7 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', setup: '🔧 Суурилуулсан', teardown: '🧱 Буулгасан', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг
@@ -16440,6 +16478,8 @@ const STAGE_HELP_Q = {
   dispatch: 'Ачих/гаргахад хамт ажилласан хүн байсан уу?',
   handover: 'Хүлээлгэж өгөхөд хамт ажилласан хүн байсан уу?',
   deliver:  'Хүргэлтэд хамт явсан хүн байсан уу?',
+  setup:    'Суурилуулалтад хамт ажилласан хүн байсан уу?',
+  teardown: 'Буулгалтад хамт ажилласан хүн байсан уу?',
   retstart: 'Буцаан авахад хамт явсан хүн байсан уу?',
   received: 'Хүлээн авахад хамт ажилласан хүн байсан уу?',
 };
@@ -16484,7 +16524,7 @@ function stageMetaHtml(o) {
   // Дэс дараалал нь мэдэгдэж буй шатуудаар, гэхдээ ТАНИГДААГҮЙ түлхүүрийг ч
   // харуулна — эс бөгөөс шатны нэр өөрчлөгдөхөд зураг чимээгүй нуугдана
   // (2026-09-01: 'prepared' түлхүүрт хадгалагдсан зураг ингэж алдагдаж байсан).
-  const ORDER = ['prepare', 'clean', 'dispatch', 'handover', 'deliver', 'retstart', 'received', 'archive'];
+  const ORDER = ['prepare', 'clean', 'dispatch', 'handover', 'deliver', 'setup', 'teardown', 'retstart', 'received', 'archive'];
   const has = k => {
     const e = sm[k];
     if (!e || typeof e !== 'object' || Array.isArray(e)) return false;   // stage_meta.quotes гэх мэт массивыг хасна
@@ -17288,6 +17328,7 @@ function openNewOrder(editOrder) {
   const today = new Date().toISOString().slice(0, 10);
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
+  const _setup0 = isEdit ? orderNeedsSetup(editOrder) : false;   // суурилуулалтын шат гарах уу
   const _ci0 = isEdit ? custInfoOf(editOrder.note) : {};   // байгууллага/РД/FB/Viber/газрын зураг
   const _rcpts0 = isEdit ? parsePaidRef(editOrder.paid_ref) : [];   // бүртгэсэн банкны баримтууд
   // Байгууллага/РД хоосон бол авто санал: 1) НӨАТ баримт (нэр+РД), 2) банкны төлөгч (нэр, харилцагчаас ӨӨР бол)
@@ -17352,6 +17393,10 @@ function openNewOrder(editOrder) {
       <label class="no-lbl" id="no-addr-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">Хүргэх хаяг<input id="no-addr" value="${escapeHtml(isEdit ? (editOrder.delivery_address || '') : '')}" placeholder="Дүүрэг, хороо, байр, орц"></label>
       <label class="no-lbl" id="no-maps-wrap" style="margin-top:6px;${_dlv0.zone === 'pickup' ? 'display:none;' : ''}">📍 Google Maps байршил<input id="no-maps" value="${escapeHtml(_ci0.maps || '')}" placeholder="Google Maps линк эсвэл координат (57.9,106.9)"></label>
       <div id="no-delivfee-row" class="no-sum-row muted" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};margin-top:6px;"><span>Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
+      <label class="no-lbl" id="no-setup-wrap" style="margin-top:8px;align-items:center;gap:7px;display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};cursor:pointer;">
+        <input type="checkbox" id="no-setup"${_setup0 ? ' checked' : ''} style="width:16px;height:16px;flex:0 0 auto;">
+        <span>🔧 Суурилуулалт / угсралт хийнэ <span style="color:var(--muted);font-weight:400;font-size:11.5px;">— дамжлагад «Суурилуулсан» ба «Буулгасан» шат нэмэгдэнэ</span></span>
+      </label>
     </div>
     </div>
     <div class="no-col no-col-b">
@@ -17539,6 +17584,7 @@ function openNewOrder(editOrder) {
     $('#no-addr-wrap').style.display = z === 'pickup' ? 'none' : '';
     const _mw = $('#no-maps-wrap'); if (_mw) _mw.style.display = z === 'pickup' ? 'none' : '';
     $('#no-delivfee-row').style.display = z === 'pickup' ? 'none' : 'flex';
+    const _sw = $('#no-setup-wrap'); if (_sw) _sw.style.display = z === 'pickup' ? 'none' : 'flex';
     recalc();
   });
   $('#no-delivkm').addEventListener('input', recalc);
@@ -17638,7 +17684,7 @@ function openNewOrder(editOrder) {
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
-      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
+      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(isDeliv && !!(($('#no-setup') || {}).checked)) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };

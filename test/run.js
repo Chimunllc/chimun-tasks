@@ -1304,5 +1304,49 @@ function finish() {
     ok(pick.length === 1 && pick[0].name === 'Үндсэн Б', 'хамтрагч: цагийн ба гарсан ажилтан жагсаалтад ороогүй');
   }
 
+  // ── Суурилуулалт / угсралтын дамжлага (⟦SET⟧) ──
+  {
+    const dlv = '⟦DLV|city|0|150000⟧';
+    const plain   = { note: dlv, items: [{ name: 'Сандал', qty: 10 }] };
+    const withSet = { note: dlv + ' ⟦SET|1⟧', items: [{ name: 'Тайз', qty: 1 }] };
+    const byItem  = { note: dlv, items: [{ name: 'Тайзны суурилуулалт', qty: 1 }] };
+    const offFlag = { note: dlv + ' ⟦SET|0⟧', items: [{ name: 'Тайзны суурилуулалт', qty: 1 }] };
+    const pickup  = { note: '⟦SET|1⟧', items: [{ name: 'Тайз', qty: 1 }] };
+
+    ok(F.orderNeedsSetup(withSet) === true, 'setup: ⟦SET|1⟧ тэмдэгтэй бол тийм');
+    ok(F.orderNeedsSetup(byItem) === true, 'setup: «суурилуулалт» бараа мөрөөр авто танина');
+    ok(F.orderNeedsSetup(offFlag) === false, 'setup: гараар унтраасан нь бараа мөрөөс ДАВУУ');
+    ok(F.orderNeedsSetup(plain) === false, 'setup: энгийн захиалгад шат гарахгүй');
+
+    const step = (o, st) => F.orderNextStep(Object.assign({}, o, { status: st }));
+    // Суурилуулалттай: Хүргэсэн → 🔧 Суурилуулах → түрээс → 🧱 Буулгах → буцаан авах
+    ok(step(withSet, 'delivering').to === 'installing', 'setup: хүргэсний дараа installing');
+    ok(step(withSet, 'installing').to === 'rented', 'setup: суурилуулсны дараа түрээс');
+    ok(step(withSet, 'installing').cap === 'orders.setup', 'setup: суурилуулах эрх = orders.setup');
+    ok(step(withSet, 'rented').to === 'teardown', 'setup: түрээсийн дараа буулгах');
+    ok(step(withSet, 'teardown').to === 'returning', 'setup: буулгасны дараа буцаан авах');
+    // Суурилуулалтгүй хүргэлт — хуучин урсгал хэвээр
+    ok(step(plain, 'delivering').to === 'rented', 'setup: энгийн хүргэлт → шууд түрээс');
+    ok(step(plain, 'rented').to === 'returning', 'setup: энгийн хүргэлт → шууд буцаан авах');
+    // Очиж авах захиалгад суурилуулалт гарахгүй (бид угсрахгүй)
+    ok(step(pickup, 'ready').to === 'rented', 'setup: очиж авах захиалгад шат нэмэгдэхгүй');
+
+    // Шатны нэр, асуулт бүрэн бүртгэгдсэн эсэх
+    // const-ууд sandbox объектод наалддаггүй тул context дотроос уншина
+    const G = n => vm.runInContext(n, sandbox);
+    ok(G('STAGE_ACTION')['installing>rented'].key === 'setup', 'setup: STAGE_ACTION зураглал');
+    ok(G('STAGE_ACTION')['rented>teardown'].key === 'teardown', 'teardown: STAGE_ACTION зураглал');
+    ok(!!G('STAGE_META_LABEL').setup && !!G('STAGE_META_LABEL').teardown, 'setup: түүхийн нэр бий');
+    ok(F.stageHelpQuestion('setup').includes('Суурилуулалт'), 'setup: хамтрагчийн асуулт тодорхой');
+    ok(!!G('STAGE_PREV_Q').setup && !!G('STAGE_PREV_Q').teardown, 'setup: үнэлгээний асуулт бий');
+    const _ss = G('ORDER_STAFF_STATUSES');
+    ok(_ss.includes('installing') && _ss.includes('teardown'), 'setup: шинэ төлөв ажилтанд харагдана');
+    ok(F.bucketOf('installing') === 'active' && F.bucketOf('teardown') === 'active',
+       'setup: шинэ төлөв «Захиалсан» бүлэгт');
+    ok(!!G('BQ_STATUS').installing && !!G('BQ_STATUS').teardown, 'setup: төлөвийн badge бий');
+    // ⟦SET⟧ token нь cleanAppNote-д арилдаг (засварлахад давхардахгүй)
+    ok(F.cleanAppNote('Тэмдэглэл ' + F.encodeSetup(true)).trim() === 'Тэмдэглэл', 'setup: token тэмдэглэлээс арилна');
+  }
+
   finish();
 })();

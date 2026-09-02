@@ -5686,7 +5686,7 @@ function boardOrderRow(e, k, todayStr, flat) {
   const _depRet = _depAmt > 0 ? depositReturnState(o) : null;
   const depWarn = _depAmt > 0
     ? (_depRet ? `<span class="br-depchip dep-ret" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан'}">✓ Буцаасан</span>`
-      : (!!o._app ? `<span class="br-depchip dep-hold" title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй">🔒 Барьцаатай</span>` : ''))
+      : (!!o._app ? `<span class="br-depchip dep-hold"${canSeeOrderMoney() ? ` title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй"` : ' title="Барьцаатай захиалга"'}>🔒 Барьцаатай</span>` : ''))
     : '';
   const id = escapeHtml(String(o.id));
   // Мөрийн үйлдэл товч = ТӨЛБӨР АВАХ (үлдэгдэлтэй үед шууд төлбөрийн модал нээнэ).
@@ -5711,7 +5711,9 @@ function boardOrderRow(e, k, todayStr, flat) {
   // харах тоо тайлантай таарна. Мөрөнд задаргаа БИЧИХГҮЙ — зөвхөн 🔒 Барьцаатай тэмдэглэгээ; нийт
   // авах төлбөр захиалгыг дэлгэхэд харагдана. «✓ Төлсөн / ◐ Дутуу» ХЭВЭЭР нийт дүнгээр (хуулга тулгалт).
   const _rev = (e && e.rev != null) ? e.rev : (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : _tot);
-  const payPill = _tot <= 0 ? '<span class="br-pay none">—</span>'
+  const _money = canSeeOrderMoney();
+  const payPill = !_money ? ''
+    : _tot <= 0 ? '<span class="br-pay none">—</span>'
     : _paid >= _tot ? '<span class="br-pay paid">✓ Төлсөн</span>'
     : _paid > 0 ? '<span class="br-pay part">◐ Дутуу</span>'
     : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр авах" товч өөрөө илэрхийлнэ)
@@ -5730,7 +5732,7 @@ function boardOrderRow(e, k, todayStr, flat) {
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
       : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
-    <span class="br-amt"${_rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${fmtMoney(_rev)}</span>
+    <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
   </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
 }
@@ -5979,7 +5981,10 @@ function renderOrders() {
   </div>`;
 
   // Төлөв таб (6 төлөв, нэгдсэн тоо) + он-сар филтер + хайлт + харагдац
-  const tabs = [{ key: 'all', label: 'Бүгд' }].concat(BQ_STATUS_ORDER.map(k => ({ key: k, label: BQ_STATUS[k].label })));
+  // Гүйцэтгэгч ажилтанд ноорог/дууссан/архив/цуцалсан/устгасан таб хэрэггүй —
+  // зөвхөн ажил хийх шаардлагатай захиалгууд.
+  const _tabKeys = canSeeOrderMoney() ? BQ_STATUS_ORDER : BQ_STATUS_ORDER.filter(k => ORDER_STAFF_STATUSES.includes(k));
+  const tabs = [{ key: 'all', label: 'Бүгд' }].concat(_tabKeys.map(k => ({ key: k, label: BQ_STATUS[k].label })));
   // Идэвхтэй дамжлагын шатууд — захиалга байхгүй байсан ч ҮРГЭЛЖ харуулна (бүрэн урсгал харагдана)
   const _PIPE_TABS = new Set(['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned']);
   const tabsHtml = tabs.map(t => {
@@ -6066,8 +6071,9 @@ function renderOrders() {
   const CAP = 200;
   // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
   const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
-  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span><span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span><span></span></div>`;
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
+  const _seeMoney = canSeeOrderMoney();
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length
@@ -11923,6 +11929,17 @@ function depositMatchForStmt(memo, amount) {
   return null;
 }
 // Ашгийн мөр зөвхөн бүх санхүүг хардаг хүнд (ажилтанд зөвхөн өөрийн хүсэлт ирдэг тул дутуу дүн харагдана)
+// Захиалгын МӨНГӨН дүн харах эрх. Агуулах/цэвэрлэгч/жолооч зэрэг гүйцэтгэгч
+// ажилтанд захиалгын дүн, төлбөрийн байдал ХАРАГДАХГҮЙ — тэдэнд зөвхөн юу, хэзээ,
+// хаана хийх нь хэрэгтэй. Санхүүгийн нууцлал.
+function canSeeOrderMoney() {
+  return state.isCEO
+    || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())
+    || can('orders.pay');
+}
+// Гүйцэтгэгч ажилтанд харуулах захиалгын төлвүүд — ноорог/архив/цуцалсан/устгасан хэрэггүй.
+const ORDER_STAFF_STATUSES = ['reserved', 'prepared', 'ready', 'rented', 'returned'];
+
 function canSeeProfit() { return state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance()); }
 function nomaadCardHtml(o) {
   const q = escapeHtml(o.quote_no);
@@ -17122,10 +17139,11 @@ function bqOrderCard(o) {
   const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
+  const _cardMoney = canSeeOrderMoney();   // гүйцэтгэгч ажилтанд мөнгөн дүн харагдахгүй
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div><div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(total)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div></div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(total)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
@@ -17134,8 +17152,10 @@ function bqOrderCard(o) {
     ${offMeta}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
-    ${payPanel}
-    ${_dep > 0 ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>` : ''}
+    ${_cardMoney ? payPanel : ''}
+    ${_dep > 0 ? (_cardMoney
+      ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>`
+      : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}

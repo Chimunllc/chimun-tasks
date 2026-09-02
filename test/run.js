@@ -550,6 +550,36 @@ function finish() {
   st.me = savedMe; st.user = savedUser; st._wtOverrides = savedOv;
 }
 
+// 31) Гүйцэтгэгч ажилтанд мөнгө/илүүц таб харагдахгүй
+{
+  const st  = vm.runInContext('state', sandbox);
+  const SEE = vm.runInContext('canSeeOrderMoney', sandbox);
+  const STF = vm.runInContext('ORDER_STAFF_STATUSES', sandbox);
+  const ORD = vm.runInContext('BQ_STATUS_ORDER', sandbox);
+
+  const savedCEO = st.isCEO, savedMe = st.me, savedMp = st.memberPerms, savedRp = st.rolePerms;
+  st.isCEO = false; st.me = 'W1'; st.rolePerms = {};
+
+  st.memberPerms = { W1: { 'orders.pay': false } };
+  ok(!SEE(), 'нууцлал: orders.pay эрхгүй ажилтанд дүн харагдахгүй');
+
+  st.memberPerms = { W1: { 'orders.pay': true } };
+  ok(SEE(), 'нууцлал: orders.pay эрхтэй хүн дүн харна');
+
+  st.memberPerms = {}; st.isCEO = true;
+  ok(SEE(), 'нууцлал: CEO үргэлж харна');
+  st.isCEO = false;
+
+  // Ажилтанд харагдах табууд — ноорог/архив/цуцалсан/устгасан БАЙХГҮЙ
+  ['draft', 'archived', 'canceled', 'deleted', 'stopped'].forEach(k =>
+    ok(!STF.includes(k), `таб: «${k}» гүйцэтгэгчид харагдахгүй`));
+  ['reserved', 'prepared', 'ready', 'rented', 'returned'].forEach(k =>
+    ok(STF.includes(k), `таб: «${k}» гүйцэтгэгчид харагдана`));
+  STF.forEach(k => ok(ORD.includes(k), `таб: «${k}» нь бодит төлөв мөн`));
+
+  st.isCEO = savedCEO; st.me = savedMe; st.memberPerms = savedMp; st.rolePerms = savedRp;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

@@ -951,6 +951,31 @@ function finish() {
   ok(OA({ status: 'reserved' }), 'боломжит: баталгаажсан захиалга орно');
 }
 
+// 40e) Захиалгын эх сурвалж — сайт уу, ажилтан уу
+{
+  const SK = vm.runInContext('orderSourceKey', sandbox);
+  const SS = vm.runInContext('siteShare', sandbox);
+
+  eq(SK({ source: 'm-event-website' }), 'site', 'эх: m-event-website → сайт');
+  eq(SK({ source: 'M-Event-Website' }), 'site', 'эх: том жижиг үсэг хамаарахгүй');
+  eq(SK({ source: 'booqable' }), 'booqable', 'эх: booqable → түүхэн');
+  eq(SK({ source: 'app' }), 'app', 'эх: app → ажилтан');
+  eq(SK({}), 'app', 'эх: талбар хоосон бол ажилтных гэж үзнэ');
+
+  const rows = [
+    { source: 'm-event-website' }, { source: 'm-event-website' },
+    { source: 'app' }, { source: 'app' }, { source: '' },
+    { source: 'booqable' }, { source: 'booqable' }, { source: 'booqable' },
+  ];
+  const sh = SS(rows);
+  eq(sh.site, 2, 'хувь: сайтын тоо');
+  eq(sh.total, 5, 'хувь: Booqable түүх хуваарьт ОРОХГҮЙ');
+  eq(sh.pct, 40, 'хувь: 2/5 = 40%');
+
+  eq(SS([]).pct, 0, 'хувь: хоосонд 0 (тэгд хуваахгүй)');
+  eq(SS([{ source: 'booqable' }]).pct, 0, 'хувь: зөвхөн түүх бол 0');
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

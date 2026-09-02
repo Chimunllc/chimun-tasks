@@ -5969,6 +5969,10 @@ function boardOrderRow(e, k, todayStr, flat) {
     : '';
   // Илгээсэн үнийн санал — жагсаалтаас шууд харагдана (өмнө зөвхөн «✎ Засах» цонхонд байсан).
   // Лог нь stage_meta.quotes: {at, by, amount, to}. Олон удаа илгээж болно.
+  // Сайтаас ирсэн захиалгыг ялгана. Ажилтны үүсгэсэн нь ЭНГИЙН тохиолдол тул тэмдэггүй —
+  // мөр бүрд тэмдэг тавибал жагсаалт бүрхэг болно.
+  const srcChip = orderSourceKey(o) === 'site'
+    ? `<span class="br-srcchip" title="mevent.mn сайтаас ирсэн захиалга">🌐 Сайт</span>` : '';
   const _qs = quotesOf(o);
   const _qLast = _qs.length ? _qs[_qs.length - 1] : null;
   const quoteChip = _qs.length
@@ -6012,11 +6016,11 @@ function boardOrderRow(e, k, todayStr, flat) {
   })() : '';
   return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') + (quoteChip ? ' ' + quoteChip : '') : ''}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') + (quoteChip ? ' ' + quoteChip : '') + (srcChip ? ' ' + srcChip : '') : ''}</span>
     ${statusCell}
     ${flat
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
-      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${quoteChip}${cxChip}</span>`}
+      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${quoteChip}${srcChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -6370,6 +6374,7 @@ function renderOrders() {
   // орлогоос ХАСна (orderRevenue, Санхүү тайлантай нийцүүлэв — app/M-Event total_mnt-д барьцаа орсон).
   const _saleE = shown.filter(e => !['draft', 'canceled', 'deleted'].includes(String(e.o.status)));
   // Боломжит борлуулалт — зөвхөн харуулах зорилготой, санхүүд хэзээ ч орохгүй.
+  const _site = siteShare(shown.map(e => e.o));
   const _draftE = shown.filter(e => String(e.o.status) === 'draft');
   const sumDraft = draftPipelineTotal(_draftE.map(e => e.o));
   const sumTotal = _saleE.reduce((s, e) => s + (typeof orderRevenue === 'function' ? orderRevenue(e.o, 'accrual') : e.total), 0);
@@ -6379,7 +6384,7 @@ function renderOrders() {
   const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${_site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length
@@ -19718,6 +19723,22 @@ function _orderDays(o) {
 function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'draft' && st !== 'deleted' && st !== 'canceled' && st !== 'cancelled'; }
 // Захиалгын ЖИНХЭНЭ орлого — барьцаа (буцаадаг өр) ХАСНА. App/M-Event-д total_mnt-д барьцаа орсон
 // тул хасна; Booqable-д total_mnt = түрээс (барьцаа тусдаа) тул хасахгүй. Түрээс + хүргэлт + НӨАТ.
+// Захиалга ХААНААС ирсэн бэ — 'site' (mevent.mn), 'booqable' (түүхэн), 'app' (ажилтан үүсгэсэн).
+// source талбар нь 'm-event-website' | 'booqable' | 'app' утгатай; хоосон бол ажилтных гэж үзнэ.
+function orderSourceKey(o) {
+  const src = String((o && o.source) || '').toLowerCase();
+  if (src.indexOf('website') > -1 || src.indexOf('site') > -1) return 'site';
+  if (src === 'booqable') return 'booqable';
+  return 'app';
+}
+// Сайтаас ирсэн захиалгын эзлэх хувь — маркетингийн шийдвэрт (сайт мөнгө оруулж
+// байна уу?). Booqable нь ГАРСАН систем тул хуваарьт оруулахгүй — эс бөгөөс
+// 2024-26 оны түүх өнөөдрийн хувийг дарж, сайт үргэлж жижиг харагдана.
+function siteShare(orders) {
+  const live = (orders || []).filter(o => orderSourceKey(o) !== 'booqable');
+  const site = live.filter(o => orderSourceKey(o) === 'site').length;
+  return { site, total: live.length, pct: live.length ? Math.round(site * 1000 / live.length) / 10 : 0 };
+}
 // Илгээсэн үнийн саналуудын лог (stage_meta.quotes). Массив биш бол хоосон.
 function quotesOf(o) {
   const q = o && o.stage_meta && o.stage_meta.quotes;

@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -1060,6 +1060,17 @@ function finish() {
   eq(COO(0, 30), 0, 'COO: 0 ашигт 0');
   eq(COO(10000000, 0), 0, 'COO: 0% = 0');
 
+  // Түрээсийн түүх — KPI (Нийт орлого) ба сарын нийлбэр НЭГ эх сурвалжаас (зөрөхгүй)
+  const HC = vm.runInContext('_histCompute', sandbox);
+  const _h = HC([
+    { customer: 'Бат', total_mnt: 1000, paid_mnt: 500, deposit_mnt: 200, starts_at: '2026-07-10', items: [] },
+    { customer: 'Болд', total_mnt: 2000, paid_mnt: 2000, deposit_mnt: 0, starts_at: '2026-08-01', items: [] },
+    { customer: 'NOMAAD Camp', total_mnt: 9999, paid_mnt: 9999, deposit_mnt: 0, starts_at: '2026-07-01', items: [] },
+  ], null, () => 'Бусад');
+  eq(_h.summary.net_revenue_mnt, 2800, 'түүх: net = (1000−200)+2000, NOMAAD(self) хасна');
+  eq(_h.summary.real_orders, 2, 'түүх: бодит захиалга 2 (self хасна)');
+  eq(_h.monthly.reduce((s, x) => s + x.net_mnt, 0), _h.summary.net_revenue_mnt, 'түүх: сарын нийлбэр = Нийт орлого KPI (дотоод зөрүү үгүй)');
+
   eq(CS([], 'accrual').n, 0, 'суваг: хоосонд 0');
   eq(CS([{ source: 'app', total_mnt: 0 }], 'accrual').staff.avg, 0, 'суваг: 0 дүнд дундаж 0 (тэгд хуваахгүй)');
 }
@@ -1717,6 +1728,41 @@ function finish() {
     ok(d.totals.rev === 2200000, 'задаргаа: нийлбэр');
     ok(F.histProductOrders(orders, 'аяны  ОР').rows.length === 2, 'задаргаа: нэр том/жижиг, зай ялгаагүй');
     ok(F.histProductOrders(orders, 'Байхгүй бараа').rows.length === 0, 'задаргаа: олдохгүй бол хоосон');
+  }
+
+  // ── Үйлчилгээний задаргаа: хүргэлт / угсралт / бусад ──
+  {
+    ok(F.serviceKind('2 талдаа Хүргэлт  (машины төрөл дунд)') === 'delivery', 'үйлчилгээ: хүргэлт танигдана');
+    ok(F.serviceKind('Хүргэлт 1 талдаа') === 'delivery', 'үйлчилгээ: хүргэлтийн өөр бичилт');
+    ok(F.serviceKind('Угсралт суурилуулалт') === 'setup', 'үйлчилгээ: угсралт танигдана');
+    ok(F.serviceKind('Суурилуулалт') === 'setup', 'үйлчилгээ: суурилуулалт');
+    ok(F.serviceKind('Оператор') === 'other', 'үйлчилгээ: бусад');
+
+    // ⟦DLV⟧ хүргэлтийн төлбөр — зөвхөн төлбөртэй, идэвхтэй захиалга
+    const orders = [
+      { id: 'a', number: 1, customer: 'А', status: 'returned', starts_at: '2026-08-01', note: '⟦DLV|city|0|150000⟧' },
+      { id: 'b', number: 2, customer: 'Б', status: 'rented',   starts_at: '2026-08-02', note: '⟦DLV|out|30|450000⟧' },
+      { id: 'c', number: 3, customer: 'В', status: 'returned', starts_at: '2026-08-03', note: '⟦DLV|pickup|0|0⟧' },
+      { id: 'd', number: 4, customer: 'Г', status: 'draft',    starts_at: '2026-08-04', note: '⟦DLV|city|0|150000⟧' },
+      { id: 'e', number: 5, customer: 'Д', status: 'returned', starts_at: '2026-08-05', note: '' },
+    ];
+    const dlv = F.deliveryFeeRows(orders);
+    ok(dlv.rows.length === 2 && dlv.total === 600000, 'хүргэлт: төлбөртэй идэвхтэй захиалга л орно');
+    ok(dlv.rows[0].number === 2 && dlv.rows[0].km === 30, 'хүргэлт: дүнгээр эрэмбэ, км уншигдана');
+    ok(!dlv.rows.some(r => r.number === 4), 'хүргэлт: ноорог орохгүй');
+    ok(!dlv.rows.some(r => r.number === 3), 'хүргэлт: очиж авах (0₮) орохгүй');
+
+    const bd = F.serviceBreakdown([
+      { product: '2 талдаа Хүргэлт', revenue_mnt: 31700000, times_rented: 304, total_qty: 835 },
+      { product: 'Угсралт суурилуулалт', revenue_mnt: 1900000, times_rented: 9, total_qty: 9 },
+      { product: 'Оператор', revenue_mnt: 100000, times_rented: 1, total_qty: 1 },
+    ], dlv);
+    ok(bd.groups.length === 3, 'задаргаа: гурван бүлэг');
+    ok(bd.groups[0].key === 'delivery' && bd.groups[0].rows.length === 2, 'задаргаа: хүргэлтэд ⟦DLV⟧ мөр нэмэгдэнэ');
+    ok(bd.groups[0].total === 31700000 + 600000, 'задаргаа: хүргэлтийн нийлбэрт ⟦DLV⟧ орно');
+    ok(bd.groups[1].key === 'setup' && bd.groups[1].total === 1900000, 'задаргаа: угсралт тусдаа');
+    ok(bd.total === 31700000 + 600000 + 1900000 + 100000, 'задаргаа: нийт дүн');
+    ok(F.serviceBreakdown([], { rows: [], total: 0 }).groups.length === 0, 'задаргаа: хоосон бол бүлэггүй');
   }
 
   finish();

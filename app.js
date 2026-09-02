@@ -16773,8 +16773,9 @@ async function loadHistory(force) {
     ]);
     const comp = _histCompute(orders || [], roiFix, _histCatResolver(prods || []));
     state.history = {
-      summary: summary[0] || null,
-      monthly: monthly || [],
+      // KPI + сар нь comp (live app_orders)-оос — хуучин rh_v_* snapshot зөрдөг тул fallback л болгоно
+      summary: comp.summary || summary[0] || null,
+      monthly: (comp.monthly && comp.monthly.length) ? comp.monthly : (monthly || []),
       methods: methods || [],
       products: comp.products,
       customers: comp.customers,
@@ -20238,6 +20239,82 @@ function histLineRevenue(gross, grossAll, totalMnt, depositMnt) {
   if (ga <= 0) return 0;
   return net < ga ? net * g / ga : g;
 }
+/* ── ҮЙЛЧИЛГЭЭНИЙ ЗАДАРГАА (хүргэлт / угсралт-суурилуулалт / бусад) ──────────
+   Үйлчилгээний орлого ХОЁР өөр газар бүртгэгддэг тул нэг дор нэгтгэж харуулна:
+     1) Захиалгын МӨР болж («2 талдаа Хүргэлт», «Угсралт суурилуулалт» г.м.) —
+        Booqable-аас ирсэн хуучин арга, нэр нь 8 янзаар бичигдсэн.
+     2) ⟦DLV⟧ token-оор — аппын одоогийн арга. Мөр болдоггүй, захиалгын дүнд шууд
+        нэмэгддэг тул барааны тайланд ОГТ харагддаггүй байв.
+   Хоёрыг нь салгаж харвал «хүргэлтээс хэдэн төгрөг олов» гэдэгт хариулт гарахгүй. */
+const SERVICE_KINDS = [
+  { key: 'delivery', label: '🚚 Хүргэлт, тээвэр',        re: /хүргэл|тээвэр|достав|deliver|унаа|такси/i },
+  { key: 'setup',    label: '🔧 Угсралт, суурилуулалт',  re: /суурилуул|угсра|буулгал|монтаж/i },
+  { key: 'other',    label: '🛠 Бусад үйлчилгээ',        re: null },
+];
+function serviceKind(name) {
+  const s = String(name || '');
+  for (const k of SERVICE_KINDS) { if (k.re && k.re.test(s)) return k.key; }
+  return 'other';
+}
+// ⟦DLV⟧ хүргэлтийн төлбөр — захиалга тус бүрээр (мөр биш тул тусад нь цуглуулна).
+// Цэвэр функц: захиалгын жагсаалтыг гаднаас авна.
+function deliveryFeeRows(orders) {
+  const out = [];
+  (orders || []).forEach(o => {
+    if (!o || ['draft', 'canceled', 'deleted'].includes(String(o.status))) return;
+    const d = (typeof parseDelivery === 'function') ? parseDelivery(o.note) : null;
+    const fee = d ? (Number(d.fee) || 0) : 0;
+    if (!d || fee <= 0) return;
+    out.push({ id: o.id, number: o.number, customer: String(o.customer || '').trim() || '—',
+      starts_at: String(o.starts_at || '').slice(0, 10), zone: d.zone, km: Number(d.km) || 0, fee });
+  });
+  out.sort((a, b) => b.fee - a.fee);
+  return { rows: out, total: out.reduce((s, r) => s + r.fee, 0) };
+}
+// Үйлчилгээг төрлөөр нь бүлэглэнэ. svcList = _histCompute-ийн services (нэрээр нэгтгэсэн),
+// dlvTotal/dlvCount = ⟦DLV⟧-ийн нийлбэр (хүргэлтийн бүлэгт тусдаа мөр болж орно).
+function serviceBreakdown(svcList, dlv) {
+  const groups = SERVICE_KINDS.map(k => ({ key: k.key, label: k.label, rows: [], total: 0 }));
+  const byKey = {}; groups.forEach(g => { byKey[g.key] = g; });
+  (svcList || []).forEach(x => {
+    const g = byKey[serviceKind(x.product)] || byKey.other;
+    g.rows.push({ name: x.product, revenue: Number(x.revenue_mnt) || 0, times: Number(x.times_rented) || 0, qty: Number(x.total_qty) || 0, kind: 'line' });
+  });
+  if (dlv && dlv.total > 0) {
+    byKey.delivery.rows.push({ name: 'Хүргэлтийн төлбөр (аппаас, авто)', revenue: dlv.total, times: dlv.rows.length, qty: dlv.rows.length, kind: 'dlv' });
+  }
+  groups.forEach(g => { g.rows.sort((a, b) => b.revenue - a.revenue); g.total = g.rows.reduce((s, r) => s + r.revenue, 0); });
+  const total = groups.reduce((s, g) => s + g.total, 0);
+  return { groups: groups.filter(g => g.rows.length), total };
+}
+// ⟦DLV⟧ хүргэлтийн задаргааны цонх — түүхээс гаралгүй
+function openDeliveryFeeOrders() {
+  const src = (state.history && state.history.orders) || state.appOrders || [];
+  const { rows, total } = deliveryFeeRows(src);
+  const money = n => fmtMoney(Math.round(n));
+  const zoneLbl = z => z === 'city' ? 'Хот дотор' : (z === 'out' ? 'Хотоос гадна' : 'Очиж авах');
+  document.getElementById('hist-prod-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.id = 'hist-prod-modal'; modal.style.zIndex = '9700';
+  modal.innerHTML = `<div class="modal hp-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:16px;">🚚 Хүргэлтийн төлбөр (аппаас)</h2>
+      <button class="btn" id="hp-close" style="padding:5px 10px;">✕</button>
+    </div>
+    <div class="hp-sum"><span>Захиалга <b>${rows.length}</b></span><span>Нийт <b style="color:var(--ok);">${money(total)}</b></span></div>
+    <div class="hp-hint">Эдгээр нь захиалгын мөр биш — байршлаар автоматаар бодогдож захиалгын дүнд нэмэгддэг. Тиймээс барааны тайланд харагддаггүй.</div>
+    <div class="pr-wrap"><table class="pr-table hp-table">
+      <thead><tr><th>Захиалга</th><th>Огноо</th><th>Харилцагч</th><th>Бүс</th><th>км</th><th>Төлбөр</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td class="hp-no">#${r.number ?? '—'}</td><td>${escapeHtml(r.starts_at)}</td>
+        <td class="hp-cust">${escapeHtml(r.customer)}</td><td>${zoneLbl(r.zone)}</td>
+        <td class="hp-n">${r.km || '—'}</td><td class="hp-n"><b>${money(r.fee)}</b></td></tr>`).join('')
+        || '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);">Байхгүй</td></tr>'}</tbody>
+    </table></div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#hp-close').onclick = () => modal.remove();
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
 function _histCompute(orders, roiFix, catOf) {
   const N = x => Number(x) || 0;
   const cat = (typeof catOf === 'function') ? catOf : () => 'Бусад';
@@ -20248,11 +20325,21 @@ function _histCompute(orders, roiFix, catOf) {
   const SELF = /nomaad|кемп|\bcamp\b|чимун/i;   // компанийн ӨӨРИЙН салбар — харилцагч БИШ, хасна
   const custs = {}, prods = {}, svcs = {};
   let unknownRev = 0, unknownCnt = 0;
+  // ⭐ KPI/сарын орлого — ЭНЭ ижил app_orders-оос тооцно (хуучин rh_v_* snapshot view биш).
+  // net = нийт − барьцаа (санхүүгийн orderRevenue-тэй ЯГ ижил дүрэм); өөрийн салбар (nomaad/чимун) хасна.
+  let sumNet = 0, sumPaid = 0, realCnt = 0; const byMonth = {};
 
   (orders || []).forEach(o => {
     const total = N(o.total_mnt), paid = N(o.paid_mnt);
     // ── харилцагч (нэрээр нэгтгэнэ — зай/үсгийн давхардал арилна) ──
     const craw = String(o.customer || '').trim().replace(/\s+/g, ' ');
+    // ── KPI/сар нэгтгэл (өөрийн салбараас бусад бүх эвент захиалга) ──
+    if (!SELF.test(craw)) {
+      const _net = Math.max(0, total - N(o.deposit_mnt));
+      sumNet += _net; sumPaid += paid; realCnt++;
+      const _mo = String(o.starts_at || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(_mo)) { const b = byMonth[_mo] || (byMonth[_mo] = { month: _mo, net_mnt: 0, charge_count: 0 }); b.net_mnt += _net; b.charge_count++; }
+    }
     if (!craw || craw === '?' || craw === '-') { unknownRev += total; unknownCnt++; }
     else if (SELF.test(craw)) { /* өөрийн салбар — алгасна */ }
     else {
@@ -20309,7 +20396,9 @@ function _histCompute(orders, roiFix, catOf) {
     .sort((a, b) => b.item_days_out - a.item_days_out)
     .map(x => ({ product: x.product, sku: x.sku, photo: x.photo, bookings: x.times_rented, total_qty_out: x.total_qty, item_days_out: x.item_days_out }));
 
-  return { customers, products, roi: products, usage, services, unknownRev: Math.round(unknownRev), unknownCnt };
+  const summary = { net_revenue_mnt: Math.round(sumNet), collected_mnt: Math.round(sumPaid), real_orders: realCnt, total_orders: (orders || []).length };
+  const monthly = Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month));
+  return { customers, products, roi: products, usage, services, summary, monthly, unknownRev: Math.round(unknownRev), unknownCnt };
 }
 
 function bqInsights(bq) {
@@ -20488,14 +20577,24 @@ function renderHistory() {
     // Үйлчилгээ (хүргэлт) тусдаа bq.services-д, НӨАТ/барьцаа аль хэдийн хасагдсан.
     const roi = (bq.roi || []).slice();
     const svc = bq.services || [];
+    // Үйлчилгээ — ТӨРЛӨӨР задалж, мөр бүр дарагдана (тухайн үйлчилгээний захиалгууд).
+    // ⟦DLV⟧ хүргэлтийн төлбөр нь захиалгын мөр БИШ тул тусад нь нэмнэ — эс бөгөөс
+    // 2026 оны хүргэлтийн орлого хаана ч харагдахгүй.
     const svcCard = (list) => {
-      if (!list.length) return '';
-      const mx = Math.max(1, ...list.map(x => N(x.revenue_mnt)));
-      const rows = list.slice().sort((a, b) => N(b.revenue_mnt) - N(a.revenue_mnt))
-        .map(x => bqBar(x.product || '—', N(x.revenue_mnt), mx, 'var(--primary)', `${N(x.times_rented)}× · ${N(x.total_qty).toLocaleString('mn-MN')}ш`)).join('');
-      const tot = list.reduce((s, x) => s + N(x.revenue_mnt), 0);
-      return card(`🛠 Үйлчилгээ (хүргэлт г.м.) — ${fmtMoneyShort(tot)}`, rows,
-        'Хүргэлт/тээвэр — бараа биш үйлчилгээ. Орлогод багтсан ч ROI/нөөцөд тооцохгүй.');
+      const _dlv = deliveryFeeRows((state.history && state.history.orders) || []);
+      const bd = serviceBreakdown(list, _dlv);
+      if (!bd.groups.length) return '';
+      const mx = Math.max(1, ...bd.groups.flatMap(g => g.rows.map(r => r.revenue)));
+      const inner = bd.groups.map(g => `
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:12px 0 4px;">
+          <b style="font-size:12.5px;">${g.label}</b>
+          <span style="font-weight:800;font-size:12.5px;">${fmtMoneyShort(g.total)}</span>
+        </div>
+        ${g.rows.map(r => `<div class="hist-roi-row" ${r.kind === 'dlv' ? 'data-hist-dlv="1"' : `data-hist-prod="${escapeHtml(r.name)}"`} style="cursor:pointer;border-radius:7px;padding:1px 4px;" title="Дарж захиалгуудыг харах">
+          ${bqBar(r.name + ' 🔍', r.revenue, mx, r.kind === 'dlv' ? 'var(--warn,#D97706)' : 'var(--primary)', `${r.times}× · ${r.qty.toLocaleString('mn-MN')}ш`)}
+        </div>`).join('')}`).join('');
+      return card(`🛠 Үйлчилгээ — ${fmtMoneyShort(bd.total)}`, inner,
+        'Бараа биш үйлчилгээ — орлогод багтана, ROI/нөөцөд тооцохгүй. Мөр дарж захиалгуудыг харна.');
     };
     if (roi.length) {
       const maxRev = Math.max(1, ...roi.map(x => N(x.revenue_mnt)));
@@ -20669,6 +20768,7 @@ function attachHistoryHandlers() {
   document.querySelectorAll('[data-hist-prod]').forEach(b => b.addEventListener('click', () => {
     openHistProductOrders(b.dataset.histProd);
   }));
+  document.querySelectorAll('[data-hist-dlv]').forEach(b => b.addEventListener('click', () => openDeliveryFeeOrders()));
 
   // view нээгдэхэд анх удаа татна
   if (!state.history && !state._bqLoading) loadHistory();

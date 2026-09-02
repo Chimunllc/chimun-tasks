@@ -1134,15 +1134,16 @@ function finish() {
   {
     const orders = [
       // Хүргэлттэй (DLV token хот): жолооч Бат хүргэж өгсөн (deliver) + буцаан авсан (retstart)
-      { note: '⟦DLV|city|0|150000⟧', stage_meta: { deliver: { by: 'bat', at: '2026-08-10' }, retstart: { by: 'bat', at: '2026-08-12' } } },
+      { number: 1455, delivery_address: 'СБД 1-р хороо', note: '⟦DLV|city|0|150000⟧', stage_meta: { deliver: { by: 'bat', at: '2026-08-10' }, retstart: { by: 'bat', at: '2026-08-12' } } },
       // Хүргэлттэй: Бат хүргэсэн, өөр хүн авсан
-      { note: '⟦DLV|out|5|50000⟧', stage_meta: { deliver: { by: 'bat', at: '2026-08-15' }, retstart: { by: 'dorj', at: '2026-08-17' } } },
+      { number: 1460, note: '⟦DLV|out|5|50000⟧', stage_meta: { deliver: { by: 'bat', at: '2026-08-15' }, retstart: { by: 'dorj', at: '2026-08-17' } } },
       // Хүргэлтгүй (очиж авах): нэмэгдэл тооцохгүй
-      { note: '', stage_meta: { deliver: { by: 'bat', at: '2026-08-20' } } },
+      { number: 1461, note: '', stage_meta: { deliver: { by: 'bat', at: '2026-08-20' } } },
     ];
     const b = F.driverBonus('bat', '2026-08', orders);
     ok(b.deliveries === 2 && b.pickups === 1, 'driverBonus: 2 хүргэсэн + 1 авсан');
     ok(b.count === 3 && b.amount === 30000, 'driverBonus: 3 × 10,000 = 30,000');
+    ok(b.trips.length === 3 && b.trips[0].number != null && b.trips[0].type, 'driverBonus: аяллын жагсаалт (дугаар+төрөл)');
     const d = F.driverBonus('dorj', '2026-08', orders);
     ok(d.count === 1 && d.amount === 10000, 'driverBonus: Дорж 1 авсан = 10,000');
     ok(F.driverBonus('bat', '2026-07', orders).count === 0, 'driverBonus: өөр сар → 0');

@@ -8132,17 +8132,19 @@ function workNormMins() { return workNormDays() * 8 * 60; }
 // БУЦААН АВСАН (rented→returning) үйлдэл бүрд 10,000₮ (тухайн үйлдлийг хийсэн жолоочид). stage_meta-гаас автомат.
 const DRIVER_BONUS_EACH = 10000;
 function driverBonus(key, month, orders) {
-  let deliveries = 0, pickups = 0;
+  let deliveries = 0, pickups = 0; const trips = [];
   for (const o of (orders || state.appOrders || [])) {
     if (typeof isDeliveryOrder === 'function' && !isDeliveryOrder(o)) continue;   // зөвхөн хүргэлттэй захиалга
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     const mine = (e) => e && String(e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
+    const addr = o.delivery_address || o.customer_address || o.customer || o.company || '';
     // stage_meta нь act.key-ээр хадгалагдана: delivering→rented='deliver', rented→returning='retstart'
-    if (mine(sm.deliver)) deliveries++;      // жолооч хүргэж өгсөн
-    if (mine(sm.retstart)) pickups++;        // жолооч хүргэлтээс буцаан авсан
+    if (mine(sm.deliver)) { deliveries++; trips.push({ number: o.number, date: String(sm.deliver.at || '').slice(0, 10), type: 'Хүргэсэн', addr }); }
+    if (mine(sm.retstart)) { pickups++; trips.push({ number: o.number, date: String(sm.retstart.at || '').slice(0, 10), type: 'Авсан', addr }); }
   }
+  trips.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const count = deliveries + pickups;
-  return { deliveries, pickups, count, amount: count * DRIVER_BONUS_EACH };
+  return { deliveries, pickups, count, amount: count * DRIVER_BONUS_EACH, trips };
 }
 // Жолоочийн хариуцлагын сануулга (улаан) — ирц/жолооны нэмэгдэл дээр харуулна.
 const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
@@ -8299,6 +8301,9 @@ function renderMyAttend() {
       <div style="font-size:12px;color:var(--muted);">🚗 Жолооны нэмэгдэл (энэ сар)</div>
       <div style="font-size:19px;font-weight:800;color:var(--ok);margin-top:3px;">${fmtMoney(db.amount)}</div>
       <div style="font-size:11.5px;color:var(--text-soft);margin-top:2px;">${db.count} удаа × ${fmtMoney(DRIVER_BONUS_EACH)} · хүргэсэн ${db.deliveries} · авсан ${db.pickups}</div>
+      <div style="margin-top:10px;border-top:1px solid var(--line);">${db.trips.map(t => `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;padding:7px 0;border-bottom:1px solid var(--line);">
+        <span style="min-width:0;">${t.type === 'Хүргэсэн' ? '🚚' : '↩️'} <b>#${escapeHtml(String(t.number ?? ''))}</b> · ${escapeHtml(t.type)}${t.addr ? ` · <span style="color:var(--muted);">${escapeHtml(String(t.addr).slice(0, 34))}</span>` : ''}</span>
+        <span style="color:var(--muted);flex-shrink:0;">${escapeHtml(t.date)}</span></div>`).join('')}</div>
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
     ${dayKeys.length ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}

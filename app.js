@@ -4010,14 +4010,66 @@ function repairId(sku, orderNo) { return `r_${String(sku || '').replace(/\W/g, '
 
 // Засварын шат урагшлуулах. «Зассан» болмогц барааны broken-ийг бууруулж нөөц СЭРГЭНЭ.
 // Хэн зассан нь fixed_by-д бүртгэгдэж KPI-д тооцогдоно.
-async function advanceRepair(id, to) {
+// Засвар дуусгах модал — зураг ЗААВАЛ, тайлбар сонголттой.
+function openRepairFinishModal(id, to) {
+  const r = (state.repairs || []).find(x => String(x.id) === String(id)); if (!r) return;
+  const isOff = to === 'written_off';
+  const title = isOff ? '🗑 Актлах' : '✓ Зассан';
+  const m = document.createElement('div');
+  m.className = 'modal-bg open'; m.style.zIndex = '9600';
+  m.innerHTML = `<div class="modal" style="max-width:460px;">
+    <div class="modal-head"><b>${title} · ${escapeHtml(r.product_name || r.sku)} ×${Number(r.qty) || 0}</b><button class="modal-x" id="rf-x">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">📷 ${isOff ? 'Актлах барааны зураг' : 'Зассаны дараах зураг'} <span style="color:var(--danger);">*</span></div>
+      <div id="rf-photos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-bottom:6px;"></div>
+      <label class="btn" for="rf-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
+      <input id="rf-input" type="file" accept="image/*" capture="environment" hidden>
+      <div id="rf-status" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
+      <textarea id="rf-note" rows="2" placeholder="${isOff ? 'Яагаад засах боломжгүй вэ?' : 'Юу зассан бэ? (заавал биш)'}" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;"></textarea>
+    </div>
+    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="rf-cancel">Болих</button>
+      <button class="btn btn-primary" id="rf-ok" disabled>${title}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const $ = (sel) => m.querySelector(sel);
+  const photos = [];
+  const close = () => m.remove();
+  const validate = () => { $('#rf-ok').disabled = photos.length === 0; };
+  const paint = () => {
+    $('#rf-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-rm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
+    $('#rf-photos').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.rm, 1); paint(); validate(); });
+  };
+  $('#rf-input').onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+    $('#rf-status').textContent = '⏳ Илгээж байна...'; $('#rf-status').style.color = 'var(--muted)';
+    try {
+      const url = await uploadReceipt(f, r.id, 'repair', `Засвар ${r.product_name || r.sku}`);
+      if (url) { photos.push(url); paint(); $('#rf-status').textContent = `✓ ${photos.length} зураг`; $('#rf-status').style.color = 'var(--ok)'; validate(); }
+      else { $('#rf-status').textContent = '⚠ Хадгалж чадсангүй'; $('#rf-status').style.color = 'var(--danger)'; }
+    } catch (err) { $('#rf-status').textContent = '⚠ ' + err.message; $('#rf-status').style.color = 'var(--danger)'; }
+  };
+  $('#rf-x').onclick = close; $('#rf-cancel').onclick = close;
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  $('#rf-ok').onclick = () => { const note = $('#rf-note').value.trim(); close(); advanceRepair(id, to, { photos, note }); };
+}
+
+async function advanceRepair(id, to, extra) {
   const r = (state.repairs || []).find(x => String(x.id) === String(id)); if (!r) return;
   if (!can('products.edit')) { showToast('Танд засварын эрх алга', 'warn', 3000); return; }
+  // Зассан / актлав — БАРИМТЫН зураг заавал (дамжлагын бусад шаттай нэгэн адил).
+  // Зураггүй бол «зассан» гэж бичих нь баталгаагүй, KPI-д ч утгагүй.
+  if ((to === 'fixed' || to === 'written_off') && !(extra && extra.photos && extra.photos.length)) {
+    openRepairFinishModal(id, to); return;
+  }
   const now = new Date().toISOString();
   const patch = { status: to, updated_at: now };
   if (to === 'in_progress') { patch.assignee = state.me; patch.started_at = now; }
-  if (to === 'fixed') {
+  if (to === 'fixed' || to === 'written_off') {
     patch.fixed_by = state.me; patch.fixed_at = now;
+    patch.fix_photos = (extra && extra.photos) || [];
+    if (extra && extra.note) patch.fix_note = extra.note;
     if (!r.assignee) patch.assignee = state.me;
   }
   try {
@@ -15786,10 +15838,8 @@ function attachProductsHandlers() {
   const _rt = document.getElementById('repair-toggle');
   if (_rt) _rt.onclick = () => { state.repairOpen = !state.repairOpen; render(); };
   document.querySelectorAll('.repair-adv').forEach(b => b.onclick = () => advanceRepair(b.dataset.rep, b.dataset.to));
-  document.querySelectorAll('.repair-off').forEach(b => b.onclick = async () => {
-    const ok = await showConfirm('Энэ барааг засах боломжгүй гэж үзэж данснаас хасах уу? Нийт нөөцөөс мөн хасагдана.', { title: 'Актлах', okText: 'Тийм, актлах', danger: true });
-    if (ok) advanceRepair(b.dataset.repoff, 'written_off');
-  });
+  // Актлах — зураг + шалтгаан шаардах модал өөрөө баталгаажуулалт болно (давхар асуухгүй)
+  document.querySelectorAll('.repair-off').forEach(b => b.onclick = () => advanceRepair(b.dataset.repoff, 'written_off'));
   // Шүүлтүүр таб — Бүгд / Түрээсийн / Хөрөнгө
   document.querySelectorAll('[data-prodfilter]').forEach(b => {
     b.onclick = () => { state.prodFilter = b.dataset.prodfilter; render(); };

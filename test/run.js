@@ -749,6 +749,35 @@ function finish() {
   ok(RID('M/069 x', 0).indexOf('/') === -1, 'засвар: sku дахь тусгай тэмдэгт цэвэрлэгдэнэ');
 }
 
+// 38) Засвар дуусгахад зураг ЗААВАЛ
+{
+  const st = vm.runInContext('state', sandbox);
+  const AR = vm.runInContext('advanceRepair', sandbox);
+  const saved = { rep: st.repairs, me: st.me, ceo: st.isCEO, mp: st.memberPerms };
+  st.isCEO = true; st.me = 'W1';
+  st.repairs = [{ id: 'r1', sku: 'M-069', product_name: 'Тест', qty: 2, status: 'in_progress' }];
+
+  let opened = null;
+  const origOpen = vm.runInContext('openRepairFinishModal', sandbox);
+  sandbox.openRepairFinishModal = (id, to) => { opened = { id, to }; };
+
+  AR('r1', 'fixed');                       // зураггүй → модал нээгдэх ёстой
+  eq(opened && opened.to, 'fixed', 'засвар: зураггүй «Зассан» дарвал зургийн модал нээгдэнэ');
+  ok(st.repairs[0].status === 'in_progress', 'засвар: зураггүй бол төлөв ӨӨРЧЛӨГДӨХГҮЙ');
+
+  opened = null;
+  AR('r1', 'written_off');
+  eq(opened && opened.to, 'written_off', 'засвар: актлахад ч зураг шаардана');
+  ok(st.repairs[0].status === 'in_progress', 'засвар: актлах ч зураггүйгээр болохгүй');
+
+  opened = null;
+  AR('r1', 'in_progress');                 // засварт авахад зураг шаардахгүй
+  eq(opened, null, 'засвар: «Засварт авах» шатанд зураг шаардахгүй');
+
+  sandbox.openRepairFinishModal = origOpen;
+  st.repairs = saved.rep; st.me = saved.me; st.isCEO = saved.ceo; st.memberPerms = saved.mp;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

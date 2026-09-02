@@ -731,6 +731,24 @@ function finish() {
   ok(STF.includes('delivering') && STF.includes('returning'), 'ажилтан: шинэ шатууд харагдана');
 }
 
+// 37) Засварын дамжлага
+{
+  const ST = vm.runInContext('REPAIR_STAGES', sandbox);
+  const RID = vm.runInContext('repairId', sandbox);
+
+  eq(ST.pending.next, 'in_progress', 'засвар: хүлээж буй → засаж байна');
+  eq(ST.in_progress.next, 'fixed',   'засвар: засаж байна → зассан');
+  eq(ST.fixed.next, null,            'засвар: зассан нь эцсийн шат');
+  eq(ST.written_off.next, null,      'засвар: актлав нь эцсийн шат');
+  ok(ST.pending.label.indexOf('Засвар') > -1, 'засвар: шатны нэр монголоор');
+
+  const id1 = RID('M-069', 1455), id2 = RID('M-069', 1455);
+  ok(id1.indexOf('M069') > -1, 'засвар: id-д sku багтана');
+  ok(id1.indexOf('1455') > -1, 'засвар: id-д захиалгын дугаар багтана');
+  ok(!/[^\w]/.test(id1.replace(/_/g, '')), 'засвар: id аюулгүй тэмдэгттэй');
+  ok(RID('M/069 x', 0).indexOf('/') === -1, 'засвар: sku дахь тусгай тэмдэгт цэвэрлэгдэнэ');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

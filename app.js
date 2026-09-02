@@ -3994,6 +3994,89 @@ function encodeRefundNote(note, totalAmount, rf) {
   return base ? base + ' ' + tok : tok;
 }
 
+/* ─── ЗАСВАРЫН ДАМЖЛАГА (repairs) ─────────────────────────────────────────
+   Эвдэрсэн бараа нөөцөөс хасагдаад (workingStock = нөөц − эвдэрсэн − засварт)
+   мартагдаж байсан. Одоо эвдрэл бүртгэх бүрд засварын бичлэг үүсч, өөрийн
+   дамжлагаар явна: Засвар хүлээж буй → Засаж байна → Зассан (нөөц сэргэнэ).
+   Хэн зассан нь бүртгэгдэж KPI-д тооцогдоно. */
+const REPAIR_STAGES = {
+  pending:     { label: '🔧 Засвар хүлээж буй', next: 'in_progress', nextLabel: '🛠 Засварт авах', dot: '#D97706' },
+  in_progress: { label: '🛠 Засаж байна',       next: 'fixed',       nextLabel: '✓ Зассан',        dot: '#2563EB' },
+  fixed:       { label: '✓ Зассан',             next: null,          nextLabel: null,              dot: '#16A34A' },
+  written_off: { label: '🗑 Актлав',            next: null,          nextLabel: null,              dot: '#DC2626' },
+};
+const REPAIRS_URL = () => `${DB_URL}/rest/v1/repairs`;
+function repairId(sku, orderNo) { return `r_${String(sku || '').replace(/\W/g, '')}_${orderNo || 0}_${Date.now().toString(36)}`; }
+
+// Засварын шат урагшлуулах. «Зассан» болмогц барааны broken-ийг бууруулж нөөц СЭРГЭНЭ.
+// Хэн зассан нь fixed_by-д бүртгэгдэж KPI-д тооцогдоно.
+async function advanceRepair(id, to) {
+  const r = (state.repairs || []).find(x => String(x.id) === String(id)); if (!r) return;
+  if (!can('products.edit')) { showToast('Танд засварын эрх алга', 'warn', 3000); return; }
+  const now = new Date().toISOString();
+  const patch = { status: to, updated_at: now };
+  if (to === 'in_progress') { patch.assignee = state.me; patch.started_at = now; }
+  if (to === 'fixed') {
+    patch.fixed_by = state.me; patch.fixed_at = now;
+    if (!r.assignee) patch.assignee = state.me;
+  }
+  try {
+    const res = await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(patch),
+    }, 15000);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    Object.assign(r, patch);
+    // Зассан / актласан — нөөцийн тооцоо
+    if (to === 'fixed' || to === 'written_off') {
+      const p = productBySku(r.sku);
+      if (p) {
+        const upd = { ...p, broken: Math.max(0, (Number(p.broken) || 0) - (Number(r.qty) || 0)) };
+        // Актлах = бараа буцаж ирэхгүй — нийт нөөцөөс мөн хасна
+        if (to === 'written_off') upd.stock = Math.max(0, (Number(p.stock) || 0) - (Number(r.qty) || 0));
+        try { await saveProduct(upd); } catch (_) {}
+      }
+    }
+    showToast(to === 'fixed' ? `✓ Зассан — ${r.qty}ш нөөцөд буцлаа` : to === 'written_off' ? '🗑 Актлав' : '🛠 Засварт авлаа', 'success', 3000);
+    render();
+  } catch (e) { showToast('Засварын төлөв хадгалагдсангүй: ' + e.message, 'error', 4000); }
+}
+
+async function loadRepairs() {
+  try {
+    const r = await fetchWithTimeout(`${REPAIRS_URL()}?select=*&order=reported_at.desc&limit=500`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.repairs = await r.json();
+  } catch (e) { console.warn('loadRepairs', e); state.repairs = state.repairs || []; }
+}
+// Эвдрэл бүртгэхэд засварын бичлэг үүсгэнэ. Нэг захиалга+бараанд ДАВХАР үүсгэхгүй —
+// дахин бүртгэвэл (тоо өөрчлөгдвөл) байгаа бичлэгийн тоог шинэчилнэ.
+async function ensureRepairRecord({ sku, name, qty, orderNumber, note, by }) {
+  if (!sku || !(qty > 0)) return;
+  try {
+    const q = `${REPAIRS_URL()}?sku=eq.${encodeURIComponent(sku)}&order_number=eq.${Number(orderNumber) || 0}&status=in.(pending,in_progress)&select=id,qty`;
+    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const rows = ex.ok ? await ex.json() : [];
+    const body = { sku, product_name: name || '', qty, order_number: Number(orderNumber) || null,
+                   note: note || '', reported_by: by || state.me || '', updated_at: new Date().toISOString() };
+    if (rows.length) {
+      await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(rows[0].id)}`, {
+        method: 'PATCH',
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ qty, note: body.note, updated_at: body.updated_at }),
+      }, 12000);
+    } else {
+      await fetchWithTimeout(REPAIRS_URL(), {
+        method: 'POST',
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ id: repairId(sku, orderNumber), status: 'pending', ...body }),
+      }, 12000);
+    }
+  } catch (e) { console.warn('ensureRepairRecord', e); }
+}
+
 // Идэвхтэй захиалгын БУЦААЛТ дээр эвдрэл бүртгэх — эвдэрсэн барааг нөөцөөс хасна (broken++) + барьцаанаас ₮ хасна.
 // Эвдэрсэн тоо note-д ⟦BRK⟧-ээр хадгалагдаж, барааны broken ДЕЛЬТА-гаар шинэчлэгдэнэ (дахин бүртгэвэл давхардахгүй).
 function openOrderDamageModal(oid) {
@@ -4056,6 +4139,8 @@ function openOrderDamageModal(oid) {
       if (!delta) continue;
       const p = productBySku(sku); if (!p) continue;
       try { await saveProduct({ ...p, broken: Math.max(0, (Number(p.broken) || 0) + delta) }); } catch (_) {}
+      // Засварын дамжлага — эвдэрсэн бараа жагсаалтад орж, хэн зассан нь бүртгэгдэнэ
+      try { await ensureRepairRecord({ sku, name: p.name, qty: newBrk[sku] || 0, orderNumber: o.number, note: userNote || '', by: state.me }); } catch (_) {}
       if ((newBrk[sku] || 0) > 0) brokenLines.push(`${p.name}×${newBrk[sku]}`);
     }
     // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
@@ -15294,6 +15379,29 @@ function renderProducts() {
         <button class="btn btn-primary" id="prod-return-nomaad" style="white-space:nowrap;">⇄ Бүгдийг 🎪 M-Event руу (${_nomaadSum}ш)</button>
       </div>`
     : '';
+  // ── Засвартай бараа — эвдэрсэн бараа мартагдахгүй, өөрийн дамжлагатай ──
+  const _rep = (state.repairs || []).filter(r => r && ['pending', 'in_progress'].includes(String(r.status)));
+  if (state.repairs === undefined) { state.repairs = []; setTimeout(loadRepairs, 0); }
+  const repairBar = _rep.length
+    ? `<div class="repair-bar">
+        <div class="repair-bar-head">
+          <span>🔧 Засвартай <b>${_rep.length}</b> бараа · нийт <b>${_rep.reduce((a, r) => a + (Number(r.qty) || 0), 0)}ш</b> нөөцөөс хасагдсан</span>
+          <button class="btn" id="repair-toggle">${state.repairOpen ? 'Хаах' : 'Жагсаалт харах'}</button>
+        </div>
+        ${state.repairOpen ? `<div class="repair-list">${_rep.map(r => {
+          const stg = REPAIR_STAGES[String(r.status)] || REPAIR_STAGES.pending;
+          const who = r.assignee ? `<span class="repair-who">👤 ${escapeHtml(memberName(r.assignee) || r.assignee)}</span>` : '';
+          return `<div class="repair-row">
+            <span class="repair-dot" style="--d:${stg.dot}"></span>
+            <span class="repair-name">${escapeHtml(r.product_name || r.sku)} <b>×${Number(r.qty) || 0}</b></span>
+            <span class="repair-meta">${escapeHtml(stg.label)}${r.order_number ? ` · #${r.order_number}` : ''}${r.note ? ` · ${escapeHtml(String(r.note).slice(0, 40))}` : ''}</span>
+            ${who}
+            ${stg.next && can('products.edit') ? `<button class="btn btn-primary repair-adv" data-rep="${escapeHtml(r.id)}" data-to="${stg.next}">${escapeHtml(stg.nextLabel)}</button>` : ''}
+            ${can('products.edit') ? `<button class="btn repair-off" data-repoff="${escapeHtml(r.id)}" title="Засах боломжгүй — данснаас хасах">🗑 Актлах</button>` : ''}
+          </div>`;
+        }).join('')}</div>` : ''}
+      </div>`
+    : '';
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)
@@ -15345,6 +15453,7 @@ function renderProducts() {
     ${nameEnBar}
     ${variantClearBar}
     ${seasonCloseBar}
+    ${repairBar}
     <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
   `;
 }
@@ -15670,6 +15779,14 @@ async function submitProductModal(modal, orig, btn) {
 }
 
 function attachProductsHandlers() {
+  // Засварын дамжлага
+  const _rt = document.getElementById('repair-toggle');
+  if (_rt) _rt.onclick = () => { state.repairOpen = !state.repairOpen; render(); };
+  document.querySelectorAll('.repair-adv').forEach(b => b.onclick = () => advanceRepair(b.dataset.rep, b.dataset.to));
+  document.querySelectorAll('.repair-off').forEach(b => b.onclick = async () => {
+    const ok = await showConfirm('Энэ барааг засах боломжгүй гэж үзэж данснаас хасах уу? Нийт нөөцөөс мөн хасагдана.', { title: 'Актлах', okText: 'Тийм, актлах', danger: true });
+    if (ok) advanceRepair(b.dataset.repoff, 'written_off');
+  });
   // Шүүлтүүр таб — Бүгд / Түрээсийн / Хөрөнгө
   document.querySelectorAll('[data-prodfilter]').forEach(b => {
     b.onclick = () => { state.prodFilter = b.dataset.prodfilter; render(); };

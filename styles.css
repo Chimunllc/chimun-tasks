@@ -6348,3 +6348,14 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .recon-ai-reason { display: block; font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
 .recon-ai-conf { color: var(--accent, var(--info)); }
 .recon-ai-diff { color: var(--warn); font-size: var(--fs-xs); }
+
+/* Засвартай бараа — эвдэрсэн бараа өөрийн дамжлагатай */
+.repair-bar { margin: 8px 0 2px; padding: 9px 12px; background: rgba(220,38,38,.06); border: 1px solid rgba(220,38,38,.25); border-radius: 10px; }
+.repair-bar-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: var(--fs-md); }
+.repair-list { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
+.repair-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 9px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; font-size: var(--fs-sm); }
+.repair-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--d); flex: 0 0 auto; }
+.repair-name { font-weight: 600; color: var(--text); }
+.repair-meta { color: var(--muted); flex: 1 1 auto; min-width: 0; }
+.repair-who { color: var(--text); font-weight: 600; white-space: nowrap; }
+@media (max-width: 700px) { .repair-meta { flex-basis: 100%; } }

@@ -1890,6 +1890,29 @@ function finish() {
        'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
   }
 
+  // ── NOMAAD дата: эрх нь ХАРУУЛАХАД, ТАТАХАД БИШ ──
+  {
+    // loadNomaadOrders нь nomaad ДЭЛГЭЦИЙН эрхээр дата татахаа зогсоодог байв. Дата нь
+    // авлага / тайлан / НӨАТ / COO цалин / катерингийг тэжээдэг тул m-event салбарын
+    // нягтлан кемпийн орлогыг 0 гэж хараад компани ХУДАЛ алдагдалтай харагддаг байв.
+    const body = src.slice(src.indexOf('async function loadNomaadOrders()'));
+    const head = body.slice(0, body.indexOf('const url'));
+    ok(head.indexOf('!canSeeNomaadOrders()') === -1,
+       'NOMAAD дата: татах нь зөвхөн nomaad дэлгэцийн эрхээр хаагдахгүй');
+    ok(head.indexOf('canUseNomaadData()') > -1,
+       'NOMAAD дата: хэрэглэгч дэлгэцүүдийн нэгдсэн эрхээр шалгана');
+    // Гэхдээ БҮРЭН хаалтгүй болгосонгүй — эрхгүй хүн лүү PII татахгүй
+    ok(/if\s*\(!canUseNomaadData\(\)\)\s*return;/.test(head),
+       'NOMAAD дата: эрхгүй хүнд дата ТАТАХГҮЙ хэвээр');
+    // ДЭЛГЭЦИЙН эрх хэвээр хүчинтэй
+    ok(/state\.view === 'nomaad' && !canSeeNomaadOrders\(\)/.test(src),
+       'NOMAAD дэлгэц: харуулах эрх хэвээр шалгагдана');
+    // Нэгдэлд орсон дэлгэц бүр бодитоор дата хэрэглэдэг
+    const cu = src.slice(src.indexOf('function canUseNomaadData()'));
+    ['canSeeNomaadOrders', 'canSeeReceivables', 'canSeeReports', 'canSeeVat', 'canSeeCatering', 'canSeeCooSalary']
+      .forEach(f => ok(cu.slice(0, cu.indexOf('}')).indexOf(f) > -1, `NOMAAD дата: нэгдэлд «${f}» багтсан`));
+  }
+
   // ── Эрхийн матрицын нэр sidebar-ын нэртэй таарах ──
   // (Эрх олгож буй хүн «Агуулах» гэсэн чагт аль цэсийг нээж байгааг таах ёсгүй.
   //  Хаалтан доторх тодотгол — «Цалин (сарын)», «Ажилчид (удирдах)» — зөвшөөрөгдөнө:

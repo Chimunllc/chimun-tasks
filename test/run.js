@@ -1497,6 +1497,7 @@ function finish() {
     };
     ok(F.resolveItemSku({ sku: 'M-234', name: 'ямар ч нэр' }, ctx).how === 'sku', 'тулгалт: sku шууд давуу');
     ok(F.resolveItemSku({ sku: 'CH_234', name: 'өөр нэр' }, ctx).sku === 'M-234', 'тулгалт: хуучин sku толиор');
+    ok(F.resolveItemSku({ sku: 'ch_234', name: 'өөр нэр' }, ctx).sku === 'M-234', 'тулгалт: том/жижиг үсэг ялгаагүй');
     ok(F.resolveItemSku({ sku: '', name: 'Эвхдэг Сандал (Цагаан)' }, ctx).sku === 'M-234', 'тулгалт: нэрийн толь');
     ok(F.resolveItemSku({ sku: '', name: 'Эвхэгддэг сандал Цагаан' }, ctx).how === 'name', 'тулгалт: шууд нэрээр');
     const skip = F.resolveItemSku({ sku: '', name: 'Бараа' }, ctx);

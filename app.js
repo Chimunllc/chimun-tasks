@@ -4235,12 +4235,14 @@ async function loadItemAliases() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     const map = Object.create(null);
-    rows.forEach(x => { if (x && x.alias) map[String(x.alias)] = String(x.sku || ''); });
+    rows.forEach(x => { if (x && x.alias) map[String(x.alias).toLowerCase()] = String(x.sku || ''); });
     state.itemAliases = map;
   } catch (e) { console.warn('loadItemAliases', e); state.itemAliases = state.itemAliases || {}; }
 }
 // Толинд бичих (upsert). sku='' = «бараа биш» гэж тэмдэглэх.
-async function saveItemAlias(alias, sku, note) {
+async function saveItemAlias(alias0, sku, note) {
+  // Түлхүүр ҮРГЭЛЖ жижиг үсгээр — resolveItemSku мөн жижиг үсгээр хайдаг
+  const alias = String(alias0 || '').toLowerCase();
   if (!alias) return false;
   const body = { alias, sku: sku || '', kind: alias.indexOf('name:') === 0 ? 'name' : 'sku',
     note: note || '', created_by: state.me || '', updated_at: new Date().toISOString() };
@@ -7481,6 +7483,7 @@ async function loadProductsCatalog() {
       state._prodHasSource = rows.length ? ('source_url' in rows[0]) : true;
       state._prodHasMedia = rows.length ? ('media_url' in rows[0]) : true;
       state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
+      state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -7721,6 +7724,7 @@ async function saveProduct(product) {
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
   if (product.media_url !== undefined && state._prodHasMedia !== false) row.media_url = product.media_url || null;
   if (product.name_en !== undefined && state._prodHasNameEn !== false) row.name_en = product.name_en || null;
+  if (product.setup_fee !== undefined && state._prodHasSetupFee !== false) row.setup_fee = Number(product.setup_fee) || 0;   // суурилуулалтын нэгж хөлс (сонголттой багана)
   if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
@@ -16004,6 +16008,7 @@ function openProductModal(p) {
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
+        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span style="color:var(--muted);font-weight:400;">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
         <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
         <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
@@ -16261,6 +16266,7 @@ async function submitProductModal(modal, orig, btn) {
   const base = {
     name, name_en: g('pm-nameen') || null, category: cat, sku, code,   // sku === code === M-xxx
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
+    setup_fee: moneyVal(modal.querySelector('#pm-setup')),   // суурилуулалтын нэгж хөлс (0 = нэрээр default)
     stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
     maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
@@ -16588,8 +16594,15 @@ function setupRateForName(name) {
   const hit = SETUP_RATES.find(([re]) => re.test(s));
   return hit ? hit[1] : SETUP_RATE_DEFAULT;
 }
+// Барааны нэгж хөлс = каталогт оруулсан `setup_fee` (item.setup) ДАВУУ; оруулаагүй бол
+// нэрээр таамагласан default (SETUP_RATES). Ингэснээр захиалга тус бүрд каталогийн
+// тохируулсан үнэ мөрдөгдөж, шинэ бараанд ч боломжийн эхлэл дүн гарна.
+function setupUnitFee(it) {
+  const explicit = Number(it && it.setup) || 0;
+  return explicit > 0 ? explicit : setupRateForName(it && it.name);
+}
 function setupFeeForItems(items) {
-  const raw = (Array.isArray(items) ? items : []).reduce((sum, it) => sum + (Number(it && it.qty) || 0) * setupRateForName(it && it.name), 0);
+  const raw = (Array.isArray(items) ? items : []).reduce((sum, it) => sum + (Number(it && it.qty) || 0) * setupUnitFee(it), 0);
   return raw > 0 ? Math.max(raw, SETUP_MIN_FEE) : 0;
 }
 function orderHasSetupItem(o) {
@@ -17814,7 +17827,7 @@ function openNewOrder(editOrder) {
     const key = p.sku || p.name;
     const ex = key ? items.find(it => (it.sku || it.name) === key) : null;
     if (ex) ex.qty = (Number(ex.qty) || 0) + 1;
-    else items.push({ sku: p.sku || p.name, name: p.name, qty: 1, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, photo: p.photo || '' });
+    else items.push({ sku: p.sku || p.name, name: p.name, qty: 1, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, setup: Number(p.setup_fee) || 0, photo: p.photo || '' });
     renderItems(); recalc();
   });
 
@@ -18118,7 +18131,7 @@ function openOrderProductPicker(opt) {
     cart.forEach((n, k) => {
       if (n <= 0) return;
       const p = all.find(x => keyOf(x) === k); if (!p) return;
-      out.push({ sku: p.sku || p.name, name: p.name, qty: n, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, photo: p.photo || '' });
+      out.push({ sku: p.sku || p.name, name: p.name, qty: n, price: Number(p.price) || 0, deposit: Number(p.deposit) || 0, setup: Number(p.setup_fee) || 0, photo: p.photo || '' });
     });
     opt.onApply(out);
     close();

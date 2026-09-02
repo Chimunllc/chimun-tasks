@@ -14112,12 +14112,13 @@ function meventContractHtml(o) {
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);
   const offFee = orderOffHoursFee(o);   // ажлын бус цагийн нэмэгдэл (⟦RT⟧ цагаас)
+  const setupFee = setupFeeOf(o.note);   // суурилуулалт / угсралт (⟦SET|1|хөлс⟧ токеноос)
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
   const _ci = custInfoOf(o.note);
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
   const deposit = Number(o.deposit_mnt) || 0;
-  const rentalNet = Math.max(0, subtotal - discount + delivFee + offFee);   // НӨАТ багтсан түрээс+үйлчилгээ+ажлын бус цаг (барьцаа ОРООГҮЙ)
+  const rentalNet = Math.max(0, subtotal - discount + delivFee + offFee + setupFee);   // НӨАТ багтсан түрээс+үйлчилгээ+ажлын бус цаг+суурилуулалт (барьцаа ОРООГҮЙ)
   const total = Number(o.total_mnt) || (rentalNet + deposit);      // нийт төлбөр
   const preVat = Math.round(rentalNet / 1.1);                      // НӨАТ ороогүй дүн
   const vat = rentalNet - preVat;                                  // НӨАТ (10%, түрээст багтсан)
@@ -14135,6 +14136,7 @@ function meventContractHtml(o) {
       ${discount > 0 ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
       ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
       ${offFee > 0 ? `<tr><td>🌙 Ажлын бус цаг:</td><td class="rt">${fmtMoney(offFee)}</td></tr>` : ''}
+      ${setupFee > 0 ? `<tr><td>🔧 Суурилуулалт / угсралт:</td><td class="rt">${fmtMoney(setupFee)}</td></tr>` : ''}
       <tr><td>Үүнээс НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
@@ -17462,7 +17464,7 @@ function openNewOrder(editOrder) {
       <div id="no-delivfee-row" class="no-sum-row muted" style="display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};margin-top:6px;"><span>Хүргэлтийн төлбөр</span><b id="no-delivfee">${fmtMoney(_dlv0.fee || 0)}</b></div>
       <label class="no-lbl" id="no-setup-wrap" style="margin-top:8px;align-items:center;gap:7px;display:${_dlv0.zone === 'pickup' ? 'none' : 'flex'};cursor:pointer;">
         <input type="checkbox" id="no-setup"${_setup0 ? ' checked' : ''} style="width:16px;height:16px;flex:0 0 auto;">
-        <span>🔧 Суурилуулалт / угсралт хийнэ <span style="color:var(--muted);font-weight:400;font-size:11.5px;">— дамжлагад «Суурилуулсан» ба «Буулгасан» шат нэмэгдэнэ</span></span>
+        <span>🔧 Суурилуулалт / угсралт хийнэ <span style="color:var(--muted);font-weight:400;font-size:11.5px;">— хөлс нэмэгдэнэ (бараа бүрийн тоогоор) + дамжлагад «Суурилуулсан»/«Буулгасан» шат</span></span>
       </label>
     </div>
     </div>
@@ -17500,6 +17502,7 @@ function openNewOrder(editOrder) {
       <div class="no-sum-row muted"><span>+ Барьцаа</span><span id="no-dep">0₮</span></div>
       <div class="no-sum-row muted" id="no-delivrow"><span>+ Хүргэлт</span><span id="no-deliv">0₮</span></div>
       <div class="no-sum-row muted" id="no-offhrow" style="display:none;"><span>🌙 + Ажлын бус цаг</span><span id="no-offh">0₮</span></div>
+      <div class="no-sum-row muted" id="no-setupfeerow" style="display:none;"><span>🔧 + Суурилуулалт / угсралт</span><span id="no-setupfee">0₮</span></div>
       <div class="no-sum-row total"><span><b>Нийт төлөх дүн</b></span><b id="no-total" style="color:var(--ok);">0₮</b></div>
       ${isEdit ? `<div class="no-sum-row"><span>Үлдэгдэл</span><b id="no-bal" style="color:var(--warn);">0₮</b></div>` : ''}
     </div>
@@ -17643,6 +17646,8 @@ function openNewOrder(editOrder) {
     $('#no-delivrow').style.display = dlv.zone === 'pickup' ? 'none' : 'flex';
     $('#no-offh').textContent = '+' + fmtMoney(offFee);
     $('#no-offhrow').style.display = offN > 0 ? 'flex' : 'none';
+    $('#no-setupfee').textContent = '+' + fmtMoney(setupFee);
+    $('#no-setupfeerow').style.display = setupFee > 0 ? 'flex' : 'none';
     $('#no-delivfee').textContent = fmtMoney(dlv.fee);
     $('#no-total').textContent = fmtMoney(total);
     if (isEdit) $('#no-bal').textContent = fmtMoney(Math.max(0, total - (Number(editOrder.paid_mnt) || 0)));
@@ -17660,6 +17665,7 @@ function openNewOrder(editOrder) {
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
   $('#no-disctype').addEventListener('change', recalc);
+  { const _su = $('#no-setup'); if (_su) _su.addEventListener('change', recalc); }   // суурилуулалт чагт → хөлс дахин тооц
   // 🎁 Байнгын үйлчлүүлэгчийн хөнгөлөлт — имэйл/утсаар өмнөх захиалга илэрвэл авто (шинэ захиалгад)
   const _lp = loyaltyPct();
   { const _e = $('#no-loyalty-pct'); if (_e) _e.textContent = String(_lp); }
@@ -17714,6 +17720,8 @@ function openNewOrder(editOrder) {
     const dlv = currentDelivery();
     const offFee = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value) * ORDER_OFFHOURS_FEE;   // ажлын бус цаг (сайттай ижил)
     const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
+    const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
+    const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалтын хөлс — токенд хадгална, нийт дүнд нэмнэ
     const addr = $('#no-addr').value.trim();
     if (isDeliv && !addr) { showToast('Хүргэх хаяг оруулна уу', 'warn'); return; }
     if (dlv.zone === 'out' && !dlv.km) { showToast('Хотоос гадна: км оруулна уу', 'warn'); return; }
@@ -17753,8 +17761,8 @@ function openNewOrder(editOrder) {
       status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
-      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(isDeliv && !!(($('#no-setup') || {}).checked)) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
+      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };

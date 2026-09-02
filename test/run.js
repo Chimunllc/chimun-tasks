@@ -83,7 +83,8 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -114,6 +115,28 @@ eq(F.custInfoOf('token байхгүй'), {}, 'CI токен: байхгүй бо
   eq({ zone: d.zone, km: d.km, fee: d.fee }, { zone: 'city', km: 5, fee: 150000 }, 'Хүргэлт токен: encode→parse');
 }
 eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: байхгүй бол null');
+
+// 3b) Суурилуулалт токен + нэгж хөлс
+{
+  // encode→parse round-trip (флаг + хөлс)
+  const enc = F.encodeSetup(true, 75000);
+  eq(F.setupFlagOf('note ' + enc), true, 'Суурилуулалт токен: флаг=true');
+  eq(F.setupFeeOf('note ' + enc), 75000, 'Суурилуулалт токен: хөлс уншина');
+  // хуучин 2 хэсэгтэй токентой нийцтэй (хөлсгүй) → фээ 0
+  eq(F.setupFlagOf('⟦SET|1⟧'), true, 'Суурилуулалт токен: хуучин ⟦SET|1⟧ флаг');
+  eq(F.setupFeeOf('⟦SET|1⟧'), 0, 'Суурилуулалт токен: хуучин токенд хөлс 0');
+  eq(F.setupFlagOf('⟦SET|0⟧'), false, 'Суурилуулалт токен: 0 = false');
+  eq(F.encodeSetup(false, 99999), '⟦SET|0⟧', 'Суурилуулалт токен: off бол хөлс кодлохгүй');
+  eq(F.setupFlagOf('токенгүй'), null, 'Суурилуулалт токен: байхгүй бол null');
+  // нэгж хөлс — барааны нэрээр
+  eq(F.setupRateForName('Тайз 2х2м'), 30000, 'Нэгж хөлс: тайз=30000');
+  eq(F.setupRateForName('Сүлжмэл сандал'), 500, 'Нэгж хөлс: сандал=500');
+  eq(F.setupRateForName('Танихгүй бараа'), 1000, 'Нэгж хөлс: default=1000');
+  // нийт хөлс = тоо × нэгж, доод хязгаартай
+  eq(F.setupFeeForItems([{ name: 'Тайз', qty: 3 }]), 90000, 'Нийт хөлс: 3×30000=90000');
+  eq(F.setupFeeForItems([{ name: 'Сандал', qty: 10 }]), 50000, 'Нийт хөлс: 10×500=5000 → доод хязгаар 50000');
+  eq(F.setupFeeForItems([]), 0, 'Нийт хөлс: бараагүй = 0');
+}
 
 // 4) Эхлэх/дуусах цаг токен
 {

@@ -3748,6 +3748,12 @@ function renderTaskList() {
     wrap.innerHTML = renderReceivables();
     attachReceivablesHandlers();
     return;
+  } else if (state.view === 'coosalary') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = renderCooSalary();
+    attachCooSalaryHandlers();
+    return;
   } else if (state.view === 'vat') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
@@ -9195,6 +9201,7 @@ const PERM_MENUS = [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
+  { key: 'coosalary',   label: '💼 COO цалин',    actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
@@ -19485,6 +19492,115 @@ function arRow(i) {
   </div>`;
 }
 
+// ══════════ COO ЦАЛИН — үйл ажиллагааны захирлын ашгийн хувь ══════════
+// Зөвхөн CEO тохируулна (аль ажилтан = COO + хувь), COO өөрийн дүнг харна.
+// Цэвэр ашиг = ноогдох орлого (барьцаа хассан) − жинхэнэ зардал (6900 зээл + 5810 барьцаа буцаалт хассан).
+// Хувь нь цэвэр ашгаас ХОЙШ авагдана (зардалд ОРОХГҮЙ — тойрч эргэлдэхээс сэргийлнэ).
+function cooShareCfg() { const c = state.cooShare; return (c && typeof c === 'object') ? c : {}; }
+function cooSharePct() { const p = Number(cooShareCfg().pct); return (p > 0 && p <= 100) ? p : 30; }
+// Цэвэр ашгаас COO-гийн авах дүн (сөрөг/алдагдалтай бол 0). Цэвэр функц — тестлэгдэнэ.
+function cooShareAmount(net, pct) { const n = Number(net) || 0, p = Number(pct) || 0; return n <= 0 ? 0 : Math.round(n * p / 100); }
+// Сарын жагсаалтын нийт компанийн цэвэр ашиг (accrual, 2 салбар нийлбэр).
+function cooNetForMonths(months) {
+  let inc = 0, exp = 0;
+  (months || []).forEach(m => {
+    const p = (typeof finBranchPnl === 'function') ? finBranchPnl(m, 'accrual') : { rows: [] };
+    (p.rows || []).forEach(r => { inc += Number(r.inc) || 0; exp += Number(r.exp) || 0; });
+  });
+  return { inc, exp, net: inc - exp };
+}
+// Оны эхнээс сонгосон сар хүртэлх сарууд (YTD).
+function cooMonthsYtd(month) {
+  const [y, m] = String(month || '').split('-').map(Number);
+  if (!y || !m) return [month];
+  const out = []; for (let i = 1; i <= m; i++) out.push(`${y}-${String(i).padStart(2, '0')}`);
+  return out;
+}
+function renderCooSalary() {
+  // Тохиргоо + дата lazy ачаалал
+  if (state.cooShare === undefined) { state.cooShare = null; loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }
+  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { loadNomaadOrders(); }
+  if (state.financeRequests === undefined && typeof loadFinanceRequests === 'function') loadFinanceRequests();
+
+  const meMember = (typeof findMember === 'function') ? findMember(state.me) : null;
+  const meCeo = ((meMember && meMember.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(meMember));
+  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
+  const meIsCoo = cooKey && state.me && String(state.me) === String(cooKey);
+  if (!meCeo && !meIsCoo) {
+    return `<div style="max-width:520px;margin:24px auto;text-align:center;color:var(--muted);padding:30px 16px;border:1px solid var(--border);border-radius:12px;">Энэ мэдээлэл зөвхөн удирдлагад харагдана.</div>`;
+  }
+
+  const month = state.cooMonth || todayStr().slice(0, 7);
+  const cur = cooNetForMonths([month]);
+  const ytd = cooNetForMonths(cooMonthsYtd(month));
+  const curShare = cooShareAmount(cur.net, pct);
+  const ytdShare = cooShareAmount(ytd.net, pct);
+  const cooName = cooKey ? ((typeof memberName === 'function' && memberName(cooKey)) || cfg.name || cooKey) : '—';
+  const dataReady = (state.appOrders && state.appOrders.length != null) && (state.financeRequests !== undefined);
+
+  const row = (l, v, c, big) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:${big ? 'var(--fs-lg)' : 'var(--fs-md)'};padding:${big ? '7px' : '3px'} 0;${big ? 'border-top:1px solid var(--border);margin-top:4px;' : ''}"><span style="color:var(--muted);">${l}</span><b style="color:${c || 'var(--text)'};white-space:nowrap;">${fmtMoney(v)}</b></div>`;
+  const panel = (title, d, share) => `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:var(--panel);">`
+    + `<div style="font-weight:800;font-size:var(--fs-md);margin-bottom:6px;">${title}</div>`
+    + row('Орлого (ноогдох, барьцаа хассан)', d.inc, 'var(--ok)')
+    + row('− Үйл ажиллагааны зардал', -d.exp)
+    + row('= Цэвэр ашиг', d.net, d.net >= 0 ? 'var(--text)' : 'var(--danger)')
+    + row(`COO цалин (${pct}%)`, share, 'var(--ok)', true)
+    + `</div>`;
+
+  let h = `<div style="max-width:640px;margin:0 auto;">`;
+  h += `<div style="font-weight:800;font-size:var(--fs-lg);margin:2px 0 3px;">💼 COO цалин</div>`;
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px;">Үйл ажиллагааны захирал <b style="color:var(--text);">${escapeHtml(cooName)}</b> — цэвэр ашгийн ${pct}%</div>`;
+
+  // Сар сонгогч
+  h += `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px;">`
+    + `<button class="btn" data-coo-month="-1" style="padding:6px 13px;">‹</button>`
+    + `<div style="font-weight:700;">${month}</div>`
+    + `<button class="btn" data-coo-month="1" style="padding:6px 13px;"${month >= todayStr().slice(0, 7) ? ' disabled' : ''}>›</button>`
+    + `</div>`;
+
+  if (!dataReady) h += `<div style="text-align:center;color:var(--muted);padding:10px;">⏳ Санхүү/захиалгын дата ачаалж байна…</div>`;
+  h += panel(`Энэ сар · ${month}`, cur, curShare);
+  h += panel(`Оны эхнээс (${month.slice(0, 4)} он, хуримтлагдсан)`, ytd, ytdShare);
+
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Ашгийн эрх = <b>хуримтлагдсан (YTD)</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана.<br>• Ноогдох суурь (гүйцэтгэсэн сард), төлбөрөөр биш. Барьцаа/зээл хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
+
+  // CEO тохиргоо
+  if (meCeo) {
+    const opts = (typeof TEAM !== 'undefined' ? TEAM : []).map(m => { const k = personKey(m); return `<option value="${escapeHtml(k)}"${k === cooKey ? ' selected' : ''}>${escapeHtml(m.name || k)}</option>`; }).join('');
+    h += `<div style="border:1px dashed var(--border);border-radius:12px;padding:12px 14px;background:var(--panel);">`
+      + `<div style="font-weight:700;font-size:var(--fs-md);margin-bottom:8px;">⚙️ Тохиргоо (зөвхөн CEO)</div>`
+      + `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">`
+      + `<label style="font-size:var(--fs-sm);color:var(--muted);">COO:</label>`
+      + `<select id="coo-member" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);"><option value="">— сонгох —</option>${opts}</select>`
+      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Хувь:</label>`
+      + `<input id="coo-pct" class="ui-raw" type="number" min="0" max="100" value="${pct}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">%`
+      + `<button class="btn primary" id="coo-save" style="padding:6px 14px;">Хадгалах</button>`
+      + `</div></div>`;
+  }
+  h += `</div>`;
+  return h;
+}
+function attachCooSalaryHandlers() {
+  document.querySelectorAll('[data-coo-month]').forEach(b => b.addEventListener('click', () => {
+    const base = state.cooMonth || todayStr().slice(0, 7);
+    const [y, m] = base.split('-').map(Number);
+    const d = new Date(y, m - 1 + Number(b.dataset.cooMonth), 1);
+    const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (nm > todayStr().slice(0, 7)) return;
+    state.cooMonth = nm; render();
+  }));
+  const saveBtn = document.getElementById('coo-save');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    const key = document.getElementById('coo-member').value;
+    const pct = Math.max(0, Math.min(100, Number(document.getElementById('coo-pct').value) || 0));
+    if (!key) { showToast('COO ажилтан сонгоно уу', 'warn'); return; }
+    saveBtn.disabled = true; saveBtn.textContent = 'Хадгалж байна…';
+    const cfg = { key, name: (typeof memberName === 'function' && memberName(key)) || key, pct };
+    try { await saveAppConfig('coo_share', cfg); state.cooShare = cfg; showToast('Хадгаллаа', 'success'); render(); }
+    catch (e) { showToast('Алдаа: ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Хадгалах'; }
+  });
+}
 function renderReceivables() {
   // Lazy ачаалал — захиалгын дата байхгүй бол татна (татаж дуусахад render дахин дуудагдана)
   if (!state.bqOrders) loadOrdersData();

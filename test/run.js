@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -1044,6 +1044,13 @@ function finish() {
   eq(FIR({ decision: 'approved', category: '5810' }), false, 'зардал: барьцаа буцаалт(5810) ХАСАГДАНА');
   eq(FIR({ decision: 'approved', category: '6900' }), false, 'зардал: эзний зээл(6900) хасагдана');
   eq(FIR({ decision: 'approved', category: '3100' }), true, 'зардал: жинхэнэ зардал(3100) тоологдоно');
+
+  // COO цалин — цэвэр ашгаас хувь (алдагдалтай бол 0, дугуйрна)
+  const COO = vm.runInContext('cooShareAmount', sandbox);
+  eq(COO(12000000, 30), 3600000, 'COO: 12сая ашгийн 30% = 3.6сая');
+  eq(COO(-5000000, 30), 0, 'COO: алдагдалтай сард 0 (сөрөг цалин үгүй)');
+  eq(COO(0, 30), 0, 'COO: 0 ашигт 0');
+  eq(COO(10000000, 0), 0, 'COO: 0% = 0');
 
   eq(CS([], 'accrual').n, 0, 'суваг: хоосонд 0');
   eq(CS([{ source: 'app', total_mnt: 0 }], 'accrual').staff.avg, 0, 'суваг: 0 дүнд дундаж 0 (тэгд хуваахгүй)');

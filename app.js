@@ -6759,6 +6759,10 @@ function productOf(it) {
 }
 // Каталогт ОГТ олдохгүй мөрүүд — сайт байхгүй бараа зарж байгааг илрүүлнэ.
 function unmatchedItems(o) {
+  // ⚠ Каталог ачаалагдаагүй байхад дүгнэлт гаргаж БОЛОХГҮЙ — тэр үед бүх хайлт
+  // бүтэлгүйтэж, захиалга бүр дээр худал улаан анхааруулга гарна. Захиалгын хэсэг
+  // нээгдэхэд бараа хойно ачаалагддаг тул энэ нөхцөл бодитоор тохиолддог.
+  if (!state.products || !state.products.length) return [];
   return ((o && o.items) || []).filter(it => it && it.name && !productOf(it));
 }
 function productByName(name) { const n = _normProdName(name); return (state.products || []).find(p => _normProdName(p.name) === n); }

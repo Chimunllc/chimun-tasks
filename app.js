@@ -14719,9 +14719,6 @@ function meventContractHtml(o) {
   // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног (НӨАТ багтсан) — үнийн саналтай ЯГ ижил.
   const lineOf = it => Number(it.total) || uPrice(it) * qty(it) * days;
   const subtotal = Number(o.subtotal_mnt) || items.reduce((s, it) => s + lineOf(it), 0);
-  // Хөнгөлөлт — захиалгад хадгалсан discount_type/value-ээс (үнийн саналтай ижил логик).
-  const _dval = Number(o.discount_value) || 0;
-  const discount = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);
@@ -14732,8 +14729,18 @@ function meventContractHtml(o) {
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
   const deposit = Number(o.deposit_mnt) || 0;
-  const rentalNet = Math.max(0, subtotal - discount + delivFee + offFee + setupFee);   // НӨАТ багтсан түрээс+үйлчилгээ+ажлын бус цаг+суурилуулалт (барьцаа ОРООГҮЙ)
-  const total = Number(o.total_mnt) || (rentalNet + deposit);      // нийт төлбөр
+  const _vat = parseVat(o.note), hasVat = _vat != null, vatDisc = hasVat ? _vat : 0;
+  // Хөнгөлөлт·НӨАТ — эрх мэдэлтэй total_mnt-аас ГАРГАЖ авна (үнийн санал buildOrderQuote-той ЯГ
+  // ИЖИЛ, quoteDiscountFromTotal). Задаргаа (түрээс − хөнгөлөлт − НӨАТ хасалт + хүргэлт + ажлын
+  // бус цаг + суурилуулалт + барьцаа) нийт дүнтэй ҮРГЭЛЖ тэнцэнэ. Өмнө discount_value-аас бие даан
+  // бодож байсан тул сайтын авто-хямдрал (total-д шингэсэн, discount_value=null) ба ⟦VAT⟧ хасалт
+  // гэрээнд огт харагдахгүй, «Түрээс» ба «Төлбөр» хооронд тайлбаргүй зөрүү үлддэг байв.
+  const _totRaw = Number(o.total_mnt) || 0;
+  const discount = _totRaw > 0
+    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDisc, _totRaw)
+    : (o.discount_value ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, Number(o.discount_value)) / 100) : Math.min(subtotal, Number(o.discount_value))) : 0);
+  const rentalNet = _totRaw > 0 ? Math.max(0, _totRaw - deposit) : Math.max(0, subtotal - discount + delivFee + offFee + setupFee);   // НӨАТ багтсан түрээс+үйлчилгээ (барьцаа ОРООГҮЙ)
+  const total = _totRaw > 0 ? _totRaw : (rentalNet + deposit);    // нийт төлбөр
   const preVat = Math.round(rentalNet / 1.1);                      // НӨАТ ороогүй дүн
   const vat = rentalNet - preVat;                                  // НӨАТ (10%, түрээст багтсан)
   const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
@@ -14748,6 +14755,7 @@ function meventContractHtml(o) {
     <table class="totb"><tbody>
       <tr><td>Түрээсийн дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
       ${discount > 0 ? `<tr><td>Хөнгөлөлт:</td><td class="rt">−${fmtMoney(discount)}</td></tr>` : ''}
+      ${hasVat ? `<tr><td>− НӨАТ хасалт (5%):</td><td class="rt">−${fmtMoney(vatDisc)}</td></tr>` : ''}
       ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
       ${offFee > 0 ? `<tr><td>🌙 Ажлын бус цаг:</td><td class="rt">${fmtMoney(offFee)}</td></tr>` : ''}
       ${setupFee > 0 ? `<tr><td>🔧 Суурилуулалт / угсралт:</td><td class="rt">${fmtMoney(setupFee)}</td></tr>` : ''}

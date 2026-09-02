@@ -831,6 +831,41 @@ function finish() {
   st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
 }
 
+// 41) Засвар KPI-д тооцогдох эсэх
+{
+  const st = vm.runInContext('state', sandbox);
+  const RM = vm.runInContext('repairMetrics', sandbox);
+  const OM = vm.runInContext('objectiveMetrics', sandbox);
+  const saved = { rep: st.repairs, tasks: st.tasks };
+  const M = '2026-08';
+
+  st.repairs = [
+    { status: 'fixed',   fixed_by: 'A', fixed_at: '2026-08-05T10:00:00Z', started_at: '2026-08-03T10:00:00Z', qty: 2 },
+    { status: 'fixed',   fixed_by: 'A', fixed_at: '2026-08-09T10:00:00Z', started_at: '2026-08-05T10:00:00Z', qty: 1 },
+    { status: 'fixed',   fixed_by: 'B', fixed_at: '2026-08-06T10:00:00Z', started_at: '2026-08-06T10:00:00Z', qty: 5 },
+    { status: 'pending', fixed_by: 'A', fixed_at: null, qty: 9 },
+    { status: 'fixed',   fixed_by: 'A', fixed_at: '2026-07-30T10:00:00Z', started_at: '2026-07-29T10:00:00Z', qty: 3 },
+  ];
+  const a = RM('A', M);
+  eq(a.fixed, 2, 'засвар KPI: A сард 2 засвар дуусгасан');
+  eq(a.qty, 3,   'засвар KPI: нийт 3ш бараа');
+  eq(a.avgDays, 3, 'засвар KPI: дундаж эргэлт 3 хоног (2 ба 4)');
+  eq(RM('B', M).avgDays, 0, 'засвар KPI: нэг өдөрт зассан → 0 хоног');
+  eq(RM('C', M).fixed, 0,   'засвар KPI: зaсвар хийгээгүй хүнд 0');
+  eq(RM('A', '2026-07').fixed, 1, 'засвар KPI: өөр сар тусдаа тоологдоно');
+
+  // Объектив оноонд нэмэгдэх
+  st.tasks = [];
+  const o = OM('A', M);
+  eq(o.repairs, 2, 'объектив: засвар тусад нь харагдана');
+  eq(o.tasks, 0,   'объектив: даалгавар тусад нь');
+  eq(o.total, 2,   'объектив: нийт = даалгавар + засвар');
+  eq(o.onTime, 2,  'объектив: засвар «цагтаа» гэж тооцогдоно');
+  eq(o.score, 100, 'объектив: зөвхөн засвартай хүн 100 оноо авна');
+
+  st.repairs = saved.rep; st.tasks = saved.tasks;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

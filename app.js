@@ -1692,8 +1692,11 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
   // орж өгдөггүй асуудлыг шийднэ. PDF/бусад файлыг хэвээр илгээнэ.
   let base64, filename = file.name || 'file', contentType = file.type || 'application/octet-stream';
   if (/^image\//i.test(file.type)) {
-    const maxSize = kind === 'completion' ? 1280 : 1600; // биелэлтийн зураг арай илүү шахна
-    const quality = kind === 'completion' ? 0.6 : 0.72;
+    // Баримтын зураг (биелэлт, засвар) илүү шахна — олон тоогоор хуримтлагддаг,
+    // нотолгооны зорилготой тул нарийвчлал бага байж болно.
+    const _evidence = kind === 'completion' || kind === 'repair';
+    const maxSize = _evidence ? 1280 : 1600;
+    const quality = _evidence ? 0.6 : 0.72;
     try {
       base64 = await resizeImageToBase64(file, maxSize, quality);
       contentType = 'image/jpeg';
@@ -5583,6 +5586,36 @@ function bankAcctInfo(acctNo) {
   if (!d) return null;
   return (state.bankAccounts || []).find(a => { const ad = String(a.account_no || '').replace(/\D/g, ''); return ad && (ad === d || ad.endsWith(d) || d.endsWith(ad)); }) || null;
 }
+// bank_receipts.used_in ('mevent:#1160'/'nomaad:NC-...'/'fin:..') → уншихад ойлгомжтой шошго
+function reconReceiptOwnerLabel(usedIn) {
+  const s = String(usedIn || '');
+  let m = s.match(/mevent:#?(\S+)/i); if (m) return '#' + m[1];
+  m = s.match(/nomaad:(\S+)/i); if (m) return m[1];
+  m = s.match(/fin:(\S+)/i); if (m) return 'Санхүү';
+  return s || '';
+}
+// ⭐ ХЭЭ-СУУРЬТАЙ ТУЛГАЛТ (үндсэн загвар): хуулгын гүйлгээ бүрийг бүртгэсэн PDF баримттай (bank_receipts)
+// хурууны хээгээр (дүн+огноо+илгээгч) тулгана. Таарвал БҮРТГЭСЭН, эс бол БҮРТГЭЭГҮЙ орлого. Нэрийн
+// таамаглал/андуурал БАЙХГҮЙ — яг тэр PDF-ийг оруулж бүртгэсэн эсэхийг л шалгана. state.usedFps шаардана.
+function reconcileByReceipts(stmtRows) {
+  const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r));
+  const usedFps = state.usedFps instanceof Set ? state.usedFps : new Set();
+  const usedIds = state.usedReceipts instanceof Set ? state.usedReceipts : new Set();
+  const fpOwners = state.fpOwners instanceof Map ? state.fpOwners : new Map();
+  const recorded = [], unrecorded = [];
+  for (const c of credits) {
+    const fp = (typeof receiptFingerprint === 'function') ? receiptFingerprint({ amount: c.credit, date: c.date, senderName: c.name }) : '';
+    const hit = fp && usedFps.has(fp);
+    if (hit) recorded.push({ ...c, fp, owner: fpOwners.get(fp) || '' });
+    else unrecorded.push({ ...c, fp });
+  }
+  // Одоо байгаа render/тайлантай нийцүүлэх: recorded→matched (order=эзэмшигч), unrecorded→untracked.
+  const matched = recorded.map(c => ({
+    order: { order_no: reconReceiptOwnerLabel(c.owner) || (c.name || '').slice(0, 20), customer_name: c.name || '', paid_amount: c.credit, branch: /nomaad/i.test(c.owner) ? 'camp' : 'mevent' },
+    credit: c.credit, rows: [c], receipts: 1,
+  }));
+  return { recorded, unrecorded, matched, mismatch: [], missing: [], untracked: unrecorded, incomeCount: credits.length, _byReceipt: true };
+}
 // Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалт. Мэргэжлийн, хэвлэх/PDF-д зориулсан.
 function incomeReportHtml(res) {
   const stmts = (res && res._stmts) || [];
@@ -5665,8 +5698,8 @@ function incomeReportHtml(res) {
     </div>
     <div class="kpis">
       <div class="kpi hl"><div class="l">Банкны нийт орлого</div><div class="v">${money(totalIncome)}</div></div>
-      <div class="kpi"><div class="l">Захиалга/орлогод тааруулсан</div><div class="v">${money(matchedSum)} · ${matchPct}%</div></div>
-      <div class="kpi"><div class="l">Захиалгагүй орлого</div><div class="v">${money(untrackedSum)}</div></div>
+      <div class="kpi"><div class="l">Бүртгэсэн (PDF баримттай)</div><div class="v">${money(matchedSum)} · ${matchPct}%</div></div>
+      <div class="kpi"><div class="l">Бүртгээгүй орлого</div><div class="v">${money(untrackedSum)}</div></div>
       <div class="kpi"><div class="l">Нийт зарлага</div><div class="v">${money(totalExpense)}</div></div>
     </div>
     <h2>Дансны хөдөлгөөн</h2>
@@ -5678,11 +5711,10 @@ function incomeReportHtml(res) {
     <h2>Орлого — салбараар</h2>
     <table><thead><tr><th>Салбар</th><th class="r">Орлого</th><th class="r">Эзлэх %</th></tr></thead>
       <tbody>${branchRows}<tr><th>Нийт</th><th class="r">${money(totalIncome)}</th><th class="r">100%</th></tr></tbody></table>
-    <h2>Тулгалтын дүн</h2>
+    <h2>Тулгалтын дүн (хуулга ↔ бүртгэсэн PDF баримт)</h2>
     <table><thead><tr><th>Ангилал</th><th class="r">Гүйлгээ</th><th class="r">Дүн</th></tr></thead><tbody>
-      <tr><td>✓ Захиалга/орлогод тааруулсан</td><td class="r">${(res.matched || []).length + (res.mismatch || []).length}</td><td class="r">${money(matchedSum)}</td></tr>
-      <tr><td>⚠ Дүн зөрүүтэй</td><td class="r">${(res.mismatch || []).length}</td><td class="r">—</td></tr>
-      <tr><td>💰 Захиалгагүй орлого</td><td class="r">${(res.untracked || []).length}</td><td class="r">${money(untrackedSum)}</td></tr>
+      <tr><td>✓ Бүртгэсэн (PDF баримттай)</td><td class="r">${(res.matched || []).length}</td><td class="r">${money(matchedSum)}</td></tr>
+      <tr><td>💰 Бүртгээгүй (PDF баримт алга)</td><td class="r">${(res.untracked || []).length}</td><td class="r">${money(untrackedSum)}</td></tr>
     </tbody></table>
     ${growth != null || prevRec > 0 ? `<h2>Өмнөх сартай харьцуулалт</h2>
     <table><thead><tr><th>Сар</th><th class="r">Бүртгэсэн орлого</th><th class="r">Өөрчлөлт</th></tr></thead><tbody>
@@ -5730,16 +5762,16 @@ function renderReconcilePanel() {
         <div class="recon-report-h"><b>${stmts.length} данс${stmts[0] && stmts[0].period ? ' · ' + escapeHtml(stmts[0].period) : ''}</b><button class="btn" id="recon-report-btn">🖨 Тайлан татах</button></div>
         <div class="recon-kpis">
           <div class="recon-kpi"><span class="rk-l">Банкны нийт орлого</span><span class="rk-v">${fmtMoney(totalIncome)}</span></div>
-          <div class="recon-kpi ok"><span class="rk-l">Тааруулсан</span><span class="rk-v">${fmtMoney(matchedSum)}</span></div>
-          <div class="recon-kpi info"><span class="rk-l">Захиалгагүй</span><span class="rk-v">${fmtMoney(untrackedSum)}</span></div>
+          <div class="recon-kpi ok"><span class="rk-l">✓ Бүртгэсэн</span><span class="rk-v">${fmtMoney(matchedSum)}</span></div>
+          <div class="recon-kpi info"><span class="rk-l">💰 Бүртгээгүй</span><span class="rk-v">${fmtMoney(untrackedSum)}</span></div>
         </div>
         ${acctChips ? `<div class="recon-accts">${acctChips}</div>` : ''}
-        <div class="recon-summary-sub">Ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ · Тулгасан захиалга/орлого: <b>${res._orderCount != null ? res._orderCount : '?'}</b></div>
+        <div class="recon-summary-sub">Ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ · ✓ Бүртгэсэн: <b>${(res.matched || []).length}</b> · 💰 Бүртгээгүй: <b>${(res.untracked || []).length}</b></div>
       </div>
-      ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${m.rows && m.rows.length > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${m.rows.length} гүйлгээ)</span>` : ''}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
-      ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => { const found = (m.rows || []).length, rec = m.receipts || 0; const note = rec > found ? ` <span style="color:var(--muted);font-size:11px;">(${found}/${rec} баримт — дутуу)</span>` : (found > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${found} гүйлгээ)</span>` : ''); return `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${note}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.credit != null ? m.credit : (m.row ? m.row.credit : 0))}</span></div>`; })}
-      ${sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
-      ${sec('💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}
+      ${sec(res._byReceipt ? '✓ Бүртгэсэн (PDF баримттай)' : '✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${m.order.order_no ? escapeHtml(m.order.order_no) + ' · ' : ''}${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
+      ${res._byReceipt ? '' : sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => { const found = (m.rows || []).length, rec = m.receipts || 0; const note = rec > found ? ` <span style="color:var(--muted);font-size:11px;">(${found}/${rec} баримт — дутуу)</span>` : (found > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${found} гүйлгээ)</span>` : ''); return `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${note}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.credit != null ? m.credit : (m.row ? m.row.credit : 0))}</span></div>`; })}
+      ${res._byReceipt ? '' : sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
+      ${sec(res._byReceipt ? '💰 Бүртгээгүй орлого (PDF баримт алга)' : '💰 Захиалгагүй орлого', 'info', res.untracked, c => `<div class="recon-row"><span class="recon-l">${escapeHtml(c.date)} · ${escapeHtml(c.name || '')} · ${escapeHtml((c.memo || '').slice(0, 44))}</span><span class="recon-amt">${fmtMoney(c.credit)}</span></div>`)}
       ${(res.missing.length && res.untracked.length) ? `<div class="recon-ai-bar"><button class="btn" id="recon-ai-btn"${state._reconAiLoading ? ' disabled' : ''}>${state._reconAiLoading ? '🤖 Бодож байна…' : '🤖 AI-аар санал авах'}</button><span class="recon-ai-hint">Зөвхөн таараагүй ${res.missing.length}×${res.untracked.length}-д. AI санал болгоно — та шалгаж баталгаажуулна.</span></div>` : ''}
       ${(res._aiSuggestions && res._aiSuggestions.length) ? `<div class="recon-sec recon-ai"><div class="recon-sec-h">🤖 AI санал <span class="recon-n">${res._aiSuggestions.length}</span></div><div class="recon-rows">${res._aiSuggestions.map(s => `<div class="recon-row clickable" data-recon-open="${escapeHtml(s.order.order_no)}"><span class="recon-l">${escapeHtml(s.order.order_no)} · ${escapeHtml(s.order.customer_name || '')} ← ${escapeHtml(s.income.name || (s.income.memo || '').slice(0, 30) || 'орлого')}${s.reason ? `<span class="recon-ai-reason">${escapeHtml(s.reason)}</span>` : ''}</span><span class="recon-amt"><b class="recon-ai-conf">${Math.round(s.confidence * 100)}%</b> · ${fmtMoney(s.income.credit)}${s.amountDiff ? ` <span class="recon-ai-diff">зөрүү ${fmtMoney(s.amountDiff)}</span>` : ''}</span></div>`).join('')}</div></div>` : ''}`;
   }
@@ -5781,6 +5813,7 @@ function openReconcileModal() {
         try { if (typeof loadNomaadPayments === 'function') await loadNomaadPayments(); } catch (_) {}
       }
       try { if (typeof loadBankAccounts === 'function') await loadBankAccounts(); } catch (_) {}   // дансны нэр/салбар тайланд
+      try { if (typeof loadUsedReceipts === 'function') await loadUsedReceipts(); } catch (_) {}   // ⭐ бүртгэсэн PDF баримтын хээ (тулгалтын үндэс)
       state._reconStmts = state._reconStmts || [];
       let added = 0;
       for (const file of files) {
@@ -5807,9 +5840,8 @@ function openReconcileModal() {
       }
       if (!added && !state._reconStmts.length) return;
       const allRows = state._reconStmts.flatMap(s => s.rows);
-      const olist = reconOrdersList();
-      state._reconResult = reconcileOrders(allRows, olist);
-      state._reconResult._orderCount = olist.length;
+      state._reconResult = reconcileByReceipts(allRows);   // ⭐ хээ-суурьтай: хуулга ↔ бүртгэсэн PDF баримт
+      state._reconResult._orderCount = (state.usedFps instanceof Set) ? state.usedFps.size : 0;
       state._reconResult._stmts = state._reconStmts;
       if (st) st.textContent = '';
       draw();
@@ -14679,6 +14711,22 @@ function taskLatenessLabel(t) {
   if (d === 0) return `<span style="color:var(--ok);font-weight:700;">✓ Хугацаандаа дуусгасан</span>`;
   return `<span style="color:var(--ok);font-weight:700;">✓ ${-d} хоногийн өмнө дуусгасан</span>`;
 }
+// Тухайн хүний ЗАСВАРЫН гүйцэтгэл (сараар). Зассан ажил бол зурагтай
+// баталгаажсан бодит ажил тул объектив онооны нэг хэсэг болно.
+// avgDays = засварт авснаас зассан хүртэлх дундаж хоног (хурдан эргэлт = сайн).
+function repairMetrics(key, month) {
+  const list = (state.repairs || []).filter(r =>
+    r && String(r.status) === 'fixed' && String(r.fixed_by || '') === String(key)
+    && String(r.fixed_at || '').slice(0, 7) === month);
+  const qty = list.reduce((a, r) => a + (Number(r.qty) || 0), 0);
+  const spans = list.map(r => {
+    const a = Date.parse(r.started_at || r.reported_at || ''), b = Date.parse(r.fixed_at || '');
+    return (isNaN(a) || isNaN(b) || b < a) ? null : (b - a) / 86400000;
+  }).filter(v => v != null);
+  const avgDays = spans.length ? Math.round((spans.reduce((x, y) => x + y, 0) / spans.length) * 10) / 10 : null;
+  return { fixed: list.length, qty, avgDays };
+}
+
 function objectiveMetrics(key, month) {
   const today = todayStr();
   const mine = (state.tasks || []).filter(t =>
@@ -14697,10 +14745,16 @@ function objectiveMetrics(key, month) {
       if (cd && t.due && cd <= t.due) onTime++; else late++;
     } else if (t.due && t.due < today) { overdue++; }
   });
-  const score = total ? Math.round(100 * (onTime + 0.5 * late) / total) : null;
+  // Зассан засвар = зурагтай баталгаажсан, дуусгасан бодит ажил → объектив ажилд
+  // нэмэгдэнэ. Засварт хугацааны заалт байдаггүй тул «цагтаа» гэж тооцно.
+  const rep = repairMetrics(key, month);
+  const total2 = total + rep.fixed;
+  const onTime2 = onTime + rep.fixed;
+  const score = total2 ? Math.round(100 * (onTime2 + 0.5 * late) / total2) : null;
   // Цөөн ажилтай үед оноо найдваргүй (2 амар ажил → 100%). Тэмдэглэж, нэгдсэн онооноос хасна.
-  const lowData = total > 0 && total < MIN_OBJ_TASKS;
-  return { total, done, onTime, late, overdue, score, lowData };
+  const lowData = total2 > 0 && total2 < MIN_OBJ_TASKS;
+  return { total: total2, done: done + rep.fixed, onTime: onTime2, late, overdue, score, lowData,
+           tasks: total, repairs: rep.fixed, repairQty: rep.qty, repairDays: rep.avgDays };
 }
 const MIN_OBJ_TASKS = 3;
 /* ─── Нэгдсэн оноо (Объектив 40% + Ажлын чанар 40% + 360° 20%) + бонус ─── */
@@ -15087,12 +15141,12 @@ function renderPerfMe() {
       </div>
       ${u.penalty ? `<div class="perf-penalty-list">${monthPenalties(state.me, month).map(p => `<div class="perf-penalty-item"><span>−${Number(p.kpi_pct) || 0}</span> ${escapeHtml(p.note || 'шалтгаан тэмдэглээгүй')}</div>`).join('')}</div>` : ''}
       ${u.total != null && u.partsUsed < 3 ? `<div class="perf-partial" style="color:var(--warn);font-size:12px;margin:4px 0;">⚠ Хэсэгчилсэн дата — оноо ${u.partsUsed}/3 бүрэлдэхүүнээс гарсан</div>` : ''}
-      <div class="perf-note">Ажил: ${obj.total} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''} Чанар: ${u.qualityInfo && u.qualityInfo.rated ? `${u.qualityInfo.avg}★ (${u.qualityInfo.rated}/${u.qualityInfo.doneTotal} ажил үнэлэгдсэн)` : 'үнэлгээ хийгдээгүй'}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
+      <div class="perf-note">Ажил: ${obj.total}${obj.repairs ? ` <small>(даалгавар ${obj.tasks} + засвар ${obj.repairs})</small>` : ''} · хугацаандаа ${obj.onTime} · хоцорсон ${obj.overdue}.${obj.repairs ? ` 🔧 Засвар: ${obj.repairs} удаа · ${obj.repairQty}ш${obj.repairDays != null ? ` · дундаж ${obj.repairDays} хоног` : ''}.` : ''}${obj.lowData ? ` <b style="color:var(--warn)">⚠ Хангалтгүй дата (${MIN_OBJ_TASKS}+ ажил хэрэгтэй — объектив оноо нэгдсэн онооноос хасагдсан).</b>` : ''} Чанар: ${u.qualityInfo && u.qualityInfo.rated ? `${u.qualityInfo.avg}★ (${u.qualityInfo.rated}/${u.qualityInfo.doneTotal} ажил үнэлэгдсэн)` : 'үнэлгээ хийгдээгүй'}. 360°: ${u.e360.raterCount} үнэлэгч.</div>
       <details class="perf-help"><summary>ℹ️ KPI яаж бодогддог вэ?</summary>
         <div class="perf-help-body">
           <div>KPI = 5 хэсгийн дундаж, зөвхөн <b>дата байгаа</b> хэсгээр (дутуу хэсэг онооноос хасагдана).</div>
           <div class="perf-help-h">🟢 Автомат — өөрөө бодогдоно:</div>
-          <div>⏱ <b>Объектив (цагтаа)</b> — ажлаа хугацаандаа дуусгасан хувь.</div>
+          <div>⏱ <b>Объектив (цагтаа)</b> — ажлаа хугацаандаа дуусгасан хувь. Зассан засвар мөн энд тооцогдоно (зурагтай баталгаажсан ажил).</div>
           <div>⭐ <b>Хүлээлцэх чанар</b> — дамжлага урагшлуулахад дараагийн хүн таны ажлыг 1-5★ үнэлнэ. <b>Энэ л «ажил дуусахад гарах үнэлгээ».</b></div>
           <div>📦 <b>Гарц</b> — хэдэн дамжлагын ажил дуусгасан.</div>
           <div class="perf-help-h">🟡 Гараар — хийхгүй бол дата дутна:</div>

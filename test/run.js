@@ -2014,5 +2014,45 @@ function finish() {
     st.nomaadPayments = savedPays;
   }
 
+  // ── Авлага: канон төлөвөөр шүүнэ (түүхий o.status БИШ) ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const RD = vm.runInContext('receivablesData', sandbox);
+    const saved = { ao: st.appOrders, no: st.nomaadOrders };
+    st.nomaadOrders = [];
+    const bal = (rows) => { st.appOrders = rows; return RD().items.filter(i => i.branch === 'bq'); };
+
+    // (1) Төлбөргүй reserved = харагдацаар «Ноорог» → авлага БИШ (өмнө бүтэн дүнгээр ордог байв)
+    eq(bal([{ id: '1', number: 1, status: 'reserved', total_mnt: 900000, paid_mnt: 0, starts_at: '2099-01-01' }]).length, 0,
+       'авлага: төлбөргүй reserved (=Ноорог) авлагад ОРОХГҮЙ');
+    // Төлбөр орсон reserved — үлдэгдэл авлага мөн
+    eq(bal([{ id: '2', number: 2, status: 'reserved', total_mnt: 900000, paid_mnt: 300000 }])
+        .map(i => i.balance), [600000], 'авлага: хэсэгчлэн төлсөн reserved = үлдэгдэл авлага');
+
+    // (2) Дамжлагын дунд шат — өмнө ОГТ тоологддоггүй байв
+    ['preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'installing', 'teardown', 'returning'].forEach(s => {
+      eq(bal([{ id: 'x', number: 9, status: s, total_mnt: 500000, paid_mnt: 200000 }]).map(i => i.balance), [300000],
+         `авлага: дамжлагын «${s}» шатны үлдэгдэл тоологдоно`);
+    });
+    // Дууссан шат — урьдын адил тоологдоно
+    ['returned', 'stopped', 'rented', 'started'].forEach(s => {
+      eq(bal([{ id: 'y', number: 8, status: s, total_mnt: 500000, paid_mnt: 200000 }]).length, 1,
+         `авлага: «${s}» урьдын адил тоологдоно`);
+    });
+    // Хаагдсан/устгасан — авлага БИШ
+    ['archived', 'canceled', 'deleted', 'draft'].forEach(s => {
+      eq(bal([{ id: 'z', number: 7, status: s, total_mnt: 500000, paid_mnt: 200000 }]).length, 0,
+         `авлага: «${s}» авлагад орохгүй`);
+    });
+    // Танигдахгүй төлөв — чимээгүй нэмэгдэхгүй (bucketOf default 'active' болдгийг тойрсон)
+    eq(bal([{ id: 'q', number: 6, status: 'ямар_ч_биш', total_mnt: 500000, paid_mnt: 200000 }]).length, 0,
+       'авлага: танигдахгүй төлөв авлагад орохгүй');
+    // Бүтэн төлсөн — үлдэгдэлгүй тул мөр үүсэхгүй
+    eq(bal([{ id: 'p', number: 5, status: 'rented', total_mnt: 500000, paid_mnt: 500000 }]).length, 0,
+       'авлага: бүтэн төлсөн захиалга авлагад орохгүй');
+
+    st.appOrders = saved.ao; st.nomaadOrders = saved.no;
+  }
+
   finish();
 })();

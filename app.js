@@ -14735,31 +14735,15 @@ function meventContractHtml(o) {
   const days = orderRentalDays(o);   // C10: каноны хоног тоолол (гэрээ/сайт/квот нэг дүрэм)
   // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног (НӨАТ багтсан) — үнийн саналтай ЯГ ижил.
   const lineOf = it => Number(it.total) || uPrice(it) * qty(it) * days;
-  const subtotal = Number(o.subtotal_mnt) || items.reduce((s, it) => s + lineOf(it), 0);
-  const _dlv = parseDelivery(o.note);
-  const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
-  const delivLbl = deliveryLabel(_dlv);
-  const offFee = orderOffHoursFee(o);   // ажлын бус цагийн нэмэгдэл (⟦RT⟧ цагаас)
-  const setupFee = setupFeeOf(o.note);   // суурилуулалт / угсралт (⟦SET|1|хөлс⟧ токеноос)
+  // ⭐ Мөнгөний задаргаа — ГАНЦ эх сурвалж orderMoneyBreakdown (үнийн санал/картатай ЯГ ижил тоо).
+  const _B = orderMoneyBreakdown(o);
+  const subtotal = _B.subtotal, discount = _B.discount, vatDisc = _B.vatDisc, hasVat = _B.hasVat,
+    delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, setupFee = _B.setupFee,
+    deposit = _B.deposit, rentalNet = _B.rentalNet, vat = _B.vat, total = _B.total;
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
   const _ci = custInfoOf(o.note);
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
-  const deposit = Number(o.deposit_mnt) || 0;
-  const _vat = parseVat(o.note), hasVat = _vat != null, vatDisc = hasVat ? _vat : 0;
-  // Хөнгөлөлт·НӨАТ — эрх мэдэлтэй total_mnt-аас ГАРГАЖ авна (үнийн санал buildOrderQuote-той ЯГ
-  // ИЖИЛ, quoteDiscountFromTotal). Задаргаа (түрээс − хөнгөлөлт − НӨАТ хасалт + хүргэлт + ажлын
-  // бус цаг + суурилуулалт + барьцаа) нийт дүнтэй ҮРГЭЛЖ тэнцэнэ. Өмнө discount_value-аас бие даан
-  // бодож байсан тул сайтын авто-хямдрал (total-д шингэсэн, discount_value=null) ба ⟦VAT⟧ хасалт
-  // гэрээнд огт харагдахгүй, «Түрээс» ба «Төлбөр» хооронд тайлбаргүй зөрүү үлддэг байв.
-  const _totRaw = Number(o.total_mnt) || 0;
-  const discount = _totRaw > 0
-    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDisc, _totRaw)
-    : (o.discount_value ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, Number(o.discount_value)) / 100) : Math.min(subtotal, Number(o.discount_value))) : 0);
-  const rentalNet = _totRaw > 0 ? Math.max(0, _totRaw - deposit) : Math.max(0, subtotal - discount + delivFee + offFee + setupFee);   // НӨАТ багтсан түрээс+үйлчилгээ (барьцаа ОРООГҮЙ)
-  const total = _totRaw > 0 ? _totRaw : (rentalNet + deposit);    // нийт төлбөр
-  const preVat = Math.round(rentalNet / 1.1);                      // НӨАТ ороогүй дүн
-  const vat = rentalNet - preVat;                                  // НӨАТ (10%, түрээст багтсан)
   const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
   const contractNo = escapeHtml(o.contract_no || '');
   const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
@@ -19056,6 +19040,32 @@ function quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, v
   if (!(total > 0)) return 0;
   return Math.max(0, (Number(subtotal) || 0) + (Number(delivFee) || 0) + (Number(offFee) || 0) + (Number(setupFee) || 0) + (Number(deposit) || 0) - (Number(vatDiscount) || 0) - (Number(total) || 0));
 }
+// ⭐ ЗАХИАЛГЫН МӨНГӨНИЙ ЗАДАРГАА — ГАНЦ ЭХ СУРВАЛЖ. Үнийн санал, гэрээ, (ирээдүйд) карт ЗӨВХӨН ҮҮНИЙГ
+// дуудна — задаргааг хоёр ч газар БИЕ ДААН бодохгүй тул шинэ баримт нэмэхэд ч давхардал/зөрүү үүсэхгүй.
+// Бүх утга эрх мэдэлтэй total_mnt + note токеноос (⟦DLV⟧/⟦RT⟧/⟦SET⟧/⟦VAT⟧). Хямдралыг total_mnt-аас
+// гаргаж (quoteDiscountFromTotal) задаргаа нийт дүнтэй ҮРГЭЛЖ тэнцэнэ. discount_value зөвхөн total=0 fallback.
+function orderMoneyBreakdown(o) {
+  o = o || {};
+  const days = (typeof orderRentalDays === 'function') ? orderRentalDays(o) : 1;
+  const _line = it => Number(it && it.total) || (Number(it && it.price) || 0) * (Number(it && (it.qty != null ? it.qty : it.quantity)) || 0) * days;
+  const subtotal = Number(o.subtotal_mnt) || (Array.isArray(o.items) ? o.items.reduce((s, it) => s + _line(it), 0) : 0);
+  const _dlv = parseDelivery(o.note);
+  const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
+  const delivLbl = deliveryLabel(_dlv);
+  const offFee = orderOffHoursFee(o);
+  const setupFee = setupFeeOf(o.note);
+  const deposit = Number(o.deposit_mnt) || 0;
+  const _vat = parseVat(o.note), hasVat = _vat != null, vatDisc = hasVat ? _vat : 0;
+  const totRaw = Number(o.total_mnt) || 0;
+  const discount = totRaw > 0
+    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDisc, totRaw)
+    : (o.discount_value ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, Number(o.discount_value)) / 100) : Math.min(subtotal, Number(o.discount_value))) : 0);
+  const rentalNet = totRaw > 0 ? Math.max(0, totRaw - deposit) : Math.max(0, subtotal - discount + delivFee + offFee + setupFee);
+  const total = totRaw > 0 ? totRaw : (rentalNet + deposit);
+  const preVat = Math.round(rentalNet / 1.1);
+  const vat = rentalNet - preVat;
+  return { days, subtotal, discount, vatDisc, hasVat, delivFee, delivLbl, offFee, setupFee, deposit, rentalNet, vat, total };
+}
 async function buildOrderQuote(o, lang) {
   const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
@@ -19075,27 +19085,14 @@ async function buildOrderQuote(o, lang) {
     const pic = r.th ? `<img class="it-th" src="${escapeHtml(r.th)}" alt="">` : '<span class="it-th it-th-x"></span>';
     return `<tr><td class="ctr">${i + 1}</td><td><div class="it-wrap">${pic}<span>${escapeHtml(en ? r.nameEn : r.name)}</span></div></td><td class="ctr">${r.qty}</td><td class="ctr">${days}</td><td class="rt">${fmtMoney(r.price)}</td><td class="rt">${fmtMoney(r.qty * r.price * days)}</td></tr>`;
   }).join('');
-  const subtotal = Number(o.subtotal_mnt) || 0, total = Number(o.total_mnt) || 0, deposit = Number(o.deposit_mnt) || 0;
-  // Хөнгөлөлт — картын/формтой ИЖИЛ дүрэм: (1) хугацааны шатлалын АВТОМАТ хямдрал (rentalDiscount:
-  // 2+ хоног 20%, 7+ 40%, 30+ 55%) + (2) гар (discount_value) хямдрал. Өмнө зөвхөн discount_value-ийг
-  // авдаг байсан тул автомат хоногийн хямдрал үнийн саналд ОРОХГҮЙ, картын дүнтэй зөрдөг байв.
-  const setupFee = setupFeeOf(o.note);   // суурилуулалт / угсралт (⟦SET|1|хөлс⟧ токеноос)
-  const _dlv = parseDelivery(o.note);
-  const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
-  const delivLbl = deliveryLabel(_dlv);
-  const offFee = orderOffHoursFee(o);   // ажлын бус цагийн нэмэгдэл (⟦RT⟧ цагаас, сайттай ижил)
+  // ⭐ Мөнгөний задаргаа — ГАНЦ эх сурвалж orderMoneyBreakdown (гэрээ/картатай ЯГ ижил тоо).
+  const _B = orderMoneyBreakdown(o);
+  const subtotal = _B.subtotal, total = _B.total, deposit = _B.deposit, setupFee = _B.setupFee,
+    delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, discount = _B.discount,
+    hasVat = _B.hasVat, vatDiscount = _B.vatDisc;
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
   const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
-  // НӨАТ хассан эсэх — захиалгын ⟦VAT|дүн⟧ token-оос. Хассан бол дүн аль хэдийн total_mnt-д тусгагдсан.
-  const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
-  // Хөнгөлөлт — эрх мэдэлтэй total_mnt-аас ГАРГАЖ авна. Задаргааны мөрүүд (түрээс − хөнгөлөлт
-  // − НӨАТ + хүргэлт + ажлын бус цаг + суурилуулалт + барьцаа) нийт дүнтэй ҮРГЭЛЖ тэнцэнэ.
-  // Өмнө авто-хоногийн хямдрал (rentalDiscount) + гар хямдралыг ТУСАД нь бодоод нэмдэг байсан нь
-  // total_mnt-д зөвхөн нэг нь тусгагдсан үед ДАВХАР тоолж, задаргаа нийт дүнтэй зөрдөг байв.
-  const discount = total > 0
-    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDiscount, total)
-    : (o.discount_value ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, Number(o.discount_value)) / 100) : Math.min(subtotal, Number(o.discount_value))) : 0);
   const mailTo = o.email || '';
   const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;
   // Илгээж буй хүний гарын үсэг — нэвтэрсэн ажилтнаас автоматаар (нэр/албан тушаал/шууд утас).

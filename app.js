@@ -15106,8 +15106,14 @@ function handoffQualityScore(key, month) {
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     for (const k of Object.keys(sm)) {
       const e = sm[k];
-      if (!e || !e.handoffRating || String(e.handoffRatee) !== String(key)) continue;
+      if (!e || typeof e !== 'object') continue;
       if (month && String(e.at || '').slice(0, 7) !== month) continue;
+      // Олон үнэлгээ (handoffRatings массив — Агуулахаас гарах дээр цэвэрлэгч+бэлдэгч)
+      if (Array.isArray(e.handoffRatings)) {
+        for (const r of e.handoffRatings) { if (r && r.rating && String(r.ratee) === String(key)) { sum += Number(r.rating) || 0; n++; } }
+        continue;   // массив байвал legacy single-ийг давхар тоолохгүй
+      }
+      if (!e.handoffRating || String(e.handoffRatee) !== String(key)) continue;
       sum += Number(e.handoffRating) || 0; n++;
     }
   }
@@ -16501,14 +16507,19 @@ function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
   const needPhoto = act.key !== 'archive';
-  // Асуулт нь ҮРГЭЛЖ өмнөх шатнаас ГАРСАН барааг асууна (хэн хийснээс үл хамааран) — жолооч «Хүргэж өгсөн»
-  // дарахад «Агуулахаас гарсан ачаа бүрэн бүтэн байсан уу?» гэж асуух ёстой, өөрийнх нь ажлыг БИШ.
-  const _prev = prevStageInfoAny(o);
-  // Хүлээлцэх чанар KPI — өмнөх шатны эзэнд очно (өөрөө өөрийгөө ч үнэлж болно; ажилтан↔ажилтан ба менежер↔ажилтан 2 түвшин).
-  const prevOwner = _prev ? _prev.by : null;
-  // Өмнөх шат БАЙХГҮЙ (эхний шат = Бэлдсэн) бол ★ асуулт ГАРГАХГҮЙ — өөрийнхөө ажлыг үнэлэх нь утгагүй
-  // (тухайн ажлыг дараагийн хүн үнэлнэ). ★ зөвхөн ӨМНӨХ шат байгаа үед гарна.
-  const q = _prev ? prevStageQuestion(_prev) : null;
+  // ── Үнэлгээний зорилтууд (rateTargets) — хяналтын цэг тус бүр өмнөх ажлыг үнэлнэ ──
+  // «Агуулахаас гарсан» (dispatch) = нярав ЦЭВЭРЛЭГЧ + БЭЛДЭГЧ ХОЁУЛАНГ үнэлнэ (2 ★).
+  // Бусад шат = өмнөх нэг шатыг үнэлнэ. Эхний шат (цэвэрлэх) = үнэлгээгүй.
+  const _smNow = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  let rateTargets = [];
+  if (act.key === 'dispatch') {
+    if (_smNow.clean && _smNow.clean.by) rateTargets.push({ ratee: _smNow.clean.by, q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' });
+    if (_smNow.prepare && _smNow.prepare.by) rateTargets.push({ ratee: _smNow.prepare.by, q: 'Бэлтгэл бүрэн, зөв бэлдэгдсэн үү?' });
+  } else {
+    const _prev = prevStageInfoAny(o);
+    if (_prev) rateTargets.push({ ratee: _prev.by, q: prevStageQuestion(_prev) });
+  }
+  const q = rateTargets.length ? rateTargets[0].q : null;   // (нэг ★ үед хэвийн)
   // ── Агуулахад хүлээн авах шат — бараа бүрэн буцаж ирсэн эсэхийг ТООГООР баталгаажуулна.
   // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг
   // гараар оруулах нь удаан бөгөөд яаравал хуурамч тоо цуглана).
@@ -16538,9 +16549,9 @@ function openStageAdvanceModal(oid, to) {
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
       <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
     ${_rcHtml}
-    ${q ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(q)} <span style="color:var(--danger);">*</span></div>
-      <div id="sa-stars" style="font-size:34px;letter-spacing:5px;margin:2px 0 4px;user-select:none;">${[1, 2, 3, 4, 5].map(i => `<span data-star="${i}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>
-      <textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
+    ${rateTargets.length ? rateTargets.map((rt, i) => `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(rt.q)}${rateTargets.length > 1 ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">— ${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''} <span style="color:var(--danger);">*</span></div>
+      <div class="sa-stars" data-si="${i}" style="font-size:34px;letter-spacing:5px;margin:2px 0 8px;user-select:none;">${[1, 2, 3, 4, 5].map(s => `<span data-star="${s}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>`).join('')
+      + `<textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
     ${canSkipStage() ? `<div id="sa-skip-wrap" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
       <button type="button" class="btn" id="sa-skip-open" style="width:100%;font-size:12.5px;">⏭ Шалтгаантай алгасах</button>
       <div id="sa-skip-box" style="display:none;margin-top:7px;">
@@ -16597,7 +16608,7 @@ function openStageAdvanceModal(oid, to) {
     rcPaint();
   }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const photos = []; let rating = 0;
+  const photos = []; const ratings = new Array(rateTargets.length).fill(0);
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
   const rcGot = _rcItems.map(x => x.qty);
   const rcShort = () => receiveShortfalls(_rcItems, rcGot);
@@ -16624,7 +16635,7 @@ function openStageAdvanceModal(oid, to) {
     const sh = _isReceive ? rcShort() : [];
     const needNote = sh.length > 0;
     const noteOk = !needNote || String(($('#sa-comment') || {}).value || '').trim().length >= 3;
-    $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && (!q || rating > 0) && noteOk);
+    $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && rateTargets.every((_, i) => ratings[i] > 0) && noteOk);
   };
   if (needPhoto) {
     const renderPhotos = () => {
@@ -16638,17 +16649,24 @@ function openStageAdvanceModal(oid, to) {
       catch (err) { $('#sa-photo-status').textContent = '⚠ ' + err.message; $('#sa-photo-status').style.color = 'var(--danger)'; }
     };
   }
-  if (q) {
-    const paint = () => $('#sa-stars').querySelectorAll('[data-star]').forEach(sp => { sp.style.color = (+sp.dataset.star <= rating) ? '#f5a623' : 'var(--border-strong)'; });
-    $('#sa-stars').querySelectorAll('[data-star]').forEach(sp => sp.onclick = () => { rating = +sp.dataset.star; paint(); validate(); });
-  }
+  modal.querySelectorAll('.sa-stars').forEach(row => {
+    const si = +row.dataset.si;
+    const paintRow = () => row.querySelectorAll('[data-star]').forEach(sp => { sp.style.color = (+sp.dataset.star <= ratings[si]) ? '#f5a623' : 'var(--border-strong)'; });
+    row.querySelectorAll('[data-star]').forEach(sp => sp.onclick = () => { ratings[si] = +sp.dataset.star; paintRow(); validate(); });
+  });
   $('#sa-submit').onclick = async () => {
     $('#sa-submit').disabled = true;
     const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
     const nowD = new Date().toISOString();
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
     if (needPhoto) entry.photos = photos.slice();
-    if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; if (prevOwner) { entry.handoffRating = rating; entry.handoffRatee = prevOwner; } }
+    if (rateTargets.length && ratings.every(r => r > 0)) {
+      entry.comment = (($('#sa-comment') || {}).value || '').trim();
+      // Үнэлгээ бүрийг тухайн ажилтанд холбоно (олон зорилт = олон handoffRating)
+      entry.handoffRatings = rateTargets.map((rt, i) => ({ ratee: rt.ratee, rating: ratings[i], q: rt.q }));
+      // Хуучин нэг ★-тэй нийцэл (handoffQualityScore хоёуланг уншина)
+      entry.rating = ratings[0]; entry.q = rateTargets[0].q; entry.handoffRating = ratings[0]; entry.handoffRatee = rateTargets[0].ratee;
+    }
     // Буцаан авалтын тоо + дутсан барааг засварын урсгал руу
     let _shortLines = [];
     if (_isReceive && _rcItems.length) {

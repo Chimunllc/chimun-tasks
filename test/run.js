@@ -690,6 +690,18 @@ function finish() {
   ok(PSQ({ by: 'A', key: 'received' }).indexOf('эвдрэлгүй') > -1, 'асуулт: буцаан авалт эвдрэлийн тухай');
   eq(PSQ(null), null, 'асуулт: өмнөх шат байхгүй бол null');
   ok(PSQ({ by: 'A', key: 'танихгүй_шат' }).length > 0, 'асуулт: танигдаагүй шатад ерөнхий асуулт');
+
+  // Олон үнэлгээ (handoffRatings массив — Агуулахаас гарах дээр цэвэрлэгч+бэлдэгч)
+  const HQS = vm.runInContext('handoffQualityScore', sandbox);
+  vm.runInContext('state.appOrders = ' + JSON.stringify([
+    { stage_meta: { dispatch: { by: 'N', at: '2026-09-01T10:00:00Z', handoffRatings: [{ ratee: 'cleaner', rating: 4 }, { ratee: 'prep', rating: 5 }] } } },
+    { stage_meta: { prepare: { by: 'X', at: '2026-09-02T10:00:00Z', handoffRating: 3, handoffRatee: 'cleaner' } } },
+  ]) + ';', sandbox);
+  const hc = HQS('cleaner', '2026-09');
+  eq(hc.count, 2, 'handoff: цэвэрлэгч 2 үнэлгээ (массив + legacy)');
+  ok(Math.abs(hc.avg - 3.5) < 0.01, 'handoff: цэвэрлэгч дундаж (4+3)/2=3.5');
+  eq(HQS('prep', '2026-09').count, 1, 'handoff: бэлдэгч 1 үнэлгээ (массиваас)');
+  vm.runInContext('state.appOrders = [];', sandbox);
 }
 
 // 36) 6 шаттай дамжлага — хүргэлттэй ба очиж авах салаа

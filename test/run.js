@@ -1133,12 +1133,12 @@ function finish() {
   // ── driverBonus: хүргэсэн (rented) + авсан (returning) бүрд 10,000₮ (зөвхөн хүргэлттэй захиалга) ──
   {
     const orders = [
-      // Хүргэлттэй (DLV token хот): жолооч Бат хүргэж өгсөн + буцаан авсан
-      { note: '⟦DLV|city|0|150000⟧', stage_meta: { rented: { by: 'bat', at: '2026-08-10' }, returning: { by: 'bat', at: '2026-08-12' } } },
+      // Хүргэлттэй (DLV token хот): жолооч Бат хүргэж өгсөн (deliver) + буцаан авсан (retstart)
+      { note: '⟦DLV|city|0|150000⟧', stage_meta: { deliver: { by: 'bat', at: '2026-08-10' }, retstart: { by: 'bat', at: '2026-08-12' } } },
       // Хүргэлттэй: Бат хүргэсэн, өөр хүн авсан
-      { note: '⟦DLV|out|5|50000⟧', stage_meta: { rented: { by: 'bat', at: '2026-08-15' }, returning: { by: 'dorj', at: '2026-08-17' } } },
+      { note: '⟦DLV|out|5|50000⟧', stage_meta: { deliver: { by: 'bat', at: '2026-08-15' }, retstart: { by: 'dorj', at: '2026-08-17' } } },
       // Хүргэлтгүй (очиж авах): нэмэгдэл тооцохгүй
-      { note: '', stage_meta: { rented: { by: 'bat', at: '2026-08-20' } } },
+      { note: '', stage_meta: { deliver: { by: 'bat', at: '2026-08-20' } } },
     ];
     const b = F.driverBonus('bat', '2026-08', orders);
     ok(b.deliveries === 2 && b.pickups === 1, 'driverBonus: 2 хүргэсэн + 1 авсан');

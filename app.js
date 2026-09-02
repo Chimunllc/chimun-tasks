@@ -8137,8 +8137,9 @@ function driverBonus(key, month, orders) {
     if (typeof isDeliveryOrder === 'function' && !isDeliveryOrder(o)) continue;   // зөвхөн хүргэлттэй захиалга
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     const mine = (e) => e && String(e.by) === String(key) && (!month || String(e.at || '').slice(0, 7) === month);
-    if (mine(sm.rented)) deliveries++;      // жолооч хүргэж өгсөн
-    if (mine(sm.returning)) pickups++;      // жолооч хүргэлтээр буцаан авсан
+    // stage_meta нь act.key-ээр хадгалагдана: delivering→rented='deliver', rented→returning='retstart'
+    if (mine(sm.deliver)) deliveries++;      // жолооч хүргэж өгсөн
+    if (mine(sm.retstart)) pickups++;        // жолооч хүргэлтээс буцаан авсан
   }
   const count = deliveries + pickups;
   return { deliveries, pickups, count, amount: count * DRIVER_BONUS_EACH };

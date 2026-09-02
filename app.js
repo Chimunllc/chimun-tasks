@@ -20085,20 +20085,17 @@ function attachReceivablesHandlers() {
 
 // CEO "Яг одоо" тууз (Тойм дээд талд) — энэ сарын орлого · нийт авлага · ойртож буй хүргэлт/буцаалт.
 function ceoNowStrip() {
-  if (!state.history && !state._bqLoading) loadHistory();          // аналитик (сар бүрийн орлого) — lazy
+  if (state.appOrders === undefined && typeof loadAppOrders === 'function') loadAppOrders();   // орлого — амьд захиалгаас
+  if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') loadNomaadOrders();
   if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
-  const loadingBq = !state.bqOrders || !state.history;
+  const loadingBq = state.appOrders === undefined || state.nomaadOrders === undefined || !state.bqOrders;
   const ym = new Date().toISOString().slice(0, 7);
 
-  // Энэ сарын орлого: түүхэн (rh_v_monthly_revenue) + NOMAAD (төлбөрийн лог pay_date)
-  let bqMonth = 0;
-  if (state.history && Array.isArray(state.history.monthly)) {
-    const m = state.history.monthly.find(x => String(x.month || '').slice(0, 7) === ym);
-    bqMonth = m ? (Number(m.net_mnt) || 0) : 0;
-  }
-  let noMonth = 0;
-  (state.nomaadOrders || []).forEach(o => { if (!nomaadIsCancelled(o)) noMonth += nomaadPaidInMonth(o, ym); });   // C5: нэг эх сурвалж, цуцалсан хасна
-  const monthTotal = bqMonth + noMonth;
+  // Энэ сарын орлого — Тайлангийн P&L-ийн ЯГ ижил функцээр (C6: нэг эх сурвалж). Захиалга (M-Event)
+  // + NOMAAD, суурь = finBasis() (Тайлантай ижил, toggle дагана). Өмнө CEO самбар түүхэн snapshot
+  // (_histCompute, accrual-хатуу + нэрийн шүүлт), Тайлан амьд appOrders (basis toggle, шүүлтгүй)
+  // гэсэн 2 өөр замаар тооцож зөрдөг байв.
+  const monthTotal = (finBranchPnl(ym, finBasis()).rows || []).reduce((s, r) => s + (Number(r.inc) || 0), 0);
 
   // Нийт авлага
   const ar = receivablesData();

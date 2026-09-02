@@ -5416,14 +5416,18 @@ function reconcileOrders(stmtRows, orders, opts) {
   const cdates = credits.map(c => String(c.date || '').slice(0, 10)).filter(Boolean).sort();
   const dMin = cdates[0] || '', dMax = cdates[cdates.length - 1] || '';
   const isCash = (o) => /бэлэн|бэлэн мөнгө|касс/i.test(String(o.paid_method || ''));
-  const orderDate = (o) => String(o.paid_date || '').slice(0, 10);
-  const inRange = (o) => { const d = orderDate(o); return !!d && (!dMin || d >= dMin) && (!dMax || d <= dMax); };
-  // Огноотой боловч хүрээнээс ГАДНА (өөр сарын) захиалгыг бүрмөсөн алгасна — «948 дансанд алга» шуугиан эндээс гардаг байсан.
-  // Огноо нь хүрээнд ✓ = үндсэн (тааруулалт + «алга» нэр дэвшигч). Огноогүй = тааруулна, гэхдээ «алга» болгож ТООЛОХГҮЙ.
-  const cand = (orders || []).filter(o => Number(o.paid_amount) > 0 && !isCash(o))
-    .filter(o => { const d = orderDate(o); return !d || inRange(o); });   // хүрээнээс гадна огноотойг хая
-  const primary = cand.filter(inRange);        // огноо хүрээнд — «алга» нэр дэвшигч
-  const secondary = cand.filter(o => !orderDate(o));   // огноогүй — зөвхөн тааруулна
+  const dayN = (s) => { const t = Date.parse(String(s || '').slice(0, 10)); return isFinite(t) ? Math.floor(t / 86400000) : null; };
+  const dMinN = dayN(dMin), dMaxN = dayN(dMax);
+  const WIN_BEFORE = 120, WIN_AFTER = 31;   // урьдчилгаа ~4 сар өмнө, төлбөр ~1 сар хожуу хүлээнэ
+  const paidInRange = (o) => { const d = String(o.paid_date || '').slice(0, 10); return !!d && (!dMin || d >= dMin) && (!dMax || d <= dMax); };
+  // Огноо = төлбөрийн огноо, эс бол эвентийн огноо (paid_date хоосон захиалгыг «аль ч сар» гэж үзэхгүй).
+  const odOf = (o) => String(o.paid_date || '').slice(0, 10) || String(o.event_date || '').slice(0, 10);
+  const windowOk = (o) => { const n = dayN(odOf(o)); if (n == null || dMinN == null) return true; return n >= dMinN - WIN_BEFORE && n <= dMaxN + WIN_AFTER; };
+  // Хугацааны цонхноос ГАДНА (өөр улирлын) захиалгыг бүрмөсөн алгасна — 3 сарын захиалга 8 сарын хуулгад орж
+  // нэрийн дэд-мөр таарлаар (ж. «Итгэл» ⊂ «Бат-Итгэл») буруу таарахаас сэргийлнэ.
+  const cand = (orders || []).filter(o => Number(o.paid_amount) > 0 && !isCash(o) && windowOk(o));
+  const primary = cand.filter(paidInRange);            // paid_date хүрээнд — «алга» нэр дэвшигч
+  const secondary = cand.filter(o => !paidInRange(o));  // цонхонд байгаа боловч paid_date хүрээнд биш — зөвхөн тааруулна
   const matched = [], mismatch = [], missing = [];
   const parseRc = (typeof parsePaidRef === 'function') ? parsePaidRef
     : (s) => String(s || '').split(/\s*\|\s*/).map(x => x.trim()).filter(Boolean).map(x => ({ id: '', sender: x, acct: '', memo: x }));
@@ -5531,6 +5535,7 @@ function reconOrdersList() {
     paid_amount: Number(o.paid_mnt) || 0,
     paid_ref: o.paid_ref || '',
     paid_date: o.paid_date ? String(o.paid_date).slice(0, 10) : '',
+    event_date: o.starts_at ? String(o.starts_at).slice(0, 10) : '',   // paid_date хоосон бол огноо-scope-д
     paid_method: o.paid_method || '',
     branch: 'mevent',
   }));
@@ -16341,6 +16346,16 @@ function openStagePhoto(url) {
 }
 
 // Товч дарахад — зураг (ЗААВАЛ) + өмнөх шатны үнэлгээ (ЗААВАЛ, сэтгэгдэл заавал биш)
+// Буцаан авалтын зөрүү — хүлээгдэж буй ба бодитоор ирсэн тоог тулгана.
+// Цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
+function receiveShortfalls(items, got) {
+  return (items || []).map((x, i) => {
+    const exp = Math.max(0, Number(x && x.qty) || 0);
+    const g = Math.max(0, Math.min(exp, Number((got || [])[i]) || 0));
+    return { sku: x && x.sku, name: x && x.name, qty: exp, got: g, miss: exp - g };
+  }).filter(x => x.miss > 0);
+}
+
 function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
@@ -16350,6 +16365,25 @@ function openStageAdvanceModal(oid, to) {
   // Өмнөх хүн байвал ★ = ТҮҮНИЙ хүлээлгэж өгсөн ажлыг үнэлнэ (Хүлээлцэх чанар KPI, бодит/шударга);
   // эс бол (эхний шат) өөрийн гүйцэтгэлийг (act.q). Асуулт нь өмнөх ШАТАД тохирсон байна.
   const q = _prev ? prevStageQuestion(_prev) : act.q;
+  // ── Агуулахад хүлээн авах шат — бараа бүрэн буцаж ирсэн эсэхийг ТООГООР баталгаажуулна.
+  // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг
+  // гараар оруулах нь удаан бөгөөд яаравал хуурамч тоо цуглана).
+  const _isReceive = act.key === 'received';
+  const _rcItems = _isReceive ? (o.items || []).filter(it => it && it.name).map(it => {
+    const p = it.sku ? productBySku(it.sku) : productByName(it.name);
+    return { sku: p ? p.sku : (it.sku || ''), name: it.name, qty: Math.max(0, Number(it.qty) || 0) };
+  }).filter(x => x.qty > 0) : [];
+  const _rcHtml = _isReceive && _rcItems.length ? `
+    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 Бараа бүрэн буцаж ирсэн үү? <span style="color:var(--danger);">*</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ирсэн</button></div>
+    <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
+      <div class="rc-row" data-rc="${i}">
+        <span class="rc-name">${escapeHtml(x.name)}</span>
+        <span class="rc-exp">${x.qty}ш</span>
+        <input class="rc-got" type="number" inputmode="numeric" min="0" max="${x.qty}" value="${x.qty}" data-rci="${i}">
+        <span class="rc-diff" data-rcd="${i}"></span>
+      </div>`).join('')}</div>
+    <div id="rc-warn" class="rc-warn" style="display:none;"></div>` : '';
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">
@@ -16359,6 +16393,7 @@ function openStageAdvanceModal(oid, to) {
       <label class="btn" for="sa-photo-input" style="display:block;text-align:center;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:11px;cursor:pointer;margin-bottom:4px;">📷 Зураг оруулах / авах</label>
       <input id="sa-photo-input" type="file" accept="image/*" capture="environment" hidden>
       <div id="sa-photo-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>` : ''}
+    ${_rcHtml}
     ${q ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(q)} <span style="color:var(--danger);">*</span></div>
       <div id="sa-stars" style="font-size:34px;letter-spacing:5px;margin:2px 0 4px;user-select:none;">${[1, 2, 3, 4, 5].map(i => `<span data-star="${i}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>
       <textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
@@ -16368,9 +16403,51 @@ function openStageAdvanceModal(oid, to) {
   const $ = s => modal.querySelector(s);
   const close = () => modal.remove();
   $('#sa-close').onclick = close; $('#sa-cancel').onclick = close;
+  if (_isReceive && _rcItems.length) {
+    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
+      const i = +inp.dataset.rci;
+      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
+      rcGot[i] = v; rcPaint(); validate();
+    });
+    const _all = modal.querySelector('#rc-all');
+    if (_all) _all.onclick = () => {
+      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
+      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
+      rcPaint(); validate();
+    };
+    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
+    rcPaint();
+  }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const photos = []; let rating = 0;
-  const validate = () => { $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && (!q || rating > 0)); };
+  // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
+  const rcGot = _rcItems.map(x => x.qty);
+  const rcShort = () => receiveShortfalls(_rcItems, rcGot);
+  const rcPaint = () => {
+    if (!_isReceive || !_rcItems.length) return;
+    _rcItems.forEach((x, i) => {
+      const d = modal.querySelector(`[data-rcd="${i}"]`);
+      const row = modal.querySelector(`[data-rc="${i}"]`);
+      const miss = x.qty - rcGot[i];
+      if (d) d.textContent = miss > 0 ? `−${miss}` : '✓';
+      if (d) d.className = 'rc-diff' + (miss > 0 ? ' bad' : ' ok');
+      if (row) row.classList.toggle('rc-bad', miss > 0);
+    });
+    const sh = rcShort();
+    const w = modal.querySelector('#rc-warn');
+    if (w) {
+      w.style.display = sh.length ? '' : 'none';
+      w.innerHTML = sh.length
+        ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}<br><span style="font-weight:400;">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
+        : '';
+    }
+  };
+  const validate = () => {
+    const sh = _isReceive ? rcShort() : [];
+    const needNote = sh.length > 0;
+    const noteOk = !needNote || String(($('#sa-comment') || {}).value || '').trim().length >= 3;
+    $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && (!q || rating > 0) && noteOk);
+  };
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
@@ -16394,8 +16471,26 @@ function openStageAdvanceModal(oid, to) {
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
     if (needPhoto) entry.photos = photos.slice();
     if (q && rating > 0) { entry.rating = rating; entry.comment = ($('#sa-comment').value || '').trim(); entry.q = q; if (prevOwner) { entry.handoffRating = rating; entry.handoffRatee = prevOwner; } }
+    // Буцаан авалтын тоо + дутсан барааг засварын урсгал руу
+    let _shortLines = [];
+    if (_isReceive && _rcItems.length) {
+      entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i] }));
+      _shortLines = rcShort();
+      entry.missing = _shortLines.reduce((a, x) => a + x.miss, 0);
+    }
     sm2[act.key] = entry;
     close();
+    if (_shortLines.length) {
+      const _why = (entry.comment || '').trim();
+      for (const x of _shortLines) {
+        if (!x.sku) continue;
+        const p = productBySku(x.sku);
+        if (p) { try { await saveProduct({ ...p, broken: Math.max(0, (Number(p.broken) || 0) + x.miss) }); } catch (_) {} }
+        try { await ensureRepairRecord({ sku: x.sku, name: x.name, qty: x.miss, orderNumber: o.number, note: _why, by: state.me }); } catch (_) {}
+      }
+      try { await loadRepairs(); } catch (_) {}
+      showToast(`⚠ ${entry.missing}ш дутуу — нөөцөөс хасаж засварын жагсаалтад нэмлээ`, 'warn', 4500);
+    }
     await bqUpdateStatus(oid, to, { stageMeta: sm2, toast: `${(BQ_STATUS[to] || {}).label || act.label} ✓` });
   };
 }

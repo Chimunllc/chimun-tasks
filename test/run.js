@@ -778,6 +778,30 @@ function finish() {
   st.repairs = saved.rep; st.me = saved.me; st.isCEO = saved.ceo; st.memberPerms = saved.mp;
 }
 
+// 39) Буцаан авалтын тоолол — дутсан барааг барина
+{
+  const RS = vm.runInContext('receiveShortfalls', sandbox);
+  const items = [
+    { sku: 'A', name: 'Ширээ', qty: 10 },
+    { sku: 'B', name: 'Сандал', qty: 50 },
+    { sku: 'C', name: 'Асар', qty: 1 },
+  ];
+  eq(RS(items, [10, 50, 1]), [], 'тоолол: бүгд бүрэн ирвэл зөрүүгүй');
+
+  const sh = RS(items, [10, 47, 0]);
+  eq(sh.length, 2, 'тоолол: 2 бараанд зөрүү');
+  eq(sh[0].name, 'Сандал', 'тоолол: дутсан барааг нэрээр нь заана');
+  eq(sh[0].miss, 3, 'тоолол: 50-аас 47 ирвэл 3 дутуу');
+  eq(sh[1].miss, 1, 'тоолол: асар огт ирээгүй');
+
+  eq(RS(items, [99, 50, 1]), [], 'тоолол: хүлээгдсэнээс их тоо оруулбал таслана (сөрөг зөрүү үүсэхгүй)');
+  eq(RS(items, [-5, 50, 1])[0].miss, 10, 'тоолол: сөрөг тоо 0 гэж тооцогдоно');
+  eq(RS(items, [null, 50, 1])[0].miss, 10, 'тоолол: хоосон утга 0');
+  eq(RS([], []), [], 'тоолол: бараагүй бол хоосон');
+  eq(RS(null, null), [], 'тоолол: null аюулгүй');
+  eq(RS(items, [10, 50])[0].miss, 1, 'тоолол: дутуу массив — сүүлийн бараа 0 гэж тооцогдоно');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);
@@ -907,6 +931,16 @@ function finish() {
     const r = F.reconcileOrders(stmt, orders);
     ok(r.matched.length === 1 && r.matched[0].rows.length === 3, '3 installment: 3 гүйлгээ нийлбэрлэж таарна');
     ok(r.untracked.length === 0, '3 installment: үлдэгдэлгүй');
+  }
+  {
+    // Хуучин эвент (3 сар) + paid_date хоосон захиалга 8 сарын хуулгад орж нэрийн дэд-мөрөөр буруу таарахгүй (#1063 кейс)
+    const stmt = [{ date: '2026-08-10', credit: 132000, memo: '1431-БАТ-ИТГЭЛ ГҮНЖ', name: 'БАТ-ИТГЭЛ ГҮНЖ', account: '5131572586' }];
+    const orders = [
+      { order_no: '1431', customer_name: 'Б.Ганчимэг', paid_amount: 132000, paid_ref: '', paid_date: '2026-08-10' },   // жинхэнэ
+      { order_no: '1063', customer_name: 'Т.Итгэл', paid_amount: 170000, paid_ref: '', paid_date: '', event_date: '2026-03-14' },  // 3 сарын, огноогүй
+    ];
+    const r = F.reconcileOrders(stmt, orders);
+    ok(!r.mismatch.some(m => m.order.order_no === '1063') && !r.matched.some(m => m.order.order_no === '1063'), 'scope: 3 сарын огноогүй захиалга 8 сарын хуулгад орохгүй');
   }
   {
     // Бэлнээр төлсөн захиалга банкны хуулгад орохгүй → missing болгож шуугихгүй

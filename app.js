@@ -14743,8 +14743,7 @@ function meventContractHtml(o) {
   const items = (o.items || []);
   const uPrice = it => Number(it.price != null ? it.price : it.unit_price) || 0;
   const qty = it => Number(it.qty != null ? it.qty : it.quantity) || 0;
-  const _days = (a, b) => { const t = Date.parse(String(a || '').slice(0, 10)), u = Date.parse(String(b || '').slice(0, 10)); const d = Math.round((u - t) / 86400000); return d > 0 ? d : 1; };
-  const days = _days(o.starts_at, o.stops_at);
+  const days = orderRentalDays(o);   // C10: каноны хоног тоолол (гэрээ/сайт/квот нэг дүрэм)
   // Мөрийн түрээсийн дүн = нэгж үнэ × тоо × хоног (НӨАТ багтсан) — үнийн саналтай ЯГ ижил.
   const lineOf = it => Number(it.total) || uPrice(it) * qty(it) * days;
   const subtotal = Number(o.subtotal_mnt) || items.reduce((s, it) => s + lineOf(it), 0);
@@ -18444,7 +18443,7 @@ function openNewOrder(editOrder) {
       customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: isDeliv ? addr : '',
       status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
-      items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
+      items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: (dtype === 'pct' ? Math.min(100, dval) : dval),   // C9: pct-ыг 100%-аар кэплэж хадгална
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
       note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
@@ -21073,15 +21072,22 @@ function finIsRealExpense(t) {
 function finExpMonth(t, basis) {
   return basis === 'cash' ? String((t && t.requested_at) || '').slice(0, 7) : finAccrualMonth(t);
 }
-function finBranchPnl(month, basis) {
-  const evInc = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month)
-    .reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
-  let noInc = 0;
+// Тухайн сарын захиалгын орлого — эвент (M-Event) + NOMAAD, суурьаар. finBranchPnl ба Тайлан толгой
+// ХОЁУЛАН энэ ГАНЦ функцийг дуудна (C8: орлогын логикийг 2 газар давхардуулж, засвар-зөрүү гаргахгүй).
+function finMonthIncome(month, basis) {
+  const evList = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
+  const evInc = evList.reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
+  let noInc = 0, noN = 0;
   (state.nomaadOrders || []).forEach(o => {
     if (nomaadIsCancelled(o)) return;
-    if (basis === 'cash') { noInc += nomaadPaidInMonth(o, month); }   // C5: төлбөрийн огноогоор, олон удаагийн төлбөр зөв сард
-    else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) noInc += nomaadEffTotal(o);
+    if (basis === 'cash') { const m = nomaadPaidInMonth(o, month); if (m > 0) { noInc += m; noN++; } }   // C5: төлбөрийн огноогоор
+    else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { noInc += nomaadEffTotal(o); noN++; }
   });
+  return { evInc, evN: evList.length, noInc, noN };
+}
+function finBranchPnl(month, basis) {
+  const _mi = finMonthIncome(month, basis);
+  const evInc = _mi.evInc, noInc = _mi.noInc;
   const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
@@ -21275,20 +21281,14 @@ function renderReports() {
   // Орлого = ЗӨВХӨН тухайн салбарынх. КЕМП→NOMAAD, ИВЕНТ→M-Event, Бүгд→хоёул, бусад(Катеринг/ХХК)→захиалгын орлого БАЙХГҮЙ.
   const inclEv = !wantBr || wantBr === 'ИВЕНТ';   // M-Event
   const inclNo = !wantBr || wantBr === 'КЕМП';    // NOMAAD
-  const evList = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
-  const evInc = evList.reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
-  let noInc = 0, noN = 0;
-  (state.nomaadOrders || []).forEach(o => {
-    if (nomaadIsCancelled(o)) return;
-    if (basis === 'cash') { const _m = nomaadPaidInMonth(o, month); if (_m > 0) { noInc += _m; noN++; } }   // C5: төлбөрийн огноогоор
-    else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { noInc += nomaadEffTotal(o); noN++; }
-  });
+  const _mi = finMonthIncome(month, basis);   // C8: finBranchPnl-тэй НЭГ эх сурвалж (орлогын логик давхардуулахгүй)
+  const evInc = _mi.evInc, noInc = _mi.noInc, noN = _mi.noN, evN = _mi.evN;
   let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0);
-  let incomeN = (inclEv ? evList.length : 0) + (inclNo ? noN : 0);
+  let incomeN = (inclEv ? evN : 0) + (inclNo ? noN : 0);
   const bl = basis === 'accrual' ? 'гүйцэтгэл' : 'мөнгө';
   let incomeLabel, incomeSub, mi = null;
   if (wantBr === 'КЕМП') { incomeLabel = `Орлого (NOMAAD · ${bl})`; incomeSub = noN + ' эвент'; }
-  else if (wantBr === 'ИВЕНТ') { mi = meventIncome(month); incomeLabel = `Орлого (M-Event · ${bl})`; incomeSub = evList.length + ' захиалга'; }
+  else if (wantBr === 'ИВЕНТ') { mi = meventIncome(month); incomeLabel = `Орлого (M-Event · ${bl})`; incomeSub = evN + ' захиалга'; }
   else if (!wantBr) { mi = meventIncome(month); incomeLabel = `Орлого (нийт · ${bl})`; incomeSub = 'M-Event + NOMAAD'; }
   else { incomeLabel = 'Орлого'; incomeSub = 'энэ салбарт захиалгын орлого бүртгэгддэггүй'; }
   let expense = 0, expN = 0;

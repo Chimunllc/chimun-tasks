@@ -5449,6 +5449,29 @@ function incomeReportHtml(res) {
   const untrackedSum = (res.untracked || []).reduce((s, c) => s + (Number(c.credit) || 0), 0);
   const period = stmts.map(s => s.period).filter(Boolean)[0] || '';
   const matchPct = totalIncome > 0 ? Math.round((matchedSum / totalIncome) * 100) : 0;
+  // Бүх бизнесийн орлогын мөр (дотоод шилжүүлэг хассан) — топ төлөгч, өдрийн хандлагад
+  const bizCredits = stmts.flatMap(s => (s.rows || []).filter(r => r.credit > 0 && !_isInternalCredit(r)));
+  // Топ 10 төлөгч
+  const byPayer = {};
+  bizCredits.forEach(c => { const k = String(c.name || '').trim() || (String(c.memo || '').slice(0, 24) || '—'); byPayer[k] = (byPayer[k] || 0) + c.credit; });
+  const topRows = Object.entries(byPayer).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map((p, i) => `<tr><td class="r">${i + 1}</td><td>${escapeHtml(p[0])}</td><td class="r">${money(p[1])}</td><td class="r">${totalIncome > 0 ? Math.round(p[1] / totalIncome * 100) : 0}%</td></tr>`).join('');
+  // Орлогын өдрийн хандлага (SVG bar, гуравдагч сангүй)
+  const byDay = {};
+  bizCredits.forEach(c => { const d = String(c.date || '').slice(0, 10); if (d) byDay[d] = (byDay[d] || 0) + c.credit; });
+  const days = Object.keys(byDay).sort();
+  const maxDay = Math.max(1, ...Object.values(byDay));
+  const cW = 700, cH = 150, padL = 8, padB = 26, n = days.length || 1, slot = (cW - padL * 2) / n, bw = Math.max(2, Math.min(22, slot - 3));
+  const bars = days.map((d, i) => { const h = (byDay[d] / maxDay) * (cH - padB - 10); const x = padL + i * slot + (slot - bw) / 2, y = cH - padB - h; return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="#5e6ad2"></rect>${(n <= 20 || i % 3 === 0) ? `<text x="${(x + bw / 2).toFixed(1)}" y="${cH - padB + 12}" font-size="8" text-anchor="middle" fill="#999">${d.slice(8)}</text>` : ''}`; }).join('');
+  const chartSvg = days.length ? `<svg viewBox="0 0 ${cW} ${cH}" style="width:100%;height:auto;">${bars}<line x1="${padL}" y1="${cH - padB}" x2="${cW - padL}" y2="${cH - padB}" stroke="#ddd"/></svg>` : '';
+  // НӨАТ задаргаа (орлого НӨАТ-тай гэж үзвэл: суурь = орлого ÷ 1.1, НӨАТ = орлого − суурь)
+  const vat = Math.round(totalIncome * 10 / 110), vatBase = totalIncome - vat;
+  // Өмнөх сартай харьцуулалт — БҮРТГЭСЭН орлого (апп: M-Event төлбөр + NOMAAD орлого)
+  const ym = (period.match(/(\d{4}-\d{2})/) || [])[1] || '';
+  const prevYm = (() => { if (!ym) return ''; let [y, m] = ym.split('-').map(Number); m--; if (m < 1) { m = 12; y--; } return y + '-' + String(m).padStart(2, '0'); })();
+  const recInc = (yy) => { if (!yy) return 0; let s = 0; (state.appOrders || []).forEach(o => { if (String(o.paid_date || '').slice(0, 7) === yy) s += Number(o.paid_mnt) || 0; }); const npm = state.nomaadPayments || {}; Object.keys(npm).forEach(q => (npm[q] || []).forEach(p => { if (String(p.pay_date || '').slice(0, 7) === yy) s += Number(p.total) || 0; })); return s; };
+  const thisRec = recInc(ym), prevRec = recInc(prevYm);
+  const growth = prevRec > 0 ? Math.round((thisRec - prevRec) / prevRec * 100) : null;
   // Салбарын орлого = данс бүрийн бүртгэсэн салбараар (Орлого Nomaad→NOMAAD, Орлого Mevent→M-Event, бусад→Бусад)
   const byBranch = {};
   stmts.forEach(s => { const b = (s.info && s.info.branch) || 'Бусад'; byBranch[b] = (byBranch[b] || 0) + (Number(s.incomeTotal) || 0); });
@@ -5516,9 +5539,23 @@ function incomeReportHtml(res) {
       <tr><td>⚠ Дүн зөрүүтэй</td><td class="r">${(res.mismatch || []).length}</td><td class="r">—</td></tr>
       <tr><td>💰 Захиалгагүй орлого</td><td class="r">${(res.untracked || []).length}</td><td class="r">${money(untrackedSum)}</td></tr>
     </tbody></table>
-    <h2>Захиалгад холбогдоогүй орлого (${(res.untracked || []).length})</h2>
-    <table><thead><tr><th>Огноо</th><th>Илгээгч</th><th>Утга</th><th>Данс</th><th class="r">Дүн</th></tr></thead>
-      <tbody>${untrackedRows || '<tr><td colspan="5">— бүх орлого захиалга/орлоготой тохирсон —</td></tr>'}</tbody></table>
+    ${growth != null || prevRec > 0 ? `<h2>Өмнөх сартай харьцуулалт</h2>
+    <table><thead><tr><th>Сар</th><th class="r">Бүртгэсэн орлого</th><th class="r">Өөрчлөлт</th></tr></thead><tbody>
+      <tr><td>${escapeHtml(prevYm || '—')} (өмнөх)</td><td class="r">${money(prevRec)}</td><td class="r">—</td></tr>
+      <tr><td><b>${escapeHtml(ym || '—')} (тайлант)</b></td><td class="r"><b>${money(thisRec)}</b></td><td class="r ${growth >= 0 ? 'pos' : 'neg'}">${growth != null ? (growth >= 0 ? '▲ +' : '▼ ') + growth + '%' : '—'}</td></tr>
+    </tbody></table>
+    <div class="mut">Апп-д бүртгэсэн орлогоор (M-Event төлбөр + NOMAAD орлого) — банкны хуулгаас үл хамааран сар харьцуулах.</div>` : ''}
+    ${chartSvg ? `<h2>Орлогын өдрийн хандлага</h2><div style="border:1px solid #e3e3ea;border-radius:8px;padding:10px 8px;">${chartSvg}</div>` : ''}
+    <h2>Топ 10 төлөгч</h2>
+    <table><thead><tr><th class="r">#</th><th>Илгээгч</th><th class="r">Дүн</th><th class="r">Эзлэх %</th></tr></thead>
+      <tbody>${topRows || '<tr><td colspan="4">—</td></tr>'}</tbody></table>
+    <h2>НӨАТ задаргаа</h2>
+    <table><thead><tr><th>Үзүүлэлт</th><th class="r">Дүн</th></tr></thead><tbody>
+      <tr><td>Нийт орлого (НӨАТ-тай)</td><td class="r">${money(totalIncome)}</td></tr>
+      <tr><td>НӨАТ-гүй суурь дүн</td><td class="r">${money(vatBase)}</td></tr>
+      <tr><td><b>Ноогдох НӨАТ (10%)</b></td><td class="r"><b>${money(vat)}</b></td></tr>
+    </tbody></table>
+    <div class="mut">Ойролцоо тооцоо: нийт орлогыг НӨАТ багтсан гэж үзэв (суурь = орлого ÷ 1.1). Барьцаа/НӨАТ-гүй орлого багтвал бодит дүн зөрж болзошгүй — албан ёсны тайланд нягтлан баталгаажуулна.</div>
     <div class="foot">Автоматаар тулгасан тайлан (M-Event захиалга + NOMAAD орлого). «Захиалгагүй орлого» = банкинд орсон боловч аппд захиалга/төлбөр бүртгэгдээгүй гүйлгээ — нягтлан шалгаж холбоно. Дотоод дансны хоорондын шилжүүлэг орлогоос хасагдсан.</div>
   </body></html>`;
 }

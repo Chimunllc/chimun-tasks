@@ -3582,7 +3582,7 @@ function renderSidebar() {
   if (noNav) {
     noNav.style.display = canSeeNomaadOrders() ? '' : 'none';
     const noCnt = document.getElementById('cnt-nomaad');
-    if (noCnt) noCnt.textContent = String((state.nomaadOrders || []).filter(o => !(nomaadPaid(o) > 0) && !nomaadIsCancelled(o)).length);
+    if (noCnt) noCnt.textContent = String(nomaadUnbilledContractCount(state.nomaadOrders));
   }
   // Катеринг — CEO / катеринг салбарын гишүүн / catering view эрхтэй. Badge = удахгүй болох ажлын тоо.
   const ktNav = document.getElementById('nav-catering');
@@ -13279,6 +13279,15 @@ function nomaadStage(o) {
   if (su.includes('БАТАЛГ')) return 'confirming';   // Баталгаажуулалт хүлээж буй (амаар тохирсон, гэрээ хүлээж буй)
   if (su.includes('ИЛГЭЭСЭН')) return 'sent';
   return 'interested';
+}
+// Sidebar «NOMAAD захиалга» badge — ГЭРЭЭ хийгдсэн боловч орлого бүртгэгдээгүй мөрийн тоо
+// (нягтлан мөнгө нь ирсэн эсэхийг шалгах ёстой жагсаалт).
+// ⚠ Өмнө нь `!(nomaadPaid(o) > 0) && !nomaadIsCancelled(o)` — өөрөөр хэлбэл ТӨЛӨӨГҮЙ БҮХ мөр:
+//   зүгээр сонирхсон хүн, илгээсэн үнийн санал бүр орно. Үнийн санал олноор илгээх тусам
+//   badge өсөж 3 оронтой болоод утгаа алддаг (кодын өөрийн тайлбар «орлого бүртгээгүй
+//   ГЭРЭЭНИЙ тоо» гэж бичсэн боловч шүүлт нь тэрийг хэрэгжүүлээгүй байв).
+function nomaadUnbilledContractCount(orders) {
+  return (orders || []).filter(o => o && nomaadStage(o) === 'contract' && !(nomaadPaid(o) > 0)).length;
 }
 function renderNomaadPipeline() {
   const orders = state.nomaadOrders || [];

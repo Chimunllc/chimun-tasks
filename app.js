@@ -4526,6 +4526,8 @@ function pricingStats(orders, products, opts) {
     const days = _dayRange(ord.starts_at, ord.stops_at);
     const _its = Array.isArray(ord.items) ? ord.items : [];
     const grossAll = _its.reduce((s2, i) => s2 + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
+    const _net = (typeof orderRevenue === 'function') ? orderRevenue(ord, 'accrual')
+      : Math.max(0, (Number(ord.total_mnt) || 0) - (Number(ord.deposit_mnt) || 0));
     _its.forEach(it => {
       if (!it) return;
       const r = resolveItemSku(it, ctx);
@@ -4534,7 +4536,7 @@ function pricingStats(orders, products, opts) {
       // Мөрийн ЖАГСААЛТЫН дүн биш, БОДИТ орлого — захиалгад хөнгөлөлт байвал
       // харьцангуйгаар буурна. Эс бөгөөс «үнийн биелэлт» хиймлээр өндөр гарч,
       // хөнгөлж зарж буй бараанд «үнэ өсгө» гэж буруу зөвлөнө.
-      const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, ord.total_mnt, ord.deposit_mnt);
+      const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, _net);
       const a = acc[r.sku] || (acc[r.sku] = { sku: r.sku, qty: 0, revenue: 0, lines: 0, orders: new Set(), byDay: Object.create(null) });
       a.qty += qty; a.revenue += amt; a.lines++;
       if (ord.number != null) a.orders.add(ord.number);
@@ -16758,7 +16760,7 @@ async function loadHistory(force) {
     // nomaad camp/давхардал/хуучирсан snapshot асуудал арилна. Төлбөрийн хэлбэр л bq_payments-аас
     // (app_orders-д migrate үед method ороогүй) — Booqable түүхэн гэж шошголно.
     const rawOrders = fetchWithTimeout(
-      `${DB_URL}/rest/v1/app_orders?select=id,number,customer,status,starts_at,stops_at,total_mnt,paid_mnt,deposit_mnt,items&status=not.in.(draft,canceled)&limit=3000`,
+      `${DB_URL}/rest/v1/app_orders?select=id,number,customer,status,source,starts_at,stops_at,total_mnt,paid_mnt,deposit_mnt,items&status=not.in.(draft,canceled,deleted)&limit=3000`,
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
     const rawProducts = fetchWithTimeout(
@@ -20159,6 +20161,7 @@ function histProductOrders(orders, productName) {
     const items = Array.isArray(o.items) ? o.items : [];
     const grossAll = items.reduce((s2, i) => s2 + N(i.qty) * N(i.price), 0);
     const total = N(o.total_mnt);
+    const net = (typeof orderRevenue === 'function') ? orderRevenue(o, 'accrual') : Math.max(0, total - N(o.deposit_mnt));
     const days = (typeof _orderDays === 'function') ? _orderDays(o) : 1;
     items.forEach(i => {
       if (normP(i.name) !== want) return;
@@ -20167,7 +20170,7 @@ function histProductOrders(orders, productName) {
         id: o.id, number: o.number, customer: String(o.customer || '').trim() || '—',
         starts_at: String(o.starts_at || '').slice(0, 10), status: o.status,
         qty: N(i.qty), price: N(i.price), gross, days,
-        rev: histLineRevenue(gross, grossAll, total, N(o.deposit_mnt)),
+        rev: histLineRevenue(gross, grossAll, net),
         orderTotal: total, deposit: N(o.deposit_mnt), grossAll,
       });
     });
@@ -20239,11 +20242,12 @@ function openHistProductOrders(name) {
 //     (2026-09-02: «Аяны ор» 58.5сая → 69.7сая болж хэтэрч байв; нийтдээ 152сая).
 //   • Иймд: хөнгөлөлт байвал (мөрийн нийлбэр > цэвэр дүн) ХАРЬЦААГААР БУУРУУЛНА;
 //     эсрэг тохиолдолд мөрийн ӨӨРИЙН дүнг авна — өсгөхгүй.
-function histLineRevenue(gross, grossAll, totalMnt, depositMnt) {
-  const g = Number(gross) || 0, ga = Number(grossAll) || 0;
-  const net = Math.max(0, (Number(totalMnt) || 0) - (Number(depositMnt) || 0));
-  if (ga <= 0) return 0;
-  return net < ga ? net * g / ga : g;
+//   • net-ийг ЗААВАЛ orderRevenue()-ээр ав: Booqable захиалгад барьцаа нь total_mnt-д
+//     ОРООГҮЙ (568/571 баталгаажсан) тул дахин хасвал 114.7сая₮ дутуу гарна.
+function histLineRevenue(gross, grossAll, net) {
+  const g = Number(gross) || 0, ga = Number(grossAll) || 0, n = Math.max(0, Number(net) || 0);
+  if (ga <= 0 || n <= 0) return 0;
+  return n < ga ? n * g / ga : g;
 }
 /* ── ҮЙЛЧИЛГЭЭНИЙ ЗАДАРГАА (хүргэлт / угсралт-суурилуулалт / бусад) ──────────
    Үйлчилгээний орлого ХОЁР өөр газар бүртгэгддэг тул нэг дор нэгтгэж харуулна:
@@ -20336,12 +20340,19 @@ function _histCompute(orders, roiFix, catOf) {
   let sumNet = 0, sumPaid = 0, realCnt = 0; const byMonth = {};
 
   (orders || []).forEach(o => {
+    // Ноорог/цуцалсан/УСТГАСАН — орлогод хэзээ ч орохгүй. Татахдаа шүүдэг ч энд
+    // ДАХИН шалгана: 2026-09-02-нд устгасан 33.2сая₮ түүхэнд орж, жагсаалтаас зөрж байв.
+    if (['draft', 'canceled', 'deleted'].includes(String(o && o.status))) return;
     const total = N(o.total_mnt), paid = N(o.paid_mnt);
+    // Цэвэр орлого = Захиалгын жагсаалттай ЯГ ИЖИЛ дүрэм. Өмнө нь энд бүх захиалгаас
+    // барьцааг хасдаг байсан тул Booqable-ийн 114.7сая₮ хиймлээр хасагдаж, түүх
+    // жагсаалтаас 76сая₮-өөр зөрж байв.
+    const netRev = (typeof orderRevenue === 'function') ? orderRevenue(o, 'accrual') : Math.max(0, total - N(o.deposit_mnt));
     // ── харилцагч (нэрээр нэгтгэнэ — зай/үсгийн давхардал арилна) ──
     const craw = String(o.customer || '').trim().replace(/\s+/g, ' ');
     // ── KPI/сар нэгтгэл (өөрийн салбараас бусад бүх эвент захиалга) ──
     if (!SELF.test(craw)) {
-      const _net = Math.max(0, total - N(o.deposit_mnt));
+      const _net = netRev;
       sumNet += _net; sumPaid += paid; realCnt++;
       const _mo = String(o.starts_at || '').slice(0, 7);
       if (/^\d{4}-\d{2}$/.test(_mo)) { const b = byMonth[_mo] || (byMonth[_mo] = { month: _mo, net_mnt: 0, charge_count: 0 }); b.net_mnt += _net; b.charge_count++; }
@@ -20352,7 +20363,7 @@ function _histCompute(orders, roiFix, catOf) {
       const ck = craw.toLowerCase();
       const c = custs[ck] || (custs[ck] = { customer: craw, order_count: 0, revenue_mnt: 0, paid_mnt: 0, latest_order_at: null });
       // Барьцаа = буцаадаг өр, харилцагчийн орлогод тооцохгүй (P&L-тэй ижил дүрэм)
-      c.order_count++; c.revenue_mnt += Math.max(0, total - N(o.deposit_mnt)); c.paid_mnt += paid;
+      c.order_count++; c.revenue_mnt += netRev; c.paid_mnt += paid;
       const d = String(o.starts_at || '').slice(0, 10);
       if (d && (!c.latest_order_at || d > c.latest_order_at)) c.latest_order_at = d;
     }
@@ -20364,7 +20375,7 @@ function _histCompute(orders, roiFix, catOf) {
       const nm = String(i.name || '').trim();
       if (!nm || TAX.test(nm)) return;                    // татвар/барьцаа — бараа биш
       const gross = N(i.qty) * N(i.price);
-      const rev = histLineRevenue(gross, grossAll, total, N(o.deposit_mnt));   // барьцаа/хүргэлт хасагдана
+      const rev = histLineRevenue(gross, grossAll, netRev);   // барьцаа/хүргэлт хасагдана
       const bucket = bqIsService(nm) ? svcs : prods;
       const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';
       const key = 'n:' + normP(nm);   // нэрээр бүлэглэнэ — ижил нэртэй (өөр SKU-тай) бараа нэгдэнэ

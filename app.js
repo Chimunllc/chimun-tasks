@@ -3138,6 +3138,8 @@ function filteredTasks() {
   // task-уудыг ч буцаадаг тул CEO Архивлуулсан жагсаалт үзэх боломжтой болгосон.
   const includeDeleted = state.view === 'archive';
   let list = state.tasks.filter(t => includeDeleted ? t.status === 'deleted' : t.status !== 'deleted');
+  // Захиалгын дамжлагын авто-ажлыг ажлын жагсаалтаас БҮРЭН хасна — дамжлагыг ЗӨВХӨН Захиалга хэсгээс хийнэ.
+  list = list.filter(t => !isOrderAutoTask(t));
   // ACCESS CONTROL — non-CEO users see:
   //   (1) tasks assigned to themselves (өөрийн хариуцах ажил),
   //   (2) tasks they created and assigned to others (өөрийн үүргэсэн ажил),
@@ -9678,7 +9680,7 @@ function canSeeVat() { return canAccessView('vat', () => state.isCEO || (typeof 
 function canSeeWorkload() { return canAccessView('workload', () => state.isCEO); }   // эрх нь Эрх удирдах матрицаас (role_perms/member_perms) — хатуу код БИШ
 let _workloadSearch = '';
 function _wlActiveTasks() {
-  return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined' && branchInLens(taskBranch(t)));
+  return state.tasks.filter(t => t.status !== 'done' && t.status !== 'deleted' && t.status !== 'declined' && !isOrderAutoTask(t) && branchInLens(taskBranch(t)));
 }
 function wlHeaderHtml() {
   const today = todayStr();
@@ -17046,6 +17048,10 @@ function parseStageTaskId(id) { const p = String(id || '').split('__'); return (
 // Захиалга/NOMAAD-аас АВТОМАТ үүссэн ажил уу — татгалзах/устгах хаах, 🤖 badge, KPI-д ашиглана.
 // (ordstage__ id + auto_source талбар хоёулаа — хуучин ажилд id fallback үлдэнэ.)
 function isAutoTask(t) { return !!(t && (parseStageTaskId(t.id) || t.auto_source === 'order' || t.auto_source === 'nomaad_prep')); }
+// ЗӨВХӨН захиалгын дамжлагын авто-ажил (ordstage__ / auto_source='order'). NOMAAD бэлтгэл (nomaad_prep)
+// нь гараар үүсгэсэн хүчинтэй ажил тул ОРОХГҮЙ. Дамжлагыг Захиалга хэсгээс л хийдэг болсон тул
+// эдгээрийг ажлын жагсаалт/ачаалал/тоймоос нууна (хуучин үлдэгдэл ажлууд ч алга болно).
+function isOrderAutoTask(t) { return !!(t && (parseStageTaskId(t.id) || t.auto_source === 'order')); }
 // Захиалга тухайн шатанд орох үед хариуцагчид ажил үүсгэнэ (давхардахгүй)
 // Дамжлагын ажлын дэлгэрэнгүй — захиалгын самбаргүй ажилтан (жолооч/нярав/цэвэрлэгч) ажлаасаа
 // л хаана/юуг хийхээ мэдэхийн тулд захиалгын гол мэдээллийг ажлын desc-д шингээнэ.

@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -1070,6 +1070,13 @@ function finish() {
   eq(_h.summary.net_revenue_mnt, 2800, 'түүх: net = (1000−200)+2000, NOMAAD(self) хасна');
   eq(_h.summary.real_orders, 2, 'түүх: бодит захиалга 2 (self хасна)');
   eq(_h.monthly.reduce((s, x) => s + x.net_mnt, 0), _h.summary.net_revenue_mnt, 'түүх: сарын нийлбэр = Нийт орлого KPI (дотоод зөрүү үгүй)');
+
+  // Захиалгын дамжлагын авто-ажил ажлын жагсаалтаас нуугдана (NOMAAD бэлтгэл ХАРАГДАНА)
+  const IOA = vm.runInContext('isOrderAutoTask', sandbox);
+  eq(IOA({ id: 'ordstage__123__delivering' }), true, 'авто ажил: ordstage__ id таьна');
+  eq(IOA({ id: 'x', auto_source: 'order' }), true, 'авто ажил: auto_source=order');
+  eq(IOA({ id: 'x', auto_source: 'nomaad_prep' }), false, 'NOMAAD бэлтгэл нь захиалгын авто ажил БИШ (харагдана)');
+  eq(IOA({ id: 'manual-1', createdBy: 'a' }), false, 'гар ажил: авто биш');
 
   eq(CS([], 'accrual').n, 0, 'суваг: хоосонд 0');
   eq(CS([{ source: 'app', total_mnt: 0 }], 'accrual').staff.avg, 0, 'суваг: 0 дүнд дундаж 0 (тэгд хуваахгүй)');

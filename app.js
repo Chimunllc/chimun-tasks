@@ -4923,7 +4923,7 @@ const RENTAL_TIERS = [
 ];
 function rentalDiscount(days) {
   days = Math.max(1, Number(days) || 1);
-  for (const t of RENTAL_TIERS) if (days >= t.min) return t;
+  for (const t of tariffTiers()) if (days >= t.min) return t;   // C2: app_config['tariffs'].tiers давуу, эс бол RENTAL_TIERS
   return { min: 1, pct: 0, label: '' };
 }
 // Захиалгын хямдралын дүн (C3) — авто-хоногийн шатлал (rentalDiscount) БА гар хямдралын ИХ нь.
@@ -17806,11 +17806,11 @@ function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
 // Ажлын бус цаг — 09:00–18:00-аас ГАДУУР авах/өгөх бүрт нэмэлт төлбөр (сайттай ижил: WORK 9–18, +20,000₮/бүр)
 // ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн OFFHOURS_FEE/WORK_START/WORK_END-тэй
 // ЯГ ИЖИЛ байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас — эс бол суваг хооронд өөр үнэ. [[tariff_two_repos_sync]]
-const ORDER_OFFHOURS_FEE = 20000;
-function _isOffHour(h) { h = +h; return !isNaN(h) && (h < 9 || h > 18); }
+const ORDER_OFFHOURS_FEE = 20000;   // fallback (app_config['tariffs'].offhours_fee давуу)
+function _isOffHour(h) { h = +h; return !isNaN(h) && (h < tariffWorkStart() || h > tariffWorkEnd()); }
 function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffHour(eh) ? 1 : 0); }
 // Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
-function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * ORDER_OFFHOURS_FEE : 0; }
+function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0; }
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
 // Цуцлах/устгах шалтгаан — note-д ⟦CX|шалтгаан⟧ token-оор (app_orders-д багана нэмэхгүйгээр). cleanAppNote нуудаг.
 const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
@@ -17880,13 +17880,22 @@ async function rejectOrderCancel(oid) {
 
 // ── Хүргэлтийн төлбөр — байршлаар автомат (сайт+апп нэг томьёо) ──
 // Хот дотор = тогтмол (очих+буцах багтсан). Хотоос гадна = нэг талын км × 2 (очих+буцах) × км-ийн үнэ.
-// ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн DELIVERY_CITY_FEE/PER_KM-тэй ЯГ ИЖИЛ
-// байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас. [[tariff_two_repos_sync]]
-const DELIVERY_CITY_FEE = 150000;   // ₮ хот дотор
-const DELIVERY_PER_KM = 5000;       // ₮ нэг талын км тутам
+// ⚠ ТАРИФ SYNC (C2): доорх const-ууд нь app_config['tariffs'] БАЙХГҮЙ үеийн fallback. Сайт
+// m-event-website-ready/index.html мөн энэ app_config-оос татна. [[tariff_two_repos_sync]]
+const DELIVERY_CITY_FEE = 150000;   // ₮ хот дотор (fallback)
+const DELIVERY_PER_KM = 5000;       // ₮ нэг талын км тутам (fallback)
+// ── ⭐ ТАРИФЫН НЭГ ЭХ СУРВАЛЖ: app_config['tariffs'] (state.tariffs). Байвал түүгээр, эс бол
+// дээрх const fallback. Тарифыг НЭГ газраас (app_config) удирдана — 2 repo-д хатуу давхардуулахгүй. ──
+function _tariffCfg() { return (state.tariffs && typeof state.tariffs === 'object') ? state.tariffs : {}; }
+function tariffDeliveryCity() { const v = Number(_tariffCfg().delivery_city_fee); return v > 0 ? v : DELIVERY_CITY_FEE; }
+function tariffPerKm() { const v = Number(_tariffCfg().delivery_per_km); return v > 0 ? v : DELIVERY_PER_KM; }
+function tariffOffhoursFee() { const v = Number(_tariffCfg().offhours_fee); return v > 0 ? v : ORDER_OFFHOURS_FEE; }
+function tariffWorkStart() { const v = Number(_tariffCfg().work_start); return (v >= 0 && v <= 23) ? v : 9; }
+function tariffWorkEnd() { const v = Number(_tariffCfg().work_end); return (v >= 0 && v <= 23) ? v : 18; }
+function tariffTiers() { const t = _tariffCfg().tiers; return (Array.isArray(t) && t.length) ? t.map(x => ({ min: Number(x.min) || 1, pct: Number(x.pct) || 0, label: x.label || '' })).sort((a, b) => b.min - a.min) : RENTAL_TIERS; }
 function calcDeliveryFee(zone, km) {
-  if (zone === 'city') return DELIVERY_CITY_FEE;
-  if (zone === 'out') return Math.max(0, (Math.round(Number(km) || 0)) * 2 * DELIVERY_PER_KM);
+  if (zone === 'city') return tariffDeliveryCity();
+  if (zone === 'out') return Math.max(0, (Math.round(Number(km) || 0)) * 2 * tariffPerKm());
   return 0;   // pickup / хоосон
 }
 // ⟦DLV|zone|km|fee⟧ note token (zone=city|out|pickup). app_orders-д багана нэмэхгүйгээр (RT/SL-тэй ижил).
@@ -18049,6 +18058,8 @@ function openNewOrder(editOrder) {
     showToast('Танд захиалга үүсгэх эрх алга', 'warn', 3000); return;
   }
   if (!state.products || !state.products.length) loadProductsCatalog();
+  // Тариф (хүргэлт/хямдрал/ажлын бус цаг) app_config-оос — байхгүй бол код fallback (C2). Нэг удаа lazy.
+  if (state.tariffs === undefined && typeof loadAppConfig === 'function') { state.tariffs = null; loadAppConfig('tariffs').then(v => { if (v && typeof v === 'object') { state.tariffs = v; if (typeof render === 'function') render(); } }); }
   const isEdit = !!editOrder;
   const items = isEdit ? (editOrder.items || []).map(x => ({ ...x })) : [];
   let depositManual = isEdit;   // засварт хадгалсан барьцаа хэвээр; шинэд авто
@@ -18290,7 +18301,7 @@ function openNewOrder(editOrder) {
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
     const offN = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value);
-    const offFee = offN * ORDER_OFFHOURS_FEE;   // ажлын бус цаг (09:00–18:00-аас гадуур) авах/өгөх бүрт (сайттай ижил)
+    const offFee = offN * tariffOffhoursFee();   // ажлын бус цаг (09:00–18:00-аас гадуур) авах/өгөх бүрт (сайттай ижил)
     const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
     const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалт: бараа бүрийн тоо × нэгж хөлс, доод хязгаартай
     const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee + setupFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ + СУУРИЛУУЛАЛТ
@@ -18378,7 +18389,7 @@ function openNewOrder(editOrder) {
     const total = Math.max(0, subtotal - discount - vatDisc);
     const deposit = moneyVal(depEl);
     const dlv = currentDelivery();
-    const offFee = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value) * ORDER_OFFHOURS_FEE;   // ажлын бус цаг (сайттай ижил)
+    const offFee = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value) * tariffOffhoursFee();   // ажлын бус цаг (сайттай ижил)
     const isDeliv = dlv.zone === 'city' || dlv.zone === 'out';
     const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
     const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалтын хөлс — токенд хадгална, нийт дүнд нэмнэ

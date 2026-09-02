@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -169,6 +169,20 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq(F.orderDiscountAmount(1000000, 3, 'pct', 30), 300000, 'C3: гар 30% > авто 20% → гар');
   eq(F.orderDiscountAmount(1000000, 3, 'pct', 10), 200000, 'C3: гар 10% < авто 20% → авто (доод хамгаалалт)');
   eq(F.orderDiscountAmount(1000000, 3, 'amount', 500000), 500000, 'C3: гар дүн 500k > авто 200k → гар');
+  // orderMoneyBreakdown — ГАНЦ эх сурвалж: задаргаа нийт дүнтэй ҮРГЭЛЖ тэнцэнэ (үнийн санал+гэрээ ижил)
+  {
+    // #1478 бодит кейс: түрээс 6.6сая, хүргэлт 150k, нийт 3.45сая → хямдрал 3.3сая (50%)
+    const o = { subtotal_mnt: 6600000, total_mnt: 3450000, deposit_mnt: 0, discount_type: 'pct', discount_value: 50, starts_at: '2026-09-15', stops_at: '2026-09-18', note: '⟦DLV|city|0|150000⟧' };
+    const b = F.orderMoneyBreakdown(o);
+    eq(b.subtotal, 6600000, 'breakdown: subtotal');
+    eq(b.delivFee, 150000, 'breakdown: delivFee');
+    eq(b.discount, 3300000, 'breakdown: хямдрал total-аас (3.3сая, 4.62сая БИШ)');
+    eq(b.subtotal - b.discount - b.vatDisc + b.delivFee + b.offFee + b.setupFee + b.deposit, b.total, 'breakdown: задаргаа = нийт дүн (үргэлж тэнцэнэ)');
+    // НӨАТ хассан + барьцаатай кейс — мөн тэнцэнэ
+    const o2 = { subtotal_mnt: 1000000, total_mnt: 1075000, deposit_mnt: 200000, note: '⟦DLV|city|0|100000⟧ ⟦VAT|25000⟧' };
+    const b2 = F.orderMoneyBreakdown(o2);
+    eq(b2.subtotal - b2.discount - b2.vatDisc + b2.delivFee + b2.offFee + b2.setupFee + b2.deposit, b2.total, 'breakdown: НӨАТ+барьцаатай ч тэнцэнэ');
+  }
 }
 
 // 4) Эхлэх/дуусах цаг токен

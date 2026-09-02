@@ -5597,11 +5597,11 @@ function reconReceiptOwnerLabel(usedIn) {
 // ⭐ ХЭЭ-СУУРЬТАЙ ТУЛГАЛТ (үндсэн загвар): хуулгын гүйлгээ бүрийг бүртгэсэн PDF баримттай (bank_receipts)
 // хурууны хээгээр (дүн+огноо+илгээгч) тулгана. Таарвал БҮРТГЭСЭН, эс бол БҮРТГЭЭГҮЙ орлого. Нэрийн
 // таамаглал/андуурал БАЙХГҮЙ — яг тэр PDF-ийг оруулж бүртгэсэн эсэхийг л шалгана. state.usedFps шаардана.
-function reconcileByReceipts(stmtRows) {
+function reconcileByReceipts(stmtRows, opts) {
+  opts = opts || {};
   const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r));
-  const usedFps = state.usedFps instanceof Set ? state.usedFps : new Set();
-  const usedIds = state.usedReceipts instanceof Set ? state.usedReceipts : new Set();
-  const fpOwners = state.fpOwners instanceof Map ? state.fpOwners : new Map();
+  const usedFps = opts.usedFps || (state.usedFps instanceof Set ? state.usedFps : new Set());
+  const fpOwners = opts.fpOwners || (state.fpOwners instanceof Map ? state.fpOwners : new Map());
   const recorded = [], unrecorded = [];
   for (const c of credits) {
     const fp = (typeof receiptFingerprint === 'function') ? receiptFingerprint({ amount: c.credit, date: c.date, senderName: c.name }) : '';
@@ -5716,6 +5716,9 @@ function incomeReportHtml(res) {
       <tr><td>✓ Бүртгэсэн (PDF баримттай)</td><td class="r">${(res.matched || []).length}</td><td class="r">${money(matchedSum)}</td></tr>
       <tr><td>💰 Бүртгээгүй (PDF баримт алга)</td><td class="r">${(res.untracked || []).length}</td><td class="r">${money(untrackedSum)}</td></tr>
     </tbody></table>
+    <h2>💰 Бүртгээгүй орлого — PDF баримт оруулах шаардлагатай (${(res.untracked || []).length})</h2>
+    <table><thead><tr><th>Огноо</th><th>Илгээгч</th><th>Утга</th><th>Данс</th><th class="r">Дүн</th></tr></thead>
+      <tbody>${untrackedRows || '<tr><td colspan="5">— бүх орлого бүртгэгдсэн ✓ —</td></tr>'}</tbody></table>
     ${growth != null || prevRec > 0 ? `<h2>Өмнөх сартай харьцуулалт</h2>
     <table><thead><tr><th>Сар</th><th class="r">Бүртгэсэн орлого</th><th class="r">Өөрчлөлт</th></tr></thead><tbody>
       <tr><td>${escapeHtml(prevYm || '—')} (өмнөх)</td><td class="r">${money(prevRec)}</td><td class="r">—</td></tr>
@@ -5733,7 +5736,7 @@ function incomeReportHtml(res) {
       <tr><td><b>Ноогдох НӨАТ (10%)</b></td><td class="r"><b>${money(vat)}</b></td></tr>
     </tbody></table>
     <div class="mut">Ойролцоо тооцоо: нийт орлогыг НӨАТ багтсан гэж үзэв (суурь = орлого ÷ 1.1). Барьцаа/НӨАТ-гүй орлого багтвал бодит дүн зөрж болзошгүй — албан ёсны тайланд нягтлан баталгаажуулна.</div>
-    <div class="foot">Автоматаар тулгасан тайлан (M-Event захиалга + NOMAAD орлого). «Захиалгагүй орлого» = банкинд орсон боловч аппд захиалга/төлбөр бүртгэгдээгүй гүйлгээ — нягтлан шалгаж холбоно. Дотоод дансны хоорондын шилжүүлэг орлогоос хасагдсан.</div>
+    <div class="foot">Хуулгын гүйлгээ бүрийг бүртгэсэн PDF баримттай (дүн+огноо+илгээгчийн хээгээр) тулгав. «Бүртгэсэн» = аппд тухайн PDF баримтаар орлого бүртгэгдсэн; «Бүртгээгүй» = банкинд орсон боловч PDF баримт бүртгээгүй — нягтлан оруулна. Дотоод дансны хоорондын шилжүүлэг орлогоос хасагдсан.</div>
   </body></html>`;
 }
 function openIncomeReport() {

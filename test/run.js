@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -1030,6 +1030,24 @@ function finish() {
   ok(F.receiptTooOld('2026-07-01') === false, 'receiptTooOld: 7/01 → false (эхлэл огноо)');
   ok(F.receiptTooOld('2026-08-12') === false, 'receiptTooOld: 8 сар → false');
   ok(F.receiptTooOld('') === false, 'receiptTooOld: огноогүй → false (хаахгүй)');
+
+  // ── reconcileByReceipts: хээ-суурьтай тулгалт (хуулга ↔ бүртгэсэн PDF) ──
+  {
+    const stmt = [
+      { date: '2026-08-12', credit: 5877700, name: 'МЯГМАРЖАВ ЗОЛЖАРГАЛ', memo: 'төлбөр' },   // бүртгэсэн
+      { date: '2026-08-14', credit: 17132000, name: 'DENTSU DATA ARTIST', memo: 'balance' },   // бүртгээгүй
+      { date: '2026-08-13', credit: 1000000, name: 'ЧИМУН ХХК', memo: 'DANS HOOROND' },         // дотоод → хасагдана
+    ];
+    const fp = F.receiptFingerprint({ amount: 5877700, date: '2026-08-12', senderName: 'МЯГМАРЖАВ ЗОЛЖАРГАЛ' });
+    const usedFps = new Set([fp]);
+    const fpOwners = new Map([[fp, 'mevent:#1160']]);
+    const r = F.reconcileByReceipts(stmt, { usedFps, fpOwners });
+    ok(r.recorded.length === 1 && r.recorded[0].owner === 'mevent:#1160', 'byReceipt: хээ таарвал бүртгэсэн');
+    ok(r.unrecorded.length === 1 && r.unrecorded[0].credit === 17132000, 'byReceipt: хээ таарахгүй→бүртгээгүй');
+    ok(r.incomeCount === 2, 'byReceipt: дотоод шилжүүлэг хасагдана');
+    ok(r.matched.length === 1 && r.matched[0].order.order_no === '#1160', 'byReceipt: matched-д эзэмшигч шошго');
+  }
+  ok(F.reconReceiptOwnerLabel && F.reconReceiptOwnerLabel('nomaad:NC-2026-0073') === 'NC-2026-0073', 'ownerLabel: nomaad');
 
   // ── statementMeta: данс+хугацаа задлах (label-аас хойш хоосон нүд байж болно) ──
   {

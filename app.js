@@ -3664,6 +3664,11 @@ function renderTitle() {
     salary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Сарын цалин', 'Ажилтан бүрийн суурь цалин ба сар бүрийн олголт'],
     attendance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>', 'Ирц', 'QR-аар ирц бүртгэх — ажилчид утсаараа уншуулна'],
     myattend: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>', 'Миний ирц', 'QR-аа менежерт харуулж ирцээ бүртгүүл · ажилласан цаг'],
+    accounts:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>', 'Данс & Карт', 'Компанийн банкны данс, карт — эзэн, зориулалт, зарцуулалт'],
+    coosalary: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>', 'COO цалин', 'Үйл ажиллагааны захирлын цалин — цэвэр ашгаас хувиар'],
+    marketing: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>', 'Постер & брэнд', 'Постер зохиох ба имэйл маркетинг'],
+    myexpenses: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>', 'Миний зардал', 'Картаар хийсэн зарлагаа ангилах — баримт хавсаргах'],
+    catering:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2M5 2v20M17 2v9c0 1 .5 2 2 2h1V2M20 13v9"/></svg>', 'Катеринг', 'Хоол хүнсний үйлчилгээ — арга хэмжээ бүрд цэс + үйлчлэх цаг төлөвлөнө'],
     all:       ['', 'Бүгд','Бүх checklist'],
     overdue:   [ICONS.alertTri, 'Хоцорсон','Эцсийн хугацаа өнгөрсөн'],
     today:     [ICONS.sun, 'Өнөөдөр','Өнөөдөр дуусах ёстой'],
@@ -10043,9 +10048,8 @@ function renderCatering() {
   const menu = state.cateringMenu || [];
   const jobs = (state.cateringJobs || []).filter(j => j.status !== 'cancelled');
   const tabBtn = (k, label) => `<button class="btn${tab === k ? ' btn-primary' : ''}" data-kt-tab="${k}" style="padding:6px 16px;font-size:13px;">${label}</button>`;
-  const header = `<div style="margin:6px 0 14px;"><div style="font-size:20px;font-weight:800;">🍽 Катеринг</div>
-    <div style="font-size:12px;color:var(--muted);">Хоол хүнсний үйлчилгээ — арга хэмжээ бүрд цэс + үйлчлэх цаг төлөвлөнө.</div></div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">${tabBtn('jobs', '📋 Ажлууд')}${tabBtn('menu', '🍲 Цэс')}
+  // Гарчиг/дэд гарчиг нь дэлгэцийн толгойд (renderTitle → titles.catering) — энд давхардуулахгүй.
+  const header = `<div style="display:flex;gap:8px;margin:6px 0 14px;flex-wrap:wrap;">${tabBtn('jobs', '📋 Ажлууд')}${tabBtn('menu', '🍲 Цэс')}
       <div style="flex:1;"></div>
       ${tab === 'jobs' ? `<button class="btn btn-primary" id="kt-new-job" style="padding:6px 16px;font-size:13px;">+ Шинэ катеринг</button>`
         : `<button class="btn btn-primary" id="kt-new-dish" style="padding:6px 16px;font-size:13px;">+ Хоол нэмэх</button>`}
@@ -20011,8 +20015,8 @@ function renderCooSalary() {
     + `</div>`;
 
   let h = `<div style="max-width:640px;margin:0 auto;">`;
-  h += `<div style="font-weight:800;font-size:var(--fs-lg);margin:2px 0 3px;">💼 COO цалин</div>`;
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin-bottom:12px;">Үйл ажиллагааны захирал <b style="color:var(--text);">${escapeHtml(cooName)}</b> — цэвэр ашгийн ${pct}%</div>`;
+  // Гарчиг нь дэлгэцийн толгойд (renderTitle → titles.coosalary). Энд зөвхөн хэнийх, хэдэн хувь.
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 12px;">Үйл ажиллагааны захирал <b style="color:var(--text);">${escapeHtml(cooName)}</b> — цэвэр ашгийн ${pct}%</div>`;
 
   // Сар сонгогч
   h += `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px;">`

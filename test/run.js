@@ -1890,6 +1890,20 @@ function finish() {
        'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
   }
 
+  // ── Sidebar-ын БҮХ цэс дэлгэцийн гарчигтай байх ёстой ──
+  // (Гарчиггүй бол renderTitle нь `t || ['', 'Бүгд', 'Бүх']` уналтад орж дэлгэц толгойдоо
+  //  «Бүгд / Бүх» гэж бичдэг байв — Данс & Карт, Постер & брэнд, Миний зардал, COO цалин,
+  //  Катеринг 5 дэлгэц ингэж «Бүгд» нэртэй байлаа.)
+  {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const navViews = [...new Set((html.match(/data-view="([a-z]+)"/g) || []).map(s => s.slice(11, -1)))];
+    ok(navViews.length > 15, 'гарчиг: sidebar-аас цэсүүд уншигдав');
+    const block = src.slice(src.indexOf('function renderTitle()'));
+    const titlesSrc = block.slice(0, block.indexOf('let t = titles[state.view]'));
+    navViews.forEach(v => ok(new RegExp('(^|[\\s{,])' + v + '\\s*:').test(titlesSrc),
+      `гарчиг: «${v}» дэлгэц renderTitle-д гарчигтай`));
+  }
+
   // ── NOMAAD badge = орлого бүртгэгдээгүй ГЭРЭЭ (бүх үнийн санал БИШ) ──
   {
     const st = vm.runInContext('state', sandbox);

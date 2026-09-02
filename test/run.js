@@ -1890,6 +1890,30 @@ function finish() {
        'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
   }
 
+  // ── NOMAAD badge = орлого бүртгэгдээгүй ГЭРЭЭ (бүх үнийн санал БИШ) ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const C = vm.runInContext('nomaadUnbilledContractCount', sandbox);
+    const savedPays = st.nomaadPayments;
+    st.nomaadPayments = {};
+    const future = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const rows = [
+      { quote_no: 'A', status: 'ГЭРЭЭ',        date_start: future, total_amount: 1000000 },   // ✓ гэрээ, орлогогүй
+      { quote_no: 'B', status: 'ШИНЭ',         date_start: future },                          // ✗ зүгээр сонирхсон
+      { quote_no: 'C', status: 'ИЛГЭЭСЭН',     date_start: future },                          // ✗ санал илгээсэн
+      { quote_no: 'D', status: 'БАТАЛГААЖУУЛАЛТ', date_start: future },                       // ✗ баталгаажуулалт
+      { quote_no: 'E', status: 'ГЭРЭЭ', date_start: future, total_amount: 1000000, income_amount: 400000 }, // ✗ орлоготой гэрээ
+      { quote_no: 'F', status: 'БОЛЬСОН',      date_start: future },                          // ✗ больсон
+    ];
+    eq(C(rows), 1, 'NOMAAD badge: зөвхөн орлого бүртгэгдээгүй гэрээ тоологдоно');
+    eq(C([]), 0, 'NOMAAD badge: хоосон бол 0');
+    eq(C(null), 0, 'NOMAAD badge: жагсаалт байхгүй бол 0');
+    // төлбөр зөвхөн логт байсан ч гэрээ badge-ээс гарна
+    st.nomaadPayments = { A: [{ total: 250000, pay_date: '2026-09-01' }] };
+    eq(C(rows), 0, 'NOMAAD badge: логоор төлсөн гэрээ badge-ээс хасагдана');
+    st.nomaadPayments = savedPays;
+  }
+
   // ── orderCanonStatus: badge ↔ жагсаалт нэг эх сурвалжаас ──
   {
     const cs = vm.runInContext('orderCanonStatus', sandbox);

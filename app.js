@@ -4522,12 +4522,17 @@ function pricingStats(orders, products, opts) {
     const d0 = String(ord.starts_at || '').slice(0, 10);
     if (!d0 || d0 < from || d0 > to) return;
     const days = _dayRange(ord.starts_at, ord.stops_at);
-    (Array.isArray(ord.items) ? ord.items : []).forEach(it => {
+    const _its = Array.isArray(ord.items) ? ord.items : [];
+    const grossAll = _its.reduce((s2, i) => s2 + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
+    _its.forEach(it => {
       if (!it) return;
       const r = resolveItemSku(it, ctx);
       if (!r.sku) return;
       const qty = Math.max(0, Number(it.qty) || 0);
-      const amt = qty * (Number(it.price) || 0);
+      // Мөрийн ЖАГСААЛТЫН дүн биш, БОДИТ орлого — захиалгад хөнгөлөлт байвал
+      // харьцангуйгаар буурна. Эс бөгөөс «үнийн биелэлт» хиймлээр өндөр гарч,
+      // хөнгөлж зарж буй бараанд «үнэ өсгө» гэж буруу зөвлөнө.
+      const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, ord.total_mnt, ord.deposit_mnt);
       const a = acc[r.sku] || (acc[r.sku] = { sku: r.sku, qty: 0, revenue: 0, lines: 0, orders: new Set(), byDay: Object.create(null) });
       a.qty += qty; a.revenue += amt; a.lines++;
       if (ord.number != null) a.orders.add(ord.number);
@@ -18990,6 +18995,14 @@ function openOrderQuote(oid, lang) {
   buildOrderQuote(o, lang).then(html => { w.document.open(); w.document.write(html); w.document.close(); })
     .catch(e => { console.warn('quote', e); showToast('Үнийн санал үүсгэхэд алдаа: ' + e.message, 'error', 5000); });
 }
+// Үнийн саналын хямдралын мөр — эрх мэдэлтэй нийт дүн (total_mnt)-аас гаргана. Задаргаа:
+// түрээс − хямдрал − НӨАТ + хүргэлт + ажлын бус цаг + суурилуулалт + барьцаа = НИЙТ. Тиймээс
+// хямдрал = түрээс + нэмэгдлүүд + барьцаа − НӨАТ хасалт − нийт. Ингэснээр мөрүүд ҮРГЭЛЖ тэнцэнэ
+// (сайтын авто-хямдрал total-д, аппын гар хямдрал discount_value-д — аль нэгийг давхар тоолохгүй).
+function quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDiscount, total) {
+  if (!(total > 0)) return 0;
+  return Math.max(0, (Number(subtotal) || 0) + (Number(delivFee) || 0) + (Number(offFee) || 0) + (Number(setupFee) || 0) + (Number(deposit) || 0) - (Number(vatDiscount) || 0) - (Number(total) || 0));
+}
 async function buildOrderQuote(o, lang) {
   const C = CHIMUN_LEGAL, now = new Date(), valid = new Date(now.getTime() + 14 * 86400000);
   const items = (o.items || []);
@@ -19013,11 +19026,7 @@ async function buildOrderQuote(o, lang) {
   // Хөнгөлөлт — картын/формтой ИЖИЛ дүрэм: (1) хугацааны шатлалын АВТОМАТ хямдрал (rentalDiscount:
   // 2+ хоног 20%, 7+ 40%, 30+ 55%) + (2) гар (discount_value) хямдрал. Өмнө зөвхөн discount_value-ийг
   // авдаг байсан тул автомат хоногийн хямдрал үнийн саналд ОРОХГҮЙ, картын дүнтэй зөрдөг байв.
-  const _tier = (typeof rentalDiscount === 'function') ? rentalDiscount(days) : { pct: 0, label: '' };
-  const _autoDisc = Math.round(subtotal * (_tier.pct || 0));
-  const _dval = Number(o.discount_value) || 0;
-  const _manualDisc = _dval ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, _dval) / 100) : Math.min(subtotal, _dval)) : 0;
-  const discount = _autoDisc + _manualDisc;
+  const setupFee = setupFeeOf(o.note);   // суурилуулалт / угсралт (⟦SET|1|хөлс⟧ токеноос)
   const _dlv = parseDelivery(o.note);
   const delivFee = _dlv ? Number(_dlv.fee) || 0 : 0;
   const delivLbl = deliveryLabel(_dlv);
@@ -19027,6 +19036,13 @@ async function buildOrderQuote(o, lang) {
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
   // НӨАТ хассан эсэх — захиалгын ⟦VAT|дүн⟧ token-оос. Хассан бол дүн аль хэдийн total_mnt-д тусгагдсан.
   const _vat = parseVat(o.note), hasVat = _vat != null, vatDiscount = hasVat ? _vat : 0;
+  // Хөнгөлөлт — эрх мэдэлтэй total_mnt-аас ГАРГАЖ авна. Задаргааны мөрүүд (түрээс − хөнгөлөлт
+  // − НӨАТ + хүргэлт + ажлын бус цаг + суурилуулалт + барьцаа) нийт дүнтэй ҮРГЭЛЖ тэнцэнэ.
+  // Өмнө авто-хоногийн хямдрал (rentalDiscount) + гар хямдралыг ТУСАД нь бодоод нэмдэг байсан нь
+  // total_mnt-д зөвхөн нэг нь тусгагдсан үед ДАВХАР тоолж, задаргаа нийт дүнтэй зөрдөг байв.
+  const discount = total > 0
+    ? quoteDiscountFromTotal(subtotal, delivFee, offFee, setupFee, deposit, vatDiscount, total)
+    : (o.discount_value ? (o.discount_type === 'pct' ? Math.round(subtotal * Math.min(100, Number(o.discount_value)) / 100) : Math.min(subtotal, Number(o.discount_value))) : 0);
   const mailTo = o.email || '';
   const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;
   // Илгээж буй хүний гарын үсэг — нэвтэрсэн ажилтнаас автоматаар (нэр/албан тушаал/шууд утас).
@@ -19155,6 +19171,7 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
         ${hasVat ? `<div class="tr"><span>${T.vatCut}</span><span class="v">−${fmtMoney(vatDiscount)}</span></div>` : ''}
         ${delivFee ? `<div class="tr"><span>${T.delivery}${dlvLbl ? ' (' + escapeHtml(dlvLbl) + ')' : ''}</span><span class="v">${fmtMoney(delivFee)}</span></div>` : ''}
         ${offFee ? `<div class="tr"><span>${T.offHours}</span><span class="v">${fmtMoney(offFee)}</span></div>` : ''}
+        ${setupFee ? `<div class="tr"><span>${EN ? 'Setup / installation' : '🔧 Суурилуулалт / угсралт'}</span><span class="v">${fmtMoney(setupFee)}</span></div>` : ''}
         ${deposit ? `<div class="tr"><span>${T.depositRow}</span><span class="v">${fmtMoney(deposit)}</span></div>` : ''}
         <div class="grand"><span class="g-l">${T.grand}</span><span class="g-v">${fmtMoney(total)}</span></div>
       </div></div>
@@ -20241,7 +20258,8 @@ function _histCompute(orders, roiFix, catOf) {
     else {
       const ck = craw.toLowerCase();
       const c = custs[ck] || (custs[ck] = { customer: craw, order_count: 0, revenue_mnt: 0, paid_mnt: 0, latest_order_at: null });
-      c.order_count++; c.revenue_mnt += total; c.paid_mnt += paid;
+      // Барьцаа = буцаадаг өр, харилцагчийн орлогод тооцохгүй (P&L-тэй ижил дүрэм)
+      c.order_count++; c.revenue_mnt += Math.max(0, total - N(o.deposit_mnt)); c.paid_mnt += paid;
       const d = String(o.starts_at || '').slice(0, 10);
       if (d && (!c.latest_order_at || d > c.latest_order_at)) c.latest_order_at = d;
     }
@@ -20864,7 +20882,10 @@ function finAddOrderIncome(inc, wantBr, basis) {
     (state.appOrders || []).filter(o => _orderActive(o)).forEach(o => {
       const mo = String(o.starts_at || o.created_at || '').slice(0, 7);
       if (!/^\d{4}-\d{2}$/.test(mo)) return;
-      const v = basis === 'cash' ? (Number(o.paid_mnt) || 0) : (Number(o.total_mnt) || 0);
+      // ⚠ Түүхий total_mnt/paid_mnt-ыг ШУУД БҮҮ АШИГЛА — тэдгээрт БАРЬЦАА багтдаг.
+      // Өмнө нь трендийн график толгойн P&L-ээс барьцааны хэмжээгээр их харагдаж,
+      // хоёр тоо зөрж байв. orderRevenue = орлогын ЦОРЫН ГАНЦ дүрэм.
+      const v = orderRevenue(o, basis);
       if (v) inc[mo] = (inc[mo] || 0) + v;
     });
   }

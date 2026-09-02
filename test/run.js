@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -140,6 +140,14 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq(F.setupUnitFee({ name: 'Сандал', setup: 3000 }), 3000, 'Нэгж хөлс: каталогийн setup давуу');
   eq(F.setupUnitFee({ name: 'Сандал' }), 500, 'Нэгж хөлс: setup байхгүй → нэрээр');
   eq(F.setupFeeForItems([{ name: 'Сандал', qty: 100, setup: 3000 }]), 300000, 'Нийт хөлс: каталогийн setup×тоо');
+  // Үнийн саналын хямдрал — нийт дүнгээс гаргах (задаргаа нийт дүнтэй тэнцэнэ)
+  // #1478 бодит кейс: түрээс 6.6сая, хүргэлт 150k, нийт 3.45сая → хямдрал = 3.3сая (50%), 4.62сая БИШ
+  eq(F.quoteDiscountFromTotal(6600000, 150000, 0, 0, 0, 0, 3450000), 3300000, 'Quote хямдрал: #1478 = 3.3сая (давхар тоолохгүй)');
+  // сайтын авто-20% total-д шингэсэн, гар хямдралгүй → 20% харагдана
+  eq(F.quoteDiscountFromTotal(1000000, 0, 0, 0, 0, 0, 800000), 200000, 'Quote хямдрал: авто-20% total-аас');
+  // хямдралгүй — задаргаа тэнцэнэ (хүргэлт+барьцаа+НӨАТ)
+  eq(F.quoteDiscountFromTotal(1000000, 100000, 0, 0, 50000, 25000, 1125000), 0, 'Quote хямдрал: хямдралгүй = 0');
+  eq(F.quoteDiscountFromTotal(6600000, 150000, 0, 0, 0, 0, 0), 0, 'Quote хямдрал: total 0 бол 0 (ноорог)');
 }
 
 // 4) Эхлэх/дуусах цаг токен
@@ -1592,15 +1600,15 @@ function finish() {
     ];
     // A: 10ш нөөц, 4 захиалга × 10ш = 40ш, бүтэн үнээр, огноо давхцаж 3+ өдөр дүүрнэ
     const orders = [
-      { number: 1, status: 'returned', starts_at: '2026-05-01', stops_at: '2026-05-03',
+      { number: 1, status: 'returned', starts_at: '2026-05-01', stops_at: '2026-05-03', total_mnt: 350000,
         items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }, { sku: 'B', name: 'b', qty: 5, price: 50000 }] },
-      { number: 2, status: 'returned', starts_at: '2026-05-02', stops_at: '2026-05-02',
+      { number: 2, status: 'returned', starts_at: '2026-05-02', stops_at: '2026-05-02', total_mnt: 100000,
         items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }] },
-      { number: 3, status: 'rented',   starts_at: '2026-05-10', stops_at: '2026-05-10',
+      { number: 3, status: 'rented',   starts_at: '2026-05-10', stops_at: '2026-05-10', total_mnt: 250000,
         items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }, { sku: 'D', name: 'd', qty: 1, price: 150000 }] },
-      { number: 4, status: 'returned', starts_at: '2026-05-11', stops_at: '2026-05-11',
+      { number: 4, status: 'returned', starts_at: '2026-05-11', stops_at: '2026-05-11', total_mnt: 100000,
         items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }] },
-      { number: 5, status: 'draft',    starts_at: '2026-05-12', stops_at: '2026-05-12',
+      { number: 5, status: 'draft',    starts_at: '2026-05-12', stops_at: '2026-05-12', total_mnt: 20000,
         items: [{ sku: 'C', name: 'c', qty: 4, price: 5000 }] },
     ];
     const st = F.pricingStats(orders, prods, { from: '2026-01-01', to: '2026-12-31', ctx });
@@ -1627,6 +1635,24 @@ function finish() {
 
     // ROI = орлого ÷ (өртөг × нөөц)
     ok(by.A.roi === 400000 / (20000 * 10), 'үнэ: ROI = орлого ÷ хөрөнгө');
+    // Хөнгөлөлттэй захиалга — бодит үнэ буурч, «үнэ өсгө» гэж буруу зөвлөхгүй
+    {
+      const disc = [{ number: 7, status: 'returned', starts_at: '2026-03-01', stops_at: '2026-03-01',
+        total_mnt: 50000,   // мөрийн нийлбэр 100,000 — 50% хөнгөлөлт
+        items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }] }];
+      const sd = F.pricingStats(disc, prods, { from: '2026-01-01', to: '2026-12-31', ctx });
+      const a = sd.rows.find(r => r.sku === 'A');
+      ok(a.revenue === 50000 && a.avg === 5000, 'үнэ: хөнгөлөлт бодит үнэд тусна');
+      ok(a.real === 0.5 && a.verdict.key === 'down', 'дүгнэлт: хөнгөлж зардаг бол «үнэ өсгө» гэхгүй');
+    }
+    // Барьцаа бодит үнийг өсгөх ёсгүй
+    {
+      const dep = [{ number: 8, status: 'returned', starts_at: '2026-03-01', stops_at: '2026-03-01',
+        total_mnt: 500000, deposit_mnt: 400000,
+        items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }] }];
+      const sdp = F.pricingStats(dep, prods, { from: '2026-01-01', to: '2026-12-31', ctx });
+      ok(sdp.rows.find(r => r.sku === 'A').avg === 10000, 'үнэ: барьцаа бодит үнийг өсгөхгүй');
+    }
     // Хугацааны шүүлт — өмнөх оны захиалга орохгүй
     const st2 = F.pricingStats(orders, prods, { from: '2026-06-01', to: '2026-12-31', ctx });
     ok(st2.rows.every(r => r.qty === 0), 'үнэ: хугацааны шүүлт ажиллана');
@@ -1649,7 +1675,7 @@ function finish() {
       ok(F.pricingStock(pkg) === 2, 'багц: нөөц = бүрэлдэхүүний хамгийн бага (4÷2=2)');
       ok(F.pricingStock({ sku: 'X', stock: 7 }) === 7, 'багц бус: энгийн нөөц');
       const sp = F.pricingStats(
-        [{ number: 9, status: 'returned', starts_at: '2026-02-01', stops_at: '2026-02-01',
+        [{ number: 9, status: 'returned', starts_at: '2026-02-01', stops_at: '2026-02-01', total_mnt: 780000,
            items: [{ sku: 'PK', name: 'Өвлийн багц', qty: 2, price: 390000 }] }],
         [pkg], { from: '2026-01-01', to: '2026-12-31',
                  ctx: { bySku: { PK: pkg }, byName: {}, aliases: {} } });

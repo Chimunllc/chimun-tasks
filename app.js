@@ -3530,7 +3530,10 @@ function renderSidebar() {
     const oCnt = document.getElementById('cnt-orders');
     if (oCnt) {
       // Анхаарал шаардсан = "Захиалсан" (reserved, удахгүй гаргах). Захиалга бүр app_orders-т.
-      oCnt.textContent = String((state.appOrders || []).filter(o => o.status === 'reserved').length);
+      // ⚠ ТҮҮХИЙ o.status БИШ — orderCanonStatus()-аар. Түүхийгээр уншвал төлбөр хийгдээгүй
+      //    reserved захиалга жагсаалтад «Ноорог» гэж харагдаж байхад badge-д «анхаарал шаардсан»
+      //    гэж тоологдоно (мөн хугацаа нь өнгөрсөн төлбөргүй нь ч). Badge ↔ жагсаалт зөрнө.
+      oCnt.textContent = String((state.appOrders || []).filter(o => orderCanonStatus(o) === 'reserved').length);
     }
   }
   // Тайлан = аналитик төв (Тайлан / Багийн ачаалал / Түрээсийн түүх табтай) — аль нэг эрхтэй бол харагдана.

@@ -1869,6 +1869,15 @@ function finish() {
     need.forEach(f => ok(m && m[1].split(',').includes(f), `түүх: select-д «${f}» талбар байна`));
   }
 
+  // ── orderCanonStatus: badge ↔ жагсаалт нэг эх сурвалжаас ──
+  {
+    const cs = vm.runInContext('orderCanonStatus', sandbox);
+    eq(cs({ status: 'reserved', paid_mnt: 500000 }), 'reserved', 'канон төлөв: төлсөн reserved хэвээр');
+    eq(cs({ status: 'reserved', paid_mnt: 0, starts_at: '2099-01-01' }), 'draft', 'канон төлөв: төлбөргүй reserved = Ноорог');
+    eq(cs({ status: 'preparation', paid_mnt: 100 }), 'prepared', 'канон төлөв: legacy статус нормчилогдоно');
+    eq(cs({ status: 'draft', paid_mnt: 0, stops_at: '2020-01-01' }), 'deleted', 'канон төлөв: хугацаа хэтэрсэн төлбөргүй ноорог = устгасан');
+  }
+
   // ── last7Days: local огноогоор, UTC гулсалтгүй ──
   {
     const l7 = F.last7Days('2026-09-02');

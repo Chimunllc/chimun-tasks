@@ -9695,6 +9695,7 @@ function wlHeaderHtml() {
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Хэн юу хийж байна — идэвхтэй ажил хариуцагчаар</div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">${kpi(active.length, 'Идэвхтэй ажил')}${kpi(people, 'Ажилтан')}${kpi(overdue, 'Хоцорсон', overdue ? 'var(--danger)' : '')}</div>
     <input id="workload-search" placeholder="🔍 Ажил эсвэл хүн хайх" value="${escapeHtml(_workloadSearch)}" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--panel);color:var(--text);">
+    ${(() => { if (!state.isCEO) return ''; const n = (state.tasks || []).filter(t => t.status !== 'done' && t.status !== 'deleted').length; return n ? `<button id="wl-cleanup" class="btn ui-raw" style="margin-top:10px;padding:8px 14px;border:1px solid var(--danger);color:var(--danger);border-radius:8px;background:transparent;font-size:13px;">🧹 Дуусаагүй ажил цэвэрлэх (${n})</button>` : ''; })()}
   </div>`;
 }
 function wlListHtml() {
@@ -9769,6 +9770,26 @@ function attachWorkloadHandlers() {
     const row = e.target.closest('[data-wl-task]');
     if (row && row.dataset.wlTask) openTaskModal(row.dataset.wlTask);
   });
+  const cb = document.getElementById('wl-cleanup');
+  if (cb) cb.addEventListener('click', bulkDeleteUnfinishedTasks);
+}
+// CEO нэг удаагийн цэвэрлэгээ — БҮХ дуусаагүй ажлыг устгана, ДУУССАН (done) ажлыг үлдээнэ.
+// Апп ашиглалтад бүрэн ороогүй үеийн хог ажлыг цэвэрлэхэд. Soft delete тул Архиваас сэргээж болно.
+async function bulkDeleteUnfinishedTasks() {
+  if (!state.isCEO) { showToast('Зөвхөн CEO', 'warn'); return; }
+  const list = (state.tasks || []).filter(t => t.status !== 'done' && t.status !== 'deleted');
+  if (!list.length) { showToast('Цэвэрлэх дуусаагүй ажил алга', 'info'); return; }
+  const ok = await showConfirm(`${list.length} дуусаагүй ажлыг устгах уу?\n\nДууссан (гүйцэтгэсэн) ажлууд үлдэнэ. Архиваас сэргээж болно.`, { okText: 'Тийм, цэвэрлэ', danger: true });
+  if (!ok) return;
+  let n = 0;
+  for (const t of list) {
+    t.status = 'deleted';
+    try { markDeleted(t.id); await saveTask(t, true, false, true); n++; } catch (e) {}
+    if (n % 20 === 0) showToast(`${n}/${list.length} устгаж байна…`, 'info', 800);
+  }
+  saveLocal();
+  showToast(`${n} дуусаагүй ажил цэвэрлэлээ ✓`, 'success', 3500);
+  render();
 }
 
 // member_perms татах (PostgREST anon SELECT). Хүснэгт байхгүй бол чимээгүй.

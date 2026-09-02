@@ -16515,6 +16515,8 @@ function openStageAdvanceModal(oid, to) {
   if (act.key === 'dispatch') {
     if (_smNow.clean && _smNow.clean.by) rateTargets.push({ ratee: _smNow.clean.by, q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' });
     if (_smNow.prepare && _smNow.prepare.by) rateTargets.push({ ratee: _smNow.prepare.by, q: 'Бэлтгэл бүрэн, зөв бэлдэгдсэн үү?' });
+  } else if (act.key === 'retstart') {
+    // Хүргэлтээс авах (жолооч) = зөвхөн ТОО ШИРХЭГ (хэрэглэгчээс); ★ БАЙХГҮЙ (өөрийн хүргэлтээ үнэлэхгүй).
   } else {
     const _prev = prevStageInfoAny(o);
     if (_prev) rateTargets.push({ ratee: _prev.by, q: prevStageQuestion(_prev) });
@@ -16523,14 +16525,23 @@ function openStageAdvanceModal(oid, to) {
   // ── Агуулахад хүлээн авах шат — бараа бүрэн буцаж ирсэн эсэхийг ТООГООР баталгаажуулна.
   // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг
   // гараар оруулах нь удаан бөгөөд яаравал хуурамч тоо цуглана).
-  const _isReceive = act.key === 'received';
+  // Тоо ширхэгийн хяналт — pickup (жолооч хэрэглэгчээс авах) БА received (нярав агуулахад авах) хоёуланд.
+  const _isReceive = act.key === 'received' || act.key === 'retstart';
+  const _isPickup = act.key === 'retstart';
+  // received дээр «хүлээгдэх тоо» = жолоочийн ХЭРЭГЛЭГЧЭЭС АВСАН тоо (retstart.got); эс бол захиалгын тоо.
+  const _prevPick = (act.key === 'received' && _smNow.retstart && Array.isArray(_smNow.retstart.items)) ? _smNow.retstart.items : null;
   const _rcItems = _isReceive ? (o.items || []).filter(it => it && it.name).map(it => {
     const p = it.sku ? productBySku(it.sku) : productByName(it.name);
-    return { sku: p ? p.sku : (it.sku || ''), name: it.name, qty: Math.max(0, Number(it.qty) || 0) };
+    const sku = p ? p.sku : (it.sku || '');
+    let qty = Math.max(0, Number(it.qty) || 0);
+    if (_prevPick) { const pj = _prevPick.find(x => (x.sku && x.sku === sku) || x.name === it.name); if (pj) qty = Math.max(0, Number(pj.got != null ? pj.got : pj.qty) || 0); }
+    return { sku, name: it.name, qty };
   }).filter(x => x.qty > 0) : [];
+  const _driverBy = (_smNow.retstart && _smNow.retstart.by) || (_smNow.deliver && _smNow.deliver.by) || '';
   const _rcHtml = _isReceive && _rcItems.length ? `
-    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 Бараа бүрэн буцаж ирсэн үү? <span style="color:var(--danger);">*</span></div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ирсэн</button></div>
+    <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 ${_isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?'} <span style="color:var(--danger);">*</span></div>
+    ${!_isPickup && _prevPick ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.</div>` : ''}
+    <div style="display:flex;gap:8px;margin-bottom:8px;"><button type="button" class="btn btn-primary" id="rc-all" style="flex:1;">✓ Бүгд бүрэн ${_isPickup ? 'авсан' : 'ирсэн'}</button></div>
     <div id="rc-list" class="rc-list">${_rcItems.map((x, i) => `
       <div class="rc-row" data-rc="${i}">
         <span class="rc-name">${escapeHtml(x.name)}</span>
@@ -16626,8 +16637,9 @@ function openStageAdvanceModal(oid, to) {
     const w = modal.querySelector('#rc-warn');
     if (w) {
       w.style.display = sh.length ? '' : 'none';
+      const _liable = (!_isPickup && _prevPick && _driverBy) ? `<br><span style="font-weight:700;">🔴 Замд дутсан/эвдэрсэн — жолооч <b>${escapeHtml((typeof memberName === 'function' ? memberName(_driverBy) : '') || _driverBy)}</b> хариуцна.</span>` : '';
       w.innerHTML = sh.length
-        ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}<br><span style="font-weight:400;">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
+        ? `⚠ <b>${sh.reduce((a, x) => a + x.miss, 0)}ш</b> дутуу / эвдэрсэн: ${sh.map(x => escapeHtml(x.name) + '×' + x.miss).join(', ')}${_liable}<br><span style="font-weight:400;">Эдгээр нөөцөөс хасагдаж, засварын жагсаалтад орно. Доор <b>шалтгаан бичнэ үү</b>.</span>`
         : '';
     }
   };
@@ -16673,6 +16685,8 @@ function openStageAdvanceModal(oid, to) {
       entry.items = _rcItems.map((x, i) => ({ sku: x.sku, name: x.name, qty: x.qty, got: rcGot[i] }));
       _shortLines = rcShort();
       entry.missing = _shortLines.reduce((a, x) => a + x.miss, 0);
+      // Received дээр авсан тоотой тулгаж дутвал = жолоочийн замд алдсан хариуцлага
+      if (!_isPickup && _prevPick && entry.missing > 0 && _driverBy) entry.liableDriver = _driverBy;
     }
     sm2[act.key] = entry;
     close();

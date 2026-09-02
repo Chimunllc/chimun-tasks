@@ -16986,6 +16986,17 @@ function setCancelReason(note, reason) {
 }
 // Цуцлах ХҮСЭЛТ (менежер илгээнэ, CEO батална) — ⟦CXRQ|хэн|огноо|шалтгаан⟧ (4 үсэг тул cleanAppNote нуудаг)
 const _CXRQ_RE = /⟦CXRQ\|([^|⟧]*)\|([^|⟧]*)\|([^⟧]*)⟧/;
+// Захиалга хаах үйлдэл = ТӨЛБӨРӨӨР шийдэгдэнэ, төлөвөөр биш.
+// Мөнгө ороогүй бол «устгах» (Устгасан), орсон бол «цуцлах» (Цуцалсан) — санхүүгийн
+// мөрдлөгө үлдэх ёстой захиалгыг устгасан мэт нуухгүй. Хоёулаа SOFT (сэргээж болно).
+// bq (түүхэн) захиалга total_paid, аппын захиалга paid_mnt талбартай.
+function orderPaidAmount(o) {
+  const v = o && (o.paid_mnt != null ? o.paid_mnt : o.total_paid);
+  return Number(v) || 0;
+}
+// 'deleted' | 'canceled' — цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
+function orderCloseAction(o) { return orderPaidAmount(o) > 0 ? 'canceled' : 'deleted'; }
+function orderCloseLabel(o) { return orderCloseAction(o) === 'deleted' ? '🗑 Устгах' : '✕ Цуцлах'; }
 function cancelReqOf(note) { const m = String(note || '').match(_CXRQ_RE); return m ? { by: m[1], date: m[2], reason: m[3].trim() } : null; }
 function setCancelReq(note, by, date, reason) {
   const base = String(note || '').replace(_CXRQ_RE, '').trim();
@@ -17018,7 +17029,8 @@ async function approveOrderCancel(oid) {
   if (!o) return; const req = cancelReqOf(o.note);
   if (!(await showConfirm(`#${o.number ?? ''} цуцлахыг батлах уу?\n\nШалтгаан: ${req ? req.reason : '—'}`, { okText: 'Батлах', danger: true }))) return;
   o.note = clearCancelReq(o.note);   // хүсэлтийн token-г арилгаад
-  bqUpdateStatus(oid, 'canceled', { reason: (req && req.reason) || 'CEO баталсан', toast: 'Цуцлахыг баталлаа' });
+  const to2 = orderCloseAction(o);
+  bqUpdateStatus(oid, to2, { reason: (req && req.reason) || 'CEO баталсан', toast: to2 === 'deleted' ? 'Устгахыг баталлаа' : 'Цуцлахыг баталлаа' });
 }
 async function rejectOrderCancel(oid) {
   if (!state.isCEO) { showToast('Зөвхөн захирал шийднэ', 'warn', 3000); return; }
@@ -17738,16 +17750,18 @@ function bqOrderCard(o) {
   // Цуцлах урсгал: ноорог→шууд устгах; идэвхтэй→CEO шууд цуцлах / менежер хүсэлт→CEO батлах (заавал шалтгаантай)
   let cxHtml = '';
   { const req = cancelReqOf(o.note);
-    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">🗑 Устгах</button>` : ''; }
-    else if (st !== 'canceled' && appActive) {
+    // Ноорог = шууд устгана. Бусад идэвхтэй захиалгад товчны НЭР төлбөрөөр шийдэгдэнэ
+    // (эрх/батлуулах урсгал хэвээр — мөнгөгүй ч баталгаажсан захиалгыг дур мэдэн хаахгүй).
+    if (st === 'draft') { cxHtml = can('orders.cancel') ? `<button class="btn" data-app-del="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>` : ''; }
+    else if (st !== 'canceled' && st !== 'deleted' && appActive) {
       if (req) {
         cxHtml = `<span style="font-size:11.5px;color:#9a6a00;font-weight:700;">⏳ Цуцлах хүсэлт${req.by ? ' · ' + escapeHtml(memberName(req.by) || req.by) : ''}${req.reason ? ' — ' + escapeHtml(req.reason) : ''}</span>`;
         if (state.isCEO) cxHtml += `<button class="btn" data-cx-approve="${id}" style="padding:5px 11px;font-size:12px;color:#fff;background:var(--danger);border-color:var(--danger);">✓ Цуцлахыг батлах</button><button class="btn" data-cx-reject="${id}" style="padding:5px 11px;font-size:12px;">✕ Татгалзах</button>`;
-      } else if (state.isCEO) { cxHtml = `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах</button>`; }
-      else if (can('orders.cancel')) { cxHtml = `<button class="btn" data-cx-request="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">✕ Цуцлах хүсэлт</button>`; }
+      } else if (state.isCEO) { cxHtml = `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseLabel(o)}</button>`; }
+      else if (can('orders.cancel')) { cxHtml = `<button class="btn" data-cx-request="${id}" style="padding:5px 11px;font-size:12px;color:var(--danger);">${orderCloseAction(o) === 'deleted' ? '🗑 Устгах хүсэлт' : '✕ Цуцлах хүсэлт'}</button>`; }
     }
   }
-  const appCanPay = st !== 'canceled' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
+  const appCanPay = st !== 'canceled' && st !== 'deleted' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
   const advCap = next ? (next.cap || 'orders.advance') : null;
   const advOk = next ? can(advCap) : false;
@@ -17760,7 +17774,7 @@ function bqOrderCard(o) {
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
     ${canScan ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}
-    ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${st === 'draft' ? '🗑 Устгах' : '✕ Цуцлах'}</button>` : ''}
+    ${canCancel ? `<button class="btn" data-bq-cancel="${id}" style="padding:5px 11px;font-size:12px;">${orderCloseLabel(o)}</button>` : ''}
   </div>` : '');
   // Бараа: app бол inline (o.items), түүхэн бол lazy toggle + баримт
   const itemsSection = isApp
@@ -17817,16 +17831,17 @@ function bqOrderCard(o) {
 async function cancelOrderWithReason(oid) {
   if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
-  const isDraft = o && o.status === 'draft';
+  const to = orderCloseAction(o);            // төлбөргүй → устгах, төлбөртэй → цуцлах
+  const isDel = to === 'deleted';
   const num = o ? (o.number ?? '') : '';
-  const reason = await showPrompt(`#${num} ${isDraft ? 'ноорогийг' : 'захиалгыг'} ${isDraft ? 'устгах' : 'цуцлах'} шалтгаанаа бичнэ үү:`, {
-    title: isDraft ? '🗑 Ноорог устгах' : '✕ Захиалга цуцлах',
-    okText: isDraft ? 'Устгах' : 'Цуцлах',
+  const reason = await showPrompt(`#${num} захиалгыг ${isDel ? 'устгах' : 'цуцлах'} шалтгаанаа бичнэ үү:`, {
+    title: isDel ? '🗑 Захиалга устгах' : '✕ Захиалга цуцлах',
+    okText: isDel ? 'Устгах' : 'Цуцлах',
     placeholder: 'Ж: давхардсан, харилцагч больсон, тест захиалга…',
   });
   if (reason == null) return;                                             // болих
   if (!reason.trim()) { showToast('Шалтгаанаа бичнэ үү', 'warn', 2500); return; }
-  bqUpdateStatus(oid, 'canceled', { reason: reason.trim(), toast: isDraft ? 'Устгаж тэмдэглэлээ' : 'Цуцаллаа' });
+  bqUpdateStatus(oid, to, { reason: reason.trim(), toast: isDel ? 'Устгасан руу шилжүүллээ' : 'Цуцаллаа' });
 }
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
@@ -17871,7 +17886,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
     showToast(opts.toast || `Төлөв: ${(BQ_STATUS[to] || {}).label || to}`, 'success', 2000);
     // Автомат ажил: шилжсэн шатны хүлээгдэж буй ажлыг хаах + дараагийн шатны ажил үүсгэх (зөвхөн app захиалга)
-    if (table === 'app_orders' && to !== 'canceled') {
+    if (table === 'app_orders' && to !== 'canceled' && to !== 'deleted') {
       try {
         if (!opts.byTask) {   // товчоор гараар шилжүүлбэл хүлээгдэж буй ажлыг хаана (ажил дуусгаснаас шилжсэн бол аль хэдийн хаагдсан)
           const pend = (state.tasks || []).find(t => t.id === stageTaskId(oid, to) && t.status !== 'done');
@@ -22111,7 +22126,7 @@ function renderCalendar() {
   const addEv = (date, ev) => { const d = String(date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return; (byDate[d] = byDate[d] || []).push(ev); };
   state.tasks.forEach(t => { if (t.due && t.status !== 'deleted' && taskOk(t)) addEv(t.due, { type: 'task', title: t.title, sub: memberName(t.assignee), done: t.status === 'done', priority: t.priority, id: t.id }); });
   // Захиалга = M-Event салбар. Бүгд/M-Event/Хөрөнгө лензэд харагдана (camp/catering үед хасна).
-  if (_calAll || cb === 'm-event') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0), oid: o.id }); });
+  if (_calAll || cb === 'm-event') (typeof unifiedOrders === 'function' ? unifiedOrders() : []).forEach(e => { const o = e.o || {}; if (o.starts_at && !['draft', 'canceled', 'deleted', 'archived'].includes(o.status)) addEv(o.starts_at, { type: 'order', title: `#${o.number ?? ''} ${o.customer || ''}`.trim(), sub: fmtMoney(e.total || 0), oid: o.id }); });
   // NOMAAD эвент = camp салбар. Бүгд/NOMAAD/Хөрөнгө лензэд харагдана.
   if (_calAll || cb === 'camp') (state.nomaadOrders || []).forEach(o => { if (typeof nomaadIsCancelled === 'function' && nomaadIsCancelled(o)) return; if (o.date_start) addEv(o.date_start, { type: 'nomaad', title: o.company || 'NOMAAD', sub: `${o.camp || ''}${o.guests ? ' · ' + o.guests + ' хүн' : ''}`, nq: o.quote_no }); });
 

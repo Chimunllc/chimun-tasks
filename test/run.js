@@ -889,6 +889,32 @@ function finish() {
   st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
 }
 
+// 40c) Захиалга хаах — төлбөр авсан эсэхээр УСТГАХ/ЦУЦЛАХ ялгана
+{
+  const CA = vm.runInContext('orderCloseAction', sandbox);
+  const CL = vm.runInContext('orderCloseLabel', sandbox);
+  const PA = vm.runInContext('orderPaidAmount', sandbox);
+
+  eq(CA({ paid_mnt: 0 }), 'deleted', 'хаах: төлбөргүй → устгах');
+  eq(CA({ paid_mnt: null }), 'deleted', 'хаах: paid_mnt хоосон → устгах');
+  eq(CA({}), 'deleted', 'хаах: талбар огт байхгүй → устгах');
+  eq(CA({ paid_mnt: 1 }), 'canceled', 'хаах: 1₮ ч орсон бол цуцлах');
+  eq(CA({ paid_mnt: 330000 }), 'canceled', 'хаах: төлбөртэй → цуцлах');
+
+  // Түүхэн (bq) захиалга total_paid талбартай
+  eq(CA({ total_paid: 55000 }), 'canceled', 'хаах: bq total_paid-г мөн таньна');
+  eq(CA({ total_paid: 0 }), 'deleted', 'хаах: bq төлбөргүй → устгах');
+
+  // Барьцаа/нийт дүн нь ТӨЛБӨР БИШ — зөвхөн бодитоор орсон мөнгө шийднэ
+  eq(CA({ total_mnt: 16681500, paid_mnt: 0 }), 'deleted', 'хаах: борлуулалтын дүн төлбөр биш');
+  eq(CA({ deposit_mnt: 500000, paid_mnt: 0 }), 'deleted', 'хаах: барьцааны дүн ч төлбөр биш');
+
+  eq(PA({ paid_mnt: 0, total_paid: 900 }), 0, 'хаах: paid_mnt тэргүүлнэ (0 ч гэсэн)');
+
+  ok(CL({ paid_mnt: 0 }).indexOf('Устгах') > -1, 'хаах: төлбөргүйд товч «Устгах»');
+  ok(CL({ paid_mnt: 5 }).indexOf('Цуцлах') > -1, 'хаах: төлбөртэйд товч «Цуцлах»');
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

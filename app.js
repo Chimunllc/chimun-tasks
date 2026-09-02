@@ -6963,16 +6963,12 @@ function openNewMeventOrder(editOrder) {
   const startDateEl = modal.querySelector('#mo-start-date');
   const endDateEl = modal.querySelector('#mo-end-date');
   function orderDays() {
-    // Түрээс эхэлсэн цагаас хойш 24 цаг = 1 хоног. Огноо + цагийг нийлүүлж бодно.
+    // Хоногийг КАЛЕНДАРИЙН ӨДРӨӨР тоолно (цаг үл нөлөөлнө) — сайт·апп·квот нэг дүрэм.
     const sd = startDateEl.value, ed = endDateEl.value;
     if (!sd || !ed) return 1;
-    const sh = parseInt(modal.querySelector('#mo-start-hour')?.value, 10) || 0;
-    const eh = parseInt(modal.querySelector('#mo-end-hour')?.value, 10) || 0;
-    const start = new Date(`${sd}T${String(sh).padStart(2, '0')}:00:00`);
-    const end = new Date(`${ed}T${String(eh).padStart(2, '0')}:00:00`);
-    const diffMs = end - start;
-    if (!(diffMs > 0)) return 1;
-    return Math.max(1, Math.ceil(diffMs / 86400000 - 1e-9));   // 24ц=1, 35ц=2, 48ц=2
+    const start = new Date(`${sd}T00:00:00`), end = new Date(`${ed}T00:00:00`);
+    if (isNaN(start) || isNaN(end)) return 1;
+    return Math.max(1, Math.round((end - start) / 86400000));   // 13→14=1, 13→15=2
   }
   const discountEl = modal.querySelector('#mo-discount');
   function computeTotals() {
@@ -17106,9 +17102,14 @@ function unifiedOrders() {
 
 // Түрээсийн хоног: 24ц = 1 хоног, 24ц-аас хэтэрвэл +1 хоног (минут тоохгүй, зөвхөн цагаар). Доод тал 1 хоног.
 function rentalDays(startMs, stopMs) {
-  const h = (stopMs - startMs) / 3600000;
-  if (!(h > 0)) return 1;
-  return Math.max(1, Math.ceil(h / 24));
+  // Хоногийг КАЛЕНДАРИЙН ӨДРӨӨР тоолно (цаг үл нөлөөлнө) — mevent.mn сайттай ЯГ ижил
+  // (сайтын diffDays). Эвент түрээсийн стандарт: 13→14 = 1 хоног, 13→15 = 2 хоног.
+  // Ингэснээр сайт·апп·үнийн санал гурвуулаа НЭГ дүрмээр (суурь үнэ + хямдралын шат) тооцно.
+  const a = new Date(startMs), b = new Date(stopMs);
+  if (isNaN(a) || isNaN(b)) return 1;
+  const ad = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const bd = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.max(1, Math.round((bd - ad) / 86400000));
 }
 // Эхлэх/дуусах ЦАГ-ийг note token-оор хадгална (app_orders-д timestamptz багана нэмэхгүйгээр; codebase-ийн ⟦…⟧ загвартай нийцнэ).
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;

@@ -198,10 +198,12 @@ eq(F.rentalDiscount(7).pct, 0.40, 'Хямдрал: 7 хоног = 40%');
 eq(F.rentalDiscount(29).pct, 0.40, 'Хямдрал: 29 хоног = 40%');
 eq(F.rentalDiscount(30).pct, 0.55, 'Хямдрал: 30 хоног = 55%');
 
-// 11) rentalDays / orderRentalDays — түрээсийн хоног тооцоо
-eq(F.rentalDays(0, 24 * 3600000), 1, 'Хоног: 24 цаг = 1 хоног');
-eq(F.rentalDays(0, 25 * 3600000), 2, 'Хоног: 25 цаг = 2 хоног (дээш бөөрөнхийлнө)');
-eq(F.rentalDays(0, 0), 1, 'Хоног: 0 = хамгийн багадаа 1');
+// 11) rentalDays / orderRentalDays — түрээсийн хоног = КАЛЕНДАРИЙН ӨДРӨӨР (mevent.mn сайттай ЯГ ижил)
+const _dMs = (y, m, day, h) => new Date(y, m - 1, day, h || 0).getTime();
+eq(F.rentalDays(_dMs(2026, 8, 28, 10), _dMs(2026, 8, 29, 10)), 1, 'Хоног: 28→29 = 1 хоног');
+eq(F.rentalDays(_dMs(2026, 8, 28, 10), _dMs(2026, 8, 29, 20)), 1, 'Хоног: 28 10:00→29 20:00 (34ц) = 1 хоног — цаг үл нөлөөлнө (сайттай ижил)');
+eq(F.rentalDays(_dMs(2026, 8, 28, 10), _dMs(2026, 8, 30, 9)), 2, 'Хоног: 28→30 = 2 хоног');
+eq(F.rentalDays(_dMs(2026, 8, 28, 10), _dMs(2026, 8, 28, 20)), 1, 'Хоног: нэг өдөр = хамгийн багадаа 1');
 eq(F.orderRentalDays({ starts_at: '2026-08-28', stops_at: '2026-08-30' }), 2, 'orderRentalDays: 28→30 = 2 хоног');
 eq(F.orderRentalDays({ starts_at: '', stops_at: '' }), 1, 'orderRentalDays: огноогүй = 1');
 

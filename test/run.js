@@ -1801,5 +1801,16 @@ function finish() {
     ok(may && may.net_mnt === listSum, 'инвариант: сарын график ч ижил дүнтэй');
   }
 
+  // ── Түүхийн дата татах select-д ХЭРЭГТЭЙ бүх талбар байх ёстой ──
+  // (2026-09-02: note дутсанаас ⟦DLV⟧ хүргэлтийн 6.8сая₮ тайланд огт харагдахгүй байв —
+  //  талбар мартагдахад алдаа гардаггүй, зүгээр л тоо чимээгүй алга болдог.)
+  {
+    const m = src.match(/rest\/v1\/app_orders\?select=([^&]+)&status=not\.in\.\(draft,canceled,deleted\)/);
+    ok(!!m, 'түүх: захиалга татах хүсэлт олдов');
+    const need = ['id', 'number', 'customer', 'status', 'source', 'starts_at', 'stops_at',
+      'total_mnt', 'paid_mnt', 'deposit_mnt', 'note', 'items'];
+    need.forEach(f => ok(m && m[1].split(',').includes(f), `түүх: select-д «${f}» талбар байна`));
+  }
+
   finish();
 })();

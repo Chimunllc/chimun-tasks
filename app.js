@@ -16774,7 +16774,7 @@ async function loadHistory(force) {
     // nomaad camp/давхардал/хуучирсан snapshot асуудал арилна. Төлбөрийн хэлбэр л bq_payments-аас
     // (app_orders-д migrate үед method ороогүй) — Booqable түүхэн гэж шошголно.
     const rawOrders = fetchWithTimeout(
-      `${DB_URL}/rest/v1/app_orders?select=id,number,customer,status,source,starts_at,stops_at,total_mnt,paid_mnt,deposit_mnt,items&status=not.in.(draft,canceled,deleted)&limit=3000`,
+      `${DB_URL}/rest/v1/app_orders?select=id,number,customer,status,source,starts_at,stops_at,total_mnt,paid_mnt,deposit_mnt,note,items&status=not.in.(draft,canceled,deleted)&limit=3000`,
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
     const rawProducts = fetchWithTimeout(

@@ -592,6 +592,31 @@ function finish() {
   ok(bad.length > 0, 'safeViewHtml: хоосон буцаахгүй (хуучин агуулга үлдэхгүй)');
 }
 
+// 33) Агуулахын ажилтан ба ахлахын эрхийн ялгаа
+{
+  const RP = vm.runInContext('rolePresetFor', sandbox);
+
+  const worker = RP('Агуулахын ажилтан');
+  ok(worker && worker.views.includes('products'), 'ажилтан: бараа ХАРНА');
+  ok(worker && worker.views.includes('orders'), 'ажилтан: захиалга харна');
+  ok(worker && !worker.actions.includes('products.edit'), 'ажилтан: бараа ЗАСАХГҮЙ');
+  ok(worker && worker.actions.includes('orders.prepare'), 'ажилтан: захиалга бэлдэнэ');
+  ok(worker && worker.actions.includes('orders.clean'), 'ажилтан: цэвэрлэнэ');
+  ok(worker && !worker.actions.includes('orders.pay'), 'ажилтан: төлбөр бүртгэхгүй (дүн харагдахгүй)');
+
+  const lead = RP('Агуулахын ахлах / Нярав');
+  ok(lead && lead.actions.includes('products.edit'), 'ахлах: бараа ЗАСНА');
+  ok(lead && lead.actions.includes('orders.dispatch'), 'ахлах: захиалга гаргана');
+
+  const nyarav = RP('Нярав');
+  ok(nyarav && nyarav.actions.includes('products.edit'), 'нярав: бараа засна');
+
+  // Бусад роль хэвээр — «Эвент менежер» нь /эвент/ загварт эхэлж таардаг (өмнөх зан төлөв)
+  ok(RP('Менежер').actions.includes('products.edit'), 'менежер: бараа засах эрх хэвээр');
+  ok(RP('Үйл ажиллагааны захирал').actions.includes('products.edit'), 'ҮАХ захирал: хэвээр');
+  ok(!RP('Эвент менежер').actions.includes('products.edit'), 'эвент менежер: /эвент/ загвар — бараа засахгүй (хэвээр)');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

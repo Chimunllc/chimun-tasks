@@ -7389,7 +7389,13 @@ function productRowHtml(p) {
   // Урьд нь байхгүй утга мөрийг богиносгож, зэргэлдээ картууд өөр өндөртэй болж, нүд багана
   // уншиж чаддаггүй байв. Одоо байрлал тогтмол — дутуу утга нь ИЛ хэлэгдэнэ.
   const sig = [];
-  if (cost > 0) {
+  // Өртөг / ROI / орлого нь САНХҮҮГИЙН мэдээлэл — гүйцэтгэгч ажилтанд харагдахгүй.
+  const _pMoney = (typeof canSeeOrderMoney === 'function') ? canSeeOrderMoney() : true;
+  if (!_pMoney) {
+    // Ажилтанд хэрэгтэй нь нөөц, эвдрэл, салбар — мөнгө биш
+    if (!pkg && (broken || maint)) sig.push(`<span class="sig sig-bad">${broken ? broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? maint + ' засварт' : ''}</span>`);
+    if (!pkg && !_actBranch) sig.push(`<span class="sig">${branchStockHtml(p)}</span>`);
+  } else if (cost > 0) {
     const _cq = _actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0);
     sig.push(_cq > 1
       ? `<span class="sig">Өртөг <b>${fmtMoneyShort(cost * _cq)}</b> <span class="sig-dim">(${fmtMoneyShort(cost)}×${_cq})</span></span>`
@@ -8589,7 +8595,10 @@ const ROLE_PRESETS = [
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
-  [/нярав|агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
+  // Агуулахын АХЛАХ / нярав — бараа засах эрхтэй (үнэ, өртөг, нөөц)
+  [/нярав|агуулахын\s*ахлах|агуулахын\s*менежер/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
+  // Энгийн агуулахын ажилтан — бараагаа ХАРНА, засахгүй (үнэ/өртөг санхүүгийн мэдээлэл)
+  [/агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch'] }],
   [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)
   [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.clean', 'orders.deliver'] }], // захиалга ХАРНА + өөрийн шат (хүргэх)
   [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering', 'orders'], actions: ['orders.clean'] }],
@@ -15201,7 +15210,7 @@ function renderProducts() {
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
-      <button class="btn btn-primary" id="prod-new">+ Шинэ</button>
+      ${can('products.edit') ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
     </div>
     <div class="prod-metabar">
       ${filterBar}

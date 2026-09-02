@@ -3089,6 +3089,17 @@ function taskBranch(t) {
 // Салбар ленз ЮУ Ч ХИЙХГҮЙ view-үүд — угаас нэг салбарынх (Захиалга/NOMAAD/Катеринг)
 // эсвэл компани даяар (Ирц). Эдгээр дээр толгойн ленз сонгогчийг НУУНА (инерт байхаас сэргийлж).
 const LENS_INERT_VIEWS = ['orders', 'nomaad', 'catering', 'attendance'];
+// Салбар ленз ХАМААРАХГҮЙ view-үүд — ХУВИЙН жагсаалтууд.
+// ⚠ Хүнд оноосон ажил нь ТЭР ХҮНИЙХ — ямар салбарын ажил байх нь хамаагүй. Ленз энд
+//   шүүвэл ажилтан ӨӨРТ НЬ оноосон ажлаа ХАРАХГҮЙ болно: taskBranch() нь branch талбаргүй
+//   ажлыг 'm-event' гэж үздэг ба нэг салбартай ажилтны ленз нь тэр салбартаа ТҮГЖЭЭТЭЙ
+//   (allowedLenses). Тиймээс Камп/Катерингийн ажилтан ажилтай атлаа «ажил алга» гэсэн
+//   ХУДАЛ мессеж хардаг байв. Санхүү нь dept_branch-аар тусдаа бүлэглэгддэг тул мөн энд.
+const LENS_EXEMPT_VIEWS = ['mine', 'finance'];
+// Ленз тухайн view-д шүүлт хийх ёстой юу? (цэвэр функц — тестлэгдэнэ)
+function lensAppliesToView(view, lens) {
+  return lens !== 'all' && !LENS_EXEMPT_VIEWS.includes(view);
+}
 // Салбарын ленз шүүлт — удирдлагын view-үүдэд (Календарь/Ачаалал/Гүйцэтгэл/Авлага).
 // lens='all'/'capital' бол бүгд; эс бөгөөс тухайн салбар + shared/хоосон.
 function branchInLens(b) {
@@ -3207,7 +3218,7 @@ function filteredTasks() {
   // ─── Глобал салбар ленз — тухайн салбар + нэгдсэн (shared) ажлыг харуулна ───
   // (Санхүү нь dept_branch-аар тусдаа бүлэглэгддэг тул энд хасахгүй.)
   const lens = effectiveBranchLens();
-  if (lens !== 'all' && state.view !== 'finance') {
+  if (lensAppliesToView(state.view, lens)) {
     list = list.filter(t => branchInLens(taskBranch(t)));   // НЭГДСЭН дүрэм: capital=бүгд, эс бол салбар+shared
   }
   // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
@@ -22872,7 +22883,11 @@ function renderDashboard() {
   const me = state.me;
 
   // ─── Хувийн KPI (бүх ажилтанд) ───
-  const mineTasks = tasks.filter(t => t.assignee === me);
+  // ⚠ Ленз ХАМААРАХГҮЙ — өөрт нь оноосон ажил нь тэр хүнийх, салбар нь хамаагүй.
+  //   Компанийн тоонууд (дээрх `tasks`) урьдын адил лензээр шүүгдэнэ; зөвхөн ХУВИЙН
+  //   блок бүтэн байна. Эс бөгөөс нэг салбартай ажилтан «0 ажил» гэсэн худал тоо хардаг.
+  const myBase = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t));
+  const mineTasks = myBase.filter(t => t.assignee === me);
   const myDone = mineTasks.filter(t => t.status === 'done').length;
   const myActive = mineTasks.filter(t => t.status !== 'done').length;
   const myOverdue = mineTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;

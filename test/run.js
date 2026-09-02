@@ -2014,5 +2014,33 @@ function finish() {
     st.nomaadPayments = savedPays;
   }
 
+  // ── Салбарын ленз «Миний ажил»-ыг шүүхгүй ──
+  {
+    const LA = F.lensAppliesToView;
+    // Хувийн жагсаалт — ленз ямар ч байсан шүүхгүй
+    ['camp', 'm-event', 'catering', 'capital'].forEach(l => {
+      eq(LA('mine', l), false, `ленз: «Миний ажил» ${l} лензэд шүүгдэхгүй`);
+      eq(LA('finance', l), false, `ленз: Санхүү ${l} лензэд энд шүүгдэхгүй (dept_branch-аар тусад нь)`);
+    });
+    // Удирдлагын жагсаалтууд урьдын адил шүүгдэнэ
+    ['all', 'today', 'overdue', 'done', 'delegated'].forEach(v => {
+      eq(LA(v, 'camp'), true, `ленз: «${v}» урьдын адил шүүгдэнэ`);
+    });
+    // 'all' ленз = бүх салбар → хаана ч шүүхгүй
+    eq(LA('all', 'all'), false, 'ленз: «Бүгд» ленз юу ч шүүхгүй');
+    eq(LA('mine', 'all'), false, 'ленз: «Бүгд» ленз + Миний ажил');
+
+    // Тоймын ХУВИЙН блок лензээс салсан эсэх (эх кодоор)
+    const dash = src.slice(src.indexOf('function renderDashboard()'));
+    const head = dash.slice(0, dash.indexOf('const myDone'));
+    ok(/const myBase = \(state\.tasks \|\| \[\]\)/.test(head),
+       'ленз: Тоймын хувийн KPI лензгүй суурьтай');
+    ok(head.indexOf('const mineTasks = myBase.filter') > -1,
+       'ленз: mineTasks нь лензээр шүүгдээгүй суурьнаас');
+    // Компанийн тоо урьдын адил лензээр шүүгдсэн хэвээр
+    ok(/const tasks = \(state\.tasks \|\| \[\]\)[\s\S]*branchInLens\(taskBranch\(t\)\)/.test(head),
+       'ленз: Тоймын компанийн тоо урьдын адил лензээр шүүгдэнэ');
+  }
+
   finish();
 })();

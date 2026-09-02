@@ -1570,5 +1570,63 @@ function finish() {
     ok(u2.rows.length === 0, 'хяналт: шууд sku-тай мөр толинд тоологдохгүй');
   }
 
+  // ── Үнийн шинжилгээ: үзүүлэлт + дүгнэлт ──
+  {
+    const ctx = { bySku: { 'A': { sku: 'A' }, 'B': { sku: 'B' }, 'C': { sku: 'C' }, 'D': { sku: 'D' } }, byName: {}, aliases: {} };
+    const prods = [
+      { sku: 'A', name: 'Дүүрдэг сандал', price: 10000, cost: 20000, qty_mevent: 10, type: 'rental' },
+      { sku: 'B', name: 'Хямдруулдаг дэлгэц', price: 100000, cost: 400000, qty_mevent: 5, type: 'rental' },
+      { sku: 'C', name: 'Зогсонги бараа', price: 5000, cost: 50000, qty_mevent: 4, type: 'rental' },
+      { sku: 'D', name: 'Хүргэлт', price: 150000, cost: 0, qty_mevent: 1, type: 'service' },
+      { sku: 'E', name: 'Ачааны машин', price: 0, cost: 68000000, qty_mevent: 1, type: 'asset' },
+    ];
+    // A: 10ш нөөц, 4 захиалга × 10ш = 40ш, бүтэн үнээр, огноо давхцаж 3+ өдөр дүүрнэ
+    const orders = [
+      { number: 1, status: 'returned', starts_at: '2026-05-01', stops_at: '2026-05-03',
+        items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }, { sku: 'B', name: 'b', qty: 5, price: 50000 }] },
+      { number: 2, status: 'returned', starts_at: '2026-05-02', stops_at: '2026-05-02',
+        items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }] },
+      { number: 3, status: 'rented',   starts_at: '2026-05-10', stops_at: '2026-05-10',
+        items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }, { sku: 'D', name: 'd', qty: 1, price: 150000 }] },
+      { number: 4, status: 'returned', starts_at: '2026-05-11', stops_at: '2026-05-11',
+        items: [{ sku: 'A', name: 'a', qty: 10, price: 10000 }] },
+      { number: 5, status: 'draft',    starts_at: '2026-05-12', stops_at: '2026-05-12',
+        items: [{ sku: 'C', name: 'c', qty: 4, price: 5000 }] },
+    ];
+    const st = F.pricingStats(orders, prods, { from: '2026-01-01', to: '2026-12-31', ctx });
+    const by = {}; st.rows.forEach(r => { by[r.sku] = r; });
+
+    ok(!by.D, 'үнэ: үйлчилгээ (хүргэлт) тайланд орохгүй');
+    ok(!by.E, 'үнэ: дотоод хөрөнгө (машин) тайланд орохгүй');
+    ok(st.totals.capital === 20000 * 10 + 400000 * 5 + 50000 * 4, 'үнэ: хөрөнгө зөвхөн түрээсийн бараанаас');
+    ok(by.A.qty === 40 && by.A.turns === 4, 'үнэ: эргэлт = ширхэг ÷ нөөц');
+    ok(by.A.orders === 4, 'үнэ: захиалгын тоо');
+    ok(by.A.revenue === 400000 && by.A.avg === 10000, 'үнэ: орлого ба дундаж бодит үнэ');
+    ok(by.A.real === 1, 'үнэ: биелэлт 100% (хөнгөлөлтгүй)');
+    // 05-01..03 (10ш) + 05-02 давхцал = 05-02-т 20ш; дүүрсэн өдөр = 10ш-ээс дээш өдрүүд
+    ok(by.A.peak === 20, 'үнэ: оргилын ачаалал давхацсан өдрөөр');
+    ok(by.A.soldOut === 5, 'үнэ: нөөц дүүрсэн өдрийн тоо');
+    ok(by.A.verdict.key === 'up', 'дүгнэлт: дүүрдэг + хөнгөлдөггүй = ҮНЭ ӨСГӨ');
+
+    ok(Math.round(by.B.real * 100) === 50, 'үнэ: хагас үнээр зарагдсан');
+    ok(by.B.verdict.key === 'down', 'дүгнэлт: 70%-иас доош биелэлт = ҮНЭ БОДИТ БОЛГО');
+
+    ok(by.C.qty === 0, 'үнэ: ноорог захиалга тоологдохгүй');
+    ok(by.C.verdict.key === 'idle', 'дүгнэлт: огт эргээгүй = ЗОГСОНГИ');
+    ok(st.totals.idleCapital === 200000 && st.totals.idleCount === 1, 'үнэ: зогсонги хөрөнгө');
+
+    // ROI = орлого ÷ (өртөг × нөөц)
+    ok(by.A.roi === 400000 / (20000 * 10), 'үнэ: ROI = орлого ÷ хөрөнгө');
+    // Хугацааны шүүлт — өмнөх оны захиалга орохгүй
+    const st2 = F.pricingStats(orders, prods, { from: '2026-06-01', to: '2026-12-31', ctx });
+    ok(st2.rows.every(r => r.qty === 0), 'үнэ: хугацааны шүүлт ажиллана');
+    // Нөөцгүй бараа — дүгнэлт гаргахгүй
+    const st3 = F.pricingStats(orders, [{ sku: 'A', name: 'x', price: 1, qty_mevent: 0, stock: 0 }], { from: '2026-01-01', to: '2026-12-31', ctx });
+    ok(st3.rows[0].verdict.key === 'nodata', 'дүгнэлт: нөөц тэмдэглээгүй бол дата дутуу');
+    // Огнооны хамгаалалт
+    ok(F._dayRange('2026-05-03', '2026-05-01').length === 1, 'огноо: буруу дараалал = 1 өдөр');
+    ok(F._dayRange('', '').length === 0, 'огноо: хоосон = хоосон');
+  }
+
   finish();
 })();

@@ -6419,3 +6419,31 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .rec-used-warn { background:rgba(220,38,38,.07); border-radius:7px; padding-left:7px; padding-right:7px; }
 .rec-warn-box { font-size:12.5px; line-height:1.5; padding:9px 12px; margin:6px 0 9px; border-radius:9px;
   background:rgba(220,38,38,.09); border:1px solid rgba(220,38,38,.32); }
+
+/* ── Үнийн шинжилгээ ─────────────────────────────────────────────────────── */
+.pr-modal { max-width:1180px; width:97%; max-height:93vh; overflow:auto; }
+.pr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); margin-bottom:8px; }
+.pr-chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
+.pr-chip { font-size:12px; padding:5px 11px; }
+.pr-chip-on { background:var(--primary) !important; color:#fff !important; border-color:var(--primary) !important; }
+.pr-sum { display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; padding:8px 11px; margin-bottom:10px;
+  background:var(--panel-2,rgba(127,127,127,.07)); border:1px solid var(--border); border-radius:9px; }
+.pr-wrap { overflow-x:auto; }
+.pr-table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }
+.pr-table th { text-align:right; color:var(--muted); font-size:10.5px; font-weight:600;
+  padding:0 6px 5px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--panel); }
+.pr-table th:first-child, .pr-table td.pr-nm { text-align:left; }
+.pr-table td { padding:6px; border-bottom:1px solid var(--border); }
+.pr-table td.pr-n { text-align:right; }
+.pr-nm { max-width:280px; white-space:normal; }
+.pr-code { display:block; font-size:10px; color:var(--muted); }
+.pr-hot { color:#16A34A; font-weight:700; }
+.pr-cold { color:#DC2626; font-weight:700; }
+.pv { display:inline-block; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.pv-up { background:#DCFCE7; color:#15803D; }
+.pv-down { background:#FEE2E2; color:#B91C1C; }
+.pv-idle { background:#F3F4F6; color:#6B7280; }
+.pv-low { background:#FEF3C7; color:#92400E; }
+.pv-ok { background:#E0F2FE; color:#0369A1; }
+.pv-none { background:transparent; color:var(--muted); }
+.pr-note { font-size:11px; color:var(--muted); padding-top:9px; line-height:1.5; }

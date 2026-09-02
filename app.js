@@ -4474,6 +4474,239 @@ function openItemReconcile() {
   };
 }
 
+/* ── ҮНИЙН ШИНЖИЛГЭЭ ────────────────────────────────────────────────────────
+   Зорилго: аль барааны үнэ ӨНДӨР, аль нь ХЯМД болохыг тоогоор мэдэх.
+   Түрээсийн үнийг ганц тоогоор шийддэггүй. Гурван бие даасан дохиог хамт харна:
+
+   1) ЭРГЭЛТ (turns) — нэгж бүр хугацаанд хэдэн удаа гарсан = ширхэг ÷ нөөц.
+      Эрэлтийн цэвэр хэмжүүр. Нөөц ихтэй бараа эргэлт багатай харагдана — зөв.
+   2) ДҮҮРЭЛТ (soldOut) — тухайн бараа 100% захиалагдсан хэдэн ӨДӨР байсан.
+      Хамгийн хүчтэй «үнэ хямд» дохио: дүүрч байгаа бол зах зээл илүү төлнө.
+   3) ҮНИЙН БИЕЛЭЛТ — бодитоор авсан үнэ ÷ жагсаалтын үнэ.
+      Байнга хөнгөлдөг бол жагсаалтын үнэ зохиомол — зах зээл «бага» гэж хэлж байна.
+
+   Дүгнэлт нь эдгээрийн ХОСЛОЛООС гарна (доорх pricingVerdict).
+   Бүх функц цэвэр — DOM-гүй, state-гүй ажиллана (тестлэгдэнэ). */
+
+// Огноог өдрөөр давтах (эхлэх ба дуусах ХОЁУЛАНГ оруулна). Хугацаагүй бол 1 өдөр.
+function _dayRange(startISO, stopISO) {
+  const a = String(startISO || '').slice(0, 10);
+  if (!a) return [];
+  const b = String(stopISO || '').slice(0, 10) || a;
+  const out = []; const d = new Date(a + 'T00:00:00Z'); const end = new Date((b < a ? a : b) + 'T00:00:00Z');
+  if (isNaN(d) || isNaN(end)) return a ? [a] : [];
+  for (let i = 0; i < 400 && d <= end; i++) {   // 400 = хамгаалалт (эвдэрсэн огноо)
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
+}
+// Барааны нөөц — M-Event салбарын хуваарилалт байвал түүнийг, эс бол нийт нөөц.
+function pricingStock(p) {
+  const m = Number(p && p.qty_mevent);
+  if (m > 0) return m;
+  return Math.max(0, Number(p && p.stock) || 0);
+}
+// Бараа бүрийн үзүүлэлт. orders = app_orders, products = каталог, ctx = тулгалтын контекст.
+// from/to = 'YYYY-MM-DD' (эвентийн огноогоор шүүнэ).
+function pricingStats(orders, products, opts) {
+  const o = opts || {};
+  const from = o.from || '0000-00-00', to = o.to || '9999-99-99';
+  const ctx = o.ctx;
+  const acc = Object.create(null);
+  (orders || []).forEach(ord => {
+    if (!ord || ['deleted', 'canceled', 'draft'].includes(String(ord.status))) return;
+    const d0 = String(ord.starts_at || '').slice(0, 10);
+    if (!d0 || d0 < from || d0 > to) return;
+    const days = _dayRange(ord.starts_at, ord.stops_at);
+    (Array.isArray(ord.items) ? ord.items : []).forEach(it => {
+      if (!it) return;
+      const r = resolveItemSku(it, ctx);
+      if (!r.sku) return;
+      const qty = Math.max(0, Number(it.qty) || 0);
+      const amt = qty * (Number(it.price) || 0);
+      const a = acc[r.sku] || (acc[r.sku] = { sku: r.sku, qty: 0, revenue: 0, lines: 0, orders: new Set(), byDay: Object.create(null) });
+      a.qty += qty; a.revenue += amt; a.lines++;
+      if (ord.number != null) a.orders.add(ord.number);
+      days.forEach(dd => { a.byDay[dd] = (a.byDay[dd] || 0) + qty; });
+    });
+  });
+  const rows = [];
+  (products || []).forEach(p => {
+    if (!p || !p.sku || p.archived) return;
+    // Түрээсийн бараа биш зүйлийг хасна:
+    //   service = хүргэлт, суурилуулалт (ажил, нөөц биш)
+    //   asset   = машин, асрын каркас г.м. дотоод хөрөнгө — түрээсийн үнэгүй тул
+    //             «зогсонги» гэж худал тоологдож, жагсаалтыг эзэлдэг байв.
+    if (['service', 'asset'].includes(String(p.type || ''))) return;
+    const a = acc[p.sku];
+    const stock = pricingStock(p);
+    const qty = a ? a.qty : 0;
+    const revenue = a ? a.revenue : 0;
+    const list = Math.max(0, Number(p.price) || 0);
+    const cost = Math.max(0, Number(p.cost) || 0);
+    const avg = qty ? revenue / qty : 0;
+    let peak = 0, soldOut = 0, busyDays = 0;
+    if (a) Object.keys(a.byDay).forEach(dd => {
+      const v = a.byDay[dd];
+      if (v > peak) peak = v;
+      if (v > 0) busyDays++;
+      if (stock > 0 && v >= stock) soldOut++;
+    });
+    rows.push({
+      sku: p.sku, code: p.code || p.sku, name: p.name || p.sku,
+      stock, qty, revenue, list, cost, avg,
+      orders: a ? a.orders.size : 0,
+      turns: stock > 0 ? qty / stock : null,
+      real: list > 0 && qty > 0 ? avg / list : null,
+      capital: cost * stock,
+      roi: cost > 0 && stock > 0 ? revenue / (cost * stock) : null,
+      peak, soldOut, busyDays,
+    });
+  });
+  rows.forEach(r => { r.verdict = pricingVerdict(r); });
+  const tot = {
+    revenue: rows.reduce((s, r) => s + r.revenue, 0),
+    capital: rows.reduce((s, r) => s + r.capital, 0),
+    idleCapital: rows.filter(r => r.qty === 0).reduce((s, r) => s + r.capital, 0),
+    idleCount: rows.filter(r => r.qty === 0).length,
+    count: rows.length,
+  };
+  return { rows, totals: tot };
+}
+// Дүгнэлт — ЭНГИЙН, тайлбарлаж болохуйц дүрэм. «Ухаалаг» оноо биш: яагаад гэдэг нь ил байх ёстой.
+const PRICING_VERDICTS = {
+  up:    { label: '⬆ Үнэ өсгө',      cls: 'pv-up' },
+  down:  { label: '⬇ Үнэ бодит болго', cls: 'pv-down' },
+  idle:  { label: '❌ Зогсонги',      cls: 'pv-idle' },
+  low:   { label: '🟡 Эрэлт бага',    cls: 'pv-low' },
+  ok:    { label: '✅ Хэвийн',        cls: 'pv-ok' },
+  nodata:{ label: '— Дата дутуу',     cls: 'pv-none' },
+};
+function pricingVerdict(r) {
+  if (!r || !r.stock) return { key: 'nodata', why: 'Нөөц тэмдэглэгдээгүй' };
+  if (!r.qty) return { key: 'idle', why: 'Энэ хугацаанд огт түрээслэгдээгүй' };
+  if (r.real == null) return { key: 'nodata', why: 'Жагсаалтын үнэ тавиагүй' };
+  // Дүүрсэн өдөр = хүн буцаасан байх магадлал. Хөнгөлөлтгүй зарагдаж байгаа дээр нь дүүрч байвал хямд.
+  if (r.real >= 0.95 && (r.soldOut >= 3 || r.turns >= 8)) {
+    return { key: 'up', why: r.soldOut >= 3 ? `${r.soldOut} өдөр нөөц дүүрсэн, хөнгөлөлтгүй зарагддаг` : `Эргэлт ${Math.round(r.turns)}, хөнгөлөлтгүй зарагддаг` };
+  }
+  if (r.real < 0.7) return { key: 'down', why: `Бодитоор жагсаалтын ${Math.round(r.real * 100)}%-аар л зарагддаг` };
+  if (r.turns < 1) return { key: 'low', why: `Нэгж бүр жилд ${Math.round(r.turns * 10) / 10} удаа л гарсан` };
+  return { key: 'ok', why: `Эргэлт ${Math.round(r.turns * 10) / 10}, үнийн биелэлт ${Math.round(r.real * 100)}%` };
+}
+// ── Үнийн шинжилгээний дэлгэц ────────────────────────────────────────────────
+function pricingPeriod(key) {
+  const t = new Date(); const to = t.toISOString().slice(0, 10);
+  const d = new Date(t);
+  if (key === '6') d.setMonth(d.getMonth() - 6);
+  else if (key === '24') d.setMonth(d.getMonth() - 24);
+  else d.setMonth(d.getMonth() - 12);
+  return { from: d.toISOString().slice(0, 10), to, months: key === '6' ? 6 : (key === '24' ? 24 : 12) };
+}
+function openPricingReport() {
+  state.pricePeriod = state.pricePeriod || '12';
+  state.priceSort = state.priceSort || 'revenue';
+  state.priceFilter = state.priceFilter || 'all';
+  const draw = () => {
+    const per = pricingPeriod(state.pricePeriod);
+    const { rows, totals } = pricingStats(state.appOrders || [], state.products || [], { from: per.from, to: per.to });
+    const sorters = {
+      revenue: (a, b) => b.revenue - a.revenue,
+      turns: (a, b) => (b.turns == null ? -1 : b.turns) - (a.turns == null ? -1 : a.turns),
+      real: (a, b) => (b.real == null ? -1 : b.real) - (a.real == null ? -1 : a.real),
+      roi: (a, b) => (b.roi == null ? -1 : b.roi) - (a.roi == null ? -1 : a.roi),
+      capital: (a, b) => b.capital - a.capital,
+    };
+    let list = rows.slice().sort(sorters[state.priceSort] || sorters.revenue);
+    if (state.priceFilter !== 'all') list = list.filter(r => r.verdict.key === state.priceFilter);
+    const cnt = k => rows.filter(r => r.verdict.key === k).length;
+    const pct = v => v == null ? '—' : Math.round(v * 100) + '%';
+    const num = v => v == null ? '—' : (Math.round(v * 10) / 10);
+    const body = list.slice(0, 300).map(r => {
+      const V = PRICING_VERDICTS[r.verdict.key] || PRICING_VERDICTS.ok;
+      return `<tr title="${escapeHtml(r.verdict.why)}">
+        <td class="pr-nm"><b>${escapeHtml(r.name)}</b><span class="pr-code">${escapeHtml(r.code)}</span></td>
+        <td class="pr-n">${r.stock}</td>
+        <td class="pr-n">${r.qty}</td>
+        <td class="pr-n${r.turns != null && r.turns >= 8 ? ' pr-hot' : ''}">${num(r.turns)}</td>
+        <td class="pr-n${r.soldOut >= 3 ? ' pr-hot' : ''}">${r.soldOut || '—'}</td>
+        <td class="pr-n">${r.list ? fmtMoney(r.list) : '—'}</td>
+        <td class="pr-n">${r.qty ? fmtMoney(Math.round(r.avg)) : '—'}</td>
+        <td class="pr-n${r.real != null && r.real < 0.7 ? ' pr-cold' : (r.real != null && r.real >= 1 ? ' pr-hot' : '')}">${pct(r.real)}</td>
+        <td class="pr-n">${fmtMoney(r.revenue)}</td>
+        <td class="pr-n">${r.roi == null ? '—' : pct(r.roi)}</td>
+        <td class="pr-v"><span class="pv ${V.cls}">${V.label}</span></td>
+      </tr>`;
+    }).join('');
+    const chip = (k, label) => `<button type="button" class="btn pr-chip${state.priceFilter === k ? ' pr-chip-on' : ''}" data-pf="${k}">${label}</button>`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <h2 style="margin:0;font-size:17px;">💰 Үнийн шинжилгээ</h2>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <select id="pr-period" class="rec-pick">${[['6', 'Сүүлийн 6 сар'], ['12', 'Сүүлийн 12 сар'], ['24', 'Сүүлийн 24 сар']].map(([k, l]) => `<option value="${k}"${state.pricePeriod === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <select id="pr-sort" class="rec-pick">${[['revenue', 'Орлогоор ↓'], ['turns', 'Эргэлтээр ↓'], ['real', 'Үнийн биелэлтээр ↓'], ['roi', 'ROI-гоор ↓'], ['capital', 'Хөрөнгөөр ↓']].map(([k, l]) => `<option value="${k}"${state.priceSort === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <button class="btn" id="pr-csv">⬇ Excel</button>
+          <button class="btn" id="pr-close" style="padding:5px 10px;">✕</button>
+        </div>
+      </div>
+      <div class="pr-legend">
+        <span><b>Эргэлт</b> — нэгж бүр хугацаанд хэдэн удаа гарсан</span>
+        <span><b>Дүүрсэн</b> — нөөц 100% захиалагдсан өдрийн тоо</span>
+        <span><b>Биелэлт</b> — бодит үнэ ÷ жагсаалтын үнэ</span>
+      </div>
+      <div class="pr-chips">
+        ${chip('all', `Бүгд (${rows.length})`)}
+        ${chip('up', `⬆ Үнэ өсгө (${cnt('up')})`)}
+        ${chip('down', `⬇ Үнэ бодит болго (${cnt('down')})`)}
+        ${chip('low', `🟡 Эрэлт бага (${cnt('low')})`)}
+        ${chip('idle', `❌ Зогсонги (${cnt('idle')})`)}
+        ${chip('ok', `✅ Хэвийн (${cnt('ok')})`)}
+      </div>
+      <div class="pr-sum">
+        <span>Түрээсийн орлого <b>${fmtMoney(totals.revenue)}</b></span>
+        <span>Хөрөнгө <b>${fmtMoney(totals.capital)}</b></span>
+        <span>Зогсонги <b style="color:var(--danger);">${fmtMoney(totals.idleCapital)}</b> (${totals.idleCount} бараа)</span>
+      </div>
+      <div class="pr-wrap"><table class="pr-table">
+        <thead><tr>
+          <th>Бараа</th><th>Нөөц</th><th>Ширхэг</th><th>Эргэлт</th><th>Дүүрсэн</th>
+          <th>Жагсаалт</th><th>Бодит</th><th>Биелэлт</th><th>Орлого</th><th>ROI</th><th>Дүгнэлт</th>
+        </tr></thead>
+        <tbody>${body || '<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--muted);">Энэ шүүлтэд бараа алга</td></tr>'}</tbody>
+      </table></div>
+      <div class="pr-note">ROI = хугацааны орлого ÷ худалдан авалтын өртөг (нөөцөөр үржүүлсэн). Үйлчилгээ (хүргэлт, суурилуулалт) орсонгүй.</div>`;
+  };
+  document.getElementById('pricing-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.id = 'pricing-modal'; modal.style.zIndex = '9600';
+  modal.innerHTML = `<div class="modal pr-modal">${draw()}</div>`;
+  document.body.appendChild(modal);
+  const wire = () => {
+    const box = modal.querySelector('.pr-modal');
+    box.querySelector('#pr-close').onclick = () => modal.remove();
+    box.querySelector('#pr-period').onchange = e => { state.pricePeriod = e.target.value; box.innerHTML = draw(); wire(); };
+    box.querySelector('#pr-sort').onchange = e => { state.priceSort = e.target.value; box.innerHTML = draw(); wire(); };
+    box.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { state.priceFilter = b.dataset.pf; box.innerHTML = draw(); wire(); });
+    box.querySelector('#pr-csv').onclick = () => {
+      const per = pricingPeriod(state.pricePeriod);
+      const { rows } = pricingStats(state.appOrders || [], state.products || [], { from: per.from, to: per.to });
+      const head = ['Код', 'Бараа', 'Нөөц', 'Ширхэг', 'Захиалга', 'Эргэлт', 'Дүүрсэн өдөр', 'Жагсаалтын үнэ', 'Бодит үнэ', 'Биелэлт %', 'Орлого', 'Өртөг', 'Хөрөнгө', 'ROI %', 'Дүгнэлт', 'Шалтгаан'];
+      const lines = rows.sort((a, b) => b.revenue - a.revenue).map(r => [r.code, r.name, r.stock, r.qty, r.orders,
+        r.turns == null ? '' : Math.round(r.turns * 10) / 10, r.soldOut, r.list, Math.round(r.avg),
+        r.real == null ? '' : Math.round(r.real * 100), r.revenue, r.cost, r.capital,
+        r.roi == null ? '' : Math.round(r.roi * 100), (PRICING_VERDICTS[r.verdict.key] || {}).label || '', r.verdict.why].map(csvCell).join(','));
+      const csv = '\uFEFF' + [head.join(','), ...lines].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `Чимун-унийн-шинжилгээ-${per.from}_${per.to}.csv`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+      showToast(`${rows.length} бараа татагдлаа`, 'success');
+    };
+  };
+  wire();
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
 // Идэвхтэй захиалгын БУЦААЛТ дээр эвдрэл бүртгэх — эвдэрсэн барааг нөөцөөс хасна (broken++) + барьцаанаас ₮ хасна.
 // Эвдэрсэн тоо note-д ⟦BRK⟧-ээр хадгалагдаж, барааны broken ДЕЛЬТА-гаар шинэчлэгдэнэ (дахин бүртгэвэл давхардахгүй).
 function openOrderDamageModal(oid) {
@@ -20903,6 +21136,9 @@ function renderReports() {
     card('📊', 'Тойм самбар', 'Ажлын гүйцэтгэлийн тойм, ажилтны ачаалал, графикууд', 'dashboard'),
     isDailyWorker() ? '' : card('🏅', 'KPI', 'Ажилтны объектив + ажлын чанар + 360° оноо, бонус', 'performance'),
     canSeeHourlyPayroll() ? card('⏱', 'Цагийн цалин', 'Цагийн ажилчдын төлбөр, ажилласан идэвх', 'hourly') : '',
+    `<button class="report-card" id="rep-pricing" style="text-align:left;cursor:pointer;border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--panel);display:flex;flex-direction:column;gap:4px;">
+      <div style="font-size:20px;">💰</div><div style="font-weight:700;font-size:13.5px;">Үнийн шинжилгээ</div>
+      <div style="font-size:11.5px;color:var(--muted);line-height:1.45;">Бараа бүрийн эргэлт, нөөц дүүрэлт, үнийн биелэлт, ROI — үнэ өсгөх/буулгах зөвлөмж</div></button>`,
   ].filter(Boolean).join('');
   const trendChart = financeTrendChart(financeTrend(wantBr), month);
   // ── CEO төвлөрсөн хэсгүүд (зөвхөн бүх салбар харагдацад, лензгүй үед) ──
@@ -21018,6 +21254,7 @@ function attachReportsHandlers() {
     if (nm && nm <= new Date().toISOString().slice(0, 7)) { state.reportMonth = nm; render(); }
   });
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
+  document.getElementById('rep-pricing')?.addEventListener('click', () => openPricingReport());
   const allXls = document.querySelector('[data-report-all-xls]'); if (allXls) allXls.onclick = exportAllReports;
   const incXls = document.querySelector('[data-income-xls]'); if (incXls) incXls.onclick = exportIncomeOrdersExcel;
   // Ангиллын мөр дээр дарахад тэр дор нь гүйлгээ задарна (хуудсаас гарахгүй, inline)

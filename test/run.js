@@ -580,6 +580,18 @@ function finish() {
   st.isCEO = savedCEO; st.me = savedMe; st.memberPerms = savedMp; st.rolePerms = savedRp;
 }
 
+// 32) Рендерийн алдаа хуучин агуулгыг үлдээхгүй
+{
+  const SV = vm.runInContext('safeViewHtml', sandbox);
+  const okHtml = SV(() => '<div>зөв</div>', 'Тест');
+  eq(okHtml, '<div>зөв</div>', 'safeViewHtml: хэвийн үед үр дүнг шууд буцаана');
+  const bad = SV(() => { throw new Error('туршилтын алдаа'); }, 'M event захиалга');
+  ok(bad.indexOf('алдаа гарлаа') > -1, 'safeViewHtml: алдаанд ойлгомжтой мессеж');
+  ok(bad.indexOf('M event захиалга') > -1, 'safeViewHtml: аль хэсэг болохыг хэлнэ');
+  ok(bad.indexOf('туршилтын алдаа') > -1, 'safeViewHtml: алдааны эх шалтгааныг харуулна');
+  ok(bad.length > 0, 'safeViewHtml: хоосон буцаахгүй (хуучин агуулга үлдэхгүй)');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

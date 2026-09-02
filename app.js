@@ -3706,13 +3706,13 @@ function renderTaskList() {
   } else if (state.view === 'orders') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderOrders();
+    wrap.innerHTML = safeViewHtml(renderOrders, 'M event захиалга');
     attachOrdersHandlers();
     return;
   } else if (state.view === 'products') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderProducts();
+    wrap.innerHTML = safeViewHtml(renderProducts, 'Бараа & хөрөнгө');
     attachProductsHandlers();
     return;
   } else if (state.view === 'accounts') {
@@ -5913,6 +5913,18 @@ function downloadCompletedCsv(list) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   showToast(`${list.length} захиалга татагдлаа`, 'success');
 }
+// View рендерлэхэд алдаа гарвал wrap.innerHTML тавигдалгүй ӨМНӨХ ХУУДАС үлдэж,
+// хэрэглэгч буруу дэлгэц харж эргэлздэг (жишээ: Захиалга дарахад Миний ажил харагдана).
+// Алдааг залгихгүй — консолд бичээд дэлгэцэнд ойлгомжтой мессеж үзүүлнэ.
+function safeViewHtml(fn, name) {
+  try { return fn(); }
+  catch (e) {
+    console.error('render ' + name + ' failed', e);
+    return `<div class="orders-empty"><div class="icon">⚠️</div><div>«${escapeHtml(name)}» хэсгийг харуулахад алдаа гарлаа.</div>`
+      + `<div style="font-size:var(--fs-sm);color:var(--muted);margin-top:6px;">Аппаа хаагаад дахин нээнэ үү. Давтагдвал: ${escapeHtml(String(e && e.message || e))}</div></div>`;
+  }
+}
+
 function renderOrders() {
   // Захиалга = нэгдсэн (app_orders). Нэгдсэн жагсаалтыг: менежер + CEO + ахлах удирдлага (level≥80)
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders

@@ -24786,6 +24786,17 @@ function changeDueQuick(t) {
   if (input.showPicker) { try { input.showPicker(); } catch { input.click(); } }
   else input.click();
 }
+// «Хуваарилсан ажил» badge-ийн тоо — filteredTasks-ийн 'delegated' салаатай ЯГ ИЖИЛ дүрэм.
+// ⚠ Энэ badge-ийг renderCounts-ийн `accessible` жагсаалтаас тоолж БОЛОХГҮЙ: CEO биш хүнд
+//   accessible = зөвхөн ӨӨРТ НЬ оноосон ажил тул `!isTaskParticipant(t, me)` нөхцөл хэзээ ч
+//   биелэхгүй → badge CEO-гоос бусад БҮХ хүнд үргэлж 0 байв (хэдэн ч ажил үүргэсэн бай).
+function delegatedOpenCount(tasks, me) {
+  if (!me) return 0;
+  return (tasks || []).filter(t =>
+    t && t.status !== 'done' && t.status !== 'deleted' &&
+    !isOrderAutoTask(t) && t.createdBy === me && !isTaskParticipant(t, me)
+  ).length;
+}
 function renderCounts() {
   const today = todayStr();
   // Apply access control to base task list — non-CEO sees only own tasks
@@ -24799,7 +24810,7 @@ function renderCounts() {
   const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n; };
   setCount('cnt-all', branchTasks.filter(t => t.status !== 'done').length);
   setCount('cnt-mine', accessible.filter(t => t.assignee === state.me && t.status !== 'done').length);
-  setCount('cnt-delegated', accessible.filter(t => t.createdBy === state.me && t.assignee !== state.me && t.status !== 'done').length);
+  setCount('cnt-delegated', delegatedOpenCount(state.tasks, state.me));
   // Финансын хүсэлт нь state.financeRequests-ээс ирнэ (тусдаа Sheet)
   const executorId = getFinanceExecutorEmail();
   const myFinance = state.isCEO

@@ -3387,7 +3387,12 @@ function isDailyMember(m) {
   return /өдрийн\s*ажил|цагийн\s*ажил/i.test(String(m.role || ''));
 }
 function isDailyWorker() {
-  return isDailyMember(state.user);
+  // state.user нь НЭВТРЭХ үед авсан хуулбар — worker_type override (app_config)
+  // дараа ачаалагддаг тул тэнд хоцрогдсон утга үлддэг. Улмаар CEO «Үндсэн» болгосон
+  // ажилтан өөрийн сесстээ цагийн ажилтан гэж тооцогдож, цэс нь хоосон харагддаг байв.
+  // Тиймээс АМЬД TEAM бичлэгийг эхэлж харна.
+  const live = (typeof findMember === 'function' && state.me) ? findMember(state.me) : null;
+  return isDailyMember(live || state.user);
 }
 // Үндсэн ажилтан (өдрийн/цагийн биш) — гүйцэтгэлийн үнэлгээ зөвхөн эдгээрт хамаарна.
 function isPermanentStaff(m) {
@@ -5379,14 +5384,34 @@ function applyReconAiSuggestions(res, aiResp) {
 }
 // Тулгалтад орох ОДООГИЙН төлсөн захиалгууд (app_orders) — reconcileOrders-ийн хүлээж буй хэлбэрт.
 function reconOrdersList() {
-  return (state.appOrders || []).filter(o => (Number(o.paid_mnt) || 0) > 0).map(o => ({
+  // M-Event захиалга (paid_mnt>0)
+  const mev = (state.appOrders || []).filter(o => (Number(o.paid_mnt) || 0) > 0).map(o => ({
     order_no: String(o.number || ''),
     customer_name: o.customer || o.company || '',
     paid_amount: Number(o.paid_mnt) || 0,
     paid_ref: o.paid_ref || '',
     paid_date: o.paid_date ? String(o.paid_date).slice(0, 10) : '',
     paid_method: o.paid_method || '',
+    branch: 'mevent',
   }));
+  // NOMAAD орлого — төлбөрийн лог мөр бүр = нэг банкны баримт (note-д [#id] sender·acct·ref).
+  const nm = [];
+  const npm = state.nomaadPayments || {};
+  for (const q of Object.keys(npm)) {
+    for (const p of (npm[q] || [])) {
+      if ((Number(p.total) || 0) <= 0) continue;
+      nm.push({
+        order_no: String(p.quote_no || q || ''),
+        customer_name: p.company || '',
+        paid_amount: Number(p.total) || 0,
+        paid_ref: p.note || '',                         // [#id] sender · acct · ref (parsePaidRef-д тааруулна)
+        paid_date: p.pay_date ? String(p.pay_date).slice(0, 10) : '',
+        paid_method: 'bank',                            // NOMAAD орлого = банкны баримтаар
+        branch: 'camp',
+      });
+    }
+  }
+  return mev.concat(nm);
 }
 
 function renderReconcilePanel() {
@@ -5436,10 +5461,14 @@ function openReconcileModal() {
         const matrix = await statementFileToMatrix(file);
         const parsed = parseStatement(matrix);
         if (parsed.headerRow < 0) { if (st) st.textContent = 'Хуулгын багана танигдсангүй — Голомтын Excel мөн эсэхийг шалгана уу.'; return; }
-        // Захиалга ачаалагдаагүй бол эхлээд татна (эс бол бүх орлого «захиалгагүй» болж харагдана)
+        // Захиалга/орлого ачаалагдаагүй бол эхлээд татна (эс бол бүгд «захиалгагүй» болж харагдана)
         if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
           if (st) st.textContent = 'Захиалга татаж байна…';
           try { await loadAppOrders(); } catch (_) {}
+        }
+        if (!state.nomaadPayments || !Object.keys(state.nomaadPayments).length) {
+          if (st) st.textContent = 'NOMAAD орлого татаж байна…';
+          try { if (typeof loadNomaadPayments === 'function') await loadNomaadPayments(); } catch (_) {}
         }
         const olist = reconOrdersList();
         state._reconResult = reconcileOrders(parsed.rows, olist);
@@ -22343,6 +22372,8 @@ function applyWorkerTypeOverrides() {
   const ov = state._wtOverrides;
   if (!ov || typeof ov !== 'object') return;
   (TEAM || []).forEach(m => { const k = personKey(m); if (ov[k]) m.worker_type = ov[k]; });
+  // Нэвтэрсэн хэрэглэгчийн хуулбарыг мөн шинэчилнэ — эс бөгөөс өөрийн эрх хоцорно
+  if (state.user && state.me && ov[state.me]) state.user.worker_type = ov[state.me];
 }
 async function loadWorkerTypeOverrides() {
   try {

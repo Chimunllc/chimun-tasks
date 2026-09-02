@@ -514,6 +514,42 @@ function finish() {
   eq(AT.ready.cap, 'orders.dispatch', 'авто ажил: цэвэрлэсний дараа ГАРГАХ ажил үүснэ');
 }
 
+// 30) worker_type override нь ӨӨРИЙН сесст мөн үйлчлэх эсэх
+{
+  const st   = vm.runInContext('state', sandbox);
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const isDW = vm.runInContext('isDailyWorker', sandbox);
+  const isDM = vm.runInContext('isDailyMember', sandbox);
+  const applyOv = vm.runInContext('applyWorkerTypeOverrides', sandbox);
+
+  const savedTeam = TEAM.slice(), savedMe = st.me, savedUser = st.user, savedOv = st._wtOverrides;
+  TEAM.length = 0;
+  TEAM.push({ name: 'Тест Ажилтан', phone: '89600906', role: 'Агуулахын ажилтан', worker_type: 'daily' });
+  st.me = '89600906';
+  st.user = { name: 'Тест Ажилтан', phone: '89600906', role: 'Агуулахын ажилтан', worker_type: 'daily' };
+
+  ok(isDW(), 'override-гүй үед: DB-ийн daily хүчинтэй');
+
+  // CEO «Үндсэн» болгов → override тавигдана
+  st._wtOverrides = { '89600906': 'permanent' };
+  applyOv();
+  ok(!isDM(TEAM[0]), 'override: TEAM бичлэг үндсэн боллоо');
+  ok(!isDW(), 'override: ӨӨРИЙН сесст ч үндсэн гэж тооцогдоно (гол засвар)');
+  eq(st.user.worker_type, 'permanent', 'override: state.user хуулбар мөн шинэчлэгдэнэ');
+
+  // Буцаад цагийн болгоход мөн ажиллана
+  st._wtOverrides = { '89600906': 'daily' };
+  applyOv();
+  ok(isDW(), 'override: цагийн руу буцаахад мөн үйлчилнэ');
+
+  // TEAM-д байхгүй хүн — state.user рүү уналт хийнэ, унахгүй
+  st.me = '00000000'; st.user = { worker_type: 'daily' };
+  ok(isDW(), 'TEAM-д олдоогүй бол state.user-ээр шийднэ, алдаа өгөхгүй');
+
+  TEAM.length = 0; savedTeam.forEach(m => TEAM.push(m));
+  st.me = savedMe; st.user = savedUser; st._wtOverrides = savedOv;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

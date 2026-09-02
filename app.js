@@ -4492,7 +4492,7 @@ function orderCardHtml(o, canManage, canConfirm) {
       parts.push(`<div class="order-kebab-wrap">
         <button class="btn order-kebab" data-order-kebab="${esc}" aria-label="Бусад үйлдэл" style="padding:4px 9px;font-size:15px;">⋯</button>
         <div class="order-kebab-menu" hidden>
-          ${prev ? `<button data-order-revert="${esc}" data-prev="${escapeHtml(prev)}">← «${escapeHtml(prev)}» руу буцаах</button>` : ''}
+          ${prev && canRevertStage() ? `<button data-order-revert="${esc}" data-prev="${escapeHtml(prev)}">← «${escapeHtml(prev)}» руу буцаах</button>` : ''}
           <button class="km-danger" data-order-cancel="${esc}">✕ Захиалга цуцлах</button>
         </div>
       </div>`);
@@ -6643,6 +6643,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('button[data-order-revert]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const prev = btn.dataset.prev;
+      if (!canRevertStage()) { showToast('Танд шат буцаах эрх олгогдоогүй', 'warn', 3000); return; }
       const ok = await showConfirm(`Захиалгыг «${prev}» шат руу буцаах уу?`, { title: 'Шат буцаах', okText: 'Тийм, буцаах' });
       if (ok) updateOrderStatus(btn.dataset.orderRevert, { status: prev });
     });
@@ -16350,7 +16351,7 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
-const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧰 Бэлтгэсэн', rented: '🤝 Хүлээлгэн өгсөн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив' };
+const STAGE_META_LABEL = { prepare: '🧰 Бэлдсэн', prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧰 Бэлтгэсэн', rented: '🤝 Хүлээлгэн өгсөн', returned: '📥 Буцаан авсан', archived: '🗄 Архивласан', clean: '🧹 Цэвэрлэгээ', dispatch: '📦 Ачилт (жолоочид)', handover: '🤝 Хүлээлгэн өгөлт', deliver: '🚚 Хүргэлт', retstart: '↩ Буцаалт эхэлсэн', received: '📥 Буцаан хүлээн авсан', archive: '🗄 Архив', revert: '↩ Шат буцаасан' };
 // Шатны цаг форматлах — бүтэн цагтай бол огноо+цаг (орон нутгийн), эс бол зөвхөн огноо
 function _stageTimeFmt(atISO) {
   const s = String(atISO || ''); if (!s) return '';
@@ -16431,7 +16432,9 @@ function canRevertStage() { return state.isCEO || capValue('orders.revert') === 
 function allowedEditStatuses(cur, order, mayRevert) {
   const i = order.indexOf(cur);
   if (i < 0) return [cur];
-  return order.slice(0, i + 1).filter(k => mayRevert || k === cur);
+  // draft/canceled/deleted нь дамжлагын шат БИШ (өөрийн урсгалтай) — буцаах зорилтод гарахгүй.
+  const OFF = ['draft', 'canceled', 'deleted'];
+  return order.slice(0, i + 1).filter(k => k === cur || (mayRevert && !OFF.includes(k)));
 }
 
 function receiveShortfalls(items, got) {
@@ -17171,7 +17174,15 @@ function openNewOrder(editOrder) {
     <div class="no-fields">
       <label class="no-lbl">Эхлэх (огноо · цаг)<div class="no-inline"><input id="no-start" type="date" value="${isEdit ? String(editOrder.starts_at || '').slice(0, 10) : today}"><select id="no-start-h" class="no-h">${hourOpts(_t0.sh)}</select></div></label>
       <label class="no-lbl">Дуусах (огноо · цаг)<div class="no-inline"><input id="no-stop" type="date" value="${isEdit ? String(editOrder.stops_at || '').slice(0, 10) : today}"><select id="no-stop-h" class="no-h">${hourOpts(_t0.eh)}</select></div></label>
-      ${isEdit ? `<label class="no-lbl no-wide">Төлөв<select id="no-status">${BQ_STATUS_ORDER.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}${k === 'draft' && editOrder.status !== 'draft' ? ' disabled' : ''}>${BQ_STATUS[k].label}${k === 'draft' && editOrder.status !== 'draft' ? ' (буцахгүй)' : ''}</option>`).join('')}</select></label>` : ''}
+      ${isEdit ? (() => {
+        // Төлөвийг энд УРАГШ үсэргэж болохгүй — эс бөгөөс зураг/үнэлгээ/хариуцагчгүйгээр шат
+        // алгасах нүх үлдэнэ (дамжлагын товч, «⏭ шалтгаантай алгасах» хоёулаа тойрогдоно).
+        // Зөвхөн БУЦААХ, тэр нь ч orders.revert эрхтэй хүнд (ҮАХ захирал).
+        const _mayRev = canRevertStage();
+        const _opts = allowedEditStatuses(editOrder.status, BQ_STATUS_ORDER, _mayRev);
+        const _lock = _opts.length <= 1;
+        return `<label class="no-lbl no-wide">Төлөв<select id="no-status"${_lock ? ' disabled' : ''}>${_opts.map(k => `<option value="${k}"${editOrder.status === k ? ' selected' : ''}>${(BQ_STATUS[k] || {}).label || k}</option>`).join('')}</select><span class="no-hint">${_lock ? 'Урагшлах нь дамжлагын товчоор (зураг + үнэлгээтэй). Буцаах эрх танд олгогдоогүй.' : 'Зөвхөн буцаах боломжтой. Урагшлах нь дамжлагын товчоор.'}</span></label>`;
+      })() : ''}
     </div>
     ${_sec('Хүргэлт')}
     <div class="no-box">
@@ -17453,12 +17464,22 @@ function openNewOrder(editOrder) {
       contact: ($('#no-contact')?.value || '').trim(),
       maps: isDeliv ? ($('#no-maps')?.value || '').trim() : '',
     };
+    // Шатны түүх (зураг/үнэлгээ/хэн-хэзээ) — засах бүрд ЗААВАЛ дамжуулна. saveAppOrder нь
+    // бүтэн мөрөөр upsert хийж, локал объектыг орлуулдаг тул орхивол түүх дэлгэцээс алга болно.
+    const _newSt = isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
+    let _sm = isEdit ? (editOrder.stage_meta || null) : null;
+    if (isEdit && _newSt !== editOrder.status) {
+      const _lbl = k => (BQ_STATUS[k] || {}).label || k;
+      _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
+      _sm.revert = { by: state.me, at: new Date().toISOString(), from: editOrder.status, to: _newSt,
+        comment: `${_lbl(editOrder.status)} → ${_lbl(_newSt)}` };
+    }
     const ord = {
       id: isEdit ? editOrder.id : uid,
       number: isEdit ? editOrder.number : nextOrderNumber(),
       contract_no: isEdit ? editOrder.contract_no : nextContractNo(),
       customer, phone: $('#no-phone').value.trim(), email: $('#no-email').value.trim(), delivery_address: isDeliv ? addr : '',
-      status: isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft',
+      status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: dval,
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,

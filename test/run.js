@@ -831,6 +831,46 @@ function finish() {
   st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
 }
 
+// 40b) Шат БУЦААХ эрх + засах модалын төлөв сонгогч (урагш үсрэх нүх хаагдсан эсэх)
+{
+  const st = vm.runInContext('state', sandbox);
+  const CR = vm.runInContext('canRevertStage', sandbox);
+  const AES = vm.runInContext('allowedEditStatuses', sandbox);
+  const SMH = vm.runInContext('stageMetaHtml', sandbox);
+  const ORDER = vm.runInContext('BQ_STATUS_ORDER', sandbox);
+  const saved = { ceo: st.isCEO, me: st.me, mp: st.memberPerms, rp: st.rolePerms };
+  st.me = 'W1'; st.rolePerms = {};
+
+  st.isCEO = false; st.memberPerms = {};
+  ok(!CR(), 'буцаах: тусгайлан олгоогүй бол ХОРИГЛОНО (default-deny)');
+  st.memberPerms = { W1: { 'orders.revert': true } };
+  ok(CR(), 'буцаах: эрх олгосон хүн (ҮАХ захирал) чадна');
+  st.memberPerms = {}; st.isCEO = true;
+  ok(CR(), 'буцаах: CEO үргэлж чадна');
+  st.isCEO = false;
+
+  // Эрхгүй хүнд сонголт огт байхгүй — өөрчлөх боломжгүй
+  eq(AES('ready', ORDER, false), ['ready'], 'сонгогч: эрхгүй бол зөвхөн одоогийн төлөв');
+
+  // Эрхтэй хүнд ЗӨВХӨН урвуу чиглэл (урагшлах сонголт гарахгүй)
+  const back = AES('rented', ORDER, true);
+  ok(back.indexOf('rented') > -1, 'сонгогч: одоогийн төлөв багтана');
+  ok(back.indexOf('ready') > -1 && back.indexOf('prepared') > -1, 'сонгогч: өмнөх шатууд багтана');
+  ok(back.indexOf('returned') === -1 && back.indexOf('archived') === -1, 'сонгогч: УРАГШ үсрэх сонголт гарахгүй');
+  ok(back.indexOf('draft') === -1, 'сонгогч: draft руу буцаахгүй');
+  ok(back.indexOf('canceled') === -1 && back.indexOf('deleted') === -1, 'сонгогч: цуцлах/устгах нь дамжлагын шат биш');
+
+  // Танигдахгүй төлөв — аюулгүй тал руу (өөрчлөх боломжгүй)
+  eq(AES('ямар_нэг', ORDER, true), ['ямар_нэг'], 'сонгогч: танигдахгүй төлөвт өөрчлөлт зөвшөөрөхгүй');
+
+  // Буцаалт түүхэнд ИЛ үлдэнэ
+  const h = SMH({ stage_meta: { revert: { by: 'W1', at: '2026-09-02T10:00:00Z', from: 'rented', to: 'ready', comment: 'Түрээслэгдсэн → Цэвэрлэсэн' } } });
+  ok(h.indexOf('Шат буцаасан') > -1, 'буцаах: түүхэнд «Шат буцаасан» гэж харагдана');
+  ok(h.indexOf('Түрээслэгдсэн → Цэвэрлэсэн') > -1, 'буцаах: аль шатнаас хаашаа буцсан нь харагдана');
+
+  st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

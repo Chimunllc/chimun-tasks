@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -1008,6 +1008,15 @@ function finish() {
   // Барьцаа орлогоос хасагдана (orderRevenue-тэй нийцнэ)
   const dep = CS([{ source: 'm-event-website', total_mnt: 1000, deposit_mnt: 400 }], 'accrual');
   eq(dep.site.inc, 600, 'суваг: барьцаа хасагдана');
+
+  // Барьцаа буцаалт(5810) = ЗАРДАЛ БИШ (P&L саармаг) — орлого талтай тэнцвэртэй
+  const FIR = vm.runInContext('finIsRealExpense', sandbox);
+  const FDR = vm.runInContext('finIsDepositReturn', sandbox);
+  eq(FDR({ category: '5810' }), true, 'барьцаа буцаалт: 5810 танина');
+  eq(FDR({ category: '5100' }), false, 'барьцаа буцаалт: 5100 биш');
+  eq(FIR({ decision: 'approved', category: '5810' }), false, 'зардал: барьцаа буцаалт(5810) ХАСАГДАНА');
+  eq(FIR({ decision: 'approved', category: '6900' }), false, 'зардал: эзний зээл(6900) хасагдана');
+  eq(FIR({ decision: 'approved', category: '3100' }), true, 'зардал: жинхэнэ зардал(3100) тоологдоно');
 
   eq(CS([], 'accrual').n, 0, 'суваг: хоосонд 0');
   eq(CS([{ source: 'app', total_mnt: 0 }], 'accrual').staff.avg, 0, 'суваг: 0 дүнд дундаж 0 (тэгд хуваахгүй)');

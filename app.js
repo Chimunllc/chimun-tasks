@@ -16301,10 +16301,37 @@ function isDeliveryOrder(o) {
 // Сандал-ширээ зөөх энгийн захиалгад ЭНЭ ШАТ ГАРАХГҮЙ — дамжлага уртсаад ажилчид
 // алгасаж эхлэхээс сэргийлнэ. Захиалгын формын шалгах нүд нь token-ыг бичнэ;
 // token байхгүй бол үнийн мөрөөс («суурилуулалт», «угсралт») автоматаар танина.
-const _SET_RE = /⟦SET\|([01])⟧/;
+// Токен: ⟦SET|1⟧ (флаг) эсвэл ⟦SET|1|75000⟧ (флаг + суурилуулалтын хөлс). Хуучин 2 хэсэгтэй
+// токентой нийцтэй — хөлс байхгүй бол 0.
+const _SET_RE = /⟦SET\|([01])(?:\|(\d+))?⟧/;
 const _SETUP_ITEM_RE = /суурилуул|угсрал|угсра[хл]|монтаж/i;
 function setupFlagOf(note) { const m = String(note || '').match(_SET_RE); return m ? m[1] === '1' : null; }
-function encodeSetup(on) { return `⟦SET|${on ? 1 : 0}⟧`; }
+function setupFeeOf(note) { const m = String(note || '').match(_SET_RE); return m && m[2] ? Number(m[2]) || 0 : 0; }
+function encodeSetup(on, fee) { return `⟦SET|${on ? 1 : 0}${on && Number(fee) > 0 ? '|' + Math.round(Number(fee)) : ''}⟧`; }
+// ── Суурилуулалтын нэгж хөлс — барааны нэрээр, доод хязгаартай ────────────────
+// Газар дээр угсрах хөдөлмөр. Нэгж хөлсийг барааны нэрээр таамаглана (тайз/асар том,
+// сандал/ширээ бага); тохирохгүй бол default. Баг очих зардлын шал = SETUP_MIN_FEE.
+// Тохируулах бол доорх дүнг өөрчилнө (үнэ шиг каталогт хадгалдаггүй — кодын тохиргоо).
+const SETUP_MIN_FEE = 50000;        // хамгийн бага дүн (баг очих шал)
+const SETUP_RATE_DEFAULT = 1000;    // ₮/ширхэг — тохирох дүрэм олдоогүй бараанд
+const SETUP_RATES = [
+  [/асар|майхан|павильон|шат[её]р|tent/i, 50000],
+  [/тайз|подиум|stage/i, 30000],
+  [/led|дэлгэц|экран|проектор|projector/i, 25000],
+  [/чанга|яригч|колонк|усилитель|sound|дуу авиа/i, 20000],
+  [/гэрэл|гэрэлтүүл|прожектор|лазер|light/i, 15000],
+  [/ширээ|table/i, 2000],
+  [/сандал|chair|пуфик|stool/i, 500],
+];
+function setupRateForName(name) {
+  const s = String(name || '');
+  const hit = SETUP_RATES.find(([re]) => re.test(s));
+  return hit ? hit[1] : SETUP_RATE_DEFAULT;
+}
+function setupFeeForItems(items) {
+  const raw = (Array.isArray(items) ? items : []).reduce((sum, it) => sum + (Number(it && it.qty) || 0) * setupRateForName(it && it.name), 0);
+  return raw > 0 ? Math.max(raw, SETUP_MIN_FEE) : 0;
+}
 function orderHasSetupItem(o) {
   return (o && Array.isArray(o.items) ? o.items : []).some(it => _SETUP_ITEM_RE.test(String((it && it.name) || '')));
 }
@@ -17602,7 +17629,9 @@ function openNewOrder(editOrder) {
     const dlv = currentDelivery();
     const offN = orderOffHoursCount($('#no-start-h').value, $('#no-stop-h').value);
     const offFee = offN * ORDER_OFFHOURS_FEE;   // ажлын бус цаг (09:00–18:00-аас гадуур) авах/өгөх бүрт (сайттай ижил)
-    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ
+    const setupOn = dlv.zone !== 'pickup' && !!(($('#no-setup') || {}).checked);
+    const setupFee = setupOn ? setupFeeForItems(items) : 0;   // суурилуулалт: бараа бүрийн тоо × нэгж хөлс, доод хязгаартай
+    const total = Math.max(0, rentalNet - vatDisc) + deposit + dlv.fee + offFee + setupFee;   // Нийт = түрээс − хөнгөлөлт − НӨАТ + БАРЬЦАА + ХҮРГЭЛТ + АЖЛЫН БУС ЦАГ + СУУРИЛУУЛАЛТ
     $('#no-perday').textContent = fmtMoney(perDay);
     $('#no-days').textContent = days + ' хоног';
     $('#no-subtotal').textContent = fmtMoney(subtotal);
@@ -20007,10 +20036,14 @@ function finAddOrderIncome(inc, wantBr, basis) {
 // close_type='хуулгаар' болмогц л тоологдоно. Ингэснээр цагийн цалин 2 дахин тоологдохгүй.
 // (Хэрэглэгчийн шийдвэр 2026-08-22: зардал зөвхөн банкны хуулгаар. Хуучин бичлэгт токен алга → хэвээр тоологдоно.)
 function finPendingStmt(t) { return /⟦PENDST⟧/.test(String(t.justification || '')) && t.close_type !== 'хуулгаар'; }
+// Барьцаа буцаалт (5810) = харилцагчийн барьцааг буцаах — компанийн ЗАРДАЛ БИШ (P&L-д саармаг).
+// Орлого талд барьцаа аль хэдийн хасагдсан (orderRevenue), тиймээс зарлага талд ч хасагдана.
+function finIsDepositReturn(t) { return String((t && t.category) || '').startsWith('5810'); }
 // ── Зардлын НЭГДСЭН дүрэм — Тайлан ба Санхүү ижилхэн тоолохын тулд ──
-// Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(6900) БИШ.
+// Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(6900) + барьцаа буцаалт(5810) БИШ.
 function finIsRealExpense(t) {
-  return !!t && t.decision === 'approved' && !finPendingStmt(t) && !String(t.category || '').startsWith('6900');
+  return !!t && t.decision === 'approved' && !finPendingStmt(t)
+    && !String(t.category || '').startsWith('6900') && !finIsDepositReturn(t);
 }
 // Зардал аль сард тоологдох вэ — basis-аар: 'cash'=гүйлгээ гарсан огноо(requested_at), 'accrual'=ноогдох сар.
 function finExpMonth(t, basis) {
@@ -20025,10 +20058,11 @@ function finBranchPnl(month, basis) {
     if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) noInc += nomaadPaid(o); }
     else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) noInc += nomaadEffTotal(o);
   });
-  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0;
+  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
     if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
+    if (finIsDepositReturn(t)) { depReturn += Number(t.amount) || 0; return; }  // барьцаа буцаалт = зардал БИШ (P&L саармаг)
     const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
   });
   return {
@@ -20036,7 +20070,7 @@ function finBranchPnl(month, basis) {
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
       { k: 'NOMAAD', inc: noInc, exp: exp['КЕМП'] },
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
-    ], ownerLoan,
+    ], ownerLoan, depReturn,
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
@@ -21203,9 +21237,11 @@ function renderFinanceReport(wrap) {
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
     + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал${(() => {
         const ol = sumOf(monthList.filter(t => String(t.category || '').startsWith('6900')));
+        const dr = sumOf(monthList.filter(finIsDepositReturn));
         const pd = sumOf(monthList.filter(t => finPendingStmt(t)));
         const bits = [];
         if (ol) bits.push(`эзний зээл ${fmtMoney(ol)}`);
+        if (dr) bits.push(`барьцаа буцаалт ${fmtMoney(dr)}`);
         if (pd) bits.push(`хүлээгдэж буй ${fmtMoney(pd)}`);
         return bits.length ? ` <span style="font-size:11px;">(${bits.join(' · ')} — зардлаас гадуур)</span>` : '';
       })()}</div></div>`
@@ -21257,6 +21293,7 @@ function renderFinanceReport(wrap) {
     monthList.forEach(t => {
       const tok = parseCardToken(t.justification); if (!tok) return;
       if (String(t.category || '').startsWith('6900')) return;
+      if (finIsDepositReturn(t)) return;   // барьцаа буцаалт = эзэмшигчийн зарцуулалт БИШ
       const amt = Number(t.amount) || 0; const k = tok.ownerKey || '';
       const o = byOwner[k] || (byOwner[k] = { card: 0, tr: 0 });
       if (tok.last4) { o.card += amt; totCard += amt; } else { o.tr += amt; totTr += amt; }
@@ -21301,15 +21338,17 @@ function renderFinanceReport(wrap) {
     // M-Event орлого = app_orders (идэвхтэй захиалга), эвентийн огноогоор (accrual). bqOrders БИШ (хуучин түүхэн түүх).
     if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }
     const evOrders = (state.appOrders || []).filter(o => (typeof _orderActive === 'function' ? _orderActive(o) : true) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
-    const evInc = evOrders.reduce((s, o) => s + (Number(o.total_mnt) || 0), 0);
+    // Орлого = барьцаа ХАССАН (orderRevenue) — барьцаа P&L-д саармаг, зарлага талтай нийцүүлнэ
+    const evInc = evOrders.reduce((s, o) => s + (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(o.total_mnt) || 0)), 0);
     const noOrders = (state.nomaadOrders || []).filter(o => String(o.date_start || '').slice(0, 7) === month && !nomaadIsCancelled(o));
     const noInc = noOrders.reduce((s, o) => s + nomaadEffTotal(o), 0);
     const inc = evInc + noInc;
-    // Эзний зээлийн эргэн төлөлт (6900) = ЗАРДАЛ БИШ (компанийн өглөгийн буцаалт) — цэвэр зардлаас хасна
+    // Эзний зээл(6900) ба барьцаа буцаалт(5810) = ЗАРДАЛ БИШ — цэвэр зардлаас хасна
     const isOwnerLoan = t => String(t.category || '').startsWith('6900');
     const expAll = monthList.filter(t => finStage(t).key === 'fdone');
     const ownerLoan = sumOf(expAll.filter(isOwnerLoan));
-    const expList = expAll.filter(t => !isOwnerLoan(t));
+    const depReturn = sumOf(expAll.filter(finIsDepositReturn));
+    const expList = expAll.filter(t => !isOwnerLoan(t) && !finIsDepositReturn(t));
     const exp = sumOf(expList);
     const byBr = groupBy(expList, t => finEffBranch(t));
     const expEv = sumOf(byBr['ИВЕНТ'] || []), expNo = sumOf(byBr['КЕМП'] || []);
@@ -21326,6 +21365,7 @@ function renderFinanceReport(wrap) {
       + row('Зарлага — Хөрөнгө / бусад', -expOther)
       + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0 1px;border-top:1px solid var(--border);margin-top:4px;"><b>Цэвэр зардал</b><b>${fmtMoney(-exp)}</b></div>`
       + (ownerLoan ? row('↩ Эзний зээл эргэн төлөлт (зардал БИШ)', -ownerLoan, 'var(--muted)') : '')
+      + (depReturn ? row('↩ Барьцаа буцаалт (зардал БИШ)', -depReturn, 'var(--muted)') : '')
       + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үйл ажиллагааны үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`
       + `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Үлдэгдэл = орлого − цэвэр зардал (эзний зээл ороогүй).</div>`
       + ((state.bqOrders || []).length ? '' : `<div style="font-size:11px;color:var(--muted);margin-top:4px;">⏳ Эвентийн захиалгын дата ачаалж байна…</div>`);

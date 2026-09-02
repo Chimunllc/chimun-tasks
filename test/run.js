@@ -925,6 +925,32 @@ function finish() {
   ok(CL({ paid_mnt: 5 }).indexOf('Цуцлах') > -1, 'хаах: төлбөртэйд товч «Цуцлах»');
 }
 
+// 40d) Боломжит борлуулалт (ноорог) + илгээсэн үнийн саналын лог
+{
+  const QO = vm.runInContext('quotesOf', sandbox);
+  const DPT = vm.runInContext('draftPipelineTotal', sandbox);
+
+  eq(QO({}), [], 'санал: stage_meta байхгүй → хоосон');
+  eq(QO({ stage_meta: {} }), [], 'санал: quotes байхгүй → хоосон');
+  eq(QO({ stage_meta: { quotes: 'муу' } }), [], 'санал: массив биш → хоосон');
+  eq(QO({ stage_meta: { quotes: [{ amount: 5 }] } }).length, 1, 'санал: логийг уншина');
+
+  const orders = [
+    { status: 'draft',    total_mnt: 1000, deposit_mnt: 200 },   // 800
+    { status: 'draft',    total_mnt: 500,  deposit_mnt: 0 },     // 500
+    { status: 'reserved', total_mnt: 9999 },                      // тоологдохгүй
+    { status: 'canceled', total_mnt: 7777 },                      // тоологдохгүй
+    { status: 'deleted',  total_mnt: 6666 },                      // тоологдохгүй
+  ];
+  eq(DPT(orders), 1300, 'боломжит: зөвхөн ноорог, барьцаа хасагдсан');
+  eq(DPT([]), 0, 'боломжит: ноороггүй бол 0');
+
+  // Санхүүд ОРОХГҮЙ — _orderActive нь draft-ыг хасдаг (гол баталгаа)
+  const OA = vm.runInContext('_orderActive', sandbox);
+  ok(!OA({ status: 'draft' }), 'боломжит: ноорог санхүүгийн тооцоонд орохгүй');
+  ok(OA({ status: 'reserved' }), 'боломжит: баталгаажсан захиалга орно');
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

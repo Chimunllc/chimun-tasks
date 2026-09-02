@@ -5967,6 +5967,13 @@ function boardOrderRow(e, k, todayStr, flat) {
     ? (_depRet ? `<span class="br-depchip dep-ret" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан'}">✓ Буцаасан</span>`
       : (!!o._app ? `<span class="br-depchip dep-hold"${canSeeOrderMoney() ? ` title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй"` : ' title="Барьцаатай захиалга"'}>🔒 Барьцаатай</span>` : ''))
     : '';
+  // Илгээсэн үнийн санал — жагсаалтаас шууд харагдана (өмнө зөвхөн «✎ Засах» цонхонд байсан).
+  // Лог нь stage_meta.quotes: {at, by, amount, to}. Олон удаа илгээж болно.
+  const _qs = quotesOf(o);
+  const _qLast = _qs.length ? _qs[_qs.length - 1] : null;
+  const quoteChip = _qs.length
+    ? `<span class="br-qchip" title="${escapeHtml(_qs.length + ' удаа илгээсэн · сүүлд ' + String((_qLast && _qLast.at) || '').slice(0, 10) + (canSeeOrderMoney() ? ' · ' + fmtMoney(Number(_qLast && _qLast.amount) || 0) : ''))}">📤 ${_qs.length}</span>`
+    : '';
   const id = escapeHtml(String(o.id));
   // Мөрийн үйлдэл товч = ТӨЛБӨР АВАХ (үлдэгдэлтэй үед шууд төлбөрийн модал нээнэ).
   // Дамжлагын алхмууд (Бэлдэх/Цэвэрлэх/Гаргах…) захиалгыг нээгээд дотор нь хийнэ — мөрөн дээр гаргахгүй.
@@ -6005,11 +6012,11 @@ function boardOrderRow(e, k, todayStr, flat) {
   })() : '';
   return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') : ''}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') + (quoteChip ? ' ' + quoteChip : '') : ''}</span>
     ${statusCell}
     ${flat
       ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
-      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${cxChip}</span>`}
+      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${quoteChip}${cxChip}</span>`}
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -6362,6 +6369,9 @@ function renderOrders() {
   // Борлуулалт = ноорог + цуцалсныг ТООЛОХГҮЙ (бодит захиалга л). Барьцаа = буцаадаг өр тул
   // орлогоос ХАСна (orderRevenue, Санхүү тайлантай нийцүүлэв — app/M-Event total_mnt-д барьцаа орсон).
   const _saleE = shown.filter(e => !['draft', 'canceled', 'deleted'].includes(String(e.o.status)));
+  // Боломжит борлуулалт — зөвхөн харуулах зорилготой, санхүүд хэзээ ч орохгүй.
+  const _draftE = shown.filter(e => String(e.o.status) === 'draft');
+  const sumDraft = draftPipelineTotal(_draftE.map(e => e.o));
   const sumTotal = _saleE.reduce((s, e) => s + (typeof orderRevenue === 'function' ? orderRevenue(e.o, 'accrual') : e.total), 0);
   const saleN = _saleE.length;
   const CAP = 200;
@@ -6369,7 +6379,7 @@ function renderOrders() {
   const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)
     : (shown.length
@@ -19696,6 +19706,18 @@ function _orderDays(o) {
 function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'draft' && st !== 'deleted' && st !== 'canceled' && st !== 'cancelled'; }
 // Захиалгын ЖИНХЭНЭ орлого — барьцаа (буцаадаг өр) ХАСНА. App/M-Event-д total_mnt-д барьцаа орсон
 // тул хасна; Booqable-д total_mnt = түрээс (барьцаа тусдаа) тул хасахгүй. Түрээс + хүргэлт + НӨАТ.
+// Илгээсэн үнийн саналуудын лог (stage_meta.quotes). Массив биш бол хоосон.
+function quotesOf(o) {
+  const q = o && o.stage_meta && o.stage_meta.quotes;
+  return Array.isArray(q) ? q : [];
+}
+// БОЛОМЖИТ БОРЛУУЛАЛТ = ноорог захиалгуудын дүн (= илгээсэн үнийн саналын хэмжээ).
+// ⚠ Энэ нь борлуулалт БИШ. Санхүү/орлогын тайланд ОРОХГҮЙ — _orderActive нь draft-ыг
+// хасдаг тул тийш нэвтрэхгүй. Зөвхөн «хэдэн төгрөгний санал явсан» гэдгийг харуулна.
+function draftPipelineTotal(orders) {
+  return (orders || []).filter(o => String(o && o.status) === 'draft')
+    .reduce((s, o) => s + orderRevenue(o, 'accrual'), 0);
+}
 function orderRevenue(o, basis) {
   const depIncluded = String(o.source || '').toLowerCase() !== 'booqable';
   const dep = depIncluded ? (Number(o.deposit_mnt) || 0) : 0;

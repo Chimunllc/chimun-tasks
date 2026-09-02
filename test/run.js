@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -701,6 +701,19 @@ function finish() {
   ok(F.receiptTooOld('2026-07-01') === false, 'receiptTooOld: 7/01 → false (эхлэл огноо)');
   ok(F.receiptTooOld('2026-08-12') === false, 'receiptTooOld: 8 сар → false');
   ok(F.receiptTooOld('') === false, 'receiptTooOld: огноогүй → false (хаахгүй)');
+
+  // ── statementMeta: данс+хугацаа задлах (label-аас хойш хоосон нүд байж болно) ──
+  {
+    const m = [
+      ['', '', '', '', '', 'Хуулганы огноо', '', '2026-09-02'],
+      ['Дансны дугаар', '3635185058 [MNT]', 'IBAN', '', 'MN77 0015 0036 3518 5058'],
+      ['Харилцагчийн нэр', 'ЧИМУН', 'Гүйлгээний огноо', '', '2026-08-01 - 2026-08-31'],
+    ];
+    const meta = F.statementMeta(m);
+    ok(meta.acct === '3635185058', 'statementMeta: дансны дугаар');
+    ok(meta.period === '2026-08-01 - 2026-08-31', 'statementMeta: хугацаа (2 нүд цаана)');
+  }
+  ok(F.statementMeta([]).acct === '', 'statementMeta: хоосон → хоосон');
 
   finish();
 })();

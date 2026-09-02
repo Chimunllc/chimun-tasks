@@ -5414,6 +5414,77 @@ function reconOrdersList() {
   return mev.concat(nm);
 }
 
+// Хуулгын матрицаас данс+хугацаа задлах (толгойн «Дансны дугаар»/«Гүйлгээний огноо» мөрөөс).
+function statementMeta(matrix) {
+  let acct = '', period = '';
+  for (const row of (matrix || []).slice(0, 14)) {
+    const cells = (row || []).map(c => String(c == null ? '' : c).trim());
+    // Данс: «Дансны дугаар» label-ын дараах эхний тоо агуулсан нүд (label→утга хооронд хоосон нүд байж болно)
+    const j = cells.findIndex(c => /дансны дугаар/i.test(c));
+    if (j >= 0 && !acct) { for (let i = j + 1; i < cells.length; i++) { const v = cells[i].replace(/\s*\[.*$/, '').trim(); if (/^\d{6,}$/.test(v.replace(/\s/g, ''))) { acct = v; break; } } }
+    // Хугацаа: «Гүйлгээний огноо» label-ын дараах эхний «YYYY-MM-DD - YYYY-MM-DD» нүд
+    const k = cells.findIndex(c => /гүйлгээний огноо/i.test(c));
+    if (k >= 0 && !period) { for (let i = k + 1; i < cells.length; i++) { if (/\d{4}-\d{2}-\d{2}\s*-\s*\d{4}-\d{2}-\d{2}/.test(cells[i])) { period = cells[i].replace(/\s+/g, ' '); break; } } }
+  }
+  return { acct, period };
+}
+// Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалтын дүн. Хэвлэх/PDF-д зориулсан цэвэр HTML.
+function incomeReportHtml(res) {
+  const stmts = (res && res._stmts) || [];
+  const money = (n) => fmtMoney(Math.round(Number(n) || 0));
+  const totalIncome = stmts.reduce((s, x) => s + (Number(x.incomeTotal) || 0), 0);
+  const matchedSum = (res.matched || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
+  const mismatchSum = (res.mismatch || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
+  const untrackedSum = (res.untracked || []).reduce((s, c) => s + (Number(c.credit) || 0), 0);
+  const mevMatched = (res.matched || []).filter(m => m.order.branch !== 'camp').reduce((s, m) => s + (Number(m.credit) || 0), 0);
+  const campMatched = (res.matched || []).filter(m => m.order.branch === 'camp').reduce((s, m) => s + (Number(m.credit) || 0), 0);
+  const period = stmts.map(s => s.period).filter(Boolean)[0] || '';
+  const accRows = stmts.map(s => `<tr><td>${escapeHtml(s.acct || s.fileName || '—')}</td><td class="r">${s.incomeCount || 0}</td><td class="r">${money(s.incomeTotal)}</td></tr>`).join('');
+  const untrackedRows = (res.untracked || []).slice().sort((a, b) => b.credit - a.credit)
+    .map(c => `<tr><td>${escapeHtml(String(c.date || ''))}</td><td>${escapeHtml(c.name || '')}</td><td>${escapeHtml((c.memo || '').slice(0, 50))}</td><td class="r">${money(c.credit)}</td></tr>`).join('');
+  const today = todayStr ? todayStr() : new Date().toISOString().slice(0, 10);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Орлогын тайлан ${escapeHtml(period)}</title>
+  <style>
+    body{font-family:'Segoe UI',Arial,sans-serif;color:#111;margin:32px;font-size:13px;}
+    h1{font-size:20px;margin:0 0 2px;} .sub{color:#666;font-size:12px;margin-bottom:18px;}
+    table{border-collapse:collapse;width:100%;margin:10px 0 22px;} th,td{border:1px solid #ddd;padding:7px 9px;text-align:left;}
+    th{background:#f5f5f7;font-weight:600;} td.r,th.r{text-align:right;white-space:nowrap;}
+    .kpis{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0 8px;}
+    .kpi{border:1px solid #e2e2e6;border-radius:10px;padding:12px 16px;min-width:150px;}
+    .kpi .l{color:#666;font-size:11px;} .kpi .v{font-size:19px;font-weight:700;margin-top:3px;}
+    .foot{color:#888;font-size:11px;margin-top:26px;border-top:1px solid #eee;padding-top:10px;}
+    h2{font-size:15px;margin:20px 0 4px;}
+  </style></head><body>
+    <h1>Орлогын тайлан</h1>
+    <div class="sub">ЧИМУН ХХК · Хугацаа: ${escapeHtml(period || '—')} · ${stmts.length} данс · Гаргасан: ${escapeHtml(today)}</div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Банкны нийт орлого</div><div class="v">${money(totalIncome)}</div></div>
+      <div class="kpi"><div class="l">Захиалгад тааруулсан</div><div class="v">${money(matchedSum + mismatchSum)}</div></div>
+      <div class="kpi"><div class="l">Захиалгагүй орлого</div><div class="v">${money(untrackedSum)}</div></div>
+    </div>
+    <h2>Дансаар</h2>
+    <table><thead><tr><th>Данс</th><th class="r">Гүйлгээ</th><th class="r">Орлого</th></tr></thead>
+      <tbody>${accRows || '<tr><td colspan="3">—</td></tr>'}<tr><th>Нийт</th><th class="r">${res.incomeCount || 0}</th><th class="r">${money(totalIncome)}</th></tr></tbody></table>
+    <h2>Салбараар (тааруулсан)</h2>
+    <table><thead><tr><th>Салбар</th><th class="r">Орлого</th></tr></thead><tbody>
+      <tr><td>M-Event (эвент түрээс)</td><td class="r">${money(mevMatched)}</td></tr>
+      <tr><td>NOMAAD (кемп)</td><td class="r">${money(campMatched)}</td></tr>
+    </tbody></table>
+    <h2>Захиалгад холбогдоогүй орлого (${(res.untracked || []).length})</h2>
+    <table><thead><tr><th>Огноо</th><th>Нэр</th><th>Утга</th><th class="r">Дүн</th></tr></thead>
+      <tbody>${untrackedRows || '<tr><td colspan="4">— бүх орлого захиалгатай тохирсон —</td></tr>'}</tbody></table>
+    <div class="foot">Автоматаар тулгасан тайлан. «Захиалгагүй орлого» = банкинд орсон ч аппд захиалга/төлбөр бүртгэгдээгүй — нягтлан шалгана.</div>
+  </body></html>`;
+}
+function openIncomeReport() {
+  const res = state._reconResult;
+  if (!res || !res._stmts || !res._stmts.length) { showToast('Эхлээд хуулга оруулна уу', 'info', 2500); return; }
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Popup хаагдсан — зөвшөөрнө үү', 'warn', 3000); return; }
+  w.document.write(incomeReportHtml(res));
+  w.document.close();
+  setTimeout(() => { try { w.print(); } catch (_) {} }, 400);
+}
 function renderReconcilePanel() {
   const res = state._reconResult;
   let resultHtml = '';
@@ -5422,7 +5493,21 @@ function renderReconcilePanel() {
       <div class="recon-sec-h">${title} <span class="recon-n">${items.length}</span></div>
       ${items.length ? `<div class="recon-rows">${items.map(fn).join('')}</div>` : '<div class="recon-empty">—</div>'}
     </div>`;
-    resultHtml = `<div class="recon-summary">${escapeHtml(res._fileName || '')} · Хуулгын ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ · Төлсөн захиалга: <b>${res._orderCount != null ? res._orderCount : '?'}</b></div>
+    const stmts = res._stmts || [];
+    const totalIncome = stmts.reduce((s, x) => s + (Number(x.incomeTotal) || 0), 0);
+    const matchedSum = (res.matched || []).reduce((s, m) => s + (Number(m.credit) || 0), 0) + (res.mismatch || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
+    const untrackedSum = (res.untracked || []).reduce((s, c) => s + (Number(c.credit) || 0), 0);
+    const acctChips = stmts.map(s => `<span class="recon-acct">🏦 ${escapeHtml(s.acct || s.fileName || '')} · ${fmtMoney(s.incomeTotal)}</span>`).join('');
+    resultHtml = `<div class="recon-report">
+        <div class="recon-report-h"><b>${stmts.length} данс${stmts[0] && stmts[0].period ? ' · ' + escapeHtml(stmts[0].period) : ''}</b><button class="btn" id="recon-report-btn">🖨 Тайлан татах</button></div>
+        <div class="recon-kpis">
+          <div class="recon-kpi"><span class="rk-l">Банкны нийт орлого</span><span class="rk-v">${fmtMoney(totalIncome)}</span></div>
+          <div class="recon-kpi ok"><span class="rk-l">Тааруулсан</span><span class="rk-v">${fmtMoney(matchedSum)}</span></div>
+          <div class="recon-kpi info"><span class="rk-l">Захиалгагүй</span><span class="rk-v">${fmtMoney(untrackedSum)}</span></div>
+        </div>
+        ${acctChips ? `<div class="recon-accts">${acctChips}</div>` : ''}
+        <div class="recon-summary-sub">Ирсэн орлого: <b>${res.incomeCount}</b> гүйлгээ · Тулгасан захиалга/орлого: <b>${res._orderCount != null ? res._orderCount : '?'}</b></div>
+      </div>
       ${sec('✓ Баталгаажсан', 'ok', res.matched, m => `<div class="recon-row"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${m.rows && m.rows.length > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${m.rows.length} гүйлгээ)</span>` : ''}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)}</span></div>`)}
       ${sec('⚠ Дүн зөрүүтэй', 'warn', res.mismatch, m => { const found = (m.rows || []).length, rec = m.receipts || 0; const note = rec > found ? ` <span style="color:var(--muted);font-size:11px;">(${found}/${rec} баримт — дутуу)</span>` : (found > 1 ? ` <span style="color:var(--muted);font-size:11px;">(${found} гүйлгээ)</span>` : ''); return `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}${note}</span><span class="recon-amt">бүртгэл ${fmtMoney(m.order.paid_amount)} ≠ данс ${fmtMoney(m.credit != null ? m.credit : (m.row ? m.row.credit : 0))}</span></div>`; })}
       ${sec('❓ Дансанд алга', 'danger', res.missing, m => `<div class="recon-row clickable" data-recon-open="${escapeHtml(m.order.order_no)}"><span class="recon-l">${escapeHtml(m.order.order_no)} · ${escapeHtml(m.order.customer_name || '')}</span><span class="recon-amt">${fmtMoney(m.order.paid_amount)} · ${escapeHtml(m.order.paid_ref || 'утга алга')}</span></div>`)}
@@ -5431,10 +5516,10 @@ function renderReconcilePanel() {
       ${(res._aiSuggestions && res._aiSuggestions.length) ? `<div class="recon-sec recon-ai"><div class="recon-sec-h">🤖 AI санал <span class="recon-n">${res._aiSuggestions.length}</span></div><div class="recon-rows">${res._aiSuggestions.map(s => `<div class="recon-row clickable" data-recon-open="${escapeHtml(s.order.order_no)}"><span class="recon-l">${escapeHtml(s.order.order_no)} · ${escapeHtml(s.order.customer_name || '')} ← ${escapeHtml(s.income.name || (s.income.memo || '').slice(0, 30) || 'орлого')}${s.reason ? `<span class="recon-ai-reason">${escapeHtml(s.reason)}</span>` : ''}</span><span class="recon-amt"><b class="recon-ai-conf">${Math.round(s.confidence * 100)}%</b> · ${fmtMoney(s.income.credit)}${s.amountDiff ? ` <span class="recon-ai-diff">зөрүү ${fmtMoney(s.amountDiff)}</span>` : ''}</span></div>`).join('')}</div></div>` : ''}`;
   }
   return `<div class="recon-wrap">
-    <div class="recon-intro">Голомтын дансны хуулгыг (.xlsx) оруулбал бүртгэсэн төлбөртэй автоматаар тулгана. Утга банкнаас яг хуулагдсан тул шууд таарна.</div>
+    <div class="recon-intro">Бүх дансны хуулгыг (олон файл зэрэг) оруулбал нэгтгэж, M-Event + NOMAAD бүх орлоготой тулгаж, орлогын тайлан гаргана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
     <div class="recon-upload">
-      <label class="btn btn-primary" for="recon-file" style="cursor:pointer;">📂 Хуулга оруулах (.xlsx / .csv)</label>
-      <input type="file" id="recon-file" accept=".xlsx,.xls,.csv" style="display:none;" />
+      <label class="btn btn-primary" for="recon-file" style="cursor:pointer;">📂 Хуулга(ууд) оруулах (.xlsx / .csv)</label>
+      <input type="file" id="recon-file" accept=".xlsx,.xls,.csv" multiple style="display:none;" />
       <span id="recon-status" class="recon-status"></span>
     </div>
     ${resultHtml}
@@ -5443,6 +5528,7 @@ function renderReconcilePanel() {
 // Орлого тулгалт — Санхүү цэснээс нээгддэг МОДАЛ (банкны орлого ↔ төлсөн захиалга + AI санал).
 function openReconcileModal() {
   document.getElementById('recon-modal')?.remove();
+  state._reconStmts = []; state._reconResult = null;   // шинэ сесс — өмнөх хуулгуудыг цэвэрлэнэ
   const ov = document.createElement('div'); ov.id = 'recon-modal'; ov.className = 'modal-bg';
   document.body.appendChild(ov);
   const draw = () => {
@@ -5455,27 +5541,45 @@ function openReconcileModal() {
     ov.querySelector('[data-recon-close]')?.addEventListener('click', () => ov.remove());
     const reconFile = ov.querySelector('#recon-file');
     if (reconFile) reconFile.addEventListener('change', async (e) => {
-      const file = e.target.files && e.target.files[0]; if (!file) return;
-      const st = ov.querySelector('#recon-status'); if (st) st.textContent = 'Уншиж байна…';
-      try {
-        const matrix = await statementFileToMatrix(file);
-        const parsed = parseStatement(matrix);
-        if (parsed.headerRow < 0) { if (st) st.textContent = 'Хуулгын багана танигдсангүй — Голомтын Excel мөн эсэхийг шалгана уу.'; return; }
-        // Захиалга/орлого ачаалагдаагүй бол эхлээд татна (эс бол бүгд «захиалгагүй» болж харагдана)
-        if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
-          if (st) st.textContent = 'Захиалга татаж байна…';
-          try { await loadAppOrders(); } catch (_) {}
-        }
-        if (!state.nomaadPayments || !Object.keys(state.nomaadPayments).length) {
-          if (st) st.textContent = 'NOMAAD орлого татаж байна…';
-          try { if (typeof loadNomaadPayments === 'function') await loadNomaadPayments(); } catch (_) {}
-        }
-        const olist = reconOrdersList();
-        state._reconResult = reconcileOrders(parsed.rows, olist);
-        state._reconResult._fileName = file.name;
-        state._reconResult._orderCount = olist.length; draw();
-      } catch (err) { if (st) st.textContent = 'Алдаа: ' + err.message; }
+      const files = [...(e.target.files || [])]; e.target.value = ''; if (!files.length) return;
+      const st = ov.querySelector('#recon-status');
+      // Захиалга/орлого ачаалагдаагүй бол эхлээд татна (эс бол бүгд «захиалгагүй» болж харагдана)
+      if (!Array.isArray(state.appOrders) || !state.appOrders.length) {
+        if (st) st.textContent = 'Захиалга татаж байна…';
+        try { await loadAppOrders(); } catch (_) {}
+      }
+      if (!state.nomaadPayments || !Object.keys(state.nomaadPayments).length) {
+        if (st) st.textContent = 'NOMAAD орлого татаж байна…';
+        try { if (typeof loadNomaadPayments === 'function') await loadNomaadPayments(); } catch (_) {}
+      }
+      state._reconStmts = state._reconStmts || [];
+      let added = 0;
+      for (const file of files) {
+        if (st) st.textContent = `📄 ${file.name} уншиж байна…`;
+        try {
+          const matrix = await statementFileToMatrix(file);
+          const parsed = parseStatement(matrix);
+          if (parsed.headerRow < 0) { if (st) st.textContent = `⚠ ${file.name}: багана танигдсангүй`; continue; }
+          const meta = statementMeta(matrix);
+          parsed.rows.forEach(r => { r._srcAcct = meta.acct; });
+          const credits = parsed.rows.filter(r => r.credit > 0);
+          const incomeTotal = credits.filter(r => !_isInternalCredit(r)).reduce((s, r) => s + r.credit, 0);
+          // Ижил данс+хугацаа дахин орвол ОРЛУУЛНА (давхар тооллого сэргийлнэ)
+          state._reconStmts = state._reconStmts.filter(s => !(s.acct === meta.acct && s.period === meta.period && meta.acct));
+          state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, incomeCount: credits.length, incomeTotal });
+          added++;
+        } catch (err) { if (st) st.textContent = `⚠ ${file.name}: ${err.message}`; }
+      }
+      if (!added && !state._reconStmts.length) return;
+      const allRows = state._reconStmts.flatMap(s => s.rows);
+      const olist = reconOrdersList();
+      state._reconResult = reconcileOrders(allRows, olist);
+      state._reconResult._orderCount = olist.length;
+      state._reconResult._stmts = state._reconStmts;
+      if (st) st.textContent = '';
+      draw();
     });
+    ov.querySelector('#recon-report-btn')?.addEventListener('click', openIncomeReport);
     ov.querySelector('#recon-ai-btn')?.addEventListener('click', async () => {
       const res = state._reconResult; const payload = buildReconAiPayload(res);
       if (!payload) { showToast('AI шаардлагагүй — таараагүй үлдэгдэлгүй', 'info', 2500); return; }

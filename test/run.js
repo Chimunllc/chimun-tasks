@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -190,6 +190,21 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq(F.calcDeliveryFee('city', 0), 150000, 'Хүргэлт: хот дотор 150,000');
   eq(F.calcDeliveryFee('out', 12), 120000, 'Хүргэлт: 12км × 2 × 5,000 = 120,000');
   eq(F.calcDeliveryFee('pickup', 0), 0, 'Хүргэлт: өөрөө авах 0');
+  // Буцаан олголт токен + барьцааны буцаалт төрөл (C11)
+  {
+    // барьцааны буцаалт — kind='dep' round-trip
+    const n1 = F.encodeRefundNote('', 200000, 'цуцлагдсан', 'dep');
+    const r1 = F.parseRefund(n1);
+    eq({ amount: r1.amount, note: r1.note, kind: r1.kind }, { amount: 200000, note: 'цуцлагдсан', kind: 'dep' }, 'Refund: барьцаа (dep) round-trip');
+    // хоосон шалтгаантай ч dep хадгалагдана
+    const r2 = F.parseRefund(F.encodeRefundNote('', 200000, '', 'dep'));
+    eq({ amount: r2.amount, kind: r2.kind }, { amount: 200000, kind: 'dep' }, 'Refund: шалтгаангүй ч dep');
+    // ерөнхий буцаалт (kind байхгүй) — dep БИШ
+    const r3 = F.parseRefund(F.encodeRefundNote('note', 150000, 'илүү төлөлт'));
+    eq({ amount: r3.amount, note: r3.note, kind: r3.kind }, { amount: 150000, note: 'илүү төлөлт', kind: '' }, 'Refund: ерөнхий буцаалт dep БИШ');
+    // хуучин 2 хэсэгтэй токентой нийцтэй
+    eq(F.parseRefund('⟦RF|100000⟧').kind, '', 'Refund: хуучин токенд kind хоосон');
+  }
 }
 
 // 4) Эхлэх/дуусах цаг токен

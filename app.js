@@ -3984,16 +3984,19 @@ function encodeBrokenRec(note, recMap) {
   return base ? `${base} ${tok}` : tok;
 }
 
-// ── БУЦААН ОЛГОЛТ (refund) — note-д ⟦RF|нийт_дүн|шалтгаан⟧. Нийт буцаасан дүнг хадгална (paid_mnt-аас хасагдсан). ──
+// ── БУЦААН ОЛГОЛТ (refund) — note-д ⟦RF|нийт_дүн|шалтгаан|төрөл⟧. Нийт буцаасан дүнг хадгална
+// (paid_mnt-аас хасагдсан). Төрөл='dep' бол БАРЬЦААНЫ буцаалт (C11: badge үүнийг уншиж «✓ Барьцаа
+// буцаасан» болно — ерөнхий буцаалтыг барьцаа гэж андуурахгүй). Шалтгаанд | тэмдэгт орохгүй (цэвэрлэдэг).
 function parseRefund(note) {
-  const m = String(note || '').match(/⟦RF\|(\d+)(?:\|([^⟧]*))?⟧/);
-  return m ? { amount: Number(m[1]) || 0, note: m[2] || '' } : null;
+  const m = String(note || '').match(/⟦RF\|(\d+)(?:\|([^⟧|]*))?(?:\|([a-z]+))?⟧/);
+  return m ? { amount: Number(m[1]) || 0, note: m[2] || '', kind: m[3] || '' } : null;
 }
-function encodeRefundNote(note, totalAmount, rf) {
+function encodeRefundNote(note, totalAmount, rf, kind) {
   const base = String(note || '').replace(/⟦RF\|[^⟧]*⟧/g, '').replace(/\s*·\s*$/, '').trim();
   if (!totalAmount) return base;
   const dn = String(rf || '').replace(/[⟦⟧|]/g, ' ').replace(/\s+/g, ' ').trim();
-  const tok = `⟦RF|${Math.round(totalAmount)}${dn ? '|' + dn : ''}⟧`;
+  const kd = /^[a-z]+$/.test(String(kind || '')) ? String(kind) : '';
+  const tok = `⟦RF|${Math.round(totalAmount)}${(dn || kd) ? '|' + dn : ''}${kd ? '|' + kd : ''}⟧`;
   return base ? base + ' ' + tok : tok;
 }
 
@@ -6547,7 +6550,7 @@ function boardOrderRow(e, k, todayStr, flat) {
   const _depAmt = Number(o.deposit_mnt) || 0;
   const _depRet = _depAmt > 0 ? depositReturnState(o) : null;
   const depWarn = _depAmt > 0
-    ? (_depRet ? `<span class="br-depchip dep-ret" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан'}">✓ Буцаасан</span>`
+    ? (_depRet ? `<span class="br-depchip dep-ret" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : _depRet.kind === 'refund' ? 'Буцаан олгох модалаар барьцаа буцаасан гэж тэмдэглэсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан'}">✓ Буцаасан</span>`
       : (!!o._app ? `<span class="br-depchip dep-hold"${canSeeOrderMoney() ? ` title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй"` : ' title="Барьцаатай захиалга"'}>🔒 Барьцаатай</span>` : ''))
     : '';
   // Илгээсэн үнийн санал — жагсаалтаас шууд харагдана (өмнө зөвхөн «✎ Засах» цонхонд байсан).
@@ -12923,12 +12926,15 @@ function depositReturnFor(orderId) { if (!orderId) return null; return _buildDep
 // (аппаас гадуур) буцаагдсан тул «буцаасан» гэж үзнэ — хуучин архивыг 🔒-өөр дүүжлэхгүй.
 const DEP_TRACK_START = '2026-08-01';
 function _depOrderDate(o) { return String((o && (o.stops_at || o.starts_at || o.created_at)) || '').slice(0, 10); }
-// Захиалгын барьцаа буцаагдсан эсэх → { amount, date, kind:'stmt'|'pre' } эсвэл null.
-// 'stmt' = хуулгаар баталгаажсан 5810; 'pre' = 2026-08-01-ээс өмнөх (өмнө буцаагдсан гэж үзсэн).
+// Захиалгын барьцаа буцаагдсан эсэх → { amount, date, kind:'stmt'|'refund'|'pre' } эсвэл null.
+// 'stmt' = хуулгаар баталгаажсан 5810; 'refund' = буцаан олгох модалаар барьцаа гэж тэмдэглэсэн
+// (⟦RF|…|dep⟧, C11); 'pre' = 2026-08-01-ээс өмнөх (өмнө буцаагдсан гэж үзсэн).
 function depositReturnState(o) {
   if (!o) return null;
   const fin = depositReturnFor(o.id);
   if (fin) return { ...fin, kind: 'stmt' };
+  const rf = parseRefund(o.note);   // C11: барьцаа гэж ТОДОРХОЙ тэмдэглэсэн буцаалт (эвристик биш)
+  if (rf && rf.kind === 'dep' && rf.amount > 0) return { amount: Math.min(rf.amount, Number(o.deposit_mnt) || rf.amount), date: '', kind: 'refund' };
   const d = _depOrderDate(o);
   if (d && d < DEP_TRACK_START) return { amount: Number(o.deposit_mnt) || 0, date: d, kind: 'pre' };
   return null;
@@ -18654,7 +18660,7 @@ function bqOrderCard(o) {
   // held зөвхөн апп/M-Event захиалгад — Booqable түүхийн барьцаа гадна (Booqable-д) эргэсэн, энд мөрдөхгүй
   const depBadge = _dep > 0
     ? (_depRet
-      ? `<span class="dep-badge dep-returned" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)'}${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
+      ? `<span class="dep-badge dep-returned" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : _depRet.kind === 'refund' ? 'Буцаан олгох модалаар барьцаа буцаасан гэж тэмдэглэсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)'}${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
       : (isApp ? `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>` : ''))
     : '';
   const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
@@ -19694,6 +19700,7 @@ function openRefundModal(oid) {
     <div class="rf-sum"><div>Төлсөн дүн: <b>${fmtMoney(paid)}</b></div>${prevRf ? `<div>Өмнө буцаасан: ${fmtMoney(prevRf.amount)}</div>` : ''}</div>
     <label class="dmg-amt-l">Буцаах дүн (₮)</label>
     <input id="rf-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
+    ${(Number(o.deposit_mnt) || 0) > 0 ? `<label class="no-lbl" style="display:flex;align-items:center;gap:8px;margin:9px 0 2px;cursor:pointer;"><input type="checkbox" id="rf-isdep" class="ui-raw" style="width:16px;height:16px;flex:0 0 auto;"><span>🔒 Энэ нь <b>барьцааны буцаалт</b> (${fmtMoney(Number(o.deposit_mnt))}) — картад «✓ Барьцаа буцаасан» болж, 🔒 тэмдэг арилна</span></label>` : ''}
     <label for="rf-pdf" class="rf-drop">📄 <b>Гарах гүйлгээний баримт (PDF)</b>
       <input id="rf-pdf" type="file" accept="application/pdf,.pdf" hidden>
       <div id="rf-pdf-status" class="rf-drop-status">Чимунээс үйлчлүүлэгч рүү шилжүүлсэн баримт хавсаргана (нотолгоо)</div>
@@ -19708,6 +19715,8 @@ function openRefundModal(oid) {
   document.body.appendChild(modal);
   const amtEl = modal.querySelector('#rf-amount');
   const statusEl = modal.querySelector('#rf-pdf-status');
+  // Барьцааны буцаалт чагтлахад дүнг барьцаагаар авто-бөглөнө (гараар засаж болно) — C11
+  modal.querySelector('#rf-isdep')?.addEventListener('change', (e) => { if (e.target.checked && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(Number(o.deposit_mnt) || 0); });
   modal.querySelector('#rf-pdf').addEventListener('change', async (e) => {
     const f = (e.target.files || [])[0]; e.target.value = ''; if (!f) return;
     modal._file = f;
@@ -19738,8 +19747,10 @@ function openRefundModal(oid) {
     } catch (_) {}
     const refundAmt = Math.min(basePaid, amount);   // төлсөнөөс илүү буцаахгүй
     const newPaid = Math.max(0, basePaid - refundAmt);
-    const prevRfTot = (parseRefund(baseNote) || {}).amount || 0;
-    const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote);
+    const prevRf = parseRefund(baseNote) || {};
+    const prevRfTot = prevRf.amount || 0;
+    const isDep = !!modal.querySelector('#rf-isdep')?.checked || prevRf.kind === 'dep';   // C11: барьцааны буцаалт гэж тэмдэглэсэн эсэх
+    const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '');
     // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
     try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: new Date().toISOString().slice(0, 10), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
     const prevPaid = o.paid_mnt, prevNote = o.note;

@@ -11399,6 +11399,7 @@ function orgCardHtml(n) {
     <div class="org-ava"><span class="org-init">${init}</span>${ava}</div>
     <div class="org-name">${escapeHtml(m.name || '?')}</div>
     <div class="org-role">${escapeHtml(m.role || '')}</div>
+    ${m.phone ? `<a class="org-phone" href="tel:${escapeHtml(String(m.phone).replace(/[^\d+]/g, ''))}" onclick="event.stopPropagation()">📞 ${escapeHtml(m.phone)}</a>` : ''}
   </div>`;
 }
 function orgNodeHtml(n) {

@@ -6256,6 +6256,8 @@ body.role-daily #add-project { display: none !important; }
 .org-ava-daily { font-size:24px; background:linear-gradient(135deg,#fde68a,#fbbf24); }
 .org-name { font-size:13px; font-weight:700; line-height:1.2; text-align:center; }
 .org-role { font-size:10.5px; color:var(--muted); line-height:1.2; text-align:center; }
+.org-phone { display:inline-block; margin-top:5px; font-size:11px; font-weight:600; color:var(--primary); text-decoration:none; letter-spacing:.2px; }
+.org-phone:hover { text-decoration:underline; }
 /* Салбарын өнгө (картын дээд зураас + аватар цагираг) */
 .org-card.org-root { border-top-color:#7c3aed; background:linear-gradient(135deg,var(--panel),rgba(124,58,237,.06)); }
 .org-card.org-b-m-event { border-top-color:#2563EB; } .org-card.org-b-m-event .org-ava { box-shadow:inset 0 0 0 3px #2563EB; }

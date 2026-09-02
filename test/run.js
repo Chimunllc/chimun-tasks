@@ -1869,6 +1869,27 @@ function finish() {
     need.forEach(f => ok(m && m[1].split(',').includes(f), `түүх: select-д «${f}» талбар байна`));
   }
 
+  // ── «Хуваарилсан ажил» badge — CEO биш хүнд ч зөв тоолно ──
+  {
+    const D = F.delegatedOpenCount;
+    const ME = '99112233';
+    const tasks = [
+      { id: '1', createdBy: ME, assignee: '88001122', status: 'open' },              // ✓ үүргэсэн
+      { id: '2', createdBy: ME, assignee: '88003344', status: 'in_progress' },       // ✓ үүргэсэн
+      { id: '3', createdBy: ME, assignee: ME,        status: 'open' },               // ✗ өөрийн ажил
+      { id: '4', createdBy: ME, assignee: '88001122', status: 'done' },              // ✗ дууссан
+      { id: '5', createdBy: ME, assignee: '88001122', status: 'deleted' },           // ✗ устгасан
+      { id: '6', createdBy: '77000000', assignee: '88001122', status: 'open' },      // ✗ өөр хүн үүргэсэн
+    ];
+    eq(D(tasks, ME), 2, 'badge: үүргэсэн идэвхтэй ажлыг тоолно (CEO биш хүнд ч)');
+    eq(D(tasks, '88001122'), 0, 'badge: гүйцэтгэгчид үүргэсэн ажил байхгүй');
+    eq(D(tasks, ''), 0, 'badge: нэвтрээгүй бол 0');
+    eq(D(null, ME), 0, 'badge: жагсаалт байхгүй бол 0');
+    // хамтран гүйцэтгэгчээр орсон бол «үүргэсэн» биш (жагсаалттай ижил дүрэм)
+    eq(D([{ id: '7', createdBy: ME, assignee: '88001122', co_assignees: ME, status: 'open' }], ME), 0,
+       'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
+  }
+
   // ── orderCanonStatus: badge ↔ жагсаалт нэг эх сурвалжаас ──
   {
     const cs = vm.runInContext('orderCanonStatus', sandbox);

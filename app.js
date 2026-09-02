@@ -1401,6 +1401,21 @@ function addDays(yyyymmdd, days) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+// Сүүлийн 7 хоног (өнөөдрөөр төгсөнө) — «Тойм»-ын багана графикт.
+// ⚠ Өмнө нь `new Date(); d.setDate(-i); d.toISOString().slice(0,10)` гэж бичигдсэн байв.
+//   toISOString нь UTC — Монгол (UTC+8) 00:00–08:00 цагт өмнөх өдрийг өгч, график бүхэлдээ
+//   нэг өдрөөр гулсаж «өнөөдөр» багана буруу байрлана. addDays/todayStr нь local-аар тоолно.
+const WEEKDAY_MN = ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'];
+function last7Days(today) {
+  const end = today || todayStr();
+  const out = [];
+  for (let i = 6; i >= 0; i--) {
+    const ds = addDays(end, -i);
+    out.push({ ds, day: WEEKDAY_MN[new Date(ds + 'T00:00:00').getDay()], isToday: ds === end });
+  }
+  return out;
+}
+
 /* Create a 5-stage act for an M Event order. Returns the parent task.
    Side-effect: pushes parent + 5 sub-tasks into state.tasks, persists via saveTask. */
 /* Финансын request-ийг task-уудтай адил render хийхэд адаптер хэлбэрт оруулах */
@@ -22848,16 +22863,11 @@ function renderDashboard() {
   const myToday = mineTasks.filter(t => t.due === today && t.status !== 'done').length;
   const myRate = mineTasks.length > 0 ? Math.round((myDone / mineTasks.length) * 100) : 0;
   // Сүүлийн 7 хоног — миний дуусгасан
-  const my7 = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const ds = d.toISOString().slice(0, 10);
-    my7.push({
-      day: ['Ня','Да','Мя','Лх','Пү','Ба','Бя'][d.getDay()],
-      count: mineTasks.filter(t => t.status === 'done' && (t.executed_at || t.completed_at || '').toString().startsWith(ds)).length,
-      isToday: ds === today,
-    });
-  }
+  const my7 = last7Days(today).map(d => ({
+    day: d.day,
+    count: mineTasks.filter(t => t.status === 'done' && (t.executed_at || t.completed_at || '').toString().startsWith(d.ds)).length,
+    isToday: d.isToday,
+  }));
   const myMax = Math.max(1, ...my7.map(x => x.count));
 
   // 1) Status breakdown
@@ -23355,18 +23365,11 @@ function renderPersonalKPI() {
   const completionRate = total > 0 ? Math.round((done / total) * 100) : 0;
 
   // Сүүлийн 7 хоногт хийсэн ажлуудаар bar chart
-  const last7 = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const dayDone = mine.filter(t => t.status === 'done' && t.executed_at && t.executed_at.startsWith(dateStr)).length;
-    last7.push({
-      day: ['Ня','Да','Мя','Лх','Пү','Ба','Бя'][d.getDay()],
-      count: dayDone,
-      isToday: dateStr === today,
-    });
-  }
+  const last7 = last7Days(today).map(d => ({
+    day: d.day,
+    count: mine.filter(t => t.status === 'done' && t.executed_at && t.executed_at.startsWith(d.ds)).length,
+    isToday: d.isToday,
+  }));
   const maxDay = Math.max(1, ...last7.map(d => d.count));
 
   return `

@@ -5416,7 +5416,8 @@ function reconOrdersList() {
 
 // Хуулгын матрицаас данс+хугацаа задлах (толгойн «Дансны дугаар»/«Гүйлгээний огноо» мөрөөс).
 function statementMeta(matrix) {
-  let acct = '', period = '';
+  let acct = '', period = '', opening = null;
+  const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : null; };
   for (const row of (matrix || []).slice(0, 14)) {
     const cells = (row || []).map(c => String(c == null ? '' : c).trim());
     // Данс: «Дансны дугаар» label-ын дараах эхний тоо агуулсан нүд (label→утга хооронд хоосон нүд байж болно)
@@ -5425,55 +5426,100 @@ function statementMeta(matrix) {
     // Хугацаа: «Гүйлгээний огноо» label-ын дараах эхний «YYYY-MM-DD - YYYY-MM-DD» нүд
     const k = cells.findIndex(c => /гүйлгээний огноо/i.test(c));
     if (k >= 0 && !period) { for (let i = k + 1; i < cells.length; i++) { if (/\d{4}-\d{2}-\d{2}\s*-\s*\d{4}-\d{2}-\d{2}/.test(cells[i])) { period = cells[i].replace(/\s+/g, ' '); break; } } }
+    // Эхний үлдэгдэл: label-ын дараах эхний тоон нүд
+    const b = cells.findIndex(c => /эхний\s*үлдэгдэл/i.test(c));
+    if (b >= 0 && opening == null) { for (let i = b + 1; i < cells.length; i++) { const n = num(cells[i]); if (n != null && cells[i]) { opening = n; break; } } }
   }
-  return { acct, period };
+  return { acct, period, opening };
 }
-// Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалтын дүн. Хэвлэх/PDF-д зориулсан цэвэр HTML.
+// Дансны дугаараар бүртгэлээс нэр/банк/салбар/зорилго олох (state.bankAccounts).
+function bankAcctInfo(acctNo) {
+  const d = String(acctNo || '').replace(/\D/g, '');
+  if (!d) return null;
+  return (state.bankAccounts || []).find(a => { const ad = String(a.account_no || '').replace(/\D/g, ''); return ad && (ad === d || ad.endsWith(d) || d.endsWith(ad)); }) || null;
+}
+// Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалт. Мэргэжлийн, хэвлэх/PDF-д зориулсан.
 function incomeReportHtml(res) {
   const stmts = (res && res._stmts) || [];
   const money = (n) => fmtMoney(Math.round(Number(n) || 0));
+  const acctName = (a) => { const s = stmts.find(x => x.acct === a); const i = s && s.info; return i ? `${i.name || ''}` : ''; };
   const totalIncome = stmts.reduce((s, x) => s + (Number(x.incomeTotal) || 0), 0);
-  const matchedSum = (res.matched || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
-  const mismatchSum = (res.mismatch || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
+  const totalExpense = stmts.reduce((s, x) => s + (Number(x.expenseTotal) || 0), 0);
+  const matchedSum = (res.matched || []).reduce((s, m) => s + (Number(m.credit) || 0), 0) + (res.mismatch || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
   const untrackedSum = (res.untracked || []).reduce((s, c) => s + (Number(c.credit) || 0), 0);
-  const mevMatched = (res.matched || []).filter(m => m.order.branch !== 'camp').reduce((s, m) => s + (Number(m.credit) || 0), 0);
-  const campMatched = (res.matched || []).filter(m => m.order.branch === 'camp').reduce((s, m) => s + (Number(m.credit) || 0), 0);
   const period = stmts.map(s => s.period).filter(Boolean)[0] || '';
-  const accRows = stmts.map(s => `<tr><td>${escapeHtml(s.acct || s.fileName || '—')}</td><td class="r">${s.incomeCount || 0}</td><td class="r">${money(s.incomeTotal)}</td></tr>`).join('');
+  const matchPct = totalIncome > 0 ? Math.round((matchedSum / totalIncome) * 100) : 0;
+  // Салбарын орлого = данс бүрийн бүртгэсэн салбараар (Орлого Nomaad→NOMAAD, Орлого Mevent→M-Event, бусад→Бусад)
+  const byBranch = {};
+  stmts.forEach(s => { const b = (s.info && s.info.branch) || 'Бусад'; byBranch[b] = (byBranch[b] || 0) + (Number(s.incomeTotal) || 0); });
+  const branchRows = Object.keys(byBranch).sort((a, b) => byBranch[b] - byBranch[a])
+    .map(b => `<tr><td>${escapeHtml(b)}</td><td class="r">${money(byBranch[b])}</td><td class="r">${totalIncome > 0 ? Math.round(byBranch[b] / totalIncome * 100) : 0}%</td></tr>`).join('');
+  // Дансны хөдөлгөөн
+  const accRows = stmts.map(s => {
+    const i = s.info || {};
+    const biz = (Number(s.rawIn) || 0) - (Number(s.incomeTotal) || 0);   // дотоод орсон (мэдээлэлд)
+    return `<tr>
+      <td><b>${escapeHtml(i.name || 'Тодорхойгүй данс')}</b><div class="mut">${escapeHtml(i.bank || '')}${i.branch ? ' · ' + escapeHtml(i.branch) : ''}</div></td>
+      <td class="mono">${escapeHtml(s.acct || '—')}</td>
+      <td class="r">${s.opening != null ? money(s.opening) : '—'}</td>
+      <td class="r pos">${money(s.rawIn)}${biz > 0 ? `<div class="mut">үүнээс бизнес ${money(s.incomeTotal)}</div>` : ''}</td>
+      <td class="r neg">${money(s.expenseTotal)}</td>
+      <td class="r">${s.closing != null ? money(s.closing) : '—'}</td>
+    </tr>`;
+  }).join('');
+  const totOpen = stmts.reduce((s, x) => s + (x.opening || 0), 0);
+  const totClose = stmts.reduce((s, x) => s + (x.closing || 0), 0);
+  const totRawIn = stmts.reduce((s, x) => s + (Number(x.rawIn) || 0), 0);
+  // Захиалгагүй орлого — данс тус бүрийн нэртэй
   const untrackedRows = (res.untracked || []).slice().sort((a, b) => b.credit - a.credit)
-    .map(c => `<tr><td>${escapeHtml(String(c.date || ''))}</td><td>${escapeHtml(c.name || '')}</td><td>${escapeHtml((c.memo || '').slice(0, 50))}</td><td class="r">${money(c.credit)}</td></tr>`).join('');
+    .map(c => `<tr><td>${escapeHtml(String(c.date || ''))}</td><td>${escapeHtml(c.name || '')}</td><td class="mut">${escapeHtml((c.memo || '').slice(0, 46))}</td><td class="mut">${escapeHtml(acctName(c._srcAcct) || '')}</td><td class="r">${money(c.credit)}</td></tr>`).join('');
   const today = todayStr ? todayStr() : new Date().toISOString().slice(0, 10);
+  const me = (state.user && state.user.name) || '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>Орлогын тайлан ${escapeHtml(period)}</title>
   <style>
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#111;margin:32px;font-size:13px;}
-    h1{font-size:20px;margin:0 0 2px;} .sub{color:#666;font-size:12px;margin-bottom:18px;}
-    table{border-collapse:collapse;width:100%;margin:10px 0 22px;} th,td{border:1px solid #ddd;padding:7px 9px;text-align:left;}
-    th{background:#f5f5f7;font-weight:600;} td.r,th.r{text-align:right;white-space:nowrap;}
-    .kpis{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0 8px;}
-    .kpi{border:1px solid #e2e2e6;border-radius:10px;padding:12px 16px;min-width:150px;}
-    .kpi .l{color:#666;font-size:11px;} .kpi .v{font-size:19px;font-weight:700;margin-top:3px;}
-    .foot{color:#888;font-size:11px;margin-top:26px;border-top:1px solid #eee;padding-top:10px;}
-    h2{font-size:15px;margin:20px 0 4px;}
+    *{box-sizing:border-box;} body{font-family:'Segoe UI',Arial,sans-serif;color:#1a1a2e;margin:0;padding:34px 38px;font-size:12.5px;}
+    .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1a1a2e;padding-bottom:12px;margin-bottom:18px;}
+    .hd .co{font-size:13px;font-weight:700;letter-spacing:.5px;} .hd .ttl{font-size:22px;font-weight:800;margin-top:2px;}
+    .hd .meta{text-align:right;color:#555;font-size:11.5px;line-height:1.7;}
+    h2{font-size:14px;margin:22px 0 6px;color:#1a1a2e;border-left:3px solid #5e6ad2;padding-left:8px;}
+    table{border-collapse:collapse;width:100%;margin:6px 0 8px;} th,td{border:1px solid #e3e3ea;padding:7px 9px;text-align:left;vertical-align:top;}
+    th{background:#f4f4f8;font-weight:700;font-size:11.5px;} td.r,th.r{text-align:right;white-space:nowrap;} .mono{font-variant-numeric:tabular-nums;color:#444;}
+    .mut{color:#888;font-size:11px;} .pos{color:#0a7d3c;} .neg{color:#b23b3b;} tfoot th{background:#eef0fb;}
+    .kpis{display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 4px;}
+    .kpi{flex:1 1 150px;border:1px solid #e2e2e6;border-radius:10px;padding:12px 15px;} .kpi.hl{background:#5e6ad2;color:#fff;border-color:#5e6ad2;}
+    .kpi .l{font-size:10.5px;opacity:.85;text-transform:uppercase;letter-spacing:.4px;} .kpi .v{font-size:19px;font-weight:800;margin-top:4px;}
+    .foot{color:#999;font-size:10.5px;margin-top:26px;border-top:1px solid #eee;padding-top:10px;line-height:1.6;}
+    @media print{body{padding:0;} .kpi.hl{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
   </style></head><body>
-    <h1>Орлогын тайлан</h1>
-    <div class="sub">ЧИМУН ХХК · Хугацаа: ${escapeHtml(period || '—')} · ${stmts.length} данс · Гаргасан: ${escapeHtml(today)}</div>
-    <div class="kpis">
-      <div class="kpi"><div class="l">Банкны нийт орлого</div><div class="v">${money(totalIncome)}</div></div>
-      <div class="kpi"><div class="l">Захиалгад тааруулсан</div><div class="v">${money(matchedSum + mismatchSum)}</div></div>
-      <div class="kpi"><div class="l">Захиалгагүй орлого</div><div class="v">${money(untrackedSum)}</div></div>
+    <div class="hd">
+      <div><div class="co">ЧИМУН ХХК</div><div class="ttl">Орлогын тайлан</div></div>
+      <div class="meta">Тайлант хугацаа: <b>${escapeHtml(period || '—')}</b><br>Данс: ${stmts.length}<br>Гаргасан: ${escapeHtml(today)}${me ? ' · ' + escapeHtml(me) : ''}</div>
     </div>
-    <h2>Дансаар</h2>
-    <table><thead><tr><th>Данс</th><th class="r">Гүйлгээ</th><th class="r">Орлого</th></tr></thead>
-      <tbody>${accRows || '<tr><td colspan="3">—</td></tr>'}<tr><th>Нийт</th><th class="r">${res.incomeCount || 0}</th><th class="r">${money(totalIncome)}</th></tr></tbody></table>
-    <h2>Салбараар (тааруулсан)</h2>
-    <table><thead><tr><th>Салбар</th><th class="r">Орлого</th></tr></thead><tbody>
-      <tr><td>M-Event (эвент түрээс)</td><td class="r">${money(mevMatched)}</td></tr>
-      <tr><td>NOMAAD (кемп)</td><td class="r">${money(campMatched)}</td></tr>
+    <div class="kpis">
+      <div class="kpi hl"><div class="l">Банкны нийт орлого</div><div class="v">${money(totalIncome)}</div></div>
+      <div class="kpi"><div class="l">Захиалга/орлогод тааруулсан</div><div class="v">${money(matchedSum)} · ${matchPct}%</div></div>
+      <div class="kpi"><div class="l">Захиалгагүй орлого</div><div class="v">${money(untrackedSum)}</div></div>
+      <div class="kpi"><div class="l">Нийт зарлага</div><div class="v">${money(totalExpense)}</div></div>
+    </div>
+    <h2>Дансны хөдөлгөөн</h2>
+    <table><thead><tr><th>Данс</th><th>Дугаар</th><th class="r">Эхний үлдэгдэл</th><th class="r">Нийт орсон (+)</th><th class="r">Нийт гарсан (−)</th><th class="r">Эцсийн үлдэгдэл</th></tr></thead>
+      <tbody>${accRows || '<tr><td colspan="6">—</td></tr>'}</tbody>
+      <tfoot><tr><th colspan="2">Нийт</th><th class="r">${money(totOpen)}</th><th class="r pos">${money(totRawIn)}</th><th class="r neg">${money(totalExpense)}</th><th class="r">${money(totClose)}</th></tr></tfoot>
+    </table>
+    <div class="mut">Нийт орсон/гарсан = данс хоорондын дотоод шилжүүлэг ОРОЛЦУУЛСАН (тиймээс үлдэгдэлтэй тохирно). «Банкны нийт орлого» KPI = дотоод шилжүүлэг ХАССАН бизнесийн орлого (${money(totalIncome)}).</div>
+    <h2>Орлого — салбараар</h2>
+    <table><thead><tr><th>Салбар</th><th class="r">Орлого</th><th class="r">Эзлэх %</th></tr></thead>
+      <tbody>${branchRows}<tr><th>Нийт</th><th class="r">${money(totalIncome)}</th><th class="r">100%</th></tr></tbody></table>
+    <h2>Тулгалтын дүн</h2>
+    <table><thead><tr><th>Ангилал</th><th class="r">Гүйлгээ</th><th class="r">Дүн</th></tr></thead><tbody>
+      <tr><td>✓ Захиалга/орлогод тааруулсан</td><td class="r">${(res.matched || []).length + (res.mismatch || []).length}</td><td class="r">${money(matchedSum)}</td></tr>
+      <tr><td>⚠ Дүн зөрүүтэй</td><td class="r">${(res.mismatch || []).length}</td><td class="r">—</td></tr>
+      <tr><td>💰 Захиалгагүй орлого</td><td class="r">${(res.untracked || []).length}</td><td class="r">${money(untrackedSum)}</td></tr>
     </tbody></table>
     <h2>Захиалгад холбогдоогүй орлого (${(res.untracked || []).length})</h2>
-    <table><thead><tr><th>Огноо</th><th>Нэр</th><th>Утга</th><th class="r">Дүн</th></tr></thead>
-      <tbody>${untrackedRows || '<tr><td colspan="4">— бүх орлого захиалгатай тохирсон —</td></tr>'}</tbody></table>
-    <div class="foot">Автоматаар тулгасан тайлан. «Захиалгагүй орлого» = банкинд орсон ч аппд захиалга/төлбөр бүртгэгдээгүй — нягтлан шалгана.</div>
+    <table><thead><tr><th>Огноо</th><th>Илгээгч</th><th>Утга</th><th>Данс</th><th class="r">Дүн</th></tr></thead>
+      <tbody>${untrackedRows || '<tr><td colspan="5">— бүх орлого захиалга/орлоготой тохирсон —</td></tr>'}</tbody></table>
+    <div class="foot">Автоматаар тулгасан тайлан (M-Event захиалга + NOMAAD орлого). «Захиалгагүй орлого» = банкинд орсон боловч аппд захиалга/төлбөр бүртгэгдээгүй гүйлгээ — нягтлан шалгаж холбоно. Дотоод дансны хоорондын шилжүүлэг орлогоос хасагдсан.</div>
   </body></html>`;
 }
 function openIncomeReport() {
@@ -5552,6 +5598,7 @@ function openReconcileModal() {
         if (st) st.textContent = 'NOMAAD орлого татаж байна…';
         try { if (typeof loadNomaadPayments === 'function') await loadNomaadPayments(); } catch (_) {}
       }
+      try { if (typeof loadBankAccounts === 'function') await loadBankAccounts(); } catch (_) {}   // дансны нэр/салбар тайланд
       state._reconStmts = state._reconStmts || [];
       let added = 0;
       for (const file of files) {
@@ -5563,10 +5610,16 @@ function openReconcileModal() {
           const meta = statementMeta(matrix);
           parsed.rows.forEach(r => { r._srcAcct = meta.acct; });
           const credits = parsed.rows.filter(r => r.credit > 0);
-          const incomeTotal = credits.filter(r => !_isInternalCredit(r)).reduce((s, r) => s + r.credit, 0);
+          const debits = parsed.rows.filter(r => r.debit > 0);
+          const incomeTotal = credits.filter(r => !_isInternalCredit(r)).reduce((s, r) => s + r.credit, 0);   // бизнесийн орлого (дотоод шилжүүлэг хассан)
+          const rawIn = credits.reduce((s, r) => s + r.credit, 0);
+          const rawOut = debits.reduce((s, r) => s + r.debit, 0);
+          const opening = meta.opening;
+          const closing = (opening != null) ? (opening + rawIn - rawOut) : null;
+          const info = bankAcctInfo(meta.acct);
           // Ижил данс+хугацаа дахин орвол ОРЛУУЛНА (давхар тооллого сэргийлнэ)
           state._reconStmts = state._reconStmts.filter(s => !(s.acct === meta.acct && s.period === meta.period && meta.acct));
-          state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, incomeCount: credits.length, incomeTotal });
+          state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, incomeCount: credits.length, incomeTotal, expenseCount: debits.length, expenseTotal: rawOut, rawIn, opening, closing, info });
           added++;
         } catch (err) { if (st) st.textContent = `⚠ ${file.name}: ${err.message}`; }
       }

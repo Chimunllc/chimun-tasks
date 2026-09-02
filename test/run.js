@@ -754,7 +754,7 @@ function finish() {
   // Төлөв жинхэнэ болсон эсэх
   ok(!LEG.delivering, 'төлөв: delivering legacy зураглалаас гарсан');
   ok(!LEG.returning,  'төлөв: returning legacy зураглалаас гарсан');
-  eq(BQS.delivering.label, 'Агуулахаас гарсан', 'нэр: delivering');
+  eq(BQS.delivering.label, 'Агуулахаас гаргасан', 'нэр: delivering');
   eq(BQS.returning.label,  'Хүргэлтээр авсан',  'нэр: returning');
   ok(STF.includes('delivering') && STF.includes('returning'), 'ажилтан: шинэ шатууд харагдана');
 }

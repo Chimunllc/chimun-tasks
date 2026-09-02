@@ -15065,7 +15065,7 @@ function prevStageInfo(o, meKey) {
 const STAGE_PREV_Q = {
   prepare:  'Бэлтгэсэн захиалга бүрэн үү? Дутуу, буруу бараа байсан уу?',
   clean:    'Цэвэрлэгээ чанартай хийгдсэн үү? Бохир, эвдэрсэн бараа байсан уу?',
-  dispatch: 'Агуулахаас гарсан ачаа бүрэн, эвдрэлгүй байсан уу?',
+  dispatch: 'Агуулахаас гаргасан ачаа бүрэн, эвдрэлгүй байсан уу?',
   handover: 'Хүлээлгэж өгсөн бараа бүрэн байсан уу?',
   deliver:  'Хүргэлт цаг хугацаандаа, бүрэн хийгдсэн үү?',
   retstart: 'Хүргэлтээс буцаан авсан бараа бүрэн бүтэн байсан уу?',
@@ -16203,7 +16203,7 @@ const BQ_STATUS = {
   reserved:    { label: 'Захиалсан',     dot: '#D97706', bg: '#FEF3C7', tx: '#92400E' },
   prepared:    { label: 'Цэвэрлэсэн',    dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
   ready:       { label: 'Бэлдсэн',       dot: '#0D9488', bg: '#CCFBF1', tx: '#0F766E' },
-  delivering:  { label: 'Агуулахаас гарсан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
+  delivering:  { label: 'Агуулахаас гаргасан', dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   rented:      { label: 'Түрээсэнд',     dot: '#2563EB', bg: '#DBEAFE', tx: '#1E40AF' },
   returning:   { label: 'Хүргэлтээр авсан', dot: '#DB2777', bg: '#FCE7F3', tx: '#9D174D' },
   returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
@@ -16222,7 +16222,7 @@ const BQ_STATUS_ORDER = ['draft', 'reserved', 'prepared', 'ready', 'delivering',
 const BQ_LEGACY_MAP = { preparation: 'prepared', cleaning: 'prepared', started: 'rented' };
 // Лайфциклийн дараагийн алхам. Ноорог→Захиалсан нь ТӨЛБӨРӨӨР шилжинэ.
 // ⚠ Урсгал нь хүргэлт/очиж авахаар САЛААЛНА — тиймээс статик map биш orderNextStep(o) ашиглана.
-// Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гарсан]→Гарсан→[Хүргэж өгсөн]→Дууссан
+// Хүргэлттэй:  Захиалсан→[Бэлтгэх]→Цэвэрлэгээ→[Цэвэрлсэн]→Гарахад бэлэн→[Агуулахаас гаргасан]→Гарсан→[Хүргэж өгсөн]→Дууссан
 // Очиж авах:   … Гарахад бэлэн→[Олгосон]→Дууссан
 // Хуучин захиалгад хүргэлт нь ТУСДАА бараа мөр болж орсон (⟦DLV⟧ token/хаяггүй).
 // Нэрээр таниж эдгээрийг ч хүргэлттэй гэж үзнэ (зөвхөн хүргэлт/тээвэр — суурилуулалт/оператор БИШ).
@@ -16242,7 +16242,7 @@ function isDeliveryOrder(o) {
 // ── ЗАХИАЛГЫН ДАМЖЛАГА (6 шат, 2026-09-02) ────────────────────────────────
 // Өмнө «Гаргах / Хүргэх» нэг товч байсан тул бараа буцаж ирсэн эсэх мөрдөгддөггүй,
 // эргэж ирээгүй бараа алдагдаж байв. Одоо гарах ба буцах тал тус тусдаа шаттай.
-//   Хүргэлттэй:  Бэлдсэн → Цэвэрлэсэн → Агуулахаас гарсан → Хүргэж өгсөн
+//   Хүргэлттэй:  Бэлдсэн → Цэвэрлэсэн → Агуулахаас гаргасан → Хүргэж өгсөн
 //                → Хүргэлтээр авсан → Агуулахад хүлээн авсан
 //   Очиж авах:   Бэлдсэн → Цэвэрлэсэн → Олгосон → Агуулахад хүлээн авсан
 // (4, 5-р шат зөвхөн хүргэлттэй захиалгад гарна.)
@@ -16255,7 +16255,7 @@ function orderNextStep(o) {
     case 'cleaning':    return { to: 'prepared', label: '🧹 Цэвэрлэсэн', cap: 'orders.clean' };
     case 'prepared':    return { to: 'ready',    label: '🧰 Бэлдсэн',    cap: 'orders.prepare' };
     case 'ready':       return dlv
-      ? { to: 'delivering', label: '📦 Агуулахаас гарсан',  cap: 'orders.dispatch' }
+      ? { to: 'delivering', label: '📦 Агуулахаас гаргасан',  cap: 'orders.dispatch' }
       : { to: 'rented',     label: '🤝 Үйлчлүүлэгчид өгсөн', cap: 'orders.dispatch' };
     case 'delivering':  return { to: 'rented',   label: '🚚 Хүргэж өгсөн', cap: 'orders.deliver' };
     case 'rented':
@@ -16273,7 +16273,7 @@ const BQ_NEXT = {
   reserved:    { to: 'cleaning', label: '🧰 Бэлтгэх' },
   preparation: { to: 'cleaning', label: '🧰 Бэлтгэх' },
   cleaning:    { to: 'ready',    label: '🧹 Цэвэрлсэн' },
-  ready:       { to: 'started',  label: '📦 Агуулахаас гарсан' },
+  ready:       { to: 'started',  label: '📦 Агуулахаас гаргасан' },
   started:     { to: 'stopped',  label: '🚚 Хүргэж өгөх' },
   stopped:     { to: 'archived', label: '🗄 Архивлах' },
 };
@@ -16397,9 +16397,9 @@ const STAGE_ACTION = {
   'preparation>cleaning': { key: 'clean',    label: 'Цэвэрлэсэн',            q: null },
   'cleaning>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
   'prepared>ready':       { key: 'prepare',  label: 'Бэлдсэн',               q: 'Цэвэрлэгээ чанартай хийгдсэн үү?' },
-  'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гарсан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'ready>delivering':     { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'ready>rented':         { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
-  'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гарсан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
+  'prepared>delivering':  { key: 'dispatch', label: 'Агуулахаас гаргасан',     q: 'Ачаа бүрэн, зөв ачигдсан уу?' },
   'prepared>rented':      { key: 'dispatch', label: 'Үйлчлүүлэгчид өгсөн',   q: 'Захиалга бүрэн, зөв өгсөн үү?' },
   'delivering>rented':    { key: 'deliver',  label: 'Хүргэж өгсөн',          q: 'Хүргэлт цаг хугацаандаа, бүрэн хүрсэн үү?' },
   'rented>returning':     { key: 'retstart', label: 'Хүргэлтээс авсан',      q: 'Хүргэлтээс авсан бараа бүрэн бүтэн байна уу?' },
@@ -16411,7 +16411,7 @@ const STAGE_ACTION = {
   'stopped>archived':     { key: 'archive',  label: 'Архивлах',              q: null },
 };
 function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { key: to, label: (BQ_STATUS[to] || {}).label || to, q: null }; }
-const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гарсан', deliver: '🚚 Хүргэж өгсөн', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
+const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
 // Шатны цаг форматлах — бүтэн цагтай бол огноо+цаг (орон нутгийн), эс бол зөвхөн огноо
@@ -16513,7 +16513,7 @@ function openStageAdvanceModal(oid, to) {
   const act = stageActionFor(String(o.status || ''), to);
   const needPhoto = act.key !== 'archive';
   // ── Үнэлгээний зорилтууд (rateTargets) — хяналтын цэг тус бүр өмнөх ажлыг үнэлнэ ──
-  // «Агуулахаас гарсан» (dispatch) = нярав ЦЭВЭРЛЭГЧ + БЭЛДЭГЧ ХОЁУЛАНГ үнэлнэ (2 ★).
+  // «Агуулахаас гаргасан» (dispatch) = нярав ЦЭВЭРЛЭГЧ + БЭЛДЭГЧ ХОЁУЛАНГ үнэлнэ (2 ★).
   // Бусад шат = өмнөх нэг шатыг үнэлнэ. Эхний шат (цэвэрлэх) = үнэлгээгүй.
   const _smNow = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
   let rateTargets = [];

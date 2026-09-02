@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -148,6 +148,20 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   // хямдралгүй — задаргаа тэнцэнэ (хүргэлт+барьцаа+НӨАТ)
   eq(F.quoteDiscountFromTotal(1000000, 100000, 0, 0, 50000, 25000, 1125000), 0, 'Quote хямдрал: хямдралгүй = 0');
   eq(F.quoteDiscountFromTotal(6600000, 150000, 0, 0, 0, 0, 0), 0, 'Quote хямдрал: total 0 бол 0 (ноорог)');
+  // NOMAAD цуглуулсан орлого — сарын харьяалал (C5): олон удаагийн төлбөр зөв сард, Σ = nomaadPaid
+  {
+    const log = [{ total: 500000, pay_date: '2026-08-15' }, { total: 300000, pay_date: '2026-09-02' }];
+    eq(F._nomaadMonthSum(log, 800000, '2026-09-02', '2026-08'), 500000, 'NOMAAD сар: 8-р сард төлбөр₁');
+    eq(F._nomaadMonthSum(log, 800000, '2026-09-02', '2026-09'), 300000, 'NOMAAD сар: 9-р сард төлбөр₂');
+    eq(F._nomaadMonthSum(log, 800000, '2026-09-02', '2026-08') + F._nomaadMonthSum(log, 800000, '2026-09-02', '2026-09'), 800000, 'NOMAAD сар: Σ = nomaadPaid');
+    // лог хоосон — running total-ыг income_date сард
+    eq(F._nomaadMonthSum([], 800000, '2026-09-02', '2026-09'), 800000, 'NOMAAD сар: логгүй → income_date сард');
+    eq(F._nomaadMonthSum([], 800000, '2026-09-02', '2026-08'), 0, 'NOMAAD сар: логгүй, өөр сар = 0');
+    // лог дутуу (running total их) — зөрүү income_date сард
+    const partial = [{ total: 500000, pay_date: '2026-08-15' }];
+    eq(F._nomaadMonthSum(partial, 800000, '2026-09-02', '2026-08'), 500000, 'NOMAAD сар: лог дутуу, 8-р сар = логоор');
+    eq(F._nomaadMonthSum(partial, 800000, '2026-09-02', '2026-09'), 300000, 'NOMAAD сар: лог дутуу, зөрүү 9-р сард');
+  }
 }
 
 // 4) Эхлэх/дуусах цаг токен

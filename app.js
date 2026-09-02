@@ -13215,6 +13215,24 @@ function nomaadPaid(o) {
   const logSum = log.reduce((s, p) => s + (Number(p.total) || 0), 0);
   return Math.max(field, logSum);
 }
+// NOMAAD цуглуулсан орлогын САРЫН харьяалал — нэг эх сурвалж (C5). Төлбөрийн логийн pay_date-аар
+// хуваарилна; running total (income_amount) нь логоос ИЛҮҮ бол зөрүү (бүртгэгдээгүй төлбөр)-ийг
+// income_date сард нэмнэ. Ингэснээр Σ(бүх сар) = nomaadPaid(o) — задаргаа нийт дүнтэй тэнцэнэ.
+// Өмнө CEO самбар pay_date-аар, Тайлан/P&L бүх дүнг income_date сард оноож, олон удаагийн төлбөр
+// буруу сар руу шидэгддэг байв.
+function _nomaadMonthSum(log, incomeAmount, incomeDate, ym) {
+  log = Array.isArray(log) ? log : [];
+  const logSum = log.reduce((s, p) => s + (Number(p && p.total) || 0), 0);
+  let sum = log.reduce((s, p) => s + (String((p && p.pay_date) || '').slice(0, 7) === ym ? (Number(p.total) || 0) : 0), 0);
+  const extra = Math.max(0, (Number(incomeAmount) || 0) - logSum);
+  if (extra > 0 && String(incomeDate || '').slice(0, 7) === ym) sum += extra;
+  return sum;
+}
+function nomaadPaidInMonth(o, ym) {
+  if (!o || !ym) return 0;
+  const log = (state.nomaadPayments && state.nomaadPayments[o.quote_no]) || [];
+  return _nomaadMonthSum(log, o.income_amount, o.income_date, ym);
+}
 function nomaadStage(o) {
   const su = String(o.status || '').toUpperCase();
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
@@ -20079,8 +20097,7 @@ function ceoNowStrip() {
     bqMonth = m ? (Number(m.net_mnt) || 0) : 0;
   }
   let noMonth = 0;
-  const np = state.nomaadPayments || {};
-  Object.keys(np).forEach(q => (np[q] || []).forEach(p => { if (String(p.pay_date || '').slice(0, 7) === ym) noMonth += Number(p.total) || 0; }));
+  (state.nomaadOrders || []).forEach(o => { if (!nomaadIsCancelled(o)) noMonth += nomaadPaidInMonth(o, ym); });   // C5: нэг эх сурвалж, цуцалсан хасна
   const monthTotal = bqMonth + noMonth;
 
   // Нийт авлага
@@ -21053,7 +21070,7 @@ function finBranchPnl(month, basis) {
   let noInc = 0;
   (state.nomaadOrders || []).forEach(o => {
     if (nomaadIsCancelled(o)) return;
-    if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) noInc += nomaadPaid(o); }
+    if (basis === 'cash') { noInc += nomaadPaidInMonth(o, month); }   // C5: төлбөрийн огноогоор, олон удаагийн төлбөр зөв сард
     else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) noInc += nomaadEffTotal(o);
   });
   const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0;
@@ -21254,7 +21271,7 @@ function renderReports() {
   let noInc = 0, noN = 0;
   (state.nomaadOrders || []).forEach(o => {
     if (nomaadIsCancelled(o)) return;
-    if (basis === 'cash') { if (String(o.income_date || '').slice(0, 7) === month) { noInc += nomaadPaid(o); noN++; } }
+    if (basis === 'cash') { const _m = nomaadPaidInMonth(o, month); if (_m > 0) { noInc += _m; noN++; } }   // C5: төлбөрийн огноогоор
     else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { noInc += nomaadEffTotal(o); noN++; }
   });
   let income = (inclEv ? evInc : 0) + (inclNo ? noInc : 0);

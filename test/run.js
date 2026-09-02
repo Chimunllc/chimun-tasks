@@ -1080,22 +1080,32 @@ function finish() {
   ok(PO({ sku: 'f83fc516-1a50-4dd3-9ca0-eb56319e45aa', name: 'огт өөр нэр' }).photo === 'p18.jpg',
      'тайлах: нэр зөрсөн ч каталогийн зураг олдоно');
 
-  const bad = UM({ items: [
+  // Анхааруулга ЗӨВХӨН гүйцэтгэгдэж болох захиалгад — хаагдсан түүхэнд утгагүй
+  const _mixed = [{ sku: 'CH_235', name: 'Байхгүй бараа' }];
+  eq(UM({ status: 'draft', items: _mixed }).length, 1, 'чимээ: ноорогт анхааруулна');
+  eq(UM({ status: 'rented', items: _mixed }).length, 1, 'чимээ: түрээсэнд байгаад анхааруулна');
+  eq(UM({ status: 'reserved', items: _mixed }).length, 1, 'чимээ: захиалсанд анхааруулна');
+  eq(UM({ status: 'done', items: _mixed }).length, 0, 'чимээ: ДУУССАН захиалгад анхааруулахгүй');
+  eq(UM({ status: 'archived', items: _mixed }).length, 0, 'чимээ: архивлаж дуусгасанд анхааруулахгүй');
+  eq(UM({ status: 'canceled', items: _mixed }).length, 0, 'чимээ: цуцалсанд анхааруулахгүй');
+  eq(UM({ status: 'returned', items: _mixed }).length, 0, 'чимээ: буцаагдаж дууссанд анхааруулахгүй');
+
+  const bad = UM({ status: 'draft', items: [
     { sku: 'M-018', name: 'Асар 6м*12м' },
     { sku: 'CH_235', name: 'Эвхэгддэг модон ширээ' },
     { sku: 'CH_200', name: '120см ширээ бүтээлэг' },
   ] });
   eq(bad.length, 2, 'хамгаалалт: каталогт байхгүй 2 барааг барина');
   eq(bad[0].name, 'Эвхэгддэг модон ширээ', 'хамгаалалт: аль нь болохыг заана');
-  eq(UM({ items: [] }).length, 0, 'хамгаалалт: хоосон захиалгад анхааруулга байхгүй');
+  eq(UM({ status: 'draft', items: [] }).length, 0, 'хамгаалалт: хоосон захиалгад анхааруулга байхгүй');
 
   // ⚠ Каталог ачаалагдаагүй үед ХУДАЛ анхааруулга гарч болохгүй (2026-09-02 регресс)
   const _keep = st.products;
   st.products = [];
-  eq(UM({ items: [{ sku: 'M-018', name: 'Асар 6м*12м' }] }).length, 0,
+  eq(UM({ status: 'draft', items: [{ sku: 'M-018', name: 'Асар 6м*12м' }] }).length, 0,
      'хамгаалалт: каталог ачаалагдаагүй бол анхааруулга ГАРАХГҮЙ');
   st.products = null;
-  eq(UM({ items: [{ sku: 'M-018', name: 'Асар 6м*12м' }] }).length, 0,
+  eq(UM({ status: 'draft', items: [{ sku: 'M-018', name: 'Асар 6м*12м' }] }).length, 0,
      'хамгаалалт: products=null үед ч унахгүй');
   st.products = _keep;
   eq(UM({}).length, 0, 'хамгаалалт: items байхгүй бол унахгүй');

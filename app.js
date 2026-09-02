@@ -15047,20 +15047,33 @@ function prevStageInfo(o, meKey) {
 }
 // Өмнөх шат тус бүрд ТОДОРХОЙ асуулт — «бүрэн үү, эвдрэлгүй юу» гэх мэт хариулж
 // болохуйц зүйл асууна. Ерөнхий асуулт бүгд 5★ авахад хүргэдэг.
+// Өмнөх шат бүрийн ТОДОРХОЙ асуулт — тухайн шатнаас гарсан бараа/ажлын чанарыг асууна (нэргүй суурь).
 const STAGE_PREV_Q = {
-  prepare:  n => `«${n}»-ийн бэлтгэсэн захиалга бүрэн үү? Дутуу, буруу бараа байсан уу?`,
-  clean:    n => `«${n}»-ийн цэвэрлэгээ чанартай хийгдсэн үү? Бохир, эвдэрсэн бараа байсан уу?`,
-  dispatch: n => `«${n}»-ийн ачсан ачаа бүрэн, эвдрэлгүй байсан уу?`,
-  handover: n => `«${n}»-ийн хүлээлгэж өгсөн бараа бүрэн байсан уу?`,
-  deliver:  n => `«${n}» хүргэлтийг цаг хугацаандаа, бүрэн хийсэн үү?`,
-  retstart: n => `«${n}»-ийн буцаан авсан бараа бүрэн бүтэн байсан уу?`,
-  received: n => `«${n}»-ийн хүлээн авсан бараа бүрэн, эвдрэлгүй байсан уу?`,
+  prepare:  'Бэлтгэсэн захиалга бүрэн үү? Дутуу, буруу бараа байсан уу?',
+  clean:    'Цэвэрлэгээ чанартай хийгдсэн үү? Бохир, эвдэрсэн бараа байсан уу?',
+  dispatch: 'Агуулахаас гарсан ачаа бүрэн, эвдрэлгүй байсан уу?',
+  handover: 'Хүлээлгэж өгсөн бараа бүрэн байсан уу?',
+  deliver:  'Хүргэлт цаг хугацаандаа, бүрэн хийгдсэн үү?',
+  retstart: 'Хүргэлтээс буцаан авсан бараа бүрэн бүтэн байсан уу?',
+  received: 'Хүлээн авсан бараа бүрэн, эвдрэлгүй байсан уу?',
 };
 function prevStageQuestion(prev) {
   if (!prev) return null;
+  const base = STAGE_PREV_Q[prev.key] || 'Өмнөх шатны ажлыг үнэлнэ үү';
+  if (String(prev.by) === String(state.me)) return base;   // өөрийнхөө өмнөх ажлыг — нэргүй
   const n = (typeof memberName === 'function' ? memberName(prev.by) : '') || prev.by;
-  const f = STAGE_PREV_Q[prev.key];
-  return f ? f(n) : `«${n}»-ийн хүлээлгэж өгсөн ажлыг үнэлнэ үү`;
+  return n ? `«${n}»: ${base}` : base;
+}
+// Өмнөх шат — хэн хийснээс үл хамааран хамгийн сүүлд гүйцэтгэсэн шат (асуулт нь ҮҮГЭЭР тодорхойлогдоно).
+function prevStageInfoAny(o) {
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  let best = null, bestKey = null;
+  for (const k of Object.keys(sm)) {
+    const e = sm[k];
+    if (!e || typeof e !== 'object' || Array.isArray(e) || !e.by) continue;
+    if (!best || String(e.at || '') > String(best.at || '')) { best = e; bestKey = k; }
+  }
+  return best ? { by: best.by, key: bestKey } : null;
 }
 function prevStageOwner(o, meKey) {
   const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
@@ -16474,10 +16487,11 @@ function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
   const needPhoto = act.key !== 'archive';
-  const _prev = prevStageInfo(o, state.me);        // хэн, АЛЬ шатыг надад хүлээлгэж өгсөн бэ
-  const prevOwner = _prev ? _prev.by : null;
-  // Өмнөх хүн байвал ★ = ТҮҮНИЙ хүлээлгэж өгсөн ажлыг үнэлнэ (Хүлээлцэх чанар KPI, бодит/шударга);
-  // эс бол (эхний шат) өөрийн гүйцэтгэлийг (act.q). Асуулт нь өмнөх ШАТАД тохирсон байна.
+  // Асуулт нь ҮРГЭЛЖ өмнөх шатнаас ГАРСАН барааг асууна (хэн хийснээс үл хамааран) — жолооч «Хүргэж өгсөн»
+  // дарахад «Агуулахаас гарсан ачаа бүрэн бүтэн байсан уу?» гэж асуух ёстой, өөрийнх нь ажлыг БИШ.
+  const _prev = prevStageInfoAny(o);
+  // Хүлээлцэх чанар KPI үнэлгээ зөвхөн ӨӨР хүнд очно (өөрийгөө үнэлэхгүй).
+  const prevOwner = (_prev && String(_prev.by) !== String(state.me)) ? _prev.by : null;
   const q = _prev ? prevStageQuestion(_prev) : act.q;
   // ── Агуулахад хүлээн авах шат — бараа бүрэн буцаж ирсэн эсэхийг ТООГООР баталгаажуулна.
   // Анхдагчаар бүгд бүрэн гэж тооцно; ажилтан зөвхөн ЗӨРҮҮТЭЙГ нь засна (50 мөрийг

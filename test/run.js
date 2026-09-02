@@ -674,9 +674,14 @@ function finish() {
   eq(PSI({ stage_meta: {} }, 'C'), null, 'өмнөх шат: байхгүй бол null');
   eq(PSI({ stage_meta: { quotes: [{ to: 'x' }] } }, 'C'), null, 'өмнөх шат: quotes массив шат биш');
 
+  // Өмнөх шат — хэн хийснээс үл хамааран сүүлийнх (асуулт нь ҮҮГЭЭР тодорхойлогдоно)
+  const PSA = vm.runInContext('prevStageInfoAny', sandbox);
+  const pa = PSA(o);
+  eq(pa && pa.key, 'clean', 'prevStageInfoAny: сүүлийн шат (хэн ч бай)');
+
   // Асуулт нь шатдаа тохирсон, ерөнхий биш
   const qClean = PSQ({ by: 'B', key: 'clean' });
-  ok(qClean.indexOf('цэвэрлэгээ') > -1, 'асуулт: цэвэрлэгээний тухай тодорхой');
+  ok(/цэвэрлэгээ/i.test(qClean), 'асуулт: цэвэрлэгээний тухай тодорхой');
   ok(qClean.indexOf('хүлээлгэж өгсөн ажлыг үнэлнэ') === -1, 'асуулт: ерөнхий томьёолол ашиглахаа болив');
   const qPrep = PSQ({ by: 'A', key: 'prepare' });
   ok(qPrep.indexOf('бүрэн') > -1, 'асуулт: бэлтгэл бүрэн эсэхийг асууна');

@@ -3601,6 +3601,16 @@ function renderSidebar() {
   // НӨАТ тайлан — CEO / бүх санхүү хардаг хүн (эсвэл эрх олгогдсон).
   const vatNav = document.getElementById('nav-vat');
   if (vatNav) vatNav.style.display = canSeeVat() ? '' : 'none';
+  // COO цалин — зөвхөн CEO + тохируулсан COO харна.
+  const cooNav = document.getElementById('nav-coosalary');
+  if (cooNav) {
+    if (state.cooShare === undefined) { state.cooShare = null; if (typeof loadAppConfig === 'function') loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
+    const _m = (typeof findMember === 'function') ? findMember(state.me) : null;
+    const _ceo = ((_m && _m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(_m));
+    const _cooKey = (state.cooShare && state.cooShare.key) || '';
+    const _isCoo = _cooKey && state.me && String(state.me) === String(_cooKey);
+    cooNav.style.display = (_ceo || _isCoo) ? '' : 'none';
+  }
   // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
   const docNav = document.getElementById('nav-documents');
   if (docNav) {
@@ -3613,7 +3623,7 @@ function renderSidebar() {
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-products']);
-  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);

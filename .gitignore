@@ -57,3 +57,6 @@ postgres-migration/
 nomaad-backup/
 *-backup-*.json
 Нягтлан-цалин-build-vs-buy.md
+
+# Бизнесийн дата snapshot (tools/biz-snapshot.js --json) — орлого/харилцагчийн тоо, public репод ОРОХГҮЙ.
+biz-snapshot.json

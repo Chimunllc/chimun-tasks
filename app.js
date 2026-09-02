@@ -6448,7 +6448,7 @@ function attachOrdersHandlers() {
     e.stopPropagation(); e.preventDefault();
     if (b.dataset.busy === '1') return;                                  // давхар дарахаас хамгаалах
     b.dataset.busy = '1'; setTimeout(() => { b.dataset.busy = ''; }, 1000);
-    if (!can(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
+    if (!canStage(b.dataset.cap || 'orders.advance')) { showToast('Танд энэ шатны эрх олгогдоогүй', 'warn', 3000); return; }
     const to = b.dataset.to;
     const oid = b.dataset.bqAdvance;
     const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
@@ -8984,6 +8984,11 @@ function can(key) {
   const v = capValue(key);
   return v === undefined ? true : v;
 }
+// Дамжлагын шат гүйцэтгэх эрх. Агуулахын хяналтын шат (orders.dispatch — Агуулахаас гаргах /
+// Агуулахад хүлээн авах) нь ЗӨВХӨН тодорхой олгосон хүнд (нярав/агуулах/менежер/CEO) — тоо ширхэг,
+// чанарын хяналтын цэг тул хэн ч хийхгүй. Бусад шат (цэвэрлэх/бэлдэх/хүргэх) default-allow.
+const STRICT_STAGE_CAPS = new Set(['orders.dispatch']);
+function canStage(cap) { return STRICT_STAGE_CAPS.has(cap) ? (capValue(cap) === true) : can(cap); }
 // ── Доорхийн эрх удирдах делегаци (org tree доорхи хүмүүсийн эрхийг удирдах) ──
 // CEO бүгдийг; 'access.delegate' эрхтэй захирал (COO г.м.) ЗӨВХӨН өөрийн org-tree доорхыг.
 function canDelegatePerms() { return state.isCEO || capValue('access.delegate') === true; }
@@ -17802,7 +17807,7 @@ function bqOrderCard(o) {
   const appCanPay = st !== 'canceled' && st !== 'deleted' && appBal > 0 && can('orders.pay');   // дараа төлбөр ирж болно → Дууссан/Архивласан-д ч төлбөр бүртгэнэ
   // Дараагийн шатны товч — шат бүрт өөр эрх (нярав/цэвэрлэгч/хүргэгч). Эрхгүй бол ИДЭВХГҮЙ харагдана (Алтансүх).
   const advCap = next ? (next.cap || 'orders.advance') : null;
-  const advOk = next ? can(advCap) : false;
+  const advOk = next ? canStage(advCap) : false;
   const advBtn = (next && st !== 'draft')
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';

@@ -6242,7 +6242,9 @@ function incomeReportHtml(res) {
   // Өмнөх сартай харьцуулалт — БҮРТГЭСЭН орлого (апп: M-Event төлбөр + NOMAAD орлого)
   const ym = (period.match(/(\d{4}-\d{2})/) || [])[1] || '';
   const prevYm = (() => { if (!ym) return ''; let [y, m] = ym.split('-').map(Number); m--; if (m < 1) { m = 12; y--; } return y + '-' + String(m).padStart(2, '0'); })();
-  const recInc = (yy) => { if (!yy) return 0; let s = 0; (state.appOrders || []).forEach(o => { if (String(o.paid_date || '').slice(0, 7) === yy) s += Number(o.paid_mnt) || 0; }); const npm = state.nomaadPayments || {}; Object.keys(npm).forEach(q => (npm[q] || []).forEach(p => { if (String(p.pay_date || '').slice(0, 7) === yy) s += Number(p.total) || 0; })); return s; };
+  // C7: «Бүртгэсэн орлого» = ОРЛОГО (барьцаагүй) — санхүүгийн orderRevenue-тэй нийцтэй. Өмнө түүхий
+  // paid_mnt (барьцаа багтсан) тоолж, орлогын тайлантай зөрж, барьцааг давхар тоолдог байв.
+  const recInc = (yy) => { if (!yy) return 0; let s = 0; (state.appOrders || []).forEach(o => { if (String(o.paid_date || '').slice(0, 7) === yy) s += orderRevenue(o, 'cash'); }); const npm = state.nomaadPayments || {}; Object.keys(npm).forEach(q => (npm[q] || []).forEach(p => { if (String(p.pay_date || '').slice(0, 7) === yy) s += Number(p.total) || 0; })); return s; };
   const thisRec = recInc(ym), prevRec = recInc(prevYm);
   const growth = prevRec > 0 ? Math.round((thisRec - prevRec) / prevRec * 100) : null;
   // Салбарын орлого = данс бүрийн бүртгэсэн салбараар (Орлого Nomaad→NOMAAD, Орлого Mevent→M-Event, бусад→Бусад)

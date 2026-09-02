@@ -1348,5 +1348,29 @@ function finish() {
     ok(F.cleanAppNote('Тэмдэглэл ' + F.encodeSetup(true)).trim() === 'Тэмдэглэл', 'setup: token тэмдэглэлээс арилна');
   }
 
+  // ── Эрхийн чагт = дамжлагын дараалал + товчны нэртэй ижил бичилт ──
+  {
+    const G2 = n => vm.runInContext(n, sandbox);
+    const canon = G2('ORDER_STAGE_CAPS');
+    ok(JSON.stringify(F.ordersStageCapOrder()) === JSON.stringify(canon),
+       'эрх: захиалгын чагтууд дамжлагын дараалалтай');
+    const lbl = {};
+    G2('PERM_MENUS').find(m => m.key === 'orders').actions.forEach(a => { lbl[a.key] = a.label; });
+    // Товчны нэр (orderNextStep) чагтны нэрэнд агуулагдах ёстой
+    const btn = (o, st) => F.orderNextStep(Object.assign({}, o, { status: st }));
+    const setO = { note: '⟦DLV|city|0|150000⟧ ⟦SET|1⟧', items: [] };
+    const pairs = [
+      ['reserved', 'orders.clean'], ['prepared', 'orders.prepare'],
+      ['ready', 'orders.dispatch'], ['delivering', 'orders.deliver'],
+      ['installing', 'orders.setup'], ['rented', 'orders.setup'],
+      ['returned', 'orders.advance'],
+    ];
+    for (const [st, cap] of pairs) {
+      const b = btn(setO, st);
+      ok(b.cap === cap, `эрх: ${st} шат → ${cap}`);
+      ok(String(lbl[cap] || '').includes(b.label), `эрх: «${b.label}» товч чагтны нэрэнд ижил бичилттэй`);
+    }
+  }
+
   finish();
 })();

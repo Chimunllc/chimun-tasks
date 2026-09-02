@@ -8903,16 +8903,19 @@ const PERM_MENUS = [
   { key: 'catering',    label: 'Катеринг',        actions: [
       { key: 'catering.edit', label: 'Цэс / ажил засах' } ] },
   { key: 'orders',      label: 'Захиалга',        actions: [
+      // ⚠ ДАРААЛАЛ = дамжлагын дараалал, НЭР = захиалга дээрх товчны нэртэй ЯГ ИЖИЛ.
+      // Эрх олгож буй хүн «энэ чагт аль товчийг нээж байна вэ» гэдгийг эргэлзэлгүй мэдэх ёстой.
+      // Товчны нэрийг өөрчилвөл ЭНДХИЙГ ч хамт өөрчил (ordersStageCapOrder тест хамгаална).
       { key: 'orders.pay',      label: 'Төлбөр бүртгэх' },
-      { key: 'orders.prepare',  label: 'Бэлтгэх (нярав)' },
-      { key: 'orders.clean',    label: 'Цэвэрлэх (цэвэрлэгч)' },
-      { key: 'orders.dispatch', label: 'Гаргах / Олгох (нярав)' },
-      { key: 'orders.deliver',  label: 'Хүргэж өгөх (хүргэгч)' },
-      { key: 'orders.setup',    label: 'Суурилуулах / буулгах (угсрагч)' },
-      { key: 'orders.advance',  label: 'Архивлах / бусад шилжүүлэх' },
-      { key: 'orders.skip',     label: 'Шат алгасах (шалтгаантай)' },
-      { key: 'orders.revert',   label: 'Шат буцаах' },
-      { key: 'orders.cancel',   label: 'Цуцлах / устгах' } ] },
+      { key: 'orders.clean',    label: '🧹 Цэвэрлэсэн' },
+      { key: 'orders.prepare',  label: '🧰 Бэлдсэн' },
+      { key: 'orders.dispatch', label: '📦 Агуулахаас гаргасан / 📥 Агуулахад авсан' },
+      { key: 'orders.deliver',  label: '🚚 Хүргэж өгсөн / ↩️ Хүргэлтээс авсан' },
+      { key: 'orders.setup',    label: '🔧 Суурилуулсан / 🧱 Буулгасан' },
+      { key: 'orders.advance',  label: '🗄 Архивлах' },
+      { key: 'orders.skip',     label: '⏭ Шат алгасах (шалтгаантай)' },
+      { key: 'orders.revert',   label: '↩ Шат буцаах' },
+      { key: 'orders.cancel',   label: '✕ Цуцлах / устгах' } ] },
   { key: 'products',    label: 'Агуулах',         actions: [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
@@ -8923,6 +8926,12 @@ const PERM_MENUS = [
   { key: 'documents',   label: 'Баримт бичиг',         actions: [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
 ];
+// Дамжлагын эрх — урсгалын дараалал (PERM_MENUS чагтууд ҮҮНИЙ дагуу байрлана).
+const ORDER_STAGE_CAPS = ['orders.clean', 'orders.prepare', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance'];
+function ordersStageCapOrder() {
+  const menu = PERM_MENUS.find(m => m.key === 'orders');
+  return (menu ? menu.actions : []).map(a => a.key).filter(k => ORDER_STAGE_CAPS.includes(k));
+}
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 // Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
@@ -11701,9 +11710,11 @@ function capSummary(m) {
   PERM_MENUS.filter(mm => !mm.core).forEach(mm => { if (effectiveCapForMember(m, mm.key, 'view')) out.views.push(mm.label); });
   const A = k => effectiveCapForMember(m, k, 'action');
   if (A('orders.pay')) out.actions.push('Төлбөр бүртгэх');
-  if (A('orders.prepare') || A('orders.dispatch')) out.actions.push('Агуулах бэлдэх/гаргах');
   if (A('orders.clean')) out.actions.push('Цэвэрлэх');
+  if (A('orders.prepare')) out.actions.push('Бэлдэх');
+  if (A('orders.dispatch')) out.actions.push('Гаргах/хүлээн авах');
   if (A('orders.deliver')) out.actions.push('Хүргэх');
+  if (A('orders.setup')) out.actions.push('Суурилуулах/буулгах');
   if (A('tasks.create')) out.actions.push('Ажил үүсгэх/хуваарилах');
   if (A('products.edit')) out.actions.push('Бараа засах');
   if (A('salary.pay')) out.actions.push('Цалин олгох');

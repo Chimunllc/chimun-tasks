@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -162,6 +162,13 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
     eq(F._nomaadMonthSum(partial, 800000, '2026-09-02', '2026-08'), 500000, 'NOMAAD сар: лог дутуу, 8-р сар = логоор');
     eq(F._nomaadMonthSum(partial, 800000, '2026-09-02', '2026-09'), 300000, 'NOMAAD сар: лог дутуу, зөрүү 9-р сард');
   }
+  // Захиалгын хямдрал — авто-хоног ба гар хямдралын их нь (C3, сувгаар парити)
+  eq(F.orderDiscountAmount(1000000, 3, 'pct', 0), 200000, 'C3: 3 хоног авто −20% (гар 0)');
+  eq(F.orderDiscountAmount(1000000, 7, 'pct', 0), 400000, 'C3: 7 хоног авто −40%');
+  eq(F.orderDiscountAmount(1000000, 1, 'pct', 0), 0, 'C3: 1 хоног авто-хямдралгүй');
+  eq(F.orderDiscountAmount(1000000, 3, 'pct', 30), 300000, 'C3: гар 30% > авто 20% → гар');
+  eq(F.orderDiscountAmount(1000000, 3, 'pct', 10), 200000, 'C3: гар 10% < авто 20% → авто (доод хамгаалалт)');
+  eq(F.orderDiscountAmount(1000000, 3, 'amount', 500000), 500000, 'C3: гар дүн 500k > авто 200k → гар');
 }
 
 // 4) Эхлэх/дуусах цаг токен

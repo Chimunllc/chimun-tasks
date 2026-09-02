@@ -1549,5 +1549,26 @@ function finish() {
     ok(!g.groups.some(x => x.name === 'Тоологдохгүй'), 'бүлэглэл: ноорог/цуцалсныг тоохгүй');
   }
 
+  // ── Тулгалтын хяналт: аль толь хэр их дүн дааж байгааг илрүүлэх ──
+  {
+    const ctx = { bySku: { 'M-235': { sku: 'M-235' } }, byName: {},
+      aliases: { ['name:' + F.normItemKey('Бараа')]: 'M-235',
+                 ['name:' + F.normItemKey('Жижиг зүйл')]: 'M-235' } };
+    const orders = [
+      { number: 1, status: 'returned', items: [
+        { sku: '', name: 'Бараа', qty: 1, price: 9000000 },
+        { sku: '', name: 'Жижиг зүйл', qty: 1, price: 1000000 } ] },
+    ];
+    const u = F.aliasUsage(orders, ctx);
+    ok(u.total === 10000000, 'хяналт: нийт дүн');
+    ok(u.rows[0].label === 'Бараа' && u.rows[0].amount === 9000000, 'хяналт: дүнгээр эрэмбэлнэ');
+    ok(Math.round(u.rows[0].share * 100) === 90, 'хяналт: эзлэх хувь тооцогдоно');
+    ok(u.rows[0].share >= 0.15, 'хяналт: 15%-иас дээш нь анхааруулга өгөх ёстой');
+    ok(u.rows[1].share < 0.15, 'хяналт: жижиг толь анхааруулга өгөхгүй');
+    // sku нь бодит бараа бол толь тоологдохгүй (шууд таарсан)
+    const u2 = F.aliasUsage([{ status: 'rented', items: [{ sku: 'M-235', name: 'Бараа', qty: 1, price: 100 }] }], ctx);
+    ok(u2.rows.length === 0, 'хяналт: шууд sku-тай мөр толинд тоологдохгүй');
+  }
+
   finish();
 })();

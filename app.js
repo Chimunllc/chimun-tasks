@@ -4265,6 +4265,52 @@ async function saveItemAlias(alias0, sku, note) {
     return true;
   } catch (e) { console.warn('saveItemAlias', e); showToast('⚠ Тулгалт хадгалагдсангүй', 'error', 3000); return false; }
 }
+// Толины бичлэг устгах — буруу тулгасныг буцаана (мөрүүд «шийдэгдээгүй» рүү эргэнэ)
+async function deleteItemAlias(alias) {
+  const k = String(alias || '').toLowerCase();
+  if (!k) return false;
+  try {
+    const r = await fetchWithTimeout(`${ALIASES_URL()}?alias=eq.${encodeURIComponent(k)}`, {
+      method: 'DELETE',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (state.itemAliases) delete state.itemAliases[k];
+    return true;
+  } catch (e) { console.warn('deleteItemAlias', e); showToast('⚠ Буцаагдсангүй', 'error', 3000); return false; }
+}
+// Толиор шийдэгдсэн мөрүүдийг ТОЛИНЫ ТҮЛХҮҮРЭЭР бүлэглэнэ — «би юуг юутай холбосон бэ,
+// хэр их дүн явж байна вэ» гэдгийг харуулж, буруу тулгалтыг илрүүлэх боломж өгнө.
+// Ганц толь дүнгийн дийлэнхийг дааж байвал бараг үргэлж АЛДАА (бөөн мөрийг барааруу холбосон).
+function aliasUsage(orders, ctx) {
+  const c = ctx || {};
+  const aliases = c.aliases || (state.itemAliases || {});
+  const out = Object.create(null);
+  let total = 0;
+  (orders || []).forEach(o => {
+    if (!o || ['deleted', 'canceled', 'draft'].includes(String(o.status))) return;
+    (Array.isArray(o.items) ? o.items : []).forEach(it => {
+      if (!it) return;
+      const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
+      total += amt;
+      // Дараалал нь resolveItemSku-тай ЯГ ИЖИЛ байх ёстой — эс бөгөөс шууд sku-тай
+      // мөр буруу толинд тоологдож, «энэ толь их дүн дааж байна» гэж худал сэрэмжлүүлнэ.
+      const bySku = c.bySku || productIndexes().bySku;
+      const raw = String(it.sku || '').trim();
+      if (raw && bySku[raw]) return;
+      let key = null;
+      if (raw && aliases['sku:' + raw.toLowerCase()] !== undefined) key = 'sku:' + raw.toLowerCase();
+      else { const nk = normItemKey(it.name); if (nk && aliases['name:' + nk] !== undefined) key = 'name:' + nk; }
+      if (!key) return;
+      const g = out[key] || (out[key] = { key, sku: aliases[key], label: String(it.name || key), lines: 0, qty: 0, amount: 0 });
+      g.lines++; g.qty += Number(it.qty) || 0; g.amount += amt;
+      if (String(it.name || '').length > g.label.length) g.label = String(it.name);
+    });
+  });
+  const rows = Object.keys(out).map(k => out[k]).sort((a, b) => b.amount - a.amount);
+  rows.forEach(r => { r.share = total ? r.amount / total : 0; });
+  return { rows, total };
+}
 // Захиалгын БҮХ мөрийг шийдээд, шийдэгдээгүйг НЭРЭЭР бүлэглэнэ (дүнгээр эрэмбэлнэ).
 // Цэвэр функц — захиалгын жагсаалтыг гаднаас авна (тестлэгдэнэ).
 function unresolvedItemGroups(orders, ctx) {
@@ -4320,6 +4366,21 @@ function openItemReconcile() {
   document.getElementById('item-recon-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.id = 'item-recon-modal'; modal.style.zIndex = '9600';
+  // Аль толь ХЭР ИХ дүн дааж байгааг харуулна — 15%-иас дээш нь бараг үргэлж алдаа
+  // («Бараа» гэх мэт бөөн мөрийг ганц бараа руу холбовол тайлан бүхэлдээ гажина).
+  const used = aliasUsage(orders);
+  const usedRows = used.rows.map(u => {
+    const p = (state.products || []).find(x => x && String(x.sku) === String(u.sku));
+    const nm = u.sku ? ((p && p.name) || u.sku) : '🚫 бараа биш';
+    const warn = u.share >= 0.15 && u.sku;
+    return `<div class="rec-used-row${warn ? ' rec-used-warn' : ''}">
+      <span class="rec-used-name">${escapeHtml(u.label)} <span style="color:var(--muted);">→</span> <b>${escapeHtml(nm)}</b></span>
+      <span class="rec-meta">${u.lines} мөр · ${u.qty}ш · <b>${money(u.amount)}</b>${warn ? ` · <b style="color:var(--danger);">нийт дүнгийн ${Math.round(u.share * 100)}%</b>` : ''}</span>
+      <button type="button" class="btn rec-undo" data-key="${escapeHtml(u.key)}">↩ Буцаах</button>
+    </div>`;
+  }).join('');
+  const _big = used.rows.filter(u => u.share >= 0.15 && u.sku);
+  const bigWarn = _big.length ? `<div class="rec-warn-box">⚠ <b>${escapeHtml(_big[0].label)}</b> ганцаараа нийт түрээсийн <b>${Math.round(_big[0].share * 100)}%</b>-ийг дааж байна. Ерөнхий нэр (жишээ нь «Бараа») нь олон өөр барааны бөөн мөр байдаг — нэг бараа руу холбовол тайлан <b>гажина</b>. «🚫 Бараа биш» болгох нь зөв.</div>` : '';
   const rowsHtml = st.groups.slice(0, 80).map(g => {
     const sug = prods.map(p => ({ p, s: itemNameScore(g.name, p.name) }))
       .filter(x => x.s > 0.18).sort((a, b) => b.s - a.s).slice(0, 3);
@@ -4353,6 +4414,14 @@ function openItemReconcile() {
       <button class="btn btn-primary" id="rec-freeze-btn">Бэхжүүлэх (${nFrozen})</button>
     </div>` : ''}
     <div id="rec-list">${rowsHtml || '<div style="padding:20px;text-align:center;color:var(--muted);">🎉 Бүх мөр тулгагдсан байна.</div>'}</div>
+    ${usedRows ? `<div style="margin-top:14px;border-top:2px solid var(--border);padding-top:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+        <b style="font-size:13.5px;">✔ Тулгасан (${used.rows.length})</b>
+        <span style="font-size:11.5px;color:var(--muted);">Буруу холбосон бол буцаана — мөрүүд нь дахин жагсаалтад гарна.</span>
+      </div>
+      ${bigWarn}
+      <div id="rec-used">${usedRows}</div>
+    </div>` : ''}
     ${st.groups.length > 80 ? `<div style="font-size:11.5px;color:var(--muted);padding:8px 2px;">…дээд 80 нэр харуулав (дүнгээр). Холбох тусам үлдсэн нь гарч ирнэ.</div>` : ''}
   </div>`;
   document.body.appendChild(modal);
@@ -4374,6 +4443,14 @@ function openItemReconcile() {
   modal.querySelectorAll('.rec-pick').forEach(sel => sel.onchange = () => {
     if (!sel.value) return;
     bind(sel.dataset.key, sel.value, sel.options[sel.selectedIndex].textContent);
+  });
+  modal.querySelectorAll('.rec-undo').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    if (await deleteItemAlias(b.dataset.key)) {
+      showToast('↩ Тулгалт буцаагдлаа', 'success', 2200);
+      state._pidx = null; openItemReconcile();
+      if (typeof render === 'function') render();
+    } else b.disabled = false;
   });
   const fz = modal.querySelector('#rec-freeze-btn');
   if (fz) fz.onclick = async () => {

@@ -5602,12 +5602,21 @@ function reconcileByReceipts(stmtRows, opts) {
   const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r));
   const usedFps = opts.usedFps || (state.usedFps instanceof Set ? state.usedFps : new Set());
   const fpOwners = opts.fpOwners || (state.fpOwners instanceof Map ? state.fpOwners : new Map());
+  const normFp = (s) => (typeof _normFp === 'function') ? _normFp(s) : String(s || '').replace(/[\s.,\-]/g, '').toUpperCase();
+  // Бүртгэсэн баримтуудыг ДҮН+ОГНОО-гоор индекслэнэ (нэр урт/богиноороо ялгаатай байж болзошгүй тул).
+  // fp формат: FP-<дүн>-<YYYYMMDD>-<нэр>. Хуулгын нэр PDF-ийнхээс УРТ байвал угтвар-таарлаар таарна.
+  const idx = new Map();   // `<amt>-<date8>` → [{name, fp}]
+  usedFps.forEach(fp => { const m = String(fp).match(/^FP-(\d+)-(\d{8})-(.*)$/); if (m) { const k = m[1] + '-' + m[2]; (idx.get(k) || (idx.set(k, []), idx.get(k))).push({ name: m[3], fp }); } });
   const recorded = [], unrecorded = [];
   for (const c of credits) {
-    const fp = (typeof receiptFingerprint === 'function') ? receiptFingerprint({ amount: c.credit, date: c.date, senderName: c.name }) : '';
-    const hit = fp && usedFps.has(fp);
-    if (hit) recorded.push({ ...c, fp, owner: fpOwners.get(fp) || '' });
-    else unrecorded.push({ ...c, fp });
+    const amt = Math.round(Number(c.credit) || 0);
+    const d8 = String(c.date || '').slice(0, 10).replace(/-/g, '');
+    const nm = normFp(c.name);   // slice(32) fp-д хийгдсэн — угтвар-таарлыг гажуудуулахгүй
+    const cands = idx.get(amt + '-' + d8) || [];
+    // яг таарах ганц (дүн+огноо) — нэр нэг нь нөгөөгийн угтвар бол баталгаажина
+    let hit = cands.find(r => { const rn = r.name || ''; return !rn || !nm || rn === nm || rn.startsWith(nm) || nm.startsWith(rn); });
+    if (hit) recorded.push({ ...c, fp: hit.fp, owner: fpOwners.get(hit.fp) || '' });
+    else unrecorded.push({ ...c, fp: '' });
   }
   // Одоо байгаа render/тайлантай нийцүүлэх: recorded→matched (order=эзэмшигч), unrecorded→untracked.
   const matched = recorded.map(c => ({
@@ -8846,6 +8855,7 @@ const PERM_MENUS = [
       { key: 'orders.deliver',  label: 'Хүргэж өгөх (хүргэгч)' },
       { key: 'orders.advance',  label: 'Архивлах / бусад шилжүүлэх' },
       { key: 'orders.skip',     label: 'Шат алгасах (шалтгаантай)' },
+      { key: 'orders.revert',   label: 'Шат буцаах' },
       { key: 'orders.cancel',   label: 'Цуцлах / устгах' } ] },
   { key: 'products',    label: 'Агуулах',         actions: [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
@@ -8859,15 +8869,17 @@ const PERM_MENUS = [
 ];
 const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // роль/CEO удирддаг view цэснүүд
 // Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
-const DENY_DEFAULT_ACTIONS = new Set(['access.delegate']);
+// orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
+// эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
+const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
-const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
@@ -16410,6 +16422,16 @@ function openStagePhoto(url) {
 // Цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
 // Шат алгасах эрх — CEO ба тусгайлан олгосон хүн (ҮАХ захирал). Ажилтан алгасаж болохгүй.
 function canSkipStage() { return state.isCEO || capValue('orders.skip') === true; }
+// Шат БУЦААХ эрх — CEO ба тусгайлан олгосон хүн (ҮАХ захирал). Алдаа зассан ч түүхэнд үлдэнэ.
+// Урагш үсрэхийг энэ эрх ОЛГОХГҮЙ — урагшлах нь зөвхөн дамжлагын модалаар (зураг+үнэлгээ).
+function canRevertStage() { return state.isCEO || capValue('orders.revert') === true; }
+// Захиалгыг тухайн төлөв рүү засах модалаас шилжүүлж болох уу — одоогийн төлөв (өөрчлөлтгүй)
+// эсвэл ЗӨВХӨН урвуу чиглэл, тэр нь ч эрхтэй хүнд. Цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
+function allowedEditStatuses(cur, order, mayRevert) {
+  const i = order.indexOf(cur);
+  if (i < 0) return [cur];
+  return order.slice(0, i + 1).filter(k => mayRevert || k === cur);
+}
 
 function receiveShortfalls(items, got) {
   return (items || []).map((x, i) => {

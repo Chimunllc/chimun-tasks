@@ -1048,6 +1048,20 @@ function finish() {
     ok(r.matched.length === 1 && r.matched[0].order.order_no === '#1160', 'byReceipt: matched-д эзэмшигч шошго');
   }
   ok(F.reconReceiptOwnerLabel && F.reconReceiptOwnerLabel('nomaad:NC-2026-0073') === 'NC-2026-0073', 'ownerLabel: nomaad');
+  {
+    // Угтвар-нэрийн таарал: хуулгын нэр PDF-ийнхээс УРТ (НЭткапитал кейс) — дүн+огноо+угтвараар таарна
+    const stmt = [{ date: '2026-08-05', credit: 31570000, name: 'НЭТКАПИТАЛ АВТО БАРЬЦААЛАН ЗЭЭЛДҮҮЛЭХ ТӨВ' }];
+    const recFp = F.receiptFingerprint({ amount: 31570000, date: '2026-08-05', senderName: 'НЭткапитал Авто' });   // богино нэр
+    const r = F.reconcileByReceipts(stmt, { usedFps: new Set([recFp]), fpOwners: new Map([[recFp, 'nomaad:NC-2026-0170']]) });
+    ok(r.recorded.length === 1, 'byReceipt: нэрийн урт ялгааг угтвараар таарна');
+    ok(r.unrecorded.length === 0, 'byReceipt: НЭткапитал бүртгээгүйд орохгүй');
+  }
+  {
+    // Дүн эсвэл огноо зөрвөл таарахгүй (өөр гүйлгээ)
+    const recFp = F.receiptFingerprint({ amount: 100000, date: '2026-08-05', senderName: 'Бат' });
+    const r = F.reconcileByReceipts([{ date: '2026-08-05', credit: 100001, name: 'Бат' }], { usedFps: new Set([recFp]) });
+    ok(r.unrecorded.length === 1, 'byReceipt: дүн зөрвөл таарахгүй');
+  }
 
   // ── statementMeta: данс+хугацаа задлах (label-аас хойш хоосон нүд байж болно) ──
   {

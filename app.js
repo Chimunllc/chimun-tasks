@@ -6083,8 +6083,8 @@ function renderOrders() {
   const CAP = 200;
   // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
   const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
+  const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const _seeMoney = canSeeOrderMoney();
   const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   const body = (state.ordersView === 'board')
     ? sumLine + renderOrderPipelineBoard(shown, todayStr)

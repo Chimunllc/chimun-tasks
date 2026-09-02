@@ -757,5 +757,14 @@ function finish() {
   }
   ok(F.statementMeta([]).acct === '', 'statementMeta: хоосон → хоосон');
 
+  // Захиалгын хэсэг CEO ба ажилтан хоёуланд рендерлэгдэх эсэх (TDZ регресс сэргийлэх)
+  const st = vm.runInContext('state', sandbox);
+  const RO = vm.runInContext('renderOrders', sandbox);
+  st.orders = []; st.bqOrders = []; st.appOrders = [];
+  for (const [who, ceo, perms] of [['CEO', true, {}], ['ажилтан', false, { W1: { 'orders.pay': false, orders: true } }]]) {
+    st.isCEO = ceo; st.me = 'W1'; st.memberPerms = perms; st.rolePerms = {};
+    try { const h = RO(); ok(String(h).length > 0, 'захиалгын хэсэг ' + who + '-д рендерлэгдэнэ'); }
+    catch (e) { ok(false, 'захиалгын хэсэг ' + who + '-д УНАЛАА: ' + e.message); }
+  }
   finish();
 })();

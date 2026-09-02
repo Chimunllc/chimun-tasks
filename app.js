@@ -2225,18 +2225,6 @@ const BRANCH_DISPLAY = {
 };
 function finBranchDisplay(b) { return BRANCH_DISPLAY[b] || b || '(салбаргүй)'; }
 // Текст хуулах helper (clipboard API + fallback).
-async function copyText(text, okMsg = 'Хуулагдлаа') {
-  text = String(text || '');
-  try { await navigator.clipboard.writeText(text); showToast(okMsg, 'success', 1500); return; }
-  catch (e) { /* fallback доор */ }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    document.execCommand('copy'); ta.remove();
-    showToast(okMsg, 'success', 1500);
-  } catch (e2) { showToast('Хуулж чадсангүй', 'error'); }
-}
 
 // ── Санхүүгийн хүсэлт → бодит объект холбоос (машин/бараа/захиалга). Сонголтоор, default Ерөнхий. ──
 // Category-г ОРЛОХГҮЙ — зэрэгцээ "энэ зардал юунтай холбоотой" гэдгийг тэмдэглэнэ.
@@ -7905,18 +7893,23 @@ async function uploadProductVideo(file) {
 /* ─── QR/баркод — агуулахын скан ───────────────────────────
    Бараа бүрт SKU кодлосон QR (модалд харагдана, хэвлэх боломжтой). Камераар сканнердаж
    барааг шууд таниж модалаа нээнэ. BarcodeDetector (native) эсвэл jsQR (fallback). */
-function loadQRGen() {
+// qrcode-generator — SVG үүсгэгч factory буцаана (барааны QR наалт).
+function loadQrcodeGen() {
   if (window.qrcode) return Promise.resolve(window.qrcode);
-  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js'; s.onload = () => res(window.qrcode); s.onerror = () => rej(new Error('QR сан ачаалж чадсангүй')); document.head.appendChild(s); });
-}
-function loadJsQR() {
-  if (window.jsQR) return Promise.resolve(window.jsQR);
-  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'; s.onload = () => res(window.jsQR); s.onerror = () => rej(new Error('Скан сан ачаалж чадсангүй')); document.head.appendChild(s); });
+  if (window.__qrcodeGenLoading) return window.__qrcodeGenLoading;
+  window.__qrcodeGenLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+    s.onload = () => res(window.qrcode);
+    s.onerror = () => rej(new Error('QR сан ачаалж чадсангүй'));
+    document.head.appendChild(s);
+  });
+  return window.__qrcodeGenLoading;
 }
 // SKU-г QR болгож контейнерт зурна (хэвлэх/наахад).
 function renderProductQR(el, sku) {
   if (!el || !sku) return;
-  loadQRGen().then(qrcode => {
+  loadQrcodeGen().then(qrcode => {
     const qr = qrcode(0, 'M'); qr.addData(sku); qr.make();
     el.innerHTML = qr.createSvgTag({ cellSize: 3, margin: 1 }) + `<div class="pm-qr-sku">${escapeHtml(sku)}</div>`;
   }).catch(() => { el.textContent = 'QR ачаалж чадсангүй'; });
@@ -8487,13 +8480,17 @@ function attCheckinUrl(token) {
   const base = location.origin + location.pathname.replace(/[^/]*$/, '') + 'checkin.html';
   return base + '?d=' + todayStr() + '&t=' + encodeURIComponent(token || todayStr());
 }
+// jsQR (камерын QR таних). Дуудагчийн зарим нь буцаах утгыг шууд дууддаг тул
+// ЗААВАЛ window.jsQR-ыг буцаана. Нэг л удаа татна (давхар татахаас хамгаална).
 function loadJsQR() {
-  if (window.jsQR) return Promise.resolve();
+  if (window.jsQR) return Promise.resolve(window.jsQR);
   if (window.__jsqrLoading) return window.__jsqrLoading;
   window.__jsqrLoading = new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+    s.onload = () => res(window.jsQR);
+    s.onerror = () => rej(new Error('Скан сан ачаалж чадсангүй'));
+    document.head.appendChild(s);
   });
   return window.__jsqrLoading;
 }
@@ -8876,7 +8873,8 @@ function attachAttendanceHandlers() {
   }, 20000);
 }
 /* ─── МИНИЙ ИРЦ / QR (цагийн ажилтны self-service) ───────────────────── */
-function loadQRGen() {
+// qrcodejs — window.QRCode класс (ирцийн QR самбар). Дээрхээс ӨӨР сан.
+function loadQRCodeJs() {
   if (window.QRCode) return Promise.resolve();
   if (window.__qrgenLoading) return window.__qrgenLoading;
   window.__qrgenLoading = new Promise((res, rej) => {
@@ -8957,7 +8955,7 @@ function renderMyAttend() {
 function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
-  loadQRGen().then(() => {
+  loadQRCodeJs().then(() => {
     const box = document.getElementById('my-qr'); if (!box || !phone) return;
     box.innerHTML = '';
     try { new QRCode(box, { text: 'chimun-att:' + phone, width: 196, height: 196, correctLevel: QRCode.CorrectLevel.M }); }
@@ -9028,17 +9026,6 @@ async function openEmployeeDocModal(phone, name) {
   }
 }
 /* ─── Лавлагаа PDF-ээс автомат бөглөх (PDF.js, AI-гүй) ─────────────────── */
-function loadPdfJs() {
-  if (window.pdfjsLib) return Promise.resolve();
-  if (window.__pdfjsLoading) return window.__pdfjsLoading;
-  window.__pdfjsLoading = new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js';
-    s.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js'; } catch (e) {} res(); };
-    s.onerror = rej; document.head.appendChild(s);
-  });
-  return window.__pdfjsLoading;
-}
 async function pdfToText(file) {
   await loadPdfJs();
   const buf = await file.arrayBuffer();

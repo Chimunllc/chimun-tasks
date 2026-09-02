@@ -22815,7 +22815,7 @@ function renderDashboard() {
   const dashBranch = effectiveBranchLens();
   const wantFinBr = finLensBranch(dashBranch);
   const memberInDashBranch = (m) => memberInLens(m);   // НЭГДСЭН дүрэм (override-aware, 'shared'-ыг зөв авна)
-  const tasks = (state.tasks || []).filter(t => branchInLens(taskBranch(t)));   // capital=бүгд жигдэлнэ
+  const tasks = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t) && branchInLens(taskBranch(t)));   // устгасан + захиалгын авто-ажил хасна (жагсаалттай нийцүүлнэ)
   const fr = (state.financeRequests || []).filter(r => r.status !== 'deleted'
     && (dashBranch === 'all' || finEffBranch(r) === wantFinBr));
   const today = todayStr();

@@ -8994,11 +8994,9 @@ function can(key) {
   const v = capValue(key);
   return v === undefined ? true : v;
 }
-// Дамжлагын шат гүйцэтгэх эрх. Агуулахын хяналтын шат (orders.dispatch — Агуулахаас гаргах /
-// Агуулахад хүлээн авах) нь ЗӨВХӨН тодорхой олгосон хүнд (нярав/агуулах/менежер/CEO) — тоо ширхэг,
-// чанарын хяналтын цэг тул хэн ч хийхгүй. Бусад шат (цэвэрлэх/бэлдэх/хүргэх) default-allow.
-const STRICT_STAGE_CAPS = new Set(['orders.dispatch']);
-function canStage(cap) { return STRICT_STAGE_CAPS.has(cap) ? (capValue(cap) === true) : can(cap); }
+// Дамжлагын шат гүйцэтгэх эрх — эрхээр л удирдана (Эрх удирдах). Нярав байхгүй үед өөр ажилтан
+// орлуулах шаардлага гардаг тул хатуу хязгаарлахгүй, тохируулаагүй бол зөвшөөрнө (can-ийн адил).
+function canStage(cap) { return can(cap); }
 // ── Доорхийн эрх удирдах делегаци (org tree доорхи хүмүүсийн эрхийг удирдах) ──
 // CEO бүгдийг; 'access.delegate' эрхтэй захирал (COO г.м.) ЗӨВХӨН өөрийн org-tree доорхыг.
 function canDelegatePerms() { return state.isCEO || capValue('access.delegate') === true; }

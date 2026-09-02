@@ -1011,6 +1011,71 @@ function finish() {
   eq(CS([{ source: 'app', total_mnt: 0 }], 'accrual').staff.avg, 0, 'суваг: 0 дүнд дундаж 0 (тэгд хуваахгүй)');
 }
 
+// 40g) Сайтын захиалгын бараа тайлах — sku → id → нэр (зураг + НӨӨЦ)
+{
+  const st = vm.runInContext('state', sandbox);
+  const PO = vm.runInContext('productOf', sandbox);
+  const UM = vm.runInContext('unmatchedItems', sandbox);
+  const saved = st.products;
+  // Бодит каталогийн хэлбэр: id ≠ sku (амьд дата дээр 308/308 ийм байсан)
+  st.products = [
+    { id: 'f83fc516-1a50-4dd3-9ca0-eb56319e45aa', sku: 'M-018', name: 'Асар 6м*12м', photo: 'p18.jpg' },
+    { id: 'ASAR-18X15', sku: 'M-294', name: 'Асар 18м 18×15', photo: 'p294.jpg' },
+  ];
+
+  eq(PO({ sku: 'M-018' }).sku, 'M-018', 'тайлах: жинхэнэ sku-гээр');
+  // Сайт sku талбарт id бичдэг — энэ нь гол буг байсан
+  eq(PO({ sku: 'f83fc516-1a50-4dd3-9ca0-eb56319e45aa', name: 'Асар 6м өргөн' }).sku, 'M-018',
+     'тайлах: sku талбарт ID ирсэн ч олно (сайтын бодит тохиолдол)');
+  eq(PO({ name: 'Асар 18м 18×15' }).sku, 'M-294', 'тайлах: sku огт байхгүй бол нэрээр');
+  eq(PO({ sku: 'CH_235', name: 'Байхгүй бараа' }), undefined, 'тайлах: каталогт байхгүй бол undefined');
+  eq(PO(null), undefined, 'тайлах: хоосон мөрд унахгүй');
+
+  // Зөрүүтэй нэр + буруу sku ирсэн ч бараа олдоно → зураг гарна
+  ok(PO({ sku: 'f83fc516-1a50-4dd3-9ca0-eb56319e45aa', name: 'огт өөр нэр' }).photo === 'p18.jpg',
+     'тайлах: нэр зөрсөн ч каталогийн зураг олдоно');
+
+  const bad = UM({ items: [
+    { sku: 'M-018', name: 'Асар 6м*12м' },
+    { sku: 'CH_235', name: 'Эвхэгддэг модон ширээ' },
+    { sku: 'CH_200', name: '120см ширээ бүтээлэг' },
+  ] });
+  eq(bad.length, 2, 'хамгаалалт: каталогт байхгүй 2 барааг барина');
+  eq(bad[0].name, 'Эвхэгддэг модон ширээ', 'хамгаалалт: аль нь болохыг заана');
+  eq(UM({ items: [] }).length, 0, 'хамгаалалт: хоосон захиалгад анхааруулга байхгүй');
+  eq(UM({}).length, 0, 'хамгаалалт: items байхгүй бол унахгүй');
+
+  st.products = saved;
+}
+
+// 40h) ДАВХАР ЗАХИАЛГЫН НҮХ — сайтын зөрүүтэй нэртэй захиалга нөөц эзлэх ёстой
+{
+  const st = vm.runInContext('state', sandbox);
+  const BQR = vm.runInContext('bookedQtyForRange', sandbox);
+  const saved = { p: st.products, o: st.appOrders };
+  st.products = [{ id: 'f83fc516-aaaa', sku: 'M-018', name: 'Асар 6м*12м', stock: 3 }];
+
+  // Сайтаас ирсэн захиалга: sku талбарт ID, нэр нь каталогийнхаас ЗӨРҮҮТЭЙ
+  st.appOrders = [{
+    number: 1478, status: 'rented', starts_at: '2026-09-16', stops_at: '2026-09-17',
+    items: [{ sku: 'f83fc516-aaaa', name: 'Асар 6м өргөн', qty: 2 }],
+  }];
+  eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 2,
+     'нөөц: зөрүүтэй нэртэй сайтын захиалга ч нөөц ЭЗЭЛНЭ (давхар захиалгаас хамгаална)');
+
+  // Огноо давхцахгүй бол эзлэхгүй
+  eq(BQR('Асар 6м*12м', '2026-10-01', '2026-10-02'), 0, 'нөөц: давхцаагүй огноонд эзлэхгүй');
+
+  // Цуцалсан захиалга нөөц эзлэхгүй
+  st.appOrders = [{
+    number: 1478, status: 'canceled', starts_at: '2026-09-16', stops_at: '2026-09-17',
+    items: [{ sku: 'f83fc516-aaaa', name: 'Асар 6м өргөн', qty: 2 }],
+  }];
+  eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 0, 'нөөц: цуцалсан захиалга эзлэхгүй');
+
+  st.products = saved.p; st.appOrders = saved.o;
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

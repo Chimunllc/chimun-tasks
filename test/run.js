@@ -652,6 +652,40 @@ function finish() {
   st.appOrders = saved.ao; st.bqOrders = saved.bo; st.orders = saved.o;
 }
 
+// 35) Дамжлагын авто ажил унтарсан + үнэлгээний асуулт тодорхой болсон
+{
+  const ON  = vm.runInContext('STAGE_AUTOTASK_ENABLED', sandbox);
+  const PSI = vm.runInContext('prevStageInfo', sandbox);
+  const PSQ = vm.runInContext('prevStageQuestion', sandbox);
+  const st  = vm.runInContext('state', sandbox);
+
+  eq(ON, false, 'авто ажил: дамжлагын ажил автоматаар үүсэхээ болив');
+
+  // Өмнөх шатыг ХЭН, АЛЬ шат гэдгээр нь таних
+  const o = { stage_meta: {
+    prepare: { by: 'A', at: '2026-09-01T10:00:00Z' },
+    clean:   { by: 'B', at: '2026-09-01T12:00:00Z' },
+  } };
+  const p1 = PSI(o, 'C');
+  eq(p1 && p1.key, 'clean', 'өмнөх шат: хамгийн сүүлийнх (clean)');
+  eq(p1 && p1.by, 'B', 'өмнөх шат: гүйцэтгэсэн хүн');
+  const p2 = PSI(o, 'B');   // өөрийгөө тооцохгүй
+  eq(p2 && p2.key, 'prepare', 'өмнөх шат: өөрийн хийсэн шатыг алгасна');
+  eq(PSI({ stage_meta: {} }, 'C'), null, 'өмнөх шат: байхгүй бол null');
+  eq(PSI({ stage_meta: { quotes: [{ to: 'x' }] } }, 'C'), null, 'өмнөх шат: quotes массив шат биш');
+
+  // Асуулт нь шатдаа тохирсон, ерөнхий биш
+  const qClean = PSQ({ by: 'B', key: 'clean' });
+  ok(qClean.indexOf('цэвэрлэгээ') > -1, 'асуулт: цэвэрлэгээний тухай тодорхой');
+  ok(qClean.indexOf('хүлээлгэж өгсөн ажлыг үнэлнэ') === -1, 'асуулт: ерөнхий томьёолол ашиглахаа болив');
+  const qPrep = PSQ({ by: 'A', key: 'prepare' });
+  ok(qPrep.indexOf('бүрэн') > -1, 'асуулт: бэлтгэл бүрэн эсэхийг асууна');
+  ok(PSQ({ by: 'A', key: 'deliver' }).indexOf('цаг хугацаа') > -1, 'асуулт: хүргэлт цаг хугацааны тухай');
+  ok(PSQ({ by: 'A', key: 'received' }).indexOf('эвдрэлгүй') > -1, 'асуулт: буцаан авалт эвдрэлийн тухай');
+  eq(PSQ(null), null, 'асуулт: өмнөх шат байхгүй бол null');
+  ok(PSQ({ by: 'A', key: 'танихгүй_шат' }).length > 0, 'асуулт: танигдаагүй шатад ерөнхий асуулт');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

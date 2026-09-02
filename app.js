@@ -14754,6 +14754,35 @@ const perfScoreColor = s => s == null ? 'var(--muted)' : s >= 85 ? 'var(--ok)' :
 
 // ── ХҮЛЭЭЛЦЭХ ЧАНАР KPI — дамжлагад ДАРААГИЙН хүн ӨМНӨХИЙН хүлээлгэж өгсөн ажлыг ★-аар үнэлнэ. ──
 // Өмнөх шатыг гүйцэтгэсэн (надад хүлээлгэж өгсөн) хүн = stage_meta-гийн by ≠ би, at хамгийн сүүлийн.
+// Өмнөх шат нь АЛЬ шат байсныг мөн буцаана — үнэлгээний асуултыг тухайн ажилд
+// тохируулахад хэрэгтэй («ажлыг үнэлнэ үү» гэсэн ерөнхий асуулт утга багатай).
+function prevStageInfo(o, meKey) {
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
+  let best = null, bestKey = null;
+  for (const k of Object.keys(sm)) {
+    const e = sm[k];
+    if (!e || typeof e !== 'object' || Array.isArray(e) || !e.by || String(e.by) === String(meKey)) continue;
+    if (!best || String(e.at || '') > String(best.at || '')) { best = e; bestKey = k; }
+  }
+  return best ? { by: best.by, key: bestKey } : null;
+}
+// Өмнөх шат тус бүрд ТОДОРХОЙ асуулт — «бүрэн үү, эвдрэлгүй юу» гэх мэт хариулж
+// болохуйц зүйл асууна. Ерөнхий асуулт бүгд 5★ авахад хүргэдэг.
+const STAGE_PREV_Q = {
+  prepare:  n => `«${n}»-ийн бэлтгэсэн захиалга бүрэн үү? Дутуу, буруу бараа байсан уу?`,
+  clean:    n => `«${n}»-ийн цэвэрлэгээ чанартай хийгдсэн үү? Бохир, эвдэрсэн бараа байсан уу?`,
+  dispatch: n => `«${n}»-ийн ачсан ачаа бүрэн, эвдрэлгүй байсан уу?`,
+  handover: n => `«${n}»-ийн хүлээлгэж өгсөн бараа бүрэн байсан уу?`,
+  deliver:  n => `«${n}» хүргэлтийг цаг хугацаандаа, бүрэн хийсэн үү?`,
+  retstart: n => `«${n}»-ийн буцаан авсан бараа бүрэн бүтэн байсан уу?`,
+  received: n => `«${n}»-ийн хүлээн авсан бараа бүрэн, эвдрэлгүй байсан уу?`,
+};
+function prevStageQuestion(prev) {
+  if (!prev) return null;
+  const n = (typeof memberName === 'function' ? memberName(prev.by) : '') || prev.by;
+  const f = STAGE_PREV_Q[prev.key];
+  return f ? f(n) : `«${n}»-ийн хүлээлгэж өгсөн ажлыг үнэлнэ үү`;
+}
 function prevStageOwner(o, meKey) {
   const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
   let best = null;
@@ -15942,7 +15971,14 @@ function _orderStageDesc(o) {
   if (tot) L.push('💰 ' + fmtMoney(tot));
   return L.join('\n');
 }
+// ⚠ 2026-09-02: Дамжлагыг ЗАХИАЛГЫН КАРТ дээр шууд хийдэг болсон (зураг + үнэлгээ
+// тэндээ авагдана) тул автомат ажил үүсгэх нь ДАВХАРДАЛ болсон. «Ажил» модуль нь
+// зөвхөн дамжлагаас ГАДУУР, ажилтнууд бие биедээ оноодог ажлын хэрэгсэл болж үлдэнэ.
+// Функцийг устгаагүй — өмнө үүссэн ажлуудыг дуусгах логик (completeStageTask,
+// stageTaskId) хэвээр ажиллах ёстой.
+const STAGE_AUTOTASK_ENABLED = false;
 function ensureStageTask(o) {
+  if (!STAGE_AUTOTASK_ENABLED) return;
   if (!o || !o.id) return;
   const cfg = STAGE_AUTOTASK[String(o.status || '')]; if (!cfg) return;
   const next = orderNextStep(o); if (!next) return;
@@ -16092,10 +16128,11 @@ function openStageAdvanceModal(oid, to) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid)); if (!o) return;
   const act = stageActionFor(String(o.status || ''), to);
   const needPhoto = act.key !== 'archive';
-  const prevOwner = prevStageOwner(o, state.me);   // хэн надад хүлээлгэж өгсөн бэ
+  const _prev = prevStageInfo(o, state.me);        // хэн, АЛЬ шатыг надад хүлээлгэж өгсөн бэ
+  const prevOwner = _prev ? _prev.by : null;
   // Өмнөх хүн байвал ★ = ТҮҮНИЙ хүлээлгэж өгсөн ажлыг үнэлнэ (Хүлээлцэх чанар KPI, бодит/шударга);
-  // эс бол (эхний шат) өөрийн гүйцэтгэлийг (act.q).
-  const q = prevOwner ? `«${memberName(prevOwner)}»-ийн хүлээлгэж өгсөн ажлыг үнэлнэ үү` : act.q;
+  // эс бол (эхний шат) өөрийн гүйцэтгэлийг (act.q). Асуулт нь өмнөх ШАТАД тохирсон байна.
+  const q = _prev ? prevStageQuestion(_prev) : act.q;
   const modal = document.createElement('div');
   modal.className = 'modal-bg open'; modal.style.zIndex = '9500';
   modal.innerHTML = `<div class="modal" style="max-width:460px;width:96%;max-height:92vh;overflow:auto;">

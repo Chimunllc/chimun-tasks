@@ -4926,6 +4926,8 @@ function cleanOrderNote(note) {
     .replace(/^\s*·\s*/, '').replace(/\s*·\s*$/, '').trim();
 }
 // Түрээсийн хугацааны хямдралын ШАТ — урт түрээслэх тусам хямд. Засах бол энэ массивыг.
+// ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн RENTAL_TIERS-тэй ЯГ ИЖИЛ байх ёстой
+// (аппын форм авто-хямдрал орно — C3). Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас. [[tariff_two_repos_sync]]
 const RENTAL_TIERS = [
   { min: 30, pct: 0.55, label: 'Сарын хямдрал' },      // 30+ хоног
   { min: 7,  pct: 0.40, label: '7+ хоногийн хямдрал' }, // 7-29 хоног
@@ -17831,6 +17833,8 @@ const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
 // Ажлын бус цаг — 09:00–18:00-аас ГАДУУР авах/өгөх бүрт нэмэлт төлбөр (сайттай ижил: WORK 9–18, +20,000₮/бүр)
+// ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн OFFHOURS_FEE/WORK_START/WORK_END-тэй
+// ЯГ ИЖИЛ байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас — эс бол суваг хооронд өөр үнэ. [[tariff_two_repos_sync]]
 const ORDER_OFFHOURS_FEE = 20000;
 function _isOffHour(h) { h = +h; return !isNaN(h) && (h < 9 || h > 18); }
 function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffHour(eh) ? 1 : 0); }
@@ -17905,6 +17909,8 @@ async function rejectOrderCancel(oid) {
 
 // ── Хүргэлтийн төлбөр — байршлаар автомат (сайт+апп нэг томьёо) ──
 // Хот дотор = тогтмол (очих+буцах багтсан). Хотоос гадна = нэг талын км × 2 (очих+буцах) × км-ийн үнэ.
+// ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн DELIVERY_CITY_FEE/PER_KM-тэй ЯГ ИЖИЛ
+// байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас. [[tariff_two_repos_sync]]
 const DELIVERY_CITY_FEE = 150000;   // ₮ хот дотор
 const DELIVERY_PER_KM = 5000;       // ₮ нэг талын км тутам
 function calcDeliveryFee(zone, km) {

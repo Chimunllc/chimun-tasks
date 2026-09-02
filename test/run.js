@@ -2014,5 +2014,70 @@ function finish() {
     st.nomaadPayments = savedPays;
   }
 
+  // ── «Хадгаллаа» гэж ХУДАЛ хэлэхгүй — 4 бичилт алдаагаа харуулна ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const savedFetch = sandbox.fetch;
+    // showToast-ыг барьж авна (эх функцийг нь буцааж тавина)
+    const toasts = [];
+    const realToast = vm.runInContext('showToast', sandbox);
+    vm.runInContext('showToast = function(m, k){ globalThis.__toasts.push([m, k]); };', sandbox);
+    sandbox.__toasts = toasts;
+
+    // (1) Дуут заавар
+    const SV = vm.runInContext('saveTaskVoice', sandbox);
+    const savedVoice = { v: st._taskVoice, d: st._taskVoiceDur, dirty: st._taskVoiceDirty };
+    st._taskVoice = 'data:audio/webm;base64,AAAA'; st._taskVoiceDur = 5; st._taskVoiceDirty = true;
+
+    sandbox.fetch = () => Promise.resolve({ ok: true, status: 201 });
+    toasts.length = 0;
+    ok(await SV('t1', true), 'дуут заавар: амжилттай үед true');
+    eq(toasts.length, 0, 'дуут заавар: амжилттай үед анхааруулга гарахгүй');
+
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
+    toasts.length = 0;
+    ok(!(await SV('t1', true)), 'дуут заавар: HTTP алдаанд false');
+    eq(toasts.length, 1, 'дуут заавар: алдааг ХЭЛНЭ');
+    ok(/ХАДГАЛАГДСАНГҮЙ/.test(toasts[0][0]), 'дуут заавар: мессеж хадгалагдаагүйг тодорхой хэлнэ');
+    eq(toasts[0][1], 'error', 'дуут заавар: алдааны төрлөөр гарна');
+
+    sandbox.fetch = () => Promise.reject(new Error('offline'));
+    toasts.length = 0;
+    ok(!(await SV('t1', true)), 'дуут заавар: сүлжээ тасрахад false');
+    eq(toasts.length, 1, 'дуут заавар: сүлжээ тасрахад ч хэлнэ');
+
+    st._taskVoice = savedVoice.v; st._taskVoiceDur = savedVoice.d; st._taskVoiceDirty = savedVoice.dirty;
+
+    // (2) Банкны PDF баримт
+    const UR = vm.runInContext('uploadReceiptFileOrWarn', sandbox);
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
+    toasts.length = 0;
+    ok(!(await UR('rid-1', null, {}, '#77')), 'PDF баримт: файлгүй/алдаатай үед false');
+    eq(toasts.length, 1, 'PDF баримт: хадгалагдаагүйг ХЭЛНЭ');
+    ok(/ХАДГАЛАГДСАНГҮЙ/.test(toasts[0][0]) && /#77/.test(toasts[0][0]),
+       'PDF баримт: мессежид аль баримт болох нь бий');
+
+    sandbox.__realToast = realToast;
+    vm.runInContext('showToast = globalThis.__realToast;', sandbox);
+    ok(typeof vm.runInContext('showToast', sandbox) === 'function', 'тест: showToast буцаан сэргэв');
+    sandbox.fetch = savedFetch;
+
+    // (3)+(4) Профайл (цалингийн данс) ба иргэний үнэмлэх — эх кодоор
+    const prof = src.slice(src.indexOf('let _profileOk = true, _docOk = true;'));
+    const blk = prof.slice(0, prof.indexOf("showToast('Профайл хадгалагдсан'"));
+    ok(/if \(!rp\.ok\) throw/.test(blk), 'цалингийн данс: r.ok шалгагдана');
+    ok(blk.indexOf('setEmployeeDoc(oldPhoneD, _doc).catch(() => {})') === -1,
+       'иргэний үнэмлэх: чимээгүй catch арилсан');
+    ok(/if \(_docOk\) state\._pendingDoc = null;/.test(blk),
+       'иргэний үнэмлэх: амжилтгүй бол файл ДАХИН оролдоход үлдэнэ');
+    ok(/if \(!_profileOk\) \{ showToast\(/.test(blk) && /if \(!_docOk\) \{ showToast\(/.test(blk),
+       'профайл: аль аль нь унавал анхааруулна');
+    ok(/if \(!_profileOk\) \{[^}]*return; \}/.test(blk),
+       'профайл: унавал модал хаагдахгүй (дахин оролдох боломж)');
+    // Бүртгэлийн үеийн үнэмлэх
+    ok(src.indexOf("fileToDoc(_idf.files[0]).then(doc => doc && setEmployeeDoc(phone, doc)).catch(() => {})") === -1,
+       'бүртгэл: иргэний үнэмлэхийн чимээгүй catch арилсан');
+  }
+
   finish();
 })();

@@ -15913,12 +15913,18 @@ function renderProducts() {
   // ── Барааны тулгалт — захиалгын мөр бараатай холбогдоогүй бол тайлан худал болно ──
   if (state.itemAliases === undefined) { state.itemAliases = {}; setTimeout(loadItemAliases, 0); }
   const _rec = (_prodMgmt && (state.appOrders || []).length) ? unresolvedItemGroups(state.appOrders) : null;
+  // Зөвхөн НЭРЭЭР таарч буй мөрүүд — бараа нэрээ соливол тасрах цорын ганц эмзэг цэг.
+  // Тулгалт бүрэн дууссан ч энэ тууз үлдэнэ, эс бөгөөс бэхжүүлэх гарц хаагдана.
+  const _fz = _rec ? Object.keys(nameMatchedKeys(state.appOrders)).length : 0;
   const reconBar = (_rec && _rec.groups.length)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(217,119,6,.10);border:1px solid rgba(217,119,6,.32);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">🔗 <b>${_rec.groups.length}</b> нэр бараатай холбогдоогүй — <b>${fmtMoney(_rec.badAmt)}</b>-ийн түрээс тайланд ороогүй байна.</span>
         <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Тулгах (${_rec.groups.length})</button>
       </div>`
-    : '';
+    : (_fz ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(37,99,235,.09);border:1px solid rgba(37,99,235,.30);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🔒 <b>${_fz}</b> нэр зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.</span>
+        <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Бэхжүүлэх (${_fz})</button>
+      </div>` : '');
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)

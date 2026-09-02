@@ -4132,6 +4132,253 @@ async function ensureRepairRecord({ sku, name, qty, orderNumber, note, by }) {
   } catch (e) { console.warn('ensureRepairRecord', e); }
 }
 
+/* ── БАРААНЫ ТУЛГАЛТ (product_aliases) ──────────────────────────────────────
+   Захиалгын мөрүүд 3 өөр эх сурвалжаас ирсэн: Booqable (UUID / CH_ код),
+   хуучин апп (хоосон sku), шинэ апп (M-xxx). Тиймээс мөрөн дэх таних тэмдэг
+   нэг маягийн биш.
+
+   НЭРЭЭР тулгах нь БУРУУ шийдэл — бараа нэрээ соливол бүх түүх тасарна.
+   Зөв шийдэл: мөрийн ямар ч таних тэмдгийг НЭГ УДАА products.sku-тэй холбож,
+   толинд (product_aliases) мөнхөд хадгална. Дараа нь нэр ч, үнэ ч өөрчлөгдөж
+   болно — холбоос sku дээр тогтоно.
+
+   Толины түлхүүр 2 төрөл:
+     'sku:<хуучин id>'  — Booqable UUID, CH_ код, hex код
+     'name:<нормчилсон>' — нэрээр нэг удаа гараар холбосон
+   sku='' утга = «энэ бараа биш» (хүргэлт, «Бараа» гэсэн бөөн мөр г.м.) —
+   шийдэгдсэнд тооцогдох ч тайланд орохгүй. */
+const ALIASES_URL = () => `${DB_URL}/rest/v1/product_aliases`;
+
+// Латин/кирилл ижил дүрст үсэг — «Mишок» гэх мэт холимог бичилтийг нэгтгэнэ.
+const _CONFUSABLE_LAT = { a: 'а', c: 'с', e: 'е', o: 'о', p: 'р', x: 'х', y: 'у', k: 'к', m: 'м', t: 'т', b: 'в', h: 'н' };
+// Нэрийн нормчлол — ЗӨВХӨН эргэлзээгүйг цэвэрлэнэ: том/жижиг үсэг, зай, цэг таслал,
+// ижил дүрст үсэг. Үг хувиргах, товчлол тайлах «ухаалаг» зүйл ЗОРИУДААР ХИЙХГҮЙ —
+// тэр нь чимээгүй буруу тулгалт үүсгэдэг. Эргэлзээтэйг хүн шийднэ.
+function normItemKey(s) {
+  const t = String(s == null ? '' : s).toLowerCase().replace(/ё/g, 'е')
+    .replace(/[acepxykmtbh]/g, ch => _CONFUSABLE_LAT[ch] || ch);
+  return t.replace(/[^0-9a-zа-я]+/g, '');
+}
+// Ижил төстэй бараа санал болгоход — үг болгон салгана (2-оос богиныг хаяна)
+function itemNameTokens(s) {
+  const t = String(s == null ? '' : s).toLowerCase().replace(/ё/g, 'е')
+    .replace(/[acepxykmtbh]/g, ch => _CONFUSABLE_LAT[ch] || ch);
+  return t.split(/[^0-9a-zа-я]+/).filter(w => w.length >= 2);
+}
+// Нэрэн дэх бүх тоо — хэмжээ таарахгүй бол өөр бараа («6-8 хүн» ≠ «2-4 хүн»)
+function itemNameNums(s) { return String(s == null ? '' : s).toLowerCase().match(/\d+/g) || []; }
+function _bigrams(s) { const o = new Set(); for (let i = 0; i < s.length - 1; i++) o.add(s.slice(i, i + 2)); return o; }
+function _jacc(A, B) { if (!A.size || !B.size) return 0; let i = 0; A.forEach(x => { if (B.has(x)) i++; }); return (2 * i) / (A.size + B.size); }
+// Хоёр нэрний ойролцоо байдал 0..1. ГУРВАН бүрэлдэхүүн:
+//   1) үгийн давхцал — «сандал», «цагаан» гэх мэт утга агуулсан үг
+//   2) 2 үсгийн давхцал — «эвхдэг» ↔ «эвхэгддэг» шиг үг хувирлыг барина
+//   3) ТООНЫ шалгуур — хэмжээ огт таарахгүй бол оноог эрс бууруулна, таарвал нэмнэ.
+//      («Өвлийн майхан 6-8» нь «Өвлийн майхан 2-4» руу оногдох нь хамгийн аюултай алдаа.)
+// ЗӨВХӨН САНАЛ болгоход. Автоматаар холбохгүй — буруу тулгалт = буруу тайлан.
+function itemNameScore(a, b) {
+  const A = itemNameTokens(a), B = itemNameTokens(b);
+  if (!A.length || !B.length) return 0;
+  const w = t => (/\d/.test(t) ? 2 : 1);
+  const setB = new Set(B);
+  let inter = 0, totA = 0, totB = 0;
+  A.forEach(t => { totA += w(t); if (setB.has(t)) inter += w(t); });
+  B.forEach(t => { totB += w(t); });
+  const tokScore = (2 * inter) / (totA + totB);
+  const bgScore = _jacc(_bigrams(normItemKey(a)), _bigrams(normItemKey(b)));
+  let s = 0.45 * tokScore + 0.55 * bgScore;
+  const na = itemNameNums(a), nb = itemNameNums(b);
+  if (na.length && nb.length) {
+    const hit = na.filter(v => nb.indexOf(v) >= 0).length;
+    s = hit ? s * (1 + 0.25 * hit / Math.max(na.length, nb.length)) : s * 0.35;
+  }
+  return Math.min(1, s);
+}
+// Барааны индексүүд (нэг удаа тооцоод кэшлэнэ; бараа шинэчлэгдэхэд шинэчилнэ)
+function productIndexes() {
+  const list = state.products || [];
+  if (state._pidx && state._pidxLen === list.length && state._pidxStamp === (state._productsStamp || 0)) return state._pidx;
+  const bySku = Object.create(null), byName = Object.create(null);
+  list.forEach(p => {
+    if (!p || !p.sku) return;
+    bySku[String(p.sku)] = p;
+    const k = normItemKey(p.name);
+    if (k && !byName[k]) byName[k] = String(p.sku);   // эхний таарсныг авна (давхардвал гараар шийднэ)
+  });
+  state._pidx = { bySku, byName }; state._pidxLen = list.length; state._pidxStamp = state._productsStamp || 0;
+  return state._pidx;
+}
+// Мөрийг барааны sku руу шийднэ. Дараалал ХАТУУ: тодорхойгоос бүрхэг рүү.
+// Цэвэр функц — ctx дамжуулбал state-гүйгээр тестлэгдэнэ.
+function resolveItemSku(line, ctx) {
+  const c = ctx || {};
+  const idx = c.bySku ? { bySku: c.bySku, byName: c.byName || {} } : productIndexes();
+  const aliases = c.aliases || (state.itemAliases || {});
+  const raw = String((line && line.sku) || '').trim();
+  if (raw && idx.bySku[raw]) return { sku: raw, how: 'sku' };
+  if (raw) {
+    const a = aliases['sku:' + raw.toLowerCase()];
+    if (a !== undefined) return a ? { sku: a, how: 'alias' } : { sku: '', how: 'skip' };
+  }
+  const nk = normItemKey(line && line.name);
+  if (nk) {
+    const a = aliases['name:' + nk];
+    if (a !== undefined) return a ? { sku: a, how: 'alias' } : { sku: '', how: 'skip' };
+    if (idx.byName[nk]) return { sku: idx.byName[nk], how: 'name' };
+  }
+  return { sku: '', how: 'none' };
+}
+async function loadItemAliases() {
+  if (!DB_ANON_KEY) { state.itemAliases = state.itemAliases || {}; return; }
+  try {
+    const r = await fetchWithTimeout(`${ALIASES_URL()}?select=alias,sku&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    const map = Object.create(null);
+    rows.forEach(x => { if (x && x.alias) map[String(x.alias)] = String(x.sku || ''); });
+    state.itemAliases = map;
+  } catch (e) { console.warn('loadItemAliases', e); state.itemAliases = state.itemAliases || {}; }
+}
+// Толинд бичих (upsert). sku='' = «бараа биш» гэж тэмдэглэх.
+async function saveItemAlias(alias, sku, note) {
+  if (!alias) return false;
+  const body = { alias, sku: sku || '', kind: alias.indexOf('name:') === 0 ? 'name' : 'sku',
+    note: note || '', created_by: state.me || '', updated_at: new Date().toISOString() };
+  try {
+    const r = await fetchWithTimeout(ALIASES_URL(), {
+      method: 'POST',
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY,
+        'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.itemAliases = state.itemAliases || {};
+    state.itemAliases[alias] = sku || '';
+    return true;
+  } catch (e) { console.warn('saveItemAlias', e); showToast('⚠ Тулгалт хадгалагдсангүй', 'error', 3000); return false; }
+}
+// Захиалгын БҮХ мөрийг шийдээд, шийдэгдээгүйг НЭРЭЭР бүлэглэнэ (дүнгээр эрэмбэлнэ).
+// Цэвэр функц — захиалгын жагсаалтыг гаднаас авна (тестлэгдэнэ).
+function unresolvedItemGroups(orders, ctx) {
+  const out = Object.create(null);
+  let okLines = 0, okAmt = 0, badLines = 0, badAmt = 0;
+  (orders || []).forEach(o => {
+    if (!o || ['deleted', 'canceled', 'draft'].includes(String(o.status))) return;
+    (Array.isArray(o.items) ? o.items : []).forEach(it => {
+      if (!it) return;
+      const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
+      const r = resolveItemSku(it, ctx);
+      if (r.how !== 'none') { okLines++; okAmt += amt; return; }
+      badLines++; badAmt += amt;
+      const nm = String(it.name || '').trim() || '(нэргүй)';
+      const key = 'name:' + normItemKey(nm);
+      const g = out[key] || (out[key] = { key, name: nm, lines: 0, qty: 0, amount: 0, orders: [] });
+      g.lines++; g.qty += Number(it.qty) || 0; g.amount += amt;
+      if (g.orders.length < 6 && o.number != null) g.orders.push(o.number);
+      if (nm.length > g.name.length) g.name = nm;   // хамгийн бүтэн бичилтийг харуулна
+    });
+  });
+  const groups = Object.keys(out).map(k => out[k]).sort((a, b) => b.amount - a.amount);
+  return { groups, okLines, okAmt, badLines, badAmt };
+}
+// ── Тулгалтын дэлгэц ─────────────────────────────────────────────────────────
+// Шийдэгдээгүй нэр бүрд 3 хамгийн ойр барааг САНАЛ болгоно (авто холбохгүй —
+// буруу тулгалт нь буруу тайлан, буруу шийдвэр). Хүн нэг товшилтоор баталгаажуулна.
+// «Одоо нэрээр таарч буй» мөрүүдийг бэхжүүлэх товч тусад нь: тэдгээр нь бараа
+// нэрээ соливол чимээгүй тасардаг ЦОРЫН ГАНЦ эмзэг цэг — толинд бичвэл мөнхөрнө.
+function nameMatchedKeys(orders) {
+  const seen = Object.create(null);
+  (orders || []).forEach(o => {
+    if (!o || ['deleted', 'canceled', 'draft'].includes(String(o.status))) return;
+    (Array.isArray(o.items) ? o.items : []).forEach(it => {
+      if (!it) return;
+      const r = resolveItemSku(it);
+      if (r.how !== 'name') return;
+      const k = 'name:' + normItemKey(it.name);
+      if (k !== 'name:') seen[k] = r.sku;
+    });
+  });
+  return seen;
+}
+function openItemReconcile() {
+  const orders = state.appOrders || [];
+  const st = unresolvedItemGroups(orders);
+  const frozenPending = nameMatchedKeys(orders);
+  const nFrozen = Object.keys(frozenPending).length;
+  const prods = (state.products || []).filter(p => p && p.sku && !p.archived)
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+  const allOpts = prods.map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(p.name || p.sku)}</option>`).join('');
+  const money = n => (typeof fmtMoney === 'function' ? fmtMoney(Math.round(n)) : String(Math.round(n)));
+  document.getElementById('item-recon-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg open'; modal.id = 'item-recon-modal'; modal.style.zIndex = '9600';
+  const rowsHtml = st.groups.slice(0, 80).map(g => {
+    const sug = prods.map(p => ({ p, s: itemNameScore(g.name, p.name) }))
+      .filter(x => x.s > 0.18).sort((a, b) => b.s - a.s).slice(0, 3);
+    return `<div class="rec-row" data-key="${escapeHtml(g.key)}">
+      <div class="rec-head">
+        <b>${escapeHtml(g.name)}</b>
+        <span class="rec-meta">${g.lines} мөр · ${g.qty}ш · <b>${money(g.amount)}</b>${g.orders.length ? ` · #${g.orders.join(', #')}` : ''}</span>
+      </div>
+      <div class="rec-actions">
+        ${sug.map(x => `<button type="button" class="btn rec-sug" data-key="${escapeHtml(g.key)}" data-sku="${escapeHtml(x.p.sku)}" title="${Math.round(x.s * 100)}% төстэй">✓ ${escapeHtml(x.p.name || x.p.sku)}</button>`).join('')}
+        <select class="rec-pick" data-key="${escapeHtml(g.key)}"><option value="">— бусад бараанаас сонгох —</option>${allOpts}</select>
+        <button type="button" class="btn rec-skip" data-key="${escapeHtml(g.key)}" title="Хүргэлт, үйлчилгээ, бөөн мөр — тайланд орохгүй">🚫 Бараа биш</button>
+      </div>
+    </div>`;
+  }).join('');
+  modal.innerHTML = `<div class="modal" style="max-width:860px;width:96%;max-height:92vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:17px;">🔗 Барааны тулгалт</h2>
+      <button class="btn" id="rec-close" style="padding:5px 10px;">✕</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 10px;">
+      Захиалгын мөрийг бараатай нэг удаа холбоно — холбоос барааны <b>кодон дээр</b> тогтох тул
+      дараа нь нэр, үнэ өөрчлөгдөхөд <b>эвдрэхгүй</b>. Автоматаар таамаглахгүй: доорх саналуудаас чи сонгоно.
+    </p>
+    <div class="rec-sum">
+      <span>✅ Шийдэгдсэн <b>${st.okLines}</b> мөр · <b>${money(st.okAmt)}</b></span>
+      <span>⚠ Үлдсэн <b>${st.groups.length}</b> нэр · <b>${money(st.badAmt)}</b></span>
+    </div>
+    ${nFrozen ? `<div class="rec-freeze">
+      <span>🔒 <b>${nFrozen}</b> нэр одоо зөвхөн <b>нэрээрээ</b> таарч байна — бараа нэрээ соливол тасарна.</span>
+      <button class="btn btn-primary" id="rec-freeze-btn">Бэхжүүлэх (${nFrozen})</button>
+    </div>` : ''}
+    <div id="rec-list">${rowsHtml || '<div style="padding:20px;text-align:center;color:var(--muted);">🎉 Бүх мөр тулгагдсан байна.</div>'}</div>
+    ${st.groups.length > 80 ? `<div style="font-size:11.5px;color:var(--muted);padding:8px 2px;">…дээд 80 нэр харуулав (дүнгээр). Холбох тусам үлдсэн нь гарч ирнэ.</div>` : ''}
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#rec-close').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const bind = async (key, sku, label) => {
+    const row = modal.querySelector(`.rec-row[data-key="${CSS.escape(key)}"]`);
+    if (row) row.style.opacity = '.45';
+    const ok = await saveItemAlias(key, sku, 'Гараар тулгав');
+    if (!ok) { if (row) row.style.opacity = ''; return; }
+    if (row) row.remove();
+    showToast(sku ? `✓ «${label}» холбогдлоо` : '🚫 Бараа биш гэж тэмдэглэв', 'success', 2200);
+    state._pidx = null;
+    if (typeof render === 'function') render();
+  };
+  modal.querySelectorAll('.rec-sug').forEach(b => b.onclick = () => bind(b.dataset.key, b.dataset.sku, b.textContent.replace(/^✓\s*/, '')));
+  modal.querySelectorAll('.rec-skip').forEach(b => b.onclick = () => bind(b.dataset.key, '', ''));
+  modal.querySelectorAll('.rec-pick').forEach(sel => sel.onchange = () => {
+    if (!sel.value) return;
+    bind(sel.dataset.key, sel.value, sel.options[sel.selectedIndex].textContent);
+  });
+  const fz = modal.querySelector('#rec-freeze-btn');
+  if (fz) fz.onclick = async () => {
+    fz.disabled = true; fz.textContent = '⏳ Бэхжүүлж байна…';
+    let n = 0;
+    for (const k of Object.keys(frozenPending)) {
+      if (await saveItemAlias(k, frozenPending[k], 'Нэрээр таарсныг бэхжүүлэв')) n++;
+    }
+    showToast(`🔒 ${n} нэр бэхжлээ — нэр солигдоход тасрахгүй`, 'success', 3200);
+    close(); if (typeof render === 'function') render();
+  };
+}
+
 // Идэвхтэй захиалгын БУЦААЛТ дээр эвдрэл бүртгэх — эвдэрсэн барааг нөөцөөс хасна (broken++) + барьцаанаас ₮ хасна.
 // Эвдэрсэн тоо note-д ⟦BRK⟧-ээр хадгалагдаж, барааны broken ДЕЛЬТА-гаар шинэчлэгдэнэ (дахин бүртгэвэл давхардахгүй).
 function openOrderDamageModal(oid) {
@@ -15652,6 +15899,15 @@ function renderProducts() {
         }).join('')}</div>` : ''}
       </div>`
     : '';
+  // ── Барааны тулгалт — захиалгын мөр бараатай холбогдоогүй бол тайлан худал болно ──
+  if (state.itemAliases === undefined) { state.itemAliases = {}; setTimeout(loadItemAliases, 0); }
+  const _rec = (_prodMgmt && (state.appOrders || []).length) ? unresolvedItemGroups(state.appOrders) : null;
+  const reconBar = (_rec && _rec.groups.length)
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(217,119,6,.10);border:1px solid rgba(217,119,6,.32);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🔗 <b>${_rec.groups.length}</b> нэр бараатай холбогдоогүй — <b>${fmtMoney(_rec.badAmt)}</b>-ийн түрээс тайланд ороогүй байна.</span>
+        <button class="btn btn-primary" id="prod-reconcile" style="white-space:nowrap;">Тулгах (${_rec.groups.length})</button>
+      </div>`
+    : '';
   // Ангилал + эрэмбэ сонгогч
   const cats = [...new Set(all.flatMap(p => [p.category, ...(Array.isArray(p.all_categories) ? p.all_categories : [])]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   const catOpts = _prodCatOptsGrouped(cats, state.prodCategory);   // сайтын бүлгээр (optgroup)
@@ -15704,6 +15960,7 @@ function renderProducts() {
     ${variantClearBar}
     ${seasonCloseBar}
     ${repairBar}
+    ${reconBar}
     <div class="prod-list">${rows ||'<div class="orders-empty"><div class="icon">📦</div>Энд бараа алга. "Шинэ" дарж нэмнэ үү.</div>'}</div>
   `;
 }
@@ -16056,6 +16313,7 @@ function attachProductsHandlers() {
   document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
   document.getElementById('prod-clear-variants')?.addEventListener('click', () => bulkClearVariants());
   document.getElementById('prod-fill-nameen')?.addEventListener('click', () => bulkFillNameEn());
+  document.getElementById('prod-reconcile')?.addEventListener('click', () => openItemReconcile());
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
   const s = document.getElementById('prod-search');
   if (s) s.oninput = (e) => {

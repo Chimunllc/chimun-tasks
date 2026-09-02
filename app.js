@@ -15165,7 +15165,9 @@ function pipelineThroughput(key, month) {
     const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {};
     for (const k of Object.keys(sm)) {
       const e = sm[k];
-      if (!e || String(e.by) !== String(key)) continue;
+      if (!e || typeof e !== 'object') continue;
+      const did = String(e.by) === String(key) || (Array.isArray(e.helpers) && e.helpers.some(h => String(h) === String(key)));
+      if (!did) continue;
       if (month && String(e.at || '').slice(0, 7) !== month) continue;
       n++;
     }
@@ -16464,7 +16466,8 @@ function stageMetaHtml(o) {
     const stars = e.rating ? `<span class="sm-stars" title="${e.ratedBy ? escapeHtml((memberName(e.ratedBy) || e.ratedBy) + ' үнэлэв') : ''}">${'★'.repeat(e.rating)}<span style="color:var(--border-strong);">${'★'.repeat(5 - e.rating)}</span></span>` : '';
     const _ph = photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : '';
     const _skip = e.skipped ? `<span class="sm-skip" title="${escapeHtml(e.reason || '')}">⏭ алгассан</span> ` : '';
-    const _head = `<div class="sm-head">${_skip}${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
+    const _helpers = (Array.isArray(e.helpers) && e.helpers.length) ? ` <span style="color:var(--muted);font-weight:400;" title="${escapeHtml(e.helpers.map(h => memberName(h) || h).join(', '))}">🤝 +${e.helpers.length} (${escapeHtml(e.helpers.map(h => memberName(h) || h).join(', ')).slice(0, 40)})</span>` : '';
+    const _head = `<div class="sm-head">${_skip}${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${_helpers}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
     const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>`
       : (e.skipped && e.reason ? `<div class="sm-comment">⏭ ${escapeHtml(e.reason)}</div>` : '');
     return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}</div></div>`;
@@ -16538,6 +16541,10 @@ function openStageAdvanceModal(oid, to) {
     return { sku, name: it.name, qty };
   }).filter(x => x.qty > 0) : [];
   const _driverBy = (_smNow.retstart && _smNow.retstart.by) || (_smNow.deliver && _smNow.deliver.by) || '';
+  // Хамтрагч — олон хүн ажилласныг харуулах (сонголттой). Идэвхтэй ажилчид, өөрийгөө хасна.
+  const _helpStaff = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && String(personKey(m)) !== String(state.me))
+    .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
   const _rcHtml = _isReceive && _rcItems.length ? `
     <div style="font-size:12.5px;font-weight:700;margin:2px 0 6px;">📦 ${_isPickup ? 'Хэрэглэгчээс бараа бүрэн авсан уу?' : 'Агуулахад бараа бүрэн ирсэн үү?'} <span style="color:var(--danger);">*</span></div>
     ${!_isPickup && _prevPick ? `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">Жолоочийн авсан тоотой тулгана. Дутвал замд алдагдсан = жолоочийн хариуцлага.</div>` : ''}
@@ -16563,6 +16570,11 @@ function openStageAdvanceModal(oid, to) {
     ${rateTargets.length ? rateTargets.map((rt, i) => `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(rt.q)}${rateTargets.length > 1 ? ` <span style="color:var(--muted);font-weight:400;font-size:11px;">— ${escapeHtml((typeof memberName === 'function' ? memberName(rt.ratee) : '') || '')}</span>` : ''} <span style="color:var(--danger);">*</span></div>
       <div class="sa-stars" data-si="${i}" style="font-size:34px;letter-spacing:5px;margin:2px 0 8px;user-select:none;">${[1, 2, 3, 4, 5].map(s => `<span data-star="${s}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>`).join('')
       + `<textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
+    ${_helpStaff.length ? `<div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">👥 Хамтарсан хүн байсан уу? <span style="color:var(--muted);font-weight:400;font-size:11px;">— дарж нэмнэ (сонголттой)</span></div>
+      <input id="sa-help-search" placeholder="Нэрээр хайх…" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12.5px;margin-bottom:6px;">
+      <div id="sa-help-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;margin-bottom:12px;">${_helpStaff.map(s => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s.k))}" data-hn="${escapeHtml(s.name.toLowerCase())}" style="cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);user-select:none;">${escapeHtml(s.name)}</span>`).join('')}</div>
+    </div>` : ''}
     ${canSkipStage() ? `<div id="sa-skip-wrap" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
       <button type="button" class="btn" id="sa-skip-open" style="width:100%;font-size:12.5px;">⏭ Шалтгаантай алгасах</button>
       <div id="sa-skip-box" style="display:none;margin-top:7px;">
@@ -16666,12 +16678,22 @@ function openStageAdvanceModal(oid, to) {
     const paintRow = () => row.querySelectorAll('[data-star]').forEach(sp => { sp.style.color = (+sp.dataset.star <= ratings[si]) ? '#f5a623' : 'var(--border-strong)'; });
     row.querySelectorAll('[data-star]').forEach(sp => sp.onclick = () => { ratings[si] = +sp.dataset.star; paintRow(); validate(); });
   });
+  // Хамтрагч сонголт (олон хүн ажилласан) — chip toggle + хайлт
+  const helpers = new Set();
+  modal.querySelectorAll('.sa-help-chip').forEach(ch => ch.onclick = () => {
+    const k = ch.dataset.hk;
+    if (helpers.has(k)) { helpers.delete(k); ch.style.background = 'var(--panel)'; ch.style.color = 'var(--text)'; ch.style.borderColor = 'var(--border)'; }
+    else { helpers.add(k); ch.style.background = 'var(--primary)'; ch.style.color = '#fff'; ch.style.borderColor = 'var(--primary)'; }
+  });
+  const _hSearch = modal.querySelector('#sa-help-search');
+  if (_hSearch) _hSearch.oninput = () => { const qq = _hSearch.value.toLowerCase().trim(); modal.querySelectorAll('.sa-help-chip').forEach(ch => { ch.style.display = (!qq || (ch.dataset.hn || '').includes(qq)) ? '' : 'none'; }); };
   $('#sa-submit').onclick = async () => {
     $('#sa-submit').disabled = true;
     const sm2 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
     const nowD = new Date().toISOString();
     const entry = Object.assign({}, sm2[act.key], { by: state.me, at: nowD });
     if (needPhoto) entry.photos = photos.slice();
+    if (helpers.size) entry.helpers = [...helpers]; else delete entry.helpers;   // хамтарсан хүмүүс
     if (rateTargets.length && ratings.every(r => r > 0)) {
       entry.comment = (($('#sa-comment') || {}).value || '').trim();
       // Үнэлгээ бүрийг тухайн ажилтанд холбоно (олон зорилт = олон handoffRating)

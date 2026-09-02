@@ -701,6 +701,16 @@ function finish() {
   eq(hc.count, 2, 'handoff: цэвэрлэгч 2 үнэлгээ (массив + legacy)');
   ok(Math.abs(hc.avg - 3.5) < 0.01, 'handoff: цэвэрлэгч дундаж (4+3)/2=3.5');
   eq(HQS('prep', '2026-09').count, 1, 'handoff: бэлдэгч 1 үнэлгээ (массиваас)');
+
+  // Хамтрагч — pipelineThroughput нь by + helpers хоёуланг тоолно
+  const PTP = vm.runInContext('pipelineThroughput', sandbox);
+  vm.runInContext('state.appOrders = ' + JSON.stringify([
+    { stage_meta: { clean: { by: 'A', at: '2026-09-01T10:00:00Z', helpers: ['B', 'C'] } } },
+  ]) + ';', sandbox);
+  eq(PTP('A', '2026-09'), 1, 'throughput: гол гүйцэтгэгч тоологдоно');
+  eq(PTP('B', '2026-09'), 1, 'throughput: хамтрагч тоологдоно');
+  eq(PTP('C', '2026-09'), 1, 'throughput: хамтрагч 2 тоологдоно');
+  eq(PTP('D', '2026-09'), 0, 'throughput: оролцоогүй хүн 0');
   vm.runInContext('state.appOrders = [];', sandbox);
 }
 

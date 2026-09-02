@@ -5349,8 +5349,11 @@ function openExpenseModal(id) {
 // Ирсэн (Орлого) мөрүүдийг бүртгэсэн төлбөртэй тулгана → 4 хуваарь.
 // Дотоод шилжүүлэг / өөрийн данс хооронд / хадгаламж — үйлчлүүлэгчийн төлбөр БИШ, тулгалтаас хасна.
 function _isInternalCredit(r) {
-  const t = (String(r.memo || '') + ' ' + String(r.name || '')).toLowerCase();
-  return /данс\s*хоор|өөрийн\s*данс|хадгаламж|дотоод\s*шилж|валют\s*арилжаа|карт\s*цэнэглэ/.test(t);
+  const name = String(r.name || '').toLowerCase();
+  // Харьцсан тал = ЧИМУН өөрөө → өөрийн данс хоорондын шилжүүлэг (орлого БИШ, кирилл ба латин хоёул)
+  if (/чимун|chimun/.test(name)) return true;
+  const t = (String(r.memo || '') + ' ' + name).toLowerCase();
+  return /данс\s*хоор|dans\s*hoor|hoorond|өөрийн\s*данс|хадгаламж|дотоод\s*шилж|валют\s*арилжаа|карт\s*цэнэглэ|зарлаг\w*\s*данс|данс\s*руу|дансруу/.test(t);
 }
 function reconcileOrders(stmtRows, orders, opts) {
   const tol = (opts && opts.amountTol) || 500;   // ±500₮ (шимтгэл/тоймлолт)

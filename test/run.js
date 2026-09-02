@@ -806,6 +806,9 @@ function finish() {
   ok(F._isInternalCredit({ memo: 'хадгаламж шилжүүлэг', name: '' }) === true, 'internal: хадгаламж');
   ok(F._isInternalCredit({ memo: 'REF1 ширээ сандал', name: 'Бат' }) === false, 'internal: жинхэнэ төлбөр → false');
   ok(F._isInternalCredit({ memo: '', name: 'Болд' }) === false, 'internal: энгийн нэр → false');
+  ok(F._isInternalCredit({ memo: 'DANS HOOROND ZARLAGA', name: 'ЧИМУН ХХК' }) === true, 'internal: илгээгч ЧИМУН → true');
+  ok(F._isInternalCredit({ memo: 'ЗАРЛАГЫН ДАНСРУУ', name: 'ЧИМУН ХХК' }) === true, 'internal: зарлагын дансруу');
+  ok(F._isInternalCredit({ memo: 'DANS HOOROND', name: '' }) === true, 'internal: latin dans hoorond');
 
   // ── reconcileOrders: хуваасан төлбөр + огноо scope ──
   {

@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -136,6 +136,10 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq(F.setupFeeForItems([{ name: 'Тайз', qty: 3 }]), 90000, 'Нийт хөлс: 3×30000=90000');
   eq(F.setupFeeForItems([{ name: 'Сандал', qty: 10 }]), 50000, 'Нийт хөлс: 10×500=5000 → доод хязгаар 50000');
   eq(F.setupFeeForItems([]), 0, 'Нийт хөлс: бараагүй = 0');
+  // каталогийн setup (item.setup) нэрээр таамагласнаас ДАВУУ
+  eq(F.setupUnitFee({ name: 'Сандал', setup: 3000 }), 3000, 'Нэгж хөлс: каталогийн setup давуу');
+  eq(F.setupUnitFee({ name: 'Сандал' }), 500, 'Нэгж хөлс: setup байхгүй → нэрээр');
+  eq(F.setupFeeForItems([{ name: 'Сандал', qty: 100, setup: 3000 }]), 300000, 'Нийт хөлс: каталогийн setup×тоо');
 }
 
 // 4) Эхлэх/дуусах цаг токен

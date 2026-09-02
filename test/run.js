@@ -1890,6 +1890,27 @@ function finish() {
        'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
   }
 
+  // ── Эрхийн матрицын нэр sidebar-ын нэртэй таарах ──
+  // (Эрх олгож буй хүн «Агуулах» гэсэн чагт аль цэсийг нээж байгааг таах ёсгүй.
+  //  Хаалтан доторх тодотгол — «Цалин (сарын)», «Ажилчид (удирдах)» — зөвшөөрөгдөнө:
+  //  тэдгээр нь sidebar-ын нэрээр эхэлж, ямар эрх болохыг л тодруулна.)
+  {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const navLabel = {};
+    for (const m of html.matchAll(/data-view="([a-z]+)"[^>]*>([\s\S]*?)<\/div>/g)) {
+      const txt = m[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim().replace(/\s*\d*$/, '').trim();
+      if (txt && !navLabel[m[1]]) navLabel[m[1]] = txt;
+    }
+    const menus = vm.runInContext('PERM_MENUS', sandbox);
+    ok(menus.length > 10, 'эрх: PERM_MENUS уншигдав');
+    menus.forEach(m => {
+      const nav = navLabel[m.key];
+      if (!nav) return;   // sidebar-т тусдаа цэсгүй (hourly, workload, history) — шалгахгүй
+      ok(m.label === nav || m.label.startsWith(nav + ' ('),
+         `эрх: «${m.key}» матрицын нэр «${m.label}» нь sidebar-ын «${nav}»-тэй нийцнэ`);
+    });
+  }
+
   // ── Захиалгын дэд гарчиг БҮХ захиалгыг сайтынх мэт харуулахгүй ──
   // (orderSourceKey нь site / booqable / app гэсэн 3 эх сурвалж ялгадаг атал дэд гарчиг
   //  «M Event сайтаас ирсэн түрээсийн захиалгууд» гэж бичдэг байв — ажилтны үүсгэсэн ба

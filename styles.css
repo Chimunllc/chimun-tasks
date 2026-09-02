@@ -2930,6 +2930,8 @@ button#f-defer:hover,
   background: var(--accent-blue) !important;
   color: #ffffff !important;
 }
+/* Тоогүй badge = хоосон саарал бөмбөлөг. Утга байхгүй бол огт харуулахгүй. */
+.count-badge:empty { display: none; }
 
 /* ── Login screen — цэвэрхэн, нэг өнгөтэй (gradient бус) ── */
 .login-screen {

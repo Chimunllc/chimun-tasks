@@ -19734,6 +19734,20 @@ function orderSourceKey(o) {
 // Сайтаас ирсэн захиалгын эзлэх хувь — маркетингийн шийдвэрт (сайт мөнгө оруулж
 // байна уу?). Booqable нь ГАРСАН систем тул хуваарьт оруулахгүй — эс бөгөөс
 // 2024-26 оны түүх өнөөдрийн хувийг дарж, сайт үргэлж жижиг харагдана.
+// Сувгийн статистик хүчинтэй болох ЭХНИЙ сар. Үүнээс өмнө сайт→апп capture
+// тогтворгүй байсан (07-р сард CORS-оос болж долоо хоног захиалга огт ирээгүй)
+// тул тоо худал гарна — харуулахгүй нь дээр.
+const ORDER_SRC_STATS_FROM = '2026-09';
+function srcStatsAvailable(month) { return String(month || '') >= ORDER_SRC_STATS_FROM; }
+// Суваг тус бүрийн тоо/орлого/дундаж — цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
+// Booqable түүх ОРОХГҮЙ (гарсан систем, харьцуулалтыг гажуудуулна).
+function channelStats(orders, basis) {
+  const pick = k => (orders || []).filter(o => orderSourceKey(o) === k);
+  const sum = arr => arr.reduce((a, o) => a + orderRevenue(o, basis), 0);
+  const wrap = arr => { const inc = sum(arr); return { n: arr.length, inc, avg: arr.length ? Math.round(inc / arr.length) : 0 }; };
+  const site = wrap(pick('site')), staff = wrap(pick('app'));
+  return { site, staff, n: site.n + staff.n, inc: site.inc + staff.inc };
+}
 function siteShare(orders) {
   const live = (orders || []).filter(o => orderSourceKey(o) !== 'booqable');
   const site = live.filter(o => orderSourceKey(o) === 'site').length;
@@ -20334,10 +20348,39 @@ function renderReports() {
       <div style="font-weight:800;font-size:12.5px;margin-bottom:8px;color:var(--primary-hover, var(--primary));">📌 Гол дүгнэлт</div>
       ${ins.map(t => `<div style="font-size:13px;line-height:1.55;margin-bottom:5px;display:flex;gap:7px;"><span style="color:var(--primary);">•</span><span>${t}</span></div>`).join('')}
     </div>` : '';
+  // ── БОРЛУУЛАЛТЫН СУВАГ — сайт vs ажилтан ────────────────────────────────────
+  // ⚠ 2026-09-аас ӨМНӨХ дата найдваргүй: сайт→апп capture 7-р сард CORS-оос болж
+  // долоо хоног тасарсан (захиалга огт ирээгүй), source тэмдэглэгээ ч тогтворгүй
+  // байсан. Тиймээс өмнөх сарыг ОГТ харуулахгүй — буруу тоо харуулснаас дээр.
+  const srcPanel = (() => {
+    if (!srcStatsAvailable(month)) return '';
+    const cs = channelStats(evList, basis);
+    const n = cs.n;
+    if (!n) return '';
+    const pct = v => Math.round(v * 1000 / n) / 10;
+    const incPct = v => (cs.inc ? Math.round(v * 1000 / cs.inc) / 10 : 0);
+    const col = (label, x) => `<div class="rsrc-col">
+        <div class="rsrc-h">${label}</div>
+        <div class="rsrc-n">${x.n} <span class="rsrc-pct">${pct(x.n)}%</span></div>
+        <div class="rsrc-row"><span>Орлого</span><b>${fmtMoney(x.inc)} <span class="rsrc-pct">${incPct(x.inc)}%</span></b></div>
+        <div class="rsrc-row"><span>Дундаж дүн</span><b>${fmtMoney(x.avg)}</b></div>
+      </div>`;
+    // Цөөн датанд хувь санамсаргүй хэлбэлзэнэ — шийдвэр гаргахаас сэргийлж сануулна.
+    const few = n < 20
+      ? `<div class="rsrc-warn">⚠ ${n} захиалга — дүгнэлт гаргахад цөөн. Хэдэн сар хуримтлагдтал хандлагыг битгий ном болго.</div>`
+      : '';
+    return `<div class="rsrc-panel">
+      <div class="rsrc-title">🛒 Борлуулалтын суваг · ${escapeHtml(month)}</div>
+      <div class="rsrc-grid">${col('🌐 Сайтаас', cs.site)}${col('👤 Ажилтнаас', cs.staff)}</div>
+      ${few}
+      <div class="rsrc-note">2026-09-аас хойшхи дата. Өмнөх сарууд сайтын бүртгэл тогтворгүй байсан тул оруулаагүй.</div>
+    </div>`;
+  })();
   return pnl
     + insightsBanner
     + ceoSections
     + trendChart
+    + srcPanel
     + incomeSections
     + expChart
     + shiftPanel

@@ -5962,7 +5962,10 @@ function renderOrders() {
   // Захиалгыг lazy татна.
   if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadOrdersData, 0);
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
-  const combined = unifiedOrders();
+  const _staffOnly = !canSeeOrderMoney();   // гүйцэтгэгч ажилтан — ноорог/архив/цуцалсан/устгасан харагдахгүй
+  const combined = _staffOnly
+    ? unifiedOrders().filter(e => ORDER_STAFF_STATUSES.includes(String(e.o.status)))
+    : unifiedOrders();
 
   if (!combined.length) {
     if (state._initialLoading || state._bqOrdersLoading) return head + `<div class="orders-empty"><div class="icon">⏳</div><div>Ачаалж байна…</div></div>`;
@@ -6005,7 +6008,7 @@ function renderOrders() {
   }).join('');
   // ── Зүүн статус sidebar (Booqable шиг) — 6 ҮНДСЭН бүлэг. "Захиалсан" = идэвхтэй бүх шат
   // (Бэлдсэн/Хүргэгдэж/Түрээсэнд/Буцаалт замд...) — нарийн статус нь хүснэгтийн Төлөв баганад л харагдана.
-  const _SIDE = [
+  const _SIDE_ALL = [
     { key: 'all', label: 'Бүгд' },
     { key: 'draft', label: 'Ноорог', dot: '#6B7280' },
     { key: 'active', label: 'Захиалсан', dot: '#D97706' },
@@ -6014,6 +6017,8 @@ function renderOrders() {
     { key: 'canceled', label: 'Цуцалсан', dot: '#DC2626' },
     { key: 'deleted', label: 'Устгасан', dot: '#9CA3AF' },
   ];
+  // Гүйцэтгэгчид зөвхөн идэвхтэй ажил — ноорог/архив/цуцалсан/устгасан бүлэг хэрэггүй
+  const _SIDE = _staffOnly ? _SIDE_ALL.filter(g => ['all', 'active'].includes(g.key)) : _SIDE_ALL;
   const sideHtml = _SIDE.map(g => {
     const n = combined.filter(e => matchFilter(e, g.key)).length;
     const dot = g.dot ? `<span class="ordv-st-dot" style="--d:${g.dot}"></span>` : '';
@@ -6047,7 +6052,7 @@ function renderOrders() {
   </div>`;
   const controls = `<div class="orders-controls">
     <div class="orders-controls-r" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${ymSelect}${paySelect}${depSelect}${custSelect}${vatSelect}${sortSelect}
+      ${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}${sortSelect}
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
     </div>
   </div>`;

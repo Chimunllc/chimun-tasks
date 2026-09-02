@@ -617,6 +617,41 @@ function finish() {
   ok(!RP('Эвент менежер').actions.includes('products.edit'), 'эвент менежер: /эвент/ загвар — бараа засахгүй (хэвээр)');
 }
 
+// 34) Ажилтанд ноорог/архив/цуцалсан захиалга ӨГӨГДӨЛ дээрээ ирэхгүй
+{
+  const st = vm.runInContext('state', sandbox);
+  const RO = vm.runInContext('renderOrders', sandbox);
+  const STF = vm.runInContext('ORDER_STAFF_STATUSES', sandbox);
+  const saved = { ceo: st.isCEO, me: st.me, mp: st.memberPerms, rp: st.rolePerms, ao: st.appOrders, bo: st.bqOrders, o: st.orders };
+
+  st.orders = []; st.bqOrders = []; st.rolePerms = {};
+  st.appOrders = [
+    { id: 'a', number: 1, status: 'draft',    customer: 'Ноорог',   total_mnt: 100, starts_at: '2026-09-01', stops_at: '2026-09-02', items: [] },
+    { id: 'b', number: 2, status: 'archived', customer: 'Архив',    total_mnt: 200, starts_at: '2026-09-01', stops_at: '2026-09-02', items: [] },
+    { id: 'c', number: 3, status: 'reserved', customer: 'Захиалсан', total_mnt: 300, paid_mnt: 300, starts_at: '2026-09-01', stops_at: '2026-09-02', items: [] },
+    { id: 'd', number: 4, status: 'canceled', customer: 'Цуцалсан', total_mnt: 400, starts_at: '2026-09-01', stops_at: '2026-09-02', items: [] },
+  ];
+
+  st.isCEO = false; st.me = 'W1'; st.memberPerms = { W1: { orders: true, 'orders.pay': false } };
+  const staffHtml = String(RO());
+  ok(staffHtml.indexOf('Захиалсан') > -1, 'ажилтан: идэвхтэй захиалга харагдана');
+  ok(staffHtml.indexOf('Ноорог') === -1,   'ажилтан: НООРОГ харагдахгүй');
+  ok(staffHtml.indexOf('Архив') === -1,    'ажилтан: АРХИВ харагдахгүй');
+  ok(staffHtml.indexOf('Цуцалсан') === -1, 'ажилтан: ЦУЦАЛСАН харагдахгүй');
+  ok(staffHtml.indexOf('Төлбөр: бүгд') === -1, 'ажилтан: төлбөрийн шүүлтүүр алга');
+  ok(staffHtml.indexOf('Барьцаа: бүгд') === -1, 'ажилтан: барьцааны шүүлтүүр алга');
+  ok(staffHtml.indexOf('НӨАТ: бүгд') === -1,   'ажилтан: НӨАТ шүүлтүүр алга');
+
+  st.memberPerms = { W1: { orders: true, 'orders.pay': true } };
+  const mgrHtml = String(RO());
+  ok(mgrHtml.indexOf('Ноорог') > -1, 'менежер: ноорог хэвээр харагдана');
+  ok(mgrHtml.indexOf('Төлбөр: бүгд') > -1, 'менежер: төлбөрийн шүүлтүүр хэвээр');
+
+  STF.forEach(k => ok(typeof k === 'string', 'төлвийн жагсаалт мөр утгатай'));
+  st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+  st.appOrders = saved.ao; st.bqOrders = saved.bo; st.orders = saved.o;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

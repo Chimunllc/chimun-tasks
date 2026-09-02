@@ -802,6 +802,35 @@ function finish() {
   eq(RS(items, [10, 50])[0].miss, 1, 'тоолол: дутуу массив — сүүлийн бараа 0 гэж тооцогдоно');
 }
 
+// 40) Шат алгасах эрх — зөвхөн CEO / тусгайлан олгосон хүн
+{
+  const st = vm.runInContext('state', sandbox);
+  const CS = vm.runInContext('canSkipStage', sandbox);
+  const SMH = vm.runInContext('stageMetaHtml', sandbox);
+  const saved = { ceo: st.isCEO, me: st.me, mp: st.memberPerms, rp: st.rolePerms };
+  st.me = 'W1'; st.rolePerms = {};
+
+  st.isCEO = false; st.memberPerms = { W1: { 'orders.skip': false } };
+  ok(!CS(), 'алгасах: эрхгүй ажилтан алгасаж чадахгүй');
+
+  st.memberPerms = { W1: { 'orders.skip': true } };
+  ok(CS(), 'алгасах: эрх олгосон хүн чадна');
+
+  st.memberPerms = {}; st.isCEO = true;
+  ok(CS(), 'алгасах: CEO үргэлж чадна');
+  st.isCEO = false;
+
+  // Алгассан шат ИЛ харагдана
+  const h = SMH({ stage_meta: { clean: { by: 'W1', at: '2026-09-02T10:00:00Z', skipped: true, reason: 'Цэвэрлэгч ажилдаа гараагүй' } } });
+  ok(h.indexOf('алгассан') > -1, 'алгасах: картад «алгассан» тэмдэг гарна');
+  ok(h.indexOf('Цэвэрлэгч ажилдаа гараагүй') > -1, 'алгасах: шалтгаан харагдана');
+
+  const h2 = SMH({ stage_meta: { clean: { by: 'W1', at: '2026-09-02T10:00:00Z', photos: ['u'] } } });
+  ok(h2.indexOf('алгассан') === -1, 'алгасах: хэвийн шатанд тэмдэг гарахгүй');
+
+  st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

@@ -8810,6 +8810,7 @@ const PERM_MENUS = [
       { key: 'orders.dispatch', label: 'Гаргах / Олгох (нярав)' },
       { key: 'orders.deliver',  label: 'Хүргэж өгөх (хүргэгч)' },
       { key: 'orders.advance',  label: 'Архивлах / бусад шилжүүлэх' },
+      { key: 'orders.skip',     label: 'Шат алгасах (шалтгаантай)' },
       { key: 'orders.cancel',   label: 'Цуцлах / устгах' } ] },
   { key: 'products',    label: 'Агуулах',         actions: [
       { key: 'products.edit', label: 'Засах / нэмэх' } ] },
@@ -8828,10 +8829,10 @@ const DENY_DEFAULT_ACTIONS = new Set(['access.delegate']);
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
-const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.skip', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
@@ -16333,8 +16334,10 @@ function stageMetaHtml(o) {
     const e = sm[k]; const photos = (e.photos || []).filter(Boolean);
     const stars = e.rating ? `<span class="sm-stars" title="${e.ratedBy ? escapeHtml((memberName(e.ratedBy) || e.ratedBy) + ' үнэлэв') : ''}">${'★'.repeat(e.rating)}<span style="color:var(--border-strong);">${'★'.repeat(5 - e.rating)}</span></span>` : '';
     const _ph = photos.length ? `<div class="sm-photos">${photos.map(u => `<img src="${escapeHtml(driveThumbUrl(u, 120))}" data-stagephoto="${escapeHtml(u)}" loading="lazy" referrerpolicy="no-referrer" />`).join('')}</div>` : '';
-    const _head = `<div class="sm-head">${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
-    const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>` : '';
+    const _skip = e.skipped ? `<span class="sm-skip" title="${escapeHtml(e.reason || '')}">⏭ алгассан</span> ` : '';
+    const _head = `<div class="sm-head">${_skip}${STAGE_META_LABEL[k] || k}${e.by ? ` · <b>${escapeHtml(memberName(e.by) || e.by)}</b>` : ''}${e.at ? ` · <span style="color:var(--muted);">${_stageTimeFmt(e.at)}</span>` : ''}${_stageTiming(k, e.at, o)}${stars ? ' · ' + stars : ''}</div>`;
+    const _cmt = e.comment ? `<div class="sm-comment">💬 ${escapeHtml(e.comment)}</div>`
+      : (e.skipped && e.reason ? `<div class="sm-comment">⏭ ${escapeHtml(e.reason)}</div>` : '');
     return `<div class="sm-row">${_ph}<div class="sm-body">${_head}${_cmt}</div></div>`;
   }).join('')}</div>`;
 }
@@ -16348,6 +16351,9 @@ function openStagePhoto(url) {
 // Товч дарахад — зураг (ЗААВАЛ) + өмнөх шатны үнэлгээ (ЗААВАЛ, сэтгэгдэл заавал биш)
 // Буцаан авалтын зөрүү — хүлээгдэж буй ба бодитоор ирсэн тоог тулгана.
 // Цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
+// Шат алгасах эрх — CEO ба тусгайлан олгосон хүн (ҮАХ захирал). Ажилтан алгасаж болохгүй.
+function canSkipStage() { return state.isCEO || capValue('orders.skip') === true; }
+
 function receiveShortfalls(items, got) {
   return (items || []).map((x, i) => {
     const exp = Math.max(0, Number(x && x.qty) || 0);
@@ -16397,12 +16403,46 @@ function openStageAdvanceModal(oid, to) {
     ${q ? `<div style="font-size:12.5px;font-weight:700;margin-bottom:2px;">⭐ ${escapeHtml(q)} <span style="color:var(--danger);">*</span></div>
       <div id="sa-stars" style="font-size:34px;letter-spacing:5px;margin:2px 0 4px;user-select:none;">${[1, 2, 3, 4, 5].map(i => `<span data-star="${i}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>
       <textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
-    <div style="display:flex;gap:8px;justify-content:flex-end;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
+    ${canSkipStage() ? `<div id="sa-skip-wrap" style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
+      <button type="button" class="btn" id="sa-skip-open" style="width:100%;font-size:12.5px;">⏭ Шалтгаантай алгасах</button>
+      <div id="sa-skip-box" style="display:none;margin-top:7px;">
+        <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:6px;">Зураг, үнэлгээгүйгээр дараагийн шатанд шилжүүлнэ. Хэн, яагаад алгассан нь захиалгад үлдэнэ.</div>
+        <textarea id="sa-skip-why" rows="2" placeholder="Яагаад алгасах шаардлагатай вэ? (заавал)" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:13px;"></textarea>
+        <button type="button" class="btn" id="sa-skip-go" disabled style="width:100%;margin-top:6px;border-color:var(--danger);color:var(--danger);">⏭ Алгасаад үргэлжлүүлэх</button>
+      </div>
+    </div>` : ''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;"><button class="btn" id="sa-cancel">Болих</button><button class="btn btn-primary" id="sa-submit" disabled>✓ Баталгаажуулах</button></div>
   </div>`;
   document.body.appendChild(modal);
   const $ = s => modal.querySelector(s);
   const close = () => modal.remove();
   $('#sa-close').onclick = close; $('#sa-cancel').onclick = close;
+  // ── Шат алгасах (зөвхөн эрхтэй хүн, шалтгаан заавал) ──
+  // Ажилтан ажилдаа гараагүй үед захиалга гацахаас сэргийлнэ. Алгассан нь ИЛ үлдэнэ.
+  const _skipOpen = $('#sa-skip-open');
+  if (_skipOpen) {
+    _skipOpen.onclick = () => {
+      const box = $('#sa-skip-box');
+      const on = box.style.display === 'none';
+      box.style.display = on ? '' : 'none';
+      _skipOpen.textContent = on ? '✕ Алгасахаа болих' : '⏭ Шалтгаантай алгасах';
+      if (on) $('#sa-skip-why').focus();
+    };
+    $('#sa-skip-why').addEventListener('input', () => {
+      $('#sa-skip-go').disabled = $('#sa-skip-why').value.trim().length < 5;
+    });
+    $('#sa-skip-go').onclick = async () => {
+      const why = $('#sa-skip-why').value.trim();
+      if (why.length < 5) return;
+      $('#sa-skip-go').disabled = true;
+      const sm3 = JSON.parse(JSON.stringify((o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : {}));
+      sm3[act.key] = Object.assign({}, sm3[act.key], {
+        by: state.me, at: new Date().toISOString(), skipped: true, reason: why,
+      });
+      close();
+      await bqUpdateStatus(o.id, to, { stageMeta: sm3, toast: `⏭ «${act.label}» алгаслаа` });
+    };
+  }
   if (_isReceive && _rcItems.length) {
     modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
       const i = +inp.dataset.rci;

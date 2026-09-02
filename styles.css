@@ -6371,3 +6371,6 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .rc-diff.ok { color: var(--ok); }
 .rc-diff.bad { color: #B45309; }
 .rc-warn { padding: 8px 10px; background: #FBF0DC; border: 1px solid #E6C878; border-radius: 8px; color: #7A560F; font-size: var(--fs-sm); font-weight: 700; margin-bottom: 10px; line-height: 1.5; }
+
+/* Алгассан дамжлагын шат — ил тод тэмдэглэгээ */
+.sm-skip { display: inline-block; background: #FBF0DC; border: 1px solid #E6C878; color: #7A560F; font-size: var(--fs-xs); font-weight: 700; padding: 1px 7px; border-radius: 100px; }

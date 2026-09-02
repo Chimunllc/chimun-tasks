@@ -1626,6 +1626,27 @@ function finish() {
     // Огнооны хамгаалалт
     ok(F._dayRange('2026-05-03', '2026-05-01').length === 1, 'огноо: буруу дараалал = 1 өдөр');
     ok(F._dayRange('', '').length === 0, 'огноо: хоосон = хоосон');
+    // Багц барааны нөөц — бүрэлдэхүүнээс тухайн агшинд бодогдоно (хадгалагдсанаас биш)
+    {
+      const st0 = vm.runInContext('state', sandbox);
+      const prev = st0.products;
+      st0.products = [
+        { sku: 'P1', name: 'Майхан', stock: 6, qty_mevent: 6 },
+        { sku: 'P2', name: 'Зуух', stock: 4, qty_mevent: 4 },
+      ];
+      const pkg = { sku: 'PK', name: 'Өвлийн багц', type: 'package', price: 390000,
+        stock: 99, qty_mevent: 99, bundle_items: [{ sku: 'P1', qty: 1 }, { sku: 'P2', qty: 2 }] };
+      ok(F.pricingStock(pkg) === 2, 'багц: нөөц = бүрэлдэхүүний хамгийн бага (4÷2=2)');
+      ok(F.pricingStock({ sku: 'X', stock: 7 }) === 7, 'багц бус: энгийн нөөц');
+      const sp = F.pricingStats(
+        [{ number: 9, status: 'returned', starts_at: '2026-02-01', stops_at: '2026-02-01',
+           items: [{ sku: 'PK', name: 'Өвлийн багц', qty: 2, price: 390000 }] }],
+        [pkg], { from: '2026-01-01', to: '2026-12-31',
+                 ctx: { bySku: { PK: pkg }, byName: {}, aliases: {} } });
+      ok(sp.rows[0].pkg === true && sp.rows[0].stock === 2 && sp.rows[0].turns === 1,
+         'багц: тайланд багц гэж тэмдэглэгдэж, эргэлт зөв');
+      st0.products = prev;
+    }
   }
 
   finish();

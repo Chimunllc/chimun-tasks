@@ -4502,7 +4502,10 @@ function _dayRange(startISO, stopISO) {
   return out;
 }
 // Барааны нөөц — M-Event салбарын хуваарилалт байвал түүнийг, эс бол нийт нөөц.
+// Багц барааны нөөц нь бүрэлдэхүүнээсээ ТУХАЙН АГШИНД бодогдоно (хадгалагдсан
+// stock нь бүрэлдэхүүн өөрчлөгдөхөд хоцордог) — эс бөгөөс эргэлт худал гарна.
 function pricingStock(p) {
+  if (typeof isPackage === 'function' && isPackage(p)) return packageStock(p);
   const m = Number(p && p.qty_mevent);
   if (m > 0) return m;
   return Math.max(0, Number(p && p.stock) || 0);
@@ -4555,6 +4558,7 @@ function pricingStats(orders, products, opts) {
     });
     rows.push({
       sku: p.sku, code: p.code || p.sku, name: p.name || p.sku,
+      pkg: typeof isPackage === 'function' && isPackage(p),
       stock, qty, revenue, list, cost, avg,
       orders: a ? a.orders.size : 0,
       turns: stock > 0 ? qty / stock : null,
@@ -4626,7 +4630,7 @@ function openPricingReport() {
     const body = list.slice(0, 300).map(r => {
       const V = PRICING_VERDICTS[r.verdict.key] || PRICING_VERDICTS.ok;
       return `<tr title="${escapeHtml(r.verdict.why)}">
-        <td class="pr-nm"><b>${escapeHtml(r.name)}</b><span class="pr-code">${escapeHtml(r.code)}</span></td>
+        <td class="pr-nm"><b>${escapeHtml(r.name)}</b>${r.pkg ? ' <span class="pr-pkg">📦 багц</span>' : ''}<span class="pr-code">${escapeHtml(r.code)}</span></td>
         <td class="pr-n">${r.stock}</td>
         <td class="pr-n">${r.qty}</td>
         <td class="pr-n${r.turns != null && r.turns >= 8 ? ' pr-hot' : ''}">${num(r.turns)}</td>

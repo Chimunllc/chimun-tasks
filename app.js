@@ -16429,6 +16429,18 @@ function stageActionFor(from, to) { return STAGE_ACTION[from + '>' + to] || { ke
 const STAGE_META_LABEL = { clean: '🧹 Цэвэрлэсэн', prepare: '🧰 Бэлдсэн', dispatch: '📦 Агуулахаас гаргасан', deliver: '🚚 Хүргэж өгсөн', retstart: '↩️ Хүргэлтээс авсан', received: '📥 Агуулахад авсан', archive: '🗄 Архивласан', handover: '🤝 Үйлчлүүлэгчид өгсөн',
   // Хуучин датаны төлөв-түлхүүрүүд (legacy fallback — хуучин утгаар)
   prepared: '🧰 Бэлдсэн', ready: '🧹 Цэвэрлэсэн', cleaning: '🧹 Цэвэрлэсэн', rented: '🚚 Хүргэж өгсөн', returned: '📥 Агуулахад авсан', archived: '🗄 Архивласан', revert: '↩ Шат буцаасан' };
+// Хамтрагч асуух текст — шат бүрд ТОДОРХОЙ («хамтарсан хүн байсан уу?» гэдэг
+// ерөнхий асуулт нь юуны тухай яриад байгаа нь ойлгомжгүй байв).
+const STAGE_HELP_Q = {
+  clean:    'Цэвэрлэгээг хамт хийсэн хүн байсан уу?',
+  prepare:  'Бэлтгэлийг хамт хийсэн хүн байсан уу?',
+  dispatch: 'Ачих/гаргахад хамт ажилласан хүн байсан уу?',
+  handover: 'Хүлээлгэж өгөхөд хамт ажилласан хүн байсан уу?',
+  deliver:  'Хүргэлтэд хамт явсан хүн байсан уу?',
+  retstart: 'Буцаан авахад хамт явсан хүн байсан уу?',
+  received: 'Хүлээн авахад хамт ажилласан хүн байсан уу?',
+};
+function stageHelpQuestion(key) { return STAGE_HELP_Q[key] || 'Энэ ажлыг хамт хийсэн хүн байсан уу?'; }
 // Шатны цаг форматлах — бүтэн цагтай бол огноо+цаг (орон нутгийн), эс бол зөвхөн огноо
 function _stageTimeFmt(atISO) {
   const s = String(atISO || ''); if (!s) return '';
@@ -16559,7 +16571,9 @@ function openStageAdvanceModal(oid, to) {
   }).filter(x => x.qty > 0) : [];
   const _driverBy = (_smNow.retstart && _smNow.retstart.by) || (_smNow.deliver && _smNow.deliver.by) || '';
   // Хамтрагч — олон хүн ажилласныг харуулах (сонголттой). Идэвхтэй ажилчид, өөрийгөө хасна.
-  const _helpStaff = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && String(personKey(m)) !== String(state.me))
+  // Зөвхөн ҮНДСЭН ажилтан — цагийн ажилтан дамжлагын хамтрагчаар бүртгэгдэхгүй
+  // (KPI/цалин нь өөр журмаар тооцогддог тул хольж болохгүй).
+  const _helpStaff = (typeof TEAM !== 'undefined' ? TEAM : []).filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !isDailyMember(m) && String(personKey(m)) !== String(state.me))
     .map(m => ({ k: personKey(m), name: m.name || '' })).filter(x => x.k && x.name)
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'mn'));
   const _rcHtml = _isReceive && _rcItems.length ? `
@@ -16588,7 +16602,7 @@ function openStageAdvanceModal(oid, to) {
       <div class="sa-stars" data-si="${i}" style="font-size:34px;letter-spacing:5px;margin:2px 0 8px;user-select:none;">${[1, 2, 3, 4, 5].map(s => `<span data-star="${s}" style="cursor:pointer;color:var(--border-strong);">★</span>`).join('')}</div>`).join('')
       + `<textarea id="sa-comment" rows="2" placeholder="Сэтгэгдэл / шалтгаан (заавал биш)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);margin-bottom:12px;font-size:13px;"></textarea>` : ''}
     ${_helpStaff.length ? `<div style="border-top:1px dashed var(--border);margin-top:6px;padding-top:9px;">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">👥 Хамтарсан хүн байсан уу? <span style="color:var(--muted);font-weight:400;font-size:11px;">— дарж нэмнэ (сонголттой)</span></div>
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:5px;">👥 ${escapeHtml(stageHelpQuestion(act.key))} <span style="color:var(--muted);font-weight:400;font-size:11px;">— байвал дарж нэмнэ</span></div>
       <input id="sa-help-search" placeholder="Нэрээр хайх…" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12.5px;margin-bottom:6px;">
       <div id="sa-help-list" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;margin-bottom:12px;">${_helpStaff.map(s => `<span class="sa-help-chip" data-hk="${escapeHtml(String(s.k))}" data-hn="${escapeHtml(s.name.toLowerCase())}" style="cursor:pointer;font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);user-select:none;">${escapeHtml(s.name)}</span>`).join('')}</div>
     </div>` : ''}

@@ -1224,5 +1224,25 @@ function finish() {
     ok(F.driverBonus('bat', '2026-07', orders).count === 0, 'driverBonus: өөр сар → 0');
   }
 
+  // ── Хамтрагчийн асуулт — шат бүрд тодорхой ──
+  {
+    ok(F.stageHelpQuestion('clean').includes('Цэвэрлэгээ'), 'help-Q: цэвэрлэх шатны асуулт тодорхой');
+    ok(F.stageHelpQuestion('prepare').includes('Бэлтгэл'), 'help-Q: бэлдэх шатны асуулт тодорхой');
+    ok(F.stageHelpQuestion('deliver').includes('Хүргэлт'), 'help-Q: хүргэх шатны асуулт тодорхой');
+    ok(F.stageHelpQuestion('retstart').includes('Буцаан авах'), 'help-Q: буцаан авах шатны асуулт');
+    const d = F.stageHelpQuestion('огт_байхгүй');
+    ok(typeof d === 'string' && d.length > 5, 'help-Q: танигдаагүй шатанд ерөнхий асуулт');
+  }
+  // ── Хамтрагчаар нэмэгдэх боломжтой хүн = зөвхөн үндсэн, идэвхтэй, өөрөөс бусад ──
+  {
+    const cands = [
+      { name: 'Үндсэн Б', status: 'идэвхтэй', worker_type: 'permanent' },
+      { name: 'Цагийн Ц', status: 'идэвхтэй', worker_type: 'daily' },
+      { name: 'Гарсан Г', status: 'гарсан', worker_type: 'permanent' },
+    ];
+    const pick = cands.filter(m => (m.status || 'идэвхтэй') === 'идэвхтэй' && !F.isDailyMember(m));
+    ok(pick.length === 1 && pick[0].name === 'Үндсэн Б', 'хамтрагч: цагийн ба гарсан ажилтан жагсаалтад ороогүй');
+  }
+
   finish();
 })();

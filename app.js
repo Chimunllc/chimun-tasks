@@ -21089,7 +21089,7 @@ function finMonthIncome(month, basis) {
     if (basis === 'cash') { const m = nomaadPaidInMonth(o, month); if (m > 0) { noInc += m; noN++; } }   // C5: төлбөрийн огноогоор
     else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { noInc += nomaadEffTotal(o); noN++; }
   });
-  return { evInc, evN: evList.length, noInc, noN };
+  return { evInc, evN: evList.length, noInc, noN, evList };
 }
 function finBranchPnl(month, basis) {
   const _mi = finMonthIncome(month, basis);
@@ -21512,7 +21512,7 @@ function renderReports() {
   // байсан. Тиймээс өмнөх сарыг ОГТ харуулахгүй — буруу тоо харуулснаас дээр.
   const srcPanel = (() => {
     if (!srcStatsAvailable(month)) return '';
-    const cs = channelStats(evList, basis);
+    const cs = channelStats(_mi.evList || [], basis);
     const n = cs.n;
     if (!n) return '';
     const pct = v => Math.round(v * 1000 / n) / 10;

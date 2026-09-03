@@ -354,7 +354,7 @@ async function setErrorStatus(fp, status, note) {
       method: 'POST',
       headers: pgWrite({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
       body: JSON.stringify({ fp, status, note: note || null,
-        fixed_ver: status === 'fixed' ? (typeof CACHE_TAG === 'string' ? CACHE_TAG : '') : null,
+        fixed_ver: status === 'fixed' ? (typeof globalThis.CACHE_TAG === 'string' ? globalThis.CACHE_TAG : '') : null,
         updated_by: state.me || '', updated_at: new Date().toISOString() }),
     }, 12000);
     if (!r.ok) throw new Error('HTTP ' + r.status);

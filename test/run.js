@@ -88,6 +88,15 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
+// 0c) SCAN — CACHE_TAG-ийг ЗӨВХӨН globalThis-ээр уншина (2026-09-03)
+// `typeof X === 'string' ? X : ''` дэх ХОЁР ДАХЬ лавлагаа нь no-undef-д баригдаж
+// CI-г улаан болгодог. 2026-09-03-нд хоёр удаа тохиолдсон — эхнийх нь 2 газар
+// зассаны дараа өөр сесс 3 дахь газар нэмсэн. Тиймээс ХЭВ МАЯГИЙГ хаана.
+{
+  const bare = (src.match(/(?<!globalThis\.)\bCACHE_TAG\b/g) || []).length;
+  eq(bare, 0, 'scan: CACHE_TAG зөвхөн globalThis.CACHE_TAG хэлбэрээр (no-undef)');
+}
+
 // 0a) SCAN — PostgREST дуудлага бүр НЭВТЭРСЭН токеноор явна (2026-09-03)
 // pgrstBearer() = pgrstToken() || DB_ANON_KEY — токенгүй бол anon руу унана, тул
 // солих нь юуг ч эвдэхгүй. Харин anon-ы УНШИХ эрхийг ирээдүйд хаах боломж нээгдэнэ.

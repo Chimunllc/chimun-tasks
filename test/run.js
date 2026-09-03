@@ -88,6 +88,15 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
+// 0d) SCAN — view бүр safeViewHtml-ээр хамгаалагдсан байна (2026-09-03)
+// Рендер алдаа шидвэл wrap.innerHTML хоосон үлдэж апп «үхсэн» мэт харагдана —
+// цэс дарахад юу ч болохгүй, алдааны мессеж ч гарахгүй. safeViewHtml нь try/catch
+// хийж хэрэглэгчид ойлгомжтой мессеж үзүүлнэ. Аудит: 15 view-ээс 13 нь хамгаалалтгүй байв.
+{
+  const bare = (src.match(/wrap\.innerHTML\s*=\s*render[A-Z]/g) || []).length;
+  eq(bare, 0, 'scan: view рендер бүр safeViewHtml-ээр хамгаалагдсан');
+}
+
 // 0c) SCAN — CACHE_TAG-ийг ЗӨВХӨН globalThis-ээр уншина (2026-09-03)
 // `typeof X === 'string' ? X : ''` дэх ХОЁР ДАХЬ лавлагаа нь no-undef-д баригдаж
 // CI-г улаан болгодог. 2026-09-03-нд хоёр удаа тохиолдсон — эхнийх нь 2 газар

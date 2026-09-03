@@ -3860,7 +3860,7 @@ function renderTaskList() {
   if (state.view === 'dashboard') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderDashboard();
+    wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     // Dashboard action товчнууд
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
@@ -3902,37 +3902,37 @@ function renderTaskList() {
   } else if (state.view === 'accounts') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderBankAccounts();
+    wrap.innerHTML = safeViewHtml(renderBankAccounts, 'Данс & карт');
     attachBankAccountsHandlers();
     return;
   } else if (state.view === 'marketing') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMarketing();
+    wrap.innerHTML = safeViewHtml(renderMarketing, 'Маркетинг');
     attachMarketingHandlers();
     return;
   } else if (state.view === 'documents') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderDocuments();
+    wrap.innerHTML = safeViewHtml(renderDocuments, 'Баримт');
     attachDocumentsHandlers();
     return;
   } else if (state.view === 'myexpenses') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMyExpenses();
+    wrap.innerHTML = safeViewHtml(renderMyExpenses, 'Миний зардал');
     attachMyExpensesHandlers();
     return;
   } else if (state.view === 'receivables') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderReceivables();
+    wrap.innerHTML = safeViewHtml(renderReceivables, 'Авлага');
     attachReceivablesHandlers();
     return;
   } else if (state.view === 'coosalary') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderCooSalary();
+    wrap.innerHTML = safeViewHtml(renderCooSalary, 'COO цалин');
     attachCooSalaryHandlers();
     return;
   } else if (state.view === 'vat') {
@@ -3943,7 +3943,7 @@ function renderTaskList() {
   } else if (state.view === 'access') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderAccess();
+    wrap.innerHTML = safeViewHtml(renderAccess, 'Ажилчид (удирдах)');
     attachAccessHandlers();
     return;
   } else if (state.view === 'salary' || state.view === 'hourly') {
@@ -3963,13 +3963,13 @@ function renderTaskList() {
   } else if (state.view === 'attendance') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderAttendance();
+    wrap.innerHTML = safeViewHtml(renderAttendance, 'Ирц');
     attachAttendanceHandlers();
     return;
   } else if (state.view === 'myattend') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMyAttend();
+    wrap.innerHTML = safeViewHtml(renderMyAttend, 'Миний ирц');
     attachMyAttendHandlers();
     return;
   } else if (state.view === 'reports') {
@@ -3989,19 +3989,19 @@ function renderTaskList() {
   } else if (state.view === 'performance') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderPerformance();
+    wrap.innerHTML = safeViewHtml(renderPerformance, 'Гүйцэтгэл');
     attachPerformanceHandlers();
     return;
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline());
+    wrap.innerHTML = safeViewHtml(() => renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline()), 'NOMAAD захиалга');
     attachNomaadHandlers();
     return;
   } else if (state.view === 'catering') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderCatering();
+    wrap.innerHTML = safeViewHtml(renderCatering, 'Катеринг');
     attachCateringHandlers();
     return;
   } else if (state.view === 'finance') {

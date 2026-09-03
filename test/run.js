@@ -88,6 +88,21 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
+// 0e) SCAN — түүхий UTC огноо БАЙХГҮЙ (2026-09-04)
+// `x.toISOString().slice(0,10)` нь UTC огноо буцаана. Монгол UTC+8 тул 00:00-08:00
+// хооронд НЭГ ӨДРӨӨР хоцордог: сарын 1-нд цалин/гүйцэтгэл өмнөх сарыг үзүүлнэ,
+// «Хоцорсон» тооллого буруу гарна. Зөвшөөрөгдөх цорын ганц хэлбэр нь
+// getTimezoneOffset()-оор тохируулсан нь (todayStr/dateStr/addDays-ийн дотоод).
+// Шинэ код: todayStr() · dateStr(d) · monthStr(d) · addDays(s, n) ашиглана.
+{
+  // Тайлбар мөрүүдэд тэр хэв маягийг ЗОРИУД бичсэн (яагаад болохгүйг тайлбарлахын тулд)
+  // тул код мөрүүдийг л шалгана.
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const all = (codeLines.match(/toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
+  const safe = (codeLines.match(/getTimezoneOffset\(\) \* 60000\)\.toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
+  eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
+}
+
 // 0d) SCAN — view бүр safeViewHtml-ээр хамгаалагдсан байна (2026-09-03)
 // Рендер алдаа шидвэл wrap.innerHTML хоосон үлдэж апп «үхсэн» мэт харагдана —
 // цэс дарахад юу ч болохгүй, алдааны мессеж ч гарахгүй. safeViewHtml нь try/catch

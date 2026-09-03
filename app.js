@@ -238,6 +238,110 @@ const state = {
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
 
+/* -------------------- ГЛОБАЛ АЛДАА БАРИГЧ --------------------
+   Яагаад: handler дотор алдаа гарвал браузер чимээгүй зогсдог — хэрэглэгч товч
+   дараад ЮУ Ч БОЛОХГҮЙ, апп юу ч хэлэхгүй, эзэн нь сар хүртэл мэдэхгүй.
+   2026-09-02: нярвын «Агуулахад авсан» товч TDZ алдаанаас болж нэг өдөр үхсэн.
+   Өмнө нь мөн адил HTML эвдэрснээс цэс дарагдахгүй болж байсан.
+   Одоо: алдаа гармагц (1) хэрэглэгчид ил хэлнэ, (2) сүүлийн 20-г хадгална,
+   (3) CEO-гийн «Систем шалгалт» үзүүлэлт улаан болно. */
+const ERR_LOG_KEY = 'appErrors';
+const ERR_LOG_MAX = 20;
+let _lastErrToastAt = 0;
+// Хэрэглэгчийн буруу биш, засах боломжгүй чимээ — тоохгүй (өргөтгөл, зургийн 404 г.м.)
+function _errIsNoise(msg, src) {
+  const m = String(msg || '');
+  if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
+  if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
+  if (/^chrome-extension:|^moz-extension:/.test(String(src || ''))) return true;
+  return false;
+}
+function appErrors() {
+  try { const a = JSON.parse(localStorage.getItem(ERR_LOG_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function clearAppErrors() { try { localStorage.removeItem(ERR_LOG_KEY); } catch (e) {} }
+function logAppError(msg, src, extra) {
+  if (_errIsNoise(msg, src)) return;
+  try {
+    const list = appErrors();
+    list.push({
+      at: new Date().toISOString(),
+      msg: String(msg || '').slice(0, 300),
+      src: String(src || '').slice(0, 200),
+      view: (typeof state === 'object' && state) ? String(state.view || '') : '',
+      me: (typeof state === 'object' && state) ? String(state.me || '') : '',
+      ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
+      extra: String(extra || '').slice(0, 300),
+    });
+    localStorage.setItem(ERR_LOG_KEY, JSON.stringify(list.slice(-ERR_LOG_MAX)));
+  } catch (e) {}
+  // Хэрэглэгчид ИЛ хэлнэ. Дараалсан алдаанд дэлгэц дүүргэхгүй — 8 секундэд нэг удаа.
+  try {
+    const now = Date.now();
+    if (now - _lastErrToastAt > 8000 && typeof showToast === 'function') {
+      _lastErrToastAt = now;
+      showToast('⚠ Алдаа гарлаа — үйлдэл хийгдсэнгүй. Дахин оролдоно уу.', 'error', 6000);
+    }
+  } catch (e) {}
+  try { if (typeof renderCiStatus === 'function') renderCiStatus(); } catch (e) {}
+  _reportErrToServer(msg, src, extra);
+}
+// Серверт мэдээлэх — ажилтны утсан дээрх алдаа ЭЗЭНД хүрнэ (локал бүртгэл зөвхөн
+// тухайн төхөөрөмжид үлддэг тул хангалтгүй байсан).
+// ⚠ Энэ функц ХЭЗЭЭ Ч алдаа шидэхгүй байх ЁСТОЙ — эс бөгөөс алдаа мэдээлэх нь өөрөө
+// алдаа болж хязгааргүй давталт үүснэ. Тиймээс энд .catch(()=>{}) нь ЗӨВ.
+const _errSentThisSession = new Set();
+let _errSentCount = 0;
+function _reportErrToServer(msg, src, extra) {
+  try {
+    if (!DB_URL || !DB_ANON_KEY) return;
+    if (_errSentCount >= 10) return;                       // нэг сесст дээд тал нь 10
+    const key = String(msg || '').slice(0, 120) + '|' + String(src || '').slice(0, 80);
+    if (_errSentThisSession.has(key)) return;              // давхардсаныг дахин илгээхгүй
+    _errSentThisSession.add(key); _errSentCount++;
+    fetch(`${DB_URL}/rest/v1/app_errors`, {
+      method: 'POST',
+      // Нэвтэрсэн бол ажилтны токеноор, эс бол anon-оор (нэвтрэхийн ӨМНӨ гарсан алдааг ч барина)
+      headers: pgWrite({ Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        msg: String(msg || '').slice(0, 300),
+        src: String(src || '').slice(0, 200),
+        view: (typeof state === 'object' && state) ? String(state.view || '') : '',
+        person: (typeof state === 'object' && state) ? String(state.me || '') : '',
+        ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
+        ua: String((navigator && navigator.userAgent) || '').slice(0, 200),
+        stack: String(extra || '').slice(0, 300),
+      }),
+    }).catch(() => {});
+  } catch (e) {}
+}
+// CEO — БҮХ ажилтны алдааг серверээс татна (сүүлийн 24 цаг). Нэвтэрсэн токен шаардана;
+// anon-д SELECT эрх ЗОРИУДААР өгөөгүй (алдааны лог нийтэд ил байх ёсгүй).
+async function loadServerErrors() {
+  if (!state.isCEO || !DB_URL) return;
+  try {
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_errors?at=gte.${since}&select=at,msg,src,view,person,ver&order=at.desc&limit=100`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return;                                     // эрхгүй/хүснэгт байхгүй — чимээгүй, локал нь ажиллана
+    const rows = await r.json();
+    if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
+  } catch (e) {}
+}
+try {
+  window.addEventListener('error', (ev) => {
+    logAppError(ev && ev.message, ev && ev.filename ? ev.filename + ':' + ev.lineno : '',
+      ev && ev.error && ev.error.stack ? String(ev.error.stack).split('\n').slice(0, 3).join(' | ') : '');
+  });
+  window.addEventListener('unhandledrejection', (ev) => {
+    const r = ev && ev.reason;
+    logAppError(r && r.message ? r.message : String(r), 'promise',
+      r && r.stack ? String(r.stack).split('\n').slice(0, 3).join(' | ') : '');
+  });
+} catch (e) {}
+
 /* -------------------- TOAST / CONFIRM (alert/confirm орлуулсан) --------------------
    showToast(msg, type)            — fire-and-forget banner. Type: '', 'success', 'error', 'warn'.
    showConfirm(msg, opts)          — Returns Promise<boolean>. opts: {title, okText, cancelText}.
@@ -4104,7 +4208,7 @@ async function advanceRepair(id, to, extra) {
   try {
     const res = await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(patch),
     }, 15000);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -4127,7 +4231,7 @@ async function advanceRepair(id, to, extra) {
 async function loadRepairs() {
   try {
     const r = await fetchWithTimeout(`${REPAIRS_URL()}?select=*&order=reported_at.desc&limit=500`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.repairs = await r.json();
   } catch (e) { console.warn('loadRepairs', e); state.repairs = state.repairs || []; }
@@ -4138,20 +4242,20 @@ async function ensureRepairRecord({ sku, name, qty, orderNumber, note, by }) {
   if (!sku || !(qty > 0)) return;
   try {
     const q = `${REPAIRS_URL()}?sku=eq.${encodeURIComponent(sku)}&order_number=eq.${Number(orderNumber) || 0}&status=in.(pending,in_progress)&select=id,qty`;
-    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
     const rows = ex.ok ? await ex.json() : [];
     const body = { sku, product_name: name || '', qty, order_number: Number(orderNumber) || null,
                    note: note || '', reported_by: by || state.me || '', updated_at: new Date().toISOString() };
     if (rows.length) {
       await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(rows[0].id)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ qty, note: body.note, updated_at: body.updated_at }),
       }, 12000);
     } else {
       await fetchWithTimeout(REPAIRS_URL(), {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: repairId(sku, orderNumber), status: 'pending', ...body }),
       }, 12000);
     }
@@ -4257,7 +4361,7 @@ async function loadItemAliases() {
   if (!DB_ANON_KEY) { state.itemAliases = state.itemAliases || {}; return; }
   try {
     const r = await fetchWithTimeout(`${ALIASES_URL()}?select=alias,sku&limit=5000`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     const map = Object.create(null);
@@ -4275,7 +4379,7 @@ async function saveItemAlias(alias0, sku, note) {
   try {
     const r = await fetchWithTimeout(ALIASES_URL(), {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY,
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
         'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
       body: JSON.stringify(body),
     }, 15000);
@@ -4292,7 +4396,7 @@ async function deleteItemAlias(alias) {
   try {
     const r = await fetchWithTimeout(`${ALIASES_URL()}?alias=eq.${encodeURIComponent(k)}`, {
       method: 'DELETE',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     if (state.itemAliases) delete state.itemAliases[k];
@@ -4797,7 +4901,7 @@ function openOrderDamageModal(oid) {
     // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
     let baseNote = o.note;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].note != null) baseNote = String(rr[0].note); }
     } catch (_) {}
     let newNote = encodeBrokenRec(baseNote, newBrk);
@@ -5315,7 +5419,7 @@ function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
 async function loadExpenseLearn() {
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const map = {}; (await r.json()).forEach(x => { if (x && x.key) map[x.key] = { branch: x.branch || '', cat: x.cat || '' }; });
     state.expenseLearn = map;
@@ -7850,7 +7954,7 @@ async function loadProductsCatalog() {
   if (DB_ANON_KEY) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
       }, 15000);
       if (!r.ok) throw new Error('PG HTTP ' + r.status);
       const rows = await r.json();
@@ -8678,7 +8782,7 @@ async function loadAttendanceToday() {
   try {
     const d = todayStr();
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -8687,7 +8791,7 @@ async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
 }
@@ -8695,7 +8799,7 @@ async function loadAttendanceView() {
 async function loadAttendanceMonthFull(month) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lte.${month}-31&select=member_key,member_name,kind,ts,day&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 20000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
     if (r.ok) { state.attMonthRecs = await r.json(); state.attMonthKey = month; if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
 }
@@ -8704,7 +8808,7 @@ function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
 async function loadAttendanceMonth() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) {
       const rows = await r.json(), map = {}, times = {};
       rows.forEach(x => {
@@ -8920,7 +9024,7 @@ function loadQRCodeJs() {
 async function loadMyAttendance() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=eq.${encodeURIComponent(state.me)}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -9823,7 +9927,7 @@ async function loadMemberPerms() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_perms?select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -9856,7 +9960,7 @@ async function loadMemberBranches() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_branches?select=person_key,branches`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
@@ -10006,7 +10110,7 @@ async function loadCateringMenu(force) {
   if (!DB_ANON_KEY) return;
   if (state.cateringMenu && !force) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringMenu = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringMenu', e); state.cateringMenu = state.cateringMenu || []; }
@@ -10015,7 +10119,7 @@ async function loadCateringJobs(force) {
   if (!DB_ANON_KEY) return;
   if (state.cateringJobs && !force) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringJobs = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringJobs', e); state.cateringJobs = state.cateringJobs || []; }
@@ -10922,7 +11026,7 @@ async function _postBrandKit(k) {
 async function loadBrandKit() {
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
     try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) {}
@@ -11187,7 +11291,7 @@ function renderEmailMarketing() {
 }
 async function loadEmailOptout() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
     if (!r.ok) return;
     const rows = await r.json();
     state._emailOptout = new Set((rows || []).map(x => String(x.email || '').trim().toLowerCase()).filter(Boolean));
@@ -11551,7 +11655,7 @@ async function loadRolePerms() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/role_perms?select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -12637,7 +12741,7 @@ async function loadNomaadPayments() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/nomaad_payments?select=*&order=recorded_at.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;   // хүснэгт үүсээгүй бол чимээгүй
     const rows = await r.json();
     const byQ = {};
@@ -16111,7 +16215,7 @@ async function loadAppConfig(key) {
   if (!DB_ANON_KEY) return null;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     return rows[0] ? rows[0].value : null;
@@ -16821,7 +16925,7 @@ async function loadHistory(force) {
   if (state.history && !state.history.error && !force) return;
   if (!DB_ANON_KEY) { state.history = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
   state._bqLoading = true;
-  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
+  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
   const get = async (view, qs) => {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${view}?select=*${qs || ''}`, { headers: H }, 20000);
     if (!r.ok) throw new Error(view + ' HTTP ' + r.status);
@@ -16893,7 +16997,7 @@ async function loadOrderItems(orderId) {
   if (state.bqOrderItems[orderId]) return state.bqOrderItems[orderId];
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.bqOrderItems[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderItems', e); state.bqOrderItems[orderId] = []; }
   return state.bqOrderItems[orderId];
@@ -16905,7 +17009,7 @@ async function loadOrderDocs(orderId) {
   if (state.bqDocuments[orderId]) return state.bqDocuments[orderId];
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.bqDocuments[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderDocs', e); state.bqDocuments[orderId] = []; }
   return state.bqDocuments[orderId];
@@ -17458,21 +17562,6 @@ function openStageAdvanceModal(oid, to) {
       await bqUpdateStatus(o.id, to, { stageMeta: sm3, toast: `⏭ «${act.label}» алгаслаа` });
     };
   }
-  if (_isReceive && _rcItems.length) {
-    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
-      const i = +inp.dataset.rci;
-      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
-      rcGot[i] = v; rcPaint(); validate();
-    });
-    const _all = modal.querySelector('#rc-all');
-    if (_all) _all.onclick = () => {
-      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
-      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
-      rcPaint(); validate();
-    };
-    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
-    rcPaint();
-  }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const photos = []; const ratings = new Array(rateTargets.length).fill(0);
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
@@ -17504,6 +17593,24 @@ function openStageAdvanceModal(oid, to) {
     const noteOk = !needNote || String(($('#sa-comment') || {}).value || '').trim().length >= 3;
     $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && rateTargets.every((_, i) => ratings[i] > 0) && noteOk);
   };
+  // ⚠ Энэ блок rcGot / rcPaint / validate-аас ХОЙШ байх ЁСТОЙ. Өмнө нь дээр талд байсан
+  // тул `rcPaint()` нь const тодорхойлогдохоос өмнө дуудагдаж ReferenceError шидэж,
+  // «Агуулахад авсан» / «Хүргэлтээс авсан» цонх ОГТ нээгддэггүй байв (нярав гацсан).
+  if (_isReceive && _rcItems.length) {
+    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
+      const i = +inp.dataset.rci;
+      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
+      rcGot[i] = v; rcPaint(); validate();
+    });
+    const _all = modal.querySelector('#rc-all');
+    if (_all) _all.onclick = () => {
+      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
+      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
+      rcPaint(); validate();
+    };
+    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
+    rcPaint();
+  }
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
@@ -17606,7 +17713,7 @@ async function _loadAppOrdersImpl() {
       if (c) { state.appOrders = JSON.parse(c); if (typeof render === 'function') render(); }
     } catch (e) {}
   }
-  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } };
+  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };
   const isArch = (o) => _ARCHIVE_STATUSES.includes(String(o.status));
   try {
     // 1-р шат: идэвхтэй захиалгууд — жижиг, хурдан
@@ -18813,7 +18920,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
       let baseNote = o.note;
       try {
         const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, {
-          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
         }, 8000);
         if (gr.ok) { const rows = await gr.json(); if (rows && rows[0] && rows[0].note != null) baseNote = String(rows[0].note); }
       } catch (_) { /* сүлжээ унавал санах ойн note дээр буцаж тооцно */ }
@@ -19567,7 +19674,7 @@ async function loadUsedReceipts() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
@@ -19623,7 +19730,7 @@ async function reserveReceipt(receiptId, meta) {
       // PK мөргөлдөөн — эзэмшигч нь мөн энэ хүсэлт бол ok (кэш хуучирсан байж болно)
       try {
         const q = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=used_in`,
-          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 10000);
+          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 10000);
         const ex = await q.json();
         if (ex[0] && ex[0].used_in === meta.usedIn) return 'ok';
       } catch (e) {}
@@ -19816,7 +19923,7 @@ function openRefundModal(oid) {
     // Серверийн ХАМГИЙН СҮҮЛИЙН paid_mnt + note уншиж (зэрэгцээ/стейл snapshot-оос) refund-ыг хасна
     let basePaid = Number(o.paid_mnt) || 0, baseNote = o.note;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { if (rr[0].paid_mnt != null) basePaid = Number(rr[0].paid_mnt) || 0; if (rr[0].note != null) baseNote = String(rr[0].note); } }
     } catch (_) {}
     const refundAmt = Math.min(basePaid, amount);   // төлсөнөөс илүү буцаахгүй
@@ -19832,7 +19939,7 @@ function openRefundModal(oid) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ paid_mnt: newPaid, note: newNote, updated_at: new Date().toISOString() }),
       }, 15000);
       if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
@@ -19874,7 +19981,7 @@ async function submitBqPayment(oid, modal, btn) {
   let basePaid = Number(o.paid_mnt) || 0, baseRef = String(o.paid_ref || '');
   if (isApp) {
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rows = await gr.json(); if (rows && rows[0]) { if (rows[0].paid_mnt != null) basePaid = Number(rows[0].paid_mnt) || 0; if (rows[0].paid_ref != null) baseRef = String(rows[0].paid_ref); } }
     } catch (_) { /* сүлжээ унавал санах ойн утга дээр тооцно */ }
   }
@@ -21687,7 +21794,7 @@ function attachReportsHandlers() {
    products-тэй ижил posture) → NOMAAD + Эвент(түүхэн) захиалгатай авто/гараар тулгана →
    захиалгад "🧾 НӨАТ" badge + Санхүүд тусдаа НӨАТ тайлан. */
 const VAT_URL = `${DB_URL}/rest/v1/vat_receipts`;
-const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
+const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
 function vatNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; }
 function vatNorm(s) { return String(s || '').toLowerCase().replace(/ххк|ххн|\bхк\b|llc|ltd|co\b|group|групп/g, '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
 function vatDateIso(v) {
@@ -21755,12 +21862,60 @@ async function loadCiStatus() {
   if (!state.isCEO) return;
   const [app, site] = await Promise.all([_ciFetchRun(CI_APP_URL), _ciFetchRun(CI_SITE_URL)]);
   if (app || site) { state.ciStatus = { app, site }; renderCiStatus(); }
-  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) loadCiStatus(); }, 300000);   // 5 мин тутам сэргээнэ
+  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) { loadCiStatus(); loadServerErrors(); } }, 300000);   // 5 мин тутам сэргээнэ
 }
 function _ciState(c) { if (!c) return 'none'; if (c.status && c.status !== 'completed') return 'run'; return c.conclusion === 'success' ? 'ok' : 'fail'; }
+// Сүүлийн 24 цагийн алдаа — CEO-д ил гаргана (эс бөгөөс хэн ч мэдэхгүй өнгөрнө)
+function recentAppErrors() {
+  const cut = Date.now() - 86400000;
+  return appErrors().filter(e => { const t = Date.parse(e && e.at); return !isNaN(t) && t >= cut; });
+}
+function openAppErrorsModal() {
+  // Локал (энэ төхөөрөмж) + сервер (бүх ажилтан) — нэг жагсаалтад, шинэ нь дээр
+  const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
+  const list = recentAppErrors().concat(srv)
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
+  ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h2 style="margin:0;font-size:16px;">⚠ Аппын алдаа · сүүлийн 24 цаг (${list.length})</h2>
+      <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+      🧑 = ажилтны төхөөрөмжөөс серверт бүртгэгдсэн · бусад нь энэ төхөөрөмжийнх.</div>
+    ${list.length ? list.map(e => `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
+      <div style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${e._srv ? '🧑 ' + escapeHtml(memberName(e.person) || e.person || '?') + ' · ' : ''}${escapeHtml(String(e.at).slice(0, 16).replace('T', ' '))} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.ver || '')}</div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button class="btn" data-err-clear>Жагсаалт цэвэрлэх</button>
+      <button class="btn btn-primary" data-err-x>Хаах</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', ev => {
+    if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
+    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); }
+  });
+}
 function renderCiStatus() {
   const el = document.getElementById('ci-status'); if (!el) return;
   const s = state.ciStatus;
+  // ⚠ Ажиллах үеийн алдаа нь CI-аас ЧУХАЛ — хэрэглэгч яг одоо гацаж байна гэсэн үг.
+  // Тиймээс CI дата ирээгүй байсан ч эхлээд үүнийг харуулна.
+  const srv = state.isCEO && Array.isArray(state.serverErrors) ? state.serverErrors : [];
+  const errs = state.isCEO ? recentAppErrors() : [];
+  const total = errs.length + srv.length;
+  if (total) {
+    el.hidden = false;
+    el.className = 'ci-status ci-fail';
+    el.innerHTML = `<span class="ci-dot">🔴</span><span class="ci-label">${total} алдаа гарсан</span>`;
+    el.title = 'Сүүлийн 24 цагт ' + total + ' алдаа' + (srv.length ? ' (' + srv.length + ' нь ажилтнуудаас)' : '') + ' — дэлгэрэнгүй харах';
+    el.onclick = openAppErrorsModal;
+    el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAppErrorsModal(); } };
+    return;
+  }
   if (!state.isCEO || !s) { el.hidden = true; return; }
   const a = _ciState(s.app), b = _ciState(s.site);
   const fails = []; if (a === 'fail') fails.push('Апп'); if (b === 'fail') fails.push('Сайт');
@@ -25564,7 +25719,7 @@ async function loadTaskVoice(taskId) {
   if (taskId) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
-        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
       if (r.ok) { const rows = await r.json(); if (rows[0]) { state._taskVoice = rows[0].audio; state._taskVoiceDur = rows[0].duration || 0; } }
     } catch (e) {}
   }
@@ -25582,7 +25737,7 @@ async function saveTaskVoice(taskId, isNew) {
       }, 60000);
     } else if (!isNew) {
       await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
-        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 20000);
+        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // нэвтэрсэн токеноор — anon бичих эрхийг хаах боломжтой болгоно
     }
   } catch (e) { console.warn('voice save failed', e); }
 }
@@ -27014,6 +27169,7 @@ async function bootApp() {
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
   loadCiStatus();       // Системийн автомат шалгалт (GitHub Actions) — sidebar-т 🟢/🔴 (CEO)
+  loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)

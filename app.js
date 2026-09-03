@@ -8762,7 +8762,9 @@ function attHandleScan(data) {
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
-  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
+  // Менежер нэвтэрсэн байдаг тул ЭНЭ замыг authenticated эрхээр бичнэ — итгэмжтэй
+  // ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
+  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(body) }).catch(() => {});
   if (kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);   // явахдаа: маргааш хэдэн цагт ирэх вэ?
 }
 // «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
@@ -8832,7 +8834,7 @@ function attMemberSummary(recs, live) {
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
@@ -8841,7 +8843,7 @@ async function loadAttendanceToday() {
 async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
@@ -8856,20 +8858,39 @@ async function loadAttendanceMonthFull(month) {
 }
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
+// Сарын ирцийн мөрүүдээс ажилтан тус бүрийн ажилласан өдөр + ирсэн цагийг тооцно.
+// ЦЭВЭР функц (сүлжээгүй) — тестлэгдэнэ. Мөрүүд ts өсөхөөр эрэмбэлэгдсэн байх ёстой.
+//   days     — ирц бүртгэгдсэн өдрийн тоо
+//   selfDays — тэдгээрээс менежер QR уншуулаагүй (source='scan' огт байхгүй) өдөр.
+//              Энэ тоо цалин болдог тул баталгаагүйг нь ЯЛГАЖ харуулах үндэс.
+function attAggregateMonth(rows) {
+  const map = {}, times = {}, scanned = {};
+  (rows || []).forEach(x => {
+    if (!x || !x.member_key || !x.day) return;
+    (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
+    if (x.source === 'scan') (scanned[x.member_key] = scanned[x.member_key] || new Set()).add(x.day);
+    const tk = times[x.member_key] = times[x.member_key] || {};
+    if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
+  });
+  const out = {};
+  Object.keys(map).forEach(k => {
+    const sc = scanned[k];
+    out[k] = {
+      days: map[k].size,
+      selfDays: [...map[k]].filter(d => !(sc && sc.has(d))).length,
+      lastDay: [...map[k]].sort().pop(),
+    };
+  });
+  return { out, times };
+}
 async function loadAttendanceMonth() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) {
-      const rows = await r.json(), map = {}, times = {};
-      rows.forEach(x => {
-        (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
-        const tk = times[x.member_key] = times[x.member_key] || {};
-        if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
-      });
-      const out = {}; Object.keys(map).forEach(k => { out[k] = { days: map[k].size, lastDay: [...map[k]].sort().pop() }; });
-      state.attWorkedDays = out;
-      state.attMonthTimes = times;
+      const agg = attAggregateMonth(await r.json());
+      state.attWorkedDays = agg.out;
+      state.attMonthTimes = agg.times;
     }
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -8879,7 +8900,13 @@ function attWorkedLine(m) {
   if (!wd || !wd.days) return '';
   const rate = Number(m.daily_rate) || 0;
   const expected = rate > 0 ? ` · ≈ ${fmtMoney(rate * wd.days)}` : '';
-  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>`;
+  // Уншуулаагүй (өөрөө холбоосоор бүртгүүлсэн) өдрийг тусад нь сануулна — энэ тоо
+  // шууд цалин болдог тул баталгаатай эсэхийг олгохын ӨМНӨ харах ёстой.
+  const selfN = Number(wd.selfDays) || 0;
+  const selfLine = selfN > 0
+    ? `<div style="font-size:11px;color:var(--warn);font-weight:600;margin-top:1px;">⚠ ${selfN} өдөр нь уншуулаагүй — өөрөө бүртгүүлсэн</div>`
+    : '';
+  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>${selfLine}`;
 }
 function renderAttendanceRows() {
   const isToday = (state.attViewDay || todayStr()) === todayStr();
@@ -8894,7 +8921,10 @@ function renderAttendanceRows() {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr, isToday);
     const m = findMember(k) || { name: arr[0].member_name || k, role: '' };
-    return { k, m, s, name: m.name || arr[0].member_name || k, role: m.role || '' };
+    // Тухайн өдөр менежер QR-ыг нь уншуулсан бол баталгаатай. Огт уншуулаагүй
+    // (зөвхөн холбоосоор өөрөө бүртгүүлсэн) бол ялгаж харуулна.
+    const scanned = arr.some(x => x.source === 'scan');
+    return { k, m, s, scanned, name: m.name || arr[0].member_name || k, role: m.role || '' };
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
@@ -8913,7 +8943,7 @@ function renderAttendanceRows() {
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;

@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
   'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
@@ -2144,6 +2144,49 @@ function finish() {
     // Урт мессеж таслагдсан ч тогтвортой
     const long = 'x'.repeat(500);
     ok(F1(long, 's') === F1(long + 'ZZZ', 's'), 'fp: 300 тэмдэгтээс хойш ялгаагүй (таслалттай нийцнэ)');
+  }
+
+  // ── Ирц: баталгаатай (менежер уншуулсан) vs өөрөө бүртгүүлсэн өдөр ──
+  // Энэ тоо шууд цалин болдог тул буруу тоолвол илүү/дутуу төлбөр гарна.
+  {
+    const A = F.attAggregateMonth;
+    const r = (key, day, source) => ({ member_key: key, day, source, ts: day + 'T01:00:00.000Z' });
+
+    const both = A([r('99', '2026-09-01', 'scan'), r('99', '2026-09-02', 'qr')]).out['99'];
+    ok(both.days === 2, 'ирц: 2 өдөр ажилласан');
+    ok(both.selfDays === 1, 'ирц: 1 өдөр нь уншуулаагүй');
+
+    // Нэг өдөр хоёуланг нь бүртгүүлсэн бол УНШУУЛСАНД тооцно (баталгаа байгаа).
+    const mixed = A([r('7', '2026-09-01', 'qr'), r('7', '2026-09-01', 'scan')]).out['7'];
+    ok(mixed.days === 1 && mixed.selfDays === 0, 'ирц: нэг өдөр уншуулсан бол баталгаатай');
+
+    const allScan = A([r('1', '2026-09-01', 'scan'), r('1', '2026-09-02', 'scan')]).out['1'];
+    ok(allScan.selfDays === 0, 'ирц: бүгд уншуулсан → сануулга гарахгүй');
+
+    const allSelf = A([r('2', '2026-09-01', 'qr'), r('2', '2026-09-02', 'qr')]).out['2'];
+    ok(allSelf.selfDays === 2, 'ирц: бүгд өөрөө → 2 өдөр сануулна');
+
+    // source байхгүй хуучин мөр = баталгаагүйд тооцно (уншуулсан гэж БҮҮ таамагла).
+    ok(A([r('3', '2026-09-01', undefined)]).out['3'].selfDays === 1, 'ирц: source байхгүй → баталгаагүй');
+
+    // Давхардсан өдөр нэг л удаа тоологдоно
+    ok(A([r('4', '2026-09-01', 'scan'), r('4', '2026-09-01', 'scan')]).out['4'].days === 1, 'ирц: давхар мөр нэг өдөр');
+
+    // Гэмтэлтэй өгөгдөл унагаахгүй
+    ok(Object.keys(A([null, {}, { member_key: 'x' }]).out).length === 0, 'ирц: гэмтэлтэй мөр алгасана');
+    ok(A(null).out && Object.keys(A(null).out).length === 0, 'ирц: хоосон оролт аюулгүй');
+
+    // Цалингийн мөрд сануулга ҮНЭХЭЭР гарч байгаа эсэх (энэ л захиралд харагдана).
+    const st = vm.runInContext('state', sandbox), saved = st.attWorkedDays;
+    const who = { name: 'Тест', phone: '99999999', daily_rate: 50000 };
+    st.attWorkedDays = { [F.personKey(who)]: { days: 5, selfDays: 2, lastDay: '2026-09-02' } };
+    const warned = F.attWorkedLine(who);
+    ok(/5 өдөр/.test(warned), 'цалин: ажилласан өдөр гарна');
+    ok(/2 өдөр нь уншуулаагүй/.test(warned), 'цалин: баталгаагүй өдрийн сануулга гарна');
+
+    st.attWorkedDays = { [F.personKey(who)]: { days: 5, selfDays: 0, lastDay: '2026-09-02' } };
+    ok(!/уншуулаагүй/.test(F.attWorkedLine(who)), 'цалин: бүгд уншуулсан бол сануулга ГАРАХГҮЙ');
+    st.attWorkedDays = saved;
   }
 
   finish();

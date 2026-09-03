@@ -12,6 +12,10 @@ on:
       - 'sw.js'
       - 'test/**'
       - '.github/workflows/lint.yml'
+  # PR бүр merge хийхээс ӨМНӨ шалгагдана. Path шүүлтгүй — PR-ын шалгалт үргэлж
+  # ажиллаж байж л «энэ PR шалгагдсан уу?» гэдэгт итгэж болно (2026-09-03).
+  pull_request:
+    branches: [main]
 
 jobs:
   lint:

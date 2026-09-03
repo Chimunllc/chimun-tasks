@@ -285,6 +285,50 @@ function logAppError(msg, src, extra) {
     }
   } catch (e) {}
   try { if (typeof renderCiStatus === 'function') renderCiStatus(); } catch (e) {}
+  _reportErrToServer(msg, src, extra);
+}
+// Серверт мэдээлэх — ажилтны утсан дээрх алдаа ЭЗЭНД хүрнэ (локал бүртгэл зөвхөн
+// тухайн төхөөрөмжид үлддэг тул хангалтгүй байсан).
+// ⚠ Энэ функц ХЭЗЭЭ Ч алдаа шидэхгүй байх ЁСТОЙ — эс бөгөөс алдаа мэдээлэх нь өөрөө
+// алдаа болж хязгааргүй давталт үүснэ. Тиймээс энд .catch(()=>{}) нь ЗӨВ.
+const _errSentThisSession = new Set();
+let _errSentCount = 0;
+function _reportErrToServer(msg, src, extra) {
+  try {
+    if (!DB_URL || !DB_ANON_KEY) return;
+    if (_errSentCount >= 10) return;                       // нэг сесст дээд тал нь 10
+    const key = String(msg || '').slice(0, 120) + '|' + String(src || '').slice(0, 80);
+    if (_errSentThisSession.has(key)) return;              // давхардсаныг дахин илгээхгүй
+    _errSentThisSession.add(key); _errSentCount++;
+    fetch(`${DB_URL}/rest/v1/app_errors`, {
+      method: 'POST',
+      // Нэвтэрсэн бол ажилтны токеноор, эс бол anon-оор (нэвтрэхийн ӨМНӨ гарсан алдааг ч барина)
+      headers: pgWrite({ Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        msg: String(msg || '').slice(0, 300),
+        src: String(src || '').slice(0, 200),
+        view: (typeof state === 'object' && state) ? String(state.view || '') : '',
+        person: (typeof state === 'object' && state) ? String(state.me || '') : '',
+        ver: (typeof CACHE_TAG === 'string') ? CACHE_TAG : '',
+        ua: String((navigator && navigator.userAgent) || '').slice(0, 200),
+        stack: String(extra || '').slice(0, 300),
+      }),
+    }).catch(() => {});
+  } catch (e) {}
+}
+// CEO — БҮХ ажилтны алдааг серверээс татна (сүүлийн 24 цаг). Нэвтэрсэн токен шаардана;
+// anon-д SELECT эрх ЗОРИУДААР өгөөгүй (алдааны лог нийтэд ил байх ёсгүй).
+async function loadServerErrors() {
+  if (!state.isCEO || !DB_URL) return;
+  try {
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_errors?at=gte.${since}&select=at,msg,src,view,person,ver&order=at.desc&limit=100`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return;                                     // эрхгүй/хүснэгт байхгүй — чимээгүй, локал нь ажиллана
+    const rows = await r.json();
+    if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
+  } catch (e) {}
 }
 try {
   window.addEventListener('error', (ev) => {
@@ -21787,7 +21831,7 @@ async function loadCiStatus() {
   if (!state.isCEO) return;
   const [app, site] = await Promise.all([_ciFetchRun(CI_APP_URL), _ciFetchRun(CI_SITE_URL)]);
   if (app || site) { state.ciStatus = { app, site }; renderCiStatus(); }
-  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) loadCiStatus(); }, 300000);   // 5 мин тутам сэргээнэ
+  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) { loadCiStatus(); loadServerErrors(); } }, 300000);   // 5 мин тутам сэргээнэ
 }
 function _ciState(c) { if (!c) return 'none'; if (c.status && c.status !== 'completed') return 'run'; return c.conclusion === 'success' ? 'ok' : 'fail'; }
 // Сүүлийн 24 цагийн алдаа — CEO-д ил гаргана (эс бөгөөс хэн ч мэдэхгүй өнгөрнө)
@@ -21796,7 +21840,10 @@ function recentAppErrors() {
   return appErrors().filter(e => { const t = Date.parse(e && e.at); return !isNaN(t) && t >= cut; });
 }
 function openAppErrorsModal() {
-  const list = recentAppErrors().slice().reverse();
+  // Локал (энэ төхөөрөмж) + сервер (бүх ажилтан) — нэг жагсаалтад, шинэ нь дээр
+  const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
+  const list = recentAppErrors().concat(srv)
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   const ov = document.createElement('div');
   ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
   ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
@@ -21804,12 +21851,11 @@ function openAppErrorsModal() {
       <h2 style="margin:0;font-size:16px;">⚠ Аппын алдаа · сүүлийн 24 цаг (${list.length})</h2>
       <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
     <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
-      Эдгээр нь ЭНЭ төхөөрөмж дээр гарсан алдаа. Ажилтны утсан дээрх алдаа энд ирэхгүй —
-      түүнд серверийн бүртгэл хэрэгтэй.</div>
+      🧑 = ажилтны төхөөрөмжөөс серверт бүртгэгдсэн · бусад нь энэ төхөөрөмжийнх.</div>
     ${list.length ? list.map(e => `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
       <div style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${escapeHtml(String(e.at).slice(0, 16).replace('T', ' '))} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.ver || '')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${e._srv ? '🧑 ' + escapeHtml(memberName(e.person) || e.person || '?') + ' · ' : ''}${escapeHtml(String(e.at).slice(0, 16).replace('T', ' '))} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.ver || '')}</div>
     </div>`).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
       <button class="btn" data-err-clear>Жагсаалт цэвэрлэх</button>
@@ -21827,12 +21873,14 @@ function renderCiStatus() {
   const s = state.ciStatus;
   // ⚠ Ажиллах үеийн алдаа нь CI-аас ЧУХАЛ — хэрэглэгч яг одоо гацаж байна гэсэн үг.
   // Тиймээс CI дата ирээгүй байсан ч эхлээд үүнийг харуулна.
+  const srv = state.isCEO && Array.isArray(state.serverErrors) ? state.serverErrors : [];
   const errs = state.isCEO ? recentAppErrors() : [];
-  if (errs.length) {
+  const total = errs.length + srv.length;
+  if (total) {
     el.hidden = false;
     el.className = 'ci-status ci-fail';
-    el.innerHTML = `<span class="ci-dot">🔴</span><span class="ci-label">${errs.length} алдаа гарсан</span>`;
-    el.title = 'Сүүлийн 24 цагт аппад ' + errs.length + ' алдаа гарсан — дэлгэрэнгүй харах';
+    el.innerHTML = `<span class="ci-dot">🔴</span><span class="ci-label">${total} алдаа гарсан</span>`;
+    el.title = 'Сүүлийн 24 цагт ' + total + ' алдаа' + (srv.length ? ' (' + srv.length + ' нь ажилтнуудаас)' : '') + ' — дэлгэрэнгүй харах';
     el.onclick = openAppErrorsModal;
     el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAppErrorsModal(); } };
     return;
@@ -27089,6 +27137,7 @@ async function bootApp() {
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
   loadCiStatus();       // Системийн автомат шалгалт (GitHub Actions) — sidebar-т 🟢/🔴 (CEO)
+  loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)

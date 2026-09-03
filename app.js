@@ -4104,7 +4104,7 @@ async function advanceRepair(id, to, extra) {
   try {
     const res = await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(patch),
     }, 15000);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -4127,7 +4127,7 @@ async function advanceRepair(id, to, extra) {
 async function loadRepairs() {
   try {
     const r = await fetchWithTimeout(`${REPAIRS_URL()}?select=*&order=reported_at.desc&limit=500`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.repairs = await r.json();
   } catch (e) { console.warn('loadRepairs', e); state.repairs = state.repairs || []; }
@@ -4138,20 +4138,20 @@ async function ensureRepairRecord({ sku, name, qty, orderNumber, note, by }) {
   if (!sku || !(qty > 0)) return;
   try {
     const q = `${REPAIRS_URL()}?sku=eq.${encodeURIComponent(sku)}&order_number=eq.${Number(orderNumber) || 0}&status=in.(pending,in_progress)&select=id,qty`;
-    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
     const rows = ex.ok ? await ex.json() : [];
     const body = { sku, product_name: name || '', qty, order_number: Number(orderNumber) || null,
                    note: note || '', reported_by: by || state.me || '', updated_at: new Date().toISOString() };
     if (rows.length) {
       await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(rows[0].id)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ qty, note: body.note, updated_at: body.updated_at }),
       }, 12000);
     } else {
       await fetchWithTimeout(REPAIRS_URL(), {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: repairId(sku, orderNumber), status: 'pending', ...body }),
       }, 12000);
     }
@@ -4257,7 +4257,7 @@ async function loadItemAliases() {
   if (!DB_ANON_KEY) { state.itemAliases = state.itemAliases || {}; return; }
   try {
     const r = await fetchWithTimeout(`${ALIASES_URL()}?select=alias,sku&limit=5000`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     const map = Object.create(null);
@@ -4275,7 +4275,7 @@ async function saveItemAlias(alias0, sku, note) {
   try {
     const r = await fetchWithTimeout(ALIASES_URL(), {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY,
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
         'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
       body: JSON.stringify(body),
     }, 15000);
@@ -4292,7 +4292,7 @@ async function deleteItemAlias(alias) {
   try {
     const r = await fetchWithTimeout(`${ALIASES_URL()}?alias=eq.${encodeURIComponent(k)}`, {
       method: 'DELETE',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     if (state.itemAliases) delete state.itemAliases[k];
@@ -4797,7 +4797,7 @@ function openOrderDamageModal(oid) {
     // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
     let baseNote = o.note;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].note != null) baseNote = String(rr[0].note); }
     } catch (_) {}
     let newNote = encodeBrokenRec(baseNote, newBrk);
@@ -5315,7 +5315,7 @@ function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
 async function loadExpenseLearn() {
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const map = {}; (await r.json()).forEach(x => { if (x && x.key) map[x.key] = { branch: x.branch || '', cat: x.cat || '' }; });
     state.expenseLearn = map;
@@ -7850,7 +7850,7 @@ async function loadProductsCatalog() {
   if (DB_ANON_KEY) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
       }, 15000);
       if (!r.ok) throw new Error('PG HTTP ' + r.status);
       const rows = await r.json();
@@ -8678,7 +8678,7 @@ async function loadAttendanceToday() {
   try {
     const d = todayStr();
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -8687,7 +8687,7 @@ async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
 }
@@ -8695,7 +8695,7 @@ async function loadAttendanceView() {
 async function loadAttendanceMonthFull(month) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lte.${month}-31&select=member_key,member_name,kind,ts,day&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 20000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
     if (r.ok) { state.attMonthRecs = await r.json(); state.attMonthKey = month; if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
 }
@@ -8704,7 +8704,7 @@ function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
 async function loadAttendanceMonth() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) {
       const rows = await r.json(), map = {}, times = {};
       rows.forEach(x => {
@@ -8920,7 +8920,7 @@ function loadQRCodeJs() {
 async function loadMyAttendance() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=eq.${encodeURIComponent(state.me)}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -9823,7 +9823,7 @@ async function loadMemberPerms() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_perms?select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -9856,7 +9856,7 @@ async function loadMemberBranches() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_branches?select=person_key,branches`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
@@ -10006,7 +10006,7 @@ async function loadCateringMenu(force) {
   if (!DB_ANON_KEY) return;
   if (state.cateringMenu && !force) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringMenu = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringMenu', e); state.cateringMenu = state.cateringMenu || []; }
@@ -10015,7 +10015,7 @@ async function loadCateringJobs(force) {
   if (!DB_ANON_KEY) return;
   if (state.cateringJobs && !force) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringJobs = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringJobs', e); state.cateringJobs = state.cateringJobs || []; }
@@ -10922,7 +10922,7 @@ async function _postBrandKit(k) {
 async function loadBrandKit() {
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
     try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) {}
@@ -11187,7 +11187,7 @@ function renderEmailMarketing() {
 }
 async function loadEmailOptout() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
     if (!r.ok) return;
     const rows = await r.json();
     state._emailOptout = new Set((rows || []).map(x => String(x.email || '').trim().toLowerCase()).filter(Boolean));
@@ -11551,7 +11551,7 @@ async function loadRolePerms() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/role_perms?select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -12636,7 +12636,7 @@ async function loadNomaadPayments() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/nomaad_payments?select=*&order=recorded_at.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;   // хүснэгт үүсээгүй бол чимээгүй
     const rows = await r.json();
     const byQ = {};
@@ -16109,7 +16109,7 @@ async function loadAppConfig(key) {
   if (!DB_ANON_KEY) return null;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     return rows[0] ? rows[0].value : null;
@@ -16819,7 +16819,7 @@ async function loadHistory(force) {
   if (state.history && !state.history.error && !force) return;
   if (!DB_ANON_KEY) { state.history = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
   state._bqLoading = true;
-  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
+  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
   const get = async (view, qs) => {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${view}?select=*${qs || ''}`, { headers: H }, 20000);
     if (!r.ok) throw new Error(view + ' HTTP ' + r.status);
@@ -16891,7 +16891,7 @@ async function loadOrderItems(orderId) {
   if (state.bqOrderItems[orderId]) return state.bqOrderItems[orderId];
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.bqOrderItems[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderItems', e); state.bqOrderItems[orderId] = []; }
   return state.bqOrderItems[orderId];
@@ -16903,7 +16903,7 @@ async function loadOrderDocs(orderId) {
   if (state.bqDocuments[orderId]) return state.bqDocuments[orderId];
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.bqDocuments[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderDocs', e); state.bqDocuments[orderId] = []; }
   return state.bqDocuments[orderId];
@@ -17607,7 +17607,7 @@ async function _loadAppOrdersImpl() {
       if (c) { state.appOrders = JSON.parse(c); if (typeof render === 'function') render(); }
     } catch (e) {}
   }
-  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } };
+  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };
   const isArch = (o) => _ARCHIVE_STATUSES.includes(String(o.status));
   try {
     // 1-р шат: идэвхтэй захиалгууд — жижиг, хурдан
@@ -18786,7 +18786,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
       let baseNote = o.note;
       try {
         const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, {
-          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
         }, 8000);
         if (gr.ok) { const rows = await gr.json(); if (rows && rows[0] && rows[0].note != null) baseNote = String(rows[0].note); }
       } catch (_) { /* сүлжээ унавал санах ойн note дээр буцаж тооцно */ }
@@ -19540,7 +19540,7 @@ async function loadUsedReceipts() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
@@ -19596,7 +19596,7 @@ async function reserveReceipt(receiptId, meta) {
       // PK мөргөлдөөн — эзэмшигч нь мөн энэ хүсэлт бол ok (кэш хуучирсан байж болно)
       try {
         const q = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=used_in`,
-          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 10000);
+          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 10000);
         const ex = await q.json();
         if (ex[0] && ex[0].used_in === meta.usedIn) return 'ok';
       } catch (e) {}
@@ -19789,7 +19789,7 @@ function openRefundModal(oid) {
     // Серверийн ХАМГИЙН СҮҮЛИЙН paid_mnt + note уншиж (зэрэгцээ/стейл snapshot-оос) refund-ыг хасна
     let basePaid = Number(o.paid_mnt) || 0, baseNote = o.note;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { if (rr[0].paid_mnt != null) basePaid = Number(rr[0].paid_mnt) || 0; if (rr[0].note != null) baseNote = String(rr[0].note); } }
     } catch (_) {}
     const refundAmt = Math.min(basePaid, amount);   // төлсөнөөс илүү буцаахгүй
@@ -19805,7 +19805,7 @@ function openRefundModal(oid) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ paid_mnt: newPaid, note: newNote, updated_at: new Date().toISOString() }),
       }, 15000);
       if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
@@ -19846,7 +19846,7 @@ async function submitBqPayment(oid, modal, btn) {
   let basePaid = Number(o.paid_mnt) || 0, baseRef = String(o.paid_ref || '');
   if (isApp) {
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rows = await gr.json(); if (rows && rows[0]) { if (rows[0].paid_mnt != null) basePaid = Number(rows[0].paid_mnt) || 0; if (rows[0].paid_ref != null) baseRef = String(rows[0].paid_ref); } }
     } catch (_) { /* сүлжээ унавал санах ойн утга дээр тооцно */ }
   }
@@ -21659,7 +21659,7 @@ function attachReportsHandlers() {
    products-тэй ижил posture) → NOMAAD + Эвент(түүхэн) захиалгатай авто/гараар тулгана →
    захиалгад "🧾 НӨАТ" badge + Санхүүд тусдаа НӨАТ тайлан. */
 const VAT_URL = `${DB_URL}/rest/v1/vat_receipts`;
-const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
+const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
 function vatNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; }
 function vatNorm(s) { return String(s || '').toLowerCase().replace(/ххк|ххн|\bхк\b|llc|ltd|co\b|group|групп/g, '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
 function vatDateIso(v) {
@@ -25536,7 +25536,7 @@ async function loadTaskVoice(taskId) {
   if (taskId) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
-        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
       if (r.ok) { const rows = await r.json(); if (rows[0]) { state._taskVoice = rows[0].audio; state._taskVoiceDur = rows[0].duration || 0; } }
     } catch (e) {}
   }

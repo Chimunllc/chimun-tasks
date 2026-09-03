@@ -88,6 +88,15 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
+// 0a) SCAN — PostgREST дуудлага бүр НЭВТЭРСЭН токеноор явна (2026-09-03)
+// pgrstBearer() = pgrstToken() || DB_ANON_KEY — токенгүй бол anon руу унана, тул
+// солих нь юуг ч эвдэхгүй. Харин anon-ы УНШИХ эрхийг ирээдүйд хаах боломж нээгдэнэ.
+// Шинэ код `Bearer ' + DB_ANON_KEY` бичвэл тэр бараа дахин anon-оор явна.
+{
+  const anonBearer = (src.match(/Authorization: 'Bearer ' \+ DB_ANON_KEY/g) || []).length;
+  eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
+}
+
 // 1) НӨАТ токен round-trip
 eq(F.parseVat(F.encodeVat(15000)), 15000, 'НӨАТ токен: encode→parse round-trip');
 eq(F.parseVat('note ' + F.encodeVat(0)), 0, 'НӨАТ токен: 0 дүн');

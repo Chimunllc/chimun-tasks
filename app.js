@@ -25551,7 +25551,7 @@ async function saveTaskVoice(taskId, isNew) {
       }, 60000);
     } else if (!isNew) {
       await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
-        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 20000);
+        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // нэвтэрсэн токеноор — anon бичих эрхийг хаах боломжтой болгоно
     }
   } catch (e) { console.warn('voice save failed', e); }
 }

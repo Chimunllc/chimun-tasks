@@ -17832,7 +17832,9 @@ function unifiedOrders() {
       // Борлуулалт = нийт − барьцаа (буцаадаг өр). Жагсаалт/бүлгийн нийлбэр/эрэмбэ бүгд ҮҮГЭЭР
       // явна — тайлан (accrual орлого) -той нэг тоо харагдана. Нийт төлбөр = e.total (захиалга дотор).
       rev: (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(ao.total_mnt) || 0)),
-      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${ao.contract_no || ''}`.toLowerCase() };
+      // Хайлт: дугаар + нэр + утас (форматтай БА зөвхөн цифр — 9911-2233↔99112233 хоёул олдоно)
+      // + имэйл + гэрээний дугаар. Placeholder «Нэр, утас, имэйл, дугаар»-тай нийцнэ.
+      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${String(ao.phone || '').replace(/\D/g, '')} ${ao.email || ''} ${ao.contract_no || ''}`.toLowerCase() };
   });
 }
 

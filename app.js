@@ -958,9 +958,21 @@ async function serverLogin(identifier, pin) {
 // Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
 // Татаж авсан PIN (state.staffPins: phone→PIN)-ыг TEAM-д наана. TEAM дахин ачаалагдах бүрд дуудна —
 // эс бөгөөс loadTeamFromAPI (TEAM.length=0) PIN-г арилгаад, loadStaffPins нэг л удаа ажилладаг тул сэргэдэггүй.
+// ⚠ ЭМЗЭГ ТАЛБАРУУД — /webhook/staff нь НИЙТИЙН түлхүүрээр хамгаалагдсан тул тэндээс
+// РД/цалин/банк/хаяг/яаралтай холбоо БУЦААХ ЁСГҮЙ. Тэдгээрийг PIN-тэй ижил замаар —
+// session токен + lvl>=100 шалгадаг /chimun-staff-pins-ээс авна.
+const STAFF_SENSITIVE_FIELDS = ['rd', 'address', 'base_salary', 'daily_rate', 'salary',
+  'bank', 'bank_account', 'bank_holder', 'emergency_name', 'emergency_phone'];
 function applyStaffPins() {
-  if (!state.staffPins) return;
-  (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && state.staffPins[p]) m.pin = state.staffPins[p]; });
+  if (!state.staffPins && !state.staffSensitive) return;
+  (TEAM || []).forEach(m => {
+    const p = String(m.phone || '').replace(/\D/g, ''); if (!p) return;
+    if (state.staffPins && state.staffPins[p]) m.pin = state.staffPins[p];
+    const sx = state.staffSensitive && state.staffSensitive[p];
+    // Серверээс ирсэн бол л дарж бичнэ — ирээгүй талбарыг хоослохгүй (шилжилтийн үед
+    // /webhook/staff хуучнаараа буцаасаар байвал одоогийн утга хэвээр үлдэнэ).
+    if (sx) STAFF_SENSITIVE_FIELDS.forEach(k => { if (sx[k] !== undefined && sx[k] !== null && sx[k] !== '') m[k] = sx[k]; });
+  });
 }
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !state.isCEO) return;
@@ -983,8 +995,16 @@ async function loadStaffPins() {
       return;
     }
     state._staffPinsErr = '';
-    const byPhone = {};
-    d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
+    const byPhone = {}, bySens = {};
+    d.team.forEach(x => {
+      const p = String(x.phone || '').replace(/\D/g, ''); if (!p) return;
+      if (x.pin) byPhone[p] = x.pin;
+      // Эмзэг талбарууд — серверийн шинэ хувилбар илгээвэл авна, эс бол хоосон үлдэнэ.
+      let has = false; const o = {};
+      STAFF_SENSITIVE_FIELDS.forEach(k => { if (x[k] !== undefined) { o[k] = x[k]; has = true; } });
+      if (has) bySens[p] = o;
+    });
+    state.staffSensitive = bySens;
     state.staffPins = byPhone;   // TEAM дахин ачаалагдсан ч (loadTeamFromAPI = TEAM.length=0) арилахгүйгээр тусад нь хадгална
     applyStaffPins();
     if (typeof render === 'function') render();

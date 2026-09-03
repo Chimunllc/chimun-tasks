@@ -271,7 +271,7 @@ function logAppError(msg, src, extra) {
       src: String(src || '').slice(0, 200),
       view: (typeof state === 'object' && state) ? String(state.view || '') : '',
       me: (typeof state === 'object' && state) ? String(state.me || '') : '',
-      ver: (typeof CACHE_TAG === 'string') ? CACHE_TAG : '',
+      ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
       extra: String(extra || '').slice(0, 300),
     });
     localStorage.setItem(ERR_LOG_KEY, JSON.stringify(list.slice(-ERR_LOG_MAX)));
@@ -309,7 +309,7 @@ function _reportErrToServer(msg, src, extra) {
         src: String(src || '').slice(0, 200),
         view: (typeof state === 'object' && state) ? String(state.view || '') : '',
         person: (typeof state === 'object' && state) ? String(state.me || '') : '',
-        ver: (typeof CACHE_TAG === 'string') ? CACHE_TAG : '',
+        ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
         ua: String((navigator && navigator.userAgent) || '').slice(0, 200),
         stack: String(extra || '').slice(0, 300),
       }),

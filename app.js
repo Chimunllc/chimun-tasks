@@ -6095,14 +6095,19 @@ function reconcileOrders(stmtRows, orders, opts) {
 // ── AI ТУЛГАЛТ (зөвхөн дүрмээр таараагүй үлдэгдэлд: «дансанд алга» захиалга × «захиалгагүй орлого») ──
 // AI юу ч БИЧИХГҮЙ — зөвхөн санал болгоно. Нягтлан өөрөө шалгаж баталгаажуулна.
 // Ачаалал: {orders:[{order_no,customer,amount,ref,date}], incomes:[{i,date,name,memo,amount}]}. Аль нэг тал хоосон бол null.
+// Нэг дуудлагад явуулах дээд хэмжээ. Хязгааргүй бол том хуулга (жилийн эцсийн
+// тулгалт г.м.) промптыг хэдэн зуун мөрөөр хөөргөж зардал/хугацааг дэмий өсгөнө.
+// Таслагдсан үлдэгдэл дараагийн дуудлагад орно (дүрмээр таарсан нь давтагдахгүй).
+const RECON_AI_MAX = 60;
+
 function buildReconAiPayload(res) {
   if (!res) return null;
-  const orders = (res.missing || []).map(m => ({
+  const orders = (res.missing || []).slice(0, RECON_AI_MAX).map(m => ({
     order_no: String(m.order.order_no || ''), customer: m.order.customer_name || '',
     amount: Number(m.order.paid_amount) || 0, ref: m.order.paid_ref || '',
     date: m.order.paid_date ? String(m.order.paid_date).slice(0, 10) : '',
   })).filter(o => o.order_no);
-  const incomes = (res.untracked || []).map((c, i) => ({
+  const incomes = (res.untracked || []).slice(0, RECON_AI_MAX).map((c, i) => ({
     i, date: c.date || '', name: c.name || '', memo: String(c.memo || '').slice(0, 120), amount: Number(c.credit) || 0,
   }));
   if (!orders.length || !incomes.length) return null;   // үлдэгдэлгүй → дэмий API дуудлага хийхгүй

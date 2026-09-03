@@ -1294,6 +1294,16 @@ function finish() {
     ok(p.incomes[0].i === 0 && p.incomes[1].i === 1, 'reconAi: incomes индекстэй');
     ok(p.orders[0].order_no === 'ME-1' && p.orders[0].amount === 100000, 'reconAi: order талбар зөв');
     ok(F.buildReconAiPayload({ missing: [{ order: { order_no: '' } }], untracked: [{ credit: 1 }] }) === null, 'reconAi: order_no хоосон → шүүгдэж null');
+    // Хэмжээний хязгаар — том хуулга промптыг хөөргөж зардал өсгөхөөс сэргийлнэ
+    {
+      const big = {
+        missing:   Array.from({ length: 150 }, (_, i) => ({ order: { order_no: 'ME-' + i, paid_amount: 1000 } })),
+        untracked: Array.from({ length: 150 }, (_, i) => ({ date: '2026-08-01', name: 'N' + i, memo: '', credit: 1000 })),
+      };
+      const bp = F.buildReconAiPayload(big);
+      ok(bp.orders.length === 60 && bp.incomes.length === 60, 'reconAi: ачаалал 60-аар таслагдана (зардлын хязгаар)');
+      ok(bp.incomes[59].i === 59, 'reconAi: таслагдсан ч индекс тасралтгүй');
+    }
     let r = mkRes(); ok(F.applyReconAiSuggestions(r, null).length === 0 && r._aiSuggestions.length === 0, 'reconAi: массив биш → []');
     ok(F.applyReconAiSuggestions(mkRes(), 'oops').length === 0, 'reconAi: string хариу → []');
     ok(F.applyReconAiSuggestions(mkRes(), [{ order_no: 'ME-1', income_i: 0, confidence: 0.9 }]).length === 1, 'reconAi: зөв санал → 1');

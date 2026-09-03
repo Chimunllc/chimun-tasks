@@ -91,7 +91,7 @@
 - **Эрх олгох газар:** Ажилтны удирдлага → хүн бүрийн доор **"🏦 Санхүү: салбар засах эрх"** чагт (зөвхөн CEO харна/тааруулна). `saveFinanceBranchPerm(key,name,grant)`.
 - **Хадгалалт:** Master Sheet хөндөхгүйгээр **`fin_categories` tab-д** `type='fin_branch_perm'`, `code=personKey`(утас), `active=1/0` мөрөөр. `loadFinanceCategories` нь ангилалтай хамт уншиж `state.finBranchPerms` (Set) болгоно. POST нь fin-categories endpoint руу (upsert by code).
 - **Шалгалт:** `isFinanceBranchEditor(key)` = CEO эсвэл finBranchPerms.has(key). Тайлан (`renderFinanceReport`) editor-т бүх гүйлгээ; модал (`openFinanceModal`) editor-т `f-accountant-only` хэсгийг харуулж зөвхөн `f-dept-branch`-ийг идэвхжүүлж авто хадгална (ангилал disabled).
-- 2026-06-17: О.Түвдэндаржаа, И.Алтансүх, Н.Анужин, Г.Сайнжаргал, Б.Дэлгэрбат-д урьдчилан олгов (CEO аль хэдийн эрхтэй).
+- Эрх авсан хүмүүсийн жагсаалт нь аппын дотор (`fin_categories`) — энд БИЧИХГҮЙ (repo public).
 
 ### Санхүүгийн ангилал — Sheet-ээс татна (2026-06-16)
 - Үндсэн/дэд ангилал (`FINANCE_MAIN_CATEGORIES`/`FINANCE_SUB_CATEGORIES`) одоо **`let`** — `loadFinanceCategories()` нь **n8n `/webhook/fin-categories`** (workflow id `syQBuTvHE9H4Gssk`, "CHIMUN · Finance Categories API")-оос татаж орлоно. Татаж чадахгүй бол кодын default → localStorage кэш fallback (апп эвдрэхгүй). Эхлэлд `loadFinanceCategories()` дуудна.

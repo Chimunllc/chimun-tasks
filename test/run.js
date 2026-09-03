@@ -1303,6 +1303,33 @@ function finish() {
   clearErrs();
 }
 
+// 40k) Серверийн алдааны бүртгэл — өөрөө хэзээ ч унахгүй байх
+{
+  const report = vm.runInContext('_reportErrToServer', sandbox);
+  const loadSrv = vm.runInContext('loadServerErrors', sandbox);
+  const st = vm.runInContext('state', sandbox);
+
+  // ⚠ ХАМГИЙН ЧУХАЛ: мэдээлэх функц алдаа шидвэл тэр нь дахин бүртгэгдэж
+  // ХЯЗГААРГҮЙ ДАВТАЛТ үүснэ. Ямар ч оролтод унахгүй байх ЁСТОЙ.
+  let threw = null;
+  try {
+    report('энгийн алдаа', 'app.js:1', 'stack');
+    report(null, null, null);
+    report(undefined, undefined, undefined);
+    report({ toString() { throw new Error('хорон объект'); } }, 'x', 'y');
+    report('а'.repeat(5000), 'б'.repeat(5000), 'в'.repeat(5000));
+  } catch (e) { threw = e; }
+  ok(threw === null, 'серверийн бүртгэл: ямар ч оролтод УНАХГҮЙ (давталтаас хамгаална)');
+
+  // CEO биш бол сервер рүү огт хандахгүй (алдааны лог нийтэд ил байх ёсгүй)
+  const savedCeo = st.isCEO;
+  st.isCEO = false;
+  let threw2 = null;
+  try { loadSrv(); } catch (e) { threw2 = e; }
+  ok(threw2 === null, 'серверийн бүртгэл: CEO бишэд унахгүй');
+  st.isCEO = savedCeo;
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

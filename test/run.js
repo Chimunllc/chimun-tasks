@@ -2130,5 +2130,21 @@ function finish() {
     st.nomaadPayments = savedPays;
   }
 
+  // ── Алдааны хурууны хээ (fingerprint) — бүлэглэлийн үндэс ──
+  {
+    const F1 = F.errFingerprint;
+    ok(F1('Cannot read x', 'app.js:100') === F1('Cannot read x', 'app.js:100'), 'fp: ижил алдаа ижил хээ');
+    ok(F1('Cannot read x', 'app.js:100') !== F1('Cannot read y', 'app.js:100'), 'fp: өөр мессеж → өөр хээ');
+    ok(F1('Cannot read x', 'app.js:100') !== F1('Cannot read x', 'app.js:200'), 'fp: өөр байрлал → өөр хээ');
+    // Query string нь хувилбар бүрд өөр байдаг тул хээнд ОРОХГҮЙ
+    ok(F1('E', 'app.js?v=1') === F1('E', 'app.js?v=2'), 'fp: ?v= хувилбар хээг задлахгүй');
+    ok(/^[0-9a-f]{12}$/.test(F1('E', 's')), 'fp: 12 тэмдэгт hex');
+    ok(F1(null, null) === F1(undefined, undefined), 'fp: хоосон утга аюулгүй');
+    ok(F1('a', 'b') !== F1('b', 'a'), 'fp: талбарууд солигдвол өөр');
+    // Урт мессеж таслагдсан ч тогтвортой
+    const long = 'x'.repeat(500);
+    ok(F1(long, 's') === F1(long + 'ZZZ', 's'), 'fp: 300 тэмдэгтээс хойш ялгаагүй (таслалттай нийцнэ)');
+  }
+
   finish();
 })();

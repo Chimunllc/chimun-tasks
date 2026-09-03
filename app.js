@@ -291,6 +291,20 @@ function logAppError(msg, src, extra) {
 // тухайн төхөөрөмжид үлддэг тул хангалтгүй байсан).
 // ⚠ Энэ функц ХЭЗЭЭ Ч алдаа шидэхгүй байх ЁСТОЙ — эс бөгөөс алдаа мэдээлэх нь өөрөө
 // алдаа болж хязгааргүй давталт үүснэ. Тиймээс энд .catch(()=>{}) нь ЗӨВ.
+// Алдааны хурууны хээ — ижил алдааг бүлэглэх түлхүүр. Мессеж + эх байрлал
+// (query-гүй). Тоо/хугацаа/хэрэглэгч ОРОХГҮЙ — эс бөгөөс бүлэглэл ажиллахгүй.
+// fp-г ЗӨВХӨН клиент бодно (эх сурвалж нэг). Хүснэгтэд байсан хуучин мөрүүдэд
+// сервер нэг удаа md5-аар нөхсөн тул тэдгээр нь тусдаа бүлэг болно — асуудалгүй.
+function errFingerprint(msg, src) {
+  const base = String(msg == null ? '' : msg).slice(0, 300) + '|' + String(src == null ? '' : src).split('?')[0];
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < base.length; i++) {
+    const c = base.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 12);
+}
 const _errSentThisSession = new Set();
 let _errSentCount = 0;
 function _reportErrToServer(msg, src, extra) {
@@ -312,6 +326,7 @@ function _reportErrToServer(msg, src, extra) {
         ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
         ua: String((navigator && navigator.userAgent) || '').slice(0, 200),
         stack: String(extra || '').slice(0, 300),
+        fp: errFingerprint(msg, src),
       }),
     }).catch(() => {});
   } catch (e) {}
@@ -321,14 +336,30 @@ function _reportErrToServer(msg, src, extra) {
 async function loadServerErrors() {
   if (!state.isCEO || !DB_URL) return;
   try {
-    const since = new Date(Date.now() - 86400000).toISOString();
+    // Бүлэглэсэн харагдац (v_app_errors) — нэг алдаа = нэг мөр, давтамж/хүний тоотой.
+    // Зассан/үл хамаарах гэж тэмдэглэсэн нь жагсаалтад гарахгүй.
     const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/app_errors?at=gte.${since}&select=at,msg,src,view,person,ver&order=at.desc&limit=100`,
+      `${DB_URL}/rest/v1/v_app_errors?status=in.(new,fixing)&order=last_at.desc&limit=60`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
-    if (!r.ok) return;                                     // эрхгүй/хүснэгт байхгүй — чимээгүй, локал нь ажиллана
+    if (!r.ok) return;                                     // эрхгүй/view байхгүй — чимээгүй, локал нь ажиллана
     const rows = await r.json();
     if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
   } catch (e) {}
+}
+// Алдааны төлөв тэмдэглэх — түүхий логийг ХӨНДӨХГҮЙ, тусдаа хүснэгтэд.
+async function setErrorStatus(fp, status, note) {
+  if (!fp) return false;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_error_state?on_conflict=fp`, {
+      method: 'POST',
+      headers: pgWrite({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ fp, status, note: note || null,
+        fixed_ver: status === 'fixed' ? (typeof CACHE_TAG === 'string' ? CACHE_TAG : '') : null,
+        updated_by: state.me || '', updated_at: new Date().toISOString() }),
+    }, 12000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) { showToast('⚠ Төлөв хадгалагдсангүй', 'error', 2500); return false; }
 }
 try {
   window.addEventListener('error', (ev) => {
@@ -21871,12 +21902,24 @@ function openAppErrorsModal() {
       <h2 style="margin:0;font-size:16px;">⚠ Аппын алдаа · сүүлийн 24 цаг (${list.length})</h2>
       <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
     <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
-      🧑 = ажилтны төхөөрөмжөөс серверт бүртгэгдсэн · бусад нь энэ төхөөрөмжийнх.</div>
-    ${list.length ? list.map(e => `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
+      🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
+      «Зассан»/«Үл хамаарах» гэж тэмдэглэвэл жагсаалтаас алга болно — түүхий лог хэвээр үлдэнэ.</div>
+    ${list.length ? list.map(e => {
+      const when = String(e._srv ? (e.last_at || '') : (e.at || '')).slice(0, 16).replace('T', ' ');
+      const who = e._srv
+        ? `🧑 ${e.users || 1} хүн · <b>${e.hits || 1}</b> удаа`
+        : escapeHtml(memberName(e.person) || e.person || 'энэ төхөөрөмж');
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
       <div style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${e._srv ? '🧑 ' + escapeHtml(memberName(e.person) || e.person || '?') + ' · ' : ''}${escapeHtml(String(e.at).slice(0, 16).replace('T', ' '))} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.ver || '')}</div>
-    </div>`).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}</div>
+      ${e._srv && e.fp ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center;">
+        <code style="font-size:10px;color:var(--muted);">${escapeHtml(e.fp)}</code>
+        <button class="btn" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔧 Засаж байна</button>
+        <button class="btn" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">✓ Зассан</button>
+        <button class="btn" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;color:var(--muted);">🚫 Үл хамаарах</button>
+      </div>` : ''}
+    </div>`; }).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
       <button class="btn" data-err-clear>Жагсаалт цэвэрлэх</button>
       <button class="btn btn-primary" data-err-x>Хаах</button></div>
@@ -21885,7 +21928,16 @@ function openAppErrorsModal() {
   const close = () => ov.remove();
   ov.addEventListener('click', ev => {
     if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
-    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); }
+    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); return; }
+    const st = ev.target.closest('[data-err-st]');
+    if (st) {
+      st.disabled = true;
+      setErrorStatus(st.dataset.errFp, st.dataset.errSt).then(ok2 => {
+        if (!ok2) { st.disabled = false; return; }
+        showToast('Тэмдэглэлээ', 'success', 1800);
+        close(); loadServerErrors();
+      });
+    }
   });
 }
 function renderCiStatus() {

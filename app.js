@@ -17456,21 +17456,6 @@ function openStageAdvanceModal(oid, to) {
       await bqUpdateStatus(o.id, to, { stageMeta: sm3, toast: `⏭ «${act.label}» алгаслаа` });
     };
   }
-  if (_isReceive && _rcItems.length) {
-    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
-      const i = +inp.dataset.rci;
-      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
-      rcGot[i] = v; rcPaint(); validate();
-    });
-    const _all = modal.querySelector('#rc-all');
-    if (_all) _all.onclick = () => {
-      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
-      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
-      rcPaint(); validate();
-    };
-    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
-    rcPaint();
-  }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const photos = []; const ratings = new Array(rateTargets.length).fill(0);
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
@@ -17502,6 +17487,24 @@ function openStageAdvanceModal(oid, to) {
     const noteOk = !needNote || String(($('#sa-comment') || {}).value || '').trim().length >= 3;
     $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && rateTargets.every((_, i) => ratings[i] > 0) && noteOk);
   };
+  // ⚠ Энэ блок rcGot / rcPaint / validate-аас ХОЙШ байх ЁСТОЙ. Өмнө нь дээр талд байсан
+  // тул `rcPaint()` нь const тодорхойлогдохоос өмнө дуудагдаж ReferenceError шидэж,
+  // «Агуулахад авсан» / «Хүргэлтээс авсан» цонх ОГТ нээгддэггүй байв (нярав гацсан).
+  if (_isReceive && _rcItems.length) {
+    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
+      const i = +inp.dataset.rci;
+      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
+      rcGot[i] = v; rcPaint(); validate();
+    });
+    const _all = modal.querySelector('#rc-all');
+    if (_all) _all.onclick = () => {
+      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
+      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
+      rcPaint(); validate();
+    };
+    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
+    rcPaint();
+  }
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');

@@ -1224,6 +1224,32 @@ function finish() {
   st.products = saved.p; st.appOrders = saved.o;
 }
 
+// 40i) TDZ хамгаалалт — «Агуулахад авсан» цонх нээгддэг эсэх (эх кодын дараалал)
+// ⚠ Энэ бол DOM-гүй тест: openStageAdvanceModal нь браузер шаарддаг тул ажиллуулж
+// чадахгүй. Оронд нь ЭХ КОДЫН дараалалд `const` тодорхойлолт нь ХЭРЭГЛЭЭНЭЭС өмнө
+// байгаа эсэхийг шалгана. 2026-09-02-нд `rcPaint()` нь тодорхойлолтоосоо 7 мөрийн
+// ӨМНӨ дуудагдаж ReferenceError шидсэн тул нярав «Агуулахад авсан» дарахад цонх ОГТ
+// нээгддэггүй байв (commit 7bc4ae0). Тест нь дахин орохоос сэргийлнэ.
+{
+  const start = src.indexOf('function openStageAdvanceModal');
+  ok(start > -1, 'TDZ: openStageAdvanceModal олдов');
+  // Функцийн төгсгөл — дараагийн дээд түвшний функцийн эхлэл
+  const after = src.indexOf('\nfunction ', start + 10);
+  const body = src.slice(start, after > -1 ? after : src.length);
+
+  [['rcPaint', 'rcPaint()'], ['rcShort', 'rcShort()'], ['validate', 'validate()']].forEach(([name, call]) => {
+    const decl = body.indexOf('const ' + name + ' =');
+    const use = body.indexOf(call);
+    if (decl === -1 || use === -1) return;   // нэр өөрчлөгдсөн бол алгасна
+    ok(decl < use, 'TDZ: `' + name + '` тодорхойлолт нь хэрэглээнээсээ ӨМНӨ байх ёстой');
+  });
+
+  // rcGot массив — оруулгын handler дотор ашиглагдана, тодорхойлолт нь өмнө байх ёстой
+  const gotDecl = body.indexOf('const rcGot');
+  const gotUse = body.indexOf('rcGot[i] =');
+  if (gotDecl > -1 && gotUse > -1) ok(gotDecl < gotUse, 'TDZ: `rcGot` тодорхойлолт хэрэглээнээс өмнө');
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

@@ -1,0 +1,87 @@
+# Ажилтны утсан дээр гарсан алдааг GitHub Issue болгож Claude-д хүргэнэ.
+#
+# Яагаад GitHub дундуур вэ: үүлэн агент VPS/n8n руу шууд хандаж чадахгүй (proxy хаадаг).
+# GitHub бол локал сесс, үүлэн сесс, хүн гурвуулангийн хүрдэг ганц газар.
+#
+# Токен: ERR_READ_JWT = ЗӨВХӨН алдааны лог уншиж, төлөв тэмдэглэх эрхтэй
+# (Postgres `err_bot` үүрэг). Захиалга/санхүү/ажилтны дата руу хандахгүй.
+name: Алдааны triage
+
+on:
+  schedule:
+    - cron: '0 1,9 * * *'      # UTC 01:00 ба 09:00 = УБ 09:00 ба 17:00
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Шошго баталгаажуулах
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh label create "алдаа" --repo "${{ github.repository }}" --color d73a4a --description "Ажилтны утсанд гарсан алдаа (авто)" 2>/dev/null || true
+
+      - name: Шинэ алдаа татаж, Issue үүсгэх
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JWT: ${{ secrets.ERR_READ_JWT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          BASE="https://n8n.nomaadcamp.com/db/rest/v1"
+          # Issue үүсээгүй, шийдэгдээгүй, сүүлийн 14 хоногт гарсан алдаа. Нэг удаад 5-аас илүүг үүсгэхгүй
+          # (нэг доор олон алдаа гарвал Issue-гээр үерлэхээс сэргийлнэ).
+          SINCE=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          curl -sS --fail-with-body \
+            -H "apikey: $JWT" -H "Authorization: Bearer $JWT" \
+            "$BASE/v_app_errors?status=eq.new&issue_no=is.null&last_at=gte.$SINCE&order=hits.desc&limit=5" \
+            -o errors.json
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { execFileSync } from "node:child_process";
+            const rows = JSON.parse(fs.readFileSync("errors.json", "utf8"));
+            if (!rows.length) { console.log("Шинэ алдаа алга."); process.exit(0); }
+            const BASE = "https://n8n.nomaadcamp.com/db/rest/v1";
+            const JWT = process.env.JWT, REPO = process.env.REPO;
+            for (const e of rows) {
+              const title = `[алдаа] ${String(e.msg || "?").slice(0, 90)}`;
+              const body = [
+                `**Давтамж:** ${e.hits} удаа · **${e.users} ажилтан**`,
+                `**Хамгийн сүүлд:** ${e.last_at} · **эхэлсэн:** ${e.first_at}`,
+                `**Дэлгэц:** \`${e.view || "—"}\` · **хувилбар:** \`${e.last_ver || "—"}\` (${e.vers} хувилбарт)`,
+                `**Байрлал:** \`${e.src || "—"}\``,
+                "",
+                "```",
+                String(e.stack || "(stack алга)"),
+                "```",
+                "",
+                `<!-- fp:${e.fp} -->`,
+                "",
+                "---",
+                "**Claude, засахдаа:**",
+                "1. Эхлээд энэ алдааг барих **нөхөн үзүүлэх тест** бич (унах ёстой).",
+                "2. Дараа нь зас — тест ногоон болно.",
+                "3. PR-д `fp` кодыг дурд. Merge хийсний дараа төлвийг `fixed` болго.",
+                "",
+                "_Автоматаар үүссэн — `.github/workflows/error-triage.yml`_",
+              ].join("\n");
+              const out = execFileSync("gh", ["issue", "create", "--repo", REPO,
+                "--title", title, "--body", body, "--label", "алдаа"],
+                { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
+              const no = Number((out.match(/\/issues\/(\d+)/) || [])[1] || 0);
+              console.log(`✓ #${no} ← ${e.fp} (${e.hits} удаа)`);
+              // Дахин үүсгэхээс сэргийлж тэмдэглэнэ
+              const res = await fetch(`${BASE}/app_error_state?on_conflict=fp`, {
+                method: "POST",
+                headers: { apikey: JWT, Authorization: `Bearer ${JWT}`,
+                  "Content-Type": "application/json",
+                  Prefer: "resolution=merge-duplicates,return=minimal" },
+                body: JSON.stringify({ fp: e.fp, issue_no: no, status: "new",
+                  updated_by: "error-triage", updated_at: new Date().toISOString() }),
+              });
+              if (!res.ok) throw new Error(`app_error_state бичигдсэнгүй: ${res.status}`);
+            }
+          '

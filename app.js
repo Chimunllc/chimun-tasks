@@ -238,6 +238,66 @@ const state = {
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
 
+/* -------------------- ГЛОБАЛ АЛДАА БАРИГЧ --------------------
+   Яагаад: handler дотор алдаа гарвал браузер чимээгүй зогсдог — хэрэглэгч товч
+   дараад ЮУ Ч БОЛОХГҮЙ, апп юу ч хэлэхгүй, эзэн нь сар хүртэл мэдэхгүй.
+   2026-09-02: нярвын «Агуулахад авсан» товч TDZ алдаанаас болж нэг өдөр үхсэн.
+   Өмнө нь мөн адил HTML эвдэрснээс цэс дарагдахгүй болж байсан.
+   Одоо: алдаа гармагц (1) хэрэглэгчид ил хэлнэ, (2) сүүлийн 20-г хадгална,
+   (3) CEO-гийн «Систем шалгалт» үзүүлэлт улаан болно. */
+const ERR_LOG_KEY = 'appErrors';
+const ERR_LOG_MAX = 20;
+let _lastErrToastAt = 0;
+// Хэрэглэгчийн буруу биш, засах боломжгүй чимээ — тоохгүй (өргөтгөл, зургийн 404 г.м.)
+function _errIsNoise(msg, src) {
+  const m = String(msg || '');
+  if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
+  if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
+  if (/^chrome-extension:|^moz-extension:/.test(String(src || ''))) return true;
+  return false;
+}
+function appErrors() {
+  try { const a = JSON.parse(localStorage.getItem(ERR_LOG_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function clearAppErrors() { try { localStorage.removeItem(ERR_LOG_KEY); } catch (e) {} }
+function logAppError(msg, src, extra) {
+  if (_errIsNoise(msg, src)) return;
+  try {
+    const list = appErrors();
+    list.push({
+      at: new Date().toISOString(),
+      msg: String(msg || '').slice(0, 300),
+      src: String(src || '').slice(0, 200),
+      view: (typeof state === 'object' && state) ? String(state.view || '') : '',
+      me: (typeof state === 'object' && state) ? String(state.me || '') : '',
+      ver: (typeof CACHE_TAG === 'string') ? CACHE_TAG : '',
+      extra: String(extra || '').slice(0, 300),
+    });
+    localStorage.setItem(ERR_LOG_KEY, JSON.stringify(list.slice(-ERR_LOG_MAX)));
+  } catch (e) {}
+  // Хэрэглэгчид ИЛ хэлнэ. Дараалсан алдаанд дэлгэц дүүргэхгүй — 8 секундэд нэг удаа.
+  try {
+    const now = Date.now();
+    if (now - _lastErrToastAt > 8000 && typeof showToast === 'function') {
+      _lastErrToastAt = now;
+      showToast('⚠ Алдаа гарлаа — үйлдэл хийгдсэнгүй. Дахин оролдоно уу.', 'error', 6000);
+    }
+  } catch (e) {}
+  try { if (typeof renderCiStatus === 'function') renderCiStatus(); } catch (e) {}
+}
+try {
+  window.addEventListener('error', (ev) => {
+    logAppError(ev && ev.message, ev && ev.filename ? ev.filename + ':' + ev.lineno : '',
+      ev && ev.error && ev.error.stack ? String(ev.error.stack).split('\n').slice(0, 3).join(' | ') : '');
+  });
+  window.addEventListener('unhandledrejection', (ev) => {
+    const r = ev && ev.reason;
+    logAppError(r && r.message ? r.message : String(r), 'promise',
+      r && r.stack ? String(r.stack).split('\n').slice(0, 3).join(' | ') : '');
+  });
+} catch (e) {}
+
 /* -------------------- TOAST / CONFIRM (alert/confirm орлуулсан) --------------------
    showToast(msg, type)            — fire-and-forget banner. Type: '', 'success', 'error', 'warn'.
    showConfirm(msg, opts)          — Returns Promise<boolean>. opts: {title, okText, cancelText}.
@@ -21730,9 +21790,53 @@ async function loadCiStatus() {
   if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) loadCiStatus(); }, 300000);   // 5 мин тутам сэргээнэ
 }
 function _ciState(c) { if (!c) return 'none'; if (c.status && c.status !== 'completed') return 'run'; return c.conclusion === 'success' ? 'ok' : 'fail'; }
+// Сүүлийн 24 цагийн алдаа — CEO-д ил гаргана (эс бөгөөс хэн ч мэдэхгүй өнгөрнө)
+function recentAppErrors() {
+  const cut = Date.now() - 86400000;
+  return appErrors().filter(e => { const t = Date.parse(e && e.at); return !isNaN(t) && t >= cut; });
+}
+function openAppErrorsModal() {
+  const list = recentAppErrors().slice().reverse();
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
+  ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <h2 style="margin:0;font-size:16px;">⚠ Аппын алдаа · сүүлийн 24 цаг (${list.length})</h2>
+      <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+      Эдгээр нь ЭНЭ төхөөрөмж дээр гарсан алдаа. Ажилтны утсан дээрх алдаа энд ирэхгүй —
+      түүнд серверийн бүртгэл хэрэгтэй.</div>
+    ${list.length ? list.map(e => `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
+      <div style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${escapeHtml(String(e.at).slice(0, 16).replace('T', ' '))} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.ver || '')}</div>
+    </div>`).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button class="btn" data-err-clear>Жагсаалт цэвэрлэх</button>
+      <button class="btn btn-primary" data-err-x>Хаах</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.addEventListener('click', ev => {
+    if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
+    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); }
+  });
+}
 function renderCiStatus() {
   const el = document.getElementById('ci-status'); if (!el) return;
   const s = state.ciStatus;
+  // ⚠ Ажиллах үеийн алдаа нь CI-аас ЧУХАЛ — хэрэглэгч яг одоо гацаж байна гэсэн үг.
+  // Тиймээс CI дата ирээгүй байсан ч эхлээд үүнийг харуулна.
+  const errs = state.isCEO ? recentAppErrors() : [];
+  if (errs.length) {
+    el.hidden = false;
+    el.className = 'ci-status ci-fail';
+    el.innerHTML = `<span class="ci-dot">🔴</span><span class="ci-label">${errs.length} алдаа гарсан</span>`;
+    el.title = 'Сүүлийн 24 цагт аппад ' + errs.length + ' алдаа гарсан — дэлгэрэнгүй харах';
+    el.onclick = openAppErrorsModal;
+    el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAppErrorsModal(); } };
+    return;
+  }
   if (!state.isCEO || !s) { el.hidden = true; return; }
   const a = _ciState(s.app), b = _ciState(s.site);
   const fails = []; if (a === 'fail') fails.push('Апп'); if (b === 'fail') fails.push('Сайт');

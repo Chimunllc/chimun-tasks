@@ -11969,6 +11969,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     if (!parsed) return;
     enableSave(false);
     const rr = await reserveReceipt(parsed.canonKey, { fp: parsed.fpKey, amount: parsed.amount, date: parsed.date, ref: parsed.receiptNote, usedIn: 'salary:' + personKey + ':' + ym + ':' + (cycShort || 'full') });
+    if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); enableSave(true); return; }   // C2: цагаан жагсаалт — 'ok' биш бол ЗОГС
     if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); enableSave(true); return; }
     let note = `Зарлага: Цалин ${cycShort} ${m.name || ''} ${String(parsed.date).slice(5).replace('-', '.')} ${parsed.receiptNote}`.replace(/\s+/g, ' ').trim();
     if (cycTag) note += ' ' + cycTag;
@@ -15085,6 +15086,7 @@ async function recordNomaadIncome(quoteNo) {
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
+  if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
   if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
@@ -19856,6 +19858,7 @@ async function submitBqPayment(oid, modal, btn) {
   const okR = [];
   for (const rc of receipts) {
     const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'mevent:#' + o.number });
+    if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }   // C2: цагаан жагсаалт
     if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
     okR.push(rc);
   }
@@ -26805,6 +26808,7 @@ function initEvents() {
       // Баримтыг нэгдсэн ledger-т ЭЗЭМШИНЭ — нэг баримт орлого/захиалга/өөр хүсэлтэд дахин орохгүй
       if (paymentFile && state._finPdfCheck && state._finPdfCheck.canonKey) {
         const rr = await reserveReceipt(state._finPdfCheck.canonKey, { fp: state._finPdfCheck.fpKey, amount: state._finPdfCheck.amount, date: state._finPdfCheck.date, ref: 'зарлага · ' + (state._finPdfCheck.receiver || ''), usedIn: 'fin:' + state.editingId });
+        if (rr === 'err') { showToast('⛔ Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
         if (rr === 'dup') { showToast('⛔ Энэ баримт аль хэдийн өөр гүйлгээнд ашиглагдсан — гүйцэтгэл цуцлагдлаа', 'error', 5000); return; }
       }
       // Upload payment proof first if provided

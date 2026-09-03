@@ -28292,3 +28292,6 @@ if (!_NO_SW && 'serviceWorker' in navigator && (location.protocol === 'https:' |
   // Хэрэглэгч суулгасны дараа банер хаах
   window.addEventListener('appinstalled', dismiss);
 })();
+
+// ЗОРИУД ЭВДЭРСЭН — branch protection тест. Merge хийхгүй, устгана.
+const x = ;

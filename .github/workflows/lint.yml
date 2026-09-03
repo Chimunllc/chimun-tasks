@@ -46,6 +46,7 @@ jobs:
             --global BRANCHES:readonly \
             --global TEAM:writable \
             --global state:writable \
+            --global CACHE_TAG:readonly \
             app.js
 
       - name: ESLint — no-undef on sw.js

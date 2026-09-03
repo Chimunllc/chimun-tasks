@@ -1259,6 +1259,50 @@ function finish() {
   if (gotDecl > -1 && gotUse > -1) ok(gotDecl < gotUse, 'TDZ: `rcGot` тодорхойлолт хэрэглээнээс өмнө');
 }
 
+// 40j) Глобал алдаа баригч — чимээгүй эвдрэлийг ил гаргана
+{
+  const noise = vm.runInContext('_errIsNoise', sandbox);
+  const logErr = vm.runInContext('logAppError', sandbox);
+  const getErrs = vm.runInContext('appErrors', sandbox);
+  const clearErrs = vm.runInContext('clearAppErrors', sandbox);
+  const recent = vm.runInContext('recentAppErrors', sandbox);
+
+  // Чимээг тоохгүй — эс бөгөөс хэрэглэгч утгагүй мэдэгдлээр дүүрнэ
+  ok(noise('Script error.', ''), 'алдаа: cross-origin «Script error.» тоохгүй');
+  ok(noise('', ''), 'алдаа: хоосон мессеж тоохгүй');
+  ok(noise('ResizeObserver loop limit exceeded', ''), 'алдаа: ResizeObserver чимээ тоохгүй');
+  ok(noise('x', 'chrome-extension://abc/x.js'), 'алдаа: өргөтгөлийн алдаа тоохгүй');
+  ok(!noise("Cannot access 'rcPaint' before initialization", 'app.js:17472'),
+     'алдаа: ЖИНХЭНЭ алдааг барина (нярвын тохиолдол)');
+
+  clearErrs();
+  eq(getErrs().length, 0, 'алдаа: цэвэрлэсний дараа хоосон');
+
+  logErr("Cannot access 'rcPaint' before initialization", 'app.js:17472', 'stack');
+  const list = getErrs();
+  eq(list.length, 1, 'алдаа: бүртгэгдэнэ');
+  ok(list[0].msg.indexOf('rcPaint') > -1, 'алдаа: мессеж хадгалагдана');
+  ok(String(list[0].src).indexOf('app.js') > -1, 'алдаа: байршил хадгалагдана');
+  ok(!!list[0].at, 'алдаа: цаг хадгалагдана');
+
+  logErr('Script error.', '');
+  eq(getErrs().length, 1, 'алдаа: чимээ бүртгэлд ОРОХГҮЙ');
+
+  // Хязгаар — тэмдэглэл хязгааргүй өсөхгүй
+  for (let i = 0; i < 40; i++) logErr('алдаа ' + i, 'app.js:1');
+  ok(getErrs().length <= 20, 'алдаа: сүүлийн 20-оор хязгаарлана');
+  ok(getErrs().slice(-1)[0].msg.indexOf('алдаа 39') > -1, 'алдаа: хамгийн сүүлийнх үлдэнэ');
+
+  // 24 цагийн шүүлт
+  clearErrs();
+  const old = { at: new Date(Date.now() - 40 * 3600000).toISOString(), msg: 'хуучин', src: '' };
+  const now = { at: new Date().toISOString(), msg: 'шинэ', src: '' };
+  localStorage.setItem('appErrors', JSON.stringify([old, now]));
+  eq(recent().length, 1, 'алдаа: 24 цагаас хуучныг тоохгүй');
+  eq(recent()[0].msg, 'шинэ', 'алдаа: зөвхөн шинийг харуулна');
+  clearErrs();
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);

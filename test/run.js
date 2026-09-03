@@ -88,6 +88,15 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
+// 0a) SCAN — PostgREST дуудлага бүр НЭВТЭРСЭН токеноор явна (2026-09-03)
+// pgrstBearer() = pgrstToken() || DB_ANON_KEY — токенгүй бол anon руу унана, тул
+// солих нь юуг ч эвдэхгүй. Харин anon-ы УНШИХ эрхийг ирээдүйд хаах боломж нээгдэнэ.
+// Шинэ код `Bearer ' + DB_ANON_KEY` бичвэл тэр бараа дахин anon-оор явна.
+{
+  const anonBearer = (src.match(/Authorization: 'Bearer ' \+ DB_ANON_KEY/g) || []).length;
+  eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
+}
+
 // 0b) Хүрэлцээ — ХУУЧИРСАН НЭРТЭЙ мөрийг sku-гээр таньж шалгана (2026-09-03)
 // Регресс: өмнө нь availabilityFor(it.name) байсан тул сайтаас хуучин нэртэй мөр
 // ирэхэд productByName олдохгүй → null → «Хүрэлцэхгүй» ОГТ гардаггүй байв.
@@ -1248,6 +1257,103 @@ function finish() {
   eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 0, 'нөөц: цуцалсан захиалга эзлэхгүй');
 
   st.products = saved.p; st.appOrders = saved.o;
+}
+
+// 40i) TDZ хамгаалалт — «Агуулахад авсан» цонх нээгддэг эсэх (эх кодын дараалал)
+// ⚠ Энэ бол DOM-гүй тест: openStageAdvanceModal нь браузер шаарддаг тул ажиллуулж
+// чадахгүй. Оронд нь ЭХ КОДЫН дараалалд `const` тодорхойлолт нь ХЭРЭГЛЭЭНЭЭС өмнө
+// байгаа эсэхийг шалгана. 2026-09-02-нд `rcPaint()` нь тодорхойлолтоосоо 7 мөрийн
+// ӨМНӨ дуудагдаж ReferenceError шидсэн тул нярав «Агуулахад авсан» дарахад цонх ОГТ
+// нээгддэггүй байв (commit 7bc4ae0). Тест нь дахин орохоос сэргийлнэ.
+{
+  const start = src.indexOf('function openStageAdvanceModal');
+  ok(start > -1, 'TDZ: openStageAdvanceModal олдов');
+  // Функцийн төгсгөл — дараагийн дээд түвшний функцийн эхлэл
+  const after = src.indexOf('\nfunction ', start + 10);
+  const body = src.slice(start, after > -1 ? after : src.length);
+
+  [['rcPaint', 'rcPaint()'], ['rcShort', 'rcShort()'], ['validate', 'validate()']].forEach(([name, call]) => {
+    const decl = body.indexOf('const ' + name + ' =');
+    const use = body.indexOf(call);
+    if (decl === -1 || use === -1) return;   // нэр өөрчлөгдсөн бол алгасна
+    ok(decl < use, 'TDZ: `' + name + '` тодорхойлолт нь хэрэглээнээсээ ӨМНӨ байх ёстой');
+  });
+
+  // rcGot массив — оруулгын handler дотор ашиглагдана, тодорхойлолт нь өмнө байх ёстой
+  const gotDecl = body.indexOf('const rcGot');
+  const gotUse = body.indexOf('rcGot[i] =');
+  if (gotDecl > -1 && gotUse > -1) ok(gotDecl < gotUse, 'TDZ: `rcGot` тодорхойлолт хэрэглээнээс өмнө');
+}
+
+// 40j) Глобал алдаа баригч — чимээгүй эвдрэлийг ил гаргана
+{
+  const noise = vm.runInContext('_errIsNoise', sandbox);
+  const logErr = vm.runInContext('logAppError', sandbox);
+  const getErrs = vm.runInContext('appErrors', sandbox);
+  const clearErrs = vm.runInContext('clearAppErrors', sandbox);
+  const recent = vm.runInContext('recentAppErrors', sandbox);
+
+  // Чимээг тоохгүй — эс бөгөөс хэрэглэгч утгагүй мэдэгдлээр дүүрнэ
+  ok(noise('Script error.', ''), 'алдаа: cross-origin «Script error.» тоохгүй');
+  ok(noise('', ''), 'алдаа: хоосон мессеж тоохгүй');
+  ok(noise('ResizeObserver loop limit exceeded', ''), 'алдаа: ResizeObserver чимээ тоохгүй');
+  ok(noise('x', 'chrome-extension://abc/x.js'), 'алдаа: өргөтгөлийн алдаа тоохгүй');
+  ok(!noise("Cannot access 'rcPaint' before initialization", 'app.js:17472'),
+     'алдаа: ЖИНХЭНЭ алдааг барина (нярвын тохиолдол)');
+
+  clearErrs();
+  eq(getErrs().length, 0, 'алдаа: цэвэрлэсний дараа хоосон');
+
+  logErr("Cannot access 'rcPaint' before initialization", 'app.js:17472', 'stack');
+  const list = getErrs();
+  eq(list.length, 1, 'алдаа: бүртгэгдэнэ');
+  ok(list[0].msg.indexOf('rcPaint') > -1, 'алдаа: мессеж хадгалагдана');
+  ok(String(list[0].src).indexOf('app.js') > -1, 'алдаа: байршил хадгалагдана');
+  ok(!!list[0].at, 'алдаа: цаг хадгалагдана');
+
+  logErr('Script error.', '');
+  eq(getErrs().length, 1, 'алдаа: чимээ бүртгэлд ОРОХГҮЙ');
+
+  // Хязгаар — тэмдэглэл хязгааргүй өсөхгүй
+  for (let i = 0; i < 40; i++) logErr('алдаа ' + i, 'app.js:1');
+  ok(getErrs().length <= 20, 'алдаа: сүүлийн 20-оор хязгаарлана');
+  ok(getErrs().slice(-1)[0].msg.indexOf('алдаа 39') > -1, 'алдаа: хамгийн сүүлийнх үлдэнэ');
+
+  // 24 цагийн шүүлт
+  clearErrs();
+  const old = { at: new Date(Date.now() - 40 * 3600000).toISOString(), msg: 'хуучин', src: '' };
+  const now = { at: new Date().toISOString(), msg: 'шинэ', src: '' };
+  localStorage.setItem('appErrors', JSON.stringify([old, now]));
+  eq(recent().length, 1, 'алдаа: 24 цагаас хуучныг тоохгүй');
+  eq(recent()[0].msg, 'шинэ', 'алдаа: зөвхөн шинийг харуулна');
+  clearErrs();
+}
+
+// 40k) Серверийн алдааны бүртгэл — өөрөө хэзээ ч унахгүй байх
+{
+  const report = vm.runInContext('_reportErrToServer', sandbox);
+  const loadSrv = vm.runInContext('loadServerErrors', sandbox);
+  const st = vm.runInContext('state', sandbox);
+
+  // ⚠ ХАМГИЙН ЧУХАЛ: мэдээлэх функц алдаа шидвэл тэр нь дахин бүртгэгдэж
+  // ХЯЗГААРГҮЙ ДАВТАЛТ үүснэ. Ямар ч оролтод унахгүй байх ЁСТОЙ.
+  let threw = null;
+  try {
+    report('энгийн алдаа', 'app.js:1', 'stack');
+    report(null, null, null);
+    report(undefined, undefined, undefined);
+    report({ toString() { throw new Error('хорон объект'); } }, 'x', 'y');
+    report('а'.repeat(5000), 'б'.repeat(5000), 'в'.repeat(5000));
+  } catch (e) { threw = e; }
+  ok(threw === null, 'серверийн бүртгэл: ямар ч оролтод УНАХГҮЙ (давталтаас хамгаална)');
+
+  // CEO биш бол сервер рүү огт хандахгүй (алдааны лог нийтэд ил байх ёсгүй)
+  const savedCeo = st.isCEO;
+  st.isCEO = false;
+  let threw2 = null;
+  try { loadSrv(); } catch (e) { threw2 = e; }
+  ok(threw2 === null, 'серверийн бүртгэл: CEO бишэд унахгүй');
+  st.isCEO = savedCeo;
 }
 
 // 41) Засвар KPI-д тооцогдох эсэх

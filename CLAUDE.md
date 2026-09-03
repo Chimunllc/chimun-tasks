@@ -22,7 +22,7 @@
 - **⚠ mevent.mn сайт нь ӨӨР repo:** `Chimunllc/m-event-website-ready` (нэг файлын `index.html` + `products.json`). Сайтын алдаа энэ репод БАЙХГҮЙ — тусад нь clone/PR хийнэ.
 
 ### Дата хаана байдаг
-- **Дата = VPS Postgres `chimun` DB** (Contabo 62.146.232.100). Sheets ч, Supabase cloud ч ХЭРЭГЛЭХГҮЙ.
+- **Дата = VPS Postgres `chimun` DB** (өөрийн VPS; хаяг/хандалт локал санах ойд). Sheets ч, Supabase cloud ч ХЭРЭГЛЭХГҮЙ.
 - **Унших:** апп `DB_URL='https://n8n.nomaadcamp.com/db'` (Caddy `/db/rest/v1/*`→PostgREST), `DB_ANON_KEY`=VPS anon JWT. ⚠ Эдгээр 2026-08-30 хүртэл `SUPABASE_URL`/`SUPABASE_ANON_KEY` нэртэй байсан — Supabase cloud-той хамааралгүй, төөрөгдүүлдэг тул нэрлэсэн. Сайтад мөн `DB_BASE`/`DB_PRODUCTS_URL`/`DB_ORDERS_URL`/`DB_ANON_KEY`. Tasks/finance/staff/nomaad = n8n webhook-оор (бүгд Postgres). products/bq_* = PostgREST шууд.
 - **Бичих:** anon grant-аар шууд — `products`, `app_orders`, `repairs`, `product_aliases`, `nomaad_payments`. Бусад нь n8n webhook-оор.
 - **Захиалга = НЭГ хүснэгт `app_orders`** (2026-07-01-нд Booqable түүх + шинэ захиалга нэгдсэн). `unifiedOrders()` нь `state.appOrders`-ээс уншина; `source` талбар нь 'booqable'(түүхэн) / 'app' / сайт гэж ялгана. `bq_*` хүснэгтүүд зөвхөн аналитик архив — шинэ захиалга тэнд БИЧИГДЭХГҮЙ. Захиалгын карт = `bqOrderCard`.
@@ -74,7 +74,7 @@
   (`note` дутсанаас хүргэлтийн 6.8сая₮ харагдахгүй байсан) — тест хамгаална.
 
 ### NOMAAD захиалга аппд орох төлөв (2026-06-19 шинэчлэв)
-- Аппын NOMAAD жагсаалт `/webhook/nomaad-orders` (n8n id `2z4L2lJtTL5fRzG4`, "Shape" Code node)-оор Quote Log-оос татна. **АНХААР: webhook нь БҮХ төлөвийг буцаадаг** (ИЛГЭЭСЭН/ГЭРЭЭ/ДУУССАН/БОЛЬСОН/АПП-д нэмэх г.м. — 2026-06-19-нд live дата шалгаж тогтоов; хуучин "зөвхөн АПП агуулсан" тэмдэглэл ХОЦРОГДСОН). Тиймээс статус солих (update_quote) нь захиалгыг webhook-оос унагахгүй.
+- Аппын NOMAAD жагсаалт `/webhook/nomaad-orders` (n8n "Shape" Code node)-оор Quote Log-оос татна. **АНХААР: webhook нь БҮХ төлөвийг буцаадаг** (ИЛГЭЭСЭН/ГЭРЭЭ/ДУУССАН/БОЛЬСОН/АПП-д нэмэх г.м. — 2026-06-19-нд live дата шалгаж тогтоов; хуучин "зөвхөн АПП агуулсан" тэмдэглэл ХОЦРОГДСОН). Тиймээс статус солих (update_quote) нь захиалгыг webhook-оос унагахгүй.
 - **Цуцалсан зохицуулалт:** `renderNomaadOrders` (жагсаалт) ба `renderNomaadCalendar` нь `nomaadIsCancelled(o)` (БОЛЬСОН/Цуцл) -ээр шүүж **цуцалсныг нуудаг**. Pipeline-д "Больсон" шатанд (эвхэгдсэн) хэвээр. Sidebar badge ч цуцалсныг хасна.
 - **Үнийн санал устгах** = статусыг `БОЛЬСОН` болгоно (`deleteNomaadQuote`, зөвхөн урьдчилгаа/орлогогүй үед) → дээрх цуцалсан-шүүлтээр жагсаалтаас алга (hard delete биш, Quote Log-д түүх үлдэнэ).
 - **Шатын нэршил (2026-06-19):** Шинэ → Үнийн санал илгээсэн → **Баталгаажуулалт хүлээж буй** (статус `БАТАЛГААЖУУЛАЛТ`→`confirming`; амаар тохирсон, гэрээ хүлээж буй) → Урьдчилгаа төлсөн → Гэрээ хийгдсэн → Гүйцэтгэсэн → Больсон. `NOMAAD_STAGES`/`NOMAAD_STATUSES`/`nomaadStage`.
@@ -219,7 +219,7 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 
 - Ажилтныг **утсаар** таних (`personKey` = утас→email→нэр). Master Sheet-ийн "ID" багана **вестижиал** — шинэ ажилтан ID хоосон үүсдэг (апп `assigned_id` илгээдэггүй).
 - **ID баганыг бие махбодоор БҮҮ устга** — register(append)/staff-list(read) schema-д бүртгэлтэй, устгавал schema gotcha. Хоосон орхи.
-- staff-update (`/staff-update`, төлөв leave/restore) ба `/staff-role` (албан тушаал засах) хоёулаа **Утас баганаар тааруулдаг**. Master Sheet: `1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM`, gid 451955481, толгой 27 багана (ID, Овог нэр, РД, Албан тушаал, ...).
+- staff-update (`/staff-update`, төлөв leave/restore) ба `/staff-role` (албан тушаал засах) хоёулаа **Утас баганаар тааруулдаг**. Master Sheet (id локал санах ойд), толгой 27 багана (ID, Овог нэр, РД, Албан тушаал, ...).
 - Role засах: Ажилтны удирдлага → ✎ → inline select (`editStaffRole`/`saveStaffRole`). HR sheet бичилтийг агентаар тест хийх боломжгүй (classifier хориглодог) — хэрэглэгч UI-аар тестэлнэ.
 
 ## Гүйцэтгэлийн үнэлгээ (Объектив + Ажлын чанар + 360° + бонус, 2026-06-10 шинэчлэв)

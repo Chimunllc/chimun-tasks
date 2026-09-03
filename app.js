@@ -120,6 +120,15 @@ const DB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.B
 // Барааны зураг VPS дээр (n8n.nomaadcamp.com/img/<file>) — mevent-upload-image webhook-оор
 // байршуулна (uploadProductImage). Гуравдагч талын storage ашиглахаа больсон.
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
+// n8n webhook дуудлагад нэвтэрсэн ажилтны session токеныг ХЭДЭР-ээр нэмнэ.
+// ⚠ URL query-д БҮҮ тавь — n8n гүйцэтгэлийн түүхэнд бүх query параметр хадгалагдана.
+// Токенгүй (нэвтрээгүй) бол хоосон объект — одоогийн зан төлөв хэвээр.
+// Сервер тал энэ header-ийг шалгаж эхлэхэд л жинхэнэ хаалт болно.
+function n8nAuthHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  try { const t = localStorage.getItem('sessionToken'); if (t) h['X-Session-Token'] = t; } catch (e) {}
+  return h;
+}
 function withKey(url) {
   if (!url) return url;
   const sep = url.includes('?') ? '&' : '?';
@@ -1323,7 +1332,7 @@ async function loadBootstrap() {
   try {
     const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
     });
     if (!r.ok) return false;
     const data = await r.json();
@@ -1363,7 +1372,7 @@ async function loadData() {
       // (мөр устгах/засах) тусахгүй байдаг. t=Date.now() + no-store-р фреш дата авна.
       const r = await fetchWithTimeout(withKey(state.config.apiUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
@@ -2011,7 +2020,7 @@ async function loadFinanceRequests() {
       // Cache-bust — Sheet дээр шууд устгасан/засварласан хүсэлт нэн даруй тусахын тулд
       const res = await fetchWithTimeout(withKey(state.config.financeUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();

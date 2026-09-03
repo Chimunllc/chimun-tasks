@@ -7403,8 +7403,16 @@ function packageStock(p) {
   for (const c of cs) { const cp = productBySku(c.sku); if (!cp) return 0; m = Math.min(m, Math.floor(workingStock(cp) / Math.max(1, Number(c.qty) || 1))); }
   return isFinite(m) ? m : 0;
 }
+// ⚠ Нэрээр хайх нь нөөцийн шалгалтыг ТОЙРДОГ байв (2026-09-03). Сайт хуучирсан нэр
+// илгээвэл productByName олдохгүй → null → «Хүрэлцэхгүй» анхааруулга ОГТ гарахгүй.
+// bookedQtyForRange нь аль хэдийн productOf-оор канонждог тул хайх тал ч ижил байх ёстой.
+// Мөр (объект) өгвөл sku→id→нэр дарааллаар, тэмдэгт мөр өгвөл хуучнаар нэрээр.
+function _prodForAvail(x) {
+  if (!x) return undefined;
+  return (typeof x === 'object') ? productOf(x) : productByName(x);
+}
 function productStockByName(name) {
-  const p = productByName(name);
+  const p = _prodForAvail(name);
   if (!p) return null;   // каталогт алга
   if (isService(p)) return null;   // үйлчилгээ — нөөцгүй → availability/shortage шалгалтыг алгасна
   if (isPackage(p)) return packageStock(p);
@@ -7446,7 +7454,7 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
   return total;
 }
 function availabilityFor(name, start, end, excludeOrderNo) {
-  const p = productByName(name);
+  const p = _prodForAvail(name);
   if (p && isPackage(p)) {   // багц = бүрэлдэхүүн бүрийн (сул ÷ тоо)-ны минимум
     let minAvail = Infinity, minStock = Infinity;
     for (const c of packageComponents(p)) {
@@ -7462,15 +7470,16 @@ function availabilityFor(name, start, end, excludeOrderNo) {
   }
   const stock = productStockByName(name);
   if (stock === null) return null;
-  const booked = bookedQtyForRange(name, start, end, excludeOrderNo);
+  // Каноник нэрээр тоол — мөр өгсөн бол каталогийн нэр, эс бол өгсөн нэр.
+  const booked = bookedQtyForRange(p ? p.name : name, start, end, excludeOrderNo);
   return { stock, booked, avail: stock - booked };
 }
 // Захиалгын item-уудаас хүрэлцэхгүй (over-booked) барааг олно.
 function orderShortages(items, start, end, excludeOrderNo) {
   const out = [];
   for (const it of (items || [])) {
-    const name = (it.name || '').trim(); if (!name) continue;
-    const a = availabilityFor(name, start, end, excludeOrderNo);
+    const name = (it.name || '').trim(); if (!name && !it.sku) continue;
+    const a = availabilityFor(it, start, end, excludeOrderNo);   // мөрөөр — sku/id-гээр таарна
     if (a && (Number(it.qty) || 0) > a.avail) out.push({ name, need: Number(it.qty) || 0, avail: a.avail, stock: a.stock, booked: a.booked });
   }
   return out;

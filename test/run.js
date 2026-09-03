@@ -84,9 +84,35 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'orderShortages', 'availabilityFor', 'productStockByName']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
+
+// 0b) Хүрэлцээ — ХУУЧИРСАН НЭРТЭЙ мөрийг sku-гээр таньж шалгана (2026-09-03)
+// Регресс: өмнө нь availabilityFor(it.name) байсан тул сайтаас хуучин нэртэй мөр
+// ирэхэд productByName олдохгүй → null → «Хүрэлцэхгүй» ОГТ гардаггүй байв.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.products, state.appOrders]');
+  runIn("state.products = [{ id:'M-100', sku:'M-100', name:'Цагаан ширээ 180см', price:10000, qty_mevent:5, stock:5 }]; state.appOrders = [];");
+  const SH = runIn('orderShortages'), AV = runIn('availabilityFor');
+
+  ok(SH([{ sku:'M-100', name:'Цагаан ширээ 180см', qty:9 }], '2026-10-01', '2026-10-02').length === 1,
+     'хүрэлцээ: зөв нэрээр хүрэлцэхгүйг барина');
+  ok(SH([{ sku:'M-100', name:'Ширээ (хуучин нэр)', qty:9 }], '2026-10-01', '2026-10-02').length === 1,
+     'хүрэлцээ: ХУУЧИРСАН нэртэй ч sku-гээр таньж барина');
+  ok(SH([{ sku:'M-100', name:'Ширээ (хуучин нэр)', qty:3 }], '2026-10-01', '2026-10-02').length === 0,
+     'хүрэлцээ: хүрэлцэж байвал анхааруулахгүй');
+  ok(SH([{ sku:'ZZZ', name:'Байхгүй бараа', qty:99 }], '2026-10-01', '2026-10-02').length === 0,
+     'хүрэлцээ: каталогт байхгүй бол шалгахгүй');
+
+  const aItem = AV({ sku:'M-100', name:'хуучин' }, '2026-10-01', '2026-10-02');
+  const aName = AV('Цагаан ширээ 180см', '2026-10-01', '2026-10-02');
+  ok(aItem && aName && aItem.stock === aName.stock && aItem.avail === aName.avail,
+     'availabilityFor: мөрөөр ба каноник нэрээр ижил');
+
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
+}
 
 // 1) НӨАТ токен round-trip
 eq(F.parseVat(F.encodeVat(15000)), 15000, 'НӨАТ токен: encode→parse round-trip');

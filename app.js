@@ -14723,11 +14723,10 @@ function meventContractHtml(o) {
   const _ci = custInfoOf(o.note);
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
-  const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
   // Эхлэх/дуусах ЦАГ нь ⟦RT|sh|eh⟧ note token-д хадгалагддаг (starts_at нь зөвхөн огноо).
   // Уншихгүй бол гэрээнд «……» гарч, ажлын бус цагийн төлбөртэй зөрчилдөнө.
-  const _rt = parseOrderTimes(o.note);
-  if (_rt) { if (ds.time === '……') ds.time = _pad2(_rt.sh) + ':00'; if (de.time === '……') de.time = _pad2(_rt.eh) + ':00'; }
+  // Нэгтгэлт = orderDateTime (үнийн санал ч ЯГ үүнийг ашиглана — ганц эх сурвалж).
+  const ds = _ctDT(orderDateTime(o.starts_at, o.note, false)), de = _ctDT(orderDateTime(o.stops_at, o.note, true)), now = new Date();
   const contractNo = escapeHtml(o.contract_no || '');
   const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
@@ -18063,6 +18062,21 @@ function rentalDays(startMs, stopMs) {
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
+// ⭐ ЗАХИАЛГЫН ОГНОО+ЦАГ — ГАНЦ ЭХ СУРВАЛЖ (үнийн санал, гэрээ, карт).
+// `starts_at`/`stops_at` нь ЗӨВХӨН огноо (date) — формын цаг ⟦RT|sh|eh⟧ token-д явдаг.
+// Тиймээс баримт бичигт цаг харуулахдаа хоёрыг ЗААВАЛ нэгтгэнэ — эс бөгөөс авах цаг харагдахгүй
+// бөгөөд ажлын бус цагийн төлбөр ямар цагаас тооцогдсон нь баримтаас харагдахгүй.
+// Огноонд аль хэдийн цаг байвал (хуучин/booqable мөр) түүнийг ХӨНДӨХГҮЙ.
+function orderDateTime(dateVal, note, isStop) {
+  const s = String(dateVal || '');
+  if (!s) return '';
+  if (/\d{4}-\d{1,2}-\d{1,2}[T ]\d{1,2}:\d{2}/.test(s)) return s;
+  const t = parseOrderTimes(note);
+  if (!t) return s;
+  const h = isStop ? t.eh : t.sh;
+  if (!(h >= 0 && h <= 23)) return s;
+  return s.slice(0, 10) + 'T' + _pad2(h) + ':00';
+}
 // Ажлын бус цаг — 09:00–18:00-аас ГАДУУР авах/өгөх бүрт нэмэлт төлбөр (сайттай ижил: WORK 9–18, +20,000₮/бүр)
 // ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн OFFHOURS_FEE/WORK_START/WORK_END-тэй
 // ЯГ ИЖИЛ байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас — эс бол суваг хооронд өөр үнэ. [[tariff_two_repos_sync]]
@@ -19390,7 +19404,7 @@ async function buildOrderQuote(o, lang) {
     delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, discount = _B.discount,
     hasVat = _B.hasVat, vatDiscount = _B.vatDisc;
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
-  const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
+  const period = (o.starts_at || o.stops_at) ? `${_dt(orderDateTime(o.starts_at, o.note, false))} → ${_dt(orderDateTime(o.stops_at, o.note, true))}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
   const mailTo = o.email || '';
   const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;
@@ -21935,6 +21949,66 @@ function vatIsReturned(r) { return !!(r && r.returned); }
 function vatActive(list) { return (Array.isArray(list) ? list : []).filter(r => !vatIsReturned(r)); }
 function vatReceiptsActive() { return vatActive(state.vatReceipts); }
 
+// ── НӨАТ ЗАДАРГАА (2026-09-04) ──────────────────────────────────────────────
+// Тайлангийн мөр дээр дарахад ТУХАЙН мөрийг бүрдүүлж буй баримтууд гарна.
+// Өмнө нь «илүү 13.2 сая₮» гэж харагдах ч ЯМАР баримтууд болохыг олохын тулд
+// захиалга бүрийг дэлгэх шаардлагатай байв.
+// Түлхүүр → баримтууд. Цэвэр функц (тестлэгддэг).
+function vatReceiptsFor(key, receipts, buyers) {
+  const R = receipts || [], k = String(key || '');
+  if (k === 'all') return R.slice();
+  if (k === 'unmatched') return R.filter(r => !r.matched_id);
+  if (k === 'matched') return R.filter(r => r.matched_id);
+  if (k.startsWith('ord:')) { const no = k.slice(4); return R.filter(r => String(r.matched_id || '') === no); }
+  if (k.startsWith('month:')) { const m = k.slice(6); return R.filter(r => String(r.dt || '').slice(0, 7) === m); }
+  if (k.startsWith('buyer:')) {
+    const b = (buyers || [])[Number(k.slice(6))];
+    if (!b) return [];
+    return R.filter(r => (r.buyer_name || r.name || '?') === b.name && (r.buyer_reg || r.reg || '') === b.reg);
+  }
+  return [];
+}
+
+// Баримтын жагсаалтын модал — огноо, ДДТД, худалдан авагч, дүн, НӨАТ.
+function openVatReceiptsModal(title, sub, rows) {
+  document.getElementById('vatlist-modal')?.remove();
+  const list = (rows || []).slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
+  const sum = (f) => list.reduce((s, r) => s + (Number(r[f]) || 0), 0);
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'vatlist-modal';
+  modal.innerHTML = `
+    <div class="modal vatl-modal">
+      <h2>${escapeHtml(title)}</h2>
+      ${sub ? `<div class="vatl-sub">${escapeHtml(sub)}</div>` : ''}
+      ${list.length ? `<div class="vatl-sum">
+          <div><span>Баримт</span><b>${list.length}</b></div>
+          <div><span>Нийт дүн</span><b>${fmtMoney(sum('total'))}</b></div>
+          <div><span>НӨАТ</span><b>${fmtMoney(sum('vat'))}</b></div>
+        </div>
+        <div class="vatl-rows">${list.map(r => `<div class="vatl-row">
+          <div class="vatl-row-t">
+            <span class="vatl-d">${escapeHtml(String(r.dt || '').slice(0, 10) || '—')}</span>
+            <span class="vatl-v">${fmtMoney(r.vat)}</span>
+          </div>
+          <div class="vatl-row-m">${escapeHtml(r.buyer_name || r.name || '—')}${(r.buyer_reg || r.reg) ? ' · ' + escapeHtml(r.buyer_reg || r.reg) : ''}</div>
+          <div class="vatl-row-b">
+            <span class="vatl-dd">${escapeHtml(String(r.ddtd || '').slice(0, 24) || 'ДДТД алга')}</span>
+            <span class="vatl-t">${fmtMoney(r.total)}</span>
+          </div>
+          ${r.matched_label ? `<div class="vatl-row-l">→ ${escapeHtml(r.matched_label)}</div>` : '<div class="vatl-row-l vatl-un">тулгаагүй</div>'}
+        </div>`).join('')}</div>`
+        : '<div class="vatl-empty">Энэ мөрд харгалзах баримт олдсонгүй.</div>'}
+      <div class="modal-actions"><button class="btn btn-primary" id="vatl-close">Хаах</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.classList.add('open');
+  const close = () => modal.remove();
+  modal.querySelector('#vatl-close').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+}
+
+
 // Ачаалсан файлаас алга болсон баримтыг ол.
 // ⚠ ЗӨВХӨН файлд орсон саруудыг харна — эс бөгөөс нэг сарын файл ачаалахад
 // бусад бүх сарын баримт «буцаасан» болно.
@@ -22656,9 +22730,9 @@ function renderVatView(wrap) {
   overList.sort((a, b) => b.diff - a.diff); underList.sort((a, b) => b.diff - a.diff);
   const anomTable = (list, color, diffLabel) => `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
     <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Захиалга</th><th style="padding:4px 6px;text-align:right;">Захиалгын дүн</th><th style="padding:4px 6px;text-align:right;">Шивсэн</th><th style="padding:4px 6px;text-align:right;">${diffLabel}</th></tr></thead>
-    <tbody>${list.map(o => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(o.name)}<span style="color:var(--muted);"> · ${o.n} баримт</span></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(o.amount)}</td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(o.inv)}</td><td style="padding:6px;text-align:right;font-weight:700;color:${color};font-variant-numeric:tabular-nums;">${fmtMoney(o.diff)}</td></tr>`).join('')}</tbody></table>`;
+    <tbody>${list.map(o => `<tr class="vat-click" data-vatlist="ord:${escapeHtml(String(o.no))}" title="Дарж баримтуудыг харах" style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(o.name)}<span style="color:var(--muted);"> · ${o.n} баримт</span></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(o.amount)}</td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(o.inv)}</td><td style="padding:6px;text-align:right;font-weight:700;color:${color};font-variant-numeric:tabular-nums;">${fmtMoney(o.diff)}</td></tr>`).join('')}</tbody></table>`;
 
-  const kpi = (label, val, sub, accent) => `<div style="background:${accent ? '#e8f2ec' : 'var(--panel)'};border:1px solid var(--border);border-radius:14px;padding:14px 16px;">
+  const kpi = (label, val, sub, accent, listKey) => `<div${listKey ? ` class="vat-click" data-vatlist="${listKey}" title="Дарж баримтуудыг харах"` : ''} style="background:${accent ? '#e8f2ec' : 'var(--panel)'};border:1px solid var(--border);border-radius:14px;padding:14px 16px;">
     <div style="font-size:12px;color:${accent ? '#1e7a55' : 'var(--muted)'};">${label}</div>
     <div style="font-size:22px;font-weight:800;margin-top:3px;color:${accent ? '#1e7a55' : 'var(--text)'};">${val}</div>
     ${sub ? `<div style="font-size:11.5px;margin-top:3px;">${sub}</div>` : ''}</div>`;
@@ -22673,9 +22747,9 @@ function renderVatView(wrap) {
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
-        ${kpi('Нийт баримт', R.length, `<span style="color:#1e7a55;">✓${mR.length} тулгасан</span> · <span style="color:#9a6a00;">${uR.length} үлдсэн</span>`)}
+        ${kpi('Нийт баримт', R.length, `<span style="color:#1e7a55;">✓${mR.length} тулгасан</span> · <span style="color:#9a6a00;">${uR.length} үлдсэн</span>`, false, 'all')}
         ${kpi('Нийт борлуулалт', fmtMoney(totSales), `<span style="color:#1e7a55;">✓${fmtMoney(mSales)}</span> · <span style="color:#9a6a00;">${fmtMoney(uSales)}</span>`)}
-        ${kpi('Төлөх НӨАТ', fmtMoney(totVat), `<span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span>`, true)}
+        ${kpi('Төлөх НӨАТ', fmtMoney(totVat), `<span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span>`, true, 'matched')}
         ${kpi('Тулгасан НӨАТ', pct + '%', `${fmtMoney(mVat)} / ${fmtMoney(totVat)}`)}
       </div>
       ${RET.length ? `<div style="background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--warn,#d9a406);border-radius:12px;padding:11px 14px;margin-bottom:16px;font-size:12.5px;">
@@ -22699,7 +22773,7 @@ function renderVatView(wrap) {
           <div style="font-weight:800;font-size:14px;margin-bottom:12px;">📅 Сар бүрийн НӨАТ</div>
           ${months.length ? months.map(m => {
             const d = byM[m]; const mp = d.vat > 0 ? Math.round(d.mvat / d.vat * 100) : 0;
-            return `<div style="margin-bottom:11px;">
+            return `<div class="vat-click" data-vatlist="month:${escapeHtml(m)}" title="Дарж баримтуудыг харах" style="margin-bottom:11px;">
               <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px;"><b>${m}</b><span>${fmtMoney(d.vat)} <span style="color:var(--muted);">· ${d.n} баримт</span></span></div>
               <div style="height:8px;background:var(--bg,#eee);border-radius:5px;overflow:hidden;"><div style="height:100%;width:${Math.round(d.vat / maxMVat * 100)}%;background:linear-gradient(90deg,#1e7a55 ${mp}%, #d9b64a ${mp}%);border-radius:5px;"></div></div>
               <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">Тулгасан ${mp}% (${fmtMoney(d.mvat)})</div>
@@ -22711,7 +22785,7 @@ function renderVatView(wrap) {
           <div style="font-weight:800;font-size:14px;margin-bottom:12px;">🏢 Топ худалдан авагч (НӨАТ-аар)</div>
           <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
             <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Худалдан авагч</th><th style="padding:4px 6px;text-align:right;">Баримт</th><th style="padding:4px 6px;text-align:right;">НӨАТ</th></tr></thead>
-            <tbody>${topB.map(b => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(b.name)}<div style="font-size:10px;color:var(--muted);">${escapeHtml(b.reg)}</div></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${b.n}</td><td style="padding:6px;text-align:right;font-weight:700;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(b.vat)}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--muted);">Алга</td></tr>'}</tbody>
+            <tbody>${topB.map((b, bi) => `<tr class="vat-click" data-vatlist="buyer:${bi}" title="Дарж баримтуудыг харах" style="border-top:1px solid var(--border);"><td style="padding:6px;">${escapeHtml(b.name)}<div style="font-size:10px;color:var(--muted);">${escapeHtml(b.reg)}</div></td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${b.n}</td><td style="padding:6px;text-align:right;font-weight:700;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(b.vat)}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--muted);">Алга</td></tr>'}</tbody>
           </table>
         </div>
       </div>
@@ -22734,11 +22808,22 @@ function renderVatView(wrap) {
         </div>
         ${uR.length ? `<table style="width:100%;border-collapse:collapse;font-size:12.5px;">
           <thead><tr style="text-align:left;color:var(--muted);font-size:11px;"><th style="padding:4px 6px;">Огноо</th><th style="padding:4px 6px;">Худалдан авагч</th><th style="padding:4px 6px;text-align:right;">Нийт дүн</th><th style="padding:4px 6px;text-align:right;">НӨАТ</th></tr></thead>
-          <tbody>${uR.slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || ''))).slice(0, 30).map(r => `<tr style="border-top:1px solid var(--border);"><td style="padding:6px;white-space:nowrap;">${escapeHtml(String(r.dt || '').slice(0, 10))}</td><td style="padding:6px;">${escapeHtml(r.buyer_name || '')}</td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(r.total)}</td><td style="padding:6px;text-align:right;color:#9a6a00;font-variant-numeric:tabular-nums;">${fmtMoney(r.vat)}</td></tr>`).join('')}</tbody>
+          <tbody>${uR.slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || ''))).slice(0, 30).map(r => `<tr class="vat-click" data-vatlist="unmatched" title="Дарж бүх тулгаагүй баримтыг харах" style="border-top:1px solid var(--border);"><td style="padding:6px;white-space:nowrap;">${escapeHtml(String(r.dt || '').slice(0, 10))}</td><td style="padding:6px;">${escapeHtml(r.buyer_name || '')}</td><td style="padding:6px;text-align:right;font-variant-numeric:tabular-nums;">${fmtMoney(r.total)}</td><td style="padding:6px;text-align:right;color:#9a6a00;font-variant-numeric:tabular-nums;">${fmtMoney(r.vat)}</td></tr>`).join('')}</tbody>
         </table>${uR.length > 30 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">…бас ${uR.length - 30} баримт. «Тулгах» дараад бүгдийг харна.</div>` : ''}` : '<div style="color:#1e7a55;font-size:13px;">🎉 Бүх баримт тулгагдсан!</div>'}
       </div>
     </div>`;
 
+  // Мөр дарахад тухайн мөрийг бүрдүүлж буй баримтууд гарна
+  const listTitles = { all: ['Бүх НӨАТ баримт', ''], matched: ['Тулгасан НӨАТ баримт', ''], unmatched: ['Тулгаагүй баримт', 'Захиалгатай холбогдоогүй'] };
+  wrap.querySelectorAll('[data-vatlist]').forEach(el => el.addEventListener('click', () => {
+    const k = el.dataset.vatlist, rows = vatReceiptsFor(k, R, topB);
+    let title = listTitles[k] && listTitles[k][0], sub = (listTitles[k] && listTitles[k][1]) || '';
+    if (!title && k.startsWith('ord:')) { const o = ordInv[k.slice(4)]; title = o ? o.name : 'Захиалга ' + k.slice(4);
+      sub = o ? `Захиалгын дүн ${fmtMoney(o.amount)} · шивсэн ${fmtMoney(o.inv)}` : ''; }
+    if (!title && k.startsWith('buyer:')) { const b = topB[Number(k.slice(6))]; title = b ? b.name : 'Худалдан авагч'; sub = b ? b.reg : ''; }
+    if (!title && k.startsWith('month:')) { title = k.slice(6) + ' сарын баримт'; }
+    openVatReceiptsModal(title || 'НӨАТ баримт', sub, rows);
+  }));
   wrap.querySelector('#vat-open-recon')?.addEventListener('click', openVatReportModal);
   wrap.querySelector('#vat-open-recon2')?.addEventListener('click', openVatReportModal);
   wrap.querySelector('#vat-view-export')?.addEventListener('click', () => vatExportExcel(R));

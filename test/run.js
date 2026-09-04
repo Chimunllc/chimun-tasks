@@ -468,6 +468,41 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   eq({ sh: t.sh, eh: t.eh }, { sh: 9, eh: 18 }, 'Цаг токен: encode→parse');
 }
 
+// 4b) orderDateTime — огноо + ⟦RT⟧ цаг нэгтгэх (2026-09-04)
+// Регресс: `starts_at`/`stops_at` нь ЗӨВХӨН огноо, формын цаг ⟦RT⟧ токенд хадгалагддаг.
+// Үнийн санал/гэрээ нь огноог шууд уншдаг байсан тул АВАХ ЦАГ хэзээ ч гардаггүй байв
+// (гэрээнд «……» цаг гэж хэвлэгддэг). Ажлын бус цагийн +төлбөр яг тэр цагаас тооцогддог
+// тул харилцагч ямар цагаас төлбөр нэмэгдсэнийг баримтаас харах ёстой.
+need(['orderDateTime']);
+{
+  const note = 'тэмдэглэл ' + F.encodeOrderTimes(8, 20);
+  eq(F.orderDateTime('2026-09-10', note, false), '2026-09-10T08:00', 'orderDateTime: эхлэх цаг огноотой нийлнэ');
+  eq(F.orderDateTime('2026-09-12', note, true),  '2026-09-12T20:00', 'orderDateTime: дуусах цаг огноотой нийлнэ');
+  // токенгүй (хуучин мөр) — огноо хэвээр, хуурамч цаг зохиохгүй
+  eq(F.orderDateTime('2026-09-10', '', false), '2026-09-10', 'orderDateTime: ⟦RT⟧ байхгүй бол огноо хэвээр');
+  // огноонд аль хэдийн цаг байвал (booqable түүх) ХӨНДӨХГҮЙ
+  eq(F.orderDateTime('2026-09-10T14:30', note, false), '2026-09-10T14:30', 'orderDateTime: байгаа цагийг дарж бичихгүй');
+  eq(F.orderDateTime('', note, false), '', 'orderDateTime: огноогүй бол хоосон');
+  // шөнө дунд (0 цаг) — falsy тул алдагдаж болзошгүй
+  eq(F.orderDateTime('2026-09-10', F.encodeOrderTimes(0, 23), false), '2026-09-10T00:00', 'orderDateTime: 00 цаг алдагдахгүй');
+}
+
+// 4c) Гэрээнд авах/өгөх цаг хэвлэгдэнэ (дээрх алдааны нөхөн үзүүлэлт)
+{
+  const ord = {
+    number: 7, customer: 'Тест ХХК', order_no: 'ME-7',
+    starts_at: '2026-09-10', stops_at: '2026-09-12',
+    total_mnt: 500000, deposit_mnt: 0,
+    items: [{ name: 'Ширээ', qty: 2, price: 10000, total: 40000 }],
+    note: F.encodeOrderTimes(8, 20),
+  };
+  const ct = F.meventContractHtml(ord);
+  ok(ct.indexOf('2026-09-10 08:00') > -1, 'гэрээ/цаг: эхлэх огноо+цаг хэвлэгдэнэ');
+  ok(ct.indexOf('2026-09-12 20:00') > -1, 'гэрээ/цаг: дуусах огноо+цаг хэвлэгдэнэ');
+  // цагийн байрлалд бөглөх «……» үлдэхгүй (гарын үсгийн мөрийн «……» нь ӨӨР — түүнийг хөндөхгүй)
+  ok(!/Эхлэх:[^<]*<b>[^<]*……/.test(ct), 'гэрээ/цаг: цагийн оронд «……» үлдэхгүй');
+}
+
 // 5) cleanAppNote — токенуудыг цэвэрлэнэ, үндсэн текст үлдэнэ
 {
   const note = 'Жинхэнэ тэмдэглэл ' + F.encodeVat(5000) + ' ' + F.encodeDelivery('out', 10, 50000);
@@ -1861,6 +1896,21 @@ function finish() {
       ok(false, `загвар: Үнийн санал (${name}) — алдаа гарлаа: ${e.message}`);
     }
   }
+  // 21b) Үнийн саналд АВАХ/ӨГӨХ ЦАГ гарна (2026-09-04 алдаа — Г.Сайнжаргал мэдээлсэн)
+  // starts_at нь огноо төдий тул үнийн санал цаггүй гардаг байв. Ажлын бус цагийн
+  // +төлбөр яг эдгээр цагаас тооцогддог — баримт дээр харагдах ЁСТОЙ.
+  try {
+    const ord = {
+      number: 42, customer: 'Тест ХХК', starts_at: '2026-09-10', stops_at: '2026-09-12',
+      total_mnt: 500000, deposit_mnt: 0, items: [{ name: 'Ширээ', qty: 2, price: 10000 }],
+      note: runIn("encodeOrderTimes(8, 20)"),
+    };
+    runIn('globalThis._qTestOrd = ' + JSON.stringify(ord) + ';');
+    const qhtml = String(await runIn("buildOrderQuote(globalThis._qTestOrd, 'mn')"));
+    ok(qhtml.indexOf('2026.09.10 08:00') > -1, 'үнийн санал/цаг: авах цаг гарна');
+    ok(qhtml.indexOf('2026.09.12 20:00') > -1, 'үнийн санал/цаг: буцаах цаг гарна');
+  } catch (e) { ok(false, 'үнийн санал/цаг — алдаа: ' + e.message); }
+
   // ── AI банкны тулгалт (buildReconAiPayload / applyReconAiSuggestions) ──
   (function () {
     const mkRes = () => ({
@@ -3088,6 +3138,37 @@ function finish() {
 
   TEAM.length = 0; sv.team.forEach(x => TEAM.push(x));
   st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.rolePerms = sv.rp;
+}
+
+// ── НӨАТ ЗАДАРГАА (2026-09-04) ──────────────────────────────────────────────
+// Тайлангийн мөр дарахад ТУХАЙН мөрийг бүрдүүлж буй баримтууд гарна. Шүүлт
+// буруу бол CEO өөр захиалгын баримтыг хараад буруу шийдвэр гаргана.
+{
+  const r = (id, ord, dt, total, vat, name, reg) =>
+    ({ id, matched_id: ord, dt, total, vat, buyer_name: name, buyer_reg: reg, matched_label: ord ? 'Захиалга ' + ord : '' });
+  const R = [
+    r('a', '1486', '2026-06-03', 45690000, 4569000, 'Netcapital', '2090007'),
+    r('b', '1486', '2026-06-05', 13200000, 1320000, 'Netcapital', '2090007'),
+    r('c', '1309', '2026-07-11', 337000, 33700, 'Б.Пүрэвдулам', ''),
+    r('d', null,   '2026-06-03', 49500, 4500, 'Энэрэл-Эрдэм', '5011922'),
+  ];
+  const buyers = [{ name: 'Netcapital', reg: '2090007' }, { name: 'Энэрэл-Эрдэм', reg: '5011922' }];
+
+  eq(F.vatReceiptsFor('ord:1486', R, buyers).map(x => x.id), ['a', 'b'], 'НӨАТ: захиалгын баримтууд');
+  eq(F.vatReceiptsFor('ord:1309', R, buyers).map(x => x.id), ['c'], 'НӨАТ: өөр захиалгынх холилдохгүй');
+  eq(F.vatReceiptsFor('ord:9999', R, buyers), [], 'НӨАТ: байхгүй захиалга → хоосон');
+  eq(F.vatReceiptsFor('unmatched', R, buyers).map(x => x.id), ['d'], 'НӨАТ: тулгаагүй баримт');
+  eq(F.vatReceiptsFor('matched', R, buyers).map(x => x.id), ['a', 'b', 'c'], 'НӨАТ: тулгасан баримт');
+  eq(F.vatReceiptsFor('all', R, buyers).length, 4, 'НӨАТ: бүх баримт');
+  eq(F.vatReceiptsFor('month:2026-06', R, buyers).map(x => x.id), ['a', 'b', 'd'], 'НӨАТ: сараар шүүнэ');
+  eq(F.vatReceiptsFor('buyer:0', R, buyers).map(x => x.id), ['a', 'b'], 'НӨАТ: худалдан авагчаар');
+  eq(F.vatReceiptsFor('buyer:1', R, buyers).map(x => x.id), ['d'], 'НӨАТ: өөр худалдан авагч');
+  eq(F.vatReceiptsFor('buyer:9', R, buyers), [], 'НӨАТ: байхгүй худалдан авагч → хоосон');
+  eq(F.vatReceiptsFor('', R, buyers), [], 'НӨАТ: танихгүй түлхүүр → хоосон (санамсаргүй бүгдийг харуулахгүй)');
+
+  // Нэр ижил ч РД өөр байгууллага ХОЛИЛДОХГҮЙ
+  const dup = [r('x', null, '2026-06-01', 100, 10, 'Toki', '111'), r('y', null, '2026-06-02', 200, 20, 'Toki', '222')];
+  eq(F.vatReceiptsFor('buyer:0', dup, [{ name: 'Toki', reg: '222' }]).map(x => x.id), ['y'], 'НӨАТ: нэр ижил ч РД өөр бол ялгана');
 }
 
   finish();

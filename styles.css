@@ -5464,6 +5464,34 @@ body.role-daily #add-project { display: none !important; }
 /* Нарийн модал (скан г.м.) — өмнө нь inline style="max-width:400px" байсан */
 .modal.modal-sm { max-width: 400px; }
 
+/* ── НӨАТ задаргаа — мөр дарахад баримтууд гарна ──
+   Угтвар `vat-click` / `vatl-`. Шинэ угтвар авахын өмнө давхцлыг шалга
+   (`grep -o '^\.xx-[a-z-]*' styles.css`) — 2026-09-04-нд `sc-` давхцаж эвдэрсэн. */
+.vat-click { cursor: pointer; transition: background var(--duration) var(--ease); }
+.vat-click:hover { background: var(--panel-hover); }
+.vatl-modal { max-width: 560px; }
+.vatl-sub { font-size: var(--fs-sm); color: var(--muted); margin: calc(-1 * var(--space-2)) 0 var(--space-3); }
+.vatl-sum {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2);
+  padding: var(--space-3); margin-bottom: var(--space-3);
+  background: var(--panel-hover); border-radius: var(--r-lg);
+}
+.vatl-sum div { display: flex; flex-direction: column; gap: 2px; }
+.vatl-sum span { font-size: var(--fs-xs); color: var(--muted); }
+.vatl-sum b { font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.vatl-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+.vatl-row { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--r-md); }
+.vatl-row-t { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.vatl-d { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.vatl-v { font-size: var(--fs-base); font-weight: 600; color: var(--ok); white-space: nowrap; }
+.vatl-row-m { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.vatl-row-b { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-1); }
+.vatl-dd { font-size: var(--fs-xs); color: var(--muted-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vatl-t { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.vatl-row-l { font-size: var(--fs-xs); color: var(--primary); margin-top: var(--space-1); }
+.vatl-row-l.vatl-un { color: var(--warn); }
+.vatl-empty { padding: var(--space-5); text-align: center; color: var(--muted); font-size: var(--fs-base); }
+
 /* ── ТООЛЛОГО — няравын дэлгэц ──
    Угтвар `stc-`. `sc-` нь АЖИЛТНЫ КАРТАД аль хэдийн эзэмшигдсэн (.sc-head,
    .sc-row г.м.) — 2026-09-04-нд давхцаж толгойн хэсэг эвдэрсэн. Шинэ угтвар

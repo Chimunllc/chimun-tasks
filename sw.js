@@ -7,7 +7,14 @@
  *  - Бусад статик (CSS/JS/icons) → cache-first (хурдан + офлайн).
  *  - n8n webhook calls → network-first.
  *
- * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
+ * CACHE_VERSION нь ЗӨВХӨН кэшийн НЭР. Шинэчлэлт хүрэх баталгаа нь ҮҮНЭЭС ХАМААРАХГҮЙ:
+ * index.html / styles.css / app.js гурав network-first + cache:'reload' тул онлайн үед
+ * ҮРГЭЛЖ шинэ код татагдаж, амжилттай бүрд кэш дээр бичигдэнэ (доорх fetch handler).
+ * Тиймээс өөрчлөлт бүрд гараар нэмэгдүүлэх ШААРДЛАГАГҮЙ — тэгэх нь зэрэгцээ салбаруудад
+ * merge конфликт үүсгэдэг байв (2026-09-04: нэг PR дээр 4 удаа, v829→v835).
+ *
+ * ⚠ Push хийсэн ч «юу ч өөрчлөгдөөгүй» бол ЭХЛЭЭД GitHub Pages deploy-г шалга —
+ * түүнийг CACHE_VERSION-оос хамаагүй олон удаа шалтгаан болсон.
  */
 
 const CACHE_VERSION = 'chimun-tasks-v836-pin-4-6-2026-09-04';

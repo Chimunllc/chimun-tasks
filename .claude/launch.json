@@ -1,11 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {
-      "name": "chimun-tasks",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8766"],
-      "port": 8766
-    }
+    { "name": "chimun-tasks", "runtimeExecutable": "node", "runtimeArgs": [".claude/serve.js", "8766", "."], "port": 8766 },
+    { "name": "mevent-site", "runtimeExecutable": "node", "runtimeArgs": [".claude/serve.js", "8765", "../m-event-website-ready"], "port": 8765 }
   ]
 }

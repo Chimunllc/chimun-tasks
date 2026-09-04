@@ -3090,5 +3090,36 @@ function finish() {
   st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.rolePerms = sv.rp;
 }
 
+// ── НӨАТ ЗАДАРГАА (2026-09-04) ──────────────────────────────────────────────
+// Тайлангийн мөр дарахад ТУХАЙН мөрийг бүрдүүлж буй баримтууд гарна. Шүүлт
+// буруу бол CEO өөр захиалгын баримтыг хараад буруу шийдвэр гаргана.
+{
+  const r = (id, ord, dt, total, vat, name, reg) =>
+    ({ id, matched_id: ord, dt, total, vat, buyer_name: name, buyer_reg: reg, matched_label: ord ? 'Захиалга ' + ord : '' });
+  const R = [
+    r('a', '1486', '2026-06-03', 45690000, 4569000, 'Netcapital', '2090007'),
+    r('b', '1486', '2026-06-05', 13200000, 1320000, 'Netcapital', '2090007'),
+    r('c', '1309', '2026-07-11', 337000, 33700, 'Б.Пүрэвдулам', ''),
+    r('d', null,   '2026-06-03', 49500, 4500, 'Энэрэл-Эрдэм', '5011922'),
+  ];
+  const buyers = [{ name: 'Netcapital', reg: '2090007' }, { name: 'Энэрэл-Эрдэм', reg: '5011922' }];
+
+  eq(F.vatReceiptsFor('ord:1486', R, buyers).map(x => x.id), ['a', 'b'], 'НӨАТ: захиалгын баримтууд');
+  eq(F.vatReceiptsFor('ord:1309', R, buyers).map(x => x.id), ['c'], 'НӨАТ: өөр захиалгынх холилдохгүй');
+  eq(F.vatReceiptsFor('ord:9999', R, buyers), [], 'НӨАТ: байхгүй захиалга → хоосон');
+  eq(F.vatReceiptsFor('unmatched', R, buyers).map(x => x.id), ['d'], 'НӨАТ: тулгаагүй баримт');
+  eq(F.vatReceiptsFor('matched', R, buyers).map(x => x.id), ['a', 'b', 'c'], 'НӨАТ: тулгасан баримт');
+  eq(F.vatReceiptsFor('all', R, buyers).length, 4, 'НӨАТ: бүх баримт');
+  eq(F.vatReceiptsFor('month:2026-06', R, buyers).map(x => x.id), ['a', 'b', 'd'], 'НӨАТ: сараар шүүнэ');
+  eq(F.vatReceiptsFor('buyer:0', R, buyers).map(x => x.id), ['a', 'b'], 'НӨАТ: худалдан авагчаар');
+  eq(F.vatReceiptsFor('buyer:1', R, buyers).map(x => x.id), ['d'], 'НӨАТ: өөр худалдан авагч');
+  eq(F.vatReceiptsFor('buyer:9', R, buyers), [], 'НӨАТ: байхгүй худалдан авагч → хоосон');
+  eq(F.vatReceiptsFor('', R, buyers), [], 'НӨАТ: танихгүй түлхүүр → хоосон (санамсаргүй бүгдийг харуулахгүй)');
+
+  // Нэр ижил ч РД өөр байгууллага ХОЛИЛДОХГҮЙ
+  const dup = [r('x', null, '2026-06-01', 100, 10, 'Toki', '111'), r('y', null, '2026-06-02', 200, 20, 'Toki', '222')];
+  eq(F.vatReceiptsFor('buyer:0', dup, [{ name: 'Toki', reg: '222' }]).map(x => x.id), ['y'], 'НӨАТ: нэр ижил ч РД өөр бол ялгана');
+}
+
   finish();
 })();

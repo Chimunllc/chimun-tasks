@@ -213,7 +213,12 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 // (member_perms дээрх DELETE нь БИЧИЛТ тул хамаарахгүй — үргэлж одоогийн түлхүүрээр.)
 {
   const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-  const bad = (codeLines.match(/rest\/v1\/attendance\?[^`'"]*member_key=eq\./g) || []).length
+  // Сервер талын RPC хайлт ч мөн адил — `get_employee_doc` нь p_phone-оор хайдаг тул
+  // хуучин түлхүүр дор хадгалагдсан баримт олдохгүй. keyVariants-аар дараалан оролдоно.
+  const rpcBad = (codeLines.match(/rpc\/get_employee_doc/g) || []).length > 0
+              && !/keyVariants\(phone\)/.test(codeLines) ? 1 : 0;
+  const bad = rpcBad
+            + (codeLines.match(/rest\/v1\/attendance\?[^`'"]*member_key=eq\./g) || []).length
             + (codeLines.match(/rest\/v1\/(evaluations|staff_salary|hourly_ratings)\?[^`'"]*=eq\.\$\{encodeURIComponent\((state\.me|personKey)/g) || []).length;
   eq(bad, 0, 'scan: ажилтны түлхүүрээр сервер талд шүүхгүй (pgrstInList(keyVariants(...)) ашигла)');
 }

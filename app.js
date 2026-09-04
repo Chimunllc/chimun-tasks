@@ -7799,6 +7799,7 @@ async function saveProduct(product) {
     if (Number(product.cost) > 0) state.productCosts[product.sku] = Number(product.cost);
     else delete state.productCosts[product.sku];
   }
+  state._utilIdx = null;   // бараа өөрчлөгдсөн → ашиглалтын индекс хуучирлаа
   render();
   if (!DB_ANON_KEY) { showToast('Өгөгдлийн сан тохируулаагүй', 'error'); return; }
   const row = {
@@ -7866,28 +7867,51 @@ function isRentable(p) {
 // мессеж ч гардаггүй. `state.orders` бүхэлдээ устсан (2026-09-04).
 // Одоо: state.appOrders (жинхэнэ эх сурвалж) + productOf (sku→id→нэр, хуучирсан
 // нэртэй мөрийг ч таана) + orderCanonStatus (цуцалсныг зөв ялгана).
-function productUtilization(name) {
-  const n = _normProdName(name);
-  let orders = 0, qty = 0, revenue = 0;
-  for (const o of (state.appOrders || [])) {
+// ⚠ ГҮЙЦЭТГЭЛ — 2026-09-04-нд амьдаар ГАЦСАН. productUtilization-ыг бараа МӨР
+// БҮРД дуудахад O(бараа × захиалга × мөр × бараа) болно: 294 бараа × ~1000
+// захиалга × мөрүүд × productOf-ийн 294-ийн хайлт. Өмнө нь `state.appOrders`
+// хоосон байсан тул гогцоо шууд дуусдаг байв; #170-аар дата ирмэгц жинхэнээсээ
+// гүйж эхлээд «Бараа & хөрөнгө» дэлгэц нээгдэхээ больсон.
+// Засвар: захиалгыг НЭГ УДАА гүйж бүх барааны дүнг индекслэнэ.
+function buildProductUtilIndex(orders, products) {
+  const idx = new Map();
+  for (const o of (orders || [])) {
     const st = typeof orderCanonStatus === 'function' ? orderCanonStatus(o) : String(o.status || '');
     if (st === 'cancelled' || st === 'deleted' || st === 'draft') continue;   // цуцалсан/устгасан/ноорог — орлого биш
-    const its = (o.items || []).filter(it => {
-      const p = typeof productOf === 'function' ? productOf(it) : null;
-      return _normProdName(p ? p.name : it.name) === n;
-    });
-    if (!its.length) continue;
-    orders++;
     // ⚠ ХОЁР ӨӨР ДҮРЭМ (амьд датаар батлагдсан 2026-09-04):
-    //   source='app' / 'm-event-website' (66 захиалга) → мөрийн price нь каталогийн
-    //     ӨДРИЙН үнэ (жишээ #1486: 27,500 = каталог 27,500) → хоногоор үржүүлнэ.
-    //   source='booqable' (946 түүхэн захиалга) → мөрийн price нь ХУГАЦААНЫ НИЙТ дүн
-    //     (жишээ #1309: 40 хоног, 6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрөгдөнө.
+    //   source='app' / 'm-event-website' → мөрийн price нь каталогийн ӨДРИЙН үнэ
+    //     (жишээ #1486: 27,500 = каталог 27,500) → хоногоор үржүүлнэ.
+    //   source='booqable' → мөрийн price нь ХУГАЦААНЫ НИЙТ дүн (жишээ #1309:
+    //     40 хоног, 6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрөгдөнө.
     const isHist = String(o.source || '') === 'booqable';
     const d = isHist ? 1 : Math.max(1, typeof orderRentalDays === 'function' ? orderRentalDays(o) : (Number(o.days) || 1));
-    for (const it of its) { qty += Number(it.qty) || 0; revenue += (Number(it.price) || 0) * (Number(it.qty) || 0) * d; }
+    for (const it of (o.items || [])) {
+      const pr = typeof productOf === 'function' ? productOf(it) : null;
+      const n = _normProdName(pr ? pr.name : it.name);
+      if (!n) continue;
+      let e = idx.get(n);
+      if (!e) { e = { orders: 0, qty: 0, revenue: 0, _o: null }; idx.set(n, e); }
+      if (e._o !== o) { e.orders++; e._o = o; }   // нэг захиалга нэг л удаа тоологдоно
+      const q = Number(it.qty) || 0;
+      e.qty += q; e.revenue += (Number(it.price) || 0) * q * d;
+    }
   }
-  return { orders, qty, revenue };
+  idx.forEach(e => { delete e._o; });
+  return idx;
+}
+// Индексийг кэшлэнэ. state.appOrders / state.products СОЛИГДОХОД (шинээр
+// оноогдоход) шинэчлэгдэнэ; saveProduct нь массивыг ГАЗАР ДЭЭР нь өөрчилдөг тул
+// тэндээс ил цэвэрлэнэ (эс бөгөөс нэр солиход дүн хуучраад үлдэнэ).
+function productUtilIndex() {
+  const orders = state.appOrders || [], products = state.products || [];
+  if (state._utilIdx && state._utilIdxO === orders && state._utilIdxP === products) return state._utilIdx;
+  state._utilIdx = buildProductUtilIndex(orders, products);
+  state._utilIdxO = orders; state._utilIdxP = products;
+  return state._utilIdx;
+}
+function productUtilization(name) {   // индексээс уншина — гацалтын шалтгаан байсан
+  const e = productUtilIndex().get(_normProdName(name));
+  return e ? { orders: e.orders, qty: e.qty, revenue: e.revenue } : { orders: 0, qty: 0, revenue: 0 };
 }
 // Богино мөнгөн формат (сая/мянга) — жижиг стат мөрд.
 // Мөнгөний НЭГ дүрэм (2026-08-29). Өмнө нь нэг дэлгэцэд 3 өөр формат зэрэг гарч байв:

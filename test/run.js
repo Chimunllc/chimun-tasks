@@ -1964,6 +1964,61 @@ function finish() {
     }
   }
 
+  // ── Санхүүгийн кэш эрхгүй хүний утсанд БҮХ гүйлгээг хадгалахгүй ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const VIS = vm.runInContext('financeVisibleRows', sandbox);
+    const SAVE = vm.runInContext('saveFinanceCache', sandbox);
+    const saved = { me: st.me, ceo: st.isCEO, fr: st.financeRequests, perms: st.finBranchPerms };
+    st.finBranchPerms = new Set();   // тусгай эрхгүй
+
+    const ME = '99112233', OTHER = '88445566';
+    const rows = [
+      { id: 'a', requested_by: ME,    beneficiary: 'Өөрийн хүсэлт', amount: 50000,   decision: 'pending' },
+      { id: 'b', requested_by: OTHER, beneficiary: 'Бусдын хүсэлт', amount: 9000000, decision: 'pending' },
+      { id: 'c', requested_by: OTHER, beneficiary: 'Бусдын, надад',  amount: 300000,  decision: 'approved', executor: ME },
+      { id: 'd', requested_by: OTHER, beneficiary: 'Бусдын, өөрт',   amount: 700000,  decision: 'approved', executor: OTHER },
+    ];
+
+    // Энгийн ажилтан — зөвхөн өөрт нь хамаатай мөрүүд
+    st.me = ME; st.isCEO = false; st.financeRequests = rows;
+    const seen = VIS(rows).map(r => r.id);
+    ok(seen.indexOf('a') > -1, 'кэш: өөрийн хүсэлт кэшлэгдэнэ');
+    ok(seen.indexOf('c') > -1, 'кэш: өөрт нь гүйцэтгүүлэх хүсэлт кэшлэгдэнэ');
+    ok(seen.indexOf('b') === -1, 'кэш: бусдын хүсэлт кэшлэгдэхгүй');
+    ok(seen.indexOf('d') === -1, 'кэш: бусдын гүйлгээ кэшлэгдэхгүй');
+
+    // localStorage-д бодитоор юу бичигдэв
+    localStorage.removeItem('financeRequests');
+    SAVE();
+    const written = JSON.parse(localStorage.getItem('financeRequests') || '[]');
+    ok(!written.some(r => r.id === 'b'), 'кэш: localStorage-д бусдын гүйлгээ БАЙХГҮЙ');
+    ok(JSON.stringify(written).indexOf('9000000') === -1, 'кэш: бусдын дүн localStorage-д алга');
+
+    // CEO — бүгд хэвээр
+    st.isCEO = true;
+    eq(VIS(rows).length, 4, 'кэш: CEO бүх гүйлгээг кэшлэнэ');
+
+    // Нэвтрээгүй — кэш ОГТ хөндөгдөхгүй (хоосон бичиж датаг устгахгүй)
+    st.isCEO = false; st.me = '';
+    localStorage.setItem('financeRequests', '[{"id":"keep"}]');
+    SAVE();
+    eq(JSON.parse(localStorage.getItem('financeRequests')).map(r => r.id), ['keep'],
+       'кэш: нэвтрээгүй үед кэш устгагдахгүй');
+    eq(VIS(rows), [], 'кэш: нэвтрээгүй бол харагдах мөр 0');
+
+    // Түүхий бичилт кодод эргэж ирээгүй эсэх
+    ok(src.indexOf("localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests))") === -1,
+       'кэш: шүүлтгүй түүхий бичилт кодод байхгүй');
+    // Гарахад цэвэрлэгдэнэ
+    const lo = src.slice(src.indexOf('async function logout()'));
+    ok(lo.slice(0, lo.indexOf('\n}')).indexOf("removeItem('financeRequests')") > -1,
+       'кэш: гарахад санхүүгийн кэш устгагдана');
+
+    localStorage.removeItem('financeRequests');
+    st.me = saved.me; st.isCEO = saved.ceo; st.financeRequests = saved.fr; st.finBranchPerms = saved.perms;
+  }
+
   // ── Түүхийн тайлан: мөрд орлого хуваарилах дүрэм ──
   {
     const R = F.histLineRevenue;
@@ -2120,6 +2175,29 @@ function finish() {
     // хамтран гүйцэтгэгчээр орсон бол «үүргэсэн» биш (жагсаалттай ижил дүрэм)
     eq(D([{ id: '7', createdBy: ME, assignee: '88001122', co_assignees: ME, status: 'open' }], ME), 0,
        'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
+  }
+
+  // ── NOMAAD дата: эрх нь ХАРУУЛАХАД, ТАТАХАД БИШ ──
+  {
+    // loadNomaadOrders нь nomaad ДЭЛГЭЦИЙН эрхээр дата татахаа зогсоодог байв. Дата нь
+    // авлага / тайлан / НӨАТ / COO цалин / катерингийг тэжээдэг тул m-event салбарын
+    // нягтлан кемпийн орлогыг 0 гэж хараад компани ХУДАЛ алдагдалтай харагддаг байв.
+    const body = src.slice(src.indexOf('async function loadNomaadOrders()'));
+    const head = body.slice(0, body.indexOf('const url'));
+    ok(head.indexOf('!canSeeNomaadOrders()') === -1,
+       'NOMAAD дата: татах нь зөвхөн nomaad дэлгэцийн эрхээр хаагдахгүй');
+    ok(head.indexOf('canUseNomaadData()') > -1,
+       'NOMAAD дата: хэрэглэгч дэлгэцүүдийн нэгдсэн эрхээр шалгана');
+    // Гэхдээ БҮРЭН хаалтгүй болгосонгүй — эрхгүй хүн лүү PII татахгүй
+    ok(/if\s*\(!canUseNomaadData\(\)\)\s*return;/.test(head),
+       'NOMAAD дата: эрхгүй хүнд дата ТАТАХГҮЙ хэвээр');
+    // ДЭЛГЭЦИЙН эрх хэвээр хүчинтэй
+    ok(/state\.view === 'nomaad' && !canSeeNomaadOrders\(\)/.test(src),
+       'NOMAAD дэлгэц: харуулах эрх хэвээр шалгагдана');
+    // Нэгдэлд орсон дэлгэц бүр бодитоор дата хэрэглэдэг
+    const cu = src.slice(src.indexOf('function canUseNomaadData()'));
+    ['canSeeNomaadOrders', 'canSeeReceivables', 'canSeeReports', 'canSeeVat', 'canSeeCatering', 'canSeeCooSalary']
+      .forEach(f => ok(cu.slice(0, cu.indexOf('}')).indexOf(f) > -1, `NOMAAD дата: нэгдэлд «${f}» багтсан`));
   }
 
   // ── Эрхийн матрицын нэр sidebar-ын нэртэй таарах ──

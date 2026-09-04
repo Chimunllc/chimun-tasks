@@ -1,0 +1,54 @@
+# Датаг ЗӨВХӨН УНШИХ суваг — үүлэн/утасны сессээс шинжилгээ хийхэд.
+#
+# Яагаад workflow дундуур вэ: үүлэн агент VPS руу шууд хандаж чадахгүй (proxy 403),
+# бас GitHub secret нь зөвхөн Actions дотор нээгддэг. Тиймээс асуулга энд ажиллаж,
+# хариу нь ажиллагааны лог руу бичигдэнэ.
+#
+# Токен: DATA_READ_JWT = Postgres `data_reader` үүрэг. ЗӨВХӨН SELECT.
+#   ✅ Уншина: v_orders_safe · v_quotes_safe · v_finance_safe · products ·
+#              repairs · product_aliases · app_config · v_app_errors
+#   ❌ Хаалттай: employees (РД/утас) · bank_accounts · attendance · түүхий app_orders
+#   🔒 Утас/имэйл маскласан. Бичих/устгах техникээр боломжгүй (403).
+#
+# Хэрэглэх (үүлэн Claude):
+#   gh workflow run data-query.yml -f path='v_orders_safe?select=number,total_mnt&limit=5'
+#   → 20 секунд хүлээ → gh run view <id> --log
+name: Дата унших
+
+on:
+  workflow_dispatch:
+    inputs:
+      path:
+        description: 'PostgREST зам, ж: v_orders_safe?select=number,total_mnt&order=number.desc&limit=20'
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Асуулга ажиллуулах
+        env:
+          JWT: ${{ secrets.DATA_READ_JWT }}
+          Q: ${{ inputs.path }}
+        run: |
+          set -euo pipefail
+          # Зөвшөөрөгдсөн эх сурвалж — үүнээс гадуур зам татахгүй (үүрэг өөрөө ч хаана,
+          # энэ нь алдааг эрт, ойлгомжтой хэлэх зорилготой).
+          case "$Q" in
+            v_orders_safe*|v_quotes_safe*|v_finance_safe*|products*|repairs*|product_aliases*|app_config*|v_app_errors*) ;;
+            *) echo "⛔ Зөвшөөрөгдөөгүй эх сурвалж: ${Q%%\?*}"; exit 1 ;;
+          esac
+          # limit заагаагүй бол 200-аар хязгаарлана (лог үерлэхээс сэргийлнэ)
+          case "$Q" in *limit=*) ;; *) Q="$Q&limit=200" ;; esac
+          echo "→ $Q"
+          echo ""
+          curl -sS --fail-with-body --max-time 30 \
+            -H "apikey: $JWT" -H "Authorization: Bearer $JWT" \
+            "https://n8n.nomaadcamp.com/db/rest/v1/$Q" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                try{const j=JSON.parse(s);console.log(JSON.stringify(j,null,1));
+                    console.log("\n— мөр:",Array.isArray(j)?j.length:1);}
+                catch(e){console.log(s)}})'

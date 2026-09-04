@@ -1364,7 +1364,7 @@ async function loadBootstrap() {
     applyPendingFinanceWrites();
     updatePendingConn();
     saveLocal();
-    try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+    saveFinanceCache();
     return true;
   } catch (e) {
     console.warn('Bootstrap load failed, falling back to per-endpoint:', e);
@@ -1951,7 +1951,7 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
 
 async function saveFinanceRequest(r, deleted = false) {
   // localStorage кэш
-  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  saveFinanceCache();
   if (!state.config.financeUrl) return;
   // Sheet рүү явуулахын өмнө: ID → нэр, код → монгол
   const wire = requestToWire(r);
@@ -1986,6 +1986,10 @@ async function loadFinanceCategories() {
     });
     state.finBranchPerms = perms;
     state.nomaadCustomAddon = naAddon;
+    // ⚠ finBranchPerms энд шинэчлэгддэг тул финансын кэшийг ДАХИН бичнэ.
+    // loadFinanceCategories нь loadBootstrap-аас ХОЙНО дуусдаг тул эрх ирэхээс өмнө
+    // бичигдсэн кэш нь илүү өргөн байж болно — эрх тодорхой болмогц шүүж дарж бичнэ.
+    if (typeof saveFinanceCache === 'function') saveFinanceCache();
     if (!mains.length) return; // хоосон ирвэл default-аа хадгална
     mains.sort((a, b) => a.code.localeCompare(b.code));
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
@@ -2038,6 +2042,28 @@ async function saveFinanceBranchPerm(key, name, grant) {
   }
 }
 
+// ── Санхүүгийн localStorage кэш — ЭРХЭЭР ШҮҮЖ бичнэ (аюулгүй байдал) ──────────────
+// n8n endpoint нь БҮХ хүсэлтийг буцаадаг (сервер талд шүүлт байхгүй) ба шүүлт нь зөвхөн
+// ХАРАГДАЦ дээр (filteredTasks) хийгддэг. Тиймээс кэшийг түүхийгээр нь бичих үед
+// компанийн БҮХ гүйлгээ — хэн хэнд хэдэн төгрөг, ямар зорилгоор — эрхгүй ажилтны утасны
+// localStorage-д тогтмол хадгалагдана. Утас гээгдэх/зээлдүүлэхэд шууд задарна.
+// Шийдэл: кэшийг харагдацын ЯГ ИЖИЛ дүрмээр (financeAsTask → assignee/createdBy) шүүнэ.
+function financeVisibleRows(rows) {
+  rows = Array.isArray(rows) ? rows : [];
+  if (state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())) return rows;
+  const me = state.me;
+  if (!me) return [];   // нэвтрээгүй бол кэш бичихгүй
+  return rows.filter(r => {
+    try { const t = financeAsTask(r); return t.assignee === me || t.createdBy === me; }
+    catch (e) { return false; }   // задлаж чадаагүй мөрийг кэшлэхгүй (аюулгүй тал руу)
+  });
+}
+function saveFinanceCache() {
+  // Хэн нэвтэрсэн нь тодорхойгүй үед (эхлэлийн race) кэшийг ОГТ ХӨНДӨХГҮЙ — хоосон
+  // массив бичвэл хэрэглэгчийн офлайн датаг устгана.
+  if (!state.me) return;
+  try { localStorage.setItem('financeRequests', JSON.stringify(financeVisibleRows(state.financeRequests))); } catch (e) {}
+}
 async function loadFinanceRequests() {
   if (state.config.financeUrl) {
     try {
@@ -2051,7 +2077,7 @@ async function loadFinanceRequests() {
       const raw = Array.isArray(data?.requests) ? data.requests : [];
       state.financeRequests = raw.map(normalizeFinance);
       applyPendingFinanceWrites();   // офлайн хийсэн өөрчлөлтийг хадгална
-      try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+      saveFinanceCache();
       return;
     } catch (e) { console.warn('Finance load failed, fallback to cache:', e); }
   }
@@ -3066,7 +3092,7 @@ async function deleteFinanceRequest(id) {
   r.status = 'deleted';
   await saveFinanceRequest(r, true);
   state.financeRequests = state.financeRequests.filter(x => x.id !== id);
-  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  saveFinanceCache();
   showToast('Хүсэлт устгагдлаа', 'success');
   closeFinanceModal();
   render();
@@ -3812,11 +3838,7 @@ function renderSidebar() {
   const cooNav = document.getElementById('nav-coosalary');
   if (cooNav) {
     if (state.cooShare === undefined) { state.cooShare = null; if (typeof loadAppConfig === 'function') loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
-    const _m = (typeof findMember === 'function') ? findMember(state.me) : null;
-    const _ceo = ((_m && _m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(_m));
-    const _cooKey = (state.cooShare && state.cooShare.key) || '';
-    const _isCoo = _cooKey && state.me && String(state.me) === String(_cooKey);
-    cooNav.style.display = (_ceo || _isCoo) ? '' : 'none';
+    cooNav.style.display = canSeeCooSalary() ? '' : 'none';
   }
   // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
   const docNav = document.getElementById('nav-documents');
@@ -12863,8 +12885,37 @@ function canSeeNomaadOrders() {
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
   return canAccessView('nomaad', () => _nomaadDefaultFor(findMember(state.me)) || (state.me === getFinanceExecutorEmail()));
 }
+// COO цалин харах эрх — CEO эсвэл тохируулсан COO өөрөө. (renderCounts ба renderCooSalary
+// хоёулаа ижил логикийг хуулбарлаж бичсэн байсныг нэг эх сурвалж болгов.)
+function canSeeCooSalary() {
+  const m = (typeof findMember === 'function') ? findMember(state.me) : null;
+  const ceo = ((m && m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(m));
+  const cooKey = (typeof cooShareCfg === 'function' ? cooShareCfg().key : (state.cooShare && state.cooShare.key)) || '';
+  return !!(ceo || (cooKey && state.me && String(state.me) === String(cooKey)));
+}
+// NOMAAD дата ХЭРЭГТЭЙ эсэх — ЭРХИЙГ ТАТАХАД БИШ, ХАРУУЛАХАД тавина.
+// ⚠ Өмнө нь loadNomaadOrders эхний мөрөндөө `if (!canSeeNomaadOrders()) return;` гэж
+//   ДАТА ТАТАХЫГ хаадаг байв. Гэтэл nomaad дэлгэцийн default (_nomaadDefaultFor) нь салбар
+//   оноогдсон хүнд ХАТУУ: зөвхөн 'camp' салбарынхан. Тиймээс m-event салбарт бүртгэлтэй
+//   нягтлан NOMAAD дата-г ОГТ татахгүй → state.nomaadOrders хоосон → түүнээс тэжээгддэг
+//   БҮХ тайлан 0 болно: ашгийн тайланд кемпийн орлого 0 (компани ХУДАЛ алдагдалтай
+//   харагдана), авлага 0, НӨАТ тулгалтад захиалга олдохгүй.
+//   Дэлгэцийн эрх нь хэвээр: renderTaskList `state.view==='nomaad' && !canSeeNomaadOrders()`
+//   -ээр буцаадаг, sidebar цэс мөн нуугддаг. Энд зөвхөн ДАТА ХЭРЭГЛЭГЧ дэлгэцүүдийг жагсаав —
+//   эрхгүй хүн лүү дата татахгүй (утсанд хэрэггүй PII буухаас сэргийлнэ).
+function canUseNomaadData() {
+  const y = (f) => typeof f === 'function' && f();
+  return y(canSeeNomaadOrders)     // NOMAAD захиалгын дэлгэц
+      || y(canSeeReceivables)      // Авлага
+      || y(canSeeReports)          // Тайлан / Салбар таб (кемпийн орлого)
+      || y(canSeeVat)              // НӨАТ тулгалт — захиалгын нэр
+      || y(canSeeCatering)         // Катеринг — NOMAAD арга хэмжээнээс ажил үүсгэдэг
+      || y(canSeeCooSalary)        // COO цалин — цэвэр ашгаас тооцно
+      || y(canSeeMarketing);       // Имэйл маркетинг — «camp» салбарын хүлээн авагчийн
+                                   // жагсаалт NOMAAD захиалгын имэйлээс бүрддэг (app.js ~11333)
+}
 async function loadNomaadOrders() {
-  if (!canSeeNomaadOrders()) return;
+  if (!canUseNomaadData()) return;
   const url = state.config.nomaadOrdersUrl;
   if (!url) return;
   try {
@@ -20282,11 +20333,11 @@ function renderCooSalary() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { loadNomaadOrders(); }
   if (state.financeRequests === undefined && typeof loadFinanceRequests === 'function') loadFinanceRequests();
 
+  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
+  // meCeo — доорх «⚙️ Тохиргоо» блок ЗӨВХӨН CEO-д (COO өөрөө өөрийн хувиа өөрчилж болохгүй).
   const meMember = (typeof findMember === 'function') ? findMember(state.me) : null;
   const meCeo = ((meMember && meMember.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(meMember));
-  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
-  const meIsCoo = cooKey && state.me && String(state.me) === String(cooKey);
-  if (!meCeo && !meIsCoo) {
+  if (!canSeeCooSalary()) {
     return `<div style="max-width:520px;margin:24px auto;text-align:center;color:var(--muted);padding:30px 16px;border:1px solid var(--border);border-radius:12px;">Энэ мэдээлэл зөвхөн удирдлагад харагдана.</div>`;
   }
 
@@ -27861,6 +27912,10 @@ async function logout() {
   localStorage.removeItem('pgrstToken');   // PostgREST JWT
   // Notification "seen" state is per-user — clear so next user doesn't see this user's history
   localStorage.removeItem('notifications');
+  // Санхүүгийн кэш мөн ХУВИЙН — цэвэрлэхгүй бол дараагийн нэвтрэгч энэ хүний гүйлгээг
+  // cache-first render-ээр шууд хараад амжина (сервер хариу иртэл).
+  localStorage.removeItem('financeRequests');
+  state.financeRequests = [];
   state.notifications = [];
   state.user = null;
   state.me = null;

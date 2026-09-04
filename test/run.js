@@ -83,10 +83,90 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
+
+// 0e) SCAN — түүхий UTC огноо БАЙХГҮЙ (2026-09-04)
+// `x.toISOString().slice(0,10)` нь UTC огноо буцаана. Монгол UTC+8 тул 00:00-08:00
+// хооронд НЭГ ӨДРӨӨР хоцордог: сарын 1-нд цалин/гүйцэтгэл өмнөх сарыг үзүүлнэ,
+// «Хоцорсон» тооллого буруу гарна. Зөвшөөрөгдөх цорын ганц хэлбэр нь
+// getTimezoneOffset()-оор тохируулсан нь (todayStr/dateStr/addDays-ийн дотоод).
+// Шинэ код: todayStr() · dateStr(d) · monthStr(d) · addDays(s, n) ашиглана.
+{
+  // Тайлбар мөрүүдэд тэр хэв маягийг ЗОРИУД бичсэн (яагаад болохгүйг тайлбарлахын тулд)
+  // тул код мөрүүдийг л шалгана.
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const all = (codeLines.match(/toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
+  const safe = (codeLines.match(/getTimezoneOffset\(\) \* 60000\)\.toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
+  eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
+}
+
+// 0b) Хүрэлцээ — ХУУЧИРСАН НЭРТЭЙ мөрийг sku-гээр таньж шалгана (2026-09-03)
+// Регресс: өмнө нь availabilityFor(it.name) байсан тул сайтаас хуучин нэртэй мөр
+// ирэхэд productByName олдохгүй → null → «Хүрэлцэхгүй» ОГТ гардаггүй байв.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.products, state.appOrders]');
+  runIn("state.products = [{ id:'M-100', sku:'M-100', name:'Цагаан ширээ 180см', price:10000, qty_mevent:5, stock:5 }]; state.appOrders = [];");
+  const SH = runIn('orderShortages'), AV = runIn('availabilityFor');
+
+  ok(SH([{ sku:'M-100', name:'Цагаан ширээ 180см', qty:9 }], '2026-10-01', '2026-10-02').length === 1,
+     'хүрэлцээ: зөв нэрээр хүрэлцэхгүйг барина');
+  ok(SH([{ sku:'M-100', name:'Ширээ (хуучин нэр)', qty:9 }], '2026-10-01', '2026-10-02').length === 1,
+     'хүрэлцээ: ХУУЧИРСАН нэртэй ч sku-гээр таньж барина');
+  ok(SH([{ sku:'M-100', name:'Ширээ (хуучин нэр)', qty:3 }], '2026-10-01', '2026-10-02').length === 0,
+     'хүрэлцээ: хүрэлцэж байвал анхааруулахгүй');
+  ok(SH([{ sku:'ZZZ', name:'Байхгүй бараа', qty:99 }], '2026-10-01', '2026-10-02').length === 0,
+     'хүрэлцээ: каталогт байхгүй бол шалгахгүй');
+
+  const aItem = AV({ sku:'M-100', name:'хуучин' }, '2026-10-01', '2026-10-02');
+  const aName = AV('Цагаан ширээ 180см', '2026-10-01', '2026-10-02');
+  ok(aItem && aName && aItem.stock === aName.stock && aItem.avail === aName.avail,
+     'availabilityFor: мөрөөр ба каноник нэрээр ижил');
+
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
+}
+
+// 5c) SCAN — reserveReceipt-ийн үр дүнг ЦАГААН жагсаалтаар шалгана (2026-09-03)
+// Дүрэм 2: 'dup'-ыг хар жагсаалтаар барих нь 'err'-ийг 'ok' мэт нэвтрүүлдэг →
+// сүлжээ/эрх унахад давхар баримтын хамгаалалт ЧИМЭЭГҮЙ унтардаг байв.
+// Энэ scan нь: 'dup' шалгадаг газар бүр 'err'-ийг мөн шалгасан байх ёстой.
+{
+  const dupChecks = (src.match(/rr === 'dup'/g) || []).length;
+  const errChecks = (src.match(/rr === 'err'/g) || []).length;
+  ok(dupChecks > 0, 'scan: reserveReceipt дуудагч олдов (' + dupChecks + ')');
+  ok(errChecks >= dupChecks,
+     "scan: 'dup' шалгадаг газар бүр 'err'-ийг мөн шалгана (dup=" + dupChecks + ", err=" + errChecks + ')');
+}
+
+// 0d) SCAN — view бүр safeViewHtml-ээр хамгаалагдсан байна (2026-09-03)
+// Рендер алдаа шидвэл wrap.innerHTML хоосон үлдэж апп «үхсэн» мэт харагдана —
+// цэс дарахад юу ч болохгүй, алдааны мессеж ч гарахгүй. safeViewHtml нь try/catch
+// хийж хэрэглэгчид ойлгомжтой мессеж үзүүлнэ. Аудит: 15 view-ээс 13 нь хамгаалалтгүй байв.
+{
+  const bare = (src.match(/wrap\.innerHTML\s*=\s*render[A-Z]/g) || []).length;
+  eq(bare, 0, 'scan: view рендер бүр safeViewHtml-ээр хамгаалагдсан');
+}
+
+// 0c) SCAN — CACHE_TAG-ийг ЗӨВХӨН globalThis-ээр уншина (2026-09-03)
+// `typeof X === 'string' ? X : ''` дэх ХОЁР ДАХЬ лавлагаа нь no-undef-д баригдаж
+// CI-г улаан болгодог. 2026-09-03-нд хоёр удаа тохиолдсон — эхнийх нь 2 газар
+// зассаны дараа өөр сесс 3 дахь газар нэмсэн. Тиймээс ХЭВ МАЯГИЙГ хаана.
+{
+  const bare = (src.match(/(?<!globalThis\.)\bCACHE_TAG\b/g) || []).length;
+  eq(bare, 0, 'scan: CACHE_TAG зөвхөн globalThis.CACHE_TAG хэлбэрээр (no-undef)');
+}
+
+// 0a) SCAN — PostgREST дуудлага бүр НЭВТЭРСЭН токеноор явна (2026-09-03)
+// pgrstBearer() = pgrstToken() || DB_ANON_KEY — токенгүй бол anon руу унана, тул
+// солих нь юуг ч эвдэхгүй. Харин anon-ы УНШИХ эрхийг ирээдүйд хаах боломж нээгдэнэ.
+// Шинэ код `Bearer ' + DB_ANON_KEY` бичвэл тэр бараа дахин anon-оор явна.
+{
+  const anonBearer = (src.match(/Authorization: 'Bearer ' \+ DB_ANON_KEY/g) || []).length;
+  eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
+}
 
 // 1) НӨАТ токен round-trip
 eq(F.parseVat(F.encodeVat(15000)), 15000, 'НӨАТ токен: encode→parse round-trip');
@@ -220,6 +300,23 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   const clean = F.cleanAppNote(note);
   ok(clean.indexOf('Жинхэнэ тэмдэглэл') === 0, 'cleanAppNote: үндсэн текст үлдэнэ');
   ok(!/⟦VAT/.test(clean) && !/⟦DLV/.test(clean), 'cleanAppNote: токенууд арилна');
+}
+
+// 5b) stripFormTokens — захиалгын форм ЗӨВХӨН өөрийн токеныг солино (2026-09-03)
+// Регресс: өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул захиалга засах бүрд
+// санхүүгийн бүртгэсэн ⟦PAY⟧ ба буцаалтын ⟦RF⟧ УСТДАГ байв.
+{
+  const foreign = '⟦PAY|500000|бүтэн|данс|2026-09-01|ITZONE⟧ ⟦RF|120000⟧ ⟦DMG|сандал⟧ ⟦CX|цуцлав⟧';
+  const own = F.encodeVat(5000) + ' ' + F.encodeDelivery('out', 10, 50000) + ' ' + F.encodeSetup(true);
+  const kept = F.stripFormTokens('Тэмдэглэл ' + own + ' ' + foreign);
+  ok(!/⟦VAT/.test(kept), 'stripFormTokens: өөрийн ⟦VAT⟧ арилна');
+  ok(!/⟦DLV/.test(kept), 'stripFormTokens: өөрийн ⟦DLV⟧ арилна');
+  ok(!/⟦SET/.test(kept), 'stripFormTokens: өөрийн ⟦SET⟧ арилна');
+  ok(/⟦PAY\|500000/.test(kept), 'stripFormTokens: санхүүгийн ⟦PAY⟧ ХАДГАЛАГДАНА');
+  ok(/⟦RF\|120000⟧/.test(kept), 'stripFormTokens: буцаалтын ⟦RF⟧ ХАДГАЛАГДАНА');
+  ok(/⟦DMG\|/.test(kept) && /⟦CX\|/.test(kept), 'stripFormTokens: ⟦DMG⟧ ба ⟦CX⟧ ХАДГАЛАГДАНА');
+  ok(kept.indexOf('Тэмдэглэл') === 0, 'stripFormTokens: үндсэн текст үлдэнэ');
+  ok(F.cleanAppNote(foreign) === '', 'cleanAppNote нь ХАРИН бүгдийг арилгасаар байна (өөр зориулалт)');
 }
 
 // 6) paid_ref задлах (банкны баримтын лавлагаа)
@@ -1224,6 +1321,103 @@ function finish() {
   st.products = saved.p; st.appOrders = saved.o;
 }
 
+// 40i) TDZ хамгаалалт — «Агуулахад авсан» цонх нээгддэг эсэх (эх кодын дараалал)
+// ⚠ Энэ бол DOM-гүй тест: openStageAdvanceModal нь браузер шаарддаг тул ажиллуулж
+// чадахгүй. Оронд нь ЭХ КОДЫН дараалалд `const` тодорхойлолт нь ХЭРЭГЛЭЭНЭЭС өмнө
+// байгаа эсэхийг шалгана. 2026-09-02-нд `rcPaint()` нь тодорхойлолтоосоо 7 мөрийн
+// ӨМНӨ дуудагдаж ReferenceError шидсэн тул нярав «Агуулахад авсан» дарахад цонх ОГТ
+// нээгддэггүй байв (commit 7bc4ae0). Тест нь дахин орохоос сэргийлнэ.
+{
+  const start = src.indexOf('function openStageAdvanceModal');
+  ok(start > -1, 'TDZ: openStageAdvanceModal олдов');
+  // Функцийн төгсгөл — дараагийн дээд түвшний функцийн эхлэл
+  const after = src.indexOf('\nfunction ', start + 10);
+  const body = src.slice(start, after > -1 ? after : src.length);
+
+  [['rcPaint', 'rcPaint()'], ['rcShort', 'rcShort()'], ['validate', 'validate()']].forEach(([name, call]) => {
+    const decl = body.indexOf('const ' + name + ' =');
+    const use = body.indexOf(call);
+    if (decl === -1 || use === -1) return;   // нэр өөрчлөгдсөн бол алгасна
+    ok(decl < use, 'TDZ: `' + name + '` тодорхойлолт нь хэрэглээнээсээ ӨМНӨ байх ёстой');
+  });
+
+  // rcGot массив — оруулгын handler дотор ашиглагдана, тодорхойлолт нь өмнө байх ёстой
+  const gotDecl = body.indexOf('const rcGot');
+  const gotUse = body.indexOf('rcGot[i] =');
+  if (gotDecl > -1 && gotUse > -1) ok(gotDecl < gotUse, 'TDZ: `rcGot` тодорхойлолт хэрэглээнээс өмнө');
+}
+
+// 40j) Глобал алдаа баригч — чимээгүй эвдрэлийг ил гаргана
+{
+  const noise = vm.runInContext('_errIsNoise', sandbox);
+  const logErr = vm.runInContext('logAppError', sandbox);
+  const getErrs = vm.runInContext('appErrors', sandbox);
+  const clearErrs = vm.runInContext('clearAppErrors', sandbox);
+  const recent = vm.runInContext('recentAppErrors', sandbox);
+
+  // Чимээг тоохгүй — эс бөгөөс хэрэглэгч утгагүй мэдэгдлээр дүүрнэ
+  ok(noise('Script error.', ''), 'алдаа: cross-origin «Script error.» тоохгүй');
+  ok(noise('', ''), 'алдаа: хоосон мессеж тоохгүй');
+  ok(noise('ResizeObserver loop limit exceeded', ''), 'алдаа: ResizeObserver чимээ тоохгүй');
+  ok(noise('x', 'chrome-extension://abc/x.js'), 'алдаа: өргөтгөлийн алдаа тоохгүй');
+  ok(!noise("Cannot access 'rcPaint' before initialization", 'app.js:17472'),
+     'алдаа: ЖИНХЭНЭ алдааг барина (нярвын тохиолдол)');
+
+  clearErrs();
+  eq(getErrs().length, 0, 'алдаа: цэвэрлэсний дараа хоосон');
+
+  logErr("Cannot access 'rcPaint' before initialization", 'app.js:17472', 'stack');
+  const list = getErrs();
+  eq(list.length, 1, 'алдаа: бүртгэгдэнэ');
+  ok(list[0].msg.indexOf('rcPaint') > -1, 'алдаа: мессеж хадгалагдана');
+  ok(String(list[0].src).indexOf('app.js') > -1, 'алдаа: байршил хадгалагдана');
+  ok(!!list[0].at, 'алдаа: цаг хадгалагдана');
+
+  logErr('Script error.', '');
+  eq(getErrs().length, 1, 'алдаа: чимээ бүртгэлд ОРОХГҮЙ');
+
+  // Хязгаар — тэмдэглэл хязгааргүй өсөхгүй
+  for (let i = 0; i < 40; i++) logErr('алдаа ' + i, 'app.js:1');
+  ok(getErrs().length <= 20, 'алдаа: сүүлийн 20-оор хязгаарлана');
+  ok(getErrs().slice(-1)[0].msg.indexOf('алдаа 39') > -1, 'алдаа: хамгийн сүүлийнх үлдэнэ');
+
+  // 24 цагийн шүүлт
+  clearErrs();
+  const old = { at: new Date(Date.now() - 40 * 3600000).toISOString(), msg: 'хуучин', src: '' };
+  const now = { at: new Date().toISOString(), msg: 'шинэ', src: '' };
+  localStorage.setItem('appErrors', JSON.stringify([old, now]));
+  eq(recent().length, 1, 'алдаа: 24 цагаас хуучныг тоохгүй');
+  eq(recent()[0].msg, 'шинэ', 'алдаа: зөвхөн шинийг харуулна');
+  clearErrs();
+}
+
+// 40k) Серверийн алдааны бүртгэл — өөрөө хэзээ ч унахгүй байх
+{
+  const report = vm.runInContext('_reportErrToServer', sandbox);
+  const loadSrv = vm.runInContext('loadServerErrors', sandbox);
+  const st = vm.runInContext('state', sandbox);
+
+  // ⚠ ХАМГИЙН ЧУХАЛ: мэдээлэх функц алдаа шидвэл тэр нь дахин бүртгэгдэж
+  // ХЯЗГААРГҮЙ ДАВТАЛТ үүснэ. Ямар ч оролтод унахгүй байх ЁСТОЙ.
+  let threw = null;
+  try {
+    report('энгийн алдаа', 'app.js:1', 'stack');
+    report(null, null, null);
+    report(undefined, undefined, undefined);
+    report({ toString() { throw new Error('хорон объект'); } }, 'x', 'y');
+    report('а'.repeat(5000), 'б'.repeat(5000), 'в'.repeat(5000));
+  } catch (e) { threw = e; }
+  ok(threw === null, 'серверийн бүртгэл: ямар ч оролтод УНАХГҮЙ (давталтаас хамгаална)');
+
+  // CEO биш бол сервер рүү огт хандахгүй (алдааны лог нийтэд ил байх ёсгүй)
+  const savedCeo = st.isCEO;
+  st.isCEO = false;
+  let threw2 = null;
+  try { loadSrv(); } catch (e) { threw2 = e; }
+  ok(threw2 === null, 'серверийн бүртгэл: CEO бишэд унахгүй');
+  st.isCEO = savedCeo;
+}
+
 // 41) Засвар KPI-д тооцогдох эсэх
 {
   const st = vm.runInContext('state', sandbox);
@@ -1294,6 +1488,16 @@ function finish() {
     ok(p.incomes[0].i === 0 && p.incomes[1].i === 1, 'reconAi: incomes индекстэй');
     ok(p.orders[0].order_no === 'ME-1' && p.orders[0].amount === 100000, 'reconAi: order талбар зөв');
     ok(F.buildReconAiPayload({ missing: [{ order: { order_no: '' } }], untracked: [{ credit: 1 }] }) === null, 'reconAi: order_no хоосон → шүүгдэж null');
+    // Хэмжээний хязгаар — том хуулга промптыг хөөргөж зардал өсгөхөөс сэргийлнэ
+    {
+      const big = {
+        missing:   Array.from({ length: 150 }, (_, i) => ({ order: { order_no: 'ME-' + i, paid_amount: 1000 } })),
+        untracked: Array.from({ length: 150 }, (_, i) => ({ date: '2026-08-01', name: 'N' + i, memo: '', credit: 1000 })),
+      };
+      const bp = F.buildReconAiPayload(big);
+      ok(bp.orders.length === 60 && bp.incomes.length === 60, 'reconAi: ачаалал 60-аар таслагдана (зардлын хязгаар)');
+      ok(bp.incomes[59].i === 59, 'reconAi: таслагдсан ч индекс тасралтгүй');
+    }
     let r = mkRes(); ok(F.applyReconAiSuggestions(r, null).length === 0 && r._aiSuggestions.length === 0, 'reconAi: массив биш → []');
     ok(F.applyReconAiSuggestions(mkRes(), 'oops').length === 0, 'reconAi: string хариу → []');
     ok(F.applyReconAiSuggestions(mkRes(), [{ order_no: 'ME-1', income_i: 0, confidence: 0.9 }]).length === 1, 'reconAi: зөв санал → 1');
@@ -1832,6 +2036,34 @@ function finish() {
     ok(F.serviceBreakdown([], { rows: [], total: 0 }).groups.length === 0, 'задаргаа: хоосон бол бүлэггүй');
   }
 
+  // ── Салбарын ленз «Миний ажил»-ыг шүүхгүй ──
+  {
+    const LA = F.lensAppliesToView;
+    // Хувийн жагсаалт — ленз ямар ч байсан шүүхгүй
+    ['camp', 'm-event', 'catering', 'capital'].forEach(l => {
+      eq(LA('mine', l), false, `ленз: «Миний ажил» ${l} лензэд шүүгдэхгүй`);
+      eq(LA('finance', l), false, `ленз: Санхүү ${l} лензэд энд шүүгдэхгүй (dept_branch-аар тусад нь)`);
+    });
+    // Удирдлагын жагсаалтууд урьдын адил шүүгдэнэ
+    ['all', 'today', 'overdue', 'done', 'delegated'].forEach(v => {
+      eq(LA(v, 'camp'), true, `ленз: «${v}» урьдын адил шүүгдэнэ`);
+    });
+    // 'all' ленз = бүх салбар → хаана ч шүүхгүй
+    eq(LA('all', 'all'), false, 'ленз: «Бүгд» ленз юу ч шүүхгүй');
+    eq(LA('mine', 'all'), false, 'ленз: «Бүгд» ленз + Миний ажил');
+
+    // Тоймын ХУВИЙН блок лензээс салсан эсэх (эх кодоор)
+    const dash = src.slice(src.indexOf('function renderDashboard()'));
+    const head = dash.slice(0, dash.indexOf('const myDone'));
+    ok(/const myBase = \(state\.tasks \|\| \[\]\)/.test(head),
+       'ленз: Тоймын хувийн KPI лензгүй суурьтай');
+    ok(head.indexOf('const mineTasks = myBase.filter') > -1,
+       'ленз: mineTasks нь лензээр шүүгдээгүй суурьнаас');
+    // Компанийн тоо урьдын адил лензээр шүүгдсэн хэвээр
+    ok(/const tasks = \(state\.tasks \|\| \[\]\)[\s\S]*branchInLens\(taskBranch\(t\)\)/.test(head),
+       'ленз: Тоймын компанийн тоо урьдын адил лензээр шүүгдэнэ');
+  }
+
   // ── ХАМГИЙН ЧУХАЛ ИНВАРИАНТ: Түүхийн «Нийт орлого» = Захиалгын жагсаалтын «борлуулалт» ──
   {
     const orders = [
@@ -2077,6 +2309,78 @@ function finish() {
     ok(!expired(unpaidFuture), 'NOMAAD үхсэн санал: ирээдүйн огноо больсон биш');
 
     st.nomaadPayments = savedPays;
+  }
+
+  // ── Алдааны хурууны хээ (fingerprint) — бүлэглэлийн үндэс ──
+  {
+    const F1 = F.errFingerprint;
+    ok(F1('Cannot read x', 'app.js:100') === F1('Cannot read x', 'app.js:100'), 'fp: ижил алдаа ижил хээ');
+    ok(F1('Cannot read x', 'app.js:100') !== F1('Cannot read y', 'app.js:100'), 'fp: өөр мессеж → өөр хээ');
+    ok(F1('Cannot read x', 'app.js:100') !== F1('Cannot read x', 'app.js:200'), 'fp: өөр байрлал → өөр хээ');
+    // Query string нь хувилбар бүрд өөр байдаг тул хээнд ОРОХГҮЙ
+    ok(F1('E', 'app.js?v=1') === F1('E', 'app.js?v=2'), 'fp: ?v= хувилбар хээг задлахгүй');
+    ok(/^[0-9a-f]{12}$/.test(F1('E', 's')), 'fp: 12 тэмдэгт hex');
+    ok(F1(null, null) === F1(undefined, undefined), 'fp: хоосон утга аюулгүй');
+    ok(F1('a', 'b') !== F1('b', 'a'), 'fp: талбарууд солигдвол өөр');
+    // Урт мессеж таслагдсан ч тогтвортой
+    const long = 'x'.repeat(500);
+    ok(F1(long, 's') === F1(long + 'ZZZ', 's'), 'fp: 300 тэмдэгтээс хойш ялгаагүй (таслалттай нийцнэ)');
+  }
+
+  // ── Алдааны төлөвийн шошго (түүхэн харагдац) ──
+  {
+    const L = F.errStatusLabel;
+    eq(L('fixed').text, 'Зассан', 'errStatusLabel: fixed → Зассан');
+    eq(L('fixing').text, 'Засаж байна', 'errStatusLabel: fixing → Засаж байна');
+    eq(L('ignored').text, 'Үл хамаарах', 'errStatusLabel: ignored → Үл хамаарах');
+    eq(L('new').text, 'Шинэ', 'errStatusLabel: new → Шинэ');
+    eq(L(undefined).text, 'Шинэ', 'errStatusLabel: тодорхойгүй → Шинэ (default)');
+    eq(L('zzz').text, 'Шинэ', 'errStatusLabel: танихгүй төлөв → Шинэ (default)');
+    ok(/^var\(--/.test(L('fixed').color), 'errStatusLabel: өнгө токеноор (хатуу hex биш)');
+    ok(L('fixed').icon && L('new').icon, 'errStatusLabel: дүрс тэмдэгтэй');
+  }
+
+  // ── Ирц: баталгаатай (менежер уншуулсан) vs өөрөө бүртгүүлсэн өдөр ──
+  // Энэ тоо шууд цалин болдог тул буруу тоолвол илүү/дутуу төлбөр гарна.
+  {
+    const A = F.attAggregateMonth;
+    const r = (key, day, source) => ({ member_key: key, day, source, ts: day + 'T01:00:00.000Z' });
+
+    const both = A([r('99', '2026-09-01', 'scan'), r('99', '2026-09-02', 'qr')]).out['99'];
+    ok(both.days === 2, 'ирц: 2 өдөр ажилласан');
+    ok(both.selfDays === 1, 'ирц: 1 өдөр нь уншуулаагүй');
+
+    // Нэг өдөр хоёуланг нь бүртгүүлсэн бол УНШУУЛСАНД тооцно (баталгаа байгаа).
+    const mixed = A([r('7', '2026-09-01', 'qr'), r('7', '2026-09-01', 'scan')]).out['7'];
+    ok(mixed.days === 1 && mixed.selfDays === 0, 'ирц: нэг өдөр уншуулсан бол баталгаатай');
+
+    const allScan = A([r('1', '2026-09-01', 'scan'), r('1', '2026-09-02', 'scan')]).out['1'];
+    ok(allScan.selfDays === 0, 'ирц: бүгд уншуулсан → сануулга гарахгүй');
+
+    const allSelf = A([r('2', '2026-09-01', 'qr'), r('2', '2026-09-02', 'qr')]).out['2'];
+    ok(allSelf.selfDays === 2, 'ирц: бүгд өөрөө → 2 өдөр сануулна');
+
+    // source байхгүй хуучин мөр = баталгаагүйд тооцно (уншуулсан гэж БҮҮ таамагла).
+    ok(A([r('3', '2026-09-01', undefined)]).out['3'].selfDays === 1, 'ирц: source байхгүй → баталгаагүй');
+
+    // Давхардсан өдөр нэг л удаа тоологдоно
+    ok(A([r('4', '2026-09-01', 'scan'), r('4', '2026-09-01', 'scan')]).out['4'].days === 1, 'ирц: давхар мөр нэг өдөр');
+
+    // Гэмтэлтэй өгөгдөл унагаахгүй
+    ok(Object.keys(A([null, {}, { member_key: 'x' }]).out).length === 0, 'ирц: гэмтэлтэй мөр алгасана');
+    ok(A(null).out && Object.keys(A(null).out).length === 0, 'ирц: хоосон оролт аюулгүй');
+
+    // Цалингийн мөрд сануулга ҮНЭХЭЭР гарч байгаа эсэх (энэ л захиралд харагдана).
+    const st = vm.runInContext('state', sandbox), saved = st.attWorkedDays;
+    const who = { name: 'Тест', phone: '99999999', daily_rate: 50000 };
+    st.attWorkedDays = { [F.personKey(who)]: { days: 5, selfDays: 2, lastDay: '2026-09-02' } };
+    const warned = F.attWorkedLine(who);
+    ok(/5 өдөр/.test(warned), 'цалин: ажилласан өдөр гарна');
+    ok(/2 өдөр нь уншуулаагүй/.test(warned), 'цалин: баталгаагүй өдрийн сануулга гарна');
+
+    st.attWorkedDays = { [F.personKey(who)]: { days: 5, selfDays: 0, lastDay: '2026-09-02' } };
+    ok(!/уншуулаагүй/.test(F.attWorkedLine(who)), 'цалин: бүгд уншуулсан бол сануулга ГАРАХГҮЙ');
+    st.attWorkedDays = saved;
   }
 
   finish();

@@ -15433,7 +15433,7 @@ async function recordNomaadIncome(quoteNo) {
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
   if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
-  if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
+  if (res.file && canonKey) uploadReceiptFileOrWarn(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo }, quoteNo);   // эх PDF хадгалах (арын гүйдэл, унавал мэдэгдэнэ)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
   const newTotal = prevPaid + res.amount;
   const today = res.date || todayStr();
@@ -20000,6 +20000,15 @@ async function uploadReceiptFile(receiptId, file, meta = {}) {
     return r.ok;
   } catch (e) { console.warn('uploadReceiptFile', e); return false; }
 }
+// Эх PDF-ийг арын гүйдэлд хадгалах — УНАВАЛ ЧИМЭЭГҮЙ ӨНГӨРӨХГҮЙ.
+// Төлбөр өөрөө бүртгэгдсэн (мөнгө алдагдахгүй) ч эх баримт нь нягтлангийн АУДИТЫН МӨР.
+// Хожим «Эх PDF хадгалагдаагүй (хуучин төлбөр эсвэл олдсонгүй)» гэж гарахад яагаад гэдгийг
+// хэн ч мэдэхгүй болно — тэр мөчид нь хэлэх ёстой (баримт гар дээр байхад дахин хавсаргана).
+async function uploadReceiptFileOrWarn(receiptId, file, meta, label) {
+  const ok = await uploadReceiptFile(receiptId, file, meta);
+  if (!ok) showToast(`⚠ Эх PDF баримт ХАДГАЛАГДСАНГҮЙ${label ? ' (' + label + ')' : ''} — төлбөр бүртгэгдсэн, баримтыг дахин хавсаргана уу`, 'error', 7000);
+  return ok;
+}
 async function fetchReceiptBlob(receiptId) {
   if (!receiptId || !DB_ANON_KEY) return null;
   try {
@@ -20174,7 +20183,7 @@ function openRefundModal(oid) {
     const isDep = !!modal.querySelector('#rf-isdep')?.checked || prevRf.kind === 'dep';   // C11: барьцааны буцаалт гэж тэмдэглэсэн эсэх
     const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '');
     // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
-    try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: todayStr(), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
+    uploadReceiptFileOrWarn('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: todayStr(), usedIn: 'refund:#' + (o.number ?? '') }, 'буцаалт #' + (o.number ?? ''));
     const prevPaid = o.paid_mnt, prevNote = o.note;
     o.paid_mnt = newPaid; o.note = newNote;
     try {
@@ -20215,7 +20224,7 @@ async function submitBqPayment(oid, modal, btn) {
   const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
   const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
   // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
-  okR.forEach(r => { if (r._file) uploadReceiptFile(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }); });
+  okR.forEach(r => { if (r._file) uploadReceiptFileOrWarn(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }, '#' + o.number); });
   // Зэрэгцээ төлбөр эсвэл хуучирсан snapshot-оос болж дүн/баримт АЛДАГДАХААС сэргийлэх: серверийн хамгийн
   // сүүлийн paid_mnt + paid_ref-ийг уншиж, ТҮҮН дээр нэмнэ. Баримтыг ДАРЖ БИЧИХГҮЙ — append (parsePaidRef | -ээр
   // задална) тул хэсэгчилсэн олон төлбөрийн бүх баримт хадгалагдана.
@@ -26063,21 +26072,31 @@ async function loadTaskVoice(taskId) {
   }
   renderVoicePreview();
 }
+// ⚠ Хариуг ЗААВАЛ шалгана. Өмнө нь `await fetch(...)` гэж бичээд r.ok-г огт хардаггүй,
+//   catch нь зөвхөн console.warn хийдэг байсан тул модал «Хадгалагдлаа» гэж хэлдэг ч
+//   дуут заавар алга болно. Ажилтан «менежер юу ч хэлээгүй» гэж ойлгоно.
 async function saveTaskVoice(taskId, isNew) {
-  if (!taskId) return;
-  if (!isNew && !state._taskVoiceDirty) return;
+  if (!taskId) return true;
+  if (!isNew && !state._taskVoiceDirty) return true;
   try {
     if (state._taskVoice) {
-      await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio`, {
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio`, {
         method: 'POST',
         headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: JSON.stringify({ task_id: taskId, audio: state._taskVoice, duration: state._taskVoiceDur || null })
       }, 60000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
     } else if (!isNew) {
-      await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
         { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // нэвтэрсэн токеноор — anon бичих эрхийг хаах боломжтой болгоно
+      if (!r.ok) throw new Error('HTTP ' + r.status);
     }
-  } catch (e) { console.warn('voice save failed', e); }
+    return true;
+  } catch (e) {
+    console.warn('voice save failed', e);
+    showToast('⚠ Дуут заавар ХАДГАЛАГДСАНГҮЙ — даалгавар хадгалагдсан, зааврыг дахин бичнэ үү', 'error', 7000);
+    return false;
+  }
 }
 // Модал дахь voice UI-ийн харагдац: засах эрхтэй → бичих товч+player; гүйцэтгэгч (read-only) → карт дор player
 function applyVoiceUI(canEditAll) {
@@ -27872,18 +27891,27 @@ function setupProfileModal() {
       member.phone = phone;
     }
     // Цалин/данс + яаралтай холбоо → update_my_profile RPC (хуучин утсаар олно — утас солихоос ӨМНӨ ажиллана).
+    // ⚠ Энэ хоёр бичилт өмнө нь ЧИМЭЭГҮЙ (r.ok шалгаагүй + `catch(() => {})`) байсан тул
+    //   доорх «Профайл хадгалагдсан» toast ХУДАЛ болдог: цалингийн данс серверт очоогүй
+    //   атлаа ажилтан бүртгүүлсэн гэж итгээд цалингаа хүлээнэ.
+    let _profileOk = true, _docOk = true;
     if (oldPhoneD) {
       const gv = id => ((document.getElementById(id) || {}).value || '').trim();
       const _bank = gv('profile-bank'), _acct = gv('profile-account');
       try {
-        await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_profile`, {
+        const rp = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_profile`, {
           method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_phone: oldPhoneD, p_bank: _bank, p_bank_account: _acct, p_bank_holder: gv('profile-holder'), p_emergency_name: gv('profile-emg-name'), p_emergency_phone: gv('profile-emg-phone') })
         }, 15000);
+        if (!rp.ok) throw new Error('HTTP ' + rp.status);
         if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone') });
-      } catch (e) { /* best-effort */ }
-      const _doc = state._pendingDoc; state._pendingDoc = null;
-      if (_doc) setEmployeeDoc(oldPhoneD, _doc).catch(() => {});
+      } catch (e) { _profileOk = false; console.warn('update_my_profile', e); }
+      const _doc = state._pendingDoc;
+      if (_doc) {
+        try { _docOk = !!(await setEmployeeDoc(oldPhoneD, _doc)); } catch (e) { _docOk = false; console.warn('setEmployeeDoc', e); }
+        // Амжилттай болсны ДАРАА л цэвэрлэнэ — эс бөгөөс дахин оролдоход файл алга болно.
+        if (_docOk) state._pendingDoc = null;
+      }
     }
     // Backend руу зураг + утас хадгалах (employees) — имэйлийн гарын үсэг + бусад төхөөрөмжид хүрнэ.
     // Зөвхөн hosted URL (http) зургийг серверт хадгална (base64 fallback = зөвхөн локал).
@@ -27907,10 +27935,14 @@ function setupProfileModal() {
       document.getElementById('profile-pin-change')?.focus();
       return;
     }
-    document.getElementById('profile-modal').classList.remove('open');
-    showToast('Профайл хадгалагдсан', 'success');
     renderUserChip();
     render();
+    // Серверийн бичилт унасан бол модалыг НЭЭЛТТЭЙ үлдээж дахин «Хадгалах» дарах боломж өгнө
+    // (checkin.html-ийн «Дахин оролдох» загвар). Нэр/утас локалд аль хэдийн шинэчлэгдсэн.
+    if (!_profileOk) { showToast('⚠ Цалингийн данс / яаралтай холбоо СЕРВЕРТ ХАДГАЛАГДСАНГҮЙ — интернэтээ шалгаад дахин Хадгалах дарна уу', 'error', 8000); return; }
+    if (!_docOk) { showToast('⚠ Иргэний үнэмлэхийн лавлагаа ХАДГАЛАГДСАНГҮЙ — дахин Хадгалах дарна уу', 'error', 8000); return; }
+    document.getElementById('profile-modal').classList.remove('open');
+    showToast('Профайл хадгалагдсан', 'success');
   });
 
   // User chip дээр товшиход профайл нээх
@@ -28269,7 +28301,16 @@ async function handleRegister() {
     // Иргэний үнэмлэхийн баримт (сонгосон бол) — employee_docs руу хавсаргана (утсаар түлхүүрлэнэ)
     const _idf = document.getElementById('reg-iddoc');
     if (_idf && _idf.files && _idf.files[0]) {
-      fileToDoc(_idf.files[0]).then(doc => doc && setEmployeeDoc(phone, doc)).catch(() => {});
+      // ⚠ Өмнө нь `.catch(() => {})` — файл хавсрахгүй байхад «✓ Амжилттай бүртгэгдлээ»
+      //   гэж бичээд өнгөрдөг байв. Бүртгэл өөрөө болсон тул блоклохгүй, гэхдээ ХЭЛНЭ:
+      //   лавлагаа нь хөдөлмөрийн гэрээний арын хуудсанд ордог, дутвал гэрээ дутуу гарна.
+      try {
+        const _doc = await fileToDoc(_idf.files[0]);
+        if (!_doc || !(await setEmployeeDoc(phone, _doc))) throw new Error('save failed');
+      } catch (e) {
+        console.warn('reg iddoc', e);
+        showToast('⚠ Иргэний үнэмлэхийн лавлагаа ХАДГАЛАГДСАНГҮЙ — нэвтэрсний дараа Миний профайл дээрээс дахин оруулна уу', 'error', 9000);
+      }
     }
 
     // Master Sheet-аас шинэ TEAM татаж шинэ хүнийг dropdown-д оруулах

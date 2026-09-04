@@ -5635,6 +5635,30 @@ body.role-daily #add-project { display: none !important; }
 .prod-type-b.rt { background: var(--ok-soft); color: var(--ok); }
 .prod-type-b.as { background: var(--warn-soft); color: var(--warn); }
 .prod-chev { font-size: 22px; color: var(--muted-soft); flex-shrink: 0; }
+/* ── Барааны модалын таб — Каталог / Үнэ / Нөөц ──
+   25 талбар нэг цонхонд байсныг гурав хуваав. `ui-raw` нь мобайлын
+   `.modal button:not(.ui-raw)` flatten дүрмээс чөлөөлнө (шинэ !important бичихгүй). */
+.pm-tabs {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.pm-tab {
+  min-height: 44px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  font-family: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--muted);
+  cursor: pointer;
+}
+.pm-tab:hover { color: var(--text); }
+.pm-tab.on { color: var(--primary); font-weight: 600; border-bottom-color: var(--primary); }
+.pm-pane[hidden] { display: none; }
+.pm-sub {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--fs-xs); font-weight: 600; color: var(--muted);
+  letter-spacing: .04em; text-transform: uppercase;
+}
+
 /* Барааны засах модал */
 .pm-stats { font-size: 12.5px; color: var(--text-soft); background: var(--panel-hover); border-radius: 8px; padding: 9px 12px; margin-bottom: 14px; line-height: 1.5; }
 .pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -5646,7 +5670,8 @@ body.role-daily #add-project { display: none !important; }
 .pm-branch { margin: 12px 0; padding: 10px 12px; background: var(--panel-hover); border-radius: 9px; }
 .pm-branch-head { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .pm-branch-head span { font-weight: 400; color: var(--muted); }
-.pm-branch-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+/* 4 салбар 3 баганад багтахгүй тул сүүлчийнх ганцаараа мөр эзэлж эвдэрдэг байв → 2×2 */
+.pm-branch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
 .pm-branch-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-soft); font-weight: 600; }
 .pm-branch-grid input { padding: 7px 8px; border: 1px solid var(--border-strong); border-radius: 7px; font-size: 15px; background: var(--panel); color: var(--text); text-align: center; }
 .pm-branch-status { margin-top: 8px; font-size: 12px; }

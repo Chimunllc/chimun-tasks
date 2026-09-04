@@ -195,6 +195,33 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
 }
 
+// 0f) SCAN — барааны модалын таб задаргаа талбар алдагдуулаагүй байх (2026-09-04)
+// openProductModal 25 талбартай нэг цонх байсныг Каталог/Үнэ/Нөөц 3 таб болгосон.
+// Талбар аль ч pane-д ороогүй үлдвэл ЧИМЭЭГҮЙ алдагдана: submitProductModal нь
+// querySelector-оос null авч үнэ 0, нөөц 0 болгож хадгална. Тиймээс модал болон
+// submit-ийн УНШДАГ pm-* id бүр модалын HTML-д зарлагдсан байх ёстой.
+{
+  const openSrc = src.slice(src.indexOf('function openProductModal(p) {'), src.indexOf('async function submitProductModal('));
+  const _rest = src.slice(src.indexOf('async function submitProductModal('));
+  const submitSrc = _rest.slice(0, _rest.indexOf('\nfunction attachProductsHandlers('));
+  const read = new Set();
+  [openSrc, submitSrc].forEach(t => {
+    // Сүүлчийн зураас дээр таслахгүй: тайлбар дахь `#pm-media-д` (кирилл) нь
+    // `pm-media-` болж худал сэрэмжлүүлэг өгдөг байв.
+    (t.match(/#(pm-[a-z]+(?:-[a-z]+)*)/g) || []).forEach(m => read.add(m.slice(1)));
+    (t.match(/g\('(pm-[a-z-]+)'\)/g) || []).forEach(m => read.add(m.slice(3, -2)));
+  });
+  const declared = new Set((openSrc.match(/id="(pm-[a-z-]+)"/g) || []).map(m => m.slice(4, -1)));
+  eq([...read].filter(id => !declared.has(id)), [], 'scan: модалын уншдаг pm-* id бүр HTML-д зарлагдсан');
+  ok(declared.size >= 20, 'scan: барааны модалын талбарууд бүрэн (' + declared.size + ')');
+
+  // Таб бүрд pane, pane бүрд таб. Нэг нь дутвал тэр бүлэг талбар БҮРМӨСӨН нуугдана.
+  const tabs = [...new Set((openSrc.match(/data-pmtab="[a-z]+"/g) || []).map(m => m.slice(12, -1)))].sort();
+  const panes = [...new Set((openSrc.match(/data-pmpane="[a-z]+"/g) || []).map(m => m.slice(13, -1)))].sort();
+  eq(tabs, ['cat', 'price', 'stock'], 'scan: барааны модал 3 табтай');
+  eq(panes, tabs, 'scan: таб бүрд харгалзах pane байна');
+}
+
 // 1) НӨАТ токен round-trip
 eq(F.parseVat(F.encodeVat(15000)), 15000, 'НӨАТ токен: encode→parse round-trip');
 eq(F.parseVat('note ' + F.encodeVat(0)), 0, 'НӨАТ токен: 0 дүн');

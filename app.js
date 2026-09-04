@@ -16791,20 +16791,18 @@ function openProductModal(p) {
     <div class="modal" style="max-width:540px;">
       <h2>${isEdit ? 'Бараа засах' : 'Шинэ бараа'}</h2>
       ${isEdit && (u.orders || cost) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
+      <div class="pm-tabs" role="tablist">
+        <button type="button" class="pm-tab ui-raw on" data-pmtab="cat" role="tab">Каталог</button>
+        <button type="button" class="pm-tab ui-raw" data-pmtab="price" role="tab">Үнэ</button>
+        <button type="button" class="pm-tab ui-raw" data-pmtab="stock" role="tab">Нөөц</button>
+      </div>
+      <div class="pm-pane" data-pmpane="cat">
       <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label class="pm-wide">Англи нэр <span style="color:var(--muted);font-weight:400;">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
         <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
-        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
-        <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
-        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span style="color:var(--muted);font-weight:400;">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
-        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
-        <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
-        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
-        <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
-        <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
         <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
         <label class="pm-wide">🎬 Бичлэг/зураг үзэх холбоос${/^https?:\/\//.test((p && p.media_url) || '') ? ` <a href="${escapeHtml(p.media_url)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-media" value="${escapeHtml((p && p.media_url) || '')}" placeholder="ж: YouTube линк, эсвэл доор видео файл оруулна">
           <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
@@ -16814,6 +16812,50 @@ function openProductModal(p) {
           </div>
           <div style="font-size:11px;color:var(--muted,#888);margin-top:3px;">Өөрсдийн бичлэг оруулбал сайтад цэвэрхэн (YouTube-гүй) тоглоно. Богино клип (15-30 сек), 80MB-аас бага.</div>
         </label>
+      </div>
+      <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
+        <div id="pm-gallery" class="pm-gallery"></div>
+        <div class="pm-gallery-actions">
+          <label class="btn pnf-upbtn" for="pm-photo-file">📷 Зураг нэмэх</label>
+          <input type="file" id="pm-photo-file" accept="image/*" multiple hidden>
+        </div>
+      </div>
+      <label class="pm-block">Тайлбар <span style="color:var(--muted);font-weight:400;">(сайтад харагдана)</span>
+        <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
+      </label>
+      ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span style="color:var(--muted);font-weight:400;">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
+      </div>
+      <div class="pm-pane" data-pmpane="price" hidden>
+      <div class="pm-grid">
+        <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
+        <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
+        <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span style="color:var(--muted);font-weight:400;">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
+      </div>
+        <div class="pm-sub">Өртөг ба хөрөнгө</div>
+      <div class="pm-grid">
+        <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
+        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
+      </div>
+      <label class="pm-rentable">
+        <input type="checkbox" id="pm-ispackage" ${isPackage(p) ? 'checked' : ''}>
+        <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
+      </label>
+      <div id="pm-bundle" class="pm-bundle"${isPackage(p) ? '' : ' hidden'}>
+        <div id="pm-bundle-list"></div>
+        <button type="button" class="btn pm-bundle-add" id="pm-bundle-add">+ Бараа нэмэх</button>
+        <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
+        <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
+      </div>
+      <label class="pm-rentable">
+        <input type="checkbox" id="pm-isservice" ${isService(p) ? 'checked' : ''}>
+        <span><b>🛠 Үйлчилгээ</b> — суурилуулалт, оператор г.м. (хүргэлт бол захиалгын хэсэгт тусад нь). Нөөц/агуулах/ROI-д ОРОХГҮЙ, зөвхөн үнэтэй мөр.</span>
+      </label>
+      </div>
+      <div class="pm-pane" data-pmpane="stock" hidden>
+      <div class="pm-grid">
+        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
+        <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
+        <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
       </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
@@ -16831,37 +16873,21 @@ function openProductModal(p) {
         </div>
         <div class="pm-branch-status" id="pm-branch-status"></div>
       </div>
-      <label class="pm-rentable">
-        <input type="checkbox" id="pm-ispackage" ${isPackage(p) ? 'checked' : ''}>
-        <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
-      </label>
-      <div id="pm-bundle" class="pm-bundle"${isPackage(p) ? '' : ' hidden'}>
-        <div id="pm-bundle-list"></div>
-        <button type="button" class="btn pm-bundle-add" id="pm-bundle-add">+ Бараа нэмэх</button>
-        <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
-        <div id="pm-bundle-sum" class="pm-bundle-sum"></div>
       </div>
-      <label class="pm-rentable">
-        <input type="checkbox" id="pm-isservice" ${isService(p) ? 'checked' : ''}>
-        <span><b>🛠 Үйлчилгээ</b> — суурилуулалт, оператор г.м. (хүргэлт бол захиалгын хэсэгт тусад нь). Нөөц/агуулах/ROI-д ОРОХГҮЙ, зөвхөн үнэтэй мөр.</span>
-      </label>
-      <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
-        <div id="pm-gallery" class="pm-gallery"></div>
-        <div class="pm-gallery-actions">
-          <label class="btn pnf-upbtn" for="pm-photo-file">📷 Зураг нэмэх</label>
-          <input type="file" id="pm-photo-file" accept="image/*" multiple hidden>
-        </div>
-      </div>
-      <label class="pm-block">Тайлбар <span style="color:var(--muted);font-weight:400;">(сайтад харагдана)</span>
-        <textarea id="pm-desc" rows="3" placeholder="Барааны тайлбар...">${v('description')}</textarea>
-      </label>
-      ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span style="color:var(--muted);font-weight:400;">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
       <div class="modal-actions" style="margin-top:16px;">
         <button class="btn" id="pm-cancel">Болих</button>
         <button class="btn btn-primary" id="pm-save">${isEdit ? '💾 Хадгалах' : 'Нэмэх'}</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+  // ── Таб: Каталог / Үнэ / Нөөц. Талбаруудын id ХЭВЭЭР тул submitProductModal
+  //    болон бүх handler (галерей, багц, салбар, видео) өөрчлөгдөхгүй. ──
+  const pmShowTab = (key) => {
+    modal.querySelectorAll('[data-pmtab]').forEach(b => b.classList.toggle('on', b.dataset.pmtab === key));
+    modal.querySelectorAll('[data-pmpane]').forEach(el => { el.hidden = el.dataset.pmpane !== key; });
+  };
+  modal._pmShowTab = pmShowTab;
+  modal.querySelectorAll('[data-pmtab]').forEach(b => b.addEventListener('click', () => pmShowTab(b.dataset.pmtab)));
   if (isEdit && p.sku) renderProductQR(modal.querySelector('#pm-qr'), p.sku);
   // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
   let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);
@@ -17025,7 +17051,7 @@ function openProductModal(p) {
 async function submitProductModal(modal, orig, btn) {
   const g = (id) => (modal.querySelector('#' + id)?.value || '').trim();
   const name = g('pm-name');
-  if (!name) { showToast('Нэр оруулна уу', 'warn'); return; }
+  if (!name) { modal._pmShowTab?.('cat'); modal.querySelector('#pm-name')?.focus(); showToast('Нэр оруулна уу', 'warn'); return; }
   const cat = g('pm-cat');
   const code = (orig && orig.code) || nextProductCode();   // засварт хэвээр, шинэд авто M-код
   let sku = g('pm-sku');
@@ -17037,6 +17063,7 @@ async function submitProductModal(modal, orig, btn) {
   if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
   // Шинэ бараанд нэгж өртөг ЗААВАЛ (багц=бүрэлдэхүүнээс, үйлчилгээ=өртөггүй тул хасна)
   if (!orig && !isPkg && !isSvc && !(moneyVal(modal.querySelector('#pm-cost')) > 0)) {
+    modal._pmShowTab?.('price');
     showToast('Нэгж өртөг заавал оруулна (худалдан авсан үнэ)', 'warn', 3500);
     modal.querySelector('#pm-cost')?.focus();
     return;
@@ -17045,6 +17072,7 @@ async function submitProductModal(modal, orig, btn) {
   if (!orig && !isPkg && !isSvc) {
     const _qsum = (Number(modal.querySelector('#pm-qm')?.value) || 0) + (Number(modal.querySelector('#pm-qc')?.value) || 0) + (Number(modal.querySelector('#pm-qn')?.value) || 0) + (Number(modal.querySelector('#pm-qk')?.value) || 0);
     if (!_qsum) {
+      modal._pmShowTab?.('stock');
       showToast('Салбарын хуваарилалт: аль салбарт байхыг сонгоно уу', 'warn', 3500);
       modal.querySelector('#pm-branch-pick')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;

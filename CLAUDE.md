@@ -400,6 +400,29 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 - ⚠ Алдаа мэдээлэх код өөрөө алдаа шидэж БОЛОХГҮЙ (`_reportErrToServer`-ийн
   `.catch(()=>{})` нь зориудынх) — эс бөгөөс хязгааргүй давталт үүснэ.
 
+## Дата унших — үүлэн/утасны сессээс (2026-09-04)
+
+Үүлэн агент VPS руу хандаж чадахгүй ч **датаг УНШИЖ чадна**. GitHub secret дэх
+токеныг зөвхөн Actions нээдэг тул асуулга workflow-оор дамжина:
+
+```
+gh workflow run data-query.yml -f path='v_orders_safe?select=number,total_mnt&order=number.desc&limit=20'
+# 20 секунд хүлээ
+gh run list --workflow=data-query.yml --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run view <id> --log
+```
+
+**Уншиж болох:** `v_orders_safe` · `v_quotes_safe` · `v_finance_safe` · `products` ·
+`repairs` · `product_aliases` · `app_config` · `v_app_errors`
+
+**Хаалттай (403):** `employees` (РД/утас) · `bank_accounts` · `attendance` ·
+түүхий `app_orders`. Утас/имэйл view-д маскласан (`9088****`).
+
+- Postgres `data_reader` үүрэг = **ЗӨВХӨН SELECT**. INSERT/UPDATE/DELETE → 403.
+- 10 сек statement_timeout; `limit` заагаагүй бол 200.
+- Асуулга бүр Actions түүхэнд бүртгэгдэнэ — хэн юу үзсэн нь ил.
+- ⚠ Дата **ЗАСАХ**, migration ажиллуулах, n8n/Docker хөндөх нь ЗӨВХӨН локал сессээс.
+
 ## Энэ файлыг арчлах дүрэм
 
 **Нэмэхээс өмнө устга.** Файл томрох тусам би гүйлгэж уншина, үүлэн агент таслагдаж

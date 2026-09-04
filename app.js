@@ -14649,13 +14649,6 @@ function meventContractHtml(o) {
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
     </tbody></table>`;
-  const chk = (title) => `<table class="svc"><tr><th class="ctr">№</th><th>Шалгах зүйлс</th><th class="ctr">Байдал (✓/✗)</th><th>Тайлбар</th></tr>
-    <tr><td class="ctr">1</td><td>Бүрэн бүтэн байдал</td><td></td><td></td></tr>
-    <tr><td class="ctr">2</td><td>Ажиллагаа хэвийн эсэх</td><td></td><td></td></tr>
-    <tr><td class="ctr">3</td><td>Иж бүрдэл бүрэн эсэх</td><td></td><td></td></tr>
-    <tr><td class="ctr">4</td><td>Гадна өнгө үзэмж цэвэр эсэх</td><td></td><td></td></tr></table>`;
-  const sigLine = 'Овог нэр: ____________________________ &nbsp;&nbsp; Гарын үсэг: ____________________________';
-  const dtLine = 'Сар ………… Өдөр ………… Цаг ………… Минут …………';
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Түрээсийн гэрээ — ${cust} (#${o.number ?? ''})</title>
@@ -14670,8 +14663,6 @@ function meventContractHtml(o) {
   .chead td.r{text-align:right}
   .ch-role{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:#1f2937;margin-bottom:3px}
   .meta-line{color:#333;font-size:12px;margin:4px 0 2px;text-align:center}
-  .apx-title{text-align:center;font-size:15px;font-weight:700;margin:8px 0 4px}
-  .sub-title{font-weight:700;font-size:12.5px;margin:12px 0 4px}
   .sigt{width:100%;border-collapse:collapse;margin:10px 0 12px;font-size:12.5px}
   .sigt td{width:50%;vertical-align:top;padding:6px 14px;border:0;line-height:1.9}
   .sigt td.r{text-align:right}
@@ -14688,7 +14679,6 @@ function meventContractHtml(o) {
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
-  .sig-block{margin:6px 0 2px;line-height:2.2}
   .pb{page-break-before:always}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc;z-index:9}
   .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff;margin:0 3px}
@@ -14754,15 +14744,6 @@ function meventContractHtml(o) {
   </tr></table>
   <div class="foot">Хаяг: ${C.address}<br>Холбогдох утас: 7755-1010</div>
 
-  <div class="pb apx-title">ХАВСРАЛТ №2 — ТОНОГ ТӨХӨӨРӨМЖИЙН БАЙДЛЫН ҮНЭЛГЭЭ</div>
-
-  <div class="sub-title">А. ХҮЛЭЭЛГЭН ӨГӨХ — Хэрэглэгч хүлээн авах үеийн шалгалт</div>
-  ${chk()}
-  <div class="sig-block"><b>Шалгаад хүлээлгэн өгсөн ажилтан:</b> ${sigLine}<br><b>Хүлээн авсан — Хэрэглэгчийн төлөөлөл:</b> ${sigLine}<br>${dtLine}</div>
-
-  <div class="sub-title" style="margin-top:16px">Б. БУЦААХ — Түрээслүүлэгч хүлээн авах үеийн шалгалт</div>
-  ${chk()}
-  <div class="sig-block"><b>Шалгаад хүлээлгэн өгсөн түрээслэгч:</b> ${sigLine}<br><b>Хүлээн авсан — Түрээслүүлэгчийн төлөөлөл:</b> ${sigLine}<br>${dtLine}</div>
 </div>
 <script>
 var CT_FILE=${JSON.stringify(fname)};

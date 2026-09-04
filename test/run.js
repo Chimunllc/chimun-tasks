@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
   'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
@@ -1505,6 +1505,36 @@ function finish() {
   eq(o.score, 100, 'объектив: зөвхөн засвартай хүн 100 оноо авна');
 
   st.repairs = saved.rep; st.tasks = saved.tasks;
+}
+
+// 23) Гэрээний НӨАТ мэдэгдэл — нэг хуудсан дээр зөрчилтэй мэдэгдэл ГАРАХГҮЙ
+{
+  const mkOrder = (vatOff) => ({
+    number: 1, customer: 'Тест ХХК', order_no: 'ME-1',
+    starts_at: '2026-09-10', stops_at: '2026-09-12',
+    total_mnt: 500000, deposit_mnt: 0,
+    items: [{ name: 'Ширээ', qty: 2, price: 10000, total: 40000 }],
+    note: vatOff ? F.encodeVat(25000) : '',
+  });
+  const withVat = F.meventContractHtml(mkOrder(false));   // НӨАТ багтсан (өгөгдмөл)
+  const noVat   = F.meventContractHtml(mkOrder(true));    // НӨАТ хасалттай
+
+  // НӨАТ БАГТСАН захиалга
+  ok(withVat.indexOf('НӨАТ багтсан болно') > -1,   'гэрээ/НӨАТ: багтсан үед «багтсан» гэж мэдэгдэнэ');
+  ok(withVat.indexOf('НӨАТ багтаагүй') === -1,     'гэрээ/НӨАТ: багтсан үед «багтаагүй» гарахгүй');
+  ok(withVat.indexOf('Үүнээс НӨАТ (10%)') > -1,    'гэрээ/НӨАТ: багтсан үед задаргаа гарна');
+  ok(withVat.indexOf('НӨАТ хасалт') === -1,        'гэрээ/НӨАТ: багтсан үед хасалтын мөр гарахгүй');
+
+  // НӨАТ ХАСАГДСАН захиалга — гурван зөрчил давтагдахгүй
+  ok(noVat.indexOf('НӨАТ багтаагүй болно') > -1,   'гэрээ/НӨАТ: хасалттай үед «багтаагүй» гэж мэдэгдэнэ');
+  ok(noVat.indexOf('НӨАТ багтсан болно') === -1,   'гэрээ/НӨАТ: хасалттай үед «багтсан» ЗЭРЭГ гарахгүй');
+  ok(noVat.indexOf('Үүнээс НӨАТ (10%)') === -1,    'гэрээ/НӨАТ: хасалттай үед «үүнээс НӨАТ» гарахгүй');
+  ok(noVat.indexOf('НӨАТ хасалт') > -1,            'гэрээ/НӨАТ: хасалттай үед хасалтын мөр гарна');
+
+  // Барааны мөрийн НӨАТ багана хоёр горимд ЭСРЭГ утгатай
+  ok(withVat.indexOf('>багтсан<') > -1,            'гэрээ/НӨАТ: мөрийн багана «багтсан»');
+  ok(noVat.indexOf('>багтаагүй<') > -1,            'гэрээ/НӨАТ: мөрийн багана «багтаагүй»');
+  ok(noVat.indexOf('>багтсан<') === -1,            'гэрээ/НӨАТ: хасалттай үед мөр «багтсан» гэж хэлэхгүй');
 }
 
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)

@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
@@ -1562,6 +1562,57 @@ function finish() {
   ok(withVat.indexOf('>багтсан<') > -1,            'гэрээ/НӨАТ: мөрийн багана «багтсан»');
   ok(noVat.indexOf('>багтаагүй<') > -1,            'гэрээ/НӨАТ: мөрийн багана «багтаагүй»');
   ok(noVat.indexOf('>багтсан<') === -1,            'гэрээ/НӨАТ: хасалттай үед мөр «багтсан» гэж хэлэхгүй');
+}
+
+// 24) Гэрээний шинэ найруулга — бүтэц, динамик тариф, батлагдсан цуцлалт
+{
+  const mk = (vatOff) => ({
+    number: 7, customer: 'Тест ХХК', order_no: 'ME-7',
+    starts_at: '2026-09-10', stops_at: '2026-09-12',
+    total_mnt: 500000, deposit_mnt: 100000,
+    items: [{ name: 'Ширээ', qty: 2, price: 10000, total: 40000 }],
+    note: vatOff ? F.encodeVat(25000) : '',
+  });
+  const ct = F.meventContractHtml(mk(false));
+
+  // Бүтэц — 12 хэсэг, хуучин 8 биш
+  for (const h of ['НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ', 'ХОЁР. ХУГАЦАА БА ХОНОГ ТООЦОХ', 'ГУРАВ. ТӨЛБӨР',
+                   'ДӨРӨВ. БАРЬЦАА', 'ТАВ. ХҮЛЭЭЛЦЭХ ЖУРАМ', 'ЗУРГАА. ХЭРЭГЛЭГЧИЙН ҮҮРЭГ',
+                   'ДОЛОО. ЭВДРЭЛ', 'НАЙМ. ХУГАЦАА СУНГАХ', 'ЕС. ЦУЦЛАЛТ',
+                   'АРАВ. ДАВАГДАШГҮЙ', 'АРВАН НЭГ. МАРГААН', 'АРВАН ХОЁР. БУСАД']) {
+    ok(ct.indexOf(h) > -1, `гэрээ: «${h}» хэсэг бий`);
+  }
+  ok(ct.indexOf('НАЙМ. БУСАД') === -1, 'гэрээ: хуучин «НАЙМ. БУСАД» дугаарлалт үлдээгүй');
+
+  // Хоног тоолох — ажилласан жишээтэй (маргааныг таслах)
+  ok(ct.indexOf('календарийн өдрийн зөрүүгээр') > -1, 'гэрээ: хоног = өдрийн зөрүү');
+  ok(ct.indexOf('12-ны өдөр буцаавал 2 хоног') > -1,  'гэрээ: хоногийн жишээ бичигдсэн');
+
+  // Цуцлалт — ХЭРЭГЛЭГЧИЙН БАТАЛСАН тоо (7 / 3–7 / <3)
+  ok(ct.indexOf('7 ба түүнээс дээш хоногийн өмнө — бүрэн') > -1, 'гэрээ: цуцлалт 7+ хоног бүрэн');
+  ok(ct.indexOf('3-аас 7 хоногийн өмнө — 50 хувь') > -1,         'гэрээ: цуцлалт 3–7 хоног 50%');
+  ok(ct.indexOf('3 хоногоос бага хугацаанд — буцаахгүй') > -1,   'гэрээ: цуцлалт <3 хоног 0%');
+  ok(ct.indexOf('Барьцааг цуцлалтын аль ч тохиолдолд бүтнээр буцаана') > -1, 'гэрээ: барьцаа цуцлалтад бүтэн');
+
+  // Аппын процесстой холбогдсон заалтууд
+  ok(ct.indexOf('гүйлгээний утгад захиалгын дугаарыг') > -1, 'гэрээ: гүйлгээний утга (тулгалт)');
+  ok(ct.indexOf('бүртгэлийн системд бүртгэнэ') > -1,         'гэрээ: хүлээлцэх нь системд');
+  ok(ct.indexOf('нөөцөөс хамаарна') > -1,                    'гэрээ: сунгалт нөөцөөс хамаарна');
+  ok(ct.indexOf('урьдчилгаа буюу бүтэн төлбөр') > -1,        'гэрээ: урьдчилгааны зөрчил арилсан');
+
+  // НӨАТ заалт — захиалгаас хамаарч ЭСРЭГ
+  ok(ct.indexOf('татвар багтсан бөгөөд') > -1,        'гэрээ/НӨАТ: багтсан үед 3.1 «багтсан»');
+  const ctNo = F.meventContractHtml(mk(true));
+  ok(ctNo.indexOf('татвар багтаагүй болно') > -1,     'гэрээ/НӨАТ: хасалттай үед 3.1 «багтаагүй»');
+  ok(ctNo.indexOf('татвар багтсан бөгөөд') === -1,    'гэрээ/НӨАТ: хасалттай үед «багтсан» ЗЭРЭГ гарахгүй');
+
+  // Тариф ДИНАМИК — app_config өөрчлөгдвөл гэрээ дагана (хатуу бичигдээгүй)
+  const tierTxt = F.ctTierText();
+  ok(/\d+.*хоног.*\d+%/.test(tierTxt), 'гэрээ: хөнгөлөлтийн шатлал тарифаас үүснэ');
+  ok(ct.indexOf(tierTxt) > -1,         'гэрээ: 2.3 заалт тарифын текстийг агуулна');
+  ok(ct.indexOf(`${F.tariffWorkStart()}:00`.padStart(5, '0')) > -1 ||
+     ct.indexOf('ажлын цаг') > -1 || ct.indexOf('Ажлын цаг') > -1 ||
+     ct.indexOf('ажлын бус цагт') > -1, 'гэрээ: ажлын цаг тарифаас бичигдэнэ');
 }
 
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)

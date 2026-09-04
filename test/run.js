@@ -1638,6 +1638,46 @@ function finish() {
      ct.indexOf('ажлын бус цагт') > -1, 'гэрээ: ажлын цаг тарифаас бичигдэнэ');
 }
 
+// 25) Гэрээ — нөхөн төлбөрийн үнэлгээ (products.market_value → заалт 7.3)
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('state.products');
+  const setP = (arr) => runIn('state.products = ' + JSON.stringify(arr) + ';');
+  const base = {
+    number: 9, customer: 'Тест ХХК', order_no: 'ME-9',
+    starts_at: '2026-09-10', stops_at: '2026-09-12',
+    total_mnt: 400000, deposit_mnt: 0, note: '',
+    items: [{ name: 'Ширээ', sku: 'M-001', qty: 3, price: 10000, total: 60000 }],
+  };
+
+  // Үнэлгээ ТАВЬСАН бараа
+  setP([{ sku: 'M-001', id: 'M-001', name: 'Ширээ', market_value: 250000 }]);
+  const withMv = F.meventContractHtml(base);
+  ok(withMv.indexOf('Нөхөн төлбөрийн үнэлгээ') > -1, 'үнэлгээ: хүснэгт гарна');
+  ok(withMv.indexOf('750,000₮') > -1,                 'үнэлгээ: 3ш × 250,000 = 750,000 бодогдоно');
+  ok(withMv.indexOf('«Нөхөн төлбөрийн үнэлгээ» хүснэгтэд заасан') > -1,
+     'үнэлгээ: заалт 7.3 хүснэгтийг иш татна');
+
+  // Үнэлгээ ТАВЬААГҮЙ — хүснэгт гарахгүй, гэрээ унахгүй
+  setP([{ sku: 'M-001', id: 'M-001', name: 'Ширээ' }]);
+  const noMv = F.meventContractHtml(base);
+  ok(noMv.indexOf('Нөхөн төлбөрийн үнэлгээ (заалт 7.3)') === -1, 'үнэлгээ: үнэлгээгүй бол хүснэгт гарахгүй');
+  ok(noMv.indexOf('зах зээлийн ханшаар тооцно') > -1, 'үнэлгээ: 7.3-д нөөц дүрэм бий');
+
+  // Хэсэгчилсэн — нэг нь үнэлгээтэй, нөгөө нь үгүй → «—»
+  const mixed = Object.assign({}, base, { items: [
+    { name: 'Ширээ', sku: 'M-001', qty: 1, price: 10000, total: 20000 },
+    { name: 'Асар',  sku: 'M-002', qty: 1, price: 50000, total: 100000 },
+  ]});
+  setP([{ sku: 'M-001', id: 'M-001', name: 'Ширээ', market_value: 250000 },
+        { sku: 'M-002', id: 'M-002', name: 'Асар' }]);
+  const mx = F.meventContractHtml(mixed);
+  ok(mx.indexOf('Нөхөн төлбөрийн үнэлгээ') > -1, 'үнэлгээ: хэсэгчилсэн ч хүснэгт гарна');
+  ok(mx.indexOf('>—<') > -1,                     'үнэлгээ: үнэлгээгүй мөр «—» гэж ялгарна');
+
+  runIn('state.products = ' + JSON.stringify(save || []) + ';');
+}
+
 // 21) Үнийн саналын загвар — async builder (хоосон захиалгаар мөн унахгүй)
 (async () => {
   const runIn = (code) => vm.runInContext(code, sandbox);

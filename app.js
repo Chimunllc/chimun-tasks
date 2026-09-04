@@ -18215,14 +18215,27 @@ function encodeVat(amt) { return `⟦VAT|${Math.round(amt) || 0}⟧`; }
 // app_orders-д багана нэмэхгүйгээр. Зөвхөн захиалгын менежерт харагдана.
 const _CI_RE = /⟦CI\|([^⟧]*)⟧/;
 function custInfoOf(note) { const m = String(note || '').match(_CI_RE); if (!m) return {}; try { return JSON.parse(m[1]) || {}; } catch (e) { return {}; } }
-// Харилцагчийн төрөл — байгууллага (компанийн нэр эсвэл 7 оронтой РД) эсвэл хувь хүн. Филтерт.
+// Харилцагчийн төрөл — байгууллага эсвэл хувь хүн. Филтер БА гэрээний тал (хэнтэй байгуулах).
+// ⭐ ХҮНИЙ СОНГОЛТ ЭХЭНД: захиалгын формын «Төрөл» сонголт (⟦CI⟧.ctype) байвал ТҮҮНИЙГ дагана.
+// Таамаглал (нэр/РД-ээс) нь зөвхөн сонголтгүй ХУУЧИН захиалгад хэрэглэгдэнэ — өмнө нь
+// байгууллагын талбарт хүний нэр бичсэн захиалга гэрээнд «байгууллага» болж сонин гарч байв.
 function orderCustType(o) {
   const ci = custInfoOf(o && o.note);
-  if (ci.company && String(ci.company).trim()) return 'org';
+  if (ci.ctype === 'org' || ci.ctype === 'person') return ci.ctype;
   const reg = String(ci.reg || '').replace(/\s/g, '');
   if (/^\d{7}$/.test(reg)) return 'org';                 // компанийн регистр = 7 орон
+  // Байгууллагын талбар дангаараа хангалтгүй: НӨАТ-ын «худалдан авагч» эсвэл төлөгчийн
+  // нэрээр автоматаар бөглөгддөг тул тэнд ХҮНИЙ нэр орсон захиалга «байгууллага» болж
+  // гэрээ хүний нэр дээр байгууллага мэт үүсдэг байв. Хуулийн хэлбэрийн тэмдэг шаардана.
+  if (_ORG_SUFFIX_RE.test(String(ci.company || ''))) return 'org';
   return 'person';                                        // хувь хүний РД (2 үсэг+8 орон) эсвэл тодорхойгүй = хувь хүн
 }
+// Хуулийн этгээдийн хэлбэр — байгууллагын нэрэнд байх ёстой тэмдэг.
+// ⚠ JS-ийн `\b` нь ASCII үсгээр тодорхойлогддог тул кирилл үгэнд АЖИЛЛАХГҮЙ —
+// тусгаарлагчийг гараар жагсаана (мөрийн эхлэл/төгсгөл, хоосон зай, хаалт, цэг, хашилт).
+const _ORG_SEP = '(?:^|[\\s"\'«»().,\\-])';
+const _ORG_SUFFIX_RE = new RegExp(
+  _ORG_SEP + '(ХХК|ХК|ХХН|ТББ|ЗБН|банк|групп|group|хоршоо|концерн|LLC|LTD|INC|JSC|CO)' + '(?:$|[\\s"\'«»().,\\-])', 'i');
 function mapsHref(v) { const s = String(v || '').trim(); if (/^https?:\/\//i.test(s)) return s; return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s); }
 // Төлбөрийн paid_ref-ийг задлах — "[#id] илгээгч · данс · утга  |  ..." → баримт бүрийн бүтэц.
 // (Эх PDF хадгалагддаггүй — банкнаас автомат задлан авсан мэдээлэл.)
@@ -18306,6 +18319,9 @@ function setCustInfo(note, ci) {
   const base = String(note || '').replace(_CI_RE, '').trim();
   const clean = {};
   ['company', 'reg', 'contact', 'maps'].forEach(k => { const v = ci && ci[k] ? String(ci[k]).replace(/[⟦⟧]/g, '').trim().slice(0, 400) : ''; if (v) clean[k] = v; });
+  // Харилцагчийн төрөл — формын сонголт. Гэрээ ХЭНТЭЙ байгуулагдахыг энэ шийддэг тул
+  // бусад талбар хоосон байсан ч (жишээ нь «хувь хүн») ЗААВАЛ хадгална.
+  if (ci && (ci.ctype === 'org' || ci.ctype === 'person')) clean.ctype = ci.ctype;
   if (!Object.keys(clean).length) return base;   // юу ч байхгүй бол token нэмэхгүй
   return (base ? base + ' ' : '') + `⟦CI|${JSON.stringify(clean)}⟧`;
 }
@@ -18381,6 +18397,9 @@ function openNewOrder(editOrder) {
   const _custNm = String((editOrder && editOrder.customer) || '').trim();
   const _autoCompany = _ci0.company || (_vr0 && _vr0.buyer_name ? String(_vr0.buyer_name).trim() : '') || ((_payerNm && _payerNm.toLowerCase() !== _custNm.toLowerCase()) ? _payerNm : '');
   const _autoReg = _ci0.reg || (_vr0 && _vr0.buyer_reg ? String(_vr0.buyer_reg).trim() : '');
+  // Гэрээ ХЭНТЭЙ байгуулагдахыг энэ шийднэ. Засаж буй захиалгад хадгалсан сонголт (эсвэл
+  // хуучин мөрд таамаглал), шинэ захиалгад «хувь хүн» — хэрэглэгч гараар сольж болно.
+  const _ctype0 = isEdit ? orderCustType(editOrder) : 'person';
   // Гарсан (rented+) ЭСВЭЛ бүрэн төлөгдсөн захиалга → мөнгөний БҮХ нөхцөл ТҮГЖИНЭ (бараа/үнэ/эхлэх огноо/
   // хөнгөлөлт/НӨАТ/барьцаа) — төлсөн дүнтэй зөрөхөөс сэргийлнэ. Засагдах: холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл.
   const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
@@ -18406,6 +18425,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Харилцагч <span class="no-req">*</span><input id="no-customer" value="${escapeHtml(isEdit ? (editOrder.customer || '') : '')}" placeholder="Нэр"></label>
       <label class="no-lbl">Утас <span class="no-req">*</span><input id="no-phone" type="tel" inputmode="numeric" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="8 оронтой дугаар"></label>
       <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
+      <label class="no-lbl">Төрөл<select id="no-ctype"><option value="person"${_ctype0 === 'org' ? '' : ' selected'}>👤 Хувь хүн</option><option value="org"${_ctype0 === 'org' ? ' selected' : ''}>🏢 Байгууллага</option></select></label>
       <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
@@ -18715,6 +18735,7 @@ function openNewOrder(editOrder) {
     if (deposit !== prevDep) depLog.push({ by: state.me, at: new Date().toISOString(), from: prevDep, to: deposit });
     const uid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 'ao-' + crypto.randomUUID() : 'ao-' + Date.now();
     const _ci = {
+      ctype: ($('#no-ctype')?.value === 'org') ? 'org' : 'person',
       company: ($('#no-company')?.value || '').trim(), reg: ($('#no-reg')?.value || '').trim(),
       contact: ($('#no-contact')?.value || '').trim(),
       maps: isDeliv ? ($('#no-maps')?.value || '').trim() : '',

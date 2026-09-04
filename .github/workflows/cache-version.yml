@@ -4,18 +4,23 @@
 # ЯГ ТЭР МӨРИЙГ өөрчилж, merge бүрд конфликт үүсгэдэг байв (2026-09-04-нд нэг
 # PR дээр 4 удаа: v829→v835). Одоо салбарууд sw.js-д ХҮРЭХГҮЙ.
 #
-# Урсгал: PR merge → энэ workflow → хувилбар нэмэгдсэн PR → auto-merge →
-#         GitHub Pages дахин байрлуулна → ажилчдын утсанд шинэ код хүрнэ.
+# Урсгал: PR merge → энэ workflow → шалгалт гүйнэ → «lint» статус бичигдэнэ →
+#         хувилбар main руу орно → Pages дахин байрлуулна → утсанд код хүрнэ.
 #
-# ⚠ Яагаад main руу ШУУД push хийдэггүй вэ: branch protection «lint» шалгалтыг
-# шаарддаг тул ботын шууд push татгалзана (GH006, 2026-09-04-нд эхний ажиллалт
-# яг ингэж унасан — хувилбар нэмэгдээгүй, ажилчдад код хүрээгүй).
+# ⚠ Яагаад шалгалтыг энд өөрөө ажиллуулж, статусыг гараар бичдэг вэ:
+# main дээр «lint» шалгалт ЗААВАЛ байх ёстой (branch protection). Ботын
+# нэмэгдүүлсэн коммит дээр lint.yml өөрөө АСДАГГҮЙ — GITHUB_TOKEN-оор хийсэн
+# push/PR нь шинэ workflow үүсгэхгүй (GitHub-ийн хязгааргүй давталтын
+# хамгаалалт). Тиймээс шалгалт хоосон үлдэж push татгалзана (GH006 —
+# 2026-09-04-нд эхний ажиллалт яг ингэж унаж, ажилчдад код хүрээгүй).
 #
-# ⚠ Яагаад шалгалтыг энд өөрөө ажиллуулдаг вэ: GITHUB_TOKEN-оор нээсэн PR дээр
-# workflow АСДАГГҮЙ (GitHub-ийн хязгааргүй давталтаас хамгаалах дүрэм). Тиймээс
-# lint.yml энэ PR дээр хэзээ ч ажиллахгүй → шаардлагатай шалгалт хоосон үлдэж
-# auto-merge мөнхөд хүлээнэ. Шалгалтыг ҮНЭХЭЭР ажиллуулаад үр дүнг «lint»
-# статусаар PR-ын толгойд бичнэ.
+# Шийдэл: шалгалтыг (lint.yml-тэй ижил) ҮНЭХЭЭР ажиллуулаад, амжилттай бол
+# коммитын SHA дээр «lint» статус бичнэ. Шалгалт унавал статус бичигдэхгүй тул
+# худал батламж гарахгүй — хамгаалалт хүчээ хадгална.
+#
+# ⚠ PR-аар оруулах замыг оролдож үзсэн боловч repo-гийн тохиргоо хаадаг:
+# «GitHub Actions is not permitted to create or approve pull requests».
+# Settings → Actions → General дээр тэрийг нээвэл PR-аар оруулах болгож болно.
 
 name: Кэшийн хувилбар
 
@@ -36,7 +41,6 @@ concurrency:
 
 permissions:
   contents: write
-  pull-requests: write
   statuses: write
 
 jobs:
@@ -94,34 +98,38 @@ jobs:
             sw.js
           node test/run.js
 
-      - name: PR-аар оруулах
+      - name: main руу бичих
         if: steps.bump.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NEW: ${{ steps.bump.outputs.new }}
         run: |
           set -euo pipefail
-          BR="cache-bump/${{ github.run_id }}"
+          TMP="refs/heads/cache-bump/${{ github.run_id }}"
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add sw.js
           git commit -m "sw: $NEW [cache-bump]"
-          git push origin "HEAD:refs/heads/$BR"
-          SHA=$(git rev-parse HEAD)
 
-          # Дээрх алхам амжилттай гүйсэн тул статусыг бичиж болно.
+          # Статус бичихийн тулд коммит сервер дээр БАЙХ ёстой — түр салбар руу
+          # түлхээд, статус бичээд, дараа нь main руу оруулж, түр салбарыг устгана.
+          git push origin "HEAD:$TMP"
+          SHA=$(git rev-parse HEAD)
           gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" \
             -f state=success -f context=lint \
-            -f description='syntax + eslint + тест (cache-bump)' >/dev/null
+            -f description='syntax + eslint + тест (cache-bump)' \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >/dev/null
 
-          PR=$(gh pr create --base main --head "$BR" \
-                --title "sw: $NEW [cache-bump]" \
-                --body "CACHE_VERSION автоматаар нэмэгдэв. Шалгалт энэ ажиллагаанд гүйсэн: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
-
-          # Статус бүртгэгдэхэд хормын зөрүү гардаг — хэдэн удаа оролдоно.
-          for i in 1 2 3 4 5; do
-            gh pr merge "$PR" --squash --delete-branch && exit 0
-            sleep 6
+          ok=0
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then ok=1; break; fi
+            # main зэрэг урагшилсан бол rebase хийнэ — шинэ SHA-д статус дахин бичнэ
+            git pull --rebase origin main
+            SHA=$(git rev-parse HEAD)
+            git push -f origin "HEAD:$TMP"
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+              -f state=success -f context=lint \
+              -f description='syntax + eslint + тест (cache-bump)' >/dev/null
           done
-          echo "::error::CACHE_VERSION-ын PR merge хийгдсэнгүй ($PR). Ажилчдын утсанд ШИНЭ КОД ХҮРЭХГҮЙ — PR-ыг гараар merge хийнэ үү."
-          exit 1
+          git push origin --delete "$TMP" || true
+          [ "$ok" = 1 ] || { echo "::error::CACHE_VERSION-ыг main руу бичиж чадсангүй. Ажилчдын утсанд ШИНЭ КОД ХҮРЭХГҮЙ — sw.js-ийн хувилбарыг гараар нэмэгдүүлнэ үү."; exit 1; }

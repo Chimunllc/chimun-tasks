@@ -4281,15 +4281,48 @@ const STOCKCOUNT_URL = () => `${DB_URL}/rest/v1/stock_counts`;
 
 // Нэг өдөр + нэг хүн = нэг сесс. Түлхүүр нь хүнд уншигдахуйц байх нь маргаан
 // таслахад чухал (аль өдөр хэн тоолсон нь ID-гүйгээр харагдана).
-function countSessionId(dateStr, personKey) { return String(dateStr || '') + '|' + String(personKey || ''); }
-// Сессийн түлхүүрээс огноо/хүнийг салгана. Тооллого нь БАГИЙН ажил — өдрийн бүх
-// бичилт хүн бүрт харагдах ёстой, эс бөгөөс хоёр хүн нэг барааг давхар тоолж,
-// «би тоолсон» / «үгүй тоолоогүй» маргаан үүснэ.
-function countSessionDate(sessionId) { const i = String(sessionId || '').indexOf('|'); return i < 0 ? String(sessionId || '') : String(sessionId).slice(0, i); }
-function countSessionPerson(sessionId) { const i = String(sessionId || '').indexOf('|'); return i < 0 ? '' : String(sessionId).slice(i + 1); }
-// Бичлэгийг хэн тоолсон бэ — `counted_by` хоосон бол сессийн түлхүүрээс сэргээнэ
-// (хуучин бичлэгт counted_by дутуу байж болно).
-function countRowPerson(r) { return String((r && r.counted_by) || '').trim() || countSessionPerson(r && r.session_id); }
+// ⚠ Сесс нь ӨДӨР ч, ХҮН ч БИШ — КАМПАНИТ АЖИЛ (2026-09-04).
+// 294 бараа нэг өдөрт тоологдохгүй, улирлын тооллого 2-3 хоног үргэлжилнэ.
+// Сесс өдрөөр солигдвол маргааш нээхэд өчигдрийн ажил алга болж прогресс тэглэгдэнэ.
+// Хүнээр салгавал хоёр нярав бие биенийхээ ажлыг харахгүй давхар тоолно.
+// Тиймээс НЭГ тооллого = НЭГ `session_id`, гараар эхлүүлж, гараар хаана.
+function scQuarterOf(dateStr) {
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})/);
+  if (!m) return '';
+  return `${m[1]}-Q${Math.floor((Number(m[2]) - 1) / 3) + 1}`;
+}
+const _SC_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+function scSessionLabel(id) {
+  const m = String(id || '').match(/^(\d{4})-Q([1-4])(?:-(\d+))?$/);
+  if (!m) return String(id || '');
+  return `${m[1]} оны ${_SC_ROMAN[Number(m[2])]} улирал${m[3] ? ' (' + m[3] + ')' : ''}`;
+}
+// Нэг улиралд хоёр дахь тооллого хийвэл дугаарлана (Q3, Q3-2, Q3-3…).
+function scNewSessionId(dateStr, usedIds) {
+  const base = scQuarterOf(dateStr); if (!base) return '';
+  const used = new Set(usedIds || []);
+  if (!used.has(base)) return base;
+  for (let i = 2; i < 100; i++) if (!used.has(`${base}-${i}`)) return `${base}-${i}`;
+  return `${base}-${Date.parse(dateStr) || 0}`;
+}
+// `stock_count` тохиргооны хэлбэрийг ЖИГДЛЭНЭ — хоосон/эвдэрсэн утга дэлгэц унагаахгүй.
+function scNormalizeConfig(cfg) {
+  const c = (cfg && typeof cfg === 'object') ? cfg : {};
+  const a = (c.active && typeof c.active === 'object' && c.active.id) ? c.active : null;
+  return { active: a, history: Array.isArray(c.history) ? c.history : [] };
+}
+function scAllSessionIds(cfg) {
+  const c = scNormalizeConfig(cfg);
+  return (c.active ? [c.active.id] : []).concat(c.history.map(h => h && h.id).filter(Boolean));
+}
+// Бичлэгийг хэн тоолсон бэ. Хуучин (2026-09-04-өөс өмнөх) бичлэгийн session_id нь
+// `огноо|хүн` хэлбэртэй байсан тул counted_by дутвал тэндээс сэргээнэ.
+function countRowPerson(r) {
+  const by = String((r && r.counted_by) || '').trim();
+  if (by) return by;
+  const sid = String((r && r.session_id) || ''), i = sid.indexOf('|');
+  return i < 0 ? '' : sid.slice(i + 1);
+}
 
 // Зөрүү = тоолсон − системд. Эерэг нь илүү гарсан, сөрөг нь дутсан.
 function countDiff(row) { return (Number(row && row.counted_qty) || 0) - (Number(row && row.system_qty) || 0); }
@@ -4342,12 +4375,43 @@ function countStats(rows, totalProducts) {
   return { counted: latest.size, total: Number(totalProducts) || 0, diffs, pending, over, short };
 }
 
+const SC_CFG_KEY = 'stock_count';
+async function loadStockCountCfg() {
+  const cfg = scNormalizeConfig(await loadAppConfig(SC_CFG_KEY));
+  state.scCfg = cfg;
+  return cfg;
+}
+// Тооллого эхлүүлэх — нэг л идэвхтэй сесс байна (хоёр зэрэг явбал тоо хуваагдана).
+async function startStockCount() {
+  const cfg = scNormalizeConfig(state.scCfg);
+  if (cfg.active) throw new Error('Тооллого аль хэдийн эхэлсэн байна');
+  const id = scNewSessionId(todayStr(), scAllSessionIds(cfg));
+  if (!id) throw new Error('Сессийн дугаар үүсгэж чадсангүй');
+  const next = { active: { id, started_at: new Date().toISOString(), started_by: state.me || '' }, history: cfg.history };
+  await saveAppConfig(SC_CFG_KEY, next);
+  state.scCfg = next; state.scSession = id; state.scRows = [];
+  return id;
+}
+// Хаах — зөрүү залруулсан эсэхээс үл хамааран кампанит ажлыг дуусгана.
+// Бичилтүүд `session_id`-аараа хэвээр үлдэж түүх болно (хатуу устгахгүй).
+async function closeStockCount(stats) {
+  const cfg = scNormalizeConfig(state.scCfg);
+  if (!cfg.active) throw new Error('Идэвхтэй тооллого алга');
+  const done = Object.assign({}, cfg.active, {
+    closed_at: new Date().toISOString(), closed_by: state.me || '',
+    counted: Number(stats && stats.counted) || 0, total: Number(stats && stats.total) || 0,
+    diffs: Number(stats && stats.diffs) || 0, pending: Number(stats && stats.pending) || 0,
+  });
+  const next = { active: null, history: [done].concat(cfg.history).slice(0, 20) };
+  await saveAppConfig(SC_CFG_KEY, next);
+  state.scCfg = next; state.scSession = ''; state.scRows = [];
+}
+
 async function loadStockCounts(sessionId) {
+  if (!sessionId) { state.scRows = []; return []; }
   try {
-    // ⚠ `eq.<өдөр|би>` БИШ — тэгвэл хүн бүр зөвхөн ӨӨРИЙНХӨӨ тоолсныг хардаг.
-    // `like.<өдөр>|*` нь тухайн өдрийн бүх хүний бичилтийг татна (session_idx-ээр).
-    const day = countSessionDate(sessionId);
-    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=like.${encodeURIComponent(day + '|*')}&select=*&order=counted_at.asc`,
+    // ⚠ Шүүлтэд ХҮН орж БОЛОХГҮЙ — сесс нь кампанит ажил, бүх хүний бичилт нэг дор.
+    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=eq.${encodeURIComponent(sessionId)}&select=*&order=counted_at.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (r.status === 404 || r.status === 406) { state._countTableMissing = true; state.scRows = []; return []; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -16171,9 +16235,13 @@ async function openCountScanner() {
 // Зөрүүг нөөцөд залруулах нь `products.stock` эрхтэй хүний тусдаа үйлдэл.
 function renderStockCount() {
   const canCount = canCountStock(), canApply = canProductPart('stock');
+  const canManage = canApply;   // тооллого нээх/хаах = нөөц засах эрхтэй хүн
   if (state._countTableMissing) {
     return '<div class="orders-empty"><div class="icon">📋</div>Тооллогын бүртгэл идэвхжээгүй — <b>stock_counts</b> хүснэгт үүсээгүй байна.</div>';
   }
+  if (!state.scCfg) return '<div class="orders-empty"><div class="icon">📋</div>Ачаалж байна…</div>';
+  const cfg = scNormalizeConfig(state.scCfg);
+  if (!cfg.active) return renderStockCountIdle(cfg, canManage);
   const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
   const rows = state.scRows || [];
   const st = countStats(rows, all.length);
@@ -16184,7 +16252,10 @@ function renderStockCount() {
   const merged = countMergeProducts(all, rows);
   const nTodo = merged.filter(x => x.st === 'todo').length;
   const nDone = merged.length - nTodo;
-  state.scFilter = state.scFilter || 'all';
+  // Анхдагчаар ТООЛООГҮЙ — тоолсон бараа ажлын жагсаалтаас гарч, үлдсэн ажил л
+  // харагдана. Дахин тоолох нь «✓ Тоолсон» табаас боломжтой хэвээр (буруу тоолсныг
+  // засах шаардлага үргэлж гардаг тул хатуу хоридоггүй; сүүлчийнх хүчинтэй).
+  state.scFilter = state.scFilter || 'todo';
   const shown = countFilterList(merged, state.scFilter, state.scSearch);
   const act = state.scActive ? productBySku(state.scActive) : null;
   const actSys = act ? (Number(act.stock) || 0) : 0;
@@ -16234,9 +16305,10 @@ function renderStockCount() {
 
   return `
     <div class="stc-head">
-      <div class="stc-head-t">Тооллого <span>${escapeHtml(todayStr())}</span></div>
-      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}</div>
+      <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))}</span></div>
+      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
+      ${canManage ? `<div class="stc-actions"><button class="btn ui-raw" id="stc-close">Тооллого хаах</button></div>` : ''}
     </div>
     ${canCount ? `<div class="stc-tools">
       <button class="btn ui-raw" id="stc-scan">📷 Скан</button>
@@ -16250,10 +16322,46 @@ function renderStockCount() {
   `;
 }
 
+// Идэвхтэй тооллого байхгүй үе — эхлүүлэх товч + өмнөх тооллогуудын түүх.
+// Түүх нь «сүүлд хэзээ тоолсон бэ» гэдгийг хариулна (улирал алгасахаас сэргийлнэ).
+function renderStockCountIdle(cfg, canManage) {
+  const hist = cfg.history.map(h => `<div class="stc-row ok">
+      <span class="stc-row-i">✓</span>
+      <span class="stc-row-n">${escapeHtml(scSessionLabel(h.id))}<span class="stc-row-by">${escapeHtml(String(h.closed_at || '').slice(0, 10))}${h.closed_by ? ' · ' + escapeHtml(memberName(h.closed_by)) : ''}</span></span>
+      <span class="stc-row-q">${Number(h.counted) || 0}/${Number(h.total) || 0}${h.diffs ? ` · ${h.diffs} зөрүү` : ''}</span>
+    </div>`).join('');
+  return `
+    <div class="stc-head">
+      <div class="stc-head-t">Тооллого</div>
+      <div class="stc-head-m">Идэвхтэй тооллого алга. Улиралд нэг удаа бүрэн тооллого хийнэ.</div>
+    </div>
+    ${canManage ? `<div class="stc-actions"><button class="btn btn-primary ui-raw" id="stc-start">Шинэ тооллого эхлүүлэх</button></div>`
+                : '<div class="pm-batch-note">Тооллого эхлээгүй байна. Удирдлага эхлүүлэхийг хүлээнэ үү.</div>'}
+    ${hist ? `<div class="stc-list-t">Өмнөх тооллогууд</div><div class="stc-list">${hist}</div>` : ''}
+  `;
+}
+
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
   const search = $('stc-search');
   if (search) search.oninput = () => { state.scSearch = search.value; render(); setTimeout(() => { const el = $('stc-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); };
+  if ($('stc-start')) $('stc-start').onclick = async (e) => {
+    const btn = e.currentTarget; btn.disabled = true;
+    try { const id = await startStockCount(); render(); showToast(scSessionLabel(id) + ' — тооллого эхэллээ', 'ok', 2500); }
+    catch (err) { showToast('Эхлүүлж чадсангүй: ' + err.message, 'error', 5000); btn.disabled = false; }
+  };
+  if ($('stc-close')) $('stc-close').onclick = async (e) => {
+    const rows = state.scRows || [];
+    const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+    const st = countStats(rows, all.length);
+    const left = st.total - st.counted;
+    // Дуусаагүй / залруулаагүй байхад хаах нь бодит эрсдэл — тоогоор нь сануулна.
+    const warn = [left > 0 ? `${left} бараа тоолоогүй` : '', st.pending ? `${st.pending} зөрүү залруулаагүй` : ''].filter(Boolean).join(', ');
+    if (!confirm(`Тооллого хаах уу?${warn ? '\n\n⚠ ' + warn + '.' : ''}\n\nБичилтүүд түүхэнд үлдэнэ.`)) return;
+    const btn = e.currentTarget; btn.disabled = true;
+    try { await closeStockCount(st); render(); showToast('Тооллого хаагдлаа', 'ok', 2500); }
+    catch (err) { showToast('Хааж чадсангүй: ' + err.message, 'error', 5000); btn.disabled = false; }
+  };
   document.querySelectorAll('[data-scfilter]').forEach(b => b.onclick = () => { state.scFilter = b.dataset.scfilter; render(); });
   document.querySelectorAll('[data-scpick]').forEach(b => {
     // Хайлтыг ЦЭВЭРЛЭХГҮЙ — нярав нэг хайлтаар олон бараа тоолдог (хайлт арилвал дахин бичнэ).
@@ -27693,8 +27801,14 @@ function refreshViewData() {
   if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
   if (v === 'stockcount' && canSeeStockCount()) {
     if (!state.products || !state.products.length) loadProductsCatalog();
-    state.scSession = state.scSession || countSessionId(todayStr(), state.me);
-    if (state.scRows === undefined) { state.scRows = []; setTimeout(() => loadStockCounts(state.scSession).then(() => { if (state.view === 'stockcount') render(); }), 0); }
+    // Идэвхтэй сессийг тохиргооноос авна (өдрөөр биш) — дараа нь бичилтүүдийг.
+    if (state.scCfg === undefined) {
+      state.scCfg = null;
+      setTimeout(() => loadStockCountCfg().then(cfg => {
+        state.scSession = cfg.active ? cfg.active.id : '';
+        return loadStockCounts(state.scSession);
+      }).then(() => { if (state.view === 'stockcount') render(); }), 0);
+    }
   }
   else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadOrdersData(); }
   else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();

@@ -27231,7 +27231,9 @@ async function ensurePushSubscription() {
 // Тухайн харж буй view-ийн датаг шинээр татна (view сэлгэх бүрд). Эрхээр хаалттай view-д no-op.
 function refreshViewData() {
   const v = state.view;
-  if (v === 'products' && canSeeProducts()) loadProductsCatalog();
+  // Захиалгын дата ЗААВАЛ — productUtilization (ROI, «N удаа · орлого») үүнээс уншина.
+  // Ачаалахгүй бол state.appOrders undefined хэвээр үлдэж БҮХ барааны ROI 0% харагдана.
+  if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
   else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadOrdersData(); }
   else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadOrdersData(); loadNomaadOrders(); }

@@ -22088,21 +22088,36 @@ async function loadVatReceipts() {
 // ── Системийн автомат шалгалт (GitHub Actions CI) — sidebar-т 🟢 OK / 🔴 алдаа (зөвхөн CEO) ──
 // Public repo тул auth шаардлагагүй (api.github.com CORS зөвшөөрдөг). Push бүрийн дараах syntax/eslint/тест үр дүн.
 // Апп (chimun-tasks lint+тест) БА mevent.mn сайт (smoke) хоёуланг шалгаж, аль нэг унавал 🔴
-const CI_APP_URL = 'https://api.github.com/repos/Chimunllc/chimun-tasks/actions/runs?branch=main&per_page=1';
+const CI_APP_URL = 'https://api.github.com/repos/Chimunllc/chimun-tasks/actions/runs?branch=main&per_page=20';
 const CI_SITE_URL = 'https://api.github.com/repos/Chimunllc/m-event-website-ready/actions/workflows/smoke.yml/runs?branch=main&per_page=1';
-async function _ciFetchRun(url) {
+// Аппын эрүүл мэндийг илэрхийлдэг workflow-ууд. Бусад (дата унших, алдааны шүүлт)
+// нь гараар/цагаар ажилладаг тусдаа хэрэгсэл — тэдгээр унасан нь «апп эвдэрсэн»
+// гэсэн үг БИШ. Шүүхгүй бол сүүлийн ямар ч ажиллагаа CEO-гийн үзүүлэлтийг улаан
+// болгож, алдааны цонхонд харуулах юм олдохгүй («Алдаа алга» атлаа 🔴).
+const CI_APP_PATHS = ['lint.yml', 'cache-version.yml'];
+// Жагсаалтаас хамаарах ажиллагааг сонгоно (цэвэр функц — тестлэгддэг).
+// paths хоосон бол шүүхгүй (сайтын smoke гэх мэт нэг workflow-ийн жагсаалтад).
+function _ciPickRun(runs, paths) {
+  const list = Array.isArray(runs) ? runs : [];
+  const rel = paths && paths.length
+    ? list.filter(r => paths.some(p => String((r && r.path) || '').endsWith(p)))
+    : list;
+  return rel[0] || null;
+}
+async function _ciFetchRun(url, paths) {
   try {
     const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
     if (!r.ok) return null;
     const d = await r.json();
-    const run = d.workflow_runs && d.workflow_runs[0];
+    const run = _ciPickRun(d.workflow_runs, paths);
     if (!run) return null;
-    return { conclusion: run.conclusion, status: run.status, url: run.html_url, msg: String((run.head_commit && run.head_commit.message) || '').split('\n')[0], at: run.created_at };
+    return { conclusion: run.conclusion, status: run.status, url: run.html_url, name: run.name,
+      msg: String((run.head_commit && run.head_commit.message) || '').split('\n')[0], at: run.created_at };
   } catch (e) { return null; }
 }
 async function loadCiStatus() {
   if (!state.isCEO) return;
-  const [app, site] = await Promise.all([_ciFetchRun(CI_APP_URL), _ciFetchRun(CI_SITE_URL)]);
+  const [app, site] = await Promise.all([_ciFetchRun(CI_APP_URL, CI_APP_PATHS), _ciFetchRun(CI_SITE_URL)]);
   if (app || site) { state.ciStatus = { app, site }; renderCiStatus(); }
   if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) { loadCiStatus(); loadServerErrors(); } }, 300000);   // 5 мин тутам сэргээнэ
 }
@@ -22135,6 +22150,10 @@ function openAppErrorsModal() {
     ${(state.isCEO && state.ciInfo) ? `<div style="font-size:12px;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span>Систем шалгалт: Апп ${state.ciInfo.app === 'ok' ? '🟢' : state.ciInfo.app === 'run' ? '🟡' : '🔴'} · Сайт ${state.ciInfo.site === 'ok' ? '🟢' : state.ciInfo.site === 'run' ? '🟡' : '🔴'}</span>
       ${state.ciInfo.url ? `<button class="btn ui-raw" data-err-gh style="font-size:11px;padding:3px 9px;">🔗 GitHub Actions</button>` : ''}</div>` : ''}
+    ${(state.isCEO && state.ciInfo && state.ciInfo.fail) ? `<div class="ci-fail-detail">
+      <b>🔴 ${escapeHtml(state.ciInfo.fail.name)}</b> унасан${state.ciInfo.at ? ' · ' + escapeHtml(String(state.ciInfo.at).slice(0, 16).replace('T', ' ')) : ''}
+      ${state.ciInfo.fail.msg ? `<br>${escapeHtml(state.ciInfo.fail.msg)}` : ''}
+      <br>Шалтгааныг «🔗 GitHub Actions» дотроос уншина.</div>` : ''}
     <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
       🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
       «Зассан»/«Үл хамаарах» тэмдэглэсэн нь идэвхтэйгээс гарч <b>«Зассан»/«Бүгд»</b> табд түүх болж үлдэнэ.</div>
@@ -22250,7 +22269,10 @@ function renderCiStatus() {
   if (fails.length) { cls = 'ci-fail'; dot = '🔴'; label = fails.join('+') + ': алдаа гарлаа'; target = a === 'fail' ? s.app : s.site; }
   else if (a === 'run' || b === 'run') { cls = 'ci-run'; dot = '🟡'; label = 'Шалгаж байна…'; target = s.app || s.site; }
   else { cls = 'ci-ok'; dot = '🟢'; label = 'Систем шалгалт: OK'; target = s.app || s.site; }
-  state.ciInfo = { app: a, site: b, url: target && target.url, at: target && target.at };
+  // fail — унасан ажиллагааны нэр/коммит. Эс бөгөөс цонхонд 🔴 гарч атлаа «юу унасан»
+  // нь хаана ч бичигдэхгүй (лог сервер талд, аппын алдааны жагсаалтад ОРДОГГҮЙ).
+  state.ciInfo = { app: a, site: b, url: target && target.url, at: target && target.at,
+    fail: fails.length && target ? { name: target.name || fails.join('+'), msg: target.msg || '' } : null };
   el.hidden = false;
   el.className = 'ci-status ' + cls;
   el.innerHTML = `<span class="ci-dot">${dot}</span><span class="ci-label">${escapeHtml(label)}</span>`;

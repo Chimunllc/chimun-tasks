@@ -3242,5 +3242,24 @@ function finish() {
   eq(F.vatReceiptsFor('buyer:0', dup, [{ name: 'Toki', reg: '222' }]).map(x => x.id), ['y'], 'НӨАТ: нэр ижил ч РД өөр бол ялгана');
 }
 
+// ── СИСТЕМ ШАЛГАЛТ — аль workflow «апп эвдэрсэн» гэсэн үг вэ (2026-09-04) ────
+// Бодит алдаа: CEO-д «Апп 🔴» гарч атлаа алдааны жагсаалт хоосон байв. Шалтгаан нь
+// үзүүлэлт main дээрх СҮҮЛИЙН ямар ч ажиллагааг уншдаг байсан — дата унших (гараар),
+// алдааны шүүлт (цагаар) унасан ч апп улаан болно. Тэдгээр аппын эрүүл мэнд БИШ.
+{
+  const run = (p, c) => ({ path: '.github/workflows/' + p, conclusion: c, name: p });
+  const runs = [run('data-query.yml', 'failure'), run('lint.yml', 'success'), run('cache-version.yml', 'failure')];
+
+  eq(F._ciPickRun(runs, ['lint.yml', 'cache-version.yml']).path, '.github/workflows/lint.yml',
+    'CI: дата унших унасан ч апп улаан болохгүй (хамаарахгүй workflow алгасна)');
+  eq(F._ciPickRun([run('error-triage.yml', 'failure')], ['lint.yml', 'cache-version.yml']), null,
+    'CI: зөвхөн хамаарахгүй ажиллагаа байвал «мэдээлэлгүй» (null) — худал улаан гаргахгүй');
+  eq(F._ciPickRun([run('cache-version.yml', 'failure'), run('lint.yml', 'success')], ['lint.yml', 'cache-version.yml']).conclusion,
+    'failure', 'CI: кэшийн хувилбар унавал апп улаан (шинэ код утсанд хүрэхгүй)');
+  eq(F._ciPickRun(runs, null).path, '.github/workflows/data-query.yml', 'CI: шүүлтгүй бол эхнийхийг авна (сайтын smoke)');
+  eq(F._ciPickRun([], ['lint.yml']), null, 'CI: ажиллагаа алга → null');
+  eq(F._ciPickRun(null, ['lint.yml']), null, 'CI: буруу оролт → null (унахгүй)');
+}
+
   finish();
 })();

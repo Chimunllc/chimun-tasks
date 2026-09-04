@@ -753,6 +753,8 @@
   .ci-status.ci-ok { color: var(--muted); }
   .ci-status.ci-run { color: var(--warn); }
   .ci-status.ci-fail { color: var(--danger); font-weight: 700; border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--panel)); }
+  /* Алдааны цонх дахь «юу унасан» мөр — 🔴 гарч атлаа тайлбаргүй үлдэхээс сэргийлнэ */
+  .ci-fail-detail { margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 8px; background: color-mix(in srgb, var(--danger) 8%, var(--panel)); color: var(--text); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
   /* User chip in sidebar (replaces "Би хэн бэ?" dropdown) */
   .user-chip {
     margin-top: 12px; padding: 10px; background: var(--panel-hover); border: 1px solid var(--border);

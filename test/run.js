@@ -213,7 +213,12 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 // (member_perms дээрх DELETE нь БИЧИЛТ тул хамаарахгүй — үргэлж одоогийн түлхүүрээр.)
 {
   const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-  const bad = (codeLines.match(/rest\/v1\/attendance\?[^`'"]*member_key=eq\./g) || []).length
+  // Сервер талын RPC хайлт ч мөн адил — `get_employee_doc` нь p_phone-оор хайдаг тул
+  // хуучин түлхүүр дор хадгалагдсан баримт олдохгүй. keyVariants-аар дараалан оролдоно.
+  const rpcBad = (codeLines.match(/rpc\/get_employee_doc/g) || []).length > 0
+              && !/keyVariants\(phone\)/.test(codeLines) ? 1 : 0;
+  const bad = rpcBad
+            + (codeLines.match(/rest\/v1\/attendance\?[^`'"]*member_key=eq\./g) || []).length
             + (codeLines.match(/rest\/v1\/(evaluations|staff_salary|hourly_ratings)\?[^`'"]*=eq\.\$\{encodeURIComponent\((state\.me|personKey)/g) || []).length;
   eq(bad, 0, 'scan: ажилтны түлхүүрээр сервер талд шүүхгүй (pgrstInList(keyVariants(...)) ашигла)');
 }
@@ -1735,13 +1740,14 @@ function finish() {
   // НӨАТ БАГТСАН захиалга
   ok(withVat.indexOf('НӨАТ багтсан болно') > -1,   'гэрээ/НӨАТ: багтсан үед «багтсан» гэж мэдэгдэнэ');
   ok(withVat.indexOf('НӨАТ багтаагүй') === -1,     'гэрээ/НӨАТ: багтсан үед «багтаагүй» гарахгүй');
-  ok(withVat.indexOf('Үүнээс НӨАТ (10%)') > -1,    'гэрээ/НӨАТ: багтсан үед задаргаа гарна');
+  ok(/үүнээс НӨАТ [\d,]+₮/.test(withVat),          'гэрээ/НӨАТ: багтсан үед дүн тайлбарт гарна');
+  ok(withVat.indexOf('<td>Үүнээс НӨАТ') === -1,     'гэрээ/НӨАТ: нийлбэрийн баганад мөр болж ОРОХГҮЙ (нэмэгдэх мэт харагдана)');
   ok(withVat.indexOf('НӨАТ хасалт') === -1,        'гэрээ/НӨАТ: багтсан үед хасалтын мөр гарахгүй');
 
   // НӨАТ ХАСАГДСАН захиалга — гурван зөрчил давтагдахгүй
   ok(noVat.indexOf('НӨАТ багтаагүй болно') > -1,   'гэрээ/НӨАТ: хасалттай үед «багтаагүй» гэж мэдэгдэнэ');
   ok(noVat.indexOf('НӨАТ багтсан болно') === -1,   'гэрээ/НӨАТ: хасалттай үед «багтсан» ЗЭРЭГ гарахгүй');
-  ok(noVat.indexOf('Үүнээс НӨАТ (10%)') === -1,    'гэрээ/НӨАТ: хасалттай үед «үүнээс НӨАТ» гарахгүй');
+  ok(!/үүнээс НӨАТ/i.test(noVat),                  'гэрээ/НӨАТ: хасалттай үед «үүнээс НӨАТ» гарахгүй');
   ok(noVat.indexOf('НӨАТ хасалт') > -1,            'гэрээ/НӨАТ: хасалттай үед хасалтын мөр гарна');
 
   // Барааны мөрийн НӨАТ багана хоёр горимд ЭСРЭГ утгатай
@@ -1837,6 +1843,40 @@ function finish() {
   const mx = F.meventContractHtml(mixed);
   ok(mx.indexOf('Нөхөн төлбөрийн үнэлгээ') > -1, 'үнэлгээ: хэсэгчилсэн ч хүснэгт гарна');
   ok(mx.indexOf('>—<') > -1,                     'үнэлгээ: үнэлгээгүй мөр «—» гэж ялгарна');
+
+  runIn('state.products = ' + JSON.stringify(save || []) + ';');
+}
+
+// 26) Гэрээний БАЙРШИЛ — хаана юу байх ёстой вэ
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('state.products');
+  runIn("state.products = [{ sku:'M-001', id:'M-001', name:'Майхан', market_value: 1980000 }];");
+  const o = {
+    number: 1480, customer: 'Соёл-Эрдэнэ', order_no: 'ME-1480',
+    starts_at: '2026-09-05', stops_at: '2026-09-07',
+    total_mnt: 184800, deposit_mnt: 0,
+    items: [{ name: 'Өвлийн майхан 6-8 хүний', sku: 'M-001', qty: 1, price: 132000, total: 264000 }],
+    note: F.encodeOrderTimes(9, 18),
+  };
+  const ct = F.meventContractHtml(o);
+
+  // ЦАГ — ⟦RT⟧ token-оос уншина; «……» гарах ёсгүй
+  ok(ct.indexOf('09:00') > -1 && ct.indexOf('18:00') > -1, 'байршил: эхлэх/дуусах цаг note token-оос бөглөгдөнө');
+  ok(ct.indexOf('2026-09-05 ……') === -1,                   'байршил: огнооны хажууд «……» үлдэхгүй');
+
+  // ҮНЭЛГЭЭНИЙ ХҮСНЭГТ нь заалт 7.3-ийн ДАРАА, гэрээний эхэнд БИШ
+  const iMv = ct.indexOf('Нөхөн төлбөрийн үнэлгээ (заалт 7.3)');
+  const i73 = ct.indexOf('<b>7.3.</b>');
+  const i11 = ct.indexOf('<b>1.1.</b>');
+  ok(iMv > -1 && i73 > -1, 'байршил: үнэлгээний хүснэгт ба 7.3 хоёул бий');
+  ok(iMv > i73,            'байршил: үнэлгээний хүснэгт заалт 7.3-ийн ДАРАА');
+  ok(iMv > i11,            'байршил: үнэлгээний хүснэгт гэрээний эхэнд ОРОХГҮЙ');
+  ok(ct.indexOf('доорх «Нөхөн төлбөрийн үнэлгээ»') > -1, 'байршил: 7.3 «доорх» гэж зөв заана');
+
+  // ТҮРЭЭСЛҮҮЛЭГЧИЙН РД толгойд байна (Хэрэглэгчийнхтэй тэнцвэртэй)
+  const head = ct.slice(0, ct.indexOf('НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ'));
+  ok((head.match(/Байгууллагын РД/g) || []).length >= 2, 'байршил: хоёр талын РД толгойд бий');
 
   runIn('state.products = ' + JSON.stringify(save || []) + ';');
 }
@@ -3098,6 +3138,37 @@ function finish() {
 
   TEAM.length = 0; sv.team.forEach(x => TEAM.push(x));
   st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.rolePerms = sv.rp;
+}
+
+// ── НӨАТ ЗАДАРГАА (2026-09-04) ──────────────────────────────────────────────
+// Тайлангийн мөр дарахад ТУХАЙН мөрийг бүрдүүлж буй баримтууд гарна. Шүүлт
+// буруу бол CEO өөр захиалгын баримтыг хараад буруу шийдвэр гаргана.
+{
+  const r = (id, ord, dt, total, vat, name, reg) =>
+    ({ id, matched_id: ord, dt, total, vat, buyer_name: name, buyer_reg: reg, matched_label: ord ? 'Захиалга ' + ord : '' });
+  const R = [
+    r('a', '1486', '2026-06-03', 45690000, 4569000, 'Netcapital', '2090007'),
+    r('b', '1486', '2026-06-05', 13200000, 1320000, 'Netcapital', '2090007'),
+    r('c', '1309', '2026-07-11', 337000, 33700, 'Б.Пүрэвдулам', ''),
+    r('d', null,   '2026-06-03', 49500, 4500, 'Энэрэл-Эрдэм', '5011922'),
+  ];
+  const buyers = [{ name: 'Netcapital', reg: '2090007' }, { name: 'Энэрэл-Эрдэм', reg: '5011922' }];
+
+  eq(F.vatReceiptsFor('ord:1486', R, buyers).map(x => x.id), ['a', 'b'], 'НӨАТ: захиалгын баримтууд');
+  eq(F.vatReceiptsFor('ord:1309', R, buyers).map(x => x.id), ['c'], 'НӨАТ: өөр захиалгынх холилдохгүй');
+  eq(F.vatReceiptsFor('ord:9999', R, buyers), [], 'НӨАТ: байхгүй захиалга → хоосон');
+  eq(F.vatReceiptsFor('unmatched', R, buyers).map(x => x.id), ['d'], 'НӨАТ: тулгаагүй баримт');
+  eq(F.vatReceiptsFor('matched', R, buyers).map(x => x.id), ['a', 'b', 'c'], 'НӨАТ: тулгасан баримт');
+  eq(F.vatReceiptsFor('all', R, buyers).length, 4, 'НӨАТ: бүх баримт');
+  eq(F.vatReceiptsFor('month:2026-06', R, buyers).map(x => x.id), ['a', 'b', 'd'], 'НӨАТ: сараар шүүнэ');
+  eq(F.vatReceiptsFor('buyer:0', R, buyers).map(x => x.id), ['a', 'b'], 'НӨАТ: худалдан авагчаар');
+  eq(F.vatReceiptsFor('buyer:1', R, buyers).map(x => x.id), ['d'], 'НӨАТ: өөр худалдан авагч');
+  eq(F.vatReceiptsFor('buyer:9', R, buyers), [], 'НӨАТ: байхгүй худалдан авагч → хоосон');
+  eq(F.vatReceiptsFor('', R, buyers), [], 'НӨАТ: танихгүй түлхүүр → хоосон (санамсаргүй бүгдийг харуулахгүй)');
+
+  // Нэр ижил ч РД өөр байгууллага ХОЛИЛДОХГҮЙ
+  const dup = [r('x', null, '2026-06-01', 100, 10, 'Toki', '111'), r('y', null, '2026-06-02', 200, 20, 'Toki', '222')];
+  eq(F.vatReceiptsFor('buyer:0', dup, [{ name: 'Toki', reg: '222' }]).map(x => x.id), ['y'], 'НӨАТ: нэр ижил ч РД өөр бол ялгана');
 }
 
   finish();

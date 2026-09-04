@@ -5425,29 +5425,40 @@ body.role-daily #add-project { display: none !important; }
 .prod-type-b.rt { background: var(--ok-soft); color: var(--ok); }
 .prod-type-b.as { background: var(--warn-soft); color: var(--warn); }
 .prod-chev { font-size: 22px; color: var(--muted-soft); flex-shrink: 0; }
-/* ── Барааны модалын таб — Каталог / Үнэ / Нөөц ──
-   25 талбар нэг цонхонд байсныг гурав хуваав. `ui-raw` нь мобайлын
-   `.modal button:not(.ui-raw)` flatten дүрмээс чөлөөлнө (шинэ !important бичихгүй). */
-.pm-tabs {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 0 0 var(--space-4);
-  border-bottom: 1px solid var(--border);
+/* ── Барааны модалын МЕНЮ — Каталог / Түрээсийн үнэ / Өртөг / Нөөц ──
+   25 талбартай нэг цонхыг 4 хэсэг болгов. Хэсэг бүр ӨӨРИЙН эрхтэй тул таб биш
+   МЕНЮ: мөр бүр дээр нэр, товч утга, түгжээ (🔒) шууд харагдана.
+   `ui-raw` нь мобайлын `.modal button:not(.ui-raw)` flatten дүрмээс чөлөөлнө
+   (шинэ !important бичихгүй). */
+.pm-menu { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-2); }
+.pm-menu-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; min-height: 60px; padding: var(--space-3);
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg);
+  font-family: inherit; text-align: left; color: var(--text); cursor: pointer;
 }
-.pm-tab {
-  min-height: 44px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; border: none; border-bottom: 2px solid transparent;
-  font-family: inherit; font-size: var(--fs-md); font-weight: 500; color: var(--muted);
-  cursor: pointer;
+.pm-menu-row:hover { border-color: var(--primary); background: var(--panel-hover); }
+.pm-menu-i { font-size: var(--fs-lg); flex-shrink: 0; }
+.pm-menu-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-base); font-weight: 600; }
+.pm-menu-t em { font-style: normal; font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
+.pm-menu-c { font-size: var(--fs-lg); color: var(--muted-soft); flex-shrink: 0; }
+.pm-menu-lock { font-size: var(--fs-md); flex-shrink: 0; }
+.pm-back {
+  display: inline-flex; align-items: center; min-height: 34px; padding: 0;
+  background: transparent; border: none; font-family: inherit;
+  font-size: var(--fs-md); font-weight: 600; color: var(--primary); cursor: pointer;
 }
-.pm-tab:hover { color: var(--text); }
-.pm-tab.on { color: var(--primary); font-weight: 600; border-bottom-color: var(--primary); }
-.pm-pane[hidden] { display: none; }
-.pm-sub {
-  margin: var(--space-4) 0 var(--space-2);
-  font-size: var(--fs-xs); font-weight: 600; color: var(--muted);
-  letter-spacing: .04em; text-transform: uppercase;
+.pm-pane-t { margin: var(--space-2) 0 var(--space-4); font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.pm-pane[hidden], .pm-menu[hidden], .pm-lock[hidden] { display: none; }
+/* Эрхгүй хэсэг — утга харагдана, засагдахгүй */
+.pm-lock {
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--r-md);
+  font-size: var(--fs-sm); color: var(--text);
 }
+.pm-locked .pm-grid, .pm-locked .pm-block, .pm-locked .pm-branch,
+.pm-locked .pm-rentable, .pm-locked .pm-bundle { opacity: .62; }
+.pm-locked .btn, .pm-locked label.pnf-upbtn { pointer-events: none; }
 
 /* Барааны засах модал */
 .pm-stats { font-size: 12.5px; color: var(--text-soft); background: var(--panel-hover); border-radius: 8px; padding: 9px 12px; margin-bottom: 14px; line-height: 1.5; }

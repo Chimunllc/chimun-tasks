@@ -4308,7 +4308,7 @@ function openRepairFinishModal(id, to) {
 
 async function advanceRepair(id, to, extra) {
   const r = (state.repairs || []).find(x => String(x.id) === String(id)); if (!r) return;
-  if (!can('products.edit')) { showToast('Танд засварын эрх алга', 'warn', 3000); return; }
+  if (!canProductPart('stock')) { showToast('Танд засварын эрх алга', 'warn', 3000); return; }
   // Зассан / актлав — БАРИМТЫН зураг заавал (дамжлагын бусад шаттай нэгэн адил).
   // Зураггүй бол «зассан» гэж бичих нь баталгаагүй, KPI-д ч утгагүй.
   if ((to === 'fixed' || to === 'written_off') && !(extra && extra.photos && extra.photos.length)) {
@@ -8110,7 +8110,7 @@ function branchStockHtml(p) {
 
 // Салбар хооронд нөөц шилжүүлэх модал — тоогоор, лог-той (маргаан таслах түүх)
 function openTransferModal(pid) {
-  if (!can('products.edit')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
+  if (!canProductPart('stock')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
   const p = (state.products || []).find(x => String(x.id) === String(pid) || String(x.sku) === String(pid));
   if (!p) return;
   document.getElementById('trans-modal')?.remove();
@@ -8173,7 +8173,7 @@ async function saveBranchTransfer(p, modal) {
 // Улирал хаалт — салбарын БҮХ нөөцийг өөр салбар руу НЭГ товчоор буцаана (бүх барааг лог-той).
 // Жишээ: NOMAAD кемпийн улирал дуусахад бүх qty_nomaad → qty_mevent (эвент түрээсийн улирал).
 async function bulkReturnBranch(from, to) {
-  if (!can('products.edit')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
+  if (!canProductPart('stock')) { showToast('Танд бараа шилжүүлэх эрх алга', 'warn', 3000); return; }
   const fI = branchInfo(from), tI = branchInfo(to);
   const movers = (state.products || []).filter(p => branchQty(p, from) > 0);
   if (!movers.length) { showToast(`${fI.label}-д нөөцтэй бараа алга`, 'info', 2600); return; }
@@ -8297,7 +8297,7 @@ function productRowHtml(p) {
       <span class="prod-stock-b${partial ? ' part' : ''}">${_actBranch ? branchInfo(_actBranch).icon + ' ' : ''}${stock}${partial ? `/${totalStock}` : ''} ширхэг</span>
       <div class="prod-price"><b>${fmtMoneyShort(Number(p.price) || 0)}</b><span>түрээс/өдөр</span></div>
       ${typeBadge}
-      ${(!pkg && can('products.edit')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id || p.sku)}" title="Салбар хооронд шилжүүлэх" aria-label="Салбар хооронд шилжүүлэх">⇄</button>` : ''}
+      ${(!pkg && canProductPart('stock')) ? `<button class="btn prod-transfer" data-transfer="${escapeHtml(p.id || p.sku)}" title="Салбар хооронд шилжүүлэх" aria-label="Салбар хооронд шилжүүлэх">⇄</button>` : ''}
     </div>
   </div>`;
 }
@@ -8311,7 +8311,7 @@ function productListHtml(list) {
 // Хувилбар бүлгийг бөөнөөр цуцлах — variant_group/variant_label-ийг null болгож,
 // сайт болон аппад бараа бүрийг тусдаа карт болгоно. Дата цэвэрлэгдмэгц тууз алга болно.
 async function bulkClearVariants() {
-  if (!can('products.edit')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
+  if (!canProductPart('catalog')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
   const grouped = (state.products || []).filter(p => String(p.variant_group || '').trim() || String(p.variant_label || '').trim());
   if (!grouped.length) { showToast('Хувилбар бүлэгт бараа алга', 'info', 2600); return; }
   const ok = await showConfirm(
@@ -8343,7 +8343,7 @@ async function bulkClearVariants() {
 // модалаас гараар засаж болно. products-д `name_en` багана байхыг шаардана
 // (postgres-migration/products_name_en.sql).
 async function bulkFillNameEn() {
-  if (!can('products.edit')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
+  if (!canProductPart('catalog')) { showToast('Танд бараа засах эрх алга', 'warn', 3000); return; }
   if (state._prodHasNameEn === false) { showToast('products хүснэгтэд name_en багана алга — эхлээд SQL-ээ ажиллуулна уу', 'error', 6000); return; }
   const empty = (state.products || []).filter(p => p.sku && String(p.name || '').trim() && !String(p.name_en || '').trim());
   if (!empty.length) { showToast('Бүх барааны англи нэр бөглөгдсөн', 'info', 2600); return; }
@@ -9556,7 +9556,13 @@ const PERM_MENUS = [
       { key: 'orders.revert',   label: '↩ Шат буцаах' },
       { key: 'orders.cancel',   label: '✕ Цуцлах / устгах' } ] },
   { key: 'products',    label: 'Бараа & хөрөнгө', actions: [
-      { key: 'products.edit', label: 'Засах / нэмэх' } ] },
+      // Барааны карт = 4 тусдаа хэсэг, тус бүр өөрийн эрхтэй. `products.edit` нь ХУУЧИН
+      // шүхэр — байвал дөрвүүлээ нээгдэнэ (өнөөдөр эрхтэй хүмүүсийн хандалт хэвээр).
+      { key: 'products.edit',    label: 'Бүгдийг засах / шинэ бараа нэмэх' },
+      { key: 'products.catalog', label: '📷 Каталог (нэр, ангилал, зураг, тайлбар)' },
+      { key: 'products.price',   label: '🏷 Түрээсийн үнэ, барьцаа, суурилуулалт' },
+      { key: 'products.cost',    label: '💰 Өртөг ба хөрөнгө (нэгж өртөг, огноо)' },
+      { key: 'products.stock',   label: '📦 Нөөц, эвдрэл, салбарын хуваарилалт' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
@@ -9576,12 +9582,14 @@ const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // ро
 // Эмзэг үйлдлүүд — бусад үйлдлээс ялгаатай нь DEFAULT=ХОРИГЛОНО (тусгайлан олгох ёстой).
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
 // эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
-const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert']);
+const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert',
+  'products.catalog', 'products.price', 'products.cost', 'products.stock']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
-const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate']);
+const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
+  'products.catalog', 'products.price', 'products.cost', 'products.stock']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
   [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
@@ -9652,6 +9660,41 @@ function can(key) {
 // Дамжлагын шат гүйцэтгэх эрх — эрхээр л удирдана (Эрх удирдах). Нярав байхгүй үед өөр ажилтан
 // орлуулах шаардлага гардаг тул хатуу хязгаарлахгүй, тохируулаагүй бол зөвшөөрнө (can-ийн адил).
 function canStage(cap) { return can(cap); }
+// ── БАРААНЫ ХЭСГИЙН ЭРХ (2026-09-04) ──────────────────────────────────────────
+// Барааны карт 4 тусдаа ажил агуулна: сайтын каталог · түрээсийн үнэ · санхүүгийн
+// өртөг · агуулахын нөөц. Тус бүр өөр хүн эзэмшдэг тул эрх нь ч тусдаа.
+//
+// ⚠ can()-д БҮҮ найд: тэр нь «тохируулаагүй бол ЗӨВШӨӨРНӨ» гэж ажилладаг тул
+// албан тушаалын загварт таарахгүй хүнд (ж: «зөөгч») шинэ түлхүүр чимээгүй
+// нээгдэнэ. Тиймээс ЗӨВХӨН ил олгосон (=== true) эрхийг хүлээн авна.
+const PRODUCT_PARTS = ['catalog', 'price', 'cost', 'stock'];
+function canProductPart(part) {
+  if (can('products.edit')) return true;             // хуучин шүхэр — бүгдийг нээнэ
+  return capValue('products.' + part) === true;      // нарийн эрх — зөвхөн ил олгосон
+}
+function canEditAnyProductPart() { return PRODUCT_PARTS.some(canProductPart); }
+// Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
+// Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
+function productPartFields() {
+  return {
+    catalog: ['name', 'name_en', 'category', 'all_categories', 'description', 'photos', 'photo', 'source_url', 'supplier', 'media_url'],
+    price:   ['price', 'deposit', 'setup_fee', 'type', 'bundle_items'],
+    cost:    ['cost', 'purchase_date'],
+    stock:   ['stock', 'broken', 'maintenance', 'qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'],
+  };
+}
+// Эрхгүй хэсгийн талбарыг ЭХ бичлэгээс хэвээр үлдээнэ. Түгжсэн input утгаа хадгалдаг
+// ч энэ нь СҮҮЛИЙН хамгаалалт: pane нуугдвал/талбар алга болвол 0 болж чимээгүй
+// дарж бичихээс сэргийлнэ (үнэ 0, нөөц 0 болох нь мөнгөний алдаа).
+function restrictProductEdit(next, orig, allowedParts) {
+  if (!orig) return next;                            // шинэ бараа — бүрэн эрх шаардсан
+  const out = { ...next }, fields = productPartFields();
+  PRODUCT_PARTS.forEach(part => {
+    if (allowedParts.includes(part)) return;
+    (fields[part] || []).forEach(f => { out[f] = orig[f]; });
+  });
+  return out;
+}
 // ── Доорхийн эрх удирдах делегаци (org tree доорхи хүмүүсийн эрхийг удирдах) ──
 // CEO бүгдийг; 'access.delegate' эрхтэй захирал (COO г.м.) ЗӨВХӨН өөрийн org-tree доорхыг.
 function canDelegatePerms() { return state.isCEO || capValue('access.delegate') === true; }
@@ -12247,6 +12290,12 @@ function capSummary(m) {
   if (A('orders.setup')) out.actions.push('Суурилуулах/буулгах');
   if (A('tasks.create')) out.actions.push('Ажил үүсгэх/хуваарилах');
   if (A('products.edit')) out.actions.push('Бараа засах');
+  else {
+    if (A('products.catalog')) out.actions.push('Барааны каталог');
+    if (A('products.price')) out.actions.push('Түрээсийн үнэ');
+    if (A('products.cost')) out.actions.push('Барааны өртөг');
+    if (A('products.stock')) out.actions.push('Барааны нөөц');
+  }
   if (A('salary.pay')) out.actions.push('Цалин олгох');
   return out;
 }
@@ -16138,8 +16187,8 @@ function renderProducts() {
             <span class="repair-name">${escapeHtml(r.product_name || r.sku)} <b>×${Number(r.qty) || 0}</b></span>
             <span class="repair-meta">${escapeHtml(stg.label)}${r.order_number ? ` · #${r.order_number}` : ''}${r.note ? ` · ${escapeHtml(String(r.note).slice(0, 40))}` : ''}</span>
             ${who}
-            ${stg.next && can('products.edit') ? `<button class="btn btn-primary repair-adv" data-rep="${escapeHtml(r.id)}" data-to="${stg.next}">${escapeHtml(stg.nextLabel)}</button>` : ''}
-            ${can('products.edit') ? `<button class="btn repair-off" data-repoff="${escapeHtml(r.id)}" title="Засах боломжгүй — данснаас хасах">🗑 Актлах</button>` : ''}
+            ${stg.next && canProductPart('stock') ? `<button class="btn btn-primary repair-adv" data-rep="${escapeHtml(r.id)}" data-to="${stg.next}">${escapeHtml(stg.nextLabel)}</button>` : ''}
+            ${canProductPart('stock') ? `<button class="btn repair-off" data-repoff="${escapeHtml(r.id)}" title="Засах боломжгүй — данснаас хасах">🗑 Актлах</button>` : ''}
           </div>`;
         }).join('')}</div>` : ''}
       </div>`
@@ -16218,7 +16267,12 @@ function renderProducts() {
 
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
 function openProductModal(p) {
-  if (!can('products.edit')) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
+  // Хэсэг бүр өөрийн эрхтэй. Шинэ бараа нэмэх нь БҮХ хэсгийг бөглөнө → бүрэн эрх шаардана.
+  if (!p && !can('products.edit')) { showToast('Шинэ бараа нэмэхэд бүрэн эрх шаардана', 'warn', 3500); return; }
+  if (!canEditAnyProductPart()) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
+  const _pcan = {}; PRODUCT_PARTS.forEach(k => { _pcan[k] = canProductPart(k); });
+  const _pcanHtml = (k) => _pcan[k] ? '<span class="pm-menu-c">›</span>' : '<span class="pm-menu-lock" title="Засах эрх алга">🔒</span>';
+  const _nImg = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.length : (p && p.photo ? 1 : 0);
   const isEdit = !!p;
   const cost = isEdit ? ((state.productCosts || {})[p.sku] || 0) : 0;
   const u = isEdit ? productUtilization(p.name) : { orders: 0, revenue: 0 };
@@ -16247,13 +16301,17 @@ function openProductModal(p) {
     <div class="modal" style="max-width:540px;">
       <h2>${isEdit ? 'Бараа засах' : 'Шинэ бараа'}</h2>
       ${isEdit && (u.orders || cost) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
-      <div class="pm-tabs" role="tablist">
-        <button type="button" class="pm-tab ui-raw on" data-pmtab="cat" role="tab">Каталог</button>
-        <button type="button" class="pm-tab ui-raw" data-pmtab="price" role="tab">Үнэ</button>
-        <button type="button" class="pm-tab ui-raw" data-pmtab="stock" role="tab">Нөөц</button>
+      <div class="pm-menu" data-pmpane="menu">
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">🏷</span><span class="pm-menu-t">Түрээсийн үнэ<em>${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${(Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>
       </div>
-      <div class="pm-pane" data-pmpane="cat">
-      <div class="pm-grid">
+      <div class="pm-pane" data-pmpane="cat" data-pmlock="cat" hidden>
+        <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
+        <div class="pm-pane-t">📷 Каталог</div>
+        <div class="pm-lock" data-lockhint="cat" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
+        <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label class="pm-wide">Англи нэр <span style="color:var(--muted);font-weight:400;">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
         <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
@@ -16268,7 +16326,7 @@ function openProductModal(p) {
           </div>
           <div style="font-size:11px;color:var(--muted,#888);margin-top:3px;">Өөрсдийн бичлэг оруулбал сайтад цэвэрхэн (YouTube-гүй) тоглоно. Богино клип (15-30 сек), 80MB-аас бага.</div>
         </label>
-      </div>
+        </div>
       <div class="pm-block">Зураг <span style="color:var(--muted);font-weight:400;">(эхнийх = нүүр зураг, сайтад gallery)</span>
         <div id="pm-gallery" class="pm-gallery"></div>
         <div class="pm-gallery-actions">
@@ -16281,17 +16339,15 @@ function openProductModal(p) {
       </label>
       ${isEdit && p.sku ? `<div class="pm-block">QR шошго <span style="color:var(--muted);font-weight:400;">(хэвлэж бараандаа наа → камераар сканнердана)</span><div id="pm-qr" class="pm-qr">QR…</div></div>` : ''}
       </div>
-      <div class="pm-pane" data-pmpane="price" hidden>
-      <div class="pm-grid">
+      <div class="pm-pane" data-pmpane="price" data-pmlock="price" hidden>
+        <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
+        <div class="pm-pane-t">🏷 Түрээсийн үнэ</div>
+        <div class="pm-lock" data-lockhint="price" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
+        <div class="pm-grid">
         <label>Түрээсийн үнэ (₮)<input id="pm-price" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.price) || 0)}"></label>
         <label>Барьцаа (₮)<input id="pm-deposit" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(Number(p && p.deposit) || 0)}"></label>
         <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span style="color:var(--muted);font-weight:400;">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
-      </div>
-        <div class="pm-sub">Өртөг ба хөрөнгө</div>
-      <div class="pm-grid">
-        <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
-        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
-      </div>
+        </div>
       <label class="pm-rentable">
         <input type="checkbox" id="pm-ispackage" ${isPackage(p) ? 'checked' : ''}>
         <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
@@ -16307,12 +16363,24 @@ function openProductModal(p) {
         <span><b>🛠 Үйлчилгээ</b> — суурилуулалт, оператор г.м. (хүргэлт бол захиалгын хэсэгт тусад нь). Нөөц/агуулах/ROI-д ОРОХГҮЙ, зөвхөн үнэтэй мөр.</span>
       </label>
       </div>
-      <div class="pm-pane" data-pmpane="stock" hidden>
-      <div class="pm-grid">
+      <div class="pm-pane" data-pmpane="cost" data-pmlock="cost" hidden>
+        <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
+        <div class="pm-pane-t">💰 Өртөг ба хөрөнгө</div>
+        <div class="pm-lock" data-lockhint="cost" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
+        <div class="pm-grid">
+        <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
+        <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
+        </div>
+      </div>
+      <div class="pm-pane" data-pmpane="stock" data-pmlock="stock" hidden>
+        <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
+        <div class="pm-pane-t">📦 Нөөц ба салбар</div>
+        <div class="pm-lock" data-lockhint="stock" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
+        <div class="pm-grid">
         <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
         <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
         <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
-      </div>
+        </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
         <div class="pm-branch-head">🏢 Салбарын хуваарилалт${isEdit ? '' : ' *'} <span>— аль салбарт хэдэн ширхэг. <b>M-Event-д 1+ бол сайтад түрээслэгдэнэ.</b></span></div>
@@ -16336,14 +16404,24 @@ function openProductModal(p) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  // ── Таб: Каталог / Үнэ / Нөөц. Талбаруудын id ХЭВЭЭР тул submitProductModal
-  //    болон бүх handler (галерей, багц, салбар, видео) өөрчлөгдөхгүй. ──
-  const pmShowTab = (key) => {
-    modal.querySelectorAll('[data-pmtab]').forEach(b => b.classList.toggle('on', b.dataset.pmtab === key));
+  // ── Меню: 4 хэсэг тус бүр өөрийн эрхтэй. Мөр дарж орно, «‹ Бүх хэсэг» буцна.
+  //    Талбаруудын id ХЭВЭЭР тул submitProductModal болон бүх handler
+  //    (галерей, багц, салбар, видео) өөрчлөгдөхгүй. ──
+  const pmGo = (key) => {
     modal.querySelectorAll('[data-pmpane]').forEach(el => { el.hidden = el.dataset.pmpane !== key; });
+    modal.scrollTop = 0;
   };
-  modal._pmShowTab = pmShowTab;
-  modal.querySelectorAll('[data-pmtab]').forEach(b => b.addEventListener('click', () => pmShowTab(b.dataset.pmtab)));
+  modal._pmGo = pmGo;
+  modal.querySelectorAll('[data-pmgo]').forEach(b => b.addEventListener('click', () => pmGo(b.dataset.pmgo)));
+  // Эрхгүй хэсгийг ТҮГЖИНЭ — утгыг харна, засахгүй. «Буцах» товч түгжигдэхгүй.
+  PRODUCT_PARTS.forEach(part => {
+    if (_pcan[part]) return;
+    const box = modal.querySelector('[data-pmlock="' + part + '"]');
+    if (!box) return;
+    box.classList.add('pm-locked');
+    box.querySelectorAll('input, select, textarea, button').forEach(el => { if (!el.dataset.pmgo) el.disabled = true; });
+    const hint = box.querySelector('[data-lockhint]'); if (hint) hint.hidden = false;
+  });
   if (isEdit && p.sku) renderProductQR(modal.querySelector('#pm-qr'), p.sku);
   // Олон зургийн менежер — эхний зураг = нүүр. modal._images-д хадгална (submitProductModal уншина).
   let images = (p && Array.isArray(p.photos) && p.photos.length) ? p.photos.slice() : (p && p.photo ? [p.photo] : []);
@@ -16359,12 +16437,14 @@ function openProductModal(p) {
   }
   renderGallery();
   gallery.onclick = (e) => {
+    if (!_pcan.catalog) return;
     const star = e.target.closest('[data-star]'), rm = e.target.closest('[data-rm]');
     if (star) { const i = +star.dataset.star; const [u] = images.splice(i, 1); images.unshift(u); renderGallery(); }
     else if (rm) { images.splice(+rm.dataset.rm, 1); renderGallery(); }
   };
   const fileInput = modal.querySelector('#pm-photo-file');
   fileInput.onchange = async () => {
+    if (!_pcan.catalog) return;
     const files = [...(fileInput.files || [])]; if (!files.length) return;
     for (const f of files) {
       try { const url = await uploadProductImage(f); images.push(url); renderGallery(); }
@@ -16426,12 +16506,14 @@ function openProductModal(p) {
   _syncType();
   modal.querySelector('#pm-bundle-add').onclick = () => { bundle.push({ sku: '', qty: 1 }); renderBundle(); };
   bundleList.addEventListener('input', (e) => {
+    if (!_pcan.price) return;
     const row = e.target.closest('.pm-bi-row'); if (!row) return; const i = +row.dataset.bi;
     if (e.target.classList.contains('pm-bi-name')) { const prod = productByName(e.target.value); bundle[i].sku = prod ? prod.sku : ''; }
     else if (e.target.classList.contains('pm-bi-qty')) { bundle[i].qty = Math.max(1, Number(e.target.value) || 1); }
     bundleSumText();
   });
   bundleList.addEventListener('click', (e) => {
+    if (!_pcan.price) return;
     const rm = e.target.closest('[data-birm]'); if (!rm) return;
     bundle.splice(+rm.dataset.birm, 1); renderBundle();
   });
@@ -16507,7 +16589,7 @@ function openProductModal(p) {
 async function submitProductModal(modal, orig, btn) {
   const g = (id) => (modal.querySelector('#' + id)?.value || '').trim();
   const name = g('pm-name');
-  if (!name) { modal._pmShowTab?.('cat'); modal.querySelector('#pm-name')?.focus(); showToast('Нэр оруулна уу', 'warn'); return; }
+  if (!name) { modal._pmGo?.('cat'); modal.querySelector('#pm-name')?.focus(); showToast('Нэр оруулна уу', 'warn'); return; }
   const cat = g('pm-cat');
   const code = (orig && orig.code) || nextProductCode();   // засварт хэвээр, шинэд авто M-код
   let sku = g('pm-sku');
@@ -16519,7 +16601,7 @@ async function submitProductModal(modal, orig, btn) {
   if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
   // Шинэ бараанд нэгж өртөг ЗААВАЛ (багц=бүрэлдэхүүнээс, үйлчилгээ=өртөггүй тул хасна)
   if (!orig && !isPkg && !isSvc && !(moneyVal(modal.querySelector('#pm-cost')) > 0)) {
-    modal._pmShowTab?.('price');
+    modal._pmGo?.('cost');
     showToast('Нэгж өртөг заавал оруулна (худалдан авсан үнэ)', 'warn', 3500);
     modal.querySelector('#pm-cost')?.focus();
     return;
@@ -16528,7 +16610,7 @@ async function submitProductModal(modal, orig, btn) {
   if (!orig && !isPkg && !isSvc) {
     const _qsum = (Number(modal.querySelector('#pm-qm')?.value) || 0) + (Number(modal.querySelector('#pm-qc')?.value) || 0) + (Number(modal.querySelector('#pm-qn')?.value) || 0) + (Number(modal.querySelector('#pm-qk')?.value) || 0);
     if (!_qsum) {
-      modal._pmShowTab?.('stock');
+      modal._pmGo?.('stock');
       showToast('Салбарын хуваарилалт: аль салбарт байхыг сонгоно уу', 'warn', 3500);
       modal.querySelector('#pm-branch-pick')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
@@ -16557,8 +16639,10 @@ async function submitProductModal(modal, orig, btn) {
     supplier: g('pm-source') || null,
     purchase_date: g('pm-purchase') || null,
   };
-  const product = orig ? { ...orig, ...base } : base;
+  let product = orig ? { ...orig, ...base } : base;
   product.cost = moneyVal(modal.querySelector('#pm-cost'));
+  // Эрхгүй хэсгийг ХЭЗЭЭ Ч дарж бичихгүй (үнэ 0, нөөц 0 болох нь мөнгөний алдаа)
+  product = restrictProductEdit(product, orig, PRODUCT_PARTS.filter(canProductPart));
   btn.disabled = true;
   try {
     await saveProduct(product);   // каталог + өртөг → VPS Postgres (upsert)

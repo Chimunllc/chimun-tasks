@@ -83,8 +83,8 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -215,11 +215,27 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq([...read].filter(id => !declared.has(id)), [], 'scan: модалын уншдаг pm-* id бүр HTML-д зарлагдсан');
   ok(declared.size >= 20, 'scan: барааны модалын талбарууд бүрэн (' + declared.size + ')');
 
-  // Таб бүрд pane, pane бүрд таб. Нэг нь дутвал тэр бүлэг талбар БҮРМӨСӨН нуугдана.
-  const tabs = [...new Set((openSrc.match(/data-pmtab="[a-z]+"/g) || []).map(m => m.slice(12, -1)))].sort();
+  // Меню мөр / буцах товч бүр БАЙГАА хэсэг рүү заана. Нэг нь зөрвөл тэр бүлэг
+  // талбар бүрмөсөн нуугдана (эсвэл хоосон дэлгэц гарна).
+  const gos = [...new Set((openSrc.match(/data-pmgo="[a-z]+"/g) || []).map(m => m.slice(11, -1)))].sort();
   const panes = [...new Set((openSrc.match(/data-pmpane="[a-z]+"/g) || []).map(m => m.slice(13, -1)))].sort();
-  eq(tabs, ['cat', 'price', 'stock'], 'scan: барааны модал 3 табтай');
-  eq(panes, tabs, 'scan: таб бүрд харгалзах pane байна');
+  eq(panes, ['cat', 'cost', 'menu', 'price', 'stock'], 'scan: барааны модал = меню + 4 хэсэг');
+  eq(gos, panes, 'scan: меню/буцах товч бүр байгаа хэсэг рүү заана');
+
+  // Хэсэг бүр ТҮГЖИГДЭХ хайрцагтай — эс бөгөөс эрхгүй хүнд задгай үлдэнэ.
+  const locks = [...new Set((openSrc.match(/data-pmlock="[a-z]+"/g) || []).map(m => m.slice(13, -1)))].sort();
+  eq(locks, ['cat', 'cost', 'price', 'stock'], 'scan: 4 хэсэг тус бүр түгжигдэх хайрцагтай');
+
+  // ХАДГАЛАГДДАГ талбар бүр аль нэг хэсэгт ХАРЬЯАЛАГДАНА. Шинэ талбар нэмээд
+  // хэсэгт хуваарилахаа мартвал эрхгүй хүн түүнийг дарж бичих боломжтой үлдэнэ.
+  {
+    const b = submitSrc.slice(submitSrc.indexOf('const base = {'));
+    const baseSrc = b.slice(0, b.indexOf('\n  };'));
+    const written = [...new Set((baseSrc.match(/([a-z_]+):/g) || []).map(m => m.slice(0, -1)))];
+    const owned = new Set(Object.values(F.productPartFields()).flat());
+    const exempt = new Set(['sku', 'code', 'variant_group', 'variant_label']);   // өөрчлөгддөггүй таних талбар
+    eq(written.filter(f => !owned.has(f) && !exempt.has(f)), [], 'scan: хадгалагддаг талбар бүр хэсэгт харьяалагдана');
+  }
 }
 
 // 1) НӨАТ токен round-trip
@@ -2626,6 +2642,66 @@ function finish() {
     ok(!/уншуулаагүй/.test(F.attWorkedLine(who)), 'цалин: бүгд уншуулсан бол сануулга ГАРАХГҮЙ');
     st.attWorkedDays = saved;
   }
+
+// ── БАРААНЫ ХЭСГИЙН ЭРХ (2026-09-04) ────────────────────────────────────────
+// Барааны карт 4 хэсэгт хуваагдсан, хэсэг бүр өөрийн эрхтэй. Хоёр зүйл эвдэрч
+// БОЛОХГҮЙ: (1) шинэ түлхүүр чимээгүй нээгдэх, (2) эрхгүй хэсгийн утга дарагдах.
+{
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const sv = { team: TEAM.slice(), me: st.me, ceo: st.isCEO, mp: st.memberPerms, rp: st.rolePerms };
+  TEAM.length = 0;
+  TEAM.push({ name: 'Зөөгч Тест', phone: '80000001', role: 'Зөөгч' });
+  st.me = '80000001'; st.isCEO = false;
+  st.rolePerms = { 'зөөгч': { 'products.edit': false } };   // шүхэр эрх ИЛ хаагдсан
+  st.memberPerms = {};
+
+  // «Зөөгч» роль нь ROLE_PRESETS-ийн аль ч загварт таарахгүй. Тийм хүнд can() нь
+  // «тохируулаагүй = зөвшөөрнө» гэж ҮНЭН буцаана — яг энэ нь занга: шинэ түлхүүр
+  // дээр can() ашиглавал эрх чимээгүй нээгдэнэ. canProductPart үүнийг хаана.
+  ok(F.can('products.stock') === true, 'эрх: can() тохируулаагүй шинэ түлхүүрийг ЗӨВШӨӨРНӨ (занга)');
+  ok(F.canProductPart('stock') === false, 'эрх: canProductPart ил олгоогүй бол ХОРИГЛОНО');
+  ok(F.canEditAnyProductPart() === false, 'эрх: нэг ч хэсэг нээлттэй биш → карт нээгдэхгүй');
+
+  st.memberPerms = { '80000001': { 'products.stock': true } };   // ЗӨВХӨН нөөц олгов
+  ok(F.canProductPart('stock') === true,  'эрх: ил олгосон хэсэг нээгдэнэ');
+  ok(F.canProductPart('price') === false, 'эрх: олгоогүй хэсэг хаалттай хэвээр');
+  ok(F.canProductPart('cost') === false,  'эрх: өртөг тусдаа — нөөцийн эрхээр нээгдэхгүй');
+  ok(F.canEditAnyProductPart() === true,  'эрх: нэг хэсэг нээлттэй бол карт нээгдэнэ');
+
+  st.memberPerms = { '80000001': { 'products.edit': true } };    // ХУУЧИН шүхэр
+  ['catalog', 'price', 'cost', 'stock'].forEach(k =>
+    ok(F.canProductPart(k) === true, 'эрх: products.edit шүхэр «' + k + '» хэсгийг нээнэ'));
+
+  TEAM.length = 0; sv.team.forEach(x => TEAM.push(x));
+  st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.rolePerms = sv.rp;
+}
+
+// Эрхгүй хэсгийн утга ХЭЗЭЭ Ч формоос бичигдэхгүй (үнэ 0 / нөөц 0 = мөнгөний алдаа)
+{
+  const orig = { name: 'Майхан', name_en: 'Tent', category: 'Майхан', all_categories: ['Майхан'],
+    description: 'хуучин', photos: ['a'], photo: 'a', source_url: 's', supplier: 's', media_url: '',
+    price: 132000, deposit: 50000, setup_fee: 0, type: 'rental', bundle_items: [],
+    cost: 1000000, purchase_date: '2024-01-15',
+    stock: 106, broken: 2, maintenance: 3, qty_mevent: 86, qty_chimun: 0, qty_nomaad: 20, qty_catering: 0 };
+  const form = { ...orig, name: 'ШИНЭ нэр', description: 'шинэ', price: 1, deposit: 0,
+    cost: 0, purchase_date: null, stock: 0, broken: 0, maintenance: 0, qty_mevent: 0, qty_nomaad: 0 };
+
+  const onlyStock = F.restrictProductEdit(form, orig, ['stock']);
+  eq(onlyStock.price, 132000, 'хязгаар: эрхгүй үнэ эх утгаараа үлдэнэ');
+  eq(onlyStock.cost, 1000000, 'хязгаар: эрхгүй өртөг эх утгаараа үлдэнэ');
+  eq(onlyStock.purchase_date, '2024-01-15', 'хязгаар: эрхгүй худалдан авсан огноо үлдэнэ');
+  eq(onlyStock.name, 'Майхан', 'хязгаар: эрхгүй каталог эх утгаараа үлдэнэ');
+  eq(onlyStock.stock, 0, 'хязгаар: эрхтэй нөөц формын утгаар шинэчлэгдэнэ');
+  eq(onlyStock.qty_mevent, 0, 'хязгаар: эрхтэй салбарын тоо шинэчлэгдэнэ');
+
+  const all = F.restrictProductEdit(form, orig, ['catalog', 'price', 'cost', 'stock']);
+  eq(all.price, 1, 'хязгаар: бүрэн эрхтэй бол үнэ формоор');
+  eq(all.name, 'ШИНЭ нэр', 'хязгаар: бүрэн эрхтэй бол нэр формоор');
+  eq(F.restrictProductEdit(form, null, []).price, 1, 'хязгаар: шинэ бараа (orig алга) хөндөгдөхгүй');
+  eq(F.restrictProductEdit({ ...orig, cost: 0 }, orig, ['catalog']).cost, 1000000,
+     'хязгаар: эрхгүй үед өртөг 0 болж ЧИМЭЭГҮЙ дарагдахгүй');
+}
 
   finish();
 })();

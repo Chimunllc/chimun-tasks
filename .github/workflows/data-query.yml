@@ -24,12 +24,15 @@ on:
         required: true
         type: string
 
-permissions: {}
+permissions:
+  contents: read   # зөвхөн скриптээ уншина
 
 jobs:
   query:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4   # хураангуйлагч скрипт хэрэгтэй
+
       - name: Асуулга ажиллуулах
         env:
           JWT: ${{ secrets.DATA_READ_JWT }}
@@ -42,14 +45,12 @@ jobs:
             v_orders_safe*|v_quotes_safe*|v_finance_safe*|v_nomaad_payments_safe*|v_tasks_safe*|products*|repairs*|product_aliases*|app_config*|v_app_errors*) ;;
             *) echo "⛔ Зөвшөөрөгдөөгүй эх сурвалж: ${Q%%\?*}"; exit 1 ;;
           esac
-          # limit заагаагүй бол 200-аар хязгаарлана (лог үерлэхээс сэргийлнэ)
+          # limit заагаагүй бол 200-аар хязгаарлана. Илүү ихийг татаж болно —
+          # 40-өөс олон мөрийг хураангуйлагч дүн болгож хэвлэдэг тул лог үерлэхгүй.
           case "$Q" in *limit=*) ;; *) Q="$Q&limit=200" ;; esac
           echo "→ $Q"
           echo ""
           curl -sS --fail-with-body --max-time 30 \
             -H "apikey: $JWT" -H "Authorization: Bearer $JWT" \
             "https://n8n.nomaadcamp.com/db/rest/v1/$Q" \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                try{const j=JSON.parse(s);console.log(JSON.stringify(j,null,1));
-                    console.log("\n— мөр:",Array.isArray(j)?j.length:1);}
-                catch(e){console.log(s)}})'
+            | node .github/scripts/summarize-rows.mjs

@@ -5460,6 +5460,42 @@ body.role-daily #add-project { display: none !important; }
 .pm-locked .pm-rentable, .pm-locked .pm-bundle { opacity: .62; }
 .pm-locked .btn, .pm-locked label.pnf-upbtn { pointer-events: none; }
 
+/* ── Хөрөнгийн багц — нэг бараа, олон удаагийн худалдан авалт ── */
+.pm-batches { margin-top: var(--space-4); }
+.pm-batch-t { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: var(--space-2); }
+.pm-batch-head {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
+  padding: var(--space-3); margin-bottom: var(--space-2);
+  background: var(--panel-hover); border-radius: var(--r-lg);
+}
+.pm-batch-head div { display: flex; flex-direction: column; gap: 2px; }
+.pm-batch-head span { font-size: var(--fs-xs); color: var(--muted); }
+.pm-batch-head b { font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.pm-batch {
+  position: relative; padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--r-md); margin-bottom: var(--space-2);
+}
+.pm-batch-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.pm-batch-d { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.pm-batch-sum { font-size: var(--fs-base); font-weight: 600; color: var(--text); white-space: nowrap; }
+.pm-batch-m { font-size: var(--fs-sm); color: var(--muted); margin-top: var(--space-1); }
+.pm-batch-m b { color: var(--text); }
+.pm-batch-off { font-size: var(--fs-xs); color: var(--muted-soft); margin-top: var(--space-1); }
+.pm-batch-rm { margin-top: var(--space-2); color: var(--danger); border-color: var(--border); background: transparent; }
+.pm-batch-rec { font-size: var(--fs-sm); margin: var(--space-2) 0 var(--space-3); }
+.pm-batch-rec.ok { color: var(--ok); }
+.pm-batch-rec.bad { color: var(--warn); font-weight: 600; }
+.pm-batch-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; padding: var(--space-3); background: var(--panel-hover); border-radius: var(--r-md); }
+/* auto-fit — 320px-д 1 багана, 390px+-д 2 болно (шинэ breakpoint нэмэхгүй).
+   Тогтмол 2 багана байхад огнооны талбар нарийн утсанд таслагдаж байв. */
+.pm-batch-add {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--space-2);
+  padding: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--r-lg);
+}
+.pm-batch-add label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-xs); color: var(--muted); }
+.pm-batch-add input { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); font-size: var(--fs-base); font-family: inherit; background: var(--panel); color: var(--text); }
+.pm-batch-add button { grid-column: 1 / -1; min-height: 44px; }
+
 /* Барааны засах модал */
 .pm-stats { font-size: 12.5px; color: var(--text-soft); background: var(--panel-hover); border-radius: 8px; padding: 9px 12px; margin-bottom: 14px; line-height: 1.5; }
 .pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

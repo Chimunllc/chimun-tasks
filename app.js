@@ -4211,6 +4211,145 @@ const REPAIR_STAGES = {
   written_off: { label: '🗑 Актлав',            next: null,          nextLabel: null,              dot: '#DC2626' },
 };
 const REPAIRS_URL = () => `${DB_URL}/rest/v1/repairs`;
+// ── ХӨРӨНГИЙН БАГЦ (2026-09-04) ─────────────────────────────────────────────
+// Нэг бараа = ОЛОН удаагийн худалдан авалт. 106 майхныг 3 удаа 3 өөр үнээр
+// авсныг `products.cost` гэсэн ГАНЦ талбар илэрхийлж чадахгүй — тиймээс 294
+// барааны 23%-д өртөг, 69%-д огноо хоосон үлдсэн (хүн юу бичихээ мэдэхгүй).
+// Багц бүр тусдаа мөр болно; `products.cost`/`purchase_date` нь тэднээс ГАРНА.
+const BATCHES_URL = () => `${DB_URL}/rest/v1/product_batches`;
+
+// Багцын үлдэгдэл = авсан − актлагдсан
+function batchLeft(b) { return Math.max(0, (Number(b && b.qty) || 0) - (Number(b && b.written_off) || 0)); }
+
+// Хоёр огнооны хоорондох сар (цэвэр — Date.now() дуудахгүй тул тестлэгдэнэ)
+function _monthsSince(dateStr, today) {
+  const a = String(dateStr || '').slice(0, 10), b = String(today || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return 0;
+  const ms = Date.parse(b) - Date.parse(a);
+  return ms <= 0 ? 0 : Math.floor(ms / 86400000 / 30.44);
+}
+
+// Багцуудын нэгтгэл. Дундаж өртөг нь ЖИГНЭСЭН байх ёстой — энгийн дундаж нь
+// 60ш×950,000 ба 6ш×1,150,000-г адил жинтэй болгож хөрөнгийн үнэ цэнэг гуйвуулна.
+function batchStats(batches, today) {
+  const list = (batches || []).filter(b => batchLeft(b) > 0);
+  let qty = 0, total = 0, first = '', ageQty = 0;
+  for (const b of list) {
+    const n = batchLeft(b), c = Number(b.unit_cost) || 0;
+    qty += n; total += n * c;
+    const d = String(b.purchased_at || '').slice(0, 10);
+    if (d) { if (!first || d < first) first = d; ageQty += n * _monthsSince(d, today); }
+  }
+  return { qty, total, avgCost: qty > 0 ? Math.round(total / qty) : 0,
+           firstDate: first || null, avgAgeMonths: qty > 0 ? Math.round(ageQty / qty) : 0 };
+}
+
+// Багцын нийлбэр нөөцтэй ТУЛГАРАХ ёстой. Зөрвөл хөрөнгийн үнэ цэнэ худал болно
+// (тоолоогүй багц = хөрөнгө дутуу, илүү багц = байхгүй барааг данслах).
+// Багцын хэсгийн HTML — ЦЭВЭР (дата → HTML). state уншихгүй тул тестлэгдэнэ,
+// мөн харагдацыг тусгаарлагдсан хуудсанд яг эх кодоор нь шалгаж болно.
+function batchesHtml(list, stock, canEdit, today) {
+  list = list || [];
+  const st = batchStats(list, today), rec = batchReconcile(list, stock);
+  const rows = list.map(b => {
+    const left = batchLeft(b), off = Number(b.written_off) || 0;
+    return `<div class="pm-batch">
+      <div class="pm-batch-top">
+        <span class="pm-batch-d">${escapeHtml(String(b.purchased_at || '').slice(0, 10) || '—')}</span>
+        <span class="pm-batch-sum">${fmtMoneyShort(left * (Number(b.unit_cost) || 0))}</span>
+      </div>
+      <div class="pm-batch-m"><b>${left} ш</b> × ${fmtMoney(Number(b.unit_cost) || 0)}${b.source ? ' · ' + escapeHtml(String(b.source).slice(0, 24)) : ''}</div>
+      ${off ? `<div class="pm-batch-off">${Number(b.qty) || 0} ш авсан · ${off} ш актлагдсан</div>` : ''}
+      ${canEdit ? `<button type="button" class="btn ui-raw pm-batch-rm" data-brm="${escapeHtml(String(b.id))}">Хасах</button>` : ''}
+    </div>`;
+  }).join('');
+  const age = st.avgAgeMonths >= 12
+    ? Math.floor(st.avgAgeMonths / 12) + 'ж ' + (st.avgAgeMonths % 12) + 'с'
+    : st.avgAgeMonths + ' сар';
+  const head = list.length
+    ? `<div class="pm-batch-head">
+         <div><span>Нийт хөрөнгө</span><b>${fmtMoneyShort(st.total)}</b></div>
+         <div><span>Тоо</span><b>${st.qty} ш</b></div>
+         <div><span>Дундаж өртөг</span><b>${fmtMoneyShort(st.avgCost)}</b></div>
+         <div><span>Дундаж нас</span><b>${age}</b></div>
+       </div>`
+    : '<div class="pm-batch-note">Багц бүртгээгүй. Дээрх нэгж өртөг нь гараар оруулсан утга — багц нэмбэл ЖИГНЭСЭН дунджаар автоматаар тооцогдоно.</div>';
+  const recLine = list.length
+    ? `<div class="pm-batch-rec ${rec.ok ? 'ok' : 'bad'}">${rec.ok
+        ? `✓ Багцын нийлбэр ${rec.sum} ш = нөөцтэй тэнцэв`
+        : `⚠ Багц ${rec.sum} ш · нөөц ${rec.stock} ш — ${Math.abs(rec.diff)} ш ${rec.diff > 0 ? 'илүү' : 'дутуу'}`}</div>`
+    : '';
+  const form = canEdit
+    ? `<div class="pm-batch-add">
+         <label>Огноо<input type="date" id="pmb-date" value="${escapeHtml(today)}"></label>
+         <label>Тоо<input type="number" id="pmb-qty" min="1" placeholder="0"></label>
+         <label>Нэгж өртөг (₮)<input type="text" inputmode="numeric" class="money-input" id="pmb-cost" placeholder="0"></label>
+         <label>Хаанаас<input type="text" id="pmb-src" placeholder="Taobao, 1688, УБ…"></label>
+         <button type="button" class="btn btn-primary ui-raw" id="pmb-add">+ Багц нэмэх</button>
+       </div>`
+    : '';
+  return `<div class="pm-batch-t">Худалдан авсан багцууд</div>${head}${rows}${recLine}${form}`;
+}
+function batchReconcile(batches, stock) {
+  const sum = (batches || []).reduce((s, b) => s + batchLeft(b), 0);
+  const st = Number(stock) || 0;
+  return { sum, stock: st, diff: sum - st, ok: sum === st };
+}
+
+// Багцаас `products`-ийн өртөг/огноог ГАРГАЖ хадгална. Ингэснээр ROI, хөрөнгийн
+// үнэ цэнэ, тайлан — бүгд хуучин талбараа уншсаар байх тул юу ч эвдрэхгүй.
+async function syncProductCostFromBatches(sku) {
+  const p = productBySku(sku); if (!p) return;
+  const st = batchStats(state.productBatches && state.productBatches[sku], todayStr());
+  if (!st.qty) return;                       // багцгүй бол гар утгыг хөндөхгүй
+  await saveProduct({ ...p, cost: st.avgCost, purchase_date: st.firstDate });
+}
+
+// Нэг барааны багцууд. Хүснэгт байхгүй бол ЧИМЭЭГҮЙ тэмдэглээд карт эвдрэхгүй
+// (SQL ажиллуулаагүй байхад бүх бараа засах боломжгүй болвол илүү муу).
+async function loadProductBatches(sku) {
+  state.productBatches = state.productBatches || {};
+  try {
+    const r = await fetchWithTimeout(`${BATCHES_URL()}?sku=eq.${encodeURIComponent(sku)}&voided=is.false&select=*&order=purchased_at.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (r.status === 404 || r.status === 406) { state._batchTableMissing = true; return []; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state._batchTableMissing = false;
+    const rows = await r.json();
+    state.productBatches[sku] = rows;
+    return rows;
+  } catch (e) { console.warn('loadProductBatches', e); return state.productBatches[sku] || []; }
+}
+
+// Багц нэмэх/засах. Амжилтгүй бол ХАЯГДАХГҮЙ — алдааг ил хэлнэ (чимээгүй
+// «хадгаллаа» гэж худал хэлэхгүй).
+async function saveProductBatch(row) {
+  const body = { sku: row.sku, purchased_at: row.purchased_at, qty: Number(row.qty) || 0,
+                 unit_cost: Number(row.unit_cost) || 0, source: row.source || null,
+                 written_off: Number(row.written_off) || 0 };
+  const isEdit = !!row.id;
+  const url = isEdit ? `${BATCHES_URL()}?id=eq.${encodeURIComponent(row.id)}` : BATCHES_URL();
+  const r = await fetchWithTimeout(url, {
+    method: isEdit ? 'PATCH' : 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify(body),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 120));
+  await loadProductBatches(row.sku);
+  await syncProductCostFromBatches(row.sku);
+}
+
+// ЗӨӨЛӨН устгал — багц нь мөнгөний бичлэг, хатуугаар устгахгүй (сэргээж болно)
+async function voidProductBatch(id, sku) {
+  const r = await fetchWithTimeout(`${BATCHES_URL()}?id=eq.${encodeURIComponent(id)}`,
+    { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+      'Content-Type': 'application/json' }, body: JSON.stringify({ voided: true }) }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  await loadProductBatches(sku);
+  await syncProductCostFromBatches(sku);
+}
+
 function repairId(sku, orderNo) { return `r_${String(sku || '').replace(/\W/g, '')}_${orderNo || 0}_${Date.now().toString(36)}`; }
 
 // Засварын шат урагшлуулах. «Зассан» болмогц барааны broken-ийг бууруулж нөөц СЭРГЭНЭ.
@@ -16085,6 +16224,7 @@ function openProductModal(p) {
         <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
         <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         </div>
+        <div id="pm-batches" class="pm-batches"></div>
       </div>
       <div class="pm-pane" data-pmpane="stock" data-pmlock="stock" hidden>
         <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
@@ -16124,9 +16264,48 @@ function openProductModal(p) {
   const pmGo = (key) => {
     modal.querySelectorAll('[data-pmpane]').forEach(el => { el.hidden = el.dataset.pmpane !== key; });
     modal.scrollTop = 0;
+    if (key === 'cost') ensureBatches();
   };
   modal._pmGo = pmGo;
   modal.querySelectorAll('[data-pmgo]').forEach(b => b.addEventListener('click', () => pmGo(b.dataset.pmgo)));
+  // ── Хөрөнгийн багц — «Өртөг» хэсгийг НЭЭХЭД лази татна (карт нээх бүрд биш) ──
+  const batchBox = modal.querySelector('#pm-batches');
+  let batchesFetched = false;
+  const batchList = () => ((state.productBatches || {})[p && p.sku]) || [];
+  function renderBatches() {
+    if (!batchBox) return;
+    if (!isEdit) { batchBox.innerHTML = '<div class="pm-batch-note">Бараагаа хадгалсны дараа худалдан авсан багцуудыг нэмнэ.</div>'; return; }
+    if (state._batchTableMissing) { batchBox.innerHTML = '<div class="pm-batch-note">Багцын бүртгэл идэвхжээгүй — <b>product_batches</b> хүснэгт үүсээгүй байна.</div>'; return; }
+    batchBox.innerHTML = batchesHtml(batchList(), Number(p.stock) || 0, _pcan.cost, todayStr());
+  }
+  async function ensureBatches() {
+    if (batchesFetched || !isEdit || !p.sku) { renderBatches(); return; }
+    batchesFetched = true;
+    if (batchBox) batchBox.innerHTML = '<div class="pm-batch-note">Ачаалж байна…</div>';
+    await loadProductBatches(p.sku);
+    renderBatches();
+  }
+  if (batchBox) batchBox.addEventListener('click', async (e) => {
+    const add = e.target.closest('#pmb-add'), rm = e.target.closest('[data-brm]');
+    if (add) {
+      const qty = Number(modal.querySelector('#pmb-qty').value) || 0;
+      const uc = moneyVal(modal.querySelector('#pmb-cost'));
+      const dt = modal.querySelector('#pmb-date').value;
+      if (!(qty > 0)) { showToast('Тоо ширхэгээ оруулна уу', 'warn'); return; }
+      if (!(uc > 0)) { showToast('Нэгж өртгөө оруулна уу', 'warn'); return; }
+      if (!dt) { showToast('Худалдан авсан огноогоо сонгоно уу', 'warn'); return; }
+      add.disabled = true;
+      try {
+        await saveProductBatch({ sku: p.sku, purchased_at: dt, qty, unit_cost: uc, source: modal.querySelector('#pmb-src').value.trim() });
+        renderBatches();
+        showToast('Багц нэмэгдлээ', 'ok', 2200);
+      } catch (err) { showToast('Багц хадгалагдсангүй: ' + err.message, 'error', 5000); add.disabled = false; }
+    } else if (rm) {
+      if (!confirm('Энэ багцыг бүртгэлээс хасах уу? (дата устахгүй, зөвхөн нуугдана)')) return;
+      try { await voidProductBatch(rm.dataset.brm, p.sku); renderBatches(); }
+      catch (err) { showToast('Хасагдсангүй: ' + err.message, 'error', 5000); }
+    }
+  });
   // Эрхгүй хэсгийг ТҮГЖИНЭ — утгыг харна, засахгүй. «Буцах» товч түгжигдэхгүй.
   PRODUCT_PARTS.forEach(part => {
     if (_pcan[part]) return;

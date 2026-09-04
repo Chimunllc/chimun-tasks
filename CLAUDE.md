@@ -78,7 +78,9 @@
 - **Цуцалсан зохицуулалт:** `renderNomaadOrders` (жагсаалт) ба `renderNomaadCalendar` нь `nomaadIsCancelled(o)` (БОЛЬСОН/Цуцл) -ээр шүүж **цуцалсныг нуудаг**. Pipeline-д "Больсон" шатанд (эвхэгдсэн) хэвээр. Sidebar badge ч цуцалсныг хасна.
 - **Үнийн санал устгах** = статусыг `БОЛЬСОН` болгоно (`deleteNomaadQuote`, зөвхөн урьдчилгаа/орлогогүй үед) → дээрх цуцалсан-шүүлтээр жагсаалтаас алга (hard delete биш, Quote Log-д түүх үлдэнэ).
 - **Шатын нэршил (2026-06-19):** Шинэ → Үнийн санал илгээсэн → **Баталгаажуулалт хүлээж буй** (статус `БАТАЛГААЖУУЛАЛТ`→`confirming`; амаар тохирсон, гэрээ хүлээж буй) → Урьдчилгаа төлсөн → Гэрээ хийгдсэн → Гүйцэтгэсэн → Больсон. `NOMAAD_STAGES`/`NOMAAD_STATUSES`/`nomaadStage`.
-- Дата = Postgres `quotes` хүснэгт (Sheet биш). Апп n8n webhook-оор уншина.
+- **Дата = Postgres `nomaad_quotes`** (109+ мөр, багана нь МОНГОЛ нэртэй: «Үнийн саналын
+  дугаар», «Нийт дүн» г.м.). ⚠ `quotes` гэдэг хүснэгт бас байгаа ч **ХООСОН legacy** —
+  түүнийг бүү ашигла. Төлбөрийн лог = `nomaad_payments`. Апп n8n webhook-оор уншина.
 
 ### NOMAAD арга хэмжээний бэлтгэл (2026-06-10, нэгтгэсэн)
 - NOMAAD картын **"📋 Бэлтгэл"** ганц товч → нэгдсэн модал 2 хэсэгтэй: **(1) Үйл ажиллагааны чеклист** (`NOMAAD_PREP_CHECKLIST`, 30 ажил, зүйл бүрд 1 ажил) + **(2) Захиалгын бараа** (`o.items` түрээсийн эд, хүнээр бүлэглэж 1 ажил/хүн). Хуучин 2 товч ("Бэлтгэл үүсгэх" + "Ажил хувиарлах") давхцаж байсныг 2026-06-10-нд нэгтгэв (`openNomaadAssign`/`sendNomaadAssignments` устсан).
@@ -412,7 +414,8 @@ gh run list --workflow=data-query.yml --limit 1 --json databaseId --jq '.[0].dat
 gh run view <id> --log
 ```
 
-**Уншиж болох:** `v_orders_safe` · `v_quotes_safe` · `v_finance_safe` · `products` ·
+**Уншиж болох:** `v_orders_safe` · `v_quotes_safe` (NOMAAD үнийн санал) ·
+`v_nomaad_payments_safe` (NOMAAD төлбөрийн лог) · `v_finance_safe` · `products` ·
 `repairs` · `product_aliases` · `app_config` · `v_app_errors`
 
 **Хаалттай (403):** `employees` (РД/утас) · `bank_accounts` · `attendance` ·

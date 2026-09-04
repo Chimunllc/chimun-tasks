@@ -84,9 +84,36 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
+
+// 0f) productUtilization — ROI-ийн эх сурвалж (2026-09-04)
+// Регресс: өмнө нь `state.orders`-оос уншдаг байсан. Тэр массив app.js:5047-д нэг л
+// удаа `[]` гэж оноогдоод хэзээ ч бичигддэггүй → БҮХ барааны ROI 0% харагдаж,
+// CEO хөрөнгийн шийдвэрээ буруу тоон дээр гаргаж байв.
+// Мөн: booqable түүхэн мөрийн price нь ХУГАЦААНЫ НИЙТ, аппынх нь ӨДРИЙН үнэ.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.products, state.appOrders, state.orders]');
+  runIn("state.products = [{ id:'M-900', sku:'M-900', name:'Тест ширээ', price:10000, qty_mevent:10, stock:10 }];");
+  runIn("state.orders = [];");   // хуучин (үхсэн) эх сурвалж — хоосон хэвээр
+  runIn(`state.appOrders = [
+    { number:1, source:'app',      status:'rented',    starts_at:'2026-10-01', stops_at:'2026-10-04', items:[{sku:'M-900', name:'Тест ширээ', qty:2, price:10000}] },
+    { number:2, source:'booqable', status:'done',      starts_at:'2026-09-01', stops_at:'2026-09-11', items:[{sku:'M-900', name:'Тест ширээ', qty:1, price:50000}] },
+    { number:3, source:'app',      status:'cancelled', starts_at:'2026-10-01', stops_at:'2026-10-04', items:[{sku:'M-900', name:'Тест ширээ', qty:9, price:10000}] }
+  ];`);
+  const u = runIn('productUtilization')('Тест ширээ');
+  ok(u.orders === 2, 'ROI: цуцалсан захиалга тоологдохгүй (2 захиалга)');
+  ok(u.qty === 3, 'ROI: тоо ширхэг = 2 + 1 (цуцалсан 9 ороогүй)');
+  // app: 10000 × 2 × 3 хоног = 60,000 · booqable: 50000 × 1 × 1 (НИЙТ дүн, үржүүлэхгүй) = 50,000
+  ok(u.revenue === 110000, 'ROI: app хоногоор, booqable нийт дүнгээр — ' + u.revenue);
+
+  // ХУУЧИН эх сурвалж хоосон байхад ч ажиллана (энэ нь зассан алдаа)
+  ok(u.revenue > 0, 'ROI: state.orders хоосон ч орлого 0 БИШ');
+
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + '; state.orders = ' + JSON.stringify(save[2] || []) + ';');
+}
 
 // 0e) SCAN — түүхий UTC огноо БАЙХГҮЙ (2026-09-04)
 // `x.toISOString().slice(0,10)` нь UTC огноо буцаана. Монгол UTC+8 тул 00:00-08:00

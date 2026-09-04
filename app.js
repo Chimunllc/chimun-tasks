@@ -8388,15 +8388,33 @@ function isRentable(p) {
 }
 
 // Барааны ашиглалт — захиалгын түүхээс хэдэн удаа түрээслэгдэж, нийт хэдэн төгрөгийн орлого олсон.
+// Барааны ашиглалт ба орлого — ROI тооцоход хэрэглэгдэнэ (барааны мөр + модал).
+// ⚠ 2026-09-04 ЗАССАН: өмнө нь `state.orders`-оос уншдаг байсан. Тэр массив нь
+// app.js:5047-д `state.orders = []` гэж НЭГ Л УДАА оноогддог бөгөөд өөр хаана ч
+// бичигддэггүй (M-Event давхарга 2026-07-01-нд app_orders руу нэгдсэн) — өөрөөр
+// хэлбэл МӨНХ ХООСОН. Үр дүнд нь БҮХ барааны ROI 0% харагдаж, хөрөнгийн шийдвэр
+// буруу тоон дээр гарч байв. Алдааны мессеж ч гардаггүй.
+// Одоо: state.appOrders (жинхэнэ эх сурвалж) + productOf (sku→id→нэр, хуучирсан
+// нэртэй мөрийг ч таана) + orderCanonStatus (цуцалсныг зөв ялгана).
 function productUtilization(name) {
   const n = _normProdName(name);
   let orders = 0, qty = 0, revenue = 0;
-  for (const o of (state.orders || [])) {
-    if (o.status === 'Цуцалсан') continue;
-    const its = (o.items || []).filter(it => _normProdName(it.name) === n);
+  for (const o of (state.appOrders || [])) {
+    const st = typeof orderCanonStatus === 'function' ? orderCanonStatus(o) : String(o.status || '');
+    if (st === 'cancelled' || st === 'deleted' || st === 'draft') continue;   // цуцалсан/устгасан/ноорог — орлого биш
+    const its = (o.items || []).filter(it => {
+      const p = typeof productOf === 'function' ? productOf(it) : null;
+      return _normProdName(p ? p.name : it.name) === n;
+    });
     if (!its.length) continue;
     orders++;
-    const d = Math.max(1, Number(o.days) || 1);
+    // ⚠ ХОЁР ӨӨР ДҮРЭМ (амьд датаар батлагдсан 2026-09-04):
+    //   source='app' / 'm-event-website' (66 захиалга) → мөрийн price нь каталогийн
+    //     ӨДРИЙН үнэ (жишээ #1486: 27,500 = каталог 27,500) → хоногоор үржүүлнэ.
+    //   source='booqable' (946 түүхэн захиалга) → мөрийн price нь ХУГАЦААНЫ НИЙТ дүн
+    //     (жишээ #1309: 40 хоног, 6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрөгдөнө.
+    const isHist = String(o.source || '') === 'booqable';
+    const d = isHist ? 1 : Math.max(1, typeof orderRentalDays === 'function' ? orderRentalDays(o) : (Number(o.days) || 1));
     for (const it of its) { qty += Number(it.qty) || 0; revenue += (Number(it.price) || 0) * (Number(it.qty) || 0) * d; }
   }
   return { orders, qty, revenue };

@@ -7,10 +7,19 @@
  *  - Бусад статик (CSS/JS/icons) → cache-first (хурдан + офлайн).
  *  - n8n webhook calls → network-first.
  *
- * Bump CACHE_VERSION whenever index.html or assets change so phones pick up new code.
+ * CACHE_VERSION хэзээ бөглөх вэ:
+ *   NETWORK_FIRST файлууд (index.html, styles.css, app.js) — БӨГЛӨХ ШААРДЛАГАГҮЙ.
+ *     Тэдгээрийг доорх fetch handler `cache:'reload'`-оор сүлжээнээс үргэлж шинээр
+ *     татдаг тул шинэчлэл хувилбараас үл хамааран шууд хүрнэ.
+ *   Үлдсэн shell файл (manifest.json, icon.svg) — cache-first тул БӨГЛӨНӨ.
+ * (2026-09-04: PR бүр гараар бөглөж байсан нь нэг мөр дээр байнга зөрчил үүсгэж,
+ *  зэрэг ажилладаг агентуудыг удаашруулж байв. Шаардлагагүй байсныг тогтоов.)
  */
 
-const CACHE_VERSION = 'chimun-tasks-v840-otable-align-2026-09-04';
+const CACHE_VERSION = 'chimun-tasks-v836-pin-4-6-2026-09-04';
+// Сүлжээнээс ҮРГЭЛЖ шинээр татдаг файлууд. Энэ жагсаалт нь fetch handler-т
+// ашиглагдана (чимэг биш) бөгөөс CI шалгалт ч үүнээс уншина — нэг эх сурвалж.
+const NETWORK_FIRST = ['index.html', 'styles.css', 'app.js'];
 const SHELL_FILES = [
   './',
   './index.html',
@@ -106,7 +115,7 @@ self.addEventListener('fetch', (event) => {
     || url.pathname.endsWith('/')
     || url.pathname.endsWith('/index.html');
   const isAppShell = url.origin === self.location.origin
-    && (url.pathname.endsWith('/styles.css') || url.pathname.endsWith('/app.js'));
+    && NETWORK_FIRST.some((f) => url.pathname.endsWith('/' + f));
   if (isHTML || isAppShell) {
     event.respondWith(
       // cache:'reload' — браузерын HTTP кэшийг ТОЙРЧ сүлжээнээс шинэ код авна (GitHub Pages

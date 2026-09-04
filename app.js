@@ -12163,6 +12163,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     if (!parsed) return;
     enableSave(false);
     const rr = await reserveReceipt(parsed.canonKey, { fp: parsed.fpKey, amount: parsed.amount, date: parsed.date, ref: parsed.receiptNote, usedIn: 'salary:' + personKey + ':' + ym + ':' + (cycShort || 'full') });
+    if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); enableSave(true); return; }   // C2: цагаан жагсаалт — 'ok' биш бол ЗОГС
     if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); enableSave(true); return; }
     let note = `Зарлага: Цалин ${cycShort} ${m.name || ''} ${String(parsed.date).slice(5).replace('-', '.')} ${parsed.receiptNote}`.replace(/\s+/g, ' ').trim();
     if (cycTag) note += ' ' + cycTag;
@@ -15279,6 +15280,7 @@ async function recordNomaadIncome(quoteNo) {
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
+  if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
   if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
@@ -18059,6 +18061,25 @@ function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffH
 // Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
 function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0; }
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
+// ⚠ ДУНДЫН МӨР — захиалгын формын ӨӨРИЙН эзэмшдэг токен ЗӨВХӨН эдгээр (2026-09-03).
+// Бусад бүх токен (PAY/RF/DMG/BRK/CX/CI/SL/SRC…) өөр урсгалынх — засварт ХАДГАЛАГДАНА.
+// Өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул санхүүгийн бүртгэсэн ⟦PAY⟧/⟦RF⟧
+// захиалга засах бүрд УСТДАГ байв (хаяг заасан менежер барьцааг «буцаагаагүй» болгодог).
+const _FORM_TOKEN_RE = /⟦(?:RT|DLV|SET|VAT)\|[^⟧]*⟧/g;
+function stripFormTokens(note) { return String(note || '').replace(_FORM_TOKEN_RE, '').replace(/\s+/g, ' ').trim(); }
+// Хадгалахын ӨМНӨ серверээс шинэ утга ав — модал нээгдсэнээс хойш өөр хүн төлбөр
+// бүртгэсэн байж болно. Алдаа гарвал null буцаана → дуудагч хадгалахаа ЗОГСООНО (fail-closed).
+async function fetchOrderFresh(id) {
+  if (!DB_ANON_KEY || !id) return null;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}&select=paid_mnt,note,status,stage_meta`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (e) { return null; }
+}
 // Цуцлах/устгах шалтгаан — note-д ⟦CX|шалтгаан⟧ token-оор (app_orders-д багана нэмэхгүйгээр). cleanAppNote нуудаг.
 const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
 function cancelReasonOf(note) { const m = String(note || '').match(_CX_RE); return m ? m[1].trim() : ''; }
@@ -18663,7 +18684,16 @@ function openNewOrder(editOrder) {
     };
     // Шатны түүх (зураг/үнэлгээ/хэн-хэзээ) — засах бүрд ЗААВАЛ дамжуулна. saveAppOrder нь
     // бүтэн мөрөөр upsert хийж, локал объектыг орлуулдаг тул орхивол түүх дэлгэцээс алга болно.
-    const _newSt = isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
+    // ⚠ ДУНДЫН МӨР: модал нээгдсэнээс хойш санхүү төлбөр бүртгэсэн байж болно. Локал
+    // хуулбарыг БҮҮ итгэ — серверээс дахин ав. Аваагүй бол хадгалахгүй (fail-closed).
+    let _fresh = null;
+    if (isEdit) {
+      _fresh = await fetchOrderFresh(editOrder.id);
+      if (!_fresh) { showToast('Сервертэй холбогдож чадсангүй — хадгалаагүй. Дахин оролдоно уу.', 'error', 5000); return; }
+    }
+    const _paidNow = isEdit ? (Number(_fresh.paid_mnt) || 0) : 0;
+    const _noteNow = isEdit ? String(_fresh.note || '') : '';
+    const _newSt = isEdit ? ((_paidNow > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
     let _sm = isEdit ? (editOrder.stage_meta || null) : null;
     if (isEdit && _newSt !== editOrder.status) {
       const _lbl = k => (BQ_STATUS[k] || {}).label || k;
@@ -18679,8 +18709,8 @@ function openNewOrder(editOrder) {
       status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: (dtype === 'pct' ? Math.min(100, dval) : dval),   // C9: pct-ыг 100%-аар кэплэж хадгална
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
-      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: _paidNow,
+      note: setCustInfo(((isEdit ? stripFormTokens(_noteNow) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -20025,6 +20055,7 @@ async function submitBqPayment(oid, modal, btn) {
   const okR = [];
   for (const rc of receipts) {
     const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'mevent:#' + o.number });
+    if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }   // C2: цагаан жагсаалт
     if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
     okR.push(rc);
   }
@@ -27043,6 +27074,7 @@ function initEvents() {
       // Баримтыг нэгдсэн ledger-т ЭЗЭМШИНЭ — нэг баримт орлого/захиалга/өөр хүсэлтэд дахин орохгүй
       if (paymentFile && state._finPdfCheck && state._finPdfCheck.canonKey) {
         const rr = await reserveReceipt(state._finPdfCheck.canonKey, { fp: state._finPdfCheck.fpKey, amount: state._finPdfCheck.amount, date: state._finPdfCheck.date, ref: 'зарлага · ' + (state._finPdfCheck.receiver || ''), usedIn: 'fin:' + state.editingId });
+        if (rr === 'err') { showToast('⛔ Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
         if (rr === 'dup') { showToast('⛔ Энэ баримт аль хэдийн өөр гүйлгээнд ашиглагдсан — гүйцэтгэл цуцлагдлаа', 'error', 5000); return; }
       }
       // Upload payment proof first if provided

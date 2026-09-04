@@ -84,9 +84,21 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'stripFormTokens']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
+
+// 5c) SCAN — reserveReceipt-ийн үр дүнг ЦАГААН жагсаалтаар шалгана (2026-09-03)
+// Дүрэм 2: 'dup'-ыг хар жагсаалтаар барих нь 'err'-ийг 'ok' мэт нэвтрүүлдэг →
+// сүлжээ/эрх унахад давхар баримтын хамгаалалт ЧИМЭЭГҮЙ унтардаг байв.
+// Энэ scan нь: 'dup' шалгадаг газар бүр 'err'-ийг мөн шалгасан байх ёстой.
+{
+  const dupChecks = (src.match(/rr === 'dup'/g) || []).length;
+  const errChecks = (src.match(/rr === 'err'/g) || []).length;
+  ok(dupChecks > 0, 'scan: reserveReceipt дуудагч олдов (' + dupChecks + ')');
+  ok(errChecks >= dupChecks,
+     "scan: 'dup' шалгадаг газар бүр 'err'-ийг мөн шалгана (dup=" + dupChecks + ", err=" + errChecks + ')');
+}
 
 // 0d) SCAN — view бүр safeViewHtml-ээр хамгаалагдсан байна (2026-09-03)
 // Рендер алдаа шидвэл wrap.innerHTML хоосон үлдэж апп «үхсэн» мэт харагдана —
@@ -247,6 +259,23 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   const clean = F.cleanAppNote(note);
   ok(clean.indexOf('Жинхэнэ тэмдэглэл') === 0, 'cleanAppNote: үндсэн текст үлдэнэ');
   ok(!/⟦VAT/.test(clean) && !/⟦DLV/.test(clean), 'cleanAppNote: токенууд арилна');
+}
+
+// 5b) stripFormTokens — захиалгын форм ЗӨВХӨН өөрийн токеныг солино (2026-09-03)
+// Регресс: өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул захиалга засах бүрд
+// санхүүгийн бүртгэсэн ⟦PAY⟧ ба буцаалтын ⟦RF⟧ УСТДАГ байв.
+{
+  const foreign = '⟦PAY|500000|бүтэн|данс|2026-09-01|ITZONE⟧ ⟦RF|120000⟧ ⟦DMG|сандал⟧ ⟦CX|цуцлав⟧';
+  const own = F.encodeVat(5000) + ' ' + F.encodeDelivery('out', 10, 50000) + ' ' + F.encodeSetup(true);
+  const kept = F.stripFormTokens('Тэмдэглэл ' + own + ' ' + foreign);
+  ok(!/⟦VAT/.test(kept), 'stripFormTokens: өөрийн ⟦VAT⟧ арилна');
+  ok(!/⟦DLV/.test(kept), 'stripFormTokens: өөрийн ⟦DLV⟧ арилна');
+  ok(!/⟦SET/.test(kept), 'stripFormTokens: өөрийн ⟦SET⟧ арилна');
+  ok(/⟦PAY\|500000/.test(kept), 'stripFormTokens: санхүүгийн ⟦PAY⟧ ХАДГАЛАГДАНА');
+  ok(/⟦RF\|120000⟧/.test(kept), 'stripFormTokens: буцаалтын ⟦RF⟧ ХАДГАЛАГДАНА');
+  ok(/⟦DMG\|/.test(kept) && /⟦CX\|/.test(kept), 'stripFormTokens: ⟦DMG⟧ ба ⟦CX⟧ ХАДГАЛАГДАНА');
+  ok(kept.indexOf('Тэмдэглэл') === 0, 'stripFormTokens: үндсэн текст үлдэнэ');
+  ok(F.cleanAppNote(foreign) === '', 'cleanAppNote нь ХАРИН бүгдийг арилгасаар байна (өөр зориулалт)');
 }
 
 // 6) paid_ref задлах (банкны баримтын лавлагаа)

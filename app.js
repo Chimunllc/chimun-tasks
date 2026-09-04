@@ -6473,7 +6473,7 @@ function incomeReportHtml(res) {
   // Захиалгагүй орлого — данс тус бүрийн нэртэй
   const untrackedRows = (res.untracked || []).slice().sort((a, b) => b.credit - a.credit)
     .map(c => `<tr><td>${escapeHtml(String(c.date || ''))}</td><td>${escapeHtml(c.name || '')}</td><td class="mut">${escapeHtml((c.memo || '').slice(0, 46))}</td><td class="mut">${escapeHtml(acctName(c._srcAcct) || '')}</td><td class="r">${money(c.credit)}</td></tr>`).join('');
-  const today = todayStr ? todayStr() : todayStr();
+  const today = todayStr();
   const me = (state.user && state.user.name) || '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>Орлогын тайлан ${escapeHtml(period)}</title>
   <style>

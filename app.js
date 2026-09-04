@@ -4282,6 +4282,14 @@ const STOCKCOUNT_URL = () => `${DB_URL}/rest/v1/stock_counts`;
 // Нэг өдөр + нэг хүн = нэг сесс. Түлхүүр нь хүнд уншигдахуйц байх нь маргаан
 // таслахад чухал (аль өдөр хэн тоолсон нь ID-гүйгээр харагдана).
 function countSessionId(dateStr, personKey) { return String(dateStr || '') + '|' + String(personKey || ''); }
+// Сессийн түлхүүрээс огноо/хүнийг салгана. Тооллого нь БАГИЙН ажил — өдрийн бүх
+// бичилт хүн бүрт харагдах ёстой, эс бөгөөс хоёр хүн нэг барааг давхар тоолж,
+// «би тоолсон» / «үгүй тоолоогүй» маргаан үүснэ.
+function countSessionDate(sessionId) { const i = String(sessionId || '').indexOf('|'); return i < 0 ? String(sessionId || '') : String(sessionId).slice(0, i); }
+function countSessionPerson(sessionId) { const i = String(sessionId || '').indexOf('|'); return i < 0 ? '' : String(sessionId).slice(i + 1); }
+// Бичлэгийг хэн тоолсон бэ — `counted_by` хоосон бол сессийн түлхүүрээс сэргээнэ
+// (хуучин бичлэгт counted_by дутуу байж болно).
+function countRowPerson(r) { return String((r && r.counted_by) || '').trim() || countSessionPerson(r && r.session_id); }
 
 // Зөрүү = тоолсон − системд. Эерэг нь илүү гарсан, сөрөг нь дутсан.
 function countDiff(row) { return (Number(row && row.counted_qty) || 0) - (Number(row && row.system_qty) || 0); }
@@ -4296,6 +4304,28 @@ function countLatestBySku(rows) {
     if (!prev || String(r.counted_at || '') >= String(prev.counted_at || '')) m.set(r.sku, r);
   }
   return m;
+}
+
+// Бараа бүрийг тооллогын мөртэй нь хослуулна. Скан хийж эхлээгүй тул нярав
+// БҮХ барааг жагсаалтаас хараад аль нь тоологдоогүйг мэдэх ёстой — эс бөгөөс
+// «юуг нь тоолсон бэ» гэдгийг цаасан дээр тэмдэглэх шаардлагатай болно.
+// Төлөв: 'todo' тоолоогүй · 'ok' тоолсон, тэнцсэн · 'diff' тоолсон, зөрүүтэй.
+function countRowState(row) { return !row ? 'todo' : (countDiff(row) === 0 ? 'ok' : 'diff'); }
+function countMergeProducts(products, rows) {
+  const latest = countLatestBySku(rows);
+  return (products || []).map(p => { const row = latest.get(p.sku) || null; return { p, row, st: countRowState(row) }; });
+}
+// Шүүлт + хайлт. Хайлт нь нэр/код/SKU-гаар (скан ирэхэд ижил зам).
+function countFilterList(merged, filter, query) {
+  const q = String(query || '').trim().toLowerCase();
+  return (merged || []).filter(x => {
+    if (filter === 'todo' && x.st !== 'todo') return false;
+    if (filter === 'done' && x.st === 'todo') return false;
+    if (filter === 'diff' && x.st !== 'diff') return false;
+    if (!q) return true;
+    const p = x.p || {};
+    return `${p.name || ''} ${p.code || ''} ${p.sku || ''}`.toLowerCase().includes(q);
+  });
 }
 
 // Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
@@ -4314,7 +4344,10 @@ function countStats(rows, totalProducts) {
 
 async function loadStockCounts(sessionId) {
   try {
-    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=eq.${encodeURIComponent(sessionId)}&select=*&order=counted_at.asc`,
+    // ⚠ `eq.<өдөр|би>` БИШ — тэгвэл хүн бүр зөвхөн ӨӨРИЙНХӨӨ тоолсныг хардаг.
+    // `like.<өдөр>|*` нь тухайн өдрийн бүх хүний бичилтийг татна (session_idx-ээр).
+    const day = countSessionDate(sessionId);
+    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=like.${encodeURIComponent(day + '|*')}&select=*&order=counted_at.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (r.status === 404 || r.status === 406) { state._countTableMissing = true; state.scRows = []; return []; }
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -16249,10 +16282,14 @@ function renderStockCount() {
   const rows = state.scRows || [];
   const st = countStats(rows, all.length);
   const latest = countLatestBySku(rows);
+  const counters = [...new Set(rows.map(countRowPerson).filter(Boolean))];
   const pct = st.total ? Math.round(st.counted / st.total * 100) : 0;
 
-  const q = String(state.scSearch || '').trim().toLowerCase();
-  const hits = q ? all.filter(p => `${p.name || ''} ${p.code || ''} ${p.sku || ''}`.toLowerCase().includes(q)).slice(0, 8) : [];
+  const merged = countMergeProducts(all, rows);
+  const nTodo = merged.filter(x => x.st === 'todo').length;
+  const nDone = merged.length - nTodo;
+  state.scFilter = state.scFilter || 'all';
+  const shown = countFilterList(merged, state.scFilter, state.scSearch);
   const act = state.scActive ? productBySku(state.scActive) : null;
   const actSys = act ? (Number(act.stock) || 0) : 0;
   const actCnt = state.scQty == null ? actSys : Number(state.scQty);
@@ -16278,16 +16315,26 @@ function renderStockCount() {
       </div>
     </div>` : '';
 
-  const listRows = [...latest.values()].sort((a, b) => String(b.counted_at || '').localeCompare(String(a.counted_at || ''))).map(r => {
-    const p = productBySku(r.sku), d = countDiff(r);
-    return `<div class="stc-row${d ? ' d' : ''}">
-      <span class="stc-row-i">${d === 0 ? '✓' : '⚠'}</span>
-      <span class="stc-row-n">${escapeHtml(p ? p.name : r.sku)}</span>
-      <span class="stc-row-q">${d === 0 ? `${r.counted_qty} = ${r.system_qty}` : `${r.system_qty} → ${r.counted_qty}`}</span>
-      ${d && !r.applied && canApply ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>` : ''}
-      ${d && r.applied ? '<span class="stc-done">залруулсан</span>' : ''}
+  // Тоолоогүй нь ЭХЭНД (үлдсэн ажил), дараа нь зөрүүтэй, эцэст нь тэнцсэн.
+  const _ord = { todo: 0, diff: 1, ok: 2 };
+  const listRows = shown.slice().sort((a, b) => (_ord[a.st] - _ord[b.st])
+      || String(a.p.name || '').localeCompare(String(b.p.name || ''), 'mn')).map(x => {
+    const p = x.p, r = x.row, d = r ? countDiff(r) : 0;
+    const who = r ? countRowPerson(r) : '', at = String((r && r.counted_at) || '').slice(11, 16);
+    const byTxt = who ? `${memberName(who)}${at ? ' · ' + at : ''}` : '';
+    const icon = x.st === 'todo' ? '○' : x.st === 'ok' ? '✓' : '⚠';
+    const qtyTxt = !r ? `${Number(p.stock) || 0} ш`
+                 : d === 0 ? `${r.counted_qty} = ${r.system_qty}` : `${r.system_qty} → ${r.counted_qty}`;
+    const sub = byTxt || escapeHtml(`${p.code || p.sku || ''}${p.category ? ' · ' + p.category : ''}`);
+    return `<div class="stc-row ${x.st}"${canCount ? ` data-scpick="${escapeHtml(p.sku)}" role="button" tabindex="0"` : ''}>
+      <span class="stc-row-i">${icon}</span>
+      <span class="stc-row-n">${escapeHtml(p.name || p.sku)}<span class="stc-row-by">${sub}</span></span>
+      <span class="stc-row-q">${qtyTxt}</span>
+      ${d && r && !r.applied && canApply ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>` : ''}
+      ${d && r && r.applied ? `<span class="stc-done">залруулсан${r.applied_by ? ' · ' + escapeHtml(memberName(r.applied_by)) : ''}</span>` : ''}
     </div>`;
   }).join('');
+  const chip = (k, lbl, cnt) => `<button type="button" class="stc-chip ui-raw${state.scFilter === k ? ' on' : ''}" data-scfilter="${k}">${lbl} ${cnt}</button>`;
 
   return `
     <div class="stc-head">
@@ -16299,10 +16346,11 @@ function renderStockCount() {
       <button class="btn ui-raw" id="stc-scan">📷 Скан</button>
       <input type="search" id="stc-search" placeholder="Нэр, код, SKU хайх" value="${escapeHtml(state.scSearch || '')}">
     </div>` : '<div class="pm-batch-note">Танд тоолох эрх олгогдоогүй — зөвхөн үр дүнг харна.</div>'}
-    ${hits.length ? `<div class="stc-hits">${hits.map(p => `<button type="button" class="stc-hit ui-raw" data-scpick="${escapeHtml(p.sku)}"><b>${escapeHtml(p.name || '')}</b><span>${escapeHtml(p.code || p.sku)} · ${Number(p.stock) || 0} ш</span></button>`).join('')}</div>` : ''}
     ${actCard}
-    ${listRows ? `<div class="stc-list-t">Энэ сессийн бичилтүүд</div><div class="stc-list">${listRows}</div>`
-               : '<div class="pm-batch-note">Өнөөдөр хараахан тоолоогүй байна. Скан дарж эсвэл хайж бараагаа сонгоно уу.</div>'}
+    <div class="stc-chips">${chip('all', 'Бүгд', merged.length)}${chip('todo', '○ Тоолоогүй', nTodo)}${chip('done', '✓ Тоолсон', nDone)}${st.diffs ? chip('diff', '⚠ Зөрүүтэй', st.diffs) : ''}</div>
+    ${counters.length > 1 ? `<div class="stc-list-t">Өнөөдөр ${counters.length} хүн тоолсон: ${escapeHtml(counters.map(memberName).join(', '))}</div>` : ''}
+    ${listRows ? `<div class="stc-list">${listRows}</div>`
+               : `<div class="pm-batch-note">${state.scSearch ? 'Хайлтад бараа олдсонгүй.' : 'Энэ шүүлтэд бараа алга.'}</div>`}
   `;
 }
 
@@ -16310,8 +16358,12 @@ function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
   const search = $('stc-search');
   if (search) search.oninput = () => { state.scSearch = search.value; render(); setTimeout(() => { const el = $('stc-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); };
-  document.querySelectorAll('[data-scpick]').forEach(b => b.onclick = () => {
-    state.scActive = b.dataset.scpick; state.scQty = null; state.scSearch = ''; render();
+  document.querySelectorAll('[data-scfilter]').forEach(b => b.onclick = () => { state.scFilter = b.dataset.scfilter; render(); });
+  document.querySelectorAll('[data-scpick]').forEach(b => {
+    // Хайлтыг ЦЭВЭРЛЭХГҮЙ — нярав нэг хайлтаар олон бараа тоолдог (хайлт арилвал дахин бичнэ).
+    const pick = () => { state.scActive = b.dataset.scpick; state.scQty = null; render(); };
+    b.onclick = pick;
+    b.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } };
   });
   const qty = $('stc-qty');
   if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - (Number(p && p.stock) || 0); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } };

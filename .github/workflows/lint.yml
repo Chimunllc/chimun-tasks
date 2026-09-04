@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # кэшийн хувилбарын шалгалт суурь салбартай харьцуулна
 
       - uses: actions/setup-node@v4
         with:
@@ -60,3 +62,14 @@ jobs:
 
       - name: Unit tests (66 цэвэр логик тест)
         run: node test/run.js
+
+      # Кэштэй утсанд өөрчлөлт ХҮРЭХ баталгаа. sw.js-ийн SHELL_FILES-д багтсан файл
+      # өөрчлөгдсөн атлаа CACHE_VERSION хэвээр бол service worker хуучин файлаа
+      # өгсөөр байх тул merge хийсэн ч ажилчдад «юу ч өөрчлөгдөөгүй» харагдана.
+      # 2026-09-04-нд PR #163 яг ингэж алдагдсан тул энэ шалгалт нэмэгдэв.
+      - name: Кэшийн хувилбар бөглөгдсөн эсэх
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --prune origin \
+            "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          node .github/scripts/check-cache-version.mjs "${{ github.base_ref }}"

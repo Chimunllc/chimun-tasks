@@ -57,3 +57,9 @@ postgres-migration/
 nomaad-backup/
 *-backup-*.json
 Нягтлан-цалин-build-vs-buy.md
+
+# Бизнесийн дата snapshot (tools/biz-snapshot.js --json) — орлого/харилцагчийн тоо, public репод ОРОХГҮЙ.
+biz-snapshot.json
+
+# Редакторын түр файл (жишээ: .!37965!sw.js) — GitHub Pages нийтэд server хийдэг.
+.!*

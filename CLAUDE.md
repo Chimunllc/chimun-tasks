@@ -14,62 +14,71 @@
 
 Компанийн дотоод даалгавар / ажлын урсгалын менежментийн PWA. Байршил: repo-гийн үндэс (root).
 
-- **Frontend:** нэг файлын `app.js` (~28,000 мөр) + `index.html` + `styles.css`. Build систем байхгүй.
-- **Backend (2026-06-28 шинэчлэв):** **бүх дата өөрийн Contabo VPS дээр** (n8n + Postgres + PostgREST + Caddy, `n8n.nomaadcamp.com`). Google Sheets БА Supabase cloud-аас БҮРЭН гарсан. Дэлгэрэнгүй: ↓ "2026-06-28 МИГРАЦ".
+- **Frontend:** нэг файлын `app.js` + `index.html` + `styles.css`. Build систем байхгүй.
+- **Backend:** **бүх дата өөрийн VPS дээр** (n8n + Postgres + PostgREST + Caddy, `n8n.nomaadcamp.com`). Google Sheets БА Supabase cloud-аас БҮРЭН гарсан.
 - **PWA:** service worker, Web Push (VAPID), офлайн ажиллагаа.
-- **Чадвар:** роль/эрх, PIN нэвтрэлт, санхүүгийн хүсэлт, KPI, 5-дамжлагат "акт" урсгал, аппын доторх + push мэдэгдэл, **захиалгын самбар (Booqable, CEO)**.
+- **Чадвар:** роль/эрх, PIN нэвтрэлт, санхүүгийн хүсэлт, KPI, захиалгын дамжлага (зурагтай), засварын урсгал, ирц/цалин, тайлан, push мэдэгдэл.
 - **Hosting:** GitHub Pages.
-- **⚠ mevent.mn сайт нь ӨӨР repo:** `Chimunllc/m-event-website-ready` (нэг файлын `index.html` ~257KB + `products.json`). Сайтын алдаа энэ репод БАЙХГҮЙ — тусад нь clone/PR хийнэ.
+- **⚠ mevent.mn сайт нь ӨӨР repo:** `Chimunllc/m-event-website-ready` (нэг файлын `index.html` + `products.json`). Сайтын алдаа энэ репод БАЙХГҮЙ — тусад нь clone/PR хийнэ.
 
-### ⭐ 2026-06-28 МИГРАЦ — бүх дата VPS Postgres-д (доорх ХУУЧИН хэсгүүдийг дарна)
-> Доорх "M-Event захиалга", "Барааны зураг — Supabase Storage", "Түрээсийн түүх" зэрэг хэсгүүд нь Google Sheets/Supabase cloud гэж бичсэн — **ХОЦРОГДСОН**. Бодит байдал:
-- **Дата = VPS Postgres `chimun` DB** (Contabo 62.146.232.100). Sheets ч, Supabase cloud ч ХЭРЭГЛЭХГҮЙ.
+### Дата хаана байдаг
+- **Дата = VPS Postgres `chimun` DB** (өөрийн VPS; хаяг/хандалт локал санах ойд). Sheets ч, Supabase cloud ч ХЭРЭГЛЭХГҮЙ.
 - **Унших:** апп `DB_URL='https://n8n.nomaadcamp.com/db'` (Caddy `/db/rest/v1/*`→PostgREST), `DB_ANON_KEY`=VPS anon JWT. ⚠ Эдгээр 2026-08-30 хүртэл `SUPABASE_URL`/`SUPABASE_ANON_KEY` нэртэй байсан — Supabase cloud-той хамааралгүй, төөрөгдүүлдэг тул нэрлэсэн. Сайтад мөн `DB_BASE`/`DB_PRODUCTS_URL`/`DB_ORDERS_URL`/`DB_ANON_KEY`. Tasks/finance/staff/nomaad = n8n webhook-оор (бүгд Postgres). products/bq_* = PostgREST шууд.
-- **Бичих:** anon grant (Supabase-тэй адил) — products/bq_orders(status,total_paid)/bq_payments/nomaad_payments.
-- **Захиалга = ЗӨВХӨН Booqable** (M-Event давхарга цуцлагдсан). `unifiedOrders()` зөвхөн `state.bqOrders`. `loadOrders` no-op. M-Event функцууд (`openNewMeventOrder`/`orderCardHtml`/`openOrderPaymentModal`/`renderOrdersBoard`/`reconcileOrders`) ҮХСЭН КОД — хүрэлцэхгүй. Захиалгын карт=`bqOrderCard` (төлбөр/гаргах/буцаах/скан). `openOrderScanModal` Booqable-аар.
+- **Бичих:** anon grant-аар шууд — `products`, `app_orders`, `repairs`, `product_aliases`, `nomaad_payments`. Бусад нь n8n webhook-оор.
+- **Захиалга = НЭГ хүснэгт `app_orders`** (2026-07-01-нд Booqable түүх + шинэ захиалга нэгдсэн). `unifiedOrders()` нь `state.appOrders`-ээс уншина; `source` талбар нь 'booqable'(түүхэн) / 'app' / сайт гэж ялгана. `bq_*` хүснэгтүүд зөвхөн аналитик архив — шинэ захиалга тэнд БИЧИГДЭХГҮЙ. Захиалгын карт = `bqOrderCard`.
 - **Захиалгын модал (2026-08-29 дахин зохиомж):** `openNewOrder` = `.modal.no-modal`, ≥1001px-д **2 багана** (зүүн: харилцагч/хугацаа/хүргэлт → төлбөр+дүн, баруун: бараа бүтэн өндрөөр) — хуучин 640px нарийн багана байсныг өргөсгөв. Хайлт `.no-search` (бүтэн өргөн, `.orders-search`-ийн 150px хайрцаггүй), каталог `.no-catalog` (том хавтан + сул үлдэгдэл), сонгосон мөр `.no-item` дээр **− [тоо] + степпер** (тоо ширхэг бүтэн харагдана) + үнэ + «✓/⚠ N сул». **`openOrderProductPicker`** = бүх барааны popup (ангиллын чип, хайлт, картан дээр тоо, «✓ Оруулах») — «⤢ Бүгд» товчоор нээнэ, `.modal`-аас ГАДНА тул modal-ийн !important flatten хүрэхгүй. Загварын гэрээгээр: шинэ `!important` 0, inline `style=` 72→26, бүх өнгө/зай токен. Мобайл `.modal input/button {...!important}` дүрмүүдэд **`:not(.ui-raw)`** нэмж жижиг контролуудыг чөлөөлсөн (шинэ !important бичихгүйгээр).
 - **Зураг:** хуучин 228 = VPS Caddy (`n8n.nomaadcamp.com/img/`). Шинэ upload = base64 data URL (products.photo-д). Supabase Storage ХЭРЭГЛЭХГҮЙ.
 - **Файл (нэхэмжлэх/ажлын зураг):** Google Drive-д ХЭВЭЭР (n8n→Drive, `driveThumbUrl`/lh3). Supabase-тэй хамаагүй.
-- **⚠ VPS:** SSH=агентын `claude-chimun-migration` түлхүүр. CORS gotcha: Caddy `header_down`-ийг `caddy reload` БИШ, зөвхөн `docker compose restart caddy` хэрэгжүүлдэг. VPS root нууц үг чатад ил болсон → солих. Дэлгэрэнгүй memory: [[project_vps_selfhost]], [[project_booqable_history]].
+- **⚠ VPS gotcha:** Caddy `header_down` (CORS) өөрчлөлтийг `caddy reload` ХЭРЭГЖҮҮЛДЭГГҮЙ — зөвхөн `docker compose restart caddy`. Хандалтын мэдээлэл (SSH, нууц үг) энд БИЧИХГҮЙ — локал санах ойд.
 
-### M-Event захиалга (backoffice эхлэл, 2026-05-31)
-- M-Event түрээсийн сайт (`chimunllc.github.io/m-event-website-ready`) захиалгыг хүлээж авах backoffice.
-- **Архитектур шийдэгдсэн:** website дээр админ БАЙХГҮЙ — бүх админ Чимун апп дотор, admin (CEO) эрхээр. Бараа/захиалга Google Sheets-д амьдарна.
-- **Дата:** `MEVENT_Orders_DB` Sheet id `1MxI9jkC06XyNNzyW2nsSNpH8CUKL9GlHDzVHwA65MR8`, tab `orders` (21 багана: order_no, status, customer_*, items_json, total, assigned_to, task_id...). MEVENT Drive фолдер: `1-zJ7OM1uEVb04JCptvJgbYh4VawN5b_c`.
-- **n8n workflow:** `MEVENT · Site order capture` (POST /webhook/m-event-site-order, id `YGrBDw0wZ7O9xMPW`) — сайт → Sheet append. `MEVENT · Orders API (read+update)` (id `9Jh8Qw2XYJwzH9Ho`) — GET /webhook/mevent-orders унших, POST статус/хариуцагч шинэчлэх. Auth: app.js webhook key `1YP4RCfL...`.
-- **App код:** `state.orders`, `loadOrders`, `renderOrders`, `updateOrderStatus`, view `orders` (зөвхөн CEO). config `ordersUrl`.
-- **Захиалгын самбар UI (2026-06-23 шинэчлэв):** менежерийн харагдац = анхаарлын чипүүд (батлах хүлээж буй / өнөөдөр хүргэх / идэвхтэй + сарын түрээс) + статус шүүлтүүр таб (`ORDER_PHASES`: new/prep/deliver/done/cancelled) + хайлт + Жагсаалт⇄Самбар(kanban) toggle. Карт = `orderCardHtml` (stepper `orderStepper`, яаралтай тэмдэг `orderUrgency`, эвхэгддэг бараа, холбоотой даалгавар). Статус удирдлага хамгаалагдсан: урагшлуулах=`data-order-advance` нэг товч, буцаах/цуцлах=⋯ кебаб (`showConfirm`-тэй) — хуучин чөлөөт `<select>`-ийг сольсон. Шүүлт төлөв: `state.ordersFilter`/`ordersView`/`ordersSearch`. `renderOrdersBoard` board харагдац. Зөвхөн frontend.
-- **Бараа backoffice (2026-05-31):** `products` tab (sheet id мөн `1MxI9jkC...`), 249 бараа seed хийсэн. n8n `MEVENT · Products API (read+upsert)` (id `t8JsCudKPGKtP0KW`): GET /webhook/mevent-products (сайт + апп уншина, bare array буцаана), POST бараа нэмэх/засах. **Merge-safe:** POST үед эхлээд Sheet уншиж байгаа мөртэй merge хийдэг — хэсэгчилсэн засвар (зөвхөн үнэ) бусад талбарыг хоослохгүй. Setup workflow: `MEVENT · setup products tab` (id `uO2UJFdT2pNnMgdX`, tab үүсгэх, дахин хэрэггүй). App: `state.products`, `loadProductsCatalog`, `saveProduct`, `renderProducts`, view `products`, config `productsUrl`. Сайт: `CONFIG.PRODUCTS_URL` (live), `loadProducts` нь products.json-ийг fallback болгоно.
-- **Барааны зураг — Supabase Storage (2026-06-23 шилжүүлсэн):** Бараа бүрийн `photo` өмнө Booqable CDN (`content.booqablecdn.com`) линк байсныг **Supabase Storage** руу шилжүүлэв (Booqable-аас бүрэн салах). 228 unique зураг (`data booqable/product-images/<photo_id>.jpg` локал backup) → **`product-images` public bucket** (project `pydgnbzntldpzzjhtaal`). Шинэ URL: `https://pydgnbzntldpzzjhtaal.supabase.co/storage/v1/object/public/product-images/<photo_id>.jpg`. Лайв Sheet `photo` багана (248) + сайтын `products.json` хоёуланг bulk merge-safe POST-оор шинэчилсэн (0 Booqable үлдсэн). Зураг хадгалах эх загвар: photo_id-аар нэрлэнэ.
-- **Аппаас зураг upload:** Шинэ барааны форм (`newProductFormHtml`)-д "📷 Зураг оруулах" товч → `uploadProductImage(file)` нь зургийг `resizeImageToBase64`(1200px/0.78)-аар шахаж **VPS webhook** `mevent-upload-image` руу илгээж hosted URL (`n8n.nomaadcamp.com/img/<file>`) авч `photo`-д оруулна; webhook унавал base64 руу fallback. ⚠ Энэ нь 2026-06-23-нд Supabase Storage `product-images` bucket руу хийдэг байсан — ОДОО ТИЙМ БИШ (амьд DB-д 287/308 зураг `n8n.nomaadcamp.com`, Supabase 0 — 2026-08-30 шалгав). Supabase дахь `pydgnbzntldpzzjhtaal` project ашиглагдахаа больсон; акаунт дээр үлдсэн бол устгаж болно (эх хуулбар `data booqable/product-images/` 228 файл + VPS дээр). Postgres-ийн `service_role`-д `GRANT ... ON ALL TABLES IN SCHEMA public` олгосон (PostgREST-ээр засах боломжтой болгох). **service_role түлхүүрийг rotate хийх ёстой** (чатад орсон).
-- **Агуулах/хөрөнгө — "Түрээслэх боломжтой" чагт (2026-06-23):** Барааны хэсэг = агуулах/хөрөнгийн бүртгэл. **`type` талбар** ялгана: `rental`(эсвэл хоосон)=түрээсийн, `asset`=Чимун ХХК-ийн дотоод хөрөнгө. `isRentable(p)` = `type!=='asset'`. Аппын барааны мөр + шинэ барааны формд "Түрээслэх" чагт (чагт→rental, чагтгүй→asset). Шүүлтүүр таб: Бүгд/Түрээсийн/Хөрөнгө (`state.prodFilter`). **Сайт (`loadProducts`) зөвхөн `type!=='asset'` барааг харуулна** — хөрөнгө сайтад харагдахгүй. Шинэ багана/backend хэрэггүй (одоо байгаа type ашигласан). Үнэ оруулаагүй шинэ бараа = asset болговол сайтад 0₮-өөр харагдахгүй (менежер үнэ оруулаад чагтлахад л гарна). Жишээ: K3-ACTIVE/KS28-ACTIVE (Lase Sound, нэгж өртөг ~5сая₮) asset-ээр нэмсэн, түрээсийн үнэ хүлээж буй.
-- **Барааны UI (2026-06-23 дахин зохиомж):** `productRowHtml` = АВСААРХАН, харах зориулалттай мөр (нэр, ангилал/SKU, ашиглалт+ROI, 💰 нэгж өртөг, үнэ/нөөц/төрөл badge) → дартал `openProductModal(p)` нээгдэнэ (нэмэх/засах нэгдсэн модал). Inline input/`newProductFormHtml` хасагдсан. `submitProductModal`: каталог→Sheet (`saveProduct`), өртөг→Supabase Postgres (`saveProductCost`, PostgREST PATCH anon key-ээр). **ROI/өртөг (2026-06-23):** `loadProductCosts` нь Postgres `products.cost`-ийг anon SELECT-ээр уншиж `state.productCosts`(sku→cost). `productUtilization(name)` орлого; ROI%=revenue/(cost×stock). Хөрөнгийн нийт үнэ цэнэ толгойд. **Booqable-аас 205 барааны өртөг backfill хийсэн** (~218сая₮, `default_purchase_cost_in_cents`). Каталог Sheet-д, өртөг Postgres-д (миграцийн дундах hybrid). Өртөг засахад anon UPDATE policy шаардана.
-- **Хувилбар (variant) ХАЛАГДСАН (2026-08-29):** `variant_group`/`variant_label`-аар барааг нэг картад нэгтгэдэг байсныг бүрэн хассан — сайтад каталог хэт цөөн бараатай харагдаж байв. Аппд: `variantGroupHead`/`.prod-vg-*` бүлэглэлт устсан (`productListHtml` = мөр бүр тусдаа), модалын «🎨 Хэмжээ/өнгө» талбар устсан, `submitProductModal` хадгалах бүрд `variant_group/label=null` бичнэ. **Дата цэвэрлэх:** Барааны хэсэгт нил ягаан тууз «Хувилбар цуцлах (N)» → `bulkClearVariants()` нь бүх мөрийг null болгож PostgREST-ээр upsert хийнэ; цэвэрлэгдмэгц тууз өөрөө алга болно. **Сайт (m-event-website-ready) нь эдгээр баганаар бүлэглэдэг тул зөвхөн энэ товчийг дарсны дараа тусдаа карт болно** (сайтын код өөрчлөх шаардлагагүй).
-- **Анхаарах (n8n appendOrUpdate gotcha 2):** defineBelow-д БҮХ багана map хийвэл дутуу талбар '' болж жинхэнэ мөрийг хоослоно. Хэсэгчилсэн засвар хийх бол эхлээд Sheet уншиж merge хий (Products API-д хийсэн).
-- **Захиалгын гүйцэтгэлийн урсгал (2026-06-23 шинэчлэв — төлбөрийн алхам нэгтгэв):** Шинэ (эвент ажилтан үүсгэв эсвэл сайтаас) → нягтлан/CEO "💵 Төлбөр авах" дарна → **төлбөрийн модал** (`openOrderPaymentModal`/`submitOrderPayment`): дүн + төрөл (бүтэн/урьдчилгаа) + хэлбэр (данс/бэлэн/карт) + огноо → баталгаажуулмагц **status=Төлбөр авсан** + **3 даалгавар автоматаар** үүснэ (Түрээс бэлдэх, Цэвэрлэгээ, Хүргэлт; branch m-event, project event, эзэн=Эвент менежер) → Эвент менежер ажилтан хуваарилна. **Хуучин «Баталсан» статус хасагдсан** (төлбөр авах = захиалга батлах нэг алхам болов; өмнө "Гүйлгээ амжилттай"→Баталсан ба нягтлан→Төлбөр авсан гэсэн 2 давхар алхам байсан). `normalizeOrder` нь хуучин дата дахь «Баталсан»-г «Төлбөр авсан» болгож буудна. **Төлбөрийн дэлгэрэнгүй (paid_amount/type/method/date/ref)** одоогоор `note` дотор `⟦PAY|дүн|төрөл|хэлбэр|огноо|гүйлгээний_утга⟧` токеноор кодлогдоно (хямдрал/НӨАТ кодлодогтой ижил арга; `parsePayment`/`encodePaymentNote`/`stripPaymentNote`, `cleanOrderNote` нь токеныг нууна; ref-д `|⟦⟧` цэвэрлэгдэнэ) — backend багана нэмэхгүйгээр ажиллана. **`paid_ref` = банкны гүйлгээний утга** — нягтлан төлбөр бүртгэх үед банкнаас ЯГ хуулна (үйлчлүүлэгчид захиалгын дугаар бичдэггүй, "ITZONE -SHIREE SANDAL-нэр" гэх мэт эмх замбараагүй бичдэг тул). Картад 🔖-ээр харагдана. **Банкны тулгалт (2026-06-23 хийсэн):** Захиалга дотор "📊 Тулгалт" горим (`state.ordersRecon`). Голомтын дансны хуулга (.xlsx/.csv) оруулна → `statementFileToMatrix` (xlsx-д SheetJS jsdelivr-ээс lazy-load, SW cross-origin дамжуулна) → `parseStatement` (толгойн мөрийг автоматаар олно: «Гүйлгээний огноо | утга | Харьцсан дансны нэр | данс | Ханш | Орлого | Зарлага»; огноо ISO `...T...`, footer/огноогүй мөр алгасна) → `reconcileOrders` (Орлого=ирсэн мөрийг paid_ref/нэр/дүн/огноогоор тулгана, score≥3) → 4 хуваарь: ✓баталгаажсан/⚠дүн зөрүүтэй/❓дансанд алга/💰захиалгагүй орлого (`renderReconcilePanel`). AI-гүй, frontend дангаар — утга банкнаас яг хуулагдсан тул шууд таарна. Engine нь бодит Голомт файлаар тестлэгдсэн. **Дараагийн (сонголттой):** AI нөхөлт (Claude API, зөвхөн таараагүй мөрд, n8n); тулгасан төлбөрийг verified болгож тэмдэглэх persist. Мөн сонголт: MEVENT_Orders_DB-д paid_* багана нэмж n8n-д map → цэвэр хадгалалт + санхүүгийн орлоготой холбох. "💵 Төлбөр авах"/"✎ төлбөр засах" зөвхөн нягтлан/CEO-д. "✎ Засах" зөвхөн Шинэ төлөвт. `orderToWire` нь paid_* талбарыг мөн илгээдэг (багана нэмэгдэхэд шууд persist).
-- **`products.name_en` — барааны албан ёсны англи нэр (2026-08-29):** SQL (нэг удаа, VPS `chimun` DB): `ALTER TABLE public.products ADD COLUMN IF NOT EXISTS name_en text;` + `GRANT SELECT,INSERT,UPDATE ON public.products TO anon;` + `NOTIFY pgrst, 'reload schema';` Апп: `select=*` тул автоматаар ирнэ; `state._prodHasNameEn` (source_url-тэй ижил хамгаалалт) багана байхгүй үед бичихгүй. Барааны модалд «Англи нэр» талбар; шүүлтэд «🇬🇧 Англи нэргүй»; Бараа хэсэгт цэнхэр тууз → `bulkFillNameEn()` нь хоосныг `enText()`-ээр бөөнөөр бөглөнө (PostgREST upsert, буцаах логиктой). `name_en` бөглөгдсөн бол EN үнийн санал ТҮҮНИЙГ, эс бөгөөс толийг ашиглана.
-- **Англи хувилбарт БҮХ монгол текст орчуулагдана (2026-08-29):** `enText()` — хэллэгийн толь (`MEV_EN_PHRASES`) → нэгж (см→cm, л→L, кВт→kW, Вт·ц→Wh) → үгийн толь (`MEV_EN_WORDS`, ~250 үг, түрээсийн каталогийн бүх нэрээр бүтээсэн) → үлдсэнийг **латинаар галиглана** (`translitMn`, MNS 5217 хялбаршуулсан). Хамрах: барааны нэр, албан тушаал (Гүйцэтгэх захирал→CEO), захиалагчийн хаяг, хүргэлтийн бүс. Хүн/байгууллагын нэр = зөвхөн галиглал (`enProper`). Компани/банк/хаяг = `CHIMUN_LEGAL.nameEn/bankEn/addressEn`. **Барааны ЖИНХЭНЭ англи нэр** хэрэгтэй бол products-д `name_en` багана нэмэхэд `enProdName()` түүнийг эхэлж авна (код засахгүй). Жишээ: «Цагаан Ширээ 180*74см»→«White Table 180*74cm», «Хогны сав Том»→«Waste bin Large».
-- **Захиалга хариуцсан ажилтны блок (2026-08-29):** баримтын нийлбэрийн доор «Таны захиалга хариуцсан ажилтан» — нэвтэрсэн ажилтны нэр — албан тушаал, утас (+976), hello@mevent.mn, mevent.mn, Агуулах хаяг. EN-д `Your order contact` + `CHIMUN_LEGAL.addressEn`. **Зураг ОРУУЛАХГҮЙ** — имэйлийн гарын үсэгт аль хэдийн бий (хэрэглэгч давхардлыг хассан).
-- **Барааны зураг үнийн саналд (2026-08-29):** баримтын мөр бүрийн нэрийн ӨМНӨ 38px зураг (`.it-th`). Зургийг `quoteThumbUrl()` нь урьдчилан татаж 200px data URL болгоно — html2canvas-ийн CORS хязгаарыг тойрч PDF-д ҮРГЭЛЖ гарна (татаж чадахгүй бол URL хэвээр). Тиймээс `openOrderQuote` нь popup-ыг ЭХЛЭЭД нээж («бэлдэж байна…»), `buildOrderQuote(o,lang)` async дуусмагц агуулгыг бичнэ (await-ын дараа `window.open` дуудвал popup blocker хаадаг). Бусад загвар өмнөх хэвээр — 2026-08-29-нд илүү «баян» загвар (SUPPLIER/CLIENT, код, тайлбар, холбоо барих блок, урт нөхцөл) туршиж үзээд хэрэглэгч буцаалгасан.
-- **Үнийн санал — монгол + АНГЛИ (2026-08-29):** `openOrderQuote(oid, lang)` нь баримт (PDF эх) + имэйлийн их биеийг ХОЁР хэлээр зэрэг үүсгэнэ (`MEV_QUOTE_T.mn` / `.en` толь). Popup-ийн toolbar-т «🇬🇧 English ⇄ 🇲🇳 Монгол» toggle — сонгосон хэл нь PDF, имэйлийн гарчиг/их бие, файлын нэр бүгдэд мөрдөгдөнө (`QD[CUR]`, webhook-д `lang` талбар нэмж илгээнэ). Дата (барааны нэр, албан тушаал, хүргэлтийн тэмдэглэл) орчуулагдахгүй; аппын товч/сануулга ажилтанд зориулагдсан тул монголоороо. EN-д гүйлгээний утга = `Order N` (MN-д `Захиалга N`).
-- **Хугацааны хямдрал (2026-09-03 шинэчлэв — хуучин «2+ хоног = 20%» ХОЦРОГДСОН):** `RENTAL_TIERS` = 30+ хоног **55%**, 7–29 хоног **40%**, 2–6 хоног **20%**. Хоног = **календарийн өдөр** (цагаар БИШ). `app_config['tariffs'].tiers` байвал түүнийг давуу тооцно. `orderDiscountAmount` нь авто-шат ба гар хямдралын **ИХ**-ийг авна (нэмэлт БИШ). ⚠ Сайтын `RENTAL_TIERS`-тэй ЯГ ИЖИЛ байх ёстой — доорх ТАРИФ SYNC. НӨАТ хасах чагт = түрээсээс −5%.
-- **Давхар захиалга сэргийлэх (availability, 2026-06-23):** `availabilityFor(name,start,end,excludeOrderNo)`={stock,booked,avail}. `bookedQtyForRange` нь огноо давхцах ИДЭВХТЭЙ захиалгуудын (`_ORDER_OCCUPYING`: Шинэ→Хүргэсэн) item тоог нэрээр (case-insensitive `_normProdName`) нэмнэ; Буцаан ирсэн/Дууссан/Цуцалсан=чөлөөтэй. `productStockByName` (null=каталогт алга). `orderShortages`=over-booked жагсаалт. Захиалгын формд (`updateAvail`) мөр бүрт "✓/⚠ N сул"; хадгалахад баталгаажуулна; төлбөрийн модалд (сайтын захиалга) анхааруулна. Frontend дангаар.
-- **Дараагийн ажил:** бараа архивлах UI; тестийн мөр (`ME-20260531-062727`) устгах; MEVENT_Orders_DB-г MEVENT фолдер руу зөөх + давхардсан sheet устгах (хэрэглэгч гараар).
+### Захиалгын дамжлага (2026-09)
 
-### Түрээсийн түүх — Booqable аналитик (2026-06-23)
-- Booqable-ийн 2024–2026 БҮРЭН түрээсийн түүхийг (1354 захиалга, 1941 төлбөр, 3375 захиалгын мөр, 4149 хуваарь, 245 бараа, 1288 харилцагч) Supabase Postgres-ийн **`bq_*` read-only хүснэгт** + **`bq_v_*` аналитик view** болгон оруулав (project `pydgnbzntldpzzjhtaal`). Орлогын үнэн эх = `bq_payments` (charge−refund, succeeded_at). **Цэвэр орлого ~668сая₮.** Booqable бол ГАРАХ систем — энэ нь түүхэн дата, амьд биш.
-- **Апп:** CEO-only view `booqable` ("Түрээсийн түүх"). `loadBooqable` нь 7 view-г PostgREST anon SELECT-ээр **lazy** татна (статик тул polling-д ОРООГҮЙ; `bq_v_product_roi` нь `.catch(()=>[])`-тэй tolerant). `renderBooqable` 4 таб: **Орлого** (KPI + 📌`bqInsights` автомат дүгнэлт банер + сар бүрийн bar + `bqSeasonChart` улирлын дундаж + төлбөрийн хэлбэр) / **Бараа·ROI** (`bq_v_product_roi`-аас ROI×=орлого÷өртөг, 🟢≥3/🟡1-3/🔴<1 + "Анхаарах: ROI<1" хэсэг; view байхгүй бол хуучин жагсаалтаар fallback) / **Харилцагч** / **Ашиглалт**. `state.booqable`/`bqTab`. `bqInsights`: YoY өсөлт (дуусаагүй сарыг хасч өнгөрсөн оны мөн сартай), топ5/топ10 төвлөрөл, царцсан хөрөнгө, оргил улирал.
-- **Дата урсгал:** `data booqable/full-export-<TODAY>/` (download_all_fresh.py, Booqable API v4) → `postgres-migration/bq_gen.js` → `bq_02..07_*.sql` (500мөр/statement batched upsert, id-аар дедуп — lines export-д ~24% давхардал бий). `bq_01_schema.sql`(хүснэгт+view), `bq_08_product_roi.sql`(ROI view) — DDL зөвхөн SQL Editor-т RUN. **Ачаалал:** `bq_load.js` (PostgREST bulk upsert, `SUPABASE_SERVICE_KEY` env, локалд — томруу SQL хуулахгүй) ЭСВЭЛ bq_02..07 SQL гараар. **Дараалал: 01(схем)→bq_load.js эсвэл 02-07(дата)→08(ROI view).** ⚠ `postgres-migration/bq_load.js`/`bq_run.js`/`bq_clean.js` нь ЖИНХЭНЭ Supabase cloud руу (`pydgnbzntldpzzjhtaal`) ханддаг байсан нэг удаагийн хэрэгсэл — `SUPABASE_*` env нэр тэнд ЗӨВ. Одоо ашиглагдахгүй (дата VPS дээр); дахин бүү ажиллуул. 2026-06-23-нд live ачаалсан (173 ROI бараа, 8 царцсан хөрөнгө).
-- **Захиалга — бүгд НЭГ нэгдсэн жагсаалт (2026-06-23):** Booqable UI-аас БҮР МӨСӨН халж, M-Event(идэвхтэй) + Booqable түүх(1354) НЭГ жагсаалтад нэгтгэв (toggle БИШ, филтерээр). `unifiedOrders()`: M-Event → `orderCardHtml` (interactive workflow), Booqable түүх → `bqOrderCard` (read-only, аппын `order-card` CSS-ээр ЯГ адил). **Төлвийн badge (2026-06-23 UI/UX):** `BQ_STATUS` = 6 Booqable төлөв ТУСДАА (Ноорог/Захиалсан/Эхэлсэн/Дууссан/Архивласан/Цуцалсан), `bqStatusBadge`=цэг+бараан текст pill (WCAG AA, өнгөнд бус текст+цэгээр). M-Event карт өөрийн badge хэвээр; шүүлтэд `meStatusKey`-ээр 6-ийн нэгэнд буулгана (`e.skey`). **Шүүлт:** төлөв таб (Бүгд + 6 төлөв логик дараалал, нэгдсэн тоо, сонгогдсон=тод) + **он-сар dropdown** (`state.ordersYM`) + хайлт(нэр/утас/имэйл/дугаар) → шүүсэн бүрд "N захиалга · нийт X₮". Жагсаалт 200-аар cap (нийлбэр бүгдээр); kanban=зөвхөн M-Event. `loadBooqableOrders`/`loadBooqableOrderItems`→`state.bqOrders`/`bqOrderItems` (lazy). **SQL:** `bq_09_orders.sql` + `bq_10_contact.sql` (харилцагчийн утас 1057/имэйл/хаяг backfill `properties.phone`/`main_address`/`delivery_address`-ээс, bq_v_orders+bq_v_order_items view). Booqable нэр UI-д АЛГА.
-- **Салбар таб (#4, 2026-06-23):** "🏢 Салбар" таб = компанийн орлого 2 салбараар. **Бизнесийн бүтэц (хэрэглэгч баталсан):** ① M-Event/Booqable = эвентийн түрээс (нэг салбар, Booqable хуучин backend, M-Event шинэ front-door, 2026-06-д ердөө 10 захиалга, харилцагч давхцдаг тул Booqable+M-Event-ийг НЭМЭХГҮЙ), ② NOMAAD = кемп (тусдаа салбар). **Орлого/зарлага салбар бүрд тусдаа, агуулах НЭГ дундын** (нийт барааг 2 салбар хуваан ашигладаг). Таб: 2 KPI (Эвент=Booqable цэвэр vs Кемп=NOMAAD `income_amount` нийлбэр) + сүүлийн 12 сар зэрэгцсэн багана. Зөвхөн frontend (bq view + `state.nomaadOrders`). NOMAAD кемп 2026-06-д ~148-166сая (эвентийн June-ээс их).
-- **⚠ АЮУЛГҮЙ БАЙДАЛ:** repo PUBLIC + GitHub Pages app.js-ийг нийтэд server хийдэг тул anon key **үргэлж public**. `bq_01_schema`-ийн `grant select to anon`-аар `bq_v_revenue_by_customer` (харилцагчийн нэр+орлого) RUN хийсний дараа **нийтэд queryable** болно. Дата backfill (bq_02–07) PII тул **gitignore** (commit-д ОРОХГҮЙ, локалд RUN). Хатуу болгох сонголт: харилцагчийн view-г anon-аас хасах / нэр нуух, эсвэл n8n proxy (service_role сервер талд).
+Захиалга бүр шаттай явна. Шат бүр **зураг ЗААВАЛ** + өмнөх шатны хүнийг ⭐ үнэлнэ.
+`orderNextStep(o)` = дараагийн алхмын ганц эх сурвалж; `STAGE_ACTION` = шилжилт→шатны нэр;
+`stage_meta` jsonb-д хэн/хэзээ/зураг/үнэлгээ/хамтрагч үлдэнэ.
+
+- Урсгал: Цэвэрлэх → Бэлдэх → Гаргах → **Хүргэх** → *(🔧 Суурилуулах)* → эвент →
+  *(🧱 Буулгах)* → Буцаан авах → Агуулахад хүлээн авах → Архив.
+- Хаалтад байгаа 2 шат зөвхөн **хүргэлттэй + ⟦SET|1⟧ тэмдэгтэй** захиалгад гарна.
+- Хүргэлт нь `⟦DLV|бүс|км|төлбөр⟧` note token-оор (мөр БИШ) — тайланд тусад нь тооцно.
+- Буцаан авахад **тоо ширхэг тулгана**; дутсан бараа нөөцөөс хасагдаж `repairs`
+  хүснэгтэд засварын бичлэг үүснэ (зассан хүн KPI-д тооцогдоно, зураг заавал).
+- Шат алгасах = зөвхөн `orders.skip` эрхтэй хүн, **шалтгаан заавал**, түүхэнд үлдэнэ.
+- ⚠ Дамжлагаас **авто ажил үүсгэхгүй** (`STAGE_AUTOTASK_ENABLED = false`) — ажил
+  үүсгэх нь ажилчид бие биедээ оноодог тусдаа ойлголт.
+
+### Барааны тулгалт — захиалгын мөр ↔ каталог
+
+Захиалгын мөрүүд 3 өөр системээс ирсэн тул `sku` нь Booqable UUID, хуучин `CH_` код,
+эсвэл хоосон байдаг. **Нэрээр тулгах нь БУРУУ** — бараа нэрээ соливол түүх тасарна.
+
+- `product_aliases` хүснэгт = мөрийн ямар ч таних тэмдэг → `products.sku` (ТОГТМОЛ).
+- `resolveItemSku(line, ctx)` дараалал: шууд sku → толь(sku) → толь(нэр) → нэрээр.
+  `sku=''` утга = «бараа биш» (хүргэлт, НӨАТ, бөөн мөр) — тайланд орохгүй.
+- Агуулах дэлгэцийн тууз тулгагдаагүй нэрийг харуулж, `openItemReconcile()` нь
+  3 санал болгоно. **Автоматаар хэзээ ч холбохгүй** — хүн баталгаажуулна.
+- `itemNameScore` = үгийн давхцал + 2 үсгийн давхцал + **тооны шалгуур**
+  («Өвлийн майхан 6-8» → «2-4» руу оногдохоос сэргийлнэ).
+
+### Орлогын ганц дүрэм — ЗӨРЧВӨЛ ТЕСТ УНАНА
+
+Түүхий `total_mnt`/`paid_mnt`-ыг тайланд **ШУУД БҮҮ АШИГЛА** — тэдгээрт барьцаа багтдаг.
+
+- `orderRevenue(o, basis)` = цорын ганц эх сурвалж. Барьцааг хасна, **гэхдээ
+  `source='booqable'` захиалгад хасахгүй** (тэнд барьцаа `total_mnt`-д ороогүй).
+- Мөрд хуваарилах: `histLineRevenue(gross, grossAll, net)` — хөнгөлөлт байвал
+  харьцангуй буурна; хүргэлт/нэмэлт төлбөр мөрд **тарахгүй**.
+- Ноорог / цуцалсан / **устгасан** захиалга орлогод хэзээ ч орохгүй.
+- Тест: «ИНВАРИАНТ: түүхийн нийт орлого = жагсаалтын борлуулалт» — дүрэм зөрвөл унана.
+- Түүхийн дата татах `select`-д шаардлагатай талбар дутвал тоо **чимээгүй алга болно**
+  (`note` дутсанаас хүргэлтийн 6.8сая₮ харагдахгүй байсан) — тест хамгаална.
 
 ### NOMAAD захиалга аппд орох төлөв (2026-06-19 шинэчлэв)
-- Аппын NOMAAD жагсаалт `/webhook/nomaad-orders` (n8n id `2z4L2lJtTL5fRzG4`, "Shape" Code node)-оор Quote Log-оос татна. **АНХААР: webhook нь БҮХ төлөвийг буцаадаг** (ИЛГЭЭСЭН/ГЭРЭЭ/ДУУССАН/БОЛЬСОН/АПП-д нэмэх г.м. — 2026-06-19-нд live дата шалгаж тогтоов; хуучин "зөвхөн АПП агуулсан" тэмдэглэл ХОЦРОГДСОН). Тиймээс статус солих (update_quote) нь захиалгыг webhook-оос унагахгүй.
+- Аппын NOMAAD жагсаалт `/webhook/nomaad-orders` (n8n "Shape" Code node)-оор Quote Log-оос татна. **АНХААР: webhook нь БҮХ төлөвийг буцаадаг** (ИЛГЭЭСЭН/ГЭРЭЭ/ДУУССАН/БОЛЬСОН/АПП-д нэмэх г.м. — 2026-06-19-нд live дата шалгаж тогтоов; хуучин "зөвхөн АПП агуулсан" тэмдэглэл ХОЦРОГДСОН). Тиймээс статус солих (update_quote) нь захиалгыг webhook-оос унагахгүй.
 - **Цуцалсан зохицуулалт:** `renderNomaadOrders` (жагсаалт) ба `renderNomaadCalendar` нь `nomaadIsCancelled(o)` (БОЛЬСОН/Цуцл) -ээр шүүж **цуцалсныг нуудаг**. Pipeline-д "Больсон" шатанд (эвхэгдсэн) хэвээр. Sidebar badge ч цуцалсныг хасна.
 - **Үнийн санал устгах** = статусыг `БОЛЬСОН` болгоно (`deleteNomaadQuote`, зөвхөн урьдчилгаа/орлогогүй үед) → дээрх цуцалсан-шүүлтээр жагсаалтаас алга (hard delete биш, Quote Log-д түүх үлдэнэ).
 - **Шатын нэршил (2026-06-19):** Шинэ → Үнийн санал илгээсэн → **Баталгаажуулалт хүлээж буй** (статус `БАТАЛГААЖУУЛАЛТ`→`confirming`; амаар тохирсон, гэрээ хүлээж буй) → Урьдчилгаа төлсөн → Гэрээ хийгдсэн → Гүйцэтгэсэн → Больсон. `NOMAAD_STAGES`/`NOMAAD_STATUSES`/`nomaadStage`.
-- Quote Log: `16pHiShilnG-QdZtc2ciB5JeP_aslZRcqpQqEJvD-0wA`.
+- Дата = Postgres `quotes` хүснэгт (Sheet биш). Апп n8n webhook-оор уншина.
 
 ### NOMAAD арга хэмжээний бэлтгэл (2026-06-10, нэгтгэсэн)
 - NOMAAD картын **"📋 Бэлтгэл"** ганц товч → нэгдсэн модал 2 хэсэгтэй: **(1) Үйл ажиллагааны чеклист** (`NOMAAD_PREP_CHECKLIST`, 30 ажил, зүйл бүрд 1 ажил) + **(2) Захиалгын бараа** (`o.items` түрээсийн эд, хүнээр бүлэглэж 1 ажил/хүн). Хуучин 2 товч ("Бэлтгэл үүсгэх" + "Ажил хувиарлах") давхцаж байсныг 2026-06-10-нд нэгтгэв (`openNomaadAssign`/`sendNomaadAssignments` устсан).
@@ -91,13 +100,7 @@
 - **Эрх олгох газар:** Ажилтны удирдлага → хүн бүрийн доор **"🏦 Санхүү: салбар засах эрх"** чагт (зөвхөн CEO харна/тааруулна). `saveFinanceBranchPerm(key,name,grant)`.
 - **Хадгалалт:** Master Sheet хөндөхгүйгээр **`fin_categories` tab-д** `type='fin_branch_perm'`, `code=personKey`(утас), `active=1/0` мөрөөр. `loadFinanceCategories` нь ангилалтай хамт уншиж `state.finBranchPerms` (Set) болгоно. POST нь fin-categories endpoint руу (upsert by code).
 - **Шалгалт:** `isFinanceBranchEditor(key)` = CEO эсвэл finBranchPerms.has(key). Тайлан (`renderFinanceReport`) editor-т бүх гүйлгээ; модал (`openFinanceModal`) editor-т `f-accountant-only` хэсгийг харуулж зөвхөн `f-dept-branch`-ийг идэвхжүүлж авто хадгална (ангилал disabled).
-- 2026-06-17: О.Түвдэндаржаа, И.Алтансүх, Н.Анужин, Г.Сайнжаргал, Б.Дэлгэрбат-д урьдчилан олгов (CEO аль хэдийн эрхтэй).
-
-### Санхүүгийн ангилал — Sheet-ээс татна (2026-06-16)
-- Үндсэн/дэд ангилал (`FINANCE_MAIN_CATEGORIES`/`FINANCE_SUB_CATEGORIES`) одоо **`let`** — `loadFinanceCategories()` нь **n8n `/webhook/fin-categories`** (workflow id `syQBuTvHE9H4Gssk`, "CHIMUN · Finance Categories API")-оос татаж орлоно. Татаж чадахгүй бол кодын default → localStorage кэш fallback (апп эвдрэхгүй). Эхлэлд `loadFinanceCategories()` дуудна.
-- **Хадгалалт:** Чимун_Tasks_DB (`1dWEAkx2KkIEwfJ3ERmCpWpQF7sxdqyag7hevsv39ZRc`) дотор **`fin_categories` tab**. Багана: `type` (main/sub), `code`, `name`, `parent` (дэдийн үндсэн код), `active` (0=нуух). 64 мөр seed хийсэн.
-- **Засах:** CEO Sheet-д шууд мөр нэмж/нэр засаж/`active`=0 болгоно → апп дараагийн ачаалалд авна. (n8n GET унших + POST seed/append; CORS=*.)
-- Кодын `const FINANCE_*_CATEGORIES` нь зөвхөн default/fallback.
+- Эрх авсан хүмүүсийн жагсаалт нь аппын дотор (`fin_categories`) — энд БИЧИХГҮЙ (repo public).
 
 ### Хөдөлмөрийн гэрээ — бэлдэж татах (2026-08-30, v643)
 - CEO ажилтны карт (staff card) → «⚙️ Ажилтан удирдах» → **«📄 Хөдөлмөрийн гэрээ бэлдэх»** (`data-sc-contract`, идэвхтэй ажилтан) → `openEmployeeContract(personKey)`.
@@ -132,6 +135,19 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 - Merge = GitHub Pages дээр шууд лайв гарч бүх ажилтанд хүрнэ. Тиймээс merge хийхээс
   ӨМНӨ `npm test` заавал ногоон, UI засвар бол Chromium-аар (`/opt/pw-browsers/chromium-1194`)
   утасны өргөнд шалгасан байх.
+- **⛔ BRANCH PROTECTION АСААЛТТАЙ (2026-09-03).** `main` дээр `lint` шалгалт
+  **required status check**. Улаан PR-ыг merge хийх боломжгүй — GitHub товчийг
+  техникээр хаана («the base branch policy prohibits the merge»). Батлагдсан:
+  зориуд эвдэрсэн PR үүсгэж туршихад хаагдсан.
+  - Тиймээс merge хийхийн өмнө CI ногоон болтол ХҮЛЭЭ (~15-20 сек).
+  - `Require branches to be up to date` нь ЗОРИУД унтраалттай — олон агент зэрэг
+    merge хийдэг тул асаавал бүх нээлттэй PR байнга хуучирч гүйлгээ нэмэгдэнэ.
+  - `enforce_admins` унтраалттай — яаралтай үед CEO `--admin`-аар тойрч чадна.
+  - Яагаад хэрэгтэй болсон бэ: 2026-09-03-нд PR #145, #146 хоёулаа **CI УНАСАН
+    байхад merge хийгдэж** `main` улаан болсон. CI зөвлөмж байхад ийм зүйл болдог.
+- **Амьд дата хөнддөг PR-ыг өөрөө merge ХИЙХГҮЙ** — гарчигт «⚠ АМЬД ДАТА ШАЛГАЛТ
+  ХЭРЭГТЭЙ» гэж тэмдэглээд CEO-гийн шалгалтад үлдээ. Мөнгө, ирц, эрх, DB эрх
+  хөндсөн бүхэн энд багтана. Тест ногоон нь «зөв ажиллана» гэсэн баталгаа биш.
 
 ## Дизайны гэрээ (2026-08-28) — UI код бичих бүрд ДАГА
 
@@ -203,7 +219,7 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 
 - Ажилтныг **утсаар** таних (`personKey` = утас→email→нэр). Master Sheet-ийн "ID" багана **вестижиал** — шинэ ажилтан ID хоосон үүсдэг (апп `assigned_id` илгээдэггүй).
 - **ID баганыг бие махбодоор БҮҮ устга** — register(append)/staff-list(read) schema-д бүртгэлтэй, устгавал schema gotcha. Хоосон орхи.
-- staff-update (`/staff-update`, төлөв leave/restore) ба `/staff-role` (албан тушаал засах) хоёулаа **Утас баганаар тааруулдаг**. Master Sheet: `1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM`, gid 451955481, толгой 27 багана (ID, Овог нэр, РД, Албан тушаал, ...).
+- staff-update (`/staff-update`, төлөв leave/restore) ба `/staff-role` (албан тушаал засах) хоёулаа **Утас баганаар тааруулдаг**. Master Sheet (id локал санах ойд), толгой 27 багана (ID, Овог нэр, РД, Албан тушаал, ...).
 - Role засах: Ажилтны удирдлага → ✎ → inline select (`editStaffRole`/`saveStaffRole`). HR sheet бичилтийг агентаар тест хийх боломжгүй (classifier хориглодог) — хэрэглэгч UI-аар тестэлнэ.
 
 ## Гүйцэтгэлийн үнэлгээ (Объектив + Ажлын чанар + 360° + бонус, 2026-06-10 шинэчлэв)
@@ -224,7 +240,60 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 - Google Sheets-ийг өгөгдлийн сан болгосон → хэдэн мянган мөрт хүрвэл удааширна.
   "Sheet too large" алдаа эсвэл удаашрал гарвал жинхэнэ DB рүү шилжих цаг.
 - Автомат тест (2026-08-28 нэмсэн): `test/run.js` — гуравдагч сангүй Node `vm` harness, app.js-г mock-той ачаалж ЦЭВЭР функцуудыг (мөнгө/токен/үнэ/цалин/давхцал/НӨАТ) шалгана. Ажиллуулах: `npm test` эсвэл `node test/run.js`. **768 тест** (2026-09-03; тоо байнга өсдөг — бодит утгыг `npm test` гаралтаас ав). Код өөрчилсний дараа заавал ажиллуулах. Зөвхөн DOM-гүй цэвэр логик (UI тест байхгүй). state-ээс уншдаг функц тестлэхэд жижиг цэвэр функц салгах хэрэгтэй (жишээ `_rangesOverlap`).
+- **SCAN-ТЕСТ — хэв маягийг хаах механизм (2026-09-04).** `test/run.js` нь `app.js`-ийн
+  ЭХ КОДЫГ уншиж тодорхой хэв маягийн тоог 0 байхыг шалгадаг тестүүдтэй. Эдгээр нь
+  прозоор бичсэн дүрмээс ЯЛГААТАЙ: зөрчвөл CI унана, мартагдах боломжгүй.
+
+  Одоогийн scan-тестүүд:
+  | Юуг хаадаг | Яагаад |
+  |---|---|
+  | Түүхий `toISOString().slice()` | UTC+8-д огноо нэг өдрөөр хоцордог. `todayStr()`/`dateStr(d)`/`monthStr(d)`/`addDays()` ашигла |
+  | `wrap.innerHTML = renderX()` | Рендер унавал дэлгэц хоосон үлдэж апп «үхсэн» мэт харагдана. `safeViewHtml(fn, 'нэр')` ашигла |
+  | `Authorization: 'Bearer ' + DB_ANON_KEY` | PostgREST дуудлага нэвтэрсэн токеноор явна. `pgrstBearer()` ашигла |
+  | Бүтэн `CACHE_TAG` лавлагаа | no-undef. `globalThis.CACHE_TAG` ашигла |
+  | `reserveReceipt`-ийн `'dup'`-г шалгаад `'err'`-г алгасах | Сүлжээ унахад давхар баримтын хамгаалалт чимээгүй унтарна |
+
+  **ДҮРЭМ:** алдаа зассан бүрдээ (а) тухайн газрыг зас, (б) ижил хэв маягийг `grep`-ээр
+  тоолж БҮГДИЙГ зас, (в) scan-тест нэмж 0 болго. Зөвхөн (а)-г хийвэл алдаа эргэж ирнэ —
+  2026-09-03/04-нд `CACHE_TAG` (2 удаа) ба огнооны алдаа (#119-ээс хойш) яг ингэж
+  давтагдсан. Scan-тест бичсэний дараа **зориуд эвдэж** унаж байгааг батал.
 - Өгөгдлийн backup-аа тогтмол хийж байгаа эсэхийг хянах.
+
+## Баримт хаана амьдрах вэ — ганц газрын дүрэм (2026-09-03)
+
+Мэдлэг хоёр газар байдаг. Аль нь алинд хамаарахыг эндээс шийд — нэг баримтыг
+**хоёр газар зэрэг бүү бич**, эс бөгөөс тэд зөрж эхэлнэ.
+
+| | **Энэ файл (`CLAUDE.md`)** | **Локал санах ой** (`~/.claude/.../memory/`) |
+|---|---|---|
+| Хэн уншдаг | Бүгд — локал, үүлэн сесс, routine | Зөвхөн локал сесс |
+| Байршил | Repo дотор, **PUBLIC** | Зөвхөн CEO-гийн Mac |
+| Юу байх ёстой | Код бичихэд ХЭРЭГТЭЙ **дүрэм** | Дэлгэрэнгүй, түүх, нууц, бизнес |
+
+**Энэ файлд БИЧНЭ:** кодын gotcha, архитектурын шийдвэр, дүрэм («ингэж хий»,
+«ингэж бүү хий»), функцийн нэр, файлын байршил, дизайны гэрээ, ажлын урсгал.
+Үүлэн агент энэ файлаас өөр юу ч уншихгүй тул **энд бичсэн зүйл өөрөө хангалттай
+байх ёстой** — «санах ойгоос хар» гэж бүү бич.
+
+**Энэ файлд ХЭЗЭЭ Ч БИЧИХГҮЙ** (repo public — интернэтэд ил гарна):
+- Сервер хаяг, SSH түлхүүр, нууц үг, API key, токен
+- Backup-ийн байршил, сэргээх түлхүүр
+- Санхүүгийн бодит дүн, цалин, эзний зээл, ашгийн хуваарилалт
+- Ажилтан/харилцагчийн хувийн мэдээлэл (нэр, утас, РД)
+
+**Санах ойд ҮЛДЭНЭ:** дээрх нууц зүйлс, gotcha бүрийн бүтэн дэлгэрэнгүй (мөрийн
+дугаар, тестийн команд, хэзээ яаж эвдэрсэн түүх), бизнесийн бүтэц, хэрэглэгчийн
+хувийн ажиллах арга барил.
+
+**☁️ Үүлэн/утасны сесс бол:** санах ой чиний машин дээр БАЙХГҮЙ. Гэхдээ түүний
+хуулбар **`Chimunllc/chimun-infra`** (private) repo-гийн `memory/` фолдерт байгаа —
+дэлгэрэнгүй хэрэгтэй бол тэндээс унш:
+`gh api repos/Chimunllc/chimun-infra/contents/memory/<нэр>.md --jq .content | base64 -d`
+Индекс нь `memory/MEMORY.md`. Тэр нь **хуулбар** — засвар оруулах бол Mac дээрх эхийг зас.
+
+**Давхцах үед:** дүрмийн **эрх мэдэл нь энэ файл**. Санах ой нь тэр дүрмийн
+дэлгэрэнгүйг тайлбарлана, өөр дүрэм БҮҮ зааж бай. Дүрэм өөрчлөгдвөл **эхлээд
+энэ файлыг** зас, дараа нь санах ойн дэлгэрэнгүйг нийцүүл.
 
 ## Гурван гүйцэтгэгч — хэн юуг батлаж ЧАДАХГҮЙг мэд (2026-09-03)
 
@@ -255,9 +324,14 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
   болно). Ямар ч дата хатуугаар бүү устга. [[feedback_never_hard_delete]]
 - **Захиалгын мөнгө бүгд `total_mnt`-аас.** Орлого ганц функцээс тооцогдоно; тарифыг
   `app_config`-оос ав. Тархсан тооцоо дахин бүү үүсгэ. [[project_money_sot_audit]]
-- **ТАРИФ SYNC:** хүргэлт, хямдрал, ажлын бус цагийн дүрэм нь **хоёр repo-д давхардсан**
-  — апп `app.js` БА сайт `Chimunllc/m-event-website-ready/index.html`. Нэгийг засвал
-  нөгөөг ЗААВАЛ зэрэг зас, эс бөгөөс суваг хооронд үнэ зөрнө. [[tariff_two_repos_sync]]
+- **ТАРИФ = `app_config['tariffs']`, НЭГ ЭХ СУРВАЛЖ** (v774 + сайт PR#8-аас хойш).
+  Апп (`tariffTiers`/`tariffDeliveryCity`/`tariffPerKm`/`tariffOffhoursFee`/`tariffWorkStart|End`)
+  ба сайт (`loadTariffs()`) хоёул үүнээс татна. **Тариф өөрчлөх = тэр JSON-г засах**
+  (аппын `saveAppConfig` эсвэл DB-д шууд) — кодын const-ыг БИШ.
+  JSON: `{delivery_city_fee, delivery_per_km, offhours_fee, work_start, work_end, tiers:[{min,pct,label}]}`.
+  Кодын `RENTAL_TIERS`/`DELIVERY_*`/`ORDER_OFFHOURS_FEE` нь зөвхөн **fallback** — гэхдээ
+  тэдгээр нь `app.js` БА сайт `index.html` хоёуланд давхардсан тул fallback-д хүрвэл
+  хоёуланг зэрэг зас. [[tariff_two_repos_sync]]
 - **Санхүү = банкны хуулга суурьтай.** Орлого/төлбөр баримт PDF-тэй байна. Баримтгүй
   гар орлого «🔒 Баримтгүй» гэж ялгарна. Хүсэлт/батлах урсгал бүрмөсөн хасагдсан.
 - **Барьцаа орлогод ОРОХГҮЙ** — source-aware хасагдана.
@@ -302,9 +376,47 @@ personKey буцаана/ашиглана. `state.me === t.assignee` гэх мэ
 - **Mockup илгээвэл static pre-render** хий. JS-ээр зурдаг mockup хэрэглэгчид хоосон
   харагдана. [[feedback_static_mockups]]
 
-## Сесс бүрийн төгсгөлд
+## Алдааны гогцоо — ажилтны утаснаас Issue хүртэл (2026-09-03)
 
-Шинэ чухал шийдвэр, хэрэглэгчийн арга барилын талаар олж мэдсэн зүйл гарвал
-энэ файлыг богино, үнэн зөв байлгаж шинэчилнэ.
+Ажилтны утсанд гарсан алдаа өөрөө GitHub Issue болж ирдэг. **Issue дээр `[алдаа]`
+шошготой ажил ирвэл дараах дарааллыг ДАГА:**
+
+1. Issue-гийн `<!-- fp:xxxx -->` кодыг ав — энэ нь алдааны хурууны хээ.
+2. **ЭХЛЭЭД нөхөн үзүүлэх тест бич** `test/run.js`-д — тэр тест УНАХ ёстой.
+   Унахгүй бол алдааг зөв ойлгоогүй байна гэсэн үг; дахин үз.
+3. Дараа нь зас — тест ногоон болно.
+4. PR-д `fp` кодыг дурд. Merge хийсний дараа төлвийг `fixed` болго:
+   `POST /rest/v1/app_error_state?on_conflict=fp` `{fp, status:'fixed', fixed_ver:'<CACHE_VERSION>'}`
+   (эсвэл аппын алдааны цонхны «✓ Зассан» товч).
+
+**Бүтэц:** `app_errors` (түүхий лог, append-only) → `v_app_errors` (хээгээр бүлэглэсэн,
+давтамж/хүний тоо) → `app_error_state` (төлөв, `issue_no`) → `.github/workflows/error-triage.yml`
+(өдөрт 2 удаа, шинэ хээ бүрд Issue үүсгэнэ, нэг удаад дээд тал нь 5).
+
+- Хээ = `errFingerprint(msg, src)` — клиент бодно. Хувилбарын дугаар (`?v=`) хээнд ОРОХГҮЙ.
+- Алдааны лог **anon-д уншигдахгүй** (401) — зөвхөн бичих эрхтэй. Нэвтэрсэн CEO харна.
+- Workflow-гийн токен `ERR_READ_JWT` = Postgres `err_bot` үүрэг: зөвхөн алдааны лог.
+  Захиалга/санхүү/ажилтны дата руу ХАНДАХГҮЙ.
+- ⚠ Алдаа мэдээлэх код өөрөө алдаа шидэж БОЛОХГҮЙ (`_reportErrToServer`-ийн
+  `.catch(()=>{})` нь зориудынх) — эс бөгөөс хязгааргүй давталт үүснэ.
+
+## Энэ файлыг арчлах дүрэм
+
+**Нэмэхээс өмнө устга.** Файл томрох тусам би гүйлгэж уншина, үүлэн агент таслагдаж
+болно. Зорилтот хэмжээ ~150 мөр.
+
+1. **Хуучирсныг УСТГА, «хоцрогдсон» гэж бүү тэмдэглэ.** Түүх git-д бий. Тэмдэглэсэн
+   хуучин текст надад буруу таамаглал өгдөг — 2026-09-03 хүртэл «Захиалга = зөвхөн
+   Booqable, M-Event функцууд үхсэн код» гэж бичээстэй байсан нь 2 сарын турш худал байв.
+2. **Кодоос мэдэж болох зүйлийг бүү бич.** Мөрийн тоо, файлын хэмжээ, тестийн тоо —
+   commit бүрд хуучирна. `grep`-ээр 5 секундэд хариулж болох бол бүү бич.
+3. **Дүрэм бич, түүх биш.** «Ингэж бүү хий» удаан амьдарна; «6-р сард ингэж шилжсэн»
+   маргааш утгагүй.
+4. **Хамгийн чухал баримтыг ТЕСТ болго.** Баримт бичиг чимээгүй худал болдог, тест
+   болж чаддаггүй. Файлд дүрмийг бичээд тестийн нэрийг зааж өг.
+5. **Огноотой гарчиг = хугацаа дуусах нэр дэвшигч.** 2 сараас хуучин хэсгийг дахин үз.
+6. **Repo PUBLIC** — Facebook-д тавихгүй зүйлээ бүү бич (нэр, утас, түлхүүр, дүн, Sheet id).
+
+Шинэ чухал шийдвэр гарвал энэ файлыг богино, үнэн зөв байлгаж шинэчилнэ.
 
 _Сүүлд шинэчилсэн: 2026-09-03_

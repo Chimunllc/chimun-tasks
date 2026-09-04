@@ -89,15 +89,14 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
 // 0f) productUtilization — ROI-ийн эх сурвалж (2026-09-04)
-// Регресс: өмнө нь `state.orders`-оос уншдаг байсан. Тэр массив app.js:5047-д нэг л
-// удаа `[]` гэж оноогдоод хэзээ ч бичигддэггүй → БҮХ барааны ROI 0% харагдаж,
-// CEO хөрөнгийн шийдвэрээ буруу тоон дээр гаргаж байв.
+// Регресс: өмнө нь `state.orders`-оос уншдаг байсан. Тэр массив нэг л удаа `[]` гэж
+// оноогдоод хэзээ ч бичигддэггүй байсан → БҮХ барааны ROI 0% харагдаж, CEO хөрөнгийн
+// шийдвэрээ буруу тоон дээр гаргаж байв. (`state.orders` өөрөө устсан — 0g-г үз.)
 // Мөн: booqable түүхэн мөрийн price нь ХУГАЦААНЫ НИЙТ, аппынх нь ӨДРИЙН үнэ.
 {
   const runIn = (code) => vm.runInContext(code, sandbox);
-  const save = runIn('[state.products, state.appOrders, state.orders]');
+  const save = runIn('[state.products, state.appOrders]');
   runIn("state.products = [{ id:'M-900', sku:'M-900', name:'Тест ширээ', price:10000, qty_mevent:10, stock:10 }];");
-  runIn("state.orders = [];");   // хуучин (үхсэн) эх сурвалж — хоосон хэвээр
   runIn(`state.appOrders = [
     { number:1, source:'app',      status:'rented',    starts_at:'2026-10-01', stops_at:'2026-10-04', items:[{sku:'M-900', name:'Тест ширээ', qty:2, price:10000}] },
     { number:2, source:'booqable', status:'done',      starts_at:'2026-09-01', stops_at:'2026-09-11', items:[{sku:'M-900', name:'Тест ширээ', qty:1, price:50000}] },
@@ -109,10 +108,9 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   // app: 10000 × 2 × 3 хоног = 60,000 · booqable: 50000 × 1 × 1 (НИЙТ дүн, үржүүлэхгүй) = 50,000
   ok(u.revenue === 110000, 'ROI: app хоногоор, booqable нийт дүнгээр — ' + u.revenue);
 
-  // ХУУЧИН эх сурвалж хоосон байхад ч ажиллана (энэ нь зассан алдаа)
-  ok(u.revenue > 0, 'ROI: state.orders хоосон ч орлого 0 БИШ');
+  ok(u.revenue > 0, 'ROI: орлого 0 БИШ (амьд эх сурвалжаас уншина)');
 
-  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + '; state.orders = ' + JSON.stringify(save[2] || []) + ';');
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
 }
 
 // 0e) SCAN — түүхий UTC огноо БАЙХГҮЙ (2026-09-04)
@@ -128,6 +126,31 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   const all = (codeLines.match(/toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
   const safe = (codeLines.match(/getTimezoneOffset\(\) \* 60000\)\.toISOString\(\)\.slice\(0, ?(?:10|7)\)/g) || []).length;
   eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
+}
+
+// 0g) SCAN — «мөнх хоосон» state талбар БАЙХГҮЙ (2026-09-04)
+// ROI 0% алдааны АНГИЛАЛ: `state.x` зарлагдсан ч хэзээ ч бичигддэггүй атлаа
+// уншигддаг бол алдаа шидэхгүйгээр ХУДАЛ «0 / хоосон» хариу өгнө. Ийм алдаа
+// чимээгүй тул сар турш илэрдэггүй — тэр л ROI-д тохиолдсон.
+// Зөвшөөрөгдөх цорын ганц тохиолдол: зориудын статик тохиргоо (`config`).
+{
+  const codeOnly = src.split('\n').map(l => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+  const init = codeOnly.match(/const state = \{([\s\S]*?)\n\};/);
+  ok(!!init, 'scan: state эхлүүлэгч олдов');
+  const STATIC_OK = ['config'];   // IIFE-ээр нэг удаа бүтээгддэг, өөрчлөгддөггүй
+  const dead = [];
+  for (const f of [...init[1].matchAll(/^\s{2}([A-Za-z_$][\w$]*)\s*:/gm)].map(x => x[1])) {
+    if (STATIC_OK.includes(f)) continue;
+    const reads = (codeOnly.match(new RegExp('state\\.' + f + '\\b', 'g')) || []).length;
+    const writes = (codeOnly.match(new RegExp(
+      'state\\.' + f + '\\s*=[^=]' +
+      '|state\\.' + f + '\\s*\\.(push|unshift|splice|set|add|delete|clear|sort)\\(' +
+      '|state\\.' + f + '\\s*\\[[^\\]]*\\]\\s*=[^=]' +
+      '|state\\.' + f + '\\.[A-Za-z_$][\\w$]*\\s*=[^=]' +
+      '|Object\\.assign\\(\\s*state\\.' + f, 'g')) || []).length;
+    if (writes === 0 && reads > 1) dead.push(f + ' (' + reads + ' уншилт, 0 бичилт)');
+  }
+  eq(dead.length, 0, 'scan: мөнх хоосон state талбар байхгүй — ' + (dead.join(', ') || 'цэвэр'));
 }
 
 // 0b) Хүрэлцээ — ХУУЧИРСАН НЭРТЭЙ мөрийг sku-гээр таньж шалгана (2026-09-03)

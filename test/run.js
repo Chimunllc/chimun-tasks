@@ -1846,6 +1846,48 @@ function finish() {
     ok(!g.groups.some(x => x.name === 'Тоологдохгүй'), 'бүлэглэл: ноорог/цуцалсныг тоохгүй');
   }
 
+  // ── QR ирц: серверийн бичилт унавал ЧИМЭЭГҮЙ ӨНГӨРӨХГҮЙ ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const save = vm.runInContext('attSaveScanRecord', sandbox);
+    const savedFetch = sandbox.fetch, savedAtt = st.attendanceToday, savedLast = st._attLastScan;
+
+    const mkRec = () => ({ member_key: '99112233', member_name: 'Тест', kind: 'in', ts: '2026-09-02T01:00:00Z' });
+    const body = { member_key: '99112233', kind: 'in' };
+
+    // (1) Амжилттай — мөр үлдэнэ, true буцаана
+    sandbox.fetch = () => Promise.resolve({ ok: true, status: 201 });
+    let rec = mkRec();
+    st.attendanceToday = [rec]; st._attLastScan = { '99112233': Date.now() };
+    ok(await save(body, rec, 'Тест'), 'ирц: амжилттай хадгалалт true');
+    eq(st.attendanceToday.length, 1, 'ирц: амжилттай үед мөр үлдэнэ');
+    ok(st._attLastScan['99112233'] != null, 'ирц: амжилттай үед давхардлын түгжээ хэвээр');
+
+    // (2) HTTP алдаа — !r.ok бол чимээгүй өнгөрөхгүй (checkin.html-ийн загвар)
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
+    rec = mkRec();
+    st.attendanceToday = [rec]; st._attLastScan = { '99112233': Date.now() };
+    ok(!(await save(body, rec, 'Тест')), 'ирц: HTTP алдаанд false буцаана');
+    eq(st.attendanceToday.length, 0, 'ирц: алдаанд оптимист мөр буцаагдана (худал ирц үлдэхгүй)');
+    eq(st._attLastScan['99112233'], undefined, 'ирц: алдаанд түгжээ тайлагдаж шууд дахин уншуулна');
+
+    // (3) Сүлжээ тасарсан — мөн адил
+    sandbox.fetch = () => Promise.reject(new Error('offline'));
+    rec = mkRec();
+    st.attendanceToday = [rec]; st._attLastScan = { '99112233': Date.now() };
+    ok(!(await save(body, rec, 'Тест')), 'ирц: сүлжээ тасрахад false буцаана');
+    eq(st.attendanceToday.length, 0, 'ирц: сүлжээ тасрахад оптимист мөр буцаагдана');
+
+    // (4) Кодод .catch(() => {}) чимээгүй залгигч эргэж ирээгүй эсэх
+    const scan = src.slice(src.indexOf('function attHandleScan('));
+    const fn = scan.slice(0, scan.indexOf('\n}'));
+    ok(fn.indexOf('.catch(() => {})') === -1, 'ирц: сканы бичилтэд чимээгүй catch байхгүй');
+    ok(fn.indexOf('attSaveScanRecord') > -1, 'ирц: бичилт алдаа шалгадаг замаар явна');
+    ok(/saved && kind === 'out'/.test(fn), 'ирц: «маргааш хэдэн цагт» зөвхөн хадгалагдсаны дараа');
+
+    sandbox.fetch = savedFetch; st.attendanceToday = savedAtt; st._attLastScan = savedLast;
+  }
+
   // ── Тулгалтын хяналт: аль толь хэр их дүн дааж байгааг илрүүлэх ──
   {
     const ctx = { bySku: { 'M-235': { sku: 'M-235' } }, byName: {},
@@ -1962,6 +2004,61 @@ function finish() {
          'багц: тайланд багц гэж тэмдэглэгдэж, эргэлт зөв');
       st0.products = prev;
     }
+  }
+
+  // ── Санхүүгийн кэш эрхгүй хүний утсанд БҮХ гүйлгээг хадгалахгүй ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const VIS = vm.runInContext('financeVisibleRows', sandbox);
+    const SAVE = vm.runInContext('saveFinanceCache', sandbox);
+    const saved = { me: st.me, ceo: st.isCEO, fr: st.financeRequests, perms: st.finBranchPerms };
+    st.finBranchPerms = new Set();   // тусгай эрхгүй
+
+    const ME = '99112233', OTHER = '88445566';
+    const rows = [
+      { id: 'a', requested_by: ME,    beneficiary: 'Өөрийн хүсэлт', amount: 50000,   decision: 'pending' },
+      { id: 'b', requested_by: OTHER, beneficiary: 'Бусдын хүсэлт', amount: 9000000, decision: 'pending' },
+      { id: 'c', requested_by: OTHER, beneficiary: 'Бусдын, надад',  amount: 300000,  decision: 'approved', executor: ME },
+      { id: 'd', requested_by: OTHER, beneficiary: 'Бусдын, өөрт',   amount: 700000,  decision: 'approved', executor: OTHER },
+    ];
+
+    // Энгийн ажилтан — зөвхөн өөрт нь хамаатай мөрүүд
+    st.me = ME; st.isCEO = false; st.financeRequests = rows;
+    const seen = VIS(rows).map(r => r.id);
+    ok(seen.indexOf('a') > -1, 'кэш: өөрийн хүсэлт кэшлэгдэнэ');
+    ok(seen.indexOf('c') > -1, 'кэш: өөрт нь гүйцэтгүүлэх хүсэлт кэшлэгдэнэ');
+    ok(seen.indexOf('b') === -1, 'кэш: бусдын хүсэлт кэшлэгдэхгүй');
+    ok(seen.indexOf('d') === -1, 'кэш: бусдын гүйлгээ кэшлэгдэхгүй');
+
+    // localStorage-д бодитоор юу бичигдэв
+    localStorage.removeItem('financeRequests');
+    SAVE();
+    const written = JSON.parse(localStorage.getItem('financeRequests') || '[]');
+    ok(!written.some(r => r.id === 'b'), 'кэш: localStorage-д бусдын гүйлгээ БАЙХГҮЙ');
+    ok(JSON.stringify(written).indexOf('9000000') === -1, 'кэш: бусдын дүн localStorage-д алга');
+
+    // CEO — бүгд хэвээр
+    st.isCEO = true;
+    eq(VIS(rows).length, 4, 'кэш: CEO бүх гүйлгээг кэшлэнэ');
+
+    // Нэвтрээгүй — кэш ОГТ хөндөгдөхгүй (хоосон бичиж датаг устгахгүй)
+    st.isCEO = false; st.me = '';
+    localStorage.setItem('financeRequests', '[{"id":"keep"}]');
+    SAVE();
+    eq(JSON.parse(localStorage.getItem('financeRequests')).map(r => r.id), ['keep'],
+       'кэш: нэвтрээгүй үед кэш устгагдахгүй');
+    eq(VIS(rows), [], 'кэш: нэвтрээгүй бол харагдах мөр 0');
+
+    // Түүхий бичилт кодод эргэж ирээгүй эсэх
+    ok(src.indexOf("localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests))") === -1,
+       'кэш: шүүлтгүй түүхий бичилт кодод байхгүй');
+    // Гарахад цэвэрлэгдэнэ
+    const lo = src.slice(src.indexOf('async function logout()'));
+    ok(lo.slice(0, lo.indexOf('\n}')).indexOf("removeItem('financeRequests')") > -1,
+       'кэш: гарахад санхүүгийн кэш устгагдана');
+
+    localStorage.removeItem('financeRequests');
+    st.me = saved.me; st.isCEO = saved.ceo; st.financeRequests = saved.fr; st.finBranchPerms = saved.perms;
   }
 
   // ── Түүхийн тайлан: мөрд орлого хуваарилах дүрэм ──
@@ -2187,6 +2284,29 @@ function finish() {
        'badge: өөрөө хамтран гүйцэтгэгч бол үүргэсэнд тооцогдохгүй');
   }
 
+  // ── NOMAAD дата: эрх нь ХАРУУЛАХАД, ТАТАХАД БИШ ──
+  {
+    // loadNomaadOrders нь nomaad ДЭЛГЭЦИЙН эрхээр дата татахаа зогсоодог байв. Дата нь
+    // авлага / тайлан / НӨАТ / COO цалин / катерингийг тэжээдэг тул m-event салбарын
+    // нягтлан кемпийн орлогыг 0 гэж хараад компани ХУДАЛ алдагдалтай харагддаг байв.
+    const body = src.slice(src.indexOf('async function loadNomaadOrders()'));
+    const head = body.slice(0, body.indexOf('const url'));
+    ok(head.indexOf('!canSeeNomaadOrders()') === -1,
+       'NOMAAD дата: татах нь зөвхөн nomaad дэлгэцийн эрхээр хаагдахгүй');
+    ok(head.indexOf('canUseNomaadData()') > -1,
+       'NOMAAD дата: хэрэглэгч дэлгэцүүдийн нэгдсэн эрхээр шалгана');
+    // Гэхдээ БҮРЭН хаалтгүй болгосонгүй — эрхгүй хүн лүү PII татахгүй
+    ok(/if\s*\(!canUseNomaadData\(\)\)\s*return;/.test(head),
+       'NOMAAD дата: эрхгүй хүнд дата ТАТАХГҮЙ хэвээр');
+    // ДЭЛГЭЦИЙН эрх хэвээр хүчинтэй
+    ok(/state\.view === 'nomaad' && !canSeeNomaadOrders\(\)/.test(src),
+       'NOMAAD дэлгэц: харуулах эрх хэвээр шалгагдана');
+    // Нэгдэлд орсон дэлгэц бүр бодитоор дата хэрэглэдэг
+    const cu = src.slice(src.indexOf('function canUseNomaadData()'));
+    ['canSeeNomaadOrders', 'canSeeReceivables', 'canSeeReports', 'canSeeVat', 'canSeeCatering', 'canSeeCooSalary']
+      .forEach(f => ok(cu.slice(0, cu.indexOf('}')).indexOf(f) > -1, `NOMAAD дата: нэгдэлд «${f}» багтсан`));
+  }
+
   // ── Эрхийн матрицын нэр sidebar-ын нэртэй таарах ──
   // (Эрх олгож буй хүн «Агуулах» гэсэн чагт аль цэсийг нээж байгааг таах ёсгүй.
   //  Хаалтан доторх тодотгол — «Цалин (сарын)», «Ажилчид (удирдах)» — зөвшөөрөгдөнө:
@@ -2309,6 +2429,46 @@ function finish() {
     ok(!expired(unpaidFuture), 'NOMAAD үхсэн санал: ирээдүйн огноо больсон биш');
 
     st.nomaadPayments = savedPays;
+  }
+
+  // ── Авлага: канон төлөвөөр шүүнэ (түүхий o.status БИШ) ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const RD = vm.runInContext('receivablesData', sandbox);
+    const saved = { ao: st.appOrders, no: st.nomaadOrders };
+    st.nomaadOrders = [];
+    const bal = (rows) => { st.appOrders = rows; return RD().items.filter(i => i.branch === 'bq'); };
+
+    // (1) Төлбөргүй reserved = харагдацаар «Ноорог» → авлага БИШ (өмнө бүтэн дүнгээр ордог байв)
+    eq(bal([{ id: '1', number: 1, status: 'reserved', total_mnt: 900000, paid_mnt: 0, starts_at: '2099-01-01' }]).length, 0,
+       'авлага: төлбөргүй reserved (=Ноорог) авлагад ОРОХГҮЙ');
+    // Төлбөр орсон reserved — үлдэгдэл авлага мөн
+    eq(bal([{ id: '2', number: 2, status: 'reserved', total_mnt: 900000, paid_mnt: 300000 }])
+        .map(i => i.balance), [600000], 'авлага: хэсэгчлэн төлсөн reserved = үлдэгдэл авлага');
+
+    // (2) Дамжлагын дунд шат — өмнө ОГТ тоологддоггүй байв
+    ['preparation', 'cleaning', 'ready', 'prepared', 'delivering', 'installing', 'teardown', 'returning'].forEach(s => {
+      eq(bal([{ id: 'x', number: 9, status: s, total_mnt: 500000, paid_mnt: 200000 }]).map(i => i.balance), [300000],
+         `авлага: дамжлагын «${s}» шатны үлдэгдэл тоологдоно`);
+    });
+    // Дууссан шат — урьдын адил тоологдоно
+    ['returned', 'stopped', 'rented', 'started'].forEach(s => {
+      eq(bal([{ id: 'y', number: 8, status: s, total_mnt: 500000, paid_mnt: 200000 }]).length, 1,
+         `авлага: «${s}» урьдын адил тоологдоно`);
+    });
+    // Хаагдсан/устгасан — авлага БИШ
+    ['archived', 'canceled', 'deleted', 'draft'].forEach(s => {
+      eq(bal([{ id: 'z', number: 7, status: s, total_mnt: 500000, paid_mnt: 200000 }]).length, 0,
+         `авлага: «${s}» авлагад орохгүй`);
+    });
+    // Танигдахгүй төлөв — чимээгүй нэмэгдэхгүй (bucketOf default 'active' болдгийг тойрсон)
+    eq(bal([{ id: 'q', number: 6, status: 'ямар_ч_биш', total_mnt: 500000, paid_mnt: 200000 }]).length, 0,
+       'авлага: танигдахгүй төлөв авлагад орохгүй');
+    // Бүтэн төлсөн — үлдэгдэлгүй тул мөр үүсэхгүй
+    eq(bal([{ id: 'p', number: 5, status: 'rented', total_mnt: 500000, paid_mnt: 500000 }]).length, 0,
+       'авлага: бүтэн төлсөн захиалга авлагад орохгүй');
+
+    st.appOrders = saved.ao; st.nomaadOrders = saved.no;
   }
 
   // ── Алдааны хурууны хээ (fingerprint) — бүлэглэлийн үндэс ──

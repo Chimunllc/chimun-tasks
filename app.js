@@ -1364,7 +1364,7 @@ async function loadBootstrap() {
     applyPendingFinanceWrites();
     updatePendingConn();
     saveLocal();
-    try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+    saveFinanceCache();
     return true;
   } catch (e) {
     console.warn('Bootstrap load failed, falling back to per-endpoint:', e);
@@ -1951,7 +1951,7 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
 
 async function saveFinanceRequest(r, deleted = false) {
   // localStorage кэш
-  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  saveFinanceCache();
   if (!state.config.financeUrl) return;
   // Sheet рүү явуулахын өмнө: ID → нэр, код → монгол
   const wire = requestToWire(r);
@@ -1986,6 +1986,10 @@ async function loadFinanceCategories() {
     });
     state.finBranchPerms = perms;
     state.nomaadCustomAddon = naAddon;
+    // ⚠ finBranchPerms энд шинэчлэгддэг тул финансын кэшийг ДАХИН бичнэ.
+    // loadFinanceCategories нь loadBootstrap-аас ХОЙНО дуусдаг тул эрх ирэхээс өмнө
+    // бичигдсэн кэш нь илүү өргөн байж болно — эрх тодорхой болмогц шүүж дарж бичнэ.
+    if (typeof saveFinanceCache === 'function') saveFinanceCache();
     if (!mains.length) return; // хоосон ирвэл default-аа хадгална
     mains.sort((a, b) => a.code.localeCompare(b.code));
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
@@ -2038,6 +2042,28 @@ async function saveFinanceBranchPerm(key, name, grant) {
   }
 }
 
+// ── Санхүүгийн localStorage кэш — ЭРХЭЭР ШҮҮЖ бичнэ (аюулгүй байдал) ──────────────
+// n8n endpoint нь БҮХ хүсэлтийг буцаадаг (сервер талд шүүлт байхгүй) ба шүүлт нь зөвхөн
+// ХАРАГДАЦ дээр (filteredTasks) хийгддэг. Тиймээс кэшийг түүхийгээр нь бичих үед
+// компанийн БҮХ гүйлгээ — хэн хэнд хэдэн төгрөг, ямар зорилгоор — эрхгүй ажилтны утасны
+// localStorage-д тогтмол хадгалагдана. Утас гээгдэх/зээлдүүлэхэд шууд задарна.
+// Шийдэл: кэшийг харагдацын ЯГ ИЖИЛ дүрмээр (financeAsTask → assignee/createdBy) шүүнэ.
+function financeVisibleRows(rows) {
+  rows = Array.isArray(rows) ? rows : [];
+  if (state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())) return rows;
+  const me = state.me;
+  if (!me) return [];   // нэвтрээгүй бол кэш бичихгүй
+  return rows.filter(r => {
+    try { const t = financeAsTask(r); return t.assignee === me || t.createdBy === me; }
+    catch (e) { return false; }   // задлаж чадаагүй мөрийг кэшлэхгүй (аюулгүй тал руу)
+  });
+}
+function saveFinanceCache() {
+  // Хэн нэвтэрсэн нь тодорхойгүй үед (эхлэлийн race) кэшийг ОГТ ХӨНДӨХГҮЙ — хоосон
+  // массив бичвэл хэрэглэгчийн офлайн датаг устгана.
+  if (!state.me) return;
+  try { localStorage.setItem('financeRequests', JSON.stringify(financeVisibleRows(state.financeRequests))); } catch (e) {}
+}
 async function loadFinanceRequests() {
   if (state.config.financeUrl) {
     try {
@@ -2051,7 +2077,7 @@ async function loadFinanceRequests() {
       const raw = Array.isArray(data?.requests) ? data.requests : [];
       state.financeRequests = raw.map(normalizeFinance);
       applyPendingFinanceWrites();   // офлайн хийсэн өөрчлөлтийг хадгална
-      try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+      saveFinanceCache();
       return;
     } catch (e) { console.warn('Finance load failed, fallback to cache:', e); }
   }
@@ -3066,7 +3092,7 @@ async function deleteFinanceRequest(id) {
   r.status = 'deleted';
   await saveFinanceRequest(r, true);
   state.financeRequests = state.financeRequests.filter(x => x.id !== id);
-  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  saveFinanceCache();
   showToast('Хүсэлт устгагдлаа', 'success');
   closeFinanceModal();
   render();
@@ -3812,11 +3838,7 @@ function renderSidebar() {
   const cooNav = document.getElementById('nav-coosalary');
   if (cooNav) {
     if (state.cooShare === undefined) { state.cooShare = null; if (typeof loadAppConfig === 'function') loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
-    const _m = (typeof findMember === 'function') ? findMember(state.me) : null;
-    const _ceo = ((_m && _m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(_m));
-    const _cooKey = (state.cooShare && state.cooShare.key) || '';
-    const _isCoo = _cooKey && state.me && String(state.me) === String(_cooKey);
-    cooNav.style.display = (_ceo || _isCoo) ? '' : 'none';
+    cooNav.style.display = canSeeCooSalary() ? '' : 'none';
   }
   // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
   const docNav = document.getElementById('nav-documents');
@@ -6740,6 +6762,14 @@ const ORDER_BUCKETS = [
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
 function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'active'; }
+// Авлага үүсгэдэг төлөвүүд = ORDER_BUCKETS-ийн 'active' + 'done' (баталгаажсан захиалга,
+// мөнгө нь ирсэн эсвэл ирэх ёстой). Ноорог / архив / цуцалсан / устгасан = авлага БИШ.
+// ⚠ ORDER_BUCKETS-аас ГАРГАЖ авав — гараар бичсэн жагсаалт дамжлагын шинэ шат нэмэгдэхэд
+//   хоцордог (дунд шатны захиалгууд авлагаас чимээгүй унасан шалтгаан нь тэр байв).
+//   Танигдахгүй төлөв энэ Set-д ОРОХГҮЙ тул урьдын адил авлагад тооцогдохгүй.
+const RECEIVABLE_ORDER_ST = new Set(
+  ORDER_BUCKETS.filter(b => b.key === 'active' || b.key === 'done').reduce((a, b) => a.concat(b.st), [])
+);
 // Захиалгын CANON (харагдах) төлөв — unifiedOrders-ийн normalize дүрэмтэй ИЖИЛ, НЭГ эх сурвалж.
 // state.appOrders-ийн ТҮҮХИЙ статусыг шууд ашигладаг логик (нөөц тооцоо, багц сонголт) заавал энэ
 // helper-ээр дамжуулж, харагдац ↔ логик зөрөхөөс сэргийлнэ: жиш. төлбөргүй reserved нь харагдацаар
@@ -8748,9 +8778,53 @@ function attBeep() {
 function attToast(msg, kind) {
   const el = document.getElementById('att-scan-toast'); if (!el) return;
   el.textContent = msg;
-  el.style.background = kind === 'ok' ? '#2e7d32' : (kind === 'out' ? '#B14F1F' : '#444');
+  el.style.background = kind === 'ok' ? '#2e7d32' : (kind === 'out' ? '#B14F1F' : (kind === 'err' ? 'var(--danger)' : '#444'));
   el.style.opacity = '1';
-  clearTimeout(state._attToastT); state._attToastT = setTimeout(() => { el.style.opacity = '0'; }, 1700);
+  // Алдааны мэдэгдэл удаан харагдана — менежер скан хийсээр байгаад алдаж болохгүй.
+  clearTimeout(state._attToastT); state._attToastT = setTimeout(() => { el.style.opacity = '0'; }, kind === 'err' ? 6000 : 1700);
+}
+// Алдааны дуу — амжилттай сканы өндөр «биип»-ээс ЯЛГААТАЙ (нам, давхар) байх ёстой:
+// менежер дэлгэц харалгүй дараалан скан хийхэд зөвхөн дуугаар нь ялгана.
+function attErrBeep() {
+  try {
+    const a = state._attAudio || (state._attAudio = new (window.AudioContext || window.webkitAudioContext)());
+    [0, 0.22].forEach(off => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = 220; o.type = 'square'; o.connect(g); g.connect(a.destination);
+      g.gain.setValueAtTime(0.14, a.currentTime + off);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + off + 0.18);
+      o.start(a.currentTime + off); o.stop(a.currentTime + off + 0.18);
+    });
+  } catch (e) {}
+}
+// Сканы бичилтийг серверт хадгална. АМЖИЛТТАЙ бол true.
+// ⚠ Энэ нь өмнө нь `.catch(() => {})` байсан — алдааг БҮРЭН залгидаг байв. Менежер «✅ Ирлээ»
+//   гэсэн ногоон toast хараад цааш явдаг ч серверт юу ч бичигдээгүй. Цагийн ажилтны цалин
+//   ирцээр бодогддог тул энэ нь ШУУД мөнгө дутаана. checkin.html дээрх ЗӨВ загвар
+//   (`if(!r.ok) throw` → alert + «Дахин оролдох») -ыг сканы урсгалд тохируулан хуулав.
+async function attSaveScanRecord(body, rec, label) {
+  try {
+    // Менежер нэвтэрсэн байдаг тул authenticated эрхээр бичнэ (origin/main-ий санаа):
+    // итгэмжтэй ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
+    const r = await fetch(`${DB_URL}/rest/v1/attendance`, {
+      method: 'POST',
+      headers: pgWrite({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) {
+    console.warn('attendance save failed', e);
+    // Оптимистоор нэмсэн мөрийг БУЦААНА — жагсаалт серверт байхгүй ирцийг харуулж болохгүй.
+    const i = (state.attendanceToday || []).indexOf(rec);
+    if (i > -1) state.attendanceToday.splice(i, 1);
+    // 8 секундын давхардлын түгжээг тайлж, ШУУД дахин уншуулах боломжтой болгоно.
+    if (state._attLastScan) delete state._attLastScan[body.member_key];
+    attToast('⚠ ' + label + ' — ХАДГАЛАГДСАНГҮЙ. Дахин уншуулна уу.', 'err');
+    attErrBeep();
+    if (typeof render === 'function') render();
+    return false;
+  }
 }
 // Камерын скан — менежер ажилтны QR картыг уншина.
 async function attStartScan() {
@@ -8811,14 +8885,18 @@ function attHandleScan(data) {
   const last = recs.length ? recs[recs.length - 1].kind : null;
   const kind = last === 'in' ? 'out' : 'in';
   const nowIso = new Date().toISOString();
-  (state.attendanceToday = state.attendanceToday || []).push({ member_key: phone, member_name: mem.name || phone, kind, ts: nowIso });
+  // Оптимистоор шууд харуулна (дараалалтай скан удаашрахгүй), гэхдээ бичилт унавал
+  // attSaveScanRecord нь энэ мөрийг БУЦААЖ хасаад алдааг харуулна.
+  const rec = { member_key: phone, member_name: mem.name || phone, kind, ts: nowIso };
+  (state.attendanceToday = state.attendanceToday || []).push(rec);
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
-  // Менежер нэвтэрсэн байдаг тул ЭНЭ замыг authenticated эрхээр бичнэ — итгэмжтэй
-  // ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
-  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(body) }).catch(() => {});
-  if (kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);   // явахдаа: маргааш хэдэн цагт ирэх вэ?
+  attSaveScanRecord(body, rec, mem.name || phone).then(saved => {
+    // «Маргааш хэдэн цагт ирэх вэ?» — ЗӨВХӨН серверт хадгалагдсаны дараа. Хадгалагдаагүй
+    // ирцийн дараа цаг асуувал бүртгэгдсэн мэт төөрөгдөнө.
+    if (saved && kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);
+  });
 }
 // «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
 function openNextArrivalPicker(phone, name) {
@@ -12855,8 +12933,37 @@ function canSeeNomaadOrders() {
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
   return canAccessView('nomaad', () => _nomaadDefaultFor(findMember(state.me)) || (state.me === getFinanceExecutorEmail()));
 }
+// COO цалин харах эрх — CEO эсвэл тохируулсан COO өөрөө. (renderCounts ба renderCooSalary
+// хоёулаа ижил логикийг хуулбарлаж бичсэн байсныг нэг эх сурвалж болгов.)
+function canSeeCooSalary() {
+  const m = (typeof findMember === 'function') ? findMember(state.me) : null;
+  const ceo = ((m && m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(m));
+  const cooKey = (typeof cooShareCfg === 'function' ? cooShareCfg().key : (state.cooShare && state.cooShare.key)) || '';
+  return !!(ceo || (cooKey && state.me && String(state.me) === String(cooKey)));
+}
+// NOMAAD дата ХЭРЭГТЭЙ эсэх — ЭРХИЙГ ТАТАХАД БИШ, ХАРУУЛАХАД тавина.
+// ⚠ Өмнө нь loadNomaadOrders эхний мөрөндөө `if (!canSeeNomaadOrders()) return;` гэж
+//   ДАТА ТАТАХЫГ хаадаг байв. Гэтэл nomaad дэлгэцийн default (_nomaadDefaultFor) нь салбар
+//   оноогдсон хүнд ХАТУУ: зөвхөн 'camp' салбарынхан. Тиймээс m-event салбарт бүртгэлтэй
+//   нягтлан NOMAAD дата-г ОГТ татахгүй → state.nomaadOrders хоосон → түүнээс тэжээгддэг
+//   БҮХ тайлан 0 болно: ашгийн тайланд кемпийн орлого 0 (компани ХУДАЛ алдагдалтай
+//   харагдана), авлага 0, НӨАТ тулгалтад захиалга олдохгүй.
+//   Дэлгэцийн эрх нь хэвээр: renderTaskList `state.view==='nomaad' && !canSeeNomaadOrders()`
+//   -ээр буцаадаг, sidebar цэс мөн нуугддаг. Энд зөвхөн ДАТА ХЭРЭГЛЭГЧ дэлгэцүүдийг жагсаав —
+//   эрхгүй хүн лүү дата татахгүй (утсанд хэрэггүй PII буухаас сэргийлнэ).
+function canUseNomaadData() {
+  const y = (f) => typeof f === 'function' && f();
+  return y(canSeeNomaadOrders)     // NOMAAD захиалгын дэлгэц
+      || y(canSeeReceivables)      // Авлага
+      || y(canSeeReports)          // Тайлан / Салбар таб (кемпийн орлого)
+      || y(canSeeVat)              // НӨАТ тулгалт — захиалгын нэр
+      || y(canSeeCatering)         // Катеринг — NOMAAD арга хэмжээнээс ажил үүсгэдэг
+      || y(canSeeCooSalary)        // COO цалин — цэвэр ашгаас тооцно
+      || y(canSeeMarketing);       // Имэйл маркетинг — «camp» салбарын хүлээн авагчийн
+                                   // жагсаалт NOMAAD захиалгын имэйлээс бүрддэг (app.js ~11333)
+}
 async function loadNomaadOrders() {
-  if (!canSeeNomaadOrders()) return;
+  if (!canUseNomaadData()) return;
   const url = state.config.nomaadOrdersUrl;
   if (!url) return;
   try {
@@ -20185,9 +20292,15 @@ function receivablesData() {
   const items = [];
   // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
   (state.appOrders || []).forEach(o => {
-    const st = String(o.status || '');
+    // ⚠ КАНОН төлөв (түүхий o.status БИШ) — жагсаалт/badge-тай нэг эх сурвалж.
+    //   Түүхийгээр уншихад 2 алдаа гардаг байв:
+    //   (1) төлбөргүй reserved нь харагдацаар «Ноорог» атлаа авлагад БҮТЭН дүнгээрээ
+    //       ордог → авлага хөөрөгддөг;
+    //   (2) дамжлагын дунд шат (Бэлдсэн/Цэвэрлсэн/Гаргасан/Хүргэсэн/Буулгах…) гараар
+    //       бичсэн жагсаалтад ОРООГҮЙ тул төлбөр дутуу байхад ч огт тоологдохгүй.
+    const st = orderCanonStatus(o);
     // Авлага = ЗӨВХӨН баталгаажсан захиалга. Ноорог(санал)/цуцалсан/архивласан(хаагдсан) = авлага БИШ.
-    if (!['reserved', 'started', 'rented', 'stopped', 'returned'].includes(st)) return;
+    if (!RECEIVABLE_ORDER_ST.has(st)) return;
     const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
     const bal = total - paid;
     if (bal <= 0) return;
@@ -20277,11 +20390,11 @@ function renderCooSalary() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { loadNomaadOrders(); }
   if (state.financeRequests === undefined && typeof loadFinanceRequests === 'function') loadFinanceRequests();
 
+  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
+  // meCeo — доорх «⚙️ Тохиргоо» блок ЗӨВХӨН CEO-д (COO өөрөө өөрийн хувиа өөрчилж болохгүй).
   const meMember = (typeof findMember === 'function') ? findMember(state.me) : null;
   const meCeo = ((meMember && meMember.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(meMember));
-  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
-  const meIsCoo = cooKey && state.me && String(state.me) === String(cooKey);
-  if (!meCeo && !meIsCoo) {
+  if (!canSeeCooSalary()) {
     return `<div style="max-width:520px;margin:24px auto;text-align:center;color:var(--muted);padding:30px 16px;border:1px solid var(--border);border-radius:12px;">Энэ мэдээлэл зөвхөн удирдлагад харагдана.</div>`;
   }
 
@@ -27879,6 +27992,10 @@ async function logout() {
   localStorage.removeItem('pgrstToken');   // PostgREST JWT
   // Notification "seen" state is per-user — clear so next user doesn't see this user's history
   localStorage.removeItem('notifications');
+  // Санхүүгийн кэш мөн ХУВИЙН — цэвэрлэхгүй бол дараагийн нэвтрэгч энэ хүний гүйлгээг
+  // cache-first render-ээр шууд хараад амжина (сервер хариу иртэл).
+  localStorage.removeItem('financeRequests');
+  state.financeRequests = [];
   state.notifications = [];
   state.user = null;
   state.me = null;

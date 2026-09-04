@@ -234,6 +234,7 @@ const state = {
   orders: (() => { try { return JSON.parse(localStorage.getItem('orders') || '[]'); } catch(e) { return []; } })(),
   products: (() => { try { return JSON.parse(localStorage.getItem('mevProducts') || '[]'); } catch(e) { return []; } })(),
   nomaadOrders: (() => { try { return JSON.parse(localStorage.getItem('nomaadOrders') || '[]'); } catch(e) { return []; } })(),
+  empAliases: (() => { try { return JSON.parse(localStorage.getItem('empAliases') || 'null'); } catch(e) { return null; } })(),   // хуучин таних утга → одоогийн түлхүүр (canonKey)
   memberPerms: (() => { try { return JSON.parse(localStorage.getItem('memberPerms') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн view хандалтын override {personKey: {orders:true,...}}
   rolePerms: (() => { try { return JSON.parse(localStorage.getItem('rolePerms') || '{}'); } catch(e) { return {}; } })(),  // албан тушаал бүрийн эрх загвар {roleNorm: {orders:true, 'tasks.delete':false,...}}
   salaries: (() => { try { return JSON.parse(localStorage.getItem('salaries') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн суурь сарын цалин {personKey: amount}
@@ -3193,9 +3194,45 @@ function personKey(m) {
   if (!m) return '';
   return String(m.phone || '').replace(/\D/g, '') || String(m.email || '').toLowerCase() || m.name || '';
 }
+// ── Хуучин таних утга → одоогийн түлхүүр (employee_aliases) ──────────────────
+// Утас/мэйл/нэр солигдоход түүхэн бичлэг эзэнгүй болохоос сэргийлнэ. Зураглалыг
+// DB талд `employees_capture_alias_trg` АВТОМАТААР бичдэг (аппд утас солих
+// үйлдэл байхгүй — DB дээр шууд засагддаг тул код талд hook барих боломжгүй).
+// Alias байхгүй/татагдаагүй бол бүх зүйл хуучнаараа ажиллана (зөөлөн задрал).
+function canonKey(key) {
+  const A = state.empAliases;
+  if (!key || !A) return key;
+  let cur = String(key).trim();
+  // Транзитив: A→B→C. Мөчлөг (A→B→A) үүсвэл 20 алхмаар таслана.
+  for (let i = 0; i < 20; i++) {
+    const d = cur.replace(/\D/g, ''), l = cur.toLowerCase();
+    const nx = (d && A['phone:' + d]) || A['email:' + l] || A['name:' + l];
+    if (!nx || nx === cur) return cur;
+    cur = nx;
+  }
+  return cur;
+}
+// Түлхүүрийн БҮХ хувилбар (одоогийн + хуучин бүгд).
+// ⚠ PostgREST-ийн шүүлт СЕРВЕР дээр болдог тул хуучин түлхүүртэй мөр клиент рүү
+//   ОГТ ИРЭХГҮЙ — canonKey тэнд туслахгүй. Ийм дуудлагад бүх хувилбарыг өгнө,
+//   эс бөгөөс «Миний ирц» ба «Ирцийн тайлан» ӨӨР ӨӨР тоо харуулна.
+function keyVariants(key) {
+  const c = canonKey(key);
+  const out = new Set([String(key || ''), c].filter(Boolean));
+  const A = state.empAliases || {};
+  Object.keys(A).forEach(a => {
+    if (A[a] !== c) return;
+    const i = a.indexOf(':');
+    if (i > 0) out.add(a.slice(i + 1));
+  });
+  return [...out];
+}
+// PostgREST `col=in.(...)` — утга бүрийг хашилтад авна (нэрэнд зай/цэг байж болно)
+function pgrstInList(vals) {
+  return 'in.(' + vals.map(v => '"' + String(v).replace(/"/g, '\\"') + '"').join(',') + ')';
+}
 // Ажилтныг утас / email / нэрийн аль нэгээр олох (resilient).
-function findMember(key) {
-  if (!key) return null;
+function _findMemberRaw(key) {
   const k = String(key).trim().toLowerCase();
   const d = String(key).replace(/\D/g, '');
   return TEAM.find(x =>
@@ -3203,6 +3240,14 @@ function findMember(key) {
     (d && String(x.phone || '').replace(/\D/g, '') === d) ||
     (String(x.name || '').trim().toLowerCase() === k)  // нэрийг үсгийн том/жижиг ялгахгүй тааруулна
   ) || null;
+}
+function findMember(key) {
+  if (!key) return null;
+  const hit = _findMemberRaw(key);
+  if (hit) return hit;
+  // Олдсонгүй — хуучин утас/мэйл/нэрээр хайж байж магадгүй
+  const c = canonKey(key);
+  return (c && c !== key) ? _findMemberRaw(c) : null;
 }
 function memberName(key) {
   if (!key) return '(сонгох)';
@@ -8489,7 +8534,11 @@ function attDecodeLoop() {
 function attHandleScan(data) {
   const m = /^chimun-att:(\d{6,})$/.exec(String(data).trim());
   if (!m) return;
-  const phone = m[1], now = Date.now();
+  // ⚠ Хэвлэсэн QR карт дээр БҮРТГҮҮЛЭХ ҮЕИЙН утас байдаг. Хүн утсаа сольсон бол
+  //   canonKey нь одоогийн түлхүүр рүү зурна — карт дахин хэвлэхгүйгээр ажиллана.
+  //   Энэ мөр нь ГУРВЫГ зэрэг зассан: findMember, өнөөдрийн бичлэгийн шүүлт,
+  //   БА шинэ бичлэгийн member_key (эс бөгөөс шинэ өнчин мөр төрөх байсан).
+  const phone = canonKey(m[1]), now = Date.now();
   if (state._attPickerOpen) return;   // «маргааш ирэх цаг» сонгож байх зуур бүү бүртгэ
   state._attLastScan = state._attLastScan || {};
   if (state._attLastScan[phone] && now - state._attLastScan[phone] < 8000) return;   // 8 сек давхардлаас хамгаалах
@@ -8850,7 +8899,7 @@ function loadQRCodeJs() {
 }
 async function loadMyAttendance() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=eq.${encodeURIComponent(state.me)}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
@@ -9801,6 +9850,30 @@ async function bulkDeleteUnfinishedTasks() {
 }
 
 // member_perms татах (PostgREST anon SELECT). Хүснэгт байхгүй бол чимээгүй.
+// Хуучин таних утга → одоогийн түлхүүр. `v_employee_aliases` нь alias-ыг ажилтны
+// ОДООГИЙН personKey рүү шууд зурсан байдаг (апп `pk`-г хардаггүй).
+// Унавал alias-гүй ажиллана — хуучин зан төлөв, эвдрэлгүй.
+async function loadEmployeeAliases() {
+  if (!DB_ANON_KEY) return;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/v_employee_aliases?select=alias,canon`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return;
+    const rows = await r.json();
+    const map = {};
+    (rows || []).forEach(a => {
+      if (!a || !a.alias || !a.canon) return;
+      const i = String(a.alias).indexOf(':');
+      if (i < 1) return;
+      const kind = a.alias.slice(0, i), val = a.alias.slice(i + 1);
+      // canonKey()-ийн хайлттай ЯГ ижил хэлбэрт оруулна
+      const norm = kind === 'phone' ? val.replace(/\D/g, '') : val.trim().toLowerCase();
+      if (norm) map[kind + ':' + norm] = a.canon;
+    });
+    state.empAliases = map;
+    try { localStorage.setItem('empAliases', JSON.stringify(map)); } catch (e) {}
+  } catch (e) { console.warn('loadEmployeeAliases', e); }
+}
 async function loadMemberPerms() {
   if (!DB_ANON_KEY) return;
   try {
@@ -9809,7 +9882,7 @@ async function loadMemberPerms() {
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
-    rows.forEach(p => { if (p && p.person_key) map[p.person_key] = p.perms || {}; });
+    rows.forEach(p => { if (p && p.person_key) map[canonKey(p.person_key)] = p.perms || {}; });   // хуучин түлхүүрээр хадгалагдсан эрх алдагдахгүй
     state.memberPerms = map;
     try { localStorage.setItem('memberPerms', JSON.stringify(map)); } catch (e) {}
     if (typeof render === 'function') render();
@@ -11582,7 +11655,7 @@ async function loadSalaries() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/staff_salary?select=*`, { headers: _SAL_H() }, 15000);
     if (!r.ok) return;
     const rows = await r.json(); const map = {}, ded = {};
-    rows.forEach(p => { if (p && p.person_key) { map[p.person_key] = Number(p.amount) || 0; ded[p.person_key] = p.deduct !== false; } });
+    rows.forEach(p => { if (p && p.person_key) { const k = canonKey(p.person_key); map[k] = Number(p.amount) || 0; ded[k] = p.deduct !== false; } });
     state.salaries = map; state.salaryDeduct = ded;
     try { localStorage.setItem('salaries', JSON.stringify(map)); localStorage.setItem('salaryDeduct', JSON.stringify(ded)); } catch (e) {}
     if (typeof render === 'function') render();
@@ -15436,7 +15509,13 @@ async function loadEvaluations() {
     const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
-    state.evaluations = Array.isArray(data) ? data : (data.evaluations || []);
+    const _evRows = Array.isArray(data) ? data : (data.evaluations || []);
+    // ratee/rater-ыг каноник болгоно — eval360Score нь `e.ratee === key` гэж ХАТУУ
+    // шүүдэг тул хуучин түлхүүртэй үнэлгээ оноонд ОРОХГҮЙ байсан (2026-09-04).
+    // `id` нь хэвээр — тэр нь upsert-ийн түлхүүр, өөрчилвөл давхар мөр үүснэ.
+    state.evaluations = _evRows.map(e => (e && (e.ratee || e.rater))
+      ? Object.assign({}, e, { ratee: canonKey(e.ratee), rater: canonKey(e.rater) })
+      : e);
     try { localStorage.setItem('evaluations', JSON.stringify(state.evaluations)); } catch(e) {}
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadEvaluations fail', e); }
@@ -15888,7 +15967,12 @@ function renderPerfRate() {
     const key = personKey(m);
     const isSelf = key === state.me;
     const type = isSelf ? 'self' : (myLevel >= 60 && (Number(m.level) || 0) < myLevel ? 'manager' : 'peer');
-    const ex = (state.evaluations || []).find(e => e.id === `${month}|${state.me}|${key}`);
+    // id нь `period|rater|ratee` нийлмэл тул alias өөрөө шийдэхгүй — түлхүүрүүдийг
+    // каноник болгож харьцуулна. Эс бөгөөс «үнэлээгүй» гэж харагдаж менежер дахин
+    // үнэлж ДАВХАР мөр үүсгэн оноог гажуудуулна.
+    const _ck = canonKey(key), _cm = canonKey(state.me);
+    const ex = (state.evaluations || []).find(e =>
+      e.id === `${month}|${_cm}|${_ck}` || e.id === `${month}|${state.me}|${key}`);
     const typeLbl = type === 'manager' ? 'удирдсан' : type === 'self' ? 'өөрөө' : 'хамт';
     return `<div class="perf-rate-card" data-rate-key="${escapeHtml(key)}" data-rate-type="${type}">
       <div class="perf-rate-head"><div><b>${escapeHtml(m.name)}</b> <span class="perf-sub">${typeLbl}</span></div>${ex ? '<span class="perf-done">✓ үнэлсэн</span>' : ''}</div>
@@ -27371,6 +27455,7 @@ async function bootApp() {
   loadCiStatus();       // Системийн автомат шалгалт (GitHub Actions) — sidebar-т 🟢/🔴 (CEO)
   loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
+  loadEmployeeAliases();   // хуучин утас/мэйл/нэрийг эзэнтэй нь холбоно (canonKey)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)

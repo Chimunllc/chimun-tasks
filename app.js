@@ -14531,6 +14531,10 @@ function meventContractHtml(o) {
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
   const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
+  // Эхлэх/дуусах ЦАГ нь ⟦RT|sh|eh⟧ note token-д хадгалагддаг (starts_at нь зөвхөн огноо).
+  // Уншихгүй бол гэрээнд «……» гарч, ажлын бус цагийн төлбөртэй зөрчилдөнө.
+  const _rt = parseOrderTimes(o.note);
+  if (_rt) { if (ds.time === '……') ds.time = _pad2(_rt.sh) + ':00'; if (de.time === '……') de.time = _pad2(_rt.eh) + ':00'; }
   const contractNo = escapeHtml(o.contract_no || '');
   const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
@@ -14559,12 +14563,11 @@ function meventContractHtml(o) {
       ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
       ${offFee > 0 ? `<tr><td>🌙 Ажлын бус цаг:</td><td class="rt">${fmtMoney(offFee)}</td></tr>` : ''}
       ${setupFee > 0 ? `<tr><td>🔧 Суурилуулалт / угсралт:</td><td class="rt">${fmtMoney(setupFee)}</td></tr>` : ''}
-      ${hasVat ? '' : `<tr><td>Үүнээс НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>`}
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
     </tbody></table>
-    <div class="vat-note">${hasVat ? 'Дээрх үнэд НӨАТ багтаагүй болно.' : 'Дээрх үнэд НӨАТ багтсан болно.'}</div>
-    ${mvTable}`;
+    <div class="vat-note">${hasVat ? 'Дээрх үнэд НӨАТ багтаагүй болно.' : `Дээрх үнэд НӨАТ багтсан болно (үүнээс НӨАТ ${fmtMoney(vat)}).`}</div>
+`;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Түрээсийн гэрээ — ${cust} (#${o.number ?? ''})</title>
@@ -14608,7 +14611,7 @@ function meventContractHtml(o) {
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
     <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b>${_ci.company ? '<br>Байгууллага: ' + escapeHtml(_ci.company) : ''}<br>${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}${_ciContact ? 'Холбоо барих: ' + escapeHtml(_ciContact) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}Байгууллагын РД: ${_ci.reg ? escapeHtml(_ci.reg) : '…………………'}${_addr ? '<br>Хүргэх хаяг: ' + escapeHtml(_addr) : ''}${_ci.maps ? ' (<a href="' + escapeHtml(mapsHref(_ci.maps)) + '">байршил</a>)' : ''}</td>
-    <td class="r"><div class="ch-role">ТҮРЭЭСЛҮҮЛЭГЧ</div><b>${C.name}</b><br>${C.address}<br>Улаанбаатар, 11000<br>Утас: 7755-1010<br>Hello@Mevent.mn</td>
+    <td class="r"><div class="ch-role">ТҮРЭЭСЛҮҮЛЭГЧ</div><b>${C.name}</b><br>${C.address}<br>Улаанбаатар, 11000<br>Байгууллагын РД: ${escapeHtml(String(C.reg || ''))}<br>Утас: 7755-1010<br>Hello@Mevent.mn</td>
   </tr></table>
   <div class="meta-line">Он сар: <b>${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}</b> &nbsp;·&nbsp; Захиалга: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; Гэрээний дугаар: <b>${contractNo || '……'}</b></div>
   <div class="meta-line">Эхлэх: <b>${ds.y}-${String(ds.mo).padStart(2, '0')}-${String(ds.d).padStart(2, '0')} ${ds.time}</b> &nbsp;·&nbsp; Дуусах: <b>${de.y}-${String(de.mo).padStart(2, '0')}-${String(de.d).padStart(2, '0')} ${de.time}</b></div>
@@ -14656,8 +14659,9 @@ function meventContractHtml(o) {
   <h2>ДОЛОО. ЭВДРЭЛ, АЛДАГДЛЫН ХАРИУЦЛАГА</h2>
   <p><b>7.1.</b> Хэрэглэгчийн эзэмшил, ашиглалтын хугацаанд гарсан аливаа эвдрэл, гэмтэл, алдагдлыг Хэрэглэгч бүрэн хариуцна. Үүнд Хэрэглэгчийн ажилтан, зочин, гуравдагч этгээдийн үйлдлээс үүссэн эвдрэл мөн хамаарна.</p>
   <p><b>7.2.</b> Засварлах боломжтой эвдрэлийн засварын зардлыг Хэрэглэгч хариуцна.</p>
-  <p><b>7.3.</b> Засварлах боломжгүй эвдрэл болон бараа, төхөөрөмж алдагдсан тохиолдолд дээрх «Нөхөн төлбөрийн үнэлгээ» хүснэгтэд заасан зах зээлийн үнэлгээгээр үл маргах журмаар бүрэн нөхөн төлнө. Хүснэгтэд үнэлгээ заагаагүй бараанд тухайн үеийн зах зээлийн ханшаар тооцно.</p>
+  <p><b>7.3.</b> Засварлах боломжгүй эвдрэл болон бараа, төхөөрөмж алдагдсан тохиолдолд доорх «Нөхөн төлбөрийн үнэлгээ» хүснэгтэд заасан зах зээлийн үнэлгээгээр үл маргах журмаар бүрэн нөхөн төлнө. Хүснэгтэд үнэлгээ заагаагүй бараанд тухайн үеийн зах зээлийн ханшаар тооцно.</p>
   <p><b>7.4.</b> Түрээслүүлэгч нь бараа, төхөөрөмж ашигласнаас үүдсэн шууд бус хохирол, ашиг орлогын алдагдлыг хариуцахгүй.</p>
+  ${mvTable}
 
   <h2>НАЙМ. ХУГАЦАА СУНГАХ</h2>
   <p><b>8.1.</b> Хугацаа сунгах тохиолдолд Хэрэглэгч дор хаяж 24 цагийн өмнө мэдэгдэж, нэмэлт хоногийн төлбөрийг төлнө.</p>

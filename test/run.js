@@ -83,19 +83,10 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'orderShortages', 'availabilityFor', 'productStockByName']);
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
-
-// 0a) SCAN — PostgREST дуудлага бүр НЭВТЭРСЭН токеноор явна (2026-09-03)
-// pgrstBearer() = pgrstToken() || DB_ANON_KEY — токенгүй бол anon руу унана, тул
-// солих нь юуг ч эвдэхгүй. Харин anon-ы УНШИХ эрхийг ирээдүйд хаах боломж нээгдэнэ.
-// Шинэ код `Bearer ' + DB_ANON_KEY` бичвэл тэр бараа дахин anon-оор явна.
-{
-  const anonBearer = (src.match(/Authorization: 'Bearer ' \+ DB_ANON_KEY/g) || []).length;
-  eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
-}
 
 // 0b) Хүрэлцээ — ХУУЧИРСАН НЭРТЭЙ мөрийг sku-гээр таньж шалгана (2026-09-03)
 // Регресс: өмнө нь availabilityFor(it.name) байсан тул сайтаас хуучин нэртэй мөр
@@ -121,6 +112,45 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'availabilityFor: мөрөөр ба каноник нэрээр ижил');
 
   runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
+}
+
+// 5c) SCAN — reserveReceipt-ийн үр дүнг ЦАГААН жагсаалтаар шалгана (2026-09-03)
+// Дүрэм 2: 'dup'-ыг хар жагсаалтаар барих нь 'err'-ийг 'ok' мэт нэвтрүүлдэг →
+// сүлжээ/эрх унахад давхар баримтын хамгаалалт ЧИМЭЭГҮЙ унтардаг байв.
+// Энэ scan нь: 'dup' шалгадаг газар бүр 'err'-ийг мөн шалгасан байх ёстой.
+{
+  const dupChecks = (src.match(/rr === 'dup'/g) || []).length;
+  const errChecks = (src.match(/rr === 'err'/g) || []).length;
+  ok(dupChecks > 0, 'scan: reserveReceipt дуудагч олдов (' + dupChecks + ')');
+  ok(errChecks >= dupChecks,
+     "scan: 'dup' шалгадаг газар бүр 'err'-ийг мөн шалгана (dup=" + dupChecks + ", err=" + errChecks + ')');
+}
+
+// 0d) SCAN — view бүр safeViewHtml-ээр хамгаалагдсан байна (2026-09-03)
+// Рендер алдаа шидвэл wrap.innerHTML хоосон үлдэж апп «үхсэн» мэт харагдана —
+// цэс дарахад юу ч болохгүй, алдааны мессеж ч гарахгүй. safeViewHtml нь try/catch
+// хийж хэрэглэгчид ойлгомжтой мессеж үзүүлнэ. Аудит: 15 view-ээс 13 нь хамгаалалтгүй байв.
+{
+  const bare = (src.match(/wrap\.innerHTML\s*=\s*render[A-Z]/g) || []).length;
+  eq(bare, 0, 'scan: view рендер бүр safeViewHtml-ээр хамгаалагдсан');
+}
+
+// 0c) SCAN — CACHE_TAG-ийг ЗӨВХӨН globalThis-ээр уншина (2026-09-03)
+// `typeof X === 'string' ? X : ''` дэх ХОЁР ДАХЬ лавлагаа нь no-undef-д баригдаж
+// CI-г улаан болгодог. 2026-09-03-нд хоёр удаа тохиолдсон — эхнийх нь 2 газар
+// зассаны дараа өөр сесс 3 дахь газар нэмсэн. Тиймээс ХЭВ МАЯГИЙГ хаана.
+{
+  const bare = (src.match(/(?<!globalThis\.)\bCACHE_TAG\b/g) || []).length;
+  eq(bare, 0, 'scan: CACHE_TAG зөвхөн globalThis.CACHE_TAG хэлбэрээр (no-undef)');
+}
+
+// 0a) SCAN — PostgREST дуудлага бүр НЭВТЭРСЭН токеноор явна (2026-09-03)
+// pgrstBearer() = pgrstToken() || DB_ANON_KEY — токенгүй бол anon руу унана, тул
+// солих нь юуг ч эвдэхгүй. Харин anon-ы УНШИХ эрхийг ирээдүйд хаах боломж нээгдэнэ.
+// Шинэ код `Bearer ' + DB_ANON_KEY` бичвэл тэр бараа дахин anon-оор явна.
+{
+  const anonBearer = (src.match(/Authorization: 'Bearer ' \+ DB_ANON_KEY/g) || []).length;
+  eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
 }
 
 // 1) НӨАТ токен round-trip
@@ -255,6 +285,23 @@ eq(F.parseDelivery('токенгүй'), null, 'Хүргэлт токен: бай
   const clean = F.cleanAppNote(note);
   ok(clean.indexOf('Жинхэнэ тэмдэглэл') === 0, 'cleanAppNote: үндсэн текст үлдэнэ');
   ok(!/⟦VAT/.test(clean) && !/⟦DLV/.test(clean), 'cleanAppNote: токенууд арилна');
+}
+
+// 5b) stripFormTokens — захиалгын форм ЗӨВХӨН өөрийн токеныг солино (2026-09-03)
+// Регресс: өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул захиалга засах бүрд
+// санхүүгийн бүртгэсэн ⟦PAY⟧ ба буцаалтын ⟦RF⟧ УСТДАГ байв.
+{
+  const foreign = '⟦PAY|500000|бүтэн|данс|2026-09-01|ITZONE⟧ ⟦RF|120000⟧ ⟦DMG|сандал⟧ ⟦CX|цуцлав⟧';
+  const own = F.encodeVat(5000) + ' ' + F.encodeDelivery('out', 10, 50000) + ' ' + F.encodeSetup(true);
+  const kept = F.stripFormTokens('Тэмдэглэл ' + own + ' ' + foreign);
+  ok(!/⟦VAT/.test(kept), 'stripFormTokens: өөрийн ⟦VAT⟧ арилна');
+  ok(!/⟦DLV/.test(kept), 'stripFormTokens: өөрийн ⟦DLV⟧ арилна');
+  ok(!/⟦SET/.test(kept), 'stripFormTokens: өөрийн ⟦SET⟧ арилна');
+  ok(/⟦PAY\|500000/.test(kept), 'stripFormTokens: санхүүгийн ⟦PAY⟧ ХАДГАЛАГДАНА');
+  ok(/⟦RF\|120000⟧/.test(kept), 'stripFormTokens: буцаалтын ⟦RF⟧ ХАДГАЛАГДАНА');
+  ok(/⟦DMG\|/.test(kept) && /⟦CX\|/.test(kept), 'stripFormTokens: ⟦DMG⟧ ба ⟦CX⟧ ХАДГАЛАГДАНА');
+  ok(kept.indexOf('Тэмдэглэл') === 0, 'stripFormTokens: үндсэн текст үлдэнэ');
+  ok(F.cleanAppNote(foreign) === '', 'cleanAppNote нь ХАРИН бүгдийг арилгасаар байна (өөр зориулалт)');
 }
 
 // 6) paid_ref задлах (банкны баримтын лавлагаа)
@@ -2154,6 +2201,65 @@ function finish() {
     ok(!expired(unpaidFuture), 'NOMAAD үхсэн санал: ирээдүйн огноо больсон биш');
 
     st.nomaadPayments = savedPays;
+  }
+
+  // ── Алдааны хурууны хээ (fingerprint) — бүлэглэлийн үндэс ──
+  {
+    const F1 = F.errFingerprint;
+    ok(F1('Cannot read x', 'app.js:100') === F1('Cannot read x', 'app.js:100'), 'fp: ижил алдаа ижил хээ');
+    ok(F1('Cannot read x', 'app.js:100') !== F1('Cannot read y', 'app.js:100'), 'fp: өөр мессеж → өөр хээ');
+    ok(F1('Cannot read x', 'app.js:100') !== F1('Cannot read x', 'app.js:200'), 'fp: өөр байрлал → өөр хээ');
+    // Query string нь хувилбар бүрд өөр байдаг тул хээнд ОРОХГҮЙ
+    ok(F1('E', 'app.js?v=1') === F1('E', 'app.js?v=2'), 'fp: ?v= хувилбар хээг задлахгүй');
+    ok(/^[0-9a-f]{12}$/.test(F1('E', 's')), 'fp: 12 тэмдэгт hex');
+    ok(F1(null, null) === F1(undefined, undefined), 'fp: хоосон утга аюулгүй');
+    ok(F1('a', 'b') !== F1('b', 'a'), 'fp: талбарууд солигдвол өөр');
+    // Урт мессеж таслагдсан ч тогтвортой
+    const long = 'x'.repeat(500);
+    ok(F1(long, 's') === F1(long + 'ZZZ', 's'), 'fp: 300 тэмдэгтээс хойш ялгаагүй (таслалттай нийцнэ)');
+  }
+
+  // ── Ирц: баталгаатай (менежер уншуулсан) vs өөрөө бүртгүүлсэн өдөр ──
+  // Энэ тоо шууд цалин болдог тул буруу тоолвол илүү/дутуу төлбөр гарна.
+  {
+    const A = F.attAggregateMonth;
+    const r = (key, day, source) => ({ member_key: key, day, source, ts: day + 'T01:00:00.000Z' });
+
+    const both = A([r('99', '2026-09-01', 'scan'), r('99', '2026-09-02', 'qr')]).out['99'];
+    ok(both.days === 2, 'ирц: 2 өдөр ажилласан');
+    ok(both.selfDays === 1, 'ирц: 1 өдөр нь уншуулаагүй');
+
+    // Нэг өдөр хоёуланг нь бүртгүүлсэн бол УНШУУЛСАНД тооцно (баталгаа байгаа).
+    const mixed = A([r('7', '2026-09-01', 'qr'), r('7', '2026-09-01', 'scan')]).out['7'];
+    ok(mixed.days === 1 && mixed.selfDays === 0, 'ирц: нэг өдөр уншуулсан бол баталгаатай');
+
+    const allScan = A([r('1', '2026-09-01', 'scan'), r('1', '2026-09-02', 'scan')]).out['1'];
+    ok(allScan.selfDays === 0, 'ирц: бүгд уншуулсан → сануулга гарахгүй');
+
+    const allSelf = A([r('2', '2026-09-01', 'qr'), r('2', '2026-09-02', 'qr')]).out['2'];
+    ok(allSelf.selfDays === 2, 'ирц: бүгд өөрөө → 2 өдөр сануулна');
+
+    // source байхгүй хуучин мөр = баталгаагүйд тооцно (уншуулсан гэж БҮҮ таамагла).
+    ok(A([r('3', '2026-09-01', undefined)]).out['3'].selfDays === 1, 'ирц: source байхгүй → баталгаагүй');
+
+    // Давхардсан өдөр нэг л удаа тоологдоно
+    ok(A([r('4', '2026-09-01', 'scan'), r('4', '2026-09-01', 'scan')]).out['4'].days === 1, 'ирц: давхар мөр нэг өдөр');
+
+    // Гэмтэлтэй өгөгдөл унагаахгүй
+    ok(Object.keys(A([null, {}, { member_key: 'x' }]).out).length === 0, 'ирц: гэмтэлтэй мөр алгасана');
+    ok(A(null).out && Object.keys(A(null).out).length === 0, 'ирц: хоосон оролт аюулгүй');
+
+    // Цалингийн мөрд сануулга ҮНЭХЭЭР гарч байгаа эсэх (энэ л захиралд харагдана).
+    const st = vm.runInContext('state', sandbox), saved = st.attWorkedDays;
+    const who = { name: 'Тест', phone: '99999999', daily_rate: 50000 };
+    st.attWorkedDays = { [F.personKey(who)]: { days: 5, selfDays: 2, lastDay: '2026-09-02' } };
+    const warned = F.attWorkedLine(who);
+    ok(/5 өдөр/.test(warned), 'цалин: ажилласан өдөр гарна');
+    ok(/2 өдөр нь уншуулаагүй/.test(warned), 'цалин: баталгаагүй өдрийн сануулга гарна');
+
+    st.attWorkedDays = { [F.personKey(who)]: { days: 5, selfDays: 0, lastDay: '2026-09-02' } };
+    ok(!/уншуулаагүй/.test(F.attWorkedLine(who)), 'цалин: бүгд уншуулсан бол сануулга ГАРАХГҮЙ');
+    st.attWorkedDays = saved;
   }
 
   finish();

@@ -120,6 +120,15 @@ const DB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.B
 // Барааны зураг VPS дээр (n8n.nomaadcamp.com/img/<file>) — mevent-upload-image webhook-оор
 // байршуулна (uploadProductImage). Гуравдагч талын storage ашиглахаа больсон.
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
+// n8n webhook дуудлагад нэвтэрсэн ажилтны session токеныг ХЭДЭР-ээр нэмнэ.
+// ⚠ URL query-д БҮҮ тавь — n8n гүйцэтгэлийн түүхэнд бүх query параметр хадгалагдана.
+// Токенгүй (нэвтрээгүй) бол хоосон объект — одоогийн зан төлөв хэвээр.
+// Сервер тал энэ header-ийг шалгаж эхлэхэд л жинхэнэ хаалт болно.
+function n8nAuthHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  try { const t = localStorage.getItem('sessionToken'); if (t) h['X-Session-Token'] = t; } catch (e) {}
+  return h;
+}
 function withKey(url) {
   if (!url) return url;
   const sep = url.includes('?') ? '&' : '?';
@@ -291,6 +300,20 @@ function logAppError(msg, src, extra) {
 // тухайн төхөөрөмжид үлддэг тул хангалтгүй байсан).
 // ⚠ Энэ функц ХЭЗЭЭ Ч алдаа шидэхгүй байх ЁСТОЙ — эс бөгөөс алдаа мэдээлэх нь өөрөө
 // алдаа болж хязгааргүй давталт үүснэ. Тиймээс энд .catch(()=>{}) нь ЗӨВ.
+// Алдааны хурууны хээ — ижил алдааг бүлэглэх түлхүүр. Мессеж + эх байрлал
+// (query-гүй). Тоо/хугацаа/хэрэглэгч ОРОХГҮЙ — эс бөгөөс бүлэглэл ажиллахгүй.
+// fp-г ЗӨВХӨН клиент бодно (эх сурвалж нэг). Хүснэгтэд байсан хуучин мөрүүдэд
+// сервер нэг удаа md5-аар нөхсөн тул тэдгээр нь тусдаа бүлэг болно — асуудалгүй.
+function errFingerprint(msg, src) {
+  const base = String(msg == null ? '' : msg).slice(0, 300) + '|' + String(src == null ? '' : src).split('?')[0];
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < base.length; i++) {
+    const c = base.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 12);
+}
 const _errSentThisSession = new Set();
 let _errSentCount = 0;
 function _reportErrToServer(msg, src, extra) {
@@ -312,6 +335,7 @@ function _reportErrToServer(msg, src, extra) {
         ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
         ua: String((navigator && navigator.userAgent) || '').slice(0, 200),
         stack: String(extra || '').slice(0, 300),
+        fp: errFingerprint(msg, src),
       }),
     }).catch(() => {});
   } catch (e) {}
@@ -321,14 +345,30 @@ function _reportErrToServer(msg, src, extra) {
 async function loadServerErrors() {
   if (!state.isCEO || !DB_URL) return;
   try {
-    const since = new Date(Date.now() - 86400000).toISOString();
+    // Бүлэглэсэн харагдац (v_app_errors) — нэг алдаа = нэг мөр, давтамж/хүний тоотой.
+    // Зассан/үл хамаарах гэж тэмдэглэсэн нь жагсаалтад гарахгүй.
     const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/app_errors?at=gte.${since}&select=at,msg,src,view,person,ver&order=at.desc&limit=100`,
+      `${DB_URL}/rest/v1/v_app_errors?status=in.(new,fixing)&order=last_at.desc&limit=60`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
-    if (!r.ok) return;                                     // эрхгүй/хүснэгт байхгүй — чимээгүй, локал нь ажиллана
+    if (!r.ok) return;                                     // эрхгүй/view байхгүй — чимээгүй, локал нь ажиллана
     const rows = await r.json();
     if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
   } catch (e) {}
+}
+// Алдааны төлөв тэмдэглэх — түүхий логийг ХӨНДӨХГҮЙ, тусдаа хүснэгтэд.
+async function setErrorStatus(fp, status, note) {
+  if (!fp) return false;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_error_state?on_conflict=fp`, {
+      method: 'POST',
+      headers: pgWrite({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ fp, status, note: note || null,
+        fixed_ver: status === 'fixed' ? (typeof globalThis.CACHE_TAG === 'string' ? globalThis.CACHE_TAG : '') : null,
+        updated_by: state.me || '', updated_at: new Date().toISOString() }),
+    }, 12000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) { showToast('⚠ Төлөв хадгалагдсангүй', 'error', 2500); return false; }
 }
 try {
   window.addEventListener('error', (ev) => {
@@ -958,9 +998,21 @@ async function serverLogin(identifier, pin) {
 // Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
 // Татаж авсан PIN (state.staffPins: phone→PIN)-ыг TEAM-д наана. TEAM дахин ачаалагдах бүрд дуудна —
 // эс бөгөөс loadTeamFromAPI (TEAM.length=0) PIN-г арилгаад, loadStaffPins нэг л удаа ажилладаг тул сэргэдэггүй.
+// ⚠ ЭМЗЭГ ТАЛБАРУУД — /webhook/staff нь НИЙТИЙН түлхүүрээр хамгаалагдсан тул тэндээс
+// РД/цалин/банк/хаяг/яаралтай холбоо БУЦААХ ЁСГҮЙ. Тэдгээрийг PIN-тэй ижил замаар —
+// session токен + lvl>=100 шалгадаг /chimun-staff-pins-ээс авна.
+const STAFF_SENSITIVE_FIELDS = ['rd', 'address', 'base_salary', 'daily_rate', 'salary',
+  'bank', 'bank_account', 'bank_holder', 'emergency_name', 'emergency_phone'];
 function applyStaffPins() {
-  if (!state.staffPins) return;
-  (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && state.staffPins[p]) m.pin = state.staffPins[p]; });
+  if (!state.staffPins && !state.staffSensitive) return;
+  (TEAM || []).forEach(m => {
+    const p = String(m.phone || '').replace(/\D/g, ''); if (!p) return;
+    if (state.staffPins && state.staffPins[p]) m.pin = state.staffPins[p];
+    const sx = state.staffSensitive && state.staffSensitive[p];
+    // Серверээс ирсэн бол л дарж бичнэ — ирээгүй талбарыг хоослохгүй (шилжилтийн үед
+    // /webhook/staff хуучнаараа буцаасаар байвал одоогийн утга хэвээр үлдэнэ).
+    if (sx) STAFF_SENSITIVE_FIELDS.forEach(k => { if (sx[k] !== undefined && sx[k] !== null && sx[k] !== '') m[k] = sx[k]; });
+  });
 }
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !state.isCEO) return;
@@ -983,8 +1035,16 @@ async function loadStaffPins() {
       return;
     }
     state._staffPinsErr = '';
-    const byPhone = {};
-    d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
+    const byPhone = {}, bySens = {};
+    d.team.forEach(x => {
+      const p = String(x.phone || '').replace(/\D/g, ''); if (!p) return;
+      if (x.pin) byPhone[p] = x.pin;
+      // Эмзэг талбарууд — серверийн шинэ хувилбар илгээвэл авна, эс бол хоосон үлдэнэ.
+      let has = false; const o = {};
+      STAFF_SENSITIVE_FIELDS.forEach(k => { if (x[k] !== undefined) { o[k] = x[k]; has = true; } });
+      if (has) bySens[p] = o;
+    });
+    state.staffSensitive = bySens;
     state.staffPins = byPhone;   // TEAM дахин ачаалагдсан ч (loadTeamFromAPI = TEAM.length=0) арилахгүйгээр тусад нь хадгална
     applyStaffPins();
     if (typeof render === 'function') render();
@@ -1272,7 +1332,7 @@ async function loadBootstrap() {
   try {
     const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
     });
     if (!r.ok) return false;
     const data = await r.json();
@@ -1312,7 +1372,7 @@ async function loadData() {
       // (мөр устгах/засах) тусахгүй байдаг. t=Date.now() + no-store-р фреш дата авна.
       const r = await fetchWithTimeout(withKey(state.config.apiUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
@@ -1960,7 +2020,7 @@ async function loadFinanceRequests() {
       // Cache-bust — Sheet дээр шууд устгасан/засварласан хүсэлт нэн даруй тусахын тулд
       const res = await fetchWithTimeout(withKey(state.config.financeUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
@@ -3800,7 +3860,7 @@ function renderTaskList() {
   if (state.view === 'dashboard') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderDashboard();
+    wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     // Dashboard action товчнууд
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
@@ -3842,37 +3902,37 @@ function renderTaskList() {
   } else if (state.view === 'accounts') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderBankAccounts();
+    wrap.innerHTML = safeViewHtml(renderBankAccounts, 'Данс & карт');
     attachBankAccountsHandlers();
     return;
   } else if (state.view === 'marketing') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMarketing();
+    wrap.innerHTML = safeViewHtml(renderMarketing, 'Маркетинг');
     attachMarketingHandlers();
     return;
   } else if (state.view === 'documents') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderDocuments();
+    wrap.innerHTML = safeViewHtml(renderDocuments, 'Баримт');
     attachDocumentsHandlers();
     return;
   } else if (state.view === 'myexpenses') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMyExpenses();
+    wrap.innerHTML = safeViewHtml(renderMyExpenses, 'Миний зардал');
     attachMyExpensesHandlers();
     return;
   } else if (state.view === 'receivables') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderReceivables();
+    wrap.innerHTML = safeViewHtml(renderReceivables, 'Авлага');
     attachReceivablesHandlers();
     return;
   } else if (state.view === 'coosalary') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderCooSalary();
+    wrap.innerHTML = safeViewHtml(renderCooSalary, 'COO цалин');
     attachCooSalaryHandlers();
     return;
   } else if (state.view === 'vat') {
@@ -3883,7 +3943,7 @@ function renderTaskList() {
   } else if (state.view === 'access') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderAccess();
+    wrap.innerHTML = safeViewHtml(renderAccess, 'Ажилчид (удирдах)');
     attachAccessHandlers();
     return;
   } else if (state.view === 'salary' || state.view === 'hourly') {
@@ -3903,13 +3963,13 @@ function renderTaskList() {
   } else if (state.view === 'attendance') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderAttendance();
+    wrap.innerHTML = safeViewHtml(renderAttendance, 'Ирц');
     attachAttendanceHandlers();
     return;
   } else if (state.view === 'myattend') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMyAttend();
+    wrap.innerHTML = safeViewHtml(renderMyAttend, 'Миний ирц');
     attachMyAttendHandlers();
     return;
   } else if (state.view === 'reports') {
@@ -3929,19 +3989,19 @@ function renderTaskList() {
   } else if (state.view === 'performance') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderPerformance();
+    wrap.innerHTML = safeViewHtml(renderPerformance, 'Гүйцэтгэл');
     attachPerformanceHandlers();
     return;
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline());
+    wrap.innerHTML = safeViewHtml(() => renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline()), 'NOMAAD захиалга');
     attachNomaadHandlers();
     return;
   } else if (state.view === 'catering') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderCatering();
+    wrap.innerHTML = safeViewHtml(renderCatering, 'Катеринг');
     attachCateringHandlers();
     return;
   } else if (state.view === 'finance') {
@@ -8720,7 +8780,9 @@ function attHandleScan(data) {
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
-  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
+  // Менежер нэвтэрсэн байдаг тул ЭНЭ замыг authenticated эрхээр бичнэ — итгэмжтэй
+  // ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
+  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(body) }).catch(() => {});
   if (kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);   // явахдаа: маргааш хэдэн цагт ирэх вэ?
 }
 // «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
@@ -8790,7 +8852,7 @@ function attMemberSummary(recs, live) {
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
@@ -8799,7 +8861,7 @@ async function loadAttendanceToday() {
 async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
@@ -8814,20 +8876,39 @@ async function loadAttendanceMonthFull(month) {
 }
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
+// Сарын ирцийн мөрүүдээс ажилтан тус бүрийн ажилласан өдөр + ирсэн цагийг тооцно.
+// ЦЭВЭР функц (сүлжээгүй) — тестлэгдэнэ. Мөрүүд ts өсөхөөр эрэмбэлэгдсэн байх ёстой.
+//   days     — ирц бүртгэгдсэн өдрийн тоо
+//   selfDays — тэдгээрээс менежер QR уншуулаагүй (source='scan' огт байхгүй) өдөр.
+//              Энэ тоо цалин болдог тул баталгаагүйг нь ЯЛГАЖ харуулах үндэс.
+function attAggregateMonth(rows) {
+  const map = {}, times = {}, scanned = {};
+  (rows || []).forEach(x => {
+    if (!x || !x.member_key || !x.day) return;
+    (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
+    if (x.source === 'scan') (scanned[x.member_key] = scanned[x.member_key] || new Set()).add(x.day);
+    const tk = times[x.member_key] = times[x.member_key] || {};
+    if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
+  });
+  const out = {};
+  Object.keys(map).forEach(k => {
+    const sc = scanned[k];
+    out[k] = {
+      days: map[k].size,
+      selfDays: [...map[k]].filter(d => !(sc && sc.has(d))).length,
+      lastDay: [...map[k]].sort().pop(),
+    };
+  });
+  return { out, times };
+}
 async function loadAttendanceMonth() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) {
-      const rows = await r.json(), map = {}, times = {};
-      rows.forEach(x => {
-        (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
-        const tk = times[x.member_key] = times[x.member_key] || {};
-        if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
-      });
-      const out = {}; Object.keys(map).forEach(k => { out[k] = { days: map[k].size, lastDay: [...map[k]].sort().pop() }; });
-      state.attWorkedDays = out;
-      state.attMonthTimes = times;
+      const agg = attAggregateMonth(await r.json());
+      state.attWorkedDays = agg.out;
+      state.attMonthTimes = agg.times;
     }
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -8837,7 +8918,13 @@ function attWorkedLine(m) {
   if (!wd || !wd.days) return '';
   const rate = Number(m.daily_rate) || 0;
   const expected = rate > 0 ? ` · ≈ ${fmtMoney(rate * wd.days)}` : '';
-  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>`;
+  // Уншуулаагүй (өөрөө холбоосоор бүртгүүлсэн) өдрийг тусад нь сануулна — энэ тоо
+  // шууд цалин болдог тул баталгаатай эсэхийг олгохын ӨМНӨ харах ёстой.
+  const selfN = Number(wd.selfDays) || 0;
+  const selfLine = selfN > 0
+    ? `<div style="font-size:11px;color:var(--warn);font-weight:600;margin-top:1px;">⚠ ${selfN} өдөр нь уншуулаагүй — өөрөө бүртгүүлсэн</div>`
+    : '';
+  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>${selfLine}`;
 }
 function renderAttendanceRows() {
   const isToday = (state.attViewDay || todayStr()) === todayStr();
@@ -8852,7 +8939,10 @@ function renderAttendanceRows() {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr, isToday);
     const m = findMember(k) || { name: arr[0].member_name || k, role: '' };
-    return { k, m, s, name: m.name || arr[0].member_name || k, role: m.role || '' };
+    // Тухайн өдөр менежер QR-ыг нь уншуулсан бол баталгаатай. Огт уншуулаагүй
+    // (зөвхөн холбоосоор өөрөө бүртгүүлсэн) бол ялгаж харуулна.
+    const scanned = arr.some(x => x.source === 'scan');
+    return { k, m, s, scanned, name: m.name || arr[0].member_name || k, role: m.role || '' };
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
@@ -8871,7 +8961,7 @@ function renderAttendanceRows() {
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
@@ -12082,6 +12172,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     if (!parsed) return;
     enableSave(false);
     const rr = await reserveReceipt(parsed.canonKey, { fp: parsed.fpKey, amount: parsed.amount, date: parsed.date, ref: parsed.receiptNote, usedIn: 'salary:' + personKey + ':' + ym + ':' + (cycShort || 'full') });
+    if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); enableSave(true); return; }   // C2: цагаан жагсаалт — 'ok' биш бол ЗОГС
     if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); enableSave(true); return; }
     let note = `Зарлага: Цалин ${cycShort} ${m.name || ''} ${String(parsed.date).slice(5).replace('-', '.')} ${parsed.receiptNote}`.replace(/\s+/g, ' ').trim();
     if (cycTag) note += ' ' + cycTag;
@@ -15198,6 +15289,7 @@ async function recordNomaadIncome(quoteNo) {
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
+  if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
   if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
@@ -17978,6 +18070,25 @@ function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffH
 // Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
 function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0; }
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
+// ⚠ ДУНДЫН МӨР — захиалгын формын ӨӨРИЙН эзэмшдэг токен ЗӨВХӨН эдгээр (2026-09-03).
+// Бусад бүх токен (PAY/RF/DMG/BRK/CX/CI/SL/SRC…) өөр урсгалынх — засварт ХАДГАЛАГДАНА.
+// Өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул санхүүгийн бүртгэсэн ⟦PAY⟧/⟦RF⟧
+// захиалга засах бүрд УСТДАГ байв (хаяг заасан менежер барьцааг «буцаагаагүй» болгодог).
+const _FORM_TOKEN_RE = /⟦(?:RT|DLV|SET|VAT)\|[^⟧]*⟧/g;
+function stripFormTokens(note) { return String(note || '').replace(_FORM_TOKEN_RE, '').replace(/\s+/g, ' ').trim(); }
+// Хадгалахын ӨМНӨ серверээс шинэ утга ав — модал нээгдсэнээс хойш өөр хүн төлбөр
+// бүртгэсэн байж болно. Алдаа гарвал null буцаана → дуудагч хадгалахаа ЗОГСООНО (fail-closed).
+async function fetchOrderFresh(id) {
+  if (!DB_ANON_KEY || !id) return null;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}&select=paid_mnt,note,status,stage_meta`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (e) { return null; }
+}
 // Цуцлах/устгах шалтгаан — note-д ⟦CX|шалтгаан⟧ token-оор (app_orders-д багана нэмэхгүйгээр). cleanAppNote нуудаг.
 const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
 function cancelReasonOf(note) { const m = String(note || '').match(_CX_RE); return m ? m[1].trim() : ''; }
@@ -18582,7 +18693,16 @@ function openNewOrder(editOrder) {
     };
     // Шатны түүх (зураг/үнэлгээ/хэн-хэзээ) — засах бүрд ЗААВАЛ дамжуулна. saveAppOrder нь
     // бүтэн мөрөөр upsert хийж, локал объектыг орлуулдаг тул орхивол түүх дэлгэцээс алга болно.
-    const _newSt = isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
+    // ⚠ ДУНДЫН МӨР: модал нээгдсэнээс хойш санхүү төлбөр бүртгэсэн байж болно. Локал
+    // хуулбарыг БҮҮ итгэ — серверээс дахин ав. Аваагүй бол хадгалахгүй (fail-closed).
+    let _fresh = null;
+    if (isEdit) {
+      _fresh = await fetchOrderFresh(editOrder.id);
+      if (!_fresh) { showToast('Сервертэй холбогдож чадсангүй — хадгалаагүй. Дахин оролдоно уу.', 'error', 5000); return; }
+    }
+    const _paidNow = isEdit ? (Number(_fresh.paid_mnt) || 0) : 0;
+    const _noteNow = isEdit ? String(_fresh.note || '') : '';
+    const _newSt = isEdit ? ((_paidNow > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
     let _sm = isEdit ? (editOrder.stage_meta || null) : null;
     if (isEdit && _newSt !== editOrder.status) {
       const _lbl = k => (BQ_STATUS[k] || {}).label || k;
@@ -18598,8 +18718,8 @@ function openNewOrder(editOrder) {
       status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: (dtype === 'pct' ? Math.min(100, dval) : dval),   // C9: pct-ыг 100%-аар кэплэж хадгална
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
-      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: _paidNow,
+      note: setCustInfo(((isEdit ? stripFormTokens(_noteNow) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -19944,6 +20064,7 @@ async function submitBqPayment(oid, modal, btn) {
   const okR = [];
   for (const rc of receipts) {
     const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'mevent:#' + o.number });
+    if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }   // C2: цагаан жагсаалт
     if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
     okR.push(rc);
   }
@@ -21860,12 +21981,24 @@ function openAppErrorsModal() {
       <h2 style="margin:0;font-size:16px;">⚠ Аппын алдаа · сүүлийн 24 цаг (${list.length})</h2>
       <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
     <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
-      🧑 = ажилтны төхөөрөмжөөс серверт бүртгэгдсэн · бусад нь энэ төхөөрөмжийнх.</div>
-    ${list.length ? list.map(e => `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
+      🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
+      «Зассан»/«Үл хамаарах» гэж тэмдэглэвэл жагсаалтаас алга болно — түүхий лог хэвээр үлдэнэ.</div>
+    ${list.length ? list.map(e => {
+      const when = String(e._srv ? (e.last_at || '') : (e.at || '')).slice(0, 16).replace('T', ' ');
+      const who = e._srv
+        ? `🧑 ${e.users || 1} хүн · <b>${e.hits || 1}</b> удаа`
+        : escapeHtml(memberName(e.person) || e.person || 'энэ төхөөрөмж');
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
       <div style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${e._srv ? '🧑 ' + escapeHtml(memberName(e.person) || e.person || '?') + ' · ' : ''}${escapeHtml(String(e.at).slice(0, 16).replace('T', ' '))} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.ver || '')}</div>
-    </div>`).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}</div>
+      ${e._srv && e.fp ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center;">
+        <code style="font-size:10px;color:var(--muted);">${escapeHtml(e.fp)}</code>
+        <button class="btn" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔧 Засаж байна</button>
+        <button class="btn" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">✓ Зассан</button>
+        <button class="btn" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;color:var(--muted);">🚫 Үл хамаарах</button>
+      </div>` : ''}
+    </div>`; }).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
       <button class="btn" data-err-clear>Жагсаалт цэвэрлэх</button>
       <button class="btn btn-primary" data-err-x>Хаах</button></div>
@@ -21874,7 +22007,16 @@ function openAppErrorsModal() {
   const close = () => ov.remove();
   ov.addEventListener('click', ev => {
     if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
-    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); }
+    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); return; }
+    const st = ev.target.closest('[data-err-st]');
+    if (st) {
+      st.disabled = true;
+      setErrorStatus(st.dataset.errFp, st.dataset.errSt).then(ok2 => {
+        if (!ok2) { st.disabled = false; return; }
+        showToast('Тэмдэглэлээ', 'success', 1800);
+        close(); loadServerErrors();
+      });
+    }
   });
 }
 function renderCiStatus() {
@@ -26941,6 +27083,7 @@ function initEvents() {
       // Баримтыг нэгдсэн ledger-т ЭЗЭМШИНЭ — нэг баримт орлого/захиалга/өөр хүсэлтэд дахин орохгүй
       if (paymentFile && state._finPdfCheck && state._finPdfCheck.canonKey) {
         const rr = await reserveReceipt(state._finPdfCheck.canonKey, { fp: state._finPdfCheck.fpKey, amount: state._finPdfCheck.amount, date: state._finPdfCheck.date, ref: 'зарлага · ' + (state._finPdfCheck.receiver || ''), usedIn: 'fin:' + state.editingId });
+        if (rr === 'err') { showToast('⛔ Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
         if (rr === 'dup') { showToast('⛔ Энэ баримт аль хэдийн өөр гүйлгээнд ашиглагдсан — гүйцэтгэл цуцлагдлаа', 'error', 5000); return; }
       }
       // Upload payment proof first if provided

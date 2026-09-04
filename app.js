@@ -6762,6 +6762,14 @@ const ORDER_BUCKETS = [
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
 function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'active'; }
+// Авлага үүсгэдэг төлөвүүд = ORDER_BUCKETS-ийн 'active' + 'done' (баталгаажсан захиалга,
+// мөнгө нь ирсэн эсвэл ирэх ёстой). Ноорог / архив / цуцалсан / устгасан = авлага БИШ.
+// ⚠ ORDER_BUCKETS-аас ГАРГАЖ авав — гараар бичсэн жагсаалт дамжлагын шинэ шат нэмэгдэхэд
+//   хоцордог (дунд шатны захиалгууд авлагаас чимээгүй унасан шалтгаан нь тэр байв).
+//   Танигдахгүй төлөв энэ Set-д ОРОХГҮЙ тул урьдын адил авлагад тооцогдохгүй.
+const RECEIVABLE_ORDER_ST = new Set(
+  ORDER_BUCKETS.filter(b => b.key === 'active' || b.key === 'done').reduce((a, b) => a.concat(b.st), [])
+);
 // Захиалгын CANON (харагдах) төлөв — unifiedOrders-ийн normalize дүрэмтэй ИЖИЛ, НЭГ эх сурвалж.
 // state.appOrders-ийн ТҮҮХИЙ статусыг шууд ашигладаг логик (нөөц тооцоо, багц сонголт) заавал энэ
 // helper-ээр дамжуулж, харагдац ↔ логик зөрөхөөс сэргийлнэ: жиш. төлбөргүй reserved нь харагдацаар
@@ -20227,9 +20235,15 @@ function receivablesData() {
   const items = [];
   // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
   (state.appOrders || []).forEach(o => {
-    const st = String(o.status || '');
+    // ⚠ КАНОН төлөв (түүхий o.status БИШ) — жагсаалт/badge-тай нэг эх сурвалж.
+    //   Түүхийгээр уншихад 2 алдаа гардаг байв:
+    //   (1) төлбөргүй reserved нь харагдацаар «Ноорог» атлаа авлагад БҮТЭН дүнгээрээ
+    //       ордог → авлага хөөрөгддөг;
+    //   (2) дамжлагын дунд шат (Бэлдсэн/Цэвэрлсэн/Гаргасан/Хүргэсэн/Буулгах…) гараар
+    //       бичсэн жагсаалтад ОРООГҮЙ тул төлбөр дутуу байхад ч огт тоологдохгүй.
+    const st = orderCanonStatus(o);
     // Авлага = ЗӨВХӨН баталгаажсан захиалга. Ноорог(санал)/цуцалсан/архивласан(хаагдсан) = авлага БИШ.
-    if (!['reserved', 'started', 'rented', 'stopped', 'returned'].includes(st)) return;
+    if (!RECEIVABLE_ORDER_ST.has(st)) return;
     const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
     const bal = total - paid;
     if (bal <= 0) return;

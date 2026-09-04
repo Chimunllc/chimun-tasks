@@ -1846,6 +1846,48 @@ function finish() {
     ok(!g.groups.some(x => x.name === 'Тоологдохгүй'), 'бүлэглэл: ноорог/цуцалсныг тоохгүй');
   }
 
+  // ── QR ирц: серверийн бичилт унавал ЧИМЭЭГҮЙ ӨНГӨРӨХГҮЙ ──
+  {
+    const st = vm.runInContext('state', sandbox);
+    const save = vm.runInContext('attSaveScanRecord', sandbox);
+    const savedFetch = sandbox.fetch, savedAtt = st.attendanceToday, savedLast = st._attLastScan;
+
+    const mkRec = () => ({ member_key: '99112233', member_name: 'Тест', kind: 'in', ts: '2026-09-02T01:00:00Z' });
+    const body = { member_key: '99112233', kind: 'in' };
+
+    // (1) Амжилттай — мөр үлдэнэ, true буцаана
+    sandbox.fetch = () => Promise.resolve({ ok: true, status: 201 });
+    let rec = mkRec();
+    st.attendanceToday = [rec]; st._attLastScan = { '99112233': Date.now() };
+    ok(await save(body, rec, 'Тест'), 'ирц: амжилттай хадгалалт true');
+    eq(st.attendanceToday.length, 1, 'ирц: амжилттай үед мөр үлдэнэ');
+    ok(st._attLastScan['99112233'] != null, 'ирц: амжилттай үед давхардлын түгжээ хэвээр');
+
+    // (2) HTTP алдаа — !r.ok бол чимээгүй өнгөрөхгүй (checkin.html-ийн загвар)
+    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
+    rec = mkRec();
+    st.attendanceToday = [rec]; st._attLastScan = { '99112233': Date.now() };
+    ok(!(await save(body, rec, 'Тест')), 'ирц: HTTP алдаанд false буцаана');
+    eq(st.attendanceToday.length, 0, 'ирц: алдаанд оптимист мөр буцаагдана (худал ирц үлдэхгүй)');
+    eq(st._attLastScan['99112233'], undefined, 'ирц: алдаанд түгжээ тайлагдаж шууд дахин уншуулна');
+
+    // (3) Сүлжээ тасарсан — мөн адил
+    sandbox.fetch = () => Promise.reject(new Error('offline'));
+    rec = mkRec();
+    st.attendanceToday = [rec]; st._attLastScan = { '99112233': Date.now() };
+    ok(!(await save(body, rec, 'Тест')), 'ирц: сүлжээ тасрахад false буцаана');
+    eq(st.attendanceToday.length, 0, 'ирц: сүлжээ тасрахад оптимист мөр буцаагдана');
+
+    // (4) Кодод .catch(() => {}) чимээгүй залгигч эргэж ирээгүй эсэх
+    const scan = src.slice(src.indexOf('function attHandleScan('));
+    const fn = scan.slice(0, scan.indexOf('\n}'));
+    ok(fn.indexOf('.catch(() => {})') === -1, 'ирц: сканы бичилтэд чимээгүй catch байхгүй');
+    ok(fn.indexOf('attSaveScanRecord') > -1, 'ирц: бичилт алдаа шалгадаг замаар явна');
+    ok(/saved && kind === 'out'/.test(fn), 'ирц: «маргааш хэдэн цагт» зөвхөн хадгалагдсаны дараа');
+
+    sandbox.fetch = savedFetch; st.attendanceToday = savedAtt; st._attLastScan = savedLast;
+  }
+
   // ── Тулгалтын хяналт: аль толь хэр их дүн дааж байгааг илрүүлэх ──
   {
     const ctx = { bySku: { 'M-235': { sku: 'M-235' } }, byName: {},

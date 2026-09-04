@@ -8778,9 +8778,53 @@ function attBeep() {
 function attToast(msg, kind) {
   const el = document.getElementById('att-scan-toast'); if (!el) return;
   el.textContent = msg;
-  el.style.background = kind === 'ok' ? '#2e7d32' : (kind === 'out' ? '#B14F1F' : '#444');
+  el.style.background = kind === 'ok' ? '#2e7d32' : (kind === 'out' ? '#B14F1F' : (kind === 'err' ? 'var(--danger)' : '#444'));
   el.style.opacity = '1';
-  clearTimeout(state._attToastT); state._attToastT = setTimeout(() => { el.style.opacity = '0'; }, 1700);
+  // Алдааны мэдэгдэл удаан харагдана — менежер скан хийсээр байгаад алдаж болохгүй.
+  clearTimeout(state._attToastT); state._attToastT = setTimeout(() => { el.style.opacity = '0'; }, kind === 'err' ? 6000 : 1700);
+}
+// Алдааны дуу — амжилттай сканы өндөр «биип»-ээс ЯЛГААТАЙ (нам, давхар) байх ёстой:
+// менежер дэлгэц харалгүй дараалан скан хийхэд зөвхөн дуугаар нь ялгана.
+function attErrBeep() {
+  try {
+    const a = state._attAudio || (state._attAudio = new (window.AudioContext || window.webkitAudioContext)());
+    [0, 0.22].forEach(off => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = 220; o.type = 'square'; o.connect(g); g.connect(a.destination);
+      g.gain.setValueAtTime(0.14, a.currentTime + off);
+      g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + off + 0.18);
+      o.start(a.currentTime + off); o.stop(a.currentTime + off + 0.18);
+    });
+  } catch (e) {}
+}
+// Сканы бичилтийг серверт хадгална. АМЖИЛТТАЙ бол true.
+// ⚠ Энэ нь өмнө нь `.catch(() => {})` байсан — алдааг БҮРЭН залгидаг байв. Менежер «✅ Ирлээ»
+//   гэсэн ногоон toast хараад цааш явдаг ч серверт юу ч бичигдээгүй. Цагийн ажилтны цалин
+//   ирцээр бодогддог тул энэ нь ШУУД мөнгө дутаана. checkin.html дээрх ЗӨВ загвар
+//   (`if(!r.ok) throw` → alert + «Дахин оролдох») -ыг сканы урсгалд тохируулан хуулав.
+async function attSaveScanRecord(body, rec, label) {
+  try {
+    // Менежер нэвтэрсэн байдаг тул authenticated эрхээр бичнэ (origin/main-ий санаа):
+    // итгэмжтэй ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
+    const r = await fetch(`${DB_URL}/rest/v1/attendance`, {
+      method: 'POST',
+      headers: pgWrite({ Prefer: 'return=minimal' }),
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) {
+    console.warn('attendance save failed', e);
+    // Оптимистоор нэмсэн мөрийг БУЦААНА — жагсаалт серверт байхгүй ирцийг харуулж болохгүй.
+    const i = (state.attendanceToday || []).indexOf(rec);
+    if (i > -1) state.attendanceToday.splice(i, 1);
+    // 8 секундын давхардлын түгжээг тайлж, ШУУД дахин уншуулах боломжтой болгоно.
+    if (state._attLastScan) delete state._attLastScan[body.member_key];
+    attToast('⚠ ' + label + ' — ХАДГАЛАГДСАНГҮЙ. Дахин уншуулна уу.', 'err');
+    attErrBeep();
+    if (typeof render === 'function') render();
+    return false;
+  }
 }
 // Камерын скан — менежер ажилтны QR картыг уншина.
 async function attStartScan() {
@@ -8841,14 +8885,18 @@ function attHandleScan(data) {
   const last = recs.length ? recs[recs.length - 1].kind : null;
   const kind = last === 'in' ? 'out' : 'in';
   const nowIso = new Date().toISOString();
-  (state.attendanceToday = state.attendanceToday || []).push({ member_key: phone, member_name: mem.name || phone, kind, ts: nowIso });
+  // Оптимистоор шууд харуулна (дараалалтай скан удаашрахгүй), гэхдээ бичилт унавал
+  // attSaveScanRecord нь энэ мөрийг БУЦААЖ хасаад алдааг харуулна.
+  const rec = { member_key: phone, member_name: mem.name || phone, kind, ts: nowIso };
+  (state.attendanceToday = state.attendanceToday || []).push(rec);
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
-  // Менежер нэвтэрсэн байдаг тул ЭНЭ замыг authenticated эрхээр бичнэ — итгэмжтэй
-  // ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
-  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(body) }).catch(() => {});
-  if (kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);   // явахдаа: маргааш хэдэн цагт ирэх вэ?
+  attSaveScanRecord(body, rec, mem.name || phone).then(saved => {
+    // «Маргааш хэдэн цагт ирэх вэ?» — ЗӨВХӨН серверт хадгалагдсаны дараа. Хадгалагдаагүй
+    // ирцийн дараа цаг асуувал бүртгэгдсэн мэт төөрөгдөнө.
+    if (saved && kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);
+  });
 }
 // «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
 function openNextArrivalPicker(phone, name) {

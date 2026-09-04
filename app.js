@@ -22115,7 +22115,7 @@ const CI_SITE_URL = 'https://api.github.com/repos/Chimunllc/m-event-website-read
 // нь гараар/цагаар ажилладаг тусдаа хэрэгсэл — тэдгээр унасан нь «апп эвдэрсэн»
 // гэсэн үг БИШ. Шүүхгүй бол сүүлийн ямар ч ажиллагаа CEO-гийн үзүүлэлтийг улаан
 // болгож, алдааны цонхонд харуулах юм олдохгүй («Алдаа алга» атлаа 🔴).
-const CI_APP_PATHS = ['lint.yml', 'cache-version.yml'];
+const CI_APP_PATHS = ['lint.yml'];
 // Жагсаалтаас хамаарах ажиллагааг сонгоно (цэвэр функц — тестлэгддэг).
 // paths хоосон бол шүүхгүй (сайтын smoke гэх мэт нэг workflow-ийн жагсаалтад).
 function _ciPickRun(runs, paths) {

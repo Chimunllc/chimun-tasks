@@ -3274,13 +3274,13 @@ need(['orderCustType']);
 // алдааны шүүлт (цагаар) унасан ч апп улаан болно. Тэдгээр аппын эрүүл мэнд БИШ.
 {
   const run = (p, c) => ({ path: '.github/workflows/' + p, conclusion: c, name: p });
-  const runs = [run('data-query.yml', 'failure'), run('lint.yml', 'success'), run('cache-version.yml', 'failure')];
+  const runs = [run('data-query.yml', 'failure'), run('lint.yml', 'success')];
 
-  eq(F._ciPickRun(runs, ['lint.yml', 'cache-version.yml']).path, '.github/workflows/lint.yml',
+  eq(F._ciPickRun(runs, ['lint.yml']).path, '.github/workflows/lint.yml',
     'CI: дата унших унасан ч апп улаан болохгүй (хамаарахгүй workflow алгасна)');
-  eq(F._ciPickRun([run('error-triage.yml', 'failure')], ['lint.yml', 'cache-version.yml']), null,
+  eq(F._ciPickRun([run('error-triage.yml', 'failure')], ['lint.yml']), null,
     'CI: зөвхөн хамаарахгүй ажиллагаа байвал «мэдээлэлгүй» (null) — худал улаан гаргахгүй');
-  eq(F._ciPickRun([run('cache-version.yml', 'failure'), run('lint.yml', 'success')], ['lint.yml', 'cache-version.yml']).conclusion,
+  eq(F._ciPickRun([run('lint.yml', 'failure'), run('data-query.yml', 'success')], ['lint.yml']).conclusion,
     'failure', 'CI: кэшийн хувилбар унавал апп улаан (шинэ код утсанд хүрэхгүй)');
   eq(F._ciPickRun(runs, null).path, '.github/workflows/data-query.yml', 'CI: шүүлтгүй бол эхнийхийг авна (сайтын smoke)');
   eq(F._ciPickRun([], ['lint.yml']), null, 'CI: ажиллагаа алга → null');

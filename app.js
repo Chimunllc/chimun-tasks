@@ -22013,6 +22013,9 @@ function openAppErrorsModal() {
       <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
     <div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap;">
       ${chip('active', '⚠ Идэвхтэй')}${chip('fixed', '✅ Зассан')}${chip('all', '📜 Бүгд')}</div>
+    ${(state.isCEO && state.ciInfo) ? `<div style="font-size:12px;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>Систем шалгалт: Апп ${state.ciInfo.app === 'ok' ? '🟢' : state.ciInfo.app === 'run' ? '🟡' : '🔴'} · Сайт ${state.ciInfo.site === 'ok' ? '🟢' : state.ciInfo.site === 'run' ? '🟡' : '🔴'}</span>
+      ${state.ciInfo.url ? `<button class="btn ui-raw" data-err-gh style="font-size:11px;padding:3px 9px;">🔗 GitHub Actions</button>` : ''}</div>` : ''}
     <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
       🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
       «Зассан»/«Үл хамаарах» тэмдэглэсэн нь идэвхтэйгээс гарч <b>«Зассан»/«Бүгд»</b> табд түүх болж үлдэнэ.</div>
@@ -22080,6 +22083,7 @@ function openAppErrorsModal() {
   ov.addEventListener('click', async ev => {
     if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
     if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); paint(); renderCiStatus(); return; }
+    if (ev.target.closest('[data-err-gh]')) { if (state.ciInfo && state.ciInfo.url) window.open(state.ciInfo.url, '_blank', 'noopener'); return; }
     const fchip = ev.target.closest('[data-err-f]');
     if (fchip) {
       filter = fchip.dataset.errF;
@@ -22127,12 +22131,14 @@ function renderCiStatus() {
   if (fails.length) { cls = 'ci-fail'; dot = '🔴'; label = fails.join('+') + ': алдаа гарлаа'; target = a === 'fail' ? s.app : s.site; }
   else if (a === 'run' || b === 'run') { cls = 'ci-run'; dot = '🟡'; label = 'Шалгаж байна…'; target = s.app || s.site; }
   else { cls = 'ci-ok'; dot = '🟢'; label = 'Систем шалгалт: OK'; target = s.app || s.site; }
+  state.ciInfo = { app: a, site: b, url: target && target.url, at: target && target.at };
   el.hidden = false;
   el.className = 'ci-status ' + cls;
   el.innerHTML = `<span class="ci-dot">${dot}</span><span class="ci-label">${escapeHtml(label)}</span>`;
   el.title = `Апп: ${a === 'ok' ? 'OK' : a} · Сайт: ${b === 'ok' ? 'OK' : b}${target && target.at ? ' · ' + String(target.at).slice(0, 10) : ''} — дэлгэрэнгүй харах`;
-  el.onclick = () => target && window.open(target.url, '_blank', 'noopener');
-  el.onkeydown = (ev) => { if ((ev.key === 'Enter' || ev.key === ' ') && target) { ev.preventDefault(); window.open(target.url, '_blank', 'noopener'); } };
+  // ⚠ Дарахад GitHub руу ҮСРЭХГҮЙ — аппын алдаа/түүхийн цонх нээнэ (GitHub нь цонх дотор 🔗 холбоос).
+  el.onclick = openAppErrorsModal;
+  el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAppErrorsModal(); } };
 }
 async function vatUpsert(list) {
   if (!list.length) return 0;

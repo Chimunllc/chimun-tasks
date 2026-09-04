@@ -110,6 +110,17 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 
   ok(u.revenue > 0, 'ROI: орлого 0 БИШ (амьд эх сурвалжаас уншина)');
 
+  // ГАЦАЛТЫН ХАМГААЛАЛТ (2026-09-04, амьдаар тохиолдсон): энэ функц бараа МӨР
+  // БҮРД дуудагдана (294 удаа). Дуудалт бүрд захиалгыг дахин гүйвэл
+  // O(бараа × захиалга × мөр) болж «Бараа & хөрөнгө» дэлгэц НЭЭГДЭХЭЭ болино.
+  // Индекс НЭГ УДАА баригдаж, дараагийн дуудалтууд түүнийг л уншина.
+  runIn('state._utilIdx = null;');
+  runIn('productUtilization')('Тест ширээ');
+  const idx1 = runIn('state._utilIdx');
+  ok(!!idx1, 'ашиглалт: индекс баригдав');
+  for (let i = 0; i < 300; i++) runIn('productUtilization')('Тест ширээ');
+  ok(runIn('state._utilIdx') === idx1, 'ашиглалт: 300 дуудалтад индекс ДАХИН баригдахгүй (гацалтын хамгаалалт)');
+
   runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
 }
 

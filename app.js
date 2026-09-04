@@ -237,11 +237,11 @@ const state = {
   rolePerms: (() => { try { return JSON.parse(localStorage.getItem('rolePerms') || '{}'); } catch(e) { return {}; } })(),  // албан тушаал бүрийн эрх загвар {roleNorm: {orders:true, 'tasks.delete':false,...}}
   salaries: (() => { try { return JSON.parse(localStorage.getItem('salaries') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн суурь сарын цалин {personKey: amount}
   salaryPayments: [],   // сарын цалингийн олголтын лог (salary_payments)
-  salaryYM: new Date().toISOString().slice(0, 7),   // Цалин view-ийн сонгосон сар
+  salaryYM: todayStr().slice(0, 7),   // Цалин view-ийн сонгосон сар
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   evaluations: (() => { try { return JSON.parse(localStorage.getItem('evaluations') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
-  perfMonth: new Date().toISOString().slice(0, 7),   // Гүйцэтгэл view-ийн сар (YYYY-MM)
+  perfMonth: todayStr().slice(0, 7),   // Гүйцэтгэл view-ийн сар (YYYY-MM)
   perfTab: 'me',         // Гүйцэтгэл view tab: me | all | rate
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
@@ -1568,6 +1568,16 @@ function todayStr() {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+// Дурын Date → ЛОКАЛ YYYY-MM-DD. Түүхий d.toISOString().slice(0,10) нь UTC тул
+// Монгол (UTC+8)-д 00:00–08:00 хооронд НЭГ ӨДРӨӨР хоцордог. Шинэ код энийг ашиглана.
+function dateStr(d) {
+  const x = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(x)) return '';
+  return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+// Дурын Date → ЛОКАЛ YYYY-MM (сар). Сарын 1-нд UTC хөрвүүлэлт өмнөх сарыг буцаадаг.
+function monthStr(d) { return dateStr(d).slice(0, 7); }
+
 // Add `days` (can be negative) to a YYYY-MM-DD string. Returns YYYY-MM-DD.
 // ⚠ toISOString нь UTC — Монгол (UTC+8)-д local шөнө дундыг UTC руу хөрвүүлж НЭГ ӨДРӨӨР
 //   буруу болгодог (addDays(өнөөдөр,1)=өнөөдөр). Тиймээс todayStr шиг local-аар форматлана.
@@ -1721,7 +1731,7 @@ function finBenDirectory() {
 // normalizeFinance үүнийг цэвэрлэдэггүй тул давтан хадгалалтад хадгалагдана).
 function finAuditToken(kind, oldV, newV) {
   const cl = s => String(s || '—').replace(/[|⟦⟧]/g, ' ').trim().slice(0, 34) || '—';
-  return ` ⟦${kind}|${cl(oldV)}|${cl(newV)}|${cl(memberName(state.me))}|${new Date().toISOString().slice(0, 10)}⟧`;
+  return ` ⟦${kind}|${cl(oldV)}|${cl(newV)}|${cl(memberName(state.me))}|${todayStr()}⟧`;
 }
 
 // Ангилалын код задлах ("1400 Урлагийн..." эсвэл "1400" → {main:'1000', sub:'1400'})
@@ -3412,8 +3422,8 @@ function filteredTasks() {
       monday.setDate(now.getDate() - (dow - 1));
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
-      const weekStart = monday.toISOString().slice(0, 10);
-      const weekEnd = sunday.toISOString().slice(0, 10);
+      const weekStart = dateStr(monday);
+      const weekEnd = dateStr(sunday);
       list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
     }
     else if (state.statusFilter === 'month') {
@@ -3466,7 +3476,7 @@ function filteredTasks() {
           if (val === 'today' || val === 'өнөөдөр') filters.push(t => t.due === today);
           else if (val === 'overdue' || val === 'хоцорсон') filters.push(t => t.due && t.due < today && t.status !== 'done');
           else if (val === 'week' || val === 'долоохоног') {
-            const w = new Date(); w.setDate(w.getDate() + 7); const wkStr = w.toISOString().slice(0, 10);
+            const w = new Date(); w.setDate(w.getDate() + 7); const wkStr = dateStr(w);
             filters.push(t => t.due && t.due >= today && t.due <= wkStr);
           } else filters.push(t => t.due === val);
         } else if (key === 'priority' || key === 'зэрэглэл') {
@@ -4684,7 +4694,7 @@ function _dayRange(startISO, stopISO) {
   const out = []; const d = new Date(a + 'T00:00:00Z'); const end = new Date((b < a ? a : b) + 'T00:00:00Z');
   if (isNaN(d) || isNaN(end)) return a ? [a] : [];
   for (let i = 0; i < 400 && d <= end; i++) {   // 400 = хамгаалалт (эвдэрсэн огноо)
-    out.push(d.toISOString().slice(0, 10));
+    out.push(dateStr(d));
     d.setUTCDate(d.getUTCDate() + 1);
   }
   return out;
@@ -4796,12 +4806,12 @@ function pricingVerdict(r) {
 }
 // ── Үнийн шинжилгээний дэлгэц ────────────────────────────────────────────────
 function pricingPeriod(key) {
-  const t = new Date(); const to = t.toISOString().slice(0, 10);
+  const t = new Date(); const to = dateStr(t);
   const d = new Date(t);
   if (key === '6') d.setMonth(d.getMonth() - 6);
   else if (key === '24') d.setMonth(d.getMonth() - 24);
   else d.setMonth(d.getMonth() - 12);
-  return { from: d.toISOString().slice(0, 10), to, months: key === '6' ? 6 : (key === '24' ? 24 : 12) };
+  return { from: dateStr(d), to, months: key === '6' ? 6 : (key === '24' ? 24 : 12) };
 }
 function openPricingReport() {
   state.pricePeriod = state.pricePeriod || '12';
@@ -5707,7 +5717,7 @@ function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[
 // Сарын бүх зардлыг цэвэрлэх (аппын өөрийн устгах замаар — хуулгаар дахин оруулахын өмнө)
 async function clearMonthExpenses(month) {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
-  month = month || state.finReportMonth || new Date().toISOString().slice(0, 7);
+  month = month || state.finReportMonth || todayStr().slice(0, 7);
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted' && String(r.requested_at || '').slice(0, 7) === month);
   if (!rows.length) { showToast(`${month} сард зардал алга`, 'warn', 2500); return; }
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
@@ -6477,7 +6487,7 @@ function incomeReportHtml(res) {
   // Захиалгагүй орлого — данс тус бүрийн нэртэй
   const untrackedRows = (res.untracked || []).slice().sort((a, b) => b.credit - a.credit)
     .map(c => `<tr><td>${escapeHtml(String(c.date || ''))}</td><td>${escapeHtml(c.name || '')}</td><td class="mut">${escapeHtml((c.memo || '').slice(0, 46))}</td><td class="mut">${escapeHtml(acctName(c._srcAcct) || '')}</td><td class="r">${money(c.credit)}</td></tr>`).join('');
-  const today = todayStr ? todayStr() : new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const me = (state.user && state.user.name) || '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>Орлогын тайлан ${escapeHtml(period)}</title>
   <style>
@@ -9665,7 +9675,7 @@ function openHourlyPayModal(m) {
     document.getElementById('hp-bank').textContent = (m.bank || '—') + (m.bank_account ? ' · ' + m.bank_account : '');
     document.getElementById('hp-holder').textContent = m.bank_holder || m.name || '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
-    rateEl.value = ''; daysEl.value = ''; startEl.value = new Date().toISOString().slice(0, 10);
+    rateEl.value = ''; daysEl.value = ''; startEl.value = todayStr();
     // Гүйлгээний утга: "Зарлага: Өдрийн цалин 2х К.Эрбол 06.05"
     const memoText = () => {
       const dPart = Number(daysEl.value) > 0 ? Number(daysEl.value) + 'х' : '';
@@ -11946,7 +11956,7 @@ function attachPayrollTabs() {
 }
 function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
-  const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
+  const ym = state.salaryYM || todayStr().slice(0, 7);
   const q = (state.salarySearch || '').toLowerCase().trim();
   const brAll = salaryStaff().filter(m => _inHubBranch(m, effectiveBranchLens() || 'all'));   // толгойн глобал салбар-сонгогчоор
   const staff = brAll
@@ -11979,7 +11989,7 @@ function renderSalary() {
     </div>`;
   const schedule = `<div style="font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:12px;">📅 Хуваарь: <b style="color:var(--text);">Урьдчилгаа 20-нд</b> (1–15) · <b style="color:var(--text);">Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс) · 5 хоногийн зайтай</div>`;
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
   const rows = staff.map(m => {
     const key = personKey(m);
@@ -12099,7 +12109,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
   if (!can('salary.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const m = findMember(personKey); if (!m) return;
   loadUsedReceipts();   // баримтын давхцлыг шуурхай шалгах
-  const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
+  const ym = state.salaryYM || todayStr().slice(0, 7);
   const base = Number((state.salaries || {})[personKey]) || 0;
   const isAdv = cycleTag === SAL_ADV_TAG, isRem = cycleTag === SAL_REM_TAG;
   const advPaid = salaryCyclePaid(personKey, ym, SAL_ADV_TAG);
@@ -12170,7 +12180,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
       d.receiptId = refKey || fpKey;
       const reason = receiptDupReason(refKey, fpKey);
       if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
-      parsed = { amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), canonKey: d.receiptId, fpKey,
+      parsed = { amount: d.amount, date: d.date || todayStr(), canonKey: d.receiptId, fpKey,
         receiptNote: '[#' + d.receiptId + '] ' + [d.receiverName, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ') };
       const warns = [];
       if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
@@ -12507,7 +12517,7 @@ function printOrgChart() {
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && !isDailyMember(m));
   const lens = (typeof effectiveBranchLens === 'function' ? effectiveBranchLens() : 'all');
   const lensLbl = (lens && lens !== 'all' && ORG_BRANCH_META[lens]) ? ' · ' + ORG_BRANCH_META[lens].label : '';
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+  const today = todayStr().replace(/-/g, '.');
   w.document.write(`<!doctype html><html data-theme="light"><head><meta charset="utf-8">
     <title>Байгууллагын бүтэц — Чимун ХХК</title>
     <link rel="stylesheet" href="${cssUrl}">
@@ -13858,7 +13868,7 @@ function exportNomaadAnalyticsExcel() {
     grp('Хүний бүлгээр', o => nomaadGuestBucket(nomaadHeadcount(o)) + ' хүн'),
     grp('Багцаар', o => (o.tier || '').trim()),
     grp('Сараар', o => String(o.date_start || '').slice(0, 7)),
-  ], `NOMAAD-аналитик-${new Date().toISOString().slice(0, 10)}.xls`);
+  ], `NOMAAD-аналитик-${todayStr()}.xls`);
   showToast(`${list.length} захиалга Excel-д татагдлаа`, 'success');
 }
 function renderNomaadCalendar() {
@@ -15279,7 +15289,7 @@ function openNomaadIncomeModal(o) {
         if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
         parsed = {
           amount: d.amount,
-          date: d.date || new Date().toISOString().slice(0, 10),
+          date: d.date || todayStr(),
           canonKey: d.receiptId, fpKey, file,
           note: '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
         };
@@ -15308,7 +15318,7 @@ async function recordNomaadIncome(quoteNo) {
   if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
   const newTotal = prevPaid + res.amount;
-  const today = res.date || new Date().toISOString().slice(0, 10);
+  const today = res.date || todayStr();
   Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
   const logRes = await logNomaadPayment(o, res);          // лог руу локал+сервер (ok/false)
   render();
@@ -15332,7 +15342,7 @@ async function recordNomaadIncomeManual(quoteNo) {
   if (!res) return;
   const prevPaid = nomaadPaid(o);
   const newTotal = prevPaid + res.amount;
-  const today = res.date || new Date().toISOString().slice(0, 10);
+  const today = res.date || todayStr();
   Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
   const logRes = await logNomaadPayment(o, { amount: res.amount, date: today, note: res.note });   // дедуп/баримтгүй
   render();
@@ -15350,7 +15360,7 @@ function openNomaadManualIncomeModal(o) {
   return new Promise((resolve) => {
     const total = nomaadEffTotal(o);
     const bal = Math.max(0, total - nomaadPaid(o));
-    const todayS = new Date().toISOString().slice(0, 10);
+    const todayS = todayStr();
     document.getElementById('nim-modal')?.remove();
     const modal = document.createElement('div');
     modal.className = 'modal-bg'; modal.id = 'nim-modal';
@@ -15696,7 +15706,7 @@ function taskCompletedDate(t) {
     : (t.completed_at ? new Date(t.completed_at).getTime()
       : (t.executed_at ? new Date(t.executed_at).getTime()
         : (t.updated ? new Date(t.updated).getTime() : 0)));
-  return ms ? new Date(ms).toISOString().slice(0, 10) : '';
+  return ms ? dateStr(ms) : '';
 }
 // Ажил хугацаанаасаа хэдэн хоног хоцорсон (+) эсвэл эрт (−) дууссан бэ. null = тооцох боломжгүй.
 function taskLatenessDays(t) {
@@ -16133,7 +16143,7 @@ function renderPerformance() {
   if (state.attMonthTimes === undefined) { state.attMonthTimes = null; loadAttendanceMonth().then(() => render()); }
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
-  const cur = new Date().toISOString().slice(0, 7);
+  const cur = todayStr().slice(0, 7);
   const tabs = [{ id: 'me', label: 'Миний оноо' }, ...(isMgr ? [{ id: 'all', label: 'Бүх ажилтан' }] : []), { id: 'rate', label: 'Үнэлэх' }];
   const head = `<div class="perf-head">
     <div class="perf-month"><button class="btn perf-nav" data-perf-nav="-1">‹</button><span class="perf-month-label">${state.perfMonth}</span><button class="btn perf-nav" data-perf-nav="1"${state.perfMonth >= cur ? ' disabled' : ''}>›</button></div>
@@ -16293,7 +16303,7 @@ function attachPerformanceHandlers() {
     const [y, m] = state.perfMonth.split('-').map(Number);
     const d = new Date(y, m - 1 + Number(btn.dataset.perfNav), 1);
     const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (next > new Date().toISOString().slice(0, 7)) return;
+    if (next > todayStr().slice(0, 7)) return;
     state.perfMonth = next; render();
   }));
   document.querySelectorAll('.perf-rate-card').forEach(card => {
@@ -18144,7 +18154,7 @@ async function requestOrderCancel(oid) {
   const reason = await showPrompt(`#${o.number ?? ''} захиалгыг цуцлах шалтгаанаа бичнэ үү. Хүсэлт CEO-д батлуулахаар илгээгдэнэ:`, { title: '✕ Цуцлах хүсэлт', okText: 'Хүсэлт илгээх', placeholder: 'Ж: харилцагч больсон, давхардсан…' });
   if (reason == null) return;
   if (!reason.trim()) { showToast('Шалтгаанаа бичнэ үү', 'warn', 2500); return; }
-  const note = setCancelReq(o.note, state.me, new Date().toISOString().slice(0, 10), reason.trim());
+  const note = setCancelReq(o.note, state.me, todayStr(), reason.trim());
   const prev = o.note; o.note = note; render();
   try { await patchOrderNote(oid, note); showToast('Цуцлах хүсэлт CEO-д илгээгдлээ', 'success', 2500); }
   catch (e) { o.note = prev; render(); showToast('Хүсэлт илгээх алдаа: ' + e.message, 'error', 4000); }
@@ -18355,7 +18365,7 @@ function openNewOrder(editOrder) {
   const items = isEdit ? (editOrder.items || []).map(x => ({ ...x })) : [];
   let depositManual = isEdit;   // засварт хадгалсан барьцаа хэвээр; шинэд авто
   const depLog = isEdit ? (editOrder.deposit_log || []).slice() : [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
   const _setup0 = isEdit ? orderNeedsSetup(editOrder) : false;   // суурилуулалтын шат гарах уу
@@ -19037,7 +19047,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
         }, 8000);
         if (gr.ok) { const rows = await gr.json(); if (rows && rows[0] && rows[0].note != null) baseNote = String(rows[0].note); }
       } catch (_) { /* сүлжээ унавал санах ойн note дээр буцаж тооцно */ }
-      notePatch = (to === 'canceled') ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, new Date().toISOString().slice(0, 10));
+      notePatch = (to === 'canceled') ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, todayStr());
       o.note = notePatch;
     }
     const body = { status: to, updated_at: new Date().toISOString() };
@@ -19968,7 +19978,7 @@ function openBqPaymentModal(oid) {
         if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
         if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
         const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
-        modal._receipts.push({ amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
+        modal._receipts.push({ amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
         status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
       } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
     }
@@ -20046,7 +20056,7 @@ function openRefundModal(oid) {
     const isDep = !!modal.querySelector('#rf-isdep')?.checked || prevRf.kind === 'dep';   // C11: барьцааны буцаалт гэж тэмдэглэсэн эсэх
     const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '');
     // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
-    try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: new Date().toISOString().slice(0, 10), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
+    try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: todayStr(), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
     const prevPaid = o.paid_mnt, prevNote = o.note;
     o.paid_mnt = newPaid; o.note = newNote;
     try {
@@ -20084,7 +20094,7 @@ async function submitBqPayment(oid, modal, btn) {
   }
   if (!okR.length) { showToast('Бүх баримт давхцсан — бүртгэсэнгүй', 'error', 4000); btn.disabled = false; return; }
   const amount = okR.reduce((s, r) => s + r.amount, 0);
-  const date = okR.map(r => r.date).sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
+  const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
   const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
   // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
   okR.forEach(r => { if (r._file) uploadReceiptFile(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }); });
@@ -20151,7 +20161,7 @@ async function submitBqPayment(oid, modal, btn) {
 // (CEO тууз + sidebar badge) салбар лензээс хамаарч бууж, мөнгө нүднээс далдлагдахаас сэргийлнэ.
 // Салбар фокус нь renderReceivables-ийн ӨӨРИЙН таб (Бүгд/Эвент/NOMAAD)-аар хийгдэнэ.
 function receivablesData() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const items = [];
   // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
   (state.appOrders || []).forEach(o => {
@@ -20407,7 +20417,7 @@ function ceoNowStrip() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') loadNomaadOrders();
   if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
   const loadingBq = state.appOrders === undefined || state.nomaadOrders === undefined || !state.bqOrders;
-  const ym = new Date().toISOString().slice(0, 7);
+  const ym = todayStr().slice(0, 7);
 
   // Энэ сарын орлого — Тайлангийн P&L-ийн ЯГ ижил функцээр (C6: нэг эх сурвалж). Захиалга (M-Event)
   // + NOMAAD, суурь = finBasis() (Тайлантай ижил, toggle дагана). Өмнө CEO самбар түүхэн snapshot
@@ -20421,8 +20431,8 @@ function ceoNowStrip() {
   const overdueCnt = ar.items.filter(i => i.overdue).length;
 
   // Ойртож буй 7 хоног
-  const today = new Date().toISOString().slice(0, 10);
-  const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = d7.toISOString().slice(0, 10);
+  const today = todayStr();
+  const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = dateStr(d7);
   const inWin = (s) => s && s >= today && s <= in7;
   let deliveries = 0, returns = 0;
   (state.appOrders || []).forEach(o => {
@@ -20779,7 +20789,7 @@ function bqInsights(bq) {
   const sumNet = arr => arr.reduce((s, x) => s + N(x.net_mnt), 0);
   // Өсөлт: сүүлийн ДУУССАН сарыг өнгөрсөн оны мөн сартай (улирлын нөлөөгүй YoY).
   // Боломжгүй бол сүүлийн 3 сарыг өмнөх 3 сартай.
-  const curMonth = (new Date()).toISOString().slice(0, 7);
+  const curMonth = todayStr().slice(0, 7);
   const done = m.filter(x => String(x.month) < curMonth);   // дуусаагүй (өнөөгийн) сарыг хасна
   const base = done.length ? done : m;
   const last = base[base.length - 1];
@@ -20819,7 +20829,7 @@ function bqInsights(bq) {
 function bqSeasonChart(bq) {
   const N = x => Number(x) || 0;
   const seas = {};
-  const _cur = (new Date()).toISOString().slice(0, 7);
+  const _cur = todayStr().slice(0, 7);
   (bq.monthly || []).filter(x => String(x.month) < _cur).forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
   const arr = Array.from({ length: 12 }, (_, i) => { const mo = String(i + 1).padStart(2, '0'); const a = seas[mo] || []; return { n: i + 1, avg: a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0, yrs: a.length }; });
   const max = Math.max(1, ...arr.map(x => x.avg));
@@ -20892,7 +20902,7 @@ function renderHistory() {
     // Сар бүрийн орлого — босоо bar (бүх сар, хэвтээ scroll, шинэ нь баруунд).
     // Одоогийн/ирээдүйн сар (эвентийн огноогоор) дутуу тул бүдэг өнгө + тэмдэглэнэ.
     const m = bq.monthly || [];
-    const curMonth = (new Date()).toISOString().slice(0, 7);
+    const curMonth = todayStr().slice(0, 7);
     const maxNet = Math.max(1, ...m.map(x => N(x.net_mnt)));
     const bars = m.map(x => {
       const net = N(x.net_mnt);
@@ -21431,7 +21441,7 @@ function finSalaryMonth(month, basis) {
 // Зардал зөвхөн банкны хуулгаар орох тул эдгээр авто бичлэг давхцал болно. Өмнөх сар хөндөхгүй
 // (хэрэглэгчийн шийдвэр 2026-08-22: зөвхөн идэвхтэй сар цэгцэлнэ, түүх хэвээр).
 function finDuplicateEntries(monthPrefix) {
-  const month = monthPrefix || new Date().toISOString().slice(0, 7);
+  const month = monthPrefix || todayStr().slice(0, 7);
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted');
   const norm = s => String(s || '').toUpperCase().replace(/[^А-ЯӨҮЁA-Z]/g, '');
   const wdate = r => (String(r.purpose || '').match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || String(r.due_date || '').slice(0, 10) || String(r.executed_at || '').slice(0, 10);
@@ -21449,7 +21459,7 @@ function finDuplicateEntries(monthPrefix) {
     .sort((a, b) => (Number(b.r.amount) || 0) - (Number(a.r.amount) || 0));
 }
 async function openFinDupAudit() {
-  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.reportMonth || todayStr().slice(0, 7);
   const items = finDuplicateEntries(month);   // [{r, dup}]
   document.getElementById('fin-dup-modal')?.remove();
   const m = document.createElement('div'); m.className = 'modal-bg'; m.id = 'fin-dup-modal';
@@ -21516,7 +21526,7 @@ function financeTrend(wantBr) {
   finAddOrderIncome(inc, wantBr, finBasis());
   const keys = [...Object.keys(inc), ...Object.keys(exp)].sort();
   if (!keys.length) return [];
-  const cur = new Date().toISOString().slice(0, 7);
+  const cur = todayStr().slice(0, 7);
   const last = cur > keys[keys.length - 1] ? cur : keys[keys.length - 1];
   const [y0, m0] = keys[0].split('-').map(Number);
   const [y1, m1] = last.split('-').map(Number);
@@ -21573,7 +21583,7 @@ function financeTrendChart(series, selMonth) {
   </div>`;
 }
 function renderReports() {
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = todayStr().slice(0, 7);
   if (!state.reportMonth) state.reportMonth = curMonth;
   const month = state.reportMonth;
   // Тайланд шаардлагатай дата (захиалга/бараа/өртөг) — байхгүй бол анх удаа татна
@@ -21848,10 +21858,10 @@ function renderReports() {
 }
 function attachReportsHandlers() {
   document.querySelectorAll('[data-report-month]').forEach(b => b.onclick = () => {
-    const [y, m] = (state.reportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
+    const [y, m] = (state.reportMonth || todayStr().slice(0, 7)).split('-').map(Number);
     const d = new Date(y, m - 1 + Number(b.dataset.reportMonth), 1);
     const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (nm > new Date().toISOString().slice(0, 7)) return;
+    if (nm > todayStr().slice(0, 7)) return;
     state.reportMonth = nm; render();
   });
   document.querySelectorAll('[data-fin-basis]').forEach(b => b.onclick = () => {
@@ -21861,7 +21871,7 @@ function attachReportsHandlers() {
   });
   document.querySelectorAll('[data-trend-month]').forEach(b => b.onclick = () => {
     const nm = b.dataset.trendMonth;
-    if (nm && nm <= new Date().toISOString().slice(0, 7)) { state.reportMonth = nm; render(); }
+    if (nm && nm <= todayStr().slice(0, 7)) { state.reportMonth = nm; render(); }
   });
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
   document.getElementById('rep-pricing')?.addEventListener('click', () => openPricingReport());
@@ -22657,7 +22667,7 @@ function renderVatView(wrap) {
 }
 
 function renderFinanceReport(wrap) {
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = todayStr().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
   const month = state.finReportMonth;
   // Хамрах хүрээ: бүх санхүүгийн хүсэлт, хандалт + салбар лензээр
@@ -23032,7 +23042,7 @@ function renderFinanceReport(wrap) {
    Одоогийн сар + салбар ленз + төлөвийн шүүлтийг дагана. */
 // Санхүүгийн ЗАРДЛЫН ТАЙЛАН — олон sheet: Хураангуй + Ангиллаар + Салбараар + Дэлгэрэнгүй
 function exportFinanceReportExcel() {
-  const month = state.finReportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.finReportMonth || todayStr().slice(0, 7);
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
@@ -23149,7 +23159,7 @@ function exportXlsSheets(sheets, filename) {
 
 // Зөвхөн "Орлого захиалгаар" sheet-ийг татна
 function exportIncomeOrdersExcel() {
-  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.reportMonth || todayStr().slice(0, 7);
   const mi = meventIncome(month);
   if (!mi.byOrder.length) { showToast('Татах захиалга алга', 'warn'); return; }
   exportXlsSheets([incomeOrdersSheet(month, mi)], `Чимун-орлого-захиалгаар-${month}.xls`);
@@ -23226,7 +23236,7 @@ function expenseSheet(month, wantBr, brLabel) {
 
 // "Бүгдийг татах" — сонгосон сарын бүх тайланг нэг Excel-д, тус бүр sheet-ээр
 function exportAllReports() {
-  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.reportMonth || todayStr().slice(0, 7);
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
@@ -23642,8 +23652,8 @@ async function sendWeeklyDigest() {
 
   const stats = {
     period: {
-      from: weekAgo.toISOString().slice(0, 10),
-      to: now.toISOString().slice(0, 10),
+      from: dateStr(weekAgo),
+      to: dateStr(now),
     },
     tasks: {
       total: tasks.length,
@@ -23703,7 +23713,7 @@ function generateICS(tasks) {
     const endDate = (() => {
       const d = new Date(t.due);
       d.setDate(d.getDate() + 1);
-      return d.toISOString().slice(0,10).replace(/-/g,'');
+      return dateStr(d).replace(/-/g,'');
     })();
     const priorityNum = { high: 1, med: 5, low: 9 }[t.priority] || 5;
     const description = [
@@ -27462,7 +27472,7 @@ async function ensurePushSubscription() {
     // хүлээн авахаа бүрмөсөн больдог байв.
     const lastSent = localStorage.getItem('pushSubLastSent');
     const subStr = JSON.stringify(sub);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayStr();
     if (lastSent === subStr + '::' + state.me + '::' + today) return true;
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
@@ -28099,7 +28109,7 @@ async function handleRegister() {
         photo: photoDataUrl, // base64 data URL эсвэл хоосон
         level: autoLevel,         // 40/60/80/100
         status: 'идэвхтэй',       // шууд идэвхтэй — зөвшөөрөл шаардахгүй
-        joined_at: new Date().toISOString().slice(0, 10),
+        joined_at: todayStr(),
         requested_at: new Date().toISOString(),
         worker_type:   workerType,   // 'permanent' | 'daily'
         bank, bank_account: bankAccount, bank_holder: bankHolder,

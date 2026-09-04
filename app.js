@@ -3834,11 +3834,7 @@ function renderSidebar() {
   const cooNav = document.getElementById('nav-coosalary');
   if (cooNav) {
     if (state.cooShare === undefined) { state.cooShare = null; if (typeof loadAppConfig === 'function') loadAppConfig('coo_share').then(v => { state.cooShare = (v && typeof v === 'object') ? v : {}; render(); }); }
-    const _m = (typeof findMember === 'function') ? findMember(state.me) : null;
-    const _ceo = ((_m && _m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(_m));
-    const _cooKey = (state.cooShare && state.cooShare.key) || '';
-    const _isCoo = _cooKey && state.me && String(state.me) === String(_cooKey);
-    cooNav.style.display = (_ceo || _isCoo) ? '' : 'none';
+    cooNav.style.display = canSeeCooSalary() ? '' : 'none';
   }
   // Баримт бичиг — эрхийн системээр (тохируулаагүй бол CEO).
   const docNav = document.getElementById('nav-documents');
@@ -12877,8 +12873,37 @@ function canSeeNomaadOrders() {
   // Default нь самбарт яг тэр чигээр харагдана (хатуу кодын нуугдсан дүрэмгүй).
   return canAccessView('nomaad', () => _nomaadDefaultFor(findMember(state.me)) || (state.me === getFinanceExecutorEmail()));
 }
+// COO цалин харах эрх — CEO эсвэл тохируулсан COO өөрөө. (renderCounts ба renderCooSalary
+// хоёулаа ижил логикийг хуулбарлаж бичсэн байсныг нэг эх сурвалж болгов.)
+function canSeeCooSalary() {
+  const m = (typeof findMember === 'function') ? findMember(state.me) : null;
+  const ceo = ((m && m.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(m));
+  const cooKey = (typeof cooShareCfg === 'function' ? cooShareCfg().key : (state.cooShare && state.cooShare.key)) || '';
+  return !!(ceo || (cooKey && state.me && String(state.me) === String(cooKey)));
+}
+// NOMAAD дата ХЭРЭГТЭЙ эсэх — ЭРХИЙГ ТАТАХАД БИШ, ХАРУУЛАХАД тавина.
+// ⚠ Өмнө нь loadNomaadOrders эхний мөрөндөө `if (!canSeeNomaadOrders()) return;` гэж
+//   ДАТА ТАТАХЫГ хаадаг байв. Гэтэл nomaad дэлгэцийн default (_nomaadDefaultFor) нь салбар
+//   оноогдсон хүнд ХАТУУ: зөвхөн 'camp' салбарынхан. Тиймээс m-event салбарт бүртгэлтэй
+//   нягтлан NOMAAD дата-г ОГТ татахгүй → state.nomaadOrders хоосон → түүнээс тэжээгддэг
+//   БҮХ тайлан 0 болно: ашгийн тайланд кемпийн орлого 0 (компани ХУДАЛ алдагдалтай
+//   харагдана), авлага 0, НӨАТ тулгалтад захиалга олдохгүй.
+//   Дэлгэцийн эрх нь хэвээр: renderTaskList `state.view==='nomaad' && !canSeeNomaadOrders()`
+//   -ээр буцаадаг, sidebar цэс мөн нуугддаг. Энд зөвхөн ДАТА ХЭРЭГЛЭГЧ дэлгэцүүдийг жагсаав —
+//   эрхгүй хүн лүү дата татахгүй (утсанд хэрэггүй PII буухаас сэргийлнэ).
+function canUseNomaadData() {
+  const y = (f) => typeof f === 'function' && f();
+  return y(canSeeNomaadOrders)     // NOMAAD захиалгын дэлгэц
+      || y(canSeeReceivables)      // Авлага
+      || y(canSeeReports)          // Тайлан / Салбар таб (кемпийн орлого)
+      || y(canSeeVat)              // НӨАТ тулгалт — захиалгын нэр
+      || y(canSeeCatering)         // Катеринг — NOMAAD арга хэмжээнээс ажил үүсгэдэг
+      || y(canSeeCooSalary)        // COO цалин — цэвэр ашгаас тооцно
+      || y(canSeeMarketing);       // Имэйл маркетинг — «camp» салбарын хүлээн авагчийн
+                                   // жагсаалт NOMAAD захиалгын имэйлээс бүрддэг (app.js ~11333)
+}
 async function loadNomaadOrders() {
-  if (!canSeeNomaadOrders()) return;
+  if (!canUseNomaadData()) return;
   const url = state.config.nomaadOrdersUrl;
   if (!url) return;
   try {
@@ -20290,11 +20315,11 @@ function renderCooSalary() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { loadNomaadOrders(); }
   if (state.financeRequests === undefined && typeof loadFinanceRequests === 'function') loadFinanceRequests();
 
+  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
+  // meCeo — доорх «⚙️ Тохиргоо» блок ЗӨВХӨН CEO-д (COO өөрөө өөрийн хувиа өөрчилж болохгүй).
   const meMember = (typeof findMember === 'function') ? findMember(state.me) : null;
   const meCeo = ((meMember && meMember.level) || 0) >= 100 || (typeof isFullAccessMember === 'function' && isFullAccessMember(meMember));
-  const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
-  const meIsCoo = cooKey && state.me && String(state.me) === String(cooKey);
-  if (!meCeo && !meIsCoo) {
+  if (!canSeeCooSalary()) {
     return `<div style="max-width:520px;margin:24px auto;text-align:center;color:var(--muted);padding:30px 16px;border:1px solid var(--border);border-radius:12px;">Энэ мэдээлэл зөвхөн удирдлагад харагдана.</div>`;
   }
 

@@ -14707,7 +14707,19 @@ function ctTierText() {
 
 function meventContractHtml(o) {
   const C = CHIMUN_LEGAL;
-  const cust = escapeHtml(o.customer || '……………………………');
+  // ⭐ ГЭРЭЭНИЙ ТАЛ — байгууллагын захиалгад ГЭРЭЭ БАЙГУУЛАГЧ НЬ БАЙГУУЛЛАГА (хувь хүн БИШ).
+  // Хариуцлага (заалт 7 — нөхөн төлбөр) хэн дээр буухыг энэ тодорхойлно: байгууллагын
+  // захиалгыг хувь хүний нэр дээр байгуулбал компаниас нэхэмжлэх эрх зүйн үндэс сул.
+  // Байгууллага эсэх = orderCustType (компанийн нэр эсвэл 7 оронтой РД) — ганц эх сурвалж.
+  const _ciP = custInfoOf(o.note);
+  const _isOrg = orderCustType(o) === 'org';
+  const _orgName = String(_ciP.company || '').trim();
+  const _person = String(o.customer || '').trim();
+  // Байгууллагын нэр хоосон ч РД нь 7 оронтой бол харилцагчийн нэрийг байгууллагад тооцно.
+  const partyName = _isOrg ? (_orgName || _person) : _person;
+  const cust = escapeHtml(partyName || '……………………………');
+  // Төлөөлөх хүн — байгууллагын нэр өөр байвал л тусад нь бичнэ (давхардуулахгүй).
+  const _rep = _isOrg && _person && _person !== partyName ? _person : '';
   const items = (o.items || []);
   const uPrice = it => Number(it.price != null ? it.price : it.unit_price) || 0;
   const qty = it => Number(it.qty != null ? it.qty : it.quantity) || 0;
@@ -14720,7 +14732,7 @@ function meventContractHtml(o) {
     delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, setupFee = _B.setupFee,
     deposit = _B.deposit, rentalNet = _B.rentalNet, vat = _B.vat, total = _B.total;
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
-  const _ci = custInfoOf(o.note);
+  const _ci = _ciP;   // дээр нэг л удаа задалсан (гэрээний талыг тодорхойлоход хэрэгтэй байсан)
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
   // Эхлэх/дуусах ЦАГ нь ⟦RT|sh|eh⟧ note token-д хадгалагддаг (starts_at нь зөвхөн огноо).
@@ -14802,7 +14814,7 @@ function meventContractHtml(o) {
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
-    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b>${_ci.company ? '<br>Байгууллага: ' + escapeHtml(_ci.company) : ''}<br>${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}${_ciContact ? 'Холбоо барих: ' + escapeHtml(_ciContact) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}Байгууллагын РД: ${_ci.reg ? escapeHtml(_ci.reg) : '…………………'}${_addr ? '<br>Хүргэх хаяг: ' + escapeHtml(_addr) : ''}${_ci.maps ? ' (<a href="' + escapeHtml(mapsHref(_ci.maps)) + '">байршил</a>)' : ''}</td>
+    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b>${_rep ? '<br>Төлөөлөх хүн: ' + escapeHtml(_rep) : ''}<br>${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}${_ciContact ? 'Холбоо барих: ' + escapeHtml(_ciContact) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${_isOrg ? 'Байгууллагын РД' : 'Регистрийн дугаар'}: ${_ci.reg ? escapeHtml(_ci.reg) : '…………………'}${_addr ? '<br>Хүргэх хаяг: ' + escapeHtml(_addr) : ''}${_ci.maps ? ' (<a href="' + escapeHtml(mapsHref(_ci.maps)) + '">байршил</a>)' : ''}</td>
     <td class="r"><div class="ch-role">ТҮРЭЭСЛҮҮЛЭГЧ</div><b>${C.name}</b><br>${C.address}<br>Улаанбаатар, 11000<br>Байгууллагын РД: ${escapeHtml(String(C.reg || ''))}<br>Утас: 7755-1010<br>Hello@Mevent.mn</td>
   </tr></table>
   <div class="meta-line">Он сар: <b>${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}</b> &nbsp;·&nbsp; Захиалга: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; Гэрээний дугаар: <b>${contractNo || '……'}</b></div>
@@ -14810,7 +14822,7 @@ function meventContractHtml(o) {
 
   ${itemTable}
 
-  <p style="margin-top:8px">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас "${cust}" ("Хэрэглэгч", хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
+  <p style="margin-top:8px">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас ${_isOrg ? (_ci.reg ? escapeHtml(_ci.reg) + ' регистрийн дугаартай ' : '') + '"' + cust + '" ("Хэрэглэгч" гэх), түүнийг төлөөлж ' + (_rep ? escapeHtml(_rep) : '…………………………') : '"' + cust + '" ("Хэрэглэгч" гэх)'} (хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
 
   <h2>НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ</h2>
   <p><b>1.1.</b> Түрээслүүлэгч нь дээр заасан бараа, төхөөрөмжийг Хэрэглэгчид түр хугацаагаар ашиглуулна. Хэрэглэгч зөвхөн ашиглах эрхтэй бөгөөд өмчлөх эрх шилжихгүй.</p>
@@ -14881,7 +14893,7 @@ function meventContractHtml(o) {
   <p style="margin-top:12px;font-weight:700">ГЭРЭЭ БАЙГУУЛСАН</p>
   <table class="sigt"><tr>
     <td><div class="sg-role">ТҮРЭЭСЛҮҮЛЭГЧ</div>Бараа, төхөөрөмжийн түрээс борлуулалт хариуцсан ажилтан:<br>Овог нэр: …………………………<br>Гарын үсэг: ________________ <span class="seal">( Тамга )</span></td>
-    <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>Овог нэр: …………………………<br>Гарын үсэг: ________________</td>
+    <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>${_isOrg ? '<b>' + cust + '</b><br>Албан тушаал: …………………………<br>' : ''}Овог нэр: ${_rep ? escapeHtml(_rep) : '…………………………'}<br>Гарын үсэг: ________________${_isOrg ? ' <span class="seal">( Тамга )</span>' : ''}</td>
   </tr></table>
   <div class="foot">Хаяг: ${C.address}<br>Холбогдох утас: 7755-1010</div>
 

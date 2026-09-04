@@ -14684,7 +14684,7 @@ function meventContractHtml(o) {
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
   const itemRows = items.length ? items.map((it, i) => {
     const line = lineOf(it);
-    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">багтсан</td><td class="rt">${fmtMoney(line)}</td></tr>`;
+    return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
   }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
   const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
@@ -14694,10 +14694,11 @@ function meventContractHtml(o) {
       ${delivFee > 0 ? `<tr><td>Хүргэлт${delivLbl ? ' (' + escapeHtml(delivLbl) + ')' : ''}:</td><td class="rt">${fmtMoney(delivFee)}</td></tr>` : ''}
       ${offFee > 0 ? `<tr><td>🌙 Ажлын бус цаг:</td><td class="rt">${fmtMoney(offFee)}</td></tr>` : ''}
       ${setupFee > 0 ? `<tr><td>🔧 Суурилуулалт / угсралт:</td><td class="rt">${fmtMoney(setupFee)}</td></tr>` : ''}
-      <tr><td>Үүнээс НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>
+      ${hasVat ? '' : `<tr><td>Үүнээс НӨАТ (10%):</td><td class="rt">${fmtMoney(vat)}</td></tr>`}
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
-    </tbody></table>`;
+    </tbody></table>
+    <div class="vat-note">${hasVat ? 'Дээрх үнэд НӨАТ багтаагүй болно.' : 'Дээрх үнэд НӨАТ багтсан болно.'}</div>`;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Түрээсийн гэрээ — ${cust} (#${o.number ?? ''})</title>
@@ -14726,6 +14727,7 @@ function meventContractHtml(o) {
   .totb td{padding:3px 10px}
   .totb td.rt{text-align:right;white-space:nowrap;min-width:120px}
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
+  .vat-note{text-align:right;font-size:12px;color:#555;margin:4px 0 0}
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
   .pb{page-break-before:always}

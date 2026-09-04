@@ -14712,7 +14712,7 @@ function meventContractHtml(o) {
   const _ci = custInfoOf(o.note);
   const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
   const _addr = (o.delivery_address || o.customer_address || '').trim();
-  const ds = _ctDT(o.starts_at), de = _ctDT(o.stops_at), now = new Date();
+  const ds = _ctDT(orderDateTime(o.starts_at, o.note, false)), de = _ctDT(orderDateTime(o.stops_at, o.note, true)), now = new Date();
   const contractNo = escapeHtml(o.contract_no || '');
   const fname = ('Туреэсийн гэрээ ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
   // Мөр бүр бодит түрээсийн дүн (НӨАТ багтсан) — үнийн саналын "Дүн" баганатай яг таарна.
@@ -18048,6 +18048,21 @@ function rentalDays(startMs, stopMs) {
 const _RT_RE = /⟦RT\|(\d{1,2})\|(\d{1,2})⟧/;
 function parseOrderTimes(note) { const m = String(note || '').match(_RT_RE); return m ? { sh: +m[1], eh: +m[2] } : null; }
 function encodeOrderTimes(sh, eh) { return `⟦RT|${sh}|${eh}⟧`; }
+// ⭐ ЗАХИАЛГЫН ОГНОО+ЦАГ — ГАНЦ ЭХ СУРВАЛЖ (үнийн санал, гэрээ, карт).
+// `starts_at`/`stops_at` нь ЗӨВХӨН огноо (date) — формын цаг ⟦RT|sh|eh⟧ token-д явдаг.
+// Тиймээс баримт бичигт цаг харуулахдаа хоёрыг ЗААВАЛ нэгтгэнэ — эс бөгөөс авах цаг харагдахгүй
+// бөгөөд ажлын бус цагийн төлбөр ямар цагаас тооцогдсон нь баримтаас харагдахгүй.
+// Огноонд аль хэдийн цаг байвал (хуучин/booqable мөр) түүнийг ХӨНДӨХГҮЙ.
+function orderDateTime(dateVal, note, isStop) {
+  const s = String(dateVal || '');
+  if (!s) return '';
+  if (/\d{4}-\d{1,2}-\d{1,2}[T ]\d{1,2}:\d{2}/.test(s)) return s;
+  const t = parseOrderTimes(note);
+  if (!t) return s;
+  const h = isStop ? t.eh : t.sh;
+  if (!(h >= 0 && h <= 23)) return s;
+  return s.slice(0, 10) + 'T' + _pad2(h) + ':00';
+}
 // Ажлын бус цаг — 09:00–18:00-аас ГАДУУР авах/өгөх бүрт нэмэлт төлбөр (сайттай ижил: WORK 9–18, +20,000₮/бүр)
 // ⚠ ТАРИФ SYNC (C2): сайт m-event-website-ready/index.html-ийн OFFHOURS_FEE/WORK_START/WORK_END-тэй
 // ЯГ ИЖИЛ байх ёстой. Нэгийг өөрчилбөл нөгөөг ЗААВАЛ зас — эс бол суваг хооронд өөр үнэ. [[tariff_two_repos_sync]]
@@ -19375,7 +19390,7 @@ async function buildOrderQuote(o, lang) {
     delivFee = _B.delivFee, delivLbl = _B.delivLbl, offFee = _B.offFee, discount = _B.discount,
     hasVat = _B.hasVat, vatDiscount = _B.vatDisc;
   const _dt = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/); return m ? `${m[1]}.${m[2]}.${m[3]}${m[4] ? ' ' + m[4].padStart(2, '0') + ':' + m[5] : ''}` : ''; };
-  const period = (o.starts_at || o.stops_at) ? `${_dt(o.starts_at)} → ${_dt(o.stops_at)}` : '';
+  const period = (o.starts_at || o.stops_at) ? `${_dt(orderDateTime(o.starts_at, o.note, false))} → ${_dt(orderDateTime(o.stops_at, o.note, true))}` : '';
   const fd = (dt) => `${dt.getFullYear()}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
   const mailTo = o.email || '';
   const _erow = (l, v) => `<tr><td style="padding:4px 0;font-size:13px;color:#4a5a50;">${l}</td><td align="right" style="padding:4px 0;font-size:13px;color:#17171B;font-weight:600;">${v}</td></tr>`;

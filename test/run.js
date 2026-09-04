@@ -153,10 +153,55 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   // Толгой ба мөр хоёулаа тэр токеноор — тусад нь бичсэн 8 баганын жагсаалт БАЙХГҮЙ
   ok(/\.otable-head\s*\{[^}]*grid-template-columns:\s*var\(--otable-cols\)/.test(css),
      'scan: otable толгой --otable-cols токеныг ашиглана');
-  ok(/\.board-order\.flat\s*>\s*summary\s*\{[^}]*grid-template-columns:\s*var\(--otable-cols\)/.test(css),
+  ok(/\.olist-row\s*>\s*summary\s*\{[^}]*grid-template-columns:\s*var\(--otable-cols\)/.test(css),
      'scan: otable мөр --otable-cols токеныг ашиглана');
-  eq((css.match(/118px 118px/g) || []).length, 1,
+  // Баганын жагсаалт өөрөө зөвхөн ТОКЕНД байна (утга нь өөрчлөгдөхөд тест хуучрахгүй)
+  const cols = (tok[0] || '').replace('--otable-cols:', '').replace(';', '').trim();
+  eq(css.split(cols).length - 1, 1,
      'scan: 8 баганын жагсаалт зөвхөн токенд (толгой/мөрд давхардуулахгүй)');
+}
+
+// 0k) Захиалгын жагсаалт — хугацааны бүлэг (Өнөөдөр / Маргааш) (2026-09-04)
+// «Самбар» харагдац хасагдаж, бүлэг нь жагсаалтын дотор гарчиг мөр болов.
+// Гол дүрэм: дууссан/архив/цуцалсныг ХЭЗЭЭ Ч «өнөөдөр/маргааш» гэж бүлэглэхгүй —
+// эс бөгөөс 888 архивласан захиалга «хугацаа хэтэрсэн» болж жагсаалтыг дүүргэнэ.
+{
+  const T = '2026-09-04';
+  // Гол огноо: гарах шатанд АВАХ өдөр, түрээсэнд БУЦААХ өдөр
+  eq(F.orderKeyDate({ status: 'reserved', starts_at: '2026-09-01', stops_at: '2026-09-05' }), '2026-09-01', 'бүлэг: гарахаас өмнө авах огноо');
+  eq(F.orderKeyDate({ status: 'rented', starts_at: '2026-09-01', stops_at: '2026-09-05' }), '2026-09-05', 'бүлэг: түрээсэнд байхад буцаах огноо');
+  eq(F.orderKeyDate({ status: 'reserved' }), '', 'бүлэг: огноогүй бол хоосон');
+  // Хугацааны бүлэг
+  eq(F.orderTimeGroup({ status: 'reserved', starts_at: '2026-09-04' }, T), 'today', 'бүлэг: өнөөдөр');
+  eq(F.orderTimeGroup({ status: 'reserved', starts_at: '2026-09-05' }, T), 'tomorrow', 'бүлэг: маргааш');
+  eq(F.orderTimeGroup({ status: 'reserved', starts_at: '2026-09-02' }, T), 'over', 'бүлэг: хугацаа хэтэрсэн');
+  eq(F.orderTimeGroup({ status: 'reserved' }, T), 'none', 'бүлэг: огноогүй');
+  ['returned', 'archived', 'canceled', 'deleted'].forEach(st => {
+    eq(F.orderTimeGroup({ status: st, starts_at: '2026-09-02' }, T), 'closed',
+       `бүлэг: «${st}» нь хэтэрсэн биш, дууссан бүлэгт`);
+  });
+  // Гарчгийн дараалал: хэтэрсэн → өнөөдөр → маргааш → … → дууссан (хамгийн сүүл)
+  const G = n => vm.runInContext(n, sandbox);
+  const keys = G('ORDER_TIME_GROUPS').map(x => x[0]);
+  eq(keys[0], 'over', 'бүлэг: хэтэрсэн нь тэргүүнд');
+  eq(keys[1], 'today', 'бүлэг: өнөөдөр хоёрт');
+  eq(keys[2], 'tomorrow', 'бүлэг: маргааш гуравт');
+  eq(keys[keys.length - 1], 'closed', 'бүлэг: дууссан нь хамгийн сүүлд');
+  eq(G('ORDER_SORT_OPTS')[0][0], 'smart', 'бүлэг: эрэмбийн default = хугацаагаар');
+}
+
+// 0l) SCAN — «Самбар» харагдац БҮРМӨСӨН хасагдсан (2026-09-04)
+// Хэрэглэгчийн шийдвэр: нэг харагдац (жагсаалт) л байна. Хоёр харагдац байхад
+// нэг нь (самбар) сайжирч, нөгөө нь хоцордог — өнөөдөр/маргааш нь зөвхөн
+// самбарт байсан тул утаснаас хардаг ажилчид түүнийг олдоггүй байв.
+{
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ['ordersView', 'ordersBoardOpen', 'renderOrderPipelineBoard', 'boardOrderRow', 'data-oview', 'board-order'].forEach(pat => {
+    eq(src.split(pat).length - 1, 0, `scan: самбарын үлдэгдэл «${pat}» байхгүй`);
+  });
+  ['.oview-toggle', '.bstep', '.board-stepper', '.board-sec', '.oboard'].forEach(pat => {
+    eq(css.split(pat).length - 1, 0, `scan: самбарын CSS «${pat}» байхгүй`);
+  });
 }
 
 // 0g) SCAN — «мөнх хоосон» state талбар БАЙХГҮЙ (2026-09-04)

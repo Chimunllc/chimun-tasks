@@ -5101,6 +5101,7 @@ body.role-daily #add-project { display: none !important; }
 .recon-l { color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recon-amt { color: var(--muted); white-space: nowrap; font-size: 12px; }
 .recon-empty { padding: 10px 12px; color: var(--muted-soft); font-size: 12px; }
+.pm-hint { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
 
 /* ─── NOMAAD захиалга — camp/багц бүлэглэл + эвхэгддэг карт ─── */
 .nomaad-camp-section { margin-bottom: 22px; }

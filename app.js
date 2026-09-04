@@ -7567,6 +7567,7 @@ async function loadProductsCatalog() {
       // source_url багана DB-д нэмэгдсэн эсэх (нэмэгдээгүй бол бичихгүй — INSERT 400 болохоос сэргийлнэ)
       state._prodHasSource = rows.length ? ('source_url' in rows[0]) : true;
       state._prodHasMedia = rows.length ? ('media_url' in rows[0]) : true;
+      state._prodHasMarketValue = rows.length ? ('market_value' in rows[0]) : true;
       state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
       state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
       const map = {};
@@ -7814,6 +7815,7 @@ async function saveProduct(product) {
   if (product.cost != null) row.cost = Number(product.cost) || 0;
   if (product.source_url !== undefined && state._prodHasSource !== false) row.source_url = product.source_url || null;
   if (product.media_url !== undefined && state._prodHasMedia !== false) row.media_url = product.media_url || null;
+  if (product.market_value !== undefined && state._prodHasMarketValue !== false) row.market_value = Number(product.market_value) || 0;
   if (product.name_en !== undefined && state._prodHasNameEn !== false) row.name_en = product.name_en || null;
   if (product.setup_fee !== undefined && state._prodHasSetupFee !== false) row.setup_fee = Number(product.setup_fee) || 0;   // суурилуулалтын нэгж хөлс (сонголттой багана)
   if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
@@ -14536,6 +14538,19 @@ function meventContractHtml(o) {
     const line = lineOf(it);
     return `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(it.name || '')}${qty(it) > 1 ? ` <span class="muted">(${qty(it)}ш)</span>` : ''}</td><td class="ctr">${days} хоног</td><td class="rt">${fmtMoney(line)}</td><td class="ctr">${hasVat ? 'багтаагүй' : 'багтсан'}</td><td class="rt">${fmtMoney(line)}</td></tr>`;
   }).join('') : `<tr><td colspan="6" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>`;
+  // Нөхөн төлбөрийн үнэлгээ — products.market_value-аас. Заалт 7.3 ҮҮНИЙГ иш татна.
+  // Үнэлгээгүй бараа мөрөнд «—» гарна: юу дутуу байгаа нь гэрээнээс шууд харагдана.
+  const mvRows = items.map(it => {
+    const pr = productOf(it) || {};
+    const mv = Number(pr.market_value) || 0;
+    return { name: it.name || '', qty: qty(it) || 1, mv, line: mv * (qty(it) || 1) };
+  });
+  const mvTotal = mvRows.reduce((a, r) => a + r.line, 0);
+  const mvTable = mvTotal > 0 ? `<div class="mv-h">Нөхөн төлбөрийн үнэлгээ (заалт 7.3)</div>
+    <table class="svc"><tr><th class="ctr">№</th><th>Бараа</th><th class="ctr">Тоо</th><th class="rt">Нэгжийн үнэлгээ</th><th class="rt">Дүн</th></tr>
+    ${mvRows.map((r, i) => `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="ctr">${r.qty}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.mv) : '—'}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.line) : '—'}</td></tr>`).join('')}
+    <tr><td colspan="4" class="rt" style="font-weight:700">Нийт үнэлгээ:</td><td class="rt" style="font-weight:700">${fmtMoney(mvTotal)}</td></tr></table>` : '';
+
   const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
       <tr><td>Түрээсийн дүн:</td><td class="rt">${fmtMoney(subtotal)}</td></tr>
@@ -14548,7 +14563,8 @@ function meventContractHtml(o) {
       ${deposit > 0 ? `<tr><td>Барьцаа төлбөр (буцаах):</td><td class="rt">${fmtMoney(deposit)}</td></tr>` : ''}
       <tr class="tb-total"><td>Төлбөр (нийт):</td><td class="rt">${fmtMoney(total)}</td></tr>
     </tbody></table>
-    <div class="vat-note">${hasVat ? 'Дээрх үнэд НӨАТ багтаагүй болно.' : 'Дээрх үнэд НӨАТ багтсан болно.'}</div>`;
+    <div class="vat-note">${hasVat ? 'Дээрх үнэд НӨАТ багтаагүй болно.' : 'Дээрх үнэд НӨАТ багтсан болно.'}</div>
+    ${mvTable}`;
 
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Түрээсийн гэрээ — ${cust} (#${o.number ?? ''})</title>
@@ -14578,6 +14594,7 @@ function meventContractHtml(o) {
   .totb td.rt{text-align:right;white-space:nowrap;min-width:120px}
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
   .vat-note{text-align:right;font-size:12px;color:#555;margin:4px 0 0}
+  .mv-h{font-weight:700;font-size:12.5px;margin:16px 0 4px}
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
   .pb{page-break-before:always}
@@ -14639,7 +14656,7 @@ function meventContractHtml(o) {
   <h2>ДОЛОО. ЭВДРЭЛ, АЛДАГДЛЫН ХАРИУЦЛАГА</h2>
   <p><b>7.1.</b> Хэрэглэгчийн эзэмшил, ашиглалтын хугацаанд гарсан аливаа эвдрэл, гэмтэл, алдагдлыг Хэрэглэгч бүрэн хариуцна. Үүнд Хэрэглэгчийн ажилтан, зочин, гуравдагч этгээдийн үйлдлээс үүссэн эвдрэл мөн хамаарна.</p>
   <p><b>7.2.</b> Засварлах боломжтой эвдрэлийн засварын зардлыг Хэрэглэгч хариуцна.</p>
-  <p><b>7.3.</b> Засварлах боломжгүй эвдрэл болон бараа, төхөөрөмж алдагдсан тохиолдолд түүний үнэлгээнд заасан дүнг үл маргах журмаар бүрэн нөхөн төлнө.</p>
+  <p><b>7.3.</b> Засварлах боломжгүй эвдрэл болон бараа, төхөөрөмж алдагдсан тохиолдолд дээрх «Нөхөн төлбөрийн үнэлгээ» хүснэгтэд заасан зах зээлийн үнэлгээгээр үл маргах журмаар бүрэн нөхөн төлнө. Хүснэгтэд үнэлгээ заагаагүй бараанд тухайн үеийн зах зээлийн ханшаар тооцно.</p>
   <p><b>7.4.</b> Түрээслүүлэгч нь бараа, төхөөрөмж ашигласнаас үүдсэн шууд бус хохирол, ашиг орлогын алдагдлыг хариуцахгүй.</p>
 
   <h2>НАЙМ. ХУГАЦАА СУНГАХ</h2>
@@ -16246,6 +16263,7 @@ function openProductModal(p) {
         <div class="pm-lock" data-lockhint="cost" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
         <div class="pm-grid">
         <label>Нэгж өртөг (₮) *<input id="pm-cost" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput(cost || 0)}"></label>
+        <label>Зах зээлийн үнэлгээ (₮) <span class="pm-hint">— гэрээнд нөхөн төлбөрийн дүн болно</span><input id="pm-market" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput((p && p.market_value) || 0)}"></label>
         <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         </div>
         <div id="pm-batches" class="pm-batches"></div>
@@ -16558,6 +16576,7 @@ async function submitProductModal(modal, orig, btn) {
   };
   let product = orig ? { ...orig, ...base } : base;
   product.cost = moneyVal(modal.querySelector('#pm-cost'));
+  product.market_value = moneyVal(modal.querySelector('#pm-market'));
   // Эрхгүй хэсгийг ХЭЗЭЭ Ч дарж бичихгүй (үнэ 0, нөөц 0 болох нь мөнгөний алдаа)
   product = restrictProductEdit(product, orig, PRODUCT_PARTS.filter(canProductPart));
   btn.disabled = true;

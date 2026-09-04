@@ -9006,7 +9006,18 @@ async function myDocExists(phone) {
     return r.ok ? (await r.json()) === true : false;
   } catch (e) { return false; }
 }
+// ⚠ Хайлт СЕРВЕР талд болдог тул canonKey энд туслахгүй — баримт нь ХУУЧИН
+//   түлхүүр дор хадгалагдсан байвал одоогийн дугаараар олдохгүй (Г.Сайнжаргалын
+//   үнэмлэх яг ингэж «алга» болж, хөдөлмөрийн гэрээний арын хуудас хоосон гарах
+//   байсан). Тиймээс бүх хувилбараар дараалан оролдоно.
 async function fetchEmployeeDoc(phone) {
+  for (const cand of (typeof keyVariants === 'function' ? keyVariants(phone) : [phone])) {
+    const hit = await _fetchEmployeeDocOne(cand);
+    if (hit) return hit;
+  }
+  return null;
+}
+async function _fetchEmployeeDocOne(phone) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/get_employee_doc`, {
       method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },

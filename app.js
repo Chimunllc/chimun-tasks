@@ -12876,7 +12876,9 @@ function canUseNomaadData() {
       || y(canSeeReports)          // Тайлан / Салбар таб (кемпийн орлого)
       || y(canSeeVat)              // НӨАТ тулгалт — захиалгын нэр
       || y(canSeeCatering)         // Катеринг — NOMAAD арга хэмжээнээс ажил үүсгэдэг
-      || y(canSeeCooSalary);       // COO цалин — цэвэр ашгаас тооцно
+      || y(canSeeCooSalary)        // COO цалин — цэвэр ашгаас тооцно
+      || y(canSeeMarketing);       // Имэйл маркетинг — «camp» салбарын хүлээн авагчийн
+                                   // жагсаалт NOMAAD захиалгын имэйлээс бүрддэг (app.js ~11333)
 }
 async function loadNomaadOrders() {
   if (!canUseNomaadData()) return;

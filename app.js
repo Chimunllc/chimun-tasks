@@ -120,6 +120,15 @@ const DB_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.B
 // Барааны зураг VPS дээр (n8n.nomaadcamp.com/img/<file>) — mevent-upload-image webhook-оор
 // байршуулна (uploadProductImage). Гуравдагч талын storage ашиглахаа больсон.
 // URL рүү ?key= эсвэл &key= нэмж буцаана. n8n workflow эхэнд IF node-оор тулгаж шалгана.
+// n8n webhook дуудлагад нэвтэрсэн ажилтны session токеныг ХЭДЭР-ээр нэмнэ.
+// ⚠ URL query-д БҮҮ тавь — n8n гүйцэтгэлийн түүхэнд бүх query параметр хадгалагдана.
+// Токенгүй (нэвтрээгүй) бол хоосон объект — одоогийн зан төлөв хэвээр.
+// Сервер тал энэ header-ийг шалгаж эхлэхэд л жинхэнэ хаалт болно.
+function n8nAuthHeaders(extra) {
+  const h = Object.assign({}, extra || {});
+  try { const t = localStorage.getItem('sessionToken'); if (t) h['X-Session-Token'] = t; } catch (e) {}
+  return h;
+}
 function withKey(url) {
   if (!url) return url;
   const sep = url.includes('?') ? '&' : '?';
@@ -228,15 +237,164 @@ const state = {
   rolePerms: (() => { try { return JSON.parse(localStorage.getItem('rolePerms') || '{}'); } catch(e) { return {}; } })(),  // албан тушаал бүрийн эрх загвар {roleNorm: {orders:true, 'tasks.delete':false,...}}
   salaries: (() => { try { return JSON.parse(localStorage.getItem('salaries') || '{}'); } catch(e) { return {}; } })(),  // хүн бүрийн суурь сарын цалин {personKey: amount}
   salaryPayments: [],   // сарын цалингийн олголтын лог (salary_payments)
-  salaryYM: new Date().toISOString().slice(0, 7),   // Цалин view-ийн сонгосон сар
+  salaryYM: todayStr().slice(0, 7),   // Цалин view-ийн сонгосон сар
   hourlyRatings: (() => { try { return JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch(e) { return []; } })(),
   evaluations: (() => { try { return JSON.parse(localStorage.getItem('evaluations') || '[]'); } catch(e) { return []; } })(),
   productSearch: '',     // Бараа view-ийн хайлт
-  perfMonth: new Date().toISOString().slice(0, 7),   // Гүйцэтгэл view-ийн сар (YYYY-MM)
+  perfMonth: todayStr().slice(0, 7),   // Гүйцэтгэл view-ийн сар (YYYY-MM)
   perfTab: 'me',         // Гүйцэтгэл view tab: me | all | rate
   editingId: null,
   notifications: [], // {id, type, taskId, msg, ts, read}
 };
+
+/* -------------------- ГЛОБАЛ АЛДАА БАРИГЧ --------------------
+   Яагаад: handler дотор алдаа гарвал браузер чимээгүй зогсдог — хэрэглэгч товч
+   дараад ЮУ Ч БОЛОХГҮЙ, апп юу ч хэлэхгүй, эзэн нь сар хүртэл мэдэхгүй.
+   2026-09-02: нярвын «Агуулахад авсан» товч TDZ алдаанаас болж нэг өдөр үхсэн.
+   Өмнө нь мөн адил HTML эвдэрснээс цэс дарагдахгүй болж байсан.
+   Одоо: алдаа гармагц (1) хэрэглэгчид ил хэлнэ, (2) сүүлийн 20-г хадгална,
+   (3) CEO-гийн «Систем шалгалт» үзүүлэлт улаан болно. */
+const ERR_LOG_KEY = 'appErrors';
+const ERR_LOG_MAX = 20;
+let _lastErrToastAt = 0;
+// Хэрэглэгчийн буруу биш, засах боломжгүй чимээ — тоохгүй (өргөтгөл, зургийн 404 г.м.)
+function _errIsNoise(msg, src) {
+  const m = String(msg || '');
+  if (!m || m === 'Script error.') return true;                  // cross-origin, дэлгэрэнгүй байхгүй
+  if (/ResizeObserver loop/i.test(m)) return true;               // хор хөнөөлгүй браузерын чимээ
+  if (/^chrome-extension:|^moz-extension:/.test(String(src || ''))) return true;
+  return false;
+}
+function appErrors() {
+  try { const a = JSON.parse(localStorage.getItem(ERR_LOG_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function clearAppErrors() { try { localStorage.removeItem(ERR_LOG_KEY); } catch (e) {} }
+function logAppError(msg, src, extra) {
+  if (_errIsNoise(msg, src)) return;
+  try {
+    const list = appErrors();
+    list.push({
+      at: new Date().toISOString(),
+      msg: String(msg || '').slice(0, 300),
+      src: String(src || '').slice(0, 200),
+      view: (typeof state === 'object' && state) ? String(state.view || '') : '',
+      me: (typeof state === 'object' && state) ? String(state.me || '') : '',
+      ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
+      extra: String(extra || '').slice(0, 300),
+    });
+    localStorage.setItem(ERR_LOG_KEY, JSON.stringify(list.slice(-ERR_LOG_MAX)));
+  } catch (e) {}
+  // Хэрэглэгчид ИЛ хэлнэ. Дараалсан алдаанд дэлгэц дүүргэхгүй — 8 секундэд нэг удаа.
+  try {
+    const now = Date.now();
+    if (now - _lastErrToastAt > 8000 && typeof showToast === 'function') {
+      _lastErrToastAt = now;
+      showToast('⚠ Алдаа гарлаа — үйлдэл хийгдсэнгүй. Дахин оролдоно уу.', 'error', 6000);
+    }
+  } catch (e) {}
+  try { if (typeof renderCiStatus === 'function') renderCiStatus(); } catch (e) {}
+  _reportErrToServer(msg, src, extra);
+}
+// Серверт мэдээлэх — ажилтны утсан дээрх алдаа ЭЗЭНД хүрнэ (локал бүртгэл зөвхөн
+// тухайн төхөөрөмжид үлддэг тул хангалтгүй байсан).
+// ⚠ Энэ функц ХЭЗЭЭ Ч алдаа шидэхгүй байх ЁСТОЙ — эс бөгөөс алдаа мэдээлэх нь өөрөө
+// алдаа болж хязгааргүй давталт үүснэ. Тиймээс энд .catch(()=>{}) нь ЗӨВ.
+// Алдааны хурууны хээ — ижил алдааг бүлэглэх түлхүүр. Мессеж + эх байрлал
+// (query-гүй). Тоо/хугацаа/хэрэглэгч ОРОХГҮЙ — эс бөгөөс бүлэглэл ажиллахгүй.
+// fp-г ЗӨВХӨН клиент бодно (эх сурвалж нэг). Хүснэгтэд байсан хуучин мөрүүдэд
+// сервер нэг удаа md5-аар нөхсөн тул тэдгээр нь тусдаа бүлэг болно — асуудалгүй.
+function errFingerprint(msg, src) {
+  const base = String(msg == null ? '' : msg).slice(0, 300) + '|' + String(src == null ? '' : src).split('?')[0];
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < base.length; i++) {
+    const c = base.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0;
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).slice(0, 12);
+}
+const _errSentThisSession = new Set();
+let _errSentCount = 0;
+function _reportErrToServer(msg, src, extra) {
+  try {
+    if (!DB_URL || !DB_ANON_KEY) return;
+    if (_errSentCount >= 10) return;                       // нэг сесст дээд тал нь 10
+    const key = String(msg || '').slice(0, 120) + '|' + String(src || '').slice(0, 80);
+    if (_errSentThisSession.has(key)) return;              // давхардсаныг дахин илгээхгүй
+    _errSentThisSession.add(key); _errSentCount++;
+    fetch(`${DB_URL}/rest/v1/app_errors`, {
+      method: 'POST',
+      // Нэвтэрсэн бол ажилтны токеноор, эс бол anon-оор (нэвтрэхийн ӨМНӨ гарсан алдааг ч барина)
+      headers: pgWrite({ Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        msg: String(msg || '').slice(0, 300),
+        src: String(src || '').slice(0, 200),
+        view: (typeof state === 'object' && state) ? String(state.view || '') : '',
+        person: (typeof state === 'object' && state) ? String(state.me || '') : '',
+        ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '',
+        ua: String((navigator && navigator.userAgent) || '').slice(0, 200),
+        stack: String(extra || '').slice(0, 300),
+        fp: errFingerprint(msg, src),
+      }),
+    }).catch(() => {});
+  } catch (e) {}
+}
+// CEO — БҮХ ажилтны алдааг серверээс татна (сүүлийн 24 цаг). Нэвтэрсэн токен шаардана;
+// anon-д SELECT эрх ЗОРИУДААР өгөөгүй (алдааны лог нийтэд ил байх ёсгүй).
+async function loadServerErrors() {
+  if (!state.isCEO || !DB_URL) return;
+  try {
+    // Бүлэглэсэн харагдац (v_app_errors) — нэг алдаа = нэг мөр, давтамж/хүний тоотой.
+    // Зассан/үл хамаарах гэж тэмдэглэсэн нь жагсаалтад гарахгүй.
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/v_app_errors?status=in.(new,fixing)&order=last_at.desc&limit=60`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return;                                     // эрхгүй/view байхгүй — чимээгүй, локал нь ажиллана
+    const rows = await r.json();
+    if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
+  } catch (e) {}
+}
+// CEO — алдааны ТҮҮХ (зассан/үл хамаарах орсон БҮХ төлөв). Идэвхтэй жагсаалтаас
+// тусад нь, зөвхөн алдааны цонх нээхэд татна. Толгойн улаан тэмдгийн тоонд нөлөөлөхгүй.
+async function loadServerErrorHistory() {
+  if (!state.isCEO || !DB_URL) return [];
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/v_app_errors?order=last_at.desc&limit=200`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return [];
+    const rows = await r.json();
+    if (Array.isArray(rows)) { state.serverErrorHist = rows; return rows; }
+  } catch (e) {}
+  return [];
+}
+// Алдааны төлөв тэмдэглэх — түүхий логийг ХӨНДӨХГҮЙ, тусдаа хүснэгтэд.
+async function setErrorStatus(fp, status, note) {
+  if (!fp) return false;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_error_state?on_conflict=fp`, {
+      method: 'POST',
+      headers: pgWrite({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ fp, status, note: note || null,
+        fixed_ver: status === 'fixed' ? (typeof globalThis.CACHE_TAG === 'string' ? globalThis.CACHE_TAG : '') : null,
+        updated_by: state.me || '', updated_at: new Date().toISOString() }),
+    }, 12000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) { showToast('⚠ Төлөв хадгалагдсангүй', 'error', 2500); return false; }
+}
+try {
+  window.addEventListener('error', (ev) => {
+    logAppError(ev && ev.message, ev && ev.filename ? ev.filename + ':' + ev.lineno : '',
+      ev && ev.error && ev.error.stack ? String(ev.error.stack).split('\n').slice(0, 3).join(' | ') : '');
+  });
+  window.addEventListener('unhandledrejection', (ev) => {
+    const r = ev && ev.reason;
+    logAppError(r && r.message ? r.message : String(r), 'promise',
+      r && r.stack ? String(r.stack).split('\n').slice(0, 3).join(' | ') : '');
+  });
+} catch (e) {}
 
 /* -------------------- TOAST / CONFIRM (alert/confirm орлуулсан) --------------------
    showToast(msg, type)            — fire-and-forget banner. Type: '', 'success', 'error', 'warn'.
@@ -854,9 +1012,21 @@ async function serverLogin(identifier, pin) {
 // Сервер токеныг HMAC-ээр шалгаж lvl>=100 бол л PIN буцаана. Session бүрд нэг л удаа, кэшлэхгүй.
 // Татаж авсан PIN (state.staffPins: phone→PIN)-ыг TEAM-д наана. TEAM дахин ачаалагдах бүрд дуудна —
 // эс бөгөөс loadTeamFromAPI (TEAM.length=0) PIN-г арилгаад, loadStaffPins нэг л удаа ажилладаг тул сэргэдэггүй.
+// ⚠ ЭМЗЭГ ТАЛБАРУУД — /webhook/staff нь НИЙТИЙН түлхүүрээр хамгаалагдсан тул тэндээс
+// РД/цалин/банк/хаяг/яаралтай холбоо БУЦААХ ЁСГҮЙ. Тэдгээрийг PIN-тэй ижил замаар —
+// session токен + lvl>=100 шалгадаг /chimun-staff-pins-ээс авна.
+const STAFF_SENSITIVE_FIELDS = ['rd', 'address', 'base_salary', 'daily_rate', 'salary',
+  'bank', 'bank_account', 'bank_holder', 'emergency_name', 'emergency_phone'];
 function applyStaffPins() {
-  if (!state.staffPins) return;
-  (TEAM || []).forEach(m => { const p = String(m.phone || '').replace(/\D/g, ''); if (p && state.staffPins[p]) m.pin = state.staffPins[p]; });
+  if (!state.staffPins && !state.staffSensitive) return;
+  (TEAM || []).forEach(m => {
+    const p = String(m.phone || '').replace(/\D/g, ''); if (!p) return;
+    if (state.staffPins && state.staffPins[p]) m.pin = state.staffPins[p];
+    const sx = state.staffSensitive && state.staffSensitive[p];
+    // Серверээс ирсэн бол л дарж бичнэ — ирээгүй талбарыг хоослохгүй (шилжилтийн үед
+    // /webhook/staff хуучнаараа буцаасаар байвал одоогийн утга хэвээр үлдэнэ).
+    if (sx) STAFF_SENSITIVE_FIELDS.forEach(k => { if (sx[k] !== undefined && sx[k] !== null && sx[k] !== '') m[k] = sx[k]; });
+  });
 }
 async function loadStaffPins() {
   if (state._staffPinsLoaded || !state.isCEO) return;
@@ -879,8 +1049,16 @@ async function loadStaffPins() {
       return;
     }
     state._staffPinsErr = '';
-    const byPhone = {};
-    d.team.forEach(x => { const p = String(x.phone || '').replace(/\D/g, ''); if (p && x.pin) byPhone[p] = x.pin; });
+    const byPhone = {}, bySens = {};
+    d.team.forEach(x => {
+      const p = String(x.phone || '').replace(/\D/g, ''); if (!p) return;
+      if (x.pin) byPhone[p] = x.pin;
+      // Эмзэг талбарууд — серверийн шинэ хувилбар илгээвэл авна, эс бол хоосон үлдэнэ.
+      let has = false; const o = {};
+      STAFF_SENSITIVE_FIELDS.forEach(k => { if (x[k] !== undefined) { o[k] = x[k]; has = true; } });
+      if (has) bySens[p] = o;
+    });
+    state.staffSensitive = bySens;
     state.staffPins = byPhone;   // TEAM дахин ачаалагдсан ч (loadTeamFromAPI = TEAM.length=0) арилахгүйгээр тусад нь хадгална
     applyStaffPins();
     if (typeof render === 'function') render();
@@ -1168,7 +1346,7 @@ async function loadBootstrap() {
   try {
     const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
     });
     if (!r.ok) return false;
     const data = await r.json();
@@ -1208,7 +1386,7 @@ async function loadData() {
       // (мөр устгах/засах) тусахгүй байдаг. t=Date.now() + no-store-р фреш дата авна.
       const r = await fetchWithTimeout(withKey(state.config.apiUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const data = await r.json();
@@ -1390,6 +1568,16 @@ function todayStr() {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+// Дурын Date → ЛОКАЛ YYYY-MM-DD. Түүхий d.toISOString().slice(0,10) нь UTC тул
+// Монгол (UTC+8)-д 00:00–08:00 хооронд НЭГ ӨДРӨӨР хоцордог. Шинэ код энийг ашиглана.
+function dateStr(d) {
+  const x = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(x)) return '';
+  return new Date(x.getTime() - x.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+// Дурын Date → ЛОКАЛ YYYY-MM (сар). Сарын 1-нд UTC хөрвүүлэлт өмнөх сарыг буцаадаг.
+function monthStr(d) { return dateStr(d).slice(0, 7); }
+
 // Add `days` (can be negative) to a YYYY-MM-DD string. Returns YYYY-MM-DD.
 // ⚠ toISOString нь UTC — Монгол (UTC+8)-д local шөнө дундыг UTC руу хөрвүүлж НЭГ ӨДРӨӨР
 //   буруу болгодог (addDays(өнөөдөр,1)=өнөөдөр). Тиймээс todayStr шиг local-аар форматлана.
@@ -1543,7 +1731,7 @@ function finBenDirectory() {
 // normalizeFinance үүнийг цэвэрлэдэггүй тул давтан хадгалалтад хадгалагдана).
 function finAuditToken(kind, oldV, newV) {
   const cl = s => String(s || '—').replace(/[|⟦⟧]/g, ' ').trim().slice(0, 34) || '—';
-  return ` ⟦${kind}|${cl(oldV)}|${cl(newV)}|${cl(memberName(state.me))}|${new Date().toISOString().slice(0, 10)}⟧`;
+  return ` ⟦${kind}|${cl(oldV)}|${cl(newV)}|${cl(memberName(state.me))}|${todayStr()}⟧`;
 }
 
 // Ангилалын код задлах ("1400 Урлагийн..." эсвэл "1400" → {main:'1000', sub:'1400'})
@@ -1856,7 +2044,7 @@ async function loadFinanceRequests() {
       // Cache-bust — Sheet дээр шууд устгасан/засварласан хүсэлт нэн даруй тусахын тулд
       const res = await fetchWithTimeout(withKey(state.config.financeUrl + '?action=list&t=' + Date.now()), {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
@@ -3089,6 +3277,17 @@ function taskBranch(t) {
 // Салбар ленз ЮУ Ч ХИЙХГҮЙ view-үүд — угаас нэг салбарынх (Захиалга/NOMAAD/Катеринг)
 // эсвэл компани даяар (Ирц). Эдгээр дээр толгойн ленз сонгогчийг НУУНА (инерт байхаас сэргийлж).
 const LENS_INERT_VIEWS = ['orders', 'nomaad', 'catering', 'attendance'];
+// Салбар ленз ХАМААРАХГҮЙ view-үүд — ХУВИЙН жагсаалтууд.
+// ⚠ Хүнд оноосон ажил нь ТЭР ХҮНИЙХ — ямар салбарын ажил байх нь хамаагүй. Ленз энд
+//   шүүвэл ажилтан ӨӨРТ НЬ оноосон ажлаа ХАРАХГҮЙ болно: taskBranch() нь branch талбаргүй
+//   ажлыг 'm-event' гэж үздэг ба нэг салбартай ажилтны ленз нь тэр салбартаа ТҮГЖЭЭТЭЙ
+//   (allowedLenses). Тиймээс Камп/Катерингийн ажилтан ажилтай атлаа «ажил алга» гэсэн
+//   ХУДАЛ мессеж хардаг байв. Санхүү нь dept_branch-аар тусдаа бүлэглэгддэг тул мөн энд.
+const LENS_EXEMPT_VIEWS = ['mine', 'finance'];
+// Ленз тухайн view-д шүүлт хийх ёстой юу? (цэвэр функц — тестлэгдэнэ)
+function lensAppliesToView(view, lens) {
+  return lens !== 'all' && !LENS_EXEMPT_VIEWS.includes(view);
+}
 // Салбарын ленз шүүлт — удирдлагын view-үүдэд (Календарь/Ачаалал/Гүйцэтгэл/Авлага).
 // lens='all'/'capital' бол бүгд; эс бөгөөс тухайн салбар + shared/хоосон.
 function branchInLens(b) {
@@ -3207,7 +3406,7 @@ function filteredTasks() {
   // ─── Глобал салбар ленз — тухайн салбар + нэгдсэн (shared) ажлыг харуулна ───
   // (Санхүү нь dept_branch-аар тусдаа бүлэглэгддэг тул энд хасахгүй.)
   const lens = effectiveBranchLens();
-  if (lens !== 'all' && state.view !== 'finance') {
+  if (lensAppliesToView(state.view, lens)) {
     list = list.filter(t => branchInLens(taskBranch(t)));   // НЭГДСЭН дүрэм: capital=бүгд, эс бол салбар+shared
   }
   // ─── Filter — санхүүгийн view нь үе шатны filter, бусад нь ерөнхий ажлын filter ───
@@ -3234,8 +3433,8 @@ function filteredTasks() {
       monday.setDate(now.getDate() - (dow - 1));
       const sunday = new Date(monday);
       sunday.setDate(monday.getDate() + 6);
-      const weekStart = monday.toISOString().slice(0, 10);
-      const weekEnd = sunday.toISOString().slice(0, 10);
+      const weekStart = dateStr(monday);
+      const weekEnd = dateStr(sunday);
       list = list.filter(t => t.due && t.due >= weekStart && t.due <= weekEnd);
     }
     else if (state.statusFilter === 'month') {
@@ -3288,7 +3487,7 @@ function filteredTasks() {
           if (val === 'today' || val === 'өнөөдөр') filters.push(t => t.due === today);
           else if (val === 'overdue' || val === 'хоцорсон') filters.push(t => t.due && t.due < today && t.status !== 'done');
           else if (val === 'week' || val === 'долоохоног') {
-            const w = new Date(); w.setDate(w.getDate() + 7); const wkStr = w.toISOString().slice(0, 10);
+            const w = new Date(); w.setDate(w.getDate() + 7); const wkStr = dateStr(w);
             filters.push(t => t.due && t.due >= today && t.due <= wkStr);
           } else filters.push(t => t.due === val);
         } else if (key === 'priority' || key === 'зэрэглэл') {
@@ -3692,7 +3891,7 @@ function renderTaskList() {
   if (state.view === 'dashboard') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderDashboard();
+    wrap.innerHTML = safeViewHtml(renderDashboard, 'Тойм');
     // Dashboard action товчнууд
     document.getElementById('dash-export-csv')?.addEventListener('click', exportTasksReport);
     document.getElementById('dash-export-ics')?.addEventListener('click', () => exportTasksAsICS());
@@ -3734,37 +3933,37 @@ function renderTaskList() {
   } else if (state.view === 'accounts') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderBankAccounts();
+    wrap.innerHTML = safeViewHtml(renderBankAccounts, 'Данс & карт');
     attachBankAccountsHandlers();
     return;
   } else if (state.view === 'marketing') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMarketing();
+    wrap.innerHTML = safeViewHtml(renderMarketing, 'Маркетинг');
     attachMarketingHandlers();
     return;
   } else if (state.view === 'documents') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderDocuments();
+    wrap.innerHTML = safeViewHtml(renderDocuments, 'Баримт');
     attachDocumentsHandlers();
     return;
   } else if (state.view === 'myexpenses') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMyExpenses();
+    wrap.innerHTML = safeViewHtml(renderMyExpenses, 'Миний зардал');
     attachMyExpensesHandlers();
     return;
   } else if (state.view === 'receivables') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderReceivables();
+    wrap.innerHTML = safeViewHtml(renderReceivables, 'Авлага');
     attachReceivablesHandlers();
     return;
   } else if (state.view === 'coosalary') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderCooSalary();
+    wrap.innerHTML = safeViewHtml(renderCooSalary, 'COO цалин');
     attachCooSalaryHandlers();
     return;
   } else if (state.view === 'vat') {
@@ -3775,7 +3974,7 @@ function renderTaskList() {
   } else if (state.view === 'access') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderAccess();
+    wrap.innerHTML = safeViewHtml(renderAccess, 'Ажилчид (удирдах)');
     attachAccessHandlers();
     return;
   } else if (state.view === 'salary' || state.view === 'hourly') {
@@ -3795,13 +3994,13 @@ function renderTaskList() {
   } else if (state.view === 'attendance') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderAttendance();
+    wrap.innerHTML = safeViewHtml(renderAttendance, 'Ирц');
     attachAttendanceHandlers();
     return;
   } else if (state.view === 'myattend') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderMyAttend();
+    wrap.innerHTML = safeViewHtml(renderMyAttend, 'Миний ирц');
     attachMyAttendHandlers();
     return;
   } else if (state.view === 'reports') {
@@ -3821,19 +4020,19 @@ function renderTaskList() {
   } else if (state.view === 'performance') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderPerformance();
+    wrap.innerHTML = safeViewHtml(renderPerformance, 'Гүйцэтгэл');
     attachPerformanceHandlers();
     return;
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline());
+    wrap.innerHTML = safeViewHtml(() => renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline()), 'NOMAAD захиалга');
     attachNomaadHandlers();
     return;
   } else if (state.view === 'catering') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = renderCatering();
+    wrap.innerHTML = safeViewHtml(renderCatering, 'Катеринг');
     attachCateringHandlers();
     return;
   } else if (state.view === 'finance') {
@@ -4100,7 +4299,7 @@ async function advanceRepair(id, to, extra) {
   try {
     const res = await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify(patch),
     }, 15000);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -4123,7 +4322,7 @@ async function advanceRepair(id, to, extra) {
 async function loadRepairs() {
   try {
     const r = await fetchWithTimeout(`${REPAIRS_URL()}?select=*&order=reported_at.desc&limit=500`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.repairs = await r.json();
   } catch (e) { console.warn('loadRepairs', e); state.repairs = state.repairs || []; }
@@ -4134,20 +4333,20 @@ async function ensureRepairRecord({ sku, name, qty, orderNumber, note, by }) {
   if (!sku || !(qty > 0)) return;
   try {
     const q = `${REPAIRS_URL()}?sku=eq.${encodeURIComponent(sku)}&order_number=eq.${Number(orderNumber) || 0}&status=in.(pending,in_progress)&select=id,qty`;
-    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const ex = await fetchWithTimeout(q, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
     const rows = ex.ok ? await ex.json() : [];
     const body = { sku, product_name: name || '', qty, order_number: Number(orderNumber) || null,
                    note: note || '', reported_by: by || state.me || '', updated_at: new Date().toISOString() };
     if (rows.length) {
       await fetchWithTimeout(`${REPAIRS_URL()}?id=eq.${encodeURIComponent(rows[0].id)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ qty, note: body.note, updated_at: body.updated_at }),
       }, 12000);
     } else {
       await fetchWithTimeout(REPAIRS_URL(), {
         method: 'POST',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ id: repairId(sku, orderNumber), status: 'pending', ...body }),
       }, 12000);
     }
@@ -4253,7 +4452,7 @@ async function loadItemAliases() {
   if (!DB_ANON_KEY) { state.itemAliases = state.itemAliases || {}; return; }
   try {
     const r = await fetchWithTimeout(`${ALIASES_URL()}?select=alias,sku&limit=5000`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     const map = Object.create(null);
@@ -4271,7 +4470,7 @@ async function saveItemAlias(alias0, sku, note) {
   try {
     const r = await fetchWithTimeout(ALIASES_URL(), {
       method: 'POST',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY,
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
         'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },
       body: JSON.stringify(body),
     }, 15000);
@@ -4288,7 +4487,7 @@ async function deleteItemAlias(alias) {
   try {
     const r = await fetchWithTimeout(`${ALIASES_URL()}?alias=eq.${encodeURIComponent(k)}`, {
       method: 'DELETE',
-      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+      headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     if (state.itemAliases) delete state.itemAliases[k];
@@ -4502,7 +4701,7 @@ function _dayRange(startISO, stopISO) {
   const out = []; const d = new Date(a + 'T00:00:00Z'); const end = new Date((b < a ? a : b) + 'T00:00:00Z');
   if (isNaN(d) || isNaN(end)) return a ? [a] : [];
   for (let i = 0; i < 400 && d <= end; i++) {   // 400 = хамгаалалт (эвдэрсэн огноо)
-    out.push(d.toISOString().slice(0, 10));
+    out.push(dateStr(d));
     d.setUTCDate(d.getUTCDate() + 1);
   }
   return out;
@@ -4614,12 +4813,12 @@ function pricingVerdict(r) {
 }
 // ── Үнийн шинжилгээний дэлгэц ────────────────────────────────────────────────
 function pricingPeriod(key) {
-  const t = new Date(); const to = t.toISOString().slice(0, 10);
+  const t = new Date(); const to = dateStr(t);
   const d = new Date(t);
   if (key === '6') d.setMonth(d.getMonth() - 6);
   else if (key === '24') d.setMonth(d.getMonth() - 24);
   else d.setMonth(d.getMonth() - 12);
-  return { from: d.toISOString().slice(0, 10), to, months: key === '6' ? 6 : (key === '24' ? 24 : 12) };
+  return { from: dateStr(d), to, months: key === '6' ? 6 : (key === '24' ? 24 : 12) };
 }
 function openPricingReport() {
   state.pricePeriod = state.pricePeriod || '12';
@@ -4793,7 +4992,7 @@ function openOrderDamageModal(oid) {
     // Захиалгын note-г серверийн ХАМГИЙН СҮҮЛИЙН утга дээр шинэчилнэ (бусад токен ⟦PAY⟧/⟦SL⟧ дарагдахгүй)
     let baseNote = o.note;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].note != null) baseNote = String(rr[0].note); }
     } catch (_) {}
     let newNote = encodeBrokenRec(baseNote, newBrk);
@@ -5311,7 +5510,7 @@ function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
 async function loadExpenseLearn() {
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/expense_learn?select=key,branch,cat`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const map = {}; (await r.json()).forEach(x => { if (x && x.key) map[x.key] = { branch: x.branch || '', cat: x.cat || '' }; });
     state.expenseLearn = map;
@@ -5525,7 +5724,7 @@ function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[
 // Сарын бүх зардлыг цэвэрлэх (аппын өөрийн устгах замаар — хуулгаар дахин оруулахын өмнө)
 async function clearMonthExpenses(month) {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
-  month = month || state.finReportMonth || new Date().toISOString().slice(0, 7);
+  month = month || state.finReportMonth || todayStr().slice(0, 7);
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted' && String(r.requested_at || '').slice(0, 7) === month);
   if (!rows.length) { showToast(`${month} сард зардал алга`, 'warn', 2500); return; }
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
@@ -6091,14 +6290,19 @@ function reconcileOrders(stmtRows, orders, opts) {
 // ── AI ТУЛГАЛТ (зөвхөн дүрмээр таараагүй үлдэгдэлд: «дансанд алга» захиалга × «захиалгагүй орлого») ──
 // AI юу ч БИЧИХГҮЙ — зөвхөн санал болгоно. Нягтлан өөрөө шалгаж баталгаажуулна.
 // Ачаалал: {orders:[{order_no,customer,amount,ref,date}], incomes:[{i,date,name,memo,amount}]}. Аль нэг тал хоосон бол null.
+// Нэг дуудлагад явуулах дээд хэмжээ. Хязгааргүй бол том хуулга (жилийн эцсийн
+// тулгалт г.м.) промптыг хэдэн зуун мөрөөр хөөргөж зардал/хугацааг дэмий өсгөнө.
+// Таслагдсан үлдэгдэл дараагийн дуудлагад орно (дүрмээр таарсан нь давтагдахгүй).
+const RECON_AI_MAX = 60;
+
 function buildReconAiPayload(res) {
   if (!res) return null;
-  const orders = (res.missing || []).map(m => ({
+  const orders = (res.missing || []).slice(0, RECON_AI_MAX).map(m => ({
     order_no: String(m.order.order_no || ''), customer: m.order.customer_name || '',
     amount: Number(m.order.paid_amount) || 0, ref: m.order.paid_ref || '',
     date: m.order.paid_date ? String(m.order.paid_date).slice(0, 10) : '',
   })).filter(o => o.order_no);
-  const incomes = (res.untracked || []).map((c, i) => ({
+  const incomes = (res.untracked || []).slice(0, RECON_AI_MAX).map((c, i) => ({
     i, date: c.date || '', name: c.name || '', memo: String(c.memo || '').slice(0, 120), amount: Number(c.credit) || 0,
   }));
   if (!orders.length || !incomes.length) return null;   // үлдэгдэлгүй → дэмий API дуудлага хийхгүй
@@ -6290,7 +6494,7 @@ function incomeReportHtml(res) {
   // Захиалгагүй орлого — данс тус бүрийн нэртэй
   const untrackedRows = (res.untracked || []).slice().sort((a, b) => b.credit - a.credit)
     .map(c => `<tr><td>${escapeHtml(String(c.date || ''))}</td><td>${escapeHtml(c.name || '')}</td><td class="mut">${escapeHtml((c.memo || '').slice(0, 46))}</td><td class="mut">${escapeHtml(acctName(c._srcAcct) || '')}</td><td class="r">${money(c.credit)}</td></tr>`).join('');
-  const today = todayStr ? todayStr() : new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const me = (state.user && state.user.name) || '';
   return `<!doctype html><html><head><meta charset="utf-8"><title>Орлогын тайлан ${escapeHtml(period)}</title>
   <style>
@@ -7394,8 +7598,16 @@ function packageStock(p) {
   for (const c of cs) { const cp = productBySku(c.sku); if (!cp) return 0; m = Math.min(m, Math.floor(workingStock(cp) / Math.max(1, Number(c.qty) || 1))); }
   return isFinite(m) ? m : 0;
 }
+// ⚠ Нэрээр хайх нь нөөцийн шалгалтыг ТОЙРДОГ байв (2026-09-03). Сайт хуучирсан нэр
+// илгээвэл productByName олдохгүй → null → «Хүрэлцэхгүй» анхааруулга ОГТ гарахгүй.
+// bookedQtyForRange нь аль хэдийн productOf-оор канонждог тул хайх тал ч ижил байх ёстой.
+// Мөр (объект) өгвөл sku→id→нэр дарааллаар, тэмдэгт мөр өгвөл хуучнаар нэрээр.
+function _prodForAvail(x) {
+  if (!x) return undefined;
+  return (typeof x === 'object') ? productOf(x) : productByName(x);
+}
 function productStockByName(name) {
-  const p = productByName(name);
+  const p = _prodForAvail(name);
   if (!p) return null;   // каталогт алга
   if (isService(p)) return null;   // үйлчилгээ — нөөцгүй → availability/shortage шалгалтыг алгасна
   if (isPackage(p)) return packageStock(p);
@@ -7437,7 +7649,7 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
   return total;
 }
 function availabilityFor(name, start, end, excludeOrderNo) {
-  const p = productByName(name);
+  const p = _prodForAvail(name);
   if (p && isPackage(p)) {   // багц = бүрэлдэхүүн бүрийн (сул ÷ тоо)-ны минимум
     let minAvail = Infinity, minStock = Infinity;
     for (const c of packageComponents(p)) {
@@ -7453,15 +7665,16 @@ function availabilityFor(name, start, end, excludeOrderNo) {
   }
   const stock = productStockByName(name);
   if (stock === null) return null;
-  const booked = bookedQtyForRange(name, start, end, excludeOrderNo);
+  // Каноник нэрээр тоол — мөр өгсөн бол каталогийн нэр, эс бол өгсөн нэр.
+  const booked = bookedQtyForRange(p ? p.name : name, start, end, excludeOrderNo);
   return { stock, booked, avail: stock - booked };
 }
 // Захиалгын item-уудаас хүрэлцэхгүй (over-booked) барааг олно.
 function orderShortages(items, start, end, excludeOrderNo) {
   const out = [];
   for (const it of (items || [])) {
-    const name = (it.name || '').trim(); if (!name) continue;
-    const a = availabilityFor(name, start, end, excludeOrderNo);
+    const name = (it.name || '').trim(); if (!name && !it.sku) continue;
+    const a = availabilityFor(it, start, end, excludeOrderNo);   // мөрөөр — sku/id-гээр таарна
     if (a && (Number(it.qty) || 0) > a.avail) out.push({ name, need: Number(it.qty) || 0, avail: a.avail, stock: a.stock, booked: a.booked });
   }
   return out;
@@ -7841,7 +8054,7 @@ async function loadProductsCatalog() {
   if (DB_ANON_KEY) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=*&archived=eq.false&order=name.asc`, {
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
       }, 15000);
       if (!r.ok) throw new Error('PG HTTP ' + r.status);
       const rows = await r.json();
@@ -8598,7 +8811,9 @@ function attHandleScan(data) {
   attToast((kind === 'in' ? '✅ ' : '👋 ') + (mem.name || phone) + ' · ' + (kind === 'in' ? 'Ирлээ' : 'Явлаа') + ' ' + attTimeUB(nowIso), kind === 'in' ? 'ok' : 'out');
   attBeep();
   const body = { member_key: phone, member_name: mem.name || '', member_phone: phone, kind, token: 'scan', source: 'scan', branch: (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) };
-  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: { apikey: DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(body) }).catch(() => {});
+  // Менежер нэвтэрсэн байдаг тул ЭНЭ замыг authenticated эрхээр бичнэ — итгэмжтэй
+  // ирц anon бичих эрхээс хамаарахгүй болно (anon-г хожим бүрэн хаах бэлтгэл).
+  fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(body) }).catch(() => {});
   if (kind === 'out') setTimeout(() => openNextArrivalPicker(phone, mem.name || phone), 350);   // явахдаа: маргааш хэдэн цагт ирэх вэ?
 }
 // «Маргааш хэдэн цагт ирэх вэ?» — явах скан хийсний дараа гарах цаг сонгогч (app_config['next_arrival']).
@@ -8668,8 +8883,8 @@ function attMemberSummary(recs, live) {
 async function loadAttendanceToday() {
   try {
     const d = todayStr();
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -8677,8 +8892,8 @@ async function loadAttendanceToday() {
 async function loadAttendanceView() {
   const d = state.attViewDay || todayStr();
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
 }
@@ -8686,26 +8901,45 @@ async function loadAttendanceView() {
 async function loadAttendanceMonthFull(month) {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lte.${month}-31&select=member_key,member_name,kind,ts,day&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 20000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
     if (r.ok) { state.attMonthRecs = await r.json(); state.attMonthKey = month; if (typeof render === 'function' && state.view === 'attendance') render(); }
   } catch (e) {}
 }
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
+// Сарын ирцийн мөрүүдээс ажилтан тус бүрийн ажилласан өдөр + ирсэн цагийг тооцно.
+// ЦЭВЭР функц (сүлжээгүй) — тестлэгдэнэ. Мөрүүд ts өсөхөөр эрэмбэлэгдсэн байх ёстой.
+//   days     — ирц бүртгэгдсэн өдрийн тоо
+//   selfDays — тэдгээрээс менежер QR уншуулаагүй (source='scan' огт байхгүй) өдөр.
+//              Энэ тоо цалин болдог тул баталгаагүйг нь ЯЛГАЖ харуулах үндэс.
+function attAggregateMonth(rows) {
+  const map = {}, times = {}, scanned = {};
+  (rows || []).forEach(x => {
+    if (!x || !x.member_key || !x.day) return;
+    (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
+    if (x.source === 'scan') (scanned[x.member_key] = scanned[x.member_key] || new Set()).add(x.day);
+    const tk = times[x.member_key] = times[x.member_key] || {};
+    if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
+  });
+  const out = {};
+  Object.keys(map).forEach(k => {
+    const sc = scanned[k];
+    out[k] = {
+      days: map[k].size,
+      selfDays: [...map[k]].filter(d => !(sc && sc.has(d))).length,
+      lastDay: [...map[k]].sort().pop(),
+    };
+  });
+  return { out, times };
+}
 async function loadAttendanceMonth() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts&order=ts.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts,source&order=ts.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) {
-      const rows = await r.json(), map = {}, times = {};
-      rows.forEach(x => {
-        (map[x.member_key] = map[x.member_key] || new Set()).add(x.day);
-        const tk = times[x.member_key] = times[x.member_key] || {};
-        if (!tk[x.day]) tk[x.day] = hhmmUB(x.ts);   // ts asc тул хамгийн ЭРТ (ирсэн) цаг үлдэнэ
-      });
-      const out = {}; Object.keys(map).forEach(k => { out[k] = { days: map[k].size, lastDay: [...map[k]].sort().pop() }; });
-      state.attWorkedDays = out;
-      state.attMonthTimes = times;
+      const agg = attAggregateMonth(await r.json());
+      state.attWorkedDays = agg.out;
+      state.attMonthTimes = agg.times;
     }
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -8715,7 +8949,13 @@ function attWorkedLine(m) {
   if (!wd || !wd.days) return '';
   const rate = Number(m.daily_rate) || 0;
   const expected = rate > 0 ? ` · ≈ ${fmtMoney(rate * wd.days)}` : '';
-  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>`;
+  // Уншуулаагүй (өөрөө холбоосоор бүртгүүлсэн) өдрийг тусад нь сануулна — энэ тоо
+  // шууд цалин болдог тул баталгаатай эсэхийг олгохын ӨМНӨ харах ёстой.
+  const selfN = Number(wd.selfDays) || 0;
+  const selfLine = selfN > 0
+    ? `<div style="font-size:11px;color:var(--warn);font-weight:600;margin-top:1px;">⚠ ${selfN} өдөр нь уншуулаагүй — өөрөө бүртгүүлсэн</div>`
+    : '';
+  return `<div style="font-size:11.5px;color:var(--ok);font-weight:700;margin-top:2px;">📅 Энэ сар ирцээр: ${wd.days} өдөр${expected}</div>${selfLine}`;
 }
 function renderAttendanceRows() {
   const isToday = (state.attViewDay || todayStr()) === todayStr();
@@ -8730,7 +8970,10 @@ function renderAttendanceRows() {
     const arr = by[k].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
     const s = attMemberSummary(arr, isToday);
     const m = findMember(k) || { name: arr[0].member_name || k, role: '' };
-    return { k, m, s, name: m.name || arr[0].member_name || k, role: m.role || '' };
+    // Тухайн өдөр менежер QR-ыг нь уншуулсан бол баталгаатай. Огт уншуулаагүй
+    // (зөвхөн холбоосоор өөрөө бүртгүүлсэн) бол ялгаж харуулна.
+    const scanned = arr.some(x => x.source === 'scan');
+    return { k, m, s, scanned, name: m.name || arr[0].member_name || k, role: m.role || '' };
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
@@ -8749,7 +8992,7 @@ function renderAttendanceRows() {
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
-      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
+      <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
@@ -8911,7 +9154,7 @@ function loadQRCodeJs() {
 async function loadMyAttendance() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=eq.${encodeURIComponent(state.me)}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY }, cache: 'no-store' }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
 }
@@ -9439,7 +9682,7 @@ function openHourlyPayModal(m) {
     document.getElementById('hp-bank').textContent = (m.bank || '—') + (m.bank_account ? ' · ' + m.bank_account : '');
     document.getElementById('hp-holder').textContent = m.bank_holder || m.name || '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
-    rateEl.value = ''; daysEl.value = ''; startEl.value = new Date().toISOString().slice(0, 10);
+    rateEl.value = ''; daysEl.value = ''; startEl.value = todayStr();
     // Гүйлгээний утга: "Зарлага: Өдрийн цалин 2х К.Эрбол 06.05"
     const memoText = () => {
       const dPart = Number(daysEl.value) > 0 ? Number(daysEl.value) + 'х' : '';
@@ -9814,7 +10057,7 @@ async function loadMemberPerms() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_perms?select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -9847,7 +10090,7 @@ async function loadMemberBranches() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/member_branches?select=person_key,branches`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
@@ -9997,7 +10240,7 @@ async function loadCateringMenu(force) {
   if (!DB_ANON_KEY) return;
   if (state.cateringMenu && !force) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_menu?select=*&order=sort.asc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringMenu = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringMenu', e); state.cateringMenu = state.cateringMenu || []; }
@@ -10006,7 +10249,7 @@ async function loadCateringJobs(force) {
   if (!DB_ANON_KEY) return;
   if (state.cateringJobs && !force) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/catering_jobs?select=*&order=event_date.desc`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.cateringJobs = r.ok ? await r.json() : [];
     if (typeof render === 'function' && state.view === 'catering') render();
   } catch (e) { console.warn('loadCateringJobs', e); state.cateringJobs = state.cateringJobs || []; }
@@ -10913,7 +11156,7 @@ async function _postBrandKit(k) {
 async function loadBrandKit() {
   if (!DB_ANON_KEY) return;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
     try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) {}
@@ -11178,7 +11421,7 @@ function renderEmailMarketing() {
 }
 async function loadEmailOptout() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 12000);
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/email_optout?select=email`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
     if (!r.ok) return;
     const rows = await r.json();
     state._emailOptout = new Set((rows || []).map(x => String(x.email || '').trim().toLowerCase()).filter(Boolean));
@@ -11542,7 +11785,7 @@ async function loadRolePerms() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/role_perms?select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     const map = {};
@@ -11720,7 +11963,7 @@ function attachPayrollTabs() {
 }
 function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
-  const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
+  const ym = state.salaryYM || todayStr().slice(0, 7);
   const q = (state.salarySearch || '').toLowerCase().trim();
   const brAll = salaryStaff().filter(m => _inHubBranch(m, effectiveBranchLens() || 'all'));   // толгойн глобал салбар-сонгогчоор
   const staff = brAll
@@ -11753,7 +11996,7 @@ function renderSalary() {
     </div>`;
   const schedule = `<div style="font-size:11.5px;color:var(--muted);background:var(--panel-hover);border-radius:8px;padding:8px 11px;margin-bottom:12px;">📅 Хуваарь: <b style="color:var(--text);">Урьдчилгаа 20-нд</b> (1–15) · <b style="color:var(--text);">Үлдэгдэл дараа сарын 5-нд</b> (16–эцэс) · 5 хоногийн зайтай</div>`;
   const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="sal-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.salarySearch || '')}" /></div>`;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const advDue = `${ym}-20`, remDue = `${salaryNextYm(ym)}-05`;
   const rows = staff.map(m => {
     const key = personKey(m);
@@ -11873,7 +12116,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
   if (!can('salary.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const m = findMember(personKey); if (!m) return;
   loadUsedReceipts();   // баримтын давхцлыг шуурхай шалгах
-  const ym = state.salaryYM || new Date().toISOString().slice(0, 7);
+  const ym = state.salaryYM || todayStr().slice(0, 7);
   const base = Number((state.salaries || {})[personKey]) || 0;
   const isAdv = cycleTag === SAL_ADV_TAG, isRem = cycleTag === SAL_REM_TAG;
   const advPaid = salaryCyclePaid(personKey, ym, SAL_ADV_TAG);
@@ -11944,7 +12187,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
       d.receiptId = refKey || fpKey;
       const reason = receiptDupReason(refKey, fpKey);
       if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
-      parsed = { amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), canonKey: d.receiptId, fpKey,
+      parsed = { amount: d.amount, date: d.date || todayStr(), canonKey: d.receiptId, fpKey,
         receiptNote: '[#' + d.receiptId + '] ' + [d.receiverName, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ') };
       const warns = [];
       if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
@@ -11960,6 +12203,7 @@ async function openSalaryPayModal(personKey, cycleTag) {
     if (!parsed) return;
     enableSave(false);
     const rr = await reserveReceipt(parsed.canonKey, { fp: parsed.fpKey, amount: parsed.amount, date: parsed.date, ref: parsed.receiptNote, usedIn: 'salary:' + personKey + ':' + ym + ':' + (cycShort || 'full') });
+    if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); enableSave(true); return; }   // C2: цагаан жагсаалт — 'ok' биш бол ЗОГС
     if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); enableSave(true); return; }
     let note = `Зарлага: Цалин ${cycShort} ${m.name || ''} ${String(parsed.date).slice(5).replace('-', '.')} ${parsed.receiptNote}`.replace(/\s+/g, ' ').trim();
     if (cycTag) note += ' ' + cycTag;
@@ -12280,7 +12524,7 @@ function printOrgChart() {
   const active = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && !isDailyMember(m));
   const lens = (typeof effectiveBranchLens === 'function' ? effectiveBranchLens() : 'all');
   const lensLbl = (lens && lens !== 'all' && ORG_BRANCH_META[lens]) ? ' · ' + ORG_BRANCH_META[lens].label : '';
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+  const today = todayStr().replace(/-/g, '.');
   w.document.write(`<!doctype html><html data-theme="light"><head><meta charset="utf-8">
     <title>Байгууллагын бүтэц — Чимун ХХК</title>
     <link rel="stylesheet" href="${cssUrl}">
@@ -12654,7 +12898,7 @@ async function loadNomaadPayments() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/nomaad_payments?select=*&order=recorded_at.asc`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;   // хүснэгт үүсээгүй бол чимээгүй
     const rows = await r.json();
     const byQ = {};
@@ -13658,7 +13902,7 @@ function exportNomaadAnalyticsExcel() {
     grp('Хүний бүлгээр', o => nomaadGuestBucket(nomaadHeadcount(o)) + ' хүн'),
     grp('Багцаар', o => (o.tier || '').trim()),
     grp('Сараар', o => String(o.date_start || '').slice(0, 7)),
-  ], `NOMAAD-аналитик-${new Date().toISOString().slice(0, 10)}.xls`);
+  ], `NOMAAD-аналитик-${todayStr()}.xls`);
   showToast(`${list.length} захиалга Excel-д татагдлаа`, 'success');
 }
 function renderNomaadCalendar() {
@@ -15079,7 +15323,7 @@ function openNomaadIncomeModal(o) {
         if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
         parsed = {
           amount: d.amount,
-          date: d.date || new Date().toISOString().slice(0, 10),
+          date: d.date || todayStr(),
           canonKey: d.receiptId, fpKey, file,
           note: '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
         };
@@ -15103,11 +15347,12 @@ async function recordNomaadIncome(quoteNo) {
   // Нэгдсэн ledger-т баримтыг эзэмших — өөр газар (M-Event/өөр захиалга) бүртгэсэн бол блоклоно
   const canonKey = res.canonKey || receiptIdFromRef(res.note);
   const rr = await reserveReceipt(canonKey, { fp: res.fpKey, amount: res.amount, date: res.date, ref: res.note, usedIn: 'nomaad:' + quoteNo });
+  if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
   if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); return; }
   if (res.file && canonKey) uploadReceiptFile(canonKey, res.file, { amount: res.amount, date: res.date, usedIn: 'nomaad:' + quoteNo });   // эх PDF хадгалах (арын гүйдэл)
   const prevPaid = nomaadPaid(o);   // running total гацсан бол логоор эдгээнэ → шинэ дүн зөв нэмэгдэж, income_amount дахин таарна
   const newTotal = prevPaid + res.amount;
-  const today = res.date || new Date().toISOString().slice(0, 10);
+  const today = res.date || todayStr();
   Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
   const logRes = await logNomaadPayment(o, res);          // лог руу локал+сервер (ok/false)
   render();
@@ -15131,7 +15376,7 @@ async function recordNomaadIncomeManual(quoteNo) {
   if (!res) return;
   const prevPaid = nomaadPaid(o);
   const newTotal = prevPaid + res.amount;
-  const today = res.date || new Date().toISOString().slice(0, 10);
+  const today = res.date || todayStr();
   Object.assign(o, { income_amount: newTotal, income_date: today, income_by: state.me });
   const logRes = await logNomaadPayment(o, { amount: res.amount, date: today, note: res.note });   // дедуп/баримтгүй
   render();
@@ -15149,7 +15394,7 @@ function openNomaadManualIncomeModal(o) {
   return new Promise((resolve) => {
     const total = nomaadEffTotal(o);
     const bal = Math.max(0, total - nomaadPaid(o));
-    const todayS = new Date().toISOString().slice(0, 10);
+    const todayS = todayStr();
     document.getElementById('nim-modal')?.remove();
     const modal = document.createElement('div');
     modal.className = 'modal-bg'; modal.id = 'nim-modal';
@@ -15495,7 +15740,7 @@ function taskCompletedDate(t) {
     : (t.completed_at ? new Date(t.completed_at).getTime()
       : (t.executed_at ? new Date(t.executed_at).getTime()
         : (t.updated ? new Date(t.updated).getTime() : 0)));
-  return ms ? new Date(ms).toISOString().slice(0, 10) : '';
+  return ms ? dateStr(ms) : '';
 }
 // Ажил хугацаанаасаа хэдэн хоног хоцорсон (+) эсвэл эрт (−) дууссан бэ. null = тооцох боломжгүй.
 function taskLatenessDays(t) {
@@ -15932,7 +16177,7 @@ function renderPerformance() {
   if (state.attMonthTimes === undefined) { state.attMonthTimes = null; loadAttendanceMonth().then(() => render()); }
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
-  const cur = new Date().toISOString().slice(0, 7);
+  const cur = todayStr().slice(0, 7);
   const tabs = [{ id: 'me', label: 'Миний оноо' }, ...(isMgr ? [{ id: 'all', label: 'Бүх ажилтан' }] : []), { id: 'rate', label: 'Үнэлэх' }];
   const head = `<div class="perf-head">
     <div class="perf-month"><button class="btn perf-nav" data-perf-nav="-1">‹</button><span class="perf-month-label">${state.perfMonth}</span><button class="btn perf-nav" data-perf-nav="1"${state.perfMonth >= cur ? ' disabled' : ''}>›</button></div>
@@ -16092,7 +16337,7 @@ function attachPerformanceHandlers() {
     const [y, m] = state.perfMonth.split('-').map(Number);
     const d = new Date(y, m - 1 + Number(btn.dataset.perfNav), 1);
     const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (next > new Date().toISOString().slice(0, 7)) return;
+    if (next > todayStr().slice(0, 7)) return;
     state.perfMonth = next; render();
   }));
   document.querySelectorAll('.perf-rate-card').forEach(card => {
@@ -16127,7 +16372,7 @@ async function loadAppConfig(key) {
   if (!DB_ANON_KEY) return null;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_config?key=eq.${encodeURIComponent(key)}&select=value`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
     return rows[0] ? rows[0].value : null;
@@ -16837,7 +17082,7 @@ async function loadHistory(force) {
   if (state.history && !state.history.error && !force) return;
   if (!DB_ANON_KEY) { state.history = { error: 'no-key' }; if (typeof render === 'function') render(); return; }
   state._bqLoading = true;
-  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
+  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
   const get = async (view, qs) => {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${view}?select=*${qs || ''}`, { headers: H }, 20000);
     if (!r.ok) throw new Error(view + ' HTTP ' + r.status);
@@ -16909,7 +17154,7 @@ async function loadOrderItems(orderId) {
   if (state.bqOrderItems[orderId]) return state.bqOrderItems[orderId];
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_order_items?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.bqOrderItems[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderItems', e); state.bqOrderItems[orderId] = []; }
   return state.bqOrderItems[orderId];
@@ -16921,7 +17166,7 @@ async function loadOrderDocs(orderId) {
   if (state.bqDocuments[orderId]) return state.bqDocuments[orderId];
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/rh_v_documents?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     state.bqDocuments[orderId] = r.ok ? await r.json() : [];
   } catch (e) { console.warn('loadOrderDocs', e); state.bqDocuments[orderId] = []; }
   return state.bqDocuments[orderId];
@@ -17474,21 +17719,6 @@ function openStageAdvanceModal(oid, to) {
       await bqUpdateStatus(o.id, to, { stageMeta: sm3, toast: `⏭ «${act.label}» алгаслаа` });
     };
   }
-  if (_isReceive && _rcItems.length) {
-    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
-      const i = +inp.dataset.rci;
-      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
-      rcGot[i] = v; rcPaint(); validate();
-    });
-    const _all = modal.querySelector('#rc-all');
-    if (_all) _all.onclick = () => {
-      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
-      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
-      rcPaint(); validate();
-    };
-    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
-    rcPaint();
-  }
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const photos = []; const ratings = new Array(rateTargets.length).fill(0);
   // Буцаан авалтын зөрүү — дутсан бол шалтгаан ЗААВАЛ (эс бөгөөс алдагдал мөрдөгдөхгүй)
@@ -17520,6 +17750,24 @@ function openStageAdvanceModal(oid, to) {
     const noteOk = !needNote || String(($('#sa-comment') || {}).value || '').trim().length >= 3;
     $('#sa-submit').disabled = !((!needPhoto || photos.length > 0) && rateTargets.every((_, i) => ratings[i] > 0) && noteOk);
   };
+  // ⚠ Энэ блок rcGot / rcPaint / validate-аас ХОЙШ байх ЁСТОЙ. Өмнө нь дээр талд байсан
+  // тул `rcPaint()` нь const тодорхойлогдохоос өмнө дуудагдаж ReferenceError шидэж,
+  // «Агуулахад авсан» / «Хүргэлтээс авсан» цонх ОГТ нээгддэггүй байв (нярав гацсан).
+  if (_isReceive && _rcItems.length) {
+    modal.querySelectorAll('.rc-got').forEach(inp => inp.oninput = () => {
+      const i = +inp.dataset.rci;
+      const v = Math.max(0, Math.min(_rcItems[i].qty, Number(inp.value) || 0));
+      rcGot[i] = v; rcPaint(); validate();
+    });
+    const _all = modal.querySelector('#rc-all');
+    if (_all) _all.onclick = () => {
+      _rcItems.forEach((x, i) => { rcGot[i] = x.qty; });
+      modal.querySelectorAll('.rc-got').forEach(inp => { inp.value = _rcItems[+inp.dataset.rci].qty; });
+      rcPaint(); validate();
+    };
+    const _cm = $('#sa-comment'); if (_cm) _cm.addEventListener('input', validate);
+    rcPaint();
+  }
   if (needPhoto) {
     const renderPhotos = () => {
       $('#sa-photos').innerHTML = photos.map((u, i) => `<div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border);"><img src="${escapeHtml(driveThumbUrl(u, 200))}" style="width:100%;height:100%;object-fit:cover;"><button data-prm="${i}" type="button" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;cursor:pointer;line-height:1;">×</button></div>`).join('');
@@ -17622,7 +17870,7 @@ async function _loadAppOrdersImpl() {
       if (c) { state.appOrders = JSON.parse(c); if (typeof render === 'function') render(); }
     } catch (e) {}
   }
-  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } };
+  const H = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };
   const isArch = (o) => _ARCHIVE_STATUSES.includes(String(o.status));
   try {
     // 1-р шат: идэвхтэй захиалгууд — жижиг, хурдан
@@ -17850,7 +18098,9 @@ function unifiedOrders() {
       // Борлуулалт = нийт − барьцаа (буцаадаг өр). Жагсаалт/бүлгийн нийлбэр/эрэмбэ бүгд ҮҮГЭЭР
       // явна — тайлан (accrual орлого) -той нэг тоо харагдана. Нийт төлбөр = e.total (захиалга дотор).
       rev: (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(ao.total_mnt) || 0)),
-      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${ao.contract_no || ''}`.toLowerCase() };
+      // Хайлт: дугаар + нэр + утас (форматтай БА зөвхөн цифр — 9911-2233↔99112233 хоёул олдоно)
+      // + имэйл + гэрээний дугаар. Placeholder «Нэр, утас, имэйл, дугаар»-тай нийцнэ.
+      hay: `#${ao.number ?? ''} ${ao.customer || ''} ${ao.phone || ''} ${String(ao.phone || '').replace(/\D/g, '')} ${ao.email || ''} ${ao.contract_no || ''}`.toLowerCase() };
   });
 }
 
@@ -17878,6 +18128,25 @@ function orderOffHoursCount(sh, eh) { return (_isOffHour(sh) ? 1 : 0) + (_isOffH
 // Захиалгын note-оос (⟦RT⟧ цаг) ажлын бус цагийн төлбөрийг тооцоолно
 function orderOffHoursFee(o) { const t = parseOrderTimes(o && o.note); return t ? orderOffHoursCount(t.sh, t.eh) * tariffOffhoursFee() : 0; }
 function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|[^⟧]*⟧/g, '').trim(); }   // бүх ⟦XX…|…⟧ token-ийг арилгана (RT, SL, DLV, CX г.м.)
+// ⚠ ДУНДЫН МӨР — захиалгын формын ӨӨРИЙН эзэмшдэг токен ЗӨВХӨН эдгээр (2026-09-03).
+// Бусад бүх токен (PAY/RF/DMG/BRK/CX/CI/SL/SRC…) өөр урсгалынх — засварт ХАДГАЛАГДАНА.
+// Өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул санхүүгийн бүртгэсэн ⟦PAY⟧/⟦RF⟧
+// захиалга засах бүрд УСТДАГ байв (хаяг заасан менежер барьцааг «буцаагаагүй» болгодог).
+const _FORM_TOKEN_RE = /⟦(?:RT|DLV|SET|VAT)\|[^⟧]*⟧/g;
+function stripFormTokens(note) { return String(note || '').replace(_FORM_TOKEN_RE, '').replace(/\s+/g, ' ').trim(); }
+// Хадгалахын ӨМНӨ серверээс шинэ утга ав — модал нээгдсэнээс хойш өөр хүн төлбөр
+// бүртгэсэн байж болно. Алдаа гарвал null буцаана → дуудагч хадгалахаа ЗОГСООНО (fail-closed).
+async function fetchOrderFresh(id) {
+  if (!DB_ANON_KEY || !id) return null;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(id)}&select=paid_mnt,note,status,stage_meta`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch (e) { return null; }
+}
 // Цуцлах/устгах шалтгаан — note-д ⟦CX|шалтгаан⟧ token-оор (app_orders-д багана нэмэхгүйгээр). cleanAppNote нуудаг.
 const _CX_RE = /⟦CX\|([^⟧]*)⟧/;
 function cancelReasonOf(note) { const m = String(note || '').match(_CX_RE); return m ? m[1].trim() : ''; }
@@ -17919,7 +18188,7 @@ async function requestOrderCancel(oid) {
   const reason = await showPrompt(`#${o.number ?? ''} захиалгыг цуцлах шалтгаанаа бичнэ үү. Хүсэлт CEO-д батлуулахаар илгээгдэнэ:`, { title: '✕ Цуцлах хүсэлт', okText: 'Хүсэлт илгээх', placeholder: 'Ж: харилцагч больсон, давхардсан…' });
   if (reason == null) return;
   if (!reason.trim()) { showToast('Шалтгаанаа бичнэ үү', 'warn', 2500); return; }
-  const note = setCancelReq(o.note, state.me, new Date().toISOString().slice(0, 10), reason.trim());
+  const note = setCancelReq(o.note, state.me, todayStr(), reason.trim());
   const prev = o.note; o.note = note; render();
   try { await patchOrderNote(oid, note); showToast('Цуцлах хүсэлт CEO-д илгээгдлээ', 'success', 2500); }
   catch (e) { o.note = prev; render(); showToast('Хүсэлт илгээх алдаа: ' + e.message, 'error', 4000); }
@@ -18130,7 +18399,7 @@ function openNewOrder(editOrder) {
   const items = isEdit ? (editOrder.items || []).map(x => ({ ...x })) : [];
   let depositManual = isEdit;   // засварт хадгалсан барьцаа хэвээр; шинэд авто
   const depLog = isEdit ? (editOrder.deposit_log || []).slice() : [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const _t0 = (isEdit ? parseOrderTimes(editOrder.note) : null) || { sh: 9, eh: 9 };   // эхлэх/дуусах цаг (default 09:00)
   const _dlv0 = (isEdit ? parseDelivery(editOrder.note) : null) || { zone: 'pickup', km: 0, fee: 0 };   // хүргэлт (default очиж авах)
   const _setup0 = isEdit ? orderNeedsSetup(editOrder) : false;   // суурилуулалтын шат гарах уу
@@ -18482,7 +18751,16 @@ function openNewOrder(editOrder) {
     };
     // Шатны түүх (зураг/үнэлгээ/хэн-хэзээ) — засах бүрд ЗААВАЛ дамжуулна. saveAppOrder нь
     // бүтэн мөрөөр upsert хийж, локал объектыг орлуулдаг тул орхивол түүх дэлгэцээс алга болно.
-    const _newSt = isEdit ? (((Number(editOrder.paid_mnt) || 0) > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
+    // ⚠ ДУНДЫН МӨР: модал нээгдсэнээс хойш санхүү төлбөр бүртгэсэн байж болно. Локал
+    // хуулбарыг БҮҮ итгэ — серверээс дахин ав. Аваагүй бол хадгалахгүй (fail-closed).
+    let _fresh = null;
+    if (isEdit) {
+      _fresh = await fetchOrderFresh(editOrder.id);
+      if (!_fresh) { showToast('Сервертэй холбогдож чадсангүй — хадгалаагүй. Дахин оролдоно уу.', 'error', 5000); return; }
+    }
+    const _paidNow = isEdit ? (Number(_fresh.paid_mnt) || 0) : 0;
+    const _noteNow = isEdit ? String(_fresh.note || '') : '';
+    const _newSt = isEdit ? ((_paidNow > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
     let _sm = isEdit ? (editOrder.stage_meta || null) : null;
     if (isEdit && _newSt !== editOrder.status) {
       const _lbl = k => (BQ_STATUS[k] || {}).label || k;
@@ -18498,8 +18776,8 @@ function openNewOrder(editOrder) {
       status: _newSt, stage_meta: _sm,
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: (dtype === 'pct' ? Math.min(100, dval) : dval),   // C9: pct-ыг 100%-аар кэплэж хадгална
-      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: isEdit ? (Number(editOrder.paid_mnt) || 0) : 0,
-      note: setCustInfo(((isEdit ? cleanAppNote(editOrder.note) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + (isEdit && (String(editOrder.note || '').match(_SL_RE) || [])[0] ? ' ' + (editOrder.note.match(_SL_RE) || [])[0] : '')).trim(), _ci),
+      deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: _paidNow,
+      note: setCustInfo(((isEdit ? stripFormTokens(_noteNow) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '')).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -18799,11 +19077,11 @@ async function bqUpdateStatus(oid, to, opts = {}) {
       let baseNote = o.note;
       try {
         const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, {
-          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY },
+          headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() },
         }, 8000);
         if (gr.ok) { const rows = await gr.json(); if (rows && rows[0] && rows[0].note != null) baseNote = String(rows[0].note); }
       } catch (_) { /* сүлжээ унавал санах ойн note дээр буцаж тооцно */ }
-      notePatch = (to === 'canceled') ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, new Date().toISOString().slice(0, 10));
+      notePatch = (to === 'canceled') ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, todayStr());
       o.note = notePatch;
     }
     const body = { status: to, updated_at: new Date().toISOString() };
@@ -19553,7 +19831,7 @@ async function loadUsedReceipts() {
   if (!DB_ANON_KEY) return;
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
     const rows = await r.json();
     state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
@@ -19609,7 +19887,7 @@ async function reserveReceipt(receiptId, meta) {
       // PK мөргөлдөөн — эзэмшигч нь мөн энэ хүсэлт бол ok (кэш хуучирсан байж болно)
       try {
         const q = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=used_in`,
-          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 10000);
+          { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 10000);
         const ex = await q.json();
         if (ex[0] && ex[0].used_in === meta.usedIn) return 'ok';
       } catch (e) {}
@@ -19734,7 +20012,7 @@ function openBqPaymentModal(oid) {
         if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
         if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
         const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
-        modal._receipts.push({ amount: d.amount, date: d.date || new Date().toISOString().slice(0, 10), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
+        modal._receipts.push({ amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
         status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
       } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
     }
@@ -19802,7 +20080,7 @@ function openRefundModal(oid) {
     // Серверийн ХАМГИЙН СҮҮЛИЙН paid_mnt + note уншиж (зэрэгцээ/стейл snapshot-оос) refund-ыг хасна
     let basePaid = Number(o.paid_mnt) || 0, baseNote = o.note;
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,note`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rr = await gr.json(); if (rr && rr[0]) { if (rr[0].paid_mnt != null) basePaid = Number(rr[0].paid_mnt) || 0; if (rr[0].note != null) baseNote = String(rr[0].note); } }
     } catch (_) {}
     const refundAmt = Math.min(basePaid, amount);   // төлсөнөөс илүү буцаахгүй
@@ -19812,13 +20090,13 @@ function openRefundModal(oid) {
     const isDep = !!modal.querySelector('#rf-isdep')?.checked || prevRf.kind === 'dep';   // C11: барьцааны буцаалт гэж тэмдэглэсэн эсэх
     const newNote = encodeRefundNote(baseNote, prevRfTot + refundAmt, userNote, isDep ? 'dep' : '');
     // PDF-ийг нотолгоо болгон хадгална (арын гүйлгээ, гацаахгүй)
-    try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: new Date().toISOString().slice(0, 10), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
+    try { uploadReceiptFile('rf-' + o.id + '-' + (prevRfTot + refundAmt), modal._file, { amount: refundAmt, date: todayStr(), usedIn: 'refund:#' + (o.number ?? '') }); } catch (_) {}
     const prevPaid = o.paid_mnt, prevNote = o.note;
     o.paid_mnt = newPaid; o.note = newNote;
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
         method: 'PATCH',
-        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ paid_mnt: newPaid, note: newNote, updated_at: new Date().toISOString() }),
       }, 15000);
       if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
@@ -19844,12 +20122,13 @@ async function submitBqPayment(oid, modal, btn) {
   const okR = [];
   for (const rc of receipts) {
     const rr = await reserveReceipt(rc.receiptId, { fp: rc.fpKey, amount: rc.amount, date: rc.date, ref: rc.ref, usedIn: 'mevent:#' + o.number });
+    if (rr === 'err') { showToast(`Баримтын давхцал шалгагдсангүй — алгаслаа (${fmtMoney(rc.amount)})`, 'error', 4500); continue; }   // C2: цагаан жагсаалт
     if (rr === 'dup') { showToast(`Баримт давхцсан — алгаслаа (${fmtMoney(rc.amount)})`, 'warn', 3000); continue; }
     okR.push(rc);
   }
   if (!okR.length) { showToast('Бүх баримт давхцсан — бүртгэсэнгүй', 'error', 4000); btn.disabled = false; return; }
   const amount = okR.reduce((s, r) => s + r.amount, 0);
-  const date = okR.map(r => r.date).sort().slice(-1)[0] || new Date().toISOString().slice(0, 10);
+  const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
   const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
   // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
   okR.forEach(r => { if (r._file) uploadReceiptFile(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }); });
@@ -19859,7 +20138,7 @@ async function submitBqPayment(oid, modal, btn) {
   let basePaid = Number(o.paid_mnt) || 0, baseRef = String(o.paid_ref || '');
   if (isApp) {
     try {
-      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 8000);
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=paid_mnt,paid_ref`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
       if (gr.ok) { const rows = await gr.json(); if (rows && rows[0]) { if (rows[0].paid_mnt != null) basePaid = Number(rows[0].paid_mnt) || 0; if (rows[0].paid_ref != null) baseRef = String(rows[0].paid_ref); } }
     } catch (_) { /* сүлжээ унавал санах ойн утга дээр тооцно */ }
   }
@@ -19916,7 +20195,7 @@ async function submitBqPayment(oid, modal, btn) {
 // (CEO тууз + sidebar badge) салбар лензээс хамаарч бууж, мөнгө нүднээс далдлагдахаас сэргийлнэ.
 // Салбар фокус нь renderReceivables-ийн ӨӨРИЙН таб (Бүгд/Эвент/NOMAAD)-аар хийгдэнэ.
 function receivablesData() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const items = [];
   // Эвент түрээс: үлдэгдэл = total − paid; ноорог(quote)/цуцлахыг хасна. Захиалга бүр app_orders-т.
   (state.appOrders || []).forEach(o => {
@@ -20172,7 +20451,7 @@ function ceoNowStrip() {
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') loadNomaadOrders();
   if (!state.bqOrders && !state._bqOrdersLoading) loadOrdersData(); // захиалгууд (авлага/ойртож буй) — lazy
   const loadingBq = state.appOrders === undefined || state.nomaadOrders === undefined || !state.bqOrders;
-  const ym = new Date().toISOString().slice(0, 7);
+  const ym = todayStr().slice(0, 7);
 
   // Энэ сарын орлого — Тайлангийн P&L-ийн ЯГ ижил функцээр (C6: нэг эх сурвалж). Захиалга (M-Event)
   // + NOMAAD, суурь = finBasis() (Тайлантай ижил, toggle дагана). Өмнө CEO самбар түүхэн snapshot
@@ -20186,8 +20465,8 @@ function ceoNowStrip() {
   const overdueCnt = ar.items.filter(i => i.overdue).length;
 
   // Ойртож буй 7 хоног
-  const today = new Date().toISOString().slice(0, 10);
-  const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = d7.toISOString().slice(0, 10);
+  const today = todayStr();
+  const d7 = new Date(); d7.setDate(d7.getDate() + 7); const in7 = dateStr(d7);
   const inWin = (s) => s && s >= today && s <= in7;
   let deliveries = 0, returns = 0;
   (state.appOrders || []).forEach(o => {
@@ -20544,7 +20823,7 @@ function bqInsights(bq) {
   const sumNet = arr => arr.reduce((s, x) => s + N(x.net_mnt), 0);
   // Өсөлт: сүүлийн ДУУССАН сарыг өнгөрсөн оны мөн сартай (улирлын нөлөөгүй YoY).
   // Боломжгүй бол сүүлийн 3 сарыг өмнөх 3 сартай.
-  const curMonth = (new Date()).toISOString().slice(0, 7);
+  const curMonth = todayStr().slice(0, 7);
   const done = m.filter(x => String(x.month) < curMonth);   // дуусаагүй (өнөөгийн) сарыг хасна
   const base = done.length ? done : m;
   const last = base[base.length - 1];
@@ -20584,7 +20863,7 @@ function bqInsights(bq) {
 function bqSeasonChart(bq) {
   const N = x => Number(x) || 0;
   const seas = {};
-  const _cur = (new Date()).toISOString().slice(0, 7);
+  const _cur = todayStr().slice(0, 7);
   (bq.monthly || []).filter(x => String(x.month) < _cur).forEach(x => { const mo = String(x.month).slice(5, 7); if (mo) (seas[mo] = seas[mo] || []).push(N(x.net_mnt)); });
   const arr = Array.from({ length: 12 }, (_, i) => { const mo = String(i + 1).padStart(2, '0'); const a = seas[mo] || []; return { n: i + 1, avg: a.length ? a.reduce((p, q) => p + q, 0) / a.length : 0, yrs: a.length }; });
   const max = Math.max(1, ...arr.map(x => x.avg));
@@ -20657,7 +20936,7 @@ function renderHistory() {
     // Сар бүрийн орлого — босоо bar (бүх сар, хэвтээ scroll, шинэ нь баруунд).
     // Одоогийн/ирээдүйн сар (эвентийн огноогоор) дутуу тул бүдэг өнгө + тэмдэглэнэ.
     const m = bq.monthly || [];
-    const curMonth = (new Date()).toISOString().slice(0, 7);
+    const curMonth = todayStr().slice(0, 7);
     const maxNet = Math.max(1, ...m.map(x => N(x.net_mnt)));
     const bars = m.map(x => {
       const net = N(x.net_mnt);
@@ -21196,7 +21475,7 @@ function finSalaryMonth(month, basis) {
 // Зардал зөвхөн банкны хуулгаар орох тул эдгээр авто бичлэг давхцал болно. Өмнөх сар хөндөхгүй
 // (хэрэглэгчийн шийдвэр 2026-08-22: зөвхөн идэвхтэй сар цэгцэлнэ, түүх хэвээр).
 function finDuplicateEntries(monthPrefix) {
-  const month = monthPrefix || new Date().toISOString().slice(0, 7);
+  const month = monthPrefix || todayStr().slice(0, 7);
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted');
   const norm = s => String(s || '').toUpperCase().replace(/[^А-ЯӨҮЁA-Z]/g, '');
   const wdate = r => (String(r.purpose || '').match(/(\d{4}-\d{2}-\d{2})/) || [])[1] || String(r.due_date || '').slice(0, 10) || String(r.executed_at || '').slice(0, 10);
@@ -21214,7 +21493,7 @@ function finDuplicateEntries(monthPrefix) {
     .sort((a, b) => (Number(b.r.amount) || 0) - (Number(a.r.amount) || 0));
 }
 async function openFinDupAudit() {
-  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.reportMonth || todayStr().slice(0, 7);
   const items = finDuplicateEntries(month);   // [{r, dup}]
   document.getElementById('fin-dup-modal')?.remove();
   const m = document.createElement('div'); m.className = 'modal-bg'; m.id = 'fin-dup-modal';
@@ -21281,7 +21560,7 @@ function financeTrend(wantBr) {
   finAddOrderIncome(inc, wantBr, finBasis());
   const keys = [...Object.keys(inc), ...Object.keys(exp)].sort();
   if (!keys.length) return [];
-  const cur = new Date().toISOString().slice(0, 7);
+  const cur = todayStr().slice(0, 7);
   const last = cur > keys[keys.length - 1] ? cur : keys[keys.length - 1];
   const [y0, m0] = keys[0].split('-').map(Number);
   const [y1, m1] = last.split('-').map(Number);
@@ -21338,7 +21617,7 @@ function financeTrendChart(series, selMonth) {
   </div>`;
 }
 function renderReports() {
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = todayStr().slice(0, 7);
   if (!state.reportMonth) state.reportMonth = curMonth;
   const month = state.reportMonth;
   // Тайланд шаардлагатай дата (захиалга/бараа/өртөг) — байхгүй бол анх удаа татна
@@ -21613,10 +21892,10 @@ function renderReports() {
 }
 function attachReportsHandlers() {
   document.querySelectorAll('[data-report-month]').forEach(b => b.onclick = () => {
-    const [y, m] = (state.reportMonth || new Date().toISOString().slice(0, 7)).split('-').map(Number);
+    const [y, m] = (state.reportMonth || todayStr().slice(0, 7)).split('-').map(Number);
     const d = new Date(y, m - 1 + Number(b.dataset.reportMonth), 1);
     const nm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    if (nm > new Date().toISOString().slice(0, 7)) return;
+    if (nm > todayStr().slice(0, 7)) return;
     state.reportMonth = nm; render();
   });
   document.querySelectorAll('[data-fin-basis]').forEach(b => b.onclick = () => {
@@ -21626,7 +21905,7 @@ function attachReportsHandlers() {
   });
   document.querySelectorAll('[data-trend-month]').forEach(b => b.onclick = () => {
     const nm = b.dataset.trendMonth;
-    if (nm && nm <= new Date().toISOString().slice(0, 7)) { state.reportMonth = nm; render(); }
+    if (nm && nm <= todayStr().slice(0, 7)) { state.reportMonth = nm; render(); }
   });
   document.querySelectorAll('[data-go-view]').forEach(b => b.onclick = () => { state.view = b.dataset.goView; state._taskListLimit = null; render(); });
   document.getElementById('rep-pricing')?.addEventListener('click', () => openPricingReport());
@@ -21672,7 +21951,7 @@ function attachReportsHandlers() {
    products-тэй ижил posture) → NOMAAD + Эвент(түүхэн) захиалгатай авто/гараар тулгана →
    захиалгад "🧾 НӨАТ" badge + Санхүүд тусдаа НӨАТ тайлан. */
 const VAT_URL = `${DB_URL}/rest/v1/vat_receipts`;
-const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY };
+const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
 function vatNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; }
 function vatNorm(s) { return String(s || '').toLowerCase().replace(/ххк|ххн|\bхк\b|llc|ltd|co\b|group|групп/g, '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
 function vatDateIso(v) {
@@ -21740,12 +22019,145 @@ async function loadCiStatus() {
   if (!state.isCEO) return;
   const [app, site] = await Promise.all([_ciFetchRun(CI_APP_URL), _ciFetchRun(CI_SITE_URL)]);
   if (app || site) { state.ciStatus = { app, site }; renderCiStatus(); }
-  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) loadCiStatus(); }, 300000);   // 5 мин тутам сэргээнэ
+  if (!state._ciTimer) state._ciTimer = setInterval(() => { if (state.isCEO) { loadCiStatus(); loadServerErrors(); } }, 300000);   // 5 мин тутам сэргээнэ
 }
 function _ciState(c) { if (!c) return 'none'; if (c.status && c.status !== 'completed') return 'run'; return c.conclusion === 'success' ? 'ok' : 'fail'; }
+// Сүүлийн 24 цагийн алдаа — CEO-д ил гаргана (эс бөгөөс хэн ч мэдэхгүй өнгөрнө)
+function recentAppErrors() {
+  const cut = Date.now() - 86400000;
+  return appErrors().filter(e => { const t = Date.parse(e && e.at); return !isNaN(t) && t >= cut; });
+}
+// Алдааны төлөв → шошго (цэвэр, тестлэгддэг). Локал (сервергүй) алдаа = «Шинэ».
+function errStatusLabel(status) {
+  switch (status) {
+    case 'fixing':  return { icon: '🔧', text: 'Засаж байна', color: 'var(--warn)' };
+    case 'fixed':   return { icon: '✅', text: 'Зассан',       color: 'var(--ok)' };
+    case 'ignored': return { icon: '🚫', text: 'Үл хамаарах',  color: 'var(--muted)' };
+    default:        return { icon: '🆕', text: 'Шинэ',         color: 'var(--danger)' };
+  }
+}
+function openAppErrorsModal() {
+  let filter = 'active';                                   // active | fixed | all
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
+  const chip = (k, t) => `<button class="btn ui-raw" data-err-f="${k}" style="font-size:12px;padding:5px 11px;">${t}</button>`;
+  ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h2 id="err-h" style="margin:0;font-size:16px;">⚠ Аппын алдаа</h2>
+      <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap;">
+      ${chip('active', '⚠ Идэвхтэй')}${chip('fixed', '✅ Зассан')}${chip('all', '📜 Бүгд')}</div>
+    ${(state.isCEO && state.ciInfo) ? `<div style="font-size:12px;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span>Систем шалгалт: Апп ${state.ciInfo.app === 'ok' ? '🟢' : state.ciInfo.app === 'run' ? '🟡' : '🔴'} · Сайт ${state.ciInfo.site === 'ok' ? '🟢' : state.ciInfo.site === 'run' ? '🟡' : '🔴'}</span>
+      ${state.ciInfo.url ? `<button class="btn ui-raw" data-err-gh style="font-size:11px;padding:3px 9px;">🔗 GitHub Actions</button>` : ''}</div>` : ''}
+    <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
+      🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
+      «Зассан»/«Үл хамаарах» тэмдэглэсэн нь идэвхтэйгээс гарч <b>«Зассан»/«Бүгд»</b> табд түүх болж үлдэнэ.</div>
+    <div id="err-list"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button class="btn" data-err-clear>Энэ төхөөрөмжийн лог цэвэрлэх</button>
+      <button class="btn btn-primary" data-err-x>Хаах</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+
+  function rowsFor(f) {
+    if (f === 'active') {
+      // Локал (энэ төхөөрөмж, 24ц) + сервер (шийдэгдээгүй) — шинэ нь дээр
+      const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
+      return recentAppErrors().concat(srv)
+        .sort((a, b) => String(b._srv ? b.last_at : b.at || '').localeCompare(String(a._srv ? a.last_at : a.at || '')));
+    }
+    // Түүх — сервер, бүх төлөв (зассан/үл хамаарах орсон)
+    const hist = (Array.isArray(state.serverErrorHist) ? state.serverErrorHist : []).map(e => Object.assign({}, e, { _srv: true }));
+    return (f === 'fixed' ? hist.filter(e => (e.status || 'new') === 'fixed') : hist)
+      .sort((a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')));
+  }
+  function renderRow(e) {
+    const st = e._srv ? (e.status || 'new') : 'new';
+    const lb = errStatusLabel(st);
+    const when = String(e._srv ? (e.last_at || '') : (e.at || '')).slice(0, 16).replace('T', ' ');
+    const who = e._srv
+      ? `🧑 ${e.users || 1} хүн · <b>${e.hits || 1}</b> удаа`
+      : escapeHtml(memberName(e.person) || e.person || 'энэ төхөөрөмж');
+    const fixInfo = (st === 'fixed' && (e.fixed_ver || e.updated_at))
+      ? ` · зассан ${escapeHtml(e.fixed_ver || '?')}${e.updated_at ? ' · ' + escapeHtml(String(e.updated_at).slice(0, 10)) : ''}`
+      : (st === 'ignored' && e.updated_at ? ' · ' + escapeHtml(String(e.updated_at).slice(0, 10)) : '');
+    const resolved = st === 'fixed' || st === 'ignored';
+    const acts = (e._srv && e.fp) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center;">
+      <code style="font-size:10px;color:var(--muted);">${escapeHtml(e.fp)}</code>
+      ${resolved
+        ? `<button class="btn" data-err-st="new" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔄 Дахин нээх</button>`
+        : `<button class="btn" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔧 Засаж байна</button>
+        <button class="btn" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">✅ Зассан</button>
+        <button class="btn" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;color:var(--muted);">🚫 Үл хамаарах</button>`}
+    </div>` : '';
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
+      <div style="display:flex;gap:7px;align-items:baseline;">
+        <span style="font-size:11px;font-weight:700;color:${lb.color};white-space:nowrap;">${lb.icon} ${lb.text}</span>
+        <span style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}${fixInfo}</div>
+      ${acts}
+    </div>`;
+  }
+  function paint() {
+    ov.querySelectorAll('[data-err-f]').forEach(b => b.classList.toggle('btn-primary', b.dataset.errF === filter));
+    const rows = rowsFor(filter);
+    const lbl = filter === 'active' ? 'идэвхтэй' : filter === 'fixed' ? 'зассан' : 'бүгд';
+    const h = ov.querySelector('#err-h');
+    if (h) h.textContent = `⚠ Аппын алдаа · ${lbl} (${rows.length})`;
+    const body = ov.querySelector('#err-list');
+    if (body) body.innerHTML = rows.length
+      ? rows.map(renderRow).join('')
+      : '<div style="color:var(--muted);font-size:13px;padding:8px 0;">Алдаа алга.</div>';
+  }
+  paint();
+
+  ov.addEventListener('click', async ev => {
+    if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
+    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); paint(); renderCiStatus(); return; }
+    if (ev.target.closest('[data-err-gh]')) { if (state.ciInfo && state.ciInfo.url) window.open(state.ciInfo.url, '_blank', 'noopener'); return; }
+    const fchip = ev.target.closest('[data-err-f]');
+    if (fchip) {
+      filter = fchip.dataset.errF;
+      if (filter !== 'active' && !Array.isArray(state.serverErrorHist)) {
+        const body = ov.querySelector('#err-list');
+        if (body) body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">Ачааллаж байна…</div>';
+        await loadServerErrorHistory();
+      }
+      paint();
+      return;
+    }
+    const st = ev.target.closest('[data-err-st]');
+    if (st) {
+      st.disabled = true;
+      const ok2 = await setErrorStatus(st.dataset.errFp, st.dataset.errSt);
+      if (!ok2) { st.disabled = false; return; }
+      showToast('Тэмдэглэлээ', 'success', 1500);
+      await loadServerErrors();                             // толгойн тоо + идэвхтэй жагсаалт шинэчлэх
+      if (Array.isArray(state.serverErrorHist)) await loadServerErrorHistory();
+      paint();
+    }
+  });
+}
 function renderCiStatus() {
   const el = document.getElementById('ci-status'); if (!el) return;
   const s = state.ciStatus;
+  // ⚠ Ажиллах үеийн алдаа нь CI-аас ЧУХАЛ — хэрэглэгч яг одоо гацаж байна гэсэн үг.
+  // Тиймээс CI дата ирээгүй байсан ч эхлээд үүнийг харуулна.
+  const srv = state.isCEO && Array.isArray(state.serverErrors) ? state.serverErrors : [];
+  const errs = state.isCEO ? recentAppErrors() : [];
+  const total = errs.length + srv.length;
+  if (total) {
+    el.hidden = false;
+    el.className = 'ci-status ci-fail';
+    el.innerHTML = `<span class="ci-dot">🔴</span><span class="ci-label">${total} алдаа гарсан</span>`;
+    el.title = 'Сүүлийн 24 цагт ' + total + ' алдаа' + (srv.length ? ' (' + srv.length + ' нь ажилтнуудаас)' : '') + ' — дэлгэрэнгүй харах';
+    el.onclick = openAppErrorsModal;
+    el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAppErrorsModal(); } };
+    return;
+  }
   if (!state.isCEO || !s) { el.hidden = true; return; }
   const a = _ciState(s.app), b = _ciState(s.site);
   const fails = []; if (a === 'fail') fails.push('Апп'); if (b === 'fail') fails.push('Сайт');
@@ -21753,12 +22165,14 @@ function renderCiStatus() {
   if (fails.length) { cls = 'ci-fail'; dot = '🔴'; label = fails.join('+') + ': алдаа гарлаа'; target = a === 'fail' ? s.app : s.site; }
   else if (a === 'run' || b === 'run') { cls = 'ci-run'; dot = '🟡'; label = 'Шалгаж байна…'; target = s.app || s.site; }
   else { cls = 'ci-ok'; dot = '🟢'; label = 'Систем шалгалт: OK'; target = s.app || s.site; }
+  state.ciInfo = { app: a, site: b, url: target && target.url, at: target && target.at };
   el.hidden = false;
   el.className = 'ci-status ' + cls;
   el.innerHTML = `<span class="ci-dot">${dot}</span><span class="ci-label">${escapeHtml(label)}</span>`;
   el.title = `Апп: ${a === 'ok' ? 'OK' : a} · Сайт: ${b === 'ok' ? 'OK' : b}${target && target.at ? ' · ' + String(target.at).slice(0, 10) : ''} — дэлгэрэнгүй харах`;
-  el.onclick = () => target && window.open(target.url, '_blank', 'noopener');
-  el.onkeydown = (ev) => { if ((ev.key === 'Enter' || ev.key === ' ') && target) { ev.preventDefault(); window.open(target.url, '_blank', 'noopener'); } };
+  // ⚠ Дарахад GitHub руу ҮСРЭХГҮЙ — аппын алдаа/түүхийн цонх нээнэ (GitHub нь цонх дотор 🔗 холбоос).
+  el.onclick = openAppErrorsModal;
+  el.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAppErrorsModal(); } };
 }
 async function vatUpsert(list) {
   if (!list.length) return 0;
@@ -22293,7 +22707,7 @@ function renderVatView(wrap) {
 }
 
 function renderFinanceReport(wrap) {
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = todayStr().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
   const month = state.finReportMonth;
   // Хамрах хүрээ: бүх санхүүгийн хүсэлт, хандалт + салбар лензээр
@@ -22668,7 +23082,7 @@ function renderFinanceReport(wrap) {
    Одоогийн сар + салбар ленз + төлөвийн шүүлтийг дагана. */
 // Санхүүгийн ЗАРДЛЫН ТАЙЛАН — олон sheet: Хураангуй + Ангиллаар + Салбараар + Дэлгэрэнгүй
 function exportFinanceReportExcel() {
-  const month = state.finReportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.finReportMonth || todayStr().slice(0, 7);
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);
   let base = (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask);
@@ -22785,7 +23199,7 @@ function exportXlsSheets(sheets, filename) {
 
 // Зөвхөн "Орлого захиалгаар" sheet-ийг татна
 function exportIncomeOrdersExcel() {
-  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.reportMonth || todayStr().slice(0, 7);
   const mi = meventIncome(month);
   if (!mi.byOrder.length) { showToast('Татах захиалга алга', 'warn'); return; }
   exportXlsSheets([incomeOrdersSheet(month, mi)], `Чимун-орлого-захиалгаар-${month}.xls`);
@@ -22862,7 +23276,7 @@ function expenseSheet(month, wantBr, brLabel) {
 
 // "Бүгдийг татах" — сонгосон сарын бүх тайланг нэг Excel-д, тус бүр sheet-ээр
 function exportAllReports() {
-  const month = state.reportMonth || new Date().toISOString().slice(0, 7);
+  const month = state.reportMonth || todayStr().slice(0, 7);
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
@@ -22895,7 +23309,11 @@ function renderDashboard() {
   const me = state.me;
 
   // ─── Хувийн KPI (бүх ажилтанд) ───
-  const mineTasks = tasks.filter(t => t.assignee === me);
+  // ⚠ Ленз ХАМААРАХГҮЙ — өөрт нь оноосон ажил нь тэр хүнийх, салбар нь хамаагүй.
+  //   Компанийн тоонууд (дээрх `tasks`) урьдын адил лензээр шүүгдэнэ; зөвхөн ХУВИЙН
+  //   блок бүтэн байна. Эс бөгөөс нэг салбартай ажилтан «0 ажил» гэсэн худал тоо хардаг.
+  const myBase = (state.tasks || []).filter(t => t.status !== 'deleted' && !isOrderAutoTask(t));
+  const mineTasks = myBase.filter(t => t.assignee === me);
   const myDone = mineTasks.filter(t => t.status === 'done').length;
   const myActive = mineTasks.filter(t => t.status !== 'done').length;
   const myOverdue = mineTasks.filter(t => t.status !== 'done' && t.due && t.due < today).length;
@@ -23278,8 +23696,8 @@ async function sendWeeklyDigest() {
 
   const stats = {
     period: {
-      from: weekAgo.toISOString().slice(0, 10),
-      to: now.toISOString().slice(0, 10),
+      from: dateStr(weekAgo),
+      to: dateStr(now),
     },
     tasks: {
       total: tasks.length,
@@ -23339,7 +23757,7 @@ function generateICS(tasks) {
     const endDate = (() => {
       const d = new Date(t.due);
       d.setDate(d.getDate() + 1);
-      return d.toISOString().slice(0,10).replace(/-/g,'');
+      return dateStr(d).replace(/-/g,'');
     })();
     const priorityNum = { high: 1, med: 5, low: 9 }[t.priority] || 5;
     const description = [
@@ -25549,7 +25967,7 @@ async function loadTaskVoice(taskId) {
   if (taskId) {
     try {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
-        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 15000);
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
       if (r.ok) { const rows = await r.json(); if (rows[0]) { state._taskVoice = rows[0].audio; state._taskVoiceDur = rows[0].duration || 0; } }
     } catch (e) {}
   }
@@ -25567,7 +25985,7 @@ async function saveTaskVoice(taskId, isNew) {
       }, 60000);
     } else if (!isNew) {
       await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}`,
-        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + DB_ANON_KEY } }, 20000);
+        { method: 'DELETE', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);   // нэвтэрсэн токеноор — anon бичих эрхийг хаах боломжтой болгоно
     }
   } catch (e) { console.warn('voice save failed', e); }
 }
@@ -26793,6 +27211,7 @@ function initEvents() {
       // Баримтыг нэгдсэн ledger-т ЭЗЭМШИНЭ — нэг баримт орлого/захиалга/өөр хүсэлтэд дахин орохгүй
       if (paymentFile && state._finPdfCheck && state._finPdfCheck.canonKey) {
         const rr = await reserveReceipt(state._finPdfCheck.canonKey, { fp: state._finPdfCheck.fpKey, amount: state._finPdfCheck.amount, date: state._finPdfCheck.date, ref: 'зарлага · ' + (state._finPdfCheck.receiver || ''), usedIn: 'fin:' + state.editingId });
+        if (rr === 'err') { showToast('⛔ Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); return; }   // C2: цагаан жагсаалт
         if (rr === 'dup') { showToast('⛔ Энэ баримт аль хэдийн өөр гүйлгээнд ашиглагдсан — гүйцэтгэл цуцлагдлаа', 'error', 5000); return; }
       }
       // Upload payment proof first if provided
@@ -26998,6 +27417,7 @@ async function bootApp() {
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
   loadCiStatus();       // Системийн автомат шалгалт (GitHub Actions) — sidebar-т 🟢/🔴 (CEO)
+  loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
@@ -27096,7 +27516,7 @@ async function ensurePushSubscription() {
     // хүлээн авахаа бүрмөсөн больдог байв.
     const lastSent = localStorage.getItem('pushSubLastSent');
     const subStr = JSON.stringify(sub);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayStr();
     if (lastSent === subStr + '::' + state.me + '::' + today) return true;
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
@@ -27733,7 +28153,7 @@ async function handleRegister() {
         photo: photoDataUrl, // base64 data URL эсвэл хоосон
         level: autoLevel,         // 40/60/80/100
         status: 'идэвхтэй',       // шууд идэвхтэй — зөвшөөрөл шаардахгүй
-        joined_at: new Date().toISOString().slice(0, 10),
+        joined_at: todayStr(),
         requested_at: new Date().toISOString(),
         worker_type:   workerType,   // 'permanent' | 'daily'
         bank, bank_account: bankAccount, bank_holder: bankHolder,

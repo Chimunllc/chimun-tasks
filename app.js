@@ -1986,6 +1986,10 @@ async function loadFinanceCategories() {
     });
     state.finBranchPerms = perms;
     state.nomaadCustomAddon = naAddon;
+    // ⚠ finBranchPerms энд шинэчлэгддэг тул финансын кэшийг ДАХИН бичнэ.
+    // loadFinanceCategories нь loadBootstrap-аас ХОЙНО дуусдаг тул эрх ирэхээс өмнө
+    // бичигдсэн кэш нь илүү өргөн байж болно — эрх тодорхой болмогц шүүж дарж бичнэ.
+    if (typeof saveFinanceCache === 'function') saveFinanceCache();
     if (!mains.length) return; // хоосон ирвэл default-аа хадгална
     mains.sort((a, b) => a.code.localeCompare(b.code));
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));

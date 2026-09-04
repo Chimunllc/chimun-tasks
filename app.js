@@ -4130,52 +4130,6 @@ const ORDER_FLOW = {
   'Цуцалсан':       { role: 'manager',                          next: null,             label: null },
 };
 function orderStage(status) { return ORDER_FLOW[status || 'Шинэ'] || ORDER_FLOW['Шинэ']; }
-// Тухайн захиалгыг би харах эрхтэй юу — менежер бүгдийг, бусад нь зөвхөн өөрийн шатных.
-function canSeeOrder(o) {
-  if (canManageOrders()) return true;
-  const stage = orderStage(o.status);
-  if (!stage || stage.role === 'manager') return false;
-  const role = String(findMember(state.me)?.role || '');
-  return stage.role.test(role);
-}
-
-function normalizeOrder(o) {
-  let items = [];
-  try { items = JSON.parse(o.items_json || '[]'); } catch(e) { items = []; }
-  // Хуучин «Баталсан» = төлбөр баталгаажсан (давхар статус хасагдсан) → буудна.
-  let status = o.status || 'Шинэ';
-  if (status === 'Баталсан') status = 'Төлбөр авсан';
-  // Төлбөрийн дэлгэрэнгүй — шинэ багана байвал тэндээс, эс бөгөөс note-д кодлогдсоноос.
-  const pay = parsePayment(o.note);
-  return {
-    order_no: o.order_no || '',
-    created_at: o.created_at || '',
-    status,
-    customer_name: o.customer_name || '',
-    phone: String(o.phone || ''),
-    address: o.address || '',
-    email: o.email || '',
-    company: o.company || '',
-    register: String(o.register || ''),
-    date_start: o.date_start || '',
-    date_end: o.date_end || '',
-    days: o.days || '',
-    items,
-    subtotal: Number(o.subtotal) || 0,
-    deposit: Number(o.deposit) || 0,
-    total: Number(o.total) || 0,
-    note: o.note || '',
-    source: o.source || '',
-    assigned_to: o.assigned_to || '',
-    task_id: o.task_id || '',
-    paid_amount: Number(o.paid_amount) || (pay ? pay.amount : 0),
-    paid_type: o.paid_type || (pay ? pay.type : ''),
-    paid_method: o.paid_method || (pay ? pay.method : ''),
-    paid_date: o.paid_date || (pay ? pay.date : ''),
-    paid_ref: o.paid_ref || (pay ? pay.ref : ''),
-  };
-}
-
 // Төлбөрийн мета — одоогоор note дотор кодлоно (backend багана нэмэгдвэл шууд тэндээс уншина).
 const PAY_TYPE_LABEL = { full: 'Бүтэн төлбөр', advance: 'Урьдчилгаа' };
 const PAY_METHOD_LABEL = { data: 'Данс', cash: 'Бэлэн', card: 'Карт' };
@@ -5042,99 +4996,7 @@ function openOrderDamageModal(oid) {
   modal.classList.add('open');
 }
 
-async function loadOrders() {
-  // M-Event захиалгын давхарга цуцлагдсан (2026-06-28) — захиалга нь ЦОРЫН ГАНЦ эх.
-  // Хуучин MEVENT_Orders_DB Sheet-ийг апп уншихаа больсон. state.orders үргэлж хоосон.
-  state.orders = [];
-  try { localStorage.removeItem('orders'); } catch (e) {}
-}
-
-// Захиалгын объектыг sheet-ийн 21 баганы бүтцэд хөрвүүлнэ. appendOrUpdate нь бүх
-// баганыг бичдэг тул update бүрд БҮРЭН мөр илгээх ёстой (эс бөгөөс талбар хоосрох).
-function orderToWire(o) {
-  return {
-    order_no: o.order_no || '', id: o.id || o.order_no || '', created_at: o.created_at || '',
-    status: o.status || 'Шинэ', customer_name: o.customer_name || '', phone: o.phone || '',
-    address: o.address || '', email: o.email || '', company: o.company || '', register: o.register || '',
-    date_start: o.date_start || '', date_end: o.date_end || '', days: o.days || '',
-    items_json: JSON.stringify(o.items || []), subtotal: Number(o.subtotal) || 0,
-    deposit: Number(o.deposit) || 0, total: Number(o.total) || 0, note: o.note || '',
-    source: o.source || '', assigned_to: o.assigned_to || '', task_id: o.task_id || '',
-    // Төлбөрийн дэлгэрэнгүй — Sheet-д багана нэмэгдвэл тэндээс хадгалагдана (одоогоор note-д кодлогддог).
-    paid_amount: Number(o.paid_amount) || 0, paid_type: o.paid_type || '', paid_method: o.paid_method || '', paid_date: o.paid_date || '', paid_ref: o.paid_ref || '',
-  };
-}
-
-async function updateOrderStatus(order_no, fields) {
-  const o = state.orders.find(x => x.order_no === order_no);
-  if (o) Object.assign(o, fields);
-  render();
-  const url = state.config.ordersUrl;
-  if (!url || !o) return;
-  try {
-    const r = await fetchWithTimeout(withKey(url), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderToWire(o)),   // бүрэн мөр
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    showToast('Захиалга шинэчлэгдлээ', 'success', 1500);
-  } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
-}
-
 // [Устгасан] openOrderPaymentModal/submitOrderPayment — гараар төлбөр бичдэг үхсэн legacy код (PDF-only submitBqPayment-ээр орлуулагдсан).
-
-// Буцаалт ба барьцаа — захиалга дуусгахад (Буцаан ирсэн → Дууссан) эвдрэл/гээгдлийн дүн авч
-// барьцаанаас хасна. Дүн note-д ⟦DMG⟧-ээр хадгалагдаж картад харагдана.
-function openReturnModal(order_no) {
-  const o = state.orders.find(x => x.order_no === order_no);
-  if (!o) return;
-  const pr = computeOrderPricing(o);
-  const existing = parseDamage(o.note);
-  document.getElementById('mev-return-modal')?.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg';
-  modal.id = 'mev-return-modal';
-  modal.innerHTML = `
-    <div class="modal" style="max-width:440px;">
-      <h2>Буцаалт ба барьцаа · ${escapeHtml(o.order_no)}</h2>
-      <div class="pay-summary">
-        <div><b>${escapeHtml(o.customer_name || '')}</b></div>
-        <div class="pay-breakdown">Авсан барьцаа: <b>${fmtMoney(pr.deposit)}</b></div>
-      </div>
-      <label>Эвдрэл/гээгдлийн дүн (₮) <span style="color:var(--muted);font-weight:400;">— барьцаанаас хасна</span></label>
-      <input id="rt-damage" type="text" inputmode="numeric" class="money-input" value="${existing ? moneyFmtInput(existing.amount) : '0'}">
-      <label style="margin-top:10px;">Тэмдэглэл (юу эвдэрсэн/дутсан)</label>
-      <textarea id="rt-note" rows="2" placeholder="ж: 1 ширээ хугарсан, 2 кабель дутсан">${existing ? escapeHtml(existing.note) : ''}</textarea>
-      <div id="rt-return" class="rt-return"></div>
-      <div class="modal-actions" style="margin-top:16px;">
-        <button class="btn" id="rt-cancel">Болих</button>
-        <button class="btn btn-primary" id="rt-save">✓ Дуусгах</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  const dmgEl = modal.querySelector('#rt-damage');
-  const retEl = modal.querySelector('#rt-return');
-  const upd = () => {
-    const d = Math.min(pr.deposit, moneyVal(dmgEl));
-    retEl.innerHTML = `Үйлчлүүлэгчид буцаах барьцаа: <b style="color:var(--ok)">${fmtMoney(pr.deposit - d)}</b>${d ? ` · эвдрэл хасав −${fmtMoney(d)}` : ''}`;
-  };
-  dmgEl.oninput = upd; upd();
-  const close = () => modal.remove();
-  modal.querySelector('#rt-cancel').onclick = close;
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('#rt-save').onclick = async (e) => {
-    const amount = Math.min(pr.deposit, moneyVal(dmgEl));
-    const note = modal.querySelector('#rt-note').value.trim();
-    e.currentTarget.disabled = true;
-    const newNote = encodeDamageNote(o.note, { amount, note });
-    modal.remove();
-    await updateOrderStatus(order_no, { status: 'Дууссан', note: newNote });
-    showToast(amount ? `Дууслаа · эвдрэл −${fmtMoney(amount)} · барьцаа буцаах ${fmtMoney(pr.deposit - amount)}` : 'Дууслаа · барьцаа бүтэн буцаана', 'success', 4500);
-  };
-  modal.classList.add('open');
-  setTimeout(() => dmgEl.focus(), 50);
-}
 
 function orderStatusClass(s) {
   return ({
@@ -5241,43 +5103,6 @@ function orderPhaseKey(status) {
   return 'new';
 }
 
-// Хүргэх огнооны яаралтай байдал — date_start-ыг өнөөдөртэй харьцуулна (дуусаагүй захиалгад).
-function orderUrgency(o) {
-  if (['Хүргэсэн', 'Буцаан ирсэн', 'Дууссан', 'Цуцалсан'].includes(o.status)) return null;
-  const ds = String(o.date_start || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const d = new Date(ds + 'T00:00:00');
-  const diff = Math.round((d - today) / 86400000);
-  if (diff < 0)   return { label: 'Хоцорсон', cls: 'ou-over' };
-  if (diff === 0) return { label: 'Өнөөдөр хүргэх', cls: 'ou-today' };
-  if (diff === 1) return { label: 'Маргааш хүргэх', cls: 'ou-soon' };
-  if (diff <= 3)  return { label: diff + ' хоногийн дараа', cls: 'ou-week' };
-  return null;
-}
-function orderStepper(status) {
-  if (status === 'Цуцалсан') return `<div class="order-steps cancelled"><span class="os-cx">✕ Цуцалсан</span></div>`;
-  const flow = ORDER_STATUSES.filter(s => s !== 'Цуцалсан');
-  const idx = Math.max(0, flow.indexOf(status));
-  let dots = '';
-  for (let i = 0; i < flow.length; i++) {
-    const cls = i < idx ? 'done' : (i === idx ? 'cur' : 'future');
-    dots += `<span class="os-dot ${cls}" title="${escapeHtml(flow[i])}"></span>`;
-    if (i < flow.length - 1) dots += `<span class="os-bar ${i < idx ? 'done' : ''}"></span>`;
-  }
-  const next = orderStage(status).next;
-  const sub = `Одоо: <b>${escapeHtml(status)}</b>` + (next ? ` · дараах — ${escapeHtml(next)}` : '') + ` <span class="os-frac">(${idx + 1}/${flow.length})</span>`;
-  return `<div class="order-steps">${dots}</div><div class="order-step-sub">${sub}</div>`;
-}
-
-// Захиалга тухайн шүүлт/хайлтад тохирох эсэх.
-function orderMatchesFilter(o, f) {
-  const ph = orderPhaseKey(o.status);
-  if (f === 'active') return ph !== 'done' && ph !== 'cancelled';
-  if (f === 'await')  return o.status === 'Шинэ';
-  if (f === 'today')  { const u = orderUrgency(o); return !!u && (u.cls === 'ou-over' || u.cls === 'ou-today'); }
-  return ph === f;
-}
 function orderMatchesSearch(o, q) {
   if (!q) return true;
   return `${o.order_no} ${o.customer_name} ${o.company} ${o.phone} ${o.email || ''}`.toLowerCase().includes(q);
@@ -5288,99 +5113,6 @@ function orderLinkedTasks(o) {
   const ts = (state.tasks || []).filter(t => t.order_no && t.order_no === o.order_no);
   const names = [...new Set(ts.map(t => findMember(t.assignee)?.name).filter(Boolean))];
   return { count: ts.length, names };
-}
-
-// Нэг захиалгын карт (менежер + ажилтан хоёуланд).
-function orderCardHtml(o, canManage, canConfirm) {
-  const pr = computeOrderPricing(o);
-  const u = orderUrgency(o);
-  const humanNote = cleanOrderNote(o.note);
-  const esc = escapeHtml(o.order_no);
-  const itemsRows = (o.items || []).map(it =>
-    `<tr><td>${escapeHtml(it.name || '')}</td><td class="num">${it.qty || 0}</td><td class="num">${fmtMoney(it.price || 0)}</td><td class="num">${fmtMoney((it.price || 0) * (it.qty || 0) * pr.days)}</td></tr>`
-  ).join('');
-  const itemCount = (o.items || []).length;
-  const lt = orderLinkedTasks(o);
-  const isCancelled = o.status === 'Цуцалсан';
-  const stage = orderStage(o.status);
-  const flow = ORDER_STATUSES.filter(s => s !== 'Цуцалсан');
-  const idx = flow.indexOf(o.status);
-  const prev = idx > 0 ? flow[idx - 1] : null;
-
-  // Үйлдлийн товчнууд
-  let actions;
-  if (canManage) {
-    const parts = [];
-    if (o.status === 'Шинэ' && canConfirm) parts.push(`<button class="btn btn-primary" data-order-confirm="${esc}" style="padding:5px 12px;font-size:12px;">💵 Төлбөр авах</button>`);
-    if (o.status === 'Шинэ') parts.push(`<button class="btn" data-order-edit="${esc}" style="padding:5px 12px;font-size:12px;">✎ Засах</button>`);
-    // Урагшлуулах — Шинэ нь зөвхөн төлбөр авах модалаар урагшилна (3 даалгавар үүсгэдэг тул).
-    if (o.status !== 'Шинэ' && stage.next) parts.push(`<button class="btn btn-primary" data-order-advance="${esc}" data-next="${escapeHtml(stage.next)}" style="padding:5px 14px;font-size:12px;">${stage.label}</button>`);
-    // ⋯ цэс — буцаах / цуцлах (баталгаажуулалттай, санамсаргүй алдаанаас хамгаална).
-    if (!isCancelled && o.status !== 'Дууссан') {
-      parts.push(`<div class="order-kebab-wrap">
-        <button class="btn order-kebab" data-order-kebab="${esc}" aria-label="Бусад үйлдэл" style="padding:4px 9px;font-size:15px;">⋯</button>
-        <div class="order-kebab-menu" hidden>
-          ${prev && canRevertStage() ? `<button data-order-revert="${esc}" data-prev="${escapeHtml(prev)}">← «${escapeHtml(prev)}» руу буцаах</button>` : ''}
-          <button class="km-danger" data-order-cancel="${esc}">✕ Захиалга цуцлах</button>
-        </div>
-      </div>`);
-    }
-    actions = parts.join('') || '<span class="order-sub">—</span>';
-  } else {
-    actions = stage.next ? `<button class="btn btn-primary" data-order-advance="${esc}" data-next="${escapeHtml(stage.next)}" style="padding:6px 16px;">${stage.label}</button>` : '<span class="order-sub">—</span>';
-  }
-
-  const haystack = escapeHtml(`${o.order_no} ${o.customer_name} ${o.company} ${o.phone}`.toLowerCase());
-  return `<div class="order-card${u ? ' urg-' + u.cls : ''}" data-order="${esc}" data-haystack="${haystack}">
-    <div class="order-head">
-      <div class="order-head-l">
-        <span class="order-no">${esc}</span>
-        <span class="order-badge ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span>
-        ${u ? `<span class="order-urg ${u.cls}">⚠ ${escapeHtml(u.label)}</span>` : ''}
-      </div>
-      <div class="order-total">${fmtMoney(pr.total)}</div>
-    </div>
-    <div class="order-cust">
-      <b>${escapeHtml(o.customer_name)}</b>${o.company ? ' · ' + escapeHtml(o.company) : ''}
-      ${o.phone ? '· <a href="tel:' + escapeHtml(o.phone) + '">' + escapeHtml(o.phone) + '</a>' : ''}
-    </div>
-    ${o.address ? `<div class="order-meta">📍 ${escapeHtml(o.address)}</div>` : ''}
-    <div class="order-meta">📅 ${escapeHtml(o.date_start || '—')} → ${escapeHtml(o.date_end || '—')}${pr.days ? ' (' + pr.days + ' хоног)' : ''}</div>
-    ${humanNote ? `<div class="order-meta">📝 ${escapeHtml(humanNote)}</div>` : ''}
-    ${orderStepper(o.status)}
-    ${o.paid_amount ? `<div class="order-meta order-pay">💵 ${PAY_TYPE_LABEL[o.paid_type] || 'Төлбөр'} ${fmtMoney(o.paid_amount)} · ${PAY_METHOD_LABEL[o.paid_method] || ''}${o.paid_date ? ' · ' + escapeHtml(o.paid_date) : ''}${canManage && canConfirm ? ` <button class="order-pay-edit" data-order-paymentedit="${esc}" title="Төлбөр засах">✎</button>` : ''}</div>` : ''}
-    ${o.paid_ref ? `<div class="order-meta order-payref" title="${escapeHtml(o.paid_ref)}">🔖 ${escapeHtml(o.paid_ref)}</div>` : ''}
-    ${lt.count ? `<div class="order-meta order-tasks">🧩 ${lt.count} даалгавар${lt.names.length ? ' · ' + escapeHtml(lt.names.join(', ')) : ''}</div>` : ''}
-    <button class="order-items-toggle" data-order-items="${esc}"><span class="oit-caret">▸</span> ${itemCount} бараа${pr.deposit ? ' · Барьцаа ' + fmtMoney(pr.deposit) : ''}</button>
-    <div class="order-items-box" data-order-itemsbox="${esc}" hidden>
-      <table class="order-items"><thead><tr><th>Бараа</th><th class="num">Тоо</th><th class="num">Үнэ</th><th class="num">Дүн</th></tr></thead><tbody>${itemsRows}</tbody></table>
-      ${pr.multiDayDiscount ? `<div class="order-meta">${pr.days} хоног · ${pr.multiDayLabel} (−${Math.round(pr.multiDayPct * 100)}%): −${fmtMoney(pr.multiDayDiscount)}</div>` : ''}
-      ${pr.vatDiscount ? `<div class="order-meta">НӨАТ хасалт (−5%): −${fmtMoney(pr.vatDiscount)}</div>` : ''}
-      ${pr.manualDiscount ? `<div class="order-meta">Нэмэлт хямдрал: −${fmtMoney(pr.manualDiscount)}</div>` : ''}
-      <div class="order-meta">Түрээс: ${fmtMoney(pr.rental)} · Барьцаа: ${fmtMoney(pr.deposit)}</div>
-      ${pr.damage ? `<div class="order-meta order-dmg">⚠ Эвдрэл/гээгдэл: −${fmtMoney(pr.damage)}${pr.damageNote ? ' (' + escapeHtml(pr.damageNote) + ')' : ''} · Барьцаа буцаах: <b>${fmtMoney(pr.depositReturn)}</b></div>` : ''}
-    </div>
-    <div class="order-foot">${actions}</div>
-  </div>`;
-}
-
-// Board (kanban) харагдац — үе шатаар багана.
-function renderOrdersBoard(list) {
-  const cols = ORDER_PHASES.map(p => {
-    const os = list.filter(o => orderPhaseKey(o.status) === p.key)
-      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-    const cards = os.map(o => {
-      const pr = computeOrderPricing(o);
-      const u = orderUrgency(o);
-      return `<div class="oboard-card" data-order-open="${escapeHtml(o.order_no)}">
-        <div class="oboard-top"><span class="oboard-no">${escapeHtml(o.order_no)}</span>${u ? `<span class="order-urg ${u.cls}">${escapeHtml(u.label)}</span>` : ''}</div>
-        <div class="oboard-cust">${escapeHtml(o.customer_name || '—')}</div>
-        <div class="oboard-foot"><span class="oboard-status ${orderStatusClass(o.status)}">${escapeHtml(o.status)}</span><span class="oboard-total">${fmtMoney(pr.total)}</span></div>
-      </div>`;
-    }).join('') || `<div class="oboard-empty">—</div>`;
-    return `<div class="oboard-col"><div class="oboard-head">${p.label}<span class="oboard-count">${os.length}</span></div><div class="oboard-list">${cards}</div></div>`;
-  }).join('');
-  return `<div class="oboard">${cols}</div>`;
 }
 
 /* ─── Банкны тулгалт (Голомт дансны хуулга ↔ бүртгэсэн төлбөр) ───
@@ -7061,10 +6793,8 @@ function renderOrders() {
   // + Эрх удирдах самбараар захиалга нээгдсэн роль бүгд бүтнээр харна. (Өмнө зөвхөн canManageOrders
   // байсан тул ҮАХ захирал зэрэг хүн хоосон харж байв.)
   const canManage = canManageOrders() || state.isCEO || (state.myLevel || 0) >= 80 || capValue('orders') === true;
-  const all = state.orders || [];
 
   // ── Захиалга харах эрхтэй (менежер биш) ажилтан — түүхэн жагсаалтыг харна (энгийн, read) ──
-  // M-Event давхарга үхсэн тул хуучин state.orders биш unifiedOrders ашиглана.
   if (!canManage) {
     if (state.bqOrders === undefined && !state._bqOrdersLoading) setTimeout(loadOrdersData, 0);
     const combined = unifiedOrders();
@@ -7237,11 +6967,6 @@ function renderOrders() {
   if (isBoard) return head + viewbar + controls + body;
   // Жагсаалт: зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + хавтгай хүснэгт)
   return head + viewbar + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
-}
-
-function _closeOrderKebabs(e) {
-  if (e && e.target.closest && e.target.closest('.order-kebab-wrap')) return;
-  document.querySelectorAll('.order-kebab-menu').forEach(m => m.setAttribute('hidden', ''));
 }
 
 function attachOrdersHandlers() {
@@ -7433,10 +7158,6 @@ function attachOrdersHandlers() {
       setTimeout(() => { const sec = document.getElementById('bsec-' + k); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
     });
   });
-  // Board картаас тухайн захиалга руу (жагсаалт + хайлт)
-  document.querySelectorAll('[data-order-open]').forEach(el => {
-    el.addEventListener('click', () => { state.ordersView = 'list'; state.ordersSearch = el.dataset.orderOpen; render(); });
-  });
 
   // Хайлт — state.ordersSearch-д хадгалж дахин рендэрлэнэ. Рендэрийн үеийн `q` (мөр ~5453) нь e.hay-г
   // жагсаалт+самбар хоёуланд шүүдэг тул энэ л зөв. (Өмнө нь .orders-wrap .order-card-ыг нуудаг байсан —
@@ -7455,54 +7176,9 @@ function attachOrdersHandlers() {
     });
   }
 
-  // Бараа задлах/хаах
-  document.querySelectorAll('[data-order-items]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const box = btn.parentElement.querySelector('.order-items-box');
-      if (!box) return;
-      const open = !box.hasAttribute('hidden');
-      if (open) box.setAttribute('hidden', ''); else box.removeAttribute('hidden');
-      btn.classList.toggle('open', !open);
-    });
-  });
-
-  // ⋯ кебаб цэс нээх/хаах
-  document.querySelectorAll('[data-order-kebab]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const menu = btn.parentElement.querySelector('.order-kebab-menu');
-      const wasHidden = menu.hasAttribute('hidden');
-      _closeOrderKebabs();
-      if (wasHidden) menu.removeAttribute('hidden');
-    });
-  });
-  if (!window._ordersKebabBound) { document.addEventListener('click', _closeOrderKebabs); window._ordersKebabBound = true; }
 
 
-  // Урагшлуулах (нэг алхам урагш)
-  document.querySelectorAll('button[data-order-advance]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const next = btn.dataset.next;
-      if (next === 'Дууссан') { openReturnModal(btn.dataset.orderAdvance); return; }   // буцаалт+барьцаа
-      withBusy(btn, () => updateOrderStatus(btn.dataset.orderAdvance, { status: next }), { successText: next });
-    });
-  });
-  // Өмнөх шат руу буцаах (баталгаажуулалттай)
-  document.querySelectorAll('button[data-order-revert]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const prev = btn.dataset.prev;
-      if (!canRevertStage()) { showToast('Танд шат буцаах эрх олгогдоогүй', 'warn', 3000); return; }
-      const ok = await showConfirm(`Захиалгыг «${prev}» шат руу буцаах уу?`, { title: 'Шат буцаах', okText: 'Тийм, буцаах' });
-      if (ok) updateOrderStatus(btn.dataset.orderRevert, { status: prev });
-    });
-  });
-  // Цуцлах (баталгаажуулалттай)
-  document.querySelectorAll('button[data-order-cancel]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const ok = await showConfirm('Энэ захиалгыг цуцлах уу? Дамжлагаас гарна.', { title: 'Захиалга цуцлах', okText: 'Тийм, цуцлах', danger: true });
-      if (ok) updateOrderStatus(btn.dataset.orderCancel, { status: 'Цуцалсан' });
-    });
-  });
+
 }
 
 /* Монгол хэлтэй огнооны календар — readonly input дээр дарахад inline panel нээгдэнэ.
@@ -8045,11 +7721,10 @@ function isRentable(p) {
 
 // Барааны ашиглалт — захиалгын түүхээс хэдэн удаа түрээслэгдэж, нийт хэдэн төгрөгийн орлого олсон.
 // Барааны ашиглалт ба орлого — ROI тооцоход хэрэглэгдэнэ (барааны мөр + модал).
-// ⚠ 2026-09-04 ЗАССАН: өмнө нь `state.orders`-оос уншдаг байсан. Тэр массив нь
-// app.js:5047-д `state.orders = []` гэж НЭГ Л УДАА оноогддог бөгөөд өөр хаана ч
-// бичигддэггүй (M-Event давхарга 2026-07-01-нд app_orders руу нэгдсэн) — өөрөөр
-// хэлбэл МӨНХ ХООСОН. Үр дүнд нь БҮХ барааны ROI 0% харагдаж, хөрөнгийн шийдвэр
-// буруу тоон дээр гарч байв. Алдааны мессеж ч гардаггүй.
+// ⚠ 2026-09-04 ЗАССАН: өмнө нь `state.orders`-оос уншдаг байсан. Тэр массив мөнх
+// хоосон байсан (M-Event давхарга 2026-07-01-нд app_orders руу нэгдсэн) тул БҮХ
+// барааны ROI 0% харагдаж, хөрөнгийн шийдвэр буруу тоон дээр гарч байв. Алдааны
+// мессеж ч гардаггүй. `state.orders` бүхэлдээ устсан (2026-09-04).
 // Одоо: state.appOrders (жинхэнэ эх сурвалж) + productOf (sku→id→нэр, хуучирсан
 // нэртэй мөрийг ч таана) + orderCanonStatus (цуцалсныг зөв ялгана).
 function productUtilization(name) {
@@ -27144,7 +26819,6 @@ async function bootApp() {
   if (!TEAM.length) await loadTeamFromAPI();
   const bootOk = await loadBootstrap();
   if (!bootOk) await Promise.all([loadData(), loadFinanceRequests()]);
-  loadOrders();   // M-Event захиалга (CEO) — фон дээр, ачаалмагц render дахин дуудна
   loadProductsCatalog();   // M-Event барааны каталог (CEO)
   loadEvaluations();   // 360° гүйцэтгэлийн үнэлгээ (бүх ажилтан)
   loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
@@ -27297,7 +26971,7 @@ async function refreshFromServer() {
     const taskPromises = bootOk ? [] : [ loadData(), loadFinanceRequests() ];
     // M-Event захиалга/бараа — refresh бүрд дахин татна (статус өөрчлөгдөхөд бусад ажилтанд хүрэх тулд).
     // Дотроо canSeeOrders/isCEO-аар хаалттай тул хамааралгүй хүмүүст no-op.
-    taskPromises.push(loadOrders(), loadProductsCatalog(), loadEvaluations());
+    taskPromises.push(loadProductsCatalog(), loadEvaluations());
     // Эрх refresh бүрд шинэчилнэ → CEO өгсөн эрх дахин нэвтрэхгүйгээр хүчинтэй.
     // ⚠ ГЭХДЭЭ CEO эрх засаж байх (access view) үед ДАХИН АЧААЛАХГҮЙ — эс бөгөөс хагас хийсэн
     //    засварыг DB-ийн хуучин утгаар дарж, chip буцаад улаана (race condition).

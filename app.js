@@ -18399,7 +18399,10 @@ function openNewOrder(editOrder) {
   const _autoReg = _ci0.reg || (_vr0 && _vr0.buyer_reg ? String(_vr0.buyer_reg).trim() : '');
   // Гэрээ ХЭНТЭЙ байгуулагдахыг энэ шийднэ. Засаж буй захиалгад хадгалсан сонголт (эсвэл
   // хуучин мөрд таамаглал), шинэ захиалгад «хувь хүн» — хэрэглэгч гараар сольж болно.
-  const _ctype0 = isEdit ? orderCustType(editOrder) : 'person';
+  // Шинэ захиалгад НӨАТ/төлөгчөөс автоматаар татсан нэрээр таамаглана (Итзон ХХК → байгууллага,
+  // хүний нэр → хувь хүн). Хэрэглэгч сонгогчоор шууд солино.
+  const _ctype0 = isEdit ? orderCustType(editOrder)
+    : orderCustType({ customer: '', note: setCustInfo('', { company: _autoCompany, reg: _autoReg }) });
   // Гарсан (rented+) ЭСВЭЛ бүрэн төлөгдсөн захиалга → мөнгөний БҮХ нөхцөл ТҮГЖИНЭ (бараа/үнэ/эхлэх огноо/
   // хөнгөлөлт/НӨАТ/барьцаа) — төлсөн дүнтэй зөрөхөөс сэргийлнэ. Засагдах: холбоо/РД/төлбөр/дуусах огноо/тэмдэглэл.
   const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
@@ -18426,8 +18429,8 @@ function openNewOrder(editOrder) {
       <label class="no-lbl">Утас <span class="no-req">*</span><input id="no-phone" type="tel" inputmode="numeric" value="${escapeHtml(isEdit ? (editOrder.phone || '') : '')}" placeholder="8 оронтой дугаар"></label>
       <label class="no-lbl">Имэйл <span class="no-req">*</span><input id="no-email" type="email" value="${escapeHtml(isEdit ? (editOrder.email || '') : '')}" placeholder="Имэйл"><label class="no-noemail"><input type="checkbox" id="no-email-none"${isEdit && !(editOrder.email || '') ? ' checked' : ''}> Имэйлгүй</label></label>
       <label class="no-lbl">Төрөл<select id="no-ctype"><option value="person"${_ctype0 === 'org' ? '' : ' selected'}>👤 Хувь хүн</option><option value="org"${_ctype0 === 'org' ? ' selected' : ''}>🏢 Байгууллага</option></select></label>
-      <label class="no-lbl">Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
-      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="Байгууллага/хувь хүн"></label>
+      <label class="no-lbl" id="no-company-wrap"${_ctype0 === 'org' ? '' : ' style="display:none;"'}>Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
+      <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
     </div>
     ${_sec('Хугацаа' + (isEdit ? ' · төлөв' : ''))}
@@ -18658,6 +18661,17 @@ function openNewOrder(editOrder) {
     const _sw = $('#no-setup-wrap'); if (_sw) _sw.style.display = z === 'pickup' ? 'none' : 'flex';
     recalc();
   });
+  // Төрөл → «Байгууллага» талбар зөвхөн байгууллагад. Хувь хүн сонгоход утга нь
+  // ХАДГАЛАГДАНА (буцааж сольвол буцаж гарна) — гэрээ ⟦CI⟧.ctype-ыг дагадаг тул
+  // нуугдсан утга баримтад ГАРАХГҮЙ.
+  {
+    const _ct = $('#no-ctype');
+    if (_ct) _ct.addEventListener('change', () => {
+      const org = _ct.value === 'org';
+      const _cw = $('#no-company-wrap'); if (_cw) _cw.style.display = org ? '' : 'none';
+      const _rg = $('#no-reg'); if (_rg) _rg.placeholder = org ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД';
+    });
+  }
   $('#no-delivkm').addEventListener('input', recalc);
   $('#no-discval').addEventListener('input', recalc);
   $('#no-disctype').addEventListener('change', recalc);

@@ -1,0 +1,75 @@
+# sw.js-ийн CACHE_VERSION-ыг main дээр АВТОМАТААР бөглөнө.
+#
+# Яагаад: хувилбарыг гараар засдаг байсан тул зэрэгцээ ажилладаг салбар бүр
+# ЯГ ТЭР МӨРИЙГ өөрчилж, merge бүрд конфликт үүсгэдэг байв (2026-09-04-нд нэг
+# PR дээр 4 удаа: v829→v835). Одоо салбарууд sw.js-д ХҮРЭХГҮЙ.
+#
+# Урсгал: PR merge → энэ workflow → хувилбар нэмэгдэж main руу commit →
+#         GitHub Pages дахин байрлуулна → ажилчдын утсанд шинэ код хүрнэ.
+
+name: Кэшийн хувилбар
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'styles.css'
+      - 'manifest.json'
+      - 'icon.svg'
+
+# Хоёр merge ойрхон болвол push-ууд мөргөлдөхөөс сэргийлж дараалуулна.
+concurrency:
+  group: cache-version-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    # Өөрийнхөө commit-оос дахин асахаас сэргийлнэ (хязгааргүй давталт).
+    if: "!contains(github.event.head_commit.message, '[cache-bump]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # HEAD~1-тэй харьцуулна
+
+      - name: Хувилбар нэмэгдүүлэх
+        id: bump
+        run: |
+          set -euo pipefail
+          # PR гарчгаас богино шошго гаргана (ж: «Гэрээний байршил…» → merge-нэрээс)
+          LABEL=$(echo "${{ github.event.head_commit.message }}" | head -1 \
+                  | tr 'A-Z' 'a-z' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//' | cut -c1-24)
+          [ -n "$LABEL" ] || LABEL=auto
+          NEW=$(node .github/scripts/bump-cache-version.mjs "$LABEL") || exit 1
+          if [ -z "$NEW" ]; then
+            echo "Кэшлэгддэг файл өөрчлөгдөөгүй — алгаслаа"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=$NEW" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Syntax check (sw.js)
+        if: steps.bump.outputs.changed == 'true'
+        run: node --check sw.js
+
+      - name: main руу бичих
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add sw.js
+          git commit -m "sw: ${{ steps.bump.outputs.new }} [cache-bump]"
+          # main зэрэг урагшилсан байж болно — дахин оролдоно
+          for i in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          echo "::error::CACHE_VERSION-ыг main руу бичиж чадсангүй. Ажилчдын утсанд ШИНЭ КОД ХҮРЭХГҮЙ — гараар нэмэгдүүлнэ үү."
+          exit 1

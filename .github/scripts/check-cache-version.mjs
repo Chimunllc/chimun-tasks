@@ -18,17 +18,24 @@ const git = (...a) => execFileSync('git', a, { encoding: 'utf8' });
 // Салаалсан цэг — main урагшилсан ч ЗӨВХӨН энэ PR-ын өөрчлөлтийг харна
 const forkPoint = git('merge-base', `origin/${base}`, 'HEAD').trim();
 
-// Хамгаалах файлын жагсаалтыг sw.js-ээс ӨӨРӨӨС нь уншина (гараар давхардуулахгүй —
-// shell-д файл нэмэгдвэл энэ шалгалт аяндаа хамарна).
+// Хамгаалах файлын жагсаалтыг sw.js-ээс ӨӨРӨӨС нь уншина (гараар давхардуулахгүй).
+// SHELL_FILES − NETWORK_FIRST = cache-first файлууд. ЗӨВХӨН тэдгээр өөрчлөгдөхөд
+// CACHE_VERSION хэрэгтэй: app.js/styles.css/index.html нь `cache:'reload'`-оор
+// сүлжээнээс үргэлж шинээр татагддаг тул хувилбараас үл хамааран хүрнэ.
 const swNow = git('show', 'HEAD:sw.js');
 const shellBlock = /SHELL_FILES\s*=\s*\[([\s\S]*?)\]/.exec(swNow);
 if (!shellBlock) { console.error('❌ sw.js-ээс SHELL_FILES олдсонгүй'); process.exit(1); }
-const watched = [...shellBlock[1].matchAll(/'\.\/([^']+)'/g)].map(m => m[1]);
-if (!watched.length) { console.error('❌ SHELL_FILES хоосон байна'); process.exit(1); }
+const nfBlock = /NETWORK_FIRST\s*=\s*\[([^\]]*)\]/.exec(swNow);
+if (!nfBlock) { console.error('❌ sw.js-ээс NETWORK_FIRST олдсонгүй'); process.exit(1); }
+const netFirst = new Set([...nfBlock[1].matchAll(/'([^']+)'/g)].map(m => m[1]));
+const shell = [...shellBlock[1].matchAll(/'\.\/([^']+)'/g)].map(m => m[1]);
+const watched = shell.filter(f => !netFirst.has(f));
+if (!shell.length) { console.error('❌ SHELL_FILES хоосон байна'); process.exit(1); }
+if (!watched.length) { console.log('✓ Бүх shell файл network-first — CACHE_VERSION шалгах зүйлгүй'); process.exit(0); }
 
 const changed = git('diff', '--name-only', forkPoint, 'HEAD', '--', ...watched).trim();
 if (!changed) {
-  console.log(`✓ Кэшлэгддэг файл (${watched.join(', ')}) өөрчлөгдөөгүй — хувилбар шаардлагагүй`);
+  console.log(`✓ Cache-first файл (${watched.join(', ')}) өөрчлөгдөөгүй — CACHE_VERSION шаардлагагүй`);
   process.exit(0);
 }
 
@@ -44,8 +51,9 @@ if (before === after) {
   console.error(`❌ Өөрчлөгдсөн: ${changed.split('\n').join(', ')}`);
   console.error(`   Гэвч sw.js-ийн CACHE_VERSION хэвээр: ${after}`);
   console.error('');
-  console.error('   Service worker хуучин файлаа өгсөөр байх тул ажилчдын утсанд');
-  console.error('   өөрчлөлт ХҮРЭХГҮЙ. sw.js-д хувилбарын дугаараа нэмэгдүүл.');
+  console.error('   Эдгээр нь cache-first тул service worker ХУУЧИН хувилбарыг өгсөөр');
+  console.error('   байна — ажилчдын утсанд өөрчлөлт хүрэхгүй.');
+  console.error('   sw.js-д CACHE_VERSION-ийн дугаарыг нэмэгдүүл.');
   process.exit(1);
 }
 console.log(`✓ ${changed.split('\n').join(', ')} өөрчлөгдсөн · CACHE_VERSION ${before} → ${after}`);

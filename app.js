@@ -6906,10 +6906,10 @@ function orderListRow(e, k, todayStr) {
   const statusCell = `<span class="br-status-cell"><span class="br-status" style="--sd:${_st.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(_st.label || o.status || '')}</span></span>`;
   // Шошгууд харилцагчийн нүдэнд — нээхгүйгээр харагдана (цуцлах хүсэлт өмнө ЗӨВХӨН
   // самбарын мөрөнд гардаг байсан тул жагсаалтад үл үзэгдэж байв).
-  const _chips = [depWarn, vatChip, quoteChip, srcChip, badChip, cxChip].filter(Boolean);
+  const _chips = (_money ? [depWarn, vatChip, quoteChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
   // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
   const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
-  return `<details class="olist-row ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
+  return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
     <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${chips}</span>
     ${statusCell}
@@ -7080,7 +7080,7 @@ function renderOrders() {
 
   // Гарчиг header-т аль хэдийн бий (давхардуулахгүй) — энд зөвхөн үйлдлийн товчнууд
   const head = `<div class="orders-head">
-    <button class="btn btn-sm" id="orders-report-btn" title="Дууссан захиалгыг огноогоор харах + татах">📥 Дууссан</button>
+    ${canSeeOrderMoney() ? `<button class="btn btn-sm" id="orders-report-btn" title="Дууссан захиалгыг огноогоор харах + татах">📥 Дууссан</button>` : ''}
     ${state.isCEO ? `<button class="btn btn-sm${state.ordersSelect ? ' on' : ''}" id="orders-manage-btn">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
     <button class="btn btn-sm btn-primary" id="new-order-btn">+ Шинэ захиалга</button>
   </div>`;
@@ -7188,7 +7188,7 @@ function renderOrders() {
   const CAP = 200;
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Хугацаа</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   // CEO-гийн «☑ Удирдах» горим — бөөн сэргээх/устгах (өмнө зөвхөн Самбарт байсан тул
   // жагсаалтад чагт гарч ирээд ҮЙЛДЛИЙН ТОВЧГҮЙ үлддэг байв).
   const selN = state.ordersSelected ? state.ordersSelected.size : 0;

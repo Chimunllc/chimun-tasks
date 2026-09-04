@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense', 'finIsDepositReturn',
-  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote']);
+  'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'errStatusLabel']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -2162,6 +2162,19 @@ function finish() {
     // Урт мессеж таслагдсан ч тогтвортой
     const long = 'x'.repeat(500);
     ok(F1(long, 's') === F1(long + 'ZZZ', 's'), 'fp: 300 тэмдэгтээс хойш ялгаагүй (таслалттай нийцнэ)');
+  }
+
+  // ── Алдааны төлөвийн шошго (түүхэн харагдац) ──
+  {
+    const L = F.errStatusLabel;
+    eq(L('fixed').text, 'Зассан', 'errStatusLabel: fixed → Зассан');
+    eq(L('fixing').text, 'Засаж байна', 'errStatusLabel: fixing → Засаж байна');
+    eq(L('ignored').text, 'Үл хамаарах', 'errStatusLabel: ignored → Үл хамаарах');
+    eq(L('new').text, 'Шинэ', 'errStatusLabel: new → Шинэ');
+    eq(L(undefined).text, 'Шинэ', 'errStatusLabel: тодорхойгүй → Шинэ (default)');
+    eq(L('zzz').text, 'Шинэ', 'errStatusLabel: танихгүй төлөв → Шинэ (default)');
+    ok(/^var\(--/.test(L('fixed').color), 'errStatusLabel: өнгө токеноор (хатуу hex биш)');
+    ok(L('fixed').icon && L('new').icon, 'errStatusLabel: дүрс тэмдэгтэй');
   }
 
   // ── Ирц: баталгаатай (менежер уншуулсан) vs өөрөө бүртгүүлсэн өдөр ──

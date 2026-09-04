@@ -355,6 +355,20 @@ async function loadServerErrors() {
     if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
   } catch (e) {}
 }
+// CEO — алдааны ТҮҮХ (зассан/үл хамаарах орсон БҮХ төлөв). Идэвхтэй жагсаалтаас
+// тусад нь, зөвхөн алдааны цонх нээхэд татна. Толгойн улаан тэмдгийн тоонд нөлөөлөхгүй.
+async function loadServerErrorHistory() {
+  if (!state.isCEO || !DB_URL) return [];
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/v_app_errors?order=last_at.desc&limit=200`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) return [];
+    const rows = await r.json();
+    if (Array.isArray(rows)) { state.serverErrorHist = rows; return rows; }
+  } catch (e) {}
+  return [];
+}
 // Алдааны төлөв тэмдэглэх — түүхий логийг ХӨНДӨХГҮЙ, тусдаа хүснэгтэд.
 async function setErrorStatus(fp, status, note) {
   if (!fp) return false;
@@ -21929,53 +21943,113 @@ function recentAppErrors() {
   const cut = Date.now() - 86400000;
   return appErrors().filter(e => { const t = Date.parse(e && e.at); return !isNaN(t) && t >= cut; });
 }
+// Алдааны төлөв → шошго (цэвэр, тестлэгддэг). Локал (сервергүй) алдаа = «Шинэ».
+function errStatusLabel(status) {
+  switch (status) {
+    case 'fixing':  return { icon: '🔧', text: 'Засаж байна', color: 'var(--warn)' };
+    case 'fixed':   return { icon: '✅', text: 'Зассан',       color: 'var(--ok)' };
+    case 'ignored': return { icon: '🚫', text: 'Үл хамаарах',  color: 'var(--muted)' };
+    default:        return { icon: '🆕', text: 'Шинэ',         color: 'var(--danger)' };
+  }
+}
 function openAppErrorsModal() {
-  // Локал (энэ төхөөрөмж) + сервер (бүх ажилтан) — нэг жагсаалтад, шинэ нь дээр
-  const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
-  const list = recentAppErrors().concat(srv)
-    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  let filter = 'active';                                   // active | fixed | all
   const ov = document.createElement('div');
   ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
+  const chip = (k, t) => `<button class="btn ui-raw" data-err-f="${k}" style="font-size:12px;padding:5px 11px;">${t}</button>`;
   ov.innerHTML = `<div class="modal" style="max-width:560px;width:96%;max-height:88vh;overflow:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <h2 style="margin:0;font-size:16px;">⚠ Аппын алдаа · сүүлийн 24 цаг (${list.length})</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <h2 id="err-h" style="margin:0;font-size:16px;">⚠ Аппын алдаа</h2>
       <button class="btn" data-err-x style="padding:5px 10px;">✕</button></div>
+    <div style="display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap;">
+      ${chip('active', '⚠ Идэвхтэй')}${chip('fixed', '✅ Зассан')}${chip('all', '📜 Бүгд')}</div>
     <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">
       🧑 = бүх ажилтнаас цуглуулсан (давтамжаар бүлэглэсэн) · бусад нь зөвхөн энэ төхөөрөмжийнх.<br>
-      «Зассан»/«Үл хамаарах» гэж тэмдэглэвэл жагсаалтаас алга болно — түүхий лог хэвээр үлдэнэ.</div>
-    ${list.length ? list.map(e => {
-      const when = String(e._srv ? (e.last_at || '') : (e.at || '')).slice(0, 16).replace('T', ' ');
-      const who = e._srv
-        ? `🧑 ${e.users || 1} хүн · <b>${e.hits || 1}</b> удаа`
-        : escapeHtml(memberName(e.person) || e.person || 'энэ төхөөрөмж');
-      return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
-      <div style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}</div>
-      ${e._srv && e.fp ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center;">
-        <code style="font-size:10px;color:var(--muted);">${escapeHtml(e.fp)}</code>
-        <button class="btn" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔧 Засаж байна</button>
-        <button class="btn" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">✓ Зассан</button>
-        <button class="btn" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;color:var(--muted);">🚫 Үл хамаарах</button>
-      </div>` : ''}
-    </div>`; }).join('') : '<div style="color:var(--muted);font-size:13px;">Алдаа алга.</div>'}
+      «Зассан»/«Үл хамаарах» тэмдэглэсэн нь идэвхтэйгээс гарч <b>«Зассан»/«Бүгд»</b> табд түүх болж үлдэнэ.</div>
+    <div id="err-list"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
-      <button class="btn" data-err-clear>Жагсаалт цэвэрлэх</button>
+      <button class="btn" data-err-clear>Энэ төхөөрөмжийн лог цэвэрлэх</button>
       <button class="btn btn-primary" data-err-x>Хаах</button></div>
   </div>`;
   document.body.appendChild(ov);
   const close = () => ov.remove();
-  ov.addEventListener('click', ev => {
+
+  function rowsFor(f) {
+    if (f === 'active') {
+      // Локал (энэ төхөөрөмж, 24ц) + сервер (шийдэгдээгүй) — шинэ нь дээр
+      const srv = (Array.isArray(state.serverErrors) ? state.serverErrors : []).map(e => Object.assign({}, e, { _srv: true }));
+      return recentAppErrors().concat(srv)
+        .sort((a, b) => String(b._srv ? b.last_at : b.at || '').localeCompare(String(a._srv ? a.last_at : a.at || '')));
+    }
+    // Түүх — сервер, бүх төлөв (зассан/үл хамаарах орсон)
+    const hist = (Array.isArray(state.serverErrorHist) ? state.serverErrorHist : []).map(e => Object.assign({}, e, { _srv: true }));
+    return (f === 'fixed' ? hist.filter(e => (e.status || 'new') === 'fixed') : hist)
+      .sort((a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')));
+  }
+  function renderRow(e) {
+    const st = e._srv ? (e.status || 'new') : 'new';
+    const lb = errStatusLabel(st);
+    const when = String(e._srv ? (e.last_at || '') : (e.at || '')).slice(0, 16).replace('T', ' ');
+    const who = e._srv
+      ? `🧑 ${e.users || 1} хүн · <b>${e.hits || 1}</b> удаа`
+      : escapeHtml(memberName(e.person) || e.person || 'энэ төхөөрөмж');
+    const fixInfo = (st === 'fixed' && (e.fixed_ver || e.updated_at))
+      ? ` · зассан ${escapeHtml(e.fixed_ver || '?')}${e.updated_at ? ' · ' + escapeHtml(String(e.updated_at).slice(0, 10)) : ''}`
+      : (st === 'ignored' && e.updated_at ? ' · ' + escapeHtml(String(e.updated_at).slice(0, 10)) : '');
+    const resolved = st === 'fixed' || st === 'ignored';
+    const acts = (e._srv && e.fp) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px;align-items:center;">
+      <code style="font-size:10px;color:var(--muted);">${escapeHtml(e.fp)}</code>
+      ${resolved
+        ? `<button class="btn" data-err-st="new" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔄 Дахин нээх</button>`
+        : `<button class="btn" data-err-st="fixing" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">🔧 Засаж байна</button>
+        <button class="btn" data-err-st="fixed"  data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;">✅ Зассан</button>
+        <button class="btn" data-err-st="ignored" data-err-fp="${escapeHtml(e.fp)}" style="font-size:11px;padding:3px 9px;color:var(--muted);">🚫 Үл хамаарах</button>`}
+    </div>` : '';
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;">
+      <div style="display:flex;gap:7px;align-items:baseline;">
+        <span style="font-size:11px;font-weight:700;color:${lb.color};white-space:nowrap;">${lb.icon} ${lb.text}</span>
+        <span style="font-weight:700;font-size:13px;">${escapeHtml(e.msg)}</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:monospace;word-break:break-all;">${escapeHtml(e.src || '')}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;">${who} · ${escapeHtml(when)} · дэлгэц: ${escapeHtml(e.view || '—')} · ${escapeHtml(e.last_ver || e.ver || '')}${fixInfo}</div>
+      ${acts}
+    </div>`;
+  }
+  function paint() {
+    ov.querySelectorAll('[data-err-f]').forEach(b => b.classList.toggle('btn-primary', b.dataset.errF === filter));
+    const rows = rowsFor(filter);
+    const lbl = filter === 'active' ? 'идэвхтэй' : filter === 'fixed' ? 'зассан' : 'бүгд';
+    const h = ov.querySelector('#err-h');
+    if (h) h.textContent = `⚠ Аппын алдаа · ${lbl} (${rows.length})`;
+    const body = ov.querySelector('#err-list');
+    if (body) body.innerHTML = rows.length
+      ? rows.map(renderRow).join('')
+      : '<div style="color:var(--muted);font-size:13px;padding:8px 0;">Алдаа алга.</div>';
+  }
+  paint();
+
+  ov.addEventListener('click', async ev => {
     if (ev.target === ov || ev.target.closest('[data-err-x]')) return close();
-    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); close(); renderCiStatus(); return; }
+    if (ev.target.closest('[data-err-clear]')) { clearAppErrors(); paint(); renderCiStatus(); return; }
+    const fchip = ev.target.closest('[data-err-f]');
+    if (fchip) {
+      filter = fchip.dataset.errF;
+      if (filter !== 'active' && !Array.isArray(state.serverErrorHist)) {
+        const body = ov.querySelector('#err-list');
+        if (body) body.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">Ачааллаж байна…</div>';
+        await loadServerErrorHistory();
+      }
+      paint();
+      return;
+    }
     const st = ev.target.closest('[data-err-st]');
     if (st) {
       st.disabled = true;
-      setErrorStatus(st.dataset.errFp, st.dataset.errSt).then(ok2 => {
-        if (!ok2) { st.disabled = false; return; }
-        showToast('Тэмдэглэлээ', 'success', 1800);
-        close(); loadServerErrors();
-      });
+      const ok2 = await setErrorStatus(st.dataset.errFp, st.dataset.errSt);
+      if (!ok2) { st.disabled = false; return; }
+      showToast('Тэмдэглэлээ', 'success', 1500);
+      await loadServerErrors();                             // толгойн тоо + идэвхтэй жагсаалт шинэчлэх
+      if (Array.isArray(state.serverErrorHist)) await loadServerErrorHistory();
+      paint();
     }
   });
 }

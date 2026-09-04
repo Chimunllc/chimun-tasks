@@ -6723,7 +6723,7 @@ function openReconcileModal() {
       finally { state._reconAiLoading = false; draw(); }
     });
     ov.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
-      ov.remove(); state.view = 'orders'; state.ordersRecon = false; state.ordersView = 'list'; state.ordersSearch = el.dataset.reconOpen; render();
+      ov.remove(); state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.reconOpen; render();
     }));
   };
   draw();
@@ -6741,11 +6741,14 @@ function orderUrgRank(o, stage, todayStr) {
   const diff = (Date.parse(d) - Date.parse(todayStr)) / 86400000;
   return (diff <= 2) ? 2 : 3;                  // удахгүй / дараа
 }
-// Захиалгыг ойрын огноогоор бүлэглэх түлхүүр — самбарт шат доторх дэд бүлгүүд
-// (хэтэрсэн / өнөөдөр / маргааш / 3 хоног / долоо хоног / дараа / огноогүй)
+// Захиалгын «гол огноо» — гарах шатанд АВАХ өдөр, түрээсэнд БУЦААХ өдөр.
+// timeGroupKey / orderUrgRank / smart эрэмбэ бүгд ҮҮНИЙГ л ашиглана (нэг эх сурвалж).
+function orderKeyDate(o) {
+  const dt = ['rented', 'returning', 'started'].includes(String((o && o.status) || '')) ? o.stops_at : o.starts_at;
+  return String(dt || '').slice(0, 10);
+}
 function timeGroupKey(o, todayStr) {
-  const dt = ['rented', 'returning', 'started'].includes(o.status) ? o.stops_at : o.starts_at;
-  const d = String(dt || '').slice(0, 10);
+  const d = orderKeyDate(o);
   if (!d) return 'none';
   if (d < todayStr) return 'over';
   if (d === todayStr) return 'today';
@@ -6802,15 +6805,13 @@ function orderCanonStatus(ao) {
 const _AV_COLORS = ['#6d4aff', '#0ea5e9', '#16a34a', '#f59e0b', '#e11d48', '#8b5cf6', '#0891b2', '#db2777'];
 function _avColor(s) { let h = 0; const t = String(s || '?'); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0; return _AV_COLORS[h % _AV_COLORS.length]; }
 function _avInitials(s) { const p = String(s || '?').replace(/[^0-9A-Za-zА-Яа-яЁёҮүӨө .]/g, '').split(/[ .]+/).filter(Boolean); return (((p[0] || '?')[0] || '?') + ((p[1] || '')[0] || '')).toUpperCase(); }
-function boardOrderRow(e, k, todayStr, flat) {
+// Захиалгын мөр — жагсаалтын ЦОРЫН ГАНЦ хэлбэр. Ширээний хүснэгт ба утасны карт
+// НЭГ HTML-ээс CSS grid-ээр гарна (styles.css → .olist-row).
+function orderListRow(e, k, todayStr) {
   const o = e.o;
   const rank = orderUrgRank(o, k, todayStr);
   const urgCls = rank === 0 ? 'urg-over' : rank === 1 ? 'urg-today' : rank === 2 ? 'urg-soon' : '';
   const deliv = isDeliveryOrder(o) ? '🚚' : '🏬';
-  const dt = ['rented', 'returning', 'started'].includes(k) ? o.stops_at : o.starts_at;
-  const dstr = String(dt || '').slice(5, 10).replace('-', '/');
-  const bal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
-  const payWarn = bal > 0 ? `<span class="br-paywarn" title="Үлдэгдэл ${escapeHtml(fmtMoney(bal))}">💵</span>` : '';
   // Барьцаа — жагсаалтад шууд текстээр (нээхгүйгээр): буцаасан бол ✓ Буцаасан, буцаагаагүй бол 🔒 Барьцаатай.
   // Held зөвхөн апп/M-Event (Booqable түүхийн барьцаа гадна эргэсэн); буцаасан badge бүх эх сурвалжид.
   const _depAmt = Number(o.deposit_mnt) || 0;
@@ -6846,12 +6847,12 @@ function boardOrderRow(e, k, todayStr, flat) {
       actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр авах</button>`;
     }
   }
-  const selBox = state.ordersSelect ? `<input type="checkbox" class="board-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
+  const selBox = state.ordersSelect ? `<input type="checkbox" class="olist-sel" data-sel-id="${id}" ${(state.ordersSelected && state.ordersSelected.has(String(o.id))) ? 'checked' : ''} onclick="event.stopPropagation()">` : '';
   const _rowOpen = state.ordersRowOpen instanceof Set && state.ordersRowOpen.has(String(o.id));
   // НӨАТ статус — НОМААД шиг тод шошго (🧾 НӨАТ ✓/дутуу/илүү, өнгөт дэвсгэр)
   const vatChip = (typeof vatBadge === 'function') ? vatBadge(o.number, o.total_mnt) : '';
   const _cxReq = (typeof cancelReqOf === 'function') ? cancelReqOf(o.note) : null;
-  const cxChip = _cxReq ? `<span title="Цуцлах хүсэлт${_cxReq.reason ? ': ' + escapeHtml(_cxReq.reason) : ''}${state.isCEO ? ' — дэлгээд батал/татгалз' : ''}" style="background:#fde8cf;color:#9a6a00;font-weight:700;font-size:10.5px;padding:2px 7px;border-radius:100px;" onclick="event.stopPropagation()">⏳ Цуцлах хүсэлт</span>` : '';
+  const cxChip = _cxReq ? `<span title="Цуцлах хүсэлт${_cxReq.reason ? ': ' + escapeHtml(_cxReq.reason) : ''}${state.isCEO ? ' — дэлгээд батал/татгалз' : ''}" class="br-cxchip" onclick="event.stopPropagation()">⏳ Цуцлах хүсэлт</span>` : '';
   const urgDot = rank === 0 || rank === 1 ? '#DC2626' : rank === 2 ? '#D97706' : '';
   const dotEl = urgDot ? `<span class="br-dot" style="--d:${urgDot}" title="${rank <= 1 ? 'Хугацаа хэтэрсэн/өнөөдөр' : 'Ойрхон'}"></span>` : '';
   const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
@@ -6867,128 +6868,74 @@ function boardOrderRow(e, k, todayStr, flat) {
     : '';   // бүрэн төлөгдөөгүй — шошго хэрэггүй ("Төлбөр авах" товч өөрөө илэрхийлнэ)
   const _d1 = String(o.starts_at || '').slice(5, 10).replace('-', '/');
   const _d2 = String(o.stops_at || '').slice(5, 10).replace('-', '/');
-  // Хавтгай хүснэгтэд (Жагсаалт) төлөв нь БАГАНА — НАРИЙН статус (Бэлдсэн/Хүргэгдэж/Түрээсэнд...)
-  const statusCell = flat ? (() => {
-    const s = (typeof BQ_STATUS === 'object' && BQ_STATUS[o.status]) || {};
-    return `<span class="br-status-cell"><span class="br-status" style="--sd:${s.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(s.label || o.status || '')}</span></span>`;
-  })() : '';
-  return `<details class="board-order${flat ? ' flat' : ''} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="board-row">
+  // Төлөв = өөрийн багана: НАРИЙН статус (Бэлдсэн/Хүргэгдэж/Түрээсэнд...)
+  const _st = (typeof BQ_STATUS === 'object' && BQ_STATUS[o.status]) || {};
+  const statusCell = `<span class="br-status-cell"><span class="br-status" style="--sd:${_st.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(_st.label || o.status || '')}</span></span>`;
+  // Шошгууд харилцагчийн нүдэнд — нээхгүйгээр харагдана (цуцлах хүсэлт өмнө ЗӨВХӨН
+  // самбарын мөрөнд гардаг байсан тул жагсаалтад үл үзэгдэж байв).
+  const _chips = [depWarn, vatChip, quoteChip, srcChip, badChip, cxChip].filter(Boolean);
+  // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
+  const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
+  return `<details class="olist-row ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
-    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${flat ? (depWarn ? ' ' + depWarn : '') + (vatChip ? ' ' + vatChip : '') + (quoteChip ? ' ' + quoteChip : '') + (srcChip ? ' ' + srcChip : '') + (badChip ? ' ' + badChip : '') : ''}</span>
+    <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${chips}</span>
     ${statusCell}
-    ${flat
-      ? `<span class="br-date1"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}</span><span class="br-date2">${_d2 || '—'}</span>`
-      : `<span class="br-meta"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span><span class="br-date">${dstr || '—'}</span>${depWarn}${vatChip}${quoteChip}${srcChip}${badChip}${cxChip}</span>`}
+    <span class="br-dates"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}<span class="br-arrow">→</span>${_d2 || '—'}</span>
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
-  </summary><div class="board-detail">${bqOrderCard(o)}</div></details>`;
+  </summary><div class="olist-detail">${bqOrderCard(o)}</div></details>`;
 }
-// Бүлэг доторх эрэмбэ — бүлэг бүр өөрийн сонголттой (state.bucketSort[key])
-const _ORDER_SORTS = [
-  ['smart', '⏱ Ойрын огноогоор'],
-  ['num_desc', '№ Дугаар: шинэ→хуучин'],
-  ['num_asc', '№ Дугаар: хуучин→шинэ'],
-  ['date_desc', '📅 Огноо: шинэ→хуучин'],
-  ['date_asc', '📅 Огноо: хуучин→шинэ'],
-  ['amount_desc', '💰 Дүн: их→бага'],
-  ['unpaid', '💵 Төлбөргүй эхэнд'],
+// ── Хугацааны бүлэг — «Өнөөдөр / Маргааш» ЖАГСААЛТ дотроо гарчиг мөр болж харагдана ──
+// (2026-09-04: Самбар харагдац хасагдав. Ажилчид утаснаас ордог тул юу хийхээ
+//  сэлгэлгүй, нэг гүйлгэлтээр харах ёстой.)
+const ORDER_TIME_GROUPS = [
+  ['over',     '⏰ Хугацаа хэтэрсэн', 'og-over'],
+  ['today',    '🔴 Өнөөдөр',          'og-today'],
+  ['tomorrow', '🟡 Маргааш',          'og-soon'],
+  ['d3',       '📅 3 хоногт',         ''],
+  ['week',     '📆 Энэ 7 хоногт',     ''],
+  ['later',    '⚪ Дараа',            ''],
+  ['none',     '🗓 Огноогүй',         ''],
+  ['closed',   '🗄 Дууссан · архив',  'og-closed'],
 ];
-// Терминал бүлгүүд (дуусан/архив г.м.) огнооны бүлэглэлт утгагүй тул огноогоор эрэмбэлнэ default
-const _BUCKET_DEFAULT_SORT = { done: 'date_desc', archived: 'date_desc', canceled: 'num_desc', draft: 'num_desc' };
-function bucketSortMode(key) { return (state.bucketSort && state.bucketSort[key]) || _BUCKET_DEFAULT_SORT[key] || 'smart'; }
-function sortOrders(arr, mode) {
-  const num = e => Number(e.o.number) || 0;
-  const dt = e => String(e.o.starts_at || e.o.created_at || '');
-  const bal = e => Math.max(0, (Number(e.o.total_mnt) || 0) - (Number(e.o.paid_mnt) || 0));
-  const a = arr.slice();
-  switch (mode) {
-    case 'num_desc': return a.sort((x, y) => num(y) - num(x));
-    case 'num_asc': return a.sort((x, y) => num(x) - num(y));
-    case 'date_desc': return a.sort((x, y) => dt(y).localeCompare(dt(x)) || num(y) - num(x));
-    case 'date_asc': return a.sort((x, y) => dt(x).localeCompare(dt(y)) || num(x) - num(y));
-    case 'amount_desc': return a.sort((x, y) => ((y.rev != null ? y.rev : y.total) - (x.rev != null ? x.rev : x.total)) || num(y) - num(x));
-    case 'unpaid': return a.sort((x, y) => bal(y) - bal(x) || num(y) - num(x));
-    default: return a;
-  }
+const _OTG = {};
+ORDER_TIME_GROUPS.forEach(([k, label, cls], i) => { _OTG[k] = { i, label, cls }; });
+// Дууссан/архив/цуцалсныг «маргааш» гэж бүлэглэх утгагүй — бүгд нэг бүлэгт, доор нь
+const _OTG_CLOSED = new Set(['done', 'archived', 'canceled', 'deleted']);
+function orderTimeGroup(o, todayStr) {
+  return _OTG_CLOSED.has(bucketOf(o.status)) ? 'closed' : timeGroupKey(o, todayStr);
 }
-function renderOrderPipelineBoard(shown, todayStr) {
-  const byB = {};
-  shown.forEach(e => { const bk = bucketOf(e.o.status); (byB[bk] = byB[bk] || []).push(e); });
-  const ALWAYS = new Set(['active']);
-  const open = state.ordersBoardOpen || new Set();
-  const searching = !!(state.ordersSearch || '').trim();
-  const buckets = ORDER_BUCKETS.filter(b => (byB[b.key] || []).length || ALWAYS.has(b.key));
-
-  // 📊 Дээд stepper — 6 үндсэн төлөв
-  const stepper = `<div class="board-stepper">${buckets.map(b => {
-    const list = byB[b.key] || [];
-    return `<button class="bstep${list.length ? '' : ' empty'}" data-board-jump="${b.key}"><span class="bstep-dot" style="background:${b.dot};"></span>${escapeHtml(b.label)}<span class="bstep-n">${list.length}</span></button>`;
-  }).join('')}</div>`;
-
-  // 🎯 Өнөөдөр/яаралтай — due захиалгыг дараагийн үйлдлээр бүлэглэнэ
-  const dueByAction = {};
-  shown.forEach(e => {
-    const stt = e.o.status, bk = bucketOf(stt);
-    if (bk !== 'active') return;
-    if (orderUrgRank(e.o, stt, todayStr) > 1) return;
-    const nx = orderNextStep(e.o); if (!nx) return;
-    (dueByAction[nx.label] = dueByAction[nx.label] || { n: 0, bucket: bk }).n++;
-  });
-  const dueChips = Object.keys(dueByAction).map(label => {
-    const v = dueByAction[label];
-    return `<button class="due-chip" data-board-jump="${v.bucket}">${escapeHtml(label)} <b>${v.n}</b></button>`;
-  }).join('');
-  const band = dueChips
-    ? `<div class="board-today">🎯 Өнөөдөр/яаралтай: ${dueChips}</div>`
-    : `<div class="board-today board-today-ok">✓ Өнөөдөр яаралтай ажил алга</div>`;
-  const selN = state.ordersSelected ? state.ordersSelected.size : 0;
-  const bulkBar = state.ordersSelect ? `<div class="board-bulk"><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span style="flex:1;"></span><button class="btn" id="bulk-restore">↩ Сэргээх</button><button class="btn" id="bulk-delete" style="color:#fff;background:var(--danger);border-color:var(--danger);">🗑 Устгах</button><button class="btn" id="bulk-clear">Цэвэрлэх</button></div>` : '';
-
-  const secs = buckets.map(b => {
-    const list = byB[b.key] || [];
-    const total = list.reduce((sm, e) => sm + (e.rev != null ? e.rev : e.total), 0);   // борлуулалт (барьцаа хасагдсан)
-    const isOpen = (open.has(b.key) || searching) && list.length;
-    let bodyHtml = '';
-    if (isOpen) {
-      const mode = bucketSortMode(b.key);
-      const CAP2 = 60;
-      // Эрэмбэлэх сонголт (бүлэг бүрд тусдаа)
-      const sortSel = `<div class="board-sortbar"><span class="board-sort-lbl">Эрэмбэ:</span><select class="board-sort" data-sort-bucket="${b.key}">${_ORDER_SORTS.map(([v, l]) => `<option value="${v}"${mode === v ? ' selected' : ''}>${l}</option>`).join('')}</select></div>`;
-      let inner;
-      if (mode === 'smart') {
-        // ⏱ Ойрын огноогоор бүлэглэнэ. Мөр бүр 🚚/🏬 badge-тэй хэвээр.
-        const byRank = arr => arr.slice().sort((a, c) => orderUrgRank(a.o, a.o.status, todayStr) - orderUrgRank(c.o, c.o.status, todayStr) || String(a.o.starts_at || '').localeCompare(String(c.o.starts_at || '')));
-        const sub = (arr, label, urgent) => {
-          if (!arr.length) return '';
-          const rows = byRank(arr).slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('');
-          const more = arr.length > CAP2 ? `<div class="board-more">…+${arr.length - CAP2} захиалга — хайлтаар</div>` : '';
-          return `<div class="board-sub${urgent ? ' board-sub-urg' : ''}">${label} · ${arr.length}</div>` + rows + more;
-        };
-        const TG = [['over', '⏰ Хугацаа хэтэрсэн', 1], ['today', '🔴 Өнөөдөр', 1], ['tomorrow', '🟡 Маргааш', 0], ['d3', '📅 3 хоногт', 0], ['week', '📆 Энэ долоо хоногт', 0], ['later', '⚪ Дараа', 0], ['none', '🗓 Огноогүй', 0]];
-        const grp = {};
-        list.forEach(e => { const k = timeGroupKey(e.o, todayStr); (grp[k] = grp[k] || []).push(e); });
-        inner = TG.map(([k, lb, urg]) => sub(grp[k] || [], lb, urg)).join('');
-      } else {
-        const sorted = sortOrders(list, mode);
-        inner = sorted.slice(0, CAP2).map(e => boardOrderRow(e, e.o.status, todayStr)).join('')
-          + (list.length > CAP2 ? `<div class="board-more">…+${list.length - CAP2} захиалга — хайлтаар</div>` : '');
+// Захиалгын мөрүүд + (smart эрэмбэд) хугацааны бүлгийн гарчиг. shown нь ӨМНӨӨС эрэмбэлэгдсэн
+// байна — бүлэг солигдох бүрд шинэ .otable нээгддэг тул гарчиг наалдацтай (sticky) байж чадна.
+function orderListHtml(shown, todayStr, cap, grouped, headHtml) {
+  const nOf = {};
+  if (grouped) shown.forEach(e => { const g = orderTimeGroup(e.o, todayStr); nOf[g] = (nOf[g] || 0) + 1; });
+  let out = headHtml || '', cur = null, open = false;
+  shown.slice(0, cap).forEach(e => {
+    if (grouped) {
+      const g = orderTimeGroup(e.o, todayStr);
+      if (g !== cur) {
+        cur = g;
+        const m = _OTG[g];
+        out += (open ? '</div>' : '') + `<div class="ogroup ${m.cls}"><span class="og-l">${m.label}</span><span class="og-n">${nOf[g]}</span></div><div class="otable">`;
+        open = true;
       }
-      bodyHtml = `<div class="board-body">${sortSel}${inner}</div>`;
-    }
-    return `<div class="board-sec" id="bsec-${b.key}" style="border-left-color:${b.dot};">
-      <div class="board-head" data-board-stage="${b.key}">
-        ${state.ordersSelect ? `<input type="checkbox" class="board-selall" data-sel-bucket="${b.key}" onclick="event.stopPropagation()" title="Бүлгийн бүгдийг сонгох">` : ''}
-        <span class="board-icon">${b.icon}</span>
-        <span class="board-name">${escapeHtml(b.label)}</span>
-        <span class="board-count">${list.length}</span>
-        ${total ? `<span class="board-total" title="Борлуулалт (барьцаа хасагдсан)">${fmtMoney(total)}</span>` : ''}
-        <span class="board-caret">${isOpen ? '▾' : '▸'}</span>
-      </div>${bodyHtml}
-    </div>`;
-  }).join('');
-  return `<div class="orders-board">${stepper}${bulkBar}${band}${secs}</div>`;
+    } else if (!open) { out += '<div class="otable">'; open = true; }
+    out += orderListRow(e, e.o.status, todayStr);
+  });
+  return `<div class="olist">${out}${open ? '</div>' : ''}</div>`;
 }
+// Жагсаалтын эрэмбийн сонголт. Эхнийх = default (хугацаагаар бүлэглэнэ).
+const ORDER_SORT_OPTS = [
+  ['smart', '⏱ Хугацаагаар (өнөөдөр эхэнд)'],
+  ['event', '📅 Арга хэмжээ ойртсон'],
+  ['number', '🔢 Дугаараар (шинэ→хуучин)'],
+  ['number_asc', '🔢 Дугаараар (1→сүүл)'],
+  ['new', '🆕 Шинэ нь дээр'],
+  ['amount', '💰 Дүн ихээр'],
+  ['old', '🕐 Хуучин нь дээр'],
+];
 
 // 📥 Дууссан захиалгын тайлан — Дууссан+Архив-ыг огноогоор (өдөр/сар/жил) харах + CSV татах
 const _CR_DONE = new Set(['done', 'archived']);
@@ -7091,18 +7038,18 @@ function renderOrders() {
   }
 
   // ── Менежер / CEO ──
-  // Default = Жагсаалт (зүүн статус sidebar + хавтгай хүснэгт, Booqable шиг). ▤ Самбар руу сэлгэж болно.
+  // ЖАГСААЛТ = цорын ганц харагдац. «Самбар» 2026-09-04-нд хасагдав: түүний ганц
+  // давуу тал болох ХУГАЦААНЫ БҮЛЭГ (Өнөөдөр / Маргааш) одоо жагсаалтын дотор
+  // гарчиг мөр болж орсон тул хоёр харагдац хооронд сэлгэх шаардлагагүй.
   state.ordersFilter = state.ordersFilter || 'all';
-  const isBoard = (state.ordersView || 'list') === 'board';
-  if (!state.ordersBoardOpen) state.ordersBoardOpen = new Set(['active']);
-  const canConfirm = state.isCEO || state.me === getFinanceExecutorEmail();
+  state.ordersSort = state.ordersSort || 'smart';
   const q = (state.ordersSearch || '').trim().toLowerCase();
 
   // Гарчиг header-т аль хэдийн бий (давхардуулахгүй) — энд зөвхөн үйлдлийн товчнууд
-  const head = `<div class="orders-head" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;">
-    <button class="btn" id="orders-report-btn" style="padding:6px 11px;font-size:12px;" title="Дууссан захиалгыг огноогоор харах + татах">📥 Дууссан</button>
-    ${state.isCEO ? `<button class="btn" id="orders-manage-btn" style="padding:6px 11px;font-size:12px;${state.ordersSelect ? 'color:var(--danger);' : ''}">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
-    <button class="btn btn-primary" id="new-order-btn" style="padding:6px 13px;font-size:12.5px;">+ Шинэ захиалга</button>
+  const head = `<div class="orders-head">
+    <button class="btn btn-sm" id="orders-report-btn" title="Дууссан захиалгыг огноогоор харах + татах">📥 Дууссан</button>
+    ${state.isCEO ? `<button class="btn btn-sm${state.ordersSelect ? ' on' : ''}" id="orders-manage-btn">${state.ordersSelect ? '✕ Болих' : '☑ Удирдах'}</button>` : ''}
+    <button class="btn btn-sm btn-primary" id="new-order-btn">+ Шинэ захиалга</button>
   </div>`;
 
   // Захиалгыг lazy татна.
@@ -7118,42 +7065,16 @@ function renderOrders() {
     return head + `<div class="orders-empty"><div class="icon">🛒</div><div>Захиалга алга байна.</div></div>`;
   }
 
-  // Захиалгын төлөв шүүлт (e.skey). today = өнөөдөр эхлэх/дуусах захиалга.
   const _t = new Date();
   const todayStr = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
-  const isToday = (e) => {
-    const s = String(e.o.starts_at || '').slice(0, 10), st = String(e.o.stops_at || '').slice(0, 10);
-    return s === todayStr || st === todayStr;
-  };
   // Sidebar түлхүүр = бакетын түлхүүр (draft/active/done/archived/canceled/deleted) — bucketOf-оор шүүнэ.
   const matchFilter = (e, f) => {
     if (f === 'all') return !['canceled', 'deleted'].includes(bucketOf(e.o.status));   // Бүгд — цуцалсан/устгасныг хасна
-    if (f === 'today') return isToday(e);
     return bucketOf(e.o.status) === f;
   };
 
-  // Анхаарлын чипүүд — Захиалгын операцийн дохио
-  const todayN = combined.filter(isToday).length;
-  const reservedN = combined.filter(e => e.skey === 'reserved').length;
-  const chips = `<div class="orders-chips">
-    <button class="ochip ochip-danger${state.ordersFilter === 'today' ? ' on' : ''}" data-ofilter="today"><span class="ochip-n">${todayN}</span><span class="ochip-l">Өнөөдөр</span></button>
-    <button class="ochip ochip-info${state.ordersFilter === 'reserved' ? ' on' : ''}" data-ofilter="reserved"><span class="ochip-n">${reservedN}</span><span class="ochip-l">Захиалсан</span></button>
-    <div class="ochip ochip-static"><span class="ochip-n">${(combined.filter(e => e.skey !== 'canceled').length).toLocaleString('mn-MN')}</span><span class="ochip-l">Нийт захиалга</span></div>
-  </div>`;
-
-  // Төлөв таб (6 төлөв, нэгдсэн тоо) + он-сар филтер + хайлт + харагдац
-  // Гүйцэтгэгч ажилтанд ноорог/дууссан/архив/цуцалсан/устгасан таб хэрэггүй —
-  // зөвхөн ажил хийх шаардлагатай захиалгууд.
-  const _tabKeys = canSeeOrderMoney() ? BQ_STATUS_ORDER : BQ_STATUS_ORDER.filter(k => ORDER_STAFF_STATUSES.includes(k));
-  const tabs = [{ key: 'all', label: 'Бүгд' }].concat(_tabKeys.map(k => ({ key: k, label: BQ_STATUS[k].label })));
-  // Идэвхтэй дамжлагын шатууд — захиалга байхгүй байсан ч ҮРГЭЛЖ харуулна (бүрэн урсгал харагдана)
-  const _PIPE_TABS = new Set(['draft', 'reserved', 'prepared', 'delivering', 'rented', 'returning', 'returned']);
-  const tabsHtml = tabs.map(t => {
-    const n = combined.filter(e => matchFilter(e, t.key)).length;   // 'all' нь matchFilter-ээр цуцалсныг хасна
-    return (n || t.key === 'all' || _PIPE_TABS.has(t.key)) ? `<button class="otab${state.ordersFilter === t.key ? ' on' : ''}" data-ofilter="${t.key}">${t.label}${n ? ` <span class="otab-n">${n}</span>` : ''}</button>` : '';
-  }).join('');
-  // ── Зүүн статус sidebar (Booqable шиг) — 6 ҮНДСЭН бүлэг. "Захиалсан" = идэвхтэй бүх шат
-  // (Бэлдсэн/Хүргэгдэж/Түрээсэнд/Буцаалт замд...) — нарийн статус нь хүснэгтийн Төлөв баганад л харагдана.
+  // ── Зүүн статус sidebar — 6 ҮНДСЭН бүлэг. "Захиалсан" = идэвхтэй бүх шат
+  // (Бэлдсэн/Хүргэгдэж/Түрээсэнд/Буцаалт замд...) — нарийн статус нь мөрөнд харагдана.
   const _SIDE_ALL = [
     { key: 'all', label: 'Бүгд' },
     { key: 'draft', label: 'Ноорог', dot: '#6B7280' },
@@ -7170,49 +7091,45 @@ function renderOrders() {
     const dot = g.dot ? `<span class="ordv-st-dot" style="--d:${g.dot}"></span>` : '';
     return `<button class="ordv-st${state.ordersFilter === g.key ? ' on' : ''}" data-ofilter="${g.key}">${dot}<span class="ordv-st-l">${g.label}</span><span class="ordv-st-n">${n || 0}</span></button>`;
   }).join('');
+
+  // ── Шүүлт. Утсанд хайлт үргэлж ил, бусад нь «⚙ Шүүлт» доор эвхэгдэнэ ──
+  const _sel = (id, cur, opts) => `<select id="${id}" class="ofilt-sel">${opts.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>`;
   const yms = [...new Set(combined.map(e => e.ym).filter(Boolean))].sort().reverse();
   const ymF = state.ordersYM || '';
-  const ymSelect = `<select id="orders-ym" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
-    <option value="">📅 Бүх хугацаа</option>
-    ${yms.map(m => `<option value="${m}"${ymF === m ? ' selected' : ''}>${m}</option>`).join('')}
-  </select>`;
-  const sortF = state.ordersSort || 'number';
-  const sortOpts = [['number', '🔢 Дугаараар (шинэ→хуучин)'], ['number_asc', '🔢 Дугаараар (1→сүүл)'], ['new', '🆕 Шинэ нь дээр'], ['event', '📅 Арга хэмжээ ойртсон'], ['amount', '💰 Дүн ихээр'], ['old', '🕐 Хуучин нь дээр']];
-  const sortSelect = `<select id="orders-sort" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
-    ${sortOpts.map(([v, l]) => `<option value="${v}"${sortF === v ? ' selected' : ''}>${l}</option>`).join('')}
-  </select>`;
-  const payFC = state.ordersPay || '';
-  const payOpts = [['', '💵 Төлбөр: бүгд'], ['unpaid', '⚠ Төлөгдөөгүй'], ['partial', '◐ Дутуу'], ['paid', '✓ Бүрэн']];
-  const paySelect = `<select id="orders-pay" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">
-    ${payOpts.map(([v, l]) => `<option value="${v}"${payFC === v ? ' selected' : ''}>${l}</option>`).join('')}
-  </select>`;
-  // Фасет филтер — Барьцаа / Харилцагчийн төрөл / НӨАТ
-  const _facetSel = (id, cur, opts) => `<select id="${id}" class="order-ym-select" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);font-size:12px;">${opts.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
-  const depSelect = _facetSel('orders-dep', state.ordersDep || '', [['', '🔒 Барьцаа: бүгд'], ['held', '🔒 Барьцаатай'], ['returned', '✓ Буцаасан'], ['none', '— Барьцаагүй']]);
-  const custSelect = _facetSel('orders-cust', state.ordersCust || '', [['', '👥 Харилцагч: бүгд'], ['person', '🧍 Хувь хүн'], ['org', '🏢 Байгууллага']]);
-  const vatSelect = _facetSel('orders-vat', state.ordersVat || '', [['', '🧾 НӨАТ: бүгд'], ['vat', '🧾 НӨАТ-тэй'], ['novat', '— НӨАТ-гүй']]);
-  const _ov = state.ordersView || 'list';
-  const viewToggle = `<div class="oview-toggle">
-    <button class="oview-btn${_ov === 'list' ? ' on' : ''}" data-oview="list">☰ Жагсаалт</button>
-    <button class="oview-btn${_ov === 'board' ? ' on' : ''}" data-oview="board">▤ Самбар</button>
-  </div>`;
+  const payF = state.ordersPay || '', depF = state.ordersDep || '', custF = state.ordersCust || '', vatF = state.ordersVat || '';
+  const sortSelect = _sel('orders-sort', state.ordersSort, ORDER_SORT_OPTS);
+  const ymSelect = _sel('orders-ym', ymF, [['', '📅 Бүх хугацаа']].concat(yms.map(m => [m, m])));
+  const paySelect = _sel('orders-pay', payF, [['', '💵 Төлбөр: бүгд'], ['unpaid', '⚠ Төлөгдөөгүй'], ['partial', '◐ Дутуу'], ['paid', '✓ Бүрэн']]);
+  const depSelect = _sel('orders-dep', depF, [['', '🔒 Барьцаа: бүгд'], ['held', '🔒 Барьцаатай'], ['returned', '✓ Буцаасан'], ['none', '— Барьцаагүй']]);
+  const custSelect = _sel('orders-cust', custF, [['', '👥 Харилцагч: бүгд'], ['person', '🧍 Хувь хүн'], ['org', '🏢 Байгууллага']]);
+  const vatSelect = _sel('orders-vat', vatF, [['', '🧾 НӨАТ: бүгд'], ['vat', '🧾 НӨАТ-тэй'], ['novat', '— НӨАТ-гүй']]);
+  const _activeF = [ymF, payF, depF, custF, vatF].filter(Boolean).length;
+  const _fOpen = !!state.ordersFiltOpen;
   const controls = `<div class="orders-controls">
-    <div class="orders-controls-r" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      ${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}${sortSelect}
-      <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, имэйл, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
+    <div class="ofilt-bar">
+      <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
+      <button type="button" class="ofilt-toggle${_fOpen ? ' on' : ''}" id="orders-filt-toggle">⚙ Шүүлт${_activeF ? `<span class="ofilt-n">${_activeF}</span>` : ''}</button>
     </div>
+    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}</div>
   </div>`;
 
-  state.ordersSort = state.ordersSort || 'number';
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
-  const payF = state.ordersPay || '';
   // Фасет предикатууд — Барьцаа / Харилцагч / НӨАТ
-  const depF = state.ordersDep || '', custF = state.ordersCust || '', vatF = state.ordersVat || '';
   const depMatch = (e) => { if (!depF) return true; const amt = Number(e.o.deposit_mnt) || 0; if (depF === 'none') return amt <= 0; if (amt <= 0) return false; const ret = !!depositReturnState(e.o); return depF === 'returned' ? ret : depF === 'held' ? !ret : true; };
   const custMatch = (e) => !custF || orderCustType(e.o) === custF;
   const vatMatch = (e) => { if (!vatF) return true; const has = (typeof vatForOrder === 'function') && vatForOrder(e.o.number).count > 0; return vatF === 'vat' ? has : !has; };
-  const shown = combined.filter(e => (isBoard || matchFilter(e, state.ordersFilter)) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF) && depMatch(e) && custMatch(e) && vatMatch(e));
+  const shown = combined.filter(e => matchFilter(e, state.ordersFilter) && (!ymF || e.ym === ymF) && (!q || e.hay.includes(q)) && (!payF || payOf(e) === payF) && depMatch(e) && custMatch(e) && vatMatch(e));
   const _sortFns = {
+    // ⏱ Хугацаагаар — жагсаалтын DEFAULT. Бүлгийн дараалал (хэтэрсэн→өнөөдөр→маргааш→…)
+    // нь orderListHtml-ийн гарчиг мөрүүдтэй ЯГ ижил тул эрэмбэ = бүлэглэлт.
+    smart: (a, b) => {
+      const ga = orderTimeGroup(a.o, todayStr), gb = orderTimeGroup(b.o, todayStr);
+      if (ga !== gb) return _OTG[ga].i - _OTG[gb].i;
+      const da = orderKeyDate(a.o), db = orderKeyDate(b.o);
+      // Хэтэрсэн / дууссан / огноогүй — сүүлийн үе эхэнд. Ирээдүй — ойрын өдөр эхэнд.
+      const desc = ga === 'over' || ga === 'closed' || ga === 'none';
+      return (desc ? db.localeCompare(da) : da.localeCompare(db)) || (Number(b.o.number) || 0) - (Number(a.o.number) || 0);
+    },
     number: (a, b) => (Number(b.o.number) || 0) - (Number(a.o.number) || 0),
     number_asc: (a, b) => (Number(a.o.number) || 0) - (Number(b.o.number) || 0),
     new: (a, b) => String(b.date).localeCompare(String(a.date)),
@@ -7225,7 +7142,7 @@ function renderOrders() {
       return af ? as.localeCompare(bs) : bs.localeCompare(as);  // ирээдүй өсөхөөр, өнгөрсөн буурахаар
     },
   };
-  shown.sort(_sortFns[state.ordersSort] || _sortFns.number);
+  shown.sort(_sortFns[state.ordersSort] || _sortFns.smart);
   // Борлуулалт = ноорог + цуцалсныг ТООЛОХГҮЙ (бодит захиалга л). Барьцаа = буцаадаг өр тул
   // орлогоос ХАСна (orderRevenue, Санхүү тайлантай нийцүүлэв — app/M-Event total_mnt-д барьцаа орсон).
   const _saleE = shown.filter(e => !['draft', 'canceled', 'deleted'].includes(String(e.o.status)));
@@ -7236,22 +7153,22 @@ function renderOrders() {
   const sumTotal = _saleE.reduce((s, e) => s + (typeof orderRevenue === 'function' ? orderRevenue(e.o, 'accrual') : e.total), 0);
   const saleN = _saleE.length;
   const CAP = 200;
-  // Жагсаалт = хавтгай хүснэгт (Booqable шиг): төлөв багана, таб-аар шүүнэ
-  const flatRows = shown.slice(0, CAP).map(e => boardOrderRow(e, e.o.status, todayStr, true)).join('');
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
-  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Авах</span><span>Буцаах</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const sumLine = `<div class="orders-sumline" style="font-weight:700;font-size:13px;margin:2px 2px 10px;">${ymF ? `📅 <span style="color:var(--brand,#2563EB);">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span style="color:#1e7a55;">${fmtMoney(sumTotal)}</span>` : ''}${_site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${!isBoard && shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
-  const body = (state.ordersView === 'board')
-    ? sumLine + renderOrderPipelineBoard(shown, todayStr)
-    : (shown.length
-      ? sumLine + `<div class="otable">${otableHead}${flatRows}</div>`
-      : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`);
+  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Хугацаа</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
+  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  // CEO-гийн «☑ Удирдах» горим — бөөн сэргээх/устгах (өмнө зөвхөн Самбарт байсан тул
+  // жагсаалтад чагт гарч ирээд ҮЙЛДЛИЙН ТОВЧГҮЙ үлддэг байв).
+  const selN = state.ordersSelected ? state.ordersSelected.size : 0;
+  const bulkBar = state.ordersSelect
+    ? `<div class="olist-bulk"><label class="obulk-all"><input type="checkbox" id="bulk-all">Бүгдийг</label><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span class="obulk-sp"></span><button class="btn btn-sm" id="bulk-restore">↩ Сэргээх</button><button class="btn btn-sm btn-danger" id="bulk-delete">🗑 Устгах</button><button class="btn btn-sm" id="bulk-clear">Цэвэрлэх</button></div>`
+    : '';
+  const body = shown.length
+    ? sumLine + bulkBar + orderListHtml(shown, todayStr, CAP, state.ordersSort === 'smart', otableHead)
+    : `<div class="orders-empty"><div class="icon">🔍</div><div>Энэ шүүлтэд захиалга алга.</div></div>`;
 
   // (Банкны тулгалт нь Санхүүгийн хяналт тул захиалгаас хассан — Санхүү хуулгыг тусдаа уншина.)
-  const viewbar = `<div class="orders-viewbar">${viewToggle}</div>`;
-  if (isBoard) return head + viewbar + controls + body;
-  // Жагсаалт: зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + хавтгай хүснэгт)
-  return head + viewbar + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
+  // Зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + жагсаалт)
+  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
 }
 
 function attachOrdersHandlers() {
@@ -7264,12 +7181,15 @@ function attachOrdersHandlers() {
     if (cb.checked) state.ordersSelected.add(cb.dataset.selId); else state.ordersSelected.delete(cb.dataset.selId);
     const c = document.getElementById('bulk-n'); if (c) c.textContent = state.ordersSelected.size;
   }));
-  document.querySelectorAll('[data-sel-bucket]').forEach(cb => cb.addEventListener('change', () => {
+  // «Бүгдийг» = яг одоо ХАРАГДАЖ буй мөрүүд (шүүлт/хайлтын үр дүн) — бүх захиалга БИШ
+  document.getElementById('bulk-all')?.addEventListener('change', (ev) => {
     state.ordersSelected = state.ordersSelected || new Set();
-    const bk = cb.dataset.selBucket;
-    (state.appOrders || []).forEach(o => { if (bucketOf(orderCanonStatus(o)) === bk) { if (cb.checked) state.ordersSelected.add(String(o.id)); else state.ordersSelected.delete(String(o.id)); } });
-    render();
-  }));
+    document.querySelectorAll('[data-sel-id]').forEach(cb => {
+      cb.checked = ev.target.checked;
+      if (ev.target.checked) state.ordersSelected.add(cb.dataset.selId); else state.ordersSelected.delete(cb.dataset.selId);
+    });
+    const c = document.getElementById('bulk-n'); if (c) c.textContent = state.ordersSelected.size;
+  });
   document.getElementById('bulk-clear')?.addEventListener('click', () => { state.ordersSelected = new Set(); render(); });
   document.getElementById('bulk-delete')?.addEventListener('click', async () => {
     const ids = [...(state.ordersSelected || [])];
@@ -7402,34 +7322,18 @@ function attachOrdersHandlers() {
     finally { state._reconAiLoading = false; render(); }
   });
   document.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
-    state.ordersRecon = false; state.ordersView = 'list'; state.ordersSearch = el.dataset.reconOpen; render();
+    state.ordersRecon = false; state.ordersSearch = el.dataset.reconOpen; render();
   }));
 
   // Шүүлтүүр таб + анхаарлын чип → state.ordersFilter
   document.querySelectorAll('[data-ofilter]').forEach(el => {
     el.addEventListener('click', () => { state.ordersFilter = el.dataset.ofilter; render(); });
   });
-  // Жагсаалт ⇄ Самбар
-  document.querySelectorAll('[data-oview]').forEach(el => {
-    el.addEventListener('click', () => { state.ordersView = el.dataset.oview; if (el.dataset.oview === 'board') state.ordersFilter = 'all'; render(); });
-  });
-  // Самбарын шат эвхэх/дэлгэх
-  document.querySelectorAll('[data-board-stage]').forEach(el => {
-    el.addEventListener('click', (e) => {
-      if (e.target.closest('.order-card') || e.target.closest('button')) return;
-      const k = el.dataset.boardStage; const set = state.ordersBoardOpen;
-      if (set.has(k)) set.delete(k); else set.add(k);
-      render();
-    });
-  });
-  // Бүлэг доторх эрэмбэ солих (бүлэг бүрд тусдаа)
-  document.querySelectorAll('select.board-sort[data-sort-bucket]').forEach(sel => {
-    sel.addEventListener('change', () => { (state.bucketSort = state.bucketSort || {})[sel.dataset.sortBucket] = sel.value; render(); });
-  });
-  // Stepper / Өнөөдөр зурвас → тухайн шатыг дэлгэж гүйлгэнэ
+  // Шүүлтүүр эвхэх/дэлгэх (утсанд — хайлт үргэлж ил, бусад нь доор)
+  document.getElementById('orders-filt-toggle')?.addEventListener('click', () => { state.ordersFiltOpen = !state.ordersFiltOpen; render(); });
   // Захиалгын мөр дэлгэх/хаах — төлөвийг state-д хадгална. Эс бөгөөс polling render()
   // бүх жагсаалтыг дахин зурахад нээсэн мөр агшинд хаагддаг (утсан дээр "дарахаар хаагдана" гэж мэдрэгддэг байсан).
-  document.querySelectorAll('details.board-order[data-row-oid]').forEach(d => d.addEventListener('toggle', () => {
+  document.querySelectorAll('details.olist-row[data-row-oid]').forEach(d => d.addEventListener('toggle', () => {
     state.ordersRowOpen = state.ordersRowOpen instanceof Set ? state.ordersRowOpen : new Set();
     if (d.open) state.ordersRowOpen.add(d.dataset.rowOid); else state.ordersRowOpen.delete(d.dataset.rowOid);
   }));
@@ -7437,16 +7341,8 @@ function attachOrdersHandlers() {
     state.ordersItemsOpen = state.ordersItemsOpen instanceof Set ? state.ordersItemsOpen : new Set();
     if (d.open) state.ordersItemsOpen.add(d.dataset.itemsOid); else state.ordersItemsOpen.delete(d.dataset.itemsOid);
   }));
-  document.querySelectorAll('[data-board-jump]').forEach(el => {
-    el.addEventListener('click', () => {
-      const k = el.dataset.boardJump; (state.ordersBoardOpen = state.ordersBoardOpen || new Set()).add(k); render();
-      setTimeout(() => { const sec = document.getElementById('bsec-' + k); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
-    });
-  });
-
-  // Хайлт — state.ordersSearch-д хадгалж дахин рендэрлэнэ. Рендэрийн үеийн `q` (мөр ~5453) нь e.hay-г
-  // жагсаалт+самбар хоёуланд шүүдэг тул энэ л зөв. (Өмнө нь .orders-wrap .order-card-ыг нуудаг байсан —
-  // энэ нь read-only ажилтны харагдац бөгөөд менежерийн .board-order мөрд огт нөлөөлдөггүй байв.)
+  // Хайлт — state.ordersSearch-д хадгалж дахин рендэрлэнэ. Рендэрийн үеийн `q` нь e.hay-г шүүдэг. (Өмнө нь .orders-wrap .order-card-ыг нуудаг байсан —
+  // энэ нь read-only ажилтны харагдац бөгөөд менежерийн .olist-row мөрд огт нөлөөлдөггүй байв.)
   // Түлхэц бүрд биш debounce-оор рендэрлэж, фокус/курсорыг сэргээж бичилтийг тасалдуулахгүй.
   const search = document.getElementById('orders-search');
   if (search) {

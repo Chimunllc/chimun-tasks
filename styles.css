@@ -63,6 +63,13 @@
     --space-6: 32px;
     --space-8: 48px;
 
+    /* ── ЗАХИАЛГЫН ХҮСНЭГТИЙН БАГАНА (Жагсаалт) ──
+       Толгой ба мөр ЯГ ижил байх ЁСТОЙ — тусад нь бичвэл зөрдөг.
+       Сүүлийн багана ТОГТМОЛ: «auto» байхад «💵 Төлбөр авах» товчтой мөр
+       өргөн, товчгүй мөр 0 болж, 1fr өөр тооцогдон бүх багана мөр бүрт
+       өөр байрлалд шилждэг байв (2026-09-04 алдаа). */
+    --otable-cols: 48px minmax(110px, 1fr) 130px 78px 78px 118px 118px 124px;
+
     /* ── РАДИУС ── */
     --r-sm: 6px;
     --r-md: 8px;
@@ -4858,13 +4865,13 @@ body.role-daily #add-project { display: none !important; }
 }
 /* ═══ Захиалгын ХАВТГАЙ ХҮСНЭГТ (Жагсаалт) — Booqable шиг картан хүснэгт ═══ */
 .otable { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--panel); }
-.otable-head { display: grid; grid-template-columns: 48px minmax(110px, 1fr) 130px 78px 78px 118px 118px auto; gap: 12px; padding: 11px 16px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--border); }
+.otable-head { display: grid; grid-template-columns: var(--otable-cols); gap: 12px; padding: 11px 16px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid var(--border); }
 .otable-head .r { text-align: right; }
 .otable .board-order { margin: 0; }
 .otable .board-order > summary { border: none; border-radius: 0; border-bottom: 1px solid var(--border); }
 .otable .board-order:last-child > summary { border-bottom: none; }
 .otable .board-order[open] > summary { background: var(--panel-hover); }
-.board-order.flat > summary { grid-template-columns: 48px minmax(110px, 1fr) 130px 78px 78px 118px 118px auto; padding: 11px 16px; }
+.board-order.flat > summary { grid-template-columns: var(--otable-cols); padding: 11px 16px; }
 .board-order.flat > summary > * { grid-row: 1; }
 .board-order.flat .br-id { grid-column: 1; }
 .board-order.flat .br-cust-cell { grid-column: 2; }

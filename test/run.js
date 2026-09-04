@@ -195,6 +195,17 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(anonBearer, 0, "scan: PostgREST дуудлагад 'Bearer ' + DB_ANON_KEY БАЙХГҮЙ (pgrstBearer() ашигла)");
 }
 
+// 0g) SCAN — «Бараа & хөрөнгө» дэлгэц захиалгын датаг АЧААЛНА (2026-09-04)
+// productUtilization (ROI, «N удаа · орлого») нь state.appOrders-оос уншина.
+// Дэлгэц түүнийг ачаалахгүй бол state.appOrders === undefined хэвээр үлдэж
+// БҮХ барааны ROI 0% харагдана — хөрөнгийн шийдвэр худал тоон дээр гарна.
+// #162 функцийг зассан ч ачаалалт дутуу үлдсэн (амьд дэлгэцээр илрэв).
+{
+  const line = src.split('\n').find(l => l.includes("v === 'products'") && l.includes('canSeeProducts'));
+  ok(!!line, 'scan: products дэлгэцийн ачаалалтын мөр олдов');
+  ok(/loadAppOrders/.test(line || ''), 'scan: products дэлгэц loadAppOrders дуудна (ROI мөнх 0% болохоос сэргийлнэ)');
+}
+
 // 0f) SCAN — барааны модалын таб задаргаа талбар алдагдуулаагүй байх (2026-09-04)
 // openProductModal 25 талбартай нэг цонх байсныг Каталог/Үнэ/Нөөц 3 таб болгосон.
 // Талбар аль ч pane-д ороогүй үлдвэл ЧИМЭЭГҮЙ алдагдана: submitProductModal нь

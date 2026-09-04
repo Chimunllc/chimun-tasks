@@ -29,7 +29,8 @@ const BRANCHES = [
 ];
 
 // 13-staff roster — Master Sheet-ээс runtime-д ачаалагдана:
-// https://docs.google.com/spreadsheets/d/1so0IBwfok7_Tss3y25a-40qybGe9SGHimkuXrihuWvM/edit
+// (Ажилтны эх сурвалж = VPS Postgres `employees`, n8n /webhook/staff-аар. Хуучин Google
+//  Sheet-ийн URL 2026-09-04-нд хасагдсан — repo PUBLIC тул ил байх ёсгүй байв.)
 //
 // 2026-05-25 — `id` талбар хасагдсан. Эргэн дурдсан түлхүүр нь EMAIL.
 // Email Sheet-д бүх ажилтанд бөглөгдсөн учраас runtime sync бүх ажилтны email-ийг
@@ -5254,9 +5255,6 @@ function orderUrgency(o) {
   if (diff <= 3)  return { label: diff + ' хоногийн дараа', cls: 'ou-week' };
   return null;
 }
-const _URGENCY_RANK = { 'ou-over': 0, 'ou-today': 1, 'ou-soon': 2, 'ou-week': 3 };
-
-// 10-шатны прогресс зураас (Цуцалсан = тусдаа улаан төлөв).
 function orderStepper(status) {
   if (status === 'Цуцалсан') return `<div class="order-steps cancelled"><span class="os-cx">✕ Цуцалсан</span></div>`;
   const flow = ORDER_STATUSES.filter(s => s !== 'Цуцалсан');
@@ -5721,9 +5719,6 @@ function setCardBranch(acct, br) { if (!acct) return; const o = _cardBranch(); o
 // Зардлын салбар = 3 үйл ажиллагааны салбар + Чимун ХХК (толгой — хөрөнгө оруулалт, удирдлагын
 // түвшний зардал). Захиргаа катч-олл хасагдсан. Хөрөнгө (6000) авто Чимун ХХК-д орно.
 const STMT_BRANCHES = [['ИВЕНТ', 'M-Event'], ['КЕМП', 'NOMAAD'], ['КАТЕРИНГ', 'Катеринг'], ['ХХК', 'Чимун ХХК']];
-// Хуучин дата дахь ХХК/ЗАХ-г нэр рүү буулгах mapping (сонгогчид харагдахгүй ч хөрвүүлэлтэд хэрэгтэй).
-const _BRANCH_CODE2NAME = { 'ИВЕНТ': 'M-Event', 'КЕМП': 'NOMAAD', 'КАТЕРИНГ': 'Катеринг', 'ХХК': 'Чимун ХХК', 'ЗАХ': 'Захиргаа' };
-// Гүйлгээний утгаас картын сүүлийн 4 оронг салгах (POS/онлайн: "420733******2819:..." → 2819)
 function detectCardLast4(memo) {
   const m = String(memo || '').match(/(\d{6})\*{2,}(\d{4})/) || String(memo || '').match(/(\d{4})\*{2,}(\d{4})/);
   return m ? m[2] : '';
@@ -6743,9 +6738,6 @@ function timeGroupKey(o, todayStr) {
   if (diff <= 7) return 'week';
   return 'later';
 }
-// Дамжлагын самбар — шат бүрээр эвхэгддэг, идэвхтэй шат дотор хүргэлт/очиж авах дэд бүлэг + яаралтай эрэмбэ
-const _BOARD_ICON = { draft: '📝', reserved: '📋', prepared: '🧼', delivering: '🚚', rented: '📦', returning: '↩', returned: '✅', stopped: '✅', archived: '🗄', canceled: '✕', deleted: '🗑' };
-// Самбарын авсаархан мөр — дартал дэлгэрэнгүй (full card). Яаралтай бол улаан/шар зураас.
 // Мөрөн дээрх дараагийн үйлдлийн товчны БОГИНО шошго
 // Үндсэн 6 төлөв (dropdown/самбарын бүлэг). Дэд шатууд эдгээрт багтана.
 // ⭐ 6 ҮНДСЭН бакет (2026-08-30 цэвэрлэв). Sidebar + Самбар хоёулаа ҮҮГЭЭР бүлэглэнэ (нэг эх).
@@ -6790,8 +6782,6 @@ function orderCanonStatus(ao) {
   if (!BQ_STATUS[raw] && !_seenBadStatus.has(raw)) { _seenBadStatus.add(raw); try { console.warn('[orders] танигдахгүй захиалгын төлөв:', raw); } catch (_) {} }
   return raw;
 }
-const _ACT_SHORT = { prepare: '🧰 Бэлдэх', clean: '🧹 Цэвэрлэх', dispatch: '📦 Гаргах', handover: '🤝 Өгөх', deliver: '🚚 Хүргэх', setup: '🔧 Суурилуулах', teardown: '🧱 Буулгах', retstart: '↩ Буцаах', received: '📥 Авах', archive: '🗄 Архив' };
-// Харилцагчийн аватар — нэрнээс тогтмол өнгө + эхний үсэг(үүд)
 const _AV_COLORS = ['#6d4aff', '#0ea5e9', '#16a34a', '#f59e0b', '#e11d48', '#8b5cf6', '#0891b2', '#db2777'];
 function _avColor(s) { let h = 0; const t = String(s || '?'); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0; return _AV_COLORS[h % _AV_COLORS.length]; }
 function _avInitials(s) { const p = String(s || '?').replace(/[^0-9A-Za-zА-Яа-яЁёҮүӨө .]/g, '').split(/[ .]+/).filter(Boolean); return (((p[0] || '?')[0] || '?') + ((p[1] || '')[0] || '')).toUpperCase(); }
@@ -7255,7 +7245,6 @@ function _closeOrderKebabs(e) {
 }
 
 function attachOrdersHandlers() {
-  document.getElementById('new-mevent-order')?.addEventListener('click', () => openNewMeventOrder());
   // Шинэ захиалга үүсгэх / app захиалга засах·устгах
   document.getElementById('new-order-btn')?.addEventListener('click', () => openNewOrder());
   document.getElementById('orders-report-btn')?.addEventListener('click', openCompletedReport);
@@ -7489,13 +7478,6 @@ function attachOrdersHandlers() {
   });
   if (!window._ordersKebabBound) { document.addEventListener('click', _closeOrderKebabs); window._ordersKebabBound = true; }
 
-  // Засах / Гүйлгээ амжилттай
-  document.querySelectorAll('button[data-order-edit]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const o = state.orders.find(x => x.order_no === btn.dataset.orderEdit);
-      if (o) openNewMeventOrder(o);
-    });
-  });
 
   // Урагшлуулах (нэг алхам урагш)
   document.querySelectorAll('button[data-order-advance]').forEach(btn => {
@@ -7712,332 +7694,6 @@ function orderShortages(items, start, end, excludeOrderNo) {
     if (a && (Number(it.qty) || 0) > a.avail) out.push({ name, need: Number(it.qty) || 0, avail: a.avail, stock: a.stock, booked: a.booked });
   }
   return out;
-}
-
-function openNewMeventOrder(editOrder) {
-  const isEdit = !!editOrder;
-  const products = state.products || [];
-  let items = isEdit && Array.isArray(editOrder.items) && editOrder.items.length
-    ? editOrder.items.map(it => ({ name: it.name || '', qty: Number(it.qty) || 1, price: Number(it.price) || 0, deposit: Number(it.deposit) || 0 }))
-    : [{ name: '', qty: 1, price: 0, deposit: 0 }];
-  let manualDeposit = isEdit ? true : null; // edit үед барьцааг хадгалсан утгаар нь авна
-  const hourOpts = Array.from({ length: 24 }, (_, h) => {
-    const hh = String(h).padStart(2, '0');
-    return `<option value="${hh}">${hh}:00</option>`;
-  }).join('');
-  // edit үед огноо/цаг задлах ("2026-06-03 09:00")
-  const parseDT = (s) => { const m = String(s || '').match(/(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}))?/); return { date: m ? m[1] : '', hour: m && m[2] ? m[2] : '' }; };
-  const sDT = parseDT(editOrder?.date_start), eDT = parseDT(editOrder?.date_end);
-
-  const old = document.getElementById('mev-order-modal');
-  if (old) old.remove();
-  const modal = document.createElement('div');
-  modal.className = 'modal-bg';
-  modal.id = 'mev-order-modal';
-  modal.innerHTML = `
-    <div class="modal" style="max-width:560px;">
-      <h2>${isEdit ? 'Захиалга засах · ' + escapeHtml(editOrder.order_no) : 'Шинэ захиалга'}</h2>
-      <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">${isEdit ? 'Зөвхөн "Шинэ" төлөвт засах боломжтой.' : 'Сайтын захиалга шиг — үйлчлүүлэгч, бараа, дүн. "Шинэ" төлөвтэй бүртгэгдэнэ.'}</p>
-      <label>Үйлчлүүлэгчийн нэр *</label>
-      <input id="mo-name" placeholder="Жишээ: Анхил Group" />
-      <div style="display:flex;gap:8px;">
-        <div style="flex:1;"><label>Утас</label><input id="mo-phone" inputmode="tel" placeholder="99112233" /></div>
-        <div style="flex:1;"><label>Байгууллага</label><input id="mo-company" placeholder="ХХК нэр" /></div>
-      </div>
-      <div style="display:flex;gap:8px;">
-        <div style="flex:1;"><label>Регистр</label><input id="mo-register" placeholder="РД" /></div>
-        <div style="flex:1;"><label>И-мэйл</label><input id="mo-email" placeholder="имэйл" /></div>
-      </div>
-      <label>Хаяг / газар</label>
-      <input id="mo-address" placeholder="Хан-Уул, Restaurant XYZ" />
-      <div class="mo-daterow" style="display:flex;gap:8px;">
-        <div style="flex:1;min-width:0;"><label>Эхлэх</label>
-          <div style="display:flex;gap:4px;align-items:flex-start;">
-            <div class="mcal" style="flex:1;min-width:0;position:relative;">
-              <input type="text" class="mcal-display" id="mo-start-disp" readonly placeholder="Огноо сонгох" style="width:100%;cursor:pointer;" />
-              <input type="hidden" id="mo-start-date" />
-              <div class="mc-pop" id="mo-start-pop" style="display:none;"></div>
-            </div>
-            <select id="mo-start-hour" style="width:80px;flex:none;">${hourOpts}</select>
-          </div>
-        </div>
-        <div style="flex:1;min-width:0;"><label>Дуусах</label>
-          <div style="display:flex;gap:4px;align-items:flex-start;">
-            <div class="mcal" style="flex:1;min-width:0;position:relative;">
-              <input type="text" class="mcal-display" id="mo-end-disp" readonly placeholder="Огноо сонгох" style="width:100%;cursor:pointer;" />
-              <input type="hidden" id="mo-end-date" />
-              <div class="mc-pop" id="mo-end-pop" style="display:none;"></div>
-            </div>
-            <select id="mo-end-hour" style="width:80px;flex:none;">${hourOpts}</select>
-          </div>
-        </div>
-      </div>
-      <label style="margin-top:10px;">Бараа</label>
-      <div id="mo-items"></div>
-      <datalist id="mo-prod-list"></datalist>
-      <button class="btn" id="mo-add-item" style="margin-top:6px;">+ Бараа нэмэх</button>
-      <label style="margin-top:12px;">Нийт барьцаа (₮)</label>
-      <input id="mo-deposit" type="number" min="0" placeholder="0" />
-      <label style="margin-top:10px;">Нэмэлт хямдрал (₮)</label>
-      <input id="mo-discount" type="number" min="0" placeholder="0" />
-      <p style="font-size:11px;color:var(--muted);margin:8px 0 0;">Бүх үнэ НӨАТ-тэй. Барааны үнэ каталогоос автомат (захиалга дотор засагдахгүй).</p>
-      <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-weight:400;cursor:pointer;">
-        <input type="checkbox" id="mo-vat" style="width:18px;height:18px;" /> НӨАТ хасах (түрээсийн үнээс −5%)
-      </label>
-      <label style="margin-top:12px;">Тэмдэглэл</label>
-      <textarea id="mo-note" placeholder="Хүргэлт, тоног, нэмэлт..."></textarea>
-      <div id="mo-totals" style="margin-top:12px;padding:10px 12px;background:var(--panel-hover);border-radius:8px;font-size:13px;"></div>
-      <div class="modal-actions" style="margin-top:16px;">
-        <button class="btn" id="mo-cancel">Болих</button>
-        <button class="btn btn-primary" id="mo-save">${isEdit ? '💾 Хадгалах' : 'Захиалга үүсгэх'}</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#mo-start-hour').value = (isEdit && sDT.hour) ? sDT.hour : '09';
-  modal.querySelector('#mo-end-hour').value = (isEdit && eDT.hour) ? eDT.hour : '17';
-  if (isEdit) {
-    const set = (id, v) => { const el = modal.querySelector(id); if (el) el.value = v || ''; };
-    set('#mo-name', editOrder.customer_name); set('#mo-phone', editOrder.phone);
-    set('#mo-company', editOrder.company); set('#mo-register', editOrder.register);
-    set('#mo-email', editOrder.email); set('#mo-address', editOrder.address);
-    set('#mo-deposit', editOrder.deposit || '');
-    // Note-оос гар хямдрал + цэвэр тэмдэглэлийг салгаж буцаан дүүргэнэ.
-    const dm = String(editOrder.note || '').match(/Хямдрал \(гар\):\s*−?\s*([\d,]+)/);
-    set('#mo-discount', dm ? dm[1].replace(/\D/g, '') : '');
-    set('#mo-note', cleanOrderNote(editOrder.note));
-    if (/НӨАТ/i.test(String(editOrder.note || ''))) { const v = modal.querySelector('#mo-vat'); if (v) v.checked = true; }
-  }
-  mountCalendar(modal.querySelector('#mo-start-disp'), modal.querySelector('#mo-start-date'), modal.querySelector('#mo-start-pop'), () => renderTotals(), isEdit ? sDT.date : '');
-  mountCalendar(modal.querySelector('#mo-end-disp'), modal.querySelector('#mo-end-date'), modal.querySelector('#mo-end-pop'), () => renderTotals(), isEdit ? eDT.date : '');
-
-  const itemsEl = modal.querySelector('#mo-items');
-  const totalsEl = modal.querySelector('#mo-totals');
-  const depositEl = modal.querySelector('#mo-deposit');
-  const findProd = (name) => products.find(p => (p.name || '') === name);
-  // Барааг нэр / SKU / M-код / нийлмэл датлист утгаар олно (сайтын хайлттай адил SKU-гаар хайх боломж).
-  const _prodTags = (p) => [...new Set([p.code, p.sku].map(x => String(x || '').trim()).filter(Boolean))];
-  const _prodListVal = (p) => { const t = _prodTags(p); return (p.name || '') + (t.length ? ` · ${t.join(' · ')}` : ''); };
-  const resolveProd = (v) => {
-    const s = String(v || '').trim(); if (!s) return null;
-    const sl = s.toLowerCase();
-    return products.find(p => _prodListVal(p) === s || (p.name || '') === s
-      || String(p.sku || '').toLowerCase() === sl || String(p.code || '').toLowerCase() === sl) || null;
-  };
-
-  const autoDeposit = () => items.reduce((s, it) => s + (Number(it.deposit) || 0) * (Number(it.qty) || 0), 0);
-  function syncAutoDeposit() { if (!manualDeposit) depositEl.value = autoDeposit() || ''; }
-  const vatEl = modal.querySelector('#mo-vat');
-  const startDateEl = modal.querySelector('#mo-start-date');
-  const endDateEl = modal.querySelector('#mo-end-date');
-  function orderDays() {
-    // Хоногийг КАЛЕНДАРИЙН ӨДРӨӨР тоолно (цаг үл нөлөөлнө) — сайт·апп·квот нэг дүрэм.
-    const sd = startDateEl.value, ed = endDateEl.value;
-    if (!sd || !ed) return 1;
-    const start = new Date(`${sd}T00:00:00`), end = new Date(`${ed}T00:00:00`);
-    if (isNaN(start) || isNaN(end)) return 1;
-    return Math.max(1, Math.round((end - start) / 86400000));   // 13→14=1, 13→15=2
-  }
-  const discountEl = modal.querySelector('#mo-discount');
-  function computeTotals() {
-    const days = orderDays();
-    // Түрээс = (барааны үнэ × тоо) × хоног
-    const subtotal = items.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0), 0) * days;
-    const deposit = Number(depositEl.value) || 0;
-    // Хугацааны шатлалын хямдрал (өдөр/7хоног/сар)
-    const tier = rentalDiscount(days);
-    const multiDayDiscount = Math.round(subtotal * tier.pct);
-    const afterMd = subtotal - multiDayDiscount;
-    // НӨАТ хасалт — хямдарсан түрээсийн үнээс 5% (барьцаанаас хасагдахгүй)
-    const vatDiscount = vatEl.checked ? Math.round(afterMd * 0.05) : 0;
-    // Гар (нэмэлт) хямдрал — менежер тавина
-    const manualDiscount = Math.max(0, Number(discountEl.value) || 0);
-    const grand = Math.max(0, afterMd - vatDiscount - manualDiscount) + deposit;
-    return { subtotal, deposit, days, multiDayDiscount, multiDayPct: tier.pct, multiDayLabel: tier.label, vatDiscount, manualDiscount, grand };
-  }
-  depositEl.addEventListener('input', () => { manualDeposit = depositEl.value.trim() !== ''; renderTotals(); });
-  vatEl.addEventListener('change', () => renderTotals());
-  discountEl.addEventListener('input', () => renderTotals());
-  function renderItems() {
-    itemsEl.innerHTML = items.map((it, i) => `
-      <div class="mo-item-row" data-idx="${i}" style="margin-bottom:8px;">
-        <div style="display:flex;gap:6px;align-items:flex-start;">
-          <div class="mo-name-wrap" style="flex:1;min-width:0;">
-            <input class="mo-it-name" list="mo-prod-list" autocomplete="off" value="${escapeHtml(it.name || '')}" placeholder="Бараа хайх/бичих" style="width:100%;" />
-          </div>
-          <input class="mo-it-qty" type="number" min="1" value="${it.qty || 1}" style="width:56px;" title="Тоо" />
-          <input class="mo-it-price" type="number" value="${it.price || 0}" style="width:104px;background:var(--panel-hover);color:var(--muted);cursor:not-allowed;" title="Каталогийн үнэ (засагдахгүй)" readonly tabindex="-1" />
-          <button class="mo-it-rm" title="Хасах" style="background:none;border:none;color:var(--danger);font-size:18px;cursor:pointer;">×</button>
-        </div>
-        <div class="mo-avail" data-ai="${i}"></div>
-      </div>`).join('');
-    syncAutoDeposit();
-    renderTotals();
-  }
-  // Сонгосон огноонд бараа сул эсэхийг мөр бүрт харуулна (давхар захиалга сэргийлэх).
-  function updateAvail() {
-    const sd = startDateEl.value, ed = endDateEl.value;
-    items.forEach((it, i) => {
-      const el = itemsEl.querySelector(`.mo-avail[data-ai="${i}"]`);
-      if (!el) return;
-      const name = (it.name || '').trim();
-      const a = name ? availabilityFor(name, sd, ed, editOrder && editOrder.order_no) : null;
-      if (!name || !a) { el.textContent = ''; el.className = 'mo-avail'; return; }
-      if (!sd || !ed) { el.textContent = `Нөөц: ${a.stock}`; el.className = 'mo-avail'; return; }
-      const need = Number(it.qty) || 0;
-      if (need > a.avail) { el.textContent = `⚠ Хүрэлцэхгүй: энэ өдөр ${a.avail} сул (${a.stock} нөөц − ${a.booked} захиалсан)`; el.className = 'mo-avail bad'; }
-      else { el.textContent = `✓ ${a.avail} сул (${a.stock} нөөц − ${a.booked} захиалсан)`; el.className = 'mo-avail ok'; }
-    });
-  }
-  function renderTotals() {
-    const t = computeTotals();
-    totalsEl.innerHTML = `Түрээс: <b>${fmtMoney(t.subtotal)}</b> · Барьцаа: <b>${fmtMoney(t.deposit)}</b>`
-      + (t.multiDayDiscount ? `<br>${t.days} хоног · ${t.multiDayLabel} (${Math.round(t.multiDayPct * 100)}%): <b style="color:var(--ok);">−${fmtMoney(t.multiDayDiscount)}</b>` : '')
-      + (t.vatDiscount ? `<br>НӨАТ хасалт (5%): <b style="color:var(--danger);">−${fmtMoney(t.vatDiscount)}</b>` : '')
-      + (t.manualDiscount ? `<br>Нэмэлт хямдрал: <b style="color:var(--ok);">−${fmtMoney(t.manualDiscount)}</b>` : '')
-      + `<br>Нийт: <b style="color:var(--primary);">${fmtMoney(t.grand)}</b>`;
-    updateAvail();
-  }
-  // Барааны жагсаалт — native <datalist> (утсан дээр найдвартай, бичсэн утга алга болохгүй).
-  function fillProdList() {
-    const dl = modal.querySelector('#mo-prod-list');
-    if (!dl) return;
-    dl.innerHTML = (products || []).map(p =>
-      `<option value="${escapeHtml(_prodListVal(p))}" label="${fmtMoney(Number(p.price) || 0)}"></option>`
-    ).join('');
-  }
-  fillProdList();
-  renderItems();
-
-  itemsEl.addEventListener('input', (e) => {
-    const row = e.target.closest('.mo-item-row'); if (!row) return;
-    const i = +row.dataset.idx;
-    if (e.target.classList.contains('mo-it-name')) {
-      const p = resolveProd(e.target.value);
-      items[i].name = p ? p.name : e.target.value;
-      if (p) { items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
-        row.querySelector('.mo-it-price').value = items[i].price; }
-    } else if (e.target.classList.contains('mo-it-qty')) {
-      items[i].qty = Math.max(1, Number(e.target.value) || 1);
-    } else if (e.target.classList.contains('mo-it-price')) {
-      items[i].price = Number(e.target.value) || 0;
-    }
-    syncAutoDeposit();
-    renderTotals();
-  });
-  itemsEl.addEventListener('click', (e) => {
-    if (!e.target.classList.contains('mo-it-rm')) return;
-    const i = +e.target.closest('.mo-item-row').dataset.idx;
-    items.splice(i, 1);
-    if (!items.length) items.push({ name: '', qty: 1, price: 0, deposit: 0 });
-    renderItems();
-  });
-  // datalist-аас сонгоход 'change' мөн биелнэ — үнэ/барьцааг шинэчилнэ.
-  itemsEl.addEventListener('change', (e) => {
-    if (!e.target.classList.contains('mo-it-name')) return;
-    const row = e.target.closest('.mo-item-row'); if (!row) return;
-    const i = +row.dataset.idx;
-    const p = resolveProd(e.target.value);
-    items[i].name = p ? p.name : e.target.value;
-    if (p) { e.target.value = p.name; items[i].price = Number(p.price) || 0; items[i].deposit = Number(p.deposit) || 0;
-      row.querySelector('.mo-it-price').value = items[i].price; }
-    syncAutoDeposit();
-    renderTotals();
-  });
-  modal.querySelector('#mo-add-item').addEventListener('click', () => {
-    items.push({ name: '', qty: 1, price: 0, deposit: 0 });
-    renderItems();
-  });
-  const close = () => modal.remove();
-  modal.querySelector('#mo-cancel').addEventListener('click', close);
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  modal.querySelector('#mo-save').addEventListener('click', (e) => {
-    submitNewMeventOrder(modal, items, computeTotals(), e.currentTarget, editOrder);
-  });
-
-  modal.classList.add('open');
-  setTimeout(() => modal.querySelector('#mo-name')?.focus(), 50);
-}
-
-async function submitNewMeventOrder(modal, items, totals, btn, editOrder) {
-  const val = (id) => (modal.querySelector(id)?.value || '').trim();
-  const name = val('#mo-name');
-  if (!name) { showToast('Үйлчлүүлэгчийн нэр шаардлагатай', 'warn'); return; }
-  const cleanItems = items.filter(it => (it.name || '').trim() && (Number(it.qty) || 0) > 0);
-  if (!cleanItems.length) { showToast('Дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
-  const sd = val('#mo-start-date'), ed = val('#mo-end-date');
-  const sh = val('#mo-start-hour') || '09', eh = val('#mo-end-hour') || '17';
-  const start = sd ? `${sd} ${sh}:00` : '';
-  const end = ed ? `${ed} ${eh}:00` : '';
-  // Хоногийг computeTotals-тэй ижил 24ц логикоор (totals.days) авна — давхар буруу тооцоо хийхгүй.
-  const days = (sd && ed) ? (totals.days || '') : '';
-  const vatOff = !!modal.querySelector('#mo-vat')?.checked;
-  // Хэрэглэгчийн note-оос өмнө автоматаар нэмсэн хямдрал/НӨАТ мөрийг арилгаад (давхардахаас сэргийлж) дахин нэмнэ.
-  let note = cleanOrderNote(val('#mo-note'));
-  if (totals.multiDayDiscount) note = (note ? note + ' · ' : '') + `${totals.days} хоногийн хямдрал (−${Math.round(totals.multiDayPct * 100)}% = ${fmtMoney(totals.multiDayDiscount)})`;
-  if (vatOff) note = (note ? note + ' · ' : '') + `НӨАТ хасав (−5% = ${fmtMoney(totals.vatDiscount || 0)})`;
-  if (totals.manualDiscount) note = (note ? note + ' · ' : '') + `Хямдрал (гар): −${fmtMoney(totals.manualDiscount)}`;
-
-  // Давхар захиалга шалгах — бараа сонгосон огноонд хүрэлцэхгүй бол анхааруулна (зогсоохгүй, баталгаажуулна).
-  if (sd && ed) {
-    const short = orderShortages(cleanItems, sd, ed, editOrder && editOrder.order_no);
-    if (short.length) {
-      const lines = short.map(s => `• ${s.name}: ${s.need} захиалж буй ч ${s.avail} л сул (${s.stock} нөөц − ${s.booked} өөр захиалга)`).join('\n');
-      const ok = await showConfirm(`⚠ Зарим бараа энэ өдрүүдэд хүрэлцэхгүй байна:\n\n${lines}\n\nДавхар захиалга үүсч болзошгүй. Үргэлжлүүлэх үү?`, { title: 'Бараа хүрэлцэхгүй', okText: 'Тийм, үргэлжлүүлэх', danger: true });
-      if (!ok) return;
-    }
-  }
-  btn.disabled = true;
-
-  // ── EDIT — бүрэн мөрийг /webhook/mevent-orders руу update хийнэ ──
-  if (editOrder) {
-    const updated = {
-      ...editOrder,
-      customer_name: name, phone: val('#mo-phone'), address: val('#mo-address'),
-      email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register'),
-      date_start: start, date_end: end, days,
-      items: cleanItems, subtotal: totals.subtotal, deposit: totals.deposit, total: totals.grand,
-      note,
-    };
-    const idx = state.orders.findIndex(x => x.order_no === editOrder.order_no);
-    if (idx >= 0) state.orders[idx] = updated;
-    try {
-      const r = await fetchWithTimeout(withKey(state.config.ordersUrl || DEFAULT_ORDERS_URL), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderToWire(updated)),
-      }, 15000);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      showToast('Захиалга шинэчлэгдлээ', 'success', 2500);
-      modal.remove();
-      render();
-      loadOrders();
-    } catch (e) { showToast('Алдаа: ' + e.message, 'error', 4000); btn.disabled = false; }
-    return;
-  }
-
-  // ── NEW — сайттай ижил capture webhook ──
-  const payload = {
-    customer: { name, phone: val('#mo-phone'), address: val('#mo-address'), email: val('#mo-email'), company: val('#mo-company'), register: val('#mo-register') },
-    dates: { start, end },
-    totals: { days, subtotal: totals.subtotal, deposit: totals.deposit, grand: totals.grand },
-    items: cleanItems,
-    note,
-    source: 'app',
-  };
-  const base = state.config.ordersUrl || DEFAULT_ORDERS_URL;
-  const captureUrl = base.replace(/\/[^/]+$/, '/m-event-site-order');
-  try {
-    const r = await fetchWithTimeout(withKey(captureUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }, 15000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    showToast('Захиалга үүсгэгдлээ', 'success', 2500);
-    modal.remove();
-    loadOrders();
-  } catch (e) {
-    showToast('Алдаа: ' + e.message, 'error', 4000);
-    btn.disabled = false;
-  }
 }
 
 // Мөнгөн дүн форматлагч (₮). fmt-тэй давхцахгүй, орон тусгаарлана.
@@ -12212,110 +11868,6 @@ function openSalaryHistory(personKey) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   modal.classList.add('open');
 }
-async function openSalaryPayModal(personKey, cycleTag) {
-  if (!can('salary.pay')) { showToast('Танд цалин олгох эрх олгогдоогүй', 'warn', 3000); return; }
-  const m = findMember(personKey); if (!m) return;
-  loadUsedReceipts();   // баримтын давхцлыг шуурхай шалгах
-  const ym = state.salaryYM || todayStr().slice(0, 7);
-  const base = Number((state.salaries || {})[personKey]) || 0;
-  const isAdv = cycleTag === SAL_ADV_TAG, isRem = cycleTag === SAL_REM_TAG;
-  const advPaid = salaryCyclePaid(personKey, ym, SAL_ADV_TAG);
-  const cycTag = isAdv ? SAL_ADV_TAG : isRem ? SAL_REM_TAG : '';
-  const cycName = isAdv ? 'Урьдчилгаа цалин' : isRem ? 'Үлдэгдэл цалин' : 'Цалин';
-  const cycShort = isAdv ? 'урьдчилгаа' : isRem ? 'үлдэгдэл' : '';
-  const net = salaryNet(base, salaryDeductOn(personKey)).net;
-  const _advForRem = advPaid > 0 ? advPaid : (salaryLastAdvance(personKey) || Math.round(net / 2));
-  const expAmt = isAdv ? (salaryLastAdvance(personKey) || Math.round(net / 2)) : isRem ? Math.max(0, net - _advForRem) : net;
-  const _acct = String(m.bank_account || '').replace(/\s/g, '');
-  const memoText = `Цалин ${cycShort} ${m.name || ''}`.replace(/\s+/g, ' ').trim();
-  const modal = document.createElement('div'); modal.className = 'modal-bg';
-  const bankBox = (m.bank || m.bank_account)
-    ? `<div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-         <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Хүлээн авах данс</div><b style="font-size:13px;">${escapeHtml(m.bank || '—')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}</b>${m.bank_holder ? `<div style="font-size:11px;color:var(--muted);">${escapeHtml(m.bank_holder)}</div>` : ''}</div>
-         ${_acct ? `<button class="btn" id="sal-copy-acct" style="padding:4px 11px;font-size:11.5px;white-space:nowrap;">⧉ Данс</button>` : ''}
-       </div>`
-    : `<div style="color:var(--danger);font-size:12px;margin-bottom:12px;">🏦 Данс бүртгэгдээгүй — Ажилтан удирдах хэсэгт нэмнэ үү</div>`;
-  const rowCss = 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--border);';
-  modal.innerHTML = `<div class="modal" style="max-width:400px;max-height:90vh;overflow-y:auto;">
-    <div style="font-weight:800;font-size:16px;margin-bottom:2px;">Цалин шилжүүлэх</div>
-    <div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">${escapeHtml(m.name || '')} · ${escapeHtml(m.role || 'ажилтан')} · ${escapeHtml(ym)}</div>
-    ${bankBox}
-    <div style="background:var(--panel-hover);border-radius:8px;padding:9px 11px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-      <div style="min-width:0;"><div style="font-size:10.5px;color:var(--muted);">Гүйлгээний утга</div><b style="font-size:12.5px;">${escapeHtml(memoText)}</b></div>
-      <button class="btn" id="sal-copy-memo" style="padding:4px 11px;font-size:11.5px;white-space:nowrap;">⧉ Утга</button>
-    </div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Шилжүүлэх ${escapeHtml(cycName.toLowerCase())}: <b style="color:var(--text);">${fmtMoney(expAmt)}</b></div>
-    <label for="sal-pdf" style="display:block;margin-bottom:14px;font-size:13px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
-      📄 <b>Шилжүүлгийн баримт (PDF) оруулах</b>
-      <input id="sal-pdf" type="file" accept="application/pdf,.pdf" hidden>
-      <div id="sal-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Голомт/Хаан шилжүүлгийн баримт · дүн·огноо автоматаар. <b>Баримт заавал.</b></div>
-    </label>
-    <div id="sal-fields" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 13px;margin-bottom:14px;">
-      <div style="${rowCss}"><span style="color:var(--muted);">Гүйлгээний дүн</span><b id="sal-amt-disp" style="font-size:15px;color:var(--ok);"></b></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Огноо</span><span id="sal-date-disp"></span></div>
-      <div style="${rowCss}"><span style="color:var(--muted);">Хүлээн авагч</span><b id="sal-recv-disp" style="text-align:right;"></b></div>
-      <div style="${rowCss}border-bottom:none;"><span style="color:var(--muted);">Төлөв</span><span id="sal-status-disp"></span></div>
-    </div>
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">
-      <button class="btn" id="sal-cancel">Болих</button>
-      <button class="btn btn-primary" id="sal-save" disabled style="opacity:.45;cursor:not-allowed;">Бүртгэх</button>
-    </div></div>`;
-  document.body.appendChild(modal);
-  let parsed = null;
-  const close = () => modal.remove();
-  modal.querySelector('#sal-cancel').onclick = close;
-  modal.querySelector('#sal-copy-acct')?.addEventListener('click', () => copyText(_acct, 'Данс хууллаа'));
-  modal.querySelector('#sal-copy-memo')?.addEventListener('click', () => copyText(memoText, 'Гүйлгээний утга хууллаа'));
-  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  const saveBtn = modal.querySelector('#sal-save');
-  const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
-  // Шилжүүлгийн баримт PDF → автомат задалж, зөвхөн үүгээр бүртгэнэ (гараар оруулах боломжгүй)
-  modal.querySelector('#sal-pdf').addEventListener('change', async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const status = modal.querySelector('#sal-pdf-status');
-    status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)'; enableSave(false); parsed = null;
-    try {
-      const d = parseBankReceipt(await extractPdfText(file));
-      if (!d.amount) throw new Error('Дүн олдсонгүй — Голомт/Хаан шилжүүлгийн баримт мөн эсэхийг шалгана уу');
-      if (receiptTooOld(d.date)) throw new Error(`${d.date} огноотой — PDF бүртгэл ${RECEIPT_MIN_DATE}-нээс эхэлсэн, түүнээс өмнөх баримт бүртгэхгүй`);
-      modal.querySelector('#sal-amt-disp').textContent = fmtMoney(d.amount);
-      modal.querySelector('#sal-date-disp').textContent = d.date || '—';
-      modal.querySelector('#sal-recv-disp').textContent = [d.receiverBank, d.receiverName].filter(Boolean).join(' · ') || '—';
-      modal.querySelector('#sal-status-disp').textContent = d.status || '—';
-      modal.querySelector('#sal-fields').style.display = '';
-      const fpKey = receiptFingerprint(d), refKey = d.bankRef || '';
-      d.receiptId = refKey || fpKey;
-      const reason = receiptDupReason(refKey, fpKey);
-      if (reason) throw new Error(`Энэ баримт аль хэдийн бүртгэгдсэн (${reason}) — дахин бүртгэх боломжгүй`);
-      parsed = { amount: d.amount, date: d.date || todayStr(), canonKey: d.receiptId, fpKey,
-        receiptNote: '[#' + d.receiptId + '] ' + [d.receiverName, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · ') };
-      const warns = [];
-      if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
-      const empTokens = String(m.name || '').split(/\s+/).map(t => t.replace(/[.\-]/g, '')).filter(t => t.length > 2);
-      if (d.receiverName && empTokens.length && !empTokens.some(t => d.receiverName.includes(t))) warns.push('хүлээн авагч ажилтны нэртэй таарахгүй байж болзошгүй');
-      if (Math.abs(d.amount - expAmt) > 1) warns.push(`хүлээгдэж буй ${fmtMoney(expAmt)}-аас зөрүүтэй`);
-      status.innerHTML = warns.length ? `✓ уншсан · <span style="color:var(--warn);">⚠ ${warns.join(', ')}</span>` : `✓ ${escapeHtml(file.name)} — уншсан`;
-      status.style.color = warns.length ? 'var(--warn)' : 'var(--ok)';
-      enableSave(true);
-    } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; parsed = null; enableSave(false); }
-  });
-  saveBtn.addEventListener('click', async () => {
-    if (!parsed) return;
-    enableSave(false);
-    const rr = await reserveReceipt(parsed.canonKey, { fp: parsed.fpKey, amount: parsed.amount, date: parsed.date, ref: parsed.receiptNote, usedIn: 'salary:' + personKey + ':' + ym + ':' + (cycShort || 'full') });
-    if (rr === 'err') { showToast('Баримтын давхцлыг шалгаж чадсангүй (сүлжээ/эрх) — бүртгэсэнгүй. Дахин оролдоно уу.', 'error', 5000); enableSave(true); return; }   // C2: цагаан жагсаалт — 'ok' биш бол ЗОГС
-    if (rr === 'dup') { showToast('Энэ баримт аппд аль хэдийн бүртгэгдсэн — дахин бүртгэхгүй', 'error', 4000); enableSave(true); return; }
-    let note = `Зарлага: Цалин ${cycShort} ${m.name || ''} ${String(parsed.date).slice(5).replace('-', '.')} ${parsed.receiptNote}`.replace(/\s+/g, ' ').trim();
-    if (cycTag) note += ' ' + cycTag;
-    close();
-    await paySalary(personKey, ym, parsed.amount, note);
-    await createSalaryExpense(m, ym, parsed.amount, cycShort);   // санхүүд автомат зардал
-    showToast(`${m.name}: ${fmtMoney(parsed.amount)} — баримтаар бүртгэлээ`, 'success', 2800);
-    render();
-  });
-  modal.classList.add('open');
-}
-
 // ── Нэг гишүүний default (role-based) хандалт — матрицын анхны төлөв харуулахад ──
 function _phoneDigits(m) { return String((m && m.phone) || '').replace(/\D/g, ''); }
 function _nomaadDefaultFor(m) {
@@ -12357,26 +11909,6 @@ function defaultViewForRole(roleKey, viewKey) {
     return false;
   });
 }
-// Гишүүний одоогийн хандалт (override байвал тэр, эс бөгөөс default). { access, hasOverride, isCeo }
-function memberAccessState(m) {
-  const key = personKey(m);
-  const ov = (state.memberPerms && state.memberPerms[key]) || null;
-  const isCeo = ((m && m.level) || 0) >= 100 || isFullAccessMember(m);
-  const base = {
-    orders: isCeo || _ordersDefaultFor(m),
-    receivables: isCeo,
-    түүх: isCeo,
-    products: isCeo,
-    reports: isCeo || canSeeAllFinance(key),
-    nomaad: isCeo || _nomaadDefaultFor(m),
-    hourly: isCeo || _hourlyDefaultFor(m),
-  };
-  const rt = (state.rolePerms && state.rolePerms[normRole(m.role)]) || null;
-  if (rt) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(rt, v.key)) base[v.key] = !!rt[v.key]; });  // албан тушаалын давхарга
-  if (ov) PERM_VIEWS.forEach(v => { if (Object.prototype.hasOwnProperty.call(ov, v.key)) base[v.key] = !!ov[v.key]; });  // хувь хүний override
-  return { access: base, hasOverride: !!ov, isCeo };
-}
-
 // ════════════ БАЙГУУЛЛАГЫН БҮТЭЦ (Org chart) ════════════
 // Иерархийг ажилтны зэрэглэл (level) + салбараар АВТОМАТААР үүсгэнэ (reports_to талбар байхгүй).
 //   level>=100 → Удирдлага (CEO) · 80-99 → Захирал · 55-79 → Менежер · <55 → Ажилтан · Цагийн=бүлэг.
@@ -12683,13 +12215,6 @@ function _inHubBranch(m, br) {
   if (!bs.length) return true;
   return bs.includes(br) || bs.includes('shared');
 }
-// "Ажилтан" таб — ажилтны жагсаалт (renderStaffList дүүргэнэ).
-function renderStaffPeople() {
-  state._staffListId = 'hub-staff-list'; state._staffSearchId = 'hub-staff-search';
-  return `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="hub-staff-search" placeholder="Нэр, албан тушаал" value="${escapeHtml(state.staffSearch || '')}" /></div>
-    <div id="hub-staff-list" style="display:flex;flex-direction:column;gap:6px;"></div>`;
-}
-
 // ── Албан тушаалаар (role templates) ──
 // Хүний бодит эрх (pre-check): хувь хүний онцгой → албан тушаал → default.
 function effectiveCapForMember(m, key, kind) {
@@ -12740,58 +12265,6 @@ function capMatrixHtml(dataAttr, holderKey, getVal, canGrant) {
     const actChips = menu.actions.map(a => chip(a.key, 'action', escapeHtml(a.label), getVal(a.key, 'action'))).join('');
     return `<div class="ac-menu"><div class="ac-menu-name">${escapeHtml(menu.label)}${menu.core ? ' <span style="font-size:9.5px;color:var(--muted);font-weight:400;">(үндсэн)</span>' : ''}</div><div class="ac-chips" style="display:flex;flex-wrap:wrap;gap:6px;">${viewChip}${actChips}</div></div>`;
   }).join('') + `</div>`;
-}
-function renderAccessRoles() {
-  // Албан тушаалын загвар (role_perms) = ЗӨВХӨН CEO. Delegate захирал зөвхөн "Хүнээр" (доорхио) засна.
-  if (!state.isCEO) return renderAccessByPerson();
-  // Хоёр горим: (1) Албан тушаалаар (role_perms — бүлгээр) (2) Хүнээр (member_perms — онцгой override).
-  const mode = state.accessRoleMode || 'role';
-  const modeBar = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
-    ${[['role', '🏷 Албан тушаалаар'], ['person', '👤 Хүнээр (онцгой)']].map(([k, l]) =>
-      `<button class="btn${k === mode ? ' btn-primary' : ''}" data-role-mode="${k}" style="padding:6px 12px;font-size:12px;">${l}</button>`).join('')}
-  </div>`;
-  if (mode === 'role') return modeBar + renderRoleTemplates();
-  return modeBar + renderAccessByPerson();
-}
-// ── Албан тушаалаар (role_perms) — нэг тохируулбал тухайн албан тушаалын бүх хүнд хэрэгжинэ ──
-function renderRoleTemplates() {
-  const br = effectiveBranchLens() || 'all';
-  const q = (state.accessSearch || '').toLowerCase().trim();
-  const people = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан' && _inHubBranch(m, br) && !isDailyMember(m));
-  // Албан тушаал бүрээр бүлэглэнэ (normRole)
-  const byRole = {};
-  people.forEach(m => { const rk = normRole(m.role); if (!rk) return; (byRole[rk] = byRole[rk] || []).push(m); });
-  let roleKeys = Object.keys(byRole).sort((a, b) => byRole[b].length - byRole[a].length || a.localeCompare(b));
-  if (q) roleKeys = roleKeys.filter(rk => rk.includes(q) || byRole[rk].some(m => (m.name || '').toLowerCase().includes(q)));
-  const note = `<div style="border:1px solid var(--border);background:var(--panel-hover);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
-    <b>Албан тушаал</b> дээр дарж задлаад эрхийг тохируул. Энэ тохиргоо тухайн албан тушаалын <b>бүх хүнд</b> хэрэгжинэ (жишээ: Менежер, Нярав, Маркетинг). Ганц хүнд онцгой эрх өгөх бол «👤 Хүнээр» рүү ор. CEO хязгаарлагдахгүй.
-  </div>`;
-  const searchBar = `<div class="orders-search" style="margin-bottom:12px;">🔍<input type="search" id="access-search" placeholder="Албан тушаал / нэр хайх" value="${escapeHtml(state.accessSearch || '')}" /></div>`;
-  const expRole = state.accessExpandedRole || '';
-  const wrap = (inner) => `<div class="ac-role-row" style="border:1px solid var(--border);border-radius:12px;background:var(--panel);padding:11px 13px;margin-bottom:8px;">${inner}</div>`;
-  const roleGetVal = (rk) => (key, kind) => {
-    const rt = state.rolePerms && state.rolePerms[rk];
-    if (rt && Object.prototype.hasOwnProperty.call(rt, key)) return !!rt[key];
-    if (kind === 'view') return defaultViewForRole(rk, key);
-    if (DENY_DEFAULT_ACTIONS.has(key)) return false;
-    return true;
-  };
-  const rows = roleKeys.map(rk => {
-    const members = byRole[rk];
-    const label = members[0] && members[0].role ? members[0].role : rk;   // жинхэнэ бичиглэлээр харуулна
-    const rExp = expRole === rk;
-    const rt = state.rolePerms && state.rolePerms[rk];
-    const hasTpl = rt && Object.keys(rt).length > 0;
-    const summary = `<div class="ac-role-head" data-role-toggle="${escapeHtml(rk)}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;">
-      <div style="min-width:0;"><span style="font-size:11px;color:var(--muted);">${rExp ? '▾' : '▸'}</span> <b style="font-size:13px;">${escapeHtml(label)}</b> <span style="font-size:11px;color:var(--muted);">· ${members.length} хүн</span></div>
-      ${hasTpl ? `<span style="font-size:10px;color:var(--accent,#2563EB);font-weight:700;">тохируулсан</span>` : `<span style="font-size:10px;color:var(--muted);">default</span>`}
-    </div>`;
-    if (!rExp) return wrap(summary);
-    const names = `<div style="font-size:11px;color:var(--muted);margin:6px 0 2px;line-height:1.6;">Хамрах хүн: ${members.map(m => escapeHtml(m.name || '?')).join(', ')}</div>`;
-    const reset = hasTpl ? `<div style="margin-top:8px;"><button class="btn" data-role-reset="${escapeHtml(rk)}" style="padding:4px 11px;font-size:11px;">↺ Default руу буцаах</button></div>` : '';
-    return wrap(summary + names + capMatrixHtml('role-cap', rk, roleGetVal(rk)) + reset);
-  }).join('');
-  return `${note}${searchBar}<div class="ac-wrap">${rows || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Албан тушаал алга</div>'}</div>`;
 }
 function renderAccessByPerson() {
   // ХҮН ТУС БҮРЭЭР — онцгой эрх (member_perms), албан тушаалын загварыг дарна.

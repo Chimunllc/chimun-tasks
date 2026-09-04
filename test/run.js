@@ -164,6 +164,60 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(dead.length, 0, 'scan: мөнх хоосон state талбар байхгүй — ' + (dead.join(', ') || 'цэвэр'));
 }
 
+// 0h) canonKey / keyVariants — ажилтны хуучин түлхүүрийг эзэнтэй нь холбох (2026-09-04)
+// Нэг ажилтны утас солигдоход 5 хүснэгтийн 16 бичлэг эзэнгүй болж, 360° оноо нь
+// БҮРЭН алдагдсан (2026-09-04). Зураглалыг DB талын trigger автоматаар бичдэг;
+// энд аппын тал зөв уншиж байгааг бэхжүүлнэ.
+{
+  const run = (code) => vm.runInContext(code, sandbox);
+  const save = run('state.empAliases');
+
+  // alias байхгүй үед ЮУ Ч өөрчлөгдөхгүй (зөөлөн задрал)
+  run('state.empAliases = null;');
+  eq(run('canonKey')('89904109'), '89904109', 'canonKey: alias байхгүй бол утга хэвээр');
+  eq(run('canonKey')(''), '', 'canonKey: хоосон утга аюулгүй');
+
+  run("state.empAliases = { 'phone:89904109':'89985352', 'email:huuchin@a.mn':'89985352', 'name:хуучин нэр':'89985352' };");
+  eq(run('canonKey')('89904109'), '89985352', 'canonKey: утсаар шийднэ');
+  eq(run('canonKey')('HUUCHIN@a.mn'), '89985352', 'canonKey: мэйл том/жижиг үсэг ялгахгүй');
+  eq(run('canonKey')('Хуучин Нэр'), '89985352', 'canonKey: нэрээр шийднэ');
+  eq(run('canonKey')('89985352'), '89985352', 'canonKey: одоогийн түлхүүр хэвээр');
+
+  // Транзитив A→B→C
+  run("state.empAliases = { 'phone:111':'222', 'phone:222':'333' };");
+  eq(run('canonKey')('111'), '333', 'canonKey: транзитив A→B→C');
+
+  // ⚠ Мөчлөг үүсвэл ГАЦААХГҮЙ (оператор дугаарыг дахин олгодог тул бодит эрсдэл)
+  run("state.empAliases = { 'phone:111':'222', 'phone:222':'111' };");
+  const cyc = run('canonKey')('111');
+  ok(cyc === '111' || cyc === '222', 'canonKey: мөчлөг дээр гацахгүй — ' + cyc);
+
+  // keyVariants — сервер талын шүүлтэд БҮХ хувилбар орох ёстой
+  run("state.empAliases = { 'phone:89904109':'89985352', 'phone:70001111':'89985352', 'phone:999':'өөр' };");
+  const v = run('keyVariants')('89985352');
+  ok(v.includes('89985352') && v.includes('89904109') && v.includes('70001111'),
+     'keyVariants: бүх хуучин утас багтана — ' + JSON.stringify(v));
+  ok(!v.includes('999'), 'keyVariants: өөр хүний alias ОРОХГҮЙ');
+
+  // PostgREST жагсаалт — нэрэнд зай/цэг байж болно тул хашилттай
+  eq(run('pgrstInList')(['89985352', 'Б.Тест Нэр']), 'in.("89985352","Б.Тест Нэр")',
+     'pgrstInList: утга бүр хашилтад');
+
+  run('state.empAliases = ' + JSON.stringify(save) + ';');
+}
+
+// 0i) SCAN — ажилтны түлхүүрээр СЕРВЕР талд шүүхийг хориглоно (2026-09-04)
+// PostgREST-ийн шүүлт сервер дээр болдог тул хуучин түлхүүртэй мөр клиент рүү ОГТ
+// ирэхгүй — canonKey тэнд туслахгүй. Ийм дуудлага нэмбэл «Миний ирц» ба «Ирцийн
+// тайлан» ӨӨР ӨӨР тоо харуулна. Зөв хэлбэр: `${pgrstInList(keyVariants(түлхүүр))}`.
+// (member_perms дээрх DELETE нь БИЧИЛТ тул хамаарахгүй — үргэлж одоогийн түлхүүрээр.)
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  const bad = (codeLines.match(/rest\/v1\/attendance\?[^`'"]*member_key=eq\./g) || []).length
+            + (codeLines.match(/rest\/v1\/(evaluations|staff_salary|hourly_ratings)\?[^`'"]*=eq\.\$\{encodeURIComponent\((state\.me|personKey)/g) || []).length;
+  eq(bad, 0, 'scan: ажилтны түлхүүрээр сервер талд шүүхгүй (pgrstInList(keyVariants(...)) ашигла)');
+}
+
 // 0b) Хүрэлцээ — ХУУЧИРСАН НЭРТЭЙ мөрийг sku-гээр таньж шалгана (2026-09-03)
 // Регресс: өмнө нь availabilityFor(it.name) байсан тул сайтаас хуучин нэртэй мөр
 // ирэхэд productByName олдохгүй → null → «Хүрэлцэхгүй» ОГТ гардаггүй байв.

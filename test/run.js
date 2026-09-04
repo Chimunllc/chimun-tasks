@@ -139,6 +139,26 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   eq(all - safe, 0, 'scan: түүхий UTC огноо байхгүй (todayStr/dateStr/monthStr ашигла)');
 }
 
+// 0j) SCAN — захиалгын хүснэгтийн толгой ба мөр НЭГ багана тодорхойлолтоос (2026-09-04)
+// Алдаа: толгой ба мөр тус тусдаа `… 118px auto` гэж бичигдсэн байв. Сүүлийн `auto`
+// нь агуулгаас хамаарна — «💵 Төлбөр авах» товчтой мөрөнд ~124px, товчгүй мөрөнд 0 —
+// тэгэхээр `1fr` мөр бүрт өөр болж БҮХ багана 112px шилжиж, хойно урд харагдана.
+// Дүрэм: хоёулаа `var(--otable-cols)`-ыг л ашиглана; шинэ `auto` сүүлийн багана хориотой.
+{
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  // Токен нэг л удаа тодорхойлогдоно, сүүлийн багана нь ТОГТМОЛ px (auto БИШ)
+  const tok = (css.match(/--otable-cols:[^;]+;/g) || []);
+  eq(tok.length, 1, 'scan: --otable-cols токен нэг л газар');
+  ok(/\d+px;$/.test(tok[0] || ''), 'scan: --otable-cols сүүлийн багана тогтмол өргөнтэй (auto биш)');
+  // Толгой ба мөр хоёулаа тэр токеноор — тусад нь бичсэн 8 баганын жагсаалт БАЙХГҮЙ
+  ok(/\.otable-head\s*\{[^}]*grid-template-columns:\s*var\(--otable-cols\)/.test(css),
+     'scan: otable толгой --otable-cols токеныг ашиглана');
+  ok(/\.board-order\.flat\s*>\s*summary\s*\{[^}]*grid-template-columns:\s*var\(--otable-cols\)/.test(css),
+     'scan: otable мөр --otable-cols токеныг ашиглана');
+  eq((css.match(/118px 118px/g) || []).length, 1,
+     'scan: 8 баганын жагсаалт зөвхөн токенд (толгой/мөрд давхардуулахгүй)');
+}
+
 // 0g) SCAN — «мөнх хоосон» state талбар БАЙХГҮЙ (2026-09-04)
 // ROI 0% алдааны АНГИЛАЛ: `state.x` зарлагдсан ч хэзээ ч бичигддэггүй атлаа
 // уншигддаг бол алдаа шидэхгүйгээр ХУДАЛ «0 / хоосон» хариу өгнө. Ийм алдаа

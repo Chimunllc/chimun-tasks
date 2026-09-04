@@ -1364,7 +1364,7 @@ async function loadBootstrap() {
     applyPendingFinanceWrites();
     updatePendingConn();
     saveLocal();
-    try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+    saveFinanceCache();
     return true;
   } catch (e) {
     console.warn('Bootstrap load failed, falling back to per-endpoint:', e);
@@ -1951,7 +1951,7 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
 
 async function saveFinanceRequest(r, deleted = false) {
   // localStorage кэш
-  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  saveFinanceCache();
   if (!state.config.financeUrl) return;
   // Sheet рүү явуулахын өмнө: ID → нэр, код → монгол
   const wire = requestToWire(r);
@@ -1986,6 +1986,10 @@ async function loadFinanceCategories() {
     });
     state.finBranchPerms = perms;
     state.nomaadCustomAddon = naAddon;
+    // ⚠ finBranchPerms энд шинэчлэгддэг тул финансын кэшийг ДАХИН бичнэ.
+    // loadFinanceCategories нь loadBootstrap-аас ХОЙНО дуусдаг тул эрх ирэхээс өмнө
+    // бичигдсэн кэш нь илүү өргөн байж болно — эрх тодорхой болмогц шүүж дарж бичнэ.
+    if (typeof saveFinanceCache === 'function') saveFinanceCache();
     if (!mains.length) return; // хоосон ирвэл default-аа хадгална
     mains.sort((a, b) => a.code.localeCompare(b.code));
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
@@ -2038,6 +2042,28 @@ async function saveFinanceBranchPerm(key, name, grant) {
   }
 }
 
+// ── Санхүүгийн localStorage кэш — ЭРХЭЭР ШҮҮЖ бичнэ (аюулгүй байдал) ──────────────
+// n8n endpoint нь БҮХ хүсэлтийг буцаадаг (сервер талд шүүлт байхгүй) ба шүүлт нь зөвхөн
+// ХАРАГДАЦ дээр (filteredTasks) хийгддэг. Тиймээс кэшийг түүхийгээр нь бичих үед
+// компанийн БҮХ гүйлгээ — хэн хэнд хэдэн төгрөг, ямар зорилгоор — эрхгүй ажилтны утасны
+// localStorage-д тогтмол хадгалагдана. Утас гээгдэх/зээлдүүлэхэд шууд задарна.
+// Шийдэл: кэшийг харагдацын ЯГ ИЖИЛ дүрмээр (financeAsTask → assignee/createdBy) шүүнэ.
+function financeVisibleRows(rows) {
+  rows = Array.isArray(rows) ? rows : [];
+  if (state.isCEO || (typeof canSeeAllFinance === 'function' && canSeeAllFinance())) return rows;
+  const me = state.me;
+  if (!me) return [];   // нэвтрээгүй бол кэш бичихгүй
+  return rows.filter(r => {
+    try { const t = financeAsTask(r); return t.assignee === me || t.createdBy === me; }
+    catch (e) { return false; }   // задлаж чадаагүй мөрийг кэшлэхгүй (аюулгүй тал руу)
+  });
+}
+function saveFinanceCache() {
+  // Хэн нэвтэрсэн нь тодорхойгүй үед (эхлэлийн race) кэшийг ОГТ ХӨНДӨХГҮЙ — хоосон
+  // массив бичвэл хэрэглэгчийн офлайн датаг устгана.
+  if (!state.me) return;
+  try { localStorage.setItem('financeRequests', JSON.stringify(financeVisibleRows(state.financeRequests))); } catch (e) {}
+}
 async function loadFinanceRequests() {
   if (state.config.financeUrl) {
     try {
@@ -2051,7 +2077,7 @@ async function loadFinanceRequests() {
       const raw = Array.isArray(data?.requests) ? data.requests : [];
       state.financeRequests = raw.map(normalizeFinance);
       applyPendingFinanceWrites();   // офлайн хийсэн өөрчлөлтийг хадгална
-      try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+      saveFinanceCache();
       return;
     } catch (e) { console.warn('Finance load failed, fallback to cache:', e); }
   }
@@ -3066,7 +3092,7 @@ async function deleteFinanceRequest(id) {
   r.status = 'deleted';
   await saveFinanceRequest(r, true);
   state.financeRequests = state.financeRequests.filter(x => x.id !== id);
-  try { localStorage.setItem('financeRequests', JSON.stringify(state.financeRequests)); } catch(e) {}
+  saveFinanceCache();
   showToast('Хүсэлт устгагдлаа', 'success');
   closeFinanceModal();
   render();
@@ -27872,6 +27898,10 @@ async function logout() {
   localStorage.removeItem('pgrstToken');   // PostgREST JWT
   // Notification "seen" state is per-user — clear so next user doesn't see this user's history
   localStorage.removeItem('notifications');
+  // Санхүүгийн кэш мөн ХУВИЙН — цэвэрлэхгүй бол дараагийн нэвтрэгч энэ хүний гүйлгээг
+  // cache-first render-ээр шууд хараад амжина (сервер хариу иртэл).
+  localStorage.removeItem('financeRequests');
+  state.financeRequests = [];
   state.notifications = [];
   state.user = null;
   state.me = null;

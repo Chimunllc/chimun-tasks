@@ -2972,5 +2972,64 @@ function finish() {
   eq(F._monthsSince('', '2026-09-04'), 0, 'багц: хоосон огноо → 0');
 }
 
+// ── ТООЛЛОГО (2026-09-04) ───────────────────────────────────────────────────
+// Няравын ажил = тоолж БҮРТГЭХ, нөөцийг дарж бичих БИШ. Хоёр зүйл эвдэрч
+// болохгүй: (1) нэг барааг хоёр удаа тоолоход хоёулаа тоологдох,
+// (2) тооллогын эрх нь нөөц засах эрхийг дагаж нээгдэх.
+{
+  const R = (sku, sys, cnt, at, applied) => ({ sku, system_qty: sys, counted_qty: cnt, counted_at: at, applied: !!applied });
+
+  eq(F.countDiff(R('a', 104, 102, '1')), -2, 'тооллого: зөрүү = тоолсон − системд');
+  eq(F.countDiff(R('a', 100, 106, '1')), 6, 'тооллого: илүү гарсан нь эерэг');
+  eq(F.countDiff(null), 0, 'тооллого: хоосон мөр 0');
+  eq(F.countSessionId('2026-09-04', '89600906'), '2026-09-04|89600906', 'тооллого: сессийн түлхүүр = өдөр|хүн');
+
+  // Нэг бараа дахин тоологдвол СҮҮЛЧИЙНХ хүчинтэй — эс бөгөөс зөрүү давхарлана
+  const twice = [R('a', 104, 90, '2026-09-04T08:00:00Z'), R('a', 104, 102, '2026-09-04T09:30:00Z')];
+  const latest = F.countLatestBySku(twice);
+  eq(latest.size, 1, 'тооллого: нэг бараа нэг л мөр');
+  eq(latest.get('a').counted_qty, 102, 'тооллого: СҮҮЛЧИЙН тоолол хүчинтэй');
+
+  const rows = [
+    R('a', 104, 102, '2026-09-04T08:00:00Z'),          // −2, залруулаагүй
+    R('b', 67, 67, '2026-09-04T08:10:00Z'),            // тэнцсэн
+    R('c', 100, 94, '2026-09-04T08:20:00Z', true),     // −6, залруулсан
+    R('d', 10, 13, '2026-09-04T08:30:00Z'),            // +3, залруулаагүй
+  ];
+  const st = F.countStats(rows, 294);
+  eq(st.counted, 4, 'тооллого: тоологдсон бараа');
+  eq(st.total, 294, 'тооллого: нийт бараа');
+  eq(st.diffs, 3, 'тооллого: зөрүүтэй бараа (тэнцсэн нь ороогүй)');
+  eq(st.pending, 2, 'тооллого: залруулаагүй зөрүү (залруулсан нь хасагдана)');
+  eq(st.short, 8, 'тооллого: дутсан нийлбэр (2 + 6)');
+  eq(st.over, 3, 'тооллого: илүү гарсан нийлбэр');
+  eq(F.countStats([], 294), { counted: 0, total: 294, diffs: 0, pending: 0, over: 0, short: 0 }, 'тооллого: хоосон сесс');
+}
+
+// Тооллогын эрх нь нөөц засах эрхээс ТУСДАА — нярав тоолно, нөөц дарж бичихгүй
+{
+  const TEAM = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const sv = { team: TEAM.slice(), me: st.me, ceo: st.isCEO, mp: st.memberPerms, rp: st.rolePerms };
+  TEAM.length = 0;
+  TEAM.push({ name: 'Нярав Тест', phone: '80000002', role: 'Зөөгч' });
+  st.me = '80000002'; st.isCEO = false;
+  st.rolePerms = { 'зөөгч': { 'products.edit': false } };
+
+  st.memberPerms = {};
+  ok(F.canCountStock() === false, 'тооллого: ил олгоогүй бол ХОРИГЛОНО');
+
+  st.memberPerms = { '80000002': { 'products.count': true } };   // ЗӨВХӨН тоолох
+  ok(F.canCountStock() === true, 'тооллого: ил олгосон бол тоолж чадна');
+  ok(F.canProductPart('stock') === false, 'тооллого: тоолох эрх нь НӨӨЦ засах эрхийг нээхгүй');
+  ok(F.canProductPart('cost') === false, 'тооллого: тоолох эрх нь өртөг засах эрхийг нээхгүй');
+
+  st.memberPerms = { '80000002': { 'products.stock': true } };   // нөөц засагч
+  ok(F.canCountStock() === false, 'тооллого: нөөц засах эрх нь тоолох эрхийг нээхгүй (тусдаа ажил)');
+
+  TEAM.length = 0; sv.team.forEach(x => TEAM.push(x));
+  st.me = sv.me; st.isCEO = sv.ceo; st.memberPerms = sv.mp; st.rolePerms = sv.rp;
+}
+
   finish();
 })();

@@ -3776,6 +3776,9 @@ function renderSidebar() {
     const pCnt = document.getElementById('cnt-products');
     if (pCnt) pCnt.textContent = String((state.products || []).length);
   }
+  // Тооллого — нярав/агуулахын ажилтанд өгч болно (бараа засах эрхгүй ч).
+  const scNav = document.getElementById('nav-stockcount');
+  if (scNav) scNav.style.display = canSeeStockCount() ? '' : 'none';
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
@@ -3852,7 +3855,7 @@ function renderSidebar() {
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
-  _setGrp('nav-group-inventory', ['nav-products']);
+  _setGrp('nav-group-inventory', ['nav-products', 'nav-stockcount']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
@@ -3877,6 +3880,7 @@ function renderTitle() {
     performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Ажилтны гүйцэтгэл — объектив, ажлын чанар, 360° оноо'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'M event захиалга', 'Түрээсийн бүх захиалга — mevent.mn сайт, ажилтны үүсгэсэн, Booqable түүх'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа & хөрөнгө', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
+    stockcount: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><rect x="9" y="2" width="6" height="4" rx="1"/><polyline points="9 14 11 16 15 12"/></svg>', 'Тооллого', 'Агуулахын тооллого — тоолсноо бүртгэнэ, зөрүү нь залруулга болж түүхэнд үлдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
@@ -3956,6 +3960,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderProducts, 'Бараа & хөрөнгө');
     attachProductsHandlers();
+    return;
+  } else if (state.view === 'stockcount') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderStockCount, 'Тооллого');
+    attachStockCountHandlers();
     return;
   } else if (state.view === 'accounts') {
     if (tableHead) tableHead.style.display = 'none';
@@ -4217,6 +4227,97 @@ const REPAIRS_URL = () => `${DB_URL}/rest/v1/repairs`;
 // барааны 23%-д өртөг, 69%-д огноо хоосон үлдсэн (хүн юу бичихээ мэдэхгүй).
 // Багц бүр тусдаа мөр болно; `products.cost`/`purchase_date` нь тэднээс ГАРНА.
 const BATCHES_URL = () => `${DB_URL}/rest/v1/product_batches`;
+// ── ТООЛЛОГО (2026-09-04) ───────────────────────────────────────────────────
+// Няравын ажил бол нөөцийн тоог ДАРЖ БИЧИХ биш, ТООЛЖ бүртгэх. Тиймээс тооллого
+// нь `products.stock`-оос ТУСДАА эрхтэй (`products.count`) бөгөөс шууд нөөцийг
+// өөрчлөхгүй: бичилт (хэн, хэзээ, системд хэд байсан, хэд тоолсон) үлдэж,
+// зөрүүг НӨӨЦӨД ЗАЛРУУЛАХ нь тусдаа, эрхтэй хүний хийдэг үйлдэл.
+const STOCKCOUNT_URL = () => `${DB_URL}/rest/v1/stock_counts`;
+
+// Нэг өдөр + нэг хүн = нэг сесс. Түлхүүр нь хүнд уншигдахуйц байх нь маргаан
+// таслахад чухал (аль өдөр хэн тоолсон нь ID-гүйгээр харагдана).
+function countSessionId(dateStr, personKey) { return String(dateStr || '') + '|' + String(personKey || ''); }
+
+// Зөрүү = тоолсон − системд. Эерэг нь илүү гарсан, сөрөг нь дутсан.
+function countDiff(row) { return (Number(row && row.counted_qty) || 0) - (Number(row && row.system_qty) || 0); }
+
+// Нэг бараа хоёр удаа тоологдвол СҮҮЛЧИЙНХ хүчинтэй (дахин тоолох нь засвар).
+// Эс бөгөөс нэг барааны хоёр зөрүү давхар тоологдож тайлан худал болно.
+function countLatestBySku(rows) {
+  const m = new Map();
+  for (const r of (rows || [])) {
+    if (!r || !r.sku) continue;
+    const prev = m.get(r.sku);
+    if (!prev || String(r.counted_at || '') >= String(prev.counted_at || '')) m.set(r.sku, r);
+  }
+  return m;
+}
+
+// Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
+function countStats(rows, totalProducts) {
+  const latest = countLatestBySku(rows);
+  let diffs = 0, pending = 0, over = 0, short = 0;
+  latest.forEach(r => {
+    const d = countDiff(r);
+    if (d === 0) return;
+    diffs++;
+    if (!r.applied) pending++;
+    if (d > 0) over += d; else short += -d;
+  });
+  return { counted: latest.size, total: Number(totalProducts) || 0, diffs, pending, over, short };
+}
+
+async function loadStockCounts(sessionId) {
+  try {
+    const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?session_id=eq.${encodeURIComponent(sessionId)}&select=*&order=counted_at.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (r.status === 404 || r.status === 406) { state._countTableMissing = true; state.scRows = []; return []; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state._countTableMissing = false;
+    state.scRows = await r.json();
+    return state.scRows;
+  } catch (e) { console.warn('loadStockCounts', e); state.scRows = state.scRows || []; return state.scRows; }
+}
+
+// Тоолсныг бүртгэнэ. Нөөцийг ХӨНДӨХГҮЙ — зөвхөн бичилт.
+async function saveStockCount({ sessionId, sku, systemQty, countedQty }) {
+  const body = { session_id: sessionId, sku, counted_by: state.me || '',
+                 system_qty: Number(systemQty) || 0, counted_qty: Number(countedQty) || 0 };
+  const r = await fetchWithTimeout(STOCKCOUNT_URL(), {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json', Prefer: 'return=representation' },
+    body: JSON.stringify(body),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + (await r.text()).slice(0, 120));
+  const rows = await r.json();
+  state.scRows = (state.scRows || []).concat(rows);
+  return rows[0];
+}
+
+// Зөрүүг нөөцөд залруулах — ЭНЭ Л нөөцийг өөрчилнө, `products.stock` эрх шаардана.
+// Тооллогын бичлэг applied болж, хэн залруулсан нь үлдэнэ.
+async function applyStockCount(row) {
+  const p = productBySku(row.sku);
+  if (!p) throw new Error('Бараа олдсонгүй: ' + row.sku);
+  const d = countDiff(row);
+  if (!d) return;
+  // Салбарын хуваарилалт: зөрүүг M-Event дээр залруулна (нөөцийн үндсэн салбар),
+  // хүрэлцэхгүй бол Чимун дээрээс. Нийлбэр stock-той үргэлж тэнцэнэ.
+  const qm = Number(p.qty_mevent) || 0, qc = Number(p.qty_chimun) || 0;
+  let nm = qm + d, nc = qc;
+  if (nm < 0) { nc = Math.max(0, qc + nm); nm = 0; }
+  await saveProduct({ ...p, stock: Math.max(0, (Number(p.stock) || 0) + d), qty_mevent: nm, qty_chimun: nc });
+  const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?id=eq.${encodeURIComponent(row.id)}`, {
+    method: 'PATCH',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ applied: true, applied_by: state.me || '', applied_at: new Date().toISOString() }),
+  }, 15000);
+  if (!r.ok) throw new Error('Нөөц зассан ч бичилт тэмдэглэгдсэнгүй: HTTP ' + r.status);
+  const i = (state.scRows || []).findIndex(x => String(x.id) === String(row.id));
+  if (i >= 0) state.scRows[i] = { ...state.scRows[i], applied: true, applied_by: state.me || '' };
+}
+
 
 // Багцын үлдэгдэл = авсан − актлагдсан
 function batchLeft(b) { return Math.max(0, (Number(b && b.qty) || 0) - (Number(b && b.written_off) || 0)); }
@@ -7693,7 +7794,7 @@ async function openScanner() {
   modal.className = 'modal-bg';
   modal.id = 'scan-modal';
   modal.innerHTML = `
-    <div class="modal" style="max-width:400px;">
+    <div class="modal modal-sm">
       <h2>📷 Бараа скан</h2>
       <div class="scan-box"><video id="scan-video" playsinline muted></video><div class="scan-frame"></div></div>
       <div id="scan-status" class="scan-status">Камер ачаалж байна…</div>
@@ -7958,7 +8059,7 @@ function openTransferModal(pid) {
   modal.className = 'modal-bg open';
   modal.id = 'trans-modal';
   const opt = (sel) => PROD_BRANCHES.map(b => `<option value="${b.k}"${b.k === sel ? ' selected' : ''}>${b.icon} ${b.label} (${branchQty(p, b.k)})</option>`).join('');
-  modal.innerHTML = `<div class="modal" style="max-width:400px;">
+  modal.innerHTML = `<div class="modal modal-sm">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <h2 style="margin:0;font-size:16px;">⇄ Нөөц шилжүүлэх</h2>
       <button class="btn" id="tr-close" style="padding:4px 9px;">✕</button>
@@ -9403,6 +9504,10 @@ const PERM_MENUS = [
       { key: 'products.price',   label: '🏷 Түрээсийн үнэ, барьцаа, суурилуулалт' },
       { key: 'products.cost',    label: '💰 Өртөг ба хөрөнгө (нэгж өртөг, огноо)' },
       { key: 'products.stock',   label: '📦 Нөөц, эвдрэл, салбарын хуваарилалт' } ] },
+  { key: 'stockcount',  label: 'Тооллого', actions: [
+      // Няравын ажил. Нөөцийг ДАРЖ БИЧИХГҮЙ — зөвхөн тоолж бүртгэнэ.
+      // Зөрүүг нөөцөд залруулахад `products.stock` эрх тусдаа шаардана.
+      { key: 'products.count', label: '📋 Тоолж бүртгэх' } ] },
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
@@ -9423,13 +9528,13 @@ const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // ро
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
 // эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
 const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock']);
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
 const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock']);
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
   [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
@@ -9513,6 +9618,10 @@ function canProductPart(part) {
   return capValue('products.' + part) === true;      // нарийн эрх — зөвхөн ил олгосон
 }
 function canEditAnyProductPart() { return PRODUCT_PARTS.some(canProductPart); }
+// Тооллого — барааны хэсгүүдээс ТУСДАА эрх (нярав зөвхөн үүнийг авч болно).
+// canProductPart-той ижил хамгаалалт: ил олгосон эрхийг л хүлээн авна.
+function canCountStock() { return can('products.edit') || capValue('products.count') === true; }
+function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
 function productPartFields() {
@@ -14903,7 +15012,7 @@ function openNomaadManualIncomeModal(o) {
     document.getElementById('nim-modal')?.remove();
     const modal = document.createElement('div');
     modal.className = 'modal-bg'; modal.id = 'nim-modal';
-    modal.innerHTML = `<div class="modal" style="max-width:400px;">
+    modal.innerHTML = `<div class="modal modal-sm">
       <h2>🔒 Хувийн дансаар — гар бүртгэл</h2>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:6px;">${escapeHtml(o.company || '')} · ${escapeHtml(o.quote_no || '')}</div>
       <div style="background:rgba(245,158,11,.12);border:1px solid var(--warn);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11.5px;color:var(--warn);">Захирлын хувийн дансруу орсон төлбөр — баримт шаардахгүй. Дүн/огноог зөв оруулна уу. Үлдэгдэл: <b>${fmtMoney(bal)}</b></div>
@@ -15993,6 +16102,136 @@ function _prodCatOptsGrouped(cats, sel) {
   if (rest.length) html += `<optgroup label="Бусад">${rest.map(opt).join('')}</optgroup>`;
   return html;
 }
+// Тооллогын скан — openScanner нь барааны МОДАЛ нээдэг тул тоолоход тохирохгүй.
+// Энэ нь сканнердсан барааг тоолох талбарт оруулаад цонхоо хаана.
+async function openCountScanner() {
+  document.getElementById('scan-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg';
+  modal.id = 'scan-modal';
+  modal.innerHTML = `
+    <div class="modal modal-sm">
+      <h2>📷 Тоолох бараа скан</h2>
+      <div class="scan-box"><video id="scan-video" playsinline muted></video><div class="scan-frame"></div></div>
+      <div id="scan-status" class="scan-status">Камер ачаалж байна…</div>
+      <div class="modal-actions"><button class="btn" id="scan-cancel">Хаах</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.classList.add('open');
+  let stop = () => {};
+  const cleanup = () => { stop(); modal.remove(); };
+  modal.querySelector('#scan-cancel').onclick = cleanup;
+  modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+  stop = await startQRScan(modal.querySelector('#scan-video'), modal.querySelector('#scan-status'), (code) => {
+    const p = (state.products || []).find(x => x.sku === code || x.id === code);
+    cleanup();
+    if (!p) { showToast('Бараа олдсонгүй: ' + code, 'warn', 3000); return; }
+    state.scActive = p.sku; state.scQty = null; state.scSearch = '';
+    render();
+  });
+}
+
+// ── ТООЛЛОГЫН ДЭЛГЭЦ ────────────────────────────────────────────────────────
+// Нярав: скан эсвэл хайлт → тоолсноо оруулна → бичилт үлдэнэ. Нөөц ХӨНДӨГДӨХГҮЙ.
+// Зөрүүг нөөцөд залруулах нь `products.stock` эрхтэй хүний тусдаа үйлдэл.
+function renderStockCount() {
+  const canCount = canCountStock(), canApply = canProductPart('stock');
+  if (state._countTableMissing) {
+    return '<div class="orders-empty"><div class="icon">📋</div>Тооллогын бүртгэл идэвхжээгүй — <b>stock_counts</b> хүснэгт үүсээгүй байна.</div>';
+  }
+  const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+  const rows = state.scRows || [];
+  const st = countStats(rows, all.length);
+  const latest = countLatestBySku(rows);
+  const pct = st.total ? Math.round(st.counted / st.total * 100) : 0;
+
+  const q = String(state.scSearch || '').trim().toLowerCase();
+  const hits = q ? all.filter(p => `${p.name || ''} ${p.code || ''} ${p.sku || ''}`.toLowerCase().includes(q)).slice(0, 8) : [];
+  const act = state.scActive ? productBySku(state.scActive) : null;
+  const actSys = act ? (Number(act.stock) || 0) : 0;
+  const actCnt = state.scQty == null ? actSys : Number(state.scQty);
+  const actDiff = actCnt - actSys;
+
+  const actCard = act ? `<div class="stc-active">
+      <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
+      <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}${act.category ? ' · ' + escapeHtml(act.category) : ''}</div>
+      <div class="stc-active-row">
+        <div class="stc-sys"><span>Системд</span><b>${actSys} ш</b></div>
+        <div class="stc-step">
+          <span class="stc-step-l">Тоолсон</span>
+          <div class="stc-step-b">
+            <button type="button" class="btn ui-raw" id="stc-minus">−</button>
+            <input type="number" id="stc-qty" min="0" value="${actCnt}">
+            <button type="button" class="btn ui-raw" id="stc-plus">+</button>
+          </div>
+        </div>
+      </div>
+      <div class="stc-active-f">
+        <span class="stc-diff ${actDiff === 0 ? 'ok' : 'bad'}">${actDiff === 0 ? '✓ Тэнцэж байна' : (actDiff > 0 ? '+' : '') + actDiff + ' ш зөрүү'}</span>
+        <button class="btn btn-primary ui-raw" id="stc-save">Бүртгэх</button>
+      </div>
+    </div>` : '';
+
+  const listRows = [...latest.values()].sort((a, b) => String(b.counted_at || '').localeCompare(String(a.counted_at || ''))).map(r => {
+    const p = productBySku(r.sku), d = countDiff(r);
+    return `<div class="stc-row${d ? ' d' : ''}">
+      <span class="stc-row-i">${d === 0 ? '✓' : '⚠'}</span>
+      <span class="stc-row-n">${escapeHtml(p ? p.name : r.sku)}</span>
+      <span class="stc-row-q">${d === 0 ? `${r.counted_qty} = ${r.system_qty}` : `${r.system_qty} → ${r.counted_qty}`}</span>
+      ${d && !r.applied && canApply ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>` : ''}
+      ${d && r.applied ? '<span class="stc-done">залруулсан</span>' : ''}
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="stc-head">
+      <div class="stc-head-t">Тооллого <span>${escapeHtml(todayStr())}</span></div>
+      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}</div>
+      <div class="stc-bar"><div style="width:${pct}%"></div></div>
+    </div>
+    ${canCount ? `<div class="stc-tools">
+      <button class="btn ui-raw" id="stc-scan">📷 Скан</button>
+      <input type="search" id="stc-search" placeholder="Нэр, код, SKU хайх" value="${escapeHtml(state.scSearch || '')}">
+    </div>` : '<div class="pm-batch-note">Танд тоолох эрх олгогдоогүй — зөвхөн үр дүнг харна.</div>'}
+    ${hits.length ? `<div class="stc-hits">${hits.map(p => `<button type="button" class="stc-hit ui-raw" data-scpick="${escapeHtml(p.sku)}"><b>${escapeHtml(p.name || '')}</b><span>${escapeHtml(p.code || p.sku)} · ${Number(p.stock) || 0} ш</span></button>`).join('')}</div>` : ''}
+    ${actCard}
+    ${listRows ? `<div class="stc-list-t">Энэ сессийн бичилтүүд</div><div class="stc-list">${listRows}</div>`
+               : '<div class="pm-batch-note">Өнөөдөр хараахан тоолоогүй байна. Скан дарж эсвэл хайж бараагаа сонгоно уу.</div>'}
+  `;
+}
+
+function attachStockCountHandlers() {
+  const $ = (id) => document.getElementById(id);
+  const search = $('stc-search');
+  if (search) search.oninput = () => { state.scSearch = search.value; render(); setTimeout(() => { const el = $('stc-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); };
+  document.querySelectorAll('[data-scpick]').forEach(b => b.onclick = () => {
+    state.scActive = b.dataset.scpick; state.scQty = null; state.scSearch = ''; render();
+  });
+  const qty = $('stc-qty');
+  if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - (Number(p && p.stock) || 0); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } };
+  const bump = (n) => { const p = productBySku(state.scActive); const cur = state.scQty == null ? (Number(p && p.stock) || 0) : state.scQty; state.scQty = Math.max(0, cur + n); render(); };
+  if ($('stc-minus')) $('stc-minus').onclick = () => bump(-1);
+  if ($('stc-plus')) $('stc-plus').onclick = () => bump(1);
+  if ($('stc-scan')) $('stc-scan').onclick = () => openCountScanner();
+  if ($('stc-save')) $('stc-save').onclick = async (e) => {
+    const p = productBySku(state.scActive); if (!p) return;
+    const btn = e.currentTarget; btn.disabled = true;
+    try {
+      await saveStockCount({ sessionId: state.scSession, sku: p.sku, systemQty: Number(p.stock) || 0,
+                             countedQty: state.scQty == null ? (Number(p.stock) || 0) : state.scQty });
+      state.scActive = null; state.scQty = null; render();
+      showToast('Тоолсон бүртгэгдлээ', 'ok', 2000);
+    } catch (err) { showToast('Бүртгэгдсэнгүй: ' + err.message, 'error', 5000); btn.disabled = false; }
+  };
+  document.querySelectorAll('[data-scapply]').forEach(b => b.onclick = async () => {
+    const row = (state.scRows || []).find(r => String(r.id) === b.dataset.scapply); if (!row) return;
+    if (!confirm('Зөрүүг нөөцөд залруулах уу? Энэ нь барааны нөөцийн тоог өөрчилнө.')) return;
+    b.disabled = true;
+    try { await applyStockCount(row); render(); showToast('Нөөц залруулагдлаа', 'ok', 2200); }
+    catch (err) { showToast('Залруулагдсангүй: ' + err.message, 'error', 6000); b.disabled = false; }
+  });
+}
+
 function renderProducts() {
   const all = state.products || [];
   // Сайтын ангиллын бүлгүүдийг нэг удаа lazy татна (dropdown-ыг сайтын бүлгээр харуулах)
@@ -17918,7 +18157,7 @@ function openPaidReceiptDetail(oid, idx) {
   const acctIsMemo = /[а-яөүёА-ЯӨҮЁ]/.test(acctVal) || acctVal.replace(/[0-9 .\-]/g, '').length > 2;
   const modal = document.createElement('div');
   modal.className = 'modal-bg open';
-  modal.innerHTML = `<div class="modal" style="max-width:400px;">
+  modal.innerHTML = `<div class="modal modal-sm">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;"><h2 style="margin:0;font-size:16px;">🧾 Банкны гүйлгээ</h2><button class="btn" id="prc-x" style="padding:5px 10px;">✕</button></div>
     <div style="font-size:13px;line-height:1.5;">
       ${rcAmt ? row('Дүн (энэ баримт)', fmtMoney(rcAmt)) : ''}
@@ -27254,6 +27493,11 @@ function refreshViewData() {
   // Захиалгын дата ЗААВАЛ — productUtilization (ROI, «N удаа · орлого») үүнээс уншина.
   // Ачаалахгүй бол state.appOrders undefined хэвээр үлдэж БҮХ барааны ROI 0% харагдана.
   if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
+  if (v === 'stockcount' && canSeeStockCount()) {
+    if (!state.products || !state.products.length) loadProductsCatalog();
+    state.scSession = state.scSession || countSessionId(todayStr(), state.me);
+    if (state.scRows === undefined) { state.scRows = []; setTimeout(() => loadStockCounts(state.scSession).then(() => { if (state.view === 'stockcount') render(); }), 0); }
+  }
   else if (v === 'orders' && canSeeOrders()) { loadAppOrders(); loadOrdersData(); }
   else if (v === 'nomaad' && canSeeNomaadOrders()) loadNomaadOrders();
   else if (v === 'receivables' && canSeeReceivables()) { state.bqOrders = null; loadOrdersData(); loadNomaadOrders(); }

@@ -5461,6 +5461,76 @@ body.role-daily #add-project { display: none !important; }
 .pm-locked .pm-rentable, .pm-locked .pm-bundle { opacity: .62; }
 .pm-locked .btn, .pm-locked label.pnf-upbtn { pointer-events: none; }
 
+/* Нарийн модал (скан г.м.) — өмнө нь inline style="max-width:400px" байсан */
+.modal.modal-sm { max-width: 400px; }
+
+/* ── ТООЛЛОГО — няравын дэлгэц ──
+   Угтвар `stc-`. `sc-` нь АЖИЛТНЫ КАРТАД аль хэдийн эзэмшигдсэн (.sc-head,
+   .sc-row г.м.) — 2026-09-04-нд давхцаж толгойн хэсэг эвдэрсэн. Шинэ угтвар
+   сонгохоос өмнө `grep -o '^\.xx-[a-z-]*' styles.css` хийж шалга. */
+.stc-head { margin: 0 2px var(--space-4); }
+.stc-head-t { font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.stc-head-t span { font-size: var(--fs-sm); font-weight: 400; color: var(--muted); margin-left: var(--space-2); }
+.stc-head-m { font-size: var(--fs-sm); color: var(--text-soft); margin-top: var(--space-1); }
+.stc-head-m b { color: var(--text); }
+.stc-bad { color: var(--danger); font-weight: 600; }
+.stc-bar { height: 6px; border-radius: var(--r-full); background: var(--panel-hover); overflow: hidden; margin-top: var(--space-2); }
+.stc-bar div { height: 100%; background: var(--primary); }
+.stc-tools { display: flex; gap: var(--space-2); margin: 0 2px var(--space-3); }
+.stc-tools input {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  font-size: var(--fs-base); font-family: inherit; background: var(--panel); color: var(--text);
+}
+.stc-tools .btn { min-height: 44px; white-space: nowrap; }
+.stc-hits { display: flex; flex-direction: column; gap: var(--space-1); margin: 0 2px var(--space-3); }
+.stc-hit {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  min-height: 44px; padding: var(--space-2) var(--space-3); text-align: left; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); font-family: inherit;
+}
+.stc-hit:hover { border-color: var(--primary); background: var(--panel-hover); }
+.stc-hit b { font-size: var(--fs-base); font-weight: 600; color: var(--text); }
+.stc-hit span { font-size: var(--fs-xs); color: var(--muted); }
+.stc-active {
+  margin: 0 2px var(--space-4); padding: var(--space-4);
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+}
+.stc-active-n { font-size: var(--fs-lg); font-weight: 600; color: var(--text); line-height: 1.3; }
+.stc-active-m { font-size: var(--fs-xs); color: var(--muted); margin-top: 2px; }
+.stc-active-row { display: flex; align-items: flex-end; gap: var(--space-4); margin-top: var(--space-4); flex-wrap: wrap; }
+.stc-sys { display: flex; flex-direction: column; gap: 2px; }
+.stc-sys span { font-size: var(--fs-xs); color: var(--muted); }
+.stc-sys b { font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.stc-step { display: flex; flex-direction: column; gap: var(--space-1); margin-left: auto; }
+.stc-step-l { font-size: var(--fs-xs); color: var(--muted); text-align: right; }
+.stc-step-b { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--r-md); overflow: hidden; }
+.stc-step-b .btn { min-width: 44px; min-height: 44px; border: none; border-radius: 0; background: transparent; font-size: var(--fs-lg); }
+.stc-step-b input {
+  width: 72px; min-height: 44px; text-align: center; border: none;
+  border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+  font-size: var(--fs-xl); font-weight: 600; font-family: inherit; background: var(--panel); color: var(--text);
+}
+.stc-active-f { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
+.stc-diff { font-size: var(--fs-sm); font-weight: 600; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); }
+.stc-diff.ok { color: var(--ok); background: var(--ok-soft); }
+.stc-diff.bad { color: var(--danger); background: var(--danger-soft); }
+.stc-active-f .btn-primary { margin-left: auto; min-height: 44px; }
+.stc-list-t { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin: 0 2px var(--space-2); }
+.stc-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0 2px; padding-bottom: var(--space-6); }
+.stc-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3); background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+}
+.stc-row.d { border-color: var(--warn); }
+.stc-row-i { flex-shrink: 0; }
+.stc-row-n { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stc-row-q { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.stc-row.d .stc-row-q { color: var(--danger); font-weight: 600; }
+.stc-done { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
+.stc-apply { white-space: nowrap; color: var(--primary); }
+
 /* ── Хөрөнгийн багц — нэг бараа, олон удаагийн худалдан авалт ── */
 .pm-batches { margin-top: var(--space-4); }
 .pm-batch-t { font-size: var(--fs-xs); font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: var(--space-2); }

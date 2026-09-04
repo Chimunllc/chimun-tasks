@@ -4361,6 +4361,30 @@ function countFilterList(merged, filter, query) {
   });
 }
 
+// Батлах хүлээгдэж буй зөрүүнүүд + өртгийн нөлөө. Захирал нэг дор харж шийднэ —
+// 20 зөрүүг нэг нэгээр батлах үед бүхэл зураг харагддаггүй.
+// `amount` = зөрүү × нэгж өртөг (эерэг = илүү гарсан, хөрөнгө нэмэгдэнэ).
+function scDiffLines(rows, products, costs) {
+  const bySku = new Map((products || []).map(p => [p.sku, p]));
+  const cost = (sku) => Number((costs || {})[sku]) || Number((bySku.get(sku) || {}).cost) || 0;
+  const out = [];
+  countLatestBySku(rows).forEach(r => {
+    const d = countDiff(r);
+    if (!d || r.applied) return;
+    const p = bySku.get(r.sku) || {};
+    out.push({ id: r.id, sku: r.sku, name: p.name || r.sku, system: Number(r.system_qty) || 0,
+      counted: Number(r.counted_qty) || 0, diff: d, by: countRowPerson(r),
+      unitCost: cost(r.sku), amount: d * cost(r.sku) });
+  });
+  return out.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount) || String(a.name).localeCompare(String(b.name), 'mn'));
+}
+function scDiffTotal(lines) {
+  return (lines || []).reduce((t, l) => ({
+    over: t.over + (l.diff > 0 ? l.diff : 0), short: t.short + (l.diff < 0 ? -l.diff : 0),
+    amount: t.amount + (Number(l.amount) || 0), n: t.n + 1,
+  }), { over: 0, short: 0, amount: 0, n: 0 });
+}
+
 // Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
 function countStats(rows, totalProducts) {
   const latest = countLatestBySku(rows);
@@ -4440,6 +4464,8 @@ async function saveStockCount({ sessionId, sku, systemQty, countedQty }) {
 // Зөрүүг нөөцөд залруулах — ЭНЭ Л нөөцийг өөрчилнө, `products.stock` эрх шаардана.
 // Тооллогын бичлэг applied болж, хэн залруулсан нь үлдэнэ.
 async function applyStockCount(row) {
+  // Хамгаалалтын хоёр дахь давхарга — UI-г тойрч дуудвал ч нөөц хөдлөхгүй.
+  if (!canApproveStockCount()) throw new Error('Зөрүү батлах эрхгүй');
   const p = productBySku(row.sku);
   if (!p) throw new Error('Бараа олдсонгүй: ' + row.sku);
   const d = countDiff(row);
@@ -9674,6 +9700,13 @@ function canEditAnyProductPart() { return PRODUCT_PARTS.some(canProductPart); }
 // Тооллого — барааны хэсгүүдээс ТУСДАА эрх (нярав зөвхөн үүнийг авч болно).
 // canProductPart-той ижил хамгаалалт: ил олгосон эрхийг л хүлээн авна.
 function canCountStock() { return can('products.edit') || capValue('products.count') === true; }
+// ⚠ Тооллогын зөрүү БАТЛАХ — `can()`-ийг ЗОРИУД ашиглахгүй. `can()` нь «тохируулаагүй
+// бол зөвшөөрнө» дүрэмтэй тул албан тушаал нь эрхийн загварт тохироогүй хүн бүр
+// нөөц залруулж чадах байв. Тооллого нь хөрөнгийн үнэ цэнэ тодорхойлдог тул энд
+// өгөгдмөл нь ХОРИГ байх ёстой: CEO, эсвэл `products.stock`-ыг ИЛ олгосон хүн.
+function canApproveStockCount() { return !!state.isCEO || capValue('products.stock') === true; }
+// Кампанит ажлыг нээх/хаах нь нөөц хөндөхгүй тул хуучин (зөөлөн) эрхээр хэвээр.
+function canManageStockCount() { return canProductPart('stock'); }
 function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
@@ -16234,16 +16267,19 @@ async function openCountScanner() {
 // Нярав: скан эсвэл хайлт → тоолсноо оруулна → бичилт үлдэнэ. Нөөц ХӨНДӨГДӨХГҮЙ.
 // Зөрүүг нөөцөд залруулах нь `products.stock` эрхтэй хүний тусдаа үйлдэл.
 function renderStockCount() {
-  const canCount = canCountStock(), canApply = canProductPart('stock');
-  const canManage = canApply;   // тооллого нээх/хаах = нөөц засах эрхтэй хүн
+  const canCount = canCountStock();
+  const canApply = canApproveStockCount();      // зөрүү → нөөц (өгөгдмөл ХААЛТТАЙ)
+  const canManage = canManageStockCount();      // кампанит ажил нээх/хаах
   if (state._countTableMissing) {
     return '<div class="orders-empty"><div class="icon">📋</div>Тооллогын бүртгэл идэвхжээгүй — <b>stock_counts</b> хүснэгт үүсээгүй байна.</div>';
   }
   if (!state.scCfg) return '<div class="orders-empty"><div class="icon">📋</div>Ачаалж байна…</div>';
+  const all0 = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+  const rows0 = state.scRows || [];
   const cfg = scNormalizeConfig(state.scCfg);
   if (!cfg.active) return renderStockCountIdle(cfg, canManage);
-  const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
-  const rows = state.scRows || [];
+  const pend = scDiffLines(rows0, all0, state.productCosts);
+  const all = all0, rows = rows0;
   const st = countStats(rows, all.length);
   const latest = countLatestBySku(rows);
   const counters = [...new Set(rows.map(countRowPerson).filter(Boolean))];
@@ -16308,7 +16344,11 @@ function renderStockCount() {
       <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))}</span></div>
       <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
-      ${canManage ? `<div class="stc-actions"><button class="btn ui-raw" id="stc-close">Тооллого хаах</button></div>` : ''}
+      ${(canManage || (canApply && pend.length)) ? `<div class="stc-actions">
+        ${canApply && pend.length ? `<button class="btn btn-primary ui-raw" id="stc-approve">Зөрүү батлах (${pend.length})</button>` : ''}
+        ${canManage ? `<button class="btn ui-raw" id="stc-close">Тооллого хаах</button>` : ''}
+      </div>` : ''}
+      ${!canApply && pend.length ? `<div class="pm-batch-note">${pend.length} зөрүү батлагдахыг хүлээж байна — нөөц засах эрхтэй хүн батална.</div>` : ''}
     </div>
     ${canCount ? `<div class="stc-tools">
       <button class="btn ui-raw" id="stc-scan">📷 Скан</button>
@@ -16341,6 +16381,71 @@ function renderStockCountIdle(cfg, canManage) {
   `;
 }
 
+// Зөрүүг НЭГ ДОР батлах цонх. Мөр тус бүр сонголттой — эргэлзээтэйг нь орхиод
+// үлдсэнийг батална. Нийт ₮ нөлөө дээд талд: хөрөнгийн үнэ цэн хэдээр өөрчлөгдөхийг
+// БАТЛАХААС ӨМНӨ харна.
+function openStockApproveModal() {
+  if (!canApproveStockCount()) { showToast('Батлах эрхгүй', 'error'); return; }
+  const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+  let lines = scDiffLines(state.scRows || [], all, state.productCosts);
+  if (!lines.length) { showToast('Батлах зөрүү алга', 'ok'); return; }
+  const picked = new Set(lines.map(l => String(l.id)));
+
+  const ov = document.createElement('div');
+  ov.className = 'modal-bg open'; ov.style.zIndex = '10002';
+  ov.innerHTML = `<div class="modal stc-appr"><div class="stc-appr-h">
+      <h2>Зөрүү батлах</h2>
+      <button class="btn ui-raw" data-ap-x>✕</button></div>
+    <div class="stc-appr-sum" id="ap-sum"></div>
+    <div class="stc-appr-list" id="ap-list"></div>
+    <div class="stc-appr-f">
+      <span class="stc-appr-note">Батлагдсан зөрүү нөөцөд шууд нэмэгдэнэ/хасагдана. Түүхэнд үлдэнэ.</span>
+      <button class="btn" data-ap-x>Болих</button>
+      <button class="btn btn-primary" id="ap-go">Батлах</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelectorAll('[data-ap-x]').forEach(b => b.onclick = close);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+
+  function draw() {
+    const sel = lines.filter(l => picked.has(String(l.id)));
+    const t = scDiffTotal(sel);
+    ov.querySelector('#ap-sum').innerHTML = `<div><b>${t.n}</b> зөрүү сонгосон</div>
+      <div>Илүү <b class="stc-ok">+${t.over}ш</b> · Дутуу <b class="stc-bad">−${t.short}ш</b></div>
+      <div>Хөрөнгийн нөлөө: <b class="${t.amount < 0 ? 'stc-bad' : 'stc-ok'}">${t.amount >= 0 ? '+' : ''}${fmtMoney(t.amount)}</b></div>`;
+    ov.querySelector('#ap-list').innerHTML = lines.map(l => `<label class="stc-appr-row">
+        <input type="checkbox" data-ap-id="${escapeHtml(String(l.id))}"${picked.has(String(l.id)) ? ' checked' : ''}>
+        <span class="stc-appr-n">${escapeHtml(l.name)}<span class="stc-row-by">${l.by ? escapeHtml(memberName(l.by)) : ''}${l.unitCost ? ' · нэгж ' + fmtMoney(l.unitCost) : ' · өртөг бүртгээгүй'}</span></span>
+        <span class="stc-appr-q">${l.system} → ${l.counted}</span>
+        <span class="stc-appr-d ${l.diff < 0 ? 'stc-bad' : 'stc-ok'}">${l.diff > 0 ? '+' : ''}${l.diff}ш<span class="stc-row-by">${l.amount ? (l.amount > 0 ? '+' : '') + fmtMoney(l.amount) : ''}</span></span>
+      </label>`).join('');
+    ov.querySelectorAll('[data-ap-id]').forEach(c => c.onchange = () => {
+      if (c.checked) picked.add(c.dataset.apId); else picked.delete(c.dataset.apId);
+      draw();
+    });
+  }
+  draw();
+
+  ov.querySelector('#ap-go').onclick = async (e) => {
+    const sel = lines.filter(l => picked.has(String(l.id)));
+    if (!sel.length) { showToast('Мөр сонгоно уу', 'error'); return; }
+    const t = scDiffTotal(sel);
+    if (!confirm(`${t.n} зөрүүг нөөцөд батлах уу?\n\nХөрөнгийн нөлөө: ${t.amount >= 0 ? '+' : ''}${fmtMoney(t.amount)}`)) return;
+    const btn = e.currentTarget; btn.disabled = true;
+    let ok = 0; const bad = [];
+    for (const l of sel) {
+      const row = (state.scRows || []).find(r => String(r.id) === String(l.id));
+      if (!row) continue;
+      btn.textContent = `Батлаж байна… ${ok + bad.length + 1}/${sel.length}`;
+      try { await applyStockCount(row); ok++; } catch (err) { bad.push(l.name + ': ' + err.message); }
+    }
+    close(); render();
+    if (bad.length) showToast(`${ok} батлагдав · ${bad.length} амжилтгүй — ${bad[0]}`, 'error', 7000);
+    else showToast(`${ok} зөрүү батлагдаж нөөц шинэчлэгдлээ`, 'ok', 3000);
+  };
+}
+
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
   const search = $('stc-search');
@@ -16350,6 +16455,7 @@ function attachStockCountHandlers() {
     try { const id = await startStockCount(); render(); showToast(scSessionLabel(id) + ' — тооллого эхэллээ', 'ok', 2500); }
     catch (err) { showToast('Эхлүүлж чадсангүй: ' + err.message, 'error', 5000); btn.disabled = false; }
   };
+  if ($('stc-approve')) $('stc-approve').onclick = () => openStockApproveModal();
   if ($('stc-close')) $('stc-close').onclick = async (e) => {
     const rows = state.scRows || [];
     const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));

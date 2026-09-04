@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList']);
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'scDiffLines', 'scDiffTotal', 'canApproveStockCount', 'countRowState', 'countMergeProducts', 'countFilterList']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -3344,6 +3344,64 @@ need(['orderCustType']);
   eq(F.countFilterList(mg, 'all', 'M-2').map(x => x.p.sku), ['b'], 'шүүлт: кодоор хайх');
   eq(F.countFilterList(mg, 'todo', 'майхан').length, 0, 'шүүлт: шүүлт + хайлт хамт үйлчилнэ');
   eq(F.countFilterList(null, 'all', '').length, 0, 'шүүлт: хоосон оролт унахгүй');
+
+  // ── Зөрүү батлах — захирал нэг дор харж шийднэ (2026-09-04) ───────────────
+  // Тоолох нь нөөцийг ХӨНДӨХГҮЙ; зөвхөн батлах нь өөрчилнө. Захирал батлахаасаа
+  // өмнө хөрөнгийн үнэ цэн хэдээр өөрчлөгдөхийг ₮-өөр харах ёстой.
+  const aProds = [
+    { sku: 'a', name: 'Майхан', cost: 1000000 },
+    { sku: 'b', name: 'Ширээ',  cost: 50000 },
+    { sku: 'c', name: 'Сандал', cost: 0 },
+  ];
+  const aRows = [
+    { id: 1, sku: 'a', system_qty: 10, counted_qty: 8,  counted_at: '1', counted_by: '880', applied: false },
+    { id: 2, sku: 'b', system_qty: 5,  counted_qty: 7,  counted_at: '2', counted_by: '991', applied: false },
+    { id: 3, sku: 'c', system_qty: 4,  counted_qty: 4,  counted_at: '3', counted_by: '880', applied: false },
+    { id: 4, sku: 'a', system_qty: 10, counted_qty: 9,  counted_at: '4', counted_by: '991', applied: false },
+  ];
+  const L = F.scDiffLines(aRows, aProds, null);
+  eq(L.length, 2, 'батлах: тэнцсэн бараа жагсаалтад орохгүй');
+  eq(L.map(l => l.sku), ['a', 'b'], 'батлах: ₮ нөлөө ихээр эрэмбэлэгдэнэ');
+  eq(L[0].id, 4, 'батлах: нэг барааны СҮҮЛЧИЙН тоолол л батлагдана (давхарлахгүй)');
+  eq(L[0].diff, -1, 'батлах: сүүлчийн зөрүү −1 (эхний −2 биш)');
+  eq(L[0].amount, -1000000, 'батлах: дутсан нь хөрөнгө бууруулна');
+  eq(L[1].amount, 100000, 'батлах: илүү гарсан нь хөрөнгө нэмнэ');
+  eq(L[0].by, '991', 'батлах: хэн тоолсон нь дагана');
+
+  eq(F.scDiffLines(aRows, aProds, { a: 2000000 }).find(l => l.sku === 'a').amount, -2000000,
+     'батлах: productCosts нь products.cost-ыг дарна');
+  eq(F.scDiffLines([{ id: 9, sku: 'a', system_qty: 10, counted_qty: 8, counted_at: '1', applied: true }], aProds, null).length, 0,
+     'батлах: аль хэдийн залруулсан нь дахин гарахгүй');
+  eq(F.scDiffLines(null, null, null).length, 0, 'батлах: хоосон оролт унахгүй');
+
+  const T = F.scDiffTotal(L);
+  eq(T.n, 2, 'нийлбэр: мөрийн тоо');
+  eq(T.over, 2, 'нийлбэр: илүү гарсан ширхэг');
+  eq(T.short, 1, 'нийлбэр: дутсан ширхэг');
+  eq(T.amount, -900000, 'нийлбэр: цэвэр хөрөнгийн нөлөө');
+  eq(F.scDiffTotal([]), { over: 0, short: 0, amount: 0, n: 0 }, 'нийлбэр: хоосон');
+  // Өртөг бүртгээгүй бараа тоог нь гуйвуулахгүй, зөвхөн ₮-д нөлөөлөхгүй
+  const noCost = F.scDiffLines([{ id: 7, sku: 'c', system_qty: 4, counted_qty: 1, counted_at: '1' }], aProds, null);
+  eq(noCost[0].amount, 0, 'батлах: өртөггүй бараа ₮ нөлөө 0');
+  eq(noCost[0].diff, -3, 'батлах: өртөггүй ч ширхэг зөрүү зөв');
+}
+
+// SCAN — зөрүү батлах эрх ӨГӨГДМӨЛӨӨР ХААЛТТАЙ (2026-09-04)
+// `can()` нь «тохируулаагүй бол зөвшөөрнө» дүрэмтэй. Тооллого хөрөнгийн үнэ цэн
+// тодорхойлдог тул энд `can(...)` ашиглавал эрхийн загварт ороогүй хүн бүр нөөц
+// залруулах эрхтэй болно — яг энэ цоорхойг 2026-09-04-нд хаасан.
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function canApproveStockCount('));
+  const body = fn.slice(0, fn.indexOf('\n}') + 1);
+  ok(/capValue\('products\.stock'\) === true/.test(body),
+     'scan: батлах эрх нь capValue(...) === true (ил олгосон эрх)');
+  ok(!/\bcan\(/.test(body),
+     'scan: батлах эрхэд can() ашиглахгүй (өгөгдмөл зөвшөөрөл алдаа)');
+  // applyStockCount нь UI-г тойрч дуудагдвал ч хамгаалагдсан байх ёстой
+  const ap = src.slice(src.indexOf('async function applyStockCount('));
+  ok(/canApproveStockCount\(\)/.test(ap.slice(0, 400)),
+     'scan: applyStockCount эрхээ өөрөө шалгана (UI-аас хамаарахгүй)');
 }
 
 // SCAN — тооллого өдрөөрөө татагдана, нэг хүнээр БИШ (2026-09-04)

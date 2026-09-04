@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit']);
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countSessionDate', 'countSessionPerson', 'countRowPerson', 'countRowState', 'countMergeProducts', 'countFilterList']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -3255,6 +3255,75 @@ need(['orderCustType']);
   eq(st.short, 8, 'тооллого: дутсан нийлбэр (2 + 6)');
   eq(st.over, 3, 'тооллого: илүү гарсан нийлбэр');
   eq(F.countStats([], 294), { counted: 0, total: 294, diffs: 0, pending: 0, over: 0, short: 0 }, 'тооллого: хоосон сесс');
+
+  // ── Тооллого = БАГИЙН ажил (2026-09-04 засвар) ──────────────────────────
+  // Регресс: `loadStockCounts` нь `session_id=eq.<өдөр|би>`-ээр татдаг байсан тул
+  // хүн бүр ЗӨВХӨН ӨӨРИЙНХӨӨ тоолсныг хардаг байв. Хоёр нярав нэг агуулах тоолоход
+  // бие биенийхээ ажлыг харахгүй → нэг барааг давхар тоолж, «тоологдоогүй» гэж
+  // бүхэл өдрийн ажил дахин хийгддэг. Мөн «хэн тоолсон» хаана ч харагдахгүй байв.
+  eq(F.countSessionDate('2026-09-04|88006790'), '2026-09-04', 'тооллого: түлхүүрээс огноо');
+  eq(F.countSessionPerson('2026-09-04|88006790'), '88006790', 'тооллого: түлхүүрээс хүн');
+  eq(F.countSessionDate('2026-09-04'), '2026-09-04', 'тооллого: тусгаарлагчгүй бол бүхэлдээ огноо');
+  eq(F.countSessionPerson('2026-09-04'), '', 'тооллого: тусгаарлагчгүй бол хүн хоосон');
+  eq(F.countSessionDate(null), '', 'тооллого: хоосон түлхүүр унахгүй');
+
+  // Хэн тоолсон — counted_by нь эх сурвалж, дутвал сессийн түлхүүрээс сэргээнэ
+  eq(F.countRowPerson({ counted_by: '99112233', session_id: '2026-09-04|88006790' }), '99112233', 'тооллого: counted_by эрхэм');
+  eq(F.countRowPerson({ counted_by: '', session_id: '2026-09-04|88006790' }), '88006790', 'тооллого: counted_by дутвал түлхүүрээс');
+  eq(F.countRowPerson({ counted_by: '   ', session_id: '2026-09-04|88006790' }), '88006790', 'тооллого: хоосон зайг тооцохгүй');
+  eq(F.countRowPerson(null), '', 'тооллого: хоосон мөр унахгүй');
+
+  // Хоёр хүний бичилт НЭГ жагсаалтад нийлж, сүүлчийнх хүчинтэй байх ёстой
+  const team = [
+    { sku: 'a', system_qty: 10, counted_qty: 10, counted_at: '2026-09-04T08:00:00Z', counted_by: '88006790', session_id: '2026-09-04|88006790' },
+    { sku: 'b', system_qty: 5,  counted_qty: 4,  counted_at: '2026-09-04T08:05:00Z', counted_by: '99112233', session_id: '2026-09-04|99112233' },
+    { sku: 'a', system_qty: 10, counted_qty: 9,  counted_at: '2026-09-04T09:00:00Z', counted_by: '99112233', session_id: '2026-09-04|99112233' },
+  ];
+  eq(F.countStats(team, 294).counted, 2, 'тооллого: 2 хүний бичилт нэг жагсаалт (a давхарлахгүй)');
+  eq(F.countLatestBySku(team).get('a').counted_by, '99112233', 'тооллого: өөр хүний СҮҮЛЧИЙН тоолол хүчинтэй');
+  eq([...new Set(team.map(F.countRowPerson))], ['88006790', '99112233'], 'тооллого: оролцсон хүмүүс');
+
+  // ── Скан хийхээс өмнө: БҮХ бараа жагсаалтад, төлвөөр ялгарна (2026-09-04) ──
+  // Бар код хараахан наагаагүй тул нярав хайж бичихийн оронд жагсаалтаас сонгоно.
+  // «Тоолоогүй» аль нь болохыг апп хэлэхгүй бол ажлыг цаасан дээр тэмдэглэнэ.
+  const prods = [
+    { sku: 'a', name: 'Майхан', code: 'M-1', stock: 10 },
+    { sku: 'b', name: 'Ширээ',  code: 'M-2', stock: 5 },
+    { sku: 'c', name: 'Сандал', code: 'M-3', stock: 7 },
+  ];
+  const cRows = [
+    { sku: 'a', system_qty: 10, counted_qty: 10, counted_at: '2026-09-04T08:00:00Z', counted_by: '88006790' },
+    { sku: 'b', system_qty: 5,  counted_qty: 3,  counted_at: '2026-09-04T08:05:00Z', counted_by: '99112233' },
+  ];
+  const mg = F.countMergeProducts(prods, cRows);
+  eq(mg.length, 3, 'тооллого: тоолоогүй бараа ч жагсаалтад үлдэнэ');
+  eq(mg.map(x => x.st), ['ok', 'diff', 'todo'], 'тооллого: төлөв = тэнцсэн / зөрүүтэй / тоолоогүй');
+  eq(mg[2].row, null, 'тооллого: тоолоогүй барааны мөр хоосон');
+  eq(F.countRowState(null), 'todo', 'тооллого: мөргүй = тоолоогүй');
+  eq(F.countRowState({ system_qty: 4, counted_qty: 4 }), 'ok', 'тооллого: тэнцсэн');
+  eq(F.countRowState({ system_qty: 4, counted_qty: 1 }), 'diff', 'тооллого: зөрүүтэй');
+
+  eq(F.countFilterList(mg, 'all', '').length, 3, 'шүүлт: Бүгд = 3');
+  eq(F.countFilterList(mg, 'todo', '').map(x => x.p.sku), ['c'], 'шүүлт: Тоолоогүй');
+  eq(F.countFilterList(mg, 'done', '').map(x => x.p.sku), ['a', 'b'], 'шүүлт: Тоолсон (зөрүүтэй нь ч тоологдсон)');
+  eq(F.countFilterList(mg, 'diff', '').map(x => x.p.sku), ['b'], 'шүүлт: Зөрүүтэй');
+  eq(F.countFilterList(mg, 'all', 'сандал').map(x => x.p.sku), ['c'], 'шүүлт: нэрээр хайх');
+  eq(F.countFilterList(mg, 'all', 'M-2').map(x => x.p.sku), ['b'], 'шүүлт: кодоор хайх');
+  eq(F.countFilterList(mg, 'todo', 'майхан').length, 0, 'шүүлт: шүүлт + хайлт хамт үйлчилнэ');
+  eq(F.countFilterList(null, 'all', '').length, 0, 'шүүлт: хоосон оролт унахгүй');
+}
+
+// SCAN — тооллого өдрөөрөө татагдана, нэг хүнээр БИШ (2026-09-04)
+// `session_id=eq.` руу буцвал бусдын тоолол дахин алга болно. Прозоор бичсэн
+// дүрэм мартагддаг тул эх кодыг шалгана.
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('async function loadStockCounts('));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  ok(/session_id=like\.\$\{encodeURIComponent\(day/.test(body),
+     'scan: loadStockCounts өдрийн БҮХ бичилтийг татна (session_id=like.<өдөр>|*)');
+  ok(!/session_id=eq\./.test(body),
+     'scan: loadStockCounts нэг хүнээр шүүхгүй (session_id=eq. байхгүй)');
 }
 
 // Тооллогын эрх нь нөөц засах эрхээс ТУСДАА — нярав тоолно, нөөц дарж бичихгүй

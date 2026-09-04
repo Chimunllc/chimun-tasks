@@ -83,7 +83,7 @@ function ok(cond, name) { if (cond) passed++; else { failed++; fails.push(`  �
 const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
-  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
+  'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
@@ -109,6 +109,17 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   ok(u.revenue === 110000, 'ROI: app хоногоор, booqable нийт дүнгээр — ' + u.revenue);
 
   ok(u.revenue > 0, 'ROI: орлого 0 БИШ (амьд эх сурвалжаас уншина)');
+
+  // ГАЦАЛТЫН ХАМГААЛАЛТ (2026-09-04, амьдаар тохиолдсон): энэ функц бараа МӨР
+  // БҮРД дуудагдана (294 удаа). Дуудалт бүрд захиалгыг дахин гүйвэл
+  // O(бараа × захиалга × мөр) болж «Бараа & хөрөнгө» дэлгэц НЭЭГДЭХЭЭ болино.
+  // Индекс НЭГ УДАА баригдаж, дараагийн дуудалтууд түүнийг л уншина.
+  runIn('state._utilIdx = null;');
+  runIn('productUtilization')('Тест ширээ');
+  const idx1 = runIn('state._utilIdx');
+  ok(!!idx1, 'ашиглалт: индекс баригдав');
+  for (let i = 0; i < 300; i++) runIn('productUtilization')('Тест ширээ');
+  ok(runIn('state._utilIdx') === idx1, 'ашиглалт: 300 дуудалтад индекс ДАХИН баригдахгүй (гацалтын хамгаалалт)');
 
   runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.appOrders = ' + JSON.stringify(save[1] || []) + ';');
 }
@@ -533,6 +544,69 @@ ok(F.vatNameMatch('Түшиг ХХК', 'Түшиг ХХК') === true, 'vatNameMa
 ok(F.vatNameMatch('Ирээдүйн Хөгжил', 'Хөгжил Ирээдүйн') === true, 'vatNameMatch: 2 гол үг таарвал (эрэмбэ хамаагүй)');
 ok(F.vatNameMatch('Гэрэл групп', 'Гэрэл төв') === false, 'vatNameMatch: 1 л гол үг таарвал ХАРГАЛЗАХГҮЙ (хатуу)');
 ok(F.vatNameMatch('Түшиг', 'Өөр Компани') === false, 'vatNameMatch: огт өөр нэр');
+
+// 16a) БУЦААСАН НӨАТ баримт (2026-09-04) — нөхөн үзүүлэх тест
+// Бодит алдаа: 2026-08-27-нд Токи шоп-д 21,057,080₮-ийн баримт шивээд маргааш нь
+// БУЦААГААД 3,000,000 + 18,057,080 болгож хуваасан. eBarimt дээр буцаасан баримт
+// задаргаанаас БҮРМӨСӨН алга болдог (сөрөг мөр ч, төлөвийн багана ч үлдэхгүй) ч
+// апп ачаалахдаа зөвхөн НЭМДЭГ байсан тул хуучин баримт сууж, нэг захиалгад
+// 4 баримт (21.0сая + 2.6сая + 3.0сая + 18.0сая = 44.7сая) холбогдож 25.2сая₮-ийн
+// захиалгыг «НӨАТ илүү 19.5сая» гэж харуулж байв.
+{
+  const D = (dt, ddtd, total, vat, name) => ({ id: ddtd, ddtd, dt, total, vat, buyer_name: name, matched_id: 'NC-2026-0160' });
+  // Аппын DB-д байгаа нь (өмнөх ачаалалт — буцаахаас ӨМНӨ татсан файлаас)
+  const existing = [
+    D('2026-08-27T11:06:00Z', 'A-21057080', 21057080, 1914280, 'Токи шоп'),          // ← буцаагдсан
+    D('2026-08-27T11:09:00Z', 'A-2655120', 2655120, 241374.55, 'ТОКИ ББСБ'),
+    D('2026-08-28T15:44:00Z', 'A-3000000', 3000000, 272727.27, 'Токи шоп'),
+    D('2026-08-28T15:45:00Z', 'A-18057080', 18057080, 1641552.73, 'Токи шоп'),
+    D('2026-07-15T10:00:00Z', 'A-7SAR', 5000000, 454545.45, 'Өөр сарын'),            // ← 7-р сар, хөндөгдөх ЁСГҮЙ
+  ];
+  // Шинэ eBarimt задаргаа (8-р сар) — буцаасан баримт БАЙХГҮЙ
+  const imported = existing.filter(r => r.ddtd !== 'A-21057080' && r.ddtd !== 'A-7SAR');
+
+  const det = F.vatDetectReturned(existing, imported);
+  eq(det.gone.map(r => r.ddtd), ['A-21057080'], 'буцаалт: файлаас алга болсон баримтыг олно');
+  eq(det.months, ['2026-08'], 'буцаалт: зөвхөн ачаалсан сар');
+  eq(det.back.length, 0, 'буцаалт: сэргээх баримт алга');
+
+  // ⚠ ХАМГИЙН ЧУХАЛ: 8-р сарын файл ачаалахад 7-р сарын баримт хөндөгдөхгүй
+  ok(!det.gone.some(r => r.ddtd === 'A-7SAR'), 'буцаалт: ачаалаагүй сарын баримт БУЦААСАН болохгүй');
+
+  // Тэмдэглэсний дараа — нийлбэрээс хасагдана
+  const after = existing.map(r => r.ddtd === 'A-21057080' ? { ...r, returned: true } : r);
+  const act = F.vatActive(after);
+  eq(act.length, 4, 'буцаалт: хүчинтэй баримт 4 (буцаасан хасагдав)');
+  const aug = act.filter(r => String(r.dt).slice(0, 7) === '2026-08');
+  eq(aug.reduce((s, r) => s + r.total, 0), 23712200, 'буцаалт: 8-р сарын Токи нийлбэр = 23,712,200₮ (44,769,280 БИШ)');
+
+  // Дахин гарч ирвэл (буцаалт цуцлагдсан) автоматаар сэргэнэ
+  const det2 = F.vatDetectReturned(after, existing.filter(r => r.ddtd !== 'A-7SAR'));
+  eq(det2.back.map(r => r.ddtd), ['A-21057080'], 'буцаалт: файлд дахин гарвал сэргээх жагсаалтад');
+  eq(det2.gone.length, 0, 'буцаалт: сэргээх үед шинэ алга болсон байхгүй');
+
+  eq(F.vatIsReturned({ returned: true }), true, 'буцаалт: тэмдэглэгээ уншина');
+  eq(F.vatIsReturned({}), false, 'буцаалт: тэмдэглэгээгүй = хүчинтэй');
+  eq(F.vatActive(null).length, 0, 'буцаалт: хоосон оролт унахгүй');
+  eq(F.vatDetectReturned([], []).gone.length, 0, 'буцаалт: хоосон файл юуг ч тэмдэглэхгүй');
+}
+
+// 16a-2) SCAN — НӨАТ-ын нийлбэр/тулгалт БҮГД буцаасныг шүүсэн эх сурвалжаас уншина.
+// Түүхий `state.vatReceipts`-ыг шүүлтгүй уншвал буцаасан баримт дахин тоологдоно —
+// яг энэ алдаа 2026-08-д гарсан. Зөвшөөрөгдөх түүхий уншилт: ачаалалт, тайлангийн
+// модалын сар/жагсаалт (тэнд «↩ Буцаасан» таб ХАРУУЛАХ ёстой), rec хайлт.
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const bad = (src.match(/^.*\bstate\.vatReceipts\b.*$/gm) || [])
+    .filter(l => !/state\.vatReceipts\s*=/.test(l))            // оноолт
+    .filter(l => !/Array\.isArray\(state\.vatReceipts\)/.test(l))   // ачаалсан эсэх шалгалт
+    .filter(l => !/\.find\(x => x\.id === /.test(l))           // нэг бичлэг хайх
+    .filter(l => !/return state\.vatReceipts;/.test(l))        // loadVatReceipts — түүхий агуулах
+    .filter(l => !/\.slice\(\)\.sort\(/.test(l))               // модалын сарын жагсаалт (↩ таб буцаасныг ХАРУУЛНА)
+    .filter(l => !/function months\(\)|const before =|const RET =|vatActive\(|vatReceiptsActive/.test(l));
+  eq(bad.map(l => l.trim().slice(0, 60)), [],
+     'scan: НӨАТ нийлбэр бүр vatActive/vatReceiptsActive-ээр (буцаасан давхар тоологдохгүй)');
+}
 
 // 16b) Ирцийн цаг — өнгөрсөн өдрийн нээлттэй сесс (гарахаа бүртгүүлээгүй) 172ц болохгүй
 {

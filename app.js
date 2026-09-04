@@ -7800,6 +7800,7 @@ async function saveProduct(product) {
     if (Number(product.cost) > 0) state.productCosts[product.sku] = Number(product.cost);
     else delete state.productCosts[product.sku];
   }
+  state._utilIdx = null;   // бараа өөрчлөгдсөн → ашиглалтын индекс хуучирлаа
   render();
   if (!DB_ANON_KEY) { showToast('Өгөгдлийн сан тохируулаагүй', 'error'); return; }
   const row = {
@@ -7868,28 +7869,51 @@ function isRentable(p) {
 // мессеж ч гардаггүй. `state.orders` бүхэлдээ устсан (2026-09-04).
 // Одоо: state.appOrders (жинхэнэ эх сурвалж) + productOf (sku→id→нэр, хуучирсан
 // нэртэй мөрийг ч таана) + orderCanonStatus (цуцалсныг зөв ялгана).
-function productUtilization(name) {
-  const n = _normProdName(name);
-  let orders = 0, qty = 0, revenue = 0;
-  for (const o of (state.appOrders || [])) {
+// ⚠ ГҮЙЦЭТГЭЛ — 2026-09-04-нд амьдаар ГАЦСАН. productUtilization-ыг бараа МӨР
+// БҮРД дуудахад O(бараа × захиалга × мөр × бараа) болно: 294 бараа × ~1000
+// захиалга × мөрүүд × productOf-ийн 294-ийн хайлт. Өмнө нь `state.appOrders`
+// хоосон байсан тул гогцоо шууд дуусдаг байв; #170-аар дата ирмэгц жинхэнээсээ
+// гүйж эхлээд «Бараа & хөрөнгө» дэлгэц нээгдэхээ больсон.
+// Засвар: захиалгыг НЭГ УДАА гүйж бүх барааны дүнг индекслэнэ.
+function buildProductUtilIndex(orders, products) {
+  const idx = new Map();
+  for (const o of (orders || [])) {
     const st = typeof orderCanonStatus === 'function' ? orderCanonStatus(o) : String(o.status || '');
     if (st === 'cancelled' || st === 'deleted' || st === 'draft') continue;   // цуцалсан/устгасан/ноорог — орлого биш
-    const its = (o.items || []).filter(it => {
-      const p = typeof productOf === 'function' ? productOf(it) : null;
-      return _normProdName(p ? p.name : it.name) === n;
-    });
-    if (!its.length) continue;
-    orders++;
     // ⚠ ХОЁР ӨӨР ДҮРЭМ (амьд датаар батлагдсан 2026-09-04):
-    //   source='app' / 'm-event-website' (66 захиалга) → мөрийн price нь каталогийн
-    //     ӨДРИЙН үнэ (жишээ #1486: 27,500 = каталог 27,500) → хоногоор үржүүлнэ.
-    //   source='booqable' (946 түүхэн захиалга) → мөрийн price нь ХУГАЦААНЫ НИЙТ дүн
-    //     (жишээ #1309: 40 хоног, 6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрөгдөнө.
+    //   source='app' / 'm-event-website' → мөрийн price нь каталогийн ӨДРИЙН үнэ
+    //     (жишээ #1486: 27,500 = каталог 27,500) → хоногоор үржүүлнэ.
+    //   source='booqable' → мөрийн price нь ХУГАЦААНЫ НИЙТ дүн (жишээ #1309:
+    //     40 хоног, 6,000,000 = нийт) → үржүүлбэл 40 дахин хөөрөгдөнө.
     const isHist = String(o.source || '') === 'booqable';
     const d = isHist ? 1 : Math.max(1, typeof orderRentalDays === 'function' ? orderRentalDays(o) : (Number(o.days) || 1));
-    for (const it of its) { qty += Number(it.qty) || 0; revenue += (Number(it.price) || 0) * (Number(it.qty) || 0) * d; }
+    for (const it of (o.items || [])) {
+      const pr = typeof productOf === 'function' ? productOf(it) : null;
+      const n = _normProdName(pr ? pr.name : it.name);
+      if (!n) continue;
+      let e = idx.get(n);
+      if (!e) { e = { orders: 0, qty: 0, revenue: 0, _o: null }; idx.set(n, e); }
+      if (e._o !== o) { e.orders++; e._o = o; }   // нэг захиалга нэг л удаа тоологдоно
+      const q = Number(it.qty) || 0;
+      e.qty += q; e.revenue += (Number(it.price) || 0) * q * d;
+    }
   }
-  return { orders, qty, revenue };
+  idx.forEach(e => { delete e._o; });
+  return idx;
+}
+// Индексийг кэшлэнэ. state.appOrders / state.products СОЛИГДОХОД (шинээр
+// оноогдоход) шинэчлэгдэнэ; saveProduct нь массивыг ГАЗАР ДЭЭР нь өөрчилдөг тул
+// тэндээс ил цэвэрлэнэ (эс бөгөөс нэр солиход дүн хуучраад үлдэнэ).
+function productUtilIndex() {
+  const orders = state.appOrders || [], products = state.products || [];
+  if (state._utilIdx && state._utilIdxO === orders && state._utilIdxP === products) return state._utilIdx;
+  state._utilIdx = buildProductUtilIndex(orders, products);
+  state._utilIdxO = orders; state._utilIdxP = products;
+  return state._utilIdx;
+}
+function productUtilization(name) {   // индексээс уншина — гацалтын шалтгаан байсан
+  const e = productUtilIndex().get(_normProdName(name));
+  return e ? { orders: e.orders, qty: e.qty, revenue: e.revenue } : { orders: 0, qty: 0, revenue: 0 };
 }
 // Богино мөнгөн формат (сая/мянга) — жижиг стат мөрд.
 // Мөнгөний НЭГ дүрэм (2026-08-29). Өмнө нь нэг дэлгэцэд 3 өөр формат зэрэг гарч байв:
@@ -17516,7 +17540,7 @@ async function autoFillOrderCompany() {
   state._companyFilled = true;
   if (typeof loadVatReceipts === 'function' && !Array.isArray(state.vatReceipts)) { try { await loadVatReceipts(); } catch (e) {} }
   const vatByOrder = {};
-  (state.vatReceipts || []).forEach(v => { if (v.matched_id && (v.buyer_name || v.buyer_reg)) { const k = String(v.matched_id); if (!vatByOrder[k]) vatByOrder[k] = v; } });
+  vatReceiptsActive().forEach(v => { if (v.matched_id && (v.buyer_name || v.buyer_reg)) { const k = String(v.matched_id); if (!vatByOrder[k]) vatByOrder[k] = v; } });
   let n = 0;
   for (const o of (state.appOrders || [])) {
     const ci = custInfoOf(o.note);
@@ -21560,6 +21584,46 @@ function vatDateIso(v) {
 }
 function vatRowId(r) { return [r.ddtd, (r.dt || '').slice(0, 10), r.reg, Math.round(r.total)].join('-').replace(/\s+/g, ''); }
 
+// ── Буцаасан баримт (2026-09-04) ────────────────────────────────────────────
+// eBarimt дээр баримт буцаавал тэр мөр задаргаанаас БҮРМӨСӨН алга болно — сөрөг
+// мөр ч, төлөвийн багана ч үлддэггүй. Апп ачаалахдаа зөвхөн НЭМЖ/шинэчилдэг
+// байсан тул буцаасан баримт хуучнаараа сууж, дүнг давхар тоолдог байв.
+// (2026-08 Токи шоп: 21,057,080₮-г буцаагаад 3,000,000 + 18,057,080 болгож
+// хуваасныг апп 3-уулангаар нь нэмж захиалгыг 19.5сая₮ «илүү» харуулсан.)
+// Шийдэл: ачаалсан САРУУДЫН хүрээнд файлаас алга болсон баримтыг «буцаасан» гэж
+// тэмдэглэнэ. ХАТУУ УСТГАХГҮЙ — түүх үлдэж, буруу бол сэргээгдэнэ.
+function vatIsReturned(r) { return !!(r && r.returned); }
+// Хүчинтэй баримт = буцаагаагүй. Тайлан/тулгалт/нийлбэр БҮГД үүгээр шүүгдэнэ.
+function vatActive(list) { return (Array.isArray(list) ? list : []).filter(r => !vatIsReturned(r)); }
+function vatReceiptsActive() { return vatActive(state.vatReceipts); }
+
+// Ачаалсан файлаас алга болсон баримтыг ол.
+// ⚠ ЗӨВХӨН файлд орсон саруудыг харна — эс бөгөөс нэг сарын файл ачаалахад
+// бусад бүх сарын баримт «буцаасан» болно.
+// `back` = өмнө буцаасан гэж тэмдэглэсэн ч файлд дахин гарч ирсэн (сэргээнэ).
+function vatDetectReturned(existing, imported) {
+  const months = new Set((imported || []).map(r => String(r.dt || '').slice(0, 7)).filter(Boolean));
+  const seen = new Set((imported || []).map(r => String(r.ddtd || '')).filter(Boolean));
+  const gone = [], back = [];
+  (existing || []).forEach(r => {
+    const m = String(r.dt || '').slice(0, 7);
+    if (!m || !months.has(m)) return;
+    if (seen.has(String(r.ddtd || ''))) { if (vatIsReturned(r)) back.push(r); }
+    else if (!vatIsReturned(r)) gone.push(r);
+  });
+  return { gone, back, months: [...months].sort() };
+}
+
+// Баримтыг буцаасан/сэргээсэн болгож тэмдэглэнэ (тулгалт нь хэвээр үлдэнэ —
+// буруу тэмдэглэвэл сэргээхэд захиалга руугаа буцаж холбогдоно).
+async function vatSetReturned(id, on) {
+  const patch = { returned: !!on, returned_at: on ? new Date().toISOString() : null };
+  const r = await fetchWithTimeout(`${VAT_URL}?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH',
+    headers: { ...VAT_HDR, 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify(patch) }, 15000);
+  if (!r.ok) throw new Error('Буцаалт тэмдэглэх алдаа (' + r.status + ')');
+  const rec = (state.vatReceipts || []).find(x => x.id === id); if (rec) Object.assign(rec, patch);
+}
+
 // ebarimt xlsx 2D массиваас баримтын мөр гаргана (толгойг нэрээр ононо)
 function parseVatMatrix(matrix) {
   if (!Array.isArray(matrix) || !matrix.length) return [];
@@ -21848,7 +21912,7 @@ function vatBestMatch(rec, cands) {
 // Захиалгын карт дээрх badge (тулгагдсан НӨАТ баримт байвал)
 // Захиалгад тохирсон НӨАТ баримтуудын нийлбэр (шивэгдсэн дүн + НӨАТ татвар)
 function vatForOrder(orderNo) {
-  const recs = Array.isArray(state.vatReceipts) ? state.vatReceipts.filter(v => v.matched_id && String(v.matched_id) === String(orderNo)) : [];
+  const recs = vatReceiptsActive().filter(v => v.matched_id && String(v.matched_id) === String(orderNo));
   const invoiced = recs.reduce((s, v) => s + (Number(v.total) || 0), 0);
   const vat = recs.reduce((s, v) => s + (Number(v.vat) || 0), 0);
   return { count: recs.length, invoiced, vat, recs };
@@ -21921,7 +21985,7 @@ async function openVatAttachModal(order) {
   const listEl = pc.querySelector('#va-list'), sumEl = pc.querySelector('#va-sum');
   function scoreRec(r) { return vatAutoScore(r, order); }
   function renderList(q) {
-    const all = (state.vatReceipts || []).slice();
+    const all = vatReceiptsActive();
     const mineIds = all.filter(r => String(r.matched_id) === String(order.no)).map(r => r.id);
     const inv = all.filter(r => mineIds.includes(r.id)).reduce((s, r) => s + (Number(r.total) || 0), 0);
     const rem = Math.max(0, (Number(order.amount) || 0) - inv);
@@ -21970,7 +22034,8 @@ async function openVatReportModal() {
   ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
   let month = 'all';
-  let vfilter = 'todo';   // 'todo'=тулгаагүй | 'done'=тулгагдсан | 'all'
+  let vfilter = 'todo';   // 'todo'=тулгаагүй | 'done'=тулгагдсан | 'all' | 'ret'=буцаасан
+  let pendingRet = null;  // ачаалсан файлаас алга болсон баримтууд — хүн баталгаажуулна
   let mfilter = 'any';    // санал төрөл: 'any'|'reg'|'amt'|'name'|'none'
   function receiptsForMonth() {
     const list = (state.vatReceipts || []).slice().sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
@@ -21979,7 +22044,10 @@ async function openVatReportModal() {
   function months() { const s = new Set((state.vatReceipts || []).map(r => String(r.dt || '').slice(0, 7)).filter(Boolean)); return [...s].sort().reverse(); }
 
   function render() {
-    const listAll = receiptsForMonth();
+    const listMonth = receiptsForMonth();
+    // Буцаасан баримт нь НӨАТ-д тооцогдохгүй — нийлбэр, тулгалт, хувь бүгд хүчинтэйгээр.
+    const listAll = vatActive(listMonth);
+    const retList = listMonth.filter(vatIsReturned);
     const cands = vatCandidateOrders();
     const totSales = listAll.reduce((s, r) => s + (Number(r.total) || 0), 0);
     const totVat = listAll.reduce((s, r) => s + (Number(r.vat) || 0), 0);
@@ -21989,9 +22057,9 @@ async function openVatReportModal() {
     const nDone = mDone.length, nTodo = mTodo.length;
     const matched = nDone;
     // Тулгагдсаныг тусад нь — тулгаагүй нь ажлын жагсаалтад үлдэнэ
-    const list = vfilter === 'done' ? listAll.filter(r => r.matched_id) : vfilter === 'all' ? listAll : listAll.filter(r => !r.matched_id);
+    const list = vfilter === 'ret' ? retList : vfilter === 'done' ? listAll.filter(r => r.matched_id) : vfilter === 'all' ? listAll : listAll.filter(r => !r.matched_id);
     const tabBtn = (k, lbl, n) => `<button data-vfilter="${k}" style="border:none;background:${vfilter === k ? '#0B1F3A' : '#f0f0f0'};color:${vfilter === k ? '#fff' : '#555'};border-radius:100px;padding:5px 13px;font-size:12px;font-weight:600;cursor:pointer;">${lbl} ${n}</button>`;
-    const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}</div>`;
+    const filterTabs = `<div style="display:flex;gap:7px;padding:0 18px 10px;flex-wrap:wrap;">${tabBtn('todo', 'Тулгаагүй', nTodo)}${tabBtn('done', 'Тулгагдсан', nDone)}${tabBtn('all', 'Бүгд', listAll.length)}${retList.length ? tabBtn('ret', '↩ Буцаасан', retList.length) : ''}</div>`;
     // Санал төрлөөр шүүх (РД/дүн/нэр таарсан захиалга байгаа эсэх)
     const near2 = (a, b) => b > 0 && Math.round(a) === Math.round(b);
     const flagsFor = (r) => { let reg = false, amt = false, name = false; for (const c of cands) { if (!reg && r.buyer_reg && c.reg && vatRegNorm(r.buyer_reg) === c.reg) reg = true; if (!amt && (near2(r.total, c.amount) || near2(r.net, c.amount))) amt = true; if (!name && vatNameMatch(r.buyer_name, c.name)) name = true; if (reg && amt && name) break; } return { reg, amt, name }; };
@@ -22000,12 +22068,25 @@ async function openVatReportModal() {
     const shown = mfilter === 'reg' ? flagged.filter(x => x.f.reg) : mfilter === 'amt' ? flagged.filter(x => x.f.amt) : mfilter === 'name' ? flagged.filter(x => x.f.name) : mfilter === 'none' ? flagged.filter(x => !x.f.reg && !x.f.amt && !x.f.name) : flagged;
     const dlist = shown.map(x => x.r);
     const mBtn = (k, lbl, n) => `<button data-mfilter="${k}" style="border:1px solid ${mfilter === k ? '#0B1F3A' : 'var(--border,#e0e0e0)'};background:${mfilter === k ? '#0B1F3A' : '#fff'};color:${mfilter === k ? '#fff' : '#555'};border-radius:100px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;">${lbl}${n != null ? ' ' + n : ''}</button>`;
-    const matchFilters = vfilter === 'done' ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 18px 10px;"><span style="font-size:11px;color:#888;">Санал:</span>${mBtn('any', 'Бүгд')}${mBtn('reg', '✓РД', cReg)}${mBtn('amt', '✓дүн', cAmt)}${mBtn('name', '✓нэр', cName)}${mBtn('none', 'Санал алга', cNone)}</div>`;
+    const matchFilters = (vfilter === 'done' || vfilter === 'ret') ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:0 18px 10px;"><span style="font-size:11px;color:#888;">Санал:</span>${mBtn('any', 'Бүгд')}${mBtn('reg', '✓РД', cReg)}${mBtn('amt', '✓дүн', cAmt)}${mBtn('name', '✓нэр', cName)}${mBtn('none', 'Санал алга', cNone)}</div>`;
+    // Ачаалсан файлаас алга болсон баримт = eBarimt дээр буцаагдсан. АВТОМАТААР
+    // тэмдэглэхгүй — хагас дутуу файл ачаалахад бүхэл сар «буцаасан» болохоос сэргийлж
+    // хүн жагсаалтыг нь хараад баталгаажуулна (барааны тулгалттай ижил зарчим).
+    const retBanner = (pendingRet && pendingRet.gone.length) ? `<div style="margin:0 18px 10px;border:1px solid var(--warn,#d9a406);background:#fff8e6;border-radius:12px;padding:11px 13px;">
+      <div style="font-size:12.5px;font-weight:700;color:#8a6100;">↩ ${pendingRet.gone.length} баримт eBarimt-д байхгүй болсон (${escapeHtml(pendingRet.months.join(', '))})</div>
+      <div style="font-size:11.5px;color:#8a6100;margin-top:3px;">Ихэвчлэн буцаалт хийсэн гэсэн үг. Тэмдэглэвэл НӨАТ-ын нийлбэр, захиалгын тулгалтаас хасагдана (устгахгүй — түүх үлдэнэ).</div>
+      <div style="margin-top:7px;display:flex;flex-direction:column;gap:3px;">${pendingRet.gone.slice(0, 12).map(r => `<div style="font-size:11.5px;color:#5c4300;display:flex;justify-content:space-between;gap:10px;"><span>${escapeHtml(String(r.dt || '').slice(0, 10))} · ${escapeHtml(r.buyer_name || '')}</span><span style="font-variant-numeric:tabular-nums;">${fmtMoney(r.total)} · НӨАТ ${fmtMoney(r.vat)}</span></div>`).join('')}${pendingRet.gone.length > 12 ? `<div style="font-size:11px;color:#8a6100;">…бас ${pendingRet.gone.length - 12}</div>` : ''}</div>
+      <div style="margin-top:9px;display:flex;gap:7px;flex-wrap:wrap;">
+        <button id="vat-ret-yes" class="btn btn-primary" style="padding:6px 13px;font-size:12px;">↩ Буцаасан гэж тэмдэглэх</button>
+        <button id="vat-ret-no" class="btn" style="padding:6px 13px;font-size:12px;">Одоохондоо үгүй</button>
+      </div></div>` : '';
     const monthOpts = ['<option value="all">Бүх сар</option>'].concat(months().map(m => `<option value="${m}"${m === month ? ' selected' : ''}>${m}</option>`)).join('');
 
     let rowsHtml = dlist.map(r => {
       let matchCell;
-      if (r.matched_id) {
+      if (vatIsReturned(r)) {
+        matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="color:var(--muted);font-size:11.5px;">eBarimt-д байхгүй — НӨАТ-д тооцогдохгүй</span><button data-vunret="${escapeHtml(r.id)}" title="Буруу тэмдэглэсэн бол сэргээнэ" style="border:1px solid var(--border,#ddd);background:#fff;color:var(--muted,#888);cursor:pointer;font-size:11px;border-radius:6px;padding:2px 8px;">↺ сэргээх</button></div>`;
+      } else if (r.matched_id) {
         matchCell = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><span style="display:inline-flex;align-items:center;gap:4px;color:#1e7a55;font-weight:700;font-size:12px;background:#e8f2ec;border-radius:6px;padding:2px 8px;">🔒 ${escapeHtml(r.matched_label || r.matched_id)}</span><button data-vunmatch="${escapeHtml(r.id)}" title="Түгжээ гаргаж тулгалтыг болиулах" style="border:1px solid var(--border,#ddd);background:#fff;color:var(--muted,#888);cursor:pointer;font-size:11px;border-radius:6px;padding:2px 8px;">🔓 гаргах</button></div>`;
       } else {
         const near = (a, b) => b > 0 && Math.round(a) === Math.round(b);
@@ -22025,17 +22106,18 @@ async function openVatReportModal() {
         }).join('');
         matchCell = `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">${chips || '<span style="color:var(--muted);font-size:11.5px;">таарах санал алга</span>'}<button data-vpicker="${escapeHtml(r.id)}" style="border:none;background:none;color:var(--accent,#2563EB);font-size:11px;cursor:pointer;padding:2px 0;">🔍 Бусад захиалга хайх</button></div>`;
       }
-      return `<tr style="border-bottom:1px solid var(--border,#eee);">
+      const ret = vatIsReturned(r);
+      return `<tr style="border-bottom:1px solid var(--border,#eee);${ret ? 'opacity:.55;' : ''}">
         <td style="padding:7px 8px;font-size:12px;white-space:nowrap;">${escapeHtml(String(r.dt || '').slice(0, 10))}</td>
-        <td style="padding:7px 8px;font-size:12.5px;">${escapeHtml(r.buyer_name || '')}<div style="color:var(--muted);font-size:10.5px;">${escapeHtml(r.buyer_reg || '')}</div></td>
-        <td style="padding:7px 8px;font-size:12.5px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.total)}</td>
-        <td style="padding:7px 8px;font-size:12px;text-align:right;white-space:nowrap;color:#1e7a55;font-variant-numeric:tabular-nums;">${fmtMoney(r.vat)}</td>
+        <td style="padding:7px 8px;font-size:12.5px;">${ret ? '↩ ' : ''}${escapeHtml(r.buyer_name || '')}<div style="color:var(--muted);font-size:10.5px;">${escapeHtml(r.buyer_reg || '')}</div></td>
+        <td style="padding:7px 8px;font-size:12.5px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;${ret ? 'text-decoration:line-through;' : ''}">${fmtMoney(r.total)}</td>
+        <td style="padding:7px 8px;font-size:12px;text-align:right;white-space:nowrap;color:${ret ? 'var(--muted)' : '#1e7a55'};font-variant-numeric:tabular-nums;${ret ? 'text-decoration:line-through;' : ''}">${fmtMoney(r.vat)}</td>
         <td style="padding:7px 8px;">${matchCell}</td></tr>`;
     }).join('');
     if (!dlist.length) {
       const emptyMsg = !listAll.length ? 'Баримт алга. Дээрээс ebarimt (.xlsx) файл оруулна уу.'
         : mfilter !== 'any' ? 'Энэ шүүлтэд баримт алга.'
-        : vfilter === 'todo' ? '🎉 Бүх баримт тулгагдсан!' : vfilter === 'done' ? 'Тулгагдсан баримт алга.' : 'Баримт алга.';
+        : vfilter === 'todo' ? '🎉 Бүх баримт тулгагдсан!' : vfilter === 'done' ? 'Тулгагдсан баримт алга.' : vfilter === 'ret' ? 'Буцаасан баримт алга.' : 'Баримт алга.';
       rowsHtml = `<tr><td colspan="5" style="padding:30px;text-align:center;color:var(--muted);">${emptyMsg}</td></tr>`;
     }
 
@@ -22059,6 +22141,7 @@ async function openVatReportModal() {
         <div style="background:#e8f2ec;border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:#1e7a55;">Төлөх НӨАТ</div><div style="font-size:17px;font-weight:800;color:#1e7a55;">${fmtMoney(totVat)}</div><div style="font-size:10.5px;margin-top:2px;"><span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span></div></div>
         <div style="background:var(--bg,#f7f7f5);border-radius:10px;padding:10px 12px;"><div style="font-size:11px;color:var(--muted);">Тулгасан НӨАТ</div><div style="font-size:17px;font-weight:800;">${totVat > 0 ? Math.round(mVat / totVat * 100) : 0}%</div><div style="font-size:10.5px;margin-top:2px;color:var(--muted);">${fmtMoney(mVat)} / ${fmtMoney(totVat)}</div></div>
       </div>
+      ${retBanner}
       ${filterTabs}
       ${matchFilters}
       <div style="max-height:52vh;overflow:auto;padding:0 18px 18px;">
@@ -22083,15 +22166,20 @@ async function openVatReportModal() {
         // давхардсан id-г нэгтгэ
         const uniq = {}; all.forEach(r => uniq[r.id] = r); all = Object.values(uniq);
         if (!all.length) { st.textContent = '⚠ Баримт олдсонгүй (багана таарсангүй)'; return; }
+        const before = (state.vatReceipts || []).slice();
+        const det = vatDetectReturned(before, all);
         await vatUpsert(all);
+        // Файлд дахин гарч ирсэн = буцаалт нь цуцлагдсан → шууд сэргээнэ (эргэлзээгүй).
+        for (const r of det.back) { try { await vatSetReturned(r.id, false); } catch (e) {} }
         await loadVatReceipts();
-        st.textContent = `✓ ${all.length} баримт орлоо`;
+        pendingRet = det.gone.length ? det : null;
+        st.textContent = `✓ ${all.length} баримт орлоо` + (det.back.length ? ` · ${det.back.length} сэргээв` : '') + (det.gone.length ? ` · ⚠ ${det.gone.length} алга болсон` : '');
         render();
       } catch (err) { st.textContent = '✗ ' + err.message; showToast('НӨАТ оруулах алдаа: ' + err.message, 'error', 5000); }
     };
     card.querySelector('#vat-auto').onclick = async () => {
       const st = card.querySelector('#vat-status'); st.textContent = 'Тулгаж байна…';
-      const cs = vatCandidateOrders(); const todo = (state.vatReceipts || []).filter(r => !r.matched_id);
+      const cs = vatCandidateOrders(); const todo = vatReceiptsActive().filter(r => !r.matched_id);
       let n = 0, skip = 0;
       for (const r of todo) {
         const rReg = vatRegNorm(r.reg || r.buyer_reg);
@@ -22112,6 +22200,16 @@ async function openVatReportModal() {
       try { await vatSetMatch(b.dataset.vmatch, { type: b.dataset.vtype, no: b.dataset.vno, label: b.dataset.vlabel, by: 'manual' }); render(); } catch (e) { showToast(e.message, 'error'); }
     });
     card.querySelectorAll('[data-vunmatch]').forEach(b => b.onclick = async () => { try { await vatSetMatch(b.dataset.vunmatch, null); render(); } catch (e) { showToast(e.message, 'error'); } });
+    card.querySelectorAll('[data-vunret]').forEach(b => b.onclick = async () => { try { await vatSetReturned(b.dataset.vunret, false); render(); } catch (e) { showToast(e.message, 'error'); } });
+    const retYes = card.querySelector('#vat-ret-yes');
+    if (retYes) retYes.onclick = async () => {
+      const st = card.querySelector('#vat-status'); const gone = pendingRet.gone.slice();
+      st.textContent = 'Тэмдэглэж байна…';
+      let ok = 0; for (const r of gone) { try { await vatSetReturned(r.id, true); ok++; } catch (e) {} }
+      pendingRet = null; st.textContent = `✓ ${ok} баримт буцаасан гэж тэмдэглэв`; render();
+    };
+    const retNo = card.querySelector('#vat-ret-no');
+    if (retNo) retNo.onclick = () => { pendingRet = null; render(); };
     card.querySelectorAll('[data-vpicker]').forEach(b => b.onclick = () => openPicker(b.dataset.vpicker));
   }
 
@@ -22165,7 +22263,8 @@ async function openVatReportModal() {
 function vatExportExcel(list) {
   loadSheetJS().then(XLSX => {
     const rows = list.map(r => ({ 'Огноо': String(r.dt || '').slice(0, 10), 'ДДТД': r.ddtd, 'Худалдан авагч': r.buyer_name, 'Регистр': r.buyer_reg,
-      'Нийт дүн': r.total, 'НӨАТ': r.vat, 'Цэвэр дүн': r.net, 'Тулгасан захиалга': r.matched_label || '', 'Тулгалт': r.matched_by || '' }));
+      'Нийт дүн': r.total, 'НӨАТ': r.vat, 'Цэвэр дүн': r.net, 'Төлөв': vatIsReturned(r) ? 'Буцаасан' : 'Хүчинтэй',
+      'Тулгасан захиалга': r.matched_label || '', 'Тулгалт': r.matched_by || '' }));
     const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'НӨАТ');
     XLSX.writeFile(wb, 'НӨАТ-тайлан-' + todayStr() + '.xlsx');
   }).catch(() => showToast('Excel сан ачаалж чадсангүй', 'error'));
@@ -22179,7 +22278,8 @@ function renderVatView(wrap) {
     loadVatReceipts().then(() => { if (state.view === 'vat') render(); });
     return;
   }
-  const R = state.vatReceipts;
+  const R = vatReceiptsActive();
+  const RET = (state.vatReceipts || []).filter(vatIsReturned);
   const N = v => Number(v) || 0;
   const totSales = R.reduce((s, r) => s + N(r.total), 0);
   const totVat = R.reduce((s, r) => s + N(r.vat), 0);
@@ -22240,6 +22340,9 @@ function renderVatView(wrap) {
         ${kpi('Төлөх НӨАТ', fmtMoney(totVat), `<span style="color:#1e7a55;">✓${fmtMoney(mVat)}</span> · <span style="color:#9a6a00;">${fmtMoney(uVat)}</span>`, true)}
         ${kpi('Тулгасан НӨАТ', pct + '%', `${fmtMoney(mVat)} / ${fmtMoney(totVat)}`)}
       </div>
+      ${RET.length ? `<div style="background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--warn,#d9a406);border-radius:12px;padding:11px 14px;margin-bottom:16px;font-size:12.5px;">
+        ↩ <b>${RET.length} буцаасан баримт</b> (eBarimt-д байхгүй) — нийт ${fmtMoney(RET.reduce((a, r) => a + N(r.total), 0))}, НӨАТ ${fmtMoney(RET.reduce((a, r) => a + N(r.vat), 0))}.
+        <span style="color:var(--muted);">Дээрх тоонуудад ОРООГҮЙ. «Баримт оруулах / тулгах» → «↩ Буцаасан» табаас харна.</span></div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
         <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;border-left:4px solid #E95400;">
           <div style="font-size:12.5px;font-weight:700;color:#E95400;">🎪 M-Event НӨАТ борлуулалт</div>

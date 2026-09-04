@@ -1113,7 +1113,7 @@ function openPinResetModal(prefillId) {
       <label class="login-label">Имэйлээр ирсэн 6 оронтой код</label>
       <input id="pr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
       <label class="login-label">Шинэ PIN (4 орон)</label>
-      <input id="pr-pin" type="tel" inputmode="numeric" maxlength="4" placeholder="● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
+      <input id="pr-pin" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
       <button class="btn btn-primary" id="pr-verify" style="width:100%;">PIN шинэчлэх</button>
     </div>
     <div id="pr-err" style="color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px;"></div>
@@ -1136,7 +1136,7 @@ function openPinResetModal(prefillId) {
   $$('#pr-verify').onclick = async (e) => {
     const code = $$('#pr-code').value.replace(/\D/g, ''); const pin = $$('#pr-pin').value.replace(/\D/g, '');
     if (!/^\d{6}$/.test(code)) { err('6 оронтой код оруулна уу'); return; }
-    if (!/^\d{4}$/.test(pin)) { err('Шинэ PIN 4 оронтой байх ёстой'); return; }
+    if (!/^\d{4,6}$/.test(pin)) { err('Шинэ PIN 4-6 оронтой тоо байх ёстой'); return; }
     e.currentTarget.disabled = true; err(''); e.currentTarget.textContent = 'Шинэчилж байна…';
     const ok = await serverResetVerify(modal._id, code, pin);
     if (ok) {
@@ -28112,13 +28112,18 @@ function initPinLogin() {
 
   const form = document.getElementById('pin-login-form');
   const pinInput = document.getElementById('login-pin-input');
-  // Auto-submit when 4 digits entered (faster UX on mobile)
+  // Авто илгээлт. ⚠ PIN 4-6 оронтой болсон тул ЯГ 4 дээр илгээж БОЛОХГҮЙ —
+  // 6 оронтой хүн бичиж дуусахаас өмнө илгээгдэж «буруу PIN» гэж тоологдоно.
+  // Сервер 5 буруу оролдлогын дараа 15 минут ТҮГЖДЭГ тул энэ нь бодит эрсдэл.
+  // Шийдэл: 6 орон (дээд хэмжээ) дээр шууд, 4-5 орон дээр бичихээ болих хүртэл хүлээнэ.
+  let _pinTimer = null;
   pinInput.addEventListener('input', () => {
-    pinInput.value = pinInput.value.replace(/\D/g,'').slice(0,4);
-    if (pinInput.value.length === 4 && idInput.value.trim()) {
-      // Defer slightly so the keyboard "done" UX feels natural
-      setTimeout(() => form.requestSubmit(), 80);
-    }
+    pinInput.value = pinInput.value.replace(/\D/g,'').slice(0,6);
+    clearTimeout(_pinTimer);
+    if (!idInput.value.trim()) return;
+    const len = pinInput.value.length;
+    if (len === 6) _pinTimer = setTimeout(() => form.requestSubmit(), 80);
+    else if (len >= 4) _pinTimer = setTimeout(() => form.requestSubmit(), 900);
   });
 
   form.addEventListener('submit', (e) => {
@@ -28283,7 +28288,7 @@ async function handleRegister() {
   if (!bankAccount || bankAccount.replace(/\D/g,'').length < 6) return show('⚠ Дансны дугаараа зөв оруулна уу.');
   if (!bankHolder) return show('⚠ Данс эзэмшигчийн нэр оруулна уу.');
   // Цагийн ажилтны цалин (өдрийн хөлс × хоног)-г менежер ажил дуусахад гараар оруулна.
-  if (!/^\d{4}$/.test(pin)) return show('PIN нь 4 оронтой тоо байх ёстой.');
+  if (!/^\d{4,6}$/.test(pin)) return show('PIN нь 4-6 оронтой тоо байх ёстой.');
 
   // ─── Давхцал шалгах (одоогийн TEAM дотор) ───
   if (TEAM.some(m => String(m.pin) === pin)) {
@@ -28377,7 +28382,7 @@ async function handleRegister() {
 
 async function handlePinLogin(userIdentifier, pin) {
   if (!userIdentifier) return showLoginError('Утас эсвэл и-мэйл хаягаа оруулна уу.');
-  if (!/^\d{4}$/.test(pin)) return showLoginError('PIN нь 4 оронтой тоо байх ёстой.');
+  if (!/^\d{4,6}$/.test(pin)) return showLoginError('PIN нь 4-6 оронтой тоо байх ёстой.');
 
   const raw = String(userIdentifier).trim();
   const lowered = raw.toLowerCase();

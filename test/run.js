@@ -258,6 +258,19 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: нэвтрэлтийн авто илгээлт ЯГ 4 орон дээр ажиллахгүй (6 оронтой PIN тасарна)');
   ok(/slice\(0,\s*6\)/.test(codeLines) && /pinInput/.test(codeLines),
      'scan: PIN оруулга 6 орон хүртэл зөвшөөрнө');
+  // ⚠ 2026-09-05: #191 нь app.js-ийг зассан ч index.html-ийн НЭВТРЭХ талбар
+  //   `maxlength="4" minlength="4" pattern="[0-9]{4}"` хэвээр үлдсэн. 6 оронтой
+  //   PIN-тэй хүн 4-өөс илүү тэмдэгт БИЧИЖ ЧАДАХГҮЙ → буруу PIN → 5 оролдлогын
+  //   дараа 15 минут түгжигдэнэ. CEO яг ингэж нэвтэрч чадахгүй болсон.
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  ['login-pin-input', 'reg-pin'].forEach(id => {
+    const tag = (html.match(new RegExp('<input id="' + id + '"[^>]*>', 's')) || [''])[0];
+    ok(tag, 'scan: ' + id + ' талбар index.html-д байна');
+    eq(/maxlength="(\d+)"/.test(tag) ? RegExp.$1 : '', '6',
+       'scan: ' + id + ' нь 6 орон хүртэл бичихийг зөвшөөрнө');
+    eq(/pattern="\[0-9\]\{4\}"/.test(tag), false,
+       'scan: ' + id + ' нь ЯГ 4 орон шаардахгүй ([0-9]{4,6})');
+  });
 }
 
 // 0h) canonKey / keyVariants — ажилтны хуучин түлхүүрийг эзэнтэй нь холбох (2026-09-04)

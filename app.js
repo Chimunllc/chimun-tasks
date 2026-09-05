@@ -1112,7 +1112,7 @@ function openPinResetModal(prefillId) {
       <p style="font-size:13px;color:var(--muted);margin:4px 0 12px;" id="pr-sent-msg"></p>
       <label class="login-label">Имэйлээр ирсэн 6 оронтой код</label>
       <input id="pr-code" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
-      <label class="login-label">Шинэ PIN (4 орон)</label>
+      <label class="login-label">Шинэ PIN (4-6 орон)</label>
       <input id="pr-pin" type="tel" inputmode="numeric" maxlength="6" placeholder="● ● ● ●" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:4px;text-align:center;margin:4px 0 12px;box-sizing:border-box;">
       <button class="btn btn-primary" id="pr-verify" style="width:100%;">PIN шинэчлэх</button>
     </div>

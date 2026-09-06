@@ -1019,6 +1019,14 @@ async function serverLogin(identifier, pin) {
 // session токен + lvl>=100 шалгадаг /chimun-staff-pins-ээс авна.
 const STAFF_SENSITIVE_FIELDS = ['rd', 'address', 'base_salary', 'daily_rate', 'salary',
   'bank', 'bank_account', 'bank_holder', 'emergency_name', 'emergency_phone'];
+// Эмзэг талбарыг (данс/РД/цалин) хэн авах вэ. ЦАЛИН ОЛГОДОГ хүнд банкны данс
+// ЗААВАЛ хэрэгтэй — дансгүйгээр шилжүүлэг хийх боломжгүй. Тиймээс CEO-гоос гадна
+// «Цалин» эрхтэй хүнд нээнэ.
+// ⚠ PIN нь ЭНД ОРОХГҮЙ — PIN зөвхөн CEO-д. Хэн юуг авахыг эцэст нь СЕРВЕР шийднэ
+//   (токен + эрх шалгана); энэ функц бол зөвхөн клиент талын «хүсэлт явуулах уу» гэсэн шүүлт.
+function canSeeStaffSensitive() {
+  return !!state.isCEO || (typeof canSeeSalary === 'function' && canSeeSalary());
+}
 function applyStaffPins() {
   if (!state.staffPins && !state.staffSensitive) return;
   (TEAM || []).forEach(m => {
@@ -1030,8 +1038,14 @@ function applyStaffPins() {
     if (sx) STAFF_SENSITIVE_FIELDS.forEach(k => { if (sx[k] !== undefined && sx[k] !== null && sx[k] !== '') m[k] = sx[k]; });
   });
 }
+// ⚠ ДАВТАЛТЫН ХАМГААЛАЛТ. renderSalary нь энэ функцийг дуудна. Сервер 403/500 буцаавал
+// (JSON биш → d === null) хуучин код `_staffPinsLoaded = false` болгодог тул render бүрд
+// хүсэлт дахин явж, сүлжээ дүүрнэ. Сессид 2 оролдлогоор хязгаарлана.
+let _staffPinsTries = 0;
 async function loadStaffPins() {
-  if (state._staffPinsLoaded || !state.isCEO) return;
+  if (state._staffPinsLoaded || !canSeeStaffSensitive()) return;
+  if (_staffPinsTries >= 2) { state._staffPinsLoaded = true; return; }
+  _staffPinsTries++;
   const token = localStorage.getItem('sessionToken');
   // Токенгүй = серверийн нэвтрэлт байхгүй → PIN татах боломжгүй. Гацаахгүй, "дахин нэвтэрнэ үү" гэж хэлнэ.
   if (!token) { state._staffPinsLoaded = true; state._staffPinsErr = 'need_login'; if (typeof render === 'function') render(); return; }
@@ -1043,10 +1057,13 @@ async function loadStaffPins() {
     }, 12000);
     const d = r.ok ? await r.json() : null;
     if (!d || !d.ok || !Array.isArray(d.team)) {
-      // bad_token = токен хүчингүй/хугацаа дууссан → дахин нэвтрэх хэрэгтэй. Бусад = түр алдаа, дахин оролдож болно.
+      // bad_token = токен хүчингүй → дахин нэвтрэх. Сүлжээ/HTTP алдаа (d === null) = түр, дахин оролдоно.
+      // ⚠ Сервер JSON-оор ok:false гэж хариулсан бол ШИЙДВЭРЭЭ гаргасан (эрх алга г.м.) —
+      //   дахин оролдох нь утгагүй бөгөөд render бүрд хүсэлт явуулах давталт үүсгэнэ.
       const badTok = d && d.reason === 'bad_token';
-      state._staffPinsErr = badTok ? 'need_login' : 'retry';
-      if (!badTok) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
+      const netErr = !d && _staffPinsTries < 2;   // 2 оролдлогоос цааш барихгүй — доорх давталтын хамгаалалт
+      state._staffPinsErr = badTok ? 'need_login' : netErr ? 'retry' : 'denied';
+      if (netErr) state._staffPinsLoaded = false;   // түр алдаа — дараагийн render-д дахин оролдоно (render дуудахгүй тул давталт үүсэхгүй)
       else if (typeof render === 'function') render();
       return;
     }
@@ -11776,6 +11793,16 @@ function salaryStaff() {
 }
 
 // Нэгдсэн "Цалин" цэсийн таб толгой (Сарын + Цагийн)
+// Данс хоосон харагдах 4 өөр шалтгаан бий. Бүгдийг нь «бүртгэгдээгүй» гэж хэлэх нь ХУДАЛ —
+// хэрэглэгч ажилтнаас данс дахин асууж цаг алддаг. Тиймээс шалтгаан бүрийг нэрлэнэ.
+function staffAcctMissingHtml() {
+  const warn = t => `<div style="font-size:11px;color:var(--muted);margin-top:2px;">🏦 ${t}</div>`;
+  if (!canSeeStaffSensitive()) return warn('данс — харах эрх алга');
+  if (state._staffPinsErr === 'denied') return warn('данс — сервер эрх өгсөнгүй');
+  if (state._staffPinsErr === 'need_login') return warn('данс — дахин нэвтэрнэ үү');
+  if (!state._staffPinsLoaded || state._staffPinsErr === 'retry') return warn('данс ачаалж байна…');
+  return `<div style="font-size:11px;color:var(--danger);margin-top:2px;">🏦 данс бүртгэгдээгүй</div>`;
+}
 function payrollTabBar(canSal, canHr) {
   const tab = (key, label) => `<button data-payroll-tab="${key}" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-bottom:2.5px solid ${state.payrollTab === key ? 'var(--primary)' : 'transparent'};background:none;color:${state.payrollTab === key ? 'var(--text)' : 'var(--muted)'};cursor:pointer;">${label}</button>`;
   return `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:10px;">
@@ -11788,6 +11815,9 @@ function attachPayrollTabs() {
 }
 function renderSalary() {
   if (!state._salLoaded) { state._salLoaded = true; loadSalaries(); loadSalaryPayments(); }
+  // Данс/РД нь эмзэг сувгаар ирдэг. Өмнө нь зөвхөн «Ажилчид» хуудсаар татагддаг байсан тул
+  // шууд Цалин руу орвол бүх данс «бүртгэгдээгүй» харагддаг байв. Эрхийг loadStaffPins шалгана.
+  if (!state._staffPinsLoaded) loadStaffPins();
   const ym = state.salaryYM || todayStr().slice(0, 7);
   const q = (state.salarySearch || '').toLowerCase().trim();
   const brAll = salaryStaff().filter(m => _inHubBranch(m, effectiveBranchLens() || 'all'));   // толгойн глобал салбар-сонгогчоор
@@ -11847,7 +11877,7 @@ function renderSalary() {
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     const bankLine = (m.bank || m.bank_account)
       ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">🏦 ${escapeHtml(m.bank || '')}${m.bank_account ? ' · <b style="font-weight:600;color:var(--text);">' + escapeHtml(m.bank_account) + '</b>' : ''}${acct ? `<button class="btn" data-sal-copy="${escapeHtml(acct)}" style="padding:1px 7px;font-size:10px;">Хуулах</button>` : ''}</div>`
-      : `<div style="font-size:11px;color:var(--danger);margin-top:2px;">🏦 данс бүртгэгдээгүй</div>`;
+      : staffAcctMissingHtml();
     const slot = (label, sub, due, amt, paid, tag) => {
       const over = !paid && base > 0 && today > due;
       const right = paid > 0
@@ -24676,7 +24706,7 @@ function renderStaffList() {
     + groups[g].map(rowHtml).join('')
   ).join('');
   listEl.querySelector('#staff-pin-relogin')?.addEventListener('click', () => { logout(); });
-  listEl.querySelector('#staff-pin-retry')?.addEventListener('click', () => { state._staffPinsLoaded = false; state._staffPinsErr = ''; if (typeof showToast === 'function') showToast('Ажилтны PIN дахин ачаалж байна…', 'info', 1800); loadStaffPins(); });
+  listEl.querySelector('#staff-pin-retry')?.addEventListener('click', () => { state._staffPinsLoaded = false; state._staffPinsErr = ''; _staffPinsTries = 0; if (typeof showToast === 'function') showToast('Ажилтны PIN дахин ачаалж байна…', 'info', 1800); loadStaffPins(); });
   listEl.querySelectorAll('.staff-role-edit').forEach(btn => {
     btn.addEventListener('click', (e) => { e.stopPropagation(); editStaffRole(btn.dataset.staffRoleedit); });
   });
@@ -27627,7 +27657,7 @@ function setUser(member, profile, auth) {
   if (auth && auth.token) localStorage.setItem('sessionToken', auth.token);
   else localStorage.removeItem('sessionToken');
   // Шинэ токен ирмэгц ажилтны PIN-г дахин татна (өмнөх session-д токенгүй/алдаатай гацсан бол сэргэнэ)
-  if (auth && auth.token) { state._staffPinsLoaded = false; state._staffPinsErr = ''; }
+  if (auth && auth.token) { state._staffPinsLoaded = false; state._staffPinsErr = ''; _staffPinsTries = 0; }
   // PostgREST JWT (эмзэг бичилтэд) — байвал хадгална, эс бол хуучныг цэвэрлэнэ.
   if (auth && auth.pgrst) localStorage.setItem('pgrstToken', auth.pgrst);
   else localStorage.removeItem('pgrstToken');

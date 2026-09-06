@@ -6398,3 +6398,23 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .hp-table td.hp-no { font-weight:700; }
 .hp-table td.hp-cust { max-width:230px; overflow:hidden; text-overflow:ellipsis; }
 .hp-table td.hp-n { text-align:right; }
+
+/* ── Хуулгын импорт: хасагдсан мөр + анхааруулга (2026-09-06) ─────────────── */
+.stmt-warn {
+  background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 8px;
+  padding: var(--space-2) 11px; margin: var(--space-2) 0;
+  font-size: var(--fs-sm); color: var(--warn); line-height: 1.5;
+}
+.stmt-drop {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: var(--space-2) 11px; margin-bottom: var(--space-3);
+  font-size: var(--fs-sm); background: var(--panel-hover);
+}
+.stmt-drop > summary { cursor: pointer; color: var(--warn); }
+.stmt-drop-row {
+  display: flex; gap: var(--space-2); align-items: baseline;
+  padding: var(--space-1) 0; border-top: 1px solid var(--border);
+}
+.stmt-drop-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stmt-drop-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stmt-drop-row i { color: var(--muted); font-style: normal; white-space: nowrap; font-size: var(--fs-xs); }

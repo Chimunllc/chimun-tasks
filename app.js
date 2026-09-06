@@ -2264,6 +2264,10 @@ async function createFinanceRequest({ amount, purpose, beneficiary, justificatio
   // CEO/нягтлан үүсгэмэгц ШУУД Дууссан (батлах/гүйцэтгэх шат давхардуулахгүй).
   if (state._finBackfill && (state.isCEO || state.me === getFinanceExecutorEmail())) {
     const bfDate = `${state._finBackfill.date}T12:00:00.000Z`;
+    // Зардлын огноо = ГҮЙЛГЭЭ гарсан өдөр. Өмнө нь requested_at нь ИМПОРТ хийсэн
+    // мөч байсан тул мөнгөн суурьтай тайлан (finExpMonth 'cash' = requested_at)
+    // 8 сарын хуулгыг 9 сард оруулбал бүх зардлыг 9 сард тоолж, 8 сар дутуу гардаг байв.
+    r.requested_at = bfDate;
     r.decision = 'approved'; r.decision_at = bfDate; r.decision_by = state.me;
     r.executed_at = bfDate; r.executed_by = state.me;
     r.status = 'done'; r.close_type = 'хуулгаар';
@@ -5574,10 +5578,10 @@ function parseStatement(matrix) {
       hr = i; break;
     }
   }
-  if (hr < 0) return { rows: [], headerRow: -1, cols };
+  if (hr < 0) return { rows: [], headerRow: -1, cols, skipped: [] };
   const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; };
   const cell = (r, idx) => (idx >= 0 ? String(r[idx] == null ? '' : r[idx]).trim() : '');
-  const rows = [];
+  const rows = [], skipped = [];
   const pad2 = (v) => String(v).padStart(2, '0');
   for (let i = hr + 1; i < matrix.length; i++) {
     const r = matrix[i] || [];
@@ -5586,12 +5590,19 @@ function parseStatement(matrix) {
     let dm = dc.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
     let dateStr = dm ? `${dm[1]}-${pad2(dm[2])}-${pad2(dm[3])}` : '';
     if (!dateStr) { dm = dc.match(/(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})/); if (dm) dateStr = `${dm[3]}-${pad2(dm[2])}-${pad2(dm[1])}`; }
-    if (!dateStr) continue;   // огноогүй мөр (footer "Нийт орлого" г.м.) → алгасна
+    if (!dateStr) {
+      // Ихэнх огноогүй мөр = footer ("Нийт", "Эцсийн үлдэгдэл") → чимээгүй алгасна.
+      // Гэхдээ УТГА + ЗАРЛАГЫН ДҮНТЭЙ мөр огноогоо алдвал бодит зардал чимээгүй алга
+      // болдог тул түүнийг skipped-д бүртгэж импортын цонхонд ил гаргана.
+      const sm = cell(r, cols.memo), sd = cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0;
+      if (sm && sd > 0 && !/нийт|total|үлдэгдэл|balance|эргэлт/i.test(sm)) skipped.push({ date: dc || '—', memo: sm, debit: sd, why: 'огноо уншигдсангүй' });
+      continue;
+    }
     // Хаан дебитээ СӨРӨГ тоогоор бичдэг (-180000), Голомт эерэгээр — abs() хоёуланд зөв
     rows.push({ date: dateStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
       account: cell(r, cols.account), credit: cols.credit >= 0 ? Math.abs(num(r[cols.credit])) : 0, debit: cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0 });
   }
-  return { rows, headerRow: hr, cols };
+  return { rows, headerRow: hr, cols, skipped };
 }
 
 // ── ХУУЛГААР ЗАРДАЛ АНГИЛАХ (долоо хоног бүр) — авто ангилал + гараар + сурах ──
@@ -5659,6 +5670,19 @@ function guessBranchForRecord(r, ownerKey) {
   const al = acctLearnOf(expRecAcct(r)); if (al && al.branch) return al.branch;   // ДАНС-суурьтай суралцлага
   const kw = guessBranch(r.purpose || r.beneficiary || '', ownerKey);
   return kw || stored;
+}
+// Цалингийн салбар. ТОДОРХОЙГҮЙ бол ХООСОН буцаана — өмнө нь `|| 'КЕМП'` гэж сохроор
+// буулгадаг байсан тул салбар нь бүртгэгдээгүй (эсвэл 2 салбарт ажилладаг) хүний цалин
+// БҮГД NOMAAD-д ороод M-Event-ийн зардал дутуу харагдаж байв. Хоосон үед импорт нь
+// тэр мөрүүдийг тусад нь жагсааж, CEO ажилтны салбарыг тохируулж дахин оруулна.
+// Хуулгын мөр аль хэдийн орсон уу. Хээ (fp) нь ижил өдөр+дүнтэй хоёр гүйлгээнд
+// ДАВХЦДАГ тул тоогоор шалгана: тухайн хээний k дахь мөр нь бүртгэлд k-аас цөөн
+// бичлэг байвал ШИНЭ. (Өмнө Set байсан тул 2 дахь мөр үргэлж «орсон» гэж хаягдаж
+// зардал дутуу ордог байв.)
+function fpAlreadyImported(occ, count) { return (Number(occ) || 1) <= (Number(count) || 0); }
+function salaryBranchOf(memo, personKey, fallbackBranch) {
+  const b = guessBranch(memo, personKey) || fallbackBranch || '';
+  return STMT_BRANCHES.some(([c]) => c === b) ? b : '';
 }
 // ── ХУВААЛЦСАН СУРАЛЦЛАГА (expense_learn, PostgREST anon) — худалдагч→салбар+ангилал, бүх компанид ──
 function _expLearn() { return state.expenseLearn || (state.expenseLearn = {}); }
@@ -5907,18 +5931,28 @@ async function openStatementClassifyModal() {
       <div id="sc-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Олон дансны хуулгыг зэрэг сонгож болно</div>
     </label>
     <div id="sc-srcaccts"></div>
+    <div id="sc-dropped"></div>
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
       <button class="btn btn-primary" id="sc-save" style="display:none;">Зардлыг оруулах</button>
     </div></div>`;
   document.body.appendChild(modal);
-  let rows = [], sources = [];
+  let rows = [], sources = [], dropped = [];
   const close = () => modal.remove();
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
-  const srcAcctsEl = modal.querySelector('#sc-srcaccts');
+  const srcAcctsEl = modal.querySelector('#sc-srcaccts'), droppedEl = modal.querySelector('#sc-dropped');
+  // ХАСАГДСАН МӨР — «дутуу орлоо» гэдэг нь хэзээ ч чимээгүй болохгүй. Хуулгад байсан
+  // боловч зардал болоогүй мөр бүрийг шалтгаантай нь энд гаргана.
+  const renderDropped = () => {
+    if (!dropped.length) { droppedEl.innerHTML = ''; return; }
+    const tot = dropped.reduce((a, x) => a + (Number(x.debit) || 0), 0);
+    droppedEl.innerHTML = `<details class="stmt-drop"><summary>⚠ Зардал болоогүй <b>${dropped.length}</b> мөр · ${fmtMoney(tot)} — шалтгааныг харах</summary>
+      ${dropped.map(x => `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(String(x.why || ''))}</i></div>`).join('')}
+      </details>`;
+  };
   // Бүртгэлгүй эх данс (манай хуулгын данс) — нэг товчоор Данс&Карт-д бүртгэнэ → зардал дээр банкны нэр гарна.
   const renderSrcAccts = () => {
     const srcs = [...new Set(rows.map(r => _acctDigits(r.src)).filter(Boolean))].filter(d => !_acctBySuffix(d));
@@ -5942,7 +5976,13 @@ async function openStatementClassifyModal() {
     const nSal = live.filter(r => r.salaryEmp).length, nHrl = live.filter(r => r.hourlyEmp).length, nDone = rows.filter(r => r.done).length;
     // Эзэнгүй картууд — эдгээрийн зардал танд ирнэ (эзэн рүү очихгүй). Тод анхааруулна.
     const orphanCards = [...new Set(live.filter(r => r.cardL4 && !ownerOf(srcKeyOf(r))).map(r => r.cardL4))];
-    const warnBanner = orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '';
+    // Салбар нь тодорхойгүй цалин — өмнө нь чимээгүйгээр КЕМП (NOMAAD)-д ордог байсан
+    // тул M-Event-ийн цалингийн зардал тайланд харагддаггүй байв. Одоо ил хэлнэ.
+    const salNoBr = live.filter(r => (r.salaryEmp || r.hourlyEmp)
+      && !salaryBranchOf(r.memo, r.salaryEmp || (r.hourlyEmp && r.hourlyEmp.key), r.salaryEmp ? branchOf(srcKeyOf(r)) : ''));
+    const salNames = [...new Set(salNoBr.map(r => r.hourlyEmp ? (r.hourlyEmp.name || memberName(r.hourlyEmp.key)) : memberName(r.salaryEmp)).filter(Boolean))];
+    const salBanner = salNames.length ? `<div class="stmt-warn">🏷 <b>${salNoBr.length}</b> цалингийн салбар тодорхойгүй: ${escapeHtml(salNames.join(', '))} — «Ажилчид»-аас тэдний салбарыг тохируулбал M-Event/NOMAAD-д зөв ороно. Одоогоор «Захиргаа»-д орж, дараа засаж болно.</div>` : '';
+    const warnBanner = salBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
     const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
@@ -5965,20 +6005,30 @@ async function openStatementClassifyModal() {
   const isForce = () => false;   // 🔁 force ХАСАГДСАН — дахин оруулахад давхардуулахгүй, нөхөх pass автоматаар ажиллана
   // "Орсон" = ИДЭВХТЭЙ санхүүгийн бүртгэл байгаа эсэх (justification-д [#fp]). Баримтын ledger биш —
   // цэвэрлэсэн (устгасан) бол дахин оруулахад force хэрэггүй болно.
-  const importedFpSet = () => { const s = new Set(); (state.financeRequests || []).forEach(r => { if (r.status === 'deleted') return; const m = String(r.justification || '').match(/\[#([^\]]+)\]/); if (m) s.add(m[1]); }); return s; };
+  // fp → аль хэдийн орсон бүртгэлийн ТОО (Set БИШ Map). Ижил өдөр ижил дүнтэй хоёр
+  // гүйлгээ (жиш. хоёр ажилтанд ижил цалин, дансны багана хоосон) ИЖИЛ хээтэй болдог.
+  // Set үед хоёр дахь нь «аль хэдийн орсон» гэж алгасагдаж зардал дутуу ордог байв.
+  const importedFpCounts = () => { const m = new Map(); (state.financeRequests || []).forEach(r => { if (r.status === 'deleted') return; const x = String(r.justification || '').match(/\[#([^\]]+)\]/); if (x) m.set(x[1], (m.get(x[1]) || 0) + 1); }); return m; };
   modal.querySelector('#sc-file').addEventListener('change', async e => {
     const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
-      rows = [];
-      const imp = importedFpSet();
+      rows = []; dropped = [];
+      const imp = importedFpCounts(); const occSeen = new Map();
       const own = ownAcctSet(); let skippedInternal = 0;
       for (const f of files) {
         const matrix = await statementFileToMatrix(f);
         const src = detectStatementAccount(matrix);
-        const parsed = parseStatement(matrix).rows.filter(r => r.debit > 0 && !/charges for pord|шимтгэл/i.test(r.memo || ''))
-          // Өөрийн данс хооронд шилжүүлсэн нь зарлага БИШ — оруулахгүй.
-          .filter(r => { if (isInternalTransfer(r, own)) { skippedInternal++; return false; } return true; });
+        const st = parseStatement(matrix);
+        (st.skipped || []).forEach(x => dropped.push(x));
+        // Хасагдсан мөр бүрийг ШАЛТГААНТАЙ нь бүртгэнэ — «дутуу орлоо» гэдэг нь
+        // хэзээ ч чимээгүй болохгүй, хэрэглэгч юу яагаад ороогүйг цонхон дээр харна.
+        const parsed = st.rows.filter(r => {
+          if (!(r.debit > 0)) return false;
+          if (/charges for pord|шимтгэл/i.test(r.memo || '')) { dropped.push({ date: r.date, memo: r.memo, debit: r.debit, why: 'банкны шимтгэл' }); return false; }
+          if (isInternalTransfer(r, own)) { skippedInternal++; dropped.push({ date: r.date, memo: r.memo, debit: r.debit, why: 'дотоод шилжүүлэг (өөрийн данс)' }); return false; }
+          return true;
+        });
         parsed.forEach(r => {
           const fp = expenseFp(r);
           const cat = classifyExpense(r.memo, r.account);
@@ -5992,7 +6042,8 @@ async function openStatementClassifyModal() {
           const hourlyEmp = (emp && emp.type === 'hourly' && _salaryMemo) ? emp : null;
           const cardL4 = detectCardLast4(r.memo);
           const depMatch = depositMatchForStmt(r.memo, r.debit);   // барьцаа буцаалт бол → захиалгад авто холбоно
-          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : cat, catManual: !!(depMatch || cat), depMatch, fp, salaryEmp, hourlyEmp, done: (!isForce() && imp.has(fp)) });
+          const occ = (occSeen.get(fp) || 0) + 1; occSeen.set(fp, occ);   // энэ хуулган дахь тухайн хээний хэд дэх мөр
+          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : cat, catManual: !!(depMatch || cat), depMatch, fp, occ, salaryEmp, hourlyEmp, done: (!isForce() && fpAlreadyImported(occ, imp.get(fp))) });
         });
       }
       // Эх сурвалжуудыг (карт/данс) цуглуулна
@@ -6000,20 +6051,20 @@ async function openStatementClassifyModal() {
       rows.forEach(r => { const k = srcKeyOf(r); if (seen.has(k)) return; seen.add(k); sources.push(r.cardL4 ? { key: k, type: 'card', l4: r.cardL4 } : { key: k, type: 'acct', acct: r.src }); });
       if (!rows.length && !skippedInternal) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
       status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
-      renderSrcAccts(); render(); saveBtn.style.display = '';
+      renderSrcAccts(); renderDropped(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   });
   saveBtn.onclick = async () => {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
-    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0, rerouted = 0;
+    saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0, rerouted = 0, failedRows = 0;
     const force = isForce();
-    const imp = importedFpSet();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
+    const imp = importedFpCounts();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
     // fp → байгаа бүртгэл (дутуу нэр нөхөхөд)
     const byFp = {}; (state.financeRequests || []).forEach(rq => { if (rq.status === 'deleted') return; const m = String(rq.justification || '').match(/\[#([^\]]+)\]/); if (m) byFp[m[1]] = rq; });
     // ── НӨХӨХ PASS: аль хэдийн орсон бүртгэлд дутуу нэр/эх данс нөхнө (шинээр оруулахгүй ч) ──
     for (const r of rows) {
-      if (force || !imp.has(r.fp)) continue;   // энэ мөр шинээр орно — доор боловсруулна
+      if (force || !fpAlreadyImported(r.occ, imp.get(r.fp))) continue;   // энэ мөр шинээр орно — доор боловсруулна
       const ex = byFp[r.fp]; if (!ex) continue;
       let dirty = false;
       if (r.name && !/^[\d\s\-]+$/.test(r.name)) { const b = String(ex.beneficiary || '').trim(); if (!b || /^[\d\s\-]+$/.test(b)) { ex.beneficiary = r.name; dirty = true; } }
@@ -6029,72 +6080,76 @@ async function openStatementClassifyModal() {
     const todo = rows.filter(r => !r.done);
     if (!todo.length) { showToast(filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}` : 'Оруулах зардал алга', filled ? 'success' : 'warn', 3500); render(); saveBtn.disabled = false; return; }
     for (const r of todo) {
-      // Идэвхтэй санхүүгийн бүртгэл аль хэдийн байвал алгасна (устгасныг дахин оруулж болно).
-      if (!force && imp.has(r.fp)) {
-        r.done = true; continue;
-      }
-      // Баримтын ledger-т тэмдэглэнэ (best-effort, cross-device) — 'dup' буцаавч алгасахгүй.
-      if (!force) { try { await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); } catch (e) {} }
-      // ЦАГИЙН ажилтны цалин — "Цагийн цалин" хэсэгт ордог форматаар бүртгэнэ (эзэн ангилалд явуулахгүй).
-      if (r.hourlyEmp) {
-        const nm = r.hourlyEmp.name || memberName(r.hourlyEmp.key);
-        // ДАВХЦАЛ СЭРГИЙЛЭХ: Цагийн цалин модулаас гараар бүртгэсэн HRLY_ бичлэг байвал ДАХИН үүсгэхгүй —
-        // түүнийг хуулгаар баталгаажуулна (нэг олголт = нэг бичлэг). Ижил нэр+дүн+сар.
-        const _nn = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
-        const _rm = String(r.date).slice(0, 7);
-        const manual = (state.financeRequests || []).find(x => x.status !== 'deleted' && String(x.id || '').startsWith('HRLY_') && x.close_type !== 'хуулгаар'
-          && Math.round(Number(x.amount) || 0) === Math.round(r.debit) && _nn(x.beneficiary) === _nn(nm)
-          && (String(x.due_date || x.requested_at || '').slice(0, 7) === _rm || ((String(x.purpose || '').match(/(\d{4}-\d{2})/) || [])[1]) === _rm));
-        if (manual) {
-          manual.close_type = 'хуулгаар'; manual.received_by = manual.received_by || r.hourlyEmp.key;
-          manual.executed_at = manual.executed_at || new Date().toISOString();
-          manual.justification = String(manual.justification || '').replace(/\s*⟦PENDST⟧/g, '');   // хуулгаар батлагдсан тул "хүлээгдэж буй" токен арилгана → зардалд тоологдоно
-          if (!/\[#/.test(manual.justification || '')) manual.justification = `${manual.justification || ''} · хуулгаар баталгаажсан [#${r.fp}] ${encodeSrcToken(r.src)}`.trim();
-          try { await saveFinanceRequest(manual); } catch (e) {}
+      // НЭГ мөр унавал БҮХ импорт зогсохгүй — унасныг тоолж эцэст нь ил хэлнэ.
+      // Өмнө нь дундуур гарсан алдаа үлдсэн мөрүүдийг чимээгүй орхидог байв.
+      try {
+        // Идэвхтэй санхүүгийн бүртгэл аль хэдийн байвал алгасна (устгасныг дахин оруулж болно).
+        if (!force && fpAlreadyImported(r.occ, imp.get(r.fp))) {
+          r.done = true; continue;
+        }
+        // Баримтын ledger-т тэмдэглэнэ (best-effort, cross-device) — 'dup' буцаавч алгасахгүй.
+        if (!force) { try { await reserveReceipt(r.fp, { fp: r.fp, amount: r.debit, date: r.date, ref: r.memo, usedIn: 'expense:stmt' }); } catch (e) {} }
+        // ЦАГИЙН ажилтны цалин — "Цагийн цалин" хэсэгт ордог форматаар бүртгэнэ (эзэн ангилалд явуулахгүй).
+        if (r.hourlyEmp) {
+          const nm = r.hourlyEmp.name || memberName(r.hourlyEmp.key);
+          // ДАВХЦАЛ СЭРГИЙЛЭХ: Цагийн цалин модулаас гараар бүртгэсэн HRLY_ бичлэг байвал ДАХИН үүсгэхгүй —
+          // түүнийг хуулгаар баталгаажуулна (нэг олголт = нэг бичлэг). Ижил нэр+дүн+сар.
+          const _nn = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+          const _rm = String(r.date).slice(0, 7);
+          const manual = (state.financeRequests || []).find(x => x.status !== 'deleted' && String(x.id || '').startsWith('HRLY_') && x.close_type !== 'хуулгаар'
+            && Math.round(Number(x.amount) || 0) === Math.round(r.debit) && _nn(x.beneficiary) === _nn(nm)
+            && (String(x.due_date || x.requested_at || '').slice(0, 7) === _rm || ((String(x.purpose || '').match(/(\d{4}-\d{2})/) || [])[1]) === _rm));
+          if (manual) {
+            manual.close_type = 'хуулгаар'; manual.received_by = manual.received_by || r.hourlyEmp.key;
+            manual.executed_at = manual.executed_at || new Date().toISOString();
+            manual.justification = String(manual.justification || '').replace(/\s*⟦PENDST⟧/g, '');   // хуулгаар батлагдсан тул "хүлээгдэж буй" токен арилгана → зардалд тоологдоно
+            if (!/\[#/.test(manual.justification || '')) manual.justification = `${manual.justification || ''} · хуулгаар баталгаажсан [#${r.fp}] ${encodeSrcToken(r.src)}`.trim();
+            try { await saveFinanceRequest(manual); } catch (e) {}
+            hrl++; r.done = true; n++; continue;
+          }
+          const hbr = salaryBranchOf(r.memo, r.hourlyEmp.key);   // тодорхойгүй бол ХООСОН (КЕМП рүү буулгахгүй)
+          state._finBackfill = { date: r.date };
+          const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
+            justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
+          state._finBackfill = null;
+          if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.received_by = r.hourlyEmp.key; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
           hrl++; r.done = true; n++; continue;
         }
-        const hbr = guessBranch(r.memo, r.hourlyEmp.key) || 'КЕМП';   // цагийн ажилтны салбар (эзний member_branches-ээс)
+        // Сарын цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
+        if (r.salaryEmp) {
+          state._finBackfill = { date: r.date };
+          const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
+            justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7100', deptBranch: salaryBranchOf(r.memo, r.salaryEmp, branchOf(srcKeyOf(r))), linkType: 'general', priority: 'low' });
+          state._finBackfill = null;
+          if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
+          const rym = String(r.date).slice(0, 7);
+          const ctag = /урьдчил/i.test(r.memo) ? SAL_ADV_TAG : /үлдэгд/i.test(r.memo) ? SAL_REM_TAG : '';
+          await paySalary(r.salaryEmp, rym, r.debit, `Хуулгаар баталгаажсан · ${r.memo} [#${r.fp}]${ctag ? ' ' + ctag : ''}`);
+          sal++; r.done = true; n++; continue;
+        }
+        // Бусад бүх зардал → ангилах эзэн рүү "ангилаагүй" (PEND) болж орно.
+        const routeOwner = routeOwnerOf(r);
+        // Салбарын таамаг: картын салбар → эзний салбар/утгын таамаг (ЗӨВХӨН 3 салбар). Эзэн Миний зардалд баталгаажуулна.
+        const brOwn = branchOf(srcKeyOf(r)); const brValid = STMT_BRANCHES.some(([c]) => c === brOwn);
+        const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
+        const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
+        const cat = (r.depMatch ? '5810' : r.cat) || CARD_PEND_CAT;   // барьцаа буцаалт → 5810; эс бол авто таамаг (эзэн баталгаажуулна)
         state._finBackfill = { date: r.date };
-        const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
-          justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
-        state._finBackfill = null;
-        if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.received_by = r.hourlyEmp.key; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
-        hrl++; r.done = true; n++; continue;
-      }
-      // Сарын цалин — хуулгаас шууд баталгаажна (тусдаа урсгал), ангилалд явуулахгүй.
-      if (r.salaryEmp) {
-        state._finBackfill = { date: r.date };
-        const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
-          justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7100', deptBranch: guessBranch(r.memo, r.salaryEmp) || branchOf(srcKeyOf(r)) || 'КЕМП', linkType: 'general', priority: 'low' });
+        // Барьцаа буцаалт таарсан бол захиалгад ШУУД холбоно (⟦LNK|order⟧) → захиалга «✓ Барьцаа буцаасан» болно
+        const _dm = r.depMatch;
+        const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
+          accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
+          justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}`.trim(),
+          category: cat, deptBranch: brCode, priority: 'low',
+          linkType: _dm ? 'order' : 'general', linkId: _dm ? _dm.id : '', linkLabel: _dm ? ('#' + _dm.number) : '' });
         state._finBackfill = null;
         if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
-        const rym = String(r.date).slice(0, 7);
-        const ctag = /урьдчил/i.test(r.memo) ? SAL_ADV_TAG : /үлдэгд/i.test(r.memo) ? SAL_REM_TAG : '';
-        await paySalary(r.salaryEmp, rym, r.debit, `Хуулгаар баталгаажсан · ${r.memo} [#${r.fp}]${ctag ? ' ' + ctag : ''}`);
-        sal++; r.done = true; n++; continue;
-      }
-      // Бусад бүх зардал → ангилах эзэн рүү "ангилаагүй" (PEND) болж орно.
-      const routeOwner = routeOwnerOf(r);
-      // Салбарын таамаг: картын салбар → эзний салбар/утгын таамаг (ЗӨВХӨН 3 салбар). Эзэн Миний зардалд баталгаажуулна.
-      const brOwn = branchOf(srcKeyOf(r)); const brValid = STMT_BRANCHES.some(([c]) => c === brOwn);
-      const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
-      const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
-      const cat = (r.depMatch ? '5810' : r.cat) || CARD_PEND_CAT;   // барьцаа буцаалт → 5810; эс бол авто таамаг (эзэн баталгаажуулна)
-      state._finBackfill = { date: r.date };
-      // Барьцаа буцаалт таарсан бол захиалгад ШУУД холбоно (⟦LNK|order⟧) → захиалга «✓ Барьцаа буцаасан» болно
-      const _dm = r.depMatch;
-      const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
-        accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
-        justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}`.trim(),
-        category: cat, deptBranch: brCode, priority: 'low',
-        linkType: _dm ? 'order' : 'general', linkId: _dm ? _dm.id : '', linkLabel: _dm ? ('#' + _dm.number) : '' });
-      state._finBackfill = null;
-      if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
-      if (routeOwner === state.me) toMe++; else toOwner++;
-      r.done = true; n++;
-      if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
+        if (routeOwner === state.me) toMe++; else toOwner++;
+        r.done = true; n++;
+        if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
+      } catch (e) { state._finBackfill = null; failedRows++; console.warn('Хуулгын мөр орсонгүй:', r.fp, e); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}`, 'success', 4000);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');

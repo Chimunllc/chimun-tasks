@@ -3327,7 +3327,7 @@ need(['orderCustType']);
   eq(st.pending, 2, 'тооллого: залруулаагүй зөрүү (залруулсан нь хасагдана)');
   eq(st.short, 8, 'тооллого: дутсан нийлбэр (2 + 6)');
   eq(st.over, 3, 'тооллого: илүү гарсан нийлбэр');
-  eq(F.countStats([], 294), { counted: 0, total: 294, diffs: 0, pending: 0, over: 0, short: 0 }, 'тооллого: хоосон сесс');
+  eq(F.countStats([], 294), { counted: 0, total: 294, diffs: 0, pending: 0, over: 0, short: 0, rep: 0, wo: 0, dmgItems: 0 }, 'тооллого: хоосон сесс');
 
   // ── Тооллого = БАГИЙН ажил (2026-09-04 засвар) ──────────────────────────
   // Регресс: `loadStockCounts` нь `session_id=eq.<өдөр|би>`-ээр татдаг байсан тул
@@ -3547,6 +3547,38 @@ need(['orderCustType']);
     "scan: `|| 'КЕМП'` сохор өгөгдмөл байхгүй (M-Event цалинг NOMAAD-д буулгадаг байв)");
   eq((codeLines.match(/importedFpSet/g) || []).length, 0,
     'scan: Set-ээр давхцал шалгахгүй (ижил хээтэй 2 дахь гүйлгээ алгасагддаг) — fpAlreadyImported ашигла');
+}
+
+// Тооллогын эвдрэл — «тоолсны дотроос N засварт, M актлах» (2026-09-06)
+{
+  eq(F.countDamage({ note: '⟦DMG|1|2⟧' }), { rep: 1, wo: 2 }, 'эвдрэл: токен уншина');
+  eq(F.countDamage({ note: null }), { rep: 0, wo: 0 }, 'эвдрэл: тэмдэглэлгүй = 0');
+  eq(F.countDamage(null), { rep: 0, wo: 0 }, 'эвдрэл: мөргүй = 0 (унахгүй)');
+  eq(F.countDamageNote(1, 2), '⟦DMG|1|2⟧', 'эвдрэл: токен бичнэ');
+  eq(F.countDamageNote(0, 0), null, 'эвдрэл: 0 бол токен бичихгүй');
+  eq(F.countDamageNote(0, 0, 'гар тэмдэглэл ⟦DMG|3|1⟧'), 'гар тэмдэглэл', 'эвдрэл: 0 болгоход бусад текст үлдэнэ');
+  eq(F.countDamageNote(2, 0, 'хуучин ⟦DMG|3|1⟧ текст'), 'хуучин текст ⟦DMG|2|0⟧', 'эвдрэл: токен солигдож, текст хэвээр');
+  // Жишээ: 3 талт матриц гэрэл — 4 ш байна, 3 хэвийн, 1 засварт
+  eq(F.countOkQty({ counted_qty: 4, note: '⟦DMG|1|0⟧' }), 3, 'эвдрэл: хэвийн = тоолсон − засвар − актлах');
+  eq(F.countOkQty({ counted_qty: 2, note: '⟦DMG|5|5⟧' }), 0, 'эвдрэл: хэвийн сөрөг болохгүй');
+  ok(F.countHasDamage({ note: '⟦DMG|0|1⟧' }) === true, 'эвдрэл: актлах ч эвдрэл гэж тооцно');
+  ok(F.countHasDamage({ note: '' }) === false, 'эвдрэл: тэмдэглэлгүй = эвдрэлгүй');
+
+  // Нэгтгэл — сүүлчийн бичилтээр (дахин тоолсон нь дардаг)
+  const rows = [
+    { sku: 'A', counted_at: '2026-09-06T01:00:00Z', system_qty: 4, counted_qty: 4, note: '⟦DMG|1|0⟧' },
+    { sku: 'A', counted_at: '2026-09-06T02:00:00Z', system_qty: 4, counted_qty: 4, note: '⟦DMG|2|1⟧' },
+    { sku: 'B', counted_at: '2026-09-06T01:00:00Z', system_qty: 5, counted_qty: 5, note: null },
+  ];
+  const st2 = F.countStats(rows, 10);
+  eq(st2.rep, 2, 'эвдрэл: сүүлчийн бичилтийн засвар тоологдоно (давхардахгүй)');
+  eq(st2.wo, 1, 'эвдрэл: актлах нийлбэр');
+  eq(st2.dmgItems, 1, 'эвдрэл: эвдрэлтэй барааны тоо');
+
+  // Шүүлт «🔧 Эвдрэлтэй»
+  const merged = F.countMergeProducts([{ sku: 'A', name: 'Гэрэл' }, { sku: 'B', name: 'Ширээ' }], rows);
+  eq(F.countFilterList(merged, 'dmg', '').length, 1, 'эвдрэл: шүүлт зөвхөн эвдрэлтэйг үзүүлнэ');
+  eq(F.countFilterList(merged, 'all', '').length, 2, 'эвдрэл: бусад шүүлт хэвээр');
 }
 
 // Сарын муж — «-31» гэсэн БАЙХГҮЙ огноо (2026-09-06, ирцийн сарын тойм гацсан алдаа)

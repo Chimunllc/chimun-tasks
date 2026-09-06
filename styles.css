@@ -6427,3 +6427,40 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-drop-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stmt-drop-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stmt-drop-row i { color: var(--muted); font-style: normal; white-space: nowrap; font-size: var(--fs-xs); }
+
+/* ── Ирц: гарсан цагийг гараар оруулах (2026-09-06) ───────────────────────── */
+.att-fixout {
+  display: inline-block; margin-top: var(--space-1);
+  border: 1px solid var(--warn); background: var(--warn-soft); color: var(--warn);
+  border-radius: 999px; padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-xs); font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.att-fixout:hover { filter: brightness(.96); }
+.att-manual { color: var(--muted); font-size: var(--fs-xs); }
+.att-noout-line {
+  margin-top: var(--space-1); font-size: var(--fs-sm); color: var(--warn); line-height: 1.6;
+}
+.att-noout-day {
+  border: 1px solid var(--warn); background: transparent; color: var(--warn);
+  border-radius: 6px; padding: 0 var(--space-1); font-size: var(--fs-xs);
+  font-weight: 700; cursor: pointer;
+}
+.amo-modal { max-width: 400px; }
+.amo-hint { font-size: var(--fs-md); color: var(--text-soft); line-height: 1.6; margin: 0 0 var(--space-3); }
+.amo-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.amo-chip {
+  padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel-hover); color: var(--text);
+  font-size: var(--fs-base); font-weight: 700; cursor: pointer;
+}
+.amo-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.amo-row span { font-size: var(--fs-md); color: var(--muted); }
+.amo-row input {
+  flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--text); font-size: var(--fs-base);
+}
+.amo-err {
+  background: var(--danger-soft); color: var(--danger); border-radius: 8px;
+  padding: var(--space-2) 11px; margin-bottom: var(--space-3);
+  font-size: var(--fs-sm); line-height: 1.5;
+}

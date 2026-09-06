@@ -8731,7 +8731,104 @@ function attMemberSummary(recs, live) {
     lastEvent = r.ts;
   });
   if (openIn && live) mins += (Date.now() - new Date(openIn)) / 60000;   // зөвхөн өнөөдрийн үргэлжилж буй сесс
-  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn && live, noOut: !!openIn && !live, lastEvent };
+  return { firstIn: recs[0] ? recs[0].ts : null, mins: Math.max(0, Math.round(mins)), open: !!openIn && live, noOut: !!openIn && !live, openTs: openIn, lastEvent };
+}
+// ── ГАРАХАА БҮРТГҮҮЛЭЭГҮЙ ӨДӨР — удирдлага гарсан цагийг гараар оруулна (2026-09-06) ──
+// Ажилтан QR-аа уншуулж «явлаа» гэж бүртгүүлээгүй бол тэр өдрийн нээлттэй сесс
+// тоологдохгүй → бүтэн өдөр ажилласан хүн 0 цаг харагдаж, цалин нь буруу гардаг.
+// Гараар оруулах эрх нь ИЛ олгогдсон байх ёстой (can() «тохируулаагүй бол зөвшөөрнө»
+// гэж ажилладаг тул түүнд найдахгүй) — энэ бичлэг шууд цалин болдог.
+function canEditAttendance() { return !!state.isCEO || capValue('attendance.edit') === true; }
+// «YYYY-MM-DD» өдөр + «HH:MM» (Улаанбаатарын цаг) → ISO ts. Улаанбаатар = UTC+8 тул
+// UTC цагаас 8-ыг хасна. Түүхий new Date('...T18:00') бичвэл сервер/утасны бүсээс
+// хамаарч огноо гулсана (энэ репод давтагдсан алдаа) — тиймээс Date.UTC-ээр барина.
+function attManualOutTs(day, hhmm) {
+  const md = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ''));
+  const mt = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  if (!md || !mt) return '';
+  const hh = Number(mt[1]), mm = Number(mt[2]);
+  if (hh > 23 || mm > 59) return '';
+  return new Date(Date.UTC(Number(md[1]), Number(md[2]) - 1, Number(md[3]), hh - 8, mm)).toISOString();
+}
+// Оруулах гэж буй гарсан цаг зөв үү. Хамгийн чухал дүрэм: ирсэн цагаас ХОЙШ байх —
+// эс бөгөөс сөрөг үргэлжлэл гарч өдөр дахин 0 болно.
+const ATT_MANUAL_MAX_H = 20;   // 20 цагаас урт өдөр = бичих алдаа гэж үзнэ
+function attManualOutCheck(inTs, outTs) {
+  if (!outTs) return { ok: false, err: 'Цаг буруу байна (ЦЦ:ММ хэлбэрээр)' };
+  if (!inTs) return { ok: false, err: 'Ирсэн цаг олдсонгүй' };
+  const mins = (new Date(outTs) - new Date(inTs)) / 60000;
+  if (!(mins > 0)) return { ok: false, err: 'Гарсан цаг нь ирсэн цагаас хойш байх ёстой' };
+  if (mins > ATT_MANUAL_MAX_H * 60) return { ok: false, err: `${ATT_MANUAL_MAX_H} цагаас урт өдөр байж болохгүй — цагаа шалгана уу` };
+  return { ok: true, mins: Math.round(mins) };
+}
+// Гарсан цагийг гараар бүртгэх. `day`-г ИЛ илгээнэ — эс бөгөөс сервер өнөөдрийн
+// огноогоор бөглөж, өнгөрсөн өдрийн засвар өнөөдөрт унаж чимээгүй алга болно.
+// Хэрэв `day` нь генерацлагдсан багана бол сервер татгалзана — тэр үед `day`-гүйгээр
+// дахин илгээнэ (ts-ээс өөрөө гарна).
+async function attSaveManualOut(body) {
+  const post = async (payload) => {
+    const r = await fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(payload) });
+    return { ok: r.ok, status: r.status, text: r.ok ? '' : await r.text().catch(() => '') };
+  };
+  let res = await post(body);
+  if (!res.ok && /generated|GENERATED ALWAYS|428C9|42P10|column "day"/i.test(res.text || '')) {
+    const { day, ...noDay } = body;
+    res = await post(noDay);
+  }
+  if (!res.ok) throw new Error('HTTP ' + res.status + (res.text ? ' · ' + String(res.text).slice(0, 120) : ''));
+  return true;
+}
+function openManualOutModal(memberKey, name, day, inTs) {
+  if (!canEditAttendance()) { showToast('Танд ирц засах эрх алга', 'warn', 3000); return; }
+  document.getElementById('att-mout-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'att-mout-modal';
+  const chips = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+  modal.innerHTML = `<div class="modal amo-modal">
+    <h2>✍️ Гарсан цаг оруулах</h2>
+    <p class="amo-hint"><b>${escapeHtml(name)}</b> · ${escapeHtml(day)}<br>
+      Ирсэн <b>${escapeHtml(attTimeUB(inTs))}</b> — гарахаа бүртгүүлээгүй тул энэ өдөр <b>0 цаг</b> тоологдож байна.
+      Бодит явсан цагийг оруул.</p>
+    <div class="amo-chips">${chips.map(c => `<button class="ui-raw amo-chip" data-amo-time="${c}">${c}</button>`).join('')}</div>
+    <div class="amo-row"><span>Бусад:</span><input type="time" id="amo-time" class="ui-raw" value="18:00"></div>
+    <div class="amo-err" id="amo-err" hidden></div>
+    <div class="modal-actions">
+      <button class="btn" id="amo-cancel">Болих</button>
+      <button class="btn btn-primary" id="amo-save">Хадгалах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  const errEl = modal.querySelector('#amo-err'), inp = modal.querySelector('#amo-time');
+  modal.querySelector('#amo-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelectorAll('[data-amo-time]').forEach(b => b.addEventListener('click', () => { inp.value = b.dataset.amoTime; errEl.hidden = true; }));
+  modal.querySelector('#amo-save').onclick = async (e) => {
+    const btn = e.currentTarget;
+    const ts = attManualOutTs(day, inp.value);
+    const chk = attManualOutCheck(inTs, ts);
+    if (!chk.ok) { errEl.textContent = '⚠ ' + chk.err; errEl.hidden = false; return; }
+    btn.disabled = true;
+    const mem = findMember(memberKey);
+    try {
+      await attSaveManualOut({
+        member_key: memberKey, member_name: (mem && mem.name) || name || '', member_phone: memberKey,
+        kind: 'out', ts, day, token: 'manual', source: 'manual',
+        branch: mem ? (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) : null,
+      });
+    } catch (err) {
+      btn.disabled = false; errEl.textContent = '⚠ Хадгалагдсангүй: ' + err.message; errEl.hidden = false; return;
+    }
+    // Жагсаалтад шууд тусгана (дахин татахгүйгээр)
+    const rec = { member_key: memberKey, member_name: (mem && mem.name) || name || '', kind: 'out', ts, day, source: 'manual' };
+    if (day === todayStr()) (state.attendanceToday = state.attendanceToday || []).push(rec);
+    else if (Array.isArray(state.attViewRecs)) state.attViewRecs.push(rec);
+    if (Array.isArray(state.attMonthRecs)) state.attMonthRecs.push(rec);
+    close();
+    showToast(`${name} · ${attTimeUB(ts)} — ${attHM(chk.mins)} тоологдлоо`, 'success', 3000);
+    if (typeof render === 'function') render();
+  };
+  modal.classList.add('open');
 }
 async function loadAttendanceToday() {
   try {
@@ -8833,7 +8930,8 @@ function renderAttendanceRows() {
     // Тухайн өдөр менежер QR-ыг нь уншуулсан бол баталгаатай. Огт уншуулаагүй
     // (зөвхөн холбоосоор өөрөө бүртгүүлсэн) бол ялгаж харуулна.
     const scanned = arr.some(x => x.source === 'scan');
-    return { k, m, s, scanned, name: m.name || arr[0].member_name || k, role: m.role || '' };
+    const manualOut = arr.some(x => x.kind === 'out' && x.source === 'manual');
+    return { k, m, s, scanned, manualOut, name: m.name || arr[0].member_name || k, role: m.role || '' };
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
@@ -8843,17 +8941,22 @@ function renderAttendanceRows() {
     const status = r.s.open
       ? '<span style="color:var(--ok);font-weight:700;font-size:12px;">● Ажиллаж байна</span>'
       : r.s.noOut
-        ? '<span style="color:var(--warn);font-size:12px;">⚠ Гарахаа бүртгүүлээгүй</span>'
-        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}</span>`;
+        ? '<span style="color:var(--warn);font-size:12px;">⚠ Гараагүй</span>'
+        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}${r.manualOut ? ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>' : ''}</span>`;
     // «Хоцорсон» = ЗӨВХӨН одоо ажиллаж байгаа (нээлттэй сесс) хүнд — явсан хүнд retroactive
     // хоцролт гаргахгүй (хуучин buggy next_arrival дата departed хүмүүст л үлдсэн; шинэ дата зөв).
     const late = r.s.open ? attLateMinutes(r.k, day, r.s.firstIn) : 0;
     const lateBadge = late > 0 ? ` <span style="color:var(--danger);font-weight:700;font-size:11.5px;">🔴 ${late}м хоцорсон</span>` : '';
+    // Гарахаа бүртгүүлээгүй → удирдлага цагийг нь оруулна. Товч нь ТУСДАА мөрөнд —
+    // 320px өргөнтэй утсанд статустай нэг мөрөнд багтахгүй, хэвтээ гүйлт үүсгэдэг.
+    const fixBtn = (r.s.noOut && canEditAttendance())
+      ? `<button class="ui-raw att-fixout" data-att-out="${escapeHtml(r.k)}" data-att-in="${escapeHtml(String(r.s.openTs || ''))}" data-att-name="${escapeHtml(r.name)}">✍️ Цаг оруулах</button>`
+      : '';
     const tmr = nextArrivalFor(r.k, addDays(day, 1));
     const tmrBadge = tmr ? `<div style="font-size:11px;color:var(--accent,#7c3aed);margin-top:1px;">→ маргааш ${escapeHtml(tmr)}</div>` : '';
     return `<div style="display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);">${av}
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}${r.scanned ? '' : ' <span title="Менежер QR уншуулаагүй — өөрөө холбоосоор бүртгүүлсэн" style="color:var(--warn);font-size:11.5px;font-weight:600;">⚠ уншуулаагүй</span>'}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
-      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${tmrBadge}</div></div>`;
+      <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;">🟢 ${attTimeUB(r.s.firstIn)}${lateBadge} · ${status}</div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.s.mins)}</div>${fixBtn}${tmrBadge}</div></div>`;
   }).join('');
   return head + `<div>${list}</div>`;
 }
@@ -8935,9 +9038,14 @@ function renderAttendanceMonth(month) {
   recs.forEach(r => { const ck = attCanonKey(r); const m = (byM[ck] = byM[ck] || { name: r.member_name, days: {} }); (m.days[r.day] = m.days[r.day] || []).push(r); });
   const rows = Object.keys(byM).map(k => {
     const m = byM[k]; const days = Object.keys(m.days);
-    let mins = 0; days.forEach(d => { mins += attMemberSummary(m.days[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr()).mins; });
+    let mins = 0, noOutDays = [];
+    days.forEach(d => {
+      const sm = attMemberSummary(m.days[d].slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts))), d === todayStr());
+      mins += sm.mins;
+      if (sm.noOut) noOutDays.push(d);   // гарах бүртгэлгүй → тэр өдөр 0 цаг тоологдож байна
+    });
     const mem = findMember(k) || { name: m.name, role: '' };
-    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins };
+    return { k, name: mem.name || m.name || k, role: mem.role || '', mem, daysN: days.length, mins, noOutDays };
   }).sort((a, b) => b.mins - a.mins);
   const head = `<div style="font-size:13px;color:var(--text-soft);margin:2px 0 10px;">${month} · <b style="color:var(--text)">${rows.length}</b> ажилтан · Сарын норм <b style="color:var(--text)">${normDays}×8=${normDays * 8}ц</b> · нийт <b style="color:var(--primary)">${attHM(rows.reduce((t, r) => t + r.mins, 0))}</b></div>`;
   let anyDriver = false;
@@ -8946,13 +9054,17 @@ function renderAttendanceMonth(month) {
     const pctColor = pct >= 100 ? 'var(--ok)' : pct >= 80 ? 'var(--text-soft)' : 'var(--warn)';
     const db = driverBonus(r.k, month);
     if (db.count) anyDriver = true;
+    // Гарах бүртгэлгүй өдөр = тэр өдөр БҮТЭН 0 цаг. Цалин болдог тул нуухгүй, өдрийг нь нэрлэнэ.
+    const noOutLine = (r.noOutDays && r.noOutDays.length)
+      ? `<div class="att-noout-line">⚠ <b>${r.noOutDays.length}</b> өдөр гарах бүртгэлгүй (0 цаг тоологдсон): ${r.noOutDays.map(d => `<button class="ui-raw att-noout-day" data-att-day="${escapeHtml(d)}">${escapeHtml(d.slice(8))}</button>`).join(' ')}</div>`
+      : '';
     const driverLine = db.count ? `<div style="font-size:12px;color:var(--ok);margin-top:2px;">🚗 Жолооны нэмэгдэл: <b>${db.count}</b> удаа × ${fmtMoney(DRIVER_BONUS_EACH)} = <b>${fmtMoney(db.amount)}</b> <span style="color:var(--muted);">(хүргэсэн ${db.deliveries} · авсан ${db.pickups})</span></div>` : '';
     return `<div style="padding:11px 4px;border-bottom:1px solid var(--line);">
       <div style="display:flex;align-items:center;gap:12px;">
       <span style="position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(r.k))}${staffAvatarImg(r.mem)}</span>
       <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14.5px;">${escapeHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.role)}</div></div>
       <div style="text-align:right;flex-shrink:0;"><div style="font-size:12.5px;"><b>${r.daysN}</b> өдөр · <b style="color:${pctColor};">${pct}%</b></div><div style="font-weight:700;color:var(--primary);font-size:13px;margin-top:1px;">${attHM(r.mins)} <span style="font-weight:400;color:var(--muted);font-size:11px;">/ ${normDays * 8}ц</span></div></div>
-      </div>${driverLine}</div>`;
+      </div>${noOutLine}${driverLine}</div>`;
   }).join('');
   const liabilityNote = anyDriver ? `<div style="margin-top:14px;padding:11px 13px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12.5px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>` : '';
   return head + `<div>${list}</div>${liabilityNote}`;
@@ -8998,6 +9110,11 @@ function attachAttendanceHandlers() {
   document.querySelector('[data-att-today]')?.addEventListener('click', () => { state.attViewDay = todayStr(); state.attMonthMode = false; render(); });
   document.querySelector('[data-att-month]')?.addEventListener('click', () => { state.attMonthMode = !state.attMonthMode; render(); });
   document.querySelector('[data-att-month-retry]')?.addEventListener('click', () => { state.attMonthErr = null; render(); });
+  // Гарахаа бүртгүүлээгүй → удирдлага гарсан цагийг гараар оруулна
+  document.querySelectorAll('[data-att-out]').forEach(b => b.addEventListener('click', () =>
+    openManualOutModal(b.dataset.attOut, b.dataset.attName || b.dataset.attOut, state.attViewDay || todayStr(), b.dataset.attIn)));
+  // Сарын тоймоос тухайн өдөр рүү үсрэх (тэндээс цагийг нь оруулна)
+  document.querySelectorAll('[data-att-day]').forEach(b => b.addEventListener('click', () => { state.attViewDay = b.dataset.attDay; state.attMonthMode = false; render(); }));
   const _isTodayView = () => (state.attViewDay || todayStr()) === todayStr() && !state.attMonthMode;
   if (_isTodayView()) loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance' && _isTodayView()) el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);
@@ -9656,7 +9773,8 @@ const PERM_MENUS = [
   { key: 'salary',      label: 'Цалин (сарын)',   actions: [
       { key: 'salary.edit', label: 'Суурь цалин тохируулах' },
       { key: 'salary.pay',  label: 'Цалин олгох' } ] },
-  { key: 'attendance',  label: 'Ирц',     actions: [] },
+  { key: 'attendance',  label: 'Ирц',     actions: [
+      { key: 'attendance.edit', label: 'Гарсан цагийг гараар оруулах' } ] },
   { key: 'access',      label: 'Ажилчид (удирдах)', actions: [
       { key: 'access.delegate', label: 'Доорхийн эрх удирдах' } ] },   // ажилтан нэмэх/засах; эрх засах: CEO бүгдийг, delegate=доорхио
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [

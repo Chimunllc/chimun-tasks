@@ -85,7 +85,8 @@ function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
-  'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer']);
+  'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
+  'attManualOutTs', 'attManualOutCheck']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -3597,6 +3598,47 @@ need(['orderCustType']);
   const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
   eq((codeLines.match(/(?:lte|lt)\.\$\{[^}]*\}-31/g) || []).length, 0,
     'scan: сарын шүүлтэд `-31` хатуу огноо байхгүй (nextMonthStr ашигла)');
+}
+
+
+// ── ИРЦ: гарахаа бүртгүүлээгүй өдрийг удирдлага гараар нөхнө (2026-09-06) ────
+// Асуудал: QR-аа «явлаа» гэж уншуулаагүй бол тэр өдрийн нээлттэй сесс тоологдохгүй
+// → бүтэн өдөр ажилласан хүн 0 цаг харагдаж, цалин нь буруу гарна.
+{
+  // Одоогийн зан төлөв (баримт): гарах бүртгэлгүй ӨНГӨРСӨН өдөр = 0 минут
+  const day = [
+    { kind: 'in', ts: '2026-09-01T01:00:00.000Z' },   // УБ 09:00
+  ];
+  const past = F.attMemberSummary(day, false);
+  eq(past.mins, 0, 'ирц: гарах бүртгэлгүй өнгөрсөн өдөр = 0 цаг (нөхөх шалтгаан)');
+  ok(past.noOut === true, 'ирц: noOut туг гарна');
+  eq(past.openTs, '2026-09-01T01:00:00.000Z', 'ирц: нээлттэй сессийн ирсэн цаг буцна');
+
+  // Гараар оруулсан «out» нэмэгдвэл цаг тоологдоно
+  const fixed = F.attMemberSummary(day.concat([{ kind: 'out', ts: F.attManualOutTs('2026-09-01', '18:00') }]), false);
+  eq(fixed.mins, 540, 'ирц: 09:00→18:00 = 9 цаг (540 мин)');
+  ok(fixed.noOut === false, 'ирц: нөхсний дараа noOut арилна');
+
+  // УБ цаг (UTC+8) — түүхий new Date() бичвэл бүсээс хамаарч гулсдаг
+  eq(F.attManualOutTs('2026-09-01', '18:00'), '2026-09-01T10:00:00.000Z', 'ирц: 18:00 УБ = 10:00 UTC');
+  eq(F.attManualOutTs('2026-09-01', '03:00'), '2026-08-31T19:00:00.000Z', 'ирц: 03:00 УБ = өмнөх өдрийн 19:00 UTC');
+  eq(F.attManualOutTs('2026-09-01', '9:30'), '2026-09-01T01:30:00.000Z', 'ирц: 1 оронтой цаг ажиллана');
+  eq(F.attManualOutTs('2026-09-01', ''), '', 'ирц: хоосон цаг → хоосон');
+  eq(F.attManualOutTs('', '18:00'), '', 'ирц: хоосон өдөр → хоосон');
+  eq(F.attManualOutTs('2026-09-01', '25:00'), '', 'ирц: боломжгүй цаг → хоосон');
+  eq(F.attManualOutTs('2026-09-01', '18:70'), '', 'ирц: боломжгүй минут → хоосон');
+
+  // Шалгалт — сөрөг эсвэл утгагүй үргэлжлэл орохгүй
+  const IN = '2026-09-01T01:00:00.000Z';   // УБ 09:00
+  ok(F.attManualOutCheck(IN, F.attManualOutTs('2026-09-01', '18:00')).ok, 'ирц: 18:00 зөвшөөрнө');
+  eq(F.attManualOutCheck(IN, F.attManualOutTs('2026-09-01', '18:00')).mins, 540, 'ирц: тооцсон минут');
+  ok(!F.attManualOutCheck(IN, F.attManualOutTs('2026-09-01', '08:00')).ok, 'ирц: ирсэн цагаас ӨМНӨХ цаг ТАТГАЛЗАНА (0 болгохгүй)');
+  ok(!F.attManualOutCheck(IN, F.attManualOutTs('2026-09-01', '09:00')).ok, 'ирц: ирсэн цагтай ЯГ ижил → татгалзана');
+  ok(!F.attManualOutCheck(IN, '').ok, 'ирц: цаггүй → татгалзана');
+  ok(!F.attManualOutCheck('', F.attManualOutTs('2026-09-01', '18:00')).ok, 'ирц: ирсэн цаг байхгүй → татгалзана');
+  // 20 цагийн дээд хязгаар — бичих алдаанаас хамгаална
+  ok(!F.attManualOutCheck('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z').ok, 'ирц: 24 цаг = бичих алдаа, татгалзана');
+  ok(F.attManualOutCheck('2026-09-01T00:00:00.000Z', '2026-09-01T19:00:00.000Z').ok, 'ирц: 19 цаг зөвшөөрнө (шөнийн ээлж)');
 }
 
 

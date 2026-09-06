@@ -5502,6 +5502,15 @@ body.role-daily #add-project { display: none !important; }
   border-left: 1px solid var(--border); border-right: 1px solid var(--border);
   font-size: var(--fs-xl); font-weight: 600; font-family: inherit; background: var(--panel); color: var(--text);
 }
+/* Тооллогын эвдрэл — тоолсны дотроос засварт / актлах ширхэг (2026-09-06) */
+.stc-dmg { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--border); }
+.stc-dmg-l { font-size: var(--fs-xs); color: var(--muted); }
+.stc-dmg-i { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); color: var(--text); }
+.stc-dmg-i input { width: 60px; min-height: 40px; text-align: center; font-size: var(--fs-base); font-weight: 600; font-family: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-md); }
+.stc-dmg-ok { margin-left: auto; font-size: var(--fs-sm); color: var(--ok); }
+.stc-dmg-ok.bad { color: var(--danger); font-weight: 600; }
+.stc-dmg-b { font-size: var(--fs-xs); font-weight: 600; color: var(--warn); white-space: nowrap; }
+.stc-dmg-t { color: var(--warn); }
 .stc-active-f { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
 .stc-diff { font-size: var(--fs-sm); font-weight: 600; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); }
 .stc-diff.ok { color: var(--ok); background: var(--ok-soft); }

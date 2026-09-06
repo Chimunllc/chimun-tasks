@@ -4357,6 +4357,31 @@ function countRowPerson(r) {
 // Зөрүү = тоолсон − системд. Эерэг нь илүү гарсан, сөрөг нь дутсан.
 function countDiff(row) { return (Number(row && row.counted_qty) || 0) - (Number(row && row.system_qty) || 0); }
 
+// ── Тооллогын үеийн ЭВДРЭЛ (2026-09-06) ───────────────────────────────────────
+// «3 ширхэг хэвийн, 1 нь эвдэрсэн» гэдгийг тоо ширхгээр бүртгэнэ. Тоолсон тоо нь
+// БАЙГАА бүх ширхэг (эвдэрсэн нь ч тавиур дээр байгаа тул) — түүний дотроос
+// хэд нь засварт, хэд нь актлах вэ гэдгийг тусад нь тэмдэглэнэ.
+// ⚠ Тусдаа багана нэмээгүй — захиалгын ⟦RT|…⟧ токентой ижил зарчмаар `note`-д
+//   ⟦DMG|засвар|актлах⟧ гэж хадгална (prod schema хөндөхгүй, шууд ажиллана).
+const COUNT_DMG_RE = /⟦DMG\|(\d+)\|(\d+)⟧/;
+function countDamage(row) {
+  const m = COUNT_DMG_RE.exec(String((row && row.note) || ''));
+  return { rep: m ? Number(m[1]) : 0, wo: m ? Number(m[2]) : 0 };
+}
+// Тэмдэглэлийн бусад текстийг хэвээр үлдээж зөвхөн токеныг сольж бичнэ.
+function countDamageNote(rep, wo, prevNote) {
+  const r = Math.max(0, Math.round(Number(rep) || 0)), w = Math.max(0, Math.round(Number(wo) || 0));
+  const rest = String(prevNote || '').replace(COUNT_DMG_RE, '').replace(/\s+/g, ' ').trim();
+  const tok = (r || w) ? `⟦DMG|${r}|${w}⟧` : '';
+  return [rest, tok].filter(Boolean).join(' ') || null;
+}
+// Хэвийн ажиллагаатай ширхэг = тоолсон − засвар − актлах (сөрөг болохгүй).
+function countOkQty(row) {
+  const d = countDamage(row);
+  return Math.max(0, (Number(row && row.counted_qty) || 0) - d.rep - d.wo);
+}
+function countHasDamage(row) { const d = countDamage(row); return (d.rep + d.wo) > 0; }
+
 // Нэг бараа хоёр удаа тоологдвол СҮҮЛЧИЙНХ хүчинтэй (дахин тоолох нь засвар).
 // Эс бөгөөс нэг барааны хоёр зөрүү давхар тоологдож тайлан худал болно.
 function countLatestBySku(rows) {
@@ -4385,6 +4410,7 @@ function countFilterList(merged, filter, query) {
     if (filter === 'todo' && x.st !== 'todo') return false;
     if (filter === 'done' && x.st === 'todo') return false;
     if (filter === 'diff' && x.st !== 'diff') return false;
+    if (filter === 'dmg' && !countHasDamage(x.row)) return false;
     if (!q) return true;
     const p = x.p || {};
     return `${p.name || ''} ${p.code || ''} ${p.sku || ''}`.toLowerCase().includes(q);
@@ -4394,15 +4420,17 @@ function countFilterList(merged, filter, query) {
 // Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
 function countStats(rows, totalProducts) {
   const latest = countLatestBySku(rows);
-  let diffs = 0, pending = 0, over = 0, short = 0;
+  let diffs = 0, pending = 0, over = 0, short = 0, rep = 0, wo = 0, dmgItems = 0;
   latest.forEach(r => {
+    const dm = countDamage(r);
+    if (dm.rep || dm.wo) { rep += dm.rep; wo += dm.wo; dmgItems++; }
     const d = countDiff(r);
     if (d === 0) return;
     diffs++;
     if (!r.applied) pending++;
     if (d > 0) over += d; else short += -d;
   });
-  return { counted: latest.size, total: Number(totalProducts) || 0, diffs, pending, over, short };
+  return { counted: latest.size, total: Number(totalProducts) || 0, diffs, pending, over, short, rep, wo, dmgItems };
 }
 
 const SC_CFG_KEY = 'stock_count';
@@ -4452,9 +4480,14 @@ async function loadStockCounts(sessionId) {
 }
 
 // Тоолсныг бүртгэнэ. Нөөцийг ХӨНДӨХГҮЙ — зөвхөн бичилт.
-async function saveStockCount({ sessionId, sku, systemQty, countedQty }) {
+async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty, writeoffQty }) {
+  const cnt = Number(countedQty) || 0;
+  // Эвдэрсэн нь тоолсноос их байж болохгүй — үлдсэн зайд нь багтаана (актлахыг эхэлж).
+  const wo = Math.min(Math.max(0, Math.round(Number(writeoffQty) || 0)), cnt);
+  const rep = Math.min(Math.max(0, Math.round(Number(repairQty) || 0)), cnt - wo);
   const body = { session_id: sessionId, sku, counted_by: state.me || '',
-                 system_qty: Number(systemQty) || 0, counted_qty: Number(countedQty) || 0 };
+                 system_qty: Number(systemQty) || 0, counted_qty: cnt,
+                 note: countDamageNote(rep, wo) };
   const r = await fetchWithTimeout(STOCKCOUNT_URL(), {
     method: 'POST',
     headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
@@ -16335,6 +16368,8 @@ async function openCountScanner() {
     cleanup();
     if (!p) { showToast('Бараа олдсонгүй: ' + code, 'warn', 3000); return; }
     state.scActive = p.sku; state.scQty = null; state.scSearch = '';
+    const _dm = countDamage(countLatestBySku(state.scRows || []).get(p.sku));
+    state.scRep = _dm.rep; state.scWo = _dm.wo;
     render();
   });
 }
@@ -16370,6 +16405,9 @@ function renderStockCount() {
   const actSys = act ? (Number(act.stock) || 0) : 0;
   const actCnt = state.scQty == null ? actSys : Number(state.scQty);
   const actDiff = actCnt - actSys;
+  const actRep = Math.max(0, Number(state.scRep) || 0), actWo = Math.max(0, Number(state.scWo) || 0);
+  const actOk = Math.max(0, actCnt - actRep - actWo);
+  const dmgOver = (actRep + actWo) > actCnt;   // тоолсноос их эвдрэл = буруу оролт
 
   const actCard = act ? `<div class="stc-active">
       <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
@@ -16384,6 +16422,12 @@ function renderStockCount() {
             <button type="button" class="btn ui-raw" id="stc-plus">+</button>
           </div>
         </div>
+      </div>
+      <div class="stc-dmg">
+        <span class="stc-dmg-l">Тоолсны дотроос эвдэрсэн</span>
+        <label class="stc-dmg-i">🔧 Засварт<input type="number" id="stc-rep" min="0" max="${actCnt}" value="${actRep}"></label>
+        <label class="stc-dmg-i">🗑 Актлах<input type="number" id="stc-wo" min="0" max="${actCnt}" value="${actWo}"></label>
+        <span class="stc-dmg-ok${dmgOver ? ' bad' : ''}" id="stc-dmg-ok">${dmgOver ? '⚠ Тоолсноос их байна' : `✓ Хэвийн <b>${actOk}</b> ш`}</span>
       </div>
       <div class="stc-active-f">
         <span class="stc-diff ${actDiff === 0 ? 'ok' : 'bad'}">${actDiff === 0 ? '✓ Тэнцэж байна' : (actDiff > 0 ? '+' : '') + actDiff + ' ш зөрүү'}</span>
@@ -16402,9 +16446,14 @@ function renderStockCount() {
     const qtyTxt = !r ? `${Number(p.stock) || 0} ш`
                  : d === 0 ? `${r.counted_qty} = ${r.system_qty}` : `${r.system_qty} → ${r.counted_qty}`;
     const sub = byTxt || escapeHtml(`${p.code || p.sku || ''}${p.category ? ' · ' + p.category : ''}`);
+    const dm = countDamage(r);
+    // Эвдрэлийг мөрөнд ил гаргана — «аль бараа засварт байна» гэдгийг жагсаалтаас шууд харна.
+    const dmgBadge = (dm.rep || dm.wo)
+      ? `<span class="stc-dmg-b">${dm.rep ? `🔧${dm.rep}` : ''}${dm.rep && dm.wo ? ' ' : ''}${dm.wo ? `🗑${dm.wo}` : ''}</span>` : '';
     return `<div class="stc-row ${x.st}"${canCount ? ` data-scpick="${escapeHtml(p.sku)}" role="button" tabindex="0"` : ''}>
       <span class="stc-row-i">${icon}</span>
       <span class="stc-row-n">${escapeHtml(p.name || p.sku)}<span class="stc-row-by">${sub}</span></span>
+      ${dmgBadge}
       <span class="stc-row-q">${qtyTxt}</span>
       ${d && r && !r.applied && canApply ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>` : ''}
       ${d && r && r.applied ? `<span class="stc-done">залруулсан${r.applied_by ? ' · ' + escapeHtml(memberName(r.applied_by)) : ''}</span>` : ''}
@@ -16415,7 +16464,7 @@ function renderStockCount() {
   return `
     <div class="stc-head">
       <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))}</span></div>
-      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
+      <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
       ${canManage ? `<div class="stc-actions"><button class="btn ui-raw" id="stc-close">Тооллого хаах</button></div>` : ''}
     </div>
@@ -16424,7 +16473,7 @@ function renderStockCount() {
       <input type="search" id="stc-search" placeholder="Нэр, код, SKU хайх" value="${escapeHtml(state.scSearch || '')}">
     </div>` : '<div class="pm-batch-note">Танд тоолох эрх олгогдоогүй — зөвхөн үр дүнг харна.</div>'}
     ${actCard}
-    <div class="stc-chips">${chip('all', 'Бүгд', merged.length)}${chip('todo', '○ Тоолоогүй', nTodo)}${chip('done', '✓ Тоолсон', nDone)}${st.diffs ? chip('diff', '⚠ Зөрүүтэй', st.diffs) : ''}</div>
+    <div class="stc-chips">${chip('all', 'Бүгд', merged.length)}${chip('todo', '○ Тоолоогүй', nTodo)}${chip('done', '✓ Тоолсон', nDone)}${st.diffs ? chip('diff', '⚠ Зөрүүтэй', st.diffs) : ''}${st.dmgItems ? chip('dmg', '🔧 Эвдрэлтэй', st.dmgItems) : ''}</div>
     ${counters.length > 1 ? `<div class="stc-list-t">Өнөөдөр ${counters.length} хүн тоолсон: ${escapeHtml(counters.map(memberName).join(', '))}</div>` : ''}
     ${listRows ? `<div class="stc-list">${listRows}</div>`
                : `<div class="pm-batch-note">${state.scSearch ? 'Хайлтад бараа олдсонгүй.' : 'Энэ шүүлтэд бараа алга.'}</div>`}
@@ -16474,12 +16523,29 @@ function attachStockCountHandlers() {
   document.querySelectorAll('[data-scfilter]').forEach(b => b.onclick = () => { state.scFilter = b.dataset.scfilter; render(); });
   document.querySelectorAll('[data-scpick]').forEach(b => {
     // Хайлтыг ЦЭВЭРЛЭХГҮЙ — нярав нэг хайлтаар олон бараа тоолдог (хайлт арилвал дахин бичнэ).
-    const pick = () => { state.scActive = b.dataset.scpick; state.scQty = null; render(); };
+    const pick = () => {
+      state.scActive = b.dataset.scpick; state.scQty = null;
+      // Өмнө тоолсон бол эвдрэлийн тоог нь сэргээж харуулна (дахин тоолох = засвар).
+      const prev = countLatestBySku(state.scRows || []).get(b.dataset.scpick);
+      const dm = countDamage(prev); state.scRep = dm.rep; state.scWo = dm.wo;
+      render();
+    };
     b.onclick = pick;
     b.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } };
   });
   const qty = $('stc-qty');
-  if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - (Number(p && p.stock) || 0); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } };
+  if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - (Number(p && p.stock) || 0); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } _dmgSync(); };
+  const _dmgSync = () => {
+    const cnt = state.scQty == null ? (Number((productBySku(state.scActive) || {}).stock) || 0) : Number(state.scQty);
+    const rep = Math.max(0, Number(state.scRep) || 0), wo = Math.max(0, Number(state.scWo) || 0);
+    const el = document.getElementById('stc-dmg-ok'); if (!el) return;
+    const over = (rep + wo) > cnt;
+    el.className = 'stc-dmg-ok' + (over ? ' bad' : '');
+    el.innerHTML = over ? '⚠ Тоолсноос их байна' : `✓ Хэвийн <b>${Math.max(0, cnt - rep - wo)}</b> ш`;
+  };
+  const rep = $('stc-rep'), wo = $('stc-wo');
+  if (rep) rep.oninput = () => { state.scRep = Math.max(0, Number(rep.value) || 0); _dmgSync(); };
+  if (wo) wo.oninput = () => { state.scWo = Math.max(0, Number(wo.value) || 0); _dmgSync(); };
   const bump = (n) => { const p = productBySku(state.scActive); const cur = state.scQty == null ? (Number(p && p.stock) || 0) : state.scQty; state.scQty = Math.max(0, cur + n); render(); };
   if ($('stc-minus')) $('stc-minus').onclick = () => bump(-1);
   if ($('stc-plus')) $('stc-plus').onclick = () => bump(1);
@@ -16489,8 +16555,9 @@ function attachStockCountHandlers() {
     const btn = e.currentTarget; btn.disabled = true;
     try {
       await saveStockCount({ sessionId: state.scSession, sku: p.sku, systemQty: Number(p.stock) || 0,
-                             countedQty: state.scQty == null ? (Number(p.stock) || 0) : state.scQty });
-      state.scActive = null; state.scQty = null; render();
+                             countedQty: state.scQty == null ? (Number(p.stock) || 0) : state.scQty,
+                             repairQty: state.scRep, writeoffQty: state.scWo });
+      state.scActive = null; state.scQty = null; state.scRep = 0; state.scWo = 0; render();
       showToast('Тоолсон бүртгэгдлээ', 'ok', 2000);
     } catch (err) { showToast('Бүртгэгдсэнгүй: ' + err.message, 'error', 5000); btn.disabled = false; }
   };

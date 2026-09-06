@@ -84,7 +84,8 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList']);
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -3496,6 +3497,58 @@ need(['orderCustType']);
   eq(F._ciPickRun([], ['lint.yml']), null, 'CI: ажиллагаа алга → null');
   eq(F._ciPickRun(null, ['lint.yml']), null, 'CI: буруу оролт → null (унахгүй)');
 }
+
+// ── ХУУЛГЫН ИМПОРТ — «зардал дутуу орно» (2026-09-06) ──────────────────────
+// Хэрэглэгчийн мэдээлсэн алдаа: дансны хуулга оруулахад зарим гүйлгээ (M-Event
+// ажилтнуудын цалин) Зарлага хэсэгт огт орж ирэхгүй / буруу салбарт ордог.
+// Гурван бодит шалтгаан — гурвуулаа энд түгжигдэв.
+{
+  // ① ДАВХЦАЛЫН ХЭЭ (fp) нь ижил өдөр + ижил дүнтэй хоёр гүйлгээнд ДАВХЦДАГ.
+  //    Хуулгын «Харьцсан данс» багана хоосон байвал хээ нь утгаас бүрдэх тул
+  //    хоёр ажилтанд ижил цалин шилжүүлбэл яг ижил хээтэй болно.
+  const a = { date: '2026-08-05', memo: '8 сарын цалин', account: '', debit: 1200000 };
+  const b = { date: '2026-08-05', memo: '8 сарын цалин', account: '', debit: 1200000 };
+  ok(F.expenseFp(a) === F.expenseFp(b), 'хуулга: данс хоосон үед 2 мөрийн хээ давхцана (баримт)');
+  // Set-ээр шалгавал 2 дахь мөр «орсон» гэж хаягдана. Тоогоор шалгах нь зөв:
+  ok(F.fpAlreadyImported(1, 1) === true, 'хуулга: 1 бүртгэлтэй хээний 1 дэх мөр = орсон');
+  ok(F.fpAlreadyImported(2, 1) === false, 'хуулга: 1 бүртгэлтэй хээний 2 дахь мөр = ШИНЭ (алгасахгүй)');
+  ok(F.fpAlreadyImported(2, 2) === true, 'хуулга: 2 бүртгэлтэй хээний 2 дахь мөр = орсон (давхардуулахгүй)');
+  ok(F.fpAlreadyImported(1, 0) === false, 'хуулга: бүртгэлгүй хээ = шинэ');
+  ok(F.fpAlreadyImported(undefined, undefined) === false, 'хуулга: утга дутуу → шинэ (чимээгүй алгасахгүй)');
+
+  // ② ОГНООГҮЙ МӨР чимээгүй хаягдахгүй — skipped-д шалтгаантай бүртгэгдэнэ.
+  const m = [
+    ['Гүйлгээний огноо', 'Гүйлгээний утга', 'Харьцсан дансны нэр', 'Харьцсан данс', 'Ханш', 'Орлого', 'Зарлага'],
+    ['2026-08-05', '8 сарын цалин', 'А', '5001', '', 0, 1200000],
+    ['05/08/26', 'Бензин', 'Б', '5002', '', 0, 50000],          // огноо танигдахгүй хэлбэр
+    ['', 'Нийт дүн', '', '', '', 0, 1250000],                    // footer — чимээгүй алгасна
+  ];
+  const p = F.parseStatement(m);
+  eq(p.rows.length, 1, 'хуулга: огноотой мөр л зардал болно');
+  eq(p.skipped.length, 1, 'хуулга: огноо уншигдаагүй ЗАРДЛЫН мөр бүртгэгдэнэ');
+  eq(p.skipped[0].memo, 'Бензин', 'хуулга: хаягдсан мөрийн утга хадгалагдана');
+  ok(/огноо/.test(p.skipped[0].why), 'хуулга: хаягдсан мөрийн шалтгаан бий');
+  ok(!p.skipped.some(x => /Нийт/.test(x.memo)), 'хуулга: footer «Нийт» мөрийг анхааруулга болгож шуугихгүй');
+  eq(F.parseStatement([['зүйлгүй']]).skipped, [], 'хуулга: толгой олдоогүй → skipped хоосон');
+
+  // ③ ЦАЛИНГИЙН САЛБАР — тодорхойгүй бол ХООСОН. Өмнө нь `|| 'КЕМП'` байсан тул
+  //    салбар нь бүртгэгдээгүй M-Event ажилтны цалин бүхэлдээ NOMAAD-д ордог байв.
+  eq(F.salaryBranchOf('8 сарын цалин', ''), '', 'цалин: салбар тодорхойгүй → ХООСОН (КЕМП биш)');
+  eq(F.salaryBranchOf('8 сарын цалин', '', 'ИВЕНТ'), 'ИВЕНТ', 'цалин: дансны салбар байвал түүнийг авна');
+  eq(F.salaryBranchOf('8 сарын цалин', '', 'ЗАХ'), '', 'цалин: буруу салбарын код → хоосон');
+  eq(F.salaryBranchOf('кемп цалин', ''), 'КЕМП', 'цалин: утгын түлхүүрээр КЕМП');
+  eq(F.salaryBranchOf('m-event цалин', ''), 'ИВЕНТ', 'цалин: утгын түлхүүрээр ИВЕНТ');
+}
+
+// SCAN — цалинг САЛБАРГҮЙ үед сохроор КЕМП-д буулгах хэв маяг эргэж ирэхгүй (2026-09-06)
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+  eq((codeLines.match(/\|\|\s*'КЕМП'/g) || []).length, 0,
+    "scan: `|| 'КЕМП'` сохор өгөгдмөл байхгүй (M-Event цалинг NOMAAD-д буулгадаг байв)");
+  eq((codeLines.match(/importedFpSet/g) || []).length, 0,
+    'scan: Set-ээр давхцал шалгахгүй (ижил хээтэй 2 дахь гүйлгээ алгасагддаг) — fpAlreadyImported ашигла');
+}
+
 
   finish();
 })();

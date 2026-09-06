@@ -1596,6 +1596,15 @@ function dateStr(d) {
 }
 // Дурын Date → ЛОКАЛ YYYY-MM (сар). Сарын 1-нд UTC хөрвүүлэлт өмнөх сарыг буцаадаг.
 function monthStr(d) { return dateStr(d).slice(0, 7); }
+// YYYY-MM → дараагийн сар. Сарын мужийг DB-ээс татахад `lte.<сар>-31` гэж БҮҮ бич —
+// 9/4/6/11-р сард (мөн 2-р сард) тийм огноо БАЙХГҮЙ тул Postgres 400 буцаана
+// («date/time field value out of range») → жагсаалт мөнхөд «Ачаалж байна…» гэж гацна.
+// Зөв хэлбэр: `day=gte.<сар>-01&day=lt.<nextMonthStr(сар)>-01`.
+function nextMonthStr(month) {
+  const y = Number(String(month || '').slice(0, 4)), m = Number(String(month || '').slice(5, 7));
+  if (!y || !m || m < 1 || m > 12) return String(month || '');
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
 
 // Add `days` (can be negative) to a YYYY-MM-DD string. Returns YYYY-MM-DD.
 // ⚠ toISOString нь UTC — Монгол (UTC+8)-д local шөнө дундыг UTC руу хөрвүүлж НЭГ ӨДРӨӨР
@@ -8710,11 +8719,18 @@ async function loadAttendanceView() {
 }
 // Сонгосон САРЫН бүх ирц (тойм) → state.attMonthRecs
 async function loadAttendanceMonthFull(month) {
+  if (state._attMonthBusy === month) return;   // render бүрд давхар хүсэлт явуулахгүй
+  state._attMonthBusy = month;
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lte.${month}-31&select=member_key,member_name,kind,ts,day&order=ts.asc`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${month}-01&day=lt.${nextMonthStr(month)}-01&select=member_key,member_name,kind,ts,day&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 20000);
-    if (r.ok) { state.attMonthRecs = await r.json(); state.attMonthKey = month; if (typeof render === 'function' && state.view === 'attendance') render(); }
-  } catch (e) {}
+    if (r.ok) { state.attMonthRecs = await r.json(); state.attMonthKey = month; state.attMonthErr = null; }
+    // ⚠ Алдааг ЗААВАЛ хэлнэ. Өмнө нь чимээгүй залгидаг байсан тул хэрэглэгчид мөнхөд
+    //   «Ачаалж байна…» гэж харагдаж, юу эвдэрснийг хэн ч мэдэхгүй байв.
+    else state.attMonthErr = { month, msg: (r.status === 401 || r.status === 403) ? 'эрх хүрэхгүй — дахин нэвтэрнэ үү' : 'сервер алдаа (' + r.status + ')' };
+  } catch (e) { state.attMonthErr = { month, msg: 'сүлжээ холбогдсонгүй' }; }
+  state._attMonthBusy = null;
+  if (typeof render === 'function' && state.view === 'attendance') render();
 }
 // Цалингийн холбоос: энэ сарын ирцээс ажилтан бүрийн ажилласан ӨДРИЙН тоог (in бичлэгтэй ялгаатай өдөр).
 function attMonthStart() { const d = todayStr(); return d.slice(0, 8) + '01'; }
@@ -8816,7 +8832,10 @@ function renderAttendance() {
   const dateLabel = `${day} · ${_MN_WD[dObj.getDay()]}`;
   // Өнгөрсөн өдрийн дата шаардвал ачаална (өнөөдөр = poll-оос)
   if (!monthMode && !isToday && state._attLoadedDay !== day) { state._attLoadedDay = day; state.attViewRecs = null; loadAttendanceView(); }
-  if (monthMode && state.attMonthKey !== day.slice(0, 7)) loadAttendanceMonthFull(day.slice(0, 7));
+  // Алдаа гарсан сарыг ДАХИН автоматаар татахгүй (render→алдаа→render давталт болно) —
+  // хэрэглэгч «Дахин оролдох» дарж л сэргээнэ.
+  if (monthMode && state.attMonthKey !== day.slice(0, 7)
+      && !(state.attMonthErr && state.attMonthErr.month === day.slice(0, 7))) loadAttendanceMonthFull(day.slice(0, 7));
   // Хоцролт тооцоолол: ажил эхлэх цаг + явахдаа сонгосон «маргааш ирэх цаг»
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
@@ -8870,6 +8889,10 @@ function driverBonus(key, month, orders) {
 const DRIVER_LIABILITY_NOTE = 'Та жолоо барьж байгаад торгуульсан, торгууль нь жолоочийн буруугаас бол торгууль болон хохирлыг жолооч өөрөө хариуцна.';
 // Сарын тойм — ажилтан бүрийн ирсэн өдрийн тоо + нийт цаг + нормын хувь
 function renderAttendanceMonth(month) {
+  if (state.attMonthErr && state.attMonthErr.month === month) {
+    return `<div style="text-align:center;color:var(--muted);padding:26px 12px;">⚠ Сарын ирц ачаалж чадсангүй — ${escapeHtml(state.attMonthErr.msg)}
+      <div style="margin-top:12px;"><button class="btn" data-att-month-retry>🔄 Дахин оролдох</button></div></div>`;
+  }
   if (state.attMonthKey !== month || !Array.isArray(state.attMonthRecs)) return '<div style="text-align:center;color:var(--muted);padding:30px;">Ачаалж байна…</div>';
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta хэрэгтэй
   const recs = state.attMonthRecs;
@@ -8941,6 +8964,7 @@ function attachAttendanceHandlers() {
   document.querySelectorAll('[data-att-nav]').forEach(b => b.addEventListener('click', () => { const cur = state.attViewDay || todayStr(); const nd = addDays(cur, Number(b.dataset.attNav)); if (nd > todayStr()) return; state.attViewDay = nd; state.attMonthMode = false; render(); }));
   document.querySelector('[data-att-today]')?.addEventListener('click', () => { state.attViewDay = todayStr(); state.attMonthMode = false; render(); });
   document.querySelector('[data-att-month]')?.addEventListener('click', () => { state.attMonthMode = !state.attMonthMode; render(); });
+  document.querySelector('[data-att-month-retry]')?.addEventListener('click', () => { state.attMonthErr = null; render(); });
   const _isTodayView = () => (state.attViewDay || todayStr()) === todayStr() && !state.attMonthMode;
   if (_isTodayView()) loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance' && _isTodayView()) el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);

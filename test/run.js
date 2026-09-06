@@ -273,6 +273,52 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   });
 }
 
+// 0l) Ажилтны данс — цалин олгодог хүнд харагдана (2026-09-05)
+// Данс/РД/цалин нь ажилтны нийтийн жагсаалтаар ирдэггүй, тусдаа эмзэг сувгаар ирнэ.
+// Тэр суваг ЗӨВХӨН CEO-д нээлттэй байсан тул «Цалин» эрх өгсөн захиралд бүх ажилтан
+// «данс бүртгэгдээгүй» гэж улаанаар харагдаж, цалин шилжүүлэх боломжгүй байв.
+// ⚠ Сервер тал (n8n «CHIMUN · Staff PINs») мөн нээгдэх ёстой — эс бол хүсэлт татгалзана.
+//   Тэр үед «denied» гэж ялгаж, ДАХИН оролдохгүй байх ёстой (render бүрд хүсэлт явахаас сэргийлнэ).
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.isCEO, state.me, state.memberPerms, state._staffPinsLoaded, state._staffPinsErr]');
+
+  runIn("state.isCEO = true; state.me = 'ceo'; state.memberPerms = {};");
+  ok(F.canSeeStaffSensitive(), 'данс: CEO харна');
+
+  // Цалин эрхтэй, CEO биш хүн — данс харна (цалин шилжүүлэхэд заавал хэрэгтэй)
+  runIn("state.isCEO = false; state.me = '80000001'; state.memberPerms = { '80000001': { salary: true } };");
+  ok(F.canSeeStaffSensitive(), 'данс: «Цалин» эрхтэй хүн харна');
+
+  // Цалингийн эрхгүй хүн — харахгүй
+  runIn("state.memberPerms = { '80000001': { salary: false } };");
+  ok(!F.canSeeStaffSensitive(), 'данс: цалингийн эрхгүй хүн харахгүй');
+  ok(/харах эрх алга/.test(F.staffAcctMissingHtml()), 'данс: эрхгүй бол «эрх алга» гэж хэлнэ');
+
+  // Хоосон харагдах шалтгааныг ЯЛГАНА — бүгдийг «бүртгэгдээгүй» гэж хэлэх нь худал
+  runIn("state.memberPerms = { '80000001': { salary: true } }; state._staffPinsLoaded = false; state._staffPinsErr = '';");
+  ok(/ачаалж байна/.test(F.staffAcctMissingHtml()), 'данс: ачаалж байхад «ачаалж байна»');
+  runIn("state._staffPinsLoaded = true; state._staffPinsErr = 'denied';");
+  ok(/эрх өгсөнгүй/.test(F.staffAcctMissingHtml()), 'данс: сервер татгалзвал «эрх өгсөнгүй»');
+  runIn("state._staffPinsErr = 'need_login';");
+  ok(/дахин нэвтэрнэ/.test(F.staffAcctMissingHtml()), 'данс: токен дууссан бол «дахин нэвтэрнэ үү»');
+  runIn("state._staffPinsErr = '';");
+  ok(/бүртгэгдээгүй/.test(F.staffAcctMissingHtml()), 'данс: жинхэнэ хоосон бол «бүртгэгдээгүй»');
+
+  // SCAN — эмзэг суваг зөвхөн state.isCEO дээр түгжигдэхгүй
+  ok(/if \(state\._staffPinsLoaded \|\| !canSeeStaffSensitive\(\)\) return;/.test(src),
+     'scan: loadStaffPins нь canSeeStaffSensitive()-ээр шалгана (CEO-гоор хатуу биш)');
+  // SCAN — давталтын хамгаалалт: renderSalary дуудна, сервер 403 буцаавал хязгааргүй хүсэлт явж БОЛОХГҮЙ
+  ok(/_staffPinsTries >= 2/.test(src) && /_staffPinsTries\+\+/.test(src),
+     'scan: loadStaffPins сессид 2 оролдлогоор хязгаарлагдана (хүсэлтийн давталт хаана)');
+  // SCAN — цалин хуудас өөрөө эмзэг датаг татна (өмнө нь зөвхөн «Ажилчид» хуудсаар татагддаг байв)
+  ok(/function renderSalary\(\)[\s\S]{0,400}loadStaffPins\(\)/.test(src),
+     'scan: renderSalary нь данс/РД-г өөрөө татна');
+
+  vm.runInContext('state.isCEO = __s[0]; state.me = __s[1]; state.memberPerms = __s[2]; state._staffPinsLoaded = __s[3]; state._staffPinsErr = __s[4];',
+    Object.assign(sandbox, { __s: save }));
+}
+
 // 0h) canonKey / keyVariants — ажилтны хуучин түлхүүрийг эзэнтэй нь холбох (2026-09-04)
 // Нэг ажилтны утас солигдоход 5 хүснэгтийн 16 бичлэг эзэнгүй болж, 360° оноо нь
 // БҮРЭН алдагдсан (2026-09-04). Зураглалыг DB талын trigger автоматаар бичдэг;

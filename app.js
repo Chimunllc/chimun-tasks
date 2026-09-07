@@ -8680,9 +8680,22 @@ async function loadAsarLeftovers() {
 async function runAsarPurge() {
   const rows = await loadAsarLeftovers();
   if (!rows.length) { showToast('Хасах хуучин бүртгэл алга', 'info', 2500); return; }
-  if (!state.itemAliases) { try { await loadItemAliases(); } catch (e) {} }
+  try { await loadItemAliases(); } catch (e) {}
+  // Зураглал нь ЦЭГЦЛЭХ товч дээр бичигддэг байсан ч тэр үед бараанууд аль хэдийн
+  // архивлагдсан (каталогт ирэхгүй) байвал давхиж өнгөрдөг байв. Тиймээс энд өөрөө
+  // нөхөж бичнэ — зураглал нь `ASAR_LEGACY_MAP`-д байгаа тул барааны мөр шаардлагагүй.
+  let wrote = 0;
+  for (const p of rows) {
+    const to = ASAR_LEGACY_MAP[p.sku]; if (!to) continue;
+    if ((state.itemAliases || {})['sku:' + String(p.sku).toLowerCase()]) continue;
+    try {
+      if (await saveItemAlias('sku:' + String(p.sku).toLowerCase(), to, 'асар → модуль')) wrote++;
+      if (p.name) await saveItemAlias('name:' + normItemKey(p.name), to, 'асар → модуль');
+    } catch (e) { console.warn('asar alias', p.sku, e); }
+  }
+  if (wrote) { try { await loadItemAliases(); } catch (e) {} }   // бичсэнээ DB-ээс баталгаажуулна
   const { go, skip } = asarPurgePlan(rows, state.itemAliases);
-  if (!go.length) { showToast('⚠ Толины зураглал алга тул юу ч хасагдахгүй — эхлээд «Асрыг модуль болгох»-ыг ажиллуулна уу', 'warn', 7000); return; }
+  if (!go.length) { showToast('⚠ Толины зураглал бичигдсэнгүй тул юу ч хасагдахгүй (түүх тасрахаас сэргийлж байна). Дахин оролдоно уу.', 'warn', 8000); return; }
   const msg = `${go.length} хуучин асрын бүртгэлийг бүрмөсөн хасах уу?\n\n`
     + `${go.slice(0, 6).map(p => '· ' + p.name).join('\n')}${go.length > 6 ? `\n· … нийт ${go.length}` : ''}\n\n`
     + `Энэ нь БУЦААГДАХГҮЙ. Хуучин захиалгын мөрүүд толиор шинэ модуль бараа руу холбогдсон тул түүх тасрахгүй.`

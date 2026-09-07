@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck']);
 
@@ -4199,6 +4199,62 @@ need(['orderCustType']);
   ok(/!live && !fx && rfix\.byName/.test(body), 'scan: snapshot зөвхөн амьд өртөггүй үед');
   const lh = src.slice(src.indexOf('async function loadHistory('));
   ok(/bundle_items,cost,stock/.test(lh.slice(0, 4000)), 'scan: loadHistory амьд өртөг/нөөцийг татна');
+}
+
+
+// ── ТҮҮХИЙН ХУГАЦААНЫ ШҮҮЛТ (2026-09-07) ───────────────────────────────────
+// Тайлан зөвхөн БҮХ цаг үеийг харуулдаг байсныг өдрийн мужаар шүүдэг болгов.
+// Захиалга санах ойд байгаа тул дахин ТАТАХГҮЙ — `_histCompute`-ыг шүүсэн
+// олонлог дээр дахин ажиллуулна.
+{
+  const ord = (n, d) => ({ id: 'o' + n, number: n, source: 'app', status: 'done',
+    starts_at: d, stops_at: d, total_mnt: 100000, paid_mnt: 100000,
+    items: [{ sku: 'M-1', name: 'Ширээ', qty: 1, price: 100000 }] });
+  const orders = [ord(1, '2026-01-05'), ord(2, '2026-03-10'), ord(3, '2026-06-20'), ord(4, '2026-09-01')];
+
+  const days = F.histDayList(orders);
+  eq(days[0], '2026-01-05', 'хугацаа: эхний өдөр');
+  eq(days[days.length - 1], '2026-09-01', 'хугацаа: сүүлийн өдөр');
+  eq(days.length, 240, 'хугацаа: тасралтгүй өдрийн жагсаалт');
+
+  // Бүтэн муж — бүх захиалга
+  eq(F.histFilterOrders(orders, days, 0, days.length - 1).length, 4, 'шүүлт: бүтэн муж = бүгд');
+  // Эхний хагас
+  const half = days.indexOf('2026-05-01');
+  eq(F.histFilterOrders(orders, days, 0, half).map(o => o.number), [1, 2], 'шүүлт: 5-р сар хүртэл 2 захиалга');
+  // Нэг өдөр
+  const d3 = days.indexOf('2026-06-20');
+  eq(F.histFilterOrders(orders, days, d3, d3).map(o => o.number), [3], 'шүүлт: ганц өдөр');
+  // Захиалгагүй муж
+  const e1 = days.indexOf('2026-07-01'), e2 = days.indexOf('2026-08-01');
+  eq(F.histFilterOrders(orders, days, e1, e2).length, 0, 'шүүлт: захиалгагүй муж хоосон');
+
+  // Огноогүй захиалга — шүүлт идэвхтэй үед ХАСАГДАНА (чимээгүй нэмэгдэхгүй)
+  const withNull = orders.concat([{ id: 'ox', number: 9, status: 'done', starts_at: '', items: [] }]);
+  eq(F.histFilterOrders(withNull, days, 0, half).map(o => o.number), [1, 2], 'шүүлт: огноогүй захиалга орохгүй');
+  eq(F.histFilterOrders(withNull, days, 0, days.length - 1).length, 5, 'шүүлт: бүтэн мужид огноогүй ч үлдэнэ');
+
+  // Хоосон оролт
+  eq(F.histDayList([]).length, 0, 'хугацаа: захиалгагүй бол хоосон');
+  eq(F.histFilterOrders(orders, [], 0, 0).length, 4, 'шүүлт: өдрийн жагсаалт хоосон бол шүүхгүй');
+
+  // Шүүсний дараа орлого зөв дахин тооцоологдоно
+  const resolveItem = () => ({ sku: 'M-1', name: 'Ширээ' });
+  const c1 = F._histCompute(orders, null, () => 'Ширээ, сандал, бүтээлэг', resolveItem, {});
+  const c2 = F._histCompute(F.histFilterOrders(orders, days, 0, half), null, () => 'Ширээ, сандал, бүтээлэг', resolveItem, {});
+  eq(c1.summary.net_revenue_mnt, 400000, 'шүүлт: бүтэн үеийн орлого');
+  eq(c2.summary.net_revenue_mnt, 200000, 'шүүлт: шүүсний дараа орлого хагасална');
+}
+
+// SCAN — хугацааны шүүлт дахин ТАТАХГҮЙ (2026-09-07)
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const hv = src.slice(src.indexOf('function histView('));
+  const body = hv.slice(0, hv.indexOf('\nfunction '));
+  ok(/_histCompute\(sub/.test(body), 'scan: шүүлт санах ойн захиалгаар дахин тооцоолно');
+  ok(!/fetch|loadHistory\(/.test(body), 'scan: шүүлт дахин ТАТАХГҮЙ (сүлжээ дуудахгүй)');
+  ok(/_fns/.test(src.slice(src.indexOf('async function loadHistory('), src.indexOf('async function loadHistory(') + 5000)),
+     'scan: loadHistory шийдэгчдийг хадгална (дахин тооцоолоход)');
 }
 
   finish();

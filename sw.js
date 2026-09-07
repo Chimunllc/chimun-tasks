@@ -16,7 +16,7 @@
  *  зэрэг ажилладаг агентуудыг удаашруулж байв. Шаардлагагүй байсныг тогтоов.)
  */
 
-const CACHE_VERSION = 'chimun-tasks-v852-roi-live-cost-2026-09-07';
+const CACHE_VERSION = 'chimun-tasks-v853-hist-period-filter-2026-09-07';
 // Сүлжээнээс ҮРГЭЛЖ шинээр татдаг файлууд. Энэ жагсаалт нь fetch handler-т
 // ашиглагдана (чимэг биш) бөгөөс CI шалгалт ч үүнээс уншина — нэг эх сурвалж.
 const NETWORK_FIRST = ['index.html', 'styles.css', 'app.js'];

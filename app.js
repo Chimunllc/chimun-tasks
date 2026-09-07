@@ -6112,6 +6112,64 @@ const SRC_TOKEN_RE = /⟦SRC\|([^⟧]*)⟧/;
 function encodeSrcToken(acct) { const a = String(acct || '').replace(/[⟦⟧|]/g, ''); return a ? `⟦SRC|${a}⟧` : ''; }
 function parseSrcToken(str) { const m = String(str || '').match(SRC_TOKEN_RE); return m ? m[1] : ''; }
 function stripSrcToken(str) { return String(str || '').replace(SRC_TOKEN_RE, '').replace(/\s{2,}/g, ' ').trim(); }
+// ── ХУВИЙН ДАНС токен: ⟦PRSN|<данс>⟧ — эзний ХУВИЙН данснаас гарсан КОМПАНИЙН зардал ──
+// Яагаад: компанийн зардлын багагүй хэсэг эзний хувийн данс/картаар гардаг. Хуулга-суурьтай
+// зарчмыг зөрчихгүйгээр (гараар зохиосон зардал үүсэхгүй) тэр зардлыг оруулах ганц зам.
+// Компани → хувийн данс руу мөнгө буцаах шилжүүлэг нь ЗАРДАЛ БИШ (дотоод шилжүүлэг гэж
+// хаягдана) — эс бөгөөс нэг зардал хоёр удаа тоологдоно.
+const PRSN_TOKEN_RE = /⟦PRSN\|([^⟧]*)⟧/;
+function encodePrsnToken(acct) { const a = String(acct || '').replace(/[⟦⟧|]/g, ''); return a ? `⟦PRSN|${a}⟧` : ''; }
+function parsePrsnToken(str) { const m = String(str || '').match(PRSN_TOKEN_RE); return m ? m[1] : ''; }
+function stripPrsnToken(str) { return String(str || '').replace(PRSN_TOKEN_RE, '').replace(/\s{2,}/g, ' ').trim(); }
+// Бүртгэлд «зорилго = хувийн» гэж тэмдэглэсэн данс уу.
+function isPersonalAcct(no) { const a = _acctBySuffix(no); return !!(a && String(a.purpose || '') === 'хувийн'); }
+// Хуулгын мөр компанийн зардал байх САНАЛ (хувийн данснаас гарсан үед урьдчилан сонгоно).
+// Утга нь ангилалд таарсан ЭСВЭЛ салбарын түлхүүр үгтэй бол компанийнх байх магадлалтай.
+function personalRowSuggest(memo, cat) { return !!(cat || guessBranch(memo, '')); }
+// Компанийн (хувийн БУС) дансны дугаарын багц — хувийн данс руу орсон нөхөн олголтыг таних.
+function companyAcctSet() {
+  const set = new Set();
+  (state.bankAccounts || []).forEach(a => {
+    if (a.active === false || String(a.purpose || '') === 'хувийн') return;
+    [a.account_no, a.id, a.iban].forEach(v => { const d = String(v || '').replace(/\D/g, ''); if (d.length >= 8) { set.add(d); set.add(d.slice(-10)); } });
+  });
+  return set;
+}
+// ── НӨХӨН ОЛГОЛТЫН ДЭВТЭР (app_config['personal_settlements']) ──
+// {fp: {acct, date, amount, memo}} — fp-ээр түлхүүрлэсэн тул дахин оруулахад давхардахгүй.
+// Санхүүгийн бүртгэлд ОРУУЛАХГҮЙ: энэ бол зардал биш, өр хаалт.
+const PRSN_SETTLE_KEY = 'personal_settlements';
+async function loadPersonalSettlements(force) {
+  if (state.personalSettlements && !force) return state.personalSettlements;
+  const v = await loadAppConfig(PRSN_SETTLE_KEY);
+  state.personalSettlements = (v && typeof v === 'object') ? v : {};
+  return state.personalSettlements;
+}
+async function savePersonalSettlements(add) {
+  const cur = state.personalSettlements || {};
+  let n = 0;
+  Object.keys(add || {}).forEach(k => { if (!cur[k]) { cur[k] = add[k]; n++; } });
+  if (!n) return 0;
+  state.personalSettlements = cur;
+  await saveAppConfig(PRSN_SETTLE_KEY, cur);
+  return n;
+}
+// Хувийн данснаас гарсан компанийн зардал − буцаан төлсөн = компанийн ӨР (эзэнд өгөх).
+function personalAcctDebt(acctNo, reqs, settle) {
+  const d = _acctDigits(acctNo);
+  let spent = 0, n = 0, paid = 0, pn = 0;
+  if (d) {
+    (reqs || state.financeRequests || []).forEach(r => {
+      if (!r || r.status === 'deleted') return;
+      const t = _acctDigits(parsePrsnToken(r.justification));
+      if (!t || t !== d) return;
+      spent += Number(r.amount) || 0; n++;
+    });
+    const st = settle || state.personalSettlements || {};
+    Object.keys(st).forEach(k => { const x = st[k]; if (!x || _acctDigits(x.acct) !== d) return; paid += Number(x.amount) || 0; pn++; });
+  }
+  return { spent, n, paid, pn, owed: spent - paid };
+}
 // Эх дансны дугаар → бүртгэлийн товч нэр (жиш "Голомт ••7218"). Суффиксээр тэвчинэ (хуулга сүүл 10 орон авдаг).
 function _acctBySuffix(no) { const d = _acctDigits(no); if (d.length < 4) return null; return (state.bankAccounts || []).find(a => { const ad = _acctDigits(a.account_no || a.id); return ad && (ad === d || ad.endsWith(d) || d.endsWith(ad)); }) || null; }
 function srcAcctLabel(no) { const d = _acctDigits(no); if (!d) return ''; const a = _acctBySuffix(d); const tail = d.length > 4 ? d.slice(-4) : d; return a ? `${a.bank || a.name || 'данс'} ••${tail}` : `данс ••${tail}`; }
@@ -6195,6 +6253,7 @@ async function openStatementClassifyModal() {
   loadUsedReceipts();
   await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
   await loadExpenseLearn();       // хуваалцсан суралцлагаар салбар/ангилал таамаглана
+  await loadPersonalSettlements(true);   // хувийн данс: нөхөн олголтын дэвтэр (өр тооцоход)
   if (state.appOrders === undefined) { try { await loadAppOrders(); } catch (e) {} }   // барьцаа буцаалтыг захиалгаар авто таьних
   // Ажилтны данс → {key, name, type}. Сарын цалин авагч + ЦАГИЙН ажилтан (тус тусдаа хэсэгт бүртгэнэ).
   const empByAcct = {};
@@ -6203,7 +6262,7 @@ async function openStatementClassifyModal() {
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:2px;">🧾 Хуулга оруулах</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал <b>шууд орно</b>, дараа нь <b>эзэн бүр өөрийн зардлаа ангилж баталгаажуулна</b>. Зөвхөн хуулгаар л орно.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Голомт/Хаан хуулга оруул → зардал <b>шууд орно</b>, дараа нь <b>эзэн бүр өөрийн зардлаа ангилж баталгаажуулна</b>. Зөвхөн хуулгаар л орно.<br>🙍 <b>Хувийн данс</b> (Данс&nbsp;&amp;&nbsp;Карт-д «зорилго: хувийн») хуулга оруулбал мөр бүрийг <b>компанийн / хувийн</b> гэж сонгоно — зөвхөн компанийнх нь зардал болно.</div>
     <label for="sc-file" style="display:block;margin-bottom:12px;border:2px dashed var(--accent,#7c3aed);border-radius:10px;padding:14px;text-align:center;cursor:pointer;background:var(--panel-hover);">
       📄 <b>Хуулга(ууд) оруулах (xlsx / csv)</b>
       <input id="sc-file" type="file" accept=".xlsx,.xls,.csv" hidden multiple>
@@ -6217,7 +6276,7 @@ async function openStatementClassifyModal() {
       <button class="btn btn-primary" id="sc-save" style="display:none;">Зардлыг оруулах</button>
     </div></div>`;
   document.body.appendChild(modal);
-  let rows = [], sources = [], dropped = [];
+  let rows = [], sources = [], dropped = [], settleAdd = {};
   const close = () => modal.remove();
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
@@ -6249,7 +6308,9 @@ async function openStatementClassifyModal() {
   // Мөр бүрийн ангилах эзэн: цалин→ажилтан, эс бол эх сурвалжийн эзэн (карт/данс), эс бол CEO
   const routeOwnerOf = (r) => r.salaryEmp ? r.salaryEmp : (ownerOf(srcKeyOf(r)) || state.me);
   const render = () => {
-    const live = rows.filter(r => !r.done);
+    // ХУВИЙН данснаас гарсан мөр «компанийн» гэж сонгогдтол зардал болохгүй — тоололтоос ч хасна.
+    const prsnRows = rows.filter(r => !r.done && r.personal);
+    const live = rows.filter(r => !r.done && !(r.personal && !r.biz));
     const nCardOwn = live.filter(r => r.cardL4 && ownerOf(srcKeyOf(r))).length;
     const nMine = live.filter(r => !r.salaryEmp && !r.hourlyEmp && routeOwnerOf(r) === state.me).length;
     const nSal = live.filter(r => r.salaryEmp).length, nHrl = live.filter(r => r.hourlyEmp).length, nDone = rows.filter(r => r.done).length;
@@ -6261,7 +6322,17 @@ async function openStatementClassifyModal() {
       && !salaryBranchOf(r.memo, r.salaryEmp || (r.hourlyEmp && r.hourlyEmp.key), r.salaryEmp ? branchOf(srcKeyOf(r)) : ''));
     const salNames = [...new Set(salNoBr.map(r => r.hourlyEmp ? (r.hourlyEmp.name || memberName(r.hourlyEmp.key)) : memberName(r.salaryEmp)).filter(Boolean))];
     const salBanner = salNames.length ? `<div class="stmt-warn">🏷 <b>${salNoBr.length}</b> цалингийн салбар тодорхойгүй: ${escapeHtml(salNames.join(', '))} — «Ажилчид»-аас тэдний салбарыг тохируулбал M-Event/NOMAAD-д зөв ороно. Одоогоор «Захиргаа»-д орж, дараа засаж болно.</div>` : '';
-    const warnBanner = salBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
+    const prsnBiz = prsnRows.filter(r => r.biz);
+    const prsnSug = prsnRows.filter(r => r.suggest);
+    const prsnBanner = prsnRows.length ? `<div class="stmt-prsn">
+      <div>🙍 <b>${prsnRows.length}</b> мөр <b>хувийн данснаас</b> · компанийн гэж сонгосон <b>${prsnBiz.length}</b> · ${fmtMoney(prsnBiz.reduce((a, x) => a + (Number(x.debit) || 0), 0))}</div>
+      <div class="stmt-prsn-acts">
+        <button class="stmt-prsn-btn ui-raw" data-prsn-all="sug">🏢 Саналтайг (${prsnSug.length}) компанийн</button>
+        <button class="stmt-prsn-btn ui-raw" data-prsn-all="all">Бүгдийг компанийн</button>
+        <button class="stmt-prsn-btn ui-raw" data-prsn-all="none">Бүгдийг хувийн</button>
+      </div>
+      <div class="stmt-prsn-note">Зөвхөн «компанийн» мөр зардал болно. Компани хувийн данс руу буцаан төлсөн шилжүүлэг нь зардал БИШ — өрөөс хасагдана.</div></div>` : '';
+    const warnBanner = prsnBanner + salBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
     const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
@@ -6269,6 +6340,7 @@ async function openStatementClassifyModal() {
       const ro = routeOwnerOf(r); const roName = ro === state.me ? 'та' : memberName(ro);
       const orphan = r.cardL4 && !ownerOf(srcKeyOf(r));
       const ctrl = r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ орсон</span>'
+        : r.personal ? `<button class="stmt-prsn-btn ui-raw${r.biz ? ' on' : ''}" data-prsn="${rows.indexOf(r)}">${r.biz ? '🏢 компанийн' : '🙍 хувийн'}</button>`
         : (r.hourlyEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">цагийн цалин · ${escapeHtml(r.hourlyEmp.name)}</span>`
           : r.salaryEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">сарын цалин · ${escapeHtml(memberName(r.salaryEmp))}</span>`
           : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
@@ -6280,6 +6352,12 @@ async function openStatementClassifyModal() {
       </div>`;
     }).join('');
     listEl.innerHTML = head + body;
+    listEl.querySelectorAll('[data-prsn]').forEach(b => b.onclick = () => { const r = rows[Number(b.dataset.prsn)]; if (r) { r.biz = !r.biz; render(); } });
+    listEl.querySelectorAll('[data-prsn-all]').forEach(b => b.onclick = () => {
+      const m = b.dataset.prsnAll;
+      rows.forEach(r => { if (!r.personal || r.done) return; r.biz = m === 'all' ? true : m === 'sug' ? !!r.suggest : false; });
+      render();
+    });
   };
   const isForce = () => false;   // 🔁 force ХАСАГДСАН — дахин оруулахад давхардуулахгүй, нөхөх pass автоматаар ажиллана
   // "Орсон" = ИДЭВХТЭЙ санхүүгийн бүртгэл байгаа эсэх (justification-д [#fp]). Баримтын ledger биш —
@@ -6292,7 +6370,7 @@ async function openStatementClassifyModal() {
     const files = [...e.target.files]; if (!files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
-      rows = []; dropped = [];
+      rows = []; dropped = []; settleAdd = {};
       const imp = importedFpCounts(); const occSeen = new Map();
       const own = ownAcctSet(); let skippedInternal = 0;
       for (const f of files) {
@@ -6300,6 +6378,18 @@ async function openStatementClassifyModal() {
         const src = detectStatementAccount(matrix);
         const st = parseStatement(matrix);
         (st.skipped || []).forEach(x => dropped.push(x));
+        // ХУВИЙН данс: КОМПАНИЙН данснаас ирсэн орлого = нөхөн олголт (өр хаалт), зардал БИШ.
+        // Дэвтэрт бичигдэж «компани эзэнд өртэй» үлдэгдлээс хасагдана.
+        if (isPersonalAcct(src)) {
+          const comp = companyAcctSet();
+          (st.rows || []).forEach(cr => {
+            if (!(cr.credit > 0)) return;
+            const d = String(cr.account || '').replace(/\D/g, '');
+            if (d.length < 8 || !(comp.has(d) || comp.has(d.slice(-10)))) return;
+            settleAdd[expenseFp({ date: cr.date, memo: cr.memo, account: cr.account, debit: cr.credit })] =
+              { acct: _acctDigits(src), date: cr.date, amount: cr.credit, memo: cr.memo };
+          });
+        }
         // Хасагдсан мөр бүрийг ШАЛТГААНТАЙ нь бүртгэнэ — «дутуу орлоо» гэдэг нь
         // хэзээ ч чимээгүй болохгүй, хэрэглэгч юу яагаад ороогүйг цонхон дээр харна.
         const parsed = st.rows.filter(r => {
@@ -6322,7 +6412,11 @@ async function openStatementClassifyModal() {
           const cardL4 = detectCardLast4(r.memo);
           const depMatch = depositMatchForStmt(r.memo, r.debit);   // барьцаа буцаалт бол → захиалгад авто холбоно
           const occ = (occSeen.get(fp) || 0) + 1; occSeen.set(fp, occ);   // энэ хуулган дахь тухайн хээний хэд дэх мөр
-          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : cat, catManual: !!(depMatch || cat), depMatch, fp, occ, salaryEmp, hourlyEmp, done: (!isForce() && fpAlreadyImported(occ, imp.get(fp))) });
+          const personal = isPersonalAcct(src);
+          const suggest = personal && personalRowSuggest(r.memo, cat);
+          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : cat, catManual: !!(depMatch || cat), depMatch, fp, occ, salaryEmp, hourlyEmp,
+            personal, suggest, biz: false,   // хувийн данс: өгөгдмөл нь ХУВИЙН (санамсаргүй зардал үүсэхгүй)
+            done: (!isForce() && fpAlreadyImported(occ, imp.get(fp))) });
         });
       }
       // Эх сурвалжуудыг (карт/данс) цуглуулна
@@ -6356,8 +6450,12 @@ async function openStatementClassifyModal() {
       }
       if (dirty) { try { await saveFinanceRequest(ex); filled++; } catch (e) {} }
     }
-    const todo = rows.filter(r => !r.done);
-    if (!todo.length) { showToast(filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}` : 'Оруулах зардал алга', filled ? 'success' : 'warn', 3500); render(); saveBtn.disabled = false; return; }
+    // Хувийн данснаас гарсан ч «компанийн» гэж сонгоогүй мөр ХЭЗЭЭ Ч зардал болохгүй.
+    const todo = rows.filter(r => !r.done && !(r.personal && !r.biz));
+    const prsnSkipped = rows.filter(r => !r.done && r.personal && !r.biz).length;
+    let settled = 0;
+    try { settled = await savePersonalSettlements(settleAdd); } catch (e) { console.warn('settlements', e); }
+    if (!todo.length) { showToast((filled || settled) ? `${filled ? `✏️ ${filled} бүртгэлд нэр/эх данс нөхлөө` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт бүртгэв` : ''}`.replace(/^ · /, '') : (prsnSkipped ? `🙍 ${prsnSkipped} мөр хувийн гэж үлдсэн — компанийн зардлыг нь сонгоно уу` : 'Оруулах зардал алга'), (filled || settled) ? 'success' : 'warn', 4000); render(); saveBtn.disabled = false; return; }
     for (const r of todo) {
       // НЭГ мөр унавал БҮХ импорт зогсохгүй — унасныг тоолж эцэст нь ил хэлнэ.
       // Өмнө нь дундуур гарсан алдаа үлдсэн мөрүүдийг чимээгүй орхидог байв.
@@ -6389,7 +6487,7 @@ async function openStatementClassifyModal() {
           const hbr = salaryBranchOf(r.memo, r.hourlyEmp.key);   // тодорхойгүй бол ХООСОН (КЕМП рүү буулгахгүй)
           state._finBackfill = { date: r.date };
           const fr = await createFinanceRequest({ amount: r.debit, beneficiary: nm, purpose: `Цагийн цалин · ${nm} · ${r.date}`,
-            justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
+            justification: `Хуулгаар баталгаажсан · цагийн цалин · ${r.memo} · Эх үүсвэр: банкны хуулга · 📞 ${(r.hourlyEmp.m && r.hourlyEmp.m.phone) || '-'} [#${r.fp}] ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(), category: '7200', deptBranch: hbr, linkType: 'general', priority: 'low' });
           state._finBackfill = null;
           if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.received_by = r.hourlyEmp.key; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
           hrl++; r.done = true; n++; continue;
@@ -6398,7 +6496,7 @@ async function openStatementClassifyModal() {
         if (r.salaryEmp) {
           state._finBackfill = { date: r.date };
           const fr = await createFinanceRequest({ amount: r.debit, beneficiary: memberName(r.salaryEmp), purpose: r.memo,
-            justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}`.trim(), category: '7100', deptBranch: salaryBranchOf(r.memo, r.salaryEmp, branchOf(srcKeyOf(r))), linkType: 'general', priority: 'low' });
+            justification: `Хуулгаар баталгаажсан · цалин · ${r.memo} [#${r.fp}] ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(), category: '7100', deptBranch: salaryBranchOf(r.memo, r.salaryEmp, branchOf(srcKeyOf(r))), linkType: 'general', priority: 'low' });
           state._finBackfill = null;
           if (fr && fr.status !== 'done') { const nw = new Date().toISOString(); fr.decision = 'approved'; fr.decision_at = nw; fr.decision_by = state.me; fr.executed_at = nw; fr.executed_by = state.me; fr.status = 'done'; fr.close_type = 'хуулгаар'; await saveFinanceRequest(fr); }
           const rym = String(r.date).slice(0, 7);
@@ -6418,7 +6516,7 @@ async function openStatementClassifyModal() {
         const _dm = r.depMatch;
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
           accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
-          justification: `Хуулгаар орсон · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}`.trim(),
+          justification: `Хуулгаар орсон${r.personal ? ' · 🙍 ХУВИЙН данснаас (компани эзэнд өртэй)' : ''} · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(),
           category: cat, deptBranch: brCode, priority: 'low',
           linkType: _dm ? 'order' : 'general', linkId: _dm ? _dm.id : '', linkLabel: _dm ? ('#' + _dm.number) : '' });
         state._finBackfill = null;
@@ -6428,7 +6526,7 @@ async function openStatementClassifyModal() {
         if (n % 5 === 0) { showToast(`${n}/${todo.length} орж байна…`, 'info', 700); render(); }
       } catch (e) { state._finBackfill = null; failedRows++; console.warn('Хуулгын мөр орсонгүй:', r.fp, e); }
     }
-    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
+    showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${prsnSkipped ? ` · 🙍 ${prsnSkipped} хувийн (орсонгүй)` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
     render(); saveBtn.disabled = false;
   };
   modal.classList.add('open');
@@ -10449,7 +10547,7 @@ async function clearMemberPerms(personKey) {
 // Компанийн банкны данс/картуудыг нэг бүртгэлд: банк, зорилго, салбар, эзэн.
 // Хуулгаар ангилах модал эндээс данс→салбарыг автоматаар таьнна.
 const BANK_LIST = ['Голомт', 'Хаан', 'Худалдаа хөгжил', 'Төрийн', 'Хас', 'Капитрон', 'Ариг', 'Богд'];
-const ACCT_PURPOSES = ['орлого', 'зарлага', 'валют', 'цалин', 'татвар', 'бусад'];
+const ACCT_PURPOSES = ['орлого', 'зарлага', 'валют', 'цалин', 'татвар', 'хувийн', 'бусад'];
 const BANK_BRANCHES = ['M-Event', 'NOMAAD', 'Катеринг', 'Чимун ХХК'];
 const _BRANCH_NAME2CODE = { 'M-Event': 'ИВЕНТ', 'NOMAAD': 'КЕМП', 'Катеринг': 'КАТЕРИНГ', 'Чимун ХХК': 'ХХК', 'Захиргаа': 'ЗАХ' };
 function _acctDigits(s) { return String(s || '').replace(/\D/g, ''); }
@@ -10475,6 +10573,7 @@ function syncCardMapsFromRegistry() {
   try { localStorage.setItem('cardBranch', JSON.stringify(br)); localStorage.setItem('cardOwners', JSON.stringify(ow)); localStorage.setItem('cardDefCat', JSON.stringify(dc)); } catch (_) {}
 }
 async function loadBankAccounts(force) {
+  loadPersonalSettlements(force).catch(() => {});   // хувийн дансны өр тооцоход хэрэгтэй
   if (!DB_ANON_KEY) return;
   if (state.bankAccounts && !force) return;
   try {
@@ -12000,6 +12099,15 @@ function openBankAccountModal(a) {
       ${_st.pendN ? `<div style="font-size:11px;color:var(--warn);margin-top:4px;">⏳ ${_st.pendN} ангилаагүй хүлээж буй</div>` : ''}
       ${_recent.length ? `<div style="margin-top:9px;"><div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-bottom:3px;">Сүүлийн гүйлгээ</div>${_recent.map(r => { const t = parseCardToken(r.justification); const pend = (t && t.pend) || String(r.category || '') === CARD_PEND_CAT; return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px solid var(--border);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t && t.last4 ? '💳' : '🏦'} ${escapeHtml((r.executed_at || r.requested_at || '').slice(5, 10))} ${escapeHtml(r.purpose || r.beneficiary || '—')}</span><span style="white-space:nowrap;font-variant-numeric:tabular-nums;">${fmtMoney(r.amount)} ${pend ? '<span style="color:var(--warn);">⏳</span>' : '<span style="color:var(--ok);">✓</span>'}</span></div>`; }).join('')}</div>` : ''}
     </div>` : `<div style="font-size:11.5px;color:var(--muted);margin-top:10px;">Энэ данснаас гарсан зардал бүртгэгдээгүй (хуулга оруулбал энд харагдана).</div>`);
+  // ХУВИЙН данс — компани эзэнд хэдийг өртэй вэ (зардал − буцаан төлсөн).
+  const _dbt = (!isNew && String(a.purpose || '') === 'хувийн') ? personalAcctDebt(a.account_no || a.id) : null;
+  const _debtBlock = _dbt ? `<div class="stmt-prsn">
+      <div style="font-weight:700;margin-bottom:5px;">🙍 Хувийн данс — компанийн өр</div>
+      <div class="stmt-prsn-debt"><span>Компанийн зардал (${_dbt.n})</span><b>${fmtMoney(_dbt.spent)}</b></div>
+      <div class="stmt-prsn-debt"><span>Буцаан төлсөн (${_dbt.pn})</span><b>−${fmtMoney(_dbt.paid)}</b></div>
+      <div class="stmt-prsn-debt tot"><span>${_dbt.owed >= 0 ? 'Компани эзэнд өртэй' : 'Эзэн компанид өртэй'}</span><b>${fmtMoney(Math.abs(_dbt.owed))}</b></div>
+      <div class="stmt-prsn-note">Хуулга оруулах бүрд шинэчлэгдэнэ. Буцаан төлөлт = компанийн данснаас энэ данс руу орсон шилжүүлэг.</div>
+    </div>` : '';
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:460px;max-height:90vh;overflow-y:auto;">
     <div style="font-weight:800;font-size:16px;margin-bottom:12px;">${isNew ? '🏦 Данс нэмэх' : '🏦 Данс засах'}</div>
@@ -12014,6 +12122,7 @@ function openBankAccountModal(a) {
     <label class="fld">Салбар<select id="ba-branch">${sel(BANK_BRANCHES, a.branch, '— салбар —')}</select></label>
     <label class="fld">👤 Хариуцсан эзэмшигч <span style="font-weight:400;color:var(--muted);font-size:11px;">(энэ данснаас гарсан шилжүүлэг → энэ хүний зарцуулалт)</span><select id="ba-owner">${ownerOpts}</select></label>
     <label class="fld">Тэмдэглэл<input id="ba-note" value="${escapeHtml(a.note || '')}" placeholder="сонголт"></label>
+    ${_debtBlock}
     ${_spendBlock}
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:space-between;margin-top:14px;">
       <button class="btn" id="ba-del" style="${isNew ? 'visibility:hidden;' : 'color:var(--danger);'}">Устгах</button>

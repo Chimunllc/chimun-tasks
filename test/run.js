@@ -3897,3 +3897,45 @@ need(['orderCustType']);
   eq(F.stmtImportedByFps(null, fps).length, 0, 'буцаах: бүртгэл байхгүй → унахгүй');
   eq(F.stmtImportedByFps(reqs, ['EXP-99000-20260801-z']).map(r => r.id), [3], 'буцаах: массиваар ч ажиллана');
 }
+
+// ── НӨАТ = ЗАРДАЛ, САЛБАР ТУС ТУСДАА (2026-09-07) ───────────────────────────
+// Борлуулалтын НӨАТ орлогод багтаж ирдэг ч компанид үлддэггүй. Ашгийн тайлан
+// түүнийг хасдаггүй байсан тул ашиг хиймлээр өндөр харагдаж байв.
+{
+  const R = [
+    { dt: '2026-08-03T10:00:00', total: 11000000, vat: 1000000, matched_type: 'event' },
+    { dt: '2026-08-15T10:00:00', total: 22000000, vat: 2000000, matched_type: 'nomaad' },
+    { dt: '2026-08-20T10:00:00', total: 3300000, vat: 300000, matched_type: null },      // тулгагдаагүй → ХХК
+    { dt: '2026-08-25T10:00:00', total: 5500000, vat: 500000, matched_type: 'nomaad', returned: true },  // буцаасан
+    { dt: '2026-07-30T10:00:00', total: 1100000, vat: 100000, matched_type: 'event' },   // өөр сар
+  ];
+  const b = F.vatByBranchMonth(R, '2026-08');
+  eq(b['ИВЕНТ'], 1000000, 'НӨАТ: M-Event салбарын НӨАТ');
+  eq(b['КЕМП'], 2000000, 'НӨАТ: NOMAAD салбарын НӨАТ (буцаасан ОРОХГҮЙ)');
+  eq(b['ХХК'], 300000, 'НӨАТ: тулгагдаагүй баримт → Чимун ХХК');
+  eq(b.total, 3300000, 'НӨАТ: сарын нийлбэр');
+  eq(F.vatByBranchMonth(R, '2026-07').total, 100000, 'НӨАТ: өөр сар тусдаа');
+  eq(F.vatByBranchMonth(R, '2026-01').total, 0, 'НӨАТ: баримтгүй сар = 0');
+  eq(F.vatByBranchMonth(null, '2026-08').total, 0, 'НӨАТ: баримт байхгүй → 0 (унахгүй)');
+
+  eq(F.vatReceiptBranch({ matched_type: 'event' }), 'ИВЕНТ', 'НӨАТ: event → ИВЕНТ');
+  eq(F.vatReceiptBranch({ matched_type: 'nomaad' }), 'КЕМП', 'НӨАТ: nomaad → КЕМП');
+  eq(F.vatReceiptBranch({}), 'ХХК', 'НӨАТ: тулгагдаагүй → ХХК');
+  eq(F.vatReceiptBranch(null), 'ХХК', 'НӨАТ: мөргүй → ХХК (унахгүй)');
+
+  // Давхар тооллого: банкаар төлсөн НӨАТ (5100) тайлангийн зардлаас хасагдана
+  ok(F.finIsVatPayment({ category: '5100' }) === true, 'НӨАТ: 5100 = НӨАТ төлөлт');
+  ok(F.finIsVatPayment({ category: '5200' }) === false, 'НӨАТ: ААНОАТ нь НӨАТ төлөлт БИШ');
+  ok(F.finIsVatPayment({}) === false, 'НӨАТ: ангилалгүй = төлөлт биш');
+  ok(F.finIsVatPayment(null) === false, 'НӨАТ: мөргүй = төлөлт биш (унахгүй)');
+}
+
+// SCAN — ноогдуулсан НӨАТ нэмсэн газар бүрт банкны НӨАТ төлөлт хасагдсан байх (2026-09-07)
+// Эс бөгөөс нэг НӨАТ хоёр удаа зардал болж ашиг буруу буурна.
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l));
+  const addVat = codeLines.filter(l => /vatExpenseFor\(|vatByBranchMonth\(vatReceiptsActive/.test(l)).length;
+  const skipPay = codeLines.filter(l => /finIsVatPayment\(t\)/.test(l)).length;
+  ok(addVat >= 2 && skipPay >= 3,
+    'scan: НӨАТ зардал нэмэгддэг бүх зам дээр 5100 төлөлт хасагдсан (давхар тоологдохгүй)');
+}

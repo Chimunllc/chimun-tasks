@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck']);
 
@@ -3868,6 +3868,71 @@ need(['orderCustType']);
   ok(/archived=eq\.true/.test(src), 'архив: архивласныг тусад нь татна (жагсаалт eq.false шүүдэг)');
   ok(/data-unarch/.test(src), 'архив: сэргээх товч байна');
   ok(/setProductArchived\(b\.dataset\.unarch, false\)/.test(src), 'архив: сэргээхэд archived=false');
+}
+
+
+// ── ТАЙЛАНГИЙН АНГИЛАЛ — толиор тулгах (2026-09-07) ─────────────────────────
+// Бодит алдаа: «Хиймэл зүлэг 100 м²»-ийн ангиллыг «Засал, тохижилт» болгож зассан
+// боловч тайланд «Хөгжөөнт тоглоом» хэвээр байв. Шалтгаан: захиалгын мөрийн нэр
+// («Хиймэл зүлэг 100m2») каталогийн нэртэй таарахгүй тул түлхүүр үгээр таамагладаг,
+// тэр жагсаалтад `зүлэг` нь ТОГЛООМ гэж бүртгэлтэй байсан. 280 мөрийн 56% ингэж
+// таамаглалаар ангилагдаж байсныг хэмжив.
+{
+  const prods = [
+    { sku: 'M-054', name: 'Хиймэл зүлэг 100 м²', category: 'Засал, тохижилт' },
+    { sku: 'M-165', name: 'Тайз (1,2 м²)',       category: 'Тайз' },
+  ];
+
+  // (а) Толгүй үед — нэр таарахгүй тул таамаглана
+  const noAlias = F._histCatResolver(prods, {});
+  eq(noAlias('', 'Хиймэл зүлэг 100m2'), 'Засал, тохижилт',
+     'ангилал: зүлэг ТОГЛООМ биш тохижилт (түлхүүр үг засварласан)');
+  eq(noAlias.stats.guess, 1, 'ангилал: таамаг тоологдов');
+
+  // (б) Толь байвал — хүн баталгаажуулсан зураглал ялна
+  const withAlias = F._histCatResolver(prods, { 'name:хиймэлзлэг100м2': 'M-054' });
+  const got = withAlias('', 'Хиймэл зүлэг 100m2');
+  ok(got === 'Засал, тохижилт', 'ангилал: толиор зөв ангилал олдов — ' + got);
+  eq(withAlias.stats.alias, 1, 'ангилал: толиор тодорхойлсон нь тоологдов');
+  eq(withAlias.stats.guess, 0, 'ангилал: толь байвал таамаглахгүй');
+
+  // (в) SKU шууд таарвал толь ч хэрэггүй
+  const r3 = F._histCatResolver(prods, {});
+  eq(r3('M-165', 'ямар ч нэр'), 'Тайз', 'ангилал: SKU шууд ялна');
+  eq(r3.stats.exact, 1, 'ангилал: шууд таарсан нь тоологдов');
+
+  // (г) Огт танигдахгүй бол «Бусад», тоологдоно
+  const r4 = F._histCatResolver(prods, {});
+  eq(r4('', 'зузаан юмны нэр'), 'Бусад', 'ангилал: танихгүй → Бусад');
+  eq(r4.stats.none, 1, 'ангилал: танигдаагүй нь тоологдов');
+
+  // (д) Толь ХООСОН sku заасан (=«бараа биш») бол таамаг руу унахгүй байх
+  const r5 = F._histCatResolver(prods, { 'sku:xyz': '' });
+  ok(typeof r5('xyz', 'НӨАТ') === 'string', 'ангилал: хоосон толь унахгүй');
+
+  // (е) Хоосон оролт
+  const r6 = F._histCatResolver(null, null);
+  eq(r6('', ''), 'Бусад', 'ангилал: хоосон оролт унахгүй');
+}
+
+// SCAN — тайлангийн ангилал ТОЛИЙГ ашиглана (2026-09-07)
+// Толь бол хүн баталгаажуулсан цорын ганц найдвартай зураглал. Түүнийг алгасвал
+// бараа нэрээ соливол тайлан чимээгүй буруу бүлэглэнэ.
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function _histCatResolver('));
+  const body = fn.slice(0, fn.indexOf('\nfunction '));
+  ok(/aliases/.test(body), 'scan: _histCatResolver толь хүлээж авна');
+  ok(/normItemKey/.test(body), 'scan: толийн түлхүүр normItemKey-ээр (resolveItemSku-тэй нэг)');
+  ok(/stats/.test(body), 'scan: таамаглалын тоог гаргана (чимээгүй буруу ангилахгүй)');
+  // Бараа зассаны дараа тайлангийн кэш хүчингүй болох ёстой
+  const sp = src.slice(src.indexOf('async function saveProduct('));
+  ok(/state\.history = null/.test(sp.slice(0, 6000)),
+     'scan: saveProduct тайлангийн кэшийг хүчингүй болгоно');
+  // `зүлэг` тоглоомын түлхүүр үгэнд БУЦАЖ ОРОХГҮЙ
+  const kw = src.slice(src.indexOf('const _HIST_CAT_KW'), src.indexOf('function _histNormAgg'));
+  const toyLine = kw.split('\n').find(l => /Хөгжөөнт тоглоом/.test(l)) || '';
+  ok(!/зүлэг/.test(toyLine), 'scan: зүлэг нь тоглоомын түлхүүр үгэнд байхгүй');
 }
 
   finish();

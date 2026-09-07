@@ -4358,3 +4358,15 @@ need(['orderCustType']);
   eq(F.archiveDeletePlan(null, orders).free.length, 0, 'архив: хоосон архив → 0');
   eq(F.archiveDeletePlan([{ name: 'sku-гүй' }], orders).free.length, 0, 'архив: sku-гүй мөр хөндөгдөхгүй');
 }
+
+// SCAN — актын жагсаалт сүлжээний алдаанд ХООСОН болохгүй (2026-09-07)
+// loadAppConfig нь «алдаа» ба «мөр байхгүй» хоёрыг ялгадаггүй (хоёулаа null).
+// Хэрэв null ирэхэд шууд [] гэж дарж бичвэл refresh дээр акт алга болно.
+{
+  ok(/if \(Array\.isArray\(v\)\) \{ state\.writeoffs = v; woCacheWrite\(\); \}/.test(src),
+    'scan: акт зөвхөн МАССИВ ирэхэд дарж бичигдэнэ');
+  ok(/else if \(!Array\.isArray\(state\.writeoffs\)\) state\.writeoffs = woCacheRead\(\) \|\| \[\];/.test(src),
+    'scan: сүлжээ унахад сүүлийн мэдэгдэж байсан жагсаалт үлдэнэ');
+  ok(/async function saveWriteoffs\(\) \{ await saveAppConfig\(WO_KEY, woList\(\)\); woCacheWrite\(\); \}/.test(src),
+    'scan: хадгалахад локал кэш ч шинэчлэгдэнэ');
+}

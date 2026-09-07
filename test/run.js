@@ -4149,6 +4149,58 @@ need(['orderCustType']);
      'scan: loadHistory багцын үнэ/бүрэлдэхүүнийг татна');
 }
 
+
+// ── ROI ӨРТӨГ: амьд каталог > хуучин snapshot (2026-09-07) ─────────────────
+// `rh_roi_fix` бол 2026 эхний snapshot бөгөөд ЭВДЭРСЭН: bySku-гийн түлхүүр нь SKU
+// биш МӨРИЙН ДУГААР ('0','1','2'…) тул тоон sku-тай мөрд САНАМСАРГҮЙ өртөг
+// оногдоно (амьд датаар 103 мөр). byName-ийн 240 нэрийн 118 нь л таарна, таарсан
+// нь ч зөрнө (Урт модон сандал: амьд 200,000 vs snapshot 2,000,000 — 10 дахин).
+// Тиймээс products.cost × products.stock ЭХЛЭЭД, snapshot зөвхөн нөөц.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const orders = [{ id: 'o1', number: 1, source: 'app', status: 'done',
+    starts_at: '2026-05-01', stops_at: '2026-05-02', total_mnt: 400000, paid_mnt: 400000,
+    items: [{ sku: '2', name: 'Урт модон сандал', qty: 1, price: 400000 }] }];
+  const bySku = { 'M-500': { sku: 'M-500', name: 'Урт модон сандал', category: 'Ширээ, сандал, бүтээлэг', price: 400000, cost: 200000, stock: 13 } };
+  const resolveItem = () => ({ sku: 'M-500', name: 'Урт модон сандал' });
+  const catOf = () => 'Ширээ, сандал, бүтээлэг';
+  // Хог snapshot: түлхүүр '2' (мөрийн дугаар) + 10 дахин том өртөг
+  const rfix = { bySku: { '2': { c: 2000000, o: 1 } }, byName: {} };
+
+  const comp = runIn('_histCompute')(orders, rfix, catOf, resolveItem, bySku);
+  const row = (comp.products || []).find(r => r.product === 'Урт модон сандал');
+  ok(!!row, 'ROI: бүлэг үүсэв');
+  eq(row.unit_cost_mnt, 200000, 'ROI: АМЬД өртөг ялна (snapshot-ын 2,000,000 БИШ)');
+  eq(row.owned_qty, 13, 'ROI: амьд нөөц ялна (snapshot-ын 1 БИШ)');
+  eq(row.total_cost_mnt, 2600000, 'ROI: хөрөнгө = 200,000 × 13');
+  eq(row.cost_src, 'live', 'ROI: эх сурвалж = амьд');
+
+  // Амьд өртөг байхгүй бол snapshot руу унана
+  const noCost = { 'M-500': { sku: 'M-500', name: 'Урт модон сандал', cost: 0, stock: 13 } };
+  const r2 = runIn('_histCompute')(orders, { bySku: {}, byName: { 'урт модон сандал': { c: 150000, o: 4 } } },
+                                   catOf, resolveItem, noCost);
+  const row2 = (r2.products || []).find(r => r.product === 'Урт модон сандал');
+  eq(row2.unit_cost_mnt, 150000, 'ROI: өртөггүй бол snapshot нөөц болно');
+  eq(row2.cost_src, 'snapshot', 'ROI: эх сурвалж = snapshot');
+
+  // Хоёулаа байхгүй бол «өртөг ?» (ROI бодохгүй)
+  const r3 = runIn('_histCompute')(orders, { bySku: {}, byName: {} }, catOf, resolveItem, noCost);
+  const row3 = (r3.products || []).find(r => r.product === 'Урт модон сандал');
+  eq(row3.total_cost_mnt, 0, 'ROI: өртөг мэдэгдэхгүй бол 0');
+  eq(row3.roi_x, null, 'ROI: өртөггүй бол ROI бодохгүй');
+}
+
+// SCAN — ROI өртөг амьд каталогоос (2026-09-07)
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fin = src.slice(src.indexOf('const finalize = (obj)'));
+  const body = fin.slice(0, 2200);
+  ok(/liveP.*cost|CAT\[String\(p\.rsku\)\]/.test(body), 'scan: ROI амьд каталогийн өртгийг эхлээд харна');
+  ok(/!live && !fx && rfix\.byName/.test(body), 'scan: snapshot зөвхөн амьд өртөггүй үед');
+  const lh = src.slice(src.indexOf('async function loadHistory('));
+  ok(/bundle_items,cost,stock/.test(lh.slice(0, 4000)), 'scan: loadHistory амьд өртөг/нөөцийг татна');
+}
+
   finish();
 })();
 

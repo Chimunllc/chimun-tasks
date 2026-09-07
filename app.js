@@ -18933,7 +18933,7 @@ async function loadHistory(force) {
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
     const rawProducts = fetchWithTimeout(
-      `${DB_URL}/rest/v1/products?select=sku,name,category,price,type,bundle_items&limit=2000`,
+      `${DB_URL}/rest/v1/products?select=sku,name,category,price,type,bundle_items,cost,stock&limit=2000`,
       { headers: H }, 20000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Барааны толь — хүн баталгаажуулсан зураглал. Үүнгүйгээр тайлан нэрээр
     // таамаглаж, бараа нэрээ соливол ангилал буруу болно.
@@ -22795,7 +22795,7 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
       // Нэг бараа = нэг мөр. Каталогт таарвал КАТАЛОГИЙН нэрээр, эс бол өөрийн нэрээр.
       const res = RES(skuT, nm);
       const add = (key, prodName, sku, revenue, qty, daysOut) => {
-        const p = bucket[key] || (bucket[key] = { product: prodName, skus: {}, names: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+        const p = bucket[key] || (bucket[key] = { product: prodName, rsku: sku || '', skus: {}, names: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
         p.names[nm] = 1;   // жинхэнэ мөрийн нэрс — дарж захиалгуудыг хайхад хэрэгтэй
         if (sku) p.skus[sku] = 1;
         p.revenue_mnt += revenue; p.total_qty += qty; p.item_days_out += daysOut;
@@ -22819,23 +22819,33 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
 
   const finalize = (obj) => Object.values(obj).map(p => {
     // эзэмшил/өртөг: бүлгийн аль нэг SKU rh_roi_fix-д таарвал түүгээр, эс бол нэрээр
-    let fx = null;
-    for (const sk of Object.keys(p.skus)) { if (rfix.bySku && rfix.bySku[sk]) { fx = rfix.bySku[sk]; break; } }
+    // ── АМЬД КАТАЛОГ ЭХЛЭЭД ────────────────────────────────────────────────
+    // `rh_roi_fix` бол 2026 оны эхэнд хийсэн ХУУЧИРСАН snapshot: bySku-гийн түлхүүр
+    // нь SKU биш МӨРИЙН ДУГААР ('0','1','2'…) тул тоон sku-тай 103 мөрд САНАМСАРГҮЙ
+    // өртөг оногддог; byName-ийн 240 нэрийн зөвхөн 118 нь каталогт таарна; таарсан
+    // нь ч зөрдөг (Урт модон сандал: амьд 200,000 vs snapshot 2,000,000).
+    // Тиймээс `products.cost` × `products.stock`-ыг ЭХЛЭЭД, snapshot-ыг зөвхөн
+    // өртөг бүртгээгүй бараанд нөөц болгож ашиглана.
+    const liveP = p.rsku ? CAT[String(p.rsku)] : null;
+    let fx = null, live = null;
+    if (liveP && N(liveP.cost) > 0) live = { c: N(liveP.cost), o: N(liveP.stock) };
+    if (!live) for (const sk of Object.keys(p.skus)) { if (rfix.bySku && rfix.bySku[sk]) { fx = rfix.bySku[sk]; break; } }
     // ⚠ rh_roi_fix-ийн нэрийн түлхүүр нь ХУУЧИН (Booqable) нэрээр хадгалагдсан. Мөрүүдийг
     //   каталогийн нэр рүү нэгтгэсний дараа зөвхөн шинэ нэрээр хайвал өртөг олдохоо больж
     //   «өртөг ?» болдог. Тиймээс бүлгийн БҮХ нэрээр (шинэ + хуучин) хайна.
-    if (!fx && rfix.byName) {
+    if (!live && !fx && rfix.byName) {
       const cands = [p.product, ...Object.keys(p.names || {})];
       for (const nm2 of cands) { const hit = rfix.byName[normP(nm2)]; if (hit) { fx = hit; break; } }
     }
-    let owned = fx ? N(fx.o) : 0;
-    const unit = fx ? N(fx.c) : 0;
-    if (unit > 10000000 && owned > 10) owned = 1;        // үнэтэй хөрөнгийн сэжигтэй эзэмшил → 1-д бари
+    let owned = live ? live.o : (fx ? N(fx.o) : 0);
+    const unit = live ? live.c : (fx ? N(fx.c) : 0);
+    // ⚠ Зөвхөн SNAPSHOT-ын хог датад — амьд каталог найдвартай тул хөндөхгүй
+    if (!live && unit > 10000000 && owned > 10) owned = 1;
     const times = Object.keys(p._orders).length;
     const tot = (unit > 0 && owned > 0) ? unit * owned : 0;
     const rx = tot > 0 ? Math.round(p.revenue_mnt / tot * 10) / 10 : null;
     const sku = Object.keys(p.skus)[0] || null;
-    return { product: p.product, sku, names: Object.keys(p.names || {}), category: cat(sku, p.product), photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
+    return { product: p.product, sku, names: Object.keys(p.names || {}), category: cat(sku, p.product), photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, cost_src: live ? 'live' : (fx ? 'snapshot' : ''), item_days_out: Math.round(p.item_days_out) };
   });
 
   const products = finalize(prods).sort((a, b) => b.revenue_mnt - a.revenue_mnt);
@@ -23066,7 +23076,10 @@ function renderHistory() {
         const pct = maxRev > 0 ? Math.max(2, Math.round(rev / maxRev * 100)) : 0;
         const badge = (tot <= 0 || rx == null) ? `<span style="color:var(--muted);">өртөг ?</span>`
           : `<span style="color:${rx >= 3 ? 'var(--ok)' : rx >= 1 ? 'var(--warn)' : 'var(--danger)'};font-weight:700;">ROI ${rx}×</span>`;
-        const costStr = tot > 0 ? `хөрөнгө ${fmtMoneyShort(tot)}${owned > 1 ? ` (${owned.toLocaleString('mn-MN')}ш)` : ''}` : 'өртөг ?';
+        // Хуучин snapshot-оос ирсэн өртгийг ⚠-аар ялгана — тэр дата найдваргүй
+        const costStr = tot > 0
+          ? `хөрөнгө ${fmtMoneyShort(tot)}${owned > 1 ? ` (${owned.toLocaleString('mn-MN')}ш)` : ''}${x.cost_src === 'snapshot' ? ' ⚠' : ''}`
+          : 'өртөг ?';
         const thumb = x.photo
           ? `<img src="${escapeHtml(x.photo)}" loading="lazy" alt="" style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;object-fit:cover;background:var(--panel-hover);" onerror="this.style.visibility='hidden';">`
           : `<div style="flex:0 0 auto;width:34px;height:34px;border-radius:6px;background:var(--panel-hover);"></div>`;

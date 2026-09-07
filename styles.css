@@ -6454,6 +6454,26 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 
 /* ── Барааны задаргаа (Түрээсийн түүх) ───────────────────────────────────── */
 .hist-roi-row:hover { background:var(--panel-hover); }
+/* Хугацааны сонгогч — түүхийн тайлан (NOMAAD аналитиктай ижил зан төлөв) */
+.hist-period { margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel); }
+.hist-period-h { display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); flex-wrap: wrap; font-size: var(--fs-sm); color: var(--muted); }
+.hist-period-h b { color: var(--text); font-variant-numeric: tabular-nums; }
+.hist-period-all { color: var(--muted); }
+.hist-period-q { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+/* Хоёр бариултай муж сонгогч */
+.rng { position: relative; height: 30px; margin-top: var(--space-2); }
+.rng-track { position: absolute; top: 13px; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--panel-hover); }
+.rng-fill { position: absolute; top: 13px; height: 4px; border-radius: 2px; background: var(--primary); }
+.rng input[type=range] { position: absolute; top: 9px; left: 0; width: 100%; height: 12px; margin: 0;
+  background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.rng input[type=range]::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none;
+  width: 18px; height: 18px; border-radius: 50%; background: var(--primary); border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.35); cursor: pointer; }
+.rng input[type=range]::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px;
+  border-radius: 50%; background: var(--primary); border: 2px solid #fff; cursor: pointer; }
+.rng input[type=range]::-webkit-slider-runnable-track { background: none; }
 /* Тайлангийн ангилал таамаглалаар тодорхойлогдсоныг ил гаргах тууз */
 .hist-catwarn {
   margin: var(--space-3) 0; padding: var(--space-3) var(--space-4);

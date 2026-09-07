@@ -18956,7 +18956,8 @@ async function loadHistory(force) {
     // Багц задлахад бүрэлдэхүүний үнэ хэрэгтэй — sku индекс
     const _bySku = {};
     (prods || []).forEach(p => { if (p && p.sku) _bySku[String(p.sku)] = p; });
-    const comp = _histCompute(orders || [], roiFix, _catOf, _histItemResolver(prods || [], aliasMap), _bySku);
+    const _resolveItem = _histItemResolver(prods || [], aliasMap);
+    const comp = _histCompute(orders || [], roiFix, _catOf, _resolveItem, _bySku);
     state.history = {
       // KPI + сар нь comp (live app_orders)-оос — хуучин rh_v_* snapshot зөрдөг тул fallback л болгоно
       summary: comp.summary || summary[0] || null,
@@ -18975,6 +18976,8 @@ async function loadHistory(force) {
       namedCustomers: comp.customers.length,
       ordersCount: (orders || []).length,
       loadedAt: Date.now(),
+      // Хугацааны шүүлтэд дахин тооцоолохын тулд — дахин татахгүй
+      _fns: { catOf: _catOf, resolveItem: _resolveItem, bySku: _bySku, roiFix: roiFix || null },
     };
   } catch (e) {
     console.warn('loadHistory', e);
@@ -22931,12 +22934,109 @@ function bqSeasonChart(bq) {
   </div>`;
 }
 
-function renderHistory() {
+// Хоёр бариултай муж сонгогч. NOMAAD аналитикт дотоод хувилбар байсныг ерөнхий
+// болгож гаргав — загвар нь styles.css-д (.rng), тул шинэ inline <style> нэмэхгүй.
+function rangeHtml(id, lo, hi, vLo, vHi) {
+  const span = (hi - lo) || 1;
+  const L = (vLo - lo) / span * 100, R = 100 - (vHi - lo) / span * 100;
+  return `<div class="rng" data-rng="${escapeHtml(id)}" data-lo="${lo}" data-hi="${hi}">
+    <div class="rng-track"></div><div class="rng-fill" style="left:${L}%;right:${R}%;"></div>
+    <input type="range" class="rng-a" min="${lo}" max="${hi}" step="1" value="${vLo}" aria-label="эхлэх">
+    <input type="range" class="rng-b" min="${lo}" max="${hi}" step="1" value="${vHi}" aria-label="дуусах">
+  </div>`;
+}
+// onDone(a,b) — чирч дуусахад л дуудагдана (чирэх бүрд render хийвэл гацна).
+function attachRange(id, fmt, onDone) {
+  const box = document.querySelector(`[data-rng="${id}"]`); if (!box) return;
+  const lo = Number(box.dataset.lo), hi = Number(box.dataset.hi), span = (hi - lo) || 1;
+  const a = box.querySelector('.rng-a'), b = box.querySelector('.rng-b'), fill = box.querySelector('.rng-fill');
+  const label = document.querySelector(`[data-rnglabel="${id}"]`);
+  const live = () => {
+    let x = Number(a.value), y = Number(b.value);
+    if (x > y) { if (document.activeElement === a) { y = x; b.value = y; } else { x = y; a.value = x; } }
+    fill.style.left = ((x - lo) / span * 100) + '%';
+    fill.style.right = (100 - (y - lo) / span * 100) + '%';
+    if (label && typeof fmt === 'function') label.textContent = fmt(x) + ' – ' + fmt(y);
+    return [x, y];
+  };
+  [a, b].forEach(el => {
+    el.addEventListener('input', live);
+    el.addEventListener('change', () => { const [x, y] = live(); onDone(x, y); });
+  });
+}
+
+// ── Түүхийн хугацааны шүүлт ────────────────────────────────────────────────
+// Захиалгыг ЭВЕНТИЙН огноогоор (starts_at) шүүнэ — KPI-ийн «эвентийн огноогоор»
+// гэсэн тайлбартай нийцнэ. Огноогүй захиалга шүүлт идэвхтэй үед ХАСАГДАНА
+// (эс бөгөөс хугацаа сонгосон ч гэсэн нийлбэрт чимээгүй нэмэгдэнэ).
+function histDayList(orders) {
+  const ds = (orders || []).map(o => String((o && o.starts_at) || '').slice(0, 10))
+    .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (!ds.length) return [];
+  const out = []; let d = ds[0]; const end = ds[ds.length - 1];
+  let guard = 0;
+  while (d <= end && guard++ < 20000) { out.push(d); d = addDays(d, 1); }
+  return out;
+}
+function histFilterOrders(orders, days, lo, hi) {
+  if (!Array.isArray(days) || !days.length) return orders || [];
+  const a = days[Math.max(0, Math.min(days.length - 1, lo))];
+  const b = days[Math.max(0, Math.min(days.length - 1, hi))];
+  if (!a || !b) return orders || [];
+  const full = (lo <= 0 && hi >= days.length - 1);
+  if (full) return orders || [];
+  return (orders || []).filter(o => {
+    const d = String((o && o.starts_at) || '').slice(0, 10);
+    return d >= a && d <= b;
+  });
+}
+
+// Сонгосон хугацаагаар дахин тооцоолно. Захиалга аль хэдийн санах ойд байгаа тул
+// дахин ТАТАХГҮЙ — зөвхөн `_histCompute`-ыг шүүсэн олонлог дээр дахин ажиллуулна.
+function histView() {
   const bq = state.history;
+  if (!bq || bq.error || !bq._fns) return bq;
+  const days = histDayList(bq.orders || []);
+  const hiIx = Math.max(0, days.length - 1);
+  if (!state.histRange || state.histRange._hi !== hiIx) state.histRange = { lo: 0, hi: hiIx, _hi: hiIx };
+  const r = state.histRange;
+  if (r.lo <= 0 && r.hi >= hiIx) return Object.assign({}, bq, { _days: days, _full: true });
+  const sub = histFilterOrders(bq.orders || [], days, r.lo, r.hi);
+  const f = bq._fns;
+  const comp = _histCompute(sub, f.roiFix, f.catOf, f.resolveItem, f.bySku);
+  return Object.assign({}, bq, comp, {
+    summary: comp.summary, orders: sub, ordersCount: sub.length,
+    namedCustomers: (comp.customers || []).length,
+    _days: days, _full: false,
+  });
+}
+
+function renderHistory() {
+  const bq = histView();
   const head = (extra) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
       <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх</div><div style="font-size:11px;color:var(--muted);">2024–2026 · нэгдсэн захиалгын дата (эвент/түрээс) · шийдвэр гаргалтад</div></div>
       <button class="btn" data-bq-refresh style="padding:6px 12px;font-size:12px;">↻ Шинэчлэх</button>
-    </div>${extra || ''}`;
+    </div>${periodBar()}${extra || ''}`;
+
+  // Хугацааны сонгогч — өдрийн муж + түргэн товч. Захиалга санах ойд байгаа тул
+  // дахин татахгүй, зөвхөн дахин тооцоолно.
+  function periodBar() {
+    const days = (state.history && state.history._fns) ? histDayList(state.history.orders || []) : [];
+    if (days.length < 2) return '';
+    const hiIx = days.length - 1;
+    if (!state.histRange || state.histRange._hi !== hiIx) state.histRange = { lo: 0, hi: hiIx, _hi: hiIx };
+    const r = state.histRange;
+    const lbl = (i) => { const d = days[Math.max(0, Math.min(hiIx, Math.round(i)))] || ''; return d.slice(0, 7) + '/' + d.slice(8, 10); };
+    const q = (k, t) => `<button class="btn ui-raw hist-q" data-histq="${k}" style="padding:4px 10px;font-size:11.5px;">${t}</button>`;
+    const full = r.lo <= 0 && r.hi >= hiIx;
+    return `<div class="hist-period">
+      <div class="hist-period-h">
+        <span>📅 Хугацаа: <b data-rnglabel="hp">${lbl(r.lo)} – ${lbl(r.hi)}</b>${full ? ' <span class="hist-period-all">(бүх хугацаа)</span>' : ''}</span>
+        <span class="hist-period-q">${q('all', 'Бүгд')}${q('y', 'Энэ жил')}${q('m12', 'Сүүлийн 12 сар')}${q('m3', 'Сүүлийн 3 сар')}${q('m1', 'Сүүлийн сар')}</span>
+      </div>
+      ${rangeHtml('hp', 0, hiIx, r.lo, r.hi)}
+    </div>`;
+  }
 
   if (state._bqLoading && !bq) {
     return `<div style="padding:4px;">${head()}<div style="text-align:center;color:var(--muted);padding:40px 0;">Татаж байна…</div></div>`;
@@ -23242,6 +23342,27 @@ function renderHistory() {
 }
 
 function attachHistoryHandlers() {
+  // Хугацааны сонгогч — гулсагч ба түргэн товчнууд
+  {
+    const days = (state.history && state.history._fns) ? histDayList(state.history.orders || []) : [];
+    if (days.length > 1) {
+      const hiIx = days.length - 1;
+      const lbl = (i) => { const d = days[Math.max(0, Math.min(hiIx, Math.round(i)))] || ''; return d.slice(0, 7) + '/' + d.slice(8, 10); };
+      attachRange('hp', lbl, (a2, b2) => { state.histRange = { lo: a2, hi: b2, _hi: hiIx }; render(); });
+      const idxOf = (d) => { let i = days.findIndex(x => x >= d); return i < 0 ? hiIx : i; };
+      document.querySelectorAll('[data-histq]').forEach(btn => btn.onclick = () => {
+        const k = btn.dataset.histq;
+        const last = days[hiIx];
+        let lo = 0;
+        if (k === 'y') lo = idxOf(last.slice(0, 4) + '-01-01');
+        else if (k === 'm12') lo = idxOf(addDays(last, -365));
+        else if (k === 'm3') lo = idxOf(addDays(last, -90));
+        else if (k === 'm1') lo = idxOf(addDays(last, -30));
+        state.histRange = { lo, hi: hiIx, _hi: hiIx };
+        render();
+      });
+    }
+  }
   document.querySelector('[data-bq-refresh]')?.addEventListener('click', () => loadHistory(true));
   document.querySelectorAll('[data-bq-tab]').forEach(b => b.addEventListener('click', () => {
     state.bqTab = b.dataset.bqTab;

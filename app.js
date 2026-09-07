@@ -5840,9 +5840,65 @@ async function statementFileToMatrix(file) {
   return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
 }
 
+// ── ХХБ (TDB) хуулга — .xls, НЭГТГЭСЭН (merged) багана, СЕРИЙН огноо, ВАЛЮТ данс ──
+// Голомт/Хаан-аас 3 зүйлээр ялгаатай тул тусдаа задлагч:
+//   ① Толгойн баганын индекс дата мөрд ТААРАХГҮЙ (merged нүд ±1-2 гулсдаг).
+//   ② Огноо нь Excel серийн тоо (46235.109) — текст огноо БИШ.
+//   ③ Валют данс (USD) — дүн долларгаар, мөр бүрд «Ханш» багана бий.
+// Тогтвортой шинж: дата мөрийн ТОО утгууд дараалалдаа
+//   [серийн огноо, орлого, зарлага, ханш, үлдэгдэл] — үүгээр ононо (индексээр биш).
+function xlsSerialToDate(v) {
+  const n = Number(v);
+  if (!isFinite(n) || n < 20000 || n > 80000) return '';
+  const d = new Date(Math.round((n - 25569) * 86400000));
+  if (isNaN(d)) return '';
+  const p = x => String(x).padStart(2, '0');
+  // UTC геттер — серийн тоо нь хуулгын ЛОКАЛ цагийг илэрхийлдэг тул бүсээр гулсуулахгүй.
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+function tdbMeta(matrix) {
+  let isTdb = false, acct = '', ccy = 'MNT';
+  (matrix || []).slice(0, 14).forEach(row => {
+    (row || []).forEach(c => {
+      const t = String(c == null ? '' : c);
+      if (/теллер/i.test(t)) isTdb = true;
+      const m = t.match(/дансны\s*дугаар\s*:?\s*(\d{6,})\s*([A-Z]{3})?/i);
+      if (m) { acct = acct || m[1]; if (m[2]) ccy = m[2].toUpperCase(); }
+    });
+  });
+  return { isTdb, acct, ccy };
+}
+function parseStatementTdb(matrix, ccy) {
+  const rows = [], skipped = [];
+  const fx = String(ccy || 'MNT').toUpperCase() !== 'MNT';
+  (matrix || []).forEach(row => {
+    const nums = [], strs = [];
+    (row || []).forEach(c => {
+      if (typeof c === 'number') nums.push(c);
+      else { const t = String(c == null ? '' : c).trim(); if (t) strs.push(t); }
+    });
+    if (nums.length < 5) return;                       // толгой/хоосон/нийт мөр
+    const date = xlsSerialToDate(nums[0]);
+    if (!date) return;
+    const rate = fx ? (Number(nums[3]) > 0 ? Number(nums[3]) : 0) : 1;
+    if (fx && !rate) { skipped.push({ date, memo: strs[strs.length - 1] || '', debit: nums[2] || 0, why: 'ханш уншигдсангүй (валют хөрвүүлэх боломжгүй)' }); return; }
+    const memo = strs.length ? strs[strs.length - 1] : '';
+    const mid = strs.slice(1, Math.max(1, strs.length - 1));   // [0]=теллер, сүүл=утга
+    const account = (mid.find(x => /^\d{8,}$/.test(x.replace(/\s/g, ''))) || '').replace(/\s/g, '');
+    const name = mid.find(x => !/^\d[\d\s]*$/.test(x) && !/өглөгийн түр данс|виза карт/i.test(x)) || '';
+    const credit = Math.round((Number(nums[1]) || 0) * rate);
+    const debit = Math.round((Number(nums[2]) || 0) * rate);
+    const r = { date, memo, name, account, credit, debit };
+    if (fx) r.fx = { ccy: String(ccy).toUpperCase(), amt: (Number(nums[2]) || 0) || (Number(nums[1]) || 0), rate };
+    rows.push(r);
+  });
+  return { rows, headerRow: 0, cols: {}, skipped, ccy: String(ccy || 'MNT').toUpperCase() };
+}
 // Хуулгын 2D массиваас гүйлгээний мөр гаргана — толгойн мөрийг автоматаар олж баганыг нэрээр ононо.
 function parseStatement(matrix) {
   if (!Array.isArray(matrix) || !matrix.length) return { rows: [], headerRow: -1, cols: {} };
+  const _tdb = tdbMeta(matrix);
+  if (_tdb.isTdb) return parseStatementTdb(matrix, _tdb.ccy);
   let hr = -1, cols = {};
   for (let i = 0; i < Math.min(matrix.length, 20); i++) {
     const cells = (matrix[i] || []).map(c => String(c == null ? '' : c).trim().toLowerCase());
@@ -5899,6 +5955,8 @@ const EXPENSE_RULES = [
   [/буцаалт|буцаа|торгууль/i, '5800'],
   [/хүргэлт|тээвэр|такси|нүүлгэ/i, '1100'],
   [/шимтгэл|charges/i, '5700'],
+  [/facebk|facebook|\bmeta\b|instagram|tiktok|google\s*ads|\bads\b/i, '4100'],   // цахим зар (валют картаар)
+  [/apple\.com|google\s*(play|cloud|workspace)|openai|anthropic|claude|chatgpt|canva|figma|adobe|notion|slack|zoom|dropbox|spotify|netflix|godaddy|namecheap|hosting/i, '2400'],  // онлайн програм/апп
   [/сурталчил|контент|маркетинг|reels|бүүст/i, '4900'],
 ];
 function _acctCatLearn() { if (!state.acctCatLearn) { try { state.acctCatLearn = JSON.parse(localStorage.getItem('acctCatLearn') || '{}'); } catch (_) { state.acctCatLearn = {}; } } return state.acctCatLearn; }
@@ -6196,9 +6254,12 @@ function allPendingCardExpenses() {
 function pendCardOwner(r) { const t = parseCardToken(r && r.justification); return t ? t.ownerKey : ''; }
 function iOwnACard(meKey) { return (state.bankCards || []).some(c => c.active !== false && c.owner_key === meKey); }
 function detectStatementAccount(matrix) {
+  // ХХБ (TDB): «Дансны дугаар:  456084193 USD» — 7 дахь мөрд байдаг тул тусад нь уншина.
+  const _t = tdbMeta(matrix);
+  if (_t.isTdb && _t.acct) return _t.acct.length > 10 ? _t.acct.slice(-10) : _t.acct;
   // IBAN (MN+2+4банк+данс) → дансны дугаар (сүүл 10 орон). Хаан/Голомт хоёр форматыг тэвчинэ.
   const acctFromIban = (s) => { const m = String(s).replace(/\s+/g, '').match(/mn\d{2}(\d{4})(\d{6,})/i); if (!m) return ''; const a = m[2]; return a.length > 10 ? a.slice(-10) : a; };
-  for (let i = 0; i < Math.min(6, matrix.length); i++) {
+  for (let i = 0; i < Math.min(10, matrix.length); i++) {
     const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
     for (let j = 0; j < cells.length; j++) {
       const c = cells[j];
@@ -6364,7 +6425,7 @@ async function openStatementClassifyModal() {
           : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
           : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.fx ? ` · <b>${escapeHtml(String(r.fx.amt))} ${escapeHtml(r.fx.ccy)}</b> × ${fmtMoney(r.fx.rate)}` : ''}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${ctrl}
       </div>`;
@@ -6557,7 +6618,7 @@ async function openStatementClassifyModal() {
         const _dm = r.depMatch;
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
           accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
-          justification: `Хуулгаар орсон${r.personal ? ' · 🙍 ХУВИЙН данснаас (компани эзэнд өртэй)' : ''} · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(),
+          justification: `Хуулгаар орсон${r.personal ? ' · 🙍 ХУВИЙН данснаас (компани эзэнд өртэй)' : ''}${r.fx ? ` · ${r.fx.amt} ${r.fx.ccy} × ${r.fx.rate}` : ''} · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(),
           category: cat, deptBranch: brCode, priority: 'low',
           linkType: _dm ? 'order' : 'general', linkId: _dm ? _dm.id : '', linkLabel: _dm ? ('#' + _dm.number) : '' });
         state._finBackfill = null;

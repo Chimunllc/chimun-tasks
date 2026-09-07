@@ -17694,7 +17694,8 @@ function renderWriteoff() {
   const st = woStats(rows);
   const card = (label, val, col) => `<div class="wo-kpi"><div class="wo-kpi-l">${label}</div><div class="wo-kpi-v"${col ? ` style="color:${col};"` : ''}>${val}</div></div>`;
   const row = (x) => {
-    const p = (state.products || []).find(q => q && q.sku === x.sku);
+    const p = (state.products || []).find(q => q && q.sku === x.sku)
+      || (state.archivedProducts || []).find(q => q && q.sku === x.sku);
     const ph = (p && p.photo) ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 96))}" alt="" loading="lazy">` : '<span class="wo-ph">📦</span>';
     const acts = x.status === 'pending'
       ? `<button class="btn wo-btn" data-wo-write="${escapeHtml(x.id)}">🗂 Актлах</button>`
@@ -17750,7 +17751,8 @@ async function woClose(id, status) {
     if (b === null) return;
     buyer = String(b || '').trim();
   }
-  const p = (state.products || []).find(q => q && q.sku === x.sku);
+  const p = (state.products || []).find(q => q && q.sku === x.sku)
+    || (state.archivedProducts || []).find(q => q && q.sku === x.sku);
   if (p) { try { await saveProduct({ ...p, ...woDeductQty(p, x.qty) }); } catch (e) { showToast('⚠ Нөөц шинэчлэгдсэнгүй: ' + e.message, 'error', 5000); return; } }
   x.status = status; x.amount = amount; x.buyer = buyer;
   x.closed_at = new Date().toISOString(); x.closed_by = state.me;
@@ -17759,14 +17761,21 @@ async function woClose(id, status) {
   showToast(status === 'sold' ? `💰 ${fmtMoney(amount)} орлого бүртгэлээ · нөөцөөс ${x.qty}ш хасав` : `🗂 Актлалаа · нөөцөөс ${x.qty}ш хасав`, 'success', 4000);
   render();
 }
-function openWriteoffModal() {
-  const prods = (state.products || []).filter(p => p && p.sku && p.type !== 'service')
+// preSku — архивын жагсаалтаас шууд дуудахад тухайн барааг урьдчилан сонгоно.
+function openWriteoffModal(preSku) {
+  // Архивласан бараа `state.products`-д ирдэггүй тул тусад нь нэмнэ — актлах гол
+  // хэрэгцээ нь ЯГ тэдгээр (аль хэдийн каталогоос гаргасан) бараанууд дээр байдаг.
+  const arch = (state.archivedProducts || []).map(p => ({ ...p, _arch: true }));
+  const seen = new Set();
+  const prods = [...(state.products || []), ...arch]
+    .filter(p => p && p.sku && p.type !== 'service' && !seen.has(p.sku) && seen.add(p.sku))
     .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  if (preSku && !prods.some(p => p.sku === preSku) && typeof loadArchivedProducts === 'function') loadArchivedProducts();
   const modal = document.createElement('div'); modal.className = 'modal-bg';
   modal.innerHTML = `<div class="modal" style="max-width:480px;">
     <h2>🗂 Акт үүсгэх</h2>
     <p class="amo-hint">Түрээслэх боломжгүй болсон барааг сонгоно. Одоо нөөц хөндөгдөхгүй — «Актлах» эсвэл «Зарлаа» дарахад хасагдана.</p>
-    <label class="fld">Бараа<select id="wo-sku">${prods.map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(p.name)} (${(Number(p.stock) || 0)}ш)</option>`).join('')}</select></label>
+    <label class="fld">Бараа<select id="wo-sku">${prods.map(p => `<option value="${escapeHtml(p.sku)}"${p.sku === preSku ? ' selected' : ''}>${escapeHtml(p.name)} (${(Number(p.stock) || 0)}ш)${p._arch ? ' · архив' : ''}</option>`).join('')}</select></label>
     <label class="fld">Тоо ширхэг<input type="number" id="wo-qty" min="1" value="1" class="ui-raw"></label>
     <label class="fld">Шалтгаан<select id="wo-reason">${WO_REASONS.map(r => `<option>${escapeHtml(r)}</option>`).join('')}</select></label>
     <label class="fld">Тэмдэглэл<input id="wo-note" placeholder="сонголт"></label>
@@ -17778,7 +17787,7 @@ function openWriteoffModal() {
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   modal.querySelector('#wo-save').onclick = async () => {
     const sku = modal.querySelector('#wo-sku').value;
-    const p = (state.products || []).find(q => q && q.sku === sku);
+    const p = prods.find(q => q && q.sku === sku);
     const qty = Math.max(1, Number(modal.querySelector('#wo-qty').value) || 1);
     if (!p) { showToast('Бараа сонгоно уу', 'warn', 2500); return; }
     if (qty > (Number(p.stock) || 0)) { showToast(`Нөөцөд ${Number(p.stock) || 0}ш л байна`, 'warn', 3000); return; }
@@ -17954,7 +17963,8 @@ function renderProducts() {
         <button class="btn" id="prod-arch-toggle">${state.archOpen ? 'Хаах' : 'Харах'}</button>
       </div>
       ${state.archOpen ? `<div class="prod-arch-list">${_arch.map(a => `<div class="prod-arch-row">
-        <span class="prod-arch-n">${escapeHtml(a.name || a.sku)}<em>${escapeHtml(a.code || a.sku)}</em></span>
+        <span class="prod-arch-n">${escapeHtml(a.name || a.sku)}<em>${escapeHtml(a.code || a.sku)} · ${Number(a.stock) || 0}ш</em></span>
+        <button class="btn" data-wo-from="${escapeHtml(a.sku)}" title="Түрээслэх боломжгүй — актлах эсвэл зарах">🗂 Акт руу</button>
         <button class="btn" data-unarch="${escapeHtml(a.sku)}">Сэргээх</button>
       </div>`).join('')}</div>` : ''}
     </div>` : '';
@@ -18516,6 +18526,7 @@ function attachProductsHandlers() {
       render(); showToast('Сэргээгдлээ', 'ok', 2200);
     } catch (e) { showToast('Сэргээж чадсангүй: ' + e.message, 'error', 5000); b.disabled = false; }
   });
+  document.querySelectorAll('[data-wo-from]').forEach(b => b.onclick = () => openWriteoffModal(b.dataset.woFrom));
   const _rt = document.getElementById('repair-toggle');
   if (_rt) _rt.onclick = () => { state.repairOpen = !state.repairOpen; render(); };
   document.querySelectorAll('.repair-adv').forEach(b => b.onclick = () => advanceRepair(b.dataset.rep, b.dataset.to));
@@ -29425,6 +29436,7 @@ function refreshViewData() {
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();
     if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => { if (state.view === 'writeoff') render(); }); }
+    if (state.archivedProducts === undefined && state.isCEO) loadArchivedProducts().then(() => { if (state.view === 'writeoff') render(); });
   }
   if (v === 'stockcount' && canSeeStockCount()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

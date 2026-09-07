@@ -5584,6 +5584,7 @@ body.role-daily #add-project { display: none !important; }
 .prod-arch-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); background: var(--panel-hover); border-radius: var(--r-md); }
 .prod-arch-n { flex: 1; min-width: 0; font-size: var(--fs-md); color: var(--text); display: flex; flex-direction: column; }
 .prod-arch-n em { font-style: normal; font-size: var(--fs-xs); color: var(--muted); }
+.prod-arch-row .btn { padding: 4px 10px; font-size: var(--fs-sm); white-space: nowrap; }
 
 /* ── Хөрөнгийн багц — нэг бараа, олон удаагийн худалдан авалт ── */
 .pm-batches { margin-top: var(--space-4); }

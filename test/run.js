@@ -3583,6 +3583,20 @@ need(['orderCustType']);
   eq(F.countFilterList(merged, 'all', '').length, 2, 'эвдрэл: бусад шүүлт хэвээр');
 }
 
+// Бөөн актлалт — салбарын нөөцөөс хасах төлөвлөгөө (2026-09-07)
+// Зөвхөн `stock`-ыг хасвал салбарын нийлбэр зөрж, шилжүүлэг/тооллого буруу тоо үзүүлнэ.
+{
+  const p = { sku: 'M-1', stock: 10, qty_mevent: 6, qty_chimun: 3, qty_nomaad: 1 };
+  eq(F.writeOffBranchPatch(p, 2).patch, { qty_mevent: 4 }, 'актлалт: M-Event-ээс эхэлж хасна');
+  eq(F.writeOffBranchPatch(p, 8).patch, { qty_mevent: 0, qty_chimun: 1 }, 'актлалт: хүрэлцэхгүй бол дараагийн салбараас');
+  eq(F.writeOffBranchPatch(p, 2, 'nomaad').patch, { qty_nomaad: 0, qty_mevent: 5 }, 'актлалт: сонгосон салбараас ЭХЭЛНЭ');
+  eq(F.writeOffBranchPatch(p, 10).patch, { qty_mevent: 0, qty_chimun: 0, qty_nomaad: 0 }, 'актлалт: бүх салбар цэвэрлэгдэнэ');
+  eq(F.writeOffBranchPatch(p, 12).unallocated, 2, 'актлалт: салбарт хуваарилагдаагүй үлдэгдлийг хэлнэ');
+  eq(F.writeOffBranchPatch({ sku: 'M-2', stock: 4 }, 3).patch, {}, 'актлалт: хуваарилаагүй бараанд салбарын өөрчлөлт байхгүй');
+  eq(F.writeOffBranchPatch(p, 0).patch, {}, 'актлалт: 0 бол юу ч хасахгүй');
+  eq(F.writeOffBranchPatch(p, -5).patch, {}, 'актлалт: сөрөг тоо аюулгүй');
+}
+
 // Сарын муж — «-31» гэсэн БАЙХГҮЙ огноо (2026-09-06, ирцийн сарын тойм гацсан алдаа)
 {
   eq(F.nextMonthStr('2026-09'), '2026-10', 'сар: 09 → 10');

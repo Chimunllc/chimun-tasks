@@ -23011,7 +23011,33 @@ function histView() {
   });
 }
 
+// Агуулахын бодит хөрөнгө = каталогийн БҮХ бараа (өртөг × эзэмшсэн тоо).
+// ⚠ Түрээслэгдсэн барааны жагсаалтаас тооцвол ХЭЗЭЭ Ч ТҮРЭЭСЛЭГДЭЭГҮЙ хөрөнгө
+// огт харагдахгүй → нөхөлтийн хувь хиймлээр өндөр гарна. Амьд датаар M-Event-ийн
+// бодит хөрөнгө 943.7 сая₮ байхад тайлан 636.6 сая гэж харуулж байв (79 бараа дутуу).
+// Ленз идэвхтэй бол ТУХАЙН САЛБАРЫН тоогоор (qty_mevent г.м.), эс бол нийт нөөцөөр.
+// Багц/үйлчилгээ ХАСАГДАНА — багц нь бүрэлдэхүүнээ давхар тоолно.
+function warehouseCapital(products, branchKey) {
+  let capital = 0, withCost = 0, noCost = 0;
+  (products || []).forEach(p => {
+    if (!p) return;
+    if (typeof isService === 'function' && isService(p)) return;
+    if (typeof isPackage === 'function' && isPackage(p)) return;
+    if (p.archived) return;
+    const qty = branchKey && branchKey !== 'all'
+      ? (typeof branchQty === 'function' ? branchQty(p, branchKey) : 0)
+      : (Number(p.stock) || 0);
+    if (qty <= 0) return;
+    const c = Number(p.cost) || 0;
+    if (c > 0) { capital += c * qty; withCost++; } else { noCost++; }
+  });
+  return { capital, withCost, noCost };
+}
+
 function renderHistory() {
+  // Хөрөнгийн нөхөлт каталогоос тооцогддог тул бараа ачаалагдсан байх ёстой.
+  // Тайлан руу шууд орох зам олон тул рендер дотроос нь баталгаажуулна.
+  if (!state.products || !state.products.length) { if (typeof loadProductsCatalog === 'function') loadProductsCatalog(); }
   const bq = histView();
   const head = (extra) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 14px;flex-wrap:wrap;">
       <div><div style="font-weight:800;font-size:16px;">📊 Түрээсийн түүх</div><div style="font-size:11px;color:var(--muted);">2024–2026 · нэгдсэн захиалгын дата (эвент/түрээс) · шийдвэр гаргалтад</div></div>
@@ -23204,20 +23230,26 @@ function renderHistory() {
         захиалгын нэр каталогтой таараагүй. Агуулах → <b>тулгах</b> хэсгээс холбовол ангилал зөв болно.
       </div>` : '';
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
-      // ── 💰 Хөрөнгийн нөхөлт (нийт) — өртөгтэй барааны хөрөнгө оруулалт vs олсон орлого ──
-      const costed = roi.filter(x => N(x.total_cost_mnt) > 0);
-      const invest = costed.reduce((s, x) => s + N(x.total_cost_mnt), 0);
-      const recov = costed.reduce((s, x) => s + N(x.revenue_mnt), 0);
+      // ── 💰 Хөрөнгийн нөхөлт — АГУУЛАХЫН бүх хөрөнгө vs олсон орлого ──
+      const _lens = (typeof effectiveBranchLens === 'function') ? effectiveBranchLens() : 'all';
+      const _bk = (typeof lensToProd === 'function') ? lensToProd(_lens) : null;
+      const wh = warehouseCapital(state.products || [], _bk);
+      const invest = wh.capital;
+      const recov = roi.reduce((s, x) => s + N(x.revenue_mnt), 0);
       const recPct = invest > 0 ? Math.round(recov / invest * 100) : 0;
-      const noCostN = roi.length - costed.length;
-      const portfolio = card('💰 Хөрөнгийн нөхөлт (нийт)',
+      const noCostN = wh.noCost;
+      const _brLbl = _bk ? ((typeof lensSelLabel === 'function') ? lensSelLabel(_lens) : _bk) : '';
+      const portfolio = card(`💰 Хөрөнгийн нөхөлт${_brLbl ? ' — ' + _brLbl : ''}`,
         `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">
-           ${kpi('Нийт хөрөнгө оруулалт', fmtMoney(invest), 'var(--text)', `${costed.length} барааны нэгж өртөг × эзэмшил`)}
-           ${kpi('Нөхсөн (түрээсийн орлого)', fmtMoney(recov), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', `нөхөлт ${recPct}%`)}
+           ${kpi('Нийт хөрөнгө оруулалт', fmtMoney(invest), 'var(--text)', `агуулахын ${wh.withCost} бараа · өртөг × эзэмшил`)}
+           ${kpi(bq._full === false ? 'Сонгосон үеийн орлого' : 'Нөхсөн (түрээсийн орлого)', fmtMoney(recov), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', `${bq._full === false ? 'хөрөнгийн' : 'нөхөлт'} ${recPct}%`)}
            ${kpi(recPct >= 100 ? 'Ашиг (өртгөө давсан)' : 'Нөхөх үлдэгдэл', fmtMoney(Math.abs(recov - invest)), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', recPct >= 100 ? 'орлого > хөрөнгө' : 'дутуу')}
          </div>
          <div style="background:var(--panel-hover);border-radius:6px;height:16px;overflow:hidden;"><div style="width:${Math.min(100, recPct)}%;height:100%;background:${recPct >= 100 ? 'var(--ok)' : 'var(--warn)'};border-radius:6px;"></div></div>`,
-        `Нийт түрээсийн орлого нь хөрөнгө оруулалтынхаа <b>${recPct}%</b>-г нөхсөн.${noCostN ? ` ${noCostN} барааны нэгж өртөг оруулаагүй тул тооцоонд ороогүй.` : ''}`);
+        `${bq._full === false
+            ? `⚠ Хугацааны шүүлт идэвхтэй — <b>сонгосон үеийн</b> орлогыг <b>нийт</b> хөрөнгөтэй харьцуулж байна (нөхөлт биш).`
+            : `Нийт түрээсийн орлого нь хөрөнгө оруулалтынхаа <b>${recPct}%</b>-г нөхсөн.`}
+         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).${noCostN ? ` ${noCostN} барааны нэгж өртөг оруулаагүй тул тооцоонд ороогүй.` : ''}`);
       // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлого + хөрөнгө + ROI ──
       const byCat = {};
       roi.forEach(x => { const c = x.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(x); });

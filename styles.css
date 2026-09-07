@@ -6451,6 +6451,26 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-prsn-debt { display: flex; justify-content: space-between; font-size: var(--fs-sm); padding: 2px 0; }
 .stmt-prsn-debt.tot { border-top: 1px solid var(--border); margin-top: var(--space-1); padding-top: var(--space-1); font-weight: 700; }
 
+/* ── Санхүүгийн жагсаалт: эвхэгддэг ангиллын бүлэг (2026-09-07) ───────────── */
+.fin-grp {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--space-2);
+  cursor: pointer; user-select: none; border-radius: 8px;
+}
+.fin-grp:hover { background: var(--panel-hover); }
+.fin-grp-1 {
+  padding: 8px 12px; margin: 10px 0 1px 8px; font-weight: 800; font-size: var(--fs-md);
+  border-left: 3px solid var(--primary);
+}
+.fin-grp-2 {
+  padding: 6px 12px; margin: 4px 0 1px 20px; font-weight: 700; font-size: var(--fs-sm);
+  color: var(--text); border-left: 2px solid var(--border-strong);
+}
+.fin-grp-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-grp-n { color: var(--muted); font-weight: 400; }
+.fin-grp-s { color: var(--muted); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fin-caret { display: inline-block; transition: transform .12s; color: var(--muted); }
+.fin-caret.closed { transform: rotate(-90deg); }
+
 /* ── Ирц: гарсан цагийг гараар оруулах (2026-09-06) ───────────────────────── */
 .att-fixout {
   display: inline-block; margin-top: var(--space-1);

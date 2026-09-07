@@ -24076,6 +24076,7 @@ function renderFinanceReport(wrap) {
         <option value="__manual"${F.src === '__manual' ? ' selected' : ''}>Гараар бүртгэсэн</option>
       </select>` : '')
     + Object.entries(FLAGS).map(([k, [l]]) => `<button type="button" data-ff-flag="${k}" style="${chipCss((F.flags || []).includes(k))}">${l}</button>`).join('')
+    + (F.sort ? '' : `<button type="button" data-ff-expand style="${chipCss(!!state.finExpandAll)}">${state.finExpandAll ? '⊟ Бүгдийг хураах' : '⊞ Бүгдийг дэлгэх'}</button>`)
     + (F.ben ? `<span style="font-size:11.5px;background:var(--primary);color:#fff;border-radius:14px;padding:5px 10px;">👤 ${escapeHtml(F.ben)} <b data-ff-clearben style="cursor:pointer;margin-left:4px;">×</b></span>` : '')
     + (fActive ? `<button type="button" data-ff-clear style="padding:5px 10px;font-size:11.5px;border-radius:14px;border:1px solid var(--danger);color:var(--danger);background:var(--panel);cursor:pointer;">✕ Цэвэрлэх</button>` : '');
   wrap.appendChild(fbar);
@@ -24088,6 +24089,11 @@ function renderFinanceReport(wrap) {
     F.flags = F.flags.includes(k) ? F.flags.filter(x => x !== k) : [...F.flags, k];
     render();
   }));
+  fbar.querySelector('[data-ff-expand]')?.addEventListener('click', () => {
+    state.finExpandAll = !state.finExpandAll;
+    state.finGrpOpen = {};   // гараар нээсэн/хаасныг цэвэрлэж, шинэ өгөгдмөлд бүгд захирагдана
+    render();
+  });
   fbar.querySelector('[data-ff-clear]')?.addEventListener('click', () => { state.finF = { min: 0, src: '', flags: [], ben: '', sort: '' }; render(); });
   fbar.querySelector('[data-ff-clearben]')?.addEventListener('click', () => { F.ben = ''; render(); });
   if (fActive) {
@@ -24101,14 +24107,27 @@ function renderFinanceReport(wrap) {
   // ── Задаргаа: Салбар → Үндсэн → Дэд → мөр (салбар бүлэг эвхэгддэг) ──
   const stMark = (t) => finStage(t).mark;
   const stCol  = (t) => finStage(t).color;
-  const subHdr = (label, count, sum, level) => {
-    const st = level === 1
-      ? 'padding:7px 12px;margin:9px 0 1px 8px;font-weight:700;font-size:12px;border-left:3px solid var(--border-strong);'
-      : 'padding:4px 12px;margin:5px 0 1px 20px;font-weight:600;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;';
-    const d = document.createElement('div');
-    d.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;' + st;
-    d.innerHTML = `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(label)} <span style="color:var(--muted);font-weight:400;">(${count})</span></span><span style="color:var(--muted);font-weight:600;white-space:nowrap;">${fmtMoney(sum)}</span>`;
-    return d;
+  // Бүлгийн толгой = ЭВХЭГДДЭГ. Дэд бүлэг өгөгдмөлөөр ХААЛТТАЙ — эхлээд ангилал
+  // бүрийн дүнг нэг харцаар үзээд, хэрэгтэйг нь дарж дэлгэнэ (өмнө нь бүх мөр
+  // задарсан байсан тул 97 гүйлгээ гүйлгэж уншихад хэцүү байв).
+  const grpBlock = (label, count, sum, level, key, defOpen) => {
+    const st = state.finGrpOpen || {};
+    const open = Object.prototype.hasOwnProperty.call(st, key) ? !!st[key] : defOpen;
+    const box = document.createElement('div');
+    const h = document.createElement('div');
+    h.className = level === 1 ? 'fin-grp fin-grp-1' : 'fin-grp fin-grp-2';
+    h.innerHTML = `<span class="fin-grp-l"><span data-caret class="fin-caret${open ? '' : ' closed'}">▾</span> ${escapeHtml(label)} <span class="fin-grp-n">(${count})</span></span><span class="fin-grp-s">${fmtMoney(sum)}</span>`;
+    const body = document.createElement('div');
+    if (!open) body.style.display = 'none';
+    h.addEventListener('click', () => {
+      const nowOpen = body.style.display !== 'none';
+      body.style.display = nowOpen ? 'none' : '';
+      state.finGrpOpen = state.finGrpOpen || {};
+      state.finGrpOpen[key] = !nowOpen;
+      h.querySelector('[data-caret]')?.classList.toggle('closed', nowOpen);
+    });
+    box.appendChild(h); box.appendChild(body);
+    return { el: box, body };
   };
   // Ангиллын төлөвийн шошго — ангилаагүй бол «Ангилах хүлээж буй», ангилсан бол «Бүртгэсэн»
   const classBadge = (t) => isUnclassified(t)
@@ -24174,11 +24193,13 @@ function renderFinanceReport(wrap) {
     body.style.display = collapsed ? 'none' : '';
     const byMain = groupBy(byBr[b], t => finMainName(t.category));
     Object.keys(byMain).sort().forEach(main => {
-      body.appendChild(subHdr(main, byMain[main].length, sumOf(byMain[main]), 1));
+      const g1 = grpBlock(main, byMain[main].length, sumOf(byMain[main]), 1, `${b}|${main}`, true);
+      body.appendChild(g1.el);
       const bySub = groupBy(byMain[main], t => finSubName(t.category));
       Object.keys(bySub).sort().forEach(sub => {
-        body.appendChild(subHdr(sub, bySub[sub].length, sumOf(bySub[sub]), 2));
-        bySub[sub].forEach(t => body.appendChild(line(t)));
+        const g2 = grpBlock(sub, bySub[sub].length, sumOf(bySub[sub]), 2, `${b}|${main}|${sub}`, !!state.finExpandAll);
+        g1.body.appendChild(g2.el);
+        bySub[sub].forEach(t => g2.body.appendChild(line(t)));
       });
     });
     wrap.appendChild(body);

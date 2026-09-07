@@ -3963,6 +3963,59 @@ need(['orderCustType']);
   ok(!/зүлэг/.test(toyLine), 'scan: зүлэг нь тоглоомын түлхүүр үгэнд байхгүй');
 }
 
+
+// ── productOf нь ТОЛИЙГ ашиглана (2026-09-07) ───────────────────────────────
+// Нөөцийн сул үлдэгдэл (bookedQtyForRange), ROI (productUtilization), барааны
+// орлого (meventIncome) БҮГД productOf-оор явдаг. Бараа нэрээ соливол хуучин
+// захиалгын мөр таслагдаж: нөөц эзлэхгүй → ДАВХАР ЗАХИАЛГА, ROI/орлого дутуу.
+// 2026-09-02-нд яг ийм нүх үүсч зассан. Одоо толь нөөцлөлт болно.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const save = runIn('[state.products, state.itemAliases]');
+  runIn("state.products = [{ id:'M-054', sku:'M-054', name:'Хиймэл зүлэг 100 м²', stock:6 }];");
+  runIn("state._pidx = null; state._productsStamp = (state._productsStamp||0)+1;");
+
+  // (а) Толгүй бол хуучин нэртэй мөр ОЛДОХГҮЙ — энэ л алдааны эх сурвалж
+  runIn("state.itemAliases = {};");
+  const noAl = runIn('productOf')({ sku: '', name: 'Хиймэл зүлэг 100m2' });
+  ok(!noAl, 'productOf: толгүй үед хуучин нэр олдохгүй (алдааны эх)');
+
+  // (б) Толь байвал олдоно
+  runIn("state.itemAliases = { 'name:хиймэлзлэг100м2': 'M-054' };");
+  const withAl = runIn('productOf')({ sku: '', name: 'Хиймэл зүлэг 100m2' });
+  ok(withAl && withAl.sku === 'M-054', 'productOf: толиор хуучин нэр олдов');
+
+  // (в) sku-гаар толь
+  runIn("state.itemAliases = { 'sku:old-123': 'M-054' };");
+  const bySku = runIn('productOf')({ sku: 'OLD-123', name: 'огт өөр нэр' });
+  ok(bySku && bySku.sku === 'M-054', 'productOf: sku толиор олдов (том/жижиг үсэг хамаарахгүй)');
+
+  // (г) Толинд «бараа биш» (хоосон sku) гэж тэмдэглэснийг бараа болгож БУЦААХГҮЙ
+  runIn("state.itemAliases = { 'sku:dlv': '' };");
+  ok(!runIn('productOf')({ sku: 'DLV', name: 'Хүргэлт' }), 'productOf: «бараа биш» толь бараа буцаахгүй');
+
+  // (д) Шууд таарвал толь хэрэггүй
+  runIn("state.itemAliases = {};");
+  ok(runIn('productOf')({ sku: 'M-054', name: '' }).sku === 'M-054', 'productOf: шууд sku ялна');
+  ok(!runIn('productOf')(null), 'productOf: хоосон оролт унахгүй');
+
+  runIn('state.products = ' + JSON.stringify(save[0] || []) + '; state.itemAliases = ' + JSON.stringify(save[1] || {}) + ';');
+  runIn("state._pidx = null;");
+}
+
+// SCAN — productOf толийг алгасаж БОЛОХГҮЙ (2026-09-07)
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function productOf('));
+  const body = fn.slice(0, fn.indexOf('\n}') + 2);
+  ok(/resolveItemSku/.test(body), 'scan: productOf толиор нөөцлөнө (resolveItemSku)');
+  ok(/r\.sku/.test(body), "scan: productOf «бараа биш» толийг шүүнэ");
+  // Толь эрт ачаалагдана — зөвхөн агуулахын дэлгэцээс хамаарахгүй
+  const boot = src.indexOf("loadVatReceipts();    // НӨАТ баримт");
+  ok(boot > 0 && /loadItemAliases\(\);/.test(src.slice(boot, boot + 700)),
+     'scan: барааны толь эхлэхэд ачаалагдана');
+}
+
   finish();
 })();
 

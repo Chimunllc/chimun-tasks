@@ -6297,8 +6297,15 @@ async function openStatementClassifyModal() {
     if (!srcs.length) { srcAcctsEl.innerHTML = ''; return; }
     srcAcctsEl.innerHTML = `<div style="background:var(--warn-soft,rgba(217,119,6,.1));border:1px solid var(--warn);border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;">
       <div style="color:var(--warn);margin-bottom:6px;">🏦 <b>Бүртгэлгүй эх данс</b> — бүртгэвэл зардал дээр «Голомт/Хаан ••XXXX» гэж эмх цэгцтэй харагдана:</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">${srcs.map(d => `<button data-reg-src="${escapeHtml(d)}" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px solid var(--warn);background:var(--panel);color:var(--text);cursor:pointer;">➕ ••${escapeHtml(d.length > 4 ? d.slice(-4) : d)} бүртгэх</button>`).join('')}</div></div>`;
-    srcAcctsEl.querySelectorAll('[data-reg-src]').forEach(b => b.onclick = () => openBankAccountModal({ account_no: b.dataset.regSrc }));
+      <div class="stmt-prsn-acts">${srcs.map(d => {
+        const tail = escapeHtml(d.length > 4 ? d.slice(-4) : d);
+        return `<button class="stmt-prsn-btn ui-raw" data-reg-src="${escapeHtml(d)}">➕ ••${tail} компанийн данс</button>`
+             + `<button class="stmt-prsn-btn ui-raw" data-reg-src="${escapeHtml(d)}" data-reg-prsn="1">🙍 ••${tail} ХУВИЙН данс</button>`;
+      }).join('')}</div>
+      <div class="stmt-prsn-note">Хувийн данс гэж бүртгэвэл мөр бүрийг «компанийн / хувийн» гэж сонгодог болно — зөвхөн сонгосон нь зардал болно.</div></div>`;
+    srcAcctsEl.querySelectorAll('[data-reg-src]').forEach(b => b.onclick = () => openBankAccountModal(
+      { account_no: b.dataset.regSrc, purpose: b.dataset.regPrsn ? 'хувийн' : '', owner_key: b.dataset.regPrsn ? state.me : '' },
+      () => processFiles(lastFiles)));   // бүртгэсний дараа хуулгыг ДАХИН уншина (хувийн эсэх нь тусгагдана)
   };
   // Эзэн/салбар нь Данс & Карт БҮРТГЭЛЭЭС автоматаар ирнэ (syncCardMapsFromRegistry). Модал доторх
   // гар оноох панел ХАСАГДСАН — будилаанаас сэргийлж, бүртгэл нэг эх сурвалж болгов.
@@ -6366,8 +6373,11 @@ async function openStatementClassifyModal() {
   // гүйлгээ (жиш. хоёр ажилтанд ижил цалин, дансны багана хоосон) ИЖИЛ хээтэй болдог.
   // Set үед хоёр дахь нь «аль хэдийн орсон» гэж алгасагдаж зардал дутуу ордог байв.
   const importedFpCounts = () => { const m = new Map(); (state.financeRequests || []).forEach(r => { if (r.status === 'deleted') return; const x = String(r.justification || '').match(/\[#([^\]]+)\]/); if (x) m.set(x[1], (m.get(x[1]) || 0) + 1); }); return m; };
-  modal.querySelector('#sc-file').addEventListener('change', async e => {
-    const files = [...e.target.files]; if (!files.length) return;
+  let lastFiles = [];
+  // Файлыг ДАХИН уншиж болохоор функц болгосон: эх дансыг «хувийн» гэж бүртгэсний дараа
+  // мөрүүдийг дахин үнэлэх шаардлагатай (нөхөн олголтын скан ч дахин ажиллана).
+  const processFiles = async (files) => {
+    if (!files || !files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
       rows = []; dropped = []; settleAdd = {};
@@ -6426,7 +6436,8 @@ async function openStatementClassifyModal() {
       status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
       renderSrcAccts(); renderDropped(); render(); saveBtn.style.display = '';
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
-  });
+  };
+  modal.querySelector('#sc-file').addEventListener('change', e => { lastFiles = [...e.target.files]; processFiles(lastFiles); });
   saveBtn.onclick = async () => {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
@@ -12082,8 +12093,8 @@ function attachMarketingHandlers() {
     cv.toBlob(blob => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `poster-${P.size}-${Date.now()}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); showToast('PNG татагдлаа ✓', 'success', 2000); }, 'image/png');
   });
 }
-function openBankAccountModal(a) {
-  const isNew = !a; a = a || {};
+function openBankAccountModal(a, onSaved) {
+  const isNew = !a || !a.id; a = a || {};
   const sel = (opts, cur, ph) => `<option value="">${ph}</option>` + opts.map(o => `<option value="${escapeHtml(o)}"${o === cur ? ' selected' : ''}>${escapeHtml(o)}</option>`).join('');
   const _staff = (TEAM || []).filter(m => (m.status || 'идэвхтэй') !== 'гарсан').sort((x, y) => (y.level || 0) - (x.level || 0) || String(x.name || '').localeCompare(String(y.name || '')));
   const ownerOpts = `<option value="">— эзэнгүй —</option>` + _staff.map(m => `<option value="${escapeHtml(personKey(m))}"${personKey(m) === a.owner_key ? ' selected' : ''}>${escapeHtml(m.name || '')}</option>`).join('');
@@ -12142,7 +12153,7 @@ function openBankAccountModal(a) {
     const ownerKey = modal.querySelector('#ba-owner').value;
     const rec = { id, bank: g('#ba-bank'), name, account_no: no, iban: g('#ba-iban'), currency: modal.querySelector('#ba-cur').value, purpose: g('#ba-purpose'), branch: g('#ba-branch'), owner_key: ownerKey, owner_name: memberName(ownerKey) || '', note: g('#ba-note'), active: true, sort: a.sort || (state.bankAccounts || []).length + 1 };
     modal.querySelector('#ba-save').disabled = true;
-    if (await saveBankAccount(rec)) { close(); await loadBankAccounts(true); showToast('Данс хадгаллаа', 'success', 2000); }
+    if (await saveBankAccount(rec)) { close(); await loadBankAccounts(true); showToast('Данс хадгаллаа', 'success', 2000); if (typeof onSaved === 'function') onSaved(); }
     else modal.querySelector('#ba-save').disabled = false;
   };
   modal.querySelector('#ba-del').onclick = async () => {

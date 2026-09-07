@@ -8559,7 +8559,7 @@ async function nextFreeProductCode() {
 const ASAR_MODULES = {
   'M-313': { w: 12, mod: 5, bays: 5, set: 'A' },
   'M-314': { w: 12, mod: 5, bays: 5, set: 'B' },
-  'M-311': { w: 18, mod: 5, bays: 8, set: 'A' },
+  'M-315': { w: 18, mod: 5, bays: 8, set: 'A' },
   'M-312': { w: 18, mod: 5, bays: 6, set: 'B' },
 };
 function asarModuleOf(sku) { return ASAR_MODULES[String(sku || '')] || null; }
@@ -8602,7 +8602,7 @@ const ASAR_MODULE_PRODUCTS = [
     cost: 6900000, supplier: 'Changzhou Maisite Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2025-03-27',
     photos: ['https://n8n.nomaadcamp.com/img/79c2672e-4273-42db-ad4b-a5a5540713e9.jpg', 'https://n8n.nomaadcamp.com/img/fa4e6d82-6da4-4a83-a009-68a0ac0bc636.jpg'],
     description: '12 метр өргөн асрын 5 метрийн нэг модуль. 5 модуль = 12×25м хүртэл.\n\n• Иж бүрдэл: B (2025 он, 12×10 + 12×15 нийлсэн) — ⚠ A иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ.\n• Гарал үүсэл: Хятад, Чанжоу — 常州迈斯特篷房有限公司 Changzhou Maisite (гэрээ 2025N-0327).\n• Карказ: алюминий 68×122×3мм, төмөр эд анги цайрдсан. Хана 3м. Модулийн алхам 5м.\n• Хулдаас: дээвэр ба хана 850г/м² давхар PVC, цагаан. Дөрвөн талдаа тунгалаг цонхтой.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
-  { sku: 'M-311', name: 'Асар 18м өргөн · 5м модуль (A иж бүрдэл)', price: asarPriceFor(18, 5), deposit: 0, stock: 8,
+  { sku: 'M-315', name: 'Асар 18м өргөн · 5м модуль (A иж бүрдэл)', price: asarPriceFor(18, 5), deposit: 0, stock: 8,
     cost: 10287500, supplier: 'Changzhou Maisite Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2026-06-09',
     photos: ['https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg', 'https://n8n.nomaadcamp.com/img/gal-aea9ebdebd436e60bfcfcbe47f2f00ad.jpg', 'https://n8n.nomaadcamp.com/img/up-da75f38c7596124328b701829f796687.jpg', 'https://n8n.nomaadcamp.com/img/up-e41fb2172ff1837004dea6b142b712ac.jpg'],
     description: '18 метр өргөн асрын 5 метрийн нэг модуль. 8 модуль = 18×40м хүртэл (720 м²).\n\n• Иж бүрдэл: A (2026 он) — ⚠ B иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ, профиль өөр.\n• Гарал үүсэл: Хятад, Чанжоу — 常州迈斯特篷房有限公司 Changzhou Maisite (гэрээ 2026N-0609).\n• Карказ: алюминий, гол профиль 112×203мм, төмөр эд анги цайрдсан. Багана 4м.\n• Хулдаас: дээвэр ба хана 850г/м² давхар PVC, цагаан. Дөрвөн талдаа тунгалаг цонхтой.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
@@ -8623,9 +8623,9 @@ const ASAR_LEGACY_MAP = {
   'M-002': 'M-314', 'M-003': 'M-314',                                 // 12×10 + 12×15 = B иж бүрдэл
   'M-290': 'M-313', 'M-291': 'M-313', 'M-292': 'M-313',               // 12×20/30/35 — зөвхөн цаасан дээр байсан
   'M-297': 'M-312',                                                   // 18×30 = B иж бүрдэл
-  'M-278': 'M-311', 'M-293': 'M-311', 'M-294': 'M-311', 'M-295': 'M-311', 'M-296': 'M-311',
-  'M-298': 'M-311', 'M-299': 'M-311', 'M-300': 'M-311', 'M-301': 'M-311', 'M-302': 'M-311',
-  'M-303': 'M-311', 'M-304': 'M-311',
+  'M-278': 'M-315', 'M-293': 'M-315', 'M-294': 'M-315', 'M-295': 'M-315', 'M-296': 'M-315',
+  'M-298': 'M-315', 'M-299': 'M-315', 'M-300': 'M-315', 'M-301': 'M-315', 'M-302': 'M-315',
+  'M-303': 'M-315', 'M-304': 'M-315',
 };
 // Барааг архивлах — saveProduct нь `archived` талбарыг бичдэггүй тул тусад нь PATCH.
 async function setProductArchived(sku, val) {

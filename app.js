@@ -4453,6 +4453,26 @@ function expectedInWarehouse(stock, outQty) {
   return Math.max(0, (Number(stock) || 0) - (Number(outQty) || 0));
 }
 
+// Зөрүүний МӨНГӨН үнэ. «6 ширхэг дутуу» гэдэг шийдвэр гаргуулдаггүй,
+// «1.2 сая₮ алдагдал» гаргуулдаг. Нэгж өртөг нь багцын жигнэсэн дунджаас ирнэ.
+// costOf(sku) → нэгж өртөг. Цэвэр функц (state уншихгүй) тул тестлэгдэнэ.
+function countLossValue(rows, costOf) {
+  const latest = countLatestBySku(rows);
+  const cost = (sku) => Math.max(0, Number(costOf ? costOf(sku) : 0) || 0);
+  let shortQty = 0, shortVal = 0, overQty = 0, repQty = 0, woQty = 0, woVal = 0;
+  latest.forEach((r) => {
+    const c = cost(r.sku), d = countDiff(r);
+    if (d < 0) { shortQty += -d; shortVal += -d * c; }
+    else if (d > 0) overQty += d;
+    const dm = countDamage(r);
+    repQty += dm.rep; woQty += dm.wo; woVal += dm.wo * c;
+  });
+  return { shortQty, shortVal, overQty, repQty, woQty, woVal, totalVal: shortVal + woVal };
+}
+// Барааны нэгж өртөг — багцаас гарсан жигнэсэн дундаж (products.cost) эсвэл гар утга.
+function countUnitCost(sku) {
+  return Number((state.productCosts || {})[sku]) || Number((productBySku(sku) || {}).cost) || 0;
+}
 // Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
 function countStats(rows, totalProducts) {
   const latest = countLatestBySku(rows);
@@ -16548,6 +16568,10 @@ function renderStockCount() {
   const pct = st.total ? Math.round(st.counted / st.total * 100) : 0;
 
   const merged = countMergeProducts(all, rows);
+  // Зөрүүг МӨНГӨӨР — шийдвэр гаргуулдаг тоо. Өртөг нь санхүүгийн мэдээлэл тул
+  // зөвхөн өртөг харах эрхтэй хүнд (нярав тоолно, дүнг удирдлага хардаг).
+  const showMoney = canProductPart('cost');
+  const loss = showMoney ? countLossValue(rows, countUnitCost) : null;
   const nTodo = merged.filter(x => x.st === 'todo').length;
   const nDone = merged.length - nTodo;
   // Анхдагчаар ТООЛООГҮЙ — тоолсон бараа ажлын жагсаалтаас гарч, үлдсэн ажил л
@@ -16600,7 +16624,7 @@ function renderStockCount() {
     const who = r ? countRowPerson(r) : '', at = String((r && r.counted_at) || '').slice(11, 16);
     const byTxt = who ? `${memberName(who)}${at ? ' · ' + at : ''}` : '';
     const icon = x.st === 'todo' ? '○' : x.st === 'ok' ? '✓' : '⚠';
-    const qtyTxt = !r ? `${Number(p.stock) || 0} ш`
+    const qtyTxt = !r ? `${countExpectedFor(p)} ш`
                  : d === 0 ? `${r.counted_qty} = ${r.system_qty}` : `${r.system_qty} → ${r.counted_qty}`;
     const sub = byTxt || escapeHtml(`${p.code || p.sku || ''}${p.category ? ' · ' + p.category : ''}`);
     const dm = countDamage(r);
@@ -16611,7 +16635,7 @@ function renderStockCount() {
       <span class="stc-row-i">${icon}</span>
       <span class="stc-row-n">${escapeHtml(p.name || p.sku)}<span class="stc-row-by">${sub}</span></span>
       ${dmgBadge}
-      <span class="stc-row-q">${qtyTxt}</span>
+      <span class="stc-row-q">${qtyTxt}${showMoney && d < 0 && countUnitCost(p.sku) > 0 ? `<em>${fmtMoneyShort(-d * countUnitCost(p.sku))}</em>` : ''}</span>
       ${d && r && !r.applied && canApply ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>` : ''}
       ${d && r && r.applied ? `<span class="stc-done">залруулсан${r.applied_by ? ' · ' + escapeHtml(memberName(r.applied_by)) : ''}</span>` : ''}
     </div>`;
@@ -16622,6 +16646,7 @@ function renderStockCount() {
     <div class="stc-head">
       <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))}</span></div>
       <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
+      ${loss && loss.totalVal > 0 ? `<div class="stc-loss">Алдагдал <b>${fmtMoney(loss.totalVal)}</b>${loss.shortQty ? ` · дутуу ${loss.shortQty} ш ${fmtMoneyShort(loss.shortVal)}` : ''}${loss.woQty ? ` · актлах ${loss.woQty} ш ${fmtMoneyShort(loss.woVal)}` : ''}</div>` : ''}
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
       ${canManage ? `<div class="stc-actions"><button class="btn ui-raw" id="stc-close">Тооллого хаах</button></div>` : ''}
     </div>
@@ -16691,7 +16716,7 @@ function attachStockCountHandlers() {
     b.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(); } };
   });
   const qty = $('stc-qty');
-  if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - (Number(p && p.stock) || 0); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } _dmgSync(); };
+  if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - countExpectedFor(p); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } _dmgSync(); };
   const _dmgSync = () => {
     const cnt = state.scQty == null ? countExpectedFor(productBySku(state.scActive)) : Number(state.scQty);
     const rep = Math.max(0, Number(state.scRep) || 0), wo = Math.max(0, Number(state.scWo) || 0);

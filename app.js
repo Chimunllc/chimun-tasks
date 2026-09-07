@@ -9279,7 +9279,9 @@ function openManualOutModal(memberKey, name, day, inTs) {
   document.getElementById('att-mout-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'att-mout-modal';
-  const chips = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00'];
+  // 17:00-аас маргаашийн 08:00 хүртэл — шөнө дүл ажиллаад өглөө тарах ээлж бий.
+  const chips = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00',
+    '00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00'];
   modal.innerHTML = `<div class="modal amo-modal">
     <h2>✍️ Гарсан цаг оруулах</h2>
     <p class="amo-hint"><b>${escapeHtml(name)}</b> · ${escapeHtml(day)}<br>

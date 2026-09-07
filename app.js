@@ -9017,6 +9017,10 @@ async function saveProduct(product) {
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
     showToast('Бараа хадгалагдлаа', 'success', 1500);
+    // ⚠ Тайлан (Дүн шинжилгээ) нь `state.history`-г сесс дундаа кэшлэдэг. Ангилал/нэр
+    // зассаны дараа хуучин тоо харагдвал «хадгалагдаагүй» мэт ойлгогдоно — кэшийг
+    // хүчингүй болгож дараагийн нээлтэд дахин тооцуулна.
+    state.history = null;
     loadProductsCatalog();
   } catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 5000); }
 }
@@ -18719,7 +18723,12 @@ async function loadHistory(force) {
     const rawProducts = fetchWithTimeout(
       `${DB_URL}/rest/v1/products?select=sku,name,category&limit=2000`,
       { headers: H }, 20000).then(r => r.ok ? r.json() : []).catch(() => []);
-    const [summary, monthly, methods, orders, roiFix, prods] = await Promise.all([
+    // Барааны толь — хүн баталгаажуулсан зураглал. Үүнгүйгээр тайлан нэрээр
+    // таамаглаж, бараа нэрээ соливол ангилал буруу болно.
+    const rawAliases = fetchWithTimeout(
+      `${DB_URL}/rest/v1/product_aliases?select=alias,sku&limit=5000`,
+      { headers: H }, 15000).then(r => r.ok ? r.json() : []).catch(() => []);
+    const [summary, monthly, methods, orders, roiFix, prods, aliases] = await Promise.all([
       get('rh_v_summary'),
       get('rh_v_monthly_revenue', '&order=month.asc'),
       get('rh_v_payment_method'),
@@ -18727,8 +18736,12 @@ async function loadHistory(force) {
       // Эзэмшсэн тоо (Booqable stock_counts) + нэгж өртөг: {bySku,byName → {o,c}}. ROI-д ашиглана.
       get('app_config', '&key=eq.rh_roi_fix&select=value').then(r => r[0] && r[0].value).catch(() => null),
       rawProducts,
+      rawAliases,
     ]);
-    const comp = _histCompute(orders || [], roiFix, _histCatResolver(prods || []));
+    const aliasMap = {};
+    (aliases || []).forEach(a => { if (a && a.alias) aliasMap[a.alias] = a.sku || ''; });
+    const _catOf = _histCatResolver(prods || [], aliasMap);
+    const comp = _histCompute(orders || [], roiFix, _catOf);
     state.history = {
       // KPI + сар нь comp (live app_orders)-оос — хуучин rh_v_* snapshot зөрдөг тул fallback л болгоно
       summary: comp.summary || summary[0] || null,
@@ -18741,6 +18754,7 @@ async function loadHistory(force) {
       roi: comp.roi,
       orders: orders || [],   // барааны задаргаанд (histProductOrders) хэрэгтэй
       roiFix: roiFix || null,
+      catStats: Object.assign({}, _catOf.stats),   // хэдэн мөр таамагласныг тайланд ил гаргана
       unknownRev: comp.unknownRev,
       unknownCnt: comp.unknownCnt,
       namedCustomers: comp.customers.length,
@@ -22206,7 +22220,8 @@ const _HIST_CAT_KW = [
   [/майхан|асар|tent|зонт|сүүдрэвч|павильон/, 'Майхан'],
   [/хөгжим|чанга|микрофон|спикер|array|sound|колонк/, 'Хөгжим'],
   [/утаа|манан|эффект|конфетти|bubble|хөөс|party|мананцар/, 'Эффект'],
-  [/тоглоом|батут|шаржигнуур|гулгуур|зүлэг|бөмбөлөг/, 'Хөгжөөнт тоглоом'],
+  [/тоглоом|батут|шаржигнуур|гулгуур|бөмбөлөг/, 'Хөгжөөнт тоглоом'],
+  [/зүлэг|хивс|багана|тугны|чимэглэл/, 'Засал, тохижилт'],
   [/тайз|подиум|шал/, 'Тайз'],
   [/халаагуур|дулаан|агааржуул|сэнс|кондиц|газан/, 'Халаалт, агааржуулалт'],
   [/генератор|цахилгаан|залгуур|кабель|сунгагч|розетк|эрчим/, 'Эрчим хүч, цахилгаан'],
@@ -22216,20 +22231,42 @@ function _histNormAgg(s) {
   s = String(s || '').toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9а-яёүө ]/g, ' ');
   return s.split(/\s+/).filter(Boolean).join(' ');
 }
-function _histCatResolver(prods) {
-  const bySku = {}, byName = {}, byAgg = {};
+// Захиалгын мөрийг каталогийн ангилалд хөрвүүлнэ.
+// ⚠ Мөрийн нэр нь 3 өөр системээс ирсэн тул каталогийн нэртэй ихэвчлэн ТААРДАГГҮЙ
+// («Хиймэл зүлэг 100m2» ↔ «Хиймэл зүлэг 100 м²»). Тиймээс агуулахын дэлгэцээр хүн
+// баталгаажуулсан `product_aliases` толийг ЭХЛЭЭД хардаг — тэр нь цорын ганц
+// найдвартай зураглал. Толинд байхгүй бол л түлхүүр үгээр таамаглана, тэр таамаг
+// хэдэн мөрд хийгдсэнийг `.stats`-д тоолж тайланд ил гаргана (чимээгүй буруу
+// ангилахаас сэргийлнэ — 2026-09-07-нд мөрийн 56% нь таамаг байсан).
+function _histCatResolver(prods, aliases) {
+  const bySku = {}, byName = {}, byAgg = {}, catBySku = {};
   (prods || []).forEach(p => {
     const c = String(p.category || '').trim() || 'Бусад';
-    if (p.sku) bySku[String(p.sku).toLowerCase()] = c;
+    if (p.sku) { bySku[String(p.sku).toLowerCase()] = c; catBySku[String(p.sku)] = c; }
     if (p.name) { byName[_normProdName(p.name)] = c; const a = _histNormAgg(p.name); if (!byAgg[a]) byAgg[a] = c; }
   });
-  return (sku, name) => {
-    const c = bySku[String(sku || '').toLowerCase()] || byName[_normProdName(name)] || byAgg[_histNormAgg(name)];
-    if (c) return c;
-    const a = _histNormAgg(name);
-    for (const kv of _HIST_CAT_KW) if (kv[0].test(a)) return kv[1];
+  const al = aliases || {};
+  const stats = { exact: 0, alias: 0, guess: 0, none: 0 };
+  const fn = (sku, name) => {
+    // (а) толь — хүн баталгаажуулсан зураглал бүхнээс дээгүүр
+    const rawSku = String(sku || '').trim();
+    let a = rawSku ? al['sku:' + rawSku.toLowerCase()] : undefined;
+    if (a === undefined && typeof normItemKey === 'function') {
+      const nk = normItemKey(name);
+      if (nk) a = al['name:' + nk];
+    }
+    if (a) { const c = catBySku[a]; if (c) { stats.alias++; return c; } }
+    // (б) шууд таарсан
+    const c2 = bySku[rawSku.toLowerCase()] || byName[_normProdName(name)] || byAgg[_histNormAgg(name)];
+    if (c2) { stats.exact++; return c2; }
+    // (в) түлхүүр үгийн ТААМАГ — найдваргүй
+    const agg = _histNormAgg(name);
+    for (const kv of _HIST_CAT_KW) if (kv[0].test(agg)) { stats.guess++; return kv[1]; }
+    stats.none++;
     return 'Бусад';
   };
+  fn.stats = stats;
+  return fn;
 }
 
 // ── Түүхэн аналитик цөм: app_orders (нэгдсэн эх сурвалж)-оос шууд тооцоолно ──
@@ -22723,6 +22760,15 @@ function renderHistory() {
           <div style="flex:0 0 auto;font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoneyShort(rev)}</div>
         </div>`;
       };
+      const _cs = (bq && bq.catStats) || null;
+      const _guessN = _cs ? (Number(_cs.guess) || 0) + (Number(_cs.none) || 0) : 0;
+      const _totN = _cs ? _guessN + (Number(_cs.exact) || 0) + (Number(_cs.alias) || 0) : 0;
+      // Ангилал таамаглалаар тодорхойлогдсон мөрүүд — тоог ил гаргана, эс бөгөөс
+      // буруу бүлэглэлт үл мэдэгдэн үлдэнэ («хиймэл зүлэг → тоглоом» гэх мэт).
+      const catWarn = (_guessN > 0 && _totN > 0) ? `<div class="hist-catwarn">
+        ⚠ <b>${_guessN}</b> / ${_totN} мөрийн ангилал <b>таамаглалаар</b> тодорхойлогдсон —
+        захиалгын нэр каталогтой таараагүй. Агуулах → <b>тулгах</b> хэсгээс холбовол ангилал зөв болно.
+      </div>` : '';
       const stuck = roi.filter(x => N(x.unit_cost_mnt) > 0 && x.roi_x != null && N(x.roi_x) < 1).sort((a, b) => N(a.roi_x) - N(b.roi_x));
       // ── 💰 Хөрөнгийн нөхөлт (нийт) — өртөгтэй барааны хөрөнгө оруулалт vs олсон орлого ──
       const costed = roi.filter(x => N(x.total_cost_mnt) > 0);
@@ -22779,7 +22825,7 @@ function renderHistory() {
       </div>`).join('');
       const histDonut = card('🍩 Ямар ангилал хамгийн эрэлттэй (орлогын хувиар)',
         `<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;"><div style="flex:0 0 auto;">${donutSvg}</div><div style="flex:1;min-width:180px;">${legend}</div></div>`);
-      body = kpis + portfolio + histDonut
+      body = kpis + catWarn + portfolio + histDonut
         + card(`Орлого × ROI — ангиллаар (${roi.length} бараа)`, cats.map(catSection).join(''),
             'ROI× = нэхэмжилсэн орлого ÷ нийт хөрөнгө (нэгж өртөг × эзэмшсэн тоо). 🟢 ≥3 · 🟡 1–3 · 🔴 <1 өртгөө нөхөөгүй. Бүлгийн толгойг дарж хумина.')
         + (stuck.length ? card(`⚠️ Анхаарах — өртгөө нөхөөгүй бараа (${stuck.length})`,

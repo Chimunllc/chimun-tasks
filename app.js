@@ -8527,6 +8527,85 @@ function nextProductCode() {
   (state.products || []).forEach(p => { const m = /^M-(\d+)$/.exec(String(p.code || '')); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } });
   return 'M-' + String(max + 1).padStart(3, '0');
 }
+// ═══════════ АСАР = МОДУЛЬ (2026-09-07) ═══════════
+// Асар нь тогтмол хэмжээтэй бараа БИШ — 5 метрийн модулиас угсардаг. Урт бүрийг
+// тусдаа бараа болговол (12×20, 12×25, 18×45 …) НЭГ иж бүрдлийг нэг өдөр олон
+// удаа зэрэг зарж болох давхар захиалгын нүх үүсдэг. Тиймээс:
+//   НЭГ ИЖ БҮРДЭЛ = НЭГ БАРАА, нөөц нь модулийн тоо.
+// ⚠ Өөр үйлдвэрийн профиль НИЙЛДЭГГҮЙ тул иж бүрдэл бүр тусдаа бараа:
+//   18м A (Maisite 112×203мм, 8 модуль) ⧸ 18м B (Guyun 150×108×3мм, 6 модуль)
+//   12м A (Expo 2023, 5 модуль)         ⧸ 12м B (Maisite 2025, 5 модуль)
+// Шинэ иж бүрдэл авбал ЭНД мөр нэмнэ — эс бөгөөс уртын сонголт гарахгүй.
+const ASAR_MODULES = {
+  'M-309': { w: 12, mod: 5, bays: 5, set: 'A' },
+  'M-310': { w: 12, mod: 5, bays: 5, set: 'B' },
+  'M-311': { w: 18, mod: 5, bays: 8, set: 'A' },
+  'M-312': { w: 18, mod: 5, bays: 6, set: 'B' },
+};
+function asarModuleOf(sku) { return ASAR_MODULES[String(sku || '')] || null; }
+// Модулийн тоо → асрын хэмжээ («18×25м»). Цэвэр функц — тестлэгдэнэ.
+function asarSizeLabel(sku, qty) {
+  const m = asarModuleOf(sku); if (!m) return '';
+  const n = Math.max(1, Math.round(Number(qty) || 1));
+  return `${m.w}×${n * m.mod}м`;
+}
+// Тухайн иж бүрдлээс угсарч болох уртууд (5, 10 … хамгийн урт).
+function asarLengthOptions(sku) {
+  const m = asarModuleOf(sku); if (!m) return [];
+  const out = []; for (let i = 1; i <= m.bays; i++) out.push(i * m.mod);
+  return out;
+}
+// Уртаар нь тусад нь бүртгэсэн ХУУРАМЧ асар (эдгээр нь бие даасан бараа биш —
+// дээрх иж бүрдлүүдийн хэсэг). Нөөцийг нь 0 болгоно: түүх хэвээр үлдэж, шинээр
+// зарагдахгүй. ХАТУУ УСТГАХГҮЙ — хуучин захиалгын мөр эдгээрийг заасаар байна.
+const ASAR_LEGACY_SKUS = ['M-002', 'M-003', 'M-005', 'M-290', 'M-291', 'M-292',
+  'M-278', 'M-293', 'M-294', 'M-295', 'M-296', 'M-297', 'M-298', 'M-299', 'M-300', 'M-301', 'M-302', 'M-303', 'M-304'];
+// Үүсгэх модуль бараанууд (нэг удаа). Үнэ = одоогийн урт бүрийн үнээс гарсан:
+// 12м 5,000,000₮ / 25м = 1,000,000₮ нэг модуль; 18м 9,900,000₮ / 25м = 1,980,000₮.
+const ASAR_MODULE_PRODUCTS = [
+  { sku: 'M-309', name: 'Асар 12м өргөн · 5м модуль (A иж бүрдэл)', price: 1000000, deposit: 200000, stock: 5,
+    photo: 'https://n8n.nomaadcamp.com/img/ea341eca-b3e3-4073-86ab-121eac941b63.jpg',
+    description: '12 метр өргөн асрын 5 метрийн нэг модуль. Урт нь модулийн тоогоор тодорхойлогдоно: 5 модуль = 12×25м. A иж бүрдэл (2023, Expo Tent, гол профиль 68×122×3мм). ⚠ B иж бүрдэлтэй холиж угсарч болохгүй.' },
+  { sku: 'M-310', name: 'Асар 12м өргөн · 5м модуль (B иж бүрдэл)', price: 1000000, deposit: 200000, stock: 5,
+    photo: 'https://n8n.nomaadcamp.com/img/79c2672e-4273-42db-ad4b-a5a5540713e9.jpg',
+    description: '12 метр өргөн асрын 5 метрийн нэг модуль. 5 модуль = 12×25м хүртэл. B иж бүрдэл (2025, Maisite, 12×10 + 12×15 нийлсэн). ⚠ A иж бүрдэлтэй холиж угсарч болохгүй.' },
+  { sku: 'M-311', name: 'Асар 18м өргөн · 5м модуль (A иж бүрдэл)', price: 1980000, deposit: 0, stock: 8,
+    photo: 'https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg',
+    description: '18 метр өргөн асрын 5 метрийн нэг модуль. 8 модуль = 18×40м хүртэл. A иж бүрдэл (2026, Maisite, гол профиль 112×203мм). ⚠ B иж бүрдэлтэй холиж угсарч болохгүй.' },
+  { sku: 'M-312', name: 'Асар 18м өргөн · 5м модуль (B иж бүрдэл)', price: 1980000, deposit: 0, stock: 6,
+    photo: 'https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg',
+    description: '18 метр өргөн асрын 5 метрийн нэг модуль. 6 модуль = 18×30м хүртэл. B иж бүрдэл (2026, Guyun, гол профиль 150×108×3мм). ⚠ A иж бүрдэлтэй холиж угсарч болохгүй.' },
+];
+// Цэгцлэлт хийгдсэн үү (модуль бараанууд каталогт бий юу).
+function asarSetupDone() {
+  const have = new Set((state.products || []).map(p => p && p.sku));
+  return ASAR_MODULE_PRODUCTS.every(m => have.has(m.sku));
+}
+async function runAsarModuleSetup() {
+  const legacy = (state.products || []).filter(p => p && ASAR_LEGACY_SKUS.includes(p.sku)
+    && ((Number(p.qty_mevent) || 0) + (Number(p.qty_chimun) || 0) + (Number(p.qty_nomaad) || 0) + (Number(p.qty_catering) || 0)) > 0);
+  const msg = `Асрын каталогийг модуль болгож цэгцлэх үү?\n\n`
+    + `➕ ${ASAR_MODULE_PRODUCTS.length} шинэ бараа үүснэ (12м A/B, 18м A/B — 5м модуль).\n`
+    + `0️⃣ Уртаар нь салгаж бүртгэсэн ${legacy.length} барааны нөөц 0 болно (устахгүй, түүх хэвээр).\n\n`
+    + `Үүний дараа 12×25 гэх мэт захиалгыг «5 модуль» гэж авна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэл арилна.`;
+  if (!(await showConfirm(msg, { okText: 'Тийм, цэгцэл' }))) return;
+  let made = 0, zeroed = 0;
+  for (const m of ASAR_MODULE_PRODUCTS) {
+    const cur = (state.products || []).find(p => p && p.sku === m.sku) || {};
+    try {
+      await saveProduct({ ...cur, sku: m.sku, id: m.sku, name: m.name, category: 'Асар', all_categories: ['Асар'],
+        type: 'rental', price: m.price, deposit: m.deposit, photo: m.photo, description: m.description,
+        stock: m.stock, qty_mevent: m.stock, qty_chimun: 0, qty_nomaad: 0, qty_catering: 0, archived: false });
+      made++;
+    } catch (e) { console.warn('asar setup', m.sku, e); }
+  }
+  for (const p of legacy) {
+    try { await saveProduct({ ...p, stock: 0, qty_mevent: 0, qty_chimun: 0, qty_nomaad: 0, qty_catering: 0 }); zeroed++; }
+    catch (e) { console.warn('asar zero', p.sku, e); }
+  }
+  showToast(`🏕 ${made} модуль бараа бэлэн · ${zeroed} хуучин уртын бүртгэлийн нөөц 0 боллоо`, 'success', 5000);
+  render();
+}
 async function saveProduct(product) {
   if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (!product.id) product.id = product.sku;
@@ -17310,6 +17389,13 @@ function renderProducts() {
         <button class="btn btn-primary" id="prod-fill-nameen" style="white-space:nowrap;">Англи нэр бөглөх (${_noEnN})</button>
       </div>`
     : '';
+  // Асрын каталог модуль болоогүй бол нэг товчоор цэгцэлнэ (дараа нь өөрөө алга болно)
+  const asarBar = (_prodMgmt && !asarSetupDone())
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү.</span>
+        <button class="btn btn-primary" id="prod-asar-setup" style="white-space:nowrap;">🏕 Асрыг модуль болгох</button>
+      </div>`
+    : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
@@ -17402,6 +17488,7 @@ function renderProducts() {
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
+    ${asarBar}
     ${nameEnBar}
     ${variantClearBar}
     ${seasonCloseBar}
@@ -17865,6 +17952,7 @@ function attachProductsHandlers() {
   // Улирал хаалт — NOMAAD-ийн бүх нөөцийг M-Event руу
   document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
   document.getElementById('prod-clear-variants')?.addEventListener('click', () => bulkClearVariants());
+  document.getElementById('prod-asar-setup')?.addEventListener('click', () => runAsarModuleSetup());
   document.getElementById('prod-fill-nameen')?.addEventListener('click', () => bulkFillNameEn());
   document.getElementById('prod-reconcile')?.addEventListener('click', () => openItemReconcile());
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)
@@ -19470,10 +19558,14 @@ function openNewOrder(editOrder) {
       const warn = a ? (qty > a.avail ? `<span class="no-item-warn">⚠ ${a.avail} сул</span>` : `<span>✓ ${a.avail} сул</span>`) : '';
       const _php = it.photo || (productOf(it) || {}).photo;   // сайт зураг илгээдэггүй — каталогоос нөхнө
       const ph = _php ? `<img src="${escapeHtml(driveThumbUrl(_php, 80))}" referrerpolicy="no-referrer" onerror="this.style.display='none'">` : `<span class="no-item-ph">📦</span>`;
+      // Асрын модуль — тоо ширхэг биш УРТААР сонгоно (5 модуль = 12×25м). Захиалга
+      // авагч метрээр боддог тул модулийг гараар тоолуулахгүй.
+      const _asar = asarModuleOf(it.sku);
       const qtyCtl = _locked ? `<b>${qty} ш</b>`
+        : _asar ? `<select class="ui-raw no-asar-len" data-ilen="${i}" aria-label="Асрын урт">${asarLengthOptions(it.sku).map(L => `<option value="${L / _asar.mod}"${L / _asar.mod === qty ? ' selected' : ''}>${_asar.w}×${L}м</option>`).join('')}</select>`
         : `<span class="no-qty"><button type="button" class="ui-raw" data-iqd="${i}" aria-label="Хасах">−</button><input type="number" class="ui-raw" min="1" value="${qty}" data-iq="${i}" aria-label="Тоо ширхэг"><button type="button" class="ui-raw" data-iqi="${i}" aria-label="Нэмэх">+</button></span>`;
       return `<div class="no-item">${ph}
-      <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}</div>
+      <div class="no-item-mid"><div class="no-item-nm">${escapeHtml(it.name || '')}${_asar ? ` <span class="no-item-mod">📐 ${escapeHtml(asarSizeLabel(it.sku, qty))} · ${qty} модуль</span>` : ''}</div>
         <div class="no-item-ctl">${qtyCtl}<span>×</span><input type="text" inputmode="numeric" class="money-input no-price ui-raw" value="${moneyFmtInput(it.price || 0)}" data-ip="${i}"${_locked ? ' disabled' : ''} aria-label="Нэгж үнэ">${warn}</div></div>
       <b class="no-item-amt" data-iamt="${i}">${fmtMoney(qty * (Number(it.price) || 0))}</b>
       ${_locked ? '' : `<button type="button" data-irm="${i}" class="btn" style="padding:2px 7px;font-size:var(--fs-lg);color:var(--danger);" aria-label="Хасах">✕</button>`}
@@ -19483,6 +19575,7 @@ function openNewOrder(editOrder) {
   renderItems();
   itemsBox.addEventListener('input', e => {
     const t = e.target; let i;
+    if (t.dataset.ilen != null) { i = +t.dataset.ilen; items[i].qty = Math.max(1, Number(t.value) || 1); renderItems(); recalc(); return; }
     if (t.dataset.iq != null) { i = +t.dataset.iq; items[i].qty = Math.max(1, Number(t.value) || 1); }
     else if (t.dataset.ip != null) { i = +t.dataset.ip; items[i].price = moneyVal(t); }
     else return;

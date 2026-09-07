@@ -18939,7 +18939,7 @@ async function loadHistory(force) {
     const aliasMap = {};
     (aliases || []).forEach(a => { if (a && a.alias) aliasMap[a.alias] = a.sku || ''; });
     const _catOf = _histCatResolver(prods || [], aliasMap);
-    const comp = _histCompute(orders || [], roiFix, _catOf);
+    const comp = _histCompute(orders || [], roiFix, _catOf, _histItemResolver(prods || [], aliasMap));
     state.history = {
       // KPI + сар нь comp (live app_orders)-оос — хуучин rh_v_* snapshot зөрдөг тул fallback л болгоно
       summary: comp.summary || summary[0] || null,
@@ -22436,6 +22436,31 @@ function _histNormAgg(s) {
 // найдвартай зураглал. Толинд байхгүй бол л түлхүүр үгээр таамаглана, тэр таамаг
 // хэдэн мөрд хийгдсэнийг `.stats`-д тоолж тайланд ил гаргана (чимээгүй буруу
 // ангилахаас сэргийлнэ — 2026-09-07-нд мөрийн 56% нь таамаг байсан).
+// Мөрийн нэрийг НЭГ бараанд хөрвүүлнэ — тайланд нэг бараа хоёр нэрээр задрахгүйн тулд.
+// Хоёр платформ (Booqable + апп) хэрэглэсний үлдэц: «Эвхдэг Сандал (Цагаан)» ба
+// «Эвхэгддэг сандал Цагаан» нь нэг бараа боловч тайланд 2 мөр болж, орлого/ROI хуваагдаж
+// байв. Дараалал: sku → толь(sku) → толь(нэр) → каталогийн нэр (normItemKey — зай/цэг/
+// том-жижиг үсэг үл хамаарна). Олдохгүй бол нэрээрээ үлдэнэ.
+function _histItemResolver(prods, aliases) {
+  const bySku = {}, byKey = {};
+  (prods || []).forEach(p => {
+    if (!p) return;
+    if (p.sku) bySku[String(p.sku)] = p;
+    const k = (typeof normItemKey === 'function') ? normItemKey(p.name) : '';
+    if (k && !byKey[k]) byKey[k] = p;
+  });
+  const al = aliases || {};
+  return (sku, name) => {
+    const raw = String(sku || '').trim();
+    if (raw && bySku[raw]) return { sku: raw, name: bySku[raw].name };
+    const nk = (typeof normItemKey === 'function') ? normItemKey(name) : '';
+    let a = raw ? al['sku:' + raw.toLowerCase()] : undefined;
+    if (a === undefined && nk) a = al['name:' + nk];
+    if (a && bySku[a]) return { sku: a, name: bySku[a].name };
+    if (nk && byKey[nk]) return { sku: byKey[nk].sku, name: byKey[nk].name };
+    return { sku: '', name: String(name || '').trim() };
+  };
+}
 function _histCatResolver(prods, aliases) {
   const bySku = {}, byName = {}, byAgg = {}, catBySku = {};
   (prods || []).forEach(p => {
@@ -22613,7 +22638,7 @@ function serviceBreakdown(svcList, dlv) {
   const byKey = {}; groups.forEach(g => { byKey[g.key] = g; });
   (svcList || []).forEach(x => {
     const g = byKey[serviceKind(x.product)] || byKey.other;
-    g.rows.push({ name: x.product, revenue: Number(x.revenue_mnt) || 0, times: Number(x.times_rented) || 0, qty: Number(x.total_qty) || 0, kind: 'line' });
+    g.rows.push({ name: x.product, names: Array.isArray(x.names) ? x.names : [], revenue: Number(x.revenue_mnt) || 0, times: Number(x.times_rented) || 0, qty: Number(x.total_qty) || 0, kind: 'line' });
   });
   if (dlv && dlv.total > 0) {
     byKey.delivery.rows.push({ name: 'Хүргэлтийн төлбөр (аппаас, авто)', revenue: dlv.total, times: dlv.rows.length, qty: dlv.rows.length, kind: 'dlv' });
@@ -22626,7 +22651,8 @@ function serviceBreakdown(svcList, dlv) {
     g.total = g.rows.reduce((s, r) => s + r.revenue, 0);
     g.times = g.rows.reduce((s, r) => s + (Number(r.times) || 0), 0);
     g.qty = g.rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
-    g.names = g.rows.filter(r => r.kind === 'line').map(r => r.name);   // мөрөөр ирсэн нэрс
+    // мөрөөр ирсэн нэрс — нэгтгэгдсэн бол ХУУЧИН нэрсээ бүгдийг нь авчирна
+    g.names = g.rows.filter(r => r.kind === 'line').flatMap(r => (r.names && r.names.length) ? r.names : [r.name]);
     g.dlvTotal = g.rows.filter(r => r.kind === 'dlv').reduce((s, r) => s + r.revenue, 0);
   });
   const total = groups.reduce((s, g) => s + g.total, 0);
@@ -22660,11 +22686,14 @@ function openDeliveryFeeOrders() {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-function _histCompute(orders, roiFix, catOf) {
+function _histCompute(orders, roiFix, catOf, resolveItem) {
   const N = x => Number(x) || 0;
   const cat = (typeof catOf === 'function') ? catOf : () => 'Бусад';
   const normP = (s) => (typeof _normProdName === 'function') ? _normProdName(s) : String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const rfix = roiFix || {};
+  // Хөрвүүлэгчгүй дуудвал (тест/хуучин зам) — зөвхөн нэрийн хэлбэржүүлэлтээр нэгтгэнэ.
+  const RES = (typeof resolveItem === 'function') ? resolveItem : (() => ({ sku: '', name: '' }));
+  const itemKey = (nm) => (typeof normItemKey === 'function' && normItemKey(nm)) || normP(nm);
   const rlook = (sku, name) => (sku && rfix.bySku && rfix.bySku[String(sku).trim()]) || (rfix.byName && rfix.byName[normP(name)]) || null;
   const TAX = /нөат|vat|барьцаа|deposit/i;
   const SELF = /nomaad|кемп|\bcamp\b|чимун/i;   // компанийн ӨӨРИЙН салбар — харилцагч БИШ, хасна
@@ -22713,8 +22742,12 @@ function _histCompute(orders, roiFix, catOf) {
       const rev = histLineRevenue(gross, grossAll, netRev);   // барьцаа/хүргэлт хасагдана
       const bucket = bqIsService(nm) ? svcs : prods;
       const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';
-      const key = 'n:' + normP(nm);   // нэрээр бүлэглэнэ — ижил нэртэй (өөр SKU-тай) бараа нэгдэнэ
-      const p = bucket[key] || (bucket[key] = { product: nm, skus: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+      // Нэг бараа = нэг мөр. Каталогт таарвал КАТАЛОГИЙН нэрээр, эс бол өөрийн нэрээр.
+      const res = RES(skuT, nm);
+      const key = res.sku ? ('s:' + res.sku) : ('n:' + itemKey(nm));
+      const p = bucket[key] || (bucket[key] = { product: res.name || nm, skus: {}, names: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+      p.names[nm] = 1;   // жинхэнэ мөрийн нэрс — дарж захиалгуудыг хайхад хэрэгтэй
+      if (res.sku) p.skus[res.sku] = 1;
       if (skuT) p.skus[skuT] = 1;
       p.revenue_mnt += rev; p.total_qty += N(i.qty); p.item_days_out += days * N(i.qty);
       p._orders[o.id] = 1;
@@ -22734,7 +22767,7 @@ function _histCompute(orders, roiFix, catOf) {
     const tot = (unit > 0 && owned > 0) ? unit * owned : 0;
     const rx = tot > 0 ? Math.round(p.revenue_mnt / tot * 10) / 10 : null;
     const sku = Object.keys(p.skus)[0] || null;
-    return { product: p.product, sku, category: cat(sku, p.product), photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
+    return { product: p.product, sku, names: Object.keys(p.names || {}), category: cat(sku, p.product), photo: p.photo, revenue_mnt: Math.round(p.revenue_mnt), times_rented: times, total_qty: Math.round(p.total_qty), owned_qty: owned, unit_cost_mnt: unit, total_cost_mnt: tot, roi_x: rx, item_days_out: Math.round(p.item_days_out) };
   });
 
   const products = finalize(prods).sort((a, b) => b.revenue_mnt - a.revenue_mnt);
@@ -22929,6 +22962,9 @@ function renderHistory() {
     // Үйлчилгээ (хүргэлт) тусдаа bq.services-д, НӨАТ/барьцаа аль хэдийн хасагдсан.
     const roi = (bq.roi || []).slice();
     const svc = bq.services || [];
+    // Нэгтгэсэн мөр дархад ХУУЧИН нэрсээр нь ч хайна (нэг бараа 2 нэрээр бичигдсэн).
+    state._histNameMap = {};
+    [...roi, ...svc].forEach(x => { if (x && x.product && Array.isArray(x.names) && x.names.length > 1) state._histNameMap[x.product] = x.names; });
     // Үйлчилгээ — ТӨРЛӨӨР задалж, мөр бүр дарагдана (тухайн үйлчилгээний захиалгууд).
     // ⟦DLV⟧ хүргэлтийн төлбөр нь захиалгын мөр БИШ тул тусад нь нэмнэ — эс бөгөөс
     // 2026 оны хүргэлтийн орлого хаана ч харагдахгүй.
@@ -23131,7 +23167,10 @@ function attachHistoryHandlers() {
     state.histPeriod = b.dataset.histperiod; render();
   }));
   document.querySelectorAll('[data-hist-prod]').forEach(b => b.addEventListener('click', () => {
-    openHistProductOrders(b.dataset.histProd);
+    const nm = b.dataset.histProd;
+    const names = (state._histNameMap || {})[nm];
+    if (names && names.length > 1) openHistProductOrders(names, { title: nm });
+    else openHistProductOrders(nm);
   }));
   document.querySelectorAll('[data-hist-dlv]').forEach(b => b.addEventListener('click', () => openDeliveryFeeOrders()));
   // Нэгтгэсэн үйлчилгээний мөр — бүлгийн БҮХ нэрийн захиалгыг нэг дор

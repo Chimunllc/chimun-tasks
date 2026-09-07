@@ -22759,7 +22759,13 @@ function _histCompute(orders, roiFix, catOf, resolveItem) {
     // эзэмшил/өртөг: бүлгийн аль нэг SKU rh_roi_fix-д таарвал түүгээр, эс бол нэрээр
     let fx = null;
     for (const sk of Object.keys(p.skus)) { if (rfix.bySku && rfix.bySku[sk]) { fx = rfix.bySku[sk]; break; } }
-    if (!fx && rfix.byName) fx = rfix.byName[normP(p.product)];
+    // ⚠ rh_roi_fix-ийн нэрийн түлхүүр нь ХУУЧИН (Booqable) нэрээр хадгалагдсан. Мөрүүдийг
+    //   каталогийн нэр рүү нэгтгэсний дараа зөвхөн шинэ нэрээр хайвал өртөг олдохоо больж
+    //   «өртөг ?» болдог. Тиймээс бүлгийн БҮХ нэрээр (шинэ + хуучин) хайна.
+    if (!fx && rfix.byName) {
+      const cands = [p.product, ...Object.keys(p.names || {})];
+      for (const nm2 of cands) { const hit = rfix.byName[normP(nm2)]; if (hit) { fx = hit; break; } }
+    }
     let owned = fx ? N(fx.o) : 0;
     const unit = fx ? N(fx.c) : 0;
     if (unit > 10000000 && owned > 10) owned = 1;        // үнэтэй хөрөнгийн сэжигтэй эзэмшил → 1-д бари
@@ -22963,8 +22969,11 @@ function renderHistory() {
     const roi = (bq.roi || []).slice();
     const svc = bq.services || [];
     // Нэгтгэсэн мөр дархад ХУУЧИН нэрсээр нь ч хайна (нэг бараа 2 нэрээр бичигдсэн).
+    // ⚠ Мөр нь КАТАЛОГИЙН нэрээр харагддаг ч захиалгад ХУУЧИН нэрээр бичигдсэн байдаг.
+    //   Тиймээс нэр нэг ч бай зураглалыг ҮРГЭЛЖ хадгална — эс бөгөөс дарахад «захиалга
+    //   олдсонгүй» гэсэн хоосон цонх гарна (2026-09-07-нд яг ингэж эвдэрсэн).
     state._histNameMap = {};
-    [...roi, ...svc].forEach(x => { if (x && x.product && Array.isArray(x.names) && x.names.length > 1) state._histNameMap[x.product] = x.names; });
+    [...roi, ...svc].forEach(x => { if (x && x.product && Array.isArray(x.names) && x.names.length) state._histNameMap[x.product] = x.names; });
     // Үйлчилгээ — ТӨРЛӨӨР задалж, мөр бүр дарагдана (тухайн үйлчилгээний захиалгууд).
     // ⟦DLV⟧ хүргэлтийн төлбөр нь захиалгын мөр БИШ тул тусад нь нэмнэ — эс бөгөөс
     // 2026 оны хүргэлтийн орлого хаана ч харагдахгүй.
@@ -23169,7 +23178,7 @@ function attachHistoryHandlers() {
   document.querySelectorAll('[data-hist-prod]').forEach(b => b.addEventListener('click', () => {
     const nm = b.dataset.histProd;
     const names = (state._histNameMap || {})[nm];
-    if (names && names.length > 1) openHistProductOrders(names, { title: nm });
+    if (names && names.length) openHistProductOrders(names, { title: nm });
     else openHistProductOrders(nm);
   }));
   document.querySelectorAll('[data-hist-dlv]').forEach(b => b.addEventListener('click', () => openDeliveryFeeOrders()));

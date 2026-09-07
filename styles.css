@@ -6594,3 +6594,29 @@ select.no-asar-len {
   .wo-row { flex-wrap: wrap; }
   .wo-acts { width: 100%; justify-content: flex-start; }
 }
+
+/* ── Барааны зорилгын дэлгэцүүд (Каталог / Үнэ / Өртөг / Нөөц) 2026-09-07 ── */
+.ps-wrap { max-width: 1100px; margin: 0 auto; }
+.ps-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.ps-title { font-family: var(--font-display, inherit); font-size: var(--fs-lg); font-weight: 800; }
+.ps-hint { font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; max-width: 62ch; line-height: 1.5; }
+.ps-q { flex: 0 1 280px; padding: 8px 12px; font-size: var(--fs-md); border: 1px solid var(--border-strong); border-radius: 10px; background: var(--panel); color: var(--text); }
+.ps-count { font-size: var(--fs-sm); color: var(--muted); margin-bottom: var(--space-2); }
+.ps-row { display: flex; align-items: center; gap: var(--space-3); padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.ps-row:hover { background: var(--panel-hover); }
+.ps-img { width: 40px; height: 40px; flex: 0 0 auto; border: 0; padding: 0; border-radius: 8px; background: var(--panel-hover); cursor: pointer; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.ps-img img { width: 100%; height: 100%; object-fit: cover; }
+.ps-nm { flex: 0 0 210px; min-width: 0; font-size: var(--fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; flex-direction: column; }
+.ps-nm em { font-style: normal; font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+.ps-fields { flex: 1; display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap; min-width: 0; }
+.ps-f { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs); color: var(--muted); }
+.ps-in { padding: 6px 9px; font-size: var(--fs-md); border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); width: 120px; }
+.ps-in:focus { border-color: var(--primary); outline: none; }
+.ps-in:disabled { opacity: .6; cursor: not-allowed; }
+.ps-wide { flex: 1; min-width: 160px; width: auto; }
+.ps-tot { font-size: var(--fs-md); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; align-self: center; }
+@media (max-width: 860px) {
+  .ps-nm { flex: 1 1 100%; }
+  .ps-row { flex-wrap: wrap; }
+  .ps-in { width: 100px; }
+}

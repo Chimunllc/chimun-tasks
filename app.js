@@ -3854,6 +3854,11 @@ function renderSidebar() {
   // Тооллого — нярав/агуулахын ажилтанд өгч болно (бараа засах эрхгүй ч).
   const scNav = document.getElementById('nav-stockcount');
   if (scNav) scNav.style.display = canSeeStockCount() ? '' : 'none';
+  // Барааны 4 зорилгын дэлгэц — эрх нь тус тусдаа (products.catalog/price/cost/stock)
+  Object.keys(PSHEET).forEach(m => {
+    const el = document.getElementById('nav-ps_' + m);
+    if (el) el.style.display = canSeeSheet(m) ? '' : 'none';
+  });
   // Акт — түрээслэх боломжгүй болсон бараа (нөөц засах эрхтэй хүн)
   const woNav = document.getElementById('nav-writeoff');
   if (woNav) {
@@ -3937,7 +3942,7 @@ function renderSidebar() {
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
-  _setGrp('nav-group-inventory', ['nav-products', 'nav-stockcount', 'nav-writeoff']);
+  _setGrp('nav-group-inventory', ['nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
@@ -3963,6 +3968,10 @@ function renderTitle() {
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'M event захиалга', 'Түрээсийн бүх захиалга — mevent.mn сайт, ажилтны үүсгэсэн, Booqable түүх'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа & хөрөнгө', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
     stockcount: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><rect x="9" y="2" width="6" height="4" rx="1"/><polyline points="9 14 11 16 15 12"/></svg>', 'Тооллого', 'Агуулахын тооллого — тоолсноо бүртгэнэ, зөрүү нь залруулга болж түүхэнд үлдэнэ'],
+    ps_catalog: ['<svg class="lcd-icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-4 4-2-2-4 4"/></svg>', 'Каталог', 'Бүх барааны нэр, ангилал — нэг дэлгэцээс засна'],
+    ps_price:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M20.6 13.4L12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>', 'Түрээсийн үнэ', 'Бүх барааны түрээсийн үнэ, барьцаа, суурилуулалт'],
+    ps_cost:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h5M9.5 14.5h5"/></svg>', 'Өртөг ба хөрөнгө', 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч'],
+    ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -4049,6 +4058,13 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderStockCount, 'Тооллого');
     attachStockCountHandlers();
+    return;
+  } else if (String(state.view || '').indexOf('ps_') === 0) {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    const _m = String(state.view).slice(3);
+    wrap.innerHTML = safeViewHtml(() => renderProductSheet(_m), PSHEET[_m] ? PSHEET[_m].label : 'Бараа');
+    attachProductSheetHandlers(_m);
     return;
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
@@ -10760,6 +10776,10 @@ const PERM_MENUS = [
       // Няравын ажил. Нөөцийг ДАРЖ БИЧИХГҮЙ — зөвхөн тоолж бүртгэнэ.
       // Зөрүүг нөөцөд залруулахад `products.stock` эрх тусдаа шаардана.
       { key: 'products.count', label: '📋 Тоолж бүртгэх' } ] },
+  { key: 'ps_catalog',  label: 'Каталог (бүх бараа)',       actions: [] },
+  { key: 'ps_price',    label: 'Түрээсийн үнэ (бүх бараа)',  actions: [] },
+  { key: 'ps_cost',     label: 'Өртөг ба хөрөнгө (бүх бараа)', actions: [] },
+  { key: 'ps_stock',    label: 'Нөөц ба салбар (бүх бараа)', actions: [] },
   { key: 'writeoff',    label: 'Акт', actions: [] },   // түрээслэх боломжгүй бараа — актлах/зарах
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
@@ -17682,6 +17702,100 @@ function attachStockCountHandlers() {
   });
 }
 
+/* ═══════════ БАРААНЫ ХУУДСУУД — зорилго тус бүр тусдаа дэлгэц (2026-09-07) ═══
+   Каталог / Түрээсийн үнэ / Өртөг / Нөөц гэсэн 4 зүйл нь ӨӨР ӨӨР ажил, өөр өөр
+   хүн хийдэг. Өмнө нь бараа бүрийн цонх дотор нуугдсан байсан тул нэг талбарыг
+   олон бараа дээр засахад бараа бүрийг тусад нь нээх шаардлагатай байв.
+   Одоо тус бүр өөрийн дэлгэцтэй: БҮХ бараа нэг жагсаалтад, тухайн өнцгийн
+   талбарууд шууд засагдана. Эрх нь `products.<mode>`-оор тусдаа олгогдоно —
+   нярав зөвхөн Нөөц, нягтлан зөвхөн Өртөг харах боломжтой. */
+const PSHEET = {
+  catalog: { label: 'Каталог', icon: '📷', perm: 'products.catalog', hint: 'Нэр, ангилал. Зураг/тайлбарыг барааны цонхноос засна.' },
+  price:   { label: 'Түрээсийн үнэ', icon: '🏷', perm: 'products.price', hint: 'Түрээсийн үнэ, барьцаа, суурилуулалтын хөлс.' },
+  cost:    { label: 'Өртөг ба хөрөнгө', icon: '💰', perm: 'products.cost', hint: 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч.' },
+  stock:   { label: 'Нөөц ба салбар', icon: '📦', perm: 'products.stock', hint: 'Салбар бүрийн тоо. Нийт нөөц нь салбаруудын нийлбэр.' },
+};
+function canSeeSheet(mode) { return !!PSHEET[mode] && canAccessView('ps_' + mode, () => !!state.isCEO || can(PSHEET[mode].perm)); }
+// Хуудсанд харагдах бараа — хайлтаар шүүнэ. Цэвэр функц (тестлэгдэнэ).
+function psFilter(list, q) {
+  const s = String(q || '').trim().toLowerCase();
+  const rows = (list || []).filter(p => p && p.sku && p.type !== 'service');
+  if (!s) return rows;
+  return rows.filter(p => `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''}`.toLowerCase().includes(s));
+}
+function psNum(v) { return Math.max(0, Math.round(Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0)); }
+function renderProductSheet(mode) {
+  const cfg = PSHEET[mode];
+  if (!cfg) return '';
+  if (!state.products || !state.products.length) { loadProductsCatalog(); return '<div style="padding:50px;text-align:center;color:var(--muted);">Ачаалж байна…</div>'; }
+  const ro = !(state.isCEO || can(cfg.perm));
+  const q = state.psQ || '';
+  const rows = psFilter(state.products, q).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
+  const money = (v) => moneyFmtInput(Number(v) || 0);
+  const cell = (p) => {
+    const d = (k, extra) => `data-ps-sku="${escapeHtml(p.sku)}" data-ps-f="${k}"${ro ? ' disabled' : ''}${extra || ''}`;
+    if (mode === 'catalog') return `
+      <input class="ps-in ps-wide ui-raw" ${d('name')} value="${escapeHtml(p.name || '')}" placeholder="Нэр" aria-label="Нэр">
+      <input class="ps-in ui-raw" list="ps-cats" ${d('category')} value="${escapeHtml(p.category || '')}" placeholder="Ангилал" aria-label="Ангилал">`;
+    if (mode === 'price') return `
+      <label class="ps-f"><span>Түрээс</span><input class="ps-in money-input ui-raw" ${d('price')} value="${money(p.price)}" inputmode="numeric"></label>
+      <label class="ps-f"><span>Барьцаа</span><input class="ps-in money-input ui-raw" ${d('deposit')} value="${money(p.deposit)}" inputmode="numeric"></label>
+      <label class="ps-f"><span>Суурилуулалт</span><input class="ps-in money-input ui-raw" ${d('setup_fee')} value="${money(p.setup_fee)}" inputmode="numeric"></label>`;
+    if (mode === 'cost') {
+      const total = (Number(p.cost) || 0) * (Number(p.stock) || 0);
+      return `
+      <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(p.cost)}" inputmode="numeric"></label>
+      <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(p.purchase_date || '').slice(0, 10))}"></label>
+      <label class="ps-f"><span>Нийлүүлэгч</span><input class="ps-in ui-raw" ${d('supplier')} value="${escapeHtml(p.supplier || '')}" placeholder="—"></label>
+      <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>`;
+    }
+    return `
+      <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent')} value="${Number(p.qty_mevent) || 0}"></label>
+      <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun')} value="${Number(p.qty_chimun) || 0}"></label>
+      <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad')} value="${Number(p.qty_nomaad) || 0}"></label>
+      <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering')} value="${Number(p.qty_catering) || 0}"></label>
+      <span class="ps-tot">${Number(p.stock) || 0}ш</span>`;
+  };
+  const row = (p) => `<div class="ps-row" data-ps-row="${escapeHtml(p.sku)}">
+      <button type="button" class="ps-img ui-raw" data-ps-open="${escapeHtml(p.sku)}" title="Барааны бүх мэдээлэл">${p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 96))}" alt="" loading="lazy">` : '📦'}</button>
+      <div class="ps-nm">${mode === 'catalog' ? '' : escapeHtml(p.name || '')}<em>${escapeHtml(p.code || p.sku)}</em></div>
+      <div class="ps-fields">${cell(p)}</div>
+    </div>`;
+  return `<div class="ps-wrap">
+    <div class="ps-head">
+      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div></div>
+      <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
+    </div>
+    <datalist id="ps-cats">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
+    <div class="ps-count">${rows.length} бараа</div>
+    <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
+  </div>`;
+}
+async function psSaveField(sku, field, raw) {
+  const p = (state.products || []).find(x => x && x.sku === sku); if (!p) return;
+  const numF = ['price', 'deposit', 'setup_fee', 'cost', 'qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'];
+  const val = numF.includes(field) ? psNum(raw) : String(raw || '').trim();
+  if (String(p[field] == null ? '' : p[field]) === String(val)) return;   // өөрчлөлтгүй — бичихгүй
+  const patch = { ...p, [field]: val };
+  if (field.startsWith('qty_')) patch.stock = ['qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'].reduce((s, k) => s + (Number(patch[k]) || 0), 0);
+  state._psScroll = document.getElementById('ps-list')?.scrollTop || 0;
+  try { await saveProduct(patch); showToast('✓ Хадгаллаа', 'success', 1200); }
+  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+}
+function attachProductSheetHandlers(mode) {
+  const list = document.getElementById('ps-list');
+  if (list && state._psScroll) { list.scrollTop = state._psScroll; state._psScroll = 0; }
+  const qEl = document.getElementById('ps-q');
+  if (qEl) qEl.addEventListener('input', (e) => { state.psQ = e.target.value; clearTimeout(state._psT); state._psT = setTimeout(() => render(), 220); });
+  document.querySelectorAll('[data-ps-open]').forEach(b => b.addEventListener('click', () => {
+    const p = (state.products || []).find(x => x && x.sku === b.dataset.psOpen);
+    if (p && typeof openProductModal === 'function') openProductModal(p);
+  }));
+  document.querySelectorAll('[data-ps-sku]').forEach(el => el.addEventListener('change', () => {
+    psSaveField(el.dataset.psSku, el.dataset.psF, el.value);
+  }));
+}
 /* ═══════════ АКТ — түрээслэх боломжгүй болсон бараа (2026-09-07) ═══════════
    Хэт хуучирсан, эвдэрсэн, өгөөжгүй болсон барааг актаар нөөцөөс гаргана.
    Зарж болох бол зараад орлогыг нь бүртгэнэ — тэр нь ТҮРЭЭСИЙН орлого БИШ,
@@ -29551,6 +29665,7 @@ function refreshViewData() {
   // Захиалгын дата ЗААВАЛ — productUtilization (ROI, «N удаа · орлого») үүнээс уншина.
   // Ачаалахгүй бол state.appOrders undefined хэвээр үлдэж БҮХ барааны ROI 0% харагдана.
   if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
+  if (String(v || '').indexOf('ps_') === 0 && (!state.products || !state.products.length)) loadProductsCatalog();
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();
     // Дэлгэц нээх бүрд DB-ээс ШИНЭЧЛЭНЭ (кэш хуучирсан байж болно)

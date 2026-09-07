@@ -4982,6 +4982,135 @@ async function advanceRepair(id, to, extra) {
   } catch (e) { showToast('Засварын төлөв хадгалагдсангүй: ' + e.message, 'error', 4000); }
 }
 
+/* ── БӨӨН АКТЛАЛТ (агуулахын хөрөнгө) ────────────────────────────────────────
+   Эвдэрсэн/ашиглагдахаа больсон барааг нэг бүрчлэн биш, олноор нь нэг актаар
+   данснаас хасна. Бичлэг нь `repairs`-д `written_off` төлөвтэй үүсэх тул
+   алдагдлын тайлан, ROI, түүх бүгд хэвийн ажиллана (шинэ хүснэгт хэрэггүй).
+   ⚠ Бараа өөрөө УСТГАГДАХГҮЙ — нөөц нь хасагдана, нөөц 0 болбол сонголтоор
+     архивлана (архив нь мөн устгал БИШ, [[feedback_never_hard_delete]]). */
+
+// Актлах тоог САЛБАРУУДААС хасах төлөвлөгөө. Нөөц салбаруудад хуваарилагдсан
+// (qty_mevent/qty_chimun/…) тул зөвхөн `stock`-ыг хасвал нийлбэр зөрж, дараагийн
+// шилжүүлэг/тооллого буруу тоо харуулна. ЦЭВЭР функц — тестлэгдэнэ.
+function writeOffBranchPatch(p, qty, preferBranch) {
+  const order = [preferBranch, 'mevent', 'chimun', 'nomaad', 'catering']
+    .filter((k, i, a) => k && a.indexOf(k) === i);
+  const patch = {};
+  let left = Math.max(0, Math.round(Number(qty) || 0));
+  order.forEach(k => {
+    const cur = Number(p && p['qty_' + k]) || 0;
+    if (left <= 0 || cur <= 0) return;
+    const take = Math.min(cur, left);
+    patch['qty_' + k] = cur - take;
+    left -= take;
+  });
+  // unallocated = салбарт хуваарилагдаагүй нөөцөөс хасагдсан хэсэг (хуучин дата).
+  return { patch, unallocated: left };
+}
+
+// Нэг барааг актлах — бичлэг + нөөц. Бусад барааг унагаахгүйн тулд алдааг ШИДНЭ,
+// дуудагч нь мөр бүрийг тусад нь барина.
+async function writeOffProduct(p, qty, reason, opts) {
+  const n = Math.max(0, Math.round(Number(qty) || 0));
+  if (!p || !p.sku || !n) throw new Error('тоо хоосон');
+  const now = new Date().toISOString();
+  const rep = { id: repairId(p.sku, 0), sku: p.sku, product_name: p.name || '', qty: n,
+                order_number: null, status: 'written_off',
+                note: 'Бөөн акт: ' + (reason || ''), reported_by: state.me || '', reported_at: now,
+                assignee: state.me || '', fixed_by: state.me || '', fixed_at: now,
+                fix_note: reason || '', fix_photos: (opts && opts.photos) || [], updated_at: now };
+  const r = await fetchWithTimeout(REPAIRS_URL(), {
+    method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(rep),
+  }, 15000);
+  if (!r.ok) throw new Error('бичлэг HTTP ' + r.status);
+  state.repairs = (state.repairs || []).concat([rep]);
+  const { patch } = writeOffBranchPatch(p, n, opts && opts.branch);
+  await saveProduct({ ...p, ...patch, stock: Math.max(0, (Number(p.stock) || 0) - n) });
+  return rep;
+}
+
+// Бөөнөөр. Нэг бараа унасан ч бусад нь үргэлжилнэ (импортын хичээл — #208).
+async function runBulkWriteOff(items, opts) {
+  const done = [], failed = [];
+  for (const it of (items || [])) {
+    const p = (state.products || []).find(x => x && x.sku === it.sku);
+    if (!p || !(it.qty > 0)) { failed.push({ sku: it.sku, why: 'бараа/тоо олдсонгүй' }); continue; }
+    try {
+      await writeOffProduct(p, it.qty, (opts && opts.reason) || '', opts);
+      done.push(it.sku);
+      // Нөөц 0 болсон бол каталогоос гаргана (сонголт) — актласан хөрөнгө зарагдах ёсгүй.
+      if (opts && opts.archiveEmpty && (Number(p.stock) || 0) - it.qty <= 0) {
+        try { await setProductArchived(p.sku, true); } catch (e) { /* архив унасан ч актлалт хүчинтэй */ }
+      }
+    } catch (e) { failed.push({ sku: it.sku, why: e.message }); }
+  }
+  return { done, failed };
+}
+
+// Бөөн актлалтын модал — тоо ширхгийг бараа бүрээр засаж, шалтгаанаа бичиж баталгаажуулна.
+function openBulkWriteoffModal(skus) {
+  if (!canProductPart('stock')) { showToast('Танд нөөц засах эрх алга', 'warn', 3000); return; }
+  const list = (skus || []).map(sku => (state.products || []).find(p => p && p.sku === sku)).filter(Boolean);
+  if (!list.length) { showToast('Бараа сонгоогүй байна', 'warn', 2600); return; }
+  const costs = state.productCosts || {};
+  const br = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
+  document.getElementById('wo-modal')?.remove();
+  const m = document.createElement('div');
+  m.className = 'modal-bg open'; m.id = 'wo-modal'; m.style.zIndex = '9600';
+  const rows = list.map(p => {
+    const st = Number(p.stock) || 0;
+    return `<div class="wo-row" data-wo-r="${escapeHtml(p.sku)}">
+      <span class="wo-row-n">${escapeHtml(p.name || p.sku)}<span class="wo-row-m">${escapeHtml(p.sku)} · нөөц ${st} ш${costs[p.sku] ? ' · ' + fmtMoneyShort(costs[p.sku]) + '/ш' : ''}</span></span>
+      <input type="number" class="wo-q ui-raw" data-wo-q="${escapeHtml(p.sku)}" min="0" max="${st}" value="${st}">
+    </div>`;
+  }).join('');
+  m.innerHTML = `<div class="modal" style="max-width:520px;">
+    <div class="modal-head"><b>🗑 Хөрөнгө актлах (${list.length})</b><button class="modal-x" id="wo-x">✕</button></div>
+    <div class="modal-body">
+      <div class="wo-note">Актласан тоо нөөцөөс хасагдаж, алдагдлын бүртгэлд (засварын түүх) орно.
+        Бараа УСТАХГҮЙ — түүх, тайлан, ROI хэвээр үлдэнэ.${br ? ` Хасалт <b>${escapeHtml(branchInfo(br).label)}</b> салбараас эхэлнэ.` : ''}</div>
+      <div class="wo-list">${rows}</div>
+      <div class="wo-sum" id="wo-sum"></div>
+      <textarea id="wo-reason" rows="2" class="ui-raw wo-reason" placeholder="Шалтгаан (заавал): ж: 8-р сарын тооллогоор эвдэрсэн, засах боломжгүй"></textarea>
+      <label class="wo-arch"><input type="checkbox" class="ui-raw" id="wo-arch" checked> Нөөц 0 болсон барааг каталогоос архивлах</label>
+    </div>
+    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="wo-cancel">Болих</button>
+      <button class="btn btn-primary" id="wo-ok" disabled>🗑 Актлах</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const $ = (sel) => m.querySelector(sel);
+  const close = () => m.remove();
+  const picked = () => list.map(p => ({ sku: p.sku, qty: Math.max(0, Math.min(Number(p.stock) || 0, Number($(`[data-wo-q="${p.sku}"]`).value) || 0)) }));
+  const sync = () => {
+    const items = picked().filter(x => x.qty > 0);
+    const qty = items.reduce((s, x) => s + x.qty, 0);
+    const val = items.reduce((s, x) => s + (costs[x.sku] || 0) * x.qty, 0);
+    $('#wo-sum').innerHTML = `Нийт <b>${items.length}</b> бараа · <b>${qty}</b> ш${val > 0 ? ` · өртөг <b>${fmtMoney(val)}</b>` : ''}`;
+    $('#wo-ok').disabled = !(qty > 0 && $('#wo-reason').value.trim().length >= 3);
+  };
+  m.querySelectorAll('[data-wo-q]').forEach(i => i.oninput = sync);
+  $('#wo-reason').oninput = sync;
+  sync();
+  $('#wo-x').onclick = close; $('#wo-cancel').onclick = close;
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  $('#wo-ok').onclick = async (e) => {
+    const items = picked().filter(x => x.qty > 0);
+    const reason = $('#wo-reason').value.trim();
+    const archiveEmpty = $('#wo-arch').checked;
+    const qty = items.reduce((s, x) => s + x.qty, 0);
+    if (!confirm(`${items.length} бараа · ${qty} ш актлах уу?\n\nНөөцөөс хасагдана. Буцаах бол дахин нөөц нэмэх шаардлагатай.`)) return;
+    const btn = e.currentTarget; btn.disabled = true; btn.textContent = '⏳ Актлаж байна…';
+    const res = await runBulkWriteOff(items, { reason, archiveEmpty, branch: br });
+    close();
+    state.prodWoSel = null;
+    render();
+    if (res.failed.length) showToast(`${res.done.length} бараа актлагдав · ⚠ ${res.failed.length} амжилтгүй`, 'warn', 6000);
+    else showToast(`🗑 ${res.done.length} бараа · ${qty} ш актлагдлаа`, 'success', 3500);
+  };
+}
+
 async function loadRepairs() {
   try {
     const r = await fetchWithTimeout(`${REPAIRS_URL()}?select=*&order=reported_at.desc&limit=500`,
@@ -9105,7 +9234,11 @@ function productRowHtml(p) {
   const typeBadge = pkg ? '<span class="prod-type-b pk">Багц</span>' : '';
   // Тогтмол араг яс: [зураг] [нэр · мета · дохио] [нөөц · үнэ]. Слот бүр ҮРГЭЛЖ нэг байранд.
   // «›» chevron хасагдсан — мөр бүхэлдээ дарагддаг тул давхардсан дохио байв.
-  return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}" data-product-open="${escapeHtml(p.id || p.sku)}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
+  // Бөөн актлалтын СОНГОХ горим — мөр дарахад модал нээхийн оронд сонгогдоно.
+  const woOn = Array.isArray(state.prodWoSel);
+  const woSel = woOn && state.prodWoSel.includes(p.sku);
+  return `<div class="prod-row prod-row-click${rentable ? '' : ' is-asset'}${woOn ? ' wo-mode' : ''}${woSel ? ' wo-on' : ''}" data-product-open="${escapeHtml(p.id || p.sku)}" data-wo-sku="${escapeHtml(p.sku || '')}" data-rentable="${rentable ? '1' : '0'}" data-search="${escapeHtml(search)}">
+    ${woOn ? `<span class="prod-wo-c">${woSel ? '✓' : ''}</span>` : ''}
     <div class="prod-img">${img}</div>
     <div class="prod-main">
       <div class="prod-name-d">${escapeHtml(p.name || '(нэргүй)')}</div>
@@ -17661,6 +17794,22 @@ function renderProducts() {
   const assetChip = (assetValue > 0 && _prodMgmt)
     ? `<span class="prod-meta-i" title="${escapeHtml(_valLabel)} · ${costedN}/${_inScope.length} барааны өртөг оруулсан">Хөрөнгө <b>${fmtMoneyShort(assetValue)}</b> <span class="prod-meta-dim">(${costedN}/${_inScope.length})</span></span>`
     : '';
+  // ── Бөөн актлалтын тууз (сонгох горим асаалттай үед) ──
+  // Сонгосон барааны тоо/ширхэг/өртгийг ШУУД харуулна — «юуг данснаас хасах гэж
+  // байна» гэдгийг баталгаажуулахаас өмнө хараад л мэднэ.
+  const _woSel = Array.isArray(state.prodWoSel) ? state.prodWoSel : null;
+  let woBar = '';
+  if (_woSel) {
+    const picked = list.filter(p => _woSel.includes(p.sku));
+    const qty = picked.reduce((s, p) => s + (_qtyVal(p) || 0), 0);
+    const val = picked.reduce((s, p) => s + (costs[p.sku] || 0) * (_qtyVal(p) || 0), 0);
+    woBar = `<div class="prod-wo-bar">
+      <span class="prod-wo-t">🗑 Актлах бараа сонгож байна — <b>${picked.length}</b> бараа${qty ? ` · ${qty} ш` : ''}${val > 0 && _prodMgmt ? ` · ${fmtMoneyShort(val)}` : ''}</span>
+      <button class="btn ui-raw" id="prod-wo-all">${picked.length === list.length && list.length ? 'Сонголт цуцлах' : `Бүгдийг сонгох (${list.length})`}</button>
+      <button class="btn ui-raw" id="prod-wo-cancel">Болих</button>
+      <button class="btn btn-primary ui-raw" id="prod-wo-go"${picked.length ? '' : ' disabled'}>Үргэлжлүүлэх (${picked.length})</button>
+    </div>`;
+  }
   // ── 2 ТУУЗ (урьд нь 6) ──
   // 1: хайлт · скан · шинэ бараа   2: шүүлтүүр · тоо · хөрөнгө · салбар
   // Эхний бараа хүртэлх зай утасны дэлгэцийн ~50%-иас ~20% болно.
@@ -17669,8 +17818,10 @@ function renderProducts() {
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
       ${can('products.edit') ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
+      ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
       ${can('products.edit') ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
     </div>
+    ${woBar}
     <div class="prod-metabar">
       ${filterBar}
       <span class="prod-meta-i" id="prod-count"><b>${list.length}</b> бараа</span>
@@ -18236,14 +18387,36 @@ function attachProductsHandlers() {
     // <b>-г хадгална (мета мөр тоог тодоор харуулдаг) — textContent бол устгана
     if (c) c.innerHTML = `<b>${n}</b> бараа${q ? ' <span class="prod-meta-dim">(шүүсэн)</span>' : ''}`;
   };
-  // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх
+  // Мөр дээр дарж дэлгэрэнгүй/засах модал нээх (актлах горимд — сонгоно)
   document.querySelectorAll('[data-product-open]').forEach(row => {
     row.addEventListener('click', () => {
+      if (Array.isArray(state.prodWoSel)) {
+        const sku = row.dataset.woSku; if (!sku) return;
+        const i = state.prodWoSel.indexOf(sku);
+        if (i >= 0) state.prodWoSel.splice(i, 1); else state.prodWoSel.push(sku);
+        render();
+        return;
+      }
       const v = row.dataset.productOpen;
       const p = (state.products || []).find(x => String(x.id) === v || String(x.sku) === v);
       if (p) openProductModal(p);
     });
   });
+  // Бөөн актлалт — горим асаах/унтраах, бүгдийг сонгох, үргэлжлүүлэх
+  document.getElementById('prod-wo-mode')?.addEventListener('click', () => {
+    state.prodWoSel = Array.isArray(state.prodWoSel) ? null : [];
+    if (state.prodWoSel) showToast('Актлах барааг дарж сонгоно уу', 'info', 2600);
+    render();
+  });
+  document.getElementById('prod-wo-cancel')?.addEventListener('click', () => { state.prodWoSel = null; render(); });
+  document.getElementById('prod-wo-all')?.addEventListener('click', () => {
+    // Дэлгэц дээр ХАРАГДАЖ БУЙ (шүүсэн) барааг л сонгоно — «бүгд» гэдэг нь шүүлтийн дотор.
+    const shown = [...document.querySelectorAll('.prod-row')].filter(r => r.style.display !== 'none')
+      .map(r => r.dataset.woSku).filter(Boolean);
+    state.prodWoSel = (state.prodWoSel || []).length >= shown.length ? [] : shown;
+    render();
+  });
+  document.getElementById('prod-wo-go')?.addEventListener('click', () => openBulkWriteoffModal(state.prodWoSel || []));
   // Шинэ бараа → хоосон модал
   document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
   document.getElementById('prod-new-pkg')?.addEventListener('click', () => openProductModal(null, { asPackage: true }));

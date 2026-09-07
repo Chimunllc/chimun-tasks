@@ -2792,6 +2792,34 @@ need(['orderCustType']);
     ok(bd.groups[1].key === 'setup' && bd.groups[1].total === 1900000, 'задаргаа: угсралт тусдаа');
     ok(bd.total === 31700000 + 600000 + 1900000 + 100000, 'задаргаа: нийт дүн');
     ok(F.serviceBreakdown([], { rows: [], total: 0 }).groups.length === 0, 'задаргаа: хоосон бол бүлэггүй');
+
+    // НЭГТГЭЛ — нэг үйлчилгээ олон нэрээр бичигдсэн байдаг (2026-09-07)
+    const bd2 = F.serviceBreakdown([
+      { product: '2 талдаа Хүргэлт (машины төрөл дунд)', revenue_mnt: 31000000, times_rented: 304, total_qty: 835 },
+      { product: 'Хүргэлт 1 талдаа', revenue_mnt: 1100000, times_rented: 18, total_qty: 20 },
+      { product: '1 талдаа хүргэлт (ван)', revenue_mnt: 640611, times_rented: 28, total_qty: 32 },
+      { product: 'Угсралт суурилуулалт', revenue_mnt: 1800000, times_rented: 9, total_qty: 9 },
+      { product: 'Суурилуулалт', revenue_mnt: 205000, times_rented: 5, total_qty: 5 },
+    ], dlv);
+    const gDlv = bd2.groups.find(g => g.key === 'delivery'), gSet = bd2.groups.find(g => g.key === 'setup');
+    eq(gDlv.total, 31000000 + 1100000 + 640611 + 600000, 'нэгтгэл: хүргэлтийн бүх нэр + ⟦DLV⟧ нэг дүн');
+    eq(gDlv.times, 304 + 18 + 28 + 2, 'нэгтгэл: удаа нийлнэ');
+    eq(gDlv.qty, 835 + 20 + 32 + 2, 'нэгтгэл: ширхэг нийлнэ');
+    eq(gDlv.names.length, 3, 'нэгтгэл: захиалгын мөрөөр ирсэн 3 нэр (⟦DLV⟧ нь мөр биш тул ороогүй)');
+    eq(gDlv.dlvTotal, 600000, 'нэгтгэл: аппын хүргэлтийн төлбөр тусад нь мэдэгдэнэ');
+    eq(gSet.total, 2005000, 'нэгтгэл: угсралтын 2 нэр нэг дүн');
+    eq(gSet.dlvTotal, 0, 'нэгтгэл: угсралтад ⟦DLV⟧ байхгүй');
+    eq(gSet.names, ['Угсралт суурилуулалт', 'Суурилуулалт'], 'нэгтгэл: нэрс дүнгээр эрэмбэлэгдэнэ');
+
+    // Нэгтгэсэн мөр дархад — БҮХ нэрийн захиалга нэг жагсаалтад
+    const svcOrders = [
+      { id: 'o1', number: 1, status: 'done', total_mnt: 200000, items: [{ name: '2 талдаа Хүргэлт (машины төрөл дунд)', qty: 1, price: 150000 }, { name: 'Ширээ', qty: 1, price: 50000 }] },
+      { id: 'o2', number: 2, status: 'done', total_mnt: 90000, items: [{ name: 'Хүргэлт 1 талдаа', qty: 1, price: 90000 }] },
+    ];
+    eq(F.histProductOrders(svcOrders, '2 талдаа Хүргэлт (машины төрөл дунд)').rows.length, 1, 'нэгтгэл: нэг нэрээр хайхад хуучин зан төлөв хэвээр');
+    const merged = F.histProductOrders(svcOrders, ['2 талдаа Хүргэлт (машины төрөл дунд)', 'Хүргэлт 1 талдаа']);
+    eq(merged.rows.length, 2, 'нэгтгэл: нэрсийн жагсаалтаар хоёулангийнх нь мөр ирнэ');
+    eq(merged.totals.orders, 2, 'нэгтгэл: захиалгын тоо нийлнэ');
   }
 
   // ── Салбарын ленз «Миний ажил»-ыг шүүхгүй ──

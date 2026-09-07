@@ -17688,13 +17688,20 @@ const WO_KEY = 'writeoffs';
 const WO_REASONS = ['Хэт хуучирсан', 'Эвдэрсэн — засах боломжгүй', 'Түрээслэгдэхгүй / өгөөжгүй', 'Алга болсон', 'Бусад'];
 const WO_STATUS = { pending: '⏳ Хүлээгдэж буй', written: '🗂 Актлагдсан', sold: '💰 Зарагдсан' };
 function woList() { return Array.isArray(state.writeoffs) ? state.writeoffs : []; }
+// Сүүлийн мэдэгдэж байсан жагсаалтыг локалд хадгална — refresh хийхэд шууд
+// харагдана (сүлжээ хүлээхгүй), сүлжээ унасан ч жагсаалт ХООСОН болж «алга»
+// болохгүй. ⚠ `loadAppConfig` нь алдаа гарсан ба мөр байхгүй хоёрыг ЯЛГАДАГГҮЙ
+// (хоёуланд нь null) тул массив ирсэн үед л дарж бичнэ.
+function woCacheRead() { try { const r = localStorage.getItem(WO_KEY); const v = r ? JSON.parse(r) : null; return Array.isArray(v) ? v : null; } catch (e) { return null; } }
+function woCacheWrite() { try { localStorage.setItem(WO_KEY, JSON.stringify(woList())); } catch (e) {} }
 async function loadWriteoffs(force) {
   if (state.writeoffs && !force) return state.writeoffs;
   const v = await loadAppConfig(WO_KEY);
-  state.writeoffs = Array.isArray(v) ? v : [];
+  if (Array.isArray(v)) { state.writeoffs = v; woCacheWrite(); }
+  else if (!Array.isArray(state.writeoffs)) state.writeoffs = woCacheRead() || [];
   return state.writeoffs;
 }
-async function saveWriteoffs() { await saveAppConfig(WO_KEY, woList()); }
+async function saveWriteoffs() { await saveAppConfig(WO_KEY, woList()); woCacheWrite(); }
 // Нөөцөөс хасах — хамгийн их үлдэгдэлтэй салбараас эхэлж хасна. Цэвэр функц (тестлэгдэнэ).
 function woDeductQty(p, qty) {
   const f = ['qty_mevent', 'qty_nomaad', 'qty_catering', 'qty_chimun'];
@@ -17724,7 +17731,9 @@ function woSoldIncome(month) {
 }
 function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }
 function renderWriteoff() {
-  if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => render()); }
+  // Кэшээс шууд үзүүлээд, ард нь DB-ээс шинэчилнэ — refresh дээр жагсаалт «алга»
+  // болоод буцаж ирдэг байсныг зогсооно.
+  if (state.writeoffs === undefined) { state.writeoffs = woCacheRead(); loadWriteoffs(true).then(() => render()); }
   if (state.writeoffs === null) return '<div style="padding:50px;text-align:center;color:var(--muted);">Ачаалж байна…</div>';
   const rows = woList().slice().sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
   const st = woStats(rows);
@@ -24607,7 +24616,7 @@ function renderVatView(wrap) {
 
 function renderFinanceReport(wrap) {
   ensureVatLoaded();   // салбар задаргаанд НӨАТ зардал орно
-  if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => render()); }   // хөрөнгө зарсан орлого
+  if (state.writeoffs === undefined) { state.writeoffs = woCacheRead(); loadWriteoffs().then(() => render()); }   // хөрөнгө зарсан орлого
   const curMonth = todayStr().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
   const month = state.finReportMonth;
@@ -29475,7 +29484,9 @@ function refreshViewData() {
   if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();
-    if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => { if (state.view === 'writeoff') render(); }); }
+    // Дэлгэц нээх бүрд DB-ээс ШИНЭЧЛЭНЭ (кэш хуучирсан байж болно)
+    if (state.writeoffs === undefined) state.writeoffs = woCacheRead();
+    loadWriteoffs(true).then(() => { if (state.view === 'writeoff') render(); });
     if (state.archivedProducts === undefined && state.isCEO) loadArchivedProducts().then(() => { if (state.view === 'writeoff') render(); });
   }
   if (v === 'stockcount' && canSeeStockCount()) {

@@ -8522,10 +8522,30 @@ function nextProductSKU() {
 }
 
 // Шинэ бараанд дараагийн M-код (M-<max+1>) — үйлчлүүлэгчийн нүүр код (утсаар захиалах)
+// ⚠ `code` БА `sku` ХОЁУЛАНГААС үзнэ. Зөвхөн `code`-оос үзвэл код нь хоосон
+// (жиш. автоматаар үүсгэсэн) бараатай дугаар давхцаж, шинэ бараа хуучныг ДАРЖ БИЧНЭ
+// — 2026-09-07-нд «Хиймэл Зүлэг» M-310-ыг авч, тэр дугаартай асрын бараа алга болсон.
 function nextProductCode() {
   let max = 0;
-  (state.products || []).forEach(p => { const m = /^M-(\d+)$/.exec(String(p.code || '')); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } });
+  const bump = (v) => { const m = /^M-(\d+)$/.exec(String(v || '')); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } };
+  (state.products || []).forEach(p => { bump(p.code); bump(p.sku); });
   return 'M-' + String(max + 1).padStart(3, '0');
+}
+// АРХИВЛАГДСАН бараа `state.products`-д ирдэггүй тул зөвхөн локал тоолуур ХАНГАЛТГҮЙ.
+// Хадгалахын өмнө DB-ээс хамгийн том M-дугаарыг асууж, сул дугаар өгнө.
+async function nextFreeProductCode() {
+  let local = nextProductCode();
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=sku,code&sku=like.M-*&order=sku.desc&limit=1`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 10000);
+    if (r.ok) {
+      const row = (await r.json())[0] || {};
+      const nums = [row.sku, row.code, local].map(v => { const m = /^M-(\d+)$/.exec(String(v || '')); return m ? parseInt(m[1], 10) : 0; });
+      const top = Math.max(...nums);
+      if (top >= parseInt(local.slice(2), 10)) local = 'M-' + String(top + 1).padStart(3, '0');
+    }
+  } catch (e) { console.warn('nextFreeProductCode', e); }
+  return local;
 }
 // ═══════════ АСАР = МОДУЛЬ (2026-09-07) ═══════════
 // Асар нь тогтмол хэмжээтэй бараа БИШ — 5 метрийн модулиас угсардаг. Урт бүрийг
@@ -8538,7 +8558,7 @@ function nextProductCode() {
 // Шинэ иж бүрдэл авбал ЭНД мөр нэмнэ — эс бөгөөс уртын сонголт гарахгүй.
 const ASAR_MODULES = {
   'M-313': { w: 12, mod: 5, bays: 5, set: 'A' },
-  'M-310': { w: 12, mod: 5, bays: 5, set: 'B' },
+  'M-314': { w: 12, mod: 5, bays: 5, set: 'B' },
   'M-311': { w: 18, mod: 5, bays: 8, set: 'A' },
   'M-312': { w: 18, mod: 5, bays: 6, set: 'B' },
 };
@@ -8578,7 +8598,7 @@ const ASAR_MODULE_PRODUCTS = [
     cost: 7000000, supplier: 'Changzhou Expo Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2023-04-28',
     photos: ['https://n8n.nomaadcamp.com/img/ea341eca-b3e3-4073-86ab-121eac941b63.jpg'],
     description: '12 метр өргөн асрын 5 метрийн нэг модуль. Урт нь модулийн тоогоор тодорхойлогдоно: 5 модуль = 12×25м.\n\n• Иж бүрдэл: A (2023 он) — ⚠ B иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ.\n• Гарал үүсэл: Хятад, Чанжоу — Changzhou Expo Tent Co., Ltd (PI EXPAQ-20230428).\n• Карказ: алюминий 68×122×3мм, GB6061-T6, зэврэлтээс хамгаалсан. Хана 3м, оргил 5.2м. Модулийн алхам 5м.\n• Хулдаас: дээвэр 850г/м² цагаан, хажуу тунгалаг.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
-  { sku: 'M-310', name: 'Асар 12м өргөн · 5м модуль (B иж бүрдэл)', price: asarPriceFor(12, 5), deposit: 200000, stock: 5,
+  { sku: 'M-314', name: 'Асар 12м өргөн · 5м модуль (B иж бүрдэл)', price: asarPriceFor(12, 5), deposit: 200000, stock: 5,
     cost: 6900000, supplier: 'Changzhou Maisite Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2025-03-27',
     photos: ['https://n8n.nomaadcamp.com/img/79c2672e-4273-42db-ad4b-a5a5540713e9.jpg', 'https://n8n.nomaadcamp.com/img/fa4e6d82-6da4-4a83-a009-68a0ac0bc636.jpg'],
     description: '12 метр өргөн асрын 5 метрийн нэг модуль. 5 модуль = 12×25м хүртэл.\n\n• Иж бүрдэл: B (2025 он, 12×10 + 12×15 нийлсэн) — ⚠ A иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ.\n• Гарал үүсэл: Хятад, Чанжоу — 常州迈斯特篷房有限公司 Changzhou Maisite (гэрээ 2025N-0327).\n• Карказ: алюминий 68×122×3мм, төмөр эд анги цайрдсан. Хана 3м. Модулийн алхам 5м.\n• Хулдаас: дээвэр ба хана 850г/м² давхар PVC, цагаан. Дөрвөн талдаа тунгалаг цонхтой.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
@@ -8600,7 +8620,7 @@ function asarSetupDone() {
 // Хуучин уртын бүртгэл → аль иж бүрдэлд хамаарах вэ (түүхийн мөр тулгагдсан хэвээр байхын тулд).
 const ASAR_LEGACY_MAP = {
   'M-005': 'M-313',                                                   // 12×25 = A иж бүрдэл
-  'M-002': 'M-310', 'M-003': 'M-310',                                 // 12×10 + 12×15 = B иж бүрдэл
+  'M-002': 'M-314', 'M-003': 'M-314',                                 // 12×10 + 12×15 = B иж бүрдэл
   'M-290': 'M-313', 'M-291': 'M-313', 'M-292': 'M-313',               // 12×20/30/35 — зөвхөн цаасан дээр байсан
   'M-297': 'M-312',                                                   // 18×30 = B иж бүрдэл
   'M-278': 'M-311', 'M-293': 'M-311', 'M-294': 'M-311', 'M-295': 'M-311', 'M-296': 'M-311',
@@ -8636,7 +8656,7 @@ async function runAsarModuleSetup() {
     }
     try {
       await saveProduct({ ...cur, sku: m.sku, id: m.sku, name: m.name, category: 'Асар', all_categories: ['Асар'],
-        type: 'rental', price: m.price, deposit: m.deposit, photo: m.photos[0], photos: m.photos,
+        type: 'rental', code: m.sku, price: m.price, deposit: m.deposit, photo: m.photos[0], photos: m.photos,
         description: m.description, cost: m.cost, supplier: m.supplier, purchase_date: m.purchase_date,
         stock: m.stock, qty_mevent: m.stock, qty_chimun: 0, qty_nomaad: 0, qty_catering: 0 });
       made++;
@@ -17966,7 +17986,7 @@ async function submitProductModal(modal, orig, btn) {
   const name = g('pm-name');
   if (!name) { modal._pmGo?.('cat'); modal.querySelector('#pm-name')?.focus(); showToast('Нэр оруулна уу', 'warn'); return; }
   const cat = g('pm-cat');
-  const code = (orig && orig.code) || nextProductCode();   // засварт хэвээр, шинэд авто M-код
+  const code = (orig && orig.code) || (await nextFreeProductCode());   // засварт хэвээр, шинэд DB-ээс баталгаажсан сул M-код
   let sku = g('pm-sku');
   if (!orig) sku = code;   // шинэ бараа: дотоод sku = код (M-xxx нэг ижил)
   const images = (modal._images || []).filter(Boolean);

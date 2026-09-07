@@ -4115,7 +4115,7 @@ need(['orderCustType']);
   eq(F.asarLengthOptions('M-311'), [5, 10, 15, 20, 25, 30, 35, 40], 'асар: 18м A → 40м хүртэл');
   eq(F.asarLengthOptions('M-312'), [5, 10, 15, 20, 25, 30], 'асар: 18м B → 30м хүртэл (18×70 БОЛОХГҮЙ)');
   eq(F.asarLengthOptions('M-313'), [5, 10, 15, 20, 25], 'асар: 12м A → 25м хүртэл');
-  eq(F.asarLengthOptions('M-310'), [5, 10, 15, 20, 25], 'асар: 12м B → 25м хүртэл');
+  eq(F.asarLengthOptions('M-314'), [5, 10, 15, 20, 25], 'асар: 12м B → 25м хүртэл');
   eq(F.asarLengthOptions('M-001'), [], 'асар: модуль биш бараанд урт сонголт байхгүй');
 
   eq(F.asarModuleOf('M-312'), { w: 18, mod: 5, bays: 6, set: 'B' }, 'асар: иж бүрдлийн тодорхойлолт');   // eslint-disable-line
@@ -4164,7 +4164,7 @@ need(['orderCustType']);
   ok(LEG.every(k => MAP[k]), 'цэгцлэлт: архивлагдах бараа БҮР шинэ бараа руу зураглагдсан');
   ok(Object.values(MAP).every(v => modSkus.has(v)), 'цэгцлэлт: зураглал зөвхөн модуль бараа руу заана');
   eq(MAP['M-005'], 'M-313', 'цэгцлэлт: 12×25 → 12м A');
-  eq(MAP['M-002'], 'M-310', 'цэгцлэлт: 12×10 → 12м B');
+  eq(MAP['M-002'], 'M-314', 'цэгцлэлт: 12×10 → 12м B');
   eq(MAP['M-297'], 'M-312', 'цэгцлэлт: 18×30 → 18м B (Guyun)');
   eq(MAP['M-278'], 'M-311', 'цэгцлэлт: 18×40 → 18м A (Maisite)');
 
@@ -4190,4 +4190,31 @@ need(['orderCustType']);
     'scan: цэгцлэлт SKU мөргөлдөөнийг шалгадаг');
   ok(/!\/5м модуль\/i\.test\(String\(cur\.name/.test(src),
     'scan: өөр нэртэй бараатай мөргөлдвөл алгасна');
+}
+
+// ── ШИНЭ БАРААНЫ M-ДУГААР ДАВХЦАХГҮЙ (2026-09-07) ──────────────────────────
+// nextProductCode нь зөвхөн `code`-оос үздэг байсан тул код нь хоосон (автоматаар
+// үүсгэсэн) бараатай дугаар давхцаж, шинэ бараа хуучныг ДАРЖ БИЧСЭН:
+// «Хиймэл Зүлэг» M-310-ыг авахад тэр дугаартай асрын бараа алга болов.
+{
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  const set = (arr) => { sandbox.__pp = arr; runIn('state.products = __pp;'); };
+  const prev = runIn('state.products');
+
+  set([{ sku: 'M-005', code: 'M-005' }, { sku: 'M-309', code: 'M-309' }]);
+  eq(F.nextProductCode(), 'M-310', 'дугаар: хамгийн томоос нэгээр нэмнэ');
+
+  // Кодгүй боловч sku нь M-311 бараа байхад дараагийнх нь M-312 байх ЁСТОЙ
+  set([{ sku: 'M-309', code: 'M-309' }, { sku: 'M-311', code: null }]);
+  eq(F.nextProductCode(), 'M-312', 'дугаар: КОДГҮЙ ч sku нь M-311 бол дарж бичихгүй');
+
+  set([{ sku: 'M-313', code: null }, { sku: 'M-002', code: 'M-002' }]);
+  eq(F.nextProductCode(), 'M-314', 'дугаар: sku-гаар хамгийн томыг олно');
+
+  set([]);
+  eq(F.nextProductCode(), 'M-001', 'дугаар: бараагүй үед M-001');
+  set([{ sku: 'P-xyz', code: '' }]);
+  eq(F.nextProductCode(), 'M-001', 'дугаар: M- хэлбэргүй sku нөлөөлөхгүй');
+
+  sandbox.__pp = prev; runIn('state.products = __pp;');
 }

@@ -9235,14 +9235,25 @@ function attManualOutTs(day, hhmm) {
   if (hh > 23 || mm > 59) return '';
   return new Date(Date.UTC(Number(md[1]), Number(md[2]) - 1, Number(md[3]), hh - 8, mm)).toISOString();
 }
-// Оруулах гэж буй гарсан цаг зөв үү. Хамгийн чухал дүрэм: ирсэн цагаас ХОЙШ байх —
-// эс бөгөөс сөрөг үргэлжлэл гарч өдөр дахин 0 болно.
+// ⏰ ШӨНӨ ДҮЛ ХҮРТЭЛ ҮРГЭЛЖИЛСЭН ЭЭЛЖ — гарах цаг ДАРААГИЙН ӨДӨР байж болно.
+// Эвентийн ажил 18:41-д эхлээд 02:00-д дуусах нь энгийн зүйл тул «гарсан цаг ирсэн
+// цагаас хойш байх ёстой» гэж хориглох нь БУРУУ байв (тэр өдөр 0 цаг тоологдоно).
+// Сонгосон цаг ирсэн цагаас өмнө/тэнцүү бол маргаашийнх гэж үзнэ; 20 цагийн тааз
+// (ATT_MANUAL_MAX_H) буруу бичилтийг барина. `day` нь ЭЭЛЖИЙН өдөр хэвээр үлдэнэ —
+// ингэж бичсэнээр ирц/цалин тухайн ээлжийн өдөрт багтаж, хос (in/out) салахгүй.
+function attManualOutResolve(day, hhmm, inTs) {
+  const same = attManualOutTs(day, hhmm);
+  if (!same) return { ts: '', nextDay: false };
+  if (!inTs || new Date(same) > new Date(inTs)) return { ts: same, nextDay: false };
+  return { ts: attManualOutTs(addDays(day, 1), hhmm), nextDay: true };
+}
+// Оруулах гэж буй гарсан цаг зөв үү.
 const ATT_MANUAL_MAX_H = 20;   // 20 цагаас урт өдөр = бичих алдаа гэж үзнэ
 function attManualOutCheck(inTs, outTs) {
   if (!outTs) return { ok: false, err: 'Цаг буруу байна (ЦЦ:ММ хэлбэрээр)' };
   if (!inTs) return { ok: false, err: 'Ирсэн цаг олдсонгүй' };
   const mins = (new Date(outTs) - new Date(inTs)) / 60000;
-  if (!(mins > 0)) return { ok: false, err: 'Гарсан цаг нь ирсэн цагаас хойш байх ёстой' };
+  if (!(mins > 0)) return { ok: false, err: 'Гарсан цаг нь ирсэн цагаас хойш байх ёстой' };   // resolve-ийн дараа гарах ёсгүй
   if (mins > ATT_MANUAL_MAX_H * 60) return { ok: false, err: `${ATT_MANUAL_MAX_H} цагаас урт өдөр байж болохгүй — цагаа шалгана уу` };
   return { ok: true, mins: Math.round(mins) };
 }
@@ -9250,13 +9261,13 @@ function attManualOutCheck(inTs, outTs) {
 // огноогоор бөглөж, өнгөрсөн өдрийн засвар өнөөдөрт унаж чимээгүй алга болно.
 // Хэрэв `day` нь генерацлагдсан багана бол сервер татгалзана — тэр үед `day`-гүйгээр
 // дахин илгээнэ (ts-ээс өөрөө гарна).
-async function attSaveManualOut(body) {
+async function attSaveManualOut(body, keepDay) {
   const post = async (payload) => {
     const r = await fetch(`${DB_URL}/rest/v1/attendance`, { method: 'POST', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify(payload) });
     return { ok: r.ok, status: r.status, text: r.ok ? '' : await r.text().catch(() => '') };
   };
   let res = await post(body);
-  if (!res.ok && /generated|GENERATED ALWAYS|428C9|42P10|column "day"/i.test(res.text || '')) {
+  if (!res.ok && !keepDay && /generated|GENERATED ALWAYS|428C9|42P10|column "day"/i.test(res.text || '')) {
     const { day, ...noDay } = body;
     res = await post(noDay);
   }
@@ -9268,7 +9279,7 @@ function openManualOutModal(memberKey, name, day, inTs) {
   document.getElementById('att-mout-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg'; modal.id = 'att-mout-modal';
-  const chips = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+  const chips = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00'];
   modal.innerHTML = `<div class="modal amo-modal">
     <h2>✍️ Гарсан цаг оруулах</h2>
     <p class="amo-hint"><b>${escapeHtml(name)}</b> · ${escapeHtml(day)}<br>
@@ -9276,6 +9287,7 @@ function openManualOutModal(memberKey, name, day, inTs) {
       Бодит явсан цагийг оруул.</p>
     <div class="amo-chips">${chips.map(c => `<button class="ui-raw amo-chip" data-amo-time="${c}">${c}</button>`).join('')}</div>
     <div class="amo-row"><span>Бусад:</span><input type="time" id="amo-time" class="ui-raw" value="18:00"></div>
+    <div class="amo-prev" id="amo-prev"></div>
     <div class="amo-err" id="amo-err" hidden></div>
     <div class="modal-actions">
       <button class="btn" id="amo-cancel">Болих</button>
@@ -9287,10 +9299,23 @@ function openManualOutModal(memberKey, name, day, inTs) {
   const errEl = modal.querySelector('#amo-err'), inp = modal.querySelector('#amo-time');
   modal.querySelector('#amo-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  modal.querySelectorAll('[data-amo-time]').forEach(b => b.addEventListener('click', () => { inp.value = b.dataset.amoTime; errEl.hidden = true; }));
+  // Сонгосон цагийг шууд тайлбарлана: хэдэн цаг тоологдох, маргаашийнх эсэх.
+  const prevEl = modal.querySelector('#amo-prev');
+  const preview = () => {
+    errEl.hidden = true;
+    const r = attManualOutResolve(day, inp.value, inTs);
+    const chk = attManualOutCheck(inTs, r.ts);
+    prevEl.innerHTML = chk.ok
+      ? `${r.nextDay ? '🌙 <b>маргааш</b> ' : ''}${escapeHtml(inp.value)} → <b>${escapeHtml(attHM(chk.mins))}</b> тоологдоно`
+      : '';
+    if (!chk.ok && inp.value) { errEl.textContent = '⚠ ' + chk.err; errEl.hidden = false; }
+  };
+  modal.querySelectorAll('[data-amo-time]').forEach(b => b.addEventListener('click', () => { inp.value = b.dataset.amoTime; preview(); }));
+  inp.addEventListener('input', preview);
+  preview();
   modal.querySelector('#amo-save').onclick = async (e) => {
     const btn = e.currentTarget;
-    const ts = attManualOutTs(day, inp.value);
+    const { ts, nextDay } = attManualOutResolve(day, inp.value, inTs);
     const chk = attManualOutCheck(inTs, ts);
     if (!chk.ok) { errEl.textContent = '⚠ ' + chk.err; errEl.hidden = false; return; }
     btn.disabled = true;
@@ -9300,7 +9325,7 @@ function openManualOutModal(memberKey, name, day, inTs) {
         member_key: memberKey, member_name: (mem && mem.name) || name || '', member_phone: memberKey,
         kind: 'out', ts, day, token: 'manual', source: 'manual',
         branch: mem ? (Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null)) : null,
-      });
+      }, nextDay);   // маргаашийн бол `day`-г заавал ээлжийн өдрөөр бичнэ (эс бол хос сална)
     } catch (err) {
       btn.disabled = false; errEl.textContent = '⚠ Хадгалагдсангүй: ' + err.message; errEl.hidden = false; return;
     }

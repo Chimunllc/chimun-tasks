@@ -4039,3 +4039,43 @@ need(['orderCustType']);
   eq(F.classifyExpense('420733******3313:VSA:GOOGLE WO', ''), '2400', 'ангилал: GOOGLE WO(rkspace) → онлайн програм');
   eq(F.classifyExpense('ЗАРЛАГА CANTABO СЕРВЕР ТӨЛБӨР', ''), '2400', 'ангилал: CANTABO сервер → онлайн програм');
 }
+
+// ── ИРЦ: ШӨНӨ ДҮЛ ХҮРТЭЛ ҮРГЭЛЖИЛСЭН ЭЭЛЖ (2026-09-07) ─────────────────────
+// 18:41-д ирээд 02:00-д гарах нь эвентийн ажилд энгийн зүйл. Өмнө нь «гарсан цаг
+// ирсэн цагаас хойш байх ёстой» гэж хориглодог тул тэр өдөр 0 цаг тоологдож байв.
+{
+  const inTs = F.attManualOutTs('2026-09-06', '18:41');   // 18:41 УБ цагаар
+  ok(!!inTs, 'ирц: ирсэн цаг ISO болов');
+
+  // ① Ижил өдрийн хожуу цаг — маргаашийнх БИШ
+  const a = F.attManualOutResolve('2026-09-06', '22:00', inTs);
+  eq(a.nextDay, false, 'ирц: 22:00 нь ижил өдөр');
+  eq(F.attManualOutCheck(inTs, a.ts).mins, 199, 'ирц: 18:41→22:00 = 3ц19м');
+
+  // ② Ирсэн цагаас ӨМНӨХ цаг = МАРГААШ (шөнийн ээлж)
+  const b = F.attManualOutResolve('2026-09-06', '02:00', inTs);
+  eq(b.nextDay, true, 'ирц: 02:00 нь МАРГААШ гэж тооцогдоно');
+  ok(b.ts.slice(0, 10) === '2026-09-06' || b.ts.slice(0, 10) === '2026-09-07', 'ирц: маргаашийн ISO (UTC+8 тул огноо шилжиж болно)');
+  const chk = F.attManualOutCheck(inTs, b.ts);
+  ok(chk.ok === true, 'ирц: шөнийн гарц ЗӨВШӨӨРӨГДӨНӨ (өмнө хориглодог байв)');
+  eq(chk.mins, 439, 'ирц: 18:41→02:00 = 7ц19м');
+
+  // ③ Яг ирсэн цаг = маргааш (24 цаг) → 20 цагийн таазанд баригдана
+  const c = F.attManualOutResolve('2026-09-06', '18:41', inTs);
+  eq(c.nextDay, true, 'ирц: ижил цаг → маргааш гэж тооцно');
+  ok(F.attManualOutCheck(inTs, c.ts).ok === false, 'ирц: 24 цаг = алдаа (20ц тааз)');
+
+  // ④ 00:00 — шөнө дунд
+  const d = F.attManualOutResolve('2026-09-06', '00:00', inTs);
+  eq(d.nextDay, true, 'ирц: 00:00 нь маргааш');
+  eq(F.attManualOutCheck(inTs, d.ts).mins, 319, 'ирц: 18:41→00:00 = 5ц19м');
+
+  // ⑤ Өглөө ирсэн бол оройн цаг ижил өдөр хэвээр
+  const morn = F.attManualOutTs('2026-09-06', '09:00');
+  eq(F.attManualOutResolve('2026-09-06', '18:00', morn).nextDay, false, 'ирц: 09:00→18:00 ижил өдөр');
+  eq(F.attManualOutCheck(morn, F.attManualOutResolve('2026-09-06', '18:00', morn).ts).mins, 540, 'ирц: 9 цаг');
+
+  // ⑥ Буруу оролт
+  eq(F.attManualOutResolve('2026-09-06', '', inTs).ts, '', 'ирц: цаг хоосон → хоосон');
+  ok(F.attManualOutCheck(inTs, '').ok === false, 'ирц: цаггүй = алдаа');
+}

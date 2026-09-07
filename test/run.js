@@ -4435,3 +4435,32 @@ need(['orderCustType']);
   ok(/async function saveWriteoffs\(\) \{ await saveAppConfig\(WO_KEY, woList\(\)\); woCacheWrite\(\); \}/.test(src),
     'scan: хадгалахад локал кэш ч шинэчлэгдэнэ');
 }
+
+// ── БАРААНЫ ЗОРИЛГЫН ДЭЛГЭЦҮҮД (2026-09-07) ────────────────────────────────
+// Каталог / Үнэ / Өртөг / Нөөц нь өөр өөр ажил, өөр өөр хүн хийдэг тул
+// тус тусдаа дэлгэц болов. Хайлт нь нэр, ангилал, код, sku-гаар ажиллана.
+{
+  const list = [
+    { sku: 'M-001', code: 'M-001', name: 'Асар 18м өргөн', category: 'Асар', type: 'rental' },
+    { sku: 'M-002', code: 'M-002', name: 'Хар сандал', category: 'Ширээ, сандал', type: 'rental' },
+    { sku: 'S-001', code: 'S-001', name: 'Хүргэлт', category: 'Үйлчилгээ', type: 'service' },
+    { name: 'sku-гүй мөр', type: 'rental' },
+  ];
+  eq(F.psFilter(list, '').map(p => p.sku), ['M-001', 'M-002'], 'хуудас: үйлчилгээ ба sku-гүй мөр орохгүй');
+  eq(F.psFilter(list, 'асар').map(p => p.sku), ['M-001'], 'хуудас: нэрээр хайна');
+  eq(F.psFilter(list, 'ширээ').map(p => p.sku), ['M-002'], 'хуудас: ангиллаар хайна');
+  eq(F.psFilter(list, 'm-002').map(p => p.sku), ['M-002'], 'хуудас: кодоор хайна (том/жижиг үсэг хамаагүй)');
+  eq(F.psFilter(list, 'олдохгүй').length, 0, 'хуудас: тохирохгүй → хоосон');
+  eq(F.psFilter(null, 'а').length, 0, 'хуудас: жагсаалтгүй → унахгүй');
+
+  // Мөнгөн утга — таслал, ₮ тэмдэгтэй бичсэн ч зөв тоо болно
+  eq(F.psNum('1,800,000₮'), 1800000, 'хуудас: тасалтай мөнгө уншина');
+  eq(F.psNum(''), 0, 'хуудас: хоосон → 0');
+  eq(F.psNum('-5'), 0, 'хуудас: сөрөг → 0 (нөөц/үнэ сөрөг байж болохгүй)');
+  eq(F.psNum('12.6'), 13, 'хуудас: бутархай → бүхэл');
+
+  // Эрх — дэлгэц бүр өөрийн түлхүүртэй
+  eq(Object.keys(vm.runInContext('PSHEET', sandbox)).sort(), ['catalog', 'cost', 'price', 'stock'], 'хуудас: 4 зорилго');
+  eq(vm.runInContext('PSHEET', sandbox).stock.perm, 'products.stock', 'хуудас: Нөөц дэлгэц products.stock эрхтэй');
+  eq(vm.runInContext('PSHEET', sandbox).cost.perm, 'products.cost', 'хуудас: Өртөг дэлгэц products.cost эрхтэй');
+}

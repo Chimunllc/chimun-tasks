@@ -21078,6 +21078,7 @@ function renderCooSalary() {
   if (state.appOrders === undefined && typeof loadAppOrders === 'function') { state.appOrders = []; loadAppOrders(); }
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { loadNomaadOrders(); }
   if (state.financeRequests === undefined && typeof loadFinanceRequests === 'function') loadFinanceRequests();
+  ensureVatLoaded();   // цэвэр ашиг НӨАТ хассан байна
 
   const cfg = cooShareCfg(); const cooKey = cfg.key || ''; const pct = cooSharePct();
   // meCeo — доорх «⚙️ Тохиргоо» блок ЗӨВХӨН CEO-д (COO өөрөө өөрийн хувиа өөрчилж болохгүй).
@@ -22203,6 +22204,37 @@ function finPendingStmt(t) { return /⟦PENDST⟧/.test(String(t.justification |
 function finIsDepositReturn(t) { return String((t && t.category) || '').startsWith('5810'); }
 // ── Зардлын НЭГДСЭН дүрэм — Тайлан ба Санхүү ижилхэн тоолохын тулд ──
 // Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(6900) + барьцаа буцаалт(5810) БИШ.
+// ── НӨАТ = ЗАРДАЛ (2026-09-07) ───────────────────────────────────────────────
+// Борлуулалтын НӨАТ орлогод багтаж ирдэг ч компанид ҮЛДДЭГГҮЙ — татварт төлөгдөнө.
+// Тиймээс ашгийн тайланд зардал болж хасагдана, салбар бүрд ӨӨРИЙНХ нь баримтаар
+// (ebarimt matched_type: event→M-Event, nomaad→NOMAAD, тулгагдаагүй→Чимун ХХК).
+// ⚠ ДАВХАР ТООЛОЛТООС сэргийлэх: банкны хуулгаар орсон НӨАТ ТӨЛӨЛТ (ангилал 5100)
+// тайлангийн зардлаас хасагдана — ноогдуулсан НӨАТ түүнийг орлоно. (Гүйлгээ жагсаалт
+// хэвээр — тэнд бодит мөнгөн гарц харагдана.)
+function finIsVatPayment(t) { return String((t && t.category) || '').startsWith('5100'); }
+function vatReceiptBranch(r) { return (r && r.matched_type === 'event') ? 'ИВЕНТ' : (r && r.matched_type === 'nomaad') ? 'КЕМП' : 'ХХК'; }
+// Тухайн сарын ноогдуулсан НӨАТ салбараар. Цэвэр функц — тестлэгдэнэ.
+function vatByBranchMonth(receipts, month) {
+  const out = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0, total: 0 };
+  (receipts || []).forEach(r => {
+    if (!r || r.returned) return;                                   // буцаасан баримт тоологдохгүй
+    if (String(r.dt || '').slice(0, 7) !== month) return;
+    const v = Number(r.vat) || 0; if (!v) return;
+    out[vatReceiptBranch(r)] += v; out.total += v;
+  });
+  return out;
+}
+function vatExpenseFor(month, wantBr) {
+  const b = vatByBranchMonth(vatReceiptsActive(), month);
+  return wantBr ? (b[wantBr] || 0) : b.total;
+}
+// Тайлангийн дэлгэц НӨАТ-ыг хасдаг тул баримтууд ачаалагдсан байх ЁСТОЙ.
+// Ачаалагдаагүй бол НӨАТ чимээгүй 0 болж ашиг хиймлээр өндөр харагдана.
+function ensureVatLoaded() {
+  if (state._vatLoadStarted || typeof loadVatReceipts !== 'function') return;
+  state._vatLoadStarted = true;
+  loadVatReceipts().then(() => render()).catch(() => {});
+}
 function finIsRealExpense(t) {
   return !!t && t.decision === 'approved' && !finPendingStmt(t)
     && !String(t.category || '').startsWith('6900') && !finIsDepositReturn(t);
@@ -22227,19 +22259,23 @@ function finMonthIncome(month, basis) {
 function finBranchPnl(month, basis) {
   const _mi = finMonthIncome(month, basis);
   const evInc = _mi.evInc, noInc = _mi.noInc;
-  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0;
+  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0, vatPaid = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
     if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
     if (finIsDepositReturn(t)) { depReturn += Number(t.amount) || 0; return; }  // барьцаа буцаалт = зардал БИШ (P&L саармаг)
+    if (finIsVatPayment(t)) { vatPaid += Number(t.amount) || 0; return; }        // НӨАТ төлөлт — ноогдуулсанаар орлуулна (давхар тоолохгүй)
     const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
   });
+  // Ноогдуулсан НӨАТ — салбар бүрийн зардал дээр нэмэгдэнэ.
+  const vat = vatByBranchMonth(vatReceiptsActive(), month);
+  ['ИВЕНТ', 'КЕМП', 'ХХК'].forEach(b => { exp[b] += vat[b] || 0; });
   return {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
       { k: 'NOMAAD', inc: noInc, exp: exp['КЕМП'] },
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
-    ], ownerLoan, depReturn,
+    ], ownerLoan, depReturn, vat, vatPaid,
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
@@ -22340,10 +22376,16 @@ async function openFinDupAudit() {
 function financeTrend(wantBr) {
   const inc = {}, exp = {};
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
-    if (finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr)) {
+    if (finIsRealExpense(t) && !finIsVatPayment(t) && (!wantBr || finEffBranch(t) === wantBr)) {
       const mo = finExpMonth(t, finBasis());   // basis-аар: cash=гарсан огноо, accrual=ноогдох сар
       if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(t.amount) || 0);
     }
+  });
+  // Ноогдуулсан НӨАТ = зардал (баримтын сараар, салбараар)
+  vatReceiptsActive().forEach(r => {
+    if (wantBr && vatReceiptBranch(r) !== wantBr) return;
+    const mo = String(r.dt || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(mo)) exp[mo] = (exp[mo] || 0) + (Number(r.vat) || 0);
   });
   finAddOrderIncome(inc, wantBr, finBasis());
   const keys = [...Object.keys(inc), ...Object.keys(exp)].sort();
@@ -22412,6 +22454,7 @@ function renderReports() {
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }
   if (state.nomaadOrders === undefined && typeof loadNomaadOrders === 'function') { state.nomaadOrders = []; setTimeout(loadNomaadOrders, 0); }
   if (!state.products || !state.products.length) loadProductsCatalog();
+  ensureVatLoaded();   // НӨАТ зардалд хасагдана — баримт заавал ачаалагдсан байх
   // P&L: салбар лензээр (Бүгд / Кемп / M-Event). Зардал = тухайн салбарын батлагдсан хүсэлт.
   const lens = effectiveBranchLens();
   const wantBr = finLensBranch(lens);          // null=бүгд, 'КЕМП', 'ИВЕНТ', 'ХХК'
@@ -22434,8 +22477,10 @@ function renderReports() {
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     // P1: basis-аар — "Мөнгөн гүйлгээ"=гарсан огноо (Санхүүтэй таарна), "Гүйцэтгэл"=ноогдох сар.
     // P2: finIsRealExpense — эзний зээл(6900)+PENDST хасна (Санхүүтэй ижил дүрэм).
-    if (finExpMonth(t, basis) === month && finIsRealExpense(t) && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
+    if (finExpMonth(t, basis) === month && finIsRealExpense(t) && !finIsVatPayment(t) && (!wantBr || finEffBranch(t) === wantBr)) { expense += Number(t.amount) || 0; expN++; }
   });
+  const vatExp = vatExpenseFor(month, wantBr);   // ноогдуулсан НӨАТ = зардал (салбараар)
+  expense += vatExp;
   const brLabel = wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар';
   const net = income - expense, margin = income > 0 ? Math.round(net / income * 100) : null;
   const netCol = net >= 0 ? 'var(--ok)' : 'var(--danger)';
@@ -22482,7 +22527,7 @@ function renderReports() {
     </div>`;
   const inputs = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
       ${kpi(incomeLabel, fmtBig(income), 'var(--ok)', incomeSub)}
-      ${kpi(basis === 'cash' ? 'Зарлага (гүйлгээгээр)' : 'Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (basis === 'cash' ? ' · Санхүүтэй таарна' : ''))}
+      ${kpi(basis === 'cash' ? 'Зарлага (гүйлгээгээр)' : 'Зарлага (ноогдох сараар)', fmtBig(expense), 'var(--danger)', expN + ' гүйлгээ · ' + escapeHtml(brLabel) + (vatExp > 0 ? ` · 🧾 НӨАТ ${fmtBig(vatExp)}` : '') + (basis === 'cash' ? ' · Санхүүтэй таарна' : ''))}
     </div>`;
   // Орлогын суурь солих товч
   const bt = (v, lbl) => `<button data-fin-basis="${v}" style="padding:6px 14px;font-size:12px;border:1px solid var(--border);cursor:pointer;font-weight:600;${basis === v ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--panel);color:var(--muted);'}">${lbl}</button>`;
@@ -22603,6 +22648,7 @@ function renderReports() {
           <tr style="border-top:2px solid var(--border);font-weight:800;"><td style="padding:8px 4px;">Нийт</td><td style="padding:8px 4px;text-align:right;color:var(--ok);">${fmtSaya(bpTotInc)}</td><td style="padding:8px 4px;text-align:right;color:var(--danger);">${fmtSaya(bpTotExp)}</td><td style="padding:8px 4px;text-align:right;color:${bpTotInc - bpTotExp >= 0 ? 'var(--ok)' : 'var(--danger)'};">${fmtSaya(bpTotInc - bpTotExp)}</td></tr>
         </tbody>
       </table>
+      ${bp.vat && bp.vat.total ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">🧾 Зардалд багтсан НӨАТ: <b style="color:var(--text);">${fmtSaya(bp.vat.total)}</b> (M-Event ${fmtSaya(bp.vat['ИВЕНТ'])} · NOMAAD ${fmtSaya(bp.vat['КЕМП'])}${bp.vat['ХХК'] ? ` · тулгагдаагүй ${fmtSaya(bp.vat['ХХК'])}` : ''})${bp.vatPaid ? ` — банкаар төлсөн ${fmtSaya(bp.vatPaid)} нь давхар тоологдохгүй` : ''}</div>` : ''}
       ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Эзний зээл эргэн төлөлт (зардал БИШ): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
     const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">
         <div style="font-size:12px;color:var(--muted);">${icon} ${label}</div>
@@ -23667,6 +23713,7 @@ function renderVatView(wrap) {
 }
 
 function renderFinanceReport(wrap) {
+  ensureVatLoaded();   // салбар задаргаанд НӨАТ зардал орно
   const curMonth = todayStr().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
   const month = state.finReportMonth;

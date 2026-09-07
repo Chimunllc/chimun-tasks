@@ -3839,6 +3839,23 @@ need(['orderCustType']);
   ok(/\.pm-menu-row\[hidden\]/.test(css), 'багц: нуусан менюгийн мөр үнэхээр нуугдана (display:flex-ийг дардаг)');
 }
 
+// ── БАРАА АРХИВЛАХ — ЗӨВХӨН CEO, ХАТУУ УСТГАЛ БИШ (2026-09-07) ─────────────
+// Дүрэм: ямар ч дата хатуугаар устгахгүй. Товч нь `archived=true` болгоно.
+{
+  const openSrc = src.slice(src.indexOf('function openProductModal('), src.indexOf('async function submitProductModal('));
+  ok(/isEdit && state\.isCEO/.test(openSrc), 'архив: товч зөвхөн CEO-д, зөвхөн байгаа бараанд');
+  ok(/id="pm-archive"/.test(openSrc), 'архив: товч байна');
+  ok(/setProductArchived\(p\.sku, true\)/.test(openSrc), 'архив: archived=true болгоно');
+  ok(!/DELETE.*products|method: 'DELETE'[^}]*products/.test(openSrc), 'архив: ХАТУУ устгал дуудахгүй');
+  ok(/showConfirm/.test(openSrc), 'архив: баталгаажуулалт асууна');
+
+  // Сэргээх зам ЗААВАЛ байх — буцаах аргагүй устгал аюултай
+  ok(/loadArchivedProducts/.test(src), 'архив: архивласныг татах функц байна');
+  ok(/archived=eq\.true/.test(src), 'архив: архивласныг тусад нь татна (жагсаалт eq.false шүүдэг)');
+  ok(/data-unarch/.test(src), 'архив: сэргээх товч байна');
+  ok(/setProductArchived\(b\.dataset\.unarch, false\)/.test(src), 'архив: сэргээхэд archived=false');
+}
+
   finish();
 })();
 

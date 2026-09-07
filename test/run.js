@@ -3878,3 +3878,22 @@ need(['orderCustType']);
   ok(/!\(r\.personal && !r\.biz\)/.test(src),
     'scan: «компанийн» гэж сонгоогүй хувийн мөр зардал болохгүй');
 }
+
+// ── ИМПОРТ БУЦААХ — зөвхөн ТУХАЙН хуулгын мөрүүд (2026-09-07) ────────────────
+// Буруу хуулга оруулчихвал сэргээх ганц зам. Бусад данс / бусад сарын зардлыг
+// хөндвөл сүйрэл болно — тиймээс хээ (fp) ЯГ таарсан бүртгэлийг л сонгоно.
+{
+  const reqs = [
+    { id: 1, amount: 20000, status: 'done', justification: 'Хуулгаар орсон [#EXP-20000-20260801-x] ⟦SRC|5400145457⟧' },
+    { id: 2, amount: 32000, status: 'done', justification: 'Хуулгаар орсон [#EXP-32000-20260801-y] ⟦SRC|5400145457⟧' },
+    { id: 3, amount: 99000, status: 'done', justification: 'Хуулгаар орсон [#EXP-99000-20260801-z] ⟦SRC|3635185058⟧' },  // өөр данс
+    { id: 4, amount: 20000, status: 'deleted', justification: 'Хуулгаар орсон [#EXP-20000-20260801-x]' },                 // аль хэдийн устсан
+    { id: 5, amount: 50000, status: 'done', justification: 'Гараар бүртгэсэн — хээгүй' },                                  // импортын биш
+  ];
+  const fps = new Set(['EXP-20000-20260801-x', 'EXP-32000-20260801-y']);
+  const hit = F.stmtImportedByFps(reqs, fps);
+  eq(hit.map(r => r.id), [1, 2], 'буцаах: зөвхөн энэ хуулгын хээтэй ИДЭВХТЭЙ бүртгэл');
+  eq(F.stmtImportedByFps(reqs, new Set()).length, 0, 'буцаах: хээ хоосон → юу ч сонгогдохгүй');
+  eq(F.stmtImportedByFps(null, fps).length, 0, 'буцаах: бүртгэл байхгүй → унахгүй');
+  eq(F.stmtImportedByFps(reqs, ['EXP-99000-20260801-z']).map(r => r.id), [3], 'буцаах: массиваар ч ажиллана');
+}

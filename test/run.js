@@ -4118,3 +4118,33 @@ need(['orderCustType']);
   ok(!LEG.some(x => MODS[x]), 'цэгцлэлт: хуучин жагсаалтад модулийн sku байхгүй');
   eq(LEG.length, 19, 'цэгцлэлт: 19 хуучин уртын бүртгэл');
 }
+
+// ── АСРЫН ЦЭГЦЛЭЛТ: түүх тасрахгүй байх (2026-09-07) ───────────────────────
+// Хуучин уртын бүртгэлийг АРХИВЛАВАЛ каталогоос унана (loadProductsCatalog нь
+// archived=eq.false татдаг) → хуучин захиалгын мөрүүд «тулгагдаагүй» болно.
+// Тиймээс архивлахын өмнө толинд (product_aliases) шинэ модуль бараа руу заана.
+{
+  const G = (n) => vm.runInContext(n, sandbox);
+  const LEG = G('ASAR_LEGACY_SKUS'), MAP = G('ASAR_LEGACY_MAP'), MODP = G('ASAR_MODULE_PRODUCTS'), MODS = G('ASAR_MODULES');
+  const modSkus = new Set(Object.keys(MODS));
+
+  ok(LEG.every(k => MAP[k]), 'цэгцлэлт: архивлагдах бараа БҮР шинэ бараа руу зураглагдсан');
+  ok(Object.values(MAP).every(v => modSkus.has(v)), 'цэгцлэлт: зураглал зөвхөн модуль бараа руу заана');
+  eq(MAP['M-005'], 'M-309', 'цэгцлэлт: 12×25 → 12м A');
+  eq(MAP['M-002'], 'M-310', 'цэгцлэлт: 12×10 → 12м B');
+  eq(MAP['M-297'], 'M-312', 'цэгцлэлт: 18×30 → 18м B (Guyun)');
+  eq(MAP['M-278'], 'M-311', 'цэгцлэлт: 18×40 → 18м A (Maisite)');
+
+  // Гарал үүсэл, өртөг, ашиглалтын хугацаа — бүх модуль бараанд байх ёстой
+  MODP.forEach(m => {
+    ok(!!m.supplier && /Хятад/.test(m.supplier), `гарал үүсэл: ${m.sku} нийлүүлэгчтэй`);
+    ok(/^\d{4}-\d{2}-\d{2}$/.test(m.purchase_date), `${m.sku}: худалдан авсан огноо`);
+    ok(m.cost > 0, `${m.sku}: нэг модулийн өртөг`);
+    ok(m.photos && m.photos.length > 0, `${m.sku}: зурагтай`);
+    ok(/Ашиглалтын хугацаа/.test(m.description), `${m.sku}: ашиглалтын хугацаа бичигдсэн`);
+    ok(/Гарал үүсэл/.test(m.description), `${m.sku}: гарал үүсэл бичигдсэн`);
+  });
+  // Нийт өртөг = гэрээний дүнтэй таарна
+  eq(MODP.find(m => m.sku === 'M-309').cost * 5, 35000000, 'өртөг: 12м A иж бүрдэл 35 сая');
+  eq(MODP.find(m => m.sku === 'M-311').cost * 8, 82300000, 'өртөг: 18м A иж бүрдэл 82.3 сая');
+}

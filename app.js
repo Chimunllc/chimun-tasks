@@ -8562,48 +8562,86 @@ const ASAR_LEGACY_SKUS = ['M-002', 'M-003', 'M-005', 'M-290', 'M-291', 'M-292',
   'M-278', 'M-293', 'M-294', 'M-295', 'M-296', 'M-297', 'M-298', 'M-299', 'M-300', 'M-301', 'M-302', 'M-303', 'M-304'];
 // Үүсгэх модуль бараанууд (нэг удаа). Үнэ = одоогийн урт бүрийн үнээс гарсан:
 // 12м 5,000,000₮ / 25м = 1,000,000₮ нэг модуль; 18м 9,900,000₮ / 25м = 1,980,000₮.
+// Өртөг = худалдан авалтын гэрээний дүн ÷ модулийн тоо. Гарал үүсэл, ашиглалтын
+// хугацаа нь гэрээ/proforma-аас — элэгдэл, ROI тооцоход хэрэгтэй.
 const ASAR_MODULE_PRODUCTS = [
   { sku: 'M-309', name: 'Асар 12м өргөн · 5м модуль (A иж бүрдэл)', price: 1000000, deposit: 200000, stock: 5,
-    photo: 'https://n8n.nomaadcamp.com/img/ea341eca-b3e3-4073-86ab-121eac941b63.jpg',
-    description: '12 метр өргөн асрын 5 метрийн нэг модуль. Урт нь модулийн тоогоор тодорхойлогдоно: 5 модуль = 12×25м. A иж бүрдэл (2023, Expo Tent, гол профиль 68×122×3мм). ⚠ B иж бүрдэлтэй холиж угсарч болохгүй.' },
+    cost: 7000000, supplier: 'Changzhou Expo Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2023-04-28',
+    photos: ['https://n8n.nomaadcamp.com/img/ea341eca-b3e3-4073-86ab-121eac941b63.jpg'],
+    description: '12 метр өргөн асрын 5 метрийн нэг модуль. Урт нь модулийн тоогоор тодорхойлогдоно: 5 модуль = 12×25м.\n\n• Иж бүрдэл: A (2023 он) — ⚠ B иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ.\n• Гарал үүсэл: Хятад, Чанжоу — Changzhou Expo Tent Co., Ltd (PI EXPAQ-20230428).\n• Карказ: алюминий 68×122×3мм, GB6061-T6, зэврэлтээс хамгаалсан. Хана 3м, оргил 5.2м. Модулийн алхам 5м.\n• Хулдаас: дээвэр 850г/м² цагаан, хажуу тунгалаг.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
   { sku: 'M-310', name: 'Асар 12м өргөн · 5м модуль (B иж бүрдэл)', price: 1000000, deposit: 200000, stock: 5,
-    photo: 'https://n8n.nomaadcamp.com/img/79c2672e-4273-42db-ad4b-a5a5540713e9.jpg',
-    description: '12 метр өргөн асрын 5 метрийн нэг модуль. 5 модуль = 12×25м хүртэл. B иж бүрдэл (2025, Maisite, 12×10 + 12×15 нийлсэн). ⚠ A иж бүрдэлтэй холиж угсарч болохгүй.' },
+    cost: 6900000, supplier: 'Changzhou Maisite Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2025-03-27',
+    photos: ['https://n8n.nomaadcamp.com/img/79c2672e-4273-42db-ad4b-a5a5540713e9.jpg', 'https://n8n.nomaadcamp.com/img/fa4e6d82-6da4-4a83-a009-68a0ac0bc636.jpg'],
+    description: '12 метр өргөн асрын 5 метрийн нэг модуль. 5 модуль = 12×25м хүртэл.\n\n• Иж бүрдэл: B (2025 он, 12×10 + 12×15 нийлсэн) — ⚠ A иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ.\n• Гарал үүсэл: Хятад, Чанжоу — 常州迈斯特篷房有限公司 Changzhou Maisite (гэрээ 2025N-0327).\n• Карказ: алюминий 68×122×3мм, төмөр эд анги цайрдсан. Хана 3м. Модулийн алхам 5м.\n• Хулдаас: дээвэр ба хана 850г/м² давхар PVC, цагаан. Дөрвөн талдаа тунгалаг цонхтой.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
   { sku: 'M-311', name: 'Асар 18м өргөн · 5м модуль (A иж бүрдэл)', price: 1980000, deposit: 0, stock: 8,
-    photo: 'https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg',
-    description: '18 метр өргөн асрын 5 метрийн нэг модуль. 8 модуль = 18×40м хүртэл. A иж бүрдэл (2026, Maisite, гол профиль 112×203мм). ⚠ B иж бүрдэлтэй холиж угсарч болохгүй.' },
+    cost: 10287500, supplier: 'Changzhou Maisite Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2026-06-09',
+    photos: ['https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg', 'https://n8n.nomaadcamp.com/img/gal-aea9ebdebd436e60bfcfcbe47f2f00ad.jpg', 'https://n8n.nomaadcamp.com/img/up-da75f38c7596124328b701829f796687.jpg', 'https://n8n.nomaadcamp.com/img/up-e41fb2172ff1837004dea6b142b712ac.jpg'],
+    description: '18 метр өргөн асрын 5 метрийн нэг модуль. 8 модуль = 18×40м хүртэл (720 м²).\n\n• Иж бүрдэл: A (2026 он) — ⚠ B иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ, профиль өөр.\n• Гарал үүсэл: Хятад, Чанжоу — 常州迈斯特篷房有限公司 Changzhou Maisite (гэрээ 2026N-0609).\n• Карказ: алюминий, гол профиль 112×203мм, төмөр эд анги цайрдсан. Багана 4м.\n• Хулдаас: дээвэр ба хана 850г/м² давхар PVC, цагаан. Дөрвөн талдаа тунгалаг цонхтой.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
   { sku: 'M-312', name: 'Асар 18м өргөн · 5м модуль (B иж бүрдэл)', price: 1980000, deposit: 0, stock: 6,
-    photo: 'https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg',
-    description: '18 метр өргөн асрын 5 метрийн нэг модуль. 6 модуль = 18×30м хүртэл. B иж бүрдэл (2026, Guyun, гол профиль 150×108×3мм). ⚠ A иж бүрдэлтэй холиж угсарч болохгүй.' },
+    cost: 10233333, supplier: 'Suzhou Guyun Tent Co., Ltd (Хятад, Сүжоу)', purchase_date: '2026-03-13',
+    photos: ['https://n8n.nomaadcamp.com/img/up-fc26bae1688fe30e0a92dd444ba62e0f.jpg', 'https://n8n.nomaadcamp.com/img/up-1cea80d604476d8ded37dc49bc08aba0.jpg'],
+    description: '18 метр өргөн асрын 5 метрийн нэг модуль. 6 модуль = 18×30м хүртэл (540 м²).\n\n• Иж бүрдэл: B (2026 он) — ⚠ A иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ, профиль өөр.\n• Гарал үүсэл: Хятад, Сүжоу — Suzhou Guyun Tent Co., Ltd (PI gy-lw20260313005).\n• Карказ: алюминий 6061-T6, гол профиль 150×108×3мм. Багана 4м, оргил 6.8м. Модулийн алхам 5м. Салхины даац 120 км/ц.\n• Хулдаас: дараа нь нэмж авсан.\n• Ашиглалтын хугацаа: 20-35 жил (үйлдвэрийн заасан), баталгаат хугацаа 3 жил.' },
 ];
 // Цэгцлэлт хийгдсэн үү (модуль бараанууд каталогт бий юу).
 function asarSetupDone() {
   const have = new Set((state.products || []).map(p => p && p.sku));
-  return ASAR_MODULE_PRODUCTS.every(m => have.has(m.sku));
+  // Архивласан бараа `loadProductsCatalog`-д ирдэггүй тул «каталогт үлдээгүй» = архивлагдсан.
+  return ASAR_MODULE_PRODUCTS.every(m => have.has(m.sku)) && !ASAR_LEGACY_SKUS.some(k => have.has(k));
+}
+// Хуучин уртын бүртгэл → аль иж бүрдэлд хамаарах вэ (түүхийн мөр тулгагдсан хэвээр байхын тулд).
+const ASAR_LEGACY_MAP = {
+  'M-005': 'M-309',                                                   // 12×25 = A иж бүрдэл
+  'M-002': 'M-310', 'M-003': 'M-310',                                 // 12×10 + 12×15 = B иж бүрдэл
+  'M-290': 'M-309', 'M-291': 'M-309', 'M-292': 'M-309',               // 12×20/30/35 — зөвхөн цаасан дээр байсан
+  'M-297': 'M-312',                                                   // 18×30 = B иж бүрдэл
+  'M-278': 'M-311', 'M-293': 'M-311', 'M-294': 'M-311', 'M-295': 'M-311', 'M-296': 'M-311',
+  'M-298': 'M-311', 'M-299': 'M-311', 'M-300': 'M-311', 'M-301': 'M-311', 'M-302': 'M-311',
+  'M-303': 'M-311', 'M-304': 'M-311',
+};
+// Барааг архивлах — saveProduct нь `archived` талбарыг бичдэггүй тул тусад нь PATCH.
+async function setProductArchived(sku, val) {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
+    { method: 'PATCH', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify({ archived: !!val }) }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const i = (state.products || []).findIndex(p => p && p.sku === sku);
+  if (i >= 0) { if (val) state.products.splice(i, 1); else state.products[i].archived = false; }
+  return true;
 }
 async function runAsarModuleSetup() {
-  const legacy = (state.products || []).filter(p => p && ASAR_LEGACY_SKUS.includes(p.sku)
-    && ((Number(p.qty_mevent) || 0) + (Number(p.qty_chimun) || 0) + (Number(p.qty_nomaad) || 0) + (Number(p.qty_catering) || 0)) > 0);
+  const legacy = (state.products || []).filter(p => p && ASAR_LEGACY_SKUS.includes(p.sku));
   const msg = `Асрын каталогийг модуль болгож цэгцлэх үү?\n\n`
-    + `➕ ${ASAR_MODULE_PRODUCTS.length} шинэ бараа үүснэ (12м A/B, 18м A/B — 5м модуль).\n`
-    + `0️⃣ Уртаар нь салгаж бүртгэсэн ${legacy.length} барааны нөөц 0 болно (устахгүй, түүх хэвээр).\n\n`
-    + `Үүний дараа 12×25 гэх мэт захиалгыг «5 модуль» гэж авна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэл арилна.`;
+    + `➕ ${ASAR_MODULE_PRODUCTS.length} модуль бараа (12м A/B, 18м A/B) — зураг, гарал үүсэл, өртөг, ашиглалтын хугацаатай.\n`
+    + `🗄 Уртаар нь салгаж бүртгэсэн ${legacy.length} бараа АРХИВЛАГДАНА (каталогоос алга болно).\n`
+    + `🔗 Хуучин захиалгын мөрүүд шинэ модуль бараа руу холбогдоно — түүх тасрахгүй.\n\n`
+    + `Устгахгүй — архивласныг сэргээж болно.`;
   if (!(await showConfirm(msg, { okText: 'Тийм, цэгцэл' }))) return;
-  let made = 0, zeroed = 0;
+  let made = 0, gone = 0, linked = 0, fail = 0;
   for (const m of ASAR_MODULE_PRODUCTS) {
     const cur = (state.products || []).find(p => p && p.sku === m.sku) || {};
     try {
       await saveProduct({ ...cur, sku: m.sku, id: m.sku, name: m.name, category: 'Асар', all_categories: ['Асар'],
-        type: 'rental', price: m.price, deposit: m.deposit, photo: m.photo, description: m.description,
-        stock: m.stock, qty_mevent: m.stock, qty_chimun: 0, qty_nomaad: 0, qty_catering: 0, archived: false });
+        type: 'rental', price: m.price, deposit: m.deposit, photo: m.photos[0], photos: m.photos,
+        description: m.description, cost: m.cost, supplier: m.supplier, purchase_date: m.purchase_date,
+        stock: m.stock, qty_mevent: m.stock, qty_chimun: 0, qty_nomaad: 0, qty_catering: 0 });
       made++;
-    } catch (e) { console.warn('asar setup', m.sku, e); }
+    } catch (e) { fail++; console.warn('asar setup', m.sku, e); }
+  }
+  // ТҮҮХ ТАСРАХГҮЙ: архивласан бараа каталогоос унадаг тул хуучин захиалгын мөрүүд
+  // «тулгагдаагүй» болно. Тиймээс архивлахын ӨМНӨ толинд (product_aliases) sku-г ба
+  // нэрийг нь шинэ модуль бараа руу заана.
+  for (const p of legacy) {
+    const to = ASAR_LEGACY_MAP[p.sku]; if (!to) continue;
+    try {
+      await saveItemAlias('sku:' + String(p.sku).toLowerCase(), to, 'асар → модуль');
+      if (p.name) await saveItemAlias('name:' + normItemKey(p.name), to, 'асар → модуль');
+      linked++;
+    } catch (e) { console.warn('asar alias', p.sku, e); }
   }
   for (const p of legacy) {
-    try { await saveProduct({ ...p, stock: 0, qty_mevent: 0, qty_chimun: 0, qty_nomaad: 0, qty_catering: 0 }); zeroed++; }
-    catch (e) { console.warn('asar zero', p.sku, e); }
+    try { await setProductArchived(p.sku, true); gone++; }
+    catch (e) { fail++; console.warn('asar archive', p.sku, e); }
   }
-  showToast(`🏕 ${made} модуль бараа бэлэн · ${zeroed} хуучин уртын бүртгэлийн нөөц 0 боллоо`, 'success', 5000);
+  showToast(`🏕 ${made} модуль бараа бэлэн · 🗄 ${gone} хуучин бүртгэл архивлав · 🔗 ${linked} түүх холбов${fail ? ` · ⚠ ${fail} алдаа` : ''}`, fail ? 'warn' : 'success', 6000);
   render();
 }
 async function saveProduct(product) {
@@ -17392,7 +17430,7 @@ function renderProducts() {
   // Асрын каталог модуль болоогүй бол нэг товчоор цэгцэлнэ (дараа нь өөрөө алга болно)
   const asarBar = (_prodMgmt && !asarSetupDone())
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
-        <span style="font-size:12.5px;color:var(--text);">🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү.</span>
+        <span style="font-size:12.5px;color:var(--text);">🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.</span>
         <button class="btn btn-primary" id="prod-asar-setup" style="white-space:nowrap;">🏕 Асрыг модуль болгох</button>
       </div>`
     : '';

@@ -8537,7 +8537,7 @@ function nextProductCode() {
 //   12м A (Expo 2023, 5 модуль)         ⧸ 12м B (Maisite 2025, 5 модуль)
 // Шинэ иж бүрдэл авбал ЭНД мөр нэмнэ — эс бөгөөс уртын сонголт гарахгүй.
 const ASAR_MODULES = {
-  'M-309': { w: 12, mod: 5, bays: 5, set: 'A' },
+  'M-313': { w: 12, mod: 5, bays: 5, set: 'A' },
   'M-310': { w: 12, mod: 5, bays: 5, set: 'B' },
   'M-311': { w: 18, mod: 5, bays: 8, set: 'A' },
   'M-312': { w: 18, mod: 5, bays: 6, set: 'B' },
@@ -8565,7 +8565,7 @@ const ASAR_LEGACY_SKUS = ['M-002', 'M-003', 'M-005', 'M-290', 'M-291', 'M-292',
 // Өртөг = худалдан авалтын гэрээний дүн ÷ модулийн тоо. Гарал үүсэл, ашиглалтын
 // хугацаа нь гэрээ/proforma-аас — элэгдэл, ROI тооцоход хэрэгтэй.
 const ASAR_MODULE_PRODUCTS = [
-  { sku: 'M-309', name: 'Асар 12м өргөн · 5м модуль (A иж бүрдэл)', price: 1000000, deposit: 200000, stock: 5,
+  { sku: 'M-313', name: 'Асар 12м өргөн · 5м модуль (A иж бүрдэл)', price: 1000000, deposit: 200000, stock: 5,
     cost: 7000000, supplier: 'Changzhou Expo Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2023-04-28',
     photos: ['https://n8n.nomaadcamp.com/img/ea341eca-b3e3-4073-86ab-121eac941b63.jpg'],
     description: '12 метр өргөн асрын 5 метрийн нэг модуль. Урт нь модулийн тоогоор тодорхойлогдоно: 5 модуль = 12×25м.\n\n• Иж бүрдэл: A (2023 он) — ⚠ B иж бүрдэлтэй холиж угсарч БОЛОХГҮЙ.\n• Гарал үүсэл: Хятад, Чанжоу — Changzhou Expo Tent Co., Ltd (PI EXPAQ-20230428).\n• Карказ: алюминий 68×122×3мм, GB6061-T6, зэврэлтээс хамгаалсан. Хана 3м, оргил 5.2м. Модулийн алхам 5м.\n• Хулдаас: дээвэр 850г/м² цагаан, хажуу тунгалаг.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
@@ -8590,9 +8590,9 @@ function asarSetupDone() {
 }
 // Хуучин уртын бүртгэл → аль иж бүрдэлд хамаарах вэ (түүхийн мөр тулгагдсан хэвээр байхын тулд).
 const ASAR_LEGACY_MAP = {
-  'M-005': 'M-309',                                                   // 12×25 = A иж бүрдэл
+  'M-005': 'M-313',                                                   // 12×25 = A иж бүрдэл
   'M-002': 'M-310', 'M-003': 'M-310',                                 // 12×10 + 12×15 = B иж бүрдэл
-  'M-290': 'M-309', 'M-291': 'M-309', 'M-292': 'M-309',               // 12×20/30/35 — зөвхөн цаасан дээр байсан
+  'M-290': 'M-313', 'M-291': 'M-313', 'M-292': 'M-313',               // 12×20/30/35 — зөвхөн цаасан дээр байсан
   'M-297': 'M-312',                                                   // 18×30 = B иж бүрдэл
   'M-278': 'M-311', 'M-293': 'M-311', 'M-294': 'M-311', 'M-295': 'M-311', 'M-296': 'M-311',
   'M-298': 'M-311', 'M-299': 'M-311', 'M-300': 'M-311', 'M-301': 'M-311', 'M-302': 'M-311',
@@ -8615,9 +8615,15 @@ async function runAsarModuleSetup() {
     + `🔗 Хуучин захиалгын мөрүүд шинэ модуль бараа руу холбогдоно — түүх тасрахгүй.\n\n`
     + `Устгахгүй — архивласныг сэргээж болно.`;
   if (!(await showConfirm(msg, { okText: 'Тийм, цэгцэл' }))) return;
-  let made = 0, gone = 0, linked = 0, fail = 0;
+  let made = 0, gone = 0, linked = 0, fail = 0; const clash = [];
   for (const m of ASAR_MODULE_PRODUCTS) {
     const cur = (state.products || []).find(p => p && p.sku === m.sku) || {};
+    // ⚠ SKU МӨРГӨЛДӨӨН: тэр дугаарыг ӨӨР бараа эзэлсэн бол ХЭЗЭЭ Ч дарж бичихгүй.
+    // (Кодыг бичсэнээс хойш шинэ бараа нэмэгдээд дугаар нь давхцаж болно —
+    //  дарж бичвэл тэр бараа бүрмөсөн алдагдана.)
+    if (cur.sku && String(cur.name || '') !== m.name && !/5м модуль/i.test(String(cur.name || ''))) {
+      clash.push(`${m.sku} = «${cur.name}»`); continue;
+    }
     try {
       await saveProduct({ ...cur, sku: m.sku, id: m.sku, name: m.name, category: 'Асар', all_categories: ['Асар'],
         type: 'rental', price: m.price, deposit: m.deposit, photo: m.photos[0], photos: m.photos,
@@ -8641,6 +8647,7 @@ async function runAsarModuleSetup() {
     try { await setProductArchived(p.sku, true); gone++; }
     catch (e) { fail++; console.warn('asar archive', p.sku, e); }
   }
+  if (clash.length) showToast(`⚠ Дугаар давхцсан тул алгаслаа: ${clash.join(', ')} — код дээр өөр дугаар өгөх хэрэгтэй`, 'warn', 9000);
   showToast(`🏕 ${made} модуль бараа бэлэн · 🗄 ${gone} хуучин бүртгэл архивлав · 🔗 ${linked} түүх холбов${fail ? ` · ⚠ ${fail} алдаа` : ''}`, fail ? 'warn' : 'success', 6000);
   render();
 }

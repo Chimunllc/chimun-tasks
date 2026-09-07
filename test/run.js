@@ -3789,5 +3789,35 @@ need(['orderCustType']);
   ok(F.countCanApply(twoSame[1], twoSame, 1010377) === true, 'дахин: баталгаажсаны дараа залруулагдана');
 }
 
+// ── ТООЛЛОГЫН ХАМРАХ ХҮРЭЭ (2026-09-04) ────────────────────────────────────
+// 294 барааг бүтнээр тоолох нь улиралд нэг л удаа боломжтой. Сар бүр хөрөнгийн
+// 80%-ийг эзлэх цөөн барааг тоолох нь бодит ачаалалд тохирно (ABC зарчим).
+{
+  const P = (sku, cat, stock, cost) => ({ sku, category: cat, stock, cost });
+  const prods = [
+    P('M-1', 'Майхан', 100, 1000000),   // 100.0 сая — 79.4%
+    P('M-2', 'Ширээ',   100, 200000),   //  20.0 сая — 15.9%
+    P('M-3', 'Ширээ',   100, 50000),    //   5.0 сая —  4.0%
+    P('M-4', 'Стакан',  100, 1000),     //   0.1 сая —  0.1%
+    P('M-5', 'Стакан',  100, 0),        // өртөггүй
+  ];
+  const costOf = (sku) => (prods.find(p => p.sku === sku) || {}).cost || 0;
+
+  eq(F.countScopeProducts(prods, 'all', costOf).length, 5, 'хүрээ: бүгд');
+  eq(F.countScopeProducts(prods, 'cat:Ширээ', costOf).map(p => p.sku), ['M-2', 'M-3'], 'хүрээ: ангиллаар');
+  eq(F.countScopeProducts(prods, 'cat:Байхгүй', costOf), [], 'хүрээ: байхгүй ангилал → хоосон');
+
+  // ABC — хөрөнгийн 80% хүрэх хүртэл. M-1 дангаараа 79.4% тул M-2 хүртэл авна.
+  eq(F.countScopeProducts(prods, 'abc', costOf).map(p => p.sku), ['M-1', 'M-2'], 'хүрээ: ABC — хөрөнгийн 80%');
+  ok(!F.countScopeProducts(prods, 'abc', costOf).some(p => p.sku === 'M-5'), 'хүрээ: өртөггүй бараа ABC-д орохгүй');
+  eq(F.countScopeProducts(prods, 'abc', () => 0), [], 'хүрээ: өртөг огт мэдэгдэхгүй бол ABC хоосон');
+  eq(F.countScopeProducts([], 'abc', costOf), [], 'хүрээ: бараагүй');
+  eq(F.countScopeProducts(prods, 'танихгүй', costOf).length, 5, 'хүрээ: танихгүй утга → бүгд (бараа алдагдахгүй)');
+
+  eq(F.countScopeLabel('abc'), 'Үнэтэй бараа (хөрөнгийн 80%)', 'хүрээ: ABC нэр');
+  eq(F.countScopeLabel('cat:Майхан'), 'Майхан', 'хүрээ: ангиллын нэр');
+  eq(F.countScopeLabel(''), 'Бүх бараа', 'хүрээ: анхдагч нэр');
+}
+
   finish();
 })();

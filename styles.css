@@ -5550,6 +5550,8 @@ body.role-daily #add-project { display: none !important; }
 .stc-row.d .stc-row-q { color: var(--danger); font-weight: 600; }
 .stc-done { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
 .stc-apply { white-space: nowrap; color: var(--primary); }
+.stc-scope { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-xs); color: var(--muted); flex: 1; min-width: 0; }
+.stc-scope select { min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--panel); color: var(--text); font-size: var(--fs-base); font-family: inherit; width: 100%; }
 .stc-recount { white-space: nowrap; font-size: var(--fs-xs); font-weight: 600; color: var(--warn); }
 
 /* ── Хөрөнгийн багц — нэг бараа, олон удаагийн худалдан авалт ── */

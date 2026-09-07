@@ -8559,6 +8559,7 @@ async function nextFreeProductCode() {
 const ASAR_MODULES = {
   'M-313': { w: 12, mod: 5, bays: 5, set: 'A' },
   'M-314': { w: 12, mod: 5, bays: 5, set: 'B' },
+  'M-316': { w: 10, mod: 5, bays: 4, set: 'A' },
   'M-315': { w: 18, mod: 5, bays: 8, set: 'A' },
   'M-312': { w: 18, mod: 5, bays: 6, set: 'B' },
 };
@@ -8571,7 +8572,7 @@ const ASAR_M2_NARROW = 15000, ASAR_M2_WIDE = 20000, ASAR_WIDE_FROM_M = 16;
 function asarM2Rate(width) { return (Number(width) || 0) >= ASAR_WIDE_FROM_M ? ASAR_M2_WIDE : ASAR_M2_NARROW; }
 function asarPriceFor(width, length) { return Math.round((Number(width) || 0) * (Number(length) || 0) * asarM2Rate(width)); }
 // Тогтмол хэмжээтэй (модульгүй) асрууд — мөн адил талбайгаар үнэлэгдэнэ.
-const ASAR_FIXED = { 'M-001': { w: 10, len: 20 }, 'M-018': { w: 6, len: 12 } };
+const ASAR_FIXED = { 'M-018': { w: 6, len: 12 } };
 // Модулийн тоо → асрын хэмжээ («18×25м»). Цэвэр функц — тестлэгдэнэ.
 function asarSizeLabel(sku, qty) {
   const m = asarModuleOf(sku); if (!m) return '';
@@ -8579,21 +8580,31 @@ function asarSizeLabel(sku, qty) {
   return `${m.w}×${n * m.mod}м`;
 }
 // Тухайн иж бүрдлээс угсарч болох уртууд (5, 10 … хамгийн урт).
+// ХАМГИЙН БАГА түрээслэх урт — 10 метр (2 модуль). Нэг модуль (5м) дангаараа
+// асар болдоггүй тул сонголтод огт гаргахгүй.
+const ASAR_MIN_LEN_M = 10;
+function asarMinBays(mod) { return Math.max(1, Math.ceil(ASAR_MIN_LEN_M / (Number(mod) || 5))); }
 function asarLengthOptions(sku) {
   const m = asarModuleOf(sku); if (!m) return [];
-  const out = []; for (let i = 1; i <= m.bays; i++) out.push(i * m.mod);
+  const out = []; for (let i = asarMinBays(m.mod); i <= m.bays; i++) out.push(i * m.mod);
   return out;
 }
 // Уртаар нь тусад нь бүртгэсэн ХУУРАМЧ асар (эдгээр нь бие даасан бараа биш —
 // дээрх иж бүрдлүүдийн хэсэг). Нөөцийг нь 0 болгоно: түүх хэвээр үлдэж, шинээр
 // зарагдахгүй. ХАТУУ УСТГАХГҮЙ — хуучин захиалгын мөр эдгээрийг заасаар байна.
-const ASAR_LEGACY_SKUS = ['M-002', 'M-003', 'M-005', 'M-290', 'M-291', 'M-292',
+const ASAR_LEGACY_SKUS = ['M-001', 'M-002', 'M-003', 'M-005', 'M-290', 'M-291', 'M-292',
   'M-278', 'M-293', 'M-294', 'M-295', 'M-296', 'M-297', 'M-298', 'M-299', 'M-300', 'M-301', 'M-302', 'M-303', 'M-304'];
 // Үүсгэх модуль бараанууд (нэг удаа). Үнэ = одоогийн урт бүрийн үнээс гарсан:
 // 12м 5,000,000₮ / 25м = 1,000,000₮ нэг модуль; 18м 9,900,000₮ / 25м = 1,980,000₮.
 // Өртөг = худалдан авалтын гэрээний дүн ÷ модулийн тоо. Гарал үүсэл, ашиглалтын
 // хугацаа нь гэрээ/proforma-аас — элэгдэл, ROI тооцоход хэрэгтэй.
 const ASAR_MODULE_PRODUCTS = [
+  { sku: 'M-316', name: 'Асар 10м өргөн · 5м модуль', price: asarPriceFor(10, 5), deposit: 250000, stock: 4,
+    supplier: 'Changzhou Maisite Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2025-05-27',
+    photos: ['https://n8n.nomaadcamp.com/img/up-af9b0ca95c55ad2d66b815b060e5ed3c.jpg',
+      'https://n8n.nomaadcamp.com/img/up-cefa925b439b1962336a8430b8073148.jpg',
+      'https://n8n.nomaadcamp.com/img/up-606e8c1aa38c1d0eeaa3e9ae0c1a93c9.jpg'],
+    description: '10 метр өргөн асрын 5 метрийн нэг модуль. 4 модуль = 10×20м хүртэл (хамгийн бага 10×10м).\n\n• Гарал үүсэл: Хятад, Чанжоу — 常州迈斯特篷房有限公司 Changzhou Maisite (гэрээ 2025N-0527).\n• Карказ: алюминий, гол профиль 68×122мм, төмөр эд анги цайрдсан. Хана 3м.\n• Хулдаас: дээвэр ба хана 850г/м² давхар PVC, цагаан. Дөрвөн талдаа тунгалаг цонхтой.\n• Ашиглалтын хугацаа: ~20-35 жил (алюминий карказ).' },
   { sku: 'M-313', name: 'Асар 12м өргөн · 5м модуль (A иж бүрдэл)', price: asarPriceFor(12, 5), deposit: 200000, stock: 5,
     cost: 7000000, supplier: 'Changzhou Expo Tent Co., Ltd (Хятад, Чанжоу)', purchase_date: '2023-04-28',
     photos: ['https://n8n.nomaadcamp.com/img/ea341eca-b3e3-4073-86ab-121eac941b63.jpg'],
@@ -8619,6 +8630,7 @@ function asarSetupDone() {
 }
 // Хуучин уртын бүртгэл → аль иж бүрдэлд хамаарах вэ (түүхийн мөр тулгагдсан хэвээр байхын тулд).
 const ASAR_LEGACY_MAP = {
+  'M-001': 'M-316',                                                   // 10×20 = 10м өргөн иж бүрдэл
   'M-005': 'M-313',                                                   // 12×25 = A иж бүрдэл
   'M-002': 'M-314', 'M-003': 'M-314',                                 // 12×10 + 12×15 = B иж бүрдэл
   'M-290': 'M-313', 'M-291': 'M-313', 'M-292': 'M-313',               // 12×20/30/35 — зөвхөн цаасан дээр байсан

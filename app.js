@@ -8276,9 +8276,22 @@ function productById(id) { const k = String(id || ''); return k ? (state.product
 // (2026-09-02-нд илрүүлэв — сайтын 13 мөрийн 7 нь зөвхөн id-гээр таарсан). Каталогт
 // бүх 308 бараанд id ≠ sku тул зөвхөн sku-гээр хайвал ихэнх нь олдохгүй.
 // Гаднаас ирсэн датанд бүрэн итгэж болохгүй — сайт зөв болсон ч энэ хамгаалалт үлдэнэ.
+// Захиалгын мөр → каталогийн бараа. Нөөцийн сул үлдэгдэл, ROI, барааны орлого
+// БҮГД үүгээр явдаг тул энд олдохгүй мөр нь чимээгүй алга болно (нөөц эзлэхгүй →
+// давхар захиалга; ROI/орлого дутуу).
+// ⚠ Бараа нэрээ соливол хуучин захиалгын мөр таслагдана. Тиймээс шууд тулгалт
+// бүтэлгүйтвэл `product_aliases` толийг харна — `resolveItemSku`-тэй ЯГ НЭГ зам,
+// хүн баталгаажуулсан цорын ганц найдвартай зураглал.
 function productOf(it) {
   if (!it) return undefined;
-  return productBySku(it.sku) || productById(it.sku) || productByName(it.name);
+  const direct = productBySku(it.sku) || productById(it.sku) || productByName(it.name);
+  if (direct) return direct;
+  if (typeof resolveItemSku === 'function') {
+    const r = resolveItemSku(it);
+    // r.sku === '' = толинд «бараа биш» гэж тэмдэглэсэн (хүргэлт, НӨАТ) — бараа буцаахгүй
+    if (r && r.sku) return productBySku(r.sku);
+  }
+  return undefined;
 }
 // Каталогт ОГТ олдохгүй мөрүүд — сайт байхгүй бараа зарж байгааг илрүүлнэ.
 // Анхааруулга гаргах утгатай төлвүүд: гүйцэтгэгдэж БОЛОХ захиалга (дамжлага + ноорог).
@@ -29402,6 +29415,9 @@ async function bootApp() {
   loadFinanceCategories();  // Санхүүгийн ангилал — Sheet-ээс (засвал бүгдэд тархана)
   loadNomaadOrders();   // NOMAAD батлагдсан гэрээ + орлого (CEO/нягтлан)
   loadVatReceipts();    // НӨАТ баримт — захиалгын "🧾 НӨАТ" badge-д
+  // Барааны толь — productOf (нөөц/ROI/орлого) үүнээс хамаарна. Зөвхөн агуулахын
+  // дэлгэцээр ачаалдаг байсан тул захиалга руу шууд орсон хүнд тулгалт сул байв.
+  if (state.itemAliases === undefined) { state.itemAliases = {}; loadItemAliases(); }
   loadCiStatus();       // Системийн автомат шалгалт (GitHub Actions) — sidebar-т 🟢/🔴 (CEO)
   loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)

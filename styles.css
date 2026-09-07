@@ -5506,6 +5506,15 @@ body.role-daily #add-project { display: none !important; }
   border-left: 1px solid var(--border); border-right: 1px solid var(--border);
   font-size: var(--fs-xl); font-weight: 600; font-family: inherit; background: var(--panel); color: var(--text);
 }
+/* Үйлчилгээний нэгтгэсэн мөр + нэрийн задаргаа (2026-09-07) */
+.hist-roi-row.svc-g { cursor: pointer; border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); margin-top: var(--space-3); background: var(--panel-hover); }
+.hist-roi-row.svc-g span, .hist-roi-row.svc-g b { font-weight: 600; }
+.svc-det { margin: 0 0 var(--space-2) var(--space-4); }
+.svc-det > summary { font-size: var(--fs-xs); color: var(--muted); cursor: pointer; padding: var(--space-1) 0; list-style: none; }
+.svc-det > summary::before { content: '▸ '; }
+.svc-det[open] > summary::before { content: '▾ '; }
+.svc-det > summary:hover { color: var(--text); }
+
 /* Бөөн актлалт — сонгох горим + модал (2026-09-07) */
 .prod-wo-bar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin: var(--space-2) 2px; padding: var(--space-3); border: 1px solid var(--danger); border-radius: var(--r-md); background: var(--danger-soft); }
 .prod-wo-t { font-size: var(--fs-sm); color: var(--text); flex: 1 1 100%; }

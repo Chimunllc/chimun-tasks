@@ -8695,6 +8695,17 @@ async function runAsarPurge() {
   showToast(`🗑 ${n} хуучин бүртгэл хаслаа${skip.length ? ` · ${skip.length} алгаслаа` : ''}${fail ? ` · ⚠ ${fail} алдаа` : ''}`, fail ? 'warn' : 'success', 6000);
   render();
 }
+
+// Архивласан бараа — жагсаалтад ачаалагддаггүй (archived=eq.false) тул тусад нь.
+async function loadArchivedProducts() {
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=*&archived=eq.true&order=name.asc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.archivedProducts = await r.json();
+  } catch (e) { console.warn('loadArchivedProducts', e); state.archivedProducts = state.archivedProducts || []; }
+  return state.archivedProducts;
+}
 // Барааг архивлах — saveProduct нь `archived` талбарыг бичдэггүй тул тусад нь PATCH.
 async function setProductArchived(sku, val) {
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
@@ -17621,6 +17632,23 @@ function renderProducts() {
       ${_fActive ? '<button class="btn prod-filters-clear" id="prod-filters-clear">Шүүлтүүр цэвэрлэх</button>' : ''}
     </div>
   </details>`;
+  // 🗄 Архивласан — зөвхөн CEO. Архивласан бараа жагсаалтад ачаалагддаггүй тул
+  // сэргээх ганц гарц энэ. Буцаах аргагүй устгал аюултай.
+  if (state.isCEO && state.archivedProducts === undefined) {
+    state.archivedProducts = [];
+    setTimeout(() => loadArchivedProducts().then(() => { if (state.view === 'products') render(); }), 0);
+  }
+  const _arch = state.isCEO ? (state.archivedProducts || []) : [];
+  const archiveBar = _arch.length ? `<div class="prod-arch">
+      <div class="prod-arch-head">
+        <span>🗄 Архивласан <b>${_arch.length}</b> бараа — каталог болон сайтад харагдахгүй</span>
+        <button class="btn" id="prod-arch-toggle">${state.archOpen ? 'Хаах' : 'Харах'}</button>
+      </div>
+      ${state.archOpen ? `<div class="prod-arch-list">${_arch.map(a => `<div class="prod-arch-row">
+        <span class="prod-arch-n">${escapeHtml(a.name || a.sku)}<em>${escapeHtml(a.code || a.sku)}</em></span>
+        <button class="btn" data-unarch="${escapeHtml(a.sku)}">Сэргээх</button>
+      </div>`).join('')}</div>` : ''}
+    </div>` : '';
   const costs = state.productCosts || {};
   // Хөрөнгийн үнэ цэнэ — салбар сонгосон бол тухайн салбарын тоогоор (qty_<салбар>), эс бөгөөс нийт нөөцөөр.
   const _valBranch = (state.prodBranch && state.prodBranch !== 'all') ? state.prodBranch : null;
@@ -17650,7 +17678,11 @@ function renderProducts() {
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
     ${asarBar}
+<<<<<<< HEAD
     ${asarPurgeBar}
+=======
+    ${archiveBar}
+>>>>>>> 7b652ab (Бараа архивлах товч — зөвхөн CEO, хатуу устгал БИШ)
     ${nameEnBar}
     ${variantClearBar}
     ${seasonCloseBar}
@@ -17703,6 +17735,10 @@ function openProductModal(p, opts) {
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${(Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>
       </div>
+      ${isEdit && state.isCEO ? `<div class="pm-danger">
+        <button type="button" class="btn ui-raw pm-archive" id="pm-archive">🗄 Барааг архивлах</button>
+        <span>Каталог болон сайтаас алга болно. Дата УСТАХГҮЙ — захиалгын түүх хэвээр, сэргээж болно.</span>
+      </div>` : ''}
       <div class="pm-pane" data-pmpane="cat" data-pmlock="cat" hidden>
         <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
         <div class="pm-pane-t">📷 Каталог</div>
@@ -18052,6 +18088,20 @@ function openProductModal(p, opts) {
   }
   updateBranch(); syncPickChips();
   const close = () => modal.remove();
+  const _arch = modal.querySelector('#pm-archive');
+  if (_arch) _arch.onclick = async () => {
+    // ⚠ ХАТУУ УСТГАЛ БИШ. archived=true болгоно — захиалгын түүх, тайлан хэвээр.
+    const ok = await showConfirm(
+      `«${p.name}» барааг архивлах уу?\n\n`
+      + '· Каталог болон mevent.mn сайтаас алга болно\n'
+      + '· Захиалгын түүх, тайлан ХЭВЭЭР үлдэнэ\n'
+      + '· Дата устахгүй — «🗄 Архивласан» жагсаалтаас сэргээж болно',
+      { okText: 'Тийм, архивла' });
+    if (!ok) return;
+    _arch.disabled = true;
+    try { await setProductArchived(p.sku, true); modal.remove(); render(); showToast('Архивлагдлаа — сэргээж болно', 'ok', 3000); }
+    catch (e) { showToast('Архивлаж чадсангүй: ' + e.message, 'error', 5000); _arch.disabled = false; }
+  };
   modal.querySelector('#pm-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#pm-save').onclick = (e) => submitProductModal(modal, p, e.currentTarget);
@@ -18132,6 +18182,16 @@ async function submitProductModal(modal, orig, btn) {
 
 function attachProductsHandlers() {
   // Засварын дамжлага
+  const _at = document.getElementById('prod-arch-toggle');
+  if (_at) _at.onclick = () => { state.archOpen = !state.archOpen; render(); };
+  document.querySelectorAll('[data-unarch]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await setProductArchived(b.dataset.unarch, false);
+      await loadProductsCatalog(); await loadArchivedProducts();
+      render(); showToast('Сэргээгдлээ', 'ok', 2200);
+    } catch (e) { showToast('Сэргээж чадсангүй: ' + e.message, 'error', 5000); b.disabled = false; }
+  });
   const _rt = document.getElementById('repair-toggle');
   if (_rt) _rt.onclick = () => { state.repairOpen = !state.repairOpen; render(); };
   document.querySelectorAll('.repair-adv').forEach(b => b.onclick = () => advanceRepair(b.dataset.rep, b.dataset.to));

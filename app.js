@@ -17816,15 +17816,30 @@ function openProductModal(p) {
   const bundleSum = modal.querySelector('#pm-bundle-sum');
   function bundleSumText() {
     let sum = 0; bundle.forEach(c => { const cp = productBySku(c.sku); if (cp) sum += (Number(cp.price) || 0) * (Number(c.qty) || 1); });
-    bundleSum.textContent = bundle.length ? `Бүрэлдэхүүний нийт үнэ: ${fmtMoney(sum)} · Багцын нөөц: ${packageStock({ bundle_items: bundle })}` : '';
+    if (!bundle.length) { bundleSum.textContent = ''; return; }
+    const pkgPrice = moneyVal(modal.querySelector('#pm-price'));
+    const save = sum > 0 && pkgPrice > 0 ? Math.round((1 - pkgPrice / sum) * 100) : null;
+    bundleSum.innerHTML = `Тусад нь түрээслэвэл <b>${fmtMoney(sum)}</b> · Багцын нөөц <b>${packageStock({ bundle_items: bundle })}</b>`
+      + (save === null ? ' · <span class="pm-bi-info bad">Багцын үнээ оруулна уу</span>'
+         : save > 0 ? ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <b>${save}% хямд</b>`
+         : ` · Багцаар <b>${fmtMoney(pkgPrice)}</b> — <span class="pm-bi-info bad">бүрэлдэхүүнээс үнэтэй</span>`);
   }
   function renderBundle() {
     bundleList.innerHTML = bundle.length ? bundle.map((c, i) => {
       const cp = productBySku(c.sku);
+      // ⚠ ui-raw — мобайлын `.modal input {...!important}` дүрэм тооны талбарыг
+      // бүтэн өргөнөөр тэлж, нэрийн талбарыг 30px болгож шахдаг байв.
+      const q = Math.max(1, Number(c.qty) || 1);
+      const info = cp
+        ? `${fmtMoney(Number(cp.price) || 0)}/өдөр · нөөц ${workingStock(cp)} ш${q > 1 ? ` → ${Math.floor(workingStock(cp) / q)} багц` : ''}`
+        : (c._typed ? '⚠ Ийм нэртэй бараа олдсонгүй — жагсаалтаас сонгоно уу' : 'Бараагаа сонгоно уу');
       return `<div class="pm-bi-row" data-bi="${i}">
-        <input class="pm-bi-name" list="pm-prod-list" value="${escapeHtml(cp ? cp.name : '')}" placeholder="Бараа сонгох">
-        <input class="pm-bi-qty" type="number" min="1" value="${c.qty || 1}" title="Тоо">
-        <button type="button" class="pm-bi-rm" data-birm="${i}" title="Хасах">×</button>
+        <div class="pm-bi-main">
+          <input class="pm-bi-name ui-raw" list="pm-prod-list" value="${escapeHtml(cp ? cp.name : (c._typed || ''))}" placeholder="Бараа хайх">
+          <div class="pm-bi-info${cp ? '' : ' bad'}">${escapeHtml(info)}</div>
+        </div>
+        <input class="pm-bi-qty ui-raw" type="number" min="1" value="${q}" title="Тоо">
+        <button type="button" class="pm-bi-rm ui-raw" data-birm="${i}" title="Хасах">×</button>
       </div>`;
     }).join('') : '<div class="pm-bundle-empty">Бараа нэмнэ үү</div>';
     bundleSumText();
@@ -17845,7 +17860,18 @@ function openProductModal(p) {
   bundleList.addEventListener('input', (e) => {
     if (!_pcan.price) return;
     const row = e.target.closest('.pm-bi-row'); if (!row) return; const i = +row.dataset.bi;
-    if (e.target.classList.contains('pm-bi-name')) { const prod = productByName(e.target.value); bundle[i].sku = prod ? prod.sku : ''; }
+    if (e.target.classList.contains('pm-bi-name')) {
+      const prod = productByName(e.target.value);
+      bundle[i].sku = prod ? prod.sku : '';
+      bundle[i]._typed = prod ? '' : e.target.value;   // таарахгүй текстийг санана (чимээгүй алга болохгүй)
+      const row2 = bundleList.querySelector(`.pm-bi-row[data-bi="${i}"] .pm-bi-info`);
+      if (row2) {
+        const q2 = Math.max(1, Number(bundle[i].qty) || 1);
+        row2.textContent = prod ? `${fmtMoney(Number(prod.price) || 0)}/өдөр · нөөц ${workingStock(prod)} ш${q2 > 1 ? ` → ${Math.floor(workingStock(prod) / q2)} багц` : ''}`
+                                : (e.target.value ? '⚠ Ийм нэртэй бараа олдсонгүй — жагсаалтаас сонгоно уу' : 'Бараагаа сонгоно уу');
+        row2.classList.toggle('bad', !prod);
+      }
+    }
     else if (e.target.classList.contains('pm-bi-qty')) { bundle[i].qty = Math.max(1, Number(e.target.value) || 1); }
     bundleSumText();
   });
@@ -17935,7 +17961,13 @@ async function submitProductModal(modal, orig, btn) {
   const isPkg = !!modal.querySelector('#pm-ispackage')?.checked;
   const isSvc = !isPkg && !!modal.querySelector('#pm-isservice')?.checked;
   const bundle = isPkg ? (modal._bundle || []).filter(c => c.sku) : [];
-  if (isPkg && !bundle.length) { showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
+  if (isPkg && !bundle.length) { modal._pmGo?.('price'); showToast('Багцад дор хаяж нэг бараа нэмнэ үү', 'warn'); return; }
+  // ⚠ Таарахгүй мөрийг ЧИМЭЭГҮЙ хаяхгүй — өмнө нь бичсэн нэр бараатай таараагүй бол
+  // filter(c => c.sku) түүнийг устгаад хэрэглэгч мэдэлгүй багц дутуу хадгалагдаж байв.
+  if (isPkg) {
+    const bad = (modal._bundle || []).filter(c => !c.sku).length;
+    if (bad) { modal._pmGo?.('price'); showToast(`Багцын ${bad} мөрд бараа сонгогдоогүй байна — жагсаалтаас сонгоно уу`, 'warn', 4500); return; }
+  }
   // Шинэ бараанд нэгж өртөг ЗААВАЛ (багц=бүрэлдэхүүнээс, үйлчилгээ=өртөггүй тул хасна)
   if (!orig && !isPkg && !isSvc && !(moneyVal(modal.querySelector('#pm-cost')) > 0)) {
     modal._pmGo?.('cost');

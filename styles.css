@@ -5493,6 +5493,7 @@ body.role-daily #add-project { display: none !important; }
 .stc-sys { display: flex; flex-direction: column; gap: 2px; }
 .stc-sys span { font-size: var(--fs-xs); color: var(--muted); }
 .stc-sys b { font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
+.stc-sys em { font-style: normal; font-size: var(--fs-xs); color: var(--muted-soft); }
 .stc-step { display: flex; flex-direction: column; gap: var(--space-1); margin-left: auto; }
 .stc-step-l { font-size: var(--fs-xs); color: var(--muted); text-align: right; }
 .stc-step-b { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: var(--r-md); overflow: hidden; }

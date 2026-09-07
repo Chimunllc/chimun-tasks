@@ -17728,6 +17728,15 @@ const PSHEET = {
   cost:    { label: 'Өртөг ба хөрөнгө', icon: '💰', perm: 'products.cost', hint: 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч.' },
   stock:   { label: 'Нөөц ба салбар', icon: '📦', perm: 'products.stock', hint: 'Салбар бүрийн тоо. Нийт нөөц нь салбаруудын нийлбэр.' },
 };
+// Сайт (mevent.mn) ангиллыг бүлгээр харуулдаг. Бүлэгт ороогүй ангилал сайтад
+// «Бусад» болж унадаг тул каталог засахад ил сануулна.
+function psSiteCats() {
+  const g = state.appCatGroups;
+  if (!Array.isArray(g)) return null;
+  const set = new Set();
+  g.forEach(x => (x && Array.isArray(x.subs) ? x.subs : []).forEach(c => set.add(String(c))));
+  return set;
+}
 function canSeeSheet(mode) { return !!PSHEET[mode] && canAccessView('ps_' + mode, () => !!state.isCEO || can(PSHEET[mode].perm)); }
 // Хуудсанд харагдах бараа — хайлтаар шүүнэ. Цэвэр функц (тестлэгдэнэ).
 function psFilter(list, q) {
@@ -17737,10 +17746,42 @@ function psFilter(list, q) {
   return rows.filter(p => `${p.name || ''} ${p.category || ''} ${p.sku || ''} ${p.code || ''}`.toLowerCase().includes(s));
 }
 function psNum(v) { return Math.max(0, Math.round(Number(String(v == null ? '' : v).replace(/[^\d.-]/g, '')) || 0)); }
+// ── ХҮЛЭЭГДЭЖ БУЙ ЗАСВАР ──────────────────────────────────────────────────
+// Автомат хадгалалт нь санамсаргүй хүрсэн засварыг чимээгүй бичдэг тул
+// БОЛИУЛСАН. Өөрчлөлт эхлээд энд хуримтлагдаж, «💾 Хадгалах» дарж байж бичигдэнэ.
+const PS_NUM_FIELDS = ['price', 'deposit', 'setup_fee', 'cost', 'qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'];
+const PS_QTY_FIELDS = ['qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'];
+function psDirty() { return state.psDirty || (state.psDirty = {}); }
+function psDirtyCount() { return Object.keys(psDirty()).length; }
+// Талбарын харагдах утга — хүлээгдэж буй засвар байвал түүнийг, эс бол хадгалагдсаныг.
+function psVal(p, field) {
+  const d = psDirty()[p && p.sku];
+  return (d && Object.prototype.hasOwnProperty.call(d, field)) ? d[field] : (p ? p[field] : '');
+}
+// Засварыг хуримтлуулна. Хадгалагдсан утга руу буцаавал «цэвэр» гэж тооцно.
+function psStage(p, field, raw) {
+  if (!p || !p.sku) return psDirtyCount();
+  const val = PS_NUM_FIELDS.includes(field) ? psNum(raw) : String(raw == null ? '' : raw).trim();
+  const cur = PS_NUM_FIELDS.includes(field) ? psNum(p[field]) : String(p[field] == null ? '' : p[field]).trim();
+  const d = psDirty();
+  const row = d[p.sku] || {};
+  if (String(val) === String(cur)) delete row[field]; else row[field] = val;
+  if (Object.keys(row).length) d[p.sku] = row; else delete d[p.sku];
+  return psDirtyCount();
+}
+// Хадгалах гэж буй бүтэн бичлэг — тоо ширхэг өөрчлөгдвөл нийт нөөцийг дахин бодно.
+function psPatchOf(p, row) {
+  const patch = { ...p, ...row };
+  if (Object.keys(row || {}).some(k => PS_QTY_FIELDS.includes(k))) {
+    patch.stock = PS_QTY_FIELDS.reduce((s, k) => s + (Number(patch[k]) || 0), 0);
+  }
+  return patch;
+}
 function renderProductSheet(mode) {
   const cfg = PSHEET[mode];
   if (!cfg) return '';
   if (!state.products || !state.products.length) { loadProductsCatalog(); return '<div style="padding:50px;text-align:center;color:var(--muted);">Ачаалж байна…</div>'; }
+  if (mode === 'catalog' && state.appCatGroups === undefined) { state.appCatGroups = null; loadAppConfig('mevent_category_groups').then(v => { state.appCatGroups = Array.isArray(v) ? v : []; render(); }); }
   const ro = !(state.isCEO || can(cfg.perm));
   const q = state.psQ || '';
   const rows = psFilter(state.products, q).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
@@ -17749,52 +17790,64 @@ function renderProductSheet(mode) {
   const cell = (p) => {
     const d = (k, extra) => `data-ps-sku="${escapeHtml(p.sku)}" data-ps-f="${k}"${ro ? ' disabled' : ''}${extra || ''}`;
     if (mode === 'catalog') return `
-      <input class="ps-in ps-wide ui-raw" ${d('name')} value="${escapeHtml(p.name || '')}" placeholder="Нэр" aria-label="Нэр">
-      <input class="ps-in ui-raw" list="ps-cats" ${d('category')} value="${escapeHtml(p.category || '')}" placeholder="Ангилал" aria-label="Ангилал">`;
+      <input class="ps-in ps-wide ui-raw" ${d('name')} value="${escapeHtml(psVal(p, 'name') || '')}" placeholder="Нэр" aria-label="Нэр">
+      <input class="ps-in ps-cat ui-raw" list="ps-cats" ${d('category')} value="${escapeHtml(psVal(p, 'category') || '')}" placeholder="Ангилал" aria-label="Ангилал">${(() => {
+        const set = psSiteCats(); const c = String(psVal(p, 'category') || '').trim();
+        return (set && c && !set.has(c)) ? '<span class="ps-warn" title="Сайтын ангиллын бүлэгт ороогүй — mevent.mn дээр «Бусад» дор харагдана">⚠</span>' : '';
+      })()}`;
     if (mode === 'price') return `
-      <label class="ps-f"><span>Түрээс</span><input class="ps-in money-input ui-raw" ${d('price')} value="${money(p.price)}" inputmode="numeric"></label>
-      <label class="ps-f"><span>Барьцаа</span><input class="ps-in money-input ui-raw" ${d('deposit')} value="${money(p.deposit)}" inputmode="numeric"></label>
-      <label class="ps-f"><span>Суурилуулалт</span><input class="ps-in money-input ui-raw" ${d('setup_fee')} value="${money(p.setup_fee)}" inputmode="numeric"></label>`;
+      <label class="ps-f"><span>Түрээс</span><input class="ps-in money-input ui-raw" ${d('price')} value="${money(psVal(p, 'price'))}" inputmode="numeric"></label>
+      <label class="ps-f"><span>Барьцаа</span><input class="ps-in money-input ui-raw" ${d('deposit')} value="${money(psVal(p, 'deposit'))}" inputmode="numeric"></label>
+      <label class="ps-f"><span>Суурилуулалт</span><input class="ps-in money-input ui-raw" ${d('setup_fee')} value="${money(psVal(p, 'setup_fee'))}" inputmode="numeric"></label>`;
     if (mode === 'cost') {
-      const total = (Number(p.cost) || 0) * (Number(p.stock) || 0);
+      const total = (Number(psVal(p, 'cost')) || 0) * (Number(p.stock) || 0);
       return `
-      <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(p.cost)}" inputmode="numeric"></label>
-      <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(p.purchase_date || '').slice(0, 10))}"></label>
-      <label class="ps-f"><span>Нийлүүлэгч</span><input class="ps-in ui-raw" ${d('supplier')} value="${escapeHtml(p.supplier || '')}" placeholder="—"></label>
+      <label class="ps-f"><span>Нэгж өртөг</span><input class="ps-in money-input ui-raw" ${d('cost')} value="${money(psVal(p, 'cost'))}" inputmode="numeric"></label>
+      <label class="ps-f"><span>Авсан огноо</span><input class="ps-in ui-raw" type="date" ${d('purchase_date')} value="${escapeHtml(String(psVal(p, 'purchase_date') || '').slice(0, 10))}"></label>
+      <label class="ps-f"><span>Нийлүүлэгч</span><input class="ps-in ui-raw" ${d('supplier')} value="${escapeHtml(psVal(p, 'supplier') || '')}" placeholder="—"></label>
       <span class="ps-tot">${total > 0 ? fmtMoney(total) : '—'}</span>`;
     }
     return `
-      <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent')} value="${Number(p.qty_mevent) || 0}"></label>
-      <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun')} value="${Number(p.qty_chimun) || 0}"></label>
-      <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad')} value="${Number(p.qty_nomaad) || 0}"></label>
-      <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering')} value="${Number(p.qty_catering) || 0}"></label>
-      <span class="ps-tot">${Number(p.stock) || 0}ш</span>`;
+      <label class="ps-f"><span>🎪 M-Event</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_mevent')} value="${Number(psVal(p, 'qty_mevent')) || 0}"></label>
+      <label class="ps-f"><span>🏢 Чимун</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_chimun')} value="${Number(psVal(p, 'qty_chimun')) || 0}"></label>
+      <label class="ps-f"><span>⛺ NOMAAD</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_nomaad')} value="${Number(psVal(p, 'qty_nomaad')) || 0}"></label>
+      <label class="ps-f"><span>🍽 Катеринг</span><input class="ps-in ui-raw" type="number" min="0" ${d('qty_catering')} value="${Number(psVal(p, 'qty_catering')) || 0}"></label>
+      <span class="ps-tot">${PS_QTY_FIELDS.reduce((t, k) => t + (Number(psVal(p, k)) || 0), 0)}ш</span>`;
   };
-  const row = (p) => `<div class="ps-row" data-ps-row="${escapeHtml(p.sku)}">
+  const row = (p) => `<div class="ps-row${psDirty()[p.sku] ? ' ps-dirty' : ''}" data-ps-row="${escapeHtml(p.sku)}">
       <button type="button" class="ps-img ui-raw" data-ps-open="${escapeHtml(p.sku)}" title="Барааны бүх мэдээлэл">${p.photo ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 96))}" alt="" loading="lazy">` : '📦'}</button>
       <div class="ps-nm">${mode === 'catalog' ? '' : escapeHtml(p.name || '')}<em>${escapeHtml(p.code || p.sku)}</em></div>
       <div class="ps-fields">${cell(p)}</div>
     </div>`;
   return `<div class="ps-wrap">
     <div class="ps-head">
-      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div></div>
+      <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div></div>
       <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
     </div>
     <datalist id="ps-cats">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
     <div class="ps-count">${rows.length} бараа</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
+    <div class="ps-savebar" id="ps-savebar"${psDirtyCount() ? '' : ' hidden'}>
+      <span><b id="ps-dirty-n">${psDirtyCount()}</b> бараа өөрчлөгдсөн — хадгалаагүй байна</span>
+      <span class="ps-savebar-b">
+        <button type="button" class="btn ui-raw" id="ps-revert">↩ Болих</button>
+        <button type="button" class="btn btn-primary ui-raw" id="ps-save">💾 Хадгалах</button>
+      </span>
+    </div>
   </div>`;
 }
-async function psSaveField(sku, field, raw) {
-  const p = (state.products || []).find(x => x && x.sku === sku); if (!p) return;
-  const numF = ['price', 'deposit', 'setup_fee', 'cost', 'qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'];
-  const val = numF.includes(field) ? psNum(raw) : String(raw || '').trim();
-  if (String(p[field] == null ? '' : p[field]) === String(val)) return;   // өөрчлөлтгүй — бичихгүй
-  const patch = { ...p, [field]: val };
-  if (field.startsWith('qty_')) patch.stock = ['qty_mevent', 'qty_chimun', 'qty_nomaad', 'qty_catering'].reduce((s, k) => s + (Number(patch[k]) || 0), 0);
-  state._psScroll = document.getElementById('ps-list')?.scrollTop || 0;
-  try { await saveProduct(patch); showToast('✓ Хадгаллаа', 'success', 1200); }
-  catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+async function psSaveAll() {
+  const d = psDirty(); const skus = Object.keys(d);
+  if (!skus.length) return;
+  const btn = document.getElementById('ps-save'); if (btn) btn.disabled = true;
+  let n = 0, fail = 0;
+  for (const sku of skus) {
+    const p = (state.products || []).find(x => x && x.sku === sku); if (!p) continue;
+    try { await saveProduct(psPatchOf(p, d[sku])); n++; } catch (e) { fail++; console.warn('psSave', sku, e); }
+  }
+  state.psDirty = {};
+  showToast(`💾 ${n} бараа хадгаллаа${fail ? ` · ⚠ ${fail} алдаа` : ''}`, fail ? 'warn' : 'success', 3500);
+  render();
 }
 function attachProductSheetHandlers(mode) {
   const list = document.getElementById('ps-list');
@@ -17805,9 +17858,27 @@ function attachProductSheetHandlers(mode) {
     const p = (state.products || []).find(x => x && x.sku === b.dataset.psOpen);
     if (p && typeof openProductModal === 'function') openProductModal(p);
   }));
-  document.querySelectorAll('[data-ps-sku]').forEach(el => el.addEventListener('change', () => {
-    psSaveField(el.dataset.psSku, el.dataset.psF, el.value);
+  // Засвар нь ХУРИМТЛАГДАНА — «💾 Хадгалах» дарж байж бичигдэнэ (санамсаргүй
+  // хүрсэн зүйл чимээгүй хадгалагдахгүй). Бичихгүй тул re-render хийхгүй —
+  // хэрэглэгчийн бичиж буй утга алдагдахгүй.
+  const bar = document.getElementById('ps-savebar');
+  const paint = () => {
+    const n = psDirtyCount();
+    const nEl = document.getElementById('ps-dirty-n'); if (nEl) nEl.textContent = String(n);
+    if (bar) bar.hidden = !n;
+  };
+  document.querySelectorAll('[data-ps-sku]').forEach(el => el.addEventListener('input', () => {
+    const p = (state.products || []).find(x => x && x.sku === el.dataset.psSku);
+    psStage(p, el.dataset.psF, el.value);
+    el.closest('.ps-row')?.classList.toggle('ps-dirty', !!psDirty()[el.dataset.psSku]);
+    paint();
   }));
+  document.getElementById('ps-save')?.addEventListener('click', () => psSaveAll());
+  document.getElementById('ps-revert')?.addEventListener('click', async () => {
+    if (!psDirtyCount()) return;
+    if (!(await showConfirm(`${psDirtyCount()} барааны хадгалаагүй засварыг болих уу?`, { okText: 'Болих', danger: true }))) return;
+    state.psDirty = {}; render();
+  });
 }
 /* ═══════════ АКТ — түрээслэх боломжгүй болсон бараа (2026-09-07) ═══════════
    Хэт хуучирсан, эвдэрсэн, өгөөжгүй болсон барааг актаар нөөцөөс гаргана.

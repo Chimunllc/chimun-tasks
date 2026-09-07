@@ -4417,6 +4417,42 @@ function countFilterList(merged, filter, query) {
   });
 }
 
+// Одоо АГУУЛАХАД БАЙХГҮЙ — үйлчлүүлэгч дээр байгаа барааны тоо.
+// Тооллогод ЗААВАЛ хэрэгтэй: улирлын үед нөөцийн тал нь эвентэд гарсан байдаг тул
+// агуулахад тоолсныг НИЙТ нөөцтэй харьцуулбал бүх бараа «дутуу» гэж гарна.
+// Гадаа гэж үзэх шат: агуулахаас гарснаас хойш агуулахад буцаж ирэх хүртэл.
+const STOCK_OUT_STATUSES = ['delivering', 'rented', 'installing', 'teardown', 'returning', 'started'];
+function outNowBySku(orders, ctx) {
+  const m = new Map();
+  for (const o of (orders || [])) {
+    const st = (typeof orderCanonStatus === 'function') ? orderCanonStatus(o) : String((o && o.status) || '');
+    if (!STOCK_OUT_STATUSES.includes(st)) continue;
+    for (const it of ((o && o.items) || [])) {
+      const r = (typeof resolveItemSku === 'function') ? resolveItemSku(it, ctx) : { sku: (it && it.sku) || '' };
+      const sku = r && r.sku;
+      if (!sku) continue;                       // хүргэлт/НӨАТ мөр — бараа биш
+      m.set(sku, (m.get(sku) || 0) + (Number(it.qty) || 0));
+    }
+  }
+  return m;
+}
+// Кэш — рендер бүрд (хайлтын товчлуур бүрд) бүх захиалгыг дахин гүйхгүй.
+function outNowIndex() {
+  const orders = state.appOrders || [], products = state.products || [];
+  if (state._outIdx && state._outIdxO === orders && state._outIdxP === products) return state._outIdx;
+  state._outIdx = outNowBySku(orders, productIndexes());
+  state._outIdxO = orders; state._outIdxP = products;
+  return state._outIdx;
+}
+// Нэг барааны «агуулахад байх ёстой» тоо — тооллого ҮҮНТЭЙ тулгана.
+function countExpectedFor(p) {
+  return expectedInWarehouse(Number(p && p.stock) || 0, outNowIndex().get(p && p.sku) || 0);
+}
+// Агуулахад БАЙХ ЁСТОЙ тоо = нийт нөөц − гадаа байгаа. Тооллого үүнтэй тулгана.
+function expectedInWarehouse(stock, outQty) {
+  return Math.max(0, (Number(stock) || 0) - (Number(outQty) || 0));
+}
+
 // Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
 function countStats(rows, totalProducts) {
   const latest = countLatestBySku(rows);
@@ -16520,7 +16556,9 @@ function renderStockCount() {
   state.scFilter = state.scFilter || 'todo';
   const shown = countFilterList(merged, state.scFilter, state.scSearch);
   const act = state.scActive ? productBySku(state.scActive) : null;
-  const actSys = act ? (Number(act.stock) || 0) : 0;
+  const actTotal = act ? (Number(act.stock) || 0) : 0;
+  const actOut = act ? (outNowIndex().get(act.sku) || 0) : 0;
+  const actSys = act ? countExpectedFor(act) : 0;   // агуулахад БАЙХ ЁСТОЙ
   const actCnt = state.scQty == null ? actSys : Number(state.scQty);
   const actDiff = actCnt - actSys;
   const actRep = Math.max(0, Number(state.scRep) || 0), actWo = Math.max(0, Number(state.scWo) || 0);
@@ -16531,7 +16569,8 @@ function renderStockCount() {
       <div class="stc-active-n">${escapeHtml(act.name || '')}</div>
       <div class="stc-active-m">${escapeHtml(act.code || act.sku || '')}${act.category ? ' · ' + escapeHtml(act.category) : ''}</div>
       <div class="stc-active-row">
-        <div class="stc-sys"><span>Системд</span><b>${actSys} ш</b></div>
+        <div class="stc-sys"><span>Агуулахад байх ёстой</span><b>${actSys} ш</b>
+          <em>Нийт ${actTotal}${actOut ? ` · түрээсэнд ${actOut}` : ''}</em></div>
         <div class="stc-step">
           <span class="stc-step-l">Тоолсон</span>
           <div class="stc-step-b">
@@ -16654,7 +16693,7 @@ function attachStockCountHandlers() {
   const qty = $('stc-qty');
   if (qty) qty.oninput = () => { state.scQty = Math.max(0, Number(qty.value) || 0); const p = productBySku(state.scActive); const d = state.scQty - (Number(p && p.stock) || 0); const el = document.querySelector('.stc-diff'); if (el) { el.textContent = d === 0 ? '✓ Тэнцэж байна' : (d > 0 ? '+' : '') + d + ' ш зөрүү'; el.className = 'stc-diff ' + (d === 0 ? 'ok' : 'bad'); } _dmgSync(); };
   const _dmgSync = () => {
-    const cnt = state.scQty == null ? (Number((productBySku(state.scActive) || {}).stock) || 0) : Number(state.scQty);
+    const cnt = state.scQty == null ? countExpectedFor(productBySku(state.scActive)) : Number(state.scQty);
     const rep = Math.max(0, Number(state.scRep) || 0), wo = Math.max(0, Number(state.scWo) || 0);
     const el = document.getElementById('stc-dmg-ok'); if (!el) return;
     const over = (rep + wo) > cnt;
@@ -16664,7 +16703,7 @@ function attachStockCountHandlers() {
   const rep = $('stc-rep'), wo = $('stc-wo');
   if (rep) rep.oninput = () => { state.scRep = Math.max(0, Number(rep.value) || 0); _dmgSync(); };
   if (wo) wo.oninput = () => { state.scWo = Math.max(0, Number(wo.value) || 0); _dmgSync(); };
-  const bump = (n) => { const p = productBySku(state.scActive); const cur = state.scQty == null ? (Number(p && p.stock) || 0) : state.scQty; state.scQty = Math.max(0, cur + n); render(); };
+  const bump = (n) => { const p = productBySku(state.scActive); const cur = state.scQty == null ? countExpectedFor(p) : state.scQty; state.scQty = Math.max(0, cur + n); render(); };
   if ($('stc-minus')) $('stc-minus').onclick = () => bump(-1);
   if ($('stc-plus')) $('stc-plus').onclick = () => bump(1);
   if ($('stc-scan')) $('stc-scan').onclick = () => openCountScanner();
@@ -16672,8 +16711,9 @@ function attachStockCountHandlers() {
     const p = productBySku(state.scActive); if (!p) return;
     const btn = e.currentTarget; btn.disabled = true;
     try {
-      await saveStockCount({ sessionId: state.scSession, sku: p.sku, systemQty: Number(p.stock) || 0,
-                             countedQty: state.scQty == null ? (Number(p.stock) || 0) : state.scQty,
+      // ⚠ systemQty = агуулахад БАЙХ ЁСТОЙ тоо (нийт − түрээсэнд), нийт нөөц БИШ.
+      await saveStockCount({ sessionId: state.scSession, sku: p.sku, systemQty: countExpectedFor(p),
+                             countedQty: state.scQty == null ? countExpectedFor(p) : state.scQty,
                              repairQty: state.scRep, writeoffQty: state.scWo });
       state.scActive = null; state.scQty = null; state.scRep = 0; state.scWo = 0; render();
       showToast('Тоолсон бүртгэгдлээ', 'ok', 2000);

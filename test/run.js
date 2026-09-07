@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck']);
 
@@ -4085,6 +4085,68 @@ need(['orderCustType']);
   const boot = src.indexOf("loadVatReceipts();    // НӨАТ баримт");
   ok(boot > 0 && /loadItemAliases\(\);/.test(src.slice(boot, boot + 700)),
      'scan: барааны толь эхлэхэд ачаалагдана');
+}
+
+
+// ── БАГЦЫН ОРЛОГО ЗАДЛАЛТ (2026-09-07) ─────────────────────────────────────
+// Багцын бүтэн дүн багцын нэр дээр сууж, бодит хөрөнгө (майхан, ор, зуух, чанга
+// яригч) 0₮ харагддаг байв. Амьд датаар 22.5 сая₮ ингэж тархаагүй.
+// ⚠ Хуваалт нь ҮНЭЭР жигнэнэ (өртгөөр БИШ) ба нийлбэр нь мөрийн орлоготой ЯГ
+//   тэнцэнэ — эс бөгөөс «түүхийн нийт орлого = жагсаалтын борлуулалт» унана.
+{
+  const bySku = {
+    'M-089': { sku: 'M-089', name: 'Өвлийн майхан 6-8 хүний', price: 132000 },
+    'M-064': { sku: 'M-064', name: 'Аяны ор',                 price: 27500 },
+    'M-060': { sku: 'M-060', name: 'Аяны зуух',               price: 44000 },
+  };
+  const pkg = { sku: 'M-328', name: 'Өвлийн майхан багц', type: 'package',
+    bundle_items: [{ sku: 'M-089', qty: 1 }, { sku: 'M-064', qty: 4 }, { sku: 'M-060', qty: 1 }] };
+
+  // Бодит жишээ: 390,000₮ (3 хоногийн багц) → 180,000 / 150,000 / 60,000
+  const r = F.packageSplit(pkg, bySku, 1, 390000);
+  eq(r.map(x => x.name), ['Өвлийн майхан 6-8 хүний', 'Аяны ор', 'Аяны зуух'], 'багц: бүрэлдэхүүн дараалал');
+  eq(r.map(x => x.revenue), [180000, 150000, 60000], 'багц: үнээр жигнэсэн хуваарилалт');
+  eq(r.reduce((a2, x) => a2 + x.revenue, 0), 390000, 'багц: нийлбэр ЯГ тэнцэнэ');
+  eq(r.map(x => x.qty), [1, 4, 1], 'багц: бүрэлдэхүүний тоо');
+
+  // Мөрийн тоо ширхэг үржинэ
+  const r2 = F.packageSplit(pkg, bySku, 2, 780000);
+  eq(r2.map(x => x.qty), [2, 8, 2], 'багц: 2 багц = бүрэлдэхүүн 2 дахин');
+  eq(r2.reduce((a2, x) => a2 + x.revenue, 0), 780000, 'багц: 2 багцын нийлбэр тэнцэнэ');
+
+  // Бутархай гарах дүн — үлдэгдэл алдагдахгүй
+  for (const v of [1, 7, 999, 100001, 333333]) {
+    const rr = F.packageSplit(pkg, bySku, 1, v);
+    eq(rr.reduce((a2, x) => a2 + x.revenue, 0), v, 'багц: ' + v + '₮ нийлбэр тэнцэнэ (бөөрөнхийлөлт алдагдахгүй)');
+  }
+
+  // Бүрэлдэхүүн бүр үнэгүй бол тоогоор жигнэнэ (бүгд 0 болохгүй)
+  const free = { 'A': { sku: 'A', name: 'A', price: 0 }, 'B': { sku: 'B', name: 'B', price: 0 } };
+  const pf = { bundle_items: [{ sku: 'A', qty: 1 }, { sku: 'B', qty: 3 }] };
+  const rf = F.packageSplit(pf, free, 1, 400000);
+  eq(rf.reduce((a2, x) => a2 + x.revenue, 0), 400000, 'багц: үнэгүй бүрэлдэхүүн — нийлбэр тэнцэнэ');
+  ok(rf[1].revenue > rf[0].revenue, 'багц: үнэгүй үед тоо ширхэгээр жигнэнэ');
+
+  // Каталогт байхгүй бүрэлдэхүүн — sku нэрээр, жин 0
+  const rm = F.packageSplit({ bundle_items: [{ sku: 'M-089', qty: 1 }, { sku: 'ALGA', qty: 1 }] }, bySku, 1, 100000);
+  eq(rm.map(x => x.name), ['Өвлийн майхан 6-8 хүний', 'ALGA'], 'багц: олдоогүй бүрэлдэхүүн sku-гаараа');
+  eq(rm.reduce((a2, x) => a2 + x.revenue, 0), 100000, 'багц: олдоогүй байсан ч нийлбэр тэнцэнэ');
+
+  eq(F.packageSplit({ bundle_items: [] }, bySku, 1, 100), null, 'багц: бүрэлдэхүүнгүй → задлахгүй');
+  eq(F.packageSplit(null, null, 1, 100), null, 'багц: хоосон оролт унахгүй');
+}
+
+// SCAN — тайлан ба ROI хоёулаа багцыг задлана (2026-09-07)
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const hc = src.slice(src.indexOf('function _histCompute('));
+  ok(/packageSplit\(/.test(hc.slice(0, 6000)), 'scan: _histCompute багцыг задална');
+  const ui = src.slice(src.indexOf('function buildProductUtilIndex('));
+  ok(/packageSplit\(/.test(ui.slice(0, 2500)), 'scan: buildProductUtilIndex багцыг задална');
+  // Багц задлахад бүрэлдэхүүний ҮНЭ хэрэгтэй — loadHistory татаж байх ёстой
+  const lh = src.slice(src.indexOf('async function loadHistory('));
+  ok(/select=sku,name,category,price,type,bundle_items/.test(lh.slice(0, 4000)),
+     'scan: loadHistory багцын үнэ/бүрэлдэхүүнийг татна');
 }
 
   finish();

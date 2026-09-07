@@ -9092,13 +9092,27 @@ function buildProductUtilIndex(orders, products) {
     const d = isHist ? 1 : Math.max(1, typeof orderRentalDays === 'function' ? orderRentalDays(o) : (Number(o.days) || 1));
     for (const it of (o.items || [])) {
       const pr = typeof productOf === 'function' ? productOf(it) : null;
-      const n = _normProdName(pr ? pr.name : it.name);
-      if (!n) continue;
-      let e = idx.get(n);
-      if (!e) { e = { orders: 0, qty: 0, revenue: 0, _o: null }; idx.set(n, e); }
-      if (e._o !== o) { e.orders++; e._o = o; }   // нэг захиалга нэг л удаа тоологдоно
       const q = Number(it.qty) || 0;
-      e.qty += q; e.revenue += (Number(it.price) || 0) * q * d;
+      const lineRev = (Number(it.price) || 0) * q * d;
+      const put = (nm2, qty2, rev2) => {
+        const k = _normProdName(nm2);
+        if (!k) return;
+        let e = idx.get(k);
+        if (!e) { e = { orders: 0, qty: 0, revenue: 0, _o: null }; idx.set(k, e); }
+        if (e._o !== o) { e.orders++; e._o = o; }   // нэг захиалга нэг л удаа тоологдоно
+        e.qty += qty2; e.revenue += rev2;
+      };
+      // Багц бол бүрэлдэхүүн рүү задална — бодит хөрөнгийн ROI зөв болно
+      if (pr && typeof isPackage === 'function' && isPackage(pr) && typeof packageSplit === 'function') {
+        const bySku = {};
+        for (const c of (pr.bundle_items || [])) {
+          const cp = typeof productBySku === 'function' ? productBySku(c && c.sku) : null;
+          if (cp) bySku[String(cp.sku)] = cp;
+        }
+        const parts = packageSplit(pr, bySku, q, lineRev);
+        if (parts) { parts.forEach(pt => put(pt.name, pt.qty, pt.revenue)); continue; }
+      }
+      put(pr ? pr.name : it.name, q, lineRev);
     }
   }
   idx.forEach(e => { delete e._o; });
@@ -18919,7 +18933,7 @@ async function loadHistory(force) {
       { headers: H }, 25000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Ангиллын толь — амьд каталогаас (бараа бүлэглэхэд ашиглана)
     const rawProducts = fetchWithTimeout(
-      `${DB_URL}/rest/v1/products?select=sku,name,category&limit=2000`,
+      `${DB_URL}/rest/v1/products?select=sku,name,category,price,type,bundle_items&limit=2000`,
       { headers: H }, 20000).then(r => r.ok ? r.json() : []).catch(() => []);
     // Барааны толь — хүн баталгаажуулсан зураглал. Үүнгүйгээр тайлан нэрээр
     // таамаглаж, бараа нэрээ соливол ангилал буруу болно.
@@ -18939,7 +18953,10 @@ async function loadHistory(force) {
     const aliasMap = {};
     (aliases || []).forEach(a => { if (a && a.alias) aliasMap[a.alias] = a.sku || ''; });
     const _catOf = _histCatResolver(prods || [], aliasMap);
-    const comp = _histCompute(orders || [], roiFix, _catOf, _histItemResolver(prods || [], aliasMap));
+    // Багц задлахад бүрэлдэхүүний үнэ хэрэгтэй — sku индекс
+    const _bySku = {};
+    (prods || []).forEach(p => { if (p && p.sku) _bySku[String(p.sku)] = p; });
+    const comp = _histCompute(orders || [], roiFix, _catOf, _histItemResolver(prods || [], aliasMap), _bySku);
     state.history = {
       // KPI + сар нь comp (live app_orders)-оос — хуучин rh_v_* snapshot зөрдөг тул fallback л болгоно
       summary: comp.summary || summary[0] || null,
@@ -22441,6 +22458,34 @@ function _histNormAgg(s) {
 // «Эвхэгддэг сандал Цагаан» нь нэг бараа боловч тайланд 2 мөр болж, орлого/ROI хуваагдаж
 // байв. Дараалал: sku → толь(sku) → толь(нэр) → каталогийн нэр (normItemKey — зай/цэг/
 // том-жижиг үсэг үл хамаарна). Олдохгүй бол нэрээрээ үлдэнэ.
+// Багцын мөрийг бүрэлдэхүүн рүү задална.
+// ⚠ Орлогыг бүрэлдэхүүний ҮНЭЭР жигнэнэ, ӨРТГӨӨР БИШ: ROI = орлого ÷ хөрөнгө тул
+//   өртгөөр жигнэвэл «авахад үнэтэй ч түрээсэд хямд» бараа орлогыг сорно.
+// ⚠ Хуваалтын нийлбэр нь мөрийн орлоготой ЯГ тэнцэнэ (үлдэгдлийг сүүлийн мөрд
+//   өгнө) — эс бөгөөс «түүхийн нийт орлого = жагсаалтын борлуулалт» инвариант унана.
+// Жишээ: «Өвлийн майхан багц» 390,000₮ → майхан 180,000 · ор 150,000 · зуух 60,000.
+function packageSplit(pkg, bySku, lineQty, revenue) {
+  const comps = (pkg && Array.isArray(pkg.bundle_items)) ? pkg.bundle_items.filter(c => c && c.sku) : [];
+  if (!comps.length) return null;
+  const idx = bySku || {};
+  const rows = comps.map(c => {
+    const cp = idx[String(c.sku)] || null;
+    const cq = Number(c.qty) || 0;
+    return { sku: String(c.sku), name: (cp && cp.name) || String(c.sku),
+             qty: cq * (Number(lineQty) || 0), w: (Number(cp && cp.price) || 0) * cq };
+  });
+  let tw = rows.reduce((a, r) => a + r.w, 0);
+  // Бүрэлдэхүүн бүр үнэгүй бол тоо ширхэгээр жигнэнэ (эс бол бүгд 0 болно)
+  if (tw <= 0) { rows.forEach(r => { r.w = Math.max(1, Number(r.qty) || 0); }); tw = rows.reduce((a, r) => a + r.w, 0); }
+  const rev = Number(revenue) || 0;
+  let acc = 0;
+  rows.forEach((r, ix) => {
+    r.revenue = (ix === rows.length - 1) ? (rev - acc) : Math.round(rev * r.w / tw);
+    acc += r.revenue;
+  });
+  return rows;
+}
+
 function _histItemResolver(prods, aliases) {
   const bySku = {}, byKey = {};
   (prods || []).forEach(p => {
@@ -22686,7 +22731,11 @@ function openDeliveryFeeOrders() {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-function _histCompute(orders, roiFix, catOf, resolveItem) {
+function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
+  const CAT = bySku || {};
+  // Багц мөн эсэх — бүрэлдэхүүнтэй бол л задална
+  const pkgOf = (sk) => { const p = CAT[String(sk || '')];
+    return (p && p.type === 'package' && Array.isArray(p.bundle_items) && p.bundle_items.length) ? p : null; };
   const N = x => Number(x) || 0;
   const cat = (typeof catOf === 'function') ? catOf : () => 'Бусад';
   const normP = (s) => (typeof _normProdName === 'function') ? _normProdName(s) : String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -22740,18 +22789,31 @@ function _histCompute(orders, roiFix, catOf, resolveItem) {
       if (!nm || TAX.test(nm)) return;                    // татвар/барьцаа — бараа биш
       const gross = N(i.qty) * N(i.price);
       const rev = histLineRevenue(gross, grossAll, netRev);   // барьцаа/хүргэлт хасагдана
-      const bucket = bqIsService(nm) ? svcs : prods;
+      const isSvc = bqIsService(nm);
+      const bucket = isSvc ? svcs : prods;
       const skuT = (i.sku != null && String(i.sku).trim()) ? String(i.sku).trim() : '';
       // Нэг бараа = нэг мөр. Каталогт таарвал КАТАЛОГИЙН нэрээр, эс бол өөрийн нэрээр.
       const res = RES(skuT, nm);
+      const add = (key, prodName, sku, revenue, qty, daysOut) => {
+        const p = bucket[key] || (bucket[key] = { product: prodName, skus: {}, names: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
+        p.names[nm] = 1;   // жинхэнэ мөрийн нэрс — дарж захиалгуудыг хайхад хэрэгтэй
+        if (sku) p.skus[sku] = 1;
+        p.revenue_mnt += revenue; p.total_qty += qty; p.item_days_out += daysOut;
+        p._orders[o.id] = 1;
+        if (!p.photo && i.photo) p.photo = i.photo;
+      };
+      // ── БАГЦ: бүрэлдэхүүн рүү задална ──────────────────────────────────────
+      // Эс бөгөөс багцын бүтэн дүн багцын нэр дээр сууж, бодит хөрөнгө (майхан, ор,
+      // чанга яригч) 0₮ харагдана. Амьд датаар 22.5 сая₮ ингэж тархаагүй байв.
+      const pkg = isSvc ? null : pkgOf(res.sku);
+      const parts = pkg ? packageSplit(pkg, CAT, N(i.qty), rev) : null;
+      if (parts) {
+        parts.forEach(pt => add('s:' + pt.sku, pt.name, pt.sku, pt.revenue, pt.qty, days * pt.qty));
+        return;
+      }
       const key = res.sku ? ('s:' + res.sku) : ('n:' + itemKey(nm));
-      const p = bucket[key] || (bucket[key] = { product: res.name || nm, skus: {}, names: {}, photo: '', revenue_mnt: 0, total_qty: 0, item_days_out: 0, _orders: {} });
-      p.names[nm] = 1;   // жинхэнэ мөрийн нэрс — дарж захиалгуудыг хайхад хэрэгтэй
-      if (res.sku) p.skus[res.sku] = 1;
-      if (skuT) p.skus[skuT] = 1;
-      p.revenue_mnt += rev; p.total_qty += N(i.qty); p.item_days_out += days * N(i.qty);
-      p._orders[o.id] = 1;
-      if (!p.photo && i.photo) p.photo = i.photo;
+      add(key, res.name || nm, res.sku || '', rev, N(i.qty), days * N(i.qty));
+      if (skuT) { const b = bucket[key]; if (b) b.skus[skuT] = 1; }
     });
   });
 

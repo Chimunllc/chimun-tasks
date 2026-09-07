@@ -5959,6 +5959,16 @@ function guessBranchForRecord(r, ownerKey) {
 // бичлэг байвал ШИНЭ. (Өмнө Set байсан тул 2 дахь мөр үргэлж «орсон» гэж хаягдаж
 // зардал дутуу ордог байв.)
 function fpAlreadyImported(occ, count) { return (Number(occ) || 1) <= (Number(count) || 0); }
+// Тухайн хуулгын хээ (fp) багцад ЯГ таарсан ИДЭВХТЭЙ санхүүгийн бүртгэлүүд.
+// Цэвэр функц — импорт буцаах сонголт нь өөр данс/сарын зардлыг хэзээ ч хамрахгүй.
+function stmtImportedByFps(reqs, fps) {
+  const set = fps instanceof Set ? fps : new Set(fps || []);
+  return (reqs || []).filter(r => {
+    if (!r || r.status === 'deleted') return false;
+    const m = String(r.justification || '').match(/\[#([^\]]+)\]/);
+    return !!(m && set.has(m[1]));
+  });
+}
 function salaryBranchOf(memo, personKey, fallbackBranch) {
   const b = guessBranch(memo, personKey) || fallbackBranch || '';
   return STMT_BRANCHES.some(([c]) => c === b) ? b : '';
@@ -6273,6 +6283,7 @@ async function openStatementClassifyModal() {
     <div id="sc-list"></div>
     <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
       <button class="btn" id="sc-cancel">Хаах</button>
+      <button class="btn" id="sc-undo" hidden>↩️ Энэ хуулгын импортыг буцаах</button>
       <button class="btn btn-primary" id="sc-save" style="display:none;">Зардлыг оруулах</button>
     </div></div>`;
   document.body.appendChild(modal);
@@ -6280,7 +6291,7 @@ async function openStatementClassifyModal() {
   const close = () => modal.remove();
   modal.querySelector('#sc-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save');
+  const listEl = modal.querySelector('#sc-list'), saveBtn = modal.querySelector('#sc-save'), undoBtn = modal.querySelector('#sc-undo');
   const srcAcctsEl = modal.querySelector('#sc-srcaccts'), droppedEl = modal.querySelector('#sc-dropped');
   // ХАСАГДСАН МӨР — «дутуу орлоо» гэдэг нь хэзээ ч чимээгүй болохгүй. Хуулгад байсан
   // боловч зардал болоогүй мөр бүрийг шалтгаантай нь энд гаргана.
@@ -6435,9 +6446,28 @@ async function openStatementClassifyModal() {
       if (!rows.length && !skippedInternal) throw new Error('Зарлагын мөр уншигдсангүй — Голомт/Хаан xlsx хуулга мөн эсэхийг шалгана уу');
       status.innerHTML = `✓ ${files.length} хуулга · ${rows.length} зарлага · ${sources.length} карт/данс${skippedInternal ? ` · <span style="color:var(--muted);">${skippedInternal} дотоод шилжүүлэг хасагдав</span>` : ''}`; status.style.color = 'var(--ok)';
       renderSrcAccts(); renderDropped(); render(); saveBtn.style.display = '';
+      undoBtn.hidden = !rows.some(r => r.done);   // энэ хуулгаас орсон зардал байвал буцаах боломж
     } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
   };
   modal.querySelector('#sc-file').addEventListener('change', e => { lastFiles = [...e.target.files]; processFiles(lastFiles); });
+  // ↩️ ИМПОРТ БУЦААХ — алдаатай оруулсныг сэргээх ганц зам. Тухайн хуулгын мөрүүдийн
+  // хээгээр (fp) ЯГ таарсан бүртгэлийг л устгана: өөр данс/сарын зардал хөндөгдөхгүй.
+  // Зөөлөн устгал (status='deleted') тул сэргээж, дахин оруулж болно.
+  undoBtn.onclick = async () => {
+    const hits = stmtImportedByFps(state.financeRequests, new Set(rows.map(r => r.fp)));
+    if (!hits.length) { showToast('Энэ хуулгаас орсон зардал олдсонгүй', 'warn', 3000); return; }
+    const tot = hits.reduce((a, x) => a + (Number(x.amount) || 0), 0);
+    if (!(await showConfirm(`Энэ хуулгаас орсон ${hits.length} зардлыг (${fmtMoney(tot)}) буцаах уу?\n\nЗөвхөн энэ хуулгын мөрүүд устана — бусад данс, бусад сарын зардал хэвээр үлдэнэ. Дараа нь дахин оруулж болно.\n\n⚠ Цалин олголтын бүртгэл (Цалин хэсэг) буцаагдахгүй — тэнд гараар засна.`, { okText: 'Тийм, буцаа', danger: true }))) return;
+    undoBtn.disabled = true; let n = 0, fail = 0;
+    for (const r of hits) {
+      try { await saveFinanceRequest(r, true); r.status = 'deleted'; n++; } catch (e) { fail++; }
+      if (n % 10 === 0) showToast(`${n}/${hits.length} буцааж байна…`, 'info', 700);
+    }
+    rows.forEach(r => { r.done = false; });
+    undoBtn.hidden = true; undoBtn.disabled = false;
+    showToast(`↩️ ${n} зардал буцаалаа${fail ? ` · ⚠ ${fail} буцаагдсангүй` : ''}`, fail ? 'warn' : 'success', 5000);
+    render();
+  };
   saveBtn.onclick = async () => {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
@@ -6539,6 +6569,7 @@ async function openStatementClassifyModal() {
     }
     showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${prsnSkipped ? ` · 🙍 ${prsnSkipped} хувийн (орсонгүй)` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
     render(); saveBtn.disabled = false;
+    undoBtn.hidden = !rows.some(r => r.done);   // дөнгөж оруулсныг шууд буцааж болно
   };
   modal.classList.add('open');
 }

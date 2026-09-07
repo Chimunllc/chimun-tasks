@@ -4545,3 +4545,37 @@ need(['orderCustType']);
   eq(vm.runInContext('PSHEET', sandbox).stock.perm, 'products.stock', 'хуудас: Нөөц дэлгэц products.stock эрхтэй');
   eq(vm.runInContext('PSHEET', sandbox).cost.perm, 'products.cost', 'хуудас: Өртөг дэлгэц products.cost эрхтэй');
 }
+
+// ── ХАДГАЛАХ ТОВЧ — санамсаргүй засвар чимээгүй бичигдэхгүй (2026-09-07) ────
+// Өмнө нь талбараас гармагц шууд бичдэг байсан тул санамсаргүй хүрсэн зүйл
+// мэдэгдэлгүй хадгалагдаж байв. Одоо засвар хуримтлагдаж, товч дарж байж бичнэ.
+{
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  runIn('state.psDirty = {};');
+  const p = { sku: 'M-001', name: 'Асар', price: 1000000, qty_mevent: 3, qty_chimun: 1, qty_nomaad: 0, qty_catering: 0, stock: 4 };
+
+  eq(F.psStage(p, 'price', '1,500,000₮'), 1, 'товч: өөрчлөлт хуримтлагдана');
+  eq(F.psVal(p, 'price'), 1500000, 'товч: харагдах утга нь хүлээгдэж буй засвар');
+  eq(F.psStage(p, 'price', '1000000'), 0, 'товч: анхны утга руу буцаавал «цэвэр» болно');
+  eq(F.psVal(p, 'price'), 1000000, 'товч: буцаасны дараа хадгалагдсан утга харагдана');
+
+  eq(F.psStage(p, 'name', ' Асар '), 0, 'товч: зөвхөн зай нэмэх нь өөрчлөлт биш');
+  eq(F.psStage(p, 'name', 'Асар 18м'), 1, 'товч: нэр өөрчлөгдвөл хуримтлагдана');
+  eq(F.psStage({ sku: 'M-002', category: 'Асар' }, 'category', 'Майхан'), 2, 'товч: өөр бараа тусдаа тоологдоно');
+  eq(F.psDirtyCount(), 2, 'товч: 2 бараа хүлээгдэж байна');
+
+  // Тоо ширхэг өөрчлөгдвөл нийт нөөц дахин бодогдоно
+  eq(F.psPatchOf(p, { qty_mevent: 5 }).stock, 6, 'товч: нөөц = салбаруудын нийлбэр');
+  eq(F.psPatchOf(p, { price: 2 }).stock, 4, 'товч: үнэ өөрчлөхөд нөөц хөндөгдөхгүй');
+  eq(F.psStage(null, 'price', 1), 2, 'товч: бараагүй → тоо өөрчлөгдөхгүй (унахгүй)');
+  runIn('state.psDirty = {};');
+  eq(F.psDirtyCount(), 0, 'товч: цэвэрлэсний дараа 0');
+}
+
+// SCAN — барааны хуудсууд талбар бүрийг ШУУД бичихгүй (2026-09-07)
+{
+  eq((src.match(/addEventListener\('change', \(\) => \{\s*psSaveField/g) || []).length, 0,
+    'scan: талбараас гармагц шууд хадгалдаг хуучин зам байхгүй');
+  ok(/document\.getElementById\('ps-save'\)\?\.addEventListener\('click', \(\) => psSaveAll\(\)\)/.test(src),
+    'scan: хадгалах товчоор л бичигдэнэ');
+}

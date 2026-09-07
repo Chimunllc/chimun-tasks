@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck']);
 
@@ -4255,6 +4255,53 @@ need(['orderCustType']);
   ok(!/fetch|loadHistory\(/.test(body), 'scan: шүүлт дахин ТАТАХГҮЙ (сүлжээ дуудахгүй)');
   ok(/_fns/.test(src.slice(src.indexOf('async function loadHistory('), src.indexOf('async function loadHistory(') + 5000)),
      'scan: loadHistory шийдэгчдийг хадгална (дахин тооцоолоход)');
+}
+
+
+// ── АГУУЛАХЫН ХӨРӨНГӨ (2026-09-07) ─────────────────────────────────────────
+// «Хөрөнгийн нөхөлт» нь ТҮРЭЭСЛЭГДСЭН барааны жагсаалтаас тооцогддог байв тул
+// хэзээ ч түрээслэгдээгүй хөрөнгө огт харагдахгүй → нөхөлтийн хувь хиймлээр
+// өндөр. Амьд датаар M-Event 943.7 сая₮ байхад тайлан 636.6 сая гэж харуулж байв.
+{
+  const prods = [
+    { sku: 'A', name: 'Ширээ',   cost: 100000, stock: 10, qty_mevent: 6, qty_nomaad: 4 },
+    { sku: 'B', name: 'Сандал',  cost: 20000,  stock: 100, qty_mevent: 100, qty_nomaad: 0 },
+    { sku: 'C', name: 'Өртөггүй', cost: 0,     stock: 5,  qty_mevent: 5,   qty_nomaad: 0 },
+    { sku: 'D', name: 'Архивласан', cost: 999999, stock: 9, qty_mevent: 9, archived: true },
+    { sku: 'E', name: 'Үйлчилгээ', type: 'service', cost: 50000, stock: 3, qty_mevent: 3 },
+    { sku: 'F', name: 'Багц', type: 'package', cost: 70000, stock: 2, qty_mevent: 2 },
+  ];
+
+  const all = F.warehouseCapital(prods, null);
+  eq(all.capital, 100000 * 10 + 20000 * 100, 'хөрөнгө: нийт нөөцөөр (100к×10 + 20к×100)');
+  eq(all.withCost, 2, 'хөрөнгө: өртөгтэй бараа 2');
+  eq(all.noCost, 1, 'хөрөнгө: өртөггүй бараа тоологдоно');
+
+  const mev = F.warehouseCapital(prods, 'mevent');
+  eq(mev.capital, 100000 * 6 + 20000 * 100, 'хөрөнгө: M-Event салбарын тоогоор');
+  const nom = F.warehouseCapital(prods, 'nomaad');
+  eq(nom.capital, 100000 * 4, 'хөрөнгө: NOMAAD салбарын тоогоор');
+
+  // Хасагдах ёстой: архивласан · үйлчилгээ · багц (бүрэлдэхүүнээ давхар тоолно)
+  eq(F.warehouseCapital([prods[3]], null).capital, 0, 'хөрөнгө: архивласан бараа ОРОХГҮЙ');
+  eq(F.warehouseCapital([prods[4]], null).capital, 0, 'хөрөнгө: үйлчилгээ орохгүй');
+  eq(F.warehouseCapital([prods[5]], null).capital, 0, 'хөрөнгө: багц орохгүй (давхар тооллого)');
+
+  // Тухайн салбарт нөөцгүй бараа орохгүй
+  eq(F.warehouseCapital([{ sku: 'X', cost: 5000, stock: 9, qty_mevent: 0 }], 'mevent').capital, 0,
+     'хөрөнгө: салбарт хуваарилаагүй бараа орохгүй');
+  eq(F.warehouseCapital(null, null).capital, 0, 'хөрөнгө: хоосон оролт унахгүй');
+}
+
+// SCAN — хөрөнгө КАТАЛОГООС тооцогдоно, ROI жагсаалтаас БИШ (2026-09-07)
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const i = src.indexOf('const _lens = (typeof effectiveBranchLens');
+  const seg = src.slice(i, i + 900);
+  ok(/warehouseCapital\(state\.products/.test(seg), 'scan: хөрөнгө каталогоос тооцогдоно');
+  ok(!/const invest = costed\.reduce/.test(seg), 'scan: ROI жагсаалтаас тооцохоо больсон');
+  const rh = src.slice(src.indexOf('function renderHistory('));
+  ok(/loadProductsCatalog/.test(rh.slice(0, 600)), 'scan: тайлан каталогийг ачаална (хөрөнгө 0 болохгүй)');
 }
 
   finish();

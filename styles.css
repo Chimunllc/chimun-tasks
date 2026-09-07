@@ -5550,6 +5550,7 @@ body.role-daily #add-project { display: none !important; }
 .stc-row.d .stc-row-q { color: var(--danger); font-weight: 600; }
 .stc-done { font-size: var(--fs-xs); color: var(--ok); white-space: nowrap; }
 .stc-apply { white-space: nowrap; color: var(--primary); }
+.stc-recount { white-space: nowrap; font-size: var(--fs-xs); font-weight: 600; color: var(--warn); }
 
 /* ── Хөрөнгийн багц — нэг бараа, олон удаагийн худалдан авалт ── */
 .pm-batches { margin-top: var(--space-4); }

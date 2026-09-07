@@ -4531,6 +4531,35 @@ async function countActDownload(session, rows, btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
+// ── ДАХИН ТООЛУУЛАХ (2026-09-04) ───────────────────────────────────────────
+// Том зөрүүг ШУУД нөөцөөс хасах нь эрсдэлтэй: буруу тоолсныг «алдагдсан» гэж
+// бичих нь мөнгө устгахтай адил. Тиймээс томоохон зөрүүг ӨӨР ХҮН дахин тоолж
+// баталгаажуулсны дараа л залруулна.
+const COUNT_RECOUNT_QTY = 5;         // ширхэг — үүнээс их зөрүү
+const COUNT_RECOUNT_VALUE = 200000;  // ₮ — эсвэл үүнээс үнэтэй алдагдал
+// Энэ бичлэг дахин тооллого шаардах уу
+function countNeedsRecount(row, unitCost) {
+  const d = countDiff(row), dm = countDamage(row);
+  const lostQty = (d < 0 ? -d : 0) + (Number(dm.wo) || 0);   // алдагдал болох ширхэг
+  if (!lostQty) return false;                                 // илүү гарсан нь эрсдэлгүй
+  const qty = Math.abs(d) + (Number(dm.wo) || 0);
+  return qty >= COUNT_RECOUNT_QTY || lostQty * (Number(unitCost) || 0) >= COUNT_RECOUNT_VALUE;
+}
+// Нэг барааны бичлэгүүд (цаг дарааллаар) — ӨӨР хүн дахин тоолж ИЖИЛ тоо гаргасан уу
+function countRecountDone(rowsForSku) {
+  const list = (rowsForSku || []).slice().sort((a, b) => String(a.counted_at || '').localeCompare(String(b.counted_at || '')));
+  if (list.length < 2) return false;
+  const last = list[list.length - 1], prev = list[list.length - 2];
+  const p1 = countRowPerson(prev), p2 = countRowPerson(last);
+  if (!p1 || !p2 || p1 === p2) return false;                  // нэг хүн хоёр удаа тоолсон нь баталгаа биш
+  return (Number(prev.counted_qty) || 0) === (Number(last.counted_qty) || 0);
+}
+// Залруулж болох эсэх: баталгаа шаардахгүй, эсвэл баталгаажсан
+function countCanApply(row, rowsForSku, unitCost) {
+  if (!countNeedsRecount(row, unitCost)) return true;
+  return countRecountDone(rowsForSku);
+}
+
 // ── ТООЛЛОГЫН АКТ ──────────────────────────────────────────────────────────
 // Тооллого хаагдахад ГАРЫН ҮСЭГТЭЙ баримт гарна: огноо, тоолсон хүмүүс, зөрүү,
 // дүн, баталсан хүн. Нягтлан/аудитад хэрэгтэй нь энэ — дэлгэц дээрх тоо биш.
@@ -16688,6 +16717,9 @@ function renderStockCount() {
   const counters = [...new Set(rows.map(countRowPerson).filter(Boolean))];
   const pct = st.total ? Math.round(st.counted / st.total * 100) : 0;
 
+  // Нэг барааны БҮХ бичлэг (дахин тооллогын баталгаа шалгахад хэрэгтэй)
+  const rowsBySku = new Map();
+  rows.forEach(r => { if (!r || !r.sku) return; const a = rowsBySku.get(r.sku) || []; a.push(r); rowsBySku.set(r.sku, a); });
   const merged = countMergeProducts(all, rows);
   // Зөрүүг МӨНГӨӨР — шийдвэр гаргуулдаг тоо. Өртөг нь санхүүгийн мэдээлэл тул
   // зөвхөн өртөг харах эрхтэй хүнд (нярав тоолно, дүнг удирдлага хардаг).
@@ -16757,7 +16789,9 @@ function renderStockCount() {
       <span class="stc-row-n">${escapeHtml(p.name || p.sku)}<span class="stc-row-by">${sub}</span></span>
       ${dmgBadge}
       <span class="stc-row-q">${qtyTxt}${showMoney && d < 0 && countUnitCost(p.sku) > 0 ? `<em>${fmtMoneyShort(-d * countUnitCost(p.sku))}</em>` : ''}</span>
-      ${d && r && !r.applied && canApply ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>` : ''}
+      ${d && r && !r.applied && canApply ? (countCanApply(r, rowsBySku.get(p.sku) || [], countUnitCost(p.sku))
+          ? `<button class="btn ui-raw stc-apply" data-scapply="${escapeHtml(String(r.id))}">Залруулах</button>`
+          : '<span class="stc-recount" title="Том зөрүү — өөр хүн дахин тоолж баталгаажуулна">⚠ Дахин тоолуул</span>') : ''}
       ${d && r && r.applied ? `<span class="stc-done">залруулсан${r.applied_by ? ' · ' + escapeHtml(memberName(r.applied_by)) : ''}</span>` : ''}
     </div>`;
   }).join('');
@@ -16872,6 +16906,10 @@ function attachStockCountHandlers() {
   };
   document.querySelectorAll('[data-scapply]').forEach(b => b.onclick = async () => {
     const row = (state.scRows || []).find(r => String(r.id) === b.dataset.scapply); if (!row) return;
+    const same = (state.scRows || []).filter(r => r.sku === row.sku);
+    if (!countCanApply(row, same, countUnitCost(row.sku))) {
+      showToast('Том зөрүү — өөр хүн дахин тоолж баталгаажуулсны дараа залруулна', 'warn', 4500); return;
+    }
     if (!confirm('Зөрүүг нөөцөд залруулах уу? Энэ нь барааны нөөцийн тоог өөрчилнө.')) return;
     b.disabled = true;
     try { await applyStockCount(row); render(); showToast('Нөөц залруулагдлаа', 'ok', 2200); }

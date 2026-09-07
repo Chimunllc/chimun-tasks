@@ -4486,7 +4486,7 @@ async function countActDownload(session, rows, btn) {
         sc.onload = res; sc.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));
         document.head.appendChild(sc); });
     }
-    const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+    const all = countScopedProducts(scNormalizeConfig(state.scCfg).active && scNormalizeConfig(state.scCfg).active.scope);
     const html = countActHtml({
       org: CHIMUN_LEGAL,
       rows,
@@ -4529,6 +4529,37 @@ async function countActDownload(session, rows, btn) {
     showToast('Акт татагдлаа ✓', 'ok', 2500);
   } catch (e) { showToast('Акт үүсгэж чадсангүй: ' + e.message, 'error', 5000); }
   finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+// Тооллогод хамаарах бараа — ГАНЦ эх сурвалж (үйлчилгээ/багц хасагдана + хүрээ).
+function countScopedProducts(scope) {
+  const base = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+  return countScopeProducts(base, scope, countUnitCost);
+}
+// ── ХАМРАХ ХҮРЭЭ (2026-09-04) ──────────────────────────────────────────────
+// 294 барааг бүтнээр тоолох нь улиралд нэг л удаа боломжтой. Сар бүр бүгдийг
+// тоолохын оронд ХӨРӨНГИЙН 80%-ийг эзлэх цөөн барааг тоолох нь бодит ачаалалд
+// тохирно (ABC зарчим): 85 бараа нийт ширхэгийн 94%-ийг эзэлдэг.
+function countScopeLabel(scope) {
+  const s = String(scope || 'all');
+  if (s === 'abc') return 'Үнэтэй бараа (хөрөнгийн 80%)';
+  if (s.startsWith('cat:')) return s.slice(4);
+  return 'Бүх бараа';
+}
+// Хамрах хүрээнд орох бараа. Цэвэр функц (state уншихгүй) тул тестлэгдэнэ.
+function countScopeProducts(products, scope, costOf) {
+  const all = (products || []).slice();
+  const s = String(scope || 'all');
+  if (s.startsWith('cat:')) { const c = s.slice(4); return all.filter(p => String(p.category || '') === c); }
+  if (s !== 'abc') return all;
+  const cost = (sku) => Math.max(0, Number(costOf ? costOf(sku) : 0) || 0);
+  const val = (p) => cost(p.sku) * (Number(p.stock) || 0);
+  const sorted = all.filter(p => val(p) > 0).sort((a, b) => val(b) - val(a) || String(a.sku).localeCompare(String(b.sku)));
+  const total = sorted.reduce((n, p) => n + val(p), 0);
+  if (!total) return [];
+  const out = []; let acc = 0;
+  for (const p of sorted) { out.push(p); acc += val(p); if (acc >= total * 0.8) break; }
+  return out;
 }
 
 // ── ДАХИН ТООЛУУЛАХ (2026-09-04) ───────────────────────────────────────────
@@ -4646,12 +4677,12 @@ async function loadStockCountCfg() {
   return cfg;
 }
 // Тооллого эхлүүлэх — нэг л идэвхтэй сесс байна (хоёр зэрэг явбал тоо хуваагдана).
-async function startStockCount() {
+async function startStockCount(scope) {
   const cfg = scNormalizeConfig(state.scCfg);
   if (cfg.active) throw new Error('Тооллого аль хэдийн эхэлсэн байна');
   const id = scNewSessionId(todayStr(), scAllSessionIds(cfg));
   if (!id) throw new Error('Сессийн дугаар үүсгэж чадсангүй');
-  const next = { active: { id, started_at: new Date().toISOString(), started_by: state.me || '' }, history: cfg.history };
+  const next = { active: { id, started_at: new Date().toISOString(), started_by: state.me || '', scope: String(scope || 'all') }, history: cfg.history };
   await saveAppConfig(SC_CFG_KEY, next);
   state.scCfg = next; state.scSession = id; state.scRows = [];
   return id;
@@ -16710,7 +16741,7 @@ function renderStockCount() {
   if (!state.scCfg) return '<div class="orders-empty"><div class="icon">📋</div>Ачаалж байна…</div>';
   const cfg = scNormalizeConfig(state.scCfg);
   if (!cfg.active) return renderStockCountIdle(cfg, canManage);
-  const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+  const all = countScopedProducts(scNormalizeConfig(state.scCfg).active && scNormalizeConfig(state.scCfg).active.scope);
   const rows = state.scRows || [];
   const st = countStats(rows, all.length);
   const latest = countLatestBySku(rows);
@@ -16799,7 +16830,7 @@ function renderStockCount() {
 
   return `
     <div class="stc-head">
-      <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))}</span></div>
+      <div class="stc-head-t">Тооллого <span>${escapeHtml(scSessionLabel(cfg.active.id))} · ${escapeHtml(countScopeLabel(cfg.active.scope))}</span></div>
       <div class="stc-head-m"><b>${st.counted}</b> / ${st.total} бараа${st.diffs ? ` · <span class="stc-bad">${st.diffs} зөрүү</span>` : ''}${st.pending ? ` · ${st.pending} залруулаагүй` : ''}${st.rep ? ` · <span class="stc-dmg-t">🔧 ${st.rep} ш засварт</span>` : ''}${st.wo ? ` · <span class="stc-dmg-t">🗑 ${st.wo} ш актлах</span>` : ''}${cfg.active.started_at ? ` · ${escapeHtml(String(cfg.active.started_at).slice(0, 10))}-нд эхэлсэн` : ''}</div>
       ${loss && loss.totalVal > 0 ? `<div class="stc-loss">Алдагдал <b>${fmtMoney(loss.totalVal)}</b>${loss.shortQty ? ` · дутуу ${loss.shortQty} ш ${fmtMoneyShort(loss.shortVal)}` : ''}${loss.woQty ? ` · актлах ${loss.woQty} ш ${fmtMoneyShort(loss.woVal)}` : ''}</div>` : ''}
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
@@ -16831,7 +16862,13 @@ function renderStockCountIdle(cfg, canManage) {
       <div class="stc-head-t">Тооллого</div>
       <div class="stc-head-m">Идэвхтэй тооллого алга. Улиралд нэг удаа бүрэн тооллого хийнэ.</div>
     </div>
-    ${canManage ? `<div class="stc-actions"><button class="btn btn-primary ui-raw" id="stc-start">Шинэ тооллого эхлүүлэх</button></div>`
+    ${canManage ? `<div class="stc-actions">
+        <label class="stc-scope">Хамрах хүрээ<select id="stc-scope">
+          <option value="abc">Үнэтэй бараа — хөрөнгийн 80% (${countScopedProducts('abc').length} бараа)</option>
+          <option value="all">Бүх бараа (${countScopedProducts('all').length})</option>
+          ${[...new Set((state.products || []).map(p => p.category).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<option value="cat:${escapeHtml(c)}">${escapeHtml(c)} (${countScopedProducts('cat:' + c).length})</option>`).join('')}
+        </select></label>
+        <button class="btn btn-primary ui-raw" id="stc-start">Шинэ тооллого эхлүүлэх</button></div>`
                 : '<div class="pm-batch-note">Тооллого эхлээгүй байна. Удирдлага эхлүүлэхийг хүлээнэ үү.</div>'}
     ${hist ? `<div class="stc-list-t">Өмнөх тооллогууд</div><div class="stc-list">${hist}</div>` : ''}
   `;
@@ -16843,12 +16880,13 @@ function attachStockCountHandlers() {
   if (search) search.oninput = () => { state.scSearch = search.value; render(); setTimeout(() => { const el = $('stc-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); };
   if ($('stc-start')) $('stc-start').onclick = async (e) => {
     const btn = e.currentTarget; btn.disabled = true;
-    try { const id = await startStockCount(); render(); showToast(scSessionLabel(id) + ' — тооллого эхэллээ', 'ok', 2500); }
+    const sel = document.getElementById('stc-scope');
+    try { const id = await startStockCount(sel ? sel.value : 'all'); render(); showToast(scSessionLabel(id) + ' — тооллого эхэллээ', 'ok', 2500); }
     catch (err) { showToast('Эхлүүлж чадсангүй: ' + err.message, 'error', 5000); btn.disabled = false; }
   };
   if ($('stc-close')) $('stc-close').onclick = async (e) => {
     const rows = state.scRows || [];
-    const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+    const all = countScopedProducts(scNormalizeConfig(state.scCfg).active && scNormalizeConfig(state.scCfg).active.scope);
     const st = countStats(rows, all.length);
     const left = st.total - st.counted;
     // Дуусаагүй / залруулаагүй байхад хаах нь бодит эрсдэл — тоогоор нь сануулна.

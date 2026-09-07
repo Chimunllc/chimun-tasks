@@ -5856,6 +5856,33 @@ function xlsSerialToDate(v) {
   // UTC геттер — серийн тоо нь хуулгын ЛОКАЛ цагийг илэрхийлдэг тул бүсээр гулсуулахгүй.
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
 }
+// Хуулгын дансны ВАЛЮТ. Голомт «3635181410 [USD]» гэж хаалтанд бичдэг; заагаагүй бол ₮.
+// ⚠ Валют дансыг ₮ гэж үзвэл 100 USD нь 100₮ болж зардал 3,600 дахин дутуу гарна.
+function statementCurrency(matrix) {
+  // ⚠ ЗӨВХӨН толгойн ТЭМДЭГЛЭГЭЭГ хүлээн авна. «USD» гэсэн үг гүйлгээний УТГАД таарвал
+  // (жиш. «ВИЗА КАРТ /USD ISSUER») ₮ хуулгыг валют гэж андуурч дүнг 3,600 дахин
+  // үрэгдүүлнэ — тиймээс задгай үгээр таамаглахгүй.
+  const CCY = /^(USD|EUR|CNY|RUB|JPY|KRW|GBP|MNT)$/;
+  for (let i = 0; i < Math.min(12, (matrix || []).length); i++) {
+    const cells = (matrix[i] || []).map(c => String(c == null ? '' : c));
+    for (const c of cells) {
+      const m = c.match(/\[\s*([A-Za-z]{3})\s*\]/)                          // Голомт: «3635181410 [USD]»
+        || c.match(/валют[^A-Za-z]{0,12}([A-Za-z]{3})/i)                        // «Валютын төрөл: USD»
+        || c.match(/дансны\s*дугаар[^A-Za-z]{0,20}([A-Za-z]{3})\s*$/i);        // ХХБ: «Дансны дугаар: 456084193 USD»
+      if (m) { const v = m[1].toUpperCase(); if (CCY.test(v)) return v; }
+    }
+  }
+  return 'MNT';
+}
+// Валют дансны мөрийг ₮ болгох ханш. Хуулгын «Ханш» баганад хөрвүүлэлт БОЛСОН мөрд
+// бодит ханш (3596), хөрвүүлэлтгүй (валютаараа хийгдсэн) мөрд 1 гэж бичигддэг тул
+// ойролцоо мөрийн бодит ханшийг авна. Огт байхгүй бол 0 → мөр чимээгүй орохгүй.
+function fxRateNear(rates, idx) {
+  if (!rates || !rates.length) return 0;
+  let best = null;
+  rates.forEach(x => { if (!best || Math.abs(x.i - idx) < Math.abs(best.i - idx)) best = x; });
+  return best ? best.rate : 0;
+}
 function tdbMeta(matrix) {
   let isTdb = false, acct = '', ccy = 'MNT';
   (matrix || []).slice(0, 14).forEach(row => {
@@ -5909,7 +5936,7 @@ function parseStatement(matrix) {
     if (dIdx >= 0 && (inIdx >= 0 || memIdx >= 0)) {
       cols = { date: dIdx, memo: memIdx, name: find(/нэр|харьцагч/),
         account: cells.findIndex(c => /харьцсан данс|данс|iban|account/.test(c) && !/нэр/.test(c)),
-        credit: inIdx, debit: find(/^зарлага|дебит|debit/) };
+        credit: inIdx, debit: find(/^зарлага|дебит|debit/), rate: find(/^ханш|rate/) };
       hr = i; break;
     }
   }
@@ -5935,9 +5962,29 @@ function parseStatement(matrix) {
     }
     // Хаан дебитээ СӨРӨГ тоогоор бичдэг (-180000), Голомт эерэгээр — abs() хоёуланд зөв
     rows.push({ date: dateStr, memo: cell(r, cols.memo), name: cell(r, cols.name),
-      account: cell(r, cols.account), credit: cols.credit >= 0 ? Math.abs(num(r[cols.credit])) : 0, debit: cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0 });
+      account: cell(r, cols.account), credit: cols.credit >= 0 ? Math.abs(num(r[cols.credit])) : 0, debit: cols.debit >= 0 ? Math.abs(num(r[cols.debit])) : 0,
+      _rate: cols.rate >= 0 ? Math.abs(num(r[cols.rate])) : 0 });
   }
-  return { rows, headerRow: hr, cols, skipped };
+  // ── ВАЛЮТ ДАНС → ₮ ──
+  const ccy = statementCurrency(matrix);
+  if (ccy !== 'MNT') {
+    const rates = [];
+    rows.forEach((r, i) => { if (r._rate >= 100) rates.push({ i, rate: r._rate }); });   // 1 = хөрвүүлэлтгүй мөр
+    if (!rates.length) {
+      // Ханшгүй бол ТААМАГЛАХГҮЙ — буруу дүн орохоос чимээгүй алдагдсан нь дээр.
+      rows.forEach(r => skipped.push({ date: r.date, memo: r.memo, debit: r.debit, why: `${ccy} дансны ханш хуулгад алга — ₮ рүү хөрвүүлэх боломжгүй` }));
+      return { rows: [], headerRow: hr, cols, skipped, ccy };
+    }
+    rows.forEach((r, i) => {
+      const rate = r._rate >= 100 ? r._rate : fxRateNear(rates, i);
+      const amt = r.debit || r.credit;
+      r.fx = { ccy, amt, rate };
+      r.credit = Math.round(r.credit * rate);
+      r.debit = Math.round(r.debit * rate);
+    });
+  }
+  rows.forEach(r => { delete r._rate; });
+  return { rows, headerRow: hr, cols, skipped, ccy };
 }
 
 // ── ХУУЛГААР ЗАРДАЛ АНГИЛАХ (долоо хоног бүр) — авто ангилал + гараар + сурах ──
@@ -5956,7 +6003,7 @@ const EXPENSE_RULES = [
   [/хүргэлт|тээвэр|такси|нүүлгэ/i, '1100'],
   [/шимтгэл|charges/i, '5700'],
   [/facebk|facebook|\bmeta\b|instagram|tiktok|google\s*ads|\bads\b/i, '4100'],   // цахим зар (валют картаар)
-  [/apple\.com|google\s*(play|cloud|workspace)|openai|anthropic|claude|chatgpt|canva|figma|adobe|notion|slack|zoom|dropbox|spotify|netflix|godaddy|namecheap|hosting/i, '2400'],  // онлайн програм/апп
+  [/apple\s*com|apple\.com|google\s*(play|cloud|workspace|wo)|openai|anthropic|claude|chatgpt|canva|figma|adobe|notion|slack|zoom|dropbox|spotify|netflix|godaddy|namecheap|hosting|contabo|cantabo|hetzner|digitalocean|\baws\b|vercel|cloudflare|github|linode/i, '2400'],  // онлайн програм/сервер
   [/сурталчил|контент|маркетинг|reels|бүүст/i, '4900'],
 ];
 function _acctCatLearn() { if (!state.acctCatLearn) { try { state.acctCatLearn = JSON.parse(localStorage.getItem('acctCatLearn') || '{}'); } catch (_) { state.acctCatLearn = {}; } } return state.acctCatLearn; }

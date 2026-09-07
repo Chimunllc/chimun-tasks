@@ -5413,7 +5413,7 @@ body.role-daily #add-project { display: none !important; }
   font-size: var(--fs-md); font-weight: 600; color: var(--primary); cursor: pointer;
 }
 .pm-pane-t { margin: var(--space-2) 0 var(--space-4); font-size: var(--fs-xl); font-weight: 600; color: var(--text); }
-.pm-pane[hidden], .pm-menu[hidden], .pm-lock[hidden] { display: none; }
+.pm-pane[hidden], .pm-menu[hidden], .pm-lock[hidden], .pm-menu-row[hidden] { display: none; }
 /* Эрхгүй хэсэг — утга харагдана, засагдахгүй */
 .pm-lock {
   margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);

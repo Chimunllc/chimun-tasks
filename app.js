@@ -17678,11 +17678,8 @@ function renderProducts() {
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
     ${asarBar}
-<<<<<<< HEAD
     ${asarPurgeBar}
-=======
     ${archiveBar}
->>>>>>> 7b652ab (Бараа архивлах товч — зөвхөн CEO, хатуу устгал БИШ)
     ${nameEnBar}
     ${variantClearBar}
     ${seasonCloseBar}

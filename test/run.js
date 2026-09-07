@@ -4271,3 +4271,11 @@ need(['orderCustType']);
   eq(F.asarPurgeSkus().length, LEG.length + DUP.length, 'хасалт: жагсаалт = хуучин уртууд + хөрөнгийн давхардал');
   ok(!F.asarPurgeSkus().some(k => G('ASAR_MODULES')[k]), 'хасалт: жагсаалтад модулийн sku БАЙХГҮЙ');
 }
+
+// SCAN — merge conflict тэмдэглэгээ ЭХ КОДОД үлдэхгүй (2026-09-07)
+// `<<<<<<< HEAD` нь template literal дотор орсон тул `node --check` барихгүй,
+// lint ч өнгөрөөсөн — хэрэглэгчийн дэлгэц дээр ТЕКСТЭЭР харагдаж байв.
+{
+  eq((src.match(/^<<<<<<< |^=======$|^>>>>>>> /gm) || []).length, 0,
+    'scan: app.js-д merge conflict тэмдэглэгээ байхгүй');
+}

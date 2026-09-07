@@ -17543,6 +17543,7 @@ function renderProducts() {
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
+      ${can('products.edit') ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
       ${can('products.edit') ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
     </div>
     <div class="prod-metabar">
@@ -17562,7 +17563,8 @@ function renderProducts() {
 }
 
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
-function openProductModal(p) {
+function openProductModal(p, opts) {
+  const asPkg = !!(opts && opts.asPackage);
   // Хэсэг бүр өөрийн эрхтэй. Шинэ бараа нэмэх нь БҮХ хэсгийг бөглөнө → бүрэн эрх шаардана.
   if (!p && !can('products.edit')) { showToast('Шинэ бараа нэмэхэд бүрэн эрх шаардана', 'warn', 3500); return; }
   if (!canEditAnyProductPart()) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
@@ -17595,7 +17597,7 @@ function openProductModal(p) {
   modal.id = 'prod-modal';
   modal.innerHTML = `
     <div class="modal" style="max-width:540px;">
-      <h2>${isEdit ? 'Бараа засах' : 'Шинэ бараа'}</h2>
+      <h2>${isEdit ? (isPackage(p) ? 'Багц засах' : 'Бараа засах') : (asPkg ? 'Шинэ багц' : 'Шинэ бараа')}</h2>
       ${isEdit && (u.orders || cost) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
       <div class="pm-menu" data-pmpane="menu">
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
@@ -17645,10 +17647,10 @@ function openProductModal(p) {
         <label>🔧 Суурилуулалтын хөлс / нэгж (₮) <span style="color:var(--muted);font-weight:400;">(хоосон = ${fmtMoney(setupRateForName((p && p.name) || ''))} санал)</span><input id="pm-setup" type="text" inputmode="numeric" class="money-input" value="${(p && Number(p.setup_fee) > 0) ? moneyFmtInput(Number(p.setup_fee)) : ''}" placeholder="${moneyFmtInput(setupRateForName((p && p.name) || ''))}"${state._prodHasSetupFee === false ? ' disabled title="products хүснэгтэд setup_fee багана алга — SQL ажиллуулна уу"' : ''}></label>
         </div>
       <label class="pm-rentable">
-        <input type="checkbox" id="pm-ispackage" ${isPackage(p) ? 'checked' : ''}>
+        <input type="checkbox" id="pm-ispackage" ${isPackage(p) || asPkg ? 'checked' : ''}>
         <span><b>📦 Багц бараа</b> — хэд хэдэн барааг нэг үнээр (ж: "Дуу багц"). Нөөц нь бүрэлдэхүүнээс автоматаар тооцогдоно.</span>
       </label>
-      <div id="pm-bundle" class="pm-bundle"${isPackage(p) ? '' : ' hidden'}>
+      <div id="pm-bundle" class="pm-bundle"${isPackage(p) || asPkg ? '' : ' hidden'}>
         <div id="pm-bundle-list"></div>
         <button type="button" class="btn pm-bundle-add" id="pm-bundle-add">+ Бараа нэмэх</button>
         <datalist id="pm-prod-list">${(state.products || []).filter(x => !isPackage(x) && x.name).map(x => `<option value="${escapeHtml(x.name)}">`).join('')}</datalist>
@@ -17851,11 +17853,21 @@ function openProductModal(p) {
   const _stockBlk = modal.querySelector('.pm-branch');
   const _syncType = () => {
     modal.querySelector('#pm-bundle').hidden = !_pkgEl.checked;
-    if (_stockBlk) _stockBlk.style.display = _svcEl.checked ? 'none' : '';
+    if (_stockBlk) _stockBlk.style.display = (_svcEl.checked || _pkgEl.checked) ? 'none' : '';
+    // Багц/үйлчилгээний нөөцийг гараар оруулдаггүй (багц нь бүрэлдэхүүнээс
+    // тооцогдоно, үйлчилгээ нөөцгүй) — тэр хэсгийг менюнээс нуана.
+    const hideStock = _pkgEl.checked || _svcEl.checked;
+    const row = modal.querySelector('[data-pmgo="stock"]');
+    if (row) row.hidden = hideStock;
+    const pane = modal.querySelector('[data-pmpane="stock"]');
+    if (pane && hideStock && !pane.hidden) pmGo('menu');
   };
   _pkgEl.onchange = () => { if (_pkgEl.checked) _svcEl.checked = false; _syncType(); };
   _svcEl.onchange = () => { if (_svcEl.checked) _pkgEl.checked = false; _syncType(); };
   _syncType();
+  // Багц үүсгэхээр нээсэн бол шууд бүрэлдэхүүн рүү — хэрэглэгч меню тойрох
+  // шаардлагагүй (тусдаа товчоор орж ирсэн нь зорилгоо аль хэдийн хэлсэн).
+  if (asPkg) pmGo('price');
   modal.querySelector('#pm-bundle-add').onclick = () => { bundle.push({ sku: '', qty: 1 }); renderBundle(); };
   bundleList.addEventListener('input', (e) => {
     if (!_pcan.price) return;
@@ -18075,6 +18087,7 @@ function attachProductsHandlers() {
   });
   // Шинэ бараа → хоосон модал
   document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
+  document.getElementById('prod-new-pkg')?.addEventListener('click', () => openProductModal(null, { asPackage: true }));
   document.getElementById('prod-groups')?.addEventListener('click', () => openCategoryGroupsModal());
   // QR скан → бараа таних
   document.getElementById('prod-scan')?.addEventListener('click', () => openScanner());

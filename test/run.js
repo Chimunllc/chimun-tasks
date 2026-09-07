@@ -462,7 +462,8 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
 // querySelector-оос null авч үнэ 0, нөөц 0 болгож хадгална. Тиймээс модал болон
 // submit-ийн УНШДАГ pm-* id бүр модалын HTML-д зарлагдсан байх ёстой.
 {
-  const openSrc = src.slice(src.indexOf('function openProductModal(p) {'), src.indexOf('async function submitProductModal('));
+  // Гарын үсгээс ХАМААРАЛГҮЙ (openProductModal(p) → (p, opts) болоход тест унасан)
+  const openSrc = src.slice(src.indexOf('function openProductModal('), src.indexOf('async function submitProductModal('));
   const _rest = src.slice(src.indexOf('async function submitProductModal('));
   const submitSrc = _rest.slice(0, _rest.indexOf('\nfunction attachProductsHandlers('));
   const read = new Set();
@@ -3817,6 +3818,25 @@ need(['orderCustType']);
   eq(F.countScopeLabel('abc'), 'Үнэтэй бараа (хөрөнгийн 80%)', 'хүрээ: ABC нэр');
   eq(F.countScopeLabel('cat:Майхан'), 'Майхан', 'хүрээ: ангиллын нэр');
   eq(F.countScopeLabel(''), 'Бүх бараа', 'хүрээ: анхдагч нэр');
+}
+
+// ── БАГЦ ҮҮСГЭХ ТУСДАА ТОВЧ (2026-09-07) ───────────────────────────────────
+// Багц үүсгэх нь барааны картын гүнд нуугдсан чагт байсныг тусдаа товч болгов.
+// scan: товч, багц горим, нөөц нуугдах логик бүрэн байгаа эсэх.
+{
+  const openSrc = src.slice(src.indexOf('function openProductModal('), src.indexOf('async function submitProductModal('));
+  ok(/id="prod-new-pkg"/.test(src), 'багц: жагсаалтад тусдаа товч байна');
+  ok(/prod-new-pkg'\)\?\.addEventListener\('click', \(\) => openProductModal\(null, \{ asPackage: true \}\)\)/.test(src),
+     'багц: товч багц горимоор нээнэ');
+  ok(/asPkg = !!\(opts && opts\.asPackage\)/.test(openSrc), 'багц: горимын тугийг уншина');
+  ok(/isPackage\(p\) \|\| asPkg \? 'checked'/.test(openSrc), 'багц: чагт урьдчилан тавигдана');
+  ok(/if \(asPkg\) pmGo\('price'\)/.test(openSrc), 'багц: шууд бүрэлдэхүүн рүү үсэрнэ');
+  ok(/Шинэ багц/.test(openSrc), 'багц: гарчиг ялгаатай');
+
+  // Багцын нөөцийг ГАРААР оруулдаггүй (бүрэлдэхүүнээс тооцогдоно) — тэр хэсэг нуугдана.
+  ok(/_pkgEl\.checked \|\| _svcEl\.checked/.test(openSrc), 'багц: нөөц хэсэг багц/үйлчилгээнд нуугдана');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  ok(/\.pm-menu-row\[hidden\]/.test(css), 'багц: нуусан менюгийн мөр үнэхээр нуугдана (display:flex-ийг дардаг)');
 }
 
   finish();

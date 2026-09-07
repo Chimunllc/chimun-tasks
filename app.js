@@ -4473,6 +4473,127 @@ function countLossValue(rows, costOf) {
 function countUnitCost(sku) {
   return Number((state.productCosts || {})[sku]) || Number((productBySku(sku) || {}).cost) || 0;
 }
+// Актыг PDF болгож татна. ⚠ html2canvas нь position:fixed элементийг ХООСОН
+// буулгадаг тул holder ЭНГИЙН урсгалд; windowWidth-ийг элементийн өргөнтэй (794)
+// таарууна — 900≠794 бол зүүн тал тасарна (гэрээний PDF-ээс батлагдсан).
+async function countActDownload(session, rows, btn) {
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Бэлдэж байна…'; }
+  try {
+    if (!window.html2pdf) {
+      await new Promise((res, rej) => { const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+        sc.onload = res; sc.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));
+        document.head.appendChild(sc); });
+    }
+    const all = (state.products || []).filter(p => !isService(p) && !isPackage(p));
+    const html = countActHtml({
+      org: CHIMUN_LEGAL,
+      rows,
+      total: all.length,
+      startedAt: String(session && session.started_at || '').slice(0, 10),
+      finishedAt: String(session && session.finished_at || todayStr()).slice(0, 10),
+      counters: [...new Set(rows.map(countRowPerson).filter(Boolean))].map(k => memberName(k) || k),
+      nameOf: (sku) => (productBySku(sku) || {}).name || sku,
+      costOf: countUnitCost,
+    });
+    const cover = document.createElement('div');
+    cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center;color:#111;font-size:15px;';
+    cover.textContent = '📄 Акт бэлдэж байна…';
+    const holder = document.createElement('div');
+    holder.style.cssText = 'box-sizing:border-box;width:794px;margin:0;background:#fff;color:#111;padding:34px 38px;font-size:12.5px;line-height:1.5;';
+    holder.innerHTML = `<style>
+      h1{font-size:17px;text-align:center;margin:0 0 14px;letter-spacing:.5px;}
+      .meta{font-size:12px;margin-bottom:12px;line-height:1.7;}
+      table{width:100%;border-collapse:collapse;margin-bottom:12px;}
+      .sum td{border:1px solid #bbb;padding:6px 8px;font-size:12px;}
+      .d th,.d td{border:1px solid #bbb;padding:5px 7px;font-size:11.5px;}
+      .d th{background:#f0f0f0;text-align:left;}
+      .n{text-align:right;white-space:nowrap;} .c{text-align:center;color:#555;padding:14px;}
+      .neg{color:#b3261e;font-weight:700;}
+      .note{font-size:11px;color:#555;margin-bottom:26px;}
+      .sig{display:flex;gap:28px;margin-top:30px;}
+      .sig div{flex:1;font-size:12px;} .sig i{display:block;border-bottom:1px solid #111;height:26px;}
+      tr{page-break-inside:avoid;}
+    </style>` + html;
+    document.body.appendChild(holder);
+    document.body.appendChild(cover);
+    try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+    await new Promise(r => setTimeout(r, 250));
+    const fname = 'Toollogo_akt_' + String(session && session.started_at || todayStr()).slice(0, 10) + '.pdf';
+    const opt = { filename: fname, margin: [10, 10, 12, 10], image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 794 },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
+    try { await window.html2pdf().set(opt).from(holder).save(); }
+    finally { holder.remove(); cover.remove(); }
+    showToast('Акт татагдлаа ✓', 'ok', 2500);
+  } catch (e) { showToast('Акт үүсгэж чадсангүй: ' + e.message, 'error', 5000); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+// ── ТООЛЛОГЫН АКТ ──────────────────────────────────────────────────────────
+// Тооллого хаагдахад ГАРЫН ҮСЭГТЭЙ баримт гарна: огноо, тоолсон хүмүүс, зөрүү,
+// дүн, баталсан хүн. Нягтлан/аудитад хэрэгтэй нь энэ — дэлгэц дээрх тоо биш.
+// Цэвэр функц (дата → HTML, state уншихгүй) тул тестлэгдэнэ.
+function countActHtml(o) {
+  const org = (o && o.org) || {};
+  const rows = (o && o.rows) || [];
+  const nameOf = (o && o.nameOf) || ((sku) => sku);
+  const costOf = (o && o.costOf) || (() => 0);
+  const latest = countLatestBySku(rows);
+  const val = countLossValue(rows, costOf);
+  const esc = (x) => escapeHtml(String(x == null ? '' : x));
+  const money = (n) => fmtMoney(n);
+
+  const diffs = [];
+  latest.forEach((r) => {
+    const d = countDiff(r), dm = countDamage(r);
+    if (d !== 0 || dm.rep || dm.wo) diffs.push({ r, d, dm });
+  });
+  diffs.sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+
+  const body = diffs.length ? diffs.map(({ r, d, dm }) => {
+    const c = Number(costOf(r.sku)) || 0;
+    // Мөрийн дүн = дутсан + актлах. Багана нь «Алдагдлын дүн»-тэй НИЙЛЭХ ёстой,
+    // эс бөгөөс нягтлан нэмээд таарахгүй болно.
+    const rowVal = (d < 0 ? -d * c : 0) + (dm.wo || 0) * c;
+    const note = [dm.rep ? `${dm.rep} ш засварт` : '', dm.wo ? `${dm.wo} ш актлах` : ''].filter(Boolean).join(', ');
+    return `<tr>
+      <td>${esc(nameOf(r.sku))}</td>
+      <td class="n">${Number(r.system_qty) || 0}</td>
+      <td class="n">${Number(r.counted_qty) || 0}</td>
+      <td class="n${d < 0 ? ' neg' : ''}">${d > 0 ? '+' : ''}${d}</td>
+      <td class="n">${rowVal > 0 ? money(rowVal) : '—'}</td>
+      <td>${esc(note) || '—'}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="6" class="c">Зөрүү гараагүй — бүх бараа бүртгэлтэй тэнцэв.</td></tr>';
+
+  const people = (o && o.counters || []).filter(Boolean);
+  return `
+    <h1>БАРААНЫ ТООЛЛОГЫН АКТ</h1>
+    <div class="meta">
+      <div><b>${esc(org.name || '')}</b>${org.reg ? ` · РД ${esc(org.reg)}` : ''}</div>
+      <div>Тооллого: ${esc(o.startedAt || '')} — ${esc(o.finishedAt || '')}</div>
+      <div>Тоолсон: ${people.length ? esc(people.join(', ')) : '—'}</div>
+    </div>
+    <table class="sum">
+      <tr><td>Нийт бараа</td><td class="n">${Number(o.total) || 0}</td>
+          <td>Тоологдсон</td><td class="n">${latest.size}</td></tr>
+      <tr><td>Зөрүүтэй</td><td class="n">${diffs.length}</td>
+          <td>Алдагдлын дүн</td><td class="n"><b>${money(val.totalVal)}</b></td></tr>
+    </table>
+    <table class="d">
+      <thead><tr><th>Барааны нэр</th><th class="n">Байх ёстой</th><th class="n">Тоолсон</th><th class="n">Зөрүү</th><th class="n">Дүн</th><th>Тайлбар</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+    <div class="note">Зөрүү нь агуулахад <b>байх ёстой</b> тоотой харьцуулагдсан (нийт нөөцөөс түрээсэнд гарсныг хассан).</div>
+    <div class="sig">
+      <div><span>Тоолсон</span><i></i></div>
+      <div><span>Хянасан</span><i></i></div>
+      <div><span>${esc(org.directorTitle || 'Захирал')}</span><i></i></div>
+    </div>`;
+}
+
 // Сессийн нэгтгэл — цэвэр функц (тестлэгддэг)
 function countStats(rows, totalProducts) {
   const latest = countLatestBySku(rows);
@@ -16653,6 +16774,7 @@ function renderStockCount() {
     ${canCount ? `<div class="stc-tools">
       <button class="btn ui-raw" id="stc-scan">📷 Скан</button>
       <input type="search" id="stc-search" placeholder="Нэр, код, SKU хайх" value="${escapeHtml(state.scSearch || '')}">
+      ${rows.length ? '<button class="btn ui-raw" id="stc-act">📄 Акт</button>' : ''}
     </div>` : '<div class="pm-batch-note">Танд тоолох эрх олгогдоогүй — зөвхөн үр дүнг харна.</div>'}
     ${actCard}
     <div class="stc-chips">${chip('all', 'Бүгд', merged.length)}${chip('todo', '○ Тоолоогүй', nTodo)}${chip('done', '✓ Тоолсон', nDone)}${st.diffs ? chip('diff', '⚠ Зөрүүтэй', st.diffs) : ''}${st.dmgItems ? chip('dmg', '🔧 Эвдрэлтэй', st.dmgItems) : ''}</div>
@@ -16732,6 +16854,10 @@ function attachStockCountHandlers() {
   if ($('stc-minus')) $('stc-minus').onclick = () => bump(-1);
   if ($('stc-plus')) $('stc-plus').onclick = () => bump(1);
   if ($('stc-scan')) $('stc-scan').onclick = () => openCountScanner();
+  if ($('stc-act')) $('stc-act').onclick = (e) => {
+    const cfg = scNormalizeConfig(state.scCfg);
+    countActDownload(cfg.active || {}, state.scRows || [], e.currentTarget);
+  };
   if ($('stc-save')) $('stc-save').onclick = async (e) => {
     const p = productBySku(state.scActive); if (!p) return;
     const btn = e.currentTarget; btn.disabled = true;

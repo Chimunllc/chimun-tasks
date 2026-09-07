@@ -3854,6 +3854,13 @@ function renderSidebar() {
   // Тооллого — нярав/агуулахын ажилтанд өгч болно (бараа засах эрхгүй ч).
   const scNav = document.getElementById('nav-stockcount');
   if (scNav) scNav.style.display = canSeeStockCount() ? '' : 'none';
+  // Акт — түрээслэх боломжгүй болсон бараа (нөөц засах эрхтэй хүн)
+  const woNav = document.getElementById('nav-writeoff');
+  if (woNav) {
+    woNav.style.display = canSeeWriteoff() ? '' : 'none';
+    const wc = document.getElementById('cnt-writeoff');
+    if (wc) wc.textContent = String(woList().filter(x => x && x.status === 'pending').length);
+  }
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
@@ -3930,7 +3937,7 @@ function renderSidebar() {
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
-  _setGrp('nav-group-inventory', ['nav-products', 'nav-stockcount']);
+  _setGrp('nav-group-inventory', ['nav-products', 'nav-stockcount', 'nav-writeoff']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
@@ -3956,6 +3963,7 @@ function renderTitle() {
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'M event захиалга', 'Түрээсийн бүх захиалга — mevent.mn сайт, ажилтны үүсгэсэн, Booqable түүх'],
     products:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', 'Бараа & хөрөнгө', 'Бараа, хөрөнгө, машин — салбараар. Түрээсийн бараа mevent.mn-д шинэчлэгдэнэ'],
     stockcount: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M9 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><rect x="9" y="2" width="6" height="4" rx="1"/><polyline points="9 14 11 16 15 12"/></svg>', 'Тооллого', 'Агуулахын тооллого — тоолсноо бүртгэнэ, зөрүү нь залруулга болж түүхэнд үлдэнэ'],
+    writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
     receivables: ['<svg class="lcd-icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>', 'Авлага', 'Төлөгдөөгүй үлдэгдэл — авах ёстой мөнгө'],
@@ -4041,6 +4049,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderStockCount, 'Тооллого');
     attachStockCountHandlers();
+    return;
+  } else if (state.view === 'writeoff') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderWriteoff, 'Акт');
+    attachWriteoffHandlers();
     return;
   } else if (state.view === 'accounts') {
     if (tableHead) tableHead.style.display = 'none';
@@ -10573,6 +10587,7 @@ const PERM_MENUS = [
       // Няравын ажил. Нөөцийг ДАРЖ БИЧИХГҮЙ — зөвхөн тоолж бүртгэнэ.
       // Зөрүүг нөөцөд залруулахад `products.stock` эрх тусдаа шаардана.
       { key: 'products.count', label: '📋 Тоолж бүртгэх' } ] },
+  { key: 'writeoff',    label: 'Акт', actions: [] },   // түрээслэх боломжгүй бараа — актлах/зарах
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
@@ -17494,6 +17509,155 @@ function attachStockCountHandlers() {
   });
 }
 
+/* ═══════════ АКТ — түрээслэх боломжгүй болсон бараа (2026-09-07) ═══════════
+   Хэт хуучирсан, эвдэрсэн, өгөөжгүй болсон барааг актаар нөөцөөс гаргана.
+   Зарж болох бол зараад орлогыг нь бүртгэнэ — тэр нь ТҮРЭЭСИЙН орлого БИШ,
+   хөрөнгө борлуулсан орлого тул тайланд тусад нь харагдана (түрээсийн маржийг
+   гажуудуулахгүй). Бичлэг нь `app_config['writeoffs']`-д хадгалагдана — шинэ
+   хүснэгт үүсгэхгүй, цөөн бичлэгт хангалттай. ХАТУУ УСТГАХГҮЙ: бичлэг үлдэнэ. */
+const WO_KEY = 'writeoffs';
+const WO_REASONS = ['Хэт хуучирсан', 'Эвдэрсэн — засах боломжгүй', 'Түрээслэгдэхгүй / өгөөжгүй', 'Алга болсон', 'Бусад'];
+const WO_STATUS = { pending: '⏳ Хүлээгдэж буй', written: '🗂 Актлагдсан', sold: '💰 Зарагдсан' };
+function woList() { return Array.isArray(state.writeoffs) ? state.writeoffs : []; }
+async function loadWriteoffs(force) {
+  if (state.writeoffs && !force) return state.writeoffs;
+  const v = await loadAppConfig(WO_KEY);
+  state.writeoffs = Array.isArray(v) ? v : [];
+  return state.writeoffs;
+}
+async function saveWriteoffs() { await saveAppConfig(WO_KEY, woList()); }
+// Нөөцөөс хасах — хамгийн их үлдэгдэлтэй салбараас эхэлж хасна. Цэвэр функц (тестлэгдэнэ).
+function woDeductQty(p, qty) {
+  const f = ['qty_mevent', 'qty_nomaad', 'qty_catering', 'qty_chimun'];
+  const out = {}; f.forEach(k => { out[k] = Math.max(0, Number(p[k]) || 0); });
+  let left = Math.max(0, Math.round(Number(qty) || 0));
+  while (left > 0) {
+    const k = f.slice().sort((a, b) => out[b] - out[a])[0];
+    if (!out[k]) break;
+    const take = Math.min(out[k], left); out[k] -= take; left -= take;
+  }
+  out.stock = f.reduce((s, k) => s + out[k], 0);
+  return out;
+}
+// Актын нэгтгэл — хүлээгдэж буй, актлагдсан, зарагдсан (дүнтэй).
+function woStats(rows, monthPrefix) {
+  const r = (rows || []).filter(x => x && (!monthPrefix || String(x.at || '').slice(0, 7) === monthPrefix));
+  const by = (st) => r.filter(x => x.status === st);
+  const sold = by('sold');
+  return { pending: by('pending').length, written: by('written').length,
+    writtenQty: by('written').reduce((s, x) => s + (Number(x.qty) || 0), 0),
+    sold: sold.length, soldSum: sold.reduce((s, x) => s + (Number(x.amount) || 0), 0) };
+}
+// Тухайн сард хөрөнгө зарсан орлого — тайланд тусад нь гарна (түрээсийн орлогод НЭМЭХГҮЙ).
+function woSoldIncome(month) {
+  return woList().reduce((s, x) => (x && x.status === 'sold' && String(x.sold_at || x.at || '').slice(0, 7) === month)
+    ? s + (Number(x.amount) || 0) : s, 0);
+}
+function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }
+function renderWriteoff() {
+  if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => render()); }
+  if (state.writeoffs === null) return '<div style="padding:50px;text-align:center;color:var(--muted);">Ачаалж байна…</div>';
+  const rows = woList().slice().sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  const st = woStats(rows);
+  const card = (label, val, col) => `<div class="wo-kpi"><div class="wo-kpi-l">${label}</div><div class="wo-kpi-v"${col ? ` style="color:${col};"` : ''}>${val}</div></div>`;
+  const row = (x) => {
+    const p = (state.products || []).find(q => q && q.sku === x.sku);
+    const ph = (p && p.photo) ? `<img src="${escapeHtml(driveThumbUrl(p.photo, 96))}" alt="" loading="lazy">` : '<span class="wo-ph">📦</span>';
+    const acts = x.status === 'pending'
+      ? `<button class="btn wo-btn" data-wo-write="${escapeHtml(x.id)}">🗂 Актлах</button>`
+        + `<button class="btn wo-btn" data-wo-sell="${escapeHtml(x.id)}">💰 Зарлаа</button>`
+        + `<button class="btn wo-btn wo-del" data-wo-del="${escapeHtml(x.id)}">✕</button>`
+      : `<span class="wo-done">${WO_STATUS[x.status] || x.status}${x.status === 'sold' ? ` · <b>${fmtMoney(x.amount)}</b>` : ''}</span>`;
+    return `<div class="wo-row">
+      ${ph}
+      <div class="wo-mid">
+        <div class="wo-nm">${escapeHtml(x.name || x.sku || '—')} <span class="wo-q">${Number(x.qty) || 0}ш</span></div>
+        <div class="wo-meta">${escapeHtml(x.reason || '')}${x.note ? ' · ' + escapeHtml(x.note) : ''}</div>
+        <div class="wo-meta">${escapeHtml(String(x.at || '').slice(0, 10))} · ${escapeHtml(memberName(x.by) || x.by || '')}${x.buyer ? ' · худалдан авагч: ' + escapeHtml(x.buyer) : ''}</div>
+      </div>
+      <div class="wo-acts">${acts}</div>
+    </div>`;
+  };
+  return `<div class="wo-wrap">
+    <div class="wo-head">
+      <div class="wo-kpis">
+        ${card('⏳ Хүлээгдэж буй', st.pending)}
+        ${card('🗂 Актлагдсан', `${st.written} <small>(${st.writtenQty}ш)</small>`)}
+        ${card('💰 Зарсан орлого', fmtMoney(st.soldSum), 'var(--ok)')}
+      </div>
+      ${can('products.stock') || state.isCEO ? '<button class="btn btn-primary" id="wo-new">+ Акт үүсгэх</button>' : ''}
+    </div>
+    <div class="wo-note">Түрээслэх боломжгүй болсон барааг энд бүртгэнэ. «Актлах» нь нөөцөөс хасна, «Зарлаа» нь нөөцөөс хасаад орлогыг бүртгэнэ. Бичлэг устахгүй — түүх үлдэнэ.</div>
+    ${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🗂</div>Акт алга. Түрээслэх боломжгүй бараа гарвал энд бүртгэнэ үү.</div>'}
+  </div>`;
+}
+function attachWriteoffHandlers() {
+  document.getElementById('wo-new')?.addEventListener('click', () => openWriteoffModal());
+  document.querySelectorAll('[data-wo-write]').forEach(b => b.addEventListener('click', () => woClose(b.dataset.woWrite, 'written')));
+  document.querySelectorAll('[data-wo-sell]').forEach(b => b.addEventListener('click', () => woClose(b.dataset.woSell, 'sold')));
+  document.querySelectorAll('[data-wo-del]').forEach(b => b.addEventListener('click', () => woDelete(b.dataset.woDel)));
+}
+async function woDelete(id) {
+  const x = woList().find(r => r && r.id === id); if (!x) return;
+  if (x.status !== 'pending') { showToast('Зөвхөн хүлээгдэж буй актыг хасна', 'warn', 3000); return; }
+  if (!(await showConfirm(`«${x.name}» актын бичлэгийг хасах уу?`, { okText: 'Хасах', danger: true }))) return;
+  state.writeoffs = woList().filter(r => r.id !== id);
+  await saveWriteoffs(); showToast('Хаслаа', 'success', 2000); render();
+}
+// Актыг хаах — нөөцөөс хасаад «актлагдсан» эсвэл «зарагдсан» болгоно.
+async function woClose(id, status) {
+  const x = woList().find(r => r && r.id === id); if (!x || x.status !== 'pending') return;
+  let amount = 0, buyer = '';
+  if (status === 'sold') {
+    const a = await showPrompt('Хэдээр зарсан бэ? (₮)', { value: '', okText: 'Үргэлжлүүлэх' });
+    if (a === null) return;
+    amount = Math.round(Number(String(a).replace(/[^\d]/g, '')) || 0);
+    if (!(amount > 0)) { showToast('Дүн оруулна уу', 'warn', 2500); return; }
+    const b = await showPrompt('Хэнд зарсан бэ? (сонголт)', { value: '', okText: 'Хадгалах' });
+    if (b === null) return;
+    buyer = String(b || '').trim();
+  }
+  const p = (state.products || []).find(q => q && q.sku === x.sku);
+  if (p) { try { await saveProduct({ ...p, ...woDeductQty(p, x.qty) }); } catch (e) { showToast('⚠ Нөөц шинэчлэгдсэнгүй: ' + e.message, 'error', 5000); return; } }
+  x.status = status; x.amount = amount; x.buyer = buyer;
+  x.closed_at = new Date().toISOString(); x.closed_by = state.me;
+  if (status === 'sold') x.sold_at = x.closed_at;
+  await saveWriteoffs();
+  showToast(status === 'sold' ? `💰 ${fmtMoney(amount)} орлого бүртгэлээ · нөөцөөс ${x.qty}ш хасав` : `🗂 Актлалаа · нөөцөөс ${x.qty}ш хасав`, 'success', 4000);
+  render();
+}
+function openWriteoffModal() {
+  const prods = (state.products || []).filter(p => p && p.sku && p.type !== 'service')
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:480px;">
+    <h2>🗂 Акт үүсгэх</h2>
+    <p class="amo-hint">Түрээслэх боломжгүй болсон барааг сонгоно. Одоо нөөц хөндөгдөхгүй — «Актлах» эсвэл «Зарлаа» дарахад хасагдана.</p>
+    <label class="fld">Бараа<select id="wo-sku">${prods.map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(p.name)} (${(Number(p.stock) || 0)}ш)</option>`).join('')}</select></label>
+    <label class="fld">Тоо ширхэг<input type="number" id="wo-qty" min="1" value="1" class="ui-raw"></label>
+    <label class="fld">Шалтгаан<select id="wo-reason">${WO_REASONS.map(r => `<option>${escapeHtml(r)}</option>`).join('')}</select></label>
+    <label class="fld">Тэмдэглэл<input id="wo-note" placeholder="сонголт"></label>
+    <div class="modal-actions"><button class="btn" id="wo-cancel">Болих</button><button class="btn btn-primary" id="wo-save">Үүсгэх</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#wo-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#wo-save').onclick = async () => {
+    const sku = modal.querySelector('#wo-sku').value;
+    const p = (state.products || []).find(q => q && q.sku === sku);
+    const qty = Math.max(1, Number(modal.querySelector('#wo-qty').value) || 1);
+    if (!p) { showToast('Бараа сонгоно уу', 'warn', 2500); return; }
+    if (qty > (Number(p.stock) || 0)) { showToast(`Нөөцөд ${Number(p.stock) || 0}ш л байна`, 'warn', 3000); return; }
+    state.writeoffs = woList().concat([{
+      id: 'WO-' + Date.now().toString(36), sku, name: p.name || sku, qty,
+      reason: modal.querySelector('#wo-reason').value, note: modal.querySelector('#wo-note').value.trim(),
+      at: new Date().toISOString(), by: state.me, status: 'pending', amount: 0, buyer: '',
+    }]);
+    await saveWriteoffs(); close(); showToast('Акт үүслээ', 'success', 2500); render();
+  };
+  modal.classList.add('open');
+}
 function renderProducts() {
   const all = state.products || [];
   // Сайтын ангиллын бүлгүүдийг нэг удаа lazy татна (dropdown-ыг сайтын бүлгээр харуулах)
@@ -23161,6 +23325,7 @@ function renderReports() {
     const statCards = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;">
         ${stat('🧾', 'Авлага (авах үлдэгдэл)', fmtSaya(rcv), 'var(--warn)', 'баталгаажсан гэрээ − цуглуулсан', 'nomaad')}
         ${stat('💵', 'Цалин — ' + month, fmtSaya(salM.sum), 'var(--text)', salM.n + ' хүн · энэ сард', 'salary')}
+        ${woSoldIncome(month) ? stat('🗂', 'Хөрөнгө зарсан — ' + month, fmtSaya(woSoldIncome(month)), 'var(--ok)', 'актаар зарсан · түрээсийн орлогод ОРОХГҮЙ', 'writeoff') : ''}
       </div>`;
     ceoSections = statCards + branchSection;
   }
@@ -24218,6 +24383,7 @@ function renderVatView(wrap) {
 
 function renderFinanceReport(wrap) {
   ensureVatLoaded();   // салбар задаргаанд НӨАТ зардал орно
+  if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => render()); }   // хөрөнгө зарсан орлого
   const curMonth = todayStr().slice(0, 7);
   if (!state.finReportMonth) state.finReportMonth = curMonth;
   const month = state.finReportMonth;
@@ -29083,6 +29249,10 @@ function refreshViewData() {
   // Захиалгын дата ЗААВАЛ — productUtilization (ROI, «N удаа · орлого») үүнээс уншина.
   // Ачаалахгүй бол state.appOrders undefined хэвээр үлдэж БҮХ барааны ROI 0% харагдана.
   if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
+  if (v === 'writeoff' && canSeeWriteoff()) {
+    if (!state.products || !state.products.length) loadProductsCatalog();
+    if (state.writeoffs === undefined) { state.writeoffs = null; loadWriteoffs().then(() => { if (state.view === 'writeoff') render(); }); }
+  }
   if (v === 'stockcount' && canSeeStockCount()) {
     if (!state.products || !state.products.length) loadProductsCatalog();
     // Идэвхтэй сессийг тохиргооноос авна (өдрөөр биш) — дараа нь бичилтүүдийг.

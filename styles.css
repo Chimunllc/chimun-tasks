@@ -6533,3 +6533,28 @@ select.no-asar-len {
   padding: var(--space-2) 11px; margin-bottom: var(--space-3);
   font-size: var(--fs-sm); line-height: 1.5;
 }
+
+/* ── АКТ — түрээслэх боломжгүй болсон бараа (2026-09-07) ─────────────────── */
+.wo-wrap { max-width: 900px; margin: 0 auto; }
+.wo-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-2); }
+.wo-kpis { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.wo-kpi { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--panel); min-width: 120px; }
+.wo-kpi-l { font-size: var(--fs-sm); color: var(--muted); }
+.wo-kpi-v { font-size: var(--fs-lg); font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.wo-kpi-v small { font-size: var(--fs-sm); font-weight: 500; color: var(--muted); }
+.wo-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; margin-bottom: var(--space-3); }
+.wo-row { display: flex; gap: var(--space-3); align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); margin-bottom: var(--space-2); }
+.wo-row img { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; }
+.wo-ph { width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; background: var(--panel-hover); border-radius: 8px; flex: 0 0 auto; }
+.wo-mid { flex: 1; min-width: 0; }
+.wo-nm { font-weight: 700; font-size: var(--fs-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wo-q { color: var(--muted); font-weight: 500; font-size: var(--fs-sm); }
+.wo-meta { font-size: var(--fs-sm); color: var(--muted); margin-top: 1px; }
+.wo-acts { display: flex; gap: var(--space-1); flex-wrap: wrap; justify-content: flex-end; }
+.wo-btn { padding: 5px 10px; font-size: var(--fs-sm); white-space: nowrap; }
+.wo-del { color: var(--danger); }
+.wo-done { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+@media (max-width: 640px) {
+  .wo-row { flex-wrap: wrap; }
+  .wo-acts { width: 100%; justify-content: flex-start; }
+}

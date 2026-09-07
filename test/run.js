@@ -4289,3 +4289,38 @@ need(['orderCustType']);
   ok(/if \(wrote\) \{ try \{ await loadItemAliases\(\)/.test(src),
     'scan: бичсэн зураглалаа DB-ээс баталгаажуулдаг');
 }
+
+// ── АКТ — түрээслэх боломжгүй бараа (2026-09-07) ────────────────────────────
+// Хэт хуучирсан / эвдэрсэн / өгөөжгүй барааг актаар нөөцөөс гаргана. Зарж
+// болох бол зараад орлогыг нь тусад нь (түрээсийн орлогод НЭМЭЛГҮЙ) бүртгэнэ.
+{
+  // Нөөцөөс хасалт — хамгийн их үлдэгдэлтэй салбараас эхэлнэ
+  const p = { qty_mevent: 5, qty_nomaad: 2, qty_catering: 0, qty_chimun: 1 };
+  eq(F.woDeductQty(p, 3), { qty_mevent: 2, qty_nomaad: 2, qty_catering: 0, qty_chimun: 1, stock: 5 }, 'акт: их үлдэгдэлтэй салбараас хасна');
+  eq(F.woDeductQty(p, 8).stock, 0, 'акт: бүгдийг хасвал нөөц 0');
+  eq(F.woDeductQty(p, 99).stock, 0, 'акт: нөөцөөс их хасахад сөрөг болохгүй');
+  eq(F.woDeductQty(p, 0), { qty_mevent: 5, qty_nomaad: 2, qty_catering: 0, qty_chimun: 1, stock: 8 }, 'акт: 0 хасахад хэвээр');
+  eq(F.woDeductQty({}, 2).stock, 0, 'акт: нөөцгүй бараа → 0 (унахгүй)');
+
+  // Нэгтгэл
+  const rows = [
+    { status: 'pending', qty: 2, at: '2026-09-01T00:00:00Z' },
+    { status: 'written', qty: 3, at: '2026-09-02T00:00:00Z' },
+    { status: 'written', qty: 1, at: '2026-08-15T00:00:00Z' },
+    { status: 'sold', qty: 1, amount: 250000, at: '2026-09-03T00:00:00Z', sold_at: '2026-09-03T00:00:00Z' },
+    { status: 'sold', qty: 2, amount: 400000, at: '2026-08-20T00:00:00Z', sold_at: '2026-08-20T00:00:00Z' },
+  ];
+  eq(F.woStats(rows), { pending: 1, written: 2, writtenQty: 4, sold: 2, soldSum: 650000 }, 'акт: нийт нэгтгэл');
+  eq(F.woStats(rows, '2026-09'), { pending: 1, written: 1, writtenQty: 3, sold: 1, soldSum: 250000 }, 'акт: сараар шүүнэ');
+  eq(F.woStats([]), { pending: 0, written: 0, writtenQty: 0, sold: 0, soldSum: 0 }, 'акт: хоосон → 0');
+  eq(F.woStats(null).sold, 0, 'акт: мөргүй → унахгүй');
+}
+
+// SCAN — хөрөнгө зарсан орлого нь ТҮРЭЭСИЙН орлогод нэмэгддэггүй (2026-09-07)
+// Нэмбэл ашгийн марж гажиж, түрээсийн гүйцэтгэл буруу харагдана.
+{
+  const codeLines = src.split('\n').filter(l => !/^\s*(\/\/|\*)/.test(l));
+  eq(codeLines.filter(l => /(income|evInc|noInc)\s*\+=\s*woSoldIncome/.test(l)).length, 0,
+    'scan: хөрөнгө зарсан орлого түрээсийн орлогод нэмэгддэггүй');
+  ok(/woSoldIncome\(month\)/.test(src), 'scan: хөрөнгө зарсан орлого тайланд тусад нь харагдана');
+}

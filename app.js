@@ -8809,7 +8809,43 @@ async function removeProductRow(sku) {
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const i = (state.products || []).findIndex(p => p && p.sku === sku);
   if (i >= 0) state.products.splice(i, 1);
+  const j = (state.archivedProducts || []).findIndex(p => p && p.sku === sku);
+  if (j >= 0) state.archivedProducts.splice(j, 1);
   return true;
+}
+// ── АРХИВЫГ БҮРМӨСӨН УСТГАХ (2026-09-07, хэрэглэгч нэг удаа зөвшөөрсөн) ──
+// Ердийн дүрэм бол хатуу устгахгүй. Архивласан бараа каталог/сайтад аль хэдийн
+// харагдахгүй тул устгах нь зөвхөн DB-ийн эмх цэгц. ⚠ ГАНЦ бодит эрсдэл: хуучин
+// захиалгын мөр тэр sku-г заасаар байвал агуулахын «тулгагдаагүй» тууз шуугина.
+// Түүнээс сэргийлж устгахын өмнө толинд `sku:<sku>` → '' («бараа биш») гэж бичнэ —
+// захиалгын мөрөнд нэр/үнэ нь өөрөө хадгалагдсан тул түүх алдагдахгүй.
+function archiveDeletePlan(archived, orders) {
+  const used = new Set();
+  (orders || []).forEach(o => (o && Array.isArray(o.items) ? o.items : []).forEach(it => {
+    const k = String((it && it.sku) || '').trim(); if (k) used.add(k);
+  }));
+  const rows = (archived || []).filter(p => p && p.sku);
+  return { inOrders: rows.filter(p => used.has(p.sku)), free: rows.filter(p => !used.has(p.sku)) };
+}
+async function runArchivePurge() {
+  if (!state.isCEO) { showToast('Зөвхөн захирал', 'warn', 2500); return; }
+  const rows = (state.archivedProducts || []);
+  if (!rows.length) { showToast('Архив хоосон', 'info', 2500); return; }
+  const { inOrders } = archiveDeletePlan(rows, state.appOrders);
+  const msg = `Архивласан ${rows.length} барааг өгөгдлийн сангаас БҮРМӨСӨН устгах уу?\n\n`
+    + `Эдгээр каталог болон сайтад аль хэдийн харагдахгүй байгаа.\n`
+    + (inOrders.length ? `⚠ Үүнээс ${inOrders.length} нь хуучин захиалгад орсон — захиалгын мөрөнд нэр, үнэ нь хадгалагдсан тул түүх алдагдахгүй, зөвхөн каталогийн холбоос тасарна.\n` : '')
+    + `\nЭнэ нь БУЦААГДАХГҮЙ.`;
+  if (!(await showConfirm(msg, { okText: 'Тийм, бүрмөсөн устга', danger: true }))) return;
+  let n = 0, fail = 0;
+  for (const p of rows.slice()) {
+    // «Бараа биш» гэж тэмдэглэнэ — агуулахын тулгалт эдгээрийг дахин асуухгүй.
+    try { await saveItemAlias('sku:' + String(p.sku).toLowerCase(), '', 'архиваас устгасан'); } catch (e) {}
+    try { await removeProductRow(p.sku); n++; } catch (e) { fail++; console.warn('archive purge', p.sku, e); }
+    if (n % 5 === 0) showToast(`${n}/${rows.length} устгаж байна…`, 'info', 700);
+  }
+  showToast(`🗑 ${n} бараа архиваас бүрмөсөн устлаа${fail ? ` · ⚠ ${fail} устсангүй` : ''}`, fail ? 'warn' : 'success', 6000);
+  render();
 }
 // Архивласан бараа каталогт ирдэггүй тул үлдэгдлийг DB-ээс тусад нь асууна.
 async function loadAsarLeftovers() {
@@ -17960,7 +17996,10 @@ function renderProducts() {
   const archiveBar = _arch.length ? `<div class="prod-arch">
       <div class="prod-arch-head">
         <span>🗄 Архивласан <b>${_arch.length}</b> бараа — каталог болон сайтад харагдахгүй</span>
-        <button class="btn" id="prod-arch-toggle">${state.archOpen ? 'Хаах' : 'Харах'}</button>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn" id="prod-arch-toggle">${state.archOpen ? 'Хаах' : 'Харах'}</button>
+          <button class="btn" id="prod-arch-purge" style="color:var(--danger);border-color:var(--danger);white-space:nowrap;">🗑 Бүрмөсөн устгах (${_arch.length})</button>
+        </span>
       </div>
       ${state.archOpen ? `<div class="prod-arch-list">${_arch.map(a => `<div class="prod-arch-row">
         <span class="prod-arch-n">${escapeHtml(a.name || a.sku)}<em>${escapeHtml(a.code || a.sku)} · ${Number(a.stock) || 0}ш</em></span>
@@ -18527,6 +18566,7 @@ function attachProductsHandlers() {
     } catch (e) { showToast('Сэргээж чадсангүй: ' + e.message, 'error', 5000); b.disabled = false; }
   });
   document.querySelectorAll('[data-wo-from]').forEach(b => b.onclick = () => openWriteoffModal(b.dataset.woFrom));
+  document.getElementById('prod-arch-purge')?.addEventListener('click', () => runArchivePurge());
   const _rt = document.getElementById('repair-toggle');
   if (_rt) _rt.onclick = () => { state.repairOpen = !state.repairOpen; render(); };
   document.querySelectorAll('.repair-adv').forEach(b => b.onclick = () => advanceRepair(b.dataset.rep, b.dataset.to));

@@ -8627,6 +8627,62 @@ const ASAR_LEGACY_MAP = {
   'M-298': 'M-315', 'M-299': 'M-315', 'M-300': 'M-315', 'M-301': 'M-315', 'M-302': 'M-315',
   'M-303': 'M-315', 'M-304': 'M-315',
 };
+// ── ХУУЧИН АСРЫН БҮРТГЭЛИЙГ БҮРМӨСӨН ХАСАХ (2026-09-07, хэрэглэгчийн шийдвэр) ──
+// Ердийн дүрэм бол «хатуу устгахгүй». Энд ЗӨВХӨН дараах болзол хангасан үед зөвшөөрнө:
+//   ① sku нь тодорхой ЖАГСААЛТАД байх (санамсаргүй өөр бараа хөндөгдөхгүй),
+//   ② уртын бүртгэл бүрд `product_aliases`-д шинэ модуль бараа руу заасан зураглал
+//      БАЙХ — тэгж байж хуучин захиалгын мөр тулгагдсаар үлдэнэ.
+// Хөрөнгийн 2 бүртгэл (M-273/M-274) захиалгын мөрөнд хэзээ ч ороогүй тул зураглал
+// шаардахгүй; тэдгээр нь модуль бараатай ӨРТӨГ ДАВХАРДУУЛЖ байгаа тул хасагдана.
+const ASAR_ASSET_DUPES = ['M-273', 'M-274'];
+function asarPurgeSkus() { return [...ASAR_LEGACY_SKUS, ...ASAR_ASSET_DUPES]; }
+// Аль sku-г хасахыг зөвшөөрөх вэ — цэвэр функц, тестлэгдэнэ.
+function asarPurgePlan(rows, aliases) {
+  const al = aliases || {};
+  const go = [], skip = [];
+  (rows || []).forEach(p => {
+    if (!p || !p.sku) return;
+    if (!asarPurgeSkus().includes(p.sku)) { skip.push(p); return; }          // жагсаалтад байхгүй
+    if (ASAR_ASSET_DUPES.includes(p.sku)) { go.push(p); return; }
+    if (al['sku:' + String(p.sku).toLowerCase()]) go.push(p);
+    else skip.push(p);                                                       // зураглалгүй — түүх тасарна
+  });
+  return { go, skip };
+}
+async function removeProductRow(sku) {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
+    { method: 'DELETE', headers: pgWrite({ Prefer: 'return=minimal' }) }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const i = (state.products || []).findIndex(p => p && p.sku === sku);
+  if (i >= 0) state.products.splice(i, 1);
+  return true;
+}
+// Архивласан бараа каталогт ирдэггүй тул үлдэгдлийг DB-ээс тусад нь асууна.
+async function loadAsarLeftovers() {
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?select=sku,name&sku=in.(${asarPurgeSkus().join(',')})`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    state._asarLeftover = r.ok ? await r.json() : [];
+  } catch (e) { state._asarLeftover = []; }
+  return state._asarLeftover;
+}
+async function runAsarPurge() {
+  const rows = await loadAsarLeftovers();
+  if (!rows.length) { showToast('Хасах хуучин бүртгэл алга', 'info', 2500); return; }
+  if (!state.itemAliases) { try { await loadItemAliases(); } catch (e) {} }
+  const { go, skip } = asarPurgePlan(rows, state.itemAliases);
+  if (!go.length) { showToast('⚠ Толины зураглал алга тул юу ч хасагдахгүй — эхлээд «Асрыг модуль болгох»-ыг ажиллуулна уу', 'warn', 7000); return; }
+  const msg = `${go.length} хуучин асрын бүртгэлийг бүрмөсөн хасах уу?\n\n`
+    + `${go.slice(0, 6).map(p => '· ' + p.name).join('\n')}${go.length > 6 ? `\n· … нийт ${go.length}` : ''}\n\n`
+    + `Энэ нь БУЦААГДАХГҮЙ. Хуучин захиалгын мөрүүд толиор шинэ модуль бараа руу холбогдсон тул түүх тасрахгүй.`
+    + (skip.length ? `\n\n⚠ ${skip.length} бүртгэл алгасагдана (зураглал алга — хасвал түүх тасарна).` : '');
+  if (!(await showConfirm(msg, { okText: 'Тийм, бүрмөсөн хас', danger: true }))) return;
+  let n = 0, fail = 0;
+  for (const p of go) { try { await removeProductRow(p.sku); n++; } catch (e) { fail++; console.warn('asar purge', p.sku, e); } }
+  state._asarLeftover = undefined;
+  showToast(`🗑 ${n} хуучин бүртгэл хаслаа${skip.length ? ` · ${skip.length} алгаслаа` : ''}${fail ? ` · ⚠ ${fail} алдаа` : ''}`, fail ? 'warn' : 'success', 6000);
+  render();
+}
 // Барааг архивлах — saveProduct нь `archived` талбарыг бичдэггүй тул тусад нь PATCH.
 async function setProductArchived(sku, val) {
   const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(sku)}`,
@@ -17479,6 +17535,15 @@ function renderProducts() {
         <button class="btn btn-primary" id="prod-asar-setup" style="white-space:nowrap;">🏕 Асрыг модуль болгох</button>
       </div>`
     : '';
+  // Хуучин асрын бүртгэл DB-д үлдсэн эсэх — архивласан нь каталогт ирдэггүй тул тусад нь асууна
+  if (_prodMgmt && state._asarLeftover === undefined && asarSetupDone()) { state._asarLeftover = null; loadAsarLeftovers().then(() => render()); }
+  const _leftN = Array.isArray(state._asarLeftover) ? state._asarLeftover.length : 0;
+  const asarPurgeBar = (_prodMgmt && _leftN > 0)
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.28);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🗑 Хуучин асрын <b>${_leftN}</b> бүртгэл (архивласан уртууд + хөрөнгийн давхардал) өгөгдлийн санд үлдсэн — хөрөнгийн дүн давхар тоологдож байна.</span>
+        <button class="btn" id="prod-asar-purge" style="white-space:nowrap;color:var(--danger);border-color:var(--danger);">🗑 Бүрмөсөн хасах (${_leftN})</button>
+      </div>`
+    : '';
   const seasonCloseBar = (_prodMgmt && state.prodBranch === 'nomaad' && _nomaadSum > 0)
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">⛺ Улирал дууссан уу? NOMAAD-ийн бүх нөөцийг M-Event руу нэг товчоор буцаана.</span>
@@ -17573,6 +17638,7 @@ function renderProducts() {
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
     ${asarBar}
+    ${asarPurgeBar}
     ${nameEnBar}
     ${variantClearBar}
     ${seasonCloseBar}
@@ -18080,6 +18146,7 @@ function attachProductsHandlers() {
   document.getElementById('prod-return-nomaad')?.addEventListener('click', () => bulkReturnBranch('nomaad', 'mevent'));
   document.getElementById('prod-clear-variants')?.addEventListener('click', () => bulkClearVariants());
   document.getElementById('prod-asar-setup')?.addEventListener('click', () => runAsarModuleSetup());
+  document.getElementById('prod-asar-purge')?.addEventListener('click', () => runAsarPurge());
   document.getElementById('prod-fill-nameen')?.addEventListener('click', () => bulkFillNameEn());
   document.getElementById('prod-reconcile')?.addEventListener('click', () => openItemReconcile());
   // Хайлт — DOM filter (focus алдахгүй, дахин render хийхгүй)

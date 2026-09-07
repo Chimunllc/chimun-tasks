@@ -4338,3 +4338,23 @@ need(['orderCustType']);
     'scan: хөрөнгө зарсан орлого түрээсийн орлогод нэмэгддэггүй');
   ok(/woSoldIncome\(month\)/.test(src), 'scan: хөрөнгө зарсан орлого тайланд тусад нь харагдана');
 }
+
+// ── АРХИВЫГ БҮРМӨСӨН УСТГАХ — түүхэнд юу нөлөөлөхийг УРЬДЧИЛАН хэлнэ (2026-09-07)
+// Хэрэглэгч нэг удаа зөвшөөрсөн. Устгахын өмнө «хэд нь хуучин захиалгад орсон»
+// гэдгийг ил хэлж, толинд «бараа биш» гэж тэмдэглэн тулгалтын шуугиан үүсгэхгүй.
+{
+  const arch = [{ sku: 'M-100' }, { sku: 'M-101' }, { sku: 'M-102' }];
+  const orders = [
+    { items: [{ sku: 'M-100', name: 'а' }, { sku: 'M-999' }] },
+    { items: [{ sku: 'M-102' }] },
+    { items: null },
+    null,
+  ];
+  const plan = F.archiveDeletePlan(arch, orders);
+  eq(plan.inOrders.map(p => p.sku), ['M-100', 'M-102'], 'архив: захиалгад орсон нь тодорхойлогдоно');
+  eq(plan.free.map(p => p.sku), ['M-101'], 'архив: хаана ч ороогүй нь тусдаа');
+  eq(F.archiveDeletePlan(arch, []).inOrders.length, 0, 'архив: захиалгагүй → бүгд чөлөөтэй');
+  eq(F.archiveDeletePlan(arch, null).free.length, 3, 'архив: захиалга ачаалагдаагүй → унахгүй');
+  eq(F.archiveDeletePlan(null, orders).free.length, 0, 'архив: хоосон архив → 0');
+  eq(F.archiveDeletePlan([{ name: 'sku-гүй' }], orders).free.length, 0, 'архив: sku-гүй мөр хөндөгдөхгүй');
+}

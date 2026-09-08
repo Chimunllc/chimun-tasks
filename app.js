@@ -17372,6 +17372,31 @@ async function saveAppConfig(key, value) {
 }
 // Сайтын (mevent.mn) ангиллын бүлэг + дэд ангилал оноолтыг засах модал.
 let _cgSeq = 0;
+// Ангиллын нэрийг СОЛИХ — тухайн ангилалтай БҮХ бараанд дагаж хийгдэнэ.
+// Ганцхан газраас нэр солих боломж байхгүй бол хүн бараа бүр дээр гараар засаж,
+// заримыг нь мартаж, сайт дээр хоёр өөр ангилал үүсдэг.
+async function renameProductCategory(oldName, newName) {
+  const from = String(oldName || '').trim(), to = String(newName || '').trim();
+  if (!from || !to || from === to) return 0;
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/products?category=eq.${encodeURIComponent(from)}`, {
+    method: 'PATCH', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify({ category: to }),
+  }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  // Нэмэлт ангиллын жагсаалтад (all_categories) хуучин нэр үлдсэн барааг мөрөөр нь засна.
+  const extra = (state.products || []).filter(p => Array.isArray(p.all_categories) && p.all_categories.includes(from));
+  for (const p of extra) {
+    const next = p.all_categories.map(c => (c === from ? to : c));
+    try {
+      await fetchWithTimeout(`${DB_URL}/rest/v1/products?sku=eq.${encodeURIComponent(p.sku)}`, {
+        method: 'PATCH', headers: pgWrite({ Prefer: 'return=minimal' }), body: JSON.stringify({ all_categories: next }),
+      }, 15000);
+      p.all_categories = next;
+    } catch (e) { console.warn('all_categories rename', p.sku, e); }
+  }
+  let n = 0;
+  (state.products || []).forEach(p => { if (String(p.category || '').trim() === from) { p.category = to; n++; } });
+  return n;
+}
 async function openCategoryGroupsModal() {
   const groups0 = await loadAppConfig('mevent_category_groups');
   if (!Array.isArray(groups0)) { showToast('Бүлгийн тохиргоо олдсонгүй', 'error'); return; }
@@ -17381,6 +17406,9 @@ async function openCategoryGroupsModal() {
   const leafCats = [...leafSet].sort((a, b) => String(a).localeCompare(String(b), 'mn'));
   // Дотоод засварын төлөв: групп бүрд тогтвортой id
   const groups = groups0.map(g => ({ id: 'g' + (++_cgSeq), name: g.name }));
+  const rename = {};   // хуучин нэр → шинэ нэр (зөвхөн засварласан нь)
+  const catCount = {}; // ангилал → барааны тоо (хэдэн бараа хөндөгдөхийг харуулна)
+  (state.products || []).forEach(p => { const c = String((p && p.category) || '').trim(); if (c) catCount[c] = (catCount[c] || 0) + 1; });
   const assign = {};  // leafCat → groupId ('' = бүлэггүй)
   leafCats.forEach(c => { const g = groups0.find(x => Array.isArray(x.subs) && x.subs.includes(c)); assign[c] = g ? groups[groups0.indexOf(g)].id : ''; });
 
@@ -17392,6 +17420,7 @@ async function openCategoryGroupsModal() {
   const syncFromDom = () => {
     modal.querySelectorAll('.cg-name').forEach(inp => { const g = groups.find(x => x.id === inp.dataset.id); if (g) g.name = inp.value; });
     modal.querySelectorAll('.cg-assign').forEach(sel => { assign[sel.dataset.cat] = sel.value; });
+    modal.querySelectorAll('.cg-leaf').forEach(inp => { rename[inp.dataset.cat] = inp.value; });
   };
   const optsFor = (cur) => `<option value="">— Бүлэггүй —</option>` + groups.map(g => `<option value="${g.id}"${cur === g.id ? ' selected' : ''}>${escapeHtml(g.name || '(нэргүй)')}</option>`).join('');
   const render = () => {
@@ -17406,10 +17435,12 @@ async function openCategoryGroupsModal() {
         </div>`).join('')}</div>
       <button class="btn" id="cg-add" style="width:100%;margin-bottom:14px;">+ Шинэ бүлэг</button>
       <div style="font-size:11px;font-weight:700;color:var(--muted);margin:2px 0 6px;">ДЭД АНГИЛАЛ → БҮЛЭГ</div>
+      <p style="font-size:11.5px;color:var(--muted);margin:0 0 8px;">Ангиллын нэрийг энд шууд засаж болно — тухайн ангилалтай <b>бүх бараа дагаж</b> шинэчлэгдэнэ.</p>
       <div id="cg-cats" style="max-height:38vh;overflow-y:auto;">${leafCats.map(c => `
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:5px;">
-          <span style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c)}</span>
-          <select class="cg-assign" data-cat="${escapeHtml(c)}" style="flex:0 0 200px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);">${optsFor(assign[c])}</select>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+          <input class="cg-leaf" data-cat="${escapeHtml(c)}" value="${escapeHtml(rename[c] != null ? rename[c] : c)}" style="flex:1 1 150px;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);">
+          <span style="flex:0 0 auto;font-size:11px;color:var(--muted);">${catCount[c] || 0}ш</span>
+          <select class="cg-assign" data-cat="${escapeHtml(c)}" style="flex:1 1 160px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);">${optsFor(assign[c])}</select>
         </div>`).join('')}</div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
         <button class="btn" id="cg-cancel">Болих</button>
@@ -17434,12 +17465,24 @@ async function openCategoryGroupsModal() {
     modal.querySelector('#cg-save').onclick = async (e) => {
       syncFromDom();
       if (groups.some(g => !g.name.trim())) { showToast('Бүлгийн нэр хоосон байж болохгүй', 'warn'); return; }
-      const newGroups = groups.map(g => ({ name: g.name.trim(), subs: leafCats.filter(c => assign[c] === g.id) }));
+      // Нэр солих — БАРААГ эхлээд засна, дараа нь бүлгийн бүтцийг шинэ нэрээр бичнэ.
+      // Эсрэгээр хийвэл дунд нь тасалдвал бараа хуучин нэртэй, бүлэг шинэ нэртэй болж
+      // бүх бараа «бүлэггүй» болно.
+      const plan = catRenamePlan(state.products, rename);
+      if (plan.length) {
+        const txt = plan.map(x => `• «${x.from}» → «${x.to}» (${x.count} бараа)`).join('\n');
+        if (!confirm(`Ангиллын нэр солих уу?\n\n${txt}\n\nТухайн ангилалтай бүх бараа дагаж шинэчлэгдэнэ.`)) return;
+      }
       e.target.disabled = true;
       try {
+        for (const x of plan) await renameProductCategory(x.from, x.to);
+        const finalName = (c) => { const t = String(rename[c] != null ? rename[c] : c).trim(); return t || c; };
+        const newGroups = groups.map(g => ({ name: g.name.trim(), subs: [...new Set(leafCats.filter(c => assign[c] === g.id).map(finalName))] }));
         await saveAppConfig('mevent_category_groups', newGroups);
-        showToast('Ангиллын бүлэг шинэчлэгдлээ — сайтад тусна', 'success', 2500);
+        state.appCatGroups = newGroups; state.catGroups = newGroups;
+        showToast(plan.length ? `Ангилал шинэчлэгдлээ — ${plan.reduce((n, x) => n + x.count, 0)} бараа дагав` : 'Ангиллын бүлэг шинэчлэгдлээ — сайтад тусна', 'success', 3000);
         modal.remove();
+        if (typeof render === 'function') render();
       } catch (err) { showToast('Алдаа: ' + err.message, 'error'); e.target.disabled = false; }
     };
   };
@@ -17744,6 +17787,58 @@ const PSHEET = {
 };
 // Сайт (mevent.mn) ангиллыг бүлгээр харуулдаг. Бүлэгт ороогүй ангилал сайтад
 // «Бусад» болж унадаг тул каталог засахад ил сануулна.
+/* ── АНГИЛЛЫН МАСТЕР ЖАГСААЛТ (2026-09-08) ──────────────────────────────────
+   Ангилал нь бараан дээр ТЕКСТЭЭР хадгалагддаг тул нэрийг хаана нэгтээ өөрчлөхөд
+   сайттай холбоос чимээгүй тасарч, тэр ангилал сайтын цэсэнд бүлгээс ГАДНА, доор
+   тусад нь өлгөөтэй харагддаг байв (60 бараа ингэж унасан).
+   Дүрэм: ангиллын жагсаалт = `mevent_category_groups` (апп ба сайт хоёул эндээс
+   уншина) → бараанд ангилал ЗӨВХӨН тэндээс сонгоно → нэр солиход бүх бараа дагана. */
+function catListFromGroups(groups) {
+  const out = [];
+  (groups || []).forEach(g => (g && Array.isArray(g.subs) ? g.subs : []).forEach(c => {
+    const t = String(c || '').trim(); if (t && !out.includes(t)) out.push(t);
+  }));
+  return out;
+}
+// Бараан дээр байгаа ч аль ч бүлэгт ороогүй ангиллууд (олон бараатай нь эхэлнэ).
+function catOrphans(products, groups) {
+  const known = new Set(catListFromGroups(groups));
+  const cnt = {};
+  (products || []).forEach(p => {
+    const c = String((p && p.category) || '').trim();
+    if (!c || known.has(c)) return;
+    cnt[c] = (cnt[c] || 0) + 1;
+  });
+  return Object.keys(cnt).map(c => ({ cat: c, count: cnt[c] }))
+    .sort((a, b) => b.count - a.count || String(a.cat).localeCompare(String(b.cat), 'mn'));
+}
+// Нэр солих төлөвлөгөө — хэдэн бараа хөндөгдөхийг УРЬДЧИЛЖ хэлнэ (баталгаажуулах цонхонд).
+function catRenamePlan(products, renames) {
+  return Object.keys(renames || {})
+    .filter(from => { const to = String(renames[from] || '').trim(); return to && to !== from; })
+    .map(from => ({
+      from, to: String(renames[from]).trim(),
+      count: (products || []).filter(p => String((p && p.category) || '').trim() === from).length,
+    }));
+}
+// Ангилал сонгох талбарын сонголтууд — бүлгээр эрэмбэлсэн. Гараар бичих боломжгүй:
+// шинэ нэр гараар бичихэд бүлэгт ороогүй ангилал үүсч, сайт дээр өлгөөтэй харагддаг байв.
+function catSelectOpts(sel) {
+  const groups = (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups
+    : ((Array.isArray(state.appCatGroups) && state.appCatGroups.length) ? state.appCatGroups : _CAT_GROUPS_FALLBACK);
+  const cur = String(sel || '').trim();
+  const known = catListFromGroups(groups);
+  const loose = catOrphans(state.products, groups).map(x => x.cat);
+  if (cur && !known.includes(cur) && !loose.includes(cur)) loose.push(cur);
+  const opt = (c) => `<option value="${escapeHtml(c)}"${c === cur ? ' selected' : ''}>${escapeHtml(c)}</option>`;
+  let html = `<option value=""${cur ? '' : ' selected'}>— ангилал сонгох —</option>`;
+  groups.forEach(g => {
+    const subs = (g && Array.isArray(g.subs) ? g.subs : []).filter(Boolean);
+    if (subs.length) html += `<optgroup label="${escapeHtml(g.name || '')}">${subs.map(opt).join('')}</optgroup>`;
+  });
+  if (loose.length) html += `<optgroup label="⚠ Бүлэгт ороогүй">${loose.map(opt).join('')}</optgroup>`;
+  return html;
+}
 function psSiteCats() {
   const g = state.appCatGroups;
   if (!Array.isArray(g)) return null;
@@ -17805,9 +17900,9 @@ function renderProductSheet(mode) {
     const d = (k, extra) => `data-ps-sku="${escapeHtml(p.sku)}" data-ps-f="${k}"${ro ? ' disabled' : ''}${extra || ''}`;
     if (mode === 'catalog') return `
       <input class="ps-in ps-wide ui-raw" ${d('name')} value="${escapeHtml(psVal(p, 'name') || '')}" placeholder="Нэр" aria-label="Нэр">
-      <input class="ps-in ps-cat ui-raw" list="ps-cats" ${d('category')} value="${escapeHtml(psVal(p, 'category') || '')}" placeholder="Ангилал" aria-label="Ангилал">${(() => {
+      <select class="ps-in ps-cat ui-raw" ${d('category')} aria-label="Ангилал">${catSelectOpts(psVal(p, 'category'))}</select>${(() => {
         const set = psSiteCats(); const c = String(psVal(p, 'category') || '').trim();
-        return (set && c && !set.has(c)) ? '<span class="ps-warn" title="Сайтын ангиллын бүлэгт ороогүй — mevent.mn дээр «Бусад» дор харагдана">⚠</span>' : '';
+        return (set && c && !set.has(c)) ? '<span class="ps-warn" title="Энэ ангилал сайтын аль ч бүлэгт ороогүй — mevent.mn-ий цэсэнд бүлгүүдийн ДООР тусдаа өлгөөтэй харагдана. «Ангиллын бүлгүүд» цонхноос бүлэгт нь оруулна уу.">⚠</span>' : '';
       })()}`;
     if (mode === 'price') return `
       <label class="ps-f"><span>Түрээс</span><input class="ps-in money-input ui-raw" ${d('price')} value="${money(psVal(p, 'price'))}" inputmode="numeric"></label>
@@ -17838,7 +17933,7 @@ function renderProductSheet(mode) {
       <div><div class="ps-title">${cfg.icon} ${escapeHtml(cfg.label)}</div><div class="ps-hint">${escapeHtml(cfg.hint)}${mode === 'catalog' ? ' <b>Нэр, ангилал нь mevent.mn сайтад ч шууд өөрчлөгдөнө.</b>' : ''}${ro ? ' · 🔒 Танд засах эрх алга — зөвхөн харна.' : ''}</div></div>
       <input id="ps-q" class="ps-q ui-raw" value="${escapeHtml(q)}" placeholder="Хайх (нэр, ангилал, код)…" aria-label="Хайх">
     </div>
-    <datalist id="ps-cats">${cats.map(c => `<option value="${escapeHtml(c)}">`).join('')}</datalist>
+
     <div class="ps-count">${rows.length} бараа</div>
     <div class="ps-list" id="ps-list">${rows.length ? rows.map(row).join('') : '<div class="orders-empty"><div class="icon">🔍</div>Хайлтад тохирох бараа алга.</div>'}</div>
     <div class="ps-savebar" id="ps-savebar"${psDirtyCount() ? '' : ' hidden'}>
@@ -17881,12 +17976,16 @@ function attachProductSheetHandlers(mode) {
     const nEl = document.getElementById('ps-dirty-n'); if (nEl) nEl.textContent = String(n);
     if (bar) bar.hidden = !n;
   };
-  document.querySelectorAll('[data-ps-sku]').forEach(el => el.addEventListener('input', () => {
-    const p = (state.products || []).find(x => x && x.sku === el.dataset.psSku);
-    psStage(p, el.dataset.psF, el.value);
-    el.closest('.ps-row')?.classList.toggle('ps-dirty', !!psDirty()[el.dataset.psSku]);
-    paint();
-  }));
+  document.querySelectorAll('[data-ps-sku]').forEach(el => {
+    const stage = () => {
+      const p = (state.products || []).find(x => x && x.sku === el.dataset.psSku);
+      psStage(p, el.dataset.psF, el.value);
+      el.closest('.ps-row')?.classList.toggle('ps-dirty', !!psDirty()[el.dataset.psSku]);
+      paint();
+    };
+    el.addEventListener('input', stage);
+    if (el.tagName === 'SELECT') el.addEventListener('change', stage);   // select дээр input эвент хөтчөөс хамаарна
+  });
   document.getElementById('ps-save')?.addEventListener('click', () => psSaveAll());
   document.getElementById('ps-revert')?.addEventListener('click', async () => {
     if (!psDirtyCount()) return;
@@ -18131,6 +18230,16 @@ function renderProducts() {
       </div>`
     : '';
   // Асрын каталог модуль болоогүй бол нэг товчоор цэгцэлнэ (дараа нь өөрөө алга болно)
+  // Бүлэгт ороогүй ангилал — сайтын цэсэнд бүлгүүдийн доор тусдаа өлгөөтэй харагдана.
+  // Хүн бараа нэмэхдээ шинэ нэр бичихэд ингэж үүсдэг байсан; одоо сонголт болсон ч
+  // хуучин үлдэгдлийг ил хэлж, нэг товчоор засах зам өгнө.
+  const _orphanCats = _prodMgmt ? catOrphans(all, (Array.isArray(state.catGroups) && state.catGroups.length) ? state.catGroups : state.appCatGroups) : [];
+  const orphanBar = _orphanCats.length
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:var(--warn-soft,rgba(217,119,6,.08));border:1px solid var(--warn);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">🗂 <b>${_orphanCats.length}</b> ангилал сайтын бүлэгт ороогүй (${escapeHtml(_orphanCats.slice(0, 3).map(x => `${x.cat} ${x.count}ш`).join(' · '))}${_orphanCats.length > 3 ? ' …' : ''}) — mevent.mn дээр бүлгүүдийн доор тусдаа өлгөөтэй харагдана.</span>
+        <button class="btn btn-primary" id="prod-fix-cats" style="white-space:nowrap;">🗂 Бүлэгт оруулах</button>
+      </div>`
+    : '';
   const asarBar = (_prodMgmt && !asarSetupDone())
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:8px 0 2px;padding:9px 12px;background:rgba(13,148,136,.08);border:1px solid rgba(13,148,136,.28);border-radius:10px;">
         <span style="font-size:12.5px;color:var(--text);">🏕 Асар урт бүрээр тусдаа бараа болж бүртгэгдсэн байна — нэг иж бүрдлийг хоёр газар зэрэг зарах эрсдэлтэй. 5м модуль болгож цэгцэлнэ үү: модуль бараанууд үүсч, хуучин уртын бүртгэлүүд архивлагдаж, түүх нь шинэ бараа руу холбогдоно.</span>
@@ -18278,6 +18387,7 @@ function renderProducts() {
       ${assetChip}
       <span class="prod-meta-i prod-meta-dim">${_pb === 'all' ? 'Бүх салбар' : `${escapeHtml(branchInfo(_pb).label)} · ${brQtySum(_pb)}ш`}</span>
     </div>
+    ${orphanBar}
     ${asarBar}
     ${asarPurgeBar}
     ${archiveBar}
@@ -18316,8 +18426,6 @@ function openProductModal(p, opts) {
   } else {
     _qm0 = 0; _qc0 = 0; _qn0 = 0; _qk0 = 0;   // шинэ бараа — салбараа ИЛЭЭР сонгоно (чимээгүй default байхгүй)
   }
-  const cats = [...new Set((state.products || []).map(x => x.category).filter(Boolean))].sort();
-  const catOpts = cats.map(c => `<option value="${escapeHtml(c)}">`).join('');
   const v = (x) => escapeHtml((p && p[x]) || '');
   document.getElementById('prod-modal')?.remove();
   const modal = document.createElement('div');
@@ -18344,7 +18452,7 @@ function openProductModal(p, opts) {
         <div class="pm-grid">
         <label class="pm-wide">Нэр *<input id="pm-name" value="${v('name')}" placeholder="Барааны нэр"></label>
         <label class="pm-wide">Англи нэр <span style="color:var(--muted);font-weight:400;">(үнийн саналын EN хувилбарт)</span><input id="pm-nameen" value="${v('name_en')}" placeholder="${escapeHtml(p && p.name ? enText(p.name) : 'English name')}"></label>
-        <label>Ангилал<input id="pm-cat" list="pm-cats" value="${v('category')}" placeholder="Ангилал"><datalist id="pm-cats">${catOpts}</datalist></label>
+        <label>Ангилал<select id="pm-cat">${catSelectOpts(p && p.category)}</select></label>
         <label>Код <span style="color:var(--muted);font-weight:400;">(${isEdit ? 'систем' : 'автомат'})</span><input id="pm-code" value="${isEdit ? v('code') : ''}" placeholder="хадгалахад авто (M-xxx)" readonly style="background:var(--panel-hover);color:var(--text-soft,#666);cursor:not-allowed;"></label>
         <input type="hidden" id="pm-sku" value="${isEdit ? v('sku') : ''}">
         <label class="pm-wide">🔗 Гарал үүсэл (хаанаас авсан)${/^https?:\/\//.test((p && (p.source_url || p.supplier)) || '') ? ` <a href="${escapeHtml(p.source_url || p.supplier)}" target="_blank" rel="noopener" style="font-weight:400;">нээх ↗</a>` : ''}<input id="pm-source" value="${escapeHtml((p && (p.source_url || p.supplier)) || '')}" placeholder="ж: taobao/1688 линк, дэлгүүр, Монголоос г.м."></label>
@@ -18870,6 +18978,7 @@ function attachProductsHandlers() {
   document.getElementById('prod-new')?.addEventListener('click', () => openProductModal(null));
   document.getElementById('prod-new-pkg')?.addEventListener('click', () => openProductModal(null, { asPackage: true }));
   document.getElementById('prod-groups')?.addEventListener('click', () => openCategoryGroupsModal());
+  document.getElementById('prod-fix-cats')?.addEventListener('click', () => openCategoryGroupsModal());
   // QR скан → бараа таних
   document.getElementById('prod-scan')?.addEventListener('click', () => openScanner());
 }

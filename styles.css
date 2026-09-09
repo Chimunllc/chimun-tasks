@@ -6653,6 +6653,42 @@ select.no-asar-len {
 }
 .ps-savebar-b { display: flex; gap: var(--space-2); }
 
+/* ── Ирцийн хүсэлт (ажилтан гаргаж, удирдлага батална) 2026-09-09 ─────────── */
+.areq-panel {
+  border: 1px solid var(--warn); background: var(--warn-soft); border-radius: 12px;
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3);
+}
+.areq-panel-h { font-size: var(--fs-sm); font-weight: 700; color: var(--warn); margin-bottom: var(--space-1); }
+.areq-row {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  justify-content: space-between; padding: var(--space-2) 0; border-top: 1px solid var(--border);
+}
+.areq-info { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); line-height: 1.6; }
+.areq-info i { font-style: normal; color: var(--muted); }
+.areq-note { color: var(--muted); }
+.areq-btns { display: flex; gap: var(--space-2); flex-shrink: 0; }
+.areq-ok, .areq-no {
+  padding: var(--space-1) var(--space-3); border-radius: 999px;
+  font-size: var(--fs-sm); font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.areq-ok { border: none; background: var(--ok); color: #fff; }
+.areq-ok[disabled] { opacity: .45; cursor: not-allowed; }
+.areq-no { border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
+.myreq-new {
+  display: block; width: 100%; margin-bottom: var(--space-3);
+  padding: var(--space-3); border: 1px dashed var(--primary); border-radius: 12px;
+  background: var(--panel); color: var(--primary);
+  font-size: var(--fs-md); font-weight: 700; cursor: pointer;
+}
+.myreq-ask {
+  margin-top: var(--space-1); padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--warn); background: var(--warn-soft); color: var(--warn);
+  border-radius: 999px; font-size: var(--fs-xs); font-weight: 700; cursor: pointer;
+}
+.myreq-st { margin-top: var(--space-1); font-size: var(--fs-xs); line-height: 1.5; }
+.myreq-wait { color: var(--warn); }
+.myreq-ok { color: var(--ok); }
+.myreq-no { color: var(--danger); }
 /* ── NOMAAD түүх (2023–2025 архив) ── */
 .nh-wrap { padding: 2px 0; }
 .nh-hdr { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }

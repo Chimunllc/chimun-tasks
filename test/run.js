@@ -5076,3 +5076,41 @@ need(['orderCustType']);
   ok(!/moneyVal\(amtEl\)/.test(cmp), 'scan: гар оруулгын талбар алга');
   ok(/reserveReceipt\(rec\.receiptId/.test(cmp), 'scan: баримт ledger-т нөөцлөгдөнө');
 }
+
+// ── БУУЛГАЛТ ДАВХАР ТООЛОГДОХГҮЙ: хуулгын мөр → захиалга (2026-09-09) ──────
+// Буулгалт нь орлогоос аль хэдийн хасагдсан. Тэр мөнгө банкнаас гарахад хуулга
+// оруулбал ЗАРДАЛ болж давхар хасагдана. Тиймээс мөрийг захиалгад холбож,
+// «захиалгад холбогдсон 5800» болгоно → finIsCustomerRefund зардлаас хасна.
+{
+  const runIn = (c) => vm.runInContext(c, sandbox);
+  const prev = runIn('state.appOrders');
+  sandbox.__oo = [
+    { id: 'a1', number: 1492, status: 'returned', total_mnt: 315000, note: '⟦CMP|Хоцорч хүргэсэн|60000⟧' },
+    { id: 'a2', number: 1493, status: 'returned', total_mnt: 200000, note: '' },
+    { id: 'a3', number: 1494, status: 'draft', total_mnt: 60000, note: '⟦CMP|Бусад|60000⟧' },   // ноорог — идэвхгүй
+  ];
+  runIn('state.appOrders = __oo;');
+
+  eq(F.cmpMatchForStmt('1492 буулгалт', 60000), { id: 'a1', number: 1492, amount: 60000 }, 'буулгалт: дугаар+дүнгээр таарна');
+  eq(F.cmpMatchForStmt('хөнгөлөлт буцаалт', 60000), { id: 'a1', number: 1492, amount: 60000 }, 'буулгалт: дүн ЯГ таарсан ганц захиалга бол дугааргүй ч таарна');
+  eq(F.cmpMatchForStmt('1492 буулгалт', 59000), null, 'буулгалт: дүн зөрвөл таарахгүй');
+  eq(F.cmpMatchForStmt('1493 төлбөр', 200000), null, 'буулгалт: буулгалтгүй захиалга таарахгүй');
+  eq(F.cmpMatchForStmt('юу ч', 0), null, 'буулгалт: дүнгүй → null');
+
+  // Хоёр захиалга ижил дүнтэй бол ХҮН шийднэ (автоматаар буруу холбохгүй)
+  sandbox.__oo2 = [
+    { id: 'b1', number: 1500, status: 'returned', total_mnt: 100000, note: '⟦CMP|Бусад|50000⟧' },
+    { id: 'b2', number: 1501, status: 'returned', total_mnt: 100000, note: '⟦CMP|Бусад|50000⟧' },
+  ];
+  runIn('state.appOrders = __oo2;');
+  eq(F.cmpMatchForStmt('буцаалт', 50000), null, 'буулгалт: ижил дүнтэй 2 захиалга → автоматаар холбохгүй');
+  eq(F.cmpMatchForStmt('1501 буцаалт', 50000).number, 1501, 'буулгалт: дугаар заасан бол зөв нь холбогдоно');
+
+  sandbox.__oo3 = prev; runIn('state.appOrders = __oo3;');
+}
+
+// SCAN — буулгалтын хуулгын мөр ЗАХИАЛГАД холбогдож зардлаас хасагдана
+{
+  ok(/const _dm = r\.depMatch \|\| r\.cmpMatch;/.test(src), 'scan: буулгалтын мөр захиалгад холбогдоно');
+  ok(/r\.cmpMatch \? '5800'/.test(src), 'scan: буулгалтын мөр 5800 ангилалтай болно');
+}

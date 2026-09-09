@@ -10336,7 +10336,7 @@ function loadQRCodeJs() {
 }
 async function loadMyAttendance() {
   try {
-    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts`,
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts,source`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
   } catch (e) { /* хуучныг үлдээнэ */ }
@@ -10366,12 +10366,14 @@ function renderMyAttend() {
   const dayList = dayKeys.map(d => {
     const s = sumFor(d);
     const q = attReqFor(myKey, d);
+    // Хүсэлтээр орсон өдрийг ажилтан ӨӨРӨӨ ч ялгаж харна (удирдлагын жагсаалттай ижил).
+    const viaReq = (byDay[d] || []).some(x => x.source === 'request');
     const askBtn = (s.noOut && !(q && q.status === 'pending'))
       ? `<button class="ui-raw myreq-ask" data-my-areq="${escapeHtml(d)}">🙋 Цаг гаргуулах</button>` : '';
     return `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <span>${escapeHtml(d)}${d === today ? ' <b style="color:var(--ok);font-size:11px;">· өнөөдөр</b>' : ''}</span>
-      <span style="color:var(--text-soft);text-align:right;">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b>${s.noOut ? ' <span style="color:var(--warn);">⚠ гараагүй</span>' : ''}</span>
+      <span style="color:var(--text-soft);text-align:right;">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b>${s.noOut ? ' <span style="color:var(--warn);">⚠ гараагүй</span>' : ''}${viaReq ? ' <span class="att-manual" title="Хүсэлтээр нэмэгдсэн">🙋</span>' : ''}</span>
       </div>${askBtn}${reqLine(d)}</div>`;
   }).join('');
   // Огт бүртгэгдээгүй өдрийн хүсэлт — тэр өдөр жагсаалтад БАЙХГҮЙ тул тусад нь харуулна.

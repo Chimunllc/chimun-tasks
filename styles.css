@@ -6652,3 +6652,47 @@ select.no-asar-len {
   box-shadow: 0 -4px 16px rgba(0,0,0,.08); font-size: var(--fs-md);
 }
 .ps-savebar-b { display: flex; gap: var(--space-2); }
+
+/* ── NOMAAD түүх (2023–2025 архив) ── */
+.nh-wrap { padding: 2px 0; }
+.nh-hdr { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.nh-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.nh-chip { padding: 5px 13px; font-family: inherit; font-size: var(--fs-sm); border: 1px solid var(--border); border-radius: var(--r-full); background: var(--panel); color: var(--text); cursor: pointer; }
+.nh-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.nh-tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nh-search { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px var(--space-3); font-size: var(--fs-md); }
+.nh-search input { border: none; background: none; outline: none; font-family: inherit; font-size: var(--fs-md); color: var(--text); width: 150px; min-width: 0; }
+.nh-xls { padding: 6px 12px; font-size: var(--fs-sm); }
+.nh-note { color: var(--muted); font-weight: 400; font-size: var(--fs-xs); }
+.nh-note-block { margin-bottom: var(--space-3); }
+.nh-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.nh-kpi { padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); }
+.nh-kpi-l { font-size: var(--fs-xs); color: var(--muted); }
+.nh-kpi-v { font-weight: 800; font-size: var(--fs-lg); margin-top: 2px; }
+.nh-kpi-s { font-size: var(--fs-xs); color: var(--muted); }
+.nh-ok { color: var(--ok); }
+.nh-warn { color: var(--warn); }
+.nh-card { border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-4); margin-top: var(--space-3); background: var(--panel); }
+.nh-card-h { font-weight: 800; font-size: var(--fs-md); margin-bottom: var(--space-3); }
+.nh-bar { margin-bottom: 9px; }
+.nh-bar-l { display: flex; justify-content: space-between; gap: var(--space-2); font-size: var(--fs-sm); margin-bottom: 3px; }
+.nh-bar-k { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nh-dim { color: var(--muted); font-size: var(--fs-sm); white-space: nowrap; }
+.nh-strong { color: var(--text); font-weight: 700; }
+.nh-track { height: 8px; border-radius: var(--r-sm); background: var(--panel-hover); overflow: hidden; }
+.nh-fill { height: 100%; border-radius: var(--r-sm); }
+.nh-c0 { background: var(--accent-green); }
+.nh-c1 { background: var(--accent-blue); }
+.nh-c2 { background: var(--accent-amber); }
+.nh-c3 { background: var(--accent-purple); }
+.nh-c4 { background: var(--accent-cyan); }
+.nh-c5 { background: var(--accent-rose); }
+.nh-tblwrap { overflow-x: auto; }
+.nh-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.nh-tbl th { text-align: left; font-weight: 700; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.nh-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--border); }
+.nh-tbl tr:last-child td { border-bottom: none; }
+.nh-r { text-align: right; white-space: nowrap; }
+.nh-nowrap { white-space: nowrap; color: var(--muted); }
+
+.order-cmp { color: var(--warn); font-weight: 600; }

@@ -3275,9 +3275,45 @@ function findMember(key) {
   if (!key) return null;
   const hit = _findMemberRaw(key);
   if (hit) return hit;
-  // Олдсонгүй — хуучин утас/мэйл/нэрээр хайж байж магадгүй
+  // Олдсонгүй — хуучин утас/мэйл/нэрээр хайж байж магадгүй (DB толь: employee_aliases)
   const c = canonKey(key);
-  return (c && c !== key) ? _findMemberRaw(c) : null;
+  const byAlias = (c && c !== key) ? _findMemberRaw(c) : null;
+  if (byAlias) return byAlias;
+  // Гараар холбосон хуучин нэр (app_config['person_name_fixes']) — DB толь бариагүй тохиолдол.
+  const fx = personNameFix(key);
+  return fx ? _findMemberRaw(fx) : null;
+}
+/* ── ХҮНИЙ НЭР СОЛИГДОХ ЭРСДЭЛ (2026-09-09) ───────────────────────────────────
+   Даалгавар (`assignee`/`createdBy`) ба санхүүгийн хүсэлт (`requested_by`) нь хүнийг
+   УТАСААР биш НЭРЭЭР хадгалдаг (сервер талд хүн уншихад зориулсан). Хүн нэрээ солиход
+   хуучин мөрүүд өнчирч: «Миний ажил»-аас алга болж, гүйцэтгэлийн оноонд ч орохгүй.
+   Хамгаалалт 3 давхар: (1) DB толь `employee_aliases` нэр солихыг өөрөө барина;
+   (2) гараар холбосон нэр (доорх); (3) аль нь ч бариагүйг ИЛ тууз болгож харуулна —
+   чимээгүй алдагдахаас сэргийлнэ. */
+function personNameFix(key) {
+  const m = state.personFixes;
+  if (!m || !key) return '';
+  return m[String(key).trim().toLowerCase()] || '';
+}
+// Даалгавар/санхүүгийн мөрөөс танигдахгүй хүний нэрсийг цуглуулна. ЦЭВЭР функц:
+// `resolve(нэр)` — олдвол гишүүн, эс бол null. Гаралт: [{name, tasks, finance}] олноороо.
+function unknownPersonRefs(tasks, finance, resolve) {
+  const hit = {};
+  const add = (val, kind) => {
+    const v = String(val || '').trim();
+    if (!v || v.toUpperCase() === 'SYSTEM') return;
+    if (resolve(v)) return;
+    const e = hit[v] || (hit[v] = { name: v, tasks: 0, finance: 0 });
+    e[kind]++;
+  };
+  (tasks || []).forEach(t => {
+    if (!t || t.status === 'deleted') return;
+    add(t.assignee, 'tasks'); add(t.createdBy, 'tasks');
+    (Array.isArray(t.co_assignees) ? t.co_assignees : []).forEach(c => add(c, 'tasks'));
+  });
+  (finance || []).forEach(r => { if (r) add(r.requested_by, 'finance'); });
+  return Object.values(hit).sort((a, b) => (b.tasks + b.finance) - (a.tasks + a.finance)
+    || String(a.name).localeCompare(String(b.name), 'mn'));
 }
 function memberName(key) {
   if (!key) return '(сонгох)';
@@ -13543,7 +13579,15 @@ function renderAccess() {
   // НЭГ харагдац = Бүтэц. Ажилтан/Эрх табыг хассан (давхардсан) — хүн бүрийг картаас удирдана
   // (openStaffCardModal: албан тушаал/салбар/төрөл/PIN/гэрээ + эрхийн матриц бүгд нэг модалд).
   const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Байгууллагын бүтэц — хүн дээр дарж удирдана</div></div>`;
-  return `<div style="padding:4px;">${head}${renderOrgChart()}</div>`;
+  // Танигдахгүй хүний нэр — даалгавар/санхүүгийн мөр өнчирсөн эсэхийг ИЛ хэлнэ.
+  const _unk = unknownPersonRefs(state.tasks, state.finance, findMember);
+  const unkBar = _unk.length
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:9px 12px;background:var(--warn-soft,rgba(217,119,6,.08));border:1px solid var(--warn);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">👤 <b>${_unk.length}</b> нэр ажилтантай тохирохгүй байна (${escapeHtml(_unk.slice(0, 3).map(x => `${x.name} ${x.tasks + x.finance}`).join(' · '))}${_unk.length > 3 ? ' …' : ''}) — эдгээр даалгавар/хүсэлт эзэнгүй болж, гүйцэтгэлд тооцогдохгүй.</span>
+        <button class="btn btn-primary" id="unk-fix" style="white-space:nowrap;">👤 Хүнтэй холбох</button>
+      </div>`
+    : '';
+  return `<div style="padding:4px;">${head}${unkBar}${renderOrgChart()}</div>`;
 }
 // Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
 // Ажилтан тухайн салбарын хамрах хүрээнд орох эсэх — НЭГДСЭН дүрэм (бүх view энэ логикийг хуваалцана).
@@ -13676,9 +13720,60 @@ function renderAccessByPerson() {
   return `${note}${searchBar}<div class="ac-wrap">${body || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
 }
 
+// Танигдахгүй нэрийг ажилтантай холбох цонх. Холбоос `app_config['person_name_fixes']`-д
+// (хуучин нэр → одоогийн нэр) хадгалагдана — утас/хувийн дата хадгалахгүй.
+// ⚠ Даалгаврын мөрийг ӨӨРЧЛӨХГҮЙ: түүх байсан хэвээрээ, зөвхөн уншихдаа эзэнтэй нь холбоно.
+function openPersonFixModal() {
+  const unknown = unknownPersonRefs(state.tasks, state.finance, findMember);
+  if (!unknown.length) { showToast('Танигдахгүй нэр алга', 'info', 2200); return; }
+  const staff = (TEAM || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+  const pick = (nm) => `<select class="pf-sel ui-raw" data-pf="${escapeHtml(nm)}" style="flex:1 1 170px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);">
+      <option value="">— хэн бэ? —</option>
+      ${staff.map(m => `<option value="${escapeHtml(m.name || '')}">${escapeHtml(m.name || '')}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`).join('')}
+    </select>`;
+  document.getElementById('pfix-modal')?.remove();
+  const m = document.createElement('div');
+  m.className = 'modal-bg open'; m.id = 'pfix-modal'; m.style.zIndex = '9600';
+  m.innerHTML = `<div class="modal" style="max-width:520px;">
+    <div class="modal-head"><b>👤 Танигдахгүй нэрийг холбох (${unknown.length})</b><button class="modal-x" id="pf-x">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Хүн нэрээ солиход хуучин даалгавар, хүсэлт нь эзэнгүй үлддэг. Аль ажилтных болохыг зааж өгвөл түүх нь эзэндээ буцна — <b>даалгаврын бичлэг өөрчлөгдөхгүй</b>.</div>
+      ${unknown.map(u => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:7px;">
+        <span style="flex:1 1 150px;min-width:0;font-size:13px;">${escapeHtml(u.name)}<span style="color:var(--muted);font-size:11px;"> · ${u.tasks ? u.tasks + ' даалгавар' : ''}${u.tasks && u.finance ? ' · ' : ''}${u.finance ? u.finance + ' хүсэлт' : ''}</span></span>
+        ${pick(u.name)}
+      </div>`).join('')}
+    </div>
+    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="pf-cancel">Болих</button>
+      <button class="btn btn-primary" id="pf-save">Холбох</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  m.querySelector('#pf-x').onclick = close; m.querySelector('#pf-cancel').onclick = close;
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  m.querySelector('#pf-save').onclick = async (e) => {
+    const next = Object.assign({}, state.personFixes || {});
+    let n = 0;
+    m.querySelectorAll('.pf-sel').forEach(sel => {
+      const to = String(sel.value || '').trim();
+      if (!to) return;
+      next[String(sel.dataset.pf).trim().toLowerCase()] = to; n++;
+    });
+    if (!n) { showToast('Хэнтэй холбохыг сонгоно уу', 'warn', 2500); return; }
+    e.target.disabled = true;
+    try {
+      await saveAppConfig('person_name_fixes', next);
+      state.personFixes = next;
+      close(); render();
+      showToast(`${n} нэр холбогдлоо — даалгавар эзэндээ буцлаа`, 'success', 3000);
+    } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); e.target.disabled = false; }
+  };
+}
 function attachAccessHandlers() {
   // Таб солих
   document.querySelectorAll('[data-hub-tab]').forEach(b => b.addEventListener('click', () => { state.hubTab = b.dataset.hubTab; render(); }));
+  document.getElementById('unk-fix')?.addEventListener('click', () => openPersonFixModal());
   const canManage = canAccessView('access', () => state.isCEO);
   let tab = state.hubTab || (canManage ? 'people' : 'org');
   if (tab === 'people' && !canManage) tab = 'org';
@@ -30015,6 +30110,8 @@ async function bootApp() {
   loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadEmployeeAliases();   // хуучин утас/мэйл/нэрийг эзэнтэй нь холбоно (canonKey)
+  // Гараар холбосон хуучин нэр (нэр солиход DB толь бариагүй тохиолдол) — findMember ашиглана
+  if (state.personFixes === undefined) { state.personFixes = null; loadAppConfig('person_name_fixes').then(v => { state.personFixes = (v && typeof v === 'object') ? v : {}; render(); }); }
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)

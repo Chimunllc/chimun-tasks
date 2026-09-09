@@ -86,7 +86,8 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
-  'attManualOutTs', 'attManualOutCheck']);
+  'attManualOutTs', 'attManualOutCheck',
+  'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -3689,6 +3690,47 @@ need(['orderCustType']);
   ok(i > 0, 'scan: _histNameMap зураглал байна');
   ok(!/names\.length > 1/.test(src.slice(i, i + 400)),
      'scan: нэрсийн зураглал `length > 1`-ээр хязгаарлагдахгүй');
+}
+
+// Хүний нэр солигдоход даалгавар өнчрөх эрсдэл (2026-09-09)
+// Даалгавар/санхүү нь хүнийг НЭРЭЭР хадгалдаг. Нэр солиход хуучин мөр эзэнгүй болдог —
+// эхлээд DB толь (employee_aliases), дараа нь гараар холбосон нэр барина; аль нь ч
+// бариагүйг ИЛ жагсаана.
+{
+  const TEAMv = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const sv = { team: TEAMv.slice(), al: st.empAliases, fx: st.personFixes };
+  TEAMv.length = 0;
+  TEAMv.push({ name: 'Б.Дэлгэрмаа', phone: '99110022', role: 'Менежер' });
+  TEAMv.push({ name: 'Г.Сайнжаргал', phone: '88220033', role: 'Ажилтан' });
+  st.empAliases = { 'name:б.болормаа': '99110022' };   // DB толь: хуучин нэр → одоогийн түлхүүр
+  st.personFixes = {};
+
+  ok(F.findMember('Б.Дэлгэрмаа') !== null, 'нэр: одоогийн нэрээр олдоно');
+  ok(F.findMember('Б.Болормаа') !== null, 'нэр: ХУУЧИН нэрээр (DB толь) олдоно — нэр солиход түүх тасрахгүй');
+  ok(F.findMember('Ц.Танихгүй') === null, 'нэр: огт танихгүй бол null');
+
+  const tasks = [
+    { id: 't1', status: 'open', assignee: 'Б.Болормаа', createdBy: 'Г.Сайнжаргал' },
+    { id: 't2', status: 'open', assignee: 'Ц.Танихгүй', createdBy: 'Г.Сайнжаргал' },
+    { id: 't3', status: 'deleted', assignee: 'Ө.Устсан', createdBy: 'Г.Сайнжаргал' },
+    { id: 't4', status: 'open', assignee: 'Г.Сайнжаргал', createdBy: 'SYSTEM', co_assignees: ['Ц.Танихгүй'] },
+  ];
+  const fin = [{ id: 'f1', requested_by: 'Ц.Танихгүй' }, { id: 'f2', requested_by: 'Б.Болормаа' }];
+  const unk = F.unknownPersonRefs(tasks, fin, F.findMember);
+  eq(unk, [{ name: 'Ц.Танихгүй', tasks: 2, finance: 1 }],
+     'нэр: зөвхөн үнэхээр танигдахгүй нь (устгасан мөр, SYSTEM, толиор олдсон нь орохгүй)');
+
+  // Гараар холбосны дараа өнчин үлдэхгүй
+  st.personFixes = { 'ц.танихгүй': 'Г.Сайнжаргал' };
+  ok(F.findMember('Ц.Танихгүй') !== null, 'нэр: гараар холбосон нэр ажиллана');
+  eq(F.unknownPersonRefs(tasks, fin, F.findMember).length, 0, 'нэр: холбосны дараа өнчин алга');
+
+  st.personFixes = {};
+  eq(F.unknownPersonRefs([], [], F.findMember), [], 'нэр: хоосон дата → хоосон жагсаалт');
+
+  TEAMv.length = 0; sv.team.forEach(x => TEAMv.push(x));
+  st.empAliases = sv.al; st.personFixes = sv.fx;
 }
 
 // Ангиллын мастер жагсаалт — бүлэгт ороогүй ангилал, нэр солих төлөвлөгөө (2026-09-08)

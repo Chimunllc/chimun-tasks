@@ -4259,6 +4259,10 @@ need(['orderCustType']);
   ok(/packageSplit\(/.test(hc.slice(0, 6000)), 'scan: _histCompute багцыг задална');
   const ui = src.slice(src.indexOf('function buildProductUtilIndex('));
   ok(/packageSplit\(/.test(ui.slice(0, 2500)), 'scan: buildProductUtilIndex багцыг задална');
+  // Багцын нөөц DB-д ХАДГАЛАГДАХГҮЙ — бүрэлдэхүүнээс тухайн агшинд бодогдоно.
+  // Хадгалсан хуулбар бүрэлдэхүүн өөрчлөгдөхөд хоцорч, байхгүй багц зарагдана.
+  ok(/stock: isPkg \? 0 :/.test(src), 'scan: багцын нөөц хадгалагдахгүй (0)');
+  ok(!/stock: isPkg \? packageStock\(/.test(src), 'scan: багцын нөөцийн snapshot бичихгүй');
   const ps = src.slice(src.indexOf('function pricingStats('));
   ok(/packageSplit\(/.test(ps.slice(0, 3000)), 'scan: pricingStats багцыг задална');
   ok(/'service', 'asset', 'package'/.test(ps.slice(0, 4000)), 'scan: pricingStats багцыг мөрөөс хасна');

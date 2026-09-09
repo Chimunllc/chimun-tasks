@@ -20562,17 +20562,18 @@ function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Ma
    ⚠ Мөнгө аль хэдийн төлөгдсөн бол буцаалт нь банкны хуулгад гарна — тэр мөрийг
    ЗАРДАЛ гэж давхар тоолохгүй (`finIsCustomerRefund`), эс бөгөөс нэг мөнгө хоёр
    удаа хасагдана. Барьцаа буцаалт (5810)-тай ижил зарчим. */
-const _CMP_RE = /⟦CMP\|([^|⟧]*)\|(\d+)⟧/;
+const _CMP_RE = /⟦CMP\|([^|⟧]*)\|(\d+)(?:\|([^⟧]*))?⟧/;
 const ORDER_CMP_REASONS = ['Хоцорч хүргэсэн', 'Эвдэрсэн / дутуу', 'Ашиглагдаагүй', 'Чанар хангаагүй', 'Бусад'];
-function parseOrderCmp(note) { const m = String(note || '').match(_CMP_RE); return m ? { reason: m[1], amount: +m[2] } : null; }
-function encodeOrderCmp(reason, amount) {
+function parseOrderCmp(note) { const m = String(note || '').match(_CMP_RE); return m ? { reason: m[1], amount: +m[2], receipt: m[3] || '' } : null; }
+function encodeOrderCmp(reason, amount, receipt) {
   const a = Math.max(0, Math.round(Number(amount) || 0));
   if (!a) return '';
-  return `⟦CMP|${String(reason || 'Бусад').replace(/[|⟧⟦]/g, '')}|${a}⟧`;
+  const r = String(receipt || '').replace(/[|⟧⟦]/g, '');
+  return `⟦CMP|${String(reason || 'Бусад').replace(/[|⟧⟦]/g, '')}|${a}${r ? '|' + r : ''}⟧`;
 }
-function setOrderCmpNote(note, reason, amount) {
+function setOrderCmpNote(note, reason, amount, receipt) {
   const clean = String(note || '').replace(_CMP_RE, '').replace(/\s{2,}/g, ' ').trim();
-  const tok = encodeOrderCmp(reason, amount);
+  const tok = encodeOrderCmp(reason, amount, receipt);
   return tok ? `${clean} ${tok}`.trim() : clean;
 }
 function orderCmpAmount(o) { const c = parseOrderCmp(o && o.note); return c ? c.amount : 0; }
@@ -20590,7 +20591,7 @@ async function patchOrderFields(o, fields) {
         if (rows && rows[0] && rows[0].note != null) {
           const fresh = String(rows[0].note);
           const cmp = parseOrderCmp(fields.note);
-          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount) : setOrderCmpNote(fresh, '', 0);
+          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt) : setOrderCmpNote(fresh, '', 0);
         }
       }
     } catch (_) { /* сүлжээ унавал санах ойн note-оор бичнэ */ }
@@ -20609,45 +20610,77 @@ async function patchOrderFields(o, fields) {
 async function openOrderCmpModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буулгалт бүртгэх эрх алга', 'warn', 3000); return; }
-  const cur = parseOrderCmp(o.note) || { reason: ORDER_CMP_REASONS[0], amount: 0 };
+  loadUsedReceipts();
+  const cur = parseOrderCmp(o.note);
   const total = Number(o.total_mnt) || 0;
   const modal = document.createElement('div'); modal.className = 'modal-bg';
-  modal.innerHTML = `<div class="modal" style="max-width:440px;">
+  modal.innerHTML = `<div class="modal" style="max-width:460px;">
     <h2>↩️ Буулгалт бүртгэх</h2>
     <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')} · нийт <b>${fmtMoney(total)}</b><br>
-      Манай буруугаас өгсөн хөнгөлөлт. Энэ нь <b>зардал биш, орлогын бууралт</b> — тухайн салбарын борлуулалт нь бодитоор буурна.</p>
-    <label class="fld">Шалтгаан<select id="cmp-reason">${ORDER_CMP_REASONS.map(r => `<option${r === cur.reason ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></label>
-    <label class="fld">Буулгах дүн (₮)<input id="cmp-amt" class="money-input ui-raw" inputmode="numeric" value="${cur.amount ? moneyFmtInput(cur.amount) : ''}" placeholder="0"></label>
-    <div class="amo-prev" id="cmp-prev"></div>
+      Манай буруугаас өгсөн хөнгөлөлт. Энэ нь <b>зардал биш, орлогын бууралт</b>.<br>
+      <b>Дүнг гараар бичихгүй</b> — буцаасан гүйлгээний PDF баримтаас автоматаар авна.</p>
+    ${cur ? `<div class="cmp-cur">Одоо: <b>−${fmtMoney(cur.amount)}</b> · ${escapeHtml(cur.reason)}${cur.receipt ? ` · баримт ${escapeHtml(cur.receipt)}` : ''}</div>` : ''}
+    <label class="fld">Шалтгаан<select id="cmp-reason">${ORDER_CMP_REASONS.map(r => `<option${cur && r === cur.reason ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></label>
+    <label for="cmp-pdf" class="cmp-drop">
+      📄 <b>Буцаасан гүйлгээний баримт (PDF)</b>
+      <input id="cmp-pdf" type="file" accept="application/pdf,.pdf" hidden>
+      <div id="cmp-st">Дүн, огноо автоматаар уншигдана. Чимунээс ГАРСАН гүйлгээ байх ёстой.</div>
+    </label>
+    <div id="cmp-got"></div>
     <div class="modal-actions" style="justify-content:space-between;">
-      <button class="btn" id="cmp-clear"${cur.amount ? '' : ' hidden'} style="color:var(--danger);">Буулгалт хасах</button>
-      <span style="display:flex;gap:8px;"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary" id="cmp-save">Хадгалах</button></span>
+      <button class="btn" id="cmp-clear"${cur ? '' : ' hidden'} style="color:var(--danger);">Буулгалт хасах</button>
+      <span style="display:flex;gap:8px;"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary" id="cmp-save" disabled style="opacity:.45;cursor:not-allowed;">Хадгалах</button></span>
     </div></div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
-  const amtEl = modal.querySelector('#cmp-amt'), prev = modal.querySelector('#cmp-prev');
-  const paint = () => {
-    const a = moneyVal(amtEl);
-    prev.textContent = a > 0 ? `Борлуулалт ${fmtMoney(total)} → ${fmtMoney(Math.max(0, total - (Number(o.deposit_mnt) || 0) - a))}` : '';
-  };
-  amtEl.addEventListener('input', paint); paint();
   modal.querySelector('#cmp-cancel').onclick = close;
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
-  const apply = async (amount, reason) => {
-    const note = setOrderCmpNote(o.note, reason, amount);
+  const saveBtn = modal.querySelector('#cmp-save'), st = modal.querySelector('#cmp-st'), got = modal.querySelector('#cmp-got');
+  let rec = null;
+  const enable = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
+  modal.querySelector('#cmp-pdf').addEventListener('change', async (e) => {
+    const file = (e.target.files || [])[0]; e.target.value = ''; if (!file) return;
+    st.textContent = `📄 ${file.name} уншиж байна…`; st.style.color = 'var(--muted)';
+    try {
+      const d = parseBankReceipt(await extractPdfText(file));
+      if (!d.amount) throw new Error('дүн олдсонгүй');
+      // ЧИМУН нь ИЛГЭЭГЧ байх ёстой — орлогын баримтыг буулгалт гэж бүртгэхээс сэргийлнэ.
+      if (!/чимун/i.test(d.senderName || '')) throw new Error(`Чимунээс гарсан гүйлгээ биш (илгээгч: ${d.senderName || '?'})`);
+      if (d.amount > total) throw new Error(`Дүн (${fmtMoney(d.amount)}) захиалгын дүнгээс их байна`);
+      const fpKey = receiptFingerprint(d), refKey = d.bankRef || '', receiptId = refKey || fpKey;
+      const dup = receiptDupReason(refKey, fpKey, 'cmp:' + o.id);
+      if (dup) throw new Error(`аль хэдийн бүртгэгдсэн (${dup})`);
+      rec = { amount: d.amount, date: d.date || todayStr(), to: d.receiverName || '', receiptId, fpKey, _file: file };
+      got.innerHTML = `<div class="cmp-got"><b>−${fmtMoney(rec.amount)}</b> · ${escapeHtml(rec.date)}${rec.to ? ' · ' + escapeHtml(rec.to) : ''}<br>
+        <span class="cmp-prev">Борлуулалт ${fmtMoney(total)} → ${fmtMoney(Math.max(0, total - (Number(o.deposit_mnt) || 0) - rec.amount))}</span></div>`;
+      st.textContent = '✓ Баримт уншигдлаа'; st.style.color = 'var(--ok)';
+      enable(true);
+    } catch (err) {
+      rec = null; got.innerHTML = ''; enable(false);
+      st.textContent = '⚠ ' + err.message; st.style.color = 'var(--danger)';
+    }
+  });
+  const apply = async (amount, reason, receipt) => {
+    const note = setOrderCmpNote(o.note, reason, amount, receipt);
     try { await patchOrderFields(o, { note }); o.note = note; }
-    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return false; }
     close();
     showToast(amount ? `↩️ ${fmtMoney(amount)} буулгалт бүртгэлээ` : 'Буулгалт хасагдлаа', 'success', 3000);
     render();
+    return true;
   };
-  modal.querySelector('#cmp-save').onclick = async () => {
-    const a = moneyVal(amtEl);
-    if (!(a > 0)) { showToast('Дүн оруулна уу', 'warn', 2500); return; }
-    if (a > total) { showToast('Буулгалт нь захиалгын дүнгээс их байж болохгүй', 'warn', 3500); return; }
-    await apply(a, modal.querySelector('#cmp-reason').value);
+  saveBtn.onclick = async () => {
+    if (!rec) return;
+    saveBtn.disabled = true;
+    // Баримтыг ledger-т нөөцлөнө — нэг баримт хоёр газар бүртгэгдэхгүй.
+    try { await reserveReceipt(rec.receiptId, { fp: rec.fpKey, amount: rec.amount, date: rec.date, ref: 'буулгалт #' + (o.number || ''), usedIn: 'cmp:' + o.id }); }
+    catch (e) { /* сүлжээ унасан ч захиалга дээр бичигдэнэ — дараа тулгагдана */ }
+    if (!(await apply(rec.amount, modal.querySelector('#cmp-reason').value, rec.receiptId))) saveBtn.disabled = false;
   };
-  modal.querySelector('#cmp-clear').onclick = async () => { await apply(0, ''); };
+  modal.querySelector('#cmp-clear').onclick = async () => {
+    if (!(await showConfirm('Буулгалтыг хасах уу? Орлого буцаад бүтэн болно.', { okText: 'Хасах', danger: true }))) return;
+    await apply(0, '', '');
+  };
   modal.classList.add('open');
 }
 // ⟦VAT|amount⟧ note token — НӨАТ хассан гэдэг + хассан дүн (түрээсээс −5%). app_orders-д багана нэмэхгүйгээр (RT/DLV/SL-тэй ижил).

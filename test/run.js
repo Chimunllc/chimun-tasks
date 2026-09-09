@@ -4969,7 +4969,10 @@ need(['orderCustType']);
 {
   eq(F.encodeOrderCmp('Хоцорч хүргэсэн', 50000), '⟦CMP|Хоцорч хүргэсэн|50000⟧', 'буулгалт: токен бичнэ');
   eq(F.encodeOrderCmp('Бусад', 0), '', 'буулгалт: 0 бол токен бичихгүй');
-  eq(F.parseOrderCmp('захиалга ⟦CMP|Хоцорч хүргэсэн|50000⟧ тайлбар'), { reason: 'Хоцорч хүргэсэн', amount: 50000 }, 'буулгалт: токен уншина');
+  eq(F.parseOrderCmp('захиалга ⟦CMP|Хоцорч хүргэсэн|50000⟧ тайлбар'), { reason: 'Хоцорч хүргэсэн', amount: 50000, receipt: '' }, 'буулгалт: токен уншина');
+  eq(F.parseOrderCmp('⟦CMP|Ашиглагдаагүй|30000|KH12345⟧').receipt, 'KH12345', 'буулгалт: баримтын дугаар токенд үлдэнэ');
+  eq(F.encodeOrderCmp('Бусад', 500, 'KH9'), '⟦CMP|Бусад|500|KH9⟧', 'буулгалт: баримттай токен');
+  eq(F.setOrderCmpNote('т', 'Бусад', 500, 'KH9'), 'т ⟦CMP|Бусад|500|KH9⟧', 'буулгалт: баримт хадгалагдана');
   eq(F.parseOrderCmp('токенгүй'), null, 'буулгалт: токенгүй → null');
   eq(F.orderCmpAmount({ note: '⟦CMP|Бусад|1200⟧' }), 1200, 'буулгалт: дүн');
   eq(F.orderCmpAmount({}), 0, 'буулгалт: тэмдэглэлгүй → 0');
@@ -4994,4 +4997,15 @@ need(['orderCustType']);
   ok(F.finIsCustomerRefund(null) === false, 'буцаалт: мөргүй → false (унахгүй)');
   ok(F.finIsRealExpense({ decision: 'approved', category: '5800', link_type: 'order', amount: 1 }) === false, 'буцаалт: тайлангийн зардалд ОРОХГҮЙ');
   ok(F.finIsRealExpense({ decision: 'approved', category: '5800', link_type: 'general', amount: 1 }) === true, 'буцаалт: торгууль зардал хэвээр');
+}
+
+// SCAN — буулгалтын дүн ГАРААР бичигдэхгүй, ЗӨВХӨН PDF баримтаас (2026-09-09)
+// Гар оруулга нь «санхүү = баримт суурьтай» зарчмыг зөрчинө.
+{
+  const cmp = src.slice(src.indexOf('async function openOrderCmpModal'), src.indexOf('// ⟦VAT|amount⟧ note token'));
+  ok(/parseBankReceipt\(await extractPdfText\(file\)\)/.test(cmp), 'scan: буулгалт PDF баримтаас дүн уншина');
+  ok(/чимун\/i\.test\(d\.senderName/.test(cmp), 'scan: Чимун ИЛГЭЭГЧ байх шалгалт (орлогын баримт орохгүй)');
+  ok(/receiptDupReason\(refKey, fpKey/.test(cmp), 'scan: нэг баримт хоёр удаа бүртгэгдэхгүй');
+  ok(!/moneyVal\(amtEl\)/.test(cmp), 'scan: гар оруулгын талбар алга');
+  ok(/reserveReceipt\(rec\.receiptId/.test(cmp), 'scan: баримт ledger-т нөөцлөгдөнө');
 }

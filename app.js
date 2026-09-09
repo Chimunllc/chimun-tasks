@@ -5580,6 +5580,15 @@ function pricingStats(orders, products, opts) {
   const from = o.from || '0000-00-00', to = o.to || '9999-99-99';
   const ctx = o.ctx;
   const acc = Object.create(null);
+  // sku → бараа. Багцыг бүрэлдэхүүн рүү задлахад хэрэгтэй.
+  const bySku = Object.create(null);
+  (products || []).forEach(pp => { if (pp && pp.sku) bySku[String(pp.sku)] = pp; });
+  const bump = (sku, qty, amt, ordNo, days) => {
+    const a = acc[sku] || (acc[sku] = { sku, qty: 0, revenue: 0, lines: 0, orders: new Set(), byDay: Object.create(null) });
+    a.qty += qty; a.revenue += amt; a.lines++;
+    if (ordNo != null) a.orders.add(ordNo);
+    days.forEach(dd => { a.byDay[dd] = (a.byDay[dd] || 0) + qty; });
+  };
   (orders || []).forEach(ord => {
     if (!ord || ['deleted', 'canceled', 'draft'].includes(String(ord.status))) return;
     const d0 = String(ord.starts_at || '').slice(0, 10);
@@ -5598,10 +5607,16 @@ function pricingStats(orders, products, opts) {
       // харьцангуйгаар буурна. Эс бөгөөс «үнийн биелэлт» хиймлээр өндөр гарч,
       // хөнгөлж зарж буй бараанд «үнэ өсгө» гэж буруу зөвлөнө.
       const amt = histLineRevenue(qty * (Number(it.price) || 0), grossAll, _net);
-      const a = acc[r.sku] || (acc[r.sku] = { sku: r.sku, qty: 0, revenue: 0, lines: 0, orders: new Set(), byDay: Object.create(null) });
-      a.qty += qty; a.revenue += amt; a.lines++;
-      if (ord.number != null) a.orders.add(ord.number);
-      days.forEach(dd => { a.byDay[dd] = (a.byDay[dd] || 0) + qty; });
+      // ── БАГЦ = бүтээгдэхүүн БИШ, бүтээгдэхүүний НИЙЛБЭР ────────────────────
+      // Багцын орлого/тоог бүрэлдэхүүн рүү задална. Эс бөгөөс өртөггүй багц мөр
+      // болж эргэлт/ROI худал гарч, бодит хөрөнгө (майхан, ор, чанга яригч)
+      // орлогоо алдан «зогсонги» гэж буруу дүгнэгдэнэ.
+      const pkgP = bySku[r.sku];
+      if (pkgP && isPackage(pkgP)) {
+        const parts = packageSplit(pkgP, bySku, qty, amt);
+        if (parts) { parts.forEach(pt => bump(pt.sku, pt.qty, pt.revenue, ord.number, days)); return; }
+      }
+      bump(r.sku, qty, amt, ord.number, days);
     });
   });
   const rows = [];
@@ -5611,7 +5626,9 @@ function pricingStats(orders, products, opts) {
     //   service = хүргэлт, суурилуулалт (ажил, нөөц биш)
     //   asset   = машин, асрын каркас г.м. дотоод хөрөнгө — түрээсийн үнэгүй тул
     //             «зогсонги» гэж худал тоологдож, жагсаалтыг эзэлдэг байв.
-    if (['service', 'asset'].includes(String(p.type || ''))) return;
+    //   package = багц нь өөрийн өртөг/хөрөнгөгүй — орлого нь дээр бүрэлдэхүүн
+    //             рүү задарсан тул энд мөр болбол ДАВХАР тоологдоно.
+    if (['service', 'asset', 'package'].includes(String(p.type || ''))) return;
     const a = acc[p.sku];
     const stock = pricingStock(p);
     const qty = a ? a.qty : 0;
@@ -5628,7 +5645,6 @@ function pricingStats(orders, products, opts) {
     });
     rows.push({
       sku: p.sku, code: p.code || p.sku, name: p.name || p.sku,
-      pkg: typeof isPackage === 'function' && isPackage(p),
       stock, qty, revenue, list, cost, avg,
       orders: a ? a.orders.size : 0,
       turns: stock > 0 ? qty / stock : null,
@@ -5700,7 +5716,7 @@ function openPricingReport() {
     const body = list.slice(0, 300).map(r => {
       const V = PRICING_VERDICTS[r.verdict.key] || PRICING_VERDICTS.ok;
       return `<tr title="${escapeHtml(r.verdict.why)}">
-        <td class="pr-nm"><b>${escapeHtml(r.name)}</b>${r.pkg ? ' <span class="pr-pkg">📦 багц</span>' : ''}<span class="pr-code">${escapeHtml(r.code)}</span></td>
+        <td class="pr-nm"><b>${escapeHtml(r.name)}</b><span class="pr-code">${escapeHtml(r.code)}</span></td>
         <td class="pr-n">${r.stock}</td>
         <td class="pr-n">${r.qty}</td>
         <td class="pr-n${r.turns != null && r.turns >= 8 ? ' pr-hot' : ''}">${num(r.turns)}</td>
@@ -9359,6 +9375,10 @@ function productRowHtml(p) {
     // Ажилтанд хэрэгтэй нь нөөц, эвдрэл, салбар — мөнгө биш
     if (!pkg && (broken || maint)) sig.push(`<span class="sig sig-bad">${broken ? broken + ' эвдэрсэн' : ''}${broken && maint ? ' · ' : ''}${maint ? maint + ' засварт' : ''}</span>`);
     if (!pkg && !_actBranch) sig.push(`<span class="sig">${branchStockHtml(p)}</span>`);
+  } else if (pkg) {
+    // Багц нь өөрийн өртөг/хөрөнгөгүй — бүрэлдэхүүн бүр дээрээ тооцогдоно.
+    // «Өртөг оруулаагүй» гэж бичвэл байхгүй дутагдлыг зассан мэт харагдана.
+    sig.push('<span class="sig sig-empty">Өртөг — бүрэлдэхүүнээр</span>');
   } else if (cost > 0) {
     const _cq = _actBranch ? branchQty(p, _actBranch) : (Number(p.stock) || 0);
     sig.push(_cq > 1
@@ -9368,7 +9388,7 @@ function productRowHtml(p) {
     // «Оруулаагүй» ба «тэг» хоёрыг ялгана — өөр асуудал, өөр үйлдэл шаардана
     sig.push('<span class="sig sig-empty">Өртөг оруулаагүй</span>');
   }
-  if (roi != null) {
+  if (!pkg && roi != null) {
     const _c = roi >= 100 ? 'ok' : roi >= 50 ? 'warn' : 'bad';
     sig.push(`<span class="sig-roi ${_c}" title="Орлого ÷ хөрөнгө оруулалт">ROI ${roi}%</span>`);
   }
@@ -19040,11 +19060,11 @@ function openProductModal(p, opts) {
   modal.innerHTML = `
     <div class="modal" style="max-width:540px;">
       <h2>${isEdit ? (isPackage(p) ? 'Багц засах' : 'Бараа засах') : (asPkg ? 'Шинэ багц' : 'Шинэ бараа')}</h2>
-      ${isEdit && (u.orders || cost) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
+      ${isEdit && (u.orders || (cost && !isPackage(p))) ? `<div class="pm-stats">📊 ${u.orders} удаа түрээслэгдсэн · Орлого <b>${fmtMoney(u.revenue)}</b>${cost && !isPackage(p) ? ` · Нийт өртөг <b>${fmtMoney(invested)}</b>${roi != null ? ` · <b style="color:${roi >= 100 ? 'var(--ok)' : 'var(--warn)'}">${roi}% нөхсөн</b>` : ''}` : ''}</div>` : ''}
       <div class="pm-menu" data-pmpane="menu">
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">🏷</span><span class="pm-menu-t">Түрээсийн үнэ<em>${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
-        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${isPackage(p) ? 'багц — бүрэлдэхүүн бүр дээрээ' : cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${(Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>
       </div>
       ${isEdit && state.isCEO ? `<div class="pm-danger">
@@ -24360,15 +24380,28 @@ function meventIncome(month) {
     // Барьцаа хассан орлого (буцаадаг өр = орлого биш)
     const paid = orderRevenue(o, 'cash'), total = orderRevenue(o, 'accrual'), days = _orderDays(o);
     let rental = 0;
+    // name/sku → ангилал+орлого. Багц бол бүрэлдэхүүн бүрд тусад нь дуудагдана.
+    const addProd = (nm, sku, rev, qty) => {
+      const cat = catOf({ name: nm, sku });
+      byCat[cat] = (byCat[cat] || 0) + rev;
+      const key = _normProdName(nm || '') || String(sku || '');
+      const pr = byProd[key] || (byProd[key] = { name: nm || key, cat, revenue: 0, unitDays: 0, orders: 0 });
+      pr.revenue += rev; pr.unitDays += qty * days; pr.orders++;
+    };
     (o.items || []).forEach(it => {
       const line = (Number(it.price) || 0) * (Number(it.qty) || 0) * days;
       if (line <= 0) return;
       rental += line;
-      const cat = catOf(it);
-      byCat[cat] = (byCat[cat] || 0) + line;
-      const key = _normProdName(it.name || '') || String(it.sku || '');
-      const pr = byProd[key] || (byProd[key] = { name: it.name || key, cat, revenue: 0, unitDays: 0, orders: 0 });
-      pr.revenue += line; pr.unitDays += (Number(it.qty) || 0) * days; pr.orders++;
+      // Багц = бүтээгдэхүүний нийлбэр. Ангилал/ROI-г бүрэлдэхүүнээр гаргана —
+      // эс бөгөөс багцын бүтэн дүн өртөггүй нэг мөрөнд суух ба ангилал гажина.
+      const prod = productOf(it);
+      if (prod && isPackage(prod)) {
+        const bySku = {};
+        for (const c of (prod.bundle_items || [])) { const cp = productBySku(c && c.sku); if (cp) bySku[String(cp.sku)] = cp; }
+        const parts = packageSplit(prod, bySku, Number(it.qty) || 0, line);
+        if (parts) { parts.forEach(pt => addProd(pt.name, pt.sku, pt.revenue, pt.qty)); return; }
+      }
+      addProd(it.name, it.sku, line, Number(it.qty) || 0);
     });
     paidSum += paid; rentalSum += rental;
     byOrder.push({ no: o.number, customer: o.customer || '—', date: String(o.starts_at || '').slice(0, 10), days, paid, total, rental, status: o.status });

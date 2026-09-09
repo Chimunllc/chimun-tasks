@@ -2657,13 +2657,16 @@ need(['orderCustType']);
         stock: 99, qty_mevent: 99, bundle_items: [{ sku: 'P1', qty: 1 }, { sku: 'P2', qty: 2 }] };
       ok(F.pricingStock(pkg) === 2, 'багц: нөөц = бүрэлдэхүүний хамгийн бага (4÷2=2)');
       ok(F.pricingStock({ sku: 'X', stock: 7 }) === 7, 'багц бус: энгийн нөөц');
+      // Багцын мөр өөрөө тайланд ГАРАХГҮЙ — орлого нь бүрэлдэхүүн рүү задарна.
       const sp = F.pricingStats(
         [{ number: 9, status: 'returned', starts_at: '2026-02-01', stops_at: '2026-02-01', total_mnt: 780000,
            items: [{ sku: 'PK', name: 'Өвлийн багц', qty: 2, price: 390000 }] }],
-        [pkg], { from: '2026-01-01', to: '2026-12-31',
+        [pkg, st0.products[0], st0.products[1]], { from: '2026-01-01', to: '2026-12-31',
                  ctx: { bySku: { PK: pkg }, byName: {}, aliases: {} } });
-      ok(sp.rows[0].pkg === true && sp.rows[0].stock === 2 && sp.rows[0].turns === 1,
-         'багц: тайланд багц гэж тэмдэглэгдэж, эргэлт зөв');
+      ok(!sp.rows.some(r => r.sku === 'PK'), 'багц: үнийн шинжилгээнд өөрийн мөр гарахгүй');
+      const _p1 = sp.rows.find(r => r.sku === 'P1'), _p2 = sp.rows.find(r => r.sku === 'P2');
+      ok(_p1 && _p1.qty === 2 && _p2 && _p2.qty === 4, 'багц: бүрэлдэхүүний тоо (2 багц)');
+      ok(Math.round(_p1.revenue + _p2.revenue) === 780000, 'багц: орлого бүтнээрээ бүрэлдэхүүнд');
       st0.products = prev;
     }
   }
@@ -4223,6 +4226,32 @@ need(['orderCustType']);
   eq(F.packageSplit(null, null, 1, 100), null, 'багц: хоосон оролт унахгүй');
 }
 
+// ── БАГЦ = бүтээгдэхүүн БИШ: үнийн шинжилгээнд мөр болж гарахгүй (2026-09-09)
+// Багц нь өөрийн өртөг/хөрөнгөгүй тул ROI/эргэлт утгагүй; орлого нь бүрэлдэхүүн
+// рүү задарсан байх ёстой. Багц мөр болж үлдвэл орлого ДАВХАР тоологдоно.
+{
+  const prods = [
+    { sku: 'M-089', code: 'M-089', name: 'Өвлийн майхан', price: 132000, cost: 500000, stock: 10, qty_mevent: 10 },
+    { sku: 'M-064', code: 'M-064', name: 'Аяны ор',       price: 27500,  cost: 90000,  stock: 40, qty_mevent: 40 },
+    { sku: 'M-328', code: 'M-328', name: 'Өвлийн багц',   price: 390000, cost: 0, stock: 10, qty_mevent: 10,
+      type: 'package', bundle_items: [{ sku: 'M-089', qty: 1 }, { sku: 'M-064', qty: 4 }] },
+  ];
+  const ctx = { aliases: {}, byName: {}, bySku: { 'M-089': { sku: 'M-089' }, 'M-064': { sku: 'M-064' }, 'M-328': { sku: 'M-328' } } };
+  const orders = [{ number: 1, status: 'confirmed', starts_at: '2026-03-01', stops_at: '2026-03-02',
+    total_mnt: 390000, items: [{ sku: 'M-328', name: 'Өвлийн багц', qty: 1, price: 390000 }] }];
+  const st = F.pricingStats(orders, prods, { from: '2026-01-01', to: '2026-12-31', ctx });
+  const bySku = {}; st.rows.forEach(r => { bySku[r.sku] = r; });
+  eq(bySku['M-328'], undefined, 'багц: үнийн шинжилгээнд мөр болж ГАРАХГҮЙ');
+  eq(Math.round(bySku['M-089'].revenue + bySku['M-064'].revenue), 390000,
+     'багц: орлого бүрэлдэхүүн рүү бүтнээрээ шилжинэ');
+  eq(bySku['M-089'].qty, 1, 'багц: майхны тоо');
+  eq(bySku['M-064'].qty, 4, 'багц: орны тоо (4 × 1 багц)');
+  eq(Math.round(st.totals.revenue), 390000, 'багц: нийт орлого давхардахгүй');
+  ok(bySku['M-089'].roi > 0, 'багц: бүрэлдэхүүн ROI-тай болно');
+  // Багц ORDER-т орсон ч түүний өртөг хөрөнгөд нэмэгдэхгүй
+  eq(st.totals.capital, 500000 * 10 + 90000 * 40, 'багц: хөрөнгөд өөрийн мөр нэмэхгүй');
+}
+
 // SCAN — тайлан ба ROI хоёулаа багцыг задлана (2026-09-07)
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
@@ -4230,6 +4259,11 @@ need(['orderCustType']);
   ok(/packageSplit\(/.test(hc.slice(0, 6000)), 'scan: _histCompute багцыг задална');
   const ui = src.slice(src.indexOf('function buildProductUtilIndex('));
   ok(/packageSplit\(/.test(ui.slice(0, 2500)), 'scan: buildProductUtilIndex багцыг задална');
+  const ps = src.slice(src.indexOf('function pricingStats('));
+  ok(/packageSplit\(/.test(ps.slice(0, 3000)), 'scan: pricingStats багцыг задална');
+  ok(/'service', 'asset', 'package'/.test(ps.slice(0, 4000)), 'scan: pricingStats багцыг мөрөөс хасна');
+  const mi = src.slice(src.indexOf('function meventIncome('));
+  ok(/packageSplit\(/.test(mi.slice(0, 2500)), 'scan: meventIncome багцыг задална');
   // Багц задлахад бүрэлдэхүүний ҮНЭ хэрэгтэй — loadHistory татаж байх ёстой
   const lh = src.slice(src.indexOf('async function loadHistory('));
   ok(/select=sku,name,category,price,type,bundle_items/.test(lh.slice(0, 4000)),

@@ -86,7 +86,8 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
-  'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck']);
+  'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
+  'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -3691,6 +3692,47 @@ need(['orderCustType']);
      'scan: нэрсийн зураглал `length > 1`-ээр хязгаарлагдахгүй');
 }
 
+// Хүний нэр солигдоход даалгавар өнчрөх эрсдэл (2026-09-09)
+// Даалгавар/санхүү нь хүнийг НЭРЭЭР хадгалдаг. Нэр солиход хуучин мөр эзэнгүй болдог —
+// эхлээд DB толь (employee_aliases), дараа нь гараар холбосон нэр барина; аль нь ч
+// бариагүйг ИЛ жагсаана.
+{
+  const TEAMv = vm.runInContext('TEAM', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const sv = { team: TEAMv.slice(), al: st.empAliases, fx: st.personFixes };
+  TEAMv.length = 0;
+  TEAMv.push({ name: 'Б.Дэлгэрмаа', phone: '99110022', role: 'Менежер' });
+  TEAMv.push({ name: 'Г.Сайнжаргал', phone: '88220033', role: 'Ажилтан' });
+  st.empAliases = { 'name:б.болормаа': '99110022' };   // DB толь: хуучин нэр → одоогийн түлхүүр
+  st.personFixes = {};
+
+  ok(F.findMember('Б.Дэлгэрмаа') !== null, 'нэр: одоогийн нэрээр олдоно');
+  ok(F.findMember('Б.Болормаа') !== null, 'нэр: ХУУЧИН нэрээр (DB толь) олдоно — нэр солиход түүх тасрахгүй');
+  ok(F.findMember('Ц.Танихгүй') === null, 'нэр: огт танихгүй бол null');
+
+  const tasks = [
+    { id: 't1', status: 'open', assignee: 'Б.Болормаа', createdBy: 'Г.Сайнжаргал' },
+    { id: 't2', status: 'open', assignee: 'Ц.Танихгүй', createdBy: 'Г.Сайнжаргал' },
+    { id: 't3', status: 'deleted', assignee: 'Ө.Устсан', createdBy: 'Г.Сайнжаргал' },
+    { id: 't4', status: 'open', assignee: 'Г.Сайнжаргал', createdBy: 'SYSTEM', co_assignees: ['Ц.Танихгүй'] },
+  ];
+  const fin = [{ id: 'f1', requested_by: 'Ц.Танихгүй' }, { id: 'f2', requested_by: 'Б.Болормаа' }];
+  const unk = F.unknownPersonRefs(tasks, fin, F.findMember);
+  eq(unk, [{ name: 'Ц.Танихгүй', tasks: 2, finance: 1 }],
+     'нэр: зөвхөн үнэхээр танигдахгүй нь (устгасан мөр, SYSTEM, толиор олдсон нь орохгүй)');
+
+  // Гараар холбосны дараа өнчин үлдэхгүй
+  st.personFixes = { 'ц.танихгүй': 'Г.Сайнжаргал' };
+  ok(F.findMember('Ц.Танихгүй') !== null, 'нэр: гараар холбосон нэр ажиллана');
+  eq(F.unknownPersonRefs(tasks, fin, F.findMember).length, 0, 'нэр: холбосны дараа өнчин алга');
+
+  st.personFixes = {};
+  eq(F.unknownPersonRefs([], [], F.findMember), [], 'нэр: хоосон дата → хоосон жагсаалт');
+
+  TEAMv.length = 0; sv.team.forEach(x => TEAMv.push(x));
+  st.empAliases = sv.al; st.personFixes = sv.fx;
+}
+
 // Ангиллын мастер жагсаалт — бүлэгт ороогүй ангилал, нэр солих төлөвлөгөө (2026-09-08)
 {
   const groups = [
@@ -4960,4 +5002,54 @@ need(['orderCustType']);
     'scan: талбараас гармагц шууд хадгалдаг хуучин зам байхгүй');
   ok(/document\.getElementById\('ps-save'\)\?\.addEventListener\('click', \(\) => psSaveAll\(\)\)/.test(src),
     'scan: хадгалах товчоор л бичигдэнэ');
+}
+
+// ── NOMAAD түүх (2023–2025 архив) — Excel-ийн «НИЙТ ДҮН»-тэй тулгана ────────
+// Мөр гараар хуулагдсан тул нэг тоо буруу бичигдвэл чимээгүй өнгөрөх аюултай.
+{
+  const H = vm.runInContext('NOMAAD_HISTORY', sandbox);
+  eq(H.length, 130, 'nomaad түүх: 130 арга хэмжээ');
+  const sum = (y) => H.filter(r => r[0].slice(0, 4) === y).reduce((s, r) => s + r[6], 0);
+  const cnt = (y) => H.filter(r => r[0].slice(0, 4) === y).length;
+  eq([cnt('2023'), sum('2023')], [31, 379862681], 'nomaad түүх: 2023 = 31 захиалга / 379,862,681₮');
+  eq([cnt('2024'), sum('2024')], [56, 716036950], 'nomaad түүх: 2024 = 56 захиалга / 716,036,950₮');
+  eq([cnt('2025'), sum('2025')], [43, 885025551], 'nomaad түүх: 2025 = 43 захиалга / 885,025,551₮');
+  eq(H.reduce((s, r) => s + r[6], 0), 1980925182, 'nomaad түүх: нийт 1,980,925,182₮');
+  ok(H.every(r => /^\d{4}-\d{2}(-\d{2})?$/.test(r[0])), 'nomaad түүх: огноо бүр зөв хэлбэртэй');
+  // Кемпийн бичилт нэг болно (кирилл «С camp» ч мөн)
+  eq(F.nhKind('a CAMP'), 'A camp', 'nomaad түүх: кемпийн бичилт нэгдэнэ');
+  eq(F.nhKind('С camp'), 'C camp', 'nomaad түүх: кирилл С → C camp');
+}
+
+// ── БУУЛГАЛТ ⟦CMP⟧ — манай буруугаас өгсөн хөнгөлөлт (2026-09-09) ───────────
+// Хоцорсон/эвдэрсэн/ашиглагдаагүй тохиолдолд өгсөн хөнгөлөлт нь ЗАРДАЛ БИШ,
+// ОРЛОГЫН БУУРАЛТ. Зардал талд бичвэл орлого бүтэн харагдаж марж гажина.
+{
+  eq(F.encodeOrderCmp('Хоцорч хүргэсэн', 50000), '⟦CMP|Хоцорч хүргэсэн|50000⟧', 'буулгалт: токен бичнэ');
+  eq(F.encodeOrderCmp('Бусад', 0), '', 'буулгалт: 0 бол токен бичихгүй');
+  eq(F.parseOrderCmp('захиалга ⟦CMP|Хоцорч хүргэсэн|50000⟧ тайлбар'), { reason: 'Хоцорч хүргэсэн', amount: 50000 }, 'буулгалт: токен уншина');
+  eq(F.parseOrderCmp('токенгүй'), null, 'буулгалт: токенгүй → null');
+  eq(F.orderCmpAmount({ note: '⟦CMP|Бусад|1200⟧' }), 1200, 'буулгалт: дүн');
+  eq(F.orderCmpAmount({}), 0, 'буулгалт: тэмдэглэлгүй → 0');
+  eq(F.setOrderCmpNote('хуучин ⟦CMP|Бусад|100⟧ текст', 'Ашиглагдаагүй', 5000), 'хуучин текст ⟦CMP|Ашиглагдаагүй|5000⟧', 'буулгалт: токен солигдож текст үлдэнэ');
+  eq(F.setOrderCmpNote('текст ⟦CMP|Бусад|100⟧', '', 0), 'текст', 'буулгалт: 0 болгоход токен арилна');
+  eq(F.setOrderCmpNote('⟦DLV|city|0|150000⟧', 'Хоцорч хүргэсэн', 30000), '⟦DLV|city|0|150000⟧ ⟦CMP|Хоцорч хүргэсэн|30000⟧', 'буулгалт: бусад токен хөндөгдөхгүй');
+
+  // ОРЛОГО — буулгалт хасагдана
+  const o = { source: 'app', total_mnt: 315000, deposit_mnt: 0, paid_mnt: 315000, note: '⟦CMP|Хоцорч хүргэсэн|60000⟧' };
+  eq(F.orderRevenue(o, 'accrual'), 255000, 'орлого: буулгалт хасагдана');
+  eq(F.orderRevenue(o, 'cash'), 255000, 'орлого: мөнгөн суурьт ч хасагдана');
+  eq(F.orderRevenue({ ...o, note: '' }, 'accrual'), 315000, 'орлого: буулгалтгүй бол бүтэн');
+  eq(F.orderRevenue({ ...o, note: '⟦CMP|Бусад|999999⟧' }, 'accrual'), 0, 'орлого: буулгалт нийтээс их бол 0 (сөрөг болохгүй)');
+  const b = { source: 'booqable', total_mnt: 100000, deposit_mnt: 20000, paid_mnt: 100000, note: '⟦CMP|Бусад|10000⟧' };
+  eq(F.orderRevenue(b, 'accrual'), 90000, 'орлого: booqable-д барьцаа хасахгүй ч буулгалт хасагдана');
+
+  // САНХҮҮ — захиалгад холбогдсон 5800 нь ЗАРДАЛ БИШ (давхар тоологдохгүй)
+  ok(F.finIsCustomerRefund({ category: '5800', link_type: 'order' }) === true, 'буцаалт: захиалгад холбогдсон 5800 = зардал биш');
+  ok(F.finIsCustomerRefund({ category: '5800', justification: 'x ⟦LNK|order|1492|#1492⟧' }) === true, 'буцаалт: LNK токеноор ч танина');
+  ok(F.finIsCustomerRefund({ category: '5800', link_type: 'general' }) === false, 'буцаалт: холбоогүй 5800 (торгууль) нь ЖИНХЭНЭ зардал');
+  ok(F.finIsCustomerRefund({ category: '5810', link_type: 'order' }) === false, 'буцаалт: барьцаа буцаалт нь өөр дүрэмтэй');
+  ok(F.finIsCustomerRefund(null) === false, 'буцаалт: мөргүй → false (унахгүй)');
+  ok(F.finIsRealExpense({ decision: 'approved', category: '5800', link_type: 'order', amount: 1 }) === false, 'буцаалт: тайлангийн зардалд ОРОХГҮЙ');
+  ok(F.finIsRealExpense({ decision: 'approved', category: '5800', link_type: 'general', amount: 1 }) === true, 'буцаалт: торгууль зардал хэвээр');
 }

@@ -3275,9 +3275,45 @@ function findMember(key) {
   if (!key) return null;
   const hit = _findMemberRaw(key);
   if (hit) return hit;
-  // Олдсонгүй — хуучин утас/мэйл/нэрээр хайж байж магадгүй
+  // Олдсонгүй — хуучин утас/мэйл/нэрээр хайж байж магадгүй (DB толь: employee_aliases)
   const c = canonKey(key);
-  return (c && c !== key) ? _findMemberRaw(c) : null;
+  const byAlias = (c && c !== key) ? _findMemberRaw(c) : null;
+  if (byAlias) return byAlias;
+  // Гараар холбосон хуучин нэр (app_config['person_name_fixes']) — DB толь бариагүй тохиолдол.
+  const fx = personNameFix(key);
+  return fx ? _findMemberRaw(fx) : null;
+}
+/* ── ХҮНИЙ НЭР СОЛИГДОХ ЭРСДЭЛ (2026-09-09) ───────────────────────────────────
+   Даалгавар (`assignee`/`createdBy`) ба санхүүгийн хүсэлт (`requested_by`) нь хүнийг
+   УТАСААР биш НЭРЭЭР хадгалдаг (сервер талд хүн уншихад зориулсан). Хүн нэрээ солиход
+   хуучин мөрүүд өнчирч: «Миний ажил»-аас алга болж, гүйцэтгэлийн оноонд ч орохгүй.
+   Хамгаалалт 3 давхар: (1) DB толь `employee_aliases` нэр солихыг өөрөө барина;
+   (2) гараар холбосон нэр (доорх); (3) аль нь ч бариагүйг ИЛ тууз болгож харуулна —
+   чимээгүй алдагдахаас сэргийлнэ. */
+function personNameFix(key) {
+  const m = state.personFixes;
+  if (!m || !key) return '';
+  return m[String(key).trim().toLowerCase()] || '';
+}
+// Даалгавар/санхүүгийн мөрөөс танигдахгүй хүний нэрсийг цуглуулна. ЦЭВЭР функц:
+// `resolve(нэр)` — олдвол гишүүн, эс бол null. Гаралт: [{name, tasks, finance}] олноороо.
+function unknownPersonRefs(tasks, finance, resolve) {
+  const hit = {};
+  const add = (val, kind) => {
+    const v = String(val || '').trim();
+    if (!v || v.toUpperCase() === 'SYSTEM') return;
+    if (resolve(v)) return;
+    const e = hit[v] || (hit[v] = { name: v, tasks: 0, finance: 0 });
+    e[kind]++;
+  };
+  (tasks || []).forEach(t => {
+    if (!t || t.status === 'deleted') return;
+    add(t.assignee, 'tasks'); add(t.createdBy, 'tasks');
+    (Array.isArray(t.co_assignees) ? t.co_assignees : []).forEach(c => add(c, 'tasks'));
+  });
+  (finance || []).forEach(r => { if (r) add(r.requested_by, 'finance'); });
+  return Object.values(hit).sort((a, b) => (b.tasks + b.finance) - (a.tasks + a.finance)
+    || String(a.name).localeCompare(String(b.name), 'mn'));
 }
 function memberName(key) {
   if (!key) return '(сонгох)';
@@ -4168,7 +4204,7 @@ function renderTaskList() {
   } else if (state.view === 'nomaad') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
-    wrap.innerHTML = safeViewHtml(() => renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : renderNomaadPipeline()), 'NOMAAD захиалга');
+    wrap.innerHTML = safeViewHtml(() => renderNomaadToggle() + (nomaadViewMode === 'calendar' ? renderNomaadCalendar() : nomaadViewMode === 'analytics' ? renderNomaadAnalytics() : nomaadViewMode === 'cleanup' ? renderNomaadCleanup() : nomaadViewMode === 'history' ? renderNomaadHistory() : renderNomaadPipeline()), 'NOMAAD захиалга');
     attachNomaadHandlers();
     return;
   } else if (state.view === 'catering') {
@@ -8070,6 +8106,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
+  document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
 
   // Он-сар филтер
@@ -13772,7 +13809,15 @@ function renderAccess() {
   // НЭГ харагдац = Бүтэц. Ажилтан/Эрх табыг хассан (давхардсан) — хүн бүрийг картаас удирдана
   // (openStaffCardModal: албан тушаал/салбар/төрөл/PIN/гэрээ + эрхийн матриц бүгд нэг модалд).
   const head = `<div style="margin:2px 0 10px;"><div style="font-weight:800;font-size:16px;">👥 Ажилчид</div><div style="font-size:11px;color:var(--muted);">Байгууллагын бүтэц — хүн дээр дарж удирдана</div></div>`;
-  return `<div style="padding:4px;">${head}${renderOrgChart()}</div>`;
+  // Танигдахгүй хүний нэр — даалгавар/санхүүгийн мөр өнчирсөн эсэхийг ИЛ хэлнэ.
+  const _unk = unknownPersonRefs(state.tasks, state.finance, findMember);
+  const unkBar = _unk.length
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:9px 12px;background:var(--warn-soft,rgba(217,119,6,.08));border:1px solid var(--warn);border-radius:10px;">
+        <span style="font-size:12.5px;color:var(--text);">👤 <b>${_unk.length}</b> нэр ажилтантай тохирохгүй байна (${escapeHtml(_unk.slice(0, 3).map(x => `${x.name} ${x.tasks + x.finance}`).join(' · '))}${_unk.length > 3 ? ' …' : ''}) — эдгээр даалгавар/хүсэлт эзэнгүй болж, гүйцэтгэлд тооцогдохгүй.</span>
+        <button class="btn btn-primary" id="unk-fix" style="white-space:nowrap;">👤 Хүнтэй холбох</button>
+      </div>`
+    : '';
+  return `<div style="padding:4px;">${head}${unkBar}${renderOrgChart()}</div>`;
 }
 // Гишүүн сонгосон салбарт хамаарах эсэх (shared/салбаргүй = бүгдэд)
 // Ажилтан тухайн салбарын хамрах хүрээнд орох эсэх — НЭГДСЭН дүрэм (бүх view энэ логикийг хуваалцана).
@@ -13905,9 +13950,60 @@ function renderAccessByPerson() {
   return `${note}${searchBar}<div class="ac-wrap">${body || '<div style="text-align:center;color:var(--muted);padding:30px 0;">Ажилтан алга</div>'}</div>`;
 }
 
+// Танигдахгүй нэрийг ажилтантай холбох цонх. Холбоос `app_config['person_name_fixes']`-д
+// (хуучин нэр → одоогийн нэр) хадгалагдана — утас/хувийн дата хадгалахгүй.
+// ⚠ Даалгаврын мөрийг ӨӨРЧЛӨХГҮЙ: түүх байсан хэвээрээ, зөвхөн уншихдаа эзэнтэй нь холбоно.
+function openPersonFixModal() {
+  const unknown = unknownPersonRefs(state.tasks, state.finance, findMember);
+  if (!unknown.length) { showToast('Танигдахгүй нэр алга', 'info', 2200); return; }
+  const staff = (TEAM || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+  const pick = (nm) => `<select class="pf-sel ui-raw" data-pf="${escapeHtml(nm)}" style="flex:1 1 170px;min-width:0;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;background:var(--panel);color:var(--text);">
+      <option value="">— хэн бэ? —</option>
+      ${staff.map(m => `<option value="${escapeHtml(m.name || '')}">${escapeHtml(m.name || '')}${m.role ? ' · ' + escapeHtml(m.role) : ''}</option>`).join('')}
+    </select>`;
+  document.getElementById('pfix-modal')?.remove();
+  const m = document.createElement('div');
+  m.className = 'modal-bg open'; m.id = 'pfix-modal'; m.style.zIndex = '9600';
+  m.innerHTML = `<div class="modal" style="max-width:520px;">
+    <div class="modal-head"><b>👤 Танигдахгүй нэрийг холбох (${unknown.length})</b><button class="modal-x" id="pf-x">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;">Хүн нэрээ солиход хуучин даалгавар, хүсэлт нь эзэнгүй үлддэг. Аль ажилтных болохыг зааж өгвөл түүх нь эзэндээ буцна — <b>даалгаврын бичлэг өөрчлөгдөхгүй</b>.</div>
+      ${unknown.map(u => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:7px;">
+        <span style="flex:1 1 150px;min-width:0;font-size:13px;">${escapeHtml(u.name)}<span style="color:var(--muted);font-size:11px;"> · ${u.tasks ? u.tasks + ' даалгавар' : ''}${u.tasks && u.finance ? ' · ' : ''}${u.finance ? u.finance + ' хүсэлт' : ''}</span></span>
+        ${pick(u.name)}
+      </div>`).join('')}
+    </div>
+    <div class="modal-foot" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" id="pf-cancel">Болих</button>
+      <button class="btn btn-primary" id="pf-save">Холбох</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  m.querySelector('#pf-x').onclick = close; m.querySelector('#pf-cancel').onclick = close;
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  m.querySelector('#pf-save').onclick = async (e) => {
+    const next = Object.assign({}, state.personFixes || {});
+    let n = 0;
+    m.querySelectorAll('.pf-sel').forEach(sel => {
+      const to = String(sel.value || '').trim();
+      if (!to) return;
+      next[String(sel.dataset.pf).trim().toLowerCase()] = to; n++;
+    });
+    if (!n) { showToast('Хэнтэй холбохыг сонгоно уу', 'warn', 2500); return; }
+    e.target.disabled = true;
+    try {
+      await saveAppConfig('person_name_fixes', next);
+      state.personFixes = next;
+      close(); render();
+      showToast(`${n} нэр холбогдлоо — даалгавар эзэндээ буцлаа`, 'success', 3000);
+    } catch (err) { showToast('Алдаа: ' + err.message, 'error', 4000); e.target.disabled = false; }
+  };
+}
 function attachAccessHandlers() {
   // Таб солих
   document.querySelectorAll('[data-hub-tab]').forEach(b => b.addEventListener('click', () => { state.hubTab = b.dataset.hubTab; render(); }));
+  document.getElementById('unk-fix')?.addEventListener('click', () => openPersonFixModal());
   const canManage = canAccessView('access', () => state.isCEO);
   let tab = state.hubTab || (canManage ? 'people' : 'org');
   if (tab === 'people' && !canManage) tab = 'org';
@@ -14625,6 +14721,251 @@ function renderNomaadCleanup() {
     <div style="font-size:11.5px;color:var(--muted);margin:2px 0 14px;">Кемп/Багц стандарт бус, хүн 0, үндсэн багц алга, ангилаагүй нэмэлттэй. Дарж нээгээд зас.</div>
     ${body}</div>`;
 }
+/* ── NOMAAD түүх (2023–2025) — апп нэвтрэхээс ӨМНӨХ борлуулалт ────────────────
+   Эх сурвалж: «2023_2025_нэгтгэсэн_тайлан.xlsx» (нэгтгэсэн хуудас, 130 мөр).
+   ЗӨВХӨН ХАРАХ архив: nomaad_quotes-д БАЙХГҮЙ, санхүү/тайлан/KPI-д ОРОХГҮЙ —
+   энэ мөнгө банкны хуулгаар аль хэдийн орсон тул давхар тоологдох ёсгүй.
+   Мөр = [огноо, харилцагч, кемп/төрөл, хүн, нэгж үнэ, нэмэлт, нийт төлбөр].
+   Жилийн нийлбэр Excel-ийн «НИЙТ ДҮН»-тэй тулгагдсан — test/run.js хамгаална. */
+const NOMAAD_HISTORY = [
+['2023-05','ТРАНСВЕСТ МОНГОЛИА','Түрээс',0,0,0,2100000],
+['2023-06-09','Лхаумор ХХК','Байгууллага',24,170000,0,4080000],
+['2023-06-10','Намир ХХК','Байгууллага',140,165000,391600,23491600],
+['2023-06-16','Солитюд Монголиа ХХК','VIP аялал',48,0,0,27352000],
+['2023-06-13','Төрсөн өдөр Zayaa Zaya','Байгууллага',9,160000,0,1341000],
+['2023-06-17','АМУУЛАЙ','Байгууллага',34,170000,132000,6082000],
+['2023-06-16','Инвескор ХХК','Түрээс',0,0,0,3529000],
+['2023-06-30','Содонойл ХХК (НӨАТ)','Байгууллага',18,180000,680000,3837000],
+['2023-07-10','NOMADIC OFF ROAD LLC','VIP аялал',0,0,0,15170000],
+['2023-07-18','BTF (НӨАТ-гүй)','Байгууллага',100,100000,1200000,11200000],
+['2023-07-27','ONDO (НӨАТ)','Байгууллага',240,270000,1538300,34538300],
+['2023-07-27','Хаан банк (НӨАТ)','Байгууллага',63,176000,300000,11388000],
+['2023-07-29','IntelMind (НӨАТ) shoppy','Байгууллага',71,176000,32381,12528381],
+['2023-08-01','Жерри төрсөн өдөр','Байгууллага',10,100000,0,1000000],
+['2023-08-04','Номин даатгал (НӨАТ)','Байгууллага',23,160000,500000,4180000],
+['2023-08-04','Номин даатгал (НӨАТ-гүй)','Байгууллага',23,176000,0,4048000],
+['2023-08-04','Таван богд маркетинг (НӨАТ)','Байгууллага',80,143000,0,11440000],
+['2023-08-05','Таван богд солюшин (НӨАТ)','Байгууллага',154,176000,655600,27759600],
+['2023-08-05','Асар түрээс Цонжин','Түрээс',0,0,0,1130000],
+['2023-08-05','MTC','Байгууллага',30,160000,300000,5100000],
+['2023-08-11','Ecomm (НӨАТ)','Байгууллага',43,176000,362000,7930000],
+['2023-08-12','Ард санхүү (НӨАТ)','Байгууллага',180,176000,815000,31670000],
+['2023-08-18','Unitel (НӨАТ-гүй)','Байгууллага',30,200000,150000,6150000],
+['2023-08-19','Net capital (НӨАТ)','Байгууллага',255,176000,0,44880000],
+['2023-08-23','Унага тамгалах ёслол','VIP аялал',14,0,0,11000000],
+['2023-08-25','Анд систем','Байгууллага',120,160000,2994000,22194000],
+['2023-08-27','Мөнгөморьт','VIP аялал',7,0,0,5300000],
+['2023-09-02','Делта сервис','Байгууллага',20,176000,0,3520000],
+['2023-09-09','Америк элчин','Байгууллага',70,136500,200000,9755000],
+['2023-09-09','VEP','VIP аялал',24,0,0,20000000],
+['2023-09-28','Голомт банк','Түрээс',40,0,0,6168800],
+
+['2024-05-19','Худалдаа хөгжлийн банк','A camp',75,105600,0,7920000],
+['2024-05-23','Барло Монголиа','A camp',45,84000,0,3780000],
+['2024-06-04','БОДИ','A camp',53,110200,0,7052000],
+['2024-06-07','NAMIR group','A camp',182,176000,0,32157200],
+['2024-06-08','Mishel life style (өдрөөр)','A camp',30,151200,0,4536000],
+['2024-06-09','Тус финтек ББСБ','A camp',58,116160,6116000,12853280],
+['2024-06-11','CHINGISIN TUGUL','A camp',22,116160,710000,3161560],
+['2024-06-13','MCS Estates LLC','A camp',65,116160,990000,8540400],
+['2024-06-15','Оюу толгой ХХК (өдрөөр)','A camp',100,161200,1665000,17785000],
+['2024-06-16','Сонгодой эмнэлэг','A camp',26.6,100000,0,2660000],
+['2024-06-18','Flora цэцгийн дэлгүүр (өдрөөр)','A camp',46,121200,880000,6455200],
+['2024-06-20','МОНОС (өдрөөр)','A camp',43,111320,0,5000000],
+['2024-06-23','СОНО финтек','A camp',100,116160,749000,12365000],
+['2024-06-24','Амуулай','A camp',35,128160,470000,14951600],
+['2024-06-29','Мянганы сорилт (хоног)','A camp',41,161200,0,6609200],
+['2024-06-30','EY Mongolia','A camp',90,250000,600000,23100000],
+['2024-07-04','Уан стоп солюшн (НӨАТ)','A camp',40,127500,1430000,6530000],
+['2024-07-06','AODE','A camp',90,160000,0,14400000],
+['2024-07-07','Monkor','A camp',36,126000,432000,4968000],
+['2024-07-26','INVESCORE PROPERTY','A camp',60,160000,4040000,12640000],
+['2024-08-02','Мэдээлэл холбоо сүлжээ','A camp',335,150000,0,46041750],
+['2024-08-03','MSM (өдрөөр)','A camp',230,162000,6000000,43260000],
+['2024-08-08','Соёл велнес summer win','A camp',115,170000,0,19550000],
+['2024-08-10','Monkon','A camp',278,171000,509000,44412000],
+['2024-08-10','GOLOMT','A camp',34,160000,0,5440000],
+['2024-08-17','ezy pay','A camp',40,184000,190000,7550000],
+['2024-08-23','Unitel','A camp',53,162000,1880000,16994000],
+['2024-08-24','Катеринг астра','A camp',30,142500,754000,5029000],
+['2024-08-26','EXA','A camp',19,144000,0,2188800],
+['2024-06-15','Оюу толгой ХХК','B camp',44,176000,5500000,13244000],
+['2024-06-16','Багануур 12-р анги','B camp',38,100000,250000,4050000],
+['2024-06-20','Ангийн уулзалт','B camp',27,105600,240000,3091200],
+['2024-06-22','Хувь хүн (88500401)','B camp',18,160000,0,2840000],
+['2024-06-23','Интерстандарт брьюри','B camp',76,116160,2128000,10956160],
+['2024-06-29','Оюу толгой ХХК','B camp',50,176000,10930000,19730000],
+['2024-06-30','Төрийн банк','B camp',26,105600,0,2745600],
+['2024-07-05','САНДВИК (өдрөөр)','B camp',100,176000,4180000,21780000],
+['2024-07-28','Electro complex','B camp',20,123200,0,3380000],
+['2024-08-02','Интерсайнс ХХК','B camp',30,180000,3400000,8800000],
+['2024-08-03','Интерсайнс ХХК','B camp',30,180000,660000,6060000],
+['2024-08-05','Asiana restaurant','B camp',100,138600,4140000,18000000],
+['2024-08-10','Inginer geodiz','B camp',27,174000,680000,5378000],
+['2024-08-23','Zero technology','B camp',24,180000,2368000,6688000],
+['2024-08-24','Grand sutai','B camp',27,180000,1240000,6100000],
+['2024-09-08','Мэйджор саплай ХХК','B camp',44,264000,800000,12416000],
+['2024-06-08','ХХБ','C camp',13,160000,0,2080000],
+['2024-08-10','Тэгш анар ХХК','C camp',25,180000,1409000,5909000],
+['2024-08-23','Хувь хүн (86119025)','C camp',16,180000,0,2880000],
+['2024-07-28','TOP MOTORS (Хэнтий)','Захиалгат',76,148600,4149000,15442600],
+['2024-08-08','ЭМ ЖИ ЭЛ Геохүдэр ХХК (Хагийн хар нуур)','Захиалгат',0,0,10000000,42000000],
+['2024-08-16','NCD (Зоргол хайрхан)','Захиалгат',0,0,600000,49440000],
+['2024-09-14','MCM','Захиалгат',100,221320,410000,22542000],
+['2024-06-08','Талын салхи (фестиваль)','Түрээс',0,150000,0,7500000],
+['2024-07-04','Интерстандарт брьюри','Түрээс',4,1500000,60000,6060000],
+['2024-07-06','Тухлах газар','Түрээс',10,150000,0,1500000],
+['2024-07-26','MCS teckpack (Тэрэлж)','Түрээс',0,0,770000,17494400],
+
+['2025-06-06','Шүүхийн шийдвэр','A camp',26,135000,200000,3710000],
+['2025-06-07','Талын салхи','C camp',100,440000,0,38800000],
+['2025-06-08','Говь хангай кашмер','B camp',30,96000,900000,3780000],
+['2025-06-10','Говь ХК кашмер','B camp',49,130800,0,6409200],
+['2025-06-10','Inter charm','A camp',80,158000,2735000,15375000],
+['2025-06-13','Юнител ХХК','C camp',26,225000,900000,6750000],
+['2025-06-13','Номин ХХК','A camp',100,162000,0,16400000],
+['2025-06-14','Хаан банк','B camp',69,133000,303000,9480000],
+['2025-06-14','TDB','A camp',100,192000,3400000,22600000],
+['2025-06-15','UB comedy','C camp',25,180000,0,4500000],
+['2025-06-15','Аствишн','A camp',41,130800,1560000,6922800],
+['2025-06-15','Праймван ХХК','B camp',41,118000,0,4838000],
+['2025-06-17','Флора флорал продактс','A camp',42,118800,900000,5889600],
+['2025-06-20','Пропем прайм партнерс ХХК','A camp',27,216000,1960000,7792000],
+['2025-06-21','Бластек ХХК','B camp',30,192000,1500000,7260000],
+['2025-06-26','MCS Проперти ХХК','A camp',250,336000,9600000,93600000],
+['2025-06-27','Камминс Монголиа','B camp',80,170000,5520000,19120000],
+['2025-06-29','Ариг Интернэшнл ХХК','A camp',150,118800,950000,18770000],
+['2025-07-01','Premier sport','A camp',54,137667,900000,8334000],
+['2025-07-04','Эхлэл','A camp',171,180000,20128000,50908000],
+['2025-07-16','Urka Үүрцайх','Захиалгат',20,660000,6000000,19200000],
+['2025-07-16','Ургийн баяр','B camp',189,108000,2620000,23032000],
+['2025-07-17','Жавхлант бэсрэг наадам','B camp',165,164000,1000000,28000000],
+['2025-07-20','Los angeles restaurant','A camp',13,200000,0,2600000],
+['2025-07-25','Нөмөр','B camp',59,173389,2100000,12329951],
+['2025-07-25','Intelmind','A camp',108,230000,0,24840000],
+['2025-07-30','Аригү Ко','Нүүдэл',19,86000,19882000,21516000],
+['2025-08-01','MCS Интернэйшнл ХХК','A camp',153,180000,3970000,31510000],
+['2025-08-01','Амар даатгал','C camp',25,180000,2656000,7156000],
+['2025-08-02','Premium concrete — Оюу толгой','A camp',33,180000,5412000,11352000],
+['2025-08-02','Дижитал Апекс ХХК','B camp',47,180000,0,8460000],
+['2025-08-08','Pickpack','A camp',270,180000,19079000,67679000],
+['2025-08-09','MCM','Нүүдэл',250,162000,1600000,42100000],
+['2025-08-15','Мон-Аэртур','Нүүдэл',30,288000,0,8640000],
+['2025-08-15','Монголиа Талент Нэтворк ХХК','C camp',14,180000,500000,3020000],
+['2025-08-15','MCS Holding','B camp',45,198000,900000,9810000],
+['2025-08-16','Хурд групп','C camp',25,180000,90000,4590000],
+['2025-08-16','CU (2 өдөр)','A camp',536,172000,220000,92412000],
+['2025-08-22','Monnis','Нүүдэл',70,290000,6000000,26300000],
+['2025-08-22','5 богд','A camp',90,150000,2800000,16300000],
+['2025-09-05','NBIK','A camp',180,162000,1000000,30160000],
+['2025-09-06','Барилгын компани','B camp',39,180000,3060000,10080000],
+['2025-09-13','Тээвэр хөгжлийн банк','A camp',218,150000,0,32700000],
+];
+
+// Кемп/төрлийн бичилт жил бүр өөр байсныг (A camp / A CAMP / захиалгат …) нэг болгоно
+function nhKind(s) {
+  const t = String(s || '').trim();
+  if (/^a\s*camp$/i.test(t)) return 'A camp';
+  if (/^b\s*camp$/i.test(t)) return 'B camp';
+  if (/^[cс]\s*camp$/i.test(t)) return 'C camp';
+  return t || 'Тодорхойгүй';
+}
+const NH_YEARS = [...new Set(NOMAAD_HISTORY.map(r => r[0].slice(0, 4)))].sort();
+
+function renderNomaadHistory() {
+  if (!state.nhF) state.nhF = { year: 'all', q: '' };
+  const f = state.nhF;
+  const q = (f.q || '').trim().toLowerCase();
+  const rows = NOMAAD_HISTORY
+    .filter(r => (f.year === 'all' || r[0].slice(0, 4) === f.year))
+    .filter(r => !q || (r[1] + ' ' + r[2]).toLowerCase().includes(q))
+    .sort((a, b) => b[0].localeCompare(a[0]));
+  const n = rows.length;
+  const sum = rows.reduce((s, r) => s + r[6], 0);
+  const guests = rows.reduce((s, r) => s + r[3], 0);
+  const addon = rows.reduce((s, r) => s + r[5], 0);
+  const bars = (title, note, map) => {
+    const list = Object.values(map).sort((a, b) => b.sum - a.sum);
+    const tot = list.reduce((s, r) => s + r.sum, 0) || 1;
+    const mx = list.length ? Math.max(...list.map(r => r.sum)) : 1;
+    const body = list.length ? list.map((r, i) => `<div class="nh-bar">
+      <div class="nh-bar-l"><span class="nh-bar-k">${escapeHtml(r.k)} <span class="nh-dim">(${r.count})</span></span><span class="nh-dim"><b class="nh-strong">${fmtMoney(r.sum)}</b> · ${Math.round(r.sum / tot * 100)}%</span></div>
+      <div class="nh-track"><div class="nh-fill nh-c${i % 6}" style="width:${Math.max(2, Math.round(r.sum / mx * 100))}%"></div></div>
+    </div>`).join('') : '<div class="nh-dim">Дата алга.</div>';
+    return `<div class="nh-card"><div class="nh-card-h">${title}${note ? ` <span class="nh-note">${note}</span>` : ''}</div>${body}</div>`;
+  };
+  const group = (keyFn) => {
+    const m = {};
+    rows.forEach(r => { const k = keyFn(r); (m[k] = m[k] || { k, count: 0, sum: 0 }).count++; m[k].sum += r[6]; });
+    return m;
+  };
+  const byMonth = group(r => r[0].slice(0, 7));
+  const monthList = Object.values(byMonth).sort((a, b) => a.k.localeCompare(b.k));
+  const monthMx = monthList.length ? Math.max(...monthList.map(r => r.sum)) : 1;
+  const kpi = (label, val, cls, sub) => `<div class="nh-kpi"><div class="nh-kpi-l">${label}</div><div class="nh-kpi-v ${cls || ''}">${val}</div>${sub ? `<div class="nh-kpi-s">${sub}</div>` : ''}</div>`;
+  const chip = (val, label) => `<button class="nh-chip${f.year === val ? ' active' : ''}" data-nh-year="${val}">${label}</button>`;
+  return `<div class="nh-wrap">
+    <div class="nh-hdr">
+      <div class="nh-chips">${chip('all', 'Бүх жил')}${NH_YEARS.map(y => chip(y, y)).join('')}</div>
+      <div class="nh-tools">
+        <label class="nh-search">🔍 <input id="nh-q" type="search" placeholder="Харилцагч, кемп…" value="${escapeHtml(f.q || '')}"></label>
+        <button class="btn btn-primary nh-xls" data-nh-xls>📥 Excel</button>
+      </div>
+    </div>
+    <div class="nh-note nh-note-block">Апп нэвтрэхээс өмнөх борлуулалтын архив (Excel тайлангаас). Зөвхөн харах — санхүү, тайлан, KPI-д ОРОХГҮЙ.</div>
+    <div class="nh-kpis">
+      ${kpi('Захиалга', n + '')}
+      ${kpi('Нийт борлуулалт', fmtMoney(sum), 'nh-ok')}
+      ${kpi('Дундаж захиалга', fmtMoney(n ? Math.round(sum / n) : 0))}
+      ${kpi('Нийт хүн', guests.toLocaleString('mn-MN'))}
+      ${kpi('1 хүнд ногдох', fmtMoney(guests ? Math.round(sum / guests) : 0))}
+      ${kpi('Нэмэлт үйлчилгээ', fmtMoney(addon), 'nh-warn', 'багцаас гадуур')}
+    </div>
+    ${f.year === 'all' ? bars('📆 Жил бүрээр', '', group(r => r[0].slice(0, 4))) : ''}
+    ${bars('🏔 Кемп / төрлөөр', '', group(r => nhKind(r[2])))}
+    <div class="nh-card"><div class="nh-card-h">📅 Сар бүрээр</div>${monthList.length ? monthList.map(r => `<div class="nh-bar">
+      <div class="nh-bar-l"><span class="nh-bar-k">${r.k} <span class="nh-dim">(${r.count})</span></span><span class="nh-dim"><b class="nh-strong">${fmtMoney(r.sum)}</b></span></div>
+      <div class="nh-track"><div class="nh-fill nh-c1" style="width:${Math.max(2, Math.round(r.sum / monthMx * 100))}%"></div></div>
+    </div>`).join('') : '<div class="nh-dim">Дата алга.</div>'}</div>
+    <div class="nh-card">
+      <div class="nh-card-h">📋 Арга хэмжээ бүрээр <span class="nh-note">${n} мөр</span></div>
+      <div class="nh-tblwrap"><table class="nh-tbl">
+        <thead><tr><th>Огноо</th><th>Харилцагч</th><th>Кемп / төрөл</th><th class="nh-r">Хүн</th><th class="nh-r">Нэгж үнэ</th><th class="nh-r">Нэмэлт</th><th class="nh-r">Нийт</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td class="nh-nowrap">${r[0]}</td><td>${escapeHtml(r[1])}</td><td>${escapeHtml(nhKind(r[2]))}</td>
+          <td class="nh-r">${r[3] || ''}</td><td class="nh-r">${r[4] ? fmtMoney(r[4]) : ''}</td>
+          <td class="nh-r">${r[5] ? fmtMoney(r[5]) : ''}</td><td class="nh-r nh-strong">${fmtMoney(r[6])}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+function attachNomaadHistory() {
+  const f = state.nhF || (state.nhF = { year: 'all', q: '' });
+  document.querySelectorAll('[data-nh-year]').forEach(b => b.onclick = () => { f.year = b.dataset.nhYear; render(); });
+  const s = document.getElementById('nh-q');
+  if (s) s.oninput = () => {
+    clearTimeout(state._nhT);
+    const pos = s.selectionStart;
+    state._nhT = setTimeout(() => {
+      f.q = s.value; render();
+      const el = document.getElementById('nh-q');
+      if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (_) {} }
+    }, 250);
+  };
+  const x = document.querySelector('[data-nh-xls]');
+  if (x) x.onclick = () => {
+    const f2 = state.nhF || {};
+    const list = NOMAAD_HISTORY.filter(r => f2.year === 'all' || !f2.year || r[0].slice(0, 4) === f2.year).sort((a, b) => a[0].localeCompare(b[0]));
+    exportXlsSheets([{ name: 'Түүх', columns: [90, 220, 110, 60, 110, 120, 130],
+      head: ['Огноо', 'Харилцагч', 'Кемп / төрөл', 'Хүн', 'Нэгж үнэ', 'Нэмэлт', 'Нийт'],
+      rows: list.map(r => [{ v: r[0], t: 'String' }, { v: r[1], t: 'String' }, { v: nhKind(r[2]), t: 'String' },
+        { v: r[3], t: 'Number' }, { v: r[4], t: 'Number', s: 'money' }, { v: r[5], t: 'Number', s: 'money' }, { v: r[6], t: 'Number', s: 'money' }]) }],
+      `NOMAAD-туух-${f2.year && f2.year !== 'all' ? f2.year : '2023-2025'}.xls`);
+    showToast(`${list.length} мөр Excel-д татагдлаа`, 'success');
+  };
+}
+
 function renderNomaadToggle() {
   const clN = state.nomaadOrders ? nomaadCleanupRows().length : 0;
   return `<div class="na-topbar">
@@ -14632,6 +14973,7 @@ function renderNomaadToggle() {
       <button class="na-vt${nomaadViewMode === 'pipeline' ? ' active' : ''}" data-na-view="pipeline">📊 Захиалга</button>
       <button class="na-vt${nomaadViewMode === 'calendar' ? ' active' : ''}" data-na-view="calendar">📅 Календарь</button>
       <button class="na-vt${nomaadViewMode === 'analytics' ? ' active' : ''}" data-na-view="analytics">📈 Аналитик</button>
+      <button class="na-vt${nomaadViewMode === 'history' ? ' active' : ''}" data-na-view="history">📜 Түүх</button>
       ${state.isCEO ? `<button class="na-vt${nomaadViewMode === 'cleanup' ? ' active' : ''}" data-na-view="cleanup">🧹 Цэгцлэх${clN ? ` <span style="background:var(--warn,#d97706);color:#fff;border-radius:9px;padding:0 6px;font-size:10px;">${clN}</span>` : ''}</button>` : ''}
     </div>
     <button class="btn btn-primary na-newbtn" data-na-new>+ Шинэ үнийн санал</button>
@@ -15154,6 +15496,7 @@ function renderNomaadCalendar() {
 
 function attachNomaadHandlers() {
   if (nomaadViewMode === 'analytics') attachNomaadAnalytics();
+  if (nomaadViewMode === 'history') attachNomaadHistory();
   if (nomaadViewMode === 'cleanup') document.querySelectorAll('[data-cleanup-open]').forEach(r => r.onclick = () => openNomaadEditModal(r.dataset.cleanupOpen));
   document.querySelectorAll('[data-nomaad-toggle]').forEach(h => {
     h.addEventListener('click', (e) => {
@@ -20441,6 +20784,101 @@ function calcDeliveryFee(zone, km) {
 const _DLV_RE = /⟦DLV\|([a-z]+)\|(\d+)\|(\d+)⟧/;
 function parseDelivery(note) { const m = String(note || '').match(_DLV_RE); return m ? { zone: m[1], km: +m[2], fee: +m[3] } : null; }
 function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Math.round(km) || 0}|${Math.round(fee) || 0}⟧`; }
+/* ⟦CMP|шалтгаан|дүн⟧ — БУУЛГАЛТ (манай буруугаас өгсөн хөнгөлөлт) 2026-09-09.
+   Хоцорсон, эвдэрсэн, дутуу очсон, ашиглагдаагүй — эдгээр нь ЗАРДАЛ БИШ,
+   ОРЛОГЫН БУУРАЛТ. Тиймээс захиалга дээр суудаг ба `orderRevenue`-аас хасагдана:
+   тухайн салбарын орлого нь бодитоор буурч, ашгийн марж үнэн харагдана.
+   ⚠ Мөнгө аль хэдийн төлөгдсөн бол буцаалт нь банкны хуулгад гарна — тэр мөрийг
+   ЗАРДАЛ гэж давхар тоолохгүй (`finIsCustomerRefund`), эс бөгөөс нэг мөнгө хоёр
+   удаа хасагдана. Барьцаа буцаалт (5810)-тай ижил зарчим. */
+const _CMP_RE = /⟦CMP\|([^|⟧]*)\|(\d+)⟧/;
+const ORDER_CMP_REASONS = ['Хоцорч хүргэсэн', 'Эвдэрсэн / дутуу', 'Ашиглагдаагүй', 'Чанар хангаагүй', 'Бусад'];
+function parseOrderCmp(note) { const m = String(note || '').match(_CMP_RE); return m ? { reason: m[1], amount: +m[2] } : null; }
+function encodeOrderCmp(reason, amount) {
+  const a = Math.max(0, Math.round(Number(amount) || 0));
+  if (!a) return '';
+  return `⟦CMP|${String(reason || 'Бусад').replace(/[|⟧⟦]/g, '')}|${a}⟧`;
+}
+function setOrderCmpNote(note, reason, amount) {
+  const clean = String(note || '').replace(_CMP_RE, '').replace(/\s{2,}/g, ' ').trim();
+  const tok = encodeOrderCmp(reason, amount);
+  return tok ? `${clean} ${tok}`.trim() : clean;
+}
+function orderCmpAmount(o) { const c = parseOrderCmp(o && o.note); return c ? c.amount : 0; }
+// Захиалгын талбар засах (PATCH). `note` бичихийн ӨМНӨ DB-ээс шинэчилж уншина —
+// өөр хүн зэрэг шат ахиулсан бол түүний бичсэн токеныг дарж бичихгүй.
+async function patchOrderFields(o, fields) {
+  const oid = o && o.id; if (!oid) throw new Error('id алга');
+  const body = { ...fields, updated_at: new Date().toISOString() };
+  if (Object.prototype.hasOwnProperty.call(fields, 'note')) {
+    try {
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`,
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+      if (gr.ok) {
+        const rows = await gr.json();
+        if (rows && rows[0] && rows[0].note != null) {
+          const fresh = String(rows[0].note);
+          const cmp = parseOrderCmp(fields.note);
+          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount) : setOrderCmpNote(fresh, '', 0);
+        }
+      }
+    } catch (_) { /* сүлжээ унавал санах ойн note-оор бичнэ */ }
+  }
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}`, {
+    method: 'PATCH',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  Object.assign(o, body);
+  return true;
+}
+// Буулгалт бүртгэх — дүн + шалтгаан. Захиалгын note-д ⟦CMP⟧ токен болж суух ба
+// орлогоос шууд хасагдана. Тайланд шалтгаанаар нь нэгтгэгдэнэ.
+async function openOrderCmpModal(id) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
+  if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буулгалт бүртгэх эрх алга', 'warn', 3000); return; }
+  const cur = parseOrderCmp(o.note) || { reason: ORDER_CMP_REASONS[0], amount: 0 };
+  const total = Number(o.total_mnt) || 0;
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:440px;">
+    <h2>↩️ Буулгалт бүртгэх</h2>
+    <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')} · нийт <b>${fmtMoney(total)}</b><br>
+      Манай буруугаас өгсөн хөнгөлөлт. Энэ нь <b>зардал биш, орлогын бууралт</b> — тухайн салбарын борлуулалт нь бодитоор буурна.</p>
+    <label class="fld">Шалтгаан<select id="cmp-reason">${ORDER_CMP_REASONS.map(r => `<option${r === cur.reason ? ' selected' : ''}>${escapeHtml(r)}</option>`).join('')}</select></label>
+    <label class="fld">Буулгах дүн (₮)<input id="cmp-amt" class="money-input ui-raw" inputmode="numeric" value="${cur.amount ? moneyFmtInput(cur.amount) : ''}" placeholder="0"></label>
+    <div class="amo-prev" id="cmp-prev"></div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn" id="cmp-clear"${cur.amount ? '' : ' hidden'} style="color:var(--danger);">Буулгалт хасах</button>
+      <span style="display:flex;gap:8px;"><button class="btn" id="cmp-cancel">Болих</button><button class="btn btn-primary" id="cmp-save">Хадгалах</button></span>
+    </div></div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  const amtEl = modal.querySelector('#cmp-amt'), prev = modal.querySelector('#cmp-prev');
+  const paint = () => {
+    const a = moneyVal(amtEl);
+    prev.textContent = a > 0 ? `Борлуулалт ${fmtMoney(total)} → ${fmtMoney(Math.max(0, total - (Number(o.deposit_mnt) || 0) - a))}` : '';
+  };
+  amtEl.addEventListener('input', paint); paint();
+  modal.querySelector('#cmp-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const apply = async (amount, reason) => {
+    const note = setOrderCmpNote(o.note, reason, amount);
+    try { await patchOrderFields(o, { note }); o.note = note; }
+    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+    close();
+    showToast(amount ? `↩️ ${fmtMoney(amount)} буулгалт бүртгэлээ` : 'Буулгалт хасагдлаа', 'success', 3000);
+    render();
+  };
+  modal.querySelector('#cmp-save').onclick = async () => {
+    const a = moneyVal(amtEl);
+    if (!(a > 0)) { showToast('Дүн оруулна уу', 'warn', 2500); return; }
+    if (a > total) { showToast('Буулгалт нь захиалгын дүнгээс их байж болохгүй', 'warn', 3500); return; }
+    await apply(a, modal.querySelector('#cmp-reason').value);
+  };
+  modal.querySelector('#cmp-clear').onclick = async () => { await apply(0, ''); };
+  modal.classList.add('open');
+}
 // ⟦VAT|amount⟧ note token — НӨАТ хассан гэдэг + хассан дүн (түрээсээс −5%). app_orders-д багана нэмэхгүйгээр (RT/DLV/SL-тэй ижил).
 const _VAT_RE = /⟦VAT\|(\d+)⟧/;
 function parseVat(note) { const m = String(note || '').match(_VAT_RE); return m ? +m[1] : null; }
@@ -21222,7 +21660,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -21267,6 +21705,7 @@ function bqOrderCard(o) {
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
+    ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
     ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
@@ -23830,8 +24269,11 @@ function draftPipelineTotal(orders) {
 function orderRevenue(o, basis) {
   const depIncluded = String(o.source || '').toLowerCase() !== 'booqable';
   const dep = depIncluded ? (Number(o.deposit_mnt) || 0) : 0;
-  const rental = Math.max(0, (Number(o.total_mnt) || 0) - dep);
-  return basis === 'cash' ? Math.min(Number(o.paid_mnt) || 0, rental) : rental;
+  // БУУЛГАЛТ (⟦CMP⟧) — манай буруугаас өгсөн хөнгөлөлт нь орлогын бууралт.
+  // Зардал талд БИЧИХГҮЙ: тэгвэл орлого бүтэн харагдаад маржийг гажуудуулна.
+  const cmp = orderCmpAmount(o);
+  const rental = Math.max(0, (Number(o.total_mnt) || 0) - dep - cmp);
+  return basis === 'cash' ? Math.min(Math.max(0, (Number(o.paid_mnt) || 0) - cmp), rental) : rental;
 }
 // Тухайн сарын Mevent орлого — задаргаатай (захиалга/ангилал/бараа)
 function meventIncome(month) {
@@ -23984,6 +24426,13 @@ function finPendingStmt(t) { return /⟦PENDST⟧/.test(String(t.justification |
 // Барьцаа буцаалт (5810) = харилцагчийн барьцааг буцаах — компанийн ЗАРДАЛ БИШ (P&L-д саармаг).
 // Орлого талд барьцаа аль хэдийн хасагдсан (orderRevenue), тиймээс зарлага талд ч хасагдана.
 function finIsDepositReturn(t) { return String((t && t.category) || '').startsWith('5810'); }
+// Үйлчлүүлэгчид буцаасан мөнгө (5800) нь ЗАХИАЛГАД ХОЛБОГДСОН бол зардал БИШ —
+// тухайн захиалгын орлогоос ⟦CMP⟧-ээр аль хэдийн хасагдсан тул давхар тоологдоно.
+// ⚠ Захиалгад холбогдоогүй 5800 (торгууль г.м) нь ЖИНХЭНЭ зардал хэвээр.
+function finIsCustomerRefund(t) {
+  if (!t || !String(t.category || '').startsWith('5800')) return false;
+  return String(t.link_type || t.linkType || '') === 'order' || /⟦LNK\|order\|/.test(String(t.justification || ''));
+}
 // ── Зардлын НЭГДСЭН дүрэм — Тайлан ба Санхүү ижилхэн тоолохын тулд ──
 // Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(6900) + барьцаа буцаалт(5810) БИШ.
 // ── НӨАТ = ЗАРДАЛ (2026-09-07) ───────────────────────────────────────────────
@@ -24019,7 +24468,7 @@ function ensureVatLoaded() {
 }
 function finIsRealExpense(t) {
   return !!t && t.decision === 'approved' && !finPendingStmt(t)
-    && !String(t.category || '').startsWith('6900') && !finIsDepositReturn(t);
+    && !String(t.category || '').startsWith('6900') && !finIsDepositReturn(t) && !finIsCustomerRefund(t);
 }
 // Зардал аль сард тоологдох вэ — basis-аар: 'cash'=гүйлгээ гарсан огноо(requested_at), 'accrual'=ноогдох сар.
 function finExpMonth(t, basis) {
@@ -24046,6 +24495,7 @@ function finBranchPnl(month, basis) {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
     if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
     if (finIsDepositReturn(t)) { depReturn += Number(t.amount) || 0; return; }  // барьцаа буцаалт = зардал БИШ (P&L саармаг)
+    if (finIsCustomerRefund(t)) { return; }                                     // үйлчлүүлэгчид буцаасан = орлогоос хасагдсан
     if (finIsVatPayment(t)) { vatPaid += Number(t.amount) || 0; return; }        // НӨАТ төлөлт — ноогдуулсанаар орлуулна (давхар тоолохгүй)
     const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
   });
@@ -30244,6 +30694,8 @@ async function bootApp() {
   loadServerErrors();   // Ажилтнуудын төхөөрөмж дээр гарсан алдаа — sidebar-т 🔴 (CEO)
   loadHourlyRatings();  // Цагийн ажилтны үнэлгээ (менежер/CEO)
   loadEmployeeAliases();   // хуучин утас/мэйл/нэрийг эзэнтэй нь холбоно (canonKey)
+  // Гараар холбосон хуучин нэр (нэр солиход DB толь бариагүй тохиолдол) — findMember ашиглана
+  if (state.personFixes === undefined) { state.personFixes = null; loadAppConfig('person_name_fixes').then(v => { state.personFixes = (v && typeof v === 'object') ? v : {}; render(); }); }
   loadMemberPerms();    // Хүн бүрийн view хандалтын override (бүгдэд хэрэгтэй — өөрийн эрхээ мэдэх)
   loadRolePerms();      // Албан тушаалын эрх загвар (бүгдэд хэрэгтэй)
   loadMemberBranches(); // Салбар оноолт (дата хамрах хүрээ — бүгдэд хэрэгтэй)

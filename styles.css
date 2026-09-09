@@ -6733,3 +6733,9 @@ select.no-asar-len {
 .nh-nowrap { white-space: nowrap; color: var(--muted); }
 
 .order-cmp { color: var(--warn); font-weight: 600; }
+
+.cmp-cur { background: var(--panel-hover); border-radius: 9px; padding: 8px 11px; font-size: var(--fs-md); margin-bottom: var(--space-3); }
+.cmp-drop { display: block; margin-bottom: var(--space-3); border: 2px dashed var(--warn); border-radius: 10px; padding: 14px; text-align: center; cursor: pointer; background: var(--panel-hover); font-size: var(--fs-md); }
+.cmp-drop #cmp-st { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
+.cmp-got { border: 1px solid var(--warn); border-radius: 9px; padding: 9px 11px; font-size: var(--fs-md); margin-bottom: var(--space-3); line-height: 1.6; }
+.cmp-prev { color: var(--muted); font-size: var(--fs-sm); }

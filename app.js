@@ -6667,7 +6667,7 @@ async function openStatementClassifyModal() {
           : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
           : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.fx ? ` · <b>${escapeHtml(String(r.fx.amt))} ${escapeHtml(r.fx.ccy)}</b> × ${fmtMoney(r.fx.rate)}` : ''}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}${r.cmpMatch ? ` · <span style="color:var(--warn);font-weight:700;">↩️ → #${escapeHtml(String(r.cmpMatch.number))} буулгалт — зардал болохгүй</span>` : ''}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.fx ? ` · <b>${escapeHtml(String(r.fx.amt))} ${escapeHtml(r.fx.ccy)}</b> × ${fmtMoney(r.fx.rate)}` : ''}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}${r.cmpMatch ? ` · <span style="color:var(--warn);font-weight:700;">↩️ → #${escapeHtml(String(r.cmpMatch.number))} буулгалт (${escapeHtml(r.cmpMatch.how || '')}) — зардал болохгүй</span>` : ''}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${ctrl}
       </div>`;
@@ -6735,7 +6735,7 @@ async function openStatementClassifyModal() {
           const hourlyEmp = (emp && emp.type === 'hourly' && _salaryMemo) ? emp : null;
           const cardL4 = detectCardLast4(r.memo);
           const depMatch = depositMatchForStmt(r.memo, r.debit);   // барьцаа буцаалт бол → захиалгад авто холбоно
-          const cmpMatch = depMatch ? null : cmpMatchForStmt(r.memo, r.debit);   // буулгалт бол → захиалгад холбож зардлаас хасна
+          const cmpMatch = depMatch ? null : cmpMatchForStmt(r.memo, r.debit, r.date);   // буулгалт бол → захиалгад холбож зардлаас хасна
           const occ = (occSeen.get(fp) || 0) + 1; occSeen.set(fp, occ);   // энэ хуулган дахь тухайн хээний хэд дэх мөр
           const personal = isPersonalAcct(src);
           const suggest = personal && personalRowSuggest(r.memo, cat);
@@ -14498,18 +14498,30 @@ function depositMatchForStmt(memo, amount) {
 // `finIsCustomerRefund` түүнийг зардлаас хасна.
 // Тулгах шалгуур: дүн ЯГ таарах (буулгалт бол бүтэн дүнгээр буцаадаг) + захиалга
 // идэвхтэй. Утгад захиалгын дугаар байвал түүнийг илүүд үзнэ.
-function cmpMatchForStmt(memo, amount) {
+function cmpMatchForStmt(memo, amount, date) {
   const amt = Math.round(Number(amount) || 0);
   if (!(amt > 0)) return null;
-  const orders = (state.appOrders || []).filter(o => o && _orderActive(o) && orderCmpAmount(o) === amt);
+  let orders = (state.appOrders || []).filter(o => o && _orderActive(o) && orderCmpAmount(o) === amt);
   if (!orders.length) return null;
+  // ① Гүйлгээний утгад захиалгын дугаар байвал ТЭР нь шийднэ (хамгийн баттай).
   const nums = String(memo || '').match(/\d{3,5}/g) || [];
   for (const ns of nums) {
     const o = orders.find(x => String(x.number) === String(parseInt(ns, 10)));
-    if (o) return { id: o.id, number: o.number, amount: amt };
+    if (o) return { id: o.id, number: o.number, amount: amt, how: 'дугаар' };
   }
-  // Дугаар дурдаагүй ч дүн ЯГ таарсан ГАНЦ захиалга байвал холбоно (олон бол хүн шийднэ).
-  return orders.length === 1 ? { id: orders[0].id, number: orders[0].number, amount: amt } : null;
+  // ② Дугааргүй бол PDF баримтын ОГНОО-гоор ялгана (±3 хоног).
+  const d = String(date || '').slice(0, 10);
+  if (d && orders.length > 1) {
+    const near = orders.filter(o => {
+      const cd = (parseOrderCmp(o.note) || {}).date;
+      if (!cd) return false;
+      return Math.abs((new Date(d) - new Date(cd)) / 86400000) <= 3;
+    });
+    if (near.length === 1) return { id: near[0].id, number: near[0].number, amount: amt, how: 'огноо' };
+    if (near.length) orders = near;
+  }
+  // ③ Дүн ЯГ таарсан ГАНЦ захиалга үлдвэл холбоно; олон бол ХҮН шийднэ.
+  return orders.length === 1 ? { id: orders[0].id, number: orders[0].number, amount: amt, how: 'дүн' } : null;
 }
 // Ашгийн мөр зөвхөн бүх санхүүг хардаг хүнд (ажилтанд зөвхөн өөрийн хүсэлт ирдэг тул дутуу дүн харагдана)
 // Захиалгын МӨНГӨН дүн харах эрх. Агуулах/цэвэрлэгч/жолооч зэрэг гүйцэтгэгч
@@ -20813,18 +20825,19 @@ function encodeDelivery(zone, km, fee) { return `⟦DLV|${zone || 'pickup'}|${Ma
    ⚠ Мөнгө аль хэдийн төлөгдсөн бол буцаалт нь банкны хуулгад гарна — тэр мөрийг
    ЗАРДАЛ гэж давхар тоолохгүй (`finIsCustomerRefund`), эс бөгөөс нэг мөнгө хоёр
    удаа хасагдана. Барьцаа буцаалт (5810)-тай ижил зарчим. */
-const _CMP_RE = /⟦CMP\|([^|⟧]*)\|(\d+)(?:\|([^⟧]*))?⟧/;
+const _CMP_RE = /⟦CMP\|([^|⟧]*)\|(\d+)(?:\|([^|⟧]*))?(?:\|([^⟧]*))?⟧/;
 const ORDER_CMP_REASONS = ['Хоцорч хүргэсэн', 'Эвдэрсэн / дутуу', 'Ашиглагдаагүй', 'Чанар хангаагүй', 'Бусад'];
-function parseOrderCmp(note) { const m = String(note || '').match(_CMP_RE); return m ? { reason: m[1], amount: +m[2], receipt: m[3] || '' } : null; }
-function encodeOrderCmp(reason, amount, receipt) {
+function parseOrderCmp(note) { const m = String(note || '').match(_CMP_RE); return m ? { reason: m[1], amount: +m[2], receipt: m[3] || '', date: m[4] || '' } : null; }
+function encodeOrderCmp(reason, amount, receipt, date) {
   const a = Math.max(0, Math.round(Number(amount) || 0));
   if (!a) return '';
-  const r = String(receipt || '').replace(/[|⟧⟦]/g, '');
-  return `⟦CMP|${String(reason || 'Бусад').replace(/[|⟧⟦]/g, '')}|${a}${r ? '|' + r : ''}⟧`;
+  const clean = (v) => String(v || '').replace(/[|⟧⟦]/g, '');
+  const r = clean(receipt), d = clean(String(date || '').slice(0, 10));
+  return `⟦CMP|${clean(reason) || 'Бусад'}|${a}${r || d ? '|' + r : ''}${d ? '|' + d : ''}⟧`;
 }
-function setOrderCmpNote(note, reason, amount, receipt) {
+function setOrderCmpNote(note, reason, amount, receipt, date) {
   const clean = String(note || '').replace(_CMP_RE, '').replace(/\s{2,}/g, ' ').trim();
-  const tok = encodeOrderCmp(reason, amount, receipt);
+  const tok = encodeOrderCmp(reason, amount, receipt, date);
   return tok ? `${clean} ${tok}`.trim() : clean;
 }
 function orderCmpAmount(o) { const c = parseOrderCmp(o && o.note); return c ? c.amount : 0; }
@@ -20842,7 +20855,7 @@ async function patchOrderFields(o, fields) {
         if (rows && rows[0] && rows[0].note != null) {
           const fresh = String(rows[0].note);
           const cmp = parseOrderCmp(fields.note);
-          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt) : setOrderCmpNote(fresh, '', 0);
+          body.note = cmp ? setOrderCmpNote(fresh, cmp.reason, cmp.amount, cmp.receipt, cmp.date) : setOrderCmpNote(fresh, '', 0);
         }
       }
     } catch (_) { /* сүлжээ унавал санах ойн note-оор бичнэ */ }
@@ -20911,8 +20924,8 @@ async function openOrderCmpModal(id) {
       st.textContent = '⚠ ' + err.message; st.style.color = 'var(--danger)';
     }
   });
-  const apply = async (amount, reason, receipt) => {
-    const note = setOrderCmpNote(o.note, reason, amount, receipt);
+  const apply = async (amount, reason, receipt, date) => {
+    const note = setOrderCmpNote(o.note, reason, amount, receipt, date);
     try { await patchOrderFields(o, { note }); o.note = note; }
     catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); return false; }
     close();
@@ -20926,11 +20939,11 @@ async function openOrderCmpModal(id) {
     // Баримтыг ledger-т нөөцлөнө — нэг баримт хоёр газар бүртгэгдэхгүй.
     try { await reserveReceipt(rec.receiptId, { fp: rec.fpKey, amount: rec.amount, date: rec.date, ref: 'буулгалт #' + (o.number || ''), usedIn: 'cmp:' + o.id }); }
     catch (e) { /* сүлжээ унасан ч захиалга дээр бичигдэнэ — дараа тулгагдана */ }
-    if (!(await apply(rec.amount, modal.querySelector('#cmp-reason').value, rec.receiptId))) saveBtn.disabled = false;
+    if (!(await apply(rec.amount, modal.querySelector('#cmp-reason').value, rec.receiptId, rec.date))) saveBtn.disabled = false;
   };
   modal.querySelector('#cmp-clear').onclick = async () => {
     if (!(await showConfirm('Буулгалтыг хасах уу? Орлого буцаад бүтэн болно.', { okText: 'Хасах', danger: true }))) return;
-    await apply(0, '', '');
+    await apply(0, '', '', '');
   };
   modal.classList.add('open');
 }

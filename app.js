@@ -19041,7 +19041,10 @@ function openProductModal(p, opts) {
   const invested = cost * (Number(p && p.stock) || 0);
   const roi = invested > 0 ? Math.round(u.revenue / invested * 100) : null;
   // Салбарын нөөцийн анхны утга — шинэ/түрээсийн бол бүгд M-Event, asset бол Чимун
-  const _st0 = isEdit ? (Number(p.stock) || 0) : 1;
+  // Багцын нөөц DB-д хадгалагддаггүй — бүрэлдэхүүнээс тухайн агшинд бодно.
+  const _isPkg0 = isEdit && isPackage(p);
+  const _st0 = _isPkg0 ? packageStock(p) : (isEdit ? (Number(p.stock) || 0) : 1);
+  const _pkgDis = (_isPkg0 || asPkg) ? ' disabled' : '';
   let _qm0, _qc0, _qn0, _qk0;
   if (isEdit && (p.qty_mevent != null || p.qty_chimun != null || p.qty_nomaad != null || p.qty_catering != null)) {
     _qm0 = Number(p.qty_mevent) || 0; _qc0 = Number(p.qty_chimun) || 0; _qn0 = Number(p.qty_nomaad) || 0; _qk0 = Number(p.qty_catering) || 0;
@@ -19065,7 +19068,7 @@ function openProductModal(p, opts) {
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cat"><span class="pm-menu-i">📷</span><span class="pm-menu-t">Каталог<em>${escapeHtml(p && p.category || 'ангилал сонгоогүй')}${_nImg ? ` · ${_nImg} зураг` : ' · зураггүй'}</em></span>${_pcanHtml('catalog')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="price"><span class="pm-menu-i">🏷</span><span class="pm-menu-t">Түрээсийн үнэ<em>${Number(p && p.price) > 0 ? `${fmtMoneyShort(Number(p.price))}/өдөр` : 'үнэ оруулаагүй'}</em></span>${_pcanHtml('price')}</button>
         <button type="button" class="pm-menu-row ui-raw" data-pmgo="cost"><span class="pm-menu-i">💰</span><span class="pm-menu-t">Өртөг ба хөрөнгө<em>${isPackage(p) ? 'багц — бүрэлдэхүүн бүр дээрээ' : cost > 0 ? `${fmtMoneyShort(cost)} × ${Number(p && p.stock) || 0}ш` : 'өртөг оруулаагүй'}</em></span>${_pcanHtml('cost')}</button>
-        <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${(Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>
+        <button type="button" class="pm-menu-row ui-raw" data-pmgo="stock"><span class="pm-menu-i">📦</span><span class="pm-menu-t">Нөөц ба салбар<em>${_st0}ш${_isPkg0 ? ' — бүрэлдэхүүнээс бодогдсон' : (Number(p && p.broken) || 0) + (Number(p && p.maintenance) || 0) ? ` · ${(Number(p.broken) || 0) + (Number(p.maintenance) || 0)} эвдэрсэн/засварт` : ''}</em></span>${_pcanHtml('stock')}</button>
       </div>
       ${isEdit && state.isCEO ? `<div class="pm-danger">
         <button type="button" class="btn ui-raw pm-archive" id="pm-archive">🗄 Барааг архивлах</button>
@@ -19142,10 +19145,11 @@ function openProductModal(p, opts) {
         <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
         <div class="pm-pane-t">📦 Нөөц ба салбар</div>
         <div class="pm-lock" data-lockhint="stock" hidden>🔒 Танд энэ хэсгийг засах эрх алга — зөвхөн харна.</div>
+        ${(_isPkg0 || asPkg) ? '<div class="pm-hint">📦 Багцын нөөц гараар тохируулагддаггүй — бүрэлдэхүүн бүрийн нөөцөөс тухайн агшинд бодогдоно.</div>' : ''}
         <div class="pm-grid">
-        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${isEdit ? (Number(p.stock) || 0) : 1}"></label>
-        <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"></label>
-        <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"></label>
+        <label>Нийт нөөц (ширхэг)<input id="pm-stock" type="number" value="${_st0}"${_pkgDis}></label>
+        <label>⚠ Эвдэрсэн<input id="pm-broken" type="number" min="0" value="${Number(p && p.broken) || 0}"${_pkgDis}></label>
+        <label>🔧 Засварт<input id="pm-maintenance" type="number" min="0" value="${Number(p && p.maintenance) || 0}"${_pkgDis}></label>
         </div>
       <div class="pm-working" id="pm-working"></div>
       <div class="pm-branch">
@@ -19156,10 +19160,10 @@ function openProductModal(p, opts) {
           <button type="button" class="f-link-type" data-brpick="n">⛺ NOMAAD</button>
         </div>`}
         <div class="pm-branch-grid">
-          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"></label>
-          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"></label>
-          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"></label>
-          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"></label>
+          <label>🎪 M-Event<input type="number" min="0" id="pm-qm" value="${_qm0}"${_pkgDis}></label>
+          <label>🏢 Чимун дотоод<input type="number" min="0" id="pm-qc" value="${_qc0}"${_pkgDis}></label>
+          <label>⛺ NOMAAD<input type="number" min="0" id="pm-qn" value="${_qn0}"${_pkgDis}></label>
+          <label>🍽 Катеринг<input type="number" min="0" id="pm-qk" value="${_qk0}"${_pkgDis}></label>
         </div>
         <div class="pm-branch-status" id="pm-branch-status"></div>
       </div>
@@ -19485,7 +19489,10 @@ async function submitProductModal(modal, orig, btn) {
     name, name_en: g('pm-nameen') || null, category: cat, sku, code,   // sku === code === M-xxx
     price: moneyVal(modal.querySelector('#pm-price')), deposit: moneyVal(modal.querySelector('#pm-deposit')),
     setup_fee: moneyVal(modal.querySelector('#pm-setup')),   // суурилуулалтын нэгж хөлс (0 = нэрээр default)
-    stock: isPkg ? packageStock({ bundle_items: bundle }) : (_qm + _qc + _qn + _qk),
+    // Багцын нөөц ХАДГАЛАГДАХГҮЙ (0). Бүрэлдэхүүн өөрчлөгдөхөд хоцордог хуулбар
+    // болохоос гадна «багц бол бүтээгдэхүүн биш» дүрмийг зөрчинө. Апп ч, сайт ч
+    // packageStock-оор тухайн агшинд бодно.
+    stock: isPkg ? 0 : (_qm + _qc + _qn + _qk),
     broken: isPkg ? 0 : (Number(g('pm-broken')) || 0),
     maintenance: isPkg ? 0 : (Number(g('pm-maintenance')) || 0),
     photos: images, photo: images[0] || '',   // эхний зураг = нүүр

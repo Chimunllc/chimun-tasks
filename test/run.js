@@ -1749,7 +1749,33 @@ function finish() {
   }];
   eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 0, 'нөөц: цуцалсан захиалга эзлэхгүй');
 
+  // СУУРИЛУУЛАЛТЫН ЦОНХ — ачаа үйлчлүүлэгч дээр байхад нөөц ЧӨЛӨӨТ харагдаж байв.
+  // `installing` = хүргэсэн, суурилуулж байгаа; `teardown` = буулгасан, агуулахад
+  // хараахан ирээгүй. 2026-09-09 хүртэл _ORDER_OCCUPYING-д ороогүй байсан.
+  for (const stt of ['installing', 'teardown']) {
+    st.appOrders = [{
+      number: 1478, status: stt, paid_mnt: 100000, starts_at: '2026-09-16', stops_at: '2026-09-17',
+      items: [{ sku: 'f83fc516-aaaa', name: 'Асар 6м өргөн', qty: 2 }],
+    }];
+    eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 2,
+       `нөөц: '${stt}' шатанд байгаа бараа нөөц ЭЗЭЛНЭ (агуулахад байхгүй)`);
+  }
+
   st.products = saved.p; st.appOrders = saved.o;
+}
+
+// 40h-2) SCAN: аппын нөөц эзлэх жагсаалт ↔ VPS харагдацын жагсаалт зөрөх ёсгүй.
+// Хоёр тал нэг ижил байх ёстой; зөрвөл апп ба mevent.mn өөр сул үлдэгдэл харуулна.
+// Харагдацыг өөрчлөхөд энэ жагсаалтыг ЗЭРЭГ шинэчилнэ (эсрэгээр нь ч мөн адил).
+{
+  const occ = vm.runInContext('_ORDER_OCCUPYING', sandbox);
+  for (const stt of ['installing', 'teardown']) {
+    ok(occ.includes(stt), `SCAN: _ORDER_OCCUPYING-д '${stt}' байна (харагдацтай ижил)`);
+  }
+  // Агуулахаас гарсан бүх шат нөөц ч эзэлнэ — эс бөгөөс тооллого ба сул үлдэгдэл зөрнө.
+  const out = vm.runInContext('STOCK_OUT_STATUSES', sandbox);
+  const missing = out.filter(s => !occ.includes(s));
+  ok(missing.length === 0, `SCAN: STOCK_OUT_STATUSES бүгд нөөц эзэлнэ (дутуу: ${missing.join(',') || '—'})`);
 }
 
 // 40i) TDZ хамгаалалт — «Агуулахад авсан» цонх нээгддэг эсэх (эх кодын дараалал)

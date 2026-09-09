@@ -4945,3 +4945,53 @@ need(['orderCustType']);
   ok(/document\.getElementById\('ps-save'\)\?\.addEventListener\('click', \(\) => psSaveAll\(\)\)/.test(src),
     'scan: хадгалах товчоор л бичигдэнэ');
 }
+
+// ── NOMAAD түүх (2023–2025 архив) — Excel-ийн «НИЙТ ДҮН»-тэй тулгана ────────
+// Мөр гараар хуулагдсан тул нэг тоо буруу бичигдвэл чимээгүй өнгөрөх аюултай.
+{
+  const H = vm.runInContext('NOMAAD_HISTORY', sandbox);
+  eq(H.length, 130, 'nomaad түүх: 130 арга хэмжээ');
+  const sum = (y) => H.filter(r => r[0].slice(0, 4) === y).reduce((s, r) => s + r[6], 0);
+  const cnt = (y) => H.filter(r => r[0].slice(0, 4) === y).length;
+  eq([cnt('2023'), sum('2023')], [31, 379862681], 'nomaad түүх: 2023 = 31 захиалга / 379,862,681₮');
+  eq([cnt('2024'), sum('2024')], [56, 716036950], 'nomaad түүх: 2024 = 56 захиалга / 716,036,950₮');
+  eq([cnt('2025'), sum('2025')], [43, 885025551], 'nomaad түүх: 2025 = 43 захиалга / 885,025,551₮');
+  eq(H.reduce((s, r) => s + r[6], 0), 1980925182, 'nomaad түүх: нийт 1,980,925,182₮');
+  ok(H.every(r => /^\d{4}-\d{2}(-\d{2})?$/.test(r[0])), 'nomaad түүх: огноо бүр зөв хэлбэртэй');
+  // Кемпийн бичилт нэг болно (кирилл «С camp» ч мөн)
+  eq(F.nhKind('a CAMP'), 'A camp', 'nomaad түүх: кемпийн бичилт нэгдэнэ');
+  eq(F.nhKind('С camp'), 'C camp', 'nomaad түүх: кирилл С → C camp');
+}
+
+// ── БУУЛГАЛТ ⟦CMP⟧ — манай буруугаас өгсөн хөнгөлөлт (2026-09-09) ───────────
+// Хоцорсон/эвдэрсэн/ашиглагдаагүй тохиолдолд өгсөн хөнгөлөлт нь ЗАРДАЛ БИШ,
+// ОРЛОГЫН БУУРАЛТ. Зардал талд бичвэл орлого бүтэн харагдаж марж гажина.
+{
+  eq(F.encodeOrderCmp('Хоцорч хүргэсэн', 50000), '⟦CMP|Хоцорч хүргэсэн|50000⟧', 'буулгалт: токен бичнэ');
+  eq(F.encodeOrderCmp('Бусад', 0), '', 'буулгалт: 0 бол токен бичихгүй');
+  eq(F.parseOrderCmp('захиалга ⟦CMP|Хоцорч хүргэсэн|50000⟧ тайлбар'), { reason: 'Хоцорч хүргэсэн', amount: 50000 }, 'буулгалт: токен уншина');
+  eq(F.parseOrderCmp('токенгүй'), null, 'буулгалт: токенгүй → null');
+  eq(F.orderCmpAmount({ note: '⟦CMP|Бусад|1200⟧' }), 1200, 'буулгалт: дүн');
+  eq(F.orderCmpAmount({}), 0, 'буулгалт: тэмдэглэлгүй → 0');
+  eq(F.setOrderCmpNote('хуучин ⟦CMP|Бусад|100⟧ текст', 'Ашиглагдаагүй', 5000), 'хуучин текст ⟦CMP|Ашиглагдаагүй|5000⟧', 'буулгалт: токен солигдож текст үлдэнэ');
+  eq(F.setOrderCmpNote('текст ⟦CMP|Бусад|100⟧', '', 0), 'текст', 'буулгалт: 0 болгоход токен арилна');
+  eq(F.setOrderCmpNote('⟦DLV|city|0|150000⟧', 'Хоцорч хүргэсэн', 30000), '⟦DLV|city|0|150000⟧ ⟦CMP|Хоцорч хүргэсэн|30000⟧', 'буулгалт: бусад токен хөндөгдөхгүй');
+
+  // ОРЛОГО — буулгалт хасагдана
+  const o = { source: 'app', total_mnt: 315000, deposit_mnt: 0, paid_mnt: 315000, note: '⟦CMP|Хоцорч хүргэсэн|60000⟧' };
+  eq(F.orderRevenue(o, 'accrual'), 255000, 'орлого: буулгалт хасагдана');
+  eq(F.orderRevenue(o, 'cash'), 255000, 'орлого: мөнгөн суурьт ч хасагдана');
+  eq(F.orderRevenue({ ...o, note: '' }, 'accrual'), 315000, 'орлого: буулгалтгүй бол бүтэн');
+  eq(F.orderRevenue({ ...o, note: '⟦CMP|Бусад|999999⟧' }, 'accrual'), 0, 'орлого: буулгалт нийтээс их бол 0 (сөрөг болохгүй)');
+  const b = { source: 'booqable', total_mnt: 100000, deposit_mnt: 20000, paid_mnt: 100000, note: '⟦CMP|Бусад|10000⟧' };
+  eq(F.orderRevenue(b, 'accrual'), 90000, 'орлого: booqable-д барьцаа хасахгүй ч буулгалт хасагдана');
+
+  // САНХҮҮ — захиалгад холбогдсон 5800 нь ЗАРДАЛ БИШ (давхар тоологдохгүй)
+  ok(F.finIsCustomerRefund({ category: '5800', link_type: 'order' }) === true, 'буцаалт: захиалгад холбогдсон 5800 = зардал биш');
+  ok(F.finIsCustomerRefund({ category: '5800', justification: 'x ⟦LNK|order|1492|#1492⟧' }) === true, 'буцаалт: LNK токеноор ч танина');
+  ok(F.finIsCustomerRefund({ category: '5800', link_type: 'general' }) === false, 'буцаалт: холбоогүй 5800 (торгууль) нь ЖИНХЭНЭ зардал');
+  ok(F.finIsCustomerRefund({ category: '5810', link_type: 'order' }) === false, 'буцаалт: барьцаа буцаалт нь өөр дүрэмтэй');
+  ok(F.finIsCustomerRefund(null) === false, 'буцаалт: мөргүй → false (унахгүй)');
+  ok(F.finIsRealExpense({ decision: 'approved', category: '5800', link_type: 'order', amount: 1 }) === false, 'буцаалт: тайлангийн зардалд ОРОХГҮЙ');
+  ok(F.finIsRealExpense({ decision: 'approved', category: '5800', link_type: 'general', amount: 1 }) === true, 'буцаалт: торгууль зардал хэвээр');
+}

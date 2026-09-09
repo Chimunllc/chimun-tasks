@@ -86,7 +86,7 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
   'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
-  'attManualOutTs', 'attManualOutCheck']);
+  'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck']);
 
 // ═══════════════════ ТЕСТҮҮД ═══════════════════
 
@@ -4339,6 +4339,64 @@ need(['orderCustType']);
   const rh = src.slice(src.indexOf('function renderHistory('));
   ok(/loadProductsCatalog/.test(rh.slice(0, 600)), 'scan: тайлан каталогийг ачаална (хөрөнгө 0 болохгүй)');
 }
+
+// ── ИРЦИЙН ХҮСЭЛТ — ажилтан өөрөө мэдүүлнэ (2026-09-09) ─────────────────────
+// Удирдлага л засаж чаддаг байсан тул ажилтан хэлэхээ мартвал тэр өдөр 0 цаг
+// үлддэг байв. Одоо хүсэлт гаргаж, удирдлага батална.
+{
+  const T = '2026-09-09';
+  const okReq = { day: '2026-09-05', inTime: '09:00', outTime: '18:00' };
+
+  // Огт бүртгэлгүй өдөр — ирсэн ба явсан цаг хоёуланг авна
+  const v = F.attReqValidate(okReq, T);
+  ok(v.ok, 'хүсэлт: бүрэн өдөр зөвшөөрнө');
+  eq(v.mins, 540, 'хүсэлт: 09:00→18:00 = 9 цаг');
+  ok(v.newIn === true, 'хүсэлт: ирсэн бүртгэлгүй бол шинэ «in» үүснэ');
+
+  // Ирсэн нь бүртгэгдсэн бол зөвхөн явсан цаг
+  const inTs = F.attManualOutTs('2026-09-05', '09:00');
+  const v2 = F.attReqValidate({ day: '2026-09-05', outTime: '18:00', existingInTs: inTs }, T);
+  ok(v2.ok && v2.newIn === false, 'хүсэлт: ирсэн бүртгэлтэй бол «in» дахин үүсгэхгүй');
+  eq(v2.mins, 540, 'хүсэлт: байгаа ирсэн цагаас тооцно');
+
+  // Шөнийн ээлж — явсан цаг ирсэнээс өмнө бол МАРГААШИЙНХ
+  const v3 = F.attReqValidate({ day: '2026-09-05', inTime: '18:41', outTime: '02:00' }, T);
+  ok(v3.ok && v3.nextDay === true, 'хүсэлт: 18:41→02:00 = шөнийн ээлж, маргаашийн гарц');
+  eq(v3.mins, 439, 'хүсэлт: шөнийн ээлжийн минут');
+
+  // Хил хязгаар
+  ok(!F.attReqValidate({ day: '2026-09-10', inTime: '09:00', outTime: '18:00' }, T).ok, 'хүсэлт: ирээдүйн өдөр болохгүй');
+  ok(!F.attReqValidate({ day: '2026-06-01', inTime: '09:00', outTime: '18:00' }, T).ok, 'хүсэлт: 45 хоногоос хуучин болохгүй');
+  ok(F.attReqValidate({ day: '2026-09-09', inTime: '09:00', outTime: '18:00' }, T).ok, 'хүсэлт: өнөөдөр зөвшөөрнө');
+  ok(!F.attReqValidate({ day: '', inTime: '09:00', outTime: '18:00' }, T).ok, 'хүсэлт: огноогүй болохгүй');
+  ok(!F.attReqValidate({ day: '2026-09-05', outTime: '18:00' }, T).ok, 'хүсэлт: ирсэн цаггүй, бүртгэл ч байхгүй → болохгүй');
+  ok(!F.attReqValidate({ day: '2026-09-05', inTime: '09:00', outTime: '' }, T).ok, 'хүсэлт: явсан цаггүй болохгүй');
+  ok(!F.attReqValidate({ day: '2026-09-05', inTime: '09:00', outTime: '08:30' }, T).ok, 'хүсэлт: 23.5 цаг = хэт урт, болохгүй');
+
+  // Түлхүүр = утас|өдөр (нэг өдөрт нэг хүсэлт)
+  eq(F.attReqKey('9911-2233', '2026-09-05'), '99112233|2026-09-05', 'хүсэлт: түлхүүр утасны цифр + өдөр');
+  eq(F.attReqKey('99112233', '2026-09-05'), F.attReqKey('9911 2233', '2026-09-05'), 'хүсэлт: утасны формат түлхүүрт нөлөөлөхгүй');
+
+  // Батлах шалгалт нь хүсэлт дотор хадгалсан inTs-ээс тооцно (сервер рүү дахин хандахгүй)
+  const stored = { day: '2026-09-05', newIn: false, inTs, inTime: '09:00', outTime: '18:00' };
+  const av = F.attReqApprovalCheck(stored);
+  ok(av.ok && av.newIn === false && av.mins === 540, 'батлах: хадгалсан inTs-ээр тооцно, «in» давхардуулахгүй');
+  const stored2 = { day: '2026-09-05', newIn: true, inTime: '09:00', outTime: '18:00' };
+  ok(F.attReqApprovalCheck(stored2).newIn === true, 'батлах: бүртгэлгүй өдөрт «in» бичлэг үүснэ');
+
+  // Хусалт — ХҮЛЭЭГДЭЖ БУЙГ хэзээ ч хасахгүй (хариу аваагүй хүсэлт алга болбол хамгийн муу)
+  const map = {
+    'a|2026-01-01': { day: '2026-01-01', status: 'pending' },
+    'b|2026-01-01': { day: '2026-01-01', status: 'approved' },
+    'c|2026-09-01': { day: '2026-09-01', status: 'approved' },
+  };
+  const pruned = F.attReqPrune(map, T);
+  ok(pruned['a|2026-01-01'], 'хусалт: хуучин ч ХҮЛЭЭГДЭЖ буй хүсэлт үлдэнэ');
+  ok(!pruned['b|2026-01-01'], 'хусалт: 120 хоногоос хуучин шийдэгдсэн хүсэлт хасагдана');
+  ok(pruned['c|2026-09-01'], 'хусалт: саяхны хүсэлт үлдэнэ');
+  eq(F.attReqPrune(null, T), {}, 'хусалт: хоосон оролт → хоосон');
+}
+
 
   finish();
 })();

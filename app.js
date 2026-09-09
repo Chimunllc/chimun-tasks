@@ -9757,6 +9757,64 @@ async function attSaveManualOut(body, keepDay) {
   if (!res.ok) throw new Error('HTTP ' + res.status + (res.text ? ' · ' + String(res.text).slice(0, 120) : ''));
   return true;
 }
+// ── ИРЦИЙН ЗАСВАРЫН ХҮСЭЛТ — ажилтан ӨӨРӨӨ гаргана (2026-09-09) ──────────────
+// Удирдлага л засаж чаддаг байсан тул ажилтан «намайг мартчихлаа» гэж дуудаж,
+// хэлэхээ мартвал тэр өдөр 0 цаг үлдэж байв. Одоо ажилтан «Миний ирц»-ээс
+// хүсэлт гаргаж, удирдлага нэг товчоор батална.
+//
+// Хадгалалт = `app_config['att_requests']` (workStart/nextArrival-тай ижил хэв маяг).
+// Шинэ хүснэгт үүсгээгүй: үүлэн сессээс DB migration хийх боломжгүй, бас хүсэлт
+// сард хэдхэн ширхэг. Түлхүүр = «утас|өдөр» тул нэг өдөрт нэг хүсэлт.
+const ATT_REQ_MAX_AGE_D = 45;   // үүнээс хуучин өдрийг хүсэлтээр нээхгүй (цалин хаагдсан)
+const ATT_REQ_KEEP_D = 120;     // blob хязгааргүй өсөхөөс сэргийлж хуучныг хусна
+function attReqKey(memberKey, day) { return String(memberKey || '').replace(/\D/g, '') + '|' + String(day || ''); }
+function attReqAll() { return (state.attRequests && typeof state.attRequests === 'object') ? state.attRequests : {}; }
+function attReqFor(memberKey, day) { return attReqAll()[attReqKey(memberKey, day)] || null; }
+function attReqPending() {
+  return Object.keys(attReqAll())
+    .filter(k => attReqAll()[k] && attReqAll()[k].status === 'pending')
+    .map(k => Object.assign({ _k: k }, attReqAll()[k]))
+    .sort((a, b) => String(a.day).localeCompare(String(b.day)));
+}
+// Хүсэлт зөв үү. ЦЭВЭР функц — тестлэгдэнэ.
+//   existingInTs — тэр өдөр аль хэдийн «ирсэн» бүртгэл байвал түүний ts (шинээр асуухгүй).
+function attReqValidate(req, today) {
+  req = req || {};
+  const day = String(req.day || '');
+  today = today || todayStr();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { ok: false, err: 'Огноо сонгоно уу' };
+  if (day > today) return { ok: false, err: 'Ирээдүйн өдөр сонгож болохгүй' };
+  if (day < addDays(today, -ATT_REQ_MAX_AGE_D)) return { ok: false, err: ATT_REQ_MAX_AGE_D + ' хоногоос хуучин өдөр — удирдлагад шууд хандана уу' };
+  let inTs = req.existingInTs || '';
+  if (!inTs) {
+    inTs = attManualOutTs(day, req.inTime);
+    if (!inTs) return { ok: false, err: 'Ирсэн цагаа оруулна уу (ЦЦ:ММ)' };
+  }
+  const r = attManualOutResolve(day, req.outTime, inTs);
+  const chk = attManualOutCheck(inTs, r.ts);
+  if (!chk.ok) return { ok: false, err: chk.err };
+  return { ok: true, inTs, outTs: r.ts, nextDay: r.nextDay, mins: chk.mins, newIn: !req.existingInTs };
+}
+// 120 хоногоос хуучин шийдэгдсэн хүсэлтийг хасна (хүлээгдэж буйг ХЭЗЭЭ Ч хасахгүй —
+// хариу аваагүй хүний хүсэлт чимээгүй алга болох нь хамгийн муу үр дүн).
+function attReqPrune(map, today) {
+  const cut = addDays(today || todayStr(), -ATT_REQ_KEEP_D), out = {};
+  Object.keys(map || {}).forEach(k => {
+    const v = map[k]; if (!v) return;
+    if (v.status === 'pending' || String(v.day || '') >= cut) out[k] = v;
+  });
+  return out;
+}
+// Уншаад→нэгтгээд→бичнэ. Нэг blob тул зэрэг бичилт бие биенээ дардаг —
+// хадгалахын өмнө сервэрээс ШИНЭЭР уншиж нэгтгэснээр эрсдэлийг багасгана.
+async function attReqWrite(k, entry) {
+  const fresh = await loadAppConfig('att_requests');
+  const map = attReqPrune(Object.assign({}, (fresh && typeof fresh === 'object') ? fresh : {}, attReqAll()));
+  if (entry) map[k] = entry; else delete map[k];
+  await saveAppConfig('att_requests', map);
+  state.attRequests = map;
+  return map;
+}
 function openManualOutModal(memberKey, name, day, inTs) {
   if (!canEditAttendance()) { showToast('Танд ирц засах эрх алга', 'warn', 3000); return; }
   document.getElementById('att-mout-modal')?.remove();
@@ -9824,6 +9882,128 @@ function openManualOutModal(memberKey, name, day, inTs) {
     if (typeof render === 'function') render();
   };
   modal.classList.add('open');
+}
+// ── Ажилтан өөрөө хүсэлт гаргах модал («Миний ирц»-ээс) ──
+// Хоёр тохиолдлыг зэрэг барина: (1) ирсэн нь бүртгэгдсэн ч гарахаа мартсан,
+// (2) тэр өдөр ОГТ бүртгүүлээгүй — тэгвэл ирсэн цагаа ч бас оруулна.
+function openAttRequestModal(preDay) {
+  const me = findMember(state.me) || {};
+  const myKey = String(personKey(me) || state.me || '').replace(/\D/g, '') || String(state.me || '');
+  const byDay = {};
+  (state.myAttendance || []).forEach(r => { (byDay[r.day] = byDay[r.day] || []).push(r); });
+  const inTsOf = (d) => {
+    const arr = (byDay[d] || []).slice().sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+    return arr.length ? attMemberSummary(arr, false).openTs || '' : '';
+  };
+  const today = todayStr();
+  document.getElementById('att-req-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.className = 'modal-bg'; modal.id = 'att-req-modal';
+  const chips = ['17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00'];
+  modal.innerHTML = `<div class="modal amo-modal">
+    <h2>🙋 Ирцийн хүсэлт</h2>
+    <p class="amo-hint">Бүртгүүлж амжаагүй өдрөө мэдүүл. Удирдлага шалгаад баталсны дараа
+      таны цагт нэмэгдэнэ — өөрөө шууд бүртгэгдэхгүй.</p>
+    <div class="amo-row"><span>Өдөр:</span><input type="date" id="areq-day" class="ui-raw" value="${escapeHtml(preDay || today)}" min="${escapeHtml(addDays(today, -ATT_REQ_MAX_AGE_D))}" max="${escapeHtml(today)}"></div>
+    <div class="amo-row" id="areq-in-row"><span>Ирсэн:</span><input type="time" id="areq-in" class="ui-raw" value="09:00"></div>
+    <div class="amo-hint" id="areq-in-known" hidden></div>
+    <div class="amo-chips">${chips.map(c => `<button class="ui-raw amo-chip" data-areq-time="${c}">${c}</button>`).join('')}</div>
+    <div class="amo-row"><span>Явсан:</span><input type="time" id="areq-out" class="ui-raw" value="18:00"></div>
+    <div class="amo-row"><span>Тайлбар:</span><input type="text" id="areq-note" class="ui-raw" maxlength="120" placeholder="Жиш: утас цэнэггүй байсан"></div>
+    <div class="amo-prev" id="areq-prev"></div>
+    <div class="amo-err" id="areq-err" hidden></div>
+    <div class="modal-actions">
+      <button class="btn" id="areq-cancel">Болих</button>
+      <button class="btn btn-primary" id="areq-send">Хүсэлт илгээх</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  const $ = (id) => modal.querySelector(id);
+  const errEl = $('#areq-err'), prevEl = $('#areq-prev'), knownEl = $('#areq-in-known'), inRow = $('#areq-in-row');
+  modal.querySelector('#areq-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  const build = () => {
+    const day = $('#areq-day').value;
+    const known = inTsOf(day);
+    const closed = !known && !!byDay[day];   // бичлэгтэй ч нээлттэй сесс алга = бүрэн бүртгэгдсэн
+    inRow.hidden = !!known || closed;
+    knownEl.hidden = !known && !closed;
+    if (known) knownEl.innerHTML = `Тэр өдөр <b>${escapeHtml(attTimeUB(known))}</b>-д ирсэн гэж бүртгэгдсэн байна — зөвхөн явсан цагаа оруул.`;
+    else if (closed) knownEl.innerHTML = '⚠ Энэ өдөр аль хэдийн <b>бүрэн бүртгэгдсэн</b> байна. Цаг буруу бол удирдлагад хандана уу.';
+    return { day, closed, existingInTs: known, inTime: $('#areq-in').value, outTime: $('#areq-out').value };
+  };
+  const preview = () => {
+    errEl.hidden = true; prevEl.innerHTML = '';
+    const req = build();
+    if (req.closed) { errEl.textContent = '⚠ Энэ өдөр аль хэдийн бүрэн бүртгэгдсэн — хүсэлт шаардлагагүй'; errEl.hidden = false; return null; }
+    const ex = attReqFor(myKey, req.day);
+    if (ex && ex.status === 'pending') { errEl.textContent = '⚠ Энэ өдөрт хүсэлт аль хэдийн илгээгдсэн — хариу хүлээж байна'; errEl.hidden = false; return null; }
+    const v = attReqValidate(req);
+    if (!v.ok) { if (req.outTime) { errEl.textContent = '⚠ ' + v.err; errEl.hidden = false; } return null; }
+    prevEl.innerHTML = `${v.nextDay ? '🌙 <b>маргааш</b> ' : ''}${escapeHtml(req.outTime)} → <b>${escapeHtml(attHM(v.mins))}</b> нэмэгдэнэ`;
+    return { req, v };
+  };
+  modal.querySelectorAll('[data-areq-time]').forEach(b => b.addEventListener('click', () => { $('#areq-out').value = b.dataset.areqTime; preview(); }));
+  ['#areq-day', '#areq-in', '#areq-out'].forEach(id => $(id).addEventListener('input', preview));
+  preview();
+  modal.querySelector('#areq-send').onclick = async (e) => {
+    const got = preview(); if (!got) return;
+    const btn = e.currentTarget; btn.disabled = true;
+    const { req, v } = got;
+    const entry = {
+      key: myKey, name: me.name || state.me || '', day: req.day,
+      newIn: v.newIn, inTs: v.inTs, inTime: v.newIn ? req.inTime : attTimeUB(v.inTs), outTime: req.outTime,
+      note: ($('#areq-note').value || '').trim().slice(0, 120),
+      status: 'pending', at: new Date().toISOString(),
+    };
+    try { await attReqWrite(attReqKey(myKey, req.day), entry); }
+    catch (err) { btn.disabled = false; errEl.textContent = '⚠ Илгээгдсэнгүй: ' + err.message; errEl.hidden = false; return; }
+    close();
+    showToast('Хүсэлт илгээгдлээ — удирдлага баталсны дараа цагт нэмэгдэнэ', 'success', 4000);
+    if (typeof render === 'function') render();
+  };
+  modal.classList.add('open');
+}
+// ── Удирдлага: хүсэлт батлах / татгалзах ──
+// Батлахад ирцийн бодит бичлэг (in шаардлагатай бол + out) үүснэ. `source='request'`
+// тул жагсаалтад «🙋 хүсэлтээр» гэж ЯЛГАРНА — цалин болдог тоо хаанаас ирснийг нуухгүй.
+async function attReqApprove(k) {
+  if (!canEditAttendance()) { showToast('Танд ирц засах эрх алга', 'warn', 3000); return; }
+  const req = attReqAll()[k]; if (!req || req.status !== 'pending') return;
+  const mem = findMember(req.key) || {};
+  const v = attReqApprovalCheck(req);
+  if (!v.ok) { showToast('Батлагдсангүй: ' + v.err, 'error', 5000); return; }
+  const base = {
+    member_key: req.key, member_name: mem.name || req.name || '', member_phone: req.key,
+    day: req.day, token: 'request', source: 'request',
+    branch: Array.isArray(mem.branches) ? mem.branches[0] : (mem.branches || mem.branch || null),
+  };
+  try {
+    if (v.newIn) await attSaveManualOut(Object.assign({}, base, { kind: 'in', ts: v.inTs }), true);
+    await attSaveManualOut(Object.assign({}, base, { kind: 'out', ts: v.outTs }), true);
+    await attReqWrite(k, Object.assign({}, req, { status: 'approved', decidedBy: state.me, decidedAt: new Date().toISOString() }));
+  } catch (e) { showToast('Батлагдсангүй: ' + e.message, 'error', 6000); return; }
+  state._attLoadedDay = null; state.attMonthKey = null;   // дахин татаж шинэ бичлэгийг харуулна
+  showToast(`${req.name || req.key} · ${req.day} — ${attHM(v.mins)} нэмэгдлээ`, 'success', 3500);
+  if (typeof render === 'function') render();
+}
+// Батлахын өмнөх шалгалт. Хүсэлт нь ирсэн цагаа (`inTs`) өөртөө агуулдаг тул
+// удирдлагын дэлгэц тэр өдрийн бичлэгийг ачаалаагүй байсан ч зөв тооцно.
+function attReqApprovalCheck(req) {
+  req = req || {};
+  return attReqValidate({ day: req.day, inTime: req.inTime, outTime: req.outTime,
+    existingInTs: req.newIn ? '' : (req.inTs || '') });
+}
+async function attReqReject(k) {
+  if (!canEditAttendance()) { showToast('Танд ирц засах эрх алга', 'warn', 3000); return; }
+  const req = attReqAll()[k]; if (!req || req.status !== 'pending') return;
+  const reason = await showPrompt('Татгалзах шалтгаан (ажилтанд харагдана)', { placeholder: 'Жиш: тэр өдөр ажилд гараагүй' });
+  if (reason === null) return;
+  try { await attReqWrite(k, Object.assign({}, req, { status: 'rejected', reason: String(reason || '').slice(0, 160), decidedBy: state.me, decidedAt: new Date().toISOString() })); }
+  catch (e) { showToast('Хадгалагдсангүй: ' + e.message, 'error', 5000); return; }
+  showToast('Татгалзлаа', 'info', 2500);
+  if (typeof render === 'function') render();
 }
 async function loadAttendanceToday() {
   try {
@@ -9925,8 +10105,9 @@ function renderAttendanceRows() {
     // Тухайн өдөр менежер QR-ыг нь уншуулсан бол баталгаатай. Огт уншуулаагүй
     // (зөвхөн холбоосоор өөрөө бүртгүүлсэн) бол ялгаж харуулна.
     const scanned = arr.some(x => x.source === 'scan');
-    const manualOut = arr.some(x => x.kind === 'out' && x.source === 'manual');
-    return { k, m, s, scanned, manualOut, name: m.name || arr[0].member_name || k, role: m.role || '' };
+    const manualOut = arr.some(x => x.kind === 'out' && (x.source === 'manual' || x.source === 'request'));
+    const bySelfReq = arr.some(x => x.source === 'request');
+    return { k, m, s, scanned, manualOut, bySelfReq, name: m.name || arr[0].member_name || k, role: m.role || '' };
   }).sort((a, b) => String(a.s.firstIn).localeCompare(String(b.s.firstIn)));
   const totalMins = rows.reduce((t, r) => t + r.s.mins, 0);
   const nOpen = rows.filter(r => r.s.open).length;
@@ -9937,7 +10118,7 @@ function renderAttendanceRows() {
       ? '<span style="color:var(--ok);font-weight:700;font-size:12px;">● Ажиллаж байна</span>'
       : r.s.noOut
         ? '<span style="color:var(--warn);font-size:12px;">⚠ Гараагүй</span>'
-        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}${r.manualOut ? ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>' : ''}</span>`;
+        : `<span style="color:var(--muted);font-size:12px;">Явсан ${attTimeUB(r.s.lastEvent)}${r.manualOut ? (r.bySelfReq ? ' <span class="att-manual" title="Ажилтны хүсэлтээр удирдлага баталсан">🙋 хүсэлтээр</span>' : ' <span class="att-manual" title="Удирдлага гараар оруулсан">✍️ гараар</span>') : ''}</span>`;
     // «Хоцорсон» = ЗӨВХӨН одоо ажиллаж байгаа (нээлттэй сесс) хүнд — явсан хүнд retroactive
     // хоцролт гаргахгүй (хуучин buggy next_arrival дата departed хүмүүст л үлдсэн; шинэ дата зөв).
     const late = r.s.open ? attLateMinutes(r.k, day, r.s.firstIn) : 0;
@@ -9955,6 +10136,24 @@ function renderAttendanceRows() {
   }).join('');
   return head + `<div>${list}</div>`;
 }
+// Хүлээгдэж буй хүсэлтийн самбар (зөвхөн ирц засах эрхтэй хүнд).
+function renderAttReqPanel() {
+  if (!canEditAttendance()) return '';
+  const pend = attReqPending();
+  if (!pend.length) return '';
+  return `<div class="areq-panel"><div class="areq-panel-h">🙋 Ирцийн хүсэлт · <b>${pend.length}</b> хүлээгдэж байна</div>
+    ${pend.map(r => {
+      const v = attReqApprovalCheck(r);
+      return `<div class="areq-row">
+        <div class="areq-info"><b>${escapeHtml(r.name || r.key)}</b> · ${escapeHtml(r.day)}<br>
+          <span>${escapeHtml(r.inTime || '')} → ${escapeHtml(r.outTime)}${r.newIn ? ' <i>(бүртгэлгүй өдөр)</i>' : ''}${v.ok ? ' · <b>' + escapeHtml(attHM(v.mins)) + '</b>' : ' · ⚠ ' + escapeHtml(v.err)}</span>
+          ${r.note ? `<br><span class="areq-note">«${escapeHtml(r.note)}»</span>` : ''}</div>
+        <div class="areq-btns">
+          <button class="ui-raw areq-no" data-areq-no="${escapeHtml(r._k)}">Татгалзах</button>
+          <button class="ui-raw areq-ok" data-areq-ok="${escapeHtml(r._k)}"${v.ok ? '' : ' disabled'}>Батлах</button>
+        </div></div>`;
+    }).join('')}</div>`;
+}
 function renderAttendance() {
   const day = state.attViewDay || todayStr();
   const isToday = day === todayStr();
@@ -9970,6 +10169,7 @@ function renderAttendance() {
   // Хоцролт тооцоолол: ажил эхлэх цаг + явахдаа сонгосон «маргааш ирэх цаг»
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.nextArrival === undefined) { state.nextArrival = null; loadAppConfig('next_arrival').then(v => { state.nextArrival = (v && typeof v === 'object') ? v : {}; render(); }); }
+  if (state.attRequests === undefined) { state.attRequests = null; loadAppConfig('att_requests').then(v => { state.attRequests = (v && typeof v === 'object') ? v : {}; render(); }); }
   const scanCard = isToday ? `<div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px 18px;text-align:center;margin-bottom:16px;">
       <div style="font-size:13px;color:var(--muted);letter-spacing:.04em;">${dateLabel}</div>
       <button id="att-scan-start" style="margin:16px auto 4px;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:340px;padding:17px;border:none;border-radius:16px;background:var(--primary,#2f3e2f);color:#fff;font-size:18px;font-weight:700;cursor:pointer;">
@@ -9991,7 +10191,7 @@ function renderAttendance() {
     </div>`;
   const body = monthMode ? renderAttendanceMonth(day.slice(0, 7)) : renderAttendanceRows();
   return `<div style="max-width:720px;margin:0 auto;padding-bottom:20px;">
-    ${scanCard}${dateBar}
+    ${scanCard}${renderAttReqPanel()}${dateBar}
     <div id="att-list">${body}</div>
   </div>`;
 }
@@ -10110,6 +10310,9 @@ function attachAttendanceHandlers() {
     openManualOutModal(b.dataset.attOut, b.dataset.attName || b.dataset.attOut, state.attViewDay || todayStr(), b.dataset.attIn)));
   // Сарын тоймоос тухайн өдөр рүү үсрэх (тэндээс цагийг нь оруулна)
   document.querySelectorAll('[data-att-day]').forEach(b => b.addEventListener('click', () => { state.attViewDay = b.dataset.attDay; state.attMonthMode = false; render(); }));
+  // Ажилтны ирцийн хүсэлт — батлах / татгалзах
+  document.querySelectorAll('[data-areq-ok]').forEach(b => b.addEventListener('click', () => { b.disabled = true; attReqApprove(b.dataset.areqOk); }));
+  document.querySelectorAll('[data-areq-no]').forEach(b => b.addEventListener('click', () => attReqReject(b.dataset.areqNo)));
   const _isTodayView = () => (state.attViewDay || todayStr()) === todayStr() && !state.attMonthMode;
   if (_isTodayView()) loadAttendanceToday().then(() => { const el = document.getElementById('att-list'); if (el && state.view === 'attendance' && _isTodayView()) el.innerHTML = renderAttendanceRows(); });
   if (state._attPoll) clearInterval(state._attPoll);
@@ -10140,6 +10343,7 @@ async function loadMyAttendance() {
 }
 function renderMyAttend() {
   const me = findMember(state.me) || {};
+  if (state.attRequests === undefined) { state.attRequests = null; loadAppConfig('att_requests').then(v => { state.attRequests = (v && typeof v === 'object') ? v : {}; render(); }); }
   if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); }   // жолооны нэмэгдэлд stage_meta
   const recs = state.myAttendance || [];
   const today = todayStr();
@@ -10150,12 +10354,32 @@ function renderMyAttend() {
   const todaySum = byDay[today] ? sumFor(today) : null;
   let monthMins = 0; dayKeys.forEach(d => { monthMins += sumFor(d).mins; });
   const avatar = `<span style="position:relative;width:56px;height:56px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:var(--muted);overflow:hidden;flex-shrink:0;">${escapeHtml(memberInitials(state.me))}${staffAvatarImg(me)}</span>`;
+  const myKey = String(personKey(me) || state.me || '').replace(/\D/g, '') || String(state.me || '');
+  // Хүсэлтийн төлвийг өдөр бүрд харуулна — ажилтан «илгээснээ» мартахгүй, хариуг ч энд харна.
+  const reqLine = (d) => {
+    const q = attReqFor(myKey, d);
+    if (!q) return '';
+    if (q.status === 'pending') return `<div class="myreq-st myreq-wait">⏳ Хүсэлт хүлээгдэж байна · ${escapeHtml(q.outTime || '')}</div>`;
+    if (q.status === 'approved') return `<div class="myreq-st myreq-ok">✅ Хүсэлт батлагдсан</div>`;
+    return `<div class="myreq-st myreq-no">❌ Татгалзсан${q.reason ? ' · ' + escapeHtml(q.reason) : ''}</div>`;
+  };
   const dayList = dayKeys.map(d => {
     const s = sumFor(d);
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
+    const q = attReqFor(myKey, d);
+    const askBtn = (s.noOut && !(q && q.status === 'pending'))
+      ? `<button class="ui-raw myreq-ask" data-my-areq="${escapeHtml(d)}">🙋 Цаг гаргуулах</button>` : '';
+    return `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
       <span>${escapeHtml(d)}${d === today ? ' <b style="color:var(--ok);font-size:11px;">· өнөөдөр</b>' : ''}</span>
-      <span style="color:var(--text-soft);">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b></span></div>`;
+      <span style="color:var(--text-soft);text-align:right;">Ирсэн <b>${attTimeUB(s.firstIn)}</b>${s.open ? ' · <span style="color:var(--ok);">ажиллаж байна</span>' : ''} · <b style="color:var(--primary);">${attHM(s.mins)}</b>${s.noOut ? ' <span style="color:var(--warn);">⚠ гараагүй</span>' : ''}</span>
+      </div>${askBtn}${reqLine(d)}</div>`;
   }).join('');
+  // Огт бүртгэгдээгүй өдрийн хүсэлт — тэр өдөр жагсаалтад БАЙХГҮЙ тул тусад нь харуулна.
+  const otherReqs = Object.keys(attReqAll())
+    .map(k => attReqAll()[k]).filter(q => q && q.key === myKey && !byDay[q.day])
+    .sort((a, b) => String(b.day).localeCompare(String(a.day)))
+    .map(q => `<div style="padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px;">
+      <div>${escapeHtml(q.day)} <span style="color:var(--muted);">${escapeHtml(q.inTime || '')}${q.inTime ? ' → ' : ''}${escapeHtml(q.outTime || '')}</span></div>${reqLine(q.day)}</div>`).join('');
   return `<div style="max-width:520px;margin:0 auto;padding-bottom:26px;">
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px;">
       <div style="display:flex;align-items:center;gap:14px;">
@@ -10196,12 +10420,15 @@ function renderMyAttend() {
         <span style="color:var(--muted);flex-shrink:0;">${escapeHtml(t.date)}</span></div>`).join('')}</div>
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--danger);border-radius:10px;background:var(--danger-soft);color:var(--danger);font-size:12px;line-height:1.5;">⚠ ${escapeHtml(DRIVER_LIABILITY_NOTE)}</div>
     </div>` : ''; })()}
-    ${dayKeys.length ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
+    <button class="ui-raw myreq-new" id="my-att-req">🙋 Бүртгүүлж амжаагүй өдөр мэдүүлэх</button>
+    ${dayKeys.length || otherReqs ? `<div style="font-size:13px;font-weight:700;color:var(--muted);margin:6px 2px 4px;">Энэ сарын ирц</div><div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px 12px;">${dayList}${otherReqs}</div>` : '<div style="text-align:center;color:var(--muted);padding:20px;font-size:13px;">Энэ сард ирц бүртгэгдээгүй байна.</div>'}
   </div>`;
 }
 function attachMyAttendHandlers() {
   const phone = String(personKey(findMember(state.me) || {}) || state.me).replace(/\D/g, '');
   const ob = document.getElementById('my-open-profile'); if (ob) ob.onclick = openProfileModal;
+  document.getElementById('my-att-req')?.addEventListener('click', () => openAttRequestModal());
+  document.querySelectorAll('[data-my-areq]').forEach(b => b.addEventListener('click', () => openAttRequestModal(b.dataset.myAreq)));
   loadQRCodeJs().then(() => {
     const box = document.getElementById('my-qr'); if (!box || !phone) return;
     box.innerHTML = '';

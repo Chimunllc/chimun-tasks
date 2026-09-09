@@ -14917,7 +14917,7 @@ function renderNomaadHistory() {
       ${kpi('Захиалга', n + '')}
       ${kpi('Нийт борлуулалт', fmtMoney(sum), 'nh-ok')}
       ${kpi('Дундаж захиалга', fmtMoney(n ? Math.round(sum / n) : 0))}
-      ${kpi('Нийт хүн', guests.toLocaleString('mn-MN'))}
+      ${kpi('Нийт хүн', Math.round(guests).toLocaleString('mn-MN'))}
       ${kpi('1 хүнд ногдох', fmtMoney(guests ? Math.round(sum / guests) : 0))}
       ${kpi('Нэмэлт үйлчилгээ', fmtMoney(addon), 'nh-warn', 'багцаас гадуур')}
     </div>

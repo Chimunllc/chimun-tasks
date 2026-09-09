@@ -5124,10 +5124,11 @@ body.role-daily #add-project { display: none !important; }
 
 /* NOMAAD захиалга — Жагсаалт/Календарь toggle + Календарь харагдац */
 .na-topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-.na-viewtoggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; margin-bottom: 14px; }
+.na-viewtoggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 9px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; max-width: 100%; margin-bottom: 14px; }
+.na-viewtoggle::-webkit-scrollbar { display: none; }
 .na-topbar .na-viewtoggle { margin-bottom: 0; }
 .na-newbtn { white-space: nowrap; }
-.na-vt { padding: 7px 16px; font-size: 13px; font-weight: 600; background: var(--panel); color: var(--muted); border: none; cursor: pointer; }
+.na-vt { padding: 7px 16px; font-size: 13px; font-weight: 600; background: var(--panel); color: var(--muted); border: none; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }   /* 5 таб — нарийн дэлгэцэд тууз нь өөрөө гүйнэ, хуудсыг сунгахгүй */
 .na-vt + .na-vt { border-left: 1px solid var(--border); }
 .na-vt.active { background: var(--primary); color: #fff; }
 .na-cal-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
@@ -6723,7 +6724,7 @@ select.no-asar-len {
 .nh-c3 { background: var(--accent-purple); }
 .nh-c4 { background: var(--accent-cyan); }
 .nh-c5 { background: var(--accent-rose); }
-.nh-tblwrap { overflow-x: auto; }
+.nh-tblwrap { overflow-x: auto; contain: inline-size; }   /* contain — эс бөгөөс өргөн хүснэгт .content grid мөрийг сунгаж бүх хуудас хэвтээ гүйнэ */
 .nh-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .nh-tbl th { text-align: left; font-weight: 700; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .nh-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--border); }

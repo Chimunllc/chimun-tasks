@@ -23797,7 +23797,7 @@ function renderHistory() {
         `${bq._full === false
             ? `⚠ Хугацааны шүүлт идэвхтэй — <b>сонгосон үеийн</b> орлогыг <b>нийт</b> хөрөнгөтэй харьцуулж байна (нөхөлт биш).`
             : `Нийт түрээсийн орлого нь хөрөнгө оруулалтынхаа <b>${recPct}%</b>-г нөхсөн.`}
-         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).${noCostN ? ` ${noCostN} барааны нэгж өртөг оруулаагүй тул тооцоонд ороогүй.` : ''}`);
+         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).${noCostN ? ` <button class="btn ui-raw" id="hist-nocost" style="padding:2px 8px;font-size:11.5px;">${noCostN} барааны өртөг оруулаагүй — нөхөх →</button>` : ''}`);
       // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлого + хөрөнгө + ROI ──
       const byCat = {};
       roi.forEach(x => { const c = x.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(x); });
@@ -23958,6 +23958,12 @@ function attachHistoryHandlers() {
     else openHistProductOrders(nm);
   }));
   document.querySelectorAll('[data-hist-dlv]').forEach(b => b.addEventListener('click', () => openDeliveryFeeOrders()));
+  // «Өртөг оруулаагүй» → Бараа хуудсанд тэр шүүлттэйгээр шууд очно (гараар хайх шаардлагагүй)
+  document.getElementById('hist-nocost')?.addEventListener('click', () => {
+    state.view = 'products'; state.prodMissing = 'nocost'; state.prodCategory = 'all'; state.productSearch = '';
+    render();
+    showToast('Өртөг оруулаагүй бараа — мөр дарж «Өртөг» хэсэгт бичнэ үү', 'info', 3500);
+  });
   // Нэгтгэсэн үйлчилгээний мөр — бүлгийн БҮХ нэрийн захиалгыг нэг дор
   document.querySelectorAll('[data-hist-svc]').forEach(b => b.addEventListener('click', () => {
     const g = (state._svcGroups || []).find(x => x.key === b.dataset.histSvc); if (!g) return;

@@ -6667,7 +6667,7 @@ async function openStatementClassifyModal() {
           : orphan ? `<span style="color:var(--warn);font-size:11px;white-space:nowrap;">эзэнгүй → та</span>`
           : `<span style="color:var(--accent,#7c3aed);font-size:11px;white-space:nowrap;">→ ${escapeHtml(roName)} ангилна</span>`);
       return `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);${r.done ? 'opacity:.5;' : ''}">
-        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.fx ? ` · <b>${escapeHtml(String(r.fx.amt))} ${escapeHtml(r.fx.ccy)}</b> × ${fmtMoney(r.fx.rate)}` : ''}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}</div></div>
+        <div style="flex:1;min-width:0;"><div style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.memo || '—')}</div><div style="font-size:10.5px;color:var(--muted);">${escapeHtml(r.date)} · ${escapeHtml(srcTag)}${r.fx ? ` · <b>${escapeHtml(String(r.fx.amt))} ${escapeHtml(r.fx.ccy)}</b> × ${fmtMoney(r.fx.rate)}` : ''}${r.depMatch ? ` · <span style="color:var(--ok);font-weight:700;">🔒 → #${escapeHtml(String(r.depMatch.number))} барьцаа буцаалт авто</span>` : ''}${r.cmpMatch ? ` · <span style="color:var(--warn);font-weight:700;">↩️ → #${escapeHtml(String(r.cmpMatch.number))} буулгалт — зардал болохгүй</span>` : ''}</div></div>
         <b style="white-space:nowrap;font-size:12.5px;font-variant-numeric:tabular-nums;">${fmtMoney(r.debit)}</b>
         ${ctrl}
       </div>`;
@@ -6735,10 +6735,12 @@ async function openStatementClassifyModal() {
           const hourlyEmp = (emp && emp.type === 'hourly' && _salaryMemo) ? emp : null;
           const cardL4 = detectCardLast4(r.memo);
           const depMatch = depositMatchForStmt(r.memo, r.debit);   // барьцаа буцаалт бол → захиалгад авто холбоно
+          const cmpMatch = depMatch ? null : cmpMatchForStmt(r.memo, r.debit);   // буулгалт бол → захиалгад холбож зардлаас хасна
           const occ = (occSeen.get(fp) || 0) + 1; occSeen.set(fp, occ);   // энэ хуулган дахь тухайн хээний хэд дэх мөр
           const personal = isPersonalAcct(src);
           const suggest = personal && personalRowSuggest(r.memo, cat);
-          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : cat, catManual: !!(depMatch || cat), depMatch, fp, occ, salaryEmp, hourlyEmp,
+          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : (cmpMatch ? '5800' : cat), catManual: !!(depMatch || cmpMatch || cat), depMatch, fp, occ, salaryEmp, hourlyEmp,
+            cmpMatch,
             personal, suggest, biz: false,   // хувийн данс: өгөгдмөл нь ХУВИЙН (санамсаргүй зардал үүсэхгүй)
             done: (!isForce() && fpAlreadyImported(occ, imp.get(fp))) });
         });
@@ -6854,10 +6856,10 @@ async function openStatementClassifyModal() {
         const brOwn = branchOf(srcKeyOf(r)); const brValid = STMT_BRANCHES.some(([c]) => c === brOwn);
         const _alB = acctLearnOf(_acctDigits(r.account));   // ДАНС-суурьтай суралцлага (ижил данс руу шилжүүлэг)
         const brCode = (brValid ? brOwn : '') || (_alB && _alB.branch) || guessBranch(r.memo, routeOwner) || '';
-        const cat = (r.depMatch ? '5810' : r.cat) || CARD_PEND_CAT;   // барьцаа буцаалт → 5810; эс бол авто таамаг (эзэн баталгаажуулна)
+        const cat = (r.depMatch ? '5810' : (r.cmpMatch ? '5800' : r.cat)) || CARD_PEND_CAT;   // барьцаа→5810, буулгалт→5800(захиалгад холбогдоно, зардал биш)
         state._finBackfill = { date: r.date };
         // Барьцаа буцаалт таарсан бол захиалгад ШУУД холбоно (⟦LNK|order⟧) → захиалга «✓ Барьцаа буцаасан» болно
-        const _dm = r.depMatch;
+        const _dm = r.depMatch || r.cmpMatch;   // барьцаа буцаалт эсвэл буулгалт → захиалгад холбоно
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
           accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
           justification: `Хуулгаар орсон${r.personal ? ' · 🙍 ХУВИЙН данснаас (компани эзэнд өртэй)' : ''}${r.fx ? ` · ${r.fx.amt} ${r.fx.ccy} × ${r.fx.rate}` : ''} · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(),
@@ -14488,6 +14490,26 @@ function depositMatchForStmt(memo, amount) {
     if (o) { const dep = Number(o.deposit_mnt) || 0; if (!amount || Number(amount) <= dep * 1.02 + 100) return { id: o.id, number: o.number, deposit: dep }; }
   }
   return null;
+}
+// ── БУУЛГАЛТЫН ГҮЙЛГЭЭГ ЗАХИАЛГАД ХОЛБОХ (2026-09-09) ──────────────────────
+// Буулгалт нь захиалгын орлогоос аль хэдийн хасагдсан. Тэр мөнгө банкнаас гарахад
+// хуулга оруулбал ЗАРДАЛ болж давхар хасагдана. Тиймээс хуулгын мөрийг бүртгэсэн
+// ⟦CMP⟧-тэй захиалгад тааруулж, ЗАХИАЛГАД ХОЛБОГДСОН 5800 болгоно —
+// `finIsCustomerRefund` түүнийг зардлаас хасна.
+// Тулгах шалгуур: дүн ЯГ таарах (буулгалт бол бүтэн дүнгээр буцаадаг) + захиалга
+// идэвхтэй. Утгад захиалгын дугаар байвал түүнийг илүүд үзнэ.
+function cmpMatchForStmt(memo, amount) {
+  const amt = Math.round(Number(amount) || 0);
+  if (!(amt > 0)) return null;
+  const orders = (state.appOrders || []).filter(o => o && _orderActive(o) && orderCmpAmount(o) === amt);
+  if (!orders.length) return null;
+  const nums = String(memo || '').match(/\d{3,5}/g) || [];
+  for (const ns of nums) {
+    const o = orders.find(x => String(x.number) === String(parseInt(ns, 10)));
+    if (o) return { id: o.id, number: o.number, amount: amt };
+  }
+  // Дугаар дурдаагүй ч дүн ЯГ таарсан ГАНЦ захиалга байвал холбоно (олон бол хүн шийднэ).
+  return orders.length === 1 ? { id: orders[0].id, number: orders[0].number, amount: amt } : null;
 }
 // Ашгийн мөр зөвхөн бүх санхүүг хардаг хүнд (ажилтанд зөвхөн өөрийн хүсэлт ирдэг тул дутуу дүн харагдана)
 // Захиалгын МӨНГӨН дүн харах эрх. Агуулах/цэвэрлэгч/жолооч зэрэг гүйцэтгэгч

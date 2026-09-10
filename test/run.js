@@ -5191,3 +5191,34 @@ need(['orderCustType']);
   ok(/const _dm = r\.depMatch \|\| r\.cmpMatch;/.test(src), 'scan: буулгалтын мөр захиалгад холбогдоно');
   ok(/r\.cmpMatch \? '5800'/.test(src), 'scan: буулгалтын мөр 5800 ангилалтай болно');
 }
+
+// ── РЕПО ХООРОНДЫН ГЭРЭЭ — сайттай (mevent.mn) хуваалцдаг зүйлс ──────────────
+// Хоёр репо нэг өгөгдлийн санг хуваалцдаг ч хамтын код байхгүй. Доорх утгууд
+// ХОЁУЛАНД нь давхардсан тул зөрч эхэлбэл чимээгүй эвдрэл үүснэ. Сайтын талд
+// (m-event-website-ready/test/logic.mjs) ЯГ ИЖИЛ утгууд бичигдсэн — аль нэг
+// тал өөрчлөгдвөл тэр талын CI улаан болно.
+{
+  // 1) Алдааны хээ. Зөрвөл нэг алдаа хоёр тусдаа GitHub Issue болно.
+  eq(F.errFingerprint('boom', 'https://mevent.mn/app.js'), '0788b3feaf14',
+     'гэрээ: errFingerprint алтан утга (сайттай ижил)');
+  eq(F.errFingerprint('boom', 'https://mevent.mn/app.js?v=9'),
+     F.errFingerprint('boom', 'https://mevent.mn/app.js'),
+     'гэрээ: хувилбарын дугаар хээнд ОРОХГҮЙ');
+
+  // 2) Тарифын нөөц утга. Хоёр репо ижил байх ёстой; хоёулаа app_config['tariffs']-аас
+  //    амьдаар татдаг тул эдгээр нь зөвхөн DB хүрэхгүй үеийн нөөц.
+  const T = vm.runInContext('RENTAL_TIERS', sandbox);
+  eq(T.length, 3, 'гэрээ: хямдралын шат 3');
+  eq(T.map(x => `${x.min}:${x.pct}`).join(','), '30:0.55,7:0.4,2:0.2',
+     'гэрээ: хямдралын шатлалын нөөц утга (сайттай ижил)');
+  eq(vm.runInContext('DELIVERY_CITY_FEE', sandbox), 150000, 'гэрээ: хот доторх хүргэлт (сайттай ижил)');
+  eq(vm.runInContext('DELIVERY_PER_KM', sandbox), 5000, 'гэрээ: км тариф (сайттай ижил)');
+  eq(vm.runInContext('ORDER_OFFHOURS_FEE', sandbox), 20000, 'гэрээ: ажлын бус цагийн хөлс (сайттай ижил)');
+
+  // 3) Нөөц эзлэх шатууд — VPS дээрх public_availability харагдацтай ижил байх ёстой.
+  //    Сайт тэр харагдацаас уншдаг тул зөрвөл апп ба сайт өөр сул үлдэгдэл харуулна.
+  const OCC = vm.runInContext('_ORDER_OCCUPYING', sandbox);
+  eq(OCC.slice().sort().join(','),
+     ['reserved','preparation','cleaning','ready','started','prepared','delivering','installing','rented','teardown','returning'].sort().join(','),
+     'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
+}

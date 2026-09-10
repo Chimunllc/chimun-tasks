@@ -1,0 +1,87 @@
+# Сайт ↔ Апп гэрээний харуул.
+#
+# Яагаад хэрэгтэй вэ: хоёр репо нэг өгөгдлийн санг хуваалцдаг ч хамтын код
+# байхгүй. Репо бүрийн тест ЗӨВХӨН өөрийнхөө кодыг хардаг тул нөгөө талын
+# гажилтыг хэн ч барихгүй — «аппад каталог өөрчлөхөд сайтаас бараа алга болдог»
+# гэсэн бүх алдаа яг эндээс төрсөн.
+#
+# Энэ ажил mevent.mn-ий АМЬД HTML-ийг татаж аппын утга болон app_config-той
+# тулгана. Сайт нийтэд нээлттэй тул хоёр дахь repo checkout ч, токен ч
+# шаардахгүй. Зөрчил олдвол GitHub Issue үүсгэнэ (алдааны triage-тай ижил зам).
+name: Гэрээний харуул
+
+on:
+  schedule:
+    - cron: '30 1 * * *'       # UTC 01:30 = УБ 09:30
+  workflow_dispatch:
+# ⚠ PR дээр ЗОРИУД ажиллуулахгүй. Энэ шалгалт АМЬД сайтын байдлаас хамаардаг —
+#    аппын PR бичсэн хүн түүнийг хянадаггүй. PR-ыг хараат бус зүйлээс болж
+#    улаан болговол шалгалт хэдхэн хоногийн дараа үл тоомсорлогдоно.
+#    Зөрчлийг Issue болгож мэдэгдэнэ.
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Гэрээ шалгах
+        id: check
+        run: |
+          set +e
+          out=$(node tools/contract-check.js 2>&1)
+          code=$?
+          echo "$out"
+          {
+            echo "report<<CONTRACT_EOF"
+            echo "$out"
+            echo "CONTRACT_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      # Issue үүсгэнэ — гэхдээ нээлттэй Issue аль хэдийн
+      # байвал давхардуулахгүй (өдөр бүр шинэ Issue үүсгэвэл үл тоомсорлогдоно).
+      - name: Зөрчил байвал Issue үүсгэх
+        if: steps.check.outputs.code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: ${{ steps.check.outputs.report }}
+        run: |
+          gh label create "гэрээ" --repo "${{ github.repository }}" --color 0e8a16 \
+            --description "Сайт ↔ апп гэрээний зөрчил (авто)" 2>/dev/null || true
+          existing=$(gh issue list --repo "${{ github.repository }}" --label "гэрээ" --state open --limit 1 --json number --jq '.[0].number')
+          body="Сайт (mevent.mn) ба аппын хуваалцсан утгууд зөрчиж байна.
+
+\`\`\`
+$REPORT
+\`\`\`
+
+Юу шалгасан: тарифын нөөц утга (хямдралын шат, хүргэлт, ажлын бус цаг),
+сайтын өгөгдлийн сангийн гадаргуу, \`public_catalog\` харагдац, арилжааны
+багана нийтэд задарсан эсэх.
+
+Дахин ажиллуулах: \`node tools/contract-check.js\`"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "${{ github.repository }}" --body "$body"
+          else
+            gh issue create --repo "${{ github.repository }}" \
+              --title "Сайт ↔ апп гэрээ зөрчигдсөн" --label "гэрээ" --body "$body"
+          fi
+
+      # Зөрчил арилсан бол нээлттэй Issue-г хаана — хуучирсан Issue үлдээхгүй.
+      - name: Зөрчил арилсан бол Issue хаах
+        if: steps.check.outputs.code == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for n in $(gh issue list --repo "${{ github.repository }}" --label "гэрээ" --state open --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "${{ github.repository }}" --comment "Гэрээ дахин таарлаа — автоматаар хаагдав."
+          done

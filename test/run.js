@@ -1543,7 +1543,7 @@ function finish() {
 
   eq(PA({ paid_mnt: 0, total_paid: 900 }), 0, 'хаах: paid_mnt тэргүүлнэ (0 ч гэсэн)');
 
-  ok(CL({ paid_mnt: 0 }).indexOf('Устгах') > -1, 'хаах: төлбөргүйд товч «Устгах»');
+  ok(CL({ paid_mnt: 0 }).indexOf('Больсон') > -1, 'хаах: төлбөргүйд товч «Больсон» (устгах БИШ — хэлцэл больсон)');
   ok(CL({ paid_mnt: 5 }).indexOf('Цуцлах') > -1, 'хаах: төлбөртэйд товч «Цуцлах»');
 }
 
@@ -5500,6 +5500,20 @@ need(['orderCustType']);
 {
   ok(/status: 'archived'/.test(src), 'scan: архивлалт зөвхөн төлөв солино');
   ok(/bulkArchiveOrders/.test(src) && /archiveDoneMonth/.test(src), 'scan: бөөн ба сарын архивлалт бий');
+}
+
+// SCAN — «Устгасан» биш «Больсон» (2026-09-10)
+// Захиалга «устдаггүй», ХЭЛЦЭЛ больдог. DB төлөв `deleted` хэвээр (дата, түүх,
+// код хөндөгдөхгүй) — зөвхөн хэрэглэгчид харагдах нэр солигдов.
+{
+  const buckets = src.slice(src.indexOf("{ key: 'deleted'"), src.indexOf("{ key: 'deleted'") + 140);
+  ok(/label: 'Больсон'/.test(buckets), 'нэр: бүлгийн шошго «Больсон»');
+  ok(/orderCloseLabel\(o\) \{ return orderCloseAction\(o\) === 'deleted' \? '🚫 Больсон'/.test(src),
+     'нэр: хаах товч «🚫 Больсон»');
+  ok(/status: 'deleted'/.test(src), 'нэр: DB төлөв `deleted` ХЭВЭЭР (зөвхөн шошго солигдсон)');
+  // Захиалгын жагсаалт/картанд «Устгасан» гэсэн шошго үлдээгүй
+  const ui = src.slice(src.indexOf('function orderListRow('), src.indexOf('function attachOrdersHandlers('));
+  ok(!/Устгасан/.test(ui), 'нэр: захиалгын жагсаалтад «Устгасан» шошго үлдээгүй');
 }
 
 // ── Сайтын ноорог 72 цагийн дараа нөөцөө сулална ────────────────────────────

@@ -1756,6 +1756,34 @@ function finish() {
     eq(F.cooSalaryPaid([_pay({})], '', '2026-06', '2026-08').total, 0, 'цалин: нэргүй бол ЮУ Ч тоолохгүй (сохроор нэмэхгүй)');
     eq(F.cooSalaryPaid([_pay({})], 'Алтансүх').total, 1000000, 'цалин: хугацаа заахгүй бол бүгд');
 
+    // ── ДАНСААР тулгах: хуулгаас ирсэн мөрд хүлээн авагч нь НЭР биш ДАНС ──
+    eq(F.cooAcctDigits('5009711612'), '5009711612', 'цалин: дансны цифр');
+    eq(F.cooAcctDigits('1400 0500 5009711612'), '140005005009711612', 'цалин: зай хасагдана');
+    eq(F.cooAcctDigits('12345'), '', 'цалин: 6-аас бага цифр = данс биш');
+    eq(F.cooAcctDigits(''), '', 'цалин: хоосон → данс биш');
+    eq(F.cooAcctDigits(null), '', 'цалин: null → данс биш (унахгүй)');
+
+    // Нэр огт таарахгүй мөр — зөвхөн данснаас баригдана
+    const _byAcct = [
+      _pay({ beneficiary: '5009711612', purpose: 'EB-Цалин', amount: 700000 }),
+      _pay({ beneficiary: 'ЗАРЛАГА: EB', account_number: '140005005009711612', purpose: 'Цалин', amount: 300000 }),
+      _pay({ beneficiary: 'Түвдэндаржаа', account_number: '1234567890', purpose: 'Цалин', amount: 900000 }),
+    ];
+    eq(F.cooSalaryPaid(_byAcct, 'Хэнбишүү', null, null, '5009711612').total, 1000000,
+       'цалин: данснаас баригдана (нэр таарахгүй ч), өөр данс орохгүй');
+    eq(F.cooSalaryPaid(_byAcct, 'Хэнбишүү', null, null, '').total, 0,
+       'цалин: данс заахгүй + нэр таарахгүй → 0');
+    eq(F.cooSalaryPaid(_byAcct, '', null, null, '5009711612').list.length, 2,
+       'цалин: нэргүй ч данстай бол тоологдоно');
+    eq(F.cooSalaryPaid(_byAcct, '', null, null, '').total, 0,
+       'цалин: нэр ч, данс ч алга → сохроор ЮУ Ч тоолохгүй');
+    // Нэр БА данс хоёулаа таарсан мөр ХОЁР удаа тоологдохгүй
+    eq(F.cooSalaryPaid([_pay({ beneficiary: 'Алтансүх', account_number: '5009711612', amount: 500000 })],
+       'И.Алтансүх', null, null, '5009711612').total, 500000, 'цалин: нэр+данс таарсан мөр давхардахгүй');
+    // Данс таарсан ч ангилал цалин биш бол орохгүй
+    eq(F.cooSalaryPaid([_pay({ beneficiary: '5009711612', category: '1800', purpose: 'Түлш' })],
+       '', null, null, '5009711612').total, 0, 'цалин: данс таарсан ч түлшний зардал орохгүй');
+
     vm.runInContext('finBranchPnl = __realPnl;', Object.assign(sandbox, { __realPnl: realPnl }));
     st.cooShare = savedCfg;
   }

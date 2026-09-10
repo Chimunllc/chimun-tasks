@@ -1795,6 +1795,7 @@ function financeAsTask(r) {
     dept_branch: r.dept_branch || '',  // салбар (ИВЕНТ/КЕМП/ЗАХ) — салбараар бүлэглэхэд
     category: r.category || '',        // ангилал (код+нэр) — үндсэн/дэд ангиллаар бүлэглэхэд
     beneficiary: r.beneficiary || '',
+    account_number: r.account_number || '',   // COO цалин тулгахад (нэр биш дансаар бичигдсэн мөр)
     link_type: r.link_type || '', link_label: r.link_label || '', link_id: r.link_id || '',   // бодит объект холбоос
     close_type: r.close_type || '',    // хаасан хэлбэр (баримттай/дутуу/баримтгүй) — аудитад
     close_note: r.close_note || '',    // баримтгүй/дутуу хаасан шалтгаан
@@ -23677,10 +23678,13 @@ function _cooNorm(s) { return String(s || '').toUpperCase().replace(/[^А-ЯӨҮ
 function cooIsSalaryCat(cat) { return /^7[1236]00/.test(String(cat || '')); }
 // Тухайн хүнд fromMonth..toMonth хооронд олгосон цалингийн мөрүүд (мөнгө гарсан сараар).
 // Цэвэр функц — тестлэгдэнэ. rows = financeAsTask(...) гаралт.
-function cooSalaryPaid(rows, name, fromMonth, toMonth) {
+// Дансны дугаар — зөвхөн цифрээр (зай/зураас/«данс:» угтвар ялгаатай бичигддэг).
+function cooAcctDigits(s) { const d = String(s || '').replace(/\D/g, ''); return d.length >= 6 ? d : ''; }
+function cooSalaryPaid(rows, name, fromMonth, toMonth, acct) {
   const key = cooNameKey(name);
+  const acc = cooAcctDigits(acct);
   const out = { list: [], total: 0 };
-  if (!key) return out;
+  if (!key && !acc) return out;   // нэр ч, данс ч алга — сохроор ЮУ Ч тоолохгүй
   (rows || []).forEach(t => {
     if (!t || t.decision !== 'approved' || t.status === 'deleted') return;
     if (!cooIsSalaryCat(t.category)) return;
@@ -23689,7 +23693,12 @@ function cooSalaryPaid(rows, name, fromMonth, toMonth) {
     if (fromMonth && m < fromMonth) return;
     if (toMonth && m > toMonth) return;
     const hay = _cooNorm(t.beneficiary) + '|' + _cooNorm(t.purpose) + '|' + _cooNorm(t.justification);
-    if (!hay.includes(key)) return;
+    // Нэрээр ЭСВЭЛ данснаар. Хуулгаас импортолсон мөрд хүлээн авагч нь НЭР биш
+    // ДАНСНЫ ДУГААР болж бичигддэг тул нэр дангаараа хүрэхгүй.
+    const digits = String(t.account_number || '').replace(/\D/g, '') + ' ' + String(t.beneficiary || '').replace(/\D/g, '');
+    const byName = !!key && hay.includes(key);
+    const byAcct = !!acc && digits.includes(acc);
+    if (!byName && !byAcct) return;
     const amt = Number(t.amount) || 0;
     if (amt <= 0) return;
     out.list.push({ d: String(t.requested_at || '').slice(0, 10), amount: amt, memo: String(t.purpose || '') });
@@ -23802,24 +23811,32 @@ function renderCooSalary() {
   h += panel(`${_cooBr} · ${escapeHtml(_cooSt)}-аас хойш (хуримтлагдсан)`, ytd);
 
   // ── Олгосон цалин + үлдэгдэл (хуримтлагдсан хугацаанд) ──
-  if (cooKey) {
-    const _paid = cooSalaryPaid((state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask), cooName, _cooSt, month);
+  {
+    // ⚠ COO сонгоогүй байхад панелыг НУУХГҮЙ — «жагсаалт харагдахгүй» гэсэн мохоо
+    //   мэдрэмж төрүүлдэг. Шалтгааныг ил хэлж, Тохиргоо руу чиглүүлнэ.
+    const _cooAcct = cooAcctDigits(cooShareCfg().acct);
+    const _paid = cooKey || _cooAcct
+      ? cooSalaryPaid((state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask), cooKey ? cooName : '', _cooSt, month, _cooAcct)
+      : { list: [], total: 0 };
     const _dueAc = cooShareAmount(ytd.ac.net, pct), _dueCa = cooShareAmount(ytd.ca.net, pct);
     const _balAc = _dueAc - _paid.total, _balCa = _dueCa - _paid.total;
     const _bcol = v => v > 0 ? 'coo-bal-due' : v < 0 ? 'coo-bal-over' : '';
     h += `<div class="coo-panel">`
       + `<div class="coo-panel-h">💵 Олгосон цалин · ${escapeHtml(_cooSt)} → ${escapeHtml(month)}</div>`
+      + (!cooKey && !_cooAcct
+        ? `<div class="coo-paid-none">⚙️ COO ажилтан сонгоогүй байна — доорх <b>Тохиргоо</b>-оос ажилтныг сонгож (мөн дансны дугаарыг бичиж) <b>Хадгалах</b> дарна уу. Түүний дараа олгосон цалин, үлдэгдэл харагдана.</div>`
+        : '')
       + (_paid.list.length
         ? `<div class="coo-paid">${_paid.list.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
           + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт олгосон · ${_paid.list.length} гүйлгээ</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div>`
-        : `<div class="coo-paid-none">Энэ хугацаанд цалин олгоогүй.</div>`)
+        : ((cooKey || _cooAcct) ? `<div class="coo-paid-none">Энэ хугацаанд цалин олгоогүй.</div>` : ''))
       + `<div class="coo-cmp coo-bal">`
       + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">Ноогдохоор</div><div class="coo-hd">Орсон мөнгөөр</div>`
       + `<div class="coo-lbl">Ашгийн эрх (${pct}%)</div><div class="coo-v">${fmtMoney(_dueAc)}</div><div class="coo-v">${fmtMoney(_dueCa)}</div>`
       + `<div class="coo-lbl">− Олгосон</div><div class="coo-v">${fmtMoney(-_paid.total)}</div><div class="coo-v">${fmtMoney(-_paid.total)}</div>`
       + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div>`
       + `</div>`
-      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон цалингийн гүйлгээ (ангилал 7100 г.м.), мөнгө гарсан сараар. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
+      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон цалингийн гүйлгээ (ангилал 7100 г.м.), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
       + `</div>`;
   }
 
@@ -23835,6 +23852,8 @@ function renderCooSalary() {
       + `<select id="coo-member" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);"><option value="">— сонгох —</option>${opts}</select>`
       + `<label style="font-size:var(--fs-sm);color:var(--muted);">Салбар:</label>`
       + `<select id="coo-branch" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">${COO_BRANCHES.map(b => `<option value="${escapeHtml(b)}"${b === _cooBr ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('')}</select>`
+      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Данс:</label>`
+      + `<input id="coo-acct" class="ui-raw" type="text" inputmode="numeric" value="${escapeHtml(String(cooShareCfg().acct || ''))}" placeholder="дансны дугаар" style="width:130px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">`
       + `<label style="font-size:var(--fs-sm);color:var(--muted);">Эхлэх сар:</label>`
       + `<input id="coo-start" class="ui-raw" type="month" value="${escapeHtml(_cooSt)}" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">`
       + `<label style="font-size:var(--fs-sm);color:var(--muted);">Хувь:</label>`
@@ -23865,7 +23884,9 @@ function attachCooSalaryHandlers() {
     const branch = (branchEl && COO_BRANCHES.includes(branchEl.value)) ? branchEl.value : 'M-Event';
     const startEl = document.getElementById('coo-start');
     const start = (startEl && /^\d{4}-(0[1-9]|1[0-2])$/.test(String(startEl.value || ''))) ? startEl.value : COO_START_DEFAULT;
-    const cfg = { key, name: (typeof memberName === 'function' && memberName(key)) || key, pct, branch, start };
+    const acctEl = document.getElementById('coo-acct');
+    const acct = cooAcctDigits(acctEl ? acctEl.value : '');
+    const cfg = { key, name: (typeof memberName === 'function' && memberName(key)) || key, pct, branch, start, acct };
     try { await saveAppConfig('coo_share', cfg); state.cooShare = cfg; showToast('Хадгаллаа', 'success'); render(); }
     catch (e) { showToast('Алдаа: ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Хадгалах'; }
   });

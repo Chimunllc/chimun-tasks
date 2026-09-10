@@ -23659,12 +23659,15 @@ function cooShareAmount(net, pct) { const n = Number(net) || 0, p = Number(pct) 
    үйл ажиллагааны үр дүнг хэмждэг, дэлгэцэд тайлбартай. */
 const COO_BRANCHES = ['M-Event', 'NOMAAD'];
 function cooBranch() { const b = String(cooShareCfg().branch || '').trim(); return COO_BRANCHES.includes(b) ? b : 'M-Event'; }
-// Сонгосон салбарын цэвэр ашиг (accrual). Салбарыг мөрийн нэрээр шүүнэ.
-function cooNetForMonths(months, branch) {
+// Сонгосон салбарын цэвэр ашиг. Салбарыг мөрийн нэрээр шүүнэ.
+// basis: 'accrual' = гүйцэтгэсэн сард ноогдуулах (өгөгдмөл) · 'cash' = бодитоор орсон/гарсан.
+// ⚠ Хоёр суурь ЗӨРНӨ: хураагдаагүй авлага ноогдохд орно, орсон мөнгөнд ОРОХГҮЙ.
+function cooNetForMonths(months, branch, basis) {
   const want = branch || cooBranch();
+  const bs = basis === 'cash' ? 'cash' : 'accrual';
   let inc = 0, exp = 0;
   (months || []).forEach(m => {
-    const p = (typeof finBranchPnl === 'function') ? finBranchPnl(m, 'accrual') : { rows: [] };
+    const p = (typeof finBranchPnl === 'function') ? finBranchPnl(m, bs) : { rows: [] };
     (p.rows || []).filter(r => r && r.k === want).forEach(r => { inc += Number(r.inc) || 0; exp += Number(r.exp) || 0; });
   });
   return { inc, exp, net: inc - exp };
@@ -23713,21 +23716,35 @@ function renderCooSalary() {
   const _cooBr = cooBranch();          // COO-гийн салбар — ашгийн эрхийн хамрах хүрээ
   const _cooSt = cooStartMonth();      // ашиг тоолж эхлэх сар (үүнээс өмнө зардал бүртгэгдээгүй)
   const _before = month < _cooSt;      // сонгосон сар нь эхлэхээсээ өмнө
-  const cur = _before ? { inc: 0, exp: 0, net: 0 } : cooNetForMonths([month], _cooBr);
-  const ytd = cooNetForMonths(cooMonthsYtd(month, _cooSt), _cooBr);
-  const curShare = cooShareAmount(cur.net, pct);
-  const ytdShare = cooShareAmount(ytd.net, pct);
+  const _zero = { inc: 0, exp: 0, net: 0 };
+  const _ytdM = cooMonthsYtd(month, _cooSt);
+  const cur = { ac: _before ? _zero : cooNetForMonths([month], _cooBr, 'accrual'), ca: _before ? _zero : cooNetForMonths([month], _cooBr, 'cash') };
+  const ytd = { ac: cooNetForMonths(_ytdM, _cooBr, 'accrual'), ca: cooNetForMonths(_ytdM, _cooBr, 'cash') };
   const cooName = cooKey ? ((typeof memberName === 'function' && memberName(cooKey)) || cfg.name || cooKey) : '—';
   const dataReady = (state.appOrders && state.appOrders.length != null) && (state.financeRequests !== undefined);
 
-  const row = (l, v, c, big) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:${big ? 'var(--fs-lg)' : 'var(--fs-md)'};padding:${big ? '7px' : '3px'} 0;${big ? 'border-top:1px solid var(--border);margin-top:4px;' : ''}"><span style="color:var(--muted);">${l}</span><b style="color:${c || 'var(--text)'};white-space:nowrap;">${fmtMoney(v)}</b></div>`;
-  const panel = (title, d, share) => `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:var(--panel);">`
-    + `<div style="font-weight:800;font-size:var(--fs-md);margin-bottom:6px;">${title}</div>`
-    + row('Орлого (ноогдох, барьцаа хассан)', d.inc, 'var(--ok)')
-    + row('− Үйл ажиллагааны зардал', -d.exp)
-    + row('= Цэвэр ашиг', d.net, d.net >= 0 ? 'var(--text)' : 'var(--danger)')
-    + row(`COO цалин (${pct}%)`, share, 'var(--ok)', true)
-    + `</div>`;
+  // ⚠ ХОЁР СУУРЬ ЗЭРЭГ (2026-09-10): «ноогдох» нь хураагдаагүй авлагыг орлого гэж
+  //   тоолдог тул #1371-ийн 55сая шиг том авлага COO цалинг хөөрөгддөг. Хэрэглэгч
+  //   аль нь ашгийн эрхийн үндэс болохыг өөрөө шийднэ — тиймээс хоёуланг харуулна.
+  // Grid (хүснэгт БИШ) — 320px-д мөрийн нэр бүтэн мөр эзэлж, 2 дүн доор зэрэгцэнэ
+  // (хүснэгтээр 3 багана байхад хоёр дахь дүн таслагдаж, хажуу тийш гүйлгэх шаардлагатай болов).
+  const _r2 = (l, a, c, cls) => `<div class="coo-lbl ${cls || ''}">${l}</div>`
+    + `<div class="coo-v ${cls || ''}">${fmtMoney(a)}</div><div class="coo-v ${cls || ''}">${fmtMoney(c)}</div>`;
+  const panel = (title, d) => {
+    const sa = cooShareAmount(d.ac.net, pct), sc = cooShareAmount(d.ca.net, pct);
+    const gap = d.ac.inc - d.ca.inc;
+    return `<div class="coo-panel">`
+      + `<div class="coo-panel-h">${title}</div>`
+      + `<div class="coo-cmp">`
+      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">Ноогдох</div><div class="coo-hd">Орсон мөнгө</div>`
+      + _r2('Орлого (барьцаа хассан)', d.ac.inc, d.ca.inc, 'coo-inc')
+      + _r2('− Үйл ажиллагааны зардал', -d.ac.exp, -d.ca.exp)
+      + _r2('= Цэвэр ашиг', d.ac.net, d.ca.net, 'coo-net')
+      + _r2(`COO цалин (${pct}%)`, sa, sc, 'coo-share')
+      + `</div>`
+      + (gap > 0 ? `<div class="coo-gap">↔ Зөрүү ${fmtMoney(gap)} = хураагдаагүй авлага. Ноогдохоор бол тэр мөнгө орлогод тоологдож, COO цалин ${fmtMoney(sa - sc)}-аар их гарна.</div>` : '')
+      + `</div>`;
+  };
 
   let h = `<div style="max-width:640px;margin:0 auto;">`;
   // Гарчиг нь дэлгэцийн толгойд (renderTitle → titles.coosalary). Энд зөвхөн хэнийх, хэдэн хувь.
@@ -23742,10 +23759,10 @@ function renderCooSalary() {
 
   if (!dataReady) h += `<div style="text-align:center;color:var(--muted);padding:10px;">⏳ Санхүү/захиалгын дата ачаалж байна…</div>`;
   if (_before) h += `<div style="text-align:center;color:var(--warn);font-size:var(--fs-sm);padding:8px 10px;border:1px solid var(--warn);border-radius:10px;margin-bottom:12px;">⚠ ${escapeHtml(_cooSt)}-аас өмнө зардлыг бүрэн бүртгэдэггүй байсан тул ашиг тооцохгүй.</div>`;
-  h += panel(`${_cooBr} · энэ сар · ${month}`, cur, curShare);
-  h += panel(`${_cooBr} · ${escapeHtml(_cooSt)}-аас хойш (хуримтлагдсан)`, ytd, ytdShare);
+  h += panel(`${_cooBr} · энэ сар · ${month}`, cur);
+  h += panel(`${_cooBr} · ${escapeHtml(_cooSt)}-аас хойш (хуримтлагдсан)`, ytd);
 
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• Ноогдох суурь (гүйцэтгэсэн сард), төлбөрөөр биш. Барьцаа/зээл хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• <b>Ноогдох</b> = захиалга гүйцэтгэсэн сард бүтэн дүнгээрээ (төлөгдөөгүй ч). <b>Орсон мөнгө</b> = бодитоор хураасан төлбөр, бодитоор гарсан зардлаар. Барьцаа/зээл хоёуланд хасагдсан.<br>• Ашгийн эрхийн үндэс болгох суурийг <b>та шийднэ</b> — аль нэгийг сонгож нягтлантай тохирно.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
 
   // CEO тохиргоо
   if (meCeo) {

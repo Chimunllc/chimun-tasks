@@ -5673,6 +5673,20 @@ need(['orderCustType']);
   ok(/function dataLoadFailed\(/.test(src), 'scan: dataLoadFailed тодорхойлогдсон');
 }
 
+// ── SCAN: алдааны лог ЧИМЭЭ БАГАТАЙ байх (2026-09-10) ─────────────────────
+// Хуудсыг шинэчлэхэд нисэж яваа fetch бүр «унасан» болж бүртгэгддэг байв
+// (loadMyAttendance-ийн анхны дохио яг ингэж гарсан). 49 ажилтан F5 дарах бүрд
+// лог дүүрч, дунд нь байгаа БОДИТ алдаа алга болно.
+{
+  ok(/if \(_pageUnloading\) return;/.test(src), 'scan: хаагдаж буй хуудсанд алдаа бүртгэхгүй');
+  ok(/navigator\.onLine === false\) return;/.test(src), 'scan: офлайн үед алдаа бүртгэхгүй');
+  ok(/addEventListener\('pageshow'/.test(src), 'scan: bfcache-аас буцвал дахин бүртгэнэ');
+  // Сервер 403/401 буцаахад ЧИМЭЭГҮЙ өнгөрөхгүй — «Миний ирц» хоосон харагдаж байсан шалтгаан
+  const fn = src.slice(src.indexOf('async function loadMyAttendance('));
+  ok(/else dataLoadFailed\('loadMyAttendance'/.test(fn.slice(0, 900)),
+     'scan: loadMyAttendance серверийн алдааг мэдээлнэ');
+}
+
 // SCAN — сесс хуучирахад ХООСОН дэлгэц биш, нэвтрэх дэлгэц (2026-09-10)
 // `pgrstBearer()` нь токенгүй бол anon руу чимээгүй уналаа. Аюулгүй байдлын
 // түгжээний дараа anon-д уншилтын эрх БАЙХГҮЙ болсон тул аппын PostgREST
@@ -5693,7 +5707,8 @@ need(['orderCustType']);
   ok(/function markAlive\(/.test(src) && /function clearAlive\(/.test(src),
      'scan: markAlive/clearAlive хосоороо байна');
   ok(/^function render\(\) \{\n  markAlive\(\);/m.test(src), 'scan: render дээр markAlive холбогдсон');
-  ok(/addEventListener\('pagehide', clearAlive\)/.test(src), 'scan: цэвэр хаалтад тэмдэглэгээ арилна');
+  ok(/addEventListener\('pagehide', \(\) => \{ _pageUnloading = true; clearAlive\(\); \}\)/.test(src),
+     'scan: цэвэр хаалтад тэмдэглэгээ арилна');
   ok(/Апп гэнэт дахин эхэлсэн/.test(src), 'scan: дохио серверт мэдэгддэг');
 }
 

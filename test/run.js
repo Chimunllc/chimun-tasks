@@ -5295,12 +5295,25 @@ need(['orderCustType']);
   // ХАМГИЙН ЧУХАЛ: SQL файлын төлвийн жагсаалт ба аппын _ORDER_OCCUPYING ЯГ ИЖИЛ
   // байх ёстой. Зөрвөл апп ба mevent.mn өөр сул үлдэгдэл харуулж давхар захиалга
   // үүснэ. Хоёрыг зэрэг өөрчлөхийг үүгээр эрхшээнэ.
-  const sqlStates = [...noSql(availSql)
-    .slice(noSql(availSql).indexOf('where status'))
-    .matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
+  const clean = noSql(availSql);
+  const arrAfter = (label) => {
+    const at = clean.indexOf(label);
+    if (at < 0) return null;
+    const open = clean.indexOf('[', at), close = clean.indexOf(']', open);
+    return [...clean.slice(open, close).matchAll(/'([a-z_-]+)'/g)].map(m => m[1]).sort();
+  };
+  const sqlStates = arrAfter('status = any (array[');
   const appStates = vm.runInContext('_ORDER_OCCUPYING', sandbox).slice().sort();
-  eq(sqlStates.join(','), appStates.join(','),
+  eq((sqlStates || []).join(','), appStates.join(','),
      'db: public_availability.sql-ийн төлөв app.js-ийн _ORDER_OCCUPYING-тэй ИЖИЛ');
+
+  // Сайтаас ирсэн ноорог нөөц эзэлдэг — SQL ба апп ижил эх сурвалжийн жагсаалттай.
+  const sqlSources = arrAfter('source = any (array[');
+  const appSources = vm.runInContext('_ORDER_OCCUPYING_DRAFT_SOURCES', sandbox).slice().sort();
+  eq((sqlSources || []).join(','), appSources.join(','),
+     'db: ноорог нөөц эзлэх эх сурвалж app.js-тэй ИЖИЛ');
+  ok(/status = 'draft' and source = any/.test(clean),
+     'db: харагдац сайтын ноорогийг нөөц эзлүүлдэг');
 
   // Харилцагчийн мэдээлэл харагдацад ОРОХГҮЙ.
   for (const col of ['customer', 'phone', 'email', 'delivery_address', 'total_mnt', 'paid_mnt']) {
@@ -5349,4 +5362,41 @@ need(['orderCustType']);
   eq(F.followupsOf(null).length, 0, 'дагах: мөргүй → 0 (унахгүй)');
   eq(F.quoteFollowupDue(null, '2026-09-05'), null, 'дагах: мөргүй → null');
   eq(vm.runInContext('FOLLOWUP_RESULTS', sandbox).length, 4, 'дагах: 4 хариу');
+}
+
+
+// ── Сайтаас ирсэн ноорог нөөц эзэлнэ; дотоод ноорог эзлэхгүй ─────────────────
+// ⚠ Сайтын захиалга ҮРГЭЛЖ `draft` төлөвтэй ирдэг (харилцагч онлайн төлдөггүй).
+//   2026-09-10 хүртэл ноорог нөөц эздэггүй байсан тул сайт нэг барааг ХЯЗГААРГҮЙ
+//   олон удаа зарч чаддаг байв: нэг зочин 10 сандал захиалсан ч дараагийнхад
+//   тэр 10 сандал бүрэн сул харагдана.
+{
+  const st = vm.runInContext('state', sandbox);
+  const BQR = vm.runInContext('bookedQtyForRange', sandbox);
+  const saved = { p: st.products, o: st.appOrders };
+  st.products = [{ id: 'dr-1', sku: 'M-777', name: 'Шилэн сандал', stock: 10 }];
+  const line = [{ sku: 'M-777', name: 'Шилэн сандал', qty: 10 }];
+
+  st.appOrders = [{ number: 9001, status: 'draft', paid_mnt: 0, source: 'm-event-website',
+                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
+  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 10,
+     'нөөц: САЙТААС ирсэн ноорог нөөц ЭЗЭЛНЭ (давхар зарахаас хамгаална)');
+
+  st.appOrders = [{ number: 9002, status: 'draft', paid_mnt: 0, source: 'app',
+                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
+  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 0,
+     'нөөц: ДОТООД ноорог (ажилтны үнийн санал) нөөц ЭЗЛЭХГҮЙ');
+
+  // Төлбөргүй `reserved` нь canon-оор `draft` болдог — эх сурвалж нь шийднэ.
+  st.appOrders = [{ number: 9003, status: 'reserved', paid_mnt: 0, source: 'm-event-website',
+                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
+  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 10,
+     'нөөц: сайтын төлбөргүй reserved ч нөөц эзэлнэ');
+
+  st.appOrders = [{ number: 9004, status: 'canceled', paid_mnt: 0, source: 'm-event-website',
+                    starts_at: '2026-09-24', stops_at: '2026-09-24', items: line }];
+  eq(BQR('Шилэн сандал', '2026-09-24', '2026-09-24'), 0,
+     'нөөц: цуцалсан сайтын захиалга эзлэхгүй');
+
+  st.products = saved.p; st.appOrders = saved.o;
 }

@@ -58,17 +58,13 @@ jobs:
           gh label create "гэрээ" --repo "${{ github.repository }}" --color 0e8a16 \
             --description "Сайт ↔ апп гэрээний зөрчил (авто)" 2>/dev/null || true
           existing=$(gh issue list --repo "${{ github.repository }}" --label "гэрээ" --state open --limit 1 --json number --jq '.[0].number')
-          body="Сайт (mevent.mn) ба аппын хуваалцсан утгууд зөрчиж байна.
-
-\`\`\`
-$REPORT
-\`\`\`
-
-Юу шалгасан: тарифын нөөц утга (хямдралын шат, хүргэлт, ажлын бус цаг),
-сайтын өгөгдлийн сангийн гадаргуу, \`public_catalog\` харагдац, арилжааны
-багана нийтэд задарсан эсэх.
-
-Дахин ажиллуулах: \`node tools/contract-check.js\`"
+          body=$(printf '%s\n' \
+            "Сайт (mevent.mn) ба аппын хуваалцсан утгууд зөрчиж байна." \
+            "" "$REPORT" "" \
+            "Юу шалгасан: тарифын нөөц утга (хямдралын шат, хүргэлт, ажлын бус цаг)," \
+            "сайтын өгөгдлийн сангийн гадаргуу, public_catalog харагдац," \
+            "арилжааны багана нийтэд задарсан эсэх." \
+            "" "Дахин ажиллуулах: node tools/contract-check.js")
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --repo "${{ github.repository }}" --body "$body"
           else

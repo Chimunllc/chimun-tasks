@@ -8274,6 +8274,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
   document.querySelectorAll('[data-app-follow]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openFollowupModal(b.dataset.appFollow); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
+  document.querySelectorAll('[data-acct-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.acctCopy, 'Дансны дугаар хууллаа'); }));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -22021,6 +22022,15 @@ function bqOrderCard(o) {
       ? `<span class="dep-badge dep-returned" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : _depRet.kind === 'refund' ? 'Буцаан олгох модалаар барьцаа буцаасан гэж тэмдэглэсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)'}${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
       : (isApp ? `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>` : ''))
     : '';
+  // ⭐ Барьцаа буцаах ДАНС — орлогын PDF-ээс уншсан шилжүүлэгчийн данс (`paid_ref`).
+  // Барьцаа нь ирсэн данс руугаа буцах ёстой; ажилтан данс хайж явахгүйн тулд картад шууд.
+  // Зөвхөн БУЦААГААГҮЙ барьцаанд харагдана (буцаасны дараа хэрэггүй, картыг чихэхгүй).
+  const _depAccts = (_dep > 0 && !_depRet && isApp && _cardMoney)
+    ? parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct)).map(r => ({ acct: r.acct.trim(), sender: (r.sender || '').trim() }))
+    : [];
+  const depAcctHtml = _depAccts.length
+    ? `<div class="dep-acct-row">${_depAccts.map(a => `<button type="button" class="dep-acct" data-acct-copy="${escapeHtml(a.acct)}" title="Дарж дансны дугаарыг хуулна">💳 Буцаах данс: <b>${escapeHtml(a.acct)}</b>${a.sender ? ` · ${escapeHtml(a.sender)}` : ''} ⧉</button>`).join('')}</div>`
+    : (_dep > 0 && !_depRet && isApp && _cardMoney ? `<div class="dep-acct-none">💳 Буцаах данс тодорхойгүй — орлогын баримтад данс уншигдаагүй</div>` : '');
   const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
@@ -22040,7 +22050,7 @@ function bqOrderCard(o) {
     ${o.created_at ? `<div class="order-meta">📥 Захиалга ирсэн: <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · арга хэмжээнээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
     ${_cardMoney ? payPanel : ''}
     ${_dep > 0 ? (_cardMoney
-      ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>`
+      ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>${depAcctHtml}`
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}

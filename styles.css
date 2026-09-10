@@ -6789,3 +6789,12 @@ select.no-asar-len {
 .dep-acct-none { font-size: var(--fs-xs); color: var(--muted); margin: 4px 0 2px; }
 .rf-diff { font-size: var(--fs-xs); color: var(--warn); margin-top: var(--space-1); font-weight: 600; }
 .ofilt-tool { font-size: var(--fs-sm); padding: 6px var(--space-3); white-space: nowrap; }
+
+/* Баримт задлагчийн оношилгоо */
+.rpd-modal { max-width: 720px; width: 97%; max-height: 90vh; overflow: auto; }
+.rpd-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.rpd-title { margin: 0; font-size: var(--fs-lg); }
+.rpd-note { font-size: var(--fs-sm); color: var(--muted); margin: 6px 0 var(--space-3); }
+.rpd-item { margin-bottom: var(--space-3); }
+.rpd-item-h { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
+.rpd-pre { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-xs); background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-2); max-height: 260px; overflow: auto; }

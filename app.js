@@ -22910,7 +22910,12 @@ const RECEIPT_MIN_DATE = '2026-07-01';
 function receiptTooOld(dateStr) { const d = String(dateStr || '').slice(0, 10); return !!d && d < RECEIPT_MIN_DATE; }
 function parseBankReceipt(text) {
   const flat = text.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
-  const isKhan = /ХААН\s*БАНК|Journal\s*No|Transaction information/i.test(flat);
+  // ⚠ Банкийг ХҮЛЭЭН АВАГЧИЙН банкаар таньж БОЛОХГҮЙ: Голомтоос Хаан банк руу
+  // шилжүүлсэн баримтад «Хаан Банк» гэж бичигдэх тул Голомтын баримтыг Хааных гэж
+  // андуурч, өөр задлагчаар уншиж данс хоосон гардаг байв (2026-09-10).
+  // Тиймээс баримт ГАРГАСАН банкны онцлог тэмдгээр таньна.
+  const isGolomt = /Хүсэлтийн лавлах дугаар|Цахим гүйлгээний баримт|ГОЛОМТ/i.test(flat);
+  const isKhan = !isGolomt && /Journal\s*No|Transaction information|ХААН\s*БАНК/i.test(flat);
   const out = { bank: isKhan ? 'Хаан' : 'Голомт' };
   const amtM = flat.match(/([\d][\d,]*(?:\.\d+)?)\s*MNT/i);
   if (amtM) out.amount = Math.round(parseFloat(amtM[1].replace(/,/g, '')));
@@ -22922,6 +22927,13 @@ function parseBankReceipt(text) {
     const parties = [...flat.matchAll(/(\d{7,20})\s+([А-ЯӨҮЁA-Z][А-ЯӨҮЁA-Za-z .\-]*?)(?=\s+[\d,]+\.\d{2}|\s+Гүйлгээний|\s+[KК]т|$)/g)].map(m => ({ acct: m[1], name: m[2].trim() }));
     if (parties[0]) { out.senderAcct = parties[0].acct; out.senderName = parties[0].name; }
     if (parties[1]) { out.receiverAcct = parties[1].acct; out.receiverName = parties[1].name; }
+    if (!out.senderAcct) {
+      // Загвар өөрчлөгдвөл дээрх regex хоосон үлдээдэг — бие даасан 7-20 оронтой
+      // эхний хоёр тоог данс гэж үзнэ (дүн, огноо, IBAN нь таслал/үсэгтэй тул орохгүй).
+      const nums = [...flat.matchAll(/\b(\d{7,20})\b/g)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+      if (nums[0]) out.senderAcct = nums[0];
+      if (!out.receiverAcct && nums[1]) out.receiverAcct = nums[1];
+    }
     const rm = flat.match(/Transaction description:\s*(.+?)(?:\s*Харилцагч|\s*Гүйлгээний баримтыг|$)/i);
     if (rm) out.ref = rm[1].trim();
     out.status = /амжилттай|success/i.test(flat) ? 'Амжилттай' : '';
@@ -23117,6 +23129,7 @@ async function backfillReceiptAccounts(btn) {
   if (!go) return;
   if (btn) btn.disabled = true;
   let fixed = 0, noFile = 0, noAcct = 0, failed = 0, i = 0;
+  const dbg = [];   // уншигдаагүй баримтын түүхий текст — оношилгоонд (доор харуулна)
   for (const o of need) {
     i++;
     if (i % 5 === 1) showToast(`📄 ${i}/${need.length} уншиж байна…`, 'info', 1500);
@@ -23125,10 +23138,10 @@ async function backfillReceiptAccounts(btn) {
       if (!r.id || refundAcctDigits(r.acct)) continue;
       const blob = await fetchReceiptBlob(r.id);
       if (!blob) { noFile++; continue; }
-      let d = null;
-      try { d = parseBankReceipt(await extractPdfText(blob)); } catch (_) { d = null; }
+      let d = null, raw = '';
+      try { raw = await extractPdfText(blob); d = parseBankReceipt(raw); } catch (_) { d = null; }
       if (d && refundAcctDigits(d.senderAcct)) found[r.id] = { acct: String(d.senderAcct).trim(), sender: String(d.senderName || '').trim() };
-      else noAcct++;
+      else { noAcct++; if (dbg.length < 3) dbg.push({ id: r.id, no: o.number, text: String(raw || '(PDF уншигдсангүй)').slice(0, 1500) }); }
     }
     if (!Object.keys(found).length) continue;
     // Зэрэгцээ төлбөр бичигдсэн байж болзошгүй — серверийн СҮҮЛИЙН paid_ref дээр нөхнө
@@ -23146,6 +23159,24 @@ async function backfillReceiptAccounts(btn) {
   render();
   showToast(`✓ ${fixed} захиалгад данс нөхөв${noFile ? ` · ${noFile} баримт хадгалагдаагүй` : ''}${noAcct ? ` · ${noAcct} баримтаас данс уншигдсангүй` : ''}${failed ? ` · ⚠ ${failed} бичигдсэнгүй` : ''}`,
     fixed ? 'success' : 'warn', 7000);
+  // Данс уншигдаагүй бол ЯАГААДЫГ нь харуулна — задлагчийг тааруулахад энэ текст хэрэгтэй.
+  if (dbg.length) showReceiptParseDebug(dbg);
+}
+// Данс уншигдаагүй баримтын түүхий текстийг харуулна (хуулж авч задлагчийг тааруулна).
+function showReceiptParseDebug(list) {
+  const m = document.createElement('div');
+  m.className = 'modal-bg open';
+  m.innerHTML = `<div class="modal rpd-modal">
+    <div class="rpd-head"><h2 class="rpd-title">🔍 Данс уншигдаагүй ${list.length} баримт</h2><button class="btn" data-rpd-x>✕ Хаах</button></div>
+    <div class="rpd-note">Доорх текстийг хуулж илгээвэл задлагчийг энэ загварт тааруулна. (Баримтын PDF-ээс гарсан түүхий текст.)</div>
+    ${list.map(d => `<div class="rpd-item"><div class="rpd-item-h">#${escapeHtml(String(d.no ?? ''))} · ${escapeHtml(d.id)}</div><pre class="rpd-pre">${escapeHtml(d.text)}</pre></div>`).join('')}
+    <div class="modal-actions"><button class="btn btn-primary" data-rpd-copy>⧉ Бүгдийг хуулах</button></div>
+  </div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove();
+  m.querySelector('[data-rpd-x]').onclick = close;
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  m.querySelector('[data-rpd-copy]').onclick = () => copyText(list.map(d => `--- #${d.no ?? ''} ${d.id} ---\n${d.text}`).join('\n\n'), 'Хууллаа — чат руу буулгана уу');
 }
 // Хадгалсан баримтыг receiptId-аар нээх — байвал PDF viewer, эс бол мэдэгдэнэ.
 async function openStoredReceipt(receiptId, meta) {

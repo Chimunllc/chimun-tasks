@@ -5468,3 +5468,36 @@ need(['orderCustType']);
   ok(/pickCancelReason\(num, isDel, o\)/.test(fn), 'scan: шалтгаан сонгох цонх ашиглагдана');
   ok(!/showPrompt\(/.test(fn), 'scan: чөлөөт текстийн prompt хасагдсан');
 }
+
+// ── ДУУССАН ЗАХИАЛГЫГ САРААР АРХИВЛАХ (2026-09-10) ─────────────────────────
+// Нэг нэгээр архивлах нь 100 захиалгад 100 дарлага. Сараар нэг товчоор.
+// ⚠ Зөвхөн ДУУССАН захиалга — идэвхтэй ажил жагсаалтаас алга болохгүй.
+{
+  const os = [
+    { id: 'a', status: 'returned', starts_at: '2026-08-05' },
+    { id: 'b', status: 'stopped', starts_at: '2026-08-20' },
+    { id: 'c', status: 'rented', starts_at: '2026-08-25' },
+    { id: 'd', status: 'returned', starts_at: '2026-09-01' },
+    { id: 'e', status: 'reserved', starts_at: '2026-08-10' },     // идэвхтэй — архивлахгүй
+    { id: 'f', status: 'draft', starts_at: '2026-08-11' },        // ноорог — архивлахгүй
+    { id: 'g', status: 'archived', starts_at: '2026-08-12' },     // аль хэдийн архивт
+    { id: 'h', status: 'deleted', starts_at: '2026-08-13' },      // устгасан
+  ];
+  eq(F.archivableOrders(os).map(o => o.id), ['a', 'b', 'c', 'd'], 'архив: зөвхөн дууссан захиалга');
+  eq(F.archivableOrders(os, '2026-08').map(o => o.id), ['a', 'b', 'c'], 'архив: сараар шүүнэ');
+  eq(F.archivableOrders(os, '2026-09').map(o => o.id), ['d'], 'архив: өөр сар');
+  eq(F.archivableOrders(os, '2026-07').length, 0, 'архив: захиалгагүй сар → 0');
+  eq(F.archivableOrders([]).length, 0, 'архив: хоосон → 0');
+  eq(F.archivableOrders(null).length, 0, 'архив: мөргүй → 0 (унахгүй)');
+  eq(F.archivableOrders([{ status: 'returned', created_at: '2026-08-01T00:00:00Z' }], '2026-08').length, 1,
+     'архив: эвентийн огноогүй бол ирсэн огноогоор');
+  const R = vm.runInContext('ORDER_ARCHIVABLE', sandbox);
+  ok(!R.includes('reserved') && !R.includes('draft') && !R.includes('deleted'),
+     'архив: идэвхтэй/ноорог/устгасан төлөв архивлах жагсаалтад БАЙХГҮЙ');
+}
+
+// SCAN — архивлалт ЗӨӨЛӨН (дата устгахгүй) 2026-09-10
+{
+  ok(/status: 'archived'/.test(src), 'scan: архивлалт зөвхөн төлөв солино');
+  ok(/bulkArchiveOrders/.test(src) && /archiveDoneMonth/.test(src), 'scan: бөөн ба сарын архивлалт бий');
+}

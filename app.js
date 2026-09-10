@@ -23650,12 +23650,22 @@ function cooShareCfg() { const c = state.cooShare; return (c && typeof c === 'ob
 function cooSharePct() { const p = Number(cooShareCfg().pct); return (p > 0 && p <= 100) ? p : 30; }
 // Цэвэр ашгаас COO-гийн авах дүн (сөрөг/алдагдалтай бол 0). Цэвэр функц — тестлэгдэнэ.
 function cooShareAmount(net, pct) { const n = Number(net) || 0, p = Number(pct) || 0; return n <= 0 ? 0 : Math.round(n * p / 100); }
-// Сарын жагсаалтын нийт компанийн цэвэр ашиг (accrual, 2 салбар нийлбэр).
-function cooNetForMonths(months) {
+/* ⚠ COO-гийн ашгийн эрх = ЗӨВХӨН ТУХАЙН САЛБАРЫН үр дүн (2026-09-10).
+   Өмнө нь БҮХ салбарын нийлбэрээр (M-Event + NOMAAD + ХХК) тооцож байсан тул
+   M-Event-ийн үйл ажиллагааны захирал NOMAAD/Катерингийн ашгаас хувь авах
+   болж байв. Салбар нь тохиргоонд (`coo_share.branch`), өгөгдмөл = M-Event.
+   `finBranchPnl` мөрийн нэрээр таарна ('M-Event' / 'NOMAAD').
+   ⚠ ХХК мөр (хөрөнгө, компанийн нийт зардал) ЗОРИУД ОРОХГҮЙ — салбарын
+   үйл ажиллагааны үр дүнг хэмждэг, дэлгэцэд тайлбартай. */
+const COO_BRANCHES = ['M-Event', 'NOMAAD'];
+function cooBranch() { const b = String(cooShareCfg().branch || '').trim(); return COO_BRANCHES.includes(b) ? b : 'M-Event'; }
+// Сонгосон салбарын цэвэр ашиг (accrual). Салбарыг мөрийн нэрээр шүүнэ.
+function cooNetForMonths(months, branch) {
+  const want = branch || cooBranch();
   let inc = 0, exp = 0;
   (months || []).forEach(m => {
     const p = (typeof finBranchPnl === 'function') ? finBranchPnl(m, 'accrual') : { rows: [] };
-    (p.rows || []).forEach(r => { inc += Number(r.inc) || 0; exp += Number(r.exp) || 0; });
+    (p.rows || []).filter(r => r && r.k === want).forEach(r => { inc += Number(r.inc) || 0; exp += Number(r.exp) || 0; });
   });
   return { inc, exp, net: inc - exp };
 }
@@ -23683,8 +23693,9 @@ function renderCooSalary() {
   }
 
   const month = state.cooMonth || todayStr().slice(0, 7);
-  const cur = cooNetForMonths([month]);
-  const ytd = cooNetForMonths(cooMonthsYtd(month));
+  const _cooBr = cooBranch();          // COO-гийн салбар — ашгийн эрхийн хамрах хүрээ
+  const cur = cooNetForMonths([month], _cooBr);
+  const ytd = cooNetForMonths(cooMonthsYtd(month), _cooBr);
   const curShare = cooShareAmount(cur.net, pct);
   const ytdShare = cooShareAmount(ytd.net, pct);
   const cooName = cooKey ? ((typeof memberName === 'function' && memberName(cooKey)) || cfg.name || cooKey) : '—';
@@ -23701,7 +23712,7 @@ function renderCooSalary() {
 
   let h = `<div style="max-width:640px;margin:0 auto;">`;
   // Гарчиг нь дэлгэцийн толгойд (renderTitle → titles.coosalary). Энд зөвхөн хэнийх, хэдэн хувь.
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 12px;">Үйл ажиллагааны захирал <b style="color:var(--text);">${escapeHtml(cooName)}</b> — цэвэр ашгийн ${pct}%</div>`;
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 12px;"><b style="color:var(--text);">${escapeHtml(_cooBr)}</b> салбарын үйл ажиллагааны захирал <b style="color:var(--text);">${escapeHtml(cooName)}</b> — тэр салбарын цэвэр ашгийн ${pct}%</div>`;
 
   // Сар сонгогч
   h += `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px;">`
@@ -23711,10 +23722,10 @@ function renderCooSalary() {
     + `</div>`;
 
   if (!dataReady) h += `<div style="text-align:center;color:var(--muted);padding:10px;">⏳ Санхүү/захиалгын дата ачаалж байна…</div>`;
-  h += panel(`Энэ сар · ${month}`, cur, curShare);
-  h += panel(`Оны эхнээс (${month.slice(0, 4)} он, хуримтлагдсан)`, ytd, ytdShare);
+  h += panel(`${_cooBr} · энэ сар · ${month}`, cur, curShare);
+  h += panel(`${_cooBr} · оны эхнээс (${month.slice(0, 4)} он, хуримтлагдсан)`, ytd, ytdShare);
 
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Ашгийн эрх = <b>хуримтлагдсан (YTD)</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана.<br>• Ноогдох суурь (гүйцэтгэсэн сард), төлбөрөөр биш. Барьцаа/зээл хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>хуримтлагдсан (YTD)</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана.<br>• Ноогдох суурь (гүйцэтгэсэн сард), төлбөрөөр биш. Барьцаа/зээл хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
 
   // CEO тохиргоо
   if (meCeo) {
@@ -23724,6 +23735,8 @@ function renderCooSalary() {
       + `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">`
       + `<label style="font-size:var(--fs-sm);color:var(--muted);">COO:</label>`
       + `<select id="coo-member" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);"><option value="">— сонгох —</option>${opts}</select>`
+      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Салбар:</label>`
+      + `<select id="coo-branch" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">${COO_BRANCHES.map(b => `<option value="${escapeHtml(b)}"${b === _cooBr ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('')}</select>`
       + `<label style="font-size:var(--fs-sm);color:var(--muted);">Хувь:</label>`
       + `<input id="coo-pct" class="ui-raw" type="number" min="0" max="100" value="${pct}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">%`
       + `<button class="btn primary" id="coo-save" style="padding:6px 14px;">Хадгалах</button>`
@@ -23747,7 +23760,9 @@ function attachCooSalaryHandlers() {
     const pct = Math.max(0, Math.min(100, Number(document.getElementById('coo-pct').value) || 0));
     if (!key) { showToast('COO ажилтан сонгоно уу', 'warn'); return; }
     saveBtn.disabled = true; saveBtn.textContent = 'Хадгалж байна…';
-    const cfg = { key, name: (typeof memberName === 'function' && memberName(key)) || key, pct };
+    const branchEl = document.getElementById('coo-branch');
+    const branch = (branchEl && COO_BRANCHES.includes(branchEl.value)) ? branchEl.value : 'M-Event';
+    const cfg = { key, name: (typeof memberName === 'function' && memberName(key)) || key, pct, branch };
     try { await saveAppConfig('coo_share', cfg); state.cooShare = cfg; showToast('Хадгаллаа', 'success'); render(); }
     catch (e) { showToast('Алдаа: ' + e.message, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Хадгалах'; }
   });

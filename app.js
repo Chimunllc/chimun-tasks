@@ -348,7 +348,13 @@ function _reportErrToServer(msg, src, extra) {
 // Улмаар сервер 401/403 буцаахад дэлгэц зүгээр ХООСОН харагдаж, ажилтан
 // «алга байна» гэж хэлэх хүртэл хэн ч мэдэхгүй байв (2026-09-10, Миний ирц).
 // ⚠ Энэ функц ӨӨРӨӨ алдаа шидэж БОЛОХГҮЙ — эс бөгөөс хязгааргүй давталт үүснэ.
+// Хуудас хаагдаж/шинэчлэгдэж байхад нисэж яваа fetch бүр «унасан» болж бүртгэгддэг.
+// Тэдгээр нь ЖИНХЭНЭ асуудал БИШ — ажилтан F5 дарах бүрд алдааны лог дүүрч, дунд нь
+// байгаа бодит алдаа алга болно. bfcache-аас буцаж ирвэл дахин бүртгэнэ (pageshow).
+let _pageUnloading = false;
 function dataLoadFailed(where, err) {
+  if (_pageUnloading) return;                    // хуудас хаагдаж байна — таслагдсан fetch
+  if (navigator && navigator.onLine === false) return;   // офлайн — хэрэглэгч мэднэ
   try {
     const m = (err && err.message) ? String(err.message) : String(err || '');
     _reportErrToServer('Дата ачаалагдсангүй: ' + String(where || '-'),
@@ -10587,6 +10593,7 @@ async function loadMyAttendance() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts,source`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
+    else dataLoadFailed('loadMyAttendance', new Error('HTTP ' + r.status));
   } catch (e) { dataLoadFailed('loadMyAttendance', e); }
 }
 function renderMyAttend() {
@@ -32330,7 +32337,10 @@ function promptDefaultPinChange() {
   // Restore a recent session if we have one; otherwise show PIN login.
   // Серверийн токен байвал ЭХЛЭЭД сервер талд баталгаажина (localStorage хуурамчлал таслах);
   // токенгүй/offline бол хуучин localStorage-based сэргээлт рүү уналт (тэвчээртэй).
-  try { window.addEventListener('pagehide', clearAlive); } catch (e) {}
+  try {
+    window.addEventListener('pagehide', () => { _pageUnloading = true; clearAlive(); });
+    window.addEventListener('pageshow', () => { _pageUnloading = false; });
+  } catch (e) { /* хуучин браузер — дохио байхгүй ч апп ажиллана */ }
   checkUncleanRestart();
 
   if (await restoreSession()) {

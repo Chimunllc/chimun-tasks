@@ -4752,6 +4752,7 @@ body.role-daily #add-project { display: none !important; }
 .br-srcchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; cursor: help; background: color-mix(in srgb, var(--ok, #16a34a) 13%, var(--panel)); color: var(--ok, #15803d); }
 .sum-site { color: var(--ok, #15803d); font-weight: 700; cursor: help; }
 .br-qchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; cursor: help; background: color-mix(in srgb, var(--brand, #2563EB) 12%, var(--panel)); color: var(--brand, #2563EB); }
+.br-qchip.none { background: color-mix(in srgb, var(--warn) 14%, var(--panel)); color: var(--warn); }
 /* Боломжит борлуулалт — борлуулалтаас ЯЛГАРАХ ёстой тул саарал, тодруулаагүй. */
 .sum-pipeline { color: var(--muted); font-weight: 600; cursor: help; }
 .br-depchip.dep-hold { background: color-mix(in srgb, var(--warn, #f59e0b) 15%, var(--panel)); color: var(--warn, #b45309); }
@@ -6738,3 +6739,12 @@ select.no-asar-len {
 .cmp-drop #cmp-st { font-size: var(--fs-xs); color: var(--muted); margin-top: 4px; line-height: 1.5; }
 .cmp-got { border: 1px solid var(--warn); border-radius: 9px; padding: 9px 11px; font-size: var(--fs-md); margin-bottom: var(--space-3); line-height: 1.6; }
 .cmp-prev { color: var(--muted); font-size: var(--fs-sm); }
+
+/* ── Ноорог (үнийн саналын шат) тууз (2026-09-10) ─────────────────────────── */
+.ordv-draftbar {
+  display: flex; flex-direction: column; gap: 3px; margin: var(--space-2) 0;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); font-size: var(--fs-md); line-height: 1.5;
+}
+.ordv-unsent { color: var(--warn); }
+.ordv-draftbar-h { font-size: var(--fs-sm); color: var(--muted); }

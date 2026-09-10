@@ -342,6 +342,62 @@ function _reportErrToServer(msg, src, extra) {
     }).catch(() => {});
   } catch (e) {}
 }
+
+// ── Дата ачаалалт унасныг ХАРАГДУУЛАХ ────────────────────────────────────────
+// Урьд нь `load*` функцүүд алдааг чимээгүй залгидаг байсан (`catch (e) {}`).
+// Улмаар сервер 401/403 буцаахад дэлгэц зүгээр ХООСОН харагдаж, ажилтан
+// «алга байна» гэж хэлэх хүртэл хэн ч мэдэхгүй байв (2026-09-10, Миний ирц).
+// ⚠ Энэ функц ӨӨРӨӨ алдаа шидэж БОЛОХГҮЙ — эс бөгөөс хязгааргүй давталт үүснэ.
+function dataLoadFailed(where, err) {
+  try {
+    const m = (err && err.message) ? String(err.message) : String(err || '');
+    _reportErrToServer('Дата ачаалагдсангүй: ' + String(where || '-'),
+                       'load:' + String(where || '-'), m.slice(0, 200));
+  } catch (e) { /* мэдээлэх нь өөрөө унавал чимээгүй өнгөрнө — зориудынх */ }
+}
+
+// ── PostgREST токены хүчинтэй хугацаа ────────────────────────────────────────
+// Нэвтрэхэд олгогддог `pgrst` JWT нь 30 хоногийн exp-тэй. Хугацаа дуусахад
+// pgrstBearer() чимээгүй anon руу уналаа — anon-д уншилтын эрх БАЙХГҮЙ тул
+// аппын бараг бүх дэлгэц хоосон болдог байв. Тиймээс эхлэхдээ шалгана.
+function pgrstTokenValid() {
+  try {
+    const t = pgrstToken();
+    if (!t) return false;
+    const parts = String(t).split('.');
+    if (parts.length !== 3) return false;
+    const b = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const p = JSON.parse(atob(b + '==='.slice((b.length + 3) % 4)));
+    if (!p || !p.exp) return true;
+    return (Number(p.exp) * 1000) > Date.now();
+  } catch (e) { return false; }
+}
+
+// ── «Гэнэт дахин эхэлсэн» дохио ──────────────────────────────────────────────
+// Зураг оруулахаар камер нээхэд PWA систем санах ойноос устгагдаж, апп дахин
+// эхэлдэг тохиолдол ажиглагдсан. JS алдаа шидэгддэггүй тул хаана ч бүртгэгддэггүй.
+let _aliveView = '', _aliveAt = 0;
+function markAlive() {
+  try {
+    const v = (typeof state === 'object' && state) ? String(state.view || '') : '';
+    const now = Date.now();
+    if (v === _aliveView && (now - _aliveAt) < 15000) return;
+    _aliveView = v; _aliveAt = now;
+    localStorage.setItem('appAlive', JSON.stringify({ v: v, at: now }));
+  } catch (e) {}
+}
+function clearAlive() { try { localStorage.removeItem('appAlive'); } catch (e) {} }
+function checkUncleanRestart() {
+  try {
+    const raw = localStorage.getItem('appAlive');
+    if (!raw) return;
+    localStorage.removeItem('appAlive');
+    const d = JSON.parse(raw) || {};
+    // 3 минутаас удаан завсарласан бол ердийн хаалт гэж үзнэ (хуурамч дохио гаргахгүй).
+    if (!d.at || (Date.now() - Number(d.at)) > 180000) return;
+    _reportErrToServer('Апп гэнэт дахин эхэлсэн', 'restart:' + String(d.v || '-'), '');
+  } catch (e) {}
+}
 // CEO — БҮХ ажилтны алдааг серверээс татна (сүүлийн 24 цаг). Нэвтэрсэн токен шаардана;
 // anon-д SELECT эрх ЗОРИУДААР өгөөгүй (алдааны лог нийтэд ил байх ёсгүй).
 async function loadServerErrors() {
@@ -355,7 +411,7 @@ async function loadServerErrors() {
     if (!r.ok) return;                                     // эрхгүй/view байхгүй — чимээгүй, локал нь ажиллана
     const rows = await r.json();
     if (Array.isArray(rows)) { state.serverErrors = rows; renderCiStatus(); }
-  } catch (e) {}
+  } catch (e) { dataLoadFailed('loadServerErrors', e); }
 }
 // CEO — алдааны ТҮҮХ (зассан/үл хамаарах орсон БҮХ төлөв). Идэвхтэй жагсаалтаас
 // тусад нь, зөвхөн алдааны цонх нээхэд татна. Толгойн улаан тэмдгийн тоонд нөлөөлөхгүй.
@@ -368,7 +424,7 @@ async function loadServerErrorHistory() {
     if (!r.ok) return [];
     const rows = await r.json();
     if (Array.isArray(rows)) { state.serverErrorHist = rows; return rows; }
-  } catch (e) {}
+  } catch (e) { dataLoadFailed('loadServerErrorHistory', e); }
   return [];
 }
 // Алдааны төлөв тэмдэглэх — түүхий логийг ХӨНДӨХГҮЙ, тусдаа хүснэгтэд.
@@ -600,7 +656,7 @@ function loadNotifications() {
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const before = state.notifications.length;
   state.notifications = state.notifications.filter(n => (n.ts || 0) >= cutoff);
-  if (state.notifications.length !== before) { try { localStorage.setItem('notifications', JSON.stringify(state.notifications)); } catch(e) {} }
+  if (state.notifications.length !== before) { try { localStorage.setItem('notifications', JSON.stringify(state.notifications)); } catch (e) { dataLoadFailed('loadNotifications', e); } }
 }
 function saveNotifications() {
   // Keep only the most recent 50 to avoid localStorage bloat
@@ -1440,7 +1496,7 @@ function loadLocal() {
       const saved = JSON.parse(pRaw);
       Object.keys(saved).forEach(b => { state.projectsByBranch[b] = saved[b]; });
     }
-  } catch(e) { /* keep defaults */ }
+  } catch (e) { dataLoadFailed('loadLocal', e); }
   setConn('offline', 'Локал режим');
 }
 function saveLocal() {
@@ -2023,11 +2079,11 @@ async function loadFinanceCategories() {
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
     FINANCE_MAIN_CATEGORIES = mains;
     FINANCE_SUB_CATEGORIES = subs;
-    try { localStorage.setItem('finCategories', JSON.stringify({ mains, subs })); } catch (e) {}
+    try { localStorage.setItem('finCategories', JSON.stringify({ mains, subs })); } catch (e) { dataLoadFailed('loadFinanceCategories', e); }
     if (typeof render === 'function') render();
   } catch (e) {
     // Сүүлд амжилттай татсан кэш байвал түүгээр (default дээр давхарлана)
-    try { const c = JSON.parse(localStorage.getItem('finCategories') || 'null'); if (c && c.mains && c.mains.length) { FINANCE_MAIN_CATEGORIES = c.mains; FINANCE_SUB_CATEGORIES = c.subs; } } catch (_) {}
+    try { const c = JSON.parse(localStorage.getItem('finCategories') || 'null'); if (c && c.mains && c.mains.length) { FINANCE_MAIN_CATEGORIES = c.mains; FINANCE_SUB_CATEGORIES = c.subs; } } catch (_) { dataLoadFailed('loadFinanceCategories', _); }
     console.warn('loadFinanceCategories fail', e);
   }
 }
@@ -3760,6 +3816,7 @@ function syncNavActive() {
 }
 
 function render() {
+  markAlive();   // «амьд» тэмдэглэгээ — гэнэт дахин эхэлснийг илрүүлэхэд
   // Цагийн ажилтныг зөвшөөрөлгүй view-аас "Ирсэн ажил" руу буцаана (UI нууснаас гадна бат)
   if (isDailyWorker()) {
     const blocked = ['dashboard','finance','delegated','archive','performance'];
@@ -7678,7 +7735,7 @@ const ORDER_BUCKETS = [
   { key: 'done',     label: 'Дууссан',     icon: '✅', dot: '#16A34A', st: ['returned', 'stopped'] },
   { key: 'archived', label: 'Архивласан',  icon: '🗄', dot: '#475569', st: ['archived'] },
   { key: 'canceled', label: 'Цуцалсан',    icon: '✕', dot: '#DC2626', st: ['canceled'] },
-  { key: 'deleted',  label: 'Устгасан',    icon: '🗑', dot: '#9CA3AF', st: ['deleted'] },
+  { key: 'deleted',  label: 'Больсон',     icon: '🚫', dot: '#9CA3AF', st: ['deleted'] },
 ];
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
@@ -7792,7 +7849,7 @@ function orderListRow(e, k, todayStr) {
   // Цуцалсан/устгасан мөрөнд шалтгааныг ЖАГСААЛТААС харагдуулна (нээх шаардлагагүй)
   const _cxr = ['canceled', 'deleted'].includes(String(o.status)) ? cancelReasonOf(o.note) : '';
   const cxReasonChip = _cxr
-    ? `<span class="br-cxreason" title="${escapeHtml((String(o.status) === 'deleted' ? 'Устгах' : 'Цуцлах') + ' шалтгаан: ' + _cxr)}">${String(o.status) === 'deleted' ? '🗑' : '❌'} ${escapeHtml(_cxr.length > 28 ? _cxr.slice(0, 28) + '…' : _cxr)}</span>`
+    ? `<span class="br-cxreason" title="${escapeHtml((String(o.status) === 'deleted' ? 'Больсон' : 'Цуцлах') + ' шалтгаан: ' + _cxr)}">${String(o.status) === 'deleted' ? '🚫' : '❌'} ${escapeHtml(_cxr.length > 28 ? _cxr.slice(0, 28) + '…' : _cxr)}</span>`
     : '';
   // Гүйцэтгэгчид цуцалсан/устгасан захиалга харагддаггүй (ORDER_STAFF_STATUSES) тул
   // шалтгааны шошго зөвхөн мөнгө харах эрхтэйд.
@@ -8008,7 +8065,7 @@ function renderOrders() {
     { key: 'done', label: 'Дууссан', dot: '#16A34A' },
     { key: 'archived', label: 'Архивласан', dot: '#475569' },
     { key: 'canceled', label: 'Цуцалсан', dot: '#DC2626' },
-    { key: 'deleted', label: 'Устгасан', dot: '#9CA3AF' },
+    { key: 'deleted', label: 'Больсон', dot: '#9CA3AF' },
   ];
   // Гүйцэтгэгчид зөвхөн идэвхтэй ажил — ноорог/архив/цуцалсан/устгасан бүлэг хэрэггүй
   const _SIDE = _staffOnly ? _SIDE_ALL.filter(g => ['all', 'active'].includes(g.key)) : _SIDE_ALL;
@@ -8103,7 +8160,7 @@ function renderOrders() {
   // жагсаалтад чагт гарч ирээд ҮЙЛДЛИЙН ТОВЧГҮЙ үлддэг байв).
   const selN = state.ordersSelected ? state.ordersSelected.size : 0;
   const bulkBar = state.ordersSelect
-    ? `<div class="olist-bulk"><label class="obulk-all"><input type="checkbox" id="bulk-all">Бүгдийг</label><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span class="obulk-sp"></span><button class="btn btn-sm" id="bulk-restore">↩ Сэргээх</button><button class="btn btn-sm" id="bulk-archive">🗄 Архивлах</button><button class="btn btn-sm btn-danger" id="bulk-delete">🗑 Устгах</button><button class="btn btn-sm" id="bulk-clear">Цэвэрлэх</button></div>`
+    ? `<div class="olist-bulk"><label class="obulk-all"><input type="checkbox" id="bulk-all">Бүгдийг</label><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span class="obulk-sp"></span><button class="btn btn-sm" id="bulk-restore">↩ Сэргээх</button><button class="btn btn-sm" id="bulk-archive">🗄 Архивлах</button><button class="btn btn-sm btn-danger" id="bulk-delete">🚫 Больсон</button><button class="btn btn-sm" id="bulk-clear">Цэвэрлэх</button></div>`
     : '';
   const body = shown.length
     ? sumLine + bulkBar + orderListHtml(shown, todayStr, CAP, state.ordersSort === 'smart', otableHead)
@@ -8173,7 +8230,7 @@ function attachOrdersHandlers() {
   document.getElementById('bulk-delete')?.addEventListener('click', async () => {
     const ids = [...(state.ordersSelected || [])];
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} захиалгыг БҮРМӨСӨН устгах уу? (буцаах боломжгүй)`, { okText: 'Устгах', danger: true }))) return;
+    if (!(await showConfirm(`${ids.length} захиалгыг «Больсон» гэж бүртгэх уу?\n\nДата УСТАХГҮЙ — «Больсон» бүлэгт үлдэж, «↩ Сэргээх»-ээр буцаж болно.`, { okText: 'Больсон', danger: true }))) return;
     try { await bulkDeleteOrders(ids); } catch (e) { return; }   // амжилтгүйд bulkDeleteOrders өөрөө сэргээж toast гаргана
     state.ordersSelected = new Set();
     showToast(`${ids.length} захиалга устгалаа`, 'success', 2800); render();
@@ -8635,7 +8692,7 @@ async function loadProductsCatalog() {
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
-      try { localStorage.setItem('mevProducts', JSON.stringify(rows)); } catch(e) {}
+      try { localStorage.setItem('mevProducts', JSON.stringify(rows)); } catch (e) { dataLoadFailed('loadProductsCatalog', e); }
       if (typeof render === 'function') render();
       return;
     } catch (e) { console.warn('Postgres products унш чадсангүй, Sheet fallback:', e.message); }
@@ -8648,7 +8705,7 @@ async function loadProductsCatalog() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.products = Array.isArray(data) ? data : (data.products || []);
-    try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch(e) {}
+    try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch (e) { dataLoadFailed('loadProductsCatalog', e); }
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadProductsCatalog fallback fail', e); }
 }
@@ -10167,7 +10224,7 @@ async function loadAttendanceToday() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.attendanceToday = await r.json();
-  } catch (e) { /* хуучныг үлдээнэ */ }
+  } catch (e) { dataLoadFailed('loadAttendanceToday', e); }
 }
 // Сонгосон ӨДРИЙН ирц (өнгөрсөн өдөр харах) → state.attViewRecs
 async function loadAttendanceView() {
@@ -10176,7 +10233,7 @@ async function loadAttendanceView() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=eq.${d}&select=member_key,member_name,kind,ts,branch,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) { state.attViewRecs = await r.json(); if (typeof render === 'function' && state.view === 'attendance') render(); }
-  } catch (e) {}
+  } catch (e) { dataLoadFailed('loadAttendanceView', e); }
 }
 // Сонгосон САРЫН бүх ирц (тойм) → state.attMonthRecs
 async function loadAttendanceMonthFull(month) {
@@ -10229,7 +10286,7 @@ async function loadAttendanceMonth() {
       state.attWorkedDays = agg.out;
       state.attMonthTimes = agg.times;
     }
-  } catch (e) { /* хуучныг үлдээнэ */ }
+  } catch (e) { dataLoadFailed('loadAttendanceMonth', e); }
 }
 // Цагийн ажилтны мөрд — энэ сар ирцээр ажилласан өдөр + хүлээгдэх цалин (өдрийн тарифаар).
 function attWorkedLine(m) {
@@ -10495,7 +10552,7 @@ async function loadMyAttendance() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?member_key=${encodeURIComponent(pgrstInList(keyVariants(state.me)))}&day=gte.${attMonthStart()}&order=ts.asc&select=day,kind,ts,source`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
     if (r.ok) state.myAttendance = await r.json();
-  } catch (e) { /* хуучныг үлдээнэ */ }
+  } catch (e) { dataLoadFailed('loadMyAttendance', e); }
 }
 function renderMyAttend() {
   const me = findMember(state.me) || {};
@@ -10945,7 +11002,7 @@ async function loadHourlyRatings() {
     const data = await r.json();
     const server = Array.isArray(data) ? data : (Array.isArray(data.ratings) ? data.ratings : []);
     // Локалд sync хийгдээгүй үнэлгээг алдахгүйн тулд merge (dedupe)
-    let local = []; try { local = JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch (e) {}
+    let local = []; try { local = JSON.parse(localStorage.getItem('hourlyRatings') || '[]'); } catch (e) { dataLoadFailed('loadHourlyRatings', e); }
     const seen = new Set(server.map(ratingDedupKey));
     const merged = [...server, ...local.filter(r => !seen.has(ratingDedupKey(r)))];
     state.hourlyRatings = merged;
@@ -11507,7 +11564,7 @@ async function loadEmployeeAliases() {
       if (norm) map[kind + ':' + norm] = a.canon;
     });
     state.empAliases = map;
-    try { localStorage.setItem('empAliases', JSON.stringify(map)); } catch (e) {}
+    try { localStorage.setItem('empAliases', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadEmployeeAliases', e); }
   } catch (e) { console.warn('loadEmployeeAliases', e); }
 }
 async function loadMemberPerms() {
@@ -11520,7 +11577,7 @@ async function loadMemberPerms() {
     const map = {};
     rows.forEach(p => { if (p && p.person_key) map[canonKey(p.person_key)] = p.perms || {}; });   // хуучин түлхүүрээр хадгалагдсан эрх алдагдахгүй
     state.memberPerms = map;
-    try { localStorage.setItem('memberPerms', JSON.stringify(map)); } catch (e) {}
+    try { localStorage.setItem('memberPerms', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadMemberPerms', e); }
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadMemberPerms', e); }
 }
@@ -11552,7 +11609,7 @@ async function loadMemberBranches() {
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
     state.memberBranches = map;
-    try { localStorage.setItem('memberBranches', JSON.stringify(map)); } catch (e) {}
+    try { localStorage.setItem('memberBranches', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadMemberBranches', e); }
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadMemberBranches', e); }
 }
@@ -12617,7 +12674,7 @@ async function loadBrandKit() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
-    try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) {}
+    try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) { dataLoadFailed('loadBrandKit', _); }
     if (k.logo) { const li = new Image(); li.onload = () => { k._logoImg = li; if (state.view === 'marketing') _mkRedraw(); }; li.src = k.logo; }
     if (state.view === 'marketing' && typeof render === 'function') render();
   } catch (e) { console.warn('loadBrandKit', e); }
@@ -12884,7 +12941,7 @@ async function loadEmailOptout() {
     const rows = await r.json();
     state._emailOptout = new Set((rows || []).map(x => String(x.email || '').trim().toLowerCase()).filter(Boolean));
     if (typeof render === 'function') render();
-  } catch (e) { /* email_optout хүснэгт байхгүй бол алгасна */ }
+  } catch (e) { dataLoadFailed('loadEmailOptout', e); }
 }
 async function sendMarketingEmail(test) {
   const S = state._mkEmail || {};
@@ -13259,7 +13316,7 @@ async function loadRolePerms() {
     const map = {};
     rows.forEach(p => { if (p && p.role) map[normRole(p.role)] = p.perms || {}; });
     state.rolePerms = map;
-    try { localStorage.setItem('rolePerms', JSON.stringify(map)); } catch (e) {}
+    try { localStorage.setItem('rolePerms', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadRolePerms', e); }
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadRolePerms', e); }
 }
@@ -13304,7 +13361,7 @@ async function loadSalaries() {
     const rows = await r.json(); const map = {}, ded = {};
     rows.forEach(p => { if (p && p.person_key) { const k = canonKey(p.person_key); map[k] = Number(p.amount) || 0; ded[k] = p.deduct !== false; } });
     state.salaries = map; state.salaryDeduct = ded;
-    try { localStorage.setItem('salaries', JSON.stringify(map)); localStorage.setItem('salaryDeduct', JSON.stringify(ded)); } catch (e) {}
+    try { localStorage.setItem('salaries', JSON.stringify(map)); localStorage.setItem('salaryDeduct', JSON.stringify(ded)); } catch (e) { dataLoadFailed('loadSalaries', e); }
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadSalaries', e); }
 }
@@ -14252,7 +14309,7 @@ async function loadNomaadOrders() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.nomaadOrders = Array.isArray(data.orders) ? data.orders : [];
-    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch(e) {}
+    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) { dataLoadFailed('loadNomaadOrders', e); }
     if (typeof render === 'function') render();
     loadNomaadPayments();   // төлбөрийн лог зэрэгцээ татна
   } catch(e) { console.warn('loadNomaadOrders fail', e); }
@@ -17525,7 +17582,7 @@ async function loadEvaluations() {
     state.evaluations = _evRows.map(e => (e && (e.ratee || e.rater))
       ? Object.assign({}, e, { ratee: canonKey(e.ratee), rater: canonKey(e.rater) })
       : e);
-    try { localStorage.setItem('evaluations', JSON.stringify(state.evaluations)); } catch(e) {}
+    try { localStorage.setItem('evaluations', JSON.stringify(state.evaluations)); } catch (e) { dataLoadFailed('loadEvaluations', e); }
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadEvaluations fail', e); }
 }
@@ -19914,7 +19971,7 @@ const BQ_STATUS = {
   returned:    { label: 'Дууссан', dot: '#16A34A', bg: '#DCFCE7', tx: '#15803D' },
   archived:    { label: 'Архивласан',    dot: '#475569', bg: '#E2E8F0', tx: '#334155' },
   canceled:    { label: 'Цуцалсан',      dot: '#DC2626', bg: '#FEE2E2', tx: '#B91C1C' },
-  deleted:     { label: 'Устгасан',      dot: '#9CA3AF', bg: '#F3F4F6', tx: '#6B7280' },
+  deleted:     { label: 'Больсон',       dot: '#9CA3AF', bg: '#F3F4F6', tx: '#6B7280' },
   // Хуучин төлөв (түүхэн захиалга рендерлэхэд)
   preparation: { label: 'Бэлтгэл',       dot: '#7C3AED', bg: '#EDE9FE', tx: '#5B21B6' },
   cleaning:    { label: 'Бэлдсэн',       dot: '#0891B2', bg: '#CFFAFE', tx: '#155E75' },
@@ -20613,7 +20670,7 @@ async function autoCleanExpiredOrders() {
   dead.forEach(o => { o.status = 'deleted'; });               // optimistic — "Устгасан" төлөв
   if (typeof render === 'function') render();
   for (const o of dead) { try { await saveAppOrder(o); } catch (e) { console.warn('autoClean move', e); } }
-  if (typeof showToast === 'function') showToast(`🗑 Хугацаа хэтэрсэн ${dead.length} төлбөргүй захиалгыг "Устгасан" руу шилжүүлэв`, 'info', 4500);
+  if (typeof showToast === 'function') showToast(`🚫 Хугацаа хэтэрсэн ${dead.length} төлбөргүй захиалгыг «Больсон» руу шилжүүлэв`, 'info', 4500);
 }
 // Байгууллагын нэр + РД-г захиалгад авто бүртгэх (⟦CI⟧ note token). Эх сурвалж:
 //   1) НӨАТ (ebarimt) баримт — buyer_name + buyer_reg (ХАМГИЙН ЗӨВ: нэр БА регистр).
@@ -20715,7 +20772,7 @@ function openTestCleanupModal() {
   modal.querySelector('#tc-del')?.addEventListener('click', async (e) => {
     const ids = [...modal.querySelectorAll('.tc-cb:checked')].map(cb => cb.dataset.id);
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
-    if (!(await showConfirm(`${ids.length} тест захиалгыг устгах уу? («Устгасан» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Устгах', danger: true }))) return;
+    if (!(await showConfirm(`${ids.length} тест захиалгыг хасах уу? («Больсон» бүлэгт шилжинэ — дараа сэргээж болно)`, { okText: 'Хасах', danger: true }))) return;
     e.currentTarget.disabled = true;
     let ok = 0;
     for (const id of ids) { try { await deleteAppOrder(id); ok++; } catch (err) { console.warn('test del', err); } }
@@ -20911,7 +20968,7 @@ function orderPaidAmount(o) {
 }
 // 'deleted' | 'canceled' — цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
 function orderCloseAction(o) { return orderPaidAmount(o) > 0 ? 'canceled' : 'deleted'; }
-function orderCloseLabel(o) { return orderCloseAction(o) === 'deleted' ? '🗑 Устгах' : '✕ Цуцлах'; }
+function orderCloseLabel(o) { return orderCloseAction(o) === 'deleted' ? '🚫 Больсон' : '✕ Цуцлах'; }
 function cancelReqOf(note) { const m = String(note || '').match(_CXRQ_RE); return m ? { by: m[1], date: m[2], reason: m[3].trim() } : null; }
 function setCancelReq(note, by, date, reason) {
   const base = String(note || '').replace(_CXRQ_RE, '').trim();
@@ -21946,7 +22003,7 @@ function bqOrderCard(o) {
     ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
-    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">${st === 'deleted' ? '🗑 Устгах' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
+    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">${st === 'deleted' ? '🚫 Больсон' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${_smHtml ? '' : slogHtml}
     ${_smHtml}
     ${itemsSection}
@@ -22006,14 +22063,14 @@ function pickCancelReason(num, isDel, o) {
     const modal = document.createElement('div'); modal.className = 'modal-bg';
     const amt = Number(o && o.total_mnt) || 0;
     modal.innerHTML = `<div class="modal" style="max-width:430px;">
-      <h2>${isDel ? '🗑 Захиалга устгах' : '✕ Захиалга цуцлах'}</h2>
+      <h2>${isDel ? '🚫 Захиалга больсон' : '✕ Захиалга цуцлах'}</h2>
       <p class="amo-hint">#${escapeHtml(String(num))}${o && o.customer ? ' · ' + escapeHtml(o.customer) : ''}${amt ? ` · ${fmtMoney(amt)}` : ''}<br>
         Шалтгааныг СОНГОНО уу — ингэснээр «яагаад захиалга алдаж байна» гэдгийг тоолж харна.</p>
       <div class="cx-opts">${ORDER_CX_REASONS.map((r, i) => `<button type="button" class="cx-opt${r.admin ? ' admin' : ''}" data-cx="${i}">${escapeHtml(r.k)}</button>`).join('')}</div>
       <label class="fld">Нэмэлт тайлбар <span style="font-weight:400;color:var(--muted);">(сонголт)</span><input id="cx-note" placeholder="Ж: 20%-иар хямд санал авсан"></label>
       <div class="modal-actions" style="justify-content:space-between;">
         <span class="cx-picked" id="cx-picked">Шалтгаан сонгоогүй</span>
-        <span style="display:flex;gap:8px;"><button class="btn" id="cx-cancel">Болих</button><button class="btn btn-primary" id="cx-ok" disabled style="opacity:.45;cursor:not-allowed;">${isDel ? 'Устгах' : 'Цуцлах'}</button></span>
+        <span style="display:flex;gap:8px;"><button class="btn" id="cx-cancel">Болих</button><button class="btn btn-primary" id="cx-ok" disabled style="opacity:.45;cursor:not-allowed;">${isDel ? 'Больсон' : 'Цуцлах'}</button></span>
       </div></div>`;
     document.body.appendChild(modal);
     let picked = null;
@@ -22044,7 +22101,7 @@ async function cancelOrderWithReason(oid) {
   const num = o ? (o.number ?? '') : '';
   const reason = await pickCancelReason(num, isDel, o);
   if (!reason) return;                                                    // болих
-  bqUpdateStatus(oid, to, { reason, toast: isDel ? 'Устгасан руу шилжүүллээ' : 'Цуцаллаа' });
+  bqUpdateStatus(oid, to, { reason, toast: isDel ? 'Больсон гэж бүртгэлээ' : 'Цуцаллаа' });
 }
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
@@ -29647,7 +29704,7 @@ async function loadTaskVoice(taskId) {
       const r = await fetchWithTimeout(`${DB_URL}/rest/v1/task_audio?task_id=eq.${encodeURIComponent(taskId)}&select=audio,duration`,
         { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
       if (r.ok) { const rows = await r.json(); if (rows[0]) { state._taskVoice = rows[0].audio; state._taskVoiceDur = rows[0].duration || 0; } }
-    } catch (e) {}
+    } catch (e) { dataLoadFailed('loadTaskVoice', e); }
   }
   renderVoicePreview();
 }
@@ -32078,7 +32135,23 @@ function promptDefaultPinChange() {
   // Restore a recent session if we have one; otherwise show PIN login.
   // Серверийн токен байвал ЭХЛЭЭД сервер талд баталгаажина (localStorage хуурамчлал таслах);
   // токенгүй/offline бол хуучин localStorage-based сэргээлт рүү уналт (тэвчээртэй).
+  try { window.addEventListener('pagehide', clearAlive); } catch (e) {}
+  checkUncleanRestart();
+
   if (await restoreSession()) {
+    // pgrst токен хүчингүй бол PostgREST уншилт БҮГД унана (anon-д эрх алга) —
+    // ажилтан хоосон дэлгэц хараад «алга байна» гэж мэдээлдэг байв.
+    // Хоосон харуулахын оронд шууд дахин нэвтрүүлнэ. Офлайн үед хөндөхгүй.
+    if (!pgrstTokenValid() && navigator.onLine !== false) {
+      try {
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('pgrstToken');
+      } catch (e) {}
+      showLoginScreen();
+      initPinLogin();
+      showLoginError('Сесс хуучирсан — дахин нэвтэрнэ үү', 'warn');
+      return;
+    }
     showApp();
     bootApp();
     // Session-аар нэвтэрсэн ч default PIN хэвээр байгаа бол шууд солихыг шаардана.

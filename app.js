@@ -8112,7 +8112,7 @@ function renderOrders() {
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
       <button type="button" class="ofilt-toggle${_fOpen ? ' on' : ''}" id="orders-filt-toggle">⚙ Шүүлт${_activeF ? `<span class="ofilt-n">${_activeF}</span>` : ''}</button>
     </div>
-    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}</div>
+    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}${state.isCEO ? `<button type="button" class="btn ofilt-tool" id="orders-acct-fix" title="Барьцаатай захиалгуудын хадгалсан PDF-ийг дахин уншиж, дутуу дансыг нөхнө">🔄 Баримтаас данс нөхөх</button>` : ''}</div>
   </div>`;
 
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };
@@ -8390,6 +8390,7 @@ function attachOrdersHandlers() {
   });
   // Шүүлтүүр эвхэх/дэлгэх (утсанд — хайлт үргэлж ил, бусад нь доор)
   document.getElementById('orders-filt-toggle')?.addEventListener('click', () => { state.ordersFiltOpen = !state.ordersFiltOpen; render(); });
+  document.getElementById('orders-acct-fix')?.addEventListener('click', (e) => backfillReceiptAccounts(e.currentTarget));
   // Захиалгын мөр дэлгэх/хаах — төлөвийг state-д хадгална. Эс бөгөөс polling render()
   // бүх жагсаалтыг дахин зурахад нээсэн мөр агшинд хаагддаг (утсан дээр "дарахаар хаагдана" гэж мэдрэгддэг байсан).
   document.querySelectorAll('details.olist-row[data-row-oid]').forEach(d => d.addEventListener('toggle', () => {
@@ -23079,6 +23080,72 @@ async function fetchReceiptBlob(receiptId) {
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: rows[0].mime || 'application/pdf' });
   } catch (e) { console.warn('fetchReceiptBlob', e); return null; }
+}
+// ── ХУУЧИН БАРИМТААС ДАНС НӨХӨХ (2026-09-10) ─────────────────────────────────
+// Голомтын хүснэгтэн баримтыг уншиж чаддаггүй байсан үед бүртгэсэн төлбөрүүдэд
+// шилжүүлэгчийн данс дутуу үлдсэн. Эх PDF нь `receipt_files`-д хэвээр байгаа тул
+// дахин уншиж ЗӨВХӨН дансыг нөхнө — дүн, огноо, төлбөр ХӨНДӨГДӨХГҮЙ.
+
+// paid_ref дотор дутуу дансыг нөхөж шинэ мөр буцаана (цэвэр функц — тесттэй).
+// found = { receiptId: {acct, sender} }. Данстай болсон бичлэгийг дахин хөндөхгүй.
+// ⚠ Данс байрлалд УТГА орсон хуучин бичлэг байдаг ([#id] нэр · 1483-БАДАРЧ) —
+// түүнийг данс гэж андуурахгүй, утга болгон хойш нь түлхэнэ (мэдээлэл алдагдахгүй).
+function refWithAccts(paidRef, found) {
+  const list = parsePaidRef(paidRef);
+  if (!list.length) return { ref: String(paidRef || ''), changed: 0 };
+  let changed = 0;
+  const rows = list.map(r => {
+    const f = r.id ? (found || {})[r.id] : null;
+    if (!f || !refundAcctDigits(f.acct) || refundAcctDigits(r.acct)) return r.raw;
+    const memo = [refundAcctDigits(r.acct) ? '' : r.acct, r.memo].filter(Boolean).join(' · ');
+    changed++;
+    return '[#' + r.id + '] ' + [r.sender || f.sender || '', f.acct, memo].filter(Boolean).join(' · ');
+  });
+  return { ref: rows.join('  |  '), changed };
+}
+// Барьцаа буцаагаагүй захиалгуудын дутуу дансыг эх PDF-ээс нөхнө (зөвхөн CEO).
+async function backfillReceiptAccounts(btn) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал', 'warn'); return; }
+  const need = (state.appOrders || []).filter(o => {
+    if (!((Number(o.deposit_mnt) || 0) > 0) || depositReturnState(o)) return false;
+    return parsePaidRef(o.paid_ref).some(r => r.id && !refundAcctDigits(r.acct));
+  });
+  if (!need.length) { showToast('Нөхөх зүйл алга — барьцаатай захиалгууд бүгд данстай', 'info', 3500); return; }
+  const go = await showConfirm(
+    `${need.length} захиалгын хадгалсан PDF-ийг дахин уншиж данс нөхөх үү?\n\nЗӨВХӨН данс нэмнэ — дүн, төлбөр, тэмдэглэл хөндөгдөхгүй. Дахин ажиллуулж болно.`,
+    { title: '🔄 Баримтаас данс нөхөх', okText: 'Тийм, унш' });
+  if (!go) return;
+  if (btn) btn.disabled = true;
+  let fixed = 0, noFile = 0, noAcct = 0, failed = 0, i = 0;
+  for (const o of need) {
+    i++;
+    if (i % 5 === 1) showToast(`📄 ${i}/${need.length} уншиж байна…`, 'info', 1500);
+    const found = {};
+    for (const r of parsePaidRef(o.paid_ref)) {
+      if (!r.id || refundAcctDigits(r.acct)) continue;
+      const blob = await fetchReceiptBlob(r.id);
+      if (!blob) { noFile++; continue; }
+      let d = null;
+      try { d = parseBankReceipt(await extractPdfText(blob)); } catch (_) { d = null; }
+      if (d && refundAcctDigits(d.senderAcct)) found[r.id] = { acct: String(d.senderAcct).trim(), sender: String(d.senderName || '').trim() };
+      else noAcct++;
+    }
+    if (!Object.keys(found).length) continue;
+    // Зэрэгцээ төлбөр бичигдсэн байж болзошгүй — серверийн СҮҮЛИЙН paid_ref дээр нөхнө
+    let fresh = String(o.paid_ref || '');
+    try {
+      const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(o.id)}&select=paid_ref`,
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 8000);
+      if (gr.ok) { const rr = await gr.json(); if (rr && rr[0] && rr[0].paid_ref != null) fresh = String(rr[0].paid_ref); }
+    } catch (_) {}
+    const res = refWithAccts(fresh, found);
+    if (!res.changed) continue;
+    try { await patchOrderFields(o, { paid_ref: res.ref }); fixed++; } catch (e) { failed++; }
+  }
+  if (btn) btn.disabled = false;
+  render();
+  showToast(`✓ ${fixed} захиалгад данс нөхөв${noFile ? ` · ${noFile} баримт хадгалагдаагүй` : ''}${noAcct ? ` · ${noAcct} баримтаас данс уншигдсангүй` : ''}${failed ? ` · ⚠ ${failed} бичигдсэнгүй` : ''}`,
+    fixed ? 'success' : 'warn', 7000);
 }
 // Хадгалсан баримтыг receiptId-аар нээх — байвал PDF viewer, эс бол мэдэгдэнэ.
 async function openStoredReceipt(receiptId, meta) {

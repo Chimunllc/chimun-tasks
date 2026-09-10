@@ -24,7 +24,44 @@
 ### Дата хаана байдаг
 - **Дата = VPS Postgres `chimun` DB** (өөрийн VPS; хаяг/хандалт локал санах ойд). Sheets ч, Supabase cloud ч ХЭРЭГЛЭХГҮЙ.
 - **Унших:** апп `DB_URL='https://n8n.nomaadcamp.com/db'` (Caddy `/db/rest/v1/*`→PostgREST), `DB_ANON_KEY`=VPS anon JWT. ⚠ Эдгээр 2026-08-30 хүртэл `SUPABASE_URL`/`SUPABASE_ANON_KEY` нэртэй байсан — Supabase cloud-той хамааралгүй, төөрөгдүүлдэг тул нэрлэсэн. Сайтад мөн `DB_BASE`/`DB_PRODUCTS_URL`/`DB_ORDERS_URL`/`DB_ANON_KEY`. Tasks/finance/staff/nomaad = n8n webhook-оор (бүгд Postgres). products/bq_* = PostgREST шууд.
-- **Бичих:** anon grant-аар шууд — `products`, `app_orders`, `repairs`, `product_aliases`, `nomaad_payments`. Бусад нь n8n webhook-оор.
+- **Бичих:** аппын PostgREST бичилт БҮГД `pgrstBearer()` (нэвтэрсэн токен) -оор. anon бичих эрх зөвхөн `app_errors` (алдааны лог) ба `attendance` (checkin.html). Бусад нь n8n webhook-оор.
+- **⛔ anon = ЗӨВХӨН нийтийн сайт (2026-09-09 хумив).** anon одоо ердөө 3 зүйл уншина:
+  `products` (**баганаар** — `cost`/`purchase_date`/`supplier`/`source_url`/`market_value` ХААЛТТАЙ,
+  тиймээс anon-аар `select=*` хийвэл **401**), `public_availability`, `app_config_public`.
+  · **`app_config` нийтэд ХААЛТТАЙ** — дотор нь хувийн данс, актласан хөрөнгө, ажилтны утас бий.
+    Сайт нь `app_config_public` **харагдац**-аас уншина (`tariffs`, `mevent_category_groups`,
+    `mevent_popularity` — 3 түлхүүр). Шинэ түлхүүрийг сайтад гаргах бол харагдацын `where key in (…)`-д нэм.
+  · Хаагдсан 15 хүснэгт (member_perms, role_perms, member_branches, nomaad_payments,
+    product_transfers, product_aliases, repairs, task_audio, brand_kit, catering_jobs,
+    catering_menu, email_optout, expense_learn, stock_counts, product_batches) — апп эдгээрийг
+    нэвтэрсэн токеноор уншдаг тул эвдрээгүй. **Шинэ хүснэгтийг anon-д БҮҮ нээ** — сайт үнэхээр
+    уншдаг эсэхийг эхлээд кодоор шалга.
+- **⛔ n8n-ий Postgres зангилаанд SQL-д утга шууд БҮҮ НАА (2026-09-09).** `'{{ … }}'` гэж хашилтан
+  дотор наавал SQL injection болно — NOMAAD-ийн үнийн саналын 3 workflow яг ингэж эмзэг байсныг
+  амьд системд баталж зассан. Зөв: `$1` + `options.queryReplacement = "={{ [String(утга ?? '')] }}"`.
+  Code node-оор SQL угсрах бол `MEVENT · Site order capture`-ийн `qt()` хашилт хамгаалагчийг ашигла.
+- **⛔ «Сайтад юу харагдах» дүрмийг кодод БҮҮ бич (2026-09-10).** Тэр дүрэм
+  `public_catalog` ХАРАГДАЦ-д DB дээр нэг удаа бичигдсэн: `archived=false` БА
+  `price>0` БА (`type in (service,package)` эсвэл `qty_mevent>0`). Сайт, `build-seo.js`,
+  `build-products-json.js` гурвуулаа тэндээс уншиж, өөрсдөө ШҮҮХГҮЙ. Харагдац
+  `stock`-ыг (qty_mevent − эвдэрсэн − засварт) бэлдэж өгнө. Дүрэм өөрчлөх =
+  харагдацыг засах, кодыг БИШ. Өмнө нь 3 газарт 3 өөрөөр бичигдэж (196/190/196)
+  байснаас «аппад хадгалахад сайтаас бараа алга болдог» алдаа төрсөн.
+  ⚠ `type` баганад БҮҮ найд — бараа хадгалах бүрд автоматаар дахин тооцогддог.
+  ⚠ `create or replace view` нь баганыг зөвхөн ТӨГСГӨЛД нэмнэ (дунд нь оруулбал
+    «cannot change name of view column»).
+- **Сайтын DB гадаргуу = 4 зүйл.** `public_catalog`, `public_availability`,
+  `app_config_public`, `app_errors` (зөвхөн бичих). Сайтад шинэ хүснэгт нээхийн
+  өмнө бод — сайтын тест үүнийг шалгаж, зөрчвөл унана.
+- **Хоёр репод давхардсан утгыг `tools/contract-check.js` хардаг.** Тарифын нөөц
+  утга, сайтын гадаргуу, харагдац, арилжааны баганын задрал. Өдөрт нэг удаа
+  ажиллаж (`.github/workflows/contract-watch.yml`) зөрчвөл Issue үүсгэнэ, арилвал
+  хаана. **PR дээр ЗОРИУД ажиллуулахгүй** — амьд сайтаас хамаардаг шалгалт PR-ыг
+  улаан болговол үл тоомсорлогдоно.
+- **⛔ n8n webhook-ийн түлхүүр = НУУЦ БИШ.** `1YP4RC…` түлхүүр mevent.mn-ий эх кодод ил байдаг тул
+  түүгээр хамгаалсан бүх зүйл нийтийнх. Бичих үйлдлийг ХЭЗЭЭ Ч тэр түлхүүрээр бүү хамгаал —
+  `chimun-session` токен шалга, эсвэл PostgREST + нэвтэрсэн токен ашигла. (`mevent-products`-ийн
+  POST салбар 2026-09-09-нд яг энэ шалтгаанаар хаагдсан; GET унших зам хэвээр.)
 - **Захиалга = НЭГ хүснэгт `app_orders`** (2026-07-01-нд Booqable түүх + шинэ захиалга нэгдсэн). `unifiedOrders()` нь `state.appOrders`-ээс уншина; `source` талбар нь 'booqable'(түүхэн) / 'app' / сайт гэж ялгана. `bq_*` хүснэгтүүд зөвхөн аналитик архив — шинэ захиалга тэнд БИЧИГДЭХГҮЙ. Захиалгын карт = `bqOrderCard`.
 - **Захиалгын модал (2026-08-29 дахин зохиомж):** `openNewOrder` = `.modal.no-modal`, ≥1001px-д **2 багана** (зүүн: харилцагч/хугацаа/хүргэлт → төлбөр+дүн, баруун: бараа бүтэн өндрөөр) — хуучин 640px нарийн багана байсныг өргөсгөв. Хайлт `.no-search` (бүтэн өргөн, `.orders-search`-ийн 150px хайрцаггүй), каталог `.no-catalog` (том хавтан + сул үлдэгдэл), сонгосон мөр `.no-item` дээр **− [тоо] + степпер** (тоо ширхэг бүтэн харагдана) + үнэ + «✓/⚠ N сул». **`openOrderProductPicker`** = бүх барааны popup (ангиллын чип, хайлт, картан дээр тоо, «✓ Оруулах») — «⤢ Бүгд» товчоор нээнэ, `.modal`-аас ГАДНА тул modal-ийн !important flatten хүрэхгүй. Загварын гэрээгээр: шинэ `!important` 0, inline `style=` 72→26, бүх өнгө/зай токен. Мобайл `.modal input/button {...!important}` дүрмүүдэд **`:not(.ui-raw)`** нэмж жижиг контролуудыг чөлөөлсөн (шинэ !important бичихгүйгээр).
 - **Зураг = ФАЙЛ, DB дотор БИШ.** VPS дээр `data/img/` (Caddy `n8n.nomaadcamp.com/img/`),

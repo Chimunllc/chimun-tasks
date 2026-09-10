@@ -1749,7 +1749,33 @@ function finish() {
   }];
   eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 0, 'нөөц: цуцалсан захиалга эзлэхгүй');
 
+  // СУУРИЛУУЛАЛТЫН ЦОНХ — ачаа үйлчлүүлэгч дээр байхад нөөц ЧӨЛӨӨТ харагдаж байв.
+  // `installing` = хүргэсэн, суурилуулж байгаа; `teardown` = буулгасан, агуулахад
+  // хараахан ирээгүй. 2026-09-09 хүртэл _ORDER_OCCUPYING-д ороогүй байсан.
+  for (const stt of ['installing', 'teardown']) {
+    st.appOrders = [{
+      number: 1478, status: stt, paid_mnt: 100000, starts_at: '2026-09-16', stops_at: '2026-09-17',
+      items: [{ sku: 'f83fc516-aaaa', name: 'Асар 6м өргөн', qty: 2 }],
+    }];
+    eq(BQR('Асар 6м*12м', '2026-09-16', '2026-09-17'), 2,
+       `нөөц: '${stt}' шатанд байгаа бараа нөөц ЭЗЭЛНЭ (агуулахад байхгүй)`);
+  }
+
   st.products = saved.p; st.appOrders = saved.o;
+}
+
+// 40h-2) SCAN: аппын нөөц эзлэх жагсаалт ↔ VPS харагдацын жагсаалт зөрөх ёсгүй.
+// Хоёр тал нэг ижил байх ёстой; зөрвөл апп ба mevent.mn өөр сул үлдэгдэл харуулна.
+// Харагдацыг өөрчлөхөд энэ жагсаалтыг ЗЭРЭГ шинэчилнэ (эсрэгээр нь ч мөн адил).
+{
+  const occ = vm.runInContext('_ORDER_OCCUPYING', sandbox);
+  for (const stt of ['installing', 'teardown']) {
+    ok(occ.includes(stt), `SCAN: _ORDER_OCCUPYING-д '${stt}' байна (харагдацтай ижил)`);
+  }
+  // Агуулахаас гарсан бүх шат нөөц ч эзэлнэ — эс бөгөөс тооллого ба сул үлдэгдэл зөрнө.
+  const out = vm.runInContext('STOCK_OUT_STATUSES', sandbox);
+  const missing = out.filter(s => !occ.includes(s));
+  ok(missing.length === 0, `SCAN: STOCK_OUT_STATUSES бүгд нөөц эзэлнэ (дутуу: ${missing.join(',') || '—'})`);
 }
 
 // 40i) TDZ хамгаалалт — «Агуулахад авсан» цонх нээгддэг эсэх (эх кодын дараалал)
@@ -5191,4 +5217,35 @@ need(['orderCustType']);
 {
   ok(/📭 Илгээгээгүй/.test(src), 'scan: илгээгээгүй ноорогт тэмдэг гарна');
   ok(/ordv-draftbar/.test(src), 'scan: ноорогийн тойм тууз бий');
+}
+
+// ── РЕПО ХООРОНДЫН ГЭРЭЭ — сайттай (mevent.mn) хуваалцдаг зүйлс ──────────────
+// Хоёр репо нэг өгөгдлийн санг хуваалцдаг ч хамтын код байхгүй. Доорх утгууд
+// ХОЁУЛАНД нь давхардсан тул зөрч эхэлбэл чимээгүй эвдрэл үүснэ. Сайтын талд
+// (m-event-website-ready/test/logic.mjs) ЯГ ИЖИЛ утгууд бичигдсэн — аль нэг
+// тал өөрчлөгдвөл тэр талын CI улаан болно.
+{
+  // 1) Алдааны хээ. Зөрвөл нэг алдаа хоёр тусдаа GitHub Issue болно.
+  eq(F.errFingerprint('boom', 'https://mevent.mn/app.js'), '0788b3feaf14',
+     'гэрээ: errFingerprint алтан утга (сайттай ижил)');
+  eq(F.errFingerprint('boom', 'https://mevent.mn/app.js?v=9'),
+     F.errFingerprint('boom', 'https://mevent.mn/app.js'),
+     'гэрээ: хувилбарын дугаар хээнд ОРОХГҮЙ');
+
+  // 2) Тарифын нөөц утга. Хоёр репо ижил байх ёстой; хоёулаа app_config['tariffs']-аас
+  //    амьдаар татдаг тул эдгээр нь зөвхөн DB хүрэхгүй үеийн нөөц.
+  const T = vm.runInContext('RENTAL_TIERS', sandbox);
+  eq(T.length, 3, 'гэрээ: хямдралын шат 3');
+  eq(T.map(x => `${x.min}:${x.pct}`).join(','), '30:0.55,7:0.4,2:0.2',
+     'гэрээ: хямдралын шатлалын нөөц утга (сайттай ижил)');
+  eq(vm.runInContext('DELIVERY_CITY_FEE', sandbox), 150000, 'гэрээ: хот доторх хүргэлт (сайттай ижил)');
+  eq(vm.runInContext('DELIVERY_PER_KM', sandbox), 5000, 'гэрээ: км тариф (сайттай ижил)');
+  eq(vm.runInContext('ORDER_OFFHOURS_FEE', sandbox), 20000, 'гэрээ: ажлын бус цагийн хөлс (сайттай ижил)');
+
+  // 3) Нөөц эзлэх шатууд — VPS дээрх public_availability харагдацтай ижил байх ёстой.
+  //    Сайт тэр харагдацаас уншдаг тул зөрвөл апп ба сайт өөр сул үлдэгдэл харуулна.
+  const OCC = vm.runInContext('_ORDER_OCCUPYING', sandbox);
+  eq(OCC.slice().sort().join(','),
+     ['reserved','preparation','cleaning','ready','started','prepared','delivering','installing','rented','teardown','returning'].sort().join(','),
+     'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
 }

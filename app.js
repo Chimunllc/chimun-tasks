@@ -8428,7 +8428,14 @@ function productStockByName(name) {
   return Math.max(0, mev - (Number(p.broken) || 0) - (Number(p.maintenance) || 0));
 }
 // Нөөц ЭЗЛЭХ статус: төлбөр төлөгдсөнөөс (reserved) гаргах хүртэл. Буцаж ирвэл (stopped/archived) чөлөөлнө.
-const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'];
+// ⚠ `installing` (хүргэсэн, суурилуулж байгаа) ба `teardown` (буулгасан, хараахан
+//    агуулахад ирээгүй) ЗААВАЛ энд байх ёстой. Эдгээр нь ачаа үйлчлүүлэгчийн талбай
+//    дээр байгаа шат — 2026-09-09 хүртэл орхигдсон тул суурилуулалттай захиалга бүрд
+//    2 цонх нээгдэж, тэр өдөр өөр захиалга авбал агуулахад бараа байхгүй болдог байв.
+//    (`STOCK_OUT_STATUSES` эдгээрийг аль хэдийн мэддэг байсан — хоёр жагсаалт зөрсөн.)
+// ⚠ Энэ жагсаалтыг өөрчилвөл VPS дээрх `public_availability` харагдацын `status IN (…)`-г
+//    ЗЭРЭГ зас — эс бөгөөс апп ба mevent.mn өөр өөр сул үлдэгдэл харуулна.
+const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'installing', 'rented', 'teardown', 'returning'];
 // Хоёр огнооны муж давхцаж байгаа эсэх (a=[s..e], b=[os..oe], инклюзив). Давхар захиалгын гол логик.
 function _rangesOverlap(s, e, os, oe) { return s <= oe && os <= e; }
 function bookedQtyForRange(name, start, end, excludeOrderNo) {

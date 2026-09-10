@@ -8442,6 +8442,25 @@ function productStockByName(name) {
 // ⚠ Энэ жагсаалтыг өөрчилвөл VPS дээрх `public_availability` харагдацын `status IN (…)`-г
 //    ЗЭРЭГ зас — эс бөгөөс апп ба mevent.mn өөр өөр сул үлдэгдэл харуулна.
 const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'installing', 'rented', 'teardown', 'returning'];
+// ⚠ САЙТААС ИРСЭН НООРОГ БАС НӨӨЦ ЭЗЭЛНЭ (2026-09-10).
+//   Сайтын захиалга ҮРГЭЛЖ `draft` төлөвтэй ирдэг (харилцагч онлайн төлдөггүй тул
+//   `paid_mnt = 0`). Ноорог нөөц эздэггүй байсан тул сайт нэг барааг ХЯЗГААРГҮЙ
+//   олон удаа зарж чадаж байв: нэг харилцагч 10 сандал захиалсан ч дараагийн
+//   зочинд тэр 10 сандал бүрэн сул харагдана. Эвентийн өдөр агуулахад бараа
+//   хүрэлцэхгүй болно.
+//   ДОТООД ноорогт (ажилтны үүсгэсэн үнийн санал) энэ дүрэм ХАМААРАХГҮЙ — тэдгээр
+//   нөөц эздэггүй нь зориудынх (100 сая₮-ийн санал нөөцийг блоклох ёсгүй, ажилтан
+//   аппаас хардаг). Ялгах хүчин зүйл = `source`.
+//   ⚠ Худалдан авалт: сайтаас ирсэн ноорог хүнээр цуцлагдтал нөөц эзэлсээр байна.
+//     Энэ нь давхар зарахаас дээр — ажилтан Захиалгын дэлгэцээс харж цуцална.
+//   ⚠ Энэ жагсаалтыг өөрчилвөл `db/public_availability.sql`-ыг ЗЭРЭГ зас
+//     (test/run.js хоёрыг тулгадаг).
+const _ORDER_OCCUPYING_DRAFT_SOURCES = ['m-event-website'];
+function _orderOccupies(o) {
+  const st = orderCanonStatus(o);
+  if (_ORDER_OCCUPYING.includes(st)) return true;
+  return st === 'draft' && _ORDER_OCCUPYING_DRAFT_SOURCES.includes(String((o && o.source) || ''));
+}
 // Хоёр огнооны муж давхцаж байгаа эсэх (a=[s..e], b=[os..oe], инклюзив). Давхар захиалгын гол логик.
 function _rangesOverlap(s, e, os, oe) { return s <= oe && os <= e; }
 function bookedQtyForRange(name, start, end, excludeOrderNo) {
@@ -8451,7 +8470,7 @@ function bookedQtyForRange(name, start, end, excludeOrderNo) {
   let total = 0;
   for (const o of (state.appOrders || [])) {
     if (excludeOrderNo && o.number === excludeOrderNo) continue;
-    if (!_ORDER_OCCUPYING.includes(orderCanonStatus(o))) continue;   // canon — харагдацтай ижил (төлбөргүй reserved нөөц эзлэхгүй)
+    if (!_orderOccupies(o)) continue;   // canon — `public_availability` харагдацтай ИЖИЛ дүрэм
     const os = String(o.starts_at || '').slice(0, 10), oe = String(o.stops_at || '').slice(0, 10);
     if (!os || !oe) continue;
     if (!_rangesOverlap(s, e, os, oe)) continue;   // огнооны давхцал

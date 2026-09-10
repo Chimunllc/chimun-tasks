@@ -5165,3 +5165,30 @@ need(['orderCustType']);
   ok(/const _dm = r\.depMatch \|\| r\.cmpMatch;/.test(src), 'scan: буулгалтын мөр захиалгад холбогдоно');
   ok(/r\.cmpMatch \? '5800'/.test(src), 'scan: буулгалтын мөр 5800 ангилалтай болно');
 }
+
+// ── НООРОГ = ҮНИЙН САНАЛЫН ШАТ (2026-09-10) ────────────────────────────────
+// Ноорог захиалга нь илгээсэн/илгээгээгүй үнийн санал. Илгээгээгүй нь чимээгүй
+// мартагддаг (42 саяын санал сар гүйцэд хэвтсэн) тул ил тэмдэглэгдэнэ.
+{
+  eq(F.quotesOf({ stage_meta: { quotes: [{ at: '2026-09-01', amount: 100 }] } }).length, 1, 'ноорог: илгээсэн саналын лог');
+  eq(F.quotesOf({ stage_meta: {} }).length, 0, 'ноорог: илгээгээгүй → 0');
+  eq(F.quotesOf({}).length, 0, 'ноорог: stage_meta байхгүй → 0 (унахгүй)');
+  eq(F.quotesOf(null).length, 0, 'ноорог: мөргүй → 0');
+
+  // Боломжит борлуулалт = ноорогуудын дүн. ⚠ Орлого БИШ.
+  const orders = [
+    { status: 'draft', source: 'app', total_mnt: 100000, deposit_mnt: 0, note: '' },
+    { status: 'draft', source: 'app', total_mnt: 42240000, deposit_mnt: 0, note: '' },
+    { status: 'returned', source: 'app', total_mnt: 500000, deposit_mnt: 0, note: '' },
+  ];
+  eq(F.draftPipelineTotal(orders), 42340000, 'ноорог: боломжит борлуулалт = зөвхөн ноорогууд');
+  eq(F.draftPipelineTotal([]), 0, 'ноорог: хоосон → 0');
+  ok(F.draftPipelineTotal(orders) !== 0 && F.orderRevenue(orders[0], 'accrual') === 100000,
+    'ноорог: ноорогийн дүн тооцогддог ч _orderActive нь draft-ыг орлогоос хасдаг');
+}
+
+// SCAN — илгээгээгүй ноорог ил тэмдэглэгдэнэ (2026-09-10)
+{
+  ok(/📭 Илгээгээгүй/.test(src), 'scan: илгээгээгүй ноорогт тэмдэг гарна');
+  ok(/ordv-draftbar/.test(src), 'scan: ноорогийн тойм тууз бий');
+}

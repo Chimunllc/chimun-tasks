@@ -7743,9 +7743,11 @@ function orderListRow(e, k, todayStr) {
     ? `<span class="br-srcchip" title="mevent.mn сайтаас ирсэн захиалга">🌐 Сайт</span>` : '';
   const _qs = quotesOf(o);
   const _qLast = _qs.length ? _qs[_qs.length - 1] : null;
+  // Ноорог = үнийн саналын шат. Санал ИЛГЭЭГЭЭГҮЙ ноорог чимээгүй мартагддаг тул
+  // (жиш. 42 саяын санал сар гүйцэд хэвтсэн) жагсаалтад ил тэмдэглэнэ.
   const quoteChip = _qs.length
     ? `<span class="br-qchip" title="${escapeHtml(_qs.length + ' удаа илгээсэн · сүүлд ' + String((_qLast && _qLast.at) || '').slice(0, 10) + (canSeeOrderMoney() ? ' · ' + fmtMoney(Number(_qLast && _qLast.amount) || 0) : ''))}">📤 ${_qs.length}</span>`
-    : '';
+    : (String(o.status) === 'draft' ? `<span class="br-qchip none" title="Ноорог боловч үнийн санал илгээгээгүй байна — «📄 Үнийн санал»-аар илгээнэ">📭 Илгээгээгүй</span>` : '');
   const id = escapeHtml(String(o.id));
   // Мөрийн үйлдэл товч = ТӨЛБӨР АВАХ (үлдэгдэлтэй үед шууд төлбөрийн модал нээнэ).
   // Дамжлагын алхмууд (Бэлдэх/Цэвэрлэх/Гаргах…) захиалгыг нээгээд дотор нь хийнэ — мөрөн дээр гаргахгүй.
@@ -8077,7 +8079,21 @@ function renderOrders() {
 
   // (Банкны тулгалт нь Санхүүгийн хяналт тул захиалгаас хассан — Санхүү хуулгыг тусдаа уншина.)
   // Зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + жагсаалт)
-  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
+  // ── НООРОГ = үнийн саналын шат. Илгээгээгүй санал чимээгүй мартагддаг тул
+  //    (42 саяын санал сар гүйцэд хэвтсэн тохиолдол байсан) тоог ил гаргана. ──
+  let draftBar = '';
+  if (state.ordersFilter === 'draft' && canSeeOrderMoney()) {
+    const dr = combined.filter(e => bucketOf(e.o.status) === 'draft').map(e => e.o);
+    const unsent = dr.filter(o => quotesOf(o).length === 0);
+    const sum = dr.reduce((t, o) => t + orderRevenue(o, 'accrual'), 0);
+    if (dr.length) {
+      draftBar = `<div class="ordv-draftbar">
+        <span>📄 <b>${dr.length}</b> ноорог · нийт <b>${fmtMoney(sum)}</b> боломжит борлуулалт${unsent.length ? ` · <b class="ordv-unsent">📭 ${unsent.length} санал илгээгээгүй</b>` : ' · ✓ бүгдэд санал илгээсэн'}</span>
+        <span class="ordv-draftbar-h">Ноорог нь орлогод ОРОХГҮЙ. Санал илгээхийн тулд захиалга нээж «📄 Үнийн санал» дар.</span>
+      </div>`;
+    }
+  }
+  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${draftBar}${body}</div></div>`;
 }
 
 function attachOrdersHandlers() {

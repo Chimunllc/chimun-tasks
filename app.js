@@ -20522,6 +20522,28 @@ function hasStageRecord(o) {
 // Дууссанд тооцогдох төлвүүд — эдгээрт дамжлагагүйгээр шилжихийг хориглоно.
 const ORDER_DONE_STATUSES = ['rented', 'returned', 'stopped', 'archived'];
 
+// ── Хэрэглэгчийн үнэлгээ ────────────────────────────────────────────────────
+// Захиалга хаагдахад явдаг имэйл дэх «★ Үнэлнэ үү» холбоос нь n8n-ий
+// /webhook/order-review хуудсыг нээж, хариуг ЭНЭ захиалгын stage_meta.review-д
+// бичдэг. Ажилтны дотоод үнэлгээ (stage_meta.<шат>.rate) -ээс ӨӨР зүйл —
+// энэ нь ГАДНЫ хэрэглэгчийн үнэлгээ.
+function orderReview(o) {
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
+  const r = sm && sm.review;
+  if (!r || typeof r !== 'object') return null;
+  const stars = Math.max(0, Math.min(5, Math.round(Number(r.stars) || 0)));
+  if (!stars) return null;
+  return { stars, text: String(r.text || '').trim(), at: String(r.at || '').slice(0, 10) };
+}
+function orderReviewHtml(o) {
+  const r = orderReview(o);
+  if (!r) return '';
+  const cls = r.stars >= 4 ? 'ok' : r.stars >= 3 ? 'warn' : 'bad';
+  return `<div class="order-review ${cls}" title="Хэрэглэгчийн үнэлгээ${r.at ? ' · ' + escapeHtml(r.at) : ''}">
+    <span class="orv-stars">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
+    ${r.text ? `<span class="orv-text">${escapeHtml(r.text)}</span>` : '<span class="orv-text orv-dim">сэтгэгдэл бичээгүй</span>'}
+  </div>`;
+}
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
@@ -22258,6 +22280,7 @@ function bqOrderCard(o) {
   // Толгойн «нийт (барьцаатай)» тайлбар — буцаасны дараа барьцаа дүнд БАЙХГҮЙ тул арилна.
   const _depIn = Math.max(0, _dep - orderRefundedDeposit(o));
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
+  const _revHtml = orderReviewHtml(o);   // хэрэглэгчийн ★ үнэлгээ (имэйлийн холбоосоор ирсэн)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
@@ -22265,6 +22288,7 @@ function bqOrderCard(o) {
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
+    ${_revHtml}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
     ${ciHtml}
     ${delivMeta}

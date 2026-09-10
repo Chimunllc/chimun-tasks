@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
@@ -4497,6 +4497,21 @@ need(['orderCustType']);
   ok(!/\bemail\b|\bhtml\b|subject/i.test(fn), 'scan: имэйл хаяг/бичвэрийг клиентээс илгээхгүй');
   ok(/dataLoadFailed\('order-mail/.test(fn), 'scan: имэйл унавал чимээгүй биш, серверт мэдэгдэнэ');
   ok(!/await fetchWithTimeout\(DEFAULT_ORDER_MAIL_URL/.test(fn), 'scan: имэйл шатны шилжилтийг хүлээлгэхгүй');
+}
+
+// ── ХЭРЭГЛЭГЧИЙН ★ ҮНЭЛГЭЭ — захиалгын stage_meta.review (2026-09-10) ───────
+{
+  const R = o => F.orderReview(o);
+  eq(R(null), null, 'үнэлгээ: хоосон захиалга');
+  eq(R({}), null, 'үнэлгээ: stage_meta алга');
+  eq(R({ stage_meta: {} }), null, 'үнэлгээ: review алга');
+  eq(R({ stage_meta: { review: { stars: 0 } } }), null, 'үнэлгээ: 0 од = үнэлгээгүй');
+  eq(R({ stage_meta: { review: { stars: 4, text: ' Сайн ', at: '2026-09-10T05:00:00' } } }),
+     { stars: 4, text: 'Сайн', at: '2026-09-10' }, 'үнэлгээ: од·бичвэр·огноо');
+  eq(R({ stage_meta: { review: { stars: 9 } } }).stars, 5, 'үнэлгээ: 5-аас дээш тасарна');
+  eq(R({ stage_meta: { review: { stars: -3 } } }), null, 'үнэлгээ: сөрөг = үнэлгээгүй');
+  // Ажилтны дотоод үнэлгээ (шатны rate) -тэй ХУТГАЛДАХГҮЙ
+  eq(R({ stage_meta: { clean: { by: '99', rate: 5 } } }), null, 'үнэлгээ: шатны rate нь хэрэглэгчийнх БИШ');
 }
 
 // SCAN — тайлан ба ROI хоёулаа багцыг задлана (2026-09-07)

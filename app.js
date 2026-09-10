@@ -1610,14 +1610,30 @@ async function saveTask(task, deleted=false, hardDelete=false, skipLocal=false) 
 
 /* Push broadcast — хариуцагч руу нэн даруй мэдэгдэл илгээнэ. Fire-and-forget;
    амжилтгүй бол ердөө сайлент үлдэнэ (Sheet sync дараа нь шинэчлэгдэх үед бас давтахгүй). */
+// Нэвтрэлтийн токен push илгээхэд хүчинтэй эсэх. Хугацаа нь дуусах дөхсөн бол
+// хуурамч найдвар өгөхгүйн тулд ХУДАЛ буцаана (сервер ямар ч байсан татгалзана).
+function _sessionTokenUsable(t) {
+  try {
+    const p = JSON.parse(atob(String(t).split('.')[0].replace(/-/g, '+').replace(/_/g, '/')));
+    return Number(p.exp) > Date.now();
+  } catch (e) { return false; }
+}
+// ⚠ push-broadcast нь 2026-09-10 хүртэл сайтын кодод ИЛ байгаа түлхүүрээр
+//   хамгаалагдаж байсан — интернэтээс хэн ч 49 ажилтны утсанд дурын мэдэгдэл
+//   илгээх боломжтой байв («CEO: яаралтай мөнгө шилжүүл» гэх мэт). Одоо
+//   нэвтэрсэн ажилтны токен шаардана. Токен байхгүй/хугацаа дууссан бол
+//   илгээхийг ОРОЛДОХГҮЙ — сервер татгалзах тул сүлжээ дэмий эзлэхгүй.
 function pushBroadcast(email, payload) {
   const url = state.config.pushBroadcastUrl;
   if (!url || !email) return;
   if (email === state.me) return; // өөртөө илгээхгүй
+  let token = '';
+  try { token = localStorage.getItem('sessionToken') || ''; } catch (e) {}
+  if (!token || !_sessionTokenUsable(token)) return;
   fetchWithTimeout(withKey(url), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, ...payload }),
+    body: JSON.stringify({ email, token, ...payload }),
     keepalive: true,
   }).catch(() => {});
 }

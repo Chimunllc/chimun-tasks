@@ -5567,3 +5567,24 @@ need(['orderCustType']);
      'db: харагдацын цаг app.js-ийн _SITE_DRAFT_HOLD_H-тэй ИЖИЛ');
   ok(/not like '%⟦SUSPECT⟧%'/.test(sql), 'db: харагдац ⟦SUSPECT⟧ захиалгыг нөөцөөс хасдаг');
 }
+
+// ── push-broadcast нэвтрэлт — токен заавал явна ─────────────────────────────
+// ⚠ 2026-09-10 хүртэл push-broadcast нь сайтын кодод ИЛ байгаа түлхүүрээр л
+//   хамгаалагдаж байсан: интернэтээс хэн ч 49 ажилтны утсанд дурын мэдэгдэл
+//   илгээх боломжтой байв. Одоо нэвтэрсэн ажилтны токен шаардана.
+{
+  const U = vm.runInContext('_sessionTokenUsable', sandbox);
+  const mk = (expMs) => Buffer.from(JSON.stringify({ ph: '99001122', lvl: 50, exp: expMs }))
+    .toString('base64url') + '.xxxxsig';
+  ok(U(mk(Date.now() + 30 * 86400000)), 'push: хүчинтэй токен ашиглагдана');
+  ok(!U(mk(Date.now() - 1000)), 'push: хугацаа дууссан токен ашиглагдахгүй');
+  ok(!U(''), 'push: хоосон токен ашиглагдахгүй');
+  ok(!U('хог'), 'push: эвдэрсэн токен ашиглагдахгүй');
+  ok(!U(mk(undefined)), 'push: exp-гүй токен ашиглагдахгүй');
+
+  const fn = src.slice(src.indexOf('function pushBroadcast'), src.indexOf('function uid()'));
+  ok(/if \(!token \|\| !_sessionTokenUsable\(token\)\) return;/.test(fn),
+     'scan: токенгүй бол push илгээхийг оролдохгүй');
+  ok(/JSON\.stringify\(\{ email, token, \.\.\.payload \}\)/.test(fn),
+     'scan: push биед токен явна');
+}

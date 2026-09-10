@@ -4457,6 +4457,37 @@ function encodeRefundNote(note, totalAmount, rf, kind) {
   return base ? base + ' ' + tok : tok;
 }
 
+/* ── ЗАХИАЛГЫН ҮЛДЭГДЭЛ — ГАНЦ ЭХ СУРВАЛЖ (2026-09-11) ──────────────────────
+   Буцаан олгох модал нь `paid_mnt`-ыг бууруулдаг ч `total_mnt`-ыг ХӨНДДӨГГҮЙ
+   (`newPaid = basePaid - refundAmt`). Тиймээс түүхий `total_mnt − paid_mnt` нь
+   буцаагдсан барьцааг ӨР болгож дахин үүсгэдэг байв: #1483 бүрэн төлөгдсөн
+   атлаа «◐ Дутуу 150,000₮» гэж харагдаж, Авлага ба Санхүү тайланд хүртэл
+   хуурамч авлага болж орсон.
+
+   ⛔ `depositReturnState(o)`-оор БҮҮ шүү. Түүний 'pre' салбар (2026-08-01-ээс
+      өмнөх БҮХ барьцаатай захиалга) ба 'stmt' салбар (5810 санхүүгийн мөрөөр
+      буцаасан) нь `paid_mnt`-ыг ОГТ хөндөөгүй буцаалтуудыг заадаг — тэднийг
+      хасвал БОДИТ авлага чимээгүй устана. Мөнгө үнэхээр `paid_mnt`-аас
+      хасагдсаныг заадаг цорын ганц дохио = note доторх ⟦RF⟧ токен.
+   ⛔ Зөвхөн БАРЬЦААНЫ буцаалт (kind='dep'). Арилжааны буцаалт (илүү төлөлт,
+      сайн санааны буцаалт) нь захиалгын өрийг барагдуулдаггүй.
+   ⛔ Барьцааны хэмжээгээр таглана — токен том байсан ч бодит өрийг идэхгүй. */
+function orderRefundedDeposit(o) {
+  const dep = Number(o && o.deposit_mnt) || 0;
+  if (dep <= 0) return 0;
+  const rf = parseRefund(o && o.note);
+  if (!rf || rf.kind !== 'dep') return 0;
+  return Math.min(dep, Math.max(0, Number(rf.amount) || 0));
+}
+/* Авах ёстой НИЙТ дүн — буцаагдсан барьцаа хасагдсан. */
+function orderBilled(o) {
+  return Math.max(0, (Number(o && o.total_mnt) || 0) - orderRefundedDeposit(o));
+}
+/* «Хэдэн төгрөг авах үлдсэн бэ» — үлдэгдэл боддог БҮХ дэлгэц үүнийг дуудна. */
+function orderOwed(o) {
+  return Math.max(0, orderBilled(o) - (Number(o && o.paid_mnt) || 0));
+}
+
 /* ─── ЗАСВАРЫН ДАМЖЛАГА (repairs) ─────────────────────────────────────────
    Эвдэрсэн бараа нөөцөөс хасагдаад (workingStock = нөөц − эвдэрсэн − засварт)
    мартагдаж байсан. Одоо эвдрэл бүртгэх бүрд засварын бичлэг үүсч, өөрийн
@@ -7868,8 +7899,7 @@ function orderListRow(e, k, todayStr) {
   // Дамжлагын алхмууд (Бэлдэх/Цэвэрлэх/Гаргах…) захиалгыг нээгээд дотор нь хийнэ — мөрөн дээр гаргахгүй.
   let actBtn = '';
   {
-    const _t = Number(o.total_mnt) || 0, _p = Number(o.paid_mnt) || 0;
-    if ((_t - _p) > 0 && String(o.status) !== 'canceled' && can('orders.pay')) {
+    if (orderOwed(o) > 0 && String(o.status) !== 'canceled' && can('orders.pay')) {
       actBtn = `<button type="button" class="br-act br-act-pay" data-bq-pay="${id}">💵 Төлбөр авах</button>`;
     }
   }
@@ -7881,7 +7911,7 @@ function orderListRow(e, k, todayStr) {
   const cxChip = _cxReq ? `<span title="Цуцлах хүсэлт${_cxReq.reason ? ': ' + escapeHtml(_cxReq.reason) : ''}${state.isCEO ? ' — дэлгээд батал/татгалз' : ''}" class="br-cxchip" onclick="event.stopPropagation()">⏳ Цуцлах хүсэлт</span>` : '';
   const urgDot = rank === 0 || rank === 1 ? '#DC2626' : rank === 2 ? '#D97706' : '';
   const dotEl = urgDot ? `<span class="br-dot" style="--d:${urgDot}" title="${rank <= 1 ? 'Хугацаа хэтэрсэн/өнөөдөр' : 'Ойрхон'}"></span>` : '';
-  const _tot = Number(o.total_mnt) || 0, _paid = Number(o.paid_mnt) || 0;
+  const _tot = orderBilled(o), _paid = Number(o.paid_mnt) || 0;
   // Жагсаалтын том тоо = БОРЛУУЛАЛТ (барьцаа хассан) — орлого/тайлан ҮҮГЭЭР бодогддог тул нүдээр
   // харах тоо тайлантай таарна. Мөрөнд задаргаа БИЧИХГҮЙ — зөвхөн 🔒 Барьцаатай тэмдэглэгээ; нийт
   // авах төлбөр захиалгыг дэлгэхэд харагдана. «✓ Төлсөн / ◐ Дутуу» ХЭВЭЭР нийт дүнгээр (хуулга тулгалт).
@@ -8032,9 +8062,9 @@ function openCompletedReport() {
 function downloadCompletedCsv(list) {
   const header = ['Дугаар', 'Эхлэх огноо', 'Дуусах огноо', 'Харилцагч', 'Утас', 'И-мэйл', 'Төлөв', 'Нийт дүн', 'Төлсөн', 'Үлдэгдэл', 'Хүргэлт'].join(',');
   const rows = list.slice().sort((a, c) => String(_crDate(c)).localeCompare(_crDate(a))).map(e => {
-    const o = e.o, tot = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
+    const o = e.o, tot = orderBilled(o), paid = Number(o.paid_mnt) || 0;
     return [o.number ?? '', _crDate(e), String(o.stops_at || '').slice(0, 10), o.customer || '', o.phone || '', o.email || '',
-      (BQ_STATUS[o.status] || {}).label || o.status || '', tot, paid, Math.max(0, tot - paid),
+      (BQ_STATUS[o.status] || {}).label || o.status || '', tot, paid, orderOwed(o),
       isDeliveryOrder(o) ? 'Хүргэлт' : 'Өөрөө авах'].map(csvCell).join(',');
   });
   const csv = '﻿' + header + '\n' + rows.join('\n');
@@ -20949,7 +20979,7 @@ const ORDER_ARCHIVABLE = ['returned', 'stopped', 'rented'];
 function archUnpaid(list) {
   let n = 0, sum = 0;
   (list || []).forEach(o => {
-    const bal = (Number(o && o.total_mnt) || 0) - (Number(o && o.paid_mnt) || 0);
+    const bal = orderOwed(o);
     if (bal > 0) { n++; sum += bal; }
   });
   return { n, sum };
@@ -21011,7 +21041,7 @@ function unifiedOrders() {
     const o = { ...ao, status: raw, item_count: (ao.items || []).length, _app: true };
     return { src: 'app', o, status: raw, skey: BQ_STATUS[raw] ? raw : 'reserved',
       ym: String(ao.starts_at || ao.created_at || '').slice(0, 7), date: ao.starts_at || ao.created_at || '',
-      total: Number(ao.total_mnt) || 0,
+      total: orderBilled(o),   // буцаагдсан барьцаа хасагдсан — payOf шүүлт ч үүнийг уншина
       // Борлуулалт = нийт − барьцаа (буцаадаг өр). Жагсаалт/бүлгийн нийлбэр/эрэмбэ бүгд ҮҮГЭЭР
       // явна — тайлан (accrual орлого) -той нэг тоо харагдана. Нийт төлбөр = e.total (захиалга дотор).
       rev: (typeof orderRevenue === 'function' ? orderRevenue(o, 'accrual') : (Number(ao.total_mnt) || 0)),
@@ -22008,7 +22038,10 @@ function openOrderProductPicker(opt) {
 function bqOrderCard(o) {
   const N = x => Number(x) || 0;
   const total = N(o.total_mnt), paid = N(o.paid_mnt), st = String(o.status || '');
-  const bal = Math.max(0, total - paid);
+  // ⚠ `total` ТҮҮХИЙ хэвээр: НӨАТ баримт нь баримтын дүнтэй тулгагддаг тул
+  //    vatBadge-д буцаалтаар засагдсан дүн өгвөл НӨАТ тулгалт эвдэрнэ.
+  const billed = orderBilled(o);   // толгойн «нийт» — буцаагдсан барьцаа хасагдсан
+  const bal = orderOwed(o);
   const start = o.starts_at ? String(o.starts_at).slice(0, 10) : '', stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
   const addr = o.delivery_address || o.customer_address || '';
   const id = escapeHtml(String(o.id));
@@ -22073,7 +22106,7 @@ function bqOrderCard(o) {
     ? `<div class="order-meta" style="color:var(--muted);font-size:11.5px;line-height:1.6;">${_ci.company ? `🏢 ${escapeHtml(_ci.company)}` : ''}${_ci.reg ? `${_ci.company ? ' · ' : ''}РД ${escapeHtml(_ci.reg)}` : ''}${_ciContact ? `<br>💬 ${escapeHtml(_ciContact)}` : ''}${_ci.maps ? `<br>📍 <a href="${escapeHtml(mapsHref(_ci.maps))}" target="_blank" rel="noopener">Google Maps байршил</a>` : ''}</div>`
     : '';
   const canScan = !isApp && activeSt && N(o.item_count) > 0;   // гаргах/буцаахад бараа скан
-  const appBal = Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0));
+  const appBal = orderOwed(o);
   const appActive = ['draft', 'reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st);
   // Захиалга ХААГДТАЛ засагдана (бараа нэмэх/хасах, тоо/үнэ өөрчлөх) — эвентийн үеэр бараа
   // нэмэгддэг тул гарсан/түрээслэгдсэн үед ч засах шаардлагатай. Дууссан/Архив/Цуцалсан л хаалттай.
@@ -22136,13 +22169,14 @@ function bqOrderCard(o) {
   const depAcctHtml = _depAccts.length
     ? `<div class="dep-acct-row">${_depAccts.map(a => `<button type="button" class="dep-acct" data-acct-copy="${escapeHtml(a.acct)}" title="Дарж дансны дугаарыг хуулна">💳 Буцаах данс: <b>${escapeHtml(a.acct)}</b>${a.sender ? ` · ${escapeHtml(a.sender)}` : ''} ⧉</button>`).join('')}</div>`
     : (_dep > 0 && !_depRet && isApp && _cardMoney ? `<div class="dep-acct-none">💳 Буцаах данс тодорхойгүй — «📄 Баримт»-аас эх PDF-ийг нээж дансыг хараарай</div>` : '');
-  const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
+  // Толгойн «нийт (барьцаатай)» тайлбар — буцаасны дараа барьцаа дүнд БАЙХГҮЙ тул арилна.
+  const _depIn = Math.max(0, _dep - orderRefundedDeposit(o));
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">
-    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(total)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
+    <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
@@ -23317,7 +23351,7 @@ function openBqPaymentModal(oid) {
   if (!o) return;
   if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
   loadUsedReceipts();   // нэгдсэн баримтын жагсаалтыг шинэчил (шуурхай давхцал шалгах)
-  const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0, bal = Math.max(0, total - paid);
+  const total = orderBilled(o), paid = Number(o.paid_mnt) || 0, bal = orderOwed(o);
   document.getElementById('bq-pay-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
@@ -23621,8 +23655,8 @@ function receivablesData() {
     const st = orderCanonStatus(o);
     // Авлага = ЗӨВХӨН баталгаажсан захиалга. Ноорог(санал)/цуцалсан/архивласан(хаагдсан) = авлага БИШ.
     if (!RECEIVABLE_ORDER_ST.has(st)) return;
-    const total = Number(o.total_mnt) || 0, paid = Number(o.paid_mnt) || 0;
-    const bal = total - paid;
+    const total = orderBilled(o), paid = Number(o.paid_mnt) || 0;
+    const bal = orderOwed(o);
     if (bal <= 0) return;
     const stop = o.stops_at ? String(o.stops_at).slice(0, 10) : '';
     items.push({

@@ -3175,11 +3175,24 @@ need(['orderCustType']);
       eq(bal([{ id: 'y', number: 8, status: s, total_mnt: 500000, paid_mnt: 200000 }]).length, 1,
          `авлага: «${s}» урьдын адил тоологдоно`);
     });
-    // Хаагдсан/устгасан — авлага БИШ
-    ['archived', 'canceled', 'deleted', 'draft'].forEach(s => {
+    // Цуцалсан/больсон/ноорог — авлага БИШ
+    ['canceled', 'cancelled', 'deleted', 'draft'].forEach(s => {
       eq(bal([{ id: 'z', number: 7, status: s, total_mnt: 500000, paid_mnt: 200000 }]).length, 0,
          `авлага: «${s}» авлагад орохгүй`);
     });
+    // ⚠ АРХИВЛАСАН нь авлага ХЭВЭЭР — архивлах = «ажлын жагсаалтаас хал», өр тэглэдэггүй.
+    //   Сараар багц архивласны дараа 963,500₮ авлага чимээгүй алга болж байв (#1470).
+    eq(bal([{ id: 'ar', number: 1470, status: 'archived', total_mnt: 1927000, paid_mnt: 963500 }]).map(i => i.balance),
+       [963500], 'авлага: АРХИВЛАСАН захиалгын үлдэгдэл хэвээр харагдана');
+    eq(bal([{ id: 'ar2', number: 5, status: 'archived', total_mnt: 500000, paid_mnt: 500000 }]).length, 0,
+       'авлага: архивласан бүтэн төлсөн захиалга авлагад орохгүй');
+    // ИНВАРИАНТ: архивлах нь авлагын дүнг ХӨНДӨХГҮЙ
+    {
+      const one = { id: 'inv', number: 11, status: 'returned', total_mnt: 800000, paid_mnt: 300000 };
+      const before = bal([one]).reduce((t, i) => t + i.balance, 0);
+      const after = bal([{ ...one, status: 'archived' }]).reduce((t, i) => t + i.balance, 0);
+      eq(after, before, 'ИНВАРИАНТ: архивласны дараа авлагын дүн өөрчлөгдөхгүй');
+    }
     // Танигдахгүй төлөв — чимээгүй нэмэгдэхгүй (bucketOf default 'active' болдгийг тойрсон)
     eq(bal([{ id: 'q', number: 6, status: 'ямар_ч_биш', total_mnt: 500000, paid_mnt: 200000 }]).length, 0,
        'авлага: танигдахгүй төлөв авлагад орохгүй');
@@ -5494,6 +5507,29 @@ need(['orderCustType']);
   const R = vm.runInContext('ORDER_ARCHIVABLE', sandbox);
   ok(!R.includes('reserved') && !R.includes('draft') && !R.includes('deleted'),
      'архив: идэвхтэй/ноорог/устгасан төлөв архивлах жагсаалтад БАЙХГҮЙ');
+
+  // Архивлахаас ӨМНӨ төлбөр дутуугийн сэрэмжлүүлэг (өр тэглэгдэхгүй ч хэрэглэгч мэдэх ёстой)
+  const up = F.archUnpaid([
+    { total_mnt: 1927000, paid_mnt: 963500 },   // 963,500 дутуу
+    { total_mnt: 500000, paid_mnt: 500000 },    // бүтэн төлсөн
+    { total_mnt: 300000, paid_mnt: 400000 },    // хэтрүүлж төлсөн → дутуу биш
+    { total_mnt: 200000, paid_mnt: 0 },         // 200,000 дутуу
+  ]);
+  eq(up.n, 2, 'архив: төлбөр дутуу захиалгын тоо');
+  eq(up.sum, 1163500, 'архив: төлбөр дутуу нийт дүн');
+  eq(F.archUnpaid([]).n, 0, 'архив: хоосон → дутуу 0');
+  eq(F.archUnpaid(null).sum, 0, 'архив: мөргүй → 0 (унахгүй)');
+  eq(F.archUnpaid([{}]).n, 0, 'архив: дүнгүй мөр → дутуу биш');
+
+  const RCV = vm.runInContext('RECEIVABLE_ORDER_ST', sandbox);
+  ok(RCV.has('archived'), 'архив: архивласан төлөв авлагын Set-д БАЙНА (өр алга болохгүй)');
+  // SCAN — сараар архивлах confirm нь төлбөр дутуугийн сэрэмжлүүлэг харуулах (чимээгүй архивлахгүй)
+  {
+    const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const body = (asrc.match(/async function archiveDoneMonth\([\s\S]*?\n}/) || [''])[0];
+    ok(/archUnpaid\(list\)/.test(body), 'архив: archiveDoneMonth нь archUnpaid-аар дутууг тоолно');
+    ok(/төлбөр дутуу/.test(body), 'архив: confirm мессежид «төлбөр дутуу» сэрэмжлүүлэг бий');
+  }
 }
 
 // SCAN — архивлалт ЗӨӨЛӨН (дата устгахгүй) 2026-09-10

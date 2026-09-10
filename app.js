@@ -8562,10 +8562,23 @@ const _ORDER_OCCUPYING = ['reserved', 'preparation', 'cleaning', 'ready', 'start
 //   ⚠ Энэ жагсаалтыг өөрчилвөл `db/public_availability.sql`-ыг ЗЭРЭГ зас
 //     (test/run.js хоёрыг тулгадаг).
 const _ORDER_OCCUPYING_DRAFT_SOURCES = ['m-event-website'];
+// ⚠ Сайтын ноорог хэдэн цаг нөөц барих вэ. Хугацаагүй барьвал нэг халдагч
+//   (эсвэл ирээгүй нэг харилцагч) каталогийг тодорхойгүй хугацаагаар блоклоно.
+//   72 цаг = баасан оройн жинхэнэ захиалга даваа гарагийг хүртэл нөөцөө барина.
+//   Ажилтан сунгах бол захиалгыг `reserved` болгоно (одоо байгаа урсгал).
+//   ⚠ `db/public_availability.sql`-тэй ЯГ ИЖИЛ тоо байх ёстой (test/run.js тулгана).
+const _SITE_DRAFT_HOLD_H = 72;
 function _orderOccupies(o) {
   const st = orderCanonStatus(o);
   if (_ORDER_OCCUPYING.includes(st)) return true;
-  return st === 'draft' && _ORDER_OCCUPYING_DRAFT_SOURCES.includes(String((o && o.source) || ''));
+  if (st !== 'draft') return false;
+  if (!_ORDER_OCCUPYING_DRAFT_SOURCES.includes(String((o && o.source) || ''))) return false;
+  // Хэвийн бус захиалга (n8n `Build Row` тэмдэглэсэн) нөөц ЭЗЛЭХГҮЙ — жагсаалтад
+  // харагдана, ажилтан шалгана, гэхдээ каталогийг блоклохгүй.
+  if (String((o && o.note) || '').includes('⟦SUSPECT⟧')) return false;
+  const t = Date.parse((o && o.created_at) || '');
+  if (!Number.isFinite(t)) return true;   // огноогүй хуучин мөр — хуучин зан үйл
+  return (Date.now() - t) < _SITE_DRAFT_HOLD_H * 3600 * 1000;
 }
 // Хоёр огнооны муж давхцаж байгаа эсэх (a=[s..e], b=[os..oe], инклюзив). Давхар захиалгын гол логик.
 function _rangesOverlap(s, e, os, oe) { return s <= oe && os <= e; }

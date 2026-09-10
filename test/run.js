@@ -5515,3 +5515,55 @@ need(['orderCustType']);
   const ui = src.slice(src.indexOf('function orderListRow('), src.indexOf('function attachOrdersHandlers('));
   ok(!/Устгасан/.test(ui), 'нэр: захиалгын жагсаалтад «Устгасан» шошго үлдээгүй');
 }
+
+// ── Сайтын ноорог 72 цагийн дараа нөөцөө сулална ────────────────────────────
+// ⚠ Хугацаагүй барьвал нэг халдагч (эсвэл ирээгүй нэг харилцагч) каталогийг
+//   тодорхойгүй хугацаагаар блоклоно. Ямар ч үер 72 цагийн дараа өөрөө арилна.
+{
+  const st = vm.runInContext('state', sandbox);
+  const BQR = vm.runInContext('bookedQtyForRange', sandbox);
+  const HOLD = vm.runInContext('_SITE_DRAFT_HOLD_H', sandbox);
+  const saved = { p: st.products, o: st.appOrders };
+  st.products = [{ id: 'h-1', sku: 'M-888', name: 'Түр сандал', stock: 10 }];
+  const line = [{ sku: 'M-888', name: 'Түр сандал', qty: 4 }];
+  const ago = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+  const mk = (extra) => [Object.assign({
+    number: 9100, status: 'draft', paid_mnt: 0, source: 'm-event-website',
+    starts_at: '2026-12-24', stops_at: '2026-12-24', items: line,
+  }, extra)];
+
+  eq(HOLD, 72, 'ноорог: хугацаа 72 цаг (SQL-тэй ижил)');
+
+  st.appOrders = mk({ created_at: ago(1) });
+  eq(BQR('Түр сандал', '2026-12-24', '2026-12-24'), 4, 'ноорог: 1 цагийн өмнөх нөөц ЭЗЭЛНЭ');
+
+  st.appOrders = mk({ created_at: ago(71) });
+  eq(BQR('Түр сандал', '2026-12-24', '2026-12-24'), 4, 'ноорог: 71 цагийн өмнөх бас эзэлнэ');
+
+  st.appOrders = mk({ created_at: ago(73) });
+  eq(BQR('Түр сандал', '2026-12-24', '2026-12-24'), 0, 'ноорог: 73 цагийн өмнөх нөөцөө СУЛАЛНА');
+
+  // Хэвийн бус гэж тэмдэглэсэн захиалга хэзээ ч нөөц эзлэхгүй.
+  st.appOrders = mk({ created_at: ago(1), note: 'сайт ⟦SUSPECT⟧' });
+  eq(BQR('Түр сандал', '2026-12-24', '2026-12-24'), 0, 'ноорог: ⟦SUSPECT⟧ тэмдэгтэй нь эзлэхгүй');
+
+  // Огноогүй хуучин мөр — хуучин зан үйл (эзэлнэ), чимээгүй алдагдахгүй.
+  st.appOrders = mk({});
+  eq(BQR('Түр сандал', '2026-12-24', '2026-12-24'), 4, 'ноорог: created_at байхгүй бол эзэлсээр');
+
+  // Төлбөртэй захиалгад хугацаа хамаарахгүй.
+  st.appOrders = mk({ status: 'reserved', paid_mnt: 500000, created_at: ago(500) });
+  eq(BQR('Түр сандал', '2026-12-24', '2026-12-24'), 4, 'ноорог: төлбөртэй захиалгад хугацаа хамаарахгүй');
+
+  st.products = saved.p; st.appOrders = saved.o;
+}
+
+// ── SQL ба апп: хугацаа ба ⟦SUSPECT⟧ дүрэм ижил эсэх ───────────────────────
+{
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'public_availability.sql'), 'utf8');
+  const m = sql.match(/created_at > now\(\) - interval '(\d+) hours'/);
+  ok(!!m, 'db: харагдацад ноорогийн хугацааны хязгаар бий');
+  eq(Number(m && m[1]), vm.runInContext('_SITE_DRAFT_HOLD_H', sandbox),
+     'db: харагдацын цаг app.js-ийн _SITE_DRAFT_HOLD_H-тэй ИЖИЛ');
+  ok(/not like '%⟦SUSPECT⟧%'/.test(sql), 'db: харагдац ⟦SUSPECT⟧ захиалгыг нөөцөөс хасдаг');
+}

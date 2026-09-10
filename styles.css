@@ -6746,3 +6746,5 @@ select.no-asar-len {
 
 .br-qchip.due { background: color-mix(in srgb, var(--danger) 13%, var(--panel)); color: var(--danger); }
 .order-follow-due { color: var(--danger); font-weight: 600; }
+
+.br-cxreason { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); padding: 2px 7px; border-radius: 999px; cursor: help; background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--danger); }

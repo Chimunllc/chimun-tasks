@@ -7789,7 +7789,14 @@ function orderListRow(e, k, todayStr) {
   const statusCell = `<span class="br-status-cell"><span class="br-status" style="--sd:${_st.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(_st.label || o.status || '')}</span></span>`;
   // Шошгууд харилцагчийн нүдэнд — нээхгүйгээр харагдана (цуцлах хүсэлт өмнө ЗӨВХӨН
   // самбарын мөрөнд гардаг байсан тул жагсаалтад үл үзэгдэж байв).
-  const _chips = (_money ? [depWarn, vatChip, followChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
+  // Цуцалсан/устгасан мөрөнд шалтгааныг ЖАГСААЛТААС харагдуулна (нээх шаардлагагүй)
+  const _cxr = ['canceled', 'deleted'].includes(String(o.status)) ? cancelReasonOf(o.note) : '';
+  const cxReasonChip = _cxr
+    ? `<span class="br-cxreason" title="${escapeHtml((String(o.status) === 'deleted' ? 'Устгах' : 'Цуцлах') + ' шалтгаан: ' + _cxr)}">${String(o.status) === 'deleted' ? '🗑' : '❌'} ${escapeHtml(_cxr.length > 28 ? _cxr.slice(0, 28) + '…' : _cxr)}</span>`
+    : '';
+  // Гүйцэтгэгчид цуцалсан/устгасан захиалга харагддаггүй (ORDER_STAFF_STATUSES) тул
+  // шалтгааны шошго зөвхөн мөнгө харах эрхтэйд.
+  const _chips = (_money ? [depWarn, vatChip, followChip, cxReasonChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
   // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
   const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
   return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
@@ -21857,7 +21864,7 @@ function bqOrderCard(o) {
     ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
-    ${st === 'canceled' && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">❌ Цуцлах шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
+    ${['canceled', 'deleted'].includes(st) && isApp && cancelReasonOf(o.note) ? `<div class="order-meta" style="color:var(--danger);">${st === 'deleted' ? '🗑 Устгах' : '❌ Цуцлах'} шалтгаан: ${escapeHtml(cancelReasonOf(o.note))}</div>` : ''}
     ${_smHtml ? '' : slogHtml}
     ${_smHtml}
     ${itemsSection}
@@ -21905,7 +21912,10 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     // PATCH хийхийн ЯГ ӨМНӨ серверийн note-ийн хамгийн сүүлийн утгыг уншиж, ТҮҮН дээр ⟦SL⟧/⟦CX⟧-г нэмнэ.
     // Ингэснээр read-modify-write цонх (хуудас ачаалснаас статус солих хүртэлх урт зай) хэдхэн зуун мс болж багасна.
     let notePatch = null;
-    if (table === 'app_orders' && state.me && (to === 'canceled' ? !!opts.reason : true)) {
+    // ⚠ Устгах/цуцлах ХОЁУЛАНД шалтгаан бичигдэнэ. Өмнө нь зөвхөн 'canceled'-д
+    //    бичигдэж, УСТГАХАД хэрэглэгчээс асуусан тайлбар чимээгүй хаягддаг байв
+    //    (50.8 сая₮-ийн устгасан захиалгын шалтгаан алга болсон).
+    if (table === 'app_orders' && state.me && (['canceled', 'deleted'].includes(to) ? !!opts.reason : true)) {
       let baseNote = o.note;
       try {
         const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=eq.${encodeURIComponent(oid)}&select=note`, {
@@ -21913,7 +21923,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
         }, 8000);
         if (gr.ok) { const rows = await gr.json(); if (rows && rows[0] && rows[0].note != null) baseNote = String(rows[0].note); }
       } catch (_) { /* сүлжээ унавал санах ойн note дээр буцаж тооцно */ }
-      notePatch = (to === 'canceled') ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, todayStr());
+      notePatch = ['canceled', 'deleted'].includes(to) ? setCancelReason(baseNote, opts.reason) : stageLogSet(baseNote, to, state.me, todayStr());
       o.note = notePatch;
     }
     const body = { status: to, updated_at: new Date().toISOString() };

@@ -7791,7 +7791,10 @@ function orderListRow(e, k, todayStr) {
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
     <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${chips}</span>
     ${statusCell}
-    <span class="br-dates"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}<span class="br-arrow">→</span>${_d2 || '—'}</span>
+    <span class="br-dates"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}<span class="br-arrow">→</span>${_d2 || '—'}${(() => {
+      const ld = orderLeadDays(o);
+      return ld == null ? '' : `<span class="br-lead" title="Захиалга ${escapeHtml(String(o.created_at || '').slice(0, 10))}-нд ирсэн — арга хэмжээнээс ${ld} хоногийн өмнө">+${ld}х</span>`;
+    })()}</span>
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -8066,7 +8069,10 @@ function renderOrders() {
   const CAP = 200;
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Хугацаа</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
+  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${(() => {
+    const ls = leadStats(shown.map(e => e.o));
+    return ls.median == null ? '' : ` · <span class="sum-lead" title="Захиалга ирсэн өдрөөс арга хэмжээ хүртэлх хоног (медиан). ${ls.sameDay} нь тэр өдрөө, ${ls.within2} нь 2 хоногийн дотор, ${ls.over14} нь 2 долоо хоногоос эрт ирсэн.">📥 дунджаар <b>${ls.median} хоногийн</b> өмнө</span>`;
+  })()}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
   // CEO-гийн «☑ Удирдах» горим — бөөн сэргээх/устгах (өмнө зөвхөн Самбарт байсан тул
   // жагсаалтад чагт гарч ирээд ҮЙЛДЛИЙН ТОВЧГҮЙ үлддэг байв).
   const selN = state.ordersSelected ? state.ordersSelected.size : 0;
@@ -21817,6 +21823,7 @@ function bqOrderCard(o) {
     ${offMeta}
     ${isApp && o.contract_no ? `<div class="order-meta" style="color:var(--muted);">Гэрээ ${escapeHtml(o.contract_no)}</div>` : ''}
     <div class="order-meta order-period">📅 ${start || '—'}${_sh}${stop ? ' → ' + stop + _eh : ''}${_days ? ` · <b>${_days} хоног</b>` : ''}</div>
+    ${o.created_at ? `<div class="order-meta">📥 Захиалга ирсэн: <b>${escapeHtml(String(o.created_at).slice(0, 10))}</b>${(() => { const ld = orderLeadDays(o); return ld == null ? '' : ` · арга хэмжээнээс <b>${ld} хоногийн өмнө</b>${ld === 0 ? ' (тэр өдрөө!)' : ld <= 2 ? ' ⚠ хэт дөхөж' : ''}`; })()}</div>` : ''}
     ${_cardMoney ? payPanel : ''}
     ${_dep > 0 ? (_cardMoney
       ? `<div class="dep-row">${depBadge}<span style="color:var(--muted);font-size:var(--fs-sm);margin-left:8px;" title="Захиалгын нийт ${escapeHtml(fmtMoney(total))} − барьцаа ${escapeHtml(fmtMoney(_dep))} (буцаадаг)">Борлуулалт: <b style="color:var(--text);">${fmtMoney(orderRevenue(o, 'accrual'))}</b></span></div>`
@@ -24379,6 +24386,32 @@ function siteShare(orders) {
   return { site, total: live.length, pct: live.length ? Math.round(site * 1000 / live.length) / 10 : 0 };
 }
 // Илгээсэн үнийн саналуудын лог (stage_meta.quotes). Массив биш бол хоосон.
+// ── УРЬДЧИЛАН ЗАХИАЛАХ ХУГАЦАА (2026-09-10) ────────────────────────────────
+// Захиалга ирсэн (`created_at`) ба арга хэмжээ болох (`starts_at`) хоорондын хоног.
+// Жагсаалт зөвхөн эвентийн огноог харуулдаг тул «хэзээ ирсэн», «хэдэн өдрийн өмнө
+// баталгаажсан» гэдэг харагдахгүй байв. Энэ тоо нь маркетинг/нөөц төлөвлөлтөд
+// шууд хэрэгтэй: 2 хоногийн өмнө ирдэг бол урьдчилсан төлөвлөлт боломжгүй.
+// Цэвэр функц — тестлэгдэнэ. Сөрөг (эвент болсны дараа бүртгэсэн) бол null.
+function orderLeadDays(o) {
+  const c = String((o && o.created_at) || '').slice(0, 10);
+  const st = String((o && o.starts_at) || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c) || !/^\d{4}-\d{2}-\d{2}$/.test(st)) return null;
+  const d = Math.round((new Date(st + 'T00:00:00Z') - new Date(c + 'T00:00:00Z')) / 86400000);
+  return d >= 0 ? d : null;
+}
+// Хугацааны нэгтгэл — медиан (дундажийг ганц том захиалга гажуудуулдаг тул).
+function leadStats(orders) {
+  const v = (orders || []).map(orderLeadDays).filter(x => x != null).sort((a, b) => a - b);
+  if (!v.length) return { n: 0, median: null, sameDay: 0, within2: 0, over14: 0 };
+  const mid = Math.floor(v.length / 2);
+  return {
+    n: v.length,
+    median: v.length % 2 ? v[mid] : Math.round((v[mid - 1] + v[mid]) / 2),
+    sameDay: v.filter(x => x === 0).length,
+    within2: v.filter(x => x <= 2).length,
+    over14: v.filter(x => x > 14).length,
+  };
+}
 function quotesOf(o) {
   const q = o && o.stage_meta && o.stage_meta.quotes;
   return Array.isArray(q) ? q : [];

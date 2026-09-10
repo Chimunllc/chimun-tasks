@@ -6748,3 +6748,6 @@ select.no-asar-len {
 }
 .ordv-unsent { color: var(--warn); }
 .ordv-draftbar-h { font-size: var(--fs-sm); color: var(--muted); }
+
+.br-lead { margin-left: 5px; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); cursor: help; }
+.sum-lead { color: var(--muted); }

@@ -23659,6 +23659,45 @@ function cooShareAmount(net, pct) { const n = Number(net) || 0, p = Number(pct) 
    үйл ажиллагааны үр дүнг хэмждэг, дэлгэцэд тайлбартай. */
 const COO_BRANCHES = ['M-Event', 'NOMAAD'];
 function cooBranch() { const b = String(cooShareCfg().branch || '').trim(); return COO_BRANCHES.includes(b) ? b : 'M-Event'; }
+/* ── COO-Д ОЛГОСОН ЦАЛИН (2026-09-10) ────────────────────────────────────────
+   Ашгийн эрх нь «хэдийг авах ёстой» гэдгийг л хэлдэг; хэдийг АВСАН нь санхүүд
+   бий. Хоёрыг хасаж үлдэгдэл гаргана.
+   ⚠ `finance.beneficiary` нь УТАС БИШ НЭР хадгалдаг бөгөөд «Алтансүх» /
+     «И.Алтансүх» / «EB-Цалин. И.Алтансүх» / бүр дансны дугаараар (тэр үед нэр нь
+     зорилгод) гэх мэт олон хэлбэртэй. Бүр үсгийн алдаа ч бий («Алтансүр») тул
+     нэрийн ЦӨМИЙН УГТВАРААР (7 үсэг) тулгана — нэг үсгийн зөрүүг барина. ── */
+function cooNameKey(name) {
+  const parts = String(name || '').split(/[^А-Яа-яӨөҮүЁёA-Za-z]+/).filter(Boolean);
+  let best = ''; parts.forEach(x => { if (x.length > best.length) best = x; });
+  const up = best.toUpperCase();
+  return up.length >= 4 ? up.slice(0, 7) : '';
+}
+function _cooNorm(s) { return String(s || '').toUpperCase().replace(/[^А-ЯӨҮЁA-Z]/g, ''); }
+// Цалингийн ангилал (7100 үндсэн, 7200/7300/7600 бусад цалингийн код).
+function cooIsSalaryCat(cat) { return /^7[1236]00/.test(String(cat || '')); }
+// Тухайн хүнд fromMonth..toMonth хооронд олгосон цалингийн мөрүүд (мөнгө гарсан сараар).
+// Цэвэр функц — тестлэгдэнэ. rows = financeAsTask(...) гаралт.
+function cooSalaryPaid(rows, name, fromMonth, toMonth) {
+  const key = cooNameKey(name);
+  const out = { list: [], total: 0 };
+  if (!key) return out;
+  (rows || []).forEach(t => {
+    if (!t || t.decision !== 'approved' || t.status === 'deleted') return;
+    if (!cooIsSalaryCat(t.category)) return;
+    const m = String(t.requested_at || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(m)) return;
+    if (fromMonth && m < fromMonth) return;
+    if (toMonth && m > toMonth) return;
+    const hay = _cooNorm(t.beneficiary) + '|' + _cooNorm(t.purpose) + '|' + _cooNorm(t.justification);
+    if (!hay.includes(key)) return;
+    const amt = Number(t.amount) || 0;
+    if (amt <= 0) return;
+    out.list.push({ d: String(t.requested_at || '').slice(0, 10), amount: amt, memo: String(t.purpose || '') });
+    out.total += amt;
+  });
+  out.list.sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  return out;
+}
 // Сонгосон салбарын цэвэр ашиг. Салбарыг мөрийн нэрээр шүүнэ.
 // basis: 'accrual' = гүйцэтгэсэн сард ноогдуулах (өгөгдмөл) · 'cash' = бодитоор орсон/гарсан.
 // ⚠ Хоёр суурь ЗӨРНӨ: хураагдаагүй авлага ноогдохд орно, орсон мөнгөнд ОРОХГҮЙ.
@@ -23761,6 +23800,28 @@ function renderCooSalary() {
   if (_before) h += `<div style="text-align:center;color:var(--warn);font-size:var(--fs-sm);padding:8px 10px;border:1px solid var(--warn);border-radius:10px;margin-bottom:12px;">⚠ ${escapeHtml(_cooSt)}-аас өмнө зардлыг бүрэн бүртгэдэггүй байсан тул ашиг тооцохгүй.</div>`;
   h += panel(`${_cooBr} · энэ сар · ${month}`, cur);
   h += panel(`${_cooBr} · ${escapeHtml(_cooSt)}-аас хойш (хуримтлагдсан)`, ytd);
+
+  // ── Олгосон цалин + үлдэгдэл (хуримтлагдсан хугацаанд) ──
+  if (cooKey) {
+    const _paid = cooSalaryPaid((state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask), cooName, _cooSt, month);
+    const _dueAc = cooShareAmount(ytd.ac.net, pct), _dueCa = cooShareAmount(ytd.ca.net, pct);
+    const _balAc = _dueAc - _paid.total, _balCa = _dueCa - _paid.total;
+    const _bcol = v => v > 0 ? 'coo-bal-due' : v < 0 ? 'coo-bal-over' : '';
+    h += `<div class="coo-panel">`
+      + `<div class="coo-panel-h">💵 Олгосон цалин · ${escapeHtml(_cooSt)} → ${escapeHtml(month)}</div>`
+      + (_paid.list.length
+        ? `<div class="coo-paid">${_paid.list.map(x => `<div class="coo-paid-d">${escapeHtml(x.d.slice(5))}</div><div class="coo-paid-m">${escapeHtml(x.memo || '—')}</div><div class="coo-paid-a">${fmtMoney(x.amount)}</div>`).join('')}`
+          + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт олгосон · ${_paid.list.length} гүйлгээ</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div>`
+        : `<div class="coo-paid-none">Энэ хугацаанд цалин олгоогүй.</div>`)
+      + `<div class="coo-cmp coo-bal">`
+      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">Ноогдохоор</div><div class="coo-hd">Орсон мөнгөөр</div>`
+      + `<div class="coo-lbl">Ашгийн эрх (${pct}%)</div><div class="coo-v">${fmtMoney(_dueAc)}</div><div class="coo-v">${fmtMoney(_dueCa)}</div>`
+      + `<div class="coo-lbl">− Олгосон</div><div class="coo-v">${fmtMoney(-_paid.total)}</div><div class="coo-v">${fmtMoney(-_paid.total)}</div>`
+      + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div>`
+      + `</div>`
+      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон цалингийн гүйлгээ (ангилал 7100 г.м.), мөнгө гарсан сараар. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
+      + `</div>`;
+  }
 
   h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• <b>Ноогдох</b> = захиалга гүйцэтгэсэн сард бүтэн дүнгээрээ (төлөгдөөгүй ч). <b>Орсон мөнгө</b> = бодитоор хураасан төлбөр, бодитоор гарсан зардлаар. Барьцаа/зээл хоёуланд хасагдсан.<br>• Ашгийн эрхийн үндэс болгох суурийг <b>та шийднэ</b> — аль нэгийг сонгож нягтлантай тохирно.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
 

@@ -6763,3 +6763,12 @@ select.no-asar-len {
 .orders-cxsum { margin: var(--space-2) 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: var(--fs-md); line-height: 1.7; }
 .orders-cxsum .cx-tag { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--panel-hover); font-size: var(--fs-sm); white-space: nowrap; }
 .orders-cxsum .cx-admin { color: var(--muted); font-size: var(--fs-sm); }
+
+/* ── Дууссан захиалгыг сараар архивлах тууз (2026-09-10) ─────────────────── */
+.ordv-archbar {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  flex-wrap: wrap; margin: var(--space-2) 0; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: var(--fs-md);
+}
+.ordv-archbar-h { display: block; font-size: var(--fs-sm); color: var(--muted); margin-top: 2px; }
+.ordv-archbar-b { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }

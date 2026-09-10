@@ -8103,7 +8103,7 @@ function renderOrders() {
   // жагсаалтад чагт гарч ирээд ҮЙЛДЛИЙН ТОВЧГҮЙ үлддэг байв).
   const selN = state.ordersSelected ? state.ordersSelected.size : 0;
   const bulkBar = state.ordersSelect
-    ? `<div class="olist-bulk"><label class="obulk-all"><input type="checkbox" id="bulk-all">Бүгдийг</label><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span class="obulk-sp"></span><button class="btn btn-sm" id="bulk-restore">↩ Сэргээх</button><button class="btn btn-sm btn-danger" id="bulk-delete">🗑 Устгах</button><button class="btn btn-sm" id="bulk-clear">Цэвэрлэх</button></div>`
+    ? `<div class="olist-bulk"><label class="obulk-all"><input type="checkbox" id="bulk-all">Бүгдийг</label><span>Сонгосон: <b id="bulk-n">${selN}</b></span><span class="obulk-sp"></span><button class="btn btn-sm" id="bulk-restore">↩ Сэргээх</button><button class="btn btn-sm" id="bulk-archive">🗄 Архивлах</button><button class="btn btn-sm btn-danger" id="bulk-delete">🗑 Устгах</button><button class="btn btn-sm" id="bulk-clear">Цэвэрлэх</button></div>`
     : '';
   const body = shown.length
     ? sumLine + bulkBar + orderListHtml(shown, todayStr, CAP, state.ordersSort === 'smart', otableHead)
@@ -8111,7 +8111,25 @@ function renderOrders() {
 
   // (Банкны тулгалт нь Санхүүгийн хяналт тул захиалгаас хассан — Санхүү хуулгыг тусдаа уншина.)
   // Зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + жагсаалт)
-  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
+  // ── «Дууссан» бүлэг: сараар нэг товчоор архивлах. Нэг нэгээр дарах нь
+  //    100 захиалгад 100 дарлага болдог. ──
+  let archBar = '';
+  if (state.ordersFilter === 'done' && (can('orders.advance') || state.isCEO)) {
+    const arch = archivableOrders(shown.map(e => e.o), ymF);
+    if (arch.length) {
+      const sum = _seeMoney ? arch.reduce((t, o) => t + orderRevenue(o, 'accrual'), 0) : 0;
+      const months = [...new Set(archivableOrders(state.appOrders).map(o => String(o.starts_at || o.created_at || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+      archBar = `<div class="ordv-archbar">
+        <span>🗄 ${ymF ? `<b>${escapeHtml(ymF)}</b> сарын ` : ''}<b>${arch.length}</b> дууссан захиалга архивлахад бэлэн${_seeMoney ? ` · ${fmtMoney(sum)}` : ''}
+          <span class="ordv-archbar-h">Дата устахгүй — орлого, тайлан хэвээр. Ажлын жагсаалтаас л хална.</span></span>
+        <span class="ordv-archbar-b">
+          ${!ymF && months.length ? `<select id="arch-ym" class="ofilt-sel"><option value="">— сар сонгох —</option>${months.map(m => `<option value="${m}">${m}</option>`).join('')}</select>` : ''}
+          <button class="btn btn-primary" id="arch-go">🗄 ${ymF ? escapeHtml(ymF) + ' архивлах' : 'Архивлах'} (${arch.length})</button>
+        </span>
+      </div>`;
+    }
+  }
+  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${archBar}${body}</div></div>`;
 }
 
 function attachOrdersHandlers() {
@@ -8134,6 +8152,24 @@ function attachOrdersHandlers() {
     const c = document.getElementById('bulk-n'); if (c) c.textContent = state.ordersSelected.size;
   });
   document.getElementById('bulk-clear')?.addEventListener('click', () => { state.ordersSelected = new Set(); render(); });
+  document.getElementById('bulk-archive')?.addEventListener('click', async () => {
+    const ids = [...(state.ordersSelected || [])];
+    if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
+    // Зөвхөн ДУУССАН захиалгыг архивлана — идэвхтэй ажил жагсаалтаас алга болохоос сэргийлнэ.
+    const ok = (state.appOrders || []).filter(o => ids.includes(String(o.id)) && ORDER_ARCHIVABLE.includes(String(o.status)));
+    if (!ok.length) { showToast('Сонгосон захиалгууд дуусаагүй байна — архивлахгүй', 'warn', 3500); return; }
+    if (!(await showConfirm(`${ok.length} дууссан захиалгыг архивлах уу?${ok.length < ids.length ? `\n\n(${ids.length - ok.length} нь дуусаагүй тул хөндөгдөхгүй)` : ''}\n\nДата устахгүй — сэргээж болно.`, { okText: 'Архивлах' }))) return;
+    await bulkArchiveOrders(ok.map(o => o.id));
+    state.ordersSelected = new Set();
+    showToast(`🗄 ${ok.length} захиалга архивлалаа`, 'success', 3000);
+    render();
+  });
+  document.getElementById('arch-go')?.addEventListener('click', () => {
+    const sel = document.getElementById('arch-ym');
+    const ym = (state.ordersYM || '') || (sel ? sel.value : '');
+    if (!ym && sel) { showToast('Сараа сонгоно уу', 'warn', 2500); return; }
+    archiveDoneMonth(ym);
+  });
   document.getElementById('bulk-delete')?.addEventListener('click', async () => {
     const ids = [...(state.ordersSelected || [])];
     if (!ids.length) { showToast('Захиалга сонгоно уу', 'warn'); return; }
@@ -20738,6 +20774,45 @@ async function bulkRestoreOrders(ids) {
         { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'reserved', updated_at: new Date().toISOString() }) }, 30000);
     } catch (e) { console.warn('bulkRestore', e); }
   }
+}
+// ── ДУУССАН ЗАХИАЛГЫГ САРААР АРХИВЛАХ (2026-09-10) ─────────────────────────
+// Нэг нэгээр архивлах нь 100 захиалгад 100 дарлага. Сараар нь нэг товчоор
+// хийнэ. Архивлах нь ЗӨӨЛӨН — status='archived', дата хэвээр, сэргээж болно.
+// Архивласан захиалга орлогод ХЭВЭЭР тоологдоно (_orderActive нь archived-ыг
+// хасдаггүй) — зөвхөн ажлын жагсаалтаас хальж, «Архивласан» бүлэгт үлдэнэ.
+const ORDER_ARCHIVABLE = ['returned', 'stopped', 'rented'];
+function archivableOrders(orders, ym) {
+  return (orders || []).filter(o => o && ORDER_ARCHIVABLE.includes(String(o.status))
+    && (!ym || String(o.starts_at || o.created_at || '').slice(0, 7) === ym));
+}
+async function bulkArchiveOrders(ids) {
+  const idSet = new Set(ids.map(String));
+  (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) o.status = 'archived'; });
+  if (typeof render === 'function') render();
+  if (!DB_ANON_KEY) return true;
+  let failed = 0;
+  for (let i = 0; i < ids.length; i += 80) {
+    const inList = ids.slice(i, i + 80).map(id => '"' + String(id).replace(/["\\]/g, '') + '"').join(',');
+    try {
+      const r = await fetchWithTimeout(`${DB_URL}/rest/v1/app_orders?id=in.(${encodeURIComponent(inList)})`,
+        { method: 'PATCH', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ status: 'archived', updated_at: new Date().toISOString() }) }, 30000);
+      if (!r.ok) failed++;
+    } catch (e) { console.warn('bulkArchive', e); failed++; }
+  }
+  return failed === 0;
+}
+async function archiveDoneMonth(ym) {
+  const list = archivableOrders(state.appOrders, ym);
+  if (!list.length) { showToast('Архивлах захиалга алга', 'info', 2500); return; }
+  const sum = list.reduce((t, o) => t + orderRevenue(o, 'accrual'), 0);
+  const msg = `${ym ? ym + ' сарын ' : ''}${list.length} дууссан захиалгыг архивлах уу?\n\n`
+    + `Нийт борлуулалт ${fmtMoney(sum)}.\n\n`
+    + `Архивласан захиалга ажлын жагсаалтаас хальж «Архивласан» бүлэгт үлдэнэ. `
+    + `Дата УСТАХГҮЙ — орлого, тайлан, түүх бүгд хэвээр. Дараа нь сэргээж болно.`;
+  if (!(await showConfirm(msg, { okText: `Тийм, ${list.length} архивла` }))) return;
+  const ok = await bulkArchiveOrders(list.map(o => o.id));
+  showToast(ok ? `🗄 ${list.length} захиалга архивлалаа` : '⚠ Хэсэгчлэн архивлагдав — дахин оролдоно уу', ok ? 'success' : 'warn', 4500);
+  render();
 }
 async function deleteAppOrder(id) {
   // ЗӨӨЛӨН устгал — мөр устгахгүй, status='deleted' (сэргээж болно). Хатуу устгал = буцалтгүй алдагдал тул хийхгүй.

@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
@@ -4476,6 +4476,27 @@ need(['orderCustType']);
   }
   eq(bad.length, 0, 'scan: bqOrderCard — зарлахаас өмнө ашигласан хувьсагч байхгүй' +
      (bad.length ? ' → ' + bad.join(', ') : ''));
+}
+
+// ── ХЭРЭГЛЭГЧИД ЯВАХ ИМЭЙЛ: зөвхөн 3 шат (2026-09-10) ──────────────────────
+// 9 шат бүрд бичвэл спам болно. Шинэ шат нэмэхээр бол ЗОРИУД шийдэх ёстой.
+{
+  eq(F.orderMailKind('reserved'), 'confirmed', 'имэйл: захиалга баталгаажлаа');
+  eq(F.orderMailKind('delivering'), 'dispatched', 'имэйл: агуулахаас гарлаа');
+  eq(F.orderMailKind('returned'), 'closed', 'имэйл: хаагдлаа');
+  ['draft', 'prepared', 'ready', 'installing', 'rented', 'teardown', 'returning',
+   'stopped', 'archived', 'canceled', 'deleted', '', null].forEach(st => {
+    eq(F.orderMailKind(st), null, 'имэйл: «' + st + '» шатанд БИЧИХГҮЙ');
+  });
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // Клиент нь имэйл хаяг/бичвэр илгээвэл webhook нээлттэй спам илгээгч болно
+  // (app.js нь public repo). Зөвхөн order_id + kind явна.
+  const fn = src.slice(src.indexOf('function notifyCustomerMail('), src.indexOf('async function bqUpdateStatus('));
+  ok(/order_id: String\(oid\), kind/.test(fn), 'scan: имэйл webhook-д зөвхөн order_id+kind явна');
+  ok(!/\bemail\b|\bhtml\b|subject/i.test(fn), 'scan: имэйл хаяг/бичвэрийг клиентээс илгээхгүй');
+  ok(/dataLoadFailed\('order-mail/.test(fn), 'scan: имэйл унавал чимээгүй биш, серверт мэдэгдэнэ');
+  ok(!/await fetchWithTimeout\(DEFAULT_ORDER_MAIL_URL/.test(fn), 'scan: имэйл шатны шилжилтийг хүлээлгэхгүй');
 }
 
 // SCAN — тайлан ба ROI хоёулаа багцыг задлана (2026-09-07)

@@ -77,6 +77,10 @@ const DEFAULT_BOOTSTRAP_URL = 'https://n8n.nomaadcamp.com/webhook/bootstrap';
 // Сайт (chimunllc.github.io/m-event-website-ready) → /webhook/m-event-site-order руу захиалга илгээж
 // MEVENT_Orders_DB Sheet-д хадгалагдана. Энэ нь тэр Sheet-ийг уншиж/шинэчилнэ.
 const DEFAULT_ORDERS_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-orders';
+// Хэрэглэгчид явах захиалгын мэдэгдэл — n8n захиалгыг ӨӨРӨӨ уншиж бичвэрээ зурна.
+// ⚠ Клиент нь ЗӨВХӨН {order_id, kind} илгээнэ. Имэйл хаяг эсвэл бичвэр илгээвэл
+// энэ webhook нээлттэй спам илгээгч болно (апп нь public repo дээр).
+const DEFAULT_ORDER_MAIL_URL = 'https://n8n.nomaadcamp.com/webhook/order-mail';
 // M-Event бараа — GET бараа жагсаалт унших, POST { product | products:[...] } → нэмэх/засах.
 // Эх сурвалж: MEVENT_Orders_DB Sheet `products` tab. Сайт мөн эндээс уншина.
 const DEFAULT_PRODUCTS_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-products';
@@ -22384,6 +22388,27 @@ async function cancelOrderWithReason(oid) {
   if (!reason) return;                                                    // болих
   bqUpdateStatus(oid, to, { reason, toast: isDel ? 'Больсон гэж бүртгэлээ' : 'Цуцаллаа' });
 }
+// ── Хэрэглэгчид явах 3 имэйл ────────────────────────────────────────────────
+// Дамжлагын 9 шат бүрд бичвэл спам болно. Хэрэглэгчид үнэхээр хэрэгтэй 3 мөч:
+//   reserved   → захиалга баталгаажлаа
+//   delivering → агуулахаас гарлаа (хүргэлттэй захиалгад л энэ шат байдаг)
+//   returned   → хаагдлаа, барьцаа буцаана
+// Давхар илгээхээс n8n тал хамгаална (stage_meta.mail-д тэмдэглэдэг).
+const ORDER_MAIL_ON_STATUS = { reserved: 'confirmed', delivering: 'dispatched', returned: 'closed' };
+function orderMailKind(to) { return ORDER_MAIL_ON_STATUS[String(to || '')] || null; }
+function notifyCustomerMail(oid, to) {
+  const kind = orderMailKind(to);
+  if (!kind || !oid) return;
+  // Шатны шилжилтийг ЗОГСООХГҮЙ (await биш), гэхдээ ЧИМЭЭГҮЙ ч уначихгүй —
+  // имэйл явсангүй гэдгийг хэн ч мэдэхгүй байх нь хамгийн муу төлөв.
+  const fail = e => dataLoadFailed('order-mail:' + kind, e);
+  try {
+    fetchWithTimeout(DEFAULT_ORDER_MAIL_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: String(oid), kind }),
+    }, 8000).then(r => { if (!r.ok) fail(new Error('HTTP ' + r.status)); }).catch(fail);
+  } catch (e) { fail(e); }
+}
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
   let o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -22429,6 +22454,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
     showToast(opts.toast || `Төлөв: ${(BQ_STATUS[to] || {}).label || to}`, 'success', 2000);
+    if (table === 'app_orders') notifyCustomerMail(oid, to);
     // Автомат ажил: шилжсэн шатны хүлээгдэж буй ажлыг хаах + дараагийн шатны ажил үүсгэх (зөвхөн app захиалга)
     if (table === 'app_orders' && to !== 'canceled' && to !== 'deleted') {
       try {

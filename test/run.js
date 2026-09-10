@@ -5693,6 +5693,39 @@ need(['orderCustType']);
   ok(!/showPrompt\(/.test(fn), 'scan: чөлөөт текстийн prompt хасагдсан');
 }
 
+// ── ЧИМЭЭГҮЙ УНАЛТ: ирцийн дата + «гэнэт дахин эхэлсэн» дохио (2026-09-11) ──
+{
+  // Уналтын шалтгааныг хүний хэлээр — хэрэглэгч программист биш
+  eq(F.attFailMsg(new Error('эрх хүрэхгүй (401)')), 'Сесс хуучирсан — дахин нэвтэрнэ үү', 'ирц: 401 → сесс хуучирсан');
+  eq(F.attFailMsg(new Error('offline')), 'Сүлжээ холбогдсонгүй', 'ирц: offline → сүлжээ');
+  eq(F.attFailMsg(new Error('Failed to fetch')), 'Сүлжээ холбогдсонгүй', 'ирц: fetch унав → сүлжээ');
+  eq(F.attFailMsg(new Error('timeout')), 'Сервер хариу өгсөнгүй', 'ирц: timeout → сервер');
+  ok(/Ачаалагдсангүй/.test(F.attFailMsg(new Error('HTTP 500'))), 'ирц: бусад → ерөнхий тайлбар');
+  ok(/Ачаалагдсангүй/.test(F.attFailMsg(null)), 'ирц: null → унахгүй');
+
+  const esrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+
+  // SCAN — loadAttendanceMonth нь HTTP алдааг ЧИМЭЭГҮЙ өнгөрүүлэхгүй
+  const lam = (esrc.match(/async function loadAttendanceMonth\(\)[\s\S]*?\n}/) || [''])[0];
+  ok(/if \(!r\.ok\) throw/.test(lam), 'ирц: !r.ok → throw (401/500 чимээгүй өнгөрөхгүй)');
+  ok(/state\.attMonthFail = /.test(lam), 'ирц: уналтын төлөв хадгалагдана (дахин оролдох боломж)');
+  ok(/dataLoadFailed\('loadAttendanceMonth'/.test(lam), 'ирц: алдаа серверт мэдэгдэнэ');
+
+  // SCAN — «гэнэт дахин эхэлсэн» нь НЭГ хурууны хээтэй (дэлгэц бүрээр лог дүүргэхгүй)
+  const cur = (esrc.match(/function checkUncleanRestart\(\)[\s\S]*?\n}/) || [''])[0];
+  ok(/_reportErrToServer\('Апп гэнэт дахин эхэлсэн', 'restart',/.test(cur),
+     'дахин эхлэлт: src ТОГТМОЛ «restart» (дэлгэц бүрээр өөр хээ болохгүй)');
+  ok(/д\.ver|d\.ver/.test(cur), 'дахин эхлэлт: хувилбар солигдсоныг шалгана (тараалт ≠ алдаа)');
+  ok(/дэлгэц: /.test(cur), 'дахин эхлэлт: дэлгэц нь stack-д (хээнд орохгүй)');
+
+  // Хурууны хээ — тогтмол src нь дэлгэц ялгаатай ч ИЖИЛ хээ гаргана
+  const FP = vm.runInContext('errFingerprint', sandbox);
+  eq(FP('Апп гэнэт дахин эхэлсэн', 'restart'), FP('Апп гэнэт дахин эхэлсэн', 'restart'),
+     'дахин эхлэлт: ижил хээ (нэг бүлэг)');
+  ok(FP('Апп гэнэт дахин эхэлсэн', 'restart:orders') !== FP('Апп гэнэт дахин эхэлсэн', 'restart:mine'),
+     'дахин эхлэлт: хуучин хэлбэр дэлгэц бүрээр өөр хээ гаргадаг байв');
+}
+
 // ── ДУУССАН ЗАХИАЛГЫГ САРААР АРХИВЛАХ (2026-09-10) ─────────────────────────
 // Нэг нэгээр архивлах нь 100 захиалгад 100 дарлага. Сараар нэг товчоор.
 // ⚠ Зөвхөн ДУУССАН захиалга — идэвхтэй ажил жагсаалтаас алга болохгүй.

@@ -389,7 +389,8 @@ function markAlive() {
     const now = Date.now();
     if (v === _aliveView && (now - _aliveAt) < 15000) return;
     _aliveView = v; _aliveAt = now;
-    localStorage.setItem('appAlive', JSON.stringify({ v: v, at: now }));
+    // ver — шинэ хувилбар тарагдсанаас болж дахин ачаалсныг «гэнэт үхсэн»-ээс ялгахад
+    localStorage.setItem('appAlive', JSON.stringify({ v: v, at: now, ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '' }));
   } catch (e) {}
 }
 function clearAlive() { try { localStorage.removeItem('appAlive'); } catch (e) {} }
@@ -401,7 +402,13 @@ function checkUncleanRestart() {
     const d = JSON.parse(raw) || {};
     // 3 минутаас удаан завсарласан бол ердийн хаалт гэж үзнэ (хуурамч дохио гаргахгүй).
     if (!d.at || (Date.now() - Number(d.at)) > 180000) return;
-    _reportErrToServer('Апп гэнэт дахин эхэлсэн', 'restart:' + String(d.v || '-'), '');
+    // Хувилбар СОЛИГДСОН бол шинэ код тарагдаж дахин ачаалсан гэсэн үг — алдаа БИШ.
+    // (2026-09-11: нэг өдөр 6 удаа тараахад 4 дэлгэцээс 7 хуурамч дохио бүртгэгдэв.)
+    const nowVer = (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '';
+    if (d.ver && nowVer && String(d.ver) !== nowVer) return;
+    // ⚠ src нь ТОГТМОЛ — дэлгэц бүрээр өөр хурууны хээ болж алдааны лог дүүрдэг байв.
+    //   Аль дэлгэц байсныг `stack`-д бичнэ (хээнд ОРОХГҮЙ) — нэг бүлэг, давтамжтай.
+    _reportErrToServer('Апп гэнэт дахин эхэлсэн', 'restart', 'дэлгэц: ' + String(d.v || '-'));
   } catch (e) {}
 }
 // CEO — БҮХ ажилтны алдааг серверээс татна (сүүлийн 24 цаг). Нэвтэрсэн токен шаардана;
@@ -10340,16 +10347,31 @@ function attAggregateMonth(rows) {
   });
   return { out, times };
 }
+// ⚠ Унавал ЧИМЭЭГҮЙ ӨНГӨРӨХГҮЙ (2026-09-11). Өмнө нь: (а) `!r.ok` (401/500) огт
+//   мэдэгддэггүй, (б) уналтын дараа `attMonthTimes` нь `null` хэвээр үлдэж дуудагч
+//   («=== undefined» шалгадаг) ДАХИН оролддоггүй тул сүлжээ нэг хором тасрахад
+//   Гүйцэтгэл дэлгэцийн ирцийн хэсэг аппыг бүрэн дахин ачаалтал хоосон үлддэг байв.
 async function loadAttendanceMonth() {
   try {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/attendance?day=gte.${attMonthStart()}&day=lte.${todayStr()}&kind=eq.in&select=member_key,day,ts,source&order=ts.asc`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() }, cache: 'no-store' }, 15000);
-    if (r.ok) {
-      const agg = attAggregateMonth(await r.json());
-      state.attWorkedDays = agg.out;
-      state.attMonthTimes = agg.times;
-    }
-  } catch (e) { dataLoadFailed('loadAttendanceMonth', e); }
+    if (!r.ok) throw new Error((r.status === 401 || r.status === 403) ? 'эрх хүрэхгүй (' + r.status + ')' : 'HTTP ' + r.status);
+    const agg = attAggregateMonth(await r.json());
+    state.attWorkedDays = agg.out;
+    state.attMonthTimes = agg.times;
+    state.attMonthFail = null;
+  } catch (e) {
+    state.attMonthFail = attFailMsg(e);
+    dataLoadFailed('loadAttendanceMonth', e);
+  }
+}
+// Уналтын шалтгааныг хүний хэлээр (хэрэглэгч программист биш).
+function attFailMsg(e) {
+  const m = String((e && e.message) || e || '');
+  if (/эрх хүрэхгүй/.test(m)) return 'Сесс хуучирсан — дахин нэвтэрнэ үү';
+  if (/offline|Failed to fetch|NetworkError/i.test(m)) return 'Сүлжээ холбогдсонгүй';
+  if (/timeout|хугацаа/i.test(m)) return 'Сервер хариу өгсөнгүй';
+  return 'Ачаалагдсангүй' + (m ? ' (' + m.slice(0, 40) + ')' : '');
 }
 // Цагийн ажилтны мөрд — энэ сар ирцээр ажилласан өдөр + хүлээгдэх цалин (өдрийн тарифаар).
 function attWorkedLine(m) {
@@ -18009,6 +18031,15 @@ function pipelineThroughput(key, month) {
   return n;
 }
 
+function attachPerfAttendRetry() {
+  const b = document.getElementById('att-retry');
+  if (!b) return;
+  b.addEventListener('click', () => {
+    b.disabled = true; b.textContent = 'Ачаалж байна…';
+    state.attMonthFail = null;
+    loadAttendanceMonth().then(() => render());
+  });
+}
 function renderPerformance() {
   // Гарц/хүлээлцэх чанар нь захиалгын stage_meta-гаас тооцогддог тул appOrders ачаалагдсан байх ёстой
   // (Гүйцэтгэл view захиалгыг өөрөө ачаалдаггүй — шууд орвол хоосон болохоос сэргийлнэ).
@@ -18016,7 +18047,11 @@ function renderPerformance() {
     state._perfOrdersLoaded = true; loadAppOrders().then(() => render());
   }
   if (state.workStart === undefined) { state.workStart = null; loadAppConfig('work_start').then(v => { state.workStart = (v && typeof v === 'object') ? v : {}; render(); }); }
-  if (state.attMonthTimes === undefined) { state.attMonthTimes = null; loadAttendanceMonth().then(() => render()); }
+  if (state.attMonthTimes === undefined) { state.attMonthTimes = null; state.attMonthFail = null; loadAttendanceMonth().then(() => render()); }
+  // Ирцийн дата унасан бол ИЛ хэлж, дахин оролдох товч гаргана (хоосон дэлгэц харуулахгүй)
+  const attWarn = state.attMonthFail
+    ? `<div class="att-fail">⚠ Ирцийн дата: ${escapeHtml(String(state.attMonthFail))} <button class="btn" id="att-retry">↻ Дахин</button></div>`
+    : '';
   const isMgr = canManageOrders() || state.isCEO || canSeeWorkload();   // Багийн ачаалал эрхтэй удирдлага/захирал → баг харна
   const tab = (!isMgr && state.perfTab === 'all') ? 'me' : (state.perfTab || 'me');
   const cur = todayStr().slice(0, 7);
@@ -18026,7 +18061,7 @@ function renderPerformance() {
     <div class="perf-tabs">${tabs.map(t => `<button class="perf-tab${t.id === tab ? ' active' : ''}" data-perf-tab="${t.id}">${t.label}</button>`).join('')}</div>
   </div>`;
   const body = tab === 'all' ? renderPerfAll() : tab === 'rate' ? renderPerfRate() : renderPerfMe();
-  return head + body;
+  return head + attWarn + body;
 }
 
 function renderPerfMe() {
@@ -18171,6 +18206,7 @@ function openPerfDetail(key, name) {
   modal.classList.add('open');
 }
 function attachPerformanceHandlers() {
+  attachPerfAttendRetry();   // ирцийн дата унасан бол «↻ Дахин» товч
   document.querySelectorAll('.perf-row[data-perf-key]').forEach(row => row.addEventListener('click', (e) => {
     if (e.target.closest('[data-penalty-key]')) return;   // суутгал товч дарвал дэлгэрэнгүй нээхгүй
     openPerfDetail(row.dataset.perfKey, row.dataset.perfName);

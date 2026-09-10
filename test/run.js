@@ -5249,3 +5249,33 @@ need(['orderCustType']);
      ['reserved','preparation','cleaning','ready','started','prepared','delivering','installing','rented','teardown','returning'].sort().join(','),
      'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
 }
+
+// ── УРЬДЧИЛАН ЗАХИАЛАХ ХУГАЦАА (2026-09-10) ────────────────────────────────
+// Жагсаалт зөвхөн эвентийн огноог харуулдаг тул «хэзээ ирсэн, хэдэн өдрийн
+// өмнө баталгаажсан» гэдэг харагдахгүй байв. Маркетинг/нөөц төлөвлөлтөд хэрэгтэй.
+{
+  eq(F.orderLeadDays({ created_at: '2025-12-27T07:39:41Z', starts_at: '2026-01-02' }), 6, 'хугацаа: 6 хоногийн өмнө');
+  eq(F.orderLeadDays({ created_at: '2026-01-03T03:42:27Z', starts_at: '2026-01-03' }), 0, 'хугацаа: тэр өдрөө');
+  eq(F.orderLeadDays({ created_at: '2026-01-12T07:39:55Z', starts_at: '2026-01-29' }), 17, 'хугацаа: 17 хоног');
+  eq(F.orderLeadDays({ created_at: '2026-01-10', starts_at: '2026-01-05' }), null, 'хугацаа: эвент болсны дараа бүртгэсэн → null');
+  eq(F.orderLeadDays({ starts_at: '2026-01-05' }), null, 'хугацаа: ирсэн огноогүй → null');
+  eq(F.orderLeadDays({}), null, 'хугацаа: талбаргүй → null (унахгүй)');
+  eq(F.orderLeadDays(null), null, 'хугацаа: мөргүй → null');
+
+  const os = [
+    { created_at: '2026-01-01', starts_at: '2026-01-01' },   // 0
+    { created_at: '2026-01-01', starts_at: '2026-01-03' },   // 2
+    { created_at: '2026-01-01', starts_at: '2026-01-06' },   // 5
+    { created_at: '2026-01-01', starts_at: '2026-01-21' },   // 20
+    { created_at: '', starts_at: '2026-01-21' },             // тоологдохгүй
+  ];
+  const st = F.leadStats(os);
+  eq(st.n, 4, 'хугацаа: огноотой мөр л тоологдоно');
+  eq(st.median, 4, 'хугацаа: медиан (2 ба 5-ийн дундаж)');
+  eq(st.sameDay, 1, 'хугацаа: тэр өдрөө ирсэн');
+  eq(st.within2, 2, 'хугацаа: 2 хоногийн дотор');
+  eq(st.over14, 1, 'хугацаа: 2 долоо хоногоос эрт');
+  eq(F.leadStats([]).median, null, 'хугацаа: хоосон → null');
+  eq(F.leadStats(null).n, 0, 'хугацаа: мөргүй → 0');
+  eq(F.leadStats([{ created_at: '2026-01-01', starts_at: '2026-01-08' }]).median, 7, 'хугацаа: нэг мөрийн медиан');
+}

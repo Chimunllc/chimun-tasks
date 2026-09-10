@@ -22034,7 +22034,7 @@ function bqOrderCard(o) {
     : [];
   const depAcctHtml = _depAccts.length
     ? `<div class="dep-acct-row">${_depAccts.map(a => `<button type="button" class="dep-acct" data-acct-copy="${escapeHtml(a.acct)}" title="Дарж дансны дугаарыг хуулна">💳 Буцаах данс: <b>${escapeHtml(a.acct)}</b>${a.sender ? ` · ${escapeHtml(a.sender)}` : ''} ⧉</button>`).join('')}</div>`
-    : (_dep > 0 && !_depRet && isApp && _cardMoney ? `<div class="dep-acct-none">💳 Буцаах данс тодорхойгүй — орлогын баримтад данс уншигдаагүй</div>` : '');
+    : (_dep > 0 && !_depRet && isApp && _cardMoney ? `<div class="dep-acct-none">💳 Буцаах данс тодорхойгүй — «📄 Баримт»-аас эх PDF-ийг нээж дансыг хараарай</div>` : '');
   const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
@@ -22935,6 +22935,30 @@ function parseBankReceipt(text) {
     out.senderAcct = get('Шилжүүлэгчийн дансны дугаар');
     out.ref = get('Гүйлгээний утга');
     out.status = get('Гүйлгээний төлөв');
+    // ⭐ ХҮСНЭГТЭН БАЙРЛАЛТАЙ баримт (Голомтын цахим баримт): шошгууд НЭГ мөрөнд цуврч,
+    // утгууд нь ДАРАА нь цуврдаг тул «шошгийн дараагийн мөр» дүрэм ажиллахгүй — данс, нэр
+    // хоосон гардаг байв (2026-09-10). Хоосон талбарыг л нөхнө, ажиллаж буй замыг хөндөхгүй.
+    const _accIdx = flat.indexOf('Шилжүүлэгчийн дансны дугаар');
+    if ((!out.senderAcct || !out.receiverAcct) && _accIdx >= 0) {
+      const seg = flat.slice(_accIdx);
+      // Зөвхөн БИЕ ДААСАН 6-20 оронтой тоо: дүн (826,680.00), огноо (2026-09-03),
+      // IBAN (MN24…), лавлах (S1853…) нь үсэг/таслалтай тул энд орохгүй.
+      const nums = [...seg.matchAll(/\b(\d{6,20})\b/g)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i);
+      if (!out.senderAcct && nums[0]) out.senderAcct = nums[0];
+      if (!out.receiverAcct && nums[1]) out.receiverAcct = nums[1];
+    }
+    if (!out.senderName || !out.receiverName) {
+      // «Шилжүүлэгчийн нэр · Хүлээн авагчийн нэр · Гүйлгээний утга» гурвал — шошгийн эгнээний
+      // дараах эхний 3 утга нь яг тэр дараалалтай (хүснэгтийн мөр).
+      const i0 = lines.findIndex(l => l.startsWith('Шилжүүлэгчийн нэр'));
+      if (i0 >= 0) {
+        const vals = [];
+        for (let i = i0 + 1; i < lines.length && vals.length < 3; i++) { if (!isLabel(lines[i])) vals.push(lines[i]); }
+        if (!out.senderName && vals[0]) out.senderName = vals[0];
+        if (!out.receiverName && vals[1]) out.receiverName = vals[1];
+        if (!out.ref && vals[2]) out.ref = vals[2];
+      }
+    }
     const lm = flat.match(/Хүсэлтийн лавлах дугаар:?\s*([A-Za-z0-9]+)/i); if (lm) out.bankRef = 'GL' + lm[1];   // S-үсгээр эхэлж болно; харах/аудит (dedup биш)
   }
   return out;

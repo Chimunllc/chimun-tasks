@@ -6015,3 +6015,64 @@ need(['orderCustType']);
   const rc = src.slice(src.indexOf('function receivablesData'), src.indexOf('function receivablesData') + 2000);
   ok(/nomaadIsCancelled\(o\)\) return;/.test(rc), 'scan: авлагад цуцалсан хасагдсан хэвээр (зөв)');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// САНХҮҮ: сервер «нуусан» хариуг хоосон датаар бүү андуур (2026-09-10)
+//
+// n8n нь хүчинтэй session токенгүй хүсэлтэд санхүүг өгөхгүй бөгөөд
+// `_finGated: true` + ХООСОН жагсаалт буцаадаг (алдаа шидэхгүй зөөлөн задрал).
+// Аппыг тэр хариуг ХҮЛЭЭЖ АВБАЛ кэш хоосноор дарагдаж «бүх гүйлгээ алга
+// болчихлоо» гэсэн үзэгдэл гарна. Бодит тохиолдол: n8n-ий bootstrap workflow
+// нэвтрэлтийн блокоо солиход `_authed` туг алдагдаж, DB-д 1,280 мөр бүтэн
+// байхад дэлгэц 0 гүйлгээ харуулсан.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const G = sandbox._finGatedEmpty;
+  ok(typeof G === 'function', '_finGatedEmpty: функц бий');
+
+  // Хаалттай + хоосон = ИТГЭЖ БОЛОХГҮЙ (хоёр хэлбэрийн хариуд ч)
+  ok(G({ _finGated: true, finance: { requests: [] } }) === true,
+     'хаалттай: bootstrap хэлбэр (finance.requests хоосон) → үл тоомсорлоно');
+  ok(G({ _finGated: true, requests: [] }) === true,
+     'хаалттай: finance webhook хэлбэр (requests хоосон) → үл тоомсорлоно');
+  ok(G({ _finGated: true }) === true,
+     'хаалттай: жагсаалт огт байхгүй → үл тоомсорлоно');
+
+  // Жинхэнэ хоосон (хаалтгүй) — хүлээж авах ЁСТОЙ, эс бол шинэ компани мөнхөд хоосон
+  ok(G({ _finGated: false, finance: { requests: [] } }) === false,
+     'хаалтгүй хоосон = ЖИНХЭНЭ хоосон, хүлээж авна');
+  ok(G({ finance: { requests: [] } }) === false,
+     '_finGated талбаргүй хуучин хариу = хүлээж авна (арагшаа нийцтэй)');
+
+  // Хаалттай гэсэн ч дата ирсэн бол хаяхгүй — дата нь дата
+  ok(G({ _finGated: true, requests: [{ id: 1 }] }) === false,
+     'хаалттай ч мөр ирвэл хүлээж авна (дата хаяхгүй)');
+
+  // Хог оролт дээр унахгүй
+  ok(G(null) === false && G(undefined) === false && G('x') === false,
+     'хог оролтод унахгүй');
+  ok(G({ _finGated: true, requests: 'юу ч биш' }) === true,
+     'хаалттай + массив биш → үл тоомсорлоно');
+}
+
+// SCAN — хамгаалалт хоёр татагчаас ХАССАН БАЙХ ЁСГҮЙ
+// Баримт мартагддаг; энэ тест мартагддаггүй. Аль нэг татагчаас хамгаалалт
+// унавал CI улаан болно.
+{
+  for (const fnName of ['async function loadBootstrap', 'async function loadFinanceRequests']) {
+    const at = src.indexOf(fnName);
+    ok(at > 0, `scan: ${fnName} олдов`);
+    const body = src.slice(at, at + 1800);
+    ok(/_finGatedEmpty\(data\)/.test(body),
+       `scan: ${fnName} нь _finGatedEmpty-ээр хамгаалагдсан`);
+  }
+  // Хаалттай үед кэш ДАРАГДАХГҮЙ байх — saveFinanceCache нөхцөлгүй дуудагдвал
+  // хуучин дата хоосноор солигдоно.
+  const lb = src.slice(src.indexOf('async function loadBootstrap'),
+                       src.indexOf('async function loadBootstrap') + 1800);
+  ok(/if \(!finGated\) saveFinanceCache\(\);/.test(lb),
+     'scan: loadBootstrap нь хаалттай үед кэш хадгалахгүй');
+  // Хэрэглэгчид ҮНЭН шалтгаан харагдана — «зардал алга» гэж худал хэлэхгүй
+  ok(/state\.finGated/.test(src) && /Нэвтрэлт хүчингүй болсон тул санхүүгийн дата/.test(src),
+     'scan: хоосон дэлгэц дээр жинхэнэ шалтгаан харагдана');
+}

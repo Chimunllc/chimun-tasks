@@ -5316,3 +5316,37 @@ need(['orderCustType']);
   ok(/revoke select on public\.member_perms\s+from anon/.test(grantsSql),
      'db: anon-grants ажилтны эрхийн матрицыг хаадаг');
 }
+
+// ── ДАГАЖ АСУУХ — санал илгээгээд дуугүй болохоос сэргийлэх (2026-09-10) ────
+// «Та үнийн санал авсан уу, захиалга хийх үү?» гэж асуусан эсэхийг бүртгэж,
+// асуугаагүй/хариугүй байвал жагсаалтад ил тэмдэглэнэ.
+{
+  const q = (d) => ({ stage_meta: { quotes: [{ at: d + 'T05:00:00Z', amount: 1 }] } });
+  const base = (extra) => ({ status: 'draft', paid_mnt: 0, ...q('2026-09-01'), ...extra });
+
+  eq(F.quoteFollowupDue(base(), '2026-09-05'), { days: 4, asked: 0 }, 'дагах: 4 хоног хариугүй');
+  eq(F.quoteFollowupDue(base(), '2026-09-02'), null, 'дагах: 1 хоног бол хараахан биш');
+  eq(F.quoteFollowupDue(base(), '2026-09-03'), { days: 2, asked: 0 }, 'дагах: 2 хоногт л сануулна');
+
+  // Санал илгээгээгүй бол өөр асуудал (📭 илгээгээгүй), энд орохгүй
+  eq(F.quoteFollowupDue({ status: 'draft', paid_mnt: 0, stage_meta: {} }, '2026-09-30'), null, 'дагах: санал илгээгээгүй → сануулахгүй');
+  // Төлбөр орсон бол асуух шаардлагагүй
+  eq(F.quoteFollowupDue(base({ paid_mnt: 500 }), '2026-09-30'), null, 'дагах: төлбөр орсон → сануулахгүй');
+  // Ноорог биш бол хамаагүй
+  eq(F.quoteFollowupDue({ status: 'reserved', paid_mnt: 0, ...q('2026-09-01') }, '2026-09-30'), null, 'дагах: ноорог биш → сануулахгүй');
+
+  // Асуусан бол хугацаа ТЭР өдрөөс дахин тоологдоно
+  const asked = base({ stage_meta: { quotes: [{ at: '2026-09-01T05:00:00Z', amount: 1 }], followups: [{ at: '2026-09-05T05:00:00Z', result: 'Бодож байна' }] } });
+  eq(F.quoteFollowupDue(asked, '2026-09-06'), null, 'дагах: сая асуусан бол дахин шаардахгүй');
+  eq(F.quoteFollowupDue(asked, '2026-09-08'), { days: 3, asked: 1 }, 'дагах: асуусны дараа 3 хоног → дахин сануулна');
+
+  // Татгалзсан бол хөөхөө болино
+  const refused = base({ stage_meta: { quotes: [{ at: '2026-09-01T05:00:00Z', amount: 1 }], followups: [{ at: '2026-09-02T05:00:00Z', result: 'Татгалзсан' }] } });
+  eq(F.quoteFollowupDue(refused, '2026-09-30'), null, 'дагах: татгалзсан → сануулга хаагдана');
+
+  eq(F.followupsOf({ stage_meta: { followups: [{}, {}] } }).length, 2, 'дагах: лог уншина');
+  eq(F.followupsOf({}).length, 0, 'дагах: логгүй → 0');
+  eq(F.followupsOf(null).length, 0, 'дагах: мөргүй → 0 (унахгүй)');
+  eq(F.quoteFollowupDue(null, '2026-09-05'), null, 'дагах: мөргүй → null');
+  eq(vm.runInContext('FOLLOWUP_RESULTS', sandbox).length, 4, 'дагах: 4 хариу');
+}

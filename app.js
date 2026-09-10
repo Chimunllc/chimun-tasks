@@ -7748,6 +7748,11 @@ function orderListRow(e, k, todayStr) {
   const quoteChip = _qs.length
     ? `<span class="br-qchip" title="${escapeHtml(_qs.length + ' удаа илгээсэн · сүүлд ' + String((_qLast && _qLast.at) || '').slice(0, 10) + (canSeeOrderMoney() ? ' · ' + fmtMoney(Number(_qLast && _qLast.amount) || 0) : ''))}">📤 ${_qs.length}</span>`
     : (String(o.status) === 'draft' ? `<span class="br-qchip none" title="Ноорог боловч үнийн санал илгээгээгүй байна — «📄 Үнийн санал»-аар илгээнэ">📭 Илгээгээгүй</span>` : '');
+  // Санал илгээгээд дуугүй болсныг тэмдэглэнэ — «дагаж асуу» гэсэн сануулга.
+  const _fd = quoteFollowupDue(o);
+  const followChip = _fd
+    ? `<span class="br-qchip due" title="Үнийн санал илгээснээс хойш ${_fd.days} хоног${_fd.asked ? ` · ${_fd.asked} удаа дагаж асуусан` : ' · дагаж асуугаагүй'}. Захиалга нээж «📞 Дагаж асуусан» дар.">📞 ${_fd.days}х</span>`
+    : '';
   const id = escapeHtml(String(o.id));
   // Мөрийн үйлдэл товч = ТӨЛБӨР АВАХ (үлдэгдэлтэй үед шууд төлбөрийн модал нээнэ).
   // Дамжлагын алхмууд (Бэлдэх/Цэвэрлэх/Гаргах…) захиалгыг нээгээд дотор нь хийнэ — мөрөн дээр гаргахгүй.
@@ -7784,7 +7789,7 @@ function orderListRow(e, k, todayStr) {
   const statusCell = `<span class="br-status-cell"><span class="br-status" style="--sd:${_st.dot || '#888'}"><span class="br-sdot"></span>${escapeHtml(_st.label || o.status || '')}</span></span>`;
   // Шошгууд харилцагчийн нүдэнд — нээхгүйгээр харагдана (цуцлах хүсэлт өмнө ЗӨВХӨН
   // самбарын мөрөнд гардаг байсан тул жагсаалтад үл үзэгдэж байв).
-  const _chips = (_money ? [depWarn, vatChip, quoteChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
+  const _chips = (_money ? [depWarn, vatChip, followChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
   // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
   const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
   return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">
@@ -8073,6 +8078,10 @@ function renderOrders() {
   // борлуулалт 0₮» гэж гарах нь шуугиан тул хасна.
   const _unsentN = _seeMoney ? _draftE.filter(e => quotesOf(e.o).length === 0).length : 0;
   const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN ? `${saleN.toLocaleString('mn-MN')} захиалга` : ''}${saleN && _seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">${_draftE.length} ноорог · боломжит ${fmtMoney(sumDraft)}</span>` : ''}${_unsentN ? ` · <span class="sum-unsent" title="Ноорог боловч үнийн санал илгээгээгүй. Захиалга нээж «📄 Үнийн санал» дарж илгээнэ.">📭 ${_unsentN} илгээгээгүй</span>` : ''}${(() => {
+    if (!_seeMoney) return '';
+    const due = _draftE.filter(e => quoteFollowupDue(e.o)).length;
+    return due ? ` · <span class="sum-unsent" title="Үнийн санал илгээснээс ${FOLLOWUP_DUE_DAYS}+ хоног болсон ч хариу алга. «Та үнийн санал авсан уу, захиалга хийх үү?» гэж асуух цаг.">📞 ${due} дагаж асуух</span>` : '';
+  })()}${(() => {
     const ls = leadStats(shown.map(e => e.o));
     return ls.median == null ? '' : ` · <span class="sum-lead" title="Захиалга ирсэн өдрөөс арга хэмжээ хүртэлх хоног (медиан). ${ls.sameDay} нь тэр өдрөө, ${ls.within2} нь 2 хоногийн дотор, ${ls.over14} нь 2 долоо хоногоос эрт ирсэн.">📥 дунджаар <b>${ls.median} хоногийн</b> өмнө</span>`;
   })()}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
@@ -8136,6 +8145,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
+  document.querySelectorAll('[data-app-follow]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openFollowupModal(b.dataset.appFollow); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
 
   // Он-сар филтер
@@ -21773,7 +21783,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}${st === 'draft' && quotesOf(o).length && (can('orders.pay') || can('orders.advance') || state.isCEO) ? `<button class="btn" data-app-follow="${id}" style="padding:5px 11px;font-size:12px;">📞 Дагаж асуусан</button>` : ''}${st !== 'draft' && st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -21819,6 +21829,12 @@ function bqOrderCard(o) {
       : `<div class="dep-row">${depBadge}</div>`) : ''}
     ${(() => { const _d = parseDamage(o.note); const _b = parseBrokenRec(o.note); const _bt = Object.values(_b).reduce((s, q) => s + q, 0); return (_d || _bt) ? `<div class="order-meta order-dmg">⚠ ${_d ? `Эвдрэл −${fmtMoney(_d.amount)}` : ''}${_d && _bt ? ' · ' : ''}${_bt ? `${_bt}ш нөөцөөс хасав` : ''}${_d && _d.note ? ` (${escapeHtml(_d.note)})` : ''}</div>` : ''; })()}
     ${(() => { const _r = parseRefund(o.note); return _r ? `<div class="order-meta order-refund">↩ Буцаан олгосон: ${fmtMoney(_r.amount)}${_r.note ? ` (${escapeHtml(_r.note)})` : ''}</div>` : ''; })()}
+    ${(() => {
+      const fu = followupsOf(o); const fd = quoteFollowupDue(o);
+      if (!fu.length && !fd) return '';
+      const last = fu.length ? fu[fu.length - 1] : null;
+      return `<div class="order-meta${fd ? ' order-follow-due' : ''}">📞 ${fu.length ? `${fu.length} удаа дагаж асуусан · сүүлд ${escapeHtml(String(last.at || '').slice(0, 10))}${last.result ? ` — <b>${escapeHtml(last.result)}</b>` : ''}` : 'Дагаж асуугаагүй'}${fd ? ` · <b>${fd.days} хоног хариугүй</b>` : ''}</div>`;
+    })()}
     ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
@@ -24400,6 +24416,63 @@ function leadStats(orders) {
     within2: v.filter(x => x <= 2).length,
     over14: v.filter(x => x > 14).length,
   };
+}
+// ── ДАГАЖ АСУУХ (2026-09-10) ────────────────────────────────────────────────
+// Үнийн санал илгээгээд дуугүй болох нь борлуулалт алдах хамгийн хямд шалтгаан.
+// «Та үнийн санал авсан уу, захиалга хийх үү?» гэж асуусан эсэхийг бүртгэнэ.
+// Лог: stage_meta.followups = [{at, by, result}].
+// ⚠ АВТО АЖИЛ ҮҮСГЭХГҮЙ (STAGE_AUTOTASK_ENABLED = false зарчим) — зөвхөн
+//    жагсаалтад ил тэмдэглэж, хүн өөрөө шийднэ.
+const FOLLOWUP_RESULTS = ['Бодож байна', 'Хүлээж байна', 'Холбогдож чадсангүй', 'Татгалзсан'];
+const FOLLOWUP_DUE_DAYS = 2;   // санал/сүүлийн холбоо барилтаас хойш хэдэн хоногт асуух
+function followupsOf(o) {
+  const f = o && o.stage_meta && o.stage_meta.followups;
+  return Array.isArray(f) ? f : [];
+}
+// Дагаж асуух шаардлагатай эсэх. Цэвэр функц — тестлэгдэнэ.
+// Болзол: санал ИЛГЭЭСЭН · төлбөр хийгдээгүй · татгалзаагүй · сүүлийн үйлдлээс
+// FOLLOWUP_DUE_DAYS хоног өнгөрсөн. Буцаах: {days, asked} эсвэл null.
+function quoteFollowupDue(o, today) {
+  if (!o || String(o.status) !== 'draft') return null;
+  if ((Number(o.paid_mnt) || 0) > 0) return null;                     // төлсөн — асуух шаардлагагүй
+  const qs = quotesOf(o); if (!qs.length) return null;                // санал илгээгээгүй — өөр асуудал
+  const fu = followupsOf(o);
+  if (fu.some(x => x && x.result === 'Татгалзсан')) return null;      // татгалзсан — хөөхгүй
+  const lastAt = String((fu.length ? fu[fu.length - 1].at : qs[qs.length - 1].at) || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(lastAt)) return null;
+  const t = String(today || todayStr()).slice(0, 10);
+  const days = Math.round((new Date(t + 'T00:00:00Z') - new Date(lastAt + 'T00:00:00Z')) / 86400000);
+  return days >= FOLLOWUP_DUE_DAYS ? { days, asked: fu.length } : null;
+}
+// «Та үнийн санал авсан уу, захиалга хийх үү?» гэж асуусны дараа хариуг бүртгэнэ.
+async function openFollowupModal(id) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
+  const fu = followupsOf(o);
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:420px;">
+    <h2>📞 Дагаж асуусан</h2>
+    <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')}${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}<br>
+      «Та үнийн санал авсан уу? Захиалга хийх үү?» гэж асуусны дараа хариуг сонго.</p>
+    ${fu.length ? `<div class="cmp-cur">${fu.map(x => `${escapeHtml(String(x.at || '').slice(0, 10))} — ${escapeHtml(x.result || '')}`).join('<br>')}</div>` : ''}
+    <label class="fld">Хариу<select id="fu-res">${FOLLOWUP_RESULTS.map(r => `<option>${escapeHtml(r)}</option>`).join('')}</select></label>
+    <div class="modal-actions"><button class="btn" id="fu-cancel">Болих</button><button class="btn btn-primary" id="fu-save">Бүртгэх</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#fu-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#fu-save').onclick = async (ev) => {
+    ev.currentTarget.disabled = true;
+    const result = modal.querySelector('#fu-res').value;
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object') ? { ...o.stage_meta } : {};
+    sm.followups = followupsOf(o).concat([{ at: new Date().toISOString(), by: state.me || '', result }]);
+    try { await patchOrderFields(o, { stage_meta: sm }); }
+    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); ev.currentTarget.disabled = false; return; }
+    close();
+    showToast(result === 'Татгалзсан' ? '📞 Татгалзсан гэж бүртгэлээ — сануулга хаагдана' : `📞 «${result}» гэж бүртгэлээ`, 'success', 3000);
+    render();
+  };
+  modal.classList.add('open');
 }
 function quotesOf(o) {
   const q = o && o.stage_meta && o.stage_meta.quotes;

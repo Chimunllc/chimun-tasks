@@ -6263,3 +6263,116 @@ need(['orderCustType']);
   ok(/state\.finGated/.test(src) && /Нэвтрэлт хүчингүй болсон тул санхүүгийн дата/.test(src),
      'scan: хоосон дэлгэц дээр жинхэнэ шалтгаан харагдана');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ЗАХИАЛГЫН ҮЛДЭГДЭЛ — буцаагдсан барьцаа ӨР болж дахин үүсэхгүй (2026-09-11)
+//
+// Буцаан олгох модал `paid_mnt`-ыг бууруулдаг ч `total_mnt`-ыг хөнддөггүй тул
+// түүхий `total_mnt − paid_mnt` нь буцаагдсан барьцааг өр болгодог байв. #1483
+// бүрэн төлөгдсөн атлаа «◐ Дутуу 150,000₮» гэж харагдаж, Авлага ба Санхүү
+// тайланд хуурамч авлага болж орсон.
+//
+// ⚠ ХАМГИЙН АЮУЛТАЙ ЗАМ: `depositReturnState(o)`-оор засвал 'pre'/'stmt' салбарууд
+//   `paid_mnt`-ыг хөндөөгүй буцаалтуудыг заадаг тул БОДИТ авлага чимээгүй устана.
+//   Доорх «stmt хагас төлсөн» ба «pre» тестүүд яг үүнийг хаана.
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const owed   = sandbox.orderOwed;
+  const billed = sandbox.orderBilled;
+  const refDep = sandbox.orderRefundedDeposit;
+  ok([owed, billed, refDep].every(f => typeof f === 'function'),
+     'үлдэгдэл: ганц эх сурвалжийн 3 функц бий');
+
+  const O = (x) => Object.assign({ total_mnt: 0, paid_mnt: 0, deposit_mnt: 0, note: '' }, x);
+
+  // (1) БОДИТ КЕЙС #1483 — барьцаа буцаасан, бүрэн төлөгдсөн
+  const o1483 = O({ total_mnt: 826680, paid_mnt: 676680, deposit_mnt: 150000,
+                    note: '⟦DLV|city|0|150000⟧ ⟦VAT|27720⟧ ⟦RF|150000||dep⟧' });
+  eq(refDep(o1483), 150000, '#1483: буцаагдсан барьцаа 150,000₮');
+  eq(billed(o1483), 676680, '#1483: авах ёстой нийт = борлуулалт (барьцаа хасагдсан)');
+  eq(owed(o1483), 0,        '#1483: ҮЛДЭГДЭЛ 0 — «Дутуу» гэж харагдахаа болино');
+
+  // (2) Барьцаа БАРЬЖ БАЙГАА (буцаагаагүй) — үлдэгдэл ХЭВЭЭР
+  eq(owed(O({ total_mnt: 826680, paid_mnt: 676680, deposit_mnt: 150000 })), 150000,
+     'барьцаа буцаагаагүй: 150,000₮ авах үлдсэн хэвээр');
+
+  // (3) Барьцаагүй захиалга — огт хөндөгдөхгүй
+  eq(owed(O({ total_mnt: 676680, paid_mnt: 400000 })), 276680, 'барьцаагүй: үлдэгдэл хэвээр');
+  eq(owed(O({ total_mnt: 676680, paid_mnt: 676680 })), 0,      'барьцаагүй бүрэн төлсөн: 0');
+
+  // (4) ХУУЛГААР буцаасан ('stmt' — 5810 санхүүгийн мөр). ⟦RF⟧ токен БАЙХГҮЙ тул
+  //     `paid_mnt` хөндөгдөөгүй → давхар хасагдах ЁСГҮЙ.
+  eq(owed(O({ total_mnt: 826680, paid_mnt: 826680, deposit_mnt: 150000 })), 0,
+     'stmt буцаалт бүрэн төлсөн: 0 (давхар хасагдахгүй)');
+  eq(owed(O({ total_mnt: 826680, paid_mnt: 500000, deposit_mnt: 150000 })), 326680,
+     '⛔ stmt буцаалт ХАГАС төлсөн: 326,680₮ БҮТЭН хэвээр — бодит авлага устахгүй');
+
+  // (5) 2026-08-01-ЭЭС ӨМНӨХ ('pre' таамаглал) — ⟦RF⟧ токенгүй тул хөндөгдөхгүй.
+  //     Хэрэв depositReturnState-ээр зассан бол энэ 150,000₮ чимээгүй устах байсан.
+  eq(owed(O({ total_mnt: 826680, paid_mnt: 676680, deposit_mnt: 150000,
+              starts_at: '2026-05-01', stops_at: '2026-05-02' })), 150000,
+     '⛔ pre-үеийн захиалга: барьцаа ХЭВЭЭР авах ёстой (таамаглалаар устахгүй)');
+
+  // (6) АРИЛЖААНЫ буцаалт (kind ≠ 'dep') — өрийг барагдуулдаггүй
+  eq(refDep(O({ total_mnt: 826680, paid_mnt: 300000, deposit_mnt: 150000,
+                note: '⟦RF|200000|төлөвлөгөө өөрчлөгдсөн⟧' })), 0,
+     'арилжааны буцаалт: барьцааны буцаалт гэж тооцогдохгүй');
+  eq(owed(O({ total_mnt: 826680, paid_mnt: 300000, deposit_mnt: 150000,
+              note: '⟦RF|200000|төлөвлөгөө өөрчлөгдсөн⟧' })), 526680,
+     '⛔ арилжааны буцаалт: өр хэвээр — 200,000₮ чимээгүй уучлагдахгүй');
+
+  // (7) ХЭСЭГЧИЛСЭН барьцаа буцаалт (эвдрэлийн суутгал)
+  const oPart = O({ total_mnt: 826680, paid_mnt: 826680, deposit_mnt: 150000,
+                    note: '⟦RF|50000||dep⟧' });
+  eq(refDep(oPart), 50000,  'хэсэгчилсэн: 50,000₮ буцаагдсан');
+  eq(billed(oPart), 776680, 'хэсэгчилсэн: үлдсэн 100,000₮ барьцаа дүнд хэвээр');
+  eq(owed(oPart), 0,        'хэсэгчилсэн: илүү төлөгдсөн тул үлдэгдэл 0');
+
+  // (8) Токен барьцаанаас ТОМ — барьцааны хэмжээгээр тагласан байх ёстой
+  eq(refDep(O({ total_mnt: 826680, deposit_mnt: 150000, note: '⟦RF|999999||dep⟧' })), 150000,
+     '⛔ токен хэт том: барьцааны хэмжээгээр тагласан — бодит өр идэгдэхгүй');
+
+  // (9) Барьцаагүй атлаа dep токентой (гар алдаа) — хасагдахгүй
+  eq(refDep(O({ total_mnt: 676680, deposit_mnt: 0, note: '⟦RF|50000||dep⟧' })), 0,
+     'барьцаа 0 бол dep токен байсан ч хасагдахгүй');
+
+  // (10) Booqable түүх — барьцаа `total_mnt`-д ОГТ ороогүй, токенгүй → хөндөгдөхгүй
+  eq(owed(O({ total_mnt: 800000, paid_mnt: 600000, deposit_mnt: 200000, source: 'booqable' })), 200000,
+     '⛔ booqable: барьцаа total_mnt-д байхгүй тул хасагдахгүй — 200,000₮ хэвээр');
+
+  // (11) Хог оролт дээр унахгүй
+  eq(owed(null), 0, 'хог оролт: unahgүй');
+  eq(owed(O({ total_mnt: 'юу ч биш', paid_mnt: null })), 0, 'тоо биш утга: 0');
+  eq(owed(O({ total_mnt: 100000, paid_mnt: 500000 })), 0, 'илүү төлсөн: сөрөг болохгүй');
+}
+
+// SCAN — түүхий `total_mnt − paid_mnt` үлдэгдэл БУЦАЖ ИРЭХГҮЙ
+// Баримт мартагддаг; энэ тест мартагддаггүй.
+{
+  const banned = [
+    'Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0))',
+    '(Number(o && o.total_mnt) || 0) - (Number(o && o.paid_mnt) || 0)',
+    'bal = Math.max(0, total - paid)',
+    'const bal = total - paid;',
+  ];
+  for (const b of banned) {
+    ok(!src.includes(b), `scan: түүхий үлдэгдэл буцаж ирээгүй «${b.slice(0, 34)}…»`);
+  }
+  ok(/function orderRefundedDeposit\(o\)/.test(src) && /function orderBilled\(o\)/.test(src)
+     && /function orderOwed\(o\)/.test(src), 'scan: үлдэгдлийн ганц эх сурвалж бий');
+
+  // Карт, Авлага, архивлалт ГУРВУУЛАА ижил функц дуудна — тоо нь хоорондоо зөрөхгүй
+  for (const fn of ['function receivablesData', 'function bqOrderCard', 'function archUnpaid']) {
+    const at = src.indexOf(fn);
+    ok(at > 0, `scan: ${fn} олдов`);
+    ok(/orderOwed\(o\)/.test(src.slice(at, at + 4000)), `scan: ${fn} нь orderOwed дуудна`);
+  }
+
+  // ⛔ depositReturnState-ээр үлдэгдэл БОДОХГҮЙ — 'pre'/'stmt' салбар бодит авлагыг устгана
+  const helpers = src.slice(src.indexOf('function orderRefundedDeposit'),
+                            src.indexOf('function orderRefundedDeposit') + 900);
+  ok(!/depositReturnState/.test(helpers),
+     'scan: үлдэгдэл depositReturnState-ээс хамаарахгүй (pre/stmt урхи хаагдсан)');
+  ok(/rf\.kind !== 'dep'/.test(helpers), 'scan: зөвхөн БАРЬЦААНЫ буцаалт хасагдана');
+  ok(/Math\.min\(dep,/.test(helpers), 'scan: буцаалт барьцааны хэмжээгээр тагласан');
+}

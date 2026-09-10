@@ -16806,7 +16806,9 @@ function meventContractHtml(o) {
     deposit = _B.deposit, rentalNet = _B.rentalNet, vat = _B.vat, total = _B.total;
   // Харилцагчийн дэлгэрэнгүй (байгууллага/РД/холбоо барих/газрын зураг) + хүргэлтийн хаяг
   const _ci = _ciP;   // дээр нэг л удаа задалсан (гэрээний талыг тодорхойлоход хэрэгтэй байсан)
-  const _ciContact = _ci.contact || [_ci.fb, _ci.viber].filter(Boolean).join(' · ');
+  // ⚠ «Холбоо барих» талбар нь ДОТООД тэмдэглэл болж бичигддэг («фб холбогдсон», «viber-ээр
+  // ярьсан» г.м.) тул ГЭРЭЭНД ХЭВЛЭХГҮЙ — гэрээ бол харилцагчид очих баримт. Утас, и-мэйл,
+  // РД нь тусдаа талбар тул холбоо барих мэдээлэл гэрээнд хэвээр байна.
   const _addr = (o.delivery_address || o.customer_address || '').trim();
   // Эхлэх/дуусах ЦАГ нь ⟦RT|sh|eh⟧ note token-д хадгалагддаг (starts_at нь зөвхөн огноо).
   // Уншихгүй бол гэрээнд «……» гарч, ажлын бус цагийн төлбөртэй зөрчилдөнө.
@@ -16887,7 +16889,7 @@ function meventContractHtml(o) {
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
-    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b>${_rep ? '<br>Төлөөлөх хүн: ' + escapeHtml(_rep) : ''}<br>${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}${_ciContact ? 'Холбоо барих: ' + escapeHtml(_ciContact) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${_isOrg ? 'Байгууллагын РД' : 'Регистрийн дугаар'}: ${_ci.reg ? escapeHtml(_ci.reg) : '…………………'}${_addr ? '<br>Хүргэх хаяг: ' + escapeHtml(_addr) : ''}${_ci.maps ? ' (<a href="' + escapeHtml(mapsHref(_ci.maps)) + '">байршил</a>)' : ''}</td>
+    <td><div class="ch-role">ХЭРЭГЛЭГЧ</div><b>${cust}</b>${_rep ? '<br>Төлөөлөх хүн: ' + escapeHtml(_rep) : ''}<br>${o.phone ? 'Холбоо барих утас: ' + escapeHtml(o.phone) + '<br>' : ''}${o.email ? escapeHtml(o.email) + '<br>' : ''}${_isOrg ? 'Байгууллагын РД' : 'Регистрийн дугаар'}: ${_ci.reg ? escapeHtml(_ci.reg) : '…………………'}${_addr ? '<br>Хүргэх хаяг: ' + escapeHtml(_addr) : ''}${_ci.maps ? ' (<a href="' + escapeHtml(mapsHref(_ci.maps)) + '">байршил</a>)' : ''}</td>
     <td class="r"><div class="ch-role">ТҮРЭЭСЛҮҮЛЭГЧ</div><b>${C.name}</b><br>${C.address}<br>Улаанбаатар, 11000<br>Байгууллагын РД: ${escapeHtml(String(C.reg || ''))}<br>Утас: 7755-1010<br>Hello@Mevent.mn</td>
   </tr></table>
   <div class="meta-line">Он сар: <b>${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}</b> &nbsp;·&nbsp; Захиалга: <b>#${o.number ?? ''}</b> &nbsp;·&nbsp; Гэрээний дугаар: <b>${contractNo || '……'}</b></div>

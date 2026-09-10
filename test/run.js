@@ -4291,6 +4291,30 @@ need(['orderCustType']);
   eq(st.totals.capital, 500000 * 10 + 90000 * 40, 'багц: хөрөнгөд өөрийн мөр нэмэхгүй');
 }
 
+// ── SCAN: bqOrderCard дотор хувьсагчийг ЗАРЛАХААС ӨМНӨ ашиглахгүй (2026-09-10)
+// `const _cardMoney` нь түүнийг ашигладаг `_depAccts`-ийн ДООР бичигдсэнээс болж
+// «Cannot access '_cardMoney' before initialization» гарч, M-Event захиалгын БҮХ
+// дэлгэц хоосон болсон. Тест байгаагүй тул CI ногоон хэвээр merge хийгдсэн.
+// bqOrderCard бол хамгийн олон гар хүрдэг функц — тиймээс тусад нь хамгаална.
+{
+  const start = src.indexOf('function bqOrderCard(');
+  ok(start > 0, 'scan: bqOrderCard олдов');
+  const body = src.slice(start, src.indexOf('\nfunction ', start + 10));
+  // Тайлбар мөрүүдийг хасна — тайлбарт дурдсан нэр «ашиглалт» биш.
+  const clean = body.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  const decl = /(?:^|\n)\s*(?:const|let)\s+(_[A-Za-z0-9]+)\s*=/g;
+  const bad = [];
+  let m;
+  while ((m = decl.exec(clean)) !== null) {
+    const name = m[1];
+    const at = m.index + m[0].indexOf(name);
+    const first = clean.search(new RegExp('\\b' + name + '\\b'));
+    if (first >= 0 && first < at) bad.push(name);
+  }
+  eq(bad.length, 0, 'scan: bqOrderCard — зарлахаас өмнө ашигласан хувьсагч байхгүй' +
+     (bad.length ? ' → ' + bad.join(', ') : ''));
+}
+
 // SCAN — тайлан ба ROI хоёулаа багцыг задлана (2026-09-07)
 {
   const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

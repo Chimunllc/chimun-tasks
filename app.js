@@ -22022,6 +22022,10 @@ function bqOrderCard(o) {
       ? `<span class="dep-badge dep-returned" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : _depRet.kind === 'refund' ? 'Буцаан олгох модалаар барьцаа буцаасан гэж тэмдэглэсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан (5810)'}${_depRet.date ? ' · ' + escapeHtml(_depRet.date) : ''}">✓ Барьцаа буцаасан</span>`
       : (isApp ? `<span class="dep-badge dep-held" title="Авсан барьцаа ${escapeHtml(fmtMoney(_dep))} — буцаах ёстой">🔒 Барьцаа ${fmtMoney(_dep)}</span>` : ''))
     : '';
+  // ⚠ ЭНЭ МӨР ДООШ БҮҮ ЗӨӨ — доорх `_depAccts` үүнийг ашигладаг. Зөөвөл
+  // «Cannot access '_cardMoney' before initialization» гээд БҮХ захиалгын
+  // дэлгэц хоосон болно (2026-09-10-нд яг ингэж эвдэрсэн).
+  const _cardMoney = canSeeOrderMoney();   // гүйцэтгэгч ажилтанд мөнгөн дүн харагдахгүй
   // ⭐ Барьцаа буцаах ДАНС — орлогын PDF-ээс уншсан шилжүүлэгчийн данс (`paid_ref`).
   // Барьцаа нь ирсэн данс руугаа буцах ёстой; ажилтан данс хайж явахгүйн тулд картад шууд.
   // Зөвхөн БУЦААГААГҮЙ барьцаанд харагдана (буцаасны дараа хэрэггүй, картыг чихэхгүй).
@@ -22034,7 +22038,6 @@ function bqOrderCard(o) {
   const _depIn = _dep;   // толгойн «нийт» тайлбарт (барьцаа багтсан эсэх)
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
-  const _cardMoney = canSeeOrderMoney();   // гүйцэтгэгч ажилтанд мөнгөн дүн харагдахгүй
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
   return `<div class="order-card bq-order" data-oid="${id}">

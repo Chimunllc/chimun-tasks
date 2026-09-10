@@ -60,7 +60,15 @@ create or replace view public.public_availability as
   --   санал нөөцийг блоклох ёсгүй. Ялгах хүчин зүйл = `source`.
   --   ⚠ Аппын `_ORDER_OCCUPYING_DRAFT_SOURCES`-тэй ЯГ ИЖИЛ байх ёстой
   --     (test/run.js хоёрыг тулгадаг).
-     or (status = 'draft' and source = any (array['m-event-website']));
+     or (status = 'draft' and source = any (array['m-event-website'])
+         -- ⚠ 72 цаг хүртэл л барина. Хугацаагүй барьвал нэг халдагч (эсвэл ирээгүй
+         --    нэг харилцагч) каталогийг тодорхойгүй хугацаагаар блоклоно. Ямар ч
+         --    үер 72 цагийн дараа өөрөө арилна. Аппын `_SITE_DRAFT_HOLD_H`-тэй
+         --    ЯГ ИЖИЛ байх ёстой (test/run.js тулгана).
+         and created_at > now() - interval '72 hours'
+         -- Хэвийн бус захиалгыг n8n `Build Row` ⟦SUSPECT⟧ гэж тэмдэглэнэ —
+         -- жагсаалтад харагдана, гэхдээ нөөц эзлэхгүй.
+         and coalesce(note, '') not like '%⟦SUSPECT⟧%');
 
 comment on view public.public_availability is
   'mevent.mn-д нөөц эзэлж байгаа захиалга. Төлвийн жагсаалт app.js-ийн _ORDER_OCCUPYING-тэй ЯГ ИЖИЛ байх ёстой (зөрвөл давхар захиалга үүснэ; test/run.js SCAN-тест хамгаална). Эх хувь: chimun-tasks/db/public_availability.sql';

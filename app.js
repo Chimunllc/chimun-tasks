@@ -21257,6 +21257,9 @@ function parsePaidRef(paid_ref) {
     return { id, sender: parts[0] || '', acct: parts[1] || '', memo: parts.slice(2).join(' · '), raw: s };
   });
 }
+// Дансны дугаарыг зөвхөн ЦИФРЭЭР харьцуулна (зай, зураас, «данс:» угтвар ялгаатай бичигддэг).
+// 6-аас бага цифртэй бол данс биш (нэр эсвэл хог) гэж үзнэ.
+function refundAcctDigits(s) { const d = String(s || '').replace(/\D/g, ''); return d.length >= 6 ? d : ''; }
 // Бүртгэсэн банкны баримтын дэлгэрэнгүйг харах (задлан авсан гүйлгээний мэдээлэл).
 // Захиалгын банкны баримт(ууд)-ыг харах — 1 бол шууд дэлгэрэнгүй, олон бол сонгуулна.
 function openOrderReceipts(oid) {
@@ -23138,6 +23141,11 @@ function openRefundModal(oid) {
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буцаан олгох эрх олгогдоогүй', 'warn', 3000); return; }
   const paid = Number(o.paid_mnt) || 0;
   const prevRf = parseRefund(o.note);
+  // ⭐ Мөнгө ХААНААС ирсэн — орлогын PDF задлахад шилжүүлэгчийн данс `paid_ref`-д
+  // хадгалагдсан байдаг ([#id] нэр · данс · утга). Барьцааг ЯГ ТЭР данс руу буцаах нь
+  // зөв: өөр данс руу буцаавал хэн авсан нь нотлогдохгүй, маргаан гарна.
+  const srcAccts = parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct))
+    .map(r => ({ acct: r.acct.trim(), sender: r.sender.trim() }));
   document.getElementById('bq-refund-modal')?.remove();
   const modal = document.createElement('div');
   modal.className = 'modal-bg';
@@ -23146,6 +23154,10 @@ function openRefundModal(oid) {
   modal.innerHTML = `<div class="modal" style="max-width:430px;">
     <h2>↩ Буцаан олгох — #${o.number ?? ''}</h2>
     <div class="rf-sum"><div>Төлсөн дүн: <b>${fmtMoney(paid)}</b></div>${prevRf ? `<div>Өмнө буцаасан: ${fmtMoney(prevRf.amount)}</div>` : ''}</div>
+    ${srcAccts.length ? `<div class="rf-src">
+      <div class="rf-src-t">💳 Орлого орсон данс — ЭНЭ данс руу буцаана</div>
+      ${srcAccts.map(a => `<button type="button" class="rf-src-row" data-rf-copy="${escapeHtml(a.acct)}"><span class="rf-src-a">${escapeHtml(a.acct)}</span><span class="rf-src-n">${escapeHtml(a.sender || '')}</span><span class="rf-src-c">⧉ хуулах</span></button>`).join('')}
+    </div>` : ''}
     <label class="dmg-amt-l">Буцаах дүн (₮)</label>
     <input id="rf-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
     ${(Number(o.deposit_mnt) || 0) > 0 ? `<label class="no-lbl" style="display:flex;align-items:center;gap:8px;margin:9px 0 2px;cursor:pointer;"><input type="checkbox" id="rf-isdep" class="ui-raw" style="width:16px;height:16px;flex:0 0 auto;"><span>🔒 Энэ нь <b>барьцааны буцаалт</b> (${fmtMoney(Number(o.deposit_mnt))}) — картад «✓ Барьцаа буцаасан» болж, 🔒 тэмдэг арилна</span></label>` : ''}
@@ -23173,10 +23185,14 @@ function openRefundModal(oid) {
       const d = parseBankReceipt(await extractPdfText(f));
       if (d.amount && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(d.amount);   // авто-бөглөх (гараар засаж болно)
       const okSender = /чимун/i.test(d.senderName || '');
-      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}`;
-      statusEl.style.color = okSender ? 'var(--ok)' : 'var(--warn)';
+      // Хүлээн авагчийн данс нь орлого орсон данстай таарч байна уу (сануулга — хаахгүй)
+      const rcv = refundAcctDigits(d.receiverAcct);
+      const okAcct = !srcAccts.length || !rcv || srcAccts.some(a => refundAcctDigits(a.acct) === rcv);
+      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}${okAcct ? '' : ' · ⚠ орлого орсон данс биш (' + d.receiverAcct + ')'}`;
+      statusEl.style.color = (okSender && okAcct) ? 'var(--ok)' : 'var(--warn)';
     } catch (err) { statusEl.textContent = `✓ ${f.name} (хавсаргав)`; statusEl.style.color = 'var(--ok)'; }
   });
+  modal.querySelectorAll('[data-rf-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.rfCopy, 'Дансны дугаар хууллаа')));
   const close = () => modal.remove();
   modal.querySelector('#rf-cancel').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });

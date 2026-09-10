@@ -7791,10 +7791,10 @@ function orderListRow(e, k, todayStr) {
     <span class="br-id">${selBox}${dotEl}<span class="br-num">#${o.number ?? ''}</span></span>
     <span class="br-cust-cell"><span class="br-av" style="--av:${_avColor(o.customer)}">${escapeHtml(_avInitials(o.customer))}</span><span class="br-cust">${escapeHtml(o.customer || '?')}</span>${chips}</span>
     ${statusCell}
-    <span class="br-dates"><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}<span class="br-arrow">→</span>${_d2 || '—'}${(() => {
+    <span class="br-dates"${(() => {
       const ld = orderLeadDays(o);
-      return ld == null ? '' : `<span class="br-lead" title="Захиалга ${escapeHtml(String(o.created_at || '').slice(0, 10))}-нд ирсэн — арга хэмжээнээс ${ld} хоногийн өмнө">+${ld}х</span>`;
-    })()}</span>
+      return ld == null ? '' : ` title="Захиалга ${escapeHtml(String(o.created_at || '').slice(0, 10))}-нд ирсэн — арга хэмжээнээс ${ld} хоногийн өмнө"`;
+    })()}><span class="br-badge" title="${isDeliveryOrder(o) ? 'Хүргэлт' : 'Очиж авах'}">${deliv}</span>${_d1 || '—'}<span class="br-arrow">→</span>${_d2 || '—'}</span>
     <span class="br-pay-cell">${payPill}</span>
     <span class="br-amt"${_money && _rev !== _tot ? ` title="Борлуулалт ${escapeHtml(fmtMoney(_rev))} · нийт авах ${escapeHtml(fmtMoney(_tot))} (барьцаа ${escapeHtml(fmtMoney(_depAmt))} багтсан)"` : ''}>${_money ? fmtMoney(_rev) : ''}</span>
     <span class="br-act-cell">${actBtn}</span>
@@ -8069,7 +8069,10 @@ function renderOrders() {
   const CAP = 200;
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
   const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Хугацаа</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
-  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN.toLocaleString('mn-MN')} захиалга${_seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">боломжит ${fmtMoney(sumDraft)} · ${_draftE.length} ноорог</span>` : ''}${(() => {
+  // Тоймын мөр — ЗӨВХӨН утгатай хэсгүүд. Ноорог харагдацад «0 захиалга ·
+  // борлуулалт 0₮» гэж гарах нь шуугиан тул хасна.
+  const _unsentN = _seeMoney ? _draftE.filter(e => quotesOf(e.o).length === 0).length : 0;
+  const sumLine = `<div class="orders-sumline">${ymF ? `📅 <span class="osum-ym">${ymF}</span> · ` : ''}${saleN ? `${saleN.toLocaleString('mn-MN')} захиалга` : ''}${saleN && _seeMoney ? ` · борлуулалт <span class="osum-rev">${fmtMoney(sumTotal)}</span>` : ''}${_seeMoney && _site.site ? ` · <span class="sum-site" title="Booqable түүхийг хасч тооцов (гарсан систем). Сайт хэдэн захиалга авчирсныг харуулна.">🌐 сайтаас ${_site.site}/${_site.total} · ${_site.pct}%</span>` : ''}${_seeMoney && _draftE.length ? ` · <span class="sum-pipeline" title="Ноорог захиалгын нийт дүн — хэдэн төгрөгний үнийн санал явсныг харуулна. Борлуулалт БИШ, санхүүд ОРОХГҮЙ.">${_draftE.length} ноорог · боломжит ${fmtMoney(sumDraft)}</span>` : ''}${_unsentN ? ` · <span class="sum-unsent" title="Ноорог боловч үнийн санал илгээгээгүй. Захиалга нээж «📄 Үнийн санал» дарж илгээнэ.">📭 ${_unsentN} илгээгээгүй</span>` : ''}${(() => {
     const ls = leadStats(shown.map(e => e.o));
     return ls.median == null ? '' : ` · <span class="sum-lead" title="Захиалга ирсэн өдрөөс арга хэмжээ хүртэлх хоног (медиан). ${ls.sameDay} нь тэр өдрөө, ${ls.within2} нь 2 хоногийн дотор, ${ls.over14} нь 2 долоо хоногоос эрт ирсэн.">📥 дунджаар <b>${ls.median} хоногийн</b> өмнө</span>`;
   })()}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
@@ -8085,21 +8088,7 @@ function renderOrders() {
 
   // (Банкны тулгалт нь Санхүүгийн хяналт тул захиалгаас хассан — Санхүү хуулгыг тусдаа уншина.)
   // Зүүн статус sidebar (навигаци) + баруун (шүүлт/хайлт + жагсаалт)
-  // ── НООРОГ = үнийн саналын шат. Илгээгээгүй санал чимээгүй мартагддаг тул
-  //    (42 саяын санал сар гүйцэд хэвтсэн тохиолдол байсан) тоог ил гаргана. ──
-  let draftBar = '';
-  if (state.ordersFilter === 'draft' && canSeeOrderMoney()) {
-    const dr = combined.filter(e => bucketOf(e.o.status) === 'draft').map(e => e.o);
-    const unsent = dr.filter(o => quotesOf(o).length === 0);
-    const sum = dr.reduce((t, o) => t + orderRevenue(o, 'accrual'), 0);
-    if (dr.length) {
-      draftBar = `<div class="ordv-draftbar">
-        <span>📄 <b>${dr.length}</b> ноорог · нийт <b>${fmtMoney(sum)}</b> боломжит борлуулалт${unsent.length ? ` · <b class="ordv-unsent">📭 ${unsent.length} санал илгээгээгүй</b>` : ' · ✓ бүгдэд санал илгээсэн'}</span>
-        <span class="ordv-draftbar-h">Ноорог нь орлогод ОРОХГҮЙ. Санал илгээхийн тулд захиалга нээж «📄 Үнийн санал» дар.</span>
-      </div>`;
-    }
-  }
-  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${draftBar}${body}</div></div>`;
+  return head + `<div class="ordv"><aside class="ordv-side">${sideHtml}</aside><div class="ordv-main">${controls}${body}</div></div>`;
 }
 
 function attachOrdersHandlers() {

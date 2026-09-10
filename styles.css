@@ -6740,14 +6740,6 @@ select.no-asar-len {
 .cmp-got { border: 1px solid var(--warn); border-radius: 9px; padding: 9px 11px; font-size: var(--fs-md); margin-bottom: var(--space-3); line-height: 1.6; }
 .cmp-prev { color: var(--muted); font-size: var(--fs-sm); }
 
-/* ── Ноорог (үнийн саналын шат) тууз (2026-09-10) ─────────────────────────── */
-.ordv-draftbar {
-  display: flex; flex-direction: column; gap: 3px; margin: var(--space-2) 0;
-  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--panel); font-size: var(--fs-md); line-height: 1.5;
-}
-.ordv-unsent { color: var(--warn); }
-.ordv-draftbar-h { font-size: var(--fs-sm); color: var(--muted); }
 
-.br-lead { margin-left: 5px; font-size: var(--fs-xs); font-weight: 700; color: var(--muted); cursor: help; }
 .sum-lead { color: var(--muted); }
+.sum-unsent { color: var(--warn); font-weight: 700; }

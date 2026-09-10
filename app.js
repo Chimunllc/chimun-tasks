@@ -8339,7 +8339,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-follow]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openFollowupModal(b.dataset.appFollow); }));
   document.querySelectorAll('[data-app-note]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderNoteModal(b.dataset.appNote); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
-  document.querySelectorAll('[data-acct-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.acctCopy, 'Дансны дугаар хууллаа'); }));
+  document.querySelectorAll('[data-copy-text]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.copyText, b.dataset.copyLabel || 'Хууллаа'); }));
 
   // Он-сар филтер
   document.getElementById('orders-ym')?.addEventListener('change', (e) => { state.ordersYM = e.target.value; render(); });
@@ -14729,6 +14729,29 @@ function linkedExpenseSum(type, id) {
   });
   return { n, sum };
 }
+/* ── БАРЬЦАА БУЦААХ ГҮЙЛГЭЭНИЙ УТГА (2026-09-11) ─────────────────────────────
+   Ажилтан утгыг ГАРААР бичихэд захиалгын дугаар/нэр андуурч, харилцагч төлбөрөө
+   танихгүй болдог. Тиймээс автоматаар үүсгэж, хуулах товч тавина.
+   Формат нь хэрэглэгчийн заасан: «Барьцаа буцаалт / Захиалга №1470 / Ч.Амри».
+   ⚠ Банкны утгын урт хязгаартай тул 90 тэмдэгтэд тааруулж НЭРИЙГ л хасна
+     (дугаар нь хамгийн чухал — тэр үргэлж бүтэн үлдэнэ). ── */
+const REFUND_MEMO_MAX = 90;
+function depositRefundMemo(number, customer) {
+  const base = 'Барьцаа буцаалт / Захиалга №' + String(number == null || number === '' ? '—' : number);
+  const nm = String(customer || '').replace(/\s+/g, ' ').trim();
+  if (!nm) return base;
+  const full = base + ' / ' + nm;
+  if (full.length <= REFUND_MEMO_MAX) return full;
+  const room = REFUND_MEMO_MAX - base.length - 3;      // ' / '
+  return room >= 3 ? (base + ' / ' + nm.slice(0, room)).trim() : base;
+}
+/* Шилжүүлэгчийн БАНК — баримтын PDF-ээс уншсан («Хаан»/«Голомт»), paid_ref-ийн
+   утга хэсэгт `банк:X` гэж бичигдэнэ. Хуучин бичлэгт байхгүй тул хоосон буцна.
+   ⚠ Дансны дугаараас банкийг ТААМАГЛАХГҮЙ — буруу банк бичвэл гүйлгээ явахгүй. */
+function refundBankOf(memo) {
+  const m = String(memo || '').match(/банк:\s*([^·|]{2,20})/i);
+  return m ? m[1].trim() : '';
+}
 // Барьцаа буцаалт — «5810 Барьцаа буцаалт» ангилалтай, ЭНЭ захиалгад холбогдсон, хаагдсан (хуулгаар
 // баталгаажсан) санхүүгийн зарлага байвал = барьцаа буцаагдсан. Нягтлан хуулга тулгаж 5810-аар
 // ангилаад захиалгад холбоход л энэ илэрнэ (гар товшилтгүй, баримт-суурьтай).
@@ -17213,7 +17236,7 @@ function openNomaadIncomeModal(o) {
           amount: d.amount,
           date: d.date || todayStr(),
           canonKey: d.receiptId, fpKey, file,
-          note: '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
+          note: '[#' + d.receiptId + '] ' + [d.senderName, d.senderAcct, d.bank && ('банк:' + d.bank), d.ref, d.bankRef && ('лавлах ' + d.bankRef)].filter(Boolean).join(' · '),
         };
         const warns = [];
         if (d.status && !/амжилттай/i.test(d.status)) warns.push('гүйлгээ амжилтгүй');
@@ -22163,12 +22186,20 @@ function bqOrderCard(o) {
   // ⭐ Барьцаа буцаах ДАНС — орлогын PDF-ээс уншсан шилжүүлэгчийн данс (`paid_ref`).
   // Барьцаа нь ирсэн данс руугаа буцах ёстой; ажилтан данс хайж явахгүйн тулд картад шууд.
   // Зөвхөн БУЦААГААГҮЙ барьцаанд харагдана (буцаасны дараа хэрэггүй, картыг чихэхгүй).
-  const _depAccts = (_dep > 0 && !_depRet && isApp && _cardMoney)
-    ? parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct)).map(r => ({ acct: r.acct.trim(), sender: (r.sender || '').trim() }))
+  const _depOpen = (_dep > 0 && !_depRet && isApp && _cardMoney);   // буцаах ёстой барьцаа
+  const _depAccts = _depOpen
+    ? parsePaidRef(o.paid_ref).filter(r => refundAcctDigits(r.acct))
+      .map(r => ({ acct: r.acct.trim(), sender: (r.sender || '').trim(), bank: refundBankOf(r.memo) }))
     : [];
-  const depAcctHtml = _depAccts.length
-    ? `<div class="dep-acct-row">${_depAccts.map(a => `<button type="button" class="dep-acct" data-acct-copy="${escapeHtml(a.acct)}" title="Дарж дансны дугаарыг хуулна">💳 Буцаах данс: <b>${escapeHtml(a.acct)}</b>${a.sender ? ` · ${escapeHtml(a.sender)}` : ''} ⧉</button>`).join('')}</div>`
-    : (_dep > 0 && !_depRet && isApp && _cardMoney ? `<div class="dep-acct-none">💳 Буцаах данс тодорхойгүй — «📄 Баримт»-аас эх PDF-ийг нээж дансыг хараарай</div>` : '');
+  // Гүйлгээний утга — захиалга тутамд ганц (гараар бичихгүй, дарж хуулна)
+  const _depMemo = _depOpen ? depositRefundMemo(o.number, o.customer) : '';
+  const depAcctHtml = !_depOpen ? '' : (
+    (_depAccts.length
+      ? `<div class="dep-acct-row">${_depAccts.map(a => `<button type="button" class="dep-acct" data-copy-text="${escapeHtml(a.acct)}" data-copy-label="Дансны дугаар хууллаа" title="Дарж дансны дугаарыг хуулна">💳 Буцаах данс: <b>${escapeHtml(a.acct)}</b>${a.bank ? ` · ${escapeHtml(a.bank)}` : ''}${a.sender ? ` · ${escapeHtml(a.sender)}` : ''} ⧉</button>`).join('')}</div>`
+      : `<div class="dep-acct-none">💳 Буцаах данс тодорхойгүй — «📄 Баримт»-аас эх PDF-ийг нээж дансыг хараарай</div>`)
+    + `<div class="dep-acct-row"><button type="button" class="dep-acct dep-memo" data-copy-text="${escapeHtml(_depMemo)}" data-copy-label="Гүйлгээний утга хууллаа" title="Дарж гүйлгээний утгыг хуулна">📝 Гүйлгээний утга: <b>${escapeHtml(_depMemo)}</b> ⧉</button></div>`
+    + (_depAccts.some(a => a.bank) ? '' : `<div class="dep-acct-none">🏦 Банк нь баримтад бүртгэгдээгүй — «📄 Баримт»-аас хараарай (шинэ төлбөрүүдэд автоматаар бүртгэгдэнэ)</div>`)
+  );
   // Толгойн «нийт (барьцаатай)» тайлбар — буцаасны дараа барьцаа дүнд БАЙХГҮЙ тул арилна.
   const _depIn = Math.max(0, _dep - orderRefundedDeposit(o));
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
@@ -23419,7 +23450,7 @@ function openBqPaymentModal(oid) {
         if (reason) throw new Error(`${file.name}: аль хэдийн бүртгэгдсэн (${reason})`);
         if (modal._receipts.some(r => r.receiptId === receiptId || r.fpKey === fpKey)) throw new Error(`${file.name}: энэ жагсаалтад орсон`);
         const warn = (d.status && !/амжилттай/i.test(d.status)) ? 'гүйлгээ амжилтгүй' : '';
-        modal._receipts.push({ amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
+        modal._receipts.push({ amount: d.amount, date: d.date || todayStr(), senderName: d.senderName || '', senderAcct: d.senderAcct || '', bank: d.bank || '', ref: d.ref || '', bankRef: d.bankRef || '', receiptId, fpKey, warn, _file: file });
         status.textContent = `✓ ${file.name}`; status.style.color = 'var(--ok)';
       } catch (err) { status.textContent = '⚠ ' + err.message; status.style.color = 'var(--danger)'; }
     }
@@ -23576,7 +23607,9 @@ async function submitBqPayment(oid, modal, btn) {
   if (!okR.length) { showToast('Бүх баримт давхцсан — бүртгэсэнгүй', 'error', 4000); btn.disabled = false; return; }
   const amount = okR.reduce((s, r) => s + r.amount, 0);
   const date = okR.map(r => r.date).sort().slice(-1)[0] || todayStr();
-  const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.ref].filter(Boolean).join(' · ')).join('  |  ');
+  // ⚠ Шилжүүлэгчийн БАНКийг `банк:X` гэж утганд бичнэ — барьцаа буцаахад хэрэгтэй
+  //   (дансны дугаараас банкийг таамаглаж болохгүй). Хуучин бичлэгт байхгүй.
+  const newRef = okR.map(r => '[#' + r.receiptId + '] ' + [r.senderName, r.senderAcct, r.bank && ('банк:' + r.bank), r.ref].filter(Boolean).join(' · ')).join('  |  ');
   // Эх PDF-ийг серверт хадгалах (арын гүйдэлд, төлбөр бүртгэхийг гацаахгүй)
   okR.forEach(r => { if (r._file) uploadReceiptFileOrWarn(r.receiptId, r._file, { amount: r.amount, date: r.date, usedIn: 'mevent:#' + o.number }, '#' + o.number); });
   // Зэрэгцээ төлбөр эсвэл хуучирсан snapshot-оос болж дүн/баримт АЛДАГДАХААС сэргийлэх: серверийн хамгийн

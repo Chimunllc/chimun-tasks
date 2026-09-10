@@ -1031,7 +1031,7 @@ async function loadTeamFromAPI() {
     const r = await fetchWithTimeout(bustUrl, {
       method: 'GET',
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
+      headers: n8nAuthHeaders({ 'Cache-Control': 'no-cache' }),
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
@@ -1058,7 +1058,7 @@ async function serverLogin(identifier, pin) {
   const id = String(identifier || '').trim();
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_LOGIN_URL), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id, phone: id.replace(/\D/g, ''), pin: String(pin || '') }),
     }, 12000);
     if (!r.ok) return null;
@@ -1108,7 +1108,7 @@ async function loadStaffPins() {
   state._staffPinsLoaded = true;
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_STAFF_PINS_URL), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ token }),
     }, 12000);
     const d = r.ok ? await r.json() : null;
@@ -1144,7 +1144,7 @@ async function serverVerifyToken(token) {
   if (!token) return null;
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_SESSION_URL), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ token }),
     }, 12000);
     if (!r.ok) return null;
@@ -1155,7 +1155,7 @@ async function serverVerifyToken(token) {
 async function serverResetRequest(id) {
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_RESET_REQUEST_URL), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id: String(id || '').trim() }),
     }, 15000);
     return r.ok;   // 200=илгээгдсэн, 500=олдсонгүй/имэйлгүй — аль ч тохиолдолд ижил мессеж (аюулгүй)
@@ -1164,7 +1164,7 @@ async function serverResetRequest(id) {
 async function serverResetVerify(id, code, newPin) {
   try {
     const r = await fetchWithTimeout(withKey(DEFAULT_RESET_VERIFY_URL), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ id: String(id || '').trim(), code: String(code || '').trim(), newPin: String(newPin || '').trim() }),
     }, 15000);
     return r.ok;
@@ -1534,7 +1534,7 @@ async function postWrite(url, body) {
   try {
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     });
     return r.ok; // 500/4xx-ийг ялагдал гэж тооцно (throw хийдэггүй)
@@ -1632,7 +1632,7 @@ function pushBroadcast(email, payload) {
   if (!token || !_sessionTokenUsable(token)) return;
   fetchWithTimeout(withKey(url), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ email, token, ...payload }),
     keepalive: true,
   }).catch(() => {});
@@ -2017,7 +2017,7 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
   try {
     const r = await fetchWithTimeout(withKey(state.config.uploadUrl), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         filename,
         contentType,
@@ -2065,7 +2065,7 @@ async function loadFinanceCategories() {
   const url = state.config.finCategoriesUrl;
   if (!url) return;
   try {
-    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: n8nAuthHeaders({ 'Accept': 'application/json' }) }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const rows = Array.isArray(data) ? data : (data.categories || []);
@@ -8735,7 +8735,7 @@ async function loadProductsCatalog() {
   const url = state.config.productsUrl;
   if (!url) return;
   try {
-    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: n8nAuthHeaders({ 'Accept': 'application/json' }) }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.products = Array.isArray(data) ? data : (data.products || []);
@@ -11031,7 +11031,7 @@ async function loadHourlyRatings() {
   const url = state.config.hourlyRatingUrl;
   if (!url) return;
   try {
-    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 12000);
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: n8nAuthHeaders({ 'Accept': 'application/json' }) }, 12000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const server = Array.isArray(data) ? data : (Array.isArray(data.ratings) ? data.ratings : []);
@@ -11107,7 +11107,7 @@ async function submitHourlyRating(workerKey) {
   const url = state.config.hourlyRatingUrl;
   if (url) {
     try {
-      const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', ...rec }) }, 12000);
+      const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ action: 'add', ...rec }) }, 12000);
       if (!r.ok) throw new Error('HTTP ' + r.status);
     } catch (e) { showToast('Үнэлгээ локалд хадгалагдсан, sync дараа хийгдэнэ.', 'warn', 2500); }
   }
@@ -14339,7 +14339,7 @@ async function loadNomaadOrders() {
   const url = state.config.nomaadOrdersUrl;
   if (!url) return;
   try {
-    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: n8nAuthHeaders({ 'Accept': 'application/json' }) }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.nomaadOrders = Array.isArray(data.orders) ? data.orders : [];
@@ -14389,7 +14389,7 @@ async function postNomaadIncome(quoteNo, newTotal, date, by) {
   if (!state.config.nomaadOrdersUrl) return false;
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'record_income', quote_no: quoteNo, income_amount: newTotal, income_advance: 0, income_balance: 0, income_addon: 0, income_damage: 0, income_date: date, income_by: by }),
     }, 15000);
     return r.ok;
@@ -15876,7 +15876,7 @@ async function deleteNomaadQuote(quoteNo) {
   };
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     // Локалд Больсон болгож шалтгаан хадгална → жагсаалт/календараас алга, Pipeline-ийн "Больсон" шатанд шалтгаантай харагдана
@@ -15918,7 +15918,7 @@ async function cancelNomaadCompany(quoteNo) {
   };
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     o.status = 'БОЛЬСОН'; o.note = cancelNote;
@@ -16176,7 +16176,7 @@ async function saveNomaadEdit(o, items, guests, modal, btn) {
   };
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     Object.assign(o, { ...fields, guests, grand_total: grand, deposit, items });
@@ -16524,7 +16524,7 @@ async function saveNomaadCreate(quoteNo, items, modal, btn) {
   };
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
     }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     (state.nomaadOrders = state.nomaadOrders || []).unshift({ ...body, income_amount: 0 });
@@ -17019,7 +17019,7 @@ async function sendNomaadQuote(quoteNo) {
     // PDF рендер + Gmail хавсралт ~40-50с болдог — богино timeout нь амжилттай илгээлтийг
     // "алдаа" гэж харуулж давхар илгээлтэд хүргэж байсан тул 120с болгов.
     const r = await fetchWithTimeout(withKey(state.config.nomaadQuoteSendUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ 'Төлөв': 'ИЛГЭЭХ', 'Үнийн саналын дугаар': quoteNo, source: 'app' }),
     }, 120000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -17235,7 +17235,7 @@ async function reverseNomaadPayment(quoteNo, paymentId) {
   let delOk = false;
   try {
     const r = await fetchWithTimeout(withKey(state.config.nomaadOrdersUrl), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'reverse_payment', quote_no: quoteNo, payment_id: p.id, receipt_key: receiptKey }),
     }, 15000);
     delOk = r.ok;
@@ -17608,7 +17608,7 @@ async function loadEvaluations() {
   const url = state.config.evalUrl;
   if (!url) return;
   try {
-    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: { 'Accept': 'application/json' } }, 15000);
+    const r = await fetchWithTimeout(withKey(url + '?t=' + Date.now()), { headers: n8nAuthHeaders({ 'Accept': 'application/json' }) }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     const _evRows = Array.isArray(data) ? data : (data.evaluations || []);
@@ -17633,7 +17633,7 @@ async function saveEvaluation(ratee, fields) {
   const url = state.config.evalUrl;
   if (!url) return;
   try {
-    const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }, 15000);
+    const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(row) }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     showToast('Үнэлгээ хадгалагдлаа', 'success', 1500);
   } catch(e) { showToast('Алдаа: ' + e.message, 'error'); }
@@ -17646,7 +17646,7 @@ async function postEvalRow(row) {
   render();
   const url = state.config.evalUrl;
   if (!url) { showToast('evaluations backend тохируулаагүй', 'warn'); return; }
-  const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) }, 15000);
+  const r = await fetchWithTimeout(withKey(url), { method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(row) }, 15000);
   if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 function openPenaltyModal(ratee, name) {
@@ -27565,7 +27565,7 @@ async function sendWeeklyDigest() {
     showToast('Имэйл илгээж байна...', 'info', 2000);
     const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/weekly-digest')), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ type: 'weekly_digest', stats, requested_by: state.user?.email }),
     });
     if (r.ok) showToast('Долоо хоногийн тойм имэйлээр илгээгдлээ', 'success', 3000);
@@ -28063,7 +28063,7 @@ function openPendingRegistration(member) {
       try {
         const r = await fetchWithTimeout(withKey(webhook), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload),
         });
         if (r.ok) {
@@ -28102,7 +28102,7 @@ function openPendingRegistration(member) {
       try {
         await fetchWithTimeout(withKey(webhook), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload),
         });
       } catch(e) {}
@@ -28347,7 +28347,7 @@ async function setStaffStatus(member, act) {
       if (newStatus === 'идэвхтэй') member.joined_at = today;
       localStorage.setItem('teamCache', JSON.stringify(TEAM.map(sanitizeTeamForCache)));
       const r = await fetchWithTimeout(withKey(webhook.replace(/\/[^\/]+$/, '/staff-update')), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'update_status', phone: member.phone, email: member.email, status: newStatus,
           left_date: newStatus === 'гарсан' ? today : '', joined_date: newStatus === 'идэвхтэй' ? today : '',
@@ -28549,7 +28549,7 @@ async function saveStaffRole(member, role) {
   const url = base.replace(/\/[^\/]+$/, '/staff-role');
   try {
     const r = await fetchWithTimeout(withKey(url), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'update_role', phone: member.phone, role, requested_by: state.me }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -28617,7 +28617,7 @@ async function saveStaffGender(member, gender) {
   const url = base.replace(/\/[^\/]+$/, '/staff-update');
   try {
     const r = await fetchWithTimeout(withKey(url), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'update_gender', phone: member.phone, gender }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -31371,7 +31371,7 @@ async function ensurePushSubscription() {
     if (lastSent === subStr + '::' + state.me + '::' + today) return true;
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ email: state.me, subscription: sub }),
     });
     if (r.ok) {
@@ -32037,7 +32037,7 @@ async function handleRegister() {
     const autoLevel = (workerType === 'daily') ? 40 : levelForRole(role);
     const r = await fetchWithTimeout(withKey(url), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         name, role: effectiveRole, group: effectiveGroup, phone, email, pin,
         rd, address,

@@ -5719,3 +5719,32 @@ need(['orderCustType']);
   ok(/⚠ Дүн баримттай зөрж байна/.test(src), 'scan: зөрүүтэй бол хүнээр баталгаажуулна');
   ok(/дүн уншигдсангүй, гараар бичсэн дүнгээр бүртгэнэ/.test(src), 'scan: PDF дүн уншигдаагүйг ил хэлнэ');
 }
+
+// ── n8n webhook дуудлага БҮР нэвтэрсэн ажилтны токен явуулна ────────────────
+// ⚠ Сайтын кодод ил байгаа түлхүүр нь n8n-ий дата webhook-уудыг хамгаалдаг
+//   ЦОРЫН ГАНЦ зүйл байсан: түүгээр 158 ажилтны нэр/утас/албан тушаал,
+//   112 NOMAAD үнийн санал (2.39 тэрбум₮), 435 дотоод ажил татагдана.
+//   Токеныг ЗАДРАХГҮЙ хэлбэрээр (query биш, header-ээр) илгээнэ — n8n нь
+//   гүйцэтгэлийн түүхэнд бүх query параметрийг хадгалдаг.
+{
+  const lines = src.split('\n');
+  const missing = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i].includes('withKey(') || lines[i].includes('function withKey')) continue;
+    // `window.open` ба HTML угсрах мөрүүд fetch БИШ — толгой явуулах боломжгүй.
+    if (/window\.open|<!DOCTYPE|innerHTML/.test(lines[i])) continue;
+    const win = lines.slice(i, i + 8).join('\n');
+    if (!/fetchWithTimeout|fetch\(/.test(win)) continue;
+    if (!win.includes('n8nAuthHeaders')) missing.push(i + 1);
+  }
+  ok(missing.length === 0,
+     `scan: n8n webhook дуудлага бүр n8nAuthHeaders ашиглана (дутуу мөр: ${missing.join(',') || '—'})`);
+
+  // ⚠ PostgREST дуудлагад X-Session-Token НЭМЭХГҮЙ — Caddy-ийн CORS түүнийг
+  //   зөвшөөрөөгүй бол браузер блоклож АПП БҮХЭЛДЭЭ унана.
+  const bad = src.split('\n').filter(l => l.includes('n8nAuthHeaders') && /apikey|rest\/v1/.test(l));
+  ok(bad.length === 0, 'scan: PostgREST дуудлагад session толгой нэмэгдээгүй');
+
+  // Токен query-д БҮҮ яв (n8n гүйцэтгэлийн түүхэнд үлдэнэ).
+  ok(!/[?&]token=\$\{|[?&]token=' \+/.test(src), 'scan: токен URL query-д яваагүй');
+}

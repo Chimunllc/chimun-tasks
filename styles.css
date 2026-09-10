@@ -6798,3 +6798,13 @@ select.no-asar-len {
 .rpd-item { margin-bottom: var(--space-3); }
 .rpd-item-h { font-size: var(--fs-sm); font-weight: 700; margin-bottom: var(--space-1); }
 .rpd-pre { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-xs); background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-2); max-height: 260px; overflow: auto; }
+
+/* Захиалгын тэмдэглэл — append-only лог (stage_meta.notes) */
+.ord-note-log { display: flex; flex-direction: column; gap: 6px; max-height: 30vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: 9px; padding: 8px; background: var(--panel); }
+.ord-note-item { border-left: 3px solid var(--border-strong); padding-left: 8px; }
+.ord-note-meta { font-size: var(--fs-xs); color: var(--muted); }
+.ord-note-text { font-size: var(--fs-md); white-space: pre-wrap; word-break: break-word; }
+.ord-note-empty { font-size: var(--fs-sm); color: var(--muted); padding: 6px 0; }
+.order-meta.order-note { white-space: pre-wrap; word-break: break-word; }
+.order-note-by { color: var(--muted); font-size: var(--fs-xs); }

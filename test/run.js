@@ -5437,6 +5437,50 @@ need(['orderCustType']);
   eq(vm.runInContext('FOLLOWUP_RESULTS', sandbox).length, 4, 'дагах: 4 хариу');
 }
 
+// ── ЗАХИАЛГЫН ТЭМДЭГЛЭЛ — append-only лог (2026-09-10) ──────────────────────
+// Ажилтан захиалганд чөлөөт тэмдэглэл бичих газар БАЙХГҮЙ байв. `note` багана нь
+// токенуудад эзэмдүүлсэн тул тэмдэглэл `stage_meta.notes`-д лог болж хадгалагдана.
+{
+  eq(F.orderNotesOf({ stage_meta: { notes: [{ text: 'a' }, { text: 'b' }] } }).length, 2, 'тэмдэглэл: лог уншина');
+  eq(F.orderNotesOf({}).length, 0, 'тэмдэглэл: логгүй → 0');
+  eq(F.orderNotesOf(null).length, 0, 'тэмдэглэл: мөргүй → 0 (унахгүй)');
+  eq(F.orderNotesOf({ stage_meta: { notes: 'хог' } }).length, 0, 'тэмдэглэл: массив биш → 0');
+  eq(F.orderNotesOf({ stage_meta: { notes: [{ text: '   ' }, { text: 'зөв' }] } }).length, 1,
+     'тэмдэглэл: хоосон бичвэртэй мөр гарахгүй');
+
+  // Нэмэх — append-only, хуучин дарагдахгүй
+  const l1 = F.appendOrderNote([], 'эхний', '9911', '2026-09-10T01:00:00Z');
+  eq(l1.length, 1, 'тэмдэглэл: нэмэгдэнэ');
+  eq(l1[0].text, 'эхний', 'тэмдэглэл: бичвэр хадгалагдана');
+  eq(l1[0].by, '9911', 'тэмдэглэл: бичсэн хүн хадгалагдана');
+  eq(l1[0].at, '2026-09-10T01:00:00Z', 'тэмдэглэл: огноо хадгалагдана');
+  const l2 = F.appendOrderNote(l1, 'хоёрдугаар', '9922', '2026-09-11T01:00:00Z');
+  eq(l2.length, 2, 'тэмдэглэл: хоёр дахь нь НЭМЭГДЭНЭ (дарахгүй)');
+  eq(l2[0].text, 'эхний', 'тэмдэглэл: хуучин мөр хэвээр');
+  eq(l1.length, 1, 'тэмдэглэл: эх массив хөндөгдөхгүй (мутац үгүй)');
+
+  // Хоосон бичвэр — шинэ мөр үүсгэхгүй
+  eq(F.appendOrderNote(l1, '', '9911').length, 1, 'тэмдэглэл: хоосон → нэмэгдэхгүй');
+  eq(F.appendOrderNote(l1, '   \n  ', '9911').length, 1, 'тэмдэглэл: зөвхөн зай → нэмэгдэхгүй');
+  eq(F.appendOrderNote(l1, null, '9911').length, 1, 'тэмдэглэл: null → нэмэгдэхгүй');
+  eq(F.appendOrderNote(null, 'а', '9911').length, 1, 'тэмдэглэл: логгүй захиалгад ч нэмэгдэнэ');
+  eq(F.appendOrderNote(undefined, '', '9911').length, 0, 'тэмдэглэл: логгүй + хоосон → 0 (унахгүй)');
+  eq(F.appendOrderNote([], '  зайтай  ', '99')[0].text, 'зайтай', 'тэмдэглэл: урд хойно зай хасагдана');
+  const MAXN = vm.runInContext('ORDER_NOTE_MAX', sandbox);
+  eq(F.appendOrderNote([], 'x'.repeat(MAXN + 500), '99')[0].text.length, MAXN, 'тэмдэглэл: дээд урт хязгаарлагдана');
+
+  // Сүүлийн тэмдэглэл — картан дээр харагдах
+  eq(F.lastOrderNote({ stage_meta: { notes: l2 } }).text, 'хоёрдугаар', 'тэмдэглэл: сүүлийнх нь картад');
+  eq(F.lastOrderNote({}), null, 'тэмдэглэл: логгүй → null');
+  eq(F.lastOrderNote(null), null, 'тэмдэглэл: мөргүй → null (унахгүй)');
+
+  // SCAN — тэмдэглэл нь `note` баганад БИШ, stage_meta-д хадгалагдана (токен эвдэхгүй)
+  const nsrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const nbody = (nsrc.match(/async function openOrderNoteModal\([\s\S]*?\n}/) || [''])[0];
+  ok(/sm\.notes = appendOrderNote/.test(nbody), 'тэмдэглэл: модал stage_meta.notes-д нэмнэ');
+  ok(!/note:/.test(nbody), 'тэмдэглэл: `note` баганад БИЧИХГҮЙ (⟦DLV⟧/⟦CX⟧ токен эвдэхгүй)');
+}
+
 
 // ── Сайтаас ирсэн ноорог нөөц эзэлнэ; дотоод ноорог эзлэхгүй ─────────────────
 // ⚠ Сайтын захиалга ҮРГЭЛЖ `draft` төлөвтэй ирдэг (харилцагч онлайн төлдөггүй).

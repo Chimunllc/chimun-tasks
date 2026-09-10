@@ -8299,6 +8299,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
   document.querySelectorAll('[data-app-follow]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openFollowupModal(b.dataset.appFollow); }));
+  document.querySelectorAll('[data-app-note]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderNoteModal(b.dataset.appNote); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
   document.querySelectorAll('[data-acct-copy]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.acctCopy, 'Дансны дугаар хууллаа'); }));
 
@@ -21472,6 +21473,7 @@ function openNewOrder(editOrder) {
   const _paidFull = isEdit && (Number(editOrder.paid_mnt) || 0) > 0 && (Number(editOrder.paid_mnt) || 0) + 0.5 >= (Number(editOrder.total_mnt) || 0) && (Number(editOrder.total_mnt) || 0) > 0;
   const _locked = isEdit && (['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || '')) || _paidFull);
   const _quotes0 = (isEdit && editOrder.stage_meta && Array.isArray(editOrder.stage_meta.quotes)) ? editOrder.stage_meta.quotes : [];   // илгээсэн үнийн саналуудын түүх
+  const _notes0 = isEdit ? orderNotesOf(editOrder) : [];   // захиалгын тэмдэглэлийн лог (append-only)
   const _saleTot = isEdit ? (Number(editOrder.total_mnt) || 0) : 0;
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
   const _sec = (t) => `<div class="no-sec">${t}</div>`;
@@ -21553,6 +21555,9 @@ function openNewOrder(editOrder) {
     <label style="display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:var(--fs-sm);cursor:pointer;">
       <input type="checkbox" id="no-vat" style="width:17px;height:17px;flex:none;">НӨАТ хасах — түрээсийн үнээс −5% (үнийн санал дээр "НӨАТ багтаагүй" гэж гарна)
     </label>
+    ${_sec('📝 Тэмдэглэл')}
+    ${_notes0.length ? `<div class="ord-note-log" style="margin-bottom:8px;">${_notes0.slice().reverse().map(n => `<div class="ord-note-item"><div class="ord-note-meta">${escapeHtml(memberName(n.by) || n.by || '?')} · ${escapeHtml(String(n.at || '').slice(0, 10))}</div><div class="ord-note-text">${escapeHtml(n.text || '')}</div></div>`).join('')}</div>` : ''}
+    <textarea id="no-note" class="ui-raw" rows="2" maxlength="${ORDER_NOTE_MAX}" placeholder="Чөлөөт тэмдэглэл — бичсэн хүн, огноо автоматаар хадгалагдана" style="width:100%;box-sizing:border-box;margin-bottom:12px;"></textarea>
     ${_quotes0.length ? `${_sec('📤 Илгээсэн үнийн саналууд · ' + _quotes0.length)}
     <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px;">${_quotes0.slice().reverse().map(q => { const isSale = _saleTot > 0 && Math.abs((Number(q.amount) || 0) - _saleTot) < 1; return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border:1px solid ${isSale ? 'var(--ok)' : 'var(--border)'};border-radius:8px;background:${isSale ? 'var(--ok-soft)' : 'var(--panel)'};font-size:var(--fs-sm);"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(q.by || '?')} · ${escapeHtml(String(q.at || '').slice(0, 10))}${q.to ? ' · ' + escapeHtml(q.to) : ''}</span><span style="font-weight:700;flex-shrink:0;white-space:nowrap;">${fmtMoney(Number(q.amount) || 0)}${isSale ? ' <span style="color:var(--ok);">✓ борлуулалт</span>' : ''}</span></div>`; }).join('')}</div>` : ''}
     <div class="no-sum">
@@ -21836,6 +21841,12 @@ function openNewOrder(editOrder) {
     const _noteNow = isEdit ? String(_fresh.note || '') : '';
     const _newSt = isEdit ? ((_paidNow > 0 && $('#no-status').value === 'draft') ? 'reserved' : $('#no-status').value) : 'draft';
     let _sm = isEdit ? (editOrder.stage_meta || null) : null;
+    // 📝 Тэмдэглэл — бичсэн бол лог руу НЭМНЭ (хуучин тэмдэглэл дарагдахгүй)
+    const _noteTxt = ($('#no-note') && $('#no-note').value) || '';
+    if (String(_noteTxt).trim()) {
+      _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
+      _sm.notes = appendOrderNote(isEdit ? orderNotesOf(editOrder) : [], _noteTxt, state.me || '');
+    }
     if (isEdit && _newSt !== editOrder.status) {
       const _lbl = k => (BQ_STATUS[k] || {}).label || k;
       _sm = Object.assign({}, (_sm && typeof _sm === 'object' && !Array.isArray(_sm)) ? _sm : {});
@@ -22052,7 +22063,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}${st === 'draft' && quotesOf(o).length && (can('orders.pay') || can('orders.advance') || state.isCEO) ? `<button class="btn" data-app-follow="${id}" style="padding:5px 11px;font-size:12px;">📞 Дагаж асуусан</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}${st === 'draft' && quotesOf(o).length && (can('orders.pay') || can('orders.advance') || state.isCEO) ? `<button class="btn" data-app-follow="${id}" style="padding:5px 11px;font-size:12px;">📞 Дагаж асуусан</button>` : ''}<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}
@@ -22116,6 +22127,7 @@ function bqOrderCard(o) {
       const last = fu.length ? fu[fu.length - 1] : null;
       return `<div class="order-meta${fd ? ' order-follow-due' : ''}">📞 ${fu.length ? `${fu.length} удаа дагаж асуусан · сүүлд ${escapeHtml(String(last.at || '').slice(0, 10))}${last.result ? ` — <b>${escapeHtml(last.result)}</b>` : ''}` : 'Дагаж асуугаагүй'}${fd ? ` · <b>${fd.days} хоног хариугүй</b>` : ''}</div>`;
     })()}
+    ${(() => { const _n = lastOrderNote(o); if (!_n) return ''; const _cnt = orderNotesOf(o).length; return `<div class="order-meta order-note">📝 ${escapeHtml(_n.text)} <span class="order-note-by">— ${escapeHtml(memberName(_n.by) || _n.by || '?')} · ${escapeHtml(String(_n.at || '').slice(0, 10))}${_cnt > 1 ? ` · +${_cnt - 1}` : ''}</span></div>`; })()}
     ${(() => { const _c = parseOrderCmp(o.note); return _c ? `<div class="order-meta order-cmp">↩️ Буулгалт −${fmtMoney(_c.amount)} · ${escapeHtml(_c.reason)} <span style="color:var(--muted);">(орлогоос хасагдсан)</span></div>` : ''; })()}
     ${vatOrderRow(o.number, total, 'event')}
     ${profitRow}
@@ -24982,6 +24994,60 @@ function leadStats(orders) {
 //    жагсаалтад ил тэмдэглэж, хүн өөрөө шийднэ.
 const FOLLOWUP_RESULTS = ['Бодож байна', 'Хүлээж байна', 'Холбогдож чадсангүй', 'Татгалзсан'];
 const FOLLOWUP_DUE_DAYS = 2;   // санал/сүүлийн холбоо барилтаас хойш хэдэн хоногт асуух
+/* ── ЗАХИАЛГЫН ТЭМДЭГЛЭЛ (2026-09-10) ───────────────────────────────────────
+   Ажилтнууд захиалганд чөлөөт бичвэр тэмдэглэл үлдээх газар БАЙХГҮЙ байв
+   (`note` багана нь ⟦DLV⟧/⟦CX⟧/⟦CMP⟧ токенуудад эзэмдүүлсэн — тэнд гар бичвэр
+   хийвэл токен эвдэрнэ). Тиймээс тэмдэглэл нь `stage_meta.notes`-д НЭМЭГДЭХ
+   лог болж хадгалагдана: [{at, by, text}] — quotes/followups-тай ижил хэлбэр.
+   ⚠ ДАРЖ БИЧИХГҮЙ (append-only): хэн юу бичснийг хожим тулгах шаардлага гардаг.
+   ── */
+const ORDER_NOTE_MAX = 1000;    // нэг тэмдэглэлийн дээд урт
+function orderNotesOf(o) {
+  const n = o && o.stage_meta && o.stage_meta.notes;
+  return Array.isArray(n) ? n.filter(x => x && typeof x === 'object' && String(x.text || '').trim()) : [];
+}
+// Лог руу нэг тэмдэглэл нэмнэ. Хоосон/зөвхөн зайтай бол ХӨНДӨХГҮЙ (нэмэлт мөр үүсгэхгүй).
+// Цэвэр функц — тестлэгдэнэ.
+function appendOrderNote(list, text, by, at) {
+  const t = String(text == null ? '' : text).trim();
+  if (!t) return Array.isArray(list) ? list : [];
+  const base = Array.isArray(list) ? list.slice() : [];
+  base.push({ at: at || new Date().toISOString(), by: String(by || ''), text: t.slice(0, ORDER_NOTE_MAX) });
+  return base;
+}
+// Картан дээр харуулах хамгийн сүүлийн тэмдэглэл (байхгүй бол null).
+function lastOrderNote(o) { const n = orderNotesOf(o); return n.length ? n[n.length - 1] : null; }
+// «📝 Тэмдэглэл» модал — логийг харуулж, шинийг нэмнэ.
+async function openOrderNoteModal(id) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
+  const notes = orderNotesOf(o);
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal" style="max-width:480px;">
+    <h2>📝 Тэмдэглэл</h2>
+    <p class="amo-hint">#${escapeHtml(String(o.number || ''))} · ${escapeHtml(o.customer || '')}<br>
+      Бичсэн хүн, огноо автоматаар хадгалагдана. Хуучин тэмдэглэл дарагдахгүй.</p>
+    ${notes.length ? `<div class="ord-note-log">${notes.slice().reverse().map(n => `<div class="ord-note-item"><div class="ord-note-meta">${escapeHtml(memberName(n.by) || n.by || '?')} · ${escapeHtml(String(n.at || '').slice(0, 10))}</div><div class="ord-note-text">${escapeHtml(n.text || '')}</div></div>`).join('')}</div>` : '<div class="ord-note-empty">Тэмдэглэл алга.</div>'}
+    <label class="fld">Шинэ тэмдэглэл<textarea id="on-text" class="ui-raw" rows="3" maxlength="${ORDER_NOTE_MAX}" placeholder="ж: харилцагч 14:00-аас хойш ирнэ гэсэн"></textarea></label>
+    <div class="modal-actions"><button class="btn" id="on-cancel">Болих</button><button class="btn btn-primary" id="on-save">Нэмэх</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#on-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#on-save').onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    const text = modal.querySelector('#on-text').value;
+    if (!String(text || '').trim()) { showToast('Тэмдэглэл хоосон байна', 'warn', 2000); return; }
+    btn.disabled = true;
+    const sm = (o.stage_meta && typeof o.stage_meta === 'object' && !Array.isArray(o.stage_meta)) ? { ...o.stage_meta } : {};
+    sm.notes = appendOrderNote(orderNotesOf(o), text, state.me || '');
+    try { await patchOrderFields(o, { stage_meta: sm }); }
+    catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; return; }
+    close(); showToast('📝 Тэмдэглэл нэмлээ', 'success', 2500); render();
+  };
+  requestAnimationFrame(() => modal.classList.add('open'));
+  setTimeout(() => { try { modal.querySelector('#on-text').focus(); } catch (_) {} }, 60);
+}
 function followupsOf(o) {
   const f = o && o.stage_meta && o.stage_meta.followups;
   return Array.isArray(f) ? f : [];

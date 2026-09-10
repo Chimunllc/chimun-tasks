@@ -23145,6 +23145,12 @@ function openBqPaymentModal(oid) {
 }
 
 // ── БУЦААН ОЛГОХ (refund) — гараар дүн + гарах гүйлгээний PDF баримт. paid_mnt-аас хасна (орлого автоматаар буурна). ──
+// Гараар бичсэн буцаалтын дүн банкны баримтын дүнтэй зөрж байна уу.
+// pdfAmt=0 (уншигдаагүй) бол тулгахгүй — байхгүй тоог зөрүү гэж хэлэх нь худал сэрэмжлүүлэг.
+function rfAmtMismatch(typed, pdfAmt) {
+  const a = Math.round(Number(typed) || 0), b = Math.round(Number(pdfAmt) || 0);
+  return b > 0 && a > 0 && a !== b;
+}
 function openRefundModal(oid) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) { showToast('Зөвхөн шинэ (app) захиалгад буцаан олголт бүртгэнэ', 'warn', 3000); return; }
@@ -23170,6 +23176,7 @@ function openRefundModal(oid) {
     </div>` : ''}
     <label class="dmg-amt-l">Буцаах дүн (₮)</label>
     <input id="rf-amount" type="text" inputmode="numeric" class="ui-raw money-input" value="0">
+    <div id="rf-diff" class="rf-diff" hidden></div>
     ${(Number(o.deposit_mnt) || 0) > 0 ? `<label class="no-lbl" style="display:flex;align-items:center;gap:8px;margin:9px 0 2px;cursor:pointer;"><input type="checkbox" id="rf-isdep" class="ui-raw" style="width:16px;height:16px;flex:0 0 auto;"><span>🔒 Энэ нь <b>барьцааны буцаалт</b> (${fmtMoney(Number(o.deposit_mnt))}) — картад «✓ Барьцаа буцаасан» болж, 🔒 тэмдэг арилна</span></label>` : ''}
     <label for="rf-pdf" class="rf-drop">📄 <b>Гарах гүйлгээний баримт (PDF)</b>
       <input id="rf-pdf" type="file" accept="application/pdf,.pdf" hidden>
@@ -23185,22 +23192,34 @@ function openRefundModal(oid) {
   document.body.appendChild(modal);
   const amtEl = modal.querySelector('#rf-amount');
   const statusEl = modal.querySelector('#rf-pdf-status');
+  const diffEl = modal.querySelector('#rf-diff');
+  // Баримтын дүнтэй зөрөх бүрд ШУУД харагдана (хадгалахыг хүлээхгүй)
+  const syncDiff = () => {
+    const bad = rfAmtMismatch(moneyVal(amtEl), modal._pdfAmt);
+    diffEl.hidden = !bad;
+    if (bad) diffEl.textContent = `⚠ Баримт дээр ${fmtMoney(modal._pdfAmt)} байна — зөрүү ${fmtMoney(Math.abs(moneyVal(amtEl) - modal._pdfAmt))}`;
+  };
+  amtEl.addEventListener('input', syncDiff);
   // Барьцааны буцаалт чагтлахад дүнг барьцаагаар авто-бөглөнө (гараар засаж болно) — C11
   modal.querySelector('#rf-isdep')?.addEventListener('change', (e) => { if (e.target.checked && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(Number(o.deposit_mnt) || 0); });
   modal.querySelector('#rf-pdf').addEventListener('change', async (e) => {
     const f = (e.target.files || [])[0]; e.target.value = ''; if (!f) return;
     modal._file = f;
+    modal._pdfAmt = 0;   // шинэ файл — хуучин баримтын дүн үлдэхгүй
     statusEl.textContent = `📄 ${f.name} уншиж байна…`; statusEl.style.color = 'var(--muted)';
     try {
       const d = parseBankReceipt(await extractPdfText(f));
+      modal._pdfAmt = Number(d.amount) || 0;   // баримтын дүн — хадгалахын өмнө гараар бичсэнтэй тулгана
       if (d.amount && moneyVal(amtEl) <= 0) amtEl.value = moneyFmtInput(d.amount);   // авто-бөглөх (гараар засаж болно)
       const okSender = /чимун/i.test(d.senderName || '');
       // Хүлээн авагчийн данс нь орлого орсон данстай таарч байна уу (сануулга — хаахгүй)
       const rcv = refundAcctDigits(d.receiverAcct);
       const okAcct = !srcAccts.length || !rcv || srcAccts.some(a => refundAcctDigits(a.acct) === rcv);
-      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}${okAcct ? '' : ' · ⚠ орлого орсон данс биш (' + d.receiverAcct + ')'}`;
-      statusEl.style.color = (okSender && okAcct) ? 'var(--ok)' : 'var(--warn)';
-    } catch (err) { statusEl.textContent = `✓ ${f.name} (хавсаргав)`; statusEl.style.color = 'var(--ok)'; }
+      const diff = rfAmtMismatch(moneyVal(amtEl), modal._pdfAmt);
+      statusEl.textContent = `✓ ${f.name}${d.amount ? ' · ' + fmtMoney(d.amount) : ''}${okSender ? '' : ' · ⚠ шилжүүлэгч Чимун биш?'}${okAcct ? '' : ' · ⚠ орлого орсон данс биш (' + d.receiverAcct + ')'}${diff ? ' · ⚠ бичсэн дүн ' + fmtMoney(moneyVal(amtEl)) + ' — баримттай зөрж байна' : ''}`;
+      statusEl.style.color = (okSender && okAcct && !diff) ? 'var(--ok)' : 'var(--warn)';
+      syncDiff();
+    } catch (err) { modal._pdfAmt = 0; statusEl.textContent = `✓ ${f.name} (хавсаргав — дүн уншигдсангүй, гараар бичсэн дүнгээр бүртгэнэ)`; statusEl.style.color = 'var(--warn)'; }
   });
   modal.querySelectorAll('[data-rf-copy]').forEach(b => b.addEventListener('click', () => copyText(b.dataset.rfCopy, 'Дансны дугаар хууллаа')));
   const close = () => modal.remove();
@@ -23212,6 +23231,14 @@ function openRefundModal(oid) {
     if (amount <= 0) { showToast('Буцаах дүн оруулна уу', 'warn'); return; }
     if (!modal._file) { showToast('Гарах гүйлгээний PDF баримт хавсаргана уу', 'warn'); return; }
     const userNote = modal.querySelector('#rf-note').value.trim();
+    // ⭐ Гараар бичсэн дүн БАРИМТААС зөрвөл чимээгүй бүртгэхгүй — мөнгө буруу бичигдвэл
+    // хуулга тулгахад олдохгүй, барьцаа «буцаасан» болж дуусна. Хүнээр баталгаажуулна.
+    if (rfAmtMismatch(amount, modal._pdfAmt)) {
+      const go = await showConfirm(
+        `Баримт дээр ${fmtMoney(modal._pdfAmt)} байна, та ${fmtMoney(amount)} бүртгэх гэж байна.\n\nЗөрүү ${fmtMoney(Math.abs(amount - modal._pdfAmt))}. Үнэхээр ингэж бүртгэх үү?`,
+        { title: '⚠ Дүн баримттай зөрж байна', okText: 'Тийм, ингэж бүртгэ', danger: true });
+      if (!go) return;
+    }
     btn.disabled = true;
     // Серверийн ХАМГИЙН СҮҮЛИЙН paid_mnt + note уншиж (зэрэгцээ/стейл snapshot-оос) refund-ыг хасна
     let basePaid = Number(o.paid_mnt) || 0, baseNote = o.note;

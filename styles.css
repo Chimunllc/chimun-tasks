@@ -6787,3 +6787,4 @@ select.no-asar-len {
 .dep-acct-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
 .dep-acct { font-family: inherit; font-size: var(--fs-sm); color: var(--text); background: var(--panel-hover); border: 1px solid var(--border); border-radius: var(--r-full); padding: 3px 11px; cursor: pointer; }
 .dep-acct-none { font-size: var(--fs-xs); color: var(--muted); margin: 4px 0 2px; }
+.rf-diff { font-size: var(--fs-xs); color: var(--warn); margin-top: var(--space-1); font-weight: 600; }

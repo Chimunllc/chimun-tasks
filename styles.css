@@ -6855,3 +6855,10 @@ select.no-asar-len {
   .coo-paid-d.coo-paid-t { border-top: 0; padding-top: 0; margin-top: 0; }
   .coo-paid-m.coo-paid-t { grid-column: 1 / -1; }
 }
+
+/* Гүйцэтгэл — ирцийн дата унасан сэрэмжлүүлэг + дахин оролдох */
+.att-fail { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  font-size: var(--fs-sm); color: var(--warn); font-weight: 600;
+  border: 1px solid var(--warn); border-radius: 10px; padding: 8px 11px;
+  margin: var(--space-2) 0; }
+.att-fail .btn { padding: 4px 10px; font-size: var(--fs-sm); }

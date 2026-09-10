@@ -8089,6 +8089,13 @@ function renderOrders() {
     const due = _draftE.filter(e => quoteFollowupDue(e.o)).length;
     return due ? ` · <span class="sum-unsent" title="Үнийн санал илгээснээс ${FOLLOWUP_DUE_DAYS}+ хоног болсон ч хариу алга. «Та үнийн санал авсан уу, захиалга хийх үү?» гэж асуух цаг.">📞 ${due} дагаж асуух</span>` : '';
   })()}${(() => {
+    // Цуцалсан/устгасан харагдац — ЯАГААД алдсаныг шалтгаанаар тоолж харуулна.
+    if (!_seeMoney || !['canceled', 'deleted'].includes(state.ordersFilter)) return '';
+    const cs = cxStats(shown.map(e => e.o));
+    const top = Object.entries(cs.by).sort((a, b) => b[1].sum - a[1].sum).slice(0, 4);
+    if (!top.length) return '';
+    return `<div class="orders-cxsum">💔 Алдсан <b>${cs.lostN}</b> захиалга · <b>${fmtMoney(cs.lostSum)}</b>${cs.adminN ? ` <span class="cx-admin">(+${cs.adminN} давхардал/тест — тооцоонд ороогүй)</span>` : ''}<br>${top.map(([k, v]) => `<span class="cx-tag">${escapeHtml(k)} <b>${v.n}</b> · ${fmtMoney(v.sum)}</span>`).join(' ')}</div>`;
+  })()}${(() => {
     const ls = leadStats(shown.map(e => e.o));
     return ls.median == null ? '' : ` · <span class="sum-lead" title="Захиалга ирсэн өдрөөс арга хэмжээ хүртэлх хоног (медиан). ${ls.sameDay} нь тэр өдрөө, ${ls.within2} нь 2 хоногийн дотор, ${ls.over14} нь 2 долоо хоногоос эрт ирсэн.">📥 дунджаар <b>${ls.median} хоногийн</b> өмнө</span>`;
   })()}${shown.length > CAP ? ` · эхний ${CAP} харуулав — нарийсгана уу` : ''}</div>`;
@@ -21876,20 +21883,93 @@ function bqOrderCard(o) {
 // Optimistic: эхлээд UI шинэчилж, амжилтгүй бол буцаана.
 // Захиалга/ноорог цуцлах — ШАЛТГААН заавал асууж, ⟦CX⟧-ээр хадгална. Ноорог "устгах" ч мөн энэ
 // (hard delete биш — цуцалсан болж "Бүгд"-ээс алга, шалтгаан + түүх үлдэнэ).
+/* ── ЦУЦЛАХ / УСТГАХ ШАЛТГААН = СОНГОЛТ (2026-09-10) ────────────────────────
+   Чөлөөт текст нь бүртгэгддэг ч ТООЛОГДДОГГҮЙ — «яагаад алдаж байна вэ?» гэсэн
+   асуултад хариулж чадахгүй. Тиймээс тогтсон сонголт болгов: шалтгаан бүрээр
+   хэдэн захиалга, хэдэн төгрөг алдсаныг тоолж болно.
+   `admin: true` = бүртгэлийн шуугиан (давхардал, тест) — алдагдлын шинжилгээнд
+   ОРОХГҮЙ, эс бөгөөс «алдсан борлуулалт» хиймлээр өснө. */
+const ORDER_CX_REASONS = [
+  { k: 'Түрээс үнэтэй санагдсан' },
+  { k: 'Өөр компаниас авсан' },
+  { k: 'Арга хэмжээ болсонгүй' },
+  { k: 'Хугацаа/огноо таарсангүй' },
+  { k: 'Бараа дүүрэн байсан' },
+  { k: 'Холбогдож чадсангүй' },
+  { k: 'Шаардлагаа өөрчилсөн' },
+  { k: 'Давхардсан бүртгэл', admin: true },
+  { k: 'Тест захиалга', admin: true },
+  { k: 'Бусад' },
+];
+// Шалтгаанын каноник хэсэг («сонголт · чөлөөт тайлбар» хэлбэрээс). Цэвэр функц.
+function cxReasonKey(note) {
+  const raw = cancelReasonOf(note);
+  if (!raw) return '';
+  const head = String(raw).split('·')[0].trim();
+  return ORDER_CX_REASONS.some(r => r.k === head) ? head : 'Бусад';
+}
+function cxIsAdmin(note) {
+  const k = cxReasonKey(note);
+  return ORDER_CX_REASONS.some(r => r.k === k && r.admin);
+}
+// Шалтгаанаар нэгтгэл — тоо ба дүн. Бүртгэлийн шуугианыг тусад нь.
+function cxStats(orders) {
+  const by = {}; let lostN = 0, lostSum = 0, adminN = 0;
+  (orders || []).forEach(o => {
+    if (!o || !['canceled', 'deleted'].includes(String(o.status))) return;
+    const k = cxReasonKey(o.note) || '— шалтгаан бичээгүй';
+    const amt = Number(o.total_mnt) || 0;
+    by[k] = by[k] || { n: 0, sum: 0 };
+    by[k].n++; by[k].sum += amt;
+    if (cxIsAdmin(o.note)) adminN++; else { lostN++; lostSum += amt; }
+  });
+  return { by, lostN, lostSum, adminN };
+}
+// Шалтгаан сонгох цонх. Буцаах: «сонголт» эсвэл «сонголт · тайлбар», болиход ''.
+function pickCancelReason(num, isDel, o) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div'); modal.className = 'modal-bg';
+    const amt = Number(o && o.total_mnt) || 0;
+    modal.innerHTML = `<div class="modal" style="max-width:430px;">
+      <h2>${isDel ? '🗑 Захиалга устгах' : '✕ Захиалга цуцлах'}</h2>
+      <p class="amo-hint">#${escapeHtml(String(num))}${o && o.customer ? ' · ' + escapeHtml(o.customer) : ''}${amt ? ` · ${fmtMoney(amt)}` : ''}<br>
+        Шалтгааныг СОНГОНО уу — ингэснээр «яагаад захиалга алдаж байна» гэдгийг тоолж харна.</p>
+      <div class="cx-opts">${ORDER_CX_REASONS.map((r, i) => `<button type="button" class="cx-opt${r.admin ? ' admin' : ''}" data-cx="${i}">${escapeHtml(r.k)}</button>`).join('')}</div>
+      <label class="fld">Нэмэлт тайлбар <span style="font-weight:400;color:var(--muted);">(сонголт)</span><input id="cx-note" placeholder="Ж: 20%-иар хямд санал авсан"></label>
+      <div class="modal-actions" style="justify-content:space-between;">
+        <span class="cx-picked" id="cx-picked">Шалтгаан сонгоогүй</span>
+        <span style="display:flex;gap:8px;"><button class="btn" id="cx-cancel">Болих</button><button class="btn btn-primary" id="cx-ok" disabled style="opacity:.45;cursor:not-allowed;">${isDel ? 'Устгах' : 'Цуцлах'}</button></span>
+      </div></div>`;
+    document.body.appendChild(modal);
+    let picked = null;
+    const okBtn = modal.querySelector('#cx-ok'), pickEl = modal.querySelector('#cx-picked');
+    const done = (v) => { modal.remove(); resolve(v); };
+    modal.querySelector('#cx-cancel').onclick = () => done('');
+    modal.addEventListener('click', e => { if (e.target === modal) done(''); });
+    modal.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => {
+      modal.querySelectorAll('[data-cx]').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      picked = ORDER_CX_REASONS[Number(b.dataset.cx)].k;
+      pickEl.textContent = picked;
+      okBtn.disabled = false; okBtn.style.opacity = '1'; okBtn.style.cursor = 'pointer';
+    });
+    okBtn.onclick = () => {
+      if (!picked) return;
+      const n = modal.querySelector('#cx-note').value.trim();
+      done(n ? `${picked} · ${n}` : picked);
+    };
+    modal.classList.add('open');
+  });
+}
 async function cancelOrderWithReason(oid) {
   if (!can('orders.cancel')) { showToast('Танд захиалга цуцлах эрх олгогдоогүй', 'warn', 3000); return; }
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
   const to = orderCloseAction(o);            // төлбөргүй → устгах, төлбөртэй → цуцлах
   const isDel = to === 'deleted';
   const num = o ? (o.number ?? '') : '';
-  const reason = await showPrompt(`#${num} захиалгыг ${isDel ? 'устгах' : 'цуцлах'} шалтгаанаа бичнэ үү:`, {
-    title: isDel ? '🗑 Захиалга устгах' : '✕ Захиалга цуцлах',
-    okText: isDel ? 'Устгах' : 'Цуцлах',
-    placeholder: 'Ж: давхардсан, харилцагч больсон, тест захиалга…',
-  });
-  if (reason == null) return;                                             // болих
-  if (!reason.trim()) { showToast('Шалтгаанаа бичнэ үү', 'warn', 2500); return; }
-  bqUpdateStatus(oid, to, { reason: reason.trim(), toast: isDel ? 'Устгасан руу шилжүүллээ' : 'Цуцаллаа' });
+  const reason = await pickCancelReason(num, isDel, o);
+  if (!reason) return;                                                    // болих
+  bqUpdateStatus(oid, to, { reason, toast: isDel ? 'Устгасан руу шилжүүллээ' : 'Цуцаллаа' });
 }
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.

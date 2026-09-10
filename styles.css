@@ -6748,3 +6748,18 @@ select.no-asar-len {
 .order-follow-due { color: var(--danger); font-weight: 600; }
 
 .br-cxreason { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); padding: 2px 7px; border-radius: 999px; cursor: help; background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--danger); }
+
+/* ── Цуцлах/устгах шалтгааны сонголт (2026-09-10) ─────────────────────────── */
+.cx-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+.cx-opt {
+  padding: 6px 11px; font-size: var(--fs-sm); border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); white-space: nowrap;
+}
+.cx-opt:hover { border-color: var(--primary); }
+.cx-opt.on { border-color: var(--primary); background: var(--primary); color: #fff; font-weight: 700; }
+.cx-opt.admin { color: var(--muted); }
+.cx-opt.admin.on { background: var(--muted); border-color: var(--muted); color: #fff; }
+.cx-picked { font-size: var(--fs-sm); color: var(--muted); align-self: center; }
+.orders-cxsum { margin: var(--space-2) 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font-size: var(--fs-md); line-height: 1.7; }
+.orders-cxsum .cx-tag { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--panel-hover); font-size: var(--fs-sm); white-space: nowrap; }
+.orders-cxsum .cx-admin { color: var(--muted); font-size: var(--fs-sm); }

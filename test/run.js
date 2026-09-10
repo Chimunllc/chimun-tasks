@@ -5953,3 +5953,65 @@ need(['orderCustType']);
     { GL9: { acct: '5309576444', sender: 'МӨНХСАЙХАН ЗАНАБАЗАР' } });
   eq(r.ref, '[#GL9] МӨНХСАЙХАН ЗАНАБАЗАР · 5309576444 · 98939696-МӨНХСАЙХАН ЗАНАБАЗАР', 'данс: нөхөхөд гүйлгээний утга хадгалагдана');
 }
+
+// ── ЦУЦАЛСАН ч ТӨЛСӨН захиалгын мөнгө орлогод үлдэнэ ───────────────────────
+// ⚠ ЯГ БОЛСОН АЛДАА: NC-2026-0094 «Мед Монгол ХХК» 4,596,000₮ урьдчилгаа төлж,
+//   4 хоногийн дараа бүтнээр буцааж авсан. Буцаалт нь банкны хуулгаар ЗАРДАЛ болж
+//   бүртгэгдсэн атлаа ОРЛОГО нь «Больсон» төлөвөөс болж бүх тайлангаас чимээгүй
+//   хаягдсан → 2026-06-ын ашиг яг 4,596,000₮-аар дутуу гарч байв.
+// ⚠ Цуцалсанд ГЭРЭЭНИЙ дүн ОРОХГҮЙ — эс бөгөөс 3,064,000₮ хуурамч ашиг үүснэ.
+{
+  const st = vm.runInContext('state', sandbox);
+  const F = vm.runInContext('nomaadIncomeMonth', sandbox);
+  const saved = { o: st.nomaadOrders, p: st.nomaadPayments };
+
+  const q = {
+    quote_no: 'NC-TEST-0094', company: 'Мед Монгол ХХК', status: 'Больсон',
+    date_start: '2026-06-12 9:00', grand_total: 7660000,
+    income_advance: 4596000, income_amount: 4596000, income_date: '2026-06-05',
+  };
+  st.nomaadOrders = [q];
+  st.nomaadPayments = { 'NC-TEST-0094': [
+    { total: 2298000, pay_date: '2026-06-05' },
+    { total: 2298000, pay_date: '2026-06-08' },
+  ] };
+
+  eq(F(q, '2026-06', 'cash'), 4596000, 'орлого: цуцалсан ч ОРСОН мөнгө 6-р сард тооцогдоно');
+  eq(F(q, '2026-06', 'accrual'), 4596000, 'орлого: гүйцэтгэлийн суурьт ч ижил');
+  ok(F(q, '2026-06', 'accrual') !== 7660000, 'орлого: цуцалсанд ГЭРЭЭНИЙ дүн ХЭЗЭЭ Ч орохгүй');
+  eq(F(q, '2026-07', 'cash'), 0, 'орлого: өөр сард 0 (сар зөв хуваарилагдана)');
+
+  // Цуцалсан + төлбөргүй → 0
+  const q2 = { ...q, quote_no: 'NC-TEST-0095', income_advance: 0, income_amount: 0, income_date: '' };
+  st.nomaadOrders = [q2]; st.nomaadPayments = {};
+  eq(F(q2, '2026-06', 'cash'), 0, 'орлого: цуцалсан + төлбөргүй = 0');
+
+  // Цуцлаагүй, гэрээтэй → гүйцэтгэлийн суурьт гэрээний дүн
+  const q3 = { quote_no: 'NC-TEST-0096', status: 'ГЭРЭЭ', contract_date: '2026-06-01',
+               date_start: '2026-06-12 9:00', grand_total: 5000000,
+               income_advance: 1000000, income_amount: 1000000, income_date: '2026-06-03' };
+  st.nomaadOrders = [q3];
+  st.nomaadPayments = { 'NC-TEST-0096': [{ total: 1000000, pay_date: '2026-06-03' }] };
+  eq(F(q3, '2026-06', 'cash'), 1000000, 'орлого: гэрээтэйд мөнгөн суурь = орсон мөнгө');
+  eq(F(q3, '2026-06', 'accrual'), 5000000, 'орлого: гэрээтэйд гүйцэтгэлийн суурь = гэрээний дүн');
+
+  st.nomaadOrders = saved.o; st.nomaadPayments = saved.p;
+}
+
+// SCAN — мөнгөний замд «цуцалсан бол буц» шүүлт БУЦАЖ ИРЭХГҮЙ
+// Баримт бичиг мартагддаг, тест мартагддаггүй.
+{
+  const money = ['function finMonthIncome', 'function finAddOrderIncome'];
+  for (const fnName of money) {
+    const at = src.indexOf(fnName);
+    ok(at > 0, `scan: ${fnName} олдов`);
+    const body = src.slice(at, at + 1400);
+    ok(!/if \(nomaadIsCancelled\(o\)\) return;/.test(body),
+       `scan: ${fnName}-д цуцалсныг хаях шүүлт БАЙХГҮЙ`);
+  }
+  ok(/function nomaadIncomeMonth\(o, ym, basis\)/.test(src),
+     'scan: NOMAAD орлогын ганц эх сурвалж бий');
+  // Авлагад цуцалсныг хасах нь ЗӨВ — мөнгө буцсан тул авлага байхгүй.
+  const rc = src.slice(src.indexOf('function receivablesData'), src.indexOf('function receivablesData') + 2000);
+  ok(/nomaadIsCancelled\(o\)\) return;/.test(rc), 'scan: авлагад цуцалсан хасагдсан хэвээр (зөв)');
+}

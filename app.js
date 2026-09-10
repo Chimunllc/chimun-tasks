@@ -15276,6 +15276,23 @@ function nomaadPaidInMonth(o, ym) {
   const log = (state.nomaadPayments && state.nomaadPayments[o.quote_no]) || [];
   return _nomaadMonthSum(log, o.income_amount, o.income_date, ym);
 }
+// Тухайн сарын NOMAAD орлого — ЦОРЫН ГАНЦ дүрэм.
+// ⚠ ЦУЦАЛСАН захиалгын БОДИТООР ОРСОН мөнгө нь орлого ХЭВЭЭР.
+//   Мед Монгол ХХК (NC-2026-0094): 4,596,000₮ орж, 4 хоногийн дараа буцаагдсан.
+//   Буцаалт нь банкны хуулгаар зардал болж бүртгэгдсэн атлаа ОРЛОГО нь «Больсон»
+//   төлөвөөс болж бүх тайлангаас чимээгүй хаягдсан → 2026-06-ын ашиг яг тэр дүнгээр
+//   дутуу гарч байв. Мөнгө алдагдаагүй, зөвхөн тайлан худал байсан.
+// ⚠ Цуцалсан захиалгад ГЭРЭЭНИЙ дүнг ХЭЗЭЭ Ч тооцохгүй — зөвхөн орсон мөнгө.
+//   Эс бөгөөс NC-2026-0094 дээр 3,064,000₮ хуурамч ашиг + хуурамч авлага үүснэ.
+// ⚠ Буцаалтыг зардлаас хасах дүрмийг (5800) NOMAAD руу БҮҮ өргөтгө — тэгвэл
+//   орлого үлдээд зардал алга болж ашиг хэт өндөр гарна. Цэвэр дүн 0 байх ёстой.
+function nomaadIncomeMonth(o, ym, basis) {
+  if (!o || !ym) return 0;
+  if (nomaadIsCancelled(o)) return nomaadPaidInMonth(o, ym);   // зөвхөн бодит мөнгө
+  if (basis === 'cash') return nomaadPaidInMonth(o, ym);
+  if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return 0;
+  return String(o.date_start || '').slice(0, 7) === ym ? nomaadEffTotal(o) : 0;
+}
 function nomaadStage(o) {
   const su = String(o.status || '').toUpperCase();
   if (su.includes('БОЛЬСОН') || su.includes('ЦУЦЛ')) return 'cancelled';
@@ -24747,9 +24764,9 @@ function renderHistory() {
     const ev = {};                                   // Эвент сараар (түүхэн цэвэр орлого)
     (bq.monthly || []).forEach(x => { ev[x.month] = N(x.net_mnt); });
     const cm = {};                                   // Кемп сараар (NOMAAD бүртгэсэн орлого)
-    const cancelled = (typeof nomaadIsCancelled === 'function') ? nomaadIsCancelled : () => false;
     (state.nomaadOrders || []).forEach(o => {
-      if (cancelled(o)) return;
+      // ⚠ ЦУЦАЛСНЫГ БҮҮ ХАЯ — цуглуулсан мөнгө нь бодит эргэлт (nomaadPaid нь
+      //   зөвхөн ОРСОН мөнгө, гэрээний дүн БИШ тул цуцалсанд ч аюулгүй).
       const a = nomaadPaid(o), mo = String(o.income_date || '').slice(0, 7);
       if (a > 0 && mo) cm[mo] = (cm[mo] || 0) + a;
     });
@@ -25136,9 +25153,11 @@ function finAddOrderIncome(inc, wantBr, basis) {
   const inclNo = !wantBr || wantBr === 'КЕМП';
   if (inclNo) {
     (state.nomaadOrders || []).forEach(o => {
-      if (nomaadIsCancelled(o)) return;
+      // ⚠ ЦУЦАЛСНЫГ БҮҮ ХАЯ — орсон мөнгө орлого хэвээр. Гэхдээ цуцалсанд
+      //   ГЭРЭЭНИЙ дүн ХЭЗЭЭ Ч орохгүй (гүйцэтгэлийн суурьт ч).
+      const _cx = nomaadIsCancelled(o);
       let mo, v;
-      if (basis === 'cash') { mo = String(o.income_date || '').slice(0, 7); v = nomaadPaid(o); }
+      if (basis === 'cash' || _cx) { mo = String(o.income_date || '').slice(0, 7); v = nomaadPaid(o); }
       else { if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return; mo = String(o.date_start || '').slice(0, 7); v = nomaadEffTotal(o); }
       if (/^\d{4}-\d{2}$/.test(mo) && v) inc[mo] = (inc[mo] || 0) + v;
     });
@@ -25218,9 +25237,9 @@ function finMonthIncome(month, basis) {
   const evInc = evList.reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
   let noInc = 0, noN = 0;
   (state.nomaadOrders || []).forEach(o => {
-    if (nomaadIsCancelled(o)) return;
-    if (basis === 'cash') { const m = nomaadPaidInMonth(o, month); if (m > 0) { noInc += m; noN++; } }   // C5: төлбөрийн огноогоор
-    else if (['deposit', 'contract', 'done'].includes(nomaadStage(o)) && String(o.date_start || '').slice(0, 7) === month) { noInc += nomaadEffTotal(o); noN++; }
+    // ⚠ ЦУЦАЛСНЫГ ЭНД БҮҮ ХАЯ — орсон мөнгө орлого хэвээр (nomaadIncomeMonth).
+    const m = nomaadIncomeMonth(o, month, basis);
+    if (m > 0) { noInc += m; noN++; }
   });
   return { evInc, evN: evList.length, noInc, noN, evList };
 }

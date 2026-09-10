@@ -5222,3 +5222,40 @@ need(['orderCustType']);
      ['reserved','preparation','cleaning','ready','started','prepared','delivering','installing','rented','teardown','returning'].sort().join(','),
      'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
 }
+
+// ── db/ — харагдацын SQL эх бичиг репод байгаа эсэх ─────────────────────────
+// ⚠ Харагдацын SQL зөвхөн VPS дээр байсан бол VPS дахин байгуулахад дүрэм алга
+//   болно. `db/` фолдер нь эх бичиг; уствал/хоосорвол энэ тест унана.
+{
+  const dbDir = path.join(__dirname, '..', 'db');
+  const availSql = fs.readFileSync(path.join(dbDir, 'public_availability.sql'), 'utf8');
+  const grantsSql = fs.readFileSync(path.join(dbDir, 'anon-grants.sql'), 'utf8');
+  const noSql = (t) => String(t).replace(/--[^\n]*/g, '');   // SQL тайлбар нь `--`
+
+  ok(/create or replace view public\.public_availability/.test(availSql),
+     'db: public_availability.sql харагдац үүсгэдэг');
+
+  // ХАМГИЙН ЧУХАЛ: SQL файлын төлвийн жагсаалт ба аппын _ORDER_OCCUPYING ЯГ ИЖИЛ
+  // байх ёстой. Зөрвөл апп ба mevent.mn өөр сул үлдэгдэл харуулж давхар захиалга
+  // үүснэ. Хоёрыг зэрэг өөрчлөхийг үүгээр эрхшээнэ.
+  const sqlStates = [...noSql(availSql)
+    .slice(noSql(availSql).indexOf('where status'))
+    .matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
+  const appStates = vm.runInContext('_ORDER_OCCUPYING', sandbox).slice().sort();
+  eq(sqlStates.join(','), appStates.join(','),
+     'db: public_availability.sql-ийн төлөв app.js-ийн _ORDER_OCCUPYING-тэй ИЖИЛ');
+
+  // Харилцагчийн мэдээлэл харагдацад ОРОХГҮЙ.
+  for (const col of ['customer', 'phone', 'email', 'delivery_address', 'total_mnt', 'paid_mnt']) {
+    ok(!new RegExp('\\b' + col + '\\b').test(noSql(availSql)),
+       `db: public_availability «${col}»-ыг задлаагүй`);
+  }
+
+  // Нийтийн эрхийн хил баримтжуулагдсан эсэх.
+  ok(/grant select on public\.public_catalog\s+to anon/.test(grantsSql),
+     'db: anon-grants нийтийн каталогийг нээдэг');
+  ok(/revoke select on public\.app_config from anon/.test(grantsSql),
+     'db: anon-grants app_config-ыг хаадаг');
+  ok(/revoke select on public\.member_perms\s+from anon/.test(grantsSql),
+     'db: anon-grants ажилтны эрхийн матрицыг хаадаг');
+}

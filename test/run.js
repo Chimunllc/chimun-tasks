@@ -1669,6 +1669,21 @@ function finish() {
       + '{ k: "Чимун ХХК", inc: 0, exp: 7000000 } ] }; }', sandbox);
     eq(CN(['2026-09'], 'M-Event'), { inc: 10000000, exp: 4000000, net: 6000000 },
        'COO: ЗӨВХӨН M-Event мөр тоологдоно (NOMAAD/ХХК орохгүй)');
+
+    // ── ХОЁР СУУРЬ: ноогдох vs орсон мөнгө (2026-09-10) ──
+    // Хураагдаагүй авлага ноогдохд орж, орсон мөнгөнд ОРОХГҮЙ — COO цалин зөрнө.
+    vm.runInContext('finBranchPnl = function (m, basis) { return { rows: ['
+      + '{ k: "M-Event", inc: basis === "cash" ? 6000000 : 10000000, exp: basis === "cash" ? 3000000 : 4000000 } ] }; }', sandbox);
+    eq(CN(['2026-09'], 'M-Event', 'accrual'), { inc: 10000000, exp: 4000000, net: 6000000 },
+       'COO: ноогдох суурь');
+    eq(CN(['2026-09'], 'M-Event', 'cash'), { inc: 6000000, exp: 3000000, net: 3000000 },
+       'COO: орсон мөнгө суурь');
+    eq(CN(['2026-09'], 'M-Event').inc, 10000000, 'COO: суурь заахгүй бол ноогдохоор (өгөгдмөл)');
+    eq(CN(['2026-09'], 'M-Event', 'хог').inc, 10000000, 'COO: танигдахгүй суурь → ноогдох');
+    vm.runInContext('finBranchPnl = function () { return { rows: ['
+      + '{ k: "M-Event", inc: 10000000, exp: 4000000 },'
+      + '{ k: "NOMAAD", inc: 90000000, exp: 20000000 },'
+      + '{ k: "Чимун ХХК", inc: 0, exp: 7000000 } ] }; }', sandbox);
     eq(CN(['2026-09'], 'NOMAAD'), { inc: 90000000, exp: 20000000, net: 70000000 },
        'COO: NOMAAD салбар сонговол зөвхөн тэр');
     eq(CN(['2026-09', '2026-08'], 'M-Event'), { inc: 20000000, exp: 8000000, net: 12000000 },

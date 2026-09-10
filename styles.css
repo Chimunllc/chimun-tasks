@@ -6160,7 +6160,7 @@ body.role-daily #add-project { display: none !important; }
 
 /* Захиалгын модал — «Эхлэх / Дуусах» огноо+цаг хос нарийн дэлгэцэд хажуу тийш
    давж, цагийн сонгогч тасардаг байв. ≤560px-д доош нь давхарлана. */
-@media (max-width: 560px) {
+@media (max-width: 620px) {
   .mo-daterow { flex-direction: column; gap: 10px !important; }
   .mo-daterow > div { width: 100%; }
 }
@@ -6808,3 +6808,28 @@ select.no-asar-len {
 .ord-note-empty { font-size: var(--fs-sm); color: var(--muted); padding: 6px 0; }
 .order-meta.order-note { white-space: pre-wrap; word-break: break-word; }
 .order-note-by { color: var(--muted); font-size: var(--fs-xs); }
+
+/* COO цалин — хоёр суурь (ноогдох / орсон мөнгө) зэрэгцүүлсэн харагдац.
+   Grid: өргөнд 3 багана (нэр · ноогдох · орсон), 620px-аас нарийнд мөрийн нэр
+   бүтэн мөр болж 2 дүн доор зэрэгцэнэ — 320px-д ч таслагдахгүй. */
+.coo-panel { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+  margin-bottom: var(--space-3); background: var(--panel); }
+.coo-panel-h { font-weight: 800; font-size: var(--fs-md); margin-bottom: 8px; }
+.coo-cmp { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline;
+  column-gap: var(--space-4); row-gap: 3px; }
+.coo-hd { font-size: var(--fs-xs); color: var(--muted); font-weight: 700; text-align: right;
+  white-space: nowrap; padding-bottom: 3px; }
+.coo-lbl { color: var(--muted); font-size: var(--fs-md); }
+.coo-v { text-align: right; white-space: nowrap; font-weight: 700; font-size: var(--fs-md); }
+.coo-inc.coo-v { color: var(--ok); }
+.coo-net { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 3px; }
+.coo-share { border-top: 1px solid var(--border); padding-top: 7px; margin-top: 3px; }
+.coo-share.coo-v { font-size: var(--fs-lg); color: var(--ok); }
+.coo-gap { font-size: var(--fs-sm); color: var(--warn); margin-top: 10px; line-height: 1.45; }
+@media (max-width: 620px) {
+  .coo-cmp { grid-template-columns: 1fr 1fr; column-gap: var(--space-3); }
+  .coo-lbl { grid-column: 1 / -1; }
+  .coo-lbl.coo-hd { display: none; }
+  .coo-lbl.coo-net, .coo-lbl.coo-share { border-top: 0; padding-top: 8px; }
+  .coo-share.coo-v { font-size: var(--fs-base); }
+}

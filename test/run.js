@@ -1645,6 +1645,42 @@ function finish() {
   eq(COO(0, 30), 0, 'COO: 0 ашигт 0');
   eq(COO(10000000, 0), 0, 'COO: 0% = 0');
 
+  // ── COO-гийн ашгийн эрх = ЗӨВХӨН ТУХАЙН САЛБАР (2026-09-10) ────────────────
+  // Өмнө нь бүх салбарын нийлбэрээр (M-Event + NOMAAD + ХХК) тооцож, M-Event-ийн
+  // захирал NOMAAD-ийн ашгаас хувь авах болж байв.
+  {
+    const st = vm.runInContext('state', sandbox);
+    const savedCfg = st.cooShare;
+    const CB = vm.runInContext('cooBranch', sandbox);
+    const CN = vm.runInContext('cooNetForMonths', sandbox);
+    const BRS = vm.runInContext('COO_BRANCHES', sandbox);
+
+    st.cooShare = {}; eq(CB(), 'M-Event', 'COO: салбар заагаагүй бол өгөгдмөл M-Event');
+    st.cooShare = { branch: 'NOMAAD' }; eq(CB(), 'NOMAAD', 'COO: тохируулсан салбар мөрдөгдөнө');
+    st.cooShare = { branch: 'Чимун ХХК' }; eq(CB(), 'M-Event', 'COO: ХХК-г салбар гэж авахгүй (M-Event руу уналт)');
+    st.cooShare = { branch: 'хог' }; eq(CB(), 'M-Event', 'COO: танигдахгүй салбар → M-Event');
+    ok(!BRS.includes('Чимун ХХК'), 'COO: ХХК салбарын жагсаалтад БАЙХГҮЙ');
+
+    // finBranchPnl-ийг mock-лож салбараар шүүхийг батална
+    const realPnl = vm.runInContext('finBranchPnl', sandbox);
+    vm.runInContext('finBranchPnl = function () { return { rows: ['
+      + '{ k: "M-Event", inc: 10000000, exp: 4000000 },'
+      + '{ k: "NOMAAD", inc: 90000000, exp: 20000000 },'
+      + '{ k: "Чимун ХХК", inc: 0, exp: 7000000 } ] }; }', sandbox);
+    eq(CN(['2026-09'], 'M-Event'), { inc: 10000000, exp: 4000000, net: 6000000 },
+       'COO: ЗӨВХӨН M-Event мөр тоологдоно (NOMAAD/ХХК орохгүй)');
+    eq(CN(['2026-09'], 'NOMAAD'), { inc: 90000000, exp: 20000000, net: 70000000 },
+       'COO: NOMAAD салбар сонговол зөвхөн тэр');
+    eq(CN(['2026-09', '2026-08'], 'M-Event'), { inc: 20000000, exp: 8000000, net: 12000000 },
+       'COO: олон сар нэмэгдэнэ');
+    st.cooShare = {};
+    eq(CN(['2026-09']).net, 6000000, 'COO: салбар заахгүй бол өгөгдмөл M-Event-ээр');
+    eq(CN([], 'M-Event'), { inc: 0, exp: 0, net: 0 }, 'COO: сар алга → 0');
+    eq(CN(null, 'M-Event'), { inc: 0, exp: 0, net: 0 }, 'COO: сар null → 0 (унахгүй)');
+    vm.runInContext('finBranchPnl = __realPnl;', Object.assign(sandbox, { __realPnl: realPnl }));
+    st.cooShare = savedCfg;
+  }
+
   // Түрээсийн түүх — KPI (Нийт орлого) ба сарын нийлбэр НЭГ эх сурвалжаас (зөрөхгүй)
   const HC = vm.runInContext('_histCompute', sandbox);
   const _h = HC([

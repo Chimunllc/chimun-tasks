@@ -7756,13 +7756,16 @@ const ORDER_BUCKETS = [
 const _BUCKET_OF = {};
 ORDER_BUCKETS.forEach(b => b.st.forEach(x => { _BUCKET_OF[x] = b.key; }));
 function bucketOf(status) { return _BUCKET_OF[String(status || '')] || 'active'; }
-// Авлага үүсгэдэг төлөвүүд = ORDER_BUCKETS-ийн 'active' + 'done' (баталгаажсан захиалга,
-// мөнгө нь ирсэн эсвэл ирэх ёстой). Ноорог / архив / цуцалсан / устгасан = авлага БИШ.
+// Авлага үүсгэдэг төлөвүүд = ORDER_BUCKETS-ийн 'active' + 'done' + 'archived' (баталгаажсан
+// захиалга, мөнгө нь ирсэн эсвэл ирэх ёстой). Ноорог / цуцалсан / больсон = авлага БИШ.
 // ⚠ ORDER_BUCKETS-аас ГАРГАЖ авав — гараар бичсэн жагсаалт дамжлагын шинэ шат нэмэгдэхэд
 //   хоцордог (дунд шатны захиалгууд авлагаас чимээгүй унасан шалтгаан нь тэр байв).
 //   Танигдахгүй төлөв энэ Set-д ОРОХГҮЙ тул урьдын адил авлагад тооцогдохгүй.
+// ⚠⚠ 'archived' ЗААВАЛ ОРНО. Архивлах = «ажлын жагсаалтаас хал» гэсэн үг, ӨРИЙГ ТЭГЛЭДЭГГҮЙ.
+//   Сараар багц архивласны дараа төлбөр дутуу захиалгын авлага чимээгүй алга болж байв
+//   (#1470 — 963,500₮). Авлага бол мөнгө: харагдахаа болих нь дата алдагдалтай адил.
 const RECEIVABLE_ORDER_ST = new Set(
-  ORDER_BUCKETS.filter(b => b.key === 'active' || b.key === 'done').reduce((a, b) => a.concat(b.st), [])
+  ORDER_BUCKETS.filter(b => b.key === 'active' || b.key === 'done' || b.key === 'archived').reduce((a, b) => a.concat(b.st), [])
 );
 // Захиалгын CANON (харагдах) төлөв — unifiedOrders-ийн normalize дүрэмтэй ИЖИЛ, НЭГ эх сурвалж.
 // state.appOrders-ийн ТҮҮХИЙ статусыг шууд ашигладаг логик (нөөц тооцоо, багц сонголт) заавал энэ
@@ -8194,7 +8197,8 @@ function renderOrders() {
       const months = [...new Set(archivableOrders(state.appOrders).map(o => String(o.starts_at || o.created_at || '').slice(0, 7)).filter(Boolean))].sort().reverse();
       archBar = `<div class="ordv-archbar">
         <span>🗄 ${ymF ? `<b>${escapeHtml(ymF)}</b> сарын ` : ''}<b>${arch.length}</b> дууссан захиалга архивлахад бэлэн${_seeMoney ? ` · ${fmtMoney(sum)}` : ''}
-          <span class="ordv-archbar-h">Дата устахгүй — орлого, тайлан хэвээр. Ажлын жагсаалтаас л хална.</span></span>
+          <span class="ordv-archbar-h">Дата устахгүй — орлого, тайлан хэвээр. Ажлын жагсаалтаас л хална.</span>
+          ${archUnpaid(arch).n ? `<span class="ordv-archbar-w">⚠ ${archUnpaid(arch).n} нь төлбөр дутуу${_seeMoney ? ` · ${fmtMoney(archUnpaid(arch).sum)}` : ''} — архивласан ч Авлагад хэвээр харагдана.</span>` : ''}</span>
         <span class="ordv-archbar-b">
           ${!ymF && months.length ? `<select id="arch-ym" class="ofilt-sel"><option value="">— сар сонгох —</option>${months.map(m => `<option value="${m}">${m}</option>`).join('')}</select>` : ''}
           <button class="btn btn-primary" id="arch-go">🗄 ${ymF ? escapeHtml(ymF) + ' архивлах' : 'Архивлах'} (${arch.length})</button>
@@ -20856,6 +20860,16 @@ async function bulkRestoreOrders(ids) {
 // Архивласан захиалга орлогод ХЭВЭЭР тоологдоно (_orderActive нь archived-ыг
 // хасдаггүй) — зөвхөн ажлын жагсаалтаас хальж, «Архивласан» бүлэгт үлдэнэ.
 const ORDER_ARCHIVABLE = ['returned', 'stopped', 'rented'];
+// Архивлах гэж байгаа захиалгуудын дундах ТӨЛБӨР ДУТУУ нь. Архивлах нь өрийг тэглэдэггүй
+// (авлага хэвээр) — гэхдээ хэрэглэгч архивлахаасаа ӨМНӨ мэдэх ёстой тул тоо + дүн гаргана.
+function archUnpaid(list) {
+  let n = 0, sum = 0;
+  (list || []).forEach(o => {
+    const bal = (Number(o && o.total_mnt) || 0) - (Number(o && o.paid_mnt) || 0);
+    if (bal > 0) { n++; sum += bal; }
+  });
+  return { n, sum };
+}
 function archivableOrders(orders, ym) {
   return (orders || []).filter(o => o && ORDER_ARCHIVABLE.includes(String(o.status))
     && (!ym || String(o.starts_at || o.created_at || '').slice(0, 7) === ym));
@@ -20880,8 +20894,10 @@ async function archiveDoneMonth(ym) {
   const list = archivableOrders(state.appOrders, ym);
   if (!list.length) { showToast('Архивлах захиалга алга', 'info', 2500); return; }
   const sum = list.reduce((t, o) => t + orderRevenue(o, 'accrual'), 0);
+  const up = archUnpaid(list);
   const msg = `${ym ? ym + ' сарын ' : ''}${list.length} дууссан захиалгыг архивлах уу?\n\n`
     + `Нийт борлуулалт ${fmtMoney(sum)}.\n\n`
+    + (up.n ? `⚠ Эдгээрээс ${up.n} захиалга төлбөр дутуу — ${fmtMoney(up.sum)}. Архивласан ч Авлага дэлгэцэд хэвээр харагдана (өр тэглэгдэхгүй).\n\n` : '')
     + `Архивласан захиалга ажлын жагсаалтаас хальж «Архивласан» бүлэгт үлдэнэ. `
     + `Дата УСТАХГҮЙ — орлого, тайлан, түүх бүгд хэвээр. Дараа нь сэргээж болно.`;
   if (!(await showConfirm(msg, { okText: `Тийм, ${list.length} архивла` }))) return;
@@ -25015,11 +25031,12 @@ function finBranchPnl(month, basis) {
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
+// ⚠ Авлагын НЭГ дүрэм = receivablesData() (Авлага дэлгэц ↔ Санхүү тайлан нэг тоо харуулна).
+//   Өмнө нь энд түүхий статусаар (_orderActive) тоолдог байсан тул төлбөргүй reserved
+//   (харагдацаар «Ноорог») бүтэн дүнгээрээ орж, хоёр дэлгэц зөрдөг байв.
 function finReceivables() {
-  let r = 0;
-  (state.nomaadOrders || []).forEach(o => { if (nomaadIsCancelled(o) || !['deposit', 'contract', 'done'].includes(nomaadStage(o))) return; r += Math.max(0, nomaadEffTotal(o) - nomaadPaid(o)); });
-  (state.appOrders || []).forEach(o => { if (!_orderActive(o)) return; r += Math.max(0, (Number(o.total_mnt) || 0) - (Number(o.paid_mnt) || 0)); });
-  return r;
+  const d = receivablesData();
+  return d.bqTotal + d.nomaadTotal;
 }
 // Тухайн сарын цалингийн нийт зардал (гүйцэтгэлийн сар) + хүний тоо
 function finSalaryMonth(month, basis) {

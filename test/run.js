@@ -5588,3 +5588,51 @@ need(['orderCustType']);
   ok(/JSON\.stringify\(\{ email, token, \.\.\.payload \}\)/.test(fn),
      'scan: push биед токен явна');
 }
+
+// SCAN — дата ачаалалт ЧИМЭЭГҮЙ унахыг хориглох (2026-09-10)
+// Алдаа: `loadMyAttendance` серверийн 403-ыг `catch (e) {}`-ээр залгиж, ажилтны
+// «Миний ирц» дэлгэц зүгээр ХООСОН харагдаж байв. Алдаа хаана ч бүртгэгдээгүй тул
+// ажилтан амаар хэлэх хүртэл хэн ч мэдээгүй. `app_errors` хүснэгтэд бүх цаг үеийн
+// ганц мөр байсны шалтгаан нь ийм 23 хоосон catch (нийт аппад 141).
+// Дүрэм: `load*` функц дотор хоосон `catch` БАЙХГҮЙ — `dataLoadFailed(нэр, e)` дуудна.
+{
+  const lines = src.split('\n');
+  const empty = /catch\s*\([A-Za-z_]*\)\s*\{\s*(?:\/\*[^*]*\*\/)?\s*\}/;
+  const fnre = /^(?:async\s+)?function\s+(load[A-Za-z0-9_]*)/;
+  let fn = null, depth = 0; const bad = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(fnre);
+    if (m) { fn = m[1]; depth = 0; }
+    if (!fn) continue;
+    depth += (lines[i].match(/\{/g) || []).length - (lines[i].match(/\}/g) || []).length;
+    if (empty.test(lines[i])) bad.push(fn + ':' + (i + 1));
+    if (depth <= 0 && i > 0 && /^\}/.test(lines[i])) fn = null;
+  }
+  eq(bad.length, 0, 'scan: load* дотор хоосон catch байхгүй (dataLoadFailed ашигла)' +
+     (bad.length ? ' → ' + bad.slice(0, 5).join(', ') : ''));
+  ok(/function dataLoadFailed\(/.test(src), 'scan: dataLoadFailed тодорхойлогдсон');
+}
+
+// SCAN — сесс хуучирахад ХООСОН дэлгэц биш, нэвтрэх дэлгэц (2026-09-10)
+// `pgrstBearer()` нь токенгүй бол anon руу чимээгүй уналаа. Аюулгүй байдлын
+// түгжээний дараа anon-д уншилтын эрх БАЙХГҮЙ болсон тул аппын PostgREST
+// асуулгууд 401 буцаж, дэлгэцүүд хоосон харагдаж эхэлсэн. Эхлэхэд exp-г шалгана.
+{
+  ok(/function pgrstTokenValid\(/.test(src), 'scan: pgrstTokenValid тодорхойлогдсон');
+  ok(/if \(!pgrstTokenValid\(\) && navigator\.onLine !== false\)/.test(src),
+     'scan: эхлэхэд токен хүчингүй бол дахин нэвтрүүлнэ (офлайнд хөндөхгүй)');
+  ok(/Сесс хуучирсан/.test(src), 'scan: хэрэглэгчид ойлгомжтой мессеж харуулна');
+}
+
+// SCAN — «Гэнэт дахин эхэлсэн» дохио (2026-09-10)
+// Зураг оруулахаар камер нээхэд PWA систем санах ойноос устгагдаж апп дахин
+// эхэлдэг гэсэн мэдээлэл ирсэн. JS алдаа шидэгддэггүй тул одоогийн бүртгэл
+// барихгүй. «Амьд» тэмдэглэгээ үлдээж, цэвэр хаагдаагүйг илрүүлж мэдээлнэ.
+{
+  ok(/function checkUncleanRestart\(/.test(src), 'scan: checkUncleanRestart тодорхойлогдсон');
+  ok(/function markAlive\(/.test(src) && /function clearAlive\(/.test(src),
+     'scan: markAlive/clearAlive хосоороо байна');
+  ok(/^function render\(\) \{\n  markAlive\(\);/m.test(src), 'scan: render дээр markAlive холбогдсон');
+  ok(/addEventListener\('pagehide', clearAlive\)/.test(src), 'scan: цэвэр хаалтад тэмдэглэгээ арилна');
+  ok(/Апп гэнэт дахин эхэлсэн/.test(src), 'scan: дохио серверт мэдэгддэг');
+}

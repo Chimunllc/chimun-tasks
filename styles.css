@@ -6743,3 +6743,6 @@ select.no-asar-len {
 
 .sum-lead { color: var(--muted); }
 .sum-unsent { color: var(--warn); font-weight: 700; }
+
+.br-qchip.due { background: color-mix(in srgb, var(--danger) 13%, var(--panel)); color: var(--danger); }
+.order-follow-due { color: var(--danger); font-weight: 600; }

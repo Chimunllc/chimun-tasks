@@ -1440,12 +1440,17 @@ async function loadBootstrap() {
       });
     }
     state.tasks = tasksRaw.map(normalizeTask).filter(t => !isRecentlyDeleted(t.id));
-    state.financeRequests = finRaw.map(normalizeFinance);
+    // Санхүү хаалттай ирвэл (токенгүй session) хоосноор БҮҮ ДАР — даалгавраа авчихаад
+    // санхүүг тусдаа замаар нөхнө. Тэр ч бүтэхгүй бол хэрэглэгчид ил хэлнэ.
+    const finGated = _finGatedEmpty(data);
+    state.finGated = finGated;
+    if (!finGated) state.financeRequests = finRaw.map(normalizeFinance);
     applyPendingTaskWrites();
     applyPendingFinanceWrites();
     updatePendingConn();
     saveLocal();
-    saveFinanceCache();
+    if (!finGated) saveFinanceCache();
+    if (finGated) await loadFinanceRequests();
     return true;
   } catch (e) {
     console.warn('Bootstrap load failed, falling back to per-endpoint:', e);
@@ -2164,6 +2169,18 @@ function financeVisibleRows(rows) {
     catch (e) { return false; }   // задлаж чадаагүй мөрийг кэшлэхгүй (аюулгүй тал руу)
   });
 }
+// Сервер САНХҮҮГ НУУСАН эсэх. n8n нь хүчинтэй session токенгүй хүсэлтэд санхүүг
+// өгөхгүй бөгөөд `_finGated: true` + ХООСОН жагсаалт буцаадаг (зөөлөн задрал —
+// алдаа шидэхгүй тул апп эвдрэхгүй).
+// ⛔ Ийм хариуг ХЭЗЭЭ Ч хүлээж авч болохгүй: хоосноор кэшийг дарж «бүх гүйлгээ
+//    алга болчихлоо» болно. 2026-09-10-нд n8n-ий нэвтрэлтийн блок `_authed` тугаа
+//    алдсанаас яг ингэж болсон — 1,280 мөр бүтэн байхад дэлгэц 0 харуулсан.
+function _finGatedEmpty(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (data._finGated !== true) return false;
+  const rows = (data.finance && data.finance.requests) || data.requests || [];
+  return !Array.isArray(rows) || rows.length === 0;
+}
 function saveFinanceCache() {
   // Хэн нэвтэрсэн нь тодорхойгүй үед (эхлэлийн race) кэшийг ОГТ ХӨНДӨХГҮЙ — хоосон
   // массив бичвэл хэрэглэгчийн офлайн датаг устгана.
@@ -2180,6 +2197,9 @@ async function loadFinanceRequests() {
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      // Хаалттай + хоосон → серверт токен хүрээгүй. Кэшийг БҮҮ ДАР, хуучныг үлдээ.
+      if (_finGatedEmpty(data)) { state.finGated = true; return; }
+      state.finGated = false;
       const raw = Array.isArray(data?.requests) ? data.requests : [];
       state.financeRequests = raw.map(normalizeFinance);
       applyPendingFinanceWrites();   // офлайн хийсэн өөрчлөлтийг хадгална
@@ -26767,7 +26787,20 @@ function renderFinanceReport(wrap) {
     state.finReportMonth = nm; render();
   }));
 
-  if (!monthList.length) { const e = document.createElement('div'); e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;'; e.textContent = 'Энэ сард зардал алга.'; wrap.appendChild(e); return; }
+  if (!monthList.length) {
+    const e = document.createElement('div');
+    e.style.cssText = 'text-align:center;color:var(--muted);padding:30px 12px;';
+    // Хоосон нь ХОЁР өөр зүйл байж болно: үнэхээр зардалгүй, эсвэл серверт токен
+    // хүрээгүй тул санхүүг НУУСАН. Хоёрыг ялгаж хэлэхгүй бол «дата алга боллоо» гэж
+    // ойлгогдоно (2026-09-10).
+    if (state.finGated) {
+      e.style.color = 'var(--warn)';
+      e.textContent = 'Нэвтрэлт хүчингүй болсон тул санхүүгийн дата татагдсангүй. Аппаас гараад дахин нэвтэрнэ үү — дата бүтэн хэвээр байгаа.';
+    } else {
+      e.textContent = 'Энэ сард зардал алга.';
+    }
+    wrap.appendChild(e); return;
+  }
 
   // ── 📊 Дүр зураг: энэ сарын зардал салбар × ангилалаар (эзний зээл 6900 + PENDST хасна — толгойн дүнтэй ижил) ──
   (() => {

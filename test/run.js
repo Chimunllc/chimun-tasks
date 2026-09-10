@@ -1677,6 +1677,24 @@ function finish() {
     eq(CN(['2026-09']).net, 6000000, 'COO: салбар заахгүй бол өгөгдмөл M-Event-ээр');
     eq(CN([], 'M-Event'), { inc: 0, exp: 0, net: 0 }, 'COO: сар алга → 0');
     eq(CN(null, 'M-Event'), { inc: 0, exp: 0, net: 0 }, 'COO: сар null → 0 (унахгүй)');
+    // ── Ашиг тоолж ЭХЛЭХ САР = 2026-06 (түүнээс өмнө зардал бүртгэгдээгүй) ──
+    const YT = vm.runInContext('cooMonthsYtd', sandbox);
+    const CS = vm.runInContext('cooStartMonth', sandbox);
+    st.cooShare = {};
+    eq(CS(), '2026-06', 'COO: эхлэх сарын өгөгдмөл = 2026-06');
+    st.cooShare = { start: '2026-07' }; eq(CS(), '2026-07', 'COO: тохируулсан эхлэх сар мөрдөгдөнө');
+    st.cooShare = { start: '2026-13' }; eq(CS(), '2026-06', 'COO: хүчингүй сар → өгөгдмөл');
+    st.cooShare = { start: 'хог' }; eq(CS(), '2026-06', 'COO: хог утга → өгөгдмөл');
+    st.cooShare = {};
+    eq(YT('2026-09'), ['2026-06', '2026-07', '2026-08', '2026-09'], 'COO: 6-9 сар (1-5 сар ОРОХГҮЙ)');
+    eq(YT('2026-06'), ['2026-06'], 'COO: эхлэх сар өөрөө орно');
+    eq(YT('2026-05'), [], 'COO: эхлэхээсээ өмнөх сар → хоосон');
+    eq(YT('2026-01'), [], 'COO: 1-р сар → хоосон (зардал бүртгэгдээгүй үе)');
+    eq(YT('2027-02', '2026-11'), ['2026-11', '2026-12', '2027-01', '2027-02'], 'COO: он давсан хуримтлал');
+    eq(YT(''), [], 'COO: сар хоосон → хоосон (унахгүй)');
+    eq(YT(null), [], 'COO: сар null → хоосон (унахгүй)');
+    eq(YT('хог'), [], 'COO: буруу хэлбэр → хоосон');
+
     vm.runInContext('finBranchPnl = __realPnl;', Object.assign(sandbox, { __realPnl: realPnl }));
     st.cooShare = savedCfg;
   }

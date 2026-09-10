@@ -6833,3 +6833,25 @@ select.no-asar-len {
   .coo-lbl.coo-net, .coo-lbl.coo-share { border-top: 0; padding-top: 8px; }
   .coo-share.coo-v { font-size: var(--fs-base); }
 }
+
+/* COO — олгосон цалингийн жагсаалт (огноо · тэмдэглэл · дүн) */
+.coo-paid { display: grid; grid-template-columns: auto 1fr auto; column-gap: var(--space-3);
+  row-gap: 2px; align-items: baseline; font-size: var(--fs-sm); margin-bottom: 10px; }
+.coo-paid-d { color: var(--muted); white-space: nowrap; }
+.coo-paid-m { color: var(--text-soft, var(--text)); min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.coo-paid-a { text-align: right; white-space: nowrap; font-weight: 700; }
+.coo-paid-t { border-top: 1px solid var(--border); padding-top: 5px; margin-top: 3px;
+  font-weight: 800; color: var(--text); }
+.coo-paid-none { font-size: var(--fs-sm); color: var(--muted); margin-bottom: 10px; }
+.coo-bal { border-top: 1px solid var(--border); padding-top: 8px; }
+.coo-v.coo-bal-due { color: var(--warn); }
+.coo-v.coo-bal-over { color: var(--danger); }
+@media (max-width: 620px) {
+  .coo-paid { grid-template-columns: auto 1fr; }
+  .coo-paid-m { grid-column: 2; }
+  .coo-paid-a { grid-column: 1 / -1; text-align: right; margin-bottom: 4px; }
+  /* Нийлбэрийн зураас бүтэн мөрөөр — хоосон огнооны эсээс тасархай зураас гаргахгүй */
+  .coo-paid-d.coo-paid-t { border-top: 0; padding-top: 0; margin-top: 0; }
+  .coo-paid-m.coo-paid-t { grid-column: 1 / -1; }
+}

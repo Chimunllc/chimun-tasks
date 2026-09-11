@@ -5128,6 +5128,62 @@ need(['orderCustType']);
   ok(!F.asarPurgeSkus().some(k => G('ASAR_MODULES')[k]), 'хасалт: жагсаалтад модулийн sku БАЙХГҮЙ');
 }
 
+// САЛБАР ХУВААРИЛАЛТ — танихгүй салбар ХХК-д НУУГДАХГҮЙ (2026-09-11)
+// Катерингийн зардалд хайрцаг байгаагүй тул 2.1 сая₮ чимээгүй Чимун ХХК дээр нэмэгдэж,
+// хоёр тоо зэрэг худал болж байв. Мөн салбаргүй/танихгүй кодтой 89 гүйлгээ (75.8 сая₮)
+// мөн адил ХХК руу унаж, эзэнгүй зардал хэн ч анзаарахгүй алга болж байсан.
+{
+  const st = vm.runInContext('state', sandbox);
+  const PNL = vm.runInContext('finBranchPnl', sandbox);
+  const saved = { fr: st.financeRequests, ao: st.appOrders, no: st.nomaadOrders, vr: st.vatReceipts };
+  st.appOrders = []; st.nomaadOrders = []; st.vatReceipts = [];
+  const E = (o) => Object.assign({ id: 'x', decision: 'approved', status: 'open',
+    requested_at: '2026-08-10T00:00:00.000Z', amount: 1000000, category: '1300' }, o);
+
+  st.financeRequests = [E({ id: '1', dept_branch: 'КАТЕРИНГ', amount: 2100000 })];
+  let p = PNL('2026-08', 'cash');
+  eq((p.rows.find(r => r.k === 'Катеринг') || {}).exp, 2100000, 'салбар: катеринг ӨӨРИЙН мөртэй');
+  eq((p.rows.find(r => r.k === 'Чимун ХХК') || {}).exp, 0, 'салбар: катеринг ХХК-д нэмэгдэхгүй');
+
+  st.financeRequests = [E({ id: '2', dept_branch: '', amount: 500000 }),
+                        E({ id: '3', dept_branch: 'shared', amount: 300000 })];
+  p = PNL('2026-08', 'cash');
+  eq(p.unknownExp, 800000, 'салбар: хоосон ба танихгүй код тусдаа тоологдоно');
+  eq(p.unknownN, 2, 'салбар: танихгүй гүйлгээний ТОО ч гарна');
+  eq((p.rows.find(r => r.k === 'Чимун ХХК') || {}).exp, 0, 'салбар: танихгүй нь ХХК-д НУУГДАХГҮЙ');
+  ok(p.rows.some(r => r.unknown), 'салбар: танихгүй мөр тэмдэглэгдэнэ');
+
+  // Хуучин ленз код зөв хөрвөнө (m-event/camp) — энэ нь өмнөх ч зөв байсан, хамгаалъя
+  st.financeRequests = [E({ id: '4', dept_branch: 'm-event', amount: 2620000 }),
+                        E({ id: '5', dept_branch: 'camp', amount: 7610000 })];
+  p = PNL('2026-08', 'cash');
+  eq((p.rows.find(r => r.k === 'M-Event') || {}).exp, 2620000, 'салбар: ленз код m-event → M-Event');
+  eq((p.rows.find(r => r.k === 'NOMAAD') || {}).exp, 7610000, 'салбар: ленз код camp → NOMAAD');
+  eq(p.unknownExp, 0, 'салбар: ленз код танихгүйд ОРОХГҮЙ');
+
+  // Хөрөнгө (6000) нь салбараас үл хамааран ХХК
+  st.financeRequests = [E({ id: '6', dept_branch: 'ИВЕНТ', category: '6100', amount: 9000000 })];
+  p = PNL('2026-08', 'cash');
+  eq((p.rows.find(r => r.k === 'Чимун ХХК') || {}).exp, 9000000, 'салбар: хөрөнгө(6000) → ХХК хэвээр');
+  eq((p.rows.find(r => r.k === 'M-Event') || {}).exp, 0, 'салбар: хөрөнгө салбарын зардал БИШ');
+
+  // ИНВАРИАНТ: нийт зардал өөрчлөгдөхгүй — зөвхөн аль мөрөнд харагдах нь өөрчлөгдөнө
+  st.financeRequests = [E({ id: '7', dept_branch: 'ИВЕНТ', amount: 1000000 }),
+                        E({ id: '8', dept_branch: 'КАТЕРИНГ', amount: 2000000 }),
+                        E({ id: '9', dept_branch: '', amount: 3000000 })];
+  p = PNL('2026-08', 'cash');
+  eq(p.rows.reduce((a, r) => a + r.exp, 0), 6000000, 'ИНВАРИАНТ: нийт зардал бүтэн хэвээр');
+
+  // Катеринг/танихгүй байхгүй бол нэмэлт мөр ГАРАХГҮЙ (хоосон мөр эвгүй)
+  st.financeRequests = [E({ id: '10', dept_branch: 'ИВЕНТ' })];
+  p = PNL('2026-08', 'cash');
+  eq(p.rows.length, 3, 'салбар: хоосон бол катеринг/танихгүй мөр гарахгүй');
+  ok(p.rows.some(r => r.k === 'M-Event') && p.rows.some(r => r.k === 'NOMAAD') && p.rows.some(r => r.k === 'Чимун ХХК'),
+    'салбар: үндсэн 3 мөр үргэлж байна (COO тооцоо тэднээс уншина)');
+
+  st.financeRequests = saved.fr; st.appOrders = saved.ao; st.nomaadOrders = saved.no; st.vatReceipts = saved.vr;
+}
+
 // МАРГААНТАЙ БАРЬЦАА — цуцалсан захиалгад орсон атлаа буцаагаагүй мөнгө (2026-09-11)
 // Захиалга №1136 (Тавантолгой): 31.2 сая₮ орсон, гэрээ цуцлагдсан, маргаан шийдэгдээгүй.
 // Орлогод орох ЁСГҮЙ (хуурамч ашиг), гэхдээ данснаас алга болох ч ЁСГҮЙ.

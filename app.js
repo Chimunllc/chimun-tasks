@@ -25627,14 +25627,22 @@ function finMonthIncome(month, basis) {
 function finBranchPnl(month, basis) {
   const _mi = finMonthIncome(month, basis);
   const evInc = _mi.evInc, noInc = _mi.noInc;
-  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0, vatPaid = 0;
+  // ⚠ Салбар бүрд ХУВЬ ХҮНИЙ хайрцаг байх ЁСТОЙ. Байхгүй бол тэр салбарын зардал
+  //   чимээгүй «Чимун ХХК» дээр нэмэгдэж, хоёр тоо зэрэг худал болно (салбарынх нь
+  //   дутуу, ХХК-ынх нь илүү). Катеринг яг ингэж 2.1 сая₮-өөр нуугдаж байв.
+  const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'КАТЕРИНГ': 0, 'ХХК': 0, 'ЗАХ': 0 };
+  let ownerLoan = 0, depReturn = 0, vatPaid = 0, unkN = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
     if (finIsNonExpense(t.category)) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл / зээлийн үндсэн төлбөр = зардал БИШ
     if (finIsDepositReturn(t)) { depReturn += Number(t.amount) || 0; return; }  // барьцаа буцаалт = зардал БИШ (P&L саармаг)
     if (finIsCustomerRefund(t)) { return; }                                     // үйлчлүүлэгчид буцаасан = орлогоос хасагдсан
     if (finIsVatPayment(t)) { vatPaid += Number(t.amount) || 0; return; }        // НӨАТ төлөлт — ноогдуулсанаар орлуулна (давхар тоолохгүй)
-    const b = finEffBranch(t); if (exp[b] != null) exp[b] += Number(t.amount) || 0; else exp['ХХК'] += Number(t.amount) || 0;
+    // finEffBranch нь 'Чимун ХХК' (хөрөнгө) гэж буцаадаг тул 'ХХК' хайрцагт нийлүүлнэ.
+    // Танихгүй/хоосон салбар → 'ЗАХ' болж ирнэ: ХХК руу НУУХГҮЙ, тусдаа мөрөнд ил гаргана.
+    const b = finEffBranch(t) === 'Чимун ХХК' ? 'ХХК' : finEffBranch(t);
+    const amt = Number(t.amount) || 0;
+    if (exp[b] != null) { exp[b] += amt; if (b === 'ЗАХ') unkN++; } else { exp['ЗАХ'] += amt; unkN++; }
   });
   // Ноогдуулсан НӨАТ — салбар бүрийн зардал дээр нэмэгдэнэ.
   const vat = vatByBranchMonth(vatReceiptsActive(), month);
@@ -25643,8 +25651,10 @@ function finBranchPnl(month, basis) {
     rows: [
       { k: 'M-Event', inc: evInc, exp: exp['ИВЕНТ'] },
       { k: 'NOMAAD', inc: noInc, exp: exp['КЕМП'] },
+      ...(exp['КАТЕРИНГ'] ? [{ k: 'Катеринг', inc: 0, exp: exp['КАТЕРИНГ'] }] : []),
       { k: 'Чимун ХХК', inc: 0, exp: exp['ХХК'] },
-    ], ownerLoan, depReturn, vat, vatPaid,
+      ...(exp['ЗАХ'] ? [{ k: '⚠ Салбар тодорхойгүй', inc: 0, exp: exp['ЗАХ'], unknown: true, n: unkN }] : []),
+    ], ownerLoan, depReturn, vat, vatPaid, unknownExp: exp['ЗАХ'], unknownN: unkN,
   };
 }
 // Авлага = баталгаажсан гэрээ − цуглуулсан (бүх хугацаа, point-in-time)
@@ -26049,6 +26059,7 @@ function renderReports() {
         </tbody>
       </table>
       ${bp.vat && bp.vat.total ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">🧾 Зардалд багтсан НӨАТ: <b style="color:var(--text);">${fmtSaya(bp.vat.total)}</b> (M-Event ${fmtSaya(bp.vat['ИВЕНТ'])} · NOMAAD ${fmtSaya(bp.vat['КЕМП'])}${bp.vat['ХХК'] ? ` · тулгагдаагүй ${fmtSaya(bp.vat['ХХК'])}` : ''})${bp.vatPaid ? ` — банкаар төлсөн ${fmtSaya(bp.vatPaid)} нь давхар тоологдохгүй` : ''}</div>` : ''}
+      ${bp.unknownExp ? `<div style="font-size:11px;color:var(--warn);margin-top:8px;">⚠ <b>${bp.unknownN} гүйлгээ (${fmtSaya(bp.unknownExp)})</b> салбаргүй эсвэл танихгүй кодтой. Өмнө нь Чимун ХХК-д чимээгүй нэмэгддэг байв — салбарыг нь заавал сонгоно уу.</div>` : ''}
       ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Эзний зээл эргэн төлөлт (зардал БИШ): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
     const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">
         <div style="font-size:12px;color:var(--muted);">${icon} ${label}</div>

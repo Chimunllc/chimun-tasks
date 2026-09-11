@@ -7031,6 +7031,64 @@ need(['orderCustType']);
   }
 }
 
+// ═══ ДАРААГИЙН АЛХАМ (2026-09-11) ═════════════════════════════════════════════
+// Хэрэглэгчийн гомдол: «тоо харагдаж байна, одоо юу хийх нь мэдэгдэхгүй». Карт нь
+// ажлыг хамаарлын дарааллаар эрэмбэлнэ — дараалал эвдэрвэл зөвлөгөө утгагүй болно.
+function testFinNextSteps() {
+  need(['finNextSteps', 'finNextStepsHtml']);
+  const keys = (st) => st.map(x => x.key);
+  const byKey = (st, k) => st.find(x => x.key === k) || {};
+
+  // ① Бүх ажил үлдсэн — эрэмбэ нь хамаарлын дараалал
+  const all = F.finNextSteps({ month: '2026-09', isCEO: true,
+    missingAccts: ['Голомт', 'Хаан'], pendExpenses: 7,
+    openIncome: { n: 12, sum: 4200000 }, chainBreaks: 2 });
+  eq(keys(all).join('>'), 'stmt>expense>income>chain>close', 'алхмын эрэмбэ: хуулга→ангилах→тулгах→залгаа→хаах');
+  eq(byKey(all, 'stmt').n, 2, 'хуулга дутуу дансны тоо');
+  eq(byKey(all, 'stmt').act, 'classify', 'хуулгын алхам → оруулах модал');
+  eq(byKey(all, 'income').sum, 4200000, 'хаагдаагүй орлогын дүн харагдана');
+  eq(byKey(all, 'expense').act, 'expenses', 'зардлын алхам → Миний зардал');
+  // Дутуутай үед сар хаах нь ХҮЛЭЭНЭ (дарж болохгүй) — эс бөгөөс дутуу сар хаагдана
+  eq(byKey(all, 'close').wait, true, 'дутуутай үед сар хаах товч идэвхгүй');
+  eq(byKey(all, 'close').act, undefined, 'хүлээж буй алхам үйлдэлгүй');
+
+  // ② Бүгд цэвэр — хаах нь идэвхтэй, бусад нь ✓
+  const clean = F.finNextSteps({ month: '2026-09', isCEO: true,
+    missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 }, chainBreaks: 0 });
+  eq(keys(clean).join('>'), 'stmt>expense>income>close', 'цэвэр үед залгааны алхам гарахгүй');
+  ok(clean.slice(0, 3).every(x => x.done), 'цэвэр үед эхний 3 алхам ✓');
+  eq(byKey(clean, 'close').act, 'close', 'цэвэр үед сар хаах идэвхтэй');
+
+  // ③ CEO биш → хаах алхам огт байхгүй
+  const staff = F.finNextSteps({ month: '2026-09', isCEO: false,
+    missingAccts: [], pendExpenses: 3, openIncome: { n: 0, sum: 0 } });
+  ok(!keys(staff).includes('close'), 'CEO биш хүнд сар хаах алхам харагдахгүй');
+  eq(byKey(staff, 'expense').n, 3, 'ангилагдаагүй зардлын тоо');
+
+  // ④ Хаалттай сар — ганц мөр, гэхдээ CEO НЭЭЖ чадна (товч эгнээнээс хасагдсан тул)
+  const lockedCeo = F.finNextSteps({ month: '2026-08', locked: true, isCEO: true });
+  eq(lockedCeo.length, 1, 'хаалттай сард ганц мөр');
+  eq(lockedCeo[0].act, 'close', 'хаалттай сарыг CEO нээж чадна');
+  const lockedStaff = F.finNextSteps({ month: '2026-08', locked: true, isCEO: false });
+  eq(lockedStaff[0].act, undefined, 'CEO биш хүн хаалттай сарыг нээж чадахгүй');
+
+  // ⑤ HTML — тоолол, товч, «хийх N зүйл» толгой
+  const h = F.finNextStepsHtml(all, '2026-09');
+  ok(/2026-09 сард хийх 4 зүйл/.test(h), 'толгойд үлдсэн ажлын тоо (хаах нь тоологдохгүй)');
+  ok(/data-ns-act="classify"/.test(h) && /data-ns-act="recon"/.test(h), 'товчнууд үйлдлээ авч явна');
+  ok(!/data-ns-act="close"/.test(h), 'хүлээж буй сар хаах товчгүй');
+  ok(/✓ 2026-09 сар цэгцтэй/.test(F.finNextStepsHtml(
+    F.finNextSteps({ month: '2026-09', isCEO: false, missingAccts: [], pendExpenses: 0, openIncome: { n: 0, sum: 0 } }),
+    '2026-09')), 'бүгд цэвэр үед толгой нь «цэгцтэй»');
+
+  // ── SCAN: гол үйлдлүүд картад л байна, товчны эгнээнд давхардахгүй ──
+  ok(!/id="fin-classify-open"/.test(src) && !/id="fin-recon-open"/.test(src),
+     'scan: хуулга/тулгалтын товч эгнээнд давхардахгүй (картаас дуудагдана)');
+  ok(!/id="fin-month-lock"/.test(src),
+     'scan: сар хаах товч ч картад — хоёр газраас хаагдвал аль нь ажилласан нь мэдэгдэхгүй');
+}
+testFinNextSteps();
+
 // ═══ ӨГӨГДМӨЛ СУУРЬ = МӨНГӨН ГҮЙЛГЭЭ (2026-09-11) ═════════════════════════════
 // Зардал 100% банкны хуулгаас ирдэг тул орлогыг 'accrual'-аар үзэх нь НЭГ тайлангийн
 // хоёр талыг өөр хэмжүүрээр хэмжинэ (эвент 9 сард, түүний зардал 10 сард → 9 сар

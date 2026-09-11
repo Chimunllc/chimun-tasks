@@ -7101,8 +7101,9 @@ async function openStatementClassifyModal() {
     //   холбогдоогүй орсон мөнгө хаана ч алга болохгүй болно.
     try {
       await loadBankIncome(true);
-      const rcptTaken = new Set();
-      for (const q of stmtQueue) await persistStatement(q.matrix, q.parsed, q.fileName, rcptTaken);
+      const rcptTaken = new Set(); let _skipC = 0;
+      for (const q of stmtQueue) { const _ps = await persistStatement(q.matrix, q.parsed, q.fileName, rcptTaken); _skipC += (_ps.skippedClosed || 0); }
+      if (_skipC) showToast(`🔒 ${_skipC} орлогын мөр хаасан сард байсан тул алгасагдав`, 'info', 5000);
     } catch (e) { showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй: ' + e.message, 'error', 6000); }
     render(); saveBtn.disabled = false;
     undoBtn.hidden = !rows.some(r => r.done);   // дөнгөж оруулсныг шууд буцааж болно
@@ -7548,8 +7549,24 @@ function reconOrdersList() {
 // Хуулгын матрицаас данс+хугацаа задлах (толгойн «Дансны дугаар»/«Гүйлгээний огноо» мөрөөс).
 function statementMeta(matrix) {
   let acct = '', period = '', opening = null, closing = null;
+  const rows = matrix || [];
   const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : null; };
-  for (const row of (matrix || []).slice(0, 14)) {
+  /* Шошгын дүн: ДАРААХ эхний тоон нүд, эс бол ӨМНӨХ хамгийн ойрхон тоон нүд.
+     Банк бүр өөр байрлуулдаг — Голомт заримдаа утгаа шошгоосоо ЗҮҮН талд бичдэг. */
+  const balNear = (cells, idx) => {
+    for (let i = idx + 1; i < cells.length; i++) { const n = num(cells[i]); if (n != null && cells[i]) return n; }
+    for (let i = idx - 1; i >= 0; i--) { const n = num(cells[i]); if (n != null && cells[i]) return n; }
+    return null;
+  };
+  const scanBal = (row) => {
+    const cells = (row || []).map(c => String(c == null ? '' : c).trim());
+    const b = cells.findIndex(c => /эхний\s*үлдэгдэл/i.test(c));
+    if (b >= 0 && opening == null) { const v = balNear(cells, b); if (v != null) opening = v; }
+    const e = cells.findIndex(c => /эцсийн\s*үлдэгдэл|дараагийн\s*үлдэгдэл|ending\s*balance|closing\s*balance/i.test(c));
+    if (e >= 0 && closing == null) { const v = balNear(cells, e); if (v != null) closing = v; }
+  };
+  // ── Толгой: данс, хугацаа, үлдэгдэл ──
+  for (const row of rows.slice(0, 14)) {
     const cells = (row || []).map(c => String(c == null ? '' : c).trim());
     // Данс: «Дансны дугаар» label-ын дараах эхний тоо агуулсан нүд (label→утга хооронд хоосон нүд байж болно)
     const j = cells.findIndex(c => /дансны дугаар/i.test(c));
@@ -7557,14 +7574,15 @@ function statementMeta(matrix) {
     // Хугацаа: «Гүйлгээний огноо» label-ын дараах эхний «YYYY-MM-DD - YYYY-MM-DD» нүд
     const k = cells.findIndex(c => /гүйлгээний огноо/i.test(c));
     if (k >= 0 && !period) { for (let i = k + 1; i < cells.length; i++) { if (/\d{4}-\d{2}-\d{2}\s*-\s*\d{4}-\d{2}-\d{2}/.test(cells[i])) { period = cells[i].replace(/\s+/g, ' '); break; } } }
-    // Эхний үлдэгдэл: label-ын дараах эхний тоон нүд
-    const b = cells.findIndex(c => /эхний\s*үлдэгдэл/i.test(c));
-    if (b >= 0 && opening == null) { for (let i = b + 1; i < cells.length; i++) { const n = num(cells[i]); if (n != null && cells[i]) { opening = n; break; } } }
-    // Эцсийн үлдэгдэл — хуулга БҮТЭН орсныг шалгах ганц бодит хэмжүүр
-    // (эхний + орлого − зарлага = эцсийн). Мөр дутуу уншигдвал энд зөрүү гарна.
-    const e = cells.findIndex(c => /эцсийн\s*үлдэгдэл/i.test(c));
-    if (e >= 0 && closing == null) { for (let i = e + 1; i < cells.length; i++) { const n = num(cells[i]); if (n != null && cells[i]) { closing = n; break; } } }
+    scanBal(row);
   }
+  /* ⭐ ЭЦСИЙН ҮЛДЭГДЭЛ НЬ ФАЙЛЫН ДООД ТАЛД БАЙДАГ (2026-09-11-нд амьд файлаар батлав):
+     толгойн 14 мөрийг л хайснаас болж оруулсан 3 хуулгын 2-т `closing_stated` ХООСОН
+     болж, «эхний + орлого − зарлага = эцсийн» шалгуур ОГТ ажиллахгүй байв — өөрөөр
+     хэлбэл хуулга бүтэн орсон эсэхийг шалгах гол хэмжүүр хоосон байсан.
+     ⚠ Гүйлгээний мөрийн «Үлдэгдэл» БАГАНА энд оногдохгүй: зөвхөн «эцсийн үлдэгдэл»
+       гэсэн ШОШГО агуулсан мөрийг хардаг. */
+  for (const row of rows.slice(Math.max(14, rows.length - 20))) scanBal(row);
   return { acct, period, opening, closing };
 }
 // Дансны дугаараар бүртгэлээс нэр/банк/салбар/зорилго олох (state.bankAccounts).
@@ -7905,9 +7923,6 @@ async function setIncomeStatus(fp, status, link, note) {
 async function persistStatement(matrix, parsed, fileName, taken) {
   const meta = statementMeta(matrix);
   if (!meta.acct) meta.acct = detectStatementAccount(matrix);
-  const _per = stmtPeriodDates(meta.period, (parsed && parsed.rows) || []);
-  assertMonthOpen(String(_per.from || '').slice(0, 7), 'хуулга оруулах');   // 🔒 хаасан сарын хуулга дахин орохгүй
-  assertMonthOpen(String(_per.to || '').slice(0, 7), 'хуулга оруулах');
   const built = buildStatementImport(parsed, meta, {
     fileName, own: ownAcctSet(), taken,   // нэг баримт нэг л мөрийг хаана (файлууд хооронд ч)
     personal: isPersonalAcct(meta.acct),  // 🙍 хувийн дансны ирэлт = компанийн орлого БИШ
@@ -7915,8 +7930,15 @@ async function persistStatement(matrix, parsed, fileName, taken) {
     rcpt: receiptFpIndex(state.usedFps instanceof Set ? state.usedFps : new Set()),
     owners: state.fpOwners instanceof Map ? state.fpOwners : new Map(),
   });
-  await saveStatementImport(built.stmt, built.incomes);
-  return built;
+  /* 🔒 ШИЛЖИЛТИЙН ХИЛ: хаасан сарын мөрийг АЛГАСНА, файлыг бүхэлдээ татгалзахгүй.
+     Нэг хуулга 2 сарыг хамардаг нь хэвийн (жиш. 08-01…09-11) — бүхэлдээ хаявал
+     хилээр дамжсан хуулга ОРОХ БОЛОМЖГҮЙ болно. Хуулгын мөр (файлын бүртгэл, нийт
+     дүн, үлдэгдэл) нь ҮРГЭЛЖ бичигдэнэ: тайлангийн тоог хөндөхгүй, харин хаасан
+     сарын эцсийн үлдэгдлийг мэдэх нь 9 сарын залгааг шалгахад ЗААВАЛ хэрэгтэй. */
+  const fresh = (built.incomes || []).filter(x => !monthLocked(String(x.dt || '').slice(0, 7)));
+  const skipped = (built.incomes || []).length - fresh.length;
+  await saveStatementImport(built.stmt, fresh);
+  return { ...built, incomes: fresh, skippedClosed: skipped };
 }
 /* ═══════ САР ХААХ (2026-09-11) ════════════════════════════════════════════════
    Хуучин сарын тоо ямар ч үед өөрчлөгдөж, «өнгөрсөн сард харсан тайлан» хүчингүй
@@ -8253,7 +8275,7 @@ function openReconcileModal() {
       try { if (typeof loadUsedReceipts === 'function') await loadUsedReceipts(); } catch (_) {}   // ⭐ бүртгэсэн PDF баримтын хээ (тулгалтын үндэс)
       try { await loadBankStatements(true); await loadBankIncome(true); } catch (_) {}             // хуулгын бүртгэл + орлогын мөр
       state._reconStmts = state._reconStmts || [];
-      let added = 0; const saveErrs = [], rcptTaken = new Set();
+      let added = 0, skippedClosed = 0; const saveErrs = [], rcptTaken = new Set();
       const _ownAccts = ownAcctSet();   // бүртгэсэн өөрийн данс — дотоод шилжүүлгийг орлогод тоолохгүй
       for (const file of files) {
         if (st) st.textContent = `📄 ${file.name} уншиж байна…`;
@@ -8279,11 +8301,13 @@ function openReconcileModal() {
           state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, personal: _prsnAcct, incomeCount: credits.length, incomeTotal, expenseCount: debits.length, expenseTotal: rawOut, rawIn, opening, closing, info });
           added++;
           // ⭐ Хуулга + орлогын мөрийг БҮРТГЭНЭ — цонх хаагдахад алга болохгүй.
-          try { await persistStatement(matrix, parsed, file.name, rcptTaken); }
+          try { const _ps = await persistStatement(matrix, parsed, file.name, rcptTaken); skippedClosed += (_ps.skippedClosed || 0); }
           catch (e2) { saveErrs.push(file.name + ': ' + e2.message); }
         } catch (err) { if (st) st.textContent = `⚠ ${file.name}: ${err.message}`; }
       }
       if (saveErrs.length) showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй — ' + saveErrs[0], 'error', 6000);
+      // 🔒 Хаасан сарын мөр алгасагдсаныг ИЛ хэлнэ — чимээгүй алга болох ёсгүй.
+      if (skippedClosed) showToast(`🔒 ${skippedClosed} орлогын мөр хаасан сард байсан тул алгасагдав (түүх хөндөгдөхгүй)`, 'info', 6000);
       if (!added && !state._reconStmts.length) return;
       const allRows = state._reconStmts.flatMap(s => s.rows);
       state._reconResult = reconcileByReceipts(allRows, { own: _ownAccts });   // ⭐ хээ-суурьтай: хуулга ↔ бүртгэсэн PDF баримт

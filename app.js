@@ -6773,6 +6773,19 @@ function isInternalTransfer(r, own) {
    «дотоод шилжүүлэг (өөрийн данс)» гэж бичсэн 56 мөр үнэхээр өөрийн данс мөн
    эсэхийг хэрэглэгч батлах аргагүй байв. Данс нь «Голомт ••7218» болж гарна.
    Цэвэр функц — `acctLabel`-ийг гаднаас авна (тестлэгдэнэ). */
+/* Хасагдсан мөрийг ШАЛТГААНААР бүлэглэнэ, дүнгээр эрэмбэлнэ. 56 мөрийг нэг
+   жагсаалтаар харуулахад хүн юуг ч уншихгүй — «маш их байна» гэсэн гомдол.
+   Бүлэг нь «дотоод шилжүүлэг · 45 мөр · 38.8сая» болж хумигдана. Цэвэр функц. */
+function dropReasonGroups(list) {
+  const by = new Map();
+  (list || []).forEach(x => {
+    const k = String((x && x.why) || '—');
+    if (!by.has(k)) by.set(k, { why: k, rows: [], sum: 0 });
+    const g = by.get(k);
+    g.rows.push(x); g.sum += Number(x && x.debit) || 0;
+  });
+  return [...by.values()].sort((a, b) => b.sum - a.sum);
+}
 function stmtDropWhy(x, acctLabel) {
   const why = String((x && x.why) || '');
   const d = String((x && x.acct) || '').replace(/\D/g, '');
@@ -6839,12 +6852,11 @@ async function openStatementClassifyModal() {
   const renderDropped = () => {
     if (!dropped.length) { droppedEl.innerHTML = ''; return; }
     const tot = dropped.reduce((a, x) => a + (Number(x.debit) || 0), 0);
-    const byWhy = dropped.reduce((o, x) => { const k = String(x.why || '—'); o[k] = (o[k] || 0) + (Number(x.debit) || 0); return o; }, {});
-    const sum = Object.entries(byWhy).sort((a, b) => b[1] - a[1])
-      .map(([w, v]) => `<span class="stmt-drop-tag">${escapeHtml(w)} · <b>${fmtMoney(v)}</b></span>`).join('');
+    // Шалтгаан нь БҮЛГИЙН гарчигт байгаа тул мөрөнд давтахгүй — зөвхөн харьцсан данс.
+    const rowHtml = (x) => `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(srcAcctLabel(x.acct) || '')}</i></div>`;
+    const grpHtml = (g) => `<details class="stmt-drop-g"><summary>${escapeHtml(g.why)} · <b>${g.rows.length}</b> мөр · <b>${fmtMoney(g.sum)}</b></summary>${g.rows.map(rowHtml).join('')}</details>`;
     droppedEl.innerHTML = `<details class="stmt-drop"><summary>⚠ Зардал болоогүй <b>${dropped.length}</b> мөр · ${fmtMoney(tot)} — шалтгааныг харах</summary>
-      <div class="stmt-drop-sum">${sum}</div>
-      ${dropped.map(x => `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(stmtDropWhy(x, srcAcctLabel))}</i></div>`).join('')}
+      ${dropReasonGroups(dropped).map(grpHtml).join('')}
       </details>`;
   };
   // Бүртгэлгүй эх данс (манай хуулгын данс) — нэг товчоор Данс&Карт-д бүртгэнэ → зардал дээр банкны нэр гарна.
@@ -6964,6 +6976,11 @@ async function openStatementClassifyModal() {
         // хэзээ ч чимээгүй болохгүй, хэрэглэгч юу яагаад ороогүйг цонхон дээр харна.
         const parsed = st.rows.filter(r => {
           if (!(r.debit > 0)) return false;
+          /* ⛔ ШИМТГЭЛ дотоод шилжүүлгээс ӨМНӨ (2026-09-11). «Charges for PORD»
+             мөрийн харьцсан данс нь ХҮЛЭЭН АВАГЧИЙНХ — өөрийн данс руу шилжүүлэхэд
+             тэр нь бидний данс болж, шимтгэл «дотоод шилжүүлэг» гэж хасагдана.
+             Шимтгэл нь банканд төлсөн ЖИНХЭНЭ зардал, хэнд шилжүүлснээс хамаарахгүй. */
+          if (isBankFee(r.memo)) return true;
           // ⚠ `acct` нь ЗААВАЛ — «яагаад зардал болоогүй»-г хэрэглэгч нүдээр шалгах
           //   ганц зам. Дансгүй бол «дотоод шилжүүлэг» гэдгийг батлах боломжгүй
           //   (2026-09-11: 56 мөр · 38.8сая хасагдсаныг шалгах аргагүй байв).

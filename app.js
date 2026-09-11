@@ -7368,11 +7368,23 @@ function _isInternalCredit(r) {
   const t = (String(r.memo || '') + ' ' + name).toLowerCase();
   return /данс\s*хоор|dans\s*hoor|hoorond|өөрийн\s*данс|хадгаламж|дотоод\s*шилж|валют\s*арилжаа|карт\s*цэнэглэ|зарлаг\w*\s*данс|данс\s*руу|дансруу/.test(t);
 }
+/* ⭐ Ирсэн мөр нь ОРЛОГО БИШ (өөрийн данс хооронд) эсэх — ЦОРЫН ГАНЦ ДҮРЭМ.
+   ⚠ БҮРТГЭСЭН ДАНС нь эрхэм дохио, гүйлгээний утга/нэр нь ЗӨВХӨН НӨӨЦ:
+     нэр хоосон ирсэн өөрийн шилжүүлэг зөвхөн үгээр таних аргад «орлого» болж
+     тоологдож, тулгалтын «Банкны нийт орлого» хөөрөгдөж байв (2026-09-11).
+     Зардлын импорт аль хэдийн `isInternalTransfer`-ээр (бүртгэсэн данс) таьдаг —
+     орлогын тал одоо ижил дүрэмтэй болов.
+   `own` дамжуулаагүй бол бүртгэлээс уншина (`ownAcctSet`). */
+function creditIsInternal(r, own) {
+  const set = own instanceof Set ? own : (typeof ownAcctSet === 'function' ? ownAcctSet() : new Set());
+  return isInternalTransfer(r, set) || _isInternalCredit(r);
+}
 function reconcileOrders(stmtRows, orders, opts) {
   const tol = (opts && opts.amountTol) || 500;   // ±500₮ (шимтгэл/тоймлолт)
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const digits = (s) => String(s || '').replace(/\D/g, '');
-  const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r)).map(r => ({ ...r, used: false }));
+  const _own = (opts && opts.own instanceof Set) ? opts.own : null;
+  const credits = stmtRows.filter(r => r.credit > 0 && !creditIsInternal(r, _own)).map(r => ({ ...r, used: false }));
   // Хуулгын огнооны хүрээ.
   const cdates = credits.map(c => String(c.date || '').slice(0, 10)).filter(Boolean).sort();
   const dMin = cdates[0] || '', dMax = cdates[cdates.length - 1] || '';
@@ -7599,7 +7611,7 @@ function receiptMatchFor(credit, idx, owners, taken) {
 // таамаглал/андуурал БАЙХГҮЙ — яг тэр PDF-ийг оруулж бүртгэсэн эсэхийг л шалгана. state.usedFps шаардана.
 function reconcileByReceipts(stmtRows, opts) {
   opts = opts || {};
-  const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r));
+  const credits = stmtRows.filter(r => r.credit > 0 && !creditIsInternal(r, opts.own));
   const usedFps = opts.usedFps || (state.usedFps instanceof Set ? state.usedFps : new Set());
   const fpOwners = opts.fpOwners || (state.fpOwners instanceof Map ? state.fpOwners : new Map());
   const idx = receiptFpIndex(usedFps);
@@ -7679,7 +7691,7 @@ function buildStatementImport(parsed, meta, opts) {
     const key = stmtIncomeKey(acct, r);
     const n = (occ.get(key) || 0) + 1; occ.set(key, n);
     // Дотоод шилжүүлэг = ОРЛОГО БИШ. Бүртгэсэн өөрийн дансаар (эрхэм) ба утга/нэрээр (нөөц).
-    const internal = isInternalTransfer(r, own) || _isInternalCredit(r);
+    const internal = creditIsInternal(r, own);
     const hit = internal ? null : receiptMatchFor(r, opts.rcpt, opts.owners, taken);
     const link = hit ? incomeLinkOfOwner(hit.owner) : { type: '', id: '' };
     incomes.push({
@@ -7959,7 +7971,8 @@ function incomeReportHtml(res) {
   const period = stmts.map(s => s.period).filter(Boolean)[0] || '';
   const matchPct = totalIncome > 0 ? Math.round((matchedSum / totalIncome) * 100) : 0;
   // Бүх бизнесийн орлогын мөр (дотоод шилжүүлэг хассан) — топ төлөгч, өдрийн хандлагад
-  const bizCredits = stmts.flatMap(s => (s.rows || []).filter(r => r.credit > 0 && !_isInternalCredit(r)));
+  const _bizOwn = ownAcctSet();
+  const bizCredits = stmts.flatMap(s => (s.rows || []).filter(r => r.credit > 0 && !creditIsInternal(r, _bizOwn)));
   // Топ 10 төлөгч
   const byPayer = {};
   bizCredits.forEach(c => { const k = String(c.name || '').trim() || (String(c.memo || '').slice(0, 24) || '—'); byPayer[k] = (byPayer[k] || 0) + c.credit; });
@@ -8194,6 +8207,7 @@ function openReconcileModal() {
       try { await loadBankStatements(true); await loadBankIncome(true); } catch (_) {}             // хуулгын бүртгэл + орлогын мөр
       state._reconStmts = state._reconStmts || [];
       let added = 0; const saveErrs = [], rcptTaken = new Set();
+      const _ownAccts = ownAcctSet();   // бүртгэсэн өөрийн данс — дотоод шилжүүлгийг орлогод тоолохгүй
       for (const file of files) {
         if (st) st.textContent = `📄 ${file.name} уншиж байна…`;
         try {
@@ -8204,7 +8218,7 @@ function openReconcileModal() {
           parsed.rows.forEach(r => { r._srcAcct = meta.acct; });
           const credits = parsed.rows.filter(r => r.credit > 0);
           const debits = parsed.rows.filter(r => r.debit > 0);
-          const incomeTotal = credits.filter(r => !_isInternalCredit(r)).reduce((s, r) => s + r.credit, 0);   // бизнесийн орлого (дотоод шилжүүлэг хассан)
+          const incomeTotal = credits.filter(r => !creditIsInternal(r, _ownAccts)).reduce((s, r) => s + r.credit, 0);   // бизнесийн орлого (дотоод шилжүүлэг хассан)
           const rawIn = credits.reduce((s, r) => s + r.credit, 0);
           const rawOut = debits.reduce((s, r) => s + r.debit, 0);
           const opening = meta.opening;
@@ -8222,7 +8236,7 @@ function openReconcileModal() {
       if (saveErrs.length) showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй — ' + saveErrs[0], 'error', 6000);
       if (!added && !state._reconStmts.length) return;
       const allRows = state._reconStmts.flatMap(s => s.rows);
-      state._reconResult = reconcileByReceipts(allRows);   // ⭐ хээ-суурьтай: хуулга ↔ бүртгэсэн PDF баримт
+      state._reconResult = reconcileByReceipts(allRows, { own: _ownAccts });   // ⭐ хээ-суурьтай: хуулга ↔ бүртгэсэн PDF баримт
       state._reconResult._orderCount = (state.usedFps instanceof Set) ? state.usedFps.size : 0;
       state._reconResult._stmts = state._reconStmts;
       if (st) st.textContent = '';

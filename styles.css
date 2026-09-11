@@ -6866,3 +6866,13 @@ select.no-asar-len {
 /* Барьцаа буцаах гүйлгээний утга — бүтэн өргөнөөр, дарж хуулна */
 .dep-acct.dep-memo { width: 100%; text-align: left; white-space: normal; word-break: break-word;
   border-radius: 10px; }
+
+/* ── Хуулгын бүртгэл / хаагдаагүй орлого (тулгалтын цонх) ── */
+.recon-row.warn-row { background: var(--warn-soft); }
+.recon-ok { color: var(--ok); }
+.recon-bad { color: var(--danger); }
+.recon-empty.recon-ok { color: var(--ok); }
+.inc-btn { padding: 1px 7px; margin-left: 4px; font-size: var(--fs-xs); }
+.stmt-banner { font-size: var(--fs-sm); color: var(--text-soft); background: var(--panel-hover);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

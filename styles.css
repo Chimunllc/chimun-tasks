@@ -6509,13 +6509,13 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-drop-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stmt-drop-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stmt-drop-row i { color: var(--muted); font-style: normal; white-space: nowrap; font-size: var(--fs-xs); }
-/* Шалтгаанаар нэгтгэсэн тойм — «56 мөр» гэдгийг задлахын өмнө юу нь хэд болохыг
-   нэг харцаар. Задаргаагүй бол 38.8саяыг мөр бүрээр нэмж шалгах болно. */
-.stmt-drop-sum { display: flex; flex-wrap: wrap; gap: var(--space-2);
-  padding: var(--space-2) 0 var(--space-1); }
-.stmt-drop-tag { font-size: var(--fs-xs); color: var(--text-soft);
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: 2px 8px; white-space: nowrap; }
+/* Шалтгаан бүр өөрийн нугалаатай — 56 мөрийг нэг жагсаалтаар харуулбал хүн
+   юуг ч уншихгүй. Хумигдсан үедээ «дотоод шилжүүлэг · 45 мөр · 38.8сая». */
+.stmt-drop-g { border-top: 1px solid var(--border); padding: var(--space-1) 0; }
+.stmt-drop-g > summary { cursor: pointer; color: var(--text-soft);
+  padding: var(--space-1) 0; font-size: var(--fs-sm); }
+.stmt-drop-g[open] > summary { color: var(--warn); font-weight: 600; }
+.stmt-drop-g .stmt-drop-row { padding-left: var(--space-3); }
 @media (max-width: 620px) {
   /* Шалтгаан нь одоо дансаа авч явдаг тул урт — нэг мөрөнд шахагдвал таслагдана */
   .stmt-drop-row { flex-wrap: wrap; }

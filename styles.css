@@ -6555,6 +6555,18 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .fin-grp-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fin-grp-n { color: var(--muted); font-weight: 400; }
 .fin-grp-s { color: var(--muted); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* «Зардал БИШ» бүлэг (эзний зээл, барьцаа буцаалт) — ашгийг бууруулдаггүй тул
+   жинхэнэ зардлаас ялгаж харуулна: тасархай хүрээ, бүдэг бичиг. */
+.fin-grp-neutral { color: var(--muted); }
+.fin-grp-neutral .fin-grp-s { font-weight: 600; }
+.fin-grp-neutral.fin-grp-1 { border-left-style: dashed; border-left-color: var(--border-strong); }
+.fin-grp-neutral.fin-grp-2 { border-left-style: dashed; border-left-color: var(--border); }
+.fin-grp-neutral .fin-grp-l::after {
+  content: 'зардалд ОРОХГҮЙ'; margin-left: var(--space-2);
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: .03em;
+  color: var(--muted); border: 1px dashed var(--border-strong);
+  border-radius: 20px; padding: 1px 7px; white-space: nowrap;
+}
 .fin-caret { display: inline-block; transition: transform .12s; color: var(--muted); }
 .fin-caret.closed { transform: rotate(-90deg); }
 

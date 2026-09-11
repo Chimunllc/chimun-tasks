@@ -2114,6 +2114,8 @@ async function uploadReceipt(file, requestId, kind, taskTitle = '') {
    UI rendering нь tasks-той хамт нэгтгэн харагдана (sidebar Хүсэлт view-р шүүгдэнэ). */
 
 async function saveFinanceRequest(r, deleted = false) {
+  // 🔒 Хаасан сар — зардал ЗАСАГДАХГҮЙ (кэш бичихээс ӨМНӨ шалгана)
+  assertMonthOpen(String((r && r.requested_at) || '').slice(0, 7), deleted ? 'зардал устгах' : 'зардлын бичилт');
   // localStorage кэш
   saveFinanceCache();
   if (!state.config.financeUrl) return;
@@ -6759,6 +6761,7 @@ function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[
 async function clearMonthExpenses(month) {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   month = month || state.finReportMonth || todayStr().slice(0, 7);
+  if (monthLocked(month)) { showToast(`🔒 ${month} сар хаагдсан — цэвэрлэх боломжгүй`, 'warn', 4000); return; }
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted' && String(r.requested_at || '').slice(0, 7) === month);
   if (!rows.length) { showToast(`${month} сард зардал алга`, 'warn', 2500); return; }
   const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
@@ -6772,6 +6775,7 @@ async function clearMonthExpenses(month) {
 async function openStatementClassifyModal() {
   if (!state.isCEO && !canSeeAllFinance()) { showToast('Танд энэ эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
+  loadClosedMonths();   // 🔒 хаасан сарын түгжээ (бичихээс өмнө ачаалагдсан байх)
   await loadBankAccounts(true);   // Данс & Карт бүртгэлээс эзэн/салбар/зорилгыг шинэ авч урьдчилан сонгоно
   await loadExpenseLearn();       // хуваалцсан суралцлагаар салбар/ангилал таамаглана
   await loadPersonalSettlements(true);   // хувийн данс: нөхөн олголтын дэвтэр (өр тооцоход)
@@ -7767,6 +7771,10 @@ function companyAcctList() {
 }
 // Санхүү тайлангийн тууз: сарын хуулга бүрэн уу + хаагдаагүй орлого хэд.
 function stmtCoverageHtml(month) {
+  if (monthLocked(month)) {
+    const i = closedMonths()[String(month).slice(0, 7)] || {};
+    return `<b class="recon-ok">🔒 ${escapeHtml(String(month))} сар ХААГДСАН</b> <span class="mut">${escapeHtml(String(i.at || '').slice(0, 10))}${i.by ? ' · ' + escapeHtml(memberName(i.by) || String(i.by)) : ''} — зардал, орлого, хуулга засагдахгүй</span>`;
+  }
   if (!state.bankStatements || !state.bankIncome) return '<span class="mut">Хуулгын бүртгэл ачаалж байна…</span>';
   const miss = stmtMonthMissingAccts(state.bankStatements, month, companyAcctList());
   const os = incomeOpenStats(state.bankIncome, month);
@@ -7832,6 +7840,8 @@ async function saveStatementImport(stmt, incomes) {
 // Орлогын мөрийг хаах (төлөв + холбоос). Хэн, хэзээ хаасан нь үлдэнэ.
 async function setIncomeStatus(fp, status, link, note) {
   if (!fp || !DB_ANON_KEY) return false;
+  const _row = (state.bankIncome || []).find(x => x.fp === fp);
+  assertMonthOpen(String((_row && _row.dt) || '').slice(0, 7), 'орлогын мөр хаах');   // 🔒
   const body = {
     status, link_type: (link && link.type) || '', link_id: (link && link.id) || '',
     decided_by: state.me, decided_at: new Date().toISOString(),
@@ -7851,6 +7861,9 @@ async function setIncomeStatus(fp, status, link, note) {
 async function persistStatement(matrix, parsed, fileName, taken) {
   const meta = statementMeta(matrix);
   if (!meta.acct) meta.acct = detectStatementAccount(matrix);
+  const _per = stmtPeriodDates(meta.period, (parsed && parsed.rows) || []);
+  assertMonthOpen(String(_per.from || '').slice(0, 7), 'хуулга оруулах');   // 🔒 хаасан сарын хуулга дахин орохгүй
+  assertMonthOpen(String(_per.to || '').slice(0, 7), 'хуулга оруулах');
   const built = buildStatementImport(parsed, meta, {
     fileName, own: ownAcctSet(), taken,   // нэг баримт нэг л мөрийг хаана (файлууд хооронд ч)
     rcpt: receiptFpIndex(state.usedFps instanceof Set ? state.usedFps : new Set()),
@@ -7858,6 +7871,81 @@ async function persistStatement(matrix, parsed, fileName, taken) {
   });
   await saveStatementImport(built.stmt, built.incomes);
   return built;
+}
+/* ═══════ САР ХААХ (2026-09-11) ════════════════════════════════════════════════
+   Хуучин сарын тоо ямар ч үед өөрчлөгдөж, «өнгөрсөн сард харсан тайлан» хүчингүй
+   болдог байв. Хаасан сар ХӨДӨЛӨХГҮЙ: алдаа гарвал дараагийн сард залруулга
+   бичнэ, хаасан сарыг ЗАСАХГҮЙ. Хадгалалт = app_config['closed_months'].
+   ⚠ Шинэ хүснэгт үүсгээгүй — { '2026-08': {at, by, note} } гэсэн жижиг тохиргоо. */
+const CLOSED_M_KEY = 'closed_months';
+function closedMonths() { return (state.closedMonths && typeof state.closedMonths === 'object') ? state.closedMonths : {}; }
+function monthIsClosed(cfg, month) {
+  const m = String(month || '').slice(0, 7);
+  return !!(m && cfg && cfg[m]);
+}
+function monthLocked(month) { return monthIsClosed(closedMonths(), month); }
+// Бичих гэж байгаа сар хаалттай бол ТОДОРХОЙ мессежтэй унана — чимээгүй бүтэлгүйтэхгүй.
+function assertMonthOpen(month, what) {
+  const m = String(month || '').slice(0, 7);
+  if (!m || !monthLocked(m)) return;
+  throw new Error(`🔒 ${m} сар хаагдсан — ${what || 'бичилт'} хийх боломжгүй. Шаардлагатай бол CEO сарыг нээнэ (Санхүү → Тайлан).`);
+}
+/* Сар хаахад БЭЛЭН эсэх — шалтгаанын жагсаалт. Хоосон = бэлэн. Цэвэр функц (тестлэгдэнэ).
+   CEO эдгээрийг үл хэрэгсэж хааж ч болно (зориудаар — шалтгаан нь бичлэгт үлдэнэ). */
+function closeMonthBlockers(stmts, income, regAccts, month) {
+  const out = [];
+  const miss = stmtMonthMissingAccts(stmts, month, regAccts);
+  if (miss.length) out.push({ kind: 'stmt', n: miss.length, accts: miss, why: `${miss.length} дансны хуулга ороогүй` });
+  const os = incomeOpenStats(income, month);
+  if (os.n) out.push({ kind: 'income', n: os.n, sum: os.sum, why: `${os.n} орлогын мөр хаагдаагүй (${os.sum}₮)` });
+  const inMonth = (g) => {
+    if (g.kind === 'gap') return String(g.from || '').slice(0, 7) <= month && String(g.to || '').slice(0, 7) >= month;
+    const p = String(g.id || '').split('|');   // id = данс|эхлэх|дуусах
+    return String(p[1] || '').slice(0, 7) === month || String(p[2] || '').slice(0, 7) === month;
+  };
+  const gaps = (stmtChainCheck(stmts) || []).filter(inMonth);
+  if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
+  return out;
+}
+async function loadClosedMonths(force) {
+  if (state.closedMonths && !force) return state.closedMonths;
+  const v = await loadAppConfig(CLOSED_M_KEY);
+  state.closedMonths = (v && typeof v === 'object') ? v : {};
+  return state.closedMonths;
+}
+async function setMonthClosed(month, closed, note) {
+  const m = String(month || '').slice(0, 7);
+  if (!m) return false;
+  const cur = { ...closedMonths() };
+  if (closed) cur[m] = { at: new Date().toISOString(), by: state.me, note: String(note || '').slice(0, 200) };
+  else delete cur[m];
+  await saveAppConfig(CLOSED_M_KEY, cur);
+  state.closedMonths = cur;
+  return true;
+}
+// Сар хаах / нээх — зөвхөн CEO. Хаахаас өмнө бэлэн эсэхийг шалгаж ил хэлнэ.
+async function toggleMonthClose(month) {
+  if (!state.isCEO) { showToast('Зөвхөн CEO сар хааж/нээж болно', 'warn', 3000); return; }
+  const m = String(month || '').slice(0, 7);
+  await loadClosedMonths(true);
+  if (monthLocked(m)) {
+    const info = closedMonths()[m] || {};
+    const ok = await showConfirm(`${m} сар ${String(info.at || '').slice(0, 10)}-нд хаагдсан.\n\nНээвэл тэр сарын тоо дахин өөрчлөгдөж, өмнө харсан тайлан хүчингүй болно. Нээх үү?`,
+      { title: '🔓 Хаалттай сарыг нээх', okText: 'Тийм, нээ', danger: true });
+    if (!ok) return;
+    try { await setMonthClosed(m, false); showToast(`🔓 ${m} нээгдлээ`, 'success', 2500); render(); }
+    catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); }
+    return;
+  }
+  try { await Promise.all([loadBankStatements(true), loadBankIncome(true), loadBankAccounts()]); } catch (e) { /* офлайн — доор шалгуур хоосон гарна */ }
+  const bl = closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), m);
+  const txt = bl.length
+    ? `⚠ ${m} хаахад бэлэн БИШ:\n\n${bl.map(b => '· ' + b.why).join('\n')}\n\nИйм байдлаар хаавал эдгээр дутуу зүйл тэр сард үүрд үлдэнэ. Ингэж хаах уу?`
+    : `${m} сарын бүх дансны хуулга орсон, орлогын мөр бүгд хаагдсан.\n\nХаасны дараа тэр сарын зардал, орлого, хуулга ЗАСАГДАХГҮЙ. Алдаа гарвал дараагийн сард залруулга бичнэ.`;
+  const ok = await showConfirm(txt, { title: '🔒 Сар хаах', okText: bl.length ? 'Ойлголоо, хаа' : 'Хаа', danger: !!bl.length });
+  if (!ok) return;
+  try { await setMonthClosed(m, true, bl.map(b => b.why).join(' · ')); showToast(`🔒 ${m} хаагдлаа`, 'success', 3000); render(); }
+  catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); }
 }
 // Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалт. Мэргэжлийн, хэвлэх/PDF-д зориулсан.
 function incomeReportHtml(res) {
@@ -7890,9 +7978,9 @@ function incomeReportHtml(res) {
   // Өмнөх сартай харьцуулалт — БҮРТГЭСЭН орлого (апп: M-Event төлбөр + NOMAAD орлого)
   const ym = (period.match(/(\d{4}-\d{2})/) || [])[1] || '';
   const prevYm = (() => { if (!ym) return ''; let [y, m] = ym.split('-').map(Number); m--; if (m < 1) { m = 12; y--; } return y + '-' + String(m).padStart(2, '0'); })();
-  // C7: «Бүртгэсэн орлого» = ОРЛОГО (барьцаагүй) — санхүүгийн orderRevenue-тэй нийцтэй. Өмнө түүхий
-  // paid_mnt (барьцаа багтсан) тоолж, орлогын тайлантай зөрж, барьцааг давхар тоолдог байв.
-  const recInc = (yy) => { if (!yy) return 0; let s = 0; (state.appOrders || []).forEach(o => { if (String(o.paid_date || '').slice(0, 7) === yy) s += orderRevenue(o, 'cash'); }); const npm = state.nomaadPayments || {}; Object.keys(npm).forEach(q => (npm[q] || []).forEach(p => { if (String(p.pay_date || '').slice(0, 7) === yy) s += Number(p.total) || 0; })); return s; };
+  // «Бүртгэсэн орлого» = мөнгөн суурийн орлого. ⭐ Санхүү тайлантай ИЖИЛ функцээр
+  // бодогдоно (finMonthIncome) — өмнө нь энд өөрийн дүрэм байсан тул хоёр дэлгэц зөрдөг байв.
+  const recInc = (yy) => { if (!yy) return 0; const m = finMonthIncome(yy, 'cash'); return m.evInc + m.noInc; };
   const thisRec = recInc(ym), prevRec = recInc(prevYm);
   const growth = prevRec > 0 ? Math.round((thisRec - prevRec) / prevRec * 100) : null;
   // Салбарын орлого = данс бүрийн бүртгэсэн салбараар (Орлого Nomaad→NOMAAD, Орлого Mevent→M-Event, бусад→Бусад)
@@ -15768,18 +15856,32 @@ function nomaadPaid(o) {
 // income_date сард нэмнэ. Ингэснээр Σ(бүх сар) = nomaadPaid(o) — задаргаа нийт дүнтэй тэнцэнэ.
 // Өмнө CEO самбар pay_date-аар, Тайлан/P&L бүх дүнг income_date сард оноож, олон удаагийн төлбөр
 // буруу сар руу шидэгддэг байв.
-function _nomaadMonthSum(log, incomeAmount, incomeDate, ym) {
+function _nomaadPayMonths(log, incomeAmount, incomeDate) {
   log = Array.isArray(log) ? log : [];
   const logSum = log.reduce((s, p) => s + (Number(p && p.total) || 0), 0);
-  let sum = log.reduce((s, p) => s + (String((p && p.pay_date) || '').slice(0, 7) === ym ? (Number(p.total) || 0) : 0), 0);
+  const out = {};
+  log.forEach(p => {
+    const v = Number(p && p.total) || 0; if (!v) return;
+    const m = String((p && p.pay_date) || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(m)) out[m] = (out[m] || 0) + v;
+  });
   const extra = Math.max(0, (Number(incomeAmount) || 0) - logSum);
-  if (extra > 0 && String(incomeDate || '').slice(0, 7) === ym) sum += extra;
-  return sum;
+  const em = String(incomeDate || '').slice(0, 7);
+  if (extra > 0 && /^\d{4}-\d{2}$/.test(em)) out[em] = (out[em] || 0) + extra;
+  return out;
+}
+function _nomaadMonthSum(log, incomeAmount, incomeDate, ym) {
+  return _nomaadPayMonths(log, incomeAmount, incomeDate)[ym] || 0;
 }
 function nomaadPaidInMonth(o, ym) {
   if (!o || !ym) return 0;
+  return nomaadPaidMonths(o)[ym] || 0;
+}
+// NOMAAD-ийн орсон мөнгө сараар ({ym: дүн}) — олон удаагийн төлбөр зөв сард унана.
+function nomaadPaidMonths(o) {
+  if (!o) return {};
   const log = (state.nomaadPayments && state.nomaadPayments[o.quote_no]) || [];
-  return _nomaadMonthSum(log, o.income_amount, o.income_date, ym);
+  return _nomaadPayMonths(log, o.income_amount, o.income_date);
 }
 // Тухайн сарын NOMAAD орлого — ЦОРЫН ГАНЦ дүрэм.
 // ⚠ ЦУЦАЛСАН захиалгын БОДИТООР ОРСОН мөнгө нь орлого ХЭВЭЭР.
@@ -21709,6 +21811,7 @@ async function openOrderCmpModal(id) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(id)); if (!o) return;
   if (!(can('orders.pay') || state.isCEO)) { showToast('Танд буулгалт бүртгэх эрх алга', 'warn', 3000); return; }
   loadUsedReceipts();
+  loadClosedMonths();   // 🔒 хаасан сарын түгжээ (бичихээс өмнө ачаалагдсан байх)
   const cur = parseOrderCmp(o.note);
   const total = Number(o.total_mnt) || 0;
   const modal = document.createElement('div'); modal.className = 'modal-bg';
@@ -23837,6 +23940,7 @@ function openBqPaymentModal(oid) {
   if (!o) return;
   if (!can('orders.pay')) { showToast('Танд төлбөр бүртгэх эрх олгогдоогүй', 'warn', 3000); return; }
   loadUsedReceipts();   // нэгдсэн баримтын жагсаалтыг шинэчил (шуурхай давхцал шалгах)
+  loadClosedMonths();   // 🔒 хаасан сарын түгжээ (бичихээс өмнө ачаалагдсан байх)
   const total = orderBilled(o), paid = Number(o.paid_mnt) || 0, bal = orderOwed(o);
   document.getElementById('bq-pay-modal')?.remove();
   const modal = document.createElement('div');
@@ -24000,6 +24104,9 @@ function openRefundModal(oid) {
     const amount = moneyVal(amtEl);
     if (amount <= 0) { showToast('Буцаах дүн оруулна уу', 'warn'); return; }
     if (!modal._file) { showToast('Гарах гүйлгээний PDF баримт хавсаргана уу', 'warn'); return; }
+    // 🔒 Буцаалт нь paid_mnt-ыг бууруулдаг тул тэр захиалгын орлогын сар хөдөлнө.
+    const _rfM = orderIncomeMonth(o, 'cash');
+    if (monthLocked(_rfM)) { showToast(`🔒 ${_rfM} сар хаагдсан — тэр сарын орлого бууруулах боломжгүй`, 'error', 6000); return; }
     const userNote = modal.querySelector('#rf-note').value.trim();
     // ⭐ Гараар бичсэн дүн БАРИМТААС зөрвөл чимээгүй бүртгэхгүй — мөнгө буруу бичигдвэл
     // хуулга тулгахад олдохгүй, барьцаа «буцаасан» болж дуусна. Хүнээр баталгаажуулна.
@@ -24049,6 +24156,9 @@ async function submitBqPayment(oid, modal, btn) {
   const isApp = !bqO;
   const receipts = (modal._receipts || []).slice();
   if (!receipts.length) { showToast('Банкны баримт (PDF) оруулна уу', 'warn'); return; }
+  // 🔒 Хаасан сар — тэр сарын орлого хөдөлж болохгүй (баримтын огноогоор шалгана)
+  const _lockM = receipts.map(r => String(r.date || '').slice(0, 7)).filter(Boolean).find(m => monthLocked(m));
+  if (_lockM) { showToast(`🔒 ${_lockM} сар хаагдсан — тэр сарын төлбөр бүртгэх боломжгүй. CEO сарыг нээнэ.`, 'error', 6000); return; }
   const method = modal.querySelector('#bqp-method')?.value || 'bank';
   btn.disabled = true;
   // Баримт БҮРИЙГ нэгдсэн ledger-т эзэмших (давхцвал тухайныг алгасна)
@@ -25806,8 +25916,8 @@ function orderRevenue(o, basis) {
 // Тухайн сарын Mevent орлого — задаргаатай (захиалга/ангилал/бараа)
 function meventIncome(month) {
   const catOf = _prodCatOf();
-  const orders = (state.appOrders || []).filter(o => _orderActive(o) &&
-    String(o.starts_at || o.created_at || '').slice(0, 7) === month);
+  // ⚠ Барааны/ангиллын задаргаа = ЭВЕНТИЙН сараар (accrual) — бараа тэр сард ажилласан.
+  const orders = (state.appOrders || []).filter(o => _orderActive(o) && orderIncomeMonth(o, 'accrual') === month);
   const byOrder = [], byCat = {}, byProd = {};
   let paidSum = 0, rentalSum = 0;
   orders.forEach(o => {
@@ -25934,6 +26044,20 @@ function finBasis() {
   if (state.finBasis === undefined) { try { state.finBasis = localStorage.getItem('finBasis') || 'accrual'; } catch (e) { state.finBasis = 'accrual'; } }
   return state.finBasis === 'cash' ? 'cash' : 'accrual';
 }
+/* ⭐ ОРЛОГО АЛЬ САРД ТООЛОГДОХ ВЭ — ЦОРЫН ГАНЦ ДҮРЭМ (2026-09-11).
+   'cash'    = мөнгө ОРСОН сар (`paid_date`). Хоосон бол эвентийн сар — түүхэн
+               Booqable мөрд paid_date байхгүй тул хасвал орлого чимээгүй алга болно.
+   'accrual' = эвент болсон сар (`starts_at`).
+   ⚠ Өмнө нь 3 газар 3 өөр дүрэм байсан: Тайлан эвентийн сараар, Тренд график
+     NOMAAD-ийн БҮХ мөнгийг `income_date` сард, Орлогын тайлан `paid_date`-аар.
+     Иймээс НЭГ сарын орлого 3 дэлгэцэд 3 өөр тоо гарч болдог байв.
+   ⚠ Хэсэгчилсэн төлбөр: `paid_date` нь СҮҮЛИЙН төлбөрийн огноо тул нэг захиалгын
+     бүх мөнгө тэр сард унана (мөрөөр задлах бол `bank_income` хэрэгтэй). */
+function orderIncomeMonth(o, basis) {
+  if (!o) return '';
+  const ev = String(o.starts_at || o.created_at || '').slice(0, 7);
+  return basis === 'cash' ? (String(o.paid_date || '').slice(0, 7) || ev) : ev;
+}
 // Сар бүрийн орлогыг САЛБАРААР нэмнэ. wantBr: 'ИВЕНТ'→M-Event, 'КЕМП'→NOMAAD, null→хоёул, бусад→байхгүй.
 function finAddOrderIncome(inc, wantBr, basis) {
   const inclEv = !wantBr || wantBr === 'ИВЕНТ';
@@ -25942,16 +26066,21 @@ function finAddOrderIncome(inc, wantBr, basis) {
     (state.nomaadOrders || []).forEach(o => {
       // ⚠ ЦУЦАЛСНЫГ БҮҮ ХАЯ — орсон мөнгө орлого хэвээр. Гэхдээ цуцалсанд
       //   ГЭРЭЭНИЙ дүн ХЭЗЭЭ Ч орохгүй (гүйцэтгэлийн суурьт ч).
-      const _cx = nomaadIsCancelled(o);
-      let mo, v;
-      if (basis === 'cash' || _cx) { mo = String(o.income_date || '').slice(0, 7); v = nomaadPaid(o); }
-      else { if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return; mo = String(o.date_start || '').slice(0, 7); v = nomaadEffTotal(o); }
+      if (basis === 'cash' || nomaadIsCancelled(o)) {
+        // Төлбөрийн лог сараар — олон удаагийн төлбөр зөв сард унана (өмнө бүх
+        // дүнг `income_date` сард шиддэг тул Тайлантай зөрдөг байв).
+        const by = nomaadPaidMonths(o);
+        Object.keys(by).forEach(mo => { if (by[mo]) inc[mo] = (inc[mo] || 0) + by[mo]; });
+        return;
+      }
+      if (!['deposit', 'contract', 'done'].includes(nomaadStage(o))) return;
+      const mo = String(o.date_start || '').slice(0, 7), v = nomaadEffTotal(o);
       if (/^\d{4}-\d{2}$/.test(mo) && v) inc[mo] = (inc[mo] || 0) + v;
     });
   }
   if (inclEv) {
     (state.appOrders || []).filter(o => _orderActive(o)).forEach(o => {
-      const mo = String(o.starts_at || o.created_at || '').slice(0, 7);
+      const mo = orderIncomeMonth(o, basis);
       if (!/^\d{4}-\d{2}$/.test(mo)) return;
       // ⚠ Түүхий total_mnt/paid_mnt-ыг ШУУД БҮҮ АШИГЛА — тэдгээрт БАРЬЦАА багтдаг.
       // Өмнө нь трендийн график толгойн P&L-ээс барьцааны хэмжээгээр их харагдаж,
@@ -26025,7 +26154,7 @@ function finExpMonth(t, basis) {
 // Тухайн сарын захиалгын орлого — эвент (M-Event) + NOMAAD, суурьаар. finBranchPnl ба Тайлан толгой
 // ХОЁУЛАН энэ ГАНЦ функцийг дуудна (C8: орлогын логикийг 2 газар давхардуулж, засвар-зөрүү гаргахгүй).
 function finMonthIncome(month, basis) {
-  const evList = (state.appOrders || []).filter(o => _orderActive(o) && String(o.starts_at || o.created_at || '').slice(0, 7) === month);
+  const evList = (state.appOrders || []).filter(o => _orderActive(o) && orderIncomeMonth(o, basis) === month);
   const evInc = evList.reduce((s, o) => s + orderRevenue(o, basis), 0);   // барьцаа хассан
   let noInc = 0, noN = 0;
   (state.nomaadOrders || []).forEach(o => {
@@ -27560,17 +27689,21 @@ function renderFinanceReport(wrap) {
 
   // ── Тулгалт + Excel татах ──
   const bar = document.createElement('div');
-  bar.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-bottom:6px;';
+  // Дизайн гэрээ: inline style → класс. `flex-wrap` нэмэгдсэн — 320px-д 7 товч нэг
+  // эгнээнд шахагдаж зүүн талынх дэлгэцээс гардаг байв.
+  bar.className = 'fin-actions';
   const canRecon = state.isCEO || canSeeAllFinance();
   bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
     + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Орлого тулгах</button>` : '')
     + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
     + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
     + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
+    + (state.isCEO ? `<button id="fin-month-lock" class="btn month-lock-btn${monthLocked(month) ? ' on' : ''}">${monthLocked(month) ? '🔒 ' + month + ' хаалттай' : '🔒 Сар хаах'}</button>` : '')
     + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
+  bar.querySelector('#fin-month-lock')?.addEventListener('click', () => toggleMonthClose(month));
   bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openReconcileModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
@@ -32320,6 +32453,7 @@ async function bootApp() {
   loadWorkerTypeOverrides(); // Цагийн⇄Үндсэн ажилтны төрөл (app_config override)
   loadBankAccounts();   // Данс & Карт бүртгэл (хуулгаар ангилах нь эндээс данс→салбарыг таьнна)
   loadExpenseLearn();   // Хуваалцсан суралцлага (худалдагч→салбар+ангилал, бүх компанид)
+  loadClosedMonths();   // 🔒 Хаасан сар — түгжээ нь бичих БҮХ замд (төлбөр/зардал/хуулга) ажиллах ёстой
   if (canSeeSalary()) { loadSalaries(); loadSalaryPayments(); }   // Сарын цалин (CEO/нягтлан)
   state._initialLoading = false;
   generateNotifications();

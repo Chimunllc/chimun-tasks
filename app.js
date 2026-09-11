@@ -7780,6 +7780,17 @@ function stmtBalanceCheck(s) {
   if (!s) return { ok: true, skip: 'хоосон' };
   if (String(s.ccy || 'MNT').toUpperCase() !== 'MNT') return { ok: true, skip: 'валют данс' };
   if (s.opening == null || s.closing_stated == null) return { ok: true, skip: 'үлдэгдэл хуулгад алга' };
+  /* ⛔ ХОЁУЛАА ЯГ 0 + гүйлгээтэй = үлдэгдэл УНШИГДААГҮЙ, тэнцэл зөрсөн БИШ
+     (2026-09-11, амьд датаар батлав). ХААН дансны хоёр хуулганд opening=0,
+     closing_stated=0 байтал 16.8сая орж 15.7сая гарсан — 16.8 орж 15.7 гарсан
+     данс 0 үлдэгдэлтэй байх боломжгүй. Задлагч «эхний/эцсийн үлдэгдэл» шошгыг
+     олоогүй үед `balNear` хажуугийн хоосон нүднээс 0 уншиж авдаг.
+     Ингэж шалгахгүй бол «1,070,023₮-ийн зардал дутуу» гэсэн ХУДАЛ анхааруулга
+     гарч, хүн байхгүй зардлыг хайна. Голомт хуулгууд үлдэгдлээ зөв өгдөг тул
+     тэдгээр хэвийн шалгагдсаар байна. */
+  const zeroBal = Math.round(Number(s.opening) || 0) === 0 && Math.round(Number(s.closing_stated) || 0) === 0;
+  const moved = (Number(s.credit_total) || 0) !== 0 || (Number(s.debit_total) || 0) !== 0;
+  if (zeroBal && moved) return { ok: true, skip: 'үлдэгдэл уншигдаагүй' };
   const diff = Math.round(Number(s.closing_calc) || 0) - Math.round(Number(s.closing_stated) || 0);
   return { ok: Math.abs(diff) <= 1, diff };   // ±1₮ = тоймлолт
 }
@@ -8354,7 +8365,10 @@ function renderStmtLedger() {
   };
   const stmtRows = (list || []).slice(0, 24).map(s => {
     const b = stmtBalanceCheck(s);
-    const mark = b.skip ? '<span class="mut">—</span>' : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
+    // «—» нь юу ч хэлдэггүй: шалгагдаагүй шалтгааныг ил бичнэ (үлдэгдэл алга /
+    // уншигдаагүй / валют данс). Эс бөгөөс «яагаад ✓ биш юм бол» гэж эргэлзэнэ.
+    const mark = b.skip ? `<span class="mut" title="Тэнцэл шалгагдаагүй">⃝ ${escapeHtml(b.skip)}</span>`
+      : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
     return `<div class="recon-row"><span class="recon-l">${isPersonalAcct(s.acct) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(s.acct))} · ${escapeHtml(String(s.period_from || '?'))} … ${escapeHtml(String(s.period_to || '?'))}${s.ccy && s.ccy !== 'MNT' ? ' · ' + escapeHtml(s.ccy) : ''}</span><span class="recon-amt">+${fmtMoney(s.credit_total)} / −${fmtMoney(s.debit_total)} · ${mark}</span></div>`;
   }).join('');
   const openRows = open.slice(0, 40).map(r => `<div class="recon-row">

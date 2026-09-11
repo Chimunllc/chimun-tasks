@@ -6416,11 +6416,18 @@ function merchantKey(memo) {
 function _memoCatLearn() { if (!state.memoCatLearn) { try { state.memoCatLearn = JSON.parse(localStorage.getItem('memoCatLearn') || '{}'); } catch (_) { state.memoCatLearn = {}; } } return state.memoCatLearn; }
 function learnMemoCat(memo, cat) { const k = merchantKey(memo); if (!k || k.length < 3 || !cat) return; const o = _memoCatLearn(); o[k] = cat; try { localStorage.setItem('memoCatLearn', JSON.stringify(o)); } catch (_) {} }
 // ── Салбар таамаглах (ЗӨВХӨН 3: ИВЕНТ/КЕМП/КАТЕРИНГ) — утга + сурсан худалдагч + эзний салбараар ──
+/* ⚠ JS-ийн `\b` нь ЗӨВХӨН латин үсэг/тоонд ажилладаг — КИРИЛЛ үгэнд хэзээ ч таарахгүй:
+   латин үгийн хил кирилл дээр ХЭЗЭЭ Ч таарахгүй. Тиймээс «асар», «гэр», «меню», «цэс»
+   гэсэн 4 түлхүүр чимээгүй ҮХСЭН байв — «Том асар боолт», «Асар хүндрүүлэгч» мэт
+   зардал салбаргүй үлдэж, тайланд Чимун ХХК дээр хуримтлагдаж байсан.
+   Кирилл үсгийг ойлгодог үгийн хилийг ГАРААР бичнэ. */
+const _CYR_W = 'А-Яа-яЁёӨөҮүA-Za-z0-9';
+function cyrWord(w) { return `(^|[^${_CYR_W}])${w}($|[^${_CYR_W}])`; }
 const BRANCH_KEYWORDS = [
-  ['КЕМП', /кемп|kemp|nomaad|номаад|\bcamp\b|глэмп|глампинг|майхан|\bгэр\b|юрт/i],
-  ['КАТЕРИНГ', /катеринг|catering|кейтеринг|цайл|цайллага|ресто|\bменю\b|\bцэс\b|тогооч|хүнс.*нийл/i],
+  ['КЕМП', new RegExp(`кемп|kemp|nomaad|номаад|\\bcamp\\b|глэмп|глампинг|майхан|${cyrWord('гэр')}|юрт`, 'i')],
+  ['КАТЕРИНГ', new RegExp(`катеринг|catering|кейтеринг|цайл|цайллага|ресто|${cyrWord('меню')}|${cyrWord('цэс')}|тогооч|хүнс.*нийл`, 'i')],
   // Барьцаа/гэрээний буцаалт = ЗӨВХӨН M-Event (түрээсийн барьцаа буцаадаг) — хэрэглэгч баталсан.
-  ['ИВЕНТ', /ивент|event|эвент|m.?event|м.?ивент|тайз|\bасар\b|стейж|стейдж|тоглолт|хурим|төрсөн\s*өдөр|барьцаа|гэрээ[а-яёөүА-ЯЁӨҮ\s]*буцаа/i],
+  ['ИВЕНТ', new RegExp(`ивент|event|эвент|m.?event|м.?ивент|тайз|${cyrWord('асар')}|стейж|стейдж|тоглолт|хурим|төрсөн\\s*өдөр|барьцаа|гэрээ[а-яёөүА-ЯЁӨҮ\\s]*буцаа`, 'i')],
 ];
 function _memoBranchLearn() { if (!state.memoBranchLearn) { try { state.memoBranchLearn = JSON.parse(localStorage.getItem('memoBranchLearn') || '{}'); } catch (_) { state.memoBranchLearn = {}; } } return state.memoBranchLearn; }
 function learnMemoBranch(memo, brCode) { const k = merchantKey(memo); if (!k || k.length < 3 || !brCode || !STMT_BRANCHES.some(([c]) => c === brCode)) return; const o = _memoBranchLearn(); o[k] = brCode; try { localStorage.setItem('memoBranchLearn', JSON.stringify(o)); } catch (_) {} }
@@ -12518,7 +12525,7 @@ function guessDocCategory(name) {
   const n = String(name || '').toLowerCase();
   if (/загвар|template|маягт|жишиг/.test(n)) return 'template';
   if (/гэрчилгээ|дүрэм|улсын\s*бүртгэл|тусгай\s*зөвшөөрөл|лиценз/.test(n)) return 'certificate';
-  if (/гэрээ|contract|\bабт\b/.test(n)) return 'contract';
+  if (new RegExp(`гэрээ|contract|${cyrWord('абт')}`).test(n)) return 'contract';
   if (/үнийн\s*санал|quote|quotation|нэхэмжлэх|invoice/.test(n)) return 'outgoing';
   if (/ирсэн|хүсэлт|албан\s*бичиг|letter/.test(n)) return 'incoming';
   return 'other';
@@ -24194,7 +24201,7 @@ const _HIST_CAT_KW = [
   [/тайз|подиум|шал/, 'Тайз'],
   [/халаагуур|дулаан|агааржуул|сэнс|кондиц|газан/, 'Халаалт, агааржуулалт'],
   [/генератор|цахилгаан|залгуур|кабель|сунгагч|розетк|эрчим/, 'Эрчим хүч, цахилгаан'],
-  [/\bор\b|гудас|аяны|кемп|зайдан/, 'Аяны хэрэгсэл'],
+  [new RegExp(`${cyrWord('ор')}|гудас|аяны|кемп|зайдан`), 'Аяны хэрэгсэл'],
 ];
 function _histNormAgg(s) {
   s = String(s || '').toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9а-яёүө ]/g, ' ');
@@ -26202,7 +26209,7 @@ function attachReportsHandlers() {
 const VAT_URL = `${DB_URL}/rest/v1/vat_receipts`;
 const VAT_HDR = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
 function vatNum(v) { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : 0; }
-function vatNorm(s) { return String(s || '').toLowerCase().replace(/ххк|ххн|\bхк\b|llc|ltd|co\b|group|групп/g, '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
+function vatNorm(s) { return String(s || '').toLowerCase().replace(new RegExp(`ххк|ххн|${cyrWord('хк')}|llc|ltd|co\\b|group|групп`, 'g'), '').replace(/[^0-9a-zа-яөү]+/gi, ' ').replace(/\s+/g, ' ').trim(); }
 function vatDateIso(v) {
   if (v == null || v === '') return '';
   if (typeof v === 'number') { const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000); return isNaN(d) ? '' : d.toISOString(); }

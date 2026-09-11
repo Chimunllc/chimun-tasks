@@ -6897,19 +6897,23 @@ async function openStatementClassifyModal() {
   // Set үед хоёр дахь нь «аль хэдийн орсон» гэж алгасагдаж зардал дутуу ордог байв.
   const importedFpCounts = () => { const m = new Map(); (state.financeRequests || []).forEach(r => { if (r.status === 'deleted') return; const x = String(r.justification || '').match(/\[#([^\]]+)\]/); if (x) m.set(x[1], (m.get(x[1]) || 0) + 1); }); return m; };
   let lastFiles = [];
+  // Уншсан хуулга бүрийн бүртгэл — ЗАРДАЛ ХАДГАЛАГДМАГЦ л DB-д бичнэ (зүгээр
+  // нээгээд хаасан файл «орсон хуулга» болж бүртгэгдэх ёсгүй).
+  let stmtQueue = [];
   // Файлыг ДАХИН уншиж болохоор функц болгосон: эх дансыг «хувийн» гэж бүртгэсний дараа
   // мөрүүдийг дахин үнэлэх шаардлагатай (нөхөн олголтын скан ч дахин ажиллана).
   const processFiles = async (files) => {
     if (!files || !files.length) return;
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
-      rows = []; dropped = []; settleAdd = {};
+      rows = []; dropped = []; settleAdd = {}; stmtQueue = [];
       const imp = importedFpCounts(); const occSeen = new Map();
       const own = ownAcctSet(); let skippedInternal = 0;
       for (const f of files) {
         const matrix = await statementFileToMatrix(f);
         const src = detectStatementAccount(matrix);
         const st = parseStatement(matrix);
+        stmtQueue.push({ matrix, parsed: st, fileName: f.name });
         (st.skipped || []).forEach(x => dropped.push(x));
         // ХУВИЙН данс: КОМПАНИЙН данснаас ирсэн орлого = нөхөн олголт (өр хаалт), зардал БИШ.
         // Дэвтэрт бичигдэж «компани эзэнд өртэй» үлдэгдлээс хасагдана.
@@ -7082,6 +7086,13 @@ async function openStatementClassifyModal() {
       } catch (e) { state._finBackfill = null; failedRows++; console.warn('Хуулгын мөр орсонгүй:', r.fp, e); }
     }
     showToast(`${n} зардал орлоо${toOwner ? ` · ${toOwner} эзэн рүү ангилуулахаар` : ''}${toMe ? ` · ${toMe} таны ангилахаар` : ''}${sal ? ` · ${sal} сарын цалин` : ''}${hrl ? ` · ${hrl} цагийн цалин` : ''}${filled ? ` · ✏️ ${filled} нөхөв` : ''}${rerouted ? ` · 👤 ${rerouted} эзэн рүү хуваарилав` : ''}${prsnSkipped ? ` · 🙍 ${prsnSkipped} хувийн (орсонгүй)` : ''}${settled ? ` · 💵 ${settled} нөхөн олголт` : ''}${failedRows ? ` · ⚠ ${failedRows} мөр ОРСОНГҮЙ (дахин оруулна уу)` : ''}`, failedRows ? 'warn' : 'success', failedRows ? 7000 : 4000);
+    // ⭐ Хуулга ба ОРЛОГЫН мөрийг бүртгэнэ — «ямар хуулга орсон» + захиалгад
+    //   холбогдоогүй орсон мөнгө хаана ч алга болохгүй болно.
+    try {
+      await loadBankIncome(true);
+      const rcptTaken = new Set();
+      for (const q of stmtQueue) await persistStatement(q.matrix, q.parsed, q.fileName, rcptTaken);
+    } catch (e) { showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй: ' + e.message, 'error', 6000); }
     render(); saveBtn.disabled = false;
     undoBtn.hidden = !rows.some(r => r.done);   // дөнгөж оруулсныг шууд буцааж болно
   };
@@ -7513,7 +7524,7 @@ function reconOrdersList() {
 
 // Хуулгын матрицаас данс+хугацаа задлах (толгойн «Дансны дугаар»/«Гүйлгээний огноо» мөрөөс).
 function statementMeta(matrix) {
-  let acct = '', period = '', opening = null;
+  let acct = '', period = '', opening = null, closing = null;
   const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : null; };
   for (const row of (matrix || []).slice(0, 14)) {
     const cells = (row || []).map(c => String(c == null ? '' : c).trim());
@@ -7526,8 +7537,12 @@ function statementMeta(matrix) {
     // Эхний үлдэгдэл: label-ын дараах эхний тоон нүд
     const b = cells.findIndex(c => /эхний\s*үлдэгдэл/i.test(c));
     if (b >= 0 && opening == null) { for (let i = b + 1; i < cells.length; i++) { const n = num(cells[i]); if (n != null && cells[i]) { opening = n; break; } } }
+    // Эцсийн үлдэгдэл — хуулга БҮТЭН орсныг шалгах ганц бодит хэмжүүр
+    // (эхний + орлого − зарлага = эцсийн). Мөр дутуу уншигдвал энд зөрүү гарна.
+    const e = cells.findIndex(c => /эцсийн\s*үлдэгдэл/i.test(c));
+    if (e >= 0 && closing == null) { for (let i = e + 1; i < cells.length; i++) { const n = num(cells[i]); if (n != null && cells[i]) { closing = n; break; } } }
   }
-  return { acct, period, opening };
+  return { acct, period, opening, closing };
 }
 // Дансны дугаараар бүртгэлээс нэр/банк/салбар/зорилго олох (state.bankAccounts).
 function bankAcctInfo(acctNo) {
@@ -7543,6 +7558,39 @@ function reconReceiptOwnerLabel(usedIn) {
   m = s.match(/fin:(\S+)/i); if (m) return 'Санхүү';
   return s || '';
 }
+// Бүртгэсэн PDF баримтуудыг ДҮН+ОГНОО-гоор индекслэнэ (нэр урт/богиноороо ялгаатай байж
+// болзошгүй тул). fp формат: FP-<дүн>-<YYYYMMDD>-<нэр>.
+// ⭐ Тулгалтын дүрэм ЭНД НЭГ газар — тулгалтын цонх ба хуулгын импорт хоёул үүнийг дуудна.
+function receiptFpIndex(usedFps) {
+  const idx = new Map();   // `<amt>-<date8>` → [{name, fp}]
+  (usedFps instanceof Set ? usedFps : new Set(usedFps || [])).forEach(fp => {
+    const m = String(fp).match(/^FP-(\d+)-(\d{8})-(.*)$/);
+    if (!m) return;
+    const k = m[1] + '-' + m[2];
+    if (!idx.has(k)) idx.set(k, []);
+    idx.get(k).push({ name: m[3], fp });
+  });
+  return idx;
+}
+/* Хуулгын орлогын мөр ↔ бүртгэсэн баримт. Хуулгын нэр PDF-ийнхээс УРТ байвал угтвар-таарлаар таарна.
+   ⚠ НЭГ БАРИМТ = НЭГ МӨР: `taken` (Set) нь аль хэдийн эзэмшсэн баримтыг хасна. Эс бөгөөс
+     ижил өдөр, ижил дүн, ижил төлөгчтэй ХОЁР бодит гүйлгээ НЭГ баримтаар хоёулаа
+     «бүртгэсэн» болж, бүртгэгдээгүй бодит төлбөр чимээгүй хаагдана. */
+function receiptMatchFor(credit, idx, owners, taken) {
+  if (!(idx instanceof Map) || !credit) return null;
+  const amt = Math.round(Number(credit.credit) || 0);
+  const d8 = String(credit.date || '').slice(0, 10).replace(/-/g, '');
+  const nm = _normFp(credit.name);   // slice(32) fp-д хийгдсэн — угтвар-таарлыг гажуудуулахгүй
+  const cands = idx.get(amt + '-' + d8) || [];
+  const used = taken instanceof Set ? taken : null;
+  const hit = cands.find(r => {
+    if (used && used.has(r.fp)) return false;
+    const rn = r.name || ''; return !rn || !nm || rn === nm || rn.startsWith(nm) || nm.startsWith(rn);
+  });
+  if (!hit) return null;
+  if (used) used.add(hit.fp);
+  return { fp: hit.fp, owner: (owners instanceof Map ? owners.get(hit.fp) : '') || '' };
+}
 // ⭐ ХЭЭ-СУУРЬТАЙ ТУЛГАЛТ (үндсэн загвар): хуулгын гүйлгээ бүрийг бүртгэсэн PDF баримттай (bank_receipts)
 // хурууны хээгээр (дүн+огноо+илгээгч) тулгана. Таарвал БҮРТГЭСЭН, эс бол БҮРТГЭЭГҮЙ орлого. Нэрийн
 // таамаглал/андуурал БАЙХГҮЙ — яг тэр PDF-ийг оруулж бүртгэсэн эсэхийг л шалгана. state.usedFps шаардана.
@@ -7551,20 +7599,12 @@ function reconcileByReceipts(stmtRows, opts) {
   const credits = stmtRows.filter(r => r.credit > 0 && !_isInternalCredit(r));
   const usedFps = opts.usedFps || (state.usedFps instanceof Set ? state.usedFps : new Set());
   const fpOwners = opts.fpOwners || (state.fpOwners instanceof Map ? state.fpOwners : new Map());
-  const normFp = (s) => (typeof _normFp === 'function') ? _normFp(s) : String(s || '').replace(/[\s.,\-]/g, '').toUpperCase();
-  // Бүртгэсэн баримтуудыг ДҮН+ОГНОО-гоор индекслэнэ (нэр урт/богиноороо ялгаатай байж болзошгүй тул).
-  // fp формат: FP-<дүн>-<YYYYMMDD>-<нэр>. Хуулгын нэр PDF-ийнхээс УРТ байвал угтвар-таарлаар таарна.
-  const idx = new Map();   // `<amt>-<date8>` → [{name, fp}]
-  usedFps.forEach(fp => { const m = String(fp).match(/^FP-(\d+)-(\d{8})-(.*)$/); if (m) { const k = m[1] + '-' + m[2]; (idx.get(k) || (idx.set(k, []), idx.get(k))).push({ name: m[3], fp }); } });
+  const idx = receiptFpIndex(usedFps);
+  const taken = new Set();   // нэг баримт = нэг гүйлгээ
   const recorded = [], unrecorded = [];
   for (const c of credits) {
-    const amt = Math.round(Number(c.credit) || 0);
-    const d8 = String(c.date || '').slice(0, 10).replace(/-/g, '');
-    const nm = normFp(c.name);   // slice(32) fp-д хийгдсэн — угтвар-таарлыг гажуудуулахгүй
-    const cands = idx.get(amt + '-' + d8) || [];
-    // яг таарах ганц (дүн+огноо) — нэр нэг нь нөгөөгийн угтвар бол баталгаажина
-    let hit = cands.find(r => { const rn = r.name || ''; return !rn || !nm || rn === nm || rn.startsWith(nm) || nm.startsWith(rn); });
-    if (hit) recorded.push({ ...c, fp: hit.fp, owner: fpOwners.get(hit.fp) || '' });
+    const hit = receiptMatchFor(c, idx, fpOwners, taken);
+    if (hit) recorded.push({ ...c, fp: hit.fp, owner: hit.owner });
     else unrecorded.push({ ...c, fp: '' });
   }
   // Одоо байгаа render/тайлантай нийцүүлэх: recorded→matched (order=эзэмшигч), unrecorded→untracked.
@@ -7573,6 +7613,252 @@ function reconcileByReceipts(stmtRows, opts) {
     credit: c.credit, rows: [c], receipts: 1,
   }));
   return { recorded, unrecorded, matched, mismatch: [], missing: [], untracked: unrecorded, incomeCount: credits.length, _byReceipt: true };
+}
+/* ═══════ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════
+   ЯАГААД: зардал нь хуулгаас бүртгэгддэг байтал ОРЛОГО нь зөвхөн захиалгаас
+   бүртгэгддэг байв. Үүнээс 2 цоорхой: (1) «ямар хуулга орсон» гэдгийг апп мэдэхгүй,
+   (2) захиалгад холбогдоогүй орсон мөнгө хаана ч үлддэггүй → тайлангаас чимээгүй
+   хоцордог. Одоо хуулга бүр `bank_statements`-д, орлогын мөр бүр `bank_income`-д
+   бүртгэгдэж, хаагдаагүй мөр нь ил тоо болно.
+   ⚠ Эдгээр хүснэгт нь ТАЙЛАНГИЙН орлогыг ОДООХОНДОО хөндөхгүй — тайлан хэвээр
+     `orderRevenue`-аас бодогдоно. Энэ бол бүртгэл + бүрэн бүтэн байдлын шалгуур. */
+const INCOME_STATUS_LABEL = {
+  open: '🔓 Хаагдаагүй', order: '🎪 Захиалга', nomaad: '⛺ NOMAAD',
+  internal: '↔ Дотоод шилжүүлэг', other: '📦 Бусад орлого',
+};
+// Хуулгын хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдийн эхний/сүүлийн огноо.
+function stmtPeriodDates(period, rows) {
+  const m = String(period || '').match(/(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/);
+  if (m) return { from: m[1], to: m[2] };
+  const ds = (rows || []).map(r => String(r.date || '').slice(0, 10)).filter(Boolean).sort();
+  return { from: ds[0] || '', to: ds[ds.length - 1] || '' };
+}
+// Хуулгын канон id — ижил данс+хугацаа дахин оруулбал ОРЛУУЛНА (давхар бүртгэгдэхгүй).
+function stmtIdOf(acct, from, to) { return [String(acct || '?'), from || '?', to || '?'].join('|'); }
+// Орлогын мөрийн хээ. ⚠ Ижил өдөр, ижил дүн, ижил төлөгчтэй ХОЁР бодит гүйлгээ байдаг тул
+// дугаар (occ) ЗААВАЛ орно — эс бөгөөс хоёр дахь мөр PK-аар залгигдаж орлого дутуу болно.
+function stmtIncomeKey(acct, r) {
+  const a = String(acct || '').replace(/\D/g, '').slice(-10);
+  return 'IN-' + a + '-' + Math.round(Number(r.credit) || 0) + '-' + String(r.date || '').replace(/-/g, '')
+    + '-' + _normFp(r.name || r.memo).slice(0, 22);
+}
+function stmtIncomeFp(acct, r, occ) { return stmtIncomeKey(acct, r) + '-' + (Number(occ) || 1); }
+// bank_receipts.used_in → орлогын мөрийн төлөв / холбоос
+function incomeStatusOfOwner(owner) {
+  const s = String(owner || '');
+  if (/^nomaad:/i.test(s)) return 'nomaad';
+  if (/^mevent:/i.test(s)) return 'order';
+  return 'other';   // fin:/хоосон — баримт бүртгэгдсэн ч захиалгын орлого биш
+}
+function incomeLinkOfOwner(owner) {
+  const s = String(owner || '');
+  let m = s.match(/^mevent:#?(\S+)/i); if (m) return { type: 'order', id: m[1] };
+  m = s.match(/^nomaad:(\S+)/i); if (m) return { type: 'nomaad', id: m[1] };
+  return { type: '', id: '' };
+}
+/* Хуулга → {stmt, incomes}. ЦЭВЭР функц (тестлэгдэнэ): DB/state хөндөхгүй, бүх
+   хамаарал opts-оор ирнэ — own=өөрийн дансны багц, rcpt=баримтын индекс, owners=эзэн. */
+function buildStatementImport(parsed, meta, opts) {
+  opts = opts || {};
+  const rows = (parsed && parsed.rows) || [];
+  const acct = String((meta && meta.acct) || opts.acct || '');
+  const ccy = String((parsed && parsed.ccy) || 'MNT').toUpperCase();
+  const per = stmtPeriodDates(meta && meta.period, rows);
+  const id = stmtIdOf(acct, per.from, per.to);
+  const own = opts.own instanceof Set ? opts.own : new Set();
+  const taken = opts.taken instanceof Set ? opts.taken : new Set();   // нэг баримт = нэг мөр
+  const occ = new Map(), incomes = [];
+  let credit = 0, debit = 0;
+  rows.forEach(r => {
+    credit += Math.round(Number(r.credit) || 0);
+    debit += Math.round(Number(r.debit) || 0);
+    if (!(Number(r.credit) > 0)) return;
+    const key = stmtIncomeKey(acct, r);
+    const n = (occ.get(key) || 0) + 1; occ.set(key, n);
+    // Дотоод шилжүүлэг = ОРЛОГО БИШ. Бүртгэсэн өөрийн дансаар (эрхэм) ба утга/нэрээр (нөөц).
+    const internal = isInternalTransfer(r, own) || _isInternalCredit(r);
+    const hit = internal ? null : receiptMatchFor(r, opts.rcpt, opts.owners, taken);
+    const link = hit ? incomeLinkOfOwner(hit.owner) : { type: '', id: '' };
+    incomes.push({
+      fp: key + '-' + n, stmt_id: id, acct, dt: r.date || null,
+      amount: Math.round(Number(r.credit) || 0),
+      payer: String(r.name || '').slice(0, 120),
+      payer_acct: String(r.account || '').slice(0, 40),
+      memo: String(r.memo || '').slice(0, 200),
+      status: internal ? 'internal' : (hit ? incomeStatusOfOwner(hit.owner) : 'open'),
+      link_type: link.type, link_id: link.id,
+      note: hit ? ('баримт ' + hit.fp) : (internal ? 'өөрийн данс хооронд' : ''),
+    });
+  });
+  const opening = (meta && meta.opening != null) ? Math.round(meta.opening) : null;
+  const stmt = {
+    id, acct, ccy, period_from: per.from || null, period_to: per.to || null,
+    file_name: String(opts.fileName || '').slice(0, 160),
+    opening, closing_stated: (meta && meta.closing != null) ? Math.round(meta.closing) : null,
+    closing_calc: opening != null ? opening + credit - debit : null,
+    credit_total: credit, debit_total: debit, row_count: rows.length,
+  };
+  return { stmt, incomes };
+}
+// Хуулгын дотоод тэнцэл: эхний үлдэгдэл + орлого − зарлага = эцсийн үлдэгдэл.
+// ⚠ Валют дансны мөр ₮ болж хөрвүүлэгддэг тул толгойн (валют) үлдэгдэлтэй тэнцэхгүй → шалгахгүй.
+function stmtBalanceCheck(s) {
+  if (!s) return { ok: true, skip: 'хоосон' };
+  if (String(s.ccy || 'MNT').toUpperCase() !== 'MNT') return { ok: true, skip: 'валют данс' };
+  if (s.opening == null || s.closing_stated == null) return { ok: true, skip: 'үлдэгдэл хуулгад алга' };
+  const diff = Math.round(Number(s.closing_calc) || 0) - Math.round(Number(s.closing_stated) || 0);
+  return { ok: Math.abs(diff) <= 1, diff };   // ±1₮ = тоймлолт
+}
+/* Дансны хуулгын ЗАЛГАА. Дутуу хуулга = мөнгө чимээгүй алга болох цорын ганц бодит
+   эрсдэл, тиймээс цэвэр функц болгож тестлэв. Буцаана: {acct, kind, …}[]
+   kind: 'balance' = хуулгын дотоод тэнцэл зөрүүтэй (мөр дутуу уншигдсан)
+         'gap'     = хоёр хуулгын хооронд оруулаагүй хугацаа
+         'jump'    = өмнөх эцсийн ≠ дараагийн эхний үлдэгдэл (өөр данс/дутуу хуулга) */
+function stmtChainCheck(list) {
+  const out = [], byAcct = {};
+  (list || []).forEach(s => { if (!s) return; const a = String(s.acct || ''); (byAcct[a] || (byAcct[a] = [])).push(s); });
+  Object.keys(byAcct).sort().forEach(a => {
+    const rows = byAcct[a].filter(s => s.period_from && s.period_to)
+      .sort((x, y) => String(x.period_from).localeCompare(String(y.period_from)));
+    rows.forEach(s => { const b = stmtBalanceCheck(s); if (!b.ok) out.push({ acct: a, kind: 'balance', id: s.id, diff: b.diff }); });
+    for (let i = 1; i < rows.length; i++) {
+      const p = rows[i - 1], c = rows[i];
+      const next = addDays(String(p.period_to), 1);
+      if (String(c.period_from) > next) { out.push({ acct: a, kind: 'gap', from: next, to: addDays(String(c.period_from), -1) }); continue; }
+      if (p.closing_stated != null && c.opening != null && Math.abs(Number(p.closing_stated) - Number(c.opening)) > 1) {
+        out.push({ acct: a, kind: 'jump', id: c.id, diff: Number(c.opening) - Number(p.closing_stated) });
+      }
+    }
+  });
+  return out;
+}
+// Хаагдаагүй орлогын мөр — сараар (эсвэл бүх хугацаа). Энэ тоо 0 болтол сар «хаагдаагүй».
+function incomeOpenStats(rows, monthPrefix) {
+  let n = 0, sum = 0;
+  (rows || []).forEach(r => {
+    if (!r || r.status !== 'open') return;
+    if (monthPrefix && String(r.dt || '').slice(0, 7) !== monthPrefix) return;
+    n++; sum += Number(r.amount) || 0;
+  });
+  return { n, sum };
+}
+/* Тухайн сард хуулга ОРООГҮЙ данснууд. Цэвэр функц (тестлэгдэнэ).
+   ⚠ Данс бүрд хуулга ороогүй бол тэр дансны бүх орлого/зардал тайлангаас алга —
+     «дутуу орсон» гэдгийг зөвхөн энэ шалгуур барина. */
+function stmtMonthMissingAccts(list, month, regAccts) {
+  const from = month + '-01', to = month + '-31';
+  const have = new Set();
+  (list || []).forEach(s => {
+    if (!s || !s.period_from) return;
+    if (String(s.period_to || s.period_from) < from || String(s.period_from) > to) return;
+    const d = String(s.acct || '').replace(/\D/g, '').slice(-10);
+    if (d) have.add(d);
+  });
+  const out = [];
+  (regAccts || []).forEach(a => {
+    const d = String(a || '').replace(/\D/g, '').slice(-10);
+    if (d && !have.has(d) && !out.includes(d)) out.push(d);
+  });
+  return out;
+}
+// Бүртгэлтэй КОМПАНИЙН дансны дугаарууд (хувийн данс хуулга оруулах шаардлагагүй).
+function companyAcctList() {
+  return (state.bankAccounts || []).filter(a => a.active !== false && String(a.purpose || '') !== 'хувийн')
+    .map(a => String(a.account_no || '')).filter(Boolean);
+}
+// Санхүү тайлангийн тууз: сарын хуулга бүрэн уу + хаагдаагүй орлого хэд.
+function stmtCoverageHtml(month) {
+  if (!state.bankStatements || !state.bankIncome) return '<span class="mut">Хуулгын бүртгэл ачаалж байна…</span>';
+  const miss = stmtMonthMissingAccts(state.bankStatements, month, companyAcctList());
+  const os = incomeOpenStats(state.bankIncome, month);
+  const nm = (d) => { const i = bankAcctInfo(d); return i ? (i.name || d) : d; };
+  const parts = [];
+  parts.push(miss.length
+    ? `<b class="recon-bad">⚠ ${miss.length} дансны хуулга ороогүй</b> <span class="mut">${miss.map(d => escapeHtml(nm(d))).join(', ')}</span>`
+    : '<b class="recon-ok">✓ Бүх дансны хуулга орсон</b>');
+  parts.push(os.n
+    ? `<b class="recon-bad">🔓 ${os.n} орлогын мөр хаагдаагүй · ${fmtMoney(os.sum)}</b>`
+    : '<b class="recon-ok">✓ Орлогын мөр бүгд хаагдсан</b>');
+  return parts.join(' · ') + ' <button class="btn ui-raw inc-btn" data-open-recon>📊 Тулгах</button>';
+}
+async function loadBankStatements(force) {
+  if (!DB_ANON_KEY) return state.bankStatements || [];
+  if (state.bankStatements && !force) return state.bankStatements;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_statements?select=*&order=period_from.desc`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.bankStatements = await r.json();
+  } catch (e) { dataLoadFailed('loadBankStatements', e); state.bankStatements = state.bankStatements || []; }
+  return state.bankStatements;
+}
+async function loadBankIncome(force) {
+  if (!DB_ANON_KEY) return state.bankIncome || [];
+  if (state.bankIncome && !force) return state.bankIncome;
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_income?select=*&order=dt.desc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.bankIncome = await r.json();
+  } catch (e) { dataLoadFailed('loadBankIncome', e); state.bankIncome = state.bankIncome || []; }
+  return state.bankIncome;
+}
+/* Хуулга + орлогын мөрийг DB-д бичнэ.
+   ⚠ Орлогын мөр ХЭЗЭЭ Ч ДАРЖ БИЧИГДЭХГҮЙ (`ignore-duplicates`) — хүн гараар хаасан
+     төлөв дахин импорт хийхэд «open» болж буцахгүй. Хуулгын мөр нь орлуулагдана. */
+async function saveStatementImport(stmt, incomes) {
+  if (!DB_ANON_KEY || !stmt) return false;
+  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' };
+  const r1 = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_statements?on_conflict=id`, {
+    method: 'POST', headers: { ...H, Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ ...stmt, imported_by: state.me, imported_at: new Date().toISOString() }),
+  }, 15000);
+  if (!r1.ok) throw new Error('хуулга: HTTP ' + r1.status + ' ' + (await r1.text()).slice(0, 80));
+  const have = new Set((state.bankIncome || []).map(x => x.fp));
+  const fresh = (incomes || []).filter(x => !have.has(x.fp));
+  if (fresh.length) {
+    const r2 = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_income?on_conflict=fp`, {
+      method: 'POST', headers: { ...H, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify(fresh),
+    }, 25000);
+    if (!r2.ok) throw new Error('орлого: HTTP ' + r2.status + ' ' + (await r2.text()).slice(0, 80));
+  }
+  // локал кэш — дахин татахгүйгээр шинэ мөрүүд харагдана
+  state.bankIncome = (state.bankIncome || []).concat(fresh);
+  const list = (state.bankStatements || []).filter(s => s.id !== stmt.id);
+  list.unshift({ ...stmt, imported_by: state.me });
+  state.bankStatements = list;
+  return true;
+}
+// Орлогын мөрийг хаах (төлөв + холбоос). Хэн, хэзээ хаасан нь үлдэнэ.
+async function setIncomeStatus(fp, status, link, note) {
+  if (!fp || !DB_ANON_KEY) return false;
+  const body = {
+    status, link_type: (link && link.type) || '', link_id: (link && link.id) || '',
+    decided_by: state.me, decided_at: new Date().toISOString(),
+  };
+  if (note != null) body.note = String(note).slice(0, 200);
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_income?fp=eq.${encodeURIComponent(fp)}`, {
+    method: 'PATCH',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(body),
+  }, 15000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const row = (state.bankIncome || []).find(x => x.fp === fp);
+  if (row) Object.assign(row, body);
+  return true;
+}
+// Хуулга уншсан файлаас бүртгэл үүсгээд хадгална (импортын 2 зам ХОЁУЛАН үүнийг дуудна).
+async function persistStatement(matrix, parsed, fileName, taken) {
+  const meta = statementMeta(matrix);
+  if (!meta.acct) meta.acct = detectStatementAccount(matrix);
+  const built = buildStatementImport(parsed, meta, {
+    fileName, own: ownAcctSet(), taken,   // нэг баримт нэг л мөрийг хаана (файлууд хооронд ч)
+    rcpt: receiptFpIndex(state.usedFps instanceof Set ? state.usedFps : new Set()),
+    owners: state.fpOwners instanceof Map ? state.fpOwners : new Map(),
+  });
+  await saveStatementImport(built.stmt, built.incomes);
+  return built;
 }
 // Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалт. Мэргэжлийн, хэвлэх/PDF-д зориулсан.
 function incomeReportHtml(res) {
@@ -7708,6 +7994,46 @@ function openIncomeReport() {
   w.document.close();
   setTimeout(() => { try { w.print(); } catch (_) {} }, 400);
 }
+/* «Ямар хуулга орсон» + «хаагдаагүй орлого» — тулгалтын цонхны байнгын хэсэг.
+   Хуулга оруулаагүй байсан ч харагдана: CEO нээхэд ямар данс, ямар хугацаа орсон,
+   хаана цоорхой байгаа нь шууд гарна. */
+function renderStmtLedger() {
+  const list = state.bankStatements;
+  if (!list) return '<div class="recon-sec"><div class="recon-sec-h">📚 Оруулсан хуулга</div><div class="recon-empty">Ачаалж байна…</div></div>';
+  const gaps = stmtChainCheck(list);
+  const open = (state.bankIncome || []).filter(r => r.status === 'open')
+    .sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
+  const os = incomeOpenStats(state.bankIncome);
+  const acctLabel = (a) => { const i = bankAcctInfo(a); return i ? `${i.name || ''} ${i.bank ? '· ' + i.bank : ''}`.trim() : (a || 'тодорхойгүй данс'); };
+  // ⚠ Огноог ЭХЭНД — нарийн дэлгэцэд нэр хасагдахад ч «ямар хугацаа дутуу» нь харагдана.
+  const gapRow = (g) => g.kind === 'gap'
+    ? `<div class="recon-row warn-row"><span class="recon-l">⚠ ${escapeHtml(g.from)} … ${escapeHtml(g.to)} хуулга ОРООГҮЙ · ${escapeHtml(acctLabel(g.acct))}</span></div>`
+    : g.kind === 'balance'
+      ? `<div class="recon-row warn-row"><span class="recon-l">⚠ ${escapeHtml(acctLabel(g.acct))} — хуулгын тэнцэл зөрж байна (мөр дутуу уншигдсан)</span><span class="recon-amt">${fmtMoney(g.diff)}</span></div>`
+      : `<div class="recon-row warn-row"><span class="recon-l">⚠ ${escapeHtml(acctLabel(g.acct))} — өмнөх эцсийн ≠ дараагийн эхний үлдэгдэл</span><span class="recon-amt">${fmtMoney(g.diff)}</span></div>`;
+  const stmtRows = (list || []).slice(0, 24).map(s => {
+    const b = stmtBalanceCheck(s);
+    const mark = b.skip ? '<span class="mut">—</span>' : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
+    return `<div class="recon-row"><span class="recon-l">🏦 ${escapeHtml(acctLabel(s.acct))} · ${escapeHtml(String(s.period_from || '?'))} … ${escapeHtml(String(s.period_to || '?'))}${s.ccy && s.ccy !== 'MNT' ? ' · ' + escapeHtml(s.ccy) : ''}</span><span class="recon-amt">+${fmtMoney(s.credit_total)} / −${fmtMoney(s.debit_total)} · ${mark}</span></div>`;
+  }).join('');
+  const openRows = open.slice(0, 40).map(r => `<div class="recon-row">
+      <span class="recon-l">${escapeHtml(String(r.dt || ''))} · ${escapeHtml(r.payer || '')} · <span class="mut">${escapeHtml(String(r.memo || '').slice(0, 40))}</span></span>
+      <span class="recon-amt">${fmtMoney(r.amount)}
+        <button class="btn ui-raw inc-btn" data-inc-link="${escapeHtml(r.fp)}" title="Захиалгад холбох">🎪</button>
+        <button class="btn ui-raw inc-btn" data-inc-set="internal" data-inc-fp="${escapeHtml(r.fp)}" title="Дотоод шилжүүлэг">↔</button>
+        <button class="btn ui-raw inc-btn" data-inc-set="other" data-inc-fp="${escapeHtml(r.fp)}" title="Бусад орлого">📦</button>
+      </span></div>`).join('');
+  return `<div class="recon-sec${gaps.length ? ' warn' : ''}">
+      <div class="recon-sec-h">📚 Оруулсан хуулга <span class="recon-n">${(list || []).length}</span></div>
+      ${gaps.length ? `<div class="recon-rows">${gaps.map(gapRow).join('')}</div>` : '<div class="recon-empty recon-ok">✓ Цоорхой алга — бүх хуулга залгаатай</div>'}
+      ${stmtRows ? `<div class="recon-rows">${stmtRows}</div>` : '<div class="recon-empty">Хуулга оруулаагүй байна</div>'}
+    </div>
+    <div class="recon-sec${os.n ? ' warn' : ''}">
+      <div class="recon-sec-h">🔓 Хаагдаагүй орлого <span class="recon-n">${os.n}</span> ${os.n ? `<b>${fmtMoney(os.sum)}</b>` : ''}</div>
+      ${os.n ? `<div class="recon-rows">${openRows}</div><div class="recon-summary-sub">Мөр бүрийг хаана хамаарахаар тэмдэглэнэ: 🎪 захиалга · ↔ дотоод шилжүүлэг · 📦 бусад орлого. Энэ тоо 0 болтол сар хаагдаагүй.</div>`
+    : '<div class="recon-empty recon-ok">✓ Бүх орлогын мөр хаагдсан</div>'}
+    </div>`;
+}
 function renderReconcilePanel() {
   const res = state._reconResult;
   let resultHtml = '';
@@ -7740,6 +8066,7 @@ function renderReconcilePanel() {
   }
   return `<div class="recon-wrap">
     <div class="recon-intro">Бүх дансны хуулгыг (олон файл зэрэг) оруулбал нэгтгэж, M-Event + NOMAAD бүх орлоготой тулгаж, орлогын тайлан гаргана. Дотоод шилжүүлэг автоматаар хасагдана.</div>
+    ${renderStmtLedger()}
     <div class="recon-upload">
       <label class="btn btn-primary" for="recon-file" style="cursor:pointer;">📂 Хуулга(ууд) оруулах (.xlsx / .csv)</label>
       <input type="file" id="recon-file" accept=".xlsx,.xls,.csv" multiple style="display:none;" />
@@ -7777,8 +8104,9 @@ function openReconcileModal() {
       }
       try { if (typeof loadBankAccounts === 'function') await loadBankAccounts(); } catch (_) {}   // дансны нэр/салбар тайланд
       try { if (typeof loadUsedReceipts === 'function') await loadUsedReceipts(); } catch (_) {}   // ⭐ бүртгэсэн PDF баримтын хээ (тулгалтын үндэс)
+      try { await loadBankStatements(true); await loadBankIncome(true); } catch (_) {}             // хуулгын бүртгэл + орлогын мөр
       state._reconStmts = state._reconStmts || [];
-      let added = 0;
+      let added = 0; const saveErrs = [], rcptTaken = new Set();
       for (const file of files) {
         if (st) st.textContent = `📄 ${file.name} уншиж байна…`;
         try {
@@ -7799,8 +8127,12 @@ function openReconcileModal() {
           state._reconStmts = state._reconStmts.filter(s => !(s.acct === meta.acct && s.period === meta.period && meta.acct));
           state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, incomeCount: credits.length, incomeTotal, expenseCount: debits.length, expenseTotal: rawOut, rawIn, opening, closing, info });
           added++;
+          // ⭐ Хуулга + орлогын мөрийг БҮРТГЭНЭ — цонх хаагдахад алга болохгүй.
+          try { await persistStatement(matrix, parsed, file.name, rcptTaken); }
+          catch (e2) { saveErrs.push(file.name + ': ' + e2.message); }
         } catch (err) { if (st) st.textContent = `⚠ ${file.name}: ${err.message}`; }
       }
+      if (saveErrs.length) showToast('⚠ Хуулгын бүртгэл хадгалагдсангүй — ' + saveErrs[0], 'error', 6000);
       if (!added && !state._reconStmts.length) return;
       const allRows = state._reconStmts.flatMap(s => s.rows);
       state._reconResult = reconcileByReceipts(allRows);   // ⭐ хээ-суурьтай: хуулга ↔ бүртгэсэн PDF баримт
@@ -7827,8 +8159,30 @@ function openReconcileModal() {
     ov.querySelectorAll('[data-recon-open]').forEach(el => el.addEventListener('click', () => {
       ov.remove(); state.view = 'orders'; state.ordersRecon = false; state.ordersSearch = el.dataset.reconOpen; render();
     }));
+    // ── Хаагдаагүй орлогын мөрийг хаах ──
+    const setInc = async (fp, status, link, note) => {
+      try { await setIncomeStatus(fp, status, link, note); showToast('Хаалаа ✓', 'success', 1500); draw(); }
+      catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
+    };
+    ov.querySelectorAll('[data-inc-set]').forEach(b => b.addEventListener('click', () =>
+      setInc(b.dataset.incFp, b.dataset.incSet, null, b.dataset.incSet === 'internal' ? 'гараар: дотоод шилжүүлэг' : 'гараар: бусад орлого')));
+    ov.querySelectorAll('[data-inc-link]').forEach(b => b.addEventListener('click', async () => {
+      const fp = b.dataset.incLink;
+      const v = await showPrompt('Захиалгын дугаар (M-Event: 1470) эсвэл NOMAAD үнийн саналын дугаар (NC-2026-0094)', { title: '🎪 Орлогыг захиалгад холбох', placeholder: '1470' });
+      const s = String(v || '').trim(); if (!s) return;
+      // Байхгүй дугаарт холбохгүй — хуурамч холбоос нь тулгалтыг илүү дордуулна.
+      const isNomaad = /[A-Za-z]/.test(s);
+      const found = isNomaad
+        ? (state.nomaadOrders || []).some(o => String(o.quote_no || '').toUpperCase() === s.toUpperCase())
+        : (state.appOrders || []).some(o => String(o.number) === s.replace(/^#/, ''));
+      if (!found) { showToast(`«${s}» дугаартай захиалга олдсонгүй`, 'warn', 4000); return; }
+      await setInc(fp, isNomaad ? 'nomaad' : 'order', { type: isNomaad ? 'nomaad' : 'order', id: s.replace(/^#/, '') }, 'гараар холбов');
+    }));
   };
   draw();
+  // Хуулгын бүртгэл + орлогын мөр — цонх нээхэд шууд («ямар хуулга орсон» гэдэг нь
+  // хуулга оруулахаас ӨМНӨ харагдах ёстой мэдээлэл).
+  Promise.all([loadBankStatements(), loadBankIncome()]).then(() => { if (document.body.contains(ov)) draw(); }).catch(() => {});
   ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
   ov.classList.add('open');
 }
@@ -27222,6 +27576,18 @@ function renderFinanceReport(wrap) {
   bar.querySelector('#fin-recon-open')?.addEventListener('click', openReconcileModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
+
+  // ── ХУУЛГЫН БҮРЭН БҮТЭН БАЙДАЛ (сараар) — модалд нуугдах ёсгүй мэдээлэл ──
+  if (canRecon) {
+    if (state.bankStatements === undefined) { state.bankStatements = null; loadBankStatements().then(() => render()).catch(() => {}); }
+    if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()).catch(() => {}); }
+    if (state.bankAccounts === undefined) loadBankAccounts().then(() => render()).catch(() => {});
+    const ban = document.createElement('div');
+    ban.className = 'stmt-banner';
+    ban.innerHTML = stmtCoverageHtml(month);
+    wrap.appendChild(ban);
+    ban.querySelector('[data-open-recon]')?.addEventListener('click', openReconcileModal);
+  }
 
   // (Батлах самбар хасагдсан — санхүү нь хуулга суурьтай: зардал хуулгаас шууд орно, хүсэлт/батлах урсгал байхгүй.)
 

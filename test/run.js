@@ -6709,6 +6709,147 @@ need(['orderCustType']);
   ok(/markHidden/.test(src) && /visibilitychange/.test(src), 'scan: далд болсон мөч тэмдэглэгддэг');
 }
 
+// ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════
+// Цоорхой: зардал нь хуулгаас бүртгэгддэг байтал орлого нь зөвхөн захиалгаас
+// бүртгэгддэг байв → (1) ямар хуулга орсныг апп мэдэхгүй, (2) захиалгад
+// холбогдоогүй орсон мөнгө хаана ч үлддэггүй. Эдгээр тест тэр 2-ыг хамгаална.
+{
+  need(['stmtPeriodDates', 'stmtIdOf', 'stmtIncomeKey', 'stmtIncomeFp', 'buildStatementImport',
+    'stmtBalanceCheck', 'stmtChainCheck', 'incomeOpenStats', 'stmtMonthMissingAccts',
+    'receiptFpIndex', 'receiptMatchFor', 'incomeStatusOfOwner', 'incomeLinkOfOwner']);
+
+  // ── хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдээс ──
+  eq(F.stmtPeriodDates('2026-08-01 - 2026-08-31', []), { from: '2026-08-01', to: '2026-08-31' }, 'хуулга: хугацаа толгойноос');
+  eq(F.stmtPeriodDates('', [{ date: '2026-08-05' }, { date: '2026-08-02' }, { date: '2026-08-20' }]),
+     { from: '2026-08-02', to: '2026-08-20' }, 'хуулга: хугацаагүй бол мөрүүдийн эхний/сүүлийн огноо');
+  eq(F.stmtIdOf('5041234567', '2026-08-01', '2026-08-31'), '5041234567|2026-08-01|2026-08-31', 'хуулга: канон id');
+
+  // ── ИНВАРИАНТ: ижил өдөр, ижил дүн, ижил төлөгчтэй ХОЁР гүйлгээ = ХОЁР мөр ──
+  // (Хээг дугаарлахгүй бол хоёр дахь нь PK-аар залгигдаж орлого дутуу болно.)
+  {
+    const r = { credit: 500000, date: '2026-08-05', name: 'Бат', memo: 'түрээс' };
+    ok(F.stmtIncomeFp('5041234567', r, 1) !== F.stmtIncomeFp('5041234567', r, 2),
+       'орлого: ижил хээтэй 2 мөр ӨӨР fp (дугаарлагдана)');
+    ok(F.stmtIncomeKey('5041234567', r) !== F.stmtIncomeKey('3001234567', r),
+       'орлого: өөр данс = өөр хээ (хоёр дансны ижил мөр хоорондоо мөргөлдөхгүй)');
+  }
+
+  // ── buildStatementImport: нийт дүн, дотоод шилжүүлэг, баримтаар авто хаагдалт ──
+  {
+    const parsed = { ccy: 'MNT', rows: [
+      { date: '2026-08-02', credit: 500000, debit: 0, name: 'Бат',   account: '5049999999', memo: 'түрээс #1470' },
+      { date: '2026-08-02', credit: 500000, debit: 0, name: 'Бат',   account: '5049999999', memo: 'түрээс #1471' },  // ижил дүн/өдөр/нэр
+      { date: '2026-08-03', credit: 900000, debit: 0, name: 'Дорж',  account: '3001111111', memo: 'урьдчилгаа' },
+      { date: '2026-08-04', credit: 200000, debit: 0, name: 'Сүх',   account: '5041234567', memo: 'данс хооронд' },  // ӨӨРИЙН данс
+      { date: '2026-08-05', credit: 0,      debit: 300000, name: 'Нийлүүлэгч', account: '4001', memo: 'хүнс' },
+    ] };
+    const meta = { acct: '5041234567', period: '2026-08-01 - 2026-08-31', opening: 1000000, closing: 2800000 };
+    // Бат-ын ПЕРВЫЙ 500,000 нь PDF баримтаар #1470-д бүртгэгдсэн гэж үзье
+    const rcpt = F.receiptFpIndex(new Set(['FP-500000-20260802-БАТ']));
+    const owners = new Map([['FP-500000-20260802-БАТ', 'mevent:#1470']]);
+    const built = F.buildStatementImport(parsed, meta, { fileName: 'golomt.xlsx', own: new Set(['5041234567']), rcpt, owners });
+
+    eq(built.stmt.credit_total, 2100000, 'хуулга: орлогын нийт (дотоод ч тооцогдоно — дансны хөдөлгөөн)');
+    eq(built.stmt.debit_total, 300000, 'хуулга: зарлагын нийт');
+    eq(built.stmt.closing_calc, 1000000 + 2100000 - 300000, 'хуулга: бодсон эцсийн үлдэгдэл');
+    eq(built.stmt.row_count, 5, 'хуулга: мөрийн тоо');
+    eq(built.incomes.length, 4, 'орлого: зөвхөн ирсэн мөрүүд (зарлага орохгүй)');
+    eq(new Set(built.incomes.map(x => x.fp)).size, 4, 'орлого: 4 мөрийн хээ бүгд ӨӨР (давхардаж залгигдахгүй)');
+
+    const byMemo = {}; built.incomes.forEach(x => { byMemo[x.memo] = x; });
+    eq(byMemo['данс хооронд'].status, 'internal', 'орлого: өөрийн данснаас ирсэн = дотоод шилжүүлэг');
+    eq(byMemo['түрээс #1470'].status, 'order', 'орлого: PDF баримттай = захиалгын орлого (авто хаагдана)');
+    eq(byMemo['түрээс #1470'].link_id, '1470', 'орлого: захиалгын дугаар баримтаас гарна');
+    eq(byMemo['түрээс #1471'].status, 'open', 'орлого: баримтгүй 2 дахь мөр ХААГДААГҮЙ хэвээр');
+    eq(byMemo['урьдчилгаа'].status, 'open', 'орлого: захиалгад холбогдоогүй мөнгө = хаагдаагүй (алга болохгүй)');
+    eq(F.incomeOpenStats(built.incomes).n, 2, 'орлого: хаагдаагүй мөрийн тоо');
+    eq(F.incomeOpenStats(built.incomes).sum, 1400000, 'орлого: хаагдаагүй дүн');
+    eq(F.incomeOpenStats(built.incomes, '2026-07').n, 0, 'орлого: сараар шүүгдэнэ');
+  }
+
+  // ── эзэн → төлөв/холбоос ──
+  eq(F.incomeStatusOfOwner('mevent:#1470'), 'order', 'эзэн: mevent → захиалга');
+  eq(F.incomeStatusOfOwner('nomaad:NC-2026-0094'), 'nomaad', 'эзэн: nomaad → NOMAAD');
+  eq(F.incomeStatusOfOwner('fin:abc'), 'other', 'эзэн: санхүү → бусад орлого');
+  eq(F.incomeStatusOfOwner(''), 'other', 'эзэн: тодорхойгүй → бусад (захиалга гэж ХУДЛАА хэлэхгүй)');
+  eq(F.incomeLinkOfOwner('nomaad:NC-2026-0094'), { type: 'nomaad', id: 'NC-2026-0094' }, 'эзэн: NOMAAD дугаар гарна');
+
+  // ── хуулгын дотоод тэнцэл ──
+  eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: 100, closing_stated: 300, closing_calc: 300 }).ok, true, 'тэнцэл: таарав');
+  eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: 100, closing_stated: 300, closing_calc: 250 }).diff, -50, 'тэнцэл: зөрүү гарна (мөр дутуу уншигдсан)');
+  eq(F.stmtBalanceCheck({ ccy: 'USD', opening: 100, closing_stated: 300, closing_calc: 999 }).ok, true, 'тэнцэл: валют данс шалгагдахгүй (мөр ₮ болж хөрвүүлэгдсэн)');
+  eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: null, closing_stated: null }).ok, true, 'тэнцэл: үлдэгдэл хуулгад алга → шалгахгүй');
+
+  // ── ЗАЛГАА: дутуу хугацаа = мөнгө чимээгүй алга болох цорын ганц бодит эрсдэл ──
+  {
+    const A = { acct: '504', ccy: 'MNT', id: 'a', period_from: '2026-07-01', period_to: '2026-07-31', opening: 0, closing_stated: 1000, closing_calc: 1000 };
+    const B = { acct: '504', ccy: 'MNT', id: 'b', period_from: '2026-08-01', period_to: '2026-08-31', opening: 1000, closing_stated: 2000, closing_calc: 2000 };
+    eq(F.stmtChainCheck([A, B]), [], 'залгаа: дараалсан 2 хуулга — цоорхой алга');
+
+    const C = { ...B, id: 'c', period_from: '2026-09-01', period_to: '2026-09-30' };
+    const g = F.stmtChainCheck([A, C]);
+    eq(g.length, 1, 'залгаа: дунд нь 8-р сар ороогүйг барина');
+    eq([g[0].kind, g[0].from, g[0].to], ['gap', '2026-08-01', '2026-08-31'], 'залгаа: дутуу хугацаа ЯГ гарна');
+
+    const D = { ...B, id: 'd', opening: 7000 };   // өмнөх эцсийн 1000 ≠ эхний 7000
+    const j = F.stmtChainCheck([A, D]);
+    eq(j.map(x => x.kind), ['jump'], 'залгаа: үлдэгдлийн уналт баригдана');
+    eq(j[0].diff, 6000, 'залгаа: уналтын дүн');
+
+    const E = { ...A, id: 'e', closing_calc: 900 };   // тэнцэл зөрүүтэй
+    eq(F.stmtChainCheck([E]).map(x => x.kind), ['balance'], 'залгаа: тэнцлийн зөрүү бас баригдана');
+
+    // Өөр данс хоорондоо хамаарахгүй
+    eq(F.stmtChainCheck([A, { ...C, acct: '300' }]), [], 'залгаа: өөр данс тусад нь шалгагдана');
+  }
+
+  // ── Сарын хуулга дутуу — данс бүрээр ──
+  {
+    const list = [{ acct: '5041234567', period_from: '2026-08-01', period_to: '2026-08-31' }];
+    eq(F.stmtMonthMissingAccts(list, '2026-08', ['5041234567', '3001234567']), ['3001234567'], 'хамрах: 8 сард 1 дансны хуулга ороогүй');
+    eq(F.stmtMonthMissingAccts(list, '2026-08', ['5041234567']), [], 'хамрах: бүгд орсон');
+    eq(F.stmtMonthMissingAccts(list, '2026-09', ['5041234567']).length, 1, 'хамрах: өөр сар — ороогүй гэж гарна');
+  }
+
+  // ── SCAN: хүний шийдвэрийг дарж бичихгүй ──
+  // Дахин импорт хийхэд гараар хаасан мөр «open» болж буцвал ажил хоосон урсана.
+  {
+    const at = src.indexOf('async function saveStatementImport');
+    ok(at > 0, 'scan: saveStatementImport олдов');
+    const body = src.slice(at, at + 1600);
+    ok(/bank_income\?on_conflict=fp/.test(body), 'scan: орлогын мөр fp-ээр upsert');
+    ok(/resolution=ignore-duplicates/.test(body),
+       'scan: орлогын мөр ДАРЖ БИЧИГДЭХГҮЙ (гараар хаасан төлөв дахин импортод устахгүй)');
+    ok(/bank_statements\?on_conflict=id[\s\S]{0,200}resolution=merge-duplicates/.test(body),
+       'scan: хуулгын мөр нь харин орлуулагдана (ижил данс+хугацаа давхар бүртгэгдэхгүй)');
+  }
+}
+
+// ── ИНВАРИАНТ: НЭГ PDF БАРИМТ = НЭГ БАНКНЫ МӨР (2026-09-11) ──────────────────
+// Баримтын индекс нь дүн+огноо+нэрээр таьдаг. Ижил өдөр ижил дүнгээр хоёр
+// төлбөр ирвэл нэг баримт хоёуланг «бүртгэсэн» болгож, бүртгэгдээгүй бодит
+// төлбөр чимээгүй хаагдаж байв. Баримт эзэмшигдмэгц дахин таарахгүй.
+{
+  const rows = [
+    { date: '2026-08-02', credit: 500000, debit: 0, name: 'Бат', account: '5049999999', memo: 'a' },
+    { date: '2026-08-02', credit: 500000, debit: 0, name: 'Бат', account: '5049999999', memo: 'b' },
+  ];
+  const idx = F.receiptFpIndex(new Set(['FP-500000-20260802-БАТ']));
+  const taken = new Set();
+  ok(!!F.receiptMatchFor(rows[0], idx, new Map(), taken), 'баримт: 1-р мөр таарна');
+  eq(F.receiptMatchFor(rows[1], idx, new Map(), taken), null, 'баримт: НЭГ баримт 2-р мөрийг ХААХГҮЙ');
+
+  // Тулгалтын цонх ч ижил дүрэмтэй байх (2 мөр = 1 бүртгэсэн + 1 бүртгээгүй)
+  const res = F.reconcileByReceipts(rows, {
+    usedFps: new Set(['FP-500000-20260802-БАТ']),
+    fpOwners: new Map([['FP-500000-20260802-БАТ', 'mevent:#1470']]),
+  });
+  eq([res.recorded.length, res.unrecorded.length], [1, 1], 'тулгалт: 1 баримт → 1 бүртгэсэн, 1 бүртгээгүй');
+
+  const at = src.indexOf('function receiptMatchFor');
+  ok(/taken instanceof Set/.test(src.slice(at, at + 900)), 'scan: баримт эзэмшигдэх механизм хэвээр');
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ҮНИЙН САНАЛЫН МЭНДЧИЛГЭЭ (2026-09-11)
 // «Эрхэм {нэр} танаа,» нь яам/албан бичгийн хуучинсаг өнгө байсан. Түрээсийн

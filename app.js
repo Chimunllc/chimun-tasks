@@ -7994,11 +7994,24 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
   if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
   return out;
 }
+/* ⚠ ТҮГЖЭЭ ХУУЧИРВАЛ ХАМГААЛАХАА БОЛИНО. Хаалт өөр сессээс (эсвэл DB-ээс шууд)
+   тавигдвал ажиллаж байгаа апп түүнийг мэдэхгүй тул бичилт чөлөөтэй өнгөрнө —
+   2026-09-11-нд яг ийм цонх байсан. Тиймээс TTL-тэй: 5 минутаас хуучирвал
+   дараагийн шалгалт өөрөө шинэчилнэ. */
+const CLOSED_M_TTL = 5 * 60 * 1000;
 async function loadClosedMonths(force) {
-  if (state.closedMonths && !force) return state.closedMonths;
+  const fresh = state._closedMonthsAt && (Date.now() - state._closedMonthsAt) < CLOSED_M_TTL;
+  if (state.closedMonths && fresh && !force) return state.closedMonths;
   const v = await loadAppConfig(CLOSED_M_KEY);
-  state.closedMonths = (v && typeof v === 'object') ? v : {};
+  state.closedMonths = (v && typeof v === 'object') ? v : (state.closedMonths || {});
+  state._closedMonthsAt = Date.now();
   return state.closedMonths;
+}
+/* Мөнгө хөндөх ҮЙЛДЛИЙН өмнөх ЖИВЭЭ шалгалт — түгжээг сервэрээс шинэчилж шалгана.
+   Устгах/цуцлах/төлбөр гэх мэт эргэлт буцалтгүй үйлдэлд ганц нэмэлт хүсэлт нь хямд. */
+async function assertMonthOpenLive(month, what) {
+  try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр шалгана */ }
+  assertMonthOpen(month, what);
 }
 /* Шилжилтийн хаалт тавих/авах. `before` = түүнээс ӨМНӨХ бүх сар хаагдана. */
 async function setCutover(beforeMonth, note) {
@@ -21640,6 +21653,14 @@ function openTestCleanupModal() {
 async function bulkDeleteOrders(ids) {
   // ЗӨӨЛӨН устгал — мөрийг DB-ээс устгахгүй, зөвхөн status='deleted' болгоно ⟹ "Устгасан" бүлэгт үлдэж,
   // «Сэргээх»-ээр буцаана. Дата хэзээ ч эргэлт буцалтгүй алдагдахгүй.
+  try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
+  // 🔒 Хаасан сарын захиалгыг багцаас ХАСНА (бусдыг хэвийн устгана)
+  const _lockedIds = (state.appOrders || []).filter(o => ids.map(String).includes(String(o.id)) && orderLockedMonth(o)).map(o => String(o.id));
+  if (_lockedIds.length) {
+    ids = ids.filter(id => !_lockedIds.includes(String(id)));
+    showToast(`🔒 ${_lockedIds.length} захиалга хаасан сард байсан тул алгасагдав`, 'warn', 6000);
+    if (!ids.length) return;
+  }
   const idSet = new Set(ids.map(String));
   const prev = new Map();   // амжилтгүйд төлөвийг буцаах
   (state.appOrders || []).forEach(o => { if (idSet.has(String(o.id))) { prev.set(String(o.id), o.status); o.status = 'deleted'; } });   // optimistic
@@ -21728,6 +21749,12 @@ async function archiveDoneMonth(ym) {
 async function deleteAppOrder(id) {
   // ЗӨӨЛӨН устгал — мөр устгахгүй, status='deleted' (сэргээж болно). Хатуу устгал = буцалтгүй алдагдал тул хийхгүй.
   const o = (state.appOrders || []).find(x => x.id === id);
+  // 🔒 Хаасан сарын захиалгыг устгавал тэр сарын орлого чимээгүй буурна
+  if (o) {
+    try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
+    const lk = orderLockedMonth(o);
+    if (lk) { showToast(`🔒 ${lk} сар хаагдсан — #${o.number} захиалгыг устгах боломжгүй`, 'error', 6000); return; }
+  }
   const prevStatus = o ? o.status : null;
   if (o) o.status = 'deleted';
   if (typeof render === 'function') render();
@@ -23040,6 +23067,20 @@ function notifyCustomerMail(oid, to) {
     }, 8000).then(r => { if (!r.ok) fail(new Error('HTTP ' + r.status)); }).catch(fail);
   } catch (e) { fail(e); }
 }
+/* Захиалгын төлөв солих нь МӨНГИЙГ хөндөх эсэх. Устгах/цуцлах нь захиалгыг
+   орлогоос гаргана, сэргээх нь буцааж оруулна — хаасан сард аль нь ч болохгүй.
+   Дамжлагын шат (бэлдэх→гаргах г.м.) мөнгийг хөнддөггүй тул хоригдохгүй.
+   Цэвэр функц (тестлэгдэнэ). */
+const ORDER_MONEY_ST = ['deleted', 'canceled', 'cancelled'];
+function orderStatusTouchesMoney(from, to) {
+  const f = String(from || '').toLowerCase(), t = String(to || '').toLowerCase();
+  if (f === t) return false;
+  return ORDER_MONEY_ST.includes(f) || ORDER_MONEY_ST.includes(t);
+}
+// Захиалгын мөнгө аль сард сууж байна (мөнгөн ба гүйцэтгэлийн суурь ХОЁУЛАА) — түгжээг шалгахад.
+function orderLockedMonth(o) {
+  return [orderIncomeMonth(o, 'cash'), orderIncomeMonth(o, 'accrual')].find(m => m && monthLocked(m)) || '';
+}
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
   let o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -23047,6 +23088,12 @@ async function bqUpdateStatus(oid, to, opts = {}) {
   if (!o) o = (state.appOrders || []).find(x => String(x.id) === String(oid));
   if (!o) return;
   if (opts.confirm && !(await showConfirm(opts.confirm, { okText: opts.okText || 'Тийм', danger: opts.danger }))) return;
+  // 🔒 Хаасан сар — устгах/цуцлах/сэргээх нь тэр сарын орлогыг хөдөлгөнө
+  if (table === 'app_orders' && orderStatusTouchesMoney(o.status, to)) {
+    try { await loadClosedMonths(true); } catch (e) { /* офлайн — кэшээр */ }
+    const lk = orderLockedMonth(o);
+    if (lk) { showToast(`🔒 ${lk} сар хаагдсан — #${o.number} захиалгын төлөв солих нь тэр сарын орлогыг хөдөлгөнө. CEO сарыг нээж болно.`, 'error', 7000); return; }
+  }
   const prev = o.status, prevNote = o.note;
   o.status = to;          // optimistic (төлөв шууд харагдана)
   // Дамжлагын зураг + үнэлгээ (stage_meta jsonb) — товчны модалаас ирнэ

@@ -7347,3 +7347,59 @@ need(['orderCustType']);
   ok(/Зөвхөн \$\{m\}/.test(tg), 'scan: хүрээ сонгох диалог бий (зөвхөн энэ сар / бүгд)');
   ok(/setCutover\('', ''\)/.test(tg), 'scan: шилжилтийг буцааж авах зам бий');
 }
+
+// ═══ ХААСАН САРЫН ЗАХИАЛГА + ХУУЧИРСАН ТҮГЖЭЭ (2026-09-11) ═══════════════════
+// Хоёр нүх: ① захиалга устгах/цуцлах нь түгжээгүй байсан — хаасан сарын орлого
+// чимээгүй буурах боломжтой. ② түгжээ зөвхөн эхлэхэд ачаалагддаг тул хаалт өөр
+// сессээс тавигдвал ажиллаж байгаа апп мэдэхгүй, бичилт чөлөөтэй өнгөрнө.
+{
+  need(['orderStatusTouchesMoney', 'orderLockedMonth', 'assertMonthOpenLive', 'loadClosedMonths']);
+  const runIn = (code) => vm.runInContext(code, sandbox);
+
+  // ── ① Ямар төлөв солилт мөнгө хөнддөг ──
+  eq(F.orderStatusTouchesMoney('rented', 'deleted'), true, 'төлөв: устгах нь мөнгө хөндөнө');
+  eq(F.orderStatusTouchesMoney('reserved', 'canceled'), true, 'төлөв: цуцлах нь мөнгө хөндөнө');
+  eq(F.orderStatusTouchesMoney('deleted', 'reserved'), true, 'төлөв: СЭРГЭЭХ нь ч мөнгө хөндөнө (орлого буцаж орно)');
+  eq(F.orderStatusTouchesMoney('preparation', 'ready'), false, 'төлөв: дамжлагын шат мөнгө хөнддөггүй → хоригдохгүй');
+  eq(F.orderStatusTouchesMoney('rented', 'returned'), false, 'төлөв: буцаан авах мөнгө хөнддөггүй');
+  eq(F.orderStatusTouchesMoney('deleted', 'deleted'), false, 'төлөв: ижил төлөв → хөдөлгөөн биш');
+
+  // ── Захиалгын мөнгө аль сард сууж байна (хоёр суурь хоёулаа шалгагдана) ──
+  {
+    const saved = runIn('state.closedMonths');
+    runIn("state.closedMonths = { __cutover: { before: '2026-09' } };");
+    // Эвент 9 сард, мөнгө 8 сард орсон → 8 сар хаалттай тул ХОРИГЛОНО
+    eq(F.orderLockedMonth({ starts_at: '2026-09-20', paid_date: '2026-08-30' }), '2026-08',
+       'захиалга: мөнгө орсон сар хаалттай бол хоригдоно');
+    // Эвент 8 сард, мөнгө 9 сард → эвентийн сар хаалттай тул мөн хоригдоно
+    eq(F.orderLockedMonth({ starts_at: '2026-08-20', paid_date: '2026-09-02' }), '2026-08',
+       'захиалга: эвентийн сар хаалттай бол ч хоригдоно (гүйцэтгэлийн суурь)');
+    eq(F.orderLockedMonth({ starts_at: '2026-09-20', paid_date: '2026-09-02' }), '',
+       'захиалга: хоёр сар нээлттэй → чөлөөтэй');
+    runIn('state.closedMonths = ' + JSON.stringify(saved === undefined ? null : saved) + ';');
+  }
+
+  // ── ② Түгжээ TTL-тэй: хуучирвал өөрөө шинэчилнэ ──
+  ok(/const CLOSED_M_TTL/.test(src), 'түгжээ: TTL тодорхойлогдсон');
+  {
+    const fn = src.slice(src.indexOf('async function loadClosedMonths'), src.indexOf('async function loadClosedMonths') + 500);
+    ok(/Date\.now\(\) - state\._closedMonthsAt\) < CLOSED_M_TTL/.test(fn),
+       'түгжээ: хуучирсан эсэхийг цагаар шалгана (зөвхөн «байгаа эсэх»-ээр биш)');
+    ok(/state\._closedMonthsAt = Date\.now\(\)/.test(fn), 'түгжээ: ачаалсан цаг тэмдэглэгдэнэ');
+  }
+
+  // ── SCAN: устгах 3 замд түгжээ тавигдсан ──
+  {
+    const gate = (fn, needle) => {
+      const at = src.indexOf(fn); ok(at > 0, 'scan: ' + fn + ' олдов');
+      ok(new RegExp(needle).test(src.slice(at, at + 1500)), `scan: ${fn} — хаасан сарын түгжээ бий`);
+    };
+    gate('async function deleteAppOrder', 'orderLockedMonth');
+    gate('async function bulkDeleteOrders', 'orderLockedMonth');
+    gate('async function bqUpdateStatus', 'orderStatusTouchesMoney');
+    // Түгжээг шалгахын ӨМНӨ серверээс шинэчилнэ (хуучирсан кэшээр гаргахгүй)
+    const bq = src.slice(src.indexOf('async function bqUpdateStatus'), src.indexOf('async function bqUpdateStatus') + 1500);
+    ok(bq.indexOf('loadClosedMonths(true)') < bq.indexOf('orderLockedMonth'),
+       'scan: түгжээ шалгахын өмнө серверээс шинэчилнэ');
+  }
+}

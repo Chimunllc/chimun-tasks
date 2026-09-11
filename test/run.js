@@ -7138,6 +7138,69 @@ function testBankFee() {
 }
 testBankFee();
 
+// ═══ ХУУЛГЫН ДАВХАР ИМПОРТ (2026-09-11) ═══════════════════════════════════════
+// Амьд датаас олов: 2026-09-д 118 илүү мөр · 22.9сая. Нэг банкны мөр (fp) хоёр
+// бүртгэлтэй болсон — хуулга хоёр удаа орсон. Зардал 24.5сая гэж харагдаж байв.
+function testFinDupImports() {
+  need(['finDupImports']);
+  const J = (fp, pend) => `Хуулгаар орсон · данс 5103006078 [#${fp}] ⟦CARD||900|${pend ? 'PEND' : 'OK'}⟧ ⟦SRC|5222003015⟧`;
+  const reqs = [
+    /* Давхардсан. ⚠ PEND нь id-ээр ЭРТ, OK нь ХОЖУУ — ингэж байж «ангилагдсан нь
+       үлдэнэ» дүрэм үнэхээр шалгагдана (эс бөгөөс зөвхөн цагийн эрэмбэ ажиллаад
+       тест хуурамчаар ногоон болно). */
+    { id: 't_aaamtpfd001', amount: 900000, requested_at: '2026-09-06T06:23:00Z', justification: J('EXP-900000-20260906-8011750530', true), purpose: 'ЦАЛИН Э.Ш' },
+    { id: 't_zzzmtwyz002', amount: 900000, requested_at: '2026-09-06T12:00:00Z', justification: J('EXP-900000-20260906-8011750530', false), purpose: 'ЦАЛИН Э.Ш' },
+    // Давхардаагүй
+    { id: 't_bbbmtpfd003', amount: 30000, requested_at: '2026-09-01T00:00:00Z', justification: J('EXP-30000-20260901-5103006078', true), purpose: 'машин' },
+    // Хоёулаа PEND → эрт үүссэн (id-гийн сүүл) үлдэнэ
+    { id: 't_cccmtpfd004', amount: 50000, requested_at: '2026-09-02T00:00:00Z', justification: J('EXP-50000-20260902-5135806589', true), purpose: 'түлш' },
+    { id: 't_dddmtwyz005', amount: 50000, requested_at: '2026-09-02T00:00:00Z', justification: J('EXP-50000-20260902-5135806589', true), purpose: 'түлш' },
+    // Устгагдсан мөр тоологдохгүй
+    { id: 't_eeemtpfd006', amount: 900000, status: 'deleted', requested_at: '2026-09-06T00:00:00Z', justification: J('EXP-900000-20260906-8011750530', true), purpose: 'x' },
+    // Өөр сар — хамаарахгүй
+    { id: 't_fffmtpfd007', amount: 70000, requested_at: '2026-08-09T00:00:00Z', justification: J('EXP-70000-20260809-5103006078', true), purpose: 'y' },
+    { id: 't_gggmtwyz008', amount: 70000, requested_at: '2026-08-09T00:00:00Z', justification: J('EXP-70000-20260809-5103006078', true), purpose: 'y' },
+  ];
+  const g = F.finDupImports(reqs, '2026-09');
+  eq(g.length, 2, 'давхар: зөвхөн давхардсан хээ гарна (давхардаагүй нь орохгүй)');
+  eq(g[0].amount, 900000, 'давхар: дүнгээр буурахаар эрэмбэлэгдэнэ');
+
+  const big = g[0];
+  eq(big.keep.id, 't_zzzmtwyz002', 'давхар: АНГИЛАГДСАН (OK) мөр үлдэнэ — хожуу орсон ч хүн ажилласан');
+  eq(big.drop.map(r => r.id), ['t_aaamtpfd001'], 'давхар: PEND хуулбар устана (эрт орсон ч)');
+
+  const small = g[1];
+  eq(small.keep.id, 't_cccmtpfd004', 'давхар: хоёулаа PEND бол ЭРТ үүссэн нь үлдэнэ');
+  eq(small.drop.map(r => r.id), ['t_dddmtwyz005'], 'давхар: хожуу үүссэн нь устана');
+
+  // Устгагдсан мөр бүлэгт орохгүй (эс бөгөөс дахин «давхардал» гэж гарна)
+  ok(!big.drop.some(r => r.id === 't_eeemtpfd006') && big.keep.id !== 't_eeemtpfd006',
+     'давхар: устгасан бичлэг тоологдохгүй');
+  // Сарын шүүлт
+  eq(F.finDupImports(reqs, '2026-08').length, 1, 'давхар: сараар шүүгдэнэ');
+  eq(F.finDupImports(reqs, '').length, 3, 'давхар: сар заахгүй бол бүх хугацаа');
+  eq(F.finDupImports([], '2026-09'), [], 'давхар: хоосон → хоосон');
+  // Хээгүй бичлэг (гараар оруулсан зардал) хэзээ ч давхардал гэж тоологдохгүй
+  eq(F.finDupImports([{ id: 'a', amount: 1, requested_at: '2026-09-01', justification: 'гараар' },
+                      { id: 'b', amount: 1, requested_at: '2026-09-01', justification: 'гараар' }], '2026-09'), [],
+     'давхар: хээгүй (гар) бичлэг хамаарахгүй');
+
+  /* ⛔ ҮНДСЭН ШАЛТГААН: `imp` нь state.financeRequests-ээс тооцогддог тул кэш
+     хуучирсан бол бүх мөр «шинэ» гэж дахин орно. Хадгалахын өмнө сервер шинэчилнэ. */
+  {
+    const at = src.indexOf('saveBtn.onclick = async () => {');
+    ok(at > 0, 'scan: хуулга хадгалах товч олдов');
+    const body = src.slice(at, at + 2000);
+    const loadAt = body.indexOf('await loadFinanceRequests()');
+    const impAt = body.indexOf('const imp = importedFpCounts()');
+    ok(loadAt > 0 && impAt > 0 && loadAt < impAt,
+       'scan: хадгалахын өмнө санхүүгийн бүртгэл серверээс шинэчлэгдэнэ (давхар импортоос сэргийлнэ)');
+    ok(/if \(state\.finGated\)/.test(body),
+       'scan: бүртгэл ирээгүй (finGated) үед хадгалахгүй — давхардлыг шалгаж чадахгүй');
+  }
+}
+testFinDupImports();
+
 // ═══ ХАСАГДСАН МӨР — ШАЛТГААНААР БҮЛЭГЛЭХ (2026-09-11) ════════════════════════
 // 56 мөрийг нэг жагсаалтаар харуулахад хүн юуг ч уншихгүй («маш их байна»).
 function testDropGroups() {

@@ -2005,6 +2005,7 @@ let FINANCE_SUB_CATEGORIES = {
     { code: '6600', name: 'Бусад хөрөнгө' },
     { code: '6900', name: 'Эзний зээл / захирлын авалт (зардал БИШ)' },
     { code: '6950', name: 'Зээлийн үндсэн төлбөр (зардал БИШ)' },
+    { code: '6960', name: 'Дотоод шилжүүлэг, буцаалт (зардал БИШ)' },
   ],
   '7000': [
     { code: '7100', name: 'Үндсэн ажилтны цалин' },
@@ -26621,7 +26622,7 @@ function renderReports() {
       </table>
       ${bp.vat && bp.vat.total ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">🧾 Зардалд багтсан НӨАТ: <b style="color:var(--text);">${fmtSaya(bp.vat.total)}</b> (M-Event ${fmtSaya(bp.vat['ИВЕНТ'])} · NOMAAD ${fmtSaya(bp.vat['КЕМП'])}${bp.vat['ХХК'] ? ` · тулгагдаагүй ${fmtSaya(bp.vat['ХХК'])}` : ''})${bp.vatPaid ? ` — банкаар төлсөн ${fmtSaya(bp.vatPaid)} нь давхар тоологдохгүй` : ''}</div>` : ''}
       ${bp.unknownExp ? `<div style="font-size:11px;color:var(--warn);margin-top:8px;">⚠ <b>${bp.unknownN} гүйлгээ (${fmtSaya(bp.unknownExp)})</b> салбаргүй эсвэл танихгүй кодтой. Өмнө нь Чимун ХХК-д чимээгүй нэмэгддэг байв — салбарыг нь заавал сонгоно уу.</div>` : ''}
-      ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Эзний зээл эргэн төлөлт (зардал БИШ): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
+      ${bp.ownerLoan ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;">↩ Зардал БИШ мөнгөн хөдөлгөөн — эзний зээл, зээлийн үндсэн төлбөр, дотоод шилжүүлэг (69xx): ${fmtSaya(bp.ownerLoan)}</div>` : ''}</div>`;
     const stat = (icon, label, val, col, sub, view) => `<button ${view ? `data-go-view="${view}"` : 'disabled'} style="text-align:left;border:1px solid var(--border);border-radius:14px;background:var(--panel);padding:14px 16px;cursor:${view ? 'pointer' : 'default'};min-width:0;">
         <div style="font-size:12px;color:var(--muted);">${icon} ${label}</div>
         <div style="font-weight:800;font-size:20px;color:${col};margin-top:4px;letter-spacing:-.5px;">${val}</div>
@@ -27891,7 +27892,7 @@ function renderFinanceReport(wrap) {
       + row('Зарлага — NOMAAD', -expNo)
       + row('Зарлага — Хөрөнгө / бусад', -expOther)
       + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;padding:5px 0 1px;border-top:1px solid var(--border);margin-top:4px;"><b>Цэвэр зардал</b><b>${fmtMoney(-exp)}</b></div>`
-      + (ownerLoan ? row('↩ Эзний зээл эргэн төлөлт (зардал БИШ)', -ownerLoan, 'var(--muted)') : '')
+      + (ownerLoan ? row('↩ Зардал БИШ мөнгөн хөдөлгөөн (69xx)', -ownerLoan, 'var(--muted)') : '')
       + (depReturn ? row('↩ Барьцаа буцаалт (зардал БИШ)', -depReturn, 'var(--muted)') : '')
       + `<div style="display:flex;justify-content:space-between;gap:8px;font-size:14px;padding:7px 0 1px;border-top:1px solid var(--border);margin-top:5px;"><b>Үйл ажиллагааны үлдэгдэл</b><b style="color:${net >= 0 ? 'var(--ok)' : 'var(--danger)'};">${net >= 0 ? '+' : ''}${fmtMoney(net)}</b></div>`
       + `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Үлдэгдэл = орлого − цэвэр зардал (эзний зээл ороогүй).</div>`

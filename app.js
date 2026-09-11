@@ -25655,6 +25655,36 @@ function finReceivables() {
   const d = receivablesData();
   return d.bqTotal + d.nomaadTotal;
 }
+/* МАРГААНТАЙ БАРЬЦАА — цуцалсан захиалгад орсон атлаа буцаагаагүй мөнгө.
+   Орлого БИШ (маргаан шийдэгдээгүй байхад ашигт бичвэл хуурамч ашиг), буцаагаагүй
+   тул зардал ч БИШ. Гэхдээ мөнгө ДАНСАНД БАЙГАА тул заавал ХАРАГДАХ ёстой —
+   эс бөгөөс цуцлагдмагц тайлангаас чимээгүй алга болж, хэн ч санахгүй.
+   ⚠ Захиалгад холбогдсон буцаалт (5800/5810) байвал түүнийг хасна — буцаасан
+     мөнгө «барьж байгаа» гэж харагдах ёсгүй.
+   Цэвэр функц — тестлэгдэнэ. */
+function disputedHeldMoney(orders, reqs) {
+  const refundByOrder = {};
+  (reqs || []).forEach(t => {
+    if (!t || t.status === 'deleted' || t.decision !== 'approved') return;
+    const cat = String(t.category || '');
+    if (!cat.startsWith('5800') && !cat.startsWith('5810')) return;
+    if (String(t.link_type || '') !== 'order') return;
+    const k = String(t.link_id || ''); if (!k) return;
+    refundByOrder[k] = (refundByOrder[k] || 0) + (Number(t.amount) || 0);
+  });
+  const list = [];
+  (orders || []).forEach(o => {
+    if (!o) return;
+    const st = String(o.status || '').toLowerCase();
+    if (st !== 'canceled' && st !== 'cancelled') return;
+    const held = (Number(o.paid_mnt) || 0) - (refundByOrder[String(o.id)] || 0);
+    if (held <= 0) return;
+    list.push({ id: o.id, number: o.number, customer: o.customer || '',
+      amount: held, date: String(o.starts_at || o.created_at || '').slice(0, 10) });
+  });
+  list.sort((a, b) => b.amount - a.amount);
+  return { list, total: list.reduce((s, x) => s + x.amount, 0) };
+}
 // Тухайн сарын цалингийн нийт зардал (гүйцэтгэлийн сар) + хүний тоо
 function finSalaryMonth(month, basis) {
   let sum = 0; const who = new Set();
@@ -26028,6 +26058,9 @@ function renderReports() {
         ${stat('🧾', 'Авлага (авах үлдэгдэл)', fmtSaya(rcv), 'var(--warn)', 'баталгаажсан гэрээ − цуглуулсан', 'nomaad')}
         ${stat('💵', 'Цалин — ' + month, fmtSaya(salM.sum), 'var(--text)', salM.n + ' хүн · энэ сард', 'salary')}
         ${woSoldIncome(month) ? stat('🗂', 'Хөрөнгө зарсан — ' + month, fmtSaya(woSoldIncome(month)), 'var(--ok)', 'актаар зарсан · түрээсийн орлогод ОРОХГҮЙ', 'writeoff') : ''}
+        ${(() => { const dh = disputedHeldMoney(state.appOrders, (state.financeRequests || []).filter(x => x.status !== 'deleted').map(financeAsTask));
+          return dh.total ? stat('⚖️', 'Маргаантай — барьж байгаа', fmtSaya(dh.total), 'var(--warn)',
+            dh.list.slice(0, 2).map(x => `#${x.number} ${escapeHtml(x.customer)}`).join(' · ') + (dh.list.length > 2 ? ` +${dh.list.length - 2}` : '') + ' · орлогод ОРООГҮЙ', 'orders') : ''; })()}
       </div>`;
     ceoSections = statCards + branchSection;
   }

@@ -7205,3 +7205,33 @@ need(['orderCustType']);
     ok(/personal: '🙍/.test(src) && /notincome: '🚫/.test(src), 'scan: шинэ 2 төлөвийн шошго бий');
   }
 }
+
+// ═══ БУРУУ ДАРСНАА ОЛОХ + БУЦААХ (2026-09-11) ════════════════════════════════
+// Орлогын мөрийг хаамагц «хаагдаагүй» жагсаалтаас гардаг тул буруу тэмдэглэгээ
+// ХАРАГДАХГҮЙ, буцаах ч аргагүй болдог байв. Амьд датаас 2 бодит түрээсийн орлого
+// «дотоод шилжүүлэг»/«бусад орлого» болж нуугдсаныг барьсан.
+{
+  need(['incomeManualRows', 'incomeOpenStats']);
+  const rows = [
+    { fp: 'a', dt: '2026-09-11', amount: 3960000, payer: 'МАЙНС АП ХХК', status: 'internal', decided_by: '88006790', decided_at: '2026-09-11T08:00:25Z' },
+    { fp: 'b', dt: '2026-09-10', amount: 475200, payer: 'ВАЙРАЛ', status: 'other', decided_by: '88006790', decided_at: '2026-09-11T08:00:34Z' },
+    { fp: 'c', dt: '2026-09-01', amount: 100000, payer: 'Бат', status: 'order', decided_by: null, note: 'баримт FP-…' },   // АВТО
+    { fp: 'd', dt: '2026-08-20', amount: 200000, payer: '', status: 'personal', decided_by: null },                        // АВТО
+    { fp: 'e', dt: '2026-08-13', amount: 132000, payer: 'ГҮНЖ', status: 'open', decided_by: null },
+  ];
+  const man = F.incomeManualRows(rows);
+  eq(man.map(r => r.fp), ['b', 'a'], 'буцаах: гараар шийдсэн мөр л гарна, сүүлд шийдсэн нь дээр');
+  ok(!man.some(r => r.status === 'order' || r.status === 'personal'),
+     'буцаах: АВТО тэмдэглэгдсэн мөр жагсаалтад ОРОХГҮЙ (хэдэн зуу мөр дүүргэхгүй)');
+
+  // Буцаасны дараа: «гараар шийдсэн»-ээс гарч, «хаагдаагүй»-д орно
+  const after = rows.map(r => (r.fp === 'a' ? { ...r, status: 'open' } : r));
+  eq(F.incomeManualRows(after).map(r => r.fp), ['b'], 'буцаах: буцаасан мөр шийдсэн жагсаалтаас гарна');
+  eq(F.incomeOpenStats(after).n, 2, 'буцаах: буцаасан мөр хаагдаагүй болж эзэн дахин шийднэ');
+  eq(F.incomeManualRows([]), [], 'буцаах: хоосон → хоосон');
+
+  // SCAN — ↩ товч ба handler хэвээр
+  ok(/data-inc-undo=/.test(src), 'scan: ↩ буцаах товч бий');
+  ok(/data-inc-undo\]'\)\.forEach/.test(src), 'scan: ↩ товчинд handler холбогдсон');
+  ok(/setInc\(b\.dataset\.incUndo, 'open'/.test(src), 'scan: буцаахад мөр «хаагдаагүй» болно');
+}

@@ -7769,6 +7769,15 @@ function stmtChainCheck(list) {
   });
   return out;
 }
+/* Хүн ГАРААР шийдсэн мөрүүд (одоо хаагдсан байгаа). Буруу дарсныг олох ЦОРЫН ГАНЦ зам:
+   хаасан мөр «хаагдаагүй» жагсаалтаас гардаг тул алдаатай тэмдэглэгээ ХАРАГДАХГҮЙ,
+   буцаах ч аргагүй болдог байв (2026-09-11-нд 2 бодит түрээсийн орлого ингэж
+   «дотоод шилжүүлэг»/«бусад орлого» болж нуугдсаныг амьд датаас барьсан).
+   Авто (дүрмээр) тэмдэглэгдсэн мөр ОРОХГҮЙ — тэдгээр нь хэдэн зуу, дүрмээс гарсан. */
+function incomeManualRows(rows) {
+  return (rows || []).filter(r => r && r.decided_by && r.status !== 'open')
+    .slice().sort((a, b) => String(b.decided_at || '').localeCompare(String(a.decided_at || '')));
+}
 // Хаагдаагүй орлогын мөр — сараар (эсвэл бүх хугацаа). Энэ тоо 0 болтол сар «хаагдаагүй».
 function incomeOpenStats(rows, monthPrefix) {
   let n = 0, sum = 0;
@@ -8129,6 +8138,7 @@ function renderStmtLedger() {
   const open = (state.bankIncome || []).filter(r => r.status === 'open')
     .sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
   const os = incomeOpenStats(state.bankIncome);
+  const manual = incomeManualRows(state.bankIncome);
   const acctLabel = (a) => { const i = bankAcctInfo(a); return i ? `${i.name || ''} ${i.bank ? '· ' + i.bank : ''}`.trim() : (a || 'тодорхойгүй данс'); };
   // ⚠ Огноог ЭХЭНД — нарийн дэлгэцэд нэр хасагдахад ч «ямар хугацаа дутуу» нь харагдана.
   const gapRow = (g) => g.kind === 'gap'
@@ -8157,9 +8167,18 @@ function renderStmtLedger() {
     </div>
     <div class="recon-sec${os.n ? ' warn' : ''}">
       <div class="recon-sec-h">🔓 Хаагдаагүй орлого <span class="recon-n">${os.n}</span> ${os.n ? `<b>${fmtMoney(os.sum)}</b>` : ''}</div>
-      ${os.n ? `<div class="recon-rows">${openRows}</div><div class="recon-summary-sub">Мөр бүрийг хаана хамаарахаар тэмдэглэнэ: 🎪 захиалга · ↔ дотоод шилжүүлэг · 📦 бусад орлого. Энэ тоо 0 болтол сар хаагдаагүй.</div>`
+      ${os.n ? `<div class="recon-rows">${openRows}</div><div class="recon-summary-sub">Мөр бүрийг хаана хамаарахаар тэмдэглэнэ: 🎪 захиалга · ↔ дотоод шилжүүлэг · 📦 бусад орлого · 🙍 хувийн · 🚫 орлого биш. Энэ тоо 0 болтол сар хаагдаагүй.</div>`
     : '<div class="recon-empty recon-ok">✓ Бүх орлогын мөр хаагдсан</div>'}
-    </div>`;
+    </div>
+    ${manual.length ? `<div class="recon-sec">
+      <div class="recon-sec-h">👤 Та гараар шийдсэн <span class="recon-n">${manual.length}</span></div>
+      <div class="recon-rows">${manual.slice(0, 30).map(r => `<div class="recon-row">
+        <span class="recon-l">${escapeHtml(String(r.dt || ''))} · ${escapeHtml(r.payer || '')} · <span class="mut">${escapeHtml(String(r.memo || '').slice(0, 30))}</span></span>
+        <span class="recon-amt">${escapeHtml(INCOME_STATUS_LABEL[r.status] || r.status || '')} · ${fmtMoney(r.amount)}
+          <button class="btn ui-raw inc-btn" data-inc-undo="${escapeHtml(r.fp)}" title="Буруу тэмдэглэсэн бол буцаах">↩</button>
+        </span></div>`).join('')}</div>
+      <div class="recon-summary-sub">Буруу дарсан бол <b>↩</b> дарж «хаагдаагүй» болгож буцаана. Авто тэмдэглэгдсэн мөр энд гарахгүй.</div>
+    </div>` : ''}`;
 }
 function renderReconcilePanel() {
   const res = state._reconResult;
@@ -8299,6 +8318,8 @@ function openReconcileModal() {
       personal: 'гараар: хувийн (компанийн орлого биш)', notincome: 'гараар: орлого биш (зээл/хөрөнгө)' };
     ov.querySelectorAll('[data-inc-set]').forEach(b => b.addEventListener('click', () =>
       setInc(b.dataset.incFp, b.dataset.incSet, null, INC_NOTE[b.dataset.incSet] || 'гараар хаав')));
+    ov.querySelectorAll('[data-inc-undo]').forEach(b => b.addEventListener('click', () =>
+      setInc(b.dataset.incUndo, 'open', null, '↩ буцаав — дахин шийднэ')));
     ov.querySelectorAll('[data-inc-link]').forEach(b => b.addEventListener('click', async () => {
       const fp = b.dataset.incLink;
       const v = await showPrompt('Захиалгын дугаар (M-Event: 1470) эсвэл NOMAAD үнийн саналын дугаар (NC-2026-0094)', { title: '🎪 Орлогыг захиалгад холбох', placeholder: '1470' });

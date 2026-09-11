@@ -6631,6 +6631,13 @@ function mainCatOptions(sel) { return '<option value="">— үндсэн анг�
 function subCatOptions(mainCode, sel) { const subs = FINANCE_SUB_CATEGORIES[mainCode] || []; return '<option value="">— дэд ангилал —</option>' + subs.map(s => `<option value="${s.code}"${s.code === sel ? ' selected' : ''}>${s.code} ${escapeHtml(s.name)}</option>`).join(''); }
 // ── Картын зардал → эзэн ангилах токен: ⟦CARD|last4|ownerKey|PEND⟧ (justification-д) ──
 const CARD_PEND_CAT = '9500';   // "Тодорхой бус (түр)" — эзэн ангилтал хүлээж буй
+/* ⭐ БАНКНЫ ШИМТГЭЛ = ЗАРДАЛ (2026-09-11). Өмнө нь хуулга оруулахад БҮРМӨСӨН
+   хасагддаг байсан тул тайлангаас чимээгүй унадаг байв (11 хоногт 26 мөр · 4,800₮
+   ≈ жилд 150мянга). Одоо 5700 ангилалтай зардал болж орно.
+   ⚠ pend=false — 200₮-ийн мөрийг хүн ангилах нь утгагүй, «Миний зардал» жагсаалтыг
+     хэдэн арван мөрөөр дүүргэнэ. Ангилал нь эргэлзээгүй тул авто баталгаажна. */
+const BANK_FEE_CAT = '5700';
+function isBankFee(memo) { return /charges for pord|гүйлгээний\s*шимтгэл|шимтгэл/i.test(String(memo || '')); }
 const CARD_TOKEN_RE = /⟦CARD\|([^|⟧]*)\|([^|⟧]*)\|(PEND|OK)⟧/;
 function encodeCardToken(last4, ownerKey, pend) { return `⟦CARD|${last4 || ''}|${ownerKey || ''}|${pend ? 'PEND' : 'OK'}⟧`; }
 function parseCardToken(str) { const m = String(str || '').match(CARD_TOKEN_RE); return m ? { last4: m[1], ownerKey: m[2], pend: m[3] === 'PEND' } : null; }
@@ -6957,7 +6964,6 @@ async function openStatementClassifyModal() {
         // хэзээ ч чимээгүй болохгүй, хэрэглэгч юу яагаад ороогүйг цонхон дээр харна.
         const parsed = st.rows.filter(r => {
           if (!(r.debit > 0)) return false;
-          if (/charges for pord|шимтгэл/i.test(r.memo || '')) { dropped.push({ date: r.date, memo: r.memo, debit: r.debit, acct: r.account, why: 'банкны шимтгэл' }); return false; }
           // ⚠ `acct` нь ЗААВАЛ — «яагаад зардал болоогүй»-г хэрэглэгч нүдээр шалгах
           //   ганц зам. Дансгүй бол «дотоод шилжүүлэг» гэдгийг батлах боломжгүй
           //   (2026-09-11: 56 мөр · 38.8сая хасагдсаныг шалгах аргагүй байв).
@@ -6981,7 +6987,8 @@ async function openStatementClassifyModal() {
           const occ = (occSeen.get(fp) || 0) + 1; occSeen.set(fp, occ);   // энэ хуулган дахь тухайн хээний хэд дэх мөр
           const personal = isPersonalAcct(src);
           const suggest = personal && personalRowSuggest(r.memo, cat);
-          rows.push({ ...r, src, cardL4, cat: depMatch ? '5810' : (cmpMatch ? '5800' : cat), catManual: !!(depMatch || cmpMatch || cat), depMatch, fp, occ, salaryEmp, hourlyEmp,
+          const fee = isBankFee(r.memo);
+          rows.push({ ...r, src, cardL4, fee, cat: depMatch ? '5810' : (cmpMatch ? '5800' : (fee ? BANK_FEE_CAT : cat)), catManual: !!(depMatch || cmpMatch || cat || fee), depMatch, fp, occ, salaryEmp, hourlyEmp,
             cmpMatch,
             personal, suggest, biz: false,   // хувийн данс: өгөгдмөл нь ХУВИЙН (санамсаргүй зардал үүсэхгүй)
             done: (!isForce() && fpAlreadyImported(occ, imp.get(fp))) });
@@ -7104,7 +7111,7 @@ async function openStatementClassifyModal() {
         const _dm = r.depMatch || r.cmpMatch;   // барьцаа буцаалт эсвэл буулгалт → захиалгад холбоно
         const fr = await createFinanceRequest({ amount: r.debit, beneficiary: (r.name || (r.cardL4 ? 'Карт ••' + r.cardL4 : (r.account || ''))), purpose: r.memo,
           accountNumber: r.cardL4 ? '' : (r.account || ''),   // шилжүүлсэн данс — дэлгэрэнгүйд харуулна
-          justification: `Хуулгаар орсон${r.personal ? ' · 🙍 ХУВИЙН данснаас (компани эзэнд өртэй)' : ''}${r.fx ? ` · ${r.fx.amt} ${r.fx.ccy} × ${r.fx.rate}` : ''} · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, true)} ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(),
+          justification: `Хуулгаар орсон${r.personal ? ' · 🙍 ХУВИЙН данснаас (компани эзэнд өртэй)' : ''}${r.fx ? ` · ${r.fx.amt} ${r.fx.ccy} × ${r.fx.rate}` : ''} · ${r.cardL4 ? 'карт ••' + r.cardL4 : 'данс ' + (r.account || '-')} [#${r.fp}] ${encodeCardToken(r.cardL4 || '', routeOwner, !r.fee)} ${encodeSrcToken(r.src)}${r.personal ? ' ' + encodePrsnToken(r.src) : ''}`.trim(),
           category: cat, deptBranch: brCode, priority: 'low',
           linkType: _dm ? 'order' : 'general', linkId: _dm ? _dm.id : '', linkLabel: _dm ? ('#' + _dm.number) : '' });
         state._finBackfill = null;

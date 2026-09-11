@@ -7311,3 +7311,39 @@ need(['orderCustType']);
      'хил: хуулгын мөр (нийт дүн, үлдэгдэл) ҮРГЭЛЖ бичигдэнэ — залгааны шалгуурт хэрэгтэй');
   ok(/skippedClosed/.test(body), 'хил: алгасагдсан мөрийн тоо буцна (чимээгүй алга болохгүй)');
 }
+
+// ═══ ШИЛЖИЛТИЙН ХААЛТ — «N сараас өмнөх БҮГД» (2026-09-11) ═══════════════════
+// Хэрэглэгчийн шийдвэр: түүхийг дахин бичихгүй, 8 сар ба өмнөхийг хүчээр хааж,
+// 9 сараас шинэ дүрмээр цэвэр эхлэх. Сар бүрийг нэг бүрчлэн хаах нь утгагүй
+// (Booqable түүх 3 сараас хойш) тул нэг «шилжилт» тэмдэглэгээгээр хаана.
+{
+  need(['monthIsClosed', 'monthCloseInfo', 'setCutover']);
+  const cut = { __cutover: { before: '2026-09', at: '2026-09-11T10:00:00Z', by: '88006790' } };
+
+  eq(monthIsClosedAll(cut, ['2026-03', '2026-06', '2026-08']), true, 'шилжилт: 9 сараас өмнөх БҮХ сар хаалттай');
+  eq(F.monthIsClosed(cut, '2026-09'), false, 'шилжилт: 9 сар НЭЭЛТТЭЙ (шинэ дүрэм эндээс)');
+  eq(F.monthIsClosed(cut, '2026-10'), false, 'шилжилт: дараагийн сарууд нээлттэй');
+  eq(F.monthIsClosed(cut, '2025-12'), true, 'шилжилт: өнгөрсөн жил ч хаалттай');
+  eq(F.monthIsClosed(cut, '2026-08-14'), true, 'шилжилт: бүтэн огноо ч сараар шалгагдана');
+  function monthIsClosedAll(cfg, months) { return months.every(m => F.monthIsClosed(cfg, m)); }
+
+  // Хоёр хэлбэр зэрэг: шилжилт + дараа нь сараар хаасан
+  const both = { ...cut, '2026-09': { at: '2026-10-01T00:00:00Z', by: 'x' } };
+  eq(F.monthIsClosed(both, '2026-09'), true, 'хоёулаа: 9 сарыг дараа нь сараар хаасан');
+  eq(F.monthIsClosed(both, '2026-10'), false, 'хоёулаа: 10 сар нээлттэй хэвээр');
+
+  // Дэлгэрэнгүй — хэрэглэгчид ЯАГААД хаалттайг тайлбарлана
+  eq(F.monthCloseInfo(cut, '2026-08').kind, 'cutover', 'дэлгэрэнгүй: шилжилтээр хаагдсан гэж хэлнэ');
+  eq(F.monthCloseInfo(both, '2026-09').kind, 'month', 'дэлгэрэнгүй: сараар хаагдсаныг ялгана');
+  eq(F.monthCloseInfo(cut, '2026-09'), null, 'дэлгэрэнгүй: нээлттэй сард хоосон');
+  eq(F.monthCloseInfo({}, '2026-08'), null, 'дэлгэрэнгүй: хаалтгүй бол хоосон');
+  eq(F.monthIsClosed({ __cutover: {} }, '2026-01'), false, 'шилжилт: before хоосон бол хаахгүй (санамсаргүй бүх түүх хаагдахгүй)');
+
+  // SCAN
+  ok(/__cutover/.test(src) && /async function setCutover/.test(src), 'scan: шилжилтийн хаалт кодод бий');
+  ok(/const before = nextMonthStr\(m\);/.test(src),
+     'scan: «m ба өмнөх бүгд» = before нь ДАРААГИЙН сар (m өөрөө хаагдана)');
+  const tg = src.slice(src.indexOf('async function toggleMonthClose'), src.indexOf('async function toggleMonthClose') + 3000);
+  ok(/Зөвхөн \$\{m\}/.test(tg), 'scan: хүрээ сонгох диалог бий (зөвхөн энэ сар / бүгд)');
+  ok(/setCutover\('', ''\)/.test(tg), 'scan: шилжилтийг буцааж авах зам бий');
+}

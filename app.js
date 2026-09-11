@@ -382,15 +382,60 @@ function pgrstTokenValid() {
 // ── «Гэнэт дахин эхэлсэн» дохио ──────────────────────────────────────────────
 // Зураг оруулахаар камер нээхэд PWA систем санах ойноос устгагдаж, апп дахин
 // эхэлдэг тохиолдол ажиглагдсан. JS алдаа шидэгддэггүй тул хаана ч бүртгэгддэггүй.
+// ⚠ Хувилбарын шошго — service worker-ийн КЭШИЙН НЭРНЭЭС автоматаар (гараар бөглөхгүй).
+//   2026-09-11 хүртэл `globalThis.CACHE_TAG` нь БҮХ репод оноогддоггүй байв: 10 газар
+//   уншдаг, 0 газар бичдэг. Үүнээс болж (а) алдааны лог бүрийн `ver` хоосон — аль
+//   хувилбарт гарсан алдаа болох нь мэдэгдэхгүй, `fixed_ver` ч хоосон бичигддэг;
+//   (б) «шинэ хувилбар тарагдсан тул дахин ачаалсан» шалгуур бүрэн ҮХМЭЛ байсан.
+try {
+  if (typeof caches === 'object' && caches && typeof caches.keys === 'function') {
+    caches.keys().then(ks => {
+      const t = (ks || []).find(k => String(k).indexOf('chimun-tasks-') === 0);
+      if (t) globalThis.CACHE_TAG = t;
+    }).catch(() => {});
+  }
+} catch (e) {}
+
+const _RESTART_STALE_MS = 180000;   // 3 мин — үүнээс удаан завсарласан бол ердийн хаалт
+const _RESTART_BG_MS    = 60000;    // 1 мин — үүнээс удаан ДАЛД байсныг OS ердийн цэвэрлэгээ гэж үзнэ
+
+/* Гэнэт үхсэн үү? — ЦЭВЭР шийдвэр (localStorage/сүлжээнээс хамаарахгүй тул тестлэгдэнэ).
+   Дохио үнэн байхын тулд ДАРААХ бүх хуурамч эх сурвалжийг хасна:
+     · 3 минутаас удаан завсар          → ердийн хаалт
+     · хувилбар өөрчлөгдсөн             → шинэ код тарагдаж дахин ачаалсан
+     · 1 минутаас удаан далд байсан     → OS санах ой чөлөөлсөн (ердийн зүйл)
+   Үлдэх нь: апп ХАРАГДАЖ байх үед, эсвэл далд болсны дараа шууд үхсэн тохиолдол —
+   яг энэ функцийн зорилго (камер/файл сонгогч нээхэд PWA устгагддаг). */
+function uncleanRestart(mark, now, nowVer) {
+  if (!mark || typeof mark !== 'object') return false;
+  const at = Number(mark.at) || 0;
+  if (!at || (Number(now) - at) > _RESTART_STALE_MS) return false;
+  if (mark.ver && nowVer && String(mark.ver) !== String(nowVer)) return false;
+  const hid = Number(mark.hid) || 0;
+  if (hid && (Number(now) - hid) > _RESTART_BG_MS) return false;
+  return true;
+}
+
 let _aliveView = '', _aliveAt = 0;
+function _aliveTag() { return (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : ''; }
 function markAlive() {
   try {
     const v = (typeof state === 'object' && state) ? String(state.view || '') : '';
     const now = Date.now();
     if (v === _aliveView && (now - _aliveAt) < 15000) return;
     _aliveView = v; _aliveAt = now;
-    // ver — шинэ хувилбар тарагдсанаас болж дахин ачаалсныг «гэнэт үхсэн»-ээс ялгахад
-    localStorage.setItem('appAlive', JSON.stringify({ v: v, at: now, ver: (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '' }));
+    localStorage.setItem('appAlive', JSON.stringify({ v: v, at: now, ver: _aliveTag(), hid: 0 }));
+  } catch (e) {}
+}
+// Далд болсон/харагдсан мөчийг тэмдэглэнэ — удаан далд байгаад устгагдсаныг
+// «гэнэт үхсэн» гэж мэдээлэхгүйн тулд (OS санах ой чөлөөлөх нь ердийн зүйл).
+function markHidden(hidden) {
+  try {
+    const raw = localStorage.getItem('appAlive');
+    if (!raw) return;
+    const d = JSON.parse(raw) || {};
+    d.hid = hidden ? Date.now() : 0;
+    localStorage.setItem('appAlive', JSON.stringify(d));
   } catch (e) {}
 }
 function clearAlive() { try { localStorage.removeItem('appAlive'); } catch (e) {} }
@@ -400,12 +445,7 @@ function checkUncleanRestart() {
     if (!raw) return;
     localStorage.removeItem('appAlive');
     const d = JSON.parse(raw) || {};
-    // 3 минутаас удаан завсарласан бол ердийн хаалт гэж үзнэ (хуурамч дохио гаргахгүй).
-    if (!d.at || (Date.now() - Number(d.at)) > 180000) return;
-    // Хувилбар СОЛИГДСОН бол шинэ код тарагдаж дахин ачаалсан гэсэн үг — алдаа БИШ.
-    // (2026-09-11: нэг өдөр 6 удаа тараахад 4 дэлгэцээс 7 хуурамч дохио бүртгэгдэв.)
-    const nowVer = (typeof globalThis.CACHE_TAG === 'string') ? globalThis.CACHE_TAG : '';
-    if (d.ver && nowVer && String(d.ver) !== nowVer) return;
+    if (!uncleanRestart(d, Date.now(), _aliveTag())) return;
     // ⚠ src нь ТОГТМОЛ — дэлгэц бүрээр өөр хурууны хээ болж алдааны лог дүүрдэг байв.
     //   Аль дэлгэц байсныг `stack`-д бичнэ (хээнд ОРОХГҮЙ) — нэг бүлэг, давтамжтай.
     _reportErrToServer('Апп гэнэт дахин эхэлсэн', 'restart', 'дэлгэц: ' + String(d.v || '-'));
@@ -32300,6 +32340,7 @@ async function logout() {
   state.user = null;
   state.me = null;
   state.isCEO = false;
+  clearAlive();   // зориудын дахин ачаалалт — «гэнэт үхсэн» гэж бүртгэгдэхгүй
   location.reload();
 }
 
@@ -32776,6 +32817,8 @@ function promptDefaultPinChange() {
   try {
     window.addEventListener('pagehide', () => { _pageUnloading = true; clearAlive(); });
     window.addEventListener('pageshow', () => { _pageUnloading = false; });
+    // Далд болсон мөчийг тэмдэглэнэ — удаан далд байгаад OS-д устгагдсаныг «гэнэт үхсэн» гэж мэдээлэхгүй.
+    document.addEventListener('visibilitychange', () => markHidden(document.visibilityState === 'hidden'));
   } catch (e) { /* хуучин браузер — дохио байхгүй ч апп ажиллана */ }
   checkUncleanRestart();
 
@@ -32825,7 +32868,7 @@ function showUpdateBanner() {
   b.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:12000;background:var(--primary,#5e6ad2);color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;align-items:center;gap:12px;font-size:14px;max-width:92vw;';
   b.innerHTML = '<span>🔄 Шинэ хувилбар бэлэн</span><button id="sw-update-btn" style="background:#fff;color:#5e6ad2;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer;white-space:nowrap;">Шинэчлэх</button><button id="sw-update-x" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1;padding:0 4px;">×</button>';
   document.body.appendChild(b);
-  document.getElementById('sw-update-btn').onclick = () => location.reload();
+  document.getElementById('sw-update-btn').onclick = () => { clearAlive(); location.reload(); };
   document.getElementById('sw-update-x').onclick = () => b.remove();
 }
 

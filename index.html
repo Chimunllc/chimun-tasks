@@ -1111,5 +1111,63 @@
 </div>
 
 <script src="app.js"></script>
+<!-- ─── app.js АЧААЛАГДААГҮЙГ ХАРАГДУУЛАХ ХЯНАГЧ (2026-09-11) ───────────────
+     Хэрэглэгчийн гомдол: «Апп юу ч дарагдахгүй, апп хөдлөхгүй байна».
+     Шалтгаан: index.html кэшээс ирж БҮХ дэлгэц бүтэн харагдана ч app.js
+     ачаалагдаагүй бол товч бүр үхмэл байна (бүх handler тэр файлд). Алдааны
+     бүртгэгч ч app.js дотор тул сервер талд ЮУ Ч бүртгэгдэхгүй — хэн ч мэдэхгүй.
+     Тиймээс энэ ЖИЖИГ inline хянагч (app.js-ээс хамааралгүй) ажиллана. -->
+<script>
+(function () {
+  var REPORT_URL = 'https://n8n.nomaadcamp.com/db/rest/v1/app_errors';
+  var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s';
+  function bar() {
+    if (document.getElementById('appjs-dead')) return;
+    var d = document.createElement('div');
+    d.id = 'appjs-dead';
+    d.setAttribute('style', 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#b4232a;color:#fff;'
+      + 'padding:14px 16px;font:600 14px/1.4 -apple-system,system-ui,sans-serif;display:flex;gap:12px;align-items:center;');
+    d.innerHTML = '<span style="flex:1">Апп бүрэн ачаалагдсангүй — товч дарагдахгүй байна.</span>'
+      + '<button id="appjs-dead-btn" type="button" style="background:#fff;color:#b4232a;border:0;border-radius:8px;'
+      + 'padding:8px 14px;font:700 14px/1 sans-serif;">Дахин ачаалах</button>';
+    document.body.appendChild(d);
+    document.getElementById('appjs-dead-btn').onclick = function () {
+      // Кэшийг цэвэрлээд шинээр татна — эвдэрсэн/дутуу хувилбар кэшэд сууснаас гарах гарц.
+      var done = function () { location.reload(); };
+      try {
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (ks) {
+            return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+          }).then(done, done);
+        } else done();
+      } catch (e) { done(); }
+    };
+  }
+  function report() {
+    try {
+      fetch(REPORT_URL, {
+        method: 'POST',
+        headers: { apikey: ANON, Authorization: 'Bearer ' + ANON, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          msg: 'app.js ачаалагдсангүй — апп хөдлөхгүй',
+          src: 'boot:appjs-missing',
+          view: '', person: '', ver: '',
+          ua: String(navigator.userAgent || '').slice(0, 200),
+          stack: 'watchdog',
+          // errFingerprint('app.js ачаалагдсангүй — апп хөдлөхгүй','boot:appjs-missing') —
+          // app.js байхгүй тул гараар бодож тавьсан. Мессеж солих бол дахин бодуул.
+          fp: 'c17dec7eb73a',
+        }),
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  // ⚠ Хугацаагаар БҮҮ таа. Энэ inline script нь `<script src="app.js">`-ийн ДАРАА
+  // байгаа тул браузер app.js-г ажиллуулж эсвэл унагаж БАРУУСНЫ дараа л үүнийг
+  // гүйцэтгэнэ (классик script-үүд дараалан ажиллана). Тиймээс дохио байхгүй бол
+  // app.js ҮНЭХЭЭР ирээгүй гэсэн үг — сул сүлжээнд «хүлээж байна»-г үхсэн гэж
+  // андуурахгүй (2.8МБ файлыг 8 секундэд татаж амждаггүй тохиолдол бий).
+  if (!window.__appJsLoaded) { bar(); report(); }
+})();
+</script>
 </body>
 </html>

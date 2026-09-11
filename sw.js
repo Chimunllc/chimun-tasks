@@ -91,6 +91,16 @@ self.addEventListener('notificationclick', (event) => {
   })());
 });
 
+// App shell-ийн кэшлэгдсэн хувилбарыг олох. Сүлжээ унасан ч, 404/503 буцаасан ч
+// ижил замаар уналт хийнэ. `ignoreSearch` — `app.js?v=123` хэлбэрийн хүсэлт
+// precache-тай (`./app.js`) таарахгүй байхаас сэргийлнэ.
+function shellFallback(req, isHTML) {
+  return caches.match(req)
+    .then((c) => c || caches.match(req, { ignoreSearch: true }))
+    .then((c) => c || (isHTML ? caches.match('./index.html') : undefined))
+    .catch(() => undefined);
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
@@ -126,10 +136,18 @@ self.addEventListener('fetch', (event) => {
           if (res.ok && url.origin === self.location.origin) {
             const copy = res.clone();
             caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
+            return res;
           }
-          return res;
+          // ⛔ ЯМАР Ч БАЙСАН 404/503-ыг хуудсанд БҮҮ ӨГ (2026-09-11).
+          // fetch нь 503-д reject ХИЙДЭГГҮЙ — resolve болно. Тиймээс доорх catch
+          // хүрэхгүй, хуудас app.js-ийн оронд алдааны HTML хуудас авдаг байв:
+          // апп бүтнээрээ ХАРАГДАНА (index.html кэшээс) ч JS ачаалагдаагүй тул
+          // ЮУ Ч ДАРАГДАХГҮЙ, алдаа ч бүртгэгдэхгүй (бүртгэгч нь app.js дотор).
+          // GitHub Pages deploy бүрд ийм цонх үүсдэг. Кэшлэгдсэн бүтэн хувилбар
+          // байвал ТҮҮНИЙГ өгнө — хуучин код байхаас апп үхсэн нь дор.
+          return shellFallback(req, isHTML).then((c) => c || res);
         })
-        .catch(() => caches.match(req).then(c => c || (isHTML ? caches.match('./index.html') : undefined)))
+        .catch(() => shellFallback(req, isHTML))
     );
     return;
   }

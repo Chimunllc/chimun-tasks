@@ -7160,3 +7160,48 @@ need(['orderCustType']);
        'scan: ганц дүрэм нь бүртгэсэн дансыг шалгана');
   }
 }
+
+// ═══ ХУВИЙН ДАНСНЫ ХУУЛГА — ирэлт нь КОМПАНИЙН ОРЛОГО БИШ (2026-09-11) ════════
+// Эзний хувийн дансны хуулгад цалин, найзын шилжүүлэг, өөрийн хооронд зөөлт гэх
+// мэт хэдэн арван ирэлт байдаг. Тэдгээрийг «хаагдаагүй орлого» болговол эзэн сар
+// бүр гараар хааж хөөцөлдөх ба сар хаагдахгүй болно.
+{
+  need(['buildStatementImport', 'incomeOpenStats']);
+  const meta = { acct: '9001112222', period: '2026-08-01 - 2026-08-31', opening: 0, closing: 0 };
+  const parsed = { ccy: 'MNT', rows: [
+    { date: '2026-08-03', credit: 2500000, debit: 0, name: 'ЧИМУН ХХК-ийн НЯГТЛАН', account: '4004004004', memo: 'цалин' },
+    { date: '2026-08-10', credit: 150000, debit: 0, name: 'Найз', account: '8008008008', memo: 'зээл буцаав' },
+    { date: '2026-08-15', credit: 900000, debit: 0, name: '', account: '5041234567', memo: '' },   // КОМПАНИЙН данснаас
+    { date: '2026-08-20', credit: 0, debit: 300000, name: 'Дэлгүүр', account: '1', memo: 'хүнс' },
+  ] };
+  const company = new Set(['5041234567']);
+
+  // ── ХУВИЙН данс ──
+  const prsn = F.buildStatementImport(parsed, meta, { personal: true, company, own: new Set(['9001112222']) });
+  const byMemo = {}; prsn.incomes.forEach(x => { byMemo[x.memo] = x; });
+  eq(F.incomeOpenStats(prsn.incomes).n, 0, '🙍 хувийн данс: ХААГДААГҮЙ мөр 0 (эзэн хувийн гүйлгээг хөөцөлдөхгүй)');
+  eq(byMemo['цалин'].status, 'personal', '🙍 хувийн данс: цалин = хувийн, компанийн орлого биш');
+  eq(byMemo['зээл буцаав'].status, 'personal', '🙍 хувийн данс: найзын шилжүүлэг = хувийн');
+  eq(byMemo[''].status, 'internal', '🙍 компанийн данснаас ирсэн нь нөхөн олголт (дотоод, орлого биш)');
+  ok(/нөхөн олголт/.test(byMemo[''].note), '🙍 нөхөн олголт гэж бичигдэнэ');
+  // Хуулгын нийт дүн нь ХЭВЭЭР бүртгэгдэнэ (дансны хөдөлгөөн, тэнцлийн шалгуурт хэрэгтэй)
+  eq(prsn.stmt.credit_total, 3550000, '🙍 хувийн данс: хуулгын нийт ирэлт бүртгэгдсэн хэвээр (тэнцэл шалгагдана)');
+  eq(prsn.stmt.debit_total, 300000, '🙍 хувийн данс: зарлага ч бүртгэгдэнэ');
+
+  // ── ИЖИЛ хуулга КОМПАНИЙН данс байвал → хаагдаагүй орлого болно ──
+  const comp = F.buildStatementImport(parsed, meta, { personal: false, company, own: new Set(['9001112222']) });
+  // «цалин» мөрийн нэрэнд ЧИМУН байгаа тул үг-суурьтай нөөц дүрмээр `internal` болно;
+  // үлдсэн 2 мөр (найзын 150,000 + нэргүй 900,000) хаагдаагүй орлого болж эзэн шийднэ.
+  eq(F.incomeOpenStats(comp.incomes).n, 2, 'компанийн данс: 2 мөр хаагдаагүй болж эзэн шийднэ');
+  eq(F.incomeOpenStats(comp.incomes).sum, 1050000, 'компанийн данс: хаагдаагүй дүн');
+  eq(comp.incomes.find(x => x.memo === 'цалин').status, 'internal', 'компанийн данс: «ЧИМУН» нэртэй мөр дотоод гэж танигдана');
+
+  // ── SCAN: хувийн дансны тугийг дамжуулахаа болихгүй ──
+  {
+    const at = src.indexOf('async function persistStatement');
+    const body = src.slice(at, at + 900);
+    ok(/personal: isPersonalAcct\(meta\.acct\)/.test(body), 'scan: хувийн дансны туг импортод дамжина');
+    ok(/company: companyAcctSet\(\)/.test(body), 'scan: компанийн дансны багц дамжина (нөхөн олголтыг таних)');
+    ok(/personal: '🙍/.test(src) && /notincome: '🚫/.test(src), 'scan: шинэ 2 төлөвийн шошго бий');
+  }
+}

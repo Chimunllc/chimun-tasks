@@ -7647,6 +7647,7 @@ function reconcileByReceipts(stmtRows, opts) {
 const INCOME_STATUS_LABEL = {
   open: '🔓 Хаагдаагүй', order: '🎪 Захиалга', nomaad: '⛺ NOMAAD',
   internal: '↔ Дотоод шилжүүлэг', other: '📦 Бусад орлого',
+  personal: '🙍 Хувийн (компанийн бус)', notincome: '🚫 Орлого биш (зээл/хөрөнгө)',
 };
 // Хуулгын хугацаа: толгойд бичигдсэн бол түүнээс, эс бол мөрүүдийн эхний/сүүлийн огноо.
 function stmtPeriodDates(period, rows) {
@@ -7699,7 +7700,16 @@ function buildStatementImport(parsed, meta, opts) {
     const n = (occ.get(key) || 0) + 1; occ.set(key, n);
     // Дотоод шилжүүлэг = ОРЛОГО БИШ. Бүртгэсэн өөрийн дансаар (эрхэм) ба утга/нэрээр (нөөц).
     const internal = creditIsInternal(r, own);
-    const hit = internal ? null : receiptMatchFor(r, opts.rcpt, opts.owners, taken);
+    /* ⚠ ХУВИЙН ДАНС: ирсэн мөрүүд нь ихэвчлэн эзний ХУВИЙН хэрэглээ (цалин, найзын
+       шилжүүлэг, өөрийн хооронд) — компанийн орлого БИШ. Тэдгээрийг «хаагдаагүй
+       орлого» болговол эзэн сар бүр хэдэн арван хувийн мөрөө гараар хаах ба сар
+       хаагдахгүй болно. Тиймээс АВТОМАТААР `personal` гэж бүртгэнэ.
+       Онцгой тохиолдол: КОМПАНИЙН данснаас ирсэн бол нөхөн олголт (өр хаалт) —
+       `internal`; зардлын импорт түүнийг `personal_settlements` дэвтэрт бичдэг. */
+    const compSet = opts.company instanceof Set ? opts.company : new Set();
+    const fromCompany = isInternalTransfer(r, compSet);
+    const personalRow = !!opts.personal && !fromCompany;
+    const hit = (internal || personalRow) ? null : receiptMatchFor(r, opts.rcpt, opts.owners, taken);
     const link = hit ? incomeLinkOfOwner(hit.owner) : { type: '', id: '' };
     incomes.push({
       fp: key + '-' + n, stmt_id: id, acct, dt: r.date || null,
@@ -7707,9 +7717,14 @@ function buildStatementImport(parsed, meta, opts) {
       payer: String(r.name || '').slice(0, 120),
       payer_acct: String(r.account || '').slice(0, 40),
       memo: String(r.memo || '').slice(0, 200),
-      status: internal ? 'internal' : (hit ? incomeStatusOfOwner(hit.owner) : 'open'),
+      status: personalRow ? 'personal'
+        : (internal || (opts.personal && fromCompany)) ? 'internal'
+        : (hit ? incomeStatusOfOwner(hit.owner) : 'open'),
       link_type: link.type, link_id: link.id,
-      note: hit ? ('баримт ' + hit.fp) : (internal ? 'өөрийн данс хооронд' : ''),
+      note: hit ? ('баримт ' + hit.fp)
+        : personalRow ? 'хувийн данс — компанийн орлого биш'
+        : (opts.personal && fromCompany) ? 'компанийн данснаас (нөхөн олголт)'
+        : (internal ? 'өөрийн данс хооронд' : ''),
     });
   });
   const opening = (meta && meta.opening != null) ? Math.round(meta.opening) : null;
@@ -7885,6 +7900,8 @@ async function persistStatement(matrix, parsed, fileName, taken) {
   assertMonthOpen(String(_per.to || '').slice(0, 7), 'хуулга оруулах');
   const built = buildStatementImport(parsed, meta, {
     fileName, own: ownAcctSet(), taken,   // нэг баримт нэг л мөрийг хаана (файлууд хооронд ч)
+    personal: isPersonalAcct(meta.acct),  // 🙍 хувийн дансны ирэлт = компанийн орлого БИШ
+    company: companyAcctSet(),            // компани→хувийн = нөхөн олголт (орлого биш)
     rcpt: receiptFpIndex(state.usedFps instanceof Set ? state.usedFps : new Set()),
     owners: state.fpOwners instanceof Map ? state.fpOwners : new Map(),
   });
@@ -7979,7 +7996,8 @@ function incomeReportHtml(res) {
   const matchPct = totalIncome > 0 ? Math.round((matchedSum / totalIncome) * 100) : 0;
   // Бүх бизнесийн орлогын мөр (дотоод шилжүүлэг хассан) — топ төлөгч, өдрийн хандлагад
   const _bizOwn = ownAcctSet();
-  const bizCredits = stmts.flatMap(s => (s.rows || []).filter(r => r.credit > 0 && !creditIsInternal(r, _bizOwn)));
+  // 🙍 Хувийн дансны хуулга бүхэлдээ хасагдана (топ төлөгч, өдрийн хандлагад ч орохгүй).
+  const bizCredits = stmts.filter(s => !s.personal).flatMap(s => (s.rows || []).filter(r => r.credit > 0 && !creditIsInternal(r, _bizOwn)));
   // Топ 10 төлөгч
   const byPayer = {};
   bizCredits.forEach(c => { const k = String(c.name || '').trim() || (String(c.memo || '').slice(0, 24) || '—'); byPayer[k] = (byPayer[k] || 0) + c.credit; });
@@ -8121,7 +8139,7 @@ function renderStmtLedger() {
   const stmtRows = (list || []).slice(0, 24).map(s => {
     const b = stmtBalanceCheck(s);
     const mark = b.skip ? '<span class="mut">—</span>' : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);
-    return `<div class="recon-row"><span class="recon-l">🏦 ${escapeHtml(acctLabel(s.acct))} · ${escapeHtml(String(s.period_from || '?'))} … ${escapeHtml(String(s.period_to || '?'))}${s.ccy && s.ccy !== 'MNT' ? ' · ' + escapeHtml(s.ccy) : ''}</span><span class="recon-amt">+${fmtMoney(s.credit_total)} / −${fmtMoney(s.debit_total)} · ${mark}</span></div>`;
+    return `<div class="recon-row"><span class="recon-l">${isPersonalAcct(s.acct) ? '🙍' : '🏦'} ${escapeHtml(acctLabel(s.acct))} · ${escapeHtml(String(s.period_from || '?'))} … ${escapeHtml(String(s.period_to || '?'))}${s.ccy && s.ccy !== 'MNT' ? ' · ' + escapeHtml(s.ccy) : ''}</span><span class="recon-amt">+${fmtMoney(s.credit_total)} / −${fmtMoney(s.debit_total)} · ${mark}</span></div>`;
   }).join('');
   const openRows = open.slice(0, 40).map(r => `<div class="recon-row">
       <span class="recon-l">${escapeHtml(String(r.dt || ''))} · ${escapeHtml(r.payer || '')} · <span class="mut">${escapeHtml(String(r.memo || '').slice(0, 40))}</span></span>
@@ -8129,6 +8147,8 @@ function renderStmtLedger() {
         <button class="btn ui-raw inc-btn" data-inc-link="${escapeHtml(r.fp)}" title="Захиалгад холбох">🎪</button>
         <button class="btn ui-raw inc-btn" data-inc-set="internal" data-inc-fp="${escapeHtml(r.fp)}" title="Дотоод шилжүүлэг">↔</button>
         <button class="btn ui-raw inc-btn" data-inc-set="other" data-inc-fp="${escapeHtml(r.fp)}" title="Бусад орлого">📦</button>
+        <button class="btn ui-raw inc-btn" data-inc-set="personal" data-inc-fp="${escapeHtml(r.fp)}" title="Хувийн — компанийн орлого биш">🙍</button>
+        <button class="btn ui-raw inc-btn" data-inc-set="notincome" data-inc-fp="${escapeHtml(r.fp)}" title="Орлого биш (зээл / хөрөнгө оруулалт)">🚫</button>
       </span></div>`).join('');
   return `<div class="recon-sec${gaps.length ? ' warn' : ''}">
       <div class="recon-sec-h">📚 Оруулсан хуулга <span class="recon-n">${(list || []).length}</span></div>
@@ -8153,7 +8173,7 @@ function renderReconcilePanel() {
     const totalIncome = stmts.reduce((s, x) => s + (Number(x.incomeTotal) || 0), 0);
     const matchedSum = (res.matched || []).reduce((s, m) => s + (Number(m.credit) || 0), 0) + (res.mismatch || []).reduce((s, m) => s + (Number(m.credit) || 0), 0);
     const untrackedSum = (res.untracked || []).reduce((s, c) => s + (Number(c.credit) || 0), 0);
-    const acctChips = stmts.map(s => `<span class="recon-acct">🏦 ${escapeHtml(s.acct || s.fileName || '')} · ${fmtMoney(s.incomeTotal)}</span>`).join('');
+    const acctChips = stmts.map(s => `<span class="recon-acct">${s.personal ? '🙍' : '🏦'} ${escapeHtml(s.acct || s.fileName || '')} · ${s.personal ? 'хувийн (орлого биш)' : fmtMoney(s.incomeTotal)}</span>`).join('');
     resultHtml = `<div class="recon-report">
         <div class="recon-report-h"><b>${stmts.length} данс${stmts[0] && stmts[0].period ? ' · ' + escapeHtml(stmts[0].period) : ''}</b><button class="btn" id="recon-report-btn">🖨 Тайлан татах</button></div>
         <div class="recon-kpis">
@@ -8225,7 +8245,10 @@ function openReconcileModal() {
           parsed.rows.forEach(r => { r._srcAcct = meta.acct; });
           const credits = parsed.rows.filter(r => r.credit > 0);
           const debits = parsed.rows.filter(r => r.debit > 0);
-          const incomeTotal = credits.filter(r => !creditIsInternal(r, _ownAccts)).reduce((s, r) => s + r.credit, 0);   // бизнесийн орлого (дотоод шилжүүлэг хассан)
+          // 🙍 ХУВИЙН данс: ирэлт нь эзний хувийн хэрэглээ — компанийн орлого БИШ (0).
+          const _prsnAcct = isPersonalAcct(meta.acct);
+          const incomeTotal = _prsnAcct ? 0
+            : credits.filter(r => !creditIsInternal(r, _ownAccts)).reduce((s, r) => s + r.credit, 0);   // бизнесийн орлого (дотоод шилжүүлэг хассан)
           const rawIn = credits.reduce((s, r) => s + r.credit, 0);
           const rawOut = debits.reduce((s, r) => s + r.debit, 0);
           const opening = meta.opening;
@@ -8233,7 +8256,7 @@ function openReconcileModal() {
           const info = bankAcctInfo(meta.acct);
           // Ижил данс+хугацаа дахин орвол ОРЛУУЛНА (давхар тооллого сэргийлнэ)
           state._reconStmts = state._reconStmts.filter(s => !(s.acct === meta.acct && s.period === meta.period && meta.acct));
-          state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, incomeCount: credits.length, incomeTotal, expenseCount: debits.length, expenseTotal: rawOut, rawIn, opening, closing, info });
+          state._reconStmts.push({ acct: meta.acct, period: meta.period, fileName: file.name, rows: parsed.rows, personal: _prsnAcct, incomeCount: credits.length, incomeTotal, expenseCount: debits.length, expenseTotal: rawOut, rawIn, opening, closing, info });
           added++;
           // ⭐ Хуулга + орлогын мөрийг БҮРТГЭНЭ — цонх хаагдахад алга болохгүй.
           try { await persistStatement(matrix, parsed, file.name, rcptTaken); }
@@ -8272,8 +8295,10 @@ function openReconcileModal() {
       try { await setIncomeStatus(fp, status, link, note); showToast('Хаалаа ✓', 'success', 1500); draw(); }
       catch (e) { showToast('Хадгалах алдаа: ' + e.message, 'error', 4000); }
     };
+    const INC_NOTE = { internal: 'гараар: дотоод шилжүүлэг', other: 'гараар: бусад орлого',
+      personal: 'гараар: хувийн (компанийн орлого биш)', notincome: 'гараар: орлого биш (зээл/хөрөнгө)' };
     ov.querySelectorAll('[data-inc-set]').forEach(b => b.addEventListener('click', () =>
-      setInc(b.dataset.incFp, b.dataset.incSet, null, b.dataset.incSet === 'internal' ? 'гараар: дотоод шилжүүлэг' : 'гараар: бусад орлого')));
+      setInc(b.dataset.incFp, b.dataset.incSet, null, INC_NOTE[b.dataset.incSet] || 'гараар хаав')));
     ov.querySelectorAll('[data-inc-link]').forEach(b => b.addEventListener('click', async () => {
       const fp = b.dataset.incLink;
       const v = await showPrompt('Захиалгын дугаар (M-Event: 1470) эсвэл NOMAAD үнийн саналын дугаар (NC-2026-0094)', { title: '🎪 Орлогыг захиалгад холбох', placeholder: '1470' });

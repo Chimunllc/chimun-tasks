@@ -77,6 +77,10 @@ const DEFAULT_BOOTSTRAP_URL = 'https://n8n.nomaadcamp.com/webhook/bootstrap';
 // Сайт (chimunllc.github.io/m-event-website-ready) → /webhook/m-event-site-order руу захиалга илгээж
 // MEVENT_Orders_DB Sheet-д хадгалагдана. Энэ нь тэр Sheet-ийг уншиж/шинэчилнэ.
 const DEFAULT_ORDERS_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-orders';
+// Хэрэглэгчид явах захиалгын мэдэгдэл — n8n захиалгыг ӨӨРӨӨ уншиж бичвэрээ зурна.
+// ⚠ Клиент нь ЗӨВХӨН {order_id, kind} илгээнэ. Имэйл хаяг эсвэл бичвэр илгээвэл
+// энэ webhook нээлттэй спам илгээгч болно (апп нь public repo дээр).
+const DEFAULT_ORDER_MAIL_URL = 'https://n8n.nomaadcamp.com/webhook/order-mail';
 // M-Event бараа — GET бараа жагсаалт унших, POST { product | products:[...] } → нэмэх/засах.
 // Эх сурвалж: MEVENT_Orders_DB Sheet `products` tab. Сайт мөн эндээс уншина.
 const DEFAULT_PRODUCTS_URL = 'https://n8n.nomaadcamp.com/webhook/mevent-products';
@@ -20518,6 +20522,28 @@ function hasStageRecord(o) {
 // Дууссанд тооцогдох төлвүүд — эдгээрт дамжлагагүйгээр шилжихийг хориглоно.
 const ORDER_DONE_STATUSES = ['rented', 'returned', 'stopped', 'archived'];
 
+// ── Хэрэглэгчийн үнэлгээ ────────────────────────────────────────────────────
+// Захиалга хаагдахад явдаг имэйл дэх «★ Үнэлнэ үү» холбоос нь n8n-ий
+// /webhook/order-review хуудсыг нээж, хариуг ЭНЭ захиалгын stage_meta.review-д
+// бичдэг. Ажилтны дотоод үнэлгээ (stage_meta.<шат>.rate) -ээс ӨӨР зүйл —
+// энэ нь ГАДНЫ хэрэглэгчийн үнэлгээ.
+function orderReview(o) {
+  const sm = (o && o.stage_meta && typeof o.stage_meta === 'object') ? o.stage_meta : null;
+  const r = sm && sm.review;
+  if (!r || typeof r !== 'object') return null;
+  const stars = Math.max(0, Math.min(5, Math.round(Number(r.stars) || 0)));
+  if (!stars) return null;
+  return { stars, text: String(r.text || '').trim(), at: String(r.at || '').slice(0, 10) };
+}
+function orderReviewHtml(o) {
+  const r = orderReview(o);
+  if (!r) return '';
+  const cls = r.stars >= 4 ? 'ok' : r.stars >= 3 ? 'warn' : 'bad';
+  return `<div class="order-review ${cls}" title="Хэрэглэгчийн үнэлгээ${r.at ? ' · ' + escapeHtml(r.at) : ''}">
+    <span class="orv-stars">${'★'.repeat(r.stars)}${'☆'.repeat(5 - r.stars)}</span>
+    ${r.text ? `<span class="orv-text">${escapeHtml(r.text)}</span>` : '<span class="orv-text orv-dim">сэтгэгдэл бичээгүй</span>'}
+  </div>`;
+}
 function stageMetaHtml(o) {
   const sm = o && o.stage_meta;
   if (!sm || typeof sm !== 'object') return '';
@@ -22254,6 +22280,7 @@ function bqOrderCard(o) {
   // Толгойн «нийт (барьцаатай)» тайлбар — буцаасны дараа барьцаа дүнд БАЙХГҮЙ тул арилна.
   const _depIn = Math.max(0, _dep - orderRefundedDeposit(o));
   const _smHtml = stageMetaHtml(o);   // зурагтай шат — байвал доорх текст шатлогийг нуух (давхцал арилгах)
+  const _revHtml = orderReviewHtml(o);   // хэрэглэгчийн ★ үнэлгээ (имэйлийн холбоосоор ирсэн)
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
@@ -22261,6 +22288,7 @@ function bqOrderCard(o) {
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
     <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
+    ${_revHtml}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}
     ${ciHtml}
     ${delivMeta}
@@ -22384,6 +22412,27 @@ async function cancelOrderWithReason(oid) {
   if (!reason) return;                                                    // болих
   bqUpdateStatus(oid, to, { reason, toast: isDel ? 'Больсон гэж бүртгэлээ' : 'Цуцаллаа' });
 }
+// ── Хэрэглэгчид явах 3 имэйл ────────────────────────────────────────────────
+// Дамжлагын 9 шат бүрд бичвэл спам болно. Хэрэглэгчид үнэхээр хэрэгтэй 3 мөч:
+//   reserved   → захиалга баталгаажлаа
+//   delivering → агуулахаас гарлаа (хүргэлттэй захиалгад л энэ шат байдаг)
+//   returned   → хаагдлаа, барьцаа буцаана
+// Давхар илгээхээс n8n тал хамгаална (stage_meta.mail-д тэмдэглэдэг).
+const ORDER_MAIL_ON_STATUS = { reserved: 'confirmed', delivering: 'dispatched', returned: 'closed' };
+function orderMailKind(to) { return ORDER_MAIL_ON_STATUS[String(to || '')] || null; }
+function notifyCustomerMail(oid, to) {
+  const kind = orderMailKind(to);
+  if (!kind || !oid) return;
+  // Шатны шилжилтийг ЗОГСООХГҮЙ (await биш), гэхдээ ЧИМЭЭГҮЙ ч уначихгүй —
+  // имэйл явсангүй гэдгийг хэн ч мэдэхгүй байх нь хамгийн муу төлөв.
+  const fail = e => dataLoadFailed('order-mail:' + kind, e);
+  try {
+    fetchWithTimeout(DEFAULT_ORDER_MAIL_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: String(oid), kind }),
+    }, 8000).then(r => { if (!r.ok) fail(new Error('HTTP ' + r.status)); }).catch(fail);
+  } catch (e) { fail(e); }
+}
 async function bqUpdateStatus(oid, to, opts = {}) {
   // Захиалга bq_orders эсвэл app_orders-д байж болно — зөв хүснэгтэд routing.
   let o = (state.bqOrders || []).find(x => String(x.id) === String(oid));
@@ -22429,6 +22478,7 @@ async function bqUpdateStatus(oid, to, opts = {}) {
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 90));
     showToast(opts.toast || `Төлөв: ${(BQ_STATUS[to] || {}).label || to}`, 'success', 2000);
+    if (table === 'app_orders') notifyCustomerMail(oid, to);
     // Автомат ажил: шилжсэн шатны хүлээгдэж буй ажлыг хаах + дараагийн шатны ажил үүсгэх (зөвхөн app захиалга)
     if (table === 'app_orders' && to !== 'canceled' && to !== 'deleted') {
       try {

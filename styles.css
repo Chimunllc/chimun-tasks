@@ -6866,3 +6866,14 @@ select.no-asar-len {
 /* Барьцаа буцаах гүйлгээний утга — бүтэн өргөнөөр, дарж хуулна */
 .dep-acct.dep-memo { width: 100%; text-align: left; white-space: normal; word-break: break-word;
   border-radius: 10px; }
+
+/* Хэрэглэгчийн ★ үнэлгээ — захиалгын карт дээр (имэйлийн холбоосоор ирдэг) */
+.order-review { display:flex; align-items:baseline; gap:var(--space-2); flex-wrap:wrap;
+  margin:var(--space-2) 0; padding:var(--space-2) var(--space-3);
+  border-radius:var(--r-md); background:var(--panel-hover); font-size:var(--fs-sm); }
+.order-review .orv-stars { font-weight:700; letter-spacing:1px; white-space:nowrap; }
+.order-review.ok   .orv-stars { color:var(--ok); }
+.order-review.warn .orv-stars { color:var(--warn); }
+.order-review.bad  .orv-stars { color:var(--danger); }
+.order-review .orv-text { color:var(--text-soft); }
+.order-review .orv-dim { font-style:italic; opacity:.7; }

@@ -7834,8 +7834,9 @@ function companyAcctList() {
 // Санхүү тайлангийн тууз: сарын хуулга бүрэн уу + хаагдаагүй орлого хэд.
 function stmtCoverageHtml(month) {
   if (monthLocked(month)) {
-    const i = closedMonths()[String(month).slice(0, 7)] || {};
-    return `<b class="recon-ok">🔒 ${escapeHtml(String(month))} сар ХААГДСАН</b> <span class="mut">${escapeHtml(String(i.at || '').slice(0, 10))}${i.by ? ' · ' + escapeHtml(memberName(i.by) || String(i.by)) : ''} — зардал, орлого, хуулга засагдахгүй</span>`;
+    const i = monthCloseInfo(closedMonths(), month) || {};
+    const how = i.kind === 'cutover' ? `шилжилтийн хаалт (${escapeHtml(String(i.before || '').slice(0, 7))}-аас өмнөх бүгд)` : 'сараар хаасан';
+    return `<b class="recon-ok">🔒 ${escapeHtml(String(month))} сар ХААГДСАН</b> <span class="mut">${how} · ${escapeHtml(String(i.at || '').slice(0, 10))}${i.by ? ' · ' + escapeHtml(memberName(i.by) || String(i.by)) : ''} — зардал, орлого, хуулга засагдахгүй</span>`;
   }
   if (!state.bankStatements || !state.bankIncome) return '<span class="mut">Хуулгын бүртгэл ачаалж байна…</span>';
   const miss = stmtMonthMissingAccts(state.bankStatements, month, companyAcctList());
@@ -7947,9 +7948,27 @@ async function persistStatement(matrix, parsed, fileName, taken) {
    ⚠ Шинэ хүснэгт үүсгээгүй — { '2026-08': {at, by, note} } гэсэн жижиг тохиргоо. */
 const CLOSED_M_KEY = 'closed_months';
 function closedMonths() { return (state.closedMonths && typeof state.closedMonths === 'object') ? state.closedMonths : {}; }
+/* Сар хаалттай эсэх. ХОЁР хэлбэр:
+   ① тухайн сар нэрээрээ хаагдсан — `cfg['2026-08']`
+   ② ШИЛЖИЛТИЙН ХААЛТ — `cfg.__cutover.before = '2026-09'` → түүнээс ӨМНӨХ БҮХ сар хаалттай.
+   Шилжилт нь нягтлангийн стандарт арга: түүхийг дахин бичихгүй, тодорхой огноогоор
+   хөлдөөж, шинэ дүрмээр урагшаа явна. Сар бүрийг нэг бүрчлэн хаах шаардлагагүй
+   (Booqable түүх 2026-03-аас хойш — тэднийг гараар нэрлэх нь утгагүй). */
 function monthIsClosed(cfg, month) {
   const m = String(month || '').slice(0, 7);
-  return !!(m && cfg && cfg[m]);
+  if (!m || !cfg) return false;
+  if (cfg[m]) return true;
+  const c = cfg.__cutover;
+  return !!(c && c.before && m < String(c.before).slice(0, 7));
+}
+// Хаалтын дэлгэрэнгүй (хэн, хэзээ, ямар хэлбэрээр) — дэлгэцэд тайлбарлахад.
+function monthCloseInfo(cfg, month) {
+  const m = String(month || '').slice(0, 7);
+  if (!m || !cfg) return null;
+  if (cfg[m]) return { ...cfg[m], kind: 'month' };
+  const c = cfg.__cutover;
+  if (c && c.before && m < String(c.before).slice(0, 7)) return { ...c, kind: 'cutover' };
+  return null;
 }
 function monthLocked(month) { return monthIsClosed(closedMonths(), month); }
 // Бичих гэж байгаа сар хаалттай бол ТОДОРХОЙ мессежтэй унана — чимээгүй бүтэлгүйтэхгүй.
@@ -7981,6 +8000,16 @@ async function loadClosedMonths(force) {
   state.closedMonths = (v && typeof v === 'object') ? v : {};
   return state.closedMonths;
 }
+/* Шилжилтийн хаалт тавих/авах. `before` = түүнээс ӨМНӨХ бүх сар хаагдана. */
+async function setCutover(beforeMonth, note) {
+  const cur = { ...closedMonths() };
+  const b = String(beforeMonth || '').slice(0, 7);
+  if (b) cur.__cutover = { before: b, at: new Date().toISOString(), by: state.me, note: String(note || '').slice(0, 300) };
+  else delete cur.__cutover;
+  await saveAppConfig(CLOSED_M_KEY, cur);
+  state.closedMonths = cur;
+  return true;
+}
 async function setMonthClosed(month, closed, note) {
   const m = String(month || '').slice(0, 7);
   if (!m) return false;
@@ -7996,8 +8025,17 @@ async function toggleMonthClose(month) {
   if (!state.isCEO) { showToast('Зөвхөн CEO сар хааж/нээж болно', 'warn', 3000); return; }
   const m = String(month || '').slice(0, 7);
   await loadClosedMonths(true);
+  // ── ХААЛТТАЙ → нээх ──
   if (monthLocked(m)) {
-    const info = closedMonths()[m] || {};
+    const info = monthCloseInfo(closedMonths(), m) || {};
+    if (info.kind === 'cutover') {
+      const ok = await showConfirm(`${m} сар нь ШИЛЖИЛТИЙН ХААЛТаар хаагдсан (${String(info.before).slice(0, 7)}-аас өмнөх бүх сар, ${String(info.at || '').slice(0, 10)}).\n\nНээвэл ТҮҮНЭЭС ӨМНӨХ БҮХ САР нээгдэж, түүхэн тоо дахин өөрчлөгдөх боломжтой болно. Нээх үү?`,
+        { title: '🔓 Шилжилтийн хаалтыг авах', okText: 'Тийм, бүгдийг нээ', danger: true });
+      if (!ok) return;
+      try { await setCutover('', ''); showToast('🔓 Шилжилтийн хаалт авагдлаа', 'success', 3000); render(); }
+      catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); }
+      return;
+    }
     const ok = await showConfirm(`${m} сар ${String(info.at || '').slice(0, 10)}-нд хаагдсан.\n\nНээвэл тэр сарын тоо дахин өөрчлөгдөж, өмнө харсан тайлан хүчингүй болно. Нээх үү?`,
       { title: '🔓 Хаалттай сарыг нээх', okText: 'Тийм, нээ', danger: true });
     if (!ok) return;
@@ -8005,14 +8043,30 @@ async function toggleMonthClose(month) {
     catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); }
     return;
   }
-  try { await Promise.all([loadBankStatements(true), loadBankIncome(true), loadBankAccounts()]); } catch (e) { /* офлайн — доор шалгуур хоосон гарна */ }
+  // ── НЭЭЛТТЭЙ → хаах. Эхлээд ХҮРЭЭ: зөвхөн энэ сар эсвэл шилжилт (энэ ба өмнөх бүгд) ──
+  try { await Promise.all([loadBankStatements(true), loadBankIncome(true), loadBankAccounts()]); } catch (e) { /* офлайн — шалгуур хоосон гарна */ }
+  const all = await showConfirm(
+    `Хаах хүрээг сонгоно уу.\n\n«${m} ба өмнөх БҮГД» = шилжилтийн хаалт: түүх хөлдөж, дараагийн сараас цэвэр эхэлнэ. Сар бүрийг нэг бүрчлэн хаах шаардлагагүй.\n\n«Зөвхөн ${m}» = тухайн нэг сар л хаагдана.`,
+    { title: '🔒 Хаах хүрээ', okText: `${m} ба өмнөх БҮГД`, cancelText: `Зөвхөн ${m}` });
   const bl = closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), m);
-  const txt = bl.length
-    ? `⚠ ${m} хаахад бэлэн БИШ:\n\n${bl.map(b => '· ' + b.why).join('\n')}\n\nИйм байдлаар хаавал эдгээр дутуу зүйл тэр сард үүрд үлдэнэ. Ингэж хаах уу?`
-    : `${m} сарын бүх дансны хуулга орсон, орлогын мөр бүгд хаагдсан.\n\nХаасны дараа тэр сарын зардал, орлого, хуулга ЗАСАГДАХГҮЙ. Алдаа гарвал дараагийн сард залруулга бичнэ.`;
-  const ok = await showConfirm(txt, { title: '🔒 Сар хаах', okText: bl.length ? 'Ойлголоо, хаа' : 'Хаа', danger: !!bl.length });
+  const why = bl.map(b => b.why).join(' · ');
+  const warn = bl.length ? `⚠ Бэлэн БИШ:\n${bl.map(b => '· ' + b.why).join('\n')}\n\n` : '';
+  if (all) {
+    // Шилжилт: `before` = дараагийн сар (m ба түүнээс өмнөх бүгд хаагдана)
+    const before = nextMonthStr(m);
+    const ok = await showConfirm(
+      `${warn}${m} ба түүнээс ӨМНӨХ БҮХ САР хаагдана.\n\nТэдгээр сарын зардал, орлого, төлбөр, хуулга ЗАСАГДАХГҮЙ болно. ${before}-аас шинэ дүрмээр цэвэр эхэлнэ. Алдаа гарвал дараагийн сард залруулга бичнэ.\n\nХэрэгтэй бол хожим нээж болно.`,
+      { title: '🔒 Шилжилтийн хаалт', okText: 'Хаа', danger: true });
+    if (!ok) return;
+    try { await setCutover(before, why || 'шилжилтийн хаалт'); showToast(`🔒 ${m} ба өмнөх бүх сар хаагдлаа`, 'success', 4000); render(); }
+    catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); }
+    return;
+  }
+  const ok = await showConfirm(
+    `${warn}${m} сар хаагдана.\n\nТэр сарын зардал, орлого, төлбөр, хуулга ЗАСАГДАХГҮЙ. Алдаа гарвал дараагийн сард залруулга бичнэ.`,
+    { title: '🔒 Сар хаах', okText: 'Хаа', danger: !!bl.length });
   if (!ok) return;
-  try { await setMonthClosed(m, true, bl.map(b => b.why).join(' · ')); showToast(`🔒 ${m} хаагдлаа`, 'success', 3000); render(); }
+  try { await setMonthClosed(m, true, why); showToast(`🔒 ${m} хаагдлаа`, 'success', 3000); render(); }
   catch (e) { showToast('Алдаа: ' + e.message, 'error', 4500); }
 }
 // Нэгтгэсэн орлогын тайлан — олон дансны хуулга + тулгалт. Мэргэжлийн, хэвлэх/PDF-д зориулсан.
@@ -8158,9 +8212,13 @@ function renderStmtLedger() {
   const list = state.bankStatements;
   if (!list) return '<div class="recon-sec"><div class="recon-sec-h">📚 Оруулсан хуулга</div><div class="recon-empty">Ачаалж байна…</div></div>';
   const gaps = stmtChainCheck(list);
-  const open = (state.bankIncome || []).filter(r => r.status === 'open')
+  /* ⚠ ЗӨВХӨН НЭЭЛТТЭЙ сарын мөрийг үйлдэлтэй жагсаана. Хаасан сарын хаагдаагүй мөр
+     нь ТҮҮХ — хөндөгдөхгүй, гэхдээ чимээгүй нуугдах ч ёсгүй тул тоогоор бичнэ. */
+  const openAll = (state.bankIncome || []).filter(r => r.status === 'open')
     .sort((a, b) => String(b.dt || '').localeCompare(String(a.dt || '')));
-  const os = incomeOpenStats(state.bankIncome);
+  const open = openAll.filter(r => !monthLocked(String(r.dt || '').slice(0, 7)));
+  const frozen = openAll.length - open.length;
+  const os = { n: open.length, sum: open.reduce((t, r) => t + (Number(r.amount) || 0), 0) };
   const manual = incomeManualRows(state.bankIncome);
   const acctLabel = (a) => { const i = bankAcctInfo(a); return i ? `${i.name || ''} ${i.bank ? '· ' + i.bank : ''}`.trim() : (a || 'тодорхойгүй данс'); };
   // ⚠ Огноог ЭХЭНД — нарийн дэлгэцэд нэр хасагдахад ч «ямар хугацаа дутуу» нь харагдана.
@@ -8192,6 +8250,7 @@ function renderStmtLedger() {
       <div class="recon-sec-h">🔓 Хаагдаагүй орлого <span class="recon-n">${os.n}</span> ${os.n ? `<b>${fmtMoney(os.sum)}</b>` : ''}</div>
       ${os.n ? `<div class="recon-rows">${openRows}</div><div class="recon-summary-sub">Мөр бүрийг хаана хамаарахаар тэмдэглэнэ: 🎪 захиалга · ↔ дотоод шилжүүлэг · 📦 бусад орлого · 🙍 хувийн · 🚫 орлого биш. Энэ тоо 0 болтол сар хаагдаагүй.</div>`
     : '<div class="recon-empty recon-ok">✓ Бүх орлогын мөр хаагдсан</div>'}
+      ${frozen ? `<div class="recon-summary-sub">🔒 Хаасан сарын ${frozen} хаагдаагүй мөр — түүх, хөндөгдөхгүй.</div>` : ''}
     </div>
     ${manual.length ? `<div class="recon-sec">
       <div class="recon-sec-h">👤 Та гараар шийдсэн <span class="recon-n">${manual.length}</span></div>

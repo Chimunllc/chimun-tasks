@@ -7994,6 +7994,69 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
   if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
   return out;
 }
+/* ═══════ ДАРААГИЙН АЛХАМ (2026-09-11) ═════════════════════════════════════════
+   Санхүүгийн дэлгэц ТӨЛӨВ хэлдэг байсан («⚠ 3 дансны хуулга ороогүй») ч ДАРААЛАЛ
+   хэлдэггүй байв: 7 товч зэрэг сууж, алийг нь эхэлж дарахыг мэдэхгүй. Хэрэглэгчийн
+   гомдол: «тоо харагдаж байна, одоо юу хийх нь мэдэгдэхгүй».
+
+   Энэ функц = тухайн сарын ажлын ГАНЦ дараалал. Цэвэр (state хөндөхгүй) тул
+   тестлэгдэнэ. Эрэмбэ нь санамсаргүй БИШ — хамаарлын дараалал:
+     ① хуулга орж ирэхгүй бол ② ангилах юм ч, ③ тулгах юм ч байхгүй;
+     ④ залгаа эвдэрсэн бол дутуу хуулга бий гэсэн үг — хаахаас өмнө засна;
+     ⑤ бүгд цэвэрсэн үед л сар хаана.
+   done:true алхам нь ЖАГСААЛТААС ГАРАХГҮЙ — «би үүнийг хийчихсэн» гэдэг нь
+   «хийх шаардлагагүй байсан»-аас өөр мэдээлэл. */
+function finNextSteps(ctx) {
+  const c = ctx || {};
+  const month = String(c.month || '');
+  /* ⚠ Хаалттай сард ч CEO-д НЭЭХ зам үлдэнэ — өмнөх товчны эгнээнд «🔒 … хаалттай»
+     товч байсныг картаар сольсон тул энд нээхгүй бол сар мөнхөд түгжигдэнэ. */
+  if (c.locked) return [{ key: 'locked', done: true, icon: '🔒', title: month + ' сар хаагдсан',
+    hint: 'Зардал, орлого, хуулга засагдахгүй. Алдаа гарвал дараагийн сард залруулга бичнэ.',
+    ...(c.isCEO ? { act: 'close', btn: 'Нээх' } : {}) }];
+  const steps = [];
+  const miss = c.missingAccts || [];
+  steps.push(miss.length
+    ? { key: 'stmt', n: miss.length, icon: '🧾', title: 'Хуулга оруулах', hint: miss.join(', '), act: 'classify', btn: 'Оруулах' }
+    : { key: 'stmt', done: true, icon: '🧾', title: 'Хуулга оруулах', hint: 'Бүх дансны хуулга орсон' });
+  const pend = Number(c.pendExpenses) || 0;
+  steps.push(pend
+    ? { key: 'expense', n: pend, icon: '🏷', title: 'Зардал ангилах', hint: 'Ямар зардал болох нь тодорхойгүй гүйлгээ', act: 'expenses', btn: 'Ангилах' }
+    : { key: 'expense', done: true, icon: '🏷', title: 'Зардал ангилах', hint: 'Ангилагдаагүй гүйлгээ алга' });
+  const oi = c.openIncome || { n: 0, sum: 0 };
+  steps.push(oi.n
+    ? { key: 'income', n: oi.n, sum: oi.sum, icon: '💰', title: 'Орлого тулгах', hint: 'Аль захиалгынх нь тодорхойгүй орсон мөнгө', act: 'recon', btn: 'Тулгах' }
+    : { key: 'income', done: true, icon: '💰', title: 'Орлого тулгах', hint: 'Орсон мөнгө бүгд захиалгадаа холбогдсон' });
+  const chain = Number(c.chainBreaks) || 0;
+  if (chain) steps.push({ key: 'chain', n: chain, icon: '🔗', title: 'Хуулгын завсар нөхөх', hint: 'Үлдэгдэл заваарсан — дутуу хуулга бий', act: 'recon', btn: 'Харах' });
+  if (c.isCEO) {
+    const blocked = miss.length || oi.n || chain;
+    steps.push(blocked
+      ? { key: 'close', icon: '🔒', title: 'Сар хаах', hint: 'Дээрх цэгцэрсний дараа', wait: true }
+      : { key: 'close', icon: '🔒', title: 'Сар хаах', hint: month + ' сарын тоог хөлдөөнө — дараа нь засагдахгүй', act: 'close', btn: 'Хаах' });
+  }
+  return steps;
+}
+/* Дараагийн алхмын карт. Хийгдсэн алхам бүдгэрч, хийх ёстой нь товчтой.
+   Тоолол нь товчны ЗҮҮН талд — нүд эхлээд «хэд үлдсэн»-ийг уншина. */
+function finNextStepsHtml(steps, month) {
+  const rows = (steps || []).map((st, i) => {
+    const cls = st.done ? ' ns-done' : st.wait ? ' ns-wait' : '';
+    const mark = st.done ? '✓' : st.wait ? '·' : String(i + 1);
+    const cnt = st.n ? `<span class="ns-n">${st.n}${st.sum ? ' · ' + fmtMoney(st.sum) : ''}</span>` : '';
+    const btn = st.act ? `<button class="btn ui-raw ns-btn${st.act === 'close' ? ' ns-btn-lock' : ''}" data-ns-act="${escapeHtml(st.act)}">${escapeHtml(st.btn || 'Нээх')} →</button>` : '';
+    return `<div class="ns-row${cls}">`
+      + `<div class="ns-mark">${mark}</div>`
+      + `<div class="ns-body"><div class="ns-title">${st.icon} ${escapeHtml(st.title)}</div>`
+      + `<div class="ns-hint">${escapeHtml(st.hint || '')}</div></div>`
+      + cnt + btn + `</div>`;
+  }).join('');
+  const left = (steps || []).filter(st => st.act && st.key !== 'close').length;
+  const head = (steps || []).length === 1 && steps[0].key === 'locked'
+    ? ''
+    : `<div class="ns-head">${left ? `${month} сард хийх ${left} зүйл` : `✓ ${month} сар цэгцтэй`}</div>`;
+  return `<div class="ns-card">${head}${rows}</div>`;
+}
 /* ⚠ ТҮГЖЭЭ ХУУЧИРВАЛ ХАМГААЛАХАА БОЛИНО. Хаалт өөр сессээс (эсвэл DB-ээс шууд)
    тавигдвал ажиллаж байгаа апп түүнийг мэдэхгүй тул бичилт чөлөөтэй өнгөрнө —
    2026-09-11-нд яг ийм цонх байсан. Тиймээс TTL-тэй: 5 минутаас хуучирвал
@@ -27901,19 +27964,19 @@ function renderFinanceReport(wrap) {
   // эгнээнд шахагдаж зүүн талынх дэлгэцээс гардаг байв.
   bar.className = 'fin-actions';
   const canRecon = state.isCEO || canSeeAllFinance();
-  bar.innerHTML = (canRecon ? `<button id="fin-classify-open" class="btn" style="padding:6px 12px;font-size:12.5px;">🧾 Хуулгаар ангилах</button>` : '')
-    + (canRecon ? `<button id="fin-recon-open" class="btn" style="padding:6px 12px;font-size:12.5px;">📊 Орлого тулгах</button>` : '')
-    + (canRecon ? `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>` : '')
-    + (canRecon ? `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>` : '')
-    + (canRecon ? `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>` : '')
-    + (state.isCEO ? `<button id="fin-month-lock" class="btn month-lock-btn${monthLocked(month) ? ' on' : ''}">${monthLocked(month) ? '🔒 ' + month + ' хаалттай' : '🔒 Сар хаах'}</button>` : '')
-    + `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`;
+  /* Гол 3 үйлдэл (хуулга оруулах · орлого тулгах · сар хаах) нь ДООРХ «дараагийн
+     алхам» картад дараалалтайгаа гарна — энд давхардуулахгүй. Үлдсэн нь ховор
+     хэрэглэгддэг туслах хэрэгсэл тул нугалаанд: 7 товч зэрэг сууж байхад аль нь
+     ОДОО хэрэгтэйг хэлж чадахгүй байв. */
+  bar.innerHTML = `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`
+    + (canRecon ? `<details class="fin-more"><summary>⋯ Бусад хэрэгсэл</summary><div class="fin-more-in">`
+      + `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>`
+      + `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>`
+      + `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>`
+      + `</div></details>` : '');
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
-  bar.querySelector('#fin-month-lock')?.addEventListener('click', () => toggleMonthClose(month));
-  bar.querySelector('#fin-classify-open')?.addEventListener('click', openStatementClassifyModal);
-  bar.querySelector('#fin-recon-open')?.addEventListener('click', openReconcileModal);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
 
@@ -27922,11 +27985,41 @@ function renderFinanceReport(wrap) {
     if (state.bankStatements === undefined) { state.bankStatements = null; loadBankStatements().then(() => render()).catch(() => {}); }
     if (state.bankIncome === undefined) { state.bankIncome = null; loadBankIncome().then(() => render()).catch(() => {}); }
     if (state.bankAccounts === undefined) loadBankAccounts().then(() => render()).catch(() => {});
-    const ban = document.createElement('div');
-    ban.className = 'stmt-banner';
-    ban.innerHTML = stmtCoverageHtml(month);
-    wrap.appendChild(ban);
-    ban.querySelector('[data-open-recon]')?.addEventListener('click', openReconcileModal);
+    /* Тууз нь ЗӨВХӨН хаалттай сард — тэнд «хэн хэзээ хаасан» гэсэн картад байхгүй
+       мэдээлэл бий. Нээлттэй сард тууз нь дараагийн алхмын картыг үг үгээр давтаж
+       байв (нэг мэдээлэл хоёр газар = аль нь эрх мэдэлтэй нь тодорхойгүй). */
+    if (monthLocked(month)) {
+      const ban = document.createElement('div');
+      ban.className = 'stmt-banner';
+      ban.innerHTML = stmtCoverageHtml(month);
+      wrap.appendChild(ban);
+      ban.querySelector('[data-open-recon]')?.addEventListener('click', openReconcileModal);
+    }
+
+    /* ⭐ ДАРААГИЙН АЛХАМ — дэлгэцийн хамгийн дээр. Тууз нь «юу болсон»-ыг хэлдэг,
+       энэ нь «одоо юу хийх»-ийг хэлнэ. Хоёулаа хэрэгтэй, дараалал нь: эхлээд
+       үйлдэл, дараа нь дэлгэрэнгүй төлөв. */
+    if (state.bankStatements && state.bankIncome) {
+      const _ns = finNextSteps({
+        month, locked: monthLocked(month), isCEO: state.isCEO,
+        missingAccts: stmtMonthMissingAccts(state.bankStatements, month, companyAcctList())
+          .map(d => { const i = bankAcctInfo(d); return (i && (i.name || i.bank)) || d; }),
+        pendExpenses: allPendingCardExpenses().filter(r => String(r.requested_at || '').slice(0, 7) === month).length,
+        openIncome: incomeOpenStats(state.bankIncome, month),
+        chainBreaks: (closeMonthBlockers(state.bankStatements, state.bankIncome, companyAcctList(), month)
+          .find(b => b.kind === 'chain') || {}).n || 0,
+      });
+      const card = document.createElement('div');
+      card.innerHTML = finNextStepsHtml(_ns, month);
+      wrap.insertBefore(card, wrap.firstChild);
+      card.querySelectorAll('[data-ns-act]').forEach(b => b.addEventListener('click', () => {
+        const a = b.dataset.nsAct;
+        if (a === 'classify') openStatementClassifyModal();
+        else if (a === 'recon') openReconcileModal();
+        else if (a === 'expenses') { state.view = 'myexpenses'; render(); }
+        else if (a === 'close') toggleMonthClose(month);
+      }));
+    }
   }
 
   // (Батлах самбар хасагдсан — санхүү нь хуулга суурьтай: зардал хуулгаас шууд орно, хүсэлт/батлах урсгал байхгүй.)

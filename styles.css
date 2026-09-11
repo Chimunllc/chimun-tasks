@@ -6891,7 +6891,42 @@ select.no-asar-len {
 .order-review.bad  .orv-stars { color:var(--danger); }
 .order-review .orv-text { color:var(--text-soft); }
 .order-review .orv-dim { font-style:italic; opacity:.7; }
-.month-lock-btn { padding: 6px 12px; font-size: var(--fs-md); }
-.month-lock-btn.on { color: var(--ok); border-color: var(--ok); }
 .fin-actions { display: flex; justify-content: flex-end; flex-wrap: wrap;
   gap: var(--space-2); margin-bottom: var(--space-2); }
+/* ── ДАРААГИЙН АЛХАМ (2026-09-11) ───────────────────────────────────────────
+   Санхүүгийн дэлгэц төлөв хэлдэг ч дараалал хэлдэггүй байв. Карт нь «одоо юу
+   хийх»-ийг эрэмбээр харуулна: дугаар → ажил → хэд үлдсэн → товч. Хийгдсэн
+   мөр бүдгэрнэ (жагсаалтаас гарахгүй — «хийчихсэн» гэдэг нь мэдээлэл). */
+.ns-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
+  padding: var(--space-3); margin-bottom: var(--space-3); }
+.ns-head { font-weight: 800; font-size: var(--fs-base); margin-bottom: var(--space-2); }
+.ns-row { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center;
+  gap: var(--space-2) var(--space-3); padding: var(--space-2) 0;
+  border-top: 1px solid var(--border); }
+.ns-row:first-of-type { border-top: 0; }
+.ns-mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: var(--fs-xs); font-weight: 800; color: #fff; background: var(--primary); }
+.ns-title { font-weight: 700; font-size: var(--fs-md); }
+.ns-hint { color: var(--muted); font-size: var(--fs-sm); line-height: 1.35; }
+.ns-n { font-weight: 800; font-size: var(--fs-md); color: var(--warn); white-space: nowrap; }
+.ns-btn { padding: 5px 12px; font-size: var(--fs-sm); white-space: nowrap; }
+.ns-btn-lock { color: var(--ok); border-color: var(--ok); }
+.ns-done .ns-mark { background: var(--ok); }
+.ns-done .ns-title, .ns-done .ns-hint { color: var(--muted); }
+.ns-wait .ns-mark { background: var(--border); color: var(--muted); }
+.ns-wait .ns-title, .ns-wait .ns-hint { color: var(--muted); }
+@media (max-width: 620px) {
+  /* 320px-д дугаар+гарчиг дээд мөрөнд, тоо БА товч доор НЭГ мөрөнд — тус тусдаа
+     мөр эзэлбэл карт хоёр дахин өндөр болж, бүх алхам нэг дэлгэцэд багтахгүй. */
+  .ns-row { grid-template-columns: auto 1fr auto; }
+  .ns-body { grid-column: 2 / -1; }
+  .ns-n { grid-column: 2; justify-self: start; align-self: center; }
+  .ns-btn { grid-column: 3; justify-self: end; }
+}
+/* Ховор хэрэглэгддэг туслах хэрэгслүүд — нугалаанд */
+.fin-more { font-size: var(--fs-sm); }
+.fin-more > summary { cursor: pointer; color: var(--muted); padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: var(--r-md); list-style: none; }
+.fin-more > summary::-webkit-details-marker { display: none; }
+.fin-more-in { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2);
+  justify-content: flex-end; }

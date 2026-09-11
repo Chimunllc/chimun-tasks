@@ -6886,3 +6886,7 @@ select.no-asar-len {
 .order-review.bad  .orv-stars { color:var(--danger); }
 .order-review .orv-text { color:var(--text-soft); }
 .order-review .orv-dim { font-style:italic; opacity:.7; }
+.month-lock-btn { padding: 6px 12px; font-size: var(--fs-md); }
+.month-lock-btn.on { color: var(--ok); border-color: var(--ok); }
+.fin-actions { display: flex; justify-content: flex-end; flex-wrap: wrap;
+  gap: var(--space-2); margin-bottom: var(--space-2); }

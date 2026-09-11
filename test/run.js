@@ -6923,3 +6923,164 @@ need(['orderCustType']);
   //   сэтгэгдэл муутай харагдана.
   ok(!/ аа\.| оо\.| өө\.| ээ\.$/.test(T.mn.greet('Б.Болд')), 'мэндчилгээ: эгшгийн зохицлын урхи хэрэглээгүй');
 }
+
+// ═══ ОРЛОГЫН САРЫН ХАРЬЯАЛАЛ = ГАНЦ ДҮРЭМ (2026-09-11) ════════════════════════
+// Өмнө 3 газар 3 өөр дүрэм байв: Санхүү тайлан эвентийн сараар, Тренд график
+// NOMAAD-ийн БҮХ мөнгийг income_date сард, Орлогын тайлан paid_date-аар. Иймээс
+// НЭГ сарын орлого 3 дэлгэцэд 3 өөр тоо гарч болдог байсан.
+{
+  need(['orderIncomeMonth', '_nomaadPayMonths', 'finMonthIncome', 'finAddOrderIncome']);
+  const runIn = (code) => vm.runInContext(code, sandbox);
+
+  // ── мөнгөн суурь = мөнгө ОРСОН сар, гүйцэтгэл = эвентийн сар ──
+  const o1 = { starts_at: '2026-10-05', paid_date: '2026-09-20', created_at: '2026-08-01' };
+  eq(F.orderIncomeMonth(o1, 'cash'), '2026-09', 'сар: мөнгөн суурь = төлсөн сар');
+  eq(F.orderIncomeMonth(o1, 'accrual'), '2026-10', 'сар: гүйцэтгэл = эвентийн сар');
+  // paid_date хоосон (түүхэн Booqable мөр) → орлого АЛГА БОЛОХГҮЙ, эвентийн сард унана
+  eq(F.orderIncomeMonth({ starts_at: '2026-07-03', paid_date: '' }, 'cash'), '2026-07',
+     'сар: paid_date хоосон бол эвентийн сар (түүхэн мөр чимээгүй алга болохгүй)');
+  eq(F.orderIncomeMonth({ created_at: '2026-06-09' }, 'cash'), '2026-06', 'сар: огноо зөвхөн created_at-д байхад ч ажиллана');
+  eq(F.orderIncomeMonth(null, 'cash'), '', 'сар: хоосон захиалга → хоосон');
+
+  // ── NOMAAD: орсон мөнгө сараар задарна, Σ = бүх орсон мөнгө ──
+  {
+    const log = [{ total: 1000000, pay_date: '2026-06-03' }, { total: 2000000, pay_date: '2026-07-11' }];
+    const by = F._nomaadPayMonths(log, 3000000, '2026-06-03');
+    eq(by, { '2026-06': 1000000, '2026-07': 2000000 }, 'NOMAAD: 2 төлбөр 2 сард тусад нь');
+    // Лог дутуу (income_amount илүү) → зөрүү income_date сард
+    eq(F._nomaadPayMonths([{ total: 500000, pay_date: '2026-08-02' }], 1200000, '2026-08-20'),
+       { '2026-08': 1200000 }, 'NOMAAD: логоос илүү дүн income_date сард нэмэгдэнэ');
+    // ИНВАРИАНТ: задаргааны нийлбэр = сар бүрийн нийлбэр (хуучин _nomaadMonthSum-тай нийцтэй)
+    eq(F._nomaadMonthSum(log, 3000000, '2026-06-03', '2026-07'), 2000000, 'NOMAAD: сарын дүн хуучин функцтэй ижил');
+  }
+
+  // ── ⭐ ИНВАРИАНТ: Тайлан ба Тренд график НЭГ тоо харуулна ──
+  {
+    const save = runIn('[state.appOrders, state.nomaadOrders, state.nomaadPayments]');
+    runIn(`state.appOrders = [
+      { id:'a', number:1, source:'app', status:'done', starts_at:'2026-10-05', created_at:'2026-08-01',
+        paid_date:'2026-09-20', total_mnt:1000000, paid_mnt:1000000, deposit_mnt:0, items:[] },
+      { id:'b', number:2, source:'app', status:'done', starts_at:'2026-09-02', created_at:'2026-09-01',
+        paid_date:'2026-09-02', total_mnt:500000, paid_mnt:500000, deposit_mnt:0, items:[] }
+    ];`);
+    runIn(`state.nomaadOrders = [{ quote_no:'NC-1', status:'ГЭРЭЭ', date_start:'2026-10-10',
+      income_amount:3000000, income_date:'2026-09-03', total_amount:5000000 }];`);
+    runIn(`state.nomaadPayments = { 'NC-1': [
+      { total:1000000, pay_date:'2026-09-03' }, { total:2000000, pay_date:'2026-10-11' } ] };`);
+
+    for (const basis of ['cash', 'accrual']) {
+      for (const mo of ['2026-09', '2026-10']) {
+        const rep = F.finMonthIncome(mo, basis);
+        const inc = {}; F.finAddOrderIncome(inc, null, basis);
+        eq(inc[mo] || 0, rep.evInc + rep.noInc,
+           `ИНВАРИАНТ: ${mo} ${basis} — Тайлан ба Тренд ижил тоо`);
+      }
+    }
+    // Мөнгөн суурь: 9 сард 1.5сая (эвент 10 сард ч мөнгө 9 сард орсон) + NOMAAD 1сая
+    eq(F.finMonthIncome('2026-09', 'cash').evInc, 1500000, 'мөнгөн суурь: 10 сарын эвентийн урьдчилгаа 9 сард тоологдоно');
+    eq(F.finMonthIncome('2026-09', 'cash').noInc, 1000000, 'мөнгөн суурь: NOMAAD-ийн 9 сарын төлбөр л 9 сард');
+    eq(F.finMonthIncome('2026-10', 'cash').noInc, 2000000, 'мөнгөн суурь: NOMAAD-ийн 10 сарын төлбөр 10 сард (бүгд 9 сард шидэгдэхгүй)');
+    // Гүйцэтгэлийн суурь: эвентийн сараар
+    eq(F.finMonthIncome('2026-10', 'accrual').evInc, 1000000, 'гүйцэтгэл: эвентийн сараар');
+    eq(F.finMonthIncome('2026-09', 'accrual').evInc, 500000, 'гүйцэтгэл: 9 сарын эвент 9 сард');
+
+    runIn('state.appOrders = ' + JSON.stringify(save[0] || []) + ';');
+    runIn('state.nomaadOrders = ' + JSON.stringify(save[1] || []) + ';');
+    runIn('state.nomaadPayments = ' + JSON.stringify(save[2] || {}) + ';');
+  }
+
+  // ── SCAN: дүрэм дахин тархахгүй ──
+  {
+    const grab = (name) => { const at = src.indexOf('function ' + name); ok(at > 0, 'scan: ' + name + ' олдов'); return src.slice(at, src.indexOf('\n}', at)); };
+    for (const fn of ['finMonthIncome', 'finAddOrderIncome']) {
+      const body = grab(fn);
+      ok(!/starts_at \|\| o\.created_at/.test(body),
+         `scan: ${fn} нь орлогын сарыг өөрөө бодохгүй (orderIncomeMonth ашиглана)`);
+    }
+    ok(!/income_date \|\| ''\)\.slice\(0, 7\); v = nomaadPaid/.test(src),
+       'scan: NOMAAD-ийн бүх мөнгө income_date сард шидэгдэхээ болив');
+    const rep = src.slice(src.indexOf('const recInc ='), src.indexOf('const recInc =') + 320);
+    ok(/finMonthIncome\(yy, 'cash'\)/.test(rep),
+       'scan: Орлогын тайлан ч ижил функцээр бодогдоно (өөрийн дүрэм байхгүй)');
+  }
+}
+
+// ═══ САР ХААХ (2026-09-11) ════════════════════════════════════════════════════
+// Хуучин сарын тоо ямар ч үед өөрчлөгдөж, «өнгөрсөн сард харсан тайлан» хүчингүй
+// болдог байв. Хаасан сар хөдөлөхгүй; алдаа гарвал дараагийн сард залруулга.
+{
+  need(['monthIsClosed', 'monthLocked', 'assertMonthOpen', 'closeMonthBlockers', 'setMonthClosed']);
+  const runIn = (code) => vm.runInContext(code, sandbox);
+
+  eq(F.monthIsClosed({ '2026-08': { at: 'x' } }, '2026-08'), true, 'сар хаах: хаасан сар танигдана');
+  eq(F.monthIsClosed({ '2026-08': { at: 'x' } }, '2026-09'), false, 'сар хаах: бусад сар хөндөгдөхгүй');
+  eq(F.monthIsClosed({}, '2026-08'), false, 'сар хаах: хоосон тохиргоо → хаалттай биш');
+  eq(F.monthIsClosed(null, ''), false, 'сар хаах: хоосон оролт → хаалттай биш');
+  // Огноо (YYYY-MM-DD) дамжуулсан ч сарыг л хардаг
+  eq(F.monthIsClosed({ '2026-08': {} }, '2026-08-14'), true, 'сар хаах: бүтэн огноо ч сараар шалгагдана');
+
+  // ── Түгжээ: бичилт ЧИМЭЭГҮЙ бүтэлгүйтэхгүй, ТОДОРХОЙ мессежтэй унана ──
+  {
+    const saved = runIn('state.closedMonths');
+    runIn("state.closedMonths = { '2026-08': { at: '2026-09-01T00:00:00Z', by: 'ceo' } };");
+    eq(F.monthLocked('2026-08'), true, 'түгжээ: хаасан сар түгжигдсэн');
+    eq(F.monthLocked('2026-09'), false, 'түгжээ: нээлттэй сар чөлөөтэй');
+    let msg = '';
+    try { F.assertMonthOpen('2026-08', 'зардлын бичилт'); } catch (e) { msg = e.message; }
+    ok(/2026-08/.test(msg) && /хаагдсан/.test(msg) && /зардлын бичилт/.test(msg),
+       'түгжээ: мессеж нь сар, шалтгаан, юу хийж чадахгүйг хэлнэ → ' + msg);
+    let threw = false;
+    try { F.assertMonthOpen('2026-09', 'зардлын бичилт'); } catch (e) { threw = true; }
+    eq(threw, false, 'түгжээ: нээлттэй сард бичилт зогсохгүй');
+    try { F.assertMonthOpen('', 'x'); } catch (e) { threw = true; }
+    eq(threw, false, 'түгжээ: огноогүй бичилт хаагдахгүй (чимээгүй блоклохгүй)');
+    runIn('state.closedMonths = ' + JSON.stringify(saved === undefined ? null : saved) + ';');
+  }
+
+  // ── Хаахад бэлэн эсэх: дутуу хуулга · хаагдаагүй орлого · залгааны эвдрэл ──
+  {
+    const stmts = [{ id: '504|2026-08-01|2026-08-31', acct: '504', ccy: 'MNT',
+      period_from: '2026-08-01', period_to: '2026-08-31', opening: 0, closing_stated: 100, closing_calc: 100 }];
+    const income = [{ fp: 'i1', dt: '2026-08-05', amount: 700000, status: 'open' },
+      { fp: 'i2', dt: '2026-08-06', amount: 300000, status: 'order' },
+      { fp: 'i3', dt: '2026-07-06', amount: 900000, status: 'open' }];
+
+    eq(F.closeMonthBlockers(stmts, [], ['504'], '2026-08'), [], 'хаах: хуулга бүрэн, хаагдаагүй мөр алга → бэлэн');
+
+    const b1 = F.closeMonthBlockers(stmts, income, ['504'], '2026-08');
+    eq(b1.map(x => x.kind), ['income'], 'хаах: хаагдаагүй орлого нь саад');
+    eq([b1[0].n, b1[0].sum], [1, 700000], 'хаах: зөвхөн ТУХАЙН сарын хаагдаагүй мөр тоологдоно');
+
+    const b2 = F.closeMonthBlockers(stmts, [], ['504', '300'], '2026-08');
+    eq(b2.map(x => x.kind), ['stmt'], 'хаах: дансны хуулга дутуу нь саад');
+    eq(b2[0].accts, ['300'], 'хаах: аль данс дутуу гэдгийг нэрлэнэ');
+
+    // Тэнцлийн зөрүү — тухайн сарын хуулганд
+    const bad = [{ ...stmts[0], closing_calc: 90 }];
+    eq(F.closeMonthBlockers(bad, [], ['504'], '2026-08').map(x => x.kind), ['chain'],
+       'хаах: хуулгын тэнцэл зөрвөл саад');
+    // ӨӨР сарын эвдрэл нь энэ сарыг хаахад саад БОЛОХГҮЙ
+    const other = [{ ...stmts[0], id: '504|2026-06-01|2026-06-30', period_from: '2026-06-01', period_to: '2026-06-30', closing_calc: 90 }];
+    eq(F.closeMonthBlockers(other, [], [], '2026-08'), [], 'хаах: өөр сарын эвдрэл энэ сарыг хорихгүй');
+  }
+
+  // ── SCAN: түгжээ бичих БҮХ гол замд тавигдсан хэвээр ──
+  {
+    const gate = (fn, needle) => {
+      const at = src.indexOf(fn);
+      ok(at > 0, 'scan: ' + fn + ' олдов');
+      ok(new RegExp(needle).test(src.slice(at, at + 1400)), `scan: ${fn} — хаасан сарын түгжээ тавигдсан`);
+    };
+    gate('async function saveFinanceRequest', 'assertMonthOpen');
+    gate('async function setIncomeStatus', 'assertMonthOpen');
+    gate('async function persistStatement', 'assertMonthOpen');
+    gate('async function submitBqPayment', 'monthLocked');
+    gate('async function clearMonthExpenses', 'monthLocked');
+    // Кэш бичихээс ӨМНӨ шалгана — эс бөгөөс локал кэш хаасан сарыг дарна
+    const sf = src.slice(src.indexOf('async function saveFinanceRequest'), src.indexOf('async function saveFinanceRequest') + 600);
+    ok(sf.indexOf('assertMonthOpen') < sf.indexOf('saveFinanceCache'),
+       'scan: түгжээ нь localStorage кэш бичихээс ӨМНӨ шалгагдана');
+    // Эхлэхэд ачаалагдана — эс бөгөөс түгжээ «нээлттэй» гэж андуурна
+    ok(/loadClosedMonths\(\);/.test(src), 'scan: хаасан сар эхлэхэд ачаалагдана');
+  }
+}

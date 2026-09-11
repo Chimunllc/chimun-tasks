@@ -4750,6 +4750,7 @@ need(['orderCustType']);
 }
 
 
+  await swFetchTests();   // sw.js — файлын төгсгөлд тодорхойлогдсон (hoisted)
   finish();
 })();
 
@@ -7792,5 +7793,145 @@ testFinBasisDefault();
     const bq = src.slice(src.indexOf('async function bqUpdateStatus'), src.indexOf('async function bqUpdateStatus') + 1500);
     ok(bq.indexOf('loadClosedMonths(true)') < bq.indexOf('orderLockedMonth'),
        'scan: түгжээ шалгахын өмнө серверээс шинэчилнэ');
+  }
+}
+
+// ═══════════════ SERVICE WORKER — «апп харагдана ч юу ч дарагдахгүй» (2026-09-11) ═══
+// Хэрэглэгчийн гомдол: «Апп юу ч дарагдахгүй апп хөдлөхгүй байна».
+// Шалтгаан: `fetch` нь 404/503-д reject ХИЙДЭГГҮЙ — resolve болдог. sw.js тэр хариуг
+// хуудсанд шууд дамжуулж байсан тул GitHub Pages deploy-ийн хиккапт app.js-ийн оронд
+// алдааны HTML ирж, апп бүтнээрээ ХАРАГДАЖ (index.html кэшээс) товч бүр үхмэл болдог.
+// Алдааны бүртгэгч нь app.js дотор тул серверт ч юу ч бүртгэгддэггүй байв.
+// Кэшэд бүтэн хувилбар байхад л хэрэглэгч үхмэл апп хардаг байсныг эндээс барина.
+async function swFetchTests() {
+  const swSrc = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+
+  const mkRes = (status, body) => {
+    const r = { ok: status >= 200 && status < 300, status, body, clone: () => mkRes(status, body) };
+    return r;
+  };
+  // caches mock — нэрээр store, store дотор url→Response
+  function mkCaches(seed) {
+    const stores = new Map([['seed', new Map(Object.entries(seed || {}))]]);
+    const find = (url, ignoreSearch) => {
+      const bare = (u) => String(u).split('?')[0];
+      for (const st of stores.values()) {
+        if (st.has(url)) return st.get(url);
+        if (ignoreSearch) { for (const [k, v] of st) if (bare(k) === bare(url)) return v; }
+      }
+      return undefined;
+    };
+    return {
+      stores,
+      open: (name) => Promise.resolve({
+        addAll: () => Promise.resolve(),
+        put: (req, res) => { if (!stores.has(name)) stores.set(name, new Map()); stores.get(name).set(req.url || String(req), res); return Promise.resolve(); },
+        keys: () => Promise.resolve([]),
+        match: (req, o) => Promise.resolve(find(req.url || String(req), o && o.ignoreSearch)),
+      }),
+      keys: () => Promise.resolve([...stores.keys()]),
+      delete: () => Promise.resolve(true),
+      match: (req, o) => Promise.resolve(find(req.url || String(req), o && o.ignoreSearch)),
+    };
+  }
+  // sw.js-г ачаалж fetch handler-ыг гаргаж авна
+  function loadSw({ seed, netFor }) {
+    const listeners = {};
+    const caches = mkCaches(seed);
+    const box = {
+      console, setTimeout, clearTimeout, Promise, URL, URLSearchParams, Object, Array, String, Number, JSON, Date, Math, Error,
+      caches,
+      fetch: (req) => netFor(req.url || String(req)),
+      self: null,
+    };
+    box.self = box;
+    box.globalThis = box;
+    box.location = { origin: 'https://chimunllc.github.io', href: 'https://chimunllc.github.io/chimun-tasks/' };
+    box.addEventListener = (ev, fn) => { listeners[ev] = fn; };
+    box.registration = { showNotification: () => Promise.resolve() };
+    box.clients = { matchAll: () => Promise.resolve([]), claim: () => Promise.resolve(), openWindow: () => Promise.resolve() };
+    box.skipWaiting = () => Promise.resolve();
+    vm.createContext(box);
+    vm.runInContext(swSrc, box, { filename: 'sw.js' });
+    return {
+      caches,
+      // хүсэлт → SW-ийн буцаасан хариу
+      go(url, mode) {
+        const req = { url, method: 'GET', mode: mode || 'cors' };
+        let out;
+        listeners.fetch({ request: req, respondWith: (p) => { out = p; } });
+        return Promise.resolve(out);
+      },
+    };
+  }
+
+  const APPJS = 'https://chimunllc.github.io/chimun-tasks/app.js';
+  const PAGE  = 'https://chimunllc.github.io/chimun-tasks/index.html';
+  const cachedApp = mkRes(200, 'CACHED-APPJS');
+  const cachedPage = mkRes(200, 'CACHED-HTML');
+  const seed = { [APPJS]: cachedApp, [PAGE]: cachedPage, 'https://chimunllc.github.io/chimun-tasks/': cachedPage };
+
+  // ① ЯДРАЛ: Pages 503 буцаасан ч кэшэд бүтэн app.js байвал ТҮҮНИЙГ өгнө
+  {
+    const sw = loadSw({ seed, netFor: () => Promise.resolve(mkRes(503, '503 Service Unavailable')) });
+    const r = await sw.go(APPJS);
+    eq(r && r.body, 'CACHED-APPJS', 'sw: app.js 503 → кэшлэгдсэн бүтэн хувилбар (апп үхэхгүй)');
+    ok(r && r.ok === true, 'sw: буцаасан хариу хүчинтэй (ok) байна');
+  }
+  // ② 404 (deploy дунд) — ижил
+  {
+    const sw = loadSw({ seed, netFor: () => Promise.resolve(mkRes(404, 'not found')) });
+    eq((await sw.go(APPJS)).body, 'CACHED-APPJS', 'sw: app.js 404 → кэшээс');
+  }
+  // ③ Хэвийн 200 — сүлжээний ШИНЭ хувилбар хүрнэ (кэш хуучныг дардаггүй)
+  {
+    const sw = loadSw({ seed, netFor: () => Promise.resolve(mkRes(200, 'FRESH-APPJS')) });
+    eq((await sw.go(APPJS)).body, 'FRESH-APPJS', 'sw: 200 → сүлжээний шинэ код (кэш хоцрохгүй)');
+  }
+  // ④ Офлайн (fetch reject) — кэшээс
+  {
+    const sw = loadSw({ seed, netFor: () => Promise.reject(new Error('offline')) });
+    eq((await sw.go(APPJS)).body, 'CACHED-APPJS', 'sw: офлайн → кэшээс');
+  }
+  // ⑤ Кэш ХООСОН + 503 — өөр гарц байхгүй тул 503-ыг дамжуулна (гэхдээ хуудас
+  //    index.html-ээ ч авахгүй тул хэрэглэгч «дарагдахгүй апп» БИШ, хоосон хардаг)
+  {
+    const sw = loadSw({ seed: {}, netFor: () => Promise.resolve(mkRes(503, 'oops')) });
+    const r = await sw.go(APPJS);
+    ok(r && r.status === 503, 'sw: кэш хоосон + 503 → хариуг дамжуулна (нуухгүй)');
+  }
+  // ⑥ `app.js?v=123` — query-тэй хүсэлт precache-тай таарна (ignoreSearch)
+  {
+    const sw = loadSw({ seed, netFor: () => Promise.resolve(mkRes(503, 'oops')) });
+    eq((await sw.go(APPJS + '?v=999')).body, 'CACHED-APPJS', 'sw: query-тэй app.js ч кэштэй таарна');
+  }
+  // ⑦ Хуудас (navigate) 503 — index.html кэшээс
+  {
+    const sw = loadSw({ seed, netFor: () => Promise.resolve(mkRes(503, 'oops')) });
+    eq((await sw.go('https://chimunllc.github.io/chimun-tasks/', 'navigate')).body, 'CACHED-HTML',
+       'sw: хуудас 503 → кэшлэгдсэн index.html');
+  }
+  // ⑧ SCAN: shell салбар дээр уналт ХОЁР замд (resolve БА reject) байх ёстой
+  {
+    const at = swSrc.indexOf('if (isHTML || isAppShell)');
+    const blk = swSrc.slice(at, at + 1600);
+    ok((blk.match(/shellFallback\(/g) || []).length >= 2,
+       'scan: sw — 404/503 (resolve) БА сүлжээ унасан (reject) ХОЁУЛАА кэш рүү уналттай');
+    ok(!/\.then\(\(res\) => res\)[\s\S]{0,40}catch\(\(\) => caches\.match\(req\)\)\s*\)\s*;?\s*\n\s*return;\s*\n\s*}\s*\n\s*\/\/ NETWORK-FIRST/.test(swSrc),
+       'scan: sw — shell салбар хариуг шалгалтгүй дамжуулдаггүй');
+  }
+  // ⑨ SCAN: app.js ачаалагдсаныг index.html хянадаг (үхмэл апп чимээгүй үлдэхгүй)
+  {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    ok(/__appJsLoaded/.test(html), 'scan: index.html — app.js ачаалагдсаныг шалгадаг хянагч бий');
+    ok(/Дахин ачаалах/.test(html), 'scan: index.html — хэрэглэгчид «Дахин ачаалах» гарц бий');
+    ok(/app_errors/.test(html), 'scan: index.html — үхмэл ачаалалт серверт бүртгэгдэнэ');
+    // Хянагч нь app.js-ийн ДАРАА байх ёстой (script дараалан ажилладаг тул дохиог
+    // тэр цагт найдвартай шалгана). Өмнө байвал үргэлж «үхсэн» гэж буудна.
+    ok(html.indexOf('__appJsLoaded') > html.indexOf('<script src="app.js">'),
+       'scan: index.html — хянагч app.js-ийн ДАРАА ажиллана');
+    ok(!/setTimeout\([\s\S]{0,400}__appJsLoaded/.test(html),
+       'scan: index.html — хянагч хугацаагаар таадаггүй (сул сүлжээнд худал дуугарна)');
+    ok(/^window\.__appJsLoaded = true;$/m.test(src), 'scan: app.js — ачаалагдсан дохиогоо тавьдаг');
   }
 }

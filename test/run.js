@@ -5128,6 +5128,40 @@ need(['orderCustType']);
   ok(!F.asarPurgeSkus().some(k => G('ASAR_MODULES')[k]), 'хасалт: жагсаалтад модулийн sku БАЙХГҮЙ');
 }
 
+// МАРГААНТАЙ БАРЬЦАА — цуцалсан захиалгад орсон атлаа буцаагаагүй мөнгө (2026-09-11)
+// Захиалга №1136 (Тавантолгой): 31.2 сая₮ орсон, гэрээ цуцлагдсан, маргаан шийдэгдээгүй.
+// Орлогод орох ЁСГҮЙ (хуурамч ашиг), гэхдээ данснаас алга болох ч ЁСГҮЙ.
+{
+  const O = (o) => Object.assign({ id: 'o1', number: 1136, customer: 'Тавантолгой',
+    status: 'canceled', paid_mnt: 31200000, starts_at: '2026-07-22' }, o);
+  const R = (o) => Object.assign({ status: 'open', decision: 'approved', category: '5800',
+    link_type: 'order', link_id: 'o1', amount: 0 }, o);
+
+  eq(F.disputedHeldMoney([O({})], []).total, 31200000, 'маргаан: цуцалсан ч орсон мөнгө харагдана');
+  eq(F.disputedHeldMoney([O({})], []).list[0].number, 1136, 'маргаан: захиалгын дугаар гарна');
+  eq(F.disputedHeldMoney([O({ status: 'archived' })], []).total, 0, 'маргаан: цуцлаагүй захиалга орохгүй');
+  eq(F.disputedHeldMoney([O({ paid_mnt: 0 })], []).total, 0, 'маргаан: мөнгө ороогүй бол 0');
+  eq(F.disputedHeldMoney([O({})], [R({ amount: 31200000 })]).total, 0,
+    'маргаан: бүтэн буцаасан бол харагдахгүй');
+  eq(F.disputedHeldMoney([O({})], [R({ amount: 11200000 })]).total, 20000000,
+    'маргаан: хэсэгчлэн буцаасан бол үлдсэн нь харагдана');
+  eq(F.disputedHeldMoney([O({})], [R({ amount: 31200000, link_type: 'general' })]).total, 31200000,
+    'маргаан: захиалгад ХОЛБООГҮЙ буцаалт хасагдахгүй (өөр гүйлгээ)');
+  eq(F.disputedHeldMoney([O({})], [R({ amount: 31200000, category: '1800' })]).total, 31200000,
+    'маргаан: буцаалтын БУС ангилал хасагдахгүй');
+  eq(F.disputedHeldMoney([O({})], [R({ amount: 31200000, status: 'deleted' })]).total, 31200000,
+    'маргаан: устгасан буцаалт хасагдахгүй');
+  eq(F.disputedHeldMoney([O({})], [R({ amount: 31200000, decision: 'rejected' })]).total, 31200000,
+    'маргаан: батлагдаагүй буцаалт хасагдахгүй');
+  eq(F.disputedHeldMoney([], []).total, 0, 'маргаан: захиалгагүй → 0');
+  eq(F.disputedHeldMoney(null, null).total, 0, 'маргаан: null → 0 (унахгүй)');
+  eq(F.disputedHeldMoney([O({ id: 'a', number: 1, paid_mnt: 100 }), O({ id: 'b', number: 2, paid_mnt: 900 })], []).list[0].number, 2,
+    'маргаан: том дүн эхэлж жагсана');
+
+  // ИНВАРИАНТ: маргаантай мөнгө ОРЛОГОД орохгүй — _orderActive цуцалсныг хасдаг хэвээр
+  ok(!F._orderActive({ status: 'canceled' }), 'маргаан: цуцалсан захиалга орлогод ОРОХГҮЙ хэвээр');
+}
+
 // SCAN — «зардал БИШ» шалгалт нэг газраас (2026-09-11)
 // 6900 (эзний зээл) дээр 6950 (зээлийн үндсэн төлбөр) нэмэгдсэн. Түүхий
 // `startsWith('6900')` нь 6950-г алддаг тул зээлийн үндсэн төлбөр зардал болж

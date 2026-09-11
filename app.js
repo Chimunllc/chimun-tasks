@@ -22704,7 +22704,8 @@ const MEV_QUOTE_T = {
     payConfirm: 'Төлбөр төлөгдсөнөөр захиалга баталгаажна.',
     depositBack: 'Барьцаа буцаан олгогдоно.',
     subject: (n) => `M-Event · Үнийн санал №${n}`,
-    greet: (c) => `Эрхэм ${c} танаа,`,
+    // ⚠ Нэргүй бол нэрийг ОРХИНО — «Сайн байна уу, харилцагч.» гэж хүйтэн болохоос сэргийлнэ.
+    greet: (c) => c ? `Сайн байна уу, ${c}.` : 'Сайн байна уу.',
     intro: 'M-Event түрээсийн үйлчилгээг сонирхож байгаад баярлалаа. Таны хүсэлтийн дагуу үнийн саналыг илгээж байна. Дэлгэрэнгүй задаргаа, нөхцөлийг хавсралт PDF файлаас үзнэ үү.',
     quoteNo: (n) => `Үнийн санал №${n}`,
     validPeriod: 'Хүчинтэй хугацаа', rentalPeriod: 'Түрээсийн хугацаа',
@@ -22712,7 +22713,7 @@ const MEV_QUOTE_T = {
     confirmHead: 'Захиалга баталгаажуулах',
     bank: 'Банк', acctNo: 'Дансны дугаар',
     regards: 'Хүндэтгэсэн,', fileBase: 'Үнийн санал',
-    fallbackCust: 'харилцагч', langBtn: '🇬🇧 English',
+    langBtn: '🇬🇧 English',
   },
   en: {
     htmlLang: 'en', tagline: 'Event Rental', eyebrow: 'M-Event',
@@ -22733,7 +22734,7 @@ const MEV_QUOTE_T = {
     payConfirm: 'The order is confirmed once payment is received.',
     depositBack: 'The deposit is refunded after return.',
     subject: (n) => `M-Event · Quotation #${n}`,
-    greet: (c) => `Dear ${c},`,
+    greet: (c) => c ? `Dear ${c},` : 'Hello,',
     intro: 'Thank you for your interest in M-Event rental services. Please find our quotation below. A full breakdown and the terms are in the attached PDF.',
     quoteNo: (n) => `Quotation #${n}`,
     validPeriod: 'Valid until', rentalPeriod: 'Rental period',
@@ -22741,7 +22742,7 @@ const MEV_QUOTE_T = {
     confirmHead: 'Confirming your order',
     bank: 'Bank', acctNo: 'Account number',
     regards: 'Best regards,', fileBase: 'Quotation',
-    fallbackCust: 'Customer', langBtn: '🇲🇳 Монгол',
+    langBtn: '🇲🇳 Монгол',
   },
 };
 // Барааны зургийг PDF-д найдвартай буулгах — html2canvas cross-origin зурагт CORS шаарддаг тул
@@ -22861,7 +22862,7 @@ async function buildOrderQuote(o, lang) {
     const sTitle = EN ? enText(_sTitle) : _sTitle;
     const dlvLbl = EN ? enText(delivLbl) : delivLbl;
     const itemRows = itemRowsFor(EN);
-    const _cust = escapeHtml(custName || T.fallbackCust);
+    const _cust = custName ? escapeHtml(custName) : '';
     const _vatNote = hasVat ? T.vatOut : T.vatIn;
     const fname = (T.fileBase + ' ' + (o.customer || '') + ' ' + (o.number || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
     const _sigBlock = _sName ? `<tr><td style="padding:26px 32px 0;">

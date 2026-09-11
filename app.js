@@ -24578,7 +24578,8 @@ function cooSalaryPaid(rows, name, fromMonth, toMonth, acct) {
   return out;
 }
 // Сонгосон салбарын цэвэр ашиг. Салбарыг мөрийн нэрээр шүүнэ.
-// basis: 'accrual' = гүйцэтгэсэн сард ноогдуулах (өгөгдмөл) · 'cash' = бодитоор орсон/гарсан.
+// basis: 'cash' = бодитоор орсон/гарсан (ашгийн эрхийн ҮНДЭС) · 'accrual' = гүйцэтгэсэн
+// сард ноогдуулах (лавлагаа). Дуудагч хоёуланг ил дамжуулна — энд өгөгдмөл байхгүй.
 // ⚠ Хоёр суурь ЗӨРНӨ: хураагдаагүй авлага ноогдохд орно, орсон мөнгөнд ОРОХГҮЙ.
 function cooNetForMonths(months, branch, basis) {
   const want = branch || cooBranch();
@@ -24641,9 +24642,10 @@ function renderCooSalary() {
   const cooName = cooKey ? ((typeof memberName === 'function' && memberName(cooKey)) || cfg.name || cooKey) : '—';
   const dataReady = (state.appOrders && state.appOrders.length != null) && (state.financeRequests !== undefined);
 
-  // ⚠ ХОЁР СУУРЬ ЗЭРЭГ (2026-09-10): «ноогдох» нь хураагдаагүй авлагыг орлого гэж
-  //   тоолдог тул #1371-ийн 55сая шиг том авлага COO цалинг хөөрөгддөг. Хэрэглэгч
-  //   аль нь ашгийн эрхийн үндэс болохыг өөрөө шийднэ — тиймээс хоёуланг харуулна.
+  /* ⚠ ҮНДЭС = ОРСОН МӨНГӨ (2026-09-11 CEO шийдвэр). «Ноогдох» нь хураагдаагүй
+     авлагыг орлого гэж тоолдог тул #1371-ийн 55сая шиг том авлага COO цалинг
+     хөөрөгддөг. Хоёуланг ХАРУУЛСАН хэвээр — зөрүү нь «хэдэн төгрөг хураагдаагүй
+     байна» гэдгийг шууд хэлдэг — гэхдээ ЭХНИЙ багана нь ашгийн эрхийн үндэс. */
   // Grid (хүснэгт БИШ) — 320px-д мөрийн нэр бүтэн мөр эзэлж, 2 дүн доор зэрэгцэнэ
   // (хүснэгтээр 3 багана байхад хоёр дахь дүн таслагдаж, хажуу тийш гүйлгэх шаардлагатай болов).
   const _r2 = (l, a, c, cls) => `<div class="coo-lbl ${cls || ''}">${l}</div>`
@@ -24654,13 +24656,13 @@ function renderCooSalary() {
     return `<div class="coo-panel">`
       + `<div class="coo-panel-h">${title}</div>`
       + `<div class="coo-cmp">`
-      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">Ноогдох</div><div class="coo-hd">Орсон мөнгө</div>`
-      + _r2('Орлого (барьцаа хассан)', d.ac.inc, d.ca.inc, 'coo-inc')
-      + _r2('− Үйл ажиллагааны зардал', -d.ac.exp, -d.ca.exp)
-      + _r2('= Цэвэр ашиг', d.ac.net, d.ca.net, 'coo-net')
-      + _r2(`COO цалин (${pct}%)`, sa, sc, 'coo-share')
+      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">✓ Орсон мөнгө</div><div class="coo-hd coo-hd-ref">Ноогдох</div>`
+      + _r2('Орлого (барьцаа хассан)', d.ca.inc, d.ac.inc, 'coo-inc')
+      + _r2('− Үйл ажиллагааны зардал', -d.ca.exp, -d.ac.exp)
+      + _r2('= Цэвэр ашиг', d.ca.net, d.ac.net, 'coo-net')
+      + _r2(`COO цалин (${pct}%)`, sc, sa, 'coo-share')
       + `</div>`
-      + (gap > 0 ? `<div class="coo-gap">↔ Зөрүү ${fmtMoney(gap)} = хураагдаагүй авлага. Ноогдохоор бол тэр мөнгө орлогод тоологдож, COO цалин ${fmtMoney(sa - sc)}-аар их гарна.</div>` : '')
+      + (gap > 0 ? `<div class="coo-gap">↔ Зөрүү ${fmtMoney(gap)} = <b>хураагдаагүй авлага</b>. Ашгийн эрх нь <b>орсон мөнгөөр</b> тооцогдоно — авлага хураагдмагц энэ зөрүү өөрөө арилж, COO цалин ${fmtMoney(sa - sc)}-аар нэмэгдэнэ.</div>` : '')
       + `</div>`;
   };
 
@@ -24701,16 +24703,16 @@ function renderCooSalary() {
           + `<div class="coo-paid-d coo-paid-t"></div><div class="coo-paid-m coo-paid-t">Нийт олгосон · ${_paid.list.length} гүйлгээ</div><div class="coo-paid-a coo-paid-t">${fmtMoney(_paid.total)}</div></div>`
         : ((cooKey || _cooAcct) ? `<div class="coo-paid-none">Энэ хугацаанд цалин олгоогүй.</div>` : ''))
       + `<div class="coo-cmp coo-bal">`
-      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">Ноогдохоор</div><div class="coo-hd">Орсон мөнгөөр</div>`
-      + `<div class="coo-lbl">Ашгийн эрх (${pct}%)</div><div class="coo-v">${fmtMoney(_dueAc)}</div><div class="coo-v">${fmtMoney(_dueCa)}</div>`
+      + `<div class="coo-lbl coo-hd"></div><div class="coo-hd">✓ Орсон мөнгөөр</div><div class="coo-hd coo-hd-ref">Ноогдохоор</div>`
+      + `<div class="coo-lbl">Ашгийн эрх (${pct}%)</div><div class="coo-v">${fmtMoney(_dueCa)}</div><div class="coo-v">${fmtMoney(_dueAc)}</div>`
       + `<div class="coo-lbl">− Олгосон</div><div class="coo-v">${fmtMoney(-_paid.total)}</div><div class="coo-v">${fmtMoney(-_paid.total)}</div>`
-      + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div>`
+      + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div>`
       + `</div>`
       + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон гүйлгээ — цалин (7100 г.м.) БА ашгийн урамшуулал (<b>7700</b>, эсвэл 6900), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
       + `</div>`;
   }
 
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• <b>Ноогдох</b> = захиалга гүйцэтгэсэн сард бүтэн дүнгээрээ (төлөгдөөгүй ч). <b>Орсон мөнгө</b> = бодитоор хураасан төлбөр, бодитоор гарсан зардлаар. Барьцаа/зээл хоёуланд хасагдсан.<br>• Ашгийн эрхийн үндэс болгох суурийг <b>та шийднэ</b> — аль нэгийг сонгож нягтлантай тохирно.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
+  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• Ашгийн эрх = <b>Орсон мөнгө</b> (эхний багана) — бодитоор хураасан төлбөр, бодитоор гарсан зардлаар. <b>Ноогдох</b> нь зөвхөн лавлагаа: захиалга гүйцэтгэсэн сард бүтэн дүнгээрээ (төлөгдөөгүй ч). Барьцаа/зээл хоёуланд хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
 
   // CEO тохиргоо
   if (meCeo) {
@@ -26237,10 +26239,18 @@ function renderIncomeSections(month, mi) {
 // Том тоог сая₮-оор товчлох (89,662,026₮ → 89.7 сая₮)
 function fmtSaya(v) { const a = Math.abs(v); return a >= 1e5 ? (v / 1e6).toFixed(a >= 1e8 ? 0 : 1).replace(/\.0$/, '') + ' сая₮' : fmtMoney(v); }
 // Олон сарын орлого/зардал/ашгийн цуврал (тухайн салбар лензээр) — тренд графикт
-// Орлогын суурь: 'accrual' (гүйцэтгэл, эвентийн сар, гэрээний дүн) | 'cash' (мөнгө орсон өдөр)
+/* Орлого/зардлын суурь. ӨГӨГДМӨЛ = 'cash' (2026-09-11 CEO шийдвэр).
+   ЯАГААД: зардал 100% банкны хуулгаас ирдэг — өөрөөр хэлбэл аль хэдийн мөнгөн
+   гүйлгээ. Орлогыг 'accrual'-аар үзэх нь НЭГ тайлангийн хоёр талыг өөр хэмжүүрээр
+   хэмжинэ: 9 сард болсон эвентийн орлого 9-д, түүний зардал 10-д гарвал 9 сар
+   хиймлээр ашигтай харагдана. 'cash' дээр сарын тоо банкны хуулгатай тулгагдана.
+   'accrual' (Гүйцэтгэл) нь товчоор хэвээр — эвентийн ашиг, татварын тайланд хэрэгтэй.
+   ⚠ localStorage түлхүүр v2 — хуучин 'finBasis' нь өгөгдмөл accrual үеийн сонголт
+     тул үл тоомсорлоно, эс бөгөөс шинэ өгөгдмөл хэрэглэгчид хүрэхгүй. */
+const FIN_BASIS_DEFAULT = 'cash';
 function finBasis() {
-  if (state.finBasis === undefined) { try { state.finBasis = localStorage.getItem('finBasis') || 'accrual'; } catch (e) { state.finBasis = 'accrual'; } }
-  return state.finBasis === 'cash' ? 'cash' : 'accrual';
+  if (state.finBasis === undefined) { try { state.finBasis = localStorage.getItem('finBasis2') || FIN_BASIS_DEFAULT; } catch (e) { state.finBasis = FIN_BASIS_DEFAULT; } }
+  return state.finBasis === 'accrual' ? 'accrual' : 'cash';
 }
 /* ⭐ ОРЛОГО АЛЬ САРД ТООЛОГДОХ ВЭ — ЦОРЫН ГАНЦ ДҮРЭМ (2026-09-11).
    'cash'    = мөнгө ОРСОН сар (`paid_date`). Хоосон бол эвентийн сар — түүхэн
@@ -26680,9 +26690,9 @@ function renderReports() {
   // Орлогын суурь солих товч
   const bt = (v, lbl) => `<button data-fin-basis="${v}" style="padding:6px 14px;font-size:12px;border:1px solid var(--border);cursor:pointer;font-weight:600;${basis === v ? 'background:var(--primary);color:#fff;border-color:var(--primary);' : 'background:var(--panel);color:var(--muted);'}">${lbl}</button>`;
   const basisToggle = `<div style="display:flex;justify-content:center;margin:0 0 6px;">
-      <div style="display:inline-flex;border-radius:10px;overflow:hidden;">${bt('accrual', 'Гүйцэтгэл')}${bt('cash', 'Мөнгөн гүйлгээ')}</div>
+      <div style="display:inline-flex;border-radius:10px;overflow:hidden;">${bt('cash', 'Мөнгөн гүйлгээ')}${bt('accrual', 'Гүйцэтгэл')}</div>
     </div>
-    <div style="text-align:center;font-size:10.5px;color:var(--muted);margin-bottom:12px;">${basis === 'accrual' ? 'Орлого: эвент болсон сараар · Зардал: ноогдох сараар (цалин ажилласан сард) — Санхүүгээс зөрж болзошгүй' : 'Орлого: мөнгө орсон өдрөөр · Зардал: гүйлгээ гарсан огноогоор — Санхүү хэсэгтэй таарна'}</div>`;
+    <div style="text-align:center;font-size:var(--fs-xs);color:var(--muted);margin-bottom:12px;line-height:1.4;">${basis === 'cash' ? '✓ Үндсэн — орлого: мөнгө орсон өдрөөр · зардал: гүйлгээ гарсан огноогоор. Банкны хуулгатай тулгагдана.' : '⚠ Лавлагаа — орлого: эвент болсон сараар · зардал: ноогдох сараар. Мөнгө хөдлөөгүй дүн орсон тул банкны хуулгатай ТААРАХГҮЙ.'}</div>`;
   const pnl = `
     ${monthNav}
     ${basisToggle}
@@ -26887,7 +26897,7 @@ function attachReportsHandlers() {
   });
   document.querySelectorAll('[data-fin-basis]').forEach(b => b.onclick = () => {
     state.finBasis = b.dataset.finBasis;
-    try { localStorage.setItem('finBasis', state.finBasis); } catch (e) {}
+    try { localStorage.setItem('finBasis2', state.finBasis); } catch (e) {}
     render();
   });
   document.querySelectorAll('[data-trend-month]').forEach(b => b.onclick = () => {

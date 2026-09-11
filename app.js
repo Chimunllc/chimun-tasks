@@ -7568,7 +7568,16 @@ function reconOrdersList() {
 function statementMeta(matrix) {
   let acct = '', period = '', opening = null, closing = null;
   const rows = matrix || [];
-  const num = (v) => { const n = Number(String(v == null ? '' : v).replace(/[^\d.\-]/g, '')); return isFinite(n) ? n : null; };
+  /* ⛔ ЦИФРГҮЙ ТЕКСТ нь 0 БИШ (2026-09-11, амьд файлаар олов). «Кредит гүйлгээ»-г
+     цэвэрлэвэл '' үлдэж, `Number('')` = 0 → задлагч баганын ГАРЧГИЙГ үлдэгдэл гэж
+     уншиж байв. ХААН хуулгын opening/closing хоёулаа ингэж 0 болж, «1,070,023₮-ийн
+     зардал дутуу» гэсэн худал анхааруулга төрсөн. */
+  const num = (v) => {
+    const t = String(v == null ? '' : v).replace(/[^\d.\-]/g, '');
+    if (!/\d/.test(t)) return null;
+    const n = Number(t);
+    return isFinite(n) ? n : null;
+  };
   /* Шошгын дүн: ДАРААХ эхний тоон нүд, эс бол ӨМНӨХ хамгийн ойрхон тоон нүд.
      Банк бүр өөр байрлуулдаг — Голомт заримдаа утгаа шошгоосоо ЗҮҮН талд бичдэг. */
   const balNear = (cells, idx) => {
@@ -7583,6 +7592,34 @@ function statementMeta(matrix) {
     const e = cells.findIndex(c => /эцсийн\s*үлдэгдэл|дараагийн\s*үлдэгдэл|ending\s*balance|closing\s*balance/i.test(c));
     if (e >= 0 && closing == null) { const v = balNear(cells, e); if (v != null) closing = v; }
   };
+  /* ⭐ БАГАНЫН ГОРИМ (ХААН). Банкууд үлдэгдлээ ХОЁР өөр газар бичдэг:
+       · Голомт — ШОШГОТОЙ мөр: «Эхний үлдэгдэл | 88542.42» … «Эцсийн үлдэгдэл | 663109»
+       · ХААН   — БАГАНА: толгойн мөрөнд «Эхний үлдэгдэл» ба «Эцсийн үлдэгдэл»
+                  хоёулаа гарчиг болж, утга нь гүйлгээний мөр БҮРД байна.
+     Тиймээс ХААН-д хуулгын эхний үлдэгдэл = ЭХНИЙ мөрийн «эхний үлдэгдэл»,
+     эцсийн үлдэгдэл = СҮҮЛИЙН мөрийн «эцсийн үлдэгдэл».
+     Таних шалгуур: нэг мөрөнд хоёр гарчиг ЗЭРЭГ байх (Голомтод хэзээ ч тохиолдохгүй —
+     тэнд тус тусдаа мөрөнд, дүнтэйгээ хамт бичигддэг). */
+  const colBal = () => {
+    for (let r = 0; r < Math.min(rows.length, 20); r++) {
+      const cells = (rows[r] || []).map(c => String(c == null ? '' : c).trim());
+      const bi = cells.findIndex(c => /^эхний\s*үлдэгдэл$/i.test(c));
+      const ei = cells.findIndex(c => /^эцсийн\s*үлдэгдэл$/i.test(c));
+      if (bi < 0 || ei < 0 || bi === ei) continue;
+      let first = null, last = null;
+      for (let i = r + 1; i < rows.length; i++) {
+        const c2 = (rows[i] || []).map(c => String(c == null ? '' : c).trim());
+        const o = num(c2[bi]), cl = num(c2[ei]);
+        if (o == null || cl == null) continue;
+        if (first == null) first = o;
+        last = cl;
+      }
+      if (first != null && last != null) return { opening: first, closing: last };
+    }
+    return null;
+  };
+  const col = colBal();
+  if (col) { opening = col.opening; closing = col.closing; }
   // ── Толгой: данс, хугацаа, үлдэгдэл ──
   for (const row of rows.slice(0, 14)) {
     const cells = (row || []).map(c => String(c == null ? '' : c).trim());

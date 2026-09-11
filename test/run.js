@@ -6851,6 +6851,23 @@ need(['orderCustType']);
   eq(F.stmtBalanceCheck({ ccy: 'USD', opening: 100, closing_stated: 300, closing_calc: 999 }).ok, true, 'тэнцэл: валют данс шалгагдахгүй (мөр ₮ болж хөрвүүлэгдсэн)');
   eq(F.stmtBalanceCheck({ ccy: 'MNT', opening: null, closing_stated: null }).ok, true, 'тэнцэл: үлдэгдэл хуулгад алга → шалгахгүй');
 
+  /* ⛔ ХУДАЛ АНХААРУУЛГА (2026-09-11, амьд датаар олсон). ХААН дансны хуулганд
+     opening=0, closing_stated=0 байтал 16.8сая орж 15.7сая гарсан — задлагч
+     үлдэгдлийн шошгыг олоогүй. «1,070,023₮-ийн зардал дутуу» гэж хэлбэл хүн
+     байхгүй зардлыг хайна. */
+  {
+    const khan = { ccy: 'MNT', opening: 0, closing_stated: 0, closing_calc: 1070023,
+      credit_total: 16800000, debit_total: 15729977 };
+    eq(F.stmtBalanceCheck(khan).ok, true, 'тэнцэл: гүйлгээтэй атлаа үлдэгдэл 0/0 → зөрүү гэж дуугарахгүй');
+    eq(F.stmtBalanceCheck(khan).skip, 'үлдэгдэл уншигдаагүй', 'тэнцэл: шалгагдаагүй шалтгаан нэрлэгдэнэ');
+    eq(F.stmtBalanceCheck({ ...khan, opening: 0, closing_stated: 0, credit_total: 0, debit_total: 0 }).skip,
+       undefined, 'тэнцэл: гүйлгээгүй хоосон данс бол 0/0 нь ЖИНХЭНЭ үлдэгдэл — шалгагдана');
+    eq(F.stmtBalanceCheck({ ...khan, opening: 100 }).ok, false,
+       'тэнцэл: эхний үлдэгдэл уншигдсан бол жинхэнэ зөрүү хэвээр баригдана');
+    eq(F.stmtBalanceCheck({ ...khan, closing_stated: 1070023 }).ok, true,
+       'тэнцэл: эцсийн үлдэгдэл таарвал тэнцэнэ');
+  }
+
   // ── ЗАЛГАА: дутуу хугацаа = мөнгө чимээгүй алга болох цорын ганц бодит эрсдэл ──
   {
     const A = { acct: '504', ccy: 'MNT', id: 'a', period_from: '2026-07-01', period_to: '2026-07-31', opening: 0, closing_stated: 1000, closing_calc: 1000 };

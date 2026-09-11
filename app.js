@@ -28395,12 +28395,17 @@ function renderFinanceReport(wrap) {
   // Бүлгийн толгой = ЭВХЭГДДЭГ. Дэд бүлэг өгөгдмөлөөр ХААЛТТАЙ — эхлээд ангилал
   // бүрийн дүнг нэг харцаар үзээд, хэрэгтэйг нь дарж дэлгэнэ (өмнө нь бүх мөр
   // задарсан байсан тул 97 гүйлгээ гүйлгэж уншихад хэцүү байв).
-  const grpBlock = (label, count, sum, level, key, defOpen) => {
+  /* «Зардал БИШ» бүлэг — эзний зээл(69xx), барьцаа буцаалт(5810). Мөнгө гарсан ч
+     ашгийг бууруулдаггүй тул жинхэнэ зардалтай ижил харагдах нь төөрөгдүүлнэ.
+     Бүлгийн БҮХ мөр саармаг байвал л тэмдэглэнэ — холимог бүлгийг худлаа буудахгүй. */
+  const grpIsNeutral = (arr) => !!(arr && arr.length)
+    && arr.every(t => finIsNonExpense(t.category) || finIsDepositReturn(t));
+  const grpBlock = (label, count, sum, level, key, defOpen, neutral) => {
     const st = state.finGrpOpen || {};
     const open = Object.prototype.hasOwnProperty.call(st, key) ? !!st[key] : defOpen;
     const box = document.createElement('div');
     const h = document.createElement('div');
-    h.className = level === 1 ? 'fin-grp fin-grp-1' : 'fin-grp fin-grp-2';
+    h.className = (level === 1 ? 'fin-grp fin-grp-1' : 'fin-grp fin-grp-2') + (neutral ? ' fin-grp-neutral' : '');
     h.innerHTML = `<span class="fin-grp-l"><span data-caret class="fin-caret${open ? '' : ' closed'}">▾</span> ${escapeHtml(label)} <span class="fin-grp-n">(${count})</span></span><span class="fin-grp-s">${fmtMoney(sum)}</span>`;
     const body = document.createElement('div');
     if (!open) body.style.display = 'none';
@@ -28478,11 +28483,11 @@ function renderFinanceReport(wrap) {
     body.style.display = collapsed ? 'none' : '';
     const byMain = groupBy(byBr[b], t => finMainName(t.category));
     Object.keys(byMain).sort().forEach(main => {
-      const g1 = grpBlock(main, byMain[main].length, sumOf(byMain[main]), 1, `${b}|${main}`, true);
+      const g1 = grpBlock(main, byMain[main].length, sumOf(byMain[main]), 1, `${b}|${main}`, true, grpIsNeutral(byMain[main]));
       body.appendChild(g1.el);
       const bySub = groupBy(byMain[main], t => finSubName(t.category));
       Object.keys(bySub).sort().forEach(sub => {
-        const g2 = grpBlock(sub, bySub[sub].length, sumOf(bySub[sub]), 2, `${b}|${main}|${sub}`, !!state.finExpandAll);
+        const g2 = grpBlock(sub, bySub[sub].length, sumOf(bySub[sub]), 2, `${b}|${main}|${sub}`, !!state.finExpandAll, grpIsNeutral(bySub[sub]));
         g1.body.appendChild(g2.el);
         bySub[sub].forEach(t => g2.body.appendChild(line(t)));
       });

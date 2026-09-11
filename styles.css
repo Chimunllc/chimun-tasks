@@ -6885,7 +6885,15 @@ select.no-asar-len {
   border-radius: 10px; }
 
 /* ── Хуулгын бүртгэл / хаагдаагүй орлого (тулгалтын цонх) ── */
-.recon-row.warn-row { background: var(--warn-soft); }
+/* Анхааруулгын мөр нь ЮУ болсныг бүтнээр хэлэх ёстой — `.recon-l`-ийн ellipsis
+   «⚠ ХААН · Хаан — хуулгын тэнцэл зөрж байна (мө…» гэж хамгийн чухал хэсгийг
+   нь таслаж байв. Жагсаалтын бусад мөр богино тул nowrap хэвээр. */
+.recon-row.warn-row { background: var(--warn-soft); flex-wrap: wrap; align-items: baseline; }
+.recon-row.warn-row .recon-l { white-space: normal; overflow: visible; text-overflow: clip;
+  flex: 1 1 auto; min-width: 0; line-height: 1.4; }
+/* Хувийн дансны анхааруулга = мэдээлэл, сар хаахад саад болохгүй. Компанийн
+   анхааруулгатай ижил тод байвал хүн эрэмбэлж чадахгүй. */
+.recon-row.warn-row.prsn-row { background: var(--panel-hover); opacity: .85; }
 .recon-ok { color: var(--ok); }
 .recon-bad { color: var(--danger); }
 .recon-empty.recon-ok { color: var(--ok); }

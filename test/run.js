@@ -7031,6 +7031,48 @@ need(['orderCustType']);
   }
 }
 
+// ═══ ӨГӨГДМӨЛ СУУРЬ = МӨНГӨН ГҮЙЛГЭЭ (2026-09-11) ═════════════════════════════
+// Зардал 100% банкны хуулгаас ирдэг тул орлогыг 'accrual'-аар үзэх нь НЭГ тайлангийн
+// хоёр талыг өөр хэмжүүрээр хэмжинэ (эвент 9 сард, түүний зардал 10 сард → 9 сар
+// хиймлээр ашигтай). Өгөгдмөл нь чимээгүй буцвал бүх тайлангийн тоо өөрчлөгдөнө.
+function testFinBasisDefault() {
+  need(['finBasis']);
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  // ① Өгөгдмөл — хадгалсан сонголт байхгүй үед
+  localStorage.removeItem('finBasis2');
+  runIn('state.finBasis = undefined;');
+  eq(F.finBasis(), 'cash', 'өгөгдмөл суурь = мөнгөн гүйлгээ (хадгалсан сонголтгүй)');
+  // ② Хэрэглэгч гүйцэтгэл рүү сэлгэвэл хүндэтгэнэ
+  localStorage.setItem('finBasis2', 'accrual');
+  runIn('state.finBasis = undefined;');
+  eq(F.finBasis(), 'accrual', 'хэрэглэгчийн сонгосон гүйцэтгэл суурь хадгалагдана');
+  // ③ Ойлгомжгүй утга → cash руу унана (accrual руу БИШ)
+  localStorage.setItem('finBasis2', 'хог');
+  runIn('state.finBasis = undefined;');
+  eq(F.finBasis(), 'cash', 'танихгүй утга → мөнгөн гүйлгээ рүү унана');
+  localStorage.removeItem('finBasis2');
+  runIn('state.finBasis = undefined;');
+
+  // ── SCAN ──
+  ok(/const FIN_BASIS_DEFAULT = 'cash'/.test(src),
+     "scan: өгөгдмөл суурь 'cash' хэвээр (accrual руу чимээгүй буцаагүй)");
+  ok(!/localStorage\.(get|set)Item\('finBasis'\)?/.test(src),
+     "scan: хуучин 'finBasis' түлхүүр хэрэглэгдэхгүй — тэр нь өгөгдмөл accrual үеийн сонголт");
+
+  // ④ COO ашгийн эрхийн ҮНДЭС = орсон мөнгө → эхний дүнгийн багана нь cash (d.ca)
+  //    Багана солигдвол CEO өөр тоо харна: хураагдаагүй авлага цалинг хөөрөгдөнө.
+  for (const [row, want] of [['Орлого (барьцаа хассан)', 'd.ca.inc, d.ac.inc'],
+                             ['= Цэвэр ашиг', 'd.ca.net, d.ac.net']]) {
+    ok(src.includes("_r2('" + row + "', " + want),
+       'scan: COO панелийн «' + row + '» мөрөнд орсон мөнгө ЭХНИЙ багана');
+  }
+  ok(/_r2\(`COO цалин \(\$\{pct\}%\)`, sc, sa,/.test(src),
+     'scan: COO цалингийн мөрөнд ч орсон мөнгө эхэнд');
+  ok(/= Үлдэгдэл<\/div><div class="coo-v coo-share \$\{_bcol\(_balCa\)\}/.test(src),
+     'scan: олгосон цалингийн үлдэгдэл ч орсон мөнгөний суурьтай');
+}
+testFinBasisDefault();
+
 // ═══ САР ХААХ (2026-09-11) ════════════════════════════════════════════════════
 // Хуучин сарын тоо ямар ч үед өөрчлөгдөж, «өнгөрсөн сард харсан тайлан» хүчингүй
 // болдог байв. Хаасан сар хөдөлөхгүй; алдаа гарвал дараагийн сард залруулга.

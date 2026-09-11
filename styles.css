@@ -6825,6 +6825,11 @@ select.no-asar-len {
 .coo-net { border-top: 1px solid var(--border); padding-top: 6px; margin-top: 3px; }
 .coo-share { border-top: 1px solid var(--border); padding-top: 7px; margin-top: 3px; }
 .coo-share.coo-v { font-size: var(--fs-lg); color: var(--ok); }
+/* Гурав дахь багана = ЛАВЛАГАА суурь («Ноогдох»). Ашгийн эрх нь эхний баганаар
+   (орсон мөнгө) тооцогддог тул лавлагааг бүдгэрүүлж, аль нь шийдвэрлэх тоо болохыг
+   нүдээр ялгана. Мөр бүр 3 нүд (шошго + 2 дүн) тул nth-child(3n) = лавлагаа багана. */
+.coo-cmp > .coo-v:nth-child(3n) { color: var(--muted); font-weight: 600; }
+.coo-cmp > .coo-hd-ref { opacity: .7; }
 .coo-gap { font-size: var(--fs-sm); color: var(--warn); margin-top: 10px; line-height: 1.45; }
 @media (max-width: 620px) {
   .coo-cmp { grid-template-columns: 1fr 1fr; column-gap: var(--space-3); }

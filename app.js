@@ -1909,6 +1909,7 @@ let FINANCE_SUB_CATEGORIES = {
     { code: '1500', name: 'Гал тогооны хангамж' },
     { code: '1600', name: 'Ажилтны хоол, халамж' },
     { code: '1700', name: 'Тоног төхөөрөмжийн засвар, сэлбэг' },
+    { code: '1750', name: 'Тээврийн хэрэгслийн засвар, оношилгоо' },
     { code: '1800', name: 'Шатахуун, түлш (бензин, газ)' },
     { code: '1900', name: 'Бусад шууд зардал' },
   ],
@@ -1917,6 +1918,7 @@ let FINANCE_SUB_CATEGORIES = {
     { code: '2200', name: 'Цахилгаан, ус, дулаан' },
     { code: '2300', name: 'Утас, интернэт' },
     { code: '2400', name: 'Онлайн програм, апп төлбөр' },
+    { code: '2600', name: 'Даатгал' },
     { code: '2900', name: 'Бусад тогтмол зардал' },
   ],
   '3000': [
@@ -1954,6 +1956,7 @@ let FINANCE_SUB_CATEGORIES = {
     { code: '6500', name: 'Барилга, дэд бүтэц' },
     { code: '6600', name: 'Бусад хөрөнгө' },
     { code: '6900', name: 'Эзний зээл / захирлын авалт (зардал БИШ)' },
+    { code: '6950', name: 'Зээлийн үндсэн төлбөр (зардал БИШ)' },
   ],
   '7000': [
     { code: '7100', name: 'Үндсэн ажилтны цалин' },
@@ -1962,6 +1965,7 @@ let FINANCE_SUB_CATEGORIES = {
     { code: '7400', name: 'Урамшуулал / бонус' },
     { code: '7500', name: 'Илүү цаг, нэмэгдэл хөлс' },
     { code: '7600', name: 'Бусад цалин, тэтгэмж' },
+    { code: '7700', name: 'Ашгийн урамшуулал (салбарын захирал)' },
   ],
   '9000': [
     { code: '9100', name: 'Засгийн газрын торгууль' },
@@ -23777,12 +23781,12 @@ function cooNameKey(name) {
   return up.length >= 4 ? up.slice(0, 7) : '';
 }
 function _cooNorm(s) { return String(s || '').toUpperCase().replace(/[^А-ЯӨҮЁA-Z]/g, ''); }
-// COO-д олгосон дүнгийн ангилал: цалин (7100 үндсэн, 7200/7300/7600) БА **6900**
-// (эзний зээл / захирлын авалт). Ашгийн эрхийн олголт нь ЗАРДАЛ БИШ тул 6900-аар
-// бүртгэгддэг — эс бөгөөс тэр төлбөр салбарын ашгийг бууруулж, тэрхүү ашгаас
-// тооцогддог хувийг өөрөө нь багасгах дугуй хамаарал үүснэ. Гэхдээ олгосон дүн
-// «Үлдэгдэл»-ээс хасагдах ёстой тул энд ЗААВАЛ орно.
-function cooIsSalaryCat(cat) { return /^(7[1236]00|6900)/.test(String(cat || '')); }
+/* COO-д олгосон дүнгийн ангилал: цалин (7100 үндсэн, 7200/7300/7600),
+   **7700** ашгийн урамшуулал (үндсэн код — ажилтны орлого тул татвар ногдоно,
+   салбар нь «Чимун ХХК» болохоор M-Event-ийн ашгийг бууруулахгүй), мөн **6900**
+   (эзний зээл — хувьцаа эзэмшигчийн авалтаар олговол). Бүгд «Үлдэгдэл»-ээс
+   хасагдах ёстой тул энд ЗААВАЛ орно. */
+function cooIsSalaryCat(cat) { return /^(7[1236]00|7700|6900)/.test(String(cat || '')); }
 // Тухайн хүнд fromMonth..toMonth хооронд олгосон цалингийн мөрүүд (мөнгө гарсан сараар).
 // Цэвэр функц — тестлэгдэнэ. rows = financeAsTask(...) гаралт.
 // Дансны дугаар — зөвхөн цифрээр (зай/зураас/«данс:» угтвар ялгаатай бичигддэг).
@@ -23943,7 +23947,7 @@ function renderCooSalary() {
       + `<div class="coo-lbl">− Олгосон</div><div class="coo-v">${fmtMoney(-_paid.total)}</div><div class="coo-v">${fmtMoney(-_paid.total)}</div>`
       + `<div class="coo-lbl coo-share">= Үлдэгдэл</div><div class="coo-v coo-share ${_bcol(_balAc)}">${fmtMoney(_balAc)}</div><div class="coo-v coo-share ${_bcol(_balCa)}">${fmtMoney(_balCa)}</div>`
       + `</div>`
-      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон гүйлгээ — цалин (7100 г.м.) БА ашгийн эрхийн олголт (<b>6900</b> — зардал БИШ), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
+      + `<div class="coo-gap">Хасагдсан нь <b>${escapeHtml(cooName)}</b>-д олгосон гүйлгээ — цалин (7100 г.м.) БА ашгийн урамшуулал (<b>7700</b>, эсвэл 6900), мөнгө гарсан сараар. Нэрээр ба ${_cooAcct ? `<b>данс ${escapeHtml(_cooAcct)}</b>-аар` : 'дансаар'} тулгана — хуулгаас ирсэн мөрд нэр биш дансны дугаар бичигддэг. Сөрөг үлдэгдэл = ашгийн эрхээс хэтрүүлж олгосон. Тэмдэглэл нь аль сарын цалин болохыг хэлнэ — 5-р сарын цалинг 6-д олгосон мөр энд орсон байвал гараар хасч тооцно уу.</div>`
       + `</div>`;
   }
 
@@ -25522,7 +25526,12 @@ function finIsCustomerRefund(t) {
   return String(t.link_type || t.linkType || '') === 'order' || /⟦LNK\|order\|/.test(String(t.justification || ''));
 }
 // ── Зардлын НЭГДСЭН дүрэм — Тайлан ба Санхүү ижилхэн тоолохын тулд ──
-// Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(6900) + барьцаа буцаалт(5810) БИШ.
+/* 69xx = мөнгө гарсан ч ЗАРДАЛ БИШ гүйлгээ: 6900 эзний зээл / захирлын авалт,
+   6950 зээлийн үндсэн төлбөр. Эдгээр нь өр/хөрөнгийн хөдөлгөөн тул ашгийг бууруулахгүй.
+   ⚠ Шинэ «зардал биш» код нэмэх бол 69xx мужид нэм — энэ ганц функц бүх тайланг барина.
+   Кодыг түүхийгээр шалгахыг scan-тест хаадаг. */
+function finIsNonExpense(cat) { return /^69/.test(String(cat || '')); }
+// Жинхэнэ зардал = батлагдсан + хуулгаар баталгаажсан(PENDST биш) + эзний зээл(69xx) + барьцаа буцаалт(5810) БИШ.
 // ── НӨАТ = ЗАРДАЛ (2026-09-07) ───────────────────────────────────────────────
 // Борлуулалтын НӨАТ орлогод багтаж ирдэг ч компанид ҮЛДДЭГГҮЙ — татварт төлөгдөнө.
 // Тиймээс ашгийн тайланд зардал болж хасагдана, салбар бүрд ӨӨРИЙНХ нь баримтаар
@@ -25556,7 +25565,7 @@ function ensureVatLoaded() {
 }
 function finIsRealExpense(t) {
   return !!t && t.decision === 'approved' && !finPendingStmt(t)
-    && !String(t.category || '').startsWith('6900') && !finIsDepositReturn(t) && !finIsCustomerRefund(t);
+    && !finIsNonExpense(t.category) && !finIsDepositReturn(t) && !finIsCustomerRefund(t);
 }
 // Зардал аль сард тоологдох вэ — basis-аар: 'cash'=гүйлгээ гарсан огноо(requested_at), 'accrual'=ноогдох сар.
 function finExpMonth(t, basis) {
@@ -25581,7 +25590,7 @@ function finBranchPnl(month, basis) {
   const exp = { 'ИВЕНТ': 0, 'КЕМП': 0, 'ХХК': 0 }; let ownerLoan = 0, depReturn = 0, vatPaid = 0;
   (state.financeRequests || []).filter(r => r.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
-    if (String(t.category || '').startsWith('6900')) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл = зардал БИШ
+    if (finIsNonExpense(t.category)) { ownerLoan += Number(t.amount) || 0; return; }  // эзний зээл / зээлийн үндсэн төлбөр = зардал БИШ
     if (finIsDepositReturn(t)) { depReturn += Number(t.amount) || 0; return; }  // барьцаа буцаалт = зардал БИШ (P&L саармаг)
     if (finIsCustomerRefund(t)) { return; }                                     // үйлчлүүлэгчид буцаасан = орлогоос хасагдсан
     if (finIsVatPayment(t)) { vatPaid += Number(t.amount) || 0; return; }        // НӨАТ төлөлт — ноогдуулсанаар орлуулна (давхар тоолохгүй)
@@ -27080,7 +27089,7 @@ function renderFinanceReport(wrap) {
   head.innerHTML = `<button class="btn" data-fin-month="-1" style="padding:6px 13px;font-size:16px;line-height:1;">‹</button>`
     + `<div style="text-align:center;flex:1;min-width:0;"><div style="font-size:16px;font-weight:800;">${month} <span style="font-size:11px;font-weight:600;color:var(--muted);">· ${wantBr ? finBranchDisplay(wantBr) : 'Бүх салбар'}</span></div>`
     + `<div style="font-size:12px;color:var(--muted);margin-top:1px;">${monthList.length} гүйлгээ · <b style="color:var(--text);">${fmtMoney(sumOf(monthList.filter(finIsRealExpense)))}</b> зардал${(() => {
-        const ol = sumOf(monthList.filter(t => String(t.category || '').startsWith('6900')));
+        const ol = sumOf(monthList.filter(t => finIsNonExpense(t.category)));
         const dr = sumOf(monthList.filter(finIsDepositReturn));
         const pd = sumOf(monthList.filter(t => finPendingStmt(t)));
         const bits = [];
@@ -27149,7 +27158,7 @@ function renderFinanceReport(wrap) {
     const byOwner = {}; let totCard = 0, totTr = 0;
     monthList.forEach(t => {
       const tok = parseCardToken(t.justification); if (!tok) return;
-      if (String(t.category || '').startsWith('6900')) return;
+      if (finIsNonExpense(t.category)) return;
       if (finIsDepositReturn(t)) return;   // барьцаа буцаалт = эзэмшигчийн зарцуулалт БИШ
       const amt = Number(t.amount) || 0; const k = tok.ownerKey || '';
       const o = byOwner[k] || (byOwner[k] = { card: 0, tr: 0 });
@@ -27201,7 +27210,7 @@ function renderFinanceReport(wrap) {
     const noInc = noOrders.reduce((s, o) => s + nomaadEffTotal(o), 0);
     const inc = evInc + noInc;
     // Эзний зээл(6900) ба барьцаа буцаалт(5810) = ЗАРДАЛ БИШ — цэвэр зардлаас хасна
-    const isOwnerLoan = t => String(t.category || '').startsWith('6900');
+    const isOwnerLoan = t => finIsNonExpense(t.category);
     const expAll = monthList.filter(t => finStage(t).key === 'fdone');
     const ownerLoan = sumOf(expAll.filter(isOwnerLoan));
     const depReturn = sumOf(expAll.filter(finIsDepositReturn));

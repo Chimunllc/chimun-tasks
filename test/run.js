@@ -5164,6 +5164,51 @@ need(['orderCustType']);
   ok(!F.asarPurgeSkus().some(k => G('ASAR_MODULES')[k]), 'хасалт: жагсаалтад модулийн sku БАЙХГҮЙ');
 }
 
+// НЭГ ҮГСИЙН САН — төлөв/шийдвэр/зэрэг англи кодоор БИЧИГДЭНЭ (2026-09-11)
+// Sheets-ийн үед хүн уншихын тулд монгол болгож бичдэг байсан. Дата DB рүү шилжсэн ч
+// орчуулга үлдсэн тул нэг утга хоёр хэлээр хадгалагдаж, DB-г ШУУД уншдаг бүхэн
+// (тайлан, SQL, үүлэн агент) устгасан мөрийг устгаагүй гэж үзэж байв.
+// БИЧИХ = англи код. УНШИХ = хуучин монгол утгыг хөрвүүлсээр (хуучин мөр эвдрэхгүй).
+{
+  const TW = vm.runInContext('taskToWire', sandbox);
+  const TF = vm.runInContext('taskFromWire', sandbox);
+  const RW = vm.runInContext('requestToWire', sandbox);
+  const RF = vm.runInContext('normalizeFinance', sandbox);
+
+  eq(TW({ status: 'done' }).status, 'done', 'үгсийн сан: ажлын төлөв англиар бичигдэнэ');
+  eq(TW({ status: 'deleted' }).status, 'deleted', 'үгсийн сан: устгасан төлөв ч англиар');
+  eq(TW({ priority: 'high' }).priority, 'high', 'үгсийн сан: зэрэг англиар бичигдэнэ');
+  eq(TW({ branch: 'm-event' }).branch, 'm-event', 'үгсийн сан: салбар ленз код хэвээр');
+  eq(RW({ status: 'done' }).status, 'done', 'үгсийн сан: санхүүгийн төлөв англиар');
+  eq(RW({ decision: 'approved' }).decision, 'approved', 'үгсийн сан: шийдвэр англиар');
+
+  // УНШИХ тал — хуучин монгол утга хөрвөсөөр байна
+  eq(TF({ status: 'Дууссан' }).status, 'done', 'үгсийн сан: хуучин «Дууссан» уншигдана');
+  eq(TF({ status: 'Устгасан' }).status, 'deleted', 'үгсийн сан: хуучин «Устгасан» уншигдана');
+  eq(TF({ priority: 'Яаралтай' }).priority, 'high', 'үгсийн сан: хуучин «Яаралтай» уншигдана');
+  eq(TF({ status: 'done' }).status, 'done', 'үгсийн сан: шинэ англи утга дамжин өнгөрнө');
+  eq(RF({ status: 'Устгасан' }).status, 'deleted', 'үгсийн сан: санхүү «Устгасан» уншигдана');
+  eq(RF({ decision: 'Зөвшөөрсөн' }).decision, 'approved', 'үгсийн сан: санхүү «Зөвшөөрсөн» уншигдана');
+  eq(RF({ status: 'deleted' }).status, 'deleted', 'үгсийн сан: санхүү англи утга дамжин өнгөрнө');
+
+  // ЭРГЭХ АЯЛАЛ: бичээд уншихад анхны утга буцаж ирнэ
+  ['open', 'done', 'deleted'].forEach(v =>
+    eq(TF(TW({ status: v })).status, v, `үгсийн сан: ажил «${v}» эргэж ирнэ`));
+  ['pending', 'approved', 'rejected', 'deferred'].forEach(v =>
+    eq(RF(RW({ decision: v })).decision, v, `үгсийн сан: шийдвэр «${v}» эргэж ирнэ`));
+}
+
+// SCAN — бичих замд монгол болгох орчуулга буцаж ирэхгүй (2026-09-11)
+{
+  ok(!/out\.status\s*=\s*_xlate\(out\.status,\s*_(FIN_)?STATUS_E2M\)/.test(src),
+    'scan: төлөвийг монгол болгож бичихгүй');
+  ok(!/out\.decision\s*=\s*_xlate\(out\.decision,\s*_(FIN_)?DEC(ISION)?_E2M\)/.test(src),
+    'scan: шийдвэрийг монгол болгож бичихгүй');
+  ok(!/out\.priority\s*=\s*_xlate\(out\.priority,\s*_PRIORITY_E2M\)/.test(src),
+    'scan: зэргийг монгол болгож бичихгүй');
+  ok(/_xlate\(out\.status,\s*_STATUS_M2E\)/.test(src), 'scan: унших хөрвүүлэлт ХЭВЭЭР');
+}
+
 // КИРИЛЛ ҮГИЙН ХИЛ — JS-ийн \b кирилл дээр ажиллахгүй (2026-09-11)
 // /\bасар\b/.test('Том асар боолт') === false. «асар» бол M-Event-ийн ГОЛ бараа;
 // энэ түлхүүр үхсэн байсан тул асартай холбоотой зардал салбаргүй үлдэж байв.

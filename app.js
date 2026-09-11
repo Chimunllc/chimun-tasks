@@ -1349,12 +1349,9 @@ function taskToWire(task) {
   }
   // Boolean flag → Тийм/Үгүй (Sheet хүн уншихад)
   out.requires_photo_label = out.requires_photo ? 'Тийм' : 'Үгүй';
-  // Код → монгол
-  out.branch    = _xlate(out.branch, _BRANCH_E2M);
-  out.priority  = _xlate(out.priority, _PRIORITY_E2M);
-  out.status    = _xlate(out.status, _STATUS_E2M);
-  out.kind      = _xlate(out.kind, _KIND_E2M);
-  out.decision  = _xlate(out.decision, _DECISION_E2M);
+  // ⛔ Кодыг монгол болгож БИЧИХГҮЙ — дээрх requestToWire-ийн тайлбарыг үз.
+  //    Каноник = англи код (`open`/`done`/`high`…). Уншихад taskFromWire нь хуучин
+  //    монгол утгыг хөрвүүлсээр байх тул хуучин мөр эвдрэхгүй.
   // Timestamp (ms) → ISO string (Sheet дээр унших боломжтой)
   if (typeof out.created === 'number') out.created = new Date(out.created).toISOString();
   if (typeof out.updated === 'number') out.updated = new Date(out.updated).toISOString();
@@ -2291,9 +2288,11 @@ function requestToWire(r) {
   // N8n Sheet upsert нь singular талбараар map хийдэг тул plural CSV-г singular-д бас оноох
   if (out.purchase_proof_urls && !out.purchase_proof_url) out.purchase_proof_url = out.purchase_proof_urls;
   if (out.purchase_receipt_urls && !out.purchase_receipt_url) out.purchase_receipt_url = out.purchase_receipt_urls;
-  // Код → монгол
-  out.status   = _xlate(out.status, _FIN_STATUS_E2M);
-  out.decision = _xlate(out.decision, _FIN_DEC_E2M);
+  // ⛔ Төлөв/шийдвэрийг монгол болгож БИЧИХГҮЙ (2026-09-11). Дата Sheets дээр
+  //    байхад хүн уншихын тулд орчуулдаг байсан; Sheets-ээс гарсан тул тэр шалтгаан
+  //    алга. Орчуулга үлдсэнээс нэг утга ХОЁР хэлээр хадгалагдаж, DB-г ШУУД уншдаг
+  //    бүхэн (тайлан, SQL, үүлэн агент) устгасан мөрийг устгаагүй гэж үзэж байв.
+  //    Каноник = англи код. Уншихдаа хуучин монгол утгыг ХӨРВҮҮЛСЭЭР байна.
   // Объект холбоосыг ⟦LNK|төрөл|id|нэр⟧ token-оор justification-д ХАДГАЛНА (DB багана/n8n
   // mapping хөндөхгүй — RT/SL/DLV-тэй ижил тогтсон загвар). normalizeFinance буцааж задална.
   out.justification = String(out.justification || '').replace(/\s*⟦LNK\|[^⟧]*⟧/g, '').trim();

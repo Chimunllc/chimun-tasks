@@ -7783,14 +7783,36 @@ function stmtBalanceCheck(s) {
   const diff = Math.round(Number(s.closing_calc) || 0) - Math.round(Number(s.closing_stated) || 0);
   return { ok: Math.abs(diff) <= 1, diff };   // ±1₮ = тоймлолт
 }
+/* Тэнцлийн зөрүү нь ЮУ дутсаныг хэлнэ. `diff` = бодсон эцсийн − хуулгад бичсэн.
+   Эерэг бол зарлага дутуу уншигдсан (гарсан мөнгө тоологдоогүй), сөрөг бол орлого.
+   «мөр дутуу уншигдсан» гэдэг нь хүнд юу хийхийг хэлдэггүй тул задалж бичнэ. */
+function gapBalanceWhy(diff) {
+  const v = Number(diff) || 0;
+  return v > 0 ? `${fmtMoney(Math.abs(v))}-ийн ЗАРЛАГА уншигдаагүй (зардал дутуу бүртгэгдсэн)`
+    : v < 0 ? `${fmtMoney(Math.abs(v))}-ийн ОРЛОГО уншигдаагүй (орлого дутуу бүртгэгдсэн)`
+    : 'хуулгын тэнцэл зөрж байна';
+}
 /* Дансны хуулгын ЗАЛГАА. Дутуу хуулга = мөнгө чимээгүй алга болох цорын ганц бодит
    эрсдэл, тиймээс цэвэр функц болгож тестлэв. Буцаана: {acct, kind, …}[]
    kind: 'balance' = хуулгын дотоод тэнцэл зөрүүтэй (мөр дутуу уншигдсан)
          'gap'     = хоёр хуулгын хооронд оруулаагүй хугацаа
          'jump'    = өмнөх эцсийн ≠ дараагийн эхний үлдэгдэл (өөр данс/дутуу хуулга) */
-function stmtChainCheck(list) {
+function stmtChainCheck(list, onlyAccts) {
   const out = [], byAcct = {};
-  (list || []).forEach(s => { if (!s) return; const a = String(s.acct || ''); (byAcct[a] || (byAcct[a] = [])).push(s); });
+  /* ⚠ `onlyAccts` = ЗӨВХӨН эдгээр дансыг шалга (сүүлийн 10 оронгоор тулгана).
+     Сар хаахад ХУВИЙН дансыг хасахад хэрэглэнэ: «дутуу хуулга» шалгуур хувийн
+     дансыг аль хэдийн хасдаг байтал залгааны шалгуур хасдаггүй байв — эзний
+     хувийн дансны 534,683₮ зөрүү компанийн сар хаахыг блоклож байсан. Хувийн
+     дансны бүрэн бүтэн байдал компанийн тайланд огт нөлөөлөхгүй. */
+  const want = onlyAccts
+    ? new Set((onlyAccts || []).map(a => String(a || '').replace(/\D/g, '').slice(-10)).filter(Boolean))
+    : null;
+  (list || []).forEach(s => {
+    if (!s) return;
+    const a = String(s.acct || '');
+    if (want && !want.has(a.replace(/\D/g, '').slice(-10))) return;
+    (byAcct[a] || (byAcct[a] = [])).push(s);
+  });
   Object.keys(byAcct).sort().forEach(a => {
     const rows = byAcct[a].filter(s => s.period_from && s.period_to)
       .sort((x, y) => String(x.period_from).localeCompare(String(y.period_from)));
@@ -8008,7 +8030,7 @@ function closeMonthBlockers(stmts, income, regAccts, month) {
     const p = String(g.id || '').split('|');   // id = данс|эхлэх|дуусах
     return String(p[1] || '').slice(0, 7) === month || String(p[2] || '').slice(0, 7) === month;
   };
-  const gaps = (stmtChainCheck(stmts) || []).filter(inMonth);
+  const gaps = (stmtChainCheck(stmts, regAccts) || []).filter(inMonth);
   if (gaps.length) out.push({ kind: 'chain', n: gaps.length, why: `${gaps.length} хуулгын залгаа эвдэрсэн` });
   return out;
 }
@@ -8316,11 +8338,20 @@ function renderStmtLedger() {
   const manual = incomeManualRows(state.bankIncome);
   const acctLabel = (a) => { const i = bankAcctInfo(a); return i ? `${i.name || ''} ${i.bank ? '· ' + i.bank : ''}`.trim() : (a || 'тодорхойгүй данс'); };
   // ⚠ Огноог ЭХЭНД — нарийн дэлгэцэд нэр хасагдахад ч «ямар хугацаа дутуу» нь харагдана.
-  const gapRow = (g) => g.kind === 'gap'
-    ? `<div class="recon-row warn-row"><span class="recon-l">⚠ ${escapeHtml(g.from)} … ${escapeHtml(g.to)} хуулга ОРООГҮЙ · ${escapeHtml(acctLabel(g.acct))}</span></div>`
-    : g.kind === 'balance'
-      ? `<div class="recon-row warn-row"><span class="recon-l">⚠ ${escapeHtml(acctLabel(g.acct))} — хуулгын тэнцэл зөрж байна (мөр дутуу уншигдсан)</span><span class="recon-amt">${fmtMoney(g.diff)}</span></div>`
-      : `<div class="recon-row warn-row"><span class="recon-l">⚠ ${escapeHtml(acctLabel(g.acct))} — өмнөх эцсийн ≠ дараагийн эхний үлдэгдэл</span><span class="recon-amt">${fmtMoney(g.diff)}</span></div>`;
+  /* Хувийн дансны анхааруулга нь МЭДЭЭЛЭЛ — сар хаахад саад болохгүй (закрытие нь
+     зөвхөн компанийн данс шалгана). Ингэж тэмдэглэхгүй бол «яагаад хаагдахгүй
+     байна вэ» гэж хүн хувийн дансаа хөөцөлдөнө. */
+  const gapRow = (g) => {
+    const prsn = isPersonalAcct(g.acct);
+    const tail = prsn ? ' <span class="mut">· 🙍 хувийн данс — сар хаахад саад болохгүй</span>' : '';
+    const body = g.kind === 'gap'
+      ? `⚠ ${escapeHtml(g.from)} … ${escapeHtml(g.to)} хуулга ОРООГҮЙ · ${escapeHtml(acctLabel(g.acct))}`
+      : g.kind === 'balance'
+        ? `⚠ ${escapeHtml(acctLabel(g.acct))} — ${gapBalanceWhy(g.diff)}`
+        : `⚠ ${escapeHtml(acctLabel(g.acct))} — өмнөх эцсийн ≠ дараагийн эхний үлдэгдэл`;
+    const amt = g.kind === 'gap' ? '' : `<span class="recon-amt">${fmtMoney(g.diff)}</span>`;
+    return `<div class="recon-row warn-row${prsn ? ' prsn-row' : ''}"><span class="recon-l">${body}${tail}</span>${amt}</div>`;
+  };
   const stmtRows = (list || []).slice(0, 24).map(s => {
     const b = stmtBalanceCheck(s);
     const mark = b.skip ? '<span class="mut">—</span>' : (b.ok ? '<span class="recon-ok">✓ тэнцэв</span>' : `<span class="recon-bad">⚠ ${fmtMoney(b.diff)}</span>`);

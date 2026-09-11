@@ -7084,3 +7084,54 @@ need(['orderCustType']);
     ok(/loadClosedMonths\(\);/.test(src), 'scan: хаасан сар эхлэхэд ачаалагдана');
   }
 }
+
+// ═══ ДОТООД ШИЛЖҮҮЛГИЙГ БҮРТГЭСЭН ДАНСААР ТАНИХ (2026-09-11) ══════════════════
+// Орлогын тал нь дотоод шилжүүлгийг ЗӨВХӨН гүйлгээний утга/нэрээр таьдаг байв
+// («данс хооронд», «Чимун»). Нэр хоосон ирсэн өөрийн шилжүүлэг «орлого» болж,
+// тулгалтын «Банкны нийт орлого» хөөрөгдөж байсан. Зардлын импорт аль хэдийн
+// бүртгэсэн дансаар (isInternalTransfer) таьдаг — орлого одоо ижил дүрэмтэй.
+{
+  need(['creditIsInternal', '_isInternalCredit', 'isInternalTransfer', 'reconcileByReceipts']);
+  const own = new Set(['5041234567', '3001234567']);
+
+  // ⭐ Гол кейс: нэр ХООСОН, утга ХООСОН — зөвхөн данснаас нь таних
+  const blank = { date: '2026-08-04', credit: 200000, name: '', memo: '', account: '5041234567' };
+  eq(F._isInternalCredit(blank), false, 'дотоод: үг-суурьтай хуучин аргад нэр хоосон мөр ТАНИГДАХГҮЙ (алдааны эх)');
+  eq(F.creditIsInternal(blank, own), true, 'дотоод: бүртгэсэн данснаас нь танигдана');
+
+  // Данс нь сүүлийн 10 оронгоор ч таарна (IBAN/угтвартай хэлбэр)
+  eq(F.creditIsInternal({ credit: 1, name: '', memo: '', account: '99 5041234567' }, own), true,
+     'дотоод: сүүлийн 10 оронгоор таарна');
+
+  // Бодит харилцагчийн төлбөр = ОРЛОГО хэвээр (хэт их хасаж орлого нуухгүй)
+  eq(F.creditIsInternal({ credit: 500000, name: 'Бат', memo: 'түрээс', account: '5049999999' }, own), false,
+     'дотоод: харилцагчийн төлбөр орлого хэвээр');
+  // Үг-суурьтай нөөц хэвээр ажиллана (данс бүртгэгдээгүй ч)
+  eq(F.creditIsInternal({ credit: 9, name: 'ЧИМУН ХХК', memo: '', account: '7777777777' }, own), true,
+     'дотоод: нэрээр таних нөөц хэвээр (данс бүртгэгдээгүй ч)');
+  eq(F.creditIsInternal({ credit: 9, name: '', memo: 'данс хооронд', account: '7777777777' }, own), true,
+     'дотоод: утгаар таних нөөц хэвээр');
+  // Хэт богино/хоосон данс нь «өөрийн данс» гэж андуурагдахгүй
+  eq(F.creditIsInternal({ credit: 9, name: 'Дорж', memo: 'төлбөр', account: '' }, own), false,
+     'дотоод: данс хоосон + утга цэвэр → орлого');
+
+  // ── Тулгалт ч ижил дүрмээр: нэргүй дотоод шилжүүлэг орлогод ОРОХГҮЙ ──
+  {
+    const rows = [
+      { date: '2026-08-02', credit: 500000, debit: 0, name: 'Бат', account: '5049999999', memo: 'түрээс' },
+      { date: '2026-08-04', credit: 200000, debit: 0, name: '', account: '5041234567', memo: '' },   // өөрийн данс
+    ];
+    const res = F.reconcileByReceipts(rows, { own, usedFps: new Set(), fpOwners: new Map() });
+    eq(res.incomeCount, 1, 'тулгалт: нэргүй дотоод шилжүүлэг орлогын мөрд тоологдохгүй');
+    eq(res.untracked.map(c => c.credit), [500000], 'тулгалт: зөвхөн бодит төлбөр үлдэнэ');
+  }
+
+  // ── SCAN: дүрэм дахин тархахгүй — үг-суурьтай шалгалтыг ШУУД дуудахгүй ──
+  {
+    const calls = [...src.matchAll(/_isInternalCredit\(/g)].length;
+    eq(calls, 2, 'scan: _isInternalCredit нь тодорхойлолт + creditIsInternal дотор ЗӨВХӨН (шууд дуудалт байхгүй)');
+    const at = src.indexOf('function creditIsInternal');
+    ok(/isInternalTransfer\(r, set\)/.test(src.slice(at, at + 400)),
+       'scan: ганц дүрэм нь бүртгэсэн дансыг шалгана');
+  }
+}

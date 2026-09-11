@@ -1792,9 +1792,16 @@ function getFinanceApprover(r) {
 function parseAccrualToken(s) { const m = String(s || '').match(/⟦ACCR\|(\d{4}-\d{2})⟧/); return m ? m[1] : ''; }
 function stripAccrualToken(s) { return String(s || '').replace(/\s*⟦ACCR\|[^⟧]*⟧/g, '').trim(); }
 // Токенгүй үеийн ухаалаг default: цалин сарын эхэнд (≤10) төлсөн бол өмнөх сар, эс бол төлсөн сар
+/* Цалингийн ангилал мөн үү. ⚠ Мөрийн ТӨГСГӨЛД уяж БОЛОХГҮЙ (`$`) — ангилал хоёр
+   хэлбэрээр хадгалагдсан: «7200» ба «7200 Цагийн / улирлын ажилтны цалин». Уясан
+   үед сүүлчийнх нь таарахгүй тул 24 цалингийн гүйлгээ (6.7 сая₮) тайлангийн
+   цалингийн нийлбэрээс чимээгүй унаж байв. Код нь 4 орон тул угтвар хангалттай. */
+function finIsSalaryCat(category) {
+  return /^7[1236]00/.test(String(category || '')) || /цалин/i.test(finSubName(category) || '');
+}
 function finAccrualAuto(category, requested_at) {
   const pay = String(requested_at || '').slice(0, 10), ym = pay.slice(0, 7), day = Number(pay.slice(8, 10)) || 0;
-  const isSalary = /^7[1236]00$/.test(String(category || '')) || /цалин/i.test(finSubName(category) || '');
+  const isSalary = finIsSalaryCat(category);
   if (isSalary && day > 0 && day <= 10 && /^\d{4}-\d{2}$/.test(ym)) {
     const [y, mo] = ym.split('-').map(Number); const d = new Date(y, mo - 2, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -26254,7 +26261,7 @@ function finSalaryMonth(month, basis) {
   let sum = 0; const who = new Set();
   (state.financeRequests || []).filter(x => x.status !== 'deleted').map(financeAsTask).forEach(t => {
     if (t.decision !== 'approved' || finExpMonth(t, basis) !== month || finPendingStmt(t)) return;
-    if (/^7[1236]00$/.test(String(t.category || '')) || /цалин/i.test(finSubName(t.category) || '')) { sum += Number(t.amount) || 0; who.add(t.beneficiary || t.id); }
+    if (finIsSalaryCat(t.category)) { sum += Number(t.amount) || 0; who.add(t.beneficiary || t.id); }
   });
   return { sum, n: who.size };
 }

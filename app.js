@@ -6762,6 +6762,17 @@ function isInternalTransfer(r, own) {
   if (d.length < 8) return false;
   return own.has(d) || own.has(d.slice(-10));
 }
+/* Хасагдсан мөрийн шалтгаан + ХАРЬЦСАН ДАНС. Шалтгаан дангаараа шалгагдахгүй:
+   «дотоод шилжүүлэг (өөрийн данс)» гэж бичсэн 56 мөр үнэхээр өөрийн данс мөн
+   эсэхийг хэрэглэгч батлах аргагүй байв. Данс нь «Голомт ••7218» болж гарна.
+   Цэвэр функц — `acctLabel`-ийг гаднаас авна (тестлэгдэнэ). */
+function stmtDropWhy(x, acctLabel) {
+  const why = String((x && x.why) || '');
+  const d = String((x && x.acct) || '').replace(/\D/g, '');
+  if (!d) return why;
+  const lbl = (typeof acctLabel === 'function' ? acctLabel(d) : '') || '';
+  return lbl ? why + ' → ' + lbl : why;
+}
 // Картын default зарцуулалтын зорилго (ангилал) — тухайн картын бүх мөрд өгөгдмөл болгоно.
 function _cardDefCat() { if (!state.cardDefCat) { try { state.cardDefCat = JSON.parse(localStorage.getItem('cardDefCat') || '{}'); } catch (_) { state.cardDefCat = {}; } } return state.cardDefCat; }
 function setCardDefCat(key, cat) { if (!key) return; const o = _cardDefCat(); o[key] = cat; try { localStorage.setItem('cardDefCat', JSON.stringify(o)); } catch (_) {} }
@@ -6821,8 +6832,12 @@ async function openStatementClassifyModal() {
   const renderDropped = () => {
     if (!dropped.length) { droppedEl.innerHTML = ''; return; }
     const tot = dropped.reduce((a, x) => a + (Number(x.debit) || 0), 0);
+    const byWhy = dropped.reduce((o, x) => { const k = String(x.why || '—'); o[k] = (o[k] || 0) + (Number(x.debit) || 0); return o; }, {});
+    const sum = Object.entries(byWhy).sort((a, b) => b[1] - a[1])
+      .map(([w, v]) => `<span class="stmt-drop-tag">${escapeHtml(w)} · <b>${fmtMoney(v)}</b></span>`).join('');
     droppedEl.innerHTML = `<details class="stmt-drop"><summary>⚠ Зардал болоогүй <b>${dropped.length}</b> мөр · ${fmtMoney(tot)} — шалтгааныг харах</summary>
-      ${dropped.map(x => `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(String(x.why || ''))}</i></div>`).join('')}
+      <div class="stmt-drop-sum">${sum}</div>
+      ${dropped.map(x => `<div class="stmt-drop-row"><span>${escapeHtml(String(x.date || '—'))} · ${escapeHtml(String(x.memo || '—'))}</span><b>${fmtMoney(Number(x.debit) || 0)}</b><i>${escapeHtml(stmtDropWhy(x, srcAcctLabel))}</i></div>`).join('')}
       </details>`;
   };
   // Бүртгэлгүй эх данс (манай хуулгын данс) — нэг товчоор Данс&Карт-д бүртгэнэ → зардал дээр банкны нэр гарна.
@@ -6942,8 +6957,11 @@ async function openStatementClassifyModal() {
         // хэзээ ч чимээгүй болохгүй, хэрэглэгч юу яагаад ороогүйг цонхон дээр харна.
         const parsed = st.rows.filter(r => {
           if (!(r.debit > 0)) return false;
-          if (/charges for pord|шимтгэл/i.test(r.memo || '')) { dropped.push({ date: r.date, memo: r.memo, debit: r.debit, why: 'банкны шимтгэл' }); return false; }
-          if (isInternalTransfer(r, own)) { skippedInternal++; dropped.push({ date: r.date, memo: r.memo, debit: r.debit, why: 'дотоод шилжүүлэг (өөрийн данс)' }); return false; }
+          if (/charges for pord|шимтгэл/i.test(r.memo || '')) { dropped.push({ date: r.date, memo: r.memo, debit: r.debit, acct: r.account, why: 'банкны шимтгэл' }); return false; }
+          // ⚠ `acct` нь ЗААВАЛ — «яагаад зардал болоогүй»-г хэрэглэгч нүдээр шалгах
+          //   ганц зам. Дансгүй бол «дотоод шилжүүлэг» гэдгийг батлах боломжгүй
+          //   (2026-09-11: 56 мөр · 38.8сая хасагдсаныг шалгах аргагүй байв).
+          if (isInternalTransfer(r, own)) { skippedInternal++; dropped.push({ date: r.date, memo: r.memo, debit: r.debit, acct: r.account, why: 'дотоод шилжүүлэг (өөрийн данс)' }); return false; }
           return true;
         });
         parsed.forEach(r => {

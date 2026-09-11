@@ -6509,6 +6509,18 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-drop-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stmt-drop-row b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stmt-drop-row i { color: var(--muted); font-style: normal; white-space: nowrap; font-size: var(--fs-xs); }
+/* Шалтгаанаар нэгтгэсэн тойм — «56 мөр» гэдгийг задлахын өмнө юу нь хэд болохыг
+   нэг харцаар. Задаргаагүй бол 38.8саяыг мөр бүрээр нэмж шалгах болно. */
+.stmt-drop-sum { display: flex; flex-wrap: wrap; gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-1); }
+.stmt-drop-tag { font-size: var(--fs-xs); color: var(--text-soft);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 2px 8px; white-space: nowrap; }
+@media (max-width: 620px) {
+  /* Шалтгаан нь одоо дансаа авч явдаг тул урт — нэг мөрөнд шахагдвал таслагдана */
+  .stmt-drop-row { flex-wrap: wrap; }
+  .stmt-drop-row i { white-space: normal; flex-basis: 100%; }
+}
 
 /* ── Хувийн данснаас гарсан компанийн зардал (2026-09-07) ─────────────────── */
 .stmt-prsn {

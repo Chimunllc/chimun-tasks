@@ -7043,6 +7043,20 @@ async function openStatementClassifyModal() {
     // ХУУЛГА ШУУД ОРНО: бүх зардал даруй бүртгэгдэж, ангилах эзэн рүү шилжинэ (карт→картын эзэн, шилжүүлэг→CEO).
     // Эзэн өөрийн зардлаа "Миний зардал"-д ангилж баталгаажуулснаар эцэслэгдэнэ (PEND→OK).
     saveBtn.disabled = true; let n = 0, sal = 0, hrl = 0, toOwner = 0, toMe = 0, filled = 0, rerouted = 0, failedRows = 0;
+    /* ⛔ ДАВХАР ИМПОРТЫН ХАМГААЛАЛТ (2026-09-11). `imp` нь `state.financeRequests`-ээс
+       тооцогддог тул КЭШ ХУУЧИРСАН бол бүх мөр «шинэ» гэж дахин орно — 2026-09-д
+       118 мөр · 22.9сая яг ингэж давхардаж, зардал 24.5сая гэж харагдаж байв.
+       Тиймээс хадгалахын өмнө серверээс ЗААВАЛ шинэчилнэ. Хаалттай (finGated) үед
+       давхардлыг шалгах боломжгүй тул хадгалахгүй — чимээгүй давхардуулахаас дээр. */
+    const _oldTxt = saveBtn.textContent;
+    saveBtn.textContent = '⏳ Давхардал шалгаж байна…';
+    try { await loadFinanceRequests(); } catch (e) { /* офлайн — кэшээр үргэлжилнэ */ }
+    saveBtn.textContent = _oldTxt;
+    if (state.finGated) {
+      saveBtn.disabled = false;
+      showToast('⚠ Санхүүгийн бүртгэл серверээс ирсэнгүй — давхардлыг шалгаж чадахгүй тул хадгалсангүй. Дахин нэвтэрч үзнэ үү.', 'error', 7000);
+      return;
+    }
     const force = isForce();
     const imp = importedFpCounts();   // ИДЭВХТЭЙ бүртгэлээр давхцал шалгана (баримтын ledger биш)
     // fp → байгаа бүртгэл (дутуу нэр нөхөхөд)
@@ -26643,6 +26657,40 @@ function finSalaryMonth(month, basis) {
 // Тухайн сарын АВТО үүссэн цалин (Цагийн цалин модул, HRLY_), хуулгаар баталгаажаагүй.
 // Зардал зөвхөн банкны хуулгаар орох тул эдгээр авто бичлэг давхцал болно. Өмнөх сар хөндөхгүй
 // (хэрэглэгчийн шийдвэр 2026-08-22: зөвхөн идэвхтэй сар цэгцэлнэ, түүх хэвээр).
+/* ═══════ ХУУЛГЫН ДАВХАР ИМПОРТ (2026-09-11) ═══════════════════════════════════
+   Нэг банкны мөр = нэг хээ (fp). Нэг хээнд хоёр бүртгэл байвал тэр хуулга ХОЁР
+   УДАА орсон гэсэн үг. 2026-09-д амьд датаас 118 илүү мөр · 22.9сая ингэж олдсон
+   (зардал 24.5сая гэж харагдаж байсан нь бодит бус байв).
+
+   ⚠ Нэг өдөр ижил дүнтэй ХОЁР БОДИТ гүйлгээ ч ижил хээтэй байдаг тул энэ нь
+     САНАЛ л болно — хүн жагсаалтыг хараад шийднэ, авто устгалт БАЙХГҮЙ.
+   Үлдээх эрэмбэ: ① ангилагдсан (PEND биш) — хүн аль хэдийн ажилласан;
+                  ② эрт үүссэн (id-гийн сүүлийн timestamp хэсгээр). */
+function finDupImports(reqs, monthPrefix) {
+  const by = new Map();
+  (reqs || []).forEach(r => {
+    if (!r || r.status === 'deleted') return;
+    if (monthPrefix && String(r.requested_at || '').slice(0, 7) !== monthPrefix) return;
+    const m = String(r.justification || '').match(/\[#([^\]]+)\]/);
+    if (!m) return;
+    const k = m[1];
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(r);
+  });
+  const isPend = (r) => /\|PEND⟧/.test(String(r && r.justification) || '');
+  const stamp = (r) => String((r && r.id) || '').slice(-8);
+  const sum = (list) => (list || []).reduce((t, r) => t + (Number(r && r.amount) || 0), 0);
+  const out = [];
+  by.forEach((g, fp) => {
+    if (g.length < 2) return;
+    const sorted = g.slice().sort((a, b) => {
+      const d = (isPend(a) ? 1 : 0) - (isPend(b) ? 1 : 0);
+      return d || stamp(a).localeCompare(stamp(b));
+    });
+    out.push({ fp, keep: sorted[0], drop: sorted.slice(1), amount: sum(sorted.slice(1)) });
+  });
+  return out.sort((a, b) => b.amount - a.amount);
+}
 function finDuplicateEntries(monthPrefix) {
   const month = monthPrefix || todayStr().slice(0, 7);
   const rows = (state.financeRequests || []).filter(r => r.status !== 'deleted');
@@ -26716,6 +26764,62 @@ async function openFinDupAudit() {
     let done = 0;
     for (const r of sel) { r.status = 'deleted'; try { await saveFinanceRequest(r, true); done++; del.textContent = `${done}/${sel.length}…`; } catch (e) {} }
     m.remove(); showToast(`${done} авто цалин давхцал устгалаа`, 'success', 3000); render();
+  };
+}
+/* Давхар импортын модал. Бүлэг = нэг банкны мөр; дотор нь «үлдэх» ба «устгах».
+   ⚠ Авто устгалт БАЙХГҮЙ — ижил өдөр ижил дүнтэй хоёр бодит гүйлгээ ч ижил хээтэй
+     байдаг тул хүн жагсаалтыг хараад шийднэ. Зөөлөн устгал (status='deleted'). */
+async function openFinDupImports() {
+  const month = state.finReportMonth || todayStr().slice(0, 7);
+  if (monthLocked(month)) { showToast(`🔒 ${month} сар хаагдсан — засах боломжгүй`, 'warn', 3500); return; }
+  const groups = finDupImports(state.financeRequests, month);
+  const totAmt = groups.reduce((t, g) => t + g.amount, 0);
+  const totRows = groups.reduce((t, g) => t + g.drop.length, 0);
+  document.getElementById('fin-dupimp-modal')?.remove();
+  const m = document.createElement('div'); m.className = 'modal-bg'; m.id = 'fin-dupimp-modal';
+  const line = (r, gi, di) => `<label class="di-row">
+      <input type="checkbox" class="di-chk" data-g="${gi}" data-d="${di}" data-amt="${Number(r.amount) || 0}" checked>
+      <span class="di-nm">${escapeHtml(String(r.purpose || r.beneficiary || '').slice(0, 52))}</span>
+      <b>${fmtMoney(r.amount)}</b></label>`;
+  const grp = (g, gi) => `<div class="di-g">
+      <div class="di-g-h">✓ үлдэнэ · ${escapeHtml(String(g.keep.purpose || g.keep.beneficiary || '').slice(0, 46))} <b>${fmtMoney(g.keep.amount)}</b></div>
+      ${g.drop.map((r, di) => line(r, gi, di)).join('')}</div>`;
+  m.innerHTML = `<div class="modal" style="max-width:520px;">
+    <h2 style="font-size:16px;">🔁 Давхар импорт — ${escapeHtml(month)}</h2>
+    <div style="font-size:12px;color:var(--muted);margin:6px 0 10px;line-height:1.5;">Нэг банкны мөр хоёр удаа бүртгэгдсэн бол хуулга давхар орсон гэсэн үг. <b>✓ үлдэнэ</b> гэсэн мөр хадгалагдана (ангилагдсан нь эсвэл эрт орсон нь), доорх чагттай мөрүүд устана.<br>⚠ Ижил өдөр ижил дүнтэй <b>хоёр бодит гүйлгээ</b> ч ийм харагддаг — устгахаас өмнө хараарай.</div>
+    ${groups.length ? `<div style="display:flex;gap:8px;margin-bottom:8px;"><button id="di-all" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Бүгдийг сонгох</button><button id="di-none" class="btn" style="flex:1;padding:7px;font-size:11.5px;">Цэвэрлэх</button></div>
+      <div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:10px;">${groups.map(grp).join('')}</div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-top:10px;"><span id="di-cnt">${totRows} мөр сонгосон</span><span id="di-sum" style="color:var(--danger);">${fmtMoney(totAmt)}</span></div>
+      <div style="display:flex;gap:10px;margin-top:16px;"><button id="di-cancel" class="btn" style="flex:1;padding:11px;">Болих</button><button id="di-del" class="btn" style="flex:1;padding:11px;background:var(--danger);color:#fff;border:none;font-weight:700;">Сонгосныг устгах</button></div>`
+      : `<div style="text-align:center;padding:24px;color:var(--muted);">✅ ${escapeHtml(month)}-д давхар импорт алга — цэвэрхэн.</div><div style="text-align:center;margin-top:12px;"><button id="di-cancel" class="btn">Хаах</button></div>`}
+  </div>`;
+  document.body.appendChild(m);
+  requestAnimationFrame(() => m.classList.add('open'));
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  m.querySelector('#di-cancel').onclick = () => m.remove();
+  const chks = () => [...m.querySelectorAll('.di-chk')];
+  const refresh = () => {
+    const sel = chks().filter(c => c.checked);
+    const cnt = m.querySelector('#di-cnt'), sm = m.querySelector('#di-sum');
+    if (cnt) cnt.textContent = `${sel.length} мөр сонгосон`;
+    if (sm) sm.textContent = fmtMoney(sel.reduce((t, c) => t + (Number(c.dataset.amt) || 0), 0));
+  };
+  chks().forEach(c => c.addEventListener('change', refresh));
+  m.querySelector('#di-all') && (m.querySelector('#di-all').onclick = () => { chks().forEach(c => c.checked = true); refresh(); });
+  m.querySelector('#di-none') && (m.querySelector('#di-none').onclick = () => { chks().forEach(c => c.checked = false); refresh(); });
+  const del = m.querySelector('#di-del');
+  if (del) del.onclick = async () => {
+    const sel = chks().filter(c => c.checked).map(c => groups[+c.dataset.g].drop[+c.dataset.d]);
+    if (!sel.length) { showToast('Мөр сонгоогүй байна', 'info', 1800); return; }
+    const sum = sel.reduce((t, r) => t + (Number(r.amount) || 0), 0);
+    if (!await showConfirm(`${sel.length} давхар бичлэг устгах уу? (${fmtMoney(sum)}) · ${month}`, { okText: 'Тийм, устгах' })) return;
+    await assertMonthOpenLive(month, 'давхар импорт цэвэрлэх');
+    del.disabled = true;
+    let done = 0, failed = 0;
+    for (const r of sel) { r.status = 'deleted'; try { await saveFinanceRequest(r, true); done++; del.textContent = `${done}/${sel.length}…`; } catch (e) { failed++; } }
+    m.remove();
+    showToast(`${done} давхар бичлэг устгалаа${failed ? ` · ⚠ ${failed} амжилтгүй` : ''}`, failed ? 'warn' : 'success', 4000);
+    render();
   };
 }
 function financeTrend(wantBr) {
@@ -28095,12 +28199,14 @@ function renderFinanceReport(wrap) {
   bar.innerHTML = `<button id="fin-export-xls" class="btn btn-primary" style="padding:6px 12px;font-size:12.5px;">📊 Зардлын тайлан татах</button>`
     + (canRecon ? `<details class="fin-more"><summary>⋯ Бусад хэрэгсэл</summary><div class="fin-more-in">`
       + `<button id="fin-learn" class="btn" style="padding:6px 12px;font-size:12.5px;">🧠 Түүхээс суралцах</button>`
-      + `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхцал аудит</button>`
+      + `<button id="fin-dup-imports" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Давхар импорт</button>`
+      + `<button id="fin-dup-audit" class="btn" style="padding:6px 12px;font-size:12.5px;">🔁 Цалингийн давхцал</button>`
       + `<button id="fin-clear-month" class="btn" style="padding:6px 12px;font-size:12.5px;color:var(--danger);border-color:var(--danger);">🗑 Сарын зардал цэвэрлэх</button>`
       + `</div></details>` : '');
   wrap.appendChild(bar);
   bar.querySelector('#fin-export-xls').addEventListener('click', exportFinanceReportExcel);
   bar.querySelector('#fin-dup-audit')?.addEventListener('click', openFinDupAudit);
+  bar.querySelector('#fin-dup-imports')?.addEventListener('click', openFinDupImports);
   bar.querySelector('#fin-learn')?.addEventListener('click', seedLearnFromHistory);
   bar.querySelector('#fin-clear-month')?.addEventListener('click', () => clearMonthExpenses(state.finReportMonth));
 

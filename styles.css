@@ -6511,6 +6511,15 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-drop-row i { color: var(--muted); font-style: normal; white-space: nowrap; font-size: var(--fs-xs); }
 /* Шалтгаан бүр өөрийн нугалаатай — 56 мөрийг нэг жагсаалтаар харуулбал хүн
    юуг ч уншихгүй. Хумигдсан үедээ «дотоод шилжүүлэг · 45 мөр · 38.8сая». */
+/* Давхар импортын модал — бүлэг = нэг банкны мөр, дотор нь үлдэх/устах */
+.di-g { border-bottom: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
+.di-g:last-child { border-bottom: 0; }
+.di-g-h { font-size: var(--fs-xs); color: var(--ok); margin-bottom: 4px; line-height: 1.35; }
+.di-row { display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-sm); padding: 3px 0; cursor: pointer; }
+.di-row input { width: 16px; height: 16px; flex: 0 0 auto; }
+.di-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.di-row b { white-space: nowrap; color: var(--danger); }
 .stmt-drop-g { border-top: 1px solid var(--border); padding: var(--space-1) 0; }
 .stmt-drop-g > summary { cursor: pointer; color: var(--text-soft);
   padding: var(--space-1) 0; font-size: var(--fs-sm); }

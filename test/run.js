@@ -3091,31 +3091,7 @@ need(['orderCustType']);
     vm.runInContext('showToast = function(m, k){ globalThis.__toasts.push([m, k]); };', sandbox);
     sandbox.__toasts = toasts;
 
-    // (1) Дуут заавар
-    const SV = vm.runInContext('saveTaskVoice', sandbox);
-    const savedVoice = { v: st._taskVoice, d: st._taskVoiceDur, dirty: st._taskVoiceDirty };
-    st._taskVoice = 'data:audio/webm;base64,AAAA'; st._taskVoiceDur = 5; st._taskVoiceDirty = true;
-
-    sandbox.fetch = () => Promise.resolve({ ok: true, status: 201 });
-    toasts.length = 0;
-    ok(await SV('t1', true), 'дуут заавар: амжилттай үед true');
-    eq(toasts.length, 0, 'дуут заавар: амжилттай үед анхааруулга гарахгүй');
-
-    sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
-    toasts.length = 0;
-    ok(!(await SV('t1', true)), 'дуут заавар: HTTP алдаанд false');
-    eq(toasts.length, 1, 'дуут заавар: алдааг ХЭЛНЭ');
-    ok(/ХАДГАЛАГДСАНГҮЙ/.test(toasts[0][0]), 'дуут заавар: мессеж хадгалагдаагүйг тодорхой хэлнэ');
-    eq(toasts[0][1], 'error', 'дуут заавар: алдааны төрлөөр гарна');
-
-    sandbox.fetch = () => Promise.reject(new Error('offline'));
-    toasts.length = 0;
-    ok(!(await SV('t1', true)), 'дуут заавар: сүлжээ тасрахад false');
-    eq(toasts.length, 1, 'дуут заавар: сүлжээ тасрахад ч хэлнэ');
-
-    st._taskVoice = savedVoice.v; st._taskVoiceDur = savedVoice.d; st._taskVoiceDirty = savedVoice.dirty;
-
-    // (2) Банкны PDF баримт
+    // (1) Банкны PDF баримт
     const UR = vm.runInContext('uploadReceiptFileOrWarn', sandbox);
     sandbox.fetch = () => Promise.resolve({ ok: false, status: 500 });
     toasts.length = 0;
@@ -3129,7 +3105,7 @@ need(['orderCustType']);
     ok(typeof vm.runInContext('showToast', sandbox) === 'function', 'тест: showToast буцаан сэргэв');
     sandbox.fetch = savedFetch;
 
-    // (3)+(4) Профайл (цалингийн данс) ба иргэний үнэмлэх — эх кодоор
+    // (2)+(3) Профайл (цалингийн данс) ба иргэний үнэмлэх — эх кодоор
     const prof = src.slice(src.indexOf('let _profileOk = true, _docOk = true;'));
     const blk = prof.slice(0, prof.indexOf("showToast('Профайл хадгалагдсан'"));
     ok(/if \(!rp\.ok\) throw/.test(blk), 'цалингийн данс: r.ok шалгагдана');

@@ -4844,6 +4844,10 @@ body.role-daily #add-project { display: none !important; }
    max-width:max-content = өргөн дэлгэцэд нэр сунаж шошгуудыг хол түлхэхээс сэргийлнэ. */
 .br-cust { flex: 1 1 60px; max-width: max-content; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text); }
 .br-chips { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+/* Мөрийн SVG дүрс — эможийн оронд. currentColor тул чип бүрийн өнгийг дагана. */
+.ricon { width: 12px; height: 12px; flex: 0 0 auto; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.br-qchip, .br-srcchip, .br-badchip, .br-depchip { display: inline-flex; align-items: center; gap: 4px; }
+.br-badge .ricon { width: 14px; height: 14px; }
 .br-badge { font-size: var(--fs-md); opacity: .7; }
 .br-dates { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
 .br-arrow { opacity: .5; }

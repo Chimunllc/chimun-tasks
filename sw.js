@@ -101,6 +101,12 @@ function shellFallback(req, isHTML) {
     .catch(() => undefined);
 }
 
+// respondWith нь reject болвол эсвэл undefined авбал хуудсанд «FetchEvent.respondWith
+// received an error» гэсэн ойлгомжгүй алдаа очдог. Тиймээс бүх салаа Response буцаана.
+function offlineResponse() {
+  return new Response('', { status: 504, statusText: 'Offline' });
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
@@ -113,7 +119,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => res)
-        .catch(() => caches.match(req)) // graceful fallback if cached
+        // ⛔ `caches.match` нь олдохгүй бол undefined буцаана. respondWith(undefined)
+        // = «FetchEvent.respondWith received an error» → хуудсанд ойлгомжгүй алдаа.
+        // ҮРГЭЛЖ Response буцаана.
+        .catch(() => caches.match(req).then((c) => c || offlineResponse()))
     );
     return;
   }
@@ -152,17 +161,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // ⛔ ГАДНЫ (cross-origin) хүсэлтийг ОГТ БҮҮ БАРЬ (2026-09-12).
+  // DB API (n8n.nomaadcamp.com/db/rest/v1/…), зураг, гуравдагч сан — эдгээрийг
+  // кэшлэдэггүй тул барих нь ямар ч ашиггүй, харин сүлжээ тасрахад доорх fetch
+  // reject болж «FetchEvent.respondWith received an error» гарган хуудсанд
+  // ойлгомжгүй алдаа өгдөг байв. «Миний ирц» дэлгэц яг ингэж 10 удаа унасан.
+  if (url.origin !== self.location.origin) return;
+
   // Cache-first for everything else (статик asset — icon, manifest г.м.)
   event.respondWith(
     caches.match(req).then((cached) => {
       if (cached) return cached;
       return fetch(req).then((res) => {
-        if (res.ok && url.origin === self.location.origin) {
+        if (res.ok) {
           const copy = res.clone();
           caches.open(CACHE_VERSION).then((cache) => cache.put(req, copy));
         }
         return res;
-      });
+      }).catch(() => offlineResponse());
     })
   );
 });

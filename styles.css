@@ -6825,11 +6825,6 @@ select.no-asar-len {
 .sum-lead { color: var(--muted); }
 .sum-unsent { color: var(--warn); font-weight: 700; }
 
-.br-qchip.due { background: color-mix(in srgb, var(--danger) 13%, var(--panel)); color: var(--danger); }
-.order-follow-due { color: var(--danger); font-weight: 600; }
-/* Дугаар = дагалт бүртгэгч: дарахад залгаад, буцахад хариуны цонх нээгдэнэ */
-.order-cust a.fu-call { font-weight: 600; text-decoration-style: dotted; text-underline-offset: 3px; }
-.order-cust a.fu-call::after { content: '↩'; margin-left: 4px; font-size: var(--fs-xs); opacity: .65; }
 
 .br-cxreason { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); padding: 2px 7px; border-radius: 999px; cursor: help; background: color-mix(in srgb, var(--danger) 10%, var(--panel)); color: var(--danger); }
 

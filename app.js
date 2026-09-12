@@ -6906,9 +6906,13 @@ async function openStatementClassifyModal() {
     // ХУВИЙН данснаас гарсан мөр «компанийн» гэж сонгогдтол зардал болохгүй — тоололтоос ч хасна.
     const prsnRows = rows.filter(r => !r.done && r.personal);
     const live = rows.filter(r => !r.done && !(r.personal && !r.biz));
-    const nCardOwn = live.filter(r => r.cardL4 && ownerOf(srcKeyOf(r))).length;
-    const nMine = live.filter(r => !r.salaryEmp && !r.hourlyEmp && routeOwnerOf(r) === state.me).length;
-    const nSal = live.filter(r => r.salaryEmp).length, nHrl = live.filter(r => r.hourlyEmp).length, nDone = rows.filter(r => r.done).length;
+    /* ⚠ Банкны шимтгэл АВТО баталгаажна (5700) тул «ангилах» тоололд ОРОХГҮЙ —
+       эс бөгөөс «Э.Нинждолгор 11 гүйлгээ ангилна» гэж худал сүрдүүлж, хүн
+       200₮-ийн мөр хөөцөлдөнө (2026-09-12 хэрэглэгчийн гомдол). */
+    const nCardOwn = live.filter(r => !r.fee && r.cardL4 && ownerOf(srcKeyOf(r))).length;
+    const nMine = live.filter(r => !r.fee && !r.salaryEmp && !r.hourlyEmp && routeOwnerOf(r) === state.me).length;
+    const nSal = live.filter(r => r.salaryEmp).length, nHrl = live.filter(r => r.hourlyEmp).length;
+    const nFee = live.filter(r => r.fee).length, nDone = rows.filter(r => r.done).length;
     // Эзэнгүй картууд — эдгээрийн зардал танд ирнэ (эзэн рүү очихгүй). Тод анхааруулна.
     const orphanCards = [...new Set(live.filter(r => r.cardL4 && !ownerOf(srcKeyOf(r))).map(r => r.cardL4))];
     // Салбар нь тодорхойгүй цалин — өмнө нь чимээгүйгээр КЕМП (NOMAAD)-д ордог байсан
@@ -6928,13 +6932,14 @@ async function openStatementClassifyModal() {
       </div>
       <div class="stmt-prsn-note">Зөвхөн «компанийн» мөр зардал болно. Компани хувийн данс руу буцаан төлсөн шилжүүлэг нь зардал БИШ — өрөөс хасагдана.</div></div>` : '';
     const warnBanner = prsnBanner + salBanner + (orphanCards.length ? `<div style="background:var(--warn-soft,rgba(217,119,6,.12));border:1px solid var(--warn);border-radius:8px;padding:8px 11px;margin:8px 0;font-size:11.5px;color:var(--warn);">⚠ Эзэнгүй карт: <b>${orphanCards.map(l => '••' + l).join(', ')}</b> — дээрх жагсаалтаас эзнийг сонго, эс бол эдгээрийн зардал <b>танд</b> ирнэ. (Данс &amp; Карт хэсэгт нэг удаа тохируулбал байнга санана.)</div>` : '');
-    const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
+    const head = warnBanner + `<div style="font-size:12px;color:var(--muted);margin:8px 0;">💳 Эзэн рүү <b style="color:var(--accent,#7c3aed)">${nCardOwn}</b> · Таны ангилах <b style="color:var(--warn)">${nMine}</b>${nSal ? ` · 👤 сарын цалин ${nSal}` : ''}${nHrl ? ` · ⏱ цагийн цалин ${nHrl}` : ''}${nFee ? ` · 🏦 шимтгэл ${nFee} (авто)` : ''}${nDone ? ` · ✓ орсон ${nDone}` : ''}</div>`;
     const ordered = [...rows].sort((a, b) => (a.done - b.done) || String(a.date).localeCompare(String(b.date)));
     const body = ordered.map(r => {
       const srcTag = r.cardL4 ? ('карт ••' + r.cardL4) : ('данс ' + (r.account || '—'));
       const ro = routeOwnerOf(r); const roName = ro === state.me ? 'та' : memberName(ro);
       const orphan = r.cardL4 && !ownerOf(srcKeyOf(r));
       const ctrl = r.done ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">✓ орсон</span>'
+        : r.fee ? '<span style="color:var(--ok);font-size:11px;white-space:nowrap;">🏦 банкны шимтгэл · авто</span>'
         : r.personal ? `<button class="stmt-prsn-btn ui-raw${r.biz ? ' on' : ''}" data-prsn="${rows.indexOf(r)}">${r.biz ? '🏢 компанийн' : '🙍 хувийн'}</button>`
         : (r.hourlyEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">цагийн цалин · ${escapeHtml(r.hourlyEmp.name)}</span>`
           : r.salaryEmp ? `<span style="color:var(--ok);font-size:11px;white-space:nowrap;">сарын цалин · ${escapeHtml(memberName(r.salaryEmp))}</span>`

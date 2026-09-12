@@ -7131,6 +7131,23 @@ function testBankFee() {
        'scan: шимтгэл дотоод шилжүүлгээс ӨМНӨ шалгагдана');
   }
 
+  /* ⛔ UI-д ч «ангилна» гэж бичигдэхгүй. Хадгалахад авто баталгаажиж байсан ч
+     жагсаалт «→ Э.Нинждолгор ангилна» гэж худал сүрдүүлж, хүн 200₮-ийн мөр
+     хөөцөлдөж байв (2026-09-12 хэрэглэгчийн гомдол). */
+  {
+    const at = src.indexOf('const ctrl = r.done ?');
+    ok(at > 0, 'scan: импортын мөрийн шошго олдов');
+    const body = src.slice(at, at + 400);
+    const feeAt = body.indexOf('r.fee ?');
+    const askAt = body.indexOf('ангилна');
+    ok(feeAt > 0 && (askAt < 0 || feeAt < askAt),
+       'scan: шимтгэл «авто» гэж тэмдэглэгдэнэ, «ангилна» гэж БИШ');
+    ok(/const nMine = live\.filter\(r => !r\.fee/.test(src),
+       'scan: шимтгэл «Таны ангилах» тоололд орохгүй');
+    ok(/const nCardOwn = live\.filter\(r => !r\.fee/.test(src),
+       'scan: шимтгэл «Эзэн рүү» тоололд ч орохгүй');
+  }
+
   // SCAN: авто баталгаажилт — 200₮-ийн мөрийг эзэн ангилахгүй
   ok(/encodeCardToken\(r\.cardL4 \|\| '', routeOwner, !r\.fee\)/.test(src),
      'scan: шимтгэл АВТО баталгаажна (pend=false), «Миний зардал»-д орохгүй');

@@ -51,16 +51,23 @@
 <script>
 (function(){
   'use strict';
-  var STAFF='https://n8n.nomaadcamp.com/webhook/staff?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ';
+  // Үнэмлэх дээр УТАС хэвлэгддэг тул энэ хуудас нэвтэрсэн ажилтнаас л ажиллана.
+  // Токен нь аппын localStorage-оос ирнэ (нэг domain) — аппад нэвтэрсэн байх ёстой.
+  // 2026-09-18-нд хуучин нийтийн түлхүүр хаагдах тул энэ нь ЗААВАЛ шаардлагатай.
+  var STAFF='https://n8n.nomaadcamp.com/webhook/staff';
+  function authHeaders(){
+    var h={}; try{ var t=localStorage.getItem('sessionToken'); if(t) h['X-Session-Token']=t; }catch(e){}
+    return h;
+  }
   var IMG='https://n8n.nomaadcamp.com/img/';
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function phoneKey(m){return String(m.phone||'').replace(/\D/g,'');}
   function isActive(m){var st=String(m.status||'').toLowerCase();if(st.indexOf('гарс')>=0||st.indexOf('идэвхг')>=0)return false;if(m.left_at)return false;return true;}
   var ALL=[];
-  fetch(STAFF+'&t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+  fetch(STAFF+'?t='+Date.now(),{cache:'no-store',headers:authHeaders()}).then(function(r){return r.json();}).then(function(d){
     var team=(d&&d.team)||(Array.isArray(d)?d:[]);
     ALL=team.filter(function(m){return isActive(m)&&phoneKey(m);}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'mn');});
-    if(!ALL.length){document.getElementById('grid').style.display='none';var mg=document.getElementById('msg');mg.style.display='';mg.textContent='Ажилтны жагсаалт ачаалж чадсангүй.';return;}
+    if(!ALL.length){document.getElementById('grid').style.display='none';var mg=document.getElementById('msg');mg.style.display='';mg.textContent='Ажилтны жагсаалт ирсэнгүй. Эхлээд аппад нэвтэрч, дараа нь энэ хуудсыг дахин нээнэ үү.';return;}
     var nH=ALL.filter(function(m){return String(m.worker_type||'')==='daily';}).length;
     document.getElementById('sub').textContent=(ALL.length-nH)+' үндсэн · '+nH+' цагийн ажилтан · картыг таслаад тарааж, ажилтан утсандаа хадгална';
     render('');

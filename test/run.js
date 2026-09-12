@@ -6806,6 +6806,22 @@ need(['orderCustType']);
                         src.indexOf('function checkUncleanRestart') + 800);
   ok(/uncleanRestart\(d, Date\.now\(\)/.test(chk), 'scan: checkUncleanRestart нь цэвэр функцийг дуудна');
   ok(/markHidden/.test(src) && /visibilitychange/.test(src), 'scan: далд болсон мөч тэмдэглэгддэг');
+
+  // (4) CACHE_TAG оноолт нь АСИНХРОН (`caches.keys().then`). Тиймээс оноолт БАЙХАД
+  //     хангалтгүй — `checkUncleanRestart()` түүнээс ӨМНӨ ажиллавал `nowVer` хоосон
+  //     болж хувилбарын шалгуур ДАХИН үхнэ. 2026-09-12-нд амьд логийн 22 restart
+  //     мөр бүгд `ver` ХООСОН байсныг ингэж барьсан (оноолт бий, тест ногоон байв).
+  ok(/function cacheTagReady\s*\(/.test(src),
+     'scan: cacheTagReady() — хувилбарын шошго бэлэн болохыг хүлээх цэг бий');
+  const bootAt = src.indexOf('  checkUncleanRestart();');
+  ok(bootAt > 0, 'scan: boot дээр checkUncleanRestart() дуудагдана');
+  const beforeBoot = src.slice(Math.max(0, bootAt - 400), bootAt);
+  ok(/await\s+cacheTagReady\(\)/.test(beforeBoot),
+     'scan: checkUncleanRestart()-ийн ӨМНӨ `await cacheTagReady()` — эс бол `ver` хоосон бичигдэнэ');
+  // Гацахгүй байх: хүлээлт цаг хязгаартай (caches удаан/байхгүй браузерт boot зогсохгүй)
+  const ctr = src.slice(src.indexOf('function cacheTagReady'), src.indexOf('function cacheTagReady') + 400);
+  ok(/Promise\.race/.test(ctr) && /setTimeout/.test(ctr),
+     'scan: cacheTagReady() цаг хязгаартай (Promise.race + setTimeout) — boot гацахгүй');
 }
 
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════

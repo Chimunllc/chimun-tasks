@@ -8749,18 +8749,36 @@ function _avColor(s) { let h = 0; const t = String(s || '?'); for (let i = 0; i 
 function _avInitials(s) { const p = String(s || '?').replace(/[^0-9A-Za-zА-Яа-яЁёҮүӨө .]/g, '').split(/[ .]+/).filter(Boolean); return (((p[0] || '?')[0] || '?') + ((p[1] || '')[0] || '')).toUpperCase(); }
 // Захиалгын мөр — жагсаалтын ЦОРЫН ГАНЦ хэлбэр. Ширээний хүснэгт ба утасны карт
 // НЭГ HTML-ээс CSS grid-ээр гарна (styles.css → .olist-row).
+// ── Мөрийн дүрсүүд ────────────────────────────────────────────────────────────
+// Эможи платформ бүрт өөр хэлбэр, өөр өнгөтэй зурагддаг (Android/Windows/Mac) тул
+// жагсаалт эмх замбараагүй харагддаг байв. Хажуугийн цэс аль хэдийн SVG (.lcd-icon)
+// ашигладаг — мөр ч мөн адил болгож НЭГ гэр бүлд оруулав.
+// ⚠ ✓ ❌ 🚫 зэрэг нь бүх платформд ижил тул ХЭВЭЭР үлдээв.
+const ROW_ICONS = {
+  mail:  '<path d="M22 6l-10 7L2 6"/><rect x="2" y="4" width="20" height="16" rx="2"/>',
+  sent:  '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/>',
+  warn:  '<path d="M12 3l9 16H3z"/><path d="M12 9v4"/><path d="M12 16v.01"/>',
+  lock:  '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  truck: '<path d="M1 4h14v12H1z"/><path d="M15 8h4l4 4v4h-8z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/>',
+  store: '<path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/>',
+};
+function rowIcon(k) {
+  return `<svg class="ricon" viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[k] || ''}</svg>`;
+}
 function orderListRow(e, k, todayStr) {
   const o = e.o;
   const rank = orderUrgRank(o, k, todayStr);
   const urgCls = rank === 0 ? 'urg-over' : rank === 1 ? 'urg-today' : rank === 2 ? 'urg-soon' : '';
-  const deliv = isDeliveryOrder(o) ? '🚚' : '🏬';
+  const deliv = rowIcon(isDeliveryOrder(o) ? 'truck' : 'store');
   // Барьцаа — жагсаалтад шууд текстээр (нээхгүйгээр): буцаасан бол ✓ Буцаасан, буцаагаагүй бол 🔒 Барьцаатай.
   // Held зөвхөн апп/M-Event (Booqable түүхийн барьцаа гадна эргэсэн); буцаасан badge бүх эх сурвалжид.
   const _depAmt = Number(o.deposit_mnt) || 0;
   const _depRet = _depAmt > 0 ? depositReturnState(o) : null;
   const depWarn = _depAmt > 0
     ? (_depRet ? `<span class="br-depchip dep-ret" title="${_depRet.kind === 'pre' ? '8-р сараас өмнөх — өмнө буцаагдсан гэж үзсэн' : _depRet.kind === 'refund' ? 'Буцаан олгох модалаар барьцаа буцаасан гэж тэмдэглэсэн' : 'Барьцаа буцаагдсан — хуулгаар баталгаажсан'}">✓ Буцаасан</span>`
-      : (!!o._app ? `<span class="br-depchip dep-hold"${canSeeOrderMoney() ? ` title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй"` : ' title="Барьцаатай захиалга"'}>🔒 Барьцаатай</span>` : ''))
+      : (!!o._app ? `<span class="br-depchip dep-hold"${canSeeOrderMoney() ? ` title="Барьцаа ${escapeHtml(fmtMoney(_depAmt))} — буцаагаагүй"` : ' title="Барьцаатай захиалга"'}>${rowIcon('lock')}Барьцаатай</span>` : ''))
     : '';
   // Илгээсэн үнийн санал — жагсаалтаас шууд харагдана (өмнө зөвхөн «✎ Засах» цонхонд байсан).
   // Лог нь stage_meta.quotes: {at, by, amount, to}. Олон удаа илгээж болно.
@@ -8770,21 +8788,21 @@ function orderListRow(e, k, todayStr) {
   // Ийм мөр нөөцөд тооцогдохгүй тул ДАВХАР ЗАХИАЛГЫН эрсдэлтэй. Шууд харагдана.
   const _bad = unmatchedItems(o);
   const badChip = _bad.length
-    ? `<span class="br-badchip" title="${escapeHtml(_bad.length + ' бараа каталогт олдсонгүй: ' + _bad.map(x => x.name).join(', ') + ' — нөөцөд тооцогдохгүй, шалгана уу')}">⚠ ${_bad.length}</span>`
+    ? `<span class="br-badchip" title="${escapeHtml(_bad.length + ' бараа каталогт олдсонгүй: ' + _bad.map(x => x.name).join(', ') + ' — нөөцөд тооцогдохгүй, шалгана уу')}">${rowIcon('warn')}${_bad.length}</span>`
     : '';
   const srcChip = orderSourceKey(o) === 'site'
-    ? `<span class="br-srcchip" title="mevent.mn сайтаас ирсэн захиалга">🌐 Сайт</span>` : '';
+    ? `<span class="br-srcchip" title="mevent.mn сайтаас ирсэн захиалга">${rowIcon('globe')}Сайт</span>` : '';
   const _qs = quotesOf(o);
   const _qLast = _qs.length ? _qs[_qs.length - 1] : null;
   // Ноорог = үнийн саналын шат. Санал ИЛГЭЭГЭЭГҮЙ ноорог чимээгүй мартагддаг тул
   // (жиш. 42 саяын санал сар гүйцэд хэвтсэн) жагсаалтад ил тэмдэглэнэ.
   const quoteChip = _qs.length
-    ? `<span class="br-qchip" title="${escapeHtml(_qs.length + ' удаа илгээсэн · сүүлд ' + String((_qLast && _qLast.at) || '').slice(0, 10) + (canSeeOrderMoney() ? ' · ' + fmtMoney(Number(_qLast && _qLast.amount) || 0) : ''))}">📤 ${_qs.length}</span>`
-    : (String(o.status) === 'draft' ? `<span class="br-qchip none" title="Ноорог боловч үнийн санал илгээгээгүй байна — «📄 Үнийн санал»-аар илгээнэ">📭 Илгээгээгүй</span>` : '');
+    ? `<span class="br-qchip" title="${escapeHtml(_qs.length + ' удаа илгээсэн · сүүлд ' + String((_qLast && _qLast.at) || '').slice(0, 10) + (canSeeOrderMoney() ? ' · ' + fmtMoney(Number(_qLast && _qLast.amount) || 0) : ''))}">${rowIcon('sent')}${_qs.length}</span>`
+    : (String(o.status) === 'draft' ? `<span class="br-qchip none" title="Ноорог боловч үнийн санал илгээгээгүй байна — «📄 Үнийн санал»-аар илгээнэ">${rowIcon('mail')}Илгээгээгүй</span>` : '');
   // Санал илгээгээд дуугүй болсныг тэмдэглэнэ — «дагаж асуу» гэсэн сануулга.
   const _fd = quoteFollowupDue(o);
   const followChip = _fd
-    ? `<span class="br-qchip due" title="Үнийн санал илгээснээс хойш ${_fd.days} хоног${_fd.asked ? ` · ${_fd.asked} удаа дагаж асуусан` : ' · дагаж асуугаагүй'}. Захиалга нээж «📞 Дагаж асуусан» дар.">📞 ${_fd.days}х</span>`
+    ? `<span class="br-qchip due" title="Үнийн санал илгээснээс хойш ${_fd.days} хоног${_fd.asked ? ` · ${_fd.asked} удаа дагаж асуусан` : ' · дагаж асуугаагүй'}. Захиалга нээж «📞 Дагаж асуусан» дар.">${rowIcon('clock')}${_fd.days}х</span>`
     : '';
   const id = escapeHtml(String(o.id));
   // Мөрийн үйлдэл товч = ТӨЛБӨР АВАХ (үлдэгдэлтэй үед шууд төлбөрийн модал нээнэ).

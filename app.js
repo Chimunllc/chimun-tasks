@@ -25221,7 +25221,7 @@ function _histCatResolver(prods, aliases) {
     if (p.name) { byName[_normProdName(p.name)] = c; const a = _histNormAgg(p.name); if (!byAgg[a]) byAgg[a] = c; }
   });
   const al = aliases || {};
-  const stats = { exact: 0, alias: 0, guess: 0, none: 0 };
+  const stats = { exact: 0, alias: 0, guess: 0, none: 0, skip: 0 };
   const fn = (sku, name) => {
     // (а) толь — хүн баталгаажуулсан зураглал бүхнээс дээгүүр
     const rawSku = String(sku || '').trim();
@@ -25230,6 +25230,11 @@ function _histCatResolver(prods, aliases) {
       const nk = normItemKey(name);
       if (nk) a = al['name:' + nk];
     }
+    /* ⛔ alias БАЙГАА ч ХООСОН (`sku:''`) = хүн «бараа биш» гэж тэмдэглэсэн —
+       хүргэлт, НӨАТ, угсралт, тэмдэглэлийн мөр. Эдгээр нь каталогт байх ЁСГҮЙ
+       тул «тулгагдаагүй» анхааруулгад тоологдох нь худал дохио (2026-09-12:
+       26 «тулгаагүй» мөрөөс 23 нь бараа биш байв). */
+    if (a !== undefined && !a) { stats.skip++; return 'Бусад'; }
     if (a) { const c = catBySku[a]; if (c) { stats.alias++; return c; } }
     // (б) шууд таарсан
     const c2 = bySku[rawSku.toLowerCase()] || byName[_normProdName(name)] || byAgg[_histNormAgg(name)];

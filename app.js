@@ -2248,11 +2248,27 @@ function _finGatedEmpty(data) {
   const rows = (data.finance && data.finance.requests) || data.requests || [];
   return !Array.isArray(rows) || rows.length === 0;
 }
-function saveFinanceCache() {
+/* ⛔ БАГЦ ҮЙЛДЭЛД БРАУЗЕР ГАЦДАГ БАЙВ (2026-09-12). `saveFinanceRequest` бүрд
+   энэ дуудагддаг тул 79 мөр устгахад 1,300+ бүртгэлийн JSON 79 УДАА бичигдэж,
+   хуудас «Page Unresponsive» болж байв (localStorage бичилт СИНХРОН, ~2МБ).
+   Тиймээс товлож бичнэ: давталтад хэдэн ч удаа дуудагдсан нэг л бичилт болно.
+   ⚠ Дараалал хэвээр — `assertMonthOpen` нь энэ дуудалтаас ӨМНӨ (scan-тест шалгана). */
+let _finCacheTimer = null;
+function _writeFinanceCache() {
+  if (!state.me) return;
+  try { localStorage.setItem('financeRequests', JSON.stringify(financeVisibleRows(state.financeRequests))); } catch (e) {}
+}
+function saveFinanceCache(immediate) {
   // Хэн нэвтэрсэн нь тодорхойгүй үед (эхлэлийн race) кэшийг ОГТ ХӨНДӨХГҮЙ — хоосон
   // массив бичвэл хэрэглэгчийн офлайн датаг устгана.
   if (!state.me) return;
-  try { localStorage.setItem('financeRequests', JSON.stringify(financeVisibleRows(state.financeRequests))); } catch (e) {}
+  if (immediate) { clearTimeout(_finCacheTimer); _finCacheTimer = null; _writeFinanceCache(); return; }
+  if (_finCacheTimer) return;                       // аль хэдийн товлогдсон
+  _finCacheTimer = setTimeout(() => { _finCacheTimer = null; _writeFinanceCache(); }, 300);
+}
+/* Хуудас хаагдахад товлогдсон бичилтийг алдахгүй — офлайн дата хэвээр үлдэнэ. */
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('pagehide', () => { if (_finCacheTimer) saveFinanceCache(true); });
 }
 async function loadFinanceRequests() {
   if (state.config.financeUrl) {

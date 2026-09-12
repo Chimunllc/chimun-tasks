@@ -40,6 +40,16 @@ grant select on public.app_config_public    to anon;
 grant insert on public.app_errors to anon;
 -- attendance: checkin.html нэвтрэлтгүйгээр ирц бүртгэдэг (зориудынх).
 grant insert on public.attendance to anon;
+-- ⚠ УНШИХ нь ЗӨВХӨН 4 багана (2026-09-12). checkin.html «өнөөдөр хэн ирсэн»-ийг
+--   харуулахад эдгээр л хэрэгтэй: day нь шүүлтэнд, member_key/kind/ts нь жагсаалтад.
+--   `member_name` нээлттэй байсан тул anon ямар ч түлхүүргүйгээр 158 ажилтны
+--   БҮТЭН НЭРийг утасны дугаартай нь хамт татаж байв — хаагдсан.
+--   ⛔ member_name / branch / id -г дахин нээж БОЛОХГҮЙ.
+revoke select on public.attendance from anon;
+grant select (day, kind, member_key, ts) on public.attendance to anon;
+-- ⚠ ҮЛДСЭН НҮХ: member_key = утасны дугаар, checkin.html түүгээр ажилладаг тул
+--   нээлттэй хэвээр. Бүрэн хаахын тулд checkin.html-ийг нэрлэсэн харагдац
+--   (хэшлэсэн түлхүүр) руу шилжүүлэх хэрэгтэй — тусдаа ажил.
 
 -- ── Сайт уншдаггүй бүх хүснэгтээс хасах ─────────────────────────────────
 -- 2026-09-09-нд ажиллуулсан. Дахин ажиллуулахад эвдрэхгүй (аль хэдийн хасагдсан).

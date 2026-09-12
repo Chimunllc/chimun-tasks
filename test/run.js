@@ -8191,3 +8191,13 @@ async function swFetchTests() {
      (missing.length ? ' → дутуу: ' + missing.join(', ') : ''));
   ok(line.includes('quoteChip'), 'scan: «Илгээгээгүй» шошго мөрөнд гарна');
 }
+
+// SCAN — дугаар дарахад tel: ЗААВАЛ явна (дагалтын бүртгэгч түүнийг хаах ёсгүй)
+{
+  const i = src.indexOf("querySelectorAll('[data-fu-call]')");
+  ok(i > 0, 'scan: data-fu-call холбогч бий');
+  const blk = src.slice(i, src.indexOf('}));', i));
+  ok(!/preventDefault\(\)/.test(blk),
+     'scan: data-fu-call холбогч preventDefault ХИЙХГҮЙ — эс бөгөөс дугаар дарахад залгахаа болино');
+  ok(/openFollowupModal/.test(blk), 'scan: дарахад дагалтын цонх нээгдэнэ');
+}

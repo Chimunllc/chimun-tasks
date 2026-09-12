@@ -9340,6 +9340,13 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
   document.querySelectorAll('[data-app-follow]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openFollowupModal(b.dataset.appFollow); }));
+  // Дугаар дарах = залгах БА хариу бүртгэх. tel: шууд явах ёстой тул preventDefault ХИЙХГҮЙ —
+  // цонх араас нь нээгдэж, залгаад буцахад хүлээж байна.
+  document.querySelectorAll('[data-fu-call]').forEach(a => a.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const oid = a.dataset.fuCall;
+    setTimeout(() => { if (!document.querySelector('.modal-bg')) openFollowupModal(oid); }, 800);
+  }));
   document.querySelectorAll('[data-app-note]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderNoteModal(b.dataset.appNote); }));
   document.querySelectorAll('[data-order-receipt]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); openOrderReceipts(b.dataset.orderReceipt); }));
   document.querySelectorAll('[data-copy-text]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); copyText(b.dataset.copyText, b.dataset.copyLabel || 'Хууллаа'); }));
@@ -23261,9 +23268,11 @@ function bqOrderCard(o) {
   // Дамжлага тойрсон захиалгыг ИЛ болгоно — зураг/үнэлгээгүйгээр дуусгасан нь харагдана
   const _noStage = isApp && !hasStageRecord(o) && ORDER_DONE_STATUSES.includes(st)
     ? '<span class="dep-badge no-stage" title="Энэ захиалга бэлдэх/цэвэрлэх/гаргах дамжлагаар яваагүй — гүйцэтгэлийн зураг, үнэлгээ алга">⚠ Дамжлагагүй</span>' : '';
+  // Залгах дугаар өөрөө дагалтын бүртгэгч — санал явсан ноорог дээр дарахад телефон + хариуны цонх
+  const _fuCall = st === 'draft' && quotesOf(o).length > 0 && (can('orders.pay') || can('orders.advance') || state.isCEO);
   return `<div class="order-card bq-order" data-oid="${id}">
     <div class="order-head"><div class="order-head-l"><span class="order-no">#${o.number ?? '—'}</span>${bqStatusBadge(st)}${_noStage}${delivBadge}${vatBadge(o.number, total)}${isApp ? ' <span style="font-size:9px;color:var(--accent,#2563EB);font-weight:700;">ШИНЭ</span>' : ''}</div>${_cardMoney ? `<div class="order-total" title="Нийт авах төлбөр${_depIn > 0 ? ` — барьцаа ${escapeHtml(fmtMoney(_depIn))} багтсан` : ''}">${fmtMoney(billed)}${_depIn > 0 ? '<small class="ord-total-sub">нийт (барьцаатай)</small>' : ''}</div>` : ''}</div>
-    <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a href="tel:${escapeHtml(o.phone)}">${escapeHtml(o.phone)}</a>` : ''}</div>
+    <div class="order-cust"><b>${escapeHtml(o.customer || '?')}</b>${o.phone ? ` · <a class="${_fuCall ? 'fu-call' : ''}" href="tel:${escapeHtml(o.phone)}"${_fuCall ? ` data-fu-call="${id}" title="Залгаад буцахад хариуг бүртгэх цонх нээгдэнэ"` : ''}>${escapeHtml(o.phone)}</a>` : ''}</div>
     ${o.email ? `<div class="order-meta">${escapeHtml(o.email)}</div>` : ''}
     ${_revHtml}
     ${addr ? `<div class="order-meta">${escapeHtml(addr)}</div>` : ''}

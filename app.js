@@ -395,14 +395,27 @@ function pgrstTokenValid() {
 //   уншдаг, 0 газар бичдэг. Үүнээс болж (а) алдааны лог бүрийн `ver` хоосон — аль
 //   хувилбарт гарсан алдаа болох нь мэдэгдэхгүй, `fixed_ver` ч хоосон бичигддэг;
 //   (б) «шинэ хувилбар тарагдсан тул дахин ачаалсан» шалгуур бүрэн ҮХМЭЛ байсан.
-try {
-  if (typeof caches === 'object' && caches && typeof caches.keys === 'function') {
-    caches.keys().then(ks => {
-      const t = (ks || []).find(k => String(k).indexOf('chimun-tasks-') === 0);
-      if (t) globalThis.CACHE_TAG = t;
-    }).catch(() => {});
-  }
-} catch (e) {}
+//   ⚠ Оноолт нь АСИНХРОН (`caches.keys()` promise) тул «оноолт бий» гэдэг хангалтгүй:
+//   2026-09-12 хүртэл `checkUncleanRestart()` нь promise бүтэхээс ӨМНӨ ажиллаж,
+//   `ver` хоосон бичигдсээр байв (амьд логийн 22 restart мөр бүгд хоосон). Тиймээс
+//   бэлэн болохыг ХҮЛЭЭХ цэг (`cacheTagReady`) хэрэгтэй.
+const _cacheTagReady = (() => {
+  try {
+    if (typeof caches === 'object' && caches && typeof caches.keys === 'function') {
+      return caches.keys().then(ks => {
+        const t = (ks || []).find(k => String(k).indexOf('chimun-tasks-') === 0);
+        if (t) globalThis.CACHE_TAG = t;
+      }).catch(() => {});
+    }
+  } catch (e) {}
+  return Promise.resolve();
+})();
+// Хувилбарын шошго бэлэн болтол хүлээнэ. ⚠ Цаг хязгаартай — caches API удаан эсвэл
+// байхгүй браузерт boot ГАЦАХ ёсгүй (шошгогүй ч апп ажиллана, лог л дутуу болно).
+const _CACHE_TAG_WAIT_MS = 1500;
+function cacheTagReady() {
+  return Promise.race([_cacheTagReady, new Promise(r => setTimeout(r, _CACHE_TAG_WAIT_MS))]);
+}
 
 const _RESTART_STALE_MS = 180000;   // 3 мин — үүнээс удаан завсарласан бол ердийн хаалт
 const _RESTART_BG_MS    = 60000;    // 1 мин — үүнээс удаан ДАЛД байсныг OS ердийн цэвэрлэгээ гэж үзнэ
@@ -34025,6 +34038,10 @@ function promptDefaultPinChange() {
     // Далд болсон мөчийг тэмдэглэнэ — удаан далд байгаад OS-д устгагдсаныг «гэнэт үхсэн» гэж мэдээлэхгүй.
     document.addEventListener('visibilitychange', () => markHidden(document.visibilityState === 'hidden'));
   } catch (e) { /* хуучин браузер — дохио байхгүй ч апп ажиллана */ }
+  // ⚠ Хувилбарын шошго бэлэн болтол ХҮЛЭЭНЭ — эс бөгөөс `nowVer` хоосон болж
+  //   «шинэ хувилбар тарагдсан тул дахин ачаалсан» шалгуур ажиллахгүй, шинэчлэлт
+  //   бүрийг «Апп гэнэт дахин эхэлсэн» гэж ХУДЛАА бүртгэнэ (лог дүүрнэ).
+  await cacheTagReady();
   checkUncleanRestart();
 
   if (await restoreSession()) {

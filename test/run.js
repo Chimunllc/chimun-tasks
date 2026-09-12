@@ -7199,6 +7199,17 @@ function testFinDupImports() {
     ok(/if \(state\.finGated\)/.test(body),
        'scan: бүртгэл ирээгүй (finGated) үед хадгалахгүй — давхардлыг шалгаж чадахгүй');
   }
+  // Жагсаалт БАЙГУУЛАХ үед ч шинэчилнэ — эс бөгөөс хүн «аль хэдийн орсон»-ыг
+  // буруу харж, давхардал оруулах гэж байгаагаа мэдэхгүй.
+  {
+    const at = src.indexOf('const processFiles = async (files)');
+    ok(at > 0, 'scan: processFiles олдов');
+    const body = src.slice(at, at + 1400);
+    const loadAt = body.indexOf('await loadFinanceRequests()');
+    const impAt = body.indexOf('const imp = importedFpCounts()');
+    ok(loadAt > 0 && impAt > 0 && loadAt < impAt,
+       'scan: хуулга уншихад ч бүртгэл шинэчлэгдэнэ (давхардлыг урьдчилж харуулна)');
+  }
 }
 testFinDupImports();
 

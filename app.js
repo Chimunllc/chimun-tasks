@@ -6956,6 +6956,12 @@ async function openStatementClassifyModal() {
     const status = modal.querySelector('#sc-status'); status.textContent = '📄 Уншиж байна…'; status.style.color = 'var(--muted)';
     try {
       rows = []; dropped = []; settleAdd = {}; stmtQueue = [];
+      /* ⛔ «Аль хэдийн орсон» гэдгийг ЗӨВ харуулахын тулд бүртгэлийг серверээс
+         эхлээд шинэчилнэ. Кэш хуучирсан бол жагсаалт бүх мөрийг «шинэ» гэж
+         харуулж, хүн давхардлыг оруулах гэж байгаагаа МЭДЭХГҮЙ (2026-09-д ингэж
+         118 мөр давхарласан). Хадгалах үед дахин шалгагдана — энэ нь урьдчилсан
+         дохио. Офлайн бол кэшээр үргэлжилнэ. */
+      try { await loadFinanceRequests(); } catch (e) { /* офлайн */ }
       const imp = importedFpCounts(); const occSeen = new Map();
       const own = ownAcctSet(); let skippedInternal = 0;
       for (const f of files) {

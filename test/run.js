@@ -7139,6 +7139,45 @@ function testBankFee() {
 }
 testBankFee();
 
+// ═══ БАГЦ ҮЙЛДЭЛД КЭШ ТОВЛОГДОЖ БИЧИГДЭНЭ (2026-09-12) ════════════════════════
+// 79 мөр устгахад 1,300+ бүртгэлийн JSON 79 УДАА localStorage-д бичигдэж, хуудас
+// «Page Unresponsive» болж байв (localStorage бичилт синхрон, ~2МБ).
+function testFinanceCacheThrottle() {
+  need(['saveFinanceCache']);
+  const runIn = (code) => vm.runInContext(code, sandbox);
+  runIn("state.me = '99119911'; state.financeRequests = [];");
+  const orig = localStorage.setItem;
+  let writes = 0;
+  localStorage.setItem = function (k, v) { if (k === 'financeRequests') writes++; return orig.call(this, k, v); };
+  try {
+    // ① Багц: 50 дуудалт → нэг ч шууд бичилт болохгүй (товлогдоно)
+    for (let i = 0; i < 50; i++) F.saveFinanceCache();
+    eq(writes, 0, 'кэш: 50 дуудалт шууд бичилт үүсгэхгүй (товлогдоно)');
+    // ② immediate — шууд бичнэ, товлогдсоныг цуцална
+    F.saveFinanceCache(true);
+    eq(writes, 1, 'кэш: immediate шууд бичнэ');
+    // ③ Товлогдсон нь цуцлагдсан тул дахин дуудахад дахин товлогдоно
+    for (let i = 0; i < 20; i++) F.saveFinanceCache();
+    eq(writes, 1, 'кэш: дараагийн багц ч шууд бичихгүй');
+    F.saveFinanceCache(true);
+    eq(writes, 2, 'кэш: immediate дахин бичнэ');
+    // ④ Нэвтрээгүй үед ОГТ бичихгүй (хоосон массив офлайн датаг устгана)
+    runIn("state.me = '';");
+    F.saveFinanceCache(true);
+    eq(writes, 2, 'кэш: нэвтрээгүй үед бичихгүй');
+  } finally {
+    localStorage.setItem = orig;
+    runIn("state.me = ''; state.financeRequests = [];");
+  }
+
+  // SCAN: assertMonthOpen нь кэш бичилтээс ӨМНӨ хэвээр (хаасан сар хамгаалагдана)
+  const at = src.indexOf('async function saveFinanceRequest');
+  const body = src.slice(at, at + 700);
+  const aAt = body.indexOf('assertMonthOpen('), cAt = body.indexOf('saveFinanceCache(');
+  ok(aAt > 0 && cAt > 0 && aAt < cAt, 'scan: assertMonthOpen нь saveFinanceCache-ээс ӨМНӨ хэвээр');
+}
+testFinanceCacheThrottle();
+
 // ═══ ХУУЛГЫН ДАВХАР ИМПОРТ (2026-09-11) ═══════════════════════════════════════
 // Амьд датаас олов: 2026-09-д 118 илүү мөр · 22.9сая. Нэг банкны мөр (fp) хоёр
 // бүртгэлтэй болсон — хуулга хоёр удаа орсон. Зардал 24.5сая гэж харагдаж байв.

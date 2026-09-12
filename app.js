@@ -25571,6 +25571,30 @@ function _histCompute(orders, roiFix, catOf, resolveItem, bySku) {
   return { customers, products, roi: products, usage, services, summary, monthly, unknownRev: Math.round(unknownRev), unknownCnt };
 }
 
+/* ⚠ «Нийт орлого» ба «Нөхсөн (түрээсийн орлого)» нь ӨӨР зүйл хэмждэг тул зөрнө —
+   тайлбаргүй бол хэрэглэгч алдаа гэж бодно (2026-09-12: 849сая vs 648сая).
+     · Нийт орлого     = БҮХ захиалгын орлого (бараа + үйлчилгээ + хүргэлт + бусад)
+     · Нөхсөн          = ЗӨВХӨН агуулахын барааны мөрүүд — хөрөнгө нь бараанд
+                         оруулагдсан тул үйлчилгээний орлогыг нөхөлтөд тоолох нь буруу
+   Зөрүүг задалж ил бичнэ: үйлчилгээ · каталогт тулгагдаагүй · бусад мөр. */
+function revGapHtml(bq, recov) {
+  const N = x => Number(x) || 0;
+  if (!bq || bq._full === false) return '';
+  const total = N((bq.summary || {}).net_revenue_mnt);
+  const gap = Math.round(total - N(recov));
+  if (total <= 0 || gap <= 0) return '';
+  const svc = Math.round((bq.services || []).reduce((s, x) => s + N(x.revenue_mnt), 0));
+  const unk = Math.round(N(bq.unknownRev));
+  const other = Math.max(0, gap - svc - unk);
+  const parts = [];
+  if (svc > 0) parts.push(`үйлчилгээ ${fmtMoney(svc)}`);
+  if (unk > 0) parts.push(`каталогт тулгагдаагүй ${fmtMoney(unk)}`);
+  if (other > 0) parts.push(`хүргэлт/бусад мөр ${fmtMoney(other)}`);
+  return `<div class="rev-gap">↔ Дээрх <b>Нийт орлого ${fmtMoney(total)}</b>-той зөрөх нь хэвийн:
+    түүнээс <b>${fmtMoney(Math.round(N(recov)))}</b> нь агуулахын барааны түрээс.
+    Үлдсэн <b>${fmtMoney(gap)}</b> = ${parts.join(' · ') || 'бараанд хамаарахгүй мөр'}.
+    Хөрөнгө нь бараанд оруулагдсан тул нөхөлтөд зөвхөн барааны орлого тоологдоно.</div>`;
+}
 function bqInsights(bq) {
   const N = x => Number(x) || 0;
   const out = [];
@@ -25953,7 +25977,8 @@ function renderHistory() {
         `${bq._full === false
             ? `⚠ Хугацааны шүүлт идэвхтэй — <b>сонгосон үеийн</b> орлогыг <b>нийт</b> хөрөнгөтэй харьцуулж байна (нөхөлт биш).`
             : `Нийт түрээсийн орлого нь хөрөнгө оруулалтынхаа <b>${recPct}%</b>-г нөхсөн.`}
-         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).${noCostN ? ` <button class="btn ui-raw" id="hist-nocost" style="padding:2px 8px;font-size:11.5px;">${noCostN} барааны өртөг оруулаагүй — нөхөх →</button>` : ''}`);
+         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).${noCostN ? ` <button class="btn ui-raw" id="hist-nocost" style="padding:2px 8px;font-size:11.5px;">${noCostN} барааны өртөг оруулаагүй — нөхөх →</button>` : ''}
+         ${revGapHtml(bq, recov)}`);
       // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлого + хөрөнгө + ROI ──
       const byCat = {};
       roi.forEach(x => { const c = x.category || 'Бусад'; (byCat[c] = byCat[c] || []).push(x); });

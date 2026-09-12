@@ -6511,6 +6511,10 @@ details[open] .sc-adv-sum::before { content:'▾ '; }
 .stmt-drop-row i { color: var(--muted); font-style: normal; white-space: nowrap; font-size: var(--fs-xs); }
 /* Шалтгаан бүр өөрийн нугалаатай — 56 мөрийг нэг жагсаалтаар харуулбал хүн
    юуг ч уншихгүй. Хумигдсан үедээ «дотоод шилжүүлэг · 45 мөр · 38.8сая». */
+/* «Нийт орлого» ↔ «Нөхсөн» зөрүүний тайлбар — хоёр тоо өөр зүйл хэмждэг */
+.rev-gap { margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--warn); background: var(--panel-hover);
+  border-radius: var(--r-sm); font-size: var(--fs-sm); line-height: 1.5; color: var(--text-soft); }
 /* Давхар импортын модал — бүлэг = нэг банкны мөр, дотор нь үлдэх/устах */
 .di-g { border-bottom: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
 .di-g:last-child { border-bottom: 0; }

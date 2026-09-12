@@ -6824,6 +6824,56 @@ need(['orderCustType']);
      'scan: cacheTagReady() цаг хязгаартай (Promise.race + setTimeout) — boot гацахгүй');
 }
 
+// ═══ ХУВИЛБАРЫН ЧИП + ШИНЭЧЛЭХ ТОВЧ (2026-09-12) ═══════════════════════════
+// Ажилтан «би ямар хувилбар дээр яваа вэ» гэдгээ мэдэхгүй, шинэчлэхийн тулд
+// гарч ороход хүрдэг байв. Толгойн чип нь app.js-ийн СЕРВЕР дэх хувилбарыг
+// (ETag/Last-Modified) харуулж, дарахад шалгаад шинэ бол татаж ачаална.
+{
+  const N = sandbox.buildIsNewer, L = sandbox.buildLabel;
+  ok(typeof N === 'function' && typeof L === 'function', 'хувилбар: цэвэр функцууд бий');
+
+  // ETag нь эрхэм дохио — агуулга өөрчлөгдөхөд солигдоно
+  ok(N({ tag: 'a', at: 100 }, { tag: 'b', at: 100 }) === true, 'ETag зөрсөн → шинэ');
+  ok(N({ tag: 'a', at: 100 }, { tag: 'a', at: 999 }) === false,
+     'ETag ижил → огноо хожим байсан ч ШИНЭ БИШ (Pages бүх файлд ижил огноо тавьдаг)');
+  // ETag байхгүй сервер дээр огноогоор
+  ok(N({ tag: '', at: 100 }, { tag: '', at: 200 }) === true, 'ETag-гүй: огноо шинэ → шинэ');
+  ok(N({ tag: '', at: 200 }, { tag: '', at: 100 }) === false, 'ETag-гүй: огноо хуучин → шинэ БИШ');
+  ok(N({ tag: '', at: 100 }, { tag: '', at: 100 }) === false, 'ижил огноо → шинэ биш');
+  // Хог оролт дээр «шинэ хувилбар бий» гэж ХУДЛАА хэлэхгүй (дэмий reload хийхгүй)
+  ok(N(null, { tag: 'b' }) === false && N({ tag: 'a' }, null) === false &&
+     N('x', 'y') === false && N({}, {}) === false, 'хог оролт: шинэ гэж хэлэхгүй');
+
+  // Шошго: өнөөдрийнх бол цаг, өөр өдөр бол сар/өдөр
+  const noon = new Date(2026, 8, 12, 14, 5, 0).getTime();
+  const sameDay = new Date(2026, 8, 12, 9, 7, 0).getTime();
+  const prevDay = new Date(2026, 8, 11, 18, 40, 0).getTime();
+  eq(L(sameDay, noon), '09:07', 'шошго: өнөөдрийнх → цаг');
+  eq(L(prevDay, noon), '9/11', 'шошго: өөр өдөр → сар/өдөр');
+  eq(L(0, noon), '—', 'шошго: огноо мэдэгдэхгүй → зураас');
+  eq(L('хог', noon), '—', 'шошго: хог оролт → зураас');
+}
+
+// SCAN — чип нь бодит хувилбарыг заана, дэмий сүлжээ чангаахгүй
+{
+  const idx = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  ok(/id="ver-btn"/.test(idx) && /id="ver-txt"/.test(idx),
+     'scan: толгойд хувилбарын чип бий (index.html)');
+  // ⚠ CACHE_TAG-аар хувилбар ХАРУУЛАХГҮЙ — app.js өөрчлөгдөхөд тэр солигддоггүй
+  //   тул ажилтанд «хуучин хувилбар дээр байна» гэдгээ мэдэхгүй байх эрсдэл үүснэ.
+  const chip = src.slice(src.indexOf('function renderVerChip'), src.indexOf('function renderVerChip') + 700);
+  ok(!/CACHE_TAG/.test(chip), 'scan: чип нь CACHE_TAG-аар БИШ, app.js-ийн хувилбараар');
+  ok(/buildLabel\(/.test(chip), 'scan: чип нь buildLabel()-ээр бичигдэнэ');
+  // Шалгалт хэт олон давтагдахгүй (visibilitychange бүрд HEAD явуулбал сүлжээ чангарна)
+  const cb = src.slice(src.indexOf('async function checkBuild'), src.indexOf('async function checkBuild') + 500);
+  ok(/_BUILD_MIN_GAP/.test(cb), 'scan: checkBuild() завсарын хамгаалалттай');
+  ok(/cache:\s*'no-store'/.test(src.slice(src.indexOf('async function probeBuild'), src.indexOf('async function probeBuild') + 400)),
+     'scan: probeBuild() кэшээс биш СЕРВЕРЭЭС асууна');
+  // Зориудын reload тул «амьд» тэмдэглэгээ цэвэрлэгдэнэ (scan (2) үүнийг ч шалгана)
+  const ap = src.slice(src.indexOf('async function applyAppUpdate'), src.indexOf('async function applyAppUpdate') + 600);
+  ok(/clearAlive\(\)/.test(ap), 'scan: applyAppUpdate() нь clearAlive() дуудна');
+}
+
 // ═══ ХУУЛГЫН БҮРТГЭЛ + ОРЛОГЫН МӨР (2026-09-11) ═══════════════════════════════
 // Цоорхой: зардал нь хуулгаас бүртгэгддэг байтал орлого нь зөвхөн захиалгаас
 // бүртгэгддэг байв → (1) ямар хуулга орсныг апп мэдэхгүй, (2) захиалгад

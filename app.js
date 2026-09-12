@@ -417,6 +417,85 @@ function cacheTagReady() {
   return Promise.race([_cacheTagReady, new Promise(r => setTimeout(r, _CACHE_TAG_WAIT_MS))]);
 }
 
+// ── ХУВИЛБАР + ШИНЭЧЛЭХ ТОВЧ (2026-09-12) ──────────────────────────────────
+// «Би аль хувилбар дээр яваа вэ?» гэдгийг ажилтан толгойноос шууд харна; дарахад
+// серверээс шалгаж, шинэ бол татаж ачаална — ГАРЧ ОРОХ шаардлагагүй.
+// ⚠ Хувилбар = `app.js`-ийн серверийн ETag/Last-Modified. SW-ийн `globalThis.CACHE_TAG` (v854)
+//   БИШ: тэр нь app.js өөрчлөгдөхөд солигддоггүй тул «шинэ эсэх»-ийг хэлж чадахгүй
+//   (тиймээс хувилбар гэж харуулбал ажилтанд ХУДАЛ мэдээлэл өгнө).
+// Цэвэр шийдвэр/формат — тестлэгдэнэ.
+function buildIsNewer(mine, srv) {
+  if (!mine || !srv || typeof mine !== 'object' || typeof srv !== 'object') return false;
+  if (mine.tag && srv.tag) return String(mine.tag) !== String(srv.tag);
+  const a = Number(mine.at) || 0, b = Number(srv.at) || 0;
+  return !!(a && b && b > a);
+}
+// Богино шошго: өнөөдрийнх бол цаг (14:22), өөр өдөр бол сар/өдөр (9/11).
+function buildLabel(at, now) {
+  const t = Number(at) || 0; if (!t) return '—';
+  const d = new Date(t), n = new Date(Number(now) || Date.now());
+  const same = d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  return same ? `${_pad2(d.getHours())}:${_pad2(d.getMinutes())}` : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+let _build = null;            // миний ачаалсан хувилбар {tag, at}
+let _buildNew = null;         // сервер дээр илүү шинэ хувилбар (бий бол)
+let _buildCheckAt = 0;
+const _BUILD_MIN_GAP = 60000; // сүлжээ чангаахгүй — 1 минутад нэгээс олон шалгахгүй
+function _appJsUrl() {
+  try {
+    const s = [...document.querySelectorAll('script[src]')].find(x => /app\.js/.test(x.src || ''));
+    return s ? s.src : 'app.js';
+  } catch (e) { return 'app.js'; }
+}
+async function probeBuild() {
+  const r = await fetchWithTimeout(_appJsUrl(), { method: 'HEAD', cache: 'no-store' }, 8000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return { tag: r.headers.get('etag') || '', at: Date.parse(r.headers.get('last-modified') || '') || 0 };
+}
+async function checkBuild(force) {
+  const now = Date.now();
+  if (!force && (now - _buildCheckAt) < _BUILD_MIN_GAP) return _buildNew;
+  _buildCheckAt = now;
+  let srv = null;
+  try { srv = await probeBuild(); } catch (e) { return _buildNew; }   // офлайн — чимээгүй
+  if (!_build) _build = srv;                                          // эхний удаа = миний хувилбар
+  _buildNew = buildIsNewer(_build, srv) ? srv : null;
+  renderVerChip();
+  return _buildNew;
+}
+function renderVerChip() {
+  const b = document.getElementById('ver-btn'), t = document.getElementById('ver-txt');
+  if (!b || !t) return;
+  if (_buildNew) {
+    b.classList.add('new');
+    t.textContent = 'Шинэ';
+    b.title = 'Шинэ хувилбар бэлэн — дарж шинэчилнэ';
+  } else {
+    b.classList.remove('new');
+    t.textContent = buildLabel(_build && _build.at, Date.now());
+    b.title = _build && _build.at
+      ? `Аппын хувилбар: ${new Date(_build.at).toLocaleString('mn-MN')} — дарж шинэчилнэ`
+      : 'Аппын хувилбар — дарж шинэчилнэ';
+  }
+}
+async function applyAppUpdate() {
+  showToast('Шинэ хувилбар татаж байна…', 'info', 1800);
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.update();
+  } catch (e) { /* SW байхгүй ч network-first тул шинэ код ирнэ */ }
+  clearAlive();          // зориудын дахин ачаалалт — «гэнэт үхсэн» гэж бүртгэгдэхгүй
+  location.reload();
+}
+async function onVerChipClick() {
+  const b = document.getElementById('ver-btn');
+  if (b) b.classList.add('busy');
+  const found = await checkBuild(true);
+  if (b) b.classList.remove('busy');
+  if (found) { await applyAppUpdate(); return; }
+  showToast('Хамгийн сүүлийн хувилбар дээр байна', 'success', 2000);
+}
+
 const _RESTART_STALE_MS = 180000;   // 3 мин — үүнээс удаан завсарласан бол ердийн хаалт
 const _RESTART_BG_MS    = 60000;    // 1 мин — үүнээс удаан ДАЛД байсныг OS ердийн цэвэрлэгээ гэж үзнэ
 
@@ -32429,6 +32508,14 @@ function initEvents() {
   // ─── Глобал салбар сонгогч (толгой) ───
   document.getElementById('branch-lens')?.addEventListener('change', (e) => setBranchLens(e.target.value));
 
+  // ─── Хувилбарын чип (толгой) — дарахад шалгаж шинэчилнэ ───
+  document.getElementById('ver-btn')?.addEventListener('click', onVerChipClick);
+  // Апп руу буцаж ороход чимээгүй шалгана (1 минутын завсартай) — ажилтан товч
+  // дарахгүй ч «Шинэ» гэж өөрөө мэдэгдэнэ.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkBuild(false);
+  });
+
   // ─── ⌘K / Ctrl+K — command palette ───
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -34062,6 +34149,7 @@ function promptDefaultPinChange() {
   //   бүрийг «Апп гэнэт дахин эхэлсэн» гэж ХУДЛАА бүртгэнэ (лог дүүрнэ).
   await cacheTagReady();
   checkUncleanRestart();
+  checkBuild(true);        // толгойн хувилбарын чипийг бөглөнө (await биш — boot саатуулахгүй)
 
   if (await restoreSession()) {
     // pgrst токен хүчингүй бол PostgREST уншилт БҮГД унана (anon-д эрх алга) —

@@ -8105,3 +8105,22 @@ async function swFetchTests() {
     ok(/^window\.__appJsLoaded = true;$/m.test(src), 'scan: app.js — ачаалагдсан дохиогоо тавьдаг');
   }
 }
+
+// SCAN — захиалгын мөрөнд тооцоологдсон шошго заавал РЕНДЕРЛЭГДЭНЭ (2026-09-12)
+// Алдаа: `quoteChip` («📭 Илгээгээгүй») бодогдоод `_chips` массивт ороогүй байв.
+// Улмаар дүнгийн мөрөнд «2 илгээгээгүй» гэж гарч байхад мөр дээр тэмдэг гарахгүй,
+// хэрэглэгч аль захиалга нь болохыг олж чадахгүй байсан. CSS нь бүрэн бэлэн байсан —
+// зөвхөн нэг массивт нэр дутсан. Энэ нь чимээгүй унадаг ангийн алдаа.
+// Дүрэм: orderListRow доторх `const *Chip` бүр `_chips` жагсаалтад байх ёстой.
+{
+  const fn = src.slice(src.indexOf('function orderListRow('), src.indexOf('const ORDER_TIME_GROUPS'));
+  ok(fn.length > 500, 'scan: orderListRow олдов');
+  const declared = [...fn.matchAll(/const\s+(\w+Chip)\s*=/g)].map(m => m[1]);
+  ok(declared.length >= 5, 'scan: мөрийн шошгууд тодорхойлогдсон (' + declared.length + ')');
+  const line = (fn.match(/const _chips = .*/) || [''])[0];
+  ok(!!line, 'scan: _chips жагсаалт олдов');
+  const missing = declared.filter(n => !line.includes(n));
+  eq(missing.length, 0, 'scan: тооцоолсон шошго бүр _chips-д орсон' +
+     (missing.length ? ' → дутуу: ' + missing.join(', ') : ''));
+  ok(line.includes('quoteChip'), 'scan: «Илгээгээгүй» шошго мөрөнд гарна');
+}

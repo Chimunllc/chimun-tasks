@@ -81,11 +81,15 @@
 <script>
 (function(){
   'use strict';
+  // ЗӨВХӨН ирцийн киоскийн суваг (2026-09-12). Өмнө нь /webhook/staff-аас 158
+  // ажилтны 18 талбарыг (утас, имэйл, эрхийн түвшин, хүйс…) татдаг байсныг зогсоов —
+  // энэ хуудас нэр/албан тушаал/зураг/төлөв гэсэн 4-ийг л хэрэглэдэг.
+  // Ажилтныг далд `k` утгаар танина; утас браузерт ОГТ ирэхгүй.
+  // Ирсэн/явсныг СЕРВЕР шийднэ (клиент хэлэхгүй) тул хуурамч мөр оруулахад хэцүү.
   var CFG = {
-    STAFF: 'https://n8n.nomaadcamp.com/webhook/staff?key=1YP4RCfL_DMiBhDfkCkX6AesQHd5p2lZ',
-    DB:    'https://n8n.nomaadcamp.com/db/rest/v1/attendance',
-    KEY:   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.Brx7AjnPrzfv--KLb-J-FK-7DmdRusxUF2jaFgKzd1s',
-    IMG:   'https://n8n.nomaadcamp.com/img/'
+    API: 'https://n8n.nomaadcamp.com/webhook/checkin',
+    KEY: '3DTGphCKKAXw2t6mlofk99EEHroYScaG',
+    IMG: 'https://n8n.nomaadcamp.com/img/'
   };
   var params = new URLSearchParams(location.search);
   var TOKEN = params.get('t') || '';
@@ -97,27 +101,23 @@
   (function(){ var d=ubNow(); document.getElementById('today').textContent = DAY + ' · ' + MN[d.getDay()]; })();
 
   function initials(name){ var p=String(name||'').trim().split(/\s+/); var s=(p[0]||'').slice(0,1)+((p[1]||p[0]||'').slice(0,1)); return s.toUpperCase()||'?'; }
-  // personKey (апптай ижил): утас → email → нэр
-  function key(m){ return String(m.phone||'').replace(/\D/g,'') || String(m.email||'').toLowerCase() || m.name || ''; }
+  // Сервер өгсөн далд таних утга. Утас БИШ — буцаагаад тайлагдахгүй.
+  function key(m){ return String(m.k||''); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function avaStyle(m){ if(m.photo){ var u=/^https?:/.test(m.photo)?m.photo:CFG.IMG+m.photo; return 'background-image:url('+u+')'; } return ''; }
 
   var MEMBERS=[], STATE={}, filtered=[];
 
-  function isActive(m){
-    var st=String(m.status||'').toLowerCase();
-    if(st.indexOf('гарс')>=0 || st.indexOf('идэвхг')>=0) return false;
-    if(m.left_at) return false;
-    return true;
-  }
+  // (Гарсан/идэвхгүй ажилтныг шүүх нь одоо СЕРВЕР талд — `status`/`left_at`
+  //  браузерт ирэхээ больсон тул энд шүүх зүйл байхгүй.)
 
-  Promise.all([
-    fetch(CFG.STAFF+'&t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json();}).catch(function(){return null;}),
-    fetch(CFG.DB+'?day=eq.'+DAY+'&select=member_key,kind,ts&order=ts.asc',{headers:{apikey:CFG.KEY}}).then(function(r){return r.ok?r.json():[];}).catch(function(){return [];})
-  ]).then(function(res){
-    var team = (res[0] && res[0].team) || (Array.isArray(res[0])?res[0]:[]);
-    MEMBERS = team.filter(isActive).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'mn');});
-    (res[1]||[]).forEach(function(r){ (STATE[r.member_key]=STATE[r.member_key]||[]).push(r); });
+  // Нэг дуудлага: жагсаалт БА өнөөдрийн төлөв хоёулаа серверээс бэлэн ирнэ.
+  fetch(CFG.API+'?key='+encodeURIComponent(CFG.KEY)+'&t='+Date.now(),{cache:'no-store'})
+    .then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+    .then(function(res){
+    var team = (res && res.team) || [];
+    MEMBERS = team.slice().sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),'mn');});
+    MEMBERS.forEach(function(m){ if(m.state) STATE[key(m)] = [{kind:m.state}]; });
     if(!MEMBERS.length){ document.getElementById('list').innerHTML='<div class="msg">Ажилтны жагсаалт ачаалж чадсангүй.<br>Сүлжээгээ шалгаад дахин уншуулна уу.</div>'; return; }
     document.getElementById('foot').textContent = MEMBERS.length + ' ажилтан';
     render('');
@@ -164,23 +164,31 @@
     document.getElementById('cGo').onclick = function(){ submit(m, kind); };
   }
 
+  // Хуудас «энэ хүн товч дарлаа» гэж л хэлнэ. Ирсэн үү, явсан уу гэдгийг
+  // СЕРВЕР өнөөдрийн бичлэгээс шийдэж, цагийг нь буцаана.
   function submit(m, kind){
     var go=document.getElementById('cGo'); if(go){ go.textContent='...'; go.disabled=true; }
     var k=key(m);
-    var body={ member_key:k, member_name:m.name||'', member_phone:String(m.phone||''),
-      kind:kind, token:TOKEN, source:'qr',
-      branch:(Array.isArray(m.branches)?m.branches[0]:(m.branches||m.branch||null)) };
-    fetch(CFG.DB, { method:'POST', headers:{ apikey:CFG.KEY, 'Content-Type':'application/json', Prefer:'return=minimal' }, body:JSON.stringify(body) })
-      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); success(m, kind); (STATE[k]=STATE[k]||[]).push({member_key:k,kind:kind}); })
+    fetch(CFG.API+'?key='+encodeURIComponent(CFG.KEY), {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify({ k:k, token:TOKEN })
+    })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(res){
+        if(!res || !res.ok) throw new Error('rejected');
+        success(m, res.kind, res.time);
+        STATE[k]=[{kind:res.kind}];
+      })
       .catch(function(){ if(go){ go.textContent='Дахин оролдох'; go.disabled=false; } alert('Хадгалж чадсангүй. Сүлжээгээ шалгана уу.'); });
   }
 
-  function success(m, kind){
+  // Цаг нь СЕРВЕРийнх — таблетын цаг буруу тохируулагдсан ч бүртгэл зөв харагдана.
+  function success(m, kind, time){
     var kindLabel = kind==='in' ? 'Ирлээ' : 'Явлаа';
     card.innerHTML =
       '<div class="ok-tick '+kind+'"><svg viewBox="0 0 24 24"><polyline points="4 12 10 18 20 6"/></svg></div>'+
       '<div class="c-name">'+esc(m.name)+'</div>'+
-      '<div class="c-kind '+kind+'" style="margin:12px 0 2px;">'+kindLabel+'<b>'+hhmm()+'</b></div>'+
+      '<div class="c-kind '+kind+'" style="margin:12px 0 2px;">'+kindLabel+'<b>'+esc(time||hhmm())+'</b></div>'+
       '<div class="done-sub">Амжилттай бүртгэгдлээ. Баярлалаа!</div>'+
       '<div class="btns"><button class="btn btn-go" id="cDone" style="flex:1;background:var(--green)">Хаах</button></div>';
     document.getElementById('cDone').onclick = closeSheet;

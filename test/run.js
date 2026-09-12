@@ -7988,6 +7988,7 @@ async function swFetchTests() {
       console, setTimeout, clearTimeout, Promise, URL, URLSearchParams, Object, Array, String, Number, JSON, Date, Math, Error,
       caches,
       fetch: (req) => netFor(req.url || String(req)),
+      Response,   // жинхэнэ SW-д байдаг — offlineResponse() үүнийг ашиглана
       self: null,
     };
     box.self = box;
@@ -8057,6 +8058,29 @@ async function swFetchTests() {
     eq((await sw.go('https://chimunllc.github.io/chimun-tasks/', 'navigate')).body, 'CACHED-HTML',
        'sw: хуудас 503 → кэшлэгдсэн index.html');
   }
+  // ── ГАДНЫ хүсэлт: SW барих ЁСГҮЙ (2026-09-12) ────────────────────────────
+  // DB API-г барьж, сүлжээ тасрахад fetch reject болж respondWith унаснаас
+  // «FetchEvent.respondWith received an error» гарч «Миний ирц» 10 удаа хоосон
+  // харагдсан. Кэшлэдэггүй тул барих нь ямар ч ашиггүй.
+  {
+    const DBQ = 'https://n8n.nomaadcamp.com/db/rest/v1/attendance?member_key=in.(1)';
+    const sw = loadSw({ seed, netFor: () => Promise.reject(new Error('offline')) });
+    eq(await sw.go(DBQ), undefined, 'sw: DB API хүсэлтийг ОГТ барихгүй (браузерт үлдээнэ)');
+    const sw2 = loadSw({ seed, netFor: () => Promise.resolve(mkRes(200, 'OK')) });
+    eq(await sw2.go('https://lh3.googleusercontent.com/x.jpg'), undefined, 'sw: гадны зургийг барихгүй');
+  }
+
+  // ── respondWith ХЭЗЭЭ Ч undefined/reject болохгүй ────────────────────────
+  // `caches.match` олдохгүй бол undefined буцаадаг. respondWith(undefined) =
+  // хуудсанд ойлгомжгүй алдаа. Бүх салаа бодит Response буцаана.
+  {
+    const sw = loadSw({ seed: {}, netFor: () => Promise.reject(new Error('offline')) });
+    const r = await sw.go('https://n8n.nomaadcamp.com/webhook/bootstrap');
+    ok(r && typeof r.status === 'number', 'sw: webhook офлайн + кэшгүй → Response буцаана');
+    const r2 = await sw.go('https://chimunllc.github.io/chimun-tasks/icon.svg');
+    ok(r2 && typeof r2.status === 'number', 'sw: өөрийн asset офлайн + кэшгүй → Response буцаана');
+  }
+
   // ⑧ SCAN: shell салбар дээр уналт ХОЁР замд (resolve БА reject) байх ёстой
   {
     const at = swSrc.indexOf('if (isHTML || isAppShell)');

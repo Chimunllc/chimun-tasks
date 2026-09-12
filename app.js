@@ -8828,7 +8828,7 @@ function orderListRow(e, k, todayStr) {
     : '';
   // Гүйцэтгэгчид цуцалсан/устгасан захиалга харагддаггүй (ORDER_STAFF_STATUSES) тул
   // шалтгааны шошго зөвхөн мөнгө харах эрхтэйд.
-  const _chips = (_money ? [depWarn, vatChip, followChip, cxReasonChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
+  const _chips = (_money ? [depWarn, vatChip, quoteChip, followChip, cxReasonChip, srcChip, badChip, cxChip] : [badChip, cxChip]).filter(Boolean);
   // Нэг сав дотор — утсанд шошгууд БҮГД доод мөрөнд бууж, харилцагчийн нэр бүтэн өргөн авна
   const chips = _chips.length ? `<span class="br-chips">${_chips.join('')}</span>` : '';
   return `<details class="olist-row${_money ? '' : ' compact'} ${urgCls}" data-row-oid="${id}"${(_rowOpen || (_cxReq && state.isCEO)) ? ' open' : ''}><summary class="olist-summary">

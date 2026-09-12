@@ -7181,6 +7181,18 @@ function testFinDupImports() {
   eq(F.finDupImports(reqs, '2026-08').length, 1, 'давхар: сараар шүүгдэнэ');
   eq(F.finDupImports(reqs, '').length, 3, 'давхар: сар заахгүй бол бүх хугацаа');
   eq(F.finDupImports([], '2026-09'), [], 'давхар: хоосон → хоосон');
+  // Модал нээхэд бүртгэл серверээс шинэчлэгдэнэ — кэшээс уншвал устгасан мөр
+  // дахин гарч, эсвэл бусад давхардал харагдахгүй үлдэнэ.
+  {
+    const at = src.indexOf('async function openFinDupImports()');
+    ok(at > 0, 'scan: openFinDupImports олдов');
+    const body = src.slice(at, at + 900);
+    const loadAt = body.indexOf('await loadFinanceRequests()');
+    const grpAt = body.indexOf('finDupImports(state.financeRequests');
+    ok(loadAt > 0 && grpAt > 0 && loadAt < grpAt,
+       'scan: давхар импортын жагсаалт серверээс шинэчлэгдсэн датаар байгуулагдана');
+  }
+
   // Хээгүй бичлэг (гараар оруулсан зардал) хэзээ ч давхардал гэж тоологдохгүй
   eq(F.finDupImports([{ id: 'a', amount: 1, requested_at: '2026-09-01', justification: 'гараар' },
                       { id: 'b', amount: 1, requested_at: '2026-09-01', justification: 'гараар' }], '2026-09'), [],

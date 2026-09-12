@@ -26782,6 +26782,11 @@ async function openFinDupAudit() {
 async function openFinDupImports() {
   const month = state.finReportMonth || todayStr().slice(0, 7);
   if (monthLocked(month)) { showToast(`🔒 ${month} сар хаагдсан — засах боломжгүй`, 'warn', 3500); return; }
+  /* ⛔ Жагсаалтыг СЕРВЭРЭЭС шинэчилж байгуулна. Кэшээс уншвал өмнө устгасан мөр
+     дахин гарч, эсвэл бусад давхардал ХАРАГДАХГҮЙ үлдэнэ (2026-09-12: 106 хээгээс
+     28 нь л цэвэрлэгдээд 78 үлдсэн). */
+  showToast('⏳ Шалгаж байна…', 'info', 1500);
+  try { await loadFinanceRequests(); } catch (e) { /* офлайн — кэшээр */ }
   const groups = finDupImports(state.financeRequests, month);
   const totAmt = groups.reduce((t, g) => t + g.amount, 0);
   const totRows = groups.reduce((t, g) => t + g.drop.length, 0);
@@ -26828,7 +26833,9 @@ async function openFinDupImports() {
     let done = 0, failed = 0;
     for (const r of sel) { r.status = 'deleted'; try { await saveFinanceRequest(r, true); done++; del.textContent = `${done}/${sel.length}…`; } catch (e) { failed++; } }
     m.remove();
-    showToast(`${done} давхар бичлэг устгалаа${failed ? ` · ⚠ ${failed} амжилтгүй` : ''}`, failed ? 'warn' : 'success', 4000);
+    const left = sel.length - done - failed;
+    showToast(`${done} давхар бичлэг устгалаа${failed ? ` · ⚠ ${failed} амжилтгүй` : ''}${left > 0 ? ` · ${left} үлдсэн — товчийг дахин дарна уу` : ''}`,
+      (failed || left) ? 'warn' : 'success', left ? 7000 : 4000);
     render();
   };
 }

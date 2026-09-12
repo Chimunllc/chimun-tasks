@@ -2300,7 +2300,7 @@ async function saveFinanceBranchPerm(key, name, grant) {
   if (!url) { showToast('Endpoint тохируулагдаагүй', 'error'); return false; }
   try {
     const r = await fetchWithTimeout(url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ key: N8N_API_KEY, rows: [{ type: 'fin_branch_perm', code: key, name: name || '', parent: '', active: grant ? '1' : '0' }] }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -17405,7 +17405,7 @@ async function saveNomaadAddonCategory(name, src, modal, onAdded) {
   const code = 'na_' + Date.now();
   try {
     const r = await fetchWithTimeout(url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: n8nAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ key: N8N_API_KEY, rows: [{ type: 'nomaad_addon', code, name, parent: src, active: '1' }] }),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status);

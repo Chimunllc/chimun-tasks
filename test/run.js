@@ -151,8 +151,15 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
   const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   // Токен нэг л удаа тодорхойлогдоно, сүүлийн багана нь ТОГТМОЛ px (auto БИШ)
   const tok = (css.match(/--otable-cols:[^;]+;/g) || []);
-  eq(tok.length, 1, 'scan: --otable-cols токен нэг л газар');
-  ok(/\d+px;$/.test(tok[0] || ''), 'scan: --otable-cols сүүлийн багана тогтмол өргөнтэй (auto биш)');
+  // 2026-09-12: «Төлөв» баганыг нуух хувилбар нэмэгдсэн тул 2 тодорхойлолт
+  // зөвшөөрнө (суурь + .ocols-nostatus). Гол инвариант ХЭВЭЭР: толгой ба мөр
+  // хоёулаа зөвхөн var(--otable-cols)-ыг уншина, багана ТОО нь ижил байна —
+  // тэгснээр толгой, мөр хэзээ ч зөрөхгүй.
+  ok(tok.length >= 1 && tok.length <= 2, 'scan: --otable-cols 1-2 тодорхойлолт (суурь + хувилбар)');
+  tok.forEach((t, i) => ok(/\d+px;$/.test(t), 'scan: --otable-cols[' + i + '] сүүлийн багана тогтмол px'));
+  const _nTracks = t => t.replace(/--otable-cols:\s*/, '').replace(/;$/, '')
+    .split(/\s+(?![^(]*\))/).filter(Boolean).length;
+  ok(new Set(tok.map(_nTracks)).size === 1, 'scan: бүх --otable-cols ижил тооны баганатай');
   // Толгой ба мөр хоёулаа тэр токеноор — тусад нь бичсэн 8 баганын жагсаалт БАЙХГҮЙ
   ok(/\.otable-head\s*\{[^}]*grid-template-columns:\s*var\(--otable-cols\)/.test(css),
      'scan: otable толгой --otable-cols токеныг ашиглана');

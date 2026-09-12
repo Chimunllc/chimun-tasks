@@ -8749,6 +8749,11 @@ function _avColor(s) { let h = 0; const t = String(s || '?'); for (let i = 0; i 
 function _avInitials(s) { const p = String(s || '?').replace(/[^0-9A-Za-zА-Яа-яЁёҮүӨө .]/g, '').split(/[ .]+/).filter(Boolean); return (((p[0] || '?')[0] || '?') + ((p[1] || '')[0] || '')).toUpperCase(); }
 // Захиалгын мөр — жагсаалтын ЦОРЫН ГАНЦ хэлбэр. Ширээний хүснэгт ба утасны карт
 // НЭГ HTML-ээс CSS grid-ээр гарна (styles.css → .olist-row).
+// Нэг төлвөөр шүүсэн үед «Төлөв» багана мөр бүрт ИЖИЛ утгатай болно — мэдээлэл
+// агуулахгүй багана зай эзэлж, нүдийг дүн/огнооноос сарниулна. Тиймээс нуудаг.
+function ordersOneStatus() {
+  return !!(state.ordersFilter && state.ordersFilter !== 'all');
+}
 function orderListRow(e, k, todayStr) {
   const o = e.o;
   const rank = orderUrgRank(o, k, todayStr);
@@ -8876,10 +8881,10 @@ function orderListHtml(shown, todayStr, cap, grouped, headHtml) {
       if (g !== cur) {
         cur = g;
         const m = _OTG[g];
-        out += (open ? '</div>' : '') + `<div class="ogroup ${m.cls}"><span class="og-l">${m.label}</span><span class="og-n">${nOf[g]}</span></div><div class="otable">`;
+        out += (open ? '</div>' : '') + `<div class="ogroup ${m.cls}"><span class="og-l">${m.label}</span><span class="og-n">${nOf[g]}</span></div><div class="otable${ordersOneStatus() ? ' ocols-nostatus' : ''}">`;
         open = true;
       }
-    } else if (!open) { out += '<div class="otable">'; open = true; }
+    } else if (!open) { out += '<div class="otable' + (ordersOneStatus() ? ' ocols-nostatus' : '') + '">'; open = true; }
     out += orderListRow(e, e.o.status, todayStr);
   });
   return `<div class="olist">${out}${open ? '</div>' : ''}</div>`;
@@ -9112,7 +9117,7 @@ function renderOrders() {
   const saleN = _saleE.length;
   const CAP = 200;
   const _seeMoney = canSeeOrderMoney();   // ⚠ otableHead-д хэрэглэгддэг тул түүнээс ӨМНӨ
-  const otableHead = `<div class="otable-head"><span>#</span><span>Харилцагч</span><span>Төлөв</span><span>Хугацаа</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
+  const otableHead = `<div class="otable-head${ordersOneStatus() ? ' ocols-nostatus' : ''}"><span>#</span><span>Харилцагч</span><span class="oth-status">Төлөв</span><span>Хугацаа</span>${_seeMoney ? '<span class="r" title="Борлуулалт = нийт − барьцаа (буцаадаг тул орлогод ороогүй)">Борлуулалт</span><span>Төлбөр</span>' : '<span></span><span></span>'}<span></span></div>`;
   // Тоймын мөр — ЗӨВХӨН утгатай хэсгүүд. Ноорог харагдацад «0 захиалга ·
   // борлуулалт 0₮» гэж гарах нь шуугиан тул хасна.
   const _unsentN = _seeMoney ? _draftE.filter(e => quotesOf(e.o).length === 0).length : 0;

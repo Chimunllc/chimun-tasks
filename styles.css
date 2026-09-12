@@ -68,7 +68,7 @@
        Сүүлийн багана ТОГТМОЛ: «auto» байхад «💵 Төлбөр авах» товчтой мөр
        өргөн, товчгүй мөр 0 болж, 1fr өөр тооцогдон бүх багана мөр бүрт
        өөр байрлалд шилждэг байв (2026-09-04 алдаа). */
-    --otable-cols: 56px minmax(88px, 1fr) 112px 112px 104px 88px 112px;
+    --otable-cols: 56px minmax(88px, 1fr) 112px 112px 120px 88px 112px;
 
     /* ── РАДИУС ── */
     --r-sm: 6px;
@@ -4836,6 +4836,14 @@ body.role-daily #add-project { display: none !important; }
 .br-amt { grid-column: 5; }
 .br-pay-cell { grid-column: 6; }
 .br-act-cell { grid-column: 7; }
+/* Нэг төлвөөр шүүсэн үед «Төлөв» баганыг хаана. Толгой ба мөр хоёулаа
+   --otable-cols-ыг л уншсаар байгаа тул хоёр тодорхойлолт зөрөх боломжгүй. */
+.otable-head.ocols-nostatus, .otable.ocols-nostatus { --otable-cols: 56px minmax(88px, 1fr) 0px 112px 120px 88px 112px; }
+/* Мөрийн нүд explicit grid-column-тай тул display:none аюулгүй.
+   Толгойн шошго ДАРААЛЛААР байрладаг — display:none хийвэл бусад шошго нэг
+   багана зүүн шилжиж толгой мөртэйгээ зөрнө. Тиймээс visibility. */
+.ocols-nostatus .br-status-cell { display: none; }
+.otable-head.ocols-nostatus .oth-status { visibility: hidden; }
 /* Яаралтай — зузаан зураас БИШ, жижиг статус цэг */
 .br-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--d, var(--muted)); flex-shrink: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--d, #999) 18%, transparent); }
 .br-num { font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -4854,10 +4862,12 @@ body.role-daily #add-project { display: none !important; }
 .br-pay.part { background: var(--panel); color: var(--warn); border-color: var(--warn); }
 .br-pay.paid { background: var(--ok, #16a34a); color: #fff; }
 .br-pay.none { background: var(--panel-hover); color: var(--muted); }
-.br-amt { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: -.01em; text-align: right; white-space: nowrap; }
+.br-amt { font-weight: 800; font-size: var(--fs-base); font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: -.01em; text-align: right; white-space: nowrap; }
 .br-pay-cell, .br-act-cell { display: flex; align-items: center; }
-.br-act { flex-shrink: 0; font-family: inherit; font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; padding: 5px var(--space-3); border-radius: var(--r-full); border: 1px solid var(--accent, #7c3aed); background: var(--accent, #7c3aed); color: #fff; cursor: pointer; }
-.br-act:hover { filter: brightness(1.08); }
+/* Мөр бүрт давтагдах товч — амарч байхдаа НАМ, дүн/нэрийг дарахгүй.
+   Хулгана/товчлуураар идэвхжихэд л өнгө авна. */
+.br-act { flex-shrink: 0; font-family: inherit; font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; padding: 5px var(--space-3); border-radius: var(--r-full); border: 1px solid var(--accent, #7c3aed); background: transparent; color: var(--accent, #7c3aed); cursor: pointer; }
+.br-act:hover, .br-act:focus-visible { background: var(--accent, #7c3aed); color: #fff; }
 .br-act-off { border-color: var(--border); background: transparent; color: var(--muted); opacity: .55; cursor: not-allowed; }
 /* Цуцлах хүсэлт — CEO шийдэх ёстой тул мөрөн дээр шууд харагдана */
 .br-cxchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px 7px; border-radius: var(--r-full); white-space: nowrap; background: color-mix(in srgb, var(--warn, #f59e0b) 18%, var(--panel)); color: var(--warn, #b45309); }

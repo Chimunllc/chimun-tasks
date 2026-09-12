@@ -5642,6 +5642,17 @@ body.role-daily #add-project { display: none !important; }
 .prod-arch-row .btn { padding: 4px 10px; font-size: var(--fs-sm); white-space: nowrap; }
 
 /* ── Хөрөнгийн багц — нэг бараа, олон удаагийн худалдан авалт ── */
+/* «+ Нэмж авсан» — ижил барааг өөр үнээр дахин авахад жигнэсэн дундаж бодно */
+.pm-buy { margin-top: var(--space-4); }
+.pm-buy-open { color: var(--brand); border-color: var(--border-strong); background: transparent; }
+.pm-buy-form { border: 1px solid var(--border-strong); border-radius: var(--r-md); padding: var(--space-3); background: var(--panel-hover); }
+.pm-buy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-3); }
+.pm-buy-grid label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--fs-xs); color: var(--muted); }
+.pm-buy-grid input, .pm-buy-grid select { padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--r-sm); font-size: var(--fs-base); font-family: inherit; background: var(--panel); color: var(--text); }
+.pm-buy-calc { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); line-height: 1.6; }
+.pm-buy-calc b { color: var(--text); }
+.pm-buy-act { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-3); }
+.pm-buy-act button { min-height: 40px; }
 .pm-batch-note { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; padding: var(--space-3); background: var(--panel-hover); border-radius: var(--r-md); }
 
 /* Барааны засах модал */

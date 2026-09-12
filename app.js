@@ -5133,6 +5133,20 @@ async function applyStockCount(row) {
 }
 
 
+// Ижил барааг ӨӨР ҮНЭЭР дахин авахад ганц `cost` талбар хоёр үнийг барьж чадахгүй.
+// Хуучныг үлдээвэл хөрөнгө дутуу, шинээр дарвал илүү гарна — ЖИГНЭСЭН дундаж нь
+// цорын ганц зөв хариу. Цэвэр функц (state уншихгүй) тул тестлэгдэнэ.
+// ⚠ Үнэ нь 0 бол «мэдэгдэхгүй» гэсэн үг — 0-ээр дундажлавал өртөг хиймлээр буурна.
+function blendCost(oldQty, oldCost, addQty, addCost) {
+  const q0 = Math.max(0, Number(oldQty) || 0), c0 = Math.max(0, Number(oldCost) || 0);
+  const q1 = Math.max(0, Number(addQty) || 0), c1 = Math.max(0, Number(addCost) || 0);
+  const qty = q0 + q1;
+  if (!(qty > 0)) return { qty: 0, cost: 0 };
+  if (!(c0 > 0)) return { qty, cost: Math.round(c1) };       // хуучин өртөг тавиагүй
+  if (!(q1 > 0) || !(c1 > 0)) return { qty, cost: Math.round(c0) };
+  return { qty, cost: Math.round((q0 * c0 + q1 * c1) / qty) };
+}
+
 function repairId(sku, orderNo) { return `r_${String(sku || '').replace(/\W/g, '')}_${orderNo || 0}_${Date.now().toString(36)}`; }
 
 // Засварын шат урагшлуулах. «Зассан» болмогц барааны broken-ийг бууруулж нөөц СЭРГЭНЭ.
@@ -20339,6 +20353,21 @@ function openProductModal(p, opts) {
         <label>Зах зээлийн үнэлгээ (₮) <span class="pm-hint">— гэрээнд нөхөн төлбөрийн дүн болно</span><input id="pm-market" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput((p && p.market_value) || 0)}"></label>
         <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         </div>
+        ${isEdit && !_isPkg0 && !asPkg ? `<div class="pm-buy">
+          <button type="button" class="btn ui-raw pm-buy-open" id="pm-buy-open">+ Нэмж авсан</button>
+          <div class="pm-buy-form" id="pm-buy-form" hidden>
+            <div class="pm-buy-grid">
+              <label>Тоо ширхэг<input type="number" min="1" id="pm-buy-qty" placeholder="0"></label>
+              <label>Нэгж үнэ (₮)<input type="text" inputmode="numeric" class="money-input" id="pm-buy-cost" placeholder="0"></label>
+              <label>Аль салбарт<select id="pm-buy-br"><option value="qm">🎪 M-Event</option><option value="qc">🏢 Чимун дотоод</option><option value="qn">⛺ NOMAAD</option><option value="qk">🍽 Катеринг</option></select></label>
+            </div>
+            <div class="pm-buy-calc" id="pm-buy-calc"></div>
+            <div class="pm-buy-act">
+              <button type="button" class="btn ui-raw" id="pm-buy-cancel">Болих</button>
+              <button type="button" class="btn btn-primary ui-raw" id="pm-buy-ok">Нөөц ба өртөгт нэмэх</button>
+            </div>
+          </div>
+        </div>` : ''}
       </div>
       <div class="pm-pane" data-pmpane="stock" data-pmlock="stock" hidden>
         <button type="button" class="pm-back ui-raw" data-pmgo="menu">‹ Бүх хэсэг</button>
@@ -20382,6 +20411,47 @@ function openProductModal(p, opts) {
   };
   modal._pmGo = pmGo;
   modal.querySelectorAll('[data-pmgo]').forEach(b => b.addEventListener('click', () => pmGo(b.dataset.pmgo)));
+  // ── «+ Нэмж авсан» — жигнэсэн дундаж өртөг + нөөц нэмэх ──────────────────
+  // ХАДГАЛАХГҮЙ: зөвхөн формын талбаруудыг бөглөнө. «💾 Хадгалах» нь эрхийн
+  // шүүлтээр (restrictProductEdit) дамжсан хэвээр — тойрч гарах зам үүсэхгүй.
+  const buyOpen = modal.querySelector('#pm-buy-open');
+  if (buyOpen) {
+    const buyForm = modal.querySelector('#pm-buy-form');
+    const qIn = modal.querySelector('#pm-buy-qty'), cIn = modal.querySelector('#pm-buy-cost');
+    const calc = modal.querySelector('#pm-buy-calc');
+    const curQty = () => Number(modal.querySelector('#pm-stock')?.value) || 0;
+    const curCost = () => moneyVal(modal.querySelector('#pm-cost'));
+    const preview = () => {
+      const aq = Number(qIn.value) || 0, ac = moneyVal(cIn);
+      if (!(aq > 0) || !(ac > 0)) { calc.textContent = 'Тоо ширхэг ба нэгж үнээ оруулна уу.'; return; }
+      const r = blendCost(curQty(), curCost(), aq, ac);
+      calc.innerHTML = `${curQty()}ш × ${fmtMoney(curCost())} + <b>${aq}ш × ${fmtMoney(ac)}</b>`
+        + `<br>→ <b>${r.qty}ш</b> · дундаж өртөг <b>${fmtMoney(r.cost)}</b>`;
+    };
+    buyOpen.onclick = () => { buyForm.hidden = false; buyOpen.hidden = true; preview(); qIn.focus(); };
+    modal.querySelector('#pm-buy-cancel').onclick = () => {
+      buyForm.hidden = true; buyOpen.hidden = false; qIn.value = ''; cIn.value = '';
+    };
+    qIn.addEventListener('input', preview);
+    cIn.addEventListener('input', preview);
+    modal.querySelector('#pm-buy-ok').onclick = () => {
+      const aq = Number(qIn.value) || 0, ac = moneyVal(cIn);
+      if (!(aq > 0)) { showToast('Тоо ширхэгээ оруулна уу', 'warn'); return; }
+      if (!(ac > 0)) { showToast('Нэгж үнээ оруулна уу', 'warn'); return; }
+      const r = blendCost(curQty(), curCost(), aq, ac);
+      const cost = modal.querySelector('#pm-cost');
+      if (cost) cost.value = moneyFmtInput(r.cost);
+      const stock = modal.querySelector('#pm-stock');
+      if (stock) stock.value = r.qty;
+      const br = modal.querySelector('#pm-buy-br').value;
+      const bEl = modal.querySelector('#pm-' + br);
+      if (bEl) bEl.value = (Number(bEl.value) || 0) + aq;
+      // Нийт нөөц өөрчлөгдсөнийг мэдэгдэнэ → M-Event үлдэгдэл, чип, төлөв дахин бодогдоно
+      if (stock) stock.dispatchEvent(new Event('input', { bubbles: true }));
+      buyForm.hidden = true; buyOpen.hidden = false; qIn.value = ''; cIn.value = '';
+      showToast(`+${aq}ш нэмлээ · дундаж өртөг ${fmtMoney(r.cost)} — хадгалахаа мартуузай`, 'ok', 4500);
+    };
+  }
   // Эрхгүй хэсгийг ТҮГЖИНЭ — утгыг харна, засахгүй. «Буцах» товч түгжигдэхгүй.
   PRODUCT_PARTS.forEach(part => {
     if (_pcan[part]) return;

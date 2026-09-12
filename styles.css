@@ -176,6 +176,44 @@
   align-items: center;
   gap: var(--space-1);
 }
+/* Хувилбарын чип — «би ямар хувилбар дээр яваа вэ» + дарж шинэчлэх.
+   Толгойн бусад товчноос ЧИМЭЭГҮЙ байх ёстой (өдөр бүр харах мэдээлэл биш),
+   шинэ хувилбар гарсан үед л анхаарал татна (.new). */
+.ver-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ver-chip:hover { color: var(--text); border-color: var(--muted); }
+.ver-chip .ver-ic { font-size: var(--fs-sm); line-height: 1; }
+.ver-chip.new {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  font-weight: 700;
+}
+.ver-chip.busy { opacity: .55; cursor: progress; }
+/* Хамгийн нарийн дэлгэц (320px): чип гарчгаас 66px иддэг тул зөвхөн дүрс үлдэнэ.
+   ⚠ ШИНЭ хувилбар байгаа үед текст ҮЛДЭНЭ — тэр нь хараад мэдэх ёстой мэдээлэл. */
+@media (max-width: 360px) {
+  .ver-chip:not(.new) .ver-txt { display: none; }
+  .ver-chip:not(.new) { padding: 4px 7px; }
+}
+.ver-chip.busy .ver-ic { animation: ver-spin 0.9s linear infinite; }
+@keyframes ver-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ver-chip.busy .ver-ic { animation: none; } }
 @media (max-width: 1000px) {
   .header h1 { font-size: 18px; }
 }

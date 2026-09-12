@@ -8763,6 +8763,7 @@ const ROW_ICONS = {
   lock:  '<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   truck: '<path d="M1 4h14v12H1z"/><path d="M15 8h4l4 4v4h-8z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/>',
   store: '<path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
 };
 function rowIcon(k) {
   return `<svg class="ricon" viewBox="0 0 24 24" aria-hidden="true">${ROW_ICONS[k] || ''}</svg>`;
@@ -8904,13 +8905,13 @@ function orderListHtml(shown, todayStr, cap, grouped, headHtml) {
 }
 // Жагсаалтын эрэмбийн сонголт. Эхнийх = default (хугацаагаар бүлэглэнэ).
 const ORDER_SORT_OPTS = [
-  ['smart', '⏱ Хугацаагаар (өнөөдөр эхэнд)'],
-  ['event', '📅 Арга хэмжээ ойртсон'],
-  ['number', '🔢 Дугаараар (шинэ→хуучин)'],
-  ['number_asc', '🔢 Дугаараар (1→сүүл)'],
-  ['new', '🆕 Шинэ нь дээр'],
-  ['amount', '💰 Дүн ихээр'],
-  ['old', '🕐 Хуучин нь дээр'],
+  ['smart', 'Хугацаагаар (өнөөдөр эхэнд)'],
+  ['event', 'Арга хэмжээ ойртсон'],
+  ['number', 'Дугаараар (шинэ→хуучин)'],
+  ['number_asc', 'Дугаараар (1→сүүл)'],
+  ['new', 'Шинэ нь дээр'],
+  ['amount', 'Дүн ихээр'],
+  ['old', 'Хуучин нь дээр'],
 ];
 
 // 📥 Дууссан захиалгын тайлан — Дууссан+Архив-ыг огноогоор (өдөр/сар/жил) харах + CSV татах
@@ -9074,11 +9075,11 @@ function renderOrders() {
   const ymF = state.ordersYM || '';
   const payF = state.ordersPay || '', depF = state.ordersDep || '', custF = state.ordersCust || '', vatF = state.ordersVat || '';
   const sortSelect = _sel('orders-sort', state.ordersSort, ORDER_SORT_OPTS);
-  const ymSelect = _sel('orders-ym', ymF, [['', '📅 Бүх хугацаа']].concat(yms.map(m => [m, m])));
-  const paySelect = _sel('orders-pay', payF, [['', '💵 Төлбөр: бүгд'], ['unpaid', '⚠ Төлөгдөөгүй'], ['partial', '◐ Дутуу'], ['paid', '✓ Бүрэн']]);
-  const depSelect = _sel('orders-dep', depF, [['', '🔒 Барьцаа: бүгд'], ['held', '🔒 Барьцаатай'], ['returned', '✓ Буцаасан'], ['none', '— Барьцаагүй']]);
-  const custSelect = _sel('orders-cust', custF, [['', '👥 Харилцагч: бүгд'], ['person', '🧍 Хувь хүн'], ['org', '🏢 Байгууллага']]);
-  const vatSelect = _sel('orders-vat', vatF, [['', '🧾 НӨАТ: бүгд'], ['vat', '🧾 НӨАТ-тэй'], ['novat', '— НӨАТ-гүй']]);
+  const ymSelect = _sel('orders-ym', ymF, [['', 'Бүх хугацаа']].concat(yms.map(m => [m, m])));
+  const paySelect = _sel('orders-pay', payF, [['', 'Төлбөр: бүгд'], ['unpaid', 'Төлөгдөөгүй'], ['partial', 'Дутуу'], ['paid', 'Бүрэн']]);
+  const depSelect = _sel('orders-dep', depF, [['', 'Барьцаа: бүгд'], ['held', 'Барьцаатай'], ['returned', 'Буцаасан'], ['none', 'Барьцаагүй']]);
+  const custSelect = _sel('orders-cust', custF, [['', 'Харилцагч: бүгд'], ['person', 'Хувь хүн'], ['org', 'Байгууллага']]);
+  const vatSelect = _sel('orders-vat', vatF, [['', 'НӨАТ: бүгд'], ['vat', 'НӨАТ-тэй'], ['novat', 'НӨАТ-гүй']]);
   const _activeF = [ymF, payF, depF, custF, vatF].filter(Boolean).length;
   const _fOpen = !!state.ordersFiltOpen;
   const controls = `<div class="orders-controls">
@@ -9086,7 +9087,7 @@ function renderOrders() {
       <div class="orders-search">🔍<input type="search" id="orders-search" placeholder="Нэр, утас, дугаар" value="${escapeHtml(state.ordersSearch || '')}" /></div>
       <button type="button" class="ofilt-toggle${_fOpen ? ' on' : ''}" id="orders-filt-toggle">⚙ Шүүлт${_activeF ? `<span class="ofilt-n">${_activeF}</span>` : ''}</button>
     </div>
-    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}${state.isCEO ? `<button type="button" class="btn ofilt-tool" id="orders-acct-fix" title="Барьцаатай захиалгуудын хадгалсан PDF-ийг дахин уншиж, дутуу дансыг нөхнө">🔄 Баримтаас данс нөхөх</button>` : ''}</div>
+    <div class="ofilt-body${_fOpen ? ' on' : ''}">${sortSelect}${ymSelect}${_staffOnly ? '' : paySelect + depSelect + custSelect + vatSelect}${state.isCEO ? `<button type="button" class="btn ofilt-tool" id="orders-acct-fix" title="Барьцаатай захиалгуудын хадгалсан PDF-ийг дахин уншиж, дутуу дансыг нөхнө">${rowIcon('refresh')}Баримтаас данс нөхөх</button>` : ''}</div>
   </div>`;
 
   const payOf = (e) => { const t = e.total, p = Number(e.o.paid_mnt) || 0; if (t <= 0) return 'none'; if (p <= 0) return 'unpaid'; if (p < t) return 'partial'; return 'paid'; };

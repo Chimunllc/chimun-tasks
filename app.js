@@ -4195,6 +4195,9 @@ function renderSidebar() {
   // Цаг бүртгэл — менежер/CEO.
   const atNav = document.getElementById('nav-attendance');
   if (atNav) atNav.style.display = canSeeAttendance() ? '' : 'none';
+  // Харилцагч — нэр/утас/РД агуулна тул төлбөр бүртгэдэг хүн ба CEO л харна.
+  const cuNav = document.getElementById('nav-customers');
+  if (cuNav) cuNav.style.display = canSeeCustomers() ? '' : 'none';
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
   const arNav = document.getElementById('nav-receivables');
   if (arNav) {
@@ -4255,7 +4258,7 @@ function renderSidebar() {
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
-  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
+  _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
   _setGrp('nav-group-hr', ['nav-access', 'nav-attendance', 'nav-salary', 'nav-performance']);
@@ -4275,6 +4278,7 @@ function renderTitle() {
     mine:      [ICONS.inbox, 'Миний ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Хуваарилсан ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Гүйлгээ', 'Хүсэлт, картын зарлага, тулгалт — бүх мөнгөн хөдөлгөөн'],
+    customers: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', 'Харилцагч', 'Захиалгын түүх, авлага, холбоо барих мэдээлэл'],
     reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Дүн шинжилгээ', 'Удирдлагад зориулсан тайлангууд'],
     performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Ажилтны гүйцэтгэл — объектив, ажлын чанар, 360° оноо'],
     orders:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'M event захиалга', 'Түрээсийн бүх захиалга — mevent.mn сайт, ажилтны үүсгэсэн, Booqable түүх'],
@@ -4456,6 +4460,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderMyAttend, 'Миний ирц');
     attachMyAttendHandlers();
+    return;
+  } else if (state.view === 'customers') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderCustomers, 'Харилцагч');
+    attachCustomersHandlers();
     return;
   } else if (state.view === 'reports') {
     if (tableHead) tableHead.style.display = 'none';
@@ -4655,6 +4665,117 @@ function orderBilled(o) {
 /* «Хэдэн төгрөг авах үлдсэн бэ» — үлдэгдэл боддог БҮХ дэлгэц үүнийг дуудна. */
 function orderOwed(o) {
   return Math.max(0, orderBilled(o) - (Number(o && o.paid_mnt) || 0));
+}
+
+/* ─── ХАРИЛЦАГЧИЙН БҮРТГЭЛ (customers) ───────────────────────────────────
+   Харилцагч урьд нь захиалга бүрд ДАХИН бичигддэг чөлөөт текст байв тул
+   «энэ хүн хэдэн удаа захиалсан», «хэр өртэй» гэдгийг систем хэлж чаддаггүй.
+   Одоо `customers` хүснэгт + `app_orders.customer_id` (db/customers.sql).
+   ⚠ Booqable түүхийн 736 захиалгын харилцагч `?` — ЗОРИУД холбогдоогүй. Нэг
+     хиймэл «?» харилцагч үүсгэвэл түүх/авлага/давтамж бүгд утгагүй болно. */
+const CUSTOMERS_URL = () => `${DB_URL}/rest/v1/customers`;
+
+// Утасны нормчлол. ⚠ `db/customers.sql`-ийн `cust_phone_norm()`-тэй ЯГ ИЖИЛ
+// байх ёстой — эс бөгөөс апп шинэ харилцагч үүсгэхэд нөхөн дүүргэсэнтэй
+// таарахгүй, нэг хүн хоёр бичлэгтэй болно. Хоёуланг ЗЭРЭГ зас.
+function custPhoneKey(raw) {
+  const d = String(raw == null ? '' : raw).replace(/\D/g, '');
+  if (/^976\d{8}$/.test(d)) return d.slice(-8);
+  if (/^0?\d{8}$/.test(d)) return d.slice(-8);
+  return '';
+}
+
+// Харилцагч бүрийн тойм. ⚠ Авлагын дүрмийг ЭНД БҮҮ ДАВТ — `receivablesData()`-тай
+// ИЖИЛ шүүлт (orderCanonStatus ∈ RECEIVABLE_ORDER_ST) + `orderOwed()`-ийг дуудна.
+// Орлого мөн `orderRevenue`-аар. Түүхий `total_mnt`/`paid_mnt` ХЭРЭГЛЭХГҮЙ.
+function custStats(orders, basis) {
+  const by = new Map();
+  for (const o of (orders || [])) {
+    const id = o && o.customer_id;
+    if (!id) continue;
+    let s = by.get(id);
+    if (!s) { s = { id, orders: 0, revenue: 0, owed: 0, first: '', last: '' }; by.set(id, s); }
+    if (_orderActive(o)) {
+      s.orders++;
+      s.revenue += Number(orderRevenue(o, basis)) || 0;
+      if (RECEIVABLE_ORDER_ST.has(orderCanonStatus(o))) s.owed += Number(orderOwed(o)) || 0;
+    }
+    const d = String(o.starts_at || o.created_at || '').slice(0, 10);
+    if (d) { if (!s.last || d > s.last) s.last = d; if (!s.first || d < s.first) s.first = d; }
+  }
+  return by;
+}
+
+// Хайлт — нэр, компани, РД, имэйл, утас. Утсыг ЦИФРЭЭР тулгана тул
+// «9900-1122» гэж бичсэн ч олдоно.
+function custMatches(c, q) {
+  const s = String(q == null ? '' : q).trim().toLowerCase();
+  if (!s) return true;
+  const digits = s.replace(/\D/g, '');
+  if (digits && String((c && c.phone) || '').includes(digits)) return true;
+  return ['name', 'company', 'rd', 'email'].some(k => String((c && c[k]) || '').toLowerCase().includes(s));
+}
+
+// Эрэмбэ: ӨРТЭЙ нь дээд талд, дараа нь сүүлд захиалсан. Энэ дэлгэцийн гол
+// асуулт «хэнд залгах вэ» тул авлага эхэнд байна.
+function custSortRows(rows) {
+  return (rows || []).slice().sort((a, b) =>
+    ((b.owed || 0) - (a.owed || 0)) ||
+    String(b.last || '').localeCompare(String(a.last || '')) ||
+    String(a.name || '').localeCompare(String(b.name || ''), 'mn'));
+}
+
+async function loadCustomers() {
+  try {
+    const r = await fetchWithTimeout(
+      `${CUSTOMERS_URL()}?select=*&merged_into=is.null&order=name.asc&limit=2000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.customers = await r.json();
+  } catch (e) { dataLoadFailed('loadCustomers', e); state.customers = state.customers || []; }
+}
+
+// Шинэ харилцагч / засвар. ⚠ `id`-г апп ҮҮСГЭХГҮЙ — DB өгөгдмөлөөр гарна.
+// Утастай шинэ бичлэг үүсгэхийн өмнө тэр утсаар ХАЙНА: нөхөн дүүргэлтээр
+// аль хэдийн үүссэн хүнийг давхардуулахгүйн тулд.
+async function saveCustomer(rec) {
+  const name = String((rec && rec.name) || '').trim();
+  if (!name) { showToast('Нэр оруулна уу', 'error'); return null; }
+  const ph = custPhoneKey(rec && rec.phone);
+  const body = {
+    name, phone: ph || null,
+    email: String((rec && rec.email) || '').trim() || null,
+    company: String((rec && rec.company) || '').trim() || null,
+    rd: String((rec && rec.rd) || '').trim() || null,
+    address: String((rec && rec.address) || '').trim() || null,
+    note: String((rec && rec.note) || '').trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+  const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+              'Content-Type': 'application/json', Prefer: 'return=representation' };
+  try {
+    let id = (rec && rec.id) || '';
+    if (!id && ph) {
+      const f = await fetchWithTimeout(
+        `${CUSTOMERS_URL()}?select=id&merged_into=is.null&phone=eq.${encodeURIComponent(ph)}`,
+        { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+      if (!f.ok) throw new Error('HTTP ' + f.status);
+      const hit = await f.json();
+      if (hit && hit[0]) id = hit[0].id;      // тэр утас аль хэдийн бүртгэлтэй
+    }
+    const r = id
+      ? await fetchWithTimeout(`${CUSTOMERS_URL()}?id=eq.${encodeURIComponent(id)}`,
+          { method: 'PATCH', headers: H, body: JSON.stringify(body) }, 15000)
+      : await fetchWithTimeout(CUSTOMERS_URL(),
+          { method: 'POST', headers: H, body: JSON.stringify(body) }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    await loadCustomers();
+    return (rows && rows[0]) || null;
+  } catch (e) {
+    showToast('Хадгалж чадсангүй: ' + e.message, 'error', 4000);
+    return null;
+  }
 }
 
 /* ─── ЗАСВАРЫН ДАМЖЛАГА (repairs) ─────────────────────────────────────────
@@ -12209,6 +12330,7 @@ const PERM_MENUS = [
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
   { key: 'catering',    label: 'Катеринг',        actions: [
       { key: 'catering.edit', label: 'Цэс / ажил засах' } ] },
+  { key: 'customers',   label: 'Харилцагч',       actions: [] },   // нэр/утас/РД = хувийн мэдээлэл
   { key: 'orders',      label: 'M event захиалга', actions: [
       // ⚠ ДАРААЛАЛ = дамжлагын дараалал, НЭР = захиалга дээрх товчны нэртэй ЯГ ИЖИЛ.
       // Эрх олгож буй хүн «энэ чагт аль товчийг нээж байна вэ» гэдгийг эргэлзэлгүй мэдэх ёстой.
@@ -19884,6 +20006,121 @@ function woSoldIncome(month) {
   return woList().reduce((s, x) => (x && x.status === 'sold' && String(x.sold_at || x.at || '').slice(0, 7) === month)
     ? s + (Number(x.amount) || 0) : s, 0);
 }
+/* ─── ХАРИЛЦАГЧ — дэлгэц ─────────────────────────────────────────────────
+   Гол асуулт: «хэнд залгах вэ» — тиймээс өртэй нь дээд талд эрэмбэлэгдэнэ.
+   Booqable түүхийн `?` захиалгууд холбогдоогүй тул тэдгээр энд ХАРАГДАХГҮЙ
+   (доод талд тоогоор нь ил бичнэ — «алга болсон» гэж эргэлзэхээс сэргийлнэ). */
+function canSeeCustomers() { return canAccessView('customers', () => !!state.isCEO || can('orders.pay')); }
+
+function renderCustomers() {
+  if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => render()); }
+  if (state.customers === null) return '<div class="cu-load">Ачаалж байна…</div>';
+
+  const basis = finBasis();
+  const stats = custStats(state.appOrders || [], basis);
+  const q = state._custQ || '';
+  const rows = custSortRows((state.customers || [])
+    .filter(c => custMatches(c, q))
+    .map(c => Object.assign({}, c, stats.get(c.id) || { orders: 0, revenue: 0, owed: 0, last: '' })));
+
+  const all = (state.customers || []).map(c => stats.get(c.id) || { orders: 0, owed: 0 });
+  const repeat = all.filter(s => (s.orders || 0) > 1).length;
+  const owedTotal = all.reduce((s, x) => s + (Number(x.owed) || 0), 0);
+  const unlinked = (state.appOrders || []).filter(o => o && !o.customer_id).length;
+
+  const kpi = (l, v) => `<div class="cu-kpi"><div class="cu-kpi-l">${l}</div><div class="cu-kpi-v">${v}</div></div>`;
+  const row = (c) => `<div class="cu-row" data-cu="${escapeHtml(c.id)}">
+    <div class="cu-main">
+      <div class="cu-nm">${escapeHtml(c.name || '—')}${c.company ? ` <span class="cu-co">${escapeHtml(c.company)}</span>` : ''}</div>
+      <div class="cu-meta">${c.phone ? escapeHtml(c.phone) : '<span class="cu-dim">утасгүй</span>'}${c.last ? ' · сүүлд ' + escapeHtml(c.last) : ''}</div>
+    </div>
+    <div class="cu-nums">
+      <span class="cu-cnt">${Number(c.orders) || 0} захиалга</span>
+      <span class="cu-rev">${fmtMoney(c.revenue || 0)}</span>
+    </div>
+    ${(c.owed > 0) ? `<span class="cu-owed">${fmtMoney(c.owed)}</span>` : '<span class="cu-ok">✓</span>'}
+  </div>`;
+
+  return `<div class="cu-wrap">
+    <div class="cu-kpis">
+      ${kpi('Харилцагч', (state.customers || []).length)}
+      ${kpi('Давтан захиалсан', repeat)}
+      ${kpi('Нийт авлага', fmtMoney(owedTotal))}
+    </div>
+    <div class="cu-bar">
+      <input id="cu-q" class="ui-raw cu-q" type="search" placeholder="Нэр, утас, компани, РД…" value="${escapeHtml(q)}">
+      <button class="btn btn-primary" id="cu-new">+ Харилцагч</button>
+    </div>
+    <div class="cu-list">${rows.length ? rows.map(row).join('') : '<div class="cu-empty">Олдсонгүй.</div>'}</div>
+    ${unlinked ? `<div class="cu-note">${unlinked} захиалга харилцагчгүй — Booqable түүхэнд нэр нь «?» байсан тул холбогдоогүй.</div>` : ''}
+  </div>`;
+}
+
+function attachCustomersHandlers() {
+  const q = document.getElementById('cu-q');
+  // Түлхэц бүрд биш — 180мс хүлээгээд рендэрлэж, фокус/курсорыг сэргээнэ
+  // (захиалгын хайлттай ижил хэв маяг), эс бөгөөс бичилт тасалдана.
+  if (q) {
+    q.addEventListener('input', () => {
+      state._custQ = q.value;
+      clearTimeout(state._custQT);
+      state._custQT = setTimeout(() => {
+        render();
+        const el = document.getElementById('cu-q');
+        if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
+      }, 180);
+    });
+  }
+  const nb = document.getElementById('cu-new');
+  if (nb) nb.onclick = () => openCustomerCard(null);
+  document.querySelectorAll('[data-cu]').forEach(el => {
+    el.onclick = () => openCustomerCard(el.getAttribute('data-cu'));
+  });
+}
+
+// Харилцагчийн карт — холбоо барих мэдээлэл (засварлана) + захиалгын түүх.
+function openCustomerCard(id) {
+  const c = id ? (state.customers || []).find(x => String(x.id) === String(id)) : null;
+  if (id && !c) return;
+  const mine = (state.appOrders || []).filter(o => o && String(o.customer_id) === String(id));
+  const hist = mine.slice().sort((a, b) => String(b.starts_at || '').localeCompare(String(a.starts_at || '')));
+  const s = id ? (custStats(mine, finBasis()).get(id) || { orders: 0, revenue: 0, owed: 0 }) : null;
+
+  const fld = (k, label, val, type) =>
+    `<label class="fld">${label}<input id="cu-${k}" class="ui-raw" type="${type || 'text'}" value="${escapeHtml(val || '')}"></label>`;
+
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal cu-modal">
+    <h2>${id ? '👤 ' + escapeHtml(c.name || '') : '+ Шинэ харилцагч'}</h2>
+    ${s ? `<div class="cu-sum"><span>${s.orders} захиалга</span><span>${fmtMoney(s.revenue)}</span>${s.owed > 0 ? `<span class="cu-owed">${fmtMoney(s.owed)} өртэй</span>` : '<span class="cu-ok">төлбөр бүрэн</span>'}</div>` : ''}
+    ${fld('name', 'Нэр *', c && c.name)}
+    ${fld('phone', 'Утас', c && c.phone, 'tel')}
+    ${fld('company', 'Байгууллага', c && c.company)}
+    ${fld('rd', 'Регистр (нэхэмжлэхэд)', c && c.rd)}
+    ${fld('email', 'Имэйл', c && c.email, 'email')}
+    ${fld('address', 'Хаяг', c && c.address)}
+    <label class="fld">Тэмдэглэл<textarea id="cu-note" class="ui-raw" rows="2">${escapeHtml((c && c.note) || '')}</textarea></label>
+    ${hist.length ? `<div class="cu-hist-h">Захиалгын түүх</div><div class="cu-hist">${hist.map(o => `
+      <div class="cu-hrow"><span>#${escapeHtml(String(o.number || ''))}</span>
+        <span class="cu-dim">${escapeHtml(String(o.starts_at || '').slice(0, 10))}</span>
+        <span>${fmtMoney(orderRevenue(o, finBasis()))}</span>
+        ${orderOwed(o) > 0 ? `<span class="cu-owed">${fmtMoney(orderOwed(o))}</span>` : ''}</div>`).join('')}</div>` : ''}
+    <div class="modal-actions"><button class="btn" id="cu-cancel">Болих</button><button class="btn btn-primary" id="cu-save">Хадгалах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#cu-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  modal.querySelector('#cu-save').onclick = async (ev) => {
+    const btn = ev.currentTarget; btn.disabled = true; btn.textContent = '…';
+    const g = (k) => (modal.querySelector('#cu-' + k) || {}).value || '';
+    const saved = await saveCustomer({ id: id || '', name: g('name'), phone: g('phone'), company: g('company'),
+                                       rd: g('rd'), email: g('email'), address: g('address'), note: g('note') });
+    if (saved) { close(); showToast('Хадгаллаа', 'success', 2000); render(); }
+    else { btn.disabled = false; btn.textContent = 'Хадгалах'; }
+  };
+}
+
 function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }
 function renderWriteoff() {
   // Кэшээс шууд үзүүлээд, ард нь DB-ээс шинэчилнэ — refresh дээр жагсаалт «алга»
@@ -33009,6 +33246,12 @@ function refreshViewData() {
   // Ачаалахгүй бол state.appOrders undefined хэвээр үлдэж БҮХ барааны ROI 0% харагдана.
   if (v === 'products' && canSeeProducts()) { loadProductsCatalog(); if (state.appOrders === undefined) { state.appOrders = []; setTimeout(loadAppOrders, 0); } }
   if (String(v || '').indexOf('ps_') === 0 && (!state.products || !state.products.length)) loadProductsCatalog();
+  // Харилцагчийн тоо (захиалга, орлого, авлага) нь app_orders-оос бодогддог тул
+  // захиалга ачаалагдаагүй бол бүх мөр 0 харагдана — заавал татна.
+  if (v === 'customers' && canSeeCustomers()) {
+    if (state.customers === undefined) loadCustomers().then(() => { if (state.view === 'customers') render(); });
+    if (state.appOrders === undefined) { state.appOrders = []; setTimeout(() => loadAppOrders().then(() => { if (state.view === 'customers') render(); }), 0); }
+  }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();
     // Дэлгэц нээх бүрд DB-ээс ШИНЭЧЛЭНЭ (кэш хуучирсан байж болно)

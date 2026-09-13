@@ -8124,3 +8124,103 @@ async function swFetchTests() {
   ok(line.includes('quoteChip'), 'scan: «Илгээгээгүй» шошго мөрөнд гарна');
 }
 
+
+// ── ХАРИЛЦАГЧИЙН БҮРТГЭЛ (2026-09-13) ───────────────────────────────────
+{
+  const PK = vm.runInContext('custPhoneKey', sandbox);
+  // Утасны нормчлол — db/customers.sql-ийн cust_phone_norm()-тэй ИЖИЛ байх ёстой.
+  eq(PK('99001122'), '99001122', 'харилцагч: 8 орон хэвээр');
+  eq(PK('976 9900 1122'), '99001122', 'харилцагч: 976 угтвар хасагдана');
+  eq(PK('+976-9900-1122'), '99001122', 'харилцагч: тэмдэгт цэвэрлэгдэнэ');
+  eq(PK('099001122'), '99001122', 'харилцагч: 0 угтвар хасагдана');
+  eq(PK('123'), '', 'харилцагч: богино дугаар → хоосон');
+  eq(PK(''), '', 'харилцагч: хоосон → хоосон');
+  eq(PK(null), '', 'харилцагч: null → хоосон');
+  eq(PK('9900112233445'), '', 'харилцагч: хэт урт → хоосон (таамаглахгүй)');
+
+  const MT = vm.runInContext('custMatches', sandbox);
+  const c = { name: 'Б.Болд', phone: '99001122', company: 'Ай Ти ХХК', rd: 'УК12345678', email: 'b@x.mn' };
+  ok(MT(c, ''), 'харилцагч: хоосон хайлт бүгдийг өгнө');
+  ok(MT(c, 'болд'), 'харилцагч: нэрээр олдоно');
+  ok(MT(c, 'ай ти'), 'харилцагч: компаниар олдоно');
+  ok(MT(c, 'УК123'), 'харилцагч: РД-гаар олдоно');
+  ok(MT(c, '9900-1122'), 'харилцагч: зураастай утсаар ч олдоно');
+  ok(!MT(c, 'гэрэл'), 'харилцагч: таарахгүй хайлт хасагдана');
+
+  const SORT = vm.runInContext('custSortRows', sandbox);
+  const sorted = SORT([
+    { name: 'A', owed: 0, last: '2026-01-01' },
+    { name: 'B', owed: 500, last: '2025-01-01' },
+    { name: 'C', owed: 0, last: '2026-05-01' },
+  ]);
+  eq(sorted.map(x => x.name), ['B', 'C', 'A'], 'харилцагч: өртэй нь эхэнд, дараа нь сүүлд захиалсан');
+
+  // ИНВАРИАНТ: харилцагчийн авлага = Авлага дэлгэцийн тоо.
+  // Хоёр газар өөр дүрэм бичигдвэл энэ тест УНАНА (CLAUDE.md: авлагын ганц дүрэм).
+  const CS = vm.runInContext('custStats', sandbox);
+  const RD = vm.runInContext('receivablesData', sandbox);
+  const st = vm.runInContext('state', sandbox);
+  const saved = { ao: st.appOrders, no: st.nomaadOrders };
+  st.nomaadOrders = [];
+  const orders = [
+    { id: '1', number: 1, customer_id: 'c_a', status: 'returned',  total_mnt: 500000, paid_mnt: 200000 },
+    { id: '2', number: 2, customer_id: 'c_a', status: 'archived',  total_mnt: 300000, paid_mnt: 300000 },
+    { id: '3', number: 3, customer_id: 'c_b', status: 'reserved',  total_mnt: 900000, paid_mnt: 0 },
+    { id: '4', number: 4, customer_id: 'c_b', status: 'deleted',   total_mnt: 400000, paid_mnt: 0 },
+    { id: '5', number: 5, customer_id: null,  status: 'returned',  total_mnt: 700000, paid_mnt: 100000 },
+  ];
+  st.appOrders = orders;
+  const byCust = CS(orders, 'cash');
+  const custOwed = [...byCust.values()].reduce((s, x) => s + x.owed, 0);
+  const rdOwed = RD().items.filter(i => i.branch === 'bq')
+    .filter(i => (orders.find(o => String(o.id) === String(i.id)) || {}).customer_id)
+    .reduce((s, i) => s + i.balance, 0);
+  eq(custOwed, rdOwed, 'ИНВАРИАНТ: харилцагчийн авлага = Авлага дэлгэцийн тоо');
+  eq((byCust.get('c_a') || {}).orders, 2, 'харилцагч: идэвхтэй захиалга тоологдоно');
+  ok(!byCust.has(null), 'харилцагч: customer_id-гүй захиалга бүлэглэгдэхгүй');
+  eq((byCust.get('c_b') || {}).orders, 1, 'харилцагч: больсон захиалга тоонд ОРОХГҮЙ');
+  st.appOrders = saved.ao; st.nomaadOrders = saved.no;
+}
+
+// scan: харилцагчийн авлагыг түүхий тоогоор БҮҮ бод — orderOwed/canon төлөв ашигла.
+{
+  const fn = src.slice(src.indexOf('function custStats('), src.indexOf('function custMatches('));
+  ok(fn.length > 200, 'scan: custStats олдов');
+  ok(/orderOwed\(/.test(fn), 'scan: харилцагчийн үлдэгдэл orderOwed-оор бодогдоно');
+  ok(/RECEIVABLE_ORDER_ST/.test(fn), 'scan: харилцагчийн авлага канон төлөвөөр шүүгдэнэ');
+  ok(/orderRevenue\(/.test(fn), 'scan: харилцагчийн орлого orderRevenue-аар бодогдоно');
+  ok(!/total_mnt\s*-\s*|paid_mnt\s*\)/.test(fn.replace(/orderOwed\([^)]*\)/g, '')),
+     'scan: custStats-д түүхий total_mnt − paid_mnt тооцоо алга');
+}
+
+// Рендэр — загвар эвдэрвэл (хаалт дутуу, тодорхойгүй хувьсагч) энд унана.
+// Нэвтрэлт шаардсан дэлгэц тул браузераар шалгах боломжгүй, тестээр барина.
+{
+  const st = vm.runInContext('state', sandbox);
+  const RC = vm.runInContext('renderCustomers', sandbox);
+  const saved = { cu: st.customers, ao: st.appOrders, q: st._custQ };
+  st.customers = [
+    { id: 'c_a', name: 'Б.Болд', phone: '99001122', company: 'Ай Ти ХХК' },
+    { id: 'c_b', name: 'Д.Сараа', phone: '88112233' },
+  ];
+  st.appOrders = [
+    { id: '1', number: 11, customer_id: 'c_a', status: 'returned', total_mnt: 500000, paid_mnt: 200000 },
+    { id: '2', number: 12, customer_id: 'c_a', status: 'archived', total_mnt: 300000, paid_mnt: 300000 },
+    { id: '9', number: 19, customer_id: null,  status: 'returned', total_mnt: 100000, paid_mnt: 0 },
+  ];
+  st._custQ = '';
+  const html = RC();
+  ok(html.indexOf('cu-wrap') > 0, 'харилцагч: дэлгэц рендэрлэгдэнэ');
+  ok(html.indexOf('Б.Болд') > 0, 'харилцагч: нэр гарна');
+  ok(html.indexOf('Ай Ти ХХК') > 0, 'харилцагч: компани гарна');
+  ok(html.indexOf('2 захиалга') > 0, 'харилцагч: захиалгын тоо гарна');
+  ok(/1 захиалга харилцагчгүй/.test(html), 'харилцагч: холбогдоогүй захиалгын тоо ил бичигдэнэ');
+
+  st._custQ = 'сараа';
+  const f = RC();
+  ok(f.indexOf('Д.Сараа') > 0 && f.indexOf('Б.Болд') < 0, 'харилцагч: хайлт шүүнэ');
+
+  st.customers = null;
+  ok(/Ачаалж байна/.test(RC()), 'харилцагч: ачаалж байх үед хоосон дэлгэц гарахгүй');
+  st.customers = saved.cu; st.appOrders = saved.ao; st._custQ = saved.q;
+}

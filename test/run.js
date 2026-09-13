@@ -8224,3 +8224,90 @@ async function swFetchTests() {
   ok(/Ачаалж байна/.test(RC()), 'харилцагч: ачаалж байх үед хоосон дэлгэц гарахгүй');
   st.customers = saved.cu; st.appOrders = saved.ao; st._custQ = saved.q;
 }
+
+// ── НЭХЭМЖЛЭХ (2026-09-13) ──────────────────────────────────────────────
+{
+  const NB = vm.runInContext('invoiceBuyer', sandbox);
+  const NT = vm.runInContext('invoiceTotals', sandbox);
+  const NL = vm.runInContext('invoiceLines', sandbox);
+  const NN = vm.runInContext('invoiceNoText', sandbox);
+  const NH = vm.runInContext('invoiceHtml', sandbox);
+  const setCI = vm.runInContext('setCustInfo', sandbox);
+
+  // Дугаарын формат
+  eq(NN(7, '2026-09-13'), 'НЭХ-2026-0007', 'нэхэмжлэх: дугаар жилтэйгээ форматлагдана');
+  eq(NN(1234, '2025-01-01'), 'НЭХ-2025-1234', 'нэхэмжлэх: 4 оронтой дугаар таслагдахгүй');
+
+  // Худалдан авагч: захиалгын ⟦CI⟧ токен нь харилцагчийн бүртгэлээс ДЭЭГҮҮР
+  const note = setCI('', { company: 'Ай Ти ХХК', reg: 'УК12345678' });
+  const o1 = { customer: 'Б.Болд', phone: '99001122', note };
+  const b1 = NB(o1, { company: 'Өөр ХХК', rd: 'ЗЗ999', name: 'Өөр хүн' });
+  eq(b1.name, 'Ай Ти ХХК', 'нэхэмжлэх: байгууллагын нэр захиалгын токеноос');
+  eq(b1.reg, 'УК12345678', 'нэхэмжлэх: РД захиалгын токеноос');
+  eq(b1.person, 'Б.Болд', 'нэхэмжлэх: төлөөлөгч тусад нь гарна');
+  ok(b1.isOrg, 'нэхэмжлэх: байгууллага гэж танигдана');
+
+  // Токен байхгүй бол харилцагчийн бүртгэлээс
+  const b2 = NB({ customer: '' }, { company: 'Нөөц ХХК', rd: 'ЗЗ999', name: 'Хүн' });
+  eq(b2.name, 'Нөөц ХХК', 'нэхэмжлэх: токенгүй бол бүртгэлээс');
+  eq(b2.reg, 'ЗЗ999', 'нэхэмжлэх: РД бүртгэлээс');
+  // Хувь хүн — байгууллага алга
+  const b3 = NB({ customer: 'Д.Сараа' }, null);
+  eq(b3.name, 'Д.Сараа', 'нэхэмжлэх: хувь хүний нэр');
+  eq(b3.person, '', 'нэхэмжлэх: хувь хүнд төлөөлөгч давхардахгүй');
+  ok(!b3.isOrg, 'нэхэмжлэх: хувь хүн байгууллага биш');
+
+  // Дүн — orderMoneyBreakdown-той ИЖИЛ байх ёстой
+  const MB = vm.runInContext('orderMoneyBreakdown', sandbox);
+  const ord = { items: [{ name: 'Майхан', qty: 2, price: 50000, total: 100000 }],
+                total_mnt: 220000, deposit_mnt: 20000, paid_mnt: 50000,
+                starts_at: '2026-09-01', stops_at: '2026-09-01' };
+  const t = NT(ord), B = MB(ord);
+  eq(t.total, B.total, 'ИНВАРИАНТ: нэхэмжлэхийн нийт = orderMoneyBreakdown');
+  eq(t.deposit, B.deposit, 'ИНВАРИАНТ: барьцаа ижил');
+  eq(t.vat, B.vat, 'ИНВАРИАНТ: НӨАТ ижил (дахин бодохгүй)');
+  eq(t.due, 170000, 'нэхэмжлэх: үлдэгдэл = нийт − төлсөн');
+  ok(t.vatIncluded, 'нэхэмжлэх: НӨАТ хасалтгүй бол «багтсан»');
+
+  // НӨАТ хасалттай захиалга — НӨАТ ХАРАГДАХГҮЙ
+  const ordNoVat = Object.assign({}, ord, { note: '⟦VAT|10000⟧' });
+  const t2 = NT(ordNoVat);
+  ok(!t2.vatIncluded, 'нэхэмжлэх: НӨАТ хасалттай бол «багтаагүй»');
+  eq(t2.vat, 0, 'нэхэмжлэх: НӨАТ хасалттай захиалгад НӨАТ 0');
+
+  // Мөрүүд
+  const L = NL(ord);
+  eq(L.length, 1, 'нэхэмжлэх: мөр гарна');
+  eq(L[0].total, 100000, 'нэхэмжлэх: мөрийн дүн гэрээнийхтэй ижил');
+
+  // HTML — загвар эвдэрвэл энд унана
+  const html = NH({ no: 'НЭХ-2026-0007', issuedAt: '2026-09-13', orderNo: 1523,
+                    buyer: b1, lines: L, t, org: vm.runInContext('CHIMUN_LEGAL', sandbox) });
+  ok(html.indexOf('НЭХЭМЖЛЭХ') > 0, 'нэхэмжлэх: гарчиг гарна');
+  ok(html.indexOf('НЭХ-2026-0007') > 0, 'нэхэмжлэх: дугаар гарна');
+  ok(html.indexOf('Ай Ти ХХК') > 0, 'нэхэмжлэх: төлөгчийн нэр гарна');
+  ok(html.indexOf('УК12345678') > 0, 'нэхэмжлэх: төлөгчийн РД гарна');
+  ok(/НӨАТ \(10%, үнэд багтсан\)/.test(html), 'нэхэмжлэх: НӨАТ мөр гарна');
+  ok(html.indexOf('ҮЛДЭГДЭЛ') > 0, 'нэхэмжлэх: төлсөн байвал үлдэгдэл гарна');
+  ok(/Дүн үсгээр/.test(html), 'нэхэмжлэх: дүн үсгээр бичигдэнэ');
+  ok(html.indexOf(vm.runInContext('CHIMUN_LEGAL', sandbox).account) > 0, 'нэхэмжлэх: төлөх данс гарна');
+
+  const html2 = NH({ no: 'НЭХ-2026-0008', issuedAt: '2026-09-13',
+                     buyer: b3, lines: [], t: t2, org: vm.runInContext('CHIMUN_LEGAL', sandbox) });
+  ok(/НӨАТ багтаагүй/.test(html2), 'нэхэмжлэх: НӨАТ хасалттайд «багтаагүй» гэж бичнэ');
+  ok(!/10%, үнэд багтсан/.test(html2), 'нэхэмжлэх: НӨАТ хасалттайд НӨАТ-ын дүн ГАРАХГҮЙ');
+  ok(/Захиалгад бараа оруулаагүй/.test(html2), 'нэхэмжлэх: мөргүй бол тайлбар гарна');
+
+  // XSS — харилцагчийн нэр escape хийгдэнэ
+  const bx = NB({ customer: '<img src=x onerror=alert(1)>' }, null);
+  const hx = NH({ no: 'x', issuedAt: '2026-09-13', buyer: bx, lines: [], t, org: {} });
+  ok(hx.indexOf('<img src=x') < 0, 'нэхэмжлэх: харилцагчийн нэр escape хийгдэнэ');
+}
+
+// scan: нэхэмжлэхийн дүнг дахин БҮҮ бод — orderMoneyBreakdown л ашиглана.
+{
+  const fn = src.slice(src.indexOf('function invoiceTotals('), src.indexOf('function invoiceLines('));
+  ok(fn.length > 100, 'scan: invoiceTotals олдов');
+  ok(/orderMoneyBreakdown\(/.test(fn), 'scan: нэхэмжлэх orderMoneyBreakdown-оос дүнгээ авна');
+  ok(!/\/\s*1\.1|\*\s*0\.1/.test(fn), 'scan: invoiceTotals-д НӨАТ-ыг ГАРААР бодохгүй');
+}

@@ -22873,6 +22873,62 @@ function parsePaidRef(paid_ref) {
     return { id, sender: parts[0] || '', acct: parts[1] || '', memo: parts.slice(2).join(' · '), raw: s };
   });
 }
+/* ─── ТӨЛБӨРИЙН МӨРҮҮД (2026-09-13) ──────────────────────────────────────
+   Захиалгад «нийт төлсөн» гэсэн ГАНЦ тоо (`paid_mnt`) л харагддаг байсан тул
+   хэн хэзээ хэдийг төлснийг задлан харах боломжгүй, авлага тулгахад гараар
+   хөөцөлддөг байв.
+   ⚠ ШИНЭ ХҮСНЭГТ ҮҮСГЭЭГҮЙ — дэлгэрэнгүй нь аль хэдийн байдаг:
+     · `paid_ref` — `[#баримтын-id] илгээгч · данс · банк:X · утга` (| -ээр)
+     · `bank_receipts` — тэр id-гаар дүн, огноо, бүртгэсэн хүн
+   Хоёрыг ХОЛБОЖ харуулна. `paid_mnt` нь ДҮНГИЙН эх сурвалж ХЭВЭЭР —
+   энд дахин тооцохгүй, зөвхөн ТУЛГАЖ зөрүүг ил гаргана. */
+function orderPaymentRows(order, byId) {
+  const refs = parsePaidRef(order && order.paid_ref);
+  const map = byId || {};
+  const rows = refs.map(r => {
+    const rc = map[r.id] || null;
+    const bank = (String(r.memo || '').match(/банк:([^·]+)/) || [])[1];
+    return {
+      id: r.id,
+      amount: rc ? (Number(rc.amount) || 0) : null,   // null = баримт олдоогүй
+      date: rc ? String(rc.pay_date || '').slice(0, 10) : '',
+      sender: r.sender || '', acct: r.acct || '',
+      bank: bank ? String(bank).trim() : '',
+      memo: String(r.memo || '').replace(/банк:[^·]+·?\s*/, '').trim(),
+      by: rc ? (rc.recorded_by || '') : '',
+    };
+  });
+  const known = rows.filter(x => x.amount != null);
+  const sum = known.reduce((s, x) => s + x.amount, 0);
+  const paid = Number((order && order.paid_mnt) || 0);
+  return { rows, sum, paid, diff: paid - sum, missing: rows.length - known.length };
+}
+
+// Зөрүүг ХҮНД ойлгомжтой хэлнэ — «зөрүү 120,000₮» гэдэг нь юу хийхийг заадаггүй.
+function paymentDiffNote(d) {
+  if (!d || !d.rows.length) return '';
+  if (d.diff === 0) return '';
+  return d.diff > 0
+    ? `${fmtMoney(d.diff)} нь баримтгүй бүртгэгдсэн — банкны баримт нь холбогдоогүй байна.`
+    : `Баримтууд ${fmtMoney(-d.diff)}-аар ИЛҮҮ — буцаан олголт хийгдсэн эсвэл баримт давхар холбогдсон.`;
+}
+
+// Захиалгын баримтуудыг `bank_receipts`-ээс татна (paid_ref дэх id-гаар).
+async function loadOrderReceipts(order) {
+  const ids = parsePaidRef(order && order.paid_ref).map(r => r.id).filter(Boolean);
+  if (!ids.length) return {};
+  try {
+    const q = ids.map(encodeURIComponent).join(',');
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/bank_receipts?select=receipt_id,amount,pay_date,recorded_by&receipt_id=in.(${q})`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const out = {};
+    (await r.json()).forEach(x => { out[x.receipt_id] = x; });
+    return out;
+  } catch (e) { dataLoadFailed('loadOrderReceipts', e); return {}; }
+}
+
 // Дансны дугаарыг зөвхөн ЦИФРЭЭР харьцуулна (зай, зураас, «данс:» угтвар ялгаатай бичигддэг).
 // 6-аас бага цифртэй бол данс биш (нэр эсвэл хог) гэж үзнэ.
 function refundAcctDigits(s) {
@@ -24898,6 +24954,29 @@ async function openStoredReceipt(receiptId, meta) {
   if (!blob) { showToast('Эх PDF хадгалагдаагүй (хуучин төлбөр эсвэл олдсонгүй)', 'warn', 3500); return; }
   openReceiptPdfViewer(blob, meta || {});
 }
+/* Өмнөх төлбөрийн мөрүүдийг цонхонд буулгана. Баримт татагдтал «…» гэж
+   харуулаад, ирсний дараа бөглөнө — цонх нээгдэхийг хүлээлгэхгүй. */
+async function renderPaymentHistory(o, modal) {
+  const el = modal.querySelector('#bqp-hist');
+  if (!el) return;
+  const refs = parsePaidRef(o && o.paid_ref);
+  if (!refs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="payh-h">Өмнөх төлбөр (${refs.length})</div><div class="payh-load">Баримт ачаалж байна…</div>`;
+  const byId = await loadOrderReceipts(o);
+  if (!modal.isConnected) return;
+  const d = orderPaymentRows(o, byId);
+  const row = (x) => `<div class="payh-row">
+      <span class="payh-d">${escapeHtml(x.date || '—')}</span>
+      <span class="payh-who">${escapeHtml(x.sender || '—')}${x.bank ? ' · ' + escapeHtml(x.bank) : ''}</span>
+      <span class="payh-a">${x.amount == null ? '<i>баримт олдсонгүй</i>' : escapeHtml(fmtMoney(x.amount))}</span>
+    </div>`;
+  const note = paymentDiffNote(d);
+  el.innerHTML = `<div class="payh-h">Өмнөх төлбөр (${d.rows.length})</div>
+    <div class="payh-list">${d.rows.map(row).join('')}</div>
+    <div class="payh-sum"><span>Баримтын нийлбэр</span><span>${escapeHtml(fmtMoney(d.sum))}</span></div>
+    ${note ? `<div class="payh-warn">⚠ ${escapeHtml(note)}</div>` : ''}`;
+}
+
 function openBqPaymentModal(oid) {
   // Нэгдсэн төлбөрийн модал — bq_orders эсвэл app_orders хоёуланд ажиллана.
   const o = (state.bqOrders || []).find(x => String(x.id) === String(oid)) || (state.appOrders || []).find(x => String(x.id) === String(oid));
@@ -24924,6 +25003,7 @@ function openBqPaymentModal(oid) {
       <input id="bqp-pdf" type="file" accept="application/pdf,.pdf" multiple hidden>
       <div id="bqp-pdf-status" style="font-size:11px;color:var(--muted);margin-top:4px;">Дүн · огноо · шилжүүлэгч автоматаар. Олон гүйлгээ = олон PDF сонго. <b>Гараар бүртгэх боломжгүй.</b></div>
     </label>
+    <div id="bqp-hist" class="payh"></div>
     <div id="bqp-list" style="margin-bottom:14px;"></div>
     <input type="hidden" id="bqp-method" value="bank">
     ${o.status === 'draft' ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px;">Төлбөр бүртгэмэгц захиалга <b>"Захиалсан"</b> болно.</div>` : ''}
@@ -24937,6 +25017,9 @@ function openBqPaymentModal(oid) {
   modal.querySelector('#bqp-cancel').addEventListener('click', close);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('#bqp-save').addEventListener('click', (e) => submitBqPayment(oid, modal, e.currentTarget));
+  // Өмнөх төлбөрүүд — `paid_ref` (хэн/данс) + `bank_receipts` (дүн/огноо) холбоно.
+  // Зөрүү гарвал ил хэлнэ: `paid_mnt` нь дүнгийн эх сурвалж ХЭВЭЭР, энд зөвхөн тулгана.
+  renderPaymentHistory(o, modal);
   const saveBtn = modal.querySelector('#bqp-save');
   const enableSave = (on) => { saveBtn.disabled = !on; saveBtn.style.opacity = on ? '1' : '.45'; saveBtn.style.cursor = on ? 'pointer' : 'not-allowed'; };
   // Банкны баримт PDF (ОЛОН) → тус бүрийг автомат задалж жагсаалтад нэмнэ. Гараар бүртгэх боломжгүй.

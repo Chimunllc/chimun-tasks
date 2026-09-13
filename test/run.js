@@ -8408,3 +8408,57 @@ async function swFetchTests() {
   ok(/X-Session-Token/.test(q), 'scan: үнийн санал илгээхэд токен явна');
   ok(/function sessionTokenForSend\(/.test(src), 'scan: токен уншигч тодорхойлогдсон');
 }
+
+// ── ТӨЛБӨРИЙН МӨРҮҮД (2026-09-13) ───────────────────────────────────────
+// ⚠ ШИНЭ ХҮСНЭГТ БАЙХГҮЙ — `paid_ref` (хэн/данс) + `bank_receipts` (дүн/огноо)
+//   хоёрыг холбоно. `paid_mnt` нь дүнгийн эх сурвалж ХЭВЭЭР.
+{
+  const PR = vm.runInContext('orderPaymentRows', sandbox);
+  const DN = vm.runInContext('paymentDiffNote', sandbox);
+
+  const o = { paid_mnt: 500000,
+    paid_ref: '[#r1] Б.Болд · 5401234567 · банк:Голомт · түрээс  |  [#r2] Ай Ти ХХК · 1234 · банк:ХААН · үлдэгдэл' };
+  const byId = { r1: { receipt_id: 'r1', amount: 200000, pay_date: '2026-09-01', recorded_by: 'a' },
+                 r2: { receipt_id: 'r2', amount: 300000, pay_date: '2026-09-05', recorded_by: 'b' } };
+  const d = PR(o, byId);
+  eq(d.rows.length, 2, 'төлбөр: мөр бүр гарна');
+  eq(d.sum, 500000, 'төлбөр: баримтын нийлбэр');
+  eq(d.paid, 500000, 'төлбөр: бүртгэсэн дүн');
+  eq(d.diff, 0, 'төлбөр: таарсан бол зөрүү 0');
+  eq(d.missing, 0, 'төлбөр: бүх баримт олдсон');
+  eq(d.rows[0].sender, 'Б.Болд', 'төлбөр: илгээгч гарна');
+  eq(d.rows[0].bank, 'Голомт', 'төлбөр: банк тусад нь салгагдана');
+  ok(d.rows[0].memo.indexOf('банк:') < 0, 'төлбөр: банк утгаас хасагдана (давхардахгүй)');
+  eq(d.rows[1].date, '2026-09-05', 'төлбөр: огноо баримтаас');
+  eq(DN(d), '', 'төлбөр: таарсан бол анхааруулга алга');
+
+  // Баримт ДУТУУ — амьд датад 17 захиалга ийм байсан (31.9сая₮)
+  const d2 = PR({ paid_mnt: 500000, paid_ref: '[#r1] Б · 1 · түрээс' }, { r1: { amount: 200000, pay_date: '2026-09-01' } });
+  eq(d2.diff, 300000, 'төлбөр: баримтгүй үлдсэн дүн гарна');
+  ok(/баримтгүй бүртгэгдсэн/.test(DN(d2)), 'төлбөр: дутуу бол ЮУ БОЛСНЫГ хэлнэ');
+
+  // Баримт ИЛҮҮ — буцаан олголтын дараа ийм болдог
+  const d3 = PR({ paid_mnt: 100000, paid_ref: '[#r1] Б · 1 · т' }, { r1: { amount: 250000, pay_date: '2026-09-01' } });
+  eq(d3.diff, -150000, 'төлбөр: илүү баримтын зөрүү сөрөг');
+  ok(/ИЛҮҮ/.test(DN(d3)), 'төлбөр: илүү бол буцаалт/давхардлыг сануулна');
+
+  // Баримтын мөр байгаа ч bank_receipts-д олдоогүй
+  const d4 = PR({ paid_mnt: 100000, paid_ref: '[#zzz] Б · 1 · т' }, {});
+  eq(d4.missing, 1, 'төлбөр: олдоогүй баримт тоологдоно');
+  eq(d4.rows[0].amount, null, 'төлбөр: олдоогүй баримтын дүн null (0 БИШ)');
+  eq(d4.sum, 0, 'төлбөр: олдоогүйг нийлбэрт оруулахгүй');
+
+  // Төлбөргүй захиалга
+  const d5 = PR({ paid_mnt: 0, paid_ref: '' }, {});
+  eq(d5.rows.length, 0, 'төлбөр: төлбөргүй бол мөр алга');
+  eq(DN(d5), '', 'төлбөр: мөргүй бол анхааруулга алга');
+}
+
+// scan: төлбөрийн мөр нь `paid_mnt`-ыг ДАРЖ БИЧИХГҮЙ — зөвхөн тулгана.
+{
+  const fn = src.slice(src.indexOf('function orderPaymentRows('), src.indexOf('function paymentDiffNote('));
+  ok(fn.length > 200, 'scan: orderPaymentRows олдов');
+  ok(/parsePaidRef\(/.test(fn), 'scan: баримтыг paid_ref-ээс уншина');
+  ok(!/paid_mnt\s*=/.test(fn), 'scan: төлбөрийн мөр paid_mnt-ыг ӨӨРЧЛӨХГҮЙ (дүнгийн эх сурвалж хэвээр)');
+  ok(/diff:/.test(fn), 'scan: зөрүүг тооцож ил гаргана');
+}

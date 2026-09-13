@@ -8311,3 +8311,36 @@ async function swFetchTests() {
   ok(/orderMoneyBreakdown\(/.test(fn), 'scan: нэхэмжлэх orderMoneyBreakdown-оос дүнгээ авна');
   ok(!/\/\s*1\.1|\*\s*0\.1/.test(fn), 'scan: invoiceTotals-д НӨАТ-ыг ГАРААР бодохгүй');
 }
+
+// Нэхэмжлэх — БИЕЭ ДААСАН баримт (шинэ цонхонд). Урьд нь шууд татдаг байсныг
+// 2026-09-13-нд зассан: хэрэглэгч юу татсанаа хардаггүй, баримт нь тасарч гардаг.
+{
+  const ND = vm.runInContext('invoiceDocHtml', sandbox);
+  const NB = vm.runInContext('invoiceBuyer', sandbox);
+  const NT = vm.runInContext('invoiceTotals', sandbox);
+  const ord = { customer: 'Б.Болд', items: [{ name: 'Майхан', qty: 2, price: 50000, total: 100000 }],
+                total_mnt: 220000, deposit_mnt: 20000, paid_mnt: 0,
+                starts_at: '2026-09-01', stops_at: '2026-09-01' };
+  const doc = ND({ no: 'НЭХ-2026-0007', issuedAt: '2026-09-13', orderNo: 1523,
+                   buyer: NB(ord, null), lines: [], t: NT(ord),
+                   org: vm.runInContext('CHIMUN_LEGAL', sandbox) });
+
+  ok(/^<!DOCTYPE html>/.test(doc), 'нэхэмжлэх: бүтэн баримт (аппын CSS хүрэхгүй)');
+  ok(doc.indexOf('<div class="sheet"') > 0, 'нэхэмжлэх: A4 хуудас гарна');
+  ok(/width:794px/.test(doc), 'нэхэмжлэх: хуудас A4 өргөнтэй');
+  ok(doc.indexOf('PDF татах') > 0, 'нэхэмжлэх: татах товч гарна');
+  ok(doc.indexOf('Хэвлэх') > 0, 'нэхэмжлэх: хэвлэх товч гарна');
+  ok(doc.indexOf('НЭХЭМЖЛЭХ') > 0, 'нэхэмжлэх: агуулга орсон');
+  ok(/@media print\{ \.toolbar\{display:none;\}/.test(doc), 'нэхэмжлэх: хэвлэхэд товчны мөр нуугдана');
+  // ⚠ ХАРАГДАХ элементээс рендэрлэнэ — windowWidth заавал БАЙХГҮЙ байх ёстой.
+  ok(!/windowWidth\s*:/.test(doc), 'нэхэмжлэх: windowWidth ЗААГААГҮЙ (заавал зөрвөл баримт тасарна)');
+  ok(doc.indexOf(String.fromCharCode(60) + "/script>") > 0, 'нэхэмжлэх: дотоод script зөв хаагдсан');
+}
+
+// scan: нэхэмжлэхийг ШУУД татахгүй — эхлээд цонхонд харуулна.
+{
+  const fn = src.slice(src.indexOf('async function issueInvoice('), src.indexOf('function invoiceDocHtml('));
+  ok(fn.length > 200, 'scan: issueInvoice олдов');
+  ok(/window\.open\(/.test(fn), 'scan: нэхэмжлэх шинэ цонхонд нээгдэнэ');
+  ok(!/\.save\(\)/.test(fn), 'scan: issueInvoice шууд ТАТАХГҮЙ (хэрэглэгч эхлээд харна)');
+}

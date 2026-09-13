@@ -7073,3 +7073,33 @@ select.no-asar-len {
 .smv-dl.up { color: var(--ok); }
 .smv-dl.dn { color: var(--danger); }
 .smv-q { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+
+/* ── ХУДАЛДАН АВАЛТ (2026-09-13) ────────────────────────────────────────
+   Шинэ бичилт ШААРДАХГҮЙ дэлгэц: хөрөнгийн зардлын мөрүүд (6xxx) банкны
+   хуулгаас өөрөө ирдэг, энд зөвхөн харагдана. */
+.buy-wrap { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
+.buy-load { padding: var(--space-5); text-align: center; color: var(--muted); font-size: var(--fs-sm); }
+.buy-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-2); }
+.buy-kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--space-3); }
+.buy-kpi-l { font-size: var(--fs-xs); color: var(--muted); }
+.buy-kpi-v { font-size: var(--fs-lg); font-weight: 700; margin-top: var(--space-1); }
+.buy-sec { font-size: var(--fs-xs); color: var(--muted); margin-top: var(--space-2); }
+.buy-months { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-2); }
+.buy-mo { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: var(--space-2) var(--space-3); display: flex; gap: var(--space-2); align-items: baseline; }
+.buy-mo-m { font-weight: 600; }
+.buy-mo-n { color: var(--muted); font-size: var(--fs-xs); }
+.buy-mo-v { margin-left: auto; font-size: var(--fs-sm); white-space: nowrap; }
+.buy-q { width: 100%; }
+.buy-list { display: flex; flex-direction: column; border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden; }
+.buy-row { display: flex; gap: var(--space-3); align-items: baseline; padding: var(--space-2) var(--space-3);
+  background: var(--panel); border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.buy-row:last-child { border-bottom: 0; }
+.buy-date { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.buy-nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buy-nm small { display: block; color: var(--muted); font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buy-cnt, .buy-last { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.buy-amt { font-weight: 600; white-space: nowrap; }
+.buy-note { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }

@@ -4196,6 +4196,9 @@ function renderSidebar() {
   const atNav = document.getElementById('nav-attendance');
   if (atNav) atNav.style.display = canSeeAttendance() ? '' : 'none';
   // Харилцагч — нэр/утас/РД агуулна тул төлбөр бүртгэдэг хүн ба CEO л харна.
+  // Худалдан авалт — хөрөнгийн зардал харуулдаг тул санхүүгийн эрхтэй хүнд.
+  const buyNav = document.getElementById('nav-purchases');
+  if (buyNav) buyNav.style.display = canSeePurchases() ? '' : 'none';
   const cuNav = document.getElementById('nav-customers');
   if (cuNav) cuNav.style.display = canSeeCustomers() ? '' : 'none';
   // Авлага — зөвхөн CEO. Badge нь хугацаа хэтэрсэн авлагын тоо.
@@ -4257,7 +4260,7 @@ function renderSidebar() {
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
   _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
-  _setGrp('nav-group-inventory', ['nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
+  _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
   _setGrp('nav-group-docs', ['nav-documents']);
@@ -4278,6 +4281,7 @@ function renderTitle() {
     mine:      [ICONS.inbox, 'Миний ажил', 'Танд оноосон ажлууд'],
     delegated: [ICONS.send, 'Хуваарилсан ажил', 'Та өөр хүнд оноосон ажлууд'],
     finance:   [ICONS.wallet, 'Гүйлгээ', 'Хүсэлт, картын зарлага, тулгалт — бүх мөнгөн хөдөлгөөн'],
+    purchases: ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>', 'Худалдан авалт', 'Хөрөнгийн зардлаас — хэнээс юу авсан'],
     customers: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', 'Харилцагч', 'Захиалгын түүх, авлага, холбоо барих мэдээлэл'],
     reports:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>', 'Дүн шинжилгээ', 'Удирдлагад зориулсан тайлангууд'],
     performance: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>', 'Гүйцэтгэл', 'Ажилтны гүйцэтгэл — объектив, ажлын чанар, 360° оноо'],
@@ -4381,6 +4385,12 @@ function renderTaskList() {
     const _m = String(state.view).slice(3);
     wrap.innerHTML = safeViewHtml(() => renderProductSheet(_m), PSHEET[_m] ? PSHEET[_m].label : 'Бараа');
     attachProductSheetHandlers(_m);
+    return;
+  } else if (state.view === 'purchases') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderPurchases, 'Худалдан авалт');
+    attachPurchasesHandlers();
     return;
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
@@ -6742,6 +6752,57 @@ function mainOfSub(subCode) { const s = String(subCode || ''); return s ? (s[0] 
 function subCatName(code) { for (const m of Object.keys(FINANCE_SUB_CATEGORIES)) { const hit = (FINANCE_SUB_CATEGORIES[m] || []).find(s => s.code === code); if (hit) return hit.name; } return ''; }
 function mainCatName(code) { const m = (FINANCE_MAIN_CATEGORIES || []).find(x => x.code === code); return m ? m.name : ''; }
 function catLabel(subCode) { const sn = subCatName(subCode); return sn ? `${subCode} ${sn}` : (subCode || ''); }
+
+/* ─── ХУДАЛДАН АВАЛТ (2026-09-13) ────────────────────────────────────────
+   ⛔ Сонгодог худалдан авалтын модуль (нийлүүлэгчийн мастер + PO + хүлээн
+     авалт) ЭНД ХИЙГДЭХГҮЙ. CLAUDE.md-ийн дүрэм: «гараар нэмэлт бичүүлдэг
+     бүртгэл үхдэг» — `product_batches` 3 сард 0 мөртэй үхсэн.
+   Худалдан авалтын дата АЛЬ ХЭДИЙН бий: хөрөнгийн зардал (ангилал 6xxx) нь
+   банкны хуулгаас ӨӨРӨӨ орж ирдэг (69 мөр · 563сая₮). Зүгээр л харагддаггүй
+   байсан. Энэ дэлгэц тэр датаг харуулна — шинэ бичилт ШААРДАХГҮЙ. */
+const PURCHASE_CAT_RE = /^6\d*/;
+
+// Хөрөнгийн зардлын мөрүүд → худалдан авалтын жагсаалт. Цэвэр функц.
+// ⚠ Устгасан мөр ОРОХГҮЙ; дүн нь `finance.amount`-аас (дахин бодохгүй).
+function purchaseRows(reqs) {
+  return (reqs || [])
+    .filter(r => r && PURCHASE_CAT_RE.test(String(r.category || '')) && String(r.status || '') !== 'deleted')
+    .map(r => ({
+      id: String(r.id || ''),
+      date: String(r.requested_at || '').slice(0, 10),
+      supplier: String(r.beneficiary || '').trim(),
+      amount: Number(r.amount) || 0,
+      category: String(r.category || ''),
+      purpose: String(r.purpose || '').trim(),
+    }))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+// Нийлүүлэгчээр нэгтгэнэ — «хэнээс хэр их, хэдэн удаа авсан».
+function supplierSummary(rows) {
+  const by = new Map();
+  (rows || []).forEach(r => {
+    const key = r.supplier || '(нэргүй)';
+    const s = by.get(key) || { supplier: key, count: 0, total: 0, last: '' };
+    s.count++; s.total += Number(r.amount) || 0;
+    if (!s.last || String(r.date) > s.last) s.last = r.date;
+    by.set(key, s);
+  });
+  return [...by.values()].sort((a, b) => b.total - a.total);
+}
+
+// Сараар нэгтгэл — «энэ сар хэр их хөрөнгө орууллаа».
+function purchaseByMonth(rows) {
+  const by = new Map();
+  (rows || []).forEach(r => {
+    const m = String(r.date || '').slice(0, 7);
+    if (!m) return;
+    const s = by.get(m) || { month: m, count: 0, total: 0 };
+    s.count++; s.total += Number(r.amount) || 0;
+    by.set(m, s);
+  });
+  return [...by.values()].sort((a, b) => String(b.month).localeCompare(String(a.month)));
+}
 function mainCatOptions(sel) { return '<option value="">— үндсэн ангилал —</option>' + (FINANCE_MAIN_CATEGORIES || []).map(m => `<option value="${m.code}"${m.code === sel ? ' selected' : ''}>${m.code} ${escapeHtml(m.name)}</option>`).join(''); }
 function subCatOptions(mainCode, sel) { const subs = FINANCE_SUB_CATEGORIES[mainCode] || []; return '<option value="">— дэд ангилал —</option>' + subs.map(s => `<option value="${s.code}"${s.code === sel ? ' selected' : ''}>${s.code} ${escapeHtml(s.name)}</option>`).join(''); }
 // ── Картын зардал → эзэн ангилах токен: ⟦CARD|last4|ownerKey|PEND⟧ (justification-д) ──
@@ -12417,6 +12478,7 @@ const PERM_MENUS = [
   { key: 'ps_price',    label: 'Түрээсийн үнэ (бүх бараа)',  actions: [] },
   { key: 'ps_cost',     label: 'Өртөг ба хөрөнгө (бүх бараа)', actions: [] },
   { key: 'ps_stock',    label: 'Нөөц ба салбар (бүх бараа)', actions: [] },
+  { key: 'purchases',   label: 'Худалдан авалт', actions: [] },   // хөрөнгийн зардлаас гарна
   { key: 'writeoff',    label: 'Акт', actions: [] },   // түрээслэх боломжгүй бараа — актлах/зарах
   { key: 'receivables', label: 'Авлага',          actions: [
       { key: 'orders.pay', label: 'Төлбөр бүртгэх' } ] },
@@ -20475,6 +20537,69 @@ function openCustomerCard(id) {
     if (saved) { close(); showToast('Хадгаллаа', 'success', 2000); render(); }
     else { btn.disabled = false; btn.textContent = 'Хадгалах'; }
   };
+}
+
+/* Худалдан авалтын дэлгэц — хөрөнгийн зардлаас БҮТНЭЭР гарна, шинэ бичилт алга.
+   Санхүүгийн дата = эмзэг тул эрх нь санхүү харах эрхтэй уялдана. */
+function canSeePurchases() { return canAccessView('purchases', () => !!state.isCEO || canSeeAllFinance()); }
+
+function renderPurchases() {
+  if (state.financeRequests === undefined || state.financeRequests === null) {
+    return '<div class="buy-load">Ачаалж байна…</div>';
+  }
+  const all = purchaseRows(state.financeRequests);
+  const q = String(state._buyQ || '').trim().toLowerCase();
+  const rows = q
+    ? all.filter(r => [r.supplier, r.purpose, r.category].some(v => String(v).toLowerCase().includes(q)))
+    : all;
+  const sup = supplierSummary(all);
+  const months = purchaseByMonth(all).slice(0, 6);
+  const total = all.reduce((s, r) => s + r.amount, 0);
+
+  const kpi = (l, v) => `<div class="buy-kpi"><div class="buy-kpi-l">${l}</div><div class="buy-kpi-v">${v}</div></div>`;
+  return `<div class="buy-wrap">
+    <div class="buy-kpis">
+      ${kpi('Худалдан авалт', all.length)}
+      ${kpi('Нийт дүн', fmtMoney(total))}
+      ${kpi('Нийлүүлэгч', sup.length)}
+    </div>
+
+    <div class="buy-sec">Сараар</div>
+    <div class="buy-months">${months.map(m => `<div class="buy-mo">
+      <span class="buy-mo-m">${escapeHtml(m.month)}</span>
+      <span class="buy-mo-n">${m.count}</span>
+      <span class="buy-mo-v">${escapeHtml(fmtMoney(m.total))}</span></div>`).join('') || '<div class="buy-load">Дата алга.</div>'}</div>
+
+    <div class="buy-sec">Нийлүүлэгч — хэнээс хэр их</div>
+    <div class="buy-list">${sup.slice(0, 12).map(s => `<div class="buy-row">
+      <span class="buy-nm">${escapeHtml(s.supplier)}</span>
+      <span class="buy-cnt">${s.count}×</span>
+      <span class="buy-last">${escapeHtml(s.last || '')}</span>
+      <span class="buy-amt">${escapeHtml(fmtMoney(s.total))}</span></div>`).join('') || '<div class="buy-load">Дата алга.</div>'}</div>
+
+    <div class="buy-sec">Гүйлгээ</div>
+    <input id="buy-q" class="ui-raw buy-q" type="search" placeholder="Нийлүүлэгч, зорилго, ангилал…" value="${escapeHtml(state._buyQ || '')}">
+    <div class="buy-list">${rows.slice(0, 200).map(r => `<div class="buy-row">
+      <span class="buy-date">${escapeHtml(r.date)}</span>
+      <span class="buy-nm">${escapeHtml(r.supplier || '—')}<small>${escapeHtml(r.purpose || catLabel(r.category))}</small></span>
+      <span class="buy-amt">${escapeHtml(fmtMoney(r.amount))}</span></div>`).join('') || '<div class="buy-load">Олдсонгүй.</div>'}</div>
+    ${rows.length > 200 ? `<div class="buy-note">Эхний 200 мөр харагдаж байна (нийт ${rows.length}).</div>` : ''}
+    <div class="buy-note">Энэ жагсаалт нь <b>хөрөнгийн зардлын мөрүүд</b> (ангилал 6xxx) — банкны хуулгаас өөрөө орж ирдэг. Гараар бичих зүйл алга.</div>
+  </div>`;
+}
+
+function attachPurchasesHandlers() {
+  const q = document.getElementById('buy-q');
+  if (!q) return;
+  q.addEventListener('input', () => {
+    state._buyQ = q.value;
+    clearTimeout(state._buyQT);
+    state._buyQT = setTimeout(() => {
+      render();
+      const el = document.getElementById('buy-q');
+      if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
+    }, 180);
+  });
 }
 
 function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }

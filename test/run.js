@@ -8505,3 +8505,54 @@ async function swFetchTests() {
   ok(snapAt < mergeAt, 'scan: хормын хуулбар state нэгтгэхээс ӨМНӨ (эс бол delta үргэлж 0)');
   ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 6000)), 'scan: saveProduct дэвтэрт бичнэ');
 }
+
+// ── ХУДАЛДАН АВАЛТ (2026-09-13) ─────────────────────────────────────────
+// ⛔ Гараар шивдэг форм БАЙХГҮЙ — дата нь хөрөнгийн зардлаас (6xxx) гарна.
+//   `product_batches` 3 сард 0 мөртэй үхсэн шалтгаан яг энэ (CLAUDE.md).
+{
+  const PR = vm.runInContext('purchaseRows', sandbox);
+  const SS = vm.runInContext('supplierSummary', sandbox);
+  const BM = vm.runInContext('purchaseByMonth', sandbox);
+
+  const reqs = [
+    { id: '1', category: '6100', amount: 500000, beneficiary: 'Ай Ти ХХК', requested_at: '2026-06-10T00:00:00Z', purpose: 'сандал' },
+    { id: '2', category: '6100', amount: 300000, beneficiary: 'Ай Ти ХХК', requested_at: '2026-07-01T00:00:00Z', purpose: 'ширээ' },
+    { id: '3', category: '6200', amount: 900000, beneficiary: 'Бат ХХК',  requested_at: '2026-07-20T00:00:00Z', purpose: 'асар' },
+    { id: '4', category: '5100', amount: 100000, beneficiary: 'Бусад',    requested_at: '2026-07-02T00:00:00Z', purpose: 'НӨАТ' },
+    { id: '5', category: '6100', amount: 700000, beneficiary: 'Устгасан', requested_at: '2026-07-03T00:00:00Z', status: 'deleted' },
+  ];
+  const rows = PR(reqs);
+  eq(rows.length, 3, 'худалдан авалт: зөвхөн 6xxx ангилал (5100 орохгүй)');
+  ok(!rows.some(r => r.id === '5'), 'худалдан авалт: устгасан мөр ОРОХГҮЙ');
+  eq(rows[0].date, '2026-07-20', 'худалдан авалт: шинэ нь дээр эрэмбэлэгдэнэ');
+  eq(rows[0].supplier, 'Бат ХХК', 'худалдан авалт: нийлүүлэгч хүлээн авагчаас');
+
+  const sup = SS(rows);
+  eq(sup.length, 2, 'худалдан авалт: нийлүүлэгчээр бүлэглэнэ');
+  eq(sup[0].supplier, 'Бат ХХК', 'худалдан авалт: дүнгээр эрэмбэлнэ');
+  eq(sup[0].total, 900000, 'худалдан авалт: нийлүүлэгчийн нийт дүн');
+  eq(sup[1].count, 2, 'худалдан авалт: давтамж тоологдоно');
+  eq(sup[1].total, 800000, 'худалдан авалт: хоёр гүйлгээ нийлнэ');
+  eq(sup[1].last, '2026-07-01', 'худалдан авалт: сүүлийн огноо');
+
+  const mo = BM(rows);
+  eq(mo.length, 2, 'худалдан авалт: сараар бүлэглэнэ');
+  eq(mo[0].month, '2026-07', 'худалдан авалт: сүүлийн сар эхэнд');
+  eq(mo[0].total, 1200000, 'худалдан авалт: сарын нийт');
+  eq(mo[1].total, 500000, 'худалдан авалт: өмнөх сарын нийт');
+
+  // Хүлээн авагчгүй мөр — бүлэгт ордог, алга болдоггүй
+  const noSup = SS(PR([{ id: '9', category: '6100', amount: 1000, requested_at: '2026-08-01' }]));
+  eq(noSup[0].supplier, '(нэргүй)', 'худалдан авалт: нийлүүлэгчгүй мөр алга болохгүй');
+  eq(PR([]).length, 0, 'худалдан авалт: хоосон оролт → хоосон');
+}
+
+// scan: худалдан авалтын дэлгэц ГАРААР бичдэг форм нэмж БОЛОХГҮЙ.
+{
+  const i = src.indexOf('function renderPurchases(');
+  const fn = src.slice(i, src.indexOf('function attachPurchasesHandlers('));
+  ok(fn.length > 300, 'scan: renderPurchases олдов');
+  ok(/purchaseRows\(/.test(fn), 'scan: дата нь хөрөнгийн зардлаас гарна');
+  ok(!/<form|type="submit"|btn-primary/.test(fn),
+     'scan: худалдан авалтын дэлгэцэд ГАРААР бичих форм БАЙХГҮЙ (гараар бүртгэл үхдэг)');
+}

@@ -7053,3 +7053,23 @@ select.no-asar-len {
 .payh-sum { display: flex; justify-content: space-between; padding: var(--space-2);
   font-size: var(--fs-sm); font-weight: 600; }
 .payh-warn { font-size: var(--fs-xs); color: var(--danger); padding: 0 var(--space-2) var(--space-2); line-height: 1.5; }
+
+/* ── НӨӨЦИЙН ХӨДӨЛГӨӨН (2026-09-13) — барааны картад ────────────────────
+   `qty_*` нь дарж бичигддэг тул «яагаад өөрчлөгдсөн» гэдгийг систем
+   хэлж чаддаггүй байв. Дэвтэр = append-only, засагддаггүй. */
+.smv { margin-top: var(--space-4); }
+.smv-h { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-1); }
+.smv-load { font-size: var(--fs-xs); color: var(--muted); padding: var(--space-2) 0; }
+.smv-list { display: flex; flex-direction: column; border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden; max-height: 240px; overflow-y: auto; }
+.smv-row { display: flex; gap: var(--space-2); align-items: baseline;
+  padding: var(--space-1) var(--space-2); font-size: var(--fs-sm); border-bottom: 1px solid var(--border); }
+.smv-row:last-child { border-bottom: 0; }
+.smv-at { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.smv-br { white-space: nowrap; }
+.smv-rs { flex: 1; min-width: 0; color: var(--muted); font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smv-dl { font-weight: 700; white-space: nowrap; }
+.smv-dl.up { color: var(--ok); }
+.smv-dl.dn { color: var(--danger); }
+.smv-q { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }

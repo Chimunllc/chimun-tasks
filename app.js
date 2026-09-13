@@ -5242,7 +5242,8 @@ async function applyStockCount(row) {
   const qm = Number(p.qty_mevent) || 0, qc = Number(p.qty_chimun) || 0;
   let nm = qm + d, nc = qc;
   if (nm < 0) { nc = Math.max(0, qc + nm); nm = 0; }
-  await saveProduct({ ...p, stock: Math.max(0, (Number(p.stock) || 0) + d), qty_mevent: nm, qty_chimun: nc });
+  await saveProduct({ ...p, stock: Math.max(0, (Number(p.stock) || 0) + d), qty_mevent: nm, qty_chimun: nc,
+    _moveReason: 'count', _moveRef: String(row.id || ''), _moveNote: 'тооллогын зөрүү' });
   const r = await fetchWithTimeout(`${STOCKCOUNT_URL()}?id=eq.${encodeURIComponent(row.id)}`, {
     method: 'PATCH',
     headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
@@ -5400,7 +5401,7 @@ async function writeOffProduct(p, qty, reason, opts) {
   if (!r.ok) throw new Error('бичлэг HTTP ' + r.status);
   state.repairs = (state.repairs || []).concat([rep]);
   const { patch } = writeOffBranchPatch(p, n, opts && opts.branch);
-  await saveProduct({ ...p, ...patch, stock: Math.max(0, (Number(p.stock) || 0) - n) });
+  await saveProduct({ ...p, ...patch, stock: Math.max(0, (Number(p.stock) || 0) - n), _moveReason: 'damage' });
   return rep;
 }
 
@@ -10293,10 +10294,59 @@ async function runAsarModuleSetup() {
   showToast(`🏕 ${made} модуль бараа бэлэн · 🗄 ${gone} хуучин бүртгэл архивлав · 🔗 ${linked} түүх холбов${repriced ? ` · 💰 ${repriced} үнэ шинэчлэв` : ''}${fail ? ` · ⚠ ${fail} алдаа` : ''}`, fail ? 'warn' : 'success', 6000);
   render();
 }
+/* ─── НӨӨЦИЙН ХӨДӨЛГӨӨНИЙ ДЭВТЭР (2026-09-13) ────────────────────────────
+   `products.qty_*` нь ОДООГИЙН тоог л хадгалж, дарж бичигддэг тул «өнгөрсөн
+   сард 120 байсан, одоо 112 — юу болов?» гэдэгт систем хариулж чаддаггүй
+   байв. Тооллогын зөрүүг батлах ч арга байхгүй.
+   `saveProduct` бол нөөц өөрчлөх ЦОРЫН ГАНЦ гарц (12 газраас дуудагдана) —
+   тиймээс дэвтрийг ЗӨВХӨН энд бичнэ. Шинэ зам нэмбэл түүнийг ч энд оруул. */
+const STOCK_MOVES_URL = () => `${DB_URL}/rest/v1/stock_moves`;
+const STOCK_BRANCHES = ['mevent', 'chimun', 'nomaad', 'catering'];
+
+function stockQtySnapshot(p) {
+  const out = {};
+  STOCK_BRANCHES.forEach(b => { out[b] = Number((p || {})['qty_' + b]) || 0; });
+  return out;
+}
+
+// Өмнөх/дараах хоёрыг тулгаж ӨӨРЧЛӨГДСӨН салбар бүрд нэг мөр гаргана.
+// Цэвэр функц — тестээр шалгагдана.
+function stockMoveRows(sku, before, after, meta) {
+  if (!before || !after) return [];
+  const m = meta || {};
+  const rows = [];
+  STOCK_BRANCHES.forEach(b => {
+    const q0 = Number(before[b]) || 0, q1 = Number(after[b]) || 0;
+    if (q0 === q1) return;
+    rows.push({ sku: String(sku || ''), branch: b, delta: q1 - q0,
+      qty_before: q0, qty_after: q1,
+      reason: String(m.reason || 'manual'), ref: m.ref ? String(m.ref) : null,
+      by: String(m.by || ''), note: m.note ? String(m.note) : null });
+  });
+  return rows;
+}
+
+// Дэвтэрт бичих — АРЫН ГҮЙДЭЛД. Бичилт унасан ч барааны хадгалалтыг
+// гацаахгүй (дэвтэр нь аудит, гол гүйлгээ биш).
+function logStockMoves(rows) {
+  if (!rows || !rows.length) return;
+  fetchWithTimeout(STOCK_MOVES_URL(), {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(rows),
+  }, 12000).then(r => { if (!r.ok) console.warn('stock_moves', r.status); })
+    .catch(e => console.warn('stock_moves', e));
+}
+
 async function saveProduct(product) {
   if (!product.sku) product.sku = 'P-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   if (!product.id) product.id = product.sku;
   const idx = state.products.findIndex(p => p.sku === product.sku);
+  // ⚠ Нөөцийн ӨМНӨХ утгыг ЭНД барина — доорх мөр `state.products[idx]`-ыг
+  //   шинэ утгаар нэгтгэдэг тул дараа нь уншвал ШИНЭ тоо гарч, хөдөлгөөн
+  //   үргэлж 0 болно (дэвтэр утгагүй болно).
+  const _qBefore = idx >= 0 ? stockQtySnapshot(state.products[idx]) : null;
   if (idx >= 0) state.products[idx] = { ...state.products[idx], ...product };
   else state.products.unshift(product);
   if (product.cost != null) {
@@ -10350,6 +10400,11 @@ async function saveProduct(product) {
       body: JSON.stringify(row),
     }, 15000);
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    // Нөөц өөрчлөгдсөн бол дэвтэрт бичнэ. Шалтгааныг дуудагч `_moveReason`-оор
+    // өгнө (акт/тооллого/шилжүүлэг); өгөөгүй бол «manual».
+    logStockMoves(stockMoveRows(row.sku, _qBefore,
+      { mevent: _qm, chimun: _qc, nomaad: _qn, catering: _qk },
+      { reason: product._moveReason, ref: product._moveRef, note: product._moveNote, by: state.me || '' }));
     showToast('Бараа хадгалагдлаа', 'success', 1500);
     // ⚠ Тайлан (Дүн шинжилгээ) нь `state.history`-г сесс дундаа кэшлэдэг. Ангилал/нэр
     // зассаны дараа хуучин тоо харагдвал «хадгалагдаагүй» мэт ойлгогдоно — кэшийг
@@ -20491,7 +20546,7 @@ async function woClose(id, status) {
   }
   const p = (state.products || []).find(q => q && q.sku === x.sku)
     || (state.archivedProducts || []).find(q => q && q.sku === x.sku);
-  if (p) { try { await saveProduct({ ...p, ...woDeductQty(p, x.qty) }); } catch (e) { showToast('⚠ Нөөц шинэчлэгдсэнгүй: ' + e.message, 'error', 5000); return; } }
+  if (p) { try { await saveProduct({ ...p, ...woDeductQty(p, x.qty), _moveReason: 'writeoff', _moveRef: String(x.id || '') }); } catch (e) { showToast('⚠ Нөөц шинэчлэгдсэнгүй: ' + e.message, 'error', 5000); return; } }
   x.status = status; x.amount = amount; x.buyer = buyer;
   x.closed_at = new Date().toISOString(); x.closed_by = state.me;
   if (status === 'sold') x.sold_at = x.closed_at;
@@ -20779,6 +20834,42 @@ function renderProducts() {
 }
 
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
+const STOCK_REASON_LABEL = { manual: 'Гараар', count: 'Тооллого', writeoff: 'Акт',
+                             transfer: 'Шилжүүлэг', damage: 'Эвдрэл/засвар', purchase: 'Худалдан авалт' };
+const STOCK_BRANCH_LABEL = { mevent: '🎪 M-Event', chimun: '🏢 Чимун', nomaad: '⛺ NOMAAD', catering: '🍽 Катеринг' };
+
+// Барааны хөдөлгөөний түүхийг картад буулгана (сүүлийн 30).
+async function renderStockMoves(sku, modal) {
+  const el = modal.querySelector('#pm-moves');
+  if (!el || !sku) return;
+  el.innerHTML = '<div class="smv-h">Нөөцийн хөдөлгөөн</div><div class="smv-load">Ачаалж байна…</div>';
+  let rows = [];
+  try {
+    const r = await fetchWithTimeout(
+      `${STOCK_MOVES_URL()}?select=*&sku=eq.${encodeURIComponent(sku)}&order=at.desc&limit=30`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 12000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    rows = await r.json();
+  } catch (e) { dataLoadFailed('renderStockMoves', e); el.innerHTML = '<div class="smv-h">Нөөцийн хөдөлгөөн</div><div class="smv-load">Ачаалж чадсангүй.</div>'; return; }
+  if (!modal.isConnected) return;
+  if (!rows.length) {
+    el.innerHTML = '<div class="smv-h">Нөөцийн хөдөлгөөн</div>'
+      + '<div class="smv-load">Бичлэг алга — энэ бараа 2026-09-13-аас хойш өөрчлөгдөөгүй байна.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="smv-h">Нөөцийн хөдөлгөөн</div><div class="smv-list">'
+    + rows.map(x => {
+        const d = Number(x.delta) || 0;
+        return `<div class="smv-row">
+          <span class="smv-at">${escapeHtml(String(x.at || '').slice(0, 10))}</span>
+          <span class="smv-br">${escapeHtml(STOCK_BRANCH_LABEL[x.branch] || x.branch || '')}</span>
+          <span class="smv-rs">${escapeHtml(STOCK_REASON_LABEL[x.reason] || x.reason || '')}</span>
+          <span class="smv-dl ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>
+          <span class="smv-q">→ ${Number(x.qty_after) || 0}</span>
+        </div>`;
+      }).join('') + '</div>';
+}
+
 function openProductModal(p, opts) {
   const asPkg = !!(opts && opts.asPackage);
   // Хэсэг бүр өөрийн эрхтэй. Шинэ бараа нэмэх нь БҮХ хэсгийг бөглөнө → бүрэн эрх шаардана.
@@ -20933,6 +21024,7 @@ function openProductModal(p, opts) {
         </div>
         <div class="pm-branch-status" id="pm-branch-status"></div>
       </div>
+      ${isEdit ? '<div class="smv" id="pm-moves"></div>' : ''}
       </div>
       <div class="modal-actions" style="margin-top:16px;">
         <button class="btn" id="pm-cancel">Болих</button>
@@ -20940,6 +21032,8 @@ function openProductModal(p, opts) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  // Нөөцийн хөдөлгөөн — картыг нээхийг хүлээлгэхгүй, ард нь ачаална.
+  if (isEdit) renderStockMoves(p && p.sku, modal);
   // ── Меню: 4 хэсэг тус бүр өөрийн эрхтэй. Мөр дарж орно, «‹ Бүх хэсэг» буцна.
   //    Талбаруудын id ХЭВЭЭР тул submitProductModal болон бүх handler
   //    (галерей, багц, салбар, видео) өөрчлөгдөхгүй. ──

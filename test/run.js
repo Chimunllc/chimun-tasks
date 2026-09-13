@@ -8462,3 +8462,46 @@ async function swFetchTests() {
   ok(!/paid_mnt\s*=/.test(fn), 'scan: төлбөрийн мөр paid_mnt-ыг ӨӨРЧЛӨХГҮЙ (дүнгийн эх сурвалж хэвээр)');
   ok(/diff:/.test(fn), 'scan: зөрүүг тооцож ил гаргана');
 }
+
+// ── НӨӨЦИЙН ХӨДӨЛГӨӨНИЙ ДЭВТЭР (2026-09-13) ─────────────────────────────
+{
+  const SNAP = vm.runInContext('stockQtySnapshot', sandbox);
+  const ROWS = vm.runInContext('stockMoveRows', sandbox);
+
+  eq(SNAP({ qty_mevent: 5, qty_chimun: 2 }),
+     { mevent: 5, chimun: 2, nomaad: 0, catering: 0 }, 'нөөц: хормын хуулбар 4 салбартай');
+  eq(SNAP(null), { mevent: 0, chimun: 0, nomaad: 0, catering: 0 }, 'нөөц: хоосон бараа → бүгд 0');
+
+  const before = { mevent: 10, chimun: 5, nomaad: 0, catering: 0 };
+  const after  = { mevent: 8,  chimun: 5, nomaad: 3, catering: 0 };
+  const rows = ROWS('M-001', before, after, { reason: 'count', ref: 'c1', by: '99' });
+  eq(rows.length, 2, 'нөөц: ЗӨВХӨН өөрчлөгдсөн салбар бүртгэгдэнэ');
+  eq(rows.map(r => r.branch), ['mevent', 'nomaad'], 'нөөц: өөрчлөгдсөн салбарууд');
+  eq(rows[0].delta, -2, 'нөөц: хасагдсан нь сөрөг');
+  eq(rows[0].qty_before, 10, 'нөөц: өмнөх утга');
+  eq(rows[0].qty_after, 8, 'нөөц: дараах утга');
+  eq(rows[1].delta, 3, 'нөөц: нэмэгдсэн нь эерэг');
+  eq(rows[0].reason, 'count', 'нөөц: шалтгаан дамжина');
+  eq(rows[0].ref, 'c1', 'нөөц: лавлагаа дамжина');
+  eq(rows[0].sku, 'M-001', 'нөөц: sku бичигдэнэ');
+
+  // Өөрчлөлтгүй бол мөр гарахгүй — дэвтэр хогоор дүүрэхгүй
+  eq(ROWS('M-001', before, before, {}).length, 0, 'нөөц: өөрчлөлтгүй бол мөр АЛГА');
+  // Шалтгаан заагаагүй → manual
+  eq(ROWS('M-1', { mevent: 1 }, { mevent: 2 }, {})[0].reason, 'manual', 'нөөц: шалтгаангүй бол «manual»');
+  // Өмнөх хормын хуулбар байхгүй (шинэ бараа) → бүртгэхгүй
+  eq(ROWS('M-1', null, { mevent: 5 }, {}).length, 0, 'нөөц: өмнөх утгагүй бол бүртгэхгүй (шинэ бараа)');
+}
+
+// scan: өмнөх утгыг state нэгтгэхээс ӨМНӨ барих ёстой.
+// Эс бөгөөс `state.products[idx]` шинэ утгаар дарагдаж, delta ҮРГЭЛЖ 0 болно.
+{
+  const i = src.indexOf('async function saveProduct(');
+  const fn = src.slice(i, i + 900);
+  const snapAt = fn.indexOf('stockQtySnapshot(state.products[idx])');
+  const mergeAt = fn.indexOf('state.products[idx] = { ...state.products[idx], ...product }');
+  ok(snapAt > 0, 'scan: нөөцийн хормын хуулбар авдаг');
+  ok(mergeAt > 0, 'scan: state нэгтгэл олдов');
+  ok(snapAt < mergeAt, 'scan: хормын хуулбар state нэгтгэхээс ӨМНӨ (эс бол delta үргэлж 0)');
+  ok(/logStockMoves\(stockMoveRows/.test(src.slice(i, i + 6000)), 'scan: saveProduct дэвтэрт бичнэ');
+}

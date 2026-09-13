@@ -8385,3 +8385,26 @@ async function swFetchTests() {
   ok(fn.length > 200, 'scan: snd() олдов');
   ok(/confirm\(/.test(fn), 'scan: имэйл илгээхийн өмнө ЗААВАЛ баталгаажуулна');
 }
+
+// Имэйл илгээх суваг нь нэвтрэлтийн токен дамжуулна (2026-09-13).
+// ⚠ Тэр суваг өмнө нь ЯМАР Ч хамгаалалтгүй байсан — гаднаас hello@mevent.mn-ээс
+//   имэйл илгээх боломжтой байв.
+{
+  const ND = vm.runInContext('invoiceDocHtml', sandbox);
+  const NB = vm.runInContext('invoiceBuyer', sandbox);
+  const NT = vm.runInContext('invoiceTotals', sandbox);
+  const ord = { customer: 'Х', items: [], total_mnt: 100000, deposit_mnt: 0, paid_mnt: 0 };
+  const doc = ND({ no: 'НЭХ-1', issuedAt: '2026-09-13', buyer: NB(ord, null), lines: [],
+                   t: NT(ord), org: vm.runInContext('CHIMUN_LEGAL', sandbox),
+                   sendUrl: 'https://x/?key=K', sendTok: 'tok123.sig', to: 'a@b.mn' });
+  ok(doc.indexOf('tok123.sig') > 0, 'нэхэмжлэх: токен баримтад шигтгэгдэнэ');
+  ok(/X-Session-Token/.test(doc), 'нэхэмжлэх: имэйл илгээхэд токен явна');
+}
+// scan: үнийн санал БА нэхэмжлэх хоёул токен илгээнэ — аль нэг нь мартагдвал
+// тэр сувгаар имэйл илгээх боломжгүй болно (сервер тал шалгадаг болсон).
+{
+  const q = src.slice(src.indexOf('async function qSend()'), src.indexOf('async function qSend()') + 2500);
+  ok(q.length > 300, 'scan: qSend олдов');
+  ok(/X-Session-Token/.test(q), 'scan: үнийн санал илгээхэд токен явна');
+  ok(/function sessionTokenForSend\(/.test(src), 'scan: токен уншигч тодорхойлогдсон');
+}

@@ -17719,6 +17719,14 @@ function mnNumToWords(n) {
    Хүснэгт: `db/invoices.sql`. Дугаарыг DB-ийн sequence өгнө (давхцахгүй). */
 const INVOICES_URL = () => `${DB_URL}/rest/v1/invoices`;
 
+/* Тусдаа цонхонд (үнийн санал / нэхэмжлэх) шигтгэх нэвтрэлтийн токен.
+   ⚠ Имэйл илгээх суваг (`mevent-quote-send`) 2026-09-13 хүртэл ЯМАР Ч
+     хамгаалалтгүй байсан — гаднаас hello@mevent.mn-ээс имэйл илгээх
+     боломжтой байв. Одоо сервер тал энэ токеныг шалгана. */
+function sessionTokenForSend() {
+  try { return localStorage.getItem('sessionToken') || ''; } catch (e) { return ''; }
+}
+
 // Худалдан авагч — ГАНЦ дүрэм. Дараалал: захиалгын ⟦CI⟧ токен (тухайн хэлцлийн
 // үед бичсэн) → харилцагчийн бүртгэл → захиалгын түүхий нэр.
 // Байгууллага бол нэр = байгууллага, төлөөлөгч нь тусдаа мөрөнд гарна.
@@ -17882,6 +17890,7 @@ async function issueInvoice(orderId, btn) {
     const doc = invoiceDocHtml({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
                                  buyer, lines, t, org: CHIMUN_LEGAL,
                                  sendUrl: withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL),
+                                 sendTok: sessionTokenForSend(),
                                  to: buyer.email || '' });
     w.document.open(); w.document.write(doc); w.document.close();
     showToast('Нэхэмжлэх ' + no + ' бэлэн ✓', 'success', 2500);
@@ -17962,6 +17971,7 @@ function dl(){
 /* Имэйлээр илгээх — PDF-ийг хавсаргана. ⚠ ЗААВАЛ баталгаажуулна: энэ нь
    харилцагч руу ЖИНХЭНЭ имэйл явуулна, буцаах боломжгүй. */
 var SEND=${JSON.stringify(d.sendUrl || '')};
+var TOK=${JSON.stringify(d.sendTok || '')};
 var TO=${JSON.stringify(d.to || '')};
 var SUBJ=${JSON.stringify('Нэхэмжлэх ' + (d.no || '') + ' · ' + ((d.org && d.org.name) || ''))};
 var BODY=${JSON.stringify(
@@ -17998,7 +18008,7 @@ function snd(){
     .then(function(uri){
       var b64=String(uri).split(',')[1]||'';
       if(!b64)throw new Error('PDF бэлдэгдсэнгүй');
-      return fetch(SEND,{method:'POST',headers:{'Content-Type':'application/json'},
+      return fetch(SEND,{method:'POST',headers:{'Content-Type':'application/json','X-Session-Token':TOK},
         body:JSON.stringify({to:to,subject:SUBJ,body:BODY,filename:FN,pdf_base64:b64,source:'app-invoice'})});
     })
     .then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);
@@ -24390,6 +24400,10 @@ ${T.phone}: 7755-1010 &nbsp;·&nbsp; <a href="https://mevent.mn" style="color:#0
   const js = (v) => JSON.stringify(v).replace(/<\//g, '<\\/');
   // Сервер талаас илгээх — html2pdf-аар PDF base64 болгож webhook руу POST → n8n hello@mevent.mn-ээс имэйлдэнэ.
   const sendUrlWithKey = withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL);
+  // ⚠ Нэвтэрсэн ажилтны токеныг ЭНД шигтгэнэ — popup нь тусдаа баримт бөгөөд
+  //   сервер тал үүнийг шалгадаг болсон (2026-09-13). Өмнө нь энэ суваг ЯМАР Ч
+  //   хамгаалалтгүй байсан тул гаднаас hello@mevent.mn-ээс имэйл илгээх боломжтой байв.
+  const _sendTok = sessionTokenForSend();
   return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Үнийн санал / Quotation — ${escapeHtml(o.customer || '')} #${o.number ?? ''}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap&subset=cyrillic,latin" rel="stylesheet">
@@ -24495,7 +24509,7 @@ async function qSend(){
     await imagesReady(qEl());
     var datauri=await window.html2pdf().set(pdfOpt()).from(qEl()).outputPdf('datauristring');
     var b64=String(datauri).split(',')[1]||'';
-    var res=await fetch(${js(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:to,subject:QD[CUR].subject,body:QD[CUR].body,filename:QD[CUR].fname,pdf_base64:b64,source:'app',lang:CUR})});
+    var res=await fetch(${js(sendUrlWithKey)},{method:'POST',headers:{'Content-Type':'application/json','X-Session-Token':${js(_sendTok)}},body:JSON.stringify({to:to,subject:QD[CUR].subject,body:QD[CUR].body,filename:QD[CUR].fname,pdf_base64:b64,source:'app',lang:CUR})});
     if(!res.ok)throw new Error('HTTP '+res.status);
     alert('✓ Үнийн санал ('+langName+') '+to+' рүү илгээгдлээ.');
     try{if(window.opener)window.opener.postMessage({type:'mev-quote-sent',oid:${js(String(o.id))},amount:${Number(total) || 0},to:to,newMail:newMail,lang:CUR,by:${js((_snd && _snd.name) || state.me || '')}},'*');}catch(_e){}

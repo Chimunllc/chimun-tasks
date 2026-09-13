@@ -17842,12 +17842,20 @@ function _ctDT(s) {
 }
 function _amt(n) { return `${fmtMoney(n)} (${mnNumToWords(n)})`; }
 
-/* Нэхэмжлэх гаргах: DB-д СНАПШОТ бичээд PDF татна.
-   Эхлээд БИЧНЭ, дараа нь PDF — эс бөгөөс дугаар аваагүй баримт харилцагчид
-   очих эрсдэлтэй. Бичилт унавал PDF огт гарахгүй, алдаа ил хэлэгдэнэ. */
+/* Нэхэмжлэх — ШИНЭ ЦОНХОНД харуулна, тэндээсээ татна (үнийн саналтай ижил).
+   ⚠ Урьд нь шууд татдаг байсан: (1) хэрэглэгч юу татсанаа хардаггүй,
+     (2) аппын дотор нуугдмал элементээс рендэрлэдэг тул баримт ТАСАРЧ гардаг.
+   Тусдаа баримт нь аппын CSS-ээс бүрэн тусгаарлагдсан бөгөөд html2pdf нь
+   ХАРАГДАХ элементээс рендэрлэдэг тул `windowWidth` заах шаардлагагүй —
+   CLAUDE.md-д «ажилладаг quote PDF = харагдах popup» гэж тэмдэглэсэн. */
 async function issueInvoice(orderId, btn) {
   const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
   if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  // Цонхыг ДАРАЛТЫН ДОТОР нээнэ — DB-ийн хариу хүлээгээд нээвэл popup blocker хаана.
+  const w = window.open('', '_blank');
+  if (!w) { showToast('Pop-up хаагдсан — зөвшөөрнө үү', 'warn', 4000); return; }
+  w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Нэхэмжлэх…</title></head><body style="font:14px system-ui,sans-serif;color:#4b5563;padding:28px;">Нэхэмжлэх бэлдэж байна…</body></html>');
+  w.document.close();
   const old = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Бэлдэж байна…'; }
   try {
@@ -17869,60 +17877,83 @@ async function issueInvoice(orderId, btn) {
     if (!inv) throw new Error('хариу хоосон');
 
     const no = invoiceNoText(inv.no, inv.issued_at);
-    await invoicePdf({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
-                       buyer, lines, t, org: CHIMUN_LEGAL });
-    showToast('Нэхэмжлэх ' + no + ' татагдлаа ✓', 'success', 3000);
+    const doc = invoiceDocHtml({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
+                                 buyer, lines, t, org: CHIMUN_LEGAL });
+    w.document.open(); w.document.write(doc); w.document.close();
+    showToast('Нэхэмжлэх ' + no + ' бэлэн ✓', 'success', 2500);
   } catch (e) {
+    try {
+      w.document.open();
+      w.document.write('<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8"><title>Алдаа</title></head><body style="font:14px system-ui,sans-serif;color:#b3261e;padding:28px;">Нэхэмжлэх гаргаж чадсангүй: ' + escapeHtml(e.message) + '</body></html>');
+      w.document.close();
+    } catch (_) {}
     showToast('Нэхэмжлэх гаргаж чадсангүй: ' + e.message, 'error', 5000);
   } finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
-/* PDF — тооллогын актын БАТЛАГДСАН хэв маягаар (CLAUDE.md-ийн gotcha):
-   holder нь ЭНГИЙН урсгалд (position:static), `windowWidth` нь элементийн
-   өргөнтэй (794) ЯГ таарна — зөрвөл зүүн тал тасарна. */
-async function invoicePdf(d) {
-  if (!window.html2pdf) {
-    await new Promise((res, rej) => { const sc = document.createElement('script');
-      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-      sc.onload = res; sc.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));
-      document.head.appendChild(sc); });
-  }
-  const cover = document.createElement('div');
-  cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center;color:#111;font-size:15px;';
-  cover.textContent = '📄 Нэхэмжлэх бэлдэж байна…';
-  const holder = document.createElement('div');
-  holder.style.cssText = 'box-sizing:border-box;width:794px;margin:0;background:#fff;color:#111;padding:34px 38px;font-size:12.5px;line-height:1.55;';
-  holder.innerHTML = `<style>
-    h1{font-size:19px;text-align:center;margin:0 0 4px;letter-spacing:1px;}
-    .no{text-align:center;font-size:13px;color:#444;margin-bottom:16px;}
-    .hd{width:100%;border-collapse:collapse;margin-bottom:10px;}
-    .hd .half{width:50%;vertical-align:top;border:1px solid #bbb;padding:8px 10px;font-size:11.5px;line-height:1.6;}
-    .dates{font-size:12px;margin-bottom:12px;}
-    .svc{width:100%;border-collapse:collapse;margin-bottom:12px;}
-    .svc th,.svc td{border:1px solid #bbb;padding:5px 7px;font-size:11.5px;}
-    .svc th{background:#f0f0f0;text-align:left;}
-    .tot{width:100%;border-collapse:collapse;margin-bottom:12px;}
-    .tot td{border:1px solid #bbb;padding:5px 8px;font-size:12px;}
-    .tot .grand td{font-weight:700;background:#f0f0f0;font-size:13px;}
-    .tot .vat td{color:#555;font-size:11px;}
-    .neg td{color:#b3261e;}
-    .rt{text-align:right;white-space:nowrap;} .ctr{text-align:center;} .muted{color:#777;}
-    .words{font-size:12px;margin-bottom:12px;}
-    .pay{font-size:11.5px;border:1px solid #bbb;padding:8px 10px;margin-bottom:26px;line-height:1.7;}
-    .sig{display:flex;gap:28px;margin-top:24px;}
-    .sig div{flex:1;font-size:12px;} .sig i{display:block;border-bottom:1px solid #111;height:26px;}
-    tr{page-break-inside:avoid;}
-  </style>` + invoiceHtml(d);
-  document.body.appendChild(holder);
-  document.body.appendChild(cover);
-  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
-  await new Promise(r => setTimeout(r, 250));
-  const fname = (d.no + ' ' + ((d.buyer && d.buyer.name) || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim() + '.pdf';
-  const opt = { filename: fname, margin: [10, 10, 12, 10], image: { type: 'jpeg', quality: 0.95 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 794 },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
-  try { await window.html2pdf().set(opt).from(holder).save(); }
-  finally { holder.remove(); cover.remove(); }
+/* Бүтэн, БИЕЭ ДААСАН HTML баримт (аппын CSS хүрэхгүй) — цэвэр функц тул
+   тестээр шалгагдана. Дээд талд товчны мөр, доор нь A4 өргөнтэй хуудас. */
+function invoiceDocHtml(d) {
+  const fname = (d.no + ' ' + ((d.buyer && d.buyer.name) || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim();
+  return `<!DOCTYPE html><html lang="mn"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(d.no)}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#e9e9ec;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#111;}
+  .toolbar{position:sticky;top:0;z-index:5;background:#1f2937;padding:10px 14px;display:flex;gap:10px;flex-wrap:wrap;}
+  .toolbar button{border:0;border-radius:7px;padding:9px 15px;font-size:14px;font-weight:600;cursor:pointer;background:#e5e7eb;color:#111;}
+  .toolbar button.main{background:#2563eb;color:#fff;}
+  .wrap{overflow-x:auto;padding:18px 10px 40px;}
+  .sheet{width:794px;min-height:1123px;margin:0 auto;background:#fff;padding:34px 38px;font-size:12.5px;line-height:1.55;box-shadow:0 2px 14px rgba(0,0,0,.18);}
+  h1{font-size:19px;text-align:center;margin:0 0 4px;letter-spacing:1px;}
+  .no{text-align:center;font-size:13px;color:#444;margin-bottom:16px;}
+  .hd{width:100%;border-collapse:collapse;margin-bottom:10px;}
+  .hd .half{width:50%;vertical-align:top;border:1px solid #bbb;padding:8px 10px;font-size:11.5px;line-height:1.6;}
+  .dates{font-size:12px;margin-bottom:12px;}
+  .svc{width:100%;border-collapse:collapse;margin-bottom:12px;}
+  .svc th,.svc td{border:1px solid #bbb;padding:5px 7px;font-size:11.5px;}
+  .svc th{background:#f0f0f0;text-align:left;}
+  .tot{width:100%;border-collapse:collapse;margin-bottom:12px;}
+  .tot td{border:1px solid #bbb;padding:5px 8px;font-size:12px;}
+  .tot .grand td{font-weight:700;background:#f0f0f0;font-size:13px;}
+  .tot .vat td{color:#555;font-size:11px;}
+  .neg td{color:#b3261e;}
+  .rt{text-align:right;white-space:nowrap;} .ctr{text-align:center;} .muted{color:#777;}
+  .words{font-size:12px;margin-bottom:12px;}
+  .pay{font-size:11.5px;border:1px solid #bbb;padding:8px 10px;margin-bottom:26px;line-height:1.7;}
+  .sig{display:flex;gap:28px;margin-top:24px;}
+  .sig div{flex:1;font-size:12px;} .sig i{display:block;border-bottom:1px solid #111;height:26px;}
+  tr{page-break-inside:avoid;}
+  @media print{ .toolbar{display:none;} body{background:#fff;} .wrap{padding:0;overflow:visible;} .sheet{box-shadow:none;margin:0;} }
+</style></head><body>
+<div class="toolbar">
+  <button class="main" onclick="dl()">📄 PDF татах</button>
+  <button onclick="window.print()">🖨 Хэвлэх</button>
+</div>
+<div class="wrap"><div class="sheet" id="sheet">${invoiceHtml(d)}</div></div>
+<script>
+var FN=${JSON.stringify(fname + '.pdf')};
+function h2p(){return new Promise(function(res,rej){if(window.html2pdf)return res();
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+  s.onload=function(){res();};s.onerror=function(){rej(new Error('татаж чадсангүй'));};
+  document.head.appendChild(s);});}
+function dl(){
+  var el=document.getElementById('sheet');
+  h2p().then(function(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):0;})
+    .then(function(){
+      // ⚠ ХАРАГДАХ элементээс рендэрлэж байгаа тул windowWidth заахгүй —
+      //   заавал зааж, элементийн өргөнтэй зөрвөл баримт тасарна.
+      return window.html2pdf().set({filename:FN,margin:[10,10,12,10],
+        image:{type:'jpeg',quality:0.95},
+        html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+        pagebreak:{mode:['css','legacy']}}).from(el).save();
+    })
+    .catch(function(){alert('PDF үүсгэгч татагдсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});
+}
+<\/script></body></html>`;
 }
 
 function nomaadContractHtml(o) {

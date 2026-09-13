@@ -194,6 +194,39 @@
     document.getElementById('cDone').onclick = closeSheet;
     render(document.getElementById('q').value);
   }
+
+  /* ── ӨӨРӨӨ ШИНЭЧЛЭХ ─────────────────────────────────────────────────────
+     Киоск таблет дээр энэ хуудас ӨДРҮҮДЭЭР нээлттэй хэвээр байдаг тул шинэ
+     хувилбар хүрдэггүй байв: 2026-09-13-нд шалгахад 2 хоногийн 43 ирц бүгд
+     ХУУЧИН замаар явсан — хэн ч дахин ачаалаагүй. Энэ хуудас service worker
+     бүртгэдэггүй тул кэшийн хувилбар ч тусалдаггүй.
+     Одоо хуудас өөрөө серверийн ETag-ийг хааяа шалгаж, өөрчлөгдсөн бол
+     ХЭН Ч АЖИЛЛААГҮЙ чимээгүй үед дахин ачаална.
+     ⚠ Ачаалалт нь ЗӨВХӨН сүлжээ ажиллаж, ETag өөр ирсэн үед болно — офлайн
+       үед хуудсыг хэзээ ч хоосон болгохгүй (SW байхгүй тул сэргэхгүй байх эрсдэл). */
+  (function selfUpdate(){
+    var CHECK_MS = 15 * 60 * 1000;   // 15 минут тутам шалгана
+    var IDLE_MS  = 2 * 60 * 1000;    // сүүлийн хүрэлтээс 2 минут өнгөрсөн байх
+    var baseTag = null, lastTouch = Date.now();
+
+    ['click','touchstart','keydown','input'].forEach(function(ev){
+      document.addEventListener(ev, function(){ lastTouch = Date.now(); }, true);
+    });
+    // Хэн нэг нь бүртгүүлж байх үед (баталгаажуулах цонх нээлттэй) БҮҮ ачаал.
+    function idle(){
+      return (Date.now() - lastTouch) > IDLE_MS && !sheet.classList.contains('on');
+    }
+    function tag(){
+      return fetch(location.pathname, { method:'HEAD', cache:'no-store' })
+        .then(function(r){ return r.ok ? (r.headers.get('etag') || r.headers.get('last-modified') || '') : null; })
+        .catch(function(){ return null; });   // офлайн — дараагийн удаа дахин оролдоно
+    }
+    tag().then(function(t){ baseTag = t || null; });
+    setInterval(function(){
+      if (!baseTag || !idle()) return;
+      tag().then(function(t){ if (t && t !== baseTag) location.reload(); });
+    }, CHECK_MS);
+  })();
 })();
 </script>
 </body>

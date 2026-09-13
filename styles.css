@@ -7103,3 +7103,34 @@ select.no-asar-len {
 .buy-cnt, .buy-last { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
 .buy-amt { font-weight: 600; white-space: nowrap; }
 .buy-note { font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+/* Гүйлгээ ↔ бараа холбох (2026-09-13) */
+.buy-tools { display: flex; gap: var(--space-2); align-items: center; }
+.buy-tools .buy-q { flex: 1; }
+.buy-chip { white-space: nowrap; font-size: var(--fs-xs); padding: var(--space-2) var(--space-3); }
+.buy-chip.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+.buy-link-btn { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); white-space: nowrap; }
+.buy-modal { max-width: 560px; }
+.bl-pick { display: flex; gap: var(--space-2); align-items: flex-end; padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.bl-nm { flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-sm); }
+.bl-pick .bl-nm { flex: 1 0 100%; font-weight: 600; }
+.bl-pick .bl-f { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.bl-f span { font-size: var(--fs-xs); color: var(--muted); }
+/* `.modal input{width:100%}` -оос давах тул хоёр класстай — шинэ !important бичихгүй. */
+.bl-pick .bl-in { width: 84px; }
+.bl-pick .bl-amt { width: 118px; }
+.bl-unit { flex: 1 1 120px; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.bl-x { padding: var(--space-1) var(--space-2); margin-left: auto; }
+.bl-sum { font-size: var(--fs-sm); color: var(--muted); padding: var(--space-2) 0; }
+.bl-sum.bad { color: var(--danger); font-weight: 600; }
+.bl-empty { font-size: var(--fs-xs); color: var(--muted); padding: var(--space-2) 0; }
+.bl-res { display: flex; flex-direction: column; gap: var(--space-1); max-height: 240px; overflow-y: auto; }
+.bl-hit { display: block; text-align: left; width: 100%; }
+.bl-hit small { display: block; color: var(--muted); font-size: var(--fs-xs); font-weight: 400; }
+/* Утсанд нийлүүлэгчийн нэр «МӨ…» болж таслагдаж байв — 2 мөр болгоно
+   (огноо·дүн·товч дээд мөрөнд, нэр доор бүтнээр). Одоо байгаа 480px завсрыг ашиглав. */
+@media (max-width: 480px) {
+  .buy-row { flex-wrap: wrap; }
+  .buy-row .buy-nm { flex: 1 1 100%; order: 2; white-space: normal; }
+  .buy-row .buy-amt { margin-left: auto; }
+}

@@ -6761,12 +6761,21 @@ function catLabel(subCode) { const sn = subCatName(subCode); return sn ? `${subC
    банкны хуулгаас ӨӨРӨӨ орж ирдэг (69 мөр · 563сая₮). Зүгээр л харагддаггүй
    байсан. Энэ дэлгэц тэр датаг харуулна — шинэ бичилт ШААРДАХГҮЙ. */
 const PURCHASE_CAT_RE = /^6\d*/;
+/* ⛔ 69xx нь ХӨРӨНГӨ БИШ — эзний зээл (6900), зээлийн үндсэн төлбөр (6950),
+   дотоод шилжүүлэг/буцаалт (6960). Ангиллын нэр өөрөө «(зардал БИШ)» гэж бичсэн.
+   2026-09-13 хүртэл эдгээр худалдан авалтад тоологдож байсан тул дэлгэц 69 мөр ·
+   563сая₮ гэж ХУДЛАА харуулж байв (бодит нь 32 мөр · 103сая₮). `finIsNonExpense`
+   нь энэ дүрмийн ганц эх сурвалж — өөр газар давтаж бүү бич. */
+function purchaseIsAsset(cat) {
+  const c = String(cat || '');
+  return PURCHASE_CAT_RE.test(c) && !finIsNonExpense(c);
+}
 
 // Хөрөнгийн зардлын мөрүүд → худалдан авалтын жагсаалт. Цэвэр функц.
 // ⚠ Устгасан мөр ОРОХГҮЙ; дүн нь `finance.amount`-аас (дахин бодохгүй).
 function purchaseRows(reqs) {
   return (reqs || [])
-    .filter(r => r && PURCHASE_CAT_RE.test(String(r.category || '')) && String(r.status || '') !== 'deleted')
+    .filter(r => r && purchaseIsAsset(r.category) && String(r.status || '') !== 'deleted')
     .map(r => ({
       id: String(r.id || ''),
       date: String(r.requested_at || '').slice(0, 10),
@@ -6802,6 +6811,74 @@ function purchaseByMonth(rows) {
     by.set(m, s);
   });
   return [...by.values()].sort((a, b) => String(b.month).localeCompare(String(a.month)));
+}
+
+/* ─── ХӨРӨНГИЙН ЗАРДЛЫН МӨР ↔ БАРАА (2026-09-13) ─────────────────────────
+   280 барааны 270-ын `cost` ГАРААР бичигдсэн, нийлүүлэгч ердөө 69-д бий —
+   өөрөөр хэлбэл ихэнх өртөг бол ТААМАГ. Бодит баримт (огноо · нийлүүлэгч ·
+   дүн) банкны хуулгаас `finance`-д аль хэдийн ирдэг. Холбоос тавимагц барааны
+   өртөг, авсан огноо, нийлүүлэгч тэр мөрөөс бөглөгдөнө.
+   ⛔ Шинэ хүснэгт ҮГҮЙ — `products.purchase_ref` ганц багана (db/product_purchase_ref.sql). */
+
+// Барааны нийт тоо (бүх салбар). `branchQty` доор тодорхойлогддог тул энд бие даасан.
+function prodTotalQty(p) {
+  return (Number(p && p.qty_chimun) || 0) + (Number(p && p.qty_mevent) || 0)
+       + (Number(p && p.qty_nomaad) || 0) + (Number(p && p.qty_catering) || 0);
+}
+
+// finance.id → тэр гүйлгээгээр авсан бараанууд. Цэвэр функц.
+function purchaseLinkIndex(products) {
+  const by = new Map();
+  (products || []).forEach(p => {
+    const ref = String((p && p.purchase_ref) || '').trim();
+    if (!ref) return;
+    const list = by.get(ref) || [];
+    list.push({ sku: String(p.sku || ''), name: String(p.name || ''), cost: Number(p.cost) || 0, qty: prodTotalQty(p) });
+    by.set(ref, list);
+  });
+  return by;
+}
+
+/* Дүнг бараанууд дээр хуваарилна. НЭГЖ ӨРТӨГ = хуваарилсан дүн ÷ тоо ширхэг.
+   ⚠ Хуваарилалтыг АВТОМАТААР бодохгүй: нэг гүйлгээгээр 3 өөр бараа авсан бол
+     аль нь хэд болохыг зөвхөн хүн мэднэ. Тоогоор хуваавал үнэтэй, хямд барааг
+     ижил өртөгтэй болгож өртгийн дата бүхэлдээ утгагүй болно.
+   Ганц бараа холбовол бүх дүн түүнд очно (цорын ганц эргэлзээгүй тохиолдол). */
+function purchaseAlloc(total, picks) {
+  const amt = Math.max(0, Number(total) || 0);
+  const list = (picks || []).map(p => {
+    const qty = Math.max(0, Math.round(Number(p.qty) || 0));
+    const share = Math.max(0, Number(p.amount) || 0);
+    return { sku: String(p.sku || ''), name: String(p.name || ''), qty, amount: share, unit: qty > 0 ? Math.round(share / qty) : 0 };
+  });
+  const used = list.reduce((s, x) => s + x.amount, 0);
+  return { items: list, total: amt, used, left: amt - used, over: used > amt, noQty: list.some(x => x.qty <= 0) };
+}
+
+/* Холбоосоос барааны талбарууд. Урьд утгыг бүрэн НЭГТГЭЖ өгнө — `saveProduct` нь
+   бүтэн мөр шаарддаг (дутуу объект илгээвэл нэр/үнэ хоосорно).
+   ⚠ `supplier` зөвхөн ХООСОН үед бичигдэнэ: тэр талбар барааны модалын «Гарал
+     үүсэл» (taobao/1688 линк) -ийг ч хадгалдаг тул банкны хүлээн авагчийн нэрээр
+     дарвал эх сурвалжийн линк алга болно. cost/purchase_date нь харин ҮРГЭЛЖ
+     бичигдэнэ — холбосон гүйлгээ бол таамгаас илүү хүчтэй баримт. */
+function purchaseLinkFields(prev, row, item) {
+  const p = prev || {};
+  const out = { ...p, purchase_ref: String((row && row.id) || '') };
+  if (item && Number(item.unit) > 0) out.cost = Number(item.unit);
+  if (row && row.date) out.purchase_date = String(row.date).slice(0, 10);
+  if (!String(p.supplier || '').trim() && row && row.supplier) out.supplier = String(row.supplier);
+  return out;
+}
+
+// Холбоос салгах — өртөг/огноо нь ҮЛДЭНЭ (устгавал дата алдагдана), зөвхөн заалт тасарна.
+function purchaseUnlinkFields(prev) { return { ...(prev || {}), purchase_ref: null }; }
+
+// Хэдэн гүйлгээ бараатай холбогдсон бэ (дэвшлийн хэмжүүр).
+function purchaseLinkStats(rows, index) {
+  const idx = index || new Map();
+  let linked = 0;
+  (rows || []).forEach(r => { if ((idx.get(String(r.id)) || []).length) linked++; });
+  return { linked, total: (rows || []).length };
 }
 function mainCatOptions(sel) { return '<option value="">— үндсэн ангилал —</option>' + (FINANCE_MAIN_CATEGORIES || []).map(m => `<option value="${m.code}"${m.code === sel ? ' selected' : ''}>${m.code} ${escapeHtml(m.name)}</option>`).join(''); }
 function subCatOptions(mainCode, sel) { const subs = FINANCE_SUB_CATEGORIES[mainCode] || []; return '<option value="">— дэд ангилал —</option>' + subs.map(s => `<option value="${s.code}"${s.code === sel ? ' selected' : ''}>${s.code} ${escapeHtml(s.name)}</option>`).join(''); }
@@ -9847,6 +9924,7 @@ async function loadProductsCatalog() {
       state._prodHasMarketValue = rows.length ? ('market_value' in rows[0]) : true;
       state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
       state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
+      state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -10436,6 +10514,7 @@ async function saveProduct(product) {
   if (product.code) row.code = product.code;   // барааны нүүр код M-xxx
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
+  if (product.purchase_ref !== undefined && state._prodHasPurchaseRef !== false) row.purchase_ref = product.purchase_ref || null;   // холбосон хөрөнгийн зардлын мөр
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
@@ -20548,10 +20627,13 @@ function renderPurchases() {
     return '<div class="buy-load">Ачаалж байна…</div>';
   }
   const all = purchaseRows(state.financeRequests);
+  const link = purchaseLinkIndex(state.products);
+  const lst = purchaseLinkStats(all, link);
   const q = String(state._buyQ || '').trim().toLowerCase();
-  const rows = q
+  let rows = q
     ? all.filter(r => [r.supplier, r.purpose, r.category].some(v => String(v).toLowerCase().includes(q)))
     : all;
+  if (state._buyUnlinked) rows = rows.filter(r => !(link.get(String(r.id)) || []).length);
   const sup = supplierSummary(all);
   const months = purchaseByMonth(all).slice(0, 6);
   const total = all.reduce((s, r) => s + r.amount, 0);
@@ -20562,6 +20644,7 @@ function renderPurchases() {
       ${kpi('Худалдан авалт', all.length)}
       ${kpi('Нийт дүн', fmtMoney(total))}
       ${kpi('Нийлүүлэгч', sup.length)}
+      ${kpi('Бараатай холбосон', `${lst.linked} / ${lst.total}`)}
     </div>
 
     <div class="buy-sec">Сараар</div>
@@ -20578,17 +20661,32 @@ function renderPurchases() {
       <span class="buy-amt">${escapeHtml(fmtMoney(s.total))}</span></div>`).join('') || '<div class="buy-load">Дата алга.</div>'}</div>
 
     <div class="buy-sec">Гүйлгээ</div>
-    <input id="buy-q" class="ui-raw buy-q" type="search" placeholder="Нийлүүлэгч, зорилго, ангилал…" value="${escapeHtml(state._buyQ || '')}">
-    <div class="buy-list">${rows.slice(0, 200).map(r => `<div class="buy-row">
+    <div class="buy-tools">
+      <input id="buy-q" class="ui-raw buy-q" type="search" placeholder="Нийлүүлэгч, зорилго, ангилал…" value="${escapeHtml(state._buyQ || '')}">
+      <button class="btn buy-chip${state._buyUnlinked ? ' on' : ''}" id="buy-unlinked">Холбоогүй</button>
+    </div>
+    <div class="buy-list">${rows.slice(0, 200).map(r => {
+      const li = link.get(String(r.id)) || [];
+      return `<div class="buy-row">
       <span class="buy-date">${escapeHtml(r.date)}</span>
-      <span class="buy-nm">${escapeHtml(r.supplier || '—')}<small>${escapeHtml(r.purpose || catLabel(r.category))}</small></span>
-      <span class="buy-amt">${escapeHtml(fmtMoney(r.amount))}</span></div>`).join('') || '<div class="buy-load">Олдсонгүй.</div>'}</div>
+      <span class="buy-nm">${escapeHtml(r.supplier || '—')}<small>${li.length
+        ? '📦 ' + escapeHtml(li.map(x => x.name || x.sku).join(', '))
+        : escapeHtml(r.purpose || catLabel(r.category))}</small></span>
+      <span class="buy-amt">${escapeHtml(fmtMoney(r.amount))}</span>
+      <button class="btn buy-link-btn" data-buy-link="${escapeHtml(r.id)}">${li.length ? '🔗 ' + li.length : '＋ Бараа'}</button></div>`;
+    }).join('') || '<div class="buy-load">Олдсонгүй.</div>'}</div>
     ${rows.length > 200 ? `<div class="buy-note">Эхний 200 мөр харагдаж байна (нийт ${rows.length}).</div>` : ''}
-    <div class="buy-note">Энэ жагсаалт нь <b>хөрөнгийн зардлын мөрүүд</b> (ангилал 6xxx) — банкны хуулгаас өөрөө орж ирдэг. Гараар бичих зүйл алга.</div>
+    <div class="buy-note">Энэ жагсаалт нь <b>хөрөнгийн зардлын мөрүүд</b> (ангилал 6100-6600) — банкны хуулгаас өөрөө орж ирдэг. Гараар бичих зүйл алга. <b>Эзний зээл, зээлийн төлбөр (69xx) энд ОРОХГҮЙ</b> — тэдгээр нь хөрөнгө биш.</div>
+    <div class="buy-note">Гүйлгээг бараатай холбовол тэр барааны <b>өртөг, авсан огноо, нийлүүлэгч</b> энэ мөрөөс бөглөгдөнө — гараар таамаглахаа болино.</div>
   </div>`;
 }
 
 function attachPurchasesHandlers() {
+  document.querySelectorAll('[data-buy-link]').forEach(el => {
+    el.addEventListener('click', () => openPurchaseLink(el.dataset.buyLink));
+  });
+  const un = document.getElementById('buy-unlinked');
+  if (un) un.addEventListener('click', () => { state._buyUnlinked = !state._buyUnlinked; render(); });
   const q = document.getElementById('buy-q');
   if (!q) return;
   q.addEventListener('input', () => {
@@ -20600,6 +20698,102 @@ function attachPurchasesHandlers() {
       if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
     }, 180);
   });
+}
+
+/* Гүйлгээг бараатай холбох цонх. Хадгалалт нь `saveProduct`-аар явна — нөөцийн
+   дэвтэр, кэш, бүх шалгуур тэнд аль хэдийн бий (тусад нь бичих зам гаргахгүй). */
+async function openPurchaseLink(id) {
+  const row = purchaseRows(state.financeRequests).find(r => String(r.id) === String(id));
+  if (!row) return;
+  if (!state.products || !state.products.length) { await loadProductsCatalog(); }
+  const linked = (purchaseLinkIndex(state.products).get(String(row.id)) || []);
+  // Ажлын хуулбар: [{sku, name, qty, amount}]. Цонх хаагдтал DB рүү юу ч бичихгүй.
+  let picks = linked.map(x => ({ sku: x.sku, name: x.name, qty: x.qty || 1, amount: (x.cost || 0) * (x.qty || 1) }));
+  const started = picks.map(p => p.sku);
+
+  const modal = document.createElement('div'); modal.className = 'modal-bg';
+  modal.innerHTML = `<div class="modal buy-modal">
+    <h2>🔗 Бараатай холбох</h2>
+    <p class="amo-hint">${escapeHtml(row.date)} · ${escapeHtml(row.supplier || '—')} · <b>${escapeHtml(fmtMoney(row.amount))}</b><br>
+      ${escapeHtml(row.purpose || '')}</p>
+    <div id="bl-picks"></div>
+    <label class="fld">Бараа нэмэх<input id="bl-q" class="ui-raw" type="search" placeholder="Барааны нэр, код…" autocomplete="off"></label>
+    <div id="bl-res" class="bl-res"></div>
+    <div class="modal-actions"><button class="btn" id="bl-cancel">Болих</button><button class="btn btn-primary" id="bl-save">Хадгалах</button></div>
+  </div>`;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector('#bl-cancel').onclick = close;
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+  const drawPicks = () => {
+    const a = purchaseAlloc(row.amount, picks);
+    const box = modal.querySelector('#bl-picks');
+    box.innerHTML = a.items.length ? a.items.map((x, i) => `<div class="bl-pick">
+      <span class="bl-nm">${escapeHtml(x.name || x.sku)}</span>
+      <label class="bl-f"><span>тоо</span><input class="ui-raw bl-in" type="number" min="1" step="1" data-bl-qty="${i}" value="${x.qty}"></label>
+      <label class="bl-f"><span>дүн ₮</span><input class="ui-raw bl-in bl-amt" type="number" min="0" step="1000" data-bl-amt="${i}" value="${x.amount}"></label>
+      <span class="bl-unit">${x.unit > 0 ? 'нэгж ' + escapeHtml(fmtMoney(x.unit)) : 'нэгж өртөг —'}</span>
+      <button class="btn bl-x" data-bl-del="${i}">✕</button></div>`).join('')
+      + `<div class="bl-sum${a.over ? ' bad' : ''}">Хуваарилсан ${escapeHtml(fmtMoney(a.used))} · ${a.over ? 'ХЭТЭРСЭН ' + escapeHtml(fmtMoney(-a.left)) : 'үлдсэн ' + escapeHtml(fmtMoney(a.left))}</div>`
+      : '<div class="bl-empty">Бараа сонгоогүй байна. Доороос хайж нэмнэ үү.</div>';
+    box.querySelectorAll('[data-bl-qty]').forEach(el => el.oninput = () => { picks[+el.dataset.blQty].qty = Math.max(1, Math.round(Number(el.value) || 1)); drawUnit(); });
+    box.querySelectorAll('[data-bl-amt]').forEach(el => el.oninput = () => { picks[+el.dataset.blAmt].amount = Math.max(0, Number(el.value) || 0); drawUnit(); });
+    box.querySelectorAll('[data-bl-del]').forEach(el => el.onclick = () => { picks.splice(+el.dataset.blDel, 1); drawPicks(); });
+  };
+  // Тоо/дүн бичих бүрд бүтнээр дахин зурвал курсор үсэрнэ — зөвхөн нэгж өртөг, нийлбэрийг шинэчилнэ.
+  const drawUnit = () => {
+    const a = purchaseAlloc(row.amount, picks);
+    modal.querySelectorAll('.bl-unit').forEach((el, i) => { el.textContent = a.items[i] && a.items[i].unit > 0 ? 'нэгж ' + fmtMoney(a.items[i].unit) : 'нэгж өртөг —'; });
+    const sum = modal.querySelector('.bl-sum');
+    if (sum) { sum.textContent = `Хуваарилсан ${fmtMoney(a.used)} · ${a.over ? 'ХЭТЭРСЭН ' + fmtMoney(-a.left) : 'үлдсэн ' + fmtMoney(a.left)}`; sum.classList.toggle('bad', a.over); }
+  };
+
+  const search = () => {
+    const q = String(modal.querySelector('#bl-q').value || '').trim().toLowerCase();
+    const res = modal.querySelector('#bl-res');
+    if (q.length < 2) { res.innerHTML = ''; return; }
+    const have = new Set(picks.map(p => p.sku));
+    const hits = (state.products || []).filter(p => p && !have.has(p.sku)
+      && [p.name, p.code, p.sku].some(v => String(v || '').toLowerCase().includes(q))).slice(0, 12);
+    res.innerHTML = hits.length ? hits.map(p => `<button class="btn bl-hit" data-bl-add="${escapeHtml(p.sku)}">
+      <span class="bl-nm">${escapeHtml(p.name || p.sku)}</span>
+      <small>${escapeHtml(String(p.code || ''))} · ${prodTotalQty(p)}ш${Number(p.cost) > 0 ? ' · одоо ' + escapeHtml(fmtMoney(Number(p.cost))) + '/ш' : ' · өртөг алга'}</small></button>`).join('')
+      : '<div class="bl-empty">Олдсонгүй.</div>';
+    res.querySelectorAll('[data-bl-add]').forEach(el => el.onclick = () => {
+      const p = (state.products || []).find(x => x.sku === el.dataset.blAdd); if (!p) return;
+      const a = purchaseAlloc(row.amount, picks);
+      // Эхний бараанд бүх дүн, дараагийнханд үлдсэнийг санал болгоно — хүн засаж болно.
+      picks.push({ sku: p.sku, name: p.name || p.sku, qty: Math.max(1, prodTotalQty(p)), amount: Math.max(0, a.left) });
+      modal.querySelector('#bl-q').value = ''; res.innerHTML = ''; drawPicks();
+    });
+  };
+  modal.querySelector('#bl-q').addEventListener('input', () => { clearTimeout(state._blQT); state._blQT = setTimeout(search, 150); });
+  drawPicks();
+
+  modal.querySelector('#bl-save').onclick = async (ev) => {
+    const btn = ev.currentTarget;
+    const a = purchaseAlloc(row.amount, picks);
+    if (a.over) { showToast('Хуваарилсан дүн гүйлгээнээс их байна', 'warn', 3000); return; }
+    if (a.noQty) { showToast('Тоо ширхэг 0 байж болохгүй', 'warn', 3000); return; }
+    btn.disabled = true;
+    const now = new Set(a.items.map(x => x.sku));
+    let ok = 0, fail = 0;
+    for (const it of a.items) {
+      const prev = (state.products || []).find(p => p.sku === it.sku); if (!prev) continue;
+      try { await saveProduct(purchaseLinkFields(prev, row, it)); ok++; } catch (e) { fail++; }
+    }
+    for (const sku of started) {          // цонхноос хассан барааны холбоос салгана
+      if (now.has(sku)) continue;
+      const prev = (state.products || []).find(p => p.sku === sku); if (!prev) continue;
+      try { await saveProduct(purchaseUnlinkFields(prev)); } catch (e) { fail++; }
+    }
+    close();
+    showToast(fail ? `⚠ ${ok} хадгалж, ${fail} амжилтгүй` : (ok ? `🔗 ${ok} бараа холбов` : 'Холбоос салгав'), fail ? 'error' : 'success', fail ? 5000 : 2500);
+    render();
+  };
+  requestAnimationFrame(() => modal.classList.add('open'));
+  setTimeout(() => { try { modal.querySelector('#bl-q').focus(); } catch (_) {} }, 60);
 }
 
 function canSeeWriteoff() { return canAccessView('writeoff', () => !!state.isCEO || can('products.stock')); }
@@ -21107,6 +21301,12 @@ function openProductModal(p, opts) {
         <label>Зах зээлийн үнэлгээ (₮) <span class="pm-hint">— гэрээнд нөхөн төлбөрийн дүн болно</span><input id="pm-market" type="text" inputmode="numeric" class="money-input" value="${moneyFmtInput((p && p.market_value) || 0)}"></label>
         <label>📅 Худалдан авсан огноо${p && p.purchase_date && productAge(p.purchase_date) ? ` <span style="color:var(--muted);font-weight:400;">(${productAge(p.purchase_date)} ашигласан)</span>` : ''}<input id="pm-purchase" type="date" value="${escapeHtml(String((p && p.purchase_date) || '').slice(0, 10))}"></label>
         </div>
+        ${(() => {   // Холбосон хөрөнгийн зардлын мөр — өртөг/огноо хаанаас гарсны БАРИМТ
+          const ref = String((p && p.purchase_ref) || '').trim(); if (!ref) return '';
+          const br = purchaseRows(state.financeRequests).find(r => String(r.id) === ref);
+          return br ? `<div class="pm-hint">🔗 Худалдан авалт: <b>${escapeHtml(br.date)}</b> · ${escapeHtml(br.supplier || '—')} · ${escapeHtml(fmtMoney(br.amount))}<br>Өртөг, огноо, нийлүүлэгч энэ банкны мөрөөс бөглөгдсөн.</div>`
+                    : '<div class="pm-hint">🔗 Холбосон худалдан авалтын мөр олдсонгүй (санхүүгийн бүртгэл ачаалагдаагүй байж болно).</div>';
+        })()}
         ${isEdit && !_isPkg0 && !asPkg ? `<div class="pm-buy">
           <button type="button" class="btn ui-raw pm-buy-open" id="pm-buy-open">+ Нэмж авсан</button>
           <div class="pm-buy-form" id="pm-buy-form" hidden>

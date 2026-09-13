@@ -9329,6 +9329,7 @@ function attachOrdersHandlers() {
   document.querySelectorAll('[data-app-del]').forEach(b => b.addEventListener('click', () => cancelOrderWithReason(b.dataset.appDel)));
   document.querySelectorAll('[data-app-contract]').forEach(b => b.addEventListener('click', () => openMeventContract(b.dataset.appContract)));
   document.querySelectorAll('[data-app-quote]').forEach(b => b.addEventListener('click', () => openOrderQuote(b.dataset.appQuote)));
+  document.querySelectorAll('[data-app-invoice]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); issueInvoice(b.dataset.appInvoice, b); }));
   document.querySelectorAll('[data-app-damage]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderDamageModal(b.dataset.appDamage); }));
   document.querySelectorAll('[data-app-refund]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openRefundModal(b.dataset.appRefund); }));
   document.querySelectorAll('[data-app-cmp]').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); openOrderCmpModal(b.dataset.appCmp); }));
@@ -17711,6 +17712,128 @@ function mnNumToWords(n) {
   if (rem) out.push(_mnTriad(rem));
   return out.join(' ');
 }
+/* ─── НЭХЭМЖЛЭХ (invoices) ───────────────────────────────────────────────
+   Апп үнийн санал ба гэрээ гаргадаг ч НЭХЭМЖЛЭХ гаргаж чаддаггүй байв.
+   ⚠ Энэ нь НӨАТ-ын баримт БИШ — татварын баримт (e-barimt) тусдаа системээр
+     гарна (`vat_receipts`). Энэ бол ТӨЛБӨРИЙН нэхэмжлэх.
+   Хүснэгт: `db/invoices.sql`. Дугаарыг DB-ийн sequence өгнө (давхцахгүй). */
+const INVOICES_URL = () => `${DB_URL}/rest/v1/invoices`;
+
+// Худалдан авагч — ГАНЦ дүрэм. Дараалал: захиалгын ⟦CI⟧ токен (тухайн хэлцлийн
+// үед бичсэн) → харилцагчийн бүртгэл → захиалгын түүхий нэр.
+// Байгууллага бол нэр = байгууллага, төлөөлөгч нь тусдаа мөрөнд гарна.
+function invoiceBuyer(o, customer) {
+  const ci = (typeof custInfoOf === 'function' ? custInfoOf(o && o.note) : null) || {};
+  const c = customer || {};
+  const org = String(ci.company || c.company || '').trim();
+  const person = String((o && o.customer) || c.name || '').trim();
+  return {
+    name: org || person || '—',
+    person: (org && person && org.toLowerCase() !== person.toLowerCase()) ? person : '',
+    reg: String(ci.reg || c.rd || '').trim(),
+    phone: String((o && o.phone) || c.phone || '').trim(),
+    email: String((o && o.email) || c.email || '').trim(),
+    address: String((o && o.delivery_address) || c.address || '').trim(),
+    isOrg: !!org,
+  };
+}
+
+// Дүн — `orderMoneyBreakdown` -оос Л гарна. ⚠ Энд дахин БҮҮ бод: үнийн санал,
+// гэрээ, карт бүгд тэр функцээс уншдаг тул зөрвөл харилцагч 2 өөр тоо харна.
+// `hasVat` = НӨАТ-ын 5% хөнгөлөлт хийгдсэн → үнэд НӨАТ БАГТААГҮЙ гэсэн үг.
+function invoiceTotals(o) {
+  const B = orderMoneyBreakdown(o || {});
+  const paid = Number((o && o.paid_mnt) || 0);
+  return {
+    subtotal: B.subtotal, discount: B.discount,
+    delivFee: B.delivFee, delivLbl: B.delivLbl, offFee: B.offFee, setupFee: B.setupFee,
+    rental: B.rentalNet, deposit: B.deposit, total: B.total,
+    vatIncluded: !B.hasVat,
+    vat: B.hasVat ? 0 : B.vat,
+    paid, due: Math.max(0, B.total - paid),
+    days: B.days,
+  };
+}
+
+// Нэхэмжлэхийн мөрүүд — гэрээнийхтэй ЯГ ИЖИЛ бодолт (нэгж үнэ × тоо × хоног).
+function invoiceLines(o) {
+  const days = (typeof orderRentalDays === 'function') ? orderRentalDays(o || {}) : 1;
+  const qty = it => Number(it && (it.qty != null ? it.qty : it.quantity)) || 0;
+  const price = it => Number(it && (it.price != null ? it.price : it.unit_price)) || 0;
+  return ((o && o.items) || []).map(it => ({
+    name: String((it && it.name) || ''),
+    qty: qty(it), days,
+    price: price(it),
+    total: Number(it && it.total) || price(it) * qty(it) * days,
+  }));
+}
+
+// «НЭХ-2026-0007» — жил + 4 оронтой дугаар. Дугаар нь DB sequence-ээс.
+function invoiceNoText(no, issuedAt) {
+  const y = String(issuedAt || '').slice(0, 4) || String(new Date().getFullYear());
+  return 'НЭХ-' + y + '-' + String(Number(no) || 0).padStart(4, '0');
+}
+
+// Нэхэмжлэхийн HTML — ЦЭВЭР функц (DOM хэрэггүй) тул тестээр шалгагдана.
+// d = { no, issuedAt, dueAt, orderNo, buyer, lines, t, org }
+function invoiceHtml(d) {
+  const e = (s) => escapeHtml(s == null ? '' : String(s));
+  const m = (n) => fmtMoney(Number(n) || 0);
+  const org = d.org || {}, b = d.buyer || {}, t = d.t || {};
+  const row = (l, v, cls) => `<tr class="${cls || ''}"><td>${e(l)}</td><td class="rt">${m(v)}</td></tr>`;
+  const lines = (d.lines || []).length
+    ? (d.lines || []).map((l, i) => `<tr><td class="ctr">${i + 1}</td><td>${e(l.name)}</td>` +
+        `<td class="ctr">${Number(l.qty) || 0}</td><td class="ctr">${Number(l.days) || 0} хоног</td>` +
+        `<td class="rt">${m(l.total)}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="ctr muted">(Захиалгад бараа оруулаагүй)</td></tr>';
+
+  return `
+  <h1>НЭХЭМЖЛЭХ</h1>
+  <div class="no">${e(d.no)}${d.orderNo ? ' · Захиалга №' + e(d.orderNo) : ''}</div>
+  <table class="hd"><tr>
+    <td class="half">
+      <b>Нэхэмжлэгч</b><br>
+      ${e(org.name)}<br>Регистр: ${e(org.reg)}<br>${e(org.address)}<br>
+      ${e(org.bank)} · ${e(org.account)}
+    </td>
+    <td class="half">
+      <b>Төлөгч</b><br>
+      ${e(b.name)}<br>
+      ${b.person ? 'Төлөөлөгч: ' + e(b.person) + '<br>' : ''}
+      ${b.reg ? 'Регистр: ' + e(b.reg) + '<br>' : ''}
+      ${b.phone ? 'Утас: ' + e(b.phone) + '<br>' : ''}
+      ${b.address ? e(b.address) : ''}
+    </td>
+  </tr></table>
+  <div class="dates">Огноо: ${e(d.issuedAt)}${d.dueAt ? ' · Төлөх хугацаа: ' + e(d.dueAt) : ''}</div>
+
+  <table class="svc">
+    <tr><th class="ctr">№</th><th>Бараа / Үйлчилгээ</th><th class="ctr">Тоо</th><th class="ctr">Хугацаа</th><th class="rt">Дүн</th></tr>
+    ${lines}
+  </table>
+
+  <table class="tot"><tbody>
+    ${row('Түрээсийн дүн', t.subtotal)}
+    ${Number(t.discount) > 0 ? row('Хөнгөлөлт', -Number(t.discount), 'neg') : ''}
+    ${Number(t.delivFee) > 0 ? row('Хүргэлт' + (t.delivLbl ? ' (' + t.delivLbl + ')' : ''), t.delivFee) : ''}
+    ${Number(t.offFee) > 0 ? row('Ажлын бус цагийн төлбөр', t.offFee) : ''}
+    ${Number(t.setupFee) > 0 ? row('Суурилуулалт', t.setupFee) : ''}
+    ${t.vatIncluded
+      ? `<tr class="vat"><td>Үүнээс НӨАТ (10%, үнэд багтсан)</td><td class="rt">${m(t.vat)}</td></tr>`
+      : '<tr class="vat"><td colspan="2">НӨАТ багтаагүй</td></tr>'}
+    ${Number(t.deposit) > 0 ? row('Барьцаа (буцаагдана)', t.deposit) : ''}
+    <tr class="grand"><td>НИЙТ ТӨЛӨХ</td><td class="rt">${m(t.total)}</td></tr>
+    ${Number(t.paid) > 0 ? row('Төлсөн', -Number(t.paid), 'neg') : ''}
+    ${Number(t.paid) > 0 ? `<tr class="grand"><td>ҮЛДЭГДЭЛ</td><td class="rt">${m(t.due)}</td></tr>` : ''}
+  </tbody></table>
+
+  <div class="words">Дүн үсгээр: <b>${e(mnNumToWords(Number(t.due) > 0 ? t.due : t.total))} төгрөг</b></div>
+  <div class="pay">Төлбөрийг дараах данс руу шилжүүлнэ үү:<br>
+    <b>${e(org.bank)} · ${e(org.account)}</b> · Хүлээн авагч: ${e(org.name)}<br>
+    Гүйлгээний утга: <b>${e(d.no)}</b></div>
+  <div class="sig"><div>Нэхэмжлэгч: ${e(org.director)}<i></i></div><div>Хүлээн авсан:<i></i></div></div>`;
+}
+
 // "2026-07-03T09:00" / "2026-07-05 08:19" → {y, mo, d, time}
 function _ctDT(s) {
   const m = String(s || '').match(/(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2}))?/);
@@ -17718,6 +17841,89 @@ function _ctDT(s) {
   return { y: m[1], mo: String(+m[2]), d: String(+m[3]), time: m[4] != null ? (m[4].padStart(2, '0') + ':' + m[5]) : '……' };
 }
 function _amt(n) { return `${fmtMoney(n)} (${mnNumToWords(n)})`; }
+
+/* Нэхэмжлэх гаргах: DB-д СНАПШОТ бичээд PDF татна.
+   Эхлээд БИЧНЭ, дараа нь PDF — эс бөгөөс дугаар аваагүй баримт харилцагчид
+   очих эрсдэлтэй. Бичилт унавал PDF огт гарахгүй, алдаа ил хэлэгдэнэ. */
+async function issueInvoice(orderId, btn) {
+  const o = (state.appOrders || []).find(x => String(x.id) === String(orderId));
+  if (!o) { showToast('Захиалга олдсонгүй', 'error'); return; }
+  const old = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Бэлдэж байна…'; }
+  try {
+    const cust = (state.customers || []).find(c => String(c.id) === String(o.customer_id)) || null;
+    const buyer = invoiceBuyer(o, cust);
+    const lines = invoiceLines(o);
+    const t = invoiceTotals(o);
+
+    const H = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+                'Content-Type': 'application/json', Prefer: 'return=representation' };
+    const r = await fetchWithTimeout(INVOICES_URL(), { method: 'POST', headers: H, body: JSON.stringify({
+      order_id: String(o.id), order_no: Number(o.number) || null,
+      customer_id: o.customer_id || null,
+      buyer, lines, totals: t, total: t.total,
+      created_by: state.me || '',
+    }) }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const inv = (await r.json())[0];
+    if (!inv) throw new Error('хариу хоосон');
+
+    const no = invoiceNoText(inv.no, inv.issued_at);
+    await invoicePdf({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
+                       buyer, lines, t, org: CHIMUN_LEGAL });
+    showToast('Нэхэмжлэх ' + no + ' татагдлаа ✓', 'success', 3000);
+  } catch (e) {
+    showToast('Нэхэмжлэх гаргаж чадсангүй: ' + e.message, 'error', 5000);
+  } finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+/* PDF — тооллогын актын БАТЛАГДСАН хэв маягаар (CLAUDE.md-ийн gotcha):
+   holder нь ЭНГИЙН урсгалд (position:static), `windowWidth` нь элементийн
+   өргөнтэй (794) ЯГ таарна — зөрвөл зүүн тал тасарна. */
+async function invoicePdf(d) {
+  if (!window.html2pdf) {
+    await new Promise((res, rej) => { const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      sc.onload = res; sc.onerror = () => rej(new Error('PDF үүсгэгч татаж чадсангүй — интернэт шалгана уу'));
+      document.head.appendChild(sc); });
+  }
+  const cover = document.createElement('div');
+  cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center;color:#111;font-size:15px;';
+  cover.textContent = '📄 Нэхэмжлэх бэлдэж байна…';
+  const holder = document.createElement('div');
+  holder.style.cssText = 'box-sizing:border-box;width:794px;margin:0;background:#fff;color:#111;padding:34px 38px;font-size:12.5px;line-height:1.55;';
+  holder.innerHTML = `<style>
+    h1{font-size:19px;text-align:center;margin:0 0 4px;letter-spacing:1px;}
+    .no{text-align:center;font-size:13px;color:#444;margin-bottom:16px;}
+    .hd{width:100%;border-collapse:collapse;margin-bottom:10px;}
+    .hd .half{width:50%;vertical-align:top;border:1px solid #bbb;padding:8px 10px;font-size:11.5px;line-height:1.6;}
+    .dates{font-size:12px;margin-bottom:12px;}
+    .svc{width:100%;border-collapse:collapse;margin-bottom:12px;}
+    .svc th,.svc td{border:1px solid #bbb;padding:5px 7px;font-size:11.5px;}
+    .svc th{background:#f0f0f0;text-align:left;}
+    .tot{width:100%;border-collapse:collapse;margin-bottom:12px;}
+    .tot td{border:1px solid #bbb;padding:5px 8px;font-size:12px;}
+    .tot .grand td{font-weight:700;background:#f0f0f0;font-size:13px;}
+    .tot .vat td{color:#555;font-size:11px;}
+    .neg td{color:#b3261e;}
+    .rt{text-align:right;white-space:nowrap;} .ctr{text-align:center;} .muted{color:#777;}
+    .words{font-size:12px;margin-bottom:12px;}
+    .pay{font-size:11.5px;border:1px solid #bbb;padding:8px 10px;margin-bottom:26px;line-height:1.7;}
+    .sig{display:flex;gap:28px;margin-top:24px;}
+    .sig div{flex:1;font-size:12px;} .sig i{display:block;border-bottom:1px solid #111;height:26px;}
+    tr{page-break-inside:avoid;}
+  </style>` + invoiceHtml(d);
+  document.body.appendChild(holder);
+  document.body.appendChild(cover);
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+  await new Promise(r => setTimeout(r, 250));
+  const fname = (d.no + ' ' + ((d.buyer && d.buyer.name) || '')).replace(/[^0-9A-Za-zА-Яа-яӨҮЁөүё \-]/g, '').replace(/\s+/g, ' ').trim() + '.pdf';
+  const opt = { filename: fname, margin: [10, 10, 12, 10], image: { type: 'jpeg', quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 794 },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'] } };
+  try { await window.html2pdf().set(opt).from(holder).save(); }
+  finally { holder.remove(); cover.remove(); }
+}
 
 function nomaadContractHtml(o) {
   const C = CHIMUN_LEGAL;
@@ -23334,7 +23540,7 @@ function bqOrderCard(o) {
     ? `<button class="btn${!advOk ? ' btn-disabled' : (appBal > 0 ? '' : ' btn-primary')}" ${advOk ? `data-bq-advance="${id}" data-to="${next.to}" data-cap="${advCap}"` : 'disabled title="Танд энэ шатны эрх олгогдоогүй"'} style="padding:5px 13px;font-size:12px;">${next.label}</button>`
     : '';
   const foot = isApp
-    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${cxHtml}</div>`
+    ? `<div class="order-foot">${appCanPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр бүртгэх</button>` : ''}${advBtn}${['reserved', 'preparation', 'cleaning', 'ready', 'started', 'prepared', 'delivering', 'rented', 'returning'].includes(st) && (o.items && o.items.length) ? `<button class="btn" data-bq-scan="${id}" style="padding:5px 11px;font-size:12px;">📷 Скан</button>` : ''}${['rented', 'returning', 'returned'].includes(st) && (o.items && o.items.length) && (can('orders.advance') || can('orders.dispatch') || state.isCEO) ? `<button class="btn" data-app-damage="${id}" style="padding:5px 11px;font-size:12px;">⚠ Эвдрэл</button>` : ''}${(Number(o.paid_mnt) || 0) > 0 && (Number(o.deposit_mnt) || 0) > 0 && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-refund="${id}" style="padding:5px 11px;font-size:12px;">↩ Буцаан олгох</button>` : ''}${st !== 'draft' && st !== 'canceled' && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-cmp="${id}" style="padding:5px 11px;font-size:12px;">↩️ Буулгалт</button>` : ''}<button class="btn" data-app-note="${id}" style="padding:5px 11px;font-size:12px;" title="Захиалганд чөлөөт тэмдэглэл нэмэх">📝 Тэмдэглэл${orderNotesOf(o).length ? ` (${orderNotesOf(o).length})` : ''}</button>${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-contract="${id}" style="padding:5px 11px;font-size:12px;">📜 Гэрээ</button>` : ''}${appEditable ? `<button class="btn" data-app-edit="${id}" style="padding:5px 13px;font-size:12px;">✎ Засах</button>` : ''}${st !== 'canceled' && (o.items && o.items.length) ? `<button class="btn" data-app-quote="${id}" style="padding:5px 11px;font-size:12px;">📄 Үнийн санал</button>` : ''}${st !== 'draft' && st !== 'canceled' && st !== 'deleted' && (o.items && o.items.length) && (can('orders.pay') || state.isCEO) ? `<button class="btn" data-app-invoice="${id}" style="padding:5px 11px;font-size:12px;" title="Төлбөрийн нэхэмжлэх — PDF татна">🧾 Нэхэмжлэх</button>` : ''}${cxHtml}</div>`
     : ((canPay || next || canCancel || canScan) ? `<div class="order-foot">
     ${canPay ? `<button class="btn btn-primary" data-bq-pay="${id}" style="padding:5px 13px;font-size:12px;">💵 Төлбөр</button>` : ''}
     ${next ? `<button class="btn${canPay ? '' : ' btn-primary'}" data-bq-advance="${id}" data-to="${next.to}" style="padding:5px 13px;font-size:12px;">${next.label}</button>` : ''}

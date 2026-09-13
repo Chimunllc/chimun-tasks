@@ -8652,3 +8652,49 @@ async function swFetchTests() {
   ok(/saveProduct\(purchaseUnlinkFields\(/.test(fn), 'scan: салгалт ч saveProduct-аар');
   ok(!/rest\/v1\/products/.test(fn), 'scan: холбох цонх ШУУД PostgREST рүү бичихгүй');
 }
+
+// ── ЦАГИЙН АЖИЛТАН — ШИНЭ БҮРТГҮҮЛСЭН ХҮН (2026-09-13) ──────────────────
+// Гомдол: «Цагийн ажилтан шинээр бүртгүүлхэд шууд идэвхгүй төрөл рүү орж байна.
+// Шинээр бүртгүүлсэн ажилтан дээр нь гарч ирдэг байх. Мөн данс харагдахгүй.»
+{
+  need(['hourlyStatusOf', 'hourlyTabMatch', 'bankLineReason', 'staffSensitiveLoaded']);
+  const NOW = Date.parse('2026-09-13T00:00:00Z');
+  const d = (days) => NOW - days * 86400000;
+
+  // ⛔ ЦАЛИН АВААГҮЙ = ИДЭВХГҮЙ БИШ. Энэ бол гомдлын гол цөм: шинэ ажилтан
+  //    цалин авах учиргүй тул хуучин дүрмээр ЗАЙЛШГҮЙ «идэвхгүй» болдог байв.
+  eq(F.hourlyStatusOf({ lastTs: 0 }, { name: 'Шинэ' }, NOW), 'new', 'цагийн: цалин аваагүй = шинэ');
+  eq(F.hourlyStatusOf(null, { name: 'Шинэ' }, NOW), 'new', 'цагийн: статистикгүй ч шинэ');
+  eq(F.hourlyStatusOf({ lastTs: d(3) }, { name: 'А' }, NOW), 'active', 'цагийн: 3 хоногийн өмнө цалин авсан = идэвхтэй');
+  eq(F.hourlyStatusOf({ lastTs: d(45) }, { name: 'Б' }, NOW), 'inactive', 'цагийн: 45 хоног цалингүй = идэвхгүй');
+  eq(F.hourlyStatusOf({ lastTs: d(29) }, { name: 'В' }, NOW), 'active', 'цагийн: 30 хоногийн хил дотор = идэвхтэй');
+  // Ажлаас гарсан хүн цалин аваагүй ч жагсаалтын толгойд гарахгүй.
+  eq(F.hourlyStatusOf({ lastTs: 0 }, { name: 'Г', status: 'гарсан' }, NOW), 'inactive', 'цагийн: гарсан ажилтан шинэ БИШ');
+
+  // «Идэвхтэй» таб шинэ ажилтныг ХАМРУУЛНА — эс бөгөөс өгөгдмөл дэлгэцээс алга болно.
+  ok(F.hourlyTabMatch('active', 'new'), 'цагийн таб: Идэвхтэй → шинэ ч харагдана');
+  ok(F.hourlyTabMatch('active', 'active'), 'цагийн таб: Идэвхтэй → идэвхтэй');
+  ok(!F.hourlyTabMatch('active', 'inactive'), 'цагийн таб: Идэвхтэй → идэвхгүйг харуулахгүй');
+  ok(F.hourlyTabMatch('new', 'new'), 'цагийн таб: Шинэ → шинэ');
+  ok(!F.hourlyTabMatch('new', 'active'), 'цагийн таб: Шинэ → идэвхтэйг харуулахгүй');
+  ok(F.hourlyTabMatch('inactive', 'inactive'), 'цагийн таб: Идэвхгүй → идэвхгүй');
+  ['new', 'active', 'inactive'].forEach(s => ok(F.hourlyTabMatch('all', s), 'цагийн таб: Бүгд → ' + s));
+
+  // Данс хоосон байхын ХОЁР өөр шалтгаан. Эмзэг дата ирээгүй үед «банк
+  // бүртгэгдээгүй» гэж бичих нь ХУДАЛ — бүртгэлийн форм дансыг заавал шаарддаг.
+  eq(F.bankLineReason(true, false), '', 'данс: утга байвал шалтгаан алга');
+  eq(F.bankLineReason(false, true), 'missing', 'данс: эмзэг дата ирсэн ч хоосон = үнэхээр бүртгэгдээгүй');
+  eq(F.bankLineReason(false, false), 'hidden', 'данс: эмзэг дата ирээгүй = эрх хүрэхгүй (худал анхааруулга гаргахгүй)');
+}
+
+// scan: цагийн ажилтны жагсаалт төлвөө ГАНЦ функцээс авна. Дэлгэц дотроо
+// «сүүлд цалин авсан эсэх»-ээр дахин бодвол шинэ ажилтан дахин алга болно.
+{
+  const i = src.indexOf('function renderHourly(');
+  const fn = src.slice(i, src.indexOf('\nfunction applyHourlySearch(', i));
+  ok(i > 0 && fn.length > 1000, 'scan: renderHourly-ийн бие зүсэгдэв');
+  ok(/hourlyStatusOf\(/.test(fn), 'scan: renderHourly нь hourlyStatusOf ашиглана');
+  ok(!/const\s+isInactive\s*=/.test(fn), 'scan: renderHourly дотроо идэвхгүйг дахин бодохгүй');
+  ok(!/банк бүртгэгдээгүй<\/span>`?\s*;/.test(fn.replace(/\s+/g, ' ')) || /bankLineReason\(/.test(fn),
+     'scan: данс хоосон бол шалтгааныг bankLineReason-оор ялгана');
+}

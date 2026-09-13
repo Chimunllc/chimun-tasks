@@ -1236,6 +1236,17 @@ const STAFF_SENSITIVE_FIELDS = ['rd', 'address', 'base_salary', 'daily_rate', 's
 function canSeeStaffSensitive() {
   return !!state.isCEO || (typeof canSeeSalary === 'function' && canSeeSalary());
 }
+// Эмзэг талбар (данс) серверээс ИРСЭН эсэх. Ирээгүй бол «банк бүртгэгдээгүй» гэж
+// бичих нь ХУДАЛ — бүртгэлийн форм дансыг ЗААВАЛ шаарддаг тул бараг үргэлж байдаг.
+function staffSensitiveLoaded() {
+  return !!(state.staffSensitive && Object.keys(state.staffSensitive).length);
+}
+// Данс хоосон байгаагийн шалтгаан: '' (данстай) · 'missing' (үнэхээр бүртгэгдээгүй) ·
+// 'hidden' (эрх хүрэхгүй тул серверээс ирээгүй).
+function bankLineReason(hasBank, sensLoaded) {
+  if (hasBank) return '';
+  return sensLoaded ? 'missing' : 'hidden';
+}
 function applyStaffPins() {
   if (!state.staffPins && !state.staffSensitive) return;
   (TEAM || []).forEach(m => {
@@ -10967,6 +10978,27 @@ function hourlyPayouts(m) {
   );
 }
 
+/* Цагийн ажилтны төлөв — 'new' | 'active' | 'inactive'.
+   ⛔ ЦАЛИН АВААГҮЙ = ИДЭВХГҮЙ БИШ. Өмнө нь «сүүлийн 30 хоногт цалин аваагүй» бүхнийг
+   идэвхгүй гэж үздэг байсан тул ШИНЭ бүртгүүлсэн ажилтан (цалин авах учиргүй) шууд
+   идэвхгүй бүлэгт унаж, өгөгдмөл «Идэвхтэй» табаас ОГТ харагдахгүй байв — менежер
+   шинэ хүнээ олохгүй. Одоо цалин аваагүй нь тусдаа 'new' төлөв, идэвхтэйтэй хамт
+   харагдаж дээрээ эрэмбэлэгдэнэ.
+   ⚠ Ажлаас ГАРСАН хүн цалин аваагүй ч 'new' болохгүй — эс бөгөөс жагсаалтын толгой
+   хэзээ ч ажиллахгүй хүмүүсээр дүүрнэ. */
+const HOURLY_INACTIVE_MS = 30 * 86400000;
+function hourlyStatusOf(st, m, nowTs) {
+  const last = (st && st.lastTs) || 0;
+  if (!last) return String((m && m.status) || '') === 'гарсан' ? 'inactive' : 'new';
+  return ((nowTs || Date.now()) - last) > HOURLY_INACTIVE_MS ? 'inactive' : 'active';
+}
+// «Идэвхтэй» таб юуг харуулах вэ — идэвхтэй БА шинэ (цалин аваагүй) хоёулаа.
+function hourlyTabMatch(tab, status) {
+  if (tab === 'all') return true;
+  if (tab === 'active') return status === 'active' || status === 'new';
+  return tab === status;
+}
+
 // Шилжүүлгийн justification-аас ажилласан хоногийг салгана ("× N өдөр").
 function hourlyPayoutDays(p) {
   const m = String(p.justification || '').match(/×\s*(\d+(?:\.\d+)?)\s*өдөр/);
@@ -12104,10 +12136,8 @@ function renderHourly() {
   // Салбаргүй/танигдахгүй ('Бусад') ажилтныг специфик лензэд ч нуухгүй — Сарын цалингийн зантай нийцүүлж, ажилтан алдагдахаас сэргийлнэ.
   const workers = lensLabel ? allWorkers.filter(m => { const bl = hourlyBranchLabel(m); return bl === lensLabel || bl === 'Бусад'; }) : allWorkers;
   const sortMode = state.hourlySort || 'recent';
-  if (!state.hourlyActivity) state.hourlyActivity = 'active';   // анхдагч: идэвхтэй л харагдана
+  if (!state.hourlyActivity) state.hourlyActivity = 'active';   // анхдагч: идэвхтэй + шинэ
   const nowTs = Date.now();
-  const INACTIVE_MS = 30 * 86400000;   // 30 хоног цалин аваагүй = идэвхгүй (устгахгүй, зөвхөн нуух)
-  const isInactive = (st) => !st.lastTs || (nowTs - st.lastTs) > INACTIVE_MS;
   // Ажилтан бүрийн цалингийн статистик — цалин авсан огноо = "хэзээ ажилласны" прокси
   // (тусгай ажилласан огноо хадгалагддаггүй тул шилжүүлгийн огноог ашиглана).
   const payDate = (p) => p.executed_at || p.requested_at || '';
@@ -12123,6 +12153,7 @@ function renderHourly() {
     return { ps, sum, count: ps.length, days, avgDaily, first: dates[0] || '', last, lastTs: last ? new Date(last).getTime() : 0 };
   };
   const stats = new Map(workers.map(m => [personKey(m), statOf(m)]));
+  const statusOf = (m) => hourlyStatusOf(stats.get(personKey(m)), m, nowTs);
   let totalPaid = 0;
   workers.forEach(m => { totalPaid += stats.get(personKey(m)).sum; });
   const rowHtml = (m) => {
@@ -12134,7 +12165,9 @@ function renderHourly() {
     const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>`;
     const bankLine = (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
-      : '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>';
+      : (bankLineReason(false, staffSensitiveLoaded()) === 'missing'
+          ? '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>'
+          : '<span style="color:var(--muted)">🔒 данс харагдахгүй (эрх)</span>');
     // Авсан нийт цалин + шилжүүлэг бүрийг (дүн · огноо) тусдаа мөрөөр доош
     const paidLine = sum > 0
       ? `<div style="margin-top:4px;">
@@ -12155,13 +12188,16 @@ function renderHourly() {
       : `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">🕒 Цалин аваагүй</div>`;
     const nameKey = escapeHtml(String(m.name || '').toLowerCase());
     const phoneKey = escapeHtml(String(m.phone || '').replace(/\D/g, ''));
-    const inact = isInactive(st);
-    const inactBadge = inact ? ` <span style="font-size:10px;color:var(--muted);background:var(--panel-hover);border-radius:6px;padding:1px 6px;white-space:nowrap;">💤 идэвхгүй</span>` : '';
-    return `<div data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" data-hourly-active="${inact ? 0 : 1}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);${inact ? 'opacity:.72;' : ''}">
+    const stt = statusOf(m);
+    const inact = stt === 'inactive';
+    const badge = inact
+      ? ` <span style="font-size:10px;color:var(--muted);background:var(--panel-hover);border-radius:6px;padding:1px 6px;white-space:nowrap;">💤 идэвхгүй</span>`
+      : (stt === 'new' ? ` <span style="font-size:10px;color:var(--primary);background:var(--panel-hover);border-radius:6px;padding:1px 6px;white-space:nowrap;font-weight:700;">🆕 шинэ</span>` : '');
+    return `<div data-hourly-name="${nameKey}" data-hourly-phone="${phoneKey}" data-hourly-state="${stt}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card);${inact ? 'opacity:.72;' : ''}">
       <div style="display:flex;align-items:center;gap:12px;min-width:0;">
         ${avatar}
         <div style="min-width:0;">
-          <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${inactBadge}</div>
+          <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${badge}</div>
           <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
           ${spanLine}
           ${attWorkedLine(m)}
@@ -12177,11 +12213,14 @@ function renderHourly() {
     </div>`;
   };
   // Сонгосон эрэмбийн comparator (бүлэг тус бүрд хэрэглэнэ)
-  const cmp = {
+  const cmpBase = {
     recent: (a, b) => (stats.get(personKey(b)).lastTs - stats.get(personKey(a)).lastTs) || String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
     name:   (a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
     paid:   (a, b) => (stats.get(personKey(b)).sum - stats.get(personKey(a)).sum) || String(a.name || '').localeCompare(String(b.name || ''), 'mn'),
   }[sortMode] || ((a, b) => 0);
+  // ⚠ Шинэ (цалин аваагүй) нь ЭРЭМБЭЭС ҮЛ ХАМААРАН дээрээ — «сүүлд ажилласан»/«их
+  //   цалинтай» аль алинд нь тэдний утга 0 тул доогуур унаж, менежер олохгүй байв.
+  const cmp = (a, b) => ((statusOf(b) === 'new' ? 1 : 0) - (statusOf(a) === 'new' ? 1 : 0)) || cmpBase(a, b);
   // Салбараар бүлэглэх — M Event / NOMAAD / Бусад (бүлэг бүрийг сонгосон эрэмбээр)
   const groups = { 'M Event': [], 'NOMAAD': [], 'Катеринг': [], 'Бусад': [] };
   workers.forEach(m => { (groups[hourlyBranchLabel(m)] || groups['Бусад']).push(m); });
@@ -12192,17 +12231,18 @@ function renderHourly() {
       return `<div data-hourly-group="${escapeHtml(k)}" style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.04em;margin:16px 0 8px;">${k} · ${groups[k].length}</div>` + groups[k].map(rowHtml).join('');
     })
     .join('');
+  let newN = 0, activeN = 0;
+  workers.forEach(m => { const s = statusOf(m); if (s === 'new') newN++; else if (s === 'active') activeN++; });
+  const inactiveN = workers.length - activeN - newN;
   const header = `<div style="margin-bottom:8px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
-    <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан${lensLabel ? ` <span style="font-size:11px;color:var(--primary);font-weight:600;">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
+    <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан${newN ? ` · <b style="color:var(--primary)">🆕 ${newN} шинэ</b>` : ''}${lensLabel ? ` <span style="font-size:11px;color:var(--primary);font-weight:600;">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
     <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>.${lensLabel ? ' Толгойн салбар сонгогчоор өөрчилнө (🏢 Бүгд = бүх салбар).' : ' Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.'}</div>
   </div>`;
-  // Идэвхийн таб — идэвхтэй (сүүлийн 30 хоногт цалин авсан) / идэвхгүй / бүгд
-  let activeN = 0; workers.forEach(m => { if (!isInactive(stats.get(personKey(m)))) activeN++; });
-  const inactiveN = workers.length - activeN;
+  // Идэвхийн таб — идэвхтэй (шинэ ажилтныг ХАМРУУЛНА) / шинэ / идэвхгүй / бүгд
   const act = state.hourlyActivity || 'active';
   const tab = (val, label, n) => `<button data-hourly-tab="${val}" style="padding:6px 12px;font-size:12.5px;border:1px solid var(--border);border-radius:8px;cursor:pointer;white-space:nowrap;${act === val ? 'background:var(--primary);color:#fff;border-color:var(--primary);font-weight:700;' : 'background:var(--panel);color:var(--text);'}">${label} <span style="opacity:.8;">${n}</span></button>`;
   const tabs = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-    ${tab('active', 'Идэвхтэй', activeN)}${tab('inactive', '💤 Идэвхгүй', inactiveN)}${tab('all', 'Бүгд', workers.length)}
+    ${tab('active', 'Идэвхтэй', activeN + newN)}${newN ? tab('new', '🆕 Шинэ', newN) : ''}${tab('inactive', '💤 Идэвхгүй', inactiveN)}${tab('all', 'Бүгд', workers.length)}
   </div>`;
   // Хайлт + эрэмбийн хяналт
   const controls = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
@@ -12227,9 +12267,9 @@ function applyHourlySearch() {
   rows.forEach(r => {
     const nm = r.getAttribute('data-hourly-name') || '';
     const ph = r.getAttribute('data-hourly-phone') || '';
-    const isAct = r.getAttribute('data-hourly-active') === '1';
+    const stt = r.getAttribute('data-hourly-state') || 'active';
     // Хайлт бичсэн үед таб үл хамааран БҮХ ажилтнаас хайна; хоосон үед л таб шүүнэ.
-    const actMatch = !!q || act === 'all' || (act === 'active' && isAct) || (act === 'inactive' && !isAct);
+    const actMatch = !!q || hourlyTabMatch(act, stt);
     const searchMatch = !q || nm.includes(q) || (!!qDigits && ph.includes(qDigits));
     const match = actMatch && searchMatch;
     r.style.display = match ? '' : 'none';
@@ -12419,7 +12459,9 @@ function openHourlyPayModal(m) {
     const copyAcctBtn = document.getElementById('hp-copy-acct');
     const copyMemoBtn = document.getElementById('hp-copy-memo');
     document.getElementById('hp-worker').textContent = (m.name || '') + ' · ' + (m.role || 'цагийн ажилтан');
-    document.getElementById('hp-bank').textContent = (m.bank || '—') + (m.bank_account ? ' · ' + m.bank_account : '');
+    document.getElementById('hp-bank').textContent = (m.bank || m.bank_account)
+      ? (m.bank || '—') + (m.bank_account ? ' · ' + m.bank_account : '')
+      : (bankLineReason(false, staffSensitiveLoaded()) === 'missing' ? 'банк бүртгэгдээгүй' : '🔒 данс харагдахгүй (эрх)');
     document.getElementById('hp-holder').textContent = m.bank_holder || m.name || '';
     const acct = String(m.bank_account || '').replace(/\s/g, '');
     rateEl.value = ''; daysEl.value = ''; startEl.value = todayStr();

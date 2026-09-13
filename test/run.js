@@ -8522,7 +8522,7 @@ async function swFetchTests() {
     { id: '5', category: '6100', amount: 700000, beneficiary: 'Устгасан', requested_at: '2026-07-03T00:00:00Z', status: 'deleted' },
   ];
   const rows = PR(reqs);
-  eq(rows.length, 3, 'худалдан авалт: зөвхөн 6xxx ангилал (5100 орохгүй)');
+  eq(rows.length, 3, 'худалдан авалт: зөвхөн хөрөнгийн ангилал (5100 орохгүй)');
   ok(!rows.some(r => r.id === '5'), 'худалдан авалт: устгасан мөр ОРОХГҮЙ');
   eq(rows[0].date, '2026-07-20', 'худалдан авалт: шинэ нь дээр эрэмбэлэгдэнэ');
   eq(rows[0].supplier, 'Бат ХХК', 'худалдан авалт: нийлүүлэгч хүлээн авагчаас');
@@ -8545,6 +8545,80 @@ async function swFetchTests() {
   const noSup = SS(PR([{ id: '9', category: '6100', amount: 1000, requested_at: '2026-08-01' }]));
   eq(noSup[0].supplier, '(нэргүй)', 'худалдан авалт: нийлүүлэгчгүй мөр алга болохгүй');
   eq(PR([]).length, 0, 'худалдан авалт: хоосон оролт → хоосон');
+
+  // ⛔ 69xx = ХӨРӨНГӨ БИШ. 2026-09-13 хүртэл эдгээр тоологдож дэлгэц 563сая₮ гэж
+  //    ХУДЛАА харуулж байв (бодит нь 103сая₮). Ангиллын нэр өөрөө «(зардал БИШ)».
+  const fin = [
+    { id: 'a', category: '6900', amount: 50000000, beneficiary: 'Эзэн',  requested_at: '2026-08-14', purpose: 'эзний зээл' },
+    { id: 'b', category: '6950', amount: 2000000,  beneficiary: 'Банк',  requested_at: '2026-09-08', purpose: 'зээлийн үндсэн төлбөр' },
+    { id: 'c', category: '6960', amount: 358000,   beneficiary: 'Данс',  requested_at: '2026-06-29', purpose: 'дотоод шилжүүлэг' },
+    { id: 'd', category: '6100', amount: 6910000,  beneficiary: 'Бат',   requested_at: '2026-07-21', purpose: '150ш ор' },
+  ];
+  const only = PR(fin);
+  eq(only.length, 1, 'худалдан авалт: 6900/6950/6960 нь ХӨРӨНГӨ БИШ — орохгүй');
+  eq(only[0].id, 'd', 'худалдан авалт: зөвхөн бодит хөрөнгийн мөр үлдэнэ');
+  eq(only.reduce((x, r) => x + r.amount, 0), 6910000, 'худалдан авалт: зээлийн мөр нийт дүнг хөөрөгдөхгүй');
+}
+
+// ── ГҮЙЛГЭЭ ↔ БАРАА ХОЛБООС (2026-09-13) ────────────────────────────────
+{
+  const LI = vm.runInContext('purchaseLinkIndex', sandbox);
+  const AL = vm.runInContext('purchaseAlloc', sandbox);
+  const LF = vm.runInContext('purchaseLinkFields', sandbox);
+  const UF = vm.runInContext('purchaseUnlinkFields', sandbox);
+  const LS = vm.runInContext('purchaseLinkStats', sandbox);
+  const TQ = vm.runInContext('prodTotalQty', sandbox);
+
+  eq(TQ({ qty_chimun: 2, qty_mevent: 3, qty_nomaad: 1, qty_catering: 4 }), 10, 'холбоос: нийт тоо = бүх салбар');
+  eq(TQ({}), 0, 'холбоос: тоогүй бараа → 0');
+
+  const prods = [
+    { sku: 'A', name: 'Ор', cost: 46067, qty_mevent: 150, purchase_ref: 't_1' },
+    { sku: 'B', name: 'Ширээ', cost: 1000, qty_chimun: 10, purchase_ref: 't_1' },
+    { sku: 'C', name: 'Сандал', cost: 500, qty_mevent: 5 },
+  ];
+  const idx = LI(prods);
+  eq(idx.size, 1, 'холбоос: индекс нь холбогдсон мөрөөр л түлхүүрлэнэ');
+  eq((idx.get('t_1') || []).length, 2, 'холбоос: нэг гүйлгээнд олон бараа холбогдоно');
+  eq((idx.get('t_1') || [])[0].qty, 150, 'холбоос: тоо ширхэг индекст орно');
+  ok(!idx.has(''), 'холбоос: хоосон ref түлхүүр үүсгэхгүй');
+
+  // Хуваарилалт
+  const a1 = AL(6910000, [{ sku: 'A', qty: 150, amount: 6910000 }]);
+  eq(a1.items[0].unit, 46067, 'хуваарилалт: нэгж өртөг = дүн ÷ тоо');
+  eq(a1.left, 0, 'хуваарилалт: бүтэн холбовол үлдэгдэл 0');
+  ok(!a1.over, 'хуваарилалт: бүтэн дүн хэтрэхгүй');
+  const a2 = AL(1000000, [{ sku: 'A', qty: 10, amount: 600000 }, { sku: 'B', qty: 5, amount: 300000 }]);
+  eq(a2.used, 900000, 'хуваарилалт: нийлбэр');
+  eq(a2.left, 100000, 'хуваарилалт: үлдэгдэл');
+  eq(a2.items[1].unit, 60000, 'хуваарилалт: хоёр дахь барааны нэгж өртөг');
+  ok(AL(100, [{ sku: 'A', qty: 1, amount: 200 }]).over, 'хуваарилалт: хэтэрсэн дүн тэмдэглэгдэнэ');
+  ok(AL(100, [{ sku: 'A', qty: 0, amount: 100 }]).noQty, 'хуваарилалт: тоо 0 бол алдаа');
+  eq(AL(100, [{ sku: 'A', qty: 0, amount: 100 }]).items[0].unit, 0, 'хуваарилалт: тоо 0 үед хуваахгүй');
+
+  // Талбар бөглөх
+  const row = { id: 't_9', date: '2026-07-21', supplier: 'Бат ХХК', amount: 6910000 };
+  const f1 = LF({ sku: 'A', name: 'Ор', cost: 1, supplier: '' }, row, { sku: 'A', qty: 150, amount: 6910000, unit: 46067 });
+  eq(f1.purchase_ref, 't_9', 'холбоос: ref бичигдэнэ');
+  eq(f1.cost, 46067, 'холбоос: өртөг холбосон мөрөөс');
+  eq(f1.purchase_date, '2026-07-21', 'холбоос: огноо холбосон мөрөөс');
+  eq(f1.supplier, 'Бат ХХК', 'холбоос: хоосон нийлүүлэгч бөглөгдөнө');
+  eq(f1.name, 'Ор', 'холбоос: бусад талбар хэвээр (saveProduct бүтэн мөр шаардана)');
+  // ⚠ `supplier` нь барааны модалын «Гарал үүсэл» (taobao линк) -ийг ч хадгалдаг
+  const f2 = LF({ sku: 'A', supplier: 'https://item.taobao.com/x' }, row, { qty: 1, amount: 100, unit: 100 });
+  eq(f2.supplier, 'https://item.taobao.com/x', 'холбоос: байгаа эх сурвалжийг ДАРАХГҮЙ');
+  const f3 = LF({ sku: 'A', cost: 999 }, row, { qty: 0, amount: 0, unit: 0 });
+  eq(f3.cost, 999, 'холбоос: нэгж өртөг 0 бол хуучин өртөг хэвээр');
+
+  const u = UF({ sku: 'A', cost: 46067, purchase_date: '2026-07-21', purchase_ref: 't_9' });
+  eq(u.purchase_ref, null, 'салгах: ref цэвэрлэгдэнэ');
+  eq(u.cost, 46067, 'салгах: өртөг ҮЛДЭНЭ (дата алдагдахгүй)');
+  eq(u.purchase_date, '2026-07-21', 'салгах: огноо ҮЛДЭНЭ');
+
+  const st = LS([{ id: 't_1' }, { id: 't_2' }, { id: 't_3' }], idx);
+  eq(st.linked, 1, 'дэвшил: холбогдсон гүйлгээний тоо');
+  eq(st.total, 3, 'дэвшил: нийт гүйлгээ');
+  eq(LS([], new Map()).linked, 0, 'дэвшил: хоосон → 0');
 }
 
 // scan: худалдан авалтын дэлгэц ГАРААР бичдэг форм нэмж БОЛОХГҮЙ.
@@ -8555,4 +8629,26 @@ async function swFetchTests() {
   ok(/purchaseRows\(/.test(fn), 'scan: дата нь хөрөнгийн зардлаас гарна');
   ok(!/<form|type="submit"|btn-primary/.test(fn),
      'scan: худалдан авалтын дэлгэцэд ГАРААР бичих форм БАЙХГҮЙ (гараар бүртгэл үхдэг)');
+}
+
+// scan: 69xx-ийг өөрөө шүүхгүй — `finIsNonExpense` ганц эх сурвалж.
+{
+  const i = src.indexOf('function purchaseIsAsset(');
+  ok(i > 0, 'scan: purchaseIsAsset олдов');
+  ok(/finIsNonExpense\(/.test(src.slice(i, i + 400)),
+     'scan: хөрөнгө мөн эсэхийг finIsNonExpense-ээр шалгана (69xx = зардал БИШ)');
+}
+
+// scan: холбоосыг `saveProduct`-аар бичнэ — тусдаа бичих зам гаргахгүй.
+// Эс бөгөөс нөөцийн дэвтэр, кэш, сонголттой баганын хамгаалалт тойрогдоно.
+{
+  const i = src.indexOf('async function openPurchaseLink(');
+  // ⚠ Тогтмол уртаар бүү зүсэ — функц ургахад шалгуур чимээгүй алдагдана
+  //   (нөөцийн дэвтрийн тест яг ингэж хуурамчаар унасан). Дараагийн функц хүртэл.
+  const fn = src.slice(i, src.indexOf('\nfunction canSeeWriteoff(', i));
+  ok(i > 0, 'scan: openPurchaseLink олдов');
+  ok(fn.length > 1000 && fn.length < 20000, 'scan: openPurchaseLink-ийн бүтэн бие зүсэгдэв');
+  ok(/saveProduct\(purchaseLinkFields\(/.test(fn), 'scan: холбоос saveProduct-аар бичигдэнэ');
+  ok(/saveProduct\(purchaseUnlinkFields\(/.test(fn), 'scan: салгалт ч saveProduct-аар');
+  ok(!/rest\/v1\/products/.test(fn), 'scan: холбох цонх ШУУД PostgREST рүү бичихгүй');
 }

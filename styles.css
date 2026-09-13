@@ -7035,3 +7035,21 @@ select.no-asar-len {
   .cu-row { gap: var(--space-2); padding: var(--space-2); }
   .cu-rev { font-size: var(--fs-xs); }
 }
+
+/* ── ТӨЛБӨРИЙН ТҮҮХ (2026-09-13) — төлбөрийн цонхонд өмнөх мөрүүд ────────
+   Зөрүү гарвал улаанаар ил гарна: «нийт төлсөн» гэсэн ганц тоо хаанаас
+   бүрдсэнийг харуулахгүй байсан нь авлага тулгахад хамгийн их цаг иддэг. */
+.payh { margin-bottom: var(--space-3); }
+.payh-h { font-size: var(--fs-xs); color: var(--muted); margin-bottom: var(--space-1); }
+.payh-load { font-size: var(--fs-xs); color: var(--muted); padding: var(--space-2) 0; }
+.payh-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
+.payh-row { display: flex; gap: var(--space-2); align-items: baseline; padding: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm); border-bottom: 1px solid var(--border); }
+.payh-row:last-child { border-bottom: 0; }
+.payh-d { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.payh-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.payh-a { white-space: nowrap; font-weight: 600; }
+.payh-a i { font-weight: 400; color: var(--danger); font-style: normal; font-size: var(--fs-xs); }
+.payh-sum { display: flex; justify-content: space-between; padding: var(--space-2);
+  font-size: var(--fs-sm); font-weight: 600; }
+.payh-warn { font-size: var(--fs-xs); color: var(--danger); padding: 0 var(--space-2) var(--space-2); line-height: 1.5; }

@@ -17877,8 +17877,12 @@ async function issueInvoice(orderId, btn) {
     if (!inv) throw new Error('хариу хоосон');
 
     const no = invoiceNoText(inv.no, inv.issued_at);
+    // Имэйл — үнийн саналын БЭЛЭН сувгаар (`mevent-quote-send`). Тэр урсгал нь
+    // ерөнхий: {to, subject, body, filename, pdf_base64} авч PDF хавсаргаж илгээнэ.
     const doc = invoiceDocHtml({ no, issuedAt: inv.issued_at, dueAt: inv.due_at, orderNo: o.number,
-                                 buyer, lines, t, org: CHIMUN_LEGAL });
+                                 buyer, lines, t, org: CHIMUN_LEGAL,
+                                 sendUrl: withKey(state.config.meventQuoteSendUrl || DEFAULT_MEVENT_QUOTE_SEND_URL),
+                                 to: buyer.email || '' });
     w.document.open(); w.document.write(doc); w.document.close();
     showToast('Нэхэмжлэх ' + no + ' бэлэн ✓', 'success', 2500);
   } catch (e) {
@@ -17929,6 +17933,7 @@ function invoiceDocHtml(d) {
 </style></head><body>
 <div class="toolbar">
   <button class="main" onclick="dl()">📄 PDF татах</button>
+  <button id="sendbtn" onclick="snd()">📧 Илгээх</button>
   <button onclick="window.print()">🖨 Хэвлэх</button>
 </div>
 <div class="wrap"><div class="sheet" id="sheet">${invoiceHtml(d)}</div></div>
@@ -17952,6 +17957,55 @@ function dl(){
         pagebreak:{mode:['css','legacy']}}).from(el).save();
     })
     .catch(function(){alert('PDF үүсгэгч татагдсангүй. Хэвлэх цонхноос "PDF болгож хадгалах"-г сонгоно уу.');window.print();});
+}
+
+/* Имэйлээр илгээх — PDF-ийг хавсаргана. ⚠ ЗААВАЛ баталгаажуулна: энэ нь
+   харилцагч руу ЖИНХЭНЭ имэйл явуулна, буцаах боломжгүй. */
+var SEND=${JSON.stringify(d.sendUrl || '')};
+var TO=${JSON.stringify(d.to || '')};
+var SUBJ=${JSON.stringify('Нэхэмжлэх ' + (d.no || '') + ' · ' + ((d.org && d.org.name) || ''))};
+var BODY=${JSON.stringify(
+  'Нэхэмжлэх ' + (d.no || '') +
+  ((d.orderNo != null && d.orderNo !== '') ? ' (Захиалга №' + d.orderNo + ')' : '') + '\n\n' +
+  'Төлөх дүн: ' + fmtMoney(Number((d.t && ((d.t.due > 0) ? d.t.due : d.t.total)) || 0)) + '\n' +
+  'Данс: ' + ((d.org && d.org.bank) || '') + ' · ' + ((d.org && d.org.account) || '') + '\n' +
+  'Хүлээн авагч: ' + ((d.org && d.org.name) || '') + '\n' +
+  'Гүйлгээний утга: ' + (d.no || '') + '\n\n' +
+  'Дэлгэрэнгүйг хавсаргасан PDF-ээс үзнэ үү.'
+)};
+function snd(){
+  if(!SEND){alert('Илгээх суваг тохируулаагүй байна.');return;}
+  var to=TO;
+  if(!to){
+    var v=prompt('Нэхэмжлэхийг ямар имэйл рүү илгээх вэ?','');
+    if(v===null)return;
+    v=String(v).trim();
+    if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(v)){alert('Имэйл буруу байна.');return;}
+    to=v;
+  }
+  if(!confirm('Нэхэмжлэхийг '+to+' рүү илгээх үү?\\n\\nЭнэ нь жинхэнэ имэйл явуулна.'))return;
+  var btn=document.getElementById('sendbtn');var old=btn?btn.textContent:'';
+  if(btn){btn.textContent='Илгээж байна…';btn.disabled=true;}
+  var el=document.getElementById('sheet');
+  h2p().then(function(){return (document.fonts&&document.fonts.ready)?document.fonts.ready.catch(function(){}):0;})
+    .then(function(){
+      return window.html2pdf().set({filename:FN,margin:[10,10,12,10],
+        image:{type:'jpeg',quality:0.95},
+        html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+        pagebreak:{mode:['css','legacy']}}).from(el).outputPdf('datauristring');
+    })
+    .then(function(uri){
+      var b64=String(uri).split(',')[1]||'';
+      if(!b64)throw new Error('PDF бэлдэгдсэнгүй');
+      return fetch(SEND,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({to:to,subject:SUBJ,body:BODY,filename:FN,pdf_base64:b64,source:'app-invoice'})});
+    })
+    .then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);
+      alert('✓ Нэхэмжлэх '+to+' рүү илгээгдлээ.');
+      if(btn){btn.textContent='✓ Илгээгдсэн';}})
+    .catch(function(e){alert('Илгээхэд алдаа: '+e.message);
+      if(btn){btn.textContent=old||'📧 Илгээх';btn.disabled=false;}});
 }
 <\/script></body></html>`;
 }

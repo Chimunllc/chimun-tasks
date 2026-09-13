@@ -8344,3 +8344,44 @@ async function swFetchTests() {
   ok(/window\.open\(/.test(fn), 'scan: нэхэмжлэх шинэ цонхонд нээгдэнэ');
   ok(!/\.save\(\)/.test(fn), 'scan: issueInvoice шууд ТАТАХГҮЙ (хэрэглэгч эхлээд харна)');
 }
+
+// Нэхэмжлэх — имэйлээр илгээх (2026-09-13). Үнийн саналын БЭЛЭН сувгаар
+// (`mevent-quote-send`): {to, subject, body, filename, pdf_base64}.
+{
+  const ND = vm.runInContext('invoiceDocHtml', sandbox);
+  const NB = vm.runInContext('invoiceBuyer', sandbox);
+  const NT = vm.runInContext('invoiceTotals', sandbox);
+  const legal = vm.runInContext('CHIMUN_LEGAL', sandbox);
+  const ord = { customer: 'Б.Болд', email: 'bold@example.mn',
+                items: [{ name: 'Майхан', qty: 1, price: 100000, total: 100000 }],
+                total_mnt: 220000, deposit_mnt: 20000, paid_mnt: 50000,
+                starts_at: '2026-09-01', stops_at: '2026-09-01' };
+  const t = NT(ord);
+  const doc = ND({ no: 'НЭХ-2026-0009', issuedAt: '2026-09-13', orderNo: 1530,
+                   buyer: NB(ord, null), lines: [], t, org: legal,
+                   sendUrl: 'https://x/webhook/mevent-quote-send?key=K', to: 'bold@example.mn' });
+
+  ok(doc.indexOf('📧 Илгээх') > 0, 'нэхэмжлэх: илгээх товч гарна');
+  ok(/function snd\(\)/.test(doc), 'нэхэмжлэх: илгээх функц орсон');
+  ok(doc.indexOf('mevent-quote-send') > 0, 'нэхэмжлэх: бэлэн сувгаар илгээнэ');
+  ok(doc.indexOf('bold@example.mn') > 0, 'нэхэмжлэх: харилцагчийн имэйл бэлэн орсон');
+  ok(/pdf_base64/.test(doc), 'нэхэмжлэх: PDF хавсаргана');
+  // ⚠ Буцаах боломжгүй үйлдэл — баталгаажуулалтгүй илгээж БОЛОХГҮЙ.
+  ok(/confirm\(/.test(doc), 'нэхэмжлэх: илгээхийн өмнө баталгаажуулна');
+  ok(doc.indexOf('Төлөх дүн') > 0, 'нэхэмжлэх: имэйлийн бичвэрт төлөх дүн орно');
+  ok(doc.indexOf('Гүйлгээний утга') > 0, 'нэхэмжлэх: гүйлгээний утга зааварчилна');
+  ok(doc.indexOf(legal.account) > 0, 'нэхэмжлэх: имэйлд данс орно');
+
+  // Имэйлгүй захиалга — асууна, товч хэвээр
+  const doc2 = ND({ no: 'НЭХ-2026-0010', issuedAt: '2026-09-13',
+                    buyer: NB({ customer: 'Х' }, null), lines: [], t, org: legal,
+                    sendUrl: 'https://x/?key=K', to: '' });
+  ok(/prompt\(/.test(doc2), 'нэхэмжлэх: имэйлгүй бол хаягийг асууна');
+}
+
+// scan: имэйл илгээх нь БАТАЛГААЖУУЛАЛТГҮЙ байж болохгүй.
+{
+  const fn = src.slice(src.indexOf('function snd()'), src.indexOf('function snd()') + 1400);
+  ok(fn.length > 200, 'scan: snd() олдов');
+  ok(/confirm\(/.test(fn), 'scan: имэйл илгээхийн өмнө ЗААВАЛ баталгаажуулна');
+}

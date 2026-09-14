@@ -5877,6 +5877,19 @@ need(['orderCustType']);
   });
   ok(/revoke delete on public\.%I from authenticated/.test(rlsSql),
      'db: хатуу устгах эрх бүх хүснэгтээс хураагдана');
+  /* ⛔ rls.sql ИДЕМПОТЕНТ байх ЁСТОЙ (2026-09-14). Бодлого бүрийн өмнө өөрийнх
+     нь нэрээр `drop policy if exists` байхгүй бол ХОЁР ДАХЬ удаа ажиллуулахад
+     «policy already exists» гэж ДУНД НЬ унаж, доорх хэсгүүд огт хэрэгжихгүй.
+     Амьд системд яг ингэж болсон: албан тушаалын толийг шинэчлэхээр дахин
+     ажиллуулахад 4-14 хэсэг алгасагдаж, ҮАХ захирал батлах эрхгүй хэвээр үлдэв. */
+  {
+    const made = [...rlsSql.matchAll(/create policy (\w+) on (public\.\w+) /g)];
+    const dropped = new Set([...rlsSql.matchAll(/drop policy if exists (\w+) on /g)].map(m => m[1]));
+    ok(made.length >= 20, 'db: rls.sql-ээс бодлогууд уншигдав (' + made.length + ')');
+    const missing = made.filter(m => !dropped.has(m[1])).map(m => m[1]);
+    eq(missing.join(','), '',
+       '⛔ db: бодлого бүр өөрийн нэрээр эхлээд устгагдана (дахин ажиллуулахад унахгүй)');
+  }
   ['products', 'member_perms', 'role_perms', 'company_docs', 'product_aliases'].forEach(t => {
     ok(rlsSql.includes("'" + t + "'"), 'db: ' + t + ' устгах зам ЗӨВШӨӨРӨГДСӨН жагсаалтад');
   });

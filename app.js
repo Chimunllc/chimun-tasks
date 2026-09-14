@@ -20193,6 +20193,14 @@ function openingBlockHtml(canManage) {
   // Хоёуланг ӨРТГӨӨР эрэмбэлнэ — «юуг эхэлж хийх вэ» гэдгийг систем хэлнэ.
   const oLeft = oRows.filter(x => x.sign === 'todo' && x.value > 0).slice(0, 40);
   const oWait = oRows.filter(x => x.sign === 'wait').slice(0, 40);
+  /* ⛔ Баталгаажсан бараа ХААНА ХАРАГДАХ вэ (2026-09-14). Анх хоёр гарын үсэг
+     бүрдмэгц бараа хоёр жагсаалтаас ХОЁУЛАНГААС нь гардаг байв — зөвхөн хувь
+     өсдөг, ХЭН тоолж ХЭН баталсан нь хаана ч харагддаггүй. Хоёр гарын үсгийн
+     БҮХ УТГА нь хариуцлага мөрдөгдөх явдал тул харагдахгүй гарын үсэг нь
+     гарын үсэг биш. Эрэмбэ = сүүлд баталсан нь дээр («юу дөнгөж боллоо»). */
+  const oDone = oRows.filter(x => x.sign === 'done')
+    .sort((a, b) => String(b.apAt).localeCompare(String(a.apAt)))
+    .slice(0, 60);
 
   const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
       <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
@@ -20220,6 +20228,16 @@ function openingBlockHtml(canManage) {
     </div>`; }).join('')}</div>
     ${oSt.wait > oWait.length ? `<div class="stc-open-m">…бас ${oSt.wait - oWait.length} бараа батлах хүлээж байна.</div>` : ''}` : '';
 
+  // Эвхэгддэг — ажил биш, ТҮҮХ. Дэлгэц дүүргэхгүй, гэхдээ үргэлж нэг дарахад бий.
+  const doneList = oSt.done ? `<details class="stc-open-done">
+    <summary>✓ Баталгаажсан · ${oSt.done}${showMoney ? ` · ${fmtMoney(oSt.valueDone)}` : ''}</summary>
+    <div class="stc-open-list">${oDone.map(x => `<div class="stc-open-row">
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · батлав: ${escapeHtml(memberName(x.apBy) || x.apBy || '—')}${x.apAt ? ' · ' + escapeHtml(fmtDateTimeUB(x.apAt)) : ''}</span></span>
+      <span class="stc-open-q">${x.qty} ш${money(x.value)}</span>
+    </div>`).join('')}</div>
+    ${oSt.done > oDone.length ? `<div class="stc-open-m">…бас ${oSt.done - oDone.length} бараа. Сүүлд баталсныг нь эхэнд гаргалаа.</div>` : ''}
+  </details>` : '';
+
   return `<div class="stc-open">
     <div class="stc-open-h">
       <div><b>Эхний үлдэгдэл</b><span>Нярав тоолж бүртгэнэ, ҮАХ захирал батална. Хоёулангийн гарын үсэгтэй байж суурь хүчинтэй.</span></div>
@@ -20229,6 +20247,7 @@ function openingBlockHtml(canManage) {
     <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа бүрэн баталгаажсан${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
     ${oSt.left ? waitList + (oWait.length ? '<div class="stc-open-sub">📋 Тоолох</div>' : '') + countList
       : '<div class="stc-open-m">✓ Бүх бараа хоёр гарын үсгээр баталгаажсан. Одоо тооллого утгатай.</div>'}
+    ${doneList}
   </div>`;
 }
 

@@ -5544,6 +5544,10 @@ body.role-daily #add-project { display: none !important; }
   margin-top: var(--space-3); }
 /* Эхний дэд гарчиг — дээр нь блокийн зай аль хэдийн бий. */
 .stc-open-sub1 { margin-top: 0; }
+/* Баталгаажсан түүх — ажил биш тул эвхэгдсэн, гэхдээ нэг дарахад бий. */
+.stc-open-done { margin-top: var(--space-2); }
+.stc-open-done > summary { font-size: var(--fs-xs); font-weight: 700; color: var(--text-soft);
+  cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 /* Товчны ОРОНД гарах шалтгаан. Унтраасан товч хүнд юу буруу байгааг хэлдэггүй
    тул текстээр бичнэ. Wrap — ellipsis нь гол хэсгийг таслана. */
 .stc-open-why { flex: 0 1 auto; font-size: var(--fs-xs); color: var(--muted);

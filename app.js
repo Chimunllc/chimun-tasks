@@ -5018,7 +5018,8 @@ function openingSignBlock(p, me, canApprove) {
   if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
   const by = String((p && p.stock_opened_by) || '').trim();
   if (by && by === String(me || '').trim()) {
-    return 'Тоолсон хүн өөрөө батлах боломжгүй — өөр хүн батална';
+    // ⚠ «Болохгүй» гэдэг нь дараагийн алхмыг заадаггүй — ХЭН батлахыг хэлнэ.
+    return 'Та тоолсон тул батлах эрхгүй — ҮАХ захирал батална';
   }
   return '';
 }
@@ -20202,9 +20203,13 @@ function openingBlockHtml(canManage) {
     ${oSt.left - oSt.wait > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oSt.wait - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
     : '<div class="stc-open-m">✓ Бүгдийг тоолсон.</div>';
 
-  // Батлах хүлээж буй хэсэг — зөвхөн ажил байхад. Товч нь хориотой бол
-  // ШАЛТГААНЫГ ил бичнэ (чимээгүй унтраасан товч хүнд юу ч хэлдэггүй).
-  const waitList = oWait.length ? `<div class="stc-open-sub">✍️ Батлах хүлээж буй · ${oSt.wait}${showMoney ? ` · ${fmtMoney(oSt.valueWait)}` : ''}</div>
+  /* ⛔ БАТЛАХ ХҮЛЭЭЖ БУЙ нь ЭХЭНД (2026-09-14). Анх тоолох жагсаалтын ДООР
+     тавьсан нь алдаа байв: тоолох жагсаалт 40 мөр гаргадаг тул батлах ажил
+     дэлгэцийн гадна үлдэж, толгойд «19 батлах хүлээж буй» гэж бичигдсэн
+     хэрнээ жагсаалт нь ОЛДОХГҮЙ байв. Батлах нь дамжлагын СҮҮЛ ч гэсэн
+     БҮТЭЭМЖИЙН БӨӨН — нярав тоолсон бараа батлагдтал суурь бүрдэхгүй.
+     Товч нь хориотой бол ШАЛТГААНЫГ ил бичнэ (унтраасан товч юу ч хэлдэггүй). */
+  const waitList = oWait.length ? `<div class="stc-open-sub stc-open-sub1">✍️ Батлах хүлээж буй · ${oSt.wait}${showMoney ? ` · ${fmtMoney(oSt.valueWait)}` : ''}</div>
     <div class="stc-open-list">${oWait.map(x => {
       const why = openingSignBlock(productBySku(x.sku), state.me, canApprove);
       return `<div class="stc-open-row">
@@ -20222,7 +20227,7 @@ function openingBlockHtml(canManage) {
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>
     <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа бүрэн баталгаажсан${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
-    ${oSt.left ? countList + waitList
+    ${oSt.left ? waitList + (oWait.length ? '<div class="stc-open-sub">📋 Тоолох</div>' : '') + countList
       : '<div class="stc-open-m">✓ Бүх бараа хоёр гарын үсгээр баталгаажсан. Одоо тооллого утгатай.</div>'}
   </div>`;
 }

@@ -5516,6 +5516,29 @@ body.role-daily #add-project { display: none !important; }
 .stc-row-q em { display: block; font-style: normal; font-size: var(--fs-xs); color: var(--danger); }
 .stc-bar { height: 6px; border-radius: var(--r-full); background: var(--panel-hover); overflow: hidden; margin-top: var(--space-2); }
 .stc-bar div { height: 100%; background: var(--primary); }
+/* Эхний үлдэгдэл — тооллогын ӨМНӨХ алхам (2026-09-14) */
+.stc-open { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--panel);
+  padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.stc-open-h { display: flex; gap: var(--space-3); align-items: baseline; }
+.stc-open-h > div:first-child { flex: 1; min-width: 0; }
+.stc-open-h span { display: block; font-size: var(--fs-xs); color: var(--muted); font-weight: 400;
+  margin-top: 2px; line-height: 1.45; }
+.stc-open-n { font-size: var(--fs-xl); font-weight: 700; color: var(--primary);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stc-open-m { font-size: var(--fs-xs); color: var(--muted); }
+.stc-open-list { display: flex; flex-direction: column; border: 1px solid var(--border);
+  border-radius: var(--r-md); overflow: hidden; margin-top: var(--space-1); }
+.stc-open-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm); }
+.stc-open-row:last-child { border-bottom: 0; }
+.stc-open-nm { flex: 1 1 160px; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.stc-open-nm span { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stc-open-q { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.stc-open-q b { color: var(--text); font-variant-numeric: tabular-nums; }
+.stc-open .stc-open-in { width: 76px; }
+.stc-open-ok { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); white-space: nowrap; }
 .stc-tools { display: flex; gap: var(--space-2); margin: 0 2px var(--space-3); }
 .stc-tools input {
   flex: 1; min-width: 0; min-height: 44px; padding: 0 var(--space-3);

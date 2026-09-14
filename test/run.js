@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
@@ -1479,6 +1479,50 @@ function finish() {
   ok(h2.indexOf('алгассан') === -1, 'алгасах: хэвийн шатанд тэмдэг гарахгүй');
 
   st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+}
+
+// 40a1) ЭХНИЙ ҮЛДЭГДЭЛ — баталгаажсан суурь (2026-09-14)
+// Тооллого нь юутай харьцуулж байгаа нь тодорхойгүй бол утгагүй. Дэвшлийг
+// ТООГООР биш ӨРТГӨӨР хэмжинэ — 280 барааны 49 нь хөрөнгийн 80%.
+{
+  const OR = vm.runInContext('openingRows', sandbox);
+  const OS = vm.runInContext('openingStats', sandbox);
+  const SO = vm.runInContext('stockOpened', sandbox);
+  const costs = { A: 1000, B: 100, C: 10, D: 0 };
+  const cost = (sku) => costs[sku] || 0;
+  const prods = [
+    { sku: 'C', name: 'Хямд',  stock: 5 },
+    { sku: 'A', name: 'Үнэтэй', stock: 10, stock_opened_at: '2026-09-14T00:00:00Z', stock_opened_by: '88' },
+    { sku: 'B', name: 'Дунд',  stock: 10 },
+    { sku: 'D', name: 'Өртөггүй', stock: 7 },
+  ];
+
+  ok(SO(prods[1]), 'эхний үлдэгдэл: тэмдэгтэй бараа баталгаажсан');
+  ok(!SO(prods[0]), 'эхний үлдэгдэл: тэмдэггүй бараа баталгаажаагүй');
+  ok(!SO(null), 'эхний үлдэгдэл: хоосон оролт унахгүй');
+
+  const rows = OR(prods, cost);
+  eq(rows.map(r => r.sku).join(','), 'A,B,C,D', 'эхний үлдэгдэл: ӨРТГӨӨР эрэмбэлнэ (үнэтэй нь эхэнд)');
+  eq(rows[0].value, 10000, 'эхний үлдэгдэл: өртөг = нэгж × тоо');
+  ok(Math.abs(rows[0].cum - 10000 / 11050) < 1e-9, 'эхний үлдэгдэл: хуримтлагдсан хувь эхний мөрд');
+  ok(Math.abs(rows[2].cum - 1) < 1e-9, 'эхний үлдэгдэл: сүүлийн үнэтэй мөрд 100%');
+  eq(rows[3].value, 0, 'эхний үлдэгдэл: өртөггүй бараа 0 үнэтэй ч жагсаалтад үлдэнэ');
+  eq(rows[0].at, '2026-09-14T00:00:00Z', 'эхний үлдэгдэл: баталгаажсан огноо дамжина');
+
+  const st = OS(rows);
+  eq(st.total, 4, 'дэвшил: нийт бараа');
+  eq(st.done, 1, 'дэвшил: баталгаажсан тоо');
+  eq(st.left, 3, 'дэвшил: үлдсэн тоо');
+  eq(st.valueTotal, 11050, 'дэвшил: нийт өртөг');
+  eq(st.valueDone, 10000, 'дэвшил: баталгаажсан өртөг');
+  // ⚠ ГОЛ САНАА: 4-ийн 1 нь баталгаажсан ч ӨРТГӨӨР 90% — тоогоор хэмжвэл
+  //   ажил дөнгөж эхэлсэн мэт харагдана, үнэндээ бараг дууссан.
+  ok(Math.abs(st.pct - 10000 / 11050) < 1e-9, 'дэвшил: хувь нь ТООГООР биш ӨРТГӨӨР');
+  ok(st.pct > 0.9, 'дэвшил: 1/4 бараа = өртгийн 90%+ (эрэмбийн утга)');
+
+  const empty = OS(OR([], cost));
+  eq(empty.pct, 0, 'дэвшил: хоосон каталог 0% (тэгд хуваахгүй)');
+  eq(OS(OR([{ sku: 'D', stock: 7 }], cost)).pct, 0, 'дэвшил: өртөггүй бараа л байвал 0%');
 }
 
 // 40a2) Барааны эрхийн ӨГӨГДМӨЛ = ХОРИГ (2026-09-14)
@@ -8711,6 +8755,21 @@ async function swFetchTests() {
   ok(/purchaseRows\(/.test(fn), 'scan: дата нь хөрөнгийн зардлаас гарна');
   ok(!/<form|type="submit"|btn-primary/.test(fn),
      'scan: худалдан авалтын дэлгэцэд ГАРААР бичих форм БАЙХГҮЙ (гараар бүртгэл үхдэг)');
+}
+
+// scan: эхний үлдэгдлийг `saveProduct`-аар л бичнэ — дэвтэр, кэш, эрхийн
+// хамгаалалт бүгд тэнд. Тусад нь бичих зам гаргавал тэдгээр тойрогдоно.
+{
+  const i = src.indexOf('async function confirmOpeningStock(');
+  ok(i > 0, 'scan: confirmOpeningStock олдов');
+  const fn = src.slice(i, src.indexOf('async function applyStockCount(', i));
+  ok(/saveProduct\(\{/.test(fn), 'scan: эхний үлдэгдэл saveProduct-аар бичигдэнэ');
+  ok(!/rest\/v1\/products/.test(fn), 'scan: эхний үлдэгдэл ШУУД PostgREST рүү бичихгүй');
+  ok(/canProductPart\('stock'\)/.test(fn), 'scan: баталгаажуулахад нөөцийн эрх шалгагдана');
+  ok(/_moveReason: 'opening'/.test(fn), 'scan: дэвтэрт «эхний үлдэгдэл» шалтгаанаар бичигдэнэ');
+  // ⚠ Тоо ТААРСАН ч тэмдэг тавигдана — «шалгасан, зөв байсан» гэдэг нь мэдээлэл.
+  //   `applyStockCount` нь diff=0 үед шууд гардаг тул тэрийг ашиглаж БОЛОХГҮЙ.
+  ok(/stock_opened_at:/.test(fn), 'scan: зөрүүгүй үед ч баталгаажсан огноо бичигдэнэ');
 }
 
 // scan: барааны эрхэд `can()` ХЭРЭГЛЭХГҮЙ — тэр нь «тохируулаагүй бол зөвшөөрнө».

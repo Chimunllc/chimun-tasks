@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
@@ -1479,6 +1479,44 @@ function finish() {
   ok(h2.indexOf('алгассан') === -1, 'алгасах: хэвийн шатанд тэмдэг гарахгүй');
 
   st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp; st.rolePerms = saved.rp;
+}
+
+// 40a2) Барааны эрхийн ӨГӨГДМӨЛ = ХОРИГ (2026-09-14)
+// ⛔ Өмнө нь «хуучин шүхэр» нь `can()` дуудаж байсан тул эрхийн загварт таараагүй
+//    албан тушаал (ж: шинээр нэмсэн «Тоног төхөөрөмжийн инженер») нөөц, өртөг,
+//    үнэ засах эрхийг ЧИМЭЭГҮЙ авдаг байв. Бараа = хөрөнгийн үнэ цэн.
+{
+  const st = vm.runInContext('state', sandbox);
+  const CPP = vm.runInContext('canProductPart', sandbox);
+  const CES = vm.runInContext('canCountStock', sandbox);
+  const CEP = vm.runInContext('canEditProducts', sandbox);
+  const saved = { ceo: st.isCEO, me: st.me, mp: st.memberPerms, rp: st.rolePerms, u: st.user };
+  st.me = 'W1'; st.rolePerms = {}; st.isCEO = false; st.user = { role: 'Тоног төхөөрөмжийн инженер' };
+
+  st.memberPerms = {};
+  ok(!CEP(), 'бараа: дүрэм таараагүй албан тушаалд шүхэр НЭЭГДЭХГҮЙ');
+  ok(!CPP('stock'), 'бараа: нөөц засах эрх ӨГӨГДМӨЛӨӨР ХОРИГЛОНО');
+  ok(!CPP('cost'),  'бараа: өртөг харах/засах эрх ӨГӨГДМӨЛӨӨР ХОРИГЛОНО');
+  ok(!CPP('price'), 'бараа: үнэ засах эрх ӨГӨГДМӨЛӨӨР ХОРИГЛОНО');
+  ok(!CES(),        'бараа: тоолох эрх ӨГӨГДМӨЛӨӨР ХОРИГЛОНО');
+
+  st.memberPerms = { W1: { 'products.stock': true } };
+  ok(CPP('stock'), 'бараа: ил олгосон нөөцийн эрх ажиллана');
+  ok(!CPP('cost'), 'бараа: нэг хэсгийн эрх БУСДЫГ нээхгүй');
+
+  st.memberPerms = { W1: { 'products.edit': true } };
+  ok(CPP('stock') && CPP('cost') && CPP('price') && CES(),
+     'бараа: ил олгосон бүрэн эрх бүх хэсгийг нээнэ');
+
+  st.memberPerms = { W1: { 'products.edit': false, 'products.count': true } };
+  ok(!CPP('stock'), 'бараа: ил хориглосон бүрэн эрх нөөц нээхгүй');
+  ok(CES(), 'бараа: тоолох эрхийг тусад нь олгож болно (нярав)');
+
+  st.memberPerms = {}; st.isCEO = true;
+  ok(CPP('stock') && CES(), 'бараа: CEO үргэлж чадна');
+
+  st.isCEO = saved.ceo; st.me = saved.me; st.memberPerms = saved.mp;
+  st.rolePerms = saved.rp; st.user = saved.u;
 }
 
 // 40b) Шат БУЦААХ эрх + засах модалын төлөв сонгогч (урагш үсрэх нүх хаагдсан эсэх)
@@ -8673,6 +8711,19 @@ async function swFetchTests() {
   ok(/purchaseRows\(/.test(fn), 'scan: дата нь хөрөнгийн зардлаас гарна');
   ok(!/<form|type="submit"|btn-primary/.test(fn),
      'scan: худалдан авалтын дэлгэцэд ГАРААР бичих форм БАЙХГҮЙ (гараар бүртгэл үхдэг)');
+}
+
+// scan: барааны эрхэд `can()` ХЭРЭГЛЭХГҮЙ — тэр нь «тохируулаагүй бол зөвшөөрнө».
+// Хуучин шүхэр эргэж ирвэл эрхийн загварт таараагүй ШИНЭ албан тушаал нөөц, өртөг,
+// үнэ засах эрхийг чимээгүй авна (2026-09-14-нд хаасан нүх).
+{
+  const bad = (src.match(/\bcan\('products\.edit'\)/g) || []).length;
+  eq(bad, 0, 'scan: барааны бүрэн эрхийг `can()`-ээр БҮҮ шалга (өгөгдмөл нь хориг)');
+  ok(/function canEditProducts\(\)\s*\{\s*return capValue\('products\.edit'\) === true;/.test(src),
+     'scan: `canEditProducts` нь ЗӨВХӨН ил олгосон эрхийг хүлээн авна');
+  const i = src.indexOf('function canProductPart(');
+  ok(/canEditProducts\(\)/.test(src.slice(i, i + 300)),
+     'scan: canProductPart шүхрээ canEditProducts-аар шалгана');
 }
 
 // scan: 69xx-ийг өөрөө шүүхгүй — `finIsNonExpense` ганц эх сурвалж.

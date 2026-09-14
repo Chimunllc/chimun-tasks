@@ -23,6 +23,7 @@
 | `invoices.sql` | Нэхэмжлэх + дугаарын дараалал | Нэг удаа (үүссэн) |
 | `stock_moves.sql` | Нөөцийн хөдөлгөөний дэвтэр (append-only) | Нэг удаа (үүссэн) |
 | `product_purchase_ref.sql` | `products.purchase_ref` — бараа ↔ хөрөнгийн зардлын мөр | Нэг удаа (үүссэн) |
+| `stock_opening.sql` | `products.stock_opened_at` — нөөцийг биечлэн шалгасан тэмдэг | Нэг удаа (үүссэн) |
 | `rls.sql` | **Эрхийн хил** — цалин, үнэмлэх, банк, хуулга хэн харахыг DB талд хаана | Идемпотент; `ROLE_PRESETS` өөрчлөгдвөл ДАХИН |
 
 Сайтын харагдацууд (`public_catalog`, `app_config_public`) нь

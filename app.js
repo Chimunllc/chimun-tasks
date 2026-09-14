@@ -4987,6 +4987,43 @@ function countLossValue(rows, costOf) {
 function countUnitCost(sku) {
   return Number((state.productCosts || {})[sku]) || Number((productBySku(sku) || {}).cost) || 0;
 }
+
+/* ─── ЭХНИЙ ҮЛДЭГДЭЛ (2026-09-14) ───────────────────────────────────────
+   Тооллого нь юутай ХАРЬЦУУЛЖ байгаа нь тодорхойгүй бол утгагүй. `qty_*` дээрх
+   9,354 ширхэг (1.2 тэрбум₮) нь Booqable/гараас ирсэн, хэн ч биечлэн шалгаагүй
+   тоо. Иймд 19 тооллогын нэг нь ч батлагдаагүй — хүн эргэлзсэн нь ЗӨВ.
+   Шийдэл: барааг нэг бүрчлэн «шалгаж баталгаажуулаад» огноо тавина
+   (`stock_opened_at`). Тэр өдрөөс хойш дэвтэр бүх хөдөлгөөнийг барина.
+   ⚠ ТААРСАН ч тэмдэглэгдэнэ — «шалгасан, зөв байсан» гэдэг нь мэдээлэл. */
+
+function stockOpened(p) { return !!(p && p.stock_opened_at); }
+
+/* Барааг ӨРТГӨӨР эрэмбэлж, хуримтлагдсан хувийг өгнө — «юуг эхэлж тоолох вэ»
+   гэдгийг систем хэлэх ёстой, хүн таамаглах ёсгүй. 49 бараа = хөрөнгийн 80%. */
+function openingRows(products, costOf) {
+  const cost = (sku) => Math.max(0, Number(costOf ? costOf(sku) : 0) || 0);
+  const list = (products || []).map(p => {
+    const qty = Number(p.stock) || 0;
+    return { sku: String(p.sku || ''), name: String(p.name || ''), qty,
+             cost: cost(p.sku), value: cost(p.sku) * qty,
+             opened: stockOpened(p), at: (p && p.stock_opened_at) || '', by: (p && p.stock_opened_by) || '' };
+  }).sort((a, b) => b.value - a.value || String(a.sku).localeCompare(String(b.sku)));
+  const total = list.reduce((n, x) => n + x.value, 0);
+  let acc = 0;
+  list.forEach(x => { acc += x.value; x.cum = total ? acc / total : 0; });
+  return list;
+}
+
+/* Дэвшил нь ТООГООР биш ӨРТГӨӨР хэмжигдэнэ — 280 барааны 49 нь хөрөнгийн 80%
+   тул «49/280» гэвэл ажил дөнгөж эхэлсэн мэт харагдана, үнэндээ бараг дууссан. */
+function openingStats(rows) {
+  const list = rows || [];
+  const valueTotal = list.reduce((n, x) => n + (Number(x.value) || 0), 0);
+  const done = list.filter(x => x.opened);
+  const valueDone = done.reduce((n, x) => n + (Number(x.value) || 0), 0);
+  return { done: done.length, total: list.length, left: list.length - done.length,
+           valueDone, valueTotal, pct: valueTotal ? valueDone / valueTotal : 0 };
+}
 // Актыг PDF болгож татна. ⚠ html2canvas нь position:fixed элементийг ХООСОН
 // буулгадаг тул holder ЭНГИЙН урсгалд; windowWidth-ийг элементийн өргөнтэй (794)
 // таарууна — 900≠794 бол зүүн тал тасарна (гэрээний PDF-ээс батлагдсан).
@@ -5253,6 +5290,27 @@ async function saveStockCount({ sessionId, sku, systemQty, countedQty, repairQty
 
 // Зөрүүг нөөцөд залруулах — ЭНЭ Л нөөцийг өөрчилнө, `products.stock` эрх шаардана.
 // Тооллогын бичлэг applied болж, хэн залруулсан нь үлдэнэ.
+/* Эхний үлдэгдэл баталгаажуулах. Тоо ӨӨРЧЛӨГДӨӨГҮЙ ч тэмдэг тавигдана —
+   «шалгасан, зөв байсан» гэдэг нь суурийг итгэл хүлээхүйц болгодог мэдээлэл.
+   ⚠ Бичилт зөвхөн `saveProduct`-аар: нөөцийн дэвтэр, кэш, сонголттой баганын
+     хамгаалалт бүгд тэнд. Тусад нь бичих зам гаргахгүй (scan-тест хаана). */
+async function confirmOpeningStock(sku, countedQty) {
+  if (!canProductPart('stock')) { showToast('Танд нөөц засах эрх алга', 'warn', 3000); return false; }
+  const p = productBySku(sku);
+  if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return false; }
+  const cur = Number(p.stock) || 0;
+  const q = Math.max(0, Math.round(Number(countedQty)));
+  const d = q - cur;
+  // Салбарын хуваарилалт — `applyStockCount`-той ИЖИЛ дүрэм (M-Event эхэлж, дараа Чимун).
+  const qm = Number(p.qty_mevent) || 0, qc = Number(p.qty_chimun) || 0;
+  let nm = qm + d, nc = qc;
+  if (nm < 0) { nc = Math.max(0, qc + nm); nm = 0; }
+  await saveProduct({ ...p, stock: Math.max(0, cur + d), qty_mevent: nm, qty_chimun: nc,
+    stock_opened_at: new Date().toISOString(), stock_opened_by: state.me || '',
+    _moveReason: 'opening', _moveNote: d ? 'эхний үлдэгдэл — зөрүү залруулав' : 'эхний үлдэгдэл баталгаажив' });
+  return true;
+}
+
 async function applyStockCount(row) {
   const p = productBySku(row.sku);
   if (!p) throw new Error('Бараа олдсонгүй: ' + row.sku);
@@ -9936,6 +9994,7 @@ async function loadProductsCatalog() {
       state._prodHasNameEn = rows.length ? ('name_en' in rows[0]) : true;   // англи нэр (сонголттой багана)
       state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
       state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
+      state._prodHasOpening = rows.length ? ('stock_opened_at' in rows[0]) : true;   // эхний үлдэгдлийн тэмдэг (сонголттой багана)
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -10526,6 +10585,8 @@ async function saveProduct(product) {
   if (product.supplier !== undefined) row.supplier = product.supplier || null;
   if (product.purchase_date !== undefined) row.purchase_date = product.purchase_date || null;
   if (product.purchase_ref !== undefined && state._prodHasPurchaseRef !== false) row.purchase_ref = product.purchase_ref || null;   // холбосон хөрөнгийн зардлын мөр
+  if (product.stock_opened_at !== undefined && state._prodHasOpening !== false) row.stock_opened_at = product.stock_opened_at || null;   // эхний үлдэгдэл баталгаажсан огноо
+  if (product.stock_opened_by !== undefined && state._prodHasOpening !== false) row.stock_opened_by = product.stock_opened_by || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
@@ -20180,11 +20241,35 @@ function renderStockCountIdle(cfg, canManage) {
       <span class="stc-row-n">${escapeHtml(scSessionLabel(h.id))}<span class="stc-row-by">${escapeHtml(String(h.closed_at || '').slice(0, 10))}${h.closed_by ? ' · ' + escapeHtml(memberName(h.closed_by)) : ''}</span></span>
       <span class="stc-row-q">${Number(h.counted) || 0}/${Number(h.total) || 0}${h.diffs ? ` · ${h.diffs} зөрүү` : ''}</span>
     </div>`).join('');
+  const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
+  const oSt = openingStats(oRows);
+  const showMoney = canProductPart('cost');
+  const oPct = Math.round(oSt.pct * 100);
+  // Тоолоогүйг ӨРТГӨӨР эхэнд — «юуг эхэлж тоолох вэ» гэдгийг систем хэлнэ.
+  const oLeft = oRows.filter(x => !x.opened && x.value > 0).slice(0, 40);
+  const opening = `<div class="stc-open">
+    <div class="stc-open-h">
+      <div><b>Эхний үлдэгдэл</b><span>Тоолохын өмнө суурийг тогтооно. Баталгаажаагүй тоотой харьцуулсан «зөрүү» утгагүй.</span></div>
+      <div class="stc-open-n">${oPct}%</div>
+    </div>
+    <div class="stc-bar"><div style="width:${oPct}%"></div></div>
+    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа баталгаажсан${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
+    ${oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${showMoney ? ' · ' + escapeHtml(fmtMoney(x.value)) : ''} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
+      <span class="stc-open-q">системд <b>${x.qty}</b></span>
+      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
+      <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Баталгаажуулах</button>` : ''}
+    </div>`).join('')}</div>
+    ${oSt.left > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
+    : '<div class="stc-open-m">✓ Бүх бараа баталгаажсан. Одоо тооллого утгатай.</div>'}
+  </div>`;
+
   return `
     <div class="stc-head">
       <div class="stc-head-t">Тооллого</div>
       <div class="stc-head-m">Идэвхтэй тооллого алга. Улиралд нэг удаа бүрэн тооллого хийнэ.</div>
     </div>
+    ${opening}
     ${canManage ? `<div class="stc-actions">
         <label class="stc-scope">Хамрах хүрээ<select id="stc-scope">
           <option value="abc">Үнэтэй бараа — хөрөнгийн 80% (${countScopedProducts('abc').length} бараа)</option>
@@ -20199,6 +20284,22 @@ function renderStockCountIdle(cfg, canManage) {
 
 function attachStockCountHandlers() {
   const $ = (id) => document.getElementById(id);
+  document.querySelectorAll('[data-op-ok]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const sku = btn.dataset.opOk;
+      const inp = document.querySelector(`[data-op-q="${CSS.escape(sku)}"]`);
+      const p = productBySku(sku);
+      const typed = inp && String(inp.value).trim();
+      const q = typed === '' || typed == null ? (Number(p && p.stock) || 0) : Number(typed);
+      if (!Number.isFinite(q) || q < 0) { showToast('Тоо буруу байна', 'warn', 2500); return; }
+      btn.disabled = true;
+      try {
+        const okd = await confirmOpeningStock(sku, q);
+        if (okd) { showToast('✓ Баталгаажлаа', 'success', 1800); render(); }
+        else btn.disabled = false;
+      } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+    });
+  });
   const search = $('stc-search');
   if (search) search.oninput = () => { state.scSearch = search.value; render(); setTimeout(() => { const el = $('stc-search'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0); };
   if ($('stc-start')) $('stc-start').onclick = async (e) => {
@@ -21201,7 +21302,8 @@ function renderProducts() {
 
 // Барааны дэлгэрэнгүй/засах модал — шинэ (p=null) эсвэл засах (p=бараа). Бүх талбар нэг дор.
 const STOCK_REASON_LABEL = { manual: 'Гараар', count: 'Тооллого', writeoff: 'Акт',
-                             transfer: 'Шилжүүлэг', damage: 'Эвдрэл/засвар', purchase: 'Худалдан авалт' };
+                             transfer: 'Шилжүүлэг', damage: 'Эвдрэл/засвар', purchase: 'Худалдан авалт',
+                             opening: 'Эхний үлдэгдэл' };
 const STOCK_BRANCH_LABEL = { mevent: '🎪 M-Event', chimun: '🏢 Чимун', nomaad: '⛺ NOMAAD', catering: '🍽 Катеринг' };
 
 // Барааны хөдөлгөөний түүхийг картад буулгана (сүүлийн 30).

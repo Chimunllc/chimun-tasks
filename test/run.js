@@ -5727,6 +5727,50 @@ need(['orderCustType']);
   ok(/create or replace view public\.public_availability/.test(availSql),
      'db: public_availability.sql харагдац үүсгэдэг');
 
+  // ── db/rls.sql — эрхийн хил өгөгдлийн санд ───────────────────────────────
+  // ⛔ Аппын UI-д эрх хаасан нь ХАНГАЛТГҮЙ: ажилтан токеноороо PostgREST рүү
+  //   шууд хандаж чаддаг. Эмзэг хүснэгт бүр DB талдаа хаагдсан байх ёстой.
+  const rlsSql = fs.readFileSync(path.join(dbDir, 'rls.sql'), 'utf8');
+  ['staff_salary', 'salary_payments', 'employee_docs', 'bank_accounts', 'bank_cards',
+   'bank_income', 'bank_statements', 'bank_receipts', 'vat_receipts',
+   'nomaad_payments', 'app_config'].forEach(t => {
+    ok(new RegExp('alter table public\\.' + t + ' enable row level security').test(rlsSql),
+       'db: ' + t + ' дээр мөрийн хамгаалалт асаалттай');
+  });
+  ok(/revoke delete on public\.%I from authenticated/.test(rlsSql),
+     'db: хатуу устгах эрх бүх хүснэгтээс хураагдана');
+  ['products', 'member_perms', 'role_perms', 'company_docs', 'product_aliases'].forEach(t => {
+    ok(rlsSql.includes("'" + t + "'"), 'db: ' + t + ' устгах зам ЗӨВШӨӨРӨГДСӨН жагсаалтад');
+  });
+
+  // ХАМГИЙН ЧУХАЛ: `sec.role_presets` нь app.js-ийн ROLE_PRESETS-ийн ТОЛЬ.
+  // Зөрвөл DB нь аппаас ЧАНГА болж, эрхтэй хүн ХООСОН дэлгэц харна (RLS алдаа
+  // шиддэггүй, зүгээр л мөрийг шүүнэ — чимээгүй эвдрэл). Хоёрыг ЗЭРЭГ зас.
+  {
+    const jsBlock = src.slice(src.indexOf('const ROLE_PRESETS = ['));
+    const jsBody = jsBlock.slice(0, jsBlock.indexOf('\n];'));
+    const jsRows = [...jsBody.matchAll(/\[\/([^/]+)\/,\s*\{\s*views:\s*\[([^\]]*)\]\s*,\s*actions:\s*\[([^\]]*)\]/g)]
+      .map(m => ({
+        pattern: m[1],
+        views: [...m[2].matchAll(/'([^']+)'/g)].map(x => x[1]).sort().join(','),
+        actions: [...m[3].matchAll(/'([^']+)'/g)].map(x => x[1]).sort().join(','),
+      }));
+    const sqlRows = [...rlsSql.matchAll(/\(\s*\d+,\s*'([^']+)',\s*'\{([^}]*)\}',\s*'\{([^}]*)\}'\)/g)]
+      .map(m => ({
+        pattern: m[1],
+        views: m[2].split(',').map(x => x.trim()).filter(Boolean).sort().join(','),
+        actions: m[3].split(',').map(x => x.trim()).filter(Boolean).sort().join(','),
+      }));
+    ok(jsRows.length >= 10, 'db: app.js-ээс ROLE_PRESETS уншигдав (' + jsRows.length + ')');
+    eq(sqlRows.length, jsRows.length, 'db: rls.sql-ийн багцын тоо ROLE_PRESETS-тэй ИЖИЛ');
+    jsRows.forEach((r, i) => {
+      const q = sqlRows[i] || {};
+      eq(q.pattern, r.pattern, 'db: багц #' + (i + 1) + ' — албан тушаалын хэв ижил');
+      eq(q.views, r.views, 'db: багц #' + (i + 1) + ' (' + r.pattern.slice(0, 14) + ') — харах эрх ижил');
+      eq(q.actions, r.actions, 'db: багц #' + (i + 1) + ' (' + r.pattern.slice(0, 14) + ') — үйлдлийн эрх ижил');
+    });
+  }
+
   // ХАМГИЙН ЧУХАЛ: SQL файлын төлвийн жагсаалт ба аппын _ORDER_OCCUPYING ЯГ ИЖИЛ
   // байх ёстой. Зөрвөл апп ба mevent.mn өөр сул үлдэгдэл харуулж давхар захиалга
   // үүснэ. Хоёрыг зэрэг өөрчлөхийг үүгээр эрхшээнэ.

@@ -8757,6 +8757,21 @@ async function swFetchTests() {
      'scan: худалдан авалтын дэлгэцэд ГАРААР бичих форм БАЙХГҮЙ (гараар бүртгэл үхдэг)');
 }
 
+// scan: эхний үлдэгдлийн блок ХОЁУЛАНГ нь харагдана — идэвхтэй тооллоготой ч,
+// тооллогогүй ч. ⛔ Анх ЗӨВХӨН idle дэлгэцэд тавьсан нь алдаа байв: тооллого
+// 09-06-наас нээлттэй байсан тул хэрэглэгч блокийг ОЛЖ ЧАДААГҮЙ.
+{
+  ok(/function openingBlockHtml\(/.test(src), 'scan: openingBlockHtml тусдаа функц');
+  const calls = (src.match(/\$\{openingBlockHtml\(/g) || []).length;
+  eq(calls, 2, 'scan: блок ХОЁР дэлгэцэд (идэвхтэй тооллого ба тооллогогүй) дуудагдана');
+  const i = src.indexOf('function renderStockCountIdle(');
+  ok(/openingBlockHtml\(/.test(src.slice(i, src.indexOf('function attachStockCountHandlers(', i))),
+     'scan: тооллогогүй дэлгэцэд блок бий');
+  const j = src.indexOf('function renderStockCount()');
+  ok(/openingBlockHtml\(/.test(src.slice(j, src.indexOf('function renderStockCountIdle(', j))),
+     'scan: ИДЭВХТЭЙ тооллогын дэлгэцэд ч блок бий');
+}
+
 // scan: эхний үлдэгдлийг `saveProduct`-аар л бичнэ — дэвтэр, кэш, эрхийн
 // хамгаалалт бүгд тэнд. Тусад нь бичих зам гаргавал тэдгээр тойрогдоно.
 {

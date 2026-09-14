@@ -27059,8 +27059,14 @@ function histView() {
 // бодит хөрөнгө 943.7 сая₮ байхад тайлан 636.6 сая гэж харуулж байв (79 бараа дутуу).
 // Ленз идэвхтэй бол ТУХАЙН САЛБАРЫН тоогоор (qty_mevent г.м.), эс бол нийт нөөцөөр.
 // Багц/үйлчилгээ ХАСАГДАНА — багц нь бүрэлдэхүүнээ давхар тоолно.
+/* ⚠ БАТАЛГААЖСАН ХУВЬ (2026-09-14). Энэ тоо нь `qty × өртөг` — тэр тоо
+   Booqable/гараас ирсэн, хэн ч биечлэн шалгаагүй. «1.2 тэрбум₮ хөрөнгөтэй»
+   гэж хэлэх нь тэр хэмжээгээр ИТГЭЛТЭЙ гэсэн санааг төрүүлдэг ч үнэндээ
+   ердөө хэсэг нь хоёр гарын үсгээр батлагдсан. Тиймээс `verified` тусад нь
+   гарна — эхний үлдэгдлийн ажил урагштал тэр дүн өсөж, тоолох хөдөлмөр
+   ЮУГ ӨӨРЧИЛЖ БУЙ нь мөнгөөр харагдана. */
 function warehouseCapital(products, branchKey) {
-  let capital = 0, withCost = 0, noCost = 0;
+  let capital = 0, withCost = 0, noCost = 0, verified = 0, verifiedN = 0;
   (products || []).forEach(p => {
     if (!p) return;
     if (typeof isService === 'function' && isService(p)) return;
@@ -27071,9 +27077,15 @@ function warehouseCapital(products, branchKey) {
       : (Number(p.stock) || 0);
     if (qty <= 0) return;
     const c = Number(p.cost) || 0;
-    if (c > 0) { capital += c * qty; withCost++; } else { noCost++; }
+    if (c > 0) {
+      capital += c * qty; withCost++;
+      // ⚠ ХОЁР гарын үсэг шаардана — `stockOpened` нь тэрийг барина. Нэг гарын
+      //   үсэгтэйг оруулбал «батлагдсан» гэдэг үг утгаа алдана.
+      if (typeof stockOpened === 'function' && stockOpened(p)) { verified += c * qty; verifiedN++; }
+    } else { noCost++; }
   });
-  return { capital, withCost, noCost };
+  return { capital, withCost, noCost, verified, verifiedN,
+           verifiedPct: capital > 0 ? verified / capital : 0 };
 }
 
 function renderHistory() {
@@ -27284,6 +27296,7 @@ function renderHistory() {
       const portfolio = card(`💰 Хөрөнгийн нөхөлт${_brLbl ? ' — ' + _brLbl : ''}`,
         `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px;">
            ${kpi('Нийт хөрөнгө оруулалт', fmtMoney(invest), 'var(--text)', `агуулахын ${wh.withCost} бараа · өртөг × эзэмшил`)}
+           ${kpi('Үүнээс баталгаажсан', fmtMoney(wh.verified), wh.verifiedPct >= 0.8 ? 'var(--ok)' : 'var(--warn)', `${wh.verifiedN} бараа · биечлэн тоологдсон ${Math.round(wh.verifiedPct * 100)}%`)}
            ${kpi(bq._full === false ? 'Сонгосон үеийн орлого' : 'Нөхсөн (түрээсийн орлого)', fmtMoney(recov), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', `${bq._full === false ? 'хөрөнгийн' : 'нөхөлт'} ${recPct}%`)}
            ${kpi(recPct >= 100 ? 'Ашиг (өртгөө давсан)' : 'Нөхөх үлдэгдэл', fmtMoney(Math.abs(recov - invest)), recPct >= 100 ? 'var(--ok)' : 'var(--warn)', recPct >= 100 ? 'орлого > хөрөнгө' : 'дутуу')}
          </div>
@@ -27291,7 +27304,9 @@ function renderHistory() {
         `${bq._full === false
             ? `⚠ Хугацааны шүүлт идэвхтэй — <b>сонгосон үеийн</b> орлогыг <b>нийт</b> хөрөнгөтэй харьцуулж байна (нөхөлт биш).`
             : `Нийт түрээсийн орлого нь хөрөнгө оруулалтынхаа <b>${recPct}%</b>-г нөхсөн.`}
-         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).${noCostN ? ` <button class="btn ui-raw" id="hist-nocost" style="padding:2px 8px;font-size:11.5px;">${noCostN} барааны өртөг оруулаагүй — нөхөх →</button>` : ''}
+         Хөрөнгө нь агуулахын БҮХ бараанаас (түрээслэгдээгүй нь ч орно).
+         ${wh.verifiedPct < 1 ? `<b>${fmtMoney(invest - wh.verified)}</b>-ийн тоог хэн ч биечлэн шалгаагүй —
+           Агуулах → <b>Тооллого</b> → «Эхний үлдэгдэл»-ээр нярав тоолж, ҮАХ захирал батална.` : 'Бүх хөрөнгө хоёр гарын үсгээр баталгаажсан.'}${noCostN ? ` <button class="btn ui-raw" id="hist-nocost" style="padding:2px 8px;font-size:11.5px;">${noCostN} барааны өртөг оруулаагүй — нөхөх →</button>` : ''}
          ${revGapHtml(bq, recov)}`);
       // ── Ангиллаар бүлэглэх (нээгддэг <details>) — бүлэг бүр орлого + хөрөнгө + ROI ──
       const byCat = {};

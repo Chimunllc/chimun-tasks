@@ -296,3 +296,112 @@ end $$;
 revoke all on public._sku_mig_backup_20260827 from authenticated;
 revoke all on public.product_batches         from authenticated;
 revoke all on public.quotes                  from authenticated;
+
+-- ═══ 11. АППЫН ӨГӨГДМӨЛТЭЙ ТААРУУЛАХ — `sec.cap` / `sec.can_act` ══════════
+-- ⛔ АСИММЕТР: app.js-ийн `can(үйлдэл)` нь ТОХИРУУЛААГҮЙ үед ЗӨВШӨӨРНӨ, харин
+--    дээрх `sec.can()` нь ХОРИГЛОНО. Өнөөдөр хохирогч алга (бүх ажилтан
+--    member_perms/role_perms/багц эсвэл lvl=100-тай — амьд датаар баталсан),
+--    гэхдээ ТАНИГДАХГҮЙ албан тушаалтай ШИНЭ ажилтан бүртгэгдмэгц апп нь
+--    зөвшөөрч, DB нь хориглож ЧИМЭЭГҮЙ хоосон дэлгэц үүсгэнэ.
+-- Тиймээс аппын гурван өгөгдмөлийг ТУСАД нь дуурайлгана:
+--   `sec.cap(k)`     = app `capValue(k)` — тохируулаагүй бол NULL
+--   `sec.can(k)`     = хориглох өгөгдмөл (дээрх бодлогууд хэвээр)
+--   `sec.can_act(k)` = app `can(k)` — зөвшөөрөх өгөгдмөл (ШИНЭ бодлогууд)
+
+-- Цагийн ажилтан — app `isDailyMember()` + `app_config['worker_type_overrides']`.
+-- ⚠ Энэ клампыг МАРТВАЛ 124 цагийн ажилтан `can_act`-аар бүх зүйл рүү нээгдэнэ.
+create or replace function sec.is_daily() returns boolean
+  language sql stable security definer set search_path = public, pg_temp as $$
+    select case
+      when ov.v is not null then ov.v = 'daily'
+      when e.worker_type = 'daily' then true
+      else coalesce(e.role ~* 'өдрийн\s*ажил|цагийн\s*ажил', false)
+    end
+    from (select sec.phone() as ph) q
+    left join lateral (
+      select e2.role, e2.worker_type from employees e2
+       where regexp_replace(coalesce(e2.phone, ''), '\D', '', 'g') = q.ph
+         and e2.merged_into is null
+       order by e2.pk limit 1) e on true
+    left join lateral (
+      select c.value ->> q.ph as v from app_config c
+       where c.key = 'worker_type_overrides') ov on true
+  $$;
+
+-- app `capValue()`-ийн ТОЛЬ. Дараалал ЧУХАЛ:
+-- CEO → member_perms → (цагийн ажилтан бол зөвхөн бүлгийн загвар) → role_perms → багц.
+create or replace function sec.cap(p_key text)
+  returns boolean
+  language plpgsql stable
+  security definer set search_path = public, sec, pg_temp as $$
+declare v_ph text; v jsonb; v_role text;
+begin
+  if sec.lvl() >= 100 then return true; end if;
+  v_ph := sec.phone();
+  if v_ph is null then return null; end if;
+
+  select mp.perms into v from member_perms mp where mp.person_key = v_ph;
+  if v is not null and v ? p_key then
+    return coalesce((v ->> p_key)::boolean, false);
+  end if;
+
+  -- Цагийн ажилтан: бүлгийн загварт байгаагаас өөр ЮУ Ч үгүй (NULL буцаахгүй —
+  -- эс бөгөөс `can_act` зөвшөөрөх өгөгдмөл рүү унана).
+  if sec.is_daily() then
+    select rp.perms into v from role_perms rp where lower(rp.role) = 'цагийн ажилтан';
+    return coalesce((v ->> p_key)::boolean, false);
+  end if;
+
+  select e.role into v_role from employees e
+   where regexp_replace(coalesce(e.phone, ''), '\D', '', 'g') = v_ph
+     and e.merged_into is null
+   order by e.pk limit 1;
+  if v_role is null then return null; end if;
+
+  select rp.perms into v from role_perms rp where lower(rp.role) = lower(v_role);
+  if v is not null and v ? p_key then
+    return coalesce((v ->> p_key)::boolean, false);
+  end if;
+
+  return sec.preset_cap(v_role, p_key);   -- таарахгүй бол NULL
+end $$;
+
+create or replace function sec.can_act(p_key text) returns boolean
+  language sql stable as $$ select coalesce(sec.cap(p_key), true) $$;
+
+revoke all on function sec.cap(text), sec.can_act(text), sec.is_daily() from public;
+grant execute on function sec.cap(text), sec.can_act(text), sec.is_daily()
+  to authenticated, anon;
+
+-- ═══ 12. ХАРИЛЦАГЧ ════════════════════════════════════════════════════════
+-- Нэр · утас · РД · захиалгын түүх. Өмнө нь нэвтэрсэн ХЭН Ч (цагийн ажилтан ч)
+-- бүх харилцагчийн жагсаалтыг уншиж, бүр ЗАСАЖ чаддаг байв.
+-- Толь: app `canSeeCustomers()` = canAccessView('customers', isCEO || can('orders.pay')).
+create or replace function sec.can_customers() returns boolean
+  language sql stable as $$
+    select coalesce(sec.cap('customers'), sec.is_ceo() or sec.can_act('orders.pay'))
+  $$;
+revoke all on function sec.can_customers() from public;
+grant execute on function sec.can_customers() to authenticated, anon;
+
+alter table public.customers enable row level security;
+drop policy if exists customers_all on public.customers;
+create policy customers_rw on public.customers for all to authenticated
+  using (sec.can_customers()) with check (sec.can_customers());
+
+-- ═══ 13. НЭХЭМЖЛЭХ ════════════════════════════════════════════════════════
+-- Худалдан авагчийн мэдээлэл + дүнгийн снапшот. Толь: картын «🧾 Нэхэмжлэх»
+-- товч = `can('orders.pay') || isCEO`.
+alter table public.invoices enable row level security;
+drop policy if exists invoices_all on public.invoices;
+create policy invoices_rw on public.invoices for all to authenticated
+  using (sec.is_ceo() or sec.can_act('orders.pay'))
+  with check (sec.is_ceo() or sec.can_act('orders.pay'));
+
+-- ═══ 14. ЗӨВХӨН ХАРАГДАЦААР УНШИГДДАГ ХҮСНЭГТЭЭС ЭРХ ХУРААХ ═══════════════
+-- Апп эдгээрийн ҮНДСЭН хүснэгтэд ОГТ хүрдэггүй — зөвхөн `v_employee_aliases`
+-- ба `rh_v_documents` харагдацаар уншина. Харагдац нь `security_invoker=off`
+-- (эзний эрхээр ажиллана) тул үндсэн хүснэгтийг бүрэн хаах нь аюулгүй.
+-- ⚠ Харагдацыг хожим `security_invoker=on` болговол эдгээр УНШИЛТ УНАНА.
+revoke all on public.employee_aliases from authenticated;   -- ажилтны хуучин утас/имэйл
+revoke all on public.bq_documents     from authenticated;   -- Booqable түүхэн баримт

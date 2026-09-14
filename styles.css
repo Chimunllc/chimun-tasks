@@ -5539,6 +5539,13 @@ body.role-daily #add-project { display: none !important; }
 .stc-open-q b { color: var(--text); font-variant-numeric: tabular-nums; }
 .stc-open .stc-open-in { width: 76px; }
 .stc-open-ok { font-size: var(--fs-xs); padding: var(--space-1) var(--space-2); white-space: nowrap; }
+/* «Батлах хүлээж буй» дэд гарчиг — хоёр ажлыг нүдээр салгана. */
+.stc-open-sub { font-size: var(--fs-xs); font-weight: 700; color: var(--text-soft);
+  margin-top: var(--space-3); }
+/* Товчны ОРОНД гарах шалтгаан. Унтраасан товч хүнд юу буруу байгааг хэлдэггүй
+   тул текстээр бичнэ. Wrap — ellipsis нь гол хэсгийг таслана. */
+.stc-open-why { flex: 0 1 auto; font-size: var(--fs-xs); color: var(--muted);
+  text-align: right; line-height: 1.4; }
 .stc-tools { display: flex; gap: var(--space-2); margin: 0 2px var(--space-3); }
 .stc-tools input {
   flex: 1; min-width: 0; min-height: 44px; padding: 0 var(--space-3);

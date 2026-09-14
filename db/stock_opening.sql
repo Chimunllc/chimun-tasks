@@ -32,3 +32,33 @@ grant select (stock_opened_at, stock_opened_by),
   on public.products to authenticated;
 
 notify pgrst, 'reload schema';
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- ХОЁР ГАРЫН ҮСЭГ (2026-09-14)
+--
+-- ЯАГААД: нэг хүний баталгаа нь суурийг итгэл хүлээхүйц БОЛГОДОГГҮЙ.
+--   Тоолсон хүн өөрөө батлах нь «өөрийгөө шалгах» — алдаа ч, санаатай
+--   зөрчил ч баригдахгүй. Хөрөнгийн 1.2 тэрбум₮-ийн суурь дээр энэ нь
+--   хангалтгүй. Тиймээс: НЯРАВ тоолж бүртгэнэ, ҮАХ ЗАХИРАЛ батална.
+--
+-- ⚠ НЭГ ХҮН ХОЁУЛАНГ НЬ ХИЙЖ БОЛОХГҮЙ (апп талд `openingSignBlock`).
+--   Хоёр гарын үсэг нэг хүнийх бол баталгаа биш, зөвхөн давхар товшилт.
+--
+-- ⚠ Өмнө нь нэг гарын үсгээр «баталгаажсан» бараанууд ХЭВЭЭР үлдэнэ —
+--   тэдгээр нь одоо «батлах хүлээж буй» төлөвт орно (дата устгахгүй,
+--   зөвхөн утга нь өөрчлөгдөнө). Дэвшлийн хувь тэр хэрээр буурна.
+-- ═══════════════════════════════════════════════════════════════════════
+
+alter table public.products add column if not exists stock_approved_at timestamptz;
+alter table public.products add column if not exists stock_approved_by text;
+
+comment on column public.products.stock_approved_at is
+  'Эхний үлдэгдлийн 2-р гарын үсэг (ҮАХ захирал). NULL = батлагдаагүй. Энэ ба stock_opened_at ХОЁУЛАА байж суурь хүчинтэй.';
+
+-- ⚠ anon-д НЭЭХГҮЙ — `products`-ийн нийтийн эрх БАГАНААР олгогддог.
+grant select (stock_approved_at, stock_approved_by),
+      insert (stock_approved_at, stock_approved_by),
+      update (stock_approved_at, stock_approved_by)
+  on public.products to authenticated;
+
+notify pgrst, 'reload schema';

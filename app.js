@@ -20116,6 +20116,37 @@ async function openCountScanner() {
 // ── ТООЛЛОГЫН ДЭЛГЭЦ ────────────────────────────────────────────────────────
 // Нярав: скан эсвэл хайлт → тоолсноо оруулна → бичилт үлдэнэ. Нөөц ХӨНДӨГДӨХГҮЙ.
 // Зөрүүг нөөцөд залруулах нь `products.stock` эрхтэй хүний тусдаа үйлдэл.
+/* Эхний үлдэгдлийн блок — ХОЁУЛАНГ нь (идэвхтэй тооллоготой ч, тооллогогүй ч)
+   харуулна. ⛔ 2026-09-14-нд ЗӨВХӨН idle дэлгэцэд тавьсан нь алдаа байв:
+   тооллого 09-06-наас нээлттэй байсан тул блок ХЭЗЭЭ Ч харагдаагүй. Суурь
+   тогтоох нь тооллогын УРЬДЧИЛСАН нөхцөл — тооллого явж байхад ч хэрэгтэй.
+   Scan-тест хоёр дуудалтыг шалгана. */
+function openingBlockHtml(canManage) {
+  const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
+  const oSt = openingStats(oRows);
+  const showMoney = canProductPart('cost');
+  const oPct = Math.round(oSt.pct * 100);
+  // Тоолоогүйг ӨРТГӨӨР эхэнд — «юуг эхэлж тоолох вэ» гэдгийг систем хэлнэ.
+  const oLeft = oRows.filter(x => !x.opened && x.value > 0).slice(0, 40);
+  const opening = `<div class="stc-open">
+    <div class="stc-open-h">
+      <div><b>Эхний үлдэгдэл</b><span>Тоолохын өмнө суурийг тогтооно. Баталгаажаагүй тоотой харьцуулсан «зөрүү» утгагүй.</span></div>
+      <div class="stc-open-n">${oPct}%</div>
+    </div>
+    <div class="stc-bar"><div style="width:${oPct}%"></div></div>
+    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа баталгаажсан${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
+    ${oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${showMoney ? ' · ' + escapeHtml(fmtMoney(x.value)) : ''} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
+      <span class="stc-open-q">системд <b>${x.qty}</b></span>
+      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
+      <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Баталгаажуулах</button>` : ''}
+    </div>`).join('')}</div>
+    ${oSt.left > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
+    : '<div class="stc-open-m">✓ Бүх бараа баталгаажсан. Одоо тооллого утгатай.</div>'}
+  </div>`;
+  return opening;
+}
+
 function renderStockCount() {
   const canCount = canCountStock(), canApply = canProductPart('stock');
   const canManage = canApply;   // тооллого нээх/хаах = нөөц засах эрхтэй хүн
@@ -20220,6 +20251,7 @@ function renderStockCount() {
       <div class="stc-bar"><div style="width:${pct}%"></div></div>
       ${canManage ? `<div class="stc-actions"><button class="btn ui-raw" id="stc-close">Тооллого хаах</button></div>` : ''}
     </div>
+    ${openingBlockHtml(canManage)}
     ${canCount ? `<div class="stc-tools">
       <button class="btn ui-raw" id="stc-scan">📷 Скан</button>
       <input type="search" id="stc-search" placeholder="Нэр, код, SKU хайх" value="${escapeHtml(state.scSearch || '')}">
@@ -20241,35 +20273,12 @@ function renderStockCountIdle(cfg, canManage) {
       <span class="stc-row-n">${escapeHtml(scSessionLabel(h.id))}<span class="stc-row-by">${escapeHtml(String(h.closed_at || '').slice(0, 10))}${h.closed_by ? ' · ' + escapeHtml(memberName(h.closed_by)) : ''}</span></span>
       <span class="stc-row-q">${Number(h.counted) || 0}/${Number(h.total) || 0}${h.diffs ? ` · ${h.diffs} зөрүү` : ''}</span>
     </div>`).join('');
-  const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
-  const oSt = openingStats(oRows);
-  const showMoney = canProductPart('cost');
-  const oPct = Math.round(oSt.pct * 100);
-  // Тоолоогүйг ӨРТГӨӨР эхэнд — «юуг эхэлж тоолох вэ» гэдгийг систем хэлнэ.
-  const oLeft = oRows.filter(x => !x.opened && x.value > 0).slice(0, 40);
-  const opening = `<div class="stc-open">
-    <div class="stc-open-h">
-      <div><b>Эхний үлдэгдэл</b><span>Тоолохын өмнө суурийг тогтооно. Баталгаажаагүй тоотой харьцуулсан «зөрүү» утгагүй.</span></div>
-      <div class="stc-open-n">${oPct}%</div>
-    </div>
-    <div class="stc-bar"><div style="width:${oPct}%"></div></div>
-    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа баталгаажсан${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
-    ${oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${showMoney ? ' · ' + escapeHtml(fmtMoney(x.value)) : ''} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
-      <span class="stc-open-q">системд <b>${x.qty}</b></span>
-      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
-      <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Баталгаажуулах</button>` : ''}
-    </div>`).join('')}</div>
-    ${oSt.left > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
-    : '<div class="stc-open-m">✓ Бүх бараа баталгаажсан. Одоо тооллого утгатай.</div>'}
-  </div>`;
-
   return `
     <div class="stc-head">
       <div class="stc-head-t">Тооллого</div>
       <div class="stc-head-m">Идэвхтэй тооллого алга. Улиралд нэг удаа бүрэн тооллого хийнэ.</div>
     </div>
-    ${opening}
+    ${openingBlockHtml(canManage)}
     ${canManage ? `<div class="stc-actions">
         <label class="stc-scope">Хамрах хүрээ<select id="stc-scope">
           <option value="abc">Үнэтэй бараа — хөрөнгийн 80% (${countScopedProducts('abc').length} бараа)</option>

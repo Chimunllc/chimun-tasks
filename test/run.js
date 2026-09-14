@@ -4759,6 +4759,26 @@ need(['orderCustType']);
   eq(F.warehouseCapital([prods[4]], null).capital, 0, 'хөрөнгө: үйлчилгээ орохгүй');
   eq(F.warehouseCapital([prods[5]], null).capital, 0, 'хөрөнгө: багц орохгүй (давхар тооллого)');
 
+  /* ⚠ БАТАЛГААЖСАН ХУВЬ (2026-09-14). «1.2 тэрбум₮ хөрөнгөтэй» гэдэг нь тэр
+     хэмжээгээр ИТГЭЛТЭЙ гэсэн санааг төрүүлдэг ч тэр тоог хэн ч биечлэн
+     шалгаагүй. Тоолох хөдөлмөр ЮУГ ӨӨРЧИЛЖ БУЙ нь мөнгөөр харагдах ёстой. */
+  {
+    const sign = { stock_opened_at: 'T1', stock_opened_by: '88',
+                   stock_approved_at: 'T2', stock_approved_by: '99' };
+    const v = F.warehouseCapital([{ ...prods[0], ...sign }, prods[1]], null);
+    eq(v.verified, 100000 * 10, 'хөрөнгө: баталгаажсан дүн зөвхөн 2 гарын үсэгтэйгээс');
+    eq(v.verifiedN, 1, 'хөрөнгө: баталгаажсан барааны тоо');
+    ok(Math.abs(v.verifiedPct - 1000000 / 3000000) < 1e-9, 'хөрөнгө: баталгаажсан хувь');
+    // ⛔ НЭГ гарын үсэг хангалтгүй — эс бөгөөс «батлагдсан» гэдэг үг утгаа алдана.
+    const half = F.warehouseCapital([{ ...prods[0], stock_opened_at: 'T1', stock_opened_by: '88' }], null);
+    eq(half.verified, 0, '⛔ хөрөнгө: НЭГ гарын үсэгтэй нь баталгаажсанд ОРОХГҮЙ');
+    eq(F.warehouseCapital(prods, null).verified, 0, 'хөрөнгө: гарын үсэггүй бол 0');
+    eq(F.warehouseCapital([], null).verifiedPct, 0, 'хөрөнгө: хоосон каталогт тэгд хуваахгүй');
+    // Салбарын лензэд ч баталгаажсан дүн тухайн салбарын тоогоор
+    eq(F.warehouseCapital([{ ...prods[0], ...sign }], 'nomaad').verified, 100000 * 4,
+       'хөрөнгө: баталгаажсан дүн салбарын тоогоор бодогдоно');
+  }
+
   // Тухайн салбарт нөөцгүй бараа орохгүй
   eq(F.warehouseCapital([{ sku: 'X', cost: 5000, stock: 9, qty_mevent: 0 }], 'mevent').capital, 0,
      'хөрөнгө: салбарт хуваарилаагүй бараа орохгүй');

@@ -84,7 +84,7 @@ const F = sandbox;
 function need(names) { const miss = names.filter(n => typeof F[n] !== 'function'); if (miss.length) { console.error('❌ функц олдсонгүй:', miss.join(', ')); process.exit(1); } }
 need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'parseDelivery', 'encodeDelivery', 'cleanAppNote', 'receiptFingerprint', 'parseBankReceipt', 'mapsHref', 'parseOrderTimes', 'encodeOrderTimes',
   'rentalDiscount', 'rentalDays', 'orderRentalDays', 'salaryNet', 'salaryNextYm', 'vatNum', 'vatNorm', 'vatDateIso', 'vatRegNorm', 'vatNameMatch', 'vatAutoScore', 'vatIsReturned', 'vatActive', 'vatDetectReturned', '_rangesOverlap', 'fmtMoney', 'fmtMoneyShort', 'meventContractHtml', 'ctTierText', 'tariffWorkStart', 'tariffWorkEnd', 'attMemberSummary', 'attAggregateMonth', 'attWorkedLine', 'buildReconAiPayload', 'applyReconAiSuggestions', '_isInternalCredit', 'reconcileOrders', 'parsePaidRef', 'receiptTooOld', 'statementMeta', 'reconcileByReceipts', 'receiptFingerprint', 'reconReceiptOwnerLabel', 'driverBonus', 'finIsRealExpense',
-  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
+  'finIsDepositReturn', 'encodeSetup', 'setupFlagOf', 'setupFeeOf', 'setupFeeForItems', 'setupRateForName', 'setupUnitFee', 'cooShareAmount', 'quoteDiscountFromTotal', '_histCompute', 'isOrderAutoTask', '_nomaadMonthSum', 'orderDiscountAmount', 'orderMoneyBreakdown', 'calcDeliveryFee', 'tariffOffhoursFee', 'tariffDeliveryCity', 'tariffPerKm', 'parseRefund', 'encodeRefundNote', 'productUtilization', 'errStatusLabel', 'productStockByName', 'availabilityFor', 'orderShortages', 'stripFormTokens', 'canProductPart', 'canEditProducts', 'canEditAnyProductPart', 'openingRows', 'openingStats', 'stockOpened', 'stockCounted', 'stockApproved', 'openingSignState', 'openingSignBlock', 'canApproveOpening', 'productPartFields', 'restrictProductEdit', 'warehouseCapital', 'orderMailKind', 'orderReview', 'histDayList', 'histFilterOrders', '_histCompute', 'packageSplit', '_histCatResolver', 'countRowPerson', 'scQuarterOf', 'scSessionLabel', 'scNewSessionId', 'scNormalizeConfig', 'scAllSessionIds', 'countRowState', 'countMergeProducts', 'countFilterList',
   'parseStatement', 'expenseFp', 'salaryBranchOf', 'fpAlreadyImported', 'isInternalTransfer',
   'attManualOutTs', 'attManualOutCheck', 'attReqValidate', 'attReqKey', 'attReqPrune', 'attReqApprovalCheck',
   'unknownPersonRefs', 'personNameFix', 'catListFromGroups', 'catOrphans', 'catRenamePlan', 'writeOffBranchPatch', 'countDamage', 'countDamageNote', 'nextMonthStr', '_histItemResolver']);
@@ -1492,14 +1492,37 @@ function finish() {
   const cost = (sku) => costs[sku] || 0;
   const prods = [
     { sku: 'C', name: 'Хямд',  stock: 5 },
-    { sku: 'A', name: 'Үнэтэй', stock: 10, stock_opened_at: '2026-09-14T00:00:00Z', stock_opened_by: '88' },
+    { sku: 'A', name: 'Үнэтэй', stock: 10, stock_opened_at: '2026-09-14T00:00:00Z', stock_opened_by: '88',
+      stock_approved_at: '2026-09-14T01:00:00Z', stock_approved_by: '99' },
     { sku: 'B', name: 'Дунд',  stock: 10 },
     { sku: 'D', name: 'Өртөггүй', stock: 7 },
   ];
 
-  ok(SO(prods[1]), 'эхний үлдэгдэл: тэмдэгтэй бараа баталгаажсан');
+  ok(SO(prods[1]), 'эхний үлдэгдэл: ХОЁР гарын үсэгтэй бараа баталгаажсан');
   ok(!SO(prods[0]), 'эхний үлдэгдэл: тэмдэггүй бараа баталгаажаагүй');
   ok(!SO(null), 'эхний үлдэгдэл: хоосон оролт унахгүй');
+
+  // ⛔ ХОЁР ГАРЫН ҮСЭГ (2026-09-14). Тоолсон хүн өөрөө батлах нь «өөрийгөө
+  //    шалгах» — 1.2 тэрбум₮-ийн суурь дээр хангалтгүй.
+  {
+    const SS = vm.runInContext('openingSignState', sandbox);
+    const SB = vm.runInContext('openingSignBlock', sandbox);
+    const only1 = { sku: 'X', stock_opened_at: 'T', stock_opened_by: '88' };
+    ok(!SO(only1), 'хоёр гарын үсэг: ЗӨВХӨН няравынх бол баталгаажаагүй');
+    eq(SS(only1), 'wait', 'хоёр гарын үсэг: төлөв = батлах хүлээж буй');
+    eq(SS({ sku: 'Y' }), 'todo', 'хоёр гарын үсэг: тоолоогүй = todo');
+    eq(SS(prods[1]), 'done', 'хоёр гарын үсэг: хоёулаа байвал done');
+    // ⚠ Зөвхөн 2-р гарын үсэгтэй байх нь ЛОГИКГҮЙ (тоолоогүй атлаа батлагдсан)
+    //   — баталгаажсанд тоологдохгүй.
+    ok(!SO({ stock_approved_at: 'T' }), 'хоёр гарын үсэг: тоолоогүй атлаа батлагдсан = хүчингүй');
+
+    eq(SB(only1, '99', true), '', 'хориг: өөр хүн батлахад саадгүй');
+    ok(SB(only1, '88', true).includes('өөрөө батлах'),
+       '⛔ хориг: ТООЛСОН ХҮН ӨӨРӨӨ батлахыг хаана');
+    ok(SB(only1, '99', false).includes('эрх'), 'хориг: эрхгүй хүнд шалтгаан хэлнэ');
+    ok(SB({ sku: 'Y' }, '99', true).includes('нярав'), 'хориг: тоолоогүй бол эхлээд нярав');
+    ok(SB(prods[1], '99', true).includes('батлагдсан'), 'хориг: давхар батлахыг хаана');
+  }
 
   const rows = OR(prods, cost);
   eq(rows.map(r => r.sku).join(','), 'A,B,C,D', 'эхний үлдэгдэл: ӨРТГӨӨР эрэмбэлнэ (үнэтэй нь эхэнд)');
@@ -1515,6 +1538,17 @@ function finish() {
   eq(st.left, 3, 'дэвшил: үлдсэн тоо');
   eq(st.valueTotal, 11050, 'дэвшил: нийт өртөг');
   eq(st.valueDone, 10000, 'дэвшил: баталгаажсан өртөг');
+  // «Батлах хүлээж буй» нь ажлын ДАРААГИЙН алхам — тоогоор ч, өртгөөр ч ил
+  // гарах ёстой, эс бөгөөс нярав тоолсон бараа хаана ч харагдахгүй гацна.
+  {
+    const wrows = OR([{ sku: 'B', stock: 10, stock_opened_at: 'T', stock_opened_by: '88' },
+                      { sku: 'C', stock: 5 }], cost);
+    const wst = OS(wrows);
+    eq(wst.wait, 1, 'дэвшил: батлах хүлээж буй тоо');
+    eq(wst.valueWait, 1000, 'дэвшил: батлах хүлээж буй өртөг');
+    eq(wst.done, 0, 'дэвшил: нэг гарын үсэг баталгаажсанд ОРОХГҮЙ');
+    eq(wst.pct, 0, 'дэвшил: нэг гарын үсгээр хувь өсөхгүй');
+  }
   // ⚠ ГОЛ САНАА: 4-ийн 1 нь баталгаажсан ч ӨРТГӨӨР 90% — тоогоор хэмжвэл
   //   ажил дөнгөж эхэлсэн мэт харагдана, үнэндээ бараг дууссан.
   ok(Math.abs(st.pct - 10000 / 11050) < 1e-9, 'дэвшил: хувь нь ТООГООР биш ӨРТГӨӨР');
@@ -8822,6 +8856,38 @@ async function swFetchTests() {
   // ⚠ Тоо ТААРСАН ч тэмдэг тавигдана — «шалгасан, зөв байсан» гэдэг нь мэдээлэл.
   //   `applyStockCount` нь diff=0 үед шууд гардаг тул тэрийг ашиглаж БОЛОХГҮЙ.
   ok(/stock_opened_at:/.test(fn), 'scan: зөрүүгүй үед ч баталгаажсан огноо бичигдэнэ');
+}
+
+// ⛔ scan: ХОЁР ГАРЫН ҮСЭГ (2026-09-14). Тоолсон хүн өөрөө батлах нь «өөрийгөө
+// шалгах» — баталгаа утгаа алдана. Доорх 4 зүйлийн аль нэг нь алдагдвал хоёр
+// гарын үсгийн систем ЧИМЭЭГҮЙ нэг гарын үсэг болж буурна.
+{
+  const i = src.indexOf('async function approveOpeningStock(');
+  ok(i > 0, 'scan: approveOpeningStock олдов');
+  const fn = src.slice(i, src.indexOf('async function applyStockCount(', i));
+  ok(/openingSignBlock\(/.test(fn),
+     '⛔ scan: батлахын өмнө `openingSignBlock` шалгагдана (өөрийгөө батлахыг хаадаг)');
+  ok(/saveProduct\(\{/.test(fn) && !/rest\/v1\/products/.test(fn),
+     'scan: 2-р гарын үсэг saveProduct-аар бичигдэнэ');
+  // ⚠ Батлагч ТОО ХӨНДӨХГҮЙ — эс бөгөөс няравын тоолсныг чимээгүй дарж бичнэ.
+  ok(!/\bstock:/.test(fn) && !/qty_mevent/.test(fn),
+     '⛔ scan: батлах үйлдэл нөөцийн ТООГ хөндөхгүй');
+  ok(/stock_approved_at:/.test(fn) && /stock_approved_by:/.test(fn),
+     'scan: 2-р гарын үсгийн хэн/хэзээ бичигдэнэ');
+  // ⚠ Няравт ихэвчлэн `products.edit` шүхэр байдаг. Батлах эрхийг тэр шүхэрт
+  //   оруулбал тоолсон хүн өөрөө батлах эрхтэй болно.
+  const k = src.indexOf('function canApproveOpening(');
+  ok(k > 0, 'scan: canApproveOpening олдов');
+  ok(!/canEditProducts\(\)/.test(src.slice(k, k + 220)),
+     '⛔ scan: батлах эрх `products.edit` шүхэрт ОРОХГҮЙ');
+  ok(/capValue\('products\.opening'\) === true/.test(src.slice(k, k + 220)),
+     'scan: батлах эрх ЗӨВХӨН ил олгосон үед');
+  ok(/DENY_DEFAULT_ACTIONS[\s\S]{0,400}?'products\.opening'/.test(src),
+     'scan: `products.opening` өгөгдмөлөөрөө ХОРИГЛОГДСОН');
+  // Тооллогын дэлгэц дээр хоёр ажил ХОЁР товчоор — нэг товчоор хоёуланг хийвэл
+  // нэг хүн хоёр гарын үсгийг дараалан дарна.
+  ok(/data-op-ok=/.test(src) && /data-op-ap=/.test(src),
+     'scan: тоолох ба батлах нь ТУСДАА товч');
 }
 
 // scan: барааны эрхэд `can()` ХЭРЭГЛЭХГҮЙ — тэр нь «тохируулаагүй бол зөвшөөрнө».

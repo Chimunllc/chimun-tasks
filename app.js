@@ -4996,7 +4996,32 @@ function countUnitCost(sku) {
    (`stock_opened_at`). Тэр өдрөөс хойш дэвтэр бүх хөдөлгөөнийг барина.
    ⚠ ТААРСАН ч тэмдэглэгдэнэ — «шалгасан, зөв байсан» гэдэг нь мэдээлэл. */
 
-function stockOpened(p) { return !!(p && p.stock_opened_at); }
+/* ⛔ ХОЁР ГАРЫН ҮСЭГ (2026-09-14). Тоолсон хүн өөрөө батлах нь «өөрийгөө
+   шалгах» — алдаа ч, санаатай зөрчил ч баригдахгүй. 1.2 тэрбум₮-ийн суурь
+   дээр хангалтгүй. НЯРАВ тоолж бүртгэнэ (`stock_opened_*`), ҮАХ ЗАХИРАЛ
+   батална (`stock_approved_*`). ХОЁУЛАА байж суурь хүчинтэй.
+   ⚠ Хоёр гарын үсэг НЭГ хүнийх бол баталгаа биш — `openingSignBlock` хаана. */
+function stockCounted(p)  { return !!(p && p.stock_opened_at); }
+function stockApproved(p) { return !!(p && p.stock_approved_at); }
+function stockOpened(p)   { return stockCounted(p) && stockApproved(p); }
+// 'todo' тоолоогүй · 'wait' тоолсон, батлах хүлээж буй · 'done' хоёр гарын үсэгтэй
+function openingSignState(p) {
+  if (stockOpened(p)) return 'done';
+  return stockCounted(p) ? 'wait' : 'todo';
+}
+/* Хоёр дахь гарын үсэг зөвшөөрөгдөх үү — хориглосон бол ШАЛТГААНЫГ буцаана
+   (хоосон мөр = зөвшөөрнө). Чимээгүй унтраасан товч нь хүнд юу буруу байгааг
+   хэлдэггүй тул мессежийг энд төрүүлж UI-д ил гаргана. */
+function openingSignBlock(p, me, canApprove) {
+  if (!stockCounted(p)) return 'Эхлээд нярав тоолж бүртгэнэ';
+  if (stockApproved(p)) return 'Аль хэдийн батлагдсан';
+  if (!canApprove) return 'Танд эхний үлдэгдэл батлах эрх алга';
+  const by = String((p && p.stock_opened_by) || '').trim();
+  if (by && by === String(me || '').trim()) {
+    return 'Тоолсон хүн өөрөө батлах боломжгүй — өөр хүн батална';
+  }
+  return '';
+}
 
 /* Барааг ӨРТГӨӨР эрэмбэлж, хуримтлагдсан хувийг өгнө — «юуг эхэлж тоолох вэ»
    гэдгийг систем хэлэх ёстой, хүн таамаглах ёсгүй. 49 бараа = хөрөнгийн 80%. */
@@ -5006,7 +5031,9 @@ function openingRows(products, costOf) {
     const qty = Number(p.stock) || 0;
     return { sku: String(p.sku || ''), name: String(p.name || ''), qty,
              cost: cost(p.sku), value: cost(p.sku) * qty,
-             opened: stockOpened(p), at: (p && p.stock_opened_at) || '', by: (p && p.stock_opened_by) || '' };
+             opened: stockOpened(p), sign: openingSignState(p),
+             at: (p && p.stock_opened_at) || '', by: (p && p.stock_opened_by) || '',
+             apAt: (p && p.stock_approved_at) || '', apBy: (p && p.stock_approved_by) || '' };
   }).sort((a, b) => b.value - a.value || String(a.sku).localeCompare(String(b.sku)));
   const total = list.reduce((n, x) => n + x.value, 0);
   let acc = 0;
@@ -5021,7 +5048,12 @@ function openingStats(rows) {
   const valueTotal = list.reduce((n, x) => n + (Number(x.value) || 0), 0);
   const done = list.filter(x => x.opened);
   const valueDone = done.reduce((n, x) => n + (Number(x.value) || 0), 0);
+  // «Батлах хүлээж буй» нь ажлын ДАРААГИЙН алхам — тоогоор ч, өртгөөр ч ил гарна,
+  // эс бөгөөс нярав тоолсон 19 бараа хаана ч харагдахгүй гацна.
+  const wait = list.filter(x => x.sign === 'wait');
+  const valueWait = wait.reduce((n, x) => n + (Number(x.value) || 0), 0);
   return { done: done.length, total: list.length, left: list.length - done.length,
+           wait: wait.length, valueWait,
            valueDone, valueTotal, pct: valueTotal ? valueDone / valueTotal : 0 };
 }
 // Актыг PDF болгож татна. ⚠ html2canvas нь position:fixed элементийг ХООСОН
@@ -5308,6 +5340,22 @@ async function confirmOpeningStock(sku, countedQty) {
   await saveProduct({ ...p, stock: Math.max(0, cur + d), qty_mevent: nm, qty_chimun: nc,
     stock_opened_at: new Date().toISOString(), stock_opened_by: state.me || '',
     _moveReason: 'opening', _moveNote: d ? 'эхний үлдэгдэл — зөрүү залруулав' : 'эхний үлдэгдэл баталгаажив' });
+  return true;
+}
+
+/* Эхний үлдэгдлийн 2-р гарын үсэг. ⛔ ТОО ХӨНДӨХГҮЙ — батлагч нь няравын
+   тоолсныг зөвшөөрч байгаа болохоос өөрөө дахин тоолохгүй. Тоо буруу бол
+   няравыг дахин тоолуулна (нярав дахин `confirmOpeningStock` дуудна).
+   ⚠ Бичилт зөвхөн `saveProduct`-аар (scan-тест хаана). */
+async function approveOpeningStock(sku) {
+  const p = productBySku(sku);
+  if (!p) { showToast('Бараа олдсонгүй', 'error', 3000); return false; }
+  const why = openingSignBlock(p, state.me, canApproveOpening());
+  if (why) { showToast(why, 'warn', 3500); return false; }
+  // ⚠ `_moveReason` өгөхгүй — тоо өөрчлөгдөөгүй тул дэвтэрт мөр үүсэхгүй
+  //   (`stockMoveRows` тэгш зөрүүг алгасдаг). Баталгааны мөр нь `stock_approved_*`.
+  await saveProduct({ ...p,
+    stock_approved_at: new Date().toISOString(), stock_approved_by: state.me || '' });
   return true;
 }
 
@@ -9995,6 +10043,7 @@ async function loadProductsCatalog() {
       state._prodHasSetupFee = rows.length ? ('setup_fee' in rows[0]) : true;   // суурилуулалтын нэгж хөлс (сонголттой багана)
       state._prodHasPurchaseRef = rows.length ? ('purchase_ref' in rows[0]) : true;   // хөрөнгийн зардлын мөрийн холбоос (сонголттой багана)
       state._prodHasOpening = rows.length ? ('stock_opened_at' in rows[0]) : true;   // эхний үлдэгдлийн тэмдэг (сонголттой багана)
+      state._prodHasApproval = rows.length ? ('stock_approved_at' in rows[0]) : true;   // 2-р гарын үсэг (сонголттой багана)
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
@@ -10587,6 +10636,8 @@ async function saveProduct(product) {
   if (product.purchase_ref !== undefined && state._prodHasPurchaseRef !== false) row.purchase_ref = product.purchase_ref || null;   // холбосон хөрөнгийн зардлын мөр
   if (product.stock_opened_at !== undefined && state._prodHasOpening !== false) row.stock_opened_at = product.stock_opened_at || null;   // эхний үлдэгдэл баталгаажсан огноо
   if (product.stock_opened_by !== undefined && state._prodHasOpening !== false) row.stock_opened_by = product.stock_opened_by || null;
+  if (product.stock_approved_at !== undefined && state._prodHasApproval !== false) row.stock_approved_at = product.stock_approved_at || null;   // 2-р гарын үсэг
+  if (product.stock_approved_by !== undefined && state._prodHasApproval !== false) row.stock_approved_by = product.stock_approved_by || null;
   if (product.variant_group !== undefined) row.variant_group = product.variant_group;
   if (product.variant_label !== undefined) row.variant_label = product.variant_label;
   // Салбарын нөөц: формоос тодорхой ирсэн бол ШУУД ашиглана (M-Event>0 = түрээслэгдэнэ).
@@ -12651,7 +12702,10 @@ const PERM_MENUS = [
       { key: 'products.catalog', label: '📷 Каталог (нэр, ангилал, зураг, тайлбар)' },
       { key: 'products.price',   label: '🏷 Түрээсийн үнэ, барьцаа, суурилуулалт' },
       { key: 'products.cost',    label: '💰 Өртөг ба хөрөнгө (нэгж өртөг, огноо)' },
-      { key: 'products.stock',   label: '📦 Нөөц, эвдрэл, салбарын хуваарилалт' } ] },
+      { key: 'products.stock',   label: '📦 Нөөц, эвдрэл, салбарын хуваарилалт' },
+      // 2-р гарын үсэг. ⚠ `products.stock`-оос ТУСДАА: тоолсон хүн өөрөө батлах
+      // ёсгүй тул нэг эрхээр хоёуланг олговол баталгаа утгаа алдана.
+      { key: 'products.opening', label: '✍️ Эхний үлдэгдэл батлах (2-р гарын үсэг)' } ] },
   { key: 'stockcount',  label: 'Тооллого', actions: [
       // Няравын ажил. Нөөцийг ДАРЖ БИЧИХГҮЙ — зөвхөн тоолж бүртгэнэ.
       // Зөрүүг нөөцөд залруулахад `products.stock` эрх тусдаа шаардана.
@@ -12682,16 +12736,16 @@ const VIEW_CAP_KEYS = PERM_MENUS.filter(m => !m.core).map(m => m.key);   // ро
 // orders.skip / orders.revert — дамжлагыг тойрох үйлдэл. Тусгайлан олгоогүй бол ХОРИГЛОНО,
 // эс бөгөөс матрицад «зөвшөөрсөн» мэт харагдаад, чагтлахад нь grant хадгалагдахгүй байсан.
 const DENY_DEFAULT_ACTIONS = new Set(['access.delegate', 'orders.skip', 'orders.revert',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count']);
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 // ── АЛБАН ТУШААЛ = ЭРХИЙН БЭЛЭН БАГЦ (2026-09-01) ──────────────────────────────
 // Хэрэглэгч баталсан хүснэгт. Албан тушаал өгмөгц эрх нь автоматаар (хатуу default-ыг орлоно).
 // views = PERM_MENUS-ийн цэсний түлхүүр; actions = удирдагдах үйлдэл. Жагсаагдаагүй = хаалттай.
 // Хүн бүрийн онцгой тохиргоо (member_perms) энэ багцыг дарна (онцгой тохиолдол).
 const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'salary.edit', 'salary.pay', 'hourly.pay', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate',
-  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count']);
+  'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
@@ -12780,6 +12834,11 @@ function canEditAnyProductPart() { return PRODUCT_PARTS.some(canProductPart); }
 // Тооллого — барааны хэсгүүдээс ТУСДАА эрх (нярав зөвхөн үүнийг авч болно).
 // canProductPart-той ижил хамгаалалт: ил олгосон эрхийг л хүлээн авна.
 function canCountStock() { return canEditProducts() || capValue('products.count') === true; }
+/* Эхний үлдэгдлийн 2-р гарын үсэг. ⚠ `canEditProducts()` шүхэрт БҮҮ оруул —
+   нярав ихэвчлэн `products.edit`-тэй байдаг тул шүхэрт оруулбал тоолсон хүн
+   өөрөө батлах эрхтэй болж, хоёр гарын үсгийн утга алга болно. Зөвхөн ил
+   олгосон эрх ба CEO. */
+function canApproveOpening() { return !!state.isCEO || capValue('products.opening') === true; }
 function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
@@ -20125,26 +20184,47 @@ function openingBlockHtml(canManage) {
   const oRows = openingRows((state.products || []).filter(p => !isService(p) && !isPackage(p)), countUnitCost);
   const oSt = openingStats(oRows);
   const showMoney = canProductPart('cost');
+  const canApprove = canApproveOpening();
   const oPct = Math.round(oSt.pct * 100);
-  // Тоолоогүйг ӨРТГӨӨР эхэнд — «юуг эхэлж тоолох вэ» гэдгийг систем хэлнэ.
-  const oLeft = oRows.filter(x => !x.opened && x.value > 0).slice(0, 40);
-  const opening = `<div class="stc-open">
+  const money = (v) => showMoney ? ' · ' + escapeHtml(fmtMoney(v)) : '';
+  // Хоёр ажил ХОЁР жагсаалт. Нэг жагсаалтад хольвол нярав батлах товч,
+  // захирал тоолох талбар харж, аль нь өөрийнх нь ажил болох нь мэдэгдэхгүй.
+  // Хоёуланг ӨРТГӨӨР эрэмбэлнэ — «юуг эхэлж хийх вэ» гэдгийг систем хэлнэ.
+  const oLeft = oRows.filter(x => x.sign === 'todo' && x.value > 0).slice(0, 40);
+  const oWait = oRows.filter(x => x.sign === 'wait').slice(0, 40);
+
+  const countList = oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${money(x.value)} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
+      <span class="stc-open-q">системд <b>${x.qty}</b></span>
+      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
+      <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Тоолсон</button>` : ''}
+    </div>`).join('')}</div>
+    ${oSt.left - oSt.wait > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oSt.wait - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
+    : '<div class="stc-open-m">✓ Бүгдийг тоолсон.</div>';
+
+  // Батлах хүлээж буй хэсэг — зөвхөн ажил байхад. Товч нь хориотой бол
+  // ШАЛТГААНЫГ ил бичнэ (чимээгүй унтраасан товч хүнд юу ч хэлдэггүй).
+  const waitList = oWait.length ? `<div class="stc-open-sub">✍️ Батлах хүлээж буй · ${oSt.wait}${showMoney ? ` · ${fmtMoney(oSt.valueWait)}` : ''}</div>
+    <div class="stc-open-list">${oWait.map(x => {
+      const why = openingSignBlock(productBySku(x.sku), state.me, canApprove);
+      return `<div class="stc-open-row">
+      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>тоолсон: ${escapeHtml(memberName(x.by) || x.by || '—')} · ${escapeHtml(String(x.sku))}${money(x.value)}</span></span>
+      <span class="stc-open-q">тоолсон <b>${x.qty}</b></span>
+      ${why ? `<span class="stc-open-why">${escapeHtml(why)}</span>`
+            : `<button class="btn stc-open-ok" data-op-ap="${escapeHtml(x.sku)}">Батлах</button>`}
+    </div>`; }).join('')}</div>
+    ${oSt.wait > oWait.length ? `<div class="stc-open-m">…бас ${oSt.wait - oWait.length} бараа батлах хүлээж байна.</div>` : ''}` : '';
+
+  return `<div class="stc-open">
     <div class="stc-open-h">
-      <div><b>Эхний үлдэгдэл</b><span>Тоолохын өмнө суурийг тогтооно. Баталгаажаагүй тоотой харьцуулсан «зөрүү» утгагүй.</span></div>
+      <div><b>Эхний үлдэгдэл</b><span>Нярав тоолж бүртгэнэ, ҮАХ захирал батална. Хоёулангийн гарын үсэгтэй байж суурь хүчинтэй.</span></div>
       <div class="stc-open-n">${oPct}%</div>
     </div>
     <div class="stc-bar"><div style="width:${oPct}%"></div></div>
-    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа баталгаажсан${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
-    ${oLeft.length ? `<div class="stc-open-list">${oLeft.map(x => `<div class="stc-open-row">
-      <span class="stc-open-nm">${escapeHtml(x.name || x.sku)}<span>${escapeHtml(String(x.sku))}${showMoney ? ' · ' + escapeHtml(fmtMoney(x.value)) : ''} · хуримтлагдсан ${Math.round(x.cum * 100)}%</span></span>
-      <span class="stc-open-q">системд <b>${x.qty}</b></span>
-      ${canManage ? `<input class="ui-raw stc-open-in" type="number" min="0" step="1" inputmode="numeric" data-op-q="${escapeHtml(x.sku)}" placeholder="${x.qty}">
-      <button class="btn stc-open-ok" data-op-ok="${escapeHtml(x.sku)}">Баталгаажуулах</button>` : ''}
-    </div>`).join('')}</div>
-    ${oSt.left > oLeft.length ? `<div class="stc-open-m">…бас ${oSt.left - oLeft.length} бараа. Өртөг ихтэйг нь эхэнд гаргалаа.</div>` : ''}`
-    : '<div class="stc-open-m">✓ Бүх бараа баталгаажсан. Одоо тооллого утгатай.</div>'}
+    <div class="stc-open-m">${oSt.done} / ${oSt.total} бараа бүрэн баталгаажсан${oSt.wait ? ` · ${oSt.wait} батлах хүлээж буй` : ''}${showMoney ? ` · өртгөөр ${fmtMoney(oSt.valueDone)} / ${fmtMoney(oSt.valueTotal)}` : ''}</div>
+    ${oSt.left ? countList + waitList
+      : '<div class="stc-open-m">✓ Бүх бараа хоёр гарын үсгээр баталгаажсан. Одоо тооллого утгатай.</div>'}
   </div>`;
-  return opening;
 }
 
 function renderStockCount() {
@@ -20305,6 +20385,17 @@ function attachStockCountHandlers() {
       try {
         const okd = await confirmOpeningStock(sku, q);
         if (okd) { showToast('✓ Баталгаажлаа', 'success', 1800); render(); }
+        else btn.disabled = false;
+      } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
+    });
+  });
+  // 2-р гарын үсэг — тоо хөндөхгүй, зөвхөн батална.
+  document.querySelectorAll('[data-op-ap]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const okd = await approveOpeningStock(btn.dataset.opAp);
+        if (okd) { showToast('✓ Батлагдлаа', 'success', 1800); render(); }
         else btn.disabled = false;
       } catch (e) { showToast('⚠ Хадгалагдсангүй: ' + e.message, 'error', 5000); btn.disabled = false; }
     });

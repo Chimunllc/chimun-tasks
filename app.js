@@ -12706,14 +12706,19 @@ function canStage(cap) { return can(cap); }
 // албан тушаалын загварт таарахгүй хүнд (ж: «зөөгч») шинэ түлхүүр чимээгүй
 // нээгдэнэ. Тиймээс ЗӨВХӨН ил олгосон (=== true) эрхийг хүлээн авна.
 const PRODUCT_PARTS = ['catalog', 'price', 'cost', 'stock'];
+// ⛔ Дээрх анхааруулга ЭНД мөрдөгдөөгүй байв (2026-09-14): «хуучин шүхэр» нь
+//   `can()` дуудаж байсан тул эрхийн загварт таараагүй ШИНЭ албан тушаал
+//   нөөц/өртөг/үнэ засах эрхийг чимээгүй авдаг байв. Бараа = хөрөнгийн үнэ цэн,
+//   өгөгдмөл нь ХОРИГ байх ёстой. Хуучин шүхэр эргэж ирэхийг scan-тест хаана.
+function canEditProducts() { return capValue('products.edit') === true; }
 function canProductPart(part) {
-  if (can('products.edit')) return true;             // хуучин шүхэр — бүгдийг нээнэ
+  if (canEditProducts()) return true;                // шүхэр — ЗӨВХӨН ил олгосон бол
   return capValue('products.' + part) === true;      // нарийн эрх — зөвхөн ил олгосон
 }
 function canEditAnyProductPart() { return PRODUCT_PARTS.some(canProductPart); }
 // Тооллого — барааны хэсгүүдээс ТУСДАА эрх (нярав зөвхөн үүнийг авч болно).
 // canProductPart-той ижил хамгаалалт: ил олгосон эрхийг л хүлээн авна.
-function canCountStock() { return can('products.edit') || capValue('products.count') === true; }
+function canCountStock() { return canEditProducts() || capValue('products.count') === true; }
 function canSeeStockCount() { return canAccessView('stockcount', () => canCountStock()); }
 // Хэсэг бүр ЭЗЭМШИХ талбарууд — эрхгүй хэсгийн утгыг эх бичлэгээс сэргээхэд ашиглана.
 // Функц (const биш) — тестийн vm sandbox-д const нь global болдоггүй.
@@ -21170,9 +21175,9 @@ function renderProducts() {
     <div class="prod-toolbar">
       <input type="search" id="prod-search" class="prod-search" placeholder="Хайх (нэр, ангилал, SKU)..." value="${escapeHtml(state.productSearch || '')}">
       <button class="btn" id="prod-scan" title="QR скан">📷 Скан</button>
-      ${can('products.edit') ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
+      ${canEditProducts() ? '<button class="btn" id="prod-new-pkg" title="Хэд хэдэн барааг нэг үнээр түрээслэх багц">📦 Багц</button>' : ''}
       ${canProductPart('stock') ? `<button class="btn" id="prod-wo-mode" title="Эвдэрсэн/ашиглагдахгүй болсон хөрөнгийг олноор данснаас хасах">🗑 Актлах</button>` : ''}
-      ${can('products.edit') ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
+      ${canEditProducts() ? '<button class="btn btn-primary" id="prod-new">+ Шинэ</button>' : ''}
     </div>
     ${woBar}
     <div class="prod-metabar">
@@ -21234,7 +21239,7 @@ async function renderStockMoves(sku, modal) {
 function openProductModal(p, opts) {
   const asPkg = !!(opts && opts.asPackage);
   // Хэсэг бүр өөрийн эрхтэй. Шинэ бараа нэмэх нь БҮХ хэсгийг бөглөнө → бүрэн эрх шаардана.
-  if (!p && !can('products.edit')) { showToast('Шинэ бараа нэмэхэд бүрэн эрх шаардана', 'warn', 3500); return; }
+  if (!p && !canEditProducts()) { showToast('Шинэ бараа нэмэхэд бүрэн эрх шаардана', 'warn', 3500); return; }
   if (!canEditAnyProductPart()) { showToast('Танд бараа засах эрх олгогдоогүй', 'warn', 3000); return; }
   const _pcan = {}; PRODUCT_PARTS.forEach(k => { _pcan[k] = canProductPart(k); });
   const _pcanHtml = (k) => _pcan[k] ? '<span class="pm-menu-c">›</span>' : '<span class="pm-menu-lock" title="Засах эрх алга">🔒</span>';

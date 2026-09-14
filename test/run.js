@@ -5825,6 +5825,43 @@ need(['orderCustType']);
     ok(rlsSql.includes("'" + t + "'"), 'db: ' + t + ' устгах зам ЗӨВШӨӨРӨГДСӨН жагсаалтад');
   });
 
+  // ── Хувийн мэдээлэлтэй хүснэгт (2-р үе) ────────────────────────────────
+  ['customers', 'invoices'].forEach(t => {
+    ok(new RegExp('alter table public\\.' + t + ' enable row level security').test(rlsSql),
+       'db: ' + t + ' дээр мөрийн хамгаалалт асаалттай');
+  });
+  // Апп эдгээрийн ҮНДСЭН хүснэгтэд хүрдэггүй — зөвхөн харагдацаар уншина.
+  ['employee_aliases', 'bq_documents'].forEach(t => {
+    ok(new RegExp('revoke all on public\\.' + t + ' +from authenticated').test(rlsSql),
+       'db: ' + t + '-ийн эрх нэвтэрсэн хэрэглэгчээс хураагдсан');
+  });
+  ok(!/rest\/v1\/(employee_aliases|bq_documents)\b/.test(src),
+     'db: app.js эдгээр хүснэгтийг ШУУД уншихгүй (харагдацаар л) — эрх хураасан тул унана');
+
+  // ⛔ ӨГӨГДМӨЛИЙН АСИММЕТР. app.js `can(үйлдэл)` = тохируулаагүй бол ЗӨВШӨӨРНӨ;
+  //   `sec.can()` = ХОРИГЛОНО. Шинэ бодлогод `sec.can()` бичвэл танигдахгүй албан
+  //   тушаалтай ажилтан апп дээр товчоо хараад DB-д хоосон хариу авна. Толь нь
+  //   `sec.can_act()` — үүнийг устгавал энэ тест унана.
+  ok(/create or replace function sec\.can_act/.test(rlsSql),
+     'db: sec.can_act (зөвшөөрөх өгөгдмөл) тодорхойлогдсон');
+  ok(/coalesce\(sec\.cap\(p_key\), true\)/.test(rlsSql),
+     'db: sec.can_act нь тохируулаагүй үед ЗӨВШӨӨРНӨ — app `can()`-ийн толь');
+  ok(/coalesce\(sec\.cap\(p_key\), false\)|coalesce\(sec\.preset_cap\(v_role, p_key\), false\)/.test(rlsSql),
+     'db: sec.can нь тохируулаагүй үед ХОРИГЛОНО — өмнөх бодлогууд хэвээр');
+  // ⚠ Цагийн ажилтны кламп. Үүнийг хасвал 124 цагийн ажилтан `can_act`-ийн
+  //   зөвшөөрөх өгөгдмөлөөр харилцагч/нэхэмжлэх рүү НЭЭГДЭНЭ.
+  ok(/create or replace function sec\.is_daily/.test(rlsSql),
+     'db: sec.is_daily (цагийн ажилтны кламп) тодорхойлогдсон');
+  ok(/if sec\.is_daily\(\) then/.test(rlsSql),
+     'db: sec.cap доторх цагийн ажилтны кламп хэвээр — хасвал 124 хүн нээгдэнэ');
+  ['customers_rw', 'invoices_rw'].forEach(n => {
+    ok(new RegExp('create policy ' + n + '\\b').test(rlsSql), 'db: ' + n + ' бодлого бий');
+  });
+  // Харилцагчийн бодлого нь `canSeeCustomers()`-ийн толь: тусгайлан тохируулсан
+  // нь тэргүүлж, эс бөгөөс CEO эсвэл `orders.pay`.
+  ok(/coalesce\(sec\.cap\('customers'\), sec\.is_ceo\(\) or sec\.can_act\('orders\.pay'\)\)/.test(rlsSql),
+     'db: can_customers = canAccessView(customers, isCEO || can(orders.pay))-ийн толь');
+
   // ХАМГИЙН ЧУХАЛ: `sec.role_presets` нь app.js-ийн ROLE_PRESETS-ийн ТОЛЬ.
   // Зөрвөл DB нь аппаас ЧАНГА болж, эрхтэй хүн ХООСОН дэлгэц харна (RLS алдаа
   // шиддэггүй, зүгээр л мөрийг шүүнэ — чимээгүй эвдрэл). Хоёрыг ЗЭРЭГ зас.

@@ -166,26 +166,39 @@ grant execute on function sec.can(text), sec.preset_cap(text, text),
                           sec.is_accountant(), sec.fin_full(),
                           sec.phone(), sec.lvl(), sec.is_ceo() to authenticated, anon;
 
+-- ⚠ ИДЕМПОТЕНТ БАЙХ ЁСТОЙ. Бодлого бүрийн өмнө өөрийнх нь нэрээр `drop policy
+--   if exists` байна — эс бөгөөс ХОЁР ДАХЬ удаа ажиллуулахад «policy already
+--   exists» гэж дунд нь унаж, доорх хэсгүүд ОГТ хэрэгжихгүй (2026-09-14-нд яг
+--   ингэж болсон: багцын толь шинэчлэхээр дахин ажиллуулахад 4-14 хэсэг
+--   алгасагдаж, ҮАХ захирал батлах эрхгүй хэвээр үлдэв). Доорх «_read» /
+--   «_write» / «_all» нэрс нь ХУУЧИН нэрсийг цэвэрлэдэг — бүү устга.
+
 -- ═══ 4. ЦАЛИН ═════════════════════════════════════════════════════════════
 -- Хамгийн эмзэг. Өөрийн цалингаа хүн бүр харна — бусдынхыг зөвхөн эрхтэй нь.
 
 alter table public.staff_salary enable row level security;
 drop policy if exists staff_salary_read  on public.staff_salary;
 drop policy if exists staff_salary_write on public.staff_salary;
+drop policy if exists staff_salary_sel on public.staff_salary;
 create policy staff_salary_sel on public.staff_salary for select to authenticated
   using (sec.can('salary') or person_key = sec.phone());
+drop policy if exists staff_salary_ins on public.staff_salary;
 create policy staff_salary_ins on public.staff_salary for insert to authenticated
   with check (sec.can('salary.edit'));
+drop policy if exists staff_salary_upd on public.staff_salary;
 create policy staff_salary_upd on public.staff_salary for update to authenticated
   using (sec.can('salary.edit')) with check (sec.can('salary.edit'));
 
 alter table public.salary_payments enable row level security;
 drop policy if exists salary_payments_read  on public.salary_payments;
 drop policy if exists salary_payments_write on public.salary_payments;
+drop policy if exists salary_payments_sel on public.salary_payments;
 create policy salary_payments_sel on public.salary_payments for select to authenticated
   using (sec.can('salary') or person_key = sec.phone());
+drop policy if exists salary_payments_ins on public.salary_payments;
 create policy salary_payments_ins on public.salary_payments for insert to authenticated
   with check (sec.can('salary.pay'));
+drop policy if exists salary_payments_upd on public.salary_payments;
 create policy salary_payments_upd on public.salary_payments for update to authenticated
   using (sec.can('salary.pay')) with check (sec.can('salary.pay'));
 
@@ -195,10 +208,13 @@ create policy salary_payments_upd on public.salary_payments for update to authen
 
 alter table public.employee_docs enable row level security;
 drop policy if exists employee_docs_all on public.employee_docs;
+drop policy if exists employee_docs_sel on public.employee_docs;
 create policy employee_docs_sel on public.employee_docs for select to authenticated
   using (sec.can('access') or member_key = sec.phone());
+drop policy if exists employee_docs_ins on public.employee_docs;
 create policy employee_docs_ins on public.employee_docs for insert to authenticated
   with check (sec.can('access') or member_key = sec.phone());
+drop policy if exists employee_docs_upd on public.employee_docs;
 create policy employee_docs_upd on public.employee_docs for update to authenticated
   using (sec.can('access') or member_key = sec.phone())
   with check (sec.can('access') or member_key = sec.phone());
@@ -209,11 +225,13 @@ create policy employee_docs_upd on public.employee_docs for update to authentica
 
 alter table public.bank_accounts enable row level security;
 drop policy if exists bank_accounts_read on public.bank_accounts;
+drop policy if exists bank_accounts_sel on public.bank_accounts;
 create policy bank_accounts_sel on public.bank_accounts for select to authenticated
   using (sec.fin_full());
 
 alter table public.bank_cards enable row level security;
 drop policy if exists bank_cards_read on public.bank_cards;
+drop policy if exists bank_cards_sel on public.bank_cards;
 create policy bank_cards_sel on public.bank_cards for select to authenticated
   using (sec.fin_full());
 
@@ -223,28 +241,33 @@ create policy bank_cards_sel on public.bank_cards for select to authenticated
 
 alter table public.bank_statements enable row level security;
 drop policy if exists bank_statements_all on public.bank_statements;
+drop policy if exists bank_statements_rw on public.bank_statements;
 create policy bank_statements_rw on public.bank_statements for all to authenticated
   using (sec.fin_full()) with check (sec.fin_full());
 
 alter table public.bank_income enable row level security;
 drop policy if exists bank_income_all on public.bank_income;
+drop policy if exists bank_income_rw on public.bank_income;
 create policy bank_income_rw on public.bank_income for all to authenticated
   using (sec.fin_full()) with check (sec.fin_full());
 
 alter table public.bank_receipts enable row level security;
 drop policy if exists bank_receipts_all on public.bank_receipts;
+drop policy if exists bank_receipts_rw on public.bank_receipts;
 create policy bank_receipts_rw on public.bank_receipts for all to authenticated
   using (sec.fin_full() or sec.can('orders.pay'))
   with check (sec.fin_full() or sec.can('orders.pay'));
 
 alter table public.vat_receipts enable row level security;
 drop policy if exists vat_receipts_all on public.vat_receipts;
+drop policy if exists vat_receipts_rw on public.vat_receipts;
 create policy vat_receipts_rw on public.vat_receipts for all to authenticated
   using (sec.fin_full() or sec.can('vat'))
   with check (sec.fin_full() or sec.can('vat'));
 
 alter table public.nomaad_payments enable row level security;
 drop policy if exists nomaad_payments_all on public.nomaad_payments;
+drop policy if exists nomaad_payments_rw on public.nomaad_payments;
 create policy nomaad_payments_rw on public.nomaad_payments for all to authenticated
   using (sec.fin_full() or sec.can('nomaad'))
   with check (sec.fin_full() or sec.can('nomaad.income'));
@@ -256,12 +279,15 @@ create policy nomaad_payments_rw on public.nomaad_payments for all to authentica
 
 alter table public.app_config enable row level security;
 drop policy if exists app_config_all on public.app_config;
+drop policy if exists app_config_sel on public.app_config;
 create policy app_config_sel on public.app_config for select to authenticated
   using (key not in ('coo_share', 'personal_settlements') or sec.fin_full());
+drop policy if exists app_config_ins on public.app_config;
 create policy app_config_ins on public.app_config for insert to authenticated
   with check (case key when 'coo_share' then sec.is_ceo()
                        when 'personal_settlements' then sec.fin_full()
                        else true end);
+drop policy if exists app_config_upd on public.app_config;
 create policy app_config_upd on public.app_config for update to authenticated
   using (case key when 'coo_share' then sec.is_ceo()
                   when 'personal_settlements' then sec.fin_full()
@@ -386,6 +412,7 @@ grant execute on function sec.can_customers() to authenticated, anon;
 
 alter table public.customers enable row level security;
 drop policy if exists customers_all on public.customers;
+drop policy if exists customers_rw on public.customers;
 create policy customers_rw on public.customers for all to authenticated
   using (sec.can_customers()) with check (sec.can_customers());
 
@@ -394,6 +421,7 @@ create policy customers_rw on public.customers for all to authenticated
 -- товч = `can('orders.pay') || isCEO`.
 alter table public.invoices enable row level security;
 drop policy if exists invoices_all on public.invoices;
+drop policy if exists invoices_rw on public.invoices;
 create policy invoices_rw on public.invoices for all to authenticated
   using (sec.is_ceo() or sec.can_act('orders.pay'))
   with check (sec.is_ceo() or sec.can_act('orders.pay'));

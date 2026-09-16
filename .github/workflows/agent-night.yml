@@ -102,9 +102,18 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           base_branch: main
           branch_prefix: 'claude/night-'
+          # ⛔ `--allowedTools`-гүй бол агент ФАЙЛ ЗАСАХ, git/gh АЖИЛЛУУЛАХ эрхгүй.
+          # 2026-09-16-нд эхний бүтэн ажиллалт 30 эргэлт, $3.63 үрээд
+          # `permission_denials_count: 22` гэж дуусаж, салбар ч, PR ч үүсээгүй —
+          # атлаа workflow «амжилттай» гэж харагдсан. Хэрэгсэл нээхээ мартвал
+          # агент чимээгүй хоосон ажиллана.
+          # ⚠ Хэрэгслийн жагсаалт нь ХАМГААЛАЛТ БИШ. Бодит хил нь механик
+          # шалгуурууд: храповикууд · diff ≤500 мөр · өр үнэхээр буурсан эсэх ·
+          # branch protection. Тиймээс энд өгөөмөр, тэнд хатуу.
           claude_args: |
             --max-turns 70
             --model claude-opus-5
+            --allowedTools Read,Edit,Write,Glob,Grep,Bash
           prompt: |
             Эхлээд `CLAUDE.md`-г бүтнээр унш — дизайны гэрээ болон бүх дүрэм тэнд.
 
@@ -118,7 +127,8 @@ jobs:
             3. Шинэ класс бүрийг `styles.css`-д нэм. Өнгө/зай/фонтыг ЗӨВХӨН
                токеноор (`var(--text)`, `var(--space-3)`, `var(--fs-md)`).
                Токен байхгүй бол `:root`-д нэм.
-            4. `node test/run.js` — 3,102 тест бүгд ногоон байх ёстой.
+            4. `node test/run.js` — БҮХ тест ногоон байх ёстой (тоог энд бичихгүй,
+               өдөр бүр өсдөг — унасан тест 0 байвал зөв).
             5. `node tools/debt-check.js` — өр БУУРСАН байх ёстой.
             6. `node tools/debt-check.js --update` — baseline-ыг чангарууул.
                (Храповик: baseline зөвхөн БУУРАХ тал руу эргэнэ.)
@@ -151,8 +161,13 @@ jobs:
                   --json number,headRefName,createdAt \
                   --jq '[.[] | select(.headRefName | startswith("claude/night-"))] | sort_by(.createdAt) | last | .number // empty')
           if [ -z "$NUM" ]; then
-            echo "::notice::Агент PR нээгээгүй — өнөөдөр ажил гараагүй."
-            exit 0
+            # ⛔ ЭНЭ НЬ АМЖИЛТ БИШ. Ажил байсан (бай сонгогдсон) атлаа PR гараагүй
+            # гэдэг нь агент эрхгүй, эргэлт дууссан, эсвэл гацсан гэсэн үг. Өмнө нь
+            # энд `exit 0` байсан тул хоосон ажиллалт «амжилттай» гэж харагдаж,
+            # $3.63 үрсэн нь мэдэгдээгүй. Ажилгүй шөнө нь ДЭЭР талд шүүгдэнэ
+            # (task.skip) — энд хүрсэн бол үнэхээр алдаа.
+            echo "::error::Агент PR нээсэнгүй. Логоос permission_denials_count ба num_turns-ыг хар."
+            exit 1
           fi
           echo "PR: #$NUM"
 

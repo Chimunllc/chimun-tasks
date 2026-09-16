@@ -27871,7 +27871,17 @@ function pbxCostPerCall(spendMnt, calls) {
 // Дуудлагын зөвлөгөө. Цэвэр функц — `adsAdvice`-тай ижил хэлбэр буцаана
 // (kind/sev/text) тул нэг жагсаалтад нийлнэ.
 // ⚠ Цөөн дуудлагатай үед дүгнэхгүй (шуугиан) — `adsAdvice`-ийн minSpend-тэй ижил санаа.
-function callAdvice(p, ws, we) {
+// ⛔ АЖЛЫН БУС ЦАГИЙН «АЛДАГДАЛ» нь ихэвчлэн ХУДАЛ (2026-09-16).
+//    Цагийн тоо (`pbx_calls_hourly`) нь дуудлагын УРТЫГ мэдэхгүй тул орой
+//    ирсэн бүх дуудлагыг «алдсан» гэж үздэг байв. Амьд датагаар ажлын бус
+//    цагийн 66 дуудлагын **65 нь мэндчилгээн дээр тасарсан**, зөвхөн 1 нь
+//    хүлээсэн. Тасалсан дуудлага 13:00 ба 19-21 цагт оргилдог — өдрийн хоол,
+//    оройн хоолны цаг, өөрөөр хэлбэл KFC-тэй андуурсан хүмүүс (манай дугаар
+//    тэдэнтэй төстэй). Түүнийг «алдсан лид» гэж тоовол шөнийн ээлж хүртэл
+//    хөлслөх шийдвэр гаргана.
+//    Тиймээс энд ДУУДЛАГА БҮРИЙН лог (`pbxLog`) -оор л дүгнэнэ: мэндчилгээг
+//    давж хүлээсэн хүн л жинхэнэ алдагдал.
+function callAdvice(p, ws, we, log) {
   const out = [];
   if (!p || !p.calls) return out;
   const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
@@ -27880,11 +27890,36 @@ function callAdvice(p, ws, we) {
     out.push({ kind: 'miss', sev: 1, mnt: 0,
       text: `Ажлын цагаар ${p.bizCalls} дуудлага ирээд ${p.bizMissed}-ыг нь хэн ч аваагүй (${p.bizRate}% авсан). Зарын мөнгө утас дуугартал хүргэж байгаа ч яг тэндээ алдагдаж байна — дуудлагын дараалал, ээлж, эсвэл шилжүүлэх дугаараа шалга.` });
   }
-  if (p.offCalls >= 10 && p.offMissed >= p.offCalls * 0.9) {
+  const off = pbxOffHoursWaited(log, w0, w1);
+  if (off >= 5) {
     out.push({ kind: 'offhours', sev: 2, mnt: 0,
-      text: `Ажлын цагийн ГАДНА ${p.offCalls} дуудлага ирж ${p.offMissed}-д нь хариулаагүй (хүн ${w0}:00–${w1}:59 хооронд л авдаг). Эдгээр нь зар үзээд орой залгасан хүмүүс — дуут мэндчилгээнд «маргааш эргэж залгана» гэж хэлэх, эсвэл ээлжийн дугаар руу шилжүүлбэл шууд нөхөгдөнө.` });
+      text: `Ажлын цагийн ГАДНА ${off} хүн дуут мэндчилгээг сонсоод хүлээсэн ч хэн ч аваагүй (хүн ${w0}:00–${w1}:59 хооронд л авдаг). Эдгээр нь жинхэнэ сонирхсон хүмүүс — ээлжийн дугаар эсвэл «маргааш эргэж залгана» гэсэн дуут захидал нөхнө.` });
   }
   return out;
+}
+// Улаанбаатарын цаг (UTC+8) — ЯГ энэ хэрэгтэй, браузерын бүсээс ХАМААРАХГҮЙ.
+// ⚠ `getHours()` нь ажиллаж буй машины бүсээр өөрчлөгддөг тул гадаад
+//    сервер/CI дээр «орой» нь «өдөр» болж хувирна (тест ингэж унасан).
+function _ubHour(ts) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return null;
+  return new Date(t + 8 * 3600 * 1000).getUTCHours();
+}
+// Ажлын бус цагт мэндчилгээг ДАВЖ хүлээгээд ч хариу аваагүй дуудлагын тоо.
+// ⚠ Богино тасалсныг ОРУУЛАХГҮЙ — тэдгээр нь андуурсан дуудлага.
+function pbxOffHoursWaited(calls, ws, we) {
+  const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
+  const w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
+  let n = 0;
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if ((Number(c.answer_sec) || 0) > 0) return;
+    if ((Number(c.call_sec) || 0) < PBX_WAIT_SEC) return;
+    const h = _ubHour(c.started_at);
+    if (h === null) return;
+    if (h < w0 || h > w1) n++;
+  });
+  return n;
 }
 
 // ── ХАРИУ АВААГҮЙ ДУУДЛАГА (2026-09-16) ─────────────────────────────────────
@@ -28288,7 +28323,7 @@ function renderAds() {
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
   const conv = callConversion(state.pbxLog || [], state.appOrders || [], { from });
-  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we)).concat(callConvAdvice(conv))
+  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [])).concat(callConvAdvice(conv))
     .sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 

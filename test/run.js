@@ -6338,9 +6338,32 @@ need(['orderCustType']);
   eq(F.pbxCostPerCall(0, 40), 0, 'өртөг: зар 0 бол 0');
 
   // Зөвлөгөө — алдсан дуудлага.
-  const tips = F.callAdvice(p, 9, 18);
+  // ⛔ Ажлын бус цагийн сануулга нь ДУУДЛАГА БҮРИЙН логоос гарна. Цагийн тоо
+  //    (pbx_calls_hourly) нь урт мэдэхгүй тул KFC-тэй андуурсан богино
+  //    дуудлагыг «алдсан лид» гэж тоолж, шөнийн ээлж хөлслөх зөвлөгөө өгдөг байв.
+  const offLog = Array.from({ length: 8 }, (_, i) => ({
+    direction: 'in', answer_sec: 0, call_sec: 30,
+    started_at: `2026-09-1${i % 5}T21:00:00+08:00`,
+  }));
+  const kfcLog = Array.from({ length: 40 }, (_, i) => ({
+    direction: 'in', answer_sec: 0, call_sec: 6,
+    started_at: `2026-09-1${i % 5}T20:00:00+08:00`,
+  }));
+  const tips = F.callAdvice(p, 9, 18, offLog);
   ok(tips.some(t => t.kind === 'miss'), 'дуудлага: ажлын цагийн алдагдлыг сануулна');
-  ok(tips.some(t => t.kind === 'offhours'), 'дуудлага: оройн дуудлагыг сануулна');
+  ok(tips.some(t => t.kind === 'offhours'), 'дуудлага: орой ХҮЛЭЭСЭН хүнийг сануулна');
+  ok(!F.callAdvice(p, 9, 18, kfcLog).some(t => t.kind === 'offhours'),
+     'дуудлага: орой богино тасалсан (KFC андуурал) нь шөнийн ээлжийн зөвлөгөө үүсгэхгүй');
+  eq(F.pbxOffHoursWaited(offLog, 9, 18), 8, 'дуудлага: ажлын бус цагийн хүлээсэн тоо');
+  eq(F.pbxOffHoursWaited(kfcLog, 9, 18), 0, 'дуудлага: богино тасалсан тоологдохгүй');
+  eq(F.pbxOffHoursWaited(offLog, 9, 23), 0, 'дуудлага: ажлын цаг сунгавал алдагдал алга');
+  eq(F.pbxOffHoursWaited(null, 9, 18), 0, 'дуудлага: null → 0');
+  // ⛔ Бүсээс ХАМААРАХГҮЙ: UTC-ээр өгсөн мөч Улаанбаатарын цагаар тоологдоно
+  //    (CI нь UTC тул `getHours()` ашиглавал «орой» нь «өдөр» болж унана).
+  eq(F.pbxOffHoursWaited([{ direction: 'in', answer_sec: 0, call_sec: 30, started_at: '2026-09-15T13:00:00Z' }], 9, 18),
+     1, 'дуудлага: UTC 13:00 = УБ-ын 21:00 → ажлын бус');
+  eq(F.pbxOffHoursWaited([{ direction: 'in', answer_sec: 0, call_sec: 30, started_at: '2026-09-15T02:00:00Z' }], 9, 18),
+     0, 'дуудлага: UTC 02:00 = УБ-ын 10:00 → ажлын цаг');
   eq(F.callAdvice(F.pbxStats([], ''), 9, 18).length, 0, 'дуудлага: дата байхгүй бол зөвлөгөө үүсгэхгүй');
   eq(F.callAdvice(null).length, 0, 'дуудлага: null → унахгүй');
   // Цөөн дуудлагаар дүгнэхгүй (шуугиан).

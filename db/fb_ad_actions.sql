@@ -33,3 +33,11 @@ create table if not exists fb_campaign_state (
 
 -- ⛔ anon-д ОГТ нээхгүй (зарцуулалт = санхүүгийн мэдээлэл).
 grant select on fb_ad_actions, fb_campaign_state to authenticated;
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on fb_ad_actions from authenticated;
+revoke delete on fb_campaign_state from authenticated;

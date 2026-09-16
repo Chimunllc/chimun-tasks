@@ -4192,6 +4192,20 @@ function renderSidebar() {
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
+  // Алдсан дуудлага — буцаж залгах ажлын жагсаалт.
+  const mcNav = document.getElementById('nav-missedcalls');
+  if (mcNav) {
+    const seeMc = canSeeMissedCalls();
+    mcNav.style.display = seeMc ? '' : 'none';
+    // ⚠ Тоог харуулахын тулд дата ЭХЛЭЭД хэрэгтэй — дэлгэц нээхийг хүлээвэл
+    //   «10 хүн буцаж залгуулахыг хүлээж байна» гэдгийг хэн ч мэдэхгүй өнгөрнө.
+    //   Тиймээс цэс зурагдахад нэг удаа арын дуудлага явуулна (давтахгүй:
+    //   төлвийг ШУУД null болгож тэмдэглэнэ).
+    if (seeMc && state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => render()); }
+    if (seeMc && state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => render()); }
+    const mcC = document.getElementById('cnt-missedcalls');
+    if (mcC) { const n = seeMc ? pbxOpenCount() : 0; mcC.textContent = n ? String(n) : ''; }
+  }
   // Зар & үр дүн — FB зарцуулалт ↔ борлуулалт.
   const adNav = document.getElementById('nav-ads');
   if (adNav) adNav.style.display = canSeeAds() ? '' : 'none';
@@ -4273,7 +4287,7 @@ function renderSidebar() {
   // Бүлгийн label — доторх цэс бүгд нуугдсан бол label-ийг ч нуана (жирийн ажилтанд Салбар/Удирдлага харагдахгүй)
   const _grpVisible = (ids) => ids.some(id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; });
   const _setGrp = (labelId, itemIds) => { const el = document.getElementById(labelId); if (el) el.style.display = _grpVisible(itemIds) ? '' : 'none'; };
-  _setGrp('nav-group-sales', ['nav-orders', 'nav-nomaad', 'nav-catering']);
+  _setGrp('nav-group-sales', ['nav-missedcalls', 'nav-orders', 'nav-nomaad', 'nav-catering']);
   _setGrp('nav-group-inventory', ['nav-purchases', 'nav-products', 'nav-ps_catalog', 'nav-ps_price', 'nav-ps_cost', 'nav-ps_stock', 'nav-stockcount', 'nav-writeoff']);
   _setGrp('nav-group-finance', ['nav-finance', 'nav-receivables', 'nav-customers', 'nav-accounts', 'nav-vat', 'nav-coosalary']);
   _setGrp('nav-group-marketing', ['nav-marketing']);
@@ -4307,6 +4321,7 @@ function renderTitle() {
     ps_cost:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h5M9.5 14.5h5"/></svg>', 'Өртөг ба хөрөнгө', 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч'],
     ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
     ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
+    missedcalls: ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/><line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/></svg>', 'Алдсан дуудлага', 'Хүлээгээд холбогдоогүй хүмүүс — буцаж залгах ажлын жагсаалт'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -4406,6 +4421,12 @@ function renderTaskList() {
     if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderPurchases, 'Худалдан авалт');
     attachPurchasesHandlers();
+    return;
+  } else if (state.view === 'missedcalls') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+    wrap.innerHTML = safeViewHtml(renderMissedCalls, 'Алдсан дуудлага');
+    attachMissedCallsHandlers();
     return;
   } else if (state.view === 'ads') {
     if (tableHead) tableHead.style.display = 'none';
@@ -12702,6 +12723,7 @@ const PERM_MENUS = [
       { key: 'attendance.edit', label: 'Гарсан цагийг гараар оруулах' } ] },
   { key: 'access',      label: 'Ажилчид (удирдах)', actions: [
       { key: 'access.delegate', label: 'Доорхийн эрх удирдах' } ] },   // ажилтан нэмэх/засах; эрх засах: CEO бүгдийг, delegate=доорхио
+  { key: 'missedcalls', label: 'Алдсан дуудлага', actions: [] },   // буцаж залгах ажлын жагсаалт
   { key: 'nomaad',      label: 'NOMAAD захиалга', actions: [
       { key: 'nomaad.income', label: 'Орлого бүртгэх' },
       { key: 'nomaad.cancel', label: 'Цуцлах' } ] },
@@ -12773,10 +12795,10 @@ const MANAGED_ACTIONS = new Set(['tasks.create', 'tasks.delete', 'orders.pay', '
   'products.catalog', 'products.price', 'products.cost', 'products.stock', 'products.count', 'products.opening']);
 const ROLE_PRESETS = [
   // [regex, {label, views, actions}] — эхний тохирсноор авна (тодорхойгоос ерөнхий рүү)
-  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
+  [/үйл ажиллагааны захирал|үах захирал|coo/, { views: ['orders', 'products', 'nomaad', 'catering', 'reports', 'receivables', 'workload', 'access', 'history', 'vat', 'documents', 'marketing', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.skip', 'orders.revert', 'orders.cancel', 'products.edit', 'products.opening', 'nomaad.income', 'nomaad.cancel', 'catering.edit', 'documents.edit', 'access.delegate'] }],
   [/нягтлан/, { views: ['reports', 'receivables', 'vat', 'salary'], actions: ['orders.pay', 'salary.pay', 'salary.edit'] }],
-  [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
-  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
+  [/эвент/, { views: ['orders', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
+  [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload', 'missedcalls'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
   // Агуулахын АХЛАХ / нярав — бараа засах эрхтэй (үнэ, өртөг, нөөц)
   [/нярав|агуулахын\s*ахлах|агуулахын\s*менежер/, { views: ['orders', 'products', 'hourly'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
   // Энгийн агуулахын ажилтан — бараагаа ХАРНА, засахгүй (үнэ/өртөг санхүүгийн мэдээлэл)
@@ -12784,7 +12806,7 @@ const ROLE_PRESETS = [
   [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)
   [/жолооч|хүргэ|түгээ/, { views: ['orders'], actions: ['orders.clean', 'orders.deliver', 'orders.setup'] }], // захиалга ХАРНА + өөрийн шат (хүргэх/угсрах)
   [/бармен|тогооч|катеринг|кейтеринг/, { views: ['catering', 'orders'], actions: ['orders.clean'] }],
-  [/маркетинг|market|дизайн|контент/, { views: ['marketing'], actions: [] }],
+  [/маркетинг|market|дизайн|контент/, { views: ['marketing', 'missedcalls'], actions: [] }],
 ];
 function rolePresetFor(role) {
   const r = String(role || '').trim().toLowerCase(); if (!r) return null;
@@ -28082,6 +28104,96 @@ function pbxCustomerOf(peer, customers) {
   if (!k) return null;
   return (customers || []).find(c => c && custPhoneKey(c.phone) === k) || null;
 }
+// ── АЛДСАН ДУУДЛАГЫГ БУЦААЖ ЗАЛГАХ (2026-09-16) ─────────────────────────────
+// Амьд датагаар: 139 хүн хүлээгээд холбогдоогүй, буцаж залгасан нь 0. Дуудлагын
+// лог хэн залгасныг мэддэг ч «бид үүнийг шийдсэн үү» гэдгийг мэддэггүй тул
+// жагсаалт хэзээ ч богиносдоггүй байв. `pbx_callbacks` (нэг дугаар = нэг мөр)
+// түүнийг барина.
+// ⚠ ГАРААР ТЭМДЭГЛЭХ АЖИЛ БАГА БАЙХ ЁСТОЙ (CLAUDE.md: нэмэлт бичилт шаарддаг
+//   боломж үхдэг). Тиймээс ХОЁР зам өөрөө хаагдана:
+//   ① тэр хүн дахин залгаад хүн авсан  → `pbxFollowups` өөрөө хасна,
+//   ② тэр дугаараас захиалга үүссэн    → `ordered` (товч дарах шаардлагагүй).
+//   Үлдсэн тохиолдолд л нэг товч дарна.
+const PBX_CB_URL = () => `${DB_URL}/rest/v1/pbx_callbacks`;
+const PBX_CB_LABEL = { reached: '✓ Холбогдсон', no_answer: '☎ Авсангүй', dropped: '🚫 Хэрэггүй' };
+// `no_answer` нь ХААХГҮЙ — хүн утсаа аваагүй бол ажил дуусаагүй. Зөвхөн
+// холбогдсон / хэрэггүй гэж тэмдэглэсэн нь жагсаалтаас гарна.
+const PBX_CB_CLOSING = ['reached', 'dropped'];
+const MISSED_DAYS = 14;   // жагсаалтын хугацаа — 2 долоо хоногоос хуучин лид хүйтэн
+function pbxCbKey(peer) { return custPhoneKey(peer) || String(peer || '').replace(/\D/g, ''); }
+// Нээлттэй эсэхийг шийднэ. Цэвэр функц — тестлэгдэнэ.
+//  fups   = pbxFollowups() гаралт (хүлээгээд холбогдоогүй дугаарууд)
+//  cbs    = pbx_callbacks мөрүүд
+//  orders = app_orders (дугаараар нь захиалга болсон эсэхийг хардаг)
+function pbxOpenCalls(fups, cbs, orders) {
+  const byCb = {};
+  (cbs || []).forEach(c => { const k = pbxCbKey(c && c.peer); if (k) byCb[k] = c; });
+  const lastOrd = {};
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const k = custPhoneKey(o.phone);
+    if (!k) return;
+    const at = String(o.created_at || '').slice(0, 10);
+    if (at && (!lastOrd[k] || at > lastOrd[k])) lastOrd[k] = at;
+  });
+  return (fups || []).map(f => {
+    const k = pbxCbKey(f.peer);
+    const cb = byCb[k] || null;
+    // `upto` нь сүүлийн дуудлагаас хойш байж гэмээнэ шийдэгдсэн — дахин
+    // залгасан хүн жагсаалтад өөрөө эргэж гарна.
+    const closed = !!(cb && PBX_CB_CLOSING.includes(String(cb.status || '')) &&
+                      cb.upto && String(cb.upto) >= String(f.last));
+    const od = lastOrd[custPhoneKey(f.peer)] || '';
+    const ordered = !!(od && od >= addDays(String(f.first).slice(0, 10), -CALL_CONV_GRACE_D));
+    return Object.assign({}, f, {
+      cb, ordered, done: closed || ordered,
+      cbTries: cb ? (Number(cb.tries) || 0) : 0,
+      status: cb ? String(cb.status || '') : '',
+    });
+  }).sort((a, b) => (a.done - b.done) || (a.cbTries - b.cbTries) ||
+                    String(b.last).localeCompare(String(a.last)));
+}
+// Сайдбарын тоо — зөвхөн шийдэгдээгүй нь.
+function pbxOpenCount() {
+  if (!Array.isArray(state.pbxLog) || !Array.isArray(state.pbxCb)) return 0;
+  const f = pbxFollowups(state.pbxLog, { from: addDays(todayStr(), -MISSED_DAYS) });
+  return pbxOpenCalls(f, state.pbxCb, state.appOrders || []).filter(x => !x.done).length;
+}
+async function loadPbxCallbacks(force) {
+  if (state.pbxCb && !force) return state.pbxCb;
+  try {
+    const r = await fetchWithTimeout(`${PBX_CB_URL()}?select=*&limit=2000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.pbxCb = await r.json();
+    return state.pbxCb;
+  } catch (e) { dataLoadFailed('Дуудлагын тэмдэглэл', e); state.pbxCb = state.pbxCb || []; return state.pbxCb; }
+}
+// Нэг дугаарын төлөв бичих. `upto` = тухайн дугаарын СҮҮЛИЙН дуудлагын цаг —
+// түүнээс хойш дахин залгавал жагсаалтад эргэж гарна.
+async function savePbxCallback(peer, status, upto, bump) {
+  const p = String(peer || '').trim();
+  if (!p) return;
+  const prev = (state.pbxCb || []).find(c => pbxCbKey(c && c.peer) === pbxCbKey(p));
+  const row = {
+    peer: p, status: String(status || 'no_answer'),
+    tries: ((prev && Number(prev.tries)) || 0) + (bump === false ? 0 : 1),
+    by_key: state.me || null,
+    upto: upto || null,
+    updated_at: new Date().toISOString(),
+  };
+  const r = await fetchWithTimeout(`${PBX_CB_URL()}?on_conflict=peer`, {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(),
+               'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(row),
+  }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const rows = await r.json();
+  const got = (rows && rows[0]) || row;
+  state.pbxCb = (state.pbxCb || []).filter(c => pbxCbKey(c && c.peer) !== pbxCbKey(p)).concat([got]);
+  return got;
+}
 // Дуудлагын лог татах (pbx_calls) — дугаартай тул anon-д хаалттай.
 async function loadPbxLog(force) {
   if (state.pbxLog && !force) return state.pbxLog;
@@ -28540,6 +28652,75 @@ function renderAds() {
     ${leadHtml}`;
 }
 
+// ── ДЭЛГЭЦ: 📵 Алдсан дуудлага ──────────────────────────────────────────────
+// Өдөр тутмын ажлын жагсаалт: хэн залгаад холбогдоогүй, хэнд буцаж залгах вэ.
+// ⚠ Зарын дэлгэц дээрх жагсаалттай ижил `pbxFollowups`-оос гарна — дүрэм ХОЁР
+//   газар салбарлахгүй (тэнд зөвхөн тоймоор харагдана, ажил нь ЭНД хийгдэнэ).
+function canSeeMissedCalls() {
+  return canAccessView('missedcalls', () => !!state.isCEO || canSeeOrders());
+}
+function renderMissedCalls() {
+  if (state.pbxLog === null || state.pbxCb === null) return '<div class="mc-empty">Ачаалж байна…</div>';
+  const from = addDays(todayStr(), -MISSED_DAYS);
+  const fups = pbxFollowups(state.pbxLog || [], { from });
+  const rows = pbxOpenCalls(fups, state.pbxCb || [], state.appOrders || []);
+  const open = rows.filter(r => !r.done);
+  const done = rows.filter(r => r.done);
+  if (!rows.length) {
+    return `<h2 class="view-title">📵 Алдсан дуудлага</h2>
+      <div class="mc-empty">✅ <b>Сүүлийн ${MISSED_DAYS} хоногт хариу аваагүй дуудлага алга.</b>
+        <div>Дуудлагын лог өдөр бүр татагдана. Шинэ дуудлага ирвэл энд гарна.</div></div>`;
+  }
+  const row = (r) => {
+    const cu = pbxCustomerOf(r.peer, state.customers || []);
+    const when = String(r.last).slice(5, 16).replace('T', ' ');
+    const who = cu ? escapeHtml(cu.name || '') : 'шинэ дугаар';
+    const meta = [`${r.tries} удаа залгасан`, `сүүлд ${escapeHtml(when)}`,
+      r.cbTries ? `бид ${r.cbTries} удаа буцаан залгасан` : '',
+      r.ordered ? '🛒 захиалга болсон' : '',
+      (r.status && !r.ordered) ? escapeHtml(PBX_CB_LABEL[r.status] || r.status) : ''].filter(Boolean).join(' · ');
+    const acts = r.done
+      ? `<button class="mc-btn" data-mc-reopen="${escapeHtml(r.peer)}">↩ Буцаах</button>`
+      : `<a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a>
+         <button class="mc-btn ok" data-mc="reached" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">✓ Холбогдсон</button>
+         <button class="mc-btn" data-mc="no_answer" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">☎ Авсангүй</button>
+         <button class="mc-btn drop" data-mc="dropped" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">🚫 Хэрэггүй</button>`;
+    return `<div class="mc-row${r.done ? ' mc-done' : ''}">
+      <div class="mc-main"><div class="mc-num">${escapeHtml(r.peer)} <span class="mc-who">${who}</span></div>
+        <div class="mc-meta">${meta}</div></div>
+      <div class="mc-acts">${acts}</div></div>`;
+  };
+  return `<h2 class="view-title">📵 Алдсан дуудлага</h2>
+    <div class="ads-kpis">
+      <div class="ads-kpi"><div class="ads-kpi-l">Шийдэгдээгүй</div><div class="ads-kpi-v">${open.length}</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">${MISSED_DAYS} хоногт</div><div class="ads-kpi-v">${rows.length}</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">Захиалга болсон</div><div class="ads-kpi-v">${rows.filter(r => r.ordered).length}</div></div>
+    </div>
+    <div class="ads-sec">Буцаж залгах <span class="ads-sub">(${open.length})</span></div>
+    <div class="mc-list">${open.map(row).join('') || '<div class="mc-empty">Бүгд шийдэгдсэн.</div>'}</div>
+    ${done.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${done.length})</summary>
+      <div class="mc-list">${done.map(row).join('')}</div></details>` : ''}
+    <div class="ads-note">Эдгээр дугаар <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b> хүнтэй ярьж чадаагүй —
+      дуут мэндчилгээг сонсоод шууд тасалсан (андуурч залгасан) дугаар энд ОРООГҮЙ.
+      ${fups.short ? `Тийм <b>${fups.short}</b> дугаар байсныг хассан.` : ''}
+      Тэр дугаараас захиалга үүсвэл эсвэл тэр хүн дахин залгаад холбогдвол мөр нь <b>өөрөө</b> хаагдана —
+      зөвхөн үлдсэнийг нь гараар тэмдэглэнэ. Хаасан дугаар <b>дахин залгавал</b> жагсаалтад эргэж гарна.
+      ⚠ Ажилтнууд гар утсаараа буцаж залгасныг PBX харахгүй тул түүнийг энд товчоор тэмдэглэнэ.</div>`;
+}
+function attachMissedCallsHandlers() {
+  const act = async (peer, st, upto, bump) => {
+    try {
+      await savePbxCallback(peer, st, upto, bump);
+      showToast(bump ? (PBX_CB_LABEL[st] || 'Тэмдэглэлээ') : 'Жагсаалтад буцаалаа', 'success');
+      render();
+    } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
+  };
+  document.querySelectorAll('[data-mc]').forEach(b => b.onclick = () =>
+    act(b.dataset.peer, b.dataset.mc, b.dataset.upto, true));
+  // ↩ Буцаах = дахин нээх. Буцаж залгасан ТОО нэмэгдэхгүй (залгаагүй шүү дээ).
+  document.querySelectorAll('[data-mc-reopen]').forEach(b => b.onclick = () =>
+    act(b.dataset.mcReopen, 'no_answer', null, false));
+}
 function attachAdsHandlers() {
   // ⛔ Батлах нь ГАДАГШ чиглэсэн үйлдэл (хуудсанд нийтлэгдэж мөнгө зарцуулна)
   //   тул баталгаажуулалтгүй байж БОЛОХГҮЙ.
@@ -35545,6 +35726,12 @@ function refreshViewData() {
       state.adsBudget = null;
       loadAppConfig(ADS_BUDGET_KEY).then(v => { state.adsBudget = v || null; if (state.view === 'ads') render(); });
     }
+  }
+  // 📵 Алдсан дуудлага — лог + тэмдэглэл + харилцагч (нэр тааруулахад).
+  if (v === 'missedcalls' && canSeeMissedCalls()) {
+    if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'missedcalls') render(); }); }
+    if (state.pbxCb === undefined) { state.pbxCb = null; loadPbxCallbacks(true).then(() => { if (state.view === 'missedcalls') render(); }); }
+    if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'missedcalls') render(); }); }
   }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

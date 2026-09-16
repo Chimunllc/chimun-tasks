@@ -23,6 +23,7 @@
     --primary: #5e6ad2;
     --primary-hover: #4b56b8;
     --primary-soft: rgba(94, 106, 210, 0.10);
+    --on-primary: #ffffff;        /* үндсэн өнгөн дээрх бичвэр */
 
     /* ── Семантик (төлөв илэрхийлэх — брэндийн өнгөнөөс ТУСДАА) ── */
     --danger: #ef4444;  --danger-soft: #fef2f2;
@@ -7257,3 +7258,24 @@ select.no-asar-len {
 /* ↩ Буруу захиалгад бүртгэсэн төлбөрийг буцаах — модалын үйлдлийн зүүн талд,
    сүүлчийн арга учир ялгаатай (2026-09-16). */
 .btn-revert { color: var(--danger); border-color: var(--danger); margin-right: auto; }
+
+/* ═══ 📵 Алдсан дуудлага — буцаж залгах ажлын жагсаалт (2026-09-16) ═══ */
+.mc-list { display: flex; flex-direction: column; gap: 6px; }
+.mc-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
+.mc-main { flex: 1 1 190px; min-width: 0; }
+.mc-num { font-size: var(--fs-base); font-weight: 800; }
+.mc-who { font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
+.mc-meta { margin-top: 2px; font-size: var(--fs-xs); color: var(--muted); }
+.mc-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.mc-btn { padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); cursor: pointer;
+  text-decoration: none; white-space: nowrap; }
+.mc-btn:hover { background: var(--panel-hover); }
+.mc-btn.call { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 700; }
+.mc-btn.ok { color: var(--ok); border-color: var(--ok); }
+.mc-btn.drop { color: var(--muted); }
+.mc-done { opacity: .6; }
+.mc-more { margin-top: var(--space-3); }
+.mc-more > summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); color: var(--muted); }
+.mc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.6; }

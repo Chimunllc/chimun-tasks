@@ -6021,6 +6021,43 @@ need(['orderCustType']);
   eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
   eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
 
+  // ── Алдсан дуудлага: буцаж залгах жагсаалт (2026-09-16) ──
+  // ⚠ Гараар тэмдэглэх ажлыг ХАМГИЙН БАГА байлгах нь энэ дэлгэцийн амин сүнс —
+  //   өөрөө хаагддаг хоёр зам (захиалга болсон / дахин залгаад холбогдсон)
+  //   ажиллахаа больбол жагсаалт хэзээ ч богиносохгүй, хүн итгэхээ болино.
+  {
+    const fups = F.pbxFollowups(cl);                       // 88446914, сүүлд 03:10
+    const ord = [{ phone: '88446914', status: 'reserved', created_at: '2026-09-15T08:00:00+00' }];
+    const withOrd = F.pbxOpenCalls(fups, [], ord);
+    eq(withOrd[0].ordered, true, 'алдсан: тэр дугаараас захиалга үүсвэл ӨӨРӨӨ шийдэгдэнэ');
+    eq(withOrd[0].done, true, 'алдсан: захиалга болсон мөр нээлттэйд тоологдохгүй');
+    eq(F.pbxOpenCalls(fups, [], [{ phone: '88446914', status: 'deleted', created_at: '2026-09-15T08:00:00+00' }])[0].done,
+       false, 'алдсан: БОЛЬСОН захиалга шийдсэнд тооцогдохгүй');
+    eq(F.pbxOpenCalls(fups, [], [{ phone: '88446914', status: 'reserved', created_at: '2026-09-01T08:00:00+00' }])[0].ordered,
+       false, 'алдсан: дуудлагаас ӨМНӨХ хуучин захиалга тоологдохгүй');
+    // Гараар тэмдэглэх — «холбогдсон» нь хаана, «авсангүй» нь ХААХГҮЙ
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00+00' }], [])[0].done,
+       true, 'алдсан: холбогдсон гэж тэмдэглэвэл хаагдана');
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00+00', tries: 2 }], [])[0].done,
+       false, 'алдсан: утсаа аваагүй бол ажил ДУУСААГҮЙ — жагсаалтад үлдэнэ');
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00+00', tries: 2 }], [])[0].cbTries,
+       2, 'алдсан: бидний буцаж залгасан тоо харагдана');
+    // ⛔ ХАМГИЙН ЧУХАЛ: хаасан дугаар ДАХИН залгавал эргэж гарна
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T02:30:00+00' }], [])[0].done,
+       false, 'алдсан: хаасны ДАРАА дахин залгасан хүн жагсаалтад эргэж гарна');
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'dropped', upto: null }], [])[0].done,
+       false, 'алдсан: upto-гүй тэмдэглэл хаахгүй (хэзээний дуудлагыг шийдсэн нь тодорхойгүй)');
+    // Дугаарын бичлэг зөрж болно (976 угтвар) — нормчилж тулгана
+    eq(F.pbxOpenCalls(fups, [{ peer: '97688446914', status: 'reached', upto: '2026-09-15T03:10:00+00' }], [])[0].done,
+       true, 'алдсан: 976 угтвартай бичигдсэн дугаар ч тулгагдана');
+    eq(F.pbxOpenCalls(null, null, null).length, 0, 'алдсан: дата байхгүй → хоосон (унахгүй)');
+    // Эрэмбэ: шийдэгдээгүй нь ДЭЭР
+    const two = F.pbxOpenCalls(
+      F.pbxFollowups(cl.concat([{ direction: 'in', peer: '99887766', started_at: '2026-09-15T04:00:00+00', answer_sec: 0, call_sec: 30 }])),
+      [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00+00' }], []);
+    eq(two[0].peer, '99887766', 'алдсан: шийдэгдээгүй нь эхэнд эрэмбэлэгдэнэ');
+  }
+
   // ── Ажилтнаар дуудлага ──
   const ag = F.pbxByAgent([
     { direction: 'in', fwd: '86042460', answer_sec: 30, started_at: '2026-09-15T02:00:00+00' },
@@ -6523,6 +6560,28 @@ need(['orderCustType']);
   ['products', 'member_perms', 'role_perms', 'company_docs', 'product_aliases'].forEach(t => {
     ok(rlsSql.includes("'" + t + "'"), 'db: ' + t + ' устгах зам ЗӨВШӨӨРӨГДСӨН жагсаалтад');
   });
+
+  // ⛔ ШИНЭ ХҮСНЭГТ АВТОМАТААР УСТГАХ ЭРХТЭЙ ТӨРДӨГ (2026-09-16).
+  //   Эзний DEFAULT PRIVILEGES нь `authenticated`-д `arwd` олгодог тул `grant
+  //   select…` гэж бичээд орхисон шинэ хүснэгт дээр хатуу устгал НЭЭЛТТЭЙ үлддэг
+  //   (`pbx_callbacks` дээр амьд туршилтаар DELETE 204 буцааж байсныг барьсан).
+  //   `db/rls.sql` бүгдээс хураадаг ч зөвхөн ДАХИН ажиллуулахад — иймд файл бүр
+  //   дангаараа зөв байх ёстой (VPS сэргээх заавар ч мөн энэ файлууд).
+  {
+    const dbDir = path.join(__dirname, '..', 'db');
+    const okDelete = ['products', 'member_perms', 'role_perms', 'company_docs', 'product_aliases'];
+    const bad = [];
+    fs.readdirSync(dbDir).filter(f => f.endsWith('.sql') && f !== 'rls.sql').forEach(f => {
+      const sql = fs.readFileSync(path.join(dbDir, f), 'utf8');
+      (sql.match(/create table if not exists\s+([a-z0-9_]+)/g) || []).forEach(m => {
+        const t = m.split(/\s+/).pop();
+        if (okDelete.includes(t)) return;
+        if (!new RegExp('revoke delete on ' + t + '\\s+from authenticated').test(sql)) bad.push(f + ':' + t);
+      });
+      if (/grant[^;]*\bdelete\b[^;]*to authenticated/.test(sql)) bad.push(f + ': delete ОЛГОСОН');
+    });
+    eq(bad.join(', '), '', '⛔ db: шинэ хүснэгт бүр DELETE-ээ ИЛ хураана (өгөгдмөл эрх устгахыг нээдэг)');
+  }
 
   // ── Хувийн мэдээлэлтэй хүснэгт (2-р үе) ────────────────────────────────
   ['customers', 'invoices'].forEach(t => {

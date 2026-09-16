@@ -26318,19 +26318,19 @@ function renderCooSalary() {
       + `</div>`;
   };
 
-  let h = `<div style="max-width:640px;margin:0 auto;">`;
+  let h = `<div class="coo-wrap">`;
   // Гарчиг нь дэлгэцийн толгойд (renderTitle → titles.coosalary). Энд зөвхөн хэнийх, хэдэн хувь.
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 12px;"><b style="color:var(--text);">${escapeHtml(_cooBr)}</b> салбарын үйл ажиллагааны захирал <b style="color:var(--text);">${escapeHtml(cooName)}</b> — тэр салбарын цэвэр ашгийн ${pct}%</div>`;
+  h += `<div class="coo-note"><b class="coo-hl">${escapeHtml(_cooBr)}</b> салбарын үйл ажиллагааны захирал <b class="coo-hl">${escapeHtml(cooName)}</b> — тэр салбарын цэвэр ашгийн ${pct}%</div>`;
 
   // Сар сонгогч
-  h += `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:12px;">`
-    + `<button class="btn" data-coo-month="-1" style="padding:6px 13px;"${month <= _cooSt ? ' disabled' : ''}>‹</button>`
-    + `<div style="font-weight:700;">${month}</div>`
-    + `<button class="btn" data-coo-month="1" style="padding:6px 13px;"${month >= todayStr().slice(0, 7) ? ' disabled' : ''}>›</button>`
+  h += `<div class="coo-mnav">`
+    + `<button class="btn" data-coo-month="-1"${month <= _cooSt ? ' disabled' : ''}>‹</button>`
+    + `<div class="coo-mnav-m">${month}</div>`
+    + `<button class="btn" data-coo-month="1"${month >= todayStr().slice(0, 7) ? ' disabled' : ''}>›</button>`
     + `</div>`;
 
-  if (!dataReady) h += `<div style="text-align:center;color:var(--muted);padding:10px;">⏳ Санхүү/захиалгын дата ачаалж байна…</div>`;
-  if (_before) h += `<div style="text-align:center;color:var(--warn);font-size:var(--fs-sm);padding:8px 10px;border:1px solid var(--warn);border-radius:10px;margin-bottom:12px;">⚠ ${escapeHtml(_cooSt)}-аас өмнө зардлыг бүрэн бүртгэдэггүй байсан тул ашиг тооцохгүй.</div>`;
+  if (!dataReady) h += `<div class="coo-wait">⏳ Санхүү/захиалгын дата ачаалж байна…</div>`;
+  if (_before) h += `<div class="coo-before">⚠ ${escapeHtml(_cooSt)}-аас өмнө зардлыг бүрэн бүртгэдэггүй байсан тул ашиг тооцохгүй.</div>`;
   h += panel(`${_cooBr} · энэ сар · ${month}`, cur);
   h += panel(`${_cooBr} · ${escapeHtml(_cooSt)}-аас хойш (хуримтлагдсан)`, ytd);
 
@@ -26364,25 +26364,25 @@ function renderCooSalary() {
       + `</div>`;
   }
 
-  h += `<div style="font-size:var(--fs-sm);color:var(--muted);margin:2px 0 14px;line-height:1.5;">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• Ашгийн эрх = <b>Орсон мөнгө</b> (эхний багана) — бодитоор хураасан төлбөр, бодитоор гарсан зардлаар. <b>Ноогдох</b> нь зөвхөн лавлагаа: захиалга гүйцэтгэсэн сард бүтэн дүнгээрээ (төлөгдөөгүй ч). Барьцаа/зээл хоёуланд хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
+  h += `<div class="coo-note coo-note-foot">• Зөвхөн <b>${escapeHtml(_cooBr)}</b> салбарын орлого-зардал. Бусад салбар (${escapeHtml(COO_BRANCHES.filter(b => b !== _cooBr).join(', '))}, катеринг) ба компанийн нийт зардал (хөрөнгө, ХХК) ОРООГҮЙ.<br>• Ашгийн эрх = <b>${escapeHtml(_cooSt)}-аас хойших хуримтлагдсан</b> дүнгээр — сар бүр урьдчилгаа, жилийн эцэст тулгана. Түүнээс өмнөх сарууд <b>ОРОХГҮЙ</b> (зардал бүрэн бүртгэгдээгүй).<br>• Ашгийн эрх = <b>Орсон мөнгө</b> (эхний багана) — бодитоор хураасан төлбөр, бодитоор гарсан зардлаар. <b>Ноогдох</b> нь зөвхөн лавлагаа: захиалга гүйцэтгэсэн сард бүтэн дүнгээрээ (төлөгдөөгүй ч). Барьцаа/зээл хоёуланд хасагдсан.<br>• Хувь = цэвэр ашгаас ХОЙШ (зардалд ороогүй). Татварын хэлбэрийг нягтлантай тохирно.</div>`;
 
   // CEO тохиргоо
   if (meCeo) {
     const opts = (typeof TEAM !== 'undefined' ? TEAM : []).map(m => { const k = personKey(m); return `<option value="${escapeHtml(k)}"${k === cooKey ? ' selected' : ''}>${escapeHtml(m.name || k)}</option>`; }).join('');
-    h += `<div style="border:1px dashed var(--border);border-radius:12px;padding:12px 14px;background:var(--panel);">`
-      + `<div style="font-weight:700;font-size:var(--fs-md);margin-bottom:8px;">⚙️ Тохиргоо (зөвхөн CEO)</div>`
-      + `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">`
-      + `<label style="font-size:var(--fs-sm);color:var(--muted);">COO:</label>`
-      + `<select id="coo-member" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);"><option value="">— сонгох —</option>${opts}</select>`
-      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Салбар:</label>`
-      + `<select id="coo-branch" class="ui-raw" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">${COO_BRANCHES.map(b => `<option value="${escapeHtml(b)}"${b === _cooBr ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('')}</select>`
-      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Данс:</label>`
-      + `<input id="coo-acct" class="ui-raw" type="text" inputmode="numeric" value="${escapeHtml(String(cooShareCfg().acct || ''))}" placeholder="дансны дугаар" style="width:130px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">`
-      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Эхлэх сар:</label>`
-      + `<input id="coo-start" class="ui-raw" type="month" value="${escapeHtml(_cooSt)}" style="padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">`
-      + `<label style="font-size:var(--fs-sm);color:var(--muted);">Хувь:</label>`
-      + `<input id="coo-pct" class="ui-raw" type="number" min="0" max="100" value="${pct}" style="width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">%`
-      + `<button class="btn primary" id="coo-save" style="padding:6px 14px;">Хадгалах</button>`
+    h += `<div class="coo-cfg">`
+      + `<div class="coo-cfg-h">⚙️ Тохиргоо (зөвхөн CEO)</div>`
+      + `<div class="coo-cfg-row">`
+      + `<label class="coo-cfg-l">COO:</label>`
+      + `<select id="coo-member" class="ui-raw coo-cfg-in"><option value="">— сонгох —</option>${opts}</select>`
+      + `<label class="coo-cfg-l">Салбар:</label>`
+      + `<select id="coo-branch" class="ui-raw coo-cfg-in">${COO_BRANCHES.map(b => `<option value="${escapeHtml(b)}"${b === _cooBr ? ' selected' : ''}>${escapeHtml(b)}</option>`).join('')}</select>`
+      + `<label class="coo-cfg-l">Данс:</label>`
+      + `<input id="coo-acct" class="ui-raw coo-cfg-in coo-in-acct" type="text" inputmode="numeric" value="${escapeHtml(String(cooShareCfg().acct || ''))}" placeholder="дансны дугаар">`
+      + `<label class="coo-cfg-l">Эхлэх сар:</label>`
+      + `<input id="coo-start" class="ui-raw coo-cfg-in" type="month" value="${escapeHtml(_cooSt)}">`
+      + `<label class="coo-cfg-l">Хувь:</label>`
+      + `<input id="coo-pct" class="ui-raw coo-cfg-in coo-in-pct" type="number" min="0" max="100" value="${pct}">%`
+      + `<button class="btn primary" id="coo-save">Хадгалах</button>`
       + `</div></div>`;
   }
   h += `</div>`;

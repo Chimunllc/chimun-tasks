@@ -56,6 +56,10 @@
 
     /* ── ЗАЙН МАСШТАБ ── */
     --space-1: 4px;
+    /* 4↔8 хоорондын хагас алхам. Жижиг контрол (input/select/нарийн товч) 8px-д
+       хэт өндөр, 4px-д хэт нам болдог тул энэ нэг завсрын алхам ЗӨВШӨӨРӨГДӨНӨ.
+       Шинэ дунд утга (5/7/10 г.м.) НЭМЭХГҮЙ — тэгвэл масштаб дахин тарна. */
+    --space-1h: 6px;
     --space-2: 8px;
     --space-3: 12px;
     --space-4: 16px;
@@ -6950,6 +6954,31 @@ select.no-asar-len {
 .coo-bal { border-top: 1px solid var(--border); padding-top: 8px; }
 .coo-v.coo-bal-due { color: var(--warn); }
 .coo-v.coo-bal-over { color: var(--danger); }
+/* COO — дэлгэцийн хүрээ, тайлбар, сар сонгогч, CEO тохиргоо.
+   (2026-09-16: 25 inline style → класс. Өнгө/зай/радиус бүгд токен.) */
+.coo-wrap { max-width: 640px; margin: 0 auto; }
+.coo-note { font-size: var(--fs-sm); color: var(--muted); margin: var(--space-1) 0 var(--space-3); }
+.coo-note-foot { margin-bottom: var(--space-4); line-height: 1.5; }
+/* Тайлбар дотор ОНЦЛОХ нэр (салбар, COO). Бусад <b> нь бүдэг хэвээр — тиймээс
+   `.coo-note b` гэж бүхлээр нь БҮҮ будаж бай. */
+.coo-hl { color: var(--text); }
+.coo-mnav { display: flex; align-items: center; justify-content: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.coo-mnav .btn { padding: var(--space-1h) var(--space-3); }
+.coo-mnav-m { font-weight: 700; }
+.coo-wait { text-align: center; color: var(--muted); padding: var(--space-2); }
+.coo-before { text-align: center; color: var(--warn); font-size: var(--fs-sm);
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--warn);
+  border-radius: var(--r-lg); margin-bottom: var(--space-3); }
+.coo-cfg { border: 1px dashed var(--border); border-radius: var(--r-lg);
+  padding: var(--space-3) var(--space-4); background: var(--panel); }
+.coo-cfg-h { font-weight: 700; font-size: var(--fs-md); margin-bottom: var(--space-2); }
+.coo-cfg-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.coo-cfg-l { font-size: var(--fs-sm); color: var(--muted); }
+.coo-cfg-in { padding: var(--space-1h) var(--space-2); border: 1px solid var(--border);
+  border-radius: var(--r-md); background: var(--bg); color: var(--text); }
+.coo-in-acct { width: 130px; }
+.coo-in-pct { width: 70px; }
+.coo-cfg-row .btn { padding: var(--space-1h) var(--space-4); }
 @media (max-width: 620px) {
   .coo-paid { grid-template-columns: auto 1fr; }
   .coo-paid-m { grid-column: 2; }

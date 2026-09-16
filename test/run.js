@@ -164,6 +164,27 @@ need(['parseVat', 'encodeVat', 'custInfoOf', 'setCustInfo', 'parsePaidRef', 'par
      'scan: 8 баганын жагсаалт зөвхөн токенд (толгой/мөрд давхардуулахгүй)');
 }
 
+// 0j-2) SCAN — workflow YAML-д 0-р баганын мөр БАЙХГҮЙ (2026-09-16)
+// Алдаа: `run: |` блок дотор heredoc (`--body "$(cat <<EOF`) бичихэд heredoc-ийн
+// мөрүүд 0-р баганад буусан. YAML блок-скаляр тэндээ ТАСАРЧ, файл бүхэлдээ парс
+// болохоо больсон. GitHub тэр үед workflow-г нэрээр биш ЗАМААР харуулж,
+// `workflow_dispatch` бүртгэгдэхгүй болсон — өөрөөр хэлбэл харуул ЧИМЭЭГҮЙ
+// унтарсан, ямар ч алдаа гарaaгүй. Дүрэм: PR/Issue-ийн бичвэрийг heredoc-оор
+// биш `printf '%s\n' …`-ээр угсарна (бүх мөр догол мөртэй үлдэнэ).
+{
+  const dir = path.join(__dirname, '..', '.github', 'workflows');
+  const TOP = /^(name|run-name|on|env|permissions|concurrency|defaults|jobs|#|---)/;
+  const bad = [];
+  for (const f of fs.readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+    fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((ln, i) => {
+      if (!ln.trim() || /^\s/.test(ln) || TOP.test(ln)) return;
+      bad.push(`${f}:${i + 1}`);
+    });
+  }
+  eq(bad.length, 0, 'scan: workflow YAML-д 0-р баганын мөр байхгүй' +
+     (bad.length ? ' → ' + bad.join(', ') : ''));
+}
+
 // 0k) Захиалгын жагсаалт — хугацааны бүлэг (Өнөөдөр / Маргааш) (2026-09-04)
 // «Самбар» харагдац хасагдаж, бүлэг нь жагсаалтын дотор гарчиг мөр болов.
 // Гол дүрэм: дууссан/архив/цуцалсныг ХЭЗЭЭ Ч «өнөөдөр/маргааш» гэж бүлэглэхгүй —

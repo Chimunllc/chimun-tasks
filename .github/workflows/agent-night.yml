@@ -10,14 +10,17 @@
 # ТООГООР хэмжигддэг, тестээр батлагддаг — автомат гогцоо үүнийг үнэхээр барина.
 #
 # ХАМГААЛАЛТЫН БҮРХҮҮЛ (бүгд МЕХАНИК, prompt-д найдаагүй):
-#   ① 3,102 тест + ESLint + syntax (lint.yml)
+#   ① бүх тест + ESLint + syntax (lint.yml)
 #   ② дизайны өрийн храповик — өр өсвөл PR унана
 #   ③ агент workflow/эрхийн файлд хүрвэл PR унана (lint.yml)
 #   ④ merge хийхээс өмнө: өр ҮНЭХЭЭР буурсан байх + diff хэмжээний дээд хязгаар
 #   ⑤ merge-ийн дараа: буцаах харуул 20 мин тутам алдаа хардаг
 #
+# 📋 ӨГЛӨӨ ХААНААС ХАРАХ: «🌙 Шөнийн агентын түүх» Issue (шошго `шөнийн-агент`).
+#    Шөнө бүр нэг мөр — амжилттай ч, УНАСАН ч бичигдэнэ.
 # 🔌 Автомат merge унтраах: доорх AUTO_MERGE-ийг 'false' болго (PR нээлттэй үлдэнэ).
-# ⚠ ANTHROPIC_API_KEY байхгүй бол чимээгүй өнгөрнө (улаан болохгүй).
+# ⚠ Түлхүүр (CLAUDE_CODE_OAUTH_TOKEN эсвэл ANTHROPIC_API_KEY) байхгүй бол
+#   чимээгүй өнгөрнө (улаан болохгүй) — тэр үед хураангуй ч бичигдэхгүй.
 name: Шөнийн агент
 
 on:
@@ -212,6 +215,7 @@ jobs:
           echo "num=$(basename "$PR")" >> "$GITHUB_OUTPUT"
 
       - name: Merge-ийн механик шалгуур + merge
+        id: merge
         if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -231,6 +235,7 @@ jobs:
 
           if [ "$WANT_MERGE" != "true" ]; then
             echo "::notice::AUTO_MERGE унтраалттай — #$NUM хүний шалгалтад үлдэв."
+            echo "state=хүний шалгалтад үлдэв (AUTO_MERGE унтраалттай)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -243,6 +248,7 @@ jobs:
           if [ "${LINES:-0}" -gt "$MAX_DIFF_LINES" ]; then
             gh pr comment "$NUM" --body "⚠ diff хэтэрхий том (${LINES} мөр > ${MAX_DIFF_LINES}) — автоматаар merge хийгдээгүй. ХҮН шалгана."
             echo "::warning::diff том — merge хийсэнгүй."
+            echo "state=merge хийгдээгүй — diff хэт том (${LINES} мөр)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -262,6 +268,7 @@ jobs:
           if [ "$IMPROVED" = "worse" ] || [ "$IMPROVED" = "none" ]; then
             gh pr comment "$NUM" --body "⚠ Дизайны өр буураагүй ($IMPROVED) — автоматаар merge хийгдээгүй. ХҮН шалгана."
             echo "::warning::Өр буураагүй — merge хийсэнгүй."
+            echo "state=merge хийгдээгүй — өр буураагүй" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -269,8 +276,68 @@ jobs:
           if gh pr checks "$NUM" --watch --fail-fast --interval 15; then
             gh pr merge "$NUM" --squash --delete-branch
             echo "::notice::#$NUM merge хийгдлээ. Буцаах харуул 20 мин тутам хянана."
+            echo "state=merge хийгдсэн" >> "$GITHUB_OUTPUT"
           else
             gh pr comment "$NUM" --body "⚠ CI унасан — автоматаар merge хийгдээгүй. ХҮН шалгана."
             echo "::error::CI улаан — merge хийсэнгүй."
+            echo "state=merge хийгдээгүй — CI улаан" >> "$GITHUB_OUTPUT"
             exit 1
+          fi
+
+      # ───────── ӨГЛӨӨНИЙ ХУРААНГУЙ ─────────
+      # 02:00-д өөрөө merge хийвэл өглөө болоход зөвхөн нэг commit үлдэнэ —
+      # хаанаас хармаа мэдэхгүй. Шөнө бүр НЭГ Issue-д сэтгэгдэл нэмнэ: нэг линк
+      # нээгээд бүх түүх дараалж харагдана (агент-metrics-тэй ижил хэв маяг).
+      # ⚠ `always()` — УНАСАН шөнө ч бичигдэнэ. Зөвхөн амжилтыг бичвэл чимээгүй
+      #   бүтэлгүйтэл дахин нуугдана, тэр яг л бидний 4 удаа гишгэсэн тармуур.
+      - name: Өглөөний хураангуй бичих
+        if: always() && steps.key.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.task.outputs.target }}
+          NOWORK: ${{ steps.task.outputs.skip }}
+          PR_NUM: ${{ steps.pr.outputs.num }}
+          MERGE_STATE: ${{ steps.merge.outputs.state }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          gh label create "шөнийн-агент" --color 5319e7 \
+            --description "Шөнийн агентын түүх (авто)" 2>/dev/null || true
+
+          DAY=$(date -u -d '+8 hours' +%Y-%m-%d)   # УБ цаг
+          if [ "$NOWORK" = "true" ]; then
+            LINE="**$DAY** · Хүрээнд ажил үлдээгүй — агент ажиллаагүй. \`tools/debt-check.js --suggest\`-ээр шалга."
+          elif [ "$JOB_STATUS" != "success" ]; then
+            LINE="**$DAY** · ❌ Унасан (бай: \`${TARGET:-?}\`). [Лог]($RUN_URL) — \`num_turns\`, \`permission_denials_count\`-ыг хар."
+          else
+            DELTA=$(node -e '
+              const fs = require("node:fs");
+              try {
+                const b = JSON.parse(fs.readFileSync("/tmp/debt-before.json", "utf8"));
+                const a = JSON.parse(fs.readFileSync("/tmp/debt-after.json", "utf8"));
+                const r = Object.keys(b).filter((k) => a[k] !== b[k])
+                  .map((k) => `${k} ${b[k]}→${a[k]}`);
+                console.log(r.join(" · ") || "өөрчлөлтгүй");
+              } catch { console.log("тоо уншигдсангүй"); }
+            ')
+            LINE="**$DAY** · ✅ \`${TARGET}\` — $DELTA · PR #${PR_NUM:-?} · ${MERGE_STATE:-төлөв тодорхойгүй}"
+          fi
+          echo "$LINE"
+
+          NUM=$(gh issue list --label "шөнийн-агент" --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --body "$LINE"
+          else
+            BODY=$(printf '%s\n' \
+              "Шөнийн агент шөнө бүр энд нэг мөр бичнэ. Өглөө ЭНЭ ЛИНКИЙГ нээ." \
+              "" \
+              "Тайлбар: ✅ = ажил хийгдсэн · ❌ = унасан (лог руу ор) ·" \
+              "«хүний шалгалтад үлдэв» = PR нээлттэй, чи merge хийнэ." \
+              "" \
+              "Унтраах: \`agent-night.yml\`-ийн \`AUTO_MERGE\` → \`false\`." \
+              "" \
+              "$LINE")
+            gh issue create --label "шөнийн-агент" \
+              --title "🌙 Шөнийн агентын түүх" --body "$BODY"
           fi

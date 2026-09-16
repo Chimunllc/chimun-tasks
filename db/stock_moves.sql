@@ -38,3 +38,10 @@ grant select, insert on stock_moves to authenticated;
 grant usage, select on sequence stock_moves_id_seq to authenticated;
 -- ⛔ update/delete ЗОРИУД алга — append-only дэвтэр.
 notify pgrst, 'reload schema';
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on stock_moves from authenticated;

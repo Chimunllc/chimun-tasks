@@ -46,3 +46,10 @@ create policy ads_posts_write on ads_posts for insert
 drop policy if exists ads_posts_edit on ads_posts;
 create policy ads_posts_edit on ads_posts for update
   using (coalesce(sec.cap('ads'), coalesce(sec.cap('marketing'), sec.is_ceo() or sec.lvl() >= 80)));
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on ads_posts from authenticated;

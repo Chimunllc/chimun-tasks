@@ -25,3 +25,10 @@ create index if not exists pbx_calls_started_idx on pbx_calls (started_at desc);
 create index if not exists pbx_calls_peer_idx on pbx_calls (peer, started_at desc);
 
 grant select on pbx_calls to authenticated;
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on pbx_calls from authenticated;

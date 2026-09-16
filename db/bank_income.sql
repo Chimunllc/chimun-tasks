@@ -45,7 +45,15 @@ create index if not exists bank_income_dt_idx     on bank_income (dt);
 create index if not exists bank_income_status_idx on bank_income (status);
 
 -- Эрх: ЗӨВХӨН нэвтэрсэн ажилтан. anon-д ОГТ нээхгүй (хэн хэдэн төгрөг төлснийг агуулна).
-grant select, insert, update, delete on bank_statements to authenticated;
-grant select, insert, update, delete on bank_income     to authenticated;
+grant select, insert, update on bank_statements to authenticated;
+grant select, insert, update on bank_income     to authenticated;
 
 commit;
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on bank_statements from authenticated;
+revoke delete on bank_income from authenticated;

@@ -25,3 +25,10 @@ create index if not exists fb_ads_daily_camp_idx on fb_ads_daily (campaign_id, d
 
 -- ⛔ anon-д ОГТ нээхгүй (зарын зарцуулалт = санхүүгийн мэдээлэл).
 grant select on fb_ads_daily to authenticated;
+
+-- ⛔ DELETE ИЛ ХУРААНА (2026-09-16). Эзний DEFAULT PRIVILEGES нь ШИНЭ хүснэгт
+--    бүрд `authenticated`-д `arwd` (устгах ч) автоматаар олгодог тул `grant`
+--    бичээд орхивол хатуу устгал нээлттэй үлдэнэ. `db/rls.sql` бүгдээс хураадаг
+--    ч тэр нь ДАХИН ажиллуулж байж хүчинтэй — VPS-ийг сэргээхэд энэ файл дангаараа
+--    зөв байх ёстой.
+revoke delete on fb_ads_daily from authenticated;

@@ -14,15 +14,22 @@ import json, subprocess, sys, urllib.parse, urllib.request
 from datetime import date, timedelta
 
 ENV = '/opt/chimun/marketing/fb.env'
+SELFTEST = '--selftest' in sys.argv     # ⚠ тест нь VPS-ийн нууц файлыг шаардахгүй
 cfg = {}
-with open(ENV) as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            k, v = line.split('=', 1)
-            cfg[k.strip()] = v.strip()
+try:
+    with open(ENV) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                cfg[k.strip()] = v.strip()
+except FileNotFoundError:
+    if not SELFTEST:
+        raise
 
-TOKEN, ACCT = cfg['FB_TOKEN'], cfg['FB_ACCT']
+TOKEN, ACCT = cfg.get('FB_TOKEN', ''), cfg.get('FB_ACCT', '')
+if not SELFTEST and not (TOKEN and ACCT):
+    raise SystemExit(f'{ENV}-д FB_TOKEN эсвэл FB_ACCT алга')
 RATE = float(cfg.get('FX_USD_MNT', '3600'))
 API = 'https://graph.facebook.com/v21.0'
 MIN_MSG = 3            # үүнээс цөөн чаттай зарын өртөг = шуугиан
@@ -82,11 +89,103 @@ def changed(old, new):
     return abs(float(old) - float(new)) >= 0.01
 
 
+# ⛔ ӨДРИЙН ТӨСВИЙГ БАЙНГА ЗАСВАЛ ЗАР МУУДНА (2026-09-17).
+#   Энэ скрипт 10 минут тутам ажилладаг бөгөөд зөрүү 1 цент байхад л бичдэг
+#   байв — амьд датаар өдөрт 46 удаа, ихэнх нь $6.25→$6.23 гэх утгагүй
+#   хөдөлгөөн. Хоёр хор:
+#     ① Meta төсөв засах бүрд хүргэлтийн «сурах үе»-г дахин эхлүүлдэг —
+#        үр дүнгийн өртөг өсч, хүргэлт тогтворгүй болно.
+#     ② Өдөрт олон арван бичилт нь эвдэрсэн интеграц шиг харагдана.
+#   Тиймээс ТОМ өөрчлөлтийг л хийнэ, тэр ч өдөрт нэг удаа.
+#   ⚠ ЗОГСООЛТ (pause) энэ хаалтад ОРОХГҮЙ — мөнгө хамгаалах ажил тул
+#     шууд хийгдэнэ.
+BUDGET_MIN_PCT = 0.15     # 15%-иас бага өөрчлөлт хийхгүй
+BUDGET_MIN_USD = 1.00     # эсвэл $1-ээс бага бол хийхгүй
+BUDGET_COOLDOWN_H = 20    # нэг кампанит ажилд өдөрт нэг удаа
+BUDGET_URGENT_PCT = 0.40  # үүнээс том бол хүлээлгүй шууд засна
+
+
+def worth_changing(old, new, last_h):
+    """Төсвийг ҮНЭХЭЭР засах уу. Цэвэр функц — тестлэгдэнэ.
+    old     = одоогийн өдрийн төсөв ($), None бол тавигдаагүй
+    new     = тооцоолсон төсөв ($)
+    last_h  = сүүлд засснаас хойш хэдэн цаг (None = хэзээ ч заагаагүй)
+    """
+    if old is None:
+        return True
+    old, new = float(old), float(new)
+    diff = abs(old - new)
+    if diff < max(BUDGET_MIN_USD, old * BUDGET_MIN_PCT):
+        return False
+    if last_h is not None and last_h < BUDGET_COOLDOWN_H:
+        # Ердийн залруулга хүлээнэ; том гажилтыг (зар нэмэгдсэн/зогссон) шууд.
+        return old > 0 and diff >= old * BUDGET_URGENT_PCT
+    return True
+
+
 # ⛔ АЛДААГ ДАВТАЖ БИЧИХГҮЙ. Алдаа нь өөрчлөлт биш ТӨЛӨВ — засагдтал 10 минут
 #   тутам давтагдана (өдөрт 144 ижил мөр). Тиймээс ижил алдаа сүүлийн 6 цагт
 #   бүртгэгдсэн бол дахин бичихгүй. Төсөв/зогсоолт нь аль хэдийн
 #   `changed()`-ээр хаалттай тул энэ нь зөвхөн алдаанд хэрэгтэй.
 ERR_QUIET_H = 6
+
+
+# ── Өөрийн тест (`--selftest`) ─────────────────────────────────────────────
+# ⚠ Энэ скрипт дээрээс доош ажилладаг тул тестийг API дуудахаас ӨМНӨ барина.
+if '--selftest' in sys.argv:
+    _f, _n = [], [0]
+
+    def _eq(got, want, name):
+        _n[0] += 1
+        if got != want:
+            _f.append(f'{name}: хүлээсэн {want!r}, ирсэн {got!r}')
+
+    # Жижиг хөдөлгөөн — ХИЙХГҮЙ (амьд датаар $6.25→$6.23 гэж өдөрт 46 удаа болсон)
+    _eq(worth_changing(6.25, 6.23, None), False, 'төсөв: 0.3% хөдөлгөөн хийхгүй')
+    _eq(worth_changing(4.66, 4.64, 100), False, 'төсөв: цент зөрүү хийхгүй')
+    # Том хөдөлгөөн, удаан заагаагүй — ХИЙНЭ
+    _eq(worth_changing(4.00, 6.00, 48), True, 'төсөв: 50% өсөлт хийнэ')
+    _eq(worth_changing(6.00, 4.00, None), True, 'төсөв: хэзээ ч заагаагүй бол хийнэ')
+    # Хангалттай том ч саяхан зассан — ХҮЛЭЭНЭ
+    _eq(worth_changing(6.00, 7.50, 3), False, 'төсөв: 25% ч саяхан зассан бол хүлээнэ')
+    # Маш том гажилт — хүлээлгүй шууд (зар нэмэгдсэн/зогссон)
+    _eq(worth_changing(4.00, 8.00, 1), True, 'төсөв: 100% гажилт шууд засагдана')
+    _eq(worth_changing(10.00, 5.00, 1), True, 'төсөв: хагасаар буурвал шууд')
+    # Хугацаа дуусмагц ердийн залруулга дахин боломжтой
+    _eq(worth_changing(6.00, 7.50, 21), True, 'төсөв: хугацаа дуусвал залруулна')
+    # Тавигдаагүй төсөв — үргэлж тавина
+    _eq(worth_changing(None, 3.00, 1), True, 'төсөв: тавигдаагүй бол тавина')
+    # ⚠ $1-ээс бага абсолют зөрүү — жижиг төсөвт хувь өндөр ч утгагүй.
+    #   Манай төсөв $2.5-6 тул энэ шал нь 16-40% өөрчлөлт шаардана: зориудынх,
+    #   өдөр бүр бага зэрэг хөдлөхөөс хүргэлт тогтвортой байх нь чухал.
+    _eq(worth_changing(2.50, 3.20, None), False, 'төсөв: $0.70 зөрүү хийхгүй')
+    _eq(worth_changing(2.50, 3.60, None), True, 'төсөв: $1.10 зөрүү хийнэ')
+
+    if _f:
+        print(f'❌ BUDGET FAIL — {_n[0] - len(_f)}/{_n[0]}')
+        for _x in _f:
+            print('   · ' + _x)
+        sys.exit(1)
+    print(f'✅ BUDGET OK — {_n[0]} тест')
+    sys.exit(0)
+
+
+def last_budget_hours():
+    """Кампанит ажил тус бүр сүүлд хэдэн цагийн өмнө төсөв нь засагдсан бэ."""
+    out = {}
+    try:
+        raw = psql("select campaign_id, round(extract(epoch from (now()-max(at)))/3600.0, 2)"
+                   " from fb_ad_actions where kind='budget' and campaign_id is not null"
+                   " group by 1")
+        for ln in raw.strip().split('\n'):
+            if '|' in ln:
+                cid, h = ln.split('|')[:2]
+                out[cid.strip()] = float(h)
+    except Exception:
+        # ⚠ Уншиж чадахгүй бол хаалтгүй ажиллана — төсөв тавигдахгүй байснаас
+        #   илүү давтамжтай засагдсан нь дээр.
+        pass
+    return out
 
 
 def flush_actions():
@@ -211,6 +310,7 @@ for a in api_get(f'{ACCT}/adsets',
     if a.get('status') == 'ACTIVE':
         by_camp.setdefault(a['campaign_id'], []).append(a)
 
+last_h = last_budget_hours()
 for c in active:
     want = plan[c['id']]
     p = perf.get(c['id'], {})
@@ -220,7 +320,7 @@ for c in active:
     try:
         if c.get('daily_budget'):
             old = float(c['daily_budget']) / 100.0
-            if changed(old, want):
+            if worth_changing(old, want, last_h.get(c['id'])):
                 api_post(c['id'], {'daily_budget': int(round(want * 100))})
                 record('budget', c['id'], c.get('name'), old, want, why)
         else:
@@ -232,9 +332,12 @@ for c in active:
             each = max(MIN_DAILY_USD, round(want / len(sets), 2))
             old_tot = sum(float(a.get('daily_budget') or 0) for a in sets) / 100.0
             hit = False
-            for a in sets:
-                if changed(float(a.get('daily_budget') or 0) / 100.0, each):
-                    api_post(a['id'], {'daily_budget': int(round(each * 100))}); hit = True
+            # ⚠ Шийдвэрийг КАМПАНИТ АЖЛЫН нийт дүнгээр гаргана — adset бүрээр
+            #   шалгавал нэг нь босгыг давахад бусад нь ч дагаж бичигдэнэ.
+            if worth_changing(old_tot or None, each * len(sets), last_h.get(c['id'])):
+                for a in sets:
+                    if changed(float(a.get('daily_budget') or 0) / 100.0, each):
+                        api_post(a['id'], {'daily_budget': int(round(each * 100))}); hit = True
             if hit:
                 record('budget', c['id'], c.get('name'), old_tot, each * len(sets), why)
     except Exception as e:

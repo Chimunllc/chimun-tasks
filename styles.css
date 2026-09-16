@@ -6990,6 +6990,36 @@ select.no-asar-len {
   .coo-paid-m.coo-paid-t { grid-column: 1 / -1; }
 }
 
+/* COO дэлгэцийн бүрхүүл, сар сонгогч, тайлбар, CEO тохиргоо.
+   2026-09-16: эдгээр 25 дүрэм inline `style=`-аар бичигдсэн байсныг класс болгов.
+   Дүрмээ ЭНД нэм — `renderCooSalary`-д inline style буцааж бүү оруул. */
+.coo-wrap { max-width: 640px; margin: 0 auto; }
+/* Тайлбарын мөр. `.coo-sub`-д b нь тод (хэн, аль салбар), `.coo-note`-д бүдэг хэвээр. */
+.coo-sub { font-size: var(--fs-sm); color: var(--muted); margin: 2px 0 var(--space-3); }
+.coo-sub b { color: var(--text); }
+.coo-note { font-size: var(--fs-sm); color: var(--muted); margin: 2px 0 14px; line-height: 1.5; }
+/* Сар сонгогч ‹ 2026-09 › */
+.coo-mnav { display: flex; align-items: center; justify-content: center;
+  gap: 10px; margin-bottom: var(--space-3); }
+.coo-mnav .btn { padding: 6px 13px; }
+.coo-mnav-m { font-weight: 700; }
+.coo-loading { text-align: center; color: var(--muted); padding: 10px; }
+.coo-warn { text-align: center; color: var(--warn); font-size: var(--fs-sm);
+  padding: var(--space-2) 10px; border: 1px solid var(--warn); border-radius: 10px;
+  margin-bottom: var(--space-3); }
+/* CEO тохиргооны хайрцаг — тасархай хүрээгээр «энэ бол тохиргоо» гэж ялгана */
+.coo-cfg { border: 1px dashed var(--border); border-radius: 12px; padding: 12px 14px;
+  background: var(--panel); }
+.coo-cfg-h { font-weight: 700; font-size: var(--fs-md); margin-bottom: var(--space-2); }
+.coo-cfg-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.coo-cfg-row label { font-size: var(--fs-sm); color: var(--muted); }
+.coo-cfg-row select, .coo-cfg-row input { padding: 6px var(--space-2);
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--bg); color: var(--text); }
+.coo-cfg-row #coo-acct { width: 130px; }
+.coo-cfg-row #coo-pct { width: 70px; }
+.coo-cfg-row .btn { padding: 6px 14px; }
+
 /* Гүйцэтгэл — ирцийн дата унасан сэрэмжлүүлэг + дахин оролдох */
 .att-fail { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   font-size: var(--fs-sm); color: var(--warn); font-weight: 600;

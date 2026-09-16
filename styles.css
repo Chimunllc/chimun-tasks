@@ -7290,3 +7290,10 @@ select.no-asar-len {
 .mc-q { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--panel); color: var(--text); font-size: var(--fs-sm); }
 .mc-cold .mc-num { color: var(--muted); }
+/* Алдсан дуудлагын мөр — нэр гарчиг, дугаар дэд мөр (2026-09-16) */
+.mc-sub { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
+.mc-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.mc-tag { padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: var(--fs-xs); color: var(--muted); }
+.mc-tag.mc-warm { color: var(--ok); border-color: var(--ok); }
+.ads-kpi-s { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }

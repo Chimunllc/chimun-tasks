@@ -6590,6 +6590,48 @@ need(['orderCustType']);
   ok(!/PBX_PASS\s*=\s*['"]/.test(py), 'scan: нууц үг скриптэд хатуу бичигдээгүй');
 }
 
+// ── META CONVERSIONS API (2026-09-16) ──────────────────────────────────────
+// Pixel зөвхөн браузерт ажилладаг тул утсаар/биечлэн хийгдсэн захиалга
+// Facebook-т ОГТ хүрдэггүй. Манай захиалгын дийлэнх нь яг тэр — иймд зар
+// «ямар хүн үнэхээр мөнгө төлдөг вэ» гэдгийг сурч чадахгүй байв.
+{
+  const capi = path.join(__dirname, '..', 'tools', 'fb_capi.py');
+  const py = fs.readFileSync(capi, 'utf8');
+
+  // ⛔ ХУВИЙН МЭДЭЭЛЭЛ ТҮҮХИЙГЭЭР ЯВАХГҮЙ — утас/мэйл/нэр бүгд SHA-256.
+  ok(/def sha\(/.test(py) && /hashlib\.sha256/.test(py), 'scan: capi хэш хийдэг');
+  ok(/ud\['ph'\] = \[sha\(ph\)\]/.test(py) && /ud\['em'\] = \[sha\(em\)\]/.test(py),
+     'scan: capi утас/мэйлийг хэшлэж явуулна');
+  // ⛔ Meta ₮ (MNT) валютыг дэмждэггүй — дүн чимээгүй хаягддаг.
+  ok(/'currency': 'USD'/.test(py) && !/'MNT'/.test(py), 'scan: capi ам.доллараар явуулна');
+  // ⛔ Барьцаа орлого БИШ (орлогын ганц дүрэм).
+  ok(/def revenue_mnt/.test(py) && /deposit/.test(py), 'scan: capi барьцааг хасна');
+  // ⛔ НЭГ ЗАХИАЛГА = НЭГ PURCHASE. Давхардвал зарын үр дүн 2 дахин их харагдана.
+  ok(/left join fb_capi_sent/.test(py) && /s\.order_id is null/.test(py),
+     'scan: capi илгээсэн захиалгыг дахин илгээхгүй');
+  // ⛔ Бүртгэл нь ИЛГЭЭГДСЭНИЙ ДАРАА — эс бөгөөс алдаа гарахад давхар явна.
+  ok(py.indexOf('urlopen') < py.indexOf('insert into fb_capi_sent'),
+     'scan: capi эхлээд илгээж, дараа нь бүртгэнэ');
+  // ⛔ Алдааг БҮРТГЭХГҮЙ — дараагийн удаа дахин оролдоно.
+  ok(/HTTPError[\s\S]{0,300}?raise SystemExit\(1\)/.test(py),
+     'scan: capi алдаанд бүртгэл үлдээхгүй (дахин оролдоно)');
+  // ⛔ Токен репод БАЙХГҮЙ.
+  ok(!/FB_TOKEN\s*=\s*['"][A-Za-z0-9]/.test(py), 'scan: capi токен хатуу бичигдээгүй');
+  // ⛔ Тулгах түлхүүргүй бол илгээхгүй — Meta хэнтэй ч холбож чадахгүй.
+  ok(/тулгах түлхүүргүй/.test(py), 'scan: capi түлхүүргүй захиалгыг илгээхгүй');
+
+  // Цэвэр функцуудын өөрийн тест (сүлжээ, DB шаардахгүй).
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(capi)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ CAPI OK/.test(out), 'capi: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    // python3 байхгүй runner дээр алгасана; тестийн алдаа бол ил гаргана.
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'capi: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
 // ── УРЬДЧИЛАН ЗАХИАЛАХ ХУГАЦАА (2026-09-10) ────────────────────────────────
 // Жагсаалт зөвхөн эвентийн огноог харуулдаг тул «хэзээ ирсэн, хэдэн өдрийн
 // өмнө баталгаажсан» гэдэг харагдахгүй байв. Маркетинг/нөөц төлөвлөлтөд хэрэгтэй.

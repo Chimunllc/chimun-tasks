@@ -6041,6 +6041,82 @@ need(['orderCustType']);
   eq(F.leadChannelStats(null, 'cash').coverage, 0, 'лид: null → 0');
 }
 
+// ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭР (2026-09-16) ────────────────────────────────────
+// Гол занга: бидний тавьсан төлөв (`status`) ба Facebook-ийн БОДИТ төлөв
+// (`effective_status`) ЗӨРДӨГ. Татгалзсан зарыг «идэвхтэй» гэж харуулбал
+// хэрэглэгч ажиллаж байгаа гэж андуурч, зар зогссоор байна.
+{
+  eq(F.adStatusLabel('ACTIVE', 'ACTIVE'), '✅ Идэвхтэй', 'зар: идэвхтэй');
+  eq(F.adStatusLabel('DISAPPROVED', 'ACTIVE'), '⛔ Татгалзсан', 'зар: бодит төлөв ЭРХЭМ');
+  eq(F.adStatusLabel('', 'PAUSED'), '⏸ Зогссон', 'зар: бодит төлөв алга бол бидний төлөв');
+  eq(F.adStatusLabel('SOMETHING_NEW', ''), '• SOMETHING_NEW', 'зар: танихгүй төлвийг далдлахгүй');
+  eq(F.adStatusLabel('', ''), '—', 'зар: төлөвгүй');
+
+  ok(F.adIsLive({ effective_status: 'ACTIVE', status: 'ACTIVE' }), 'зар: үнэхээр ажиллаж байна');
+  ok(!F.adIsLive({ effective_status: 'DISAPPROVED', status: 'ACTIVE' }),
+     'зар: татгалзсан зар «ажиллаж байна» БИШ');
+  ok(!F.adIsLive({ effective_status: 'CAMPAIGN_PAUSED', status: 'ACTIVE' }), 'зар: зогссон');
+  ok(F.adIsLive({ status: 'ACTIVE' }), 'зар: бодит төлөв алга бол бидний төлөв');
+  ok(!F.adIsLive({}), 'зар: хоосон → ажиллахгүй');
+  ok(!F.adIsLive(null), 'зар: null → унахгүй');
+
+  // Эрэмбэ: ажиллаж байгаа нь эхэнд, дараа нь өдрийн төсвөөр.
+  const rows = F.adStateRows([
+    { campaign_id: 'a', effective_status: 'PAUSED', daily_usd: 99 },
+    { campaign_id: 'b', effective_status: 'ACTIVE', daily_usd: 3 },
+    { campaign_id: 'c', effective_status: 'ACTIVE', daily_usd: 7 },
+  ]);
+  eq(rows.map(r => r.campaign_id).join(''), 'cba', 'зар: идэвхтэй нь эхэнд, төсвөөр эрэмбэлнэ');
+  eq(F.adStateRows([]).length, 0, 'зар: хоосон → унахгүй');
+  eq(F.adStateRows(null).length, 0, 'зар: null → унахгүй');
+
+  // Шийдвэрийн бичвэр.
+  eq(F.adActionLabel({ kind: 'budget', old_val: 3, new_val: 6.52 }),
+     'Өдрийн төсөв $3.00 → $6.52 ↑', 'шийдвэр: төсөв өссөн');
+  eq(F.adActionLabel({ kind: 'budget', old_val: 9, new_val: 4 }),
+     'Өдрийн төсөв $9.00 → $4.00 ↓', 'шийдвэр: төсөв буурсан');
+  eq(F.adActionLabel({ kind: 'budget', old_val: null, new_val: 5 }),
+     'Өдрийн төсөв $5.00', 'шийдвэр: хуучин утга байхгүй');
+  eq(F.adActionLabel({ kind: 'pause' }), '⏸ Зар зогсоов', 'шийдвэр: зогсоов');
+  eq(F.adActionLabel({ kind: 'cap', new_val: 1982.68 }),
+     'Дансны хатуу хязгаар $1982.68', 'шийдвэр: хязгаар');
+  eq(F.adActionLabel({ kind: 'error' }), '⚠ Хийгдсэнгүй', 'шийдвэр: алдаа');
+  eq(F.adActionLabel({}), '—', 'шийдвэр: хоосон → унахгүй');
+  eq(F.adActionLabel(null), '—', 'шийдвэр: null → унахгүй');
+  ok(F.adActionIsBad({ kind: 'error' }), 'шийдвэр: алдаа тусгаарлагдана');
+  ok(!F.adActionIsBad({ kind: 'budget' }), 'шийдвэр: энгийн өөрчлөлт алдаа биш');
+  eq(F.fmtUsd('abc'), '—', 'доллар: тоо биш бол —');
+}
+
+// scan: «Зар & үр дүн» дэлгэц төлвийг дотроо дахин шалгахгүй.
+// `status === 'ACTIVE'` гэж бичвэл татгалзсан зар «идэвхтэй» гэж харагдана.
+{
+  const i = src.indexOf('function renderAds(');
+  const fn = src.slice(i, src.indexOf('\nfunction attachAdsHandlers(', i));
+  ok(/adIsLive\(/.test(fn) && /adStatusLabel\(/.test(fn), 'scan: renderAds төлвийг функцээр шалгана');
+  ok(!/['\"]ACTIVE['\"]/.test(fn), 'scan: renderAds дотор төлвийг хатуу харьцуулахгүй');
+}
+
+// scan: төсвийн хуваарилагч ЗӨВХӨН өөрчлөлт бүртгэнэ, SQL-д утга наахгүй.
+// 10 минут тутам ажилладаг тул бүх удаа бичвэл өдөрт 144 мөр хог үүснэ;
+// зарын нэрэнд хашилт байдаг тул шууд наавал SQL эвдэрнэ.
+{
+  const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
+  ok(/def changed\(/.test(py), 'scan: хуваарилагчид changed() байна');
+  // ⚠ Хоёр САЛАА зам бий (CBO кампанит ажил ба adset). Хоёулангийнх нь
+  // api_post нь `changed(...)` хаалтын ДОТОР байх ёстой — нэгийг нь хаалтгүй
+  // орхивол тэр замаар өдөрт 144 мөр хог бүртгэгдэнэ.
+  ok(/if changed\(old, want\):\s*\n\s*api_post\(c\['id'\], \{'daily_budget'/.test(py),
+     'scan: кампанит ажлын төсөв changed() хаалтын дотор');
+  ok(/if changed\(float\(a\.get\('daily_budget'\)[\s\S]{0,80}?api_post\(a\['id'\], \{'daily_budget'/.test(py),
+     'scan: adset-ийн төсөв changed() хаалтын дотор');
+  ok(/if changed\(cap_old, cap_usd\):/.test(py), 'scan: дансны хязгаар ч өөрчлөгдсөн үед л');
+  ok(/def sq\(/.test(py) && /replace\(\"'\", \"''\"\)/.test(py),
+     'scan: SQL мөрийн утга хашилтаас хамгаалагдана');
+  ok(!/values[\s\S]{0,120}\{c\['name'\]\}/.test(py), 'scan: зарын нэрийг SQL-д шууд наахгүй');
+  ok(/record\('error'/.test(py), 'scan: амжилтгүй үйлдэл ч бүртгэгдэнэ (аппад харагдана)');
+}
+
 // ── УТАСНЫ ДУУДЛАГА (2026-09-16) ────────────────────────────────────────────
 // Unitel PBX-ийн CDR-ээс өдөр×цагаар татагдана. Гол занга: порталын «Answered»
 // статус нь PBX өөрөө авсныг хэлдэг — түүгээр хэмжвэл 99% гэсэн худал тоо гарна.

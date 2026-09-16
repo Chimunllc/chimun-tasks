@@ -27950,6 +27950,73 @@ async function loadFbAds(force) {
   } catch (e) { dataLoadFailed('Зарын дата', e); state.fbAds = state.fbAds || []; return state.fbAds; }
 }
 
+
+// ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
+// `tools/fb_budget.py` 10 минут тутам шийдвэр гаргадаг (төсөв шилжүүлэх, зар
+// зогсоох) ч энэ нь VPS-ийн лог файлд л үлддэг байв — хэрэглэгч «систем юу
+// хийв, яагаад» гэдгийг ХЭЗЭЭ Ч харж чаддаггүй.
+// ⛔ Зөвхөн ӨӨРЧЛӨЛТ бүртгэгдэнэ (скрипт өдөрт 144 удаа ажилладаг).
+const AD_STATUS_LABEL = {
+  ACTIVE: '✅ Идэвхтэй', PAUSED: '⏸ Зогссон', CAMPAIGN_PAUSED: '⏸ Зогссон',
+  ADSET_PAUSED: '⏸ Зогссон', DISAPPROVED: '⛔ Татгалзсан',
+  PENDING_REVIEW: '⏳ Хянагдаж буй', WITH_ISSUES: '⚠ Асуудалтай',
+  ARCHIVED: '📦 Архив', DELETED: '🗑 Устсан', IN_PROCESS: '⏳ Боловсруулж буй',
+};
+function fmtUsd(v) { const n = Number(v); return isFinite(n) ? '$' + n.toFixed(2) : '—'; }
+// Facebook-ийн БОДИТ төлөв нь бидний тавьсан төлвөөс зөрж болно (татгалзсан зар,
+// төлбөрийн алдаа). Тиймээс `effective_status` ЭРХЭМ — түүнийг эхэлж хардаг.
+function adStatusLabel(eff, st) {
+  const k = String(eff || st || '').toUpperCase();
+  return AD_STATUS_LABEL[k] || (k ? '• ' + k : '—');
+}
+// Зар үнэхээр мөнгө зарцуулж байна уу (бидний хүслээр биш, Facebook дээр).
+function adIsLive(s) {
+  return String((s && s.effective_status) || (s && s.status) || '').toUpperCase() === 'ACTIVE';
+}
+// Кампанит ажлууд — идэвхтэй нь эхэнд, дараа нь өдрийн төсвөөр.
+function adStateRows(states) {
+  return (states || []).filter(Boolean).slice().sort((a, b) =>
+    (adIsLive(b) ? 1 : 0) - (adIsLive(a) ? 1 : 0) ||
+    (Number(b.daily_usd) || 0) - (Number(a.daily_usd) || 0));
+}
+// Нэг шийдвэрийг хүний хэлээр. Цэвэр функц — тестлэгдэнэ.
+function adActionLabel(a) {
+  const k = String((a && a.kind) || '');
+  const o = a && a.old_val != null ? Number(a.old_val) : null;
+  const n = a && a.new_val != null ? Number(a.new_val) : null;
+  if (k === 'budget') {
+    const dir = (o === null || n === null) ? '' : (n > o ? ' ↑' : n < o ? ' ↓' : '');
+    return `Өдрийн төсөв ${o === null ? '' : fmtUsd(o) + ' → '}${fmtUsd(n)}${dir}`;
+  }
+  if (k === 'pause') return '⏸ Зар зогсоов';
+  if (k === 'cap') return `Дансны хатуу хязгаар ${fmtUsd(n)}`;
+  if (k === 'error') return '⚠ Хийгдсэнгүй';
+  return k || '—';
+}
+function adActionIsBad(a) { return String((a && a.kind) || '') === 'error'; }
+
+// ── Зарын төлөв/шийдвэр татах ───────────────────────────────────────────────
+// anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
+async function loadFbActions(force) {
+  if (state.fbActions && !force) return state.fbActions;
+  const hdr = { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } };
+  try {
+    const [ra, rs] = await Promise.all([
+      fetchWithTimeout(`${DB_URL}/rest/v1/fb_ad_actions?select=*&order=at.desc&limit=60`, hdr, 20000),
+      fetchWithTimeout(`${DB_URL}/rest/v1/fb_campaign_state?select=*&limit=200`, hdr, 20000),
+    ]);
+    if (!ra.ok) throw new Error('HTTP ' + ra.status);
+    if (!rs.ok) throw new Error('HTTP ' + rs.status);
+    state.fbActions = await ra.json();
+    state.fbStates = await rs.json();
+    return state.fbActions;
+  } catch (e) {
+    dataLoadFailed('Зарын шийдвэр', e);
+    state.fbActions = state.fbActions || []; state.fbStates = state.fbStates || [];
+    return state.fbActions;
+  }
+}
+
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
 
 function renderAds() {
@@ -28038,6 +28105,30 @@ function renderAds() {
   const leadHtml = `<div class="ads-note">Захиалгын лид суваг: <b>${lead.coverage}%</b> тэмдэглэгдсэн${lead.unknown ? ` · ${lead.unknown} захиалга тэмдэглээгүй` : ''}.
     ${lead.coverage < 80 ? 'Хамралт 80%-иас дээш болмогц Facebook-ийн чат → захиалга хүртэлх холбоос гарч ирнэ.' : 'Чат → захиалгын холбоос гаргахад хангалттай дата боллоо.'}</div>`;
 
+  // Ямар зар яг одоо мөнгө зарцуулж байна. `effective_status` нь Facebook-ийн
+  // БОДИТ төлөв — татгалзсан зар зөвхөн энд илэрнэ.
+  const states = adStateRows(state.fbStates || []);
+  const liveN = states.filter(adIsLive).length;
+  const stateHtml = !states.length ? '' : `<div class="ads-sec">Идэвхтэй зар <span class="ads-sub">(${liveN} ажиллаж байна · ${states.length} нийт)</span></div>
+    <div class="ads-list">${states.map(c => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(c.name || '—')}</span>
+      <span class="ads-sp">${escapeHtml(adStatusLabel(c.effective_status, c.status))}</span>
+      <span class="ads-ms">${c.updated_at ? escapeHtml(fmtDateTimeUB(c.updated_at)) : ''}</span>
+      <b class="ads-pm${adIsLive(c) ? '' : ' ads-bad'}">${adIsLive(c) ? fmtUsd(c.daily_usd) + '/өдөр' : '—'}</b>
+    </div>`).join('')}</div>`;
+
+  // Систем юу хийсэн. ⚠ Зөвхөн ӨӨРЧЛӨЛТ бүртгэгддэг тул мөр цөөн байх нь
+  // хэвийн — «юу ч болоогүй» гэдэг нь тогтвортой ажиллаж байгааг хэлнэ.
+  const acts = (state.fbActions || []).slice(0, 20);
+  const actHtml = !acts.length ? '' : `<div class="ads-sec">Систем юу хийсэн <span class="ads-sub">(зөвхөн өөрчлөлт)</span></div>
+    <div class="ads-list">${acts.map(a => `<div class="ads-act${adActionIsBad(a) ? ' ads-act-bad' : ''}">
+      <span class="ads-act-t">${escapeHtml(fmtDateTimeUB(a.at))}</span>
+      <span class="ads-act-b">
+        <span class="ads-act-n">${escapeHtml(adActionLabel(a))}</span>${a.campaign_name ? ' · ' + escapeHtml(a.campaign_name) : ''}
+        <span class="ads-act-r">${escapeHtml(a.reason || '')}</span>
+      </span>
+    </div>`).join('')}</div>`;
+
   // Утасны дуудлага — зар ажилласны ДАРААХ алхам. Энд алдагдвал зарын мөнгө
   // бүхэлдээ дэмий болно, тиймээс кампанит ажлын өмнө харагдана.
   const callHtml = !pbx.calls ? '' : `<div class="ads-sec">Утасны дуудлага <span class="ads-sub">(${pbx.dayCount} хоног · өдөрт дунджаар ${pbx.perDay})</span></div>
@@ -28067,6 +28158,8 @@ function renderAds() {
     ${kpi}
     ${budgetHtml}
     ${adviceHtml}
+    ${stateHtml}
+    ${actHtml}
     ${callHtml}
     ${fupHtml}
     <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
@@ -35032,6 +35125,9 @@ function refreshViewData() {
   if (v === 'customers' && canSeeCustomers()) {
     if (state.customers === undefined) loadCustomers().then(() => { if (state.view === 'customers') render(); });
     if (state.appOrders === undefined) { state.appOrders = []; setTimeout(() => loadAppOrders().then(() => { if (state.view === 'customers') render(); }), 0); }
+  }
+  if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
+    loadFbActions().then(() => { if (state.view === 'ads') render(); });
   }
   if (v === 'ads' && canSeeAds() && state.pbxCalls === undefined) {
     loadPbxCalls().then(() => { if (state.view === 'ads') render(); });

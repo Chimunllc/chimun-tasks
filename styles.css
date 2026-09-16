@@ -4808,6 +4808,13 @@ body.role-daily #add-project { display: none !important; }
 .ads-sec { font-weight: 800; font-size: var(--fs-md); margin: var(--space-3) 0 8px; }
 .ads-sub { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
 .ads-list { display: flex; flex-direction: column; gap: 4px; }
+/* Системийн шийдвэрийн мөр — цаг зүүн талд, шалтгаан доор нь. */
+.ads-act { display: flex; gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); border-left: 3px solid var(--ok); }
+.ads-act-bad { border-left-color: var(--danger); }
+.ads-act-t { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.ads-act-b { min-width: 0; }
+.ads-act-n { font-weight: 700; }
+.ads-act-r { display: block; color: var(--muted); font-size: var(--fs-xs); margin-top: 2px; }
 .ads-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
 .ads-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ads-sp, .ads-ms { color: var(--muted); }

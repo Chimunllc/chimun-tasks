@@ -45,6 +45,15 @@ START_USD = 2.50           # эхлэх өдрийн төсөв; 10 минуты
 # ⚠ Багц нэгдэж систем хэрэглэгчид хуудасны эрх өгмөгц үүнийг `FB_TOKEN` рүү
 #   буцаа — систем хэрэглэгчийн токен хүнээс хамаардаггүй тул илүү найдвартай.
 ADS_TOKEN = PAGE_TOKEN
+# ⛔ БҮҮСТ ӨГӨГДМӨЛӨӨР УНТРААЛТТАЙ (2026-09-17). Зурагтай постыг чат руу
+#   оптимизацтай зартай хослуулахыг Meta зөвшөөрдөггүй («Invalid Creative For
+#   Objective»). Хоёр удаа оролдоход кампанит ажил + adset үүсээд ЗАР нь
+#   үүсдэггүй — үр дүнд нь хоосон бүрхүүл үлдэж, хуваарилагч түүнд төсөв
+#   хуваарилж БОДИТ зарууд бага авдаг байв.
+#   Асаах бол `fb.env`-д `PUBLISH_BOOST=1` — гэхдээ эхлээд creative-ийн
+#   асуудлыг шийд (чат руу бол «Мессеж бичих» товчтой тусдаа creative,
+#   сайт руу бол OUTCOME_TRAFFIC).
+BOOST = cfg.get('PUBLISH_BOOST', '0') not in ('0', '', 'false', 'no')
 
 
 def log(msg):
@@ -169,7 +178,15 @@ for row in rows:
                 psql(f'update ads_posts set fb_post_id={sq(post_id)} where id={sq(pid)};')
             log(f'нийтлэв: {title} → {post_id}')
 
-        # ④ Бүүст — зарын данс дээр SYSTEM токеноор.
+        if not BOOST:
+            if not DRY:
+                psql(f"update ads_posts set status='published', published_at=now(), "
+                     f"error=null where id={sq(pid)};")
+            ok += 1
+            log(f'нийтлэв (бүүст унтраалттай): {title}')
+            continue
+
+        # ④ Бүүст — зарын данс дээр.
         # ⚠ `is_adset_budget_sharing_enabled` нь Meta-гийн ШААРДЛАГАТАЙ талбар
         #   (2026-09). Төсвийг adset дээр тавьдаг тул false — кампанит ажлын
         #   түвшний (CBO) төсөв асаавал `fb_budget.py`-ийн хуваарилалт зөрнө.

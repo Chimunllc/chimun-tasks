@@ -1,0 +1,166 @@
+# БУЦААХ ХАРУУЛ — deploy эвдэрвэл өөрөө сэргээнэ.
+#
+# Яагаад: main-д merge = GitHub Pages дээр шууд, 150+ ажилтанд. Алдааны триаж
+# өдөрт 2 удаа л ажилладаг тул эвдэрсэн апп хагас өдөр амьд байж болно.
+# Автомат merge (шөнийн агент) хийх бол ЭНЭ харуул заавал байна.
+#
+# Дүрэм (tools/revert-watch.js, тестлэгдсэн):
+#   merge-ээс хойш ШИНЭЭР гарсан алдаа ≥3 удаа давтагдаж, ≥2 ӨӨР ажилтанд
+#   тохиолдвол → тэр merge-ийг буцаана. Нэг хүний онцгой тохиолдол хүрэлцэхгүй.
+#
+# ⛔ main-д ШУУД push хийхгүй (branch protection: GH006). Буцаалт нь PR-аар
+#    явж, `lint` ногоон болсны дараа merge хийгдэнэ (~40 сек).
+# ⛔ Буцаалтыг дахин буцаахгүй (ping-pong хориглоно).
+# 🔌 Унтраах: `.github/NO_AUTO_REVERT` файл үүсгэ (агуулга хамаагүй).
+name: Буцаах харуул
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Зөвхөн шалгана, буцаахгүй'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: revert-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15      # `gh pr checks --watch` мөнхөд хүлээхээс сэргийлнэ
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Унтраалга шалгах
+        id: sw
+        run: |
+          set -euo pipefail
+          if [ -f .github/NO_AUTO_REVERT ]; then
+            echo "::notice::.github/NO_AUTO_REVERT байна — харуул унтраалттай."
+            echo "off=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "off=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Сүүлийн deploy-г тодорхойлох
+        id: dep
+        if: steps.sw.outputs.off != 'true'
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          WHEN=$(git log -1 --format=%cI HEAD)
+          SUBJ=$(git log -1 --format=%s HEAD)
+          echo "Сүүлийн: $SHA  $WHEN"
+          echo "Гарчиг: $SUBJ"
+          # Буцаалтыг дахин буцаахгүй.
+          case "$SUBJ" in
+            Revert*|'Буцаав'*) echo "::notice::Сүүлийн commit нь буцаалт — өнгөрүүлэв."; echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "when=$WHEN" >> "$GITHUB_OUTPUT"
+          echo "subj=$SUBJ" >> "$GITHUB_OUTPUT"
+
+      - name: Алдааны лог шалгах
+        id: check
+        if: steps.sw.outputs.off != 'true' && steps.dep.outputs.skip != 'true'
+        env:
+          ERR_READ_JWT: ${{ secrets.ERR_READ_JWT }}
+          DEPLOY_TIME: ${{ steps.dep.outputs.when }}
+        run: |
+          set -euo pipefail
+          OUT=$(node tools/revert-watch.js)
+          echo "$OUT"
+          echo "revert=$(echo "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).revert))')" >> "$GITHUB_OUTPUT"
+          echo "reason=$(echo "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).reason))')" >> "$GITHUB_OUTPUT"
+          { echo 'body<<EOF_BODY'
+            echo "$OUT" | node -e '
+              let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const j = JSON.parse(s);
+                console.log(j.reason);
+                console.log("");
+                for (const e of j.errors) console.log(`- \`${e.fp}\` **${e.hits}** удаа · ${e.users} ажилтан · ${e.view || "?"} — ${e.msg}`);
+              });'
+            echo 'EOF_BODY'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Буцаах PR нээж merge хийх
+        if: >
+          steps.check.outputs.revert == 'true' &&
+          !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.dep.outputs.sha }}
+          SHORT: ${{ steps.dep.outputs.short }}
+          SUBJ: ${{ steps.dep.outputs.subj }}
+          REASON: ${{ steps.check.outputs.reason }}
+          DETAIL: ${{ steps.check.outputs.body }}
+        run: |
+          set -euo pipefail
+          BR="revert/auto-$SHORT"
+
+          # Аль хэдийн буцаасан бол дахин хийхгүй.
+          if git ls-remote --exit-code --heads origin "$BR" >/dev/null 2>&1; then
+            echo "::notice::$BR аль хэдийн байна — өнгөрүүлэв."
+            exit 0
+          fi
+
+          git config user.name  "chimun-revert-bot"
+          git config user.email "noreply@anthropic.com"
+          git checkout -b "$BR"
+          # Squash merge = нэг эцэгтэй commit. Жинхэнэ merge commit бол -m 1.
+          git revert --no-edit "$SHA" || git revert --no-edit -m 1 "$SHA"
+          git push origin "$BR"
+
+          # ⚠ `gh pr create` нь --json дэмждэггүй — URL-ыг stdout-аас шууд авна.
+          PR=$(gh pr create --base main --head "$BR" \
+            --title "Буцаав: $SUBJ" \
+            --body "$(cat <<EOF
+**Автомат буцаалт** — deploy-ийн дараа шинэ алдаа хязгаар давсан.
+
+$REASON
+
+$DETAIL
+
+Буцаасан commit: \`$SHORT\` — $SUBJ
+
+Шалтгааныг нь зассны дараа энэ буцаалтыг өөрөө буцааж (re-apply) болно.
+Харуулыг унтраах: \`.github/NO_AUTO_REVERT\` файл үүсгэнэ.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)") || { echo "::error::PR нээгдсэнгүй"; exit 1; }
+          echo "PR: $PR"
+
+          # `lint` ногоон болтол хүлээнэ. main хамгаалалттай тул шууд push боломжгүй.
+          if gh pr checks "$PR" --watch --fail-fast --interval 10; then
+            gh pr merge "$PR" --squash --delete-branch
+            echo "::warning::Автомат буцаалт merge хийгдлээ: $SUBJ"
+          else
+            gh pr comment "$PR" --body "⚠ \`lint\` унасан тул автоматаар merge хийгдээгүй — ХҮН шалгана."
+            echo "::error::Буцаалтын PR улаан — хүн шалгана: $PR"
+            exit 1
+          fi
+
+      - name: Хэвийн үед лог
+        if: steps.check.outputs.revert != 'true'
+        run: |
+          echo "Буцаах шаардлагагүй."
+          echo "Шалтгаан: ${{ steps.check.outputs.reason }}"

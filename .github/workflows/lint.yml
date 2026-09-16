@@ -10,7 +10,9 @@ on:
     paths:
       - 'app.js'
       - 'sw.js'
+      - 'styles.css'
       - 'test/**'
+      - 'tools/**'
       - '.github/workflows/lint.yml'
   # PR бүр merge хийхээс ӨМНӨ шалгагдана. Path шүүлтгүй — PR-ын шалгалт үргэлж
   # ажиллаж байж л «энэ PR шалгагдсан уу?» гэдэгт итгэж болно (2026-09-03).
@@ -23,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # кэшийн хувилбарын шалгалт суурь салбартай харьцуулна
+          fetch-depth: 0   # храповикууд суурь салбартай харьцуулна
 
       - uses: actions/setup-node@v4
         with:
@@ -60,11 +62,108 @@ jobs:
             --parser-options=ecmaVersion:latest,sourceType:script \
             sw.js
 
-      - name: Unit tests (66 цэвэр логик тест)
+      - name: Unit tests
         run: node test/run.js
 
+      - name: Буцаах харуулын дүрэм
+        run: node tools/revert-watch.js --selftest
+
+      # ───────── ХРАПОВИКУУД: шалгуураа сулруулж «ногоон» болохыг хаана ─────────
+      # Яагаад ЭНЭ ажилд нэмсэн бэ: `lint` бол main дээрх ЦОРЫН ГАНЦ required
+      # check. Тусдаа workflow болгон салгавал required биш тул PR-ыг зогсоохгүй,
+      # улмаар харуул чимээгүй унтардаг.
+      #
+      # Яагаад хэрэгтэй болов: «шинэ inline style нэмэхгүй» гэж CLAUDE.md-д
+      # бичээстэй байсан ч 2026-08-29-ний 2,050 тоо 09-16-нд 2,259 болтлоо ӨССӨН.
+      # Дүрэм бичээстэй байсан, гэхдээ хэн ч ХЭМЖЭЭГҮЙ. Тоо мартагддаггүй.
+
+      - name: Суурь салбарын хуулбар
+        id: base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          if git worktree add -f "$RUNNER_TEMP/base" "$BASE_SHA" >/dev/null 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Суурь салбар татагдсангүй — храповикууд алгасав."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Харуул — тестийн тоо буурсан эсэх
+        if: >
+          github.event_name == 'pull_request' &&
+          steps.base.outputs.ok == 'true' &&
+          !contains(github.event.pull_request.labels.*.name, 'тест-цөөрүүлэхийг-зөвшөөрөв')
+        run: |
+          set -uo pipefail
+          num() { grep -oP 'Тест: \K[0-9]+' | head -1; }
+          HEAD_N=$(node test/run.js 2>/dev/null | num)
+          BASE_N=$( (cd "$RUNNER_TEMP/base" && node test/run.js 2>/dev/null) | num )
+          echo "Суурь: ${BASE_N:-?} → энэ PR: ${HEAD_N:-?}"
+          if [ -z "${BASE_N:-}" ] || [ -z "${HEAD_N:-}" ]; then
+            echo "::notice::Тестийн тоо уншигдсангүй — храповик алгасав."
+            exit 0
+          fi
+          if [ "$HEAD_N" -lt "$BASE_N" ]; then
+            echo "::error::Тест ЦӨӨРСӨН: $BASE_N → $HEAD_N. Тест устгаж/сулруулж ногоон болох боломжгүй. Зориуд бол 'тест-цөөрүүлэхийг-зөвшөөрөв' шошго тавь."
+            exit 1
+          fi
+
+      # Дизайны өр: ① хэмжсэн тоо ≤ PR-ын baseline  ② PR-ын baseline ≤ суурийн baseline.
+      # ②-гүй бол агент baseline-ыг өсгөөд «ногоон» болно — храповик нэг тал руу л эргэнэ.
+      - name: Харуул — дизайны өр өссөн эсэх
+        if: >
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'дизайны-өр-өсөхийг-зөвшөөрөв')
+        run: node tools/debt-check.js
+
+      - name: Харуул — өрийн baseline сулруулсан эсэх
+        if: >
+          github.event_name == 'pull_request' &&
+          steps.base.outputs.ok == 'true' &&
+          !contains(github.event.pull_request.labels.*.name, 'дизайны-өр-өсөхийг-зөвшөөрөв')
+        run: |
+          set -uo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const J = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+            const head = J("tools/debt-baseline.json");
+            const base = J(process.env.RUNNER_TEMP + "/base/tools/debt-baseline.json");
+            if (!head || !base) { console.log("::notice::baseline уншигдсангүй — храповик алгасав."); process.exit(0); }
+            const bad = Object.keys(base).filter((k) => (head[k] ?? 0) > base[k]);
+            if (bad.length) {
+              for (const k of bad) console.log(`::error::baseline СУЛРУУЛСАН: ${k} ${base[k]} → ${head[k]}`);
+              console.log("::error::Зарласан шалгуурыг өсгөж «ногоон» болох боломжгүй. Зориуд бол `дизайны-өр-өсөхийг-зөвшөөрөв` шошго тавь.");
+              process.exit(1);
+            }
+            console.log("baseline сулраагүй.");
+          '
+
+      - name: Харуул — авто агент өөрийн хяналтдаа хүрсэн эсэх
+        if: >
+          github.event_name == 'pull_request' &&
+          (startsWith(github.head_ref, 'claude/auto-') ||
+           startsWith(github.head_ref, 'claude/night-') ||
+           endsWith(github.event.pull_request.user.login, '[bot]'))
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # ⚠ tools/debt-baseline.json нь ЭНД БАЙХГҮЙ — агент өрийг бууруулахдаа
+          # шалгуураа чангаруулах ёстой. Дээрх «baseline сулруулсан эсэх» харуул
+          # түүнийг НЭГ ТАЛ РУУ л (чангаруулах) зөвшөөрдөг тул хамгаалалт хүрэлцээтэй.
+          BAD=$(git diff --name-only "$BASE_SHA"...HEAD \
+                | grep -E '^(\.github/workflows/|db/rls\.sql|db/anon-grants\.sql)' || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::Авто агент шалгуур/эрхийн файлд хүрсэн — хүн шалгана:"
+            echo "$BAD"
+            exit 1
+          fi
+          echo "Хамгаалалттай файлд хүрээгүй."
+
       # ⚠ Кэшийн хувилбарыг САЛБАР дээр шалгахаа больсон (2026-09-04).
-      # CACHE_VERSION-ыг одоо cache-version.yml нь main дээр merge хийгдсэний
-      # ДАРАА автоматаар бөглөнө. Салбарууд sw.js-д хүрэхгүй тул зэрэгцээ
-      # merge-д конфликт үүсэхгүй. Хувилбар бөглөгдсөн эсэхийн баталгаа нь
-      # тэр workflow өөрөө — бичиж чадаагүй бол улаанаар унана.
+      # app.js/index.html/styles.css нь network-first + cache:'reload' тул
+      # CACHE_VERSION бөглөх шаардлагагүй. Зөвхөн cache-first файл
+      # (manifest.json, icon.svg, checkin.html, id-cards.html) өөрчлөгдөхөд бөглөнө.

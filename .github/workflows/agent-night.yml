@@ -1,0 +1,191 @@
+# ШӨНИЙН АГЕНТ — өдөрт нэг удаа, нэг тодорхой өрийг бууруулна.
+#
+# УБ 02:00-д ажиллана. Хэмжигч (tools/debt-check.js) хамгийн их inline style
+# хуримтлагдсан функцийг нэрлэж өгнө → агент ТЭР НЭГИЙГ л зас → PR → CI ногоон
+# → автоматаар merge. Буцаах харуул (revert-watch.yml) эвдрэлийг сэргээнэ.
+#
+# Яагаад «алдаа зас» биш «өр бууруул» вэ: 2026-09-16-нд нээлттэй 10 алдааны
+# Issue-ний бараг бүгд нь кодын алдаа БИШ (апп дахин эхлэх, сүлжээ, Android
+# WebView). Агент тэднийг таамаглаж «зассаар» байвал токен үрнэ. Дизайны өр нь
+# ТООГООР хэмжигддэг, тестээр батлагддаг — автомат гогцоо үүнийг үнэхээр барина.
+#
+# ХАМГААЛАЛТЫН БҮРХҮҮЛ (бүгд МЕХАНИК, prompt-д найдаагүй):
+#   ① 3,102 тест + ESLint + syntax (lint.yml)
+#   ② дизайны өрийн храповик — өр өсвөл PR унана
+#   ③ агент workflow/эрхийн файлд хүрвэл PR унана (lint.yml)
+#   ④ merge хийхээс өмнө: өр ҮНЭХЭЭР буурсан байх + diff хэмжээний дээд хязгаар
+#   ⑤ merge-ийн дараа: буцаах харуул 20 мин тутам алдаа хардаг
+#
+# 🔌 Автомат merge унтраах: доорх AUTO_MERGE-ийг 'false' болго (PR нээлттэй үлдэнэ).
+# ⚠ ANTHROPIC_API_KEY байхгүй бол чимээгүй өнгөрнө (улаан болохгүй).
+name: Шөнийн агент
+
+on:
+  schedule:
+    - cron: '0 18 * * *'      # UTC 18:00 = УБ 02:00
+  workflow_dispatch:
+    inputs:
+      auto_merge:
+        description: 'CI ногоон бол автоматаар merge хийх'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: agent-night
+  cancel-in-progress: false
+
+env:
+  AUTO_MERGE: 'true'          # cron үед автоматаар merge хийх эсэх
+  MAX_DIFF_LINES: '500'       # үүнээс том diff-ийг автоматаар merge хийхгүй
+
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Түлхүүр шалгах
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::notice::ANTHROPIC_API_KEY нэмэгдээгүй — шөнийн агент унтраалттай. Settings → Secrets and variables → Actions."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.skip != 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        if: steps.key.outputs.skip != 'true'
+        with:
+          node-version: '20'
+
+      - name: Өнөөдрийн ажлыг сонгох
+        id: task
+        if: steps.key.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          node tools/debt-check.js || true
+          echo '--- санал ---'
+          node tools/debt-check.js --suggest | tee /tmp/suggest.txt
+          TARGET=$(sed -n '2p' /tmp/suggest.txt | awk '{print $1}')
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "Өнөөдрийн бай: $TARGET"
+
+      - name: Claude — нэг функцийн inline style-ыг класс болгох
+        if: steps.key.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          base_branch: main
+          branch_prefix: 'claude/night-'
+          claude_args: |
+            --max-turns 40
+            --model claude-opus-5
+          prompt: |
+            Эхлээд `CLAUDE.md`-г бүтнээр унш — дизайны гэрээ болон бүх дүрэм тэнд.
+
+            ӨНӨӨДРИЙН ЦОРЫН ГАНЦ АЖИЛ: `${{ steps.task.outputs.target }}` функцийн
+            inline `style="..."` -уудыг `styles.css`-ийн класс болгож хөрвүүл.
+
+            ДАРААЛАЛ:
+            1. `node tools/debt-check.js --suggest` ажиллуулж байг хараарай.
+            2. Тэр функцийг `app.js`-ээс ол. Inline style-уудыг уншиж, ДАВТАГДАЖ
+               байгаа хэв маягийг класс болго (нэг style = нэг класс гэж бүү бод).
+            3. Шинэ класс бүрийг `styles.css`-д нэм. Өнгө/зай/фонтыг ЗӨВХӨН
+               токеноор (`var(--text)`, `var(--space-3)`, `var(--fs-md)`).
+               Токен байхгүй бол `:root`-д нэм.
+            4. `node test/run.js` — 3,102 тест бүгд ногоон байх ёстой.
+            5. `node tools/debt-check.js` — өр БУУРСАН байх ёстой.
+            6. `node tools/debt-check.js --update` — baseline-ыг чангарууул.
+               (Храповик: baseline зөвхөн БУУРАХ тал руу эргэнэ.)
+            7. Салбар үүсгэж commit, push, дараа нь `gh pr create`-ээр PR нээ.
+
+            ХОРИГ (зөрчвөл PR автоматаар унана — механикаар шалгагдана):
+            - Шинэ `!important` нэмэхгүй. Шинэ inline `style=` нэмэхгүй.
+            - Хатуу `#hex` өнгө, хатуу `px` бичихгүй — токен л.
+            - Тест устгах / алгасах / сулруулахыг ХОРИГЛОНО. Тестийн тоо буурч болохгүй.
+            - `.github/workflows/**`, `db/rls.sql`, `db/anon-grants.sql`-д ХҮРЭХГҮЙ.
+            - Мөнгө, эрх, өгөгдлийн сангийн ЛОГИКИЙГ ОГТ ХӨНДӨХГҮЙ. Энэ бол
+              зөвхөн харагдах байдлын хөрвүүлэлт — үйлдлийн зан чанар БИТГИЙ өөрчил.
+            - `main`-д push хийхгүй, merge хийхгүй. Зөвхөн PR нээнэ.
+            - 500 мөрөөс том diff гаргахгүй. Бүтэн функц хэтэрхий том бол
+              түүний ХАМГИЙН ИХ давтагдсан хэсгийг л хий, PR-д юуг үлдээснээ бич.
+
+            PR-ын тайлбарт: (а) ямар функц (б) хичнээн inline style хөрвүүлсэн
+            (в) өрийн тоо хэрхэн буурсан — тус бүр 1 өгүүлбэр.
+
+      - name: Merge-ийн механик шалгуур + merge
+        if: steps.key.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WANT_MERGE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto_merge || (github.event_name == 'schedule' && env.AUTO_MERGE == 'true') }}
+        run: |
+          set -euo pipefail
+
+          # Агент нээсэн PR-ыг ол (claude/night- угтвартай, хамгийн шинэ).
+          NUM=$(gh pr list --state open --limit 20 \
+                  --json number,headRefName,createdAt \
+                  --jq '[.[] | select(.headRefName | startswith("claude/night-"))] | sort_by(.createdAt) | last | .number // empty')
+          if [ -z "$NUM" ]; then
+            echo "::notice::Агент PR нээгээгүй — өнөөдөр ажил гараагүй."
+            exit 0
+          fi
+          echo "PR: #$NUM"
+
+          if [ "$WANT_MERGE" != "true" ]; then
+            echo "::notice::AUTO_MERGE унтраалттай — #$NUM хүний шалгалтад үлдэв."
+            exit 0
+          fi
+
+          BR=$(gh pr view "$NUM" --json headRefName --jq .headRefName)
+          git fetch origin "$BR" main --quiet
+
+          # ④-1 diff хэмжээ
+          LINES=$(git diff --numstat "origin/main...origin/$BR" | awk '{a+=$1; d+=$2} END {print a+d+0}')
+          echo "diff мөр: ${LINES:-0} / $MAX_DIFF_LINES"
+          if [ "${LINES:-0}" -gt "$MAX_DIFF_LINES" ]; then
+            gh pr comment "$NUM" --body "⚠ diff хэтэрхий том (${LINES} мөр > ${MAX_DIFF_LINES}) — автоматаар merge хийгдээгүй. ХҮН шалгана."
+            echo "::warning::diff том — merge хийсэнгүй."
+            exit 0
+          fi
+
+          # ④-2 өр ҮНЭХЭЭР буурсан эсэх (зөвхөн тест ногоон байх нь хүрэлцэхгүй —
+          #      «ажил хийсэн дүр» үзүүлсэн PR merge хийгдэх ёсгүй).
+          git show "origin/main:tools/debt-baseline.json" > /tmp/base.json
+          git show "origin/$BR:tools/debt-baseline.json"  > /tmp/head.json
+          IMPROVED=$(node -e '
+            const fs = require("node:fs");
+            const b = JSON.parse(fs.readFileSync("/tmp/base.json", "utf8"));
+            const h = JSON.parse(fs.readFileSync("/tmp/head.json", "utf8"));
+            const better = Object.keys(b).filter((k) => (h[k] ?? 0) < b[k]);
+            const worse  = Object.keys(b).filter((k) => (h[k] ?? 0) > b[k]);
+            console.log(worse.length ? "worse" : better.length ? better.join(",") : "none");
+          ')
+          echo "өрийн өөрчлөлт: $IMPROVED"
+          if [ "$IMPROVED" = "worse" ] || [ "$IMPROVED" = "none" ]; then
+            gh pr comment "$NUM" --body "⚠ Дизайны өр буураагүй ($IMPROVED) — автоматаар merge хийгдээгүй. ХҮН шалгана."
+            echo "::warning::Өр буураагүй — merge хийсэнгүй."
+            exit 0
+          fi
+
+          # ⑤ CI ногоон болтол хүлээнэ. Улаан бол merge ХИЙХГҮЙ.
+          if gh pr checks "$NUM" --watch --fail-fast --interval 15; then
+            gh pr merge "$NUM" --squash --delete-branch
+            echo "::notice::#$NUM merge хийгдлээ. Буцаах харуул 20 мин тутам хянана."
+          else
+            gh pr comment "$NUM" --body "⚠ CI унасан — автоматаар merge хийгдээгүй. ХҮН шалгана."
+            echo "::error::CI улаан — merge хийсэнгүй."
+            exit 1
+          fi

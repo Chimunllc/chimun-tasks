@@ -6163,6 +6163,42 @@ need(['orderCustType']);
   eq(st.rows[0].n, 2, 'лид: FB-ээс 2 захиалга');
   eq(st.rows[0].inc, 1500000, 'лид: FB-ийн орлого');
   eq(st.rows[0].avg, 750000, 'лид: дундаж дүн');
+  // ── ЗАРЫН АТРИБУЦИ (2026-09-16) — сайт ⟦ADS|…⟧ токеноор дамжуулна ──
+  eq(F.parseAdAttrib('юм ⟦ADS|facebook|asar|cpc⟧ юм').src, 'facebook', 'атрибуци: суваг');
+  eq(F.parseAdAttrib('⟦ADS|facebook|asar|cpc⟧').camp, 'asar', 'атрибуци: кампанит ажил');
+  eq(F.parseAdAttrib('⟦ADS|google||⟧').camp, '', 'атрибуци: кампанитгүй');
+  eq(F.parseAdAttrib('⟦ADS|||⟧'), null, 'атрибуци: сувгийн нэргүй → null');
+  eq(F.parseAdAttrib('токенгүй тэмдэглэл'), null, 'атрибуци: токенгүй → null');
+  eq(F.parseAdAttrib(null), null, 'атрибуци: null → унахгүй');
+  // ⚠ ⟦DLV⟧/⟦CI⟧-тэй зэрэгцэж байхад ч зөв уншина (note-д олон токен байдаг).
+  eq(F.parseAdAttrib('⟦DLV|city|5|30000⟧ ⟦ADS|facebook|asar|⟧ ⟦CI|{}⟧').src, 'facebook',
+     'атрибуци: бусад токентой зэрэгцэж уншина');
+
+  const aOrders = [
+    { id: 1, status: 'reserved', starts_at: '2026-09-10', total_mnt: 1000000, note: '⟦ADS|facebook|asar|cpc⟧', source: 'm-event-website' },
+    { id: 2, status: 'reserved', starts_at: '2026-09-11', total_mnt: 500000, note: '⟦ADS|facebook|asar|cpc⟧', source: 'm-event-website' },
+    { id: 3, status: 'reserved', starts_at: '2026-09-12', total_mnt: 300000, note: '⟦ADS|google||⟧', source: 'm-event-website' },
+    { id: 4, status: 'reserved', starts_at: '2026-09-12', total_mnt: 900000, note: 'токенгүй', source: 'app' },
+    { id: 5, status: 'deleted', starts_at: '2026-09-12', total_mnt: 900000, note: '⟦ADS|facebook|asar|cpc⟧' },
+  ];
+  const at = F.adAttribStats(aOrders, '2026-09-01', 'cash');
+  eq(at.n, 3, 'атрибуци: токентой захиалга л тоологдоно');
+  eq(at.rows.length, 2, 'атрибуци: суваг+кампанитаар бүлэглэнэ');
+  eq(at.rows[0].k, 'facebook · asar', 'атрибуци: орлогоор эрэмбэлнэ');
+  eq(at.rows[0].n, 2, 'атрибуци: нэг бүлэгт 2 захиалга');
+  eq(F.adAttribStats(aOrders, '2026-09-12', 'cash').n, 1, 'атрибуци: хугацаагаар шүүнэ');
+  eq(F.adAttribStats([], '', 'cash').n, 0, 'атрибуци: хоосон → 0');
+  eq(F.adAttribStats(null, '', 'cash').n, 0, 'атрибуци: null → унахгүй');
+
+  // ⛔ ⟦ADS⟧ токеныг формын токенуудад БҮҮ НЭМ. `stripFormTokens` нь формоос
+  //   дахин үүсдэг токенуудыг цэвэрлэдэг; ADS нь аппад ХЭЗЭЭ Ч дахин үүсдэггүй
+  //   (сайтаас ирдэг) тул жагсаалтад орвол захиалгыг нэг засах бүрд атрибуци
+  //   чимээгүй УСТАНА — өөрөөр хэлбэл сайт дээрх бүх ажил дэмий болно.
+  ok(!/⟦\(\?:[^)]*ADS/.test(src.slice(src.indexOf('const _FORM_TOKEN_RE'), src.indexOf('const _FORM_TOKEN_RE') + 200)),
+     'scan: ADS токен формын цэвэрлэгээнд ОРООГҮЙ');
+  eq((F.parseAdAttrib(F.stripFormTokens('⟦DLV|city|5|3⟧ ⟦ADS|facebook|asar|⟧ үлдсэн')) || {}).src, 'facebook',
+     'scan: захиалга засахад атрибуци үлдэнэ');
+
   eq(F.leadChannelStats([], 'cash').n, 0, 'лид: хоосон жагсаалт → 0 (унахгүй)');
   eq(F.leadChannelStats(null, 'cash').coverage, 0, 'лид: null → 0');
 }

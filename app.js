@@ -27871,6 +27871,55 @@ function callAdvice(p, ws, we) {
   return out;
 }
 
+// ── ХАРИУ АВААГҮЙ ДУУДЛАГА (2026-09-16) ─────────────────────────────────────
+// `pbx_calls_hourly` нь зөвхөн ТОО хадгалдаг тул «хэн залгасан, буцаж
+// холбогдсон уу» гэдгийг хэлж чаддаггүй байв. `pbx_calls` (дуудлага бүрийн мөр,
+// дугаартай) үүнийг барина.
+// ⚠ ГАРСАН дуудлага CDR-д БАЙХГҮЙ (ажилтнууд гар утсаараа буцаж залгадаг) тул
+//   «бид эргэж залгасан» гэдгийг систем ХАРАХГҮЙ. Иймд «холбогдсон» гэдэг нь
+//   ЗӨВХӨН «тэр хүн дахин залгаад хүн авсан» гэсэн утгатай — дутуу тоолж
+//   болно. Хэт итгэлтэй «хариу аваагүй» гэж бичихгүй, «холбогдсон нь
+//   баталгаагүй» гэж ойлгоно.
+function pbxFollowups(calls, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const by = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const p = String(c.peer || '');
+    if (p.length < 6) return;                      // дотоод/богино дугаар — хүн биш
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at });
+    x.tries++;
+    if ((Number(c.answer_sec) || 0) > 0) x.answered++;
+    if (at && at < x.first) x.first = at;
+    if (at && at > x.last) x.last = at;
+  });
+  return Object.values(by).filter(x => !x.answered)
+    .sort((a, b) => (b.tries - a.tries) || String(b.last).localeCompare(String(a.last)));
+}
+// Дугаараар харилцагч олох — `custPhoneKey`-ээр нормчилж тулгана (нэг дугаар
+// 976/0 угтвартай ч, хоосон зайтай ч байж болно).
+function pbxCustomerOf(peer, customers) {
+  const k = custPhoneKey(peer);
+  if (!k) return null;
+  return (customers || []).find(c => c && custPhoneKey(c.phone) === k) || null;
+}
+// Дуудлагын лог татах (pbx_calls) — дугаартай тул anon-д хаалттай.
+async function loadPbxLog(force) {
+  if (state.pbxLog && !force) return state.pbxLog;
+  try {
+    const from = addDays(todayStr(), -21);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,answer_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.pbxLog = await r.json();
+    return state.pbxLog;
+  } catch (e) { dataLoadFailed('Дуудлагын лог', e); state.pbxLog = state.pbxLog || []; return state.pbxLog; }
+}
+
 // ── Дуудлагын дата татах (pbx_calls_hourly) ─────────────────────────────────
 // anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
 async function loadPbxCalls(force) {
@@ -27998,12 +28047,28 @@ function renderAds() {
       <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
     </div>`;
 
+  // ── Хариу аваагүй дуудлага — нэрлэсэн жагсаалт ──
+  const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days) });
+  const fupHtml = !fups.length ? '' : `
+    <div class="ads-sec">📵 Хариу аваагүй дуудлага <span class="ads-sub">(${fups.length} дугаар · ${days} хоног)</span></div>
+    <div class="ads-list">${fups.slice(0, 40).map(f => {
+      const cu = pbxCustomerOf(f.peer, state.customers || []);
+      return `<div class="ads-row">
+        <span class="ads-nm">${escapeHtml(f.peer)}${cu ? ' · ' + escapeHtml(cu.name || '') : ' <span class="ads-sub">шинэ дугаар</span>'}</span>
+        <span class="ads-sp">${f.tries} удаа</span>
+        <span class="ads-ms">${escapeHtml(String(f.last).slice(5, 16).replace('T', ' '))}</span>
+        <b class="ads-pm"><a href="tel:${escapeHtml(f.peer)}">Залгах</a></b>
+      </div>`;
+    }).join('')}</div>
+    <div class="ads-note">Эдгээр дугаар залгаад <b>хүнтэй ярьж чадаагүй</b>. ⚠ Ажилтнууд гар утсаараа буцаж залгасан бол PBX түүнийг харахгүй — тиймээс зарим нь аль хэдийн шийдэгдсэн байж болно.</div>`;
+
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
     ${period}
     ${kpi}
     ${budgetHtml}
     ${adviceHtml}
     ${callHtml}
+    ${fupHtml}
     <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
     <div class="ads-list">${campRows}</div>
     <div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
@@ -34970,6 +35035,8 @@ function refreshViewData() {
   }
   if (v === 'ads' && canSeeAds() && state.pbxCalls === undefined) {
     loadPbxCalls().then(() => { if (state.view === 'ads') render(); });
+    loadPbxLog().then(() => { if (state.view === 'ads') render(); });
+    if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
   }
   if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
     loadFbAds().then(() => { if (state.view === 'ads') render(); });

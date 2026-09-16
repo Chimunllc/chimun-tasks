@@ -6676,6 +6676,38 @@ need(['orderCustType']);
   ok(/capiStale/.test(asrc), 'scan: холболт зогссоныг сэрэмжлүүлнэ');
 }
 
+// ── GOOGLE SEARCH CONSOLE (2026-09-16) ─────────────────────────────────────
+// Facebook дээр бид хүнд өөрөө очдог; Google дээр хүн БИДНИЙГ хайж байна.
+// Аль үгээр олдож байгаагаа мэдэхгүй бол ямар бараанд зар тавихаа мэдэхгүй.
+{
+  const gsc = path.join(__dirname, '..', 'tools', 'gsc_pull.py');
+  const py = fs.readFileSync(gsc, 'utf8');
+
+  // ⛔ Дата 2-3 хоног хоцорч, дараа нь ЗАЛРУУЛАГДДАГ — зөвхөн өчигдрийг
+  //    татвал буруу тоо хөлдөнө.
+  ok(/WINDOW = 10/.test(py) && /window_dates/.test(py), 'scan: gsc сүүлийн хоногуудыг дахин татна');
+  ok(/on conflict \(day,query,page\) do update/.test(py), 'scan: gsc залруулгыг орлуулна');
+  // ⛔ Мөр ирээгүй бол ЧИМЭЭГҮЙ 0 бичихгүй — баталгаажуулаагүй/эрх унтарсан байж болно.
+  ok(/мөр ирсэнгүй/.test(py) && /if not recs:/.test(py), 'scan: gsc хоосныг чимээгүй өнгөрөөхгүй');
+  // ⛔ Токен репод БАЙХГҮЙ.
+  ok(!/GSC_REFRESH_TOKEN\s*=\s*['"][A-Za-z0-9]/.test(py), 'scan: gsc токен хатуу бичигдээгүй');
+  ok(/GSC_SITE алга/.test(py), 'scan: gsc сайтаа заагаагүй бол зогсоно');
+
+  // ⛔ Зөвшөөрлийн туслах нь токеныг ДЭЛГЭЦЭД хэвлэхгүй (чат/лог руу алдагдана).
+  const au = fs.readFileSync(path.join(__dirname, '..', 'tools', 'gsc_auth.py'), 'utf8');
+  ok(!/print\([^)]*refresh_token[^)]*\)/.test(au), 'scan: gsc_auth токен хэвлэхгүй');
+  ok(/chmod\(OUT, 0o600\)/.test(au), 'scan: gsc_auth файлын эрх хаана');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(gsc)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ GSC OK/.test(out), 'gsc: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'gsc: Python тест — ' + msg.trim().slice(0, 300));
+  }
+}
+
 // ── META CONVERSIONS API (2026-09-16) ──────────────────────────────────────
 // Pixel зөвхөн браузерт ажилладаг тул утсаар/биечлэн хийгдсэн захиалга
 // Facebook-т ОГТ хүрдэггүй. Манай захиалгын дийлэнх нь яг тэр — иймд зар

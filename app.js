@@ -35519,9 +35519,14 @@ function refreshViewData() {
   if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
     loadFbActions().then(() => { if (state.view === 'ads') render(); });
   }
-  if (v === 'ads' && canSeeAds() && state.pbxCalls === undefined) {
-    loadPbxCalls().then(() => { if (state.view === 'ads') render(); });
-    loadPbxLog().then(() => { if (state.view === 'ads') render(); });
+  // ⚠ Дата бүр ӨӨРИЙН хамгаалалттай байх ёстой. Өмнө нь дуудлагын лог
+  //    (`pbxLog`) нь цагийн тооны (`pbxCalls`) нөхцөлд багтсан тул хуучин
+  //    хувилбарт дэлгэц нээгээд байсан хүнд лог ХЭЗЭЭ Ч ачаалагддаггүй,
+  //    «Дуудлага → захиалга» хоосон харагддаг байв (хуудсаа дахин
+  //    ачаалснаар л засагддаг — хэн ч алдаа гэж мэдэхгүй).
+  if (v === 'ads' && canSeeAds()) {
+    if (state.pbxCalls === undefined) { state.pbxCalls = null; loadPbxCalls(true).then(() => { if (state.view === 'ads') render(); }); }
+    if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
   }
   if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {

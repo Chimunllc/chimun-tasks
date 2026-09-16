@@ -38,6 +38,11 @@ USER = cfg['PBX_USER']
 PASS = cfg['PBX_PASS']
 TENANT = cfg.get('PBX_TENANT', '0')
 DAYS = int(cfg.get('PBX_DAYS', '7'))
+# Түүх нөхөх (backfill): `PBX_FROM`/`PBX_TO` (YYYY-MM-DD) эсвэл argv-ээр хугацаа
+# ЗААЖ өгнө. Заагаагүй бол өнөөдрөөс буцаад `PBX_DAYS` хоног — өдөр тутмын горим.
+# ⚠ Нэг удаад НЭГ САР татна. Портал нэг хуудсанд л буцаадаг тул урт хугацаа
+#   чимээгүй таслагдана — доорх `PAGE_SIZE` хамгаалалтыг үз.
+PAGE_SIZE = 2000
 CONTAINER = cfg.get('PG_CONTAINER', 'vps-deploy-postgres-1')
 # ⚠ Unitel-ийн галт хана ГАДААД IP-г хаадаг (VPS-ээс портал руу орохгүй — өөрийнх
 #   нь WatchGuard сертификат ирнэ). Тиймээс энэ скрипт Монгол дахь машин дээр
@@ -111,10 +116,20 @@ get(LOGIN, {
 })
 
 # ── CDR татах ─────────────────────────────────────────────────────────────────
-end_d = date.today()
-start_d = end_d - timedelta(days=DAYS - 1)
+_args = [a for a in sys.argv[1:] if not a.startswith('-')]
+_from = os.environ.get('PBX_FROM') or (_args[0] if len(_args) > 0 else '')
+_to = os.environ.get('PBX_TO') or (_args[1] if len(_args) > 1 else '')
+BACKFILL = bool(_from)
+if BACKFILL:
+    start_d = date.fromisoformat(_from)
+    end_d = date.fromisoformat(_to) if _to else start_d
+    if end_d < start_d:
+        die('PBX_TO нь PBX_FROM-оос өмнө байна')
+else:
+    end_d = date.today()
+    start_d = end_d - timedelta(days=DAYS - 1)
 q = urllib.parse.urlencode({
-    'pageSize': '2000',
+    'pageSize': str(PAGE_SIZE),
     'CallRecordBillingTenant[start]': start_d.strftime('%m-%d-%Y') + ' 00:00:00',
     'CallRecordBillingTenant[end]': end_d.strftime('%m-%d-%Y') + ' 23:59:59',
 })
@@ -193,7 +208,17 @@ for r in g.rows:
                      ans,
                      int(r[col['Call Second']] or 0) if 'Call Second' in col else 0))
 
+# ⛔ ХУУДАС ДҮҮРВЭЛ ДАТА ТАСАРСАН. Портал нэг хуудас буцаадаг тул мөрийн тоо
+#   хязгаарт хүрсэн бол цаана нь дахиад мөр бий — чимээгүй дутуу импортлохоос
+#   илүү ЗОГСООД хугацааг богиносгуулсан нь дээр.
+_data_rows = sum(1 for r in g.rows if len(r) >= len(head) and r is not head)
+if _data_rows >= PAGE_SIZE:
+    die(f'{_data_rows} мөр = хуудасны хязгаар. Хугацааг богиносго (сараар нь тат).')
+
 if not agg:
+    if BACKFILL:
+        print(f'pbx_pull: {start_d}…{end_d} · дуудлага алга (тэр үед бичлэг байхгүй)')
+        sys.exit(0)
     die('дуудлага олдсонгүй. Хоосон гэж бичихгүй — эвдэрсэн эсэхийг шалгана уу.')
 
 # ── Бичих: тухайн хугацааны мөрийг устгаад шинээр (idempotent) ───────────────

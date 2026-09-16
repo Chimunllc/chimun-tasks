@@ -28120,6 +28120,19 @@ const PBX_CB_LABEL = { reached: '✓ Холбогдсон', no_answer: '☎ Ав
 // холбогдсон / хэрэггүй гэж тэмдэглэсэн нь жагсаалтаас гарна.
 const PBX_CB_CLOSING = ['reached', 'dropped'];
 const MISSED_DAYS = 14;   // жагсаалтын хугацаа — 2 долоо хоногоос хуучин лид хүйтэн
+// ⛔ ПОРТАЛ ЗӨВХӨН ~90 ХОНОГ ХАДГАЛНА (2026-09-16-нд баталсан: 6-07-оос өмнөх
+//   хугацаанаас юу ч буцаадаггүй). Тиймээс татагч удаан зогсвол тэр хугацааны
+//   дуудлага МӨНХӨД алга болно — нөхөх газар байхгүй. Манай DB нь урт хугацааны
+//   цорын ганц архив тул «дата ирэхээ болисон» нь чимээгүй өнгөрч БОЛОХГҮЙ.
+// ⚠ Босго = 4 хоног. Амьд датаар дуудлагагүй байсан хамгийн урт завсар 3 хоног
+//   (амралт) байсан тул түүнээс дээгүүр — худал сэрэмжлүүлэг гаргахгүй.
+const PBX_STALE_D = 4;
+function pbxFeedAge(calls, today) {
+  let last = '';
+  (calls || []).forEach(c => { const at = String((c && c.started_at) || '').slice(0, 10); if (at > last) last = at; });
+  if (!last) return null;
+  return Math.round((new Date(String(today || todayStr())) - new Date(last)) / 86400000);
+}
 function pbxCbKey(peer) { return custPhoneKey(peer) || String(peer || '').replace(/\D/g, ''); }
 // Нээлттэй эсэхийг шийднэ. Цэвэр функц — тестлэгдэнэ.
 //  fups   = pbxFollowups() гаралт (хүлээгээд холбогдоогүй дугаарууд)
@@ -28690,7 +28703,14 @@ function renderMissedCalls() {
         <div class="mc-meta">${meta}</div></div>
       <div class="mc-acts">${acts}</div></div>`;
   };
+  const age = pbxFeedAge(state.pbxLog || [], todayStr());
+  const stale = (age !== null && age >= PBX_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Дуудлагын дата ${age} хоног шинэчлэгдээгүй.</b>
+        Татагч (CEO-гийн компьютер) зогссон байж магадгүй. Унител зөвхөн сүүлийн
+        ~90 хоногийг хадгалдаг тул удаан зогсвол тэр хугацааны дуудлага бүрмөсөн алга болно.</div>`
+    : '';
   return `<h2 class="view-title">📵 Алдсан дуудлага</h2>
+    ${stale}
     <div class="ads-kpis">
       <div class="ads-kpi"><div class="ads-kpi-l">Шийдэгдээгүй</div><div class="ads-kpi-v">${open.length}</div></div>
       <div class="ads-kpi"><div class="ads-kpi-l">${MISSED_DAYS} хоногт</div><div class="ads-kpi-v">${rows.length}</div></div>

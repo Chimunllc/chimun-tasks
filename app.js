@@ -27988,20 +27988,40 @@ function pbxOffHoursWaited(calls, ws, we, from) {
 //   жинхэнэ лид «андуурсан» гэж ангилагдаж алдагдана, урт болбол эсрэгээр
 //   хуурамч лид үүснэ. (Хэмжих арга: тасалсан дуудлагын секундын оргилыг хар.)
 const PBX_GREETING_SEC = 8;
-const PBX_WAIT_SEC = PBX_GREETING_SEC + 2;
-// `waited` = дор хаяж нэг удаа 13 секундээс удаан хүлээсэн. Богино тасалсан нь
+// ⛔ БОСГО = 13 СЕК (CEO-гийн шийдвэр, 2026-09-16). Мэндчилгээ 8 сек тул
+//    «мэндчилгээ + 2» нь 10 байсан — тэр нь хэтэрхий уужим байж, мэндчилгээг
+//    дөнгөж сонсоод тасалсан андуурсан дуудлагыг лид гэж тоолж байв.
+// ⚠ Мэндчилгээ УРТСВАЛ босго ч автоматаар өснө (доод хязгаар нь 13) — эс бөгөөс
+//    урт мэндчилгээ сонссон бүх хүн «лид» болно.
+const PBX_WAIT_SEC = Math.max(PBX_GREETING_SEC + 2, 13);
+// `waited` = дор хаяж нэг удаа босгоос удаан хүлээсэн. Богино тасалсан нь
 // `short` (андуурсан/сонирхолгүй) — жагсаалтад ОРОХГҮЙ, зөвхөн тоогоор.
+// ⛔ АЖЛЫН ЦАГИЙН ГАДНА = АЛДСАН ДУУДЛАГА БИШ (CEO-гийн шийдвэр, 2026-09-16).
+//    Хаалттай цагт хэн ч утас авахгүй нь хэвийн — түүнийг «алдсан» гэж тоолвол
+//    ажлын цагийн ЖИНХЭНЭ алдагдал (үдийн завсарлага, 14-18 цаг) тоонд дарагдана.
+// ⚠ ЗАВСРЫН ТОХИОЛДОЛ: нэг хүн ажлын цагт БА гадна залгасан бол зөвхөн ажлын
+//    цагийн оролдлого тоологдоно. ЗӨВХӨН гадна залгасан хүн жагсаалтад орохгүй,
+//    `out.off`-д тоологдоно — нуухгүй, тоог нь ил гаргана (тэд боломжит захиалга).
 function pbxFollowups(calls, opts) {
   const o = opts || {};
   const from = String(o.from || '');
   const minSec = Number.isFinite(Number(o.minSec)) ? Number(o.minSec) : PBX_WAIT_SEC;
-  const by = {};
+  const w0 = Number.isFinite(Number(o.ws)) ? Number(o.ws) : 9;
+  const w1 = Number.isFinite(Number(o.we)) ? Number(o.we) : 18;
+  const by = {}; const offOnly = {};
   (calls || []).forEach(c => {
     if (!c || String(c.direction || '') !== 'in') return;
     const p = String(c.peer || '');
     if (p.length < 6) return;                      // дотоод/богино дугаар — хүн биш
     const at = String(c.started_at || '');
     if (from && at < from) return;
+    // ⚠ Цаг УНШИГДААГҮЙ бол (h === null) ХАСАХГҮЙ — эс бөгөөс огнооны формат
+    //   өөрчлөгдөхөд бүх дуудлага чимээгүй алга болно. Эргэлзвэл ҮЛДЭЭНЭ.
+    const h = _ubHour(at);
+    if (h !== null && (h < w0 || h > w1)) {        // ажлын цагийн ГАДНА — алдсан гэж тооцохгүй
+      if ((Number(c.answer_sec) || 0) === 0 && (Number(c.call_sec) || 0) >= minSec) offOnly[p] = 1;
+      return;
+    }
     const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
     x.tries++;
     if ((Number(c.answer_sec) || 0) > 0) x.answered++;
@@ -28012,6 +28032,7 @@ function pbxFollowups(calls, opts) {
   const out = Object.values(by).filter(x => !x.answered && x.maxSec >= minSec)
     .sort((a, b) => (b.tries - a.tries) || String(b.last).localeCompare(String(a.last)));
   out.short = Object.values(by).filter(x => !x.answered && x.maxSec < minSec).length;
+  out.off = Object.keys(offOnly).filter(p => !by[p]).length;
   return out;
 }
 // ── ДУУДЛАГА → ЗАХИАЛГА (2026-09-16) ────────────────────────────────────────
@@ -28202,8 +28223,12 @@ function pbxOpenCalls(fups, cbs, orders) {
     const cb = byCb[k] || null;
     // `upto` нь сүүлийн дуудлагаас хойш байж гэмээнэ шийдэгдсэн — дахин
     // залгасан хүн жагсаалтад өөрөө эргэж гарна.
+    // ⚠ Цагийг МӨРӨӨР бүү харьцуул — «…+00:00» ба «…Z» хоёр ижил мөч боловч
+    //   мөрийн эрэмбээр өөр гарна. Тоо болгож тулгана.
+    const uptoT = Date.parse(String((cb && cb.upto) || ''));
+    const lastT = Date.parse(String(f.last || ''));
     const closed = !!(cb && PBX_CB_CLOSING.includes(String(cb.status || '')) &&
-                      cb.upto && String(cb.upto) >= String(f.last));
+                      !isNaN(uptoT) && !isNaN(lastT) && uptoT >= lastT);
     const od = lastOrd[custPhoneKey(f.peer)] || '';
     const ordered = !!(od && od >= addDays(String(f.first).slice(0, 10), -CALL_CONV_GRACE_D));
     return Object.assign({}, f, {
@@ -28217,7 +28242,7 @@ function pbxOpenCalls(fups, cbs, orders) {
 // Сайдбарын тоо — зөвхөн шийдэгдээгүй нь.
 function pbxOpenCount() {
   if (!Array.isArray(state.pbxLog) || !Array.isArray(state.pbxCb)) return 0;
-  const f = pbxFollowups(state.pbxLog, { from: addDays(todayStr(), -MISSED_DAYS) });
+  const f = pbxFollowups(state.pbxLog, { from: addDays(todayStr(), -MISSED_DAYS), ws: tariffWorkStart(), we: tariffWorkEnd() });
   return pbxOpenCalls(f, state.pbxCb, state.appOrders || []).filter(x => !x.done).length;
 }
 async function loadPbxCallbacks(force) {
@@ -28742,7 +28767,7 @@ function renderAds() {
       ⚠ Ажилтан захиалгад өөр дугаар бичсэн бол энд тоологдохгүй тул бодит хувь үүнээс өндөр байж болно.</div>`;
 
   // ── Хариу аваагүй дуудлага — нэрлэсэн жагсаалт ──
-  const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days) });
+  const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days), ws, we });
   const fupHtml = !fups.length ? '' : `
     <div class="ads-sec">📵 Хариу аваагүй дуудлага <span class="ads-sub">(${fups.length} дугаар · ${days} хоног)</span></div>
     <div class="ads-list">${fups.slice(0, 40).map(f => {
@@ -28903,7 +28928,7 @@ function canSeeMissedCalls() {
 function renderMissedCalls() {
   if (state.pbxLog === null || state.pbxCb === null) return '<div class="mc-empty">Ачаалж байна…</div>';
   const from = addDays(todayStr(), -MISSED_DAYS);
-  const fups = pbxFollowups(state.pbxLog || [], { from });
+  const fups = pbxFollowups(state.pbxLog || [], { from, ws: tariffWorkStart(), we: tariffWorkEnd() });
   const rows = pbxOpenCalls(fups, state.pbxCb || [], state.appOrders || []);
   const nameIdx0 = pbxNameIndex(state.customers || [], state.appOrders || []);
   rows.forEach(r => { r.pri = pbxPriority(r, pbxWho(r.peer, nameIdx0), todayStr()); });
@@ -28914,8 +28939,6 @@ function renderMissedCalls() {
   const ws = tariffWorkStart(), we = tariffWorkEnd();
   const row = (r) => {
     const w = pbxWho(r.peer, nameIdx);
-    const h = _ubHour(r.last);
-    const off = h !== null && (h < ws || h > we);
     // Хамгийн чухал нь ХЭН гэдэг — нэр байвал тэр нь гарчиг, дугаар нь доор.
     const head = w.name
       ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
@@ -28928,7 +28951,6 @@ function renderMissedCalls() {
       r.ordered ? { t: '💰 залгасныхаа дараа захиалга өгсөн', warm: 1 } : null,
       r.tries > 1 ? { t: `${r.tries} удаа залгасан` } : null,
       r.maxSec >= 30 ? { t: `${r.maxSec} сек хүлээсэн` } : null,
-      off ? { t: 'ажлын цагийн гадна' } : null,
       r.cbTries ? { t: `бид ${r.cbTries} удаа залгасан` } : null,
       (r.status && !r.ordered) ? { t: PBX_CB_LABEL[r.status] || r.status } : null,
     ].filter(x => x && x.t !== why)
@@ -29009,9 +29031,10 @@ function renderMissedCalls() {
     <div class="mc-list">${open.map(row).join('') || '<div class="mc-empty">Хариу аваагүй дуудлага алга — бүгд шийдэгдсэн.</div>'}</div>
     ${done.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${done.length})</summary>
       <div class="mc-list">${done.map(row).join('')}</div></details>` : ''}`}
-    <div class="ads-note">Эдгээр дугаар <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b> хүнтэй ярьж чадаагүй —
-      дуут мэндчилгээг сонсоод шууд тасалсан (андуурч залгасан) дугаар энд ОРООГҮЙ.
-      ${fups.short ? `Тийм <b>${fups.short}</b> дугаар байсныг хассан.` : ''}
+    <div class="ads-note">Эдгээр дугаар <b>ажлын цагт</b> (${ws}:00–${we}:59) залгаж, <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b>
+      хүнтэй ярьж чадаагүй.
+      ${fups.short ? `Мэндчилгээг сонсоод шууд тасалсан (ихэвчлэн андуурсан) <b>${fups.short}</b> дугаарыг хассан.` : ''}
+      ${fups.off ? `Ажлын цагийн гадна залгасан <b>${fups.off}</b> дугаарыг мөн хассан — хаалттай цагт утас аваагүй нь алдаа биш.` : ''}
       Тэр дугаараас захиалга үүсвэл эсвэл тэр хүн дахин залгаад холбогдвол мөр нь <b>өөрөө</b> хаагдана —
       зөвхөн үлдсэнийг нь гараар тэмдэглэнэ. Хаасан дугаар <b>дахин залгавал</b> жагсаалтад эргэж гарна.
       ⚠ Ажилтнууд гар утсаараа буцаж залгасныг PBX харахгүй тул түүнийг энд товчоор тэмдэглэнэ.</div>`;

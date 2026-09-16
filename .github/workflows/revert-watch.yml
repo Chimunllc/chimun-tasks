@@ -129,24 +129,29 @@ jobs:
           git revert --no-edit "$SHA" || git revert --no-edit -m 1 "$SHA"
           git push origin "$BR"
 
+          # ⛔ `run: |` блок дотор heredoc БҮҮ хэрэглэ. Heredoc-ийн мөрүүд 0-р
+          # баганад буудаг тул YAML блок тэндээ ТАСАРЧ, файл бүхэлдээ парс
+          # болохоо болино. GitHub тэр үед workflow-г нэрээр биш ЗАМААР
+          # харуулж, `workflow_dispatch` бүртгэгдэхгүй — алдаа ЧИМЭЭГҮЙ
+          # (2026-09-16-нд яг ингэж эвдэрсэн). Бүх мөр догол мөртэй үлдэхийн
+          # тулд printf-ээр угсарна. Scan-тест үүнийг хаана.
+          BODY=$(printf '%s\n' \
+            "**Автомат буцаалт** — deploy-ийн дараа шинэ алдаа хязгаар давсан." \
+            "" \
+            "$REASON" \
+            "" \
+            "$DETAIL" \
+            "" \
+            "Буцаасан commit: \`$SHORT\` — $SUBJ" \
+            "" \
+            "Шалтгааныг нь зассны дараа энэ буцаалтыг өөрөө буцааж (re-apply) болно." \
+            "Харуулыг унтраах: \`.github/NO_AUTO_REVERT\` файл үүсгэнэ." \
+            "" \
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
           # ⚠ `gh pr create` нь --json дэмждэггүй — URL-ыг stdout-аас шууд авна.
           PR=$(gh pr create --base main --head "$BR" \
-            --title "Буцаав: $SUBJ" \
-            --body "$(cat <<EOF
-**Автомат буцаалт** — deploy-ийн дараа шинэ алдаа хязгаар давсан.
-
-$REASON
-
-$DETAIL
-
-Буцаасан commit: \`$SHORT\` — $SUBJ
-
-Шалтгааныг нь зассны дараа энэ буцаалтыг өөрөө буцааж (re-apply) болно.
-Харуулыг унтраах: \`.github/NO_AUTO_REVERT\` файл үүсгэнэ.
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)") || { echo "::error::PR нээгдсэнгүй"; exit 1; }
+            --title "Буцаав: $SUBJ" --body "$BODY") \
+            || { echo "::error::PR нээгдсэнгүй"; exit 1; }
           echo "PR: $PR"
 
           # `lint` ногоон болтол хүлээнэ. main хамгаалалттай тул шууд push боломжгүй.

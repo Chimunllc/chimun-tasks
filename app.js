@@ -27880,9 +27880,21 @@ function callAdvice(p, ws, we) {
 //   ЗӨВХӨН «тэр хүн дахин залгаад хүн авсан» гэсэн утгатай — дутуу тоолж
 //   болно. Хэт итгэлтэй «хариу аваагүй» гэж бичихгүй, «холбогдсон нь
 //   баталгаагүй» гэж ойлгоно.
+// ⛔ БОГИНО ТАСАЛСАН ДУУДЛАГА = ЛИД БИШ (2026-09-16).
+// Манай дугаар 7767-5510-10 нь KFC-гийн 7555-1010-тэй төстэй тул андуурч
+// залгах нь ОЛОН. Тэд дуут мэндчилгээг сонсоод шууд тасалдаг.
+// Амьд датагаар: ХҮН хүртэл хүрсэн дуудлагын хамгийн богино нь **13 секунд**
+// (дуут мэндчилгээ + дуудлага). Өөрөөр хэлбэл 13 секундээс өмнө тасалсан хүн
+// хүнтэй холбогдох БОЛОМЖГҮЙ байсан — тэд хүлээгээгүй.
+// ⚠ Дуут мэндчилгээгээ СОЛИВОЛ энэ тоог ДАХИН хэмжинэ (богино болбол лид
+//   алдагдаж, урт болбол хуурамч лид үүснэ).
+const PBX_WAIT_SEC = 13;
+// `waited` = дор хаяж нэг удаа 13 секундээс удаан хүлээсэн. Богино тасалсан нь
+// `short` (андуурсан/сонирхолгүй) — жагсаалтад ОРОХГҮЙ, зөвхөн тоогоор.
 function pbxFollowups(calls, opts) {
   const o = opts || {};
   const from = String(o.from || '');
+  const minSec = Number.isFinite(Number(o.minSec)) ? Number(o.minSec) : PBX_WAIT_SEC;
   const by = {};
   (calls || []).forEach(c => {
     if (!c || String(c.direction || '') !== 'in') return;
@@ -27890,14 +27902,17 @@ function pbxFollowups(calls, opts) {
     if (p.length < 6) return;                      // дотоод/богино дугаар — хүн биш
     const at = String(c.started_at || '');
     if (from && at < from) return;
-    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at });
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, first: at, last: at, maxSec: 0 });
     x.tries++;
     if ((Number(c.answer_sec) || 0) > 0) x.answered++;
+    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
     if (at && at < x.first) x.first = at;
     if (at && at > x.last) x.last = at;
   });
-  return Object.values(by).filter(x => !x.answered)
+  const out = Object.values(by).filter(x => !x.answered && x.maxSec >= minSec)
     .sort((a, b) => (b.tries - a.tries) || String(b.last).localeCompare(String(a.last)));
+  out.short = Object.values(by).filter(x => !x.answered && x.maxSec < minSec).length;
+  return out;
 }
 // ── ДУУДЛАГА → ЗАХИАЛГА (2026-09-16) ────────────────────────────────────────
 // «Ирсэн дуудлагын хэдэн хувь нь борлуулалт болов?» гэдгийг дугаараар тулгаж
@@ -27920,9 +27935,10 @@ function callConversion(calls, orders, opts) {
     if (p.length < 6) return;
     const at = String(c.started_at || '');
     if (from && at < from) return;
-    const x = byPeer[p] || (byPeer[p] = { peer: p, first: at, talked: false });
+    const x = byPeer[p] || (byPeer[p] = { peer: p, first: at, talked: false, maxSec: 0 });
     if (at && at < x.first) x.first = at;
     if ((Number(c.answer_sec) || 0) > 0) x.talked = true;
+    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
   });
   // Дугаар → захиалгын жагсаалт (нэг удаа индексжүүлнэ — дуудлага бүрээр
   // бүх захиалгыг гүйвэл 300 × 3000 удаа харьцуулалт болно).
@@ -27933,9 +27949,14 @@ function callConversion(calls, orders, opts) {
     if (!k) return;
     (byPhone[k] || (byPhone[k] = [])).push(od);
   });
-  const grp = { talked: { callers: 0, converted: 0, sum: 0 }, missed: { callers: 0, converted: 0, sum: 0 } };
+  // ⚠ ГУРВАН бүлэг: ярьсан · хүлээгээд холбогдоогүй · богино тасалсан.
+  //   Сүүлийнх нь ихэвчлэн KFC-тэй андуурсан хүмүүс (дугаар төстэй) тул
+  //   «алдагдсан боломж»-д ОРУУЛАХГҮЙ — эс бөгөөс алдагдал 7 дахин хөөрөгдөнө.
+  const grp = { talked: { callers: 0, converted: 0, sum: 0 },
+                missed: { callers: 0, converted: 0, sum: 0 },
+                short: { callers: 0, converted: 0, sum: 0 } };
   Object.values(byPeer).forEach(x => {
-    const g = x.talked ? grp.talked : grp.missed;
+    const g = x.talked ? grp.talked : (x.maxSec >= PBX_WAIT_SEC ? grp.missed : grp.short);
     g.callers++;
     const lim = addDays(String(x.first).slice(0, 10), -CALL_CONV_GRACE_D);
     const hit = (byPhone[custPhoneKey(x.peer)] || [])
@@ -27945,17 +27966,19 @@ function callConversion(calls, orders, opts) {
   const pct = g => (g.callers ? Math.round(g.converted * 1000 / g.callers) / 10 : 0);
   grp.talked.rate = pct(grp.talked);
   grp.missed.rate = pct(grp.missed);
+  grp.short.rate = pct(grp.short);
   grp.avgOrder = grp.talked.converted ? Math.round(grp.talked.sum / grp.talked.converted) : 0;
-  // Холбогдоогүй хүмүүс ярьсан хүмүүсийн хувиар захиалга өгөх байсан бол —
-  // ТААМАГ тоо, дэлгэцэд «ойролцоогоор» гэж ил бичнэ.
+  // Хүлээгээд ч холбогдоогүй хүмүүс ярьсан хүмүүсийн хувиар захиалга өгөх
+  // байсан бол — ТААМАГ тоо, дэлгэцэд «ойролцоогоор» гэж ил бичнэ.
+  // ⚠ Богино тасалсан бүлгийг ОРУУЛАХГҮЙ (андуурч залгасан хүмүүс).
   grp.lost = Math.round(grp.missed.callers * (grp.talked.rate / 100) * grp.avgOrder);
   return grp;
 }
 // Дуудлага алдсанаас үүсэх алдагдлын сануулга. `adsAdvice`-тай ижил хэлбэр.
 function callConvAdvice(conv) {
-  if (!conv || conv.missed.callers < 10 || !conv.talked.converted) return [];
+  if (!conv || conv.missed.callers < 5 || !conv.talked.converted) return [];
   return [{ kind: 'lostcalls', sev: 1, mnt: conv.lost,
-    text: `${conv.missed.callers} хүн залгаад холбогдож чадаагүй. Ярьж чадсан хүмүүсийн ${conv.talked.rate}% нь захиалга өгдөг (дунджаар ${fmtMoney(conv.avgOrder)}) тул эдгээр нь ойролцоогоор ${fmtMoney(conv.lost)}-ийн боломж. Утас авах нь зар нэмэхээс хямд.` }];
+    text: `${conv.missed.callers} хүн ${PBX_WAIT_SEC} секундээс удаан хүлээгээд хэн ч утсаа аваагүй. Ярьж чадсан хүмүүсийн ${conv.talked.rate}% нь захиалга өгдөг (дунджаар ${fmtMoney(conv.avgOrder)}) тул эдгээр нь ойролцоогоор ${fmtMoney(conv.lost)}-ийн боломж. Утас авах нь зар нэмэхээс хямд.` }];
 }
 
 // Дугаараар харилцагч олох — `custPhoneKey`-ээр нормчилж тулгана (нэг дугаар
@@ -27971,7 +27994,7 @@ async function loadPbxLog(force) {
   try {
     const from = addDays(todayStr(), -21);
     const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,answer_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
+      `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,answer_sec,call_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.pbxLog = await r.json();
@@ -28112,10 +28135,13 @@ function renderAds() {
     <div class="ads-sec">☎️ Дуудлага → захиалга <span class="ads-sub">(${days} хоног)</span></div>
     <div class="ads-list">
       <div class="ads-row"><span class="ads-nm">Ярьж чадсан</span><span class="ads-sp">${conv.talked.callers} хүн</span><span class="ads-ms">${conv.talked.converted} захиалга</span><b class="ads-pm">${conv.talked.rate}%</b></div>
-      <div class="ads-row"><span class="ads-nm">Холбогдож чадаагүй</span><span class="ads-sp">${conv.missed.callers} хүн</span><span class="ads-ms">${conv.missed.converted} захиалга</span><b class="ads-pm${conv.missed.rate < conv.talked.rate ? ' ads-bad' : ''}">${conv.missed.rate}%</b></div>
+      <div class="ads-row"><span class="ads-nm">Хүлээгээд холбогдоогүй</span><span class="ads-sp">${conv.missed.callers} хүн</span><span class="ads-ms">${conv.missed.converted} захиалга</span><b class="ads-pm${conv.missed.rate < conv.talked.rate ? ' ads-bad' : ''}">${conv.missed.rate}%</b></div>
+      <div class="ads-row"><span class="ads-nm">Богино тасалсан <span class="ads-sub">(&lt;${PBX_WAIT_SEC} сек)</span></span><span class="ads-sp">${conv.short.callers} хүн</span><span class="ads-ms">${conv.short.converted} захиалга</span><b class="ads-pm">${conv.short.rate}%</b></div>
       ${conv.avgOrder ? `<div class="ads-row"><span class="ads-nm">Дуудлагаас ирсэн захиалгын дундаж</span><span class="ads-sp"></span><span class="ads-ms"></span><b class="ads-pm">${fmtMoney(conv.avgOrder)}</b></div>` : ''}
     </div>
-    <div class="ads-note">Дугаараар тулгана: тэр дугаараас залгасны дараа захиалга үүссэн эсэх. ⚠ Ажилтан захиалгад өөр дугаар бичсэн бол энд тоологдохгүй тул бодит хувь үүнээс өндөр байж болно.</div>`;
+    <div class="ads-note">Дугаараар тулгана: тэр дугаараас залгасны дараа захиалга үүссэн эсэх.
+      <b>Богино тасалсан</b> нь дуут мэндчилгээг сонсоод ${PBX_WAIT_SEC} секунд хүрэхгүй таслагсад — манай дугаар KFC-тэй төстэй тул ихэнх нь андуурсан хүмүүс. Тэднийг алдагдалд тооцохгүй.
+      ⚠ Ажилтан захиалгад өөр дугаар бичсэн бол энд тоологдохгүй тул бодит хувь үүнээс өндөр байж болно.</div>`;
 
   // ── Хариу аваагүй дуудлага — нэрлэсэн жагсаалт ──
   const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days) });
@@ -28130,7 +28156,9 @@ function renderAds() {
         <b class="ads-pm"><a href="tel:${escapeHtml(f.peer)}">Залгах</a></b>
       </div>`;
     }).join('')}</div>
-    <div class="ads-note">Эдгээр дугаар залгаад <b>хүнтэй ярьж чадаагүй</b>. ⚠ Ажилтнууд гар утсаараа буцаж залгасан бол PBX түүнийг харахгүй — тиймээс зарим нь аль хэдийн шийдэгдсэн байж болно.</div>`;
+    <div class="ads-note">Эдгээр дугаар <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b> хүнтэй ярьж чадаагүй — тиймээс жинхэнэ сонирхсон хүмүүс.
+      ${fups.short ? `Нэмэлт <b>${fups.short}</b> дугаар мэндчилгээ сонсоод шууд тасалсан (KFC-тэй андуурсан байх магадлалтай) — жагсаалтад оруулаагүй.` : ''}
+      ⚠ Ажилтнууд гар утсаараа буцаж залгасан бол PBX түүнийг харахгүй — зарим нь аль хэдийн шийдэгдсэн байж болно.</div>`;
 
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
     ${period}

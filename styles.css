@@ -4815,6 +4815,13 @@ body.role-daily #add-project { display: none !important; }
 .ads-act-b { min-width: 0; }
 .ads-act-n { font-weight: 700; }
 .ads-act-r { display: block; color: var(--muted); font-size: var(--fs-xs); margin-top: 2px; }
+/* Постын санал — зураг зүүн талд, бичвэр хэвээрээ (шинэ мөр хадгалагдана). */
+.ads-post { display: flex; gap: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+.ads-post-img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; flex: none; }
+.ads-post-b { min-width: 0; flex: 1; }
+.ads-post-why { color: var(--muted); font-size: var(--fs-xs); margin-bottom: 4px; }
+.ads-post-t { white-space: pre-wrap; font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.ads-post-a { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .ads-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
 .ads-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ads-sp, .ads-ms { color: var(--muted); }

@@ -6101,6 +6101,99 @@ need(['orderCustType']);
   eq(F.leadChannelStats(null, 'cash').coverage, 0, 'лид: null → 0');
 }
 
+// ── ПОСТ БЭЛДЭХ (2026-09-16) ────────────────────────────────────────────────
+// Бичвэрийг барааны бүртгэлээс УГСАРНА — хүнээр бичүүлдэг форм хийхгүй
+// (CLAUDE.md: «гараар нэмэлт бичүүлдэг боломж үхдэг»).
+{
+  eq(F.adPostDesc('Богино тайлбар'), 'Богино тайлбар', 'пост: богино тайлбар хэвээр');
+  eq(F.adPostDesc('  олон   зайтай\n  мөр  '), 'олон зайтай мөр', 'пост: зай цэгцлэгдэнэ');
+  eq(F.adPostDesc(''), '', 'пост: тайлбаргүй → хоосон');
+  eq(F.adPostDesc(null), '', 'пост: null → хоосон');
+  const long = F.adPostDesc('аа '.repeat(200));
+  ok(long.length <= 181 && long.endsWith('…'), 'пост: урт тайлбар тасарна');
+  ok(!/ …$/.test(long), 'пост: тасалсны дараа сул зай үлдэхгүй');
+  eq(F.adPostDesc('нэгдугаар хоёрдугаар гуравдугаар дөрөвдүгээр', 20).indexOf('нэгдугаар'), 0,
+     'пост: үгийн заагаар тасална');
+
+  eq(F.adPostUrl({ sku: 'M-007' }), 'https://mevent.mn/products/m-007/', 'пост: холбоос sku-гаар');
+  eq(F.adPostUrl({}), 'https://mevent.mn', 'пост: sku алга → нүүр хуудас');
+  eq(F.adPostUrl(null), 'https://mevent.mn', 'пост: null → унахгүй');
+
+  eq(F.adPostImage({ photo: ' a.jpg ' }), 'a.jpg', 'пост: үндсэн зураг');
+  eq(F.adPostImage({ photos: ['', 'b.jpg'] }), 'b.jpg', 'пост: жагсаалтын эхний бодит зураг');
+  eq(F.adPostImage({ photos: [] }), '', 'пост: зураггүй');
+  eq(F.adPostImage(null), '', 'пост: null → унахгүй');
+
+  const prod = { sku: 'M-007', name: 'Асар майхан 12x20', price: 350000, qty_mevent: 4,
+                 description: 'Уул уурхайн стандартын асар.', photo: 'x.jpg' };
+  const body = F.adPostText(prod);
+  ok(body.indexOf('Асар майхан 12x20') >= 0, 'пост: нэр орно');
+  ok(body.indexOf('350,000') >= 0, 'пост: үнэ орно');
+  ok(body.indexOf('4 ширхэг') >= 0, 'пост: нөөц орно');
+  ok(body.indexOf('mevent.mn/products/m-007/') >= 0, 'пост: захиалгын холбоос орно');
+  eq(F.adPostText({ price: 1 }), '', 'пост: нэргүй бараагаар пост үүсгэхгүй');
+  eq(F.adPostText(null), '', 'пост: null → унахгүй');
+  // Үнэ/нөөцгүй бараа ч унахгүй (мөр нь орохгүй).
+  const bare = F.adPostText({ name: 'Зүйл', sku: 'M-1' });
+  ok(bare.indexOf('Зүйл') >= 0 && bare.indexOf('₮') < 0, 'пост: үнэгүй бол үнийн мөр гарахгүй');
+
+  // Хамгийн их түрээслэгддэг, ЗУРАГТАЙ, нөөцтэй бараа сонгогдоно.
+  const prods = [
+    { sku: 'A', name: 'Асар майхан том', price: 100, qty_mevent: 2, photo: 'a.jpg' },
+    { sku: 'B', name: 'Асар майхан жижиг', price: 100, qty_mevent: 9, photo: 'b.jpg' },
+    { sku: 'C', name: 'Асар майхан зураггүй', price: 100, qty_mevent: 99 },
+    { sku: 'D', name: 'Асар майхан үнэгүй', price: 0, qty_mevent: 9, photo: 'd.jpg' },
+    { sku: 'E', name: 'Асар майхан нөөцгүй', price: 100, qty_mevent: 0, photo: 'e.jpg' },
+    { sku: 'F', name: 'Асар майхан архив', price: 100, qty_mevent: 9, photo: 'f.jpg', archived: true },
+    { sku: 'G', name: 'Сандал энгийн', price: 100, qty_mevent: 9, photo: 'g.jpg' },
+  ];
+  eq(F.adBestProductIn('asar', prods, { A: 50, B: 1 }).sku, 'A', 'пост: түрээсийн тоогоор сонгоно');
+  eq(F.adBestProductIn('asar', prods, {}).sku, 'B', 'пост: түүх алга бол нөөц ихээр');
+  eq(F.adBestProductIn('asar', [prods[2], prods[3], prods[4], prods[5]], {}), null,
+     'пост: зураггүй/үнэгүй/нөөцгүй/архив бараагаар пост үүсгэхгүй');
+  eq(F.adBestProductIn('stage', prods, {}), null, 'пост: ангилалд бараа алга → null');
+
+  // Санал зөвхөн ЗАР ДУТУУ ангилалд гарна.
+  const rev = { total: 1000, by: { asar: { k: 'asar', amt: 500 }, furniture: { k: 'furniture', amt: 400 }, other: { k: 'other', amt: 100 } } };
+  const spend = { furniture: { k: 'furniture', mnt: 900000 } };
+  const cands = F.adPostCandidates(rev, spend, prods, { A: 50 }, []);
+  eq(cands.length, 1, 'пост: зартай ангилалд санал гаргахгүй');
+  eq(cands[0].cat, 'asar', 'пост: зар дутуу ангилал');
+  eq(cands[0].product.sku, 'A', 'пост: хамгийн их түрээслэгддэг');
+  ok(cands[0].body.indexOf('Асар майхан том') >= 0, 'пост: бичвэр бэлэн ирнэ');
+  eq(cands[0].share, 50, 'пост: борлуулалтын хувь');
+
+  // Аль хэдийн санал болгосон/болисон барааг ДАХИН санал болгохгүй.
+  eq(F.adPostCandidates(rev, spend, prods, { A: 50 }, [{ sku: 'A', status: 'discarded' }]).length, 0,
+     'пост: болисон барааг дахин санал болгохгүй');
+  eq(F.adPostCandidates(rev, spend, prods, { A: 50 }, [{ sku: 'A', status: 'published' }]).length, 0,
+     'пост: нийтлэгдсэн барааг дахин санал болгохгүй');
+
+  eq(F.adPostCandidates(null, null, prods, {}, []).length, 0, 'пост: борлуулалт алга → санал алга');
+  eq(F.adPostCandidates({ total: 0, by: {} }, {}, prods, {}, []).length, 0, 'пост: 0 борлуулалт → унахгүй');
+  eq(F.adPostStatusLabel('approved'), '⏳ Хүлээж буй', 'пост: төлвийн нэр');
+  // ⚠ Төлвийн бичвэр БОГИНО байх ёстой — дараалалын мөр утсанд 2 багана болж
+  //   агшихад урт төлөв постын нэрийг «🎪 …» болтол шахна.
+  Object.keys({ draft: 1, approved: 1, published: 1, failed: 1, discarded: 1 }).forEach(k =>
+    ok(F.adPostStatusLabel(k).length <= 16, 'пост: төлвийн нэр богино — ' + k));
+  eq(F.adPostStatusLabel('шинэ_төлөв'), 'шинэ_төлөв', 'пост: танихгүй төлвийг далдлахгүй');
+}
+
+// scan: пост батлах нь баталгаажуулалтгүй байж БОЛОХГҮЙ (гадагш нийтлэгдэж
+// мөнгө зарцуулна) + пост бичих форм нэмэхгүй + санал ганц функцээс гарна.
+{
+  const i = src.indexOf('function attachAdsHandlers(');
+  const fn = src.slice(i, i + 4000);
+  ok(/data-post-ok/.test(fn), 'scan: батлах товч холбогдсон');
+  ok(/showConfirm\([\s\S]{0,300}?okText: 'Батлах'/.test(fn), 'scan: батлахын өмнө асууна');
+  const rd = src.indexOf('function renderAds(');
+  const rf = src.slice(rd, src.indexOf('\nfunction attachAdsHandlers(', rd));
+  ok(!/<textarea/.test(rf), 'scan: постын бичвэрийг хүнээр бичүүлэх форм нэмэхгүй');
+  ok(/adPostCandidates\(/.test(rf), 'scan: саналыг adPostCandidates гаргана');
+  ok(/adPostCandidates\(/.test(src.slice(src.indexOf('function _adCandBySku('), src.indexOf('function _adCandBySku(') + 900)),
+     'scan: товчны зам ч ижил функцээр бодно (хоёр эх сурвалж болохгүй)');
+}
+
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭР (2026-09-16) ────────────────────────────────────
 // Гол занга: бидний тавьсан төлөв (`status`) ба Facebook-ийн БОДИТ төлөв
 // (`effective_status`) ЗӨРДӨГ. Татгалзсан зарыг «идэвхтэй» гэж харуулбал

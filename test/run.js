@@ -5962,6 +5962,19 @@ need(['orderCustType']);
      100, 'төсөв: зөвхөн тухайн сарын зарцуулалт');
   eq(F.adsSpentInMonth(null, '2026-09'), 0, 'төсөв: дата байхгүй → 0');
 
+  // SCAN: төсвийн эрх UI ба DB дээр ИЖИЛ байх ёстой. Зөрвөл товч харагдаад
+  // дарахад чимээгүй бүтэлгүйтнэ (RLS алдаа шидэхгүй, мөрийг л шүүнэ).
+  {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    const rls = fs.readFileSync(path.join(__dirname, '..', 'db', 'rls.sql'), 'utf8');
+    ok(/function adsBudgetEditable\(\)\s*\{\s*return !!state\.isCEO;/.test(app),
+       'эрх: төсөв засах = зөвхөн CEO (app.js)');
+    eq((rls.match(/when 'ads_budget' then sec\.is_ceo\(\)/g) || []).length, 3,
+       'эрх: rls.sql-д ads_budget → CEO (insert + update-ийн using ба with check)');
+    ok(!/data-ads-edit>/.test(app.replace(/\$\{adsBudgetEditable\(\) \? [\s\S]*?\}/g, '')),
+       'эрх: төсвийн товч adsBudgetEditable()-гүйгээр гарахгүй');
+  }
+
   // Бага зарцуулалтыг дүгнэхгүй (шуугиан) — 30,000₮-ийн доор
   const tiny = F.adCampaignStats([{ day: '2026-09-11', campaign_id: 'x', campaign_name: 'Жижиг', spend_mnt: 5000, messages: 0 }], '2026-09-01');
   eq(F.adsAdvice(tiny, { by: {}, total: 0 }).length, 0, 'зар: бага зарцуулалт анхааруулга үүсгэхгүй');

@@ -274,8 +274,12 @@ create policy nomaad_payments_rw on public.nomaad_payments for all to authentica
 
 -- ═══ 8. app_config — ТҮЛХҮҮРЭЭР ХУВААНА ═══════════════════════════════════
 -- Дотор нь эзний хувийн данс (`personal_settlements`), ашгийн хуваарилалт
--- (`coo_share`) байдаг. Үлдсэн түлхүүр (тариф, хаасан сар, ирцийн хүсэлт …)
--- нь ажлын урсгалд ЗААВАЛ хэрэгтэй тул нээлттэй хэвээр.
+-- (`coo_share`), зарын сарын төсөв (`ads_budget`) байдаг. Үлдсэн түлхүүр
+-- (тариф, хаасан сар, ирцийн хүсэлт …) нь ажлын урсгалд ЗААВАЛ хэрэгтэй тул
+-- нээлттэй хэвээр.
+-- ⛔ `ads_budget` = БОДИТ МӨНГӨ (Facebook зар автоматаар зарцуулна) тул зөвхөн
+--    CEO бичнэ. Уншихыг хаагаагүй — маркетингийн хүн төсвөө харах ёстой.
+--    app.js-ийн `adsBudgetEditable()` ижил дүрэмтэй байх ёстой (scan-тест хардаг).
 
 alter table public.app_config enable row level security;
 drop policy if exists app_config_all on public.app_config;
@@ -286,14 +290,17 @@ drop policy if exists app_config_ins on public.app_config;
 create policy app_config_ins on public.app_config for insert to authenticated
   with check (case key when 'coo_share' then sec.is_ceo()
                        when 'personal_settlements' then sec.fin_full()
+                       when 'ads_budget' then sec.is_ceo()
                        else true end);
 drop policy if exists app_config_upd on public.app_config;
 create policy app_config_upd on public.app_config for update to authenticated
   using (case key when 'coo_share' then sec.is_ceo()
                   when 'personal_settlements' then sec.fin_full()
+                  when 'ads_budget' then sec.is_ceo()
                   else true end)
   with check (case key when 'coo_share' then sec.is_ceo()
                        when 'personal_settlements' then sec.fin_full()
+                       when 'ads_budget' then sec.is_ceo()
                        else true end);
 
 -- ═══ 9. ХАТУУ УСТГАЛ = БҮГДЭД ХОРИГЛОНО ═══════════════════════════════════

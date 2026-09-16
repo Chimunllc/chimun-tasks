@@ -27777,6 +27777,11 @@ function adsAdvice(camps, rev, opts) {
 //    Скрипт унасан ч ① үлдэнэ — Facebook өөрөө зогсооно. Энэ дараалал ЧУХАЛ:
 //    зөвхөн манай кодод найдвал алдаа гармагц мөнгө хязгааргүй гарна.
 const ADS_BUDGET_KEY = 'ads_budget';
+// ⛔ ТӨСӨВ ТАВИХ = ЗӨВХӨН CEO. Дэлгэцийг маркетингийн хүн ХАРНА (тоо, зөвлөгөө),
+//    гэхдээ мөнгө зарцуулах шийдвэрийг ГАРГАХГҮЙ. `db/rls.sql` дээр ижил дүрэм
+//    (`ads_budget` → `sec.is_ceo()`) — UI ба DB хоёр ЗЭРЭГ зассан байх ёстой,
+//    эс бөгөөс товч харагдаад дарахад чимээгүй бүтэлгүйтнэ.
+function adsBudgetEditable() { return !!state.isCEO; }
 // Тухайн сарын төсвийн төлөв. Цэвэр функц.
 // 'stale' = өмнөх сарын төсөв үлдсэн → хуваарилагч зар АЖИЛЛУУЛАХГҮЙ (сар бүр
 // хүн шийдвэр гаргах ёстой; өнгөрсөн сарын дүнг чимээгүй давтвал төсөв хөвнө).
@@ -27933,15 +27938,15 @@ function renderAds() {
       <div class="ads-brow"><span>Зарцуулсан</span><b>${fmtMoney(bp.spent)}</b></div>
       <div class="ads-brow"><span>Үлдсэн · ${bp.daysLeft} хоног</span><b>${fmtMoney(bp.left)}</b></div>
       <div class="ads-brow"><span>Өдрийн төсөв</span><b>${fmtMoney(bp.daily)}</b></div>
-      <div class="ads-bact">
+      ${adsBudgetEditable() ? `<div class="ads-bact">
         <button class="btn" data-ads-edit>✎ Төсөв өөрчлөх</button>
         <button class="btn ${bst === 'on' ? 'btn-danger' : 'btn-primary'}" data-ads-toggle="${bst === 'on' ? '0' : '1'}">${bst === 'on' ? '⛔ Бүх зар зогсоо' : '▶ Зар үргэлжлүүлэх'}</button>
-      </div>
+      </div>` : ''}
       <div class="ads-note">${bst === 'on'
         ? 'Систем 10 минут тутам шалгаж өдрийн төсвийг үр дүнтэй зар руу шилжүүлнэ. Дансны хатуу хязгаар тавигдсан — төсөв дуусмагц Facebook өөрөө зогсооно.'
         : '⛔ Унтраалттай. Дараагийн шалгалтаар (10 минутын дотор) бүх зар зогсоно. Яаралтай бол Ads Manager-ээс шууд зогсооно уу.'}</div>`
     : `<div class="ads-brow"><span>${bst === 'stale' ? 'Өмнөх сарын төсөв — энэ сард зар ажиллахгүй' : 'Төсөв тавиагүй — автомат хуваарилалт унтраалттай'}</span></div>
-      <div class="ads-bact"><button class="btn btn-primary" data-ads-edit>＋ Сарын төсөв тавих</button></div>`}
+      ${adsBudgetEditable() ? '<div class="ads-bact"><button class="btn btn-primary" data-ads-edit>＋ Сарын төсөв тавих</button></div>' : ''}`}
   </div>`;
 
   const kpi = `<div class="ads-kpis">

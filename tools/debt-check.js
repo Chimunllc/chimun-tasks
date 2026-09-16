@@ -22,6 +22,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 const BASELINE = path.join(__dirname, 'debt-baseline.json');
@@ -86,6 +87,34 @@ function loadBaseline() {
    хязгаарт тохирох. 89 функц энэ хүрээнд байгаа тул ажил урт хугацаанд хүрэлцэнэ. */
 const SUG_MIN = 5;    // үүнээс бага бол ажил болгох нь үнэ цэнэгүй
 const SUG_MAX = 25;   // үүнээс их бол нэг шөнөд дуусахгүй / diff хязгаараас хэтэрнэ
+const CHURN_DAYS = 90;
+
+/* ── Сүүлийн CHURN_DAYS хоногт хүрсэн мөрүүд ──
+   Яагаад хэрэгтэй: тоос их байгаа өрөөг цэвэрлэх нь чиний хамгийн их явдаг
+   өрөөг цэвэрлэхтэй ижил БИШ. Өр бөөгнөрсөн функц нь 2 жил хөдөлгөөнгүй байж
+   болно — түүнийг цэвэрлэвэл засвар хурдан болохгүй. Иймд «сүүлд хүрсэн»
+   функцийг эрхэмлэнэ: агент чиний бодит ажиллаж буй кодыг цэгцэлнэ.
+
+   `git blame` НЭГ удаа ажиллана — мөр бүрийн СҮҮЛИЙН commit-ийн огноог өгнө.
+   ⚠ Доогуур тоолно (нэг мөр 5 удаа өөрчлөгдсөн ч зөвхөн сүүлийнх харагдана),
+   гэхдээ «сүүлд хүрсэн эсэх» дохио хангалттай. `git log -L`-ийг 89 функцэд
+   ажиллуулбал хэт удаан.
+   ⚠ git байхгүй / shallow clone бол `null` буцаана → тооны эрэмбэ руу унана
+   (чимээгүй биш, `--suggest` дээр ил бичигдэнэ). */
+function blameRecent() {
+  try {
+    const out = execFileSync('git', ['blame', '--line-porcelain', '--', 'app.js'],
+      { cwd: ROOT, encoding: 'utf8', maxBuffer: 1024 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+    const cutoff = Date.now() / 1000 - CHURN_DAYS * 86400;
+    const recent = [];
+    let pending = 0, idx = 0;
+    for (const l of out.split('\n')) {
+      if (l.startsWith('author-time ')) pending = Number(l.slice(12));
+      else if (l[0] === '\t') recent[idx++] = pending >= cutoff;   // мөрийн агуулга = мөр дуусав
+    }
+    return idx ? recent : null;
+  } catch { return null; }
+}
 
 function suggest() {
   const js = read('app.js');
@@ -108,15 +137,26 @@ function suggest() {
     cur.n += n;
     tally.set(key, cur);
   });
+  // Функц тус бүрийн «сүүлд хүрсэн мөрийн тоо»
+  const recent = blameRecent();
+  const churn = new Map();
+  if (recent) owner.forEach((fn, i) => { if (recent[i]) churn.set(fn, (churn.get(fn) || 0) + 1); });
+
   const all = [...tally.entries()]
-    .map(([name, v]) => ({ fn: name, count: v.n, line: v.first }))
+    .map(([name, v]) => ({ fn: name, count: v.n, line: v.first, churn: churn.get(name) || 0 }))
     .sort((a, b) => b.count - a.count);
+
   const fit = all.filter((r) => r.count >= SUG_MIN && r.count <= SUG_MAX);
+  // ЭРЭМБЭ: сүүлд хүрсэн нь эхэлнэ, дараа нь өр их нь. Churn уншигдаагүй бол
+  // бүгд 0 болж зөвхөн тооны эрэмбэ үлдэнэ (хуучин зан чанар).
+  fit.sort((a, b) => (b.churn - a.churn) || (b.count - a.count));
+
   return {
     metric: 'inline_style',
     top: fit.slice(0, 5),                             // сонгож болох ажлууд
     oversize: all.filter((r) => r.count > SUG_MAX),   // нэг шөнөд томдох нь
     remaining: fit.length,
+    churnOk: !!recent,                                // git blame ажилласан эсэх
   };
 }
 
@@ -139,10 +179,24 @@ function main() {
     return;
   }
 
+  // ⚠ Нэр дангаараа ХҮРЭЛЦЭХГҮЙ. Churn эрэмбэ нь `v`, `row`, `draw` гэх мэт
+  // 1-2 үсэгтэй дотоод функцүүдийг дээш гаргадаг — агент тэр нэрээр хайвал
+  // олон таарц гарч буруу газар зална. Мөрийн дугаар нь ганц зөв хаяг.
+  // Хүрээнд юу ч байхгүй бол ХООСОН гаралт (workflow түүнийг шалгана).
+  if (arg === '--suggest-json') {
+    const s = suggest();
+    if (s.top[0]) console.log(JSON.stringify(s.top[0]));
+    return;
+  }
+
   if (arg === '--suggest') {
     const s = suggest();
-    console.log(`Нэг шөнийн ажилд тохирох (${SUG_MIN}–${SUG_MAX} inline style):`);
-    for (const r of s.top) console.log(`  ${r.fn}  —  ${r.count} inline style  (app.js:${r.line})`);
+    console.log(`Нэг шөнийн ажилд тохирох (${SUG_MIN}–${SUG_MAX} inline style), ` +
+                (s.churnOk ? `сүүлийн ${CHURN_DAYS} хоногт хамгийн олон хүрсэн нь эхэлнэ:`
+                           : `⚠ git blame уншигдсангүй — зөвхөн тооны эрэмбэ:`));
+    for (const r of s.top) {
+      console.log(`  ${r.fn}  —  ${r.count} inline style  ·  ${r.churn} мөр сүүлд хүрсэн  (app.js:${r.line})`);
+    }
     if (!s.top.length) console.log('  (хүрээнд юу ч байхгүй)');
     console.log(`\nХүрээнд бүгд: ${s.remaining} функц.`);
     if (s.oversize.length) {

@@ -20917,7 +20917,7 @@ function openCustomerCard(id) {
       </div>
       <div class="cu-hist">${cs.rows.slice(0, 8).map(r => `
         <div class="cu-hrow"><span>${r.ans > 0 ? '📞 ярьсан' : '📵 аваагүй'}</span>
-          <span class="cu-dim">${escapeHtml(String(r.at).slice(0, 16).replace('T', ' '))}</span>
+          <span class="cu-dim">${escapeHtml(ubStamp(r.at))}</span>
           <span class="cu-dim">${r.ans > 0 ? Math.round(r.ans / 60) + ' мин' : r.sec + ' сек хүлээсэн'}</span></div>`).join('')}
         ${cs.rows.length > 8 ? `<div class="cu-hrow cu-dim">…бас ${cs.rows.length - 8}</div>` : ''}</div>`;
 
@@ -28474,6 +28474,41 @@ async function loadFbActions(force) {
   }
 }
 
+// ── Conversions API — Facebook руу юу буцсан (fb_capi_sent) ─────────────────
+// ⚠ Pixel зөвхөн браузерт ажилладаг. Утсаар/биечлэн хийгдсэн захиалга Facebook-т
+//   ЗӨВХӨН энэ замаар хүрнэ. Холболт тасарсныг хэн ч мэдэхгүй байхаас сэргийлж
+//   дэлгэцэд ил гаргана.
+async function loadFbCapi(force) {
+  if (state.fbCapi && !force) return state.fbCapi;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/fb_capi_sent?select=order_id,value_usd,matched,sent_at&order=sent_at.desc&limit=500`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.fbCapi = await r.json();
+    return state.fbCapi;
+  } catch (e) {
+    dataLoadFailed('Facebook-т илгээсэн худалдан авалт', e);
+    state.fbCapi = state.fbCapi || [];
+    return state.fbCapi;
+  }
+}
+// Илгээлтийн хураангуй. Цэвэр функц — тестлэгдэнэ.
+// `strong` = зар дарсан хүнтэй ШУУД тулгагдсан (fbc). Энэ тоо өсөх тусам
+// Facebook-ийн оновчлол сайжирна; 0 бол зар нь хэнд хүрснээ мэдэхгүй хэвээр.
+function capiStats(rows, from) {
+  let n = 0, usd = 0, strong = 0, last = '';
+  (rows || []).forEach(r => {
+    const at = String((r && r.sent_at) || '');
+    if (from && at.slice(0, 10) < from) return;
+    n++; usd += Number((r && r.value_usd) || 0);
+    if (String((r && r.matched) || '').indexOf('fbc') > -1) strong++;
+    if (at > last) last = at;
+  });
+  return { n, usd: Math.round(usd * 100) / 100, strong, last,
+           strongPct: n ? Math.round(strong * 100 / n) : 0 };
+}
+
 // ── Постын дараалал татах/бичих (ads_posts) ─────────────────────────────────
 // anon-д хаалттай; DB тал дээр RLS нь зарын дэлгэц харах эрхээр хамгаалагдсан.
 async function loadAdPosts(force) {
@@ -28662,6 +28697,22 @@ function renderAds() {
       <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
     </div>`;
 
+  // ── Facebook руу буцсан худалдан авалт (Conversions API) ──
+  // Хэрэглэгч «холбоо ажиллаж байна уу» гэдгийг ЭНДЭЭС л харна.
+  const capi = capiStats(state.fbCapi || [], from);
+  const capiStale = capi.last && (todayStr() > addDays(String(capi.last).slice(0, 10), 2));
+  const capiHtml = !(state.fbCapi || []).length ? '' : `
+    <div class="ads-sec">🔁 Facebook руу буцсан худалдан авалт <span class="ads-sub">(${days} хоног)</span></div>
+    <div class="ads-list">
+      <div class="ads-row"><span class="ads-nm">Илгээгдсэн захиалга</span>
+        <span class="ads-sp">${capi.n} ш</span><span class="ads-ms">$${capi.usd.toLocaleString('en-US')}</span>
+        <b class="ads-pm${capiStale ? ' ads-bad' : ''}">${capiStale ? 'холболт зогссон' : 'идэвхтэй'}</b></div>
+      <div class="ads-row"><span class="ads-nm">Зар дарсан хүнтэй тулгагдсан</span>
+        <span class="ads-sp">${capi.strong} ш</span><span class="ads-ms">үлдсэн нь утас/мэйлээр</span>
+        <b class="ads-pm">${capi.strongPct}%</b></div>
+    </div>
+    <div class="ads-note">Утсаар, биечлэн хийгдсэн захиалга Facebook-т зөвхөн энэ замаар хүрнэ — зар «ямар хүн үнэхээр мөнгө төлдөг вэ» гэдгийг үүн дээр сурна. Утас, и-мэйл нь шифрлэгдэж явдаг тул Facebook хэн болохыг харахгүй.</div>`;
+
   // ── Дуудлага → захиалга ──
   // ── Ажилтнаар — хэн хэдэн дуудлага авав ──
   const agents = pbxByAgent(state.pbxLog || [], { from });
@@ -28717,6 +28768,7 @@ function renderAds() {
     ${queueHtml}
     ${stateHtml}
     ${actHtml}
+    ${capiHtml}
     ${callHtml}
     ${convHtml}
     ${agentHtml}
@@ -28729,6 +28781,52 @@ function renderAds() {
     ${leadHtml}`;
 }
 
+// ⛔ ДУУДЛАГЫН ЦАГ = УБ-ИЙН ЦАГ (2026-09-16). PostgREST нь `started_at`-ыг
+//   **UTC**-ээр буцаадаг (`…T05:44:00+00:00`) тул түүхий мөрийг таслаж
+//   харуулбал **8 цагаар эрт** харагдана — амьд системд «05:44-д залгасан»
+//   гэж бичигдэж байсан нь үнэндээ 13:44 байв. Огноо ч шөнийн дуудлагад
+//   нэг өдрөөр гулсана.
+// ⚠ `getHours()` БҮҮ ашигла — ажиллаж буй машины бүсээс хамаарна (`_ubHour`-ийн
+//   тэмдэглэлийг үз). UTC геттер + 8 цаг л найдвартай.
+function ubStamp(ts, withDate) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return '';
+  const d = new Date(t + 8 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  const hm = p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+  if (withDate === false) return hm;
+  return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${hm}`;
+}
+// ── ЗАЛГАСАН ХҮНИЙ НЭР (2026-09-16) ─────────────────────────────────────────
+// Залгагчдын 89% нь `customers`-т БАЙХГҮЙ (1,377-оос 80 нь л бүртгэлтэй) тул
+// жагсаалт нүцгэн дугаараар дүүрч, хүн хэнийг залгахаа мэдэхгүй байв. Захиалгын
+// мөрөнд нэр УТАСТАЙГАА хамт хадгалагддаг — түүнээс нэрийг сэргээнэ.
+// ⚠ Бүртгэлтэй харилцагчийн нэр ДАВУУ (шинэчлэгдсэн байдаг); захиалгын нэр
+//   зөвхөн нөхөх үүрэгтэй.
+// ⚠ Нэр олдоогүйг ТААМАГЛАХГҮЙ — «шинэ дугаар» гэж ил бичнэ.
+function pbxNameIndex(customers, orders) {
+  const m = {};
+  const at = (o) => String(o.starts_at || o.created_at || '').slice(0, 10);
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    const k = custPhoneKey(o.phone);
+    if (!k) return;
+    const x = m[k] || (m[k] = { name: '', orders: 0, last: '' });
+    x.orders++;
+    if (at(o) > x.last) x.last = at(o);
+    if (!x.name && o.customer) x.name = String(o.customer).trim();
+  });
+  (customers || []).forEach(c => {
+    const k = custPhoneKey(c && c.phone);
+    if (!k) return;
+    const x = m[k] || (m[k] = { name: '', orders: 0, last: '' });
+    if (c.name) x.name = String(c.name).trim();
+  });
+  return m;
+}
+function pbxWho(peer, idx) {
+  return (idx && idx[custPhoneKey(peer)]) || { name: '', orders: 0, last: '' };
+}
 // ── БҮХ ЗАЛГАГЧ (2026-09-16) ────────────────────────────────────────────────
 // «Алдсан дуудлага» нь зөвхөн ШИЙДЭГДЭЭГҮЙ мөрийг харуулдаг тул 1,300+ залгасан
 // хүнийг хаанаас ч харах газаргүй байв. Энэ нь дугаар бүрээр нэг мөр.
@@ -28788,23 +28886,34 @@ function renderMissedCalls() {
   const open = rows.filter(r => !r.done);
   const done = rows.filter(r => r.done);
 
+  const nameIdx = pbxNameIndex(state.customers || [], state.appOrders || []);
+  const ws = tariffWorkStart(), we = tariffWorkEnd();
   const row = (r) => {
-    const cu = pbxCustomerOf(r.peer, state.customers || []);
-    const when = String(r.last).slice(5, 16).replace('T', ' ');
-    const who = cu ? escapeHtml(cu.name || '') : 'шинэ дугаар';
-    const meta = [`${r.tries} удаа залгасан`, `сүүлд ${escapeHtml(when)}`,
-      r.cbTries ? `бид ${r.cbTries} удаа буцаан залгасан` : '',
-      r.ordered ? '🛒 захиалга болсон' : '',
-      (r.status && !r.ordered) ? escapeHtml(PBX_CB_LABEL[r.status] || r.status) : ''].filter(Boolean).join(' · ');
+    const w = pbxWho(r.peer, nameIdx);
+    const h = _ubHour(r.last);
+    const off = h !== null && (h < ws || h > we);
+    // Хамгийн чухал нь ХЭН гэдэг — нэр байвал тэр нь гарчиг, дугаар нь доор.
+    const head = w.name
+      ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
+      : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар — өмнө захиалга өгөөгүй</div>`;
+    const tags = [
+      w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга${w.last ? ' · сүүлд ' + escapeHtml(w.last) : ''}</span>` : '',
+      r.tries > 1 ? `<span class="mc-tag">${r.tries} удаа залгасан</span>` : '',
+      off ? '<span class="mc-tag">ажлын цагийн гадна</span>' : '',
+      r.cbTries ? `<span class="mc-tag">бид ${r.cbTries} удаа залгасан</span>` : '',
+      r.ordered ? '<span class="mc-tag mc-warm">дараа нь захиалга өгсөн</span>' : '',
+      (r.status && !r.ordered) ? `<span class="mc-tag">${escapeHtml(PBX_CB_LABEL[r.status] || r.status)}</span>` : '',
+    ].filter(Boolean).join('');
     const acts = r.done
       ? `<button class="mc-btn" data-mc-reopen="${escapeHtml(r.peer)}">↩ Буцаах</button>`
       : `<a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a>
-         <button class="mc-btn ok" data-mc="reached" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">✓ Холбогдсон</button>
-         <button class="mc-btn" data-mc="no_answer" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">☎ Авсангүй</button>
-         <button class="mc-btn drop" data-mc="dropped" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">🚫 Хэрэггүй</button>`;
+         <button class="mc-btn ok" data-mc="reached" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">✓ Ярьсан</button>
+         <button class="mc-btn" data-mc="no_answer" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}">Авсангүй</button>
+         <button class="mc-btn drop" data-mc="dropped" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}" title="Хэрэггүй — жагсаалтаас хас">🚫</button>`;
     return `<div class="mc-row${r.done ? ' mc-done' : ''}">
-      <div class="mc-main"><div class="mc-num">${escapeHtml(r.peer)} <span class="mc-who">${who}</span></div>
-        <div class="mc-meta">${meta}</div></div>
+      <div class="mc-main">${head}
+        <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b></div>
+        ${tags ? `<div class="mc-tags">${tags}</div>` : ''}</div>
       <div class="mc-acts">${acts}</div></div>`;
   };
   // Бүх залгагч (90 хоног = порталын хадгалах хугацаа).
@@ -28817,15 +28926,20 @@ function renderMissedCalls() {
       placeholder="Дугаар эсвэл харилцагчийн нэр…" value="${escapeHtml(q)}"></div>
     <div class="ads-sec">Залгасан хүмүүс <span class="ads-sub">(90 хоног${q ? ` · ${shown.length} олдлоо` : ''})</span></div>
     <div class="mc-list">${shown.slice(0, 200).map(r => {
-      const cu = pbxCustomerOf(r.peer, state.customers || []);
-      const meta = [`${r.tries} удаа`,
-        r.answered ? `${r.answered} ярьсан` : 'хэзээ ч яриагүй',
-        r.missed ? `${r.missed} аваагүй` : '',
-        r.talk ? `${Math.round(r.talk / 60)} мин` : '',
-        r.orders ? `🛒 ${r.orders} захиалга` : ''].filter(Boolean).join(' · ');
+      const w = pbxWho(r.peer, nameIdx);
+      const tags = [
+        w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга</span>` : '',
+        `<span class="mc-tag">${r.tries} удаа</span>`,
+        r.answered ? `<span class="mc-tag">${r.answered} ярьсан${r.talk ? ' · ' + Math.round(r.talk / 60) + ' мин' : ''}</span>`
+                   : '<span class="mc-tag">хэзээ ч яриагүй</span>',
+        r.missed ? `<span class="mc-tag">${r.missed} аваагүй</span>` : '',
+      ].filter(Boolean).join('');
       return `<div class="mc-row${r.answered ? '' : ' mc-cold'}">
-        <div class="mc-main"><div class="mc-num">${escapeHtml(r.peer)} <span class="mc-who">${cu ? escapeHtml(cu.name || '') : 'шинэ дугаар'}</span></div>
-          <div class="mc-meta">${meta} · сүүлд ${escapeHtml(String(r.last).slice(0, 16).replace('T', ' '))}</div></div>
+        <div class="mc-main">
+          ${w.name ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
+                   : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар</div>`}
+          <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b></div>
+          <div class="mc-tags">${tags}</div></div>
         <div class="mc-acts"><a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a></div></div>`;
     }).join('') || '<div class="mc-empty">Олдсонгүй.</div>'}</div>
     ${shown.length > 200 ? `<div class="mc-empty">…бас ${shown.length - 200} дугаар. Хайлтаар нарийсга.</div>` : ''}`;
@@ -28840,7 +28954,8 @@ function renderMissedCalls() {
     <div class="ads-kpis">
       <div class="ads-kpi"><div class="ads-kpi-l">Шийдэгдээгүй</div><div class="ads-kpi-v">${open.length}</div></div>
       <div class="ads-kpi"><div class="ads-kpi-l">${MISSED_DAYS} хоногт</div><div class="ads-kpi-v">${rows.length}</div></div>
-      <div class="ads-kpi"><div class="ads-kpi-l">Захиалга болсон</div><div class="ads-kpi-v">${rows.filter(r => r.ordered).length}</div></div>
+      <div class="ads-kpi"><div class="ads-kpi-l">Танил дугаар</div><div class="ads-kpi-v">${rows.filter(r => pbxWho(r.peer, nameIdx).orders).length}</div>
+        <div class="ads-kpi-s">өмнө захиалга өгсөн</div></div>
     </div>
     <div class="ads-tabs">
       <button class="ads-tab${tab === 'open' ? ' on' : ''}" data-mc-tab="open">Буцаж залгах (${open.length})</button>
@@ -35902,6 +36017,10 @@ function refreshViewData() {
   }
   if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
     loadFbActions().then(() => { if (state.view === 'ads') render(); });
+  }
+  if (v === 'ads' && canSeeAds() && state.fbCapi === undefined) {
+    state.fbCapi = null;
+    loadFbCapi(true).then(() => { if (state.view === 'ads') render(); });
   }
   // ⚠ Дата бүр ӨӨРИЙН хамгаалалттай байх ёстой. Өмнө нь дуудлагын лог
   //    (`pbxLog`) нь цагийн тооны (`pbxCalls`) нөхцөлд багтсан тул хуучин

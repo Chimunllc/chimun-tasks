@@ -6000,6 +6000,36 @@ need(['orderCustType']);
   eq(F.pbxCustomerOf('99998888', cus), null, 'дуудлага: шинэ дугаар → харилцагч алга');
   eq(F.pbxCustomerOf('', cus), null, 'дуудлага: хоосон дугаар → null');
 
+  // ── Дуудлага → захиалга ──
+  const ccCalls = [
+    { direction: 'in', peer: '88110011', started_at: '2026-09-10T02:00:00+00', answer_sec: 30 },
+    { direction: 'in', peer: '88220022', started_at: '2026-09-10T02:00:00+00', answer_sec: 30 },
+    { direction: 'in', peer: '88330033', started_at: '2026-09-10T02:00:00+00', answer_sec: 0 },
+    { direction: 'in', peer: '88440044', started_at: '2026-09-10T02:00:00+00', answer_sec: 0 },
+  ];
+  const ccOrders = [
+    { status: 'rented', phone: '976-8811-0011', created_at: '2026-09-11T05:00:00+00', total_mnt: 2000000 },
+    { status: 'draft', phone: '88220022', created_at: '2026-09-11T05:00:00+00', total_mnt: 9000000 },
+    { status: 'rented', phone: '88330033', created_at: '2026-09-01T05:00:00+00', total_mnt: 5000000 },
+  ];
+  const cc = F.callConversion(ccCalls, ccOrders);
+  eq(cc.talked.callers, 2, 'хөрвөлт: ярьсан хүний тоо');
+  eq(cc.talked.converted, 1, 'хөрвөлт: ноорог захиалга тоологдохгүй');
+  eq(cc.talked.rate, 50, 'хөрвөлт: хувь');
+  eq(cc.missed.callers, 2, 'хөрвөлт: холбогдоогүй хүний тоо');
+  eq(cc.missed.converted, 0, 'хөрвөлт: дуудлагаас ӨМНӨХ захиалга тоологдохгүй');
+  eq(cc.avgOrder, 2000000, 'хөрвөлт: дундаж захиалгын дүн');
+  eq(cc.lost, 2000000, 'хөрвөлт: алдагдсан боломжийн таамаг (2 хүн × 50% × 2сая)');
+  eq(F.callConversion([], []).talked.rate, 0, 'хөрвөлт: дата байхгүй → 0');
+  eq(F.callConversion(null, null).missed.callers, 0, 'хөрвөлт: null → унахгүй');
+
+  eq(F.callConvAdvice(cc).length, 0, 'хөрвөлт: 10-аас цөөн хүнд сануулга гаргахгүй (шуугиан)');
+  const big = F.callConversion(
+    Array.from({ length: 12 }, (_, i) => ({ direction: 'in', peer: '9900' + String(1000 + i), started_at: '2026-09-10T02:00:00+00', answer_sec: 0 })).concat(ccCalls),
+    ccOrders);
+  eq(F.callConvAdvice(big).length, 1, 'хөрвөлт: олон хүн холбогдоогүй бол сануулна');
+  eq(F.callConvAdvice(big)[0].sev, 1, 'хөрвөлт: сануулга хамгийн ноцтой зэрэгтэй');
+
   // Бага зарцуулалтыг дүгнэхгүй (шуугиан) — 30,000₮-ийн доор
   const tiny = F.adCampaignStats([{ day: '2026-09-11', campaign_id: 'x', campaign_name: 'Жижиг', spend_mnt: 5000, messages: 0 }], '2026-09-01');
   eq(F.adsAdvice(tiny, { by: {}, total: 0 }).length, 0, 'зар: бага зарцуулалт анхааруулга үүсгэхгүй');

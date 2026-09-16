@@ -27899,6 +27899,65 @@ function pbxFollowups(calls, opts) {
   return Object.values(by).filter(x => !x.answered)
     .sort((a, b) => (b.tries - a.tries) || String(b.last).localeCompare(String(a.last)));
 }
+// ── ДУУДЛАГА → ЗАХИАЛГА (2026-09-16) ────────────────────────────────────────
+// «Ирсэн дуудлагын хэдэн хувь нь борлуулалт болов?» гэдгийг дугаараар тулгаж
+// хариулна: дуудлага ирсэн дугаараас (эхний дуудлагын өдрөөс хойш) захиалга
+// үүссэн эсэх.
+// ⚠ ХОЁР БҮЛГЭЭР ТУСАД НЬ: «ярьсан» ба «холбогдоогүй». Нийлүүлбэл хамгийн
+//   чухал зөрүү (холбогдоогүй хүн захиалга өгдөггүй) нуугдана.
+// ⚠ Энэ нь АТРИБУЦИ БИШ — утсаар ярьсан хүн сайт/танилаараа ч ирсэн байж
+//   болно. «Дуудлага хийсэн хүмүүсийн хэдэн хувь захиалга өгсөн» гэсэн утга.
+// ⚠ Дугаар нь ЗАХИАЛГАД бичигдээгүй бол (ажилтан өөр дугаар бичсэн) энэ нь
+//   бодит хувиас ДООГУУР тоолно.
+const CALL_CONV_GRACE_D = 1;   // дуудлагаас өмнөх 1 хоногийн захиалгыг ч тооцно
+function callConversion(calls, orders, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const byPeer = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const p = String(c.peer || '');
+    if (p.length < 6) return;
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const x = byPeer[p] || (byPeer[p] = { peer: p, first: at, talked: false });
+    if (at && at < x.first) x.first = at;
+    if ((Number(c.answer_sec) || 0) > 0) x.talked = true;
+  });
+  // Дугаар → захиалгын жагсаалт (нэг удаа индексжүүлнэ — дуудлага бүрээр
+  // бүх захиалгыг гүйвэл 300 × 3000 удаа харьцуулалт болно).
+  const byPhone = {};
+  (orders || []).forEach(od => {
+    if (!od || !_orderActive(od)) return;
+    const k = custPhoneKey(od.phone);
+    if (!k) return;
+    (byPhone[k] || (byPhone[k] = [])).push(od);
+  });
+  const grp = { talked: { callers: 0, converted: 0, sum: 0 }, missed: { callers: 0, converted: 0, sum: 0 } };
+  Object.values(byPeer).forEach(x => {
+    const g = x.talked ? grp.talked : grp.missed;
+    g.callers++;
+    const lim = addDays(String(x.first).slice(0, 10), -CALL_CONV_GRACE_D);
+    const hit = (byPhone[custPhoneKey(x.peer)] || [])
+      .filter(od => String(od.created_at || '').slice(0, 10) >= lim);
+    if (hit.length) { g.converted++; g.sum += hit.reduce((a, od) => a + (Number(od.total_mnt) || 0), 0); }
+  });
+  const pct = g => (g.callers ? Math.round(g.converted * 1000 / g.callers) / 10 : 0);
+  grp.talked.rate = pct(grp.talked);
+  grp.missed.rate = pct(grp.missed);
+  grp.avgOrder = grp.talked.converted ? Math.round(grp.talked.sum / grp.talked.converted) : 0;
+  // Холбогдоогүй хүмүүс ярьсан хүмүүсийн хувиар захиалга өгөх байсан бол —
+  // ТААМАГ тоо, дэлгэцэд «ойролцоогоор» гэж ил бичнэ.
+  grp.lost = Math.round(grp.missed.callers * (grp.talked.rate / 100) * grp.avgOrder);
+  return grp;
+}
+// Дуудлага алдсанаас үүсэх алдагдлын сануулга. `adsAdvice`-тай ижил хэлбэр.
+function callConvAdvice(conv) {
+  if (!conv || conv.missed.callers < 10 || !conv.talked.converted) return [];
+  return [{ kind: 'lostcalls', sev: 1, mnt: conv.lost,
+    text: `${conv.missed.callers} хүн залгаад холбогдож чадаагүй. Ярьж чадсан хүмүүсийн ${conv.talked.rate}% нь захиалга өгдөг (дунджаар ${fmtMoney(conv.avgOrder)}) тул эдгээр нь ойролцоогоор ${fmtMoney(conv.lost)}-ийн боломж. Утас авах нь зар нэмэхээс хямд.` }];
+}
+
 // Дугаараар харилцагч олох — `custPhoneKey`-ээр нормчилж тулгана (нэг дугаар
 // 976/0 угтвартай ч, хоосон зайтай ч байж болно).
 function pbxCustomerOf(peer, customers) {
@@ -27963,7 +28022,8 @@ function renderAds() {
   const spend = adSpendByCat(camps);
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
-  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we))
+  const conv = callConversion(state.pbxLog || [], state.appOrders || [], { from });
+  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we)).concat(callConvAdvice(conv))
     .sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 
@@ -28047,6 +28107,16 @@ function renderAds() {
       <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
     </div>`;
 
+  // ── Дуудлага → захиалга ──
+  const convHtml = !(conv.talked.callers + conv.missed.callers) ? '' : `
+    <div class="ads-sec">☎️ Дуудлага → захиалга <span class="ads-sub">(${days} хоног)</span></div>
+    <div class="ads-list">
+      <div class="ads-row"><span class="ads-nm">Ярьж чадсан</span><span class="ads-sp">${conv.talked.callers} хүн</span><span class="ads-ms">${conv.talked.converted} захиалга</span><b class="ads-pm">${conv.talked.rate}%</b></div>
+      <div class="ads-row"><span class="ads-nm">Холбогдож чадаагүй</span><span class="ads-sp">${conv.missed.callers} хүн</span><span class="ads-ms">${conv.missed.converted} захиалга</span><b class="ads-pm${conv.missed.rate < conv.talked.rate ? ' ads-bad' : ''}">${conv.missed.rate}%</b></div>
+      ${conv.avgOrder ? `<div class="ads-row"><span class="ads-nm">Дуудлагаас ирсэн захиалгын дундаж</span><span class="ads-sp"></span><span class="ads-ms"></span><b class="ads-pm">${fmtMoney(conv.avgOrder)}</b></div>` : ''}
+    </div>
+    <div class="ads-note">Дугаараар тулгана: тэр дугаараас залгасны дараа захиалга үүссэн эсэх. ⚠ Ажилтан захиалгад өөр дугаар бичсэн бол энд тоологдохгүй тул бодит хувь үүнээс өндөр байж болно.</div>`;
+
   // ── Хариу аваагүй дуудлага — нэрлэсэн жагсаалт ──
   const fups = pbxFollowups(state.pbxLog || [], { from: addDays(todayStr(), -days) });
   const fupHtml = !fups.length ? '' : `
@@ -28068,6 +28138,7 @@ function renderAds() {
     ${budgetHtml}
     ${adviceHtml}
     ${callHtml}
+    ${convHtml}
     ${fupHtml}
     <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
     <div class="ads-list">${campRows}</div>

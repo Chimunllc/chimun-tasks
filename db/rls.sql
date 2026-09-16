@@ -70,7 +70,7 @@ insert into sec.role_presets (ord, pattern, views, actions) values
      '{orders,products,nomaad,reports,workload}',
      '{tasks.create,tasks.delete,orders.pay,orders.prepare,orders.clean,orders.dispatch,orders.deliver,orders.setup,orders.advance,orders.cancel,products.edit,nomaad.income}'),
  (5, 'нярав|агуулахын\s*ахлах|агуулахын\s*менежер',
-     '{orders,products}',
+     '{orders,products,hourly}',
      '{orders.prepare,orders.clean,orders.dispatch,products.edit}'),
  (6, 'агуулах',
      '{orders,products}',

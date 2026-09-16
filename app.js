@@ -11087,6 +11087,20 @@ function canSeeHourlyPayroll() {
   // Эрх удирдах самбар = эх сурвалж: CEO → роль тохиргоо → default(_hourlyDefaultFor).
   return canAccessView('hourly', () => _hourlyDefaultFor(findMember(state.me)) || isFinanceAccountant());
 }
+// Утас = дарж залгах холбоос. Утасгүй бол «—» (холбоосгүй).
+function hourlyTelHtml(phone) {
+  const t = String(phone || '').trim();
+  if (!t) return '📞 —';
+  return `📞 <a class="tel-link" href="tel:${escapeHtml(t.replace(/[^\d+]/g, ''))}">${escapeHtml(t)}</a>`;
+}
+/* Цагийн ажилтны МӨНГӨ (цалин, данс, шилжүүлэх товч) харах эрх — ЖАГСААЛТ харахаас
+   ТУСДАА. Нярав хүн дуудахын тулд нэр/утас/үнэлгээг хардаг ч хэн хэдэн төгрөг авсныг
+   харах ёсгүй.
+   ⛔ `can('salary.pay')`-ээр БҮҮ шалга — `can()` нь тохируулаагүй үед ЗӨВШӨӨРдөг тул
+      эрхийн загварт таараагүй ШИНЭ албан тушаал цалинг чимээгүй харна. */
+function canSeeHourlyMoney() {
+  return !!state.isCEO || canSeeSalary() || capValue('salary.pay') === true;
+}
 function hourlyWorkers() {
   // Бүх цагийн ажилтан — салбар/идэвхтэй эсэхээс үл хамаарна (ad-hoc дуудаж ажиллуулдаг).
   return (TEAM || []).filter(m => m.worker_type === 'daily');
@@ -12276,6 +12290,7 @@ function renderHourly() {
     return { ps, sum, count: ps.length, days, avgDaily, first: dates[0] || '', last, lastTs: last ? new Date(last).getTime() : 0 };
   };
   const stats = new Map(workers.map(m => [personKey(m), statOf(m)]));
+  const money = canSeeHourlyMoney();   // худал бол = зөвхөн дуудах жагсаалт (нэр/утас/үнэлгээ)
   const statusOf = (m) => hourlyStatusOf(stats.get(personKey(m)), m, nowTs);
   let totalPaid = 0;
   workers.forEach(m => { totalPaid += stats.get(personKey(m)).sum; });
@@ -12286,13 +12301,14 @@ function renderHourly() {
     const sum = st.sum;
     // Initials default; зураг ачаалагдвал дээр нь харагдана, алдвал (onerror) initials үлдэнэ.
     const avatar = `<span style="position:relative;width:42px;height:42px;border-radius:50%;background:var(--panel-hover);display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--muted);flex-shrink:0;overflow:hidden;">${escapeHtml(memberInitials(key))}${staffAvatarImg(m)}</span>`;
-    const bankLine = (m.bank || m.bank_account)
+    const bankLine = !money ? ''
+      : (m.bank || m.bank_account)
       ? `${escapeHtml(m.bank || '')}${m.bank_account ? ' · ' + escapeHtml(m.bank_account) : ''}`
       : (bankLineReason(false, staffSensitiveLoaded()) === 'missing'
           ? '<span style="color:var(--danger)">банк бүртгэгдээгүй</span>'
           : '<span style="color:var(--muted)">🔒 данс харагдахгүй (эрх)</span>');
     // Авсан нийт цалин + шилжүүлэг бүрийг (дүн · огноо) тусдаа мөрөөр доош
-    const paidLine = sum > 0
+    const paidLine = (money && sum > 0)
       ? `<div style="margin-top:4px;">
            <div style="font-size:12px;font-weight:600;color:var(--ok);">Авсан нийт: ${fmtMoney(sum)}</div>
            ${st.days > 0 ? `<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:1px;">📅 ${st.days} өдөр ажилласан · өдрийн дундаж <span style="color:var(--primary);">${fmtMoney(st.avgDaily)}</span></div>` : ''}
@@ -12321,7 +12337,7 @@ function renderHourly() {
         ${avatar}
         <div style="min-width:0;">
           <div><b>${escapeHtml(m.name || '')}</b> <span style="font-size:11px;color:var(--muted);">${escapeHtml(m.role || 'цагийн ажилтан')}</span>${badge}</div>
-          <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">📞 ${escapeHtml(m.phone || '-')} · ${bankLine}</div>
+          <div style="font-size:12px;color:var(--text-soft);margin-top:3px;">${hourlyTelHtml(m.phone)}${bankLine ? ' · ' + bankLine : ''}</div>
           ${spanLine}
           ${attWorkedLine(m)}
           ${ratingLine}
@@ -12330,7 +12346,7 @@ function renderHourly() {
         </div>
       </div>
       <div style="flex-shrink:0;display:flex;flex-direction:column;gap:6px;">
-        <button class="btn btn-primary" data-hourly-pay="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">Цалин шилжүүлэх</button>
+        ${money ? `<button class="btn btn-primary" data-hourly-pay="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">Цалин шилжүүлэх</button>` : ''}
         <button class="btn" data-hourly-rate="${escapeHtml(key)}" style="padding:5px 14px;font-size:12px;">★ Үнэлгээ өгөх</button>
       </div>
     </div>`;
@@ -12358,8 +12374,8 @@ function renderHourly() {
   workers.forEach(m => { const s = statusOf(m); if (s === 'new') newN++; else if (s === 'active') activeN++; });
   const inactiveN = workers.length - activeN - newN;
   const header = `<div style="margin-bottom:8px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--bg-soft,var(--card));">
-    <div style="font-size:13px;">Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ${workers.length} цагийн ажилтан${newN ? ` · <b style="color:var(--primary)">🆕 ${newN} шинэ</b>` : ''}${lensLabel ? ` <span style="font-size:11px;color:var(--primary);font-weight:600;">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px;">Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>.${lensLabel ? ' Толгойн салбар сонгогчоор өөрчилнө (🏢 Бүгд = бүх салбар).' : ' Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.'}</div>
+    <div style="font-size:13px;">${money ? `Нийт шилжүүлсэн: <b style="color:var(--ok)">${fmtMoney(totalPaid)}</b> · ` : ''}${workers.length} цагийн ажилтан${newN ? ` · <b style="color:var(--primary)">🆕 ${newN} шинэ</b>` : ''}${lensLabel ? ` <span style="font-size:11px;color:var(--primary);font-weight:600;">· ${lensLabel === 'NOMAAD' ? '🏔 NOMAAD' : '⛺ M-Event'} салбар</span>` : ''}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px;">${money ? `Эх үүсвэр: <b>${HOURLY_FUND_LABEL}</b>.` : 'Утас дээр дарж шууд залгана.'}${lensLabel ? ' Толгойн салбар сонгогчоор өөрчилнө (🏢 Бүгд = бүх салбар).' : (money ? ' Менежер өдрийн хөлс × хоногоор гараар оруулж шилжүүлнэ.' : '')}</div>
   </div>`;
   // Идэвхийн таб — идэвхтэй (шинэ ажилтныг ХАМРУУЛНА) / шинэ / идэвхгүй / бүгд
   const act = state.hourlyActivity || 'active';
@@ -12762,7 +12778,7 @@ const ROLE_PRESETS = [
   [/эвент/, { views: ['orders', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.clean', 'orders.advance'] }],
   [/менежер|manager/, { views: ['orders', 'products', 'nomaad', 'reports', 'workload'], actions: ['tasks.create', 'tasks.delete', 'orders.pay', 'orders.prepare', 'orders.clean', 'orders.dispatch', 'orders.deliver', 'orders.setup', 'orders.advance', 'orders.cancel', 'products.edit', 'nomaad.income'] }],
   // Агуулахын АХЛАХ / нярав — бараа засах эрхтэй (үнэ, өртөг, нөөц)
-  [/нярав|агуулахын\s*ахлах|агуулахын\s*менежер/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
+  [/нярав|агуулахын\s*ахлах|агуулахын\s*менежер/, { views: ['orders', 'products', 'hourly'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch', 'products.edit'] }],
   // Энгийн агуулахын ажилтан — бараагаа ХАРНА, засахгүй (үнэ/өртөг санхүүгийн мэдээлэл)
   [/агуулах/, { views: ['orders', 'products'], actions: ['orders.prepare', 'orders.clean', 'orders.dispatch'] }],
   [/цэвэрл/, { views: ['orders'], actions: ['orders.clean'] }],           // захиалга ХАРНА (том зураглал) + өөрийн шат (цэвэрлэх)

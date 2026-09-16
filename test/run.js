@@ -5863,6 +5863,54 @@ need(['orderCustType']);
      'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
 }
 
+// ── ЗАР & ҮР ДҮН (2026-09-16) ─────────────────────────────────────────────
+// Зөвлөгөөний хөдөлгүүр — дүрэм бүр БОДИТ алдаанаас гарсан (traffic зорилготой
+// зар 429мянга₮ дэмий, тайз/хөгжим 46сая₮ орлоготой атлаа 0₮ зартай).
+{
+  eq(F.adCatOf('Асар майхан'), 'asar', 'зар: асар таних');
+  eq(F.adCatOf('Mevent сандал ширээ'), 'furniture', 'зар: сандал/ширээ таних');
+  eq(F.adCatOf('Тайз карказ - 1метр'), 'stage', 'зар: тайз таних');
+  eq(F.adCatOf('Мэргэжилийн хөгжим array-line'), 'stage', 'зар: хөгжим таних');
+  eq(F.adCatOf('Аяны ор'), 'nomaad', 'зар: аяны ор → NOMAAD');
+  eq(F.adCatOf('Хиймэл зүлэг 100m2'), 'other', 'зар: танихгүй → бусад (таамаглахгүй)');
+
+  const rows = [
+    { day: '2026-09-10', campaign_id: 'c1', campaign_name: 'Асар майхан', spend_mnt: 300000, impressions: 5e4, clicks: 1500, messages: 30 },
+    { day: '2026-09-11', campaign_id: 'c1', campaign_name: 'Асар майхан', spend_mnt: 300000, impressions: 5e4, clicks: 1500, messages: 31 },
+    { day: '2026-09-11', campaign_id: 'c2', campaign_name: 'Mevent post', spend_mnt: 334000, impressions: 13e4, clicks: 4900, messages: 0 },
+    { day: '2026-01-01', campaign_id: 'c3', campaign_name: 'Хуучин зар', spend_mnt: 999999, impressions: 1, clicks: 1, messages: 0 },
+  ];
+  const camps = F.adCampaignStats(rows, '2026-09-01');
+  eq(camps.length, 2, 'зар: хугацаанаас гадуурх мөр орохгүй');
+  eq(camps[0].name, 'Асар майхан', 'зар: зарцуулалтаар эрэмбэлнэ');
+  eq(camps[0].mnt, 600000, 'зар: өдрүүд нэгтгэгдэнэ');
+  eq(camps[0].msg, 61, 'зар: чат нэгтгэгдэнэ');
+  eq(camps[0].perMsg, 9836, 'зар: 1 чатын өртөг');
+  eq(camps[1].perMsg, null, 'зар: чат 0 бол өртөг null (хуваахгүй)');
+
+  const orders = [
+    { status: 'rented', source: 'app', starts_at: '2026-09-05', items: [
+      { name: 'Тайз карказ - 1метр', qty: 10, price: 300000 },
+      { name: 'Эвхдэг Сандал (Цагаан)', qty: 100, price: 3000 } ] },
+    { status: 'draft', source: 'app', starts_at: '2026-09-06', items: [{ name: 'Асар 300мкв', qty: 1, price: 2e7 }] },
+    { status: 'rented', source: 'booqable', starts_at: '2026-09-06', items: [{ name: 'Асар 300мкв', qty: 1, price: 2e7 }] },
+  ];
+  const rev = F.adRevenueByCat(orders, '2026-09-01');
+  eq(rev.total, 3300000, 'зар: ноорог ба Booqable түүх борлуулалтад орохгүй');
+  eq(rev.by.stage.amt, 3000000, 'зар: тайзны борлуулалт');
+
+  const tips = F.adsAdvice(camps, rev);
+  ok(tips.some(t => t.kind === 'dead' && /Mevent post/.test(t.text)), 'зар: чат 0 кампанит ажлыг заана');
+  ok(tips.some(t => t.kind === 'gap' && /Тайз/.test(t.text)), 'зар: орлоготой атлаа зargүй ангиллыг заана');
+  ok(tips.every(t => t.sev >= 1 && t.sev <= 3), 'зар: зөвлөгөө бүр ноцтойн зэрэгтэй');
+  eq(F.adsAdvice([], { by: {}, total: 0 }).length, 0, 'зар: дата байхгүй бол зөвлөгөө үүсгэхгүй');
+  eq(F.adsAdvice(null, null).length, 0, 'зар: null → унахгүй');
+
+  // Бага зарцуулалтыг дүгнэхгүй (шуугиан) — 30,000₮-ийн доор
+  const tiny = F.adCampaignStats([{ day: '2026-09-11', campaign_id: 'x', campaign_name: 'Жижиг', spend_mnt: 5000, messages: 0 }], '2026-09-01');
+  eq(F.adsAdvice(tiny, { by: {}, total: 0 }).length, 0, 'зар: бага зарцуулалт анхааруулга үүсгэхгүй');
+}
+
 // ── ЛИД СУВАГ (маркетингийн атрибуци, 2026-09-16) ──────────────────────────
 // Маркетингийн төсөв энэ тоон дээр хуваарилагдана. Тэмдэглээгүйг ТААМАГЛАЖ
 // дүүргэвэл худал төсөв гарна — «мэдэхгүй» нь ил тоологдох ёстой.

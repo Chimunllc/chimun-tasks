@@ -4192,6 +4192,9 @@ function renderSidebar() {
   // Данс & Карт — зөвхөн CEO.
   const baNav = document.getElementById('nav-accounts');
   if (baNav) baNav.style.display = state.isCEO ? '' : 'none';
+  // Зар & үр дүн — FB зарцуулалт ↔ борлуулалт.
+  const adNav = document.getElementById('nav-ads');
+  if (adNav) adNav.style.display = canSeeAds() ? '' : 'none';
   // Маркетинг (постер үүсгэгч) — CEO/менежер.
   const mkNav = document.getElementById('nav-marketing');
   if (mkNav) mkNav.style.display = canSeeMarketing() ? '' : 'none';
@@ -4303,6 +4306,7 @@ function renderTitle() {
     ps_price:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M20.6 13.4L12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>', 'Түрээсийн үнэ', 'Бүх барааны түрээсийн үнэ, барьцаа, суурилуулалт'],
     ps_cost:   ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h5M9.5 14.5h5"/></svg>', 'Өртөг ба хөрөнгө', 'Нэгж өртөг, худалдан авсан огноо, нийлүүлэгч'],
     ps_stock:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 9l9-6 9 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>', 'Нөөц ба салбар', 'Салбар бүрийн тоо — нярав нэг дэлгэцээс шинэчилнэ'],
+    ads:       ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>', 'Зар & үр дүн', 'Facebook зарын зарцуулалт ба борлуулалтын тулгалт — аль зар үр дүнтэйг харуулна'],
     writeoff:  ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>', 'Акт', 'Түрээслэх боломжгүй болсон бараа — актлах, зарах. Зарсан орлого тусад нь бүртгэгдэнэ'],
     hourly:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', 'Цагийн цалин', 'Цагийн ажилчдын цалин — урьдчилгаа авч, ажил дуусахад шилжүүлнэ'],
     nomaad:    ['<svg class="lcd-icon" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>', 'NOMAAD захиалга', 'Батлагдсан гэрээ — Quote Items дэлгэрэнгүй, орлого гараар бүртгэх'],
@@ -4403,6 +4407,9 @@ function renderTaskList() {
     wrap.innerHTML = safeViewHtml(renderPurchases, 'Худалдан авалт');
     attachPurchasesHandlers();
     return;
+  } else if (state.view === 'ads') {
+    wrap.innerHTML = safeViewHtml(renderAds, 'Зар & үр дүн');
+    attachAdsHandlers();
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';
@@ -12722,6 +12729,7 @@ const PERM_MENUS = [
   { key: 'coosalary',   label: 'COO цалин',       actions: [] },   // үйл ажиллагааны захирлын ашгийн хувь — зөвхөн CEO+COO
   { key: 'history',    label: 'Түрээсийн түүх',  actions: [] },
   { key: 'marketing',   label: 'Постер & брэнд',       actions: [] },
+  { key: 'ads',         label: 'Зар & үр дүн',         actions: [] },   // FB зарцуулалт ↔ борлуулалт
   { key: 'vat',         label: 'НӨАТ тайлан',          actions: [] },
   { key: 'documents',   label: 'Баримт бичиг',         actions: [
       { key: 'documents.edit', label: 'Баримт нэмэх / устгах' } ] },
@@ -27622,6 +27630,234 @@ function _orderDays(o) {
 function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'draft' && st !== 'deleted' && st !== 'canceled' && st !== 'cancelled'; }
 // Захиалгын ЖИНХЭНЭ орлого — барьцаа (буцаадаг өр) ХАСНА. App/M-Event-д total_mnt-д барьцаа орсон
 // тул хасна; Booqable-д total_mnt = түрээс (барьцаа тусдаа) тул хасахгүй. Түрээс + хүргэлт + НӨАТ.
+// ── ЗАР & ҮР ДҮН (2026-09-16) ───────────────────────────────────────────────
+// Facebook-ийн зарцуулалт (`fb_ads_daily`, VPS cron өдөр бүр татна) ба захиалгын
+// борлуулалтыг НЭГ дэлгэцэд тулгана. Асуулт нь «хэдэн төгрөг зарцуулав» биш —
+// **«зөв зүйл рүү зарцуулж байна уу»**.
+// ⚠ Чат→захиалгын холбоос ОДООХОНДОО байхгүй (лид сувгийн дата хуримтлагдаж
+//   байна). Тиймээс ROI гэж бичихгүй — «1 чатын өртөг» л үнэн хэмжүүр.
+const AD_CATS = [
+  { k: 'asar', label: 'Асар / майхан', re: /асар|майхан|bell|tent|сүүдрэвч/i },
+  { k: 'furniture', label: 'Сандал / ширээ', re: /сандал|ширээ|chair|table/i },
+  { k: 'stage', label: 'Тайз / хөгжим / гэрэл', re: /тайз|хөгжим|гэрэл|дэлгэц|лэд|led|проектор|дуу/i },
+  { k: 'nomaad', label: 'NOMAAD (кемп)', re: /nomaad|номаад|кемп|camp|аяны ор|гэр\b/i },
+];
+// Зарын нэр эсвэл барааны нэр → ангилал. Танихгүй бол 'other' («бусад»).
+// ⚠ Дараалал ЧУХАЛ: «nomaad camp» нэрэнд «camp» ба «майхан» зэрэг таарч болно —
+//   эхлээд илүү тодорхой ангиллыг шалгана.
+function adCatOf(name) {
+  const s = String(name || '');
+  for (const c of AD_CATS) if (c.re.test(s)) return c.k;
+  return 'other';
+}
+function adCatLabel(k) { const c = AD_CATS.find(x => x.k === k); return c ? c.label : 'Бусад'; }
+
+// Кампанит ажил бүрийн нэгтгэл. Цэвэр функц — тестлэгдэнэ.
+function adCampaignStats(rows, fromDay) {
+  const by = {};
+  (rows || []).forEach(r => {
+    if (!r) return;
+    if (fromDay && String(r.day || '') < fromDay) return;
+    const id = String(r.campaign_id || r.ad_id || '');
+    const nm = String(r.campaign_name || r.ad_name || '—');
+    by[id] = by[id] || { id, name: nm, mnt: 0, imp: 0, clicks: 0, msg: 0, days: 0 };
+    const x = by[id];
+    x.mnt += Number(r.spend_mnt) || 0;
+    x.imp += Number(r.impressions) || 0;
+    x.clicks += Number(r.clicks) || 0;
+    x.msg += Number(r.messages) || 0;
+    x.days++;
+  });
+  return Object.values(by)
+    .map(x => Object.assign(x, {
+      cat: adCatOf(x.name),
+      perMsg: x.msg > 0 ? Math.round(x.mnt / x.msg) : null,
+    }))
+    .sort((a, b) => b.mnt - a.mnt);
+}
+
+// Ангиллаар зарцуулалт.
+function adSpendByCat(camps) {
+  const by = {};
+  (camps || []).forEach(c => {
+    by[c.cat] = by[c.cat] || { k: c.cat, mnt: 0, msg: 0 };
+    by[c.cat].mnt += c.mnt; by[c.cat].msg += c.msg;
+  });
+  return by;
+}
+
+// Захиалгын мөрөөс ангиллаар борлуулалт. `orderRevenue` ашиглахгүй — мөрийн
+// задаргаа хэрэгтэй тул мөрийн дүнгээр (барьцаа мөрд ордоггүй).
+function adRevenueByCat(orders, fromDay) {
+  const by = {}; let total = 0;
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    if (orderSourceKey(o) === 'booqable') return;              // гарсан систем
+    if (fromDay && String(o.starts_at || '').slice(0, 10) < fromDay) return;
+    (Array.isArray(o.items) ? o.items : []).forEach(it => {
+      const amt = (Number(it.qty) || 0) * (Number(it.price) || 0);
+      if (!amt) return;
+      const k = adCatOf(it.name);
+      by[k] = by[k] || { k, amt: 0, n: 0 };
+      by[k].amt += amt; by[k].n++;
+      total += amt;
+    });
+  });
+  return { by, total };
+}
+
+// ⭐ ЗӨВЛӨГӨӨНИЙ ХӨДӨЛГҮҮР. Дүрэм бүр БОДИТ алдаанаас гарсан:
+//   ① орлого ихтэй ангилалд зар огт байхгүй (тайз/хөгжим — 46сая₮, 0₮ зар)
+//   ② зарцуулсан атлаа чат ирээгүй (traffic зорилготой зар — 429мянга₮ дэмий)
+//   ③ 1 чатын өртөг хэт өндөр (дунджаас 2 дахин)
+//   ④ орлогын хувиас хамаагүй их зарцуулж буй ангилал
+// Цэвэр функц — DOM-гүй, тестлэгдэнэ.
+function adsAdvice(camps, rev, opts) {
+  const o = opts || {};
+  const minSpend = o.minSpend || 30000;       // үүнээс бага зарцуулалтыг дүгнэхгүй (шуугиан)
+  const out = [];
+  const spend = adSpendByCat(camps);
+  const totalSpend = (camps || []).reduce((s, c) => s + c.mnt, 0);
+
+  // ② Зарцуулсан атлаа чат 0
+  (camps || []).forEach(c => {
+    if (c.mnt >= minSpend && c.msg === 0) {
+      out.push({ kind: 'dead', sev: 1, camp: c.name, mnt: c.mnt,
+        text: `«${c.name}» — ${fmtMoney(c.mnt)} зарцуулаад чат 0. Зорилго нь буруу (Traffic/Views) байх магадлалтай — Messages болго эсвэл зогсоо.` });
+    }
+  });
+
+  // ③ 1 чатын өртөг хэт өндөр
+  const withMsg = (camps || []).filter(c => c.perMsg && c.mnt >= minSpend);
+  if (withMsg.length >= 2) {
+    const med = withMsg.map(c => c.perMsg).sort((a, b) => a - b)[Math.floor(withMsg.length / 2)];
+    withMsg.forEach(c => {
+      if (c.perMsg >= med * 2) {
+        out.push({ kind: 'pricey', sev: 2, camp: c.name, mnt: c.mnt,
+          text: `«${c.name}» — 1 чат ${fmtMoney(c.perMsg)}, бусад зарын дунджаас (${fmtMoney(med)}) 2 дахин үнэтэй. Зорилтот бүлэг эсвэл зургаа сольж үз.` });
+      }
+    });
+  }
+
+  // ① Орлоготой атлаа зар байхгүй ангилал
+  const rt = (rev && rev.total) || 0;
+  Object.values((rev && rev.by) || {}).forEach(r => {
+    if (r.k === 'other' || !rt) return;
+    const share = r.amt / rt;
+    const sp = (spend[r.k] || {}).mnt || 0;
+    if (share >= 0.08 && sp < minSpend) {
+      out.push({ kind: 'gap', sev: 1, cat: r.k, amt: r.amt,
+        text: `${adCatLabel(r.k)} — борлуулалтын ${Math.round(share * 100)}% (${fmtMoney(r.amt)}) атлаа зар бараг байхгүй. Хүмүүс өөрсдөө олж ирж байна; энд бүүст хийвэл өгөөж хамгийн өндөр.` });
+    }
+  });
+
+  // ④ Орлогын хувиас хамаагүй их зарцуулалт
+  if (rt && totalSpend) {
+    Object.values(spend).forEach(s => {
+      if (s.k === 'other' || s.mnt < minSpend) return;
+      const sShare = s.mnt / totalSpend;
+      const rShare = (((rev.by[s.k] || {}).amt) || 0) / rt;
+      if (sShare >= 0.25 && rShare > 0 && sShare >= rShare * 2) {
+        out.push({ kind: 'over', sev: 3, cat: s.k, mnt: s.mnt,
+          text: `${adCatLabel(s.k)} — зарын ${Math.round(sShare * 100)}%, борлуулалтын ${Math.round(rShare * 100)}%. Хэдэн долоо хоног зогсоож захиалга буурах эсэхийг хэмж: буурахгүй бол энэ мөнгө дэмий гарч байна.` });
+      }
+    });
+  }
+
+  return out.sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
+}
+
+// ── Зарын дата татах (fb_ads_daily) ─────────────────────────────────────────
+// anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
+async function loadFbAds(force) {
+  if (state.fbAds && !force) return state.fbAds;
+  try {
+    const from = addDays(todayStr(), -90);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/fb_ads_daily?select=*&day=gte.${from}&order=day.desc&limit=3000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.fbAds = await r.json();
+    return state.fbAds;
+  } catch (e) { dataLoadFailed('Зарын дата', e); state.fbAds = state.fbAds || []; return state.fbAds; }
+}
+
+function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
+
+function renderAds() {
+  const rows = state.fbAds || [];
+  const days = Number(state.adsDays) || 30;
+  const from = addDays(todayStr(), -days);
+  const camps = adCampaignStats(rows, from);
+  const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
+  const advice = adsAdvice(camps, rev);
+  const spend = adSpendByCat(camps);
+  const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
+  const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
+  const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
+
+  if (!rows.length) {
+    return `<div class="ads-empty">📣 <b>Зарын дата хараахан ирээгүй.</b>
+      <div>VPS дээрх татагч өдөр бүр 06:30-д ажиллана. Хэрэв 1 хоногоос удвал холболт тасарсан байж магадгүй.</div></div>`;
+  }
+
+  const period = `<div class="ads-tabs">${[7, 30, 90].map(d =>
+    `<button class="ads-tab${d === days ? ' on' : ''}" data-ads-days="${d}">${d} хоног</button>`).join('')}</div>`;
+
+  const kpi = `<div class="ads-kpis">
+    <div class="ads-kpi"><div class="ads-kpi-l">Зарцуулсан</div><div class="ads-kpi-v">${fmtMoney(totalSpend)}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Эхэлсэн чат</div><div class="ads-kpi-v">${totalMsg}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">1 чатын өртөг</div><div class="ads-kpi-v">${totalMsg ? fmtMoney(Math.round(totalSpend / totalMsg)) : '—'}</div></div>
+  </div>`;
+
+  const adviceHtml = advice.length ? `<div class="ads-advice">
+      <div class="ads-h">💡 Юу хийх вэ</div>
+      ${advice.map(a => `<div class="ads-tip ads-sev${a.sev}">${escapeHtml(a.text)}</div>`).join('')}
+    </div>` : `<div class="ads-advice"><div class="ads-h">💡 Юу хийх вэ</div>
+      <div class="ads-tip ads-sev3">Тодорхой зөрүү олдсонгүй — зарын хуваарилалт борлуулалттайгаа нийцэж байна.</div></div>`;
+
+  const campRows = camps.map(c => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(c.name)}</span>
+      <span class="ads-sp">${fmtMoney(c.mnt)}</span>
+      <span class="ads-ms">${c.msg} чат</span>
+      <b class="ads-pm${c.perMsg === null ? ' ads-bad' : ''}">${c.perMsg === null ? 'чат алга' : fmtMoney(c.perMsg)}</b>
+    </div>`).join('');
+
+  // Зарын хувь ↔ борлуулалтын хувь. Зөрүү нь ЯГ энд харагдана.
+  const cmpRows = AD_CATS.concat([{ k: 'other', label: 'Бусад' }]).map(c => {
+    const sp = (spend[c.k] || {}).mnt || 0;
+    const rv = ((rev.by[c.k] || {}).amt) || 0;
+    if (!sp && !rv) return '';
+    const sPct = totalSpend ? Math.round(sp * 100 / totalSpend) : 0;
+    const rPct = rev.total ? Math.round(rv * 100 / rev.total) : 0;
+    return `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(c.label)}</span>
+      <span class="ads-sp">зар ${sPct}%</span>
+      <span class="ads-ms">борлуулалт ${rPct}%</span>
+      <b class="ads-pm">${fmtMoney(rv)}</b>
+    </div>`;
+  }).join('');
+
+  const leadHtml = `<div class="ads-note">Захиалгын лид суваг: <b>${lead.coverage}%</b> тэмдэглэгдсэн${lead.unknown ? ` · ${lead.unknown} захиалга тэмдэглээгүй` : ''}.
+    ${lead.coverage < 80 ? 'Хамралт 80%-иас дээш болмогц Facebook-ийн чат → захиалга хүртэлх холбоос гарч ирнэ.' : 'Чат → захиалгын холбоос гаргахад хангалттай дата боллоо.'}</div>`;
+
+  return `<h2 class="view-title">📣 Зар & үр дүн</h2>
+    ${period}
+    ${kpi}
+    ${adviceHtml}
+    <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
+    <div class="ads-list">${campRows}</div>
+    <div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
+    <div class="ads-list">${cmpRows}</div>
+    ${leadHtml}`;
+}
+
+function attachAdsHandlers() {
+  document.querySelectorAll('[data-ads-days]').forEach(b => b.onclick = () => {
+    state.adsDays = Number(b.dataset.adsDays) || 30; render();
+  });
+}
+
 // ── ЛИД СУВАГ: харилцагч биднийг ХААНААС олсон (маркетингийн атрибуци, 2026-09-16) ──
 // ⚠ `source` (site/app/booqable) -ЭЭС ӨӨР тэнхлэг: тэр нь захиалга ХААНА бичигдснийг,
 // энэ нь харилцагч биднийг ХААНААС олсныг хэлнэ. Утсаар залгасан хүн source='app'
@@ -34524,6 +34760,9 @@ function refreshViewData() {
   if (v === 'customers' && canSeeCustomers()) {
     if (state.customers === undefined) loadCustomers().then(() => { if (state.view === 'customers') render(); });
     if (state.appOrders === undefined) { state.appOrders = []; setTimeout(() => loadAppOrders().then(() => { if (state.view === 'customers') render(); }), 0); }
+  }
+  if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
+    loadFbAds().then(() => { if (state.view === 'ads') render(); });
   }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

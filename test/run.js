@@ -6814,6 +6814,13 @@ need(['orderCustType']);
   // ⛔ НЭГ ЗАХИАЛГА = НЭГ PURCHASE. Давхардвал зарын үр дүн 2 дахин их харагдана.
   ok(/left join fb_capi_sent/.test(py) && /s\.order_id is null/.test(py),
      'scan: capi илгээсэн захиалгыг дахин илгээхгүй');
+  // ⛔ SQL-ийн ШҮҮЛТ нь `event_time`-тай ЯГ ИЖИЛ өдрөөр явна. `updated_at`-ыг
+  //    ч тооцвол 7-р сард төлөгдсөн атлаа саяхан хөндөгдсөн захиалга татагдаж,
+  //    бүгд «хэт хуучин» гэж хаягдана — `limit`-д хүрвэл ЖИНХЭНЭ шинэ
+  //    худалдан авалт шахагдаж гарна (амьд датаар 45 мөр ингэж татагдаж байв).
+  ok(!/greatest\(coalesce\(nullif\(o\.paid_date/.test(py)
+     && /and coalesce\(nullif\(o\.paid_date,''\)::date, o\.updated_at::date\) >= date/.test(py),
+     'scan: capi шүүлт event_time-тай ижил өдрөөр');
   // ⛔ Бүртгэл нь ИЛГЭЭГДСЭНИЙ ДАРАА — эс бөгөөс алдаа гарахад давхар явна.
   ok(py.indexOf('urlopen') < py.indexOf('insert into fb_capi_sent'),
      'scan: capi эхлээд илгээж, дараа нь бүртгэнэ');

@@ -181,6 +181,10 @@ def main():
     if not fx:
         raise SystemExit('fb.env-д FX_USD_MNT алга — дүн хөрвүүлэх боломжгүй')
 
+    # ⛔ ШҮҮЛТ нь `event_time`-ТАЙ ЯГ ИЖИЛ өдрөөр явна. Өмнө нь `updated_at`-ыг
+    #    ч тооцдог байсан тул 7-р сард төлөгдсөн атлаа саяхан хөндөгдсөн захиалга
+    #    45-аар татагдаж, бүгд «хэт хуучин» гэж хаягддаг байв — `limit`-д хүрвэл
+    #    ЖИНХЭНЭ шинэ худалдан авалт шахагдаж гарах эрсдэлтэй.
     since = (date.today() - timedelta(days=MAX_AGE_DAYS)).isoformat()
     rows = psql(f"""
         select o.id, coalesce(o.number,0), coalesce(o.customer,''), coalesce(o.phone,''),
@@ -193,8 +197,7 @@ def main():
            and coalesce(o.paid_mnt,0) > 0
            and coalesce(o.source,'') <> 'booqable'
            and coalesce(o.status,'') not in ('deleted','canceled','draft')
-           and greatest(coalesce(nullif(o.paid_date,'')::date, o.updated_at::date),
-                        o.updated_at::date) >= date {sq(since)}
+           and coalesce(nullif(o.paid_date,'')::date, o.updated_at::date) >= date {sq(since)}
          order by o.updated_at
          limit 200""")
 

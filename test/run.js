@@ -5937,6 +5937,31 @@ need(['orderCustType']);
   eq(F.adsAdvice([], { by: {}, total: 0 }).length, 0, 'зар: дата байхгүй бол зөвлөгөө үүсгэхгүй');
   eq(F.adsAdvice(null, null).length, 0, 'зар: null → унахгүй');
 
+  // ── Сарын төсөв ──
+  eq(F.adsBudgetState(null, '2026-09'), 'none', 'төсөв: тавиагүй');
+  eq(F.adsBudgetState({ mnt: 0, month: '2026-09', enabled: true }, '2026-09'), 'none', 'төсөв: 0 = тавиагүй');
+  eq(F.adsBudgetState({ mnt: 5e6, month: '2026-08', enabled: true }, '2026-09'), 'stale',
+     'төсөв: өмнөх сарын төсөв автоматаар үргэлжлэхгүй (сар бүр хүн шийднэ)');
+  eq(F.adsBudgetState({ mnt: 5e6, month: '2026-09', enabled: true }, '2026-09'), 'on', 'төсөв: идэвхтэй');
+  eq(F.adsBudgetState({ mnt: 5e6, month: '2026-09', enabled: false }, '2026-09'), 'off', 'төсөв: унтраалттай');
+
+  const p1 = F.adsBudgetPlan(5000000, 2000000, 10);
+  eq(p1.left, 3000000, 'төсөв: үлдэгдэл');
+  eq(p1.daily, 300000, 'төсөв: өдрийн хуваарилалт');
+  eq(p1.over, false, 'төсөв: хэтрээгүй');
+  const p2 = F.adsBudgetPlan(1000000, 1500000, 5);
+  eq(p2.left, 0, 'төсөв: хэтэрсэн ч сөрөг болохгүй');
+  eq(p2.over, true, 'төсөв: хэтэрсэн гэж тэмдэглэнэ');
+  eq(F.adsBudgetPlan(1000000, 0, 0).daily, 1000000, 'төсөв: 0 хоног → 1-ээр хуваана (тэгд хуваахгүй)');
+
+  eq(F.adsDaysLeft('2026-09-16'), 15, 'төсөв: 9 сарын 16-нд 15 хоног үлдсэн (өнөөдрийг оруулаад)');
+  eq(F.adsDaysLeft('2026-02-28'), 1, 'төсөв: сарын сүүлийн өдөр → 1');
+  eq(F.adsDaysLeft('2026-01-01'), 31, 'төсөв: сарын эхэнд бүтэн сар');
+
+  eq(F.adsSpentInMonth([{ day: '2026-09-01', spend_mnt: 100 }, { day: '2026-08-31', spend_mnt: 999 }], '2026-09'),
+     100, 'төсөв: зөвхөн тухайн сарын зарцуулалт');
+  eq(F.adsSpentInMonth(null, '2026-09'), 0, 'төсөв: дата байхгүй → 0');
+
   // Бага зарцуулалтыг дүгнэхгүй (шуугиан) — 30,000₮-ийн доор
   const tiny = F.adCampaignStats([{ day: '2026-09-11', campaign_id: 'x', campaign_name: 'Жижиг', spend_mnt: 5000, messages: 0 }], '2026-09-01');
   eq(F.adsAdvice(tiny, { by: {}, total: 0 }).length, 0, 'зар: бага зарцуулалт анхааруулга үүсгэхгүй');
@@ -5976,6 +6001,90 @@ need(['orderCustType']);
   eq(st.rows[0].avg, 750000, 'лид: дундаж дүн');
   eq(F.leadChannelStats([], 'cash').n, 0, 'лид: хоосон жагсаалт → 0 (унахгүй)');
   eq(F.leadChannelStats(null, 'cash').coverage, 0, 'лид: null → 0');
+}
+
+// ── УТАСНЫ ДУУДЛАГА (2026-09-16) ────────────────────────────────────────────
+// Unitel PBX-ийн CDR-ээс өдөр×цагаар татагдана. Гол занга: порталын «Answered»
+// статус нь PBX өөрөө авсныг хэлдэг — түүгээр хэмжвэл 99% гэсэн худал тоо гарна.
+// Тиймээс татагч ХҮН авсныг (`Callee Answer Second > 0`) л `answered` гэж бичнэ.
+{
+  const rows = [
+    { day: '2026-09-15', hour: 3, calls: 4, answered: 0, talk_sec: 0 },    // шөнө
+    { day: '2026-09-15', hour: 10, calls: 12, answered: 5, talk_sec: 600 },
+    { day: '2026-09-15', hour: 18, calls: 6, answered: 3, talk_sec: 300 }, // ажлын цагийн СҮҮЛЧ
+    { day: '2026-09-15', hour: 21, calls: 8, answered: 0, talk_sec: 0 },   // орой
+    { day: '2026-09-16', hour: 11, calls: 10, answered: 8, talk_sec: 900 },
+    { day: '2026-08-01', hour: 11, calls: 99, answered: 99, talk_sec: 1 }, // хугацаанаас гадуур
+  ];
+  const p = F.pbxStats(rows, '2026-09-01', 9, 18);
+  eq(p.calls, 40, 'дуудлага: нийт (хугацаанаас гадуурхыг хасна)');
+  eq(p.answered, 16, 'дуудлага: хүн авсан');
+  eq(p.missed, 24, 'дуудлага: алдсан');
+  eq(p.bizCalls, 28, 'дуудлага: ажлын цагаар ирсэн');
+  eq(p.bizAns, 16, 'дуудлага: ажлын цагаар авсан');
+  eq(p.offCalls, 12, 'дуудлага: ажлын цагийн гадна ирсэн');
+  eq(p.offMissed, 12, 'дуудлага: ажлын цагийн гадна алдсан');
+  eq(p.dayCount, 2, 'дуудлага: хоногийн тоо');
+  eq(p.perDay, 20, 'дуудлага: өдрийн дундаж');
+  eq(p.rate, 40, 'дуудлага: авсан хувь');
+  eq(p.bizRate, 57.1, 'дуудлага: ажлын цагийн авсан хувь');
+
+  // ⚠ Ажлын цагийн ТӨГСГӨЛИЙН цаг (18:00–18:59) нь ажлын цагт ОРНО — амьд датаар
+  // тэр цагт хүн утсаа авсаар байсан. `h < we` гэж бичвэл 23 дуудлага «оройн» болно.
+  eq(F.pbxStats([{ day: '2026-09-15', hour: 18, calls: 5, answered: 5 }], '', 9, 18).offCalls, 0,
+     'дуудлага: 18 цаг = ажлын цаг (төгсгөлийн цагийг хасахгүй)');
+  eq(F.pbxStats([{ day: '2026-09-15', hour: 19, calls: 5, answered: 0 }], '', 9, 18).offCalls, 5,
+     'дуудлага: 19 цаг = ажлын цагийн гадна');
+
+  eq(F.pbxStats([], '2026-09-01', 9, 18).calls, 0, 'дуудлага: хоосон → 0 (унахгүй)');
+  eq(F.pbxStats(null, '', 9, 18).rate, 0, 'дуудлага: null → 0');
+  eq(F.pbxStats([{ day: '2026-09-15', hour: 10, calls: 3, answered: 1 }], '').bizCalls, 3,
+     'дуудлага: ажлын цаг заагаагүй бол 9–18 өгөгдмөл');
+
+  // 1 дуудлагын өртөг — 0-д хуваахгүй.
+  eq(F.pbxCostPerCall(400000, 40), 10000, 'өртөг: зарцуулалт ÷ дуудлага');
+  eq(F.pbxCostPerCall(400000, 0), null, 'өртөг: дуудлага 0 бол null (∞ биш)');
+  eq(F.pbxCostPerCall(0, 40), 0, 'өртөг: зар 0 бол 0');
+
+  // Зөвлөгөө — алдсан дуудлага.
+  const tips = F.callAdvice(p, 9, 18);
+  ok(tips.some(t => t.kind === 'miss'), 'дуудлага: ажлын цагийн алдагдлыг сануулна');
+  ok(tips.some(t => t.kind === 'offhours'), 'дуудлага: оройн дуудлагыг сануулна');
+  eq(F.callAdvice(F.pbxStats([], ''), 9, 18).length, 0, 'дуудлага: дата байхгүй бол зөвлөгөө үүсгэхгүй');
+  eq(F.callAdvice(null).length, 0, 'дуудлага: null → унахгүй');
+  // Цөөн дуудлагаар дүгнэхгүй (шуугиан).
+  eq(F.callAdvice(F.pbxStats([{ day: '2026-09-15', hour: 10, calls: 6, answered: 0 }], ''), 9, 18).length, 0,
+     'дуудлага: цөөн дуудлагатай үед дүгнэхгүй');
+  // Сайн ажилласан сар — анхааруулга гарахгүй.
+  eq(F.callAdvice(F.pbxStats([{ day: '2026-09-15', hour: 10, calls: 40, answered: 36 }], ''), 9, 18).length, 0,
+     'дуудлага: 90% авсан бол анхааруулга алга');
+  // `adsAdvice`-тай ижил хэлбэр буцаана (нэг жагсаалтад нийлдэг).
+  ok(tips.every(t => t.kind && t.sev >= 1 && typeof t.text === 'string'),
+     'дуудлага: зөвлөгөө нь adsAdvice-тай ижил хэлбэртэй');
+}
+
+// scan: «Зар & үр дүн» дэлгэц дуудлагын тоог ДОТРОО дахин бодохгүй.
+// Ажлын цагийг хатуу бичвэл тариф өөрчлөгдөхөд дэлгэц хуучин цагаар тоолсоор байна.
+{
+  const i = src.indexOf('function renderAds(');
+  const fn = src.slice(i, src.indexOf('\nfunction attachAdsHandlers(', i));
+  ok(i > 0 && fn.length > 1000, 'scan: renderAds-ийн бие зүсэгдэв');
+  ok(/pbxStats\(/.test(fn), 'scan: renderAds нь pbxStats ашиглана');
+  ok(/tariffWorkStart\(\)/.test(fn) && /tariffWorkEnd\(\)/.test(fn),
+     'scan: ажлын цаг тарифын тохиргооноос ирнэ');
+  ok(!/\b(?:hour|h)\s*[<>]=?\s*(?:9|18)\b/.test(fn), 'scan: ажлын цагийг хатуу бичихгүй');
+  ok(/callAdvice\(/.test(fn), 'scan: дуудлагын зөвлөгөө нэг жагсаалтад нийлнэ');
+}
+
+// scan: дуудлагын татагч «хүн авсан»-г Callee Answer Second-оор л тоолно.
+// Порталын Call Status = «Answered» нь PBX өөрөө авсныг хэлдэг (амьд датаар
+// 8 сард 649 дуудлагын 645 нь «Answered» атлаа хүн ердөө 221-г нь авсан).
+{
+  const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'pbx_pull.py'), 'utf8');
+  ok(/Callee Answer Second/.test(py), 'scan: татагч Callee Answer Second-ыг уншина');
+  ok(!/Call Status/.test(py), 'scan: татагч Call Status-аар хариулсныг тоолохгүй');
+  ok(/die\(/.test(py) && /if not agg:/.test(py), 'scan: хоосон үр дүнг чимээгүй 0 гэж бичихгүй');
+  ok(!/PBX_PASS\s*=\s*['"]/.test(py), 'scan: нууц үг скриптэд хатуу бичигдээгүй');
 }
 
 // ── УРЬДЧИЛАН ЗАХИАЛАХ ХУГАЦАА (2026-09-10) ────────────────────────────────

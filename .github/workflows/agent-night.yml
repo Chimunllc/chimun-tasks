@@ -84,17 +84,23 @@ jobs:
           node tools/debt-check.js || true
           echo '--- санал ---'
           node tools/debt-check.js --suggest
-          # ⚠ Нэрийг гаралтын мөрөөс sed/awk-аар БҮҮ ав — `--suggest-target` нь
-          # ЗӨВХӨН нэрийг хэвлэдэг тогтсон гэрээ. Формат өөрчлөгдөхөд эвдэрхгүй.
-          TARGET=$(node tools/debt-check.js --suggest-target)
-          if [ -z "$TARGET" ]; then
+          # ⚠ Нэрийг гаралтын мөрөөс sed/awk-аар БҮҮ ав — `--suggest-json` нь
+          # тогтсон гэрээ. Формат өөрчлөгдөхөд эвдэрхгүй.
+          # ⚠ Нэр дангаараа хүрэлцэхгүй: churn эрэмбэ нь `v`, `row` гэх мэт
+          # 1-2 үсэгтэй дотоод функцүүдийг дээш гаргадаг тул МӨРИЙН ДУГААР
+          # заавал агентад хүрнэ — эс бөгөөс буруу газар зална.
+          JSON=$(node tools/debt-check.js --suggest-json)
+          if [ -z "$JSON" ]; then
             echo "::notice::Хүрээнд ажил байхгүй — өнөө шөнө агент ажиллахгүй."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          TARGET=$(echo "$JSON" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).fn))')
+          LINE=$(echo "$JSON"   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).line))')
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "Өнөөдрийн бай: $TARGET"
+          echo "line=$LINE" >> "$GITHUB_OUTPUT"
+          echo "Өнөөдрийн бай: $TARGET (app.js:$LINE)"
           # Өмнөх тоог ХАДГАЛНА — PR-ын бичвэрийг агентын үгээр биш, бодит
           # зөрүүгээр бичнэ (модель өөрийгөө магтаж болно, тоо магтдаггүй).
           node tools/debt-check.js --json > /tmp/debt-before.json
@@ -126,9 +132,16 @@ jobs:
             ӨНӨӨДРИЙН ЦОРЫН ГАНЦ АЖИЛ: `${{ steps.task.outputs.target }}` функцийн
             inline `style="..."` -уудыг `styles.css`-ийн класс болгож хөрвүүл.
 
+            **Эхлэх цэг: `app.js`, ${{ steps.task.outputs.line }}-р мөр** — энэ бол
+            тэр функцийн АНХНЫ зөрчсөн мөр (функц өөрөө үүнээс дээр эхэлж болно).
+
+            ⚠ Функцийг НЭРЭЭР бүү хай — нэр нь `v`, `row`, `fname` гэх мэт богино
+            байж олон таарц гарна. Мөрийн дугаараар ор, дээш уншиж функцийн
+            зааг хаана байгааг тогтоо, дараа нь түүний БҮХ inline style-ыг хий.
+
             ДАРААЛАЛ:
             1. `node tools/debt-check.js --suggest` ажиллуулж байг хараарай.
-            2. Тэр функцийг `app.js`-ээс ол. Inline style-уудыг уншиж, ДАВТАГДАЖ
+            2. Тэр мөрөөс функцийг унш. Inline style-уудыг уншиж, ДАВТАГДАЖ
                байгаа хэв маягийг класс болго (нэг style = нэг класс гэж бүү бод).
             3. Шинэ класс бүрийг `styles.css`-д нэм. Өнгө/зай/фонтыг ЗӨВХӨН
                токеноор (`var(--text)`, `var(--space-3)`, `var(--fs-md)`).

@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# Unitel PBX (pbxuc.unitel.mn) — дуудлагын тоог татаж `pbx_calls_hourly` руу бичнэ.
+# Cron-оос өдөр бүр ажиллана.
+#
+# ⚠ Unitel-д API БАЙХГҮЙ. Портал нь Yii (PHP) веб апп тул энэ скрипт нэвтэрч
+#   «Call Details» хуудсыг уншина. Дараах зүйл эвдэрвэл АЛДАА гарган зогсоно
+#   (чимээгүй 0 бичихгүй): нэвтрэлт амжилтгүй · хүснэгт олдохгүй · багана дутуу.
+#
+# ⛔ Нэвтрэх нэр/нууц үг зөвхөн VPS дээрх `pbx.env`-д (chmod 600). Репод БАЙХГҮЙ.
+# ⛔ Нэг л удаа нэвтэрнэ, амжилтгүй бол ДАХИН ОРОЛДОХГҮЙ — портал хэрэглэгчийг
+#   түгждэг (dashboard дээр «Locked User» тоолуур бий).
+import http.cookiejar
+import os
+import subprocess
+import sys
+import urllib.parse
+import urllib.request
+from datetime import date, timedelta
+from html.parser import HTMLParser
+
+ENV = os.environ.get('PBX_ENV', '/opt/chimun/marketing/pbx.env')
+cfg = {}
+with open(ENV) as f:
+    for line in f:
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            k, v = line.split('=', 1)
+            cfg[k.strip()] = v.strip()
+
+BASE = cfg.get('PBX_URL', 'https://pbxuc.unitel.mn').rstrip('/')
+USER = cfg['PBX_USER']
+PASS = cfg['PBX_PASS']
+TENANT = cfg.get('PBX_TENANT', '0')
+DAYS = int(cfg.get('PBX_DAYS', '7'))
+CONTAINER = cfg.get('PG_CONTAINER', 'vps-deploy-postgres-1')
+
+CDR = f'{BASE}/index.php/{TENANT}/tenant/callRecordBillingTenant/admin'
+LOGIN = f'{BASE}/index.php/site/login'
+
+opener = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+opener.addheaders = [('User-Agent', 'chimun-pbx-pull/1')]
+
+
+def get(url, data=None):
+    body = urllib.parse.urlencode(data).encode() if data else None
+    with opener.open(url, body, timeout=90) as r:
+        return r.read().decode('utf-8', 'replace')
+
+
+class Grid(HTMLParser):
+    """Эхний <table>-ийн мөр/нүдийг цуглуулна (grid-ийн эхлэлээс хойш тэжээнэ)."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.depth, self.rows, self.cur, self.cell, self.done = 0, [], None, None, False
+
+    def handle_starttag(self, tag, attrs):
+        if self.done:
+            return
+        if tag == 'table':
+            self.depth += 1
+        elif tag == 'tr' and self.depth:
+            self.cur = []
+        elif tag in ('td', 'th') and self.cur is not None:
+            self.cell = []
+
+    def handle_endtag(self, tag):
+        if self.done:
+            return
+        if tag in ('td', 'th') and self.cell is not None:
+            self.cur.append(' '.join(''.join(self.cell).split()))
+            self.cell = None
+        elif tag == 'tr' and self.cur is not None:
+            self.rows.append(self.cur)
+            self.cur = None
+        elif tag == 'table':
+            self.depth -= 1
+            if self.depth <= 0:
+                self.done = True
+
+    def handle_data(self, d):
+        if self.cell is not None:
+            self.cell.append(d)
+
+
+def die(msg):
+    sys.stderr.write('pbx_pull: ' + msg + '\n')
+    sys.exit(2)
+
+
+# ── Нэвтрэх ───────────────────────────────────────────────────────────────────
+get(LOGIN)                                    # сессийн cookie авах
+get(LOGIN, {
+    'LoginForm[acc_type]': 'ADMIN_LOGIN',
+    'LoginForm[username]': USER,
+    'LoginForm[password]': PASS,
+    'LoginForm[reseller_id]': '0',
+    'LoginForm[applyCaptcha]': '0',
+    'yt0': 'Login',
+})
+
+# ── CDR татах ─────────────────────────────────────────────────────────────────
+end_d = date.today()
+start_d = end_d - timedelta(days=DAYS - 1)
+q = urllib.parse.urlencode({
+    'pageSize': '2000',
+    'CallRecordBillingTenant[start]': start_d.strftime('%m-%d-%Y') + ' 00:00:00',
+    'CallRecordBillingTenant[end]': end_d.strftime('%m-%d-%Y') + ' 23:59:59',
+})
+html = get(f'{CDR}?{q}')
+
+if 'LoginForm[password]' in html:
+    die('нэвтэрч чадсангүй (нэр/нууц үг буруу, эсвэл хэрэглэгч түгжигдсэн). ДАХИН оролдохгүй.')
+
+i = html.find('call-record-billing-tenant-grid')
+if i < 0:
+    die('CDR хүснэгт олдсонгүй — Unitel портал өөрчлөгдсөн байж магадгүй.')
+
+g = Grid()
+g.feed(html[i:])
+head = next((r for r in g.rows if 'Call ID' in r), None)
+if not head:
+    die('хүснэгтийн толгой олдсонгүй — багана нуугдсан байж магадгүй («Manage Column»).')
+
+col = {name: n for n, name in enumerate(head)}
+NEED = ('Start Time', 'Callee Answer Second')
+for c in NEED:
+    if c not in col:
+        die(f'«{c}» багана алга. Порталын «Manage Column»-оос буцааж асаана уу.')
+
+# ── Өдөр × цагаар нэгтгэх ────────────────────────────────────────────────────
+agg = {}
+bad = 0
+for r in g.rows:
+    if len(r) < len(head) or r is head:
+        continue
+    ts = r[col['Start Time']]                 # MM-DD-YYYY HH:MM:SS
+    if len(ts) < 19 or ts[:2] == '00':
+        continue
+    try:
+        day = f'{ts[6:10]}-{ts[0:2]}-{ts[3:5]}'
+        hour = int(ts[11:13])
+        ans = int(r[col['Callee Answer Second']] or 0)
+    except ValueError:
+        bad += 1
+        continue
+    a = agg.setdefault((day, hour), [0, 0, 0])
+    a[0] += 1                                  # ирсэн
+    if ans > 0:                                # ХҮН авсан (PBX биш)
+        a[1] += 1
+        a[2] += ans
+
+if not agg:
+    die('дуудлага олдсонгүй. Хоосон гэж бичихгүй — эвдэрсэн эсэхийг шалгана уу.')
+
+# ── Бичих: тухайн хугацааны мөрийг устгаад шинээр (idempotent) ───────────────
+vals = ',\n  '.join(
+    f"('{d}',{h},{v[0]},{v[1]},{v[2]},now())" for (d, h), v in sorted(agg.items()))
+SQL = f"""
+begin;
+delete from pbx_calls_hourly where day between '{start_d}' and '{end_d}';
+insert into pbx_calls_hourly (day, hour, calls, answered, talk_sec, fetched_at) values
+  {vals};
+commit;
+"""
+
+p = subprocess.run(['docker', 'exec', '-i', CONTAINER,
+                    'psql', '-U', 'chimun', '-d', 'chimun', '-v', 'ON_ERROR_STOP=1'],
+                   input=SQL, text=True, capture_output=True)
+sys.stdout.write(p.stdout)
+sys.stderr.write(p.stderr)
+calls = sum(v[0] for v in agg.values())
+ans = sum(v[1] for v in agg.values())
+print(f'pbx_pull: {start_d}…{end_d} · {calls} дуудлага ({ans} хүн авсан) · {len(agg)} мөр'
+      + (f' · {bad} мөр уншигдсангүй' if bad else ''))
+sys.exit(p.returncode)

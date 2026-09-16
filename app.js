@@ -28001,6 +28001,35 @@ function callConvAdvice(conv) {
     text: `${conv.missed.callers} хүн ${PBX_WAIT_SEC} секундээс удаан хүлээгээд хэн ч утсаа аваагүй. Ярьж чадсан хүмүүсийн ${conv.talked.rate}% нь захиалга өгдөг (дунджаар ${fmtMoney(conv.avgOrder)}) тул эдгээр нь ойролцоогоор ${fmtMoney(conv.lost)}-ийн боломж. Утас авах нь зар нэмэхээс хямд.` }];
 }
 
+// ── АЖИЛТНААР ДУУДЛАГА (2026-09-16) ─────────────────────────────────────────
+// Ring group нь дуудлагыг хоёр гар утас руу үсэргэдэг. CDR-ийн `fwd` талбар нь
+// ЯГ АЛЬ дугаар руу очсоныг хэлнэ — түүгээр ажилтан бүрийн авсан дуудлагыг тоолно.
+// ⚠ ДОТООД дугаар (3-5 орон, жишээ 4001/4008) нь PBX-ийн өөрийн шат — тэнд
+//   «авсан» гэж тоологдохгүй тул ХАСНА, эс бөгөөс хүн аваагүй дуудлага
+//   ажилтны нэр дээр бичигдэнэ.
+// ⚠ Дугаар → ажилтан нь `findMember` (personKey = утас) -ээр тулгагдана.
+//   Танихгүй дугаар «—» гэж ил гарна, ТААМАГЛАХГҮЙ.
+function pbxByAgent(calls, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const by = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const f = String(c.fwd || '').replace(/\D/g, '');
+    if (f.length < 6) return;                       // дотоод дугаар — ажилтан биш
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const x = by[f] || (by[f] = { phone: f, calls: 0, answered: 0, talk: 0 });
+    x.calls++;
+    const a = Number(c.answer_sec) || 0;
+    if (a > 0) { x.answered++; x.talk += a; }
+  });
+  return Object.values(by).map(x => Object.assign(x, {
+    rate: x.calls ? Math.round(x.answered * 1000 / x.calls) / 10 : 0,
+    avg: x.answered ? Math.round(x.talk / x.answered) : 0,
+  })).sort((a, b) => b.answered - a.answered);
+}
+
 // Дугаараар харилцагч олох — `custPhoneKey`-ээр нормчилж тулгана (нэг дугаар
 // 976/0 угтвартай ч, хоосон зайтай ч байж болно).
 function pbxCustomerOf(peer, customers) {
@@ -28014,7 +28043,7 @@ async function loadPbxLog(force) {
   try {
     const from = addDays(todayStr(), -21);
     const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,answer_sec,call_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
+      `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,fwd,answer_sec,call_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.pbxLog = await r.json();
@@ -28242,6 +28271,21 @@ function renderAds() {
     </div>`;
 
   // ── Дуудлага → захиалга ──
+  // ── Ажилтнаар — хэн хэдэн дуудлага авав ──
+  const agents = pbxByAgent(state.pbxLog || [], { from });
+  const agentHtml = !agents.length ? '' : `
+    <div class="ads-sec">👤 Ажилтнаар — дуудлага <span class="ads-sub">(${days} хоног)</span></div>
+    <div class="ads-list">${agents.map(a => {
+      const m = findMember(a.phone);
+      return `<div class="ads-row">
+        <span class="ads-nm">${escapeHtml(m ? (m.name || a.phone) : a.phone)}${m ? '' : ' <span class="ads-sub">— ажилтан танигдсангүй</span>'}</span>
+        <span class="ads-sp">${a.answered} авсан</span>
+        <span class="ads-ms">${Math.round(a.talk / 60)} мин · дундаж ${a.avg} сек</span>
+        <b class="ads-pm">${a.rate}%</b>
+      </div>`;
+    }).join('')}</div>
+    <div class="ads-note">Дуудлага ring group-оор хоёр дугаар руу үсэрдэг — аль дугаар авсныг PBX бичдэг. Хувь нь «тухайн дугаар руу очсоны хэд нь яригдсан».</div>`;
+
   const convHtml = !(conv.talked.callers + conv.missed.callers) ? '' : `
     <div class="ads-sec">☎️ Дуудлага → захиалга <span class="ads-sub">(${days} хоног)</span></div>
     <div class="ads-list">
@@ -28280,6 +28324,7 @@ function renderAds() {
     ${actHtml}
     ${callHtml}
     ${convHtml}
+    ${agentHtml}
     ${fupHtml}
     <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
     <div class="ads-list">${campRows}</div>

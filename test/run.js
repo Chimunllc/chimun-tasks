@@ -6021,6 +6021,24 @@ need(['orderCustType']);
   eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
   eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
 
+  // ── Ажилтнаар дуудлага ──
+  const ag = F.pbxByAgent([
+    { direction: 'in', fwd: '86042460', answer_sec: 30, started_at: '2026-09-15T02:00:00+00' },
+    { direction: 'in', fwd: '86042460', answer_sec: 60, started_at: '2026-09-15T03:00:00+00' },
+    { direction: 'in', fwd: '86042460', answer_sec: 0, started_at: '2026-09-15T04:00:00+00' },
+    { direction: 'in', fwd: '86657676', answer_sec: 45, started_at: '2026-09-15T05:00:00+00' },
+    { direction: 'in', fwd: '4001', answer_sec: 0, started_at: '2026-09-15T06:00:00+00' },
+    { direction: 'out', fwd: '86042460', answer_sec: 99, started_at: '2026-09-15T07:00:00+00' },
+  ]);
+  eq(ag.length, 2, 'ажилтан: дотоод дугаар (4001) ажилтан гэж тоологдохгүй');
+  eq(ag[0].phone, '86042460', 'ажилтан: авсан дуудлагаар эрэмбэлнэ');
+  eq(ag[0].answered, 2, 'ажилтан: авсан дуудлагын тоо');
+  eq(ag[0].calls, 3, 'ажилтан: очсон дуудлагын тоо');
+  eq(ag[0].rate, 66.7, 'ажилтан: авсан хувь');
+  eq(ag[0].avg, 45, 'ажилтан: дундаж яриа (секунд)');
+  eq(ag[0].talk, 90, 'ажилтан: нийт яриа');
+  eq(F.pbxByAgent(null).length, 0, 'ажилтан: дата байхгүй → хоосон (унахгүй)');
+
   const cus = [{ id: 1, name: 'Болд', phone: '976-8844-6914' }];
   eq((F.pbxCustomerOf('88446914', cus) || {}).name, 'Болд', 'дуудлага: 976 угтвартай дугаар тулгагдана');
   eq(F.pbxCustomerOf('99998888', cus), null, 'дуудлага: шинэ дугаар → харилцагч алга');

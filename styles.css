@@ -4814,7 +4814,7 @@ body.role-daily #add-project { display: none !important; }
 .ads-pm { font-size: var(--fs-md); }
 .ads-bad { color: var(--danger); }
 .ads-note { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; }
-@media (max-width: 560px) {
+@media (max-width: 620px) {
   .ads-row { grid-template-columns: 1fr auto; row-gap: 2px; }
   .ads-sp, .ads-ms { font-size: var(--fs-xs); }
 }

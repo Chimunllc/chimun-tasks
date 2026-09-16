@@ -5975,6 +5975,31 @@ need(['orderCustType']);
        'эрх: төсвийн товч adsBudgetEditable()-гүйгээр гарахгүй');
   }
 
+  // ── Хариу аваагүй дуудлага ──
+  const cl = [
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00+00', answer_sec: 0 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00+00', answer_sec: 0 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00+00', answer_sec: 0 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00+00', answer_sec: 27 },
+    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00+00', answer_sec: 0 },
+    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00+00', answer_sec: 0 },
+  ];
+  const fu = F.pbxFollowups(cl);
+  eq(fu.length, 1, 'дуудлага: нэг ч удаа яриагүй дугаар л үлдэнэ');
+  eq(fu[0].peer, '88446914', 'дуудлага: хариу аваагүй дугаар');
+  eq(fu[0].tries, 2, 'дуудлага: оролдлогын тоо нэгтгэгдэнэ');
+  ok(!fu.some(x => x.peer === '99112233'), 'дуудлага: дараа нь ярьсан бол жагсаалтаас гарна');
+  ok(!fu.some(x => x.peer === '4001'), 'дуудлага: дотоод богино дугаар орохгүй');
+  ok(!fu.some(x => x.peer === '95000000'), 'дуудлага: ГАРСАН дуудлага орохгүй');
+  eq(F.pbxFollowups(cl, { from: '2026-09-15' }).length, 1, 'дуудлага: хугацаагаар шүүнэ');
+  eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
+  eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
+
+  const cus = [{ id: 1, name: 'Болд', phone: '976-8844-6914' }];
+  eq((F.pbxCustomerOf('88446914', cus) || {}).name, 'Болд', 'дуудлага: 976 угтвартай дугаар тулгагдана');
+  eq(F.pbxCustomerOf('99998888', cus), null, 'дуудлага: шинэ дугаар → харилцагч алга');
+  eq(F.pbxCustomerOf('', cus), null, 'дуудлага: хоосон дугаар → null');
+
   // Бага зарцуулалтыг дүгнэхгүй (шуугиан) — 30,000₮-ийн доор
   const tiny = F.adCampaignStats([{ day: '2026-09-11', campaign_id: 'x', campaign_name: 'Жижиг', spend_mnt: 5000, messages: 0 }], '2026-09-01');
   eq(F.adsAdvice(tiny, { by: {}, total: 0 }).length, 0, 'зар: бага зарцуулалт анхааруулга үүсгэхгүй');

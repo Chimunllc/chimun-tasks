@@ -134,13 +134,30 @@ if not head:
     die('хүснэгтийн толгой олдсонгүй — багана нуугдсан байж магадгүй («Manage Column»).')
 
 col = {name: n for n, name in enumerate(head)}
-NEED = ('Start Time', 'Callee Answer Second')
+NEED = ('Start Time', 'Callee Answer Second', 'Call ID', 'Caller', 'Callee')
 for c in NEED:
     if c not in col:
         die(f'«{c}» багана алга. Порталын «Manage Column»-оос буцааж асаана уу.')
 
+# ── Дуудлага бүрийн мөр ─────────────────────────────────────────────────────
+# Порталын «Call Direction» багана ХООСОН ирдэг (амьд датаар батлав) тул
+# чиглэлийг дугаарын уртаар тодорхойлно: дотоод дугаар = 3-5 орон.
+def _is_ext(n):
+    s = ''.join(ch for ch in str(n or '') if ch.isdigit())
+    return 1 <= len(s) <= 5
+
+
+def _digits(n):
+    return ''.join(ch for ch in str(n or '') if ch.isdigit())
+
+
+def _sq(v):
+    return "null" if v in (None, '') else "'" + str(v).replace("'", "''") + "'"
+
+
 # ── Өдөр × цагаар нэгтгэх ────────────────────────────────────────────────────
 agg = {}
+rows_raw = []
 bad = 0
 for r in g.rows:
     if len(r) < len(head) or r is head:
@@ -161,17 +178,49 @@ for r in g.rows:
         a[1] += 1
         a[2] += ans
 
+    cid = _digits(r[col['Call ID']])
+    if not cid:
+        continue
+    caller, callee = r[col['Caller']], r[col['Callee']]
+    if _is_ext(caller) and _is_ext(callee):
+        direc, peer, ext = 'internal', '', _digits(caller)
+    elif _is_ext(callee):
+        direc, peer, ext = 'in', _digits(caller), _digits(callee)
+    else:
+        direc, peer, ext = 'out', _digits(callee), _digits(caller)
+    rows_raw.append((cid, f'{day} {ts[11:19]}+08', direc, peer, ext,
+                     _digits(r[col['Forward']]) if 'Forward' in col else '',
+                     ans,
+                     int(r[col['Call Second']] or 0) if 'Call Second' in col else 0))
+
 if not agg:
     die('дуудлага олдсонгүй. Хоосон гэж бичихгүй — эвдэрсэн эсэхийг шалгана уу.')
 
 # ── Бичих: тухайн хугацааны мөрийг устгаад шинээр (idempotent) ───────────────
 vals = ',\n  '.join(
     f"('{d}',{h},{v[0]},{v[1]},{v[2]},now())" for (d, h), v in sorted(agg.items()))
+# Дуудлага бүрийн мөр — call_id-аар ОРЛУУЛНА (Unitel хожим залруулж болно).
+raw_sql = ''
+if rows_raw:
+    rv = ',\n  '.join(
+        f"({_sq(c[0])},{_sq(c[1])}::timestamptz,{_sq(c[2])},{_sq(c[3])},{_sq(c[4])},"
+        f"{_sq(c[5])},{c[6]},{c[7]},now())" for c in rows_raw)
+    raw_sql = f"""
+insert into pbx_calls (call_id, started_at, direction, peer, ext, fwd,
+                       answer_sec, call_sec, fetched_at) values
+  {rv}
+on conflict (call_id) do update set
+  started_at = excluded.started_at, direction = excluded.direction,
+  peer = excluded.peer, ext = excluded.ext, fwd = excluded.fwd,
+  answer_sec = excluded.answer_sec, call_sec = excluded.call_sec, fetched_at = now();
+"""
+
 SQL = f"""
 begin;
 delete from pbx_calls_hourly where day between '{start_d}' and '{end_d}';
 insert into pbx_calls_hourly (day, hour, calls, answered, talk_sec, fetched_at) values
   {vals};
+{raw_sql}
 commit;
 """
 

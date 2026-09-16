@@ -7297,3 +7297,8 @@ select.no-asar-len {
   font-size: var(--fs-xs); color: var(--muted); }
 .mc-tag.mc-warm { color: var(--ok); border-color: var(--ok); }
 .ads-kpi-s { font-size: var(--fs-xs); color: var(--muted); margin-top: 1px; }
+.mc-sorts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+.mc-chip { padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--panel); color: var(--muted); font-size: var(--fs-xs); cursor: pointer; }
+.mc-chip.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.mc-why { color: var(--ok); font-weight: 700; }

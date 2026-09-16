@@ -20904,6 +20904,23 @@ function openCustomerCard(id) {
   const hist = mine.slice().sort((a, b) => String(b.starts_at || '').localeCompare(String(a.starts_at || '')));
   const s = id ? (custStats(mine, finBasis()).get(id) || { orders: 0, revenue: 0, owed: 0 }) : null;
 
+  // ── Дуудлагын түүх (сүүлийн 90 хоног, PBX-ийн хадгалах хугацаа) ──
+  const cs = c ? custCallStats(state.pbxLog || [], c.phone) : null;
+  const callBlock = !(cs && cs.total) ? (c && state.pbxLog === null
+    ? '<div class="cu-hist-h">Дуудлагын түүх <span class="cu-dim">ачаалж байна…</span></div>' : '')
+    : `<div class="cu-hist-h">Дуудлагын түүх <span class="cu-dim">(90 хоног)</span></div>
+      <div class="cu-calls">
+        <span class="cu-cs">${cs.total} дуудлага</span>
+        <span class="cu-cs">${cs.answered} ярьсан</span>
+        ${cs.missed ? `<span class="cu-cs cu-miss">${cs.missed} аваагүй</span>` : ''}
+        ${cs.talkSec ? `<span class="cu-cs">${Math.round(cs.talkSec / 60)} мин</span>` : ''}
+      </div>
+      <div class="cu-hist">${cs.rows.slice(0, 8).map(r => `
+        <div class="cu-hrow"><span>${r.ans > 0 ? '📞 ярьсан' : '📵 аваагүй'}</span>
+          <span class="cu-dim">${escapeHtml(String(r.at).slice(0, 16).replace('T', ' '))}</span>
+          <span class="cu-dim">${r.ans > 0 ? Math.round(r.ans / 60) + ' мин' : r.sec + ' сек хүлээсэн'}</span></div>`).join('')}
+        ${cs.rows.length > 8 ? `<div class="cu-hrow cu-dim">…бас ${cs.rows.length - 8}</div>` : ''}</div>`;
+
   const fld = (k, label, val, type) =>
     `<label class="fld">${label}<input id="cu-${k}" class="ui-raw" type="${type || 'text'}" value="${escapeHtml(val || '')}"></label>`;
 
@@ -20918,6 +20935,7 @@ function openCustomerCard(id) {
     ${fld('email', 'Имэйл', c && c.email, 'email')}
     ${fld('address', 'Хаяг', c && c.address)}
     <label class="fld">Тэмдэглэл<textarea id="cu-note" class="ui-raw" rows="2">${escapeHtml((c && c.note) || '')}</textarea></label>
+    ${callBlock}
     ${hist.length ? `<div class="cu-hist-h">Захиалгын түүх</div><div class="cu-hist">${hist.map(o => `
       <div class="cu-hrow"><span>#${escapeHtml(String(o.number || ''))}</span>
         <span class="cu-dim">${escapeHtml(String(o.starts_at || '').slice(0, 10))}</span>
@@ -27903,7 +27921,7 @@ function pbxCostPerCall(spendMnt, calls) {
 //    хөлслөх шийдвэр гаргана.
 //    Тиймээс энд ДУУДЛАГА БҮРИЙН лог (`pbxLog`) -оор л дүгнэнэ: мэндчилгээг
 //    давж хүлээсэн хүн л жинхэнэ алдагдал.
-function callAdvice(p, ws, we, log) {
+function callAdvice(p, ws, we, log, from) {
   const out = [];
   if (!p || !p.calls) return out;
   const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
@@ -27912,7 +27930,7 @@ function callAdvice(p, ws, we, log) {
     out.push({ kind: 'miss', sev: 1, mnt: 0,
       text: `Ажлын цагаар ${p.bizCalls} дуудлага ирээд ${p.bizMissed}-ыг нь хэн ч аваагүй (${p.bizRate}% авсан). Зарын мөнгө утас дуугартал хүргэж байгаа ч яг тэндээ алдагдаж байна — дуудлагын дараалал, ээлж, эсвэл шилжүүлэх дугаараа шалга.` });
   }
-  const off = pbxOffHoursWaited(log, w0, w1);
+  const off = pbxOffHoursWaited(log, w0, w1, from);
   if (off >= 5) {
     out.push({ kind: 'offhours', sev: 2, mnt: 0,
       text: `Ажлын цагийн ГАДНА ${off} хүн дуут мэндчилгээг сонсоод хүлээсэн ч хэн ч аваагүй (хүн ${w0}:00–${w1}:59 хооронд л авдаг). Эдгээр нь жинхэнэ сонирхсон хүмүүс — ээлжийн дугаар эсвэл «маргааш эргэж залгана» гэсэн дуут захидал нөхнө.` });
@@ -27929,12 +27947,17 @@ function _ubHour(ts) {
 }
 // Ажлын бус цагт мэндчилгээг ДАВЖ хүлээгээд ч хариу аваагүй дуудлагын тоо.
 // ⚠ Богино тасалсныг ОРУУЛАХГҮЙ — тэдгээр нь андуурсан дуудлага.
-function pbxOffHoursWaited(calls, ws, we) {
+// ⚠ `from` ЗААВАЛ дамжина: дэлгэцийн бусад тоо сонгосон хугацаагаар бодогддог
+//   атал энэ нь БҮХ логоор тоологддог байсан тул «7 хоног» гэж сонгоод 90
+//   хоногийн тоог уншиж болдог байв.
+function pbxOffHoursWaited(calls, ws, we, from) {
   const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
   const w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
+  const f = String(from || '');
   let n = 0;
   (calls || []).forEach(c => {
     if (!c || String(c.direction || '') !== 'in') return;
+    if (f && String(c.started_at || '') < f) return;
     if ((Number(c.answer_sec) || 0) > 0) return;
     if ((Number(c.call_sec) || 0) < PBX_WAIT_SEC) return;
     const h = _ubHour(c.started_at);
@@ -28097,6 +28120,31 @@ function pbxByAgent(calls, opts) {
   })).sort((a, b) => b.answered - a.answered);
 }
 
+// ── ХАРИЛЦАГЧИЙН ДУУДЛАГЫН ТҮҮХ (2026-09-16) ────────────────────────────────
+// «Энэ хүн хэдэн удаа залгасан, сүүлд хэзээ ярьсан бэ» — худалдагч утсаа
+// авахаасаа ӨМНӨ харах ёстой мэдээлэл. Дуудлагын лог нь дугаартай, харилцагч
+// ч дугаартай тул `custPhoneKey`-ээр тулгана.
+// ⚠ Дуудлага нь ГАДААД дугаараар л таарна — байгууллагын хэд хэдэн ажилтан
+//   өөр өөр дугаараас залгасан бол зөвхөн бүртгэсэн дугаарынх нь харагдана.
+//   Тиймээс «залгаж байгаагүй» гэж ХАТУУ дүгнэхгүй.
+function custCallStats(calls, phone) {
+  const k = custPhoneKey(phone);
+  const out = { total: 0, answered: 0, missed: 0, last: '', lastTalk: '', talkSec: 0, rows: [] };
+  if (!k) return out;
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (custPhoneKey(c.peer) !== k) return;
+    const at = String(c.started_at || '');
+    const ans = Number(c.answer_sec) || 0;
+    out.total++;
+    if (ans > 0) { out.answered++; out.talkSec += ans; if (at > out.lastTalk) out.lastTalk = at; }
+    else out.missed++;
+    if (at > out.last) out.last = at;
+    out.rows.push({ at, ans, sec: Number(c.call_sec) || 0 });
+  });
+  out.rows.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return out;
+}
 // Дугаараар харилцагч олох — `custPhoneKey`-ээр нормчилж тулгана (нэг дугаар
 // 976/0 угтвартай ч, хоосон зайтай ч байж болно).
 function pbxCustomerOf(peer, customers) {
@@ -28211,7 +28259,11 @@ async function savePbxCallback(peer, status, upto, bump) {
 async function loadPbxLog(force) {
   if (state.pbxLog && !force) return state.pbxLog;
   try {
-    const from = addDays(todayStr(), -21);
+    // ⚠ 90 хоног: харилцагчийн карт дээрх дуудлагын түүх ба зарын дэлгэцийн
+    //   «90 хоног» сонголт хоёулаа үүнээс уншина (өмнө 21 байсан тул 90 хоногийн
+    //   харагдац ЧИМЭЭГҮЙ дутуу байв). Порталын хадгалах хугацаа ~90 хоног тул
+    //   үүнээс урт болгох нь ч утгагүй.
+    const from = addDays(todayStr(), -90);
     const r = await fetchWithTimeout(
       `${DB_URL}/rest/v1/pbx_calls?select=call_id,started_at,direction,peer,fwd,answer_sec,call_sec&started_at=gte.${from}&order=started_at.desc&limit=3000`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
@@ -28458,7 +28510,7 @@ function renderAds() {
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
   const conv = callConversion(state.pbxLog || [], state.appOrders || [], { from });
-  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [])).concat(callConvAdvice(conv))
+  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we, state.pbxLog || [], from)).concat(callConvAdvice(conv))
     .sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 
@@ -35787,6 +35839,11 @@ function refreshViewData() {
       state.adsBudget = null;
       loadAppConfig(ADS_BUDGET_KEY).then(v => { state.adsBudget = v || null; if (state.view === 'ads') render(); });
     }
+  }
+  // Харилцагчийн картад дуудлагын түүх гаргахад лог хэрэгтэй.
+  if (v === 'customers' && canSeeCustomers() && state.pbxLog === undefined) {
+    state.pbxLog = null;
+    loadPbxLog(true).then(() => { if (state.view === 'customers') render(); });
   }
   // 📵 Алдсан дуудлага — лог + тэмдэглэл + харилцагч (нэр тааруулахад).
   if (v === 'missedcalls' && canSeeMissedCalls()) {

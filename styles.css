@@ -7281,3 +7281,8 @@ select.no-asar-len {
 .mc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.6; }
 .mc-stale { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--warn);
   border-radius: 10px; background: var(--warn-soft); color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
+/* Харилцагчийн картын дуудлагын түүх (2026-09-16) */
+.cu-calls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.cu-cs { padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px;
+  font-size: var(--fs-xs); color: var(--muted); }
+.cu-cs.cu-miss { color: var(--warn); border-color: var(--warn); }

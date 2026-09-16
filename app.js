@@ -18568,7 +18568,7 @@ function nomaadContractHtml(o) {
     const head = `<tr><td colspan="3" class="cat">${escapeHtml((c || '').toUpperCase())}</td></tr>`;
     const rows = grouped[c].map(it => {
       const tot = itTotal(it), incl = it.included || (tot === 0 && !isPkg(it));
-      const price = isPkg(it) ? fmtMoney(tot) : (incl ? '<span style="color:#15803d">Багцад багтсан</span>' : fmtMoney(tot));
+      const price = isPkg(it) ? fmtMoney(tot) : (incl ? '<span class="incl">Багцад багтсан</span>' : fmtMoney(tot));
       const q = Number(it.qty) || 0, u = escapeHtml(it.unit || '');
       const note = it.note ? `<div class="inote">${escapeHtml(it.note)}</div>` : '';
       return `<tr><td>${escapeHtml(it.name || '')}${note}</td><td class="ctr">${q ? `${q}${u ? ' ' + u : ''}` : ''}</td><td class="rt">${price}</td></tr>`;
@@ -18576,7 +18576,7 @@ function nomaadContractHtml(o) {
     return head + rows;
   }).join('');
   const svcTable = items.length
-    ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt" style="font-weight:700">Нийт дүн (НӨАТ багтсан):</td><td class="rt" style="font-weight:700">${fmtMoney(total)}</td></tr></table>`
+    ? `<table class="svc"><tr><th>Үйлчилгээ</th><th class="ctr">Тоо</th><th class="rt">Дүн</th></tr>${svcRows}<tr><td colspan="2" class="rt sum">Нийт дүн (НӨАТ багтсан):</td><td class="rt sum">${fmtMoney(total)}</td></tr></table>`
     : '<div class="muted">(Захиалгад үйлчилгээний дэлгэрэнгүй жагсаалт оруулаагүй)</div>';
   const seal = ' &nbsp;&nbsp; <span class="seal">( Тамга )</span>';
   const sigCust = `<div class="sg-role">ЗАХИАЛАГЧ</div><b>"${co}"</b><br>Албан тушаал: …………………………<br>Овог нэр: …………………………<br>Гарын үсэг: ________________${seal}<br>Хаяг: …………………………<br>Утас: ……………………`;
@@ -18614,6 +18614,10 @@ function nomaadContractHtml(o) {
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
   .inote{font-size:11px;color:#666;margin-top:1px}
+  .sum{font-weight:700}
+  .incl{color:#15803d}
+  .tbnote{font-size:12px}
+  .ind{margin-left:16px}
   .total{font-size:15px;font-weight:700;margin:10px 0}
   .toolbar{position:sticky;top:0;background:#f3f3f3;padding:8px;text-align:center;margin:-26px -32px 16px;border-bottom:1px solid #ccc}
   .toolbar button{font-size:14px;padding:7px 18px;cursor:pointer;border:1px solid #888;border-radius:6px;background:#fff}
@@ -18621,7 +18625,7 @@ function nomaadContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted" style="font-size:12px">…………… талбаруудыг энд бичиж засаж болно</span></div>
+<div class="toolbar"><button onclick="ctWord()">📄 Word татах</button> &nbsp;<button onclick="window.print()">🖨 Хэвлэх / PDF</button> &nbsp;<span class="muted tbnote">…………… талбаруудыг энд бичиж засаж болно</span></div>
 <div contenteditable="true">
   ${topSig}
   <div class="rule-t"></div>
@@ -18662,10 +18666,10 @@ function nomaadContractHtml(o) {
   <h2>ТАВ. ТАЛУУДЫН ХҮЛЭЭХ ХАРИУЦЛАГА</h2>
   <p><b>5.1</b> Майхан кемпийн орчинд захиалагчийн зочин, үйлчлүүлэгч нар өөрсдийн үнэт эдлэл, зургийн аппарат, камер, цүнх болон бусад эд зүйлийг өөрсдөө хариуцах бөгөөд алдаж үрэгдүүлсэн тохиолдолд Гүйцэтгэгч хариуцлага хүлээхгүй, энэхүү асуудлыг зохицуулахад хамтран ажиллана.</p>
   <p><b>5.2</b> Захиалагч тал гэрээг цуцалсан тохиолдолд төлбөрийн буцаалт дараах хуваарийн дагуу хийгдэнэ:</p>
-  <p style="margin-left:16px"><b>а)</b> Арга хэмжээ эхлэхээс 14-өөс дээш хоногийн өмнө цуцалбал захиалагчийн төлсөн төлбөрийг бүрэн (100%) буцаана.</p>
-  <p style="margin-left:16px"><b>б)</b> 7-13 хоногийн өмнө цуцалбал төлсөн төлбөрийн 50%-ийг буцаана.</p>
-  <p style="margin-left:16px"><b>в)</b> 7 хоногийн дотор цуцалбал төлсөн төлбөрийг буцаахгүй бөгөөд гэрээгээр шаардагдах үлдэгдэл төлбөрийг шаардахгүй.</p>
-  <p style="margin-left:16px"><b>г)</b> Гэнэтийн давагдашгүй хүчин зүйл (6.1)-ийн улмаас цуцлах тохиолдолд цуцлалт биш аяллын огноог талуудын харилцан тохиролцооны дагуу шилжүүлнэ.</p>
+  <p class="ind"><b>а)</b> Арга хэмжээ эхлэхээс 14-өөс дээш хоногийн өмнө цуцалбал захиалагчийн төлсөн төлбөрийг бүрэн (100%) буцаана.</p>
+  <p class="ind"><b>б)</b> 7-13 хоногийн өмнө цуцалбал төлсөн төлбөрийн 50%-ийг буцаана.</p>
+  <p class="ind"><b>в)</b> 7 хоногийн дотор цуцалбал төлсөн төлбөрийг буцаахгүй бөгөөд гэрээгээр шаардагдах үлдэгдэл төлбөрийг шаардахгүй.</p>
+  <p class="ind"><b>г)</b> Гэнэтийн давагдашгүй хүчин зүйл (6.1)-ийн улмаас цуцлах тохиолдолд цуцлалт биш аяллын огноог талуудын харилцан тохиролцооны дагуу шилжүүлнэ.</p>
   <p><b>5.3</b> Захиалагч нь гэрээнд заасан хугацаанд төлбөрөө төлөөгүй тохиолдолд хугацаа хэтрүүлсэн хоног тутамд төлбөл зохих үнийн дүнгийн 0.3 хувьтай тэнцэх хэмжээний алдангийг Гүйцэтгэгчид төлнө.</p>
   <p><b>5.4</b> Учирсан хохирол гэдэгт талууд гэрээний үүргээ зохих ёсоор биелүүлээгүйн улмаас нөгөө талд учирсан нэмэлт зардал, илүү төлбөр, гэрээний үүргээ зохих ёсоор биелүүлсэн бол гарахгүй байсан зардал зэрэг хохирлыг тооцно.</p>
   <p><b>5.5</b> Гүйцэтгэгч нь майхан кемп үйлчилгээний заавар, зөвлөгөө, майхан болон бусад эд хэрэгсэл, төхөөрөмжтэй харьцах зааварчилгааг өгнө.</p>
@@ -18782,7 +18786,7 @@ function meventContractHtml(o) {
   const mvTable = mvTotal > 0 ? `<div class="mv-h">Нөхөн төлбөрийн үнэлгээ (заалт 7.3)</div>
     <table class="svc"><tr><th class="ctr">№</th><th>Бараа</th><th class="ctr">Тоо</th><th class="rt">Нэгжийн үнэлгээ</th><th class="rt">Дүн</th></tr>
     ${mvRows.map((r, i) => `<tr><td class="ctr">${i + 1}</td><td>${escapeHtml(r.name)}</td><td class="ctr">${r.qty}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.mv) : '—'}</td><td class="rt">${r.mv > 0 ? fmtMoney(r.line) : '—'}</td></tr>`).join('')}
-    <tr><td colspan="4" class="rt" style="font-weight:700">Нийт үнэлгээ:</td><td class="rt" style="font-weight:700">${fmtMoney(mvTotal)}</td></tr></table>` : '';
+    <tr><td colspan="4" class="rt sum">Нийт үнэлгээ:</td><td class="rt sum">${fmtMoney(mvTotal)}</td></tr></table>` : '';
 
   const itemTable = `<table class="svc"><tr><th class="ctr">№</th><th>Бараа / Тодорхойлолт</th><th class="ctr">Хугацаа</th><th class="rt">Үнэ</th><th class="ctr">НӨАТ</th><th class="rt">Нийт</th></tr>${itemRows}</table>
     <table class="totb"><tbody>
@@ -18827,6 +18831,10 @@ function meventContractHtml(o) {
   .totb .tb-total td{font-weight:700;font-size:13.5px;border-top:2px solid #333}
   .vat-note{text-align:right;font-size:12px;color:#555;margin:4px 0 0}
   .mv-h{font-weight:700;font-size:12.5px;margin:16px 0 4px}
+  .sum{font-weight:700}
+  .tbnote{font-size:12px}
+  .intro{margin-top:8px}
+  .sigh{margin-top:12px;font-weight:700}
   .ctr{text-align:center;white-space:nowrap}
   .rt{text-align:right;white-space:nowrap}
   .pb{page-break-before:always}
@@ -18835,7 +18843,7 @@ function meventContractHtml(o) {
   @media print{.toolbar{display:none}body{padding:0}}
 </style></head>
 <body>
-<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted" style="font-size:12px">…… талбаруудыг шууд бичиж засаж болно</span></div>
+<div class="toolbar"><button onclick="window.print()">🖨 Хэвлэх / PDF</button><button onclick="ctWord()">📄 Word татах</button> <span class="muted tbnote">…… талбаруудыг шууд бичиж засаж болно</span></div>
 <div contenteditable="true">
   <h1>ТҮРЭЭСИЙН ГЭРЭЭ</h1>
   <table class="chead"><tr>
@@ -18847,7 +18855,7 @@ function meventContractHtml(o) {
 
   ${itemTable}
 
-  <p style="margin-top:8px">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас ${_isOrg ? (_ci.reg ? escapeHtml(_ci.reg) + ' регистрийн дугаартай ' : '') + '"' + cust + '" ("Хэрэглэгч" гэх), түүнийг төлөөлж ' + (_rep ? escapeHtml(_rep) : '…………………………') : '"' + cust + '" ("Хэрэглэгч" гэх)'} (хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
+  <p class="intro">Энэхүү гэрээг нэг талаас ${C.reg} регистрийн дугаартай ${C.name} ("Түрээслүүлэгч" гэх), нөгөө талаас ${_isOrg ? (_ci.reg ? escapeHtml(_ci.reg) + ' регистрийн дугаартай ' : '') + '"' + cust + '" ("Хэрэглэгч" гэх), түүнийг төлөөлж ' + (_rep ? escapeHtml(_rep) : '…………………………') : '"' + cust + '" ("Хэрэглэгч" гэх)'} (хамтад нь "Талууд" гэх) нар дараах нөхцөлүүдийг харилцан тохиролцож байгуулав.</p>
 
   <h2>НЭГ. ГЭРЭЭНИЙ ЗҮЙЛ</h2>
   <p><b>1.1.</b> Түрээслүүлэгч нь дээр заасан бараа, төхөөрөмжийг Хэрэглэгчид түр хугацаагаар ашиглуулна. Хэрэглэгч зөвхөн ашиглах эрхтэй бөгөөд өмчлөх эрх шилжихгүй.</p>
@@ -18915,7 +18923,7 @@ function meventContractHtml(o) {
   <p><b>12.2.</b> Гэрээ нь Талууд гарын үсэг зурж, гэрээнд заасан урьдчилгаа буюу бүтэн төлбөр төлөгдсөн өдрөөс хүчин төгөлдөр болно.</p>
   <p><b>12.3.</b> Энэхүү гэрээг монгол хэл дээр 2 хувь үйлдэж, Талууд тус бүр нэг хувийг хадгална. Хувь тус бүр хууль зүйн адил хүчинтэй.</p>
 
-  <p style="margin-top:12px;font-weight:700">ГЭРЭЭ БАЙГУУЛСАН</p>
+  <p class="sigh">ГЭРЭЭ БАЙГУУЛСАН</p>
   <table class="sigt"><tr>
     <td><div class="sg-role">ТҮРЭЭСЛҮҮЛЭГЧ</div>Бараа, төхөөрөмжийн түрээс борлуулалт хариуцсан ажилтан:<br>Овог нэр: …………………………<br>Гарын үсэг: ________________ <span class="seal">( Тамга )</span></td>
     <td class="r"><div class="sg-role">ХЭРЭГЛЭГЧ</div>${_isOrg ? '<b>' + cust + '</b><br>Албан тушаал: …………………………<br>' : ''}Овог нэр: ${_rep ? escapeHtml(_rep) : '…………………………'}<br>Гарын үсэг: ________________${_isOrg ? ' <span class="seal">( Тамга )</span>' : ''}</td>

@@ -34929,6 +34929,7 @@ function openProfileModal() {
   setv('profile-holder', meM.bank_holder || meM.name);
   setv('profile-emg-name', meM.emergency_name);
   setv('profile-emg-phone', meM.emergency_phone);
+  setv('profile-address', meM.address);
   const docInput = document.getElementById('profile-doc'); if (docInput) docInput.value = '';
   state._pendingDoc = null;
   const dst = document.getElementById('profile-doc-status');
@@ -35062,10 +35063,10 @@ function setupProfileModal() {
       try {
         const rp = await fetchWithTimeout(`${DB_URL}/rest/v1/rpc/update_my_profile`, {
           method: 'POST', headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ p_phone: oldPhoneD, p_bank: _bank, p_bank_account: _acct, p_bank_holder: gv('profile-holder'), p_emergency_name: gv('profile-emg-name'), p_emergency_phone: gv('profile-emg-phone') })
+          body: JSON.stringify({ p_phone: oldPhoneD, p_bank: _bank, p_bank_account: _acct, p_bank_holder: gv('profile-holder'), p_emergency_name: gv('profile-emg-name'), p_emergency_phone: gv('profile-emg-phone'), p_address: gv('profile-address') })
         }, 15000);
         if (!rp.ok) throw new Error('HTTP ' + rp.status);
-        if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone') });
+        if (member) Object.assign(member, { bank: _bank, bank_account: _acct, bank_holder: gv('profile-holder'), emergency_name: gv('profile-emg-name'), emergency_phone: gv('profile-emg-phone'), address: gv('profile-address') });
       } catch (e) { _profileOk = false; console.warn('update_my_profile', e); }
       const _doc = state._pendingDoc;
       if (_doc) {

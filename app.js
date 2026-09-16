@@ -27897,6 +27897,14 @@ function callAdvice(p, ws, we, log) {
   }
   return out;
 }
+// Улаанбаатарын цаг (UTC+8) — ЯГ энэ хэрэгтэй, браузерын бүсээс ХАМААРАХГҮЙ.
+// ⚠ `getHours()` нь ажиллаж буй машины бүсээр өөрчлөгддөг тул гадаад
+//    сервер/CI дээр «орой» нь «өдөр» болж хувирна (тест ингэж унасан).
+function _ubHour(ts) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return null;
+  return new Date(t + 8 * 3600 * 1000).getUTCHours();
+}
 // Ажлын бус цагт мэндчилгээг ДАВЖ хүлээгээд ч хариу аваагүй дуудлагын тоо.
 // ⚠ Богино тасалсныг ОРУУЛАХГҮЙ — тэдгээр нь андуурсан дуудлага.
 function pbxOffHoursWaited(calls, ws, we) {
@@ -27907,9 +27915,8 @@ function pbxOffHoursWaited(calls, ws, we) {
     if (!c || String(c.direction || '') !== 'in') return;
     if ((Number(c.answer_sec) || 0) > 0) return;
     if ((Number(c.call_sec) || 0) < PBX_WAIT_SEC) return;
-    const d = new Date(c.started_at);
-    if (isNaN(d)) return;
-    const h = d.getHours();
+    const h = _ubHour(c.started_at);
+    if (h === null) return;
     if (h < w0 || h > w1) n++;
   });
   return n;

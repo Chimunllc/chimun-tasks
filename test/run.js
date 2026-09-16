@@ -6358,6 +6358,12 @@ need(['orderCustType']);
   eq(F.pbxOffHoursWaited(kfcLog, 9, 18), 0, 'дуудлага: богино тасалсан тоологдохгүй');
   eq(F.pbxOffHoursWaited(offLog, 9, 23), 0, 'дуудлага: ажлын цаг сунгавал алдагдал алга');
   eq(F.pbxOffHoursWaited(null, 9, 18), 0, 'дуудлага: null → 0');
+  // ⛔ Бүсээс ХАМААРАХГҮЙ: UTC-ээр өгсөн мөч Улаанбаатарын цагаар тоологдоно
+  //    (CI нь UTC тул `getHours()` ашиглавал «орой» нь «өдөр» болж унана).
+  eq(F.pbxOffHoursWaited([{ direction: 'in', answer_sec: 0, call_sec: 30, started_at: '2026-09-15T13:00:00Z' }], 9, 18),
+     1, 'дуудлага: UTC 13:00 = УБ-ын 21:00 → ажлын бус');
+  eq(F.pbxOffHoursWaited([{ direction: 'in', answer_sec: 0, call_sec: 30, started_at: '2026-09-15T02:00:00Z' }], 9, 18),
+     0, 'дуудлага: UTC 02:00 = УБ-ын 10:00 → ажлын цаг');
   eq(F.callAdvice(F.pbxStats([], ''), 9, 18).length, 0, 'дуудлага: дата байхгүй бол зөвлөгөө үүсгэхгүй');
   eq(F.callAdvice(null).length, 0, 'дуудлага: null → унахгүй');
   // Цөөн дуудлагаар дүгнэхгүй (шуугиан).

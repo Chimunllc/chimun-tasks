@@ -50,11 +50,14 @@ jobs:
       - name: Түлхүүр шалгах
         id: key
         env:
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          # Хоёр зам: ① CLAUDE_CODE_OAUTH_TOKEN (Pro/Max бишрэл, `claude setup-token`)
+          #           ② ANTHROPIC_API_KEY (console.anthropic.com, тусдаа төлбөр)
+          # Аль нэг байхад хангалттай. Хоёулаа байвал action нь OAuth-ыг эрхэмлэнэ.
+          HAS_KEY: ${{ (secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '') }}
         run: |
           set -euo pipefail
           if [ "$HAS_KEY" != "true" ]; then
-            echo "::notice::ANTHROPIC_API_KEY нэмэгдээгүй — шөнийн агент унтраалттай. Settings → Secrets and variables → Actions."
+            echo "::notice::Түлхүүр нэмэгдээгүй — шөнийн агент унтраалттай. Settings → Secrets and variables → Actions → CLAUDE_CODE_OAUTH_TOKEN эсвэл ANTHROPIC_API_KEY."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -87,6 +90,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           base_branch: main
           branch_prefix: 'claude/night-'

@@ -31843,6 +31843,33 @@ function openStaffCardModal(key) {
     // Дэд эрхүүд: CEO бүгдийг; 'access'-тэй менежер зөвхөн албан тушаал (lvl<100) + гарсан/сэргээх.
     const canRole = amCeo || (lvl < 100 && canManage);
     const canStatus = canManage && !isSelf && !(!amCeo && lvl >= 100);
+    // ── Хувийн мэдээлэл (бүртгэлийн маягтаас) ──
+    // ⚠ РД/хаяг/яаралтай холбоог СЕРВЕР зөвхөн CEO-д илгээдэг (staff-pins: SENS_CEO) тул
+    //   эрхгүй хүнд эдгээр талбар TEAM-д ирэхгүй → мөр өөрөө гарахгүй. UI-д давхар шүүхгүй.
+    const scVal = (lbl, val) => {
+      const v = String(val == null ? '' : val).trim();
+      return v ? `<div class="sc-row"><span class="sc-lbl">${lbl}</span><span class="sc-val">${escapeHtml(v)}</span></div>` : '';
+    };
+    const scTel = (lbl, who, tel) => {
+      const w = String(who || '').trim(), t = String(tel || '').trim();
+      if (!w && !t) return '';
+      const dial = t.replace(/[^\d+]/g, '');
+      return `<div class="sc-row"><span class="sc-lbl">${lbl}</span><span class="sc-val">${escapeHtml(w || '—')}${t ? ` · <a class="sc-tel" href="tel:${escapeHtml(dial)}">${escapeHtml(t)}</a>` : ''}</span></div>`;
+    };
+    let info = '';
+    if (canManage) {
+      const rows = [
+        scTel('☎️ Яаралтай', m.emergency_name, m.emergency_phone),
+        scVal('И-мэйл', m.email),
+        scVal('РД', m.rd),
+        scVal('🏠 Хаяг', m.address),
+        scVal('Ажилд орсон', m.joined_at),
+        isActive ? '' : scVal('Гарсан', m.left_at),
+      ].filter(Boolean).join('');
+      const noEmg = amCeo && !String(m.emergency_phone || '').trim()
+        ? '<div class="sc-hint">☎️ Яаралтай үеийн холбоо бүртгэгдээгүй — ажилтан «Профайл»-аасаа нэмнэ.</div>' : '';
+      if (rows || noEmg) info = `<div class="sc-sec"><div class="sc-sec-t">ℹ️ Хувийн мэдээлэл</div>${rows}${noEmg}</div>`;
+    }
     // ── Удирдах хэсэг ──
     const gBtn = (val, label) => `<button class="staff-gbtn${m.gender === val ? ' on' : ''}" data-sc-gender="${val}">${label}</button>`;
     const brBtn = (val, label) => `<button class="staff-gbtn${bs.includes(val) ? ' on' : ''}" data-sc-br="${val}">${label}</button>`;
@@ -31901,7 +31928,7 @@ function openStaffCardModal(key) {
         <span class="staff-status status-${isActive ? 'active' : (status === 'хүлээж буй' ? 'pending' : 'left')}">${isActive ? 'Идэвхтэй' : (status === 'хүлээж буй' ? '⏳' : 'Гарсан')}</span>
         <button class="sc-x" data-sc-close>✕</button>
       </div>
-      <div class="sc-body">${admin}${capBox}${perms}${(!admin && !capBox && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
+      <div class="sc-body">${info}${admin}${capBox}${perms}${(!info && !admin && !capBox && !perms) ? '<div style="padding:20px;text-align:center;color:var(--muted);">Энэ ажилтныг удирдах эрх алга.</div>' : ''}</div>
     </div>`;
     attachHandlers();
   }

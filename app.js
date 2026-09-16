@@ -27770,6 +27770,117 @@ function adsAdvice(camps, rev, opts) {
   return out.sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
 }
 
+// ── САРЫН ТӨСӨВ (2026-09-16) ────────────────────────────────────────────────
+// Аппаас тавьсан төсвийг VPS-ийн `tools/fb_budget.py` 10 минут тутам уншиж
+// өдрийн төсөв болгон хувааж, үр дүнтэй зар руу шилжүүлнэ.
+// ⛔ ГУРВАН ХААЛТ: ① Meta-гийн дансны hard cap ② өдрийн төсөв ③ унтраалт.
+//    Скрипт унасан ч ① үлдэнэ — Facebook өөрөө зогсооно. Энэ дараалал ЧУХАЛ:
+//    зөвхөн манай кодод найдвал алдаа гармагц мөнгө хязгааргүй гарна.
+const ADS_BUDGET_KEY = 'ads_budget';
+// Тухайн сарын төсвийн төлөв. Цэвэр функц.
+// 'stale' = өмнөх сарын төсөв үлдсэн → хуваарилагч зар АЖИЛЛУУЛАХГҮЙ (сар бүр
+// хүн шийдвэр гаргах ёстой; өнгөрсөн сарын дүнг чимээгүй давтвал төсөв хөвнө).
+function adsBudgetState(cfg, month) {
+  if (!cfg || !Number(cfg.mnt)) return 'none';
+  if (String(cfg.month || '') !== String(month || '')) return 'stale';
+  return cfg.enabled ? 'on' : 'off';
+}
+// Үлдсэн төсөв ба өдрийн хуваарилалт. daysLeft нь ӨНӨӨДРИЙГ оруулна.
+function adsBudgetPlan(mnt, spentMnt, daysLeft) {
+  const plan = Math.max(0, Number(mnt) || 0);
+  const spent = Math.max(0, Number(spentMnt) || 0);
+  const left = Math.max(0, plan - spent);
+  const d = Math.max(1, Number(daysLeft) || 1);
+  return { plan, spent, left, daysLeft: d, daily: Math.round(left / d), over: spent > plan };
+}
+// Сарын үлдсэн хоног (өнөөдрийг оруулаад).
+function adsDaysLeft(day) {
+  const s = String(day || todayStr());
+  const y = +s.slice(0, 4), m = +s.slice(5, 7), d = +s.slice(8, 10);
+  return new Date(y, m, 0).getDate() - d + 1;
+}
+// Тухайн сард зарцуулсан (аппын кэшээс — хуваарилагч нь Meta-гийн тоог хэрэглэнэ).
+function adsSpentInMonth(rows, month) {
+  return (rows || []).reduce((a, r) =>
+    a + (String((r && r.day) || '').slice(0, 7) === month ? (Number(r.spend_mnt) || 0) : 0), 0);
+}
+
+// ── УТАСНЫ ДУУДЛАГА (2026-09-16) ────────────────────────────────────────────
+// Unitel PBX-ийн дуудлагын түүхээс өдөр×цагаар татагдана (`pbx_calls_hourly`,
+// `tools/pbx_pull.py`, VPS cron). Зарын зарцуулалттай зэрэгцүүлж «1 дуудлагын
+// өртөг» гаргана — чат→захиалгын холбоос байхгүй тул энэ нь одоогоор хамгийн
+// бодитой хэмжүүр.
+// ⛔ «Авсан» = ХҮН утсаа авсан. Порталын «Call Status = Answered» гэдэг нь PBX
+//    өөрөө авсныг (дуут мэндчилгээ) хэлдэг тул түүгээр хэмжвэл «99% хариулсан»
+//    гэсэн ХУДАЛ тоо гарна. Татагч `Callee Answer Second > 0`-оор л тоолно.
+// ⚠ Ажлын цагийг ЭНД хатуу бичихгүй — `app_config['tariffs']`-ийн
+//    `work_start`/`work_end`-ээс ирнэ (тарифын ганц эх сурвалж).
+function pbxStats(rows, fromDay, workStart, workEnd) {
+  const w0 = Number.isFinite(Number(workStart)) ? Number(workStart) : 9;
+  const w1 = Number.isFinite(Number(workEnd)) ? Number(workEnd) : 18;
+  const o = { calls: 0, answered: 0, talk: 0, bizCalls: 0, bizAns: 0, offCalls: 0, offAns: 0, days: {} };
+  (rows || []).forEach(r => {
+    if (!r) return;
+    const d = String(r.day || '').slice(0, 10);
+    if (!d || (fromDay && d < fromDay)) return;
+    const h = Number(r.hour);
+    const c = Number(r.calls) || 0;
+    const a = Number(r.answered) || 0;
+    o.calls += c; o.answered += a; o.talk += Number(r.talk_sec) || 0;
+    o.days[d] = (o.days[d] || 0) + c;
+    if (h >= w0 && h <= w1) { o.bizCalls += c; o.bizAns += a; } else { o.offCalls += c; o.offAns += a; }
+  });
+  o.missed = o.calls - o.answered;
+  o.bizMissed = o.bizCalls - o.bizAns;
+  o.offMissed = o.offCalls - o.offAns;
+  o.rate = o.calls ? Math.round(o.answered * 1000 / o.calls) / 10 : 0;
+  o.bizRate = o.bizCalls ? Math.round(o.bizAns * 1000 / o.bizCalls) / 10 : 0;
+  o.dayCount = Object.keys(o.days).length;
+  o.perDay = o.dayCount ? Math.round(o.calls * 10 / o.dayCount) / 10 : 0;
+  return o;
+}
+
+// Нэг дуудлагын өртөг — зарын зарцуулалт ÷ ирсэн дуудлага. Дуудлага 0 бол null
+// (0-д хуваахгүй, «—» гэж харагдана).
+function pbxCostPerCall(spendMnt, calls) {
+  const c = Number(calls) || 0;
+  return c > 0 ? Math.round((Number(spendMnt) || 0) / c) : null;
+}
+
+// Дуудлагын зөвлөгөө. Цэвэр функц — `adsAdvice`-тай ижил хэлбэр буцаана
+// (kind/sev/text) тул нэг жагсаалтад нийлнэ.
+// ⚠ Цөөн дуудлагатай үед дүгнэхгүй (шуугиан) — `adsAdvice`-ийн minSpend-тэй ижил санаа.
+function callAdvice(p, ws, we) {
+  const out = [];
+  if (!p || !p.calls) return out;
+  const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
+  const w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
+  if (p.bizCalls >= 20 && p.bizRate < 70) {
+    out.push({ kind: 'miss', sev: 1, mnt: 0,
+      text: `Ажлын цагаар ${p.bizCalls} дуудлага ирээд ${p.bizMissed}-ыг нь хэн ч аваагүй (${p.bizRate}% авсан). Зарын мөнгө утас дуугартал хүргэж байгаа ч яг тэндээ алдагдаж байна — дуудлагын дараалал, ээлж, эсвэл шилжүүлэх дугаараа шалга.` });
+  }
+  if (p.offCalls >= 10 && p.offMissed >= p.offCalls * 0.9) {
+    out.push({ kind: 'offhours', sev: 2, mnt: 0,
+      text: `Ажлын цагийн ГАДНА ${p.offCalls} дуудлага ирж ${p.offMissed}-д нь хариулаагүй (хүн ${w0}:00–${w1}:59 хооронд л авдаг). Эдгээр нь зар үзээд орой залгасан хүмүүс — дуут мэндчилгээнд «маргааш эргэж залгана» гэж хэлэх, эсвэл ээлжийн дугаар руу шилжүүлбэл шууд нөхөгдөнө.` });
+  }
+  return out;
+}
+
+// ── Дуудлагын дата татах (pbx_calls_hourly) ─────────────────────────────────
+// anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
+async function loadPbxCalls(force) {
+  if (state.pbxCalls && !force) return state.pbxCalls;
+  try {
+    const from = addDays(todayStr(), -90);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/pbx_calls_hourly?select=*&day=gte.${from}&order=day.desc&limit=3000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.pbxCalls = await r.json();
+    return state.pbxCalls;
+  } catch (e) { dataLoadFailed('Дуудлагын дата', e); state.pbxCalls = state.pbxCalls || []; return state.pbxCalls; }
+}
+
 // ── Зарын дата татах (fb_ads_daily) ─────────────────────────────────────────
 // anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
 async function loadFbAds(force) {
@@ -27793,13 +27904,16 @@ function renderAds() {
   const from = addDays(todayStr(), -days);
   const camps = adCampaignStats(rows, from);
   const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
-  const advice = adsAdvice(camps, rev);
+  const ws = tariffWorkStart(), we = tariffWorkEnd();
+  const pbx = pbxStats(state.pbxCalls || [], from, ws, we);
   const spend = adSpendByCat(camps);
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
+  const advice = adsAdvice(camps, rev).concat(callAdvice(pbx, ws, we))
+    .sort((a, b) => a.sev - b.sev || (b.mnt || b.amt || 0) - (a.mnt || a.amt || 0));
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 
-  if (!rows.length) {
+  if (!rows.length && !pbx.calls) {
     return `<div class="ads-empty">📣 <b>Зарын дата хараахан ирээгүй.</b>
       <div>VPS дээрх татагч өдөр бүр 06:30-д ажиллана. Хэрэв 1 хоногоос удвал холболт тасарсан байж магадгүй.</div></div>`;
   }
@@ -27807,10 +27921,36 @@ function renderAds() {
   const period = `<div class="ads-tabs">${[7, 30, 90].map(d =>
     `<button class="ads-tab${d === days ? ' on' : ''}" data-ads-days="${d}">${d} хоног</button>`).join('')}</div>`;
 
+  // ── Сарын төсөв ба автомат хуваарилалт ──
+  const month = todayStr().slice(0, 7);
+  const bcfg = state.adsBudget || null;
+  const bst = adsBudgetState(bcfg, month);
+  const bp = adsBudgetPlan(bcfg && bcfg.mnt, adsSpentInMonth(rows, month), adsDaysLeft());
+  const budgetHtml = `<div class="ads-budget">
+    <div class="ads-h">💰 Сарын төсөв · ${escapeHtml(month)}</div>
+    ${bst === 'on' || bst === 'off' ? `
+      <div class="ads-brow"><span>Төсөв</span><b>${fmtMoney(bp.plan)}</b></div>
+      <div class="ads-brow"><span>Зарцуулсан</span><b>${fmtMoney(bp.spent)}</b></div>
+      <div class="ads-brow"><span>Үлдсэн · ${bp.daysLeft} хоног</span><b>${fmtMoney(bp.left)}</b></div>
+      <div class="ads-brow"><span>Өдрийн төсөв</span><b>${fmtMoney(bp.daily)}</b></div>
+      <div class="ads-bact">
+        <button class="btn" data-ads-edit>✎ Төсөв өөрчлөх</button>
+        <button class="btn ${bst === 'on' ? 'btn-danger' : 'btn-primary'}" data-ads-toggle="${bst === 'on' ? '0' : '1'}">${bst === 'on' ? '⛔ Бүх зар зогсоо' : '▶ Зар үргэлжлүүлэх'}</button>
+      </div>
+      <div class="ads-note">${bst === 'on'
+        ? 'Систем 10 минут тутам шалгаж өдрийн төсвийг үр дүнтэй зар руу шилжүүлнэ. Дансны хатуу хязгаар тавигдсан — төсөв дуусмагц Facebook өөрөө зогсооно.'
+        : '⛔ Унтраалттай. Дараагийн шалгалтаар (10 минутын дотор) бүх зар зогсоно. Яаралтай бол Ads Manager-ээс шууд зогсооно уу.'}</div>`
+    : `<div class="ads-brow"><span>${bst === 'stale' ? 'Өмнөх сарын төсөв — энэ сард зар ажиллахгүй' : 'Төсөв тавиагүй — автомат хуваарилалт унтраалттай'}</span></div>
+      <div class="ads-bact"><button class="btn btn-primary" data-ads-edit>＋ Сарын төсөв тавих</button></div>`}
+  </div>`;
+
   const kpi = `<div class="ads-kpis">
     <div class="ads-kpi"><div class="ads-kpi-l">Зарцуулсан</div><div class="ads-kpi-v">${fmtMoney(totalSpend)}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">Эхэлсэн чат</div><div class="ads-kpi-v">${totalMsg}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 чатын өртөг</div><div class="ads-kpi-v">${totalMsg ? fmtMoney(Math.round(totalSpend / totalMsg)) : '—'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Ирсэн дуудлага</div><div class="ads-kpi-v">${pbx.calls || '—'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${pbx.calls ? pbx.rate + '%' : '—'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">1 дуудлагын өртөг</div><div class="ads-kpi-v">${pbxCostPerCall(totalSpend, pbx.calls) === null ? '—' : fmtMoney(pbxCostPerCall(totalSpend, pbx.calls))}</div></div>
   </div>`;
 
   const adviceHtml = advice.length ? `<div class="ads-advice">
@@ -27844,10 +27984,21 @@ function renderAds() {
   const leadHtml = `<div class="ads-note">Захиалгын лид суваг: <b>${lead.coverage}%</b> тэмдэглэгдсэн${lead.unknown ? ` · ${lead.unknown} захиалга тэмдэглээгүй` : ''}.
     ${lead.coverage < 80 ? 'Хамралт 80%-иас дээш болмогц Facebook-ийн чат → захиалга хүртэлх холбоос гарч ирнэ.' : 'Чат → захиалгын холбоос гаргахад хангалттай дата боллоо.'}</div>`;
 
+  // Утасны дуудлага — зар ажилласны ДАРААХ алхам. Энд алдагдвал зарын мөнгө
+  // бүхэлдээ дэмий болно, тиймээс кампанит ажлын өмнө харагдана.
+  const callHtml = !pbx.calls ? '' : `<div class="ads-sec">Утасны дуудлага <span class="ads-sub">(${pbx.dayCount} хоног · өдөрт дунджаар ${pbx.perDay})</span></div>
+    <div class="ads-list">
+      <div class="ads-row"><span class="ads-nm">Ажлын цагаар (${ws}:00–${we}:59)</span><span class="ads-sp">${pbx.bizCalls} ирсэн</span><span class="ads-ms">${pbx.bizAns} авсан</span><b class="ads-pm${pbx.bizRate < 70 ? ' ads-bad' : ''}">${pbx.bizRate}%</b></div>
+      <div class="ads-row"><span class="ads-nm">Ажлын цагийн гадна</span><span class="ads-sp">${pbx.offCalls} ирсэн</span><span class="ads-ms">${pbx.offAns} авсан</span><b class="ads-pm${pbx.offMissed ? ' ads-bad' : ''}">${pbx.offMissed} алдсан</b></div>
+      <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
+    </div>`;
+
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
     ${period}
     ${kpi}
+    ${budgetHtml}
     ${adviceHtml}
+    ${callHtml}
     <div class="ads-sec">Кампанит ажил — 1 чатын өртөг</div>
     <div class="ads-list">${campRows}</div>
     <div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
@@ -27858,6 +28009,27 @@ function renderAds() {
 function attachAdsHandlers() {
   document.querySelectorAll('[data-ads-days]').forEach(b => b.onclick = () => {
     state.adsDays = Number(b.dataset.adsDays) || 30; render();
+  });
+  const save = async (cfg) => {
+    try { await saveAppConfig(ADS_BUDGET_KEY, cfg); state.adsBudget = cfg; render(); }
+    catch (e) { showToast('Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  };
+  document.querySelector('[data-ads-edit]')?.addEventListener('click', async () => {
+    const cur = state.adsBudget || {};
+    const v = await showPrompt('Энэ сард зар сурталчилгаанд хэдэн төгрөг зарцуулах вэ?', {
+      value: cur.mnt ? String(cur.mnt) : '', okText: 'Хадгалах', placeholder: 'жишээ 5000000',
+    });
+    if (!v) return;
+    const mnt = Math.round(Number(String(v).replace(/[^0-9]/g, '')) || 0);
+    if (!mnt) { showToast('Дүн оруулна уу', 'warn'); return; }
+    await save({ month: todayStr().slice(0, 7), mnt, enabled: true, by: state.me || '', at: new Date().toISOString() });
+    showToast('Төсөв тавигдлаа — 10 минутын дотор хүчинтэй болно', 'success', 4000);
+  });
+  document.querySelector('[data-ads-toggle]')?.addEventListener('click', async (e) => {
+    const on = e.currentTarget.dataset.adsToggle === '1';
+    if (!on && !(await showConfirm('Бүх зарыг зогсоох уу? Дараагийн шалгалтаар (10 минутын дотор) зогсоно.',
+      { okText: 'Зогсоо', danger: true }))) return;
+    await save(Object.assign({}, state.adsBudget || { month: todayStr().slice(0, 7), mnt: 0 }, { enabled: on }));
   });
 }
 
@@ -34791,8 +34963,15 @@ function refreshViewData() {
     if (state.customers === undefined) loadCustomers().then(() => { if (state.view === 'customers') render(); });
     if (state.appOrders === undefined) { state.appOrders = []; setTimeout(() => loadAppOrders().then(() => { if (state.view === 'customers') render(); }), 0); }
   }
+  if (v === 'ads' && canSeeAds() && state.pbxCalls === undefined) {
+    loadPbxCalls().then(() => { if (state.view === 'ads') render(); });
+  }
   if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
     loadFbAds().then(() => { if (state.view === 'ads') render(); });
+    if (state.adsBudget === undefined) {
+      state.adsBudget = null;
+      loadAppConfig(ADS_BUDGET_KEY).then(v => { state.adsBudget = v || null; if (state.view === 'ads') render(); });
+    }
   }
   if (v === 'writeoff' && canSeeWriteoff()) {
     if (!state.products || !state.products.length) loadProductsCatalog();

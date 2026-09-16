@@ -6621,6 +6621,42 @@ need(['orderCustType']);
   ok(!/PBX_PASS\s*=\s*['"]/.test(py), 'scan: нууц үг скриптэд хатуу бичигдээгүй');
 }
 
+// ── CAPI-ийн дэлгэцийн хураангуй ───────────────────────────────────────────
+// «Холбоо ажиллаж байна уу» гэдгийг хэрэглэгч ЭНДЭЭС л харна. Тоо буруу бол
+// тасарсан холболт «идэвхтэй» мэт харагдана.
+{
+  const rows = [
+    { order_id: 'a', value_usd: 100, matched: 'ph,em,fbp,fbc', sent_at: '2026-09-16T09:00:00Z' },
+    { order_id: 'b', value_usd: 50.5, matched: 'ph', sent_at: '2026-09-15T09:00:00Z' },
+    { order_id: 'c', value_usd: 20, matched: 'ph,fbc', sent_at: '2026-09-10T09:00:00Z' },
+    { order_id: 'd', value_usd: 999, matched: 'ph', sent_at: '2026-08-01T09:00:00Z' },  // хугацаанаас гадна
+  ];
+  const st = F.capiStats(rows, '2026-09-09');
+  eq(st.n, 3, 'capi: хугацаанд багтсан мөр л тоологдоно');
+  eq(st.usd, 170.5, 'capi: дүн нийлнэ');
+  eq(st.strong, 2, 'capi: fbc-тэй нь зар дарсан хүн');
+  eq(st.strongPct, 67, 'capi: хувь');
+  eq(st.last, '2026-09-16T09:00:00Z', 'capi: сүүлийн илгээлт');
+
+  const none = F.capiStats([], '2026-09-01');
+  eq(none.n, 0, 'capi: хоосон → 0');
+  eq(none.strongPct, 0, 'capi: хоосонд хуваагдахгүй');
+  eq(F.capiStats(null, '2026-09-01').n, 0, 'capi: null → унахгүй');
+  // ⚠ Хугацаа заагаагүй бол БҮГД тоологдоно (шүүлтгүй дуудлага).
+  eq(F.capiStats(rows, '').n, 4, 'capi: хугацаагүй бол бүгд');
+  // ⚠ Талбар дутуу мөр унагаахгүй — Meta-гийн хариу өөрчлөгдөж болно.
+  eq(F.capiStats([{ order_id: 'x' }], '').n, 1, 'capi: дутуу мөр унагаахгүй');
+}
+
+// scan: CAPI-ийн блок дэлгэцэд БАЙХ ёстой — эс бөгөөс холболт чимээгүй
+// тасарч, утсаар хийсэн бүх захиалга Facebook-т хүрэхээ болино.
+{
+  const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  ok(/capiStats\(state\.fbCapi/.test(asrc), 'scan: зарын дэлгэц CAPI-г харуулна');
+  ok(/loadFbCapi\(true\)/.test(asrc), 'scan: CAPI дата ачаалагдана');
+  ok(/capiStale/.test(asrc), 'scan: холболт зогссоныг сэрэмжлүүлнэ');
+}
+
 // ── META CONVERSIONS API (2026-09-16) ──────────────────────────────────────
 // Pixel зөвхөн браузерт ажилладаг тул утсаар/биечлэн хийгдсэн захиалга
 // Facebook-т ОГТ хүрдэггүй. Манай захиалгын дийлэнх нь яг тэр — иймд зар

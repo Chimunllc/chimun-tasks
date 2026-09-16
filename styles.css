@@ -7286,3 +7286,7 @@ select.no-asar-len {
 .cu-cs { padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px;
   font-size: var(--fs-xs); color: var(--muted); }
 .cu-cs.cu-miss { color: var(--warn); border-color: var(--warn); }
+.mc-tools { margin-bottom: var(--space-3); }
+.mc-q { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); color: var(--text); font-size: var(--fs-sm); }
+.mc-cold .mc-num { color: var(--muted); }

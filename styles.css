@@ -7279,3 +7279,5 @@ select.no-asar-len {
 .mc-more { margin-top: var(--space-3); }
 .mc-more > summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); color: var(--muted); }
 .mc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.6; }
+.mc-stale { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--warn);
+  border-radius: 10px; background: var(--warn-soft); color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }

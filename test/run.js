@@ -5993,13 +5993,13 @@ need(['orderCustType']);
 
   // ── Хариу аваагүй дуудлага ──
   const cl = [
-    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00+00', answer_sec: 0, call_sec: 20 },
-    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00+00', answer_sec: 0, call_sec: 25 },
-    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00+00', answer_sec: 0, call_sec: 18 },
-    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00+00', answer_sec: 27, call_sec: 47 },
-    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 30 },
-    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 30 },
-    { direction: 'in', peer: '77009900', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 6 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00Z', answer_sec: 0, call_sec: 20 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00Z', answer_sec: 0, call_sec: 25 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00Z', answer_sec: 0, call_sec: 18 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00Z', answer_sec: 27, call_sec: 47 },
+    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 30 },
+    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 30 },
+    { direction: 'in', peer: '77009900', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 6 },
   ];
   const fu = F.pbxFollowups(cl);
   eq(fu.length, 1, 'дуудлага: нэг ч удаа яриагүй дугаар л үлдэнэ');
@@ -6009,12 +6009,17 @@ need(['orderCustType']);
   ok(!fu.some(x => x.peer === '4001'), 'дуудлага: дотоод богино дугаар орохгүй');
   ok(!fu.some(x => x.peer === '95000000'), 'дуудлага: ГАРСАН дуудлага орохгүй');
   ok(!fu.some(x => x.peer === '77009900'), 'дуудлага: мэндчилгээ дуусахаас өмнө тасалсан нь лид биш (KFC андуурал)');
-  // Босго нь мэндчилгээнээс ХАМААРНА — мэндчилгээ солигдоход гар тоо үлдэхээс сэргийлнэ
-  eq(vm.runInContext('PBX_WAIT_SEC', sandbox), vm.runInContext('PBX_GREETING_SEC', sandbox) + 2,
-     'дуудлага: босго = мэндчилгээ + 2 сек (гар тоо биш)');
+  // ⛔ Босго = 13 сек (CEO-гийн шийдвэр 2026-09-16), гэхдээ мэндчилгээ уртсвал
+  //    түүнийг ДАГАЖ өснө — эс бөгөөс урт мэндчилгээ сонссон бүх хүн «лид» болно.
+  eq(vm.runInContext('PBX_WAIT_SEC', sandbox), 13, 'дуудлага: босго = 13 сек');
+  ok(vm.runInContext('PBX_WAIT_SEC', sandbox) >= vm.runInContext('PBX_GREETING_SEC', sandbox) + 2,
+     'дуудлага: босго нь мэндчилгээнээс үргэлж дээгүүр');
   eq(F.pbxFollowups([
-    { direction: 'in', peer: '88991122', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 11 },
-  ]).length, 1, 'дуудлага: мэндчилгээг сонсоод дуудалт хүлээсэн хүн = жинхэнэ лид');
+    { direction: 'in', peer: '88991122', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 14 },
+  ]).length, 1, 'дуудлага: 13 секундээс удаан хүлээсэн хүн = жинхэнэ лид');
+  eq(F.pbxFollowups([
+    { direction: 'in', peer: '88991122', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 11 },
+  ]).length, 0, 'дуудлага: 13 секунд хүрэхгүй тасалсан нь лид БИШ');
   eq(fu.short, 1, 'дуудлага: богино тасалсныг тусад нь тоолно');
   eq(F.pbxFollowups(cl, { minSec: 0 }).length, 2, 'дуудлага: босгыг 0 болговол бүгд орно');
   eq(F.pbxFollowups(cl, { from: '2026-09-15' }).length, 1, 'дуудлага: хугацаагаар шүүнэ');
@@ -6157,26 +6162,51 @@ need(['orderCustType']);
     eq(F.pbxOpenCalls(fups, [], [{ phone: '88446914', status: 'reserved', created_at: '2026-09-01T08:00:00+00' }])[0].ordered,
        false, 'алдсан: дуудлагаас ӨМНӨХ хуучин захиалга тоологдохгүй');
     // Гараар тэмдэглэх — «холбогдсон» нь хаана, «авсангүй» нь ХААХГҮЙ
-    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00+00' }], [])[0].done,
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00Z' }], [])[0].done,
        true, 'алдсан: холбогдсон гэж тэмдэглэвэл хаагдана');
-    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00+00', tries: 2 }], [])[0].done,
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00Z', tries: 2 }], [])[0].done,
        false, 'алдсан: утсаа аваагүй бол ажил ДУУСААГҮЙ — жагсаалтад үлдэнэ');
-    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00+00', tries: 2 }], [])[0].cbTries,
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'no_answer', upto: '2026-09-15T03:10:00Z', tries: 2 }], [])[0].cbTries,
        2, 'алдсан: бидний буцаж залгасан тоо харагдана');
     // ⛔ ХАМГИЙН ЧУХАЛ: хаасан дугаар ДАХИН залгавал эргэж гарна
-    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T02:30:00+00' }], [])[0].done,
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T02:30:00Z' }], [])[0].done,
        false, 'алдсан: хаасны ДАРАА дахин залгасан хүн жагсаалтад эргэж гарна');
     eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'dropped', upto: null }], [])[0].done,
        false, 'алдсан: upto-гүй тэмдэглэл хаахгүй (хэзээний дуудлагыг шийдсэн нь тодорхойгүй)');
     // Дугаарын бичлэг зөрж болно (976 угтвар) — нормчилж тулгана
-    eq(F.pbxOpenCalls(fups, [{ peer: '97688446914', status: 'reached', upto: '2026-09-15T03:10:00+00' }], [])[0].done,
+    eq(F.pbxOpenCalls(fups, [{ peer: '97688446914', status: 'reached', upto: '2026-09-15T03:10:00Z' }], [])[0].done,
        true, 'алдсан: 976 угтвартай бичигдсэн дугаар ч тулгагдана');
+    // ⚠ «…Z» ба «…+00:00» нь ИЖИЛ мөч — мөрөөр харьцуулбал өөр гарна.
+    eq(F.pbxOpenCalls(fups, [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00+00:00' }], [])[0].done,
+       true, 'алдсан: цагийн бичлэгийн хэлбэр ялгаатай ч ижил мөч гэж танина');
     eq(F.pbxOpenCalls(null, null, null).length, 0, 'алдсан: дата байхгүй → хоосон (унахгүй)');
     // Эрэмбэ: шийдэгдээгүй нь ДЭЭР
     const two = F.pbxOpenCalls(
       F.pbxFollowups(cl.concat([{ direction: 'in', peer: '99887766', started_at: '2026-09-15T04:00:00+00', answer_sec: 0, call_sec: 30 }])),
-      [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00+00' }], []);
+      [{ peer: '88446914', status: 'reached', upto: '2026-09-15T03:10:00Z' }], []);
     eq(two[0].peer, '99887766', 'алдсан: шийдэгдээгүй нь эхэнд эрэмбэлэгдэнэ');
+  }
+
+  // ⛔ АЖЛЫН ЦАГИЙН ГАДНА = АЛДСАН ДУУДЛАГА БИШ (CEO, 2026-09-16).
+  //   Хаалттай цагт утас аваагүй нь алдаа биш — түүнийг тоолвол ажлын цагийн
+  //   ЖИНХЭНЭ алдагдал (үдийн завсарлага) тоонд дарагдана.
+  {
+    const lg = [
+      // 02:00Z = УБ-ийн 10:00 (ажлын цагт) · 14:00Z = УБ-ийн 22:00 (гадна)
+      { direction: 'in', peer: '99000001', started_at: '2026-09-15T02:00:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '99000002', started_at: '2026-09-15T14:00:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '99000003', started_at: '2026-09-15T14:30:00Z', answer_sec: 0, call_sec: 40 },
+      { direction: 'in', peer: '99000003', started_at: '2026-09-15T03:00:00Z', answer_sec: 0, call_sec: 40 },
+    ];
+    const f = F.pbxFollowups(lg, { ws: 9, we: 18 });
+    eq(f.map(x => x.peer).sort().join(','), '99000001,99000003',
+       'дуудлага: ажлын цагт залгасан нь л жагсаалтад орно');
+    eq(f.find(x => x.peer === '99000003').tries, 1,
+       'дуудлага: ажлын цагийн гадна оролдлого тоологдохгүй (нэг хүн хоёуланд залгасан)');
+    eq(f.off, 1, 'дуудлага: ЗӨВХӨН гадна залгасан хүн тусад нь тоологдоно (нуухгүй)');
+    // ⚠ Цаг уншигдахгүй бол ХАСАХГҮЙ — формат өөрчлөгдөхөд бүгд алга болохоос сэргийлнэ.
+    eq(F.pbxFollowups([{ direction: 'in', peer: '99000009', started_at: 'муу', answer_sec: 0, call_sec: 40 }],
+       { ws: 9, we: 18 }).length, 1, 'дуудлага: цаг уншигдаагүй мөрийг ҮЛДЭЭНЭ (чимээгүй хасахгүй)');
   }
 
   // ── Ажилтнаар дуудлага ──

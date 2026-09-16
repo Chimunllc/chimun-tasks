@@ -81,14 +81,26 @@ def changed(old, new):
     return abs(float(old) - float(new)) >= 0.01
 
 
+# ⛔ АЛДААГ ДАВТАЖ БИЧИХГҮЙ. Алдаа нь өөрчлөлт биш ТӨЛӨВ — засагдтал 10 минут
+#   тутам давтагдана (өдөрт 144 ижил мөр). Тиймээс ижил алдаа сүүлийн 6 цагт
+#   бүртгэгдсэн бол дахин бичихгүй. Төсөв/зогсоолт нь аль хэдийн
+#   `changed()`-ээр хаалттай тул энэ нь зөвхөн алдаанд хэрэгтэй.
+ERR_QUIET_H = 6
+
+
 def flush_actions():
     if not ACTIONS:
         return
-    vals = ',\n  '.join(
-        f'({sq(k)},{sq(c)},{sq(nm)},{sn(o)},{sn(nv)},{sq(r)})'
-        for k, c, nm, o, nv, r in ACTIONS)
-    psql('insert into fb_ad_actions (kind,campaign_id,campaign_name,old_val,new_val,reason) '
-         f'values\n  {vals};')
+    stmts = []
+    for k, c, nm, o, nv, r in ACTIONS:
+        row = (f'select {sq(k)},{sq(c)},{sq(nm)},{sn(o)},{sn(nv)},{sq(r)}')
+        if k == 'error':
+            row += (f" where not exists (select 1 from fb_ad_actions"
+                    f" where kind='error' and coalesce(campaign_id,'')=coalesce({sq(c)},'')"
+                    f" and reason={sq(r)} and at > now() - interval '{ERR_QUIET_H} hours')")
+        stmts.append('insert into fb_ad_actions '
+                     '(kind,campaign_id,campaign_name,old_val,new_val,reason) ' + row + ';')
+    psql('\n'.join(stmts))
 
 
 def save_state(camps, plan):

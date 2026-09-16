@@ -26,7 +26,8 @@ TOKEN, ACCT = cfg['FB_TOKEN'], cfg['FB_ACCT']
 RATE = float(cfg.get('FX_USD_MNT', '3600'))
 API = 'https://graph.facebook.com/v21.0'
 MIN_MSG = 3            # үүнээс цөөн чаттай зарын өртөг = шуугиан
-MIN_DAILY_USD = 1.0    # Meta-гийн доод хязгаар
+MIN_DAILY_USD = 2.50   # ⚠ Meta-гийн доод хязгаар ($2.00-оос ДЭЭШ; доогуур бол
+                       #   adset шинэчлэлт «Budget Is Too Low» гэж УНАНА)
 
 
 def api_get(path, params):

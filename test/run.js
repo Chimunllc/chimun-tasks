@@ -6587,12 +6587,16 @@ need(['orderCustType']);
   const py = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
   ok(/def changed\(/.test(py), 'scan: хуваарилагчид changed() байна');
   // ⚠ Хоёр САЛАА зам бий (CBO кампанит ажил ба adset). Хоёулангийнх нь
-  // api_post нь `changed(...)` хаалтын ДОТОР байх ёстой — нэгийг нь хаалтгүй
-  // орхивол тэр замаар өдөрт 144 мөр хог бүртгэгдэнэ.
-  ok(/if changed\(old, want\):\s*\n\s*api_post\(c\['id'\], \{'daily_budget'/.test(py),
-     'scan: кампанит ажлын төсөв changed() хаалтын дотор');
-  ok(/if changed\(float\(a\.get\('daily_budget'\)[\s\S]{0,80}?api_post\(a\['id'\], \{'daily_budget'/.test(py),
-     'scan: adset-ийн төсөв changed() хаалтын дотор');
+  // api_post нь хаалтын ДОТОР байх ёстой — нэгийг нь хаалтгүй орхивол тэр
+  // замаар өдөрт 144 мөр хог бүртгэгдэнэ.
+  // ⚠ 2026-09-17-нд хаалт `changed()` (1 цент) → `worth_changing()` (15% ба
+  //   өдөрт нэг удаа) болов: 1 цент нь хэт сул, өдөрт 46 утгагүй засвар
+  //   хийгдэж Meta-гийн «сурах үе» байнга дахин эхэлж байв.
+  ok(/if worth_changing\(old, want, last_h[\s\S]{0,80}?api_post\(c\['id'\], \{'daily_budget'/.test(py),
+     'scan: кампанит ажлын төсөв хаалтын дотор');
+  ok(/if changed\(float\(a\.get\('daily_budget'\)[\s\S]{0,80}?api_post\(a\['id'\], \{'daily_budget'/.test(py)
+     && /if worth_changing\(old_tot or None/.test(py),
+     'scan: adset-ийн төсөв хаалтын дотор (хоёр давхар)');
   ok(/if changed\(cap_old, cap_usd\):/.test(py), 'scan: дансны хязгаар ч өөрчлөгдсөн үед л');
   ok(/def sq\(/.test(py) && /replace\(\"'\", \"''\"\)/.test(py),
      'scan: SQL мөрийн утга хашилтаас хамгаалагдана');
@@ -6768,6 +6772,36 @@ need(['orderCustType']);
   // ⛔ Анхааруулга ХАМГИЙН ДЭЭР — доорх тоог уншихаас ӨМНӨ харагдана.
   ok(/\$\{staleHtml\}\s*\n\s*\$\{period\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
   ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
+}
+
+// ── ТӨСВИЙН ШАЛГАРАЛ (2026-09-17) ──────────────────────────────────────────
+// ⛔ Өдрийн төсвийг байнга засвал зар МУУДНА. Скрипт 10 минут тутам ажилладаг
+//    бөгөөд зөрүү 1 цент байхад бичдэг байв — амьд датаар өдөрт 46 удаа,
+//    ихэнх нь $6.25→$6.23 гэх утгагүй хөдөлгөөн. Meta төсөв засах бүрд
+//    хүргэлтийн «сурах үе»-г дахин эхлүүлдэг тул үр дүнгийн өртөг өснө.
+{
+  const bud = path.join(__dirname, '..', 'tools', 'fb_budget.py');
+  const py = fs.readFileSync(bud, 'utf8');
+
+  ok(/BUDGET_MIN_PCT|worth_changing/.test(py), 'scan: төсвийн босго тогтоогдсон');
+  // ⛔ Төсөв тавихдаа `changed()` (1 цент) руу БУЦАХГҮЙ.
+  ok(/if worth_changing\(old, want, last_h/.test(py), 'scan: CBO төсөв босгоор шалгагдана');
+  ok(/if worth_changing\(old_tot or None/.test(py), 'scan: adset төсөв босгоор шалгагдана');
+  // ⛔ ЗОГСООЛТ хаалтад ОРОХГҮЙ — мөнгө хамгаалах ажил шууд хийгдэнэ.
+  ok(/def pause_all/.test(py) && !/worth_changing[\s\S]{0,200}?PAUSED/.test(py),
+     'scan: зогсоолт төсвийн хаалтад ороогүй');
+  // ⚠ Хугацааг уншиж чадахгүй бол ажиллахаа болихгүй (хаалтгүй үргэлжилнэ).
+  ok(/def last_budget_hours[\s\S]{0,600}?except Exception:/.test(py),
+     'scan: хугацаа уншигдахгүй бол унахгүй');
+
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(bud)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ BUDGET OK/.test(out), 'төсөв: Python өөрийн тест тэнцэв — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'төсөв: Python тест — ' + msg.trim().slice(0, 300));
+  }
 }
 
 // ── GOOGLE SEARCH CONSOLE (2026-09-16) ─────────────────────────────────────

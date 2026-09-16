@@ -27980,6 +27980,11 @@ function pbxFollowups(calls, opts) {
 // ⚠ Дугаар нь ЗАХИАЛГАД бичигдээгүй бол (ажилтан өөр дугаар бичсэн) энэ нь
 //   бодит хувиас ДООГУУР тоолно.
 const CALL_CONV_GRACE_D = 1;   // дуудлагаас өмнөх 1 хоногийн захиалгыг ч тооцно
+// ⛔ ДЭЭД ХИЛ ЗААВАЛ. Хязгааргүй бол нэг удаа залгасан хүн ДАРААГИЙН БҮХ
+//   захиалгадаа «хөрвөсөн» гэж тоологдож, дуудлагын түүх урт болох тусам
+//   хувь нь 100% руу хиймлээр өснө. Одоо 14 хоногийн дата тул нөлөөлөхгүй ч
+//   сар өнгөрөх тусам тоо чимээгүй гажина.
+const CALL_CONV_WINDOW_D = 30;
 function callConversion(calls, orders, opts) {
   const o = opts || {};
   const from = String(o.from || '');
@@ -28013,9 +28018,14 @@ function callConversion(calls, orders, opts) {
   Object.values(byPeer).forEach(x => {
     const g = x.talked ? grp.talked : (x.maxSec >= PBX_WAIT_SEC ? grp.missed : grp.short);
     g.callers++;
-    const lim = addDays(String(x.first).slice(0, 10), -CALL_CONV_GRACE_D);
+    const d0 = String(x.first).slice(0, 10);
+    const lim = addDays(d0, -CALL_CONV_GRACE_D);
+    const cap = addDays(d0, CALL_CONV_WINDOW_D);
     const hit = (byPhone[custPhoneKey(x.peer)] || [])
-      .filter(od => String(od.created_at || '').slice(0, 10) >= lim);
+      .filter(od => {
+        const d = String(od.created_at || '').slice(0, 10);
+        return d >= lim && d <= cap;
+      });
     if (hit.length) { g.converted++; g.sum += hit.reduce((a, od) => a + (Number(od.total_mnt) || 0), 0); }
   });
   const pct = g => (g.callers ? Math.round(g.converted * 1000 / g.callers) / 10 : 0);

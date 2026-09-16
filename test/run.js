@@ -6071,6 +6071,17 @@ need(['orderCustType']);
   eq(F.callConversion([], []).talked.rate, 0, 'хөрвөлт: дата байхгүй → 0');
   eq(F.callConversion(null, null).missed.callers, 0, 'хөрвөлт: null → унахгүй');
 
+  // ⛔ ДЭЭД ХИЛ: нэг удаа залгасан хүн ДАРААГИЙН БҮХ захиалгадаа «хөрвөсөн»
+  //   гэж тоологдож болохгүй — эс бөгөөс түүх урт болох тусам хувь 100% руу
+  //   хиймлээр өснө (одоогийн 14 хоногийн датаар мэдэгдэхгүй нүх).
+  const farCalls = [{ direction: 'in', peer: '99112233', started_at: '2026-01-05T03:00:00Z', answer_sec: 40, call_sec: 60 }];
+  const farOrders = [{ id: 'o1', phone: '99112233', total_mnt: 500000, created_at: '2026-06-20T03:00:00Z', status: 'active' }];
+  eq(F.callConversion(farCalls, farOrders).talked.converted, 0,
+     'хөрвөлт: хагас жилийн дараах захиалга тоологдохгүй');
+  const nearOrders = [{ id: 'o2', phone: '99112233', total_mnt: 500000, created_at: '2026-01-20T03:00:00Z', status: 'active' }];
+  eq(F.callConversion(farCalls, nearOrders).talked.converted, 1,
+     'хөрвөлт: цонхны дотор захиалга тоологдоно');
+
   eq(F.callConvAdvice(cc).length, 0, 'хөрвөлт: 5-аас цөөн хүнд сануулга гаргахгүй (шуугиан)');
   const big = F.callConversion(
     Array.from({ length: 12 }, (_, i) => ({ direction: 'in', peer: '9900' + String(1000 + i), started_at: '2026-09-10T02:00:00+00', answer_sec: 0, call_sec: 20 })).concat(ccCalls),

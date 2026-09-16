@@ -28517,6 +28517,17 @@ function renderAds() {
     </div>`;
   }).join('');
 
+  // Сайтаар ирсэн захиалгын зарын суваг — note дахь ⟦ADS⟧ токеноос.
+  // ⚠ Утсаар ирсэн захиалгад энэ токен БАЙХГҮЙ (тэнд дуудлагын тулгалт ажиллана).
+  const attrib = adAttribStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= from), from, 'cash');
+  const attribHtml = !attrib.n ? '' : `<div class="ads-sec">Сайтаар ирсэн захиалга — зарын суваг <span class="ads-sub">(${days} хоног)</span></div>
+    <div class="ads-list">${attrib.rows.map(r => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(r.k)}</span>
+      <span class="ads-sp">${r.n} захиалга</span>
+      <span class="ads-ms">${r.n ? fmtMoney(Math.round(r.inc / r.n)) : '—'} дундаж</span>
+      <b class="ads-pm">${fmtMoney(r.inc)}</b>
+    </div>`).join('')}</div>`;
+
   const leadHtml = `<div class="ads-note">Захиалгын лид суваг: <b>${lead.coverage}%</b> тэмдэглэгдсэн${lead.unknown ? ` · ${lead.unknown} захиалга тэмдэглээгүй` : ''}.
     ${lead.coverage < 80 ? 'Хамралт 80%-иас дээш болмогц Facebook-ийн чат → захиалга хүртэлх холбоос гарч ирнэ.' : 'Чат → захиалгын холбоос гаргахад хангалттай дата боллоо.'}</div>`;
 
@@ -28649,6 +28660,7 @@ function renderAds() {
     <div class="ads-list">${campRows}</div>
     <div class="ads-sec">Зарын хуваарилалт ↔ борлуулалт <span class="ads-sub">(борлуулалт 90 хоног)</span></div>
     <div class="ads-list">${cmpRows}</div>
+    ${attribHtml}
     ${leadHtml}`;
 }
 
@@ -28789,6 +28801,35 @@ const LEAD_SOURCES = [
   { k: 'partner', label: '🤝 Хамтрагч / эвент зохион байгуулагч' },
   { k: 'other', label: '❓ Бусад / мэдэхгүй' },
 ];
+// ── ЗАРЫН АТРИБУЦИ — сайт ⟦ADS|суваг|кампанит|хэрэгсэл⟧ токеноор дамжуулна ──
+// (2026-09-16) Сайт нь хүн хаанаас ирснийг URL-ээс (fbclid/utm_*) автоматаар
+// барьж захиалгын note-д бичдэг. Гараар сонгуулдаг лид суваг 144 захиалгын
+// 4-д нь л бөглөгдсөн байсан тул автомат суваг нэмэгдэв.
+// ⚠ Зөвхөн САЙТААР ирсэн захиалгад байна — утсаар ирсэнд байхгүй (тэнд
+//   дуудлагын тулгалт ажилладаг). Хамралтыг ИЛ тоолно, таамаглаж дүүргэхгүй.
+const _ADS_RE = /⟦ADS\|([^⟧]*)⟧/;
+function parseAdAttrib(note) {
+  const m = String(note || '').match(_ADS_RE);
+  if (!m) return null;
+  const [src, camp, med] = String(m[1]).split('|');
+  return src ? { src, camp: camp || '', med: med || '' } : null;
+}
+// Сувгаар нэгтгэсэн захиалга/орлого. Цэвэр функц — тестлэгдэнэ.
+function adAttribStats(orders, fromDay, basis) {
+  const by = {}; let n = 0, inc = 0;
+  (orders || []).forEach(o => {
+    if (!o || !_orderActive(o)) return;
+    if (fromDay && String(o.starts_at || '').slice(0, 10) < fromDay) return;
+    const a = parseAdAttrib(o.note);
+    if (!a) return;
+    const k = a.src + (a.camp ? ' · ' + a.camp : '');
+    const amt = orderRevenue(o, basis);
+    by[k] = by[k] || { k, src: a.src, camp: a.camp, n: 0, inc: 0 };
+    by[k].n++; by[k].inc += amt;
+    n++; inc += amt;
+  });
+  return { rows: Object.values(by).sort((a, b) => b.inc - a.inc), n, inc };
+}
 const _LEAD_RE = /⟦LEAD\|([a-z]+)⟧/;
 function encodeLeadSource(k) { return LEAD_SOURCES.some(x => x.k === k) ? `⟦LEAD|${k}⟧` : ''; }
 function parseLeadSource(note) { const m = String(note || '').match(_LEAD_RE); return m ? m[1] : ''; }

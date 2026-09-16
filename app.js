@@ -28729,6 +28729,50 @@ function renderAds() {
     ${leadHtml}`;
 }
 
+// ── БҮХ ЗАЛГАГЧ (2026-09-16) ────────────────────────────────────────────────
+// «Алдсан дуудлага» нь зөвхөн ШИЙДЭГДЭЭГҮЙ мөрийг харуулдаг тул 1,300+ залгасан
+// хүнийг хаанаас ч харах газаргүй байв. Энэ нь дугаар бүрээр нэг мөр.
+// ⚠ Дотоод/богино дугаар (3-5 орон) = PBX-ийн шат, хүн БИШ — хасна.
+// ⚠ Захиалга болсон эсэхийг `custPhoneKey`-ээр тулгана; дугаараа өөрөөр бичсэн
+//   захиалга таарахгүй тул «захиалга өгөөгүй» гэж ХАТУУ дүгнэхгүй.
+function pbxCallers(calls, orders, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const by = {};
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    const p = String(c.peer || '');
+    if (p.replace(/\D/g, '').length < 6) return;
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    const x = by[p] || (by[p] = { peer: p, tries: 0, answered: 0, talk: 0, first: at, last: at, maxSec: 0 });
+    x.tries++;
+    const a = Number(c.answer_sec) || 0;
+    if (a > 0) { x.answered++; x.talk += a; }
+    x.maxSec = Math.max(x.maxSec, Number(c.call_sec) || 0);
+    if (at && at < x.first) x.first = at;
+    if (at && at > x.last) x.last = at;
+  });
+  const ordBy = {};
+  (orders || []).forEach(od => {
+    if (!od || !_orderActive(od)) return;
+    const k = custPhoneKey(od.phone);
+    if (!k) return;
+    ordBy[k] = (ordBy[k] || 0) + 1;
+  });
+  return Object.values(by).map(x => Object.assign(x, {
+    orders: ordBy[custPhoneKey(x.peer)] || 0,
+    missed: x.tries - x.answered,
+  })).sort((a, b) => String(b.last).localeCompare(String(a.last)));
+}
+// Хайлт — дугаар эсвэл харилцагчийн нэрээр.
+function pbxCallerMatch(row, q, customers) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return true;
+  if (String(row.peer || '').toLowerCase().includes(s)) return true;
+  const cu = pbxCustomerOf(row.peer, customers);
+  return !!(cu && String(cu.name || '').toLowerCase().includes(s));
+}
 // ── ДЭЛГЭЦ: 📵 Алдсан дуудлага ──────────────────────────────────────────────
 // Өдөр тутмын ажлын жагсаалт: хэн залгаад холбогдоогүй, хэнд буцаж залгах вэ.
 // ⚠ Зарын дэлгэц дээрх жагсаалттай ижил `pbxFollowups`-оос гарна — дүрэм ХОЁР
@@ -28743,11 +28787,7 @@ function renderMissedCalls() {
   const rows = pbxOpenCalls(fups, state.pbxCb || [], state.appOrders || []);
   const open = rows.filter(r => !r.done);
   const done = rows.filter(r => r.done);
-  if (!rows.length) {
-    return `<h2 class="view-title">📵 Алдсан дуудлага</h2>
-      <div class="mc-empty">✅ <b>Сүүлийн ${MISSED_DAYS} хоногт хариу аваагүй дуудлага алга.</b>
-        <div>Дуудлагын лог өдөр бүр татагдана. Шинэ дуудлага ирвэл энд гарна.</div></div>`;
-  }
+
   const row = (r) => {
     const cu = pbxCustomerOf(r.peer, state.customers || []);
     const when = String(r.last).slice(5, 16).replace('T', ' ');
@@ -28767,6 +28807,28 @@ function renderMissedCalls() {
         <div class="mc-meta">${meta}</div></div>
       <div class="mc-acts">${acts}</div></div>`;
   };
+  // Бүх залгагч (90 хоног = порталын хадгалах хугацаа).
+  const allRows = pbxCallers(state.pbxLog || [], state.appOrders || [], {});
+  const tab = state._mcTab === 'all' ? 'all' : 'open';
+  const q = String(state._mcQ || '');
+  const shown = allRows.filter(r => pbxCallerMatch(r, q, state.customers || []));
+  const allHtml = `
+    <div class="mc-tools"><input id="mc-q" class="ui-raw mc-q" type="search"
+      placeholder="Дугаар эсвэл харилцагчийн нэр…" value="${escapeHtml(q)}"></div>
+    <div class="ads-sec">Залгасан хүмүүс <span class="ads-sub">(90 хоног${q ? ` · ${shown.length} олдлоо` : ''})</span></div>
+    <div class="mc-list">${shown.slice(0, 200).map(r => {
+      const cu = pbxCustomerOf(r.peer, state.customers || []);
+      const meta = [`${r.tries} удаа`,
+        r.answered ? `${r.answered} ярьсан` : 'хэзээ ч яриагүй',
+        r.missed ? `${r.missed} аваагүй` : '',
+        r.talk ? `${Math.round(r.talk / 60)} мин` : '',
+        r.orders ? `🛒 ${r.orders} захиалга` : ''].filter(Boolean).join(' · ');
+      return `<div class="mc-row${r.answered ? '' : ' mc-cold'}">
+        <div class="mc-main"><div class="mc-num">${escapeHtml(r.peer)} <span class="mc-who">${cu ? escapeHtml(cu.name || '') : 'шинэ дугаар'}</span></div>
+          <div class="mc-meta">${meta} · сүүлд ${escapeHtml(String(r.last).slice(0, 16).replace('T', ' '))}</div></div>
+        <div class="mc-acts"><a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a></div></div>`;
+    }).join('') || '<div class="mc-empty">Олдсонгүй.</div>'}</div>
+    ${shown.length > 200 ? `<div class="mc-empty">…бас ${shown.length - 200} дугаар. Хайлтаар нарийсга.</div>` : ''}`;
   const age = pbxFeedAge(state.pbxLog || [], todayStr());
   const stale = (age !== null && age >= PBX_STALE_D)
     ? `<div class="mc-stale">⚠ <b>Дуудлагын дата ${age} хоног шинэчлэгдээгүй.</b>
@@ -28780,10 +28842,15 @@ function renderMissedCalls() {
       <div class="ads-kpi"><div class="ads-kpi-l">${MISSED_DAYS} хоногт</div><div class="ads-kpi-v">${rows.length}</div></div>
       <div class="ads-kpi"><div class="ads-kpi-l">Захиалга болсон</div><div class="ads-kpi-v">${rows.filter(r => r.ordered).length}</div></div>
     </div>
+    <div class="ads-tabs">
+      <button class="ads-tab${tab === 'open' ? ' on' : ''}" data-mc-tab="open">Буцаж залгах (${open.length})</button>
+      <button class="ads-tab${tab === 'all' ? ' on' : ''}" data-mc-tab="all">Бүх залгагч (${allRows.length})</button>
+    </div>
+    ${tab === 'all' ? allHtml : `
     <div class="ads-sec">Буцаж залгах <span class="ads-sub">(${open.length})</span></div>
-    <div class="mc-list">${open.map(row).join('') || '<div class="mc-empty">Бүгд шийдэгдсэн.</div>'}</div>
+    <div class="mc-list">${open.map(row).join('') || '<div class="mc-empty">Хариу аваагүй дуудлага алга — бүгд шийдэгдсэн.</div>'}</div>
     ${done.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${done.length})</summary>
-      <div class="mc-list">${done.map(row).join('')}</div></details>` : ''}
+      <div class="mc-list">${done.map(row).join('')}</div></details>` : ''}`}
     <div class="ads-note">Эдгээр дугаар <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b> хүнтэй ярьж чадаагүй —
       дуут мэндчилгээг сонсоод шууд тасалсан (андуурч залгасан) дугаар энд ОРООГҮЙ.
       ${fups.short ? `Тийм <b>${fups.short}</b> дугаар байсныг хассан.` : ''}
@@ -28799,6 +28866,19 @@ function attachMissedCallsHandlers() {
       render();
     } catch (err) { showToast('Хадгалж чадсангүй: ' + err.message, 'error', 4000); }
   };
+  document.querySelectorAll('[data-mc-tab]').forEach(b => b.onclick = () => {
+    state._mcTab = b.dataset.mcTab; render();
+  });
+  const qEl = document.getElementById('mc-q');
+  if (qEl) {
+    // ⚠ Бичих бүрд render() дуудвал фокус алдагдана — товшилт зогсоход л шинэчилнэ.
+    qEl.oninput = () => {
+      clearTimeout(state._mcQT);
+      state._mcQT = setTimeout(() => { state._mcQ = qEl.value; render();
+        const el = document.getElementById('mc-q');
+        if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 350);
+    };
+  }
   document.querySelectorAll('[data-mc]').forEach(b => b.onclick = () =>
     act(b.dataset.peer, b.dataset.mc, b.dataset.upto, true));
   // ↩ Буцаах = дахин нээх. Буцаж залгасан ТОО нэмэгдэхгүй (залгаагүй шүү дээ).

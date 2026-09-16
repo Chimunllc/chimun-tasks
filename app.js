@@ -23287,7 +23287,7 @@ function cleanAppNote(note) { return String(note || '').replace(/⟦[A-Z]{2,4}\|
 // Бусад бүх токен (PAY/RF/DMG/BRK/CX/CI/SL/SRC…) өөр урсгалынх — засварт ХАДГАЛАГДАНА.
 // Өмнө нь cleanAppNote-оор бүгдийг арилгаж байсан тул санхүүгийн бүртгэсэн ⟦PAY⟧/⟦RF⟧
 // захиалга засах бүрд УСТДАГ байв (хаяг заасан менежер барьцааг «буцаагаагүй» болгодог).
-const _FORM_TOKEN_RE = /⟦(?:RT|DLV|SET|VAT)\|[^⟧]*⟧/g;
+const _FORM_TOKEN_RE = /⟦(?:RT|DLV|SET|VAT|LEAD)\|[^⟧]*⟧/g;
 function stripFormTokens(note) { return String(note || '').replace(_FORM_TOKEN_RE, '').replace(/\s+/g, ' ').trim(); }
 // Хадгалахын ӨМНӨ серверээс шинэ утга ав — модал нээгдсэнээс хойш өөр хүн төлбөр
 // бүртгэсэн байж болно. Алдаа гарвал null буцаана → дуудагч хадгалахаа ЗОГСООНО (fail-closed).
@@ -23881,6 +23881,7 @@ function openNewOrder(editOrder) {
   const _locked = isEdit && (['rented', 'returning', 'returned', 'stopped', 'archived'].includes(String(editOrder.status || '')) || _paidFull);
   const _quotes0 = (isEdit && editOrder.stage_meta && Array.isArray(editOrder.stage_meta.quotes)) ? editOrder.stage_meta.quotes : [];   // илгээсэн үнийн саналуудын түүх
   const _notes0 = isEdit ? orderNotesOf(editOrder) : [];   // захиалгын тэмдэглэлийн лог (append-only)
+  const _lead0 = isEdit ? leadSourceOf(editOrder) : '';   // лид суваг (маркетингийн атрибуци)
   const _saleTot = isEdit ? (Number(editOrder.total_mnt) || 0) : 0;
   const hourOpts = (sel) => Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sel ? ' selected' : ''}>${_pad2(h)}:00</option>`).join('');
   const _sec = (t) => `<div class="no-sec">${t}</div>`;
@@ -23905,6 +23906,7 @@ function openNewOrder(editOrder) {
       <label class="no-lbl" id="no-company-wrap"${_ctype0 === 'org' ? '' : ' style="display:none;"'}>Байгууллага<input id="no-company" value="${escapeHtml(_autoCompany)}" placeholder="ХХК нэр"></label>
       <label class="no-lbl">РД (регистр)<input id="no-reg" value="${escapeHtml(_autoReg)}" placeholder="${_ctype0 === 'org' ? 'Байгууллагын 7 оронтой РД' : 'Хувь хүний РД'}"></label>
       <label class="no-lbl no-wide">Холбоо барих<input id="no-contact" value="${escapeHtml(_ci0.contact || [_ci0.fb, _ci0.viber].filter(Boolean).join(' · '))}" placeholder="FB / Viber / бусад холбоо барих мэдээлэл"></label>
+      <label class="no-lbl no-wide">Хаанаас ирсэн <span class="no-req">*</span><select id="no-lead"><option value="">— сонгоно уу —</option>${LEAD_SOURCES.map(x => `<option value="${x.k}"${x.k === _lead0 ? ' selected' : ''}>${x.label}</option>`).join('')}</select><span class="no-hint">Харилцагч биднийг хаанаас олсон бэ — маркетингийн төсөв энэ тоон дээр хуваарилагдана</span></label>
     </div>
     ${_sec('Хугацаа' + (isEdit ? ' · төлөв' : ''))}
     <div class="no-fields">
@@ -24200,6 +24202,9 @@ function openNewOrder(editOrder) {
       customer, phone: $('#no-phone').value, email: $('#no-email').value, noEmail: !!$('#no-email-none')?.checked,
     });
     if (_bad) { showToast(_bad.msg, 'warn'); $('#no-' + _bad.field)?.focus(); return; }
+    // Лид суваг ЗААВАЛ — атрибуцигүй бол маркетингийн төсөв таамаг дээр тогтоно.
+    const _lead = ($('#no-lead')?.value || '').trim();
+    if (!_lead) { showToast('«Хаанаас ирсэн» сонгоно уу — маркетингийн тайланд хэрэгтэй', 'warn'); $('#no-lead')?.focus(); return; }
     const days = currentDays();
     const subtotal = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.price) || 0), 0) * days;
     const dval = moneyVal($('#no-discval')); const dtype = $('#no-disctype').value;
@@ -24269,7 +24274,7 @@ function openNewOrder(editOrder) {
       starts_at: $('#no-start').value || null, stops_at: $('#no-stop').value || null,
       items, subtotal_mnt: subtotal, discount_type: dval ? dtype : null, discount_value: (dtype === 'pct' ? Math.min(100, dval) : dval),   // C9: pct-ыг 100%-аар кэплэж хадгална
       deposit_mnt: deposit, deposit_log: depLog, total_mnt: total + deposit + dlv.fee + offFee + setupFee, paid_mnt: _paidNow,
-      note: setCustInfo(((isEdit ? stripFormTokens(_noteNow) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '')).trim(), _ci),
+      note: setCustInfo(((isEdit ? stripFormTokens(_noteNow) : '') + ' ' + encodeOrderTimes(+$('#no-start-h').value, +$('#no-stop-h').value) + ' ' + encodeDelivery(dlv.zone, dlv.km, dlv.fee) + ' ' + encodeSetup(setupOn, setupFee) + (vatOff ? ' ' + encodeVat(vatDisc) : '') + ' ' + encodeLeadSource(_lead)).trim(), _ci),
       created_by: isEdit ? (editOrder.created_by || state.me) : state.me,
       created_at: isEdit ? editOrder.created_at : new Date().toISOString(), updated_at: new Date().toISOString(),
     };
@@ -27617,6 +27622,51 @@ function _orderDays(o) {
 function _orderActive(o) { const st = String(o.status || '').toLowerCase(); return st !== 'draft' && st !== 'deleted' && st !== 'canceled' && st !== 'cancelled'; }
 // Захиалгын ЖИНХЭНЭ орлого — барьцаа (буцаадаг өр) ХАСНА. App/M-Event-д total_mnt-д барьцаа орсон
 // тул хасна; Booqable-д total_mnt = түрээс (барьцаа тусдаа) тул хасахгүй. Түрээс + хүргэлт + НӨАТ.
+// ── ЛИД СУВАГ: харилцагч биднийг ХААНААС олсон (маркетингийн атрибуци, 2026-09-16) ──
+// ⚠ `source` (site/app/booqable) -ЭЭС ӨӨР тэнхлэг: тэр нь захиалга ХААНА бичигдснийг,
+// энэ нь харилцагч биднийг ХААНААС олсныг хэлнэ. Утсаар залгасан хүн source='app'
+// боловч лид нь Facebook байж болно — маркетингийн төсөв хуваарилалт ЭНЭ тоон дээр
+// тогтоно. Захиалга бүрд ⟦LEAD|түлхүүр⟧ note token-оор (app_orders-д багана
+// нэмэхгүйгээр, DLV/VAT/CX-тэй ижил загвар).
+const LEAD_SOURCES = [
+  { k: 'fb', label: '📘 Facebook' },
+  { k: 'ig', label: '📷 Instagram' },
+  { k: 'site', label: '🌐 Сайт / Google хайлт' },
+  { k: 'repeat', label: '🔁 Өмнө нь үйлчлүүлсэн' },
+  { k: 'referral', label: '🗣 Танилын зөвлөмж' },
+  { k: 'partner', label: '🤝 Хамтрагч / эвент зохион байгуулагч' },
+  { k: 'other', label: '❓ Бусад / мэдэхгүй' },
+];
+const _LEAD_RE = /⟦LEAD\|([a-z]+)⟧/;
+function encodeLeadSource(k) { return LEAD_SOURCES.some(x => x.k === k) ? `⟦LEAD|${k}⟧` : ''; }
+function parseLeadSource(note) { const m = String(note || '').match(_LEAD_RE); return m ? m[1] : ''; }
+// Захиалгын лид суваг. Тэмдэглээгүй бол САЙТААС ирсэн захиалгыг 'site' гэж үзнэ
+// (тэр нь маргаангүй — хүн сайтын формыг бөглөсөн). Бусад тэмдэглээгүй нь '' —
+// «мэдэхгүй» гэж ИЛ тоологдоно, таамаглаж дүүргэхгүй (худал дата = худал төсөв).
+function leadSourceOf(o) {
+  const t = parseLeadSource(o && o.note);
+  if (t) return t;
+  return orderSourceKey(o) === 'site' ? 'site' : '';
+}
+function leadSourceLabel(k) { const x = LEAD_SOURCES.find(s => s.k === k); return x ? x.label : '— тэмдэглээгүй'; }
+// Суваг тус бүрийн захиалга/орлого — цэвэр функц (DOM-гүй) тул тестлэгдэнэ.
+// Booqable түүх ОРОХГҮЙ (гарсан систем, атрибуци огт байхгүй тул «мэдэхгүй»-г хөөрөгдөнө).
+// Ноорог/цуцалсан/устгасан ч ОРОХГҮЙ — `_orderActive` (орлогын дүрэмтэй ижил).
+function leadChannelStats(orders, basis) {
+  const by = {}; let n = 0, inc = 0, unknown = 0;
+  (orders || []).forEach(o => {
+    if (!o || orderSourceKey(o) === 'booqable' || !_orderActive(o)) return;
+    const k = leadSourceOf(o) || '?';
+    const amt = orderRevenue(o, basis);
+    by[k] = by[k] || { k, n: 0, inc: 0 };
+    by[k].n++; by[k].inc += amt;
+    n++; inc += amt;
+    if (k === '?') unknown++;
+  });
+  const rows = Object.values(by).sort((a, b) => b.inc - a.inc)
+    .map(r => Object.assign(r, { label: r.k === '?' ? '— тэмдэглээгүй' : leadSourceLabel(r.k), avg: r.n ? Math.round(r.inc / r.n) : 0 }));
+  return { rows, n, inc, unknown, coverage: n ? Math.round((n - unknown) * 1000 / n) / 10 : 0 };
+}
 // Захиалга ХААНААС ирсэн бэ — 'site' (mevent.mn), 'booqable' (түүхэн), 'app' (ажилтан үүсгэсэн).
 // source талбар нь 'm-event-website' | 'booqable' | 'app' утгатай; хоосон бол ажилтных гэж үзнэ.
 function orderSourceKey(o) {
@@ -28608,11 +28658,33 @@ function renderReports() {
       <div class="rsrc-note">2026-09-аас хойшхи дата. Өмнөх сарууд сайтын бүртгэл тогтворгүй байсан тул оруулаагүй.</div>
     </div>`;
   })();
+  // ── ЛИД СУВАГ — харилцагч биднийг хаанаас олсон (маркетингийн атрибуци) ──────
+  // Маркетингийн төсөв ЭНЭ тоон дээр хуваарилагдана. Тэмдэглээгүй захиалгыг
+  // ИЛ харуулна — «хамралт» бага байхад хуваарилалт таамаг болохыг хэлэх ёстой.
+  const leadPanel = (() => {
+    const ls = leadChannelStats(_mi.evList || [], basis);
+    if (!ls.n) return '';
+    const bar = r => `<div class="lead-row">
+        <span class="lead-nm">${r.label}</span>
+        <span class="lead-n">${r.n}</span>
+        <b class="lead-inc">${fmtMoney(r.inc)}</b>
+      </div>`;
+    const warn = ls.coverage < 70
+      ? `<div class="rsrc-warn">⚠ Захиалгын <b>${ls.coverage}%</b> л сувагтай (${ls.unknown} тэмдэглээгүй). Төсөв хуваарилахад хамралт 80%-иас дээш байх ёстой — захиалга бүрд «Хаанаас ирсэн» сонгож хэвшүүлнэ.</div>`
+      : '';
+    return `<div class="rsrc-panel">
+      <div class="rsrc-title">📣 Лид суваг · ${escapeHtml(month)} <span class="rsrc-pct">${ls.coverage}% хамрагдсан</span></div>
+      <div class="lead-list">${ls.rows.map(bar).join('')}</div>
+      ${warn}
+      <div class="rsrc-note">Харилцагч биднийг хаанаас олсон — захиалга бичих үед тэмдэглэгддэг. Зарын зарцуулалттай холбогдмогц суваг бүрийн өртөг гарна.</div>
+    </div>`;
+  })();
   return pnl
     + insightsBanner
     + ceoSections
     + trendChart
     + srcPanel
+    + leadPanel
     + incomeSections
     + expChart
     + shiftPanel

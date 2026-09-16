@@ -5844,6 +5844,42 @@ need(['orderCustType']);
      'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
 }
 
+// ── ЛИД СУВАГ (маркетингийн атрибуци, 2026-09-16) ──────────────────────────
+// Маркетингийн төсөв энэ тоон дээр хуваарилагдана. Тэмдэглээгүйг ТААМАГЛАЖ
+// дүүргэвэл худал төсөв гарна — «мэдэхгүй» нь ил тоологдох ёстой.
+{
+  eq(F.parseLeadSource('⟦LEAD|fb⟧ тэмдэглэл'), 'fb', 'лид: token уншина');
+  eq(F.parseLeadSource('тэмдэглэл'), '', 'лид: token байхгүй → хоосон');
+  eq(F.encodeLeadSource('ig'), '⟦LEAD|ig⟧', 'лид: token бичнэ');
+  eq(F.encodeLeadSource('хакер'), '', 'лид: жагсаалтад үгүй түлхүүр → бичихгүй');
+  eq(F.leadSourceOf({ note: '⟦LEAD|referral⟧', source: 'm-event-website' }), 'referral', 'лид: тэмдэглэсэн нь source-ыг дарна');
+  eq(F.leadSourceOf({ source: 'm-event-website' }), 'site', 'лид: сайтын захиалга → site');
+  eq(F.leadSourceOf({ source: 'app' }), '', 'лид: тэмдэглээгүй ажилтны захиалга → мэдэхгүй (таамаглахгүй)');
+  eq(F.leadSourceOf(null), '', 'лид: мөргүй → хоосон (унахгүй)');
+
+  // stripFormTokens нь LEAD-ийг хасна → дахин хадгалахад давхардахгүй
+  eq(F.stripFormTokens('⟦LEAD|fb⟧ ⟦LEAD|ig⟧ бичвэр'), 'бичвэр', 'лид: дахин хадгалахад хуучин token арилна');
+  eq(F.stripFormTokens('⟦PAY|1⟧ ⟦LEAD|fb⟧'), '⟦PAY|1⟧', 'лид: өөр урсгалын token ХЭВЭЭР');
+
+  const os = [
+    { status: 'rented', source: 'app', note: '⟦LEAD|fb⟧', total_mnt: 1000000, paid_mnt: 1000000, starts_at: '2026-09-01', paid_date: '2026-09-01' },
+    { status: 'rented', source: 'app', note: '⟦LEAD|fb⟧', total_mnt: 500000, paid_mnt: 500000, starts_at: '2026-09-02', paid_date: '2026-09-02' },
+    { status: 'rented', source: 'app', note: '', total_mnt: 300000, paid_mnt: 300000, starts_at: '2026-09-03', paid_date: '2026-09-03' },
+    { status: 'draft', source: 'app', note: '⟦LEAD|ig⟧', total_mnt: 900000, starts_at: '2026-09-04' },
+    { status: 'rented', source: 'booqable', note: '', total_mnt: 700000, starts_at: '2026-09-05' },
+  ];
+  const st = F.leadChannelStats(os, 'cash');
+  eq(st.n, 3, 'лид: ноорог ба Booqable түүх тоологдохгүй');
+  eq(st.unknown, 1, 'лид: тэмдэглээгүй нь ил тоологдоно');
+  eq(st.coverage, 66.7, 'лид: хамралт хувиар');
+  eq(st.rows[0].k, 'fb', 'лид: орлогоор эрэмбэлнэ');
+  eq(st.rows[0].n, 2, 'лид: FB-ээс 2 захиалга');
+  eq(st.rows[0].inc, 1500000, 'лид: FB-ийн орлого');
+  eq(st.rows[0].avg, 750000, 'лид: дундаж дүн');
+  eq(F.leadChannelStats([], 'cash').n, 0, 'лид: хоосон жагсаалт → 0 (унахгүй)');
+  eq(F.leadChannelStats(null, 'cash').coverage, 0, 'лид: null → 0');
+}
+
 // ── УРЬДЧИЛАН ЗАХИАЛАХ ХУГАЦАА (2026-09-10) ────────────────────────────────
 // Жагсаалт зөвхөн эвентийн огноог харуулдаг тул «хэзээ ирсэн, хэдэн өдрийн
 // өмнө баталгаажсан» гэдэг харагдахгүй байв. Маркетинг/нөөц төлөвлөлтөд хэрэгтэй.

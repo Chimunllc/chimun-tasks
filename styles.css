@@ -4785,6 +4785,11 @@ body.role-daily #add-project { display: none !important; }
 .rsrc-row { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); padding: 3px 0; }
 .rsrc-warn { margin-top: 10px; font-size: var(--fs-sm); color: var(--warn, #b45309); line-height: 1.5; }
 .rsrc-note { margin-top: 8px; font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+.lead-list { display: flex; flex-direction: column; gap: 4px; }
+.lead-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
+.lead-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lead-n { color: var(--muted); font-weight: 700; }
+.lead-inc { font-size: var(--fs-md); }
 /* Каталогт олдохгүй бараа — улаан, анхаарал татах ёстой (нөөцөд тооцогдохгүй) */
 .br-badchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 800; padding: 2px 7px; border-radius: 999px; white-space: nowrap; cursor: help; background: color-mix(in srgb, var(--danger, #e5484d) 15%, var(--panel)); color: var(--danger, #b91c1c); }
 .br-srcchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; cursor: help; background: color-mix(in srgb, var(--ok, #16a34a) 13%, var(--panel)); color: var(--ok, #15803d); }

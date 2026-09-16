@@ -4790,6 +4790,34 @@ body.role-daily #add-project { display: none !important; }
 .lead-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lead-n { color: var(--muted); font-weight: 700; }
 .lead-inc { font-size: var(--fs-md); }
+/* Зар & үр дүн */
+.ads-empty { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--panel); font-size: var(--fs-sm); line-height: 1.6; }
+.ads-tabs { display: flex; gap: 6px; margin-bottom: var(--space-3); }
+.ads-tab { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); font-size: var(--fs-sm); cursor: pointer; }
+.ads-tab.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+.ads-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: var(--space-3); }
+.ads-kpi { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--panel); }
+.ads-kpi-l { font-size: var(--fs-sm); color: var(--muted); font-weight: 700; }
+.ads-kpi-v { font-size: var(--fs-xl); font-weight: 800; margin-top: 2px; }
+.ads-advice { border: 1px solid var(--primary); background: var(--primary-soft); border-radius: 14px; padding: 12px 14px; margin-bottom: var(--space-3); }
+.ads-h { font-weight: 800; font-size: var(--fs-md); margin-bottom: 8px; }
+.ads-tip { font-size: var(--fs-sm); line-height: 1.55; padding: 7px 10px; border-radius: 10px; background: var(--panel); margin-bottom: 6px; border-left: 3px solid var(--muted); }
+.ads-sev1 { border-left-color: var(--danger); }
+.ads-sev2 { border-left-color: var(--warn, #b45309); }
+.ads-sev3 { border-left-color: var(--ok); }
+.ads-sec { font-weight: 800; font-size: var(--fs-md); margin: var(--space-3) 0 8px; }
+.ads-sub { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.ads-list { display: flex; flex-direction: column; gap: 4px; }
+.ads-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; font-size: var(--fs-sm); }
+.ads-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ads-sp, .ads-ms { color: var(--muted); }
+.ads-pm { font-size: var(--fs-md); }
+.ads-bad { color: var(--danger); }
+.ads-note { margin-top: var(--space-3); font-size: var(--fs-sm); color: var(--muted); line-height: 1.55; }
+@media (max-width: 620px) {
+  .ads-row { grid-template-columns: 1fr auto; row-gap: 2px; }
+  .ads-sp, .ads-ms { font-size: var(--fs-xs); }
+}
 /* Каталогт олдохгүй бараа — улаан, анхаарал татах ёстой (нөөцөд тооцогдохгүй) */
 .br-badchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 800; padding: 2px 7px; border-radius: 999px; white-space: nowrap; cursor: help; background: color-mix(in srgb, var(--danger, #e5484d) 15%, var(--panel)); color: var(--danger, #b91c1c); }
 .br-srcchip { flex-shrink: 0; font-size: var(--fs-xs); font-weight: 700; padding: 2px 7px; border-radius: 999px; white-space: nowrap; cursor: help; background: color-mix(in srgb, var(--ok, #16a34a) 13%, var(--panel)); color: var(--ok, #15803d); }

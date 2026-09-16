@@ -92,6 +92,9 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
           echo "Өнөөдрийн бай: $TARGET"
+          # Өмнөх тоог ХАДГАЛНА — PR-ын бичвэрийг агентын үгээр биш, бодит
+          # зөрүүгээр бичнэ (модель өөрийгөө магтаж болно, тоо магтдаггүй).
+          node tools/debt-check.js --json > /tmp/debt-before.json
 
       - name: Claude — нэг функцийн inline style-ыг класс болгох
         if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
@@ -132,7 +135,12 @@ jobs:
             5. `node tools/debt-check.js` — өр БУУРСАН байх ёстой.
             6. `node tools/debt-check.js --update` — baseline-ыг чангарууул.
                (Храповик: baseline зөвхөн БУУРАХ тал руу эргэнэ.)
-            7. Салбар үүсгэж commit, push, дараа нь `gh pr create`-ээр PR нээ.
+
+            ⛔ GIT-Д БҮҮ ХҮР. Салбар үүсгэхгүй, commit хийхгүй, push хийхгүй,
+               PR нээхгүй. Файлаа зассан чигээр нь ҮЛДЭЭ — workflow өөрөө
+               commit, push, PR хийнэ. (2026-09-16: агент 63 эргэлт ажиллаад
+               засвараа хийсэн ч git алхмыг нь хийгээгүй тул ажил бүхэлдээ
+               алдагдсан. Тиймээс git нь моделийн ажил БИШ болов.)
 
             ХОРИГ (зөрчвөл PR автоматаар унана — механикаар шалгагдана):
             - Шинэ `!important` нэмэхгүй. Шинэ inline `style=` нэмэхгүй.
@@ -141,32 +149,82 @@ jobs:
             - `.github/workflows/**`, `db/rls.sql`, `db/anon-grants.sql`-д ХҮРЭХГҮЙ.
             - Мөнгө, эрх, өгөгдлийн сангийн ЛОГИКИЙГ ОГТ ХӨНДӨХГҮЙ. Энэ бол
               зөвхөн харагдах байдлын хөрвүүлэлт — үйлдлийн зан чанар БИТГИЙ өөрчил.
-            - `main`-д push хийхгүй, merge хийхгүй. Зөвхөн PR нээнэ.
             - 500 мөрөөс том diff гаргахгүй. Бүтэн функц хэтэрхий том бол
-              түүний ХАМГИЙН ИХ давтагдсан хэсгийг л хий, PR-д юуг үлдээснээ бич.
+              түүний ХАМГИЙН ИХ давтагдсан хэсгийг л хий.
 
-            PR-ын тайлбарт: (а) ямар функц (б) хичнээн inline style хөрвүүлсэн
-            (в) өрийн тоо хэрхэн буурсан — тус бүр 1 өгүүлбэр.
+            Төгсгөлд нэг догол мөрөөр: ямар функц, хэдэн inline style хөрвүүлсэн,
+            юуг зориуд үлдээсэн.
+
+      # ⛔ GIT НЬ МОДЕЛИЙН АЖИЛ БИШ. 2026-09-16-нд агент 63 эргэлт ажиллаж
+      # засвараа хийсэн ч салбар/commit/PR алхмыг хийгээгүй тул бүх ажил
+      # алдагдсан (0 denial, «амжилттай» гэж дуусаад PR нь алга). Тодорхой
+      # дараалалтай, мартагдаж болохгүй ажлыг shell хийнэ — модель зөвхөн
+      # файл засна.
+      - name: Агентын засварыг commit хийж PR нээх
+        id: pr
+        if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.task.outputs.target }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "::error::Агент ямар ч файл заваагүй. Логоос num_turns ба permission_denials_count-ыг хар."
+            exit 1
+          fi
+          echo '--- Агентын засвар ---'
+          git status --short
+
+          node tools/debt-check.js --json > /tmp/debt-after.json
+          SUMMARY=$(node -e '
+            const fs = require("node:fs");
+            const b = JSON.parse(fs.readFileSync("/tmp/debt-before.json", "utf8"));
+            const a = JSON.parse(fs.readFileSync("/tmp/debt-after.json", "utf8"));
+            const rows = Object.keys(b)
+              .filter((k) => a[k] !== b[k])
+              .map((k) => `| ${k} | ${b[k]} | ${a[k]} | ${a[k] - b[k] > 0 ? "+" : ""}${a[k] - b[k]} |`);
+            console.log(rows.length ? rows.join("\n") : "| — | — | — | өөрчлөлтгүй |");
+          ')
+
+          BR="claude/night-$(date -u +%Y%m%d-%H%M)"
+          git config user.name  "chimun-night-agent"
+          git config user.email "noreply@anthropic.com"
+          git switch -c "$BR"
+          git add -A
+          git commit -m "$TARGET: inline style-ыг класс болгов (шөнийн агент)"
+          git push origin "$BR"
+
+          BODY=$(printf '%s\n' \
+            "Шөнийн агент \`$TARGET\` функцийн inline style-ыг \`styles.css\`-ийн класс болгов." \
+            "" \
+            "| Метрик | Өмнө | Дараа | Зөрүү |" \
+            "|---|---:|---:|---:|" \
+            "$SUMMARY" \
+            "" \
+            "Тоо нь агентын үгээр биш, \`tools/debt-check.js\`-ийн бодит хэмжилтээр." \
+            "" \
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code)")
+
+          PR=$(gh pr create --base main --head "$BR" \
+            --title "$TARGET: inline style-ыг класс болгов" --body "$BODY")
+          echo "PR: $PR"
+          echo "num=$(basename "$PR")" >> "$GITHUB_OUTPUT"
 
       - name: Merge-ийн механик шалгуур + merge
-        if: steps.key.outputs.skip != 'true'
+        if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WANT_MERGE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto_merge || (github.event_name == 'schedule' && env.AUTO_MERGE == 'true') }}
         run: |
           set -euo pipefail
 
-          # Агент нээсэн PR-ыг ол (claude/night- угтвартай, хамгийн шинэ).
-          NUM=$(gh pr list --state open --limit 20 \
-                  --json number,headRefName,createdAt \
-                  --jq '[.[] | select(.headRefName | startswith("claude/night-"))] | sort_by(.createdAt) | last | .number // empty')
+          # ⚠ PR-ын дугаарыг ХАЙЖ бүү ол — өмнөх алхам нь өөрөө нээсэн тул
+          # дугаарыг нь шууд дамжуулна. Хайлт нь өөр агентын PR-ыг андуурч
+          # авах эрсдэлтэй (2026-09-04-нд бодит болсон алдаа).
+          NUM="${{ steps.pr.outputs.num }}"
           if [ -z "$NUM" ]; then
-            # ⛔ ЭНЭ НЬ АМЖИЛТ БИШ. Ажил байсан (бай сонгогдсон) атлаа PR гараагүй
-            # гэдэг нь агент эрхгүй, эргэлт дууссан, эсвэл гацсан гэсэн үг. Өмнө нь
-            # энд `exit 0` байсан тул хоосон ажиллалт «амжилттай» гэж харагдаж,
-            # $3.63 үрсэн нь мэдэгдээгүй. Ажилгүй шөнө нь ДЭЭР талд шүүгдэнэ
-            # (task.skip) — энд хүрсэн бол үнэхээр алдаа.
-            echo "::error::Агент PR нээсэнгүй. Логоос permission_denials_count ба num_turns-ыг хар."
+            echo "::error::PR дугаар алга — өмнөх алхам амжилтгүй."
             exit 1
           fi
           echo "PR: #$NUM"

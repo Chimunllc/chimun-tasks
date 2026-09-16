@@ -28807,25 +28807,47 @@ function ubStamp(ts, withDate) {
 function pbxNameIndex(customers, orders) {
   const m = {};
   const at = (o) => String(o.starts_at || o.created_at || '').slice(0, 10);
+  const mk = () => ({ name: '', orders: 0, last: '', revenue: 0 });
   (orders || []).forEach(o => {
     if (!o || !_orderActive(o)) return;
     const k = custPhoneKey(o.phone);
     if (!k) return;
-    const x = m[k] || (m[k] = { name: '', orders: 0, last: '' });
+    const x = m[k] || (m[k] = mk());
     x.orders++;
+    // ⚠ Түүхий `total_mnt` БИШ — барьцаа хасагдсан жинхэнэ орлого (CLAUDE.md).
+    x.revenue += orderRevenue(o, finBasis()) || 0;
     if (at(o) > x.last) x.last = at(o);
     if (!x.name && o.customer) x.name = String(o.customer).trim();
   });
   (customers || []).forEach(c => {
     const k = custPhoneKey(c && c.phone);
     if (!k) return;
-    const x = m[k] || (m[k] = { name: '', orders: 0, last: '' });
+    const x = m[k] || (m[k] = mk());
     if (c.name) x.name = String(c.name).trim();
   });
   return m;
 }
 function pbxWho(peer, idx) {
-  return (idx && idx[custPhoneKey(peer)]) || { name: '', orders: 0, last: '' };
+  return (idx && idx[custPhoneKey(peer)]) || { name: '', orders: 0, last: '', revenue: 0 };
+}
+// ── ХЭНД ЭХЛЭЭД ЗАЛГАХ ВЭ (2026-09-16) ──────────────────────────────────────
+// «Хаа хамаагүй залгах уу?» — ҮГҮЙ. Жагсаалт өөрөө дарааллаа хэлэх ёстой.
+// Оноо нь ЗӨВХӨН бидний мэддэг дохионоос: өмнө худалдан авсан уу · хэдэн удаа
+// залгасан · хэдэн секунд хүлээсэн · хэр саяхан. Таамаг оруулахгүй.
+// ⚠ `why` нь хамгийн ХҮНД дохиог нэрлэнэ — хүн «яагаад энэ эхэнд байна?» гэдгийг
+//   эргэлзэлгүй мэдэх ёстой (оноо нь өөрөө тайлбаргүй тоо).
+function pbxPriority(r, w, today) {
+  const wh = w || { orders: 0, revenue: 0 };
+  const days = Math.max(0, Math.round(
+    (new Date(String(today || todayStr())) - new Date(String(r.last || '').slice(0, 10))) / 86400000));
+  const parts = [];
+  if (wh.orders) parts.push({ n: 1000 + Math.min(wh.revenue / 10000, 500), t: 'өмнө худалдан авсан' });
+  if ((r.tries || 0) > 1) parts.push({ n: (r.tries - 1) * 120, t: `${r.tries} удаа залгасан` });
+  if ((r.maxSec || 0) >= 30) parts.push({ n: Math.min(r.maxSec, 120), t: `${r.maxSec} сек хүлээсэн` });
+  if (days <= 2) parts.push({ n: 100 - days * 20, t: days === 0 ? 'өнөөдөр залгасан' : 'саяхан залгасан' });
+  const score = parts.reduce((a, x) => a + x.n, 0) - days;
+  const top = parts.slice().sort((a, b) => b.n - a.n)[0];
+  return { score, why: top ? top.t : '', days };
 }
 // ── БҮХ ЗАЛГАГЧ (2026-09-16) ────────────────────────────────────────────────
 // «Алдсан дуудлага» нь зөвхөн ШИЙДЭГДЭЭГҮЙ мөрийг харуулдаг тул 1,300+ залгасан
@@ -28883,10 +28905,12 @@ function renderMissedCalls() {
   const from = addDays(todayStr(), -MISSED_DAYS);
   const fups = pbxFollowups(state.pbxLog || [], { from });
   const rows = pbxOpenCalls(fups, state.pbxCb || [], state.appOrders || []);
-  const open = rows.filter(r => !r.done);
+  const nameIdx0 = pbxNameIndex(state.customers || [], state.appOrders || []);
+  rows.forEach(r => { r.pri = pbxPriority(r, pbxWho(r.peer, nameIdx0), todayStr()); });
+  const open = rows.filter(r => !r.done).sort((a, b) => b.pri.score - a.pri.score);
   const done = rows.filter(r => r.done);
 
-  const nameIdx = pbxNameIndex(state.customers || [], state.appOrders || []);
+  const nameIdx = nameIdx0;
   const ws = tariffWorkStart(), we = tariffWorkEnd();
   const row = (r) => {
     const w = pbxWho(r.peer, nameIdx);
@@ -28897,11 +28921,12 @@ function renderMissedCalls() {
       ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
       : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар — өмнө захиалга өгөөгүй</div>`;
     const tags = [
-      w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга${w.last ? ' · сүүлд ' + escapeHtml(w.last) : ''}</span>` : '',
+      w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга · ${escapeHtml(fmtMoney(w.revenue))}${w.last ? ' · сүүлд ' + escapeHtml(w.last) : ''}</span>` : '',
+      r.ordered ? '<span class="mc-tag mc-warm">💰 залгасныхаа дараа захиалга өгсөн</span>' : '',
       r.tries > 1 ? `<span class="mc-tag">${r.tries} удаа залгасан</span>` : '',
+      r.maxSec >= 30 ? `<span class="mc-tag">${r.maxSec} сек хүлээсэн</span>` : '',
       off ? '<span class="mc-tag">ажлын цагийн гадна</span>' : '',
       r.cbTries ? `<span class="mc-tag">бид ${r.cbTries} удаа залгасан</span>` : '',
-      r.ordered ? '<span class="mc-tag mc-warm">дараа нь захиалга өгсөн</span>' : '',
       (r.status && !r.ordered) ? `<span class="mc-tag">${escapeHtml(PBX_CB_LABEL[r.status] || r.status)}</span>` : '',
     ].filter(Boolean).join('');
     const acts = r.done
@@ -28912,7 +28937,8 @@ function renderMissedCalls() {
          <button class="mc-btn drop" data-mc="dropped" data-peer="${escapeHtml(r.peer)}" data-upto="${escapeHtml(r.last)}" title="Хэрэггүй — жагсаалтаас хас">🚫</button>`;
     return `<div class="mc-row${r.done ? ' mc-done' : ''}">
       <div class="mc-main">${head}
-        <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b></div>
+        <div class="mc-meta">Сүүлд залгасан: <b>${escapeHtml(ubStamp(r.last))}</b>${
+          !r.done && r.pri && r.pri.why ? ` · <span class="mc-why">${escapeHtml(r.pri.why)}</span>` : ''}</div>
         ${tags ? `<div class="mc-tags">${tags}</div>` : ''}</div>
       <div class="mc-acts">${acts}</div></div>`;
   };

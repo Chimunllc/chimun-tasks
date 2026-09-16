@@ -136,10 +136,18 @@ for row in rows:
         if not post_id:
             if not image:
                 raise RuntimeError('зураггүй пост — Facebook дээр уншигдахгүй')
-            r = api_post(f'{PAGE_ID}/photos', {
-                'url': image, 'caption': body, 'published': 'true',
-                'access_token': PAGE_TOKEN})
-            post_id = r.get('post_id') or f"{PAGE_ID}_{r.get('id')}"
+            # ⛔ `/photos`-оор ШУУД нийтлэвэл пост нь зургийн цомогт орж
+            #   timeline дээр сул харагдана (2026-09-16-нд эхний пост яг ингэж
+            #   «зөвхөн зурагт харагдаж» байсан). Хоёр алхмаар хийнэ:
+            #   ① зургийг НИЙТЛЭХГҮЙГЭЭР байршуулж id авна
+            #   ② түүнийг хавсаргасан ЖИРИЙН feed пост үүсгэнэ
+            ph = api_post(f'{PAGE_ID}/photos', {
+                'url': image, 'published': 'false', 'access_token': PAGE_TOKEN})
+            r = api_post(f'{PAGE_ID}/feed', {
+                'message': body,
+                'attached_media': json.dumps([{'media_fbid': ph['id']}]),
+                'published': 'true', 'access_token': PAGE_TOKEN})
+            post_id = r.get('id') or f"{PAGE_ID}_{r.get('post_id')}"
             # ⚠ ШУУД хадгална — доорх зар үүсэхгүй байсан ч пост давхардахгүй.
             if not DRY:
                 psql(f'update ads_posts set fb_post_id={sq(post_id)} where id={sq(pid)};')

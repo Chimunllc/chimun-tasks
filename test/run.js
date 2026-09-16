@@ -5977,12 +5977,13 @@ need(['orderCustType']);
 
   // ── Хариу аваагүй дуудлага ──
   const cl = [
-    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00+00', answer_sec: 0 },
-    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00+00', answer_sec: 0 },
-    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00+00', answer_sec: 0 },
-    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00+00', answer_sec: 27 },
-    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00+00', answer_sec: 0 },
-    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00+00', answer_sec: 0 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T02:10:00+00', answer_sec: 0, call_sec: 20 },
+    { direction: 'in', peer: '88446914', started_at: '2026-09-15T03:10:00+00', answer_sec: 0, call_sec: 25 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T02:00:00+00', answer_sec: 0, call_sec: 18 },
+    { direction: 'in', peer: '99112233', started_at: '2026-09-14T05:00:00+00', answer_sec: 27, call_sec: 47 },
+    { direction: 'in', peer: '4001', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 30 },
+    { direction: 'out', peer: '95000000', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 30 },
+    { direction: 'in', peer: '77009900', started_at: '2026-09-15T02:00:00+00', answer_sec: 0, call_sec: 6 },
   ];
   const fu = F.pbxFollowups(cl);
   eq(fu.length, 1, 'дуудлага: нэг ч удаа яриагүй дугаар л үлдэнэ');
@@ -5991,6 +5992,9 @@ need(['orderCustType']);
   ok(!fu.some(x => x.peer === '99112233'), 'дуудлага: дараа нь ярьсан бол жагсаалтаас гарна');
   ok(!fu.some(x => x.peer === '4001'), 'дуудлага: дотоод богино дугаар орохгүй');
   ok(!fu.some(x => x.peer === '95000000'), 'дуудлага: ГАРСАН дуудлага орохгүй');
+  ok(!fu.some(x => x.peer === '77009900'), 'дуудлага: 13 сек хүрэхгүй тасалсан нь лид биш (KFC андуурал)');
+  eq(fu.short, 1, 'дуудлага: богино тасалсныг тусад нь тоолно');
+  eq(F.pbxFollowups(cl, { minSec: 0 }).length, 2, 'дуудлага: босгыг 0 болговол бүгд орно');
   eq(F.pbxFollowups(cl, { from: '2026-09-15' }).length, 1, 'дуудлага: хугацаагаар шүүнэ');
   eq(F.pbxFollowups(cl, { from: '2026-09-16' }).length, 0, 'дуудлага: хугацаанаас гадуур → хоосон');
   eq(F.pbxFollowups(null).length, 0, 'дуудлага: дата байхгүй → хоосон (унахгүй)');
@@ -6002,10 +6006,11 @@ need(['orderCustType']);
 
   // ── Дуудлага → захиалга ──
   const ccCalls = [
-    { direction: 'in', peer: '88110011', started_at: '2026-09-10T02:00:00+00', answer_sec: 30 },
-    { direction: 'in', peer: '88220022', started_at: '2026-09-10T02:00:00+00', answer_sec: 30 },
-    { direction: 'in', peer: '88330033', started_at: '2026-09-10T02:00:00+00', answer_sec: 0 },
-    { direction: 'in', peer: '88440044', started_at: '2026-09-10T02:00:00+00', answer_sec: 0 },
+    { direction: 'in', peer: '88110011', started_at: '2026-09-10T02:00:00+00', answer_sec: 30, call_sec: 50 },
+    { direction: 'in', peer: '88220022', started_at: '2026-09-10T02:00:00+00', answer_sec: 30, call_sec: 50 },
+    { direction: 'in', peer: '88330033', started_at: '2026-09-10T02:00:00+00', answer_sec: 0, call_sec: 20 },
+    { direction: 'in', peer: '88440044', started_at: '2026-09-10T02:00:00+00', answer_sec: 0, call_sec: 20 },
+    { direction: 'in', peer: '88550055', started_at: '2026-09-10T02:00:00+00', answer_sec: 0, call_sec: 5 },
   ];
   const ccOrders = [
     { status: 'rented', phone: '976-8811-0011', created_at: '2026-09-11T05:00:00+00', total_mnt: 2000000 },
@@ -6016,16 +6021,19 @@ need(['orderCustType']);
   eq(cc.talked.callers, 2, 'хөрвөлт: ярьсан хүний тоо');
   eq(cc.talked.converted, 1, 'хөрвөлт: ноорог захиалга тоологдохгүй');
   eq(cc.talked.rate, 50, 'хөрвөлт: хувь');
-  eq(cc.missed.callers, 2, 'хөрвөлт: холбогдоогүй хүний тоо');
+  eq(cc.missed.callers, 2, 'хөрвөлт: хүлээгээд холбогдоогүй хүний тоо');
   eq(cc.missed.converted, 0, 'хөрвөлт: дуудлагаас ӨМНӨХ захиалга тоологдохгүй');
+  eq(cc.short.callers, 1, 'хөрвөлт: богино тасалсан нь тусдаа бүлэг');
+  ok(cc.lost === 2 * (cc.talked.rate / 100) * cc.avgOrder,
+     'хөрвөлт: алдагдалд богино тасалсан хүн ОРОХГҮЙ (KFC андуурал хөөрөгдөхгүй)');
   eq(cc.avgOrder, 2000000, 'хөрвөлт: дундаж захиалгын дүн');
   eq(cc.lost, 2000000, 'хөрвөлт: алдагдсан боломжийн таамаг (2 хүн × 50% × 2сая)');
   eq(F.callConversion([], []).talked.rate, 0, 'хөрвөлт: дата байхгүй → 0');
   eq(F.callConversion(null, null).missed.callers, 0, 'хөрвөлт: null → унахгүй');
 
-  eq(F.callConvAdvice(cc).length, 0, 'хөрвөлт: 10-аас цөөн хүнд сануулга гаргахгүй (шуугиан)');
+  eq(F.callConvAdvice(cc).length, 0, 'хөрвөлт: 5-аас цөөн хүнд сануулга гаргахгүй (шуугиан)');
   const big = F.callConversion(
-    Array.from({ length: 12 }, (_, i) => ({ direction: 'in', peer: '9900' + String(1000 + i), started_at: '2026-09-10T02:00:00+00', answer_sec: 0 })).concat(ccCalls),
+    Array.from({ length: 12 }, (_, i) => ({ direction: 'in', peer: '9900' + String(1000 + i), started_at: '2026-09-10T02:00:00+00', answer_sec: 0, call_sec: 20 })).concat(ccCalls),
     ccOrders);
   eq(F.callConvAdvice(big).length, 1, 'хөрвөлт: олон хүн холбогдоогүй бол сануулна');
   eq(F.callConvAdvice(big)[0].sev, 1, 'хөрвөлт: сануулга хамгийн ноцтой зэрэгтэй');

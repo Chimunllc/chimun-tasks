@@ -28077,6 +28077,110 @@ function adActionLabel(a) {
 }
 function adActionIsBad(a) { return String((a && a.kind) || '') === 'error'; }
 
+
+// ── ПОСТ БЭЛДЭХ (2026-09-16) ────────────────────────────────────────────────
+// Апп зар дутуу ангиллыг аль хэдийн олдог (`adsAdvice` ①-р дүрэм). Дараагийн
+// алхам нь тэр цоорхойг НӨХӨХ пост САНАЛ болгох — бичвэрийг барааны бүртгэлээс
+// угсарна, хүний үүрэг = батлах эсвэл болих.
+// ⛔ Пост бичих ФОРМ хийхгүй (CLAUDE.md: «гараар нэмэлт бичүүлдэг боломж үхдэг»).
+// ⚠ ТӨСӨВ асуухгүй — шинэ кампанит ажил байгаа төсвийн санд нэгдэж
+//   `fb_budget.py`-аас ногдох хувиа авна. Нийтлэх нь ШИНЭ мөнгө гаргахгүй.
+const AD_POST_DESC_MAX = 180;
+
+// Барааны тайлбарыг постод багтаах урт болгоно — үгийн ЗААГААР тасална.
+function adPostDesc(s, max) {
+  const t = String(s || '').replace(/\s+/g, ' ').trim();
+  const m = Math.max(40, Number(max) || AD_POST_DESC_MAX);
+  if (t.length <= m) return t;
+  const cut = t.slice(0, m);
+  const i = cut.lastIndexOf(' ');
+  return (i > m * 0.6 ? cut.slice(0, i) : cut).replace(/[,;:\-–—]+$/, '') + '…';
+}
+// Барааны хуудас сайт дээр. ⚠ Шинэ хуудсууд sku-гаар (`products/m-NNN/`) —
+// нэрээр биш (нэр солигдоход холбоос тасарна).
+function adPostUrl(p) {
+  const sku = String((p && p.sku) || '').trim().toLowerCase();
+  return sku ? `https://mevent.mn/products/${encodeURIComponent(sku)}/` : 'https://mevent.mn';
+}
+function adPostImage(p) {
+  const one = String((p && p.photo) || '').trim();
+  if (one) return one;
+  const many = (p && Array.isArray(p.photos)) ? p.photos : [];
+  const first = many.find(x => typeof x === 'string' && x.trim());
+  return first ? String(first).trim() : '';
+}
+// Постын бичвэр. Цэвэр функц — тестлэгдэнэ.
+function adPostText(p) {
+  const name = String((p && p.name) || '').trim();
+  if (!name) return '';
+  const price = Number(p && p.price) || 0;
+  const stock = Number(p && p.qty_mevent) || 0;
+  const desc = adPostDesc(p && p.description);
+  const out = [`🎪 ${name} — түрээс`];
+  if (desc) out.push('', desc);
+  const facts = [];
+  if (price > 0) facts.push(`💰 ${fmtMoney(price)} / хоног`);
+  if (stock > 0) facts.push(`📦 ${stock} ширхэг бэлэн`);
+  if (facts.length) out.push('', facts.join('\n'));
+  out.push('', `👉 Захиалга: ${adPostUrl(p)}`);
+  return out.join('\n');
+}
+// Ангилалд хамгийн их түрээслэгддэг, ЗУРАГТАЙ, нөөцтэй, үнэтэй бараа.
+// ⚠ Зураггүй бараагаар пост тавьж болохгүй — Facebook дээр зураггүй пост уншигдахгүй.
+function adBestProductIn(cat, products, popularity) {
+  const pop = popularity || {};
+  const ok = (products || []).filter(p => p && !p.archived
+    && adCatOf(p.name) === cat
+    && (Number(p.price) || 0) > 0
+    && (Number(p.qty_mevent) || 0) > 0
+    && adPostImage(p));
+  if (!ok.length) return null;
+  return ok.slice().sort((a, b) =>
+    (Number(pop[b.sku]) || 0) - (Number(pop[a.sku]) || 0) ||
+    (Number(b.qty_mevent) || 0) - (Number(a.qty_mevent) || 0))[0];
+}
+// Аль хэдийн санал болгосон / болисон барааг ДАХИН санал болгохгүй.
+function adPostSkipSkus(posts) {
+  const s = new Set();
+  (posts || []).forEach(x => { if (x && x.sku) s.add(String(x.sku)); });
+  return s;
+}
+// Санал болгох постууд — зар дутуу ангилал бүрд нэг.
+function adPostCandidates(rev, spend, products, popularity, posts, opts) {
+  const o = opts || {};
+  const minSpend = o.minSpend || 30000;
+  const rt = (rev && rev.total) || 0;
+  if (!rt) return [];
+  const skip = adPostSkipSkus(posts);
+  const out = [];
+  Object.values((rev && rev.by) || {}).forEach(r => {
+    if (!r || r.k === 'other') return;
+    const share = r.amt / rt;
+    if (share < 0.08) return;
+    if ((((spend || {})[r.k] || {}).mnt || 0) >= minSpend) return;
+    const best = adBestProductIn(r.k, products, popularity);
+    if (!best || skip.has(String(best.sku))) return;
+    out.push({ cat: r.k, share: Math.round(share * 100), amt: r.amt, product: best,
+      body: adPostText(best), image: adPostImage(best), link: adPostUrl(best) });
+  });
+  return out.sort((a, b) => b.share - a.share);
+}
+const AD_POST_STATUS = {
+  draft: '📝 Ноорог', approved: '⏳ Хүлээж буй',
+  published: '✅ Нийтлэгдсэн', failed: '⚠ Амжилтгүй', discarded: '✕ Болив',
+};
+function adPostStatusLabel(s) { return AD_POST_STATUS[String(s || '')] || String(s || '—'); }
+// Товч дарагдахад саналыг ДАХИН бодно — рендерийн үр дүнг хадгалж явбал хоёр
+// эх сурвалж болж, дата шинэчлэгдэхэд хуучирсан бичвэр батлагдана.
+function _adCandBySku(sku) {
+  const days = Number(state.adsDays) || 30;
+  const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
+  const spend = adSpendByCat(adCampaignStats(state.fbAds || [], addDays(todayStr(), -days)));
+  const list = adPostCandidates(rev, spend, state.products || [],
+    (state.appConfig && state.appConfig.mevent_popularity) || {}, state.adPosts || []);
+  return list.find(c => String((c.product && c.product.sku) || '') === String(sku || '')) || null;
+}
+
 // ── Зарын төлөв/шийдвэр татах ───────────────────────────────────────────────
 // anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
 async function loadFbActions(force) {
@@ -28097,6 +28201,28 @@ async function loadFbActions(force) {
     state.fbActions = state.fbActions || []; state.fbStates = state.fbStates || [];
     return state.fbActions;
   }
+}
+
+// ── Постын дараалал татах/бичих (ads_posts) ─────────────────────────────────
+// anon-д хаалттай; DB тал дээр RLS нь зарын дэлгэц харах эрхээр хамгаалагдсан.
+async function loadAdPosts(force) {
+  if (state.adPosts && !force) return state.adPosts;
+  try {
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/ads_posts?select=*&order=created_at.desc&limit=100`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.adPosts = await r.json();
+    return state.adPosts;
+  } catch (e) { dataLoadFailed('Постын дараалал', e); state.adPosts = state.adPosts || []; return state.adPosts; }
+}
+async function saveAdPost(row) {
+  const r = await fetchWithTimeout(`${DB_URL}/rest/v1/ads_posts`, {
+    method: 'POST',
+    headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(row),
+  }, 20000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
 }
 
 function canSeeAds() { return canAccessView('ads', () => !!state.isCEO || canSeeMarketing()); }
@@ -28212,6 +28338,39 @@ function renderAds() {
       </span>
     </div>`).join('')}</div>`;
 
+  // Зар дутуу ангиллыг нөхөх пост САНАЛ. Бичвэр нь барааны бүртгэлээс угсрагдана
+  // — хүнээс шаардах зүйл нь ЗӨВХӨН батлах/болих (нэг товч).
+  const posts = state.adPosts || [];
+  const cands = adPostCandidates(rev, spend, state.products || [],
+    (state.appConfig && state.appConfig.mevent_popularity) || {}, posts);
+  const candHtml = !cands.length ? '' : `<div class="ads-sec">Санал болгож буй пост <span class="ads-sub">(зар дутуу ангилалд)</span></div>
+    <div class="ads-list">${cands.map(c => `<div class="ads-post">
+      ${c.image ? `<img class="ads-post-img" src="${escapeHtml(c.image)}" alt="" loading="lazy">` : ''}
+      <div class="ads-post-b">
+        <div class="ads-post-why">${escapeHtml(adCatLabel(c.cat))} — борлуулалтын ${c.share}% атлаа зар бараг алга</div>
+        <div class="ads-post-t">${escapeHtml(c.body)}</div>
+        <div class="ads-post-a">
+          <button class="btn btn-primary" data-post-ok="${escapeHtml(c.product.sku || '')}">✓ Батлах</button>
+          <button class="btn" data-post-no="${escapeHtml(c.product.sku || '')}">✕ Болих</button>
+        </div>
+      </div>
+    </div>`).join('')}</div>`;
+
+  // ⚠ Нийтлэгч хараахан холбогдоогүй бол ҮҮНИЙГ ИЛ хэл — «Батлах» дарсан хүн
+  //   пост явсан гэж бодоод хүлээх нь худал амлалт болно.
+  const pubReady = posts.some(x => x && x.status === 'published');
+  const pubNote = (!cands.length && !posts.length) || pubReady ? '' :
+    `<div class="ads-note">⚠ Нийтлэгч хараахан холбогдоогүй — баталсан пост дараалалд хүлээнэ. Facebook хуудасны эрх тохируулмагц автоматаар нийтлэгдэж бүүст хийгдэнэ.</div>`;
+
+  const queued = posts.filter(x => x && x.status !== 'discarded').slice(0, 10);
+  const queueHtml = !queued.length ? '' : `<div class="ads-sec">Постын дараалал</div>
+    <div class="ads-list">${queued.map(x => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(String(x.body || '').split('\n')[0])}</span>
+      <span class="ads-sp">${escapeHtml(adPostStatusLabel(x.status))}</span>
+      <span class="ads-ms">${escapeHtml(fmtDateTimeUB(x.created_at))}</span>
+      <b class="ads-pm${x.status === 'failed' ? ' ads-bad' : ''}">${x.error ? escapeHtml(String(x.error).slice(0, 40)) : ''}</b>
+    </div>`).join('')}</div>`;
+
   // Утасны дуудлага — зар ажилласны ДАРААХ алхам. Энд алдагдвал зарын мөнгө
   // бүхэлдээ дэмий болно, тиймээс кампанит ажлын өмнө харагдана.
   const callHtml = !pbx.calls ? '' : `<div class="ads-sec">Утасны дуудлага <span class="ads-sub">(${pbx.dayCount} хоног · өдөрт дунджаар ${pbx.perDay})</span></div>
@@ -28256,6 +28415,9 @@ function renderAds() {
     ${kpi}
     ${budgetHtml}
     ${adviceHtml}
+    ${candHtml}
+    ${pubNote}
+    ${queueHtml}
     ${stateHtml}
     ${actHtml}
     ${callHtml}
@@ -28269,6 +28431,32 @@ function renderAds() {
 }
 
 function attachAdsHandlers() {
+  // ⛔ Батлах нь ГАДАГШ чиглэсэн үйлдэл (хуудсанд нийтлэгдэж мөнгө зарцуулна)
+  //   тул баталгаажуулалтгүй байж БОЛОХГҮЙ.
+  const postAct = async (sku, approve) => {
+    const cand = _adCandBySku(sku);
+    if (!cand) return;
+    if (approve && !(await showConfirm(
+      `Энэ постыг M event хуудсанд нийтлээд бүүст хийх үү?\n\n${cand.body}`,
+      { okText: 'Батлах' }))) return;
+    try {
+      await saveAdPost({
+        id: 'post-' + Date.now().toString(36) + '-' + String(sku || '').toLowerCase(),
+        sku: sku || null, status: approve ? 'approved' : 'discarded',
+        body: cand.body, image_url: cand.image || null, link_url: cand.link || null,
+        created_by: state.me || null,
+        approved_at: approve ? new Date().toISOString() : null,
+        approved_by: approve ? (state.me || null) : null,
+      });
+      await loadAdPosts(true);
+      showToast(approve ? 'Батлагдлаа — удахгүй нийтлэгдэнэ' : 'Болив', 'success', 3000);
+      render();
+    } catch (e) { showToast('Хадгалагдсангүй: ' + e.message, 'error', 5000); }
+  };
+  document.querySelectorAll('[data-post-ok]').forEach(b =>
+    b.onclick = () => postAct(b.dataset.postOk, true));
+  document.querySelectorAll('[data-post-no]').forEach(b =>
+    b.onclick = () => postAct(b.dataset.postNo, false));
   document.querySelectorAll('[data-ads-days]').forEach(b => b.onclick = () => {
     state.adsDays = Number(b.dataset.adsDays) || 30; render();
   });
@@ -35224,6 +35412,9 @@ function refreshViewData() {
   if (v === 'customers' && canSeeCustomers()) {
     if (state.customers === undefined) loadCustomers().then(() => { if (state.view === 'customers') render(); });
     if (state.appOrders === undefined) { state.appOrders = []; setTimeout(() => loadAppOrders().then(() => { if (state.view === 'customers') render(); }), 0); }
+  }
+  if (v === 'ads' && canSeeAds() && state.adPosts === undefined) {
+    loadAdPosts().then(() => { if (state.view === 'ads') render(); });
   }
   if (v === 'ads' && canSeeAds() && state.fbActions === undefined) {
     loadFbActions().then(() => { if (state.view === 'ads') render(); });

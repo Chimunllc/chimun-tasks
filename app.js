@@ -28920,15 +28920,19 @@ function renderMissedCalls() {
     const head = w.name
       ? `<div class="mc-num">${escapeHtml(w.name)}</div><div class="mc-sub">${escapeHtml(r.peer)}</div>`
       : `<div class="mc-num">${escapeHtml(r.peer)}</div><div class="mc-sub">шинэ дугаар — өмнө захиалга өгөөгүй</div>`;
+    // ⚠ «Яагаад эхэнд байна» гэдэг шалтгааныг шошго болгож ДАВТАХГҮЙ — нэг
+    //   мэдээлэл хоёр газар байвал нүд хаашаа харахаа мэдэхгүй болно.
+    const why = (!r.done && r.pri) ? r.pri.why : '';
     const tags = [
-      w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга · ${escapeHtml(fmtMoney(w.revenue))}${w.last ? ' · сүүлд ' + escapeHtml(w.last) : ''}</span>` : '',
-      r.ordered ? '<span class="mc-tag mc-warm">💰 залгасныхаа дараа захиалга өгсөн</span>' : '',
-      r.tries > 1 ? `<span class="mc-tag">${r.tries} удаа залгасан</span>` : '',
-      r.maxSec >= 30 ? `<span class="mc-tag">${r.maxSec} сек хүлээсэн</span>` : '',
-      off ? '<span class="mc-tag">ажлын цагийн гадна</span>' : '',
-      r.cbTries ? `<span class="mc-tag">бид ${r.cbTries} удаа залгасан</span>` : '',
-      (r.status && !r.ordered) ? `<span class="mc-tag">${escapeHtml(PBX_CB_LABEL[r.status] || r.status)}</span>` : '',
-    ].filter(Boolean).join('');
+      w.orders ? { t: `🛒 ${w.orders} захиалга · ${fmtMoney(w.revenue)}${w.last ? ' · сүүлд ' + w.last : ''}`, warm: 1 } : null,
+      r.ordered ? { t: '💰 залгасныхаа дараа захиалга өгсөн', warm: 1 } : null,
+      r.tries > 1 ? { t: `${r.tries} удаа залгасан` } : null,
+      r.maxSec >= 30 ? { t: `${r.maxSec} сек хүлээсэн` } : null,
+      off ? { t: 'ажлын цагийн гадна' } : null,
+      r.cbTries ? { t: `бид ${r.cbTries} удаа залгасан` } : null,
+      (r.status && !r.ordered) ? { t: PBX_CB_LABEL[r.status] || r.status } : null,
+    ].filter(x => x && x.t !== why)
+     .map(x => `<span class="mc-tag${x.warm ? ' mc-warm' : ''}">${escapeHtml(x.t)}</span>`).join('');
     const acts = r.done
       ? `<button class="mc-btn" data-mc-reopen="${escapeHtml(r.peer)}">↩ Буцаах</button>`
       : `<a class="mc-btn call" href="tel:${escapeHtml(r.peer)}">☎ Залгах</a>
@@ -28946,15 +28950,28 @@ function renderMissedCalls() {
   const allRows = pbxCallers(state.pbxLog || [], state.appOrders || [], {});
   const tab = state._mcTab === 'all' ? 'all' : 'open';
   const q = String(state._mcQ || '');
-  const shown = allRows.filter(r => pbxCallerMatch(r, q, state.customers || []));
+  // Эрэмбэ — «хаа хамаагүй залгах уу?» гэсэн асуултын хариу нь ЭНЭ.
+  const MC_SORTS = {
+    last:   { label: 'Сүүлд залгасан', fn: (a, b) => String(b.last).localeCompare(String(a.last)) },
+    tries:  { label: 'Олон удаа залгасан', fn: (a, b) => b.tries - a.tries || String(b.last).localeCompare(String(a.last)) },
+    money:  { label: 'Танил — худалдан авсан', fn: (a, b) => (pbxWho(b.peer, nameIdx).revenue - pbxWho(a.peer, nameIdx).revenue) || String(b.last).localeCompare(String(a.last)) },
+    cold:   { label: 'Хэзээ ч яриагүй', fn: (a, b) => (a.answered - b.answered) || (b.tries - a.tries) },
+  };
+  const sortKey = MC_SORTS[state._mcSort] ? state._mcSort : 'last';
+  const shown = allRows.filter(r => pbxCallerMatch(r, q, state.customers || []))
+    .filter(r => sortKey !== 'money' || pbxWho(r.peer, nameIdx).orders)
+    .filter(r => sortKey !== 'cold' || !r.answered)
+    .sort(MC_SORTS[sortKey].fn);
   const allHtml = `
     <div class="mc-tools"><input id="mc-q" class="ui-raw mc-q" type="search"
       placeholder="Дугаар эсвэл харилцагчийн нэр…" value="${escapeHtml(q)}"></div>
+    <div class="mc-sorts">${Object.keys(MC_SORTS).map(k =>
+      `<button class="mc-chip${k === sortKey ? ' on' : ''}" data-mc-sort="${k}">${MC_SORTS[k].label}</button>`).join('')}</div>
     <div class="ads-sec">Залгасан хүмүүс <span class="ads-sub">(90 хоног${q ? ` · ${shown.length} олдлоо` : ''})</span></div>
     <div class="mc-list">${shown.slice(0, 200).map(r => {
       const w = pbxWho(r.peer, nameIdx);
       const tags = [
-        w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга</span>` : '',
+        w.orders ? `<span class="mc-tag mc-warm">🛒 ${w.orders} захиалга · ${escapeHtml(fmtMoney(w.revenue))}</span>` : '',
         `<span class="mc-tag">${r.tries} удаа</span>`,
         r.answered ? `<span class="mc-tag">${r.answered} ярьсан${r.talk ? ' · ' + Math.round(r.talk / 60) + ' мин' : ''}</span>`
                    : '<span class="mc-tag">хэзээ ч яриагүй</span>',
@@ -29009,6 +29026,9 @@ function attachMissedCallsHandlers() {
   };
   document.querySelectorAll('[data-mc-tab]').forEach(b => b.onclick = () => {
     state._mcTab = b.dataset.mcTab; render();
+  });
+  document.querySelectorAll('[data-mc-sort]').forEach(b => b.onclick = () => {
+    state._mcSort = b.dataset.mcSort; render();
   });
   const qEl = document.getElementById('mc-q');
   if (qEl) {

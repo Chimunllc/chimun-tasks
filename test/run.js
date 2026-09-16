@@ -8686,6 +8686,40 @@ async function swFetchTests() {
   eq(DN(d5), '', 'төлбөр: мөргүй бол анхааруулга алга');
 }
 
+// ── ↩ БУРУУ БҮРТГЭСЭН ТӨЛБӨР БУЦААХ (2026-09-16) ────────────────────────
+{
+  const W = vm.runInContext('paidRefWithout', sandbox);
+  const V = vm.runInContext('receiptIsVoid', sandbox);
+  const raw = '[#A1] Бат · 5555 · түрээс  |  [#B2] Дорж · 4444 · төлбөр';
+  const r1 = W(raw, 'A1');
+  ok(r1.removed, 'буцаалт: баримт олдож хасагдав');
+  ok(!/A1/.test(r1.ref) && /B2/.test(r1.ref), 'буцаалт: зөвхөн тэр баримт хасагдана, нөгөө нь үлдэнэ');
+  eq(r1.entry.sender, 'Бат', 'буцаалт: хасагдсан баримтын илгээгч');
+  const r2 = W(raw, 'ҮГҮЙ');
+  ok(!r2.removed, 'буцаалт: байхгүй баримт — юу ч хасахгүй');
+  eq(W(raw, '').removed, false, 'буцаалт: хоосон id-гаар БҮХ мөрийг хасахгүй');
+  eq(W('[#A1] Бат · 5555', 'A1').ref, '', 'буцаалт: ганц баримтыг хасвал ref хоосон');
+  ok(V('void:mevent:#1537') && !V('mevent:#1537') && !V(''), 'буцаалт: void: угтвар танигдана');
+}
+
+// scan: буцаалт нь баримтыг УСТГАХГҮЙ, сарын түгжээ шалгана, статус хөдөлгөхгүй.
+{
+  const fn = src.slice(src.indexOf('async function reverseOrderPayment('), src.indexOf('function setCustInfo('));
+  ok(fn.length > 500, 'scan: reverseOrderPayment олдов');
+  ok(!/method:\s*'DELETE'/.test(fn), 'scan: буцаалт баримтын мөрийг ХАТУУ УСТГАХГҮЙ');
+  ok(/void:/.test(fn), 'scan: баримт `void:`-ээр чөлөөлөгдөнө');
+  ok(/assertMonthOpenLive\(/.test(fn), 'scan: хаасан сарыг АМЬД шалгана');
+  ok(/state\.isCEO/.test(fn), 'scan: зөвхөн CEO буцаана');
+  ok(!/body\.status\s*=|status:\s*'/.test(fn), 'scan: захиалгын статус хөдлөхгүй');
+  ok(/appendOrderNote\(/.test(fn), 'scan: буцаалт тэмдэглэлд үлдэнэ');
+}
+
+// scan: void баримт давхардлын хаалтад ОРОХГҮЙ (зөв захиалгад дахин бүртгэнэ).
+{
+  const fn = src.slice(src.indexOf('async function loadUsedReceipts('), src.indexOf('function receiptIdFromRef('));
+  ok(/receiptIsVoid\(/.test(fn), 'scan: loadUsedReceipts нь void баримтыг шүүнэ');
+}
+
 // scan: төлбөрийн мөр нь `paid_mnt`-ыг ДАРЖ БИЧИХГҮЙ — зөвхөн тулгана.
 {
   const fn = src.slice(src.indexOf('function orderPaymentRows('), src.indexOf('function paymentDiffNote('));

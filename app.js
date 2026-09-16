@@ -23565,6 +23565,18 @@ function parsePaidRef(paid_ref) {
     return { id, sender: parts[0] || '', acct: parts[1] || '', memo: parts.slice(2).join(' · '), raw: s };
   });
 }
+/* Нэг баримтыг `paid_ref`-ээс ХАСАХ — буруу захиалгад бүртгэсэн төлбөрийг буцаахад.
+   Цэвэр функц (тесттэй). Буцаах: { ref, removed, entry }. `removed=false` бол юу ч өөрчлөгдөөгүй. */
+function paidRefWithout(paid_ref, receiptId) {
+  const list = parsePaidRef(paid_ref);
+  const id = String(receiptId || '');
+  const keep = [], drop = [];
+  list.forEach(r => (r.id === id && id ? drop : keep).push(r));
+  return { ref: keep.map(r => r.raw).join('  |  '), removed: drop.length > 0, entry: drop[0] || null };
+}
+/* Хүчингүй болгосон (буцаасан) баримтын тэмдэг. Мөрийг УСТГАХГҮЙ — `used_in`-г `void:`
+   болгоод түүхэнд үлдээнэ (bank_receipts-д DELETE эрх ЗОРИУД байхгүй). */
+function receiptIsVoid(usedIn) { return /^void:/.test(String(usedIn || '')); }
 /* ─── ТӨЛБӨРИЙН МӨРҮҮД (2026-09-13) ──────────────────────────────────────
    Захиалгад «нийт төлсөн» гэсэн ГАНЦ тоо (`paid_mnt`) л харагддаг байсан тул
    хэн хэзээ хэдийг төлснийг задлан харах боломжгүй, авлага тулгахад гараар
@@ -23688,14 +23700,92 @@ function openPaidReceiptDetail(oid, idx) {
       ${row('Баримтын дугаар', r.id)}
     </div>
     <p style="font-size:11px;color:var(--muted);margin-top:12px;">Задлан авсан мэдээлэл. Эх PDF хадгалагдсан бол доор дарж үзнэ.</p>
-    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;">${r.id ? `<button class="btn" id="prc-pdf" style="color:var(--accent,#7c3aed);">📄 Эх баримт харах</button>` : ''}<button class="btn btn-primary" id="prc-close">Хаах</button></div>
+    <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">${(r.id && state.isCEO) ? `<button class="btn btn-revert" id="prc-rev" title="Буруу захиалгад бүртгэсэн бол хасаж, баримтыг чөлөөлнө">↩ Буруу бүртгэсэн</button>` : ''}${r.id ? `<button class="btn" id="prc-pdf" style="color:var(--accent,#7c3aed);">📄 Эх баримт харах</button>` : ''}<button class="btn btn-primary" id="prc-close">Хаах</button></div>
   </div>`;
   document.body.appendChild(modal);
   const close = () => modal.remove();
   modal.querySelector('#prc-x').addEventListener('click', close);
   modal.querySelector('#prc-close').addEventListener('click', close);
   modal.querySelector('#prc-pdf')?.addEventListener('click', () => openStoredReceipt(r.id, { amount: rcAmt }));
+  modal.querySelector('#prc-rev')?.addEventListener('click', () => { close(); reverseOrderPayment(oid, r.id); });
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
+}
+/* ↩ БУРУУ ЗАХИАЛГАД БҮРТГЭСЭН ТӨЛБӨРИЙГ БУЦААХ (2026-09-16)
+   PDF баримт буруу захиалганд орвол өмнө нь ЗАСАХ АРГАГҮЙ байв: `paid_ref`-ээс баримт
+   хасах UI байхгүй, `bank_receipts`-д тэр баримт «ашиглагдсан» гэж таглагдсан тул ЗӨВ
+   захиалгад дахин бүртгэх гэхэд «давхцсан» гээд хаагддаг байсан (NOMAAD-д л буцаалт бий).
+   Энд: баримтыг захиалгаас хасаж, төлсөн дүнг бууруулж, баримтыг ЧӨЛӨӨЛНӨ.
+   ⚠ Баримтын мөрийг УСТГАХГҮЙ — `used_in`-г `void:<хуучин>` болгож түүхэнд үлдээнэ.
+   ⚠ Захиалгын СТАТУС хөдлөхгүй (reserved хэвээр) — дамжлага яваад эхэлсэн байж болно.
+   ⚠ Зөвхөн CEO (NOMAAD-ийн `reverseNomaadPayment`-тэй ижил хил). */
+async function reverseOrderPayment(oid, receiptId) {
+  if (!state.isCEO) { showToast('Зөвхөн захирал төлбөр буцаана', 'warn', 3500); return; }
+  const bqO = (state.bqOrders || []).find(x => String(x.id) === String(oid));
+  const o = bqO || (state.appOrders || []).find(x => String(x.id) === String(oid));
+  if (!o || !receiptId) return;
+  const isApp = !bqO;
+  const table = isApp ? 'app_orders' : 'bq_orders';
+  const hdr = { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() };
+  // 1) Серверийн СҮҮЛИЙН төлөв (зэрэгцээ төлбөр бичигдсэн байж болзошгүй)
+  let freshPaid = Number(o.paid_mnt) || 0, freshRef = String(o.paid_ref || '');
+  try {
+    const sel = isApp ? 'paid_mnt,paid_ref' : 'total_paid_in_cents,paid_ref';
+    const gr = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}&select=${sel}`, { headers: hdr }, 8000);
+    if (gr.ok) { const rr = (await gr.json())[0]; if (rr) {
+      if (rr.paid_ref != null) freshRef = String(rr.paid_ref);
+      freshPaid = isApp ? (Number(rr.paid_mnt) || 0) : (Number(rr.total_paid_in_cents) || 0) / 100;
+    } }
+  } catch (_) { /* офлайн — санах ойн утгаар */ }
+  const cut = paidRefWithout(freshRef, receiptId);
+  if (!cut.removed) { showToast('Энэ баримт захиалгад бүртгэгдээгүй байна', 'warn', 3500); return; }
+  // 2) Баримтын ДҮН/огноо — bank_receipts эх сурвалж, эс бол хээнээс (FP-<дүн>-<огноо>)
+  let amt = 0, rDate = '', prevUsed = '';
+  try {
+    const q = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}&select=amount,pay_date,used_in`, { headers: hdr }, 10000);
+    if (q.ok) { const rc = (await q.json())[0]; if (rc) { amt = Number(rc.amount) || 0; rDate = String(rc.pay_date || '').slice(0, 10); prevUsed = String(rc.used_in || ''); } }
+  } catch (_) {}
+  if (!amt) { const m = String(receiptId).match(/^FP-(\d+)-/); amt = m ? Number(m[1]) : 0; }
+  if (!amt) { showToast('Баримтын дүн тодорхойгүй — буцаах боломжгүй', 'error', 4500); return; }
+  // 3) 🔒 Хаасан сар — төлбөрийн огнооны сар хөдөлж болохгүй (амьд шалгалт)
+  const lockM = (rDate || String(o.paid_date || '')).slice(0, 7);
+  try { await assertMonthOpenLive(lockM, 'төлбөр буцаах'); }
+  catch (e) { showToast(e.message, 'error', 6000); return; }
+  const ok = await showConfirm(
+    `#${o.number || ''} · ${fmtMoney(amt)}\n${cut.entry && cut.entry.sender ? cut.entry.sender : ''}\n\n`
+    + 'Энэ баримтыг захиалгаас хасах уу? Төлсөн дүн '
+    + `${fmtMoney(freshPaid)} → ${fmtMoney(Math.max(0, freshPaid - amt))} болно. `
+    + 'Баримт чөлөөлөгдөж ЗӨВ захиалгад дахин бүртгэх боломжтой болно.',
+    { title: '↩ Буруу бүртгэсэн төлбөр буцаах', okText: 'Буцаах', danger: true });
+  if (!ok) return;
+  const newPaid = Math.max(0, freshPaid - amt);
+  // 4) Захиалгыг шинэчлэх (статус ХӨДЛӨХГҮЙ)
+  const sm = (o.stage_meta && typeof o.stage_meta === 'object' && !Array.isArray(o.stage_meta)) ? { ...o.stage_meta } : {};
+  sm.notes = appendOrderNote(orderNotesOf(o), `↩ Төлбөр буцаав: ${fmtMoney(amt)} · баримт ${receiptId} (буруу захиалгад бүртгэгдсэн)`, state.me || '');
+  const body = { updated_at: new Date().toISOString(), paid_ref: cut.ref };
+  if (isApp) { body.paid_mnt = newPaid; body.stage_meta = sm; } else { body.total_paid_in_cents = Math.round(newPaid * 100); }
+  try {
+    const r = await fetchWithTimeout(`${DB_URL}/rest/v1/${table}?id=eq.${encodeURIComponent(oid)}`, {
+      method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(body),
+    }, 15000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { showToast('Буцаагдсангүй: ' + e.message, 'error', 5000); return; }
+  o.paid_mnt = newPaid; o.paid_ref = cut.ref; if (isApp) o.stage_meta = sm;
+  // 5) Баримтыг ЧӨЛӨӨЛӨХ — мөрийг устгахгүй, `used_in`-г `void:` болгоно
+  let freed = false;
+  try {
+    const vr = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}`, {
+      method: 'PATCH', headers: { ...hdr, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ used_in: 'void:' + (prevUsed || ('mevent:#' + (o.number || ''))) }),
+    }, 15000);
+    freed = vr.ok;
+  } catch (_) {}
+  await loadUsedReceipts();
+  render();
+  showToast(freed
+    ? `↩ ${fmtMoney(amt)} буцаалаа — баримтыг зөв захиалгад дахин оруулна уу`
+    : `↩ ${fmtMoney(amt)} буцаалаа · ⚠ баримт чөлөөлөгдсөнгүй — дахин оруулахад «давхцсан» гэж гарвал дахин оролдоно уу`,
+    freed ? 'success' : 'warn', freed ? 3500 : 6000);
 }
 function setCustInfo(note, ci) {
   const base = String(note || '').replace(_CI_RE, '').trim();
@@ -25447,7 +25537,10 @@ async function loadUsedReceipts() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?select=receipt_id,fp,used_in`,
       { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return;
-    const rows = await r.json();
+    const all = await r.json();
+    // ⭐ ХҮЧИНГҮЙ БОЛГОСОН баримт (`used_in` нь `void:`) нь давхардлын хаалтад ОРОХГҮЙ —
+    //   буруу захиалгад бүртгэснийг буцаасны дараа ЗӨВ захиалгад дахин бүртгэх ёстой.
+    const rows = all.filter(x => !receiptIsVoid(x.used_in));
     state.usedReceipts = new Set(rows.map(x => x.receipt_id));                                  // бүх канон түлхүүр
     state.usedFps = new Set(rows.map(x => x.fp).filter(Boolean));                               // бүх хурууны хээ
     state.refLessFps = new Set(rows.filter(x => x.fp && x.fp === x.receipt_id).map(x => x.fp)); // лавлах дугааргүй бичлэгийн хээ
@@ -25504,6 +25597,19 @@ async function reserveReceipt(receiptId, meta) {
           { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 10000);
         const ex = await q.json();
         if (ex[0] && ex[0].used_in === meta.usedIn) return 'ok';
+        // Хүчингүй болгосон баримт — эзэмшлийг ШИНЭ захиалга руу шилжүүлнэ (мөр устгахгүй).
+        if (ex[0] && receiptIsVoid(ex[0].used_in)) {
+          const pr = await fetchWithTimeout(`${DB_URL}/rest/v1/bank_receipts?receipt_id=eq.${encodeURIComponent(receiptId)}`, {
+            method: 'PATCH',
+            headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+            body: JSON.stringify({ used_in: meta.usedIn || '', amount: meta.amount || null, pay_date: meta.date || null, ref: meta.ref || '', recorded_by: state.me }),
+          }, 15000);
+          if (pr.ok) {
+            (state.usedReceipts = state.usedReceipts instanceof Set ? state.usedReceipts : new Set()).add(receiptId);
+            (state.usedFps = state.usedFps instanceof Set ? state.usedFps : new Set()).add(fpKey);
+            return 'ok';
+          }
+        }
       } catch (e) {}
       return 'dup';
     }

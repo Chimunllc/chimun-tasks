@@ -7170,3 +7170,7 @@ select.no-asar-len {
   .buy-row .buy-nm { flex: 1 1 100%; order: 2; white-space: normal; }
   .buy-row .buy-amt { margin-left: auto; }
 }
+
+/* ↩ Буруу захиалгад бүртгэсэн төлбөрийг буцаах — модалын үйлдлийн зүүн талд,
+   сүүлчийн арга учир ялгаатай (2026-09-16). */
+.btn-revert { color: var(--danger); border-color: var(--danger); margin-right: auto; }

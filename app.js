@@ -28203,6 +28203,20 @@ function pbxFeedAge(calls, today) {
   return Math.round((new Date(String(today || todayStr())) - new Date(last)) / 86400000);
 }
 function pbxCbKey(peer) { return custPhoneKey(peer) || String(peer || '').replace(/\D/g, ''); }
+
+// ⛔ ХУУЧИРСАН ЗАРЫН ДАТА ЧИМЭЭГҮЙ ХУДАЛ ХЭЛНЭ (2026-09-17).
+//    Дэлгэц нь дата огт БАЙХГҮЙ үед л анхааруулдаг байв. Гэтэл татагч
+//    зогсоход хуучин тоо ХЭВИЙН мэт харагдана — зар үргэлжлүүлэн мөнгө
+//    зарцуулж байхад «өнөөдрийн» гэж үзсэн тоо нь хэдэн хоногийн өмнөх байна.
+//    Амьд системд болсон: Meta аппын хандалт хаагдаж бүх татагч унасан ч
+//    дэлгэц юу ч хэлээгүй. Цэвэр функц — тестлэгдэнэ.
+const ADS_STALE_D = 2;
+function adsFeedAge(rows, today) {
+  let last = '';
+  (rows || []).forEach(r => { const d = String((r && r.day) || '').slice(0, 10); if (d > last) last = d; });
+  if (!last) return null;
+  return Math.round((new Date(String(today || todayStr())) - new Date(last)) / 86400000);
+}
 // Нээлттэй эсэхийг шийднэ. Цэвэр функц — тестлэгдэнэ.
 //  fups   = pbxFollowups() гаралт (хүлээгээд холбогдоогүй дугаарууд)
 //  cbs    = pbx_callbacks мөрүүд
@@ -28579,6 +28593,16 @@ function renderAds() {
       <div>VPS дээрх татагч өдөр бүр 06:30-д ажиллана. Хэрэв 1 хоногоос удвал холболт тасарсан байж магадгүй.</div></div>`;
   }
 
+  // ⚠ Татагч зогссон бол доорх БҮХ тоо хуучирсан. Мөнгө зарцуулагдсаар
+  //   байхад «өнөөдрийн» гэж уншихаас сэргийлж ХАМГИЙН ДЭЭР нь бичнэ.
+  const feedAge = adsFeedAge(rows, todayStr());
+  const staleHtml = (feedAge !== null && feedAge >= ADS_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Зарын дата ${feedAge} хоног шинэчлэгдээгүй.</b>
+        Доорх бүх тоо тэр өдрийнх — зар үргэлжилж байвал зарцуулалт үүнээс ИХ.
+        Facebook-ийн холболт тасарсан байж магадгүй: автомат төсөв ч хуваарилагдахгүй,
+        зар зогсоох ч боломжгүй байна. Ads Manager-ээс гараар шалгаарай.</div>`
+    : '';
+
   const period = `<div class="ads-tabs">${[7, 30, 90].map(d =>
     `<button class="ads-tab${d === days ? ' on' : ''}" data-ads-days="${d}">${d} хоног</button>`).join('')}</div>`;
 
@@ -28784,6 +28808,7 @@ function renderAds() {
       ⚠ Ажилтнууд гар утсаараа буцаж залгасан бол PBX түүнийг харахгүй — зарим нь аль хэдийн шийдэгдсэн байж болно.</div>`;
 
   return `<h2 class="view-title">📣 Зар & үр дүн</h2>
+    ${staleHtml}
     ${period}
     ${kpi}
     ${budgetHtml}

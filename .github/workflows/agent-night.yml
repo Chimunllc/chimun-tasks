@@ -80,13 +80,21 @@ jobs:
           set -euo pipefail
           node tools/debt-check.js || true
           echo '--- санал ---'
-          node tools/debt-check.js --suggest | tee /tmp/suggest.txt
-          TARGET=$(sed -n '2p' /tmp/suggest.txt | awk '{print $1}')
+          node tools/debt-check.js --suggest
+          # ⚠ Нэрийг гаралтын мөрөөс sed/awk-аар БҮҮ ав — `--suggest-target` нь
+          # ЗӨВХӨН нэрийг хэвлэдэг тогтсон гэрээ. Формат өөрчлөгдөхөд эвдэрхгүй.
+          TARGET=$(node tools/debt-check.js --suggest-target)
+          if [ -z "$TARGET" ]; then
+            echo "::notice::Хүрээнд ажил байхгүй — өнөө шөнө агент ажиллахгүй."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
           echo "Өнөөдрийн бай: $TARGET"
 
       - name: Claude — нэг функцийн inline style-ыг класс болгох
-        if: steps.key.outputs.skip != 'true'
+        if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -95,7 +103,7 @@ jobs:
           base_branch: main
           branch_prefix: 'claude/night-'
           claude_args: |
-            --max-turns 40
+            --max-turns 70
             --model claude-opus-5
           prompt: |
             Эхлээд `CLAUDE.md`-г бүтнээр унш — дизайны гэрээ болон бүх дүрэм тэнд.

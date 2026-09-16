@@ -74,9 +74,19 @@ function loadBaseline() {
   try { return JSON.parse(fs.readFileSync(BASELINE, 'utf8')); } catch { return null; }
 }
 
-/* ── --suggest: агентад НЭГ тодорхой, хүрээтэй ажил өгнө ──
-   «inline style багасга» гэвэл агент 2,259 мөрийг хөөж цаг/токен үрнэ. Тиймээс
-   хамгийн их хуримтлагдсан ГАЗРЫГ нэрлэж өгнө — нэг функц, нэг класс. */
+/* ── --suggest: агентад НЭГ тодорхой, ДУУСГАЖ БОЛОХ ажил өгнө ──
+   «inline style багасга» гэвэл агент 2,259 мөрийг хөөж токен үрнэ. Тиймээс нэг
+   функцийг л нэрлэнэ.
+
+   ⛔ ХАМГИЙН ИХ нэгийг БҮҮ сонго. 2026-09-16-нд суггестер `kpi` (200 style)-г
+   нэрлээд агент 40 эргэлтийг дуусгаж УНАСАН — бүр дуусгасан ч 500 мөрийн diff
+   хязгаараас хэтэрч merge хийгдэхгүй байсан. Суггестер ба merge-ийн хязгаар
+   хоёр бие биенийхээ эсрэг ажиллаж байв.
+   Тиймээс [SUG_MIN, SUG_MAX] хүрээнээс л сонгоно: нэг шөнөд дуусах, diff нь
+   хязгаарт тохирох. 89 функц энэ хүрээнд байгаа тул ажил урт хугацаанд хүрэлцэнэ. */
+const SUG_MIN = 5;    // үүнээс бага бол ажил болгох нь үнэ цэнэгүй
+const SUG_MAX = 25;   // үүнээс их бол нэг шөнөд дуусахгүй / diff хязгаараас хэтэрнэ
+
 function suggest() {
   const js = read('app.js');
   const lines = js.split('\n');
@@ -98,8 +108,16 @@ function suggest() {
     cur.n += n;
     tally.set(key, cur);
   });
-  const top = [...tally.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 5);
-  return { metric: 'inline_style', top: top.map(([name, v]) => ({ fn: name, count: v.n, line: v.first })) };
+  const all = [...tally.entries()]
+    .map(([name, v]) => ({ fn: name, count: v.n, line: v.first }))
+    .sort((a, b) => b.count - a.count);
+  const fit = all.filter((r) => r.count >= SUG_MIN && r.count <= SUG_MAX);
+  return {
+    metric: 'inline_style',
+    top: fit.slice(0, 5),                             // сонгож болох ажлууд
+    oversize: all.filter((r) => r.count > SUG_MAX),   // нэг шөнөд томдох нь
+    remaining: fit.length,
+  };
 }
 
 function main() {
@@ -114,10 +132,23 @@ function main() {
     return;
   }
 
+  // Зөвхөн нэрийг хэвлэнэ — workflow үүнийг уншина. Хүрээнд юу ч байхгүй бол хоосон.
+  if (arg === '--suggest-target') {
+    const s = suggest();
+    if (s.top[0]) console.log(s.top[0].fn);
+    return;
+  }
+
   if (arg === '--suggest') {
     const s = suggest();
-    console.log('Хамгийн их inline style хуримтлагдсан газрууд:');
+    console.log(`Нэг шөнийн ажилд тохирох (${SUG_MIN}–${SUG_MAX} inline style):`);
     for (const r of s.top) console.log(`  ${r.fn}  —  ${r.count} inline style  (app.js:${r.line})`);
+    if (!s.top.length) console.log('  (хүрээнд юу ч байхгүй)');
+    console.log(`\nХүрээнд бүгд: ${s.remaining} функц.`);
+    if (s.oversize.length) {
+      console.log(`Нэг шөнөд томдох (${SUG_MAX}-аас их): ${s.oversize.length} функц — ` +
+                  `хамгийн том нь ${s.oversize[0].fn} (${s.oversize[0].count}). Эдгээрийг ГАРААР хувааж зас.`);
+    }
     console.log('\nНэг ажил = нэг функц. Тэр функцийн inline style-ыг styles.css-ийн класс болго.');
     return;
   }
@@ -153,4 +184,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { measure, METRICS };
+module.exports = { measure, METRICS, suggest, SUG_MIN, SUG_MAX };

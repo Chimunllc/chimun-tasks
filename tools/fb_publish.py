@@ -114,9 +114,25 @@ if not on:
     sys.exit(0)
 
 # ── ② Ажиллаж байгаа зарын тохиргоог загвар болгоно ─────────────────────────
-sets = [a for a in api_get(f'{ACCT}/adsets', {
-    'fields': 'status,optimization_goal,billing_event,destination_type,promoted_object,targeting',
-    'limit': 50, 'access_token': ADS_TOKEN})['data'] if a.get('status') == 'ACTIVE']
+# ⛔ ЭНД УНАВАЛ ЧИМЭЭГҮЙ БОЛНО. Токен хүчингүй болох нь БОДИТ тохиолдол
+#   (2026-09-17-нд хуудасны эрх цуцлагдаж скрипт бүтнээрээ унасан, аппад юу ч
+#   харагдаагүй, хэрэглэгч «нийтлэгдэхгүй байна» гэж мэдэгдэх хүртэл мэдээгүй).
+#   Тиймээс алдааг барьж АППАД бүртгэнэ.
+try:
+    sets = [a for a in api_get(f'{ACCT}/adsets', {
+        'fields': 'status,optimization_goal,billing_event,destination_type,promoted_object,targeting',
+        'limit': 50, 'access_token': ADS_TOKEN})['data'] if a.get('status') == 'ACTIVE']
+except Exception as e:
+    detail = str(e)
+    if hasattr(e, 'read'):
+        try:
+            detail = e.read().decode('utf-8', 'replace')[:200]
+        except Exception:
+            pass
+    log(f'⚠ зарын тохиргоо уншигдсангүй: {detail}')
+    note(f'{len(rows)} пост хүлээж байна — Facebook-ийн холболт тасарсан '
+         f'(токен хүчингүй байж магадгүй): {detail[:150]}')
+    sys.exit(1)
 if not sets:
     log('идэвхтэй зар алга — загвар авах боломжгүй')
     note('Пост нийтлэгдээгүй: идэвхтэй зар байхгүй тул зорилтот бүлгийн загвар алга')

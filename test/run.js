@@ -5875,6 +5875,25 @@ need(['orderCustType']);
      'гэрээ: нөөц эзлэх шатууд (public_availability харагдацтай ижил)');
 }
 
+// SCAN: дэлгэцийн салаа бүр `return;`-ээр дуусах ЁСТОЙ (2026-09-16).
+// Мартвал доорх даалгаврын жагсаалт wrap.innerHTML-ийг ДАРЖ бичиж, дэлгэц
+// «гарчиг нь зөв, агуулга нь өөр» болно (амьд системд «Зар & үр дүн» ингэж
+// даалгаврын жагсаалт харуулсан). Товч дарагдаж байгаа тул хэн ч алдаа гэж
+// мэдэхгүй — зөвхөн хүн нүдээрээ анзаарна.
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const marks = [...src.matchAll(/wrap\.innerHTML = safeViewHtml\(/g)].map(m => m.index);
+  const bad = [];
+  marks.forEach(i => {
+    // Салаа хаана дуусахыг 2 хоосон зайн `} else if (` / `} else {` -ээр олно
+    const tail = src.slice(i);
+    const end = tail.search(/\n {2}\} (?:else if \(|else \{|$)/);
+    const seg = end > -1 ? tail.slice(0, end) : tail.slice(0, 2000);
+    if (!/\breturn;/.test(seg)) bad.push(src.slice(i, i + 80).split('\n')[0]);
+  });
+  eq(bad.length, 0, 'scan: дэлгэцийн салаа бүр return;-ээр дуусна' + (bad.length ? ' — ' + bad.join(' | ') : ''));
+}
+
 // ── ЗАР & ҮР ДҮН (2026-09-16) ─────────────────────────────────────────────
 // Зөвлөгөөний хөдөлгүүр — дүрэм бүр БОДИТ алдаанаас гарсан (traffic зорилготой
 // зар 429мянга₮ дэмий, тайз/хөгжим 46сая₮ орлоготой атлаа 0₮ зартай).

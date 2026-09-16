@@ -4408,8 +4408,11 @@ function renderTaskList() {
     attachPurchasesHandlers();
     return;
   } else if (state.view === 'ads') {
+    if (tableHead) tableHead.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
     wrap.innerHTML = safeViewHtml(renderAds, 'Зар & үр дүн');
     attachAdsHandlers();
+    return;
   } else if (state.view === 'writeoff') {
     if (tableHead) tableHead.style.display = 'none';
     if (toolbar) toolbar.style.display = 'none';

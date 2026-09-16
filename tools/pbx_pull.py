@@ -6,7 +6,13 @@
 #   «Call Details» хуудсыг уншина. Дараах зүйл эвдэрвэл АЛДАА гарган зогсоно
 #   (чимээгүй 0 бичихгүй): нэвтрэлт амжилтгүй · хүснэгт олдохгүй · багана дутуу.
 #
-# ⛔ Нэвтрэх нэр/нууц үг зөвхөн VPS дээрх `pbx.env`-д (chmod 600). Репод БАЙХГҮЙ.
+# ⛔ ЭНЭ СКРИПТ VPS ДЭЭР АЖИЛЛАХГҮЙ — Unitel-ийн галт хана гадаад IP-г хааж
+#   өөрийн WatchGuard сертификатаа буцаадаг. CEO-гийн Mac дээрээс ажиллана
+#   (launchd `com.chimun.pbxpull`, өдөр бүр 09:30), DB рүү `PG_SSH`-ээр бичнэ.
+# ⚠ launchd нь Desktop доторх файлыг уншиж ЧАДАХГҮЙ (macOS TCC) тул ажиллаж
+#   буй хуулбар нь `~/.chimun/pbx_pull.py`. ЭНЭ файлыг зассан бол
+#   `cp tools/pbx_pull.py ~/.chimun/` хийхээ мартаж болохгүй.
+# ⛔ Нэвтрэх нэр/нууц үг зөвхөн `~/.chimun/pbx.env`-д (chmod 600). Репод БАЙХГҮЙ.
 # ⛔ Нэг л удаа нэвтэрнэ, амжилтгүй бол ДАХИН ОРОЛДОХГҮЙ — портал хэрэглэгчийг
 #   түгждэг (dashboard дээр «Locked User» тоолуур бий).
 import http.cookiejar
@@ -33,6 +39,10 @@ PASS = cfg['PBX_PASS']
 TENANT = cfg.get('PBX_TENANT', '0')
 DAYS = int(cfg.get('PBX_DAYS', '7'))
 CONTAINER = cfg.get('PG_CONTAINER', 'vps-deploy-postgres-1')
+# ⚠ Unitel-ийн галт хана ГАДААД IP-г хаадаг (VPS-ээс портал руу орохгүй — өөрийнх
+#   нь WatchGuard сертификат ирнэ). Тиймээс энэ скрипт Монгол дахь машин дээр
+#   ажиллаж, DB рүү ssh-ээр бичнэ. `PG_SSH` тавибал psql-ийг тэр хостоор дамжуулна.
+PG_SSH = cfg.get('PG_SSH', '')
 
 CDR = f'{BASE}/index.php/{TENANT}/tenant/callRecordBillingTenant/admin'
 LOGIN = f'{BASE}/index.php/site/login'
@@ -165,9 +175,11 @@ insert into pbx_calls_hourly (day, hour, calls, answered, talk_sec, fetched_at) 
 commit;
 """
 
-p = subprocess.run(['docker', 'exec', '-i', CONTAINER,
-                    'psql', '-U', 'chimun', '-d', 'chimun', '-v', 'ON_ERROR_STOP=1'],
-                   input=SQL, text=True, capture_output=True)
+cmd = ['docker', 'exec', '-i', CONTAINER,
+       'psql', '-U', 'chimun', '-d', 'chimun', '-v', 'ON_ERROR_STOP=1']
+if PG_SSH:
+    cmd = ['ssh', PG_SSH] + cmd
+p = subprocess.run(cmd, input=SQL, text=True, capture_output=True)
 sys.stdout.write(p.stdout)
 sys.stderr.write(p.stderr)
 calls = sum(v[0] for v in agg.values())

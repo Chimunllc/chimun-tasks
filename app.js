@@ -29221,8 +29221,10 @@ function renderAds() {
 
   const gscHtml = gscSectionHtml(gsc, days);
   // Юүлүүрийн ёроол = тэр хугацаанд САЙТААР ирсэн захиалга.
+  // ⛔ `source` нь 'm-event-website' гэж ирдэг — 'site' гэж ТҮҮХИЙГЭЭР бүү
+  //    харьцуул (эхний хувилбар яг ингэж үргэлж 0 харуулж байв).
   const siteOrders = (state.appOrders || []).filter(o =>
-    String(o.source || '') === 'site' && String(o.created_at || o.starts_at || '').slice(0, 10) >= from).length;
+    orderSourceKey(o) === 'site' && String(o.created_at || o.starts_at || '').slice(0, 10) >= from).length;
   const gaHtml = gaSectionHtml(state.ga || [], days, siteOrders);
 
   if (!rows.length && !pbx.calls && !gsc.length) {

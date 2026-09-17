@@ -21,6 +21,12 @@
 # 🔌 Автомат merge унтраах: доорх AUTO_MERGE-ийг 'false' болго (PR нээлттэй үлдэнэ).
 # ⚠ Түлхүүр (CLAUDE_CODE_OAUTH_TOKEN эсвэл ANTHROPIC_API_KEY) байхгүй бол
 #   чимээгүй өнгөрнө (улаан болохгүй) — тэр үед хураангуй ч бичигдэхгүй.
+# ⛔ `NIGHT_PAT` (хувийн токен, Contents+Pull requests: RW) ЗААВАЛ. GITHUB_TOKEN-оор
+#   нээсэн PR дээр GitHub нь шалгалтыг `action_required` гэж түгжиж ХЭЗЭЭ Ч
+#   ажиллуулдаггүй → required `lint` ногоон болохгүй → авто merge мөнхөд гацна
+#   (2026-09-17-нд #450 яг ингэж гацаж, хураангуйд «CI улаан» гэж ХУДАЛ бичигдсэн).
+#   Түлхүүр байхгүй бол агент ажиллана, PR нээнэ, гэхдээ «CI ажиллаагүй» гэж
+#   ил хэлээд merge хийхгүй.
 name: Шөнийн агент
 
 on:
@@ -36,6 +42,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write             # өглөөний хураангуйг Issue-д бичнэ
 
 concurrency:
   group: agent-night
@@ -180,7 +187,8 @@ jobs:
         id: pr
         if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ⛔ GITHUB_TOKEN-оор нээсэн PR дээр CI түгжигддэг (толгойг үз).
+          GH_TOKEN: ${{ secrets.NIGHT_PAT || secrets.GITHUB_TOKEN }}
           TARGET: ${{ steps.task.outputs.target }}
         run: |
           set -euo pipefail
@@ -209,6 +217,9 @@ jobs:
           git switch -c "$BR"
           git add -A
           git commit -m "$TARGET: inline style-ыг класс болгов (шөнийн агент)"
+          # ⚠ checkout нь GITHUB_TOKEN-ыг хадгалдаг — дарж бичихгүй бол түлхэлт
+          # ч, PR ч роботынх болж CI түгжигдэнэ.
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "$BR"
 
           BODY=$(printf '%s\n' \
@@ -231,7 +242,7 @@ jobs:
         id: merge
         if: steps.key.outputs.skip != 'true' && steps.task.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.NIGHT_PAT || secrets.GITHUB_TOKEN }}
           WANT_MERGE: ${{ github.event_name == 'workflow_dispatch' && inputs.auto_merge || (github.event_name == 'schedule' && env.AUTO_MERGE == 'true') }}
         run: |
           set -euo pipefail
@@ -282,6 +293,25 @@ jobs:
             gh pr comment "$NUM" --body "⚠ Дизайны өр буураагүй ($IMPROVED) — автоматаар merge хийгдээгүй. ХҮН шалгана."
             echo "::warning::Өр буураагүй — merge хийсэнгүй."
             echo "state=merge хийгдээгүй — өр буураагүй" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ④-3 CI ҮНЭХЭЭР асаасан эсэх. Түгжээтэй шалгалтыг «улаан» гэж
+          #      бичвэл өглөө нь буруу дүгнэлт гарна — кодыг буруутгаад
+          #      жинхэнэ шалтгаан (түлхүүр алга) нуугдана.
+          SHA=$(gh pr view "$NUM" --json headRefOid --jq .headRefOid)
+          RUNS=''
+          for _ in 1 2 3 4 5 6; do
+            RUNS=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs" \
+                     --jq '[.check_runs[] | "\(.name):\(.status)/\(.conclusion // "-")"] | join(" ")' 2>/dev/null || true)
+            [ -n "$RUNS" ] && break
+            sleep 15
+          done
+          echo "шалгалт: ${RUNS:-алга}"
+          if [ -z "$RUNS" ] || printf '%s' "$RUNS" | grep -q 'action_required'; then
+            gh pr comment "$NUM" --body "⚠ CI огт ажиллаагүй (шалгалт түгжээтэй) — merge хийгдээгүй. \`NIGHT_PAT\` нууц түлхүүр нэмэгдсэн эсэхийг шалга."
+            echo "::warning::CI ажиллаагүй — merge хийсэнгүй."
+            echo "state=merge хийгдээгүй — CI огт ажиллаагүй (NIGHT_PAT алга?)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 

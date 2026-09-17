@@ -19,6 +19,12 @@ TOKEN_URL = 'https://oauth2.googleapis.com/token'
 API = 'https://analyticsdata.googleapis.com/v1beta'
 CONTAINER = 'vps-deploy-postgres-1'
 WINDOW = 10          # сүүлийн хэдэн хоногийг дахин татах
+# ⛔ `keyEvents` МЕТРИКТ БҮҮ НАЙД (2026-09-17, амьд датаар баталсан). GA4 нь
+#   «key event» гэж ТЭМДЭГЛЭСЭН өдрөөс хойшхыг л тоолдог тул `generate_lead`-ийг
+#   09-16-нд тэмдэглэсэн манай property дээр keyEvents = 0 гарч байв — 30 хоногт
+#   10 жинхэнэ lead байхад. Иймд `eventName` шүүлттэй `eventCount`-оор тоолно:
+#   тэмдэглэснээс үл хамааран түүх бүтэн ирнэ.
+LEAD_EVENT = 'generate_lead'
 PAGE = 100000        # нэг хүсэлтийн дээд мөр
 UB = timezone(timedelta(hours=8))
 
@@ -141,16 +147,10 @@ def fetch(prop, tok, start, end):
             'dimensions': dims, 'limit': PAGE}
     main_resp = run_report(prop, tok, dict(base, metrics=[
         {'name': 'sessions'}, {'name': 'totalUsers'}, {'name': 'engagedSessions'}]))
-    # ⚠ GA4 «conversions»-ыг «keyEvents» болгож нэрлэсэн. Хуучин property дээр
-    #   шинэ нэр танигдахгүй байж болзошгүй тул нэрээ солиод дахин оролдоно.
-    lead_resp = {}
-    for metric in ('keyEvents', 'conversions'):
-        try:
-            lead_resp = run_report(prop, tok, dict(base, metrics=[{'name': metric}]))
-            break
-        except urllib.error.HTTPError as e:
-            if e.code != 400:
-                raise
+    lead_resp = run_report(prop, tok, dict(
+        base, metrics=[{'name': 'eventCount'}],
+        dimensionFilter={'filter': {'fieldName': 'eventName',
+                                    'stringFilter': {'value': LEAD_EVENT}}}))
     return main_resp, lead_resp
 
 
@@ -236,6 +236,12 @@ def selftest():
     eq([r['leads'] for r in merged], [3, 0], 'lead: зөвхөн таарсан мөрд')
 
     eq(top_channels(recs)[0]['channel'], 'Organic Search', 'суваг: сессээр эрэмбэлнэ')
+    # ⛔ keyEvents-ийг БУЦААЖ БҮҮ ОРУУЛ — тэмдэглэснээс хойшхыг л тоолдог тул 0 гарна.
+    src = open(__file__).read()
+    # ⚠ Хайлтын мөрийг ХУВААЖ бичнэ — эс бөгөөс энэ мөр өөрөө олдож, тест
+    #   үргэлж унана (эхний бичилт яг ингэж унасан).
+    eq(("'key" + "Events'") in src, False, 'lead: keyEvents метрик хэрэглэхгүй')
+    eq("'fieldName': 'eventName'" in src, True, 'lead: eventName шүүлтээр тоолно')
     eq(top_channels([]), [], 'суваг: хоосон')
 
     print(('✅ ga_pull selftest: %d тест' % n[0]) if not f

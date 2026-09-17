@@ -7288,6 +7288,31 @@ select.no-asar-len {
 .mc-more { margin-top: var(--space-3); }
 .mc-more > summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); color: var(--muted); }
 .mc-empty { padding: var(--space-4); text-align: center; color: var(--muted); font-size: var(--fs-sm); line-height: 1.6; }
+/* Хуудасны постыг бүүст хийх жагсаалт (2026-09-17) */
+.pp-row { display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: 10px 0; border-bottom: 1px solid var(--border); }
+.pp-row:last-child { border-bottom: 0; }
+.pp-img { width: 54px; height: 54px; flex: 0 0 54px; object-fit: cover;
+  border-radius: var(--r-md); background: var(--muted-soft); }
+.pp-noimg { display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: var(--fs-sm); }
+.pp-b { flex: 1 1 auto; min-width: 0; }
+.pp-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.pp-day { font-size: var(--fs-xs); color: var(--muted); }
+.pp-kind { font-size: var(--fs-xs); color: var(--muted); }
+.pp-t { font-size: var(--fs-sm); color: var(--text); line-height: 1.45;
+  overflow-wrap: anywhere; }
+.pp-err { font-size: var(--fs-xs); color: var(--danger); margin-top: 3px;
+  overflow-wrap: anywhere; }
+.pp-a { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.pp-st { font-size: var(--fs-xs); white-space: nowrap; }
+.pp-wait { color: var(--muted); }
+.pp-on { color: var(--ok); font-weight: 700; }
+.pp-bad { color: var(--danger); }
+@media (max-width: 560px) {
+  .pp-row { flex-wrap: wrap; }
+  .pp-a { flex: 1 1 100%; flex-direction: row; justify-content: flex-end; align-items: center; }
+}
 .mc-stale { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--warn);
   border-radius: 10px; background: var(--warn-soft); color: var(--text); font-size: var(--fs-sm); line-height: 1.5; }
 /* Харилцагчийн картын дуудлагын түүх (2026-09-16) */

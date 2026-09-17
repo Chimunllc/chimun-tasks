@@ -7131,6 +7131,10 @@ need(['orderCustType']);
   const bsrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_boost.py'), 'utf8');
   ok(!/tpl = sets\[0\]/.test(bsrc) && /max\(sets, key=/.test(bsrc),
      'scan: загвар нь хамгийн том төсөвтэй зар');
+  // ⛔ Зарыг ХОТООР хумивал хөдөөгийн захиалга таслагдана — тэр нь орлогын ТАЛ
+  //    (180 хоногт хот 30 захиалга = 44.1сая, хөдөө 7 захиалга = 44.1сая).
+  ok(/geo_locations/.test(bsrc) && /countries/.test(bsrc),
+     'scan: газарзүйг улс даяар барина');
 
   // ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ кэшлэдэг тул шинэ
   //    хүснэгтэд апп 404 авна. SQL бүр өөрөө кэшийг шинэчлүүлнэ.

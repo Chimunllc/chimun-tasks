@@ -6798,6 +6798,17 @@ need(['orderCustType']);
     { campaign_id: 'c', effective_status: 'ACTIVE', daily_usd: 7 },
   ]);
   eq(rows.map(r => r.campaign_id).join(''), 'cba', 'зар: идэвхтэй нь эхэнд, төсвөөр эрэмбэлнэ');
+  // ⛔ META-ЭЭС УСТСАН кампанит ажил ACTIVE хэвээр үлдэж «9 ажиллаж байна» гэж
+  //    ХУДЛАА тоологдож байв (бодит нь 7) — амьд датаас 2 сүнс мөр олдсон.
+  const ghost = F.adStateRows([
+    { campaign_id: 'a', name: 'Амьд', effective_status: 'ACTIVE', daily_usd: 3 },
+    { campaign_id: 'b', name: 'Устсан', effective_status: 'REMOVED', daily_usd: 3 },
+    { campaign_id: 'c', name: 'Зогссон', effective_status: 'PAUSED', daily_usd: 1 },
+  ]);
+  eq(ghost.length, 2, 'зар: устсан кампанит ажил жагсаалтад ОРОХГҮЙ');
+  eq(ghost.filter(F.adIsLive).length, 1, 'зар: «ажиллаж байна» тоо зөв');
+  eq(F.adStatusLabel('REMOVED', 'ACTIVE'), '🗑 Устсан', 'зар: устсан төлвийн шошго');
+
   eq(F.adStateRows([]).length, 0, 'зар: хоосон → унахгүй');
   eq(F.adStateRows(null).length, 0, 'зар: null → унахгүй');
 
@@ -7193,6 +7204,13 @@ need(['orderCustType']);
   ok(/📣 Зар & үр дүн<\/h2>\s*\n\s*\$\{staleHtml\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
   ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
   ok(/adsFetchAge\(rows, Date\.now\(\)\)/.test(asrc2), 'scan: татагчийн амьд эсэхийг хэмжинэ');
+
+  // ⛔ Татагч талдаа ч цэвэрлэнэ — эс бөгөөс сүнс мөр ҮҮРД ACTIVE хэвээр үлдэнэ.
+  const bud = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_budget.py'), 'utf8');
+  ok(/set status='REMOVED', effective_status='REMOVED'/.test(bud),
+     'scan: Meta-д алга болсон кампанит ажил REMOVED болно');
+  ok(/if len\(camps\) < 100:/.test(bud),
+     'scan: бүтэн хуудас ирвэл цэвэрлэхгүй (хуудаслалтын хамгаалалт)');
   ok(/ads-fresh/.test(asrc2), 'scan: хэзээ татсаныг ил бичнэ');
 
   // ⛔ `date_preset=last_Nd` нь ӨНӨӨДРИЙГ ОРОЛЦУУЛДАГГҮЙ — өдөржин мөнгө

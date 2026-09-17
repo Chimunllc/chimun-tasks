@@ -28779,6 +28779,7 @@ const AD_STATUS_LABEL = {
   ADSET_PAUSED: '⏸ Зогссон', DISAPPROVED: '⛔ Татгалзсан',
   PENDING_REVIEW: '⏳ Хянагдаж буй', WITH_ISSUES: '⚠ Асуудалтай',
   ARCHIVED: '📦 Архив', DELETED: '🗑 Устсан', IN_PROCESS: '⏳ Боловсруулж буй',
+  REMOVED: '🗑 Устсан',
 };
 function fmtUsd(v) { const n = Number(v); return isFinite(n) ? '$' + n.toFixed(2) : '—'; }
 // Facebook-ийн БОДИТ төлөв нь бидний тавьсан төлвөөс зөрж болно (татгалзсан зар,
@@ -28792,8 +28793,11 @@ function adIsLive(s) {
   return String((s && s.effective_status) || (s && s.status) || '').toUpperCase() === 'ACTIVE';
 }
 // Кампанит ажлууд — идэвхтэй нь эхэнд, дараа нь өдрийн төсвөөр.
+// ⛔ META-ЭЭС УСТСАН мөрийг ХАРУУЛАХГҮЙ (2026-09-17). Устгасан кампанит ажил
+//    хүснэгтэд ACTIVE хэвээр үлдэж «9 ажиллаж байна» гэж ХУДЛАА тоологдож
+//    байв — бодит нь 7. Мөр DB-д үлдэнэ (түүх), зөвхөн жагсаалтаас хасагдана.
 function adStateRows(states) {
-  return (states || []).filter(Boolean).slice().sort((a, b) =>
+  return (states || []).filter(s => s && String(s.effective_status || '').toUpperCase() !== 'REMOVED').slice().sort((a, b) =>
     (adIsLive(b) ? 1 : 0) - (adIsLive(a) ? 1 : 0) ||
     (Number(b.daily_usd) || 0) - (Number(a.daily_usd) || 0));
 }

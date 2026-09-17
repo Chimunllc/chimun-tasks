@@ -217,8 +217,11 @@ jobs:
           git switch -c "$BR"
           git add -A
           git commit -m "$TARGET: inline style-ыг класс болгов (шөнийн агент)"
-          # ⚠ checkout нь GITHUB_TOKEN-ыг хадгалдаг — дарж бичихгүй бол түлхэлт
-          # ч, PR ч роботынх болж CI түгжигдэнэ.
+          # ⚠ checkout нь GITHUB_TOKEN-ыг `extraheader`-т хадгалдаг ба тэр нь
+          # URL доторх түлхүүрийг ДАРДАГ — 2026-09-17-нд туршихад түлхэлт
+          # «Permission denied to github-actions[bot]» (403) болсон. Эхлээд
+          # толгойг цэвэрлэж байж л PAT хүчинтэй болно.
+          git config --unset-all 'http.https://github.com/.extraheader' || true
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "$BR"
 

@@ -28615,6 +28615,21 @@ async function loadGsc(force) {
   } catch (e) { dataLoadFailed('Google хайлтын дата', e); state.gsc = state.gsc || []; return state.gsc; }
 }
 
+// ── Сайтын зочдын дата татах (ga_daily) ─────────────────────────────────────
+// anon-д ОГТ нээгээгүй — нэвтэрсэн токеноор л ирнэ.
+async function loadGa(force) {
+  if (state.ga && !force) return state.ga;
+  try {
+    const from = addDays(todayStr(), -90);
+    const r = await fetchWithTimeout(
+      `${DB_URL}/rest/v1/ga_daily?select=day,channel,sessions,users,engaged,leads&day=gte.${from}&order=day.desc&limit=5000`,
+      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    state.ga = await r.json();
+    return state.ga;
+  } catch (e) { dataLoadFailed('Сайтын зочдын дата', e); state.ga = state.ga || []; return state.ga; }
+}
+
 
 // ── ЗАРЫН ТӨЛӨВ БА ШИЙДВЭРИЙН БҮРТГЭЛ (2026-09-16) ──────────────────────────
 // `tools/fb_budget.py` 10 минут тутам шийдвэр гаргадаг (төсөв шилжүүлэх, зар
@@ -29105,9 +29120,86 @@ const ADS_TABS = [
 //    хоёуланг нь шалгана — шинэ блок нэмбэл энд ч нэм.
 function adsTabParts(tab, p) {
   if (tab === 'money') return [p.kpi, p.budget, p.camps, p.cmp, p.state, p.act];
-  if (tab === 'src') return [p.gsc, p.attrib, p.lead, p.capi];
+  if (tab === 'src') return [p.ga, p.gsc, p.attrib, p.lead, p.capi];
   if (tab === 'calls') return [p.call, p.conv, p.agent, p.fup];
   return [p.advice, p.daily, p.cand, p.pubNote, p.pp, p.queue];   // 'todo' = өгөгдмөл
+}
+
+// ── САЙТЫН ЗОЧИД (GA4) — юүлүүрийн ДЭЭД тал (2026-09-17) ───────────────────
+// GSC «ямар үгээр хайж байна» гэдгийг хэлнэ; GA4 «хэдэн хүн орж, хэд нь
+// холбоо барьсан» гэдгийг хэлнэ. Хоёул байж л «зар ажиллаж байна уу» гэдэг
+// асуултад хариулна.
+// ⚠ `leads` = GA4-д key event гэж тэмдэглэсэн үйлдэл (одоогоор `generate_lead`
+//   ганцаараа). GA4-д шинэ key event нэмбэл энэ тоо утгаа өөрчилнө.
+const GA_STALE_D = 3;       // GA4 ~48 цагт тогтворжино; 3+ хоног бол татагч зогссон
+const GA_CHANNEL_MN = {
+  'Organic Search': 'Google хайлт', 'Direct': 'Шууд орсон',
+  'Paid Social': 'Төлбөртэй зар', 'Organic Social': 'Сошиал (органик)',
+  'Referral': 'Бусад сайтаас', 'Email': 'Имэйл', 'Paid Search': 'Хайлтын зар',
+  'Unassigned': 'Тодорхойгүй', 'Organic Video': 'Видео', 'Cross-network': 'Хос сүлжээ',
+};
+function gaChannelLabel(c) { return GA_CHANNEL_MN[c] || String(c || '—'); }
+
+function gaStats(rows, from) {
+  let sessions = 0, users = 0, engaged = 0, leads = 0, last = '';
+  const days = new Set();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    sessions += Number(r.sessions) || 0;
+    users += Number(r.users) || 0;
+    engaged += Number(r.engaged) || 0;
+    leads += Number(r.leads) || 0;
+    days.add(d); if (d > last) last = d;
+  });
+  // ⛔ Хөрвөлтийг сесс БАЙХГҮЙ үед 0 гэж БҮҮ бич — «хөрвөлт 0%» нь «муу
+  //    ажиллаж байна» гэж уншигдана, үнэндээ хэмжих юм алга. null = «—».
+  return { sessions, users, engaged, leads, days: days.size, last,
+    conv: sessions ? Math.round((leads / sessions) * 1000) / 10 : null };
+}
+
+function gaChannels(rows, from) {
+  const m = new Map();
+  (rows || []).forEach(r => {
+    const d = String((r && r.day) || '').slice(0, 10);
+    if (!d || (from && d < from)) return;
+    const c = String((r && r.channel) || '').trim() || 'Unassigned';
+    const e = m.get(c) || { ch: c, sessions: 0, leads: 0 };
+    e.sessions += Number(r.sessions) || 0;
+    e.leads += Number(r.leads) || 0;
+    m.set(c, e);
+  });
+  return [...m.values()].sort((a, b) => b.sessions - a.sessions || b.leads - a.leads);
+}
+
+// `orders` = тухайн хугацаанд САЙТААР ирсэн захиалгын тоо (юүлүүрийн ёроол).
+function gaSectionHtml(rows, days, orders) {
+  const from = addDays(todayStr(), -(Number(days) || 30));
+  const s = gaStats(rows, from);
+  const head = `<div class="ads-sec">Сайтын зочид <span class="ads-sub">(${days} хоног${s.last ? ' · сүүлийн дата ' + escapeHtml(s.last) : ''})</span></div>`;
+  if (!s.sessions) {
+    return `${head}<div class="ads-note">Сайтын зочдын дата хараахан ирээгүй.
+      VPS дээрх татагч өдөр бүр 07:10-д ажиллана — эхний өдөр хоосон байх нь хэвийн.</div>`;
+  }
+  const age = adsFeedAge(rows, todayStr());
+  const stale = (age !== null && age > GA_STALE_D)
+    ? `<div class="mc-stale">⚠ <b>Сайтын зочдын дата ${age} хоног шинэчлэгдээгүй.</b>
+        GA4 хоёр хоног хоцордог нь хэвийн — үүнээс удвал татагч зогссон байж магадгүй.</div>` : '';
+  const kpis = `<div class="ads-kpis">
+    <div class="ads-kpi"><div class="ads-kpi-l">Сайтад орсон</div><div class="ads-kpi-v">${s.users}</div><div class="ads-kpi-s">${s.sessions} удаа</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Холбоо барьсан</div><div class="ads-kpi-v">${s.leads}</div><div class="ads-kpi-s">${s.conv === null ? '' : s.conv + '% нь'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Сайтаар ирсэн захиалга</div><div class="ads-kpi-v">${Number(orders) || 0}</div>
+      <div class="ads-kpi-s">${s.sessions && orders ? Math.round((orders / s.sessions) * 1000) / 10 + '% нь' : 'тэр хугацаанд'}</div></div>
+  </div>`;
+  const chRows = gaChannels(rows, from).slice(0, 8).map(c => `<div class="ads-row">
+      <span class="ads-nm">${escapeHtml(gaChannelLabel(c.ch))}</span>
+      <span class="ads-sp">${c.sessions} сесс</span>
+      <span class="ads-ms">${c.leads} холбоо барив</span>
+      <b class="ads-pm">${c.sessions ? Math.round((c.leads / c.sessions) * 1000) / 10 + '%' : '—'}</b>
+    </div>`).join('');
+  return `${head}${stale}${kpis}
+    <div class="ads-sec">Хаанаас орж ирсэн <span class="ads-sub">(сессээр)</span></div>
+    <div class="ads-list">${chRows}</div>`;
 }
 
 function renderAds() {
@@ -29128,6 +29220,10 @@ function renderAds() {
   const lead = leadChannelStats((state.appOrders || []).filter(o => String(o.starts_at || '') >= addDays(todayStr(), -days)), 'cash');
 
   const gscHtml = gscSectionHtml(gsc, days);
+  // Юүлүүрийн ёроол = тэр хугацаанд САЙТААР ирсэн захиалга.
+  const siteOrders = (state.appOrders || []).filter(o =>
+    String(o.source || '') === 'site' && String(o.created_at || o.starts_at || '').slice(0, 10) >= from).length;
+  const gaHtml = gaSectionHtml(state.ga || [], days, siteOrders);
 
   if (!rows.length && !pbx.calls && !gsc.length) {
     return `<div class="ads-empty">📣 <b>Зарын дата хараахан ирээгүй.</b>
@@ -29379,7 +29475,7 @@ function renderAds() {
   const body = adsTabParts(tab, {
     advice: adviceHtml, daily: dailyHtml, cand: candHtml, pubNote, pp: ppHtml, queue: queueHtml,
     kpi, budget: budgetHtml, camps: campsHtml, cmp: cmpHtml, state: stateHtml, act: actHtml,
-    gsc: gscHtml, attrib: attribHtml, lead: leadHtml, capi: capiHtml,
+    ga: gaHtml, gsc: gscHtml, attrib: attribHtml, lead: leadHtml, capi: capiHtml,
     call: callHtml, conv: convHtml, agent: agentHtml, fup: fupHtml,
   }).filter(x => x && String(x).trim()).join('\n');
 
@@ -36735,6 +36831,7 @@ function refreshViewData() {
     if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
     if (state.gsc === undefined) { state.gsc = null; loadGsc().then(() => { if (state.view === 'ads') render(); }); }
+    if (state.ga === undefined) { state.ga = null; loadGa().then(() => { if (state.view === 'ads') render(); }); }
   }
   if (v === 'ads' && canSeeAds() && state.fbAds === undefined) {
     loadFbAds().then(() => { if (state.view === 'ads') render(); });

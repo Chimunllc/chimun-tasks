@@ -6922,7 +6922,7 @@ need(['orderCustType']);
   //    хүн мэдэхгүй, хаанаас ч гаргахгүй бол блок ЧИМЭЭГҮЙ алга болно.
   {
     const keys = ['advice', 'daily', 'cand', 'pubNote', 'pp', 'queue', 'kpi', 'budget',
-      'camps', 'cmp', 'state', 'act', 'gsc', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
+      'camps', 'cmp', 'state', 'act', 'ga', 'gsc', 'attrib', 'lead', 'capi', 'call', 'conv', 'agent', 'fup'];
     const parts = {}; keys.forEach(k => { parts[k] = '<' + k + '>'; });
     const tabs = ['todo', 'money', 'src', 'calls'];
     const seen = {};
@@ -6983,6 +6983,36 @@ need(['orderCustType']);
     // Цөөн харагдалтаас дүгнэлт ГАРГАХГҮЙ (одоогийн бодит байдал)
     eq(F.gscAdvice([{ day: '2026-09-16', query: 'm event', clicks: 2, impressions: 2, position: 7 }], '2026-09-10').length, 0,
        'gsc: цөөн датанаас зөвлөгөө гаргахгүй');
+  }
+
+  // ── САЙТЫН ЗОЧИД (GA4) — юүлүүрийн дээд тал (2026-09-17) ─────────────────
+  {
+    const g = [
+      { day: '2026-09-16', channel: 'Organic Search', sessions: 120, users: 95, engaged: 80, leads: 3 },
+      { day: '2026-09-15', channel: 'Organic Search', sessions: 80, users: 60, engaged: 50, leads: 1 },
+      { day: '2026-09-15', channel: 'Direct', sessions: 40, users: 38, engaged: 21, leads: 0 },
+      { day: '2026-08-01', channel: 'Direct', sessions: 900, users: 900, engaged: 900, leads: 50 },
+    ];
+    const st = F.gaStats(g, '2026-09-10');
+    eq(st.sessions, 240, 'ga: сесс нийлнэ');
+    eq(st.users, 193, 'ga: хүн нийлнэ');
+    eq(st.leads, 4, 'ga: холбоо барьсан нийлнэ');
+    eq(st.days, 2, 'ga: хэдэн өдрийн дата');
+    eq(st.last, '2026-09-16', 'ga: сүүлийн өдөр');
+    eq(st.conv, 1.7, 'ga: хөрвөлт хувиар');
+    // ⛔ Сессгүй үед хөрвөлт `null` — 0% гэвэл «муу ажиллаж байна» гэж уншигдана
+    eq(F.gaStats([], '2026-09-10').conv, null, 'ga: сесс алга → хөрвөлт null');
+    eq(F.gaStats(null, null).sessions, 0, 'ga: null → унахгүй');
+    // Хугацаанаас гадуурх 8-р сарын мөр орохгүй
+    eq(F.gaStats(g, '2026-01-01').sessions, 1140, 'ga: бүх хугацаа сонгоход л түүх орно');
+
+    const ch = F.gaChannels(g, '2026-09-10');
+    eq(ch.length, 2, 'ga: суваг нэгтгэгдэнэ');
+    eq(ch[0].ch, 'Organic Search', 'ga: сессээр эрэмбэлнэ');
+    eq(ch[0].sessions, 200, 'ga: сувгийн сесс нийлнэ');
+    eq(ch[0].leads, 4, 'ga: сувгийн lead нийлнэ');
+    eq(F.gaChannelLabel('Organic Search'), 'Google хайлт', 'ga: сувгийн нэр монголоор');
+    eq(F.gaChannelLabel('Хачин'), 'Хачин', 'ga: танихгүй суваг хэвээр');
   }
 
   const asrc2 = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
@@ -7271,6 +7301,23 @@ need(['orderCustType']);
   } catch (e) {
     const msg = String((e.stdout || '') + (e.stderr || ''));
     ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'gsc: Python тест — ' + msg.trim().slice(0, 300));
+  }
+
+  // GA4 татагчийн цэвэр функцууд (огноо хөрвүүлэлт, lead нэгтгэл)
+  try {
+    const gap = path.join(__dirname, '..', 'tools', 'ga_pull.py');
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(gap)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/✅ ga_pull selftest/.test(out), 'ga: Python өөрийн тест тэнцэв — ' + out.trim());
+    const gsrc = fs.readFileSync(gap, 'utf8');
+    // ⛔ Мөр ирээгүй үед чимээгүй 0 бичихгүй (таг унтарсныг нуухгүй).
+    ok(/мөр ирсэнгүй/.test(gsrc) && /if not recs:/.test(gsrc), 'scan: ga хоосныг чимээгүй өнгөрөөхгүй');
+    // ⛔ Сүүлийн хоногуудыг ДАХИН татна — GA4 дата хожим тогтворжино.
+    ok(/WINDOW = 10/.test(gsrc) && /window_dates/.test(gsrc), 'scan: ga сүүлийн хоногуудыг дахин татна');
+    ok(/on conflict \(day,channel\) do update/.test(gsrc), 'scan: ga залруулгыг орлуулна');
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'ga: Python тест — ' + msg.trim().slice(0, 300));
   }
 }
 

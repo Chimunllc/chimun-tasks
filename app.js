@@ -29557,7 +29557,7 @@ function renderAds() {
   const wdHtml = !pbx.calls ? '' : `<div class="ads-sec">Гараагаар <span class="ads-sub">(ажлын цагт · ${days} хоног)</span></div>
     <div class="ads-list">${wd.map(x => `<div class="ads-row wd-row">
       <span class="ads-nm">${x.label}</span>
-      <span class="wd-bar"><i style="width:${Math.round(x.calls * 100 / wdMax)}%"></i></span>
+      <span class="wd-bar"><i class="wd-w${Math.round(x.calls * 10 / wdMax) * 10}"></i></span>
       <span class="ads-ms">${x.perDay}/өдөр</span>
       <b class="ads-pm${x.missed && x === wdWorst ? ' ads-bad' : ''}">${x.missed} алдсан · ${x.rate}%</b>
     </div>`).join('')}</div>

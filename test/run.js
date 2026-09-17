@@ -7114,6 +7114,26 @@ need(['orderCustType']);
   eq(F.adsFeedAge([{ day: '2026-09-01' }, { day: '2026-09-16' }], '2026-09-17'), 1,
      'хуучрал: дарааллаас үл хамаарна');
 
+  // ⛔ ӨДРӨӨР БИШ, ТАТАЛТААР (2026-09-17). Татагч өдөрт нэг ажиллаж, өнөөдрийн
+  //    мөр ирдэггүй байхад `adsFeedAge` ҮРГЭЛЖ 1 гарч, анхааруулга хэзээ ч
+  //    асдаггүй байв — «зарын үр дүн ерөөсөө шинэчлэгдэхгүй» гомдол эндээс.
+  const NOW = Date.parse('2026-09-17T14:00:00+08:00');
+  const fr = t => ({ fetched_at: t });
+  eq(F.adsFetchAge([fr('2026-09-17T13:30:00+08:00')], NOW), 0, 'татац: саяхан → 0 цаг');
+  eq(F.adsFetchAge([fr('2026-09-17T09:00:00+08:00')], NOW), 5, 'татац: 5 цагийн өмнө');
+  eq(F.adsFetchAge([fr('2026-09-16T06:30:00+08:00'), fr('2026-09-17T12:00:00+08:00')], NOW), 2,
+     'татац: ХАМГИЙН СҮҮЛИЙН таталтаар');
+  eq(F.adsFetchAge([], NOW), null, 'татац: дата алга → null');
+  eq(F.adsFetchAge(null, NOW), null, 'татац: null → унахгүй');
+  eq(F.adsFetchAge([{}], NOW), null, 'татац: талбаргүй мөр → null');
+
+  eq(F.adsStaleMsg(0, 0), '', 'анхааруулга: бүх юм шинэ → чимээгүй');
+  eq(F.adsStaleMsg(1, 1), '', 'анхааруулга: 1 цаг/1 хоног → чимээгүй');
+  ok(/4 цаг/.test(F.adsStaleMsg(0, 4)), 'анхааруулга: татагч зогссоныг ЦАГААР хэлнэ');
+  ok(/3 хоног/.test(F.adsStaleMsg(3, 0)), 'анхааруулга: дата хуучирсныг ӨДРӨӨР хэлнэ');
+  ok(/цаг/.test(F.adsStaleMsg(5, 9)), 'анхааруулга: хоёулаа муу бол татагчийнх ДАВУУ');
+  eq(F.adsStaleMsg(null, null), '', 'анхааруулга: дата огт алга → чимээгүй');
+
   // ── ЗАРЫН ДЭЛГЭЦИЙН 4 ТАБ (2026-09-17) ───────────────────────────────────
   // 20 гаруй блок нэг хуудсанд дараалж «юу хараад юу хийхээ» олдохгүй байв.
   // ⛔ Блок бүр ЯГ НЭГ табд байх ёстой: хоёр табд тавибал аль нь шинэ болохыг
@@ -7226,6 +7246,23 @@ need(['orderCustType']);
   // ⛔ Анхааруулга ХАМГИЙН ДЭЭР — доорх тоог уншихаас ӨМНӨ харагдана.
   ok(/📣 Зар & үр дүн<\/h2>\s*\n\s*\$\{staleHtml\}/.test(asrc2), 'scan: хуучрлын анхааруулга дээд талд');
   ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
+  ok(/adsFetchAge\(rows, Date\.now\(\)\)/.test(asrc2), 'scan: татагчийн амьд эсэхийг хэмжинэ');
+  ok(/ads-fresh/.test(asrc2), 'scan: хэзээ татсаныг ил бичнэ');
+
+  // ⛔ `date_preset=last_Nd` нь ӨНӨӨДРИЙГ ОРОЛЦУУЛДАГГҮЙ — өдөржин мөнгө
+  //    зарцуулж байхад «өнөөдөр 0» гэж харагдана.
+  const pull = fs.readFileSync(path.join(__dirname, '..', 'tools', 'fb_pull.py'), 'utf8');
+  ok(!/'date_preset':/.test(pull) && /'time_range': json\.dumps\(win\(/.test(pull),
+     'scan: зарын татагч өнөөдрийг хамруулна');
+  try {
+    const out = require('child_process')
+      .execSync(`python3 ${JSON.stringify(path.join(__dirname, '..', 'tools', 'fb_pull.py'))} --selftest`,
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ok(/PULL OK/.test(out), 'fb_pull.py: өөрийн тест — ' + out.trim());
+  } catch (e) {
+    const msg = String((e.stdout || '') + (e.stderr || ''));
+    ok(/No such file|not found|ENOENT/.test(msg) || !msg, 'fb_pull.py: тест — ' + msg.trim().slice(0, 200));
+  }
 }
 
 // ── КЭШ БИЧИЛТ УНАХ ≠ ДАТА АЧААЛАГДААГҮЙ (2026-09-17) ──────────────────────
@@ -7625,6 +7662,124 @@ need(['orderCustType']);
   eq(F.leadStats([]).median, null, 'хугацаа: хоосон → null');
   eq(F.leadStats(null).n, 0, 'хугацаа: мөргүй → 0');
   eq(F.leadStats([{ created_at: '2026-01-01', starts_at: '2026-01-08' }]).median, 7, 'хугацаа: нэг мөрийн медиан');
+}
+
+// ── 💬 Facebook чат дэлгэц ─────────────────────────────────────────────────
+{
+  const now = Date.parse('2026-09-17T12:00:00Z');
+  const h = (n) => new Date(now - n * 3600000).toISOString();
+
+  // Цонхны үлдэгдэл — Meta 24 цагаас хойш чөлөөт бичвэр авахгүй.
+  eq(F.chatWindowLeft(h(2), now), 22, 'чат: 2 цагийн өмнөх → 22 цаг үлдсэн');
+  eq(F.chatWindowLeft(h(30), now), 0, 'чат: 30 цаг → цонх хаагдсан');
+  eq(F.chatWindowLeft(null, now), 0, 'чат: мессежгүй → 0');
+
+  const cs = [
+    { thread_id: 't1', name: 'А', state: 'bot', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(3) },
+    { thread_id: 't2', name: 'Б', state: 'bot', last_at: '2026-09-17', last_in_at: h(40), last_out_at: h(50) },
+    { thread_id: 't3', name: 'В', state: 'bot', last_at: '2026-09-17', last_in_at: h(5), last_out_at: h(2) },
+    { thread_id: 't4', name: 'Г', state: 'done', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(9) },
+  ];
+  const w = F.chatWaiting(cs, now);
+  eq(w.map(x => x.thread_id).join(','), 't1,t2', 'чат: харилцагч сүүлд бичсэн нь л жагсана');
+  // ⛔ Цонх хаагдсан чатыг ХАСАХГҮЙ — тэр нь алдагдсан лид, тоолуураас нуувал
+  //   «бүгд хариулагдсан» гэсэн худал дүр зураг гарна.
+  ok(w.some(x => x.thread_id === 't2'), 'чат: цонх хаагдсан ч жагсаалтад үлдэнэ');
+
+  const stt = F.chatStats(cs, '2026-09-01', now);
+  eq(stt.n, 4, 'чат: 30 хоногийн тоо');
+  eq(stt.waiting, 2, 'чат: хариугүй');
+  eq(stt.open, 1, 'чат: одоо хариулж болох нь');
+  // ⛔ Хэмжих юм алга бол медиан `null`, 0 БИШ — «0 мин» нь төгс гэж уншигдана.
+  eq(F.chatStats([], '2026-09-01', now).med, null, 'чат: дата алга → медиан null');
+  eq(stt.med, 180, 'чат: эхний хариултын медиан (t3 = 3 цаг)');
+
+  // Батлах дараалал — дөрвөн нөхцөл ЗЭРЭГ шалгагдана.
+  const lg = [
+    { id: 1, review: true, sent: false, approved_by: null, error: null, out_text: 'а', at: h(1) },
+    { id: 2, review: true, sent: true, approved_by: 'X', error: null, out_text: 'б', at: h(2) },
+    { id: 3, review: true, sent: false, approved_by: 'X', error: null, out_text: 'в', at: h(3) },
+    { id: 4, review: true, sent: false, approved_by: null, error: 'татгалзсан', out_text: 'г', at: h(4) },
+    { id: 5, review: false, sent: false, approved_by: null, error: null, out_text: 'д', at: h(5) },
+  ];
+  eq(F.chatPending(lg).map(x => x.id).join(','), '1', 'чат: зөвхөн шийдэгдээгүй ноорог батлахаар гарна');
+  eq(F.chatBotMode({}), 'off', 'чат: тохиргоогүй → унтраалттай');
+  eq(F.chatBotMode({ enabled: true, review: true }), 'review', 'чат: баталгаатай горим');
+  eq(F.chatBotMode({ enabled: true, review: false }), 'live', 'чат: шууд горим');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ «Шууд» болгох нь ГАДАГШ чиглэсэн, буцаахад хэцүү үйлдэл — бот тэр
+  //   мөчөөс харилцагч руу өөрөө бичиж эхэлнэ. Баталгаажуулалт ЗААВАЛ.
+  ok(/data-fc-mode\]'\)\.forEach[\s\S]{0,700}?if \(!\(await showConfirm\(msg[\s\S]{0,60}?\)\)\) return;/.test(src),
+     'чат: горим солиход баталгаажуулалт байна');
+  ok(/data-fc-ok\]'\)\.forEach[\s\S]{0,300}?if \(!\(await showConfirm\([\s\S]{0,120}?\)\)\) return;/.test(src),
+     'чат: хариулт илгээхэд баталгаажуулалт байна');
+  // ⛔ Татгалзсан хариулт = бот энэ чатыг ойлгоогүй. Хүнд шилжүүлэхгүй бол
+  //   дараагийн эргэлтэд ижил алдаагаа давтана.
+  ok(/data-fc-no\]'\)\.forEach[\s\S]{0,800}?state: 'human'/.test(src),
+     'чат: татгалзсан чат хүнд шилжинэ');
+}
+
+// ── Messenger чатбот (tools/fb_chat.py) ────────────────────────────────────
+// Бот КОМПАНИЙН НЭРЭЭР харилцагчтай ярьдаг тул дүрмийг прозоор бичээд орхиж
+// БОЛОХГҮЙ — зөрчвөл CI унана.
+{
+  const chat = path.join(__dirname, '..', 'tools', 'fb_chat.py');
+  const py = fs.readFileSync(chat, 'utf8');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'db', 'fb_chats.sql'), 'utf8');
+
+  const out = require('child_process')
+    .execSync(`python3 ${JSON.stringify(chat)} --selftest`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/fb_chat selftest: \d+ тест OK/.test(out), 'chat: Python өөрийн тест тэнцэв — ' + out.trim());
+
+  // ⛔ ҮНЭ ЗОХИОХГҮЙ — бот үнэ/сул үлдэгдлийг манай өөрийн харагдацаас л уншина.
+  //    Энэ нь сайт юу харуулж байгаатай ЯГ ижил эх сурвалж. Салгавал бот
+  //    сайтаас өөр үнэ хэлж, компани түүнийг барих үүрэгтэй болно.
+  ok(/from public_catalog/.test(py), 'chat: үнэ public_catalog-оос уншигдана');
+  ok(/def tool_delivery/.test(py) && /delivery_city_fee/.test(py) && /delivery_per_km/.test(py),
+     'chat: хүргэлтийн төлбөр тарифаас уншигдана');
+
+  // ⛔ ХҮН ОРВОЛ БОТ ГАРНА. Ажилтны бичсэн мессежийн id бидний логт байхгүй —
+  //    тэр л цорын ганц дохио. Хасвал бот ажилтны яриаг дундуур нь таслана.
+  ok(/def thread_state/.test(py) && /bot_mids/.test(py), 'chat: хүний оролцоог таьна');
+  // ⛔ ГЭХДЭЭ ЭЗЭМШИЛ ХУГАЦААТАЙ. Хугацаагүй бол эхний татацад «human» болсон
+  //    294 хуучин харилцагч бот руу ХЭЗЭЭ Ч эргэж орохгүй болно.
+  ok(/HUMAN_TTL_H/.test(py) && /ttl_h/.test(py), 'chat: ажилтны эзэмшил хугацаатай');
+  // ⛔ Трипвайрын шилжүүлэг харин НААЛДАНА — гомдол 12 цагаар уусдаггүй.
+  ok(/when fb_chats\.handoff_at is not null then 'human'/.test(py),
+     'chat: трипвайрын шилжүүлэг татацаар арилахгүй');
+  ok(/if row\['state'\] == 'human'/.test(py), 'chat: human чатыг алгасна');
+  ok(/out_mid/.test(py) && /out_mid/.test(sql),
+     'chat: илгээсэн мессежийн id хадгалагдана');
+
+  // ⛔ META-ГИЙН 24 ЦАГИЙН ЦОНХ — хэтэрвэл Meta татгалзана.
+  ok(/def in_window/.test(py) && /in_window\(last_in, now\)/.test(py),
+     'chat: 24 цагийн цонх шалгагдана');
+
+  // ⛔ ТРИПВАЙР — мөнгө, гомдол, хөнгөлөлтийг машин шийдэхгүй.
+  ok(/TRIPWIRES/.test(py) && /хөнгөлөлт/.test(py) && /гомдол/.test(py),
+     'chat: хөнгөлөлт/гомдол хүнд шилжинэ');
+  ok(/why = tripwire\(in_text\)/.test(py), 'chat: трипвайр илгээхээс ӨМНӨ шалгагдана');
+
+  // ⛔ УНТРААХ ТОВЧ — `enabled` худал бол ганц ч мессеж явахгүй.
+  ok(/if not conf\.get\('enabled'\)/.test(py), 'chat: kill switch байна');
+  // ⛔ LLM түлхүүрийг ХУУЛЖ БҮҮ БИЧ — VPS-ийн стекийн .env-д аль хэдийн байгаа.
+  //    Хоёр файлд байвал нэгийг эргүүлэхэд нөгөө нь чимээгүй хуучирна.
+  ok(/STACK_ENV/.test(py) && /ANTHROPIC_API_KEY/.test(py),
+     'chat: түлхүүр байгаа газраасаа уншигдана');
+  // ⚠ Стекийн .env-д DB нууц үг ч бий — зөвхөн LLM түлхүүрийн НЭРийг авна.
+  ok(/_read_env\(STACK_ENV, set\(LLM_KEYS\)\)/.test(py),
+     'chat: стекийн .env-ээс зөвхөн түлхүүр уншина');
+  ok(/row\['turns'\] >= max_turns/.test(py), 'chat: ботын эргэлт хязгаартай');
+
+  // ⛔ `.strip()` нь psql-ийн `\x1f`-ийг хасдаг тул сүүлийн багана алдагдана.
+  ok(/stdout\.strip\('\\n'\)/.test(py), 'chat: psql тусгаарлагч хамгаалагдсан');
+
+  // ⛔ Шинэ хүснэгт: anon-д нээхгүй, хатуу устгалгүй, PostgREST кэш шинэчилнэ.
+  ok(/revoke delete on fb_chats/.test(sql) && /revoke delete on fb_chat_bot_log/.test(sql),
+     'chat: хатуу устгал хураагдсан');
+  ok(!/to anon/.test(sql), 'chat: anon-д нээгээгүй');
+  ok(/notify pgrst, 'reload schema';/.test(sql), 'chat: PostgREST кэш шинэчилнэ');
 }
 
 // ── db/ — харагдацын SQL эх бичиг репод байгаа эсэх ─────────────────────────

@@ -28092,6 +28092,28 @@ function _ubHour(ts) {
   if (isNaN(t)) return null;
   return new Date(t + 8 * 3600 * 1000).getUTCHours();
 }
+// UTC+8-ийн ОГНОО. ⚠ `started_at` нь UTC-ээр ирдэг тул түүхий мөрийг таславал
+// шөнийн дуудлага нэг өдрөөр эрт гарна ([[огноо UTC+8 занга]]).
+function _ubDate(ts) {
+  const t = Date.parse(ts);
+  if (isNaN(t)) return '';
+  const d = new Date(t + 8 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+// ⛔ ӨЧИГДӨРЧИЙГ ОВООЛЖ БОЛОХГҮЙ (CEO, 2026-09-17). 14 хоногийн жагсаалтад
+//   өчигдрийн 3 дуудлага эрэмбийн дундуур орж «хэзээ нэгэн цагт» болдог байв.
+//   Өглөөний push «Өчигдөр N хүн» гэж хэлдэг тул дэлгэц дээр ЯГ тэр бүлэг
+//   байх ёстой — эс бөгөөс мэдэгдэл дээрх тоог хаанаас хайхаа мэдэхгүй.
+//   Огноо уншигдахгүй бол «older» — шинэ рүү хийвэл хуучин мөр өдөр бүр
+//   дээд талд гацна.
+function pbxDayBucket(lastTs, today) {
+  const d = _ubDate(lastTs);
+  if (!d) return 'older';
+  if (d >= String(today || '')) return 'today';
+  if (d === addDays(String(today || ''), -1)) return 'yesterday';
+  return 'older';
+}
 // Ажлын бус цагт мэндчилгээг ДАВЖ хүлээгээд ч хариу аваагүй дуудлагын тоо.
 // ⚠ Богино тасалсныг ОРУУЛАХГҮЙ — тэдгээр нь андуурсан дуудлага.
 // ⚠ `from` ЗААВАЛ дамжина: дэлгэцийн бусад тоо сонгосон хугацаагаар бодогддог
@@ -29259,6 +29281,9 @@ function renderMissedCalls() {
   return `<h2 class="view-title">📵 Алдсан дуудлага</h2>
     ${stale}
     <div class="ads-kpis">
+      <div class="ads-kpi"><div class="ads-kpi-l">Өчигдөр</div><div class="ads-kpi-v">${
+        open.filter(r => pbxDayBucket(r.last, todayStr()) === 'yesterday').length}</div>
+        <div class="ads-kpi-s">өглөөний мэдэгдлийн тоо</div></div>
       <div class="ads-kpi"><div class="ads-kpi-l">Шийдэгдээгүй</div><div class="ads-kpi-v">${open.length}</div></div>
       <div class="ads-kpi"><div class="ads-kpi-l">${MISSED_DAYS} хоногт</div><div class="ads-kpi-v">${rows.length}</div></div>
       <div class="ads-kpi"><div class="ads-kpi-l">Танил дугаар</div><div class="ads-kpi-v">${rows.filter(r => pbxWho(r.peer, nameIdx).orders).length}</div>
@@ -29269,8 +29294,20 @@ function renderMissedCalls() {
       <button class="ads-tab${tab === 'all' ? ' on' : ''}" data-mc-tab="all">Бүх залгагч (${allRows.length})</button>
     </div>
     ${tab === 'all' ? allHtml : `
-    <div class="ads-sec">Буцаж залгах <span class="ads-sub">(${open.length})</span></div>
-    <div class="mc-list">${open.map(row).join('') || '<div class="mc-empty">Хариу аваагүй дуудлага алга — бүгд шийдэгдсэн.</div>'}</div>
+    ${(() => {
+      // ⛔ Өчигдрийнхийг 14 хоногийн эрэмбэ дотор БҮҮ ууш — өглөөний push
+      //    «Өчигдөр N хүн» гэж хэлсэн бол дэлгэцэн дээр ЯГ тэр бүлэг байна.
+      const g = { today: [], yesterday: [], older: [] };
+      open.forEach(r => g[pbxDayBucket(r.last, todayStr())].push(r));
+      const sec = (title, list, sub) => list.length
+        ? `<div class="ads-sec">${title} <span class="ads-sub">(${list.length}${sub ? ' · ' + sub : ''})</span></div>
+           <div class="mc-list">${list.map(row).join('')}</div>`
+        : '';
+      return (sec('🔴 Өнөөдөр', g.today, 'шинэ')
+        + sec('🟠 Өчигдөр', g.yesterday, 'өнөөдөр залгах')
+        + sec('Өмнөх өдрүүд', g.older))
+        || '<div class="mc-list"><div class="mc-empty">Хариу аваагүй дуудлага алга — бүгд шийдэгдсэн.</div></div>';
+    })()}
     ${done.length ? `<details class="mc-more"><summary>Шийдэгдсэн (${done.length})</summary>
       <div class="mc-list">${done.map(row).join('')}</div></details>` : ''}`}
     <div class="ads-note">Эдгээр дугаар <b>ажлын цагт</b> (${ws}:00–${we}:59) залгаж, <b>${PBX_WAIT_SEC} секундээс удаан хүлээгээд</b>

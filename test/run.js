@@ -6774,6 +6774,40 @@ need(['orderCustType']);
   ok(/adsFeedAge\(rows, todayStr\(\)\)/.test(asrc2), 'scan: зарын дэлгэц хуучрлыг хэмжинэ');
 }
 
+// ── КЭШ БИЧИЛТ УНАХ ≠ ДАТА АЧААЛАГДААГҮЙ (2026-09-17) ──────────────────────
+// Утасны санах ой дүүрэхэд setItem «quota exceeded» шидэж, 12 газар
+// `dataLoadFailed()` дуудагдан «Дата ачаалагдсангүй» гэсэн ХУДАЛ анхааруулга
+// гардаг байв — дата САЙН ирсэн, зөвхөн кэшлэх нь бүтээгүй (fp 1cddeb5f6c64,
+// амьд датаар 2 ажилтан · 11 удаа).
+{
+  const real = localStorage.setItem.bind(localStorage);
+  // Хэвийн үед бичигдэнэ
+  eq(F.cacheSet('t1', 'a'), true, 'кэш: хэвийн бичилт');
+  eq(localStorage.getItem('t1'), 'a', 'кэш: утга хадгалагдана');
+
+  // Санах ой дүүрсэн ч ХУУЧИН утгыг чөлөөлөөд дахин оролдоно
+  localStorage.setItem('t2', 'хуучин');
+  let tries = 0;
+  localStorage.setItem = (k, v) => { if (++tries === 1) { const e = new Error('The quota has been exceeded.'); e.name = 'QuotaExceededError'; throw e; } real(k, v); };
+  eq(F.cacheSet('t2', 'шинэ'), true, 'кэш: чөлөөлөөд дахин оролдоно');
+  eq(localStorage.getItem('t2'), 'шинэ', 'кэш: хоёр дахь оролдлого амжилттай');
+
+  // Хоёулаа унавал ЧИМЭЭГҮЙ false — апп унахгүй, худал анхааруулга гарахгүй
+  localStorage.setItem = () => { throw new Error('The quota has been exceeded.'); };
+  eq(F.cacheSet('t3', 'x'), false, 'кэш: бүтэхгүй бол false');
+  localStorage.setItem = real;
+  localStorage.removeItem('t1'); localStorage.removeItem('t2');
+
+  // ⛔ КЭШ БИЧИЛТИЙГ `dataLoadFailed`-ЭЭР БҮҮ МЭДЭЭЛ — худал анхааруулга
+  //    болж, алдааны лог дүүрнэ. Дата үнэхээр ирээгүй үед л түүнийг ашиглана.
+  const asrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  const bad = (asrc.match(/localStorage\.setItem[^\n]*dataLoadFailed/g) || []).length;
+  eq(bad, 0, 'scan: кэш бичилтийг dataLoadFailed-ээр мэдээлэхгүй');
+  ok(/function cacheSet\(key, value\)/.test(asrc), 'scan: cacheSet туслах байна');
+  // ⚠ Дата ачаалах ЖИНХЭНЭ алдаа хэвээр мэдээлэгдэнэ.
+  ok((asrc.match(/dataLoadFailed\(/g) || []).length > 10, 'scan: жинхэнэ алдааны мэдээлэл хэвээр');
+}
+
 // ── ТӨСВИЙН ШАЛГАРАЛ (2026-09-17) ──────────────────────────────────────────
 // ⛔ Өдрийн төсвийг байнга засвал зар МУУДНА. Скрипт 10 минут тутам ажилладаг
 //    бөгөөд зөрүү 1 цент байхад бичдэг байв — амьд датаар өдөрт 46 удаа,

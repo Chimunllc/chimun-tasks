@@ -7672,6 +7672,13 @@ need(['orderCustType']);
 
   // ⛔ УНТРААХ ТОВЧ — `enabled` худал бол ганц ч мессеж явахгүй.
   ok(/if not conf\.get\('enabled'\)/.test(py), 'chat: kill switch байна');
+  // ⛔ LLM түлхүүрийг ХУУЛЖ БҮҮ БИЧ — VPS-ийн стекийн .env-д аль хэдийн байгаа.
+  //    Хоёр файлд байвал нэгийг эргүүлэхэд нөгөө нь чимээгүй хуучирна.
+  ok(/STACK_ENV/.test(py) && /ANTHROPIC_API_KEY/.test(py),
+     'chat: түлхүүр байгаа газраасаа уншигдана');
+  // ⚠ Стекийн .env-д DB нууц үг ч бий — зөвхөн LLM түлхүүрийн НЭРийг авна.
+  ok(/_read_env\(STACK_ENV, set\(LLM_KEYS\)\)/.test(py),
+     'chat: стекийн .env-ээс зөвхөн түлхүүр уншина');
   ok(/row\['turns'\] >= max_turns/.test(py), 'chat: ботын эргэлт хязгаартай');
 
   // ⛔ `.strip()` нь psql-ийн `\x1f`-ийг хасдаг тул сүүлийн багана алдагдана.

@@ -28102,26 +28102,50 @@ function adsSpentInMonth(rows, month) {
 //    гэсэн ХУДАЛ тоо гарна. Татагч `Callee Answer Second > 0`-оор л тоолно.
 // ⚠ Ажлын цагийг ЭНД хатуу бичихгүй — `app_config['tariffs']`-ийн
 //    `work_start`/`work_end`-ээс ирнэ (тарифын ганц эх сурвалж).
-function pbxStats(rows, fromDay, workStart, workEnd) {
+// ⛔ ДУУДЛАГЫН ТОО = ДУУДЛАГА БҮРИЙН ЛОГООС (`pbx_calls`), цагийн нэгтгэлээс БИШ
+//    (2026-09-17). Өмнө нь `pbx_calls_hourly`-гоос тоолдог байсан тул «алдсан
+//    дуудлага» гэдэг дэлгэц бүрд ӨӨР утгатай байв: 📵 дэлгэц ажлын цаг + 13 сек
+//    дүрмээр 13 мөр харуулж байхад зарын дэлгэц «40% аваагүй» гэж бичдэг байсан —
+//    хоёулаа үнэн боловч хоёр өөр дүрэм. Цагийн нэгтгэлд дуудлагын УРТ байхгүй
+//    тул тэндээс 13 секундын дүрмийг хэрэглэх БОЛОМЖГҮЙ.
+// ⚠ Дүрэм `pbxFollowups`-тай ИЖИЛ байх ёстой — тест хоёуланг тулгана.
+//   · андуурч тасалсан (< PBX_WAIT_SEC, хариу аваагүй) → `short`, тооллогод ОРОХГҮЙ
+//   · ажлын цагийн гадна → тусад нь (`off*`), «алдсан» гэж тооцогдохгүй
+// ⚠ `rate` = АЖЛЫН ЦАГИЙН хариу авалт. Ажлын бус цагийг оруулбал хаалттай үеийн
+//   дуудлага гүйцэтгэлийг дардаг.
+function pbxStats(calls, fromDay, workStart, workEnd) {
   const w0 = Number.isFinite(Number(workStart)) ? Number(workStart) : 9;
   const w1 = Number.isFinite(Number(workEnd)) ? Number(workEnd) : 18;
-  const o = { calls: 0, answered: 0, talk: 0, bizCalls: 0, bizAns: 0, offCalls: 0, offAns: 0, days: {} };
-  (rows || []).forEach(r => {
-    if (!r) return;
-    const d = String(r.day || '').slice(0, 10);
-    if (!d || (fromDay && d < fromDay)) return;
-    const h = Number(r.hour);
-    const c = Number(r.calls) || 0;
-    const a = Number(r.answered) || 0;
-    o.calls += c; o.answered += a; o.talk += Number(r.talk_sec) || 0;
-    o.days[d] = (o.days[d] || 0) + c;
-    if (h >= w0 && h <= w1) { o.bizCalls += c; o.bizAns += a; } else { o.offCalls += c; o.offAns += a; }
+  const o = { calls: 0, answered: 0, talk: 0, bizCalls: 0, bizAns: 0,
+              offCalls: 0, offAns: 0, short: 0, days: {} };
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (String(c.peer || '').replace(/\D/g, '').length < 6) return;   // дотоод дугаар
+    const at = String(c.started_at || '');
+    const d = at.slice(0, 10);
+    // ⚠ Огноогүй мөрийг тоолж БОЛОХГҮЙ — ямар хугацаанд хамаарахыг мэдэхгүй тул
+    //   «7 хоног» гэж сонгосон хүнд тоо нь хаанаас гарсан нь тайлагдахгүй болно.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || (fromDay && d < fromDay)) return;
+    const a = Number(c.answer_sec) || 0;
+    // ⚠ Цаг уншигдаагүй бол ажлын цагт тооцно — чимээгүй хаяхгүй.
+    const h = _ubHour(at);
+    const off = h !== null && (h < w0 || h > w1);
+    // ⛔ Ажлын цагийн гадна дуудлагыг «андуурсан» гэж БҮҮ тоол (2026-09-17).
+    //    Амьд датаар тэдгээрийн 144/144 нь 10 секундээс богино байсан — хүн
+    //    таслаагүй, **PBX мэндчилгээгээ хэлээд өөрөө таслажээ**. Богиносгох
+    //    шүүлтийг эхэлж хэрэглэвэл тэд «андуурч залгасан» болж, хаалттай цагийн
+    //    бодит эрэлт (сард 144 хүн) харагдахаа болино.
+    if (!off && a <= 0 && (Number(c.call_sec) || 0) < PBX_WAIT_SEC) { o.short++; return; }
+    o.calls++; o.days[d] = (o.days[d] || 0) + 1;
+    if (a > 0) { o.answered++; o.talk += a; }
+    if (off) { o.offCalls++; if (a > 0) o.offAns++; }
+    else { o.bizCalls++; if (a > 0) o.bizAns++; }
   });
   o.missed = o.calls - o.answered;
   o.bizMissed = o.bizCalls - o.bizAns;
   o.offMissed = o.offCalls - o.offAns;
-  o.rate = o.calls ? Math.round(o.answered * 1000 / o.calls) / 10 : 0;
   o.bizRate = o.bizCalls ? Math.round(o.bizAns * 1000 / o.bizCalls) / 10 : 0;
+  o.rate = o.bizRate;                       // гарчгийн тоо = ажлын цагийнх
   o.dayCount = Object.keys(o.days).length;
   o.perDay = o.dayCount ? Math.round(o.calls * 10 / o.dayCount) / 10 : 0;
   return o;
@@ -28569,20 +28593,11 @@ async function loadPbxLog(force) {
   } catch (e) { dataLoadFailed('Дуудлагын лог', e); state.pbxLog = state.pbxLog || []; return state.pbxLog; }
 }
 
-// ── Дуудлагын дата татах (pbx_calls_hourly) ─────────────────────────────────
-// anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
-async function loadPbxCalls(force) {
-  if (state.pbxCalls && !force) return state.pbxCalls;
-  try {
-    const from = addDays(todayStr(), -90);
-    const r = await fetchWithTimeout(
-      `${DB_URL}/rest/v1/pbx_calls_hourly?select=*&day=gte.${from}&order=day.desc&limit=3000`,
-      { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 20000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    state.pbxCalls = await r.json();
-    return state.pbxCalls;
-  } catch (e) { dataLoadFailed('Дуудлагын дата', e); state.pbxCalls = state.pbxCalls || []; return state.pbxCalls; }
-}
+// ⚠ `pbx_calls_hourly`-г апп УНШИХАА БОЛИВ (2026-09-17). Цагийн нэгтгэлд
+//    дуудлагын УРТ байдаггүй тул андуурч тасалсныг ялгах боломжгүй — улмаар
+//    зарын дэлгэц ба 📵 дэлгэц ХОЁР өөр «алдсан» тоо харуулдаг байв. Одоо
+//    хоёулаа `pbx_calls` (дуудлага бүрийн лог, `loadPbxLog`)-оос тоолно.
+//    Хүснэгт нь татагчид хэвээр бичигдэнэ — түүх, хурдан нэгтгэлд хэрэгтэй.
 
 // ── Зарын дата татах (fb_ads_daily) ─────────────────────────────────────────
 // anon-д хаалттай — нэвтэрсэн токеноор л ирнэ.
@@ -29209,7 +29224,7 @@ function renderAds() {
   const camps = adCampaignStats(rows, from);
   const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
   const ws = tariffWorkStart(), we = tariffWorkEnd();
-  const pbx = pbxStats(state.pbxCalls || [], from, ws, we);
+  const pbx = pbxStats(state.pbxLog || [], from, ws, we);
   const spend = adSpendByCat(camps);
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
@@ -29271,7 +29286,8 @@ function renderAds() {
     <div class="ads-kpi"><div class="ads-kpi-l">Эхэлсэн чат</div><div class="ads-kpi-v">${totalMsg}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 чатын өртөг</div><div class="ads-kpi-v">${totalMsg ? fmtMoney(Math.round(totalSpend / totalMsg)) : '—'}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">Ирсэн дуудлага</div><div class="ads-kpi-v">${pbx.calls || '—'}</div></div>
-    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${pbx.calls ? pbx.rate + '%' : '—'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${pbx.calls ? pbx.rate + '%' : '—'}</div>
+      <div class="ads-kpi-s">ажлын цагт</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 дуудлагын өртөг</div><div class="ads-kpi-v">${pbxCostPerCall(totalSpend, pbx.calls) === null ? '—' : fmtMoney(pbxCostPerCall(totalSpend, pbx.calls))}</div></div>
   </div>`;
 
@@ -29396,9 +29412,13 @@ function renderAds() {
   const callHtml = !pbx.calls ? '' : `<div class="ads-sec">Утасны дуудлага <span class="ads-sub">(${pbx.dayCount} хоног · өдөрт дунджаар ${pbx.perDay})</span></div>
     <div class="ads-list">
       <div class="ads-row"><span class="ads-nm">Ажлын цагаар (${ws}:00–${we}:59)</span><span class="ads-sp">${pbx.bizCalls} ирсэн</span><span class="ads-ms">${pbx.bizAns} авсан</span><b class="ads-pm${pbx.bizRate < 70 ? ' ads-bad' : ''}">${pbx.bizRate}%</b></div>
-      <div class="ads-row"><span class="ads-nm">Ажлын цагийн гадна</span><span class="ads-sp">${pbx.offCalls} ирсэн</span><span class="ads-ms">${pbx.offAns} авсан</span><b class="ads-pm${pbx.offMissed ? ' ads-bad' : ''}">${pbx.offMissed} алдсан</b></div>
+      <div class="ads-row"><span class="ads-nm">Ажлын цагийн гадна</span><span class="ads-sp">${pbx.offCalls} ирсэн</span><span class="ads-ms">${pbx.offAns} авсан</span><b class="ads-pm">алдсанд тооцохгүй</b></div>
       <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
-    </div>`;
+    </div>
+    <div class="ads-note">Тоолол нь <b>📵 Алдсан дуудлага</b> дэлгэцтэй ИЖИЛ дүрэмтэй.
+      Ажлын цагт ${PBX_WAIT_SEC} секунд хүрэхгүй тасалсан <b>${pbx.short}</b> дуудлага ороогүй — манай дугаар
+      KFC-тэй төстэй тул ихэнх нь андуурч залгасан хүмүүс.
+      Ажлын цагийн гадна залгасныг «алдсан» гэж тооцохгүй: тэнд PBX мэндчилгээгээ хэлээд өөрөө таслана.</div>`;
 
   // ── Facebook руу буцсан худалдан авалт (Conversions API) ──
   // Хэрэглэгч «холбоо ажиллаж байна уу» гэдгийг ЭНДЭЭС л харна.
@@ -36827,7 +36847,6 @@ function refreshViewData() {
   //    «Дуудлага → захиалга» хоосон харагддаг байв (хуудсаа дахин
   //    ачаалснаар л засагддаг — хэн ч алдаа гэж мэдэхгүй).
   if (v === 'ads' && canSeeAds()) {
-    if (state.pbxCalls === undefined) { state.pbxCalls = null; loadPbxCalls(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.pbxLog === undefined) { state.pbxLog = null; loadPbxLog(true).then(() => { if (state.view === 'ads') render(); }); }
     if (state.customers === undefined) { state.customers = null; loadCustomers().then(() => { if (state.view === 'ads') render(); }); }
     if (state.gsc === undefined) { state.gsc = null; loadGsc().then(() => { if (state.view === 'ads') render(); }); }

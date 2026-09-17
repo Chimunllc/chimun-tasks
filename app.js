@@ -370,6 +370,21 @@ function dataLoadFailed(where, err) {
   } catch (e) { /* мэдээлэх нь өөрөө унавал чимээгүй өнгөрнө — зориудынх */ }
 }
 
+// ⛔ КЭШ БИЧИЛТ УНАХ нь «ДАТА АЧААЛАГДААГҮЙ» гэсэн үг БИШ (2026-09-17).
+//   Утасны санах ой дүүрэхэд `localStorage.setItem` нь «quota exceeded» шидэж,
+//   12 газар `dataLoadFailed(...)` дуудагдаж «Дата ачаалагдсангүй» гэсэн ХУДАЛ
+//   анхааруулга гарч, алдааны лог дүүрдэг байв — үнэндээ дата САЙН ирсэн,
+//   зөвхөн хадгалах нь бүтээгүй (амьд датаар 2 ажилтан · 11 удаа, fp 1cddeb5f6c64).
+//   Кэш бол зөвхөн хурдны туслах: бүтэхгүй бол апп хэвийн ажиллана.
+//   ⚠ Дата ҮНЭХЭЭР ирээгүй бол `dataLoadFailed()`-ыг хэвээр ашиглана.
+function cacheSet(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch (e) {
+    // Хуучин утгыг нь чөлөөлөөд НЭГ дахин оролдоно — ихэнхдээ энэ хангалттай.
+    try { localStorage.removeItem(key); localStorage.setItem(key, value); return true; }
+    catch (e2) { return false; }
+  }
+}
+
 // ── PostgREST токены хүчинтэй хугацаа ────────────────────────────────────────
 // Нэвтрэхэд олгогддог `pgrst` JWT нь 30 хоногийн exp-тэй. Хугацаа дуусахад
 // pgrstBearer() чимээгүй anon руу уналаа — anon-д уншилтын эрх БАЙХГҮЙ тул
@@ -809,7 +824,7 @@ function loadNotifications() {
   const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const before = state.notifications.length;
   state.notifications = state.notifications.filter(n => (n.ts || 0) >= cutoff);
-  if (state.notifications.length !== before) { try { localStorage.setItem('notifications', JSON.stringify(state.notifications)); } catch (e) { dataLoadFailed('loadNotifications', e); } }
+  if (state.notifications.length !== before) { cacheSet('notifications', JSON.stringify(state.notifications)); }
 }
 function saveNotifications() {
   // Keep only the most recent 50 to avoid localStorage bloat
@@ -2276,7 +2291,7 @@ async function loadFinanceCategories() {
     Object.keys(subs).forEach(k => subs[k].sort((a, b) => a.code.localeCompare(b.code)));
     FINANCE_MAIN_CATEGORIES = mains;
     FINANCE_SUB_CATEGORIES = subs;
-    try { localStorage.setItem('finCategories', JSON.stringify({ mains, subs })); } catch (e) { dataLoadFailed('loadFinanceCategories', e); }
+    cacheSet('finCategories', JSON.stringify({ mains, subs }));
     if (typeof render === 'function') render();
   } catch (e) {
     // Сүүлд амжилттай татсан кэш байвал түүгээр (default дээр давхарлана)
@@ -10079,7 +10094,7 @@ async function loadProductsCatalog() {
       const map = {};
       rows.forEach(p => { if (p.sku && Number(p.cost) > 0) map[p.sku] = Number(p.cost); });
       state.productCosts = map;
-      try { localStorage.setItem('mevProducts', JSON.stringify(rows)); } catch (e) { dataLoadFailed('loadProductsCatalog', e); }
+      cacheSet('mevProducts', JSON.stringify(rows));
       if (typeof render === 'function') render();
       return;
     } catch (e) { console.warn('Postgres products унш чадсангүй, Sheet fallback:', e.message); }
@@ -10092,7 +10107,7 @@ async function loadProductsCatalog() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.products = Array.isArray(data) ? data : (data.products || []);
-    try { localStorage.setItem('mevProducts', JSON.stringify(state.products)); } catch (e) { dataLoadFailed('loadProductsCatalog', e); }
+    cacheSet('mevProducts', JSON.stringify(state.products));
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadProductsCatalog fallback fail', e); }
 }
@@ -13090,7 +13105,7 @@ async function loadEmployeeAliases() {
       if (norm) map[kind + ':' + norm] = a.canon;
     });
     state.empAliases = map;
-    try { localStorage.setItem('empAliases', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadEmployeeAliases', e); }
+    cacheSet('empAliases', JSON.stringify(map));
   } catch (e) { console.warn('loadEmployeeAliases', e); }
 }
 async function loadMemberPerms() {
@@ -13103,7 +13118,7 @@ async function loadMemberPerms() {
     const map = {};
     rows.forEach(p => { if (p && p.person_key) map[canonKey(p.person_key)] = p.perms || {}; });   // хуучин түлхүүрээр хадгалагдсан эрх алдагдахгүй
     state.memberPerms = map;
-    try { localStorage.setItem('memberPerms', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadMemberPerms', e); }
+    cacheSet('memberPerms', JSON.stringify(map));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadMemberPerms', e); }
 }
@@ -13135,7 +13150,7 @@ async function loadMemberBranches() {
     const map = {};
     (await r.json()).forEach(x => { if (x && x.person_key) map[x.person_key] = Array.isArray(x.branches) ? x.branches : []; });
     state.memberBranches = map;
-    try { localStorage.setItem('memberBranches', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadMemberBranches', e); }
+    cacheSet('memberBranches', JSON.stringify(map));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadMemberBranches', e); }
 }
@@ -14200,7 +14215,7 @@ async function loadBrandKit() {
     const r = await fetchWithTimeout(`${DB_URL}/rest/v1/brand_kit?id=eq.default&select=*`, { headers: { apikey: DB_ANON_KEY, Authorization: 'Bearer ' + pgrstBearer() } }, 15000);
     if (!r.ok) return; const rows = await r.json(); const d = rows && rows[0]; if (!d) return;
     const k = {}; BRAND_FIELDS.forEach(f => k[f] = d[f] || ''); state.brandKit = k;
-    try { localStorage.setItem('brandKit', JSON.stringify(k)); } catch (_) { dataLoadFailed('loadBrandKit', _); }
+    cacheSet('brandKit', JSON.stringify(k));
     if (k.logo) { const li = new Image(); li.onload = () => { k._logoImg = li; if (state.view === 'marketing') _mkRedraw(); }; li.src = k.logo; }
     if (state.view === 'marketing' && typeof render === 'function') render();
   } catch (e) { console.warn('loadBrandKit', e); }
@@ -14842,7 +14857,7 @@ async function loadRolePerms() {
     const map = {};
     rows.forEach(p => { if (p && p.role) map[normRole(p.role)] = p.perms || {}; });
     state.rolePerms = map;
-    try { localStorage.setItem('rolePerms', JSON.stringify(map)); } catch (e) { dataLoadFailed('loadRolePerms', e); }
+    cacheSet('rolePerms', JSON.stringify(map));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadRolePerms', e); }
 }
@@ -14887,7 +14902,7 @@ async function loadSalaries() {
     const rows = await r.json(); const map = {}, ded = {};
     rows.forEach(p => { if (p && p.person_key) { const k = canonKey(p.person_key); map[k] = Number(p.amount) || 0; ded[k] = p.deduct !== false; } });
     state.salaries = map; state.salaryDeduct = ded;
-    try { localStorage.setItem('salaries', JSON.stringify(map)); localStorage.setItem('salaryDeduct', JSON.stringify(ded)); } catch (e) { dataLoadFailed('loadSalaries', e); }
+    cacheSet('salaries', JSON.stringify(map)); cacheSet('salaryDeduct', JSON.stringify(ded));
     if (typeof render === 'function') render();
   } catch (e) { console.warn('loadSalaries', e); }
 }
@@ -15835,7 +15850,7 @@ async function loadNomaadOrders() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     state.nomaadOrders = Array.isArray(data.orders) ? data.orders : [];
-    try { localStorage.setItem('nomaadOrders', JSON.stringify(state.nomaadOrders)); } catch (e) { dataLoadFailed('loadNomaadOrders', e); }
+    cacheSet('nomaadOrders', JSON.stringify(state.nomaadOrders));
     if (typeof render === 'function') render();
     loadNomaadPayments();   // төлбөрийн лог зэрэгцээ татна
   } catch(e) { console.warn('loadNomaadOrders fail', e); }
@@ -19464,7 +19479,7 @@ async function loadEvaluations() {
     state.evaluations = _evRows.map(e => (e && (e.ratee || e.rater))
       ? Object.assign({}, e, { ratee: canonKey(e.ratee), rater: canonKey(e.rater) })
       : e);
-    try { localStorage.setItem('evaluations', JSON.stringify(state.evaluations)); } catch (e) { dataLoadFailed('loadEvaluations', e); }
+    cacheSet('evaluations', JSON.stringify(state.evaluations));
     if (typeof render === 'function') render();
   } catch(e) { console.warn('loadEvaluations fail', e); }
 }

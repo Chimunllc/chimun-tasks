@@ -36,7 +36,14 @@ CONTAINER = 'vps-deploy-postgres-1'
 UB = timezone(timedelta(hours=8))
 SEP = '\x1f'
 
-CONV_PAGES = 6            # 50×6 = сүүлийн 300 яриа хангалттай
+# ⚠ Бүтэн татац 132 СЕКУНД болдог (300 яриа × 60 мессеж). Түүнийг минут тутам
+#   ажиллуулах боломжгүй тул хариулт 3-5 минут хоцордог байв — ажилтны дундаж
+#   (4 мин) шиг удаан, өөрөөр хэлбэл ботоос хурдны давуу тал ГАРАХГҮЙ.
+#   Яриа `updated_time` буурахаар ирдэг тул ХАРИУ ХЭРЭГТЭЙ чат үргэлж эхний
+#   хуудсанд байна (өдөрт ~6.5 чат → 50 яриа ≈ долоо хоног).
+QUICK_PAGES = 1           # хариултын зам — минут тутам
+FULL_PAGES = 6            # бүтэн тохируулга — жагсаалт, статистикт
+CONV_PAGES = FULL_PAGES
 # ⚠ 30 хоногийн 195 чатын 36 нь 20-оос олон мессежтэй (20 нь 40-өөс олон).
 #    20-оор таслахад бот ярианы эхлэлийг — ямар эвент, хэдэн хүн, ямар огноо
 #    гэдгийг — ХАРАХГҮЙ өнгөрдөг байв. Токен нэмэгдэх нь хямд (1 хариулт
@@ -53,6 +60,7 @@ MODEL = 'claude-sonnet-5'
 
 DRY = '--dry' in sys.argv
 PULL_ONLY = '--pull-only' in sys.argv
+FULL = '--full' in sys.argv or PULL_ONLY
 
 
 # ── Цэвэр функцууд (--selftest шалгана) ────────────────────────────────────
@@ -286,7 +294,7 @@ def known_bot_mids():
     return {x[0] for x in r if x and x[0]}
 
 
-def fetch_threads(tok, page_id):
+def fetch_threads(tok, page_id, pages=None):
     q = urllib.parse.urlencode({
         # ⚠ `attachments` ЗААВАЛ — эс бөгөөс `has_attach()` үргэлж худал буцааж,
         #   зурган мессежийн хамгаалалт ЧИМЭЭГҮЙ унтарна.
@@ -294,11 +302,12 @@ def fetch_threads(tok, page_id):
                    '{id,created_time,from,message,attachments{mime_type}}') % MSG_LIMIT,
         'limit': 50, 'access_token': tok})
     url = API + '/' + page_id + '/conversations?' + q
-    out, pages = [], 0
-    while url and pages < CONV_PAGES:
+    cap = pages if pages else (FULL_PAGES if FULL else QUICK_PAGES)
+    out, n = [], 0
+    while url and n < cap:
         r = api_get(url)
         out += r.get('data', [])
-        pages += 1
+        n += 1
         url = (r.get('paging') or {}).get('next')
     return out
 
@@ -613,7 +622,8 @@ def main():
             todo.append((row, msgs, (last_in_m.get('message') or '')))
 
     waiting = len(todo)
-    print('[%s] чат %d | хариу хүлээж буй %d' % (stamp, len(threads), waiting))
+    print('[%s] чат %d%s | хариу хүлээж буй %d'
+          % (stamp, len(threads), '' if FULL else ' (түргэн)', waiting))
     if PULL_ONLY:
         return
 

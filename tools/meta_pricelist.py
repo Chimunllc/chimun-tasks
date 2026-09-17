@@ -24,7 +24,7 @@ Pricelist, ба **Google Drive**. Эдгээрээс зөвхөн Drive нь б�
 Ажиллах: VPS cron, өдөрт нэг удаа.
 Гараар:  python3 meta_pricelist.py [--dry] [--selftest]
 """
-import csv, os, subprocess, sys, tempfile
+import csv, os, re, subprocess, sys, tempfile
 
 CONTAINER = 'vps-deploy-postgres-1'
 SEP = '\x1f'
@@ -78,6 +78,14 @@ def group_of(cat):
     return 'Бусад'
 
 
+def item_link(sku):
+    """Сайтын барааны хуудас. ⚠ Энэ БАЙХГҮЙ бол Custom instructions-ийн
+    «барааны холбоосыг өг» гэсэн дүрэм хэрэгжих боломжгүй — AI холбоосыг
+    зохиох аргагүй тул зөвхөн нүүр хуудас өгнө."""
+    s = re.sub(r'[^A-Za-z0-9-]', '', str(sku or '')).lower()
+    return 'https://mevent.mn/products/%s/' % s if s else 'https://mevent.mn'
+
+
 def money(v):
     try:
         return format(int(round(float(v))), ',') + '₮'
@@ -92,19 +100,21 @@ def build_csv(rows, today):
     ⚠ Үнэ нь ЗӨВХӨН тоо байна (таслал, ₮ тэмдэггүй) — эс бөгөөс CSV багана
       эвдэрч, Meta үнийг текст гэж уншина.
     """
-    out = [['Барааны нэр', '1 хоногийн түрээсийн үнэ (төгрөг)', 'Ангилал', 'Тайлбар']]
+    out = [['Барааны код', 'Барааны нэр', '1 хоногийн түрээсийн үнэ (төгрөг)',
+            'Ангилал', 'Барааны холбоос', 'Тайлбар']]
     n = 0
     for r in rows:
         if len(r) < 4:
             continue
-        name, price, cat = r[1].strip(), r[2], group_of(r[3])
+        sku, name, price, cat = str(r[0]).strip(), r[1].strip(), r[2], group_of(r[3])
         try:
             v = int(round(float(price)))
         except (TypeError, ValueError):
             continue
         if not name or v <= 0:
             continue
-        out.append([name, str(v), cat, '1 хоногийн түрээс, НӨАТ багтсан. Шинэчилсэн %s' % today])
+        out.append([sku, name, str(v), cat, item_link(sku),
+                    '1 хоногийн түрээс, НӨАТ багтсан. Шинэчилсэн %s' % today])
         n += 1
     return out, n
 
@@ -121,15 +131,20 @@ def selftest():
     eq(group_of('Юу ч биш'), 'Бусад', 'танихгүй ангилал')
     eq(group_of(None), 'Бусад', 'хоосон ангилал')
     eq(money(6600), '6,600₮', 'мөнгө')
-    t, n = build_csv([('M-1', 'Сандал', 6600, 'Ширээ, сандал, бүтээлэг'),
+    eq(item_link('M-102'), 'https://mevent.mn/products/m-102/', 'барааны холбоос')
+    eq(item_link(''), 'https://mevent.mn', 'кодгүй бол нүүр хуудас')
+    t, n = build_csv([('M-102', 'Сандал', 6600, 'Ширээ, сандал, бүтээлэг'),
                       ('M-2', 'Асар', 825000, 'Асар'),
                       ('M-3', 'Үнэгүй', 0, 'Асар')], '2026-09-17')
     eq(n, 2, 'үнэгүй бараа орохгүй')
-    eq(t[0][0], 'Барааны нэр', 'толгой мөр')
+    eq(t[0][0], 'Барааны код', 'толгой мөр')
+    # ⛔ Код нь хүснэгтэд байхгүй бол «M-102 хэд вэ?» гэсэн асуултад хариулахгүй.
+    eq(t[1][0], 'M-102', 'код хадгалагдав')
     # ⚠ Үнэ зөвхөн ТОО — таслал, ₮ тэмдэг байвал Meta текст гэж уншина.
-    eq(t[1][1], '6600', 'үнэ цэвэр тоо')
-    eq(t[2][2], 'Асар, майхан, сүүдрэвч', 'ангилал бүлэглэгдэв')
-    eq(len(t[0]), 4, 'дөрвөн багана')
+    eq(t[1][2], '6600', 'үнэ цэвэр тоо')
+    eq(t[1][4], 'https://mevent.mn/products/m-102/', 'холбоос багананд')
+    eq(t[2][3], 'Асар, майхан, сүүдрэвч', 'ангилал бүлэглэгдэв')
+    eq(len(t[0]), 6, 'зургаан багана')
     print('meta_pricelist selftest: %d тест OK' % k[0])
 
 

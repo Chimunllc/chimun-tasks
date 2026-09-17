@@ -28844,7 +28844,7 @@ function pagePostRows(posts, limit) {
         id: String(p.post_id),
         day: String(p.created_time || '').slice(5, 10),
         msg: String(p.message || '').replace(/\s+/g, ' ').trim() || '(бичвэргүй)',
-        img: String(p.picture || ''),
+
         // ⚠ Холбоосгүй постыг «сайт руу» гэж бүүстлэх боломжгүй — Facebook
         //   татгалздаг. Хүнд ЯГ юу болохыг нь хэлнэ.
         kind: site ? 'site' : 'engage',
@@ -29049,9 +29049,9 @@ function renderAds() {
   const ppHtml = !ppRows.length ? '' : `
     <div class="ads-sec">📣 Таны постыг бүүст хийх <span class="ads-sub">(хуудсанд нийтэлсэн сүүлийн постууд)</span></div>
     <div class="ads-list">${ppRows.map(r => `<div class="pp-row">
-      ${r.img ? `<img class="pp-img" src="${escapeHtml(r.img)}" alt="" loading="lazy">` : '<span class="pp-img pp-noimg">—</span>'}
       <div class="pp-b">
-        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind">${escapeHtml(r.kindLabel)}</span></div>
+        <div class="pp-h"><span class="pp-day">${escapeHtml(r.day)}</span><span class="pp-kind">${escapeHtml(r.kindLabel)}</span>${
+          r.link ? `<a class="pp-link" href="${escapeHtml(r.link)}" target="_blank" rel="noopener">Facebook дээр ↗</a>` : ''}</div>
         <div class="pp-t">${escapeHtml(r.msg.slice(0, 90))}</div>
         ${r.err ? `<div class="pp-err">${escapeHtml(r.err)}</div>` : ''}
       </div>

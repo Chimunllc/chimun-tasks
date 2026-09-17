@@ -35,3 +35,8 @@ create index if not exists fb_page_posts_boost_idx on fb_page_posts (boost) wher
 grant select, insert, update on fb_page_posts to authenticated;
 -- ⛔ DELETE ИЛ ХУРААНА — эзний default privileges `arwd`-г автоматаар олгодог.
 revoke delete on fb_page_posts from authenticated;
+
+-- ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ КЭШЛЭДЭГ тул шинэ
+--    хүснэгтийг мэдэхгүй, апп нь **404** авна (2026-09-17-нд яг ингэсэн:
+--    кэш 78 relation дээр зогссон байсныг 81 болгож зассан).
+notify pgrst, 'reload schema';

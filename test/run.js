@@ -7043,6 +7043,19 @@ need(['orderCustType']);
   ok(/data-pp-boost\][\s\S]{0,900}?await requestBoost\(/.test(asrc3),
      'scan: бүүстын хүсэлт илгээгдэнэ');
   ok(/loadPagePosts\(true\)/.test(asrc3), 'scan: постын жагсаалт ачаалагдана');
+  // ⛔ Facebook-ийн CDN нь гадны хуудсанд 403 буцаадаг — зураг харуулбал
+  //    саарал хайрцаг л гарна (амьд системд яг ингэсэн).
+  ok(!/pp-img/.test(asrc3), 'scan: Facebook зураг харуулахгүй');
+  ok(/pp-link/.test(asrc3), 'scan: оронд нь постын холбоос');
+
+  // ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ кэшлэдэг тул шинэ
+  //    хүснэгтэд апп 404 авна. SQL бүр өөрөө кэшийг шинэчлүүлнэ.
+  for (const f of ['fb_page_posts.sql', 'fb_capi.sql', 'gsc.sql']) {
+    const fp = path.join(__dirname, '..', 'db', f);
+    if (!fs.existsSync(fp)) continue;
+    ok(/notify pgrst, 'reload schema'/.test(fs.readFileSync(fp, 'utf8')),
+       `scan: ${f} — PostgREST кэшийг шинэчлүүлнэ`);
+  }
 
   // Python талын цэвэр функцууд
   for (const [f, tag] of [['fb_posts_pull.py', 'POSTS OK'], ['fb_boost.py', 'BOOST OK']]) {

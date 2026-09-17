@@ -7292,10 +7292,8 @@ select.no-asar-len {
 .pp-row { display: flex; align-items: flex-start; gap: var(--space-3);
   padding: 10px 0; border-bottom: 1px solid var(--border); }
 .pp-row:last-child { border-bottom: 0; }
-.pp-img { width: 54px; height: 54px; flex: 0 0 54px; object-fit: cover;
-  border-radius: var(--r-md); background: var(--muted-soft); }
-.pp-noimg { display: flex; align-items: center; justify-content: center;
-  color: var(--muted); font-size: var(--fs-sm); }
+.pp-link { font-size: var(--fs-xs); color: var(--info); text-decoration: none; }
+.pp-link:hover { text-decoration: underline; }
 .pp-b { flex: 1 1 auto; min-width: 0; }
 .pp-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 2px; }
 .pp-day { font-size: var(--fs-xs); color: var(--muted); }

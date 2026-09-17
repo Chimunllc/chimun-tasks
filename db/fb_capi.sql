@@ -26,3 +26,8 @@ grant select, insert, update on fb_capi_sent to authenticated;
 --    `authenticated`-д `arwd` автоматаар олгодог тул `grant` бичээд орхивол
 --    хатуу устгал нээлттэй үлдэнэ. Мөр уствал ижил захиалга ДАХИН илгээгдэнэ.
 revoke delete on fb_capi_sent from authenticated;
+
+-- ⛔ ХҮСНЭГТ ҮҮСГЭСЭН НЬ ХАНГАЛТГҮЙ — PostgREST схемээ КЭШЛЭДЭГ тул шинэ
+--    хүснэгтийг мэдэхгүй, апп нь **404** авна (2026-09-17-нд яг ингэсэн:
+--    кэш 78 relation дээр зогссон байсныг 81 болгож зассан).
+notify pgrst, 'reload schema';

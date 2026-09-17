@@ -28630,19 +28630,79 @@ function adPostCandidates(rev, spend, products, popularity, posts, opts) {
   });
   return out.sort((a, b) => b.share - a.share);
 }
+// ── ӨДРИЙН САНАЛ (2026-09-17) ───────────────────────────────────────────────
+// Постер үүсгэгч ажилладаг ч хүн өдөр бүр «юуг постлох вэ» гэж бодох
+// шаардлагатай байв — тэр бодол л ажлыг зогсоодог. Одоо апп өдөрт хоёр бараа
+// өөрөө сонгож, бичвэртэй нь бэлдэж тавина. Хүний үүрэг = батлах эсвэл алгасах.
+// ⚠ Алгассан нь ч БҮРТГЭГДЭНЭ (`discarded`) — дахин гарч ирэхгүй, сонголт нь
+//   давтагдахгүй. Өөрөөр хэлбэл «алгаслаа» гэдэг нь чимээгүй үнэлгээ.
+const AD_DAILY_PICKS = 2;
+const AD_REPOST_DAYS = 60;      // нэг бараа дахин постлогдох хүртэлх хугацаа
+
+function _dayNum(d) {
+  const s = String(d || '');
+  const t = Date.parse(s.slice(0, 10) + 'T00:00:00Z');
+  return isFinite(t) ? Math.floor(t / 86400000) : 0;
+}
+// Өдөр бүрийн санал. ЦЭВЭР бөгөөд ТОГТМОЛ — нэг өдөр дотор ижил үр дүн
+// (дэлгэц дахин зурагдах бүрд сонголт солигдвол хүн ажлаа алдана).
+function adDailyPicks(products, posts, popularity, today, n) {
+  const cnt = Math.max(1, Number(n) || AD_DAILY_PICKS);
+  const day = String(today || '');
+  // Саяхан постлогдсон / болисон барааг дахин санал болгохгүй.
+  const used = new Set();
+  (posts || []).forEach(x => {
+    if (!x || !x.sku) return;
+    const at = String(x.created_at || '').slice(0, 10);
+    if (!at || !day || (_dayNum(day) - _dayNum(at)) <= AD_REPOST_DAYS) used.add(String(x.sku));
+  });
+  const pop = popularity || {};
+  const ok = (products || []).filter(p => p && !p.archived
+    && (Number(p.price) || 0) > 0 && (Number(p.qty_mevent) || 0) > 0
+    && adPostImage(p) && !used.has(String(p.sku)))
+    .sort((a, b) => (Number(pop[b.sku]) || 0) - (Number(pop[a.sku]) || 0)
+      || String(a.sku || '').localeCompare(String(b.sku || '')));
+  if (!ok.length) return [];
+  const off = ((_dayNum(day) * cnt) % ok.length + ok.length) % ok.length;
+  const out = [];
+  for (let i = 0; i < Math.min(cnt, ok.length); i++) {
+    const p = ok[(off + i) % ok.length];
+    out.push({ cat: adCatOf(p.name), product: p, body: adPostText(p),
+      image: adPostImage(p), link: adPostUrl(p), daily: true });
+  }
+  return out;
+}
+
 const AD_POST_STATUS = {
   draft: '📝 Ноорог', approved: '⏳ Хүлээж буй',
   published: '✅ Нийтлэгдсэн', failed: '⚠ Амжилтгүй', discarded: '✕ Болив',
 };
 function adPostStatusLabel(s) { return AD_POST_STATUS[String(s || '')] || String(s || '—'); }
+// Постын саналын карт — өдрийн санал ба цоорхойн санал ХОЁУЛАА үүнийг ашиглана
+// (хоёр газар давтвал нэг нь өөрчлөгдөхөд нөгөө нь хоцорно).
+function _adPostCardHtml(c, why) {
+  const sku = escapeHtml((c.product && c.product.sku) || '');
+  return `<div class="ads-post">
+      ${c.image ? `<img class="ads-post-img" src="${escapeHtml(c.image)}" alt="" loading="lazy">` : ''}
+      <div class="ads-post-b">
+        <div class="ads-post-why">${escapeHtml(why)}</div>
+        <div class="ads-post-t">${escapeHtml(c.body)}</div>
+        <div class="ads-post-a">
+          <button class="btn btn-primary" data-post-ok="${sku}">✓ Батлах</button>
+          <button class="btn" data-post-no="${sku}">✕ Алгасах</button>
+        </div>
+      </div>
+    </div>`;
+}
 // Товч дарагдахад саналыг ДАХИН бодно — рендерийн үр дүнг хадгалж явбал хоёр
 // эх сурвалж болж, дата шинэчлэгдэхэд хуучирсан бичвэр батлагдана.
 function _adCandBySku(sku) {
   const days = Number(state.adsDays) || 30;
   const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
   const spend = adSpendByCat(adCampaignStats(state.fbAds || [], addDays(todayStr(), -days)));
-  const list = adPostCandidates(rev, spend, state.products || [],
-    (state.appConfig && state.appConfig.mevent_popularity) || {}, state.adPosts || []);
+  const pop = (state.appConfig && state.appConfig.mevent_popularity) || {};
+  const list = adPostCandidates(rev, spend, state.products || [], pop, state.adPosts || [])
+    .concat(adDailyPicks(state.products || [], state.adPosts || [], pop, todayStr()));
   return list.find(c => String((c.product && c.product.sku) || '') === String(sku || '')) || null;
 }
 
@@ -28865,17 +28925,16 @@ function renderAds() {
   const cands = adPostCandidates(rev, spend, state.products || [],
     (state.appConfig && state.appConfig.mevent_popularity) || {}, posts);
   const candHtml = !cands.length ? '' : `<div class="ads-sec">Санал болгож буй пост <span class="ads-sub">(зар дутуу ангилалд)</span></div>
-    <div class="ads-list">${cands.map(c => `<div class="ads-post">
-      ${c.image ? `<img class="ads-post-img" src="${escapeHtml(c.image)}" alt="" loading="lazy">` : ''}
-      <div class="ads-post-b">
-        <div class="ads-post-why">${escapeHtml(adCatLabel(c.cat))} — борлуулалтын ${c.share}% атлаа зар бараг алга</div>
-        <div class="ads-post-t">${escapeHtml(c.body)}</div>
-        <div class="ads-post-a">
-          <button class="btn btn-primary" data-post-ok="${escapeHtml(c.product.sku || '')}">✓ Батлах</button>
-          <button class="btn" data-post-no="${escapeHtml(c.product.sku || '')}">✕ Болих</button>
-        </div>
-      </div>
-    </div>`).join('')}</div>`;
+    <div class="ads-list">${cands.map(c =>
+      _adPostCardHtml(c, `${adCatLabel(c.cat)} — борлуулалтын ${c.share}% атлаа зар бараг алга`)).join('')}</div>`;
+
+  // Өдрийн санал — «юуг постлох вэ» гэсэн бодлыг систем хийнэ.
+  const daily = adDailyPicks(state.products || [], posts,
+    (state.appConfig && state.appConfig.mevent_popularity) || {}, todayStr())
+    .filter(d => !cands.some(c => c.product && d.product && c.product.sku === d.product.sku));
+  const dailyHtml = !daily.length ? '' : `<div class="ads-sec">Өнөөдрийн санал <span class="ads-sub">(өдөрт ${AD_DAILY_PICKS} — батлах эсвэл алгасах)</span></div>
+    <div class="ads-list">${daily.map(d =>
+      _adPostCardHtml(d, 'Удаан постлогдоогүй бараа')).join('')}</div>`;
 
   // ⚠ Нийтлэгч хараахан холбогдоогүй бол ҮҮНИЙГ ИЛ хэл — «Батлах» дарсан хүн
   //   пост явсан гэж бодоод хүлээх нь худал амлалт болно.
@@ -28968,6 +29027,7 @@ function renderAds() {
     ${kpi}
     ${budgetHtml}
     ${adviceHtml}
+    ${dailyHtml}
     ${candHtml}
     ${pubNote}
     ${queueHtml}

@@ -119,14 +119,17 @@ def main():
         return
 
     # Зорилтот бүлгийг ЗОХИОХГҮЙ — ажиллаж байгаа зарынхыг хуулна.
+    # ⛔ ЗАГВАРЫГ [0]-ООС БҮҮ АВ — тэр нь ердөө API-гийн буцаасан эхний мөр,
+    #    зогссон кампанит ажлынх ч байж болно. ХАМГИЙН ТОМ ӨДРИЙН ТӨСӨВТЭЙГ
+    #    сонгоно: бодит мөнгө зарцуулж байгаа нь л батлагдсан тохиргоо.
     sets = [a for a in get(f'{acct}/adsets',
-                           {'fields': 'status,targeting,billing_event', 'limit': 50,
-                            'access_token': tok}).get('data', [])
+                           {'fields': 'status,targeting,billing_event,daily_budget',
+                            'limit': 50, 'access_token': tok}).get('data', [])
             if a.get('status') == 'ACTIVE' and a.get('targeting')]
     if not sets:
         print(f'[{stamp}] boost: идэвхтэй зар алга — зорилтот бүлгийн загвар авах боломжгүй')
         return
-    tpl = sets[0]
+    tpl = max(sets, key=lambda a: float(a.get('daily_budget') or 0))
     targeting = clean_targeting(tpl.get('targeting'))
 
     ok = bad = 0
@@ -205,6 +208,13 @@ def selftest():
     eq(KINDS['engage']['dest'], 'ON_POST', 'төрөл: хандалт → ON_POST')
     eq(KINDS['site']['objective'] != KINDS['engage']['objective'], True,
        'төрөл: зорилго ялгаатай')
+
+    # ⛔ Загвар нь хамгийн ТОМ төсөвтэй зар — [0] нь санамсаргүй мөр.
+    sets = [{'daily_budget': '100', 'targeting': {'a': 1}},
+            {'daily_budget': '900', 'targeting': {'b': 2}},
+            {'daily_budget': None, 'targeting': {'c': 3}}]
+    eq(max(sets, key=lambda a: float(a.get('daily_budget') or 0))['targeting'],
+       {'b': 2}, 'загвар: хамгийн том төсөвтэй нь')
 
     if f:
         print(f'❌ BOOST FAIL — {n[0] - len(f)}/{n[0]}')

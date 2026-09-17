@@ -40,7 +40,11 @@ CONV_PAGES = 6            # 50×6 = сүүлийн 300 яриа хангалтт
 MSG_LIMIT = 20            # контекстэд авах сүүлийн мессеж
 WINDOW_H = 24             # Meta-гийн чөлөөт бичвэрийн цонх
 MAX_TURNS_DEF = 4         # дараалсан ботын хариултын дээд хязгаар
-MODEL = 'claude-haiku-4-5-20251001'
+# ⛔ HAIKU БОЛОХГҮЙ (2026-09-17, амьд ноорогоор баталсан). Монгол хэл нь
+#    эвдэрсэн гардаг: «хэрэгсэл худалдавлаж байна», «дэмжин арсан хэрэгтэй
+#    юу», «Эргүүлэг, төрийн ёслол» г.м. Харилцагч руу явах бичвэр тул
+#    хэлний чанар нь тохиргооны асуудал БИШ, бүтээгдэхүүний асуудал.
+MODEL = 'claude-sonnet-5'
 
 DRY = '--dry' in sys.argv
 PULL_ONLY = '--pull-only' in sys.argv
@@ -245,6 +249,19 @@ def tariffs():
         return {}
 
 
+def pending_threads():
+    """Батлагдахыг хүлээж буй нооргийн чатууд.
+
+    ⛔ Ноорог хүлээж байхад ШИНЭ ноорог үүсгэж БОЛОХГҮЙ. Cron 2 минут тутам
+       ажилладаг тул нэг хариугүй чат цагт 30 ноорог үүсгэж, батлах дараалал
+       дүүрч, мөнгө дэмий шатна (2026-09-17-нд эхний ажиллалтад 2 хүнд
+       5-5 ноорог үүссэн). Хүн шийдтэл тэр чат ХҮЛЭЭНЭ.
+    """
+    r = psql("select distinct thread_id from fb_chat_bot_log "
+             "where review and not sent and approved_by is null and error is null;", rows=True)
+    return {x[0] for x in r if x and x[0]}
+
+
 def known_bot_mids():
     """Ботын өөрийн илгээсэн мессежийн id — «хүн орсон уу» гэдгийг ингэж таьна."""
     r = psql("select coalesce(out_mid,'') from fb_chat_bot_log where sent and out_mid is not null;", rows=True)
@@ -325,35 +342,44 @@ TOOLS = [
 ]
 
 SYSTEM = """Чи M event (mevent.mn) арга хэмжээний хэрэгсэл ТҮРЭЭСИЙН компанийн
-Facebook чатын ажилтан. Улаанбаатарт майхан, асар, ширээ, сандал, тайз, дулаацуулагч
-зэргийг түрээслүүлдэг.
+Facebook чатын ажилтан. Улаанбаатарт майхан, асар, ширээ, сандал, тайз,
+дулаацуулагч зэргийг түрээслүүлдэг.
 
 ЯАЖ БИЧИХ:
-- Монголоор, ЭНГИЙН бөгөөд ТОВЧ. 1-3 өгүүлбэр. Урт тайлбар бичихгүй.
-- Жинхэнэ ажилтан шиг практик өнгө аяс. Маркетингийн чимэг үг, "эрхэм үйлчлүүлэгч"
-  гэх мэт албархуу хэллэг хэрэглэхгүй.
-- Эмодзи хэрэглэхгүй.
+- Монголоор, ЭНГИЙН бөгөөд ТОВЧ. 1-2 өгүүлбэр. Урт тайлбар бичихгүй.
+- Жинхэнэ ажилтан шиг практик өнгө аяс.
+- ЭМОДЗИ, ОД (**), ДООГУУР ЗУРААС, ЖАГСААЛТЫН ТЭМДЭГ хэрэглэхгүй — Messenger
+  тэдгээрийг харагдуулдаггүй, түүхийгээр нь хэвлэнэ.
+- Мэндчилгээ, компанийн танилцуулга БИЧИХГҮЙ. Харилцагч аль хэдийн манай
+  хуудсан дээр байгаа — «сайн байна уу, бид ийм компани» гэж эхлэх нь цаг
+  алдуулна. ШУУД асуултад нь хари.
+- «Үйлчилгээ эрхэлдэг», «хамгийн сайн үнэ», «баяртай байна» гэх мэт
+  маркетингийн хэллэг ХЭРЭГЛЭХГҮЙ.
 
 ХАТУУ ДҮРЭМ:
-1. ҮНЭ, СУЛ ҮЛДЭГДЛИЙГ ЗОХИОХГҮЙ. search_products-ыг дуудаж гарсан тоог л хэлнэ.
-   Хэрэгсэл юу ч буцаахгүй бол "шалгаад хэлье" гэж хэлээд handoff дуудна.
+1. ҮНЭ, СУЛ ҮЛДЭГДЭЛ, БАРААНЫ НЭР дурдахын ӨМНӨ search_products-ыг ЗААВАЛ
+   дуудна. Хэрэгсэл дуудалгүйгээр тоо, үнэ, нэр бичихийг ХОРИГЛОНО.
 2. Хүргэлтийн төлбөрийг delivery_price-аас л авна.
 3. Хөнгөлөлт ОГТ амлахгүй. Хямдрал асуувал handoff.
-4. Захиалгыг БАТАЛГААЖУУЛАХГҮЙ — огноо, тоо тодорхой болмогц handoff хийж
-   ажилтан баталгаажуулна. Чи мэдээлэл өгч, сонирхлыг тодруулна.
+4. Захиалгыг БАТАЛГААЖУУЛАХГҮЙ — огноо, тоо тодорхой болмогц handoff.
 5. Мэдэхгүй зүйлээ таамаглахгүй. Итгэлгүй бол handoff.
-6. Боломжтой бол mevent.mn дээрх тухайн барааны холбоосыг өгнө — хүн үнэ,
-   зургийг өөрөө хараад захиалж чадна.
-7. Хэрэглэгчийн утасны дугаарыг асууж болно (ажилтан залгахад хэрэгтэй).
+6. Харилцагч МОНГОЛООР БИШ бичсэн, эсвэл юу хүсэж байгаа нь ойлгомжгүй бол
+   таамаглахгүй — handoff дуудна.
+7. Боломжтой бол mevent.mn дээрх тухайн барааны холбоосыг өгнө.
+8. Утасны дугаараа үлдээхийг санал болгож болно.
 
 ЗОРИЛГО: хүнийг сайт руу оруулах, эсвэл утсаа үлдээлгэх. Хоёулаа болохгүй бол
 ажилтанд цэвэр мэдээлэлтэйгээр дамжуулах."""
 
 
 def ask_claude(key, history, name):
-    """Claude-аар хариулт бэлдэнэ. (text, tools_used, handoff_reason) буцаана."""
+    """Claude-аар хариулт бэлдэнэ.
+
+    (text, tools_used, handoff_reason, [оролт, гаралт] токен) буцаана.
+    """
     msgs = list(history)
     used, hand = [], ''
+    used_tok = [0, 0]           # [оролт, гаралт] — зардлыг таамаглахгүй хэмжинэ
     for _ in range(4):                      # хэрэгслийн эргэлтийн хязгаар
         body = json.dumps({
             'model': MODEL, 'max_tokens': 700, 'system': SYSTEM,
@@ -364,11 +390,14 @@ def ask_claude(key, history, name):
                      'anthropic-version': '2023-06-01'})
         with urllib.request.urlopen(req, timeout=90) as r:
             out = json.loads(r.read().decode())
+        u = out.get('usage') or {}
+        used_tok[0] += int(u.get('input_tokens') or 0)
+        used_tok[1] += int(u.get('output_tokens') or 0)
         blocks = out.get('content', [])
         calls = [b for b in blocks if b.get('type') == 'tool_use']
         if not calls:
             txt = ' '.join(b.get('text', '') for b in blocks if b.get('type') == 'text')
-            return txt.strip(), used, hand
+            return txt.strip(), used, hand, used_tok
         msgs.append({'role': 'assistant', 'content': blocks})
         results = []
         t = tariffs()
@@ -389,7 +418,7 @@ def ask_claude(key, history, name):
         msgs.append({'role': 'user', 'content': results})
         if hand:
             break
-    return '', used, (hand or 'хэрэгслийн хязгаарт хүрэв')
+    return '', used, (hand or 'хэрэгслийн хязгаарт хүрэв'), used_tok
 
 
 def history_for(msgs, page_id):
@@ -429,12 +458,14 @@ def upsert_chat(c):
         "when fb_chats.handoff_at is not null then 'human' else excluded.state end;")
 
 
-def log_bot(thread, in_text, out_text, tools, sent, mid, review, err):
-    psql("insert into fb_chat_bot_log (thread_id,in_text,out_text,tools,model,sent,out_mid,review,error) "
+def log_bot(thread, in_text, out_text, tools, sent, mid, review, err, tok=None):
+    tk = tok or [0, 0]
+    psql("insert into fb_chat_bot_log (thread_id,in_text,out_text,tools,model,sent,out_mid,review,error,tok_in,tok_out) "
          "values (" + ','.join([sq(thread), sq(clip(in_text, 400)), sq(out_text),
                                 sq(','.join(tools) or None), sq(MODEL),
                                 'true' if sent else 'false', sq(mid),
-                                'true' if review else 'false', sq(err)]) + ");")
+                                'true' if review else 'false', sq(err),
+                                str(int(tk[0])), str(int(tk[1]))]) + ");")
 
 
 def send_approved(tok, page, now):
@@ -488,6 +519,7 @@ def main():
     stamp = now.astimezone(UB).strftime('%Y-%m-%d %H:%M')
     conf = bot_config()
     bot_mids = known_bot_mids()
+    pend = pending_threads()
 
     threads = fetch_threads(tok, page)
     todo = []
@@ -542,6 +574,9 @@ def main():
     sent_n = held_n = skip_n = 0
     for row, msgs, in_text in todo:
         tid = row['thread_id']
+        if tid in pend:
+            skip_n += 1
+            continue                                    # ноорог хүлээж байна — давхардуулахгүй
         if row['state'] == 'human':
             skip_n += 1
             continue                                    # хүн гарт авсан — бот орохгүй
@@ -559,7 +594,7 @@ def main():
             skip_n += 1
             continue
         try:
-            text, tools, hand = ask_claude(key, hist, row.get('name'))
+            text, tools, hand, tok_n = ask_claude(key, hist, row.get('name'))
         except urllib.error.HTTPError as e:
             log_bot(tid, in_text, None, [], False, None, False,
                     'claude %d %s' % (e.code, e.read().decode()[:120]))
@@ -567,12 +602,12 @@ def main():
             continue
         if hand or not text:
             handoff(tid, hand or 'бот хариулт гаргаагүй')
-            log_bot(tid, in_text, None, tools, False, None, False, hand or 'хоосон хариулт')
+            log_bot(tid, in_text, None, tools, False, None, False, hand or 'хоосон хариулт', tok_n)
             skip_n += 1
             continue
         text = clip(text)
         if DRY or review:
-            log_bot(tid, in_text, text, tools, False, None, True, None)
+            log_bot(tid, in_text, text, tools, False, None, True, None, tok_n)
             held_n += 1
             print('   [хүлээлгэ] %s: %s' % ((row.get('name') or '?')[:16], text[:80]))
             continue
@@ -581,11 +616,11 @@ def main():
                 'recipient': json.dumps({'id': row['psid']}),
                 'message': json.dumps({'text': text}),
                 'messaging_type': 'RESPONSE', 'access_token': tok})
-            log_bot(tid, in_text, text, tools, True, r.get('message_id'), False, None)
+            log_bot(tid, in_text, text, tools, True, r.get('message_id'), False, None, tok_n)
             sent_n += 1
         except urllib.error.HTTPError as e:
             log_bot(tid, in_text, text, tools, False, None, False,
-                    'send %d %s' % (e.code, e.read().decode()[:150]))
+                    'send %d %s' % (e.code, e.read().decode()[:150]), tok_n)
             handoff(tid, 'илгээх алдаа')
             skip_n += 1
     print('       илгээсэн %d | баталгаа хүлээж буй %d | хүнд үлдсэн %d'

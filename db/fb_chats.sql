@@ -52,10 +52,21 @@ create table if not exists fb_chat_bot_log (
   sent       boolean not null default false,  -- үнэхээр илгээгдсэн үү
   review     boolean not null default false,  -- хүний баталгаа хүлээсэн үү
   approved_by text,
-  error      text
+  error      text,
+  -- Зардлыг ТААМАГЛАХГҮЙ хэмжинэ — «сард хэд болох вэ» гэдэг нь бодит тоо
+  -- байх ёстой, миний тооцоо биш.
+  tok_in     int not null default 0,
+  tok_out    int not null default 0
 );
 create index if not exists fb_chat_bot_log_thread_idx on fb_chat_bot_log (thread_id, at desc);
 create index if not exists fb_chat_bot_log_at_idx     on fb_chat_bot_log (at desc);
+
+-- ⚠ `create table if not exists` нь БАЙГАА хүснэгтэд шинэ багана НЭМДЭГГҮЙ —
+--    файлыг дахин ажиллуулахад чимээгүй өнгөрөөд, бичилт «column does not
+--    exist» гэж унана. Шинэ багана бүрийг ИЛ нэмнэ.
+alter table fb_chat_bot_log add column if not exists out_mid text;
+alter table fb_chat_bot_log add column if not exists tok_in  int not null default 0;
+alter table fb_chat_bot_log add column if not exists tok_out int not null default 0;
 
 -- ⛔ anon-д ОГТ нээхгүй — нэр, PSID, яриа = хувийн мэдээлэл.
 grant select, insert, update on fb_chats to authenticated;

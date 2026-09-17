@@ -19,10 +19,34 @@ OUT = os.path.expanduser('~/.chimun/gsc.env')
 PORT = 8765
 REDIRECT = f'http://localhost:{PORT}/'
 
+SITE = os.environ.get('GSC_SITE', 'https://mevent.mn/').strip()
+
+
+def client_from_json(path):
+    """Google-ийн татуулдаг клиентийн JSON-оос id/secret-ийг гаргана."""
+    with open(path) as f:
+        d = json.load(f)
+    d = d.get('installed') or d.get('web') or {}
+    return d.get('client_id', '').strip(), d.get('client_secret', '').strip()
+
+
 cid = os.environ.get('GSC_CLIENT_ID', '').strip()
 csec = os.environ.get('GSC_CLIENT_SECRET', '').strip()
 if not cid or not csec:
-    raise SystemExit('GSC_CLIENT_ID / GSC_CLIENT_SECRET хувьсагч алга')
+    # ⚠ Түлхүүрийг гараар хуулуулахгүй — татсан файлаас уншина.
+    args = [a for a in sys.argv[1:] if not a.startswith('-')]
+    for p in args or sorted(glob.glob(os.path.expanduser('~/Downloads/client_secret_*.json')),
+                            key=os.path.getmtime, reverse=True):
+        try:
+            cid, csec = client_from_json(p)
+        except (OSError, ValueError):
+            continue
+        if cid and csec:
+            print('Клиент: ' + os.path.basename(p))
+            break
+if not cid or not csec:
+    raise SystemExit('Клиентийн JSON олдсонгүй. Google Cloud → Clients → gsc-pull → ⬇ дарж '
+                     'татаад дахин ажиллуул (эсвэл файлын замыг argv-д өг).')
 
 state = secrets.token_urlsafe(16)
 got = {}
@@ -69,6 +93,6 @@ if 'refresh_token' not in tok:
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, 'w') as f:
     f.write(f'GSC_CLIENT_ID={cid}\nGSC_CLIENT_SECRET={csec}\n'
-            f'GSC_REFRESH_TOKEN={tok["refresh_token"]}\nGSC_SITE=\n')
+            f'GSC_REFRESH_TOKEN={tok["refresh_token"]}\nGSC_SITE={SITE}\n')
 os.chmod(OUT, 0o600)
 print(f'✅ Хадгалагдлаа: {OUT} (эрх 600). Токен дэлгэцэд хэвлэгдээгүй.')

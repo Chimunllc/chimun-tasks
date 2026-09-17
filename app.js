@@ -10141,7 +10141,30 @@ async function uploadProductImage(file) {
 //   · бараанаас хийсэн постер → `adPostText` (зарын дэлгэцтэй ИЖИЛ функц)
 //   · өөрийн зурагтай постер → постерын гарчиг/тайлбар (хүн аль хэдийн бичсэн)
 //     + брэндийн утас/вэб.
-function adPosterText(poster, prod, kit) {
+// Постын САЙТЫН холбоос. ⛔ Ажил гүйцэтгэлийн постерт ч ЗААВАЛ линк явна — эс
+//   бөгөөс пост ердөө «сайхан зураг» болж, сайт руу орох зам байхгүй, мөн хэн
+//   хаанаас ирснийг ХЭМЖИХ аргагүй (⟦ADS⟧ токен зөвхөн utm-тэй линкээр бичигддэг).
+// ⚠ Сайтад АНГИЛЛЫН хуудас БАЙХГҮЙ — бараа заагаагүй бол нүүр хуудас руу.
+// ⚠ Кампанит нэр = `work-<огноо>` (барааных бол sku) → GA4/⟦ADS⟧-д аль постын
+//   хүн захиалга болсныг ялгаж харна.
+function posterSiteUrl(P, day) {
+  const sku = String((P && (P.linkSku || P.productSku)) || '').trim();
+  if (sku) return adPostUrl({ sku });
+  const camp = 'work-' + String(day || '').trim();
+  return `https://mevent.mn/?utm_source=facebook&utm_medium=${AD_UTM_MEDIUM}&utm_campaign=${encodeURIComponent(camp.replace(/-$/, ''))}`;
+}
+// Хүний засварласан бичвэр дэх линкийн мөрийг ШИНЭ холбоосоор солино (бусад
+// бичвэрийг нь хөндөхгүй). Линкийн мөр огт байхгүй бол төгсгөлд нэмнэ.
+const _POST_LINK_RE = /^👉 (?:Дэлгэрэнгүй|Захиалга): .*$/m;
+function postSwapLink(text, url) {
+  const t = String(text == null ? '' : text);
+  const u = String(url || '').trim();
+  if (!u) return t;
+  const line = `👉 Дэлгэрэнгүй: ${u}`;
+  if (_POST_LINK_RE.test(t)) return t.replace(_POST_LINK_RE, line);
+  return t.trim() ? t.replace(/\s+$/, '') + '\n\n' + line : line;
+}
+function adPosterText(poster, prod, kit, link) {
   if (prod) return adPostText(prod);
   const P = poster || {}, k = kit || {};
   const title = String(P.title || '').trim();
@@ -10150,10 +10173,13 @@ function adPosterText(poster, prod, kit) {
   const out = [];
   if (title) out.push(title);
   if (sub) out.push('', sub);
+  const url = String(link || '').trim();
   const tail = [];
   if (k.phone) tail.push('📞 ' + String(k.phone).trim());
-  if (k.website) tail.push('🌐 ' + String(k.website).trim());
+  // Линк байвал вэб хаягийг ДАВТАХГҮЙ — нэг постод хоёр удаа mevent.mn бичигдэнэ.
+  if (k.website && !url) tail.push('🌐 ' + String(k.website).trim());
   if (tail.length) out.push('', tail.join('\n'));
+  if (url) out.push('', `👉 Дэлгэрэнгүй: ${url}`);
   return out.join('\n');
 }
 
@@ -14602,6 +14628,9 @@ function renderMarketing() {
   const _mkByCat = {};
   _mkRent.forEach(p => { (_mkByCat[p.category || 'Бусад'] = _mkByCat[p.category || 'Бусад'] || []).push(p); });
   const _mkOptLbl = p => p.name || '';
+  // 🔗 Хаашаа чиглүүлэх — постын бичвэрт орох сайтын холбоос.
+  const _mkLinkCur = String(P.linkSku || P.productSku || '');
+  const mkLinkSelect = `<select id="mk-link-sku" style="${fld}"><option value="">🏠 Сайтын нүүр — mevent.mn</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}"${String(p.sku) === _mkLinkCur ? ' selected' : ''}>${escapeHtml(_mkOptLbl(p))}</option>`).join('')}</optgroup>`).join('')}</select>`;
   const mkProdSelect = `<select id="mk-prod-sel" style="${fld}"><option value="">📂 Бүлгээр сонгох (категори)…</option>${Object.keys(_mkByCat).sort((a, b) => String(a).localeCompare(String(b), 'mn')).map(c => `<optgroup label="${escapeHtml(c)}">${_mkByCat[c].slice().sort((a, b) => String(_mkOptLbl(a)).localeCompare(String(_mkOptLbl(b)), 'mn')).map(p => `<option value="${escapeHtml(p.sku)}">${escapeHtml(_mkOptLbl(p))}${p.price ? ' · ' + fmtMoney(Number(p.price)) : ''}</option>`).join('')}</optgroup>`).join('')}</select>`;
   return `<div style="max-width:900px;margin:0 auto;padding:4px 2px 40px;">${_mkTabBar}
     <div style="margin:6px 0 16px;"><div style="font-size:20px;font-weight:800;">🎨 Маркетинг · Постер үүсгэгч</div>
@@ -14664,6 +14693,9 @@ function renderMarketing() {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="font-size:11px;color:var(--muted);width:64px;">Байрлал ↔</span><input id="mk-posx" type="range" min="0" max="100" value="${Math.round((P.imgX == null ? 0.5 : P.imgX) * 100)}" style="flex:1;"></div>
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Барааны нэр' : 'Гарчиг'}</label><input id="mk-title" value="${escapeHtml(P.title || '')}" placeholder="${P.template === 'product' ? 'Chiavari сандал' : 'Хуримын чимэглэл'}" style="${fld}">
         <label style="font-size:11.5px;color:var(--muted);">${P.template === 'product' ? 'Богино уриа / hook (сонголт — хоосон бол зөвхөн нэр)' : 'Дэд гарчиг / огноо'} (сонголт)</label>${P.template === 'product' ? `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="ж: Тайзны шоуг мэргэжлийн түвшинд" style="${fld}">` : `<input id="mk-sub" value="${escapeHtml(P.subtitle || '')}" placeholder="2026.08.25" style="${fld}">`}
+        <label style="font-size:11.5px;color:var(--muted);">🔗 Хаашаа чиглүүлэх</label>
+        ${mkLinkSelect}
+        <div class="mk-hint">Постын бичвэрт энэ холбоос орно: <span class="mk-url">${escapeHtml(posterSiteUrl(P, todayStr()))}</span></div>
         ${P.template === 'product' && P.productSku ? `<button class="btn btn-sm" id="mk-save-prod" style="width:100%;border-color:#16a34a;color:#16a34a;margin-top:2px;">💾 Нэр/тайлбарыг бараанд хадгалах (агуулах + сайт)</button><div style="font-size:10.5px;color:var(--muted);margin-top:4px;">Дээрх нэр, тайлбар барааны бүртгэлд бичигдэж, агуулах болон mevent.mn сайтад шинэчлэгдэнэ.</div>` : ''}
       </div>
     </div>
@@ -14730,6 +14762,8 @@ function attachMarketingHandlers() {
     P.template = 'product';
     P.title = p.name || '';
     P.productSku = p.sku || '';   // энэ барааг дараа шинэчлэхэд
+    P.linkSku = '';                // холбоос энэ бараа руу буцна (хуучин сонголт хоцрохгүй)
+    P.body = '';                   // шинэ бараа = шинэ пост, хуучин бичвэр хоцрохгүй
     P.code = p.code || '';   // барааны код (M-xxx) — постерт харуулна
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5;   // шинэ зурагт тохиргоо reset
     // ТАЙЛБАР АВТО ДҮҮРГЭХГҮЙ — постер цэвэр (зураг+нэр+CTA). Хүсвэл богино уриа/hook гараар нэмнэ.
@@ -14739,6 +14773,7 @@ function attachMarketingHandlers() {
     else { P.img = null; render(); }
     showToast('Бараа орлоо ✓', 'success', 1500); render();
   };
+  document.getElementById('mk-link-sku')?.addEventListener('change', e => { P.linkSku = e.target.value || ''; render(); });
   document.getElementById('mk-prod-sel')?.addEventListener('change', e => {
     const sku = e.target.value; if (!sku) return;
     _mkLoadProduct((state.products || []).find(x => x && x.sku === sku));
@@ -14751,6 +14786,7 @@ function attachMarketingHandlers() {
   document.getElementById('mk-img')?.addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return; const r = new FileReader();
     P.imgFit = 'contain'; P.imgZoom = 1; P.imgY = 0.5; P.imgX = 0.5; P.productSku = ''; P.code = '';   // custom зураг = каталогийн бараа биш
+    P.body = '';   // шинэ зураг = шинэ пост
     r.onload = () => { const im = new Image(); im.onload = () => { P.img = im; render(); }; im.src = r.result; }; r.readAsDataURL(f); P.terms = '';
   });
   document.querySelectorAll('[data-mk-size]').forEach(b => b.addEventListener('click', () => { P.size = b.dataset.mkSize; render(); }));
@@ -14779,9 +14815,12 @@ function attachMarketingHandlers() {
     const ta = document.getElementById('mk-post-text');
     if (!ta || ta.dataset.touched === '1') return;
     const prod = P.productSku ? (state.products || []).find(x => x && x.sku === P.productSku) : null;
-    ta.value = adPosterText(P, prod, state.brandKit || {});
+    const url = posterSiteUrl(P, todayStr());
+    // Хүн засаж эхэлсэн бичвэр `P.body`-д үлдэнэ — дэлгэц дахин зурагдахад (хэмжээ,
+    // загвар, холбоос солиход) ажил нь алга болохгүй. Зөвхөн ЛИНКИЙН мөр шинэчлэгдэнэ.
+    ta.value = P.body ? postSwapLink(P.body, url) : adPosterText(P, prod, state.brandKit || {}, url);
   };
-  document.getElementById('mk-post-text')?.addEventListener('input', e => { e.target.dataset.touched = '1'; });
+  document.getElementById('mk-post-text')?.addEventListener('input', e => { e.target.dataset.touched = '1'; P.body = e.target.value; });
   _mkFillPost();
 
   // ⛔ Гадагш нийтлэгдэх тул `showConfirm`-гүй байж БОЛОХГҮЙ.
@@ -14801,7 +14840,7 @@ function attachMarketingHandlers() {
       await saveAdPost({
         id: 'post-' + Date.now().toString(36) + '-' + String(P.productSku || 'poster').toLowerCase(),
         sku: P.productSku || null, status: 'approved', body, image_url: img,
-        link_url: prod ? adPostUrl(prod) : null, created_by: state.me || null,
+        link_url: posterSiteUrl(P, todayStr()), created_by: state.me || null,
         approved_at: new Date().toISOString(), approved_by: state.me || null,
       });
       showToast('Дараалалд орлоо — 10 минутын дотор нийтлэгдэнэ ✓', 'success', 4000);

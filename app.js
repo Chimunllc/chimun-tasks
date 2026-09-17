@@ -28191,9 +28191,14 @@ function callAdvice(p, ws, we, log, from) {
   if (!p || !p.calls) return out;
   const w0 = Number.isFinite(Number(ws)) ? Number(ws) : 9;
   const w1 = Number.isFinite(Number(we)) ? Number(we) : 18;
-  if (p.bizCalls >= 20 && p.bizRate < 70) {
+  // ⛔ ЦАГИЙН НИЙЛБЭРИЙН `bizRate`-ыг БҮҮ АШИГЛА — тэнд дуудлагын урт байхгүй
+  //    тул 13 секундээс богино тасалсан нь «алдсан» болж хувь худлаа буурна
+  //    (амьд датаар 54% гэж харагдсан нь үнэндээ 77% байв). Жинхэнэ оролдлогыг
+  //    дэлгэрэнгүй логоос тоолно.
+  const real = pbxAnswerRate(log, { from, ws: w0, we: w1 });
+  if (real.calls >= 20 && real.rate < 70) {
     out.push({ kind: 'miss', sev: 1, mnt: 0,
-      text: `Ажлын цагаар ${p.bizCalls} дуудлага ирээд ${p.bizMissed}-ыг нь хэн ч аваагүй (${p.bizRate}% авсан). Зарын мөнгө утас дуугартал хүргэж байгаа ч яг тэндээ алдагдаж байна — дуудлагын дараалал, ээлж, эсвэл шилжүүлэх дугаараа шалга.` });
+      text: `Ажлын цагаар ${real.calls} жинхэнэ дуудлага ирээд ${real.missed}-ыг нь хэн ч аваагүй (${real.rate}% авсан). Зарын мөнгө утас дуугартал хүргэж байгаа ч яг тэндээ алдагдаж байна — дуудлагын дараалал, ээлж, эсвэл шилжүүлэх дугаараа шалга.` });
   }
   const off = pbxOffHoursWaited(log, w0, w1, from);
   if (off >= 5) {
@@ -28298,6 +28303,36 @@ const PBX_WAIT_SEC = Math.max(PBX_GREETING_SEC + 2, 13);
 // ⚠ ЗАВСРЫН ТОХИОЛДОЛ: нэг хүн ажлын цагт БА гадна залгасан бол зөвхөн ажлын
 //    цагийн оролдлого тоологдоно. ЗӨВХӨН гадна залгасан хүн жагсаалтад орохгүй,
 //    `out.off`-д тоологдоно — нуухгүй, тоог нь ил гаргана (тэд боломжит захиалга).
+// ⛔ ХАРИУЛАЛТЫН ХУВЬ = ДЭЛГЭРЭНГҮЙ ЛОГООС, цагийн нийлбэрээс БИШ (2026-09-17).
+//    `pbx_calls_hourly`-д дуудлага бүрийн УРТ байхгүй тул 13 секундээс богино
+//    тасалсныг «алдсан» гэж тоолж, хариулалт 54% гэж ХУДЛАА бага харагдана.
+//    Дэлгэрэнгүй логоор бодоход 77% — тэр нь бодит тоо. Хоёр дэлгэц өөр эх
+//    сурвалжаас тоолж өөр хариу өгч байсныг ингэж нэгтгэв.
+//    Цэвэр функц — тестлэгдэнэ.
+function pbxAnswerRate(calls, opts) {
+  const o = opts || {};
+  const from = String(o.from || '');
+  const minSec = Number.isFinite(Number(o.minSec)) ? Number(o.minSec) : PBX_WAIT_SEC;
+  const w0 = Number.isFinite(Number(o.ws)) ? Number(o.ws) : 9;
+  const w1 = Number.isFinite(Number(o.we)) ? Number(o.we) : 18;
+  let n = 0, ans = 0;
+  (calls || []).forEach(c => {
+    if (!c || String(c.direction || '') !== 'in') return;
+    if (String(c.peer || '').length < 6) return;   // дотоод/богино дугаар — хүн биш
+    const at = String(c.started_at || '');
+    if (from && at < from) return;
+    // ⚠ Цаг уншигдаагүй мөрийг ХАСАХГҮЙ (форматын өөрчлөлтөд бүгд алга болохоос).
+    const h = _ubHour(at);
+    if (h !== null && (h < w0 || h > w1)) return;  // ажлын цагийн гадна — тоохгүй
+    const a = Number(c.answer_sec) || 0;
+    // ⛔ 13 сек хүрэхгүй тасалсан нь ЛИД БИШ — хариулалтын хувьд тоологдохгүй.
+    if (a === 0 && (Number(c.call_sec) || 0) < minSec) return;
+    n++; if (a > 0) ans++;
+  });
+  return { calls: n, answered: ans, missed: n - ans,
+           rate: n ? Math.round(ans * 1000 / n) / 10 : 0 };
+}
+
 function pbxFollowups(calls, opts) {
   const o = opts || {};
   const from = String(o.from || '');
@@ -29249,6 +29284,9 @@ function renderAds() {
   const rev = adRevenueByCat(state.appOrders || [], addDays(todayStr(), -90));
   const ws = tariffWorkStart(), we = tariffWorkEnd();
   const pbx = pbxStats(state.pbxCalls || [], from, ws, we);
+  // ⚠ Хариулалтын хувийг ДЭЛГЭРЭНГҮЙ логоос — цагийн нийлбэрт дуудлагын урт
+  //   байхгүй тул 13 сек хүрэхгүй тасалсан нь «алдсан» болж хувь буурдаг.
+  const ansR = pbxAnswerRate(state.pbxLog || [], { from, ws, we });
   const spend = adSpendByCat(camps);
   const totalSpend = camps.reduce((s, c) => s + c.mnt, 0);
   const totalMsg = camps.reduce((s, c) => s + c.msg, 0);
@@ -29312,7 +29350,7 @@ function renderAds() {
     <div class="ads-kpi"><div class="ads-kpi-l">Эхэлсэн чат</div><div class="ads-kpi-v">${totalMsg}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 чатын өртөг</div><div class="ads-kpi-v">${totalMsg ? fmtMoney(Math.round(totalSpend / totalMsg)) : '—'}</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">Ирсэн дуудлага</div><div class="ads-kpi-v">${pbx.calls || '—'}</div></div>
-    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${pbx.calls ? pbx.rate + '%' : '—'}</div></div>
+    <div class="ads-kpi"><div class="ads-kpi-l">Хүн авсан</div><div class="ads-kpi-v">${ansR.calls ? ansR.rate + '%' : '—'}</div><div class="ads-kpi-s">ажлын цагаар</div></div>
     <div class="ads-kpi"><div class="ads-kpi-l">1 дуудлагын өртөг</div><div class="ads-kpi-v">${pbxCostPerCall(totalSpend, pbx.calls) === null ? '—' : fmtMoney(pbxCostPerCall(totalSpend, pbx.calls))}</div></div>
   </div>`;
 
@@ -29436,7 +29474,7 @@ function renderAds() {
   // бүхэлдээ дэмий болно, тиймээс кампанит ажлын өмнө харагдана.
   const callHtml = !pbx.calls ? '' : `<div class="ads-sec">Утасны дуудлага <span class="ads-sub">(${pbx.dayCount} хоног · өдөрт дунджаар ${pbx.perDay})</span></div>
     <div class="ads-list">
-      <div class="ads-row"><span class="ads-nm">Ажлын цагаар (${ws}:00–${we}:59)</span><span class="ads-sp">${pbx.bizCalls} ирсэн</span><span class="ads-ms">${pbx.bizAns} авсан</span><b class="ads-pm${pbx.bizRate < 70 ? ' ads-bad' : ''}">${pbx.bizRate}%</b></div>
+      <div class="ads-row"><span class="ads-nm">Ажлын цагаар (${ws}:00–${we}:59)</span><span class="ads-sp">${ansR.calls} жинхэнэ дуудлага</span><span class="ads-ms">${ansR.answered} авсан</span><b class="ads-pm${ansR.rate < 70 ? ' ads-bad' : ''}">${ansR.rate}%</b></div>
       <div class="ads-row"><span class="ads-nm">Ажлын цагийн гадна</span><span class="ads-sp">${pbx.offCalls} ирсэн</span><span class="ads-ms">${pbx.offAns} авсан</span><b class="ads-pm${pbx.offMissed ? ' ads-bad' : ''}">${pbx.offMissed} алдсан</b></div>
       <div class="ads-row"><span class="ads-nm">Нийт яриа</span><span class="ads-sp">${pbx.answered} дуудлага</span><span class="ads-ms">${Math.round(pbx.talk / 60)} минут</span><b class="ads-pm">${pbx.answered ? Math.round(pbx.talk / pbx.answered) : 0} сек дундаж</b></div>
     </div>`;

@@ -6502,6 +6502,41 @@ need(['orderCustType']);
   eq(F.adPosterText({}, null, {}), '', 'постер: гарчиг ч, тайлбар ч алга → хоосон');
   eq(F.adPosterText(null, null, null), '', 'постер: null → унахгүй');
 
+  // ── САЙТ РУУ ЧИГЛҮҮЛЭХ (2026-09-17) ──────────────────────────────────────
+  // ⛔ Ажлын постерт ч линк ЗААВАЛ — линкгүй пост нь сайт руу зам ч өгөхгүй,
+  //    хаанаас ирснийг ч хэмжүүлэхгүй (⟦ADS⟧ токен зөвхөн utm-тэй линкээр).
+  eq(F.posterSiteUrl({ linkSku: 'M-007' }, '2026-09-17'), F.adPostUrl({ sku: 'M-007' }),
+     'постер: бараа заасан → барааны хуудас руу');
+  eq(F.posterSiteUrl({ productSku: 'M-007' }, '2026-09-17'), F.adPostUrl({ sku: 'M-007' }),
+     'постер: барааны постер → тэр барааны хуудас');
+  eq(F.posterSiteUrl({ linkSku: 'M-002', productSku: 'M-007' }, '2026-09-17'),
+     F.adPostUrl({ sku: 'M-002' }), 'постер: гараар сонгосон холбоос давуу');
+  eq(F.posterSiteUrl({}, '2026-09-17'),
+     'https://mevent.mn/?utm_source=facebook&utm_medium=post&utm_campaign=work-2026-09-17',
+     'постер: бараагүй → нүүр хуудас, огноогоор тэмдэглэнэ');
+  ok(/utm_source=facebook/.test(F.posterSiteUrl(null, '')), 'постер: null → унахгүй, utm хэвээр');
+
+  const wl = F.adPosterText({ title: 'Хурим 300 хүн', subtitle: '2026.09.14' }, null,
+    { phone: '7755 1010', website: 'mevent.mn' }, 'https://mevent.mn/?utm_campaign=work-2026-09-17');
+  ok(/👉 Дэлгэрэнгүй: https:\/\/mevent\.mn\/\?utm_campaign=work-2026-09-17$/.test(wl),
+     'постер: ажлын бичвэрийн төгсгөлд сайтын линк');
+  ok(!/🌐/.test(wl), 'постер: линктэй үед вэб хаяг ДАВХАРДАХГҮЙ');
+
+  // Хүний засварласан бичвэрийн ЗӨВХӨН линкийн мөр солигдоно.
+  eq(F.postSwapLink('Миний бичвэр\n\n👉 Дэлгэрэнгүй: https://old', 'https://new'),
+     'Миний бичвэр\n\n👉 Дэлгэрэнгүй: https://new', 'линк солих: мөр солигдоно');
+  eq(F.postSwapLink('Зөвхөн бичвэр', 'https://new'),
+     'Зөвхөн бичвэр\n\n👉 Дэлгэрэнгүй: https://new', 'линк солих: байхгүй бол нэмнэ');
+  eq(F.postSwapLink('Бичвэр\n\n👉 Захиалга: https://old', 'https://new'),
+     'Бичвэр\n\n👉 Дэлгэрэнгүй: https://new', 'линк солих: барааны линкийг ч солино');
+  eq(F.postSwapLink('Бичвэр', ''), 'Бичвэр', 'линк солих: хоосон холбоос юу ч хийхгүй');
+  eq(F.postSwapLink(null, 'https://x'), '👉 Дэлгэрэнгүй: https://x', 'линк солих: null → унахгүй');
+
+  ok(/ta\.value = P\.body \? postSwapLink\(P\.body, url\)/.test(src),
+     'scan: хүний засварласан бичвэр дэлгэц дахин зурахад алга болохгүй');
+  ok(/adPosterText\(P, prod, state\.brandKit \|\| \{\}, url\)/.test(src),
+     'scan: саналын бичвэрт сайтын линк дамжина');
+
   const i = src.indexOf("document.getElementById('mk-publish')");
   ok(i > 0, 'scan: постероос нийтлэх товч холбогдсон');
   const fn = src.slice(i, i + 1800);
@@ -6509,6 +6544,9 @@ need(['orderCustType']);
   ok(/uploadPosterPng\(/.test(fn), 'scan: постер VPS рүү байршина');
   // ⛔ Бичвэрийг товчны дотор ДАХИН угсрахгүй — textarea-гаас (хүний засвартай) авна.
   ok(/ta && ta\.value/.test(fn), 'scan: нийтлэхэд хүний засварласан бичвэр явна');
+  // ⛔ Нийтлэгдэх пост бүр сайтын холбоостой — `link_url` нь бүүстлэх боломжийг ч
+  //    тодорхойлдог (холбоосгүй пост зөвхөн «хандалт» зар болно).
+  ok(/link_url: posterSiteUrl\(P, todayStr\(\)\)/.test(fn), 'scan: нийтлэхэд сайтын холбоос хадгалагдана');
 
   // ⛔ Хүн засаж эхэлсэн бичвэрийг дахин зурахад ДАРАХГҮЙ — ажил нь алга болно.
   ok(/dataset\.touched === '1'/.test(src), 'scan: гараар зассан бичвэр дарагдахгүй');

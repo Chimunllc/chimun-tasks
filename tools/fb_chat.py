@@ -414,6 +414,50 @@ def log_bot(thread, in_text, out_text, tools, sent, mid, review, err):
                                 'true' if review else 'false', sq(err)]) + ");")
 
 
+def send_approved(tok, page, now):
+    """Аппаас БАТЛАГДСАН ноорог хариултуудыг илгээнэ.
+
+    Баталгааны горимд бот хариултаа `fb_chat_bot_log`-д бичээд ЗОГСДОГ. CEO
+    аппаас «Батлаад илгээх» дарахад тэр мөрд `approved_by` бичигдэнэ — энэ
+    функц түүнийг олж илгээнэ. (Апп өөрөө Facebook руу хандаж ЧАДАХГҮЙ:
+    токен зөвхөн VPS дээр байдаг. Бүүстын урсгалтай ижил зохион байгуулалт.)
+
+    ⚠ Батлах хүртэлх хугацаанд Meta-гийн 24 цагийн цонх хаагдсан байж болно —
+      илгээхийн ӨМНӨ дахин шалгана, эс бөгөөс Meta татгалзаад мөр «алдаатай»
+      болж хүнд ойлгомжгүй болно.
+    """
+    rows = psql(
+        "select l.id, l.thread_id, l.out_text, c.psid, c.last_in_at "
+        "from fb_chat_bot_log l join fb_chats c using (thread_id) "
+        "where l.review and not l.sent and l.approved_by is not null and l.error is null "
+        "order by l.id limit 40;", rows=True)
+    n = 0
+    for r in rows:
+        if len(r) < 5:
+            continue
+        rid, tid, text, psid, last_in = r[0], r[1], r[2], r[3], parse_ts(r[4])
+        if not psid or not text:
+            psql("update fb_chat_bot_log set error='хүлээн авагч тодорхойгүй' where id=" + rid + ";")
+            continue
+        if not in_window(last_in, now):
+            psql("update fb_chat_bot_log set error='24 цагийн цонх хаагдсан' where id=" + rid + ";")
+            handoff(tid, 'цонх хаагдсан — залгах')
+            continue
+        try:
+            res = api_post(page + '/messages', {
+                'recipient': json.dumps({'id': psid}),
+                'message': json.dumps({'text': text}),
+                'messaging_type': 'RESPONSE', 'access_token': tok})
+            psql("update fb_chat_bot_log set sent=true, out_mid=" + sq(res.get('message_id'))
+                 + " where id=" + rid + ";")
+            n += 1
+        except urllib.error.HTTPError as e:
+            psql("update fb_chat_bot_log set error=" + sq('send %d %s' % (e.code, e.read().decode()[:150]))
+                 + " where id=" + rid + ";")
+            handoff(tid, 'илгээх алдаа')
+    return n
+
+
 def main():
     c = cfg()
     tok, page = c['FB_PAGE_TOKEN'], c['FB_PAGE_ID']
@@ -454,6 +498,13 @@ def main():
     print('[%s] чат %d | хариу хүлээж буй %d' % (stamp, len(threads), waiting))
     if PULL_ONLY:
         return
+
+    # ⚠ Батлагдсан ноорог нь ботын горимоос ХАМААРАХГҮЙ илгээгдэнэ. CEO «батла»
+    #   гээд дараа нь ботыг унтраасан ч тэр нэг хариулт явах ёстой — хүн шийдсэн.
+    if not DRY:
+        ap = send_approved(tok, page, now)
+        if ap:
+            print('       батлагдсан хариулт илгээв: %d' % ap)
 
     if not conf.get('enabled'):
         print('       бот УНТРААЛТТАЙ (app_config.fb_bot.enabled) — зөвхөн жагсаалт шинэчлэв')

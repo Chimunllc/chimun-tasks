@@ -7573,6 +7573,62 @@ need(['orderCustType']);
   eq(F.leadStats([{ created_at: '2026-01-01', starts_at: '2026-01-08' }]).median, 7, 'хугацаа: нэг мөрийн медиан');
 }
 
+// ── 💬 Facebook чат дэлгэц ─────────────────────────────────────────────────
+{
+  const now = Date.parse('2026-09-17T12:00:00Z');
+  const h = (n) => new Date(now - n * 3600000).toISOString();
+
+  // Цонхны үлдэгдэл — Meta 24 цагаас хойш чөлөөт бичвэр авахгүй.
+  eq(F.chatWindowLeft(h(2), now), 22, 'чат: 2 цагийн өмнөх → 22 цаг үлдсэн');
+  eq(F.chatWindowLeft(h(30), now), 0, 'чат: 30 цаг → цонх хаагдсан');
+  eq(F.chatWindowLeft(null, now), 0, 'чат: мессежгүй → 0');
+
+  const cs = [
+    { thread_id: 't1', name: 'А', state: 'bot', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(3) },
+    { thread_id: 't2', name: 'Б', state: 'bot', last_at: '2026-09-17', last_in_at: h(40), last_out_at: h(50) },
+    { thread_id: 't3', name: 'В', state: 'bot', last_at: '2026-09-17', last_in_at: h(5), last_out_at: h(2) },
+    { thread_id: 't4', name: 'Г', state: 'done', last_at: '2026-09-17', last_in_at: h(1), last_out_at: h(9) },
+  ];
+  const w = F.chatWaiting(cs, now);
+  eq(w.map(x => x.thread_id).join(','), 't1,t2', 'чат: харилцагч сүүлд бичсэн нь л жагсана');
+  // ⛔ Цонх хаагдсан чатыг ХАСАХГҮЙ — тэр нь алдагдсан лид, тоолуураас нуувал
+  //   «бүгд хариулагдсан» гэсэн худал дүр зураг гарна.
+  ok(w.some(x => x.thread_id === 't2'), 'чат: цонх хаагдсан ч жагсаалтад үлдэнэ');
+
+  const stt = F.chatStats(cs, '2026-09-01', now);
+  eq(stt.n, 4, 'чат: 30 хоногийн тоо');
+  eq(stt.waiting, 2, 'чат: хариугүй');
+  eq(stt.open, 1, 'чат: одоо хариулж болох нь');
+  // ⛔ Хэмжих юм алга бол медиан `null`, 0 БИШ — «0 мин» нь төгс гэж уншигдана.
+  eq(F.chatStats([], '2026-09-01', now).med, null, 'чат: дата алга → медиан null');
+  eq(stt.med, 180, 'чат: эхний хариултын медиан (t3 = 3 цаг)');
+
+  // Батлах дараалал — дөрвөн нөхцөл ЗЭРЭГ шалгагдана.
+  const lg = [
+    { id: 1, review: true, sent: false, approved_by: null, error: null, out_text: 'а', at: h(1) },
+    { id: 2, review: true, sent: true, approved_by: 'X', error: null, out_text: 'б', at: h(2) },
+    { id: 3, review: true, sent: false, approved_by: 'X', error: null, out_text: 'в', at: h(3) },
+    { id: 4, review: true, sent: false, approved_by: null, error: 'татгалзсан', out_text: 'г', at: h(4) },
+    { id: 5, review: false, sent: false, approved_by: null, error: null, out_text: 'д', at: h(5) },
+  ];
+  eq(F.chatPending(lg).map(x => x.id).join(','), '1', 'чат: зөвхөн шийдэгдээгүй ноорог батлахаар гарна');
+  eq(F.chatBotMode({}), 'off', 'чат: тохиргоогүй → унтраалттай');
+  eq(F.chatBotMode({ enabled: true, review: true }), 'review', 'чат: баталгаатай горим');
+  eq(F.chatBotMode({ enabled: true, review: false }), 'live', 'чат: шууд горим');
+
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  // ⛔ «Шууд» болгох нь ГАДАГШ чиглэсэн, буцаахад хэцүү үйлдэл — бот тэр
+  //   мөчөөс харилцагч руу өөрөө бичиж эхэлнэ. Баталгаажуулалт ЗААВАЛ.
+  ok(/data-fc-mode\]'\)\.forEach[\s\S]{0,700}?if \(!\(await showConfirm\(msg[\s\S]{0,60}?\)\)\) return;/.test(src),
+     'чат: горим солиход баталгаажуулалт байна');
+  ok(/data-fc-ok\]'\)\.forEach[\s\S]{0,300}?if \(!\(await showConfirm\([\s\S]{0,120}?\)\)\) return;/.test(src),
+     'чат: хариулт илгээхэд баталгаажуулалт байна');
+  // ⛔ Татгалзсан хариулт = бот энэ чатыг ойлгоогүй. Хүнд шилжүүлэхгүй бол
+  //   дараагийн эргэлтэд ижил алдаагаа давтана.
+  ok(/data-fc-no\]'\)\.forEach[\s\S]{0,800}?state: 'human'/.test(src),
+     'чат: татгалзсан чат хүнд шилжинэ');
+}
+
 // ── Messenger чатбот (tools/fb_chat.py) ────────────────────────────────────
 // Бот КОМПАНИЙН НЭРЭЭР харилцагчтай ярьдаг тул дүрмийг прозоор бичээд орхиж
 // БОЛОХГҮЙ — зөрчвөл CI унана.

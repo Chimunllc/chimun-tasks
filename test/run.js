@@ -6521,6 +6521,65 @@ need(['orderCustType']);
      'scan: постер байршуулалт base64 руу унахгүй, алдаа шиднэ');
 }
 
+// ── ӨДРИЙН САНАЛ (2026-09-17) ───────────────────────────────────────────────
+// «Юуг постлох вэ» гэсэн бодол л ажлыг зогсоодог. Апп өдөрт хоёр бараа өөрөө
+// сонгож бэлдэнэ; хүний үүрэг = батлах эсвэл алгасах.
+{
+  const mk = (sku, extra) => Object.assign({ sku, name: 'Асар ' + sku, price: 1000,
+    qty_mevent: 5, photo: sku + '.jpg' }, extra || {});
+  const prods = [mk('A'), mk('B'), mk('C'), mk('D'), mk('E')];
+  const pop = { A: 90, B: 80, C: 70, D: 60, E: 50 };
+
+  const d1 = F.adDailyPicks(prods, [], pop, '2026-09-17');
+  eq(d1.length, 2, 'өдрийн санал: өдөрт 2');
+  ok(d1[0].body.indexOf('Асар') >= 0, 'өдрийн санал: бичвэр бэлэн ирнэ');
+  ok(!!d1[0].image, 'өдрийн санал: зурагтай');
+
+  // ⛔ ТОГТМОЛ байх ёстой — дэлгэц дахин зурагдах бүрд сонголт солигдвол
+  //   хүн дарах гэж байгаад ажлаа алдана.
+  eq(JSON.stringify(F.adDailyPicks(prods, [], pop, '2026-09-17').map(x => x.product.sku)),
+     JSON.stringify(d1.map(x => x.product.sku)), 'өдрийн санал: нэг өдөр ижил үр дүн');
+  // Өөр өдөр өөр бараа (эргэлдэнэ).
+  const d2 = F.adDailyPicks(prods, [], pop, '2026-09-18');
+  ok(JSON.stringify(d2.map(x => x.product.sku)) !== JSON.stringify(d1.map(x => x.product.sku)),
+     'өдрийн санал: өдөр бүр эргэлдэнэ');
+
+  // Саяхан постлогдсон / алгассан бараа дахин ГАРАХГҮЙ.
+  const used = d1.map(x => ({ sku: x.product.sku, created_at: '2026-09-17', status: 'approved' }));
+  const d3 = F.adDailyPicks(prods, used, pop, '2026-09-17');
+  ok(!d3.some(x => used.some(u => u.sku === x.product.sku)), 'өдрийн санал: саяхан постлогдсоныг давтахгүй');
+  ok(!F.adDailyPicks(prods, [{ sku: 'A', created_at: '2026-09-17', status: 'discarded' }], pop, '2026-09-17')
+      .some(x => x.product.sku === 'A'), 'өдрийн санал: алгассан бараа дахин гарахгүй');
+  // ⚠ Хугацаа өнгөрвөл ДАХИН боломжтой (хязгаарлагдмал каталог хоосорч болохгүй).
+  ok(F.adDailyPicks(prods, [{ sku: 'A', created_at: '2026-01-01' }], pop, '2026-09-17')
+      .concat(F.adDailyPicks(prods, [{ sku: 'A', created_at: '2026-01-01' }], pop, '2026-09-20')).length > 0,
+     'өдрийн санал: хуучин пост дахин боломжтой');
+
+  // Зураггүй / үнэгүй / нөөцгүй / архив бараа ОРОХГҮЙ.
+  eq(F.adDailyPicks([mk('X', { photo: '' }), mk('Y', { price: 0 }),
+                     mk('Z', { qty_mevent: 0 }), mk('W', { archived: true })], [], {}, '2026-09-17').length, 0,
+     'өдрийн санал: тохиромжгүй бараа орохгүй');
+  eq(F.adDailyPicks([], [], {}, '2026-09-17').length, 0, 'өдрийн санал: бараагүй → хоосон');
+  eq(F.adDailyPicks(null, null, null, '2026-09-17').length, 0, 'өдрийн санал: null → унахгүй');
+  // Бараа цөөн бол байгаагаараа (давхардуулахгүй).
+  eq(F.adDailyPicks([mk('A')], [], {}, '2026-09-17').length, 1, 'өдрийн санал: ганц бараа → 1');
+}
+
+// scan: саналын карт ГАНЦ загвартай. Өдрийн санал ба цоорхойн санал хоёр
+// өөр газар бичигдвэл нэгийг нь зассан үед нөгөө нь хоцорно.
+{
+  const rd = src.indexOf('function renderAds(');
+  const rf = src.slice(rd, src.indexOf('\nfunction attachAdsHandlers(', rd));
+  ok(/_adPostCardHtml\(/.test(rf), 'scan: renderAds картын загварыг дуудна');
+  ok((rf.match(/data-post-ok=/g) || []).length === 0,
+     'scan: картын HTML renderAds дотор давтагдахгүй');
+  ok(/adDailyPicks\(/.test(rf), 'scan: өдрийн санал дэлгэцэд гарна');
+  // Товчны зам ч ижил функцээр — эс бөгөөс өдрийн саналыг батлахад олдохгүй.
+  const cb = src.indexOf('function _adCandBySku(');
+  ok(/adDailyPicks\(/.test(src.slice(cb, cb + 900)),
+     'scan: батлах зам өдрийн саналыг ч олно');
+}
+
 // scan: пост батлах нь баталгаажуулалтгүй байж БОЛОХГҮЙ (гадагш нийтлэгдэж
 // мөнгө зарцуулна) + пост бичих форм нэмэхгүй + санал ганц функцээс гарна.
 {

@@ -1247,14 +1247,13 @@ creative үүсгэхэд «The post you selected is not available» гэнэ. �
   үүсгэгчийн бүх пост ингэж «зөвхөн хандалт» болж байв. `msg_link()` нь
   бичвэрээс уншина (домэйны дараа `/?#` эсвэл зай байх ЛАВЛАГАА заавал — эс
   бөгөөс `mevent.mn.evil.com` тааруулна).
-- ⛔ **DEVELOPMENT ГОРИМ САЙТЫН ЗАРЫГ ХААДАГ (2026-09-17, амьд туршиж баталсан).**
-  `link_data` creative үүсгэхэд «Ads creative post was created by an app that is in
-  development mode» гэж ТАТГАЛЗана. Зураг байршуулах (`/adimages` → `image_hash`) нь
-  хуудасны токеноор АЖИЛЛАНА — асуудал зөвхөн creative дээр. Тиймээс Meta developers
-  апп **Live** болтол сайт руу чиглүүлсэн төлбөрт зар ажиллахгүй; хүсэлт нь `error`
-  болж аппад тэр мессежээр харагдана (чимээгүй «хандалт» руу БУУРУУЛАХГҮЙ — хүний
-  сонгоогүй зорилгод мөнгө зарцуулахгүй). Live болгоход Privacy Policy URL хэрэгтэй:
-  **https://mevent.mn/privacy/** (сайтын репод бий). [[meta_app_advanced_access]]
+- ⛔ **АПП «LIVE» БАЙХ ЁСТОЙ (2026-09-17).** Meta developers апп Development
+  горимд байхад `link_data` creative «Ads creative post was created by an app
+  that is in development mode» гэж ТАТГАЛЗдаг — сайтын зар бүхэлдээ ажиллахгүй.
+  Апп 2026-09-17-нд Live болсон (Privacy policy URL = https://mevent.mn/privacy/,
+  ангилал = Business and pages; хоёулаа тавигдсаны дараа л Publish нээгдсэн).
+  **Development руу БУЦААЖ БҮҮ тавь.** Зураг байршуулах (`/adimages` →
+  `image_hash`) нь хуудасны токеноор ажиллана.
 - ⛔ **САЙТЫН ЗАР = `link_data` creative, `object_story_id` БИШ.** Зурагтай постыг
   постоороо вэб зар болгох боломжгүй тул `fb_boost.py` нь постын зураг
   (`full_picture` → `/adimages` → `image_hash`) + линкээс ШИНЭ creative угсарна.

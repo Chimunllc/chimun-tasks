@@ -26,6 +26,11 @@ import json, os, re, subprocess, sys, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timedelta, timezone
 
 ENV = '/opt/chimun/marketing/fb.env'
+# ⚠ Anthropic түлхүүр нь маркетингийн env-д БИШ, VPS-ийн үндсэн стекийн .env-д
+#   аль хэдийн байдаг (`ANTHROPIC_API_KEY`). Түүнийг ХУУЛЖ БҮҮ БИЧ — нэг нууц
+#   хоёр файлд байвал нэгийг нь эргүүлэхэд нөгөө нь чимээгүй хуучирна.
+STACK_ENV = '/opt/chimun/vps-deploy/.env'
+LLM_KEYS = ('ANTHROPIC_API_KEY', 'ANTHROPIC_KEY')
 API = 'https://graph.facebook.com/v21.0'
 CONTAINER = 'vps-deploy-postgres-1'
 UB = timezone(timedelta(hours=8))
@@ -169,14 +174,32 @@ def sq_ts(dt):
 
 # ── I/O ────────────────────────────────────────────────────────────────────
 
-def cfg():
+def _read_env(path, keys=None):
     out = {}
-    with open(ENV) as f:
-        for ln in f:
-            ln = ln.strip()
-            if ln and not ln.startswith('#') and '=' in ln:
+    try:
+        with open(path) as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln or ln.startswith('#') or '=' not in ln:
+                    continue
                 k, v = ln.split('=', 1)
-                out[k.strip()] = v.strip()
+                k = k.strip()
+                if keys is None or k in keys:
+                    out[k] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return out
+
+
+def cfg():
+    out = _read_env(ENV)
+    # LLM түлхүүрийг зөвхөн НЭРЭЭР нь стекийн .env-ээс авна (бусад нууцыг
+    # уншихгүй). fb.env-д байвал тэр нь давуу — тусад нь тавьсан бол
+    # зориудаар тавьсан гэсэн үг.
+    stack = _read_env(STACK_ENV, set(LLM_KEYS))
+    for k in LLM_KEYS:
+        if out.get(k) or stack.get(k):
+            out.setdefault('ANTHROPIC_KEY', out.get(k) or stack.get(k))
     return out
 
 

@@ -6368,9 +6368,18 @@ need(['orderCustType']);
   eq(F.adPostDesc('нэгдугаар хоёрдугаар гуравдугаар дөрөвдүгээр', 20).indexOf('нэгдугаар'), 0,
      'пост: үгийн заагаар тасална');
 
-  eq(F.adPostUrl({ sku: 'M-007' }), 'https://mevent.mn/products/m-007/', 'пост: холбоос sku-гаар');
-  eq(F.adPostUrl({}), 'https://mevent.mn', 'пост: sku алга → нүүр хуудас');
-  eq(F.adPostUrl(null), 'https://mevent.mn', 'пост: null → унахгүй');
+  // ⛔ ЛИНК UTM-ГҮЙ БОЛ ЗАХИАЛГА ХЭМЖИГДЭХГҮЙ (2026-09-17). Сайт `utm_source`-ыг
+  //    уншиж ⟦ADS⟧ токен бичдэг; тэмдэглэгээгүй бол «мэдэхгүй» болж тоологдоно.
+  eq(F.adPostUrl({ sku: 'M-007' }),
+     'https://mevent.mn/products/m-007/?utm_source=facebook&utm_medium=post&utm_campaign=m-007',
+     'пост: холбоос sku + UTM');
+  eq(F.adPostUrl({}), 'https://mevent.mn/?utm_source=facebook&utm_medium=post&utm_campaign=mevent',
+     'пост: sku алга → нүүр хуудас, UTM хэвээр');
+  eq(F.adPostUrl(null), 'https://mevent.mn/?utm_source=facebook&utm_medium=post&utm_campaign=mevent',
+     'пост: null → унахгүй');
+  // ⚠ Сайтын parseAttrib нь `facebook`-ийг ⟦LEAD|fb⟧ гэж бичдэг — хамралт
+  //   гараар бөглөхгүйгээр өснө. Эх сурвалжийг солих нь тэр гинжийг тасална.
+  ok(/utm_source=facebook/.test(F.adPostUrl({ sku: 'x' })), 'пост: эх сурвалж facebook хэвээр');
 
   eq(F.adPostImage({ photo: ' a.jpg ' }), 'a.jpg', 'пост: үндсэн зураг');
   eq(F.adPostImage({ photos: ['', 'b.jpg'] }), 'b.jpg', 'пост: жагсаалтын эхний бодит зураг');

@@ -28515,9 +28515,19 @@ function adPostDesc(s, max) {
 }
 // Барааны хуудас сайт дээр. ⚠ Шинэ хуудсууд sku-гаар (`products/m-NNN/`) —
 // нэрээр биш (нэр солигдоход холбоос тасарна).
+// ⛔ ЗАРЫН ЛИНК UTM-ГҮЙ БОЛ ХЭМЖИГДЭХГҮЙ (2026-09-17). Сайт нь `utm_source`-ыг
+//   уншиж захиалгад `⟦ADS|суваг|кампанит|хэрэгсэл⟧` токен бичдэг. Тэмдэглэгээгүй
+//   линкээр ирсэн хүн «мэдэхгүй» болж тоологдох тул «сайт руу зар явуулах нь
+//   ашигтай юу» гэдгийг ХЭЗЭЭ Ч хариулж чадахгүй.
+//   ⚠ `utm_source=facebook` нь сайтад `⟦LEAD|fb⟧`-ийг ч бичүүлнэ — лид сувгийн
+//     хамралт гараар бөглөхгүйгээр өснө.
+//   ⚠ `utm_campaign` = БАРААНЫ sku. Аль барааны пост захиалга авчирсныг заана;
+//     Facebook-ийн кампанит ажлын нэр пост үүсгэх үед хараахан байхгүй.
+const AD_UTM_MEDIUM = 'post';
 function adPostUrl(p) {
   const sku = String((p && p.sku) || '').trim().toLowerCase();
-  return sku ? `https://mevent.mn/products/${encodeURIComponent(sku)}/` : 'https://mevent.mn';
+  const q = `utm_source=facebook&utm_medium=${AD_UTM_MEDIUM}&utm_campaign=${encodeURIComponent(sku || 'mevent')}`;
+  return sku ? `https://mevent.mn/products/${encodeURIComponent(sku)}/?${q}` : `https://mevent.mn/?${q}`;
 }
 function adPostImage(p) {
   const one = String((p && p.photo) || '').trim();

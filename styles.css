@@ -7309,7 +7309,7 @@ select.no-asar-len {
 .pp-wait { color: var(--muted); }
 .pp-on { color: var(--ok); font-weight: 700; }
 .pp-bad { color: var(--danger); }
-@media (max-width: 560px) {
+@media (max-width: 480px) {
   .pp-row { flex-wrap: wrap; }
   .pp-a { flex: 1 1 100%; flex-direction: row; justify-content: flex-end; align-items: center; }
 }

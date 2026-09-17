@@ -37,7 +37,12 @@ UB = timezone(timedelta(hours=8))
 SEP = '\x1f'
 
 CONV_PAGES = 6            # 50×6 = сүүлийн 300 яриа хангалттай
-MSG_LIMIT = 20            # контекстэд авах сүүлийн мессеж
+# ⚠ 30 хоногийн 195 чатын 36 нь 20-оос олон мессежтэй (20 нь 40-өөс олон).
+#    20-оор таслахад бот ярианы эхлэлийг — ямар эвент, хэдэн хүн, ямар огноо
+#    гэдгийг — ХАРАХГҮЙ өнгөрдөг байв. Токен нэмэгдэх нь хямд (1 хариулт
+#    ~1 центээс ~2 цент), буруу хариулт үүнээс хамаагүй үнэтэй.
+MSG_LIMIT = 60            # контекстэд авах сүүлийн мессеж
+HIST_TURNS = 25           # Claude руу явах эргэлтийн дээд тоо
 WINDOW_H = 24             # Meta-гийн чөлөөт бичвэрийн цонх
 MAX_TURNS_DEF = 4         # дараалсан ботын хариултын дээд хязгаар
 # ⛔ HAIKU БОЛОХГҮЙ (2026-09-17, амьд ноорогоор баталсан). Монгол хэл нь
@@ -270,7 +275,10 @@ def known_bot_mids():
 
 def fetch_threads(tok, page_id):
     q = urllib.parse.urlencode({
-        'fields': 'id,updated_time,participants,messages.limit(%d){id,created_time,from,message}' % MSG_LIMIT,
+        # ⚠ `attachments` ЗААВАЛ — эс бөгөөс `has_attach()` үргэлж худал буцааж,
+        #   зурган мессежийн хамгаалалт ЧИМЭЭГҮЙ унтарна.
+        'fields': ('id,updated_time,participants,messages.limit(%d)'
+                   '{id,created_time,from,message,attachments{mime_type}}') % MSG_LIMIT,
         'limit': 50, 'access_token': tok})
     url = API + '/' + page_id + '/conversations?' + q
     out, pages = [], 0
@@ -365,6 +373,8 @@ Facebook чатын ажилтан. Улаанбаатарт майхан, ас�
 5. Мэдэхгүй зүйлээ таамаглахгүй. Итгэлгүй бол handoff.
 6. Харилцагч МОНГОЛООР БИШ бичсэн, эсвэл юу хүсэж байгаа нь ойлгомжгүй бол
    таамаглахгүй — handoff дуудна.
+6б. Ярианд «[зураг илгээв]» гэж байвал ЧИ ТЭР ЗУРГИЙГ ХАРААГҮЙ. Зурган дээр
+   юу байгааг ТААМАГЛАХГҮЙ. Хариулт нь тэр зургаас хамаарч байвал handoff.
 7. Боломжтой бол mevent.mn дээрх тухайн барааны холбоосыг өгнө.
 8. Утасны дугаараа үлдээхийг санал болгож болно.
 
@@ -421,11 +431,40 @@ def ask_claude(key, history, name):
     return '', used, (hand or 'хэрэгслийн хязгаарт хүрэв'), used_tok
 
 
+def has_attach(m):
+    """Мессежид зураг/файл хавсаргасан уу."""
+    a = (m or {}).get('attachments')
+    return bool((a or {}).get('data') if isinstance(a, dict) else a)
+
+
+def blind_on_photo(msgs, page_id):
+    """Харилцагчийн СҮҮЛИЙН мессеж нь зөвхөн зураг бол бот СОХОР.
+
+    ⛔ Бот зураг ХАРДАГГҮЙ. 30 хоногийн 195 чатын 25-д нь харилцагчийн сүүлийн
+       мессеж зөвхөн зураг байв («энэ хэд вэ?» гэж зураг илгээх нь түгээмэл).
+       Тэдэнд бот өмнөх бичвэрт тулгуурлаж ТААМАГЛАН хариулдаг байв — хамгийн
+       аюултай хэлбэр, учир нь итгэлтэй сонсогдоно. Хүнд шилжүүлнэ.
+    """
+    ins = [m for m in sorted(msgs, key=lambda x: x.get('created_time') or '')
+           if (m.get('from') or {}).get('id') != page_id]
+    if not ins:
+        return False
+    last = ins[-1]
+    return has_attach(last) and not (last.get('message') or '').strip()
+
+
 def history_for(msgs, page_id):
-    """Facebook мессежүүдийг Claude-ийн хэлбэрт. Хоосон/зурган мессежийг алгасна."""
+    """Facebook мессежүүдийг Claude-ийн хэлбэрт.
+
+    ⚠ Зурган мессежийг ЧИМЭЭГҮЙ алгасахгүй — «[зураг илгээв]» гэж тэмдэглэнэ.
+      Алгасвал бот «би чамд зураг илгээсэн» гэсэн хариуг ойлгохгүй, ярианы
+      утга тасарна.
+    """
     out = []
     for m in sorted(msgs, key=lambda x: x.get('created_time') or ''):
         txt = (m.get('message') or '').strip()
+        if not txt and has_attach(m):
+            txt = '[зураг илгээв]'
         if not txt:
             continue
         role = 'assistant' if (m.get('from') or {}).get('id') == page_id else 'user'
@@ -435,7 +474,7 @@ def history_for(msgs, page_id):
             out.append({'role': role, 'content': txt})
     while out and out[0]['role'] == 'assistant':
         out.pop(0)                          # Claude эхний мессежийг user байхыг шаардана
-    return out[-12:]
+    return out[-HIST_TURNS:]
 
 
 def upsert_chat(c):
@@ -584,6 +623,10 @@ def main():
             handoff(tid, 'бот %d удаа хариулсан' % row['turns'])
             skip_n += 1
             continue
+        if blind_on_photo(msgs, page):
+            handoff(tid, 'зураг илгээсэн — бот харахгүй')
+            skip_n += 1
+            continue
         why = tripwire(in_text)
         if why:
             handoff(tid, why)
@@ -682,6 +725,22 @@ def selftest():
 
     eq(phone_in('утас 99112233 байна'), '99112233', 'утас олдоно')
     eq(phone_in('2026 онд'), '', 'он утас биш')
+
+    A = {'data': [{'mime_type': 'image/jpeg'}]}
+    eq(has_attach({'attachments': A}), True, 'хавсралт таньдаг')
+    eq(has_attach({'message': 'х'}), False, 'хавсралтгүй')
+    # ⛔ Сүүлийн мессеж нь ЗӨВХӨН зураг бол бот сохор — 195 чатын 25 нь ийм.
+    eq(blind_on_photo([{'id': 'a', 'created_time': t0, 'from': {'id': 'U'}, 'message': 'үнэ хэд вэ'},
+                       {'id': 'b', 'created_time': t1, 'from': {'id': 'U'}, 'attachments': A}], P),
+       True, 'зөвхөн зураг → сохор')
+    eq(blind_on_photo([{'id': 'a', 'created_time': t0, 'from': {'id': 'U'}, 'attachments': A,
+                        'message': 'энэ хэд вэ'}], P), False, 'зураг+бичвэр → сохор биш')
+    eq(blind_on_photo([{'id': 'a', 'created_time': t0, 'from': {'id': 'U'}, 'attachments': A},
+                       {'id': 'b', 'created_time': t1, 'from': {'id': P}, 'message': 'за'}], P),
+       True, 'бид хариулсан ч харилцагчийн сүүлийнх зураг хэвээр')
+    # Зурган мессеж ЧИМЭЭГҮЙ алгасагдахгүй — ярианы утга тасрахаас.
+    hp = history_for([{'id': '1', 'created_time': t0, 'from': {'id': 'U'}, 'attachments': A}], P)
+    eq(hp[0]['content'], '[зураг илгээв]', 'зураг тэмдэглэгдэнэ')
 
     h = history_for([{'id': '1', 'created_time': t0, 'from': {'id': P}, 'message': 'урьдын хариу'},
                      {'id': '2', 'created_time': t1, 'from': {'id': 'U'}, 'message': 'үнэ хэд вэ'},
